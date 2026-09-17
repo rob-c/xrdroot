@@ -44,9 +44,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      # The point of the package is that it needs nothing compiled: no ROOT,
-      # no uproot, no numpy, no wheel with a C extension behind it.
-      - run: pip install -e ".[dev]"
+      # The package itself needs nothing compiled - no ROOT, no uproot, no
+      # numpy - but the zstd extra is installed so that the accelerated path
+      # is the one under test on every interpreter, rather than only on the
+      # 3.14s that carry `compression.zstd` in the standard library.
+      - run: pip install -e ".[dev,zstd]"
       # pytest-cov rather than `coverage run`, because the workers xdist
       # spawns are separate processes and only pytest-cov collects them all.
       # `fail_under = 100` comes from pyproject.toml, so the gate lives with
