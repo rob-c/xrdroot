@@ -21,7 +21,7 @@ import zlib
 
 import pytest
 
-from xrd.root import (
+from xrdroot import (
     Branch,
     Directory,
     FormatError,
@@ -32,13 +32,13 @@ from xrd.root import (
     UnsupportedFeatureError,
     open_root,
 )
-from xrd.root.buffer import BYTE_COUNT_MASK, CLASS_MASK, MAP_OFFSET, NEW_CLASS_TAG, Buffer
-from xrd.root.compression import _lz4, algorithm, decompress
-from xrd.root.cxx import parse
-from xrd.root.file import Source, _directory_record
-from xrd.root.graph import Graph
-from xrd.root.hist import Histogram
-from xrd.root.interp import (
+from xrdroot.buffer import BYTE_COUNT_MASK, CLASS_MASK, MAP_OFFSET, NEW_CLASS_TAG, Buffer
+from xrdroot.compression import _lz4, algorithm, decompress
+from xrdroot.cxx import parse
+from xrdroot.file import Source, _directory_record
+from xrdroot.graph import Graph
+from xrdroot.hist import Histogram
+from xrdroot.interp import (
     MEMBER_WISE,
     Refused,
     _class_held,
@@ -47,9 +47,9 @@ from xrd.root.interp import (
     _sequence,
     build,
 )
-from xrd.root.objects import BranchRecord, LeafRecord, read_branch, read_tree
-from xrd.root.streamers import Member
-from xrd.root.tree import Basket
+from xrdroot.objects import BranchRecord, LeafRecord, read_branch, read_tree
+from xrdroot.streamers import Member
+from xrdroot.tree import Basket
 
 DATA = pathlib.Path(__file__).parent / "data"
 
@@ -383,7 +383,7 @@ def test_lzma_and_zstd_blocks_are_undone_too(monkeypatch):
 
     body = b"x" * 40
     assert decompress(block(b"XZ", lzma.compress(body), 40), 40) == body
-    monkeypatch.setattr("xrd.root.compression._zstd", lambda blk, size: blk * size)
+    monkeypatch.setattr("xrdroot.compression._zstd", lambda blk, size: blk * size)
     assert decompress(block(b"ZS", b"ab", 2), 4) == b"abab"
 
 

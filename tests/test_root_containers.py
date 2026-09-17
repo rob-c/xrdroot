@@ -16,19 +16,19 @@ import struct
 
 import pytest
 
-from xrd.root import FormatError, UnsupportedFeatureError, open_root
-from xrd.root.buffer import BYTE_COUNT_MASK, Buffer
-from xrd.root.cxx import Mapping, Pair, Prim, Seq, Str, parse, py_name
-from xrd.root.file import Source
-from xrd.root.interp import KINDS, Flat, Refused, Rows, Values, _fields, _packed, _range, build
-from xrd.root.objects import (
+from xrdroot import FormatError, UnsupportedFeatureError, open_root
+from xrdroot.buffer import BYTE_COUNT_MASK, Buffer
+from xrdroot.cxx import Mapping, Pair, Prim, Seq, Str, parse, py_name
+from xrdroot.file import Source
+from xrdroot.interp import KINDS, Flat, Refused, Rows, Values, _fields, _packed, _range, build
+from xrdroot.objects import (
     BranchRecord,
     LeafRecord,
     read_branch_element,
     read_derived_branch,
 )
-from xrd.root.streamers import Member, read_element, read_info, read_streamers
-from xrd.root.tree import TTree
+from xrdroot.streamers import Member, read_element, read_info, read_streamers
+from xrdroot.tree import TTree
 
 DATA = pathlib.Path(__file__).parent / "data"
 

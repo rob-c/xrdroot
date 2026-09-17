@@ -18,13 +18,13 @@ import struct
 
 import pytest
 
-from xrd.root import create, open_root
-from xrd.root.buffer import Buffer
-from xrd.root.compression import decompress
-from xrd.root.objects import CLASSES
-from xrd.root.winfo import INFOS
-from xrd.root.writer import _keylen
-from xrd.root.wtree import (
+from xrdroot import create, open_root
+from xrdroot.buffer import Buffer
+from xrdroot.compression import decompress
+from xrdroot.objects import CLASSES
+from xrdroot.winfo import INFOS
+from xrdroot.writer import _keylen
+from xrdroot.wtree import (
     BRANCH_VERSION,
     LEAF_VERSION,
     LEAVES,
@@ -192,7 +192,7 @@ def test_several_trees_in_one_file_keep_their_own_entries():
 
 
 def test_a_tree_and_a_histogram_can_share_a_file():
-    from xrd.root import Histogram
+    from xrdroot import Histogram
 
     buf = io.BytesIO()
     with create(buf) as out:

@@ -1,7 +1,7 @@
-site_name: PyXRootDClient
-site_description: A pure-Python, Pythonic client for XRootD and HEP WebDAV
-site_url: https://example.org/pyxrootdclient/
-repo_url: https://github.com/rcurrie/PyXRootDClient
+site_name: xrdroot
+site_description: The ROOT file format in pure Python, over any URL PyXRootDClient can open
+site_url: https://example.org/xrdroot/
+repo_url: https://github.com/rob-c/xrdroot
 copyright: LGPL-3.0-or-later
 
 theme:
@@ -29,38 +29,8 @@ theme:
 
 nav:
   - Home: index.md
-  - Easy mode: easy.md
-  - Quickstart: quickstart.md
-  - Guides:
-      - Files and paths: files.md
-      - Namespaces: filesystem.md
-      - Copying: copying.md
-      - Authentication: auth.md
-      - Asynchronous use: async.md
-      - HTTP and WebDAV: http.md
-      - S3 object storage: s3.md
-      - ROOT files: root.md
-      - Machine learning: ml.md
-      - Training playbooks: playbooks.md
-      - A datasets site: datasets-site.md
-      - fsspec: fsspec.md
-      - Command line: cli.md
-      - Safety: safety.md
-  - Coming from pyxrootd: migrating.md
-  - Reference:
-      - API: api.md
-      - Configuration: config.md
-      - Errors: errors.md
-      - Typing: typing.md
-  - Under the hood:
-      - Performance: performance.md
-      - Testing and fault injection: testing.md
-      - Maintainability metrics: maintainability.md
-      - Interoperability and parity: interop.md
-      - Security: security.md
-  - Design notes:
-      - Design: superpowers/specs/2026-07-31-pyxrootd-client-design.md
-      - Roadmap: superpowers/plans/2026-07-31-pyxrootd-client-roadmap.md
+  - ROOT files: root.md
+  - Maintainability metrics: maintainability.md
 
 markdown_extensions:
   - admonition
@@ -88,4 +58,4 @@ plugins:
             filters: ["!^_"]
 
 watch:
-  - src/xrd
+  - src/xrdroot

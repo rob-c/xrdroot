@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pyxrootdclient"
+name = "xrdroot"
 version = "0.1.0"
-description = "A pure-Python, Pythonic client for XRootD (root://, roots://) and HEP WebDAV"
+description = "The ROOT file format in pure Python, read and written over any URL PyXRootDClient can open"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "LGPL-3.0-or-later" }
 authors = [{ name = "Robert Currie", email = "robert.andrew.currie@gmail.com" }]
-keywords = ["xrootd", "hep", "webdav", "storage", "root"]
+keywords = ["root", "hep", "xrootd", "file-format", "ttree"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
@@ -20,23 +20,17 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
-  "Topic :: System :: Filesystems",
+  "Topic :: Scientific/Engineering :: Physics",
 ]
-dependencies = []
+# The transport underneath: every URL a ROOT file is read from here is opened
+# through it. Until these layers are on PyPI the requirement names the
+# repository it comes from; swap it for a version specifier at first release.
+dependencies = ["pyxrootdclient @ git+https://github.com/rob-c/xrd@main"]
 
 [project.optional-dependencies]
-krb5 = ["gssapi>=1.8"]
-fsspec = ["fsspec>=2024.2.0"]
 plot = ["matplotlib>=3.5"]
-datasets = [
-  "h5py>=3.8",
-  "igor2>=0.5.12",
-  "imagecodecs>=2023.3",
-  "numpy>=1.23",
-  "Pillow>=9",
-  "pyarrow>=10",
-  "tifffile>=2023.4",
-]
+lz4 = ["lz4>=4"]
+zstd = ["zstandard>=0.21"]
 dev = [
   "complexipy>=6,<7",
   "mypy>=1.10",
@@ -49,34 +43,22 @@ dev = [
 ]
 docs = ["mkdocs>=1.6", "mkdocs-material>=9.5", "mkdocstrings[python]>=0.25"]
 
-[project.scripts]
-xrd-cp = "xrd.cli.cp:main"
-xrd-datasets = "xrd.cli.datasets:main"
-xrd-fs = "xrd.cli.fs:main"
-
-[project.entry-points."fsspec.specs"]
-root = "xrd.fsspec_impl:XRootDFileSystem"
-roots = "xrd.fsspec_impl:XRootDFileSystem"
-xroot = "xrd.fsspec_impl:XRootDFileSystem"
-dav = "xrd.fsspec_impl:HTTPXRootDFileSystem"
-davs = "xrd.fsspec_impl:HTTPXRootDFileSystem"
-webdav = "xrd.fsspec_impl:HTTPXRootDFileSystem"
+# The layers below are required by repository URL until they are on PyPI,
+# and hatchling wants that said out loud.
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/xrd"]
+packages = ["src/xrdroot"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 timeout = 120
 filterwarnings = ["error::ResourceWarning"]
-markers = [
-    "interop: needs a real xrootd daemon on PATH",
-    "parity: needs the official XRootD python bindings as well",
-]
 
 [tool.coverage.run]
 branch = true
-source = ["xrd"]
+source = ["xrdroot"]
 parallel = true
 
 [tool.coverage.report]
@@ -86,12 +68,9 @@ exclude_also = [
   "\\.\\.\\.$",
   "if __name__ == .__main__.:",
 ]
-# The wire protocol, the cryptography and the client surface are where a gap
-# in coverage means an untested code path against a real server, so they are
-# gated at the full line-and-branch mark; the optional adapters (fsspec,
-# asyncio, CLI) are not, because their coverage depends on which extras are
-# installed - the suite covers those too, but only when they are there.
-include = ["*/xrd/proto/*", "*/xrd/crypto/*", "*/xrd/client/*", "*/xrd/s3/*", "*/xrd/root/*"]
+# A gap here is an untested path against somebody's real physics data, so the
+# whole package is gated at the full line-and-branch mark.
+include = ["*/xrdroot/*"]
 fail_under = 100
 show_missing = true
 skip_covered = true
@@ -103,25 +82,24 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4", "RUF"]
 # RUF022/RUF023: ``__all__`` and ``__slots__`` are grouped by meaning here -
-# urls, values, flags, errors - with a comment on each group. Alphabetising
+# reading, writing, data, errors - with a comment on each group. Alphabetising
 # them would trade a reader's map of the package for a sort order nobody reads.
 ignore = ["E741", "RUF022", "RUF023"]
 
 [tool.mypy]
 # The floor is 3.9 - what RHEL 9 and AlmaLinux 9 ship - but mypy itself refuses
 # to be pointed below 3.10, so the floor is held by the interpreter instead:
-# tests/test_compat.py parses every shipped module as 3.9 and imports the whole
-# package under a real 3.9 if one is installed, and CI runs the suite on it.
+# CI runs the suite on a real 3.9.
 python_version = "3.10"
 strict = true
-packages = ["xrd"]
+packages = ["xrdroot"]
 mypy_path = "src"
 
-# The optional accelerators and adapters ship no stubs. They are reached
-# through narrow, guarded imports, so untyped is the honest description of
-# them rather than a hole in our own checking.
+# The optional accelerators ship no stubs. They are reached through narrow,
+# guarded imports, so untyped is the honest description of them rather than a
+# hole in our own checking.
 [[tool.mypy.overrides]]
-module = ["gssapi.*", "google_crc32c.*", "fsspec.*", "igor2.*", "zstandard.*", "tensorflow.*"]
+module = ["lz4.*", "zstandard.*", "tensorflow.*"]
 ignore_missing_imports = true
 
 # matplotlib drags numpy in, whose stubs use syntax newer than the floor this
@@ -131,9 +109,3 @@ module = ["matplotlib", "matplotlib.*", "numpy", "numpy.*"]
 follow_imports = "skip"
 follow_imports_for_stubs = true
 ignore_missing_imports = true
-
-# ``AbstractFileSystem`` is therefore ``Any``, and subclassing it is the whole
-# point of the adapter.
-[[tool.mypy.overrides]]
-module = "xrd.fsspec_impl"
-disallow_subclassing_any = false

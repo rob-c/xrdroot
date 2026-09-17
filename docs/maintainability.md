@@ -2,9 +2,8 @@
 
 The maintainability test turns five complementary views of function complexity
 into one report and one absolute gate. It scans the handwritten Python under
-`src`, `tools`, `tests` and `benchmarks`. Generated dataset table modules are
-excluded in `maintainability.json`: reviewing a generated declaration as if it
-were control-flow code would not help a maintainer.
+`src`, `tools` and `tests`. Nothing here is generated, so nothing is excluded
+in `maintainability.json`.
 
 Install the development tools and run a report from the repository root:
 
@@ -12,7 +11,7 @@ Install the development tools and run a report from the repository root:
 $ python -m pip install -e ".[dev]"
 $ python tools/maintainability.py hotspots
 $ python tools/maintainability.py report --top 50
-$ python tools/maintainability.py report src/xrd/root --top 0
+$ python tools/maintainability.py report src/xrdroot --top 0
 ```
 
 `hotspots` is the immediate drill-down: it lists every function which exceeds

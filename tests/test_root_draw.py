@@ -12,10 +12,10 @@ import sys
 import types
 
 import pytest
-
 from xrd._compat import zip_strict
-from xrd.root import Graph, Histogram, UnsupportedFeatureError, open_root
-from xrd.root.draw import bar, missing_picture, shade
+
+from xrdroot import Graph, Histogram, UnsupportedFeatureError, open_root
+from xrdroot.draw import bar, missing_picture, shade
 
 DATA = __file__.rsplit("/", 1)[0] + "/data"
 

@@ -3,13 +3,9 @@
   "paths": [
     "src",
     "tools",
-    "tests",
-    "benchmarks"
+    "tests"
   ],
-  "exclude": [
-    "src/xrd/root/_hub_tables.py",
-    "src/xrd/root/_uci_tables.py"
-  ],
+  "exclude": [],
   "limits": {
     "ccn": 10,
     "cognitive": 15,

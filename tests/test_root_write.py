@@ -19,14 +19,14 @@ import struct
 
 import pytest
 
-from xrd.root import (
+from xrdroot import (
     Graph,
     Histogram,
     UnsupportedFeatureError,
     create,
     open_root,
 )
-from xrd.root.compression import (
+from xrdroot.compression import (
     BLOCK,
     _lz4,
     _lz4_pack,
@@ -35,9 +35,9 @@ from xrd.root.compression import (
     compress,
     decompress,
 )
-from xrd.root.interp import OFFSET_L, OFFSET_P
-from xrd.root.winfo import INFOS, WRITER_VERSION
-from xrd.root.writer import WBuffer, _closure, _element, _find, _list, _record
+from xrdroot.interp import OFFSET_L, OFFSET_P
+from xrdroot.winfo import INFOS, WRITER_VERSION
+from xrdroot.writer import WBuffer, _closure, _element, _find, _list, _record
 
 DATA = pathlib.Path(__file__).parent / "data"
 
