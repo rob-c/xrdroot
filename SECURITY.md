@@ -11,8 +11,8 @@ few working days.
 
 It parses a file format, and a file format is untrusted input. Everything to
 do with credentials, TLS and talking to a server belongs to
-[PyXRootDClient](https://github.com/rob-c/xrd) underneath it, whose
-[SECURITY.md](https://github.com/rob-c/xrd/blob/main/SECURITY.md) is the
+[xrdclient](https://github.com/rob-c/xrdclient) underneath it, whose
+[SECURITY.md](https://github.com/rob-c/xrdclient/blob/main/SECURITY.md) is the
 document for those. The threat model here has one party: whoever wrote the
 bytes.
 

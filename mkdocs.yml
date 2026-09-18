@@ -1,5 +1,5 @@
 site_name: xrdroot
-site_description: The ROOT file format in pure Python, over any URL PyXRootDClient can open
+site_description: The ROOT file format in pure Python, over any URL xrdclient can open
 site_url: https://example.org/xrdroot/
 repo_url: https://github.com/rob-c/xrdroot
 copyright: LGPL-3.0-or-later

@@ -14,7 +14,7 @@ import array
 import math
 from typing import Any
 
-from xrd._compat import zip_strict
+from xrdclient._compat import zip_strict
 
 from .draw import axes, bar, missing_picture, shade
 from .errors import FormatError

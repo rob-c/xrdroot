@@ -14,7 +14,7 @@ import os
 import struct
 from typing import IO, TYPE_CHECKING, Any
 
-from xrd.url import parse
+from xrdclient.url import parse
 
 from .buffer import Buffer, as_datetime
 from .compression import decompress
@@ -23,7 +23,7 @@ from .graph import GRAPHS, Graph
 from .hist import HISTOGRAMS, Histogram
 
 if TYPE_CHECKING:
-    from xrd.config import Config
+    from xrdclient.config import Config
 
 __all__ = ["Key", "Directory", "ROOTFile", "open_root"]
 
@@ -49,7 +49,7 @@ class Reopener:
         url = parse(self.target)
         if url.is_local:
             return open(url.path, "rb")
-        from xrd.io import open_url
+        from xrdclient.io import open_url
 
         return open_url(url, "rb", config=self.config)
 

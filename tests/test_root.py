@@ -1390,7 +1390,7 @@ def test_padding_an_integer_column_keeps_it_an_integer_column():
 
 
 def test_a_tree_reads_over_root_without_ever_being_downloaded(config):
-    from xrd.testing import FakeServer
+    from xrdclient.testing import FakeServer
 
     data = (DATA / "small-flat-tree.root").read_bytes()
     with FakeServer(files={"/data/flat.root": data}) as server:

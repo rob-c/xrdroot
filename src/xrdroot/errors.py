@@ -1,6 +1,6 @@
 """What reading a ROOT file can go wrong with.
 
-Both are :class:`~xrd.errors.XRootDError`, so one ``except`` still covers
+Both are :class:`~xrdclient.errors.XRootDError`, so one ``except`` still covers
 everything this package raises, and they are two rather than one because the
 answers differ: a :class:`FormatError` means the bytes are wrong, and a
 :class:`UnsupportedFeatureError` means they are right and this reader is the
@@ -9,7 +9,7 @@ one that is missing something.
 
 from __future__ import annotations
 
-from xrd.errors import XRootDError
+from xrdclient.errors import XRootDError
 
 __all__ = ["ROOTError", "FormatError", "UnsupportedFeatureError"]
 

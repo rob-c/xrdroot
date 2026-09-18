@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "xrdroot"
 version = "0.1.0"
-description = "The ROOT file format in pure Python, read and written over any URL PyXRootDClient can open"
+description = "The ROOT file format in pure Python, read and written over any URL xrdclient can open"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "LGPL-3.0-or-later" }
@@ -25,7 +25,7 @@ classifiers = [
 # The transport underneath: every URL a ROOT file is read from here is opened
 # through it. Until these layers are on PyPI the requirement names the
 # repository it comes from; swap it for a version specifier at first release.
-dependencies = ["pyxrootdclient @ git+https://github.com/rob-c/xrd@main"]
+dependencies = ["xrdclient @ git+https://github.com/rob-c/xrdclient@main"]
 
 [project.optional-dependencies]
 plot = ["matplotlib>=3.5"]

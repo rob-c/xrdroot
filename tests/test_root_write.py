@@ -530,7 +530,7 @@ def test_create_takes_a_sink_with_nothing_but_a_write_method():
 
 
 def test_create_writes_over_the_wire_like_anything_else():
-    from xrd.testing import FakeServer
+    from xrdclient.testing import FakeServer
 
     with FakeServer(files={}) as server:
         with create(str(server.url / "out.root")) as out:

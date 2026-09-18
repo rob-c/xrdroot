@@ -1,7 +1,7 @@
 # xrdroot
 
 The ROOT file format, in pure Python, read and written over any URL
-[PyXRootDClient](https://github.com/rob-c/xrd) can open.
+[xrdclient](https://github.com/rob-c/xrdclient) can open.
 
 ```python
 import xrdroot
@@ -14,7 +14,7 @@ with xrdroot.open_root("root://eos.example.org//store/events.root") as f:
 
 No ROOT, no `uproot`, no `numpy`, no compiled extension — the format itself,
 read from the standard library. Nothing is downloaded either: a tree is read a
-basket at a time through `xrd`, so a hundred-gigabyte file on the other side of
+basket at a time through `xrdclient`, so a hundred-gigabyte file on the other side of
 the world is walked from a laptop and costs the entries you asked for rather
 than the file.
 
@@ -22,7 +22,7 @@ than the file.
 
     pip install git+https://github.com/rob-c/xrdroot
 
-That brings `pyxrootdclient` with it, which is where `root://`, `https://`,
+That brings `xrdclient` with it, which is where `root://`, `https://`,
 HEP WebDAV and `s3://` come from. Nothing else is required. `matplotlib` makes
 histograms and graphs draw themselves onto axes; `lz4` and `zstandard` make
 those two compression algorithms faster than the pure-Python fallbacks that
@@ -69,7 +69,7 @@ matplotlib is there, `.text()` into plain characters when it is not.
 
 ## Where this sits
 
-    xrd          the XRootD protocol, files, copies, auth       (pyxrootdclient)
+    xrdclient    the XRootD protocol, files, copies, authentication
       └─ xrdroot        the ROOT file format                    (this package)
            └─ xrdml     trees to tensors, a URL to a training loop
                 └─ xrddatasets   open data converted to ROOT, and the site that serves it

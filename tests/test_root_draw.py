@@ -12,7 +12,7 @@ import sys
 import types
 
 import pytest
-from xrd._compat import zip_strict
+from xrdclient._compat import zip_strict
 
 from xrdroot import Graph, Histogram, UnsupportedFeatureError, open_root
 from xrdroot.draw import bar, missing_picture, shade

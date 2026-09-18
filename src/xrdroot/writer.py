@@ -27,7 +27,7 @@ import uuid
 from collections.abc import Mapping
 from typing import IO, TYPE_CHECKING, Any
 
-from xrd.url import parse
+from xrdclient.url import parse
 
 from .buffer import BYTE_COUNT_MASK, IS_REFERENCED, NEW_CLASS_TAG
 from .compression import CODES, LEVELS, compress
@@ -836,7 +836,7 @@ def create(
     if url.is_local:
         handle: IO[bytes] = open(url.path, "wb")
     else:
-        from xrd.io import open_url
+        from xrdclient.io import open_url
 
         handle = open_url(url, "wb", config=config)
     return WritableFile(handle, str(target), True, compression, level)

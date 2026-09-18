@@ -1,7 +1,7 @@
 # xrdroot
 
 The ROOT file format in pure Python, read and written over any URL
-[PyXRootDClient](https://github.com/rob-c/xrd) can open.
+[xrdclient](https://github.com/rob-c/xrdclient) can open.
 
 ```python
 import xrdroot
@@ -23,7 +23,7 @@ metrics](maintainability.md) for how this package is kept honest.
 
 | Package | What it is |
 | --- | --- |
-| [`pyxrootdclient`](https://github.com/rob-c/xrd) | the XRootD protocol, files, copies, authentication |
+| [`xrdclient`](https://github.com/rob-c/xrdclient) | the XRootD protocol, files, copies, authentication |
 | `xrdroot` | this package: the ROOT file format |
 | [`xrdml`](https://github.com/rob-c/xrdml) | trees to tensors, a URL to a training loop |
 | [`xrddatasets`](https://github.com/rob-c/xrddatasets) | open data converted to ROOT, and the site that serves it |

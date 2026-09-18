@@ -11,7 +11,7 @@ from __future__ import annotations
 import array
 from typing import Any
 
-from xrd._compat import zip_strict
+from xrdclient._compat import zip_strict
 
 from .draw import axes
 from .errors import FormatError, UnsupportedFeatureError

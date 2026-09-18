@@ -2,13 +2,13 @@
 
 Everything here is about keeping the suite off the network and off whoever is
 running it. The format tests themselves are pure bytes; the handful that read
-a tree over a URL stand up a :class:`~xrd.testing.FakeServer` of their own.
+a tree over a URL stand up a :class:`~xrdclient.testing.FakeServer` of their own.
 """
 
 from __future__ import annotations
 
 import pytest
-from xrd.config import Config
+from xrdclient.config import Config
 
 
 @pytest.fixture(autouse=True)
@@ -29,7 +29,7 @@ def _a_short_data_stream_probe(monkeypatch):
     """Do not spend the suite's time learning what the fake server is.
 
     A file asks its server once per connection whether it serves a request
-    that arrived on a data path, and :class:`~xrd.testing.FakeServer` is the
+    that arrived on a data path, and :class:`~xrdclient.testing.FakeServer` is the
     standard push-only kind that never will - so every connection would sit
     out a whole ``data_stream_timeout`` to be told what this suite already
     knows. A quarter of a second is still an age on loopback.
@@ -41,12 +41,12 @@ def _a_short_data_stream_probe(monkeypatch):
 def _no_pooled_connections():
     """Never let one test's connection be handed to the next.
 
-    Every :class:`~xrd.testing.FakeServer` gets an ephemeral port, and the
+    Every :class:`~xrdclient.testing.FakeServer` gets an ephemeral port, and the
     kernel hands those out again: a connection left in the pool by a test
     whose server has since stopped would match a later test's server by
     address and be reused, dead.
     """
-    from xrd.session import SESSIONS
+    from xrdclient.session import SESSIONS
 
     SESSIONS.clear()
     yield

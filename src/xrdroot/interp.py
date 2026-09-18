@@ -18,7 +18,7 @@ import struct
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from xrd._compat import zip_strict
+from xrdclient._compat import zip_strict
 
 from .buffer import Buffer, as_datetime, to_native
 from .cxx import SEQUENCES, Mapping, Pair, Prim, Seq, Str, parse, py_name
