@@ -426,8 +426,10 @@ def test_names_a_reader_could_never_ask_for_are_refused():
     with create(buf) as out:
         with pytest.raises(ValueError, match="could never be asked for"):
             out[""] = "x"
-        with pytest.raises(ValueError, match="does not make subdirectories"):
-            out["a/b"] = "x"
+        with pytest.raises(ValueError, match="could never be asked for"):
+            out["a/"] = "x"
+        with pytest.raises(ValueError, match="could never be asked for"):
+            out["a//b"] = "x"
         with pytest.raises(ValueError, match="an old cycle"):
             out["a;1"] = "x"
         with pytest.raises(ValueError, match="the name must be a str"):

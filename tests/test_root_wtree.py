@@ -583,8 +583,8 @@ def test_filling_a_tree_after_the_file_closed_says_what_it_holds():
 
 def test_a_tree_cannot_be_named_what_a_key_cannot_be_named():
     with create(io.BytesIO()) as out:
-        with pytest.raises(ValueError, match="does not make subdirectories"):
-            out.tree("a/b", {"x": float})
+        with pytest.raises(ValueError, match="could never be asked for"):
+            out.tree("a/", {"x": float})
         with pytest.raises(ValueError, match="asks for an old cycle"):
             out.tree("a;1", {"x": float})
         with pytest.raises(ValueError, match="could never be asked for"):

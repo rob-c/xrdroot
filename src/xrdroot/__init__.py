@@ -29,10 +29,11 @@ It writes, too: :func:`create` makes a new ROOT file anywhere this library
 can put bytes, holding trees - from a dict of arrays or any DataFrame -
 histograms and graphs - read from another file, made by ``hist`` or
 :func:`numpy.histogram`, or built from plain numbers with
-:meth:`Histogram.new` and :meth:`Graph.new` - along with strings and arrays.
-And both classes draw themselves: ``.plot()`` onto matplotlib axes if
-matplotlib is there, ``.text()`` into characters with nothing installed at
-all.
+:meth:`Histogram.new` and :meth:`Graph.new` - along with strings and arrays,
+in directories of their own if their names say so; and :func:`update` adds
+to a file that is already there. And both classes draw themselves:
+``.plot()`` onto matplotlib axes if matplotlib is there, ``.text()`` into
+characters with nothing installed at all.
 
 :mod:`xrdml` turns what comes out into tensors, if PyTorch or TensorFlow
 is there; it is a separate package that builds on this one.
@@ -45,8 +46,9 @@ from .file import Directory, Key, ROOTFile, open_root
 from .graph import Graph
 from .hist import Axis, Histogram
 from .tree import Branch, Group, Jagged, TTree
-from .writer import WritableFile, create
+from .writer import WritableDirectory, WritableFile, create
 from .wtree import WritableTree
+from .wupdate import update
 
 __all__ = [
     # opening
@@ -56,7 +58,9 @@ __all__ = [
     "Key",
     # writing
     "create",
+    "update",
     "WritableFile",
+    "WritableDirectory",
     "WritableTree",
     # data
     "TTree",
