@@ -450,7 +450,7 @@ def test_a_column_pair_of_the_wrong_shape_says_what_a_pair_means():
         _typecode("x", ("f", 3, 4))
 
 
-@pytest.mark.parametrize("length", [0, -1, "four", 2.0, True])
+@pytest.mark.parametrize("length", [0, -1, 2.0, True])
 def test_a_column_whose_count_is_not_a_count_is_refused(length):
     with pytest.raises(ValueError, match="values per entry, which is not a count"):
         _typecode("x", ("f", length))

@@ -682,7 +682,9 @@ class WritableFile:
 
         A table - a dict of arrays, a pandas or Polars DataFrame, an Arrow
         table - becomes a tree, a column per column, typed by what the arrays
-        hold. A histogram from ``hist``, ``boost-histogram`` or
+        hold: numbers, rows of numbers of different lengths (a
+        :class:`~.tree.Jagged`, an Awkward Array, a list of arrays), or
+        strings. A histogram from ``hist``, ``boost-histogram`` or
         :func:`numpy.histogram` becomes the ROOT histogram it is. The title is
         taken from the object when it has one; a name written twice becomes a
         second cycle of itself, exactly as in ROOT, and reading the file back
@@ -725,7 +727,9 @@ class WritableFile:
         ``columns`` maps each column's name to what it holds: a Python
         ``bool``, ``int`` or ``float``, an :mod:`array` type code such as
         ``'f'`` for a narrower number, or a pair of either and how many
-        values every entry holds. Entries go out a basket at a time as they
+        values every entry holds - ``None`` there for a number that changes
+        from entry to entry, or a counter's name to share one - or ``str``
+        for a column of text. Entries go out a basket at a time as they
         gather - ``basket_size`` bytes of a column at a time - so the tree
         can be far larger than memory, and the tree's own record is written
         when the file closes.

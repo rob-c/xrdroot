@@ -379,6 +379,14 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
         ('TStreamerBasicType', 'fMaximum', 'Maximum value if leaf range is specified',
          8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
     )),
+    "TLeafC": (0xfbe3b2f3, 1, (
+        ('TStreamerBase', 'TLeaf', 'Leaf: description of a Branch data type',
+         0, 0, 0, 0, (0, 1830715730, 0, 0, 0), 'BASE', (2,)),
+        ('TStreamerBasicType', 'fMinimum', 'Minimum value if leaf range is specified',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fMaximum', 'Maximum value if leaf range is specified',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+    )),
     "TObjArray": (0xa99e6552, 3, (
         ('TStreamerBase', 'TSeqCollection', 'Sequenceable collection ABC',
          0, 0, 0, 0, (0, -60015674, 0, 0, 0), 'BASE', (0,)),

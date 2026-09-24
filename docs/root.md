@@ -435,13 +435,40 @@ values every entry holds — `("i", 4)` is four `int32`s per entry. A Python
 `int` gets the widest ROOT has, because a Python int has no width of its own
 and a column that quietly stopped fitting halfway down the file would be worse.
 
+Rows whose length changes from entry to entry are declared with `None` for the
+count, and strings with `str`:
+
+```python
+with xrdroot.create("out.root") as f:
+    tree = f.tree("events", {
+        "jet_pt": ("f", None),       # float32 rows, counted by njet_pt
+        "mu_px": ("f", "nmu"),       # two columns sharing one counter, nmu
+        "mu_py": ("f", "nmu"),
+        "trigger": str,
+    })
+    tree.fill(jet_pt=[40.5, 22.0], mu_px=[1.5], mu_py=[-0.5], trigger="HLT_Mu20")
+```
+
+These are laid out the way ROOT lays out a leaf-list `x[n]/F`: a counter
+branch of `int32`s — `n` and the column's name, unless one is named — that
+comes just before the first column it counts, a data leaf that points at the
+counter's leaf, and baskets that carry a table of where each entry begins
+after the values, as ROOT's own do. The counter is never filled by hand: it
+is the length of each row, and columns that share one must agree about that
+in every entry. A string is a `TLeafC`, its length and then its bytes. `fill`
+takes any one-dimensional sequence for a row and a `str` for text; `extend`
+takes a `Jagged`, an Awkward Array or a list of arrays for a column of rows,
+and a list or NumPy array of strings for text, and packs rows in C the way it
+packs everything else.
+
 `extend` is the fast way in: given a mapping of column name to array, it packs
 every column in C, checks the shapes and refuses a float going into an integer
 column or an integer too wide for one, and puts the entries into exactly the
 baskets filling them one by one would have. Given an iterable of mappings it
 takes them as entries instead. Writing a table under a name — `f["events"] =
 frame` — declares the tree from the arrays' own types and extends it in one
-go.
+go: a `Jagged`, an Awkward Array of lists, a list of arrays or a frame's
+column of lists becomes a column of rows, and strings a column of text.
 
 [array]: https://docs.python.org/3/library/array.html
 
@@ -455,9 +482,10 @@ landed, so it is written when the file closes.
 
 An entry that does not fit its columns is refused whole — nothing is kept for
 any column, so the tree is exactly as it was — and it is refused by name:
-which column, what it holds, and what arrived instead. Columns are fixed-size
-by design; rows of varying length, strings and split C++ objects are refused
-rather than approximated, on the same principle as the rest of the writer.
+which column, what it holds, and what arrived instead — a row that is not
+flat, a float for an integer column, a string with a NUL in it, which ROOT
+would take to end there. Split C++ objects are refused rather than
+approximated, on the same principle as the rest of the writer.
 
 The result is a tree laid out the way ROOT lays one out, down to the record
 versions and the `fLeaves` references pointing at the very leaves the branches
