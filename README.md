@@ -51,6 +51,10 @@ comes back as a `Histogram` with its bins, edges and errors where you would
 look for them, and a graph — layered error bars and all — as a `Graph` you can
 walk a point at a time, inside another object as well as in a key.
 
+RNTuple, ROOT 7's columnar successor to the tree, reads the same way — every
+column encoding of its specification, records, collections, variants and all —
+and a table or a field-by-field declaration writes as one too.
+
 The few columns this reader will not decode are refused by name with the
 reason, because a plausible misreading of physics data is worse than a
 refusal.

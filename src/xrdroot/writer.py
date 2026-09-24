@@ -49,6 +49,7 @@ from .interp import ARRAYS, OFFSET_L, OFFSET_P
 from .winfo import INFOS, SUBVERSIONS, WRITER_VERSION, Element
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
+    from .rntuple.writer import WritableRNTuple
     from .wtree import WritableTree
 
 __all__ = ["create", "WritableFile", "WritableDirectory"]
@@ -842,7 +843,9 @@ class WritableDirectory:
         state = "closed" if self.closed else f"{len(self._keys)} keys so far"
         return f"<WritableDirectory {self.path!r} in {self._file.name!r}, {state}>"
 
-    def write(self, name: str, obj: Any, *, title: str | None = None) -> None:
+    def write(
+        self, name: str, obj: Any, *, title: str | None = None, rntuple: bool = False
+    ) -> None:
         """Write one object under ``name``, as :meth:`__setitem__` does.
 
             >>> f["events"] = {"energy": energies, "hits": hits}   # doctest: +SKIP
@@ -858,14 +861,20 @@ class WritableDirectory:
         taken from the object when it has one; a name written twice becomes a
         second cycle of itself, exactly as in ROOT, and reading the file back
         gives the newest. A name with a ``/`` in it goes into the directory
-        it names, made if it is not there yet.
+        it names, made if it is not there yet. ``rntuple=True`` writes a table
+        as an RNTuple instead of a tree, a field per column: see :meth:`rntuple`.
         """
         here, leaf = self._place(name)
-        here._write(leaf, obj, title)
+        here._write(leaf, obj, title, rntuple)
 
-    def _write(self, name: str, obj: Any, title: str | None) -> None:
+    def _write(self, name: str, obj: Any, title: str | None, rntuple: bool = False) -> None:
         self._check_leaf(name)
         table = _table(obj)
+        if rntuple:  # ROOT 7's columnar format rather than a TTree: see .rntuple
+            from .rntuple.writer import write_table
+
+            write_table(self, name, table, obj)
+            return
         if table is not None:
             from .wtree import spec_of
 
@@ -981,6 +990,27 @@ class WritableDirectory:
     @property
     def _where(self) -> str:
         return repr(self.path) if self.path else "the top of the file"
+
+    def rntuple(self, name: str, fields: Mapping[str, Any], **options: Any) -> WritableRNTuple:
+        """An RNTuple in this directory, to be filled a batch or an entry at a time.
+
+            >>> with xrdroot.create("out.root") as f:        # doctest: +SKIP
+            ...     ntuple = f.rntuple("events", {"n": np.int32, "pt": [np.float32]})
+            ...     ntuple.extend({"n": counts, "pt": pts})
+
+        ``fields`` maps each field's name to what it holds, and ``options``
+        are ``cluster_size`` and ``page_size`` in bytes and a ``description``;
+        :class:`~xrdroot.rntuple.writer.WritableRNTuple` says what each can be.
+        A name with a ``/`` in it puts the RNTuple in the directory it names.
+        """
+        from .rntuple.writer import WritableRNTuple
+
+        here, leaf = self._place(name)
+        here._check_leaf(leaf)
+        ntuple = WritableRNTuple(here, leaf, fields, here._next_cycle(leaf), **options)
+        self._file._rntuples.append(ntuple)
+        self._file._used["ROOT::RNTuple"] = None
+        return ntuple
 
     def _check_name(self, name: str) -> None:
         """Whether a key could be written under this name, and read back by it."""
@@ -1175,6 +1205,7 @@ class WritableFile(WritableDirectory):
         self._version = WRITER_VERSION
         self._used: dict[str, None] = {}
         self._trees: list[WritableTree] = []
+        self._rntuples: list[WritableRNTuple] = []
         #: The gaps the file already had, and the records this session let go.
         self._gaps: list[tuple[int, int]] = []
         self._freed: list[tuple[int, int]] = []
@@ -1212,6 +1243,8 @@ class WritableFile(WritableDirectory):
         """Everything that could only be placed once the objects were in."""
         for tree in self._trees:
             tree._finish()  # its baskets are in; now it can say where they went
+        for ntuple in self._rntuples:
+            ntuple._finish()  # likewise its pages; now its header, footer and anchor
         info = self._write_streamers()
         for directory in self._walk():
             if directory._dirty:

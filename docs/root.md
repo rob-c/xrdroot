@@ -560,6 +560,105 @@ hundred sets of them — is [`xrddatasets`](https://github.com/rob-c/xrddatasets
 which is built on this package and publishes the catalogue those files are
 served from.
 
+## RNTuple
+
+RNTuple is ROOT 7's successor to the `TTree`: a column of plain values for
+every leaf of the schema, cut into compressed pages, grouped into clusters of
+consecutive entries, and described in little-endian envelopes of its own
+rather than in ROOT's streamer format. A directory lists only its anchor, a
+`ROOT::RNTuple` key, and asking for one gives back an `RNTuple`, which is used
+the way a tree is:
+
+```python
+events = f["Events"]  # <RNTuple 'Events' with 969 fields and 10 entries>
+len(events), events.keys(), events.num_clusters
+events.show()  # name, Python type and C++ type, one line per field
+events.typenames()  # {'nMuon': 'uint32', 'Muon_pt': 'list[float32]', ...}
+events.cxx_types()  # {'nMuon': 'ROOT::RNTupleCardinality<std::uint32_t>', ...}
+events["Muon_pt"].array(0, 1000)  # <Jagged 1000 rows of 2372 float32 values>
+events.arrays(["nMuon", "Muon_pt"], library="ak")
+for batch in events.iterate(step=50_000, library="pd"):
+    ...
+```
+
+A range of entries reads the page lists of the cluster groups it touches and
+the pages of the fields asked for in the clusters it touches, nothing else —
+the same bargain a tree's baskets make. Every column encoding of the
+specification (1.0) is decoded: the plain little-endian numbers; the split
+ones, whose pages hold every element's first byte, then every second; delta
+for offsets and zigzag for signed integers on top of those; booleans a bit to
+an element; half-precision floats; `Real32Trunc`, a float with its low
+mantissa bits dropped; and `Real32Quant`, a float spread over the integers its
+bits can count within the range the column declares. So is everything around
+them: several clusters and cluster groups, a schema that grew while the file
+was being written (its entries before a field existed read as zeros), a field
+written through two encodings with a different one live in different
+clusters, projected fields and their alias columns, blocks split across keys,
+and the three versions of the format ROOT has shipped. Envelopes, pages and
+the anchor each carry an XXH3 checksum; with the `lz4` extra's `xxhash`
+installed every one is checked on the way in and a damaged one refused, and
+without it they are passed over, as the LZ4 checksums are.
+
+What comes back is shaped the way a tree's columns are:
+
+| The field | What `array()` gives |
+| --- | --- |
+| a number or a `bool` | a NumPy array, of the type the C++ says — a `float` stored as `Real16` is still `float32` |
+| `std::array<T, N>` of numbers, `std::bitset<N>` | a NumPy array of shape `(entries, N)`, a dimension per nesting |
+| `std::vector`, `RVec` or set of numbers | a `Jagged` |
+| `ROOT::RNTupleCardinality` | a NumPy array of how many items each entry's collection holds |
+| `std::string` | a `list[str]` |
+| a class or struct | a `dict` per entry, a key per member — a base class under the name of its class, as a tree's objects keep theirs |
+| `std::pair`, `std::tuple` | a `tuple` per entry |
+| `std::map`, `std::unordered_map` | a `dict` per entry; a multimap is a list of `(key, value)` pairs, so nothing is lost |
+| `std::optional`, `std::unique_ptr` | the value, or `None` |
+| `std::variant` | whichever alternative each entry holds, or `None` for none |
+| `std::atomic`, an enum | what it wraps |
+| anything nested | a list per entry, of the same shapes one level down: a `vector<vector<int>>` is a list of NumPy arrays per entry |
+
+A member of a record is a field of its own under a dotted name,
+`events["event.muon.pt"]`, which reads that column alone; so is a record held
+in a record. A field ROOT streamed whole with its own streamer, and a column
+type newer than the specification, are listed in `unreadable` with the reason
+rather than read, and a feature flag this reader does not know refuses the
+RNTuple outright, as the specification asks.
+
+### Writing one
+
+`f.rntuple(name, fields)` declares an RNTuple and `extend` and `fill` give it
+entries; a table goes in whole with `rntuple=True`:
+
+```python
+with xrdroot.create("out.root") as f:
+    events = f.rntuple("events", {"n": np.int32, "pt": [np.float32], "tag": str})
+    events.extend({"n": counts, "pt": jagged_pt, "tag": tags})
+    events.fill(n=2, pt=[10.5, 3.25], tag="last")
+    f.write("summary", frame, rntuple=True)  # a dict of arrays or any DataFrame
+```
+
+A field is a number — a NumPy type, a C++ name such as `"std::uint16_t"` or
+`"double"`, or a Python `bool`, `int` or `float` — or `str` for a
+`std::string`, or a vector of a number, spelled `[np.float32]` or
+`"std::vector<float>"`. A vector is given as a `Jagged`, an Awkward list, or a
+list of rows. Entries gather a cluster at a time — `cluster_size` bytes of
+values, 32 MB unless said otherwise — and each column is written in pages of
+at most `page_size` bytes, ROOT's own megabyte by default, so an RNTuple far
+larger than memory costs one cluster of it. The pages are compressed with the
+file's algorithm, each followed by its checksum, in the unlisted `RBlob` keys
+ROOT keeps them in; the header, page list, footer and anchor go in when the
+file closes, and the file's streamer information describes `ROOT::RNTuple` as
+ROOT itself does. The column encodings are ROOT's defaults: split, zigzag and
+delta when the file is compressed, and the plain ones when it is not.
+
+The checksums are XXH3, computed by `xxhash` when it is there and by a Python
+XXH3 here when it is not, which the test suite holds to the C library's
+digests and to the checksums ROOT wrote into the files under `tests/data`. What
+this writes is read back by uproot and by go-hep, which checks every checksum.
+
+Records, nested collections, variants and the lossy float encodings are not
+written: their layout is well defined, but a writer that gets one subtly wrong
+makes files ROOT misreads, and each is refused by name until it is here.
+
 ## Compression
 
 Every algorithm ROOT writes with is read here — and written: zlib, lzma, LZ4,

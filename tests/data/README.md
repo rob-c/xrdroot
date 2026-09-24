@@ -48,3 +48,43 @@ The layouts it writes trees with were harvested the same way — from
 
 go-hep is BSD-3-Clause; the licence is in `LICENSE.go-hep` next to these
 files, and it is the whole of what is required to redistribute them.
+
+## RNTuple
+
+The twenty-three files under `rntuple/` are RNTuples ROOT wrote, taken
+unchanged from go-hep's `groot/testdata/rntuple`, which took them in turn from
+[scikit-hep-testdata](https://github.com/scikit-hep/scikit-hep-testdata); the
+macros that made them are in that project's `dev/make-root/`, and the values
+the tests assert are the ones those macros filled. The name of each ends in the
+version of the binary format it was written to. Every one of them is also read
+here field for field against uproot's reader, outside the suite, with no
+differences but the shape of an empty struct.
+
+| File | What it is there for |
+| --- | --- |
+| `test_int_float_rntuple_v1-0-0-0.root` | two numbers per entry, and the donor of the anchor's streamer information |
+| `test_int_5e4_rntuple_v1-0-0-0.root` | fifty thousand entries in one page |
+| `test_split_3e4_rntuple_v1-0-0-0.root` | the split encodings, signed and unsigned, and a vector |
+| `test_1jag_int_float_rntuple_v1-0-0-0.root` | vectors whose length changes every entry |
+| `test_bit_rntuple_v1-0-0-0.root` | booleans, a bit to an entry |
+| `test_atomic_bitset_rntuple_v1-0-0-0.root` | a `std::atomic`, which wraps its value, and a `std::bitset<42>` |
+| `test_float_types_rntuple_v1-0-0-0.root` | `Real32Trunc` at four widths and `Real32Quant` at seven |
+| `test_nested_structs_rntuple_v1-0-0-0.root` | a struct in a struct in a struct, with a vector at the bottom |
+| `test_class_inheritance_rntuple_v1-0-0-1.root` | classes with one base and with two, which RNTuple keeps as `:_0` and `:_1` |
+| `test_int_vfloat_tlv_vtlv_rntuple_v1-0-0-0.root` | a record, and a vector of them |
+| `test_stl_containers_rntuple_v1-0-0-0.root` | strings, vectors of vectors, arrays, tuples, pairs and variants, alone and in vectors |
+| `test_emptystruct_invalidvar_rntuple_v1-0-0-0.root` | a struct with nothing in it, and a variant that holds nothing |
+| `test_extension_columns_rntuple_v1-0-0-0.root` | fields added after 200 and 400 entries, in the footer's schema extension |
+| `test_multiple_representations_rntuple_v1-0-0-0.root` | one field written as `Real32` and as `Real16`, a different one live per cluster |
+| `test_index_multicluster_rntuple_v1-0-0-0.root` | vectors over three clusters, whose offsets restart in each |
+| `test_multiple_cluster_groups_rntuple_v1-0-0-0.root` | twelve clusters in three groups, each with a page list of its own |
+| `test_int_multicluster_rntuple_v1-0-0-0.root` | a hundred million entries in 191 pages, reached without reading them all |
+| `ntpl001_staff_rntuple_v1-0-0-0.root` | ROOT's own staff tutorial: numbers and strings |
+| `ntpl001_staff_rntuple_v1-0-1-0.root` | the same in the newer format, whose footer ends with a list of attribute sets |
+| `rntviewer-testfile-uncomp-single-rntuple-v1-0-0-0.root` | written uncompressed, so in the plain encodings |
+| `rntviewer-testfile-multiple-rntuples-v1-0-0-0.root` | two RNTuples in one file |
+| `Run2012BC_DoubleMuParked_Muons_1000evts_rntuple_v1-0-0-0.root` | a thousand events of CMS dimuon data: projected fields over an untyped collection, and a cardinality |
+| `cmsopendata2015_ttbar_19980_NANOAOD_RNTupleImporter_rntuple_v1-0-0-1.root` | a CMS NanoAOD of 969 fields, which is what an analysis is actually handed |
+
+scikit-hep-testdata is BSD-3-Clause too; its licence is in
+`rntuple/LICENSE.scikit-hep-testdata`.
