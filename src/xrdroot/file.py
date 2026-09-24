@@ -292,8 +292,8 @@ class Directory:
             return default
 
     def _read(self, key: Key) -> Any:
-        if key.classname in ("TDirectory", "TDirectoryFile"):
-            return self._subdirectory(key)
+        if key.classname in ("TDirectory", "TDirectoryFile", "ROOT::RNTuple"):
+            return self._container(key)
         from .objects import TREE_CLASSES, read_tree
 
         if key.classname in TREE_CLASSES:
@@ -327,6 +327,14 @@ class Directory:
         if key.classname in GRAPHS:
             return Graph(key.classname, value)
         return value
+
+    def _container(self, key: Key) -> Any:
+        """A directory, or an RNTuple - ROOT 7's columnar format, in :mod:`.rntuple`."""
+        if key.classname == "ROOT::RNTuple":
+            from .rntuple import RNTuple
+
+            return RNTuple.from_key(key, self._source)
+        return self._subdirectory(key)
 
     def _subdirectory(self, key: Key) -> Directory:
         record = _directory_record(self._source, key.seek_key + key.keylen)

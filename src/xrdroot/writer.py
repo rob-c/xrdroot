@@ -45,6 +45,7 @@ from .interp import ARRAYS, OFFSET_L, OFFSET_P
 from .winfo import INFOS, SUBVERSIONS, WRITER_VERSION, Element
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
+    from .rntuple.writer import WritableRNTuple
     from .wtree import WritableTree
 
 __all__ = ["create", "WritableFile"]
@@ -669,12 +670,15 @@ class WritableFile:
         self._cycles: dict[str, int] = {}
         self._used: dict[str, None] = {}
         self._trees: list[WritableTree] = []
+        self._rntuples: list[WritableRNTuple] = []
 
     def __repr__(self) -> str:
         state = "closed" if self._closed else f"{len(self._keys)} keys so far"
         return f"<WritableFile {self.name!r}, {state}>"
 
-    def write(self, name: str, obj: Any, *, title: str | None = None) -> None:
+    def write(
+        self, name: str, obj: Any, *, title: str | None = None, rntuple: bool = False
+    ) -> None:
         """Write one object under ``name``, as :meth:`__setitem__` does.
 
             >>> f["events"] = {"energy": energies, "hits": hits}   # doctest: +SKIP
@@ -686,10 +690,16 @@ class WritableFile:
         :func:`numpy.histogram` becomes the ROOT histogram it is. The title is
         taken from the object when it has one; a name written twice becomes a
         second cycle of itself, exactly as in ROOT, and reading the file back
-        gives the newest.
+        gives the newest. ``rntuple=True`` writes a table as an RNTuple instead
+        of a tree, a field per column: see :meth:`rntuple`.
         """
         self._check_name(name)
         table = _table(obj)
+        if rntuple:  # ROOT 7's columnar format rather than a TTree: see .rntuple
+            from .rntuple.writer import write_table
+
+            write_table(self, name, table, obj)
+            return
         if table is not None:
             from .wtree import spec_of
 
@@ -740,6 +750,27 @@ class WritableFile:
         self._trees.append(tree)
         self._used.update(dict.fromkeys(tree.classes))
         return tree
+
+    def rntuple(self, name: str, fields: Mapping[str, Any], **options: Any) -> WritableRNTuple:
+        """An RNTuple in this file, to be filled a batch or an entry at a time.
+
+            >>> with xrdroot.create("out.root") as f:        # doctest: +SKIP
+            ...     ntuple = f.rntuple("events", {"n": np.int32, "pt": [np.float32]})
+            ...     ntuple.extend({"n": counts, "pt": pts})
+
+        ``fields`` maps each field's name to what it holds, and ``options``
+        are ``cluster_size`` and ``page_size`` in bytes and a ``description``;
+        :class:`~xrdroot.rntuple.writer.WritableRNTuple` says what each can be.
+        """
+        from .rntuple.writer import WritableRNTuple
+
+        self._check_name(name)
+        cycle = self._cycles.get(name, 0) + 1
+        ntuple = WritableRNTuple(self, name, fields, cycle, **options)
+        self._cycles[name] = cycle
+        self._rntuples.append(ntuple)
+        self._used["ROOT::RNTuple"] = None
+        return ntuple
 
     def _check_name(self, name: str) -> None:
         """Whether a key could be written under this name, and read back by it."""
@@ -834,6 +865,8 @@ class WritableFile:
         """Everything that could only be placed once the objects were in."""
         for tree in self._trees:
             tree._finish()  # its baskets are in; now it can say where they went
+        for ntuple in self._rntuples:
+            ntuple._finish()  # likewise its pages; now its header, footer and anchor
 
         info = _streamers(self._used)
         seek_info, nbytes_info = self._put(

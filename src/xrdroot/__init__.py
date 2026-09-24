@@ -44,6 +44,7 @@ from .errors import FormatError, ROOTError, UnsupportedFeatureError
 from .file import Directory, Key, ROOTFile, open_root
 from .graph import Graph
 from .hist import Axis, Histogram
+from .rntuple import RField, RNTuple, WritableRNTuple
 from .tree import Branch, Group, Jagged, TTree
 from .writer import WritableFile, create
 from .wtree import WritableTree
@@ -58,11 +59,14 @@ __all__ = [
     "create",
     "WritableFile",
     "WritableTree",
+    "WritableRNTuple",
     # data
     "TTree",
     "Branch",
     "Group",
     "Jagged",
+    "RNTuple",
+    "RField",
     "Histogram",
     "Axis",
     "Graph",
