@@ -19,7 +19,11 @@ Numbers, strings, jagged rows, STL containers and the members ROOT splits a
 C++ class into are all read, and a split object can be asked for whole. So are
 the objects ROOT's own kit writes beside a tree: a histogram comes back as a
 :class:`Histogram`, with its bins and its edges where you would look for them,
-and a graph as a :class:`Graph` you can walk a point at a time.
+and a graph as a :class:`Graph` you can walk a point at a time; a profile is a
+:class:`Profile`, an efficiency an :class:`Efficiency` with ROOT's intervals,
+and a sparse histogram a :class:`SparseHistogram`. :func:`chain` reads a tree
+written as many files as one, a tree reads its friends beside it, and an
+:class:`EntryList` picks the entries to read.
 What it does not do is every ROOT class ever written: one whose layout the
 file does not describe, or one that streams itself in some way of its own, is
 refused by name with the class in the message, because a plausible misreading
@@ -40,10 +44,16 @@ is there; it is a separate package that builds on this one.
 
 from __future__ import annotations
 
+from .chain import Chain, ChainedBranch, chain
+from .efficiency import Efficiency
+from .entries import EntryList
 from .errors import FormatError, ROOTError, UnsupportedFeatureError
 from .file import Directory, Key, ROOTFile, open_root
 from .graph import Graph
 from .hist import Axis, Histogram
+from .profile import Profile
+from .sparse import SparseHistogram
+from .stacks import MultiGraph, Stack
 from .tree import Branch, Group, Jagged, TTree
 from .writer import WritableFile, create
 from .wtree import WritableTree
@@ -51,6 +61,7 @@ from .wtree import WritableTree
 __all__ = [
     # opening
     "open_root",
+    "chain",
     "ROOTFile",
     "Directory",
     "Key",
@@ -63,9 +74,17 @@ __all__ = [
     "Branch",
     "Group",
     "Jagged",
+    "Chain",
+    "ChainedBranch",
+    "EntryList",
     "Histogram",
     "Axis",
+    "Profile",
+    "Efficiency",
+    "SparseHistogram",
+    "Stack",
     "Graph",
+    "MultiGraph",
     # errors
     "ROOTError",
     "FormatError",

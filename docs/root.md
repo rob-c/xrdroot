@@ -125,6 +125,82 @@ values, edges = f["h1d"].to_numpy()  # as numpy.histogram would give them
 f["h1d"].density()  # divided by bin width and total, integrating to one
 ```
 
+### Profiles
+
+A `TProfile`, `TProfile2D` or `TProfile3D` comes back as a `Profile`, which is
+a `Histogram` whose bins hold the mean of something rather than a count. The
+file keeps no means: it keeps the sum of `w*y` per bin, the sum of `w*y*y`,
+and the sum of the weights, and a profile read as a plain histogram would plot
+the first of those and be wrong without looking wrong. So `values()` divides
+them out:
+
+```python
+p = f["p1d"]
+p.kind  # 'MEAN', in the plotting protocol's words
+p.values()  # the mean in each bin, zero in an empty one
+p.bin_entries()  # the sum of the weights in each - GetBinEntries
+p.counts()  # the effective number of entries, (sum w)**2 / sum w**2
+p.errors()  # the error on each mean, by the profile's own error option
+p.errors(error_mode="s")  # or another: '', 's', 'i' or 'g', as SetErrorOption
+p.spread()  # the standard deviation of what went into each bin
+p.to_hist()  # a hist.Hist of Mean storage, WeightedMean when it was weighted
+```
+
+The error is ROOT's `GetBinError`, whichever of the four the profile was saved
+with (`p.error_mode`): the error on the mean, the spread, the spread with a
+floor of `1/sqrt(12)` for identical integers, or one over the root of the
+weights. `variances()` is its square. `sum()` and `density()` refuse, since
+a sum of means is not a thing; `sums()` has what the file stored.
+
+### Efficiencies
+
+A `TEfficiency` comes back as an `Efficiency`: the two histograms it was
+filled into, and the efficiency and its confidence interval worked out from
+them the way ROOT works them out — which is to say, not stored in the file at
+all.
+
+```python
+eff = f["trigger"]
+eff.passed, eff.total  # the two Histograms
+eff.values()  # passed / total, zero where nothing was tried
+eff.intervals()  # (low, high): by fStatisticOption, at fConfLevel
+eff.intervals(level=0.95, method="wilson")
+eff.errors()  # (below, above): the error bars, distance to each end
+eff.method, eff.level  # ('clopper-pearson', 0.682689492137)
+```
+
+The methods are ROOT's: `clopper-pearson` (the default, and exact), `normal`,
+`wilson`, `agresti-coull`, and the Bayesian `jeffreys`, `uniform` and
+`bayesian` — the last with the Beta prior the object was saved with, bin by bin
+when it was given priors per bin. For a Bayesian method `values()` is the
+posterior's mean, or its mode when the object says so. None of them can leave
+[0, 1], which is the point: dividing two histograms and propagating their
+errors gives an interval past one with no width at zero.
+
+The Beta quantile the exact and Bayesian intervals need is worked out here in
+plain Python, since SciPy is not a dependency; it agrees with gonum's to about
+one part in 10^13. Feldman-Cousins, mid-P, the shortest Bayesian interval and
+an efficiency filled with weights are refused by name rather than
+approximated.
+
+### Sparse histograms
+
+A `THnSparse` of any content type comes back as a `SparseHistogram`: its axes,
+and the bins something fell into, since in ten dimensions the grid would not
+fit in any machine.
+
+```python
+hn = f["hn"]
+hn.axes, hn.shape  # one Axis per dimension, and their bin counts
+hn.coordinates()  # one row per filled bin, a column per axis
+hn.values(), hn.variances()  # what is in each, in the same order
+hn.to_dense()  # the grid, for one small enough to have one
+```
+
+Coordinates count from zero the way a `Histogram` does, so `-1` is an
+underflow and `len(axis)` an overflow. `to_dense(flow=True)` keeps the flow
+bins, and a grid of more than ten million cells is refused.
+
 ## Graphs
 
 A `TGraph`, `TGraphErrors`, `TGraphAsymmErrors` or `TGraphMultiErrors` comes
@@ -151,9 +227,23 @@ added. Asking such a graph for `yerr` raises rather than picking a layer or
 summing them for you, because how to combine them is physics, not format. For
 every other graph `layers` is simply `(yerr,)`, or `()` when none were kept.
 
-A graph or histogram met *inside* another object — in the list a `TMultiGraph`
-keeps, behind a pointer in a `TEfficiency` — comes back as a `Graph` or
-`Histogram` too, the same as it would standing in a key of its own.
+### Several at once
+
+A `TMultiGraph` comes back as a `MultiGraph`, which is the sequence of the
+graphs it holds, and a `THStack` as a `Stack`, the sequence of its histograms,
+each in the order they were added; the frame they were drawn in is under
+`.members` with everything else.
+
+```python
+[g.classname for g in f["mg"]]  # ['TGraph', 'TGraphErrors', 'TGraphAsymmErrors']
+sum(h.values() for h in f["stack"])  # what the stack's top edge is
+```
+
+Every one of these classes — a histogram, profile, efficiency, sparse
+histogram, graph, multigraph, stack or entry list — met *inside* another
+object comes back as that class too, the same as it would standing in a key of
+its own: the graphs of a `MultiGraph` are `Graph`s, and the two histograms of
+an `Efficiency` are `Histogram`s.
 
 ## Drawing
 
@@ -236,6 +326,88 @@ for batch in tree.iterate(["Muon_pt", "Muon_eta"], step=50_000):
 
 `tree.arrays()` is the same for one range, and takes every readable column
 when it is not told which.
+
+## Chains
+
+A dataset is rarely one file. `xrdroot.chain` reads the tree of one name in
+each of many as one tree, entries end to end — which is ROOT's `TChain`:
+
+```python
+events = xrdroot.chain("Events", ["run1/*.root", "root://host//store/extra.root"])
+len(events)  # the entries of every file together
+events["Muon_pt"].array(95_000, 105_000)  # across the boundary of two files
+for batch in events.iterate(["Muon_pt", "Muon_eta"], step=100_000):
+    ...
+events.arrays(["nMuon"], library="pd")
+events.close()  # or use it in a with block
+```
+
+A source is a path, a URL, or a file already open; a local path with `*`, `?`
+or `[` in it is a glob, standing for every file it matches in sorted order. A
+chain reads with everything a tree reads with — `keys`, `typenames`, `show`,
+`arrays`, `iterate` — and the columns are joined across files as one read
+would give them: arrays end to end, `Jagged` rows with each file's offsets
+carried on, lists as one list. A batch of `iterate` runs off the end of one
+file and into the next, so every batch but the last is `step` long.
+
+Files are opened when first needed and once each. The number of entries needs
+every file — `len`, a range counted from the end, or an entry in the tenth file
+all need to know how long the nine before it are — and that costs a small read
+of each file's header, key list and tree record, no baskets. A column whose
+type differs from one file to another is refused by name, and so is one that a
+later file does not have. A chain pickles as where its files are, so it can go
+to a worker process, which opens them again there.
+
+## Friends
+
+A friend is another tree of the same entries, read beside a tree as though it
+were part of it — weights computed afterwards, say, written to a file of their
+own:
+
+```python
+events = f["Events"]
+events.add_friend(g["Weights"], "w")
+events["w.nominal"].array(0, 10)  # the friend's column, entry for entry
+events["nominal"].array(0, 10)  # the same, when no other tree has the name
+events.arrays(["Muon_pt", "w.nominal"])
+```
+
+A friend has to have exactly as many entries, since entry `i` of it is read as
+entry `i` of the tree. Its columns are there by `alias.branch` — the alias is
+the friend's own name unless given — and by their bare names too, when neither
+the tree nor another friend has one of the same name; a name two friends share
+has to be asked for by alias. A `Chain` can be a friend as well as a tree.
+
+ROOT records the friends a tree was given when it was written, and those are
+read back: `tree.friends` finds them the first time it is asked for. A friend
+in another file is looked for where ROOT wrote down it was, then beside this
+file under the same name, then beside it by the file's last part — usually the
+right one, since the friend was shipped with the tree — and a remote file's
+friend is looked for beside it on the same server. The files opened for them
+close when the tree's file does.
+
+## Entry lists
+
+A selection run over a big tree can be kept as a `TEntryList` — just the
+numbers of the entries that passed — or the older `TEventList`. Either comes
+back as an `EntryList`, and every read takes one:
+
+```python
+kept = f["passed_cuts"]
+kept.entries  # array([ 3,  4, 17, ...]): the entry numbers, int64
+tree.arrays(["Muon_pt"], entries=kept)  # just those entries
+tree["Muon_pt"].array(entries=[7, 2, 90])  # or any entry numbers, in that order
+tree["Muon_pt"].array(entries=mask)  # or a mask of one bool per entry
+for batch in tree.iterate(step=1000, entries=kept):
+    ...
+```
+
+Only the baskets holding an entry that was asked for are read. A list made
+over a chain keeps one list per tree, in `kept.lists`, each naming its tree
+and file; `tree.arrays(entries=kept)` takes the one for the tree it is
+reading, a `Chain` takes each file's from it, and `kept.for_tree(name, file)`
+finds one by hand. `kept.entries` on such a list refuses, since its numbers
+count from the start of each tree rather than from one place.
 
 ## Into pandas, Awkward, Arrow and Polars
 

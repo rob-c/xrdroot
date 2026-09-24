@@ -21,7 +21,7 @@ from .interp import Column, Flat, Members, Refused, Rows, Values, build
 
 if TYPE_CHECKING:
     from .file import Source
-    from .objects import BranchRecord, LeafRecord
+    from .objects import BranchRecord, FriendRecord, LeafRecord
 
 __all__ = ["Jagged", "Branch", "Group", "TTree"]
 
@@ -122,6 +122,72 @@ class Jagged(Sequence[Any]):
         from .library import arrow_list
 
         return arrow_list(self)
+
+    def take(self, rows: Any) -> Jagged:
+        """The rows at the given places, in the order given, as rows of their own."""
+        rows = np.asarray(rows, dtype=np.int64)
+        starts = self.offsets[:-1][rows]
+        lengths = self.offsets[1:][rows] - starts
+        offsets = np.zeros(len(rows) + 1, np.int64)
+        np.cumsum(lengths, out=offsets[1:])
+        index = np.repeat(starts - offsets[:-1], lengths) + np.arange(offsets[-1])
+        return Jagged(self.content[index], offsets)
+
+    @staticmethod
+    def join(pieces: Sequence[Jagged]) -> Jagged:
+        """Rows from several places, one after another, with the offsets carried on."""
+        lengths = np.concatenate([piece.lengths() for piece in pieces])
+        offsets = np.zeros(len(lengths) + 1, np.int64)
+        np.cumsum(lengths, out=offsets[1:])
+        return Jagged(np.concatenate([piece.flat for piece in pieces]), offsets)
+
+
+def concatenate(pieces: Sequence[Any]) -> Any:
+    """The values of several reads of one column, as one read of them all.
+
+    What one read gives, several give joined: NumPy arrays end to end,
+    :class:`Jagged` rows with each piece's offsets carried on from the last,
+    and lists of values one list. This is how a range read across baskets,
+    files of a chain, or a scattered set of entries comes back whole.
+    """
+    first = pieces[0]
+    if isinstance(first, Jagged):
+        return Jagged.join(pieces)
+    if isinstance(first, np.ndarray):
+        return np.concatenate(pieces)
+    joined: list[Any] = []
+    for piece in pieces:
+        joined.extend(piece)
+    return joined
+
+
+def scattered(rows: Any, bounds: Any, read: Any, empty: Any) -> Any:
+    """Entries picked from anywhere, read a block at a time and put back in order.
+
+    ``bounds`` are where each block - a basket, a file of a chain - starts,
+    and one past where the last ends. The entries are sorted into their
+    blocks, ``read(block, entries)`` gives the values of each block's share,
+    and the pieces are joined and put back in the order ``rows`` asked for
+    them in; ``empty()`` is what asking for none at all gives.
+    """
+    rows = np.asarray(rows, dtype=np.int64)
+    order = np.argsort(rows, kind="stable")
+    ordered = rows[order]
+    homes = np.searchsorted(np.asarray(bounds, dtype=np.int64), ordered, side="right") - 1
+    pieces = [read(int(home), ordered[homes == home]) for home in np.unique(homes)]
+    if not pieces:
+        return empty()
+    joined = concatenate(pieces)
+    if np.array_equal(order, np.arange(len(order))):
+        return joined
+    return take(joined, np.argsort(order, kind="stable"))
+
+
+def take(values: Any, rows: Any) -> Any:
+    """The entries at the given places of what one read gave, whatever its shape."""
+    if isinstance(values, (np.ndarray, Jagged)):
+        return values[rows] if isinstance(values, np.ndarray) else values.take(rows)
+    return [values[row] for row in np.asarray(rows).tolist()]
 
 
 def _bounds(total: int, entry_start: int, entry_stop: int | None) -> tuple[int, int]:
@@ -351,14 +417,26 @@ class Branch:
         self._cached = (index, basket)
         return basket
 
-    def array(self, entry_start: int = 0, entry_stop: int | None = None) -> Any:
-        """The values for a range of entries.
+    def array(
+        self, entry_start: int = 0, entry_stop: int | None = None, *, entries: Any = None
+    ) -> Any:
+        """The values for a range of entries, or for the entries named.
 
         Fixed-size columns come back as a NumPy array - one value per entry, or
         ``length`` of them one after another - variable ones as
         :class:`Jagged`, and anything that is neither - strings, lists of
         lists, maps - as a list with one Python value per entry.
+
+        ``entries`` picks entries rather than a range of them: an array of
+        entry numbers, a mask of one bool per entry, or an
+        :class:`~.entries.EntryList`. Only the baskets holding one of them
+        are read, and the values come back in the order the entries were asked
+        for in.
         """
+        if entries is not None:
+            from .entries import selected
+
+            return self.pick(selected(entries, self.num_entries))
         self._refuse_if_unreadable()
         start, stop = self._bounds(entry_start, entry_stop)
         column = self.column
@@ -368,6 +446,22 @@ class Branch:
             return self._rows(column, start, stop)
         assert isinstance(column, Flat)
         return self._flat(column, start, stop)
+
+    def pick(self, rows: np.ndarray[Any, Any]) -> Any:
+        """The values of the entries numbered in ``rows``, reading only their baskets.
+
+        The entries are sorted into the baskets that hold them, each basket
+        is read once for the span from its first wanted entry to its last,
+        and what is wanted of that span is taken; the pieces are put back in
+        the order ``rows`` asked for them in.
+        """
+        bounds = self.record.basket_entry[: self.num_baskets + 1]
+
+        def read(_home: int, inside: np.ndarray[Any, Any]) -> Any:
+            low = int(inside[0])
+            return take(self.array(low, int(inside[-1]) + 1), inside - low)
+
+        return scattered(rows, bounds, read, lambda: self.array(0, 0))
 
     def _flat(self, column: Flat, start: int, stop: int) -> Any:
         size = column.length * column.itemsize
@@ -453,15 +547,26 @@ class Group(Branch):
             if isinstance(column := self._branches[label].column, Refused)
         }
 
-    def array(self, entry_start: int = 0, entry_stop: int | None = None) -> list[dict[str, Any]]:
+    def array(
+        self, entry_start: int = 0, entry_stop: int | None = None, *, entries: Any = None
+    ) -> list[dict[str, Any]]:
         """One dictionary per entry, a key for each member that reads."""
+        if entries is not None:
+            return list(super().array(entries=entries))
         start, stop = self._bounds(entry_start, entry_stop)
-        rows: list[dict[str, Any]] = [{} for _ in range(max(stop - start, 0))]
+        return self._assemble(max(stop - start, 0), lambda branch: branch.array(start, stop))
+
+    def pick(self, rows: np.ndarray[Any, Any]) -> list[dict[str, Any]]:
+        """One dictionary for each entry numbered in ``rows``, read member by member."""
+        return self._assemble(len(rows), lambda branch: branch.pick(rows))
+
+    def _assemble(self, count: int, read: Any) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = [{} for _ in range(count)]
         for member, label in self.members.items():
             branch = self._branches[label]
             if isinstance(branch.column, Refused):
                 continue
-            values = branch.array(start, stop)
+            values = read(branch)
             plain = isinstance(values, np.ndarray) and values.ndim == 1
             for index, row in enumerate(rows):
                 row[member] = values[index].item() if plain else values[index]
@@ -478,9 +583,24 @@ class TTree:
 
     ``len(tree)`` is the number of entries, because that is what a tree is a
     lot of; the number of columns is ``len(tree.branches)``.
+
+    A tree can have friends - other trees of the same entries, read beside
+    it, whether ROOT recorded them in the file or :meth:`add_friend` adds
+    them - and a friend's column is asked for by name like one of the tree's
+    own: ``tree["alias.branch"]``, or ``tree["branch"]`` when no other tree
+    has one of that name.
     """
 
-    __slots__ = ("name", "title", "num_entries", "branches", "unreadable", "_source")
+    __slots__ = (
+        "name",
+        "title",
+        "num_entries",
+        "branches",
+        "unreadable",
+        "_source",
+        "_friends",
+        "_recorded",
+    )
 
     def __init__(
         self,
@@ -489,6 +609,7 @@ class TTree:
         num_entries: int,
         records: list[BranchRecord],
         source: Source,
+        friends: Sequence[FriendRecord] = (),
     ) -> None:
         self.name = name
         self.title = title
@@ -496,6 +617,10 @@ class TTree:
         self._source = source
         self.branches: dict[str, Branch] = {}
         self.unreadable: dict[str, str] = {}
+        self._friends: dict[str, Any] = {}
+        #: The friends the file recorded, found and opened the first time a
+        #: friend is asked for rather than every time a tree is opened.
+        self._recorded = list(friends)
         for top in records:
             self._add(top, source)
 
@@ -556,15 +681,78 @@ class TTree:
         return iter(self.branches)
 
     def __contains__(self, name: object) -> bool:
-        return name in self.branches
-
-    def __getitem__(self, name: str) -> Branch:
+        if name in self.branches:
+            return True
         try:
-            return self.branches[name]
+            return isinstance(name, str) and self._befriended(name) is not None
         except KeyError:
+            return False
+
+    def __getitem__(self, name: str) -> Any:
+        found = self.branches.get(name)
+        if found is None:
+            found = self._befriended(name)
+        if found is None:
             raise KeyError(
-                f"{name!r} is not a branch of {self.name!r}; there is " + ", ".join(self.branches)
-            ) from None
+                f"{name!r} is not a branch of {self.name!r} or of any of its friends; "
+                f"there is " + ", ".join(self.branches)
+            )
+        return found
+
+    @property
+    def friends(self) -> dict[str, Any]:
+        """The trees read beside this one, by the name each is asked for under.
+
+        Those ROOT recorded in the file are found the first time this is
+        asked: a friend in another file is looked for beside this one when
+        the file is local, and at the same place on the same server when it
+        is not, and is opened then - and closed when this tree's file is.
+        """
+        while self._recorded:
+            from .friends import open_friend
+
+            record = self._recorded[0]
+            self.add_friend(open_friend(record, self._source), record.alias)
+            self._recorded.pop(0)  # only once found, so a friend not found stays missed
+        return dict(self._friends)
+
+    def add_friend(self, other: Any, alias: str | None = None) -> None:
+        """Read ``other`` beside this tree, entry for entry, as ROOT's ``AddFriend`` does.
+
+            >>> events.add_friend(f2["weights"], "w")          # doctest: +SKIP
+            >>> events["w.nominal"].array(0, 10)
+
+        ``other`` is a :class:`TTree` or a :class:`~.chain.Chain` of exactly
+        as many entries, since entry ``i`` of a friend is read as entry ``i``
+        of this tree and a count that differs means that is not what it is.
+        Its columns are then here as ``alias.branch`` - the alias is the
+        friend's own name unless given - and by their bare names too, when
+        neither this tree nor another friend has one of the same name.
+        """
+        alias = str(alias or other.name)
+        if len(other) != self.num_entries:
+            raise ValueError(
+                f"{alias!r} has {len(other)} entries and {self.name!r} has "
+                f"{self.num_entries}: a friend is read entry for entry, so the two "
+                f"have to be the same length"
+            )
+        if alias in self._friends:
+            raise ValueError(f"{self.name!r} already has a friend called {alias!r}; give an alias")
+        self._friends[alias] = other
+
+    def _befriended(self, name: str) -> Any:
+        """A friend's column: ``alias.branch``, or a bare name only one friend has."""
+        friends = self.friends
+        alias, dot, rest = name.partition(".")
+        if dot and alias in friends and rest in friends[alias].keys():
+            return friends[alias][rest]
+        holders = [alias for alias, tree in friends.items() if name in tree.keys()]
+        if len(holders) > 1:
+            raise KeyError(
+                f"{name!r} is a branch of {len(holders)} friends of {self.name!r} "
+                f"({', '.join(holders)}); ask for it as alias.{name}"
+            )
+        return friends[holders[0]][name] if holders else None
 
     def keys(self) -> list[str]:
         """Every column, readable here or not."""
@@ -613,22 +801,38 @@ class TTree:
         entry_stop: int | None = None,
         *,
         library: str = "np",
+        entries: Any = None,
     ) -> Any:
         """Several columns at once, over the same range of entries.
 
             >>> tree.arrays(["pt", "eta"], library="pd")      # doctest: +SKIP
+            >>> tree.arrays(["pt"], entries=f["selected"])    # doctest: +SKIP
 
         With no names, every column this reader can decode; the ones it cannot
         are in :attr:`unreadable` with the reason, rather than quietly missing.
         ``library`` says what to hand them back as: ``np``, the default, is a
         dict of NumPy arrays; ``pd``, ``ak``, ``pa`` and ``pl`` are a pandas
         DataFrame, an Awkward Array, an Arrow table and a Polars DataFrame.
+
+        ``entries`` reads the entries named instead of a range: an
+        :class:`~.entries.EntryList` - the list for this tree, if it keeps one
+        per tree - an array of entry numbers, or a mask of one bool per entry.
+        Only the baskets holding them are read.
         """
         from .library import convert
 
         wanted = self.readable() if names is None else list(names)
-        columns = {name: self[name].array(entry_start, entry_stop) for name in wanted}
+        if entries is None:
+            columns = {name: self[name].array(entry_start, entry_stop) for name in wanted}
+        else:
+            rows = self._selected(entries)
+            columns = {name: self[name].pick(rows) for name in wanted}
         return convert(columns, library)
+
+    def _selected(self, entries: Any) -> np.ndarray[Any, Any]:
+        from .entries import selected
+
+        return selected(entries, self.num_entries, self.name, self._source.name)
 
     def iterate(
         self,
@@ -638,6 +842,7 @@ class TTree:
         entry_start: int = 0,
         entry_stop: int | None = None,
         library: str = "np",
+        entries: Any = None,
     ) -> Iterator[Any]:
         """Walk the tree in batches, reading only what each batch needs.
 
@@ -646,9 +851,16 @@ class TTree:
 
         This is the one to reach for over a network: memory is one step, not
         one file, and a tree far larger than the machine goes through it.
+        With ``entries``, the batches are ``step`` of the entries named at a
+        time rather than ``step`` of the tree's.
         """
         if step <= 0:
             raise ValueError("step must be at least one entry")
+        if entries is not None:
+            rows = self._selected(entries)
+            for at in range(0, len(rows), step):
+                yield self.arrays(names, library=library, entries=rows[at : at + step])
+            return
         # The same counting from the end that one branch's ``array`` does, so a
         # negative start or stop means here what it means there.
         at, stop = _bounds(self.num_entries, entry_start, entry_stop)

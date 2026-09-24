@@ -22,8 +22,6 @@ from xrdclient._compat import zip_strict
 from .buffer import Buffer, as_datetime, gather, numbers
 from .cxx import SEQUENCES, Mapping, Pair, Prim, Seq, Str, parse, py_name
 from .errors import FormatError, UnsupportedFeatureError
-from .graph import GRAPHS, Graph
-from .hist import HISTOGRAMS, Histogram
 
 if TYPE_CHECKING:
     from .file import Source
@@ -654,10 +652,10 @@ def _shown(name: str, read: Callable[[Buffer], Any]) -> Callable[[Buffer], Any]:
     like this: a base written into a derived object stays a plain ``dict``,
     because the members of the derived class count on reaching into it.
     """
-    if name in GRAPHS:
-        return lambda buf: Graph(name, read(buf))
-    if name in HISTOGRAMS:
-        return lambda buf: Histogram(name, read(buf))
+    from .kinds import CLASSES, dress
+
+    if name in CLASSES:
+        return lambda buf: dress(name, read(buf))
     return read
 
 
@@ -820,9 +818,16 @@ def _bookkeeping(buf: Buffer) -> dict[str, Any]:
 
 
 def _titled(buf: Buffer) -> dict[str, Any]:
-    """A ``TNamed`` base: the name and title, which every ROOT object can have."""
-    name, title = buf.named()
-    return {"fName": name, "fTitle": title}
+    """A ``TNamed`` base: the name and title, which every ROOT object can have.
+
+    The bits of the ``TObject`` under it come too: a few classes keep their
+    own settings in them, and a ``TEfficiency`` keeps how it was filled there.
+    """
+    _version, end = buf.header()
+    unique, bits = buf.tobject()
+    name, title = buf.string(), buf.string()
+    buf.resume(end)
+    return {"fName": name, "fTitle": title, "fUniqueID": unique, "fBits": bits}
 
 
 def _reader(node: Any) -> Callable[[Buffer], Any]:
@@ -927,7 +932,10 @@ def _object_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step 
         # points at where it stands, with no class name in front of it.
         return _plainly(_embedded(member.typename.rstrip("*"), source, seen))
     if member.stype in OBJECTS_POINTED:
-        classes = _Described(source, seen)
+        # What a pointer points at is read only when it is met, so a class
+        # pointing at another of its own kind - a list of lists - is finite
+        # as far as the bytes go, which is as far as a reader ever goes.
+        classes = _Described(source, ())
         return _plainly(lambda buf: buf.any(classes))
     return None
 

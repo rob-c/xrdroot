@@ -49,7 +49,15 @@ however it was told to write itself, `vector<pair>`, and the packed
 Beside the tree, the objects ROOT's own kit writes: a `TH1`, `TH2` or `TH3`
 comes back as a `Histogram` with its bins, edges and errors where you would
 look for them, and a graph — layered error bars and all — as a `Graph` you can
-walk a point at a time, inside another object as well as in a key.
+walk a point at a time, inside another object as well as in a key. Profiles
+are a `Profile` of means, a `TEfficiency` an `Efficiency` with ROOT's
+confidence intervals worked out, a `THnSparse` a `SparseHistogram`, and a
+`TMultiGraph` or `THStack` the sequence of what it holds.
+
+Many files of one tree read as one with `xrdroot.chain`, a tree reads its
+friends — the ones ROOT recorded, or any added with `add_friend` — beside its
+own columns, and a `TEntryList` picks out the entries to read, costing only
+the baskets they are in.
 
 The few columns this reader will not decode are refused by name with the
 reason, because a plausible misreading of physics data is worse than a
