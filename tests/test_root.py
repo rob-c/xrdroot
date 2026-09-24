@@ -918,7 +918,7 @@ def test_a_class_the_file_describes_as_having_no_members_reads_as_nothing():
 def test_a_container_of_pairs_is_a_list_of_tuples():
     """gen-tconflvl.go set bins 1 and 2 of ``fBeta_bin_params`` and left the rest."""
     with opened("tconfidence-level") as root:
-        eff = root["eff"]
+        eff = root["eff"].members
         params = eff["fBeta_bin_params"]
         assert len(params) == 22  # twenty bins and the flow either side
         assert params[:3] == [(1.0, 1.0), (1.0, 2.0), (2.0, 3.0)]
@@ -1016,13 +1016,12 @@ def test_a_container_of_pairs_written_pair_by_pair_is_refused():
 
 
 def test_a_graph_or_histogram_inside_another_object_is_still_one():
-    """A ``TMultiGraph`` is not wrapped, but everything it holds comes back dressed."""
+    """A ``TMultiGraph`` is the graphs it holds, and each of them comes back dressed."""
     with opened("tgme") as root:
         multi = root["mg"]
-        held = multi["fGraphs"]
-        assert [one.classname for one in held] == ["TGraph", "TGraphErrors", "TGraphAsymmErrors"]
-        assert len(held[0]) == 5
-        assert multi["fHistogram"].classname == "TH1F"  # the frame its fit drew
+        assert [one.classname for one in multi] == ["TGraph", "TGraphErrors", "TGraphAsymmErrors"]
+        assert len(multi[0]) == 5
+        assert multi.members["fHistogram"].classname == "TH1F"  # the frame its fit drew
 
 
 def test_a_class_the_file_says_nothing_about_is_stepped_over_inside_a_list():

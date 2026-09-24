@@ -19,8 +19,6 @@ from xrdclient.url import parse
 from .buffer import Buffer, as_datetime
 from .compression import decompress
 from .errors import FormatError, UnsupportedFeatureError
-from .graph import GRAPHS, Graph
-from .hist import HISTOGRAMS, Histogram
 
 if TYPE_CHECKING:
     from xrdclient.config import Config
@@ -65,7 +63,17 @@ class Source:
     makes a tree readable from several processes: see :meth:`_adopt`.
     """
 
-    __slots__ = ("handle", "name", "owned", "info", "_streamers", "_pid", "_reopen", "_inherited")
+    __slots__ = (
+        "handle",
+        "name",
+        "owned",
+        "info",
+        "companions",
+        "_streamers",
+        "_pid",
+        "_reopen",
+        "_inherited",
+    )
 
     def __init__(
         self, handle: IO[bytes], name: str, owned: bool, reopen: Reopener | None = None
@@ -75,6 +83,9 @@ class Source:
         self.owned = owned
         #: Where the file keeps the description of its own classes.
         self.info: tuple[int, int] = (0, 0)
+        #: Other files opened on this one's behalf - the files its trees'
+        #: friends are in - which close when it does.
+        self.companions: list[Any] = []
         self._streamers: dict[str, Any] | None = None
         self._pid = os.getpid()
         self._reopen = reopen
@@ -142,6 +153,9 @@ class Source:
         return data
 
     def close(self) -> None:
+        for companion in self.companions:
+            companion.close()
+        self.companions.clear()
         if self.owned:
             self.handle.close()
 
@@ -322,11 +336,9 @@ class Directory:
                 f"was read the way this file describes the class, so it streams itself "
                 f"its own way and reading it would be a guess"
             )
-        if key.classname in HISTOGRAMS:
-            return Histogram(key.classname, value)
-        if key.classname in GRAPHS:
-            return Graph(key.classname, value)
-        return value
+        from .kinds import dress
+
+        return dress(key.classname, value)
 
     def _container(self, key: Key) -> Any:
         """A directory, or an RNTuple - ROOT 7's columnar format, in :mod:`.rntuple`."""

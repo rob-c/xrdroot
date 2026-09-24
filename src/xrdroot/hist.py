@@ -169,11 +169,18 @@ def _contents(row: dict[str, Any]) -> np.ndarray[Any, Any] | None:
     """The bins themselves, which are the array base the class inherits.
 
     Read from a file they are a NumPy array; members put together by hand may
-    hold them as an :class:`array.array`, which is taken the same way.
+    hold them as an :class:`array.array`, which is taken the same way. A class
+    built on a histogram - a profile is a ``TH1D`` with more on top - keeps
+    them one base further down, and they are looked for there too.
     """
     for name, value in row.items():
         if name.startswith("TArray") and isinstance(value, (np.ndarray, array.array)):
             return np.asarray(value)
+    for value in row.values():
+        if isinstance(value, dict) and "fNcells" not in value:
+            found = _contents(value)
+            if found is not None:
+                return found
     return None
 
 
@@ -206,13 +213,17 @@ class Histogram:
         self.members = members
         self._core, self._bins = core, bins
         #: One :class:`Axis` per dimension, x first.
-        self.axes = tuple(Axis(core[f"f{letter}axis"]) for letter in "XYZ"[: int(classname[2])])
+        self.axes = tuple(Axis(core[f"f{letter}axis"]) for letter in "XYZ"[: self._dimensions()])
         self._widths = [len(axis) + 2 for axis in self.axes]
         cells = math.prod(self._widths)
         if len(bins) < cells:
             raise FormatError(
                 f"a {classname} of {cells} bins counting the ends holds only {len(bins)} values"
             )
+
+    def _dimensions(self) -> int:
+        """How many axes this class has, which a ``TH2F`` says in its name."""
+        return int(self.classname[2])
 
     @property
     def name(self) -> str:

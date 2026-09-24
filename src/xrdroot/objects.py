@@ -13,13 +13,13 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from .buffer import Buffer
-from .errors import UnsupportedFeatureError
+from .errors import FormatError, UnsupportedFeatureError
 
 if TYPE_CHECKING:
     from .file import Source
     from .tree import Basket
 
-__all__ = ["TREE_CLASSES", "read_tree"]
+__all__ = ["TREE_CLASSES", "FriendRecord", "read_tree"]
 
 #: Key classes this reader will open as a tree.
 TREE_CLASSES = ("TTree", "TNtuple", "TNtupleD")
@@ -369,8 +369,9 @@ def read_tree(buf: Buffer, source: Source, name: str, classname: str = "TTree") 
     entries = _tree_fields(buf, version, modern)
 
     branches = [b for b in buf.objarray(CLASSES) if isinstance(b, BranchRecord)]
+    friends = _tree_friends(buf, version)
     buf.resume(end)
-    return TTree(name, title, entries, branches, source)
+    return TTree(name, title, entries, branches, source, friends)
 
 
 def _tuple_header(buf: Buffer, classname: str) -> None:
@@ -419,3 +420,70 @@ def _tree_clusters(buf: Buffer, version: int, clusters: int) -> None:
         buf.i64s(clusters)
     if version >= 20:
         buf.skip_record()
+
+
+class FriendRecord:
+    """A ``TFriendElement``: a tree another tree was told to read beside itself.
+
+    ROOT writes one into the tree for every ``AddFriend`` it was given, and
+    the tree is found again by what it says: what the friend is called here,
+    which tree it is, and which file that tree is in - or nothing, for a
+    friend in the same file as the tree it befriends.
+    """
+
+    __slots__ = ("alias", "tree_name", "file_name")
+
+    def __init__(self, alias: str, tree_name: str, file_name: str) -> None:
+        #: The name the friend's columns are asked for under, ``alias.branch``.
+        self.alias = alias
+        #: The friend's own name, in its own file.
+        self.tree_name = tree_name
+        #: The file it is in as the writer knew it, or empty for this file.
+        self.file_name = file_name
+
+    def __repr__(self) -> str:
+        where = f" in {self.file_name!r}" if self.file_name else ""
+        return f"<FriendRecord {self.alias!r}: {self.tree_name!r}{where}>"
+
+
+def read_friend(buf: Buffer) -> FriendRecord:
+    """A ``TFriendElement``: its name and title, then the tree's own name."""
+    _version, end = buf.header()
+    alias, file_name = buf.named()
+    tree_name = buf.string() or alias
+    buf.resume(end)
+    return FriendRecord(alias, tree_name, file_name)
+
+
+def _friend_list(buf: Buffer) -> list[Any]:
+    return buf.tlist({"TFriendElement": read_friend})
+
+
+#: What the pointer to a tree's friends can point at.
+FRIENDS: dict[str, Any] = {"TList": _friend_list}
+
+
+def _tree_friends(buf: Buffer, version: int) -> list[FriendRecord]:
+    """The friends a tree keeps, from the members written after its branches.
+
+    Between the branches and the friends are the leaves, the aliases, and
+    the index a tree may have been sorted by, all stepped over. That layout
+    holds from ``TTree`` version 16 on; an older tree has no friends read,
+    and neither does one whose tail does not read the way the layout says,
+    since the columns are there either way and a friend list is not worth
+    refusing them for.
+    """
+    if version < 16:
+        return []
+    try:
+        buf.skip_record()  # fLeaves, which the branches already hold
+        buf.any({})  # fAliases
+        buf.take(8 * buf.i32())  # fIndexValues
+        buf.take(4 * buf.i32())  # fIndex
+        buf.any({})  # fTreeIndex
+        friends = buf.any(FRIENDS)
+    except FormatError:
+        return []
+    if not isinstance(friends, list):
+        return []
+    return [friend for friend in friends if isinstance(friend, FriendRecord)]

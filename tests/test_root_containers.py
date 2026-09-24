@@ -836,5 +836,5 @@ def test_a_tnamed_base_gives_back_the_name_and_title_it_carries():
     source = Layout(Event={"TNamed": Member("TNamed", "", 67, "BASE", 0)})
     column = column_of("Event", source=source)
     assert column.value(Buffer(named_bytes("a name", "a title")), 0) == {
-        "TNamed": {"fName": "a name", "fTitle": "a title"}
+        "TNamed": {"fName": "a name", "fTitle": "a title", "fUniqueID": 0, "fBits": 0}
     }
