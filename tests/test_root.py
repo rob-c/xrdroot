@@ -19,8 +19,10 @@ import pickle
 import struct
 import zlib
 
+import numpy as np
 import pytest
 
+from support import plain
 from xrdroot import (
     Branch,
     Directory,
@@ -617,7 +619,7 @@ def test_a_tdatime_is_the_moment_it_stands_for():
     with opened("tdatime") as root:
         assert root["tda"] == stamp
         assert root["foo"]["d"] == stamp
-        assert root["dat"] == {"d": stamp, "pad": array.array("b", b"12345\x00")}
+        assert plain(root["dat"]) == {"d": stamp, "pad": list(b"12345\x00")}
         tree = root["tree"]
         assert tree.typenames()["b0"] == "datetime"
         assert tree["b0"].array() == [stamp, stamp.replace(day=3)]
@@ -683,7 +685,7 @@ def _assert_histogram_bins(hist):
 def test_a_histogram_binned_unevenly_keeps_every_edge_it_was_written_with():
     """An evenly binned axis writes no edges at all: the two ends say where they are."""
     with opened("gauss-h1") as root:
-        assert root["h1d"].axes[0]._edges == array.array("d")
+        assert len(root["h1d"].axes[0]._edges) == 0
         uneven = root["h1d-var"].axes[0]
         assert len(uneven._edges) == 11
         assert (uneven.low, uneven.high, len(uneven)) == (-4.0, 4.0, 10)
@@ -714,7 +716,7 @@ def test_a_histogram_filled_without_weights_takes_its_error_from_the_count():
     """No sum of squared weights was kept, so the error on *n* counts is its root."""
     with opened("dirs-6.14.00") as root:
         hist = root["dir1/dir11/h1"]
-        assert hist.members["TH1"]["fSumw2"] == array.array("d")
+        assert len(hist.members["TH1"]["fSumw2"]) == 0
         assert list(hist.values())[:4] == [3.0, 1.0, 0.0, 1.0]
         assert list(hist.errors())[:4] == [math.sqrt(3.0), 1.0, 0.0, 1.0]
         assert (hist.sum(), hist.entries) == (5.0, 5.0)
@@ -778,7 +780,7 @@ def _assert_plain_graph(plain):
 
 def _assert_graph_errors(even, uneven):
     # The same bar both sides of the point, written once.
-    assert even.yerr[0] == even.yerr[1]
+    assert even.yerr[0].tolist() == even.yerr[1].tolist()
     assert [round(bar, 4) for bar in even.yerr[0]] == [0.2, 0.4, 0.6, 0.8]
     assert even.members["TGraph"]["fNpoints"] == 4
     below, above = uneven.yerr
@@ -837,7 +839,7 @@ def test_an_array_of_one_class_names_that_class_once_at_the_front():
 def test_an_array_of_numbers_standing_on_its_own_is_read_as_numbers():
     """A ``TArrayD`` key is a count and that many values, with no record round it."""
     payload = struct.pack(">i", 2) + struct.pack(">dd", 1.5, 2.5)
-    assert keyed(payload, "TArrayD", {})["thing"] == array.array("d", [1.5, 2.5])
+    assert keyed(payload, "TArrayD", {})["thing"].tolist() == [1.5, 2.5]
 
 
 def test_an_array_of_one_class_written_field_by_field_reads_the_same_either_way():
@@ -970,7 +972,7 @@ def test_the_layers_of_an_ordinary_graph_are_its_bars_or_nothing():
     with opened("graphs") as root:
         assert root["tg"].layers == ()
         tge = root["tge"]
-        assert tge.layers == (tge.yerr,)
+        assert plain(tge.layers) == (plain(tge.yerr),)
 
 
 def test_a_key_of_a_class_holding_what_cannot_be_walked_is_refused_by_member():
@@ -1087,14 +1089,14 @@ def test_a_flat_tree_reads_every_column_ROOT_can_write(flat):
     assert flat["Float64"].array(0, 2).tolist() == [0.0, 1.0]
     assert flat["Str"].array(0, 2) == ["evt-000", "evt-001"]
     assert flat["ArrayInt32"].length == 10
-    assert flat["ArrayInt32"].array(1, 2).tolist() == [1] * 10
+    assert flat["ArrayInt32"].array(1, 2).tolist() == [[1] * 10]
 
 
 def test_a_variable_length_column_keeps_its_rows(flat):
     jets = flat["SliceInt32"].array(0, 4)
     assert isinstance(jets, Jagged)
     assert jets.tolist() == [[], [1], [2, 2], [3, 3, 3]]
-    assert jets.lengths() == [0, 1, 2, 3]
+    assert jets.lengths().tolist() == [0, 1, 2, 3]
     assert flat["SliceInt32"].is_jagged
     assert not flat["Int32"].is_jagged
 
@@ -1136,8 +1138,8 @@ def test_negative_entry_numbers_count_from_the_end(simple):
 def test_iterating_gives_batches_and_refuses_a_step_of_nothing(simple):
     batches = list(simple.iterate(["one"], step=3))
     assert [b["one"].tolist() for b in batches] == [[1, 2, 3], [4]]
-    assert list(simple.iterate(["one"], step=3, entry_start=1, entry_stop=99)) == [
-        {"one": array.array("i", [2, 3, 4])}
+    assert plain(list(simple.iterate(["one"], step=3, entry_start=1, entry_stop=99))) == [
+        {"one": [2, 3, 4]}
     ]
     with pytest.raises(ValueError, match="at least one entry"):
         list(simple.iterate(step=0))
@@ -1199,7 +1201,7 @@ def test_a_vector_member_of_a_split_object_is_read_as_rows():
         assert tree.unreadable == {}
         assert tree.typenames() == {"hits_n": "int32", "hits_time_mc": "float32"}
         assert tree["hits_time_mc"].is_jagged
-        assert tree["hits_time_mc"].array(0, 2).lengths() == [10, 11]
+        assert tree["hits_time_mc"].array(0, 2).lengths().tolist() == [10, 11]
         assert " variable" in tree.show()
 
 
@@ -1214,7 +1216,7 @@ def test_a_split_object_shows_every_sub_branch_and_reads_the_maps():
         assert tree["msi32"].array(1, 2) == [{"key-000": 0}]
         assert tree["mss"].array(1, 2) == [{"key-000": "val-000"}]
         assert tree["msvs"].array(1, 2) == [{"key-000": ["val-000", "val-001", "val-002"]}]
-        assert tree["msvi32"].array(1, 2) == [{"key-000": array.array("i", [1, 0, 3, 0])}]
+        assert plain(tree["msvi32"].array(1, 2)) == [{"key-000": [1, 0, 3, 0]}]
 
 
 def test_a_double32_leaf_is_unpacked_by_the_recipe_in_its_title():
@@ -1224,11 +1226,11 @@ def test_a_double32_leaf_is_unpacked_by_the_recipe_in_its_title():
         assert tree["D16"].typename == tree["D32"].typename == "float64"
         assert list(tree["D16"].array()) == [float(n) for n in range(10)]
         assert list(tree["D32"].array()) == [float(n) for n in range(10)]
-        assert tree["ArrD16"].array(3, 4).tolist() == [3.0] * 10
+        assert tree["ArrD16"].array(3, 4).tolist() == [[3.0] * 10]
         assert tree["SliD32"].array(4, 5).tolist() == [[4.0] * 4]
         assert tree["U8"].typename == "uint8"
         assert tree["G64"].typename == "int64"
-        assert tree["ArrU32"].array(0, 1).tolist() == [0] * 10
+        assert tree["ArrU32"].array(0, 1).tolist() == [[0] * 10]
 
 
 def test_a_leaf_class_nobody_has_heard_of_says_that_plainly():
@@ -1372,7 +1374,8 @@ def test_jagged_rows_index_like_a_sequence():
     assert rows[-1].tolist() == [3.0]
     assert [row.tolist() for row in rows[0:2]] == [[1.0, 2.0], []]
     assert rows.tolist() == [[1.0, 2.0], [], [3.0]]
-    assert repr(rows) == "<Jagged 3 rows of 3 d values>"
+    assert repr(rows) == "<Jagged 3 rows of 3 float64 values>"
+    assert isinstance(rows[0:2], Jagged)
     with pytest.raises(IndexError, match="row out of range"):
         rows[7]
 
@@ -1387,10 +1390,10 @@ def test_jagged_rows_pad_to_a_rectangle():
 
 
 def test_padding_an_integer_column_keeps_it_an_integer_column():
-    rows = Jagged(array.array("i", [1]), array.array("q", [0, 1, 1]))
+    rows = Jagged(np.array([1], dtype=np.int32), [0, 1, 1])
     values, _width = rows.padded(fill=0.0)
     assert values.tolist() == [1, 0]
-    assert values.typecode == "i"
+    assert values.dtype == np.int32
 
 
 # -- over the network -----------------------------------------------------

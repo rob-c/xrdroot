@@ -25,13 +25,25 @@ classifiers = [
 # The transport underneath: every URL a ROOT file is read from here is opened
 # through it. Until these layers are on PyPI the requirement names the
 # repository it comes from; swap it for a version specifier at first release.
-dependencies = ["xrdclient @ git+https://github.com/rob-c/xrdclient@main"]
+dependencies = [
+  "xrdclient @ git+https://github.com/rob-c/xrdclient@main",
+  # Every column, histogram and graph comes back as an array, decoded in C.
+  "numpy>=1.22",
+]
 
 [project.optional-dependencies]
 plot = ["matplotlib>=3.5"]
 lz4 = ["lz4>=4", "xxhash>=3"]
 zstd = ["zstandard>=0.21"]
 dev = [
+  # The libraries a tree or a histogram can be handed to, so that every one of
+  # those hand-overs is exercised by the suite rather than trusted.
+  "awkward>=2",
+  "boost-histogram>=1.4",
+  "hist>=2.7",
+  "pandas>=1.5",
+  "polars>=1",
+  "pyarrow>=14",
   "complexipy>=6,<7",
   "mypy>=1.10",
   "pytest>=8",

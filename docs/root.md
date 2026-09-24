@@ -1,10 +1,12 @@
 # ROOT files
 
-`xrdroot` opens a ROOT file and reads its trees in pure Python — over
-`root://`, `https://`, WebDAV, `s3://` or a local path, with no ROOT, no
-`uproot`, no `numpy` and no compiled extension anywhere in the way. It
-[writes new files](#writing) too, and histograms and graphs
-[draw themselves](#drawing), onto matplotlib axes or into plain characters.
+`xrdroot` opens a ROOT file and reads its trees in Python — over `root://`,
+`https://`, WebDAV, `s3://` or a local path, with no ROOT and no C++ anywhere
+in the way. What it reads comes back as NumPy arrays, and
+[goes on](#into-pandas-awkward-arrow-and-polars) to pandas, Awkward, Arrow,
+Polars and `hist` in one call. It [writes new files](#writing) too, and
+histograms and graphs [draw themselves](#drawing), onto matplotlib axes or into
+plain characters.
 
 ```python
 import xrdroot
@@ -81,8 +83,9 @@ edges and what is in them, counted the way Python counts.
 ```python
 h = f["h1d"]
 h.name, h.title, h.shape  # ('h1d', 'h1d', (10,))
-h.values()  # array('d', [6.6, 72.6, 543.4, ...])
+h.values()  # array([  6.6,  72.6, 543.4, ...])
 h.errors()  # the same shape, from the sums of squared weights
+h.variances(), h.counts()  # squared errors, and the effective number of fills
 h.edges()  # 11 edges for 10 bins
 h.axes[0].centers()  # where a point would be drawn
 h.sum(), h.entries  # 11000.0, 10004.0
@@ -94,10 +97,9 @@ extra bins per axis for what fell off each end, and `values(flow=True)` gives
 them back at the ends where ROOT keeps them — so `sum(flow=True)` is everything
 that was ever filled and `sum()` is what landed on the axis.
 
-A two-dimensional histogram gives a row per bin along x, so `values()[ix][iy]`
-is the bin ROOT calls `GetBinContent(ix+1, iy+1)`, and a three-dimensional one
-nests once more. Everything is an `array.array`, which `numpy.asarray` takes
-without copying and which needs nothing installed to use as it is.
+Everything is a NumPy array shaped the way the axes are, x first:
+`values()[ix, iy]` is the bin ROOT calls `GetBinContent(ix+1, iy+1)`, and a
+three-dimensional one takes a third index.
 
 A histogram filled with weights keeps the sum of their squares, and that is
 where `errors()` comes from; one filled without them keeps no such sum, and
@@ -109,6 +111,20 @@ Every member the histogram was written with is still there under `h.members`,
 under the name of the class that declared it, so nothing is hidden by being
 tidied away.
 
+A `Histogram` speaks the plotting protocol that `hist`, `boost-histogram` and
+`mplhep` share — `kind`, `values()`, `variances()`, `counts()` and `axes`, each
+axis a sequence of `(low, high)` bins — so any of those takes one as it stands,
+and two methods hand it over outright:
+
+```python
+import mplhep
+
+mplhep.histplot(f["h1d"])  # drawn straight from the file
+f["h1d"].to_hist()  # a hist.Hist, with Weight storage when it was weighted
+values, edges = f["h1d"].to_numpy()  # as numpy.histogram would give them
+f["h1d"].density()  # divided by bin width and total, integrating to one
+```
+
 ## Graphs
 
 A `TGraph`, `TGraphErrors`, `TGraphAsymmErrors` or `TGraphMultiErrors` comes
@@ -119,7 +135,7 @@ g = f["tge"]
 len(g), g[0]  # 4, (1.0, 2.0)
 for x, y in g:
     ...
-g.x, g.y  # array('d', [...]) each, one value per point
+g.x, g.y  # NumPy arrays, one value per point
 g.points()  # [(1.0, 2.0), (2.0, 4.0), ...]
 below, above = g.yerr  # the bars either side, or None if none were kept
 ```
@@ -182,22 +198,29 @@ advance from `tree[name].is_jagged` and `typename`:
 
 | The column | What `array()` gives |
 | --- | --- |
-| a plain number (`x/F`) | an `array.array` of one value per entry |
-| a fixed array (`x[10]/F`) | an `array.array`, `branch.length` values per entry |
+| a plain number (`x/F`) | a NumPy array of one value per entry |
+| a fixed array (`x[10]/F`) | a NumPy array of shape `(entries, branch.length)` |
 | a variable one (`x[n]/F`) | a `Jagged` — rows of different lengths |
 | a character leaf (`x/C`) | a `list[str]` |
 | a string, `std::string` or `TString` | a `list[str]` |
 | an STL container | a `list`, one Python object per entry |
 
 ```python
-tree["nMuon"].array()  # array('i', [2, 0, 3, ...])
-tree["Muon_pt"].array(0, 1000)  # <Jagged 1000 rows of 2431 f values>
+tree["nMuon"].array()  # array([2, 0, 3, ...], dtype=int32)
+tree["Muon_pt"].array(0, 1000)  # <Jagged 1000 rows of 2431 float32 values>
 jets = tree["Muon_pt"].array()
-jets[7]  # array('f', [22.5, 19.0])
-jets.lengths()  # [2, 0, 3, ...]
-jets.tolist()
+jets[7]  # array([22.5, 19. ], dtype=float32)
+jets.lengths()  # array([2, 0, 3, ...])
+jets.content, jets.offsets  # every value, and where each row starts and stops
+jets[100:200]  # a Jagged of those rows, sharing the same values
 values, width = jets.padded()  # a flat rectangle and its width
 ```
+
+A `Jagged` is kept the way Awkward Array and Arrow keep a list — one flat
+array of values and one of offsets — so `jets.to_awkward()` and
+`jets.to_arrow()` hand it over without copying the values. Every column is
+decoded in C: a basket's bytes become an array in one pass, and the rows of a
+variable column are cut out of it by one mask rather than one slice each.
 
 Entry numbers behave like a Python slice, negatives included:
 `branch.array(-1000)` is the last thousand entries.
@@ -213,6 +236,26 @@ for batch in tree.iterate(["Muon_pt", "Muon_eta"], step=50_000):
 
 `tree.arrays()` is the same for one range, and takes every readable column
 when it is not told which.
+
+## Into pandas, Awkward, Arrow and Polars
+
+`arrays` and `iterate` take a `library`, which says what to hand the columns
+back as:
+
+```python
+tree.arrays(["pt", "eta", "jet_pt"], library="pd")  # a pandas DataFrame
+tree.arrays(library="ak")  # an Awkward record array
+tree.arrays(library="pa")  # a pyarrow Table, jagged columns as large_list
+tree.arrays(library="pl")  # a Polars DataFrame
+for frame in tree.iterate(step=100_000, library="pd"):
+    ...
+```
+
+`np`, the default, is a dict of what the branches gave. A jagged column is a
+real list type in Awkward, Arrow and Polars, and a column of arrays — one per
+row — in pandas; a fixed-size array column is Arrow's `fixed_size_list`. None
+of these libraries is a dependency: each is imported when it is asked for, and
+one that is not installed is refused with the `pip install` that fixes it.
 
 ## C++ classes and containers
 
@@ -286,9 +329,9 @@ nearly is, one per entry:
 
 | In the file | In Python |
 | --- | --- |
-| `std::vector<double>`, `list`, `deque`, `set` of numbers | a `Jagged` — rows of `array.array` |
+| `std::vector<double>`, `list`, `deque`, `set` of numbers | a `Jagged` — rows of NumPy arrays |
 | a container of strings | a `list[list[str]]` |
-| `vector<vector<T>>` | a `list` of `list`s of `array.array` |
+| `vector<vector<T>>` | a `list` of `list`s of NumPy arrays |
 | `std::map<K, V>`, `unordered_map` | a `list[dict]`, one dict per entry |
 | `std::string`, `TString` | a `list[str]` |
 | `std::vector<bool>` | rows of 0 and 1, a byte an element, which is how ROOT wrote it |
@@ -325,7 +368,9 @@ with xrdroot.create("root://eos.example.org//store/user/me/out.root") as f:
     f["counts"] = xrdroot.Histogram.new("counts", edges, values)
     f["scan"] = xrdroot.Graph.new("scan", xs, ys, yerr=bars)
     f["note"] = "made from run 4711"
-    f["weights"] = array.array("d", weights)
+    f["weights"] = np.asarray(weights)
+    f["events"] = {"pt": pt, "eta": eta}  # a tree, from arrays or any DataFrame
+    f["spectrum"] = hist_object  # a hist.Hist, boost histogram or numpy.histogram
 ```
 
 The file is a mapping from name to object, closed with `with` or `close()`. It
@@ -333,17 +378,28 @@ is the real thing — keys, directory, free list, and the streamer information
 describing its classes exactly as the ROOT the layouts were harvested from
 would — so ROOT, uproot and this library's own reader all read it back by its
 own self-description. A name written twice becomes a second cycle of itself,
-exactly as in ROOT, and reading back gives the newest. Everything is built in
-memory and written out in one piece at a clean close; a `with` block that
-raises writes nothing at all, on the principle that no file is better than
-half a file.
+exactly as in ROOT, and reading back gives the newest.
+
+Records go out as they are made, a few megabytes at a time, so a file far
+larger than memory is written in the memory of one basket per column; only the
+header at the front, which points at the bookkeeping written last, is held back
+and filled in at the close. A `with` block that raises takes back everything it
+wrote — the target is cut back to where the file began — on the principle that
+no file is better than half a file, and a remote file is opened
+persist-on-successful-close, so a process that dies part way leaves the server
+nothing. A target that cannot seek, such as a pipe, is the one exception: that
+file is kept in memory and written in order at the close.
 
 What can be written is what can be written *correctly*: trees of numbers,
-histograms and graphs — read from another file, or built from plain numbers —
-plus strings and `array.array`s of signed integers or floats, which become the
-matching `TArray`. `Histogram.new` takes every bin edge, one value per bin (two more
-fills the flow bins), and optionally per-bin errors and an entry count;
-evenly spaced edges are stored the compact way ROOT stores an even axis.
+histograms and graphs — read from another file, built from plain numbers, or
+made by `hist`, `boost-histogram` or `numpy.histogram` — plus strings and
+one-dimensional arrays of signed integers or floats, which become the matching
+`TArray`. `Histogram.new` takes every bin edge — or a set of edges per axis,
+for two or three — the values shaped the way the axes are (two more along an
+axis fills its flow bins), and optionally per-bin errors or variances, axis
+labels and an entry count; evenly spaced edges are stored the compact way ROOT
+stores an even axis. `TH1D`, `TH1F`, `TH2D` and `TH2F` are written; a
+`Histogram.of(...)` turns any histogram Python has into one of these.
 `Graph.new` picks its own class: plain points make a `TGraph`, one bar per
 point a `TGraphErrors`, and any `(low, high)` pair of runs a
 `TGraphAsymmErrors`.
@@ -373,11 +429,19 @@ with xrdroot.create("out.root") as f:
 ```
 
 A column is a Python `bool`, `int` or `float`, an [`array`][array] type code
-such as `'f'` for a narrower number, or a pair of either and how many values
-every entry holds — `("i", 4)` is four `int32`s per entry. A Python `int` gets
-the widest ROOT has, because a Python int has no width of its own and a column
-that quietly stopped fitting halfway down the file would be worse. `extend`
-takes an iterable of mappings for the same thing in bulk.
+such as `'f'` for a narrower number, anything NumPy calls a type
+(`np.float32`, `"uint8"`, a dtype), or a pair of any of those and how many
+values every entry holds — `("i", 4)` is four `int32`s per entry. A Python
+`int` gets the widest ROOT has, because a Python int has no width of its own
+and a column that quietly stopped fitting halfway down the file would be worse.
+
+`extend` is the fast way in: given a mapping of column name to array, it packs
+every column in C, checks the shapes and refuses a float going into an integer
+column or an integer too wide for one, and puts the entries into exactly the
+baskets filling them one by one would have. Given an iterable of mappings it
+takes them as entries instead. Writing a table under a name — `f["events"] =
+frame` — declares the tree from the arrays' own types and extends it in one
+go.
 
 [array]: https://docs.python.org/3/library/array.html
 
@@ -410,10 +474,12 @@ served from.
 ## Compression
 
 Every algorithm ROOT writes with is read here — and written: zlib, lzma, LZ4,
-zstd, and the bare-deflate blocks ROOT wrote before 2005 (read only). The LZ4
-coder is Python both ways, checksum and all, because a physics file should not
-need a wheel; zstd uses Python 3.14's own `compression.zstd` where there is
-one and the `zstandard` package otherwise, and is the one case where a file
+zstd, and the bare-deflate blocks ROOT wrote before 2005 (read only). LZ4 is
+decoded and encoded in Python, checksum and all, when nothing else is there,
+and by the C codec of the `lz4` extra when it is — about sixty times faster,
+with the checksum then checked on the way in, so a damaged block is refused
+rather than decoded. zstd uses Python 3.14's own `compression.zstd` where there
+is one and the `zstandard` package otherwise, and is the one case where a file
 may need something installed.
 
 ## Old files

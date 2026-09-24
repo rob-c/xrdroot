@@ -12,21 +12,30 @@ with xrdroot.open_root("root://eos.example.org//store/events.root") as f:
         analyse(batch)
 ```
 
-No ROOT, no `uproot`, no `numpy`, no compiled extension — the format itself,
-read from the standard library. Nothing is downloaded either: a tree is read a
-basket at a time through `xrdclient`, so a hundred-gigabyte file on the other side of
-the world is walked from a laptop and costs the entries you asked for rather
-than the file.
+No ROOT and no C++ — the format itself, decoded into NumPy. Every column comes
+back as an array, every histogram speaks the plotting protocol `hist` and
+`mplhep` share, and a tree is one keyword away from being a pandas, Awkward,
+Arrow or Polars table. Nothing is downloaded either: a tree is read a basket at
+a time through `xrdclient`, so a hundred-gigabyte file on the other side of the
+world is walked from a laptop and costs the entries you asked for rather than
+the file.
+
+```python
+frame = tree.arrays(["pt", "eta"], library="pd")    # or "ak", "pa", "pl"
+spectrum = f["h_pt"].to_hist()                       # a hist.Hist, flow and all
+```
 
 ## Install
 
     pip install git+https://github.com/rob-c/xrdroot
 
 That brings `xrdclient` with it, which is where `root://`, `https://`,
-HEP WebDAV and `s3://` come from. Nothing else is required. `matplotlib` makes
-histograms and graphs draw themselves onto axes; `lz4` and `zstandard` make
-those two compression algorithms faster than the pure-Python fallbacks that
-are always there.
+HEP WebDAV and `s3://` come from, and NumPy, which is what everything is read
+into. Nothing else is required. `matplotlib` makes histograms and graphs draw
+themselves onto axes; the `lz4` extra (`lz4` and `xxhash`) makes LZ4 some sixty
+times faster than the pure-Python codec that is always there, and `zstandard`
+reads zstd before Python 3.14. pandas, Awkward, pyarrow, Polars and `hist` are
+used when asked for and never required.
 
 ## What it reads
 
@@ -49,18 +58,22 @@ refusal.
 ## What it writes
 
 `xrdroot.create` makes a new ROOT file anywhere the client can put bytes:
-trees filled entry by entry and flushed a basket at a time, histograms, graphs,
-strings and arrays of numbers, under every compression ROOT itself writes —
-still from nothing but the standard library.
+trees, histograms of one, two and three dimensions, graphs, strings and arrays
+of numbers, under every compression ROOT itself writes. Records go out as they
+are made, so a file far larger than memory is written in the memory of a
+basket per column.
 
 ```python
 import xrdroot
 
 with xrdroot.create("root://eos.example.org//store/out.root") as f:
-    tree = f.tree("Events", {"pt": "f4", "eta": "f4"})
-    for pt, eta in rows:
-        tree.fill(pt=pt, eta=eta)
+    f["Events"] = {"pt": pt, "eta": eta, "p4": p4}    # arrays, or any DataFrame
+    f["h_pt"] = hist.Hist(...)                          # or numpy.histogram(...)
 ```
+
+A dict of arrays, a pandas or Polars DataFrame or an Arrow table becomes a
+tree, packed in C a column at a time; `f.tree(...)` and `fill` write one entry
+at a time where that is the natural shape of the loop.
 
 ## Drawing
 

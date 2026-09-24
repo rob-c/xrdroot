@@ -24,6 +24,8 @@ import struct
 from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 from .buffer import MAP_OFFSET
 from .objects import LEAF_TYPES
 from .writer import BASKET_BYTES, WBuffer, _checked, _keylen
@@ -98,26 +100,57 @@ def _typecode(name: str, spec: Any) -> tuple[str, int]:
                 f"the column {name!r} says {length!r} values per entry, which is not a "
                 f"count of them; a column holds a fixed number, one or more"
             )
+    return _code(name, spec), length
+
+
+def _code(name: str, spec: Any) -> str:
+    """The :mod:`array` code for a column's type, however it was spelled.
+
+    A Python ``bool``, ``int`` or ``float``; an :mod:`array` code such as
+    ``'f'``; or anything NumPy calls a type - ``np.float32``, ``'float32'``,
+    ``'<i8'``, a dtype - all come to the same letter, which is the one the
+    leaf class is picked by.
+    """
+    if isinstance(spec, type) and spec in PYTHON_TYPES:
+        return PYTHON_TYPES[spec]
+    try:
+        code = np.dtype(spec).char
+    except TypeError:
+        code = None
+    code = PLATFORM.get(code, code) if code is not None else None
+    if code in LEAVES:
+        return str(code)
     if isinstance(spec, type):
-        found = PYTHON_TYPES.get(spec)
-        if found is None:
-            raise ValueError(
-                f"the column {name!r} is declared as {spec.__name__}, and the Python "
-                f"types a column can be spelled with are bool, int and float"
-            )
-        spec = found
-    if not isinstance(spec, str):
+        raise ValueError(
+            f"the column {name!r} is declared as {spec.__name__}, and the Python "
+            f"types a column can be spelled with are bool, int and float"
+        )
+    if not isinstance(spec, (str, np.dtype)):
         raise ValueError(
             f"the column {name!r} is declared as {spec!r}, which is neither a type "
             f"code such as 'f' nor a Python type such as float"
         )
-    spec = PLATFORM.get(spec, spec)
-    if spec not in LEAVES:
+    raise ValueError(
+        f"the column {name!r} is of type {str(spec)!r}, and the types a tree here "
+        f"holds are {', '.join(LEAVES)} - fixed-size numbers, nothing else"
+    )
+
+
+def spec_of(name: str, values: Any) -> Any:
+    """The declaration a column of these values needs, read off the values.
+
+    One dimension is a number per entry; more is a fixed-size array per
+    entry, as many values as the trailing dimensions hold.
+    """
+    array_ = np.asarray(values)
+    if array_.ndim == 0:
         raise ValueError(
-            f"the column {name!r} is of type {spec!r}, and the types a tree here "
-            f"holds are {', '.join(LEAVES)} - fixed-size numbers, nothing else"
+            f"the column {name!r} is a single {array_.dtype} rather than a value per "
+            f"entry; give it as an array with one element for every entry"
         )
-    return spec, length
+    if array_.ndim == 1:
+        return array_.dtype
+    return (array_.dtype, int(np.prod(array_.shape[1:])))
 
 
 class _Column:
@@ -211,6 +244,44 @@ class _Column:
                 f"{self.name!r} holds {self.typename} values, and this entry is not one "
                 f"of those: {exc}"
             ) from None
+
+
+def _pack_many(column: _Column, values: Any) -> bytes:
+    """A whole column of entries at once, as the bytes a run of baskets holds.
+
+    The same promise :meth:`_Column.pack` makes for one entry, made for all
+    of them in one pass in C: the shape is checked, a float is not quietly
+    truncated into an integer column, and an integer that does not fit the
+    column is refused rather than wrapped round.
+    """
+    given = np.asarray(values)
+    want = (len(given),) if column.length == 1 else (len(given), column.length)
+    if given.ndim == 0 or int(np.prod(given.shape[1:])) != column.length:
+        raise ValueError(
+            f"{column.name!r} takes {column.length} values per entry, and these are "
+            f"shaped {given.shape}; give an array of shape {('n', *want[1:])}"
+        )
+    target = np.dtype(column.typecode)
+    if not np.can_cast(given.dtype, target, "same_kind"):
+        raise ValueError(
+            f"{column.name!r} holds {column.typename} values, and these are {given.dtype}, "
+            f"which would not go into it without losing what they are"
+        )
+    _require_fits(column, given, target)
+    return bytes(given.reshape(want).astype(target.newbyteorder(">")).tobytes())
+
+
+def _require_fits(column: _Column, given: np.ndarray[Any, Any], target: np.dtype[Any]) -> None:
+    """Refuse integers that the column's type is too narrow to hold."""
+    if target.kind not in "iu" or given.dtype.kind not in "iu" or not given.size:
+        return
+    limits = np.iinfo(target)
+    low, high = int(given.min()), int(given.max())
+    if low < limits.min or high > limits.max:
+        raise ValueError(
+            f"{column.name!r} holds {column.typename} values, from {limits.min} to "
+            f"{limits.max}, and these run from {low} to {high}"
+        )
 
 
 def _objarray(buf: WBuffer, count: int) -> int:
@@ -410,13 +481,58 @@ class WritableTree:
         """
         self._row(values)
 
-    def extend(self, rows: Iterable[Mapping[str, Any]]) -> None:
-        """Add every entry in ``rows``, each a mapping of column to value.
+    def extend(self, rows: Iterable[Mapping[str, Any]] | Mapping[str, Any]) -> None:
+        """Add many entries: a column of values for each column, or row after row.
 
-        >>> tree.extend([{"energy": 1.0}, {"energy": 2.0}])   # doctest: +SKIP
+            >>> tree.extend({"energy": energies, "hits": hits})   # doctest: +SKIP
+            >>> tree.extend([{"energy": 1.0}, {"energy": 2.0}])   # doctest: +SKIP
+
+        A mapping of column name to an array - one element, or one row of a
+        fixed-size column, per entry - is the fast way, packed in C a column
+        at a time; every column needs the same number of entries, and they go
+        into baskets exactly as filling them one by one would have put them.
+        Anything else is taken as entries, each a mapping of column to value.
+        Either way a batch that does not fit is refused whole.
         """
+        if isinstance(rows, Mapping):
+            self._columns_at_once(rows)
+            return
         for row in rows:
             self._row(row)
+
+    def _columns_at_once(self, arrays: Mapping[str, Any]) -> None:
+        self._require_open()
+        self._require_columns(arrays)
+        packed = [(col, _pack_many(col, arrays[name])) for name, col in self._columns.items()]
+        counts = {column.name: len(raw) // column.size for column, raw in packed}
+        if len(set(counts.values())) > 1:
+            raise ValueError(
+                f"the columns given to {self.name!r} hold different numbers of entries "
+                f"({', '.join(f'{name}: {count}' for name, count in counts.items())}); a "
+                f"tree whose columns disagree about that is a tree nothing can read"
+            )
+        for column, raw in packed:
+            self._feed(column, raw)
+        self._entries += next(iter(counts.values()))
+
+    def _feed(self, column: _Column, raw: bytes) -> None:
+        """Pour many entries into one column, a basket's worth at a time.
+
+        A basket goes out once it holds ``basket_size`` bytes, which for a
+        column of fixed-size entries is a fixed number of them - the same
+        number a row at a time would have reached - so the file is the same
+        whichever way the entries were given.
+        """
+        per = -(-column.basket_size // column.size)
+        at = 0
+        while at < len(raw):
+            take = (per - column.pending) * column.size
+            chunk = raw[at : at + take]
+            column.buffer += chunk
+            column.pending += len(chunk) // column.size
+            at += len(chunk)
+            if len(column.buffer) >= column.basket_size:
+                self._flush(column)
 
     def _row(self, row: Mapping[str, Any]) -> None:
         """One entry: packed in full before any of it is kept."""

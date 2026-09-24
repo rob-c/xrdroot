@@ -11,16 +11,15 @@ refusal, which is why this module says no as precisely as it says yes.
 
 from __future__ import annotations
 
-import array
 import datetime
 import math
-import struct
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 from xrdclient._compat import zip_strict
 
-from .buffer import Buffer, as_datetime, to_native
+from .buffer import Buffer, as_datetime, gather, numbers
 from .cxx import SEQUENCES, Mapping, Pair, Prim, Seq, Str, parse, py_name
 from .errors import FormatError, UnsupportedFeatureError
 from .graph import GRAPHS, Graph
@@ -132,11 +131,11 @@ KINDS = {
 }
 
 #: How a packed float column turns its bytes into the doubles they stand for.
-Unpack = Callable[[bytes], "array.array[Any]"]
+Unpack = Callable[[bytes], "np.ndarray[Any, Any]"]
 
-_COUNT = struct.Struct(">I")
-_BITS = struct.Struct(">I")
-_FLOAT = struct.Struct(">f")
+#: A ``Float16_t`` on disk: the float's exponent byte, then a sign bit over
+#: however much of the mantissa its declaration asked to keep.
+_TRUNCATED = np.dtype([("exp", "u1"), ("man", ">u2")])
 
 #: How ROOT lets a packing range be written in units of pi, longest first.
 _PI = (
@@ -181,11 +180,16 @@ class Numeric(Column):
         self.itemsize = prim.itemsize
         self.unpack = unpack
 
-    def decode(self, raw: bytes) -> array.array[Any]:
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        """The NumPy type the values come back as, which is the ``typename``."""
+        return np.dtype(self.typename)
+
+    def decode(self, raw: bytes) -> np.ndarray[Any, Any]:
         """A run of values, from the bytes the file holds them in."""
         if self.unpack is not None:
             return self.unpack(raw)
-        return to_native(array.array(self.typecode, raw))
+        return numbers(raw, str(self.typename))
 
 
 class Flat(Numeric):
@@ -220,18 +224,28 @@ class Rows(Numeric):
         #: Does the entry say how many values it holds, or only where it ends?
         self.counted = counted
 
-    def span(self, basket: Basket, entry: int, offset: int) -> tuple[int, int]:
-        """Where this entry's values start and stop inside the basket."""
-        start = basket.start_of(entry, offset) + self.header
-        end = basket.end_of(entry)
+    def spans(
+        self, basket: Basket, low: int, high: int, offset: int
+    ) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
+        """Where entries ``low`` to ``high`` start and stop inside the basket.
+
+        A container says how many values it holds in the four bytes in front
+        of them, and that count is checked against the room the entry was
+        written into rather than trusted: a count that overruns is a file
+        that would otherwise be read as its neighbour's values.
+        """
+        start = basket.starts(low, high, offset) + self.header
+        end = basket.ends(low, high)
         if not self.counted:
             return start, end
-        count = _COUNT.unpack_from(basket.data, start - 4)[0]
-        stop = start + count * self.itemsize
-        if stop > end:
+        counts = np.frombuffer(gather(basket.data, start - 4, np.full(len(start), 4)), ">u4")
+        stop = start + counts.astype(np.int64) * self.itemsize
+        over = np.flatnonzero(stop > end)
+        if len(over):
+            first = int(over[0])
             raise FormatError(
-                f"an entry says it holds {count} values, which do not fit in the "
-                f"{end - start} bytes it was written into"
+                f"an entry says it holds {int(counts[first])} values, which do not fit in the "
+                f"{int(end[first] - start[first])} bytes it was written into"
             )
         return start, stop
 
@@ -284,7 +298,7 @@ class Refused(Column):
 def _items(node: Any, buf: Buffer, count: int) -> Any:
     """``count`` values of one type, written one after another."""
     if isinstance(node, Prim):
-        return to_native(array.array(node.typecode, buf.take(count * node.itemsize)))
+        return numbers(buf.take(count * node.itemsize), node.typename)
     if isinstance(node, Str):
         return [buf.string() for _ in range(count)]
     return [_items(node.item, buf, buf.u32()) for _ in range(count)]
@@ -465,9 +479,8 @@ def _range(title: str) -> tuple[float, float, float] | None:
 def _scaled(factor: float, xmin: float) -> Unpack:
     """Values written as a whole number of steps across a known range."""
 
-    def unpack(raw: bytes) -> array.array[Any]:
-        count = len(raw) // 4
-        return array.array("d", [v / factor + xmin for v in struct.unpack(f">{count}I", raw)])
+    def unpack(raw: bytes) -> np.ndarray[Any, Any]:
+        return np.frombuffer(raw, ">u4") / factor + xmin
 
     return unpack
 
@@ -477,20 +490,19 @@ def _truncated(nbits: int) -> Unpack:
     mask = (1 << (nbits + 1)) - 1
     sign = 1 << (nbits + 1)
 
-    def unpack(raw: bytes) -> array.array[Any]:
-        out = array.array("d")
-        for exp, man in struct.iter_unpack(">BH", raw):
-            bits = ((exp << 23) | ((man & mask) << (23 - nbits))) & 0xFFFFFFFF
-            value = _FLOAT.unpack(_BITS.pack(bits))[0]
-            out.append(-value if man & sign else value)
-        return out
+    def unpack(raw: bytes) -> np.ndarray[Any, Any]:
+        packed = np.frombuffer(raw, _TRUNCATED)
+        man = packed["man"].astype(np.uint32)
+        bits = (packed["exp"].astype(np.uint32) << 23) | ((man & mask) << (23 - nbits))
+        values = bits.view(np.float32).astype(np.float64)
+        return np.where(man & sign, -values, values)
 
     return unpack
 
 
-def _widened(raw: bytes) -> array.array[Any]:
+def _widened(raw: bytes) -> np.ndarray[Any, Any]:
     """A ``Double32_t`` with no recipe at all, which is a plain ``float``."""
-    return array.array("d", to_native(array.array("f", raw)))
+    return numbers(raw, "float32").astype(np.float64)
 
 
 def _packing(title: str, double32: bool) -> tuple[Prim, Unpack] | None:
@@ -576,12 +588,14 @@ def _numbers(prim: Prim, unpack: Unpack | None, buf: Buffer, count: int) -> Any:
     raw = buf.take(count * prim.itemsize)
     if unpack is not None:
         return unpack(raw)
-    return to_native(array.array(prim.typecode, raw))
+    return numbers(raw, prim.typename)
 
 
 def _one(prim: Prim, unpack: Unpack | None) -> Step:
     """A single number, which comes back as a number rather than a run of one."""
-    return lambda buf, _row: _numbers(prim, unpack, buf, 1)[0]
+    # ``item`` makes it a Python number: a member such as ``fNbins`` is a
+    # count to be used as one, not a NumPy scalar that leaks into everything.
+    return lambda buf, _row: _numbers(prim, unpack, buf, 1)[0].item()
 
 
 def _run(prim: Prim, unpack: Unpack | None, length: int) -> Step:

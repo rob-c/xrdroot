@@ -9,9 +9,11 @@
 ROOT is how experimental physics stores its data, and until now getting at it
 from Python meant a C++ toolchain or a wheel with a compiler behind it. This
 reads the format itself - keys, directories, trees, baskets and all four of
-ROOT's compression algorithms - with nothing but the standard library, and it
-reads it a basket at a time, so a tree on the other side of the world costs
-the entries you asked for rather than the file.
+ROOT's compression algorithms - into NumPy, and it reads it a basket at a
+time, so a tree on the other side of the world costs the entries you asked for
+rather than the file. ``tree.arrays(library="pd")`` - or ``ak``, ``pa`` and
+``pl`` - hands the columns to pandas, Awkward, Arrow or Polars, and every
+histogram speaks the plotting protocol ``hist`` and ``mplhep`` share.
 
 Numbers, strings, jagged rows, STL containers and the members ROOT splits a
 C++ class into are all read, and a split object can be asked for whole. So are
@@ -24,11 +26,13 @@ refused by name with the class in the message, because a plausible misreading
 of physics data is worse than a refusal.
 
 It writes, too: :func:`create` makes a new ROOT file anywhere this library
-can put bytes, holding histograms and graphs - read from another file, or
-built from plain numbers with :meth:`Histogram.new` and :meth:`Graph.new` -
-along with strings and arrays. And both classes draw themselves: ``.plot()``
-onto matplotlib axes if matplotlib is there, ``.text()`` into characters
-with nothing installed at all.
+can put bytes, holding trees - from a dict of arrays or any DataFrame -
+histograms and graphs - read from another file, made by ``hist`` or
+:func:`numpy.histogram`, or built from plain numbers with
+:meth:`Histogram.new` and :meth:`Graph.new` - along with strings and arrays.
+And both classes draw themselves: ``.plot()`` onto matplotlib axes if
+matplotlib is there, ``.text()`` into characters with nothing installed at
+all.
 
 :mod:`xrdml` turns what comes out into tensors, if PyTorch or TensorFlow
 is there; it is a separate package that builds on this one.

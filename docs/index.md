@@ -12,8 +12,9 @@ with xrdroot.open_root("root://eos.example.org//store/events.root") as f:
         analyse(batch)
 ```
 
-No ROOT, no `uproot`, no `numpy`, no compiled extension, and nothing
-downloaded: a tree is read a basket at a time over the wire.
+No ROOT and no C++: the format itself, decoded into NumPy and handed on to
+pandas, Awkward, Arrow, Polars and `hist` when asked. Nothing is downloaded: a
+tree is read a basket at a time over the wire.
 
 See [ROOT files](root.md) for the whole surface — reading, writing, histograms,
 graphs and what the reader refuses — and [Maintainability

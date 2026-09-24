@@ -19,6 +19,7 @@ import struct
 
 import pytest
 
+from support import plain
 from xrdroot import (
     Graph,
     Histogram,
@@ -93,8 +94,8 @@ def _assert_histogram_round_trip(again, hist):
     assert again.classname == hist.classname
     assert again.title == hist.title
     assert again.entries == hist.entries
-    assert list(again.values(flow=True)) == list(hist.values(flow=True))
-    assert list(again.errors(flow=True)) == list(hist.errors(flow=True))
+    assert again.values(flow=True).tolist() == hist.values(flow=True).tolist()
+    assert again.errors(flow=True).tolist() == hist.errors(flow=True).tolist()
     for axis in range(len(hist.shape)):
         assert list(again.edges(axis)) == list(hist.edges(axis))
 
@@ -107,9 +108,9 @@ def test_every_donor_graph_survives_a_round_trip():
             again = back[name]
             assert again.classname == graph.classname
             assert again.title == graph.title
-            assert (again.x, again.y) == (graph.x, graph.y)
-            assert again.xerr == graph.xerr
-            assert again.layers == graph.layers
+            assert plain((again.x, again.y)) == plain((graph.x, graph.y))
+            assert plain(again.xerr) == plain(graph.xerr)
+            assert plain(again.layers) == plain(graph.layers)
 
 
 def test_a_written_file_describes_its_classes_exactly_as_the_donors_do():
@@ -286,8 +287,8 @@ def test_a_new_graph_picks_its_class_from_the_bars_it_was_given():
     assert list(mixed.members["fEXlow"]) == list(mixed.members["fEXhigh"]) == [0.5, 0.6]
     with read_back(written(g=mixed)) as back:
         again = back["g"]
-        assert again.xerr == mixed.xerr
-        assert again.layers == mixed.layers
+        assert plain(again.xerr) == plain(mixed.xerr)
+        assert plain(again.layers) == plain(mixed.layers)
 
 
 def test_a_new_graph_of_no_points_is_still_a_graph():

@@ -9,11 +9,12 @@ laptop: the bytes that cross the wire are the ones asked for.
 
 from __future__ import annotations
 
-import array
 from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 
-from .buffer import Buffer
+import numpy as np
+
+from .buffer import Buffer, gather
 from .compression import decompress
 from .errors import UnsupportedFeatureError
 from .interp import Column, Flat, Members, Refused, Rows, Values, build
@@ -36,53 +37,91 @@ class Jagged(Sequence[Any]):
 
     This is the shape a physics file is usually in - a variable number of
     particles per collision - and it is kept flat because that is how it
-    arrives and how a tensor wants it back.
+    arrives and how a tensor wants it back. ``content`` is every value of
+    every row in one NumPy array, and ``offsets`` the ``len + 1`` places the
+    rows start and stop; row ``i`` is ``content[offsets[i]:offsets[i + 1]]``,
+    which is exactly the layout Awkward Array and Arrow keep a list in.
     """
 
     __slots__ = ("content", "offsets")
 
-    def __init__(self, content: array.array[Any], offsets: array.array[Any]) -> None:
-        self.content = content
-        self.offsets = offsets
+    def __init__(self, content: Any, offsets: Any) -> None:
+        self.content: np.ndarray[Any, Any] = np.asarray(content)
+        self.offsets: np.ndarray[Any, Any] = np.asarray(offsets, dtype=np.int64)
 
     def __repr__(self) -> str:
-        return f"<Jagged {len(self)} rows of {len(self.content)} {self.content.typecode} values>"
+        return f"<Jagged {len(self)} rows of {len(self.content)} {self.content.dtype} values>"
 
     def __len__(self) -> int:
         return len(self.offsets) - 1
 
     def __getitem__(self, index: Any) -> Any:
         if isinstance(index, slice):
-            return [self[i] for i in range(*index.indices(len(self)))]
+            start, stop, step = index.indices(len(self))
+            if step != 1:
+                return [self[i] for i in range(start, stop, step)]
+            stop = max(start, stop)
+            low, high = self.offsets[start], self.offsets[stop]
+            return Jagged(self.content[low:high], self.offsets[start : stop + 1] - low)
         if index < 0:
             index += len(self)
         if not 0 <= index < len(self):
             raise IndexError("row out of range")
         return self.content[self.offsets[index] : self.offsets[index + 1]]
 
-    def lengths(self) -> list[int]:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Jagged):
+            return NotImplemented
+        return bool(
+            np.array_equal(self.offsets - self.offsets[0], other.offsets - other.offsets[0])
+            and np.array_equal(self.flat, other.flat)
+        )
+
+    __hash__ = None  # type: ignore[assignment]
+
+    @property
+    def flat(self) -> np.ndarray[Any, Any]:
+        """Every value of every row, in order, with nothing either side."""
+        return self.content[self.offsets[0] : self.offsets[-1]]
+
+    def lengths(self) -> np.ndarray[Any, Any]:
         """How long each row is."""
-        return [self.offsets[i + 1] - self.offsets[i] for i in range(len(self))]
+        return np.diff(self.offsets)
 
     def tolist(self) -> list[list[Any]]:
-        return [list(row) for row in self]
+        return [row.tolist() for row in self]
 
-    def padded(self, width: int | None = None, fill: float = 0.0) -> tuple[array.array[Any], int]:
+    def padded(
+        self, width: int | None = None, fill: float = 0.0
+    ) -> tuple[np.ndarray[Any, Any], int]:
         """A rectangle: every row cut or filled to the same width.
 
         Gives back the flat values and the width, which is what a tensor of
-        shape ``(rows, width)`` is made of. ``width`` defaults to the longest
-        row, so nothing is lost unless a number is asked for.
+        shape ``(rows, width)`` is made of - ``.reshape(-1, width)`` makes it
+        that. ``width`` defaults to the longest row, so nothing is lost unless
+        a number is asked for.
         """
+        lengths = self.lengths()
         if width is None:
-            width = max(self.lengths(), default=0)
-        code = self.content.typecode
-        out = array.array(code, [fill if code in "fd" else int(fill)]) * (len(self) * width)
-        for row in range(len(self)):
-            start, end = self.offsets[row], self.offsets[row + 1]
-            end = min(end, start + width)
-            out[row * width : row * width + (end - start)] = self.content[start:end]
-        return out, width
+            width = int(lengths.max(initial=0))
+        out = np.full((len(self), width), fill, dtype=self.content.dtype)
+        kept = np.minimum(lengths, width)
+        rows = np.repeat(np.arange(len(self)), kept)
+        columns = np.arange(int(kept.sum())) - np.repeat(np.cumsum(kept) - kept, kept)
+        out[rows, columns] = self.content[self.offsets[:-1][rows] + columns]
+        return out.reshape(-1), width
+
+    def to_awkward(self) -> Any:
+        """The same rows as an Awkward Array, sharing the same memory."""
+        from .library import awkward_list
+
+        return awkward_list(self)
+
+    def to_arrow(self) -> Any:
+        """The same rows as an Arrow list array, which pandas and Polars take."""
+        from .library import arrow_list
+
+        return arrow_list(self)
 
 
 def _bounds(total: int, entry_start: int, entry_stop: int | None) -> tuple[int, int]:
@@ -181,6 +220,17 @@ class Basket:
         boundary = self.offsets[entry + 1] if entry + 1 < self.nevbuf else self.last
         return boundary - self.keylen
 
+    def starts(self, low: int, high: int, offset: int) -> np.ndarray[Any, Any]:
+        """:meth:`start_of` for every entry from ``low`` up to ``high``, at once."""
+        if self.offsets:
+            return np.asarray(self.offsets[low:high], dtype=np.int64) - self.keylen + offset
+        return np.arange(low, high, dtype=np.int64) * self.nevsize + offset
+
+    def ends(self, low: int, high: int) -> np.ndarray[Any, Any]:
+        """:meth:`end_of` for every entry from ``low`` up to ``high``, at once."""
+        table = np.asarray([*self.offsets[: self.nevbuf], self.last], dtype=np.int64)
+        return table[low + 1 : high + 1] - self.keylen
+
 
 def _inline_offsets(buf: Buffer, flag: int, entries: int) -> tuple[int, list[int]]:
     if flag >= 80:
@@ -199,7 +249,7 @@ class Branch:
     """One column of a tree: a name, a type, and the entries under it.
 
         >>> tree["pt"].array(0, 1000)              # doctest: +SKIP
-        array('f', [22.5, 19.0, ...])
+        array([22.5, 19. , ...], dtype=float32)
 
     A branch holding several leaves appears once per leaf, named
     ``branch.leaf``, which is how ROOT itself writes such a name.
@@ -246,10 +296,9 @@ class Branch:
     def length(self) -> int:
         """How many values each entry holds, for a column of fixed-size arrays.
 
-        ``1`` for a plain number, ``10`` for ``x[10]``; the flat array a fixed
-        column gives back is this wide per entry, which is the shape to give a
-        tensor. A variable column says ``1`` here and means the lengths in
-        :class:`Jagged` instead.
+        ``1`` for a plain number, ``10`` for ``x[10]``, which a fixed column
+        gives back as an array of shape ``(entries, 10)``. A variable column
+        says ``1`` here and means the lengths in :class:`Jagged` instead.
         """
         return self.column.length if isinstance(self.column, Flat) else 1
 
@@ -305,8 +354,9 @@ class Branch:
     def array(self, entry_start: int = 0, entry_stop: int | None = None) -> Any:
         """The values for a range of entries.
 
-        Fixed-size columns come back as an :class:`array.array`, variable ones
-        as :class:`Jagged`, and anything that is neither - strings, lists of
+        Fixed-size columns come back as a NumPy array - one value per entry, or
+        ``length`` of them one after another - variable ones as
+        :class:`Jagged`, and anything that is neither - strings, lists of
         lists, maps - as a list with one Python value per entry.
         """
         self._refuse_if_unreadable()
@@ -322,32 +372,29 @@ class Branch:
     def _flat(self, column: Flat, start: int, stop: int) -> Any:
         size = column.length * column.itemsize
         offset = self.leaf.offset
-        content = bytearray()
+        pieces = []
         for index, low, high in self._spans(start, stop):
             basket = self.basket(index)
             if not basket.offsets and offset == 0 and basket.nevsize == size:
-                content += basket.data[low * size : high * size]  # the whole run at once
+                pieces.append(basket.data[low * size : high * size])  # the whole run at once
             else:
-                for entry in range(low, high):
-                    at = basket.start_of(entry, offset)
-                    content += basket.data[at : at + size]
-        return column.decode(bytes(content))
+                starts = basket.starts(low, high, offset)
+                pieces.append(gather(basket.data, starts, np.full(len(starts), size)))
+        values = column.decode(b"".join(pieces))
+        return values.reshape(-1, column.length) if column.length > 1 else values
 
     def _rows(self, column: Rows, start: int, stop: int) -> Jagged:
-        content = bytearray()
-        counts: list[int] = []
+        pieces = []
+        counts = [np.zeros(0, np.int64)]
         for index, low, high in self._spans(start, stop):
             basket = self.basket(index)
-            for entry in range(low, high):
-                at, end = column.span(basket, entry, self.leaf.offset)
-                counts.append((end - at) // column.itemsize)
-                content += basket.data[at:end]
-        values = column.decode(bytes(content))
-        offsets = array.array("q", [0]) * (len(counts) + 1)
-        total = 0
-        for row, count in enumerate(counts):
-            total += count
-            offsets[row + 1] = total
+            at, end = column.spans(basket, low, high, self.leaf.offset)
+            counts.append((end - at) // column.itemsize)
+            pieces.append(gather(basket.data, at, end - at))
+        values = column.decode(b"".join(pieces))
+        lengths = np.concatenate(counts)
+        offsets = np.zeros(len(lengths) + 1, np.int64)
+        np.cumsum(lengths, out=offsets[1:])
         return Jagged(values, offsets)
 
     def _objects(self, column: Values, start: int, stop: int) -> list[Any]:
@@ -415,11 +462,9 @@ class Group(Branch):
             if isinstance(branch.column, Refused):
                 continue
             values = branch.array(start, stop)
-            width = branch.length
+            plain = isinstance(values, np.ndarray) and values.ndim == 1
             for index, row in enumerate(rows):
-                row[member] = (
-                    values[index * width : (index + 1) * width] if width > 1 else values[index]
-                )
+                row[member] = values[index].item() if plain else values[index]
         return rows
 
 
@@ -566,14 +611,24 @@ class TTree:
         names: Sequence[str] | None = None,
         entry_start: int = 0,
         entry_stop: int | None = None,
-    ) -> dict[str, Any]:
+        *,
+        library: str = "np",
+    ) -> Any:
         """Several columns at once, over the same range of entries.
+
+            >>> tree.arrays(["pt", "eta"], library="pd")      # doctest: +SKIP
 
         With no names, every column this reader can decode; the ones it cannot
         are in :attr:`unreadable` with the reason, rather than quietly missing.
+        ``library`` says what to hand them back as: ``np``, the default, is a
+        dict of NumPy arrays; ``pd``, ``ak``, ``pa`` and ``pl`` are a pandas
+        DataFrame, an Awkward Array, an Arrow table and a Polars DataFrame.
         """
+        from .library import convert
+
         wanted = self.readable() if names is None else list(names)
-        return {name: self[name].array(entry_start, entry_stop) for name in wanted}
+        columns = {name: self[name].array(entry_start, entry_stop) for name in wanted}
+        return convert(columns, library)
 
     def iterate(
         self,
@@ -582,7 +637,8 @@ class TTree:
         step: int = DEFAULT_STEP,
         entry_start: int = 0,
         entry_stop: int | None = None,
-    ) -> Iterator[dict[str, Any]]:
+        library: str = "np",
+    ) -> Iterator[Any]:
         """Walk the tree in batches, reading only what each batch needs.
 
             >>> for batch in tree.iterate(step=50_000):        # doctest: +SKIP
@@ -597,5 +653,5 @@ class TTree:
         # negative start or stop means here what it means there.
         at, stop = _bounds(self.num_entries, entry_start, entry_stop)
         while at < stop:
-            yield self.arrays(names, at, min(at + step, stop))
+            yield self.arrays(names, at, min(at + step, stop), library=library)
             at += step

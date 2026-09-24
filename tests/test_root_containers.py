@@ -9,13 +9,14 @@ field - where a refusal has to be provoked to be checked.
 
 from __future__ import annotations
 
-import array
 import io
 import pathlib
 import struct
 
+import numpy as np
 import pytest
 
+from support import plain
 from xrdroot import FormatError, UnsupportedFeatureError, open_root
 from xrdroot.buffer import BYTE_COUNT_MASK, Buffer
 from xrdroot.cxx import Mapping, Pair, Prim, Seq, Str, parse, py_name
@@ -273,12 +274,12 @@ def test_a_tstring_in_a_map_is_bytes_where_a_std_string_is_a_record(containers):
 
 
 def test_a_map_of_containers_keeps_the_containers(containers):
-    assert containers["map_i32_vec_i16"].array(1, 2) == [
-        {-2: array.array("h", [-1, -2]), -1: array.array("h", [-1])}
+    assert plain(containers["map_i32_vec_i16"].array(1, 2)) == [
+        {-2: [-1, -2], -1: [-1]}
     ]
     assert containers["map_str_vec_str"].array(1, 2) == [{"one": ["one"], "two": ["one", "two"]}]
-    assert containers["map_i32_set_i16"].array(1, 2) == [
-        {-2: array.array("h", [-2, -1]), -1: array.array("h", [-1])}
+    assert plain(containers["map_i32_set_i16"].array(1, 2)) == [
+        {-2: [-2, -1], -1: [-1]}
     ]
     nested = containers["map_i32_vec_vec_i16"].array(1, 2)[0]
     assert {key: [list(row) for row in value] for key, value in nested.items()} == {
@@ -298,7 +299,7 @@ def test_every_column_of_the_container_file_but_none_is_readable(containers):
 def test_a_split_member_is_a_column_of_its_own(event):
     assert event["I16"].array(1, 2).tolist() == [1]
     assert event["U64"].array(1, 2).tolist() == [1]
-    assert event["ArrayF64[10]"].array(1, 2).tolist() == [1.0] * 10
+    assert event["ArrayF64[10]"].array(1, 2).tolist() == [[1.0] * 10]
     assert event["SliceF64"].array(1, 2).tolist() == [[1.0]]
     assert event["N"].array(1, 2).tolist() == [1]
 
@@ -318,7 +319,7 @@ def test_the_three_kinds_of_string_a_split_class_can_hold(event):
 
 def test_a_vector_member_of_a_split_class_is_rows(event):
     assert event["StlVecF64"].array(1, 2).tolist() == [[1.0]]
-    assert event["StlVecI16"].array(0, 2).lengths() == [0, 1]
+    assert event["StlVecI16"].array(0, 2).lengths().tolist() == [0, 1]
     assert event["StlVecF32"].typename == "float32"
 
 
@@ -326,7 +327,7 @@ def test_a_vector_of_bool_is_a_byte_an_element_not_a_bit():
     with opened("stdvec-bool-fullsplit-6.10.08") as handle:
         tree = handle["tree"]
         assert tree["Bool"].array(0, 3).tolist() == [1, 0, 1]
-        assert tree["ArrayBool[10]"].array(2, 3).tolist() == [1] * 10
+        assert tree["ArrayBool[10]"].array(2, 3).tolist() == [[True] * 10]
         assert tree["StlVecBool"].array(0, 3).tolist() == [[], [0], [1, 1]]
         assert tree["SliceBool"].array(0, 3).tolist() == [[], [0], [1, 1]]
 
@@ -386,11 +387,11 @@ class Fake:
         self.data = data
         self._end = end
 
-    def start_of(self, entry: int, offset: int) -> int:
-        return 0
+    def starts(self, low: int, high: int, offset: int):
+        return np.zeros(high - low, np.int64)
 
-    def end_of(self, entry: int) -> int:
-        return self._end
+    def ends(self, low: int, high: int):
+        return np.full(high - low, self._end, np.int64)
 
 
 def test_a_row_claiming_more_values_than_it_holds_is_a_format_error():
@@ -398,7 +399,7 @@ def test_a_row_claiming_more_values_than_it_holds_is_a_format_error():
     assert isinstance(column, Rows)
     basket = Fake(struct.pack(">IHI", BYTE_COUNT_MASK | 10, 6, 99), 14)
     with pytest.raises(FormatError, match="says it holds 99 values"):
-        column.span(basket, 0, 0)
+        column.spans(basket, 0, 1, 0)
 
 
 # -- floats packed into fewer bytes ---------------------------------------

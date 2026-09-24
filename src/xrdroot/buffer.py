@@ -12,27 +12,68 @@ object back-references written into the stream are absolute in those terms.
 
 from __future__ import annotations
 
-import array
 import datetime
 import struct
-import sys
+from functools import cache
 from typing import Any
+
+import numpy as np
 
 from .errors import FormatError, UnsupportedFeatureError
 
-__all__ = ["Buffer", "as_datetime", "to_native"]
+__all__ = ["Buffer", "as_datetime", "gather", "numbers", "on_disk"]
 
-if sys.byteorder == "little":  # pragma: no cover - one of two, decided by the machine
 
-    def to_native(values: array.array[Any]) -> array.array[Any]:
-        """ROOT writes big-endian; make it the order this machine reads."""
-        values.byteswap()
-        return values
+@cache
+def on_disk(typename: str) -> np.dtype[Any]:
+    """How a number of this type is laid out in a ROOT file: big-endian.
 
-else:  # pragma: no cover - big-endian machines, where ROOT's order is ours
+    ``typename`` is this library's word for it - ``'float32'``, ``'uint16'``
+    - which is also NumPy's. A ``bool`` is a byte, as C++ has it.
+    """
+    if typename == "bool":
+        return np.dtype("u1")
+    return np.dtype(typename).newbyteorder(">")
 
-    def to_native(values: array.array[Any]) -> array.array[Any]:
-        return values
+
+def gather(data: bytes, starts: Any, lengths: Any) -> bytes:
+    """The runs ``data[start:start + length]`` for every pair, end to end.
+
+    This is how a basket's entries come out when they do not sit one after
+    another at a fixed stride: one index built in C and one take, rather than
+    a slice and a copy per entry.
+    """
+    starts = np.asarray(starts, dtype=np.int64)
+    lengths = np.asarray(lengths, dtype=np.int64)
+    kept = lengths > 0
+    starts, lengths = starts[kept], lengths[kept]
+    if not len(starts):
+        return b""
+    raw = np.frombuffer(data, np.uint8)
+    ends = starts + lengths
+    if np.all(starts[1:] >= ends[:-1]):
+        # In order and apart, which is every basket's case: a byte mask that
+        # steps up where a run starts and down where it ends costs a byte per
+        # byte of basket, where an index would cost eight.
+        steps = np.zeros(len(raw) + 1, np.int8)
+        steps[starts] += 1
+        steps[ends] -= 1
+        return bytes(raw[np.cumsum(steps[:-1], dtype=np.int8).view(bool)].tobytes())
+    before = np.cumsum(lengths) - lengths
+    index = np.repeat(starts - before, lengths) + np.arange(int(lengths.sum()))
+    return bytes(raw[index].tobytes())
+
+
+def numbers(raw: bytes, typename: str) -> np.ndarray[Any, Any]:
+    """Big-endian bytes as a NumPy array in this machine's own order.
+
+    One pass in C, whatever the length, and a copy of its own rather than a
+    view: the bytes usually belong to a basket that is about to be dropped.
+    """
+    values = np.frombuffer(raw, on_disk(typename))
+    if typename == "bool":
+        return values != 0
+    return values.astype(typename)
 
 
 def as_datetime(packed: int) -> datetime.datetime:

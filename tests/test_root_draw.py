@@ -12,7 +12,6 @@ import sys
 import types
 
 import pytest
-from xrdclient._compat import zip_strict
 
 from xrdroot import Graph, Histogram, UnsupportedFeatureError, open_root
 from xrdroot.draw import bar, missing_picture, shade
@@ -146,8 +145,7 @@ def test_a_two_dimensional_histogram_plots_as_a_mesh_with_the_grid_transposed(fr
     assert name == "pcolormesh"
     assert list(xs) == list(hist.edges(0))
     assert list(ys) == list(hist.edges(1))
-    rows = [list(row) for row in hist.values()]
-    assert columns == [list(column) for column in zip_strict(*rows)]
+    assert columns.tolist() == hist.values().T.tolist()
     assert ("set_ylabel", ("the other way",), {}) in ax.calls
 
 

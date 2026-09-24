@@ -8,9 +8,9 @@ every member it was written with in reach under :attr:`Graph.members`.
 
 from __future__ import annotations
 
-import array
 from typing import Any
 
+import numpy as np
 from xrdclient._compat import zip_strict
 
 from .draw import axes
@@ -43,8 +43,7 @@ class Graph:
         >>> for x, y in graph:                     # doctest: +SKIP
         ...     print(x, y)
 
-    ``x`` and ``y`` are :class:`array.array` of one value per point, which
-    :func:`numpy.asarray` takes without copying. :attr:`xerr` and :attr:`yerr`
+    ``x`` and ``y`` are NumPy arrays of one value per point. :attr:`xerr` and :attr:`yerr`
     are the bars either side of each point, or ``None`` for a graph written
     without them; a graph keeping its errors in layers has them in
     :attr:`layers`.
@@ -68,8 +67,8 @@ class Graph:
         self.members = members
         self._core = core
         #: Where each point is, one value per point.
-        self.x: array.array[float] = array.array("d", core["fX"][:points])
-        self.y: array.array[float] = array.array("d", core["fY"][:points])
+        self.x: np.ndarray[Any, Any] = _doubles(core["fX"][:points])
+        self.y: np.ndarray[Any, Any] = _doubles(core["fY"][:points])
 
     @property
     def name(self) -> str:
@@ -85,23 +84,23 @@ class Graph:
         return len(self.x)
 
     def __getitem__(self, index: int) -> tuple[float, float]:
-        return (self.x[index], self.y[index])
+        return (float(self.x[index]), float(self.y[index]))
 
     def __iter__(self) -> Any:
-        return iter(zip_strict(self.x, self.y))
+        return iter(zip_strict(self.x.tolist(), self.y.tolist()))
 
     def points(self) -> list[tuple[float, float]]:
         """Every point as a pair, which is what a graph is a picture of."""
         return list(self)
 
-    def _pair(self, low: Any, high: Any) -> tuple[array.array[float], array.array[float]]:
+    def _pair(self, low: Any, high: Any) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
         """Two arrays of bars, cut to the points the graph says it has."""
         points = len(self)
-        return (array.array("d", low[:points]), array.array("d", high[:points]))
+        return (_doubles(low[:points]), _doubles(high[:points]))
 
     def _bars(
         self, axis: str, *spellings: tuple[str, str]
-    ) -> tuple[array.array[float], array.array[float]] | None:
+    ) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]] | None:
         """The bars either side along one axis, or ``None`` if there are none.
 
         Each spelling is the pair of names one class gives the low and the
@@ -116,12 +115,12 @@ class Graph:
         return None if same is None else self._pair(same, same)
 
     @property
-    def xerr(self) -> tuple[array.array[float], array.array[float]] | None:
+    def xerr(self) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]] | None:
         """The bars left and right of each point, or ``None`` if none were kept."""
         return self._bars("X", ("fEXlow", "fEXhigh"), ("fExL", "fExH"))
 
     @property
-    def layers(self) -> tuple[tuple[array.array[float], array.array[float]], ...]:
+    def layers(self) -> tuple[tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]], ...]:
         """The bars below and above each point, one pair per layer of them.
 
         A graph told to keep its statistical and its systematic errors apart
@@ -135,7 +134,7 @@ class Graph:
         return tuple(self._pair(a, b) for a, b in zip_strict(low, high))
 
     @property
-    def yerr(self) -> tuple[array.array[float], array.array[float]] | None:
+    def yerr(self) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]] | None:
         """The bars below and above each point, or ``None`` if none were kept.
 
         A graph keeping more than one layer of them refuses here rather than
@@ -174,8 +173,7 @@ class Graph:
         ``TGraphErrors``, and any uneven pair a ``TGraphAsymmErrors`` with
         the even ones carried on both sides.
         """
-        xs = array.array("d", (float(value) for value in x))
-        ys = array.array("d", (float(value) for value in y))
+        xs, ys = _doubles(x), _doubles(y)
         if len(xs) != len(ys):
             raise ValueError(f"{len(xs)} x values and {len(ys)} y values are not points")
         count = len(xs)
@@ -184,7 +182,7 @@ class Graph:
         core = _graph_core(name, title, xs, ys)
         if across is None and upward is None:
             return cls("TGraph", core)
-        zeros = array.array("d", [0.0]) * count
+        zeros = np.zeros(count)
         if _symmetric(across, upward):
             return cls("TGraphErrors", _even_members(core, across, upward, zeros))
         return cls("TGraphAsymmErrors", _uneven_members(core, across, upward, zeros))
@@ -209,10 +207,10 @@ class Graph:
 
     def text(self, width: int = 60, height: int = 16) -> str:
         """The graph as a grid of points, for a terminal or a log file."""
-        if not self.x:
+        if not len(self.x):
             return "(a graph of no points)"
-        xlo, xhi = min(self.x), max(self.x)
-        ylo, yhi = min(self.y), max(self.y)
+        xlo, xhi = float(self.x.min()), float(self.x.max())
+        ylo, yhi = float(self.y.min()), float(self.y.max())
         xspan, yspan = (xhi - xlo) or 1.0, (yhi - ylo) or 1.0
         grid = [[" "] * width for _ in range(height)]
         for x, y in self:
@@ -231,9 +229,14 @@ class Graph:
         return f"<{self.classname} {self.name!r} of {len(self)} points>"
 
 
+def _doubles(values: Any) -> np.ndarray[Any, Any]:
+    """A run of numbers as a one-dimensional array of doubles of its own."""
+    return np.array(values, dtype=np.float64).reshape(-1)
+
+
 def _sides(
     err: Any, count: int, label: str
-) -> tuple[array.array[float], array.array[float], bool] | None:
+) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any], bool] | None:
     """The bars along one axis: low, high, and whether they were given uneven.
 
     One bar per point is both sides of it; a pair of runs is a side each,
@@ -249,14 +252,13 @@ def _sides(
 
 
 def _is_side_pair(given: list[Any]) -> bool:
-    return len(given) == 2 and not any(isinstance(side, (int, float)) for side in given)
+    return len(given) == 2 and all(np.ndim(side) == 1 for side in given)
 
 
 def _uneven_sides(
     given: list[Any], count: int, label: str
-) -> tuple[array.array[float], array.array[float], bool]:
-    low = array.array("d", (float(value) for value in given[0]))
-    high = array.array("d", (float(value) for value in given[1]))
+) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any], bool]:
+    low, high = _doubles(given[0]), _doubles(given[1])
     if len(low) != count or len(high) != count:
         raise ValueError(f"{label} has {len(low)} low and {len(high)} high bars for {count} points")
     return low, high, True
@@ -264,8 +266,8 @@ def _uneven_sides(
 
 def _even_sides(
     given: list[Any], count: int, label: str
-) -> tuple[array.array[float], array.array[float], bool]:
-    bars = array.array("d", (float(value) for value in given))
+) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any], bool]:
+    bars = _doubles(given)
     if len(bars) != count:
         raise ValueError(
             f"{label} has {len(bars)} bars for {count} points: give one per "
@@ -275,7 +277,7 @@ def _even_sides(
 
 
 def _graph_core(
-    name: str, title: str, xs: array.array[float], ys: array.array[float]
+    name: str, title: str, xs: np.ndarray[Any, Any], ys: np.ndarray[Any, Any]
 ) -> dict[str, Any]:
     return {
         "TNamed": {"fName": str(name), "fTitle": str(title)},

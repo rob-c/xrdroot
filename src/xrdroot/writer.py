@@ -33,6 +33,7 @@ import uuid
 from collections.abc import Mapping
 from typing import IO, TYPE_CHECKING, Any
 
+import numpy as np
 from xrdclient.url import parse
 
 from .buffer import BYTE_COUNT_MASK, IS_REFERENCED, NEW_CLASS_TAG
@@ -287,13 +288,12 @@ def _find(row: dict[str, Any], name: str) -> Any:
 
 def _numbers(buf: WBuffer, typecode: str, values: Any) -> None:
     """A run of values of one type, big-endian, as every ROOT number is."""
-    values = list(values)
-    buf.raw(struct.pack(f">{len(values)}{typecode}", *values))
+    buf.raw(np.asarray(values, dtype=np.dtype(typecode).newbyteorder(">")).tobytes())
 
 
 def _array(buf: WBuffer, classname: str, values: Any) -> None:
     """A ``TArray``: its length and its values, with no record round them."""
-    values = list(values if values is not None else ())
+    values = np.asarray(values if values is not None else ())
     buf.i32(len(values))
     _numbers(buf, ARRAYS[classname].typecode, values)
 
@@ -540,14 +540,35 @@ def _payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]]:
     """What one object writes as: its class, its bytes, the layouts it needs."""
     if isinstance(obj, str):
         return _string_payload(obj)
-    if isinstance(obj, array.array):
+    if isinstance(obj, (array.array, np.ndarray)):
         return _array_payload(obj)
     if isinstance(obj, (Histogram, Graph)):
         return _object_payload(obj)
+    if Histogram.recognises(obj):
+        return _object_payload(Histogram.of(obj))
     raise UnsupportedFeatureError(
         f"a {type(obj).__name__} is not something this writer puts in a ROOT "
-        f"file: it takes a Histogram, a Graph, a str, or an array.array"
+        f"file: it takes a Histogram, a Graph, any histogram that speaks the "
+        f"plotting protocol (hist, boost-histogram), a (values, edges) pair "
+        f"from numpy.histogram, a str, or a one-dimensional array of numbers"
     )
+
+
+def _table(obj: Any) -> dict[str, Any] | None:
+    """The columns of ``obj``, if it is a table: a dict of arrays, or a frame.
+
+    A mapping of column name to values is one; so is a pandas or Polars
+    DataFrame, which says its column names in ``columns``, and an Arrow table,
+    which says them in ``column_names``.
+    """
+    if isinstance(obj, Mapping):
+        return dict(obj)
+    names = getattr(obj, "column_names", None)
+    if names is None and not isinstance(obj, np.ndarray):
+        names = getattr(obj, "columns", None)
+    if names is None:
+        return None
+    return {str(name): np.asarray(obj[name]) for name in names}
 
 
 def _string_payload(value: str) -> tuple[str, bytes, tuple[str, ...]]:
@@ -556,15 +577,16 @@ def _string_payload(value: str) -> tuple[str, bytes, tuple[str, ...]]:
     return "string", bytes(buf.data), ()
 
 
-def _array_payload(value: array.array[Any]) -> tuple[str, bytes, tuple[str, ...]]:
-    code = value.typecode
+def _array_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
+    code = value.typecode if isinstance(value, array.array) else value.dtype.char
     if code == "l":  # its width is the platform's, so pick the class by it
         code = "q" if value.itemsize == 8 else "i"
     classname = ARRAY_CLASSES.get(code)
-    if classname is None:
+    if classname is None or np.ndim(value) != 1:
         raise UnsupportedFeatureError(
-            f"an array of typecode {value.typecode!r} has no ROOT class: the "
-            f"TArrays are signed integers b, h, i, l and q, and floats f and d"
+            f"an array of typecode {code!r} and {np.ndim(value)} dimensions has no ROOT "
+            f"class: the TArrays are one-dimensional runs of signed integers b, h, i, "
+            f"l and q, and floats f and d"
         )
     buf = WBuffer()
     buf.i32(len(value))
@@ -655,11 +677,25 @@ class WritableFile:
     def write(self, name: str, obj: Any, *, title: str | None = None) -> None:
         """Write one object under ``name``, as :meth:`__setitem__` does.
 
-        The title is taken from the object when it has one; a name written
-        twice becomes a second cycle of itself, exactly as in ROOT, and
-        reading the file back gives the newest.
+            >>> f["events"] = {"energy": energies, "hits": hits}   # doctest: +SKIP
+            >>> f["spectrum"] = hist.Hist(...)                      # doctest: +SKIP
+
+        A table - a dict of arrays, a pandas or Polars DataFrame, an Arrow
+        table - becomes a tree, a column per column, typed by what the arrays
+        hold. A histogram from ``hist``, ``boost-histogram`` or
+        :func:`numpy.histogram` becomes the ROOT histogram it is. The title is
+        taken from the object when it has one; a name written twice becomes a
+        second cycle of itself, exactly as in ROOT, and reading the file back
+        gives the newest.
         """
         self._check_name(name)
+        table = _table(obj)
+        if table is not None:
+            from .wtree import spec_of
+
+            columns = {column: spec_of(column, values) for column, values in table.items()}
+            self.tree(name, columns, title=title).extend(table)
+            return
         classname, payload, used = _payload(obj)
         if title is None:
             title = obj.title if isinstance(obj, (Histogram, Graph)) else ""

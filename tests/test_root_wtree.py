@@ -118,16 +118,16 @@ def test_the_types_a_reader_reports_are_the_types_that_were_asked_for():
         }
         assert [tree[name].length for name in columns] == [1, 1, 1, 1, 4, 3]
         assert not any(tree[name].is_jagged for name in columns)
-        assert list(tree["pixels"].array()) == [0, 1, 2, 3]
-        assert list(tree["coords"].array()) == [1.0, 2.0, 3.0]
+        assert tree["pixels"].array().tolist() == [[0, 1, 2, 3]]
+        assert tree["coords"].array().tolist() == [[1.0, 2.0, 3.0]]
 
 
 def test_a_column_of_arrays_reads_back_entry_by_entry():
     rows = [{"hits": [step, step + 1, step + 2, step + 3]} for step in range(5)]
     with read_back(written({"hits": ("i", 4)}, rows)) as back:
         branch = back["events"]["hits"]
-        assert list(branch.array()) == [value for row in rows for value in row["hits"]]
-        assert list(branch.array(1, 3)) == [1, 2, 3, 4, 2, 3, 4, 5]
+        assert branch.array().tolist() == [row["hits"] for row in rows]
+        assert branch.array(1, 3).tolist() == [[1, 2, 3, 4], [2, 3, 4, 5]]
 
 
 def test_the_widest_int_is_the_default_because_a_python_int_has_no_width():
@@ -237,7 +237,7 @@ def test_each_column_fills_its_own_baskets_at_its_own_rate():
         assert tree["wide"].num_baskets == 10  # 64 bytes an entry
         assert tree["narrow"].num_baskets == 1  # one byte an entry
         assert list(tree["narrow"].array()) == list(range(20))
-        assert list(tree["wide"].array(19, 20)) == [19] * 8
+        assert tree["wide"].array(19, 20).tolist() == [[19] * 8]
 
 
 def test_baskets_are_compressed_and_still_read_back():
