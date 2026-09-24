@@ -33,7 +33,7 @@ from xrdroot import (
     open_root,
 )
 from xrdroot.buffer import BYTE_COUNT_MASK, CLASS_MASK, MAP_OFFSET, NEW_CLASS_TAG, Buffer
-from xrdroot.compression import _lz4, algorithm, decompress
+from xrdroot.compression import _lz4, _xxh64, algorithm, decompress
 from xrdroot.cxx import parse
 from xrdroot.file import Source, _directory_record
 from xrdroot.graph import Graph
@@ -374,7 +374,7 @@ def test_zlib_blocks_are_undone_one_after_another():
 
 def test_an_lz4_block_is_undone_after_its_checksum(monkeypatch):
     sequence = lz4_literals(b"physics")
-    data = block(b"L4", b"\x00" * 8 + sequence, 7)
+    data = block(b"L4", _xxh64(sequence).to_bytes(8, "big") + sequence, 7)
     assert decompress(data, 7) == b"physics"
 
 
@@ -1141,6 +1141,13 @@ def test_iterating_gives_batches_and_refuses_a_step_of_nothing(simple):
     ]
     with pytest.raises(ValueError, match="at least one entry"):
         list(simple.iterate(step=0))
+
+
+def test_iterating_counts_negative_ends_from_the_last_entry_as_array_does(simple):
+    batches = list(simple.iterate(["one"], step=1, entry_start=-2))
+    assert [b["one"].tolist() for b in batches] == [[3], [4]]
+    batches = list(simple.iterate(["one"], step=5, entry_start=-99, entry_stop=-1))
+    assert [b["one"].tolist() for b in batches] == [[1, 2, 3]]
 
 
 def test_a_column_spanning_two_baskets_is_read_from_both():

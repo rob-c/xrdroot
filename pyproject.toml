@@ -29,7 +29,7 @@ dependencies = ["xrdclient @ git+https://github.com/rob-c/xrdclient@main"]
 
 [project.optional-dependencies]
 plot = ["matplotlib>=3.5"]
-lz4 = ["lz4>=4"]
+lz4 = ["lz4>=4", "xxhash>=3"]
 zstd = ["zstandard>=0.21"]
 dev = [
   "complexipy>=6,<7",
@@ -104,6 +104,15 @@ mypy_path = "src"
 # hole in our own checking.
 [[tool.mypy.overrides]]
 module = ["lz4.*", "zstandard.*", "tensorflow.*"]
+ignore_missing_imports = true
+
+# These two are typed but not always there: xxhash comes only with the lz4
+# extra, and compression.zstd only with Python 3.14 - where mypy, told to check
+# against 3.10, finds it on disk but not in its own copy of the standard
+# library, and so calls it untyped. Absent or untyped, the guarded import falls
+# back, and that is the same answer on every interpreter.
+[[tool.mypy.overrides]]
+module = ["xxhash", "xxhash.*", "compression", "compression.*"]
 ignore_missing_imports = true
 
 # matplotlib drags numpy in, whose stubs use syntax newer than the floor this

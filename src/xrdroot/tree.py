@@ -85,6 +85,15 @@ class Jagged(Sequence[Any]):
         return out, width
 
 
+def _bounds(total: int, entry_start: int, entry_stop: int | None) -> tuple[int, int]:
+    """A range of entries, with negative ends counted from the last, as in Python."""
+    start = total + entry_start if entry_start < 0 else entry_start
+    stop = total if entry_stop is None else entry_stop
+    if stop < 0:
+        stop += total
+    return max(start, 0), min(stop, total)
+
+
 class Basket:
     """One compressed block of entries, decompressed and ready to slice.
 
@@ -267,12 +276,7 @@ class Branch:
             )
 
     def _bounds(self, entry_start: int, entry_stop: int | None) -> tuple[int, int]:
-        total = self.num_entries
-        start = total + entry_start if entry_start < 0 else entry_start
-        stop = total if entry_stop is None else entry_stop
-        if stop < 0:
-            stop += total
-        return max(start, 0), min(stop, total)
+        return _bounds(self.num_entries, entry_start, entry_stop)
 
     def _spans(self, start: int, stop: int) -> Iterator[tuple[int, int, int]]:
         """Which baskets hold ``[start, stop)``, and the part of each to take."""
@@ -589,8 +593,9 @@ class TTree:
         """
         if step <= 0:
             raise ValueError("step must be at least one entry")
-        stop = self.num_entries if entry_stop is None else min(entry_stop, self.num_entries)
-        at = entry_start
+        # The same counting from the end that one branch's ``array`` does, so a
+        # negative start or stop means here what it means there.
+        at, stop = _bounds(self.num_entries, entry_start, entry_stop)
         while at < stop:
             yield self.arrays(names, at, min(at + step, stop))
             at += step

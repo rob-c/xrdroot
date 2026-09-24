@@ -8,7 +8,9 @@ zlib and lzma come from the standard library, and so does the pre-2005 ROOT
 algorithm, which turns out to be deflate with the wrapper left off. LZ4 is
 decoded and encoded here, in Python, because there is no LZ4 in the standard
 library and a physics file should not need a wheel - it is a small format,
-and this is a small decoder and a small, honest encoder. zstd is used from
+and this is a small decoder and a small, honest encoder. When the ``lz4``
+extra is installed its C codec does the same work many times faster, and the
+Python one stays behind as the fallback that always works. zstd is used from
 the standard library on Python 3.14 and later, or from the ``zstandard``
 package if it happens to be installed, and is otherwise refused by name
 rather than guessed at.
@@ -16,12 +18,16 @@ rather than guessed at.
 Writing an LZ4 block also means writing the XXH64 checksum ROOT stores in
 front of it, so XXH64 is here too - and the test suite checks it against
 checksums ROOT itself computed, stored in the LZ4 blocks of a donor file.
+The ``xxhash`` package, which comes with the ``lz4`` extra, computes the same
+number in C; with it installed the checksum is cheap enough to check on the
+way in as well, so a damaged LZ4 block is refused instead of decoded.
 """
 
 from __future__ import annotations
 
 import lzma
 import zlib
+from typing import Callable
 
 from .errors import FormatError, UnsupportedFeatureError
 
@@ -54,7 +60,7 @@ def algorithm(data: bytes) -> str:
 
 
 try:  # pragma: no cover - depends on the interpreter and an optional extra
-    from compression.zstd import decompress as _unzstd  # type: ignore[import-not-found]
+    from compression.zstd import decompress as _unzstd
 
     def _zstd(block: bytes, size: int) -> bytes:
         return bytes(_unzstd(block))
@@ -95,6 +101,21 @@ except ImportError:  # pragma: no cover - before 3.14, where zstandard fills in
                 "writing zstd needs Python 3.14 or the zstandard package: "
                 "pip install zstandard, or write with zlib, lzma or lz4 instead"
             )
+
+
+try:  # pragma: no cover - depends on the optional lz4 extra
+    from lz4.block import LZ4BlockError
+    from lz4.block import compress as _lz4_fast_pack
+    from lz4.block import decompress as _lz4_fast
+except ImportError:  # pragma: no cover - the Python codec below fills in
+    _lz4_fast = _lz4_fast_pack = LZ4BlockError = None
+
+#: XXH64 in C, when the ``xxhash`` package is there to provide it.
+_xxh64_fast: Callable[[bytes], int] | None
+try:  # pragma: no cover - depends on the optional lz4 extra
+    from xxhash import xxh64_intdigest as _xxh64_fast
+except ImportError:  # pragma: no cover - the Python XXH64 below fills in
+    _xxh64_fast = None
 
 
 def _lz4(src: bytes, size: int) -> bytes:
@@ -168,28 +189,50 @@ def _xxh64(data: bytes) -> int:
 
     Pure Python and verified in the test suite against checksums ROOT itself
     computed, so an LZ4 block written here carries the same eight bytes ROOT
-    would have put there.
+    would have put there. The work is split the way the definition splits it:
+    thirty-two-byte stripes through four lanes, then the tail, then the final
+    mix that spreads every bit across the result.
     """
     length = len(data)
-    pos = 0
     if length >= 32:
-        v1, v2, v3, v4 = (_P1 + _P2) & _M64, _P2, 0, (-_P1) & _M64
-        for pos in range(0, length - 31, 32):
-            lanes = int.from_bytes(data[pos : pos + 32], "little")
-            v1 = (_rot((v1 + (lanes & _M64) * _P2) & _M64, 31) * _P1) & _M64
-            v2 = (_rot((v2 + ((lanes >> 64) & _M64) * _P2) & _M64, 31) * _P1) & _M64
-            v3 = (_rot((v3 + ((lanes >> 128) & _M64) * _P2) & _M64, 31) * _P1) & _M64
-            v4 = (_rot((v4 + (lanes >> 192) * _P2) & _M64, 31) * _P1) & _M64
-        pos += 32
-        acc = (_rot(v1, 1) + _rot(v2, 7) + _rot(v3, 12) + _rot(v4, 18)) & _M64
-        for v in (v1, v2, v3, v4):
-            acc = ((acc ^ (_rot((v * _P2) & _M64, 31) * _P1)) * _P1 + _P4) & _M64
+        acc, pos = _xxh64_stripes(data)
     else:
-        acc = _P5
-    acc = (acc + length) & _M64
+        acc, pos = _P5, 0
+    acc = _xxh64_tail(data, pos, (acc + length) & _M64)
+    return _xxh64_avalanche(acc)
+
+
+def _xxh64_round(lane: int, value: int) -> int:
+    """One lane's step: fold eight bytes of input into its running value."""
+    return (_rot((lane + value * _P2) & _M64, 31) * _P1) & _M64
+
+
+def _xxh64_stripes(data: bytes) -> tuple[int, int]:
+    """Every whole thirty-two-byte stripe, as four lanes merged into one.
+
+    Returns the merged accumulator and where the stripes stopped, which is
+    where the tail begins.
+    """
+    v1, v2, v3, v4 = (_P1 + _P2) & _M64, _P2, 0, (-_P1) & _M64
+    stop = len(data) - len(data) % 32
+    for pos in range(0, stop, 32):
+        lanes = int.from_bytes(data[pos : pos + 32], "little")
+        v1 = _xxh64_round(v1, lanes & _M64)
+        v2 = _xxh64_round(v2, (lanes >> 64) & _M64)
+        v3 = _xxh64_round(v3, (lanes >> 128) & _M64)
+        v4 = _xxh64_round(v4, lanes >> 192)
+    acc = (_rot(v1, 1) + _rot(v2, 7) + _rot(v3, 12) + _rot(v4, 18)) & _M64
+    for lane in (v1, v2, v3, v4):
+        acc = ((acc ^ _xxh64_round(0, lane)) * _P1 + _P4) & _M64
+    return acc, stop
+
+
+def _xxh64_tail(data: bytes, pos: int, acc: int) -> int:
+    """What is left after the stripes: eight bytes at a time, then four, then one."""
+    length = len(data)
     while pos + 8 <= length:
         lane = int.from_bytes(data[pos : pos + 8], "little")
-        acc = (_rot(acc ^ (_rot((lane * _P2) & _M64, 31) * _P1) & _M64, 27) * _P1 + _P4) & _M64
+        acc = (_rot(acc ^ _xxh64_round(0, lane), 27) * _P1 + _P4) & _M64
         pos += 8
     if pos + 4 <= length:
         lane = int.from_bytes(data[pos : pos + 4], "little")
@@ -197,11 +240,21 @@ def _xxh64(data: bytes) -> int:
         pos += 4
     for byte in data[pos:]:
         acc = (_rot(acc ^ (byte * _P5) & _M64, 11) * _P1) & _M64
-    acc ^= acc >> 33
-    acc = (acc * _P2) & _M64
-    acc ^= acc >> 29
-    acc = (acc * _P3) & _M64
+    return acc
+
+
+def _xxh64_avalanche(acc: int) -> int:
+    """The final mix, so that a one-bit change in the input moves them all."""
+    acc = ((acc ^ (acc >> 33)) * _P2) & _M64
+    acc = ((acc ^ (acc >> 29)) * _P3) & _M64
     return acc ^ (acc >> 32)
+
+
+def _checksum(body: bytes) -> int:
+    """XXH64 of ``body``, in C when ``xxhash`` is installed and in Python if not."""
+    if _xxh64_fast is None:
+        return _xxh64(body)
+    return _xxh64_fast(body)
 
 
 def _extend(out: bytearray, value: int) -> None:
@@ -234,25 +287,80 @@ def _lz4_pack(src: bytes) -> bytes:
         if found is None or pos - found > 0xFFFF:
             pos += 1
             continue
-        length = 4
-        while pos + length < n - 5 and src[found + length] == src[pos + length]:
-            length += 1
-        literals = pos - anchor
-        out.append((min(literals, 15) << 4) | min(length - 4, 15))
-        if literals >= 15:
-            _extend(out, literals)
-        out += src[anchor:pos]
-        out += (pos - found).to_bytes(2, "little")
-        if length - 4 >= 15:
-            _extend(out, length - 4)
+        length = _lz4_reach(src, found, pos)
+        _lz4_sequence(out, src[anchor:pos], pos - found, length)
         pos += length
         anchor = pos
-    literals = n - anchor
-    out.append(min(literals, 15) << 4)
-    if literals >= 15:
-        _extend(out, literals)
-    out += src[anchor:]
+    _lz4_sequence(out, src[anchor:])
     return bytes(out)
+
+
+def _lz4_reach(src: bytes, found: int, pos: int) -> int:
+    """How far the four bytes matched at ``found`` keep matching at ``pos``,
+    stopping short of the five bytes at the end that must stay literals."""
+    limit = len(src) - 5
+    length = 4
+    while pos + length < limit and src[found + length] == src[pos + length]:
+        length += 1
+    return length
+
+
+def _lz4_sequence(out: bytearray, literals: bytes, offset: int = 0, length: int = 0) -> None:
+    """One LZ4 sequence: a token, the literals, and - unless this is the last
+    sequence, which has no match - the distance back and the match length."""
+    count = len(literals)
+    extra = length - 4 if offset else 0
+    out.append((min(count, 15) << 4) | min(extra, 15))
+    if count >= 15:
+        _extend(out, count)
+    out += literals
+    if not offset:
+        return
+    out += offset.to_bytes(2, "little")
+    if extra >= 15:
+        _extend(out, extra)
+
+
+def _pack_lz4(chunk: bytes, level: int) -> bytes:
+    """One chunk as the body of a ROOT LZ4 block: checksum, then the block.
+
+    With the ``lz4`` extra this is the reference encoder, which at level four
+    and up switches to its high-compression mode the way ROOT does; without
+    it, the greedy encoder above, which knows no levels. Either way the block
+    is raw LZ4 with no size in front - ROOT keeps the size in its own header.
+    """
+    if _lz4_fast_pack is None:
+        body = _lz4_pack(chunk)
+    elif level >= 4:
+        body = _lz4_fast_pack(chunk, mode="high_compression", compression=level, store_size=False)
+    else:
+        body = _lz4_fast_pack(chunk, store_size=False)
+    return _checksum(body).to_bytes(8, "big") + body
+
+
+def _unpack_lz4(block: bytes, size: int) -> bytes:
+    """One ROOT LZ4 block, checksum first, back to the ``size`` bytes it holds.
+
+    The checksum is checked when ``xxhash`` is installed and passed over when
+    it is not, because in Python it costs more than the decoding does. Passed
+    over, a damaged block is caught only if the damage breaks the decoder's
+    own rules - a byte flipped among the literals comes through as data.
+    """
+    body = block[8:]
+    if _xxh64_fast is not None and _xxh64_fast(body) != int.from_bytes(block[:8], "big"):
+        raise FormatError(
+            "an LZ4 block does not match the checksum stored in front of it, "
+            "so the file is damaged there"
+        )
+    if _lz4_fast is None:
+        return _lz4(body, size)
+    try:
+        out = bytes(_lz4_fast(body, uncompressed_size=size))
+    except LZ4BlockError as exc:
+        raise FormatError(f"an LZ4 block would not decode: {exc}") from None
+    if len(out) != size:
+        raise FormatError(f"an LZ4 block gave {len(out)} bytes where {size} were promised")
+    return out
 
 
 def compress(data: bytes, algorithm: str = "zlib", level: int | None = None) -> bytes:
@@ -274,8 +382,7 @@ def compress(data: bytes, algorithm: str = "zlib", level: int | None = None) -> 
         elif algorithm == "lzma":
             packed = lzma.compress(chunk, format=lzma.FORMAT_XZ, preset=level)
         elif algorithm == "lz4":
-            body = _lz4_pack(chunk)
-            packed = _xxh64(body).to_bytes(8, "big") + body
+            packed = _pack_lz4(chunk, level)
         else:
             packed = _zstd_pack(chunk, level)
         out += TAGS[algorithm]
@@ -325,7 +432,7 @@ def decompress(data: bytes, size: int) -> bytes:
         elif tag == b"XZ":
             out += lzma.decompress(block)
         elif tag == b"L4":
-            out += _lz4(block[8:], unpacked)  # after the checksum, which we do not need
+            out += _unpack_lz4(block, unpacked)
         elif tag == b"ZS":
             out += _zstd(block, unpacked)
         else:

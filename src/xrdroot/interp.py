@@ -402,6 +402,46 @@ def _number(text: str) -> float:
     return float(text)
 
 
+def _in_comment(title: str, beg: int) -> bool:
+    """Is the bracket at ``beg`` the start of a comment's range, ``//[...]``?
+
+    A bracket anywhere else in a title is an array's length rather than a
+    packing recipe, and reading it as one would squeeze the wrong numbers.
+    """
+    if beg == 0:
+        return True
+    slash = title.rfind("/", 0, beg)
+    return slash >= 0 and slash + 2 == beg
+
+
+def _range_parts(title: str) -> list[str]:
+    """The comma-separated pieces of the range a title spells out, if any.
+
+    An empty list means the title spells out no range at all - no brackets,
+    or brackets that are an array's rather than a comment's.
+    """
+    beg, end = title.rfind("["), title.rfind("]")
+    if beg < 0 or end < 0 or not _in_comment(title, beg):
+        return []
+    return [part.strip().lower() for part in title[beg + 1 : end].split(",")]
+
+
+def _range_numbers(parts: list[str]) -> tuple[int, float, float] | None:
+    """The bit count and the two ends a range's pieces spell, as numbers.
+
+    ``None`` for pieces this reader cannot turn into numbers, or a bit count
+    outside the widths ROOT will pack into.
+    """
+    try:
+        nbits = int(parts[2]) if len(parts) == 3 else 32
+        xmin, xmax = _number(parts[0]), _number(parts[1])
+    except ValueError:
+        return None
+    if not 2 <= nbits <= 32:
+        return None
+    return nbits, xmin, xmax
+
+
 def _range(title: str) -> tuple[float, float, float] | None:
     """``xmin``, ``xmax`` and the scale factor a title asks for.
 
@@ -409,27 +449,13 @@ def _range(title: str) -> tuple[float, float, float] | None:
     default packing for the type. ``None`` means it says something this
     reader cannot make sense of, which is worth refusing over.
     """
-    beg, end = title.rfind("["), title.rfind("]")
-    if beg < 0 or end < 0:
-        return 0.0, 0.0, 0.0
-    if beg > 0:
-        slash = title.rfind("/", 0, beg)
-        if slash < 0 or slash + 2 != beg:
-            return 0.0, 0.0, 0.0  # a title like ``x[10]``: an array, not a range
-    parts = [part.strip().lower() for part in title[beg + 1 : end].split(",")]
-    if len(parts) == 1:
-        return 0.0, 0.0, 0.0
-    if len(parts) > 3:
+    parts = _range_parts(title)
+    if len(parts) <= 1:
+        return 0.0, 0.0, 0.0  # no range, or a title like ``x[10]``: an array
+    numbers = _range_numbers(parts) if len(parts) <= 3 else None
+    if numbers is None:
         return None
-    nbits = 32
-    try:
-        if len(parts) == 3:
-            nbits = int(parts[2])
-        xmin, xmax = _number(parts[0]), _number(parts[1])
-    except ValueError:
-        return None
-    if not 2 <= nbits <= 32:
-        return None
+    nbits, xmin, xmax = numbers
     if xmin >= xmax:
         # No range: the bit count is all there is, and ROOT keeps it in xmin.
         return (float(nbits) + 0.1 if nbits < 15 else 0.0), xmax, 0.0
@@ -798,43 +824,82 @@ def _reader(node: Any) -> Callable[[Buffer], Any]:
     return _sequence(node.item)
 
 
-def _step(
-    member: Member, source: Source, seen: tuple[str, ...], before: dict[str, tuple[str, ...]]
+#: The bases ROOT's own kit gives a class, which stream themselves in a shape
+#: that is always the same, keyed by the streamer type that declares them.
+_KIT_BASES: dict[int, Callable[[Buffer], dict[str, Any]]] = {
+    TOBJECT: _bookkeeping,
+    TNAMED: _titled,
+}
+
+
+def _member_prim(member: Member, kind: int) -> tuple[Prim, Unpack | None]:
+    """How wide one of a numeric member's values is, and how it decodes.
+
+    A plain number needs nothing but its width; a packed float needs the
+    recipe its declaration's comment gives, and a comment this reader cannot
+    read is a refusal of the whole class rather than a column of guesses.
+    """
+    prim = BASIC.get(kind)
+    if prim is not None:
+        return prim, None
+    found = _packing(member.title, PACKED[kind])
+    if found is None:
+        raise _Unreadable(
+            f"{member.name!r}, a packed float whose range is written "
+            f"{member.title!r}, which is not a spelling this reader can "
+            f"turn into numbers"
+        )
+    return found
+
+
+def _shaped(
+    member: Member,
+    base: int,
+    prim: Prim,
+    unpack: Unpack | None,
+    before: dict[str, tuple[str, ...]],
 ) -> Step:
-    """How to read one member, or a refusal to read the class it belongs to."""
+    """A numeric member in the shape it was declared in: one, fixed, or counted.
+
+    A counted array finds its length in a member read before it, so one that
+    names a count the class declares later is refused: there would be nothing
+    yet to count by.
+    """
+    if base == OFFSET_P:
+        where = before.get(member.count)
+        if where is None:
+            raise _Unreadable(
+                f"{member.name!r}, which says it holds as many values as "
+                f"{member.count or 'a member with no name'} but is written "
+                f"before it"
+            )
+        return _pointer(prim, unpack, where)
+    if base == OFFSET_L:
+        return _run(prim, unpack, member.length)
+    return _one(prim, unpack)
+
+
+def _numeric_step(member: Member, before: dict[str, tuple[str, ...]]) -> Step | None:
+    """How a member of numbers reads, or ``None`` for a member that is not one."""
     for base in (0, OFFSET_L, OFFSET_P):
         kind = member.stype - base
-        if kind not in BASIC and kind not in PACKED:
-            continue
-        unpack = None
-        prim = BASIC.get(kind)
-        if prim is None:
-            found = _packing(member.title, PACKED[kind])
-            if found is None:
-                raise _Unreadable(
-                    f"{member.name!r}, a packed float whose range is written "
-                    f"{member.title!r}, which is not a spelling this reader can "
-                    f"turn into numbers"
-                )
-            prim, unpack = found
-        if base == OFFSET_P:
-            where = before.get(member.count)
-            if where is None:
-                raise _Unreadable(
-                    f"{member.name!r}, which says it holds as many values as "
-                    f"{member.count or 'a member with no name'} but is written "
-                    f"before it"
-                )
-            return _pointer(prim, unpack, where)
-        if base == OFFSET_L:
-            return _run(prim, unpack, member.length)
-        return _one(prim, unpack)
+        if kind in BASIC or kind in PACKED:
+            prim, unpack = _member_prim(member, kind)
+            return _shaped(member, base, prim, unpack, before)
+    return None
+
+
+def _object_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step | None:
+    """How a member that is a whole object reads, or ``None`` if it is not one.
+
+    That covers a base, an object held by value or by a pointer that is never
+    null, a fixed-size array of objects, and a pointer that may point at any
+    class at all - each of which the streamer type alone says.
+    """
     if member.typename == "TDatime":
         return _plainly(_datime)  # a class of its own that writes no record
-    if member.stype == TOBJECT:
-        return _plainly(_bookkeeping)
-    if member.stype == TNAMED:
-        return _plainly(_titled)
+    if member.stype in _KIT_BASES:
+        return _plainly(_KIT_BASES[member.stype])
     if member.stype - OFFSET_L in (61, 62):
         # A fixed-size array of a class, written one object after another.
         one = _embedded(member.typename, source, seen)
@@ -850,22 +915,50 @@ def _step(
     if member.stype in OBJECTS_POINTED:
         classes = _Described(source, seen)
         return _plainly(lambda buf: buf.any(classes))
+    return None
+
+
+def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step | None:
+    """How a string or container member reads, or ``None`` if it is neither.
+
+    What the type's name parses into covers strings and containers of numbers
+    or strings; what is left is a container of one class, held by value or by
+    pointer, which reads as a list of whole objects.
+    """
     node = parse(member.typename)
     if node is not None:
         return _plainly(_reader(node))
     held = _class_held(member.typename)
-    if held is not None:
-        name, pointed = held
-        if pointed:
-            classes = _Described(source, seen)
-            return _plainly(_objects(lambda buf: buf.any(classes)))
-        # A class the file describes can also be written field by field; one
-        # that streams itself, such as a TArrayD, only ever comes whole.
-        return _plainly(_objects(_embedded(name, source, seen), _fields(name, source, seen)))
-    raise _Unreadable(
-        f"{member.name!r}, which is {KINDS.get(member.stype, 'of a kind')} that "
-        f"this reader does not decode inside an entry"
-    )
+    if held is None:
+        return None
+    name, pointed = held
+    if pointed:
+        classes = _Described(source, seen)
+        return _plainly(_objects(lambda buf: buf.any(classes)))
+    # A class the file describes can also be written field by field; one
+    # that streams itself, such as a TArrayD, only ever comes whole.
+    return _plainly(_objects(_embedded(name, source, seen), _fields(name, source, seen)))
+
+
+def _step(
+    member: Member, source: Source, seen: tuple[str, ...], before: dict[str, tuple[str, ...]]
+) -> Step:
+    """How to read one member, or a refusal to read the class it belongs to.
+
+    A member is numbers, a whole object, or a string or container, asked in
+    that order; one that is none of them is refused by the kind it is.
+    """
+    step = _numeric_step(member, before)
+    if step is None:
+        step = _object_step(member, source, seen)
+    if step is None:
+        step = _container_step(member, source, seen)
+    if step is None:
+        raise _Unreadable(
+            f"{member.name!r}, which is {KINDS.get(member.stype, 'of a kind')} that "
+            f"this reader does not decode inside an entry"
+        )
+    return step
 
 
 def _steps(name: str, source: Source, seen: tuple[str, ...] = ()) -> list[tuple[str, Step]]:
@@ -999,16 +1092,31 @@ def _declared_node(
 ) -> Column:
     """Turn a parsed declared C++ type into its column interpreter."""
     if node is None:
-        if not header:
-            return _whole(name, source, branch.streamed)  # the whole object
-        return Refused(
-            f"{name or 'an unnamed type'}, which is a C++ type this reader does not "
-            f"decode; a split file has its members as branches of their own"
-        )
+        return _unparsed(name, header, branch, source)
     if isinstance(node, Str):
         return Values("str", _member_string if header and node.record else _string)
     if isinstance(node, Seq) and isinstance(node.item, Prim):
         return Rows(node.item, RECORD + 4, True)
+    return _container(node)
+
+
+def _unparsed(name: str, header: bool, branch: BranchRecord, source: Source) -> Column:
+    """A declared type that is not a string or container: a class, or nothing.
+
+    A branch that names the class itself holds the whole object; a member of a
+    split class whose own type is a class would have been split in turn, so
+    finding one here means a shape this reader does not decode.
+    """
+    if not header:
+        return _whole(name, source, branch.streamed)  # the whole object
+    return Refused(
+        f"{name or 'an unnamed type'}, which is a C++ type this reader does not "
+        f"decode; a split file has its members as branches of their own"
+    )
+
+
+def _container(node: object) -> Column:
+    """A map or a sequence of anything but plain numbers, one value per entry."""
     reason = _unusable(node)
     if reason:
         return Refused(reason)

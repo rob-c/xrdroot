@@ -152,7 +152,7 @@ f["tge"].plot(ax=ax, color="crimson")  # points with their error bars
 ax.figure.savefig("both.png")
 ```
 
-matplotlib is not a dependency; `pip install xrdclient[plot]` brings it,
+matplotlib is not a dependency; `pip install xrdroot[plot]` brings it,
 and without it `plot()` refuses with both ways out by name. The other way is
 `text()`, which needs nothing installed at all and goes anywhere a string
 goes — a terminal, a log file, a CI transcript:

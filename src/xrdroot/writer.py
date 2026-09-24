@@ -14,8 +14,14 @@ an error message. The same goes for the parts of an object this writer cannot
 carry - a histogram with fits attached refuses rather than silently dropping
 them.
 
-The file is built in memory and written out in one piece when it is closed,
-so a ``with`` block that raises leaves nothing behind rather than half a file.
+Records go out as they are made: only the hundred-odd bytes of header at the
+front are held back, because they point at the bookkeeping written last, and
+they are filled in when the file closes. A file this writes can therefore be
+far larger than memory. A ``with`` block that raises takes back whatever it
+had written - the target is cut back to where the file began - so what is
+left behind is nothing rather than half a file. A target that cannot seek,
+which no header could be filled in on afterwards, is the one exception: that
+file is kept in memory and written in one piece at a clean close.
 """
 
 from __future__ import annotations
@@ -54,6 +60,11 @@ KEY_VERSION = 4
 #: basket. ROOT's own default, and a reasonable trade: bigger baskets read
 #: faster in bulk, smaller ones let a reader take a few entries cheaply.
 BASKET_BYTES = 32_000
+#: How many bytes of finished records gather before they go to the target in
+#: one write. A remote file pays a round trip per write, and a basket is a few
+#: tens of kilobytes, so writing each the moment it is made would spend the
+#: time on latency rather than on bytes.
+WRITE_BEHIND = 8 << 20
 
 #: The struct code for each basic streamer type this writer packs.
 FORMS = {
@@ -192,6 +203,73 @@ class WBuffer:
         self.string(name)
         self.string(title)
         self.end(index)
+
+
+def _seekable(handle: IO[bytes]) -> bool:
+    """Whether the header at the front can be written after everything else."""
+    probe = getattr(handle, "seekable", None)
+    return bool(probe()) if callable(probe) else False
+
+
+class _Output:
+    """Where a file's bytes go: straight out, except the header at the front.
+
+    Everything a file holds is written once and never touched again, save the
+    header and the file's own record in the first few hundred bytes, which say
+    where the bookkeeping written last ended up. Those are kept here as
+    :attr:`head` and written over the placeholder left for them at the close.
+    Everything after them goes to the target as it is made, a few megabytes
+    at a time.
+
+    A target that cannot seek could not have its header filled in, so for one
+    of those everything is kept and written in order at the end instead.
+    Places in the file are counted from where the target stood when writing
+    began, which is the start of the file for any target but a caller's own
+    handle that already held something.
+    """
+
+    __slots__ = ("head", "size", "_handle", "_base", "_streaming", "_pending")
+
+    def __init__(self, handle: IO[bytes], reserved: int) -> None:
+        self._handle = handle
+        self._streaming = _seekable(handle)
+        self._base = handle.tell() if self._streaming else 0
+        #: The bytes at the front, filled in last.
+        self.head = bytearray(reserved)
+        #: How long the file is so far, which is where the next record goes.
+        self.size = reserved
+        self._pending = bytearray(reserved) if self._streaming else bytearray()
+
+    def append(self, chunk: bytes) -> None:
+        """Put ``chunk`` at the end of the file, sending it once enough gathers."""
+        self._pending += chunk
+        self.size += len(chunk)
+        if self._streaming and len(self._pending) >= WRITE_BEHIND:
+            self._send()
+
+    def _send(self) -> None:
+        self._handle.write(self._pending)
+        self._pending = bytearray()
+
+    def finish(self) -> None:
+        """Write what is still gathered, then the header over its placeholder."""
+        if not self._streaming:
+            self._handle.write(self.head + self._pending)
+        else:
+            self._send()
+            self._handle.seek(self._base)
+            self._handle.write(self.head)
+            self._handle.seek(self._base + self.size)
+        self._pending = bytearray()
+        if hasattr(self._handle, "flush"):
+            self._handle.flush()
+
+    def abandon(self) -> None:
+        """Take back everything written, leaving the target as writing found it."""
+        self._pending = bytearray()
+        if self._streaming:
+            self._handle.seek(self._base)
+            self._handle.truncate()
 
 
 def _find(row: dict[str, Any], name: str) -> Any:
@@ -534,9 +612,10 @@ class WritableFile:
         >>> with xrdroot.create("out.root") as f:            # doctest: +SKIP
         ...     f["hist"] = xrdroot.Histogram.new("hist", edges, counts)
 
-    Everything is kept in memory and written out in one piece at a clean
-    close; a ``with`` block that raises writes nothing at all, on the
-    principle that no file is better than half a file.
+    Records go out as they are made, so a file far larger than memory can be
+    written; the header, which points at what is written last, is filled in
+    at a clean close. A ``with`` block that raises takes back everything it
+    wrote, on the principle that no file is better than half a file.
     """
 
     def __init__(
@@ -563,7 +642,7 @@ class WritableFile:
         self._nname = keylen + 2 + len(self._label.encode())
         #: The header, then the room the file's own record takes; both are
         #: filled in at close, when everything they point at has a place.
-        self._data = bytearray(BEGIN + self._nname + 60)
+        self._out = _Output(handle, BEGIN + self._nname + 60)
         self._keys: list[bytes] = []
         self._cycles: dict[str, int] = {}
         self._used: dict[str, None] = {}
@@ -673,7 +752,7 @@ class WritableFile:
         because ROOT - and the reader here - parses both without looking at
         the lengths that would say they were compressed.
         """
-        seek = len(self._data)
+        seek = self._out.size
         if seek > BIG:  # pragma: no cover - a file no test should ever make
             raise UnsupportedFeatureError(
                 "this file has grown past 2 GB, which needs the wide layout "
@@ -700,21 +779,18 @@ class WritableFile:
         header = bytes(key.data) + extra
         if listed:
             self._keys.append(header)
-        self._data += header + body
+        self._out.append(header + body)
         return seek, keylen + len(body)
 
     def close(self) -> None:
-        """Lay out the bookkeeping, write the whole file out, and let go."""
+        """Lay out the bookkeeping, fill in the header, and let go."""
         if self._closed:
             return
         self._closed = True
         try:
             self._assemble()
-            self._handle.write(self._data)
-            if hasattr(self._handle, "flush"):
-                self._handle.flush()
+            self._out.finish()
         finally:
-            self._data = bytearray()
             if self._owned:
                 self._handle.close()
 
@@ -736,7 +812,7 @@ class WritableFile:
             "TFile", self._label, "", bytes(keylist.data), 1, listed=False, packed=False
         )
 
-        seek_free = len(self._data)
+        seek_free = self._out.size
         free_keylen = 34 + len(self._label.encode())
         end = seek_free + free_keylen + 10
         free = WBuffer()
@@ -771,12 +847,12 @@ class WritableFile:
         head.u16(1)
         head.raw(self._uuid)
         head.raw(bytes(12))
-        self._data[BEGIN : BEGIN + len(head.data)] = head.data
+        self._out.head[BEGIN : BEGIN + len(head.data)] = head.data
 
-        struct.pack_into(">4sii", self._data, 0, b"root", WRITER_VERSION, BEGIN)
+        struct.pack_into(">4sii", self._out.head, 0, b"root", WRITER_VERSION, BEGIN)
         struct.pack_into(
             ">iiiiiBiii",
-            self._data,
+            self._out.head,
             12,
             end,
             seek_free,
@@ -788,7 +864,7 @@ class WritableFile:
             seek_info,
             nbytes_info,
         )
-        struct.pack_into(">H16s", self._data, 45, 1, self._uuid)
+        struct.pack_into(">H16s", self._out.head, 45, 1, self._uuid)
 
     @property
     def closed(self) -> bool:
@@ -801,8 +877,11 @@ class WritableFile:
         if kind is not None:
             # Whatever went wrong, do not leave a plausible half-truth behind.
             self._closed = True
-            if self._owned:
-                self._handle.close()
+            try:
+                self._out.abandon()
+            finally:
+                if self._owned:
+                    self._handle.close()
             return
         self.close()
 
@@ -838,5 +917,7 @@ def create(
     else:
         from xrdclient.io import open_url
 
-        handle = open_url(url, "wb", config=config)
+        # Persist on successful close: a process that dies part way through
+        # leaves the server nothing, where cutting back could not be done.
+        handle = open_url(url, "wb", config=config, posc=True)
     return WritableFile(handle, str(target), True, compression, level)
