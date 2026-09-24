@@ -22,6 +22,10 @@ had written - the target is cut back to where the file began - so what is
 left behind is nothing rather than half a file. A target that cannot seek,
 which no header could be filled in on afterwards, is the one exception: that
 file is kept in memory and written in one piece at a clean close.
+
+Directories are ROOT's own: a ``TDirectory`` record per directory, each with
+its key list, and a file that grows past 2 GB changes to ROOT's wide layout
+for the records past that point, as ROOT does, rather than being refused.
 """
 
 from __future__ import annotations
@@ -30,7 +34,7 @@ import array
 import datetime
 import struct
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
 from typing import IO, TYPE_CHECKING, Any
 
 import numpy as np
@@ -47,16 +51,40 @@ from .winfo import INFOS, SUBVERSIONS, WRITER_VERSION, Element
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from .wtree import WritableTree
 
-__all__ = ["create", "WritableFile"]
+__all__ = ["create", "WritableFile", "WritableDirectory"]
 
 #: The bits a freshly made object carries: on the heap, and not deleted.
 BITS = 0x03000000
+#: What every ROOT file starts with.
+MAGIC = b"root"
 #: Where the first record starts; the hundred bytes before it are the header.
 BEGIN = 100
-#: Where ROOT says big-file territory starts, which is where the free list ends.
+#: Where ROOT says big-file territory starts: a record that points past here
+#: needs the wide layout, its places in the file in eight bytes rather than
+#: four. It is read when each record is written, never copied, so a test can
+#: lower it and see the wide layout without writing 2 GB to get there.
 BIG = 2_000_000_000
-#: The key version this writer emits: small offsets, which :data:`BIG` protects.
+#: How far ROOT moves the end of its free list each time a file passes it.
+GROW = 1_000_000_000
+#: The key version this writer emits for a record with small offsets.
 KEY_VERSION = 4
+#: The version of a directory's record, and of each free-list entry.
+DIRECTORY_VERSION = 5
+FREE_VERSION = 1
+#: What a key, a directory record or a free-list entry adds to its version
+#: to say it is wide, and what the header adds to the file's.
+WIDE = 1000
+WIDE_FILE = 1_000_000
+#: How much longer a wide key is: two places in eight bytes, not four.
+WIDER = 8
+#: How long a directory's record is, small or wide: ROOT leaves room for the
+#: wide places in every record, so a directory never has to move.
+DIRECTORY_BYTES = 60
+#: How long a free-list entry is, small and wide.
+FREE_SMALL = 10
+FREE_WIDE = 18
+#: The most a gap's marker can say it spans, being four signed bytes.
+MAX_GAP = 0x7FFFFFFF
 #: How many bytes of one tree column gather before that column writes a
 #: basket. ROOT's own default, and a reasonable trade: bigger baskets read
 #: faster in bulk, smaller ones let a reader take a few entries cheaply.
@@ -148,6 +176,13 @@ class WBuffer:
     def i64(self, value: int) -> None:
         self.data += struct.pack(">q", value)
 
+    def seek(self, value: int, wide: bool) -> None:
+        """A place in the file: eight bytes in the wide layout, four otherwise."""
+        if wide:
+            self.i64(value)
+        else:
+            self.i32(value)
+
     def string(self, text: str) -> None:
         """A ``TString``: one length byte, or ``255`` and then four."""
         raw = text.encode("utf-8", "surrogateescape")
@@ -227,19 +262,54 @@ class _Output:
     Places in the file are counted from where the target stood when writing
     began, which is the start of the file for any target but a caller's own
     handle that already held something.
+
+    The few other bytes written over after the fact - a directory's record,
+    told at the close where its key list went - are kept by :meth:`patch`
+    until :meth:`finish`, and written before the header, so that the header
+    is the very last thing to change.
     """
 
-    __slots__ = ("head", "size", "_handle", "_base", "_streaming", "_pending")
+    __slots__ = ("head", "size", "_handle", "_base", "_keep", "_streaming", "_pending", "_patches")
 
     def __init__(self, handle: IO[bytes], reserved: int) -> None:
         self._handle = handle
         self._streaming = _seekable(handle)
         self._base = handle.tell() if self._streaming else 0
+        #: Where the target is cut back to if the file is abandoned.
+        self._keep = self._base
         #: The bytes at the front, filled in last.
         self.head = bytearray(reserved)
         #: How long the file is so far, which is where the next record goes.
         self.size = reserved
         self._pending = bytearray(reserved) if self._streaming else bytearray()
+        self._patches: list[tuple[int, bytes]] = []
+
+    @classmethod
+    def resume(cls, handle: IO[bytes], head: bytes, end: int) -> _Output:
+        """Carry on at the end of a file that is already there, its ``head`` in hand.
+
+        Nothing of what was there is written over until :meth:`finish`, and
+        abandoning cuts the file back to ``end``: an update that fails leaves
+        the file byte for byte as it found it.
+        """
+        out = cls.__new__(cls)
+        out._handle = handle
+        out._streaming = True
+        out._base = 0
+        out._keep = end
+        out.head = bytearray(head)
+        out.size = end
+        out._pending = bytearray()
+        out._patches = []
+        handle.seek(end)
+        return out
+
+    def patch(self, at: int, chunk: bytes) -> None:
+        """Write ``chunk`` over what is at ``at``, when the file is finished."""
+        if at + len(chunk) <= len(self.head):
+            self.head[at : at + len(chunk)] = chunk
+        else:
+            self._patches.append((at, bytes(chunk)))
 
     def append(self, chunk: bytes) -> None:
         """Put ``chunk`` at the end of the file, sending it once enough gathers."""
@@ -249,15 +319,24 @@ class _Output:
             self._send()
 
     def _send(self) -> None:
+        # Where the gathered bytes go is said every time, because a file
+        # being updated is read from between writes, and reading moves it.
+        self._handle.seek(self._base + self.size - len(self._pending))
         self._handle.write(self._pending)
         self._pending = bytearray()
 
     def finish(self) -> None:
-        """Write what is still gathered, then the header over its placeholder."""
+        """Write what is still gathered, then the patches, then the header."""
         if not self._streaming:
-            self._handle.write(self.head + self._pending)
+            whole = self.head + self._pending
+            for at, chunk in self._patches:
+                whole[at : at + len(chunk)] = chunk
+            self._handle.write(whole)
         else:
             self._send()
+            for at, chunk in self._patches:
+                self._handle.seek(self._base + at)
+                self._handle.write(chunk)
             self._handle.seek(self._base)
             self._handle.write(self.head)
             self._handle.seek(self._base + self.size)
@@ -269,7 +348,7 @@ class _Output:
         """Take back everything written, leaving the target as writing found it."""
         self._pending = bytearray()
         if self._streaming:
-            self._handle.seek(self._base)
+            self._handle.seek(self._keep)
             self._handle.truncate()
 
 
@@ -481,12 +560,23 @@ def _streamers(used: dict[str, None]) -> bytes:
     file describes its classes exactly as the ROOT that the descriptions were
     harvested from would have.
     """
+    names = _closure(used)
     buf = WBuffer()
     index = buf.start(5)
     buf.tobject()
     buf.string("")
-    names = _closure(used)
     buf.i32(len(names))
+    buf.raw(_info_entries(names))
+    buf.end(index)
+    return bytes(buf.data)
+
+
+def _info_entries(names: list[str]) -> bytes:
+    """One ``TStreamerInfo`` list entry per class, each naming its classes in
+    full rather than referring back, so the bytes mean the same wherever in
+    a list they land - which is what lets an update add them to a list that
+    is already there."""
+    buf = WBuffer()
     for name in names:
         checksum, version, elements = INFOS[name]
         tag = buf.tag("TStreamerInfo")
@@ -507,7 +597,6 @@ def _streamers(used: dict[str, None]) -> bytes:
         buf.end(info)
         buf.end(tag)
         buf.u8(0)  # the option string every list entry carries, empty
-    buf.end(index)
     return bytes(buf.data)
 
 
@@ -609,14 +698,82 @@ def _object_payload(value: Histogram | Graph) -> tuple[str, bytes, tuple[str, ..
 
 
 def _keylen(classname: str, name: str, title: str, extra: int = 0) -> int:
-    """How long the key in front of a record is: 26 fixed bytes, then three
-    strings - and whatever else the class writes into its own key, which only
-    a ``TBasket`` does."""
+    """How long the small form of the key in front of a record is: 26 fixed
+    bytes, then three strings - and whatever else the class writes into its
+    own key, which only a ``TBasket`` does. The wide form is :data:`WIDER`
+    bytes longer."""
     return (
         26
         + extra
         + sum(1 + len(text.encode("utf-8", "surrogateescape")) for text in (classname, name, title))
     )
+
+
+def _wide(*seeks: int) -> bool:
+    """Whether a record pointing at these places needs ROOT's wide layout.
+
+    ROOT decides record by record, and so does this: a key stays small until
+    it is written past :data:`BIG`, or belongs to a directory that was -
+    which is what ``TKey`` does once the file's end passes ``kStartBigFile``.
+    A file that grows past 2 GB is then small keys at the front and wide ones
+    after, exactly as ROOT's own big files are. Making every key wide from
+    the start would be just as legal, and would cost eight bytes a key in
+    the files that never get there, which is nearly all of them.
+    """
+    return max(seeks) > BIG
+
+
+def _key_fields(
+    buf: WBuffer, seek: int, pdir: int, sizes: tuple[int, int, int], cycle: int, datime: int
+) -> None:
+    """The fixed part of a key, small or wide as the places it holds decide.
+
+    ``sizes`` are the record's length on file, the object's length, and the
+    key's own length, in the order the key holds them.
+    """
+    wide = _wide(seek, pdir)
+    nbytes, objlen, keylen = sizes
+    buf.i32(nbytes)
+    buf.u16(KEY_VERSION + (WIDE if wide else 0))
+    buf.i32(objlen)
+    buf.u32(datime)
+    buf.i16(keylen)
+    buf.i16(cycle)
+    buf.seek(seek, wide)
+    buf.seek(pdir, wide)
+
+
+def _tail(end: int) -> int:
+    """Where the free space at the end of a file is said to stop.
+
+    ROOT starts it at :data:`BIG` and moves it on :data:`GROW` bytes at a
+    time as the file passes it, so this is the number ROOT would have written.
+    """
+    if end <= BIG:
+        return BIG
+    return BIG + GROW * -(-(end - BIG) // GROW)
+
+
+def _free_entries(segments: list[tuple[int, int]]) -> bytes:
+    """Free-list entries: each gap's first and last byte, wide past :data:`BIG`."""
+    buf = WBuffer()
+    for first, last in segments:
+        wide = last > BIG
+        buf.u16(FREE_VERSION + (WIDE if wide else 0))
+        buf.seek(first, wide)
+        buf.seek(last, wide)
+    return bytes(buf.data)
+
+
+def _merged(segments: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Gaps in order, neighbours and overlaps joined, as ROOT keeps its free list."""
+    joined: list[tuple[int, int]] = []
+    for first, last in sorted(segments):
+        if joined and first <= joined[-1][1] + 1:
+            joined[-1] = (joined[-1][0], max(joined[-1][1], last))
+        else:
+            joined.append((first, last))
+    return joined
 
 
 def _checked(text: str, what: str) -> str:
@@ -628,57 +785,69 @@ def _checked(text: str, what: str) -> str:
     return text
 
 
-class WritableFile:
-    """A ROOT file being written: a mapping from name to object, then a close.
+class WritableDirectory:
+    """A directory in a ROOT file being written: a mapping from name to object.
 
         >>> with xrdroot.create("out.root") as f:            # doctest: +SKIP
-        ...     f["hist"] = xrdroot.Histogram.new("hist", edges, counts)
+        ...     run = f.mkdir("calibration/run4711")
+        ...     run["gains"] = gains
+        ...     f["calibration/run4711/offsets"] = offsets   # the same place
 
-    Records go out as they are made, so a file far larger than memory can be
-    written; the header, which points at what is written last, is filled in
-    at a clean close. A ``with`` block that raises takes back everything it
-    wrote, on the principle that no file is better than half a file.
+    A directory is what ROOT makes one: a ``TDirectory`` record with a key of
+    its own in the directory above, and a key list of its own written when
+    the file closes. The record goes out the moment the directory is made,
+    because every key inside it says where it is, and is filled in at the
+    close with where the key list landed - the order ROOT does it in.
+
+    A path with a ``/`` in it names a place in a directory below this one,
+    and whatever directories it passes through are made if they are not
+    there, so ``f["a/b/h"] = h`` needs no ``mkdir`` first.
     """
 
     def __init__(
         self,
-        handle: IO[bytes],
-        name: str,
-        owned: bool,
-        algorithm: str | None,
-        level: int | None,
+        file: WritableFile,
+        path: str,
+        title: str,
+        seek: int,
+        parent_seek: int,
+        nname: int,
     ) -> None:
-        self._handle = handle
-        self._owned = owned
-        self._algorithm = algorithm
-        self._level = LEVELS[algorithm] if algorithm is not None and level is None else level
-        self._datime = packed_now()
+        self._file = file
+        #: Where this is, counted from the top of the file: ``"calibration/run4711"``.
+        self.path = path
+        #: What this directory is called, and what it says it is.
+        self.name = path.rpartition("/")[2]
+        self.title = title
+        #: Where its record's key is, where its parent's is, and how many
+        #: bytes come before the record itself: what the record says of both.
+        self._seek = seek
+        self._parent_seek = parent_seek
+        self._nname = nname
+        self._ctime = file._datime
         self._uuid = uuid.uuid4().bytes
-        self._closed = False
-        #: What the file calls itself: the last segment of where it is going.
-        self.name = name
-        self._label = _checked(name.rstrip("/").rpartition("/")[2] or name, "file name")
-        # The key in front of the file's own record: 26 fixed bytes, then
-        # "TFile", the name, and an empty title; the name and title again.
-        keylen = 34 + len(self._label.encode())
-        self._nname = keylen + 2 + len(self._label.encode())
-        #: The header, then the room the file's own record takes; both are
-        #: filled in at close, when everything they point at has a place.
-        self._out = _Output(handle, BEGIN + self._nname + 60)
+        #: The class, name and title the key in front of its key list carries.
+        self._listed_as = ("TDirectory", self.name, title)
         self._keys: list[bytes] = []
         self._cycles: dict[str, int] = {}
-        self._used: dict[str, None] = {}
-        self._trees: list[WritableTree] = []
+        self._subdirs: dict[str, WritableDirectory] = {}
+        #: Directories already on file, opened only when something goes in.
+        self._found: dict[str, Callable[[], WritableDirectory]] = {}
+        #: Whether its key list has to be written: anything new has one.
+        self._dirty = True
+        #: The key list this one's replaces, freed once the new one is out.
+        self._replaced: tuple[int, int] | None = None
 
     def __repr__(self) -> str:
-        state = "closed" if self._closed else f"{len(self._keys)} keys so far"
-        return f"<WritableFile {self.name!r}, {state}>"
+        state = "closed" if self.closed else f"{len(self._keys)} keys so far"
+        return f"<WritableDirectory {self.path!r} in {self._file.name!r}, {state}>"
 
     def write(self, name: str, obj: Any, *, title: str | None = None) -> None:
         """Write one object under ``name``, as :meth:`__setitem__` does.
 
             >>> f["events"] = {"energy": energies, "hits": hits}   # doctest: +SKIP
             >>> f["spectrum"] = hist.Hist(...)                      # doctest: +SKIP
+            >>> f["runs/4711/spectrum"] = hist.Hist(...)            # doctest: +SKIP
 
         A table - a dict of arrays, a pandas or Polars DataFrame, an Arrow
         table - becomes a tree, a column per column, typed by what the arrays
@@ -688,9 +857,14 @@ class WritableFile:
         :func:`numpy.histogram` becomes the ROOT histogram it is. The title is
         taken from the object when it has one; a name written twice becomes a
         second cycle of itself, exactly as in ROOT, and reading the file back
-        gives the newest.
+        gives the newest. A name with a ``/`` in it goes into the directory
+        it names, made if it is not there yet.
         """
-        self._check_name(name)
+        here, leaf = self._place(name)
+        here._write(leaf, obj, title)
+
+    def _write(self, name: str, obj: Any, title: str | None) -> None:
+        self._check_leaf(name)
         table = _table(obj)
         if table is not None:
             from .wtree import spec_of
@@ -702,10 +876,8 @@ class WritableFile:
         if title is None:
             title = obj.title if isinstance(obj, (Histogram, Graph)) else ""
         _checked(title, "title")
-        self._used.update(dict.fromkeys(used))
-        cycle = self._cycles.get(name, 0) + 1
-        self._cycles[name] = cycle
-        self._put(classname, name, title, payload, cycle, listed=True)
+        self._file._used.update(dict.fromkeys(used))
+        self._put(classname, name, title, payload, self._next_cycle(name), listed=True)
 
     def __setitem__(self, name: str, obj: Any) -> None:
         self.write(name, obj)
@@ -718,7 +890,7 @@ class WritableFile:
         title: str | None = None,
         basket_size: int = BASKET_BYTES,
     ) -> WritableTree:
-        """A tree in this file, to be filled entry by entry.
+        """A tree in this directory, to be filled entry by entry.
 
             >>> with xrdroot.create("out.root") as f:        # doctest: +SKIP
             ...     tree = f.tree("events", {"energy": float, "hits": ("i", 4)})
@@ -732,43 +904,133 @@ class WritableFile:
         for a column of text. Entries go out a basket at a time as they
         gather - ``basket_size`` bytes of a column at a time - so the tree
         can be far larger than memory, and the tree's own record is written
-        when the file closes.
+        when the file closes. A name with a ``/`` in it puts the tree in the
+        directory it names.
         """
         from .wtree import WritableTree
 
-        self._check_name(name)
+        here, leaf = self._place(name)
+        here._check_leaf(leaf)
         _checked(title or "", "title")
-        cycle = self._cycles.get(name, 0) + 1
-        self._cycles[name] = cycle
-        tree = WritableTree(self, name, title or "", columns, basket_size, cycle)
-        self._trees.append(tree)
-        self._used.update(dict.fromkeys(tree.classes))
+        tree = WritableTree(here, leaf, title or "", columns, basket_size, here._next_cycle(leaf))
+        self._file._trees.append(tree)
+        self._file._used.update(dict.fromkeys(tree.classes))
         return tree
+
+    def mkdir(self, path: str) -> WritableDirectory:
+        """The directory at ``path`` below this one, made if it is not there.
+
+            >>> run = f.mkdir("calibration/run4711")        # doctest: +SKIP
+            >>> run["gains"] = gains                         # doctest: +SKIP
+
+        Every directory along the way is made too if need be, and one that is
+        already there - made earlier, or already in a file being updated - is
+        given back as it is, so asking twice is harmless. A name that already
+        holds an object is refused, because a directory of the same name would
+        hide it from anything reading the file back. A path with any part a
+        key could not be named is refused before anything along it is made.
+        """
+        parts = path.split("/") if isinstance(path, str) else [path]  # which then refuses
+        for part in parts:
+            self._check_name(part)
+        here = self
+        for part in parts:
+            here = here._subdirectory(part)
+        return here
+
+    def _subdirectory(self, name: str) -> WritableDirectory:
+        """The directory ``name`` right here: already made, on file, or new."""
+        found = self._subdirs.get(name)
+        if found is None and name in self._found:
+            found = self._subdirs[name] = self._found.pop(name)()
+        if found is not None:
+            return found
+        if name in self._cycles:
+            raise ValueError(
+                f"{name!r} in {self._where} already holds an object, and a directory "
+                f"of that name would hide it; give the directory another name"
+            )
+        return self._make_subdirectory(name)
+
+    def _make_subdirectory(self, name: str) -> WritableDirectory:
+        """A new directory: its key here, and its record, to be filled in at the close.
+
+        The record's parent is the file's top directory however deep this one
+        is, because that is what ROOT writes there; the key's own directory,
+        which is what a reader goes by, is the one it is really in.
+        """
+        seek, nbytes = self._put(
+            "TDirectory", name, name, bytes(DIRECTORY_BYTES), 1, listed=True, packed=False
+        )
+        path = f"{self.path}/{name}" if self.path else name
+        file = self._file
+        made = WritableDirectory(file, path, name, seek, file._seek, nbytes - DIRECTORY_BYTES)
+        self._subdirs[name] = made
+        return made
+
+    def _place(self, name: str) -> tuple[WritableDirectory, str]:
+        """Which directory a path puts its last part in, made if need be, and that part."""
+        if not isinstance(name, str):
+            return self, name  # which the name check then refuses, by what it is
+        head, slash, leaf = name.rpartition("/")
+        if not slash:
+            return self, leaf
+        self._check_name(leaf)  # before any directory is made for it
+        return self.mkdir(head), leaf
+
+    @property
+    def _where(self) -> str:
+        return repr(self.path) if self.path else "the top of the file"
 
     def _check_name(self, name: str) -> None:
         """Whether a key could be written under this name, and read back by it."""
-        if self._closed:
+        if self._file._closed:
             raise ValueError("this file is closed; whatever it was going to hold is written")
         _checked(name, "name")
         if not name:
             raise ValueError("a key with no name could never be asked for; give it one")
-        if "/" in name:
-            raise ValueError(
-                f"{name!r} has a / in it, and this writer does not make subdirectories: "
-                f"write to the top level, or spell the structure in the name another way"
-            )
         if ";" in name:
             raise ValueError(
                 f"{name!r} has a ; in it, which is how a reader asks for an old cycle; "
                 f"a name containing one could never be read back"
             )
 
+    def _check_leaf(self, name: str) -> None:
+        """Whether an object could go under this name, which a directory must not have."""
+        self._check_name(name)
+        if name in self._subdirs or name in self._found:
+            raise ValueError(
+                f"{name!r} is a directory in {self._where}, and an object of that name "
+                f"would hide everything in it; write into it as {name}/..., or pick "
+                f"another name"
+            )
+
+    def _next_cycle(self, name: str) -> int:
+        cycle = self._cycles.get(name, 0) + 1
+        self._cycles[name] = cycle
+        return cycle
+
+    @property
+    def closed(self) -> bool:
+        return self._file._closed
+
     @property
     def _codes(self) -> int:
         """How ROOT spells this file's compression: the algorithm and the level."""
-        if self._algorithm is None:
+        file = self._file
+        if file._algorithm is None:
             return 0
-        return CODES[self._algorithm] * 100 + (self._level or 0)
+        return CODES[file._algorithm] * 100 + (file._level or 0)
+
+    def _key_length(self, classname: str, name: str, title: str, extra: int = 0) -> int:
+        """How long the key of the next record put here will be.
+
+        A tree has to know before it writes a record, because the record
+        counts places from the start of its key; and whether that key is
+        small or wide depends on where it lands, which is here and now.
+        """
+        wide = _wide(self._file._out.size, self._seek)
+        return _keylen(classname, name, title, extra) + (WIDER if wide else 0)
 
     def _put(
         self,
@@ -781,46 +1043,158 @@ class WritableFile:
         packed: bool = True,
         extra: bytes = b"",
     ) -> tuple[int, int]:
-        """One record: its key, then its payload, compressed when that is smaller.
+        """One record in this directory: its key, then its payload, compressed
+        when that is smaller.
 
         Where it went and how long it turned out come back, which is what a
         tree writes down about each of its baskets. ``extra`` is whatever the
         class keeps in its own key rather than its payload - only a
         ``TBasket`` does, and what it keeps is how to slice itself.
 
-        The key list and the free list go in raw whatever the file's setting,
-        because ROOT - and the reader here - parses both without looking at
-        the lengths that would say they were compressed.
+        The key lists, the free list and a directory's record go in raw
+        whatever the file's setting, because ROOT - and the reader here -
+        parses them without looking at the lengths that would say they were
+        compressed.
         """
-        seek = self._out.size
-        if seek > BIG:  # pragma: no cover - a file no test should ever make
-            raise UnsupportedFeatureError(
-                "this file has grown past 2 GB, which needs the wide layout "
-                "this writer does not produce; split the output across files"
-            )
-        body = payload
-        if packed and self._algorithm is not None:
-            squeezed = compress(payload, self._algorithm, self._level)
-            if len(squeezed) < len(payload):
-                body = squeezed
+        file = self._file
+        seek = file._out.size
+        body = file._squeeze(payload) if packed else payload
+        keylen = self._key_length(classname, name, title, len(extra))
         key = WBuffer()
-        keylen = _keylen(classname, name, title, len(extra))
-        key.i32(keylen + len(body))
-        key.u16(KEY_VERSION)
-        key.i32(len(payload))
-        key.u32(self._datime)
-        key.i16(keylen)
-        key.i16(cycle)
-        key.i32(seek)
-        key.i32(BEGIN)
+        sizes = (keylen + len(body), len(payload), keylen)
+        _key_fields(key, seek, self._seek, sizes, cycle, file._datime)
         key.string(classname)
         key.string(name)
         key.string(title)
         header = bytes(key.data) + extra
         if listed:
             self._keys.append(header)
-        self._out.append(header + body)
+            self._dirty = True
+        file._out.append(header + body)
         return seek, keylen + len(body)
+
+    def _walk(self) -> Iterator[WritableDirectory]:
+        """This directory and every one below it, deepest first, as ROOT closes them."""
+        for sub in self._subdirs.values():
+            yield from sub._walk()
+        yield self
+
+    def _write_keys(self) -> None:
+        """This directory's key list, then its record told where the list went."""
+        keylist = WBuffer()
+        keylist.i32(len(self._keys))
+        for header in self._keys:
+            keylist.raw(header)
+        classname, name, title = self._listed_as
+        seek, nbytes = self._put(
+            classname, name, title, bytes(keylist.data), 1, listed=False, packed=False
+        )
+        self._file._release(self._replaced)
+        self._file._out.patch(self._seek + self._nname, self._record(seek, nbytes))
+
+    def _record(self, seek_keys: int, nbytes_keys: int) -> bytes:
+        """The ``TDirectory`` record: when, how long its key list is, and where
+        it, its parent and its keys are.
+
+        It is wide when any of those places is past :data:`BIG`, and always
+        :data:`DIRECTORY_BYTES` long either way - ROOT leaves room for the
+        wide form in every file it writes, so a directory never has to move.
+        """
+        seeks = (self._seek, self._parent_seek, seek_keys)
+        wide = _wide(*seeks)
+        buf = WBuffer()
+        buf.u16(DIRECTORY_VERSION + (WIDE if wide else 0))
+        buf.u32(self._ctime)
+        buf.u32(self._file._datime)
+        buf.i32(nbytes_keys)
+        buf.i32(self._nname)
+        for place in seeks:
+            buf.seek(place, wide)
+        buf.u16(1)  # the version of the UUID after it
+        buf.raw(self._uuid)
+        buf.raw(bytes(DIRECTORY_BYTES - len(buf.data)))
+        return bytes(buf.data)
+
+
+class WritableFile(WritableDirectory):
+    """A ROOT file being written: a mapping from name to object, then a close.
+
+        >>> with xrdroot.create("out.root") as f:            # doctest: +SKIP
+        ...     f["hist"] = xrdroot.Histogram.new("hist", edges, counts)
+
+    The file is its own top directory, so everything a
+    :class:`WritableDirectory` does - ``mkdir``, trees, paths with ``/`` in
+    them - it does too. Records go out as they are made, so a file far larger
+    than memory can be written; the header, which points at what is written
+    last, is filled in at a clean close. A ``with`` block that raises takes
+    back everything it wrote, on the principle that no file is better than
+    half a file.
+    """
+
+    def __init__(
+        self,
+        handle: IO[bytes],
+        name: str,
+        owned: bool,
+        algorithm: str | None,
+        level: int | None,
+    ) -> None:
+        self._start(handle, owned, algorithm, level)
+        label = _checked(name.rstrip("/").rpartition("/")[2] or name, "file name")
+        # The key in front of the file's own record: the fixed part, then
+        # "TFile", the name, and an empty title; the name and title again.
+        keylen = _keylen("TFile", label, "")
+        nname = keylen + 2 + len(label.encode())
+        #: The header, then the room the file's own record takes; both are
+        #: filled in at close, when everything they point at has a place.
+        self._out = _Output(handle, BEGIN + nname + DIRECTORY_BYTES)
+        super().__init__(self, "", "", BEGIN, 0, nname)
+        #: What the file calls itself: the last segment of where it is going.
+        self.name = name
+        self._listed_as = ("TFile", label, "")
+        #: The file's identity, which its top directory shares, as in ROOT.
+        self._file_uuid = self._uuid
+        head = WBuffer()  # the fBEGIN block: the file is a key like any other
+        sizes = (nname + DIRECTORY_BYTES, nname - keylen + DIRECTORY_BYTES, keylen)
+        _key_fields(head, BEGIN, 0, sizes, 1, self._datime)
+        for text in ("TFile", label, "", label, ""):
+            head.string(text)
+        self._out.head[BEGIN : BEGIN + len(head.data)] = head.data
+
+    def _start(
+        self, handle: IO[bytes], owned: bool, algorithm: str | None, level: int | None
+    ) -> None:
+        """What every file being written keeps, whether new or being updated."""
+        self._handle = handle
+        self._owned = owned
+        self._algorithm = algorithm
+        self._level = LEVELS[algorithm] if algorithm is not None and level is None else level
+        self._datime = packed_now()
+        self._closed = False
+        #: The version of ROOT the header says wrote the file.
+        self._version = WRITER_VERSION
+        self._used: dict[str, None] = {}
+        self._trees: list[WritableTree] = []
+        #: The gaps the file already had, and the records this session let go.
+        self._gaps: list[tuple[int, int]] = []
+        self._freed: list[tuple[int, int]] = []
+
+    def __repr__(self) -> str:
+        state = "closed" if self._closed else f"{len(self._keys)} keys so far"
+        return f"<WritableFile {self.name!r}, {state}>"
+
+    def _squeeze(self, payload: bytes) -> bytes:
+        """The payload compressed with the file's setting, if that made it smaller."""
+        if self._algorithm is None:
+            return payload
+        squeezed = compress(payload, self._algorithm, self._level)
+        return squeezed if len(squeezed) < len(payload) else payload
+
+    def _release(self, region: tuple[int, int] | None) -> None:
+        """Give a replaced record's bytes, where and how many, to the free list."""
+        if region is not None:
+            seek, nbytes = region
+            self._freed.append((seek, seek + nbytes - 1))
 
     def close(self) -> None:
         """Lay out the bookkeeping, fill in the header, and let go."""
@@ -838,77 +1212,53 @@ class WritableFile:
         """Everything that could only be placed once the objects were in."""
         for tree in self._trees:
             tree._finish()  # its baskets are in; now it can say where they went
+        info = self._write_streamers()
+        for directory in self._walk():
+            if directory._dirty:
+                directory._write_keys()
+        self._write_header(*self._write_free(), info)
 
+    def _write_streamers(self) -> tuple[int, int]:
+        """The file's ``StreamerInfo`` record, and where it went."""
         info = _streamers(self._used)
-        seek_info, nbytes_info = self._put(
-            "TList", "StreamerInfo", "Doubly linked list", info, 1, listed=False
-        )
+        return self._put("TList", "StreamerInfo", "Doubly linked list", info, 1, listed=False)
 
-        keylist = WBuffer()
-        keylist.i32(len(self._keys))
-        for header in self._keys:
-            keylist.raw(header)
-        seek_keys, nbytes_keys = self._put(
-            "TFile", self._label, "", bytes(keylist.data), 1, listed=False, packed=False
-        )
+    def _write_free(self) -> tuple[int, tuple[int, int, int]]:
+        """The free list, last of all: every gap, then the open end of the file.
 
-        seek_free = self._out.size
-        free_keylen = 34 + len(self._label.encode())
-        end = seek_free + free_keylen + 10
-        free = WBuffer()
-        free.u16(1)
-        free.i32(end)
-        free.i32(BIG)
-        self._put("TFile", self._label, "", bytes(free.data), 1, listed=False, packed=False)
+        Its own length decides where the file ends, and where the file ends
+        decides whether its last entry is wide, so the small entry is tried
+        first and the wide one taken only when the small would end past
+        :data:`BIG`. Each gap also gets ROOT's marker at its front - its
+        length, negated - so that anything walking the file record by record
+        steps over it.
+        """
+        gaps = _merged(self._gaps + self._freed)
+        for first, last in gaps:
+            if last - first >= 3:
+                self._out.patch(first, struct.pack(">i", -min(last - first + 1, MAX_GAP)))
+        classname, name, title = self._listed_as
+        seek = self._out.size
+        before = self._key_length(classname, name, title) + len(_free_entries(gaps))
+        end = seek + before + FREE_SMALL
+        if end > BIG:
+            end = seek + before + FREE_WIDE
+        body = _free_entries([*gaps, (end, _tail(end))])
+        _, nbytes = self._put(classname, name, title, body, 1, listed=False, packed=False)
+        return end, (seek, nbytes, len(gaps) + 1)
 
-        head = WBuffer()  # the fBEGIN block: the file is a key like any other
-        keylen = 34 + len(self._label.encode())
-        head.i32(self._nname + 60)
-        head.u16(KEY_VERSION)
-        head.i32(self._nname - keylen + 60)
-        head.u32(self._datime)
-        head.i16(keylen)
-        head.i16(1)
-        head.i32(BEGIN)
-        head.i32(0)
-        head.string("TFile")
-        head.string(self._label)
-        head.string("")
-        head.string(self._label)
-        head.string("")
-        head.u16(5)  # the directory record the reader finds at BEGIN + nname
-        head.u32(self._datime)
-        head.u32(self._datime)
-        head.i32(nbytes_keys)
-        head.i32(self._nname)
-        head.i32(BEGIN)
-        head.i32(0)
-        head.i32(seek_keys)
-        head.u16(1)
-        head.raw(self._uuid)
-        head.raw(bytes(12))
-        self._out.head[BEGIN : BEGIN + len(head.data)] = head.data
-
-        struct.pack_into(">4sii", self._out.head, 0, b"root", WRITER_VERSION, BEGIN)
-        struct.pack_into(
-            ">iiiiiBiii",
-            self._out.head,
-            12,
-            end,
-            seek_free,
-            free_keylen + 10,
-            1,
-            self._nname,
-            4,
-            self._codes,
-            seek_info,
-            nbytes_info,
-        )
-        struct.pack_into(">H16s", self._out.head, 45, 1, self._uuid)
-
-    @property
-    def closed(self) -> bool:
-        return self._closed
+    def _write_header(self, end: int, free: tuple[int, int, int], info: tuple[int, int]) -> None:
+        """The hundred bytes at the front, in the wide form once the file ends past BIG."""
+        wide = end > BIG
+        seek_free, nbytes_free, nfree = free
+        seek_info, nbytes_info = info
+        form = ">qqiiiBiqi" if wide else ">iiiiiBiii"
+        head = self._out.head
+        version = self._version + (WIDE_FILE if wide else 0)
+        struct.pack_into(">4sii", head, 0, MAGIC, version, self._seek)
+        fields = (nbytes_free, nfree, self._nname, 8 if wide else 4, self._codes)
+        struct.pack_into(form, head, 12, end, seek_free, *fields, seek_info, nbytes_info)
+        struct.pack_into(">H16s", head, 12 + struct.calcsize(form), 1, self._file_uuid)
 
     def __enter__(self) -> WritableFile:
         return self
@@ -938,6 +1288,7 @@ def create(
         >>> with xrdroot.create("counts.root") as f:         # doctest: +SKIP
         ...     f["signal"] = xrdroot.Histogram.new("signal", edges, counts)
         ...     f["scan"] = xrdroot.Graph.new("scan", xs, ys, yerr=bars)
+        ...     f["runs/4711/signal"] = signal    # in a directory, made for it
 
     ``target`` is a local path, a URL of any scheme this library writes, or
     an already-open binary file, which is used as it is and left open.
@@ -945,10 +1296,7 @@ def create(
     ``zstd``, or ``None`` to store everything as it is - and each object is
     stored raw anyway when compressing it did not make it smaller.
     """
-    if compression is not None and compression not in CODES:
-        raise ValueError(
-            f"compression must be one of {', '.join(CODES)} or None, not {compression!r}"
-        )
+    _check_compression(compression)
     if hasattr(target, "write"):
         return WritableFile(target, getattr(target, "name", "<file>"), False, compression, level)
     url = parse(target)
@@ -961,3 +1309,10 @@ def create(
         # leaves the server nothing, where cutting back could not be done.
         handle = open_url(url, "wb", config=config, posc=True)
     return WritableFile(handle, str(target), True, compression, level)
+
+
+def _check_compression(compression: str | None) -> None:
+    if compression is not None and compression not in CODES:
+        raise ValueError(
+            f"compression must be one of {', '.join(CODES)} or None, not {compression!r}"
+        )

@@ -409,8 +409,7 @@ Anything else is refused by name rather than guessed at — a
 with fits attached or an axis with labels (empty them first, rather than
 have them silently dropped), a name a reader could never ask back for —
 because a plausible-looking file that ROOT misreads is worse than an error
-message. Files past 2 GB, which need ROOT's wide layout, are refused too:
-split the output across files.
+message.
 
 `create(..., compression="zstd")` chooses the algorithm — zlib unless said
 otherwise, or `lzma`, `lz4`, `zstd`, `None` to store raw — and `level` the
@@ -490,6 +489,68 @@ approximated, on the same principle as the rest of the writer.
 The result is a tree laid out the way ROOT lays one out, down to the record
 versions and the `fLeaves` references pointing at the very leaves the branches
 hold, so ROOT, uproot and this library's own reader all walk it the same way.
+
+### Directories
+
+A name with a `/` in it goes into a directory, and every directory along the
+path is made if it is not there yet; `mkdir` makes one outright and hands it
+back, with the same mapping, `tree` and `mkdir` as the file itself:
+
+```python
+with xrdroot.create("out.root") as f:
+    f["runs/4711/pt"] = pt_hist             # runs and runs/4711 are made for it
+    calib = f.mkdir("calibration")
+    calib["gains"] = gains
+    events = calib.tree("events", {"energy": float})
+```
+
+Each is ROOT's own `TDirectory`: a key in the directory above it, a record
+behind that key, and a key list of its own written at the close, laid out
+record for record the way ROOT 6 lays out the directories in
+`tests/data/dirs-6.14.00.root`. Reading back is by path, `back["runs/4711/pt"]`,
+here and in ROOT and uproot alike. `mkdir` of a directory already there gives
+it back rather than making a second; a name already holding an object is
+refused as a directory, and a directory's name refused as an object, because
+either would hide the other from anything reading the file back.
+
+### Files past 2 GB
+
+ROOT keeps places in a file in four bytes until a file passes 2 GB, and in
+eight after — keys, directory records, the free list and the header each have
+a wide form for it. A file written here changes over exactly where ROOT does:
+a record stays small until it is written past the 2 GB line or belongs to a
+directory that was, and the header goes wide once the file ends past it. What
+comes out is small keys at the front and wide ones after, as in ROOT's own big
+files, and it reads back here, in ROOT and in uproot. Nothing is refused for
+size any more.
+
+### Updating a file
+
+`update` opens a ROOT file that is already there — written by ROOT, uproot,
+go-hep or this library — to add to it, with the same mapping, trees and
+directories as a new one:
+
+```python
+with xrdroot.update("root://eos.example.org//store/user/me/out.root") as f:
+    f["counts"] = newer_counts        # the next cycle of what was there
+    f["runs/4712/pt"] = pt_hist       # into directories old or new
+```
+
+What was there stays where it was. New records go on the end; a name written
+again becomes its next cycle; at the close the directories that gained
+something get new key lists, the streamer information gains whatever classes
+the new objects need — the file's own descriptions kept byte for byte, the new
+ones added after — and the records those replace join the free list, marked
+the way ROOT marks a gap. The header is the last thing written, so until then
+the file still says exactly what it said before, and a `with` block that
+raises cuts it back to its old length: a failed update leaves the file byte for
+byte as it was. `compression` carries on with the file's own setting unless
+told otherwise.
+
+A file whose length is not where its header says it ends — still being
+written, cut short, or added to by something else — is refused rather than
+guessed at, as is one whose top directory has no room for the record an update
+rewrites.
 
 ### The datasets everyone teaches with
 

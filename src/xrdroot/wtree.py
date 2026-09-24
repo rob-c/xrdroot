@@ -35,10 +35,10 @@ import numpy as np
 from .buffer import MAP_OFFSET
 from .objects import LEAF_TYPES
 from .tree import Jagged
-from .writer import BASKET_BYTES, WBuffer, _checked, _keylen
+from .writer import BASKET_BYTES, WBuffer, _checked
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
-    from .writer import WritableFile
+    from .writer import WritableDirectory
 
 __all__ = ["WritableTree", "BASKET_BYTES"]
 
@@ -875,7 +875,7 @@ class WritableTree:
 
     def __init__(
         self,
-        file: WritableFile,
+        file: WritableDirectory,
         name: str,
         title: str,
         columns: Mapping[str, Any],
@@ -1101,7 +1101,7 @@ class WritableTree:
         if not column.pending:
             return
         payload = bytes(column.buffer)
-        keylen = _keylen("TBasket", column.name, self.name, extra=19)
+        keylen = self._file._key_length("TBasket", column.name, self.name, extra=19)
         table = column.table(keylen)
         extra = struct.pack(
             ">hiiiiB",
@@ -1126,7 +1126,7 @@ class WritableTree:
         """Flush what is left, then write the record that ties it all together."""
         for column in self._branches:
             self._flush(column)
-        keylen = _keylen("TTree", self.name, self.title)
+        keylen = self._file._key_length("TTree", self.name, self.title)
         payload = self._payload(keylen)
         self._file._put("TTree", self.name, self.title, payload, self._cycle, listed=True)
 

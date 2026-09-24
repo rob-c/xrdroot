@@ -75,6 +75,11 @@ A dict of arrays, a pandas or Polars DataFrame or an Arrow table becomes a
 tree, packed in C a column at a time; `f.tree(...)` and `fill` write one entry
 at a time where that is the natural shape of the loop.
 
+A name with a `/` in it — `f["runs/4711/h_pt"]` — goes into ROOT directories,
+made on the way; a file past 2 GB takes ROOT's wide layout as ROOT does; and
+`xrdroot.update` opens a file that is already there, ROOT's or anyone's, to
+add to it, leaving it byte for byte as it was if the `with` block fails.
+
 ## Drawing
 
 Histograms and graphs draw themselves: `.plot()` onto matplotlib axes when
