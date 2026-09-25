@@ -303,10 +303,10 @@ class TColor:
     def GetPalette() -> list[int]:
         from .style import gStyle
 
-        return gStyle.palette()
+        return list(gStyle.palette())
 
     @staticmethod
     def GetNumberOfColors() -> int:
         from .style import gStyle
 
-        return gStyle.GetNumberOfColors()
+        return int(gStyle.GetNumberOfColors())

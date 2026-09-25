@@ -27,7 +27,7 @@ __all__ = [
 ]
 
 #: The ends of a line or the corners of a box.
-CORNERS = {"X1": float, "Y1": float, "X2": float, "Y2": float}
+CORNERS: dict[str, type] = {"X1": float, "Y1": float, "X2": float, "Y2": float}
 
 
 def _copy(obj: Drawn, option: str = "", **members: Any) -> Any:
@@ -42,8 +42,8 @@ class TLine(Drawn):
     """A straight line, ``(x1, y1)`` to ``(x2, y2)``."""
 
     classname = "TLine"
-    groups = ("line",)
-    fields = CORNERS
+    groups: ClassVar[tuple[str, ...]] = ("line",)
+    fields: ClassVar[dict[str, type]] = CORNERS
 
     def __init__(self, x1: float = 0.0, y1: float = 0.0, x2: float = 0.0, y2: float = 0.0) -> None:
         super().__init__(fX1=float(x1), fY1=float(y1), fX2=float(x2), fY2=float(y2))
@@ -61,7 +61,7 @@ class TArrow(TLine):
     """A line with a head, or two: ``">"``, ``"<|>"``, ``"->-"``..."""
 
     classname = "TArrow"
-    groups = ("line", "fill")
+    groups: ClassVar[tuple[str, ...]] = ("line", "fill")
     fields: ClassVar[dict[str, type]] = {**CORNERS, "ArrowSize": float, "Angle": float}
 
     def __init__(
@@ -90,8 +90,8 @@ class TBox(Drawn):
     """A rectangle, corner to corner, filled and outlined as its attributes say."""
 
     classname = "TBox"
-    groups = ("line", "fill")
-    fields = CORNERS
+    groups: ClassVar[tuple[str, ...]] = ("line", "fill")
+    fields: ClassVar[dict[str, type]] = CORNERS
 
     def __init__(self, x1: float = 0.0, y1: float = 0.0, x2: float = 0.0, y2: float = 0.0) -> None:
         super().__init__(fX1=float(x1), fY1=float(y1), fX2=float(x2), fY2=float(y2))
@@ -116,7 +116,7 @@ class TWbox(TBox):
 
 
 #: An ellipse's members.
-ROUND = {"X1": float, "Y1": float, "R1": float, "R2": float,
+ROUND: dict[str, type] = {"X1": float, "Y1": float, "R1": float, "R2": float,
          "Phimin": float, "Phimax": float, "Theta": float}  # fmt: skip
 
 
@@ -124,8 +124,8 @@ class TEllipse(Drawn):
     """An ellipse, or the slice of one between two angles, tilted by ``theta``."""
 
     classname = "TEllipse"
-    groups = ("line", "fill")
-    fields = ROUND
+    groups: ClassVar[tuple[str, ...]] = ("line", "fill")
+    fields: ClassVar[dict[str, type]] = ROUND
 
     def __init__(
         self, x1: float = 0.0, y1: float = 0.0, r1: float = 0.0, r2: float = 0.0,
@@ -182,7 +182,7 @@ class TMarker(Drawn):
     """One marker at ``(x, y)``."""
 
     classname = "TMarker"
-    groups = ("marker",)
+    groups: ClassVar[tuple[str, ...]] = ("marker",)
     fields: ClassVar[dict[str, type]] = {"X": float, "Y": float}
 
     def __init__(self, x: float = 0.0, y: float = 0.0, marker: int = 1) -> None:
@@ -197,7 +197,7 @@ class TPolyLine(Drawn):
     """Points joined by lines, or filled as an area when drawn ``"f"``."""
 
     classname = "TPolyLine"
-    groups = ("line", "fill")
+    groups: ClassVar[tuple[str, ...]] = ("line", "fill")
 
     def __init__(self, n: int = 0, x: Any = None, y: Any = None, option: str = "") -> None:
         xs = np.zeros(int(n)) if x is None else np.asarray(x, dtype=float)[: int(n)].copy()
@@ -240,4 +240,4 @@ class TPolyMarker(TPolyLine):
     """A marker at each of its points."""
 
     classname = "TPolyMarker"
-    groups = ("marker",)
+    groups: ClassVar[tuple[str, ...]] = ("marker",)

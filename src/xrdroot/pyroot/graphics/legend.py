@@ -25,7 +25,7 @@ class TLegendEntry(Drawn):
     """One entry of a legend: what it stands for, its label and its option."""
 
     classname = "TLegendEntry"
-    groups = ("text", "line", "fill", "marker")
+    groups: ClassVar[tuple[str, ...]] = ("text", "line", "fill", "marker")
     defaults: ClassVar[dict[str, Any]] = {"fTextAlign": 0, "fTextColor": 0, "fTextFont": 0,
                                           "fTextSize": 0.0}  # fmt: skip
 
@@ -63,7 +63,7 @@ class TLegend(TPave):
     """A legend: rows and columns of entries in a pave, placed in NDC."""
 
     classname = "TLegend"
-    groups = ("line", "fill", "text")
+    groups: ClassVar[tuple[str, ...]] = ("line", "fill", "text")
     fields: ClassVar[dict[str, type]] = {
         **PAVE_FIELDS, "Margin": float, "NColumns": int, "EntrySeparation": float,
         "ColumnSeparation": float,
@@ -72,7 +72,8 @@ class TLegend(TPave):
     def __init__(self, *args: Any) -> None:
         corners, rest = _placed(args)
         header, option = (list(rest) + ["", "brNDC"][len(rest) :])[:2]
-        super().__init__(*corners, gStyle.GetLegendBorderSize(), str(option))
+        x1, y1, x2, y2 = corners
+        super().__init__(x1, y1, x2, y2, gStyle.GetLegendBorderSize(), str(option))
         self.members.update(
             fFillColor=gStyle.GetLegendFillColor(), fFillStyle=1001,
             fTextFont=gStyle.GetLegendFont(), fTextSize=gStyle.GetLegendTextSize(),
@@ -122,7 +123,7 @@ class TLegend(TPave):
             self.members["fPrimitives"].pop()
 
 
-def _placed(args: tuple[Any, ...]) -> tuple[tuple[float, ...], tuple[Any, ...]]:
+def _placed(args: tuple[Any, ...]) -> tuple[tuple[float, float, float, float], tuple[Any, ...]]:
     """The corners of a legend and what follows them, from however it was made.
 
     ``TLegend(x1, y1, x2, y2, ...)`` is placed where it says; ``TLegend(w, h,
@@ -130,7 +131,8 @@ def _placed(args: tuple[Any, ...]) -> tuple[tuple[float, ...], tuple[Any, ...]]:
     """
     numbers = [a for a in args[:4] if isinstance(a, (int, float)) and not isinstance(a, bool)]
     if len(numbers) >= 4:
-        return tuple(float(a) for a in numbers[:4]), args[4:]
+        x1, y1, x2, y2 = (float(a) for a in numbers[:4])
+        return (x1, y1, x2, y2), args[4:]
     width, height = (float(numbers[0]), float(numbers[1])) if len(numbers) >= 2 else DEFAULT_SIZE
     right = 1.0 - gStyle.GetPadRightMargin() - 0.02
     top = 1.0 - gStyle.GetPadTopMargin() - 0.02

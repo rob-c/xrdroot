@@ -20,7 +20,7 @@ class TText(Drawn):
     """A string at ``(x, y)``, drawn as it is."""
 
     classname = "TText"
-    groups = ("text",)
+    groups: ClassVar[tuple[str, ...]] = ("text",)
     fields: ClassVar[dict[str, type]] = {"X": float, "Y": float}
 
     def __init__(self, x: float = 0.0, y: float = 0.0, text: str = "") -> None:
@@ -47,7 +47,7 @@ class TLatex(TText):
     """A string at ``(x, y)``, with ROOT's ``#`` mathematics drawn."""
 
     classname = "TLatex"
-    groups = ("text", "line")
+    groups: ClassVar[tuple[str, ...]] = ("text", "line")
 
     def DrawLatex(self, x: float, y: float, text: str) -> Any:
         return self._draw_at(x, y, text, False)
@@ -73,7 +73,7 @@ class TGaxis(Drawn):
     """
 
     classname = "TGaxis"
-    groups = ("line", "text")
+    groups: ClassVar[tuple[str, ...]] = ("line", "text")
     fields: ClassVar[dict[str, type]] = {
         "Wmin": float, "Wmax": float, "LabelSize": float, "LabelFont": int,
         "LabelColor": int, "LabelOffset": float, "TitleSize": float, "TitleOffset": float,

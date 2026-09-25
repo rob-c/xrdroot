@@ -12,7 +12,7 @@ pad and a saved one are drawn by the same code.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from .drawn import Drawn
 from .style import gStyle
@@ -78,8 +78,8 @@ class TPad(Drawn):
     """A pad: a rectangle of its canvas, with margins round a frame, and what it draws."""
 
     classname = "TPad"
-    groups = ("line", "fill")
-    fields = PAD_FIELDS
+    groups: ClassVar[tuple[str, ...]] = ("line", "fill")
+    fields: ClassVar[dict[str, type]] = PAD_FIELDS
 
     def __init__(
         self, name: str = "", title: str = "", xlow: float = 0.0, ylow: float = 0.0,

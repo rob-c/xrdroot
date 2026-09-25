@@ -89,12 +89,13 @@ def frame_of(pad: TPad) -> tuple[float, float, float, float]:
     bare = _bare(pad, _drawn(pad))
     found = owner(bare)
     if found is None:
-        x1, y1, x2, y2 = (float(pad.members[n]) for n in ("fX1", "fY1", "fX2", "fY2"))
-        return x1, y1, x2, y2
+        return tuple(float(pad.members[n]) for n in ("fX1", "fY1", "fX2", "fY2"))  # type: ignore[return-value]
     xmin, ymin, xmax, ymax = extent(*found, bare)
-    return _logged(xmin, xmax, bool(pad.members["fLogx"])) + _logged(  # type: ignore[return-value]
-        ymin, ymax, bool(pad.members["fLogy"])
+    (x1, x2), (y1, y2) = (
+        _logged(xmin, xmax, bool(pad.members["fLogx"])),
+        _logged(ymin, ymax, bool(pad.members["fLogy"])),
     )
+    return x1, y1, x2, y2
 
 
 def _logged(low: float, high: float, log: bool) -> tuple[float, float]:

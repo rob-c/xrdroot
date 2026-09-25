@@ -137,7 +137,7 @@ mypy_path = "src"
 # guarded imports, so untyped is the honest description of them rather than a
 # hole in our own checking.
 [[tool.mypy.overrides]]
-module = ["lz4.*", "zstandard.*", "tensorflow.*"]
+module = ["lz4.*", "zstandard.*", "tensorflow.*", "skimage", "skimage.*"]
 ignore_missing_imports = true
 
 # iminuit ships no py.typed marker. It is imported in one place, behind a

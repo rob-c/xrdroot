@@ -22,7 +22,7 @@ DECORATION = (4, 28)
 
 
 def _size(args: tuple[Any, ...]) -> tuple[int, int, int, int, bool]:
-    """Where and how big: ``(form)``, ``(w, h)`` or ``(x, y, w, h)``, and whether it is decorated."""
+    """Where and how big - ``(form)``, ``(w, h)`` or ``(x, y, w, h)`` - and if it is decorated."""
     numbers = [int(a) for a in args if isinstance(a, (int, float)) and not isinstance(a, bool)]
     if len(numbers) >= 4:
         x, y, w, h = numbers[:4]

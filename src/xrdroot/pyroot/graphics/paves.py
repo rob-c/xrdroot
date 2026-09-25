@@ -20,7 +20,7 @@ __all__ = ["TPave", "TPaveLabel", "TPaveStats", "TPaveText"]
 
 #: A pave's corners, in the axes' units and in the pad's fractions.
 PAVE_FIELDS = {
-    **{name: float for name in ("X1", "Y1", "X2", "Y2")},
+    **dict.fromkeys(("X1", "Y1", "X2", "Y2"), float),
     **{f"{name}NDC": float for name in ("X1", "Y1", "X2", "Y2")},
     "BorderSize": int, "ShadowColor": int, "CornerRadius": float, "Name": str,
 }  # fmt: skip
@@ -30,7 +30,7 @@ class TPave(Drawn):
     """A box with a border and a shadow on the sides its option names."""
 
     classname = "TPave"
-    groups = ("line", "fill")
+    groups: ClassVar[tuple[str, ...]] = ("line", "fill")
     fields: ClassVar[dict[str, type]] = PAVE_FIELDS
 
     def __init__(
@@ -80,7 +80,7 @@ class TPaveText(TPave):
     """A pave of lines of text, stacked from the top."""
 
     classname = "TPaveText"
-    groups = ("line", "fill", "text")
+    groups: ClassVar[tuple[str, ...]] = ("line", "fill", "text")
     defaults: ClassVar[dict[str, Any]] = {"fTextAlign": 22, "fTextSize": 0.0, "fMargin": 0.05}
 
     def __init__(
@@ -142,7 +142,7 @@ class TPaveLabel(TPave):
     """A pave of one label, in the middle of it."""
 
     classname = "TPaveLabel"
-    groups = ("line", "fill", "text")
+    groups: ClassVar[tuple[str, ...]] = ("line", "fill", "text")
     defaults: ClassVar[dict[str, Any]] = {"fTextAlign": 22, "fTextSize": 0.99}
 
     def __init__(
