@@ -9,6 +9,7 @@ byte count the record started with and never has to know the rest.
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -17,6 +18,7 @@ from .errors import FormatError, UnsupportedFeatureError
 
 if TYPE_CHECKING:
     from .file import Source
+    from .streamers import Member
     from .tree import Basket
 
 __all__ = ["TREE_CLASSES", "FriendRecord", "read_tree"]
@@ -376,14 +378,65 @@ def read_tree(buf: Buffer, source: Source, name: str, classname: str = "TTree") 
             f"this tree was written by ROOT 3 or older (TTree version {version}), which this "
             f"reader does not go back to; hadd it forward first"
         )
-    modern = version > 5  # ROOT 5 widened the counters; ROOT 4 kept them narrow
     title = buf.named()[1]
-    entries = _tree_fields(buf, version, modern)
+    if DESCRIBED_TREES[0] <= version <= DESCRIBED_TREES[1]:
+        entries = _described_tree_fields(buf, source, version)
+    else:
+        entries = _tree_fields(buf, version, version > 5)
 
     branches = [b for b in buf.objarray(CLASSES) if isinstance(b, BranchRecord)]
     friends = _tree_friends(buf, version)
     buf.resume(end)
     return TTree(name, title, entries, branches, source, friends)
+
+
+#: The ``TTree`` versions, from ROOT 3.02 to 5.08, whose fixed fields changed
+#: from release to release - ``fWeight`` arriving, the counters staying
+#: doubles for years after ROOT 4 - and which are read the way ROOT itself
+#: reads them, by the file's own description of the class.
+DESCRIBED_TREES = (6, 15)
+
+#: How a fundamental member of such a tree is read, by its streamer type.
+TREE_MEMBER_READS = {3: "i32", 6: "i32", 8: "f64", 13: "u32", 16: "i64", 17: "i64"}
+
+
+def _described_tree_fields(buf: Buffer, source: Source | None, version: int) -> int:
+    """The fields in front of a middle-aged tree's branches, as its file lists them.
+
+    ROOT reads a ``TTree`` of these versions member by member from the
+    streamer information the file carries, so this does the same and stops
+    at ``fBranches``: the bases after ``TNamed`` are records stepped over,
+    and each number is read at the width the file declares it.
+    """
+    members = source.streamers().get("TTree", {}) if source is not None else {}
+    if "fBranches" not in members:
+        raise UnsupportedFeatureError(
+            f"this tree is TTree version {version}, whose fields changed from one ROOT "
+            f"release to the next, and its file does not describe the TTree class to say "
+            f"which of them it has; hadd it forward and it will open"
+        )
+    entries = 0
+    for member in itertools.takewhile(lambda m: m.name != "fBranches", members.values()):
+        value = _tree_member(buf, member, version)
+        if member.name == "fEntries":
+            entries = int(value)
+    return entries
+
+
+def _tree_member(buf: Buffer, member: Member, version: int) -> float:
+    """One member ahead of a described tree's branches: a base, or a number."""
+    if member.typename == "BASE":
+        if member.name != "TNamed":  # which the caller has already read
+            buf.skip_record()
+        return 0
+    read = TREE_MEMBER_READS.get(member.stype)
+    if read is None:
+        raise UnsupportedFeatureError(
+            f"this file describes TTree version {version} with a member {member.name} of "
+            f"type {member.typename}, which is not a number this reader expected there"
+        )
+    value: float = getattr(buf, read)()
+    return value
 
 
 def _tuple_header(buf: Buffer, classname: str) -> None:

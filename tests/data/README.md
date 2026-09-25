@@ -85,6 +85,22 @@ files, and it is the whole of what is required to redistribute them.
 scikit-hep-testdata is BSD-3-Clause too; its licence is in
 `rntuple/LICENSE.scikit-hep-testdata`.
 
+## ROOT's tutorials
+
+The files under `tutorials/` are the ones ROOT's own tutorials ship beside
+their macros, taken unchanged from ROOT's `tutorials` directory. Each is
+here because it once would not open, and each is a writer this corpus had
+nothing else from.
+
+| File | What it is there for |
+| --- | --- |
+| `mlpHiggs.root` | two trees ROOT 3.04 wrote, `TTree` version 9: doubles for counters and a weight, read by the file's own description of the class (`legacy/mlp`) |
+| `stock.root` | ten trees ROOT 4.00 wrote, `TTree` version 11, compressed with the pre-2005 algorithm, an object split into members (`math/quadp`) |
+| `gallery.root` | seven `TASImage`s, which stream themselves as PNGs (`gallery.root`, beside the tutorials) |
+
+ROOT is LGPL-2.1-or-later; its licence notice and the text of the LGPL are
+in `tutorials/LICENSE.root`.
+
 ## RNTuple
 
 The twenty-three files under `rntuple/` are RNTuples ROOT wrote, taken

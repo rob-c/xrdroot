@@ -704,14 +704,16 @@ def _embedded(name: str, source: Source, seen: tuple[str, ...]) -> Callable[[Buf
 def _by_hand(name: str, source: Source, seen: tuple[str, ...]) -> Callable[[Buffer], Any] | None:
     """How a class that streams itself by hand reads, or ``None`` for any other.
 
-    ROOT writes no description of such a class - a ``TCanvas``, and the
-    ``TQObject`` under every pad, are the ones this reader knows - so its
-    reader is written out in :mod:`.canvas.streamer`, and handed a way to
-    read the described classes it is made of.
+    ROOT writes no description of such a class - a ``TCanvas``, the
+    ``TQObject`` under every pad, and a ``TASImage`` are the ones this
+    reader knows - so its reader is written out in :mod:`.canvas.streamer`
+    or :mod:`.image`, and handed a way to read the described classes it is
+    made of.
     """
     from .canvas.streamer import STREAMED
+    from .image import IMAGES
 
-    make = STREAMED.get(name)
+    make = STREAMED.get(name) or IMAGES.get(name)
     if make is None:
         return None
     return make(lambda held: _streamed(_members(held, source, (*seen, name))))
