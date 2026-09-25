@@ -32,7 +32,6 @@ FAMILIES = (
     "troot",
     "randoms",
     "vectors",
-    "genvector",
     "axes",
     "hists",
     "profiles",
@@ -59,7 +58,7 @@ def _gather(namespace: dict[str, Any]) -> list[str]:
     return names
 
 
-# from . import rmath as Math  # TEMP
+from . import rmath as Math  # noqa: E402
 from . import tmath as TMath  # noqa: E402
 
-__all__ = [*_gather(globals()), "TMath", "draw_hook", "set_draw_hook", "DRAWN"]
+__all__ = [*_gather(globals()), "TMath", "Math", "draw_hook", "set_draw_hook", "DRAWN"]
