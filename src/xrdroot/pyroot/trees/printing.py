@@ -92,7 +92,7 @@ def branch_lines(branch: BranchInfo, count: int) -> list[str]:
     text = _title(branch)
     head = f"*Br{count:5d} :{branch.name:<9} : "
     first = head + f"{text or ' ':<54}"
-    first = _wrapped(head, text) if len(first) > LINE_END else first + "*"
+    first = _wrapped(head, text) if len(first) > LINE_END else first + " *"
     ratio = _ratio(branch.tot_bytes, branch.zip_bytes)
     return [
         first,

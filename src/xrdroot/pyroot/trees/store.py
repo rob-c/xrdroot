@@ -80,6 +80,8 @@ class Slot:
         """What ``TLeaf::GetTypeName`` says: ``Float_t``, or the vector's class."""
         if self.kind == VECTOR:
             return f"vector<{self.address.vector.value_type}>"  # type: ignore[attr-defined]
+        if self.kind == TEXT and self.code != "C":
+            return "string"
         return TYPE_NAMES[self.code]
 
     @property
