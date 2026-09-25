@@ -11,6 +11,7 @@ from the runtime (``printf``, ``sqrt``, ``M_PI``), or else ROOT's:
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any
 
 from .base import TAKEN, Out, P
@@ -203,7 +204,7 @@ def _character(node: Literal) -> str:
     return str(value)
 
 
-_LITERALS = {
+_LITERALS: dict[str, Callable[[Literal], str]] = {
     "int": lambda node: str(node.value),
     "float": lambda node: repr(float(node.value)),
     "str": lambda node: repr(node.value),

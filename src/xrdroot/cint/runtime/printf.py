@@ -68,7 +68,7 @@ def _value(conv: str, length: str | None, value: Any) -> Any:
     if conv == "c":
         return chr(_integer(value) & 0xFF) if not isinstance(value, str) else value[:1]
     if conv == "p":
-        return id(value)
+        return id(value) if value else 0
     return "(null)" if value is None else str(value)
 
 
@@ -90,17 +90,17 @@ def _conversion(found: re.Match[str], arguments: _Arguments) -> str:
     spec = "%" + flags + (width or "") + ("" if prec is None else "." + (prec or "0"))
     value = _value(conv, found["length"], arguments.next())
     if conv == "p":
-        return (spec + "x") % value if value else "(nil)"
+        return "0x" + (spec + "x") % value if value else "(nil)"
     if conv in "aA":
         text = float.hex(value)
         return text.upper() if conv == "A" else text
-    return (spec + {"i": "d", "u": "d"}.get(conv, conv)) % value
+    return str((spec + {"i": "d", "u": "d"}.get(conv, conv)) % value)
 
 
 def cformat(fmt: Any, *args: Any) -> str:
     """What C's ``sprintf(buffer, fmt, args...)`` would leave in the buffer."""
     arguments = _Arguments(str(fmt), args)
-    return SPEC.sub(lambda found: _conversion(found, arguments), str(fmt))
+    return str(SPEC.sub(lambda found: _conversion(found, arguments), str(fmt)))
 
 
 def printf(fmt: Any, *args: Any) -> int:

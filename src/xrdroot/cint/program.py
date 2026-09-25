@@ -226,7 +226,7 @@ class Program:
     def _enum(self, decl: EnumDecl, owner: ClassInfo | None) -> None:
         if decl.name:
             self.enums[decl.name] = decl
-        home = decl.name if decl.scoped else (owner.name if owner else "")
+        home = (decl.name or "") if decl.scoped else (owner.name if owner else "")
         for item, _ in decl.items:
             if owner is not None and not decl.scoped:
                 owner.constants[item] = owner.name

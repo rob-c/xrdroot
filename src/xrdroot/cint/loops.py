@@ -19,6 +19,7 @@ from .nodes import (
     Call,
     Case,
     Continue,
+    Expr,
     DoWhile,
     ExprStmt,
     For,
@@ -149,7 +150,8 @@ def is_literal_step(node: Node, name: str) -> int | None:
     if isinstance(node, Assign) and node.op in ("+=", "-=") and _is(node.target, name):
         value = node.value
         if isinstance(value, Literal) and value.kind == "int" and value.value > 0:
-            return value.value if node.op == "+=" else -value.value
+            step = int(value.value)
+            return step if node.op == "+=" else -step
     return None
 
 
@@ -157,7 +159,7 @@ def _is(node: Node, name: str) -> bool:
     return isinstance(node, Name) and node.parts == [name]
 
 
-def bound_of(cond: Node, name: str) -> tuple[str, Node] | None:
+def bound_of(cond: Node, name: str) -> tuple[str, Expr] | None:
     """``i < n``: the comparison and the bound, when ``cond`` compares ``i`` with something."""
     if isinstance(cond, Binary) and cond.op in ("<", "<=", ">", ">=", "!=") and _is(
         cond.left, name

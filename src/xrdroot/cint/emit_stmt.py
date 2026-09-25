@@ -75,10 +75,10 @@ class StmtEmitter(CallEmitter):
     def local_variable(self, decl: VarDecl) -> None:
         raise NotImplementedError
 
-    def local_class_statement(self, decl: ClassDecl) -> None:
+    def local_class(self, decl: ClassDecl) -> None:
         raise NotImplementedError
 
-    def local_enum_statement(self, decl: EnumDecl) -> None:
+    def local_enum(self, decl: EnumDecl) -> None:
         raise NotImplementedError
 
     def returns(self) -> Any:
@@ -124,7 +124,7 @@ class StmtEmitter(CallEmitter):
         self.expression_statement(node.expr)
 
     def expression_statement(self, expr: Expr) -> None:
-        """``expr;``, with assignment, ``++``, ``delete`` and the like as the statements they are."""
+        """``expr;``, with assignments, ``++`` and ``delete`` written as the statements they are."""
         special = self._EXPRESSIONS.get(type(expr))
         if special is not None and special(self, expr):
             return

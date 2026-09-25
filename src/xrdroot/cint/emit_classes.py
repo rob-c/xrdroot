@@ -67,7 +67,8 @@ class ClassEmitter(FunctionEmitter):
         last: int | str = -1
         for name, value in decl.items:
             if value is not None:
-                last = _constant(value) if _constant(value) is not None else self.value(value)
+                known = _constant(value)
+                last = known if known is not None else self.value(value)
             elif isinstance(last, int):
                 last += 1
             else:

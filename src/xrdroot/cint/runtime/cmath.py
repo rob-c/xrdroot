@@ -110,6 +110,8 @@ def cbrt(value: Any) -> float:
 
 def pow(base: Any, exponent: Any) -> float:
     """C's ``pow``: always a double, ``inf`` for a zero to a negative power."""
+    if float(base) == 0 and float(exponent) < 0:
+        return INF
     try:
         return float(math.pow(float(base), float(exponent)))
     except ZeroDivisionError:

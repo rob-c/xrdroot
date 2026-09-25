@@ -47,13 +47,13 @@ def idiv(a: Any, b: Any) -> int:
     if b == 0:
         raise ZeroDivisionError("integer division by zero, which C++ leaves undefined")
     quotient = abs(a) // abs(b)
-    return quotient if (a < 0) == (b < 0) else -quotient
+    return int(quotient if (a < 0) == (b < 0) else -quotient)
 
 
 def imod(a: Any, b: Any) -> int:
     """``a % b`` for two integers, with the sign of ``a`` as C gives it."""
     a, b = int(a), int(b)
-    return a - b * idiv(a, b)
+    return int(a - b * idiv(a, b))
 
 
 def div(a: Any, b: Any) -> Any:

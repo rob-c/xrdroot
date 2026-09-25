@@ -92,20 +92,20 @@ class Inference(EmitterBase):
         rule = self._RULES.get(type(node))
         return rule(self, node) if rule is not None else None
 
-    def _literal(self, node: Literal) -> CType | None:
+    def _type_literal(self, node: Literal) -> CType | None:
         if node.ctype == "char*":
             return CType("char", pointer=1, const=True)
         if node.kind == "null":
             return CType("nullptr_t", pointer=1)
         return CType(node.ctype)
 
-    def _name(self, node: Name) -> CType | None:
+    def _type_name(self, node: Name) -> CType | None:
         symbol = self.symbol(node)
         if symbol is None or symbol.ctype is None:
             return None
         return symbol.ctype.value() if not symbol.ctype.dims else symbol.ctype
 
-    def _unary(self, node: Unary) -> CType | None:
+    def _type_unary(self, node: Unary) -> CType | None:
         inner = self.typeof(node.operand)
         if node.op == "!":
             return BOOL
@@ -117,7 +117,7 @@ class Inference(EmitterBase):
             return arithmetic_result(inner, INT) if inner is not None and inner.scalar else inner
         return inner
 
-    def _binary(self, node: Binary) -> CType | None:
+    def _type_binary(self, node: Binary) -> CType | None:
         if node.op in ("==", "!=", "<", ">", "<=", ">=", "&&", "||"):
             return BOOL
         left, right = self.typeof(node.left), self.typeof(node.right)
@@ -127,25 +127,25 @@ class Inference(EmitterBase):
             return left
         return arithmetic_result(left, right)
 
-    def _assign(self, node: Assign) -> CType | None:
+    def _type_assign(self, node: Assign) -> CType | None:
         return self.typeof(node.target)
 
-    def _ternary(self, node: Ternary) -> CType | None:
+    def _type_ternary(self, node: Ternary) -> CType | None:
         yes, no = self.typeof(node.yes), self.typeof(node.no)
         if yes is not None and no is not None and yes.scalar and no.scalar:
             return arithmetic_result(yes, no)
         return yes if yes is not None and no is not None and yes.name == no.name else None
 
-    def _cast(self, node: Cast) -> CType | None:
+    def _type_cast(self, node: Cast) -> CType | None:
         return node.ctype
 
-    def _sizeof(self, node: SizeOf) -> CType | None:
+    def _type_sizeof(self, node: SizeOf) -> CType | None:
         return CType("unsigned long")
 
-    def _new(self, node: New) -> CType | None:
+    def _type_new(self, node: New) -> CType | None:
         return node.ctype.pointed()
 
-    def _index(self, node: Index) -> CType | None:
+    def _type_index(self, node: Index) -> CType | None:
         inner = self.typeof(node.obj)
         if inner is None:
             return None
@@ -155,16 +155,16 @@ class Inference(EmitterBase):
             return inner.element()
         return None
 
-    def _comma(self, node: Comma) -> CType | None:
+    def _type_comma(self, node: Comma) -> CType | None:
         return self.typeof(node.items[-1])
 
-    def _this(self, node: This) -> CType | None:
+    def _type_this(self, node: This) -> CType | None:
         return CType(self.scope.klass, pointer=1) if self.scope.klass else None
 
-    def _init_list(self, node: InitList) -> CType | None:
+    def _type_init_list(self, node: InitList) -> CType | None:
         return node.ctype
 
-    def _call(self, node: Call) -> CType | None:
+    def _type_call(self, node: Call) -> CType | None:
         func = node.func
         if isinstance(func, Name):
             return self._named_call(func, node)
@@ -206,7 +206,7 @@ class Inference(EmitterBase):
         methods = info.methods.get(func.name, []) if info is not None else []
         return methods[0].returns if methods else None
 
-    def _member(self, node: Member) -> CType | None:
+    def _type_member(self, node: Member) -> CType | None:
         owner = self.typeof(node.obj)
         if owner is None:
             return None
@@ -221,21 +221,21 @@ class Inference(EmitterBase):
         raise NotImplementedError
 
     _RULES: ClassVar[dict[type, Callable[[Inference, Any], CType | None]]] = {
-        Literal: _literal,
-        Name: _name,
-        Unary: _unary,
-        Binary: _binary,
-        Assign: _assign,
-        Ternary: _ternary,
-        Cast: _cast,
-        SizeOf: _sizeof,
-        New: _new,
-        Index: _index,
-        Comma: _comma,
-        This: _this,
-        InitList: _init_list,
-        Call: _call,
-        Member: _member,
+        Literal: _type_literal,
+        Name: _type_name,
+        Unary: _type_unary,
+        Binary: _type_binary,
+        Assign: _type_assign,
+        Ternary: _type_ternary,
+        Cast: _type_cast,
+        SizeOf: _type_sizeof,
+        New: _type_new,
+        Index: _type_index,
+        Comma: _type_comma,
+        This: _type_this,
+        InitList: _type_init_list,
+        Call: _type_call,
+        Member: _type_member,
     }
 
     def is_integral(self, node: Expr) -> bool:
