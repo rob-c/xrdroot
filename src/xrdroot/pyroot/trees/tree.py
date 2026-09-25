@@ -98,6 +98,8 @@ class TTree(_Player):
                     title=leaf_title,
                 )
             )
+        if len(leaves) > 1:
+            store.titles[name] = title
         self._changed()
         branch = self.GetBranch(name)
         assert branch is not None

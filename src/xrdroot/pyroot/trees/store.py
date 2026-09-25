@@ -163,6 +163,8 @@ class Store:
 
     def __init__(self) -> None:
         self.slots: dict[str, Slot] = {}
+        #: The title of each branch of several leaves: the leaf list it was given.
+        self.titles: dict[str, str] = {}
         self.entries = 0
 
     def add(self, slot: Slot) -> None:
@@ -213,7 +215,7 @@ class Store:
     def reset(self) -> None:
         """Forget every entry, keeping the branches: ``TTree::Reset``."""
         for slot in self.slots.values():
-            slot.pending, slot.chunks = [], []
+            slot.pending, slot.chunks = [], []  # the branches and their titles stay
         self.entries = 0
 
 

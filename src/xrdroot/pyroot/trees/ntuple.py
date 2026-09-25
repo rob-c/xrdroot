@@ -42,6 +42,8 @@ class TNtuple(TTree):
     def Fill(self, *values: Any) -> int:
         """One entry: a value for every variable, in order, or one sequence of them."""
         self._writable("Fill")
+        if not values:  # TTree::Fill: the values already at the variables' addresses
+            return super().Fill()
         given = values[0] if len(values) == 1 and np.ndim(values[0]) == 1 else values
         if len(given) != len(self._values):
             raise ValueError(

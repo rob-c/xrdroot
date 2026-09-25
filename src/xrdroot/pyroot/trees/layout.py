@@ -90,7 +90,7 @@ def from_store(store: Store, stats: Any = None) -> list[BranchInfo]:
 
 
 def _stored(name: str, leaves: list[LeafInfo], store: Store, stats: Any) -> BranchInfo:
-    title = leaves[0].title if len(leaves) == 1 else ":".join(leaf.title for leaf in leaves)
+    title = store.titles.get(name, leaves[0].title)
     classname = leaves[0].typename if leaves[0].vector else ""
     records = [stats.branches[leaf.name].record for leaf in leaves] if stats is not None else []
     return BranchInfo(name, title, classname, leaves, store.entries, *_sizes(records))
