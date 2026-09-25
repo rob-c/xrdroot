@@ -39,6 +39,22 @@ def _range(first: int, last: int) -> Any:
     return None if last < first else (int(first), int(last))
 
 
+def _cumulated(
+    target: Any, source: Any, widths: list[int], cut: tuple[slice, ...], forward: bool
+) -> None:
+    """``source``'s running sum over the block ``cut`` - every axis at once - into ``target``."""
+    shape = tuple(reversed(widths))
+    block = np.asarray(source, dtype=np.float64).reshape(shape)[tuple(reversed(cut))]
+    for axis in range(block.ndim):
+        block = (
+            np.flip(np.cumsum(np.flip(block, axis), axis), axis)
+            if not forward
+            else np.cumsum(block, axis)
+        )
+    view = np.asarray(target).reshape(shape)
+    view[tuple(reversed(cut))] = block
+
+
 class Operations:
     """Arithmetic, reshaping, fitting and random numbers for a ``TH1``."""
 
@@ -228,7 +244,17 @@ class Operations:
         return _kept(self._xrd.profile_y(called, _range(firstxbin, lastxbin)))
 
     def GetCumulative(self, forward: bool = True, suffix: str = "_cumulative") -> Any:
-        return _kept(self._xrd.cumulative(bool(forward), str(suffix)))
+        """``GetCumulative``: each bin in the range drawn, the sum of those before it - or after."""
+        made = self._xrd.copy(f"{self.GetName()}{suffix}")
+        made.reset()
+        cut = tuple(slice(axis.GetFirst(), axis.GetLast() + 1) for axis in self._axes())
+        _cumulated(made._cells(), self._xrd._bins, self._widths(), cut, forward)
+        squares = self._xrd._sumw2()
+        if squares is not None:
+            _cumulated(made._ensure_sumw2(), squares, self._widths(), cut, forward)
+        made._core["fEntries"] = float(np.prod([s.stop - s.start for s in cut]))
+        made._core["fTsumw"] = 0.0
+        return _kept(made)
 
     def Smooth(self, ntimes: int = 1, option: str = "") -> None:
         self._xrd.smooth(int(ntimes))
@@ -294,7 +320,7 @@ class Operations:
 
     def ComputeIntegral(self, onlyPositive: bool = False) -> float:
         """``ComputeIntegral``: the running sum of the bins, x fastest, kept normalised."""
-        values = self._xrd._flat_inner(np.asarray(self._xrd._bins, dtype=np.float64))
+        values = np.asarray(self._xrd.values(), dtype=np.float64).ravel(order="F")
         running = np.concatenate([[0.0], np.cumsum(values)])
         total = float(running[-1])
         self._integral = running / total if total else running

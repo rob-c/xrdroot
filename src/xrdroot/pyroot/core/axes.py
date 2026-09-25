@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 
 from ...fillrandom import AXIS_RANGE
+from .messages import message
 from .objects import TNamed
 
 __all__ = ["TAxis", "TAttAxis"]
@@ -254,6 +255,16 @@ class TAxis(TNamed, TAttAxis):
         self.SetRange(first, last)
 
     def UnZoom(self) -> None:
+        """``UnZoom``: every bin again - once the axis is drawn, as ROOT needs a pad for it."""
+        import sys
+
+        if not getattr(sys.modules.get("xrdroot.pyroot"), "__dict__", {}).get("gPad"):
+            message(
+                "Warning",
+                "TAxis::UnZoom",
+                "Cannot UnZoom if gPad does not exist. Did you mean to draw the TAxis first?",
+            )
+            return
         self.SetRange(0, 0)
 
     def GetRangeActual(self) -> bool:

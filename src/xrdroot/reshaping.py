@@ -407,6 +407,11 @@ def profiled(histogram: Histogram, along: int, name: str | None, bounds: Any) ->
         target = made._ensure_sumw2()
         target[:] = 0.0
         np.add.at(target, made.axes[0].find_bin(xs), histogram._variance_cells()[origin])
+    else:
+        # A histogram of counts fills with ``kIsNotW`` set: the contents are
+        # weights, but the profile keeps no squares of them, so each bin's
+        # effective entries are its entries - the counts - as in ROOT.
+        made._drop_sumw2()
     reset_statistics(made)
     made._core["fEntries"] = effective_entries(made)
     return made
