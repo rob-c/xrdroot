@@ -11,7 +11,7 @@ for it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .ctype import CType
@@ -88,7 +88,7 @@ class VariableEmitter(StmtEmitter):
         if decl.static and self.contexts:
             self.static_local(decl)
             return
-        ctype = self.declared_type(decl)
+        ctype = _sized(self.declared_type(decl), decl)
         alias = self.alias_of(decl, ctype)
         if alias is not None:
             self.declare(decl.name, "local", ctype, alias=alias)
@@ -238,7 +238,7 @@ class VariableEmitter(StmtEmitter):
                     raise self.refuse(f"the array {decl.name}[] with no size to give it", decl)
                 dims.append(str(len(init.items)))
             else:
-                dims.append(self.value(dim))
+                dims.append(str(dim) if isinstance(dim, int) else self.value(dim))
         return dims[0] if len(dims) == 1 else f"({', '.join(dims)})"
 
     def _char_array(self, decl: VarDecl, ctype: CType, init: Expr | None) -> str:
@@ -272,3 +272,12 @@ class VariableEmitter(StmtEmitter):
 
 def _container(ctype: CType) -> bool:
     return ctype.name.split("::")[-1] in CONTAINERS
+
+
+def _sized(ctype: CType | None, decl: VarDecl) -> CType | None:
+    """``int a[] = {1, 2, 3}`` has the size its initialiser gives it, which ``sizeof`` needs."""
+    if ctype is None or not ctype.dims or ctype.dims[0] is not None:
+        return ctype
+    if not isinstance(decl.init, InitList):
+        return ctype
+    return replace(ctype, dims=[len(decl.init.items), *ctype.dims[1:]])

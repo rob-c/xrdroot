@@ -117,6 +117,9 @@ class ExprEmitter(NameEmitter):
             return self._divide(node)
         if op in ("+", "-") and self._pointer_arithmetic(node):
             return self._offset(node)
+        if self._concatenation(node):
+            right = f"cstr({self.value(node.right)})"
+            return f"{self.at(node.left, P.ADD)} + {right}", P.ADD
         if op in ("<<", ">>") and self._streams(node):
             return self._shift(node)
         if op in PLAIN:
@@ -163,7 +166,17 @@ class ExprEmitter(NameEmitter):
         left = self.typeof(node.left)
         if left is None or not (left.is_pointer or left.is_array):
             return False
+        if left.is_string:
+            right = self.typeof(node.right)
+            return right is not None and right.integral
         return not left.is_object_pointer or left.is_array
+
+    def _concatenation(self, node: Binary) -> bool:
+        """``"text" + s``: a C string joined to a string, which C++ does through ``s``'s class."""
+        left, right = self.typeof(node.left), self.typeof(node.right)
+        if node.op != "+" or left is None or not left.is_string or left.name == "std::string":
+            return False
+        return right is None or not right.is_string
 
     def _offset(self, node: Binary) -> Out:
         left = self.typeof(node.left)

@@ -192,7 +192,9 @@ class TypeParser(Cursor):
         """The ``[N][M]`` after a declarator's name."""
         dims: list[Any] = []
         while self.accept("["):
-            dims.append(None if self.at_("]") else self.constant())
+            dim = None if self.at_("]") else self.constant()
+            literal = getattr(dim, "kind", None) == "int"
+            dims.append(dim.value if literal else dim)  # type: ignore[union-attr]
             self.expect("]")
         return replace(ctype, dims=dims) if dims else ctype
 
