@@ -1074,3 +1074,19 @@ def test_a_stats_box_of_a_two_dimensional_histogram_leaves_out_what_only_one_has
     h.attach(Function("f", "pol0", range=(0.0, 10.0), parameters=[1.0]))
     h.functions[0].fit_result = {"chi2": 1.0, "ndf": 1, "npfits": 2}
     assert [name for name, _ in fit_rows(h, 110)] == ["#chi^{2} / ndf", "Prob"]
+
+
+def test_a_hatch_takes_its_colour_where_this_matplotlib_keeps_one(monkeypatch):
+    import builtins
+
+    from xrdroot.canvas import shapes
+
+    real = builtins.__import__
+
+    def missing(name, *args, **kwargs):
+        if name.startswith("matplotlib"):
+            raise ImportError(name)
+        return real(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", missing)
+    assert shapes._hatch_colour() == "hatchcolor"

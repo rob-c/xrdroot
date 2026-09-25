@@ -67,3 +67,31 @@ def test_a_delimiter_with_nothing_after_it_is_nothing():
 def test_a_group_left_open_ends_where_the_text_does():
     assert drawable(translate("x^{2"))
     assert drawable(translate("#sqrt[3{x}"))
+
+
+def test_a_mark_this_matplotlib_cannot_draw_keeps_its_text(monkeypatch):
+    from xrdroot.canvas import latex
+
+    monkeypatch.setattr(latex, "mathtext_draws", lambda command: command != "underline")
+    assert translate("#underline{x}") == r"$\mathrm{x}$"
+    assert translate("#bar{x}") == r"$\bar{\mathrm{x}}$"
+
+
+def test_without_matplotlib_the_translation_is_still_the_whole_one(monkeypatch):
+    import builtins
+
+    from xrdroot.canvas import latex
+
+    real = builtins.__import__
+
+    def missing(name, *args, **kwargs):
+        if name.startswith("matplotlib"):
+            raise ImportError(name)
+        return real(name, *args, **kwargs)
+
+    latex.mathtext_draws.cache_clear()
+    monkeypatch.setattr(builtins, "__import__", missing)
+    try:
+        assert latex.mathtext_draws("underline")
+    finally:
+        latex.mathtext_draws.cache_clear()

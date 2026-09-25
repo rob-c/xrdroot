@@ -111,9 +111,13 @@ def test_what_is_not_an_index_is_refused_by_name():
 
 def test_a_cut_keeps_what_it_cuts_away_in_the_flow_bins_as_boost_histogram_does():
     h, b = five(), boosted()
-    for index in (slice(1, 4), slice(None, 3), slice(2, None), slice(-2, None), slice(0, len)):
+    for index in (slice(1, 4), slice(None, 3), slice(2, None), slice(0, len)):
         assert h[index].values(flow=True).tolist() == b[index].values(flow=True).tolist()
         assert h[index].edges().tolist() == b[index].axes[0].edges.tolist()
+    # A negative start counts from the end, as UHI says and boost-histogram 1.7
+    # on does; 1.6, which is the last for Python 3.9, counted it otherwise.
+    assert h[-2:].values(flow=True).tolist() == [5.0, 1.0, 3.0, 1.0]
+    assert h[-2:].edges().tolist() == [3.0, 4.0, 5.0]
 
 
 def test_a_cut_by_coordinate_is_a_cut_from_the_bins_the_coordinates_are_in():

@@ -113,7 +113,9 @@ except ImportError:  # pragma: no cover - the Python codec below fills in
 #: XXH64 in C, when the ``xxhash`` package is there to provide it.
 _xxh64_fast: Callable[[bytes], int] | None
 try:  # pragma: no cover - depends on the optional lz4 extra
-    from xxhash import xxh64_intdigest as _xxh64_fast
+    import xxhash as _xxhash
+
+    _xxh64_fast = _xxhash.xxh64_intdigest
 except ImportError:  # pragma: no cover - the Python XXH64 below fills in
     _xxh64_fast = None
 

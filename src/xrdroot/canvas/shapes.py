@@ -127,8 +127,27 @@ def patch_style(scene: Scene, prim: Any, outline: bool = True) -> dict[str, Any]
         made["facecolor"] = filled["facecolor"]
         if filled["hatch"]:
             made["hatch"] = filled["hatch"]
-            made["hatchcolor"] = filled["hatchcolor"]
+            made[_HATCH_COLOUR] = filled["hatchcolor"]
     return made
+
+
+def _hatch_colour() -> str:
+    """The keyword a hatch takes its colour from in this matplotlib.
+
+    ``hatchcolor`` came in matplotlib 3.10; before it a hatch is drawn in the
+    patch's edge colour, which is where ROOT's fill colour goes instead.
+    """
+    try:
+        from matplotlib.patches import Patch
+    except ImportError:
+        return "hatchcolor"
+    if hasattr(Patch, "set_hatchcolor"):
+        return "hatchcolor"
+    return "edgecolor"  # pragma: no cover - matplotlib before 3.10
+
+
+#: What a patch's hatch colour is called here.
+_HATCH_COLOUR = _hatch_colour()
 
 
 def box(scene: Scene, prim: Primitive, _option: str) -> None:

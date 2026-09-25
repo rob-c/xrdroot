@@ -46,6 +46,21 @@ def _by_hand(columns: dict) -> np.ndarray:
     return np.asarray(masses, np.float32)
 
 
+def _same_masses(found: np.ndarray, wanted: np.ndarray) -> bool:
+    """Masses equal to what single precision can say, which is less than it looks.
+
+    A pair's mass is the root of ``E**2 - p**2``, and near threshold that
+    difference cancels most of the float32 digits of each: the same pair
+    worked out with another NumPy's sin, cos and sinh - SIMD versions differ
+    by platform - can move by a few parts in a million. The honest bound is
+    some hundreds of float32 steps of ``m**2`` near threshold, where ``E**2``
+    is many times it, and a few elsewhere.
+    """
+    squares = np.abs(found.astype(np.float64) ** 2 - wanted.astype(np.float64) ** 2)
+    scale = np.maximum(wanted.astype(np.float64), 1.0) ** 2
+    return bool(len(found) == len(wanted) and np.all(squares <= 512 * 2.0**-23 * scale))
+
+
 def _counts(masses: np.ndarray) -> np.ndarray:
     return np.histogram(masses, bins=np.linspace(0.25, 300, 301))[0]
 
@@ -59,7 +74,7 @@ def test_the_dimuon_spectrum_of_a_tree_is_numpy_by_hand(tmp_path):
             df.Report(),
         )
         wanted = _by_hand(muon_columns(5000))
-        assert np.allclose(masses.GetValue(), wanted, rtol=1e-6)
+        assert _same_masses(masses.GetValue(), wanted)
         assert h.GetValue().values().tolist() == _counts(masses.GetValue()).tolist()
         assert h.GetValue().entries == len(wanted)
         cuts = report.GetValue()
@@ -114,7 +129,7 @@ def test_roots_own_open_data_dimuons(tmp_path):
         )
         df = RDataFrame(events)
         masses = _dimuon(df).Take("Dimuon_mass").GetValue()
-        assert np.allclose(masses, _by_hand(columns), rtol=1e-5)
+        assert _same_masses(masses, _by_hand(columns))
         assert len(masses) > 100
         assert df.GetColumnType("nMuon") == "ROOT::RNTupleCardinality<std::uint32_t>"
         assert df.GetColumnType("Muon_charge") == "ROOT::VecOps::RVec<std::int32_t>"

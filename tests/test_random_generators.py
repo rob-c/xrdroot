@@ -285,7 +285,10 @@ def test_a_state_missing_a_member_is_refused_by_name():
 def test_numpys_functions_are_used_only_where_they_are_the_c_librarys():
     import math
 
-    assert libm.choose(np.log, math.log, 0.1, 1.0) is np.log
+    # The same numbers as the C library by construction, so kept, on any machine;
+    # whether NumPy's own log is is the machine's business (not on AVX-512 Linux).
+    same = np.vectorize(math.log)
+    assert libm.choose(same, math.log, 0.1, 1.0) is same
     exact = libm.choose(lambda x: np.nextafter(np.log(x), 0), math.log, 0.1, 1.0)
     values = np.array([[0.5, 0.25], [0.125, 0.3]])
     assert np.array_equal(exact(values), [[math.log(x) for x in row] for row in values.tolist()])

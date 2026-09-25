@@ -229,7 +229,9 @@ def xxh3_64(data: bytes) -> int:
 #: XXH3-64 in C, when the ``xxhash`` package is there to provide it.
 _fast: Callable[[bytes], int] | None
 try:  # pragma: no cover - depends on the optional lz4 extra
-    from xxhash import xxh3_64_intdigest as _fast
+    import xxhash as _xxhash
+
+    _fast = _xxhash.xxh3_64_intdigest
 except ImportError:  # pragma: no cover - the Python XXH3 above fills in
     _fast = None
 

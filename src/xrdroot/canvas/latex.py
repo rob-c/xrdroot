@@ -19,6 +19,8 @@ fail on.
 
 from __future__ import annotations
 
+from functools import cache
+
 __all__ = ["translate"]
 
 #: The ``#`` commands that are one symbol, against mathtext's name for it.
@@ -164,6 +166,25 @@ def _command(reader: _Reader) -> str:
     return _argument(reader, name)
 
 
+@cache
+def mathtext_draws(command: str) -> bool:
+    """Whether this matplotlib's mathtext draws ``\\command{x}`` at all.
+
+    Most of mathtext's accents are old, but ``\\underline`` came in 3.10, and
+    the matplotlib an older Python can have refuses it; there the underlined
+    text is kept and only the line under it is lost.
+    """
+    try:
+        from matplotlib.mathtext import MathTextParser
+
+        MathTextParser("path").parse(f"$\\{command}{{x}}$")
+    except ImportError:
+        return True  # nothing will draw it here; the translation is still the right one
+    except ValueError:  # pragma: no cover - only a matplotlib before 3.10 refuses one
+        return False
+    return True
+
+
 def _argument(reader: _Reader, name: str) -> str:
     """A command of one argument, a symbol, or a word this does not know."""
     setting = reader.bracketed() if name in ADJUSTMENTS else ""
@@ -171,6 +192,8 @@ def _argument(reader: _Reader, name: str) -> str:
         root = f"[{setting}]" if setting else ""
         return r"\sqrt" + root + "{" + reader.group() + "}"
     if name in ACCENTS:
+        if not mathtext_draws(ACCENTS[name]):
+            return reader.group()  # the text, without the mark this matplotlib cannot draw
         return f"\\{ACCENTS[name]}{{{reader.group()}}}"
     if name in FACES:
         return "{" + reader.group().replace(r"\mathrm{", "\\" + FACES[name] + "{") + "}"
