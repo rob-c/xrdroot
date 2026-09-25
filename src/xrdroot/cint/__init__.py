@@ -23,9 +23,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from .errors import CintError, MacroError, Refusal, Where
+from .execute import load, process_line, run
 from .translation import Translation, translation
 
 __all__ = [
+    "run",
+    "load",
+    "process_line",
     "translate",
     "translate_file",
     "translation",
