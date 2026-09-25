@@ -31,7 +31,6 @@ __all__ = [
     "TAttMarker",
     "TAttText",
     "TAtt3D",
-    "Indent",
     "SetOwnership",
     "addressof",
     "nullptr",
@@ -122,7 +121,6 @@ class TObject:
     CLASS_TITLE = "Basic ROOT object"
 
     def __init__(self, *args: Any) -> None:
-        self._bits = 0
         self._unique_id = 0
         if args and isinstance(args[0], TObject):
             args[0].Copy(self)
@@ -172,21 +170,29 @@ class TObject:
 
     # -- bits --------------------------------------------------------------------
 
+    def _bitword(self) -> int:
+        """The object's bits; a wrapper keeps them in its xrdroot object's ``fBits``."""
+        return int(self.__dict__.get("_bits", 0))
+
+    def _store_bits(self, bits: int) -> None:
+        self.__dict__["_bits"] = int(bits)
+
     def SetBit(self, bit: int, value: bool = True) -> None:
         """``SetBit(f, set)``: set - or with ``set`` false, clear - the bits ``f``."""
-        self._bits = self._bits | int(bit) if value else self._bits & ~int(bit)
+        bits = self._bitword()
+        self._store_bits(bits | int(bit) if value else bits & ~int(bit))
 
     def ResetBit(self, bit: int) -> None:
-        self._bits &= ~int(bit)
+        self._store_bits(self._bitword() & ~int(bit))
 
     def TestBit(self, bit: int) -> bool:
-        return bool(self._bits & int(bit))
+        return bool(self._bitword() & int(bit))
 
     def TestBits(self, bits: int) -> int:
-        return self._bits & int(bits)
+        return self._bitword() & int(bits)
 
     def InvertBit(self, bit: int) -> None:
-        self._bits ^= int(bit)
+        self._store_bits(self._bitword() ^ int(bit))
 
     def GetUniqueID(self) -> int:
         return self._unique_id
