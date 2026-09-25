@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import re
-import sys
 import traceback
 from collections import Counter
 from pathlib import Path
@@ -86,7 +85,6 @@ def main(argv: list[str] | None = None) -> int:
         help="also list every file of one kind",
     )
     args = parser.parse_args(argv)
-    sys.setrecursionlimit(10_000)
     print(report(args.tutorials, args.top, args.list))
     return 0
 
