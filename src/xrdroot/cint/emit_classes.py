@@ -198,8 +198,9 @@ class ClassEmitter(FunctionEmitter):
             return
         self._base_inits(info, inits)
         for var in info.fields.values():
-            self.out.line(f"self.{python_name(var.name)} = {self.field_value(var, inits)}",
-                          var.where)
+            self.out.line(
+                f"self.{python_name(var.name)} = {self.field_value(var, inits)}", var.where
+            )
 
     def _base_inits(self, info: ClassInfo, inits: dict[str, list[Expr]]) -> None:
         for base in info.decl.bases:

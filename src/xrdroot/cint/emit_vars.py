@@ -250,8 +250,10 @@ class VariableEmitter(StmtEmitter):
 
     def array_initial(self, decl: VarDecl, ctype: CType) -> str:
         """``double a[3] = {1, 2}``: an array of zeros, the given values first."""
-        init = decl.init if decl.init is not None else (
-            InitList(decl.where, decl.args) if decl.args else None
+        init = (
+            decl.init
+            if decl.init is not None
+            else (InitList(decl.where, decl.args) if decl.args else None)
         )
         element = CType(ctype.name, ctype.args, ctype.pointer, False, ctype.const)
         if element.name in ("char", "signed char", "unsigned char") and not element.pointer:

@@ -345,4 +345,3 @@ def _declared(body: Node) -> set[str]:
         elif isinstance(node, Lambda):
             names.update(param.name for param in node.params if param.name)
     return names
-

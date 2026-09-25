@@ -67,9 +67,7 @@ LIMITS = {
 
 
 def _lvalue(node: Expr) -> bool:
-    return isinstance(node, (Name, Member, Index)) or (
-        isinstance(node, Unary) and node.op == "*"
-    )
+    return isinstance(node, (Name, Member, Index)) or (isinstance(node, Unary) and node.op == "*")
 
 
 class CallEmitter(ExprEmitter):

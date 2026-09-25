@@ -24,12 +24,15 @@ __all__ = ["NameEmitter", "STD", "type_text"]
 
 #: ``std::`` names that the runtime (or Python) provides, and what they are called there.
 STD = {
-    **{name: name for name in """cout cerr clog endl flush fixed scientific left right
+    **{
+        name: name
+        for name in """cout cerr clog endl flush fixed scientific left right
         boolalpha noboolalpha hex dec oct showpos noshowpos setw setprecision setfill
         defaultfloat ostringstream ifstream istringstream sqrt cbrt exp exp2 expm1 log log10 log2
         log1p pow sin cos tan asin acos atan atan2 sinh cosh tanh asinh acosh atanh fabs
         floor ceil trunc fmod hypot erf erfc tgamma lgamma isnan isinf isfinite copysign
-        fmin fmax to_string stoi stod min max strlen strcmp atoi atof""".split()},
+        fmin fmax to_string stoi stod min max strlen strcmp atoi atof""".split()
+    },
     "string": "str",
     "string_view": "str",
     "abs": "cabs",
@@ -187,8 +190,9 @@ class NameEmitter(Inference):
         """``<double, 3>`` as the subscript ``['double', 3]`` a pyroot template takes."""
         if not targs:
             return ""
-        items = [repr(type_text(arg)) if isinstance(arg, CType) else self.value(arg)
-                 for arg in targs]
+        items = [
+            repr(type_text(arg)) if isinstance(arg, CType) else self.value(arg) for arg in targs
+        ]
         return "[" + ", ".join(items) + "]"
 
     # -- literals ------------------------------------------------------------

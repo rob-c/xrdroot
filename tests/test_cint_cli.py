@@ -30,14 +30,20 @@ def write(tmp_path: Path, name: str, text: str) -> Path:
     return path
 
 
-def test_run_runs_a_macro_with_its_arguments(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    path = write(tmp_path, "count.C", 'int count(int n = 2) { printf("%d\\n", n * kRed); return 7; }')
+def test_run_runs_a_macro_with_its_arguments(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(
+        tmp_path, "count.C", 'int count(int n = 2) { printf("%d\\n", n * kRed); return 7; }'
+    )
     assert main(["run", str(path)]) == 0
     assert main(["run", f"{path}(3)", "--no-cache"]) == 0
     assert capsys.readouterr().out == "1264\n1896\n"
 
 
-def test_run_prints_the_translation_when_asked(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_run_prints_the_translation_when_asked(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     path = write(tmp_path, "show.C", "void show() { int a = 7 / 2; }")
     assert main(["run", str(path), "--python"]) == 0
     assert "    a = idiv(7, 2)\n" in capsys.readouterr().out
@@ -52,7 +58,9 @@ def test_run_runs_a_python_script_with_root_as_pyroot(
     assert sys.modules["ROOT"] is fake_pyroot
 
 
-def test_run_refuses_a_construct_in_one_line(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_run_refuses_a_construct_in_one_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     path = write(tmp_path, "jump.C", "void jump() {\n  goto end;\n}\n")
     assert main(["run", str(path)]) == 2
     assert capsys.readouterr().err == (
@@ -60,7 +68,9 @@ def test_run_refuses_a_construct_in_one_line(tmp_path: Path, capsys: pytest.Capt
     )
 
 
-def test_the_session_runs_a_cpp_macro_with_x(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_the_session_runs_a_cpp_macro_with_x(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     path = write(tmp_path, "hello.C", 'void hello(int n) { printf("hello %d\\n", n); }')
     session = Session()
     session.macro(f"{path}+", 4)

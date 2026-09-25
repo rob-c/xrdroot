@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import math
 import types
-from typing import Any
+from typing import Any, ClassVar
 
 __all__ = ["fake"]
 
@@ -42,8 +42,15 @@ class Named:
 
 
 class TH1(Named):
-    def __init__(self, name: str = "", title: str = "", nbins: int = 1, low: float = 0.0,
-                 high: float = 1.0, *rest: Any) -> None:
+    def __init__(
+        self,
+        name: str = "",
+        title: str = "",
+        nbins: int = 1,
+        low: float = 0.0,
+        high: float = 1.0,
+        *rest: Any,
+    ) -> None:
         super().__init__(name, title)
         self.nbins, self.low, self.high = int(nbins), float(low), float(high)
         self.counts = [0.0] * (self.nbins + 2)
@@ -53,8 +60,12 @@ class TH1(Named):
         value = float(x)
         self.values.append(value)
         width = (self.high - self.low) / self.nbins
-        index = 0 if value < self.low else self.nbins + 1 if value >= self.high else (
-            1 + int((value - self.low) / width)
+        index = (
+            0
+            if value < self.low
+            else self.nbins + 1
+            if value >= self.high
+            else (1 + int((value - self.low) / width))
         )
         self.counts[index] += 1
         return index
@@ -135,7 +146,7 @@ class TMath:
 class TFile(Named):
     """A file that remembers every file opened, so a test can look at what was written."""
 
-    opened: list[TFile] = []
+    opened: ClassVar[list[TFile]] = []
 
     @staticmethod
     def Open(name: str, *rest: Any) -> TFile:
@@ -192,6 +203,7 @@ def fake(tutorials: str = ".") -> types.SimpleNamespace:
             return thing
 
         return build
+
     canvases: list[Named] = []
 
     def canvas(*args: Any) -> Named:
@@ -200,8 +212,16 @@ def fake(tutorials: str = ".") -> types.SimpleNamespace:
         return made
 
     std = types.SimpleNamespace(vector=_Template(Vector))
-    colours = {"kRed": 632, "kBlue": 600, "kGreen": 416, "kMagenta": 616, "kCyan": 432,
-               "kYellow": 400, "kOrange": 800, "kSolid": 1}
+    colours = {
+        "kRed": 632,
+        "kBlue": 600,
+        "kGreen": 416,
+        "kMagenta": 616,
+        "kCyan": 432,
+        "kYellow": 400,
+        "kOrange": 800,
+        "kSolid": 1,
+    }
     return types.SimpleNamespace(
         TString=TString,
         TH1F=remembered(TH1),

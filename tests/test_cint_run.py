@@ -1,4 +1,4 @@
-"""Running macros the ways ROOT runs them: files, ``.x`` arguments, ProcessLine, the cache, errors."""
+"""Running macros as ROOT runs them: files, ``.x`` arguments, ProcessLine, the cache, errors."""
 
 from __future__ import annotations
 
@@ -28,17 +28,21 @@ def write(tmp_path: Path, name: str, text: str) -> Path:
 def test_a_macro_file_runs_its_function_of_the_same_name_with_the_arguments_given(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    path = write(tmp_path, "twice.C", 'int twice(int n = 1) { printf("%d\\n", 2 * n); return 2 * n; }')
+    path = write(
+        tmp_path, "twice.C", 'int twice(int n = 1) { printf("%d\\n", 2 * n); return 2 * n; }'
+    )
     assert run(path, root=fake()) == 2
     assert run(f"{path}+", (21,), root=fake()) == 42
     assert capsys.readouterr().out == "2\n42\n"
 
 
-def test_an_unnamed_macro_runs_its_block(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_an_unnamed_macro_runs_its_block(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     path = write(tmp_path, "block.C", '{\n  int a = 5;\n  printf("%d\\n", a / 2);\n}\n')
     run(path, root=fake())
     assert capsys.readouterr().out == "2\n"
-    with pytest.raises(TypeError, match="block.C is an unnamed macro, which takes no arguments"):
+    with pytest.raises(TypeError, match=r"block\.C is an unnamed macro, which takes no arguments"):
         run(path, (1,), root=fake())
 
 
@@ -52,7 +56,9 @@ def test_a_translation_is_kept_and_found_again_until_the_macro_or_its_header_cha
     tmp_path: Path, private_cache: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     write(tmp_path, "values.h", "const int kValue = 1;")
-    path = write(tmp_path, "cached.C", '#include "values.h"\nvoid cached() { printf("%d\\n", kValue); }')
+    path = write(
+        tmp_path, "cached.C", '#include "values.h"\nvoid cached() { printf("%d\\n", kValue); }'
+    )
     run(path, root=fake())
     assert len(list(private_cache.glob("*.json"))) == 1
     run(path, root=fake())
@@ -122,7 +128,7 @@ def test_refusals_and_exits_pass_through_unchanged(tmp_path: Path) -> None:
     [
         ("hsimple.C", "hsimple.C", ""),
         ("hsimple.C+", "hsimple.C", ""),
-        ("fit.C++(1000, \"gaus\")", "fit.C", '1000, "gaus"'),
+        ('fit.C++(1000, "gaus")', "fit.C", '1000, "gaus"'),
         (" dir/m.cxx ( 2 ) ", "dir/m.cxx", "2"),
     ],
 )
@@ -151,7 +157,7 @@ def test_process_line_runs_statements_and_dot_commands(
     process_line('int a = 7; printf("%d %g\\n", a / 2, a / 2.)', root=fake())
     process_line(f".x {path}(3)", root=fake())
     assert process_line(f".L {path}", root=fake())["hello"] is not None
-    process_line("{ printf(\"block\\n\"); }", root=fake())
+    process_line('{ printf("block\\n"); }', root=fake())
     assert capsys.readouterr().out == "3 3.5\nhello 3\nblock\n"
     with pytest.raises(ValueError, match=r"\.q is not a command"):
         process_line(".q")

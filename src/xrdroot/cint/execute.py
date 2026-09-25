@@ -150,8 +150,9 @@ def _entry(made: Translation, namespace: dict[str, Any], file: str, args: tuple[
     return entry
 
 
-def run(path: str | Path, args: tuple[Any, ...] = (), *, root: Any = None,
-        use_cache: bool = True) -> Any:
+def run(
+    path: str | Path, args: tuple[Any, ...] = (), *, root: Any = None, use_cache: bool = True
+) -> Any:
     """``.x path(args)``: translate the macro at ``path`` and run it, as ROOT would."""
     where = Path(str(path).rstrip("+"))
     source = where.read_text(encoding="utf-8", errors="replace")

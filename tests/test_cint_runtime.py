@@ -48,7 +48,9 @@ def test_too_few_arguments_and_n_are_refused_in_sentences() -> None:
         rt.cformat("%n", 1)
 
 
-def test_the_printf_family_writes_where_c_and_root_write(capsys: pytest.CaptureFixture[str]) -> None:
+def test_the_printf_family_writes_where_c_and_root_write(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     assert rt.printf("%d\n", 3) == 2
     rt.Printf("x=%g", 0.5)
     assert rt.sprintf("%03d", 7) == "007"
@@ -70,8 +72,6 @@ def test_the_printf_family_writes_where_c_and_root_write(capsys: pytest.CaptureF
     )
 
 
-
-
 def same(got: object, expected: object) -> bool:
     """Equal - with ``nan`` equal to itself, which is what a C function returning it means."""
     if isinstance(expected, float) and math.isnan(expected):
@@ -87,7 +87,10 @@ def same(got: object, expected: object) -> bool:
         ([rt.fixed, rt.setprecision(2), 3.14159, " ", rt.scientific, 1234.5], "3.14 1.23e+03"),
         ([rt.setw(6), 7, "|", rt.left, rt.setw(4), 1, "|"], "     7|1   |"),
         ([rt.setfill("*"), rt.setw(3), 5, rt.setfill(ord("-")), rt.setw(2), 1], "**5-1"),
-        ([rt.hex, 255, " ", -1, rt.oct, " ", 8, " ", -1, rt.dec, " ", 9], "ff ffffffff 10 37777777777 9"),
+        (
+            [rt.hex, 255, " ", -1, rt.oct, " ", 8, " ", -1, rt.dec, " ", 9],
+            "ff ffffffff 10 37777777777 9",
+        ),
         ([rt.showpos, 3, " ", 2.5, rt.noshowpos, " ", 3], "+3 +2.5 3"),
         ([None, " ", np.float32(0.1), " ", np.int32(3), rt.flush], "0 0.1 3"),
         ([rt.setprecision(0), 2.5, " ", rt.defaultfloat, 1e-5], "2 1e-05"),

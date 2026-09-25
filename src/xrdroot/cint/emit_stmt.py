@@ -16,9 +16,9 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 from .base import P
-from .errors import Where
 from .ctype import CType
 from .emit_calls import CallEmitter
+from .errors import Where
 from .loops import assigned_names, bound_of, cases, ends_in_jump, is_literal_step, jumps, stable
 from .nodes import (
     Assign,
@@ -61,8 +61,18 @@ __all__ = ["StmtEmitter", "Loop", "STOPS"]
 
 #: The types a compound assignment must convert back into: rounded, wrapped or narrowed.
 NARROW = frozenset(
-    {"float", "short", "char", "signed char", "unsigned char", "unsigned short", "unsigned int",
-     "unsigned long", "unsigned long long", "bool"}
+    {
+        "float",
+        "short",
+        "char",
+        "signed char",
+        "unsigned char",
+        "unsigned short",
+        "unsigned int",
+        "unsigned long",
+        "unsigned long long",
+        "bool",
+    }
 )
 
 #: For ``i op bound`` stepping up (``True``) or down: what ``range``'s stop adds to the bound.
@@ -257,8 +267,8 @@ class StmtEmitter(CallEmitter):
             self._orelse(node.orelse)
 
     def _orelse(self, orelse: Stmt | None) -> None:
-        while isinstance(orelse, If) and orelse.init is None and not isinstance(
-            orelse.cond, VarDecl
+        while (
+            isinstance(orelse, If) and orelse.init is None and not isinstance(orelse.cond, VarDecl)
         ):
             mark = self.out.mark()
             test = self.condition(orelse.cond)
@@ -539,8 +549,11 @@ class StmtEmitter(CallEmitter):
         self.out.line(f"{container} = {iterable}", node.where)
         self.out.line(f"for {index} in range(len({container})):", node.where)
         alias = Index(node.where, Name(node.where, [container]), Name(node.where, [index]))
-        self.declare(container, "local", CType("auto", dims=[None]) if element is None else
-                     CType(element.name, dims=[None]))
+        self.declare(
+            container,
+            "local",
+            CType("auto", dims=[None]) if element is None else CType(element.name, dims=[None]),
+        )
         self.declare(index, "local", CType("int"))
         self.declare(node.decl.name, "local", element, alias=alias)
         self.loop_body(node.body, Loop("loop"))

@@ -29,10 +29,16 @@ def add_parser(subparsers: Any) -> None:
         description="Run a ROOT macro as root -b -q would: file.C, file.C(args) or file.py.",
     )
     parser.add_argument("macro", help='the macro, with any arguments: file.C or "file.C(1, 2)"')
-    parser.add_argument("--python", action="store_true",
-                        help="print the Python the macro translates into, and run nothing")
-    parser.add_argument("--no-cache", action="store_true",
-                        help="translate afresh rather than use a translation kept from before")
+    parser.add_argument(
+        "--python",
+        action="store_true",
+        help="print the Python the macro translates into, and run nothing",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="translate afresh rather than use a translation kept from before",
+    )
 
 
 def _script(path: Path) -> int:

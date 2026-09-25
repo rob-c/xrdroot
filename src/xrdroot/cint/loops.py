@@ -19,8 +19,8 @@ from .nodes import (
     Call,
     Case,
     Continue,
-    Expr,
     DoWhile,
+    Expr,
     ExprStmt,
     For,
     Lambda,
@@ -166,9 +166,10 @@ def _is(node: Node, name: str) -> bool:
 
 def bound_of(cond: Node, name: str) -> tuple[str, Expr] | None:
     """``i < n``: the comparison and the bound, when ``cond`` compares ``i`` with something."""
-    if isinstance(cond, Binary) and cond.op in ("<", "<=", ">", ">=", "!=") and _is(
-        cond.left, name
+    if (
+        isinstance(cond, Binary)
+        and cond.op in ("<", "<=", ">", ">=", "!=")
+        and _is(cond.left, name)
     ):
         return cond.op, cond.right
     return None
-

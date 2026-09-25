@@ -219,7 +219,6 @@ class ExprEmitter(NameEmitter):
             right = f"chr({self.value(node.right)})"
         return f"{self.at(node.left, P.SHIFT)} << {right}", P.SHIFT
 
-
     # -- unary ---------------------------------------------------------------
 
     def _unary(self, node: Unary) -> Out:

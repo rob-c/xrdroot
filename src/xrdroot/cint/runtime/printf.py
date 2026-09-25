@@ -16,8 +16,21 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
-__all__ = ["cformat", "printf", "Printf", "sprintf", "Form", "fprintf", "puts", "putchar",
-           "Info", "Warning", "Error", "Fatal", "Printf_"]
+__all__ = [
+    "cformat",
+    "printf",
+    "Printf",
+    "sprintf",
+    "Form",
+    "fprintf",
+    "puts",
+    "putchar",
+    "Info",
+    "Warning",
+    "Error",
+    "Fatal",
+    "Printf_",
+]
 
 #: One conversion specification.
 SPEC = re.compile(
@@ -26,8 +39,20 @@ SPEC = re.compile(
 )
 
 #: How many bits an integer argument has, by its length modifier.
-BITS = {"hh": 8, "h": 16, None: 32, "l": 64, "ll": 64, "q": 64, "j": 64, "z": 64, "t": 64,
-        "L": 64, "I64": 64, "I32": 32}
+BITS = {
+    "hh": 8,
+    "h": 16,
+    None: 32,
+    "l": 64,
+    "ll": 64,
+    "q": 64,
+    "j": 64,
+    "z": 64,
+    "t": 64,
+    "L": 64,
+    "I64": 64,
+    "I32": 32,
+}
 
 
 def _signed(value: int, bits: int) -> int:

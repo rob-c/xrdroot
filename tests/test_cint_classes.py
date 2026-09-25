@@ -89,7 +89,8 @@ def test_inheritance_calls_the_base_and_overrides_the_virtual(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     source = """
-    class Shape { public: Shape(const char *n) : fName(n) {} virtual double Area() const { return 0; }
+    class Shape { public: Shape(const char *n) : fName(n) {}
+      virtual double Area() const { return 0; }
       const char *Name() const { return fName; } protected: const char *fName; };
     class Square : public Shape { public: Square(double s) : Shape("square"), fSide(s) {}
       double Area() const override { return fSide * fSide; } private: double fSide; };
@@ -163,7 +164,9 @@ def test_casts_ternaries_commas_and_pointers_to_null(capsys: pytest.CaptureFixtu
     assert output(capsys, source) == "3 -2 2.75 20 103 1\n2147483648 1099511627776 49\n"
 
 
-def test_arguments_given_to_the_macro_reach_its_function(capsys: pytest.CaptureFixture[str]) -> None:
+def test_arguments_given_to_the_macro_reach_its_function(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     source = 'void t(int n = 2, const char *what = "x") { printf("%d %s\\n", n * 2, what); }'
     assert output(capsys, source) == "4 x\n"
     assert output(capsys, source, 5, "y") == "10 y\n"

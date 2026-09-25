@@ -56,7 +56,9 @@ class TypeParser(Cursor):
             pass
         return Specifiers(self._base(base[0] if base else None, builtin, words), words & KEPT)
 
-    def _specifier(self, words: set[str], builtin: list[str], base: list[CType], strict: bool) -> bool:
+    def _specifier(
+        self, words: set[str], builtin: list[str], base: list[CType], strict: bool
+    ) -> bool:
         """Read one specifier into what has been read so far; ``False`` once there are no more."""
         token = self.peek()
         if token.kind != "id" and not token.is_("::"):

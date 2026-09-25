@@ -72,9 +72,7 @@ def report(root: Path, top: int, listing: str | None) -> str:
             lines.extend(f"  {n:>4}  {why}" for why, n in grouped.most_common(top))
     if listing:
         lines.append(f"\n{listing}:")
-        lines.extend(
-            f"  {path.relative_to(root)}: {detail}" for path, detail in outcome[listing]
-        )
+        lines.extend(f"  {path.relative_to(root)}: {detail}" for path, detail in outcome[listing])
     return "\n".join(lines)
 
 
@@ -82,8 +80,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("tutorials", type=Path, help="ROOT's tutorials directory")
     parser.add_argument("--top", type=int, default=25, help="reasons to show of each kind")
-    parser.add_argument("--list", choices=("translated", "refused", "crashed"),
-                        help="also list every file of one kind")
+    parser.add_argument(
+        "--list",
+        choices=("translated", "refused", "crashed"),
+        help="also list every file of one kind",
+    )
     args = parser.parse_args(argv)
     sys.setrecursionlimit(10_000)
     print(report(args.tutorials, args.top, args.list))

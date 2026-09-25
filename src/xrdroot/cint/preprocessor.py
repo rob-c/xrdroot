@@ -487,9 +487,9 @@ def _read(path: Path) -> str:
         return data.decode("latin-1")
 
 
-def preprocess(text: str, file: str = "<macro>", directories: list[Path] | None = None) -> tuple[
-    list[Token], list[Path]
-]:
+def preprocess(
+    text: str, file: str = "<macro>", directories: list[Path] | None = None
+) -> tuple[list[Token], list[Path]]:
     """The tokens of a macro after preprocessing, and the local files it read in."""
     pre = Preprocessor(directories)
     tokens = pre.run(tokenize(text, file))

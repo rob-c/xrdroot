@@ -43,7 +43,8 @@ def test_stores_convert_as_c_converts(capsys: pytest.CaptureFixture[str]) -> Non
 def test_logical_operators_give_zero_or_one_where_their_value_is_used(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    source = 'int a = 5, b = 3; int c = a && b; int d = a || 0; int e = !a; printf("%d %d %d\\n", c, d, e);'
+    source = """int a = 5, b = 3; int c = a && b; int d = a || 0; int e = !a;
+    printf("%d %d %d\\n", c, d, e);"""
     assert block(capsys, source) == "1 1 0\n"
 
 
@@ -115,11 +116,15 @@ def test_printf_and_cout_print_what_cpp_prints(capsys: pytest.CaptureFixture[str
     source = """
     double x = 1.0 / 3; float f = 2.5f; int n = 42; char c = 'z'; bool ok = true;
     std::cout << x << " " << f << " " << n << " " << c << " " << ok << std::endl;
-    std::cout << std::fixed << std::setprecision(3) << x << " " << std::setw(6) << n << "|" << std::endl;
+    std::cout << std::fixed << std::setprecision(3) << x << " "
+              << std::setw(6) << n << "|" << std::endl;
     printf("%5.2f|%-4d|%e\\n", x, n, 1234.5);
     Printf("%s", Form("h%d", n));
     """
-    assert block(capsys, source) == "0.333333 2.5 42 z 1\n0.333     42|\n 0.33|42  |1.234500e+03\nh42\n"
+    assert (
+        block(capsys, source)
+        == "0.333333 2.5 42 z 1\n0.333     42|\n 0.33|42  |1.234500e+03\nh42\n"
+    )
 
 
 def test_strings_are_written_and_read_as_c_and_std_string_are(

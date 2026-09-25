@@ -507,7 +507,7 @@ def _declared_type(tokens: list[Token], index: int) -> str | None:
 
 
 def _templated(tokens: list[Token], ahead: int) -> str | None:
-    """The name a ``template <...>`` starting at ``ahead`` declares: the one before ``(`` or ``{``."""
+    """The name a ``template <...>`` from ``ahead`` declares: the one before ``(`` or ``{``."""
     depth = 1
     last = len(tokens) - 1
     while depth and ahead < last:

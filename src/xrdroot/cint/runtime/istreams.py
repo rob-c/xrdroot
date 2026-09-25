@@ -19,7 +19,9 @@ __all__ = ["istream", "ifstream", "istringstream"]
 #: What ``>>`` reads for each kind of target: the text it takes, from the front of the rest.
 PATTERNS = {
     "integral": re.compile(r"\s*([+-]?\d+)"),
-    "floating": re.compile(r"\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|[+-]?(?:inf|nan))", re.I),
+    "floating": re.compile(
+        r"\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|[+-]?(?:inf|nan))", re.I
+    ),
     "word": re.compile(r"\s*(\S+)"),
     "char": re.compile(r"\s*(\S)"),
 }
@@ -27,8 +29,10 @@ PATTERNS = {
 #: The C++ types, by name, that read as each kind.
 KINDS = {
     **dict.fromkeys(
-        "int short long unsigned bool size_t Int_t Long64_t UInt_t".split()
-        + ["long long", "unsigned int", "unsigned long", "unsigned short"],
+        [
+            *"int short long unsigned bool size_t Int_t Long64_t UInt_t".split(),
+            *["long long", "unsigned int", "unsigned long", "unsigned short"],
+        ],
         "integral",
     ),
     **dict.fromkeys("double float Double_t Float_t long double".split(), "floating"),
@@ -36,7 +40,7 @@ KINDS = {
 }
 
 
-class istream:  # noqa: N801
+class istream:
     """Text read with ``>>``: whitespace-separated, converted to what each target is."""
 
     def __init__(self, text: str = "") -> None:
@@ -90,7 +94,7 @@ class istream:  # noqa: N801
         return not self._failed
 
 
-class ifstream(istream):  # noqa: N801
+class ifstream(istream):
     """``std::ifstream(path)``: a file's text, read with ``>>``; not open if it cannot be read."""
 
     def __init__(self, path: Any = None, *mode: Any) -> None:
@@ -108,13 +112,13 @@ class ifstream(istream):  # noqa: N801
         self._at, self._failed, self._open = 0, False, True
 
 
-class istringstream(istream):  # noqa: N801
+class istringstream(istream):
     """``std::istringstream(text)``: a string, read with ``>>``."""
 
     def __init__(self, text: Any = "") -> None:
         super().__init__(str(text))
 
-    def str(self, text: Any = None) -> str:  # noqa: A003
+    def str(self, text: Any = None) -> str:
         if text is not None:
             self._text, self._at, self._failed = f"{text}", 0, False
             return ""

@@ -74,8 +74,12 @@ class EmitterBase:
     @contextmanager
     def scoped(self, kind: str = "block", **extra: Any) -> Iterator[Scope]:
         outer = self.scope
-        self.scope = Scope(kind, outer, function=extra.get("function", outer.function),
-                           klass=extra.get("klass", outer.klass))
+        self.scope = Scope(
+            kind,
+            outer,
+            function=extra.get("function", outer.function),
+            klass=extra.get("klass", outer.klass),
+        )
         try:
             yield self.scope
         finally:
