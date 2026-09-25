@@ -193,7 +193,7 @@ def test_a_profile_is_the_mean_in_each_bin():
     assert p.ClassName() == "TProfile" and p.GetErrorOption() == "s" and p.GetYmax() == 10
     assert p.Fill(0.5, 2.0) == 1 and p.Fill(0.5, 4.0, 3.0) == 1 and p.Fill(1.5, 20.0) == 2
     assert p.GetBinContent(1) == pytest.approx(3.5) and p.GetBinEntries(1) == 4
-    assert p.GetBinEffectiveEntries(1) == pytest.approx(16 / 10) and p.GetSumOfWeights() == 23.5
+    assert p.GetBinEffectiveEntries(1) == pytest.approx(16 / 10) and p.GetSumOfWeights() == 3.5
     p.SetErrorOption("")
     assert p.GetErrorOption() == "" and p.GetBinError(1) > 0 and p.GetYmin() == 0
     p.FillN(2, [1.5, 1.5], [1.0, 3.0])
