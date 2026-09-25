@@ -115,7 +115,7 @@ class FitResult:
         self.fixed = tuple(bool(flag) for flag in (fixed or [False] * npar))
         #: ``IsParameterBound``, per parameter.
         self.bounded = tuple(bool(flag) for flag in (bounded or [False] * npar))
-        #: ``MinimizerType``: ``"Minuit2 / Migrad"``, or ``"Linear"`` for linear least squares.
+        #: ``MinimizerType``: ``"Minuit2 / Migrad"``, or ``"Linear / Migrad"`` for least squares.
         self.minimizer = minimizer
         #: The :class:`~xrdroot.Function` fitted, as it was left - or ``None``.
         self.function: Any = None
