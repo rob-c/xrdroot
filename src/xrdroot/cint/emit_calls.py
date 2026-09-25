@@ -77,9 +77,17 @@ class CallEmitter(ExprEmitter):
 
     def arguments(self, node: Call) -> str:
         """A call's arguments, with those passed by reference passed as something writable."""
-        positions = set(self.program.reference_positions(node))
+        return self.argument_list(node.args, self.program.reference_positions(node))
+
+    def constructor_arguments(self, ctype: CType, args: list[Expr]) -> str:
+        """Arguments to a constructor of the macro's own, references passed as writable."""
+        positions = self.program.constructor_positions(ctype.name, len(args))
+        return self.argument_list(args, positions)
+
+    def argument_list(self, args: list[Expr], at: tuple[int, ...]) -> str:
+        positions = set(at)
         items = []
-        for index, arg in enumerate(node.args):
+        for index, arg in enumerate(args):
             if index in positions and _lvalue(arg) and not self._object(arg):
                 items.append(self.reference(arg))
             else:

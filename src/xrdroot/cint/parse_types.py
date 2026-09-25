@@ -19,7 +19,7 @@ __all__ = ["TypeParser", "Specifiers"]
 #: Words that qualify a declaration without being its type.
 QUALIFIERS = frozenset(
     """const volatile static extern inline constexpr consteval constinit mutable virtual
-    explicit friend register thread_local typename __extension__ struct class union
+    explicit friend register thread_local typename __extension__ struct class union enum
     R__EXTERN __inline __restrict restrict""".split()
 )
 

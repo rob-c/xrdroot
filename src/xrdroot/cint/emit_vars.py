@@ -195,7 +195,7 @@ class VariableEmitter(StmtEmitter):
             return self.store(ctype, args[0])
         if ctype.pointer or ctype.is_smart or ctype.callable or ctype.is_string:
             return self._held(ctype, args)
-        items = ", ".join(self.value(arg) for arg in args)
+        items = self.constructor_arguments(ctype, args)
         return self._built(ctype, items, decl.style == "{}")
 
     def _built(self, ctype: CType, items: str, braces: bool) -> str:

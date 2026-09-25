@@ -66,6 +66,8 @@ class Parser(StmtParser):
             name = _declared_type(tokens, index)
             if name is not None:
                 self.types.add(name)
+                if token.is_("enum"):
+                    self.aliases[name] = CType("int")
             elif token.kind == "id" and tokens[index + 1].is_("(") and depth == 0:
                 self.functions.add(token.text)
         self._prescan_templates(tokens)
@@ -400,7 +402,7 @@ class Parser(StmtParser):
         name = self.take().text
         self.types.add(name)
         if self.at_("<"):
-            self.skip_brackets()
+            raise self.refuse(f"a specialisation of the class template {name}")
         self.accept("final")
         bases = self._bases() if self.accept(":") else []
         decl = ClassDecl(where, name, kind, bases, self._members(name))

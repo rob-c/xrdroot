@@ -82,6 +82,9 @@ class ExprEmitter(NameEmitter):
     def lambda_(self, node: Lambda) -> Out:
         raise NotImplementedError
 
+    def constructor_arguments(self, ctype: CType, args: list[Expr]) -> str:
+        raise NotImplementedError
+
     def expr(self, node: Any) -> Out:
         return self._EMIT[type(node)](self, node)
 
@@ -402,7 +405,7 @@ class ExprEmitter(NameEmitter):
         ctype = node.ctype
         if node.count is not None:
             return self.new_array(ctype, node.count), P.POSTFIX
-        args = ", ".join(self.value(arg) for arg in node.args or [])
+        args = self.constructor_arguments(ctype, node.args or [])
         if ctype.scalar or ctype.pointer:
             first = node.args[0] if node.args else None
             initial = self.store(ctype, first) if first is not None else zero(ctype)

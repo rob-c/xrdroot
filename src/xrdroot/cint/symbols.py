@@ -16,7 +16,7 @@ from typing import Any
 
 from .ctype import CType
 
-__all__ = ["Symbol", "Scope", "python_name", "RESERVED"]
+__all__ = ["Symbol", "Scope", "python_name", "member_name", "RESERVED"]
 
 #: Names the Python a translation writes relies on, which a macro's own names must not hide.
 RESERVED = frozenset(
@@ -91,6 +91,15 @@ def python_name(name: str, taken: frozenset[str] = frozenset()) -> str:
     if clean in RESERVED or clean in taken or hasattr(builtins, clean):
         return clean + "_"
     return clean
+
+
+def member_name(name: str) -> str:
+    """A C++ member's name as a Python attribute: itself, unless it is one of Python's keywords.
+
+    A member may be called ``set`` or ``sum`` - attributes hide nothing - but
+    not ``print``'s neighbours ``lambda`` or ``import``, which Python's grammar owns.
+    """
+    return name + "_" if keyword.iskeyword(name) else name
 
 
 @dataclass(eq=False)

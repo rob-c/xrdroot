@@ -17,7 +17,7 @@ from .emit_funcs import FunctionEmitter
 from .nodes import ClassDecl, EnumDecl, Expr, Function, Literal, Unary, VarDecl
 from .operators import DUNDERS
 from .program import ClassInfo
-from .symbols import Symbol, python_name
+from .symbols import Symbol, member_name, python_name
 
 __all__ = ["ClassEmitter"]
 
@@ -48,6 +48,7 @@ class ClassEmitter(FunctionEmitter):
     def enum_def(self, decl: EnumDecl) -> None:
         values = self.enum_values(decl)
         if decl.scoped and decl.name:
+            self.out.blank(2 if self.scope.kind == "module" else 1)
             self.out.line(f"class {python_name(decl.name)}:", decl.where)
             with self.out.indented():
                 for name, value in values:
@@ -80,9 +81,12 @@ class ClassEmitter(FunctionEmitter):
         bases = [self._base(base.ctype) for base in decl.bases]
         self.out.blank(2 if self.scope.kind == "module" else 1)
         self.out.line(f"class {py}({', '.join(bases)}):" if bases else f"class {py}:", decl.where)
+        template = set(decl.template or [])
+        self.template_names |= template
         with self.out.indented(), self.scoped("class", klass=decl.name) as scope:
             self._members(info, scope.symbols)
             self._class_body(info)
+        self.template_names -= template
         self.declarators(decl.declarators)
 
     def declarators(self, decls: list[VarDecl]) -> None:
@@ -117,7 +121,7 @@ class ClassEmitter(FunctionEmitter):
     def _class_body(self, info: ClassInfo) -> None:
         for name, var in info.statics.items():
             ctype = self.declared_type(var)
-            self.out.line(f"{python_name(name)} = {self.initial(var, ctype)}", var.where)
+            self.out.line(f"{member_name(name)} = {self.initial(var, ctype)}", var.where)
         for decl in info.decl.members:
             if isinstance(decl, EnumDecl):
                 for name, value in self.enum_values(decl):
@@ -158,7 +162,7 @@ class ClassEmitter(FunctionEmitter):
                 own = python_name(var.name)
                 if aggregate:
                     value = f"{value} if {own} is None else {own}"
-                self.out.line(f"self.{own} = {value}", var.where)
+                self.out.line(f"self.{member_name(var.name)} = {value}", var.where)
 
     def initialise(self, info: ClassInfo, func: Function) -> None:
         """What runs before a constructor's body: its bases, then its members, in C++'s order."""
@@ -171,7 +175,7 @@ class ClassEmitter(FunctionEmitter):
         self._base_inits(info, inits)
         for var in info.fields.values():
             self.out.line(
-                f"self.{python_name(var.name)} = {self.field_value(var, inits)}", var.where
+                f"self.{member_name(var.name)} = {self.field_value(var, inits)}", var.where
             )
 
     def _base_inits(self, info: ClassInfo, inits: dict[str, list[Expr]]) -> None:
@@ -192,6 +196,9 @@ class ClassEmitter(FunctionEmitter):
             return self.initial(var, self.declared_type(var))
         if ctype.dims:
             return self.array_initial(var, ctype)
+        if ctype.name in self.template_names:
+            # C++ leaves a member of a template parameter's type unset: nothing may read it yet.
+            return "None"
         return self.default(ctype, var)
 
     def _method(self, info: ClassInfo, name: str, funcs: list[Function]) -> None:
@@ -214,7 +221,7 @@ class ClassEmitter(FunctionEmitter):
         if func.kind == "destructor":
             return "_destruct"
         if func.kind != "operator":
-            return python_name(func.name)
+            return member_name(func.name)
         names = DUNDERS.get(func.name)
         if names is None:
             raise self.refuse(f"the operator {func.name[8:]} defined for a class", func)
@@ -227,7 +234,7 @@ class ClassEmitter(FunctionEmitter):
 
 def _data_symbols(klass: ClassInfo) -> list[Symbol]:
     """A class's members, static members and enumerators, as its methods see them."""
-    found = [Symbol(n, "field", python_name(n), v.ctype.value()) for n, v in klass.fields.items()]
+    found = [Symbol(n, "field", member_name(n), v.ctype.value()) for n, v in klass.fields.items()]
     found += [Symbol(n, "static", f"{klass.name}.{n}", v.ctype) for n, v in klass.statics.items()]
     found += [Symbol(n, "static", f"{klass.name}.{n}", CType("int")) for n in klass.constants]
     return found

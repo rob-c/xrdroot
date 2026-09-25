@@ -22,11 +22,13 @@ from .nodes import (
     ClassDecl,
     DeclStmt,
     EnumDecl,
+    Expr,
     Function,
     Lambda,
     Member,
     Name,
     Namespace,
+    New,
     Node,
     Param,
     Stmt,
@@ -299,16 +301,17 @@ class Program:
             if isinstance(node, Unary) and node.op == "&" and isinstance(node.operand, Name):
                 yield node.operand.last
             elif isinstance(node, Call):
-                yield from self._written(node)
+                yield from _written(node.args, self.reference_positions(node))
+            elif isinstance(node, (New, VarDecl)) and node.args:
+                positions = self.constructor_positions(node.ctype.name, len(node.args))
+                yield from _written(node.args, positions)
 
-    def _written(self, call: Call) -> Iterator[str]:
-        """The variables a call writes through references: ROOT's known ones, and the macro's."""
-        positions = self.reference_positions(call)
-        for index in positions:
-            if index < len(call.args):
-                arg = call.args[index]
-                if isinstance(arg, Name) and len(arg.parts) == 1:
-                    yield arg.last
+    def constructor_positions(self, name: str, count: int) -> tuple[int, ...]:
+        """Which arguments of a constructor of the macro's class ``name`` it takes by reference."""
+        info = self.classes.get(name)
+        if info is None:
+            return ()
+        return self._user_positions(info.methods.get(name, []), count)
 
     def reference_positions(self, call: Call) -> tuple[int, ...]:
         func = call.func
@@ -318,6 +321,8 @@ class Program:
                 return known
             return self._user_positions(self._methods(func.name), len(call.args))
         if isinstance(func, Name) and len(func.parts) == 1:
+            if func.last in self.classes:
+                return self.constructor_positions(func.last, len(call.args))
             return self._user_positions(self.overloads(func.last), len(call.args))
         return ()
 
@@ -330,6 +335,15 @@ class Program:
             if len(func.params) >= count:
                 return tuple(i for i, p in enumerate(func.params) if by_reference(p.ctype))
         return ()
+
+
+def _written(args: list[Expr], positions: tuple[int, ...]) -> Iterator[str]:
+    """The variables handed to a call where it takes them by reference - they live in cells."""
+    for index in positions:
+        if index < len(args):
+            arg = args[index]
+            if isinstance(arg, Name) and len(arg.parts) == 1:
+                yield arg.last
 
 
 def _all(functions: dict[str, list[Function]]) -> list[Function]:
