@@ -40,6 +40,9 @@ DEFAULT_CACHE = Path(os.environ.get("XRDROOT_TUTORIALS_CACHE", "~/.cache/xrdroot
 #: Bumped whenever how an oracle run is made changes, so old cache entries stop matching.
 ORACLE_SCHEMA = "oracle/1"
 
+#: The reason given for every tutorial ROOT ran when xrdroot was not asked to.
+ORACLE_ONLY = "xrdroot not run (--oracle-only)"
+
 #: Environment entries of CI's that name its build tree, replaced by the harness's own.
 BUILD_TREE_VARIABLES = ("PYTHONPATH", "ROOT_INCLUDE_PATH")
 
@@ -381,6 +384,8 @@ class Harness:
                 record["details"].append(_tail(oracle.result.stderr or oracle.result.stdout))
                 return "ORACLE-FAIL", failed
         if mine is None:
+            if not self.settings.run_xrdroot:
+                return "SKIP", ORACLE_ONLY
             if self.xrdroot_command(tutorial) is None:
                 return "FAIL", classify.NO_RUN
             return "ORACLE-FAIL", "no ROOT run to compare with"

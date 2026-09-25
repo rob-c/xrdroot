@@ -659,3 +659,12 @@ def test_the_oracle_prefix_supplies_root_config_and_its_own_python(tmp_path, mon
     assert environment.python_for("3.99", str(tmp_path / "bin")) == str(tmp_path / "bin" / "python")
     assert environment.python_for("", "") is None
     assert environment.find_oracle(str(tmp_path / "bin" / "nothing")) is None
+
+
+def test_an_oracle_only_run_does_not_blame_xrdroot(harness):
+    from dataclasses import replace
+
+    harness.settings = replace(harness.settings, run_xrdroot=False)
+    records = {record["path"]: record for record in harness.run()}
+    assert records["hist/writer.C"]["status"] == "SKIP"
+    assert records["hist/writer.C"]["oracle"]["exit_code"] == 0
