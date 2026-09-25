@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from xrdroot.pyroot import stl
-from xrdroot.pyroot.stl import std
+from xrdroot.pyroot.stl import NPOS, std
 
 
 def test_every_spelling_of_one_element_type_is_the_one_class():
@@ -27,19 +27,21 @@ def test_every_spelling_of_one_element_type_is_the_one_class():
 
 def test_a_vector_of_numbers_grows_as_it_is_pushed_and_keeps_numpy_storage():
     v = std.vector["float"]()
-    assert v.empty() and v.size() == 0
+    assert (v.empty(), v.size()) == (True, 0)
     for value in (1.5, 2.5, 3.5):
         v.push_back(value)
     v.emplace_back(4.5)
-    assert v.size() == len(v) == 4 and v.capacity() >= 4
-    assert list(v) == [1.5, 2.5, 3.5, 4.5]
-    assert v[0] == 1.5 and v[-1] == 4.5 and v.at(1) == 2.5
-    assert v.front() == 1.5 and v.back() == 4.5
+    assert (v.size(), len(v), v.capacity() >= 4, list(v)) == (4, 4, True, [1.5, 2.5, 3.5, 4.5])
+    assert (v[0], v[-1], v.at(1), v.front(), v.back()) == (1.5, 4.5, 2.5, 1.5, 4.5)
     assert v.data().dtype == np.float32
+
+
+def test_a_vector_of_numbers_is_changed_compared_and_seen_as_an_array():
+    v = std.vector["float"]([1.5, 2.5, 3.5, 4.5])
     v[1] = 9.0
     assert v[1:3].tolist() == [9.0, 3.5]
     v.pop_back()
-    assert v == [1.5, 9.0, 3.5] and v != "abc" and not (v == [1.5])
+    assert (v == [1.5, 9.0, 3.5], v != "abc", v == [1.5]) == (True, True, False)
     assert np.asarray(v, dtype=float).tolist() == [1.5, 9.0, 3.5]
     assert "vector<float>" in repr(v)
 
@@ -90,20 +92,33 @@ def test_a_vector_of_strings_or_vectors_keeps_its_elements_as_objects():
     assert nested.empty()
 
 
-def test_a_string_changes_in_place_and_finds_as_cplusplus_does():
+def test_a_string_finds_and_cuts_as_cplusplus_does():
     s = std.string("hello")
     s += " world"
-    assert str(s) == "hello world" and s.size() == s.length() == len(s) == 11
-    assert s.find("world") == 6 and s.find("nope") == std.string.npos == stl.NPOS
-    assert s.rfind("o") == 7 and s.rfind("q") == std.string.npos
-    assert s.substr(6) == "world" and s.substr(0, 5) == "hello"
-    assert s.c_str() == s.data() == "hello world" and s[0] == "h" and list(s)[:2] == ["h", "e"]
-    assert s.compare("hello world") == 0 and s.compare("a") == 1 and s.compare("z") == -1
-    assert (s + "!") == "hello world!" and ("> " + s) == "> hello world"
-    assert s < "z" and s != 3 and hash(s) == hash("hello world") and repr(s) == "'hello world'"
+    assert (str(s), s.size(), s.length(), len(s)) == ("hello world", 11, 11, 11)
+    assert (s.find("world"), s.find("nope"), s.rfind("o"), s.rfind("q")) == (6, NPOS, 7, NPOS)
+    assert (s.substr(6), s.substr(0, 5), s.c_str(), s.data()) == (
+        "world",
+        "hello",
+        "hello world",
+        "hello world",
+    )
+    assert (s[0], list(s)[:2]) == ("h", ["h", "e"])
+    assert (s.compare("hello world"), s.compare("a"), s.compare("z")) == (0, 1, -1)
+
+
+def test_a_string_is_joined_compared_and_changed_in_place():
+    s = std.string("hello world")
+    assert (s + "!", "> " + s) == ("hello world!", "> hello world")
+    assert (s < "z", s != 3, hash(s) == hash("hello world"), repr(s)) == (
+        True,
+        True,
+        True,
+        "'hello world'",
+    )
     s.append("?")
     s.assign("x")
-    assert s == std.string(b"x") and not s.empty()
+    assert (s == std.string(b"x"), s.empty()) == (True, False)
     s.clear()
     assert s.empty()
 

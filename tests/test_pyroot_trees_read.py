@@ -149,32 +149,46 @@ def test_pyroot_reads_a_branch_as_an_attribute_and_walks_the_tree_entry_by_entry
         tree._private  # noqa: B018
 
 
-def test_branches_and_leaves_answer_roots_questions_about_themselves(tree):
-    names = [branch.GetName() for branch in tree.GetListOfBranches()]
-    assert names == ["px", "n", "arr", "v", "s", "rec"] or "nv" in names
+def test_a_leaf_answers_roots_questions_about_itself_and_its_value(tree):
     leaf = tree.GetLeaf("arr")
-    assert leaf.GetTypeName() == "Double_t" and leaf.GetLeafCount().GetName() == "n"
-    assert leaf.GetValue() == 0.0 and leaf.GetLenStatic() == 1 and not leaf.IsUnsigned()
+    assert (leaf.GetTypeName(), leaf.GetLeafCount().GetName()) == ("Double_t", "n")
+    assert (leaf.GetValue(), leaf.GetLenStatic(), leaf.IsUnsigned()) == (0.0, 1, False)
     tree.GetEntry(6)
-    assert leaf.GetLen() == leaf.GetNdata() == 2 and leaf.GetValue(1) == 7.0
-    assert leaf.GetValue(5) == 0.0 and leaf.GetValueLong64() == 6
-    assert leaf.GetValuePointer().tolist() == [6.0, 7.0] and leaf.GetBranch().GetName() == "arr"
-    assert "Double_t" in repr(leaf) and tree.GetLeaf("px").GetLeafCount() is None
-    assert tree.GetLeaf("s").GetValue() == 2.0 and tree.GetLeaf("s").GetLen() == 1
-    assert tree.GetLeaf("nothing") is None and tree.GetLeaf("px", "px").GetName() == "px"
+    assert (leaf.GetLen(), leaf.GetNdata(), leaf.GetValue(1)) == (2, 2, 7.0)
+    assert (leaf.GetValue(5), leaf.GetValueLong64()) == (0.0, 6)
+    assert leaf.GetValuePointer().tolist() == [6.0, 7.0]
+    assert leaf.GetBranch().GetName() == "arr"
+    assert "Double_t" in repr(leaf)
+    assert tree.GetLeaf("px").GetLeafCount() is None
+    assert (tree.GetLeaf("s").GetValue(), tree.GetLeaf("s").GetLen()) == (2.0, 1)
+
+
+def test_a_tree_finds_its_leaves_by_name_or_by_branch_and_name(tree):
+    names = [branch.GetName() for branch in tree.GetListOfBranches()]
+    assert names in (
+        ["px", "n", "arr", "v", "s", "rec"],
+        ["px", "n", "arr", "nv", "v", "s", "a", "b"],
+    )
+    assert tree.GetLeaf("nothing") is None
+    assert tree.GetLeaf("px", "px").GetName() == "px"
     assert tree.GetLeaf("nothing", "px") is None
     assert len(tree.GetListOfLeaves()) >= 7
+    assert tree.GetBranch("nothing") is None
+
+
+def test_a_branch_answers_roots_questions_about_itself_and_reads_alone(tree):
     branch = tree.GetBranch("px")
-    assert (
-        branch.GetEntries() == ENTRIES and branch.GetTree() is tree and branch.GetMother() is branch
-    )
-    assert branch.GetListOfBranches().GetEntries() == 0 and branch.GetClassName() == ""
-    assert branch.GetBasketSize() > 0 and branch.GetTotBytes() >= 0 and branch.GetZipBytes() >= 0
-    assert branch.GetWriteBasket() >= 0 and branch.GetReadEntry() == 6 and "TBranch" in repr(branch)
+    assert (branch.GetEntries(), branch.GetTree(), branch.GetMother()) == (ENTRIES, tree, branch)
+    assert (branch.GetListOfBranches().GetEntries(), branch.GetClassName()) == (0, "")
+    assert min(branch.GetBasketSize(), branch.GetTotBytes() + 1, branch.GetZipBytes() + 1) > 0
+    tree.GetEntry(6)
+    assert (branch.GetWriteBasket() >= 0, branch.GetReadEntry()) == (True, 6)
+    assert "TBranch" in repr(branch)
     px = np.zeros(1, "f")
     branch.SetAddress(px)
-    assert branch.GetAddress() is not None and branch.GetEntry(8) > 0 and px[0] == 4.0
-    assert tree.GetBranch("nothing") is None
+    assert branch.GetAddress() is not None
+    assert branch.GetEntry(8) > 0
+    assert px[0] == 4.0
 
 
 def test_a_vector_branch_says_the_class_it_holds(path):

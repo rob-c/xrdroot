@@ -113,19 +113,24 @@ def test_a_friend_of_as_many_entries_is_drawn_beside_the_tree(tmp_path):
             assert by_alias.GetFriend("ww").GetEntries() == ENTRIES
 
 
-def test_draw_to_an_entry_list_keeps_the_entries_and_set_entry_list_walks_only_them():
+def test_draw_to_an_entry_list_keeps_the_entries_the_selection_keeps():
     parent = _parent()
     assert parent.Draw(">>elist", "Event % 5 == 0", "entrylist") == 8
     elist = hooks.registry()["elist"]
-    assert isinstance(elist, TEntryList) and elist.GetN() == 8 and elist.GetTreeName() == "T"
-    assert parent.Draw(">>+elist", "Event == 1") == 1 and elist.GetN() == 9
+    assert (isinstance(elist, TEntryList), elist.GetN(), elist.GetTreeName()) == (True, 8, "T")
+    assert (parent.Draw(">>+elist", "Event == 1"), elist.GetN()) == (1, 9)
     assert parent.Draw(">>fresh", "Event < 30", "", 10, 5) == 10
+
+
+def test_set_entry_list_makes_a_loop_a_draw_and_a_scan_go_through_its_entries_alone():
+    parent = _parent()
+    parent.Draw(">>elist", "Event % 5 == 0 || Event == 1", "entrylist")
+    elist = hooks.registry()["elist"]
     parent.SetEntryList(elist)
-    assert parent.GetEntryList() is elist and parent.GetEntryNumber(2) == 5
+    assert (parent.GetEntryList(), parent.GetEntryNumber(2)) == (elist, 5)
     assert [int(event.Event) for event in parent] == [0, 1, 5, 10, 15, 20, 25, 30, 35]
-    assert parent.Draw("x", "", "goff") == 9 and parent.Draw(">>sub", "Event > 20") == 3
-    assert list(hooks.registry()["sub"]) == [25, 30, 35]
-    assert parent.Scan("Event", "Event > 20") == 3
+    assert (parent.Draw("x", "", "goff"), parent.Draw(">>sub", "Event > 20")) == (9, 3)
+    assert (list(hooks.registry()["sub"]), parent.Scan("Event", "Event > 20")) == ([25, 30, 35], 3)
     parent.SetEntryList(None)
     assert parent.Draw("x", "", "goff") == ENTRIES
 

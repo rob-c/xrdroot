@@ -107,28 +107,53 @@ def test_an_rvec_is_a_vector_that_does_numpy_arithmetic_and_is_indexed_by_a_mask
         ROOT.RVec["string"]
 
 
+def _listed(value):
+    return list(value) if hasattr(value, "__len__") else value
+
+
 def test_vecops_of_one_rvec_gives_what_rdataframes_vecops_gives():
     v = ROOT.RVecF([3.0, 1.0, 2.0])
-    assert ROOT.VecOps.Sum(v) == 6.0 and ROOT.VecOps.Max(v) == 3.0 and ROOT.VecOps.Mean(v) == 2.0
-    assert list(ROOT.VecOps.Sort(v)) == [1.0, 2.0, 3.0]
-    assert list(ROOT.VecOps.Argsort(v)) == [1, 2, 0] and ROOT.VecOps.ArgMax(v) == 0
-    assert list(ROOT.VecOps.Take(v, 2)) == [3.0, 1.0] and list(ROOT.VecOps.Take(v, [2, 0])) == [
-        2,
-        3,
+    ops = ROOT.VecOps
+    got = [
+        ops.Sum(v),
+        ops.Max(v),
+        ops.Mean(v),
+        ops.Sort(v),
+        ops.Argsort(v),
+        ops.ArgMax(v),
+        ops.Take(v, 2),
+        ops.Take(v, [2, 0]),
+        ops.Nonzero(ROOT.RVecI([0, 4, 0])),
+        ops.Sum(ROOT.RVecF()),
     ]
-    assert ROOT.VecOps.DeltaPhi(0.1, 3.0) == pytest.approx(2.9)
-    first, second = ROOT.VecOps.Combinations(v, 2)
-    assert list(first) == [0, 0, 1] and list(second) == [1, 2, 2]
-    assert list(ROOT.VecOps.Map(v, lambda x: x * x)) == [9.0, 1.0, 4.0]
-    assert list(ROOT.VecOps.Map(v, v, lambda a, b: a + b)) == [6.0, 2.0, 4.0]
-    assert list(ROOT.VecOps.Filter(v, lambda x: x > 1)) == [3.0, 2.0]
-    assert list(ROOT.VecOps.Nonzero(ROOT.RVecI([0, 4, 0]))) == [1]
-    assert ROOT.VecOps.Sum(ROOT.RVecF()) == 0.0 and np.isnan(ROOT.VecOps.Max(ROOT.RVecF()))
-    mass = ROOT.VecOps.InvariantMass(
+    assert [_listed(each) for each in got] == [
+        6.0,
+        3.0,
+        2.0,
+        [1, 2, 3],
+        [1, 2, 0],
+        0,
+        [3, 1],
+        [2, 3],
+        [1],
+        0.0,
+    ]
+    first, second = ops.Combinations(v, 2)
+    assert (list(first), list(second)) == ([0, 0, 1], [1, 2, 2])
+    assert np.isnan(ops.Max(ROOT.RVecF()))
+    assert ops.DeltaPhi(0.1, 3.0) == pytest.approx(2.9)
+    mass = ops.InvariantMass(
         ROOT.RVecF([10, 20]), ROOT.RVecF([0, 1]), ROOT.RVecF([0, 2]), ROOT.RVecF([0.1, 0.1])
     )
     assert mass == pytest.approx(27.995, abs=1e-3)
-    assert ROOT.VecOps.Sum.__name__ == "Sum" and repr(ROOT.VecOps) == "<namespace ROOT::VecOps>"
+
+
+def test_vecops_maps_and_filters_with_python_functions_and_refuses_what_it_lacks():
+    v = ROOT.RVecF([3.0, 1.0, 2.0])
+    assert list(ROOT.VecOps.Map(v, lambda x: x * x)) == [9.0, 1.0, 4.0]
+    assert list(ROOT.VecOps.Map(v, v, lambda a, b: a + b)) == [6.0, 2.0, 4.0]
+    assert list(ROOT.VecOps.Filter(v, lambda x: x > 1)) == [3.0, 2.0]
+    assert (ROOT.VecOps.Sum.__name__, repr(ROOT.VecOps)) == ("Sum", "<namespace ROOT::VecOps>")
     with pytest.raises(AttributeError, match=r"ROOT has VecOps\.Nope; xrdroot\.pyroot does not"):
         ROOT.VecOps.Nope  # noqa: B018
     with pytest.raises(AttributeError, match=r"ROOT has VecOps\._rows"):

@@ -45,45 +45,53 @@ def files(tmp_path):
 
 def test_a_chain_adds_files_by_name_by_wildcard_and_by_another_chain(files, tmp_path):
     chain = TChain("events")
-    assert chain.GetEntries() == 0 and chain.GetNtrees() == 0
+    assert (chain.GetEntries(), chain.GetNtrees()) == (0, 0)
     with pytest.raises(ValueError, match="has no files; Add some first"):
         chain.Draw("x")
-    assert chain.Add(files[0]) == 1
-    assert chain.Add(str(tmp_path / "run[12].root")) == 2
-    assert chain.GetNtrees() == 3 and chain.GetEntries() == 30
+    added = (chain.Add(files[0]), chain.Add(str(tmp_path / "run[12].root")))
+    assert (added, chain.GetNtrees(), chain.GetEntries()) == ((1, 2), 3, 30)
     assert [element.GetTitle() for element in chain.GetListOfFiles()] == files
     assert chain.GetListOfFiles()[0].GetName() == "events"
     other = TChain("events")
-    assert other.Add(chain) == 3 and other.AddFile(files[0], -1, "events") == 1
-    assert other.GetEntries() == 40 and other.GetEntries("x < 5") == 10
-    assert other.ClassName() == "TChain"
+    added = (other.Add(chain), other.AddFile(files[0], -1, "events"))
+    assert (added, other.GetEntries(), other.GetEntries("x < 5")) == ((3, 1), 40, 10)
     named = TChain("ignored")
     named.Add(f"{files[1]}/events")
-    assert named.GetEntries() == PER_FILE
+    assert (named.GetEntries(), other.ClassName()) == (PER_FILE, "TChain")
     for each in (chain, other, named):
         each._xrd.close()
 
 
-def test_a_chain_reads_entries_across_its_files_and_knows_which_file_each_is_in(files):
+def _chained(files):
     chain = TChain("events")
     for path in files:
         chain.Add(path)
-    assert chain.GetTreeNumber() == -1
+    return chain
+
+
+def test_a_chain_reads_entries_across_its_files_in_order(files):
+    chain = _chained(files)
     x = np.zeros(1)
     chain.SetBranchAddress("x", x)
-    assert chain.LoadTree(25) == 5 and chain.GetTreeNumber() == 2
-    assert chain.LoadTree(99) == -2 and chain.GetTreeOffset() == [0, 10, 20, 30]
     total = 0.0
     for i in range(chain.GetEntries()):
         chain.GetEntry(i)
         total += x[0]
-    assert total == sum(range(30)) and chain.GetTreeNumber() == 2
-    tree = chain.GetTree()
-    assert tree.GetEntries() == PER_FILE and tree.ClassName() == "TTree"
+    assert (total, chain.GetTreeNumber()) == (sum(range(30)), 2)
     assert chain.Draw("x", "x > 14", "goff") == 15
     assert [branch.GetName() for branch in chain.GetListOfBranches()] == ["x", "nv", "v"]
     wrapped = wrap(chain._xrd)
-    assert wrapped.GetEntries() == 30 and wrapped.GetNtrees() == 3
+    assert (wrapped.GetEntries(), wrapped.GetNtrees()) == (30, 3)
+    chain._xrd.close()
+
+
+def test_a_chain_knows_which_file_each_entry_is_in(files):
+    chain = _chained(files)
+    assert chain.GetTreeNumber() == -1
+    assert (chain.LoadTree(25), chain.GetTreeNumber(), chain.LoadTree(99)) == (5, 2, -2)
+    assert chain.GetTreeOffset() == [0, 10, 20, 30]
+    tree = chain.GetTree()
+    assert (tree.GetEntries(), tree.ClassName()) == (PER_FILE, "TTree")
     chain._xrd.close()
 
 
@@ -105,18 +113,25 @@ def test_a_reader_walks_every_entry_and_its_values_read_as_cplusplus_reads_them(
         seen = []
         while reader.Next():
             seen.append((x.Get()[0], x.__deref__(), float(x), int(x), list(v), len(v)))
-        assert len(seen) == PER_FILE and seen[2] == (2.0, 2.0, 2.0, 2, [2.0, 2.0], 2)
-        assert reader.GetCurrentEntry() == PER_FILE and x.IsValid() and x.GetBranchName() == "x"
+        assert (len(seen), seen[2]) == (PER_FILE, (2.0, 2.0, 2.0, 2, [2.0, 2.0], 2))
+        assert (reader.GetCurrentEntry(), x.IsValid(), x.GetBranchName()) == (PER_FILE, True, "x")
+        with pytest.raises(KeyError, match="no branch called 'nope'"):
+            TTreeReaderValue(reader, "nope")
+
+
+def test_a_reader_walks_a_range_and_is_set_to_any_entry(files):
+    with xrdroot.open_root(files[0]) as f:
+        reader = TTreeReader("events", f)
+        x = TTreeReaderValue["double"](reader, "x")
+        v = TTreeReaderArray["float"](reader, "v")
         reader.Restart()
         reader.SetEntriesRange(4, 7)
         assert list(reader) == [4, 5, 6]
-        assert reader.SetEntry(8) == 8 and reader.SetEntry(3) == 0 and x.__deref__() == 3.0
+        assert (reader.SetEntry(8), reader.SetEntry(3), x.__deref__()) == (8, 0, 3.0)
         reader.SetEntry(5)
-        assert v.GetSize() == v.size() == 2 and v[1] == 5.0 and v.At(0) == 5.0
-        assert not v.IsEmpty() and list(iter(v)) == [5.0, 5.0]
-        assert reader.GetEntries() == PER_FILE and not reader.IsChain()
-        with pytest.raises(KeyError, match="no branch called 'nope'"):
-            TTreeReaderValue(reader, "nope")
+        assert (v.GetSize(), v.size(), v[1], v.At(0), v.IsEmpty()) == (2, 2, 5.0, 5.0, False)
+        assert list(iter(v)) == [5.0, 5.0]
+        assert (reader.GetEntries(), reader.IsChain()) == (PER_FILE, False)
 
 
 def test_a_reader_is_made_from_a_tree_a_chain_a_path_or_nothing(files):
@@ -124,7 +139,7 @@ def test_a_reader_is_made_from_a_tree_a_chain_a_path_or_nothing(files):
     chain.Add(files[0])
     chain.Add(files[1])
     reader = TTreeReader(chain)
-    assert reader.IsChain() and reader.GetEntries() == 20 and reader.GetTree() is chain
+    assert (reader.IsChain(), reader.GetEntries(), reader.GetTree()) == (True, 20, chain)
     chain._xrd.close()
     by_path = TTreeReader("events", files[2])
     x = TTreeReaderValue(by_path, "x")

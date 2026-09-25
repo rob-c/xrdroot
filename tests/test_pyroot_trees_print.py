@@ -34,29 +34,32 @@ def _tree(entries: int = 5) -> TTree:
     return t
 
 
+def _branch(number: int, name: str, title: str) -> list[str]:
+    """The four lines ROOT prints for a branch of a tree not yet written, as patterns."""
+    return [
+        re.escape(f"*Br{number:5d} :{name:<9} : {title}".ljust(77) + "*"),
+        r"\*Entries :        5 : Total  Size= +\d+ bytes  One basket in memory    \*",
+        re.escape("*Baskets :        0 : Basket Size=      32000 bytes  Compression=   1.00     *"),
+        re.escape("*" + "." * 76 + "*"),
+    ]
+
+
 def test_print_lays_the_tree_and_every_branch_out_in_roots_table(capsys):
     _tree().Print()
     lines = capsys.readouterr().out.splitlines()
-    assert all(len(line) == 78 for line in lines)
-    assert lines[0] == "*" * 78
-    assert lines[1] == "*Tree    :T         : a tree to print".ljust(77) + "*"
-    assert re.fullmatch(
-        r"\*Entries :        5 : Total = +\d+ bytes  File  Size = +\d+ \*", lines[2]
-    )
-    assert re.fullmatch(
-        r"\*        :          : Tree compression factor = +\d+\.\d\d +\*", lines[3]
-    )
-    assert lines[5] == "*Br    0 :x         : x/D".ljust(77) + "*"
-    assert re.fullmatch(
-        r"\*Entries :        5 : Total  Size= +\d+ bytes  One basket in memory    \*", lines[6]
-    )
-    assert (
-        lines[7] == "*Baskets :        0 : Basket Size=      32000 bytes  Compression=   1.00     *"
-    )
-    assert lines[2].endswith("File  Size =          0 *") and "factor =   1.00 " in lines[3]
-    assert lines[8] == "*" + "." * 76 + "*"
-    assert lines[13].startswith("*Br    2 :a         : a[n]/F ")
-    assert len(lines) == 5 + 3 * 4
+    patterns = [
+        re.escape("*" * 78),
+        re.escape("*Tree    :T         : a tree to print".ljust(77) + "*"),
+        r"\*Entries :        5 : Total = +\d+ bytes  File  Size =          0 \*",
+        re.escape("*        :          : Tree compression factor =   1.00" + " " * 23 + "*"),
+        re.escape("*" * 78),
+        *_branch(0, "x", "x/D"),
+        *_branch(1, "n", "n/I"),
+        *_branch(2, "a", "a[n]/F"),
+    ]
+    assert len(lines) == len(patterns)
+    assert [bool(re.fullmatch(p, line)) for p, line in zip(patterns, lines)] == [True] * len(lines)
+    assert {len(line) for line in lines} == {78}
 
 
 def test_a_tree_written_prints_its_baskets_on_file(capsys, tmp_path):
@@ -172,26 +175,30 @@ def test_draw_returns_the_number_selected_and_leaves_what_it_filled_in_the_direc
     monkeypatch.setattr(hooks, "wrap", lambda obj: ("wrapped", obj))
     t = _tree(10)
     assert t.Draw("x", "n > 12") == 7
-    assert drawn[-1][0][0] == "wrapped" and drawn[-1][1] == "" and "htemp" in objects
-    assert t.Draw("x>>hx(10, 0, 20)", "", "goff") == 10 and len(drawn) == 1
-    assert objects["hx"].name == "hx"
-    assert t.Draw("x>>+hx", "", "goff") == 10 and objects["hx"].entries == 20
+    assert (drawn[-1][0][0], drawn[-1][1], "htemp" in objects) == ("wrapped", "", True)
+    assert (t.Draw("x>>hx(10, 0, 20)", "", "goff"), len(drawn), objects["hx"].name) == (10, 1, "hx")
+    assert (t.Draw("x>>+hx", "", "goff"), objects["hx"].entries) == (10, 20)
+
+
+def test_draw_takes_aliases_weights_ranges_and_estimates(monkeypatch):
+    objects = {}
+    monkeypatch.setattr(hooks, "registry", lambda: objects)
+    t = _tree(10)
     t.SetAlias("twice", "2 * x")
-    assert t.GetAlias("twice") == "2 * x" and t.GetAlias("nope") is None
+    assert (t.GetAlias("twice"), t.GetAlias("nope")) == ("2 * x", None)
     assert t.Draw("twice", "twice > 10", "goff", 5, 3) == 3
     t.SetWeight(2.0)
-    assert t.GetWeight() == 2.0 and t.Draw("x", "", "goff") == 10
+    assert (t.GetWeight(), t.Draw("x", "", "goff")) == (2.0, 10)
     assert objects["htemp"].sum(flow=True) == pytest.approx(20)
     t.SetEstimate(50)
     t.SetEstimate(-1)
-    assert t.GetEstimate() == 50
-    assert t.SetScanField(10) is None
+    assert (t.GetEstimate(), t.SetScanField(10)) == (50, None)
 
 
 def test_the_attributes_a_tree_draws_with_are_kept_for_graphics():
     t = _tree()
     t.SetMarkerColor(2)
     t.SetFillStyle(3001)
-    assert t.GetMarkerColor() == 2 and t.GetFillStyle() == 3001 and t.GetLineWidth() == 1
+    assert (t.GetMarkerColor(), t.GetFillStyle(), t.GetLineWidth()) == (2, 3001, 1)
     t.SetNameTitle("renamed", "and retitled")
     assert (t.GetName(), t.GetTitle()) == ("renamed", "and retitled")

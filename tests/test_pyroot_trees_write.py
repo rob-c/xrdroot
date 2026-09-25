@@ -27,6 +27,11 @@ class Cell:
             self.dtype = dtype
 
 
+def _plain(values):
+    """A column as plain lists, whatever it was read back as."""
+    return values.tolist() if hasattr(values, "tolist") else list(values)
+
+
 def _written(tmp_path, tree, name="t"):
     path = tmp_path / "out.root"
     with xrdroot.create(str(path)) as f:
@@ -60,14 +65,21 @@ def test_every_kind_of_address_is_read_at_the_moment_fill_is_called(tmp_path):
         text.assign(f"e{i}")
         label[:3] = f"l{i}\0".encode()[:3]
         assert t.Fill() > 0
-    assert t.GetEntries() == len(t) == 6 and bool(TTree("empty", ""))
+    assert (t.GetEntries(), len(t), bool(TTree("empty", ""))) == (6, 6, True)
     got = _written(tmp_path, t)
-    assert got["px"].tolist() == [0, 1.5, 3, 4.5, 6, 7.5] and got["py"].dtype == np.float32
-    assert got["ev"].tolist() == list(range(6)) and got["n"].tolist() == [0, 1, 2, 0, 1, 2]
-    assert [list(row) for row in got["arr"]] == [[], [1], [2, 3], [], [4], [5, 6]]
-    assert [list(row) for row in got["vec"]] == [[0], [0, 1]] * 3
-    assert got["text"] == [f"e{i}" for i in range(6)] and got["label"][2] == "l2"
-    assert got["w"].tolist() == [i / 4 for i in range(6)]
+    assert {name: _plain(values) for name, values in got.items()} == {
+        "px": [0, 1.5, 3, 4.5, 6, 7.5],
+        "py": [0, -1, -2, -3, -4, -5],
+        "ev": [0, 1, 2, 3, 4, 5],
+        "n": [0, 1, 2, 0, 1, 2],
+        "arr": [[], [1], [2, 3], [], [4], [5, 6]],
+        "nvec": [1, 2, 1, 2, 1, 2],
+        "vec": [[0], [0, 1]] * 3,
+        "label": ["l0", "l1", "l2", "l3", "l4", "l5"],
+        "w": [0, 0.25, 0.5, 0.75, 1.0, 1.25],
+        "text": ["e0", "e1", "e2", "e3", "e4", "e5"],
+    }
+    assert got["py"].dtype == np.float32
 
 
 def test_a_leaf_list_of_several_leaves_reads_each_member_of_what_it_was_given(tmp_path):
