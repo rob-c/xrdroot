@@ -1,0 +1,105 @@
+"""What a name means where it is used: the scopes of a translation and their symbols.
+
+A C++ name can be a local, a parameter, a member of the class whose method
+is being translated, a global, a function, a class, an enumerator - or,
+when the macro declares nothing by that name, one of ROOT's. Each becomes
+different Python (``x``, ``x.value``, ``self.x``, ``Foo.x``, ``ROOT.x``),
+and a :class:`Scope` chain answers which.
+"""
+
+from __future__ import annotations
+
+import builtins
+import keyword
+from dataclasses import dataclass, field
+from typing import Any, Optional
+
+from .ctype import CType
+
+__all__ = ["Symbol", "Scope", "python_name", "RESERVED"]
+
+#: Names the Python a translation writes relies on, which a macro's own names must not hide.
+RESERVED = frozenset(
+    set(keyword.kwlist)
+    | {"self", "ROOT", "int", "float", "bool", "str", "len", "range", "print", "isinstance",
+       "min", "max", "abs", "chr", "ord", "super", "object", "list", "sum", "enumerate",
+       "iter", "next", "type", "tuple", "dict", "set", "id", "None", "True", "False",
+       "staticmethod", "Exception", "RuntimeError", "SystemExit", "zip", "map", "filter",
+       "sorted", "reversed", "round", "pow", "hex", "oct", "divmod", "open", "input",
+       "format", "vars", "exec", "eval", "compile", "globals", "locals", "hash", "all", "any",
+       "match", "case", "_"}
+)
+
+
+def python_name(name: str, taken: frozenset[str] = frozenset()) -> str:
+    """A C++ identifier as a Python one that hides nothing the translation needs."""
+    clean = name.replace("$", "_")
+    if clean in RESERVED or clean in taken or hasattr(builtins, clean):
+        return clean + "_"
+    return clean
+
+
+@dataclass(eq=False)
+class Symbol:
+    """One declared name: what it is, its C++ type, and the Python that stands for it.
+
+    ``kind`` is ``local``, ``param``, ``global``, ``field``, ``static``,
+    ``method``, ``function``, ``class``, ``enum`` or ``constant``. A symbol
+    with ``cell`` set lives in a :class:`~xrdroot.cint.runtime.Cell`; one
+    with ``alias`` set is a C++ reference, and every use of it is the
+    expression it was bound to.
+    """
+
+    name: str
+    kind: str
+    py: str
+    ctype: Optional[CType] = None
+    cell: bool = False
+    alias: Any = None
+    owner: Optional[str] = None
+
+
+@dataclass(eq=False)
+class Scope:
+    """A block, function, class or the module: its symbols, and the scope around it."""
+
+    kind: str
+    parent: Optional[Scope] = None
+    symbols: dict[str, Symbol] = field(default_factory=dict)
+    #: The function this scope belongs to, when it is inside one.
+    function: Any = None
+    #: The class whose method this is, when it is one.
+    klass: Optional[str] = None
+
+    def lookup(self, name: str) -> Symbol | None:
+        scope: Scope | None = self
+        while scope is not None:
+            found = scope.symbols.get(name)
+            if found is not None:
+                return found
+            scope = scope.parent
+        return None
+
+    def add(self, symbol: Symbol) -> Symbol:
+        self.symbols[symbol.name] = symbol
+        return symbol
+
+    def visible(self, name: str) -> bool:
+        """Is ``name`` declared in an enclosing scope of the same function - so a new one shadows?"""
+        scope: Scope | None = self
+        while scope is not None and scope.kind in ("block", "function"):
+            if name in scope.symbols:
+                return True
+            if scope.kind == "function":
+                return False
+            scope = scope.parent
+        return False
+
+    def taken(self) -> set[str]:
+        """Every Python name in use in this function's scopes."""
+        names: set[str] = set()
+        scope: Scope | None = self
+        while scope is not None:
+            names.update(symbol.py for symbol in scope.symbols.values())
+            scope = scope.parent
+        return names
