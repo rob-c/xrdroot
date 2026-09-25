@@ -78,5 +78,5 @@ def frame_histogram(xmin: float, ymin: float, xmax: float, ymax: float, title: s
     frame.SetTitle(title)
     held = frame._xrd._core
     held.update(fMinimum=float(ymin), fMaximum=float(ymax))
-    held["TObject"]["fBits"] = int(held["TObject"].get("fBits", 0)) | NO_STATS
+    held["TNamed"]["fBits"] = int(held["TNamed"].get("fBits", 0)) | NO_STATS
     return frame

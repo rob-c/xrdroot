@@ -229,7 +229,7 @@ def _or_none(values: Any) -> Any:
 
 
 def polyline(scene: Scene, prim: Primitive, option: str) -> None:
-    """A ``TPolyLine``: its points joined, or an area when its option, or how it was drawn, has ``f``."""
+    """A ``TPolyLine``: its points joined, or an area when it is drawn with ``f``."""
     from matplotlib.lines import Line2D
     from matplotlib.patches import Polygon
 

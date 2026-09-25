@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from pyrootgraphics import fresh_session, gaussian  # noqa: F401
 
 import xrdroot.pyroot as ROOT
+from pyrootgraphics import fresh_session, gaussian  # noqa: F401
 from xrdroot.pyroot.graphics import snapshot
 
 

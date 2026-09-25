@@ -9,9 +9,9 @@ on the figure.
 from __future__ import annotations
 
 import pytest
-from pyrootgraphics import fresh_session, gaussian, graph  # noqa: F401
 
 import xrdroot.pyroot as ROOT
+from pyrootgraphics import fresh_session, gaussian, graph  # noqa: F401
 from xrdroot.canvas import Canvas, Pad
 from xrdroot.pyroot import graphics
 from xrdroot.pyroot.graphics import pads, snapshot

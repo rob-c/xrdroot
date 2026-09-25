@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import pytest
-from pyrootgraphics import fresh_session  # noqa: F401
 
 import xrdroot.pyroot as ROOT
+from pyrootgraphics import fresh_session  # noqa: F401
 from xrdroot.pyroot.graphics import colors, style
 
 
