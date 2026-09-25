@@ -34,6 +34,18 @@ def _kept(made: Any) -> Any:
     return wrapped
 
 
+def _within(r1: float, low: float, high: float) -> float:
+    """How far into its bin a draw lands: ROOT adds nothing when it is at the bin's start."""
+    return float((r1 - low) / (high - low)) if r1 > low else 0.0
+
+
+def _histogram(obj: Any) -> bool:
+    """Does ``obj`` stand for a histogram - rather than a function to add?"""
+    from ...hist import Histogram
+
+    return isinstance(unwrap(obj), Histogram)
+
+
 def _range(first: int, last: int) -> Any:
     """ROOT's ``(first, last)`` bin arguments: all of them, flow included, when ``last < first``."""
     return None if last < first else (int(first), int(last))
@@ -94,19 +106,17 @@ class Operations:
     # -- arithmetic ---------------------------------------------------------------------
 
     def Add(self, h1: Any, *rest: Any) -> bool:
-        """``Add(h1, c1)``, or ``Add(h1, h2, c1, c2)``: this becomes ``c1*h1 + c2*h2``."""
-        if rest and hasattr(rest[0], "_xrd"):
-            c1, c2 = (
-                (float(rest[1]) if len(rest) > 1 else 1.0),
-                (float(rest[2]) if len(rest) > 2 else 1.0),
-            )
+        """``Add(h1, c1)``, ``Add(h1, h2, c1, c2)``: ``c1*h1 + c2*h2``; ``Add(f1, c1)``: f1."""
+        if rest and _histogram(rest[0]):
+            numbers = [float(value) for value in rest[1:3]] + [1.0, 1.0]
             self._xrd.reset()
-            self._xrd.add(unwrap(h1), c1)
-            self._xrd.add(unwrap(rest[0]), c2)
+            self._xrd.add(unwrap(h1), numbers[0])
+            self._xrd.add(unwrap(rest[0]), numbers[1])
             return True
-        if not hasattr(h1, "_xrd"):
-            return self._add_function(h1, float(rest[0]) if rest else 1.0)
-        self._xrd.add(unwrap(h1), float(rest[0]) if rest else 1.0)
+        factor = float(rest[0]) if rest else 1.0
+        if not _histogram(h1):
+            return self._add_function(h1, factor)
+        self._xrd.add(unwrap(h1), factor)
         return True
 
     def _add_function(self, f1: Any, c1: float) -> bool:
@@ -344,14 +354,9 @@ class Operations:
         nbins = len(integral) - 1
         ibin = int(np.searchsorted(integral[:nbins], r1, side="right")) - 1
         axis = self.GetXaxis()  # type: ignore[attr-defined]
-        x = float(axis.GetBinLowEdge(ibin + 1))
-        if r1 > integral[ibin]:
-            x += (
-                axis.GetBinWidth(ibin + 1)
-                * (r1 - integral[ibin])
-                / (integral[ibin + 1] - integral[ibin])
-            )
-        return x
+        return float(axis.GetBinLowEdge(ibin + 1)) + axis.GetBinWidth(ibin + 1) * _within(
+            r1, integral[ibin], integral[ibin + 1]
+        )
 
     def GetRandom2(self, x: Any = None, y: Any = None, rng: Any = None) -> tuple[float, float]:
         """``GetRandom2(x, y)``: a point drawn from a two-dimensional histogram."""
@@ -366,12 +371,7 @@ class Operations:
         biny, binx = divmod(ibin, nx)
         xaxis, yaxis = self.GetXaxis(), self.GetYaxis()  # type: ignore[attr-defined]
         px = float(xaxis.GetBinLowEdge(binx + 1))
-        if r1 > integral[ibin]:
-            px += (
-                xaxis.GetBinWidth(binx + 1)
-                * (r1 - integral[ibin])
-                / (integral[ibin + 1] - integral[ibin])
-            )
+        px += xaxis.GetBinWidth(binx + 1) * _within(r1, integral[ibin], integral[ibin + 1])
         py = float(yaxis.GetBinLowEdge(biny + 1)) + yaxis.GetBinWidth(biny + 1) * float(
             generator.rndm()
         )
