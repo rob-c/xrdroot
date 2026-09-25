@@ -386,6 +386,8 @@ class ExprEmitter(NameEmitter):
             return f"dynamic_cast({kind}, {self.value(node.operand)})", P.POSTFIX
         if target.scalar:
             return self.store(target, node.operand), P.POSTFIX
+        if target.pointer and _is_null(node.operand):
+            return "None", P.ATOM
         if target.is_string and not target.is_array and self.typeof(node.operand) is None:
             return f"cstr({self.value(node.operand)})", P.POSTFIX
         return self.expr(node.operand)

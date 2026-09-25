@@ -72,7 +72,7 @@ class ClassEmitter(FunctionEmitter):
             elif isinstance(last, int):
                 last += 1
             else:
-                last = f"{last} + 1"
+                last = f"{values[-1][0]} + 1"
             values.append((name, str(last)))
         return values
 
@@ -87,11 +87,12 @@ class ClassEmitter(FunctionEmitter):
             for name, value in values:
                 symbol = self.lookup(name)
                 self.out.line(f"{symbol.py if symbol else name} = {value}", decl.where)
-        for var in decl.declarators:
-            self.local_variable(var)
+        self.declarators(decl.declarators)
 
     def local_enum(self, decl: EnumDecl) -> None:
         home = python_name(decl.name) if decl.scoped and decl.name else ""
+        if home:
+            self.scope.add(Symbol(str(decl.name), "class", home))
         for name, _ in decl.items:
             py = f"{home}.{name}" if home else python_name(name)
             self.scope.add(Symbol(name, "constant", py, CType("int")))
@@ -115,6 +116,11 @@ class ClassEmitter(FunctionEmitter):
         with self.out.indented(), self.scoped("class", klass=decl.name) as scope:
             self._members(info, scope.symbols)
             self._class_body(info)
+        self.declarators(decl.declarators)
+
+    def declarators(self, decls: list[VarDecl]) -> None:
+        """``struct P {...} p;``: the variables declared with a class or enum."""
+        raise NotImplementedError
 
     def _class_symbol(self, name: str) -> Symbol:
         symbol = self.lookup(name)

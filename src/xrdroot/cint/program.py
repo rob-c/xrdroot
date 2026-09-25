@@ -164,7 +164,17 @@ class Program:
         self.class_statics: set[int] = set()
         self._flatten(unit.decls)
         self._attach()
+        self._locals()
         self._escapes()
+
+    def _locals(self) -> None:
+        """Classes and enums declared inside functions: known by name, as they are in C++."""
+        found = [node for _, _, body in list(self.bodies()) for node in walk(body)]
+        for node in found:
+            if isinstance(node, ClassDecl):
+                self._class(node)
+            elif isinstance(node, EnumDecl) and node.name:
+                self.enums[node.name] = node
 
     # -- collecting ---------------------------------------------------------
 

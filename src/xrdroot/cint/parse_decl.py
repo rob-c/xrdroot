@@ -108,10 +108,11 @@ class Parser(StmtParser):
 
     def _namespace(self) -> Stmt:
         where = self.take().where
-        name = None
+        parts = []
         while self.peek().kind == "id":
-            name = self.take().text
+            parts.append(self.take().text)
             self.accept("::")
+        name = "::".join(parts) or None
         if self.accept("="):
             self.skip_to(";")
             return Empty(where)
@@ -219,6 +220,10 @@ class Parser(StmtParser):
     def function_or_variable(self) -> Stmt:
         """A function (declared or defined) or variables, at namespace or class scope."""
         where = self.where
+        conversion = self._conversion_head()
+        if conversion is not None:
+            spec = Specifiers(CType("auto"), set())
+            return self.function_rest(where, spec, CType("auto"), [], conversion, "operator")
         head = self._constructor_head()
         if head is not None:
             scope, name, kind = head
@@ -248,6 +253,16 @@ class Parser(StmtParser):
             decls.extend(self.declarators(spec))
         self.expect(";")
         return DeclStmt(where, decls)
+
+    def _conversion_head(self) -> str | None:
+        """``operator double()`` in a class: a conversion, which names no return type first."""
+        start = self.at
+        while self.accept(*CONSTRUCTOR_WORDS):
+            pass
+        if self.classes and self.at_("operator"):
+            return self.operator_name()
+        self.at = start
+        return None
 
     def _constructor_head(self) -> tuple[list[str], str, str] | None:
         start = self.at
@@ -491,7 +506,7 @@ class Parser(StmtParser):
             return EnumDecl(where, name, [], scoped)
         decl = EnumDecl(where, name, self._enumerators(), scoped)
         if not self.at_(";"):
-            decl.declarators = self.declarators(Specifiers(CType(name or "int"), set()))
+            decl.declarators = self.declarators(Specifiers(CType("int"), set()))
         self.expect(";")
         return decl
 
@@ -520,4 +535,10 @@ def _templated(tokens: list[Token], ahead: int) -> str | None:
 
 def parse(tokens: list[Token]) -> Unit:
     """A preprocessed macro's tokens as a syntax tree."""
-    return Parser(tokens).unit()
+    parser = Parser(tokens)
+    try:
+        return parser.unit()
+    except NoParse:
+        # Every guess the parser makes is taken back where it is made; one that
+        # escapes is C++ none of the guesses fits.
+        raise parser.refuse("C++ this translator cannot read") from None

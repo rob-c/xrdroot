@@ -104,7 +104,7 @@ class StmtParser(ExprParser):
         if self.peek().text in self.functions and self.peek(1).is_("("):
             raise NoParse
         spec = self.specifiers()
-        if self.at_("[") and spec.ctype.is_auto:
+        if spec.ctype.is_auto and self._binding_ahead():
             return True
         if self.at_(";") and spec.words - {"const"}:
             raise NoParse
@@ -116,7 +116,7 @@ class StmtParser(ExprParser):
     def declaration_statement(self) -> DeclStmt:
         where = self.where
         spec = self.specifiers()
-        if self.at_("["):
+        if self._binding_ahead():
             decl = self.binding(spec)
             self.expect(";")
             return DeclStmt(where, [decl])
@@ -148,6 +148,12 @@ class StmtParser(ExprParser):
         elif self.at_("{"):
             decl.args = self.braced().items
             decl.style = "{}"
+
+    def _binding_ahead(self) -> bool:
+        """``[a, b]`` or ``&[a, b]`` after ``auto``: a structured binding's names come next."""
+        while self.at_("&", "&&") and self.peek(1).is_("["):
+            self.take()
+        return self.at_("[")
 
     def binding(self, spec: Specifiers) -> VarDecl:
         """``auto [a, b] = pair``: a structured binding, its names, and what it unpacks."""
@@ -254,7 +260,7 @@ class StmtParser(ExprParser):
 
     def _range_head(self) -> VarDecl:
         spec = self.specifiers()
-        if self.at_("["):
+        if self._binding_ahead():
             decl = self.binding(spec)
         else:
             where = self.where

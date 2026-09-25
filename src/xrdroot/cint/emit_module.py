@@ -101,6 +101,13 @@ class Translator(ClassEmitter):
         elif isinstance(decl, Function):
             self._free_function(decl)
 
+    def declarators(self, decls: list[VarDecl]) -> None:
+        if self.scope.kind == "module":
+            self._globals(DeclStmt(self.scope_where, decls))
+        else:
+            for var in decls:
+                self.local_variable(var)
+
     def _globals(self, decl: DeclStmt) -> None:
         for var in decl.decls:
             if id(var) in self.program.class_statics:
@@ -154,6 +161,6 @@ def _namespaces(decls: list[Stmt]) -> set[str]:
     for decl in decls:
         if isinstance(decl, Namespace):
             if decl.name:
-                found.add(decl.name)
+                found.update(decl.name.split("::"))
             found |= _namespaces(decl.body)
     return found

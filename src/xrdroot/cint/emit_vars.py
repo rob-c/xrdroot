@@ -317,7 +317,8 @@ def _value_like(ctype: CType | None, init: Expr) -> bool:
 
 def _by_value(ctype: CType) -> bool:
     """An object held by value: not a pointer, smart pointer or reference to one."""
-    return ctype.is_class and not ctype.pointer and not ctype.is_smart and not ctype.reference
+    held = ctype.pointer or ctype.is_smart or ctype.reference or ctype.callable
+    return ctype.is_class and not held
 
 
 def addressable(ctype: CType | None) -> bool:

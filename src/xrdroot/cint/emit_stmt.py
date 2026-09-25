@@ -19,7 +19,16 @@ from .base import P
 from .ctype import CType
 from .emit_calls import CallEmitter
 from .errors import Where
-from .loops import assigned_names, bound_of, cases, ends_in_jump, is_literal_step, jumps, stable
+from .loops import (
+    assigned_names,
+    bound_of,
+    cases,
+    ends_in_jump,
+    is_literal_step,
+    jumps,
+    stable,
+    without_break,
+)
 from .nodes import (
     Assign,
     Binary,
@@ -422,7 +431,7 @@ class StmtEmitter(CallEmitter):
             raise self.refuse("a statement in a switch before its first case", node)
         subject = self._subject(node)
         falls = any(not ends_in_jump(stmts) for _, stmts in groups[:-1])
-        breaks = any(jumps(Block(node.where, stmts[:-1]), Break) for _, stmts in groups)
+        breaks = any(jumps(Block(node.where, without_break(s)), Break) for _, s in groups)
         if falls or breaks:
             self._falling_switch(node, subject, groups)
         else:
@@ -451,8 +460,7 @@ class StmtEmitter(CallEmitter):
         try:
             for index, (labels, stmts) in enumerate(ordered):
                 self.out.line(self._branch(index, subject, labels), labels[0].where)
-                body = stmts[:-1] if stmts and isinstance(stmts[-1], Break) else stmts
-                self._statements(body)
+                self._statements(without_break(stmts))
         finally:
             self.loops.pop()
 

@@ -15,6 +15,7 @@ from collections.abc import Iterator
 from .nodes import (
     Assign,
     Binary,
+    Block,
     Break,
     Call,
     Case,
@@ -44,6 +45,7 @@ __all__ = [
     "stable",
     "cases",
     "ends_in_jump",
+    "without_break",
     "READ_ONLY",
     "is_literal_step",
     "bound_of",
@@ -140,7 +142,21 @@ def ends_in_jump(stmts: list[Stmt]) -> bool:
     last = stmts[-1]
     if isinstance(last, (Break, Continue, Return)):
         return True
+    if isinstance(last, Block):
+        return ends_in_jump(last.body)
     return isinstance(last, ExprStmt) and isinstance(last.expr, Throw)
+
+
+def without_break(stmts: list[Stmt]) -> list[Stmt]:
+    """A case's statements without the ``break`` ending them, even one inside a closing block."""
+    if not stmts:
+        return stmts
+    last = stmts[-1]
+    if isinstance(last, Break):
+        return stmts[:-1]
+    if isinstance(last, Block):
+        return [*stmts[:-1], Block(last.where, without_break(last.body))]
+    return stmts
 
 
 def is_literal_step(node: Node, name: str) -> int | None:
