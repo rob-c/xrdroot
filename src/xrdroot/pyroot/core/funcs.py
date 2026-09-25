@@ -187,9 +187,18 @@ class TFormula(TNamed):
         return self
 
     def Eval(self, x: Any, y: Any = 0.0, z: Any = 0.0, t: Any = 0.0) -> Any:
-        """``Eval(x[, y[, z]])``: the value at a point, or at each of arrays of points."""
-        given = (x, y, z)[: self.GetNdim()]
-        return self._xrd(*given)
+        """``Eval(x[, y[, z]])``: the value at a point, or at each of arrays of points.
+
+        As ROOT's ``Eval`` - and a function's call - it is the formula itself,
+        never divided by the integral a normalised function keeps; that is
+        ``EvalPar``'s and ``Integral``'s.
+        """
+        given = np.broadcast_arrays(
+            *(np.asarray(v, dtype=np.float64) for v in (x, y, z)[: self.GetNdim()])
+        )
+        columns = [np.ravel(column) for column in given]
+        found = np.asarray(self._xrd._raw(columns, self._xrd.parameters), dtype=np.float64)
+        return float(found[0]) if given[0].ndim == 0 else found.reshape(given[0].shape)
 
     def __call__(self, *args: Any) -> Any:
         """``f(x)``, ``f(x, y)``; ``f(xs, params)`` with an array of coordinates is ``EvalPar``."""
@@ -438,10 +447,20 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
             print(f"Formula based function:     {self.GetName()} ")
             TFormula.Print(self, option)
             return
-        print(f"Compiled based function: {self.GetName()}  based on a functor object.  "
-              f"Ndim = {self.GetNdim()}, Npar = {self.GetNpar()}")  # fmt: skip
+        print(self._code_line())
         if "V" in str(option).upper():
             self._print_parameters(" %20s =  %10f ")
+
+    def _code_line(self) -> str:
+        """What ``Print`` says of a function of code: Python's, or the points ROOT saved of C++."""
+        shape = f"Ndim = {self.GetNdim()}, Npar = {self.GetNpar()}"
+        if self._xrd._model is not None:
+            return f"Compiled based function: {self.GetName()}  based on a functor object.  {shape}"
+        saved = len(np.ravel(self._xrd._f1.get("fSave", ())))
+        return (
+            f"Function based on a list of points from a compiled based function: "
+            f"{self.GetName()}.  {shape}, Npx = {saved}"
+        )
 
     def Clone(self, newname: str = "") -> Any:
         """``Clone``: the same function, sharing nothing, and not put in ``gROOT``'s list."""

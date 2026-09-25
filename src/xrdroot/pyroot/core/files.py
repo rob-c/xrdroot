@@ -25,7 +25,7 @@ from typing import Any
 from .collections import TList
 from .directories import TDirectory, current_directory, set_current
 from .messages import message
-from .objects import Indent, TNamed
+from .objects import Indent, TNamed, TObject
 from .wrapping import unwrap, wrap
 
 __all__ = ["TFile", "TDirectoryFile", "TKey"]
@@ -42,6 +42,31 @@ MODES = {
 }
 #: The classes a directory keeps in memory once read, as ``TH1`` and ``TTree`` add themselves.
 KEPT = ("TH1", "TTree")
+
+
+class TOther(TObject):
+    """An object of a class the namespace has no wrapper for: its class, name and members.
+
+    ``._xrd`` is what xrdroot read - its members, or its own object - so a
+    script can still ask its name, and the rest is there to be looked at.
+    """
+
+    def __init__(self, classname: str = "TObject", xrd: Any = None) -> None:
+        super().__init__()
+        self._classname, self._xrd = str(classname), xrd
+
+    def _named(self) -> dict[str, Any]:
+        named = self._xrd.get("TNamed") if isinstance(self._xrd, dict) else None
+        return named if isinstance(named, dict) else {}
+
+    def ClassName(self) -> str:
+        return self._classname
+
+    def GetName(self) -> str:
+        return str(self._named().get("fName", self._classname))
+
+    def GetTitle(self) -> str:
+        return str(self._named().get("fTitle", ""))
 
 
 class TKey(TNamed):
@@ -169,8 +194,11 @@ class TDirectoryFile(TDirectory):
     def _keys_from(self, reader: Any) -> None:
         if reader is None:
             return
-        for key in reader.all_keys():
-            self._keys.append(TKey(key.name, key.title, key.classname, key.cycle, self, key))
+        names = list(dict.fromkeys(key.name for key in reader.all_keys()))
+        found = sorted(reader.all_keys(), key=lambda key: (names.index(key.name), -key.cycle))
+        for key in found:
+            classname = "TDirectoryFile" if key.classname == "TDirectory" else key.classname
+            self._keys.append(TKey(key.name, key.title, classname, key.cycle, self, key))
 
     def IsWritable(self) -> bool:
         return self.GetFile() is not None and self.GetFile()._writing is not None
@@ -224,6 +252,8 @@ class TDirectoryFile(TDirectory):
     def _fetched(self, label: str, key: TKey) -> Any:
         """Read one record; a histogram or tree of the newest cycle stays in memory here."""
         found = wrap(self._reader()[label])
+        if not isinstance(found, TObject):
+            found = TOther(key.GetClassName(), found)
         newest = key is self.GetKey(key.GetName())
         if newest and any(_inherits(found, kind) for kind in KEPT):
             self.Append(found, True)
@@ -474,7 +504,8 @@ class TFile(TDirectoryFile):
         return not self._zombie and (self._reading is not None or self._writing is not None)
 
     def GetOption(self) -> str:
-        return self._option
+        """``GetOption``: ``READ``, ``UPDATE`` - or ``CREATE``, which ``RECREATE`` is once done."""
+        return "CREATE" if self._option == "RECREATE" else self._option
 
     def GetSize(self) -> int:
         """``GetSize``: the file's size in bytes, as it is now."""

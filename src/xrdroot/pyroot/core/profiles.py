@@ -77,8 +77,8 @@ class _Profiled:
         return float(np.asarray(self._xrd.counts(flow=True)).ravel(order="F")[int(bin)])
 
     def GetSumOfWeights(self) -> float:
-        """A profile's weights are its bin entries, flow left out."""
-        return float(np.sum(self._xrd.bin_entries()))
+        """``GetSumOfWeights``: of a profile, the sum of its bins' means, as ROOT adds them up."""
+        return float(np.sum(self._xrd.values()))
 
     def SetErrorOption(self, option: str = "") -> None:
         """``SetErrorOption``: ``""`` the mean's error, ``"s"`` the spread, ``"i"``, ``"g"``."""
