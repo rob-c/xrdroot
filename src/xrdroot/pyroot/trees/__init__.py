@@ -53,5 +53,5 @@ def wrap(source: Any, classname: str = "TTree", key: Any = None) -> Any:
         made._files = [(name, source.name) for name in source.files]
         return made
     made = CLASSES.get(classname, TTree)._over(source, classname)
-    made._key = key
+    made._tree_key = key
     return made

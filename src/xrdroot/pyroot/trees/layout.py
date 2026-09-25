@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any, NamedTuple
 
+from .sizes import Streamed, streamed
 from .store import TEXT, VECTOR, Store
 
 __all__ = ["LeafInfo", "BranchInfo", "from_store", "from_tree"]
@@ -63,6 +64,8 @@ class BranchInfo(NamedTuple):
     zip_bytes: int
     baskets: int
     basket_size: int
+    #: The bytes of the branch's own record, which ROOT's total adds to its baskets'.
+    streamed: int = 0
 
 
 def from_store(store: Store, stats: Any = None, written: bool = False) -> list[BranchInfo]:
@@ -88,7 +91,28 @@ def from_store(store: Store, stats: Any = None, written: bool = False) -> list[B
         )
         grouped.setdefault(slot.branch, []).append(leaf)
     made = [_stored(name, leaves, store, stats) for name, leaves in grouped.items()]
-    return made if written else [info._replace(zip_bytes=0, baskets=0) for info in made]
+    if not written:
+        made = [info._replace(zip_bytes=0, baskets=0) for info in made]
+    return [_with_record(info) for info in made]
+
+
+def _with_record(info: BranchInfo) -> BranchInfo:
+    """A branch with the length of its own record, when it is one leaf this writer knows."""
+    if len(info.leaves) != 1:
+        return info
+    leaf = info.leaves[0]
+    made = Streamed(
+        info.name,
+        info.title,
+        leaf.name,
+        leaf.title,
+        leaf.classname,
+        leaf.typename.startswith("U"),
+        leaf.size,
+        leaf.counter,
+        info.baskets,
+    )
+    return info._replace(streamed=streamed(made))
 
 
 def _stored(name: str, leaves: list[LeafInfo], store: Store, stats: Any) -> BranchInfo:
@@ -141,7 +165,7 @@ def from_tree(tree: Any) -> list[BranchInfo]:
     for label, branch in tree.branches.items():
         record = branch.record
         grouped.setdefault(id(record), (record, []))[1].append(_read_leaf(label, branch))
-    return [_recorded(record, leaves) for record, leaves in grouped.values()]
+    return [_with_record(_recorded(record, leaves)) for record, leaves in grouped.values()]
 
 
 def _recorded(record: Any, leaves: list[LeafInfo]) -> BranchInfo:

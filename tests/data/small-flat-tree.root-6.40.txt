@@ -1,0 +1,120 @@
+******************************************************************************
+*Tree    :tree      : my tree title                                          *
+*Entries :      100 : Total =           71978 bytes  File  Size =      10452 *
+*        :          : Tree compression factor =   7.18                       *
+******************************************************************************
+*Br    0 :Int32     : Int32/I                                                *
+*Entries :      100 : Total  Size=        957 bytes  File Size  =        244 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   1.93     *
+*............................................................................*
+*Br    1 :Int64     : Int64/L                                                *
+*Entries :      100 : Total  Size=       1365 bytes  File Size  =        259 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   3.37     *
+*............................................................................*
+*Br    2 :UInt32    : UInt32/i                                               *
+*Entries :      100 : Total  Size=        962 bytes  File Size  =        245 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   1.93     *
+*............................................................................*
+*Br    3 :UInt64    : UInt64/l                                               *
+*Entries :      100 : Total  Size=       1370 bytes  File Size  =        260 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   3.36     *
+*............................................................................*
+*Br    4 :Float32   : Float32/F                                              *
+*Entries :      100 : Total  Size=        967 bytes  File Size  =        285 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   1.66     *
+*............................................................................*
+*Br    5 :Float64   : Float64/D                                              *
+*Entries :      100 : Total  Size=       1375 bytes  File Size  =        297 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   2.94     *
+*............................................................................*
+*Br    6 :Str       : Str/C                                                  *
+*Entries :      100 : Total  Size=       1755 bytes  File Size  =        464 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   2.75     *
+*............................................................................*
+*Br    7 :ArrayInt32 : ArrayInt32[10]/I                                      *
+*Entries :      100 : Total  Size=       4590 bytes  File Size  =        401 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=  10.17     *
+*............................................................................*
+*Br    8 :ArrayInt64 : ArrayInt64[10]/L                                      *
+*Entries :      100 : Total  Size=       8598 bytes  File Size  =        439 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=  18.40     *
+*............................................................................*
+*Br    9 :ArrayUInt32 : ArrayInt32[10]/i                                     *
+*Entries :      100 : Total  Size=       4592 bytes  File Size  =        402 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=  10.14     *
+*............................................................................*
+*Br   10 :ArrayUInt64 : ArrayInt64[10]/l                                     *
+*Entries :      100 : Total  Size=       8600 bytes  File Size  =        440 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=  18.36     *
+*............................................................................*
+*Br   11 :ArrayFloat32 : ArrayFloat32[10]/F                                  *
+*Entries :      100 : Total  Size=       4600 bytes  File Size  =        437 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   9.33     *
+*............................................................................*
+*Br   12 :ArrayFloat64 : ArrayFloat64[10]/D                                  *
+*Entries :      100 : Total  Size=       8608 bytes  File Size  =        475 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=  17.01     *
+*............................................................................*
+*Br   13 :N         : N/I                                                    *
+*Entries :      100 : Total  Size=        937 bytes  File Size  =        117 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   4.00     *
+*............................................................................*
+*Br   14 :SliceInt32 : SliceInt32[N]/I                                       *
+*Entries :      100 : Total  Size=       2858 bytes  File Size  =        598 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   3.82     *
+*............................................................................*
+*Br   15 :SliceInt64 : SliceInt64[N]/L                                       *
+*Entries :      100 : Total  Size=       4673 bytes  File Size  =        644 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   6.34     *
+*............................................................................*
+*Br   16 :SliceUInt32 : SliceInt32[N]/i                                      *
+*Entries :      100 : Total  Size=       2860 bytes  File Size  =        598 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   3.82     *
+*............................................................................*
+*Br   17 :SliceUInt64 : SliceInt64[N]/l                                      *
+*Entries :      100 : Total  Size=       4675 bytes  File Size  =        646 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   6.33     *
+*............................................................................*
+*Br   18 :SliceFloat32 : SliceFloat32[N]/F                                   *
+*Entries :      100 : Total  Size=       2875 bytes  File Size  =        603 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   3.79     *
+*............................................................................*
+*Br   19 :SliceFloat64 : SliceFloat64[N]/D                                   *
+*Entries :      100 : Total  Size=       4683 bytes  File Size  =        690 *
+*Baskets :        1 : Basket Size=      32000 bytes  Compression=   5.92     *
+*............................................................................*
+======> EVENT:3
+ Int32           = 3
+ Int64           = 3
+ UInt32          = 3
+ UInt64          = 3
+ Float32         = 3
+ Float64         = 3
+ Str             = evt-003
+ ArrayInt32      = 3, 
+                  3, 3, 3, 3, 3, 3, 3, 3, 3
+ ArrayInt64      = 3, 
+                  3, 3, 3, 3, 3, 3, 3, 3, 3
+ ArrayInt32      = 3, 
+                  3, 3, 3, 3, 3, 3, 3, 3, 3
+ ArrayInt64      = 3, 
+                  3, 3, 3, 3, 3, 3, 3, 3, 3
+ ArrayFloat32    = 3, 
+                  3, 3, 3, 3, 3, 
+                  3, 3, 3, 3
+ ArrayFloat64    = 3, 
+                  3, 3, 3, 3, 3, 
+                  3, 3, 3, 3
+ N               = 3
+ SliceInt32      = 3, 
+                  3, 3
+ SliceInt64      = 3, 
+                  3, 3
+ SliceInt32      = 3, 
+                  3, 3
+ SliceInt64      = 3, 
+                  3, 3
+ SliceFloat32    = 3, 
+                  3, 3
+ SliceFloat64    = 3, 
+                  3, 3

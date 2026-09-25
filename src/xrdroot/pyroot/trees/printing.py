@@ -106,9 +106,10 @@ def branch_lines(branch: BranchInfo, count: int) -> list[str]:
     where = f"File Size  = {branch.zip_bytes:10d} *"
     if not branch.zip_bytes and not branch.baskets:
         where = "One basket in memory    *"  # what ROOT says of a branch not yet written
+    total = branch.tot_bytes + branch.streamed
     return [
         first,
-        f"*Entries :{branch.entries:9d} : Total  Size={branch.tot_bytes:11d} bytes  {where}",
+        f"*Entries :{branch.entries:9d} : Total  Size={total:11d} bytes  {where}",
         f"*Baskets :{branch.baskets:9d} : Basket Size={branch.basket_size:11d} bytes  "
         f"Compression= {ratio:6.2f}     *",
         DOTS,

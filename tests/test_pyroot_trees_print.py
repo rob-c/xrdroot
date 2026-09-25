@@ -220,3 +220,21 @@ def test_the_attributes_a_tree_draws_with_are_kept_for_graphics():
     assert (t.GetMarkerColor(), t.GetFillStyle(), t.GetLineWidth()) == (2, 3001, 1)
     t.SetNameTitle("renamed", "and retitled")
     assert (t.GetName(), t.GetTitle()) == ("renamed", "and retitled")
+
+
+def test_print_and_show_of_a_file_root_wrote_are_what_root_6_40_prints(capsys):
+    """Every line but the tree's own total, which counts ROOT's in-memory record."""
+    import pathlib
+
+    import xrdroot
+    from xrdroot.pyroot.trees import wrap
+
+    data = pathlib.Path(__file__).parent / "data"
+    expected = (data / "small-flat-tree.root-6.40.txt").read_text().splitlines()
+    with xrdroot.open_root(str(data / "small-flat-tree.root")) as f:
+        tree = wrap(f["tree"], "TTree", f.key("tree"))
+        tree.Print()
+        tree.Show(3)
+    printed = capsys.readouterr().out.splitlines()
+    assert printed[:2] + printed[3:] == expected[:2] + expected[3:]
+    assert printed[2].endswith("File  Size =      10452 *")
