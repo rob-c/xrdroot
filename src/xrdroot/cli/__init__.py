@@ -8,6 +8,7 @@
     $ xrdroot scan f.root:events "pt:eta" "pt > 30"
     $ xrdroot draw f.root:events pt -o pt.png
     $ xrdroot info f.root                 # the header, the compression, the classes
+    $ xrdroot run 'hsimple.C(1)'          # root -b -q: a C++ macro, translated and run
 
 The subcommand registry
 -----------------------
@@ -63,6 +64,7 @@ COMMANDS = [
     "info",
     "merge",
     "cp",
+    "run",
 ]
 
 #: What a subcommand raises to refuse, printed as a line rather than a traceback.
