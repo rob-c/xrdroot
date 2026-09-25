@@ -109,6 +109,8 @@ class Translator(ClassEmitter):
                 self.local_variable(var)
 
     def _globals(self, decl: DeclStmt) -> None:
+        if self.out.lines and self.out.lines[-1].startswith(" "):
+            self.out.blank(2)
         for var in decl.decls:
             if id(var) in self.program.class_statics:
                 continue

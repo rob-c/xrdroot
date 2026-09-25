@@ -158,8 +158,9 @@ class Parser(StmtParser):
             self.skip_to(";")
             return Empty(where)
         stmt = self.function_or_variable()
-        if isinstance(stmt, Function):
-            stmt.template = names
+        if not isinstance(stmt, Function):
+            raise self.refuse("a variable template", where)
+        stmt.template = names
         return stmt
 
     def template_parameters(self) -> list[str]:
@@ -188,9 +189,7 @@ class Parser(StmtParser):
             return name
         spec = self.specifiers()
         name, _ = self.declarator(spec.ctype)
-        if self.accept("="):
-            self.ternary()
-        return name
+        raise self.refuse(f"the template parameter {name}, a value a template is given")
 
     _TOP: ClassVar[dict[str, Callable[[Parser], Stmt]]] = {
         ";": StmtParser._empty,

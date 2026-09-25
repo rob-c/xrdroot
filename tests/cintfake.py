@@ -234,6 +234,7 @@ def fake(tutorials: str = ".") -> types.SimpleNamespace:
         TF1=remembered(Named),
         TLegend=remembered(Named),
         TFile=TFile,
+        TObject=Named,
         gROOT=ROOTSession(tutorials),
         gPad=Named("pad"),
         std=std,

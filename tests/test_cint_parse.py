@@ -35,7 +35,7 @@ def python(source: str) -> str:
         ("template class std::vector<int>;\nint t() { return 0; }", "def t():"),
         ("template <class T> struct Box;\nint t() { return 0; }", "def t():"),
         (
-            "template <typename T = double, int N = 3> T first(T x) { return x * N; }",
+            "template <typename T = double> T first(T x) { return x * 3; }",
             "def first(x):",
         ),
         ("template <typename> int count() { return 0; }", "def count():"),

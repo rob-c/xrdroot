@@ -163,3 +163,137 @@ def test_streams_write_to_a_file_given_them_and_format_anything() -> None:
     strings = rt.ostringstream()
     strings << "a" << rt.endl
     assert strings.str() == "a\n"
+
+
+@pytest.mark.parametrize(
+    ("source", "text"),
+    [
+        (
+            'class B : public TObject { public: int x; }; void t() { B b; printf("%d\\n", b.x); }',
+            "0\n",
+        ),
+        (
+            "void t() { for (int i = 0; i < 3; i++) { switch (i) { case 1: continue; default: break; }"
+            ' printf("%d", i); } printf("\\n"); }',
+            "02\n",
+        ),
+        (
+            'struct S { char buf[8]; std::string s; }; void t() { S o; sprintf(o.buf, "%d", 5);'
+            ' o.s.append("x"); std::istringstream in("l"); std::getline(in, o.s);'
+            ' printf("%s %s\\n", o.buf, o.s.c_str()); }',
+            "5 l\n",
+        ),
+        ('void t() { int a[2] = {1, 2}; std::swap(a[0], a[1]); printf("%d\\n", a[0]); }', "2\n"),
+        (
+            "void t() { int y = 0; auto f = [&]() { int z = 0; z = 2; y = z; }; f();"
+            ' printf("%d\\n", y); }',
+            "2\n",
+        ),
+        (
+            "int gInit = 4; int next() { static int n = gInit; return n++; }"
+            'void t() { next(); printf("%d\\n", next()); }',
+            "5\n",
+        ),
+        (
+            "int f(int) { return 1; } void t() { int k = 0; for (int i = 0; i < f(i); i++) k++;"
+            ' printf("%d\\n", k); }',
+            "1\n",
+        ),
+        ('void t() { int x = 1; { int x = 2; printf("%d", x); } printf("%d\\n", x); }', "21\n"),
+        (
+            'void f(int a = 1); void f(int a = 1) { printf("%d\\n", a); } void f(int);'
+            "void t() { f(); }",
+            "1\n",
+        ),
+        (
+            "void g(int &a, int &b) { a = 1; } void t() { int x = 0, arr[1] = {0}; g(x, arr[0]);"
+            ' printf("%d\\n", x); }',
+            "1\n",
+        ),
+        (
+            "int f() noexcept { return 1; } int g() throw() { return 2; } enum E {};"
+            'void t() { printf("%d%d\\n", f(), g()); }',
+            "12\n",
+        ),
+    ],
+)
+def test_more_edges_behave_as_cpp_does(
+    capsys: pytest.CaptureFixture[str], source: str, text: str
+) -> None:
+    assert printed(capsys, source) == text
+
+
+@pytest.mark.parametrize(
+    ("source", "fragment"),
+    [
+        ("auto *q = (Outer::TInner *)p;", "q = ROOT.p"),
+        ("struct P { int a; }; P p; auto m = p.missing;", "m = p.missing"),
+        ("auto x = f<>(1); auto y = df.Take<float, int>(2); int z = g((Int_t));", "f(1)"),
+        ("auto [a, b] = pairs();", "a, b = ROOT.pairs()"),
+        ("int (*arr)[3] = nullptr;", "arr = None"),
+    ],
+)
+def test_more_edges_are_written_as_python(source: str, fragment: str) -> None:
+    text = translate("void t() {\n" + source + "\n}\n", "t.C")
+    compile(text, "t.C", "exec")
+    assert fragment in text
+
+
+def test_members_declared_after_their_definitions_and_types_named_through_classes() -> None:
+    source = """
+    struct A { void f() {} };
+    void A::f();
+    Outer::Inner var;
+    struct K { K(int) {} };
+    void t() { auto k = K::K(1); }
+    """
+    text = translate(source, "t.C")
+    assert "var = ROOT.Outer.Inner()" in text
+    assert "k = K(1)" in text
+
+
+@pytest.mark.parametrize(
+    ("source", "why"),
+    [
+        ("static_assert(1", "the macro ends in the middle"),
+        ("void t() { int (*p) = nullptr; }", "assigning to something that is not a variable"),
+        ("template <int N> int times(int x) { return N * x; }", "the template parameter N, a"),
+        ("template <typename T> T half = T(1) / 2;", "a variable template"),
+    ],
+)
+def test_more_edges_that_have_no_python_are_refused(source: str, why: str) -> None:
+    with pytest.raises(Refusal, match=why):
+        translate(source, "t.C")
+
+
+@pytest.mark.parametrize(
+    ("source", "text"),
+    [
+        ('char gBuf[8]; void t() { sprintf(gBuf, "%d", 3); printf("%s\\n", gBuf); }', "3\n"),
+        (
+            "int gOther = 0; void g(int &a, int &b = gOther) { a = 5; }"
+            'void t() { int x = 0; g(x); printf("%d\\n", x); }',
+            "5\n",
+        ),
+        ('void t() { { int x = 1; { int x = 2; printf("%d", x); } printf("%d\\n", x); } }', "21\n"),
+        ('int n = 2; int value(n), m;\nvoid t() { printf("%d %d\\n", value, m); }', "2 0\n"),
+    ],
+)
+def test_the_last_edges_behave_as_cpp_does(
+    capsys: pytest.CaptureFixture[str], source: str, text: str
+) -> None:
+    assert printed(capsys, source) == text
+
+
+def test_a_member_of_one_of_roots_classes_has_no_type_the_macro_knows() -> None:
+    text = body("TH1F *h = nullptr; int x = h->fN / 2;")
+    assert "x = int(div(h.fN, 2))" in text
+
+
+def test_a_string_written_into_a_buffer_of_roots_is_assigned_there() -> None:
+    assert "ROOT.extBuf = cformat('%d', 1)" in body('sprintf(extBuf, "%d", 1);')
+
+
+def test_a_variable_initialised_from_a_name_is_not_a_function_declaration() -> None:
+    text = translate("int value(unknownThing), m;", "t.C")
+    assert "value = int(ROOT.unknownThing)" in text

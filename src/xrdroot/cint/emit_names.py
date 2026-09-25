@@ -122,13 +122,13 @@ class NameEmitter(Inference):
 
     def _class_member(self, klass: str, name: str) -> Symbol | None:
         info = self.program.classes[klass]
+        if name == klass:
+            return self.lookup(klass)
         if name in info.statics or name in info.constants:
             found = info.statics.get(name)
             return Symbol(name, "static", f"{klass}.{name}", found.ctype if found else None)
         if name in info.methods:
             return Symbol(name, "static", f"{klass}.{python_operator(name)}", owner=klass)
-        if name == klass:
-            return self.lookup(klass)
         return None
 
     def use(self, symbol: Symbol) -> Out:
