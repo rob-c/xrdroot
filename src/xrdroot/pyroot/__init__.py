@@ -31,6 +31,7 @@ from typing import Any
 #: The modules the namespace is made from, in order: a later one's name wins.
 SUBMODULES = [
     "core",
+    "graphics",
 ]
 
 __all__: list[str] = []

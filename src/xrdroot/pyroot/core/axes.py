@@ -217,7 +217,7 @@ class TAxis(TNamed, TAttAxis):
 
     def FindFixBin(self, x: Any) -> int:
         if isinstance(x, str):
-            found = [bin for bin, label in self._labels().items() if label == x]
+            found = [int(bin) for bin, label in self._labels().items() if label == x]
             return found[0] if found else -1
         return self.FindBin(x)
 
@@ -283,23 +283,24 @@ class TAxis(TNamed, TAttAxis):
 
     # -- labels and time ---------------------------------------------------------------------
 
-    def _labels(self) -> dict[int, str]:
-        labels: dict[int, str] = self._row.setdefault("_labels", {})
+    def _labels(self) -> dict[str, str]:
+        """The labels by bin, the bin numbers as text: the members are walked by name."""
+        labels: dict[str, str] = self._row.setdefault("_labels", {})
         return labels
 
     def SetBinLabel(self, bin: int, label: Any) -> None:
-        self._labels()[int(bin)] = str(label)
+        self._labels()[str(int(bin))] = str(label)
 
     def GetBinLabel(self, bin: int) -> str:
-        return self._labels().get(int(bin), "")
+        return self._labels().get(str(int(bin)), "")
 
     def GetLabels(self) -> Any:
         from .collections import THashList, TObjString
 
         made = THashList()
-        for bin, label in sorted(self._labels().items()):
+        for bin, label in sorted(self._labels().items(), key=lambda pair: int(pair[0])):
             item = TObjString(label)
-            item.SetUniqueID(bin)
+            item.SetUniqueID(int(bin))
             made.Add(item)
         return made if self._labels() else None
 
@@ -309,7 +310,7 @@ class TAxis(TNamed, TAttAxis):
 
     def ChangeLabel(self, *args: Any) -> None:
         """``ChangeLabel``: a drawn label restyled, which the drawing reads."""
-        self._row.setdefault("_changed_labels", []).append(args)
+        self._row.setdefault("_changed_labels", []).append(args)  # a list: not walked into
 
     def SetTimeDisplay(self, value: bool) -> None:
         self._row["fTimeDisplay"] = bool(value)

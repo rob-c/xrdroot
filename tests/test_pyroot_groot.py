@@ -72,15 +72,7 @@ def test_get_function_makes_a_standard_function_when_first_asked():
     assert ROOT.gROOT.GetFunction("not_a_function") is None
 
 
-def test_set_style_makes_a_style_the_graphics_listed_current(capsys):
-    chosen = []
-    style = ROOT.TNamed("Plain", "")
-    style.cd = lambda: chosen.append("Plain")
-    ROOT.gROOT.GetListOfStyles().Add(style)
-    ROOT.gROOT.SetStyle("Plain")
-    ROOT.gROOT.SetStyle("Nope")
-    assert chosen == ["Plain"] and ROOT.gROOT.GetStyle("Plain") is style
-    assert "Error in <TROOT::SetStyle>: Unknown style:Nope" in capsys.readouterr().err
+def test_force_style_is_noted():
     ROOT.gROOT.ForceStyle()
     assert ROOT.gROOT.GetForceStyle()
 

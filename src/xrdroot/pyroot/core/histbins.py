@@ -118,14 +118,9 @@ class Bins:
             cells[bin] = content
 
     def AddBinContent(self, *args: Any) -> None:
-        """``AddBinContent(bin[, w])``: add to one bin, as a fill without coordinates would."""
-        bin, w = (int(args[0]), float(args[1]) if len(args) > 1 else 1.0)
-        cells = self._xrd._cells()
-        cells[bin] += w
-        squares = self._xrd._sumw2()
-        if squares is not None:
-            squares[bin] += w * w
-        self._core()["fTsumw"] = 0.0
+        """``AddBinContent(bin[, w])``: add to one bin's content alone, as ROOT's does."""
+        w = float(args[1]) if len(args) > 1 else 1.0
+        self._xrd._cells()[int(args[0])] += w
 
     def GetBinError(self, *args: Any) -> float:
         """``GetBinError``: the root of the bin's squared weights, or of its content."""

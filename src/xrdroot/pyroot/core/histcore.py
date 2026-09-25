@@ -79,7 +79,10 @@ class Booked:
         if not args:
             return Histogram.book("", *[(1, 0.0, 1.0)] * self.DIM, kind=self.KIND)
         specs, _rest = axis_specs(args[2:], self.DIM)
-        return Histogram.book(str(args[0]), *specs, title=str(args[1]), kind=self.KIND)
+        made = Histogram.book(str(args[0]), *specs, title=str(args[1]), kind=self.KIND)
+        for letter, label in zip("XYZ", str(args[1]).split(";")[1:]):
+            made._core[f"f{letter}axis"]["TNamed"]["fTitle"] = label
+        return made
 
     def _adopted(self, xrd: Any) -> None:
         """Stand for ``xrd``, one read from a file or made by xrdroot, in no directory."""

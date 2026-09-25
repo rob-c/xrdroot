@@ -56,6 +56,31 @@ def _processor(what: str) -> Callable[..., Any]:
     return _PROCESSOR[0]
 
 
+def _graphics(*path: str) -> Any:
+    """What the graphics part of the kit has at ``path`` - or ``None`` without it.
+
+    Each step is an attribute, or a submodule of that name imported when the
+    package has not imported it itself.
+    """
+    name = "xrdroot.pyroot.graphics"
+    if importlib.util.find_spec(name) is None:
+        return None
+    found: Any = importlib.import_module(name)
+    for part in path:
+        found = getattr(found, part, None) or _submodule(f"{name}.{part}")
+        name = f"{name}.{part}"
+        if found is None:
+            return None
+    return found
+
+
+def _submodule(name: str) -> Any:
+    try:
+        return importlib.import_module(name)
+    except ImportError:
+        return None
+
+
 class TROOT(TDirectory):
     """``TROOT``: the session, and the directory at the top of every other."""
 
@@ -85,7 +110,24 @@ class TROOT(TDirectory):
         return self._listed("Files")
 
     def GetListOfCanvases(self) -> TList:
-        return self._listed("Canvases")
+        """``GetListOfCanvases``: the graphics' canvases, when the graphics are installed."""
+        canvases = _graphics("pads", "CANVASES")
+        if canvases is None:
+            return self._listed("Canvases")
+        made = TList()
+        for canvas in canvases:
+            made.Add(canvas)
+        return made
+
+    def MakeDefCanvas(self) -> Any:
+        """``MakeDefCanvas``: the graphics' default canvas, ``c1``."""
+        maker = _graphics("canvas", "default_canvas")
+        if maker is None:
+            raise UnsupportedFeatureError(
+                "gROOT.MakeDefCanvas makes a canvas, and xrdroot.pyroot.graphics - which draws "
+                "them - is not installed"
+            )
+        return maker()
 
     def GetListOfFunctions(self) -> TList:
         return self._listed("Functions")
@@ -139,7 +181,9 @@ class TROOT(TDirectory):
             if found is not None:
                 return found
         here = current_directory()
-        return here.Get(name) if here is not self else self._list.FindObject(name)
+        found = here.Get(name) if here is not self else self._list.FindObject(name)
+        anywhere = _graphics("pads", "find_anywhere")
+        return found if found is not None or anywhere is None else anywhere(name)
 
     def FindObjectAny(self, name: Any) -> Any:
         """``FindObjectAny``: as ``FindObject``, then in every directory in memory below."""
@@ -156,10 +200,16 @@ class TROOT(TDirectory):
         return found
 
     def GetStyle(self, name: Any) -> Any:
-        return self.GetListOfStyles().FindObject(str(name))
+        """``GetStyle``: the graphics' style of that name - or one listed here."""
+        getter = _graphics("get_style")
+        return self.GetListOfStyles().FindObject(str(name)) if getter is None else getter(str(name))
 
     def SetStyle(self, name: Any = "Default") -> None:
-        """``SetStyle``: make the style called ``name`` - one the graphics made - current."""
+        """``SetStyle``: make the style called ``name`` current - by the graphics, when there."""
+        setter = _graphics("set_style")
+        if setter is not None:
+            setter(str(name))
+            return
         found = self.GetStyle(name)
         if found is None:
             message("Error", "TROOT::SetStyle", "Unknown style:%s", str(name))
