@@ -41,8 +41,8 @@ def _wrapped(value: Any) -> Any:
     """What a PyROOT script is given back for what xrdroot returned."""
     if isinstance(value, _rdf.RDataFrame):
         return RDataFrame._of(value)
-    if isinstance(value, _rdf.Result):
-        return RResultPtr(value)
+    if isinstance(value, _rdf.Result) or hasattr(value, "IsReady"):
+        return RResultPtr(value)  # a booked result, or a booked Snapshot
     return value
 
 
