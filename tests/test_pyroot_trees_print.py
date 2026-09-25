@@ -79,6 +79,24 @@ def test_a_tree_written_prints_its_baskets_on_file(capsys, tmp_path):
     )
 
 
+def test_a_tree_read_with_its_key_counts_the_key_in_its_totals(capsys, tmp_path):
+    import xrdroot
+    from xrdroot.pyroot.trees import wrap
+
+    t = _tree()
+    with xrdroot.create(str(tmp_path / "k.root")) as f:
+        t.SetDirectory(f)
+        t.Write()
+    with xrdroot.open_root(str(tmp_path / "k.root")) as f:
+        key = f.key("T")
+        wrap(f["T"]).Print()
+        without = capsys.readouterr().out.splitlines()[2]
+        wrap(f["T"], "TTree", key).Print()
+        with_key = capsys.readouterr().out.splitlines()[2]
+    assert without != with_key
+    assert with_key.endswith(f"File  Size = {int(without.split()[-2]) + key.nbytes:10d} *")
+
+
 def test_print_with_a_name_prints_only_the_branches_it_matches(capsys):
     _tree().Print("n*")
     out = capsys.readouterr().out

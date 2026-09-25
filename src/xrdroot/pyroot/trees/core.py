@@ -46,6 +46,8 @@ class _TreeCore(_TObjectLike):
         self._snapshot_entries = -1
         #: Has ``Write`` put the entries in a file, so that they are baskets on file?
         self._written = False
+        #: The key the tree was read from, if whoever read it said: what ``Print`` counts.
+        self._key: Any = None
         self._layout_cache: list[BranchInfo] | None = None
         self._addresses: dict[str, Address] = {}
         self._disabled: set[str] = set()

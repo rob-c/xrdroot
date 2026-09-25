@@ -41,11 +41,17 @@ __all__ = [
 CLASSES: dict[str, Any] = {"TTree": TTree, "TNtuple": TNtuple, "TNtupleD": TNtupleD}
 
 
-def wrap(source: Any, classname: str = "TTree") -> Any:
-    """The tree class here over an :class:`xrdroot.TTree` or :class:`xrdroot.Chain` read already."""
+def wrap(source: Any, classname: str = "TTree", key: Any = None) -> Any:
+    """The tree class here over an :class:`xrdroot.TTree` or :class:`xrdroot.Chain` read already.
+
+    ``key`` is the :class:`xrdroot.Key` a tree was read from, which ``Print``
+    counts in its totals as ROOT does.
+    """
     if hasattr(source, "spans"):
         made = TChain(source.name)
         made._source = source
         made._files = [(name, source.name) for name in source.files]
         return made
-    return CLASSES.get(classname, TTree)._over(source, classname)
+    made = CLASSES.get(classname, TTree)._over(source, classname)
+    made._key = key
+    return made

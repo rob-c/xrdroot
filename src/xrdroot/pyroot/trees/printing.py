@@ -41,14 +41,23 @@ def _ratio(tot: int, zipped: int) -> float:
     return (tot + 0.00001) / zipped if zipped else 1.0
 
 
-def tree_lines(name: str, title: str, entries: int, branches: Sequence[BranchInfo]) -> list[str]:
-    """The header ``TTree::Print`` puts above the branches."""
+def tree_lines(
+    name: str, title: str, entries: int, branches: Sequence[BranchInfo], key: Any = None
+) -> list[str]:
+    """The header ``TTree::Print`` puts above the branches.
+
+    ROOT counts the tree's own key and record in its totals; ``key`` is the
+    :class:`xrdroot.Key` the tree was read from, when whoever read it says,
+    and without it the totals are the baskets' alone.
+    """
     tot = sum(branch.tot_bytes for branch in branches)
     zipped = sum(branch.zip_bytes for branch in branches)
+    total = tot if key is None else tot + key.keylen + key.objlen
+    on_file = zipped if key is None else zipped + key.nbytes
     return [
         STARS,
         f"*Tree    :{name:<10}: {title:<54} *",
-        f"*Entries : {entries:8d} : Total = {tot:15d} bytes  File  Size = {zipped:10d} *",
+        f"*Entries : {entries:8d} : Total = {total:15d} bytes  File  Size = {on_file:10d} *",
         f"*        :          : Tree compression factor = {_ratio(tot, zipped):6.2f}"
         "                       *",
         STARS,
@@ -92,7 +101,7 @@ def branch_lines(branch: BranchInfo, count: int) -> list[str]:
     text = _title(branch)
     head = f"*Br{count:5d} :{branch.name:<9} : "
     first = head + f"{text or ' ':<54}"
-    first = _wrapped(head, text) if len(first) > LINE_END else first + " *"
+    first = _wrapped(head, text) if len(first) > LINE_END else first.ljust(LINE_END) + "*"
     ratio = _ratio(branch.tot_bytes, branch.zip_bytes)
     where = f"File Size  = {branch.zip_bytes:10d} *"
     if not branch.zip_bytes and not branch.baskets:

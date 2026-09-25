@@ -122,7 +122,7 @@ class _Player(_Friends):
     def Print(self, option: str = "") -> None:
         """``TTree::Print``: the tree, then every branch, in ROOT's table."""
         layout = self._layout()
-        lines = tree_lines(self._name, self._title, self.GetEntries(), layout)
+        lines = tree_lines(self._name, self._title, self.GetEntries(), layout, self._key)
         wanted = str(option or "")
         pattern = wanted if wanted and wanted not in ("all", "toponly") else "*"
         for count, branch in enumerate(layout):
