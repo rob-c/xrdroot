@@ -148,7 +148,7 @@ class BranchRecord:
         self.branches: list[BranchRecord] = []
         #: Baskets written into this record rather than out to one of their
         #: own, which a tree too small to have flushed never does.
-        self.baskets: list[Basket] = []
+        self.baskets: list[Basket | None] = []
         #: Did the class stream itself, record and all, rather than the file's
         #: streamer information writing out its members bare?
         self.streamed = False
@@ -306,12 +306,24 @@ def _basket_tables(
 
 
 def _inline_basket_bounds(branch: BranchRecord) -> None:
-    if not branch.baskets or branch.basket_seek:
-        return
-    bounds = [0]
-    for basket in branch.baskets:
+    """Where the held baskets' entries start: all of them, or the one after the flushed.
+
+    A tree saved while its last basket was still being filled - ``Write``
+    without a ``FlushBaskets`` - keeps that basket in the branch at the slot
+    after the ones written out, and its entries follow theirs.
+    """
+    written = len(branch.basket_seek)
+    after = branch.baskets[written:] if not written else branch.baskets[written : written + 1]
+    bounds = branch.basket_entry[: written + 1] if written else [0]
+    held: list[Basket | None] = []
+    for basket in after:
+        if basket is None:
+            break
+        held.append(basket)
         bounds.append(bounds[-1] + basket.nevbuf)
-    branch.basket_entry = bounds
+    branch.baskets = branch.baskets[:written] + held
+    if held:
+        branch.basket_entry = bounds
 
 
 def read_branch_element(buf: Buffer) -> BranchRecord:
@@ -376,19 +388,19 @@ def read_basket(buf: Buffer) -> Basket | None:
     return Basket.inline(buf)
 
 
-def _held(items: list[Any]) -> list[Basket]:
-    """The baskets a branch record carries, up to the first one it does not.
+def _held(items: list[Any]) -> list[Basket | None]:
+    """The baskets a branch record carries, each in its own slot.
 
-    Anything past a gap has been flushed to a record of its own, and the
-    branch's seek table is what says where.
+    A slot whose basket was flushed to a record of its own is ``None``, and
+    the branch's seek table is what says where that one is; what is held is
+    either every basket of a tree never flushed, or the last one of a tree
+    saved with a basket still being filled.
     """
     from .tree import Basket
 
-    held = []
-    for item in items:
-        if not isinstance(item, Basket):
-            break
-        held.append(item)
+    held: list[Basket | None] = [item if isinstance(item, Basket) else None for item in items]
+    while held and held[-1] is None:
+        held.pop()
     return held
 
 

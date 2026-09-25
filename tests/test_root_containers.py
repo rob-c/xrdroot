@@ -274,13 +274,9 @@ def test_a_tstring_in_a_map_is_bytes_where_a_std_string_is_a_record(containers):
 
 
 def test_a_map_of_containers_keeps_the_containers(containers):
-    assert plain(containers["map_i32_vec_i16"].array(1, 2)) == [
-        {-2: [-1, -2], -1: [-1]}
-    ]
+    assert plain(containers["map_i32_vec_i16"].array(1, 2)) == [{-2: [-1, -2], -1: [-1]}]
     assert containers["map_str_vec_str"].array(1, 2) == [{"one": ["one"], "two": ["one", "two"]}]
-    assert plain(containers["map_i32_set_i16"].array(1, 2)) == [
-        {-2: [-2, -1], -1: [-1]}
-    ]
+    assert plain(containers["map_i32_set_i16"].array(1, 2)) == [{-2: [-2, -1], -1: [-1]}]
     nested = containers["map_i32_vec_vec_i16"].array(1, 2)[0]
     assert {key: [list(row) for row in value] for key, value in nested.items()} == {
         -2: [[-1], [-1, -2]],
@@ -355,7 +351,9 @@ def test_a_member_the_file_never_described_cannot_be_guessed_at():
 
 
 def test_a_streamer_type_this_reader_will_not_decode_is_named_in_words():
-    for stype, words in KINDS.items():
+    # A pointer is read as what it points at, when the file says what that is.
+    refused = {stype: words for stype, words in KINDS.items() if stype not in (63, 64)}
+    for stype, words in refused.items():
         reason = column_of("Event", ltype=stype).reason
         assert reason == f"{words}, which this reader does not decode"
 

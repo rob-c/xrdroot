@@ -261,6 +261,27 @@ class Values(Column):
         return self._read(buf)
 
 
+class Each(Values):
+    """A list per entry: one value for each object of a split collection.
+
+    The objects' values are written one after another with no count in
+    front, so they are read until the entry ends - which the basket says -
+    each value saying for itself where it stops.
+    """
+
+    __slots__ = ()
+
+    def __init__(self, one: Values) -> None:
+        super().__init__("list", one._read)
+
+    def items(self, buf: Buffer, at: int, end: int) -> list[Any]:
+        buf.pos = at
+        found = []
+        while buf.pos < end:
+            found.append(self._read(buf))
+        return found
+
+
 class Members(Column):
     """A branch with no bytes of its own, whose members are the branches under it.
 
@@ -1178,7 +1199,41 @@ def _declared(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column:
     if isinstance(declared, Refused):
         return declared
     name, header = declared
-    return _declared_node(parse(name), name, header, branch, source)
+    if header and leaf.ltype in OBJECTS_HELD + OBJECTS_POINTED:
+        column = _pointer_member(name, leaf.ltype, source)
+    else:
+        column = _declared_node(parse(name), name, header, branch, source)
+    return _per_object(column, leaf)
+
+
+def _pointer_member(name: str, ltype: int, source: Source) -> Column:
+    """A pointer member ROOT left unsplit, read the way ROOT writes it.
+
+    One the class promises is never null is written in place; any other is
+    written the way ROOT writes any pointer - a null tag, or the class and
+    then the object.
+    """
+    if ltype in OBJECTS_HELD:
+        return Values("object", _embedded(name.rstrip("*"), source, ()))
+    classes = _Described(source, ())
+    return Values("object", lambda buf: buf.any(classes))
+
+
+def _per_object(column: Column, leaf: LeafRecord) -> Column:
+    """A column as it is, or one of a member held by each object of a split collection.
+
+    Such an entry is one object's value after another's with no count in
+    front of them, so only a value that says where it ends - a string, an
+    object - can be read that way, one after another until the entry ends.
+    """
+    if leaf.count is None or isinstance(column, Refused):
+        return column
+    if isinstance(column, Values):
+        return Each(column)
+    return Refused(
+        f"a {column.typename} in each object of the split collection {leaf.count.name}, "
+        f"whose values are written one after another with nothing to say where each ends"
+    )
 
 
 def _declared_name(
@@ -1192,11 +1247,6 @@ def _declared_name(
         return Refused(
             f"a member of {branch.classname or 'a class'} that this file's streamer "
             f"information does not describe, so its type is not knowable"
-        )
-    if leaf.count is not None:
-        return Refused(
-            f"a {member.typename} in each object of the split collection "
-            f"{leaf.count.name}, which this reader does not read one object at a time"
         )
     return member.typename, True
 
@@ -1223,11 +1273,6 @@ def _unparsed(name: str, header: bool, branch: BranchRecord, source: Source) -> 
     """
     if not header:
         return _whole(name, source, branch.streamed)  # the whole object
-    if name.endswith("*"):
-        # A pointer member left unsplit, which ROOT writes the way it writes
-        # any pointer: nothing but a null tag, or the class and the object.
-        classes = _Described(source, ())
-        return Values("object", lambda buf: buf.any(classes))
     return Refused(
         f"{name or 'an unnamed type'}, which is a C++ type this reader does not "
         f"decode; a split file has its members as branches of their own"
@@ -1267,17 +1312,12 @@ def build(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column:
 
 def _element(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column:
     """Interpret a ``TLeafElement`` from its ROOT type code."""
-    if leaf.ltype == 65 and leaf.count is not None:
-        return Refused(
-            f"a TString in each object of the split collection {leaf.count.name}, "
-            f"which this reader does not read one object at a time"
-        )
     if leaf.ltype == 65:
-        return Values("str", _string)  # a TString member, written with no header
+        return _per_object(Values("str", _string), leaf)  # a TString, with no header
     primitive = _primitive_element(branch, leaf, source)
     if primitive is not None:
         return primitive
-    if leaf.ltype not in KINDS:
+    if leaf.ltype not in KINDS or leaf.ltype in OBJECTS_HELD + OBJECTS_POINTED:
         return _declared(branch, leaf, source)
     if branch.whole:
         # ROOT 4 left the code at zero on a branch holding a whole

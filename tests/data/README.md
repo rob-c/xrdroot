@@ -96,6 +96,12 @@ one a `TString`, and a branch `n` whose baskets ROOT was told, with
 file anywhere else in this corpus splits a collection of objects, which the
 ALICE files ROOT's event-display tutorials download do throughout.
 
+`tail-basket.root` was written the same way from `tail_basket.C`: a branch
+that flushed three baskets and was then written, with `WriteTObject` rather
+than `TTree::Write`, while its fourth was still being filled, so that basket
+is kept inside the branch record after the three out in the file - as ALICE's
+ESD trees keep theirs. It is the only file here that holds a basket that way.
+
 `uproot-issue-172.root` is from go-hep's `groot/testdata/uproot`, which took
 it from scikit-hep-testdata: `RVec`s written by ROOT 6.20, whose type names an
 `RAdoptAllocator`.

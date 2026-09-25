@@ -214,12 +214,12 @@ def move_baskets(
     held = len(record.baskets)
     for index in range(max(len(record.basket_seek), held)):
         entries = bounds[index + 1] - bounds[index]
-        if index < held:
-            mover.inline(record.baskets[index], tabled)
+        inline = record.baskets[index] if index < held else None
+        if inline is not None:
+            mover.inline(inline, tabled)
         elif in_place:
             mover.in_place(source, record.basket_seek[index], record.basket_bytes[index], entries)
         else:
             seek, nbytes = record.basket_seek[index], record.basket_bytes[index]
             mover.keyed(source, seek, nbytes, entries, tabled)
     return Moved(*mover.counts)
-

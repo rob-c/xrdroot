@@ -18,7 +18,7 @@ from .buffer import Buffer, gather
 from .compression import decompress
 from .drawable import Drawable
 from .errors import UnsupportedFeatureError
-from .interp import Column, Flat, Members, Refused, Rows, Values, build
+from .interp import Column, Each, Flat, Members, Refused, Rows, Values, build
 
 if TYPE_CHECKING:
     from .file import Source
@@ -405,8 +405,9 @@ class Branch:
 
     def basket(self, index: int) -> Basket:
         """Read one basket, remembering the last so a small step is not a reread."""
-        if index < len(self.record.baskets):
-            return self.record.baskets[index]  # already here, and never on its own
+        held = self.record.baskets[index] if index < len(self.record.baskets) else None
+        if held is not None:
+            return held  # already here, and never on its own
         if self._cached is not None and self._cached[0] == index:
             return self._cached[1]
         source = self._source
@@ -504,8 +505,15 @@ class Branch:
             reader = Buffer(basket.data, basket.keylen)
             for entry in range(low, high):
                 at = basket.start_of(entry, self.leaf.offset) + basket.keylen
-                out.append(column.value(reader, at))
+                out.append(self._object(column, reader, basket, entry, at))
         return out
+
+    @staticmethod
+    def _object(column: Values, reader: Buffer, basket: Basket, entry: int, at: int) -> Any:
+        """One entry's value; for each object of a split collection, the entry's list of them."""
+        if isinstance(column, Each):
+            return column.items(reader, at, basket.end_of(entry) + basket.keylen)
+        return column.value(reader, at)
 
 
 class Group(Branch):

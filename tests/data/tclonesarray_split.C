@@ -1,3 +1,4 @@
+// Written by ROOT 6.40.04, run interpreted: root -b -q tclonesarray_split.C
 // Write tclonesarray-split.root: a TClonesArray of Hit split into members,
 // and one branch whose baskets ROOT is told to put in tclonesarray-split-baskets.root.
 #include "TClonesArray.h"

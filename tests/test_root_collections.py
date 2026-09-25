@@ -18,13 +18,14 @@ from typing import Any
 
 import pytest
 
-from xrdroot import UnsupportedFeatureError, open_root
+from xrdroot import open_root
 from xrdroot.buffer import BYTE_COUNT_MASK, Buffer
 from xrdroot.file import Source
 from xrdroot.friends import basket_source
 from xrdroot.interp import STREAM_LOOP, Refused, build, whole_object
-from xrdroot.objects import BranchRecord, LeafRecord
+from xrdroot.objects import BranchRecord, LeafRecord, _inline_basket_bounds
 from xrdroot.streamers import Member
+from xrdroot.tree import Basket
 
 DATA = pathlib.Path(__file__).parent / "data"
 SPLIT = DATA / "tclonesarray-split.root"
@@ -51,30 +52,45 @@ def test_a_packed_member_of_a_split_clones_array_finds_its_range_under_its_own_n
     assert energies == [[0.99945068359375], [2.00042724609375, 14.50042724609375]]
 
 
-def test_a_TString_in_each_object_of_a_split_collection_is_refused_by_name(hits):
-    assert (
-        "a TString in each object of the split collection hits_" in hits.unreadable["hits.fLabel"]
-    )
-    with pytest.raises(UnsupportedFeatureError, match="split collection hits_"):
-        hits["hits.fLabel"].array()
+def test_a_TString_in_each_object_of_a_split_collection_reads_as_a_list_per_entry(hits):
+    """The strings are one after another, each its own length first, to the entry's end."""
+    labels = hits["hits.fLabel"].array(2, 4)
+    assert labels == [["hit-2-0", "hit-2-1"], ["hit-3-0", "hit-3-1", "hit-3-2"]]
+    assert hits.unreadable == {}
 
 
 def test_the_branch_a_split_clones_array_hangs_from_puts_its_objects_back_together(hits):
     rows = hits["hits"].array(1, 3)
     assert [row["fId"].tolist() for row in rows] == [[10], [20, 21]]
-    assert set(hits["hits"].unreadable) == {"fLabel"}
+    assert [row["fLabel"] for row in rows] == [["hit-1-0"], ["hit-2-0", "hit-2-1"]]
+    assert hits["hits"].unreadable == {}
 
 
-def test_a_class_in_each_object_of_a_split_collection_is_refused_by_name():
+def member_of_each(typename: str, ltype: int) -> Any:
+    """The column of a member ``fArr`` of each ``Hit`` of a split collection ``hits``."""
     source = type("Described", (), {})()
-    source.streamers = lambda: {"Hit": {"fArr": Member("fArr", "", 69, "TArrayF*", 0)}}
+    source.streamers = lambda: {"Hit": {"fArr": Member("fArr", "", ltype, typename, 0)}}
     branch, leaf = BranchRecord(), LeafRecord("TLeafElement")
-    branch.classname, leaf.name, leaf.ltype = "Hit", "hits.fArr", 69
+    branch.classname, leaf.name, leaf.ltype = "Hit", "hits.fArr", ltype
     leaf.count = LeafRecord("TLeafElement")
     leaf.count.name = "hits_"
-    column = build(branch, leaf, source)
+    return build(branch, leaf, source)
+
+
+def test_an_object_held_in_place_by_each_object_reads_one_after_another():
+    """A ``TArrayF*`` its class promises is never null: no tag, the array where it stands."""
+    column = member_of_each("TArrayF*", 68)
+    raw = struct.pack(">if", 1, 0.5) + struct.pack(">iff", 2, 1.5, 2.5)
+    assert [array.tolist() for array in column.items(Buffer(raw), 0, len(raw))] == [
+        [0.5],
+        [1.5, 2.5],
+    ]
+
+
+def test_a_container_in_each_object_of_a_split_collection_is_refused_by_name():
+    column = member_of_each("vector<float>", 300)
     assert isinstance(column, Refused)
-    assert column.reason.startswith("a TArrayF* in each object of the split collection hits_")
+    assert column.reason.startswith("a float32 in each object of the split collection hits_")
 
 
 def test_a_pointer_member_left_unsplit_reads_as_what_it_points_at_or_None():
@@ -105,6 +121,24 @@ def test_a_branch_whose_baskets_file_is_missing_says_where_it_looked(tmp_path):
     with open_root(tmp_path / SPLIT.name) as root:
         with pytest.raises(FileNotFoundError, match=r"the baskets of a branch in .* is in"):
             root["t"]["n"].array()
+
+
+def test_a_basket_still_being_filled_when_the_tree_was_written_is_read_after_the_rest():
+    """``tail-basket.root``: three baskets of eight out in the file, and the 25th entry held."""
+    with open_root(DATA / "tail-basket.root") as root:
+        column = root["t"]["i"]
+        assert (column.record.basket_entry, column.num_baskets) == ([0, 8, 16, 24, 25], 4)
+        assert column.array().tolist() == list(range(25))
+        assert column.array(23, 25).tolist() == [23, 24]
+
+
+def test_a_held_basket_after_a_gap_is_not_taken_for_one_that_follows_the_rest():
+    """A branch never flushed holds its baskets from the first; a gap ends them."""
+    first = Basket(0, 4, 3, 0, bytes(12), [])
+    branch = BranchRecord()
+    branch.baskets = [first, None, Basket(0, 4, 2, 0, bytes(8), [])]
+    _inline_basket_bounds(branch)
+    assert (branch.baskets, branch.basket_entry) == ([first], [0, 3])
 
 
 def test_a_vector_with_an_allocator_named_reads_as_the_vector_it_is():
