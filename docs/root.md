@@ -2285,9 +2285,9 @@ may need something installed.
 A `TClonesArray`, or a `std::vector` of a class, split into members is a
 branch per member under one branch that holds how many objects each entry
 has. Each member reads as a row per entry, one value per object — an array
-member as the run of each object's values in turn — and the branch they
-hang from reads as a dictionary per entry of those rows, as any split
-object does:
+member as the run of each object's values in turn, and a string, pointer or
+object as a list of one per object — and the branch they hang from reads as
+a dictionary per entry of those rows, as any split object does:
 
 ```python
 >>> esd = xrdroot.open_root("alice_ESDs.root")["esdTree"]
@@ -2306,7 +2306,9 @@ A tree written by ROOT 4 opens like any other. Those files count entries in
 doubles and keep their seek points in 32-bit integers, and one small enough
 never to have been flushed holds its baskets inside the branch record rather
 than out in the file — all of which is read here, so a decade-old Geant4 run
-needs no copying forward first.
+needs no copying forward first. So is the last basket of a tree saved while
+it was still being filled, which the branch record keeps after the ones
+written out.
 
 Older trees open too, back to the ROOT 2.24 of the H1 files ROOT's
 `h1analysis` tutorial reads. A `TTree` of versions 6 to 15 — ROOT 3.02 to
@@ -2370,10 +2372,9 @@ What is named that way:
   names, is read);
 - a graph of layered y errors asked for `yerr`, because summing the layers
   would be an answer this reader made up;
-- a `TString`, or an object, in each object of a split `TClonesArray` or
-  vector of a class: the entry holds one after another with nothing to say
-  where each ends (a number, an array or a packed float there is read, as a
-  row per entry of one value, or an array's run of values, per object);
+- a container of numbers in each object of a split `TClonesArray` or vector
+  of a class: the entry holds one object's after another's with nothing to
+  say where each ends (numbers, strings, pointers and objects there are read);
 - a `TBranch` older than version 5, which kept no
   sizes for its baskets.
 
