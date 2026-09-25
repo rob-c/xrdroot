@@ -135,23 +135,32 @@ SMART = frozenset(
 )
 
 
+#: The words that only modify an integer type's width or sign.
+MODIFIERS = frozenset({"signed", "unsigned", "int", "long", "short"})
+
+#: The integer types a sign can be put on.
+SIGNABLE = frozenset({"char", "short", "int", "long", "long long"})
+
+
 def builtin_name(words: list[str]) -> str:
     """The canonical spelling of a built-in type written as ``words``: ``long int`` is ``long``."""
-    unsigned = "unsigned" in words
-    rest = [word for word in words if word not in ("signed", "unsigned", "int")]
-    longs = rest.count("long")
-    others = [word for word in rest if word != "long"]
-    if others == ["double"] and longs:
+    longs = words.count("long")
+    others = [word for word in words if word not in MODIFIERS]
+    base = others[0] if others else _integer(words, longs)
+    if base == "double" and longs:
         return "long double"
-    if others:
-        base = others[0]
-        if base == "char" and "signed" in words:
-            return "signed char"
-        return f"unsigned {base}" if unsigned and base in ("char", "short") else base
-    base = {0: "int", 1: "long"}.get(longs, "long long")
+    if "unsigned" in words and base in SIGNABLE:
+        return f"unsigned {base}"
+    if base == "char" and "signed" in words:
+        return "signed char"
+    return base
+
+
+def _integer(words: list[str], longs: int) -> str:
+    """The integer type ``short``, ``long``, ``long long`` or ``int`` the words spell."""
     if "short" in words:
-        base = "short"
-    return f"unsigned {base}" if unsigned else base
+        return "short"
+    return {0: "int", 1: "long"}.get(longs, "long long")
 
 
 def canonical(name: str) -> str:

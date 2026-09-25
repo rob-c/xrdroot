@@ -130,18 +130,8 @@ class ClassEmitter(FunctionEmitter):
     def _members(self, info: ClassInfo, symbols: dict[str, Symbol]) -> None:
         """The names a method of ``info`` sees: its members and its bases' - the nearest winning."""
         for klass in reversed(self._lineage(info)):
-            for name, var in klass.fields.items():
-                symbols[name] = Symbol(name, "field", python_name(name), var.ctype.value())
-            for name, var in klass.statics.items():
-                symbols[name] = Symbol(name, "static", f"{klass.name}.{name}", var.ctype)
-            for name in klass.constants:
-                symbols[name] = Symbol(name, "static", f"{klass.name}.{name}", CType("int"))
-            for name, funcs in klass.methods.items():
-                if name in (klass.name, "~" + klass.name):
-                    continue
-                static = any(func.static for func in funcs)
-                kind, py = ("static", f"{klass.name}.{name}") if static else ("method", name)
-                symbols[name] = Symbol(name, kind, py, owner=klass.name)
+            for symbol in [*_data_symbols(klass), *_method_symbols(klass)]:
+                symbols[symbol.name] = symbol
 
     def _lineage(self, info: ClassInfo) -> list[ClassInfo]:
         """``info`` and the macro's classes it derives from, nearest first."""
@@ -260,6 +250,26 @@ class ClassEmitter(FunctionEmitter):
         if chosen is None:
             raise self.refuse(f"the operator {func.name[8:]} with this many operands", func)
         return chosen
+
+
+def _data_symbols(klass: ClassInfo) -> list[Symbol]:
+    """A class's members, static members and enumerators, as its methods see them."""
+    found = [Symbol(n, "field", python_name(n), v.ctype.value()) for n, v in klass.fields.items()]
+    found += [Symbol(n, "static", f"{klass.name}.{n}", v.ctype) for n, v in klass.statics.items()]
+    found += [Symbol(n, "static", f"{klass.name}.{n}", CType("int")) for n in klass.constants]
+    return found
+
+
+def _method_symbols(klass: ClassInfo) -> list[Symbol]:
+    """A class's methods - not its constructors - as ``self.m`` or, static, ``Class.m``."""
+    found = []
+    for name, funcs in klass.methods.items():
+        if name in (klass.name, "~" + klass.name):
+            continue
+        static = any(func.static for func in funcs)
+        kind, py = ("static", f"{klass.name}.{name}") if static else ("method", name)
+        found.append(Symbol(name, kind, py, owner=klass.name))
+    return found
 
 
 def _constant(value: Expr) -> int | None:

@@ -44,6 +44,15 @@ __all__ = ["ExprEmitter", "COMPARISONS", "zero"]
 #: C's comparison operators, which are Python's.
 COMPARISONS = frozenset({"==", "!=", "<", ">", "<=", ">="})
 
+#: The runtime helper for ``/`` and ``%`` by what the operands are known to be.
+DIVISIONS = {
+    ("/", "integral"): "idiv",
+    ("/", "unknown"): "div",
+    ("%", "integral"): "imod",
+    ("%", "floating"): "fmod",
+    ("%", "unknown"): "mod",
+}
+
 #: The operators whose Python is C's own, and their Python precedence.
 PLAIN = {
     "+": P.ADD,
@@ -115,17 +124,24 @@ class ExprEmitter(NameEmitter):
             return self._compare(node)
         if op in ("/", "%"):
             return self._divide(node)
-        if op in ("+", "-") and self._pointer_arithmetic(node):
-            return self._offset(node)
-        if self._concatenation(node):
-            right = f"cstr({self.value(node.right)})"
-            return f"{self.at(node.left, P.ADD)} + {right}", P.ADD
-        if op in ("<<", ">>") and self._streams(node):
-            return self._shift(node)
+        special = self._arithmetic_special(node)
+        if special is not None:
+            return special
         if op in PLAIN:
             level = PLAIN[op]
             return f"{self.at(node.left, level)} {op} {self.at(node.right, level + 1)}", level
         raise self.refuse(f"the operator {op}", node)
+
+    def _arithmetic_special(self, node: Binary) -> Out | None:
+        """``+``, ``-``, ``<<`` whose Python is not Python's own: on pointers, strings, streams."""
+        if node.op in ("+", "-") and self._pointer_arithmetic(node):
+            return self._offset(node)
+        if self._concatenation(node):
+            right = f"cstr({self.value(node.right)})"
+            return f"{self.at(node.left, P.ADD)} + {right}", P.ADD
+        if node.op in ("<<", ">>") and self._streams(node):
+            return self._shift(node)
+        return None
 
     def _compare(self, node: Binary) -> Out:
         left, right = node.left, node.right
@@ -146,21 +162,21 @@ class ExprEmitter(NameEmitter):
         )
 
     def _divide(self, node: Binary) -> Out:
+        """``/`` and ``%``: C's integer ones where both sides are integers, Python's otherwise."""
+        kind = self._division_kind(node)
+        if node.op == "/" and kind == "floating":
+            return f"{self.at(node.left, P.MUL)} / {self.at(node.right, P.MUL + 1)}", P.MUL
+        helper = DIVISIONS[node.op, kind]
+        return f"{helper}({self.value(node.left)}, {self.value(node.right)})", P.POSTFIX
+
+    def _division_kind(self, node: Binary) -> str:
+        """``integral`` if both operands are, ``floating`` if either is, else ``unknown``."""
         left, right = self.typeof(node.left), self.typeof(node.right)
-        a, b = self.value(node.left), self.value(node.right)
-        integral = left is not None and right is not None and left.integral and right.integral
-        floating = (left is not None and left.floating) or (right is not None and right.floating)
-        if node.op == "/":
-            if integral:
-                return f"idiv({a}, {b})", P.POSTFIX
-            if floating:
-                return f"{self.at(node.left, P.MUL)} / {self.at(node.right, P.MUL + 1)}", P.MUL
-            return f"div({a}, {b})", P.POSTFIX
-        if integral:
-            return f"imod({a}, {b})", P.POSTFIX
-        if floating:
-            return f"fmod({a}, {b})", P.POSTFIX
-        return f"mod({a}, {b})", P.POSTFIX
+        if left is not None and right is not None and left.integral and right.integral:
+            return "integral"
+        if any(side is not None and side.floating for side in (left, right)):
+            return "floating"
+        return "unknown"
 
     def _pointer_arithmetic(self, node: Binary) -> bool:
         left = self.typeof(node.left)
@@ -232,23 +248,31 @@ class ExprEmitter(NameEmitter):
     def address(self, operand: Expr) -> Out:
         """``&x``: the cell ``x`` lives in, a view of an array from an element, or the object."""
         if isinstance(operand, Name):
-            symbol = self.symbol(operand)
-            if symbol is not None and symbol.cell and symbol.alias is None:
-                prefix = "self." if symbol.kind == "field" else ""
-                return prefix + symbol.py, P.POSTFIX
-            found = self.typeof(operand)
-            if symbol is not None and symbol.kind == "field" and found is not None and found.scalar:
-                return f"AttrRef(self, {symbol.py!r})", P.POSTFIX
-            return self.expr(operand)
+            return self._name_address(operand)
         if isinstance(operand, Index):
             return self._element_address(operand)
         if isinstance(operand, Member):
-            found = self.typeof(operand)
-            if found is None or found.scalar or found.is_string:
-                return f"AttrRef({self.value(operand.obj)}, {operand.name!r})", P.POSTFIX
-            return self.expr(operand)
+            return self._member_address(operand)
         if isinstance(operand, Unary) and operand.op == "*":
             return self.expr(operand.operand)
+        return self.expr(operand)
+
+    def _name_address(self, operand: Name) -> Out:
+        symbol = self.symbol(operand)
+        if symbol is None:
+            return self.expr(operand)
+        if symbol.cell and symbol.alias is None:
+            prefix = "self." if symbol.kind == "field" else ""
+            return prefix + symbol.py, P.POSTFIX
+        found = self.typeof(operand)
+        if symbol.kind == "field" and found is not None and found.scalar:
+            return f"AttrRef(self, {symbol.py!r})", P.POSTFIX
+        return self.expr(operand)
+
+    def _member_address(self, operand: Member) -> Out:
+        found = self.typeof(operand)
+        if found is None or found.scalar or found.is_string:
+            return f"AttrRef({self.value(operand.obj)}, {operand.name!r})", P.POSTFIX
         return self.expr(operand)
 
     def _element_address(self, operand: Index) -> Out:
@@ -265,15 +289,20 @@ class ExprEmitter(NameEmitter):
             return f"ItemRef({self.value(target.obj)}, {self.value(target.index)})"
         if isinstance(target, Member):
             return f"AttrRef({self.value(target.obj)}, {target.name!r})"
-        if isinstance(target, Name):
-            symbol = self.symbol(target)
-            if symbol is not None and symbol.cell:
-                return ("self." if symbol.kind == "field" else "") + symbol.py
-            if symbol is not None and symbol.kind == "field":
-                return f"AttrRef(self, {symbol.py!r})"
+        found = self._name_reference(target) if isinstance(target, Name) else None
+        if found is not None:
+            return found
         if isinstance(target, Unary) and target.op == "*":
             return f"ItemRef({self.value(target.operand)}, 0)"
         raise self.refuse("changing this in the middle of an expression", target)
+
+    def _name_reference(self, target: Name) -> str | None:
+        symbol = self.symbol(target)
+        if symbol is None:
+            return None
+        if symbol.cell:
+            return ("self." if symbol.kind == "field" else "") + symbol.py
+        return f"AttrRef(self, {symbol.py!r})" if symbol.kind == "field" else None
 
     def local_name(self, target: Expr) -> str | None:
         """The Python name a walrus can assign, when ``target`` is a plain local or global."""

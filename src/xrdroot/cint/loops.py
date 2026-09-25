@@ -148,11 +148,16 @@ def is_literal_step(node: Node, name: str) -> int | None:
     if isinstance(node, Unary) and node.op in ("++", "--") and _is(node.operand, name):
         return 1 if node.op == "++" else -1
     if isinstance(node, Assign) and node.op in ("+=", "-=") and _is(node.target, name):
-        value = node.value
-        if isinstance(value, Literal) and value.kind == "int" and value.value > 0:
-            step = int(value.value)
-            return step if node.op == "+=" else -step
+        return _literal_step(node)
     return None
+
+
+def _literal_step(node: Assign) -> int | None:
+    value = node.value
+    if not isinstance(value, Literal) or value.kind != "int" or value.value <= 0:
+        return None
+    step = int(value.value)
+    return step if node.op == "+=" else -step
 
 
 def _is(node: Node, name: str) -> bool:

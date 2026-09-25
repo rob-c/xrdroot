@@ -344,39 +344,65 @@ class Preprocessor:
         macro = self.macros.get(token.text)
         if macro is None:
             return None
+        body = self._body(macro, token, work)
+        if body is None:
+            return None
         hide = token.hide | {macro.name}
+        return [word.moved(token.where, hide) for word in body]
+
+    def _body(self, macro: Macro, token: Token, work: deque[Token]) -> list[Token] | None:
+        """What a use of ``macro`` becomes - ``None`` for a function-like one not called."""
         if macro.params is None:
-            return [word.moved(token.where, hide) for word in macro.body]
+            return macro.body
         if not work or not work[0].is_("("):
             return None
-        arguments = _arguments(work, token.where)
-        body = self._substituted(macro, arguments, token.where)
-        return [word.moved(token.where, hide) for word in body]
+        return self._substituted(macro, _arguments(work, token.where), token.where)
 
     def _substituted(self, macro: Macro, arguments: list[list[Token]], where: Where) -> list[Token]:
         named = _bind(macro, arguments, where)
         out: list[Token] = []
-        body = macro.body
         at = 0
-        while at < len(body):
-            word = body[at]
-            if word.is_("#") and at + 1 < len(body) and body[at + 1].text in named:
-                out.append(_stringised(named[body[at + 1].text], where))
-                at += 2
-                continue
-            if word.is_("##") and out and at + 1 < len(body):
-                after = body[at + 1]
-                right = named.get(after.text, [after]) if after.kind == "id" else [after]
-                out.extend(self._paste(out.pop(), right))
-                at += 2
-                continue
-            pasting = at + 1 < len(body) and body[at + 1].is_("##")
-            if word.kind == "id" and word.text in named:
-                out.extend(named[word.text] if pasting else self.expand(named[word.text]))
-            else:
-                out.append(word)
-            at += 1
+        while at < len(macro.body):
+            at = self._substitute(macro.body, at, named, out, where)
         return out
+
+    def _substitute(
+        self,
+        body: list[Token],
+        at: int,
+        named: dict[str, list[Token]],
+        out: list[Token],
+        where: Where,
+    ) -> int:
+        """Put what ``body[at]`` becomes on ``out``, and say where the body goes on from."""
+        word = body[at]
+        after = body[at + 1] if at + 1 < len(body) else None
+        if after is not None and self._operator(word, after, named, out, where):
+            return at + 2
+        if word.kind == "id" and word.text in named:
+            pasting = after is not None and after.is_("##")
+            out.extend(named[word.text] if pasting else self.expand(named[word.text]))
+        else:
+            out.append(word)
+        return at + 1
+
+    def _operator(
+        self,
+        word: Token,
+        after: Token,
+        named: dict[str, list[Token]],
+        out: list[Token],
+        where: Where,
+    ) -> bool:
+        """``#param`` and ``a ## b``: stringise or paste, if that is what ``word`` is."""
+        if word.is_("#") and after.text in named:
+            out.append(_stringised(named[after.text], where))
+            return True
+        if word.is_("##") and out:
+            right = named.get(after.text, [after]) if after.kind == "id" else [after]
+            out.extend(self._paste(out.pop(), right))
+            return True
+        return False
 
     @staticmethod
     def _paste(left: Token, right: list[Token]) -> list[Token]:

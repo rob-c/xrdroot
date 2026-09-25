@@ -172,14 +172,7 @@ class ExprParser(TypeParser):
         strict = self.trial(lambda: self.type_id(strict=True))
         ctype = strict or self.type_id()
         self.expect(")")
-        token = self.peek()
-        if strict is None and not _pointerish(ctype) and token.kind not in ("id", "num"):
-            raise NoParse
-        if strict is None and token.kind == "id" and token.text in KEYWORDS - {"this", "new"}:
-            raise NoParse
-        if token.kind == "op" and token.text not in PREFIX and not token.is_("(", "{", "::"):
-            raise NoParse
-        if token.kind == "eof" or (token.is_("*", "&", "+", "-") and not _pointerish(ctype)):
+        if not _casts(strict is not None, ctype, self.peek()):
             raise NoParse
         return Cast(where, ctype, self.unary(), "c")
 
@@ -528,11 +521,9 @@ class ExprParser(TypeParser):
         targs: list[Any] | None = None
         while True:
             self.accept("template")
-            if self.at_("operator"):
-                parts.append(self.operator_name())
-                break
-            if self.accept("~"):
-                parts.append("~" + self.identifier())
+            special = self._special_part()
+            if special is not None:
+                parts.append(special)
                 break
             parts.append(self.identifier())
             if self.at_("<"):
@@ -540,10 +531,23 @@ class ExprParser(TypeParser):
             if not ((self.at_("::") and self.peek(1).kind == "id") or self._scoped_operator()):
                 break
             self.take()
-        if len(parts) == 1 and parts[0] in STD_NAMES and not self.is_variable(parts[0]):
-            if parts[0] not in self.types and parts[0] not in self.functions:
-                parts = ["std", parts[0]]
-        return Name(where, parts, targs, rooted)
+        return Name(where, self._standard(parts), targs, rooted)
+
+    def _special_part(self) -> str | None:
+        """``operator+`` or ``~Name`` where a name's next part stands, else ``None``."""
+        if self.at_("operator"):
+            return self.operator_name()
+        if self.accept("~"):
+            return "~" + self.identifier()
+        return None
+
+    def _standard(self, parts: list[str]) -> list[str]:
+        """``vector`` as ``std::vector`` after ``using namespace std``, unless the macro's own."""
+        if len(parts) != 1 or parts[0] not in STD_NAMES or self.is_variable(parts[0]):
+            return parts
+        if parts[0] in self.types or parts[0] in self.functions:
+            return parts
+        return ["std", parts[0]]
 
     #: The functions the macro defines, which a standard name may be hidden by.
     functions: set[str]
@@ -577,6 +581,24 @@ class ExprParser(TypeParser):
         if not self.at_("(", "::", "{", ",", ")"):
             raise NoParse
         return args
+
+
+def _casts(known: bool, ctype: CType, token: Token) -> bool:
+    """Is ``(T)`` followed by ``token`` a cast - rather than a bracketed name in an expression?"""
+    if token.kind == "eof":
+        return False
+    if not known and not _operand_after_unknown(ctype, token):
+        return False
+    if token.kind == "op" and token.text not in PREFIX and not token.is_("(", "{", "::"):
+        return False
+    return not (token.is_("*", "&", "+", "-") and not _pointerish(ctype))
+
+
+def _operand_after_unknown(ctype: CType, token: Token) -> bool:
+    """After ``(name)`` of no known type, only a pointer type or a plain operand makes a cast."""
+    if token.kind == "id":
+        return token.text not in KEYWORDS - {"this", "new"}
+    return _pointerish(ctype) or token.kind == "num"
 
 
 def _pointerish(ctype: CType) -> bool:

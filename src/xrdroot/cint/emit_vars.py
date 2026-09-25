@@ -143,16 +143,12 @@ class VariableEmitter(StmtEmitter):
 
     def alias_of(self, decl: VarDecl, ctype: CType | None) -> Expr | None:
         """The element or member a reference names, when it is a second name for one."""
-        if not decl.ctype.reference or decl.init is None:
-            return None
         init = decl.init
-        if isinstance(init, Name) and self.symbol(init) is not None:
-            return init if ctype is not None and (ctype.scalar or ctype.is_string) else None
-        if not isinstance(init, (Index, Member)):
+        if not decl.ctype.reference or init is None or not _value_like(ctype, init):
             return None
-        if ctype is not None and not (ctype.scalar or ctype.is_string):
-            return None
-        return init if self._fixed(init) else None
+        if isinstance(init, Name):
+            return init if self.symbol(init) is not None else None
+        return init if isinstance(init, (Index, Member)) and self._fixed(init) else None
 
     def _fixed(self, init: Expr) -> bool:
         for node in walk(init):
@@ -219,22 +215,30 @@ class VariableEmitter(StmtEmitter):
     def assigned_initial(self, ctype: CType, init: Expr) -> str:
         """``T x = init``: converted, wrapped in its class, or copied, as C++'s rules say."""
         if isinstance(init, InitList) and init.ctype is None:
-            if ctype.scalar:
-                return self.store(ctype, init.items[0]) if init.items else zero(ctype)
-            items = ", ".join(self.value(item) for item in init.items)
-            if _container(ctype):
-                return self._container_of(ctype, items)
-            return f"{self.class_expr(ctype)}({items})"
-        if ctype.name in STRING_CLASSES and not ctype.pointer:
-            found = self.typeof(init)
-            if found is None or found.name not in STRING_CLASSES:
-                return f"{self.class_expr(ctype)}({self.value(init)})"
-        if ctype.is_class and not ctype.pointer and not ctype.is_smart and not ctype.reference:
-            found = self.typeof(init)
-            plain = found is not None and (found.arithmetic or found.is_string)
-            if isinstance(init, Literal) or plain:
-                return f"{self.class_expr(ctype)}({self.value(init)})"
+            return self._braced_initial(ctype, init)
+        if self._converted_by_constructor(ctype, init):
+            return f"{self.class_expr(ctype)}({self.value(init)})"
         return self.store(ctype, init)
+
+    def _braced_initial(self, ctype: CType, init: InitList) -> str:
+        """``T x = {a, b}``: the first item for a number, the class built from them otherwise."""
+        if ctype.scalar:
+            return self.store(ctype, init.items[0]) if init.items else zero(ctype)
+        items = ", ".join(self.value(item) for item in init.items)
+        if _container(ctype):
+            return self._container_of(ctype, items)
+        return f"{self.class_expr(ctype)}({items})"
+
+    def _converted_by_constructor(self, ctype: CType, init: Expr) -> bool:
+        """Does C++ build a ``ctype`` from ``init`` - ``TString s = "a"`` - rather than copy one?"""
+        found = self.typeof(init)
+        if ctype.name in STRING_CLASSES and not ctype.pointer:
+            return found is None or found.name not in STRING_CLASSES
+        if not _by_value(ctype):
+            return False
+        return isinstance(init, Literal) or (
+            found is not None and (found.arithmetic or found.is_string)
+        )
 
     def array_initial(self, decl: VarDecl, ctype: CType) -> str:
         """``double a[3] = {1, 2}``: an array of zeros, the given values first."""
@@ -292,6 +296,18 @@ class VariableEmitter(StmtEmitter):
         symbol = self.declare(decl.name, "global", ctype)
         symbol.py = self.fresh(f"{owner}_{decl.name}")
         context.statics.append((f"{symbol.py} = {value}", decl.where))
+
+
+def _value_like(ctype: CType | None, init: Expr) -> bool:
+    """Is what a reference is bound to a number or string - not an object, already shared?"""
+    if ctype is None:
+        return not isinstance(init, Name)
+    return ctype.scalar or ctype.is_string
+
+
+def _by_value(ctype: CType) -> bool:
+    """An object held by value: not a pointer, smart pointer or reference to one."""
+    return ctype.is_class and not ctype.pointer and not ctype.is_smart and not ctype.reference
 
 
 def addressable(ctype: CType | None) -> bool:

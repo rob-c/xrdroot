@@ -56,7 +56,17 @@ from .nodes import (
     While,
 )
 
-__all__ = ["StmtEmitter", "Loop"]
+__all__ = ["StmtEmitter", "Loop", "STOPS"]
+
+#: For ``i op bound`` stepping up (``True``) or down: what ``range``'s stop adds to the bound.
+STOPS = {
+    ("<", True): "",
+    (">", False): "",
+    ("!=", True): "",
+    ("!=", False): "",
+    ("<=", True): " + 1",
+    (">=", False): " - 1",
+}
 
 
 @dataclass
@@ -132,26 +142,31 @@ class StmtEmitter(CallEmitter):
 
     def _assign_statement(self, expr: Assign) -> bool:
         target = expr.target
-        if isinstance(target, Unary) and target.op == "*":
-            found = self.typeof(target.operand)
-            if found is None or found.is_object_pointer:
-                raise self.refuse("assigning a whole object through a pointer to it", expr)
-        if isinstance(target, Call):
-            raise self.refuse("assigning to what a call returns by reference, f(i) = v", expr)
-        if isinstance(target, Index):
-            owner = self.typeof(target.obj)
-            if owner is not None and owner.is_string and not owner.dims:
-                raise self.refuse("changing one character of a string in place", expr)
+        refusal = self._unassignable(target)
+        if refusal is not None:
+            raise self.refuse(refusal, expr)
         lhs = self.value(target)
         if isinstance(target, Name):
-            symbol = self.symbol(target)
-            if symbol is not None:
-                self.assigned(symbol)
+            self.assigned(self.symbol(target))
         if expr.op != "=" and self._in_place(expr):
             self.out.line(f"{lhs} {expr.op} {self.value(expr.value)}", expr.where)
             return True
         self.out.line(f"{lhs} = {self.assigned_value(expr)}", expr.where)
         return True
+
+    def _unassignable(self, target: Expr) -> str | None:
+        """Why assigning to ``target`` has no Python that does the same, if it has none."""
+        if isinstance(target, Unary) and target.op == "*":
+            found = self.typeof(target.operand)
+            if found is None or found.is_object_pointer:
+                return "assigning a whole object through a pointer to it"
+        if isinstance(target, Call):
+            return "assigning to what a call returns by reference, f(i) = v"
+        if isinstance(target, Index):
+            owner = self.typeof(target.obj)
+            if owner is not None and owner.is_string and not owner.dims:
+                return "changing one character of a string in place"
+        return None
 
     def _in_place(self, expr: Assign) -> bool:
         """Can ``x op= v`` be written as Python's own ``op=`` - no C conversion to make?"""
@@ -348,16 +363,13 @@ class StmtEmitter(CallEmitter):
         return stable(bound, node.body)
 
     def _stop(self, op: str, bound: Expr, step: int) -> str | None:
-        upward = step > 0
-        if (op == "<" and upward) or (op == ">" and not upward):
-            return self.value(bound)
-        if op == "!=" and abs(step) == 1:
-            return self.value(bound)
-        if op == "<=" and upward:
-            return f"{self.at(bound, P.ADD)} + 1"
-        if op == ">=" and not upward:
-            return f"{self.at(bound, P.ADD)} - 1"
-        return None
+        """Where ``range`` stops for ``i op bound`` stepping by ``step``, if it can say."""
+        if op == "!=" and abs(step) != 1:
+            return None
+        offset = STOPS.get((op, step > 0))
+        if offset is None:
+            return None
+        return f"{self.at(bound, P.ADD)}{offset}" if offset else self.value(bound)
 
     def cell_names(self) -> set[str]:
         raise NotImplementedError
@@ -419,23 +431,27 @@ class StmtEmitter(CallEmitter):
         return f"{subject} in ({', '.join(values)})"
 
     def _chained_switch(self, subject: str, groups: list[tuple[list[Case], list[Stmt]]]) -> None:
-        ordered = sorted(groups, key=lambda group: any(c.value is None for c in group[0]))
+        ordered = sorted(groups, key=lambda group: _is_default(group[0]))
         self.loops.append(Loop("switch"))
         try:
             for index, (labels, stmts) in enumerate(ordered):
-                default = any(case.value is None for case in labels)
-                word = "if" if index == 0 else "elif"
-                test = self._labels(subject, labels, [])
-                line = "else:" if default and index else f"{word} {test}:"
-                if default and not index:
-                    line = "if True:"
-                self.out.line(line, labels[0].where)
+                self.out.line(self._branch(index, subject, labels), labels[0].where)
                 body = stmts[:-1] if stmts and isinstance(stmts[-1], Break) else stmts
-                with self.out.indented(), self.scoped():
-                    for stmt in body:
-                        self.statement(stmt)
+                self._statements(body)
         finally:
             self.loops.pop()
+
+    def _branch(self, index: int, subject: str, labels: list[Case]) -> str:
+        """The ``if``/``elif``/``else`` line of one group of a switch's cases."""
+        if _is_default(labels):
+            return "else:" if index else "if True:"
+        word = "elif" if index else "if"
+        return f"{word} {self._labels(subject, labels, [])}:"
+
+    def _statements(self, body: list[Stmt]) -> None:
+        with self.out.indented(), self.scoped():
+            for stmt in body:
+                self.statement(stmt)
 
     def _falling_switch(
         self, node: Switch, subject: str, groups: list[tuple[list[Case], list[Stmt]]]
@@ -612,16 +628,10 @@ class StmtEmitter(CallEmitter):
             return False
         target = self.value(func.obj)
         args = [self.value(arg) for arg in expr.args]
-        line = None
-        if owner.name == "TString" and not owner.pointer and func.name == "Form":
-            line = f"{target} = ROOT.TString(cformat({', '.join(args)}))"
-        elif owner.is_smart and func.name == "reset":
-            line = f"{target} = {args[0] if args else 'None'}"
-        elif owner.is_string and not owner.dims:
-            line = _string_statement(target, func.name, args)
+        line = _changing_statement(owner, target, func.name, args)
         if line is None:
             return False
-        if isinstance(func.obj, Name) and self.symbol(func.obj) is not None:
+        if isinstance(func.obj, Name):
             self.assigned(self.symbol(func.obj))
         self.out.line(line, expr.where)
         return True
@@ -647,6 +657,21 @@ class StmtEmitter(CallEmitter):
         Return: _return,
         Try: _try,
     }
+
+
+def _is_default(labels: list[Case]) -> bool:
+    return any(case.value is None for case in labels)
+
+
+def _changing_statement(owner: CType, target: str, name: str, args: list[str]) -> str | None:
+    """A member call that changes a TString, smart pointer or string, as an assignment."""
+    if owner.name == "TString" and not owner.pointer and name == "Form":
+        return f"{target} = ROOT.TString(cformat({', '.join(args)}))"
+    if owner.is_smart and name == "reset":
+        return f"{target} = {args[0] if args else 'None'}"
+    if owner.is_string and not owner.dims:
+        return _string_statement(target, name, args)
+    return None
 
 
 def _string_statement(target: str, name: str, args: list[str]) -> str | None:

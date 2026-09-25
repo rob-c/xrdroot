@@ -62,30 +62,20 @@ class Parser(StmtParser):
         tokens = self.tokens
         depth = 0
         for index, token in enumerate(tokens[:-1]):
-            after = tokens[index + 1]
             depth += token.is_("{") - token.is_("}")
-            if token.is_("class", "struct", "union", "enum", "typename") and after.kind == "id":
-                name = tokens[index + 2] if after.is_("class", "struct") else after
-                self.types.add(name.text)
-            elif token.is_("using") and after.kind == "id" and tokens[index + 2].is_("="):
-                self.types.add(after.text)
-            elif token.kind == "id" and after.is_("(") and depth == 0:
+            name = _declared_type(tokens, index)
+            if name is not None:
+                self.types.add(name)
+            elif token.kind == "id" and tokens[index + 1].is_("(") and depth == 0:
                 self.functions.add(token.text)
         self._prescan_templates(tokens)
 
     def _prescan_templates(self, tokens: list[Token]) -> None:
         for index, token in enumerate(tokens[:-2]):
-            if not token.is_("template") or not tokens[index + 1].is_("<"):
-                continue
-            ahead = index + 2
-            depth = 1
-            while depth and ahead < len(tokens) - 1:
-                depth += tokens[ahead].is_("<") - tokens[ahead].is_(">")
-                ahead += 1
-            while ahead < len(tokens) - 1 and not tokens[ahead + 1].is_("(", "{", ":", ";"):
-                ahead += 1
-            if tokens[ahead].kind == "id":
-                self.templates.add(tokens[ahead].text)
+            if token.is_("template") and tokens[index + 1].is_("<"):
+                name = _templated(tokens, index + 2)
+                if name is not None:
+                    self.templates.add(name)
 
     # -- the whole macro ------------------------------------------------------
 
@@ -278,11 +268,7 @@ class Parser(StmtParser):
         return None
 
     def _out_of_class_head(self) -> tuple[list[str], str, str] | None:
-        ahead = 0
-        parts: list[str] = []
-        while self.peek(ahead).kind == "id" and self.peek(ahead + 1).is_("::"):
-            parts.append(self.peek(ahead).text)
-            ahead += 2
+        parts, ahead = self._scope_ahead()
         if not parts:
             return None
         last = self.peek(ahead)
@@ -295,6 +281,15 @@ class Parser(StmtParser):
         self.at += ahead + 1
         kind = "destructor" if destructor else "constructor"
         return parts, ("~" if destructor else "") + last.text, kind
+
+    def _scope_ahead(self) -> tuple[list[str], int]:
+        """``A::B::`` at the cursor: its parts, and how many tokens they take."""
+        ahead = 0
+        parts: list[str] = []
+        while self.peek(ahead).kind == "id" and self.peek(ahead + 1).is_("::"):
+            parts.append(self.peek(ahead).text)
+            ahead += 2
+        return parts, ahead
 
     def declared_name(self) -> tuple[list[str], str]:
         """The name a declaration declares - ``f``, ``Foo::bar``, ``operator+`` - and its scope."""
@@ -470,6 +465,18 @@ class Parser(StmtParser):
         "static_assert": StmtParser._static_assert,
     }
 
+    def _enumerators(self) -> list[tuple[str, Expr | None]]:
+        """``{ kA, kB = 5 }``: each enumerator, and its value if one is written."""
+        self.expect("{")
+        items: list[tuple[str, Expr | None]] = []
+        while not self.at_("}"):
+            item = self.identifier()
+            items.append((item, self.ternary() if self.accept("=") else None))
+            if not self.accept(","):
+                break
+        self.expect("}")
+        return items
+
     def enum_declaration(self) -> EnumDecl:
         """``enum Color { kA, kB = 5 };`` or ``enum class E : int { ... }``."""
         where = self.take().where
@@ -480,21 +487,35 @@ class Parser(StmtParser):
         if name is not None:
             self.types.add(name)
             self.aliases[name] = CType("int")
-        items: list[tuple[str, Expr | None]] = []
         if self.accept(";"):
-            return EnumDecl(where, name, items, scoped)
-        self.expect("{")
-        while not self.at_("}"):
-            item = self.identifier()
-            items.append((item, self.ternary() if self.accept("=") else None))
-            if not self.accept(","):
-                break
-        self.expect("}")
-        decl = EnumDecl(where, name, items, scoped)
+            return EnumDecl(where, name, [], scoped)
+        decl = EnumDecl(where, name, self._enumerators(), scoped)
         if not self.at_(";"):
             decl.declarators = self.declarators(Specifiers(CType(name or "int"), set()))
         self.expect(";")
         return decl
+
+
+def _declared_type(tokens: list[Token], index: int) -> str | None:
+    """The type ``class X``, ``enum class X``, ``typename X`` or ``using X =`` declares here."""
+    token, after = tokens[index], tokens[index + 1]
+    if token.is_("class", "struct", "union", "enum", "typename") and after.kind == "id":
+        return (tokens[index + 2] if after.is_("class", "struct") else after).text
+    if token.is_("using") and after.kind == "id" and tokens[index + 2].is_("="):
+        return after.text
+    return None
+
+
+def _templated(tokens: list[Token], ahead: int) -> str | None:
+    """The name a ``template <...>`` starting at ``ahead`` declares: the one before ``(`` or ``{``."""
+    depth = 1
+    last = len(tokens) - 1
+    while depth and ahead < last:
+        depth += tokens[ahead].is_("<") - tokens[ahead].is_(">")
+        ahead += 1
+    while ahead < last and not tokens[ahead + 1].is_("(", "{", ":", ";"):
+        ahead += 1
+    return tokens[ahead].text if tokens[ahead].kind == "id" else None
 
 
 def parse(tokens: list[Token]) -> Unit:

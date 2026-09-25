@@ -83,15 +83,20 @@ class NoParse(Exception):
 def looks_like_type(parts: list[str], known: set[str]) -> bool:
     """Would ``a::b::c`` be the name of a type, from its spelling and what has been declared?"""
     last = parts[-1]
-    if last in known or last in BUILTIN_WORDS or last in ROOT_TYPEDEFS:
+    if last in known or last in BUILTIN_WORDS or "::".join(parts) in ROOT_TYPEDEFS:
         return True
-    if "::".join(parts) in ROOT_TYPEDEFS:
-        return True
-    if len(parts) > 1 and parts[0] == "std":
-        return last in STD_TYPES or last.endswith("_t")
-    if len(parts) > 1 and (parts[-2] in TYPE_NAMESPACES or parts[-2] in known):
-        return last[:1].isupper()
+    if len(parts) > 1:
+        return _qualified_type(parts, known)
     return bool(ROOT_CLASS.match(last)) or (last.endswith("_t") and last[:1].isupper())
+
+
+def _qualified_type(parts: list[str], known: set[str]) -> bool:
+    last = parts[-1]
+    if parts[0] == "std":
+        return last in STD_TYPES or last.endswith("_t")
+    if parts[-2] in TYPE_NAMESPACES or parts[-2] in known:
+        return last[:1].isupper()
+    return bool(ROOT_CLASS.match(last))
 
 
 class Cursor:

@@ -74,18 +74,17 @@ class Translator(ClassEmitter):
     def predeclare(self) -> None:
         """Every name the macro declares at namespace scope, before any is used."""
         add = self.scope.add
-        for name in self.program.classes:
+        scoped = [name for name, enum in self.program.enums.items() if enum.scoped]
+        for name in [*self.program.classes, *scoped]:
             add(Symbol(name, "class", python_name(name)))
-        for name, enum in self.program.enums.items():
-            if enum.scoped:
-                add(Symbol(name, "class", python_name(name)))
         for name, home in self.program.constants.items():
             py = f"{home}.{name}" if home else python_name(name)
             add(Symbol(name, "constant", py, CType("int")))
         for name in self.program.functions:
             add(Symbol(name, "function", python_name(name)))
+        cells = self.program.global_cells
         for name, var in self.program.globals.items():
-            cell = name in self.program.global_cells and addressable(var.ctype)
+            cell = name in cells and addressable(var.ctype)
             add(Symbol(name, "global", python_name(name), var.ctype, cell=cell))
 
     def top(self, decl: object) -> None:

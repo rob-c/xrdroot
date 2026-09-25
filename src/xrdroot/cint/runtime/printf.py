@@ -72,12 +72,8 @@ def _value(conv: str, length: str | None, value: Any) -> Any:
     return "(null)" if value is None else str(value)
 
 
-def _conversion(found: re.Match[str], arguments: _Arguments) -> str:
-    conv = found["conv"]
-    if conv == "%":
-        return "%"
-    if conv == "n":
-        raise ValueError("%n writes a count through a pointer, which printf here does not do")
+def _spec(found: re.Match[str], arguments: _Arguments) -> str:
+    """The Python ``%`` specification for a C one: flags, width and precision, ``*`` read."""
     width = found["width"]
     if width == "*":
         width = str(int(arguments.next()))
@@ -87,7 +83,16 @@ def _conversion(found: re.Match[str], arguments: _Arguments) -> str:
     flags = found["flags"].replace("'", "")
     if width and width.startswith("-"):
         flags, width = flags + "-", width[1:]
-    spec = "%" + flags + (width or "") + ("" if prec is None else "." + (prec or "0"))
+    return "%" + flags + (width or "") + ("" if prec is None else "." + (prec or "0"))
+
+
+def _conversion(found: re.Match[str], arguments: _Arguments) -> str:
+    conv = found["conv"]
+    if conv == "%":
+        return "%"
+    if conv == "n":
+        raise ValueError("%n writes a count through a pointer, which printf here does not do")
+    spec = _spec(found, arguments)
     value = _value(conv, found["length"], arguments.next())
     if conv == "p":
         return "0x" + (spec + "x") % value if value else "(nil)"

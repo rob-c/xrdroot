@@ -51,23 +51,29 @@ class TypeParser(Cursor):
         """The specifiers at the cursor; ``strict`` wants a name known to be a type."""
         words: set[str] = set()
         builtin: list[str] = []
-        base: CType | None = None
-        while True:
-            token = self.peek()
-            if token.kind != "id" and not token.is_("::"):
-                break
-            text = token.text
-            if text in QUALIFIERS:
-                self._qualifier(words, text)
-            elif text in BUILTIN_WORDS and base is None:
-                builtin.append(self.take().text)
-            elif text == "decltype" and base is None and not builtin:
-                base = self._decltype()
-            elif base is None and not builtin and text not in KEYWORDS:
-                base = self.named_type(strict)
-            else:
-                break
-        return Specifiers(self._base(base, builtin, words), words & KEPT)
+        base: list[CType] = []
+        while self._specifier(words, builtin, base, strict):
+            pass
+        return Specifiers(self._base(base[0] if base else None, builtin, words), words & KEPT)
+
+    def _specifier(self, words: set[str], builtin: list[str], base: list[CType], strict: bool) -> bool:
+        """Read one specifier into what has been read so far; ``False`` once there are no more."""
+        token = self.peek()
+        if token.kind != "id" and not token.is_("::"):
+            return False
+        text = token.text
+        if text in QUALIFIERS:
+            self._qualifier(words, text)
+            return True
+        if base:
+            return False
+        if text in BUILTIN_WORDS:
+            builtin.append(self.take().text)
+            return True
+        if builtin or text in KEYWORDS - {"decltype"}:
+            return False
+        base.append(self._decltype() if text == "decltype" else self.named_type(strict))
+        return True
 
     def _qualifier(self, words: set[str], text: str) -> None:
         self.take()
@@ -96,17 +102,19 @@ class TypeParser(Cursor):
     def named_type(self, strict: bool) -> CType:
         """A type by name, ``TH1F`` or ``std::map<int, TString>``, typedefs looked through."""
         parts, args = self.qualified_type()
-        if strict and not self.is_type(parts):
+        if (strict and not self.is_type(parts)) or (len(parts) == 1 and self.is_variable(parts[0])):
             raise NoParse
-        if len(parts) == 1 and self.is_variable(parts[0]):
-            raise NoParse
-        text = "::".join(parts)
-        alias = self.aliases.get(text) or self.aliases.get(parts[-1])
+        alias = self.aliases.get("::".join(parts)) or self.aliases.get(parts[-1])
         if alias is not None and not args:
             return replace(alias)
+        return CType(canonical(self._standard_type(parts)), args)
+
+    def _standard_type(self, parts: list[str]) -> str:
+        """``vector`` means ``std::vector`` when it is the standard's, not the macro's own."""
+        text = "::".join(parts)
         if len(parts) == 1 and parts[0] in STD_NAMES and parts[0] not in self.types:
-            text = "std::" + text
-        return CType(canonical(text), args)
+            return "std::" + text
+        return text
 
     def qualified_type(self) -> tuple[list[str], list[Any]]:
         """``a::b<...>::c<...>``: the parts of a type's name, and the last template arguments."""

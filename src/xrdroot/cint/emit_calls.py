@@ -38,6 +38,9 @@ WRAPS = {
     "signed char": "i8",
 }
 
+#: A container's iterator functions, and the index each stands for in a slice.
+ITERATOR_ENDS = {"begin": "0", "cbegin": "0", "end": "None", "cend": "None"}
+
 #: ``std::numeric_limits<T>``'s members, for the floating types and the integer ones.
 LIMITS = {
     ("double", "max"): "1.7976931348623157e+308",
@@ -170,19 +173,23 @@ class CallEmitter(ExprEmitter):
         return container, start, stop
 
     def _iterator(self, it: Expr, node: Expr, end: str) -> tuple[str, str]:
-        offset = "0"
-        if isinstance(it, Call) and len(it.args) == 0 and isinstance(it.func, Member):
-            if it.func.name in ("begin", "cbegin"):
-                return self.value(it.func.obj), "0"
-            if it.func.name in ("end", "cend"):
-                return self.value(it.func.obj), "None"
+        ends = self._container_end(it)
+        if ends is not None:
+            return ends
         if isinstance(it, Binary) and it.op == "+":
             base, _ = self._iterator(it.left, node, end)
             return base, self.value(it.right)
         found = self.typeof(it)
         if found is not None and (found.is_array or found.is_pointer):
-            return self.value(it), offset
+            return self.value(it), "0"
         raise self.refuse("an iterator this translator cannot follow back to its container", node)
+
+    def _container_end(self, it: Expr) -> tuple[str, str] | None:
+        """``v.begin()`` as ``(v, 0)`` and ``v.end()`` as ``(v, None)``: where a range starts."""
+        if not isinstance(it, Call) or it.args or not isinstance(it.func, Member):
+            return None
+        position = ITERATOR_ENDS.get(it.func.name)
+        return (self.value(it.func.obj), position) if position is not None else None
 
     _LIBRARY: ClassVar[dict[str, Callable[[CallEmitter, Name, Call], Out | None]]] = {
         "unique_ptr": _smart,
@@ -248,23 +255,33 @@ class CallEmitter(ExprEmitter):
             return self.store(ctype, node.items[0]) if node.items else zero(ctype)
         if ctype.scalar:
             return self._arithmetic_store(ctype, node)
-        text = self.value(node)
-        if ctype.is_class and not ctype.pointer and not ctype.reference and _lvalue(node):
-            found = self.typeof(node)
-            if found is not None and found.is_class and not found.pointer:
-                return f"value_copy({text})"
-        return text
+        if self._copied(ctype, node):
+            return f"value_copy({self.value(node)})"
+        return self.value(node)
+
+    def _copied(self, ctype: CType, node: Expr) -> bool:
+        """Is ``T b = a`` a copy of an object - which Python would otherwise share, not copy?"""
+        if not ctype.is_class or ctype.pointer or ctype.reference or not _lvalue(node):
+            return False
+        found = self.typeof(node)
+        return found is not None and found.is_class and not found.pointer
 
     def _arithmetic_store(self, ctype: CType, node: Expr) -> str:
         source = self.typeof(node)
         if ctype.is_bool:
-            return self.value(node) if source is not None and source.is_bool else (
-                f"bool({self.condition(node)})"
-            )
+            return self._bool_store(source, node)
         if ctype.integral:
             return self._integral_store(ctype, source, node)
         if ctype.name == "float":
             return f"f32({self.value(node)})"
+        return self._double_store(source, node)
+
+    def _bool_store(self, source: CType | None, node: Expr) -> str:
+        if source is not None and source.is_bool:
+            return self.value(node)
+        return f"bool({self.condition(node)})"
+
+    def _double_store(self, source: CType | None, node: Expr) -> str:
         if isinstance(node, Literal) and node.kind in ("int", "char"):
             return repr(float(node.value))
         if source is not None and source.integral:
@@ -280,9 +297,11 @@ class CallEmitter(ExprEmitter):
         wrap = WRAPS.get(ctype.name)
         if wrap is not None:
             return f"{wrap}({text})"
-        if source is not None and source.integral and not source.is_bool:
-            return text
-        return f"int({text})"
+        return text if _plain_integer(source) else f"int({text})"
+
+
+def _plain_integer(source: CType | None) -> bool:
+    return source is not None and source.integral and not source.is_bool
 
 
 def _wrapped(value: int, ctype: CType) -> int:

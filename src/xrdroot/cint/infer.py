@@ -58,6 +58,14 @@ RETURNS = {
     "Form": CType("char", pointer=1),
 }
 
+#: The standard's smart pointers and their makers, and the smart pointer each gives.
+SMART_MAKERS = {
+    "unique_ptr": "std::unique_ptr",
+    "make_unique": "std::unique_ptr",
+    "shared_ptr": "std::shared_ptr",
+    "make_shared": "std::shared_ptr",
+}
+
 #: TMath's functions that return an integer; the rest of TMath returns a double.
 TMATH_INTEGERS = frozenset(
     "Nint Abs Sign Min Max Floor Ceil FloorNint CeilNint BinarySearch LocMin LocMax "
@@ -190,9 +198,13 @@ class Inference(EmitterBase):
         if len(parts) != 1:
             return None
         name = parts[0]
-        if name in ("unique_ptr", "shared_ptr", "make_unique", "make_shared"):
-            return CType(f"std::{name.replace('make_', '')}_ptr".replace("_ptr_ptr", "_ptr"),
-                         list(func.targs or []))
+        smart = SMART_MAKERS.get(name)
+        if smart is not None:
+            return CType(smart, list(func.targs or []))
+        return self._numeric_call(name, node)
+
+    def _numeric_call(self, name: str, node: Call) -> CType | None:
+        """The type of ``min``, ``max`` and ``abs`` - their arguments' - and the fixed ones."""
         if name in ("min", "max") and len(node.args) == 2:
             return arithmetic_result(self.typeof(node.args[0]), self.typeof(node.args[1]))
         if name == "abs" and node.args:
