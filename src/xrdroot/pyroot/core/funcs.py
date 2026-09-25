@@ -11,6 +11,7 @@ functions, replacing one of its name, so ``FillRandom("f")`` and
 from __future__ import annotations
 
 import inspect
+import re
 from functools import partial
 from typing import Any, Callable
 
@@ -68,6 +69,36 @@ def _register(function: Any) -> None:
     listed.Add(function)
 
 
+#: A word of a formula: what may be the name of a function made before it.
+WORD = re.compile(r"(?<![\w\[.:])([A-Za-z_]\w*)(?![\w(\[])")
+#: A parameter by number in an expression: ``[p3]`` or ``[3]``.
+PARAMETER = re.compile(r"\[p?(\d+)\]")
+
+
+def composed(formula: str) -> str:
+    """``formula`` with every function it names by name - ``[3]*form1`` - written in full.
+
+    As ROOT lets one formula use another made before it, each name of a
+    function in ``gROOT``'s list becomes its expression, in brackets, its
+    parameters numbered after the ones the formula uses itself.
+    """
+    from ...fillrandom import STANDARD
+    from .troot import gROOT
+
+    listed = {item.GetName(): item for item in gROOT.GetListOfFunctions()}
+
+    def expanded(found: re.Match[str]) -> str:
+        inner = listed.get(found.group(1))
+        if inner is None or found.group(1) in STANDARD:
+            return found.group(0)
+        used = [int(n) for n in PARAMETER.findall(formula)]
+        shift = max(used) + 1 if used else 0
+        text = PARAMETER.sub(lambda p: f"[{int(p.group(1)) + shift}]", inner.GetExpFormula())
+        return f"({text})"
+
+    return WORD.sub(expanded, formula)
+
+
 def standard_function(name: str) -> Any:
     """``gROOT->GetFunction("gaus")``: one of ROOT's standard functions, made when first asked."""
     from ...fillrandom import STANDARD
@@ -88,7 +119,11 @@ class TFormula(TNamed):
 
     def __init__(self, name: Any = "", formula: Any = "", *rest: Any) -> None:
         super().__init__()
-        self._xrd = Function(str(name), str(formula)) if formula else Function(str(name), "0")
+        text = composed(str(formula)) if formula else "0"
+        self._xrd = Function(str(name), text, title=str(formula) or "0")
+        remember(self._xrd, self)
+        if name:
+            _register(self)
 
     def _adopted(self, xrd: Any) -> None:
         TNamed.__init__(self)
@@ -262,7 +297,7 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
             model = adapted(source, self.DIM)
             return Function.from_callable(name, model, npar, dimensions=self.DIM, range=span)
         formula = str(source) if source is not None else "0"
-        return Function(name, formula, range=span, title=formula)
+        return Function(name, composed(formula), range=span, title=formula)
 
     def _attribute_holder(self) -> dict[str, Any]:
         f1: dict[str, Any] = self._xrd._f1

@@ -300,6 +300,13 @@ class TDirectoryFile(TDirectory):
             self._subdirectory(name, key.GetTitle()) if key is not None and key.IsFolder() else None
         )
 
+    def __getitem__(self, name: str) -> Any:
+        """``f["hpx"]``: an object by name, as PyROOT's files give them; ``KeyError`` if none."""
+        found = self.Get(name)
+        if found is None:
+            raise KeyError(f"{self.ClassName()} {self.GetName()!r} has no object {name!r}")
+        return found
+
     def __getattr__(self, name: str) -> Any:
         """``f.hpx``: an object by name as an attribute, as PyROOT's files give them."""
         if name.startswith("_"):
