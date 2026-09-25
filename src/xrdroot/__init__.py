@@ -26,6 +26,10 @@ written as many files as one, a tree reads its friends beside it, and an
 :class:`EntryList` picks the entries to read. :func:`compile_formula` makes a
 ``TTree::Draw`` expression, evaluated over whole columns at once, and
 ``tree.arrays(["Sum$(pt > 30)"], cut="n > 1")`` reads them by their text.
+:class:`RDataFrame` is ROOT's declarative analysis over a tree, a chain or an
+RNTuple: lazy, in one pass, with C++ expressions and ``ROOT::VecOps``
+evaluated over whole batches of entries, and shared across processes by
+:func:`EnableImplicitMT`.
 What it does not do is every ROOT class ever written: one whose layout the
 file does not describe, or one that streams itself in some way of its own, is
 refused by name with the class in the message, because a plausible misreading
@@ -56,6 +60,7 @@ from .formula import Formula, FormulaError, compile_formula
 from .graph import Graph
 from .hist import Axis, Histogram
 from .profile import Profile
+from .rdf import EnableImplicitMT, RDataFrame, RunGraphs
 from .rntuple import RField, RNTuple, WritableRNTuple
 from .sparse import SparseHistogram
 from .stacks import MultiGraph, Stack
@@ -96,6 +101,10 @@ __all__ = [
     "Stack",
     "Graph",
     "MultiGraph",
+    # analysis
+    "RDataFrame",
+    "RunGraphs",
+    "EnableImplicitMT",
     # expressions
     "compile_formula",
     "Formula",
