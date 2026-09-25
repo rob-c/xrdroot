@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 
+from . import styles
 from .latex import translate
 from .model import Primitive
 from .scene import Scene
@@ -24,6 +25,9 @@ __all__ = ["SHAPES", "draw_text"]
 ELLIPSE_POINTS = 181
 #: How long an arrow's head is when ``fArrowSize`` was never set, as a fraction of the pad.
 ARROW_SIZE = 0.05
+#: How much bigger than ``fArrowSize`` of the pad's height matplotlib's arrow must be
+#: scaled for its head to be as long as ``TArrow::PaintArrowNDC`` draws one.
+HEAD = 3.0
 
 
 def draw_text(scene: Scene, text: str, x: float, y: float, style: dict[str, Any], ndc: bool) -> Any:
@@ -101,7 +105,7 @@ def arrow(scene: Scene, prim: Primitive, _option: str) -> None:
         (xs[0], ys[0]),
         (xs[1], ys[1]),
         arrowstyle=_arrowstyle(str(prim.get("fOption", "|>"))),
-        mutation_scale=size * scene.pixels[1] * 0.5,
+        mutation_scale=styles.points(HEAD * size * scene.pixels[1]),
         transform=scene.where(prim.ndc),
         clip_on=False,
         zorder=scene.layer(),
@@ -161,7 +165,7 @@ def box(scene: Scene, prim: Primitive, _option: str) -> None:
             transform=scene.ax.transData,
             clip_on=False,
             zorder=scene.layer(),
-            **patch_style(scene, prim),
+            **patch_style(scene, prim, outline=scene.fill(prim) is None),
         )
     )
 

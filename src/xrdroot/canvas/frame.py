@@ -322,6 +322,24 @@ def _label(scene: Scene, axis: Any, which: str) -> None:
     )
 
 
+def _plain(value: float, _position: Any = None) -> str:
+    """A tick's label as ROOT writes it: the number, with no zeros after its point."""
+    return f"{value:.6g}" if abs(value) > 1e-12 else "0"
+
+
+def _divided(axis: Any, attributes: Any, log: bool) -> None:
+    """A linear axis's ticks as ``fNdivisions`` asks: up to its units of round steps, each
+    divided by its tens, labelled as plain numbers."""
+    if log:
+        return
+    from matplotlib.ticker import AutoMinorLocator, FuncFormatter, MaxNLocator
+
+    divisions = abs(int(lookup(attributes, "fNdivisions", 510) or 510))
+    axis.set_major_locator(MaxNLocator(nbins=divisions % 100 or 10, steps=[1, 2, 2.5, 5, 10]))
+    axis.set_minor_locator(AutoMinorLocator((divisions // 100) % 100 or 5))
+    axis.set_major_formatter(FuncFormatter(_plain))
+
+
 def _ticks(scene: Scene, source: Any) -> None:
     """Ticks inside the frame, on the far sides too when the pad asks for them."""
     tickx, ticky = scene.pad.ticks
@@ -331,6 +349,8 @@ def _ticks(scene: Scene, source: Any) -> None:
     xlength = styles.points(float(lookup(xaxis, "fTickLength", TICK_LENGTH)) * frame_h)
     ylength = styles.points(float(lookup(yaxis, "fTickLength", TICK_LENGTH)) * frame_w)
     scene.ax.minorticks_on()
+    _divided(scene.ax.xaxis, xaxis, scene.pad.logx)
+    _divided(scene.ax.yaxis, yaxis, scene.pad.logy)
     scene.ax.tick_params(axis="x", which="major", direction="in", length=xlength, top=bool(tickx))
     scene.ax.tick_params(
         axis="x", which="minor", direction="in", length=xlength / 2, top=bool(tickx)
