@@ -66,10 +66,19 @@ class Bins:
         A string coordinate fills the bin of that label, made on the axis if
         it has none yet, as ROOT fills a histogram of categories.
         """
+        if args and np.ndim(args[0]) > 0:
+            return self._fill_arrays(args)
         coordinates = [self._coordinate(at, value) for at, value in enumerate(args[: self.DIM])]
         weight = float(args[self.DIM]) if len(args) > self.DIM else 1.0
         self._xrd.fill(*coordinates, weight=None if weight == 1.0 else weight)
         return int(self._xrd.find_bin(*coordinates))
+
+    def _fill_arrays(self, args: tuple[Any, ...]) -> int:
+        """``Fill(xs[, ys][, ws])`` - PyROOT's - an entry for each element: ``-1``, no one bin."""
+        columns = [np.asarray(value, dtype=np.float64) for value in args[: self.DIM]]
+        weights = np.asarray(args[self.DIM], dtype=np.float64) if len(args) > self.DIM else None
+        self._xrd.fill(*columns, weight=weights)
+        return -1
 
     def _coordinate(self, at: int, value: Any) -> float:
         if not isinstance(value, str):

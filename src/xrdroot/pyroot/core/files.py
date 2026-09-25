@@ -594,6 +594,9 @@ class TFile(TDirectoryFile):
         """``Flush``: records go out as they are written."""
 
     def ls(self, option: str = "") -> None:
+        """``TFile::ls``: the file, and what it holds; a file that would not open lists nothing."""
+        if self._zombie:
+            return
         print(f"{Indent.text()}{self.ClassName()}**\t\t{self.GetName()}\t{self.GetTitle()}")
         Indent.deeper()
         try:

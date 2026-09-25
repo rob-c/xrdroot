@@ -18,12 +18,14 @@ from . import distributions as dist
 from .genvector import *  # noqa: F403
 from .genvector import __all__ as _vectors
 from .mathtools import (  # noqa: F401 - ROOT::Math's function objects and tools, by name
+    Factory,
     Functor,
     Functor1D,
     GradFunctor,
     GradFunctor1D,
     Integrator,
     IntegratorOneDim,
+    Minimizer,
     RootFinder,
 )
 
@@ -357,6 +359,8 @@ __all__ = sorted(
     [name for name, value in list(globals().items()) if _exported(name, value)]
     + list(_vectors)
     + [
+        "Factory",
+        "Minimizer",
         "Functor",
         "Functor1D",
         "GradFunctor",

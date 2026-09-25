@@ -24,6 +24,8 @@ __all__ = [
     "RootFinder",
     "Fitter",
     "Fit",
+    "Minimizer",
+    "Factory",
 ]
 
 
@@ -248,12 +250,10 @@ def _minimised(fcn: Any, start: Any, names: list[str]) -> Any:
     """MIGRAD on ``fcn`` from ``start`` - with its gradient, when it is a ``GradFunctor``."""
     from ...fit import minuit as core
 
-    value = lambda p: float(fcn(p))  # noqa: E731 - Minuit is handed a plain function
     if not isinstance(fcn, GradFunctor):
-        return core.minimize(value, start, names=names)
-    grad = lambda p: [fcn.Derivative(p, at) for at in range(len(start))]  # noqa: E731
-    made = core.iminuit().Minuit(value, start, grad=grad, name=tuple(names))
-    made.errordef, made.tol, made.strategy, made.print_level = 1.0, core.TOLERANCE, core.STRATEGY, 0
+        return core.minimize(lambda p: float(fcn(p)), start, names=names)
+    made = _minuit(fcn, start, names)
+    made.tol, made.strategy = core.TOLERANCE, core.STRATEGY
     made.errors = core.default_steps(start)
     made.migrad(iterate=1, use_simplex=False)
     return core._result(made, names, False)
@@ -267,3 +267,108 @@ class _FitNamespace:
 
 #: ``ROOT.Fit``.
 Fit = _FitNamespace()
+
+
+class Minimizer:
+    """``ROOT::Math::Minimizer``, as ``Factory::CreateMinimizer("Minuit2")`` makes one."""
+
+    def __init__(self, name: str = "Minuit2", algorithm: str = "") -> None:
+        self._name, self._algorithm = str(name or "Minuit2"), str(algorithm or "Migrad")
+        self._settings = {"calls": 0, "tolerance": 0.01, "print": 0, "strategy": 1}
+        self._fcn: Any = None
+        self._variables: dict[int, list[Any]] = {}
+        self._found: Any = None
+
+    def SetMaxFunctionCalls(self, calls: int) -> None:
+        self._settings["calls"] = int(calls)
+
+    def SetMaxIterations(self, iterations: int) -> None:
+        """``SetMaxIterations``: for GSL's minimisers - Minuit counts calls instead."""
+
+    def SetTolerance(self, tolerance: float) -> None:
+        self._settings["tolerance"] = float(tolerance)
+
+    def SetPrintLevel(self, level: int) -> None:
+        self._settings["print"] = int(level)
+
+    def SetStrategy(self, strategy: int) -> None:
+        self._settings["strategy"] = int(strategy)
+
+    def SetFunction(self, fcn: Any) -> None:
+        self._fcn = fcn
+
+    def SetVariable(self, index: int, name: Any, value: float, step: float) -> bool:
+        self._variables[int(index)] = [str(name), float(value), float(step), None]
+        return True
+
+    def SetLimitedVariable(self, index: int, name: Any, value: float, step: float,
+                           low: float, high: float) -> bool:  # fmt: skip
+        self._variables[int(index)] = [str(name), float(value), float(step), (low, high)]
+        return True
+
+    def Minimize(self) -> bool:
+        """``Minimize``: MIGRAD from the variables set, and - at print level 1 - ROOT's lines."""
+        order = sorted(self._variables)
+        names = [self._variables[at][0] for at in order]
+        made = _minuit(self._fcn, [self._variables[at][1] for at in order], names)
+        made.errors = [self._variables[at][2] for at in order]
+        made.limits = [self._variables[at][3] for at in order]
+        made.tol, made.strategy = self._settings["tolerance"], self._settings["strategy"]
+        made.migrad(ncall=self._settings["calls"] or None, iterate=1, use_simplex=False)
+        self._found = made
+        if self._settings["print"] > 0:
+            self._report(names)
+        return bool(made.valid)
+
+    def _report(self, names: list[str]) -> None:
+        found, settings = self._found, self._settings
+        print(f"{self._name}Minimizer: Minimize with max-calls {settings['calls']} convergence for "
+              f"edm < {settings['tolerance']:g} strategy {settings['strategy']}")  # fmt: skip
+        verdict = "Valid minimum" if found.valid else "Invalid minimum"
+        print(f"{self._name}Minimizer : {verdict} - status = {self.Status()}")
+        print(f"FVAL  = {found.fval:.18g}\nEdm   = {found.fmin.edm:.18g}\nNfcn  = {found.nfcn}")
+        for name, value, error in zip(names, found.values, found.errors):
+            print(f"{name}\t  = {value:g}\t +/-  {error:g}")
+
+    def X(self) -> np.ndarray[Any, Any]:
+        return np.array(self._found.values)
+
+    def Errors(self) -> np.ndarray[Any, Any]:
+        return np.array(self._found.errors)
+
+    def MinValue(self) -> float:
+        return float(self._found.fval)
+
+    def Edm(self) -> float:
+        return float(self._found.fmin.edm)
+
+    def NCalls(self) -> int:
+        return int(self._found.nfcn)
+
+    def NDim(self) -> int:
+        return len(self._variables)
+
+    def Status(self) -> int:
+        return 0 if self._found.valid else 3
+
+
+def _minuit(fcn: Any, start: Any, names: list[str]) -> Any:
+    """iminuit's Minuit over ``fcn``, with its gradient when it is a ``GradFunctor``."""
+    from ...fit import minuit as core
+
+    value = lambda p: float(fcn(p))  # noqa: E731 - Minuit is handed a plain function
+    grad = None
+    if isinstance(fcn, GradFunctor):
+        grad = lambda p: [fcn.Derivative(p, at) for at in range(len(start))]  # noqa: E731
+    made = core.iminuit().Minuit(value, np.asarray(start, dtype=np.float64), grad=grad,
+                                 name=tuple(names))  # fmt: skip
+    made.errordef, made.print_level = 1.0, 0
+    return made
+
+
+class Factory:
+    """``ROOT::Math::Factory``: minimisers by name - each one Minuit2's here."""
+
+    @staticmethod
+    def CreateMinimizer(name: Any = "Minuit2", algorithm: Any = "") -> Minimizer:
+        return Minimizer(str(name), str(algorithm))
