@@ -46,6 +46,30 @@ def axis_specs(args: tuple[Any, ...], dimensions: int) -> tuple[list[Any], tuple
     return specs, args[at:]
 
 
+#: ROOT's constructor arguments by the names PyROOT lets a script give them.
+KEYWORDS = ("name", "title", "nbinsx", "xlow", "xup", "nbinsy", "ylow", "yup",
+            "nbinsz", "zlow", "zup")  # fmt: skip
+#: The names that stand for an axis's low and high edge together, as an array of edges.
+EDGES = {"xbins": ("xlow", "xup"), "ybins": ("ylow", "yup"), "zbins": ("zlow", "zup")}
+
+
+def positional(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[Any, ...]:
+    """ROOT's arguments given by name - ``nbinsx=100, xlow=0, xup=1`` - put in their places."""
+    if not kwargs:
+        return args
+    named = dict(zip(KEYWORDS, args))
+    named.update(kwargs)
+    order = list(KEYWORDS)
+    for edges, (low, high) in EDGES.items():
+        if edges in named:
+            order[order.index(low)] = edges
+            order.remove(high)
+    unknown = sorted(set(named) - set(order))
+    if unknown:
+        raise TypeError(f"ROOT's histogram constructors take no argument {unknown[0]!r}")
+    return tuple(named[key] for key in order if key in named) + args[len(KEYWORDS) :]
+
+
 class Booked:
     """The construction, naming and keeping of a histogram, whatever its kind."""
 
@@ -57,10 +81,11 @@ class Booked:
     _default_sumw2: ClassVar[list[bool]] = [False]
     _xrd: Any
 
-    def __init__(self, *args: Any) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         from .objects import TObject
 
         TObject.__init__(self)  # type: ignore[arg-type]
+        args = positional(args, kwargs)
         self._directory: Any = None
         self._axis_cache: dict[str, Any] = {}
         if args and isinstance(args[0], Booked):
