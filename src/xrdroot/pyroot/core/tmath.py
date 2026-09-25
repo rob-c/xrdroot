@@ -387,7 +387,47 @@ def StudentI(T: float, ndf: float) -> float:
 
 
 def StudentQuantile(p: float, ndf: float, lower_tail: bool = True) -> float:
-    return dist.student_quantile(p if lower_tail else 1.0 - p, ndf)
+    """``StudentQuantile``: Hill's algorithm 396, as ROOT computes it, to about nine digits."""
+    if ndf < 1 or p >= 1 or p <= 0:
+        message("Error", "TMath::StudentQuantile", "illegal parameter values")
+        return 0.0
+    upper = p > 0.5 if lower_tail else p < 0.5
+    q = 2 * ((1 - p) if lower_tail == upper else p)
+    found = _hill(q, ndf)
+    return found if upper else -found
+
+
+def _hill(q: float, ndf: float) -> float:
+    """The two-sided quantile of Student's t for a tail of ``q``: ``TMath::StudentQuantile``'s."""
+    if ndf - 1 < 1e-8:
+        angle = math.pi / 2 * q
+        return math.cos(angle) / math.sin(angle)
+    if ndf - 2 < 1e-8:
+        return math.sqrt(2.0 / (q * (2 - q)) - 2)
+    a = 1.0 / (ndf - 0.5)
+    b = 48.0 / (a * a)
+    c = ((20700 * a / b - 98) * a - 16) * a + 96.36
+    d = ((94.5 / (b + c) - 3.0) / b + 1) * math.sqrt(a * math.pi / 2) * ndf
+    y = math.pow(q * d, 2.0 / ndf)
+    y = _hill_normal(q, ndf, a, b, c, d) if y > 0.05 + a else _hill_near(ndf, y, d)
+    return math.sqrt(ndf * y)
+
+
+def _hill_near(ndf: float, y: float, d: float) -> float:
+    inner = 1.0 / (((ndf + 6.0) / (ndf * y) - 0.089 * d - 0.822) * (ndf + 2.0) * 3)
+    return ((inner + 0.5 / (ndf + 4.0)) * y - 1.0) * (ndf + 1.0) / (ndf + 2.0) + 1 / y
+
+
+def _hill_normal(q: float, ndf: float, a: float, b: float, c: float, d: float) -> float:
+    """Hill's asymptotic inverse expansion about the normal distribution."""
+    x = dist.normal_quantile(q * 0.5)
+    y = x * x
+    if ndf < 5:
+        c += 0.3 * (ndf - 4.5) * (x + 0.6)
+    c += (((0.05 * d * x - 5.0) * x - 7.0) * x - 2.0) * x + b
+    y = (((((0.4 * y + 6.3) * y + 36.0) * y + 94.5) / c - y - 3.0) / b + 1) * x
+    y = a * y * y
+    return math.exp(y) - 1 if y > 0.002 else y + 0.5 * y * y
 
 
 def FDist(F: float, N: float, M: float) -> float:
