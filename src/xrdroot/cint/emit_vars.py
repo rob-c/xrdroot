@@ -59,8 +59,7 @@ class VariableEmitter(StmtEmitter):
 
     def declare(self, name: str, kind: str, ctype: CType | None = None, **extra: Any) -> Symbol:
         symbol = super().declare(name, kind, ctype, **extra)
-        if self.contexts:
-            self.contexts[-1].declared.add(id(symbol))
+        self.contexts[-1].declared.add(id(symbol))
         return symbol
 
     def assigned(self, symbol: Any) -> None:

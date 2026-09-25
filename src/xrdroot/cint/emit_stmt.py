@@ -180,6 +180,8 @@ class StmtEmitter(CallEmitter):
                 return "assigning a whole object through a pointer to it"
         if isinstance(target, Call):
             return "assigning to what a call returns by reference, f(i) = v"
+        if not isinstance(target, (Name, Index, Member, Unary)):
+            return "assigning to something that is not a variable"
         if isinstance(target, Index):
             owner = self.typeof(target.obj)
             if owner is not None and owner.is_string and not owner.dims:
@@ -394,13 +396,11 @@ class StmtEmitter(CallEmitter):
         self.out.line("break", node.where)
 
     def _continue(self, node: Continue) -> None:
-        for loop in reversed(self.loops):
-            if loop.kind == "loop":
-                for step in loop.step:
-                    self.expression_statement(step)
-                break
-            if loop.kind == "falling":
-                raise self.refuse("a continue inside a switch whose cases fall through", node)
+        loop = next(loop for loop in reversed(self.loops) if loop.kind != "switch")
+        if loop.kind == "falling":
+            raise self.refuse("a continue inside a switch whose cases fall through", node)
+        for step in loop.step:
+            self.expression_statement(step)
         self.out.line("continue", node.where)
 
     def _return(self, node: Return) -> None:

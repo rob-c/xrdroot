@@ -142,13 +142,9 @@ class TypeParser(Cursor):
         """``<int, 3, std::string>``: each a :class:`CType` or an expression node."""
         self.expect("<")
         self.angle += 1
-        args: list[Any] = []
         try:
             self.split_shift()
-            while not self.at_(">"):
-                args.append(self._template_arg())
-                if not self.accept(","):
-                    break
+            args = self.listed(self._template_arg, ">")
             self.split_shift()
             self.expect(">")
         finally:

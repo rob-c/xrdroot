@@ -35,9 +35,8 @@ class Writer:
         trailing = 0
         while trailing < len(self.lines) and not self.lines[-1 - trailing]:
             trailing += 1
-        if self.lines and trailing < count:
-            for _ in range(count - trailing):
-                self.line("")
+        for _ in range(count - trailing):
+            self.line("")
 
     @contextmanager
     def indented(self) -> Iterator[None]:

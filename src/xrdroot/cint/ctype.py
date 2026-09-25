@@ -257,9 +257,6 @@ class CType:
         """What indexing this gives: an array's element, or what a pointer points at."""
         if self.dims:
             return replace(self, dims=self.dims[1:], reference=False)
-        if self.is_smart and self.args:
-            pointee = self.args[0]
-            return pointee if isinstance(pointee, CType) else CType("auto")
         return replace(self, pointer=max(self.pointer - 1, 0), reference=False)
 
     def value(self) -> CType:

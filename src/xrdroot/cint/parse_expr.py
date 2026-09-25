@@ -264,17 +264,17 @@ class ExprParser(TypeParser):
         """``(a, b, c)``: the arguments of a call or constructor."""
         self.expect("(")
         self.angle, saved = 0, self.angle
-        args: list[Expr] = []
         try:
-            while not self.at_(")"):
-                args.append(self.initializer_value())
-                self.accept("...")
-                if not self.accept(","):
-                    break
+            args = self.listed(self._argument, ")")
             self.expect(")")
         finally:
             self.angle = saved
         return args
+
+    def _argument(self) -> Expr:
+        argument = self.initializer_value()
+        self.accept("...")
+        return argument
 
     def _index(self, expr: Expr) -> Expr:
         where = self.take().where
@@ -426,11 +426,7 @@ class ExprParser(TypeParser):
 
     def _lambda(self) -> Expr:
         where = self.take().where
-        captures = []
-        while not self.at_("]"):
-            captures.append(self._capture())
-            if not self.accept(","):
-                break
+        captures = self.listed(self._capture, "]")
         self.expect("]")
         params: list[Param] = []
         if self.at_("("):
@@ -464,18 +460,17 @@ class ExprParser(TypeParser):
         """``{a, b, {c, d}}``: a braced list, as an initialiser or an argument."""
         where = self.expect("{").where
         self.angle, saved = 0, self.angle
-        items: list[Expr] = []
         try:
-            while not self.at_("}"):
-                if self.at_("."):
-                    raise self.refuse("a designated initialiser, .name = value")
-                items.append(self.initializer_value())
-                if not self.accept(","):
-                    break
+            items = self.listed(self._item, "}")
             self.expect("}")
         finally:
             self.angle = saved
         return InitList(where, items)
+
+    def _item(self) -> Expr:
+        if self.at_("."):
+            raise self.refuse("a designated initialiser, .name = value")
+        return self.initializer_value()
 
     _PRIMARY_WORD: ClassVar[dict[str, Callable[[ExprParser], Expr]]] = {
         "true": _true,
@@ -562,17 +557,15 @@ class ExprParser(TypeParser):
             return None
         return self.trial(self._call_targs)
 
+    def _typed_or_number(self) -> Any:
+        return self._number() if self.peek().kind == "num" else self.type_id(strict=True)
+
     def _call_targs(self) -> list[Any]:
         """Template arguments that must all be types, and be followed by ``(``, ``::`` or ``{``."""
         self.expect("<")
         self.angle += 1
-        args: list[Any] = []
         try:
-            while not self.at_(">", ">>"):
-                number = self.peek().kind == "num"
-                args.append(self._number() if number else self.type_id(strict=True))
-                if not self.accept(","):
-                    break
+            args = self.listed(self._typed_or_number, ">", ">>")
             self.split_shift()
             self.expect(">")
         finally:

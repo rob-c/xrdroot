@@ -114,7 +114,7 @@ class ClassInfo:
         found = self.methods.setdefault(func.name, [])
         for index, other in enumerate(found):
             if _same_signature(other, func):
-                if func.body is not None or other.body is None:
+                if func.body is not None:
                     found[index] = _merged(other, func)
                 return
         found.append(func)

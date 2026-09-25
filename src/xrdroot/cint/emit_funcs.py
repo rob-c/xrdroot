@@ -97,9 +97,9 @@ class FunctionEmitter(VariableEmitter):
             self._wrap_parameters(func)
             if prologue is not None:
                 prologue()
-            if func.body is not None:
-                for stmt in func.body.body:
-                    self.statement(stmt)
+            assert func.body is not None, "only a function with a body is written"
+            for stmt in func.body.body:
+                self.statement(stmt)
             self._declare_scopes(context, head, func)
         self.template_names -= template
 

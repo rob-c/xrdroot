@@ -158,11 +158,7 @@ class StmtParser(ExprParser):
     def binding(self, spec: Specifiers) -> VarDecl:
         """``auto [a, b] = pair``: a structured binding, its names, and what it unpacks."""
         where = self.expect("[").where
-        names = []
-        while not self.at_("]"):
-            names.append(self.identifier())
-            if not self.accept(","):
-                break
+        names = self.listed(self.identifier, "]")
         self.expect("]")
         for name in names:
             self.declare(name)

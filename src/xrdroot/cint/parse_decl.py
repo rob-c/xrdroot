@@ -166,12 +166,8 @@ class Parser(StmtParser):
         """``<typename T, int N = 3>``: the names a template declares, each now a type or value."""
         self.expect("<")
         self.angle += 1
-        names: list[str] = []
         try:
-            while not self.at_(">"):
-                names.append(self._template_parameter())
-                if not self.accept(","):
-                    break
+            names = self.listed(self._template_parameter, ">")
             self.split_shift()
             self.expect(">")
         finally:
@@ -481,14 +477,13 @@ class Parser(StmtParser):
     def _enumerators(self) -> list[tuple[str, Expr | None]]:
         """``{ kA, kB = 5 }``: each enumerator, and its value if one is written."""
         self.expect("{")
-        items: list[tuple[str, Expr | None]] = []
-        while not self.at_("}"):
-            item = self.identifier()
-            items.append((item, self.ternary() if self.accept("=") else None))
-            if not self.accept(","):
-                break
+        items = self.listed(self._enumerator, "}")
         self.expect("}")
         return items
+
+    def _enumerator(self) -> tuple[str, Expr | None]:
+        item = self.identifier()
+        return item, self.ternary() if self.accept("=") else None
 
     def enum_declaration(self) -> EnumDecl:
         """``enum Color { kA, kB = 5 };`` or ``enum class E : int { ... }``."""

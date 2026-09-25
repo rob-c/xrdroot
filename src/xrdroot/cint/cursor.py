@@ -184,6 +184,15 @@ class Cursor:
         self.at, self.tokens, self.angle = at, tokens, angle
         return found
 
+    def listed(self, read: Callable[[], T], *closing: str) -> list[T]:
+        """What ``read`` reads, comma after comma, until one of ``closing`` (left unread)."""
+        items: list[T] = []
+        while not self.at_(*closing):
+            items.append(read())
+            if not self.accept(","):
+                break
+        return items
+
     def split_shift(self) -> None:
         """Make a ``>>`` that closes two template argument lists into two ``>``."""
         token = self.peek()
