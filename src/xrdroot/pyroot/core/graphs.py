@@ -10,6 +10,7 @@ points' range with a tenth more either side, made when first asked for.
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any
 
 import numpy as np
@@ -42,6 +43,14 @@ def _grown(values: np.ndarray[Any, Any], count: int) -> np.ndarray[Any, Any]:
     return np.concatenate([values[:count], np.zeros(max(count - len(values), 0))])
 
 
+def _sides(made: Any) -> dict[str, Any]:
+    """Every bar an xrdroot graph has, by the names each pyroot class keeps them under."""
+    across = made.xerr or (None, None)
+    upward = made.layers[0] if made.layers else (None, None)
+    return {"ex": across[1], "ey": upward[1], "exl": across[0], "exh": across[1],
+            "eyl": upward[0], "eyh": upward[1]}  # fmt: skip
+
+
 class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
     """``TGraph``: points, joined or marked."""
 
@@ -61,24 +70,24 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
         return next(base.__name__ for base in type(self).__mro__ if base.__name__ in ERRORS)
 
     def _construct(self, args: tuple[Any, ...]) -> None:
-        """Every one of ROOT's constructors: ``(n)``, ``(n, x, y, errors...)``, ``(x, y)``, ``(h)``."""
+        """ROOT's constructors: ``(n)``, ``(n, x, y, errors...)``, ``(x, y)``, ``(h)``."""
         if not args:
             return
         first = args[0]
-        if hasattr(first, "_xrd") and not isinstance(first, TGraph):
-            self._from_histogram(first, args[1:])
-            return
         if isinstance(first, TGraph):
             self._take(first)
-            return
-        if np.ndim(first) > 0:
-            args = (len(first), *args)
+        elif hasattr(first, "_xrd"):
+            self._from_histogram(first, args[1:])
+        else:
+            self._from_arrays((len(first), *args) if np.ndim(first) > 0 else args)
+
+    def _from_arrays(self, args: tuple[Any, ...]) -> None:
+        """``(n, x, y, bars...)``: the first ``n`` of each array, zeros for any not given."""
         count = int(args[0])
-        self._points = (_doubles(args[1] if len(args) > 1 else None, count),
-                        _doubles(args[2] if len(args) > 2 else None, count))  # fmt: skip
+        given = [*args[1:], *([None] * (2 + len(self._bars)))]
+        self._points = (_doubles(given[0], count), _doubles(given[1], count))
         for at, key in enumerate(self._bars):
-            given = args[3 + at] if len(args) > 3 + at else None
-            self._bars[key] = _doubles(given, count)
+            self._bars[key] = _doubles(given[2 + at], count)
 
     def _from_histogram(self, source: Any, rest: tuple[Any, ...]) -> None:
         """``TGraph(h)``: a point per bin - or for ``TGraphAsymmErrors(pass, total)``, the ratio."""
@@ -91,8 +100,10 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
         self._absorb(made)
 
     def _take(self, other: TGraph) -> None:
-        self._points = tuple(np.array(part) for part in other._points)  # type: ignore[assignment]
-        self._bars = {key: np.array(value) for key, value in other._bars.items() if key in self._bars}
+        self._points = (np.array(other._points[0]), np.array(other._points[1]))
+        self._bars = {
+            key: np.array(value) for key, value in other._bars.items() if key in self._bars
+        }
         self.SetNameTitle(other.GetName(), other.GetTitle())
 
     def _adopted(self, xrd: Any) -> None:
@@ -103,19 +114,18 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
     def _absorb(self, made: Any) -> None:
         """Take the points, bars, name and look of an xrdroot graph."""
         self._points = (np.array(made.x), np.array(made.y))
-        count = len(made.x)
-        across, upward = made.xerr, (made.layers[0] if made.layers else None)
-        sides = {"ex": across[1] if across else None, "ey": upward[1] if upward else None,
-                 "exl": across[0] if across else None, "exh": across[1] if across else None,
-                 "eyl": upward[0] if upward else None, "eyh": upward[1] if upward else None}  # fmt: skip
+        sides = _sides(made)
         for key in self._bars:
-            self._bars[key] = _doubles(sides[key], count)
+            self._bars[key] = _doubles(sides[key], len(made.x))
         self.SetNameTitle(made.name, made.title)
         for group in ("TAttLine", "TAttFill", "TAttMarker"):
             if group in made._core:
                 self.__dict__.setdefault("_atts", {})[group] = dict(made._core[group])
         self._functions = list(made.functions)
-        self._extremes = [float(made._core.get("fMinimum", -1111.0)), float(made._core.get("fMaximum", -1111.0))]
+        self._extremes = [
+            float(made._core.get("fMinimum", -1111.0)),
+            float(made._core.get("fMaximum", -1111.0)),
+        ]
 
     # -- the xrdroot graph, made when asked ---------------------------------------------------
 
@@ -325,7 +335,9 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
         spread = self.GetRMS(1) * self.GetRMS(2)
         return self.GetCovariance() / spread if spread else 0.0
 
-    def Fit(self, f1: Any, option: str = "", goption: str = "", rxmin: float = 0.0, rxmax: float = 0.0) -> Any:
+    def Fit(
+        self, f1: Any, option: str = "", goption: str = "", rxmin: float = 0.0, rxmax: float = 0.0
+    ) -> Any:
         """``Fit``: as ``TGraph::Fit``, the function hung on the graph afterwards."""
         from .fits import fit
 
@@ -369,25 +381,32 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
     def _frame(self) -> Any:
         from .hists import TH1F
 
-        xmin, ymin, xmax, ymax = self.ComputeRange()
-        xmax, ymax = (xmax + 1.0 if xmin == xmax else xmax), (ymax + 1.0 if ymin == ymax else ymax)
-        dx, dy = 0.1 * (xmax - xmin), 0.1 * (ymax - ymin)
-        low, high = xmin - dx, xmax + dx
-        minimum = self._extremes[0] if self._extremes[0] != -1111.0 else ymin - dy
-        maximum = self._extremes[1] if self._extremes[1] != -1111.0 else ymax + dy
-        low = 0.0 if low < 0 <= xmin else low
-        high = 0.0 if high > 0 >= xmax else high
-        minimum = 0.9 * ymin if minimum < 0 <= ymin else minimum
+        low, high, minimum, maximum = self._frame_range()
+        kept = TH1F.AddDirectoryStatus()
         TH1F.AddDirectory(False)
         try:
-            made = TH1F(self.GetName() or "Graph", self.GetTitle(), max(100, self.GetN()), low, high)
+            count = max(100, self.GetN())
+            made = TH1F(self.GetName() or "Graph", self.GetTitle(), count, low, high)
         finally:
-            TH1F.AddDirectory(True)
+            TH1F.AddDirectory(kept)
         made.SetMinimum(minimum)
         made.SetMaximum(maximum)
         made.SetStats(False)
         made.GetYaxis().SetLimits(minimum, maximum)
         return made
+
+    def _frame_range(self) -> tuple[float, float, float, float]:
+        """``GetHistogram``'s range: the points', a tenth wider, kept off zero's other side."""
+        xmin, ymin, xmax, ymax = self.ComputeRange()
+        xmax += 1.0 if xmin == xmax else 0.0
+        ymax += 1.0 if ymin == ymax else 0.0
+        dx, dy = 0.1 * (xmax - xmin), 0.1 * (ymax - ymin)
+        low = max(xmin - dx, 0.0) if xmin >= 0 else xmin - dx
+        high = min(xmax + dx, 0.0) if xmax <= 0 else xmax + dx
+        minimum = self._extremes[0] if self._extremes[0] != -1111.0 else ymin - dy
+        maximum = self._extremes[1] if self._extremes[1] != -1111.0 else ymax + dy
+        minimum = 0.9 * ymin if minimum < 0 <= ymin else minimum
+        return low, high, minimum, maximum
 
     def GetXaxis(self) -> Any:
         return self.GetHistogram().GetXaxis()
@@ -449,4 +468,4 @@ class TGraphAsymmErrors(TGraph):
 TGraphBentErrors = TGraphAsymmErrors
 
 for _cls in (TGraph, TGraphErrors, TGraphAsymmErrors):
-    register(_cls.__name__, factory=lambda xrd, cls=_cls: adopt(cls, xrd))
+    register(_cls.__name__, factory=partial(adopt, _cls))

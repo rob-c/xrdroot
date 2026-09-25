@@ -39,6 +39,15 @@ def _signed_root(squared: float) -> float:
     return -math.sqrt(-squared) if squared < 0.0 else math.sqrt(squared)
 
 
+def boosted(b: tuple[float, float, float], v: tuple[float, ...]) -> tuple[float, ...]:
+    """``TLorentzVector::Boost``: the four-vector ``v`` boosted by the velocity ``b``."""
+    b2 = b[0] * b[0] + b[1] * b[1] + b[2] * b[2]
+    gamma = 1.0 / math.sqrt(1.0 - b2)
+    bp = b[0] * v[0] + b[1] * v[1] + b[2] * v[2]
+    along = ((gamma - 1.0) / b2 if b2 > 0 else 0.0) * bp + gamma * v[3]
+    return v[0] + along * b[0], v[1] + along * b[1], v[2] + along * b[2], gamma * (v[3] + bp)
+
+
 class TVector2(TObject):
     """``TVector2``: a vector in the plane."""
 
@@ -102,7 +111,8 @@ class TVector2(TObject):
         return TVector2(self._x * c - self._y * s, self._x * s + self._y * c)
 
     def Proj(self, v: TVector2) -> TVector2:
-        return v * ((self * v) / v.Mod2())
+        made: TVector2 = v * ((self * v) / v.Mod2())
+        return made
 
     def Norm(self, v: TVector2) -> TVector2:
         return self - self.Proj(v)
@@ -481,6 +491,8 @@ class TLorentzVector(TObject):
 
     def __init__(self, x: Any = 0.0, y: Any = 0.0, z: float = 0.0, t: float = 0.0) -> None:
         super().__init__()
+        self._p: TVector3
+        self._e: float
         if isinstance(x, TLorentzVector):
             self._p, self._e = TVector3(x._p), x._e
         elif isinstance(x, TVector3):
@@ -664,16 +676,9 @@ class TLorentzVector(TObject):
 
     def Boost(self, bx: Any, by: float = 0.0, bz: float = 0.0) -> None:
         """``Boost(b)`` or ``Boost(bx, by, bz)``: from the frame moving at ``b`` to this one."""
-        bx, by, bz = _three(bx, by, bz)
-        b2 = bx * bx + by * by + bz * bz
-        gamma = 1.0 / math.sqrt(1.0 - b2)
-        bp = bx * self.X() + by * self.Y() + bz * self.Z()
-        gamma2 = (gamma - 1.0) / b2 if b2 > 0 else 0.0
-        t = self._e
-        self._p.SetXYZ(self.X() + gamma2 * bp * bx + gamma * bx * t,
-                       self.Y() + gamma2 * bp * by + gamma * by * t,
-                       self.Z() + gamma2 * bp * bz + gamma * bz * t)  # fmt: skip
-        self._e = gamma * (t + bp)
+        x, y, z, t = boosted(_three(bx, by, bz), (self.X(), self.Y(), self.Z(), self._e))
+        self._p.SetXYZ(x, y, z)
+        self._e = t
 
     def RotateX(self, angle: float) -> None:
         self._p.RotateX(angle)

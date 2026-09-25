@@ -38,7 +38,7 @@ class Bins:
         return total
 
     def GetBinXYZ(self, bin: int, binx: Any, biny: Any = None, binz: Any = None) -> tuple[int, ...]:
-        """``GetBinXYZ``: a global bin's bin along each axis, into what is given - and handed back."""
+        """``GetBinXYZ``: a global bin's bin along each axis, into what is given, and back."""
         from .refs import store
 
         found, rest = [], int(bin)
@@ -108,7 +108,7 @@ class Bins:
         return self.GetBinContent(bin)
 
     def SetBinContent(self, *args: Any) -> None:
-        """``SetBinContent(bin, c)`` or ``(binx, biny[, binz], c)``: one more entry, as ROOT counts."""
+        """``SetBinContent(bin, c)`` or ``(binx, biny[, binz], c)``: and one more entry."""
         bin, (content,) = self._split(args, 1)
         core = self._core()
         core["fEntries"] = float(core["fEntries"]) + 1.0
@@ -143,7 +143,7 @@ class Bins:
         return self.GetBinError(*args)
 
     def SetBinError(self, *args: Any) -> None:
-        """``SetBinError(bin, e)``: from now the histogram keeps squared weights, this one ``e²``."""
+        """``SetBinError(bin, e)``: squared weights kept from now on, this bin's ``e²``."""
         bin, (error,) = self._split(args, 1)
         squares = self._xrd._ensure_sumw2()
         if 0 <= bin < len(squares):

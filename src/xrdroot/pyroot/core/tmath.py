@@ -218,11 +218,11 @@ def Ceil(x: float) -> float:
 
 
 def FloorNint(x: float) -> int:
-    return int(math.floor(x))
+    return math.floor(x)
 
 
 def CeilNint(x: float) -> int:
-    return int(math.ceil(x))
+    return math.ceil(x)
 
 
 def Nint(x: float) -> int:
@@ -497,7 +497,7 @@ def Quantiles(
     n: int, nprob: int, x: Any, quantiles: Any, prob: Any, isSorted: bool = True,
     index: Any = None, type: int = 7,
 ) -> None:  # fmt: skip
-    """``Quantiles``: Hyndman and Fan's quantiles of the sample - type 7 by default - into ``quantiles``."""
+    """``Quantiles``: Hyndman and Fan's quantiles - type 7 by default - into ``quantiles``."""
     values = np.sort(_elements(n, x))
     probabilities = _elements(nprob, prob)
     methods = {4: "interpolated_inverted_cdf", 5: "hazen", 6: "weibull", 7: "linear",

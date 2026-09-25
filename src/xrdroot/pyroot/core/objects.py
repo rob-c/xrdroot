@@ -252,7 +252,7 @@ class TObject:
         """``Write``: write this object to the current directory, under ``name`` or its own."""
         from .directories import current_directory
 
-        return current_directory().WriteTObject(self, name, option)
+        return int(current_directory().WriteTObject(self, name, option))
 
     def SaveAs(self, filename: str = "", option: str = "") -> None:
         """``SaveAs``: a ``.root`` file holding this object alone."""
@@ -332,7 +332,7 @@ class TNamed(TObject):
     def Compare(self, other: Any) -> int:
         """``Compare``: by name, as a sorted list orders them."""
         mine, theirs = self.GetName(), other.GetName()
-        return (mine > theirs) - (mine < theirs)
+        return int(mine > theirs) - int(mine < theirs)
 
     def Sizeof(self) -> int:
         return len(self.GetName()) + len(self.GetTitle())
@@ -403,16 +403,39 @@ def _alpha_setter(group: str, member: str) -> Any:
     return setter
 
 
-def _mixin(group: str) -> type:
-    """The class of ``Set`` and ``Get`` methods for one attribute group."""
-    methods: dict[str, Any] = {"__doc__": f"``{group}``: {', '.join(ATTRIBUTES[group])}."}
+def _dressed(cls: type, group: str) -> None:
+    """Give an attribute mixin a ``Set`` and a ``Get`` for each of its group's members."""
     for member in ATTRIBUTES[group]:
-        methods[f"Set{member[1:]}"] = _setter(group, member)
-        methods[f"Get{member[1:]}"] = _getter(group, member)
+        setattr(cls, f"Set{member[1:]}", _setter(group, member))
+        setattr(cls, f"Get{member[1:]}", _getter(group, member))
         if member.endswith("Color"):
-            methods[f"Set{member[1:]}Alpha"] = _alpha_setter(group, member)
-    methods["_attribute_holder"] = lambda self: None
-    return type(group, (), methods)
+            setattr(cls, f"Set{member[1:]}Alpha", _alpha_setter(group, member))
+    setattr(cls, f"Reset{group[1:]}", _reset(group))
+    setattr(cls, f"Copy{group}", _copy_to(group))
+
+
+class _Attributes:
+    """What the attribute mixins share: where the object keeps its members."""
+
+    def _attribute_holder(self) -> Any:
+        """The xrdroot members holding the groups, or ``None`` to keep them on the wrapper."""
+        return None
+
+
+class TAttLine(_Attributes):
+    """``TAttLine``: a line's colour, style and width."""
+
+
+class TAttFill(_Attributes):
+    """``TAttFill``: a fill's colour and style."""
+
+
+class TAttMarker(_Attributes):
+    """``TAttMarker``: a marker's colour, style and size."""
+
+
+class TAttText(_Attributes):
+    """``TAttText``: text's angle, size, alignment, colour and font."""
 
 
 def _reset(group: str) -> Any:
@@ -429,18 +452,8 @@ def _copy_to(group: str) -> Any:
     return copied
 
 
-TAttLine: Any = _mixin("TAttLine")
-TAttFill: Any = _mixin("TAttFill")
-TAttMarker: Any = _mixin("TAttMarker")
-TAttText: Any = _mixin("TAttText")
-for _group, _mixed in (
-    ("TAttLine", TAttLine),
-    ("TAttFill", TAttFill),
-    ("TAttMarker", TAttMarker),
-    ("TAttText", TAttText),
-):
-    setattr(_mixed, f"Reset{_group[1:]}", _reset(_group))
-    setattr(_mixed, f"Copy{_group}", _copy_to(_group))
+for _mixed in (TAttLine, TAttFill, TAttMarker, TAttText):
+    _dressed(_mixed, _mixed.__name__)
 
 
 class TAtt3D:

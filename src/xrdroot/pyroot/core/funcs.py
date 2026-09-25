@@ -11,6 +11,7 @@ functions, replacing one of its name, so ``FillRandom("f")`` and
 from __future__ import annotations
 
 import inspect
+from functools import partial
 from typing import Any, Callable
 
 import numpy as np
@@ -69,7 +70,8 @@ def _register(function: Any) -> None:
 
 def standard_function(name: str) -> Any:
     """``gROOT->GetFunction("gaus")``: one of ROOT's standard functions, made when first asked."""
-    from ...fillrandom import STANDARD, standard_function as made
+    from ...fillrandom import STANDARD
+    from ...fillrandom import standard_function as made
 
     if name not in STANDARD:
         return None
@@ -138,7 +140,11 @@ class TFormula(TNamed):
 
     def SetParameters(self, *values: Any) -> None:
         """``SetParameters(p0, p1, ...)`` or ``SetParameters(array)``: from the first on."""
-        given = list(np.ravel(values[0])) if len(values) == 1 and np.ndim(values[0]) > 0 else list(values)
+        given = (
+            list(np.ravel(values[0]))
+            if len(values) == 1 and np.ndim(values[0]) > 0
+            else list(values)
+        )
         held = self._xrd.parameters.copy()
         count = min(len(given), len(held))
         held[:count] = [float(value) for value in given[:count]]
@@ -303,7 +309,10 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
 
     def GetParLimits(self, parameter: Any, low: Any, high: Any) -> tuple[float, float]:
         at = self._index(parameter)
-        found = (float(self._xrd._per_parameter("fParMin")[at]), float(self._xrd._per_parameter("fParMax")[at]))
+        found = (
+            float(self._xrd._per_parameter("fParMin")[at]),
+            float(self._xrd._per_parameter("fParMax")[at]),
+        )
         store(low, found[0])
         store(high, found[1])
         return found
@@ -384,7 +393,7 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
         return float(self._xrd.x_at(float(y), float(xmin), float(xmax)))
 
     def GetRandom(self, *args: Any) -> float:
-        """``GetRandom([xmin, xmax][, rng])``: a number distributed as the function, from ``gRandom``."""
+        """``GetRandom([xmin, xmax][, rng])``: a number distributed as the function."""
         from .randoms import current_generator
 
         numbers = [float(value) for value in args if isinstance(value, (int, float))]
@@ -393,20 +402,28 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
         span = (numbers[0], numbers[1]) if len(numbers) >= 2 and numbers[0] < numbers[1] else None
         return float(self._xrd.get_random(rng=generator, range=span))
 
-    def Moment(self, n: float, a: float, b: float, params: Any = None, epsilon: float = 1e-12) -> float:
+    def Moment(
+        self, n: float, a: float, b: float, params: Any = None, epsilon: float = 1e-12
+    ) -> float:
         """``Moment(n, a, b)``: the ``n``th moment of the function over ``[a, b]``, as a density."""
         from ...function.function import _numerically
 
         weight = _numerically(self._xrd.evaluate, float(a), float(b), epsilon)
-        shifted = _numerically(lambda x: np.power(x, n) * self._xrd.evaluate(x), float(a), float(b), epsilon)
+        shifted = _numerically(
+            lambda x: np.power(x, n) * self._xrd.evaluate(x), float(a), float(b), epsilon
+        )
         return float(shifted / weight) if weight else 0.0
 
-    def CentralMoment(self, n: float, a: float, b: float, params: Any = None, epsilon: float = 1e-12) -> float:
+    def CentralMoment(
+        self, n: float, a: float, b: float, params: Any = None, epsilon: float = 1e-12
+    ) -> float:
         from ...function.function import _numerically
 
         mean = self.Moment(1, a, b)
         weight = _numerically(self._xrd.evaluate, float(a), float(b), epsilon)
-        shifted = _numerically(lambda x: np.power(x - mean, n) * self._xrd.evaluate(x), float(a), float(b), epsilon)
+        shifted = _numerically(
+            lambda x: np.power(x - mean, n) * self._xrd.evaluate(x), float(a), float(b), epsilon
+        )
         return float(shifted / weight) if weight else 0.0
 
     def Mean(self, a: float, b: float, params: Any = None, epsilon: float = 1e-12) -> float:
@@ -429,7 +446,7 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
             self._print_parameters(" %20s =  %10f ")
 
     def Clone(self, newname: str = "") -> Any:
-        """``Clone``: the same function, sharing nothing; the copy is not put in ``gROOT``'s list."""
+        """``Clone``: the same function, sharing nothing, and not put in ``gROOT``'s list."""
         return wrap(self._xrd.copy(str(newname) if newname else None))
 
     def Copy(self, obj: Any) -> None:
@@ -448,7 +465,9 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
         edges = np.linspace(low, high, self.GetNpx() + 1)
         centres = 0.5 * (edges[1:] + edges[:-1])
         values = np.asarray(self._xrd(centres), dtype=np.float64)
-        made = Histogram.new("Func", edges, values, title=self.GetTitle(), errors=np.zeros(len(values)))
+        made = Histogram.new(
+            "Func", edges, values, title=self.GetTitle(), errors=np.zeros(len(values))
+        )
         return wrap(made)
 
 
@@ -486,24 +505,31 @@ class TF2(TF1):
     def GetYmax(self) -> float:
         return self.GetRange()[3]
 
+    def _cells(self) -> tuple[np.ndarray[Any, Any], float, float]:
+        """``GetRandom2``'s table: the running integral over ``Npx`` by ``Npy`` cells, x fastest."""
+        xmin, ymin, xmax, ymax = self.GetRange()
+        dx, dy = (xmax - xmin) / self.GetNpx(), (ymax - ymin) / self.GetNpy()
+        cells = []
+        for j in range(self.GetNpy()):
+            for i in range(self.GetNpx()):
+                corner = [xmin + dx * i, xmin + dx * (i + 1), ymin + dy * j, ymin + dy * (j + 1)]
+                cells.append(_gauss_legendre(self._xrd, corner, 2))
+        integral = np.concatenate([[0.0], np.cumsum(np.maximum(cells, 0.0))])
+        return integral / integral[-1], dx, dy
+
     def GetRandom2(self, x: Any = None, y: Any = None, rng: Any = None) -> tuple[float, float]:
         """``GetRandom2(x, y)``: a point distributed as the function, by ROOT's grid of cells."""
         from .randoms import current_generator
 
         generator = unwrap(rng) if rng is not None else current_generator()
-        xmin, ymin, xmax, ymax = self.GetRange()
-        npx, npy = self.GetNpx(), self.GetNpy()
-        dx, dy = (xmax - xmin) / npx, (ymax - ymin) / npy
-        cells = [_gauss_legendre(self._xrd, [xmin + dx * i, xmin + dx * (i + 1), ymin + dy * j, ymin + dy * (j + 1)], 2)
-                 for j in range(npy) for i in range(npx)]  # fmt: skip
-        integral = np.concatenate([[0.0], np.cumsum(np.maximum(cells, 0.0))])
-        integral /= integral[-1]
+        integral, dx, dy = self._cells()
         r = float(generator.rndm())
         cell = int(np.searchsorted(integral[:-1], r, side="right")) - 1
         width = integral[cell + 1] - integral[cell]
         ddx = dx * (r - integral[cell]) / width if width > 0 else 0.0
-        j, i = divmod(cell, npx)
-        px, py = xmin + dx * i + ddx, ymin + dy * j + dy * float(generator.rndm())
+        j, i = divmod(cell, self.GetNpx())
+        px = self.GetXmin() + dx * i + ddx
+        py = self.GetYmin() + dy * j + dy * float(generator.rndm())
         store(x, px)
         store(y, py)
         return px, py
@@ -523,5 +549,4 @@ class TF3(TF2):
 
 
 for _cls in (TF1, TF2, TF3, TFormula):
-    register(_cls.__name__, factory=lambda xrd, cls=_cls: adopt(cls, xrd))
-
+    register(_cls.__name__, factory=partial(adopt, _cls))

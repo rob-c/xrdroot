@@ -162,7 +162,8 @@ class TDatime(TObject):
 
     def _set_parts(self, *parts: int) -> None:
         full = (*parts, 0, 0, 0, 0, 0, 0)[:6]
-        self._t = time.localtime(time.mktime((*full, 0, 0, -1)))
+        stamp: Any = (*full, 0, 0, -1)
+        self._t = time.localtime(time.mktime(stamp))
 
     def Convert(self, toGMT: bool = False) -> int:
         return int(time.mktime(self._t))

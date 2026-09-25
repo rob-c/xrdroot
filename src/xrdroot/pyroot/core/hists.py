@@ -8,6 +8,7 @@ read from a file comes back as the class it was written as.
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any
 
 import numpy as np
@@ -43,7 +44,10 @@ class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarke
     def Print(self, option: str = "") -> None:
         """``Print``: ROOT's one-line summary; ``"all"``, ``"range"`` or ``"base"`` more."""
         entries = int(self.GetEntries())
-        print(f"TH1.Print Name  = {self.GetName()}, Entries= {entries}, Total sum= {self.GetSumOfWeights():g}")
+        print(
+            f"TH1.Print Name  = {self.GetName()}, Entries= {entries}, "
+            f"Total sum= {self.GetSumOfWeights():g}"
+        )
         chosen = str(option).lower()
         if "base" in chosen and "all" not in chosen and "range" not in chosen:
             self._print_base()
@@ -56,18 +60,27 @@ class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarke
         parts = []
         for letter, axis in zip("XYZ", self._axes()):
             low = letter.lower()
-            parts.append(f"Nbins{letter}= {axis.GetNbins()}, {low}min= {axis.GetXmin():g}, {low}max={axis.GetXmax():g}")
+            parts.append(
+                f"Nbins{letter}= {axis.GetNbins()}, {low}min= {axis.GetXmin():g}, "
+                f"{low}max={axis.GetXmax():g}"
+            )
         print("          " + ", ".join(parts))
 
     def _print_bins(self, everything: bool) -> None:
         axes = self._axes()
-        spans = [(0, axis.GetNbins() + 1) if everything else (axis.GetFirst(), axis.GetLast()) for axis in axes]
+        spans = [
+            (0, axis.GetNbins() + 1) if everything else (axis.GetFirst(), axis.GetLast())
+            for axis in axes
+        ]
         keep_errors = self.GetSumw2N() > 0
         grids = np.meshgrid(*[np.arange(a, b + 1) for a, b in spans], indexing="ij")
         for parts in zip(*(grid.ravel(order="F") for grid in grids)):
             bin = self.GetBin(*parts)
             index = "".join(f"[{int(p)}]" for p in parts)
-            where = ", ".join(f"{letter}={axis.GetBinCenter(int(p)):g}" for letter, axis, p in zip("xyz", axes, parts))
+            where = ", ".join(
+                f"{letter}={axis.GetBinCenter(int(p)):g}"
+                for letter, axis, p in zip("xyz", axes, parts)
+            )
             line = f" fSumw{index}={self.GetBinContent(bin):g}, {where}"
             print(f"{line}, error={self.GetBinError(bin):g}" if keep_errors else line)
 
@@ -154,4 +167,4 @@ TH3D: Any = _kind(TH3, "D", f"3-Dim histograms ({_TITLES['D']})")
 
 for _cls in (TH1C, TH1S, TH1I, TH1F, TH1D, TH2C, TH2S, TH2I, TH2F, TH2D,
              TH3C, TH3S, TH3I, TH3F, TH3D):  # fmt: skip
-    register(_cls.__name__, factory=lambda xrd, cls=_cls: adopt(cls, xrd))
+    register(_cls.__name__, factory=partial(adopt, _cls))

@@ -201,7 +201,7 @@ class TSystem(TNamed):
         return os.path.join(str(directory), str(name))
 
     def PrependPathName(self, directory: Any, name: Any) -> str:
-        """``PrependPathName``: ``directory/name``, put back into ``name`` if it is a ``TString``."""
+        """``PrependPathName``: ``directory/name``, put back into a ``TString`` ``name``."""
         joined = os.path.join(str(directory), str(name))
         if isinstance(name, TString):
             name._s = joined

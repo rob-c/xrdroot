@@ -80,7 +80,10 @@ class Operations:
     def Add(self, h1: Any, *rest: Any) -> bool:
         """``Add(h1, c1)``, or ``Add(h1, h2, c1, c2)``: this becomes ``c1*h1 + c2*h2``."""
         if rest and hasattr(rest[0], "_xrd"):
-            c1, c2 = (float(rest[1]) if len(rest) > 1 else 1.0), (float(rest[2]) if len(rest) > 2 else 1.0)
+            c1, c2 = (
+                (float(rest[1]) if len(rest) > 1 else 1.0),
+                (float(rest[2]) if len(rest) > 2 else 1.0),
+            )
             self._xrd.reset()
             self._xrd.add(unwrap(h1), c1)
             self._xrd.add(unwrap(rest[0]), c2)
@@ -103,7 +106,9 @@ class Operations:
         """``Scale(c1[, "width"])``: in place; ``"width"`` divides by each bin's width too."""
         self._xrd.scale(float(c1), "width" in str(option).lower())
 
-    def Multiply(self, h1: Any, h2: Any = None, c1: float = 1.0, c2: float = 1.0, option: str = "") -> bool:
+    def Multiply(
+        self, h1: Any, h2: Any = None, c1: float = 1.0, c2: float = 1.0, option: str = ""
+    ) -> bool:
         if h2 is None:
             self._xrd.multiply(unwrap(h1))
             return True
@@ -113,7 +118,9 @@ class Operations:
         self._replace_contents(product)
         return True
 
-    def Divide(self, h1: Any, h2: Any = None, c1: float = 1.0, c2: float = 1.0, option: str = "") -> bool:
+    def Divide(
+        self, h1: Any, h2: Any = None, c1: float = 1.0, c2: float = 1.0, option: str = ""
+    ) -> bool:
         """``Divide(h1)``, or ``Divide(h1, h2, c1, c2, "B")``: this becomes ``c1*h1 / c2*h2``."""
         if h2 is None:
             self._xrd.divide(unwrap(h1))
@@ -164,8 +171,12 @@ class Operations:
     # -- reshaping ----------------------------------------------------------------------------
 
     def Rebin(self, ngroup: int = 2, newname: str = "", xbins: Any = None) -> Any:
-        """``Rebin(n)``: in place; ``Rebin(n, "name")`` a new histogram; with ``xbins``, onto those edges."""
-        group: Any = list(np.asarray(xbins, dtype=np.float64)[: int(ngroup) + 1]) if xbins is not None else int(ngroup)
+        """``Rebin(n)``: in place; ``Rebin(n, "name")``: a new one; ``xbins``: onto those edges."""
+        group: Any = (
+            list(np.asarray(xbins, dtype=np.float64)[: int(ngroup) + 1])
+            if xbins is not None
+            else int(ngroup)
+        )
         made = self._xrd.rebin(group, name=str(newname) if newname else None)
         if newname:
             return _kept(made)
@@ -185,12 +196,16 @@ class Operations:
     def RebinY(self, ngroup: int = 2, newname: str = "") -> Any:
         return self.Rebin2D(1, ngroup, newname)
 
-    def ProjectionX(self, name: str = "_px", firstybin: int = 0, lastybin: int = -1, option: str = "") -> Any:
-        """``ProjectionX``: y summed over its bins ``firstybin`` to ``lastybin`` - all by default."""
+    def ProjectionX(
+        self, name: str = "_px", firstybin: int = 0, lastybin: int = -1, option: str = ""
+    ) -> Any:
+        """``ProjectionX``: y summed over bins ``firstybin`` to ``lastybin``, all by default."""
         called = f"{self.GetName()}{name}" if name == "_px" else str(name)
         return _kept(self._xrd.projection_x(called, _range(firstybin, lastybin)))
 
-    def ProjectionY(self, name: str = "_py", firstxbin: int = 0, lastxbin: int = -1, option: str = "") -> Any:
+    def ProjectionY(
+        self, name: str = "_py", firstxbin: int = 0, lastxbin: int = -1, option: str = ""
+    ) -> Any:
         called = f"{self.GetName()}{name}" if name == "_py" else str(name)
         return _kept(self._xrd.projection_y(called, _range(firstxbin, lastxbin)))
 
@@ -200,11 +215,15 @@ class Operations:
         ordered = axes[::-1] if len(axes) == 2 else axes
         return _kept(self._xrd.projection(ordered, f"{self.GetName()}_{axes}"))
 
-    def ProfileX(self, name: str = "_pfx", firstybin: int = 1, lastybin: int = -1, option: str = "") -> Any:
+    def ProfileX(
+        self, name: str = "_pfx", firstybin: int = 1, lastybin: int = -1, option: str = ""
+    ) -> Any:
         called = f"{self.GetName()}{name}" if name == "_pfx" else str(name)
         return _kept(self._xrd.profile_x(called, _range(firstybin, lastybin)))
 
-    def ProfileY(self, name: str = "_pfy", firstxbin: int = 1, lastxbin: int = -1, option: str = "") -> Any:
+    def ProfileY(
+        self, name: str = "_pfy", firstxbin: int = 1, lastxbin: int = -1, option: str = ""
+    ) -> Any:
         called = f"{self.GetName()}{name}" if name == "_pfy" else str(name)
         return _kept(self._xrd.profile_y(called, _range(firstxbin, lastxbin)))
 
@@ -216,7 +235,9 @@ class Operations:
 
     def GetQuantiles(self, nprobSum: int, q: Any, probSum: Any = None) -> int:
         """``GetQuantiles(n, q, probSum)``: the quantiles at ``probSum``, into ``q``."""
-        probabilities = None if probSum is None else np.asarray(probSum, dtype=np.float64)[:nprobSum]
+        probabilities = (
+            None if probSum is None else np.asarray(probSum, dtype=np.float64)[:nprobSum]
+        )
         found = self._xrd.quantiles(probabilities)
         for at, value in enumerate(found[:nprobSum]):
             q[at] = float(value)
@@ -228,7 +249,7 @@ class Operations:
         return float(self._xrd.kolmogorov_test(unwrap(h2), str(option), rng=current_generator()))
 
     def Chi2Test(self, h2: Any, option: str = "UU", res: Any = None) -> float:
-        """``Chi2Test``: the p-value - or the chi-square, with ``CHI2`` - and the residuals into ``res``."""
+        """``Chi2Test``: the p-value - or with ``CHI2`` the chi-square - residuals into ``res``."""
         if res is not None:
             full = self._xrd.chi2_test_full(unwrap(h2), str(option))
             for at, value in enumerate(np.asarray(full.residuals).ravel()):
@@ -237,8 +258,10 @@ class Operations:
 
     # -- fitting ------------------------------------------------------------------------------
 
-    def Fit(self, f1: Any, option: str = "", goption: str = "", xxmin: float = 0.0, xxmax: float = 0.0) -> Any:
-        """``Fit(f, option, goption, xmin, xmax)``: a ``TFitResultPtr``; the function keeps what was found."""
+    def Fit(
+        self, f1: Any, option: str = "", goption: str = "", xxmin: float = 0.0, xxmax: float = 0.0
+    ) -> Any:
+        """``Fit(f, option, goption, xmin, xmax)``: a ``TFitResultPtr``, and ``f`` fitted."""
         from .fits import fit
 
         return fit(self, f1, option, goption, (xxmin, xxmax))
@@ -270,7 +293,7 @@ class Operations:
         self._xrd.fill_random(source, int(ntimes), rng=generator)
 
     def ComputeIntegral(self, onlyPositive: bool = False) -> float:
-        """``ComputeIntegral``: the running sum of the bins on the axes, x fastest, kept normalised."""
+        """``ComputeIntegral``: the running sum of the bins, x fastest, kept normalised."""
         values = self._xrd._flat_inner(np.asarray(self._xrd._bins, dtype=np.float64))
         running = np.concatenate([[0.0], np.cumsum(values)])
         total = float(running[-1])
@@ -297,11 +320,15 @@ class Operations:
         axis = self.GetXaxis()  # type: ignore[attr-defined]
         x = float(axis.GetBinLowEdge(ibin + 1))
         if r1 > integral[ibin]:
-            x += axis.GetBinWidth(ibin + 1) * (r1 - integral[ibin]) / (integral[ibin + 1] - integral[ibin])
+            x += (
+                axis.GetBinWidth(ibin + 1)
+                * (r1 - integral[ibin])
+                / (integral[ibin + 1] - integral[ibin])
+            )
         return x
 
     def GetRandom2(self, x: Any = None, y: Any = None, rng: Any = None) -> tuple[float, float]:
-        """``GetRandom2(x, y)``: a point drawn from a two-dimensional histogram, into ``x`` and ``y``."""
+        """``GetRandom2(x, y)``: a point drawn from a two-dimensional histogram."""
         if self.ComputeIntegral(True) == 0:
             store(x, 0.0)
             store(y, 0.0)
@@ -314,8 +341,14 @@ class Operations:
         xaxis, yaxis = self.GetXaxis(), self.GetYaxis()  # type: ignore[attr-defined]
         px = float(xaxis.GetBinLowEdge(binx + 1))
         if r1 > integral[ibin]:
-            px += xaxis.GetBinWidth(binx + 1) * (r1 - integral[ibin]) / (integral[ibin + 1] - integral[ibin])
-        py = float(yaxis.GetBinLowEdge(biny + 1)) + yaxis.GetBinWidth(biny + 1) * float(generator.rndm())
+            px += (
+                xaxis.GetBinWidth(binx + 1)
+                * (r1 - integral[ibin])
+                / (integral[ibin + 1] - integral[ibin])
+            )
+        py = float(yaxis.GetBinLowEdge(biny + 1)) + yaxis.GetBinWidth(biny + 1) * float(
+            generator.rndm()
+        )
         store(x, px)
         store(y, py)
         return px, py

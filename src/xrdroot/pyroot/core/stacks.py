@@ -8,6 +8,7 @@ for, made when asked, so the graphics draw the objects as they are now.
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any
 
 import numpy as np
@@ -73,6 +74,9 @@ class _Holder(TNamed):
         """``Print``: each thing held, printed its own way."""
         for item in self._held:
             item.Print(option)
+
+    def GetHistogram(self) -> Any:
+        return self._histogram
 
     def GetXaxis(self) -> Any:
         return self.GetHistogram().GetXaxis()
@@ -149,7 +153,9 @@ class TMultiGraph(_Holder):
     def GetListOfGraphs(self) -> TList:
         return self._listed()
 
-    def Fit(self, f1: Any, option: str = "", goption: str = "", rxmin: float = 0.0, rxmax: float = 0.0) -> Any:
+    def Fit(
+        self, f1: Any, option: str = "", goption: str = "", rxmin: float = 0.0, rxmax: float = 0.0
+    ) -> Any:
         """``Fit``: one fit to the points of every graph together."""
         from .fits import fit
 
@@ -165,7 +171,11 @@ class TMultiGraph(_Holder):
 
     def GetFunction(self, name: Any) -> Any:
         fitted = getattr(self, "_fitted", None)
-        found = [item for item in (fitted.functions if fitted is not None else []) if item.name == str(name)]
+        found = [
+            item
+            for item in (fitted.functions if fitted is not None else [])
+            if item.name == str(name)
+        ]
         return wrap(found[0]) if found else None
 
     def GetHistogram(self) -> Any:
@@ -183,4 +193,4 @@ class TMultiGraph(_Holder):
 
 
 for _cls in (THStack, TMultiGraph):
-    register(_cls.__name__, factory=lambda xrd, cls=_cls: adopt(cls, xrd))
+    register(_cls.__name__, factory=partial(adopt, _cls))

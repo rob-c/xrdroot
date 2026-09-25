@@ -72,7 +72,9 @@ class TFitResult(TNamed):
     def ParError(self, i: int) -> float:
         return float(self._xrd.error(int(i)))
 
-    Error = ParError
+    def Error(self, i: Any, *rest: Any) -> Any:
+        """``Error(i)``: the parameter's error, as ``ParError``."""
+        return self.ParError(int(i))
 
     def LowerError(self, i: int) -> float:
         return float(self._xrd.lower_error(int(i)))
@@ -103,7 +105,7 @@ class TFitResult(TNamed):
     NTotalParameters = NPar
 
     def NFreeParameters(self) -> int:
-        return self.NPar() - sum(self._xrd.fixed)
+        return self.NPar() - int(sum(self._xrd.fixed))
 
     def IsParameterFixed(self, i: int) -> bool:
         return bool(self._xrd.fixed[int(i)])
@@ -207,13 +209,17 @@ def _model(f1: Any) -> Any:
     from .troot import gROOT
 
     named = gROOT.GetListOfFunctions().FindObject(f1)
-    return unwrap(named) if named is not None and named.GetName() not in ("gaus", "expo", "landau") else f1
+    return (
+        unwrap(named)
+        if named is not None and named.GetName() not in ("gaus", "expo", "landau")
+        else f1
+    )
 
 
 def fit(
     target: Any, f1: Any, option: str, goption: str, span: tuple[float, float], xrd: Any = None
 ) -> TFitResultPtr:
-    """``Fit`` of a histogram, a graph or a multigraph, as ``TH1::Fit`` and ``TGraph::Fit`` run it."""
+    """``Fit`` of a histogram, a graph or a multigraph, as ``TH1::Fit`` and ``TGraph::Fit`` do."""
     low, high = float(span[0]), float(span[1])
     chosen = (low, high) if low < high else None
     try:

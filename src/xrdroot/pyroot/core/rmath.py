@@ -9,15 +9,14 @@ vectors are those of :mod:`.genvector`, and ``VectorUtil`` beside them.
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, ClassVar
 
 from ...efficiency import regularized_beta
 from ...function import special
 from ...stats import incomplete_gamma, incomplete_gamma_c
 from . import distributions as dist
-from .genvector import __all__ as _vectors
 from .genvector import *  # noqa: F403
-
+from .genvector import __all__ as _vectors
 
 # -- the Gaussian -------------------------------------------------------------------------------
 
@@ -250,7 +249,9 @@ def uniform_cdf_c(x: float, a: float, b: float, x0: float = 0.0) -> float:
     return 1.0 - uniform_cdf(x, a, b, x0)
 
 
-def crystalball_function(x: float, alpha: float, n: float, sigma: float, mean: float = 0.0) -> float:
+def crystalball_function(
+    x: float, alpha: float, n: float, sigma: float, mean: float = 0.0
+) -> float:
     return float(special.crystalball_function(x, alpha, n, sigma, mean))
 
 
@@ -304,7 +305,7 @@ class MinimizerOptions:
     is set, so a script choosing ``"Minuit"`` or ``"Minuit2"`` gets the same.
     """
 
-    _defaults: dict[str, Any] = {"Minimizer": "Minuit2", "Algorithm": "Migrad",
+    _defaults: ClassVar[dict[str, Any]] = {"Minimizer": "Minuit2", "Algorithm": "Migrad",
                                  "Tolerance": 0.01, "Precision": -1.0, "PrintLevel": 0,
                                  "MaxFunctionCalls": 0, "MaxIterations": 0,
                                  "Strategy": 1, "ErrorDef": 1.0}  # fmt: skip
@@ -335,8 +336,14 @@ for _key in ("Tolerance", "Precision", "PrintLevel", "MaxFunctionCalls", "MaxIte
     _default_accessors(_key)
 
 
+def _exported(name: str, value: object) -> bool:
+    return (
+        callable(value)
+        and not name.startswith("_")
+        and getattr(value, "__module__", "") == __name__
+    )
+
+
 __all__ = sorted(
-    [name for name, value in list(globals().items())
-     if callable(value) and not name.startswith("_") and getattr(value, "__module__", "") == __name__]
-    + list(_vectors)
-)  # fmt: skip
+    [name for name, value in list(globals().items()) if _exported(name, value)] + list(_vectors)
+)

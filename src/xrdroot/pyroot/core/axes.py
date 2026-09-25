@@ -83,7 +83,7 @@ class TAxis(TNamed, TAttAxis):
         from ...booking import axis_members, binning
 
         super().__init__()
-        spec = (int(args[0]), float(args[1]), float(args[2])) if len(args) == 3 else None
+        spec: Any = (int(args[0]), float(args[1]), float(args[2])) if len(args) == 3 else None
         if spec is None:
             spec = list(args[1])[: int(args[0]) + 1] if len(args) == 2 else (1, 0.0, 1.0)
         made = binning(spec)

@@ -104,7 +104,7 @@ class TDirectory(TNamed):
 
     def FindObject(self, name: Any) -> Any:
         """``FindObject``: an object in memory here, by name or by being it."""
-        return self._list.FindObject(name if isinstance(name, str) else name)
+        return self._list.FindObject(name)
 
     def FindObjectAny(self, name: Any) -> Any:
         """``FindObjectAny``: here, then in every directory below."""
@@ -184,7 +184,9 @@ class TDirectory(TNamed):
         if found is None:
             found = self._made_directory(head, str(title) if not rest else "")
         elif not rest and not returnExistingDirectory:
-            message("Error", f"{self.ClassName()}::mkdir", "An object with name %s exists already", head)
+            message(
+                "Error", f"{self.ClassName()}::mkdir", "An object with name %s exists already", head
+            )
             return None
         return found.mkdir(rest, title, returnExistingDirectory) if rest else found
 
@@ -260,8 +262,8 @@ class TDirectory(TNamed):
     class TContext:
         """``TDirectory::TContext``: go back to the directory it was made in, when left.
 
-            >>> with ROOT.TDirectory.TContext():            # doctest: +SKIP
-            ...     f = ROOT.TFile("out.root", "RECREATE")
+        >>> with ROOT.TDirectory.TContext():            # doctest: +SKIP
+        ...     f = ROOT.TFile("out.root", "RECREATE")
         """
 
         def __init__(self, *directories: Any) -> None:
@@ -295,7 +297,9 @@ class _CurrentDirectory:
         return getattr(current_directory(), name)
 
     def __eq__(self, other: object) -> bool:
-        return current_directory() is (other.__real__() if isinstance(other, _CurrentDirectory) else other)
+        return current_directory() is (
+            other.__real__() if isinstance(other, _CurrentDirectory) else other
+        )
 
     def __hash__(self) -> int:
         return id(self)

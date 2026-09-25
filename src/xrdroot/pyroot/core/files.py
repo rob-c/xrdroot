@@ -31,8 +31,15 @@ from .wrapping import unwrap, wrap
 __all__ = ["TFile", "TDirectoryFile", "TKey"]
 
 #: ``TFile``'s modes, as ROOT reads the option: upper-cased, with its synonyms.
-MODES = {"": "READ", "READ": "READ", "NEW": "CREATE", "CREATE": "CREATE",
-         "RECREATE": "RECREATE", "UPDATE": "UPDATE", "READ_WITHOUT_GLOBALREGISTRATION": "READ"}  # fmt: skip
+MODES = {
+    "": "READ",
+    "READ": "READ",
+    "NEW": "CREATE",
+    "CREATE": "CREATE",
+    "RECREATE": "RECREATE",
+    "UPDATE": "UPDATE",
+    "READ_WITHOUT_GLOBALREGISTRATION": "READ",
+}
 #: The classes a directory keeps in memory once read, as ``TH1`` and ``TTree`` add themselves.
 KEPT = ("TH1", "TTree")
 
@@ -92,7 +99,8 @@ class TKey(TNamed):
 
     def ls(self, current: Any = None) -> None:
         """``ls``: ``KEY: class<TAB>name;cycle<TAB>title``, and which cycle, when told."""
-        line = f"{Indent.text()}KEY: {self._classname}\t{self.GetName()};{self._cycle}\t{self.GetTitle()}"
+        line = f"{Indent.text()}KEY: {self._classname}\t{self.GetName()};{self._cycle}"
+        line += f"\t{self.GetTitle()}"
         if isinstance(current, bool):
             line += " [current cycle]" if current else " [backup cycle]"
         print(line)
@@ -113,7 +121,9 @@ class TDirectoryFile(TDirectory):
 
     CLASS_TITLE = "Describe directory structure in a ROOT file"
 
-    def __init__(self, name: Any = "", title: Any = "", classname: str = "", mother: Any = None) -> None:
+    def __init__(
+        self, name: Any = "", title: Any = "", classname: str = "", mother: Any = None
+    ) -> None:
         super().__init__(name, title, mother=mother)
         self._keys: list[TKey] = []
         self._subdirs: dict[str, TDirectoryFile] = {}
@@ -225,7 +235,7 @@ class TDirectoryFile(TDirectory):
         return self._subdirs[name]
 
     def GetDirectory(self, path: Any, printError: bool = False, funcname: str = "") -> Any:
-        """``GetDirectory``: ``"a/b"`` below this one, ``".."`` up, ``"file.root:/a"`` from the top."""
+        """``GetDirectory``: ``"a/b"`` below, ``".."`` up, ``"file.root:/a"`` from the top."""
         text = str(path)
         if ":" in text:
             text = text.split(":", 1)[1]
@@ -243,7 +253,9 @@ class TDirectoryFile(TDirectory):
         if isinstance(found, TDirectory):
             return found
         key = self.GetKey(name)
-        return self._subdirectory(name, key.GetTitle()) if key is not None and key.IsFolder() else None
+        return (
+            self._subdirectory(name, key.GetTitle()) if key is not None and key.IsFolder() else None
+        )
 
     def __getattr__(self, name: str) -> Any:
         """``f.hpx``: an object by name as an attribute, as PyROOT's files give them."""
@@ -261,7 +273,12 @@ class TDirectoryFile(TDirectory):
         writer = self._writable()
         called = str(name) if name else obj.GetName()
         if writer is None:
-            message("Error", "TDirectoryFile::WriteTObject", "Directory %s is not writable", self.GetName())
+            message(
+                "Error",
+                "TDirectoryFile::WriteTObject",
+                "Directory %s is not writable",
+                self.GetName(),
+            )
             return 0
         own = getattr(obj, "_write_into", None)
         if own is not None:
@@ -282,7 +299,9 @@ class TDirectoryFile(TDirectory):
     def Write(self, name: Any = None, option: int = 0, bufsize: int = 0) -> int:
         """``Write``: every object in memory here written, and every directory below its own."""
         if self._writable() is None:
-            message("Error", "TDirectoryFile::Write", "file %s not opened in write mode", self.GetName())
+            message(
+                "Error", "TDirectoryFile::Write", "file %s not opened in write mode", self.GetName()
+            )
             return 0
         return super().Write(name, option, bufsize)
 
@@ -292,7 +311,12 @@ class TDirectoryFile(TDirectory):
         found = self._named_directory(head)
         if found is None:
             if self._writable() is None:
-                message("Error", "TDirectoryFile::mkdir", "Can not create directory %s in a file opened to read", head)
+                message(
+                    "Error",
+                    "TDirectoryFile::mkdir",
+                    "Can not create directory %s in a file opened to read",
+                    head,
+                )
                 return None
             found = self._subdirectory(head, str(title) or head)
             self.Append(found)
@@ -327,7 +351,9 @@ class TDirectoryFile(TDirectory):
     def _ls_keys(self, pattern: str) -> None:
         import fnmatch
 
-        keys = [key for key in self._keys if not pattern or fnmatch.fnmatchcase(key.GetName(), pattern)]
+        keys = [
+            key for key in self._keys if not pattern or fnmatch.fnmatchcase(key.GetName(), pattern)
+        ]
         for key, mark in zip(keys, _listing_marks(keys)):
             key.ls(mark)
 
@@ -361,6 +387,13 @@ def _file_title(reading: Any) -> str:
     return str(Key(Buffer(source.read(begin, 512))).title)
 
 
+def _exists(name: str) -> bool:
+    """Is there a file at ``name`` already? Asked only of a local one; a URL is taken to be."""
+    if not _local(name):
+        return True
+    return os.path.exists(name[7:] if name.startswith("file://") else name)
+
+
 def _local(name: str) -> bool:
     return "://" not in name or name.startswith("file://")
 
@@ -370,7 +403,9 @@ class TFile(TDirectoryFile):
 
     CLASS_TITLE = "ROOT file"
 
-    def __init__(self, fname: Any = "", option: Any = "READ", ftitle: Any = "", compress: int = 101) -> None:
+    def __init__(
+        self, fname: Any = "", option: Any = "READ", ftitle: Any = "", compress: int = 101
+    ) -> None:
         name = str(fname)
         super().__init__(name, str(ftitle))
         self._option = MODES.get(str(option).upper().strip(), "READ")
@@ -387,14 +422,15 @@ class TFile(TDirectoryFile):
 
     def _open(self, name: str) -> None:
         """Open the file the way the mode says, or leave a zombie with ROOT's error."""
-        exists = os.path.exists(name[7:] if name.startswith("file://") else name) if _local(name) else True
+        exists = _exists(name)
         mode = self._option
         if mode == "CREATE" and exists:
             message("Error", "TFile::TFile", "file %s already exists", name)
             self._zombie = True
-        elif mode == "READ" or (mode == "UPDATE" and exists):
+            return
+        if mode == "READ" or (mode == "UPDATE" and exists):
             self._read_file(name)
-        if not self._zombie and mode in ("CREATE", "RECREATE", "UPDATE"):
+        if not self._zombie and mode != "READ":
             self._write_file(name, exists and mode == "UPDATE")
 
     def _read_file(self, name: str) -> None:
@@ -403,8 +439,9 @@ class TFile(TDirectoryFile):
         try:
             self._reading = open_root(name)
         except (OSError, ValueError) as why:
-            message("Error", "TFile::TFile", "file %s does not exist" if isinstance(why, FileNotFoundError)
-                    else "file %s is not a ROOT file", name)  # fmt: skip
+            missing = isinstance(why, FileNotFoundError)
+            text = "file %s does not exist" if missing else "file %s is not a ROOT file"
+            message("Error", "TFile::TFile", text, name)
             self._zombie = True
             return
         if not self.GetTitle():
@@ -418,7 +455,9 @@ class TFile(TDirectoryFile):
         self._writer = self._writing
 
     @staticmethod
-    def Open(name: Any, option: Any = "READ", ftitle: Any = "", compress: int = 101, netopt: int = 0) -> Any:
+    def Open(
+        name: Any, option: Any = "READ", ftitle: Any = "", compress: int = 101, netopt: int = 0
+    ) -> Any:
         """``TFile::Open``: the file, or ``None`` - a null pointer - if it would not open."""
         made = TFile(name, option, ftitle, compress)
         return None if made.IsZombie() else made

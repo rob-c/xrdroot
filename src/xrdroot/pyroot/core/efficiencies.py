@@ -71,7 +71,9 @@ class TEfficiency(TNamed, TAttLine, TAttFill, TAttMarker):
         coordinates = [value for value in (x, y, z) if value is not None][: self.GetDimension()]
         self._xrd.fill(bool(bPassed), *coordinates)
 
-    def FillWeighted(self, bPassed: Any, weight: float, x: float, y: Any = None, z: Any = None) -> None:
+    def FillWeighted(
+        self, bPassed: Any, weight: float, x: float, y: Any = None, z: Any = None
+    ) -> None:
         coordinates = [value for value in (x, y, z) if value is not None][: self.GetDimension()]
         self._xrd.fill(bool(bPassed), *coordinates, weight=float(weight))
 
@@ -174,7 +176,11 @@ class TEfficiency(TNamed, TAttLine, TAttFill, TAttMarker):
 def _counted(args: tuple[Any, ...]) -> Any:
     """Each axis ROOT's constructor arguments give, to count them."""
     at = 0
-    while at < len(args) and isinstance(args[at], (int, np.integer)) and not isinstance(args[at], bool):
+    while (
+        at < len(args)
+        and isinstance(args[at], (int, np.integer))
+        and not isinstance(args[at], bool)
+    ):
         at += 2 if np.ndim(args[at + 1]) > 0 else 3
         yield at
 

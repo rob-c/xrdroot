@@ -98,7 +98,7 @@ class Stats:
         return lows, highs, width
 
     def Integral(self, *args: Any) -> float:
-        """``Integral([binx1, binx2[, biny1, biny2 ...]][, "width"])``: over the range drawn by default."""
+        """``Integral([binx1, binx2[, biny1, biny2]][, "width"])``: the range drawn by default."""
         lows, highs, width = self._bin_ranges(args)
         return float(self._xrd.integral(lows, highs, width))
 

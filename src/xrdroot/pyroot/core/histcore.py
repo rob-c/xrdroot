@@ -10,7 +10,7 @@ it or, given ``nullptr``, takes it out.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -53,8 +53,8 @@ class Booked:
     KIND = "D"
     DIM = 1
     #: ``TH1::AddDirectory``'s switch, and ``TH1::SetDefaultSumw2``'s.
-    _add_directory = [True]
-    _default_sumw2 = [False]
+    _add_directory: ClassVar[list[bool]] = [True]
+    _default_sumw2: ClassVar[list[bool]] = [False]
     _xrd: Any
 
     def __init__(self, *args: Any) -> None:

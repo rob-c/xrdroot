@@ -13,7 +13,7 @@ templates do. ROOT's ``Eta`` of a vector along the beam is ``z ± 22756``.
 from __future__ import annotations
 
 import math
-from typing import Any, Callable
+from typing import Any, Callable, ClassVar
 
 __all__ = [
     "LorentzVector",
@@ -153,7 +153,7 @@ for _name, _others in ALIASES.items():
 
 def _getter(name: str) -> Any:
     def get(self: Any) -> float:
-        return self._get(name)
+        return float(self._get(name))
 
     get.__doc__ = f"``{name}()``."
     return get
@@ -172,8 +172,8 @@ class _Vector:
 
     SYSTEM = ""
     NAMES: tuple[str, ...] = ()
-    DERIVED: dict[str, Callable[[Any], float]] = {}
-    SYSTEMS: dict[str, Any] = {}
+    DERIVED: ClassVar[dict[str, Callable[[Any], float]]] = {}
+    SYSTEMS: ClassVar[dict[str, Any]] = {}
     SETTABLE: tuple[str, ...] = ()
 
     def __init__(self, *args: Any) -> None:
@@ -194,7 +194,7 @@ class _Vector:
     def _get(self, name: str) -> float:
         own = [coord for coord in self.NAMES if coord == name or name in ALIASES.get(coord, ())]
         if own:
-            return self._c[self.NAMES.index(own[0])]
+            return float(self._c[self.NAMES.index(own[0])])
         return float(self.DERIVED[name](self._cartesian()))
 
     def _set(self, name: str, value: float) -> None:
@@ -275,7 +275,7 @@ class _Vector:
         self._set_cartesian(tuple(a - b for a, b in zip(self._cartesian(), other._cartesian())))
         return self
 
-    def __imul__(self, a: float) -> Any:
+    def __imul__(self, a: Any) -> Any:
         self._set_cartesian(tuple(value * float(a) for value in self._cartesian()))
         return self
 
@@ -334,13 +334,13 @@ class LorentzVector(_Vector):
 
     def isLightlike(self, tolerance: float = 100 * 2.220446049250313e-16) -> bool:
         x = self._cartesian()
-        return abs(x[3] ** 2 - _p2(x)) < tolerance * x[3] ** 2
+        return bool(abs(x[3] ** 2 - _p2(x)) < tolerance * x[3] ** 2)
 
     def isTimelike(self) -> bool:
-        return self.M2() > 0
+        return self._get("M2") > 0
 
     def isSpacelike(self) -> bool:
-        return self.M2() < 0
+        return self._get("M2") < 0
 
     def ColinearRapidity(self) -> float:
         x = self._cartesian()
@@ -389,7 +389,11 @@ def _r3(x: Any) -> float:
 
 def _from_polar(c: Any) -> Any:
     r, theta, phi = c
-    return r * math.sin(theta) * math.cos(phi), r * math.sin(theta) * math.sin(phi), r * math.cos(theta)
+    return (
+        r * math.sin(theta) * math.cos(phi),
+        r * math.sin(theta) * math.sin(phi),
+        r * math.cos(theta),
+    )
 
 
 def _to_polar(x: Any) -> Any:
@@ -543,9 +547,9 @@ class Polar2DVector(XYVector):
     NAMES = SYSTEMS_2D["Polar2D"][0]
 
 
-for _made in (DisplacementVector3D, XYZVector, PositionVector3D, XYZPoint, Polar3DVector,
+for _kind in (DisplacementVector3D, XYZVector, PositionVector3D, XYZPoint, Polar3DVector,
               RhoEtaPhiVector, RhoZPhiVector, XYVector, Polar2DVector):  # fmt: skip
-    _dress(_made)
+    _dress(_kind)
 
 
 def _phi_mpi_pi(x: float) -> float:
@@ -556,14 +560,10 @@ def _phi_mpi_pi(x: float) -> float:
 
 
 def _boosted(v: LorentzVector, bx: float, by: float, bz: float) -> Any:
-    """``VectorUtil::boost``: ``v`` seen from a frame moving at ``-b``."""
-    b2 = bx * bx + by * by + bz * bz
-    gamma = 1.0 / math.sqrt(1.0 - b2)
-    x, y, z, t = v._cartesian()
-    bp = bx * x + by * y + bz * z
-    gamma2 = (gamma - 1.0) / b2 if b2 > 0 else 0.0
-    return v._made((x + gamma2 * bp * bx + gamma * bx * t, y + gamma2 * bp * by + gamma * by * t,
-                    z + gamma2 * bp * bz + gamma * bz * t, gamma * (t + bp)))  # fmt: skip
+    """``VectorUtil::boost``: ``v`` boosted by the velocity ``b``, as ``TLorentzVector`` is."""
+    from .vectors import boosted
+
+    return v._made(boosted((bx, by, bz), tuple(v._cartesian())))
 
 
 class VectorUtil:
@@ -575,7 +575,7 @@ class VectorUtil:
 
     @staticmethod
     def DeltaR2(v1: Any, v2: Any) -> float:
-        return VectorUtil.DeltaPhi(v1, v2) ** 2 + (v2.Eta() - v1.Eta()) ** 2
+        return float(VectorUtil.DeltaPhi(v1, v2) ** 2 + (v2.Eta() - v1.Eta()) ** 2)
 
     @staticmethod
     def DeltaR(v1: Any, v2: Any) -> float:
@@ -589,7 +589,9 @@ class VectorUtil:
     def CosTheta(v1: Any, v2: Any) -> float:
         a, b = v1._cartesian()[:3], v2._cartesian()[:3]
         product = _r3(a) * _r3(b)
-        return 1.0 if product <= 0 else max(-1.0, min(1.0, sum(p * q for p, q in zip(a, b)) / product))
+        return (
+            1.0 if product <= 0 else max(-1.0, min(1.0, sum(p * q for p, q in zip(a, b)) / product))
+        )
 
     @staticmethod
     def Angle(v1: Any, v2: Any) -> float:

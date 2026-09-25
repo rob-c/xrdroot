@@ -9,6 +9,7 @@ range of values averaged, then the error option.
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any
 
 import numpy as np
@@ -60,8 +61,8 @@ class _Profiled:
     def FillN(self, ntimes: int, x: Any, y: Any, w: Any = None, stride: int = 1) -> None:
         count = int(ntimes)
         weights = None if w is None else np.asarray(w, dtype=np.float64)[:count]
-        self._xrd.fill(np.asarray(x, dtype=np.float64)[:count], np.asarray(y, dtype=np.float64)[:count],
-                       weight=weights)  # fmt: skip
+        xs = np.asarray(x, dtype=np.float64)[:count]
+        self._xrd.fill(xs, np.asarray(y, dtype=np.float64)[:count], weight=weights)
 
     def _contents(self) -> np.ndarray[Any, Any]:
         return np.asarray(self._xrd.values(flow=True)).ravel(order="F")
@@ -80,7 +81,7 @@ class _Profiled:
         return float(np.sum(self._xrd.bin_entries()))
 
     def SetErrorOption(self, option: str = "") -> None:
-        """``SetErrorOption``: ``""`` the error on the mean, ``"s"`` the spread, ``"i"``, ``"g"``."""
+        """``SetErrorOption``: ``""`` the mean's error, ``"s"`` the spread, ``"i"``, ``"g"``."""
         chosen = str(option).lower()
         self._xrd.members["fErrorMode"] = ERROR_OPTIONS[chosen]
         self._xrd.error_mode = ERROR_MODES[ERROR_OPTIONS[chosen]]
@@ -89,7 +90,7 @@ class _Profiled:
         return str(self._xrd.error_mode)
 
     def ProjectionX(self, name: str = "_px", option: str = "e") -> Any:
-        """``ProjectionX``: a ``TH1D`` of the means - with ``"b"`` the entries - as ROOT makes it."""
+        """``ProjectionX``: a ``TH1D`` of the means - with ``"b"``, the entries - as ROOT's."""
         from ...hist import Histogram
 
         axis = self._xrd.axes[0]
@@ -108,7 +109,7 @@ class _Profiled:
         return float(self._xrd.members.get("fYmax", 0.0))
 
 
-class TProfile(_Profiled, TH1):
+class TProfile(_Profiled, TH1):  # type: ignore[misc]  # ProjectionX takes a profile's arguments
     """``TProfile``: the mean of y in bins of x."""
 
     CLASS_TITLE = "Profile histogram class"
@@ -116,7 +117,7 @@ class TProfile(_Profiled, TH1):
     KIND = "D"
 
 
-class TProfile2D(_Profiled, TH2):
+class TProfile2D(_Profiled, TH2):  # type: ignore[misc]  # ProjectionX takes a profile's arguments
     """``TProfile2D``: the mean of z in bins of x and y."""
 
     CLASS_TITLE = "Profile2D histogram class"
@@ -124,7 +125,7 @@ class TProfile2D(_Profiled, TH2):
     KIND = "D"
 
 
-class TProfile3D(_Profiled, TH3):
+class TProfile3D(_Profiled, TH3):  # type: ignore[misc]  # ProjectionX takes a profile's arguments
     """``TProfile3D``: the mean of t in bins of x, y and z."""
 
     CLASS_TITLE = "Profile3D histogram class"
@@ -133,4 +134,4 @@ class TProfile3D(_Profiled, TH3):
 
 
 for _cls in (TProfile, TProfile2D, TProfile3D):
-    register(_cls.__name__, factory=lambda xrd, cls=_cls: adopt(cls, xrd))
+    register(_cls.__name__, factory=partial(adopt, _cls))

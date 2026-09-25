@@ -68,7 +68,7 @@ def unwrap(obj: Any) -> Any:
     return getattr(obj, "_xrd", obj)
 
 
-def adopt(cls: type, xrd: Any) -> Any:
+def adopt(cls: Any, xrd: Any) -> Any:
     """A ``cls`` standing for ``xrd`` without running its constructor - what reading makes."""
     made = cls.__new__(cls)
     made._adopted(xrd)
