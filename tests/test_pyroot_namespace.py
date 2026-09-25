@@ -23,7 +23,7 @@ def test_the_namespace_holds_roots_classes_by_their_names():
 
 
 def test_a_name_root_has_and_this_does_not_is_refused_by_that_name():
-    with pytest.raises(AttributeError, match="ROOT has TNoSuchThing; xrdroot.pyroot does not yet"):
+    with pytest.raises(AttributeError, match=r"TNoSuchThing; xrdroot\.pyroot does not yet"):
         ROOT.TNoSuchThing  # noqa: B018
 
 

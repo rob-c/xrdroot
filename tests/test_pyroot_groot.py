@@ -106,9 +106,9 @@ def test_the_small_session_questions_have_roots_answers():
 
 def test_cpp_is_refused_by_name_without_the_translator(monkeypatch):
     monkeypatch.setattr(troot.importlib.util, "find_spec", lambda name: None)
-    with pytest.raises(UnsupportedFeatureError, match="xrdroot.cint"):
+    with pytest.raises(UnsupportedFeatureError, match=r"xrdroot\.cint"):
         ROOT.gROOT.ProcessLine("int x = 1;")
-    with pytest.raises(UnsupportedFeatureError, match="gInterpreter.Declare"):
+    with pytest.raises(UnsupportedFeatureError, match=r"gInterpreter\.Declare"):
         ROOT.gInterpreter.Declare("int f();")
 
 
