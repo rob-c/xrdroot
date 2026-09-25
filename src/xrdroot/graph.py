@@ -14,7 +14,7 @@ import numpy as np
 from xrdclient._compat import zip_strict
 
 from . import graphmath
-from .draw import axes
+from .display import Displayed
 from .efficiency import Efficiency
 from .errors import FormatError, UnsupportedFeatureError
 from .function.attached import listed
@@ -40,7 +40,7 @@ def _core(row: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-class Graph:
+class Graph(Displayed):
     """A graph: its points, and the error bars round them.
 
         >>> for x, y in graph:                     # doctest: +SKIP
@@ -284,24 +284,6 @@ class Graph:
     def rms(self, axis: int = 0) -> float:
         """``GetRMS``: the spread of the points' ``x``, or ``y`` for ``axis=1``."""
         return graphmath.rms(self, axis)
-
-    def plot(self, ax: Any = None, **options: Any) -> Any:
-        """Draw onto matplotlib axes, made fresh unless ``ax`` brings some.
-
-        Points with their error bars; a graph keeping layers of them draws
-        every layer over the same points. The axes come back, so styling and
-        saving carry on where this left off - and matplotlib not being
-        installed refuses with the two ways out by name.
-        """
-        if ax is None:
-            ax = axes()
-        style: dict[str, Any] = {"fmt": "o", "markersize": 4}
-        style.update(options)
-        for index, bars in enumerate(self.layers or (None,)):
-            ax.errorbar(self.x, self.y, yerr=bars, xerr=self.xerr if index == 0 else None, **style)
-        if self.title:
-            ax.set_title(self.title)
-        return ax
 
     def text(self, width: int = 60, height: int = 16) -> str:
         """The graph as a grid of points, for a terminal or a log file."""

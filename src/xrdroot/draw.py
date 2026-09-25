@@ -1,37 +1,23 @@
-"""Pictures without a canvas: matplotlib when it is there, characters when not.
+"""Pictures without a canvas or a drawing library: characters.
 
-ROOT draws through a ``TCanvas``, which this library does not carry. What it
-has instead is the two ways Python usually looks at data: matplotlib axes,
-made on demand and returned so the caller can keep styling them, and plain
-text, which needs nothing installed and goes anywhere a string goes.
+ROOT draws through a ``TCanvas``, which this library does not carry. The
+drawing libraries Python has are reached through :mod:`xrdroot.plot`; what
+is here is the plainest picture of all, text, which needs nothing installed
+and goes anywhere a string goes.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Any
 
 from .errors import UnsupportedFeatureError
 
-__all__ = ["axes", "bar", "shade"]
+__all__ = ["bar", "missing_picture", "shade"]
 
 #: A bar grown one eighth of a character at a time, then a full block.
 EIGHTHS = "▏▎▍▌▋▊▉█"
 #: A grid cell, darker the fuller it is.
 SHADES = " ░▒▓█"
-
-
-def axes() -> Any:
-    """A fresh matplotlib axes to draw on, or a refusal that says what to do."""
-    try:
-        from matplotlib import pyplot
-    except ImportError:
-        raise UnsupportedFeatureError(
-            "drawing this needs matplotlib, which is not installed: "
-            "pip install matplotlib - or use .text(), which draws in the "
-            "terminal with nothing installed at all"
-        ) from None
-    return pyplot.subplots()[1]
 
 
 def bar(fraction: float, width: int) -> str:

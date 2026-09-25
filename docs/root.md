@@ -852,21 +852,140 @@ ROOT's binomial likelihood of an efficiency, is not here.
 
 ## Drawing
 
-ROOT draws through a `TCanvas`, which this library does not carry. What it
-has instead is the two ways Python usually looks at data. `plot()` draws onto
-matplotlib axes — made on demand, or brought along — and returns them, so
-styling and saving carry on where it left off:
+ROOT draws on a `TCanvas`, which this library does not carry. It draws
+instead through the libraries Python already draws with — matplotlib,
+plotly and bokeh — or in plain characters, and everything drawn has the
+same `plot()`:
 
 ```python
-ax = f["h1d"].plot()  # steps for 1D, a shaded mesh for 2D
-f["tge"].plot(ax=ax, color="crimson")  # points with their error bars
-ax.figure.savefig("both.png")
+ax = f["h_pt"].plot()  # ROOT's default: HIST, or E once it keeps Sumw2
+f["h_pt_mc"].plot(option="HIST SAME", color="kRed+1", label="MC")
+ax.figure.savefig("pt.pdf")
+
+fig = f["h2"].plot(backend="plotly", option="LEGO2Z")  # turn it round in a notebook
+xrdroot.plot.set_backend("bokeh")  # from now on, unless a call says otherwise
+print(f["h_pt"].plot(backend="text"))  # a terminal, a log, a CI transcript
 ```
 
-matplotlib is not a dependency; `pip install xrdroot[plot]` brings it,
-and without it `plot()` refuses with both ways out by name. The other way is
-`text()`, which needs nothing installed at all and goes anywhere a string
-goes — a terminal, a log file, a CI transcript:
+`obj.plot(ax=None, backend=None, option="", **style)` is the same on a
+histogram, profile, efficiency, graph (plain, with errors, asymmetric or in
+layers), multigraph, stack and function, and `xrdroot.plot.plot(obj, ...)`
+is the same again. What comes back is the backend's own object — matplotlib
+`Axes`, a plotly `Figure`, a bokeh `figure`, a `str` — so styling, saving
+and laying out carry on with the library's own calls, and `ax=` draws onto
+one you already have. Only the text backend needs nothing installed;
+`pip install xrdroot[plot]`, `[plotly]`, `[bokeh]` and `[hep]` (mplhep)
+bring the others, and one that is missing is refused with the command that
+installs it.
+
+What is drawn does not change with the backend. The object becomes a
+picture first — its layers of steps, points, bands, curves and shaded
+cells, and the frame round them (`xrdroot.plot.picture(obj, option)` shows
+it) — and every backend draws that picture. The look is ROOT's, read off
+the object: `fLineColor`, `fFillStyle`, `fMarkerStyle` and the rest,
+through ROOT's own colour table (indices 0–50, the pretty palette, the
+Petroff sets and the colour wheel, `kRed+1` and all, to the bit) and its
+markers; a fit hung on a histogram or graph is drawn over it in its red, as
+ROOT draws it, unless the fit was made with option `0`.
+
+### Options
+
+Options are ROOT's, in any case and run together as ROOT takes them
+(`"E1SAME"`, `"colz"`). One this does not draw is refused by name with why,
+and so is one that means nothing for the object — `COLZ` on a 1-D
+histogram — rather than being quietly ignored.
+
+| ROOT | What it draws | Here |
+| --- | --- | --- |
+| *(none)*, 1-D | `HIST`, or `E` once `Sumw2` is kept; a profile `E` | same, with fits drawn |
+| *(none)*, 2-D | `COL` | `COLZ`: the colours need their scale |
+| *(none)*, graph | `ALP`, or the graph's `fOption` | same |
+| *(none)*, efficiency | `AP`, or `COLZ` in 2-D | same |
+| *(none)*, TF1 / TF2 | a line / `CONT3` lines | same, at `fNpx` (and `fNpy`) points |
+| `HIST` | the outline, and no fits | steps |
+| `E`, `E0`, `E1` | error bars; `E0` for empty bins too, `E1` with ticks | same; `X0` drops the x bars |
+| `E2` | error boxes | filled boxes and markers |
+| `E3`, `E4` | a band through the bars' ends, `E4` smoothed | same |
+| `P`, `*`, `L`, `C` | markers, stars, a line, a smooth line | same |
+| `B` | bars | same |
+| `TEXT`, `TEXTnn` | the values, at `nn` degrees | same |
+| `COL`, `COLZ` | shaded cells, with the scale | same; empty cells unpainted |
+| `BOX` | a box per cell, as big as its content | same |
+| `CONT`, `CONT0`–`CONT4` | filled bands; `CONT1`–`3` lines | same, `levels=` of them |
+| `LEGO`, `SURF` (and their numbers) | 3-D blocks, a surface | matplotlib 3-D axes, plotly surfaces; bokeh refuses |
+| 3-D histogram, `BOX`, `ISO` | boxes, iso-surfaces | plotly markers, isosurfaces; the others refuse |
+| `A`, `2`, `3`, `4`, `X`, `Z` (graphs) | axes, error boxes, bands, no bars, no ticks | same |
+| `SAME` | onto the current pad | onto what that backend last drew on |
+| `NORM` | scaled to a sum of one | same; refused for a profile's means |
+| `FUNC` | the fits alone | same |
+| `NOSTACK`, `NOSTACKB` (stacks) | overlaid, side by side | same |
+| `PLC`, `PMC`, `PFC` | colours from the palette | same, spread across it |
+| `LOGX`, `LOGY`, `LOGZ` | not options: set on the pad | `logx=True`, `logy=True`, `logz=True` |
+| `SCAT`, `ARR`, `PIE`, `POL`, `CYL`, `SPH`, `PSR`, `CANDLE`, `VIOLIN`, `TRI`, `SPEC`, `GL…`, `E5`, `E6`, `HBAR`, `PADS` | — | refused, each with why |
+
+### Style keywords
+
+`color`, `linewidth`, `linestyle`, `fill`, `alpha`, `hatch`, `marker`,
+`markersize`, `markercolor` and `label` restyle the marks — a colour may be
+ROOT's (`2`, `"kAzure-3"`) or any the backend knows, a marker ROOT's style
+number (`20`) or a shape; `title`, `xlabel`, `ylabel`, `zlabel`, `logx`,
+`logy`, `logz`, `xlim`, `ylim`, `legend` and `grid` set the frame;
+`palette` shades a grid (`"bird"`, ROOT's default, `"viridis"`, or a colour
+map of the backend's), and `levels` counts contours. Any other keyword is
+the backend's own and is handed to its call for the first layer, so
+`zorder=3` reaches matplotlib and `opacity=0.5` plotly.
+
+### Ratios, comparisons and stacks
+
+```python
+upper, lower = xrdroot.plot.ratio(data, mc, labels=["data", "MC"])  # TRatioPlot
+fig = xrdroot.plot.ratio(h, h.functions[0], "diffsig", backend="plotly")  # pulls
+ax = xrdroot.plot.compare([h_2016, h_2017, h_2018], norm=True)
+ax = xrdroot.plot.stack([ttbar, wjets, qcd], ["tt", "W+jets", "QCD"])
+data.plot(ax=ax, option="E SAME", label="data")
+```
+
+`ratio` is `TRatioPlot`: the two above, their ratio below on a shared x
+axis about a dashed line — `divsym` (the default) with the errors of both as
+`TH1::Divide` gives them, `pois` with the interval on a ratio of two counts
+as `TGraphAsymmErrors::Divide` gives it, `diff` and `diffsig`. Against a
+function it is the residuals or the pulls of a fit. matplotlib gives back
+the two axes, plotly one figure of two rows, bokeh a column of two figures.
+`compare` overlays several things in colours told apart — ROOT's ten
+Petroff colours unless told — with a legend; `stack` piles histograms as
+`THStack` does, each filled, the first at the bottom, and takes a stack's
+options (`NOSTACK`, `NOSTACKB`). A `THStack` read from a file draws itself
+the same way.
+
+### Styles and labels
+
+```python
+ax = h.plot(style="ROOT")  # built in: ROOT's ticks, frame and axis titles
+upper, lower = xrdroot.plot.ratio(data, mc, style="CMS")  # mplhep's
+xrdroot.plot.label(upper, "CMS", "Preliminary", lumi=138, energy=13)
+xrdroot.plot.use_style("ATLAS")  # every matplotlib plot from now on
+```
+
+`style="ROOT"` needs nothing installed and styles plotly and bokeh too;
+`"CMS"`, `"ATLAS"`, `"LHCb"`, `"ALICE"` and the rest are mplhep's, for
+matplotlib, and refused with the install command when mplhep is not there.
+`label` writes the experiment in bold, its text after it, and the
+luminosity and energy on the right, on whichever backend drew the plot.
+
+### Notebooks
+
+Left at the end of a Jupyter cell, a histogram, graph, profile, efficiency,
+stack or function shows as its picture — a small SVG, drawn on a figure
+pyplot never hears of so it is not shown twice, or plotly's HTML when
+plotly is the backend set. Showing never fails a cell: whatever goes wrong
+falls back to the picture in characters, and then to the `repr`. A tree, a
+chain, an RNTuple and a directory show as a table of their branches, files,
+fields or keys — names, types, entries, classes and cycles — made from
+what was read when they were opened, without reading a basket.
+
+### Characters
+
+`text()` is the plainest picture of all, and needs nothing:
 
 ```python
 print(f["h1d"].text())  # one line per bin: its edges, a bar and the value
@@ -874,9 +993,8 @@ print(f["h2d"].text())  # a shaded grid, y upward
 print(f["tge"].text())  # a grid of stars with the axis ends labelled
 ```
 
-A graph of layered error bars draws every layer over the same points; a
-three-dimensional histogram has no honest flat picture and refuses both ways,
-saying to slice `values()` down to the two dimensions you want to see.
+A 3-D histogram has no honest flat picture in characters or in
+matplotlib, and says to slice `values()` down or draw it with plotly.
 
 ## Columns
 

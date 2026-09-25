@@ -280,6 +280,12 @@ class RNTuple:
             f"<RNTuple {self.name!r} with {len(self.fields)} fields and {self.num_entries} entries>"
         )
 
+    def _repr_html_(self) -> str:
+        """A notebook's table of the fields, from the header and footer alone."""
+        from ..plot.notebook import rntuple_table
+
+        return rntuple_table(self)
+
     def __len__(self) -> int:
         return self.num_entries
 

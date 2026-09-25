@@ -1,9 +1,10 @@
 """Drawing histograms and graphs, with matplotlib and without it.
 
-matplotlib is not a dependency of this library, so most of what is here
-stands a small axes object in for it and checks the right calls arrive with
-the right numbers - the part this library is responsible for. One test at the
-end draws onto the real thing when it happens to be installed, headless.
+matplotlib is not a dependency of this library, so what is here stands a
+small axes object in for it and checks the right calls arrive with the right
+numbers - the part this library is responsible for - and draws characters,
+which need nothing. The real matplotlib, and the other backends, are drawn
+with in the ``test_plot_*`` modules.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import types
 
 import pytest
 
+from plotting import tidy  # noqa: F401
 from xrdroot import Graph, Histogram, UnsupportedFeatureError, open_root
 from xrdroot.draw import bar, missing_picture, shade
 
@@ -92,7 +94,7 @@ def test_a_two_dimensional_histogram_draws_as_a_grid_with_y_upward():
     assert any(cell != " " for cell in "".join(lines))
 
 
-def test_a_three_dimensional_histogram_refuses_both_pictures():
+def test_the_refusal_of_a_picture_names_its_dimensions():
     with pytest.raises(UnsupportedFeatureError, match="3-dimensional histogram"):
         raise missing_picture("histogram", 3)
 
@@ -131,47 +133,31 @@ def test_a_histogram_plots_as_stairs_with_its_titles(fresh):
     _, (values, edges), options = ax.calls[0]
     assert list(values) == [4.0, 2.0]
     assert list(edges) == [0.0, 1.0, 2.0]
-    assert options == {"color": "red"}
+    assert options == {"baseline": 0, "color": "red", "linewidth": 1.0, "linestyle": "-"}
     assert ax.calls[1][1] == ("counts",)
     assert ax.calls[2][1] == ("energy",)
 
 
-def test_a_two_dimensional_histogram_plots_as_a_mesh_with_the_grid_transposed(fresh):
-    with open_root(f"{DATA}/gauss-h2.root") as root:
-        hist = root["h2d"]
-    hist.axes[1].title = "the other way"
-    ax = hist.plot()
-    name, (xs, ys, columns), _ = ax.calls[0]
-    assert name == "pcolormesh"
-    assert list(xs) == list(hist.edges(0))
-    assert list(ys) == list(hist.edges(1))
-    assert columns.tolist() == hist.values().T.tolist()
-    assert ("set_ylabel", ("the other way",), {}) in ax.calls
-
-
-def test_a_three_dimensional_histogram_refuses_to_plot_before_touching_matplotlib():
-    hist = Histogram.new("h", [0, 1], [1])
-    hist.axes = (None, None, None)
-    with pytest.raises(UnsupportedFeatureError, match="no honest flat picture"):
-        hist.plot()
+def test_a_three_dimensional_histogram_refuses_its_picture_in_characters():
+    hist = Histogram.new("h", [[0, 1], [0, 1], [0, 1]], [[[1]]])
     with pytest.raises(UnsupportedFeatureError, match="no honest flat picture"):
         hist.text()
 
 
 def test_a_graph_plots_its_points_and_every_layer_of_bars(fresh):
     plain = Graph.new("g", [1, 2], [3, 4], title="scan")
-    ax = plain.plot()
+    ax = plain.plot(option="P")
     name, (xs, ys), options = ax.calls[0]
     assert name == "errorbar"
     assert (list(xs), list(ys)) == ([1.0, 2.0], [3.0, 4.0])
     assert options["yerr"] is None and options["xerr"] is None
-    assert options["fmt"] == "o" and options["markersize"] == 4
+    assert options["marker"] == "." and options["linestyle"] == "none"
     assert ax.calls[1] == ("set_title", ("scan",), {})
 
     bars = Graph.new("g", [1, 2], [3, 4], xerr=[0.1, 0.1], yerr=[0.2, 0.3])
-    ax = bars.plot(fmt="s")
+    ax = bars.plot(option="P", marker="s")
     _, _, options = ax.calls[0]
-    assert options["fmt"] == "s"  # the caller's style wins
+    assert options["marker"] == "s"  # the caller's style wins
     assert [list(side) for side in options["yerr"]] == [[0.2, 0.3], [0.2, 0.3]]
     assert options["xerr"] is not None
 
@@ -190,18 +176,13 @@ def test_without_matplotlib_the_refusal_names_both_ways_out(monkeypatch):
         Histogram.new("h", [0, 1], [1]).plot()
 
 
-# -- matplotlib, the real one, when it is there ----------------------------
+# -- matplotlib, the real one ------------------------------------------------
 
 
 def test_the_real_matplotlib_accepts_everything_we_send_it():
-    matplotlib = pytest.importorskip("matplotlib")
-    matplotlib.use("Agg", force=True)
-    from matplotlib import pyplot
-
     with open_root(f"{DATA}/gauss-h2.root") as root:
         flat = root["h2d"]
     layered = Graph.new("g", [1, 2], [3, 4], yerr=([0.1, 0.2], [0.3, 0.4]))
     for thing in (Histogram.new("h", [0, 1, 2], [4, 2]), flat, layered):
         ax = thing.plot()
         assert ax.figure is not None
-        pyplot.close(ax.figure)
