@@ -110,8 +110,7 @@ class TDirectory(TNamed):
         """``FindObjectAny``: here, then in every directory below."""
         found = self.FindObject(name)
         for sub in self._subdirectories():
-            if found is None:
-                found = sub.FindObjectAny(name)
+            found = found if found is not None else sub.FindObjectAny(name)
         return found
 
     def _subdirectories(self) -> list[Any]:

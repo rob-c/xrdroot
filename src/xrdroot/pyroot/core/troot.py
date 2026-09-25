@@ -142,7 +142,9 @@ class TROOT(TDirectory):
         return here.Get(name) if here is not self else self._list.FindObject(name)
 
     def FindObjectAny(self, name: Any) -> Any:
-        return self.FindObject(name)
+        """``FindObjectAny``: as ``FindObject``, then in every directory in memory below."""
+        found = self.FindObject(name)
+        return found if found is not None else TDirectory.FindObjectAny(self, name)
 
     def GetFunction(self, name: Any) -> Any:
         """``GetFunction``: a function made by name - ``gaus`` and the rest made when asked."""

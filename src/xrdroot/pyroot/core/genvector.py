@@ -287,8 +287,7 @@ class _Vector:
 def _dress(cls: Any) -> Any:
     """A vector class given a getter for every question and a setter per own coordinate."""
     for name in cls.DERIVED:
-        if name not in cls.__dict__:
-            setattr(cls, name, _getter(name))
+        setattr(cls, name, _getter(name))
     for coord in cls.SETTABLE:
         setattr(cls, f"Set{coord}", _setter(coord))
     return cls

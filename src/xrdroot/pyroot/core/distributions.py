@@ -22,7 +22,6 @@ __all__ = [
     "normal_quantile",
     "chi2_cdf",
     "chi2_quantile",
-    "gamma_cdf",
     "gamma_pdf",
     "student_pdf",
     "student_cdf",
@@ -65,12 +64,11 @@ def invert(cdf: Callable[[float], float], p: float, low: float, high: float) -> 
     """
     while cdf(high) < p:
         low, high = high, high * 2.0 + 1.0
-    for _ in range(2000):
-        middle = 0.5 * (low + high)
-        if middle in (low, high):
-            break
+    middle = 0.5 * (low + high)
+    while middle not in (low, high):
         low, high = (middle, high) if cdf(middle) < p else (low, middle)
-    return 0.5 * (low + high)
+        middle = 0.5 * (low + high)
+    return middle
 
 
 def gamma_pdf(x: float, alpha: float, theta: float, x0: float = 0.0) -> float:
@@ -81,10 +79,6 @@ def gamma_pdf(x: float, alpha: float, theta: float, x0: float = 0.0) -> float:
     if u == 0:
         return 1.0 / theta if alpha == 1 else 0.0
     return math.exp((alpha - 1) * math.log(u / theta) - u / theta - math.lgamma(alpha)) / theta
-
-
-def gamma_cdf(x: float, alpha: float, theta: float, x0: float = 0.0) -> float:
-    return incomplete_gamma(alpha, (x - x0) / theta)
 
 
 def chi2_cdf(x: float, r: float, x0: float = 0.0) -> float:
