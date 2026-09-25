@@ -7,8 +7,8 @@ saved, length first. That PNG is the whole of the picture, so this module
 keeps its bytes as they are and decodes them into pixels only when asked,
 with nothing more than :mod:`zlib` and NumPy.
 
-What it refuses: an image kept as a grid of values and a palette rather
-than a PNG, which no file this reader has met holds, and a ``TASImage``
+An image made from numbers is kept as the numbers and a palette instead,
+which :mod:`.palette` reads and colours. What this refuses is a ``TASImage``
 written by ROOT 4, which kept its zoom and its range but none of its pixels.
 """
 
@@ -45,28 +45,65 @@ class Image:
 
     :attr:`png` is the file's own bytes, untouched; :attr:`array` is them
     decoded, top row first, as red, green, blue and alpha.
+
+    An image made from data rather than read from a picture keeps that data:
+    :attr:`values` is the grid, top row first, and :attr:`palette` the stops
+    and colours that give :attr:`array` its pixels, which are ROOT's own; its
+    :attr:`png` is those pixels encoded, since the file held none.
     """
 
-    __slots__ = ("classname", "name", "title", "png", "width", "height", "_array")
+    __slots__ = (
+        "classname",
+        "name",
+        "title",
+        "width",
+        "height",
+        "values",
+        "palette",
+        "_png",
+        "_array",
+    )
 
     def __init__(self, classname: str, members: dict[str, Any]) -> None:
         self.classname = classname
         self.name: str = members["fName"]
         self.title: str = members["fTitle"]
-        #: The PNG the image was written as, byte for byte.
-        self.png: bytes = members["png"]
-        self.width, self.height = png_size(self.png)
+        self._png: bytes | None = members.get("png")
+        #: The numbers an image made from data was made from, or ``None``.
+        self.values: np.ndarray[Any, Any] | None = members.get("values")
+        #: How those numbers are coloured: ``fPoints`` and a 16-bit level per channel.
+        self.palette: dict[str, Any] | None = members.get("palette")
         self._array: np.ndarray[Any, Any] | None = None
+        if self.values is None:
+            self.width, self.height = png_size(self.png)
+        else:
+            self.height, self.width = self.values.shape
 
     def __repr__(self) -> str:
         return f"<Image {self.name!r} of {self.width}x{self.height} pixels>"
 
     @property
+    def png(self) -> bytes:
+        """The PNG the image was written as, byte for byte, or its pixels encoded as one."""
+        if self._png is None:
+            from .palette import encode_png
+
+            self._png = encode_png(self.array)
+        return self._png
+
+    @property
     def array(self) -> np.ndarray[Any, Any]:
         """The pixels, ``height`` by ``width`` by RGBA, as ``uint8``: decoded once."""
         if self._array is None:
-            self._array = decode_png(self.png)
+            self._array = self._pixels()
         return self._array
+
+    def _pixels(self) -> np.ndarray[Any, Any]:
+        if self.values is None:
+            return decode_png(self.png)
+        from .palette import colorize
+
+        return colorize(self.values, self.palette or {})
 
     def _repr_png_(self) -> bytes:
         """What a notebook shows: the picture itself."""
@@ -238,15 +275,15 @@ def read_image(_described: Any) -> Callable[[Buffer], dict[str, Any]]:
                 f"a picture, which is how ROOT 4 wrote one: its zoom and its range, and "
                 f"none of its pixels"
             )
-        if not kept:
-            raise UnsupportedFeatureError(
-                f"{name!r} is a TASImage kept as values and a palette rather than as a "
-                f"PNG, which no file this reader has met holds, so reading one would be a "
-                f"guess"
-            )
-        png = buf.take(buf.i32())
+        row: dict[str, Any] = {"fName": name, "fTitle": title}
+        if kept:
+            row["png"] = buf.take(buf.i32())
+        else:
+            from .palette import read_vector_image
+
+            row.update(read_vector_image(buf))
         buf.resume(end)
-        return {"fName": name, "fTitle": title, "png": png}
+        return row
 
     return read
 

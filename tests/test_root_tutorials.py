@@ -194,5 +194,66 @@ def test_a_TASImage_with_no_picture_in_it_is_refused_by_what_it_kept():
         read(image_record(1, 0x40))
     with pytest.raises(UnsupportedFeatureError, match="version 0 whose bytes"):
         read(image_record(0, 1))
-    with pytest.raises(UnsupportedFeatureError, match="values and a palette"):
-        read(image_record(2, 0))
+
+
+def vector_image_body(
+    values: list[list[float]], points: list[float], levels: list[list[int]]
+) -> bytes:
+    """What follows the byte saying an image is numbers: its ``TAttImage``, then the grid.
+
+    ``values`` is given top row first and written bottom row first, as ROOT
+    writes it; ``levels`` is the red, green, blue and alpha at each stop.
+    """
+    n = len(points)
+    palette = struct.pack(">HII", 1, 0, 0) + struct.pack(">I", n)
+    palette += struct.pack(f">{n}d", *points)
+    for channel in levels:
+        palette += struct.pack(f">{n}H", *channel)
+    palette = struct.pack(">IH", BYTE_COUNT_MASK | (2 + len(palette)), 1) + palette
+    attributes = struct.pack(">HiIB", 1, 0, 0, 1) + palette
+    attributes = struct.pack(">I", BYTE_COUNT_MASK | len(attributes)) + attributes
+    height, width = len(values), len(values[0])
+    grid = [value for row in reversed(values) for value in row]
+    return attributes + struct.pack(f">ii{width * height}d", width, height, *grid)
+
+
+def test_an_image_made_of_numbers_is_coloured_the_way_ROOT_colours_it():
+    """Three stops over the range 0 to 4: black, mid grey at 1, then white, all opaque.
+
+    The stops stretch over the values' own range, a value between two is
+    interpolated at 16 bits and truncated, and the top eight bits are kept.
+    """
+    values = [[0.0, 1.0], [2.0, 4.0]]
+    levels = [[0, 0x8000, 0xFFFF]] * 3 + [[0xFFFF] * 3]
+    body = vector_image_body(values, [0.0, 0.25, 1.0], levels)
+    row = read_image(None)(image_record(2, 0, body))
+    image = Image("TASImage", row)
+    assert (image.width, image.height, repr(image)) == (2, 2, "<Image 'p' of 2x2 pixels>")
+    assert image.values.tolist() == values
+    assert image.palette["fPoints"].tolist() == [0.0, 0.25, 1.0]
+    # 2 is a third of the way from 1 to 4: 0x8000 + 0x7FFF / 3, whose top byte is 0xAA
+    assert image.array[..., 0].tolist() == [[0, 0x80], [0xAA, 0xFF]]
+    assert image.array[..., 3].tolist() == [[255, 255], [255, 255]]
+    assert np.array_equal(decode_png(image.png), image.array)
+    assert image.png is image.png
+
+
+def test_the_walk_to_a_stop_carries_on_from_the_last_value_and_past_the_last_stop():
+    """Stops at 0, 2.25 and 4.5 over values to 9: the walk starts at the middle stop.
+
+    5 is coloured from it; the second 5 takes the same stop without a walk; 0
+    walks down to the first; 9 walks up and is held at the last segment, its
+    colour carried on past the last stop and clipped at the top of the range;
+    and 1 walks back down from there.
+    """
+    levels = [[0, 0x4000, 0x8000]] * 4
+    body = vector_image_body([[5.0, 5.0, 0.0, 9.0, 1.0]], [0.0, 0.25, 0.5], levels)
+    image = Image("TASImage", read_image(None)(image_record(2, 0, body)))
+    assert image.array[0, :, 0].tolist() == [142, 142, 0, 255, 28]
+
+
+def test_an_image_whose_stops_coincide_steps_rather_than_dividing_by_nothing():
+    levels = [[0, 0x4000, 0xFFFF]] * 4
+    body = vector_image_body([[0.0, 2.0]], [0.0, 0.0, 1.0], levels)
+    image = Image("TASImage", read_image(None)(image_record(2, 0, body)))
+    assert image.array[0, :, 0].tolist() == [0x40, 0xFF]

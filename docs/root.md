@@ -2312,8 +2312,14 @@ as an `xrdroot.Image`:
 ```
 
 `.png` is the stored PNG untouched and `.array` is its pixels as RGBA
-`uint8`, decoded with nothing but `zlib` and NumPy. An image kept as a grid
-of values and a palette rather than as a PNG is refused by name.
+`uint8`, decoded with nothing but `zlib` and NumPy.
+
+An image ROOT made from numbers — the `galaxy_image` tutorial's NGC 4254 —
+is kept as those numbers and the palette that colours them. It reads with
+`.values`, the grid top row first, and `.palette`, the stops and the 16-bit
+levels at each; `.array` colours it the way libAfterImage does, and is the
+same array as ROOT's own `GetArgbArray()` of that image, pixel for pixel.
+Its `.png` is those pixels encoded, since the file holds none.
 
 ## What it refuses, and why by name
 
