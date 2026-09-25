@@ -33,8 +33,8 @@ def test_a_file_made_keeps_what_is_booked_after_it_and_writes_it(capsys):
     assert out.Write() == 2 and h.Write() == 1
     out.ls()
     lines = capsys.readouterr().out.splitlines()
-    assert lines[:3] == ["TFile**\t\tout.root\tthe title", " TFile*\t\tout.root\tthe title",
-                         lines[2]] and lines[2].startswith("  OBJ: TH1F\thpx\tpx : 0 at: 0x")  # fmt: skip
+    assert lines[:2] == ["TFile**\t\tout.root\tthe title", " TFile*\t\tout.root\tthe title"]
+    assert lines[2].startswith("  OBJ: TH1F\thpx\tpx : 0 at: 0x")
     assert lines[3] == "  TDirectoryFile*\t\tsub\tthe sub" and lines[4].startswith(
         "   OBJ: TH1D\tinner"
     )
