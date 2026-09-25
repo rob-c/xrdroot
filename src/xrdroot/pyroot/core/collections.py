@@ -25,6 +25,9 @@ __all__ = [
     "TObjLink",
 ]
 
+#: Not ROOT's name, so not in the namespace; what ``GetListOfFunctions`` hands back.
+_PRIVATE = ["FunctionList"]
+
 
 def _named(item: Any, name: str) -> bool:
     """Is ``item`` called ``name``, as ``FindObject`` compares them?"""
@@ -209,6 +212,59 @@ class TList(TSeqCollection):
 
     def LastLink(self) -> TObjLink | None:
         return TObjLink(self, len(self._items) - 1) if self._items else None
+
+
+class FunctionList(TList):
+    """``GetListOfFunctions``: an object's own list, read and changed where it is kept.
+
+    A fitted function or one a script adds is kept in the xrdroot object's
+    ``functions``, so it is written with it; anything else - a stats box the
+    drawing puts there, a line a macro hangs on a histogram - in a list of
+    its own beside them, which is drawn but not written.
+    """
+
+    def __init__(self, functions: list[Any], extras: list[Any]) -> None:
+        super().__init__()
+        self._functions, self._extras = functions, extras
+
+    @property
+    def _items(self) -> list[Any]:
+        from .wrapping import wrap
+
+        return [wrap(item) for item in self._functions] + list(self._extras)
+
+    @_items.setter
+    def _items(self, value: list[Any]) -> None:
+        """What ``TCollection.__init__`` sets, which the two lists stand in for."""
+
+    def _home(self, obj: Any) -> list[Any]:
+        from ...function import Function
+
+        return self._functions if isinstance(getattr(obj, "_xrd", None), Function) else self._extras
+
+    def Add(self, obj: Any) -> None:
+        home = self._home(obj)
+        home.append(obj._xrd if home is self._functions else obj)
+
+    AddLast = Add
+
+    def AddFirst(self, obj: Any) -> None:
+        home = self._home(obj)
+        home.insert(0, obj._xrd if home is self._functions else obj)
+
+    def Remove(self, obj: Any) -> Any:
+        """``Remove``: take ``obj`` off its list and hand it back - ``None`` if on none."""
+        for held in (self._extras, self._functions):
+            for at, item in enumerate(held):
+                if item is obj or item is getattr(obj, "_xrd", None):
+                    del held[at]
+                    return obj
+        return None
+
+    def Clear(self, option: str = "") -> None:
+        del self._functions[:], self._extras[:]
+
+    Delete = Clear
 
 
 class THashList(TList):

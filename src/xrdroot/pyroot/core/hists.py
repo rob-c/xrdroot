@@ -40,6 +40,8 @@ class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarke
     kNoTitle = 1 << 17
     kIsAverage = 1 << 18
     kIsNotW = 1 << 19
+    #: ``EStatusBits`` for ``SetCanExtend``: the axes that may grow.
+    kNoAxis, kXaxis, kYaxis, kZaxis, kAllAxes = 0, 1, 2, 4, 7
 
     def Print(self, option: str = "") -> None:
         """``Print``: ROOT's one-line summary; ``"all"``, ``"range"`` or ``"base"`` more."""
@@ -130,6 +132,45 @@ class TH2(TH1):
 
     CLASS_TITLE = "2-Dim histogram base class"
     DIM = 2
+
+    def FillRandom(self, fname: Any, ntimes: int = 5000, rng: Any = None) -> None:
+        """``TH2::FillRandom``: from a ``TF2`` bin by bin, as ROOT does, or from a histogram."""
+        from .randoms import current_generator
+        from .troot import gROOT
+        from .wrapping import unwrap
+
+        source = gROOT.GetFunction(fname) if isinstance(fname, str) else fname
+        generator = unwrap(rng) if rng is not None else current_generator()
+        if isinstance(source, TH1):
+            if source.ComputeIntegral() == 0:
+                return
+            points = [source.GetRandom2(rng=generator) for _ in range(int(ntimes))]
+            self._xrd.fill(*(np.array(column, dtype=np.float64) for column in zip(*points)))
+            return
+        self._fill_from_function(source, int(ntimes), generator)
+
+    def _fill_from_function(self, source: Any, ntimes: int, generator: Any) -> None:
+        """Each entry at the centre of a bin chosen by the function's integral over it."""
+        from .funcs import _gauss_legendre
+        from .wrapping import unwrap
+
+        function = unwrap(source)
+        xaxis, yaxis = self.GetXaxis(), self.GetYaxis()
+        nx, ny = xaxis.GetNbins(), yaxis.GetNbins()
+        cells = [
+            _gauss_legendre(function, [xaxis.GetBinLowEdge(i), xaxis.GetBinUpEdge(i),
+                            yaxis.GetBinLowEdge(j), yaxis.GetBinUpEdge(j)], 8)
+            for j in range(1, ny + 1)
+            for i in range(1, nx + 1)
+        ]  # fmt: skip
+        integral = np.concatenate([[0.0], np.cumsum(cells)])
+        integral /= integral[-1]
+        drawn = np.atleast_1d(generator.rndm(ntimes)) if ntimes else np.zeros(0)
+        ibin = np.searchsorted(integral[:-1], drawn, side="right") - 1
+        biny, binx = np.divmod(ibin, nx)
+        xs = [xaxis.GetBinCenter(int(b) + 1) for b in binx]
+        ys = [yaxis.GetBinCenter(int(b) + 1) for b in biny]
+        self._xrd.fill(np.array(xs, dtype=np.float64), np.array(ys, dtype=np.float64))
 
 
 class TH3(TH1, TAtt3D):

@@ -40,6 +40,32 @@ __all__ = [
 nullptr = None
 
 
+class _Bound:
+    """A template method as Python calls it: ``f.Get["TTree"]("T")`` or ``f.Get("T")``."""
+
+    def __init__(self, fn: Any, obj: Any) -> None:
+        self._fn, self._obj = fn, obj
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return self._fn(self._obj, *args, **kwargs)
+
+    def __getitem__(self, kind: Any) -> _Bound:
+        """``Get<TTree>``: the same method - the object found says what class it is."""
+        return self
+
+
+class templated:
+    """A method ROOT's C++ declares as a template, callable with the type in brackets or not."""
+
+    def __init__(self, fn: Any) -> None:
+        self._fn = fn
+        self.__doc__ = fn.__doc__
+        self.__name__ = fn.__name__
+
+    def __get__(self, obj: Any, owner: Any = None) -> Any:
+        return self if obj is None else _Bound(self._fn, obj)
+
+
 class Indent:
     """``TROOT::IndentLevel``: how deep ``ls`` is, one space per level."""
 

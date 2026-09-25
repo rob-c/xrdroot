@@ -19,7 +19,7 @@ from typing import Any
 
 from .collections import TList
 from .messages import message
-from .objects import Indent, TNamed
+from .objects import Indent, TNamed, templated
 
 __all__ = ["TDirectory", "gDirectory", "current_directory"]
 
@@ -116,6 +116,7 @@ class TDirectory(TNamed):
     def _subdirectories(self) -> list[Any]:
         return [obj for obj in self._list if isinstance(obj, TDirectory)]
 
+    @templated
     def Get(self, namecycle: Any) -> Any:
         """``Get``: an object by name - ``dir/name`` walks down, ``;cycle`` is ignored here."""
         name = str(namecycle).split(";")[0]

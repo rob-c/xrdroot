@@ -310,12 +310,10 @@ class Operations:
         return wrap(found[0]) if found else None
 
     def GetListOfFunctions(self) -> Any:
-        from .collections import TList
+        """``GetListOfFunctions``: the fits and whatever else is hung on the histogram."""
+        from .collections import FunctionList
 
-        made = TList()
-        for item in self._xrd.functions:
-            made.Add(wrap(item))
-        return made
+        return FunctionList(self._xrd.functions, self.__dict__.setdefault("_extras", []))
 
     # -- random numbers ------------------------------------------------------------------
 

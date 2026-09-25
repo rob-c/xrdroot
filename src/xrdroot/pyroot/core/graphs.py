@@ -353,12 +353,11 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
         return wrap(found[0]) if found else None
 
     def GetListOfFunctions(self) -> Any:
-        from .collections import TList
+        """``GetListOfFunctions``: the fits and whatever else is hung on the graph."""
+        from .collections import FunctionList
 
-        made = TList()
-        for item in self._functions:
-            made.Add(wrap(item))
-        return made
+        self._changed()
+        return FunctionList(self._functions, self.__dict__.setdefault("_extras", []))
 
     # -- the frame it is drawn in ----------------------------------------------------------------
 

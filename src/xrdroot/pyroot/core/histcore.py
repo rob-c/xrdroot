@@ -253,6 +253,29 @@ class Booked:
 
         return statistics(self._xrd)
 
+    def SetCanExtend(self, bits: int) -> int:
+        """``SetCanExtend``: which axes may grow for a label or a value past them; noted."""
+        before = int(self.__dict__.get("_extend", 0))
+        self.__dict__["_extend"] = int(bits)
+        return before
+
+    def CanExtendAllAxes(self) -> bool:
+        every = (1 << self.GetDimension()) - 1
+        return (int(self.__dict__.get("_extend", 0)) & every) == every
+
+    def SetBarWidth(self, width: float = 0.5) -> None:
+        """``SetBarWidth``: a bar's width for ``Draw("bar")``, as a fraction of the bin."""
+        self._core()["fBarWidth"] = int(1000 * float(width))
+
+    def GetBarWidth(self) -> float:
+        return float(self._core().get("fBarWidth", 1000)) / 1000.0
+
+    def SetBarOffset(self, offset: float = 0.25) -> None:
+        self._core()["fBarOffset"] = int(1000 * float(offset))
+
+    def GetBarOffset(self) -> float:
+        return float(self._core().get("fBarOffset", 0)) / 1000.0
+
     def SetOption(self, option: Any = " ") -> None:
         self._core()["fOption"] = str(option)
 

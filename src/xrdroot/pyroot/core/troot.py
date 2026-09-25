@@ -375,6 +375,18 @@ class TInterpreter:
     def Load(self, filename: Any, system: bool = False) -> int:
         return 0
 
+    def IsLoaded(self, filename: Any) -> bool:
+        """``IsLoaded``: whether ``LoadMacro`` has loaded this macro already."""
+        return str(filename) in self.__dict__.get("_loaded", set())
+
+    def LoadMacro(self, filename: Any, error: Any = None, check: bool = False) -> None:
+        """``LoadMacro``: ``.L filename``, by the translator."""
+        gROOT.LoadMacro(filename)
+        self.__dict__.setdefault("_loaded", set()).add(str(filename))
+
+    def ExecuteMacro(self, filename: Any, error: Any = None) -> Any:
+        return gROOT.Macro(filename)
+
     def AddIncludePath(self, path: Any) -> None:
         """``AddIncludePath``: nothing is compiled, so there is nothing to include."""
 

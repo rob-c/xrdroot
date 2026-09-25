@@ -26,7 +26,7 @@ from ...errors import ROOTError
 from .collections import TList
 from .directories import TDirectory, current_directory, set_current
 from .messages import message
-from .objects import Indent, TNamed, TObject
+from .objects import Indent, TNamed, TObject, templated
 from .wrapping import unwrap, wrap
 
 __all__ = ["TFile", "TDirectoryFile", "TKey"]
@@ -114,6 +114,7 @@ class TKey(TNamed):
     def IsFolder(self) -> bool:
         return self._classname in ("TDirectory", "TDirectoryFile")
 
+    @templated
     def ReadObj(self) -> Any:
         """``ReadObj``: the object this key labels, this cycle of it."""
         return self._directory.Get(f"{self.GetName()};{self._cycle}")
@@ -235,6 +236,7 @@ class TDirectoryFile(TDirectory):
         chosen = [key for key in found if key.GetCycle() == cycle] or found
         return max(chosen, key=lambda key: key.GetCycle()) if chosen else None
 
+    @templated
     def Get(self, namecycle: Any) -> Any:
         """``Get("name")``, ``Get("name;2")`` or ``Get("dir/name")``: an object here or below."""
         text = str(namecycle)
