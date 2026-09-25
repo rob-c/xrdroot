@@ -111,7 +111,8 @@ class TFormula(TNamed):
         self._named()["fTitle"] = str(title)
 
     def ClassName(self) -> str:
-        return str(self._xrd.classname)
+        """``TFormula`` for a formula; for a function, the ``TF1``, ``TF2`` or ``TF3`` it is."""
+        return "TFormula" if type(self) is TFormula else str(self._xrd.classname)
 
     def _bitword(self) -> int:
         return int(self._named().get("fBits", 0) or 0) & 0x00FFFFFF

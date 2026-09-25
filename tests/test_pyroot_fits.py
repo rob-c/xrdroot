@@ -24,7 +24,7 @@ def fitted():
 
 
 def test_a_fit_result_answers_by_roots_accessors(capsys):
-    h, r = fitted()
+    _h, r = fitted()
     assert int(r) == 0 and r == 0 and r.__index__() == 0 and bool(r) and hash(r) == hash(0)
     assert r != 1 and r != "x" and "status 0" in repr(r) and r.Get() is not None
     assert r.Parameter(1) == r.Parameters()[1] == r.GetParams()[1] and r.ParError(2) == r.Error(2)

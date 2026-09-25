@@ -151,12 +151,8 @@ class TAxis(TNamed, TAttAxis):
         return len(self._row["fXbins"]) == self.GetNbins() + 1
 
     def _edges(self) -> np.ndarray[Any, Any]:
-        """Every edge, ``nbins + 1`` of them, as ROOT works out an even axis's."""
-        if self.IsVariableBinSize():
-            return np.asarray(self._row["fXbins"], dtype=np.float64)
-        low, high, nbins = self.GetXmin(), self.GetXmax(), self.GetNbins()
-        width = (high - low) / nbins
-        return np.append(low + width * np.arange(nbins), high)
+        """Every edge of an axis binned unevenly, as it keeps them."""
+        return np.asarray(self._row["fXbins"], dtype=np.float64)
 
     def GetXbins(self) -> np.ndarray[Any, Any]:
         return np.asarray(self._row["fXbins"], dtype=np.float64)
@@ -248,10 +244,9 @@ class TAxis(TNamed, TAttAxis):
             self._owner.SetMaximum(ulast)
             return
         first, last = self.FindFixBin(ufirst), self.FindFixBin(ulast)
-        if self.GetBinUpEdge(first) <= ufirst:
-            first += 1
-        if self.GetBinLowEdge(last) >= ulast:
-            last -= 1
+        # ROOT's guards against rounding: a bin whose edge is the very value is not in.
+        first += int(self.GetBinUpEdge(first) <= ufirst)
+        last -= int(self.GetBinLowEdge(last) >= ulast)
         self.SetRange(first, last)
 
     def UnZoom(self) -> None:
