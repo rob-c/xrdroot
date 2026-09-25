@@ -618,8 +618,6 @@ class TFile(TDirectoryFile):
         gROOT.GetListOfFiles().Remove(self)
         if self in _OPEN:
             _OPEN.remove(self)
-        if _inside(current_directory(), self):
-            set_current(gROOT)
 
     def __enter__(self) -> TFile:
         return self
@@ -629,11 +627,6 @@ class TFile(TDirectoryFile):
 
     def __bool__(self) -> bool:
         return not self._zombie
-
-
-def _inside(directory: Any, top: TFile) -> bool:
-    """Is ``directory`` the file ``top`` or somewhere in it?"""
-    return bool(getattr(directory, "GetFile", lambda: None)() is top)
 
 
 #: The files still open, to be closed when the program ends as ROOT closes them.

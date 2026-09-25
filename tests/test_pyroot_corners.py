@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import array
+import importlib
 import pathlib
 
 import numpy as np
@@ -197,6 +198,45 @@ def test_a_stack_without_histograms_has_no_frame_and_takes_one():
         (bool(mg.GetHistogram() is frame), True),
         (mg.GetXaxis().GetNbins(), 1),
     )
+
+
+def test_the_linear_fitter_refuses_a_function_not_linear_in_its_parameters():
+    from xrdroot.fit import linear
+
+    shape = Function("g", "gaus", range=(0, 10), parameters=[1, 5, 1])
+    assert linear.design(shape, np.linspace(0, 10, 20), shape.parameters) is None
+
+
+def test_newtons_method_stops_where_it_is_told_to():
+    finder = ROOT.Math.RootFinder(ROOT.Math.RootFinder.kGSL_NEWTON)
+    finder.SetFunction(ROOT.Math.GradFunctor1D(lambda x: x * x - 2, lambda x: 2 * x), 5)
+    finder.Solve(1)
+    assert finder.Root() == pytest.approx(2.7)
+
+
+def test_a_trees_list_is_a_tobjarray():
+    from xrdroot.pyroot.trees._base import ListOf
+
+    listed = ListOf([ROOT.TNamed("a", "")])
+    expect((listed.ClassName(), "TObjArray"), (listed.GetName(), "TObjArray"), (len(listed), 1))
+
+
+def test_a_pads_frame_is_kept_in_no_directory(monkeypatch):
+    from xrdroot.pyroot.graphics import frames
+
+    made = frames.frame_histogram(0, 1, 10, 5, "t;x;y")
+    expect((made.GetDirectory(), None), (made.GetMaximum(), 5), (made.GetMinimum(), 1))
+    assert ROOT.gROOT.FindObject("hframe") is None
+    monkeypatch.setattr(importlib.import_module("xrdroot.pyroot.core"), "TH1F", None)
+    plain = frames.frame_histogram(0, 1, 10, 5, "t;x;y")
+    plain.GetXaxis().SetTitle("the x")
+    expect(
+        (plain.GetName(), "hframe"),
+        (plain.GetTitle(), "t"),
+        (plain.GetXaxis().GetTitle(), "the x"),
+        (plain.GetYaxis().GetTitle(), "y"),
+    )
+    plain.Draw("same")
 
 
 def test_an_efficiencys_title_titles_its_histograms_axes():

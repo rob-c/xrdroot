@@ -75,8 +75,7 @@ class _Holder(TNamed):
         for item in self._held:
             item.Print(option)
 
-    def GetHistogram(self) -> Any:
-        return self._histogram
+    GetHistogram: Any
 
     def GetXaxis(self) -> Any:
         return self.GetHistogram().GetXaxis()
