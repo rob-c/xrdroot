@@ -23,6 +23,7 @@ import pytest
 from xrdroot import FormatError, Image, UnsupportedFeatureError, open_root
 from xrdroot.buffer import BYTE_COUNT_MASK, Buffer
 from xrdroot.image import decode_png, read_image
+from xrdroot.known import read_recorder
 
 TUTORIALS = pathlib.Path(__file__).parent / "data" / "tutorials"
 
@@ -86,6 +87,30 @@ def test_a_geometry_reads_whole_with_the_volumes_and_materials_ROOT_finds_in_it(
     assert (cave["TNamed"]["fName"], cave["TNamed"]["fTitle"]) == ("CAVE", "Top volume")
     assert [cave["fShape"][d] for d in ("fDX", "fDY", "fDZ")] == [800.0, 250.0, 2500.0]
     assert len([node for node in cave["fNodes"] if node is not None]) == 23
+
+
+def test_a_GUI_recording_reads_its_recorder_and_the_events_it_replays():
+    """``fitpanel_playback.root`` holds a ``TRecorder`` its file never describes.
+
+    The recorder is read by the layout ``TRecorder.h`` declares; the sums are
+    ROOT 6.40's over the first thousand GUI events.
+    """
+    with open_root(TUTORIALS / "fitpanel_playback.root") as root:
+        assert root["recorder"] == {
+            "TObject": {"fUniqueID": 0, "fBits": 0x03000000},
+            "fFilename": "TransientTests.root",
+        }
+        events = root["GuiEvents"]
+        assert (len(events), len(root["WindowsTree"])) == (7814, 1274)
+        assert int(events["fType"].array(0, 1000).sum()) == 8067
+        assert int(events["fCode"].array(0, 1000).sum()) == 181696268741
+        assert root["CmdEvents"]["fText"].array() == [".x qa2.C"]
+
+
+def test_a_class_the_file_does_not_describe_is_read_by_its_declaration_only_at_its_version():
+    raw = struct.pack(">IH", BYTE_COUNT_MASK | 2, 3)
+    with pytest.raises(UnsupportedFeatureError, match="TRecorder is version 3"):
+        read_recorder(None)(Buffer(raw))
 
 
 def test_a_picture_in_a_file_reads_as_the_PNG_it_was_written_as():

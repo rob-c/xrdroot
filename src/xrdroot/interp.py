@@ -746,8 +746,11 @@ def _by_hand(name: str, source: Source, seen: tuple[str, ...]) -> Callable[[Buff
     """
     from .canvas.streamer import STREAMED
     from .image import IMAGES
+    from .known import KNOWN
 
     make = STREAMED.get(name) or IMAGES.get(name)
+    if make is None and source.streamers().get(name) is None:
+        make = KNOWN.get(name)  # the file's own description comes first
     if make is None:
         return None
     return make(lambda held: _streamed(_members(held, source, (*seen, name))))

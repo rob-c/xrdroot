@@ -118,6 +118,7 @@ nothing else from.
 | `mlpHiggs.root` | two trees ROOT 3.04 wrote, `TTree` version 9: doubles for counters and a weight, read by the file's own description of the class (`legacy/mlp`) |
 | `stock.root` | ten trees ROOT 4.00 wrote, `TTree` version 11, compressed with the pre-2005 algorithm, an object split into members (`math/quadp`) |
 | `gallery.root` | seven `TASImage`s, which stream themselves as PNGs (`gallery.root`, beside the tutorials) |
+| `fitpanel_playback.root` | a `TRecorder` the file does not describe, read by its declaration, and the trees of GUI events it replays; downloaded by `math/fit/fitpanel_playback.C` |
 | `brahms.root` | the BRAHMS detector as a `TGeoManager`, whose mixtures write a null `fNatoms` as a zero marker and nothing else; downloaded by `visualisation/geom/geomBrahms.C` from root.cern/files |
 
 ROOT is LGPL-2.1-or-later; its licence notice and the text of the LGPL are
