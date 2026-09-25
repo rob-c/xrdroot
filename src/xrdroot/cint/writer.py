@@ -49,6 +49,11 @@ class Writer:
     def mark(self) -> int:
         return len(self.lines)
 
+    def truncate(self, at: int) -> None:
+        """Take back every line written since :meth:`mark` said ``at``."""
+        del self.lines[at:]
+        del self.places[at:]
+
     def insert(self, at: int, text: str, where: Where | None = None) -> None:
         """A line put back at ``at``, at the depth the lines around it have."""
         after = self.lines[at] if at < len(self.lines) else ""
