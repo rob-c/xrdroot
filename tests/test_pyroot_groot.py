@@ -8,7 +8,7 @@ import types
 import pytest
 
 import xrdroot.pyroot as ROOT
-from pyrootsupport import fresh
+from pyrootsupport import expect, fresh
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.core import directories, troot
 
@@ -19,15 +19,17 @@ def _fresh(tmp_path):
 
 
 def test_groot_is_the_top_directory_pyroot():
-    assert ROOT.gROOT.GetName() == "PyROOT"
-    assert ROOT.gROOT.GetTitle() == "The ROOT of EVERYTHING"
-    assert ROOT.gROOT.GetPath() == "PyROOT:/"
-    assert ROOT.gDirectory.GetPath() == "PyROOT:/"
-    assert ROOT.gDirectory == ROOT.gROOT
-    assert ROOT.gDirectory == ROOT.gDirectory
-    assert hash(ROOT.gDirectory) == id(ROOT.gDirectory)
-    assert repr(ROOT.gDirectory) == repr(ROOT.gROOT)
-    assert ROOT.gROOT._xrd is __import__("xrdroot").gROOT
+    expect(
+        (ROOT.gROOT.GetName(), "PyROOT"),
+        (ROOT.gROOT.GetTitle(), "The ROOT of EVERYTHING"),
+        (ROOT.gROOT.GetPath(), "PyROOT:/"),
+        (ROOT.gDirectory.GetPath(), "PyROOT:/"),
+        (ROOT.gDirectory, ROOT.gROOT),
+        (ROOT.gDirectory, ROOT.gDirectory),
+        (hash(ROOT.gDirectory), id(ROOT.gDirectory)),
+        (repr(ROOT.gDirectory), repr(ROOT.gROOT)),
+        (bool(ROOT.gROOT._xrd is __import__("xrdroot").gROOT), True),
+    )
 
 
 def test_groot_says_it_is_in_batch_mode_unless_told_otherwise():
@@ -39,17 +41,21 @@ def test_groot_says_it_is_in_batch_mode_unless_told_otherwise():
 
 
 def test_groot_names_the_release_it_follows():
-    assert ROOT.gROOT.GetVersion() == "6.40.04"
-    assert ROOT.gROOT.GetVersionInt() == 64004
-    assert ROOT.gROOT.GetVersionCode() == (6 << 16) + (40 << 8) + 4
-    assert ROOT.gROOT.GetGitCommit() == ""
-    assert ROOT.gROOT.GetConfigFeatures() == "pyroot"
+    expect(
+        (ROOT.gROOT.GetVersion(), "6.40.04"),
+        (ROOT.gROOT.GetVersionInt(), 64004),
+        (ROOT.gROOT.GetVersionCode(), (6 << 16) + (40 << 8) + 4),
+        (ROOT.gROOT.GetGitCommit(), ""),
+        (ROOT.gROOT.GetConfigFeatures(), "pyroot"),
+    )
 
 
 def test_the_tutorial_directory_comes_from_the_environment(monkeypatch):
     monkeypatch.setenv("ROOT_TUTORIAL_DIR", "/tut")
-    assert ROOT.gROOT.GetTutorialDir() == "/tut"
-    assert ROOT.gROOT.GetTutorialsDir() == "/tut"
+    expect(
+        (ROOT.gROOT.GetTutorialDir(), "/tut"),
+        (ROOT.gROOT.GetTutorialsDir(), "/tut"),
+    )
     monkeypatch.delenv("ROOT_TUTORIAL_DIR")
     monkeypatch.setenv("ROOTSYS", "/opt/root")
     assert ROOT.gROOT.GetTutorialDir() == "/opt/root/tutorials"
@@ -65,20 +71,26 @@ def test_every_list_groot_keeps_is_a_tlist():
 def test_find_object_looks_in_the_lists_then_the_current_directory():
     h = ROOT.TH1D("h", "", 1, 0, 1)
     f = ROOT.TF1("myfunc", "x", 0, 1)
-    assert ROOT.gROOT.FindObject("h") is h
-    assert ROOT.gROOT.FindObjectAny("myfunc") is f
-    assert ROOT.gROOT.FindObject(h) is h
-    assert ROOT.gROOT.FindObject("nothing") is None
+    expect(
+        (bool(ROOT.gROOT.FindObject("h") is h), True),
+        (bool(ROOT.gROOT.FindObjectAny("myfunc") is f), True),
+        (bool(ROOT.gROOT.FindObject(h) is h), True),
+        (bool(ROOT.gROOT.FindObject("nothing") is None), True),
+    )
     out = ROOT.TFile("f.root", "RECREATE")
-    assert ROOT.gROOT.FindObject("f.root") is out
-    assert ROOT.gROOT.FindObject("h") is None
+    expect(
+        (bool(ROOT.gROOT.FindObject("f.root") is out), True),
+        (bool(ROOT.gROOT.FindObject("h") is None), True),
+    )
 
 
 def test_get_function_makes_a_standard_function_when_first_asked():
     gaus = ROOT.gROOT.GetFunction("gaus")
-    assert gaus.GetNpar() == 3
-    assert ROOT.gROOT.GetFunction("gaus") is gaus
-    assert ROOT.gROOT.GetFunction("not_a_function") is None
+    expect(
+        (gaus.GetNpar(), 3),
+        (bool(ROOT.gROOT.GetFunction("gaus") is gaus), True),
+        (bool(ROOT.gROOT.GetFunction("not_a_function") is None), True),
+    )
 
 
 def test_force_style_is_noted():
@@ -90,8 +102,10 @@ def test_reset_forgets_memory_and_goes_back_to_it():
     ROOT.TH1D("h", "", 1, 0, 1)
     ROOT.TFile("f.root", "RECREATE")
     ROOT.gROOT.Reset()
-    assert ROOT.gDirectory == ROOT.gROOT
-    assert ROOT.gROOT.FindObject("h") is None
+    expect(
+        (ROOT.gDirectory, ROOT.gROOT),
+        (bool(ROOT.gROOT.FindObject("h") is None), True),
+    )
     ROOT.gROOT.CloseFiles()
     ROOT.gROOT.EndOfProcessCleanups()
     assert ROOT.gROOT.GetListOfFiles().IsEmpty()
@@ -99,12 +113,14 @@ def test_reset_forgets_memory_and_goes_back_to_it():
 
 def test_the_small_session_questions_have_roots_answers():
     ROOT.gROOT.SetMacroPath("/m")
-    assert ROOT.gROOT.GetMacroPath() == "/m"
-    assert ROOT.gROOT.GetDirLevel() == 0
-    assert ROOT.gROOT.GetFile() is None
-    assert ROOT.gROOT.GetApplication() is None
-    assert not ROOT.gROOT.IsInterrupted()
-    assert ROOT.gROOT.GetSelectedPad() is None
+    expect(
+        (ROOT.gROOT.GetMacroPath(), "/m"),
+        (ROOT.gROOT.GetDirLevel(), 0),
+        (bool(ROOT.gROOT.GetFile() is None), True),
+        (bool(ROOT.gROOT.GetApplication() is None), True),
+        (bool(not ROOT.gROOT.IsInterrupted()), True),
+        (bool(ROOT.gROOT.GetSelectedPad() is None), True),
+    )
     ROOT.gROOT.Time()
     ROOT.gROOT.RefreshBrowsers()
 
@@ -125,19 +141,23 @@ def test_cpp_goes_to_the_translator_when_it_is_installed(monkeypatch):
     monkeypatch.setitem(sys.modules, "xrdroot.cint.execute", types.ModuleType("execute"))
     monkeypatch.setattr(troot.importlib.util, "find_spec", lambda name: True)
     try:
-        assert ROOT.gROOT.ProcessLine("1+1") == 7
-        assert ROOT.gROOT.ProcessLineSync("a") == 7
-        assert ROOT.gROOT.ProcessLineFast("b") == 7
-        assert ROOT.gROOT.Macro("m.C") == 7
-        assert ROOT.gROOT.LoadMacro("m.C") == 0
-        assert ROOT.gInterpreter.Declare("int y;")
-        assert ROOT.gInterpreter.ProcessLine("c") == 7
-        assert ROOT.gInterpreter.Calc("d") == 7
+        expect(
+            (ROOT.gROOT.ProcessLine("1+1"), 7),
+            (ROOT.gROOT.ProcessLineSync("a"), 7),
+            (ROOT.gROOT.ProcessLineFast("b"), 7),
+            (ROOT.gROOT.Macro("m.C"), 7),
+            (ROOT.gROOT.LoadMacro("m.C"), 0),
+            (bool(ROOT.gInterpreter.Declare("int y;")), True),
+            (ROOT.gInterpreter.ProcessLine("c"), 7),
+            (ROOT.gInterpreter.Calc("d"), 7),
+        )
     finally:
         troot.set_line_processor(None)
-    assert seen == ["1+1", "a", "b", ".x m.C", ".L m.C", "int y;", "c", "d"]
-    assert ROOT.gInterpreter.Load("lib") == 0
-    assert ROOT.gInterpreter.GenerateDictionary("x") == 0
+    expect(
+        (seen, ["1+1", "a", "b", ".x m.C", ".L m.C", "int y;", "c", "d"]),
+        (ROOT.gInterpreter.Load("lib"), 0),
+        (ROOT.gInterpreter.GenerateDictionary("x"), 0),
+    )
     ROOT.gInterpreter.AddIncludePath("-I.")
 
 
@@ -153,10 +173,12 @@ def test_a_declaration_puts_what_it_declares_in_the_namespace(monkeypatch):
     monkeypatch.setitem(sys.modules, "xrdroot.cint.execute", execute)
     monkeypatch.setattr(troot.importlib.util, "find_spec", lambda name: True)
     try:
-        assert ROOT.gInterpreter.Declare("int answer() { return 42; }")
-        assert ROOT.answer() == 42
-        assert "_hidden" not in ROOT.__dict__
-        assert ROOT.gROOT.ProcessLine("x") == 7
+        expect(
+            (bool(ROOT.gInterpreter.Declare("int answer() { return 42; }")), True),
+            (ROOT.answer(), 42),
+            (bool("_hidden" not in ROOT.__dict__), True),
+            (ROOT.gROOT.ProcessLine("x"), 7),
+        )
     finally:
         troot.set_line_processor(None)
         ROOT.__dict__.pop("answer", None)
@@ -177,26 +199,32 @@ def test_a_translator_module_without_process_line_is_still_refused(monkeypatch):
 
 def test_memory_directories_nest_and_are_walked(capsys):
     top = ROOT.gROOT.mkdir("a/b", "the b")
-    assert top.GetName() == "b"
-    assert top.GetPath() == "PyROOT:/a/b"
-    assert ROOT.gROOT.mkdir("a") is None
-    assert ROOT.gROOT.mkdir("a", "", True).GetName() == "a"
-    assert ROOT.gROOT.GetDirectory("a/b") is top
-    assert ROOT.gROOT.GetDirectory("a/../a/./b") is top
-    assert ROOT.gROOT.GetDirectory("zz") is None
-    assert ROOT.gROOT.GetDirectory("a/zz/q") is None
-    assert top.cd()
-    assert ROOT.gDirectory.GetName() == "b"
-    assert top.GetMother().GetName() == "a"
+    expect(
+        (top.GetName(), "b"),
+        (top.GetPath(), "PyROOT:/a/b"),
+        (bool(ROOT.gROOT.mkdir("a") is None), True),
+        (ROOT.gROOT.mkdir("a", "", True).GetName(), "a"),
+        (bool(ROOT.gROOT.GetDirectory("a/b") is top), True),
+        (bool(ROOT.gROOT.GetDirectory("a/../a/./b") is top), True),
+        (bool(ROOT.gROOT.GetDirectory("zz") is None), True),
+        (bool(ROOT.gROOT.GetDirectory("a/zz/q") is None), True),
+        (bool(top.cd()), True),
+        (ROOT.gDirectory.GetName(), "b"),
+        (top.GetMother().GetName(), "a"),
+    )
     ROOT.gDirectory.pwd()
-    assert ROOT.gROOT.cd("a")
-    assert not ROOT.gROOT.cd("zz")
+    expect(
+        (bool(ROOT.gROOT.cd("a")), True),
+        (bool(not ROOT.gROOT.cd("zz")), True),
+    )
     out = capsys.readouterr()
-    assert out.out == "PyROOT:/a/b\n"
-    assert "Unknown directory zz" in out.err
-    assert top.GetMotherDir().GetName() == "a"
-    assert top.GetFile() is None
-    assert not top.IsWritable()
+    expect(
+        (out.out, "PyROOT:/a/b\n"),
+        (bool("Unknown directory zz" in out.err), True),
+        (top.GetMotherDir().GetName(), "a"),
+        (bool(top.GetFile() is None), True),
+        (bool(not top.IsWritable()), True),
+    )
 
 
 def test_a_directory_keeps_what_is_made_in_it_and_replaces_by_name(capsys):
@@ -204,24 +232,35 @@ def test_a_directory_keeps_what_is_made_in_it_and_replaces_by_name(capsys):
     first = ROOT.TH1D("h", "", 1, 0, 1)
     second = ROOT.TH1D("h", "", 1, 0, 1)
     here = ROOT.gDirectory.__real__()
-    assert here.Get("h") is second
-    assert here.Get("h;1") is second
-    assert ROOT.gROOT.Get("d/h") is second
-    assert ROOT.gROOT.Get("zz/h") is None
-    assert "Replacing existing TH1D: h (Potential memory leak)." in capsys.readouterr().err
-    assert first.GetDirectory() is None
-    assert second.GetDirectory() is here
+    expect(
+        (bool(here.Get("h") is second), True),
+        (bool(here.Get("h;1") is second), True),
+        (bool(ROOT.gROOT.Get("d/h") is second), True),
+        (bool(ROOT.gROOT.Get("zz/h") is None), True),
+        (
+            bool("Replacing existing TH1D: h (Potential memory leak)." in capsys.readouterr().err),
+            True,
+        ),
+        (bool(first.GetDirectory() is None), True),
+        (bool(second.GetDirectory() is here), True),
+    )
     here.Add(ROOT.TNamed("n", ""))
-    assert ROOT.gROOT.FindObjectAny("n").GetName() == "n"
-    assert here.GetObject("n").GetName() == "n"
+    expect(
+        (ROOT.gROOT.FindObjectAny("n").GetName(), "n"),
+        (here.GetObject("n").GetName(), "n"),
+    )
     here.Delete("n")
-    assert here.FindObject("n") is None
-    assert len(here.GetList()) == 1
+    expect(
+        (bool(here.FindObject("n") is None), True),
+        (len(here.GetList()), 1),
+    )
     here.ReadAll()
     here.SaveSelf()
     here.DeleteAll()
-    assert here.GetList().IsEmpty()
-    assert here.GetListOfKeys().IsEmpty()
+    expect(
+        (bool(here.GetList().IsEmpty()), True),
+        (bool(here.GetListOfKeys().IsEmpty()), True),
+    )
 
 
 def test_a_memory_directory_lists_its_objects_one_level_in(capsys):
@@ -231,17 +270,21 @@ def test_a_memory_directory_lists_its_objects_one_level_in(capsys):
     ROOT.gDirectory.ls("-mh*")
     ROOT.gROOT.ls("noaddr")
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0].startswith(" OBJ: TH1D\th1\tone : 0 at: 0x")
-    assert lines[1].startswith(" OBJ: TH1D\tx2")
-    assert len(lines) == 3
-    assert lines[2].startswith(" OBJ: TH1D\th1")
+    expect(
+        (bool(lines[0].startswith(" OBJ: TH1D\th1\tone : 0 at: 0x")), True),
+        (bool(lines[1].startswith(" OBJ: TH1D\tx2")), True),
+        (len(lines), 3),
+        (bool(lines[2].startswith(" OBJ: TH1D\th1")), True),
+    )
 
 
 def test_writing_a_memory_directory_writes_nothing(capsys):
     ROOT.TH1D("h", "", 1, 0, 1)
-    assert ROOT.gROOT.Write() == 0
-    assert ROOT.gROOT.WriteObject(ROOT.TNamed("n", ""), "m") == 0
-    assert "The object (m) has not been written" in capsys.readouterr().err
+    expect(
+        (ROOT.gROOT.Write(), 0),
+        (ROOT.gROOT.WriteObject(ROOT.TNamed("n", ""), "m"), 0),
+        (bool("The object (m) has not been written" in capsys.readouterr().err), True),
+    )
     ROOT.gROOT.Close()
     assert ROOT.gROOT.GetList().IsEmpty()
 

@@ -404,13 +404,19 @@ def _hill(q: float, ndf: float) -> float:
         return math.cos(angle) / math.sin(angle)
     if ndf - 2 < 1e-8:
         return math.sqrt(2.0 / (q * (2 - q)) - 2)
+    a, b, c, d = _hill_terms(ndf)
+    y = math.pow(q * d, 2.0 / ndf)
+    y = _hill_normal(q, ndf, (a, b, c, d)) if y > 0.05 + a else _hill_near(ndf, y, d)
+    return math.sqrt(ndf * y)
+
+
+def _hill_terms(ndf: float) -> tuple[float, float, float, float]:
+    """Hill's ``a``, ``b``, ``c`` and ``d`` for ``ndf`` degrees of freedom."""
     a = 1.0 / (ndf - 0.5)
     b = 48.0 / (a * a)
     c = ((20700 * a / b - 98) * a - 16) * a + 96.36
     d = ((94.5 / (b + c) - 3.0) / b + 1) * math.sqrt(a * math.pi / 2) * ndf
-    y = math.pow(q * d, 2.0 / ndf)
-    y = _hill_normal(q, ndf, a, b, c, d) if y > 0.05 + a else _hill_near(ndf, y, d)
-    return math.sqrt(ndf * y)
+    return a, b, c, d
 
 
 def _hill_near(ndf: float, y: float, d: float) -> float:
@@ -418,16 +424,21 @@ def _hill_near(ndf: float, y: float, d: float) -> float:
     return ((inner + 0.5 / (ndf + 4.0)) * y - 1.0) * (ndf + 1.0) / (ndf + 2.0) + 1 / y
 
 
-def _hill_normal(q: float, ndf: float, a: float, b: float, c: float, d: float) -> float:
+def _hill_normal(q: float, ndf: float, terms: tuple[float, float, float, float]) -> float:
     """Hill's asymptotic inverse expansion about the normal distribution."""
+    a, b, c, d = terms
     x = dist.normal_quantile(q * 0.5)
-    y = x * x
     if ndf < 5:
         c += 0.3 * (ndf - 4.5) * (x + 0.6)
     c += (((0.05 * d * x - 5.0) * x - 7.0) * x - 2.0) * x + b
-    y = (((((0.4 * y + 6.3) * y + 36.0) * y + 94.5) / c - y - 3.0) / b + 1) * x
+    y = _hill_series(x, b, c)
     y = a * y * y
     return math.exp(y) - 1 if y > 0.002 else y + 0.5 * y * y
+
+
+def _hill_series(x: float, b: float, c: float) -> float:
+    y = x * x
+    return (((((0.4 * y + 6.3) * y + 36.0) * y + 94.5) / c - y - 3.0) / b + 1) * x
 
 
 def FDist(F: float, N: float, M: float) -> float:

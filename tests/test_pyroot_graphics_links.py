@@ -8,7 +8,7 @@ import types
 import pytest
 
 import xrdroot.pyroot as ROOT
-from pyrootsupport import fresh
+from pyrootsupport import expect, fresh
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.core import troot
 
@@ -53,15 +53,19 @@ def no_graphics(monkeypatch):
 
 def test_styles_are_the_graphics_when_it_is_there(graphics):
     ROOT.gROOT.SetStyle("Plain")
-    assert graphics == ["Plain"]
-    assert ROOT.gROOT.GetStyle("Plain") == "style Plain"
+    expect(
+        (graphics, ["Plain"]),
+        (ROOT.gROOT.GetStyle("Plain"), "style Plain"),
+    )
 
 
 def test_canvases_are_the_graphics_list(graphics):
     listed = ROOT.gROOT.GetListOfCanvases()
-    assert isinstance(listed, ROOT.TList)
-    assert listed.At(0).GetName() == "c1"
-    assert ROOT.gROOT.MakeDefCanvas() == "c1"
+    expect(
+        (bool(isinstance(listed, ROOT.TList)), True),
+        (listed.At(0).GetName(), "c1"),
+        (ROOT.gROOT.MakeDefCanvas(), "c1"),
+    )
 
 
 def test_a_name_found_nowhere_else_is_looked_for_on_the_pads(graphics):
@@ -72,21 +76,27 @@ def test_a_name_found_nowhere_else_is_looked_for_on_the_pads(graphics):
 
 def test_a_graphics_package_without_a_name_is_as_good_as_none(graphics, monkeypatch):
     monkeypatch.delattr(sys.modules["xrdroot.pyroot.graphics"], "get_style")
-    assert troot._graphics("get_style") is None
-    assert troot._graphics("pads", "nothing") is None
+    expect(
+        (bool(troot._graphics("get_style") is None), True),
+        (bool(troot._graphics("pads", "nothing") is None), True),
+    )
 
 
 def test_without_the_graphics_the_lists_are_groots_own(no_graphics, capsys):
-    assert ROOT.gROOT.GetListOfCanvases().IsEmpty()
-    assert ROOT.gROOT.FindObject("x") is None
+    expect(
+        (bool(ROOT.gROOT.GetListOfCanvases().IsEmpty()), True),
+        (bool(ROOT.gROOT.FindObject("x") is None), True),
+    )
     chosen = []
     style = ROOT.TNamed("Plain", "")
     style.cd = lambda: chosen.append("Plain")
     ROOT.gROOT.GetListOfStyles().Add(style)
     ROOT.gROOT.SetStyle("Plain")
     ROOT.gROOT.SetStyle("Nope")
-    assert chosen == ["Plain"]
-    assert ROOT.gROOT.GetStyle("Plain") is style
-    assert "Error in <TROOT::SetStyle>: Unknown style:Nope" in capsys.readouterr().err
+    expect(
+        (chosen, ["Plain"]),
+        (bool(ROOT.gROOT.GetStyle("Plain") is style), True),
+        (bool("Error in <TROOT::SetStyle>: Unknown style:Nope" in capsys.readouterr().err), True),
+    )
     with pytest.raises(UnsupportedFeatureError, match="MakeDefCanvas"):
         ROOT.gROOT.MakeDefCanvas()

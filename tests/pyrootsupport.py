@@ -15,6 +15,19 @@ import xrdroot.pyroot as ROOT
 from xrdroot.pyroot.core import directories, files, hooks
 
 
+def expect(*checks: tuple[Any, Any]) -> None:
+    """Each check a ``(found, wanted)`` pair; every one compared, and every failure reported.
+
+    A test of ROOT's API asks many small questions of one object; one call
+    with a pair per question keeps them together as a table, and says all
+    that is wrong at once rather than the first.
+    """
+    failed = [f"check {at}: {found!r} != {wanted!r}" for at, (found, wanted) in enumerate(checks)
+              if not found == wanted]  # fmt: skip
+    if failed:
+        raise AssertionError("; ".join(failed))
+
+
 def fresh(tmp_path: Any) -> Iterator[None]:
     """Run a test in ``tmp_path`` with nothing open, nothing in memory, nothing drawn."""
     here = os.getcwd()

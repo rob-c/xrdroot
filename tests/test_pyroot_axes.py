@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
-from pyrootsupport import fresh
+from pyrootsupport import expect, fresh
 from xrdroot.pyroot.core import axes as core_axes
 
 
@@ -18,26 +18,34 @@ def _fresh(tmp_path):
 
 
 def test_an_axis_stands_alone_in_every_constructor():
-    assert ROOT.TAxis().GetNbins() == 1
-    assert ROOT.TAxis(4, 0, 2).GetBinWidth(1) == 0.5
+    expect(
+        (ROOT.TAxis().GetNbins(), 1),
+        (ROOT.TAxis(4, 0, 2).GetBinWidth(1), 0.5),
+    )
     uneven = ROOT.TAxis(3, [0, 1, 3, 6, 99])
-    assert uneven.GetXmax() == 6
-    assert uneven.IsVariableBinSize()
-    assert list(uneven.GetXbins()) == [0, 1, 3, 6]
+    expect(
+        (uneven.GetXmax(), 6),
+        (bool(uneven.IsVariableBinSize()), True),
+        (list(uneven.GetXbins()), [0, 1, 3, 6]),
+    )
 
 
 def test_an_axis_names_and_styles_itself_in_its_members():
     axis = ROOT.TH1D("h", "", 4, 0, 4).GetXaxis()
     axis.SetName("xx")
     axis.SetTitle("the x")
-    assert axis.GetName() == "xx"
-    assert axis.GetTitle() == "the x"
+    expect(
+        (axis.GetName(), "xx"),
+        (axis.GetTitle(), "the x"),
+    )
     axis.SetTitleOffset(1.4)
     axis.SetLabelSize()
     axis.SetNdivisions(505, False)
-    assert axis.GetTitleOffset() == 1.4
-    assert axis.GetLabelSize() == 0.035
-    assert axis.GetNdivisions() == -505
+    expect(
+        (axis.GetTitleOffset(), 1.4),
+        (axis.GetLabelSize(), 0.035),
+        (axis.GetNdivisions(), -505),
+    )
     axis.SetNdivisions(510)
     assert axis.GetNdivisions() == 510
     axis.ResetAttAxis()
@@ -56,34 +64,42 @@ def test_an_axis_names_and_styles_itself_in_its_members():
 
 def test_the_bins_of_an_even_and_an_uneven_axis_are_roots():
     even = ROOT.TAxis(4, 0, 2)
-    assert (even.GetBinLowEdge(0), even.GetBinUpEdge(5), even.GetBinCenter(5)) == (-0.5, 2.5, 2.25)
-    assert even.FindBin(-1) == 0
-    assert even.FindBin(2) == 5
-    assert even.FindBin(0.6) == 2
-    assert even.GetBinCenterLog(2) == pytest.approx(np.sqrt(0.5 * 1.0))
-    assert even.GetBinCenterLog(1) == 0.25
+    expect(
+        ((even.GetBinLowEdge(0), even.GetBinUpEdge(5), even.GetBinCenter(5)), (-0.5, 2.5, 2.25)),
+        (even.FindBin(-1), 0),
+        (even.FindBin(2), 5),
+        (even.FindBin(0.6), 2),
+        (even.GetBinCenterLog(2), pytest.approx(np.sqrt(0.5 * 1.0))),
+        (even.GetBinCenterLog(1), 0.25),
+    )
     uneven = ROOT.TAxis(3, [0.0, 1.0, 3.0, 6.0])
-    assert uneven.GetBinLowEdge(3) == 3
-    assert uneven.GetBinUpEdge(3) == 6
-    assert uneven.GetBinCenter(2) == 2
-    assert uneven.GetBinWidth(9) == 3
-    assert uneven.GetBinWidth(0) == 1
-    assert uneven.FindBin(4.0) == 3
-    assert uneven.GetBinLowEdge(0) == -2
-    assert uneven.GetBinCenter(0) == -1
+    expect(
+        (uneven.GetBinLowEdge(3), 3),
+        (uneven.GetBinUpEdge(3), 6),
+        (uneven.GetBinCenter(2), 2),
+        (uneven.GetBinWidth(9), 3),
+        (uneven.GetBinWidth(0), 1),
+        (uneven.FindBin(4.0), 3),
+        (uneven.GetBinLowEdge(0), -2),
+        (uneven.GetBinCenter(0), -1),
+    )
     lows, centres = np.zeros(3), np.zeros(3)
     uneven.GetLowEdge(lows)
     uneven.GetCenter(centres)
-    assert list(lows) == [0, 1, 3]
-    assert list(centres) == [0.5, 2, 4.5]
+    expect(
+        (list(lows), [0, 1, 3]),
+        (list(centres), [0.5, 2, 4.5]),
+    )
 
 
 def test_ranges_are_set_as_root_sets_them():
     axis = ROOT.TAxis(10, 0, 10)
     axis.SetRange(3, 5)
-    assert (axis.GetFirst(), axis.GetLast(), axis.GetRangeActual()) == (3, 5, True)
-    assert axis._row["fFirst"] == 3
-    assert axis._row["fLast"] == 5
+    expect(
+        ((axis.GetFirst(), axis.GetLast(), axis.GetRangeActual()), (3, 5, True)),
+        (axis._row["fFirst"], 3),
+        (axis._row["fLast"], 5),
+    )
     axis.SetRange(0, 99)
     assert (axis.GetFirst(), axis.GetLast()) == (0, 11)
     for first, last in ((5, 3), (-1, -2), (20, 30), (0, 0)):
@@ -94,8 +110,10 @@ def test_ranges_are_set_as_root_sets_them():
     axis.SetLimits(-1, 1)
     assert axis.GetXmin() == -1
     axis.Set(2, 0.0, 4.0)
-    assert axis.GetNbins() == 2
-    assert axis.GetBinWidth(1) == 2
+    expect(
+        (axis.GetNbins(), 2),
+        (axis.GetBinWidth(1), 2),
+    )
     axis.Set(2, array.array("d", [0, 1, 5]))
     assert axis.GetBinUpEdge(2) == 5
 
@@ -122,14 +140,18 @@ def test_labels_time_and_extending_are_kept_for_the_drawing():
     axis.SetBinLabel(2, "two")
     axis.LabelsOption("v")
     axis.ChangeLabel(1, -1, -1, -1, -1, -1, "one")
-    assert axis.GetBinLabel(2) == "two"
-    assert axis.GetBinLabel(1) == ""
-    assert axis._row["_labels_option"] == "v"
+    expect(
+        (axis.GetBinLabel(2), "two"),
+        (axis.GetBinLabel(1), ""),
+        (axis._row["_labels_option"], "v"),
+    )
     axis.SetTimeDisplay(True)
     axis.SetTimeFormat("%H:%M")
     axis.SetTimeOffset(100)
-    assert axis.GetTimeDisplay()
-    assert axis.GetTimeFormat() == "%H:%M%F100"
+    expect(
+        (bool(axis.GetTimeDisplay()), True),
+        (axis.GetTimeFormat(), "%H:%M%F100"),
+    )
     axis.SetCanExtend(True)
     assert not axis.CanExtend()
 
@@ -138,11 +160,13 @@ def test_statistics_extremes_and_their_errors():
     h = ROOT.TH1D("h", "", 4, 0, 4)
     for x in (0.5, 1.5, 1.5, 3.5):
         h.Fill(x)
-    assert h.GetMean(11) == h.GetMeanError()
-    assert h.GetStdDev(11) == h.GetStdDevError()
-    assert h.GetRMSError() == h.GetStdDevError()
-    assert h.GetSkewness(11) > 0
-    assert h.GetKurtosis(11) > 0
+    expect(
+        (h.GetMean(11), h.GetMeanError()),
+        (h.GetStdDev(11), h.GetStdDevError()),
+        (h.GetRMSError(), h.GetStdDevError()),
+        (bool(h.GetSkewness(11) > 0), True),
+        (bool(h.GetKurtosis(11) > 0), True),
+    )
     h.SetEntries(10)
     assert h.GetEntries() == 10
     h.SetMaximum(9)
@@ -155,35 +179,45 @@ def test_statistics_extremes_and_their_errors():
     )
     h.SetMaximum()
     h.SetMinimum()
-    assert h.GetMaximum() == 2
-    assert h.GetMinimum() == 0
-    assert h.GetMaximum(2) == 1
-    assert h.GetMinimum(0) == 1
-    assert h.GetMaximum(0) == -ROOT.TMath.Infinity() or h.GetMaximum(0) < -1e38
-    assert h.GetMinimum(5) > 1e38
+    expect(
+        (h.GetMaximum(), 2),
+        (h.GetMinimum(), 0),
+        (h.GetMaximum(2), 1),
+        (h.GetMinimum(0), 1),
+        (bool(h.GetMaximum(0) == -ROOT.TMath.Infinity() or h.GetMaximum(0) < -1e38), True),
+        (bool(h.GetMinimum(5) > 1e38), True),
+    )
     bx = array.array("i", [0])
-    assert h.GetMaximumBin(bx, array.array("i", [0]), array.array("i", [0])) == 2
-    assert bx[0] == 2
-    assert h.GetBinLowEdge(2) == 1
-    assert h.Interpolate(1.0) == pytest.approx(1.5)
+    expect(
+        (h.GetMaximumBin(bx, array.array("i", [0]), array.array("i", [0])), 2),
+        (bx[0], 2),
+        (h.GetBinLowEdge(2), 1),
+        (h.Interpolate(1.0), pytest.approx(1.5)),
+    )
     h.GetXaxis().SetRange(3, 3)
-    assert h.GetMean() == 0.0
-    assert h.GetStdDev() == 0.0
+    expect(
+        (h.GetMean(), 0.0),
+        (h.GetStdDev(), 0.0),
+    )
 
 
 def test_covariance_of_two_axes():
     h2 = ROOT.TH2D("h2", "", 10, 0, 10, 10, 0, 10)
     for x in range(10):
         h2.Fill(x + 0.5, x + 0.5)
-    assert h2.GetCorrelationFactor() == pytest.approx(1.0)
-    assert h2.GetCovariance(1, 1) == pytest.approx(h2.GetStdDev(1) ** 2)
-    assert ROOT.TH2D("e", "", 1, 0, 1, 1, 0, 1).GetCovariance() == 0.0
-    assert ROOT.TH2D("f", "", 1, 0, 1, 1, 0, 1).GetCorrelationFactor() == 0.0
+    expect(
+        (h2.GetCorrelationFactor(), pytest.approx(1.0)),
+        (h2.GetCovariance(1, 1), pytest.approx(h2.GetStdDev(1) ** 2)),
+        (ROOT.TH2D("e", "", 1, 0, 1, 1, 0, 1).GetCovariance(), 0.0),
+        (ROOT.TH2D("f", "", 1, 0, 1, 1, 0, 1).GetCorrelationFactor(), 0.0),
+    )
     h3 = ROOT.TH3D("h3", "", 2, 0, 2, 2, 0, 2, 2, 0, 2)
     h3.Fill(0.5, 0.5, 0.5)
     h3.Fill(1.5, 1.5, 1.5)
-    assert h3.GetCovariance(1, 3) == pytest.approx(0.25)
-    assert h3.GetCovariance(3, 2) == pytest.approx(0.25)
+    expect(
+        (h3.GetCovariance(1, 3), pytest.approx(0.25)),
+        (h3.GetCovariance(3, 2), pytest.approx(0.25)),
+    )
 
 
 def test_integrals_over_ranges_with_and_without_widths():
@@ -191,45 +225,55 @@ def test_integrals_over_ranges_with_and_without_widths():
     for x in (1, 3, 5, 7):
         h.Fill(x)
     err = array.array("d", [0])
-    assert h.Integral(2, 3) == 2
-    assert h.Integral(2, 3, "width") == 4
-    assert h.IntegralAndError(1, 4, err, "") == 4
-    assert err[0] == 2
+    expect(
+        (h.Integral(2, 3), 2),
+        (h.Integral(2, 3, "width"), 4),
+        (h.IntegralAndError(1, 4, err, ""), 4),
+        (err[0], 2),
+    )
 
 
 def test_a_profile_is_the_mean_in_each_bin():
     p = ROOT.TProfile("p", "prof", 2, 0, 2, 0, 10, "s")
-    assert p.ClassName() == "TProfile"
-    assert p.GetErrorOption() == "s"
-    assert p.GetYmax() == 10
-    assert p.Fill(0.5, 2.0) == 1
-    assert p.Fill(0.5, 4.0, 3.0) == 1
-    assert p.Fill(1.5, 20.0) == 2
-    assert p.GetBinContent(1) == pytest.approx(3.5)
-    assert p.GetBinEntries(1) == 4
-    assert p.GetBinEffectiveEntries(1) == pytest.approx(16 / 10)
-    assert p.GetSumOfWeights() == 3.5
+    expect(
+        (p.ClassName(), "TProfile"),
+        (p.GetErrorOption(), "s"),
+        (p.GetYmax(), 10),
+        (p.Fill(0.5, 2.0), 1),
+        (p.Fill(0.5, 4.0, 3.0), 1),
+        (p.Fill(1.5, 20.0), 2),
+        (p.GetBinContent(1), pytest.approx(3.5)),
+        (p.GetBinEntries(1), 4),
+        (p.GetBinEffectiveEntries(1), pytest.approx(16 / 10)),
+        (p.GetSumOfWeights(), 3.5),
+    )
     p.SetErrorOption("")
-    assert p.GetErrorOption() == ""
-    assert p.GetBinError(1) > 0
-    assert p.GetYmin() == 0
+    expect(
+        (p.GetErrorOption(), ""),
+        (bool(p.GetBinError(1) > 0), True),
+        (p.GetYmin(), 0),
+    )
     p.FillN(2, [1.5, 1.5], [1.0, 3.0])
     p.FillN(1, [0.5], [1.0], [1.0])
     projected = p.ProjectionX()
-    assert projected.GetName() == "p_px"
-    assert projected.GetBinContent(2) == pytest.approx(2.0)
-    assert p.ProjectionX("entries", "b").GetBinContent(2) == 2
-    assert ROOT.TProfile().GetNbinsX() == 1
-    assert ROOT.TProfile("q", "", 2, array.array("d", [0, 1, 3])).GetNbinsX() == 2
+    expect(
+        (projected.GetName(), "p_px"),
+        (projected.GetBinContent(2), pytest.approx(2.0)),
+        (p.ProjectionX("entries", "b").GetBinContent(2), 2),
+        (ROOT.TProfile().GetNbinsX(), 1),
+        (ROOT.TProfile("q", "", 2, array.array("d", [0, 1, 3])).GetNbinsX(), 2),
+    )
 
 
 def test_two_and_three_dimensional_profiles():
     p2 = ROOT.TProfile2D("p2", "", 2, 0, 2, 2, 0, 2, 0, 100)
     p2.Fill(0.5, 0.5, 3.0)
     p2.Fill(0.5, 0.5, 5.0)
-    assert p2.GetBinContent(1, 1) == 4
-    assert p2.ClassName() == "TProfile2D"
-    assert p2.GetYmin() == 0
+    expect(
+        (p2.GetBinContent(1, 1), 4),
+        (p2.ClassName(), "TProfile2D"),
+        (p2.GetYmin(), 0),
+    )
     p3 = ROOT.TProfile3D("p3", "", 1, 0, 1, 1, 0, 1, 1, 0, 1)
     p3.Fill(0.5, 0.5, 0.5, 7.0)
     assert p3.GetBinContent(1, 1, 1) == 7

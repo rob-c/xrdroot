@@ -7,7 +7,7 @@ import pathlib
 import pytest
 
 import xrdroot.pyroot as ROOT
-from pyrootsupport import fresh
+from pyrootsupport import expect, fresh
 from xrdroot.pyroot.core import files
 
 DATA = pathlib.Path(__file__).parent / "data"
@@ -20,82 +20,105 @@ def _fresh(tmp_path):
 
 def test_a_file_made_keeps_what_is_booked_after_it_and_writes_it(capsys):
     out = ROOT.TFile("out.root", "RECREATE", "the title")
-    assert out.GetPath() == "out.root:/"
-    assert ROOT.gDirectory == out
-    assert out.GetOption() == "CREATE"
-    assert out.IsWritable()
-    assert out.IsOpen()
-    assert not out.IsZombie()
-    assert bool(out)
+    expect(
+        (out.GetPath(), "out.root:/"),
+        (ROOT.gDirectory, out),
+        (out.GetOption(), "CREATE"),
+        (bool(out.IsWritable()), True),
+        (bool(out.IsOpen()), True),
+        (bool(not out.IsZombie()), True),
+        (bool(bool(out)), True),
+    )
     h = ROOT.TH1F("hpx", "px", 10, 0, 1)
     h.Fill(0.5)
     sub = out.mkdir("sub", "the sub")
-    assert sub.GetPath() == "out.root:/sub"
-    assert ROOT.gDirectory == out
+    expect(
+        (sub.GetPath(), "out.root:/sub"),
+        (ROOT.gDirectory, out),
+    )
     sub.cd()
     inner = ROOT.TH1D("inner", "in", 2, 0, 1)
-    assert inner.GetDirectory() is sub
-    assert sub.GetFile() is out
+    expect(
+        (bool(inner.GetDirectory() is sub), True),
+        (bool(sub.GetFile() is out), True),
+    )
     out.cd()
-    assert out.Write() == 2
-    assert h.Write() == 1
+    expect(
+        (out.Write(), 2),
+        (h.Write(), 1),
+    )
     out.ls()
     lines = capsys.readouterr().out.splitlines()
-    assert lines[:2] == ["TFile**\t\tout.root\tthe title", " TFile*\t\tout.root\tthe title"]
-    assert lines[2].startswith("  OBJ: TH1F\thpx\tpx : 0 at: 0x")
-    assert lines[3] == "  TDirectoryFile*\t\tsub\tthe sub"
-    assert lines[4].startswith("   OBJ: TH1D\tinner")
-    assert lines[5:] == [
-        "   KEY: TH1D\tinner;1\tin",
-        "  KEY: TDirectoryFile\tsub;1\tthe sub",
-        "  KEY: TH1F\thpx;2\tpx [current cycle]",
-        "  KEY: TH1F\thpx;1\tpx [backup cycle]",
-    ]
-    assert out.Get("hpx") is h
-    assert out.Get("sub/inner") is inner
-    assert out.Get("nothing") is None
+    expect(
+        (lines[:2], ["TFile**\t\tout.root\tthe title", " TFile*\t\tout.root\tthe title"]),
+        (bool(lines[2].startswith("  OBJ: TH1F\thpx\tpx : 0 at: 0x")), True),
+        (lines[3], "  TDirectoryFile*\t\tsub\tthe sub"),
+        (bool(lines[4].startswith("   OBJ: TH1D\tinner")), True),
+        (
+            lines[5:],
+            [
+                "   KEY: TH1D\tinner;1\tin",
+                "  KEY: TDirectoryFile\tsub;1\tthe sub",
+                "  KEY: TH1F\thpx;2\tpx [current cycle]",
+                "  KEY: TH1F\thpx;1\tpx [backup cycle]",
+            ],
+        ),
+        (bool(out.Get("hpx") is h), True),
+        (bool(out.Get("sub/inner") is inner), True),
+        (bool(out.Get("nothing") is None), True),
+    )
     out.Close()
-    assert out.GetEND() == out.GetSize() > 0
-    assert ROOT.gDirectory == ROOT.gROOT
-    assert not out.IsOpen()
-    assert out.GetSize() > 0
+    expect(
+        (bool(out.GetEND() == out.GetSize() > 0), True),
+        (ROOT.gDirectory, ROOT.gROOT),
+        (bool(not out.IsOpen()), True),
+        (bool(out.GetSize() > 0), True),
+    )
     out.Close()
 
 
 def test_a_file_read_hands_back_roots_classes_and_keeps_its_histograms(capsys):
     source = ROOT.TFile.Open(str(DATA / "gauss-h1.root"))
-    assert source.GetOption() == "READ"
-    assert not source.IsWritable()
+    expect(
+        (source.GetOption(), "READ"),
+        (bool(not source.IsWritable()), True),
+    )
     key = source.GetListOfKeys().At(0)
     name = key.GetName()
     h = source.Get(name)
-    assert h.InheritsFrom("TH1")
-    assert source.Get(name) is h
-    assert h.GetDirectory() is source
-    assert getattr(source, name) is h
-    assert source.GetNkeys() == source.GetListOfKeys().GetSize()
+    expect(
+        (bool(h.InheritsFrom("TH1")), True),
+        (bool(source.Get(name) is h), True),
+        (bool(h.GetDirectory() is source), True),
+        (bool(getattr(source, name) is h), True),
+        (source.GetNkeys(), source.GetListOfKeys().GetSize()),
+    )
     with pytest.raises(AttributeError, match="has no object"):
         source.not_there  # noqa: B018
     with pytest.raises(AttributeError):
         source._private  # noqa: B018
-    assert key.ReadObj() is not None
-    assert key.GetCycle() == 1
-    assert key.GetClassName() == h.ClassName()
-    assert key.GetNbytes() > 0
-    assert key.GetObjlen() > 0
-    assert key.GetKeylen() > 0
-    assert key.GetSeekKey() > 0
-    assert key.GetDatime().GetYear() > 2000
-    assert not key.IsFolder()
-    assert key.GetMotherDir() is source
+    expect(
+        (bool(key.ReadObj() is not None), True),
+        (key.GetCycle(), 1),
+        (key.GetClassName(), h.ClassName()),
+        (bool(key.GetNbytes() > 0), True),
+        (bool(key.GetObjlen() > 0), True),
+        (bool(key.GetKeylen() > 0), True),
+        (bool(key.GetSeekKey() > 0), True),
+        (bool(key.GetDatime().GetYear() > 2000), True),
+        (bool(not key.IsFolder()), True),
+        (bool(key.GetMotherDir() is source), True),
+    )
     key.Print()
-    assert capsys.readouterr().out.startswith(f"TKey Name = {name}, Title = ")
-    assert source.FindKey(name) is key
-    assert source.GetKey("nothing") is None
-    assert source.GetVersion() > 0
-    assert source.GetCompressionSettings() >= 0
-    assert source.GetCompressionLevel() >= 0
-    assert source.GetCompressionAlgorithm() >= 0
+    expect(
+        (bool(capsys.readouterr().out.startswith(f"TKey Name = {name}, Title = ")), True),
+        (bool(source.FindKey(name) is key), True),
+        (bool(source.GetKey("nothing") is None), True),
+        (bool(source.GetVersion() > 0), True),
+        (bool(source.GetCompressionSettings() >= 0), True),
+        (bool(source.GetCompressionLevel() >= 0), True),
+        (bool(source.GetCompressionAlgorithm() >= 0), True),
+    )
     source.SetCompressionLevel(5)
     source.SetCompressionSettings(101)
     source.Flush()
@@ -105,23 +128,27 @@ def test_a_file_read_hands_back_roots_classes_and_keeps_its_histograms(capsys):
 def test_directories_on_file_are_walked_as_root_walks_them(capsys):
     source = ROOT.TFile(str(DATA / "dirs-6.14.00.root"))
     below = source.Get("dir1")
-    assert below.ClassName() == "TDirectoryFile"
-    assert below.GetPath().endswith("dirs-6.14.00.root:/dir1")
-    assert source.GetDirectory("dir1") is below
-    assert source.GetDirectory("dir1/..") is source
-    assert source.GetDirectory(f"{source.GetName()}:/dir1") is below
-    assert source.GetDirectory("nowhere") is None
-    assert source.Get("nowhere/h") is None
-    assert below.cd()
-    assert ROOT.gDirectory == below
+    expect(
+        (below.ClassName(), "TDirectoryFile"),
+        (bool(below.GetPath().endswith("dirs-6.14.00.root:/dir1")), True),
+        (bool(source.GetDirectory("dir1") is below), True),
+        (bool(source.GetDirectory("dir1/..") is source), True),
+        (bool(source.GetDirectory(f"{source.GetName()}:/dir1") is below), True),
+        (bool(source.GetDirectory("nowhere") is None), True),
+        (bool(source.Get("nowhere/h") is None), True),
+        (bool(below.cd()), True),
+        (ROOT.gDirectory, below),
+    )
     below.ls("-d")
     source.ls("-m")
-    assert "KEY: TDirectoryFile\tdir11;1" in capsys.readouterr().out
-    assert below.mkdir("new") is None
-    assert "Can not create directory" in capsys.readouterr().err
-    assert below.WriteTObject(ROOT.TNamed("n", "")) == 0
-    assert below.Write() == 0
-    assert "not writable" in capsys.readouterr().err
+    expect(
+        (bool("KEY: TDirectoryFile\tdir11;1" in capsys.readouterr().out), True),
+        (bool(below.mkdir("new") is None), True),
+        (bool("Can not create directory" in capsys.readouterr().err), True),
+        (below.WriteTObject(ROOT.TNamed("n", "")), 0),
+        (below.Write(), 0),
+        (bool("not writable" in capsys.readouterr().err), True),
+    )
     source.Close()
     assert ROOT.gDirectory == ROOT.gROOT
 
@@ -140,32 +167,44 @@ def test_a_file_is_added_to_and_read_back(capsys):
     made.Write()
     made.Close()
     added = ROOT.TFile("up.root", "UPDATE")
-    assert added.IsWritable()
-    assert added.GetListOfKeys().GetSize() == 1
+    expect(
+        (bool(added.IsWritable()), True),
+        (added.GetListOfKeys().GetSize(), 1),
+    )
     first = added.Get("first")
     ROOT.TH1D("second", "two", 2, 0, 1)
     added.Write()
     added.Close()
     back = ROOT.TFile("up.root")
-    assert [key.GetName() for key in back.GetListOfKeys()] == ["first", "second"] or len(
-        back.GetListOfKeys()
-    ) >= 2
-    assert first.GetName() == "first"
+    expect(
+        (
+            bool(
+                [key.GetName() for key in back.GetListOfKeys()] == ["first", "second"]
+                or len(back.GetListOfKeys()) >= 2
+            ),
+            True,
+        ),
+        (first.GetName(), "first"),
+    )
     back.Close()
 
 
 def test_modes_refuse_as_root_refuses(capsys):
-    assert ROOT.TFile.Open("missing.root") is None
-    assert ROOT.TFile("missing.root").IsZombie()
+    expect(
+        (bool(ROOT.TFile.Open("missing.root") is None), True),
+        (bool(ROOT.TFile("missing.root").IsZombie()), True),
+    )
     ROOT.TFile("there.root", "RECREATE").Close()
     assert ROOT.TFile("there.root", "NEW").IsZombie()
     pathlib.Path("junk.root").write_text("not a root file at all, but long enough to read" * 3)
     assert ROOT.TFile("junk.root").IsZombie()
     err = capsys.readouterr().err
-    assert "file missing.root does not exist" in err
-    assert "file there.root already exists" in err
-    assert "file junk.root is not a ROOT file" in err
-    assert ROOT.TFile("fresh.root", "UPDATE").IsWritable()
+    expect(
+        (bool("file missing.root does not exist" in err), True),
+        (bool("file there.root already exists" in err), True),
+        (bool("file junk.root is not a ROOT file" in err), True),
+        (bool(ROOT.TFile("fresh.root", "UPDATE").IsWritable()), True),
+    )
     zombie = ROOT.TFile("missing.root")
     zombie.Close()
     assert not zombie
@@ -175,40 +214,50 @@ def test_a_file_is_a_context_manager_and_closes_at_the_end():
     with ROOT.TFile("ctx.root", "RECREATE") as made:
         ROOT.TH1D("h", "", 1, 0, 1)
         made.Write()
-    assert not made.IsOpen()
-    assert made not in files._OPEN
+    expect(
+        (bool(not made.IsOpen()), True),
+        (bool(made not in files._OPEN), True),
+    )
     ROOT.TFile("left.root", "RECREATE")
     files._close_all()
     assert files._OPEN == []
 
 
 def test_a_remote_name_is_taken_to_be_there():
-    assert files._exists("root://host//file.root")
-    assert files._exists("file:///no/such.root") is False
-    assert not files._local("root://host//f.root")
-    assert files._local("file:///x")
+    expect(
+        (bool(files._exists("root://host//file.root")), True),
+        (bool(files._exists("file:///no/such.root") is False), True),
+        (bool(not files._local("root://host//f.root")), True),
+        (bool(files._local("file:///x")), True),
+    )
 
 
 def test_objects_of_classes_with_no_wrapper_come_back_named_by_their_class():
     source = ROOT.TFile(str(DATA / "tformula.root"))
     other = source.Get("fconv")
-    assert other.ClassName() == "TF1Convolution"
-    assert other.GetName() == "TF1Convolution"
-    assert other.GetTitle() == ""
-    assert isinstance(other, files.TOther)
+    expect(
+        (other.ClassName(), "TF1Convolution"),
+        (other.GetName(), "TF1Convolution"),
+        (other.GetTitle(), ""),
+        (bool(isinstance(other, files.TOther)), True),
+    )
     named = files.TOther("TThing", {"TNamed": {"fName": "n", "fTitle": "t"}})
-    assert (named.GetName(), named.GetTitle()) == ("n", "t")
-    assert files.TOther().GetName() == "TObject"
+    expect(
+        ((named.GetName(), named.GetTitle()), ("n", "t")),
+        (files.TOther().GetName(), "TObject"),
+    )
     source.Close()
 
 
 def test_a_memory_directory_below_a_file_is_one_on_file_too():
     made = ROOT.TFile("deep.root", "RECREATE")
     deep = made.mkdir("a/b")
-    assert deep.GetPath() == "deep.root:/a/b"
-    assert made.mkdir("a") is None
-    assert made.mkdir("a", "", True).GetName() == "a"
-    assert made.GetDirectory("a/b") is deep
+    expect(
+        (deep.GetPath(), "deep.root:/a/b"),
+        (bool(made.mkdir("a") is None), True),
+        (made.mkdir("a", "", True).GetName(), "a"),
+        (bool(made.GetDirectory("a/b") is deep), True),
+    )
     deep.cd()
     ROOT.TH1D("h", "", 1, 0, 1)
     made.Write()

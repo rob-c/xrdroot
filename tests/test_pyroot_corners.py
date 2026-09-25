@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
-from pyrootsupport import fresh
+from pyrootsupport import expect, fresh
 from xrdroot import Function, Graph
 from xrdroot.pyroot.core import files, funcs, wrapping
 
@@ -29,8 +29,10 @@ def test_a_directory_made_in_an_updated_file_is_not_read_from_it():
     ROOT.TFile("u.root", "RECREATE").Close()
     added = ROOT.TFile("u.root", "UPDATE")
     fresh_dir = added.mkdir("brand_new")
-    assert fresh_dir._reader() is None
-    assert fresh_dir.GetListOfKeys().IsEmpty()
+    expect(
+        (bool(fresh_dir._reader() is None), True),
+        (bool(fresh_dir.GetListOfKeys().IsEmpty()), True),
+    )
     added.Close()
 
 
@@ -43,8 +45,10 @@ def test_an_object_that_writes_itself_is_asked_to(tmp_path):
             return 7
 
     out = ROOT.TFile("own.root", "RECREATE")
-    assert out.WriteTObject(Own("thing", "")) == 7
-    assert written == [("own.root", "thing")]
+    expect(
+        (out.WriteTObject(Own("thing", "")), 7),
+        (written, [("own.root", "thing")]),
+    )
     out.Close()
 
 
@@ -64,9 +68,11 @@ def test_trees_are_written_when_their_file_closes_and_read_back_as_trees():
     out.Close()
     back = ROOT.TFile("trees.root")
     read = back.Get("t")
-    assert read.ClassName() == "TTree"
-    assert read.GetEntries() == 3
-    assert back.GetKey("t").GetCycle() == 1
+    expect(
+        (read.ClassName(), "TTree"),
+        (read.GetEntries(), 3),
+        (back.GetKey("t").GetCycle(), 1),
+    )
     back.Close()
 
 
@@ -78,9 +84,11 @@ def test_a_tree_written_by_hand_is_listed_once(capsys):
     tree.Fill()
     tree.Write()
     out.ls()
-    assert "  KEY: TTree\tt;1\tby hand" in capsys.readouterr().out
-    assert out._xrd.path == ""
-    assert out._xrd.name != ""
+    expect(
+        (bool("  KEY: TTree\tt;1\tby hand" in capsys.readouterr().out), True),
+        (out._xrd.path, ""),
+        (bool(out._xrd.name != ""), True),
+    )
     out.Close()
     back = ROOT.TFile("hand.root", "READ", "a title of my own")
     assert back.GetTitle() == "a title of my own"
@@ -109,8 +117,10 @@ def test_tree_classes_without_the_trees_come_back_as_they_were_read(monkeypatch)
     monkeypatch.setattr(
         importlib.util, "find_spec", lambda name: None if "trees" in name else real(name)
     )
-    assert files._tree(object(), files.TKey("t", "", "TTree")) is None
-    assert files._tree(object(), files.TKey("h", "", "TH1F")) is None
+    expect(
+        (bool(files._tree(object(), files.TKey("t", "", "TTree")) is None), True),
+        (bool(files._tree(object(), files.TKey("h", "", "TH1F")) is None), True),
+    )
 
 
 def test_a_function_whose_signature_cannot_be_read_takes_x_and_p():
@@ -164,8 +174,10 @@ def test_the_small_histogram_paths():
     assert h.GetStats()[:2] == [1.0, 1.0]
     ROOT.TH1.AddDirectory(False)
     c = h.Clone("c")
-    assert ROOT.gROOT.FindObject("c") is None
-    assert c.GetName() == "c"
+    expect(
+        (bool(ROOT.gROOT.FindObject("c") is None), True),
+        (c.GetName(), "c"),
+    )
     ROOT.TH1.AddDirectory(True)
     assert h.GetCumulative().GetSumw2N() == 0
 
@@ -175,17 +187,23 @@ def test_a_stack_without_histograms_has_no_frame_and_takes_one():
     assert stack.GetHistogram() is None
     frame = ROOT.TH1F("frame", "", 1, 0, 1)
     stack.SetHistogram(frame)
-    assert stack.GetHistogram() is frame
-    assert ROOT.TMultiGraph().GetHistogram() is not None
+    expect(
+        (bool(stack.GetHistogram() is frame), True),
+        (bool(ROOT.TMultiGraph().GetHistogram() is not None), True),
+    )
     mg = ROOT.TMultiGraph()
     mg.SetHistogram(frame)
-    assert mg.GetHistogram() is frame
-    assert mg.GetXaxis().GetNbins() == 1
+    expect(
+        (bool(mg.GetHistogram() is frame), True),
+        (mg.GetXaxis().GetNbins(), 1),
+    )
 
 
 def test_an_efficiencys_title_titles_its_histograms_axes():
     e = ROOT.TEfficiency("e", "t", 2, 0, 2)
     e.SetTitle("eff;x axis;y axis")
-    assert e.GetTitle() == "eff"
-    assert e.GetTotalHistogram().GetXaxis().GetTitle() == "x axis"
-    assert e.GetPassedHistogram().GetYaxis().GetTitle() == "y axis"
+    expect(
+        (e.GetTitle(), "eff"),
+        (e.GetTotalHistogram().GetXaxis().GetTitle(), "x axis"),
+        (e.GetPassedHistogram().GetYaxis().GetTitle(), "y axis"),
+    )

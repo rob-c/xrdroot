@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
-from pyrootsupport import fresh
+from pyrootsupport import expect, fresh
 from xrdroot import Efficiency, Histogram
 from xrdroot.pyroot.core import fits, treelinks, wrapping
 
@@ -25,61 +25,69 @@ def fitted():
 
 def test_a_fit_result_answers_by_roots_accessors(capsys):
     _h, r = fitted()
-    assert int(r) == 0
-    assert r == 0
-    assert r.__index__() == 0
-    assert bool(r)
-    assert hash(r) == hash(0)
-    assert r != 1
-    assert r != "x"
-    assert "status 0" in repr(r)
-    assert r.Get() is not None
-    assert r.Parameter(1) == r.Parameters()[1] == r.GetParams()[1]
-    assert r.ParError(2) == r.Error(2)
-    assert list(r.Errors()) == list(r.GetErrors())
-    assert r.LowerError(0) == r.UpperError(0) == r.ParError(0)
-    assert r.ParName(2) == "Sigma"
-    assert r.Index("Mean") == 1
-    assert r.Index("zz") == -1
-    assert r.NPar() == r.NTotalParameters() == 3
-    assert r.NFreeParameters() == 3
-    assert not r.IsParameterFixed(0)
-    assert r.IsParameterBound(2)
-    assert r.Ndf() == r.Ndf()
-    assert r.Chi2() > 0
-    assert 0 <= r.Prob() <= 1
-    assert r.MinFcnValue() > 0
-    assert r.Edm() >= 0
-    assert r.NCalls() > 0
-    assert r.Status() == 0
-    assert r.IsValid()
-    assert not r.IsEmpty()
-    assert r.CovMatrixStatus() == 3
-    assert r.MinimizerType().startswith("Minuit")
-    assert r.CovMatrix(1, 1) == pytest.approx(r.ParError(1) ** 2)
-    assert r.Correlation(0, 0) == pytest.approx(1)
+    expect(
+        (int(r), 0),
+        (r, 0),
+        (r.__index__(), 0),
+        (bool(bool(r)), True),
+        (hash(r), hash(0)),
+        (bool(r != 1), True),
+        (bool(r != "x"), True),
+        (bool("status 0" in repr(r)), True),
+        (bool(r.Get() is not None), True),
+        (bool(r.Parameter(1) == r.Parameters()[1] == r.GetParams()[1]), True),
+        (r.ParError(2), r.Error(2)),
+        (list(r.Errors()), list(r.GetErrors())),
+        (bool(r.LowerError(0) == r.UpperError(0) == r.ParError(0)), True),
+        (r.ParName(2), "Sigma"),
+        (r.Index("Mean"), 1),
+        (r.Index("zz"), -1),
+        (bool(r.NPar() == r.NTotalParameters() == 3), True),
+        (r.NFreeParameters(), 3),
+        (bool(not r.IsParameterFixed(0)), True),
+        (bool(r.IsParameterBound(2)), True),
+        (r.Ndf(), r.Ndf()),
+        (bool(r.Chi2() > 0), True),
+        (bool(0 <= r.Prob() <= 1), True),
+        (bool(r.MinFcnValue() > 0), True),
+        (bool(r.Edm() >= 0), True),
+        (bool(r.NCalls() > 0), True),
+        (r.Status(), 0),
+        (bool(r.IsValid()), True),
+        (bool(not r.IsEmpty()), True),
+        (r.CovMatrixStatus(), 3),
+        (bool(r.MinimizerType().startswith("Minuit")), True),
+        (r.CovMatrix(1, 1), pytest.approx(r.ParError(1) ** 2)),
+        (r.Correlation(0, 0), pytest.approx(1)),
+    )
     matrix = r.GetCovarianceMatrix()
-    assert matrix.GetNrows() == matrix.GetNcols() == 3
-    assert matrix(1, 1) == r.CovMatrix(1, 1)
-    assert matrix[1][1] == r.CovMatrix(1, 1)
-    assert len(matrix.GetMatrixArray()) == 9
-    assert r.GetCorrelationMatrix()(2, 2) == pytest.approx(1)
-    assert r.FittedFunction().GetName() == "gaus"
+    expect(
+        (bool(matrix.GetNrows() == matrix.GetNcols() == 3), True),
+        (matrix(1, 1), r.CovMatrix(1, 1)),
+        (matrix[1][1], r.CovMatrix(1, 1)),
+        (len(matrix.GetMatrixArray()), 9),
+        (r.GetCorrelationMatrix()(2, 2), pytest.approx(1)),
+        (r.FittedFunction().GetName(), "gaus"),
+    )
     r.Print("V")
     matrix.Print()
     out = capsys.readouterr().out
-    assert "Minimizer is Minuit2" in out
-    assert "3x3 matrix is as follows" in out
-    assert r.GetName() == "TFitResult-h-gaus"
+    expect(
+        (bool("Minimizer is Minuit2" in out), True),
+        (bool("3x3 matrix is as follows" in out), True),
+        (r.GetName(), "TFitResult-h-gaus"),
+    )
 
 
 def test_an_empty_fit_is_roots_warning_and_status(capsys):
     empty = ROOT.TH1D("e", "", 10, 0, 1)
     r = empty.Fit("gaus", "Q")
-    assert int(r) == -1
-    assert not r
-    assert r.Get() is None
-    assert "Fit data is empty" in capsys.readouterr().err
+    expect(
+        (int(r), -1),
+        (bool(not r), True),
+        (bool(r.Get() is None), True),
+        (bool("Fit data is empty" in capsys.readouterr().err), True),
+    )
     with pytest.raises(AttributeError):
         r.Parameter  # noqa: B018
     with pytest.raises(AttributeError):
@@ -92,12 +100,16 @@ def test_fitting_a_user_function_by_name_and_by_object():
     mine = ROOT.TF1("mine", "[0]*exp(-0.5*((x-[1])/[2])**2)", -4, 4)
     mine.SetParameters(100, 0, 1)
     r = h.Fit("mine", "QS")
-    assert r.Parameter(2) == pytest.approx(1.0, rel=0.1)
-    assert mine.GetParameter(2) == pytest.approx(r.Parameter(2))
+    expect(
+        (r.Parameter(2), pytest.approx(1.0, rel=0.1)),
+        (mine.GetParameter(2), pytest.approx(r.Parameter(2))),
+    )
     r2 = h.Fit(mine, "QS")
-    assert r2.Chi2() == pytest.approx(r.Chi2(), rel=1e-6)
-    assert fits._model("gaus") == "gaus"
-    assert fits._model("nothing_named_so") == "nothing_named_so"
+    expect(
+        (r2.Chi2(), pytest.approx(r.Chi2(), rel=1e-6)),
+        (fits._model("gaus"), "gaus"),
+        (fits._model("nothing_named_so"), "nothing_named_so"),
+    )
 
 
 def test_an_efficiency_is_made_filled_and_answered_bin_by_bin():
@@ -105,35 +117,43 @@ def test_an_efficiency_is_made_filled_and_answered_bin_by_bin():
     for x, passed in ((0.5, True), (0.5, False), (1.5, True), (2.5, 1)):
         e.Fill(passed, x)
     e.FillWeighted(True, 2.0, 3.5)
-    assert e.GetName() == "eff"
-    assert e.GetTitle() == "t"
-    assert e.GetDimension() == 1
-    assert e.GetTotalHistogram().GetXaxis().GetTitle() == "x"
-    assert e.GetGlobalBin(2) == 2
-    assert e.FindFixBin(1.5) == 2
-    assert e.GetPassedHistogram().GetEntries() == 4
-    assert e.GetCopyPassedHisto() is not e.GetPassedHistogram()
-    assert e.GetCopyTotalHisto().GetEntries() == 5
+    expect(
+        (e.GetName(), "eff"),
+        (e.GetTitle(), "t"),
+        (e.GetDimension(), 1),
+        (e.GetTotalHistogram().GetXaxis().GetTitle(), "x"),
+        (e.GetGlobalBin(2), 2),
+        (e.FindFixBin(1.5), 2),
+        (e.GetPassedHistogram().GetEntries(), 4),
+        (bool(e.GetCopyPassedHisto() is not e.GetPassedHistogram()), True),
+        (e.GetCopyTotalHisto().GetEntries(), 5),
+    )
     e.SetName("renamed")
     assert e.GetName() == "renamed"
     two = ROOT.TEfficiency("e2", "", 2, 0, 2, 2, 0, 2)
     two.Fill(True, 0.5, 0.5)
-    assert two.GetDimension() == 2
-    assert two.GetEfficiency(two.GetGlobalBin(1, 1)) == 1
-    assert ROOT.TEfficiency().GetName() == "eff"
-    assert ROOT.TEfficiency("v", "", 2, np.array([0.0, 1, 3])).GetDimension() == 1
+    expect(
+        (two.GetDimension(), 2),
+        (two.GetEfficiency(two.GetGlobalBin(1, 1)), 1),
+        (ROOT.TEfficiency().GetName(), "eff"),
+        (ROOT.TEfficiency("v", "", 2, np.array([0.0, 1, 3])).GetDimension(), 1),
+    )
 
 
 def test_an_efficiencys_intervals_follow_its_statistic_option():
     e = ROOT.TEfficiency("eff", "", 1, 0, 1)
     for passed in (True, True, False, False):
         e.Fill(passed, 0.5)
-    assert e.GetEfficiency(1) == 0.5
-    assert e.GetStatisticOption() == e.kFCP == 0
+    expect(
+        (e.GetEfficiency(1), 0.5),
+        (bool(e.GetStatisticOption() == e.kFCP == 0), True),
+    )
     low, up = e.GetEfficiencyErrorLow(1), e.GetEfficiencyErrorUp(1)
-    assert low > 0
-    assert up > 0
-    assert not e.UsesBayesianStat()
+    expect(
+        (bool(low > 0), True),
+        (bool(up > 0), True),
+        (bool(not e.UsesBayesianStat()), True),
+    )
     e.SetStatisticOption(ROOT.TEfficiency.kFWilson)
     assert e.GetEfficiencyErrorUp(1) != up
     e.SetStatisticOption(ROOT.TEfficiency.kBJeffrey)
@@ -143,8 +163,10 @@ def test_an_efficiencys_intervals_follow_its_statistic_option():
     e.SetBetaBeta(3.0)
     assert (e.GetConfidenceLevel(), e.GetBetaAlpha(), e.GetBetaBeta()) == (0.95, 2.0, 3.0)
     graph = e.CreateGraph()
-    assert graph.ClassName() == "TGraphAsymmErrors"
-    assert graph.GetN() == 1
+    expect(
+        (graph.ClassName(), "TGraphAsymmErrors"),
+        (graph.GetN(), 1),
+    )
     shown = e.CreateHistogram()
     assert shown.GetBinContent(1) == pytest.approx(e.GetEfficiency(1))
     other = ROOT.TEfficiency("o", "", 1, 0, 1)
@@ -158,24 +180,30 @@ def test_an_efficiency_from_two_histograms_is_checked_first():
     passed, total = ROOT.TH1D("p", "", 2, 0, 2), ROOT.TH1D("t", "", 2, 0, 2)
     total.Fill(0.5)
     passed.Fill(0.5)
-    assert ROOT.TEfficiency.CheckConsistency(passed, total)
-    assert not ROOT.TEfficiency.CheckConsistency(total, ROOT.TH1D("z", "", 3, 0, 1))
-    assert ROOT.TEfficiency(passed, total).GetEfficiency(1) == 1
+    expect(
+        (bool(ROOT.TEfficiency.CheckConsistency(passed, total)), True),
+        (bool(not ROOT.TEfficiency.CheckConsistency(total, ROOT.TH1D("z", "", 3, 0, 1))), True),
+        (ROOT.TEfficiency(passed, total).GetEfficiency(1), 1),
+    )
     read = wrapping.wrap(Efficiency.book("r", (2, 0, 2)))
-    assert read.ClassName() == "TEfficiency"
-    assert read.GetLineColor() >= 0
+    expect(
+        (read.ClassName(), "TEfficiency"),
+        (bool(read.GetLineColor() >= 0), True),
+    )
 
 
 def test_the_wrapper_registry_hands_back_one_wrapper_per_object():
     made = Histogram.book("h", (2, 0, 1), kind="F")
     first = wrapping.wrap(made)
-    assert first.ClassName() == "TH1F"
-    assert wrapping.wrap(made) is first
-    assert wrapping.wrap(first) is first
-    assert wrapping.wrap(None) is None
-    assert wrapping.wrap(3) == 3
-    assert wrapping.unwrap(first) is made
-    assert wrapping.unwrap(5) == 5
+    expect(
+        (first.ClassName(), "TH1F"),
+        (bool(wrapping.wrap(made) is first), True),
+        (bool(wrapping.wrap(first) is first), True),
+        (bool(wrapping.wrap(None) is None), True),
+        (wrapping.wrap(3), 3),
+        (bool(wrapping.unwrap(first) is made), True),
+        (wrapping.unwrap(5), 5),
+    )
 
     class Thing:
         classname = "TThing"
@@ -197,17 +225,23 @@ def test_the_wrapper_registry_hands_back_one_wrapper_per_object():
 def test_what_the_trees_are_given_is_the_cores(tmp_path):
     from xrdroot.pyroot.trees import _base
 
-    assert treelinks.connect()
-    assert _base.hooks.draw is ROOT.draw_hook
-    assert _base.hooks.directory() is None
+    expect(
+        (bool(treelinks.connect()), True),
+        (bool(_base.hooks.draw is ROOT.draw_hook), True),
+        (bool(_base.hooks.directory() is None), True),
+    )
     out = ROOT.TFile("t.root", "RECREATE")
-    assert _base.hooks.directory() is out
-    assert out._xrd is not None
+    expect(
+        (bool(_base.hooks.directory() is out), True),
+        (bool(out._xrd is not None), True),
+    )
     registry = _base.hooks.registry()
     booked = ROOT.TH1D("h", "", 2, 0, 1)
-    assert registry["h"] is booked._xrd
-    assert "h" in list(registry)
-    assert len(registry) == 1
+    expect(
+        (bool(registry["h"] is booked._xrd), True),
+        (bool("h" in list(registry)), True),
+        (len(registry), 1),
+    )
     registry["h"] = booked._xrd
     registry["made"] = Histogram.book("tmp", (1, 0, 1))
     assert out.Get("made").GetName() == "made"

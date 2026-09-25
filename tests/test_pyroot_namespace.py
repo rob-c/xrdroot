@@ -7,7 +7,7 @@ import importlib
 import pytest
 
 import xrdroot.pyroot as ROOT
-from pyrootsupport import fresh
+from pyrootsupport import expect, fresh
 from xrdroot.pyroot.core import cformat
 
 
@@ -18,8 +18,10 @@ def _fresh(tmp_path):
 
 def test_the_namespace_holds_roots_classes_by_their_names():
     for name in ("TH1F", "TFile", "TGraph", "TF1", "TMath", "Math", "gROOT", "gRandom", "kRed"):
-        assert name in ROOT.__all__
-        assert hasattr(ROOT, name)
+        expect(
+            (bool(name in ROOT.__all__), True),
+            (bool(hasattr(ROOT, name)), True),
+        )
 
 
 def test_a_name_root_has_and_this_does_not_is_refused_by_that_name():
@@ -31,8 +33,10 @@ def test_a_listed_module_that_is_not_installed_is_passed_over(monkeypatch):
     monkeypatch.setattr(ROOT, "SUBMODULES", ["core", "no_such_module"])
     namespace: dict = {}
     names = ROOT._gather(namespace)
-    assert "TH1D" in names
-    assert "TH1D" in namespace
+    expect(
+        (bool("TH1D" in names), True),
+        (bool("TH1D" in namespace), True),
+    )
 
 
 def test_the_core_gathers_every_family_again_the_same():
@@ -42,34 +46,40 @@ def test_the_core_gathers_every_family_again_the_same():
 
 
 def test_colours_are_ints_and_add_as_roots_do():
-    assert ROOT.kRed + 2 == 634
-    assert ROOT.kBlue - 9 == 591
-    assert ROOT.kOrange == 800
-    assert ROOT.kWhite == 0
-    assert ROOT.kTRUE is True
-    assert ROOT.kFALSE is False
+    expect(
+        (ROOT.kRed + 2, 634),
+        (ROOT.kBlue - 9, 591),
+        (ROOT.kOrange, 800),
+        (ROOT.kWhite, 0),
+        (bool(ROOT.kTRUE is True), True),
+        (bool(ROOT.kFALSE is False), True),
+    )
 
 
 def test_the_styles_and_palettes_are_roots_numbers():
-    assert (ROOT.kSolid, ROOT.kDashed, ROOT.kDotted) == (1, 2, 3)
-    assert ROOT.kFullCircle == 20
-    assert ROOT.kOpenSquare == 25
-    assert ROOT.kBird == 57
-    assert ROOT.kRainbow == ROOT.kRainBow == 55
-    assert ROOT.kCividis == 113
-    assert ROOT.kFSolid == 1
-    assert ROOT.kFHatched1 == 3004
-    assert ROOT.kCanDelete == 1
-    assert ROOT.kOverwrite == 2
+    expect(
+        ((ROOT.kSolid, ROOT.kDashed, ROOT.kDotted), (1, 2, 3)),
+        (ROOT.kFullCircle, 20),
+        (ROOT.kOpenSquare, 25),
+        (ROOT.kBird, 57),
+        (bool(ROOT.kRainbow == ROOT.kRainBow == 55), True),
+        (ROOT.kCividis, 113),
+        (ROOT.kFSolid, 1),
+        (ROOT.kFHatched1, 3004),
+        (ROOT.kCanDelete, 1),
+        (ROOT.kOverwrite, 2),
+    )
 
 
 def test_form_fills_a_format_as_printf_does():
-    assert ROOT.Form("h%d", 3) == "h3"
-    assert ROOT.Form("%5.2lf|%lld|%lu|%zu", 3.14159, 7, 8, 9) == " 3.14|7|8|9"
-    assert ROOT.Form("%s=%g", ROOT.TString("x"), 0.5) == "x=0.5"
-    assert ROOT.Form("%d%%", True) == "1%"
-    assert ROOT.Form("plain") == "plain"
-    assert ROOT.Form("%p", 255) == "0xff"
+    expect(
+        (ROOT.Form("h%d", 3), "h3"),
+        (ROOT.Form("%5.2lf|%lld|%lu|%zu", 3.14159, 7, 8, 9), " 3.14|7|8|9"),
+        (ROOT.Form("%s=%g", ROOT.TString("x"), 0.5), "x=0.5"),
+        (ROOT.Form("%d%%", True), "1%"),
+        (ROOT.Form("plain"), "plain"),
+        (ROOT.Form("%p", 255), "0xff"),
+    )
 
 
 def test_printf_prints_without_a_newline_of_its_own(capsys):
@@ -115,5 +125,7 @@ def test_a_fatal_message_ends_the_program(capsys):
 def test_ownership_and_addresses_are_what_python_keeps():
     thing = ROOT.TNamed("n", "t")
     ROOT.SetOwnership(thing, False)
-    assert ROOT.addressof(thing) == id(thing)
-    assert ROOT.nullptr is None
+    expect(
+        (ROOT.addressof(thing), id(thing)),
+        (bool(ROOT.nullptr is None), True),
+    )

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
-from pyrootsupport import fresh
+from pyrootsupport import expect, fresh
 from xrdroot.pyroot.core import refs
 
 
@@ -24,22 +24,28 @@ def test_a_running_stopwatch_started_again_keeps_running(capsys):
     watch.Stop()
     watch.Start()
     watch.Print()
-    assert capsys.readouterr().out.startswith("Real time 0:00:00, CP time ")
-    assert watch.Counter() == 1
+    expect(
+        (bool(capsys.readouterr().out.startswith("Real time 0:00:00, CP time ")), True),
+        (watch.Counter(), 1),
+    )
 
 
 def test_appending_an_object_already_kept_says_nothing(capsys):
     h = ROOT.TH1D("h", "", 1, 0, 1)
     ROOT.gROOT.Append(h, True)
-    assert capsys.readouterr().err == ""
-    assert ROOT.gROOT.GetList().GetSize() == 1
+    expect(
+        (capsys.readouterr().err, ""),
+        (ROOT.gROOT.GetList().GetSize(), 1),
+    )
 
 
 def test_find_object_any_looks_into_every_directory_below():
     below = ROOT.gROOT.mkdir("a/b")
     below.Append(ROOT.TNamed("deep", ""))
-    assert ROOT.gROOT.FindObjectAny("deep").GetName() == "deep"
-    assert ROOT.gROOT.GetDirectory("a").FindObjectAny("nothing") is None
+    expect(
+        (ROOT.gROOT.FindObjectAny("deep").GetName(), "deep"),
+        (bool(ROOT.gROOT.GetDirectory("a").FindObjectAny("nothing") is None), True),
+    )
 
 
 def test_a_directory_standing_alone_is_its_own_top():
@@ -51,16 +57,20 @@ def test_prepend_path_name_hands_back_a_plain_join():
 
 
 def test_the_root_namespace_hands_other_names_to_the_top():
-    assert ROOT.ROOT.TH1F is ROOT.TH1F
-    assert repr(ROOT.ROOT) == "<namespace ROOT>"
-    assert ROOT.ROOT.GetThreadPoolSize() >= 1
+    expect(
+        (bool(ROOT.ROOT.TH1F is ROOT.TH1F), True),
+        (repr(ROOT.ROOT), "<namespace ROOT>"),
+        (bool(ROOT.ROOT.GetThreadPoolSize() >= 1), True),
+    )
     with pytest.raises(AttributeError):
         ROOT.ROOT.__wrapped__  # noqa: B018
 
 
 def test_genvector_edges():
-    assert ROOT.Math.RhoEtaPhiVector(ROOT.Math.XYZVector(1, 0, 0)).Rho() == pytest.approx(1)
-    assert ROOT.Math.XYZVector(1, 2, 3).GetCoordinates() == (1, 2, 3)
+    expect(
+        (ROOT.Math.RhoEtaPhiVector(ROOT.Math.XYZVector(1, 0, 0)).Rho(), pytest.approx(1)),
+        (ROOT.Math.XYZVector(1, 2, 3).GetCoordinates(), (1, 2, 3)),
+    )
     far = ROOT.Math.PtEtaPhiMVector(1, 0, 3.0, 0)
     near = ROOT.Math.PtEtaPhiMVector(1, 0, -3.0, 0)
     assert ROOT.Math.VectorUtil.DeltaPhi(far, near) == pytest.approx(2 * math.pi - 6)
@@ -74,8 +84,10 @@ def test_references_are_filled_however_they_were_made():
     refs.store(cell, 2.5)
     refs.store(array, 3.5)
     refs.store(None, 1.0)
-    assert (holder.value, cell.value, array[0]) == (1.5, 2.5, 3.5)
-    assert refs.load(holder) == 1.5
-    assert refs.load(array) == 3.5
+    expect(
+        ((holder.value, cell.value, array[0]), (1.5, 2.5, 3.5)),
+        (refs.load(holder), 1.5),
+        (refs.load(array), 3.5),
+    )
     with pytest.raises(TypeError, match="not somewhere to put a number"):
         refs.store(3, 1.0)
