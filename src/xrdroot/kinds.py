@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from .canvas import CANVASES
 from .efficiency import EFFICIENCIES, Efficiency
 from .entries import ENTRY_LISTS, EntryList
 from .function import FUNCTIONS
@@ -38,6 +39,7 @@ CLASSES: dict[str, Callable[[str, dict[str, Any]], Any]] = {
     **dict.fromkeys(ENTRY_LISTS, EntryList),
     **dict.fromkeys(FUNCTIONS, function),
     **COLLECTIONS,
+    **CANVASES,
 }
 
 

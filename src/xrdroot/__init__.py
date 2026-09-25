@@ -59,6 +59,7 @@ is there; it is a separate package that builds on this one.
 from __future__ import annotations
 
 from . import fit, stats
+from .canvas import Canvas
 from .chain import Chain, ChainedBranch, chain
 from .efficiency import Efficiency
 from .entries import EntryList
@@ -114,6 +115,7 @@ __all__ = [
     "Graph",
     "MultiGraph",
     "Function",
+    "Canvas",
     # fitting
     "fit",
     "FitResult",
