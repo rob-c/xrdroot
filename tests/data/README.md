@@ -51,18 +51,31 @@ The layouts it writes trees with were harvested the same way — from
 | `join4.root` | one tree of eleven entries and one sharing column names with the three above: a friend refused, and a name two friends share |
 | `tefficiency.root` | `TEfficiency` in one, two and three dimensions, saved with ROOT's defaults |
 | `tprofile.root` | a `TProfile` and a `TProfile2D`, whose bins are means |
+| `uproot-issue-227b.root` | a `TProfile3D`, and so a `TH3D`: the donor of the three-dimensional layouts |
 
-No file here holds a `TEntryList`, `TEventList`, `THnSparse`, `THStack` or
-`TProfile3D`, or a tree that records its friends, and none can be made without
-ROOT. The tests for those make their files as they run: `tests/crafted.py`
+No file here holds a `TEntryList`, `TEventList`, `THnSparse` or `THStack`,
+or a tree that records its friends, and none can be made without ROOT. The tests for those make their files as they run: `tests/crafted.py`
 writes the classes member by member from the layouts their C++ headers
 declare, beside the description of ROOT's own classes `gauss-h1.root` carries,
 and `test_root_friends.py` writes a tree and then its record again with a
 `TFriendElement` list in it. Those check a layout is read faithfully, not that
 the layout is ROOT's; nothing made that way is kept here.
 
+`uproot-issue-227b.root` is the one exception to where these came from: ROOT
+6.22 wrote it for uproot's issue 227, and it is taken unchanged from
+[scikit-hep-testdata](https://github.com/scikit-hep/scikit-hep-testdata), the
+only place a `TProfile3D` ROOT wrote was to be had.
+
+`tefficiency.root` and `tprofile.root` were made by go-hep's
+`riofs/gendata/gen-teff.go` and `gen-tprofile.go`, ROOT macros filling from
+`gRandom` at its default seed; `tests/support.py` draws the same numbers, so
+the tests fill the same histograms again and compare them with ROOT's bit for
+bit.
+
 go-hep is BSD-3-Clause; the licence is in `LICENSE.go-hep` next to these
 files, and it is the whole of what is required to redistribute them.
+scikit-hep-testdata is BSD-3-Clause too; its licence is in
+`rntuple/LICENSE.scikit-hep-testdata`.
 
 ## RNTuple
 

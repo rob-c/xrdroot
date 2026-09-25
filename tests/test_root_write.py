@@ -120,6 +120,10 @@ def test_a_written_file_describes_its_classes_exactly_as_the_donors_do():
     with opened("graphs") as donor:
         theirs.update(donor._source.streamers())
         graph = donor["tgae"]
+    with opened("tprofile") as donor:
+        # The histogram family is written at the vintage of this donor, which
+        # keeps one more member of TH1 than the 6.08 files do.
+        theirs.update(donor._source.streamers())
     with read_back(written(h=hist, g=graph)) as back:
         ours = back._source.streamers()
     assert len(ours) >= 14
@@ -396,7 +400,8 @@ def test_lz4_packs_every_awkward_shape_the_decoder_can_prove():
 def test_an_object_the_writer_has_no_layout_for_is_refused():
     buf = io.BytesIO()
     with create(buf) as out:
-        with pytest.raises(UnsupportedFeatureError, match="takes a Histogram, a Graph"):
+        refusal = "takes a Histogram, a Profile, an Efficiency, a Graph"
+        with pytest.raises(UnsupportedFeatureError, match=refusal):
             out["x"] = 3.14
         multi = Graph("TGraphMultiErrors", dict(Graph.new("g", [1], [2]).members))
         with pytest.raises(UnsupportedFeatureError, match="TGraphMultiErrors is not a class"):

@@ -201,6 +201,92 @@ Coordinates count from zero the way a `Histogram` does, so `-1` is an
 underflow and `len(axis)` an overflow. `to_dense(flow=True)` keeps the flow
 bins, and a grid of more than ten million cells is refused.
 
+## Building and filling histograms
+
+A histogram is also something to fill and compute with, the way ROOT's `TH1`
+is. Book one, fill it an array at a time, and ask it what ROOT would be asked:
+
+```python
+from xrdroot import Efficiency, Histogram, Profile
+
+h = Histogram.book("pt", (100, 0.0, 200.0), title="p_{T};p_{T} [GeV];events")
+h.fill(pt)  # arrays or numbers
+h.fill(pt, weight=w)  # the sums of squares start at the first weight not one
+h.mean(), h.std(), h.mean_error(), h.effective_entries
+h.integral(), h.integral(1, 10, width=True), h.integral_error()
+
+h2 = Histogram.book("map", (50, -2.5, 2.5), [0, 10, 20, 50, 100], kind="F")
+h2.fill(eta, pt)
+h2.projection_x(), h2.profile_x(), h2.rebin(5, 2)
+
+p = Profile.book("pz", (100, -4, 4), value_range=(0, 20), error_option="s")
+p.fill(px, pz)  # the coordinates, then the value averaged
+
+eff = Efficiency.book("trigger", (20, 0, 100))
+eff.fill(fired, pt)  # whether each entry passed, then where it is
+```
+
+| ROOT | xrdroot |
+| --- | --- |
+| `TH1D h("h", "t", 100, 0, 1)` | `Histogram.book("h", (100, 0, 1), title="t")` |
+| `TH1F`, `TH1I`, `TH1S`, `TH1C` | `Histogram.book(..., kind="F")`, `"I"`, `"S"`, `"C"` |
+| `TH1D h("h", "", n, xbins)` | `Histogram.book("h", xbins)` — edges as a list or array |
+| `TH2D h("h", "", 10, 0, 1, 20, 0, 2)` | `Histogram.book("h", (10, 0, 1), (20, 0, 2))` |
+| `TProfile p("p", "", 100, -4, 4, 0, 20, "s")` | `Profile.book("p", (100, -4, 4), value_range=(0, 20), error_option="s")` |
+| `TEfficiency e("e", "", 20, 0, 100)` | `Efficiency.book("e", (20, 0, 100))` |
+| `TEfficiency(passed, total)` | `Efficiency.from_histograms(passed, total)` |
+| `h->Fill(x)`, `h->Fill(x, w)` | `h.fill(x)`, `h.fill(x, weight=w)` — arrays or numbers |
+| `p->Fill(x, y, w)` | `p.fill(x, y, weight=w)` |
+| `e->Fill(passed, x)`, `FillWeighted` | `e.fill(passed, x)`, `e.fill(passed, x, weight=w)` |
+| `GetEntries`, `GetEffectiveEntries` | `h.entries`, `h.effective_entries` |
+| `GetMean(1)`, `GetStdDev(2)` | `h.mean(0)`, `h.std(1)` — axes from zero |
+| `GetMeanError`, `GetStdDevError` | `h.mean_error()`, `h.std_error()` |
+| `GetSkewness`, `GetKurtosis` | `h.skewness()`, `h.kurtosis()`, and their `_error()`s |
+| `Integral()`, `Integral(a, b, "width")` | `h.integral()`, `h.integral(a, b, width=True)` |
+| `IntegralAndError` | `h.integral_error(...)` |
+| `FindBin(x, y)`, `Interpolate(x)` | `h.find_bin(x, y)`, `h.interpolate(x)` — vectorised |
+| `GetMaximum`, `GetMaximumBin` | `h.maximum()`, `h.argmax()` — an index into `values()` |
+| `h->Add(h2)`, `h->Add(h2, c)` | `h.add(h2)`, `h.add(h2, c)`, or `h + h2`, `h - h2`, `h += h2` |
+| `h->Scale(c)`, `h->Scale(c, "width")` | `h.scale(c)`, `h.scale(c, width=True)`, or `h * c`, `h / c` |
+| `h->Multiply(h2)`, `h->Divide(h2)` | `h.multiply(h2)`, `h.divide(h2)`, or `h * h2`, `h / h2` |
+| `h->Divide(pass, total, 1, 1, "B")` | `passed.divide(total, binomial=True)` |
+| `h->Scale(1 / h->Integral())` | `h.normalized()`, `h.normalized(width=True)` for a density |
+| `hadd`, `TH1::Merge` | `Histogram.merge([h1, h2, ...])`, `sum([h1, h2])`, `Profile.merge` |
+| `h->Reset()`, `h->Clone("c")` | `h.reset()`, `h.copy("c")` |
+| `h->Rebin(4)`, `h->Rebin(n, "", xbins)` | `h.rebin(4)`, `h.rebin(xbins)` |
+| `h2->Rebin2D(2, 5)` | `h2.rebin(2, 5)` |
+| `h2->ProjectionX("", 1, 5)` | `h2.projection_x(y_range=(1, 5))` |
+| `h3->Project3D("yx")`, `Project3D("x")` | `h3.projection("xy")`, `h3.projection("x")` |
+| `h2->ProfileX()`, `ProfileY()` | `h2.profile_x()`, `h2.profile_y()` |
+| `TGraphErrors(h)`, `e->CreateGraph()` | `Graph.from_histogram(h)`, `Graph.from_histogram(e)` |
+
+The numbers are ROOT's, to the bit: the suite runs go-hep's ROOT macros for
+`tefficiency.root` and `tprofile.root` again, drawing `gRandom`'s very numbers,
+and what comes out matches every bin, square of weights, running sum and entry
+count ROOT wrote. That is because the bookkeeping is ROOT's. An entry off the
+end of an axis goes to its flow bin — the upper edge of the last bin to the
+overflow, and a NaN too, since ROOT's `FindBin` asks `!(x < xmax)` — and
+counts towards `entries` but not towards the moments, which is ROOT's default
+of leaving the flow out of the statistics. The mean and spread are made from
+the running sums the fills added to, and only when those are gone — a
+histogram whose bins were set by hand, or whose sums an operation rebuilt —
+from the bin centres. Every running total is added in the order ROOT would
+have met the entries, rather than pairwise as NumPy would. Integer storage
+saturates at ROOT's limits and takes a weight's whole part, and a `TH1F` adds
+in single precision.
+
+Filling and ROOT's other in-place methods — `add`, `scale`, `multiply`,
+`divide`, `reset` — change the histogram they are called on, as ROOT's do;
+the operators, `copy`, `normalized`, `rebin` and the projections make a new
+one. The members stay the whole of a histogram's state throughout: filling
+changes the arrays and the sums they hold, so what is written is exactly what
+was computed. The arithmetic propagates errors as ROOT does and refuses two
+histograms binned differently, by name; it refuses profiles too, whose bins
+are means — `Profile.merge` adds profiles up as `hadd` does. Rebinning onto
+new edges refuses an edge the old axis does not have, since merging bins can
+never split one. `projection("xy")` keeps the axes in the order named, which
+is the reverse of ROOT's `Project3D` letters.
+
 ## Graphs
 
 A `TGraph`, `TGraphErrors`, `TGraphAsymmErrors` or `TGraphMultiErrors` comes
@@ -570,7 +656,9 @@ one-dimensional arrays of signed integers or floats, which become the matching
 for two or three — the values shaped the way the axes are (two more along an
 axis fills its flow bins), and optionally per-bin errors or variances, axis
 labels and an entry count; evenly spaced edges are stored the compact way ROOT
-stores an even axis. `TH1D`, `TH1F`, `TH2D` and `TH2F` are written; a
+stores an even axis. Every `TH1`, `TH2` and `TH3` of chars, shorts, ints,
+floats and doubles is written, and so are `TProfile`, `TProfile2D`,
+`TProfile3D` and `TEfficiency` — booked and filled here or read from a file;
 `Histogram.of(...)` turns any histogram Python has into one of these.
 `Graph.new` picks its own class: plain points make a `TGraph`, one bar per
 point a `TGraphErrors`, and any `(low, high)` pair of runs a
