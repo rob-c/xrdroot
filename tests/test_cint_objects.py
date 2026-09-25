@@ -196,3 +196,8 @@ def test_a_string_stream_reads_its_string() -> None:
     assert stream.str() == "3 4"
     assert stream.str("7") == "" and stream.extract("long") == 7
     assert not rt.istream("x").extract("int")
+
+
+def test_arguments_of_no_candidates_kinds_go_to_the_first_that_takes_as_many() -> None:
+    only = rt.Overloaded("g", (lambda a: f"got {a}", 1, 1, (rt.INTEGRAL,)))
+    assert only("text") == "got text"

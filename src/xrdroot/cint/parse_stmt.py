@@ -145,6 +145,8 @@ class StmtParser(ExprParser):
         elif self.at_("("):
             decl.args = self.arguments()
             decl.style = "()" if decl.args else None
+            if self.at_("{"):
+                raise self.refuse("a function defined inside another function")
         elif self.at_("{"):
             decl.args = self.braced().items
             decl.style = "{}"

@@ -122,10 +122,7 @@ class StmtEmitter(CallEmitter):
         raise NotImplementedError
 
     def statement(self, node: Stmt) -> None:
-        emit = self._STATEMENTS.get(type(node))
-        if emit is None:
-            raise self.refuse(f"the statement {type(node).__name__}", node)
-        emit(self, node)
+        self._STATEMENTS[type(node)](self, node)
 
     def body(self, node: Stmt) -> None:
         """A statement as the indented body of the line just written."""
