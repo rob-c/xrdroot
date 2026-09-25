@@ -421,7 +421,8 @@ class StmtEmitter(CallEmitter):
         if returns is None or returns.is_void:
             self.out.line(f"return {self.value(node.value)}", node.where)
             return
-        self.out.line(f"return {self.store(returns.value(), node.value)}", node.where)
+        kind = returns if returns.reference else returns.value()
+        self.out.line(f"return {self.store(kind, node.value)}", node.where)
 
     # -- switch ----------------------------------------------------------------------
 

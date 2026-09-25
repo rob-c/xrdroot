@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, ClassVar
 
-from .ctype import BUILTIN_WORDS, CType, builtin_name
+from .ctype import BUILTIN_WORDS, CType, builtin_name, canonical
 from .cursor import KEYWORDS, KNOWN_TEMPLATES, STD_NAMES, NoParse
 from .literals import number
 from .nodes import (
@@ -305,7 +305,7 @@ class ExprParser(TypeParser):
         if not isinstance(expr, Name) or not self._type_name(expr):
             return expr
         braced = self.braced()
-        braced.ctype = CType(expr.text, expr.targs or [])
+        braced.ctype = CType(canonical(expr.text), expr.targs or [])
         return braced
 
     _POSTFIX: ClassVar[dict[str, Callable[[ExprParser, Expr], Expr]]] = {

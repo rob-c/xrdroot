@@ -82,10 +82,7 @@ class ExprEmitter(NameEmitter):
         raise NotImplementedError
 
     def expr(self, node: Any) -> Out:
-        emit = self._EMIT.get(type(node))
-        if emit is None:
-            raise self.refuse(f"the expression {type(node).__name__}", node)
-        return emit(self, node)
+        return self._EMIT[type(node)](self, node)
 
     # -- truth ---------------------------------------------------------------
 
@@ -459,8 +456,6 @@ class ExprEmitter(NameEmitter):
             return symbol.py if symbol is not None else name
         if ctype.is_string:
             return "str"
-        if ctype.arithmetic:
-            return "float" if ctype.floating else "int"
         parts = name.split("::")
         return self.library(Name(self.scope_where, parts, ctype.args or None))[0]
 
