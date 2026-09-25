@@ -163,12 +163,49 @@ def root4_branch_bytes(version: int = 8, *, wide: bool = False) -> bytes:
 
 
 def oldest_tree_bytes() -> bytes:
-    """A ``TTree`` of the first version ROOT 5 wrote, with no branches."""
+    """A ``TTree`` of the first version read without its file's description."""
     body = named_bytes("t", "an old tree") + record(1) * 3
     body += struct.pack(">qqqq", 7, 0, 0, 0)  # entries, then bytes written three ways
+    body += struct.pack(">d", 1)  # the weight
     body += struct.pack(">iii", 0, 0, 0)  # timer interval, scan field, update
     body += struct.pack(">qqqqq", 0, 0, 0, 0, 0)  # the entry and size limits
-    return record(6, body + objarray_bytes())
+    return record(16, body + objarray_bytes())
+
+
+def described_tree_bytes(version: int = 11) -> bytes:
+    """A ``TTree`` of ROOT 4's middle years: doubles for counters, and a weight."""
+    body = named_bytes("t", "a described tree") + record(1) * 3
+    body += struct.pack(">ddddd", 9, 0, 0, 0, 1)  # entries, bytes three ways, weight
+    body += struct.pack(">iii", 0, 0, 0)  # timer interval, scan field, update
+    body += struct.pack(">iiii", 0, 0, 0, 0)  # the entry and size limits, and the estimate
+    return record(version, body + objarray_bytes())
+
+
+def described_source(**members: tuple[int, str]) -> Source:
+    """A file whose only streamer information is a ``TTree`` of the members given."""
+    source = source_over(b"")
+    source._streamers = {
+        "TTree": {
+            name: Member(name, "", stype, typename, 0)
+            for name, (stype, typename) in members.items()
+        }
+    }
+    return source
+
+
+#: The members ROOT 4.00 described its ``TTree`` version 11 with, up to its branches.
+ROOT4_TREE_MEMBERS = {
+    "TNamed": (67, "BASE"),
+    "TAttLine": (0, "BASE"),
+    "TAttFill": (0, "BASE"),
+    "TAttMarker": (0, "BASE"),
+    **dict.fromkeys(
+        ("fEntries", "fTotBytes", "fZipBytes", "fSavedBytes", "fWeight"), (8, "Double_t")
+    ),
+    **dict.fromkeys(("fTimerInterval", "fScanField", "fUpdate"), (3, "Int_t")),
+    **dict.fromkeys(("fMaxEntryLoop", "fMaxVirtualSize", "fAutoSave", "fEstimate"), (3, "Int_t")),
+    "fBranches": (61, "TObjArray"),
+}
 
 
 def oldest_branch_bytes() -> bytes:
@@ -1305,13 +1342,76 @@ def test_a_tree_and_branch_from_ROOT_4_are_read_with_the_narrower_counters():
     assert read_branch(Buffer(root4_branch_bytes(wide=True))).basket_seek == [128]
 
 
-def test_a_tree_from_before_this_reader_is_refused_by_version():
-    with pytest.raises(UnsupportedFeatureError, match="TTree version 4"):
-        read_tree(Buffer(record(4)), None, "old")
-    with pytest.raises(UnsupportedFeatureError, match="TTree version 3"):
-        read_tree(Buffer(record(1) + record(3)), None, "old", "TNtuple")
-    with pytest.raises(UnsupportedFeatureError, match="TBranch version 5"):
-        read_branch(Buffer(record(5)))
+def test_a_tree_between_ROOT_3_and_5_is_read_by_the_members_its_file_describes():
+    """ROOT reads these versions by its streamer information, so this does too."""
+    tree = read_tree(Buffer(described_tree_bytes()), described_source(**ROOT4_TREE_MEMBERS), "t")
+    assert (tree.name, tree.title, len(tree)) == ("t", "a described tree", 9)
+
+
+def test_a_described_tree_without_its_description_is_refused_by_version():
+    with pytest.raises(UnsupportedFeatureError, match="TTree version 11, whose fields changed"):
+        read_tree(Buffer(described_tree_bytes()), None, "t")
+    with pytest.raises(UnsupportedFeatureError, match="TTree version 9, whose fields changed"):
+        read_tree(Buffer(described_tree_bytes(9)), described_source(), "t")
+
+
+def test_a_described_tree_with_a_member_that_is_no_number_is_refused_by_name():
+    members = {**ROOT4_TREE_MEMBERS, "fEstimate": (65, "TString")}
+    with pytest.raises(UnsupportedFeatureError, match="member fEstimate of type TString"):
+        read_tree(Buffer(described_tree_bytes()), described_source(**members), "t")
+
+
+def unversioned(version: int, body: bytes = b"") -> bytes:
+    """A record ROOT 2 wrote with a version and no byte count in front of it."""
+    return struct.pack(">H", version) + body
+
+
+def root2_branch_bytes() -> bytes:
+    """A ``TBranch`` of version 5, the layout ROOT 2 wrote, with one basket out in the file."""
+    body = unversioned(1, struct.pack(">HII", 1, 0, 0) + tstring("b") + tstring("b/I"))
+    body += struct.pack(">iiiiii", 1, 8000, 0, 3, 1, 5)  # through max baskets, written, next
+    body += struct.pack(">dddi", 5, 0, 0, 0)  # entries, bytes both ways, offset in the parent
+    empty = unversioned(2, tstring("") + struct.pack(">iii", 1, 0, 0))  # one null slot
+    body += empty * 3
+    body += struct.pack(">iii", 2, 0, 5)  # the first entry of each basket, counted
+    body += struct.pack(">iii", 2, 40, 0)  # the size of each, counted
+    body += struct.pack(">iiii", 3, 128, 0, 0)  # a count ROOT ignores, then a seek per slot
+    return record(5, body + tstring(""))
+
+
+def root2_tree_bytes(classname: str = "TTree") -> bytes:
+    """A ``TTree`` of version 4, from before streamer information, holding that branch."""
+    body = unversioned(1, struct.pack(">HII", 1, 0, 0) + tstring("t") + tstring("a ROOT 2 tree"))
+    body += unversioned(1, bytes(6)) + unversioned(1, bytes(4)) + unversioned(1, bytes(8))
+    body += struct.pack(">iiidddii", 25, 0, 0, 5, 0, 0, 0, 0)
+    inner = root2_branch_bytes()
+    branch = struct.pack(">II", BYTE_COUNT_MASK | (4 + 8 + len(inner)), NEW_CLASS_TAG)
+    branch += b"TBranch\x00" + inner
+    body += unversioned(2, tstring("") + struct.pack(">ii", 1, 0)) + branch
+    tree = record(4, body)
+    return record(1) + tree if classname != "TTree" else tree
+
+
+def test_a_tree_ROOT_2_wrote_is_read_the_way_ROOT_still_reads_one():
+    raw = root2_tree_bytes()
+    buf = Buffer(raw)
+    tree = read_tree(buf, source_over(b""), "t")
+    assert (tree.title, len(tree), buf.pos) == ("a ROOT 2 tree", 5, len(raw))
+    branch = read_branch(Buffer(root2_branch_bytes()))
+    assert (branch.name, branch.title, branch.entries) == ("b", "b/I", 5)
+    assert (branch.basket_entry, branch.basket_bytes, branch.basket_seek) == ([0, 5], [40], [128])
+    ntuple = read_tree(Buffer(root2_tree_bytes("TNtuple")), source_over(b""), "t", "TNtuple")
+    assert len(ntuple) == 5
+
+
+def test_an_array_ROOT_1_wrote_has_no_name_to_read():
+    buf = Buffer(unversioned(1, struct.pack(">iii", 1, 0, 0)))
+    assert buf.objarray({}) == [None]
+
+
+def test_a_branch_from_before_this_reader_is_refused_by_version():
+    with pytest.raises(UnsupportedFeatureError, match="TBranch of version 4"):
+        read_branch(Buffer(record(4)))
 
 
 def test_a_basket_that_writes_its_size_negative_carries_feature_bits():

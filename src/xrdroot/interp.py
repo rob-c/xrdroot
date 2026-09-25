@@ -196,9 +196,7 @@ class Flat(Numeric):
     __slots__ = ("length",)
     kind = "flat"
 
-    def __init__(
-        self, prim: Prim, length: int, unpack: Unpack | None = None
-    ) -> None:
+    def __init__(self, prim: Prim, length: int, unpack: Unpack | None = None) -> None:
         super().__init__(prim, unpack)
         self.length = length
 
@@ -261,6 +259,27 @@ class Values(Column):
     def value(self, buf: Buffer, at: int) -> Any:
         buf.pos = at
         return self._read(buf)
+
+
+class Each(Values):
+    """A list per entry: one value for each object of a split collection.
+
+    The objects' values are written one after another with no count in
+    front, so they are read until the entry ends - which the basket says -
+    each value saying for itself where it stops.
+    """
+
+    __slots__ = ()
+
+    def __init__(self, one: Values) -> None:
+        super().__init__("list", one._read)
+
+    def items(self, buf: Buffer, at: int, end: int) -> list[Any]:
+        buf.pos = at
+        found = []
+        while buf.pos < end:
+            found.append(self._read(buf))
+        return found
 
 
 class Members(Column):
@@ -551,6 +570,11 @@ def _packed(leaf: LeafRecord) -> Column:
     return Flat(prim, leaf.length, unpack)
 
 
+def member_name(leaf: LeafRecord) -> str:
+    """The member a split leaf is, without the branches above it: ``fX`` of ``V0s.fParamN.fX``."""
+    return leaf.name.rpartition(".")[2]
+
+
 def _packed_member(
     branch: BranchRecord, leaf: LeafRecord, source: Source, kind: int, counted: bool
 ) -> Column:
@@ -561,7 +585,7 @@ def _packed_member(
     Without that comment there is no honest way to read the bytes, so a class
     the file does not describe is refused rather than read at a guess.
     """
-    member = source.streamers().get(branch.classname, {}).get(leaf.name)
+    member = source.streamers().get(branch.classname, {}).get(member_name(leaf))
     if member is None:
         return Refused(
             f"a packed float member of {branch.classname or 'a class'} that this file's "
@@ -574,6 +598,8 @@ def _packed_member(
     prim, unpack = found
     if counted:
         return Rows(prim, 1, False, unpack)  # one marker byte, then the packed values
+    if leaf.count is not None:
+        return Rows(prim, 0, False, unpack)  # one per object of a split collection
     return Flat(prim, leaf.length, unpack)
 
 
@@ -618,17 +644,25 @@ def _pointer(prim: Prim, unpack: Unpack | None, count: tuple[str, ...]) -> Step:
 
     ``count`` is where in the entry read so far the length is, which is a
     member of the same class or one of a base it inherits - ``TArrayD`` holds
-    as many values as the ``fN`` its ``TArray`` base declares.
+    as many values as the ``fN`` its ``TArray`` base declares. A marker of
+    zero is a pointer that was null when it was written, and nothing follows
+    it, whatever the count says.
     """
 
     def step(buf: Buffer, row: dict[str, Any]) -> Any:
-        buf.u8()  # the marker saying the pointer was not null when it was written
-        where: Any = row
-        for key in count:
-            where = where[key]
-        return _numbers(prim, unpack, buf, int(where))
+        if not buf.u8():
+            return _numbers(prim, unpack, buf, 0)
+        return _numbers(prim, unpack, buf, int(_counted(row, count)))
 
     return step
+
+
+def _counted(row: dict[str, Any], where: tuple[str, ...]) -> Any:
+    """The count a member was said to hold, found where in the row it was read."""
+    found: Any = row
+    for key in where:
+        found = found[key]
+    return found
 
 
 class _Described(dict[str, Any]):
@@ -704,14 +738,19 @@ def _embedded(name: str, source: Source, seen: tuple[str, ...]) -> Callable[[Buf
 def _by_hand(name: str, source: Source, seen: tuple[str, ...]) -> Callable[[Buffer], Any] | None:
     """How a class that streams itself by hand reads, or ``None`` for any other.
 
-    ROOT writes no description of such a class - a ``TCanvas``, and the
-    ``TQObject`` under every pad, are the ones this reader knows - so its
-    reader is written out in :mod:`.canvas.streamer`, and handed a way to
-    read the described classes it is made of.
+    ROOT writes no description of such a class - a ``TCanvas``, the
+    ``TQObject`` under every pad, and a ``TASImage`` are the ones this
+    reader knows - so its reader is written out in :mod:`.canvas.streamer`
+    or :mod:`.image`, and handed a way to read the described classes it is
+    made of.
     """
     from .canvas.streamer import STREAMED
+    from .image import IMAGES
+    from .known import KNOWN
 
-    make = STREAMED.get(name)
+    make = STREAMED.get(name) or IMAGES.get(name)
+    if make is None and source.streamers().get(name) is None:
+        make = KNOWN.get(name)  # the file's own description comes first
     if make is None:
         return None
     return make(lambda held: _streamed(_members(held, source, (*seen, name))))
@@ -997,6 +1036,40 @@ def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> St
     return _plainly(_objects(_embedded(name, source, seen), _fields(name, source, seen)))
 
 
+#: The streamer type of a ``TStreamerLoop``: ``x[n]`` of a class.
+STREAM_LOOP = 501
+
+
+def _loop_step(
+    member: Member, source: Source, seen: tuple[str, ...], before: dict[str, tuple[str, ...]]
+) -> Step | None:
+    """How a ``TStreamerLoop`` reads, or ``None`` for a member that is not one.
+
+    It is ``MyClass* x; //[n]`` - ``TH2Poly`` keeps a ``TList`` per cell of
+    its partition that way - and ROOT writes it as one record holding the
+    ``n`` objects, each streaming itself, or for ``MyClass**`` each a pointer
+    naming its class.
+    """
+    if member.stype != STREAM_LOOP:
+        return None
+    where = before.get(member.count)
+    if where is None:
+        raise _Unreadable(f"{member.name!r}, which is counted by a member written after it")
+    if member.typename.endswith("**"):
+        classes = _Described(source, ())
+        one: Callable[[Buffer], Any] = lambda buf: buf.any(classes)  # noqa: E731
+    else:
+        one = _embedded(member.typename.rstrip("*"), source, seen)
+
+    def step(buf: Buffer, row: dict[str, Any]) -> list[Any]:
+        _version, end = buf.header()
+        items = [one(buf) for _ in range(int(_counted(row, where)))]
+        buf.resume(end)
+        return items
+
+    return step
+
+
 def _step(
     member: Member, source: Source, seen: tuple[str, ...], before: dict[str, tuple[str, ...]]
 ) -> Step:
@@ -1005,7 +1078,7 @@ def _step(
     A member is numbers, a whole object, or a string or container, asked in
     that order; one that is none of them is refused by the kind it is.
     """
-    step = _numeric_step(member, before)
+    step = _numeric_step(member, before) or _loop_step(member, source, seen, before)
     if step is None:
         step = _object_step(member, source, seen)
     if step is None:
@@ -1129,7 +1202,41 @@ def _declared(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column:
     if isinstance(declared, Refused):
         return declared
     name, header = declared
-    return _declared_node(parse(name), name, header, branch, source)
+    if header and leaf.ltype in OBJECTS_HELD + OBJECTS_POINTED:
+        column = _pointer_member(name, leaf.ltype, source)
+    else:
+        column = _declared_node(parse(name), name, header, branch, source)
+    return _per_object(column, leaf)
+
+
+def _pointer_member(name: str, ltype: int, source: Source) -> Column:
+    """A pointer member ROOT left unsplit, read the way ROOT writes it.
+
+    One the class promises is never null is written in place; any other is
+    written the way ROOT writes any pointer - a null tag, or the class and
+    then the object.
+    """
+    if ltype in OBJECTS_HELD:
+        return Values("object", _embedded(name.rstrip("*"), source, ()))
+    classes = _Described(source, ())
+    return Values("object", lambda buf: buf.any(classes))
+
+
+def _per_object(column: Column, leaf: LeafRecord) -> Column:
+    """A column as it is, or one of a member held by each object of a split collection.
+
+    Such an entry is one object's value after another's with no count in
+    front of them, so only a value that says where it ends - a string, an
+    object - can be read that way, one after another until the entry ends.
+    """
+    if leaf.count is None or isinstance(column, Refused):
+        return column
+    if isinstance(column, Values):
+        return Each(column)
+    return Refused(
+        f"a {column.typename} in each object of the split collection {leaf.count.name}, "
+        f"whose values are written one after another with nothing to say where each ends"
+    )
 
 
 def _declared_name(
@@ -1138,7 +1245,7 @@ def _declared_name(
     """Resolve the class name and whether a member record precedes it."""
     if leaf.ltype < 0 or branch.whole:
         return branch.classname, False  # a whole object: the branch names it
-    member = source.streamers().get(branch.classname, {}).get(leaf.name)
+    member = source.streamers().get(branch.classname, {}).get(member_name(leaf))
     if member is None:
         return Refused(
             f"a member of {branch.classname or 'a class'} that this file's streamer "
@@ -1209,11 +1316,11 @@ def build(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column:
 def _element(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column:
     """Interpret a ``TLeafElement`` from its ROOT type code."""
     if leaf.ltype == 65:
-        return Values("str", _string)  # a TString member, written with no header
+        return _per_object(Values("str", _string), leaf)  # a TString, with no header
     primitive = _primitive_element(branch, leaf, source)
     if primitive is not None:
         return primitive
-    if leaf.ltype not in KINDS:
+    if leaf.ltype not in KINDS or leaf.ltype in OBJECTS_HELD + OBJECTS_POINTED:
         return _declared(branch, leaf, source)
     if branch.whole:
         # ROOT 4 left the code at zero on a branch holding a whole
@@ -1223,17 +1330,32 @@ def _element(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column:
     return Refused(f"{KINDS[leaf.ltype]}, which this reader does not decode")
 
 
-def _primitive_element(
-    branch: BranchRecord, leaf: LeafRecord, source: Source
-) -> Column | None:
-    """A primitive, packed primitive, or pointer element when its code says so."""
+def _primitive_element(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column | None:
+    """A primitive, packed primitive, or pointer element when its code says so.
+
+    A plain or fixed-size member whose leaf has a counter is a member of
+    the objects of a split collection - a ``TClonesArray`` or a vector of a
+    class - so an entry holds one value per object, or ``length`` of them
+    for an array member, one object's after another's.
+    """
     for base in (0, OFFSET_L, OFFSET_P):
         kind = leaf.ltype - base
         prim = BASIC.get(kind)
         if prim is not None:
-            if base == OFFSET_P:
-                return Rows(prim, 1, False)  # one marker byte, then the counted values
-            return Flat(prim, leaf.length)
+            return _primitive_shape(leaf, prim, base)
         if kind in PACKED:
             return _packed_member(branch, leaf, source, kind, base == OFFSET_P)
     return None
+
+
+def _primitive_shape(leaf: LeafRecord, prim: Prim, base: int) -> Column:
+    """A primitive member as one value, a fixed array, a counted one, or one per object.
+
+    A counted array's leaf names the member that counts it; any other
+    member with a counter is one of a split collection's objects.
+    """
+    if base == OFFSET_P:
+        return Rows(prim, 1, False)  # one marker byte, then the counted values
+    if leaf.count is not None:
+        return Rows(prim, 0, False)
+    return Flat(prim, leaf.length)

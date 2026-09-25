@@ -174,6 +174,12 @@ def _template(text: str) -> object | None:
 
 
 def _sequence(inside: str) -> Seq | None:
+    """A container's item type; a second argument that is an allocator - an
+    ``RVec`` of ROOT 6.18 to 6.24 writes ``RAdoptAllocator<float>`` - decides
+    only where the items live in memory, and not how they are written."""
+    halves = _split(inside)
+    if halves is not None and "llocator<" in halves[1]:
+        inside = halves[0]
     item = parse(inside)
     return None if item is None else Seq(item)
 
