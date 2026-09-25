@@ -312,7 +312,9 @@ class Minimizer:
         names = [self._variables[at][0] for at in order]
         made = _minuit(self._fcn, [self._variables[at][1] for at in order], names)
         made.errors = [self._variables[at][2] for at in order]
-        made.limits = [self._variables[at][3] for at in order]
+        for place, at in enumerate(order):
+            bounds = self._variables[at][3]
+            made.limits[place] = bounds if bounds is not None else (-np.inf, np.inf)
         made.tol, made.strategy = self._settings["tolerance"], self._settings["strategy"]
         made.migrad(ncall=self._settings["calls"] or None, iterate=1, use_simplex=False)
         self._found = made

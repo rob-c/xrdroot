@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import types
+
 import numpy as np
 import pytest
 
@@ -63,6 +65,62 @@ def test_the_fitter_minimises_and_prints_as_root_does(capsys):
     graded = ROOT.Fit.Fitter()
     graded.FitFCN(ROOT.Math.GradFunctor(rosenbrock, gradient, 2))
     assert graded.Result().Parameter(1) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_a_minimizer_from_the_factory_prints_minuit2s_lines(capsys):
+    minimizer = ROOT.Math.Factory.CreateMinimizer("Minuit2", "")
+    minimizer.SetMaxFunctionCalls(100000)
+    minimizer.SetMaxIterations(1000)
+    minimizer.SetTolerance(0.001)
+    minimizer.SetPrintLevel(1)
+    minimizer.SetStrategy(1)
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: (v[1] - v[0] ** 2) ** 2 + (1 - v[0]) ** 2, 2))
+    minimizer.SetVariable(0, "x", -1.0, 0.01)
+    minimizer.SetLimitedVariable(1, "y", 1.2, 0.01, -10, 10)
+    assert minimizer.Minimize() and minimizer.Status() == 0 and minimizer.NDim() == 2
+    lines = capsys.readouterr().out.splitlines()
+    assert (
+        lines[0]
+        == "Minuit2Minimizer: Minimize with max-calls 100000 convergence for edm < 0.001 strategy 1"
+    )
+    assert lines[1] == "Minuit2Minimizer : Valid minimum - status = 0" and lines[2].startswith(
+        "FVAL  = "
+    )
+    assert lines[5].startswith("x\t  = ") and "\t +/-  " in lines[5]
+    assert minimizer.X()[0] == pytest.approx(1.0, abs=0.01) and minimizer.MinValue() < 1e-4
+    assert len(minimizer.Errors()) == 2 and minimizer.Edm() >= 0 and minimizer.NCalls() > 0
+    graded = ROOT.Math.Minimizer()
+    graded.SetFunction(
+        ROOT.Math.GradFunctor(lambda v: (v[0] - 2) ** 2, lambda v, i: 2 * (v[0] - 2), 1)
+    )
+    graded.SetVariable(0, "a", 0.0, 0.1)
+    assert graded.Minimize() and graded.X()[0] == pytest.approx(2.0, abs=1e-4)
+    graded._found = types.SimpleNamespace(
+        valid=False,
+        fval=0.0,
+        fmin=types.SimpleNamespace(edm=0.0),
+        nfcn=1,
+        values=[0.0],
+        errors=[0.0],
+    )
+    assert graded.Status() == 3
+    graded._report(["a"])
+    assert "Invalid minimum - status = 3" in capsys.readouterr().out
+
+
+def test_a_histogram_fills_from_arrays_as_pyroot_lets_it():
+    h = ROOT.TH1D("h", "", 4, 0, 4)
+    assert h.Fill(np.array([0.5, 1.5, 1.5])) == -1 and h.GetBinContent(2) == 2
+    h.Fill(np.array([2.5]), np.array([3.0]))
+    assert h.GetBinContent(3) == 3 and h.GetEntries() == 4
+    h2 = ROOT.TH2D("h2", "", 2, 0, 2, 2, 0, 2)
+    h2.Fill(np.array([0.5, 1.5]), np.array([0.5, 0.5]))
+    assert h2.GetBinContent(1, 1) == 1 and h2.GetBinContent(2, 1) == 1
+
+
+def test_a_file_that_would_not_open_lists_nothing(capsys):
+    ROOT.TFile("missing.root").ls()
+    assert capsys.readouterr().out == ""
 
 
 def test_std_streams_write_what_they_are_given(capsys):
