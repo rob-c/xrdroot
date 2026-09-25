@@ -388,11 +388,15 @@ class ExprEmitter(NameEmitter):
             return f"dynamic_cast({kind}, {self.value(node.operand)})", P.POSTFIX
         if target.scalar:
             return self.store(target, node.operand), P.POSTFIX
-        if target.pointer and _is_null(node.operand):
+        return self._held_cast(target, node.operand)
+
+    def _held_cast(self, target: CType, operand: Expr) -> Out:
+        """A cast to a pointer or a string: ``None`` from ``0``, text from what is not text."""
+        if target.pointer and _is_null(operand):
             return "None", P.ATOM
-        if target.is_string and not target.is_array and self.typeof(node.operand) is None:
-            return f"cstr({self.value(node.operand)})", P.POSTFIX
-        return self.expr(node.operand)
+        if target.is_string and not target.is_array and self.typeof(operand) is None:
+            return f"cstr({self.value(operand)})", P.POSTFIX
+        return self.expr(operand)
 
     def _sizeof(self, node: SizeOf) -> Out:
         ctype = node.ctype if node.ctype is not None else self.typeof(node.operand)

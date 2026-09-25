@@ -174,18 +174,24 @@ class StmtEmitter(CallEmitter):
 
     def _unassignable(self, target: Expr) -> str | None:
         """Why assigning to ``target`` has no Python that does the same, if it has none."""
-        if isinstance(target, Unary) and target.op == "*":
-            found = self.typeof(target.operand)
-            if found is None or found.is_object_pointer:
-                return "assigning a whole object through a pointer to it"
         if isinstance(target, Call):
             return "assigning to what a call returns by reference, f(i) = v"
-        if not isinstance(target, (Name, Index, Member, Unary)):
-            return "assigning to something that is not a variable"
+        if isinstance(target, Unary):
+            return self._through_pointer(target)
         if isinstance(target, Index):
             owner = self.typeof(target.obj)
             if owner is not None and owner.is_string and not owner.dims:
                 return "changing one character of a string in place"
+        if not isinstance(target, (Name, Index, Member)):
+            return "assigning to something that is not a variable"
+        return None
+
+    def _through_pointer(self, target: Unary) -> str | None:
+        if target.op != "*":
+            return "assigning to something that is not a variable"
+        found = self.typeof(target.operand)
+        if found is None or found.is_object_pointer:
+            return "assigning a whole object through a pointer to it"
         return None
 
     def _in_place(self, expr: Assign) -> bool:

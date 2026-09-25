@@ -28,7 +28,8 @@ def body(source: str) -> str:
     [
         ('void t() { int len = 1; int len_ = 2; printf("%d %d\\n", len, len_); }', "1 2\n"),
         (
-            'void t() { double d = 3; d /= 2; int i = 7; i %= 4; i <<= 1; printf("%g %d\\n", d, i); }',
+            "void t() { double d = 3; d /= 2; int i = 7; i %= 4; i <<= 1;"
+            ' printf("%g %d\\n", d, i); }',
             "1.5 6\n",
         ),
         (
@@ -59,7 +60,8 @@ def body(source: str) -> str:
             "5 6\n",
         ),
         (
-            'void t() { int n = 3; int k = 0; for (int i = 0; n > i; i++) k++; printf("%d\\n", k); }',
+            "void t() { int n = 3; int k = 0; for (int i = 0; n > i; i++) k++;"
+            ' printf("%d\\n", k); }',
             "3\n",
         ),
         ('void t() { struct P { int a; } p; p.a = 4; printf("%d\\n", p.a); }', "4\n"),
@@ -81,7 +83,8 @@ def body(source: str) -> str:
         ('void f(int a); void f(int) {}\nvoid t() { f(1); printf("ok\\n"); }', "ok\n"),
         ('int Nope::counter = 3; void t() { printf("%d\\n", counter); }', "3\n"),
         (
-            'void t() { const char * const p = "x"; enum class Mode m = Mode::kA; printf("%s\\n", p); }'
+            'void t() { const char * const p = "x"; enum class Mode m = Mode::kA;'
+            ' printf("%s\\n", p); }'
             "enum class Mode { kA };",
             "x\n",
         ),
@@ -173,7 +176,8 @@ def test_streams_write_to_a_file_given_them_and_format_anything() -> None:
             "0\n",
         ),
         (
-            "void t() { for (int i = 0; i < 3; i++) { switch (i) { case 1: continue; default: break; }"
+            "void t() { for (int i = 0; i < 3; i++) {"
+            " switch (i) { case 1: continue; default: break; }"
             ' printf("%d", i); } printf("\\n"); }',
             "02\n",
         ),
@@ -297,3 +301,8 @@ def test_a_string_written_into_a_buffer_of_roots_is_assigned_there() -> None:
 def test_a_variable_initialised_from_a_name_is_not_a_function_declaration() -> None:
     text = translate("int value(unknownThing), m;", "t.C")
     assert "value = int(ROOT.unknownThing)" in text
+
+
+def test_assigning_to_an_operators_result_is_refused() -> None:
+    with pytest.raises(Refusal, match="assigning to something that is not a variable"):
+        body("int x = 0; -x = 3;")
