@@ -118,7 +118,7 @@ def test_compare_images_falls_back_to_numpy_without_scikit_image(monkeypatch):
 def test_the_namespace_has_the_graphics_and_refuses_what_it_lacks_by_name():
     assert ROOT.TCanvas is ROOT.graphics.TCanvas and ROOT.kBird == 57
     assert "TCanvas" in ROOT.__all__ and "gStyle" in ROOT.__all__
-    with pytest.raises(AttributeError, match="ROOT has TNothing; xrdroot.pyroot does not yet"):
+    with pytest.raises(AttributeError, match=r"ROOT has TNothing; xrdroot\.pyroot does not yet"):
         ROOT.TNothing  # noqa: B018
 
 

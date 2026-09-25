@@ -233,3 +233,13 @@ def test_colours_and_a_palette_made_in_the_session_go_with_the_canvas():
     (table,) = snapshot.model(c).colors
     assert table[-1].get("fNumber") == colour
     assert snapshot.model(c).palette().rgb(colour) == pytest.approx((12 / 255, 34 / 255, 56 / 255))
+
+
+def test_raw_data_is_drawn_found_and_labelled_by_its_own_name_and_title():
+    c = ROOT.TCanvas("c", "c")
+    h = gaussian("raw")._xrd
+    c.add(h, "")
+    legend = ROOT.TLegend()
+    assert c.FindObject("raw") is h and legend.AddEntry(h).GetLabel() == "A Gaussian"
+    copy = legend.DrawClone()
+    assert copy is not legend and c.primitives[-1][0] is copy
