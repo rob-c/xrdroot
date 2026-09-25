@@ -107,6 +107,21 @@ h.mean(), h.std(), h.integral(), h.rebin(4), h / other
 Profiles and efficiencies book and fill the same way, and the arithmetic,
 rebinning and projections are ROOT's, errors and all.
 
+## Analysis
+
+`RDataFrame` is ROOT's declarative analysis — ROOT's methods, ROOT's C++
+expressions with `ROOT::VecOps` — evaluated lazily, in one pass, over whole
+batches of entries with NumPy, and across worker processes with results that
+are the same to the last bit:
+
+```python
+df = xrdroot.RDataFrame("Events", "run*.root")
+pair = df.Filter("nMuon == 2", "two muons").Filter("Muon_charge[0] != Muon_charge[1]")
+m = pair.Define("m", "InvariantMass(Muon_pt, Muon_eta, Muon_phi, Muon_mass)")
+h = m.Histo1D(("m", "dimuon mass", 300, 0.25, 300), "m")
+h.GetValue().plot(); print(df.Report().GetValue())
+```
+
 ## Drawing
 
 Histograms and graphs draw themselves: `.plot()` onto matplotlib axes when

@@ -6,7 +6,8 @@ in the way. What it reads comes back as NumPy arrays, and
 [goes on](#into-pandas-awkward-arrow-and-polars) to pandas, Awkward, Arrow,
 Polars and `hist` in one call. It [writes new files](#writing) too, and
 histograms and graphs [draw themselves](#drawing), onto matplotlib axes or into
-plain characters.
+plain characters. [`RDataFrame`](#rdataframe) is ROOT's declarative analysis over
+all of it: lazy, in one pass, a batch of entries at a time.
 
 ```python
 import xrdroot
@@ -786,6 +787,227 @@ Turning what comes out of a tree into tensors is [`xrdml`](https://github.com/ro
 a package of its own on top of this one: `xrdml.tensors` batches a tree into
 PyTorch or TensorFlow a basket at a time, and `xrdml.load` takes a URL
 straight to a training loop.
+
+## RDataFrame
+
+`xrdroot.RDataFrame` is ROOT's declarative analysis: describe what to select,
+compute and fill, and one event loop does all of it, reading each column once.
+The interface is ROOT's, method for method, and the expressions are ROOT's
+too — C++, with `ROOT::VecOps` in scope. What is different is what runs.
+ROOT calls the code of a `Define` or `Filter` once per entry; here an
+expression, or a Python callable, is evaluated over a whole batch of entries
+at once, as NumPy arrays and `Jagged` collections, so nothing loops over
+entries in Python.
+
+ROOT's `df102_NanoAODDimuonAnalysis`, line for line:
+
+```python
+from xrdroot import RDataFrame
+
+df = RDataFrame("Events", "root://eospublic.cern.ch//eos/opendata/cms/Run2012BC_DoubleMuParked_Muons.root")
+two = df.Filter("nMuon == 2", "Events with exactly two muons")
+pair = two.Filter("Muon_charge[0] != Muon_charge[1]", "Muons with opposite charge")
+mass = pair.Define("Dimuon_mass", "InvariantMass(Muon_pt, Muon_eta, Muon_phi, Muon_mass)")
+h = mass.Histo1D(("Dimuon_mass", "Dimuon mass;m_{#mu#mu} (GeV);N_{Events}", 30000, 0.25, 300), "Dimuon_mass")
+report = df.Report()
+
+h.GetValue().plot()        # the loop runs here, once, for both results
+print(report.GetValue())
+# Events with exactly two muons: pass=... all=...   -- eff=... % cumulative eff=... %
+```
+
+Nothing is read until a result is asked for. `Define`, `Filter`, `Alias` and
+`Range` each give a new frame over the same graph, and leave the one they were
+called on as it was, so one source feeds several branches of an analysis;
+`Count`, `Sum`, `Histo1D` and the other actions book a result and give a
+`Result` — ROOT's `RResultPtr` — whose `GetValue()` (or `.value`, `float()`,
+iteration, indexing, or any attribute of the value itself) runs the loop for
+every result booked so far. A column is computed only for the entries that
+reach the node it was defined at, so a `Define` after a `Filter` never sees an
+entry the filter rejected.
+
+```python
+RDataFrame(tree)                                  # a TTree, a Chain or an RNTuple
+RDataFrame("Events", "events.root")               # a tree or RNTuple, by name
+RDataFrame("Events", ["a.root", "run2/*.root"])   # several files, globs too
+RDataFrame(1_000_000).Define("x", "rdfentry_ * 2.")   # empty entries to define columns on
+RDataFrame(tree, workers=4, step=200_000)         # four processes, batches of 200 000
+```
+
+A frame made from a name opens its files and closes them with `close()` or a
+`with` block; one handed a tree leaves it open.
+
+### Expressions
+
+A string is a C++ expression over the frame's columns, evaluated as C++
+would: integers stay integers and divide as C divides them (`7 / 2` is `3`),
+`float` stays `float`, `bool` and the small integers are promoted to `int`,
+and `^` is exclusive or. A collection is an `RVec`: arithmetic pairs its
+elements with another's one for one, a number per entry goes with each of its
+entry's elements, comparing gives an `RVec<int>`, and a mask indexes one:
+
+```python
+df.Define("good_pt", "Muon_pt[Muon_pt > 30 && abs(Muon_eta) < 2.4]")   # a collection per entry
+df.Define("n_good", "good_pt.size()")
+df.Define("lead", "n_good > 0 ? good_pt[0] : -1.f")
+df.Filter("Sum(Jet_pt > 30) >= 2", "two jets")
+df.Define("dr", "DeltaR(Muon_eta[0], Muon_eta[1], Muon_phi[0], Muon_phi[1])")
+df.Define("pairs", "Combinations(Muon_pt, 2)")       # Take(Muon_pt, pairs[0]) and pairs[1]
+```
+
+What C++ evaluates conditionally is evaluated conditionally: the right side of
+`&&` and `||`, and each branch of `? :`, is evaluated only for the entries that
+reach it, so `nMuon > 0 && Muon_pt[0] > 30` never looks at the first muon of an
+entry with none. Where C++ is undefined — an index past the end, the `Max` of
+an empty collection, an integer divided by zero — the expression is refused,
+naming the entry, rather than given a made-up value. A name no column has is
+refused when `Define` or `Filter` is called, with the nearest names that are
+columns.
+
+`ROOT::VecOps` is there by its bare names and with `VecOps::` or
+`ROOT::VecOps::` in front: `Sum`, `Product`, `Mean`, `Var`, `StdDev`, `Max`,
+`Min`, `ArgMax`, `ArgMin`, `Any`, `All`, `Dot`, `Take` (of positions, of the
+first or last `n`, padded with a default), `Nonzero`, `Where`, `Argsort`,
+`StableArgsort`, `Sort`, `Reverse`, `Concatenate`, `Drop`, `Enumerate`,
+`Range`, `Combinations`, `DeltaPhi`, `DeltaR2`, `DeltaR`, `InvariantMass` and
+`InvariantMasses`; so are `<cmath>` and `TMath`, element by element over
+collections, casts in all three spellings, and an `RVec`'s `size()`,
+`empty()`, `front()`, `back()` and `at(i)`. `rdfentry_` and `rdfslot_` are
+columns of every frame. A C++ lambda is refused, naming a Python callable —
+which does the same job — as the alternative.
+
+### Python callables
+
+A callable is given its columns a batch at a time — NumPy arrays, `Jagged`
+collections, lists of strings — named by `columns`, or by its own parameters
+when that is not given, and gives back one value per entry of the batch:
+
+```python
+import numpy as np
+from xrdroot.rdf import vecops
+
+df.Define("pt2", lambda Muon_pt: vecops.Map(np.square, Muon_pt))
+df.Define("r", np.hypot, ["x", "y"])
+df.Filter(lambda nMuon: nMuon >= 2, name="two or more")
+df.Define("mass", vecops.InvariantMass, ["Muon_pt", "Muon_eta", "Muon_phi", "Muon_mass"])
+```
+
+`xrdroot.rdf.vecops` is `ROOT::VecOps` for callables: the same functions by
+the same names, on a `Jagged` of every entry's collection at once, giving an
+array of one value per entry or another `Jagged`. They are the kernels the
+string expressions use, so the numbers are the same either way. Where C++
+would be undefined these do not make something up either: `Max` and `Min` put
+`default` (NaN unless told) in an empty entry, and `Take` past the end is
+refused unless given a default to pad with.
+
+### Results
+
+| Action | Gives |
+| --- | --- |
+| `Count()` | the number of entries reaching the node |
+| `Sum(c)`, `Mean(c)`, `Min(c)`, `Max(c)`, `StdDev(c)` | over every value — every element, of a collection |
+| `Stats(c, w)` | a `TStatistic`: `GetN`, `GetMean`, `GetRMS`, `GetMin`, `GetMax`, ... |
+| `Histo1D(model, x, w)`, `Histo1D(x)` | a `Histogram`, filled with ROOT's bookkeeping |
+| `Histo2D(model, x, y, w)`, `Histo3D(model, x, y, z, w)` | the same, of more axes |
+| `Profile1D(model, x, y, w)`, `Profile2D(model, x, y, z, w)` | a `Profile` |
+| `Graph(x, y)` | a `Graph` of a point per entry, in entry order |
+| `Take(c)`, `AsNumpy(columns, exclude)` | the values: an array, a `Jagged`, a list; a dict of them |
+| `Reduce(f, c, init)` | the values folded by `f` — a NumPy ufunc reduces a batch in C |
+| `Aggregate(aggregator, merger, c, init)` | `aggregator(acc, batch_values)` per batch, `merger(a, b)` across |
+| `Foreach(f, columns)`, `ForeachSlot` | `f` called on every batch, now |
+| `Display(columns, rows, elements)` | ROOT's box of the first entries |
+| `Report()` | the cut flow of the named filters, printed as ROOT prints it |
+| `Snapshot(tree, file, columns)` | the entries and columns written to a file, and a frame over it |
+
+A histogram's model is ROOT's `TH1DModel` as a tuple — `("name", "title",
+nbins, low, high)`, or a number of bins and a list of edges per axis, a
+profile's followed by the range of values it averages and its error option —
+or a `Histogram` or `Profile` already booked, whose binning and kind are used.
+Without one, `Histo1D` books 128 bins spanning every value it is filled with.
+Any column an action names may be an expression instead, as ROOT's actions do
+not allow: `df.Sum("x * 2")`.
+
+`Snapshot` writes as ROOT's does — immediately, with every other result booked
+— through `xrdroot.create`, a `TTree` or, with `rntuple=True`, an RNTuple:
+numbers, collections and strings; columns as a list or a regular expression,
+every one by default; `mode="UPDATE"` to add to a file already there;
+`lazy=True` for a `Result` rather than the frame over the file written. A
+loop that fails abandons the file rather than leaving half of one.
+
+`GetColumnNames()` (or `.columns`), `GetDefinedColumnNames()`,
+`GetColumnType(c)` — ROOT's names for the types, `Float_t` for a tree's
+branch, `ROOT::VecOps::RVec<double>` for a defined collection — `HasColumn`,
+`GetFilterNames`, `GetNRuns` and `Describe()` say what a frame is, and
+`to_pandas()`, `to_awkward()`, `to_arrow()` and `to_polars()` hand its columns
+over. Every method has a snake_case spelling too: `define`, `filter`,
+`histo1d`, `as_numpy`, `get_column_names`.
+
+### In parallel
+
+`workers=n`, or `xrdroot.EnableImplicitMT(n)` for every frame made after it,
+shares the loop across `n` worker processes — processes rather than ROOT's
+threads, which is what lets Python in a `Define` run side by side. The entries
+are cut into tasks of `step` entries that never straddle two files, a worker
+opens the files again for itself (a chain, a tree and an RNTuple all pickle as
+where their files are), and each task's partial results come back and are
+merged in task order — exactly as one process merges them — so the results
+are the same to the last bit however many workers made them. `workers=1`, the
+default, runs the same tasks here.
+
+Everything sent to a worker is pickled, so a callable must be a function
+defined at the top level of a module, or a NumPy function; a lambda is refused
+with that said. `Range`, which counts entries in the order they arrive, and
+`Foreach`, which runs for its side effects, are refused with more than one
+worker, as ROOT refuses `Range` under implicit multithreading. `RunGraphs`
+computes the results of several frames, in one loop for frames made over the
+very same tree object.
+
+A dimuon analysis like the one above, with a second histogram and the report,
+over a million NanoAOD-like entries in a local file, takes 1.45 s in one
+process — the same as reading its six columns with `arrays` and nothing else,
+1.47 s, because the vectorised arithmetic is a small part of it — and 1.04 s
+with four workers, process start-up included.
+
+### From ROOT
+
+| ROOT | xrdroot |
+| --- | --- |
+| `ROOT::RDataFrame df("Events", "f.root")` | `df = RDataFrame("Events", "f.root")` |
+| `ROOT::RDataFrame df(1000)` | `RDataFrame(1000)` |
+| `df.Define("pt2", "pt*pt")` | `df.Define("pt2", "pt*pt")` |
+| `df.Define("r", [](float x, float y) { ... }, {"x", "y"})` | `df.Define("r", func, ["x", "y"])` — `func` takes arrays |
+| `df.Filter("n > 1", "cut")` | `df.Filter("n > 1", "cut")` |
+| `df.Range(100)`, `df.Alias("a", "b")`, `df.Redefine(...)` | the same |
+| `df.Histo1D({"h", "t", 100, 0., 1.}, "x", "w")` | `df.Histo1D(("h", "t", 100, 0.0, 1.0), "x", "w")` |
+| `df.Profile1D({"p", "", 10, 0., 1., 0., 5., "s"}, "x", "y")` | `df.Profile1D(("p", "", 10, 0.0, 1.0, 0.0, 5.0, "s"), "x", "y")` |
+| `auto n = df.Count(); *n` | `n = df.Count(); n.GetValue()` |
+| `h->Draw()` | `h.GetValue().plot()` |
+| `df.Report()->Print()` | `print(df.Report().GetValue())` |
+| `df.Display({"x", "y"}, 5)->Print()` | `print(df.Display(["x", "y"], 5).GetValue())` |
+| `df.Snapshot("t", "out.root", {"x"})` | `df.Snapshot("t", "out.root", ["x"])` |
+| `ROOT::RDF::RSnapshotOptions opts; opts.fLazy = true` | `df.Snapshot(..., lazy=True)` |
+| `ROOT::EnableImplicitMT(4)` | `xrdroot.EnableImplicitMT(4)` |
+| `ROOT::RDF::RunGraphs({r1, r2})` | `xrdroot.RunGraphs([r1, r2])` |
+| `ROOT.RDataFrame(...).AsNumpy(["x"])` | `df.AsNumpy(["x"]).GetValue()` |
+| `ROOT::VecOps::Sum(v)` in C++ | `vecops.Sum(v)` in Python, `Sum(v)` in a string |
+
+What differs from ROOT, and why:
+
+- A callable is called once per batch with arrays, not once per entry with
+  numbers; it gives back an array of the batch's length.
+- `v.size()` is a `Long64_t` rather than `size_t`, so `v.size() - 1` of an
+  empty collection is `-1`, not a wrapped-around unsigned number.
+- What C++ leaves undefined is refused, naming the entry, rather than read out
+  of whatever memory was there.
+- `Sum` adds integers exactly and anything else in `double`, batch by batch,
+  with the batches' sums added by `math.fsum`; `StdDev` of fewer than two
+  values is zero, as go-hep has it; a `Graph`'s points are in entry order
+  however many workers there were.
+- `Histo1D` without a model spans exactly the values it was filled with, where
+  ROOT rounds the range out to "nice" numbers.
+- A loop that fails fails every result it was computing; results booked after
+  it compute as usual.
+- `Vary`, `DefineSlot`, `FilterAvailable` and string lambdas are not here.
 
 ## Writing
 
