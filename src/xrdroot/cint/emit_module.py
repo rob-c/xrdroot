@@ -82,6 +82,10 @@ class Translator(ClassEmitter):
             add(Symbol(name, "constant", py, CType("int")))
         for name in self.program.functions:
             add(Symbol(name, "function", python_name(name)))
+        self._predeclare_globals()
+
+    def _predeclare_globals(self) -> None:
+        add = self.scope.add
         cells = self.program.global_cells
         for name, var in self.program.globals.items():
             cell = name in cells and addressable(var.ctype)

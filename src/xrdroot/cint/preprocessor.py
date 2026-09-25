@@ -422,14 +422,18 @@ def _bind(macro: Macro, arguments: list[list[Token]], where: Where) -> dict[str,
         )
     named = dict(zip(params, arguments))
     if macro.variadic:
-        extra = arguments[len(params) :]
-        joined: list[Token] = []
-        for index, argument in enumerate(extra):
-            if index:
-                joined.append(Token("op", ",", where))
-            joined.extend(argument)
-        named["__VA_ARGS__"] = joined
+        named["__VA_ARGS__"] = _joined_arguments(arguments[len(params) :], where)
     return named
+
+
+def _joined_arguments(extra: list[list[Token]], where: Where) -> list[Token]:
+    """``__VA_ARGS__``: the arguments past the named ones, commas between them again."""
+    joined: list[Token] = []
+    for index, argument in enumerate(extra):
+        if index:
+            joined.append(Token("op", ",", where))
+        joined.extend(argument)
+    return joined
 
 
 def _arguments(work: deque[Token], where: Where) -> list[list[Token]]:

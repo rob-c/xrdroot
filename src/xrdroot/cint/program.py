@@ -226,14 +226,18 @@ class Program:
     def _enum(self, decl: EnumDecl, owner: ClassInfo | None) -> None:
         if decl.name:
             self.enums[decl.name] = decl
-        home = (decl.name or "") if decl.scoped else (owner.name if owner else "")
-        for item, _ in decl.items:
-            if owner is not None and not decl.scoped:
-                owner.constants[item] = owner.name
-            if not decl.scoped:
-                self.constants.setdefault(item, home)
+        if not decl.scoped:
+            self._enumerators(decl, owner)
         for var in decl.declarators:
             self.globals[var.name] = var
+
+    def _enumerators(self, decl: EnumDecl, owner: ClassInfo | None) -> None:
+        """An unscoped enum's names, which belong to the scope around it: a class, or the macro."""
+        home = owner.name if owner is not None else ""
+        for item, _ in decl.items:
+            if owner is not None:
+                owner.constants[item] = owner.name
+            self.constants.setdefault(item, home)
 
     def _attach(self) -> None:
         """Put each function where it belongs: a method in its class, the rest by name."""
@@ -264,17 +268,15 @@ class Program:
 
     def bodies(self) -> Iterator[tuple[Node, list[Param], Node]]:
         """Every function body, with its parameters: free functions, methods, the unnamed block."""
-        for funcs in self.functions.values():
-            for func in funcs:
-                if func.body is not None:
-                    yield func, func.params, func.body
-        for info in self.classes.values():
-            for methods in info.methods.values():
-                for func in methods:
-                    if func.body is not None:
-                        yield func, func.params, func.body
+        for func in [*_all(self.functions), *self.methods()]:
+            if func.body is not None:
+                yield func, func.params, func.body
         if self.unit.unnamed is not None:
             yield self.unit, [], self.unit.unnamed
+
+    def methods(self) -> list[Function]:
+        """Every method of every class of the macro's."""
+        return [func for info in self.classes.values() for func in _all(info.methods)]
 
     def _escapes(self) -> None:
         for owner, params, body in self.bodies():
@@ -322,6 +324,10 @@ class Program:
             if len(func.params) >= count:
                 return tuple(i for i, p in enumerate(func.params) if by_reference(p.ctype))
         return ()
+
+
+def _all(functions: dict[str, list[Function]]) -> list[Function]:
+    return [func for funcs in functions.values() for func in funcs]
 
 
 def by_reference(ctype: CType) -> bool:

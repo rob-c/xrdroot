@@ -166,17 +166,21 @@ class FunctionEmitter(VariableEmitter):
                 params.extend(self._captured(node))
                 self.out.line(f"def {py}({', '.join(params)}):", node.where)
                 with self.out.indented():
-                    head = self.out.mark()
-                    self.loops, saved = [], self.loops
-                    try:
-                        for stmt in node.body.body:
-                            self.statement(stmt)
-                    finally:
-                        self.loops = saved
-                    self._declare_scopes(context, head, node)
+                    self._lambda_body(node, context)
         finally:
             self.contexts.pop()
         return py, P.ATOM
+
+    def _lambda_body(self, node: Lambda, context: Context) -> None:
+        """A lambda's statements, with no loop around them for ``break`` to leave."""
+        head = self.out.mark()
+        self.loops, saved = [], self.loops
+        try:
+            for stmt in node.body.body:
+                self.statement(stmt)
+        finally:
+            self.loops = saved
+        self._declare_scopes(context, head, node)
 
     def _captured(self, node: Lambda) -> list[str]:
         """``[x]`` captures ``x`` by value: bound now, as a default, not looked up later."""

@@ -193,12 +193,14 @@ class VariableEmitter(StmtEmitter):
             return self.default(ctype, decl)
         if ctype.scalar:
             return self.store(ctype, args[0])
-        if ctype.pointer or ctype.is_smart or ctype.callable:
-            return self.value(args[0])
-        if ctype.is_string:
-            return f"cstr({self.value(args[0])})" if len(args) == 1 else self._string_of(args)
+        if ctype.pointer or ctype.is_smart or ctype.callable or ctype.is_string:
+            return self._held(ctype, args)
         items = ", ".join(self.value(arg) for arg in args)
-        if decl.style == "{}" and _container(ctype):
+        return self._built(ctype, items, decl.style == "{}")
+
+    def _built(self, ctype: CType, items: str, braces: bool) -> str:
+        """An object built from ``items``; a container from a braced list is built from a list."""
+        if braces and _container(ctype):
             return self._container_of(ctype, items)
         return f"{self.class_expr(ctype)}({items})"
 
@@ -207,6 +209,12 @@ class VariableEmitter(StmtEmitter):
         if not ctype.args:
             return f"[{items}]"
         return f"{self.class_expr(ctype)}([{items}])"
+
+    def _held(self, ctype: CType, args: list[Expr]) -> str:
+        """A pointer, callable or string built from arguments: what the first one is."""
+        if not ctype.is_string:
+            return self.value(args[0])
+        return f"cstr({self.value(args[0])})" if len(args) == 1 else self._string_of(args)
 
     def _string_of(self, args: list[Expr]) -> str:
         count, char = (self.value(arg) for arg in args[:2])

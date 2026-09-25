@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 from .base import P
+from .errors import Where
 from .ctype import CType
 from .emit_calls import CallEmitter
 from .loops import assigned_names, bound_of, cases, ends_in_jump, is_literal_step, jumps, stable
@@ -57,6 +58,12 @@ from .nodes import (
 )
 
 __all__ = ["StmtEmitter", "Loop", "STOPS"]
+
+#: The types a compound assignment must convert back into: rounded, wrapped or narrowed.
+NARROW = frozenset(
+    {"float", "short", "char", "signed char", "unsigned char", "unsigned short", "unsigned int",
+     "unsigned long", "unsigned long long", "bool"}
+)
 
 #: For ``i op bound`` stepping up (``True``) or down: what ``range``'s stop adds to the bound.
 STOPS = {
@@ -170,17 +177,15 @@ class StmtEmitter(CallEmitter):
 
     def _in_place(self, expr: Assign) -> bool:
         """Can ``x op= v`` be written as Python's own ``op=`` - no C conversion to make?"""
+        target = self.typeof(expr.target)
         if expr.op in ("/=", "%=", ">>=", "<<="):
             return False
-        target = self.typeof(expr.target)
         if target is None or not target.scalar:
-            return target is None or not target.scalar
-        if target.name == "float" or target.unsigned or target.name in ("short", "char"):
+            return True
+        if target.name in NARROW:
             return False
-        if target.integral:
-            value = self.typeof(expr.value)
-            return value is not None and value.integral
-        return True
+        value = self.typeof(expr.value)
+        return not target.integral or (value is not None and value.integral)
 
     def _increment_statement(self, expr: Unary) -> bool:
         if expr.op not in ("++", "--"):
@@ -448,8 +453,11 @@ class StmtEmitter(CallEmitter):
         word = "elif" if index else "if"
         return f"{word} {self._labels(subject, labels, [])}:"
 
-    def _statements(self, body: list[Stmt]) -> None:
+    def _statements(self, body: list[Stmt], fall: tuple[str, Where] | None = None) -> None:
+        """Statements indented in a scope of their own; with ``fall``, first set that flag."""
         with self.out.indented(), self.scoped():
+            if fall is not None:
+                self.out.line(f"{fall[0]} = True", fall[1])
             for stmt in body:
                 self.statement(stmt)
 
@@ -466,10 +474,7 @@ class StmtEmitter(CallEmitter):
                 for labels, stmts in groups:
                     test = self._labels(subject, labels, every)
                     self.out.line(f"if {fall} or {test}:", labels[0].where)
-                    with self.out.indented(), self.scoped():
-                        self.out.line(f"{fall} = True", labels[0].where)
-                        for stmt in stmts:
-                            self.statement(stmt)
+                    self._statements(stmts, (fall, labels[0].where))
                 self.out.line("break", node.where)
         finally:
             self.loops.pop()

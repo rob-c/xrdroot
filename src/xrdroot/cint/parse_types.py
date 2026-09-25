@@ -61,12 +61,13 @@ class TypeParser(Cursor):
         token = self.peek()
         if token.kind != "id" and not token.is_("::"):
             return False
-        text = token.text
-        if text in QUALIFIERS:
-            self._qualifier(words, text)
+        if token.text in QUALIFIERS:
+            self._qualifier(words, token.text)
             return True
-        if base:
-            return False
+        return not base and self._base_word(token.text, builtin, base, strict)
+
+    def _base_word(self, text: str, builtin: list[str], base: list[CType], strict: bool) -> bool:
+        """A word of the base type: a built-in's, ``decltype``, or a named type."""
         if text in BUILTIN_WORDS:
             builtin.append(self.take().text)
             return True

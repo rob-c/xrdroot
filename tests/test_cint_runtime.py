@@ -70,25 +70,40 @@ def test_the_printf_family_writes_where_c_and_root_write(capsys: pytest.CaptureF
     )
 
 
-def test_cout_formats_numbers_as_iostreams_do(capsys: pytest.CaptureFixture[str]) -> None:
+
+
+def same(got: object, expected: object) -> bool:
+    """Equal - with ``nan`` equal to itself, which is what a C function returning it means."""
+    if isinstance(expected, float) and math.isnan(expected):
+        return isinstance(got, float) and math.isnan(got)
+    return got == expected and type(got) is type(expected)
+
+
+@pytest.mark.parametrize(
+    ("items", "text"),
+    [
+        (["x = ", 1.0 / 3, " ", True, " ", 42], "x = 0.333333 1 42"),
+        ([rt.boolalpha, False, rt.noboolalpha, " ", False], "false 0"),
+        ([rt.fixed, rt.setprecision(2), 3.14159, " ", rt.scientific, 1234.5], "3.14 1.23e+03"),
+        ([rt.setw(6), 7, "|", rt.left, rt.setw(4), 1, "|"], "     7|1   |"),
+        ([rt.setfill("*"), rt.setw(3), 5, rt.setfill(ord("-")), rt.setw(2), 1], "**5-1"),
+        ([rt.hex, 255, " ", -1, rt.oct, " ", 8, " ", -1, rt.dec, " ", 9], "ff ffffffff 10 37777777777 9"),
+        ([rt.showpos, 3, " ", 2.5, rt.noshowpos, " ", 3], "+3 +2.5 3"),
+        ([None, " ", np.float32(0.1), " ", np.int32(3), rt.flush], "0 0.1 3"),
+        ([rt.setprecision(0), 2.5, " ", rt.defaultfloat, 1e-5], "2 1e-05"),
+    ],
+)
+def test_a_stream_formats_as_iostreams_do(items: list[object], text: str) -> None:
+    out = rt.ostringstream()
+    for item in items:
+        out << item
+    assert out.str() == text
+
+
+def test_endl_ends_the_line(capsys: pytest.CaptureFixture[str]) -> None:
     out = rt.ostream()
-    out << "x = " << 1.0 / 3 << " " << True << " " << 42 << rt.endl
-    out << rt.boolalpha << False << rt.noboolalpha << " " << False << rt.endl
-    out << rt.fixed << rt.setprecision(2) << 3.14159 << " " << rt.scientific << 1234.5 << rt.endl
-    out << rt.defaultfloat << rt.setw(6) << 7 << "|" << rt.left << rt.setw(4) << 1 << "|"
-    out << rt.right << rt.setfill("*") << rt.setw(3) << 5 << rt.setfill(ord("-")) << rt.endl
-    out << rt.hex << 255 << " " << -1 << rt.oct << " " << 8 << " " << -1 << rt.dec << rt.endl
-    out << rt.showpos << 3 << " " << 2.5 << rt.noshowpos << " " << None << " " << out.pad("a")
-    out << np.float32(0.1) << " " << np.int32(3) << " " << rt.flush << rt.endl
-    captured = capsys.readouterr().out.splitlines()
-    assert captured == [
-        "x = 0.333333 1 42",
-        "false 0",
-        "3.14 1.23e+03",
-        "     7|1   |**5",
-        "ff ffffffff 10 37777777777",
-        "+3 +2.5 0 a0.1 3 ",
-    ]
+    out << "a" << rt.endl << "b" << rt.endl
+    assert capsys.readouterr().out == "a\nb\n"
 
 
 def test_a_stream_keeps_cpps_member_functions() -> None:
@@ -121,10 +136,7 @@ def test_cout_writes_to_whatever_stdout_is_now(capsys: pytest.CaptureFixture[str
 def test_integer_division_truncates_toward_zero_as_c_does(
     a: int, b: int, quotient: int, rest: int
 ) -> None:
-    assert rt.idiv(a, b) == quotient
-    assert rt.imod(a, b) == rest
-    assert rt.div(a, b) == quotient
-    assert rt.mod(a, b) == rest
+    assert (rt.idiv(a, b), rt.imod(a, b), rt.div(a, b), rt.mod(a, b)) == (quotient, rest) * 2
 
 
 def test_division_of_unknown_types_is_true_division_unless_both_are_integers() -> None:
@@ -134,23 +146,32 @@ def test_division_of_unknown_types_is_true_division_unless_both_are_integers() -
         rt.idiv(1, 0)
 
 
-def test_stores_convert_as_c_converts() -> None:
-    assert rt.to_int(3.9) == 3
-    assert rt.to_int(-3.9) == -3
-    assert rt.to_int("A") == 65
-    assert rt.to_int(np.int64(5)) == 5
+@pytest.mark.parametrize(
+    ("got", "expected"),
+    [
+        (lambda: rt.to_int(3.9), 3),
+        (lambda: rt.to_int(-3.9), -3),
+        (lambda: rt.to_int("A"), 65),
+        (lambda: rt.to_int(np.int64(5)), 5),
+        (lambda: rt.f32(0.1), float(np.float32(0.1))),
+        (lambda: rt.u8(257), 1),
+        (lambda: rt.u16(-1), 65535),
+        (lambda: rt.u32(-1), 4294967295),
+        (lambda: rt.u64(-1), 2**64 - 1),
+        (lambda: rt.i8(200), -56),
+        (lambda: rt.i16(40000), -25536),
+        (lambda: rt.i32(2**31), -(2**31)),
+        (lambda: rt.i64(2**63), -(2**63)),
+        (lambda: rt.comma(1, 2, 3), 3),
+    ],
+)
+def test_stores_convert_as_c_converts(got: object, expected: object) -> None:
+    assert same(got(), expected)  # type: ignore[operator]
+
+
+def test_an_infinity_stored_into_an_integer_is_refused() -> None:
     with pytest.raises(OverflowError, match="does not fit"):
         rt.to_int(float("inf"))
-    assert rt.f32(0.1) == float(np.float32(0.1))
-    assert rt.u8(257) == 1
-    assert rt.u16(-1) == 65535
-    assert rt.u32(-1) == 4294967295
-    assert rt.u64(-1) == 2**64 - 1
-    assert rt.i8(200) == -56
-    assert rt.i16(40000) == -25536
-    assert rt.i32(2**31) == -(2**31)
-    assert rt.i64(2**63) == -(2**63)
-    assert rt.comma(1, 2, 3) == 3
 
 
 def test_exit_and_assert_stop_the_macro() -> None:
@@ -162,52 +183,89 @@ def test_exit_and_assert_stop_the_macro() -> None:
         rt.cassert(0, "why")
 
 
-def test_cmath_answers_nan_and_inf_where_python_raises() -> None:
-    assert math.isnan(rt.sqrt(-1))
-    assert rt.log(0) == -math.inf
-    assert math.isnan(rt.log(-1))
-    assert math.isnan(rt.log10(float("nan")))
-    assert rt.log2(8) == 3
-    assert rt.exp(1000) == math.inf
-    assert rt.pow(0, -1) == math.inf
-    assert math.isnan(rt.pow(-8, 1 / 3))
-    assert rt.pow(10, 400) == math.inf
-    assert rt.pow(2, 3) == 8.0
-    assert rt.cbrt(-8) == pytest.approx(-2)
-    assert rt.floor(2.5) == 2.0 and rt.ceil(2.5) == 3.0 and rt.trunc(-2.5) == -2.0
-    assert rt.floor(math.inf) == math.inf
-    assert rt.cround(2.5) == 3.0 and rt.cround(-2.5) == -3.0 and rt.cround(math.inf) == math.inf
-    assert rt.cabs(-3) == 3 and isinstance(rt.cabs(-3), int)
-    assert rt.cabs(-2.5) == 2.5
-    assert rt.isnan(math.nan) and rt.isinf(math.inf) and rt.isfinite(1.0)
-    assert rt.fmin(1, 2) == 1 and rt.fmax(1, 2) == 2
-    assert rt.sqrt.__name__ == "sqrt"
-    assert rt.M_PI == math.pi
+@pytest.mark.parametrize(
+    ("got", "expected"),
+    [
+        (lambda: rt.sqrt(-1), math.nan),
+        (lambda: rt.log(0), -math.inf),
+        (lambda: rt.log(-1), math.nan),
+        (lambda: rt.log10(math.nan), math.nan),
+        (lambda: rt.log2(8), 3.0),
+        (lambda: rt.exp(1000), math.inf),
+        (lambda: rt.pow(0, -1), math.inf),
+        (lambda: rt.pow(-8, 1 / 3), math.nan),
+        (lambda: rt.pow(10, 400), math.inf),
+        (lambda: rt.pow(2, 3), 8.0),
+        (lambda: round(rt.cbrt(-8), 12), -2.0),
+        (lambda: rt.floor(2.5), 2.0),
+        (lambda: rt.ceil(2.5), 3.0),
+        (lambda: rt.trunc(-2.5), -2.0),
+        (lambda: rt.floor(math.inf), math.inf),
+        (lambda: rt.cround(2.5), 3.0),
+        (lambda: rt.cround(-2.5), -3.0),
+        (lambda: rt.cround(math.inf), math.inf),
+        (lambda: rt.cabs(-3), 3),
+        (lambda: rt.cabs(-2.5), 2.5),
+        (lambda: rt.isnan(math.nan), True),
+        (lambda: rt.isinf(math.inf), True),
+        (lambda: rt.isfinite(1.0), True),
+        (lambda: rt.fmin(1, 2), 1.0),
+        (lambda: rt.fmax(1, 2), 2.0),
+        (lambda: rt.sqrt.__name__, "sqrt"),
+        (lambda: rt.M_PI, math.pi),
+    ],
+)
+def test_cmath_answers_nan_and_inf_where_python_raises(got: object, expected: object) -> None:
+    assert same(got(), expected)  # type: ignore[operator]
 
 
-def test_string_functions_read_c_strings_as_c_does() -> None:
-    assert rt.strlen("abc") == 3
-    assert rt.strcmp("a", "b") < 0 < rt.strcmp("b", "a")
-    assert rt.strcmp("a", "a") == 0
-    assert rt.strncmp("abc", "abd", 2) == 0
-    assert rt.strcasecmp("ABC", "abc") == 0
-    assert rt.strstr("hello", "ll") == "llo"
-    assert rt.strstr("hello", "z") is None
-    assert rt.strchr("hello", ord("e")) == "ello"
-    assert rt.atoi("  42abc") == 42 and rt.atoi("x") == 0
-    assert rt.atol("-7") == -7
-    assert rt.atof("2.5e1x") == 25.0 and rt.atof("nope") == 0.0
-    assert rt.stoi("12") == 12 and rt.stod("1.5") == 1.5
-    with pytest.raises(ValueError, match="std::stoi"):
-        rt.stoi("x")
-    with pytest.raises(ValueError, match="std::stod"):
-        rt.stod("x")
-    assert rt.to_string(3) == "3" and rt.to_string(2.5) == "2.500000"
-    assert rt.to_string(True) == "1"
-    assert rt.char_at("ab", 1) == 98 and rt.char_at("ab", 2) == 0
-    assert rt.find("hello", "l") == 2 and rt.find("hello", "z") == rt.npos
-    assert rt.rfind("hello", "l") == 3 and rt.rfind("hello", "z") == rt.npos
-    assert rt.substr("hello", 1, 3) == "ell" and rt.substr("hello", 2) == "llo"
-    with pytest.raises(IndexError, match="past the end"):
-        rt.substr("ab", 5)
-    assert rt.cstr(None) == "" and rt.cstr(65) == "A" and rt.cstr(1.5) == "1.5"
+@pytest.mark.parametrize(
+    ("got", "expected"),
+    [
+        (lambda: rt.strlen("abc"), 3),
+        (lambda: rt.strcmp("a", "b"), -1),
+        (lambda: rt.strcmp("b", "a"), 1),
+        (lambda: rt.strcmp("a", "a"), 0),
+        (lambda: rt.strncmp("abc", "abd", 2), 0),
+        (lambda: rt.strcasecmp("ABC", "abc"), 0),
+        (lambda: rt.strstr("hello", "ll"), "llo"),
+        (lambda: rt.strstr("hello", "z"), None),
+        (lambda: rt.strchr("hello", ord("e")), "ello"),
+        (lambda: rt.atoi("  42abc"), 42),
+        (lambda: rt.atoi("x"), 0),
+        (lambda: rt.atol("-7"), -7),
+        (lambda: rt.atof("2.5e1x"), 25.0),
+        (lambda: rt.atof("nope"), 0.0),
+        (lambda: rt.stoi("12"), 12),
+        (lambda: rt.stod("1.5"), 1.5),
+        (lambda: rt.to_string(3), "3"),
+        (lambda: rt.to_string(2.5), "2.500000"),
+        (lambda: rt.to_string(True), "1"),
+        (lambda: rt.char_at("ab", 1), 98),
+        (lambda: rt.char_at("ab", 2), 0),
+        (lambda: rt.find("hello", "l"), 2),
+        (lambda: rt.find("hello", "z"), rt.npos),
+        (lambda: rt.rfind("hello", "l"), 3),
+        (lambda: rt.rfind("hello", "z"), rt.npos),
+        (lambda: rt.substr("hello", 1, 3), "ell"),
+        (lambda: rt.substr("hello", 2), "llo"),
+        (lambda: rt.cstr(None), ""),
+        (lambda: rt.cstr(65), "A"),
+        (lambda: rt.cstr(1.5), "1.5"),
+    ],
+)
+def test_string_functions_read_c_strings_as_c_does(got: object, expected: object) -> None:
+    assert same(got(), expected)  # type: ignore[operator]
+
+
+@pytest.mark.parametrize(
+    ("call", "why"),
+    [
+        (lambda: rt.stoi("x"), "std::stoi"),
+        (lambda: rt.stod("x"), "std::stod"),
+        (lambda: rt.substr("ab", 5), "past the end"),
+    ],
+)
+def test_string_functions_that_throw_in_cpp_raise(call: object, why: str) -> None:
+    with pytest.raises((ValueError, IndexError), match=why):
+        call()  # type: ignore[operator]

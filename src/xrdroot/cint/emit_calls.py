@@ -224,13 +224,21 @@ class CallEmitter(ExprEmitter):
 
     def method_call(self, func: Member, node: Call) -> Out:
         owner = self.typeof(func.obj)
-        if owner is not None and owner.is_string and not owner.dims:
-            return self._string_method(func, node)
-        if owner is not None and owner.is_smart and not func.arrow:
-            return self._smart_method(func, node)
-        if func.name == "what" and owner is not None and "exception" in owner.name:
-            return f"str({self.value(func.obj)})", P.POSTFIX
+        if owner is not None:
+            special = self._typed_method(owner, func, node)
+            if special is not None:
+                return special
         return f"{self.value(func)}({self.arguments(node)})", P.POSTFIX
+
+    def _typed_method(self, owner: CType, func: Member, node: Call) -> Out | None:
+        """A member of a string, a smart pointer or an exception, rewritten as Python's."""
+        if owner.is_string and not owner.dims:
+            return self._string_method(func, node)
+        if owner.is_smart and not func.arrow:
+            return self._smart_method(func, node)
+        if func.name == "what" and "exception" in owner.name:
+            return f"str({self.value(func.obj)})", P.POSTFIX
+        return None
 
     def _string_method(self, func: Member, node: Call) -> Out:
         obj = self.value(func.obj)

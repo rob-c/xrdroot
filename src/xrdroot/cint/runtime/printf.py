@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Callable
 from typing import Any
 
 __all__ = ["cformat", "printf", "Printf", "sprintf", "Form", "fprintf", "puts", "putchar",
@@ -57,19 +58,40 @@ class _Arguments:
         return value
 
 
-def _value(conv: str, length: str | None, value: Any) -> Any:
-    bits = BITS[length]
-    if conv in "di":
-        return _signed(_integer(value), bits) if length in ("hh", "h") else _integer(value)
-    if conv in "ouxX":
-        return _integer(value) & ((1 << bits) - 1)
-    if conv in "eEfFgGaA":
-        return float(value)
-    if conv == "c":
-        return chr(_integer(value) & 0xFF) if not isinstance(value, str) else value[:1]
-    if conv == "p":
-        return id(value) if value else 0
+def _decimal(value: Any, length: str | None) -> int:
+    number = _integer(value)
+    return _signed(number, BITS[length]) if length in ("hh", "h") else number
+
+
+def _unsigned(value: Any, length: str | None) -> int:
+    return _integer(value) & ((1 << BITS[length]) - 1)
+
+
+def _character(value: Any, length: str | None) -> str:
+    return value[:1] if isinstance(value, str) else chr(_integer(value) & 0xFF)
+
+
+def _pointer(value: Any, length: str | None) -> int:
+    return id(value) if value else 0
+
+
+def _text(value: Any, length: str | None) -> str:
     return "(null)" if value is None else str(value)
+
+
+#: What each conversion makes of its argument before Python's ``%`` formats it.
+CONVERTERS: dict[str, Callable[[Any, str | None], Any]] = {
+    **dict.fromkeys("di", _decimal),
+    **dict.fromkeys("ouxX", _unsigned),
+    **dict.fromkeys("eEfFgGaA", lambda value, length: float(value)),
+    "c": _character,
+    "p": _pointer,
+    "s": _text,
+}
+
+
+def _value(conv: str, length: str | None, value: Any) -> Any:
+    return CONVERTERS[conv](value, length)
 
 
 def _spec(found: re.Match[str], arguments: _Arguments) -> str:

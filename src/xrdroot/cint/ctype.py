@@ -149,6 +149,11 @@ def builtin_name(words: list[str]) -> str:
     base = others[0] if others else _integer(words, longs)
     if base == "double" and longs:
         return "long double"
+    return _signed(base, words)
+
+
+def _signed(base: str, words: list[str]) -> str:
+    """``base`` with the sign the words give it: ``unsigned int``, ``signed char``."""
     if "unsigned" in words and base in SIGNABLE:
         return f"unsigned {base}"
     if base == "char" and "signed" in words:
