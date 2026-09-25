@@ -1189,3 +1189,30 @@ def test_an_efficiency_frames_its_pad_and_is_drawn_as_points_or_a_grid():
     e2 = Efficiency.book("e2", (2, 0.0, 2.0), (2, 0.0, 4.0))
     e2.fill([True], [0.5], [1.0])
     assert _drawn(e2, "colz")[1].get_ylim() == (0.0, 4.0)
+
+
+def test_text_is_fitted_by_its_measured_width_or_a_guess_when_it_cannot_be_laid_out(monkeypatch):
+    from matplotlib import textpath
+
+    from xrdroot.canvas import paves
+
+    assert paves.ems(["WWWW"], 42) > paves.ems(["iiii"], 42) > 0
+    assert paves.ems([""]) == 0.0 and paves.ems([]) == 0.0
+
+    def refuses(*args, **kwargs):
+        raise ValueError("no")
+
+    monkeypatch.setattr(textpath, "TextPath", refuses)
+    paves._em_width.cache_clear()
+    assert paves._em_width("abcd", 42) == pytest.approx(4 * paves.CHARACTER)
+    paves._em_width.cache_clear()
+
+
+def test_tick_labels_are_plain_numbers_and_divisions_follow_fndivisions():
+    from xrdroot.canvas.frame import _plain
+
+    assert (_plain(2.0), _plain(2.5), _plain(1e-17), _plain(-3.0)) == ("2", "2.5", "0", "-3")
+    h = filled()
+    h._core["fXaxis"]["TAttAxis"]["fNdivisions"] = 505
+    _fig, ax = _drawn(h, "hist")
+    assert len(ax.get_xticks()) <= 7
