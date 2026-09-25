@@ -128,6 +128,16 @@ LAYOUTS: dict[str, list[Member]] = {
 }
 
 
+#: The version a class is written at, where the reader tells versions apart:
+#: a ``TCanvas`` streams itself, and says more the newer it is.
+VERSIONS: dict[str, int] = {"TCanvas": 8}
+#: Bases that write nothing at all, as ``TQObject``'s streamer does.
+SILENT = frozenset({"TQObject"})
+#: Classes that stream themselves and so are not described in the file ROOT
+#: writes, though the crafted writer is given their order to write them in.
+UNDESCRIBED = frozenset({"TCanvas", "TQObject"})
+
+
 class Out:
     """Bytes being written, with ROOT's byte counts filled in afterwards."""
 
@@ -161,6 +171,18 @@ class Out:
         self.pack("HII", 1, row.get("fUniqueID", 0), row.get("fBits", 0x03000000) & ~(1 << 4))
 
 
+def _counted(row: dict[str, Any], name: str) -> Any:
+    """How many a counted array holds: its counter, in the row or a base of it."""
+    if name in row:
+        return row[name]
+    for value in row.values():
+        if isinstance(value, dict):
+            found = _counted(value, name)
+            if found:
+                return found
+    return 0
+
+
 class Writer:
     """Objects written the way their descriptions say, which is how ROOT writes most."""
 
@@ -168,7 +190,9 @@ class Writer:
         self.layouts = layouts
 
     def record(self, out: Out, classname: str, row: dict[str, Any]) -> None:
-        at = out.start(1)
+        if classname in SILENT:
+            return
+        at = out.start(VERSIONS.get(classname, 1))
         for one in self.layouts[classname].values():
             self.member(out, one, row)
         out.end(at)
@@ -205,7 +229,7 @@ class Writer:
             out.pack(f"{one.length}{BASIC[one.stype - 20].typecode}", *fixed)
             return
         code = BASIC[one.stype - 40].typecode
-        values = list(value if value is not None else ())[: int(row.get(one.count, 0))]
+        values = list(value if value is not None else ())[: int(_counted(row, one.count))]
         out.pack("B", 1)
         out.pack(f"{len(values)}{code}", *values)
 
@@ -232,17 +256,18 @@ class Writer:
         self.held(out, classname, value)
         out.end(at)
 
-    def collection(self, out: Out, classname: str, items: list[tuple[str, Any]]) -> None:
+    def collection(self, out: Out, classname: str, items: list[tuple[Any, ...]]) -> None:
+        """A list of ``(class, members)``, or ``(class, members, option)`` in a ``TList``."""
         at = out.start(5 if classname == "TList" else 3)
         out.tobject()
         out.string("")
         out.pack("i", len(items))
         if classname == "TObjArray":
             out.pack("i", 0)
-        for held, value in items:
+        for held, value, *option in items:
             self.pointed(out, held, (held, value))
             if classname == "TList":
-                out.string("")
+                out.string(option[0] if option else "")
         out.end(at)
 
 
@@ -320,9 +345,19 @@ def _key(classname: str, name: str, seek: int, payload: bytes) -> bytes:
     return bytes(out.data + strings.data)
 
 
-def craft(path: pathlib.Path, objects: list[tuple[str, str, dict[str, Any]]]) -> pathlib.Path:
-    """A ROOT file at ``path`` holding each ``(class, name, members)`` as a key."""
-    known = layouts()
+def craft(
+    path: pathlib.Path,
+    objects: list[tuple[str, str, dict[str, Any]]],
+    known: dict[str, dict[str, Member]] | None = None,
+    undescribed: frozenset[str] = UNDESCRIBED,
+) -> pathlib.Path:
+    """A ROOT file at ``path`` holding each ``(class, name, members)`` as a key.
+
+    ``known`` is every layout the file is written with, :func:`layouts` if not
+    given; those in ``undescribed`` - the classes that stream themselves - are
+    written but not described.
+    """
+    known = layouts() if known is None else known
     writer = Writer(known)
     body = bytearray(b"\x00" * 160)  # the header, and the directory after it
     keys = []
@@ -332,7 +367,7 @@ def craft(path: pathlib.Path, objects: list[tuple[str, str, dict[str, Any]]]) ->
         header = _key(classname, name, len(body), bytes(out.data))
         keys.append(header)
         body += header + out.data
-    info = _infos(known)
+    info = _infos({name: members for name, members in known.items() if name not in undescribed})
     info_at = len(body)
     info_key = _key("TList", "StreamerInfo", info_at, info)
     body += info_key + info

@@ -68,7 +68,7 @@ def _shadow(scene: Scene, prim: Any, corners: tuple[float, float, float, float])
             y2 - y1,
             transform=scene.ndc,
             clip_on=False,
-            zorder=5.8,
+            zorder=scene.layer(),
             facecolor=scene.colors.rgb(lookup(prim, "fShadowColor", 1)),
             edgecolor="none",
         )
@@ -90,7 +90,7 @@ def draw_box(scene: Scene, prim: Any) -> tuple[float, float, float, float]:
             y2 - y1,
             transform=scene.ndc,
             clip_on=False,
-            zorder=5.9,
+            zorder=scene.layer(),
             **patch_style(scene, prim, outline=outlined),
         )
     )
@@ -237,7 +237,7 @@ def _symbol(scene: Scene, entry: Any, option: str, cell: tuple[float, float, flo
         scene.ax.add_artist(
             Rectangle(
                 (x - SYMBOL * room, y - SYMBOL * height), 2 * SYMBOL * room, 2 * SYMBOL * height,
-                transform=scene.ndc, clip_on=False, zorder=6,
+                transform=scene.ndc, clip_on=False, zorder=scene.layer(),
                 **patch_style(scene, source, outline="l" in option),
             )
         )  # fmt: skip
@@ -248,11 +248,18 @@ def _symbol(scene: Scene, entry: Any, option: str, cell: tuple[float, float, flo
         lines.append(([x, x], [y - SYMBOL * height, y + SYMBOL * height]))
     for xs, ys in lines:
         scene.ax.add_artist(
-            Line2D(xs, ys, transform=scene.ndc, clip_on=False, zorder=6, **scene.line(source))
+            Line2D(
+                xs,
+                ys,
+                transform=scene.ndc,
+                clip_on=False,
+                zorder=scene.layer(),
+                **scene.line(source),
+            )
         )
     if "p" in option:
         scene.ax.add_artist(
-            Line2D([x], [y], linestyle="none", transform=scene.ndc, clip_on=False, zorder=6,
+            Line2D([x], [y], linestyle="none", transform=scene.ndc, clip_on=False, zorder=scene.layer(),
                    **scene.marker(source))
         )  # fmt: skip
 

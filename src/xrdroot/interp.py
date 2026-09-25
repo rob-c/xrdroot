@@ -678,9 +678,13 @@ def _embedded(name: str, source: Source, seen: tuple[str, ...]) -> Callable[[Buf
     walking the members it declares is the whole of it. A collection is the
     exception: it streams itself, and what it holds is objects that each say
     which class they are.
+
+    What a list holds is pointed at, read only when it is met, so a class
+    may hold a list of its own kind - a pad the pads inside it - and the
+    reading still ends where the bytes do.
     """
     if name in LISTS:
-        classes = _Described(source, seen)
+        classes = _Described(source, ())
         return lambda buf: buf.tlist(classes)
     if name in OBJECT_ARRAYS:
         held = _Described(source, seen)
@@ -700,10 +704,10 @@ def _embedded(name: str, source: Source, seen: tuple[str, ...]) -> Callable[[Buf
 def _by_hand(name: str, source: Source, seen: tuple[str, ...]) -> Callable[[Buffer], Any] | None:
     """How a class that streams itself by hand reads, or ``None`` for any other.
 
-    ROOT writes no description of such a class - a ``TCanvas`` is the one
-    this reader knows - so its reader is written out in
-    :mod:`.canvas.streamer`, and handed a way to read the described classes
-    it is made of.
+    ROOT writes no description of such a class - a ``TCanvas``, and the
+    ``TQObject`` under every pad, are the ones this reader knows - so its
+    reader is written out in :mod:`.canvas.streamer`, and handed a way to
+    read the described classes it is made of.
     """
     from .canvas.streamer import STREAMED
 
@@ -874,11 +878,6 @@ def _reader(node: Any) -> Callable[[Buffer], Any]:
     return _sequence(node.item)
 
 
-#: Bases a class declares that write nothing at all: ``TQObject``, the
-#: signals and slots under every pad, streams itself as no bytes, not even
-#: a record, and a file does not describe it.
-SILENT_BASES = frozenset({"TQObject"})
-
 #: The bases ROOT's own kit gives a class, which stream themselves in a shape
 #: that is always the same, keyed by the streamer type that declares them.
 _KIT_BASES: dict[int, Callable[[Buffer], dict[str, Any]]] = {
@@ -955,8 +954,6 @@ def _object_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step 
         return _plainly(_datime)  # a class of its own that writes no record
     if member.stype in _KIT_BASES:
         return _plainly(_KIT_BASES[member.stype])
-    if member.stype == 0 and member.name in SILENT_BASES:
-        return _plainly(lambda _buf: {})
     if member.stype - OFFSET_L in (61, 62):
         # A fixed-size array of a class, written one object after another.
         one = _embedded(member.typename, source, seen)

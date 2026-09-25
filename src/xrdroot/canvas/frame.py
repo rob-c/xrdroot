@@ -150,6 +150,14 @@ def extent(obj: Any, option: str, pad: Pad) -> Extent:
     return 0.0, 0.0, 1.0, 1.0
 
 
+def _logarithmic(axis: Any) -> None:
+    """An axis scaled logarithmically, labelled with plain numbers as ROOT labels one."""
+    from matplotlib.ticker import LogFormatter
+
+    axis.set_major_formatter(LogFormatter())
+    axis.set_minor_formatter(LogFormatter(minor_thresholds=(1, 0.4)))
+
+
 def open_axes(scene: Scene) -> None:
     """The pad's axes: over its frame, scaled and ranged, or over all of it, bare."""
     pad = scene.pad
@@ -169,8 +177,13 @@ def open_axes(scene: Scene) -> None:
         ax.set_ylim(y1, y2)
         ax.set_axis_off()
         return
-    ax.set_xscale("log" if pad.logx else "linear")
-    ax.set_yscale("log" if pad.logy else "linear")
+    for scale, axis, log in (
+        (ax.set_xscale, ax.xaxis, pad.logx),
+        (ax.set_yscale, ax.yaxis, pad.logy),
+    ):
+        if log:
+            scale("log")
+            _logarithmic(axis)
     xmin, ymin, xmax, ymax = pad.frame if pad.painted else extent(*scene.owner, pad)
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
@@ -184,35 +197,41 @@ def _axes_of(obj: Any) -> Any:
     return framing if isinstance(framing, Histogram) else None
 
 
-def _frame_style(scene: Scene) -> Any:
-    """The ``TFrame`` the pad was drawn with, or the pad itself, whose frame members stand in."""
-    for obj, _option in scene.pad.primitives:
-        if getattr(obj, "classname", "") == "TFrame":
-            return obj
-    return None
+#: The frame's attributes, as a ``TFrame`` keeps them and as its pad does.
+FRAME_MEMBERS = {
+    "fFillStyle": ("fFrameFillStyle", 1001),
+    "fFillColor": ("fFrameFillColor", 0),
+    "fLineColor": ("fFrameLineColor", 1),
+    "fLineWidth": ("fFrameLineWidth", 1),
+}
+
+
+def _frame_style(pad: Pad) -> dict[str, Any]:
+    """The frame's fill and line: the ``TFrame`` it was drawn with, or else its pad's."""
+    frames = [obj for obj, _option in pad.primitives if getattr(obj, "classname", "") == "TFrame"]
+    if frames:
+        return {
+            name: lookup(frames[0], name, default) for name, (_, default) in FRAME_MEMBERS.items()
+        }
+    return {name: pad.get(member, default) for name, (member, default) in FRAME_MEMBERS.items()}
 
 
 def _frame(scene: Scene) -> None:
     """The frame's fill behind the data, and its outline in the frame's line style."""
     from matplotlib.patches import Rectangle
 
-    frame = _frame_style(scene)
-    pad = scene.pad
-    fill_style = lookup(frame, "fFillStyle") if frame else pad.get("fFrameFillStyle", 1001)
-    fill_color = lookup(frame, "fFillColor") if frame else pad.get("fFrameFillColor", 0)
-    line_color = lookup(frame, "fLineColor") if frame else pad.get("fFrameLineColor", 1)
-    line_width = lookup(frame, "fLineWidth") if frame else pad.get("fFrameLineWidth", 1)
-    fills, _hatch, alpha = styles.fill(fill_style if fill_style is not None else 1001)
+    style = _frame_style(scene.pad)
+    fills, _hatch, alpha = styles.fill(style["fFillStyle"])
     if fills:
         scene.ax.add_artist(
             Rectangle(
                 (0, 0), 1, 1, transform=scene.ax.transAxes, zorder=-50,
-                facecolor=scene.colors.rgba(fill_color or 0, alpha), edgecolor="none",
+                facecolor=scene.colors.rgba(style["fFillColor"], alpha), edgecolor="none",
             )
         )  # fmt: skip
     for spine in scene.ax.spines.values():
-        spine.set_color(scene.colors.rgb(line_color if line_color is not None else 1))
-        spine.set_linewidth(styles.points(float(line_width or 1)))
+        spine.set_color(scene.colors.rgb(style["fLineColor"]))
+        spine.set_linewidth(styles.points(float(style["fLineWidth"])))
 
 
 def _label(scene: Scene, axis: Any, which: str) -> None:

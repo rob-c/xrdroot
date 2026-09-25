@@ -22,9 +22,11 @@ named in a warning when it is drawn.
 
 from __future__ import annotations
 
+from typing import Any
+
 from .model import PRIMITIVES, Canvas, Pad, Primitive
 
-__all__ = ["CANVASES", "Canvas", "Pad", "Primitive"]
+__all__ = ["CANVASES", "Canvas", "Pad", "Primitive", "render"]
 
 #: The classes of a canvas that come back as more than a dictionary.
 CANVASES: dict[str, type] = {
@@ -32,3 +34,20 @@ CANVASES: dict[str, type] = {
     "TPad": Pad,
     **dict.fromkeys(PRIMITIVES, Primitive),
 }
+
+
+def render(obj: Any, path: Any, **options: Any) -> Any:
+    """Save a canvas or a pad as a picture, whatever the suffix of ``path`` says.
+
+    ``obj`` is a :class:`Canvas` or :class:`Pad`, or the members of a
+    ``TCanvas`` or ``TPad`` as a dictionary; ``options`` are
+    :meth:`matplotlib.figure.Figure.savefig`'s.
+    """
+    if isinstance(obj, dict):
+        obj = Canvas("TCanvas", obj) if "TPad" in obj else Pad("TPad", obj)
+    if not isinstance(obj, Pad):
+        raise TypeError(
+            f"only a canvas or a pad can be rendered as a canvas, and this is a "
+            f"{type(obj).__name__}; draw it with its own .plot() instead"
+        )
+    return obj.save(path, **options)

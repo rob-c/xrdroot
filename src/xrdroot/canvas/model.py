@@ -241,6 +241,23 @@ class Pad:
         """
         return any(getattr(entry, "classname", "") == "TFrame" for entry, _ in self.primitives)
 
+    def plot(self, figure: Any = None) -> Any:
+        """Draw onto a matplotlib figure: the pad alone, filling a canvas of ROOT's default size."""
+        whole = dict(self.members, fXlowNDC=0.0, fYlowNDC=0.0, fWNDC=1.0, fHNDC=1.0)
+        return Canvas("TCanvas", {"TPad": whole}).plot(figure)
+
+    def save(self, path: Any, **options: Any) -> Any:
+        """Draw, and save as whatever the suffix says: ``.png``, ``.pdf``, ``.svg``...
+
+        ``options`` are :meth:`matplotlib.figure.Figure.savefig`'s.
+        """
+        self.plot().savefig(path, **options)
+        return path
+
+    def save_as(self, path: Any, **options: Any) -> Any:
+        """``TPad::SaveAs``: the same as :meth:`save`."""
+        return self.save(path, **options)
+
     def __repr__(self) -> str:
         return f"<{self.classname} {self.name!r} of {len(self.primitives)} primitives>"
 
@@ -296,11 +313,6 @@ class Canvas(Pad):
         from .paint import paint
 
         return paint(self, figure)
-
-    def save(self, path: Any, **options: Any) -> Any:
-        """Draw, and save as whatever the suffix says: ``.png``, ``.pdf``, ``.svg``..."""
-        self.plot().savefig(path, **options)
-        return path
 
     def __repr__(self) -> str:
         return f"<TCanvas {self.name!r} {self.width}x{self.height} of {len(self.pads)} pads>"

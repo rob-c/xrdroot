@@ -69,5 +69,17 @@ def read_canvas(described: Described) -> Callable[[Buffer], dict[str, Any]]:
     return read
 
 
+def read_nothing(_described: Described) -> Callable[[Buffer], dict[str, Any]]:
+    """How a ``TQObject`` reads: as nothing, not even a record.
+
+    It is the signals and slots under every pad, a base the pad's
+    description declares, and its streamer writes no bytes at all.
+    """
+    return lambda _buf: {}
+
+
 #: The classes that stream themselves by hand, against how each is read.
-STREAMED: dict[str, Callable[[Described], Callable[[Buffer], Any]]] = {"TCanvas": read_canvas}
+STREAMED: dict[str, Callable[[Described], Callable[[Buffer], Any]]] = {
+    "TCanvas": read_canvas,
+    "TQObject": read_nothing,
+}

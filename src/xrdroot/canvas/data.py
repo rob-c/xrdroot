@@ -47,6 +47,8 @@ NPX = 100
 PALETTE_GAP, PALETTE_WIDTH = 0.005, 0.05
 #: The keywords of an error bar, which a graph drawn without its bars leaves out.
 BAR_KEYWORDS = frozenset({"fmt", "ecolor", "elinewidth", "capsize"})
+#: The error options drawn as boxes or a band rather than bars.
+BANDS = frozenset({"E2", "E3", "E4", "E5", "E6"})
 
 
 # -- histograms ------------------------------------------------------------------
@@ -168,14 +170,20 @@ def _errors_by_default(h: Histogram, words: frozenset[str]) -> bool:
     return isinstance(h, Profile) or h.weighted
 
 
+def _error_picture(scene: Scene, h: Histogram, words: frozenset[str]) -> None:
+    """The errors, as bars with markers or as boxes and bands, by which ``E`` it is."""
+    if words & BANDS:
+        _band(scene, h, words)
+    else:
+        _bars(scene, h, frozenset(words | {"E"}), markers=True)
+
+
 def _histogram_1d(scene: Scene, h: Histogram, words: frozenset[str]) -> None:
     errors = words & ERRORS or _errors_by_default(h, words)
     if "HIST" in words or not (errors or words & SHAPES):
         _outline(scene, h)
-    if errors and not words & {"E2", "E3", "E4", "E5", "E6"}:
-        _bars(scene, h, frozenset(words | {"E"}), markers=True)
-    elif errors:
-        _band(scene, h, words)
+    if errors:
+        _error_picture(scene, h, words)
     _points(scene, h, words)
     if words & {"B", "BAR"}:
         _bar_chart(scene, h)
@@ -278,19 +286,28 @@ def _hung(scene: Scene, obj: Any, words: frozenset[str], option: str) -> None:
     """What ROOT draws with an object: its fitted functions, and its stats box."""
     functions = obj.functions
     if "HIST" not in words:
-        for function in functions:
-            if isinstance(function, Function) and not int(lookup(function, "fBits", 0)) & NOT_DRAW:
-                paint_function(scene, function, "SAME")
+        _fits(scene, functions)
     saved = [one for one in functions if getattr(one, "classname", "") == "TPaveStats"]
     for box in saved:
         stats_box(scene, box, "")
-    if (
-        not saved
-        and isinstance(obj, Histogram)
-        and not scene.pad.painted
-        and shows_stats(obj, option)
-    ):
+    if not saved and _stats_made(scene, obj, option):
         default_stats(scene, obj)
+
+
+def _fits(scene: Scene, functions: list[Any]) -> None:
+    """The functions hung on an object, but for one told ``kNotDraw``."""
+    for function in functions:
+        if isinstance(function, Function) and not int(lookup(function, "fBits", 0)) & NOT_DRAW:
+            paint_function(scene, function, "SAME")
+
+
+def _stats_made(scene: Scene, obj: Any, option: str) -> bool:
+    """Whether drawing ``obj`` now would make a stats box, as ROOT does for a histogram.
+
+    A pad drawn before it was saved kept the box it made, if any, so this
+    is only for one saved without being drawn.
+    """
+    return isinstance(obj, Histogram) and not scene.pad.painted and shows_stats(obj, option)
 
 
 def paint_histogram(scene: Scene, h: Histogram, option: str) -> None:
@@ -371,22 +388,24 @@ def paint_graph(scene: Scene, g: Graph, option: str) -> None:
 
 def paint_multigraph(scene: Scene, mg: MultiGraph, option: str) -> None:
     """A ``TMultiGraph``: each graph by its own option, or the multigraph's without its axes."""
-    held = mg.members.get("fGraphs") or []
-    options = getattr(held, "options", [""] * len(mg))
     shared = strip_same(option).replace("A", "")
-    for graph, own in zip(mg, options):
+    for graph, own in zip(mg, _held_options(mg, "fGraphs")):
         paint_graph(scene, graph, own or shared)
     _hung(scene, mg, frozenset(), option)
 
 
+def _held_options(held: Any, member: str) -> list[str]:
+    """The option each thing in a multigraph or stack was added with, ``""`` for none."""
+    listed = held.members.get(member) or []
+    return list(getattr(listed, "options", [""] * len(held)))
+
+
 def paint_stack(scene: Scene, stack: Stack, option: str) -> None:
     """A ``THStack``: stacked, the top drawn first so each fill shows, or ``NOSTACK``."""
-    words = histogram_option(option)
-    held = stack.members.get("fHists") or []
-    options = getattr(held, "options", [""] * len(stack))
-    if "NOSTACK" in words or any(len(h.axes) != 1 for h in stack):
-        for h, own in zip(stack, options):
-            paint_histogram(scene, h, (own or option.upper().replace("NOSTACK", "")) + " SAME")
+    if "NOSTACK" in histogram_option(option) or any(len(h.axes) != 1 for h in stack):
+        shared = option.upper().replace("NOSTACK", "")
+        for h, own in zip(stack, _held_options(stack, "fHists")):
+            paint_histogram(scene, h, (own or shared) + " SAME")
         return
     totals = np.cumsum([h.values() for h in stack], axis=0) if len(stack) else []
     for h, total in reversed(list(zip(stack, totals))):

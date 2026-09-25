@@ -106,18 +106,24 @@ def fit_rows(h: Any, option: int) -> list[tuple[str, str]]:
     if not option or not fitted:
         return []
     function = fitted[0]
-    result = function.fit_result or {}
     parameters, probability, chi2 = _digits(option, 3)
-    rows: list[tuple[str, str]] = []
-    if chi2 and "chi2" in result:
-        rows.append(("#chi^{2} / ndf", f"{_value(result['chi2'])} / {int(result.get('ndf', 0))}"))
-    if probability and "chi2" in result:
-        rows.append(("Prob", _value(prob(result["chi2"], int(result.get("ndf", 0))))))
+    rows = _goodness(function.fit_result or {}, chi2, probability)
     if parameters:
         for label, value, error in zip(
             function.parameter_names, function.parameters, function.parameter_errors
         ):
             rows.append((label, f"{_value(value)} #pm {_value(error)}"))
+    return rows
+
+
+def _goodness(result: dict[str, Any], chi2: int, probability: int) -> list[tuple[str, str]]:
+    """The fit's chi-square over its degrees of freedom, and its probability, as asked."""
+    if "chi2" not in result:
+        return []
+    ndf = int(result.get("ndf", 0))
+    rows = [("#chi^{2} / ndf", f"{_value(result['chi2'])} / {ndf}")] if chi2 else []
+    if probability:
+        rows.append(("Prob", _value(prob(result["chi2"], ndf))))
     return rows
 
 

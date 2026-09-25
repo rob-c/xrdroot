@@ -28,7 +28,9 @@ ARROW_SIZE = 0.05
 
 def draw_text(scene: Scene, text: str, x: float, y: float, style: dict[str, Any], ndc: bool) -> Any:
     """One string at ``(x, y)``, already translated, in the style given."""
-    return scene.ax.text(x, y, text, transform=scene.where(ndc), clip_on=False, zorder=5, **style)
+    return scene.ax.text(
+        x, y, text, transform=scene.where(ndc), clip_on=False, zorder=scene.layer(), **style
+    )
 
 
 def _text(scene: Scene, prim: Primitive, latex: bool) -> None:
@@ -63,7 +65,14 @@ def line(scene: Scene, prim: Primitive, _option: str) -> None:
 
     xs, ys = _ends(prim)
     scene.ax.add_artist(
-        Line2D(xs, ys, transform=scene.where(prim.ndc), clip_on=False, zorder=4, **scene.line(prim))
+        Line2D(
+            xs,
+            ys,
+            transform=scene.where(prim.ndc),
+            clip_on=False,
+            zorder=scene.layer(),
+            **scene.line(prim),
+        )
     )
 
 
@@ -91,8 +100,8 @@ def arrow(scene: Scene, prim: Primitive, _option: str) -> None:
         mutation_scale=size * scene.pixels[1] * 0.5,
         transform=scene.where(prim.ndc),
         clip_on=False,
-        zorder=4,
-        color=style["color"],
+        zorder=scene.layer(),
+        edgecolor=style["color"],
         linewidth=style["linewidth"],
         linestyle=style["linestyle"],
         facecolor=filled["facecolor"] if filled else style["color"],
@@ -130,7 +139,7 @@ def box(scene: Scene, prim: Primitive, _option: str) -> None:
             abs(ys[1] - ys[0]),
             transform=scene.ax.transData,
             clip_on=False,
-            zorder=3,
+            zorder=scene.layer(),
             **patch_style(scene, prim),
         )
     )
@@ -163,7 +172,7 @@ def ellipse(scene: Scene, prim: Primitive, _option: str) -> None:
             closed=True,
             transform=scene.ax.transData,
             clip_on=False,
-            zorder=3,
+            zorder=scene.layer(),
             **patch_style(scene, prim),
         )
     )
@@ -180,7 +189,7 @@ def marker(scene: Scene, prim: Primitive, _option: str) -> None:
             linestyle="none",
             transform=scene.where(prim.ndc),
             clip_on=False,
-            zorder=5,
+            zorder=scene.layer(),
             **scene.marker(prim),
         )
     )

@@ -22,6 +22,8 @@ __all__ = ["Scene"]
 
 #: The text size ROOT's own kit gives a ``TAttText`` that was never set.
 TEXT_SIZE = 0.05
+#: Where the drawing classes start stacking, above the data, and how far apart.
+LAYERS, LAYER_STEP = 3.0, 0.001
 
 
 class Scene:
@@ -38,6 +40,7 @@ class Scene:
         "owner",
         "ndc",
         "stats",
+        "depth",
     )
 
     def __init__(
@@ -67,6 +70,17 @@ class Scene:
         self.ndc = Affine2D().scale(box[2], box[3]).translate(box[0], box[1]) + figure.transFigure
         #: How many stats boxes the pad has drawn, which offsets each new one.
         self.stats = 0
+        self.depth = 0
+
+    def layer(self) -> float:
+        """The next height to draw at, over everything drawn in the pad before.
+
+        ROOT paints a pad's primitives in order, each over the last, so each
+        drawing here stands a little above the one before it - and above the
+        data, which matplotlib draws low down.
+        """
+        self.depth += 1
+        return LAYERS + self.depth * LAYER_STEP
 
     # -- sizes ---------------------------------------------------------------
 
