@@ -40,20 +40,28 @@ SUBMODULES = [
 __all__: list[str] = []
 
 
-def _gather(namespace: dict[str, Any]) -> list[str]:
-    """Import each listed module that exists and put its ``__all__`` in ``namespace``."""
+def _gather(namespace: dict[str, Any] | None = None) -> list[str]:
+    """Import each listed module that exists and put its ``__all__`` in ``namespace``.
+
+    Without a namespace given it is this module's own, and ``__all__`` grows
+    by the names gathered.
+    """
+    into = globals() if namespace is None else namespace
     exported: list[str] = []
     for module in SUBMODULES:
         if importlib.util.find_spec(f"{__name__}.{module}") is None:
             continue
         found = importlib.import_module(f"{__name__}.{module}")
-        for name in found.__all__:
-            namespace[name] = getattr(found, name)
+        for name in getattr(found, "__all__", ()):
+            into[name] = getattr(found, name)
             exported.append(name)
+    if namespace is None:
+        fresh = [name for name in dict.fromkeys(exported) if name not in __all__]
+        __all__.extend(fresh)
     return exported
 
 
-__all__ = _gather(globals())
+_gather()
 
 
 def __getattr__(name: str) -> Any:

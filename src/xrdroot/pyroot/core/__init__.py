@@ -16,6 +16,7 @@ import importlib
 from typing import Any
 
 from .hooks import DRAWN, draw_hook, set_draw_hook
+from .hooks import _remember as _remember  # the default hook, which the graphics restore
 
 #: The families, in the order their names are gathered: a later one's wins.
 FAMILIES = (

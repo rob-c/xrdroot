@@ -18,12 +18,14 @@ from xrdroot.pyroot.core import directories, files, hooks
 def fresh(tmp_path: Any) -> Iterator[None]:
     """Run a test in ``tmp_path`` with nothing open, nothing in memory, nothing drawn."""
     here = os.getcwd()
+    installed = hooks._installed[0]
     os.chdir(tmp_path)
     _reset()
     try:
         yield
     finally:
         _reset()
+        hooks.set_draw_hook(installed)
         os.chdir(here)
 
 
