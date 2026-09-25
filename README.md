@@ -114,6 +114,17 @@ h[xrdroot.loc(10.0):xrdroot.loc(50.0)], h2[:, sum]    # UHI slicing, ROOT's book
 h.cumulative(), h.quantiles([0.5]), h.smooth()         # GetCumulative, GetQuantiles, Smooth
 ```
 
+The functions fits are made with are ROOT's too: a `TF1` read from a file,
+or hung on a histogram by a fit, is a `Function` in ROOT's formula language,
+evaluated over whole arrays, differentiated in its parameters and written
+back:
+
+```python
+f = xrdroot.Function("peak", "gaus(0) + pol1(3)", range=(0, 10))
+f(xs), f.gradient(xs), f.integral(0, 10)            # TF1::Eval, GradientPar, Integral
+h.attach(f); out["h"] = h                             # written with its fit
+```
+
 ## Analysis
 
 `RDataFrame` is ROOT's declarative analysis — ROOT's methods, ROOT's C++

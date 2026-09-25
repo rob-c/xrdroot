@@ -408,12 +408,12 @@ def test_an_object_the_writer_has_no_layout_for_is_refused():
             out["m"] = multi
 
 
-def test_a_histogram_with_fits_attached_is_refused_rather_than_stripped():
+def test_a_histogram_carrying_anything_but_functions_is_refused_rather_than_stripped():
     hist = Histogram.new("h", [0, 1, 2], [1, 2])
     hist.members["TH1"]["fFunctions"] = ["a fit"]
     buf = io.BytesIO()
     with create(buf) as out:
-        with pytest.raises(UnsupportedFeatureError, match="empty it first"):
+        with pytest.raises(UnsupportedFeatureError, match="take them out first"):
             out["h"] = hist
 
 
@@ -422,7 +422,7 @@ def test_an_axis_with_labels_is_refused_rather_than_silently_unlabelled():
     hist.members["TH1"]["fXaxis"]["fLabels"] = ["one", "two"]
     buf = io.BytesIO()
     with create(buf) as out:
-        with pytest.raises(UnsupportedFeatureError, match="empty it first"):
+        with pytest.raises(UnsupportedFeatureError, match="take them out first"):
             out["h"] = hist
 
 
@@ -561,8 +561,8 @@ def test_a_class_no_seed_describes_still_comes_out_of_the_closure():
 
 
 def test_a_list_holding_anything_refuses_and_an_unknown_class_does_too():
-    with pytest.raises(UnsupportedFeatureError, match="empty it first"):
-        _list(WBuffer(), "TList", [1, 2])
+    with pytest.raises(UnsupportedFeatureError, match="take them out first"):
+        _list(WBuffer(), "TList", [1, 2], {})
     with pytest.raises(UnsupportedFeatureError, match="carries a layout for"):
         _record(WBuffer(), "TCanvas", {}, {})
     with pytest.raises(UnsupportedFeatureError, match="rather than the dict"):

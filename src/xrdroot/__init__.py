@@ -31,7 +31,9 @@ RNTuple: lazy, in one pass, with C++ expressions and ``ROOT::VecOps``
 evaluated over whole batches of entries, and shared across processes by
 :func:`EnableImplicitMT`. :data:`gRandom` and :class:`TRandom3` are ROOT's
 random numbers to the bit, an array at a time, with the rest of ROOT's
-generators in :mod:`xrdroot.random`.
+generators in :mod:`xrdroot.random`. A :class:`Function` is ROOT's ``TF1``: a
+``TFormula`` or a Python model, read from a file or hung on a histogram by
+a fit, evaluated, differentiated and integrated over whole arrays.
 What it does not do is every ROOT class ever written: one whose layout the
 file does not describe, or one that streams itself in some way of its own, is
 refused by name with the class in the message, because a plausible misreading
@@ -60,6 +62,7 @@ from .entries import EntryList
 from .errors import FormatError, ROOTError, UnsupportedFeatureError
 from .file import Directory, Key, ROOTFile, open_root
 from .formula import Formula, FormulaError, compile_formula
+from .function import Function
 from .graph import Graph
 from .hist import Axis, Histogram
 from .profile import Profile
@@ -106,6 +109,7 @@ __all__ = [
     "Stack",
     "Graph",
     "MultiGraph",
+    "Function",
     # indexing, as UHI does it
     "loc",
     "rebin",

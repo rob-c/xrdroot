@@ -3,7 +3,8 @@
 A file describes a histogram the way it describes any other class, and read
 member by member that is what it would be: a dictionary. For the classes
 analysis actually handles - histograms, profiles, graphs, efficiencies,
-sparse histograms, the lists that draw several at once, and entry lists -
+sparse histograms, the lists that draw several at once, entry lists, and
+the functions a fit is made with -
 that dictionary is handed to the class that knows what the members mean.
 This is the one table saying which, used for a key of a file and for an
 object met inside another alike, so the two can never disagree.
@@ -16,6 +17,8 @@ from typing import Any
 
 from .efficiency import EFFICIENCIES, Efficiency
 from .entries import ENTRY_LISTS, EntryList
+from .function import FUNCTIONS
+from .function.function import dress as function
 from .graph import GRAPHS, Graph
 from .hist import HISTOGRAMS, Histogram
 from .profile import PROFILES, Profile
@@ -33,6 +36,7 @@ CLASSES: dict[str, Callable[[str, dict[str, Any]], Any]] = {
     **dict.fromkeys(EFFICIENCIES, Efficiency),
     **dict.fromkeys(SPARSE, SparseHistogram),
     **dict.fromkeys(ENTRY_LISTS, EntryList),
+    **dict.fromkeys(FUNCTIONS, function),
     **COLLECTIONS,
 }
 

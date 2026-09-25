@@ -20,6 +20,14 @@ and ``TProfile2D`` from ``tprofile.root``, ``TH1F`` from ``tgme.root``,
 adds ``fStatOverflows`` to the end of ``TH1``, where a reader of the older
 layout steps over it.
 
+The functions a fit is made with are of that vintage too, and from the same
+donors: ``TF1``, ``TFormula`` and ``TF1Parameters`` from ``tgme.root`` - whose
+``TMultiGraph`` ROOT fitted with a ``pol1`` - and ``TF1AbsComposition``,
+which ``tgme.root`` never needed, from ``tformula.root``, which ROOT 6.24
+wrote as well. That ``TFormula`` is version 13, the last without
+``fNumber``; ROOT 6.34 reads it. ``TF2`` and ``TF3`` have no donor here at
+all, so they are read - a file describes them - but not written.
+
 Eleven histogram classes - ``TH1C``, ``TH1S`` and ``TH1I``, the same three
 and ``TH2F`` in two dimensions, and the other four ``TH3`` classes - have no
 donor of that vintage here. Each is nothing but two bases, a ``TH1``, ``TH2``
@@ -55,6 +63,7 @@ SUBVERSIONS = {
     "TStreamerObject": 2,
     "TStreamerObjectAny": 2,
     "TStreamerObjectPointer": 2,
+    "TStreamerObjectAnyPointer": 1,
     "TStreamerSTL": 3,
 }
 
@@ -334,6 +343,88 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
          64, 8, 0, 0, (0, 0, 0, 0, 0), 'TH1*', ()),
         ('TStreamerBasicType', 'fWeight', 'weight for all events (default = 1)',
          8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+    )),
+    "TF1": (0x7223ffd8, 12, (
+        ('TStreamerBase', 'TNamed', 'The basis for a named object (name, title)',
+         67, 0, 0, 0, (0, -541636036, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerBase', 'TAttLine', 'Line attributes',
+         0, 0, 0, 0, (0, -1811462839, 0, 0, 0), 'BASE', (2,)),
+        ('TStreamerBase', 'TAttFill', 'Fill area attributes',
+         0, 0, 0, 0, (0, -2545006, 0, 0, 0), 'BASE', (2,)),
+        ('TStreamerBase', 'TAttMarker', 'Marker attributes',
+         0, 0, 0, 0, (0, 689802220, 0, 0, 0), 'BASE', (2,)),
+        ('TStreamerBasicType', 'fXmin', 'Lower bounds for the range',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fXmax', 'Upper bounds for the range',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fNpar', 'Number of parameters',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fNdim', 'Function dimension',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fNpx', 'Number of points used for the graphical representation',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fType', '',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'TF1::EFType', ()),
+        ('TStreamerBasicType', 'fNpfits', 'Number of points used in the fit',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fNDF', 'Number of degrees of freedom in the fit',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fChisquare', 'Function fit chisquare',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fMinimum', 'Minimum value for plotting',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fMaximum', 'Maximum value for plotting',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerSTL', 'fParErrors', 'Array of errors of the fNpar parameters',
+         500, 24, 0, 0, (0, 0, 0, 0, 0), 'vector<double>', (1, 8)),
+        ('TStreamerSTL', 'fParMin', 'Array of lower limits of the fNpar parameters',
+         500, 24, 0, 0, (0, 0, 0, 0, 0), 'vector<double>', (1, 8)),
+        ('TStreamerSTL', 'fParMax', 'Array of upper limits of the fNpar parameters',
+         500, 24, 0, 0, (0, 0, 0, 0, 0), 'vector<double>', (1, 8)),
+        ('TStreamerSTL', 'fSave', 'Array of fNsave function values',
+         500, 24, 0, 0, (0, 0, 0, 0, 0), 'vector<double>', (1, 8)),
+        ('TStreamerBasicType', 'fNormalized', 'Normalization option (false by default)',
+         18, 1, 0, 0, (0, 0, 0, 0, 0), 'bool', ()),
+        ('TStreamerBasicType', 'fNormIntegral', 'Integral of the function before being normalized',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerObjectPointer', 'fFormula',
+         'Pointer to TFormula in case when user define formula',
+         64, 8, 0, 0, (0, 0, 0, 0, 0), 'TFormula', ()),
+        ('TStreamerObjectAnyPointer', 'fParams',
+         'Pointer to Function parameters object (exists only for not-formula functions)',
+         69, 8, 0, 0, (0, 0, 0, 0, 0), 'TF1Parameters', ()),
+        ('TStreamerObjectPointer', 'fComposition', 'Pointer to composition (NSUM or CONV)',
+         64, 8, 0, 0, (0, 0, 0, 0, 0), 'TF1AbsComposition', ()),
+    )),
+    "TFormula": (0x3d29ef01, 13, (
+        ('TStreamerBase', 'TNamed', 'The basis for a named object (name, title)',
+         67, 0, 0, 0, (0, -541636036, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerSTL', 'fClingParameters', 'parameter values',
+         500, 24, 0, 0, (0, 0, 0, 0, 0), 'vector<double>', (1, 8)),
+        ('TStreamerBasicType', 'fAllParametersSetted',
+         'flag to control if all parameters are setted',
+         18, 1, 0, 0, (0, 0, 0, 0, 0), 'bool', ()),
+        ('TStreamerSTL', 'fParams', '|| list of  parameter names',
+         500, 48, 0, 0, (0, 0, 0, 0, 0), 'map<TString,int,TFormulaParamOrder>', (4, 61)),
+        ('TStreamerString', 'fFormula', 'string representing the formula expression',
+         65, 24, 0, 0, (0, 0, 0, 0, 0), 'TString', ()),
+        ('TStreamerBasicType', 'fNdim', 'Dimension - needed for lambda expressions',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerSTL', 'fLinearParts', 'vector of linear functions',
+         500, 24, 0, 0, (0, 0, 0, 0, 0), 'vector<TObject*>', (1, 63)),
+        ('TStreamerBasicType', 'fVectorized',
+         'whether we should use vectorized or regular variables',
+         18, 1, 0, 0, (0, 0, 0, 0, 0), 'bool', ()),
+    )),
+    "TF1Parameters": (0xd703028e, 1, (
+        ('TStreamerSTL', 'fParameters', 'parameter values',
+         500, 24, 0, 0, (0, 0, 0, 0, 0), 'vector<double>', (1, 8)),
+        ('TStreamerSTL', 'fParNames', 'parameter names',
+         500, 24, 0, 0, (0, 0, 0, 0, 0), 'vector<string>', (1, 61)),
+    )),
+    "TF1AbsComposition": (0xa71d6529, 1, (
+        ('TStreamerBase', 'TObject', 'Basic ROOT object',
+         66, 0, 0, 0, (0, -1877229523, 0, 0, 0), 'BASE', (1,)),
     )),
     "TGraph": (0x05f7f465, 4, (
         ('TStreamerBase', 'TNamed', 'The basis for a named object (name, title)',

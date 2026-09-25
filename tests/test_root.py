@@ -930,18 +930,19 @@ def test_a_container_of_objects_is_read_one_object_after_another():
     """``fFunctions`` is a ``vector<TF1*>``: a count, then each object named."""
     with opened("tformula") as root:
         summed = root["fnorm"]
-        assert [held["TNamed"]["fName"] for held in summed["fFunctions"]] == ["func1", "func2"]
+        assert [held.name for held in summed["fFunctions"]] == ["func1", "func2"]
         assert list(summed["fCoeffs"]) == [10.0, 20.0]
         assert summed["fParNames"] == ["Coeff0", "Coeff1", "p01", "p11", "p02", "p12"]
 
 
-def test_a_member_of_a_class_this_reader_cannot_walk_comes_back_as_its_name():
-    """Stepping over it by the length in front of it beats guessing at its shape."""
+def test_a_map_inside_an_object_is_read_pair_by_pair():
+    """A ``TFormula`` keeps its parameter names in a map written a key then a value at a time."""
     with opened("tformula") as root:
-        formula = root["func1"]
-        assert formula["fFormula"] == "TFormula"
-        assert formula["fComposition"] is None  # a null pointer is nothing at all
-        assert list(formula["fParErrors"]) == [0.0, 0.0]
+        members = root["func1"].members
+        assert members["fFormula"]["fParams"] == {"p0": 0, "p1": 1}
+        assert members["fFormula"]["fFormula"] == "[p0]+[p1]*x"
+        assert members["fComposition"] is None  # a null pointer is nothing at all
+        assert list(members["fParErrors"]) == [0.0, 0.0]
 
 
 def test_a_container_written_field_by_field_is_read_a_field_at_a_time():

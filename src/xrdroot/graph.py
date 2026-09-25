@@ -17,6 +17,7 @@ from . import graphmath
 from .draw import axes
 from .efficiency import Efficiency
 from .errors import FormatError, UnsupportedFeatureError
+from .function.attached import listed
 from .hist import FILL, LINE, MARKER, Histogram
 
 __all__ = ["GRAPHS", "Graph"]
@@ -81,6 +82,15 @@ class Graph:
     def title(self) -> str:
         """The title it is drawn with, which is usually a sentence about it."""
         return str(self._core["TNamed"]["fTitle"])
+
+    @property
+    def functions(self) -> list[Any]:
+        """``GetListOfFunctions``: the fits and functions attached, written with it."""
+        return listed(self._core)
+
+    def attach(self, function: Any) -> None:
+        """Hang ``function`` - a :class:`~xrdroot.Function`, a fit - on this graph."""
+        self.functions.append(function)
 
     def __len__(self) -> int:
         return len(self.x)

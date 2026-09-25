@@ -374,10 +374,16 @@ def test_a_container_written_field_by_field_is_refused_rather_than_guessed():
         column.value(Buffer(record(0x4000 | 6)), 0)
 
 
-def test_a_map_written_pair_by_pair_is_refused_rather_than_guessed():
+def test_a_map_written_pair_by_pair_is_read_a_key_then_its_value():
+    """How a map inside an object streamed by its class goes - a ``TFormula``'s names."""
     column = column_of("map<int,int>")
-    with pytest.raises(UnsupportedFeatureError, match="pair by pair"):
-        column.value(Buffer(record(6)), 0)
+    body = struct.pack(">Iiiii", 2, 7, 70, 8, 80)
+    assert column.value(Buffer(record(6, body)), 0) == {7: 70, 8: 80}
+
+
+def test_a_map_ordered_by_a_comparator_of_its_own_is_the_same_map():
+    assert py_name(parse("map<TString,int,TFormulaParamOrder>")) == "dict[str, int32]"
+    assert parse("map<int>") is None
 
 
 class Fake:

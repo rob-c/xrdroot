@@ -1,6 +1,6 @@
 # ROOT files used by the tests
 
-Forty-one small ROOT files, taken unchanged from the [go-hep](https://github.com/go-hep/hep)
+Forty-three small ROOT files, taken unchanged from the [go-hep](https://github.com/go-hep/hep)
 project's `groot/testdata`, and used here to check that `xrdclient.root` reads what
 ROOT wrote. They are here rather than generated because the only honest test
 of a reader is bytes somebody else's writer produced. The writer this library
@@ -43,8 +43,9 @@ The layouts it writes trees with were harvested the same way — from
 | `gauss-h2.root` | two-dimensional histograms, for the order the bins are written in |
 | `streamers.root` | objects held by pointer, arrays of them, and the class names written in front |
 | `tconfidence-level.root` | a `TObjArray` member, a class of no members at all, and a `vector<pair<double,double>>` |
-| `tformula.root` | a `vector<TF1*>`, and a member of a class no reader here can walk |
-| `tgme.root` | a `TGraphMultiErrors` whose containers are written field by field |
+| `tformula.root` | `TF1`s of a formula and of C++ code, the ROOT 6.24 `TFormula` with its parameter names in a map, a `vector<TF1*>`, and a function's `fSave` samples |
+| `tformula-v14.root` | the same functions written by ROOT 6.34, whose `TFormula` is version 14 and carries `fNumber` |
+| `tgme.root` | a `TGraphMultiErrors` whose containers are written field by field, and a `TMultiGraph` fitted with `pol1`, whose `fSave` is ROOT's own evaluation of it |
 | `chain.1.root`, `chain.2.root` | one tree of whole objects written as two files, read as one chain |
 | `chain.flat.1.root`, `chain.flat.2.root` | thirty-five columns in two files of five entries, each value the negative of its entry across both |
 | `join1.root`, `join2.root`, `join3.root` | three trees of ten entries each, read as friends of one another |
