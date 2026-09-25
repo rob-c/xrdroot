@@ -28,6 +28,7 @@ class TEntryList(_TObjectLike):
         self._set: set[int] = set()
         self._sorted: np.ndarray[Any, Any] | None = None
         self._tree_name = tree.GetName() if tree is not None else ""
+        self._file_name = ""
         self._next = 0
 
     def __repr__(self) -> str:
@@ -89,14 +90,14 @@ class TEntryList(_TObjectLike):
 
     def SetTree(self, tree: Any, filename: str = "") -> None:
         self._tree_name = tree if isinstance(tree, str) else tree.GetName()
+        self._file_name = str(filename)
 
     def GetTreeName(self) -> str:
         return self._tree_name
 
     def Print(self, option: str = "") -> None:
-        """What ``TEntryList::Print`` shows: the tree, the count, and with ``all`` each entry."""
-        print(f"{self._tree_name}\t")
-        print(f"{self.GetN()}")
+        """What ``TEntryList::Print`` shows: tree, file and count, and with ``all`` each entry."""
+        print(f"{self._tree_name} {self._file_name} {self.GetN()}")
         if "all" in str(option).lower():
             for entry in self._entries().tolist():
                 print(entry)

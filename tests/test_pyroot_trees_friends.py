@@ -142,7 +142,7 @@ def test_an_entry_list_keeps_its_entries_once_each_and_in_order(capsys):
     elist.Add(other)
     elist.SetTree("T")
     elist.Print("all")
-    assert capsys.readouterr().out == "T\t\n2\n5\n7\n"
+    assert capsys.readouterr().out == "T  2\n5\n7\n"
     elist.SetTree(_parent())
     assert other.GetTreeName() == "T"
     elist.Reset()

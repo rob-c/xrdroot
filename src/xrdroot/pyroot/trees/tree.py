@@ -150,6 +150,8 @@ class TTree(_Player):
                 f"making the tree, or give it one with SetDirectory, then Write"
             )
         store.write(directory, name or self._name, self._title)
+        self._written = True
+        self._layout_cache = None
         return max(sum(branch.tot_bytes for branch in self._layout()), 1)
 
     def AutoSave(self, option: str = "") -> int:

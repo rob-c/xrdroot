@@ -94,10 +94,12 @@ def branch_lines(branch: BranchInfo, count: int) -> list[str]:
     first = head + f"{text or ' ':<54}"
     first = _wrapped(head, text) if len(first) > LINE_END else first + " *"
     ratio = _ratio(branch.tot_bytes, branch.zip_bytes)
+    where = f"File Size  = {branch.zip_bytes:10d} *"
+    if not branch.zip_bytes and not branch.baskets:
+        where = "One basket in memory    *"  # what ROOT says of a branch not yet written
     return [
         first,
-        f"*Entries :{branch.entries:9d} : Total  Size={branch.tot_bytes:11d} bytes  "
-        f"File Size  = {branch.zip_bytes:10d} *",
+        f"*Entries :{branch.entries:9d} : Total  Size={branch.tot_bytes:11d} bytes  {where}",
         f"*Baskets :{branch.baskets:9d} : Basket Size={branch.basket_size:11d} bytes  "
         f"Compression= {ratio:6.2f}     *",
         DOTS,
@@ -121,6 +123,8 @@ def _values(leaf: LeafInfo, value: Any) -> list[Any]:
 def _joined(leaf: LeafInfo, value: Any) -> str:
     if leaf.text:
         return str(value)
+    if leaf.vector:  # ROOT prints where the vector is, not what is in it
+        return f"({leaf.typename}*)0x{id(value):x}"
     per_line = 5 if leaf.classname in FIVE_A_LINE or leaf.vector else 10
     shown = [_printed(leaf, each) for each in _values(leaf, value)]
     text = ""
@@ -138,7 +142,7 @@ def show_lines(entry: int, leaves: Sequence[tuple[LeafInfo, Any]]) -> list[str]:
     """What ``TTree::Show`` prints for one entry, given each leaf and its value in it."""
     lines = [f"======> EVENT:{entry}"]
     for leaf, value in leaves:
-        if not leaf.text and np.size(value) == 0:
+        if not leaf.text and not leaf.vector and np.size(value) == 0:
             continue
         lines.append(f" {leaf.name:<15} = {_joined(leaf, value)}")
     return lines

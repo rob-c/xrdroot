@@ -46,6 +46,8 @@ class _TreeCore(_TObjectLike):
         self._source: Any = None
         self._snapshot: Any = None
         self._snapshot_entries = -1
+        #: Has ``Write`` put the entries in a file, so that they are baskets on file?
+        self._written = False
         self._layout_cache: list[BranchInfo] | None = None
         self._addresses: dict[str, Address] = {}
         self._disabled: set[str] = set()
@@ -117,7 +119,7 @@ class _TreeCore(_TObjectLike):
         if self._layout_cache is None:
             if self._store is not None:
                 stats = self._backing() if self._store.slots else None
-                self._layout_cache = from_store(self._store, stats)
+                self._layout_cache = from_store(self._store, stats, self._written)
             else:
                 self._layout_cache = from_tree(_first_tree(self._source))
         return self._layout_cache

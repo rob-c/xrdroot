@@ -44,15 +44,26 @@ def test_print_lays_the_tree_and_every_branch_out_in_roots_table(capsys):
     assert re.fullmatch(r"\*        :          : Tree compression factor = +\d+\.\d\d +\*", lines[3])
     assert lines[5] == "*Br    0 :x         : x/D".ljust(77) + "*"
     assert re.fullmatch(
-        r"\*Entries :        5 : Total  Size= +\d+ bytes  File Size  = +\d+ \*", lines[6]
+        r"\*Entries :        5 : Total  Size= +\d+ bytes  One basket in memory    \*", lines[6]
     )
-    assert re.fullmatch(
-        r"\*Baskets :        1 : Basket Size= +32000 bytes  Compression= +\d+\.\d\d     \*",
-        lines[7],
-    )
+    assert lines[7] == "*Baskets :        0 : Basket Size=      32000 bytes  Compression=   1.00     *"
+    assert lines[2].endswith("File  Size =          0 *") and "factor =   1.00 " in lines[3]
     assert lines[8] == "*" + "." * 76 + "*"
     assert lines[13].startswith("*Br    2 :a         : a[n]/F ")
     assert len(lines) == 5 + 3 * 4
+
+
+def test_a_tree_written_prints_its_baskets_on_file(capsys, tmp_path):
+    import xrdroot
+
+    t = _tree()
+    with xrdroot.create(str(tmp_path / "p.root")) as f:
+        t.SetDirectory(f)
+        t.Write()
+    t.Print()
+    lines = capsys.readouterr().out.splitlines()
+    assert re.fullmatch(r"\*Entries :        5 : Total  Size= +\d+ bytes  File Size  = +\d+ \*", lines[6])
+    assert re.fullmatch(r"\*Baskets :        1 : Basket Size= +32000 bytes  Compression= +\d\.\d\d     \*", lines[7])
 
 
 def test_print_with_a_name_prints_only_the_branches_it_matches(capsys):
