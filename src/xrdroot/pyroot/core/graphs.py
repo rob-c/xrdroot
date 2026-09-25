@@ -131,9 +131,12 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
 
     @property
     def _xrd(self) -> Any:
+        """The xrdroot graph of the points as they are, sharing this graph's look."""
         if self._cached is None:
             self._cached = self._built()
             remember(self._cached, self)
+        for group, values in self.__dict__.get("_atts", {}).items():
+            self._cached._core[group] = values
         return self._cached
 
     def _changed(self) -> None:
@@ -173,8 +176,7 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
         self._changed()
 
     def _attribute_holder(self) -> None:
-        """A graph keeps its look itself, and hands it to each xrdroot graph made."""
-        self._changed()
+        """A graph keeps its look itself, and shares it with each xrdroot graph made."""
 
     # -- the points --------------------------------------------------------------------------
 
