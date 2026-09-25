@@ -179,9 +179,16 @@ def _sequence(inside: str) -> Seq | None:
 
 
 def _mapping(inside: str) -> Mapping | None:
+    """A map's key and value; a third argument is the comparator, which only
+    decides the order the pairs are written in - ``TFormula`` keeps its
+    parameter names in a ``map<TString,int,TFormulaParamOrder>`` - and a
+    dict keeps them in the order read."""
     halves = _split(inside)
     if halves is None:
         return None
+    ordered = _split(halves[1])
+    if ordered is not None:
+        halves = (halves[0], ordered[0])
     key, value = parse(halves[0]), parse(halves[1])
     return None if key is None or value is None else Mapping(key, value)
 

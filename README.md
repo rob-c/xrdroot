@@ -107,6 +107,17 @@ h.mean(), h.std(), h.integral(), h.rebin(4), h / other
 Profiles and efficiencies book and fill the same way, and the arithmetic,
 rebinning and projections are ROOT's, errors and all.
 
+The functions fits are made with are ROOT's too: a `TF1` read from a file,
+or hung on a histogram by a fit, is a `Function` in ROOT's formula language,
+evaluated over whole arrays, differentiated in its parameters and written
+back:
+
+```python
+f = xrdroot.Function("peak", "gaus(0) + pol1(3)", range=(0, 10))
+f(xs), f.gradient(xs), f.integral(0, 10)            # TF1::Eval, GradientPar, Integral
+h.attach(f); out["h"] = h                             # written with its fit
+```
+
 ## Analysis
 
 `RDataFrame` is ROOT's declarative analysis — ROOT's methods, ROOT's C++

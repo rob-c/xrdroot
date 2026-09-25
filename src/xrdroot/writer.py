@@ -11,8 +11,9 @@ What can be written is what can be written *correctly*: histograms, graphs,
 strings and arrays of numbers. Anything else is refused by name rather than
 guessed at, because a plausible-looking file that ROOT misreads is worse than
 an error message. The same goes for the parts of an object this writer cannot
-carry - a histogram with fits attached refuses rather than silently dropping
-them.
+carry: a histogram's list of functions is written when what it holds is
+functions - the fits ROOT hangs there - and refused, rather than silently
+dropped, when it holds anything else.
 
 Records go out as they are made: only the hundred-odd bytes of header at the
 front are held back, because they point at the bookkeeping written last, and
@@ -44,6 +45,7 @@ from .buffer import BYTE_COUNT_MASK, IS_REFERENCED, NEW_CLASS_TAG
 from .compression import CODES, LEVELS, compress
 from .efficiency import EFFICIENCIES, Efficiency
 from .errors import UnsupportedFeatureError
+from .function import FUNCTIONS, Function
 from .graph import GRAPHS, Graph
 from .hist import HISTOGRAMS, Histogram
 from .interp import ARRAYS, MEMBER_WISE, OFFSET_L, OFFSET_P
@@ -149,9 +151,13 @@ PAIRS = "vector<pair<double,double> >"
 PAIRS_VERSION = MEMBER_WISE | 9
 PAIR_CHECKSUM = 0xD7BED200
 
+#: The version ROOT's collection proxy gives the record round an STL
+#: container written inside an object.
+STL_VERSION = 9
+
 #: The objects this writer writes by their members, and the classes they are.
-WRITABLE = (Histogram, Graph, Efficiency)
-OBJECTS = (*HISTOGRAMS, *PROFILES, *EFFICIENCIES, *GRAPHS)
+WRITABLE = (Histogram, Graph, Efficiency, Function)
+OBJECTS = (*HISTOGRAMS, *PROFILES, *EFFICIENCIES, *GRAPHS, *FUNCTIONS)
 
 
 def packed_now() -> int:
@@ -402,18 +408,41 @@ def _array(buf: WBuffer, classname: str, values: Any) -> None:
     _numbers(buf, ARRAYS[classname].typecode, values)
 
 
-def _list(buf: WBuffer, classname: str, entries: Any, bits: int = BITS) -> None:
-    """An empty ``TList``, which is the only list this writer will write."""
-    if entries:
+def _row(value: Any) -> dict[str, Any]:
+    """The members an object is written from: a function of code sampled, as ROOT samples it."""
+    if isinstance(value, Function):
+        return value.written_members()
+    members: dict[str, Any] = value.members
+    return members
+
+
+def _list(
+    buf: WBuffer, classname: str, entries: Any, used: dict[str, None], bits: int = BITS
+) -> None:
+    """A ``TList`` of functions - the fits a histogram or graph carries - or of nothing.
+
+    Each entry is the object naming its class, then the option it was added
+    with, which for a fit is none. Anything but a function is refused: what
+    a list carries could be anything at all, and writing it wrongly would be
+    worse than refusing.
+    """
+    held = list(entries or ())
+    strangers = [type(entry).__name__ for entry in held if not isinstance(entry, Function)]
+    if strangers:
         raise UnsupportedFeatureError(
-            f"a {classname} holding {len(entries)} entries is not written: what a "
-            f"list carries could be anything at all, and writing it wrongly would "
-            f"be worse than refusing; empty it first"
+            f"a {classname} holding {', '.join(strangers)} is not written: a list of "
+            f"functions is, and what else a list carries could be anything at all, "
+            f"which writing wrongly would be worse than refusing; take them out first"
         )
     index = buf.start(5)
     buf.tobject(bits)
     buf.string("")
-    buf.i32(0)
+    buf.i32(len(held))
+    for entry in held:
+        tag = buf.tag(entry.classname)
+        _record(buf, entry.classname, _row(entry), used)
+        buf.end(tag)
+        buf.string("")
     buf.end(index)
 
 
@@ -425,7 +454,7 @@ def _record(buf: WBuffer, classname: str, row: Any, used: dict[str, None]) -> No
     file's streamer information exactly as a key of the file would be.
     """
     if classname in LISTS:
-        _list(buf, classname, row)
+        _list(buf, classname, row, used)
         return
     info = INFOS.get(classname)
     if info is None:
@@ -452,9 +481,7 @@ def _pointed(buf: WBuffer, typename: str, value: Any, used: dict[str, None]) -> 
         return
     classname = typename.rstrip("*")
     if isinstance(value, WRITABLE):
-        classname, value = value.classname, value.members
-    elif isinstance(value, (list, tuple)):
-        _list(buf, classname, value)  # non-empty here, so this refuses by name
+        classname, value = value.classname, _row(value)
     index = buf.tag(classname)
     _record(buf, classname, value, used)
     buf.end(index)
@@ -467,18 +494,31 @@ def _element(buf: WBuffer, element: Element, row: dict[str, Any], used: dict[str
     if _base_element(buf, name, stype, value, used):
         return
     if name == "fFunctions" and "fNcells" in row:  # a histogram's, which ROOT locks
-        _list(buf, "TList", value, BITS | USE_RWLOCK)
+        _list(buf, "TList", value, used, BITS | USE_RWLOCK)
         return
     if _object_element(buf, stype, typename, value, used):
         return
     if _number_element(buf, name, stype, alen, extras, value, row):
         return
-    if stype == 500 and typename == PAIRS:
-        _pairs(buf, value)
+    if stype == 500 and _stl_element(buf, name, typename, value):
         return
     raise UnsupportedFeatureError(
         f"{name} is of streamer type {stype}, which this writer does not lay out"
     )
+
+
+def _stl_element(buf: WBuffer, name: str, typename: str, value: Any) -> bool:
+    """An STL member: the prior a ``TEfficiency`` keeps, or a function's vectors and map."""
+    if typename == PAIRS:
+        _pairs(buf, value)
+        return True
+    writer = STL_WRITERS.get(typename)
+    if writer is None:
+        return False
+    index = buf.start(STL_VERSION)
+    writer(buf, name, value)
+    buf.end(index)
+    return True
 
 
 def _base_element(buf: WBuffer, name: str, stype: int, value: Any, used: dict[str, None]) -> bool:
@@ -510,6 +550,54 @@ def _pairs(buf: WBuffer, value: Any) -> None:
     _numbers(buf, "d", pairs[:, 0])
     _numbers(buf, "d", pairs[:, 1])
     buf.end(index)
+
+
+def _doubles(buf: WBuffer, name: str, value: Any) -> None:
+    """A ``vector<double>``: how many, then each."""
+    values = np.asarray(value if value is not None else (), dtype=np.float64).ravel()
+    buf.u32(len(values))
+    _numbers(buf, "d", values)
+
+
+def _strings(buf: WBuffer, name: str, value: Any) -> None:
+    """A ``vector<string>``: how many, then each as a length and its bytes."""
+    values = list(value or ())
+    buf.u32(len(values))
+    for text in values:
+        buf.string(str(text))
+
+
+def _parameter_names(buf: WBuffer, name: str, value: Any) -> None:
+    """A ``TFormula``'s ``map<TString,int,TFormulaParamOrder>``, pair by pair.
+
+    The pairs go in the order the members hold them, which a formula made
+    here keeps in ``TFormulaParamOrder`` and one read from a file keeps as
+    ROOT wrote it.
+    """
+    pairs = dict(value or {})
+    buf.u32(len(pairs))
+    for key, index in pairs.items():
+        buf.string(str(key))
+        buf.i32(int(index))
+
+
+def _no_objects(buf: WBuffer, name: str, value: Any) -> None:
+    """A ``vector<TObject*>`` - a formula's linear parts - which is written only empty."""
+    if value:
+        raise UnsupportedFeatureError(
+            f"{name} holds {len(value)} objects, the parts of a linear fit, which this "
+            f"writer does not lay out; a formula made or read here has none"
+        )
+    buf.u32(0)
+
+
+#: The STL members of the function classes, by the type the layout names.
+STL_WRITERS: dict[str, Callable[[WBuffer, str, Any], None]] = {
+    "vector<double>": _doubles,
+    "vector<string>": _strings,
+    "map<TString,int,TFormulaParamOrder>": _parameter_names,
+    "vector<TObject*>": _no_objects,
+}
 
 
 def _write_tobject(buf: WBuffer, value: Any) -> None:
@@ -700,7 +788,7 @@ def _payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]]:
         return _object_payload(Histogram.of(obj))
     raise UnsupportedFeatureError(
         f"a {type(obj).__name__} is not something this writer puts in a ROOT "
-        f"file: it takes a Histogram, a Profile, an Efficiency, a Graph, any "
+        f"file: it takes a Histogram, a Profile, an Efficiency, a Graph, a Function, any "
         f"histogram that speaks the "
         f"plotting protocol (hist, boost-histogram), a (values, edges) pair "
         f"from numpy.histogram, a str, or a one-dimensional array of numbers"
@@ -747,7 +835,9 @@ def _array_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
     return classname, bytes(buf.data), ()
 
 
-def _object_payload(value: Histogram | Graph | Efficiency) -> tuple[str, bytes, tuple[str, ...]]:
+def _object_payload(
+    value: Histogram | Graph | Efficiency | Function,
+) -> tuple[str, bytes, tuple[str, ...]]:
     classname = value.classname
     if classname not in INFOS:
         writable = ", ".join(name for name in INFOS if name in OBJECTS)
@@ -757,7 +847,7 @@ def _object_payload(value: Histogram | Graph | Efficiency) -> tuple[str, bytes, 
         )
     buf = WBuffer()
     used: dict[str, None] = {}
-    _record(buf, classname, value.members, used)
+    _record(buf, classname, _row(value), used)
     return classname, bytes(buf.data), tuple(used)
 
 

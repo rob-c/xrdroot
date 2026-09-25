@@ -6,7 +6,8 @@ in the way. What it reads comes back as NumPy arrays, and
 [goes on](#into-pandas-awkward-arrow-and-polars) to pandas, Awkward, Arrow,
 Polars and `hist` in one call. It [writes new files](#writing) too, and
 histograms and graphs [draw themselves](#drawing), onto matplotlib axes or into
-plain characters. [`RDataFrame`](#rdataframe) is ROOT's declarative analysis over
+plain characters. The functions fits are made with [evaluate](#functions) over whole
+arrays. [`RDataFrame`](#rdataframe) is ROOT's declarative analysis over
 all of it: lazy, in one pass, a batch of entries at a time.
 
 ```python
@@ -331,6 +332,103 @@ histogram, graph, multigraph, stack or entry list — met *inside* another
 object comes back as that class too, the same as it would standing in a key of
 its own: the graphs of a `MultiGraph` are `Graph`s, and the two histograms of
 an `Efficiency` are `Histogram`s.
+
+## Functions
+
+ROOT's `TF1`, `TF2` and `TF3` — and the `TFormula` inside each — come back
+as a `Function`: a formula, a value for each of its parameters, a range for
+each of its variables and, once fitted, what the fit left behind. It is
+built by hand the way `TF1`'s constructor builds one, read from a file on
+its own or among the fits a histogram or graph carries, and evaluated over
+whole arrays at once:
+
+```python
+from xrdroot import Function
+
+f = Function("peak", "gaus(0) + pol1(3)", range=(0, 10), parameters=[40, 5, 0.5, 2, 0.1])
+f(5.0), f(np.linspace(0, 10, 101))  # a number for a number, an array for an array
+f.parameter_names  # ('p0', 'p1', 'p2', 'p3', 'p4')
+f.gradient(xs)  # (n, npar): exact for sums, products, powers, exp, log, ...
+f.integral(0, 10), f.maximum(), f.x_at(20.0), f.derivative(5.0)
+
+with xrdroot.open_root("fitted.root") as file:
+    fit = file["h_mass"].functions[0]  # the TF1 ROOT's Fit left on the histogram
+    fit.parameters, fit.parameter_errors, fit.fit_result["chi2"]
+
+decay = Function.from_callable("decay", lambda x, p: p[0] * np.exp(-x / p[1]), 2)
+```
+
+| ROOT | xrdroot |
+| --- | --- |
+| `TF1 f("f", "[0]*exp(-x/[tau])", 0, 10)` | `Function("f", "[0]*exp(-x/[tau])", range=(0, 10))` |
+| `TF2 f("f", "x*y", 0, 1, 0, 2)` | `Function("f", "x*y", range=((0, 1), (0, 2)))` |
+| `TF1 f("f", cppfunction, 0, 10, 2)` | `Function.from_callable("f", fn, 2, range=(0, 10))` — `fn(x, params)` |
+| `f->Eval(x)`, `f->EvalPar(x, p)` | `f(x)`, `f.evaluate(x, p)` — arrays, `(n,)` or `(n, dimensions)` |
+| `f->SetParameters(...)`, `SetParameter("mean", v)` | `f.set_parameters(...)`, `f.set_parameters(mean=v)`, `f.parameters = [...]` |
+| `GetParName(i)`, `SetParNames(...)` | `f.parameter_names`, `f.parameter_names = (...)` |
+| `GetParErrors()`, `SetParLimits(i, a, b)` | `f.parameter_errors`, `f.set_limits(i, a, b)`, `f.parameter_limits` |
+| `FixParameter(i, v)`, `ReleaseParameter(i)` | `f.fix(i, v)`, `f.release(i)`, `f.fixed` |
+| `GetChisquare()`, `GetNDF()`, `GetNumberFitPoints()` | `f.fit_result` — `chi2`, `ndf`, `npfits`, `parameters`, `errors` |
+| `GradientPar(x, grad)` | `f.gradient(x)` — every parameter at once |
+| `Integral(a, b)` | `f.integral(a, b)` — either end may be infinite |
+| `Derivative(x)` | `f.derivative(x)` |
+| `GetMaximum()`, `GetMaximumX()`, `GetMinimum()`, `GetMinimumX()` | `f.maximum()`, `f.maximum_x()`, `f.minimum()`, `f.minimum_x()` |
+| `GetX(y)` | `f.x_at(y)` |
+| `SetNormalized(true)` | `f.normalized = True` |
+| `Clone("g")` | `f.copy("g")` |
+| `h->GetListOfFunctions()`, `h->Fit(f)` leaving `f` on `h` | `h.functions`, `h.attach(f)` — and a graph's the same |
+
+The language is ROOT 6's: `x`, `y` and `z` — or `x[0]`, `x[1]`, `x[2]` —
+parameters by number `[0]` or by name `[mean]`, `^` and `**` for a power,
+`TMath`, `<cmath>` and the `ROOT::Math` densities, the constants `pi`, `e`,
+`ln10`, `sqrt2`, `infinity` and the rest, and ROOT's predefined shapes with
+the parameter meaning and names ROOT gives them: `gaus` and the normalised
+`gausn`, `xygaus`, `xyzgaus` and `bigaus`, `expo` and `xyexpo`, `landau` and
+`landaun`, `crystalball` and `crystalballn`, `breitwigner`, `pol0` to `polN`
+and `cheb0` to `cheb10`. A shape takes where its parameters start,
+`gaus(3)`, its variable, `pol1(y, 0)`, or its parameters' names,
+`pol1(x, [A], [B])`. The shapes are written out as ROOT writes them —
+`gaus` becomes `[Constant]*exp(-0.5*((x-[Mean])/[Sigma])*((x-[Mean])/[Sigma]))`,
+exactly the text ROOT keeps in the file — and the densities are ROOT's own,
+operation for operation: CERNLIB's rational approximation of the Landau,
+the Crystal Ball's two sides and its `n > 1` normalisation, Clenshaw's sum
+for a Chebyshev series.
+
+The gradient is exact wherever the formula is built from arithmetic and the
+elementary functions, which covers the polynomials, `gaus`, `expo` and any
+sum or product of them; where it calls something with no derivative written
+down, such as `TMath::Landau`, the parameters inside that call are
+differentiated as `TF1::GradientPar` does it — two central differences of
+steps `h` and `h/2`, combined, with `h` a hundredth of the parameter's error
+— and only those. Integrals are adaptive 21-point Gauss-Kronrod to
+`TF1::Integral`'s tolerance of `1e-12`; extrema and `x_at` are
+`BrentMinimizer1D`'s scan of `fNpx` points and Brent's search inside the
+bracket; the derivative is `RichardsonDerivator`'s, with a step of a
+thousandth of the range. A normalised function is divided by its integral,
+kept up to date as its parameters change.
+
+A `TF1` of C++ code — a function pointer, a convolution, a normalised sum —
+cannot bring its code into the file, and ROOT writes the function sampled
+over its range instead. Such a function reads back as those samples, and is
+the straight line between the two either side of a point, zero outside the
+range, as `TF1::GetSave` makes it; a function made here from Python code is
+written the same way, and reads back — here or in ROOT — the same way. The
+checks are ROOT's own numbers: `tgme.root`'s `pol1` fit saved a hundred and
+one evaluations of itself, and the formula evaluated here gives every one of
+them to a part in 10^12.
+
+What is written is a `TF1` of either kind, alone or in a histogram's or
+graph's list of functions, in the layouts ROOT 6.24 wrote into `tgme.root`
+and `tformula.root`; a `TF1` ROOT wrote is written back byte for byte, but
+for the one boolean ROOT left uninitialised and so wrote as `0x99`. What
+is refused, by name: writing a `TF2` or `TF3`, which no file here describes
+for a writer to copy; evaluating a formula that calls what this does not
+know, or a physical constant whose value ROOT has changed between releases;
+evaluating a function of code that saved nothing, or saved its samples at
+the bins of the histogram it was fitted to; and a `TF1NormSum` or
+`TF1Convolution` on its own, which comes back as its members. A `TF1` from
+ROOT 5, which was a `TFormula` rather than holding one, comes back as its
+members too, so the histogram it hangs off still reads.
 
 ## Drawing
 
@@ -1046,7 +1144,8 @@ file is kept in memory and written in order at the close.
 
 What can be written is what can be written *correctly*: trees of numbers,
 histograms and graphs — read from another file, built from plain numbers, or
-made by `hist`, `boost-histogram` or `numpy.histogram` — plus strings and
+made by `hist`, `boost-histogram` or `numpy.histogram` — and the functions
+fitted to them, plus strings and
 one-dimensional arrays of signed integers or floats, which become the matching
 `TArray`. `Histogram.new` takes every bin edge — or a set of edges per axis,
 for two or three — the values shaped the way the axes are (two more along an
@@ -1062,8 +1161,9 @@ point a `TGraphErrors`, and any `(low, high)` pair of runs a
 
 Anything else is refused by name rather than guessed at — a
 `TGraphMultiErrors`, an unsigned array ROOT has no class for, a histogram
-with fits attached or an axis with labels (empty them first, rather than
-have them silently dropped), a name a reader could never ask back for —
+whose list of functions holds anything but functions, or an axis with labels
+(take them out first, rather than have them silently dropped), a name a
+reader could never ask back for —
 because a plausible-looking file that ROOT misreads is worse than an error
 message.
 
@@ -1359,7 +1459,8 @@ What is named that way:
   keyed by a container or nested inside one;
 - a `pair` anywhere but directly under its own container, and a container of
   pairs written pair by pair, neither of which any file this reader has met
-  writes;
+  writes (a map written pair by pair, as a `TFormula` writes its parameter
+  names, is read);
 - a graph of layered y errors asked for `yerr`, because summing the layers
   would be an answer this reader made up;
 - trees written by ROOT 3 or older.

@@ -358,14 +358,26 @@ def _sequence(item: Any) -> Callable[[Buffer], Any]:
     return read
 
 
+def _single(node: Any, buf: Buffer) -> Any:
+    """One value of one type, as a Python value rather than a run of one."""
+    value = _items(node, buf, 1)[0]
+    return value.item() if isinstance(value, np.generic) else value
+
+
+def _pairs_of(node: Mapping, buf: Buffer, count: int) -> list[tuple[Any, Any]]:
+    """``count`` pairs written one after another, each key before its value."""
+    return [(_single(node.key, buf), _single(node.value, buf)) for _ in range(count)]
+
+
 def _mapping(node: Mapping) -> Callable[[Buffer], Any]:
     def read(buf: Buffer) -> Any:
         version, _end = buf.header()
         if not version & MEMBER_WISE:
-            raise UnsupportedFeatureError(
-                "this map was written pair by pair, which this reader has never "
-                "seen a file do and will not decode on a guess"
-            )
+            # A map inside an object ROOT streams by its class - the parameter
+            # names a ``TFormula`` keeps - goes pair by pair: the count, then
+            # each key followed by its value.
+            count = buf.u32()
+            return dict(_pairs_of(node, buf, count))
         if buf.i16() <= 0:
             buf.u32()  # a class with no version of its own says so with a checksum
         count = buf.u32()

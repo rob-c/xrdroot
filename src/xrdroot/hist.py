@@ -22,6 +22,7 @@ from .booking import AXIS_STYLE, FILL, LINE, MARKER, histogram_members
 from .booking import axis_members as _axis
 from .draw import axes, bar, missing_picture, shade
 from .errors import FormatError, UnsupportedFeatureError
+from .function.attached import listed
 from .interp import ARRAYS
 
 __all__ = ["AXIS_STYLE", "FILL", "HISTOGRAMS", "LINE", "MARKER", "Axis", "Histogram", "Traits"]
@@ -336,6 +337,15 @@ class Histogram:
     def entries(self) -> float:
         """How many times it was filled, which weights make a fraction of."""
         return float(self._core["fEntries"])
+
+    @property
+    def functions(self) -> list[Any]:
+        """``GetListOfFunctions``: the fits and functions attached, written with it."""
+        return listed(self._core)
+
+    def attach(self, function: Any) -> None:
+        """Hang ``function`` - a :class:`~xrdroot.Function`, a fit - on this histogram."""
+        self.functions.append(function)
 
     @property
     def shape(self) -> tuple[int, ...]:
