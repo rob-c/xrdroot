@@ -93,6 +93,11 @@ made on the way; a file past 2 GB takes ROOT's wide layout as ROOT does; and
 `xrdroot.update` opens a file that is already there, ROOT's or anyone's, to
 add to it, leaving it byte for byte as it was if the `with` block fails.
 
+`xrdroot.merge` is `hadd` — histograms added up, graphs gathered, trees
+concatenated with their baskets copied across byte for byte, flag for flag on
+the command line as `xrdroot merge` — and `xrdroot.copy` is `rootcp`, or
+`TTree::CopyTree` given a cut.
+
 ## Histograms to fill
 
 A histogram is also something to fill and compute with, the way ROOT's `TH1`

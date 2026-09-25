@@ -492,8 +492,8 @@ class _Counter(_Column):
 
     __slots__ = ("maximum", "users")
 
-    def __init__(self, name: str, basket_size: int) -> None:
-        super().__init__(name, COUNTER_CODE, 1, basket_size)
+    def __init__(self, name: str, basket_size: int, typecode: str = COUNTER_CODE) -> None:
+        super().__init__(name, typecode, 1, basket_size)
         self.maximum = 0
         #: The columns this one counts, which must agree entry by entry.
         self.users: list[_Rows] = []
@@ -503,10 +503,11 @@ class _Counter(_Column):
         return True
 
     def limits(self) -> bytes:
-        return struct.pack(">ii", 0, self.maximum)
+        return struct.pack(f">2{self.typecode}", 0, self.maximum)
 
     def note(self, raw: bytes, sizes: np.ndarray[Any, Any] | None) -> None:
-        self.maximum = max(self.maximum, int(np.frombuffer(raw, ">i4").max()))
+        found = np.frombuffer(raw, np.dtype(self.typecode).newbyteorder(">"))
+        self.maximum = max(self.maximum, int(found.max()))
 
 
 def _room(size: int, entries: int) -> int:
@@ -837,16 +838,41 @@ def _row_trouble(missing: list[str], unknown: list[str], counters: list[str]) ->
     return trouble
 
 
-def _declared(name: str, spec: Any, basket_size: int, counters: dict[str, _Counter]) -> _Column:
-    """The column a declaration asks for, sharing a counter already made if named."""
+def _declared(
+    name: str,
+    spec: Any,
+    basket_size: int,
+    counters: dict[str, _Counter],
+    types: Mapping[str, Any],
+) -> _Column:
+    """The column a declaration asks for, sharing a counter already made if named.
+
+    A counter is a 32-bit int unless ``types`` names another integer type
+    for it, which is how a tree ROOT wrote with a counter of its own type is
+    written again with the same one.
+    """
     if spec is str:
         return _Text(name, basket_size)
     typecode, length = _typecode(name, spec)
     if isinstance(length, int):
         return _Column(name, typecode, length, basket_size)
     _require_name(length, "counter")
-    counter = counters.setdefault(length, _Counter(length, basket_size))
-    return _Rows(name, typecode, basket_size, counter)
+    if length not in counters:
+        counters[length] = _Counter(length, basket_size, _counter_code(length, types))
+    return _Rows(name, typecode, basket_size, counters[length])
+
+
+def _counter_code(name: str, types: Mapping[str, Any]) -> str:
+    """The integer type a counter is: the one asked for, or a 32-bit int."""
+    if name not in types:
+        return COUNTER_CODE
+    code = _code(name, types[name])
+    if code not in "bBhHiIqQ":
+        raise ValueError(
+            f"the counter {name!r} is declared as {types[name]!r}; a counter counts, "
+            f"so it is one of the integer types"
+        )
+    return code
 
 
 class WritableTree:
@@ -881,6 +907,7 @@ class WritableTree:
         columns: Mapping[str, Any],
         basket_size: int,
         cycle: int,
+        counters: Mapping[str, Any] | None = None,
     ) -> None:
         if not isinstance(columns, Mapping):
             raise TypeError(
@@ -902,9 +929,10 @@ class WritableTree:
         self._entries = 0
         self._columns: dict[str, _Column] = {}
         self._counters: dict[str, _Counter] = {}
+        types = counters or {}
         for column, spec in columns.items():
             _require_name(column, "column")
-            self._columns[column] = _declared(column, spec, basket_size, self._counters)
+            self._columns[column] = _declared(column, spec, basket_size, self._counters, types)
         self._branches = self._in_order()
 
     def _in_order(self) -> list[_Column]:
@@ -1011,7 +1039,9 @@ class WritableTree:
         """Count the rows, then keep what every column was given - or refuse it all."""
         for counter in self._counters.values():
             lengths = self._lengths(counter, packed)
-            packed[counter.name] = (lengths.astype(">i4").tobytes(), None)
+            code = np.dtype(counter.typecode)
+            _require_fits(counter, lengths, code)
+            packed[counter.name] = (bytes(lengths.astype(code.newbyteorder(">")).tobytes()), None)
         for column in self._branches:
             self._feed(column, packed[column.name])
         self._entries += entries
@@ -1121,6 +1151,40 @@ class WritableTree:
         column.tot_bytes += keylen + len(payload) + len(table)
         column.zip_bytes += nbytes
         column.emptied()
+
+    def _branch(self, name: str) -> _Column:
+        """The branch of this name - a column or a counter - as it is being written."""
+        for column in self._branches:
+            if column.name == name:
+                return column
+        raise KeyError(f"{name!r} is not a branch of {self.name!r}")
+
+    def _flush_all(self) -> None:
+        """Send out every basket part filled, so what comes next starts a basket afresh."""
+        for column in self._branches:
+            self._flush(column)
+
+    def _adopt(self, column: _Column, place: tuple[int, int], entries: int, size: int) -> None:
+        """Take in a basket that is already on file, as a basket of ``column``.
+
+        ``place`` is where the record is and how long, ``entries`` how many
+        entries it holds and ``size`` how long it is unpacked, key and all.
+        This is how baskets copied as they are from another tree - or left
+        where they are in a file being added to - join the tree: the branch
+        only has to say where they are. A basket part filled must have gone
+        out first, or the entries would be out of order.
+        """
+        if column.pending:
+            raise ValueError(
+                f"{column.name!r} of {self.name!r} has entries of its own not yet in a "
+                f"basket, and a basket from elsewhere would land before them"
+            )
+        seek, nbytes = place
+        column.seeks.append(seek)
+        column.sizes.append(nbytes)
+        column.starts.append(column.starts[-1] + entries)
+        column.tot_bytes += size
+        column.zip_bytes += nbytes
 
     def _finish(self) -> None:
         """Flush what is left, then write the record that ties it all together."""

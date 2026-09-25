@@ -42,6 +42,7 @@ from .writer import (
     _Output,
     _seekable,
     _streamers,
+    carried_entries,
 )
 
 __all__ = ["update"]
@@ -360,11 +361,14 @@ class UpdatedFile(WritableFile):
         """The streamer information, rewritten only if new classes need describing."""
         known = self._infos.known
         names = [name for name in _closure(self._used) if (name, INFOS[name][1]) not in known]
-        if not names:
+        unknown = {key: entry for key, entry in self._carried.items() if key not in known}
+        extra = carried_entries(names, unknown)
+        if not names and not extra:
             return self._info_at or (0, 0)
         title = self._infos.title
         keylen = self._key_length("TList", "StreamerInfo", title)
-        payload = self._infos.merged(_info_entries(names), len(names), keylen)
+        entries = _info_entries(names) + b"".join(extra)
+        payload = self._infos.merged(entries, len(names) + len(extra), keylen)
         self._release(self._info_at)
         return self._put("TList", "StreamerInfo", title, payload, 1, listed=False)
 
