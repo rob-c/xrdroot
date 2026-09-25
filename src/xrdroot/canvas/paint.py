@@ -22,6 +22,7 @@ from . import styles
 from .colors import Colors
 from .data import paint_data
 from .frame import default_title, dress, open_axes
+from .gaxis import GAXIS
 from .model import Canvas, Pad, Primitive
 from .paves import PAVES
 from .scene import Scene
@@ -36,7 +37,7 @@ QUIET = frozenset({"TFrame", "TPaletteAxis", "TLegendEntry", "TColor"})
 BEVEL = 0.4
 
 #: Every drawing class this draws, and how.
-PAINTERS = {**SHAPES, **PAVES}
+PAINTERS = {**SHAPES, **PAVES, **GAXIS}
 
 
 class CanvasWarning(UserWarning):

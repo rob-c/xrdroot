@@ -20,6 +20,7 @@ from typing import Any
 
 import numpy as np
 
+from ..efficiency import Efficiency
 from ..errors import ROOTError
 from ..function import Function
 from ..graph import Graph
@@ -30,7 +31,7 @@ from .model import Pad, lookup
 from .options import ERRORS, histogram_option
 from .scene import Scene
 
-__all__ = ["open_axes", "dress"]
+__all__ = ["open_axes", "dress", "extent", "owner", "shown_bins"]
 
 #: How much room ROOT leaves above a histogram's highest bin, as ``gStyle->GetHistTopMargin()``.
 TOP_MARGIN = 0.05
@@ -56,7 +57,7 @@ def owner(pad: Pad) -> tuple[Any, str] | None:
         if isinstance(obj, (Graph, MultiGraph)):
             if "A" in upper.replace("SAME", ""):
                 return obj, option
-        elif isinstance(obj, (Histogram, Stack, Function)) and "SAME" not in upper:
+        elif isinstance(obj, (Histogram, Stack, Function, Efficiency)) and "SAME" not in upper:
             return obj, option
     return None
 
@@ -81,15 +82,49 @@ def _limit(obj: Any, name: str, fallback: float) -> float:
     return fallback if value is None or float(value) == -1111 else float(value)
 
 
+def shown_bins(h: Any, axis: int = 0) -> tuple[int, int]:
+    """The bins of an axis that are drawn, from zero and past the last: all, or its range.
+
+    ``TAxis::SetRange`` and ``SetRangeUser`` keep the first and last bin to
+    draw, counted from one, as ``fFirst`` and ``fLast``; both zero, or a
+    range outside the axis, is the whole of it.
+    """
+    count = h.axes[axis].nbins
+    members = lookup(h, f"f{'XYZ'[axis]}axis") or {}
+    first, last = int(lookup(members, "fFirst", 0) or 0), int(lookup(members, "fLast", 0) or 0)
+    if 1 <= first <= last <= count:
+        return first - 1, last
+    return 0, count
+
+
+def _ends(h: Any, axis: int) -> tuple[float, float]:
+    """Where an axis starts and ends, as far as its range reaches."""
+    first, last = shown_bins(h, axis)
+    edges = h.axes[axis].edges()
+    return float(edges[first]), float(edges[last])
+
+
 def _histogram_extent(h: Histogram, option: str, log: bool) -> Extent:
-    axis = h.axes[0]
+    (xlow, xhigh) = _ends(h, 0)
     if len(h.axes) > 1:
-        return axis.low, h.axes[1].low, axis.high, h.axes[1].high
-    values = h.values()
+        ylow, yhigh = _ends(h, 1)
+        return xlow, ylow, xhigh, yhigh
+    first, last = shown_bins(h)
+    values, errors = h.values()[first:last], h.errors()[first:last]
     if histogram_option(option) & ERRORS or h.weighted:
-        values = np.concatenate([values - h.errors(), values + h.errors()])
+        values = np.concatenate([values - errors, values + errors])
     low, high = _histogram_y(values, log)
-    return axis.low, _limit(h, "fMinimum", low), axis.high, _limit(h, "fMaximum", high)
+    return xlow, _limit(h, "fMinimum", low), xhigh, _limit(h, "fMaximum", high)
+
+
+def _efficiency_extent(e: Efficiency, pad: Pad) -> Extent:
+    """An efficiency's frame: its axes, or its axis and its points' intervals round them."""
+    axis = e.axes[0]
+    if len(e.axes) > 1:
+        return axis.low, e.axes[1].low, axis.high, e.axes[1].high
+    low, high = e.intervals()
+    y0, y1 = _spread(np.concatenate([low, high]), pad.logy, floor=True)
+    return axis.low, y0, axis.high, y1
 
 
 def _spread(values: np.ndarray[Any, Any], log: bool, floor: bool) -> tuple[float, float]:
@@ -152,6 +187,8 @@ def extent(obj: Any, option: str, pad: Pad) -> Extent:
         return first.low, low, first.high, high
     if isinstance(obj, Function):
         return _function_extent(obj, pad.logy)
+    if isinstance(obj, Efficiency):
+        return _efficiency_extent(obj, pad)
     return 0.0, 0.0, 1.0, 1.0
 
 
@@ -285,6 +322,24 @@ def _label(scene: Scene, axis: Any, which: str) -> None:
     )
 
 
+def _plain(value: float, _position: Any = None) -> str:
+    """A tick's label as ROOT writes it: the number, with no zeros after its point."""
+    return f"{value:.6g}" if abs(value) > 1e-12 else "0"
+
+
+def _divided(axis: Any, attributes: Any, log: bool) -> None:
+    """A linear axis's ticks as ``fNdivisions`` asks: up to its units of round steps, each
+    divided by its tens, labelled as plain numbers."""
+    if log:
+        return
+    from matplotlib.ticker import AutoMinorLocator, FuncFormatter, MaxNLocator
+
+    divisions = abs(int(lookup(attributes, "fNdivisions", 510) or 510))
+    axis.set_major_locator(MaxNLocator(nbins=divisions % 100 or 10, steps=[1, 2, 2.5, 5, 10]))
+    axis.set_minor_locator(AutoMinorLocator((divisions // 100) % 100 or 5))
+    axis.set_major_formatter(FuncFormatter(_plain))
+
+
 def _ticks(scene: Scene, source: Any) -> None:
     """Ticks inside the frame, on the far sides too when the pad asks for them."""
     tickx, ticky = scene.pad.ticks
@@ -294,6 +349,8 @@ def _ticks(scene: Scene, source: Any) -> None:
     xlength = styles.points(float(lookup(xaxis, "fTickLength", TICK_LENGTH)) * frame_h)
     ylength = styles.points(float(lookup(yaxis, "fTickLength", TICK_LENGTH)) * frame_w)
     scene.ax.minorticks_on()
+    _divided(scene.ax.xaxis, xaxis, scene.pad.logx)
+    _divided(scene.ax.yaxis, yaxis, scene.pad.logy)
     scene.ax.tick_params(axis="x", which="major", direction="in", length=xlength, top=bool(tickx))
     scene.ax.tick_params(
         axis="x", which="minor", direction="in", length=xlength / 2, top=bool(tickx)

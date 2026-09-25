@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
 from tools import maintainability as mt
 
 
@@ -154,6 +155,10 @@ def test_project_policy_keeps_the_readability_limits_strict() -> None:
     }
 
 
+# The scan reads every function in the project, and there are thousands; on
+# a loaded machine that outlasts the suite's two-minute default, which is
+# meant for one test's worth of work rather than the whole tree's.
+@pytest.mark.timeout(900)
 def test_project_has_no_functions_over_maintainability_limits() -> None:
     root = Path(__file__).resolve().parents[1]
     policy = mt.load_policy(root / "maintainability.json")

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..efficiency import Efficiency
 from ..errors import ROOTError
 from ..function import Function
 from ..graph import Graph
@@ -127,7 +128,8 @@ def _paint(scene: Scene, obj: Any, option: str) -> None:
 
 def _palette(scene: Scene, mesh: Any, h: Any) -> None:
     """The colour scale of ``COLZ``, where its ``TPaletteAxis`` was, or in the right margin."""
-    saved = [one for one in h.functions if getattr(one, "classname", "") == "TPaletteAxis"]
+    held = getattr(h, "functions", [])
+    saved = [one for one in held if getattr(one, "classname", "") == "TPaletteAxis"]
     _left, right, bottom, top = scene.pad.margins
     corners = (1 - right + PALETTE_GAP, bottom, 1 - right + PALETTE_GAP + PALETTE_WIDTH, 1 - top)
     if saved:
@@ -213,9 +215,15 @@ def paint_function(scene: Scene, f: Function, option: str) -> None:
     _paint(scene, f, option)
 
 
+def paint_efficiency(scene: Scene, e: Efficiency, option: str) -> None:
+    """A ``TEfficiency``: its points and their intervals, or of two axes its shaded grid."""
+    _paint(scene, e, option)
+
+
 #: How each kind of data draws, by the Python class it comes back as.
 DATA: tuple[tuple[type, Any], ...] = (
     (Histogram, paint_histogram),
+    (Efficiency, paint_efficiency),
     (Graph, paint_graph),
     (MultiGraph, paint_multigraph),
     (Stack, paint_stack),

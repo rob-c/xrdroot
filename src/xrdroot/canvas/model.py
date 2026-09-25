@@ -40,7 +40,11 @@ PRIMITIVES = (
     "TBox",
     "TWbox",
     "TEllipse",
+    "TArc",
+    "TCrown",
     "TMarker",
+    "TPolyLine",
+    "TPolyMarker",
     "TGaxis",
     "TColor",
 )
