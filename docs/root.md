@@ -1024,7 +1024,8 @@ Histograms, profiles, graphs, stacks, multigraphs and functions come back as
 the classes they always are. The drawing classes — `TFrame`, `TPave`,
 `TPaveText`, `TPavesText`, `TPaveLabel`, `TPaveStats`, `TPaletteAxis`,
 `TLegend` and `TLegendEntry`, `TText`, `TLatex`, `TLine`, `TArrow`, `TBox`,
-`TWbox`, `TEllipse`, `TMarker`, `TGaxis` and `TColor` — come back as a
+`TWbox`, `TEllipse`, `TArc`, `TCrown`, `TMarker`, `TPolyLine`, `TPolyMarker`,
+`TGaxis` and `TColor` — come back as a
 `Primitive`: the class, and its members by name however deep in its bases
 ROOT keeps them (`text["fTextSize"]`). The colours a canvas saved with it,
 its `ListOfColors` and palette, are used to draw it and kept out of
@@ -1041,7 +1042,8 @@ read off the object, the same layers, onto the pad's axes. What a pad adds:
 | stats box | a saved `TPaveStats` with the lines it was saved with, a name on the left and its value on the right; a histogram saved without one, not drawn `SAME` nor told `kNoStats`, gets `gStyle`'s — its name, entries, mean and standard deviation (`SetOptStat(1111)`) |
 | title | the `title` pave a drawn pad saved; one saved undrawn gets its histogram's or graph's title at the top, as `gStyle` puts it |
 | `TText`, `TLatex` | at `fX`, `fY` in the axes' units or, `SetNDC`, the pad's fractions; `TLatex`'s `#` mathematics in matplotlib's mathtext — Greek letters and symbols, `^{}` and `_{}`, `#sqrt`, `#frac`, `#bar` and the other accents, `#it` and `#bf`, `#splitline` as two stacked lines; `#font`, `#color`, `#scale`, `#kern` and `#lower` keep their text and drop the adjustment |
-| `TLine`, `TArrow`, `TBox`, `TEllipse`, `TMarker` | as their attributes say; an arrow's head by its `fOption` (`"|>"`, `"<|>"`, `"->-"`...), an ellipse's slice by `fPhimin` and `fPhimax` |
+| `TLine`, `TArrow`, `TBox`, `TEllipse`, `TArc`, `TCrown`, `TMarker`, `TPolyLine`, `TPolyMarker` | as their attributes say; an arrow's head by its `fOption` (`"|>"`, `"<|>"`, `"->-"`...), an ellipse's or a crown's slice by `fPhimin` and `fPhimax`, a polyline filled when drawn `f`, a box outlined only when it is hollow |
+| `TGaxis` | a line graduated from `fWmin` to `fWmax` in round steps as `fNdiv` asks, logarithmically for `G` in `fChopt`, its ticks on the side `+` or `-` names and its labels opposite (or with them, `=`; none, `U`), its title at its far end |
 | `TPave`, `TPaveText`, `TPaveLabel`, `TLegend` | the box, its border and shadow (on the sides `fOption` names), and its lines stacked in it, or its entries in `fNColumns` columns, each a symbol — `l` line, `p` marker, `f` fill, `e` error bar, `h` a header — drawn in the style of the thing it stands for |
 
 Colours are ROOT's by index, from the table [Drawing](#drawing) uses —
@@ -1054,7 +1056,7 @@ drawn at 100 dots to the inch so that one of ROOT's pixels is one of its.
 Text left at size 0 in a pave or a legend is sized to fit, as ROOT sizes it.
 
 **What is left out**, with a warning naming every one: a class the file
-does not describe, or does but this does not draw — `TGaxis`, a `TButton`,
+does not describe, or does but this does not draw — a `TButton`,
 anything of a GUI — a three-dimensional histogram, and a function that
 cannot be evaluated here. An option ROOT takes that is not drawn here
 (`SCAT`, `*H`, the `[]` of an asymmetric graph) is drawn as the object would
@@ -1064,6 +1066,87 @@ stands in the way of writing what it drew.
 
 `xrdroot.canvas.render(obj, path)` saves a `Canvas`, a `Pad`, or the members
 of either as a dictionary, which is what a tool handed any object reaches for.
+
+## Canvases you draw on
+
+`xrdroot.pyroot` is ROOT's own Python namespace, and its graphics are ROOT's
+in batch mode: a macro makes a `TCanvas`, divides it, draws into its pads and
+saves it, and the picture is drawn by the same code that draws a canvas read
+from a file ([Canvases](#canvases)).
+
+```python
+import xrdroot.pyroot as ROOT
+
+c = ROOT.TCanvas("c1", "Two views", 800, 400)
+c.Divide(2, 1)
+c.cd(1)
+h.Draw("E1")                        # any object with an ._xrd draws as what it wraps
+ROOT.gPad.SetLogy()
+legend = ROOT.TLegend(0.6, 0.7, 0.88, 0.88)
+legend.AddEntry(h, "data", "lep")
+legend.Draw()
+c.cd(2)
+ROOT.TLatex().DrawLatexNDC(0.2, 0.8, "#sqrt{s} = 13 TeV")
+ROOT.gStyle.SetOptStat("nemr")
+c.SaveAs("views.png")               # .pdf .svg .eps .ps .jpg .gif too
+c.Print("book.pdf[")                # a book of pages, as ROOT makes one
+c.Print("book.pdf")
+c.Print("book.pdf]")
+```
+
+**How a live pad is drawn.** A `TPad` keeps what a saved one holds - its
+members by ROOT's names (`fXlowNDC`, `fLeftMargin`, `fLogy`, `fGridx`...) and
+its primitives, each with the option it was drawn with - and when it is saved
+it becomes the `Canvas` and `Pad` a file would have given: data as the
+histogram, graph or function it wraps (`._xrd`), every drawing class as a
+`Primitive` of its members. What ROOT adds when it paints a pad is made then,
+from `gStyle`, the way `THistPainter` makes it: the `TFrame`; the `title`
+pave at `TitleX`/`TitleY` by `TitleAlign`; and a `TPaveStats` after each
+histogram shown with its statistics, and each fitted graph with `SetOptFit`,
+of the lines `PaintStat` writes (`"Entries = 1000"`), at `StatX`/`StatY`, a
+quarter of `StatH` tall per line and 1.8 times as wide for a fit. `Update()`
+makes them at once, so `gPad.GetPrimitive("stats")` finds the box to move,
+and a box moved keeps its place. The colours a session makes and a palette
+other than `kBird` go with the canvas as the colour tables a saved one
+carries.
+
+**Drawing.** `Draw` on anything - through the hook the core module's
+`TObject.Draw` calls - puts it on the current pad, `gPad`, making ROOT's
+default canvas `c1` (700 by 500) when there is none. Data drawn without
+`SAME` clears the pad first, as `TH1::Draw` does: a histogram, function,
+stack or efficiency always, a graph or multigraph when drawn with `A`; a
+graph drawn alone draws its own axes. The frame is the first histogram's, or
+a graph's drawn `A`, with an axis's `SetRangeUser` (its `fFirst`/`fLast`)
+and `SetMinimum`/`SetMaximum` respected; `GetUxmin()` and the rest give it,
+in powers of ten on a logarithmic axis as ROOT does. `DrawFrame` draws an
+empty `hframe`, `Range` sets a pad's coordinates for what is drawn with no
+frame, and `BuildLegend` makes a legend of what the pad draws.
+
+**Sizes.** A canvas's window is the size it is made - `(w, h)`,
+`(x, y, w, h)`, a form number, or `gStyle`'s `CanvasDefW` by `CanvasDefH` -
+and its picture, as in ROOT's batch mode, is that less the window's
+decoration: 4 pixels narrower and 28 shorter, so 700 by 500 saves as 696 by
+472. A negative width asks for the picture itself to be that size.
+
+| What | ROOT's names here |
+| --- | --- |
+| canvases and pads | `TCanvas`, `TPad`, `gPad`: `cd`, `Divide`, `Draw`, `Clear`, `Close`, `Update`, `Modified`, `Paint`, `SetLogx`/`y`/`z`, `SetGrid`, `SetGridx`/`y`, `SetTicks`, `SetTickx`/`y`, `SetLeftMargin` and the other three, `SetMargin`, `SetFillColor`, `SetFrameFillColor` and the frame's line and border, `SetBorderMode`/`Size`, `Range`, `GetRange`, `GetUxmin`/`Uxmax`/`Uymin`/`Uymax`, `GetFrame`, `DrawFrame`, `BuildLegend`, `GetListOfPrimitives`, `FindObject`, `GetPrimitive`, `GetPad`, `GetMother`, `GetCanvas`, `SaveAs`, `Print`, `ls`; a canvas's `GetWw`/`Wh`, `GetWindowWidth`/`Height`, `SetCanvasSize`, `SetWindowSize` |
+| styles | `TStyle`, `gStyle`: a `Set` and `Get` for every field of ROOT's - `SetOptStat` (digits or `"nemruoisk"`), `SetOptFit`, `SetOptTitle`, `SetStatX`..., `SetTitleX`..., `SetTitleFontSize`, `SetLabelSize(size, "xyz")` and every per-axis field, `SetPadTickX`, `SetPalette(number or kBird, kRainBow...)` or colours of one's own; `set_style("Plain")` for `gROOT->SetStyle` - `Modern`, `Plain`, `Classic`, `Default`, `Bold`, `Video`, `Pub`, `ATLAS`, `BELLE2` |
+| colours | `TColor(index, r, g, b)`, `TColor.GetColor(r, g, b)` or `("#rrggbb")` (an existing colour when there is one), `GetFreeColorIndex` (1179 at the start, as in ROOT), `CreateGradientColorTable`, `GetColorBright`/`Dark`/`Transparent`; the palettes `kDeepSea` to `kCividis` by name |
+| text | `TText`, `TLatex`, `TMathText`: `DrawText`, `DrawLatex`, `DrawLatexNDC`, `SetNDC`, `SetTextAlign`/`Size`/`Font`/`Angle`/`Color` |
+| paves and legends | `TPave`, `TPaveText` (`AddText`, `AddLine`, `GetLine`, `SetAllWith`), `TPaveLabel` (`DrawPaveLabel`), `TPaveStats`, `TLegend` (`AddEntry(obj or name, label, "lpfe")`, `SetHeader`, `SetNColumns`, `SetBorderSize`, `SetMargin`), `TLegendEntry` |
+| shapes | `TLine`, `TArrow`, `TBox`, `TWbox`, `TEllipse`, `TArc`, `TCrown`, `TMarker`, `TPolyLine`, `TPolyMarker`, `TGaxis`, and their `DrawLine`, `DrawBox`, `DrawArrow`, `DrawEllipse`, `DrawArc`, `DrawMarker`, `DrawPolyLine`, `DrawAxis` |
+
+Every drawing class takes its attributes from `gStyle` when it is made, as
+ROOT 6's do - text in font 62, fills in colour 19 - and has the
+`TAttLine`, `TAttFill`, `TAttMarker` and `TAttText` methods of its C++ class
+and a `Set`/`Get` for each coordinate. A name ROOT has that is not here is
+refused by name, `ROOT has TGraphPolar; xrdroot.pyroot does not yet`.
+
+`xrdroot.pyroot.graphics.compare_images(a, b)` says how alike two pictures
+are - files or arrays - as their structural similarity, 1 for the same
+picture: scikit-image's when it is installed, else the same formula in
+NumPy.
 
 ## Columns
 
