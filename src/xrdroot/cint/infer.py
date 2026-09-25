@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
-from typing import Any
+from typing import Any, ClassVar
 
 from .base import EmitterBase
 from .ctype import FLOATING, INTEGRAL, CType
@@ -43,10 +43,13 @@ BOOL = CType("bool")
 
 #: The results of the C and C++ functions whose return type the translation needs.
 RETURNS = {
-    **{name: DOUBLE for name in """sqrt cbrt exp exp2 expm1 log log10 log2 log1p pow sin cos
-        tan asin acos atan atan2 sinh cosh tanh asinh acosh atanh fabs floor ceil trunc round
-        fmod hypot erf erfc tgamma lgamma atof stod stof copysign fmin fmax""".split()},
-    **{name: INT for name in "atoi atol stoi strcmp strncmp printf sprintf rand abs".split()},
+    **dict.fromkeys(
+        """sqrt cbrt exp exp2 expm1 log log10 log2 log1p pow sin cos tan asin acos atan atan2
+        sinh cosh tanh asinh acosh atanh fabs floor ceil trunc round fmod hypot erf erfc
+        tgamma lgamma atof stod stof copysign fmin fmax""".split(),
+        DOUBLE,
+    ),
+    **dict.fromkeys("atoi atol stoi strcmp strncmp printf sprintf rand abs".split(), INT),
     "strlen": CType("unsigned long"),
     "isnan": BOOL,
     "isinf": BOOL,
@@ -217,7 +220,7 @@ class Inference(EmitterBase):
         """The functions a function or method symbol stands for."""
         raise NotImplementedError
 
-    _RULES: dict[type, Callable[[Inference, Any], CType | None]] = {
+    _RULES: ClassVar[dict[type, Callable[[Inference, Any], CType | None]]] = {
         Literal: _literal,
         Name: _name,
         Unary: _unary,

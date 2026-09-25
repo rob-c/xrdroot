@@ -195,7 +195,7 @@ class ClassEmitter(FunctionEmitter):
                 self.out.line(f"self.{own} = {value}", var.where)
 
     def initialise(self, info: ClassInfo, func: Function) -> None:
-        """What runs before a constructor's body: its bases, then its members, as C++ orders them."""
+        """What runs before a constructor's body: its bases, then its members, in C++'s order."""
         inits = dict(func.inits)
         own = inits.get(info.name)
         if own is not None:
@@ -214,7 +214,7 @@ class ClassEmitter(FunctionEmitter):
             self.out.line(f"{self._base(base.ctype)}.__init__({call})", base.where)
 
     def field_value(self, var: VarDecl, inits: dict[str, list[Expr]] | None) -> str:
-        """A member's starting value: from the initialiser list, the class body, or C++'s default."""
+        """A member's first value: from the initialiser list, the class body, or C++'s default."""
         ctype = var.ctype.value()
         if inits and var.name in inits:
             args = inits[var.name]

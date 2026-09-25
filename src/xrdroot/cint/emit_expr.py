@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import keyword
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ClassVar
 
 from .base import Out, P
 from .ctype import CType
@@ -260,7 +260,7 @@ class ExprEmitter(NameEmitter):
         return f"ItemRef({self.value(operand.obj)}, {index})", P.POSTFIX
 
     def reference(self, target: Expr) -> str:
-        """Something that reads and writes ``target`` as ``.value``: a cell, an ItemRef, an AttrRef."""
+        """What reads and writes ``target`` as ``.value``: a cell, an ItemRef or an AttrRef."""
         if isinstance(target, Index):
             return f"ItemRef({self.value(target.obj)}, {self.value(target.index)})"
         if isinstance(target, Member):
@@ -437,7 +437,7 @@ class ExprEmitter(NameEmitter):
     #: Where the emitter is, for the nodes it makes up for itself.
     scope_where: Any
 
-    _EMIT: dict[type, Callable[[ExprEmitter, Any], Out]] = {
+    _EMIT: ClassVar[dict[type, Callable[[ExprEmitter, Any], Out]]] = {
         Literal: _literal,
         Name: _name,
         Unary: _unary,

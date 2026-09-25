@@ -46,7 +46,8 @@ def _script(path: Path) -> int:
 
 def run(args: argparse.Namespace) -> int:
     from ..cint import translate_file
-    from ..cint.execute import arguments, run as run_macro, split_call
+    from ..cint.execute import arguments, split_call
+    from ..cint.execute import run as run_macro
 
     path_text, given = split_call(args.macro)
     path = Path(path_text)

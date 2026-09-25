@@ -108,7 +108,7 @@ def cbrt(value: Any) -> float:
     return math.copysign(abs(number) ** (1 / 3), number)
 
 
-def pow(base: Any, exponent: Any) -> float:  # noqa: A001
+def pow(base: Any, exponent: Any) -> float:
     """C's ``pow``: always a double, ``inf`` for a zero to a negative power."""
     try:
         return float(math.pow(float(base), float(exponent)))

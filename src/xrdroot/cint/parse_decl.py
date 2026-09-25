@@ -10,6 +10,7 @@ noting what names are declared as types and templates, since whether
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import ClassVar
 
 from .ctype import CType
 from .cursor import KEYWORDS, NoParse
@@ -202,7 +203,7 @@ class Parser(StmtParser):
             self.ternary()
         return name
 
-    _TOP: dict[str, Callable[[Parser], Stmt]] = {
+    _TOP: ClassVar[dict[str, Callable[[Parser], Stmt]]] = {
         ";": StmtParser._empty,
         "namespace": _namespace,
         "inline": lambda self: self._inline_namespace(),
@@ -459,7 +460,7 @@ class Parser(StmtParser):
             else:
                 self.take()
 
-    _MEMBER: dict[str, Callable[[Parser], Stmt]] = {
+    _MEMBER: ClassVar[dict[str, Callable[[Parser], Stmt]]] = {
         "typedef": StmtParser._typedef,
         "template": _template,
         "class": _type_at_top,

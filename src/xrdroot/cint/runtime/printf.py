@@ -157,7 +157,7 @@ def Info(location: Any, fmt: Any, *args: Any) -> None:
     _message("Info", location, fmt, args)
 
 
-def Warning(location: Any, fmt: Any, *args: Any) -> None:  # noqa: A001
+def Warning(location: Any, fmt: Any, *args: Any) -> None:
     _message("Warning", location, fmt, args)
 
 

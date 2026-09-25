@@ -109,6 +109,10 @@ INTEGRAL = (int, np.integer)
 REAL = (int, float, np.integer, np.floating)
 
 
+#: One function of an overload set: it, its fewest and most arguments, and their kinds.
+Candidate = tuple[Callable[..., Any], int, int, tuple[Any, ...]]
+
+
 class Overloaded:
     """A C++ overload set: calls go to the candidate the arguments fit, arity first.
 
@@ -118,7 +122,7 @@ class Overloaded:
     like a method, so overloaded members and constructors work too.
     """
 
-    def __init__(self, name: str, *candidates: tuple[Callable[..., Any], int, int, tuple[Any, ...]]):
+    def __init__(self, name: str, *candidates: Candidate) -> None:
         self.name = name
         self.candidates = candidates
 
@@ -160,7 +164,7 @@ def value_copy(value: Any) -> Any:
         return value.copy()
     try:
         return copy.deepcopy(value)
-    except Exception:  # noqa: BLE001 - an object that will not deep-copy is copied shallowly
+    except Exception:
         return copy.copy(value)
 
 
@@ -215,7 +219,9 @@ def iterate(container: Any) -> Iterable[Any]:
     return container  # type: ignore[no-any-return]
 
 
-def sort_range(container: Any, start: int, stop: Any, less: Callable[..., Any] | None = None) -> None:
+def sort_range(
+    container: Any, start: int, stop: Any, less: Callable[..., Any] | None = None
+) -> None:
     """``std::sort(begin, end[, less])`` over ``container[start:stop]``, in place."""
     end = len(container) if stop is None else int(stop)
     values = list(container[start:end])
@@ -224,8 +230,19 @@ def sort_range(container: Any, start: int, stop: Any, less: Callable[..., Any] |
     else:
         import functools
 
-        values.sort(key=functools.cmp_to_key(lambda a, b: -1 if less(a, b) else int(bool(less(b, a)))))
+        values.sort(key=functools.cmp_to_key(_comparison(less)))
     container[start:end] = values
+
+
+def _comparison(less: Callable[..., Any]) -> Callable[[Any, Any], int]:
+    """A C++ "less than" predicate as the three-way comparison Python's sort takes."""
+
+    def compare(a: Any, b: Any) -> int:
+        if less(a, b):
+            return -1
+        return 1 if less(b, a) else 0
+
+    return compare
 
 
 def reverse_range(container: Any, start: int, stop: Any) -> None:

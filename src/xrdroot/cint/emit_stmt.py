@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 from .base import P
 from .ctype import CType
@@ -41,13 +41,13 @@ from .nodes import (
     If,
     Index,
     InitList,
-    Member,
-    RangeFor,
-    Switch,
     Literal,
+    Member,
     Name,
+    RangeFor,
     Return,
     Stmt,
+    Switch,
     Throw,
     Try,
     Typedef,
@@ -124,7 +124,7 @@ class StmtEmitter(CallEmitter):
         self.expression_statement(node.expr)
 
     def expression_statement(self, expr: Expr) -> None:
-        """``expr;`` - with assignment, ``++``, ``delete`` and friends as the statements they are."""
+        """``expr;``, with assignment, ``++``, ``delete`` and the like as the statements they are."""
         special = self._EXPRESSIONS.get(type(expr))
         if special is not None and special(self, expr):
             return
@@ -215,10 +215,7 @@ class StmtEmitter(CallEmitter):
     def _call_statement(self, expr: Call) -> bool:
         return self.call_statement(expr)
 
-    def call_statement(self, expr: Call) -> bool:
-        raise NotImplementedError
-
-    _EXPRESSIONS: dict[type, Callable[[StmtEmitter, Any], bool]] = {
+    _EXPRESSIONS: ClassVar[dict[type, Callable[[StmtEmitter, Any], bool]]] = {
         Assign: _assign_statement,
         Unary: _increment_statement,
         Delete: _delete_statement,
@@ -323,7 +320,7 @@ class StmtEmitter(CallEmitter):
                     self.expression_statement(step)
 
     def counted(self, node: For) -> bool:
-        """``for (int i = a; i < b; ++i)`` as ``for i in range(a, b)``, when that is the same loop."""
+        """``for (int i = a; i < b; ++i)`` as ``for i in range(a, b)``, when that is the same."""
         found = _counter(node)
         if found is None:
             return False
@@ -352,7 +349,7 @@ class StmtEmitter(CallEmitter):
 
     def _stop(self, op: str, bound: Expr, step: int) -> str | None:
         upward = step > 0
-        if op == "<" and upward or op == ">" and not upward:
+        if (op == "<" and upward) or (op == ">" and not upward):
             return self.value(bound)
         if op == "!=" and abs(step) == 1:
             return self.value(bound)
@@ -428,7 +425,8 @@ class StmtEmitter(CallEmitter):
             for index, (labels, stmts) in enumerate(ordered):
                 default = any(case.value is None for case in labels)
                 word = "if" if index == 0 else "elif"
-                line = "else:" if default and index else f"{word} {self._labels(subject, labels, [])}:"
+                test = self._labels(subject, labels, [])
+                line = "else:" if default and index else f"{word} {test}:"
                 if default and not index:
                     line = "if True:"
                 self.out.line(line, labels[0].where)
@@ -544,7 +542,7 @@ class StmtEmitter(CallEmitter):
     def _buffer(self, expr: Call, count: int) -> str:
         """The buffer a C string function writes into, as something Python can assign."""
         if len(expr.args) < count:
-            raise self.refuse(f"{expr.func.text}() with too few arguments", expr)  # type: ignore[attr-defined]
+            raise self.refuse("a C string function with too few arguments", expr)
         target = expr.args[0]
         if isinstance(target, Name):
             symbol = self.symbol(target)
@@ -588,7 +586,7 @@ class StmtEmitter(CallEmitter):
         a, b = (self.value(arg) for arg in expr.args)
         self.out.line(f"{a}, {b} = {b}, {a}", expr.where)
 
-    _WRITERS: dict[str, Callable[[StmtEmitter, Call], None]] = {
+    _WRITERS: ClassVar[dict[str, Callable[[StmtEmitter, Call], None]]] = {
         "sprintf": _sprintf,
         "snprintf": _snprintf,
         "strcpy": _strcpy,
@@ -618,7 +616,7 @@ class StmtEmitter(CallEmitter):
         self.out.line(line, expr.where)
         return True
 
-    _STATEMENTS: dict[type, Callable[[StmtEmitter, Any], None]] = {
+    _STATEMENTS: ClassVar[dict[type, Callable[[StmtEmitter, Any], None]]] = {
         Block: _block_statement,
         ExprStmt: _expression,
         DeclStmt: _declarations,

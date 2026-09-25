@@ -117,7 +117,7 @@ def to_string(value: Any) -> str:
     """``std::to_string``: an integer as digits, a floating value with ``%f``."""
     if isinstance(value, bool) or hasattr(value, "__index__"):
         return str(int(value))
-    return "%f" % float(value)
+    return f"{float(value):f}"
 
 
 def char_at(text: Any, index: Any) -> int:

@@ -9,7 +9,7 @@ nothing but their parts.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional, Union
+from typing import Any
 
 from .ctype import CType
 from .errors import Where
@@ -84,7 +84,7 @@ class Name(Expr):
     """A name, qualified or not: ``x``, ``TMath::Pi``, ``std::vector<int>``."""
 
     parts: list[str]
-    targs: Optional[list[Any]] = None
+    targs: list[Any] | None = None
     rooted: bool = False
 
     @property
@@ -144,7 +144,7 @@ class Member(Expr):
     obj: Expr
     name: str
     arrow: bool
-    targs: Optional[list[Any]] = None
+    targs: list[Any] | None = None
 
 
 @dataclass(eq=False)
@@ -164,15 +164,15 @@ class Cast(Expr):
 
 @dataclass(eq=False)
 class SizeOf(Expr):
-    ctype: Optional[CType]
-    operand: Optional[Expr]
+    ctype: CType | None
+    operand: Expr | None
 
 
 @dataclass(eq=False)
 class New(Expr):
     ctype: CType
-    args: Optional[list[Expr]]
-    count: Optional[Expr] = None
+    args: list[Expr] | None
+    count: Expr | None = None
     braces: bool = False
 
 
@@ -195,7 +195,7 @@ class Lambda(Expr):
     captures: list[Capture]
     params: list[Param]
     body: Block
-    returns: Optional[CType] = None
+    returns: CType | None = None
 
 
 @dataclass(eq=False)
@@ -203,7 +203,7 @@ class InitList(Expr):
     """``{a, b}``, or ``T{a, b}`` when a type is named before it."""
 
     items: list[Expr]
-    ctype: Optional[CType] = None
+    ctype: CType | None = None
 
 
 @dataclass(eq=False)
@@ -218,7 +218,7 @@ class This(Expr):
 
 @dataclass(eq=False)
 class Throw(Expr):
-    operand: Optional[Expr]
+    operand: Expr | None
 
 
 # -- statements --------------------------------------------------------------
@@ -249,12 +249,12 @@ class VarDecl(Stmt):
 
     name: str
     ctype: CType
-    init: Optional[Expr] = None
-    style: Optional[str] = None
+    init: Expr | None = None
+    style: str | None = None
     args: list[Expr] = field(default_factory=list)
     static: bool = False
     #: The names of a structured binding, ``auto [a, b] = ...``.
-    binding: Optional[list[str]] = None
+    binding: list[str] | None = None
 
 
 @dataclass(eq=False)
@@ -264,15 +264,15 @@ class DeclStmt(Stmt):
 
 @dataclass(eq=False)
 class If(Stmt):
-    cond: Union[Expr, VarDecl]
+    cond: Expr | VarDecl
     then: Stmt
-    orelse: Optional[Stmt] = None
-    init: Optional[Stmt] = None
+    orelse: Stmt | None = None
+    init: Stmt | None = None
 
 
 @dataclass(eq=False)
 class While(Stmt):
-    cond: Union[Expr, VarDecl]
+    cond: Expr | VarDecl
     body: Stmt
 
 
@@ -284,9 +284,9 @@ class DoWhile(Stmt):
 
 @dataclass(eq=False)
 class For(Stmt):
-    init: Optional[Stmt]
-    cond: Optional[Expr]
-    step: Optional[Expr]
+    init: Stmt | None
+    cond: Expr | None
+    step: Expr | None
     body: Stmt
 
 
@@ -307,7 +307,7 @@ class Switch(Stmt):
 class Case(Stmt):
     """A ``case value:`` label, or ``default:`` when ``value`` is ``None``."""
 
-    value: Optional[Expr]
+    value: Expr | None
 
 
 @dataclass(eq=False)
@@ -322,12 +322,12 @@ class Continue(Stmt):
 
 @dataclass(eq=False)
 class Return(Stmt):
-    value: Optional[Expr]
+    value: Expr | None
 
 
 @dataclass(eq=False)
 class Handler(Node):
-    decl: Optional[VarDecl]
+    decl: VarDecl | None
     body: Block
 
 
@@ -347,9 +347,9 @@ class Empty(Stmt):
 
 @dataclass(eq=False)
 class Param(Node):
-    name: Optional[str]
+    name: str | None
     ctype: CType
-    default: Optional[Expr] = None
+    default: Expr | None = None
 
 
 @dataclass(eq=False)
@@ -364,7 +364,7 @@ class Function(Stmt):
     name: str
     returns: CType
     params: list[Param]
-    body: Optional[Block]
+    body: Block | None
     scope: list[str] = field(default_factory=list)
     kind: str = "function"
     const: bool = False
@@ -372,9 +372,9 @@ class Function(Stmt):
     virtual: bool = False
     variadic: bool = False
     inits: list[tuple[str, list[Expr]]] = field(default_factory=list)
-    template: Optional[list[str]] = None
+    template: list[str] | None = None
     #: ``= 0``, ``= default``, ``= delete``: declared, and never to be given a body.
-    special: Optional[str] = None
+    special: str | None = None
 
 
 @dataclass(eq=False)
@@ -389,7 +389,7 @@ class ClassDecl(Stmt):
     kind: str
     bases: list[Base]
     members: list[Stmt]
-    template: Optional[list[str]] = None
+    template: list[str] | None = None
     #: Declared with ``struct Foo;`` and nothing more.
     forward: bool = False
     #: Variables declared after the closing brace, ``struct P {...} p;``.
@@ -398,15 +398,15 @@ class ClassDecl(Stmt):
 
 @dataclass(eq=False)
 class EnumDecl(Stmt):
-    name: Optional[str]
-    items: list[tuple[str, Optional[Expr]]]
+    name: str | None
+    items: list[tuple[str, Expr | None]]
     scoped: bool = False
     declarators: list[VarDecl] = field(default_factory=list)
 
 
 @dataclass(eq=False)
 class Namespace(Stmt):
-    name: Optional[str]
+    name: str | None
     body: list[Stmt]
 
 
@@ -424,4 +424,4 @@ class Unit(Node):
     """A whole macro: its declarations, and its brace-only body if it is an unnamed macro."""
 
     decls: list[Stmt]
-    unnamed: Optional[Block] = None
+    unnamed: Block | None = None

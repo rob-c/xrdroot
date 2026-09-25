@@ -392,7 +392,7 @@ class Session:
         return None
 
     @staticmethod
-    def ProcessLine(line: str) -> Any:  # noqa: N802 - ROOT's name
+    def ProcessLine(line: str) -> Any:
         """``gROOT->ProcessLine(line)``: C++ statements, or ``.x``/``.L`` of a C++ macro."""
         from .cint.execute import process_line
 

@@ -52,7 +52,7 @@ def _one(path: Path) -> tuple[str, str]:
         compile(python, str(path), "exec")
     except Refusal as why:
         return "refused", why.why
-    except Exception as why:  # noqa: BLE001 - the survey is here to count exactly these
+    except Exception as why:
         frame = traceback.extract_tb(why.__traceback__)[-1]
         return "crashed", f"{type(why).__name__}: {why} ({frame.name}:{frame.lineno})"
     return "translated", ""

@@ -66,9 +66,9 @@ left = Manipulator("left", adjust="left")
 right = Manipulator("right", adjust="right")
 boolalpha = Manipulator("boolalpha", alpha=True)
 noboolalpha = Manipulator("noboolalpha", alpha=False)
-hex = Manipulator("hex", base=16)  # noqa: A001
+hex = Manipulator("hex", base=16)
 dec = Manipulator("dec", base=10)
-oct = Manipulator("oct", base=8)  # noqa: A001
+oct = Manipulator("oct", base=8)
 showpos = Manipulator("showpos", plus=True)
 noshowpos = Manipulator("noshowpos", plus=False)
 
@@ -85,7 +85,7 @@ def setfill(char: Any) -> Manipulator:
     return Manipulator("setfill", fill=chr(char) if isinstance(char, int) else str(char))
 
 
-class ostream:  # noqa: N801
+class ostream:
     """A C++ output stream over a Python text file: ``<<`` writes, as C++ would format it."""
 
     def __init__(self, target: TextIO | None = None, name: str = "stdout") -> None:
@@ -193,7 +193,7 @@ def _is_floating(value: Any) -> bool:
     return isinstance(value, float) or type(value).__name__ in ("float32", "float16")
 
 
-class ostringstream(ostream):  # noqa: N801
+class ostringstream(ostream):
     """``std::ostringstream``: a stream into a string, handed back by ``.str()``."""
 
     def __init__(self, initial: str = "") -> None:
@@ -207,7 +207,7 @@ class ostringstream(ostream):  # noqa: N801
     def write(self, text: str) -> None:
         self._parts.append(text)
 
-    def str(self, text: Any = None) -> str:  # noqa: A003
+    def str(self, text: Any = None) -> str:
         if text is not None:
             self._parts = [f"{text}"]
             return ""

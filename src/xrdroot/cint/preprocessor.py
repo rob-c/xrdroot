@@ -23,8 +23,8 @@ from .tokens import Token, tokenize
 
 __all__ = ["Macro", "Preprocessor", "preprocess", "PREDEFINED"]
 
-#: ROOT's version as Cling reports it, ``ROOT_VERSION(6, 36, 0)``.
-ROOT_VERSION = (6 << 16) | (36 << 8) | 0
+#: ROOT's version as Cling reports it, ``ROOT_VERSION(6, 40, 4)``.
+ROOT_VERSION = (6 << 16) | (40 << 8) | 4
 
 #: The macros defined before a macro's first line: Cling's, the platform's and ROOT's own.
 PREDEFINED = f"""

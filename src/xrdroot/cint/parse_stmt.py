@@ -11,6 +11,7 @@ its labels are refused by name: there is no Python for a jump.
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import ClassVar
 
 from .ctype import CType
 from .cursor import KEYWORDS, NoParse
@@ -171,7 +172,7 @@ class StmtParser(ExprParser):
         return self.block()
 
     def condition(self) -> Expr | VarDecl:
-        """What ``if``, ``while`` and ``switch`` test: an expression, or a declaration with ``=``."""
+        """What ``if``, ``while`` and ``switch`` test: an expression, or a declaration."""
         if self.looks_declaration():
             spec = self.specifiers()
             name, ctype = self.declarator(spec.ctype)
@@ -408,7 +409,7 @@ class StmtParser(ExprParser):
             return self.enum_declaration()
         return self.class_declaration()
 
-    _STATEMENTS: dict[str, Callable[[StmtParser], Stmt]] = {
+    _STATEMENTS: ClassVar[dict[str, Callable[[StmtParser], Stmt]]] = {
         ";": _empty,
         "{": _block,
         "if": _if,

@@ -165,7 +165,7 @@ class VariableEmitter(StmtEmitter):
         return self.default(ctype, decl)
 
     def default(self, ctype: CType, decl: VarDecl) -> str:
-        """What a variable declared without an initialiser holds: zero, ``''``, ``None``, ``T()``."""
+        """What a variable declared with no initialiser holds: zero, ``''``, ``None``, ``T()``."""
         if ctype.scalar or ctype.pointer or ctype.is_smart:
             return zero(ctype)
         if ctype.is_string:
@@ -210,7 +210,8 @@ class VariableEmitter(StmtEmitter):
                 return f"{self.class_expr(ctype)}({self.value(init)})"
         if ctype.is_class and not ctype.pointer and not ctype.is_smart and not ctype.reference:
             found = self.typeof(init)
-            if isinstance(init, Literal) or (found is not None and (found.arithmetic or found.is_string)):
+            plain = found is not None and (found.arithmetic or found.is_string)
+            if isinstance(init, Literal) or plain:
                 return f"{self.class_expr(ctype)}({self.value(init)})"
         return self.store(ctype, init)
 
@@ -250,7 +251,8 @@ class VariableEmitter(StmtEmitter):
         if init is None:
             return "''"
         if isinstance(init, InitList):
-            raise self.refuse(f"the character array {decl.name} initialised one char at a time", decl)
+            why = f"the character array {decl.name} initialised one char at a time"
+            raise self.refuse(why, decl)
         return self.value(init)
 
     def static_local(self, decl: VarDecl) -> None:
@@ -261,7 +263,8 @@ class VariableEmitter(StmtEmitter):
         for node in walk(decl):
             if isinstance(node, Name) and self.symbol(node) is not None:
                 if self.symbol(node).kind in ("local", "param"):  # type: ignore[union-attr]
-                    raise self.refuse(f"the static local {decl.name} initialised from a local", decl)
+                    why = f"the static local {decl.name} initialised from a local"
+                    raise self.refuse(why, decl)
         ctype = self.declared_type(decl)
         value = self.initial(decl, ctype)
         owner = getattr(context.owner, "name", "macro")

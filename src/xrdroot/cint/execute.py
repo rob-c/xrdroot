@@ -20,7 +20,7 @@ from typing import Any
 
 from . import cache
 from .errors import MacroError, Refusal, Where
-from .runtime import ROOT, cout, cerr, clog
+from .runtime import ROOT, cerr, clog, cout
 from .runtime.streams import ostream
 from .translation import Translation, translation
 

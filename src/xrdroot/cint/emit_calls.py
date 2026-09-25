@@ -16,6 +16,7 @@ standard library's calls that have no pyroot counterpart are rewritten:
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import ClassVar
 
 from .base import Out, P
 from .ctype import CType
@@ -175,7 +176,7 @@ class CallEmitter(ExprEmitter):
             return self.value(it), offset
         raise self.refuse("an iterator this translator cannot follow back to its container", node)
 
-    _LIBRARY: dict[str, Callable[[CallEmitter, Name, Call], Out | None]] = {
+    _LIBRARY: ClassVar[dict[str, Callable[[CallEmitter, Name, Call], Out | None]]] = {
         "make_unique": _make,
         "make_shared": _make,
         "max": _limits,

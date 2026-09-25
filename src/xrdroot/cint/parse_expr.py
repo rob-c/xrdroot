@@ -11,7 +11,7 @@ must make are made from what is known about names: ``(T)x`` is a cast when
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ClassVar
 
 from .ctype import BUILTIN_WORDS, CType, builtin_name
 from .cursor import KEYWORDS, KNOWN_TEMPLATES, STD_NAMES, NoParse
@@ -179,7 +179,7 @@ class ExprParser(TypeParser):
             raise NoParse
         if token.kind == "op" and token.text not in PREFIX and not token.is_("(", "{", "::"):
             raise NoParse
-        if token.kind == "eof" or token.is_("*", "&", "+", "-") and not _pointerish(ctype):
+        if token.kind == "eof" or (token.is_("*", "&", "+", "-") and not _pointerish(ctype)):
             raise NoParse
         return Cast(where, ctype, self.unary(), "c")
 
@@ -238,7 +238,7 @@ class ExprParser(TypeParser):
         word = self.peek().text
         raise self.refuse(f"{word} is not something this translator turns into Python")
 
-    _PREFIXED: dict[str, Callable[[ExprParser], Expr]] = {
+    _PREFIXED: ClassVar[dict[str, Callable[[ExprParser], Expr]]] = {
         "sizeof": _sizeof,
         "alignof": _unsupported,
         "new": _new,
@@ -315,7 +315,7 @@ class ExprParser(TypeParser):
         braced.ctype = CType(expr.text, expr.targs or [])
         return braced
 
-    _POSTFIX: dict[str, Callable[[ExprParser, Expr], Expr]] = {
+    _POSTFIX: ClassVar[dict[str, Callable[[ExprParser, Expr], Expr]]] = {
         "(": _call,
         "[": _index,
         ".": _member,
@@ -375,7 +375,7 @@ class ExprParser(TypeParser):
             value = value * 256 + ord(char)
         return Literal(token.where, "char", value, "char")
 
-    _PRIMARY_KIND: dict[str, Callable[[ExprParser], Expr]] = {
+    _PRIMARY_KIND: ClassVar[dict[str, Callable[[ExprParser], Expr]]] = {
         "num": _number,
         "str": _string,
         "chr": _character,
@@ -483,7 +483,7 @@ class ExprParser(TypeParser):
             self.angle = saved
         return InitList(where, items)
 
-    _PRIMARY_WORD: dict[str, Callable[[ExprParser], Expr]] = {
+    _PRIMARY_WORD: ClassVar[dict[str, Callable[[ExprParser], Expr]]] = {
         "true": _true,
         "false": _true,
         "nullptr": _null,
@@ -501,7 +501,7 @@ class ExprParser(TypeParser):
     # -- names ----------------------------------------------------------------
 
     def operator_name(self) -> str:
-        """``operator+``, ``operator()``, ``operator[]``, ``operator double``: the name as written."""
+        """``operator+``, ``operator()``, ``operator[]``, ``operator double``: as written."""
         self.expect("operator")
         if self.at_("(") and self.peek(1).is_(")"):
             self.take()
@@ -537,7 +537,7 @@ class ExprParser(TypeParser):
             parts.append(self.identifier())
             if self.at_("<"):
                 targs = self._name_targs(parts) or targs
-            if not (self.at_("::") and self.peek(1).kind == "id" or self._scoped_operator()):
+            if not ((self.at_("::") and self.peek(1).kind == "id") or self._scoped_operator()):
                 break
             self.take()
         if len(parts) == 1 and parts[0] in STD_NAMES and not self.is_variable(parts[0]):
