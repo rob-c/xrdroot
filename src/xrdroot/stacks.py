@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from .display import Displayed
 from .errors import FormatError
 from .function.attached import listed
 from .graph import Graph
@@ -20,7 +21,7 @@ from .hist import Histogram
 __all__ = ["COLLECTIONS", "MultiGraph", "Stack"]
 
 
-class _Held(Sequence[Any]):
+class _Held(Displayed, Sequence[Any]):
     """What the two have in common: a name, a title, and a list of things."""
 
     __slots__ = ("classname", "members", "_items")

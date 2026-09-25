@@ -31,8 +31,8 @@ spectrum = f["h_pt"].to_hist()                       # a hist.Hist, flow and all
 
 That brings `xrdclient` with it, which is where `root://`, `https://`,
 HEP WebDAV and `s3://` come from, and NumPy, which is what everything is read
-into. Nothing else is required. `matplotlib` makes histograms and graphs draw
-themselves onto axes; the `lz4` extra (`lz4` and `xxhash`) makes LZ4 some sixty
+into. Nothing else is required. `matplotlib`, `plotly` or `bokeh` make things
+draw themselves (`mplhep` adds the experiments' styles); the `lz4` extra (`lz4` and `xxhash`) makes LZ4 some sixty
 times faster than the pure-Python codec that is always there, and `zstandard`
 reads zstd before Python 3.14. pandas, Awkward, pyarrow, Polars and `hist` are
 used when asked for and never required.
@@ -154,8 +154,11 @@ h.GetValue().plot(); print(df.Report().GetValue())
 
 ## Drawing
 
-Histograms and graphs draw themselves: `.plot()` onto matplotlib axes when
-matplotlib is there, `.text()` into plain characters when it is not.
+Everything drawable draws itself with ROOT's options, defaults and colours:
+`.plot()` onto matplotlib axes, a plotly or a bokeh figure (`backend=`), or
+into plain characters; `xrdroot.plot.ratio`, `compare` and `stack` make the
+plots of several things, in ROOT's style or an experiment's; and a notebook
+shows each as its picture, and a tree or file as a table.
 
 ## The shell and the command line
 

@@ -258,6 +258,12 @@ class Directory:
     def __repr__(self) -> str:
         return f"<Directory {self.path or '/'} with {len(self._keys)} keys>"
 
+    def _repr_html_(self) -> str:
+        """A notebook's table of every key: name, cycle, class and title, none read."""
+        from .plot.notebook import directory_table
+
+        return directory_table(repr(self).strip("<>"), self._keys)
+
     def _key(self, name: str) -> Key:
         wanted, _, cycle = name.partition(";")
         found = None

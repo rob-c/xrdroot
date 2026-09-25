@@ -14,9 +14,10 @@ import types
 import pytest
 
 from clisupport import FakeMatplotlib
-from xrdroot import Graph, Histogram
+from xrdroot import Histogram
 from xrdroot.cli import main
 from xrdroot.cli.render import options, render
+from xrdroot.display import Displayed
 from xrdroot.errors import UnsupportedFeatureError
 
 DATA = pathlib.Path(__file__).parent / "data"
@@ -35,8 +36,10 @@ def fake_matplotlib(monkeypatch):
 def saved(monkeypatch, fake_matplotlib):
     """Where every histogram and graph was saved, and the style it was drawn in."""
     found: list = []
-    for kind in (Histogram, Graph):
-        monkeypatch.setattr(kind, "plot", lambda self, **style: fake_matplotlib.axes(found, style))
+    # Everything that draws draws through the one mixin, functions included.
+    monkeypatch.setattr(
+        Displayed, "plot", lambda self, **style: fake_matplotlib.axes(found, style)
+    )
     return found
 
 
@@ -83,11 +86,14 @@ def test_a_directory_draws_everything_in_it_that_draws(capsys, tmp_path, saved):
 
 def test_what_does_not_draw_is_skipped_with_the_reason(capsys, tmp_path, saved):
     _, out = printed(capsys, data("tformula.root"), "-o", str(tmp_path / "f.png"))
-    assert out[0] == (
-        "skipped func1 (TF1): a TF1 has no picture to draw; "
+    # The four TF1s are Functions, which draw; the two compositions of them
+    # come back as the members they were written with, which do not.
+    assert [line.split()[0] for line in out] == ["wrote"] * 4 + ["skipped"] * 2
+    assert out[4] == (
+        "skipped fconv (TF1Convolution): a TF1Convolution has no picture to draw; "
         "histograms, graphs, profiles, stacks and canvases do"
     )
-    assert len(out) == 6
+    assert len(saved) == 4
 
 
 def test_a_directory_without_a_picture_file_is_refused(capsys):

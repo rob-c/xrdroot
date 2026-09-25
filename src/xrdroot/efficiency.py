@@ -27,6 +27,7 @@ import numpy as np
 
 from .arithmetic import compatible
 from .booking import FILL, LINE, MARKER, split_title
+from .display import Displayed
 from .errors import FormatError, UnsupportedFeatureError
 from .filling import arrays, fill_histogram
 from .hist import Histogram
@@ -294,7 +295,7 @@ def _filled_with_weights(passed: Histogram, total: Histogram) -> bool:
     )
 
 
-class Efficiency:
+class Efficiency(Displayed):
     """A ``TEfficiency``: what passed, out of what was tried, bin by bin.
 
         >>> eff = f["trigger"]                               # doctest: +SKIP

@@ -53,9 +53,11 @@ histograms and graphs - read from another file, made by ``hist`` or
 :func:`numpy.histogram`, or built from plain numbers with
 :meth:`Histogram.new` and :meth:`Graph.new` - along with strings and arrays,
 in directories of their own if their names say so; and :func:`update` adds
-to a file that is already there. And both classes draw themselves:
-``.plot()`` onto matplotlib axes if matplotlib is there, ``.text()`` into
-characters with nothing installed at all.
+to a file that is already there. And everything drawable draws itself,
+with ROOT's options, defaults and colours: ``.plot()`` onto matplotlib
+axes, a plotly or a bokeh figure, or into characters with nothing installed
+at all, with :mod:`xrdroot.plot` for ratio plots, comparisons, stacks and
+experiments' styles - and a notebook shows each as its picture.
 
 :mod:`xrdml` turns what comes out into tensors, if PyTorch or TensorFlow
 is there; it is a separate package that builds on this one.
@@ -65,7 +67,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import fit, stats
+from . import fit, plot, stats
 from .chain import Chain, ChainedBranch, chain
 from .efficiency import Efficiency
 from .entries import EntryList
@@ -132,6 +134,8 @@ __all__ = [
     "overflow",
     # statistics
     "stats",
+    # drawing
+    "plot",
     # analysis
     "RDataFrame",
     "RunGraphs",
