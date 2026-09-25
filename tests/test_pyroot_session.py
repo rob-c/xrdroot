@@ -26,9 +26,13 @@ def test_a_stopwatch_prints_real_and_cpu_time_as_root_does(capsys):
     watch.Print("m")
     watch.Print("u")
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0].startswith("Real time 0:00:0") and lines[0].endswith(", 2 slices")
-    assert ", CP time " in lines[1] and len(lines[2].split(",")[0].split(":")[-1]) == 9
-    assert watch.RealTime() >= 0 and watch.CpuTime() >= 0 and watch.Counter() == 2
+    assert lines[0].startswith("Real time 0:00:0")
+    assert lines[0].endswith(", 2 slices")
+    assert ", CP time " in lines[1]
+    assert len(lines[2].split(",")[0].split(":")[-1]) == 9
+    assert watch.RealTime() >= 0
+    assert watch.CpuTime() >= 0
+    assert watch.Counter() == 2
     watch.Reset()
     watch.ResetCpuTime(1.5)
     assert watch.CpuTime() == 1.5
@@ -50,9 +54,13 @@ def test_a_benchmark_shows_each_stopwatch_by_name(capsys):
     ROOT.gBenchmark.Stop("none")
     real, cpu = ROOT.gBenchmark.Summary()
     out = capsys.readouterr().out.splitlines()
-    assert out[0].startswith("fill      : Real Time =   ") and "seconds Cpu Time" in out[0]
-    assert out[-1].startswith("TOTAL     : Real Time =") and real >= 0 and cpu >= 0
-    assert ROOT.gBenchmark.GetRealTime("none") == 0.0 and ROOT.gBenchmark.GetCpuTime("none") == 0
+    assert out[0].startswith("fill      : Real Time =   ")
+    assert "seconds Cpu Time" in out[0]
+    assert out[-1].startswith("TOTAL     : Real Time =")
+    assert real >= 0
+    assert cpu >= 0
+    assert ROOT.gBenchmark.GetRealTime("none") == 0.0
+    assert ROOT.gBenchmark.GetCpuTime("none") == 0
 
 
 def test_a_datime_is_a_date_and_time_to_the_second(capsys):
@@ -60,9 +68,12 @@ def test_a_datime_is_a_date_and_time_to_the_second(capsys):
     assert (when.GetDate(), when.GetTime()) == (20260925, 123005)
     assert (when.GetYear(), when.GetMonth(), when.GetDay()) == (2026, 9, 25)
     assert (when.GetHour(), when.GetMinute(), when.GetSecond()) == (12, 30, 5)
-    assert when.GetDayOfWeek() == 5 and when.AsSQLString() == "2026-09-25 12:30:05"
+    assert when.GetDayOfWeek() == 5
+    assert when.AsSQLString() == "2026-09-25 12:30:05"
     same = ROOT.TDatime(20260925, 123005)
-    assert same == when and hash(same) == hash(when) and same != "x"
+    assert same == when
+    assert hash(same) == hash(when)
+    assert same != "x"
     assert ROOT.TDatime(when.Convert()) == when
     when.Print()
     assert capsys.readouterr().out == "Date/Time = Fri Sep 25 12:30:05 2026\n"
@@ -80,7 +91,8 @@ def test_gsystem_says_a_path_is_missing_the_way_root_does(tmp_path):
 
 
 def test_gsystem_loads_and_includes_without_complaint():
-    assert ROOT.gSystem.Load("libPhysics") == 0 and "libPhysics" in ROOT.gSystem.GetLibraries()
+    assert ROOT.gSystem.Load("libPhysics") == 0
+    assert "libPhysics" in ROOT.gSystem.GetLibraries()
     ROOT.gSystem.Unload("libPhysics")
     ROOT.gSystem.Unload("libNothing")
     ROOT.gSystem.AddIncludePath("-I/a")
@@ -103,9 +115,12 @@ def test_gsystem_reads_and_sets_the_environment(monkeypatch):
     assert ROOT.gSystem.Getenv("PYROOT_TEST") == "5"
     ROOT.gSystem.Unsetenv("PYROOT_TEST")
     assert "PYROOT_TEST" not in os.environ
-    assert ROOT.gSystem.HostName() and ROOT.gSystem.GetPid() == os.getpid()
-    assert ROOT.gSystem.GetUid() == os.getuid() and ROOT.gSystem.GetUserInfo() is None
-    assert ROOT.gSystem.GetBuildArch() and ROOT.gSystem.Now() > 0
+    assert ROOT.gSystem.HostName()
+    assert ROOT.gSystem.GetPid() == os.getpid()
+    assert ROOT.gSystem.GetUid() == os.getuid()
+    assert ROOT.gSystem.GetUserInfo() is None
+    assert ROOT.gSystem.GetBuildArch()
+    assert ROOT.gSystem.Now() > 0
 
 
 def test_gsystem_runs_commands_and_sleeps():
@@ -122,17 +137,24 @@ def test_gsystem_runs_commands_and_sleeps():
 def test_gsystem_walks_and_names_paths(tmp_path):
     here = os.getcwd()
     assert ROOT.gSystem.pwd() == ROOT.gSystem.WorkingDirectory() == here
-    assert ROOT.gSystem.mkdir("a/b", True) == 0 and ROOT.gSystem.mkdir("a") == -1
+    assert ROOT.gSystem.mkdir("a/b", True) == 0
+    assert ROOT.gSystem.mkdir("a") == -1
     assert ROOT.gSystem.MakeDirectory("c") == 0
-    assert ROOT.gSystem.cd("a") and not ROOT.gSystem.ChangeDirectory("nowhere")
+    assert ROOT.gSystem.cd("a")
+    assert not ROOT.gSystem.ChangeDirectory("nowhere")
     os.chdir(here)
-    assert ROOT.gSystem.BaseName("/x/y.root") == "y.root" and ROOT.gSystem.BaseName("/") == "/"
-    assert ROOT.gSystem.DirName("/x/y.root") == "/x" and ROOT.gSystem.DirName("y") == "."
-    assert ROOT.gSystem.DirName("/y") == "/" and ROOT.gSystem.GetDirName("/x/y") == "/x"
+    assert ROOT.gSystem.BaseName("/x/y.root") == "y.root"
+    assert ROOT.gSystem.BaseName("/") == "/"
+    assert ROOT.gSystem.DirName("/x/y.root") == "/x"
+    assert ROOT.gSystem.DirName("y") == "."
+    assert ROOT.gSystem.DirName("/y") == "/"
+    assert ROOT.gSystem.GetDirName("/x/y") == "/x"
     assert ROOT.gSystem.ConcatFileName("a", "b") == os.path.join("a", "b")
     name = ROOT.TString("f.root")
-    assert ROOT.gSystem.PrependPathName("dir", name) == "dir/f.root" and name == "dir/f.root"
-    assert ROOT.gSystem.IsAbsoluteFileName("/x") and ROOT.gSystem.UnixPathName("a") == "a"
+    assert ROOT.gSystem.PrependPathName("dir", name) == "dir/f.root"
+    assert name == "dir/f.root"
+    assert ROOT.gSystem.IsAbsoluteFileName("/x")
+    assert ROOT.gSystem.UnixPathName("a") == "a"
     assert ROOT.gSystem.HomeDirectory() == os.path.expanduser("~")
     assert os.path.isdir(ROOT.gSystem.TempDirectory())
 
@@ -141,7 +163,8 @@ def test_gsystem_expands_and_finds_files(tmp_path, monkeypatch):
     monkeypatch.setenv("PYROOT_DIR", "there")
     assert ROOT.gSystem.ExpandPathName("$PYROOT_DIR/x") == "there/x"
     text = ROOT.TString("$PYROOT_DIR")
-    assert ROOT.gSystem.ExpandPathName(text) is False and text == "there"
+    assert ROOT.gSystem.ExpandPathName(text) is False
+    assert text == "there"
     (tmp_path / "found.txt").write_text("x")
     assert ROOT.gSystem.Which(f"/nowhere:{tmp_path}", "found.txt") == str(tmp_path / "found.txt")
     assert ROOT.gSystem.Which(".", "missing.txt") is None
@@ -154,13 +177,13 @@ def test_gsystem_expands_and_finds_files(tmp_path, monkeypatch):
 
 def test_gsystem_moves_and_removes_files(tmp_path):
     (tmp_path / "a.txt").write_text("x")
-    assert (
-        ROOT.gSystem.CopyFile("a.txt", "b.txt") == 0
-        and ROOT.gSystem.CopyFile("a.txt", "b.txt") == -1
-    )
+    assert ROOT.gSystem.CopyFile("a.txt", "b.txt") == 0
+    assert ROOT.gSystem.CopyFile("a.txt", "b.txt") == -1
     assert ROOT.gSystem.CopyFile("a.txt", "b.txt", True) == 0
-    assert ROOT.gSystem.Rename("b.txt", "c.txt") == 0 and ROOT.gSystem.Rename("nope", "d") == -1
-    assert ROOT.gSystem.Unlink("c.txt") == 0 and ROOT.gSystem.Unlink("c.txt") == -1
+    assert ROOT.gSystem.Rename("b.txt", "c.txt") == 0
+    assert ROOT.gSystem.Rename("nope", "d") == -1
+    assert ROOT.gSystem.Unlink("c.txt") == 0
+    assert ROOT.gSystem.Unlink("c.txt") == -1
     os.mkdir("empty")
     assert ROOT.gSystem.Unlink("empty") == 0
 
@@ -175,4 +198,5 @@ def test_gsystem_lists_a_directory_an_entry_at_a_time(tmp_path):
         entry = ROOT.gSystem.GetDirEntry(handle)
     ROOT.gSystem.FreeDirectory(handle)
     assert names == [".", "..", "one"]
-    assert ROOT.gSystem.OpenDirectory("nowhere") is None and ROOT.gSystem.GetDirEntry(None) is None
+    assert ROOT.gSystem.OpenDirectory("nowhere") is None
+    assert ROOT.gSystem.GetDirEntry(None) is None

@@ -53,12 +53,14 @@ def no_graphics(monkeypatch):
 
 def test_styles_are_the_graphics_when_it_is_there(graphics):
     ROOT.gROOT.SetStyle("Plain")
-    assert graphics == ["Plain"] and ROOT.gROOT.GetStyle("Plain") == "style Plain"
+    assert graphics == ["Plain"]
+    assert ROOT.gROOT.GetStyle("Plain") == "style Plain"
 
 
 def test_canvases_are_the_graphics_list(graphics):
     listed = ROOT.gROOT.GetListOfCanvases()
-    assert isinstance(listed, ROOT.TList) and listed.At(0).GetName() == "c1"
+    assert isinstance(listed, ROOT.TList)
+    assert listed.At(0).GetName() == "c1"
     assert ROOT.gROOT.MakeDefCanvas() == "c1"
 
 
@@ -70,18 +72,21 @@ def test_a_name_found_nowhere_else_is_looked_for_on_the_pads(graphics):
 
 def test_a_graphics_package_without_a_name_is_as_good_as_none(graphics, monkeypatch):
     monkeypatch.delattr(sys.modules["xrdroot.pyroot.graphics"], "get_style")
-    assert troot._graphics("get_style") is None and troot._graphics("pads", "nothing") is None
+    assert troot._graphics("get_style") is None
+    assert troot._graphics("pads", "nothing") is None
 
 
 def test_without_the_graphics_the_lists_are_groots_own(no_graphics, capsys):
-    assert ROOT.gROOT.GetListOfCanvases().IsEmpty() and ROOT.gROOT.FindObject("x") is None
+    assert ROOT.gROOT.GetListOfCanvases().IsEmpty()
+    assert ROOT.gROOT.FindObject("x") is None
     chosen = []
     style = ROOT.TNamed("Plain", "")
     style.cd = lambda: chosen.append("Plain")
     ROOT.gROOT.GetListOfStyles().Add(style)
     ROOT.gROOT.SetStyle("Plain")
     ROOT.gROOT.SetStyle("Nope")
-    assert chosen == ["Plain"] and ROOT.gROOT.GetStyle("Plain") is style
+    assert chosen == ["Plain"]
+    assert ROOT.gROOT.GetStyle("Plain") is style
     assert "Error in <TROOT::SetStyle>: Unknown style:Nope" in capsys.readouterr().err
     with pytest.raises(UnsupportedFeatureError, match="MakeDefCanvas"):
         ROOT.gROOT.MakeDefCanvas()

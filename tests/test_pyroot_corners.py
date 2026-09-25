@@ -29,7 +29,8 @@ def test_a_directory_made_in_an_updated_file_is_not_read_from_it():
     ROOT.TFile("u.root", "RECREATE").Close()
     added = ROOT.TFile("u.root", "UPDATE")
     fresh_dir = added.mkdir("brand_new")
-    assert fresh_dir._reader() is None and fresh_dir.GetListOfKeys().IsEmpty()
+    assert fresh_dir._reader() is None
+    assert fresh_dir.GetListOfKeys().IsEmpty()
     added.Close()
 
 
@@ -42,7 +43,8 @@ def test_an_object_that_writes_itself_is_asked_to(tmp_path):
             return 7
 
     out = ROOT.TFile("own.root", "RECREATE")
-    assert out.WriteTObject(Own("thing", "")) == 7 and written == [("own.root", "thing")]
+    assert out.WriteTObject(Own("thing", "")) == 7
+    assert written == [("own.root", "thing")]
     out.Close()
 
 
@@ -62,9 +64,9 @@ def test_trees_are_written_when_their_file_closes_and_read_back_as_trees():
     out.Close()
     back = ROOT.TFile("trees.root")
     read = back.Get("t")
-    assert (
-        read.ClassName() == "TTree" and read.GetEntries() == 3 and back.GetKey("t").GetCycle() == 1
-    )
+    assert read.ClassName() == "TTree"
+    assert read.GetEntries() == 3
+    assert back.GetKey("t").GetCycle() == 1
     back.Close()
 
 
@@ -77,7 +79,8 @@ def test_a_tree_written_by_hand_is_listed_once(capsys):
     tree.Write()
     out.ls()
     assert "  KEY: TTree\tt;1\tby hand" in capsys.readouterr().out
-    assert out._xrd.path == "" and out._xrd.name != ""
+    assert out._xrd.path == ""
+    assert out._xrd.name != ""
     out.Close()
     back = ROOT.TFile("hand.root", "READ", "a title of my own")
     assert back.GetTitle() == "a title of my own"
@@ -161,7 +164,8 @@ def test_the_small_histogram_paths():
     assert h.GetStats()[:2] == [1.0, 1.0]
     ROOT.TH1.AddDirectory(False)
     c = h.Clone("c")
-    assert ROOT.gROOT.FindObject("c") is None and c.GetName() == "c"
+    assert ROOT.gROOT.FindObject("c") is None
+    assert c.GetName() == "c"
     ROOT.TH1.AddDirectory(True)
     assert h.GetCumulative().GetSumw2N() == 0
 
@@ -171,14 +175,17 @@ def test_a_stack_without_histograms_has_no_frame_and_takes_one():
     assert stack.GetHistogram() is None
     frame = ROOT.TH1F("frame", "", 1, 0, 1)
     stack.SetHistogram(frame)
-    assert stack.GetHistogram() is frame and ROOT.TMultiGraph().GetHistogram() is not None
+    assert stack.GetHistogram() is frame
+    assert ROOT.TMultiGraph().GetHistogram() is not None
     mg = ROOT.TMultiGraph()
     mg.SetHistogram(frame)
-    assert mg.GetHistogram() is frame and mg.GetXaxis().GetNbins() == 1
+    assert mg.GetHistogram() is frame
+    assert mg.GetXaxis().GetNbins() == 1
 
 
 def test_an_efficiencys_title_titles_its_histograms_axes():
     e = ROOT.TEfficiency("e", "t", 2, 0, 2)
     e.SetTitle("eff;x axis;y axis")
-    assert e.GetTitle() == "eff" and e.GetTotalHistogram().GetXaxis().GetTitle() == "x axis"
+    assert e.GetTitle() == "eff"
+    assert e.GetTotalHistogram().GetXaxis().GetTitle() == "x axis"
     assert e.GetPassedHistogram().GetYaxis().GetTitle() == "y axis"

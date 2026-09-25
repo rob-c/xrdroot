@@ -31,7 +31,8 @@ def test_a_listed_module_that_is_not_installed_is_passed_over(monkeypatch):
     monkeypatch.setattr(ROOT, "SUBMODULES", ["core", "no_such_module"])
     namespace: dict = {}
     names = ROOT._gather(namespace)
-    assert "TH1D" in names and "TH1D" in namespace
+    assert "TH1D" in names
+    assert "TH1D" in namespace
 
 
 def test_the_core_gathers_every_family_again_the_same():
@@ -43,16 +44,23 @@ def test_the_core_gathers_every_family_again_the_same():
 def test_colours_are_ints_and_add_as_roots_do():
     assert ROOT.kRed + 2 == 634
     assert ROOT.kBlue - 9 == 591
-    assert ROOT.kOrange == 800 and ROOT.kWhite == 0
-    assert ROOT.kTRUE is True and ROOT.kFALSE is False
+    assert ROOT.kOrange == 800
+    assert ROOT.kWhite == 0
+    assert ROOT.kTRUE is True
+    assert ROOT.kFALSE is False
 
 
 def test_the_styles_and_palettes_are_roots_numbers():
     assert (ROOT.kSolid, ROOT.kDashed, ROOT.kDotted) == (1, 2, 3)
-    assert ROOT.kFullCircle == 20 and ROOT.kOpenSquare == 25
-    assert ROOT.kBird == 57 and ROOT.kRainbow == ROOT.kRainBow == 55 and ROOT.kCividis == 113
-    assert ROOT.kFSolid == 1 and ROOT.kFHatched1 == 3004
-    assert ROOT.kCanDelete == 1 and ROOT.kOverwrite == 2
+    assert ROOT.kFullCircle == 20
+    assert ROOT.kOpenSquare == 25
+    assert ROOT.kBird == 57
+    assert ROOT.kRainbow == ROOT.kRainBow == 55
+    assert ROOT.kCividis == 113
+    assert ROOT.kFSolid == 1
+    assert ROOT.kFHatched1 == 3004
+    assert ROOT.kCanDelete == 1
+    assert ROOT.kOverwrite == 2
 
 
 def test_form_fills_a_format_as_printf_does():
