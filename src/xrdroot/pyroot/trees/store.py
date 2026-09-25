@@ -221,7 +221,7 @@ def _nbytes(slot: Slot, value: Any) -> int:
     return int(np.size(value)) * slot.dtype.itemsize
 
 
-def memory_tree(name: str, title: str, write: Any) -> Any:
+def memory_tree(name: str, write: Any) -> Any:
     """A tree written by ``write(directory)`` into a ROOT file in memory, and read back.
 
     This is how anything here that is not in a file yet - a tree being

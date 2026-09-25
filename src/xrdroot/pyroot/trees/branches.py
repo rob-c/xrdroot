@@ -17,7 +17,7 @@ from ._base import ListOf, _TObjectLike
 from .layout import BranchInfo, LeafInfo
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
-    from .tree import TTree
+    from .reading import _Reading as TTree
 
 __all__ = ["TBranch", "TLeaf"]
 
