@@ -27,6 +27,8 @@ class Translation:
     source_map: dict[int, tuple[str, int]] = field(default_factory=dict)
     entry: str | None = None
     included: list[str] = field(default_factory=list)
+    #: Whether the macro is an unnamed one, ``{ ... }``, which takes no arguments.
+    unnamed: bool = False
 
 
 def translation(
@@ -40,5 +42,10 @@ def translation(
     translator = Translator(program, file, stem)
     out = translator.translate()
     return Translation(
-        out.text(), file, out.source_map(), translator.entry, [str(path) for path in included]
+        out.text(),
+        file,
+        out.source_map(),
+        translator.entry,
+        [str(path) for path in included],
+        unit.unnamed is not None,
     )

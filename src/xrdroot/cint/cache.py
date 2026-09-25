@@ -75,7 +75,9 @@ def load(source: str, file: str) -> Translation | None:
     if kept.get("included_hash") != _included_hash(kept.get("included", [])):
         return None
     source_map = {int(line): (place[0], place[1]) for line, place in kept["source_map"].items()}
-    return Translation(kept["python"], file, source_map, kept["entry"], kept["included"])
+    return Translation(
+        kept["python"], file, source_map, kept["entry"], kept["included"], kept["unnamed"]
+    )
 
 
 def save(source: str, file: str, translation: Translation) -> None:
@@ -85,6 +87,7 @@ def save(source: str, file: str, translation: Translation) -> None:
         "source_map": {str(line): list(place) for line, place in translation.source_map.items()},
         "entry": translation.entry,
         "included": translation.included,
+        "unnamed": translation.unnamed,
         "included_hash": _included_hash(translation.included),
     }
     where = directory()

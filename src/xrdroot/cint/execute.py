@@ -123,19 +123,31 @@ def run_source(
     namespace: dict[str, Any] = {"__name__": "__cint__", "__file__": file}
     binding = ROOT.bind(root) if root is not None else nullcontext()
     _reset_streams()
-    with binding, _placed(made, label):
-        exec(compile(made.python, label, "exec"), namespace)
+    with binding:
+        with _placed(made, label):
+            exec(compile(made.python, label, "exec"), namespace)
         if not call:
             return namespace
-        entry = namespace.get(made.entry) if made.entry else None
+        entry = _entry(made, namespace, file, args)
         if entry is None:
-            if args:
-                raise TypeError(f"{Path(file).name} defines no function {Path(file).stem}() "
-                                f"to hand {', '.join(map(repr, args))} to")
             return None
-        result = entry(*args)
-        sys.stdout.flush()
-        return result
+        with _placed(made, label):
+            result = entry(*args)
+    sys.stdout.flush()
+    return result
+
+
+def _entry(made: Translation, namespace: dict[str, Any], file: str, args: tuple[Any, ...]) -> Any:
+    """The function running the macro means - refusing arguments nothing would take."""
+    entry = namespace.get(made.entry) if made.entry else None
+    if args and made.unnamed:
+        raise TypeError(f"{Path(file).name} is an unnamed macro, which takes no arguments")
+    if args and entry is None:
+        raise TypeError(
+            f"{Path(file).name} defines no function {Path(file).stem}() "
+            f"to hand {', '.join(map(repr, args))} to"
+        )
+    return entry
 
 
 def run(path: str | Path, args: tuple[Any, ...] = (), *, root: Any = None,
