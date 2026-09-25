@@ -61,6 +61,8 @@ COMMANDS = [
     "scan",
     "draw",
     "info",
+    "merge",
+    "cp",
 ]
 
 #: What a subcommand raises to refuse, printed as a line rather than a traceback.

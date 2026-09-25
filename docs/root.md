@@ -1854,6 +1854,141 @@ hundred sets of them — is [`xrddatasets`](https://github.com/rob-c/xrddatasets
 which is built on this package and publishes the catalogue those files are
 served from.
 
+## Merging and copying
+
+`merge` is ROOT's `hadd`, and `copy` is `rootcp` — or, given a cut,
+`TTree::CopyTree`. Neither needs ROOT, and both work on anything this
+library opens and writes, local or remote.
+
+```python
+import xrdroot
+
+xrdroot.merge("all.root", ["run1.root", "run2.root", "run3.root"])
+xrdroot.merge("all.root", paths, compression=505, force=True)    # hadd -f505
+xrdroot.copy("in.root", "out.root", ["hists/*", "events"])       # rootcp
+xrdroot.copy("in.root", "skim.root", "events", cut="nMuon >= 2",
+             columns=["nMuon", "Muon_pt"])                       # TTree::CopyTree
+```
+
+Every name in every input is merged with the same name in the others, the
+way ROOT's `TFileMerger` does it: directories are walked all the way down,
+empty ones kept, and a name only a later file holds is taken up too. The
+inputs are opened one at a time, in order, and closed before the next, so a
+thousand of them cost one open file and the histograms being added up. What
+comes back is a `Merged`: what became of each path, how many tree baskets
+went across as they were, were packed again or were left where they were, and
+how many entries were read and written the slow way.
+
+| What | Merged as | ROOT's |
+| --- | --- | --- |
+| `TH1`, `TH2`, `TH3` of every storage | bins, squares of weights, running sums and entries added; the same binning required | `TH1::Merge` |
+| `TProfile`, `TProfile2D`, `TProfile3D` | the sums of each bin, its weights and their squares added | `TProfile::Merge` |
+| `TEfficiency` | passed added to passed, total to total | `TEfficiency::Merge` |
+| `TGraph`, `TGraphErrors`, `TGraphAsymmErrors` | the points of each after the last's, error bars of the first graph's kind | `TGraph::Merge` |
+| `TMultiGraph` | the graphs of each after the last's | `TMultiGraph::Merge` |
+| `TTree`, `TNtuple` | every input's entries one after another; baskets copied as they are where they can be | `TTree::Merge` with `"fast"` |
+| `ROOT::RNTuple` | every input's entries one after another, read and written again | `RNTupleMerger` |
+| anything else — `TF1`, `TObjString`, a string, a class of your own | carried over from every input as it was, a cycle each, with a `MergeWarning` saying so once | the pass-through for a class with no `Merge` |
+
+Two histograms binned differently are refused by name rather than added bin
+by bin into the wrong bins — ROOT's extendable and labelled axes are not
+merged here — and so are two trees whose branches differ, two RNTuples whose
+fields do, or one name holding different classes in different files. The
+refusal names the object and the file, and a merge that raises leaves no
+output behind.
+
+Something ROOT does that is worth knowing: an object ROOT has no `Merge`
+for is not "kept from the first file" but written from *every* file that has
+it, one cycle each, and reading the name gives the last. This does the same.
+A multigraph's graphs keep their data but not the draw option each was added
+with, which the reader does not keep.
+
+### The fast way
+
+A tree is mostly its baskets, and a basket does not know which file it is
+in. So a merged tree's baskets are the inputs' baskets, read and written
+again byte for byte behind new keys, and only its `TTree` and `TBranch`
+records are new — with each branch's leaf made again as ROOT made it: the
+same leaf class, a counter of the same integer type, the largest count and
+the longest string its inputs had. Nothing is decompressed, let alone decoded.
+
+That needs every branch to be one this writer makes the same way: a number,
+a fixed run of them, a run counted by another branch, or a string, each a
+branch of one leaf. A basket goes across as it was when its input was
+compressed as the output is, or with `keep_compression` (`hadd -fk`), which is
+what leaving `compression` alone means; otherwise it is decompressed and
+compressed again, still without decoding an entry. ROOT writes every basket's
+key in its wide form so that a basket's table of entry offsets, which counts
+from the start of its key, never moves; a basket is copied in the width its
+key had for the same reason, and only one whose key has to grow — a
+small-keyed basket landing past 2 GB, or a tree copied under a longer name —
+has that table moved along, the basket unpacked for it and packed again.
+Baskets ROOT kept inside a branch's record become baskets of their own.
+
+A tree with a branch this writer does not make that way — a `TLeafG`, a
+packed `Float16_t`, an STL vector ROOT wrote as a `TBranchElement` — goes the
+slow way: its entries read a batch at a time and written through
+`WritableTree`, as the nearest thing this writer makes. What neither way can
+carry — a split object, a leaf list, an unreadable column — is refused by name.
+`fast=False` (`hadd -O`) sends every tree the slow way.
+
+Ten files of a million entries each — a float64, an int32, a bool and a
+jagged float32, 178 MB between them — merge in about 3 s the fast way, 6 s
+when every basket is packed again for another compression, and 31 s the slow
+way; the fast way is the time it takes to copy the bytes.
+
+### `hadd` flags
+
+The command line takes `hadd`'s flags as `hadd` spells them:
+`xrdroot merge [flags] TARGET SOURCES...`.
+
+| `hadd` | `xrdroot merge` | `xrdroot.merge(...)` |
+| --- | --- | --- |
+| `-f` | `-f` | `force=True` |
+| `-f505`, `-f[0-509]` | `-f505` | `compression=505` (or `"zstd"`, or `("zstd", 5)`) |
+| `-fk`, `-fk505` | `-fk`, `-fk505` | `keep_compression=True` |
+| `-ff` | `-ff` | `keep_compression=False`, `compression` left alone |
+| `-a` | `-a` | `append=True` |
+| `-k` | `-k` | `skip_errors=True` |
+| `-O` | `-O` | `fast=False` |
+| `-T` | `-T` | `trees=False` |
+| `-L FILE -Ltype SkipListed` | the same | `skip_keys=[...]` |
+| `-L FILE -Ltype OnlyListed` | the same | `only_keys=[...]` |
+| `-v LEVEL` | `-v LEVEL` | — |
+| `-j N`, `-n N` | taken and ignored | — |
+
+One default differs: with no `-f` setting `hadd` writes ROOT's 101, where this
+keeps the first input's setting and copies baskets as they are — `-f101` asks
+for `hadd`'s. `-j` is taken and ignored because the inputs are merged in one
+process, one at a time; `-n` because only one input is ever open. With `-a`
+what the output already holds is the first input: its trees' baskets are
+left where they are and pointed at, and each merged object is a new cycle of
+its name. `skip_keys` and `only_keys` take names, paths from the top of the
+file, or shell patterns of either; a directory named in `only_keys` is taken
+whole.
+
+### Copying
+
+`copy(source, destination, keys)` copies what `keys` names — everything at
+the top of the file, directories and all, when `None`; a path or shell
+pattern, or a list of them; or a mapping of each path to a new one. An object
+goes across as the very record it was, and the destination is made to
+describe its classes as the source did, so a class this library has no
+layout for reads back exactly as it read before. The destination is added to
+if it is there, and a name already in it becomes its next cycle; it can also
+be a directory of a file being written, which is left open.
+
+A tree goes across as its baskets. `columns` naming branches keeps the fast
+way — only those branches' baskets go, with the counters their runs need —
+while `cut`, or `columns` as a mapping of name to expression, reads the
+entries through the formula engine and writes only those that pass;
+`tree_filter`, given each tree's path, says which trees they apply to.
+
+On the command line, `xrdroot cp SOURCE... DEST` names what to take the way
+`rootcp` does, `file.root:path` with a shell pattern allowed, and `DEST` may
+be `out.root:directory`; `--cut`, `--columns a,b`, `-c 505` and `--recreate`
+are the rest.
+
 ## RNTuple
 
 RNTuple is ROOT 7's successor to the `TTree`: a column of plain values for

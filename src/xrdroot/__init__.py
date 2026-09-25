@@ -59,6 +59,10 @@ axes, a plotly or a bokeh figure, or into characters with nothing installed
 at all, with :mod:`xrdroot.plot` for ratio plots, comparisons, stacks and
 experiments' styles - and a notebook shows each as its picture.
 
+:func:`merge` is ``hadd``: many files made into one, histograms added up and
+trees concatenated with their baskets copied across as they are; and
+:func:`copy` is ``rootcp``, or ``TTree::CopyTree`` given a cut.
+
 :mod:`xrdml` turns what comes out into tensors, if PyTorch or TensorFlow
 is there; it is a separate package that builds on this one.
 """
@@ -78,6 +82,7 @@ from .formula import Formula, FormulaError, compile_formula
 from .function import Function
 from .graph import Graph
 from .hist import Axis, Histogram
+from .merging import Merged, MergeWarning, copy, merge
 from .profile import Profile
 from .random import TRandom3, gRandom
 from .rdf import EnableImplicitMT, RDataFrame, RunGraphs
@@ -105,6 +110,11 @@ __all__ = [
     "WritableDirectory",
     "WritableTree",
     "WritableRNTuple",
+    # merging and copying, as hadd and rootcp do
+    "merge",
+    "copy",
+    "Merged",
+    "MergeWarning",
     # data
     "TTree",
     "Branch",
