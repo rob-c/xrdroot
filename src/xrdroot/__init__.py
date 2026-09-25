@@ -36,7 +36,12 @@ generators in :mod:`xrdroot.random`. A :class:`Function` is ROOT's ``TF1``: a
 a fit, evaluated, differentiated and integrated over whole arrays, and
 ``h.fit("gaus")`` is ``TH1::Fit`` - ROOT's options, starting values and
 chi-squares, Minuit through iminuit - with :mod:`xrdroot.fit` beneath it and
-its :class:`FitResult` handed back.
+its :class:`FitResult` handed back. :data:`gROOT` and :data:`gDirectory` are
+ROOT's session - the open files, where you are in them, a name looked up
+the way ROOT's prompt looks it up - for the shell ``xrdroot`` starts and the
+macros it runs, beside ``xrdroot ls``, ``dump``, ``diff`` and the rest of
+ROOT's command-line kit (``%load_ext xrdroot`` brings the prompt's commands
+into IPython).
 What it does not do is every ROOT class ever written: one whose layout the
 file does not describe, or one that streams itself in some way of its own, is
 refused by name with the class in the message, because a plausible misreading
@@ -58,6 +63,8 @@ is there; it is a separate package that builds on this one.
 
 from __future__ import annotations
 
+from typing import Any
+
 from . import fit, stats
 from .chain import Chain, ChainedBranch, chain
 from .efficiency import Efficiency
@@ -73,6 +80,7 @@ from .profile import Profile
 from .random import TRandom3, gRandom
 from .rdf import EnableImplicitMT, RDataFrame, RunGraphs
 from .rntuple import RField, RNTuple, WritableRNTuple
+from .session import gDirectory, gROOT
 from .slicing import loc, overflow, rebin, underflow
 from .sparse import SparseHistogram
 from .stacks import MultiGraph, Stack
@@ -131,6 +139,9 @@ __all__ = [
     # random numbers
     "TRandom3",
     "gRandom",
+    # the session
+    "gROOT",
+    "gDirectory",
     # expressions
     "compile_formula",
     "Formula",
@@ -140,3 +151,10 @@ __all__ = [
     "FormatError",
     "UnsupportedFeatureError",
 ]
+
+
+def load_ipython_extension(ipython: Any) -> None:
+    """``%load_ext xrdroot``: ROOT's prompt commands, and ``%root_ls`` and friends, in IPython."""
+    from .cli.magics import load
+
+    load(ipython)

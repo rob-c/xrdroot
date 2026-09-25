@@ -157,6 +157,16 @@ h.GetValue().plot(); print(df.Report().GetValue())
 Histograms and graphs draw themselves: `.plot()` onto matplotlib axes when
 matplotlib is there, `.text()` into plain characters when it is not.
 
+## The shell and the command line
+
+`xrdroot f.root` is `root -l f.root`: a Python prompt with `_file0`, `gROOT`,
+`gDirectory` and ROOT's `.ls`, `.cd` and `.x` — IPython's if it is there — and
+`xrdroot ls`, `dump`, `diff`, `print`, `scan`, `draw` and `info` are ROOT's and
+go-hep's command-line kit, over any URL.
+
+    xrdroot ls -t root://eos.example.org//store/events.root
+    xrdroot diff before.root after.root && echo same
+
 ## Where this sits
 
     xrdclient    the XRootD protocol, files, copies, authentication

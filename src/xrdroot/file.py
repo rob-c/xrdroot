@@ -10,8 +10,10 @@ world for the cost of three reads.
 from __future__ import annotations
 
 import datetime
+import itertools
 import os
 import struct
+import weakref
 from typing import IO, TYPE_CHECKING, Any
 
 from xrdclient.url import parse
@@ -28,6 +30,12 @@ __all__ = ["Key", "Directory", "ROOTFile", "open_root"]
 MAGIC = b"root"
 #: Enough for a header and the longest sensible class, name and title.
 KEY_WINDOW = 1024
+#: Every file opened in this process and not yet collected, by the order it
+#: was opened in: what ``gROOT.files`` lists beside the files it opened itself.
+#: Weakly, so that a file nobody holds is still closed by being forgotten.
+OPENED: weakref.WeakValueDictionary[int, ROOTFile] = weakref.WeakValueDictionary()
+#: Where the next file opened goes in :data:`OPENED`.
+_ORDER = itertools.count()
 
 
 class Reopener:
@@ -265,6 +273,18 @@ class Directory:
             raise KeyError(f"{name!r} is not in {self.path or '/'}; there is {', '.join(self)}")
         return found
 
+    def key(self, name: str) -> Key:
+        """The key ``name`` is read through - the newest cycle, or ``"name;2"``'s.
+
+        What a listing wants: the class, title, cycle and sizes of a record,
+        without reading the record itself.
+        """
+        return self._key(name)
+
+    def all_keys(self) -> list[Key]:
+        """Every key here, every cycle of every name, in the order written."""
+        return list(self._keys)
+
     def keys(self) -> list[str]:
         """Every name here, newest cycle only, in the order they were written."""
         seen: dict[str, None] = {}
@@ -403,7 +423,7 @@ class ROOTFile(Directory):
     names, and closing it closes whatever it was opened over.
     """
 
-    __slots__ = ("version", "compression", "uuid")
+    __slots__ = ("version", "compression", "uuid", "_closed", "__weakref__")
 
     def __init__(self, source: Source) -> None:
         header = source.read(0, 100)
@@ -423,6 +443,8 @@ class ROOTFile(Directory):
         source.info = (info, ninfo)
         record = _directory_record(source, begin + nbytes_name)
         super().__init__(source, read_keys(source, record["seek_keys"], record["nbytes_keys"]))
+        self._closed = False
+        OPENED[next(_ORDER)] = self
 
     def __repr__(self) -> str:
         return f"<ROOTFile {self._source.name!r} written by ROOT {self.version}>"
@@ -432,8 +454,14 @@ class ROOTFile(Directory):
         """Where this file came from."""
         return self._source.name
 
+    @property
+    def closed(self) -> bool:
+        """Has this file been closed - by :meth:`close`, or its handle by whoever owns it?"""
+        return self._closed or bool(getattr(self._source.handle, "closed", False))
+
     def close(self) -> None:
         """Close the underlying file, if this object opened it."""
+        self._closed = True
         self._source.close()
 
     def __enter__(self) -> ROOTFile:

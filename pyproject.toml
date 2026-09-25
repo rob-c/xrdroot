@@ -31,6 +31,11 @@ dependencies = [
   "numpy>=1.22",
 ]
 
+# ``xrdroot`` is ROOT's prompt and its command-line kit: ``xrdroot f.root``
+# is ``root -l f.root``, and ``xrdroot ls``, ``dump``, ``diff``... the rest.
+[project.scripts]
+xrdroot = "xrdroot.cli:main"
+
 [project.optional-dependencies]
 plot = ["matplotlib>=3.5"]
 lz4 = ["lz4>=4", "xxhash>=3"]

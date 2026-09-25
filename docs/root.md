@@ -1835,6 +1835,118 @@ Records, nested collections, variants and the lossy float encodings are not
 written: their layout is well defined, but a writer that gets one subtly wrong
 makes files ROOT misreads, and each is refused by name until it is here.
 
+## The shell and command-line tools
+
+`pip install` puts an `xrdroot` command on the path — `python -m xrdroot` is the
+same thing — and it is ROOT's prompt and ROOT's command-line kit at once, over
+any URL `open_root` takes: a local path, `root://`, `https://`, `s3://`.
+
+```console
+$ xrdroot events.root                   # root -l events.root: a prompt, with _file0
+$ xrdroot ls -t root://host//events.root
+$ xrdroot dump events.root:dir/h        # every bin, point and entry, as text
+$ xrdroot diff before.root after.root   # exit status 0 the same, 1 different
+$ xrdroot print events.root:h -o h.png  # or .pdf, .svg
+$ xrdroot scan events.root:Events "pt:eta" "pt > 30"
+$ xrdroot draw events.root:Events pt -o pt.png
+$ xrdroot info events.root              # version, compression, UUID, sizes, classes
+```
+
+A thing inside a file is `FILE:path`. A URL has colons of its own, so the
+path is split off at the last `.root` that a `:` follows —
+`root://host:1094//f.root:dir/h` is the file `root://host:1094//f.root` and
+the path `dir/h` — and a file whose name does not end in `.root` names its
+path with `-k` instead. A refusal is one line on standard error and exit
+status 2.
+
+| ROOT | here |
+| --- | --- |
+| `root -l f.root` | `xrdroot f.root` — `_file0`, `_file1`… as ROOT names them, and a `.py` among them run as a macro; `-q` leaves after |
+| `.ls`, `.pwd`, `.cd dir`, `.q` | the same, at the prompt: `print(gROOT.ls())`, `gROOT.cd("dir")`… |
+| `.x macro.C(1, 2)` | `.x macro.py(1, 2)` — or `gROOT.macro("macro.py", 1, 2)` — runs the file, then its function of the same name |
+| `gROOT`, `gDirectory`, `gFile` | `xrdroot.gROOT`, `xrdroot.gDirectory`; the file is `gROOT.cd()`'s answer, or `_file0` |
+| `TFile::Open(url)` | `gROOT.open(url)`, which goes into the file as ROOT's does |
+| `gROOT->Get("f.root:/dir/h")`, `FindObject("h")` | `gROOT.get("f.root:/dir/h")`, `gROOT["h"]` |
+| `TBrowser` | not provided: `xrdroot ls -t` for what a file holds, `dump` for what is in it, `print` or `.plot()` to see it |
+| `rootls -t -l` | `xrdroot ls -t -l` |
+| `rootprint`, `root-print` | `xrdroot print` |
+| `rootdiff`, `root-diff` | `xrdroot diff`, with `--atol`, `--rtol` and `-k` |
+| `root-dump` | `xrdroot dump`, with `-n` entries of each tree |
+| `TTree::Scan`, `TTree::Draw` | `xrdroot scan`, `xrdroot draw` |
+| `hadd`, `rootcp` | the `merge` and `cp` subcommands, where `xrdroot.merge` is installed |
+
+### The prompt
+
+`xrdroot` with no subcommand is a Python prompt — IPython if it is installed,
+the standard library's otherwise — holding everything `from xrdroot import *`
+brings, and NumPy as `np`. A line starting in its first column with one of
+ROOT's dot-commands is the Python it stands for; anything else is Python, so
+`h = _file0["h1d"]` and `.ls` sit side by side. `.help` lists the commands.
+
+```text
+$ xrdroot tests/data/dirs-6.14.00.root
+>>> .cd dir1/dir11
+>>> .ls
+TDirectoryFile*		dir11	tests/data/dirs-6.14.00.root:/dir1/dir11
+  KEY: TH1F	h1;1	h1
+>>> gDirectory["h1"].sum()
+5.0
+```
+
+In IPython or Jupyter, `%load_ext xrdroot` brings the same: the names, the
+dot-commands, `%root_ls [dir]`, `%root_open FILE` (the next `_fileN`), and a
+`%%root_macro` cell magic that runs its cell as `.x` runs a macro.
+
+### gROOT
+
+`gROOT` is ROOT's session made an object you can ask for — nothing else in the
+library looks at it, so a program that never imports it never has one.
+
+```python
+from xrdroot import gROOT, gDirectory
+
+f = gROOT.open("dirs.root")        # held open, and the session goes into it
+gROOT.cd("dir1/dir11")             # "..", "/dir2", "other.root:/dir" and a Directory work too
+gROOT.pwd()                        # 'dirs.root:/dir1/dir11'
+print(gROOT.ls())                  # ROOT's TFile** / KEY: listing
+gROOT["h1"]                        # here, then memory, then every open file
+gROOT.get("dirs.root:/dir1/dir11/h1")
+gROOT.add(Histogram.book("h", (10, 0, 1)))   # TH1::AddDirectory, said out loud
+gROOT.files                        # every file open in the process, open_root's too
+gROOT.close_all()                  # the files gROOT opened; open_root's are their opener's
+```
+
+A bare name is looked for where ROOT's `FindObject` looks: the current
+directory, then the objects `add` put in memory, then each open file in the
+order it was opened. `gDirectory` is whichever directory the session is in
+when it is used — the session itself at the top — rather than the one it was
+in when it was imported.
+
+### The subcommands
+
+`ls` is a line per key — class, name, title, cycle — walking directories all
+the way down; `-t` lists every tree's and RNTuple's columns with their types
+and entries, `-l` adds each record's bytes on disk and uncompressed, the ratio,
+its date and each column's baskets. `dump` writes every key out: a tree an
+entry and a column at a time, `[001][pt]: 42.5` as go-hep's `root-dump` does, a
+histogram every bin with its edges and error, a graph every point with its
+bars, a function its formula and parameters, anything else as it reads.
+`diff` compares names, classes and values — a histogram's edges, contents,
+errors and entries, a graph's points and bars, a tree column by column a batch
+at a time — and says the first difference in each; numbers are the same
+within `--atol` and `--rtol`, exactly unless told. `print` draws through
+`.plot()` and saves the figure in the format the file name ends in, a whole
+directory at once into `out_<path>.png` files, or prints the `.text()`
+picture without `-o`; a `TCanvas` is drawn by `xrdroot.canvas` where that is
+installed and refused by name where it is not. `info` is the header: the ROOT
+release, the seek width, the file's size, its compression in words, its UUID,
+where its free segments and class descriptions are, and every class it
+describes.
+
+Every subcommand is a module `xrdroot.cli.<name>` with an `add_parser(subparsers)`
+and a `run(args)`, named in the list `xrdroot.cli.COMMANDS`; adding one is
+writing the module and adding its name to that list.
+
 ## Compression
 
 Every algorithm ROOT writes with is read here — and written: zlib, lzma, LZ4,
