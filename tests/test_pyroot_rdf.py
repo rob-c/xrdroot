@@ -43,7 +43,7 @@ def test_results_are_handed_back_through_the_wrapper_core_installs(monkeypatch):
     monkeypatch.setattr(hooks, "wrap", lambda obj: ("wrapped", obj))
     assert _frame().Count().GetValue() == ("wrapped", 10)
     taken = _frame().Take("x")
-    assert len(taken) == 2 and taken[0] == "wrapped" and list(iter(taken))[0] == "wrapped"
+    assert len(taken) == 2 and taken[0] == "wrapped" and next(iter(taken)) == "wrapped"
 
 
 def test_as_numpy_gives_its_columns_at_once_with_an_rvec_per_collection():
@@ -83,7 +83,7 @@ def test_rdf_models_are_the_tuples_xrdroot_books_from_and_the_rest_is_refused():
     assert ROOT.RDF.TH2DModel("h", "", 2, 0, 1, np.array([0.0, 1.0])) == ("h", "", 2, 0, 1, [0, 1])
     assert ROOT.RDF.TProfile1DModel("p", "", 2, 0.0, 1.0) == ("p", "", 2, 0.0, 1.0)
     assert ROOT.RDF.RNode is ROOT.RDataFrame and repr(ROOT.RDF) == "<namespace ROOT::RDF>"
-    with pytest.raises(AttributeError, match="ROOT has RDF.FromCSV; xrdroot.pyroot does not yet"):
+    with pytest.raises(AttributeError, match=r"ROOT has RDF\.FromCSV; xrdroot\.pyroot does not"):
         ROOT.RDF.FromCSV  # noqa: B018
     ROOT.EnableImplicitMT(2)
     assert ROOT.IsImplicitMTEnabled() and ROOT.GetThreadPoolSize() == 2
@@ -112,7 +112,10 @@ def test_vecops_of_one_rvec_gives_what_rdataframes_vecops_gives():
     assert ROOT.VecOps.Sum(v) == 6.0 and ROOT.VecOps.Max(v) == 3.0 and ROOT.VecOps.Mean(v) == 2.0
     assert list(ROOT.VecOps.Sort(v)) == [1.0, 2.0, 3.0]
     assert list(ROOT.VecOps.Argsort(v)) == [1, 2, 0] and ROOT.VecOps.ArgMax(v) == 0
-    assert list(ROOT.VecOps.Take(v, 2)) == [3.0, 1.0] and list(ROOT.VecOps.Take(v, [2, 0])) == [2, 3]
+    assert list(ROOT.VecOps.Take(v, 2)) == [3.0, 1.0] and list(ROOT.VecOps.Take(v, [2, 0])) == [
+        2,
+        3,
+    ]
     assert ROOT.VecOps.DeltaPhi(0.1, 3.0) == pytest.approx(2.9)
     first, second = ROOT.VecOps.Combinations(v, 2)
     assert list(first) == [0, 0, 1] and list(second) == [1, 2, 2]
@@ -126,13 +129,25 @@ def test_vecops_of_one_rvec_gives_what_rdataframes_vecops_gives():
     )
     assert mass == pytest.approx(27.995, abs=1e-3)
     assert ROOT.VecOps.Sum.__name__ == "Sum" and repr(ROOT.VecOps) == "<namespace ROOT::VecOps>"
-    with pytest.raises(AttributeError, match="ROOT has VecOps.Nope; xrdroot.pyroot does not yet"):
+    with pytest.raises(AttributeError, match=r"ROOT has VecOps\.Nope; xrdroot\.pyroot does not"):
         ROOT.VecOps.Nope  # noqa: B018
-    with pytest.raises(AttributeError, match="ROOT has VecOps._rows"):
+    with pytest.raises(AttributeError, match=r"ROOT has VecOps\._rows"):
         ROOT.VecOps._rows  # noqa: B018
 
 
 def test_the_namespace_refuses_a_name_root_has_and_it_does_not():
-    with pytest.raises(AttributeError, match="ROOT has TFoo; xrdroot.pyroot does not yet"):
+    with pytest.raises(AttributeError, match=r"ROOT has TFoo; xrdroot\.pyroot does not yet"):
         ROOT.TFoo  # noqa: B018
     assert {"TTree", "RDataFrame", "std", "RVec", "EnableImplicitMT"} <= set(ROOT.__all__)
+
+
+def test_a_result_is_an_index_and_a_frame_hands_back_what_is_not_a_method():
+    from xrdroot.pyroot.rdf import rvec
+
+    count = _frame().Count()
+    assert [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][count] == 10
+    frame = _frame()
+    frame._inner.extra = "kept"
+    assert frame.extra == "kept"
+    assert rvec._made(3) == 3 and rvec._unbatched(2.5) == 2.5
+    assert list(rvec._unbatched(np.zeros(0))) == []

@@ -111,7 +111,9 @@ def test_an_address_too_small_for_an_entry_is_refused_with_both_sizes(tree):
 
 def test_an_unknown_branch_is_reported_as_root_reports_it(tree, capsys):
     assert tree.SetBranchAddress("nothing", np.zeros(1)) == -5
-    assert "Error in <TTree::SetBranchAddress>: unknown branch -> nothing" in capsys.readouterr().err
+    assert (
+        "Error in <TTree::SetBranchAddress>: unknown branch -> nothing" in capsys.readouterr().err
+    )
 
 
 def test_a_branch_switched_off_is_not_read_and_is_read_again_when_on(tree):
@@ -141,7 +143,7 @@ def test_pyroot_reads_a_branch_as_an_attribute_and_walks_the_tree_entry_by_entry
     assert tree.GetLineColor() == 1
     tree.SetLineColor(4)
     assert tree.GetLineColor() == 4
-    with pytest.raises(AttributeError, match="xrdroot.pyroot's does not"):
+    with pytest.raises(AttributeError, match=r"xrdroot\.pyroot's does not"):
         tree.NotAMethod  # noqa: B018
     with pytest.raises(AttributeError):
         tree._private  # noqa: B018
@@ -163,7 +165,9 @@ def test_branches_and_leaves_answer_roots_questions_about_themselves(tree):
     assert tree.GetLeaf("nothing", "px") is None
     assert len(tree.GetListOfLeaves()) >= 7
     branch = tree.GetBranch("px")
-    assert branch.GetEntries() == ENTRIES and branch.GetTree() is tree and branch.GetMother() is branch
+    assert (
+        branch.GetEntries() == ENTRIES and branch.GetTree() is tree and branch.GetMother() is branch
+    )
     assert branch.GetListOfBranches().GetEntries() == 0 and branch.GetClassName() == ""
     assert branch.GetBasketSize() > 0 and branch.GetTotBytes() >= 0 and branch.GetZipBytes() >= 0
     assert branch.GetWriteBasket() >= 0 and branch.GetReadEntry() == 6 and "TBranch" in repr(branch)
@@ -186,3 +190,67 @@ def test_load_tree_and_get_tree_are_the_tree_itself_for_a_tree(tree):
     assert tree.GetEntryNumber(4) == 4 and tree.GetEntryNumber(ENTRIES) == -1
     assert tree.GetEntries("n > 2") == 7 and tree.GetEntriesFast() == ENTRIES
     assert "entries" in repr(tree) and tree._xrd is not None
+
+
+def test_a_tree_s_lists_answer_as_a_tobjarray_does():
+    branches = _filled().GetListOfBranches()
+    assert branches.GetEntries() == branches.GetEntriesFast() == branches.GetSize() == 6
+    assert (
+        branches.GetLast() == 5 and branches.At(9) is None and branches.UncheckedAt(0) is not None
+    )
+    assert branches.First().GetName() == "px" and branches.Last().GetName() == "rec"
+    assert branches.FindObject("nothing") is None
+
+
+def test_the_members_of_an_object_are_filled_by_a_leaf_list_branch():
+    class Event:
+        a, b = 0, 0.0
+
+    event = Event()
+    t = _filled()
+    t.SetBranchAddress("rec", event)
+    t.GetEntry(3)
+    assert (event.a, event.b) == (3, -3.0)
+
+
+def test_addresses_of_every_kind_are_read_for_a_counted_or_fixed_leaf(tmp_path):
+    from xrdroot.pyroot.trees.addresses import View, address_of
+    from xrdroot.pyroot.trees.store import Slot
+
+    n, held, fixed = np.zeros(1, "i"), Cell(np.zeros(4)), (ctypes.c_float * 3)()
+    t = TTree("t", "")
+    t.Branch("n", n, "n/I")
+    t.Branch("x", held, "x[n]/D")
+    t.Branch("f", fixed, "f[3]/F")
+    n[0], held.value[:], fixed[1] = 2, [1, 2, 3, 4], 5.0
+    t.Fill()
+    got = t._xrd.arrays()
+    assert list(got["x"][0]) == [1.0, 2.0] and got["f"].tolist() == [[0.0, 5.0, 0.0]]
+    view = View(np.zeros(2))
+    assert address_of(view) is view
+    assert "Slot 'n' of Int_t (scalar)" in repr(Slot("n", "n", "i", view))
+
+
+def test_a_leaf_of_a_class_this_does_not_name_is_called_by_its_class():
+    from types import SimpleNamespace
+
+    from xrdroot.pyroot.trees.layout import _typename
+
+    assert _typename(SimpleNamespace(classname="TLeafX", unsigned=False)) == "TLeafX"
+    assert _typename(SimpleNamespace(classname="TLeafI", unsigned=True)) == "UInt_t"
+
+
+def test_a_friend_without_an_index_is_read_at_the_same_entry():
+    parent, friend = _filled(), _filled()
+    px = np.zeros(1, "f")
+    friend.SetBranchAddress("px", px)
+    parent.AddFriend(friend, "f")
+    parent.GetEntry(7)
+    assert px[0] == 3.5
+
+
+def test_show_prints_where_a_vector_is_as_root_does(capsys):
+    t = _filled()
+    t.Show(2)
+    shown = capsys.readouterr().out.splitlines()
+    assert any(line.startswith(" v               = (vector<int>*)0x") for line in shown)

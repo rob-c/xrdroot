@@ -1,4 +1,4 @@
-"""``Print``, ``Show``, ``Scan`` and ``Draw``: what ROOT prints and returns, character for character.
+"""``Print``, ``Show``, ``Scan`` and ``Draw``: what ROOT prints and returns, to the character.
 
 The layouts are ``TTree::Print``'s and ``TBranch::Print``'s ``printf``
 strings - ``*Br%5d :%-9s : %-54s``, ``*Entries :%9lld : Total  Size=%11lld
@@ -40,13 +40,19 @@ def test_print_lays_the_tree_and_every_branch_out_in_roots_table(capsys):
     assert all(len(line) == 78 for line in lines)
     assert lines[0] == "*" * 78
     assert lines[1] == "*Tree    :T         : a tree to print".ljust(77) + "*"
-    assert re.fullmatch(r"\*Entries :        5 : Total = +\d+ bytes  File  Size = +\d+ \*", lines[2])
-    assert re.fullmatch(r"\*        :          : Tree compression factor = +\d+\.\d\d +\*", lines[3])
+    assert re.fullmatch(
+        r"\*Entries :        5 : Total = +\d+ bytes  File  Size = +\d+ \*", lines[2]
+    )
+    assert re.fullmatch(
+        r"\*        :          : Tree compression factor = +\d+\.\d\d +\*", lines[3]
+    )
     assert lines[5] == "*Br    0 :x         : x/D".ljust(77) + "*"
     assert re.fullmatch(
         r"\*Entries :        5 : Total  Size= +\d+ bytes  One basket in memory    \*", lines[6]
     )
-    assert lines[7] == "*Baskets :        0 : Basket Size=      32000 bytes  Compression=   1.00     *"
+    assert (
+        lines[7] == "*Baskets :        0 : Basket Size=      32000 bytes  Compression=   1.00     *"
+    )
     assert lines[2].endswith("File  Size =          0 *") and "factor =   1.00 " in lines[3]
     assert lines[8] == "*" + "." * 76 + "*"
     assert lines[13].startswith("*Br    2 :a         : a[n]/F ")
@@ -62,8 +68,12 @@ def test_a_tree_written_prints_its_baskets_on_file(capsys, tmp_path):
         t.Write()
     t.Print()
     lines = capsys.readouterr().out.splitlines()
-    assert re.fullmatch(r"\*Entries :        5 : Total  Size= +\d+ bytes  File Size  = +\d+ \*", lines[6])
-    assert re.fullmatch(r"\*Baskets :        1 : Basket Size= +32000 bytes  Compression= +\d\.\d\d     \*", lines[7])
+    assert re.fullmatch(
+        r"\*Entries :        5 : Total  Size= +\d+ bytes  File Size  = +\d+ \*", lines[6]
+    )
+    assert re.fullmatch(
+        r"\*Baskets :        1 : Basket Size= +32000 bytes  Compression= +\d\.\d\d     \*", lines[7]
+    )
 
 
 def test_print_with_a_name_prints_only_the_branches_it_matches(capsys):
@@ -81,8 +91,12 @@ def test_a_long_title_is_broken_at_a_colon_as_tbranch_print_breaks_it():
         "*Br    0 :staff     : Category/I:Flag:Age:Service:Children:Grade:Step:Hrweek:*\n"
         "*         | Cost                                                             *"
     )
-    assert lines[1] == "*Entries :     3354 : Total  Size=     154237 bytes  File Size  =      32316 *"
-    assert lines[2] == "*Baskets :        3 : Basket Size=      32000 bytes  Compression=   4.77     *"
+    assert (
+        lines[1] == "*Entries :     3354 : Total  Size=     154237 bytes  File Size  =      32316 *"
+    )
+    assert (
+        lines[2] == "*Baskets :        3 : Basket Size=      32000 bytes  Compression=   4.77     *"
+    )
 
 
 def test_a_title_that_is_the_name_prints_the_leaf_type_instead(capsys):
@@ -91,7 +105,9 @@ def test_a_title_that_is_the_name_prints_the_leaf_type_instead(capsys):
     ntuple = TNtuple("ntuple", "Demo ntuple", "px:py")
     ntuple.Fill(1, 2)
     ntuple.GetBranch("px").Print()
-    assert capsys.readouterr().out.splitlines()[0] == "*Br    0 :px        : Float_t".ljust(77) + "*"
+    assert (
+        capsys.readouterr().out.splitlines()[0] == "*Br    0 :px        : Float_t".ljust(77) + "*"
+    )
     empty = TTree("empty", "")
     empty.Print()
     assert capsys.readouterr().out.count("\n") == 5
@@ -112,7 +128,9 @@ def test_show_prints_one_entry_breaking_an_array_after_its_first_value(capsys):
     )
     t.GetEntry(0)
     t.Show()
-    assert capsys.readouterr().out == "======> EVENT:0\n x               = 0\n n               = 0\n"
+    assert (
+        capsys.readouterr().out == "======> EVENT:0\n x               = 0\n n               = 0\n"
+    )
     fresh = _tree()
     fresh.SetBranchStatus("a", 0)
     fresh.Show()

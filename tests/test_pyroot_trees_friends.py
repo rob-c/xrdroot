@@ -195,3 +195,22 @@ def test_a_clone_takes_counters_vectors_and_text_with_what_they_count(tmp_path):
         assert got["s"] == ["1", "2"] and [list(r) for r in got["v"]] == [[1.0], [2.0, 2.0]]
         assert [list(r) for r in got["a"]] == [[1.0], [2.0, 2.0]]
         assert read.CloneTree().GetEntries() == 2
+
+
+def test_a_clone_filled_entry_by_entry_reads_arrays_from_what_the_source_read(capsys):
+    n, a = np.zeros(1, "i"), np.zeros(3)
+    t = TTree("t", "")
+    t.Branch("n", n, "n/I")
+    t.Branch("a", a, "a[n]/D")
+    for i in range(3):
+        n[0], a[:] = i, [i, i, i]
+        t.Fill()
+    clone = t.CloneTree(0)
+    for i in range(3):
+        t.GetEntry(i)
+        clone.Fill()
+    assert [list(row) for row in clone._xrd.arrays()["a"]] == [[], [1.0], [2.0, 2.0]]
+    empty = TEntryList("none")
+    empty.Print("all")
+    empty.Print()
+    assert capsys.readouterr().out == "  0\n  0\n"

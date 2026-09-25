@@ -123,8 +123,6 @@ class Slot:
     def column(self) -> Any:
         """Every entry filled, as one column."""
         self.seal()
-        if not self.chunks:
-            return self._assembled([])
         if len(self.chunks) > 1:
             self.chunks = [concatenate(self.chunks)]
         return self.chunks[0]

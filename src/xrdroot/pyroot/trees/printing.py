@@ -114,9 +114,7 @@ def _printed(leaf: LeafInfo, value: Any) -> str:
     return str(int(number))
 
 
-def _values(leaf: LeafInfo, value: Any) -> list[Any]:
-    if leaf.text:
-        return [str(value)]
+def _values(value: Any) -> list[Any]:
     return list(np.asarray(value).reshape(-1)[:SHOW_MAX])
 
 
@@ -126,15 +124,11 @@ def _joined(leaf: LeafInfo, value: Any) -> str:
     if leaf.vector:  # ROOT prints where the vector is, not what is in it
         return f"({leaf.typename}*)0x{id(value):x}"
     per_line = 5 if leaf.classname in FIVE_A_LINE or leaf.vector else 10
-    shown = [_printed(leaf, each) for each in _values(leaf, value)]
     text = ""
-    for at, each in enumerate(shown):
-        text += each
-        if at == len(shown) - 1:
-            break
-        text += ", "
-        if at % per_line == 0:
-            text += "\n" + " " * 18
+    for at, each in enumerate(_values(value)):
+        if at:  # after every value but the last, and a new line after the first and each run
+            text += ", " + ("\n" + " " * 18 if (at - 1) % per_line == 0 else "")
+        text += _printed(leaf, each)
     return text
 
 

@@ -79,8 +79,6 @@ class TTreeReader(_TObjectLike):
         if not 0 <= self._entry < self._stop():
             return ENTRY_BEYOND_END
         number = self._entry if self._list is None else self._list.GetEntry(self._entry)
-        if number < 0:
-            return ENTRY_BEYOND_END
         self._tree._read_entry = int(number)
         return ENTRY_VALID
 

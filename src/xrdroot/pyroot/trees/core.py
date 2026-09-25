@@ -26,8 +26,6 @@ __all__ = ["_TreeCore", "python_value"]
 
 def python_value(value: Any, vector: bool) -> Any:
     """A value as a PyROOT script is handed it: a number, an array, or a ``std::vector``."""
-    if isinstance(value, np.ndarray) and value.ndim == 0:
-        return value.item()
     if isinstance(value, np.generic):
         return value.item()
     if vector and isinstance(value, np.ndarray):
@@ -72,8 +70,7 @@ class _TreeCore(_TObjectLike):
         made._directory = None
         made._store = None
         made._source = source
-        if classname:
-            made._classname = classname
+        made._classname = classname or made._classname
         return made
 
     def __repr__(self) -> str:

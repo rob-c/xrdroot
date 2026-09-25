@@ -42,8 +42,13 @@ def test_every_kind_of_address_is_read_at_the_moment_fill_is_called(tmp_path):
     label, cell = bytearray(16), Cell(0.0)
     t = TTree("t", "a simple tree")
     for name, where, leaflist in [
-        ("px", px, "px/F"), ("py", py, "py/F"), ("ev", ev, "ev/I"), ("n", n, "n/I"),
-        ("arr", arr, "arr[n]/D"), ("label", label, "label/C"), ("w", cell, "w/D"),
+        ("px", px, "px/F"),
+        ("py", py, "py/F"),
+        ("ev", ev, "ev/I"),
+        ("n", n, "n/I"),
+        ("arr", arr, "arr[n]/D"),
+        ("label", label, "label/C"),
+        ("w", cell, "w/D"),
     ]:
         t.Branch(name, where, leaflist)
     t.Branch("vec", vec)
@@ -112,8 +117,14 @@ def test_a_branch_without_a_leaf_list_takes_its_type_from_its_address(tmp_path):
     got = _written(tmp_path, t)
     kinds = {name: values.dtype.str[1:] for name, values in got.items()}
     assert kinds == {
-        "d": "f8", "i": "i4", "l": "i8", "three": "i2", "flag": "b1", "count": "i4",
-        "x": "f8", "typed": "f4",
+        "d": "f8",
+        "i": "i4",
+        "l": "i8",
+        "three": "i2",
+        "flag": "b1",
+        "count": "i4",
+        "x": "f8",
+        "typed": "f4",
     }
     assert got["three"].shape == (1, 3) and got["i"].tolist() == [3]
 
@@ -224,7 +235,11 @@ def test_reset_forgets_the_entries_and_keeps_the_branches_and_the_rest_do_nothin
     t.Fill()
     assert t.GetEntries() == 1
     for setting in (
-        t.SetAutoSave, t.SetAutoFlush, t.SetMaxTreeSize, t.SetCircular, t.StartViewer,
+        t.SetAutoSave,
+        t.SetAutoFlush,
+        t.SetMaxTreeSize,
+        t.SetCircular,
+        t.StartViewer,
     ):
         assert setting(10) is None
     t.SetBasketSize("x", 100)

@@ -109,7 +109,7 @@ def test_a_reader_walks_every_entry_and_its_values_read_as_cplusplus_reads_them(
         assert reader.GetCurrentEntry() == PER_FILE and x.IsValid() and x.GetBranchName() == "x"
         reader.Restart()
         reader.SetEntriesRange(4, 7)
-        assert [entry for entry in reader] == [4, 5, 6]
+        assert list(reader) == [4, 5, 6]
         assert reader.SetEntry(8) == 8 and reader.SetEntry(3) == 0 and x.__deref__() == 3.0
         reader.SetEntry(5)
         assert v.GetSize() == v.size() == 2 and v[1] == 5.0 and v.At(0) == 5.0
