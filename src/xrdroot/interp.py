@@ -1223,6 +1223,11 @@ def _unparsed(name: str, header: bool, branch: BranchRecord, source: Source) -> 
     """
     if not header:
         return _whole(name, source, branch.streamed)  # the whole object
+    if name.endswith("*"):
+        # A pointer member left unsplit, which ROOT writes the way it writes
+        # any pointer: nothing but a null tag, or the class and the object.
+        classes = _Described(source, ())
+        return Values("object", lambda buf: buf.any(classes))
     return Refused(
         f"{name or 'an unnamed type'}, which is a C++ type this reader does not "
         f"decode; a split file has its members as branches of their own"

@@ -77,6 +77,19 @@ def test_a_class_in_each_object_of_a_split_collection_is_refused_by_name():
     assert column.reason.startswith("a TArrayF* in each object of the split collection hits_")
 
 
+def test_a_pointer_member_left_unsplit_reads_as_what_it_points_at_or_None():
+    """ALICE's ``PHOSTrigger.fTriggerAmplitudes`` is a ``TArrayF*`` in a split class."""
+    source = type("Described", (), {})()
+    source.streamers = lambda: {"Trigger": {"fA": Member("fA", "", 69, "TArrayF*", 0)}}
+    branch, leaf = BranchRecord(), LeafRecord("TLeafElement")
+    branch.classname, leaf.name, leaf.ltype = "Trigger", "fA", 69
+    column = build(branch, leaf, source)
+    body = struct.pack(">I", 0xFFFFFFFF) + b"TArrayF\x00" + struct.pack(">iff", 2, 1.5, -2.0)
+    raw = struct.pack(">I", BYTE_COUNT_MASK | len(body)) + body
+    assert column.value(Buffer(raw), 0).tolist() == [1.5, -2.0]
+    assert column.value(Buffer(bytes(4)), 0) is None
+
+
 def test_a_branch_written_to_a_file_of_its_own_reads_its_baskets_from_there(hits):
     assert hits["n"].record.file_name == "tclonesarray-split-baskets.root"
     assert hits["n"].array().tolist() == [0, 1, 2, 3, 4]
