@@ -196,9 +196,7 @@ class Flat(Numeric):
     __slots__ = ("length",)
     kind = "flat"
 
-    def __init__(
-        self, prim: Prim, length: int, unpack: Unpack | None = None
-    ) -> None:
+    def __init__(self, prim: Prim, length: int, unpack: Unpack | None = None) -> None:
         super().__init__(prim, unpack)
         self.length = length
 
@@ -551,6 +549,11 @@ def _packed(leaf: LeafRecord) -> Column:
     return Flat(prim, leaf.length, unpack)
 
 
+def member_name(leaf: LeafRecord) -> str:
+    """The member a split leaf is, without the branches above it: ``fX`` of ``V0s.fParamN.fX``."""
+    return leaf.name.rpartition(".")[2]
+
+
 def _packed_member(
     branch: BranchRecord, leaf: LeafRecord, source: Source, kind: int, counted: bool
 ) -> Column:
@@ -561,7 +564,7 @@ def _packed_member(
     Without that comment there is no honest way to read the bytes, so a class
     the file does not describe is refused rather than read at a guess.
     """
-    member = source.streamers().get(branch.classname, {}).get(leaf.name)
+    member = source.streamers().get(branch.classname, {}).get(member_name(leaf))
     if member is None:
         return Refused(
             f"a packed float member of {branch.classname or 'a class'} that this file's "
@@ -574,6 +577,8 @@ def _packed_member(
     prim, unpack = found
     if counted:
         return Rows(prim, 1, False, unpack)  # one marker byte, then the packed values
+    if leaf.count is not None:
+        return Rows(prim, 0, False, unpack)  # one per object of a split collection
     return Flat(prim, leaf.length, unpack)
 
 
@@ -1140,11 +1145,16 @@ def _declared_name(
     """Resolve the class name and whether a member record precedes it."""
     if leaf.ltype < 0 or branch.whole:
         return branch.classname, False  # a whole object: the branch names it
-    member = source.streamers().get(branch.classname, {}).get(leaf.name)
+    member = source.streamers().get(branch.classname, {}).get(member_name(leaf))
     if member is None:
         return Refused(
             f"a member of {branch.classname or 'a class'} that this file's streamer "
             f"information does not describe, so its type is not knowable"
+        )
+    if leaf.count is not None:
+        return Refused(
+            f"a {member.typename} in each object of the split collection "
+            f"{leaf.count.name}, which this reader does not read one object at a time"
         )
     return member.typename, True
 
@@ -1210,6 +1220,11 @@ def build(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column:
 
 def _element(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column:
     """Interpret a ``TLeafElement`` from its ROOT type code."""
+    if leaf.ltype == 65 and leaf.count is not None:
+        return Refused(
+            f"a TString in each object of the split collection {leaf.count.name}, "
+            f"which this reader does not read one object at a time"
+        )
     if leaf.ltype == 65:
         return Values("str", _string)  # a TString member, written with no header
     primitive = _primitive_element(branch, leaf, source)
@@ -1225,17 +1240,32 @@ def _element(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column:
     return Refused(f"{KINDS[leaf.ltype]}, which this reader does not decode")
 
 
-def _primitive_element(
-    branch: BranchRecord, leaf: LeafRecord, source: Source
-) -> Column | None:
-    """A primitive, packed primitive, or pointer element when its code says so."""
+def _primitive_element(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column | None:
+    """A primitive, packed primitive, or pointer element when its code says so.
+
+    A plain or fixed-size member whose leaf has a counter is a member of
+    the objects of a split collection - a ``TClonesArray`` or a vector of a
+    class - so an entry holds one value per object, or ``length`` of them
+    for an array member, one object's after another's.
+    """
     for base in (0, OFFSET_L, OFFSET_P):
         kind = leaf.ltype - base
         prim = BASIC.get(kind)
         if prim is not None:
-            if base == OFFSET_P:
-                return Rows(prim, 1, False)  # one marker byte, then the counted values
-            return Flat(prim, leaf.length)
+            return _primitive_shape(leaf, prim, base)
         if kind in PACKED:
             return _packed_member(branch, leaf, source, kind, base == OFFSET_P)
     return None
+
+
+def _primitive_shape(leaf: LeafRecord, prim: Prim, base: int) -> Column:
+    """A primitive member as one value, a fixed array, a counted one, or one per object.
+
+    A counted array's leaf names the member that counts it; any other
+    member with a counter is one of a split collection's objects.
+    """
+    if base == OFFSET_P:
+        return Rows(prim, 1, False)  # one marker byte, then the counted values
+    if leaf.count is not None:
+        return Rows(prim, 0, False)
+    return Flat(prim, leaf.length)

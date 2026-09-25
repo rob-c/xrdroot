@@ -2280,6 +2280,26 @@ rather than decoded. zstd uses Python 3.14's own `compression.zstd` where there
 is one and the `zstandard` package otherwise, and is the one case where a file
 may need something installed.
 
+## Split collections, and baskets in another file
+
+A `TClonesArray`, or a `std::vector` of a class, split into members is a
+branch per member under one branch that holds how many objects each entry
+has. Each member reads as a row per entry, one value per object — an array
+member as the run of each object's values in turn — and the branch they
+hang from reads as a dictionary per entry of those rows, as any split
+object does:
+
+```python
+>>> esd = xrdroot.open_root("alice_ESDs.root")["esdTree"]
+>>> esd["Tracks.fITSncls"].array(0, 1)[0][:5]
+array([5, 6, 6, 6, 6], dtype=int32)
+```
+
+A branch ROOT was told to write to a file of its own — `TBranch::SetFile`,
+which ALICE used for its `ESDfriend` — records that file's name, and its
+baskets are read from it, found beside the tree's own file the way a
+friend's is.
+
 ## Old files
 
 A tree written by ROOT 4 opens like any other. Those files count entries in
@@ -2350,6 +2370,10 @@ What is named that way:
   names, is read);
 - a graph of layered y errors asked for `yerr`, because summing the layers
   would be an answer this reader made up;
+- a `TString`, or an object, in each object of a split `TClonesArray` or
+  vector of a class: the entry holds one after another with nothing to say
+  where each ends (a number, an array or a packed float there is read, as a
+  row per entry of one value, or an array's run of values, per object);
 - a `TBranch` older than version 5, which kept no
   sizes for its baskets.
 

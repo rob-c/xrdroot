@@ -131,6 +131,8 @@ class BranchRecord:
         "baskets",
         "streamed",
         "whole",
+        "collection",
+        "file_name",
     )
 
     def __init__(self) -> None:
@@ -153,6 +155,12 @@ class BranchRecord:
         #: Does this branch hold the whole class it names, rather than one
         #: member of one? ROOT says so by giving it no member to point at.
         self.whole = False
+        #: Is this the branch a split collection's members hang from, whose
+        #: baskets hold how many objects each entry has and nothing else?
+        self.collection = False
+        #: The file the baskets were written to, when ROOT was told to put
+        #: them in one of their own; empty for the file the tree is in.
+        self.file_name = ""
 
     def __repr__(self) -> str:
         return f"<BranchRecord {self.name!r} with {len(self.basket_seek)} baskets>"
@@ -213,6 +221,7 @@ def read_branch(buf: Buffer) -> BranchRecord:
     write_basket, max_baskets = _branch_header(buf, branch, version, modern)
     _branch_contents(buf, branch)
     _basket_tables(buf, branch, modern, max_baskets, write_basket)
+    branch.file_name = buf.string()
     _inline_basket_bounds(branch)
     buf.resume(end)
     return branch
@@ -237,7 +246,7 @@ def _ancient_branch(buf: Buffer, branch: BranchRecord, end: int | None) -> Branc
     branch.basket_bytes = buf.i32s(buf.i32())[:written]
     buf.i32()
     branch.basket_seek = buf.i32s(max_baskets)[:written]
-    buf.string()  # the file the baskets are in, empty for this one
+    branch.file_name = buf.string()
     _inline_basket_bounds(branch)
     buf.resume(end)
     return branch
@@ -320,9 +329,16 @@ def read_branch_element(buf: Buffer) -> BranchRecord:
         buf.u32()  # the checksum of the class this was written from
     buf.u16() if version >= 10 else buf.u32()  # that class's version
     branch.whole = buf.i32() < 0  # which member this is, and -1 for none of them
-    branch.streamed = buf.i32() < 0  # ROOT calls this fType, and -1 is the whole object
+    kind = buf.i32()  # ROOT calls this fType, and -1 is the whole object
+    branch.streamed = kind < 0
+    branch.collection = kind in SPLIT_COLLECTIONS
     buf.resume(end)
     return branch
+
+
+#: The ``fType`` of the branch a split ``TClonesArray`` or STL collection
+#: hangs from, whose own baskets hold only how many objects each entry has.
+SPLIT_COLLECTIONS = (3, 4)
 
 
 def read_branch_object(buf: Buffer) -> BranchRecord:

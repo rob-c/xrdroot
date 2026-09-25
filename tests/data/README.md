@@ -85,6 +85,21 @@ files, and it is the whole of what is required to redistribute them.
 scikit-hep-testdata is BSD-3-Clause too; its licence is in
 `rntuple/LICENSE.scikit-hep-testdata`.
 
+## Written by ROOT 6.40
+
+`tclonesarray-split.root` and `tclonesarray-split-baskets.root` were written
+by ROOT 6.40.04 from `tclonesarray_split.C`, the macro beside them, run
+interpreted (`root -b -q tclonesarray_split.C`): a `TClonesArray` of a class
+split into members, one of them a `Double32_t` with a range, one an array and
+one a `TString`, and a branch `n` whose baskets ROOT was told, with
+`TBranch::SetFile`, to write to the second file. They are here because no
+file anywhere else in this corpus splits a collection of objects, which the
+ALICE files ROOT's event-display tutorials download do throughout.
+
+`uproot-issue-172.root` is from go-hep's `groot/testdata/uproot`, which took
+it from scikit-hep-testdata: `RVec`s written by ROOT 6.20, whose type names an
+`RAdoptAllocator`.
+
 ## ROOT's tutorials
 
 The files under `tutorials/` are the ones ROOT's own tutorials ship beside
