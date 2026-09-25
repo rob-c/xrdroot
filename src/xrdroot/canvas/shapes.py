@@ -37,9 +37,13 @@ def _text(scene: Scene, prim: Primitive, latex: bool) -> None:
     title = str(prim.get("fTitle", ""))
     shown = translate(title) if latex else title.replace("$", r"\$")
     draw_text(
-        scene, shown, float(prim.get("fX", 0.0)), float(prim.get("fY", 0.0)),
-        scene.text(prim), prim.ndc,
-    )  # fmt: skip
+        scene,
+        shown,
+        float(prim.get("fX", 0.0)),
+        float(prim.get("fY", 0.0)),
+        scene.text(prim),
+        prim.ndc,
+    )
 
 
 def text(scene: Scene, prim: Primitive, _option: str) -> None:

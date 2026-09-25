@@ -43,6 +43,9 @@ NO_TITLE = 1 << 17
 #: Where ``gStyle`` puts a title a pad was saved without: its middle top, and its size.
 TITLE_X, TITLE_Y, TITLE_SIZE_PAD = 0.5, 0.995, 0.05
 
+#: How far below the top a logarithmic axis starts when its bottom is not above zero.
+LOG_FLOOR = 1e-3
+
 Extent = tuple[float, float, float, float]
 
 
@@ -123,6 +126,8 @@ def _graphs_extent(graphs: list[Graph], pad: Pad) -> Extent:
 
 
 def _function_extent(f: Function, log: bool) -> Extent:
+    if f.dimensions != 1:
+        return 0.0, 0.0, 1.0, 1.0  # it is not drawn, and says so when it is not
     low, high = (float(end) for end in f.range[:2])
     try:
         values = np.asarray(f(np.linspace(low, high, 101)), dtype=float)
@@ -172,7 +177,7 @@ def open_axes(scene: Scene) -> None:
     ax.patch.set_visible(False)
     scene.ax = ax
     if scene.owner is None:
-        x1, y1, x2, y2 = pad.range
+        x1, y1, x2, y2 = _usable(pad.range, (0.0, 0.0, 1.0, 1.0))
         ax.set_xlim(x1, x2)
         ax.set_ylim(y1, y2)
         ax.set_axis_off()
@@ -184,9 +189,27 @@ def open_axes(scene: Scene) -> None:
         if log:
             scale("log")
             _logarithmic(axis)
-    xmin, ymin, xmax, ymax = pad.frame if pad.painted else extent(*scene.owner, pad)
-    ax.set_xlim(xmin, xmax)
-    ax.set_ylim(ymin, ymax)
+    worked_out = extent(*scene.owner, pad)
+    xmin, ymin, xmax, ymax = _usable(pad.frame, worked_out) if pad.painted else worked_out
+    ax.set_xlim(*_positive(xmin, xmax, pad.logx))
+    ax.set_ylim(*_positive(ymin, ymax, pad.logy))
+
+
+def _usable(ends: Extent, otherwise: Extent) -> Extent:
+    """``ends``, unless they enclose nothing - a range never set - when ``otherwise``."""
+    x1, y1, x2, y2 = ends
+    return ends if x1 != x2 and y1 != y2 else otherwise
+
+
+def _positive(low: float, high: float, log: bool) -> tuple[float, float]:
+    """An axis's ends, the lower above zero on a logarithmic one, as ROOT moves it.
+
+    ROOT takes a thousandth of the upper end when the lower is not above
+    zero - an axis from zero, drawn logarithmically, starts somewhere.
+    """
+    if log and low <= 0:
+        return high * LOG_FLOOR, high
+    return low, high
 
 
 def _axes_of(obj: Any) -> Any:
@@ -225,10 +248,15 @@ def _frame(scene: Scene) -> None:
     if fills:
         scene.ax.add_artist(
             Rectangle(
-                (0, 0), 1, 1, transform=scene.ax.transAxes, zorder=-50,
-                facecolor=scene.colors.rgba(style["fFillColor"], alpha), edgecolor="none",
+                (0, 0),
+                1,
+                1,
+                transform=scene.ax.transAxes,
+                zorder=-50,
+                facecolor=scene.colors.rgba(style["fFillColor"], alpha),
+                edgecolor="none",
             )
-        )  # fmt: skip
+        )
     for spine in scene.ax.spines.values():
         spine.set_color(scene.colors.rgb(style["fLineColor"]))
         spine.set_linewidth(styles.points(float(style["fLineWidth"])))
@@ -250,9 +278,11 @@ def _label(scene: Scene, axis: Any, which: str) -> None:
     setter = scene.ax.set_xlabel if which == "x" else scene.ax.set_ylabel
     where = {"loc": "right"} if which == "x" else {"loc": "top"}
     setter(
-        translate(title), fontsize=title_size,
-        color=scene.colors.rgb(lookup(axis, "fTitleColor", 1)), **where,
-    )  # fmt: skip
+        translate(title),
+        fontsize=title_size,
+        color=scene.colors.rgb(lookup(axis, "fTitleColor", 1)),
+        **where,
+    )
 
 
 def _ticks(scene: Scene, source: Any) -> None:

@@ -193,10 +193,7 @@ def _histogram_1d(scene: Scene, h: Histogram, words: frozenset[str]) -> None:
 
 def _colormap(scene: Scene) -> Any:
     """The palette, with what is below its lowest value - an empty bin - not drawn."""
-    cmap = scene.colors.colormap()
-    cmap.set_under((0, 0, 0, 0))
-    cmap.set_bad((0, 0, 0, 0))
-    return cmap
+    return scene.colors.colormap().with_extremes(under=(0, 0, 0, 0), bad=(0, 0, 0, 0))
 
 
 def _norm(scene: Scene, h: Histogram) -> Any:

@@ -81,7 +81,6 @@ DELIMITERS = frozenset({"left", "right"})
 ESCAPES = {
     "%": r"\%",
     "$": r"\$",
-    "&": r"\&",
     "\\": r"\backslash ",
     "#": r"\#",
     "{": r"\{",
@@ -89,6 +88,8 @@ ESCAPES = {
 }
 #: What makes a string mathematics rather than plain text.
 MARKS = "#^_"
+#: What an empty argument becomes: a space, which mathtext will take.
+EMPTY = r"\ "
 
 
 class _Reader:
@@ -117,22 +118,25 @@ class _Reader:
 
     def bracketed(self) -> str:
         """A ``[setting]``, if one is next, which is skipped over and returned."""
-        if self.peek() != "[":
-            return ""
         end = self.text.find("]", self.at)
-        end = len(self.text) if end < 0 else end
+        if self.peek() != "[" or end < 0:
+            return ""  # a bracket never closed is text, not a setting
         setting = self.text[self.at + 1 : end]
         self.at = end + 1
         return setting
 
     def group(self) -> str:
-        """The next ``{...}``, translated - or, with no brace, the next character."""
+        """The next ``{...}``, translated - or, with no brace, the next character.
+
+        An empty one is a space, since mathtext will not take an empty group
+        where an argument has to be.
+        """
         if self.peek() != "{":
-            return _plain(self.take())
+            return _plain(self.take()) or EMPTY
         self.at += 1
         inner = _body(self, closing="}")
         self.at += 1  # the closing brace
-        return inner
+        return inner or EMPTY
 
 
 def _plain(run: str) -> str:
@@ -149,8 +153,7 @@ def _command(reader: _Reader) -> str:
     if not name:
         return _plain(reader.take())
     if name in DELIMITERS:
-        delimiter = reader.take() or "."
-        return f"\\{name}" + ESCAPES.get(delimiter, delimiter)
+        return _plain(reader.take())  # the delimiter, at the size of the text
     if name == "frac":
         top = reader.group()
         return r"\frac{" + top + "}{" + reader.group() + "}"
@@ -218,4 +221,5 @@ def translate(text: str) -> str:
     """
     if not any(mark in text for mark in MARKS):
         return text.replace("$", r"\$")
-    return "$" + _body(_Reader(text)) + "$"
+    body = _body(_Reader(text))
+    return f"${body}$" if body else ""

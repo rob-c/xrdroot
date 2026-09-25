@@ -236,11 +236,15 @@ def _symbol(scene: Scene, entry: Any, option: str, cell: tuple[float, float, flo
     if "f" in option:
         scene.ax.add_artist(
             Rectangle(
-                (x - SYMBOL * room, y - SYMBOL * height), 2 * SYMBOL * room, 2 * SYMBOL * height,
-                transform=scene.ndc, clip_on=False, zorder=scene.layer(),
+                (x - SYMBOL * room, y - SYMBOL * height),
+                2 * SYMBOL * room,
+                2 * SYMBOL * height,
+                transform=scene.ndc,
+                clip_on=False,
+                zorder=scene.layer(),
                 **patch_style(scene, source, outline="l" in option),
             )
-        )  # fmt: skip
+        )
     lines = []
     if "l" in option and "f" not in option:
         lines.append(([x - SYMBOL * room, x + SYMBOL * room], [y, y]))
@@ -259,9 +263,16 @@ def _symbol(scene: Scene, entry: Any, option: str, cell: tuple[float, float, flo
         )
     if "p" in option:
         scene.ax.add_artist(
-            Line2D([x], [y], linestyle="none", transform=scene.ndc, clip_on=False, zorder=scene.layer(),
-                   **scene.marker(source))
-        )  # fmt: skip
+            Line2D(
+                [x],
+                [y],
+                linestyle="none",
+                transform=scene.ndc,
+                clip_on=False,
+                zorder=scene.layer(),
+                **scene.marker(source),
+            )
+        )
 
 
 def _cell(

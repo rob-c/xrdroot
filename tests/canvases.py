@@ -17,7 +17,6 @@ import pathlib
 from typing import Any
 
 from crafted import DATA, UNDESCRIBED, base, craft, layouts, member
-
 from xrdroot import open_root
 from xrdroot.streamers import Member
 

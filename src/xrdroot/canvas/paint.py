@@ -66,9 +66,16 @@ def _bevel(scene: Scene, mode: int, size: int, face: tuple[float, float, float])
         (lower, dark if mode > 0 else light),
     ):
         scene.ax.add_artist(
-            Polygon(corner, closed=True, transform=scene.ndc, clip_on=False, zorder=-90,
-                    facecolor=color, edgecolor="none")
-        )  # fmt: skip
+            Polygon(
+                corner,
+                closed=True,
+                transform=scene.ndc,
+                clip_on=False,
+                zorder=-90,
+                facecolor=color,
+                edgecolor="none",
+            )
+        )
 
 
 def _background(scene: Scene) -> None:
@@ -80,9 +87,17 @@ def _background(scene: Scene) -> None:
     face = scene.colors.rgb(pad.get("fFillColor", 0))
     if fills:
         scene.ax.add_artist(
-            Rectangle((0, 0), 1, 1, transform=scene.ndc, clip_on=False, zorder=-100,
-                      facecolor=(*face, alpha), edgecolor="none")
-        )  # fmt: skip
+            Rectangle(
+                (0, 0),
+                1,
+                1,
+                transform=scene.ndc,
+                clip_on=False,
+                zorder=-100,
+                facecolor=(*face, alpha),
+                edgecolor="none",
+            )
+        )
     mode, size = int(pad.get("fBorderMode", 0)), int(pad.get("fBorderSize", 0))
     if mode and size > 0:
         _bevel(scene, mode, size, face)
