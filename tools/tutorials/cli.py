@@ -19,7 +19,7 @@ from typing import Any
 from . import report
 from .catalog import catalog
 from .compare import Tolerance
-from .environment import cmake_variables, find_oracle, targets
+from .environment import cmake_variables, find_oracle, root_config, targets
 from .harness import DEFAULT_CACHE, Harness, Settings, selected
 
 __all__ = ["main", "parser"]
@@ -63,7 +63,12 @@ def _common(command: argparse.ArgumentParser) -> None:
     command.add_argument("--tutorials", type=Path, required=True, help="ROOT's tutorials directory")
     command.add_argument("--only", action="append", default=[], help="a directory or file prefix")
     command.add_argument("--cache", type=Path, default=DEFAULT_CACHE, help="the oracle cache")
-    command.add_argument("--root-config", default="root-config", help="the ROOT to compare with")
+    command.add_argument(
+        "--oracle-prefix",
+        type=Path,
+        help="the ROOT installation to compare with ($XRDROOT_ORACLE_PREFIX, "
+        "~/.local/root-oracle, else root-config on PATH)",
+    )
     command.add_argument("--root-python", help="the Python whose PyROOT runs .py tutorials")
     command.add_argument(
         "--features",
@@ -73,7 +78,7 @@ def _common(command: argparse.ArgumentParser) -> None:
 
 
 def _catalogue(args: argparse.Namespace) -> tuple[dict[str, Any], Any]:
-    oracle = find_oracle(args.root_config, args.root_python)
+    oracle = find_oracle(root_config(args.oracle_prefix), args.root_python)
     tutorials = args.tutorials.resolve()
     features = oracle.features if oracle is not None else frozenset()
     if args.features is not None:

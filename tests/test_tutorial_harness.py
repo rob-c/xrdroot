@@ -645,3 +645,17 @@ def test_the_cpp_each_tutorial_hands_over_is_masked_from_its_reason():
     assert classify.failure(result(exit_code=1, stderr=stderr)).reason == (
         "UnsupportedFeatureError: gROOT.ProcessLine(...) runs C++"
     )
+
+
+def test_the_oracle_prefix_supplies_root_config_and_its_own_python(tmp_path, monkeypatch):
+    from tools.tutorials import environment
+
+    monkeypatch.setattr(environment, "DEFAULT_PREFIX", tmp_path / "absent")
+    assert environment.root_config(None) == "root-config"
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "root-config").write_text("")
+    (tmp_path / "bin" / "python").write_text("")
+    assert environment.root_config(tmp_path) == str(tmp_path / "bin" / "root-config")
+    assert environment.python_for("3.99", str(tmp_path / "bin")) == str(tmp_path / "bin" / "python")
+    assert environment.python_for("", "") is None
+    assert environment.find_oracle(str(tmp_path / "bin" / "nothing")) is None

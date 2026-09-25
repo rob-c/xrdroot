@@ -29,10 +29,16 @@ Running it
     python -m tools.tutorials report       # redraw the Markdown and HTML from results.json
     python -m tools.tutorials list --tutorials rootsrc/tutorials           # the catalogue
 
-The oracle is the ROOT ``root-config`` finds (``--root-config`` for another);
-its Python bindings are run with the ``python<X.Y>`` that ``root-config
---python-version`` names and ROOT's library directory on ``PYTHONPATH``, as
-Homebrew's ROOT is used (``--root-python`` to choose another).
+The oracle is a ROOT installation prefix: ``--oracle-prefix``, else
+``$XRDROOT_ORACLE_PREFIX``, else ``~/.local/root-oracle`` if it exists, else
+whatever ``root-config`` is on ``PATH``. C++ tutorials run under its
+``bin/root -b -q -l``, Python ones under its ``bin/python`` (a conda-forge
+ROOT carries PyROOT in its own Python) or the ``python<X.Y>`` that
+``root-config --python-version`` names, with ROOT's library directory on
+``PYTHONPATH`` (``--root-python`` to choose another). A conda-forge ROOT is
+one command::
+
+    micromamba create -y -p ~/.local/root-oracle -c conda-forge root
 
 Where things go
 ---------------

@@ -1,11 +1,15 @@
 """The ROOT installed here - the oracle - and the build options it was made with.
 
 Nothing here imports ROOT: it is asked through ``root-config`` (its version,
-its ``--features``, where its libraries are) and its Python bindings are
-found as the Python ``root-config --python-version`` names, with ROOT's
-library directory on ``PYTHONPATH`` - which is how Homebrew's ROOT is used
-from Python. ROOT is never a dependency of xrdroot; without it the harness
-still runs xrdroot, and says there was nothing to compare against.
+its ``--features``, where its libraries are). The oracle is a prefix - an
+installation with ``bin/root``, ``bin/root-config`` and, for a conda-forge
+ROOT, ``bin/python`` with PyROOT in it - chosen by ``--oracle-prefix``,
+``$XRDROOT_ORACLE_PREFIX``, or ``~/.local/root-oracle`` when that exists;
+failing all three, whatever ``root-config`` is on ``PATH``. Its Python is the
+prefix's own, else the ``pythonX.Y`` that ``root-config --python-version``
+names, run with ROOT's library directory on ``PYTHONPATH``. ROOT is never a
+dependency of xrdroot; without it the harness still runs xrdroot, and says
+there was nothing to compare against.
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-__all__ = ["Oracle", "find_oracle", "cmake_variables", "python_for"]
+__all__ = ["Oracle", "find_oracle", "root_config", "cmake_variables", "python_for"]
 
 #: CMake variables the tutorials' CMakeLists tests that ``--features`` spells differently:
 #: each is ON when any of the features after it is.
@@ -29,8 +33,8 @@ DERIVED = {
     "tmva-pymva": ("tmva-pymva",),
 }
 
-#: Where Homebrew keeps a versioned Python, on Intel and on Apple silicon.
-BREW_PREFIXES = ("/usr/local/opt", "/opt/homebrew/opt")
+#: Where the oracle ROOT is installed when nothing says otherwise.
+DEFAULT_PREFIX = Path(os.environ.get("XRDROOT_ORACLE_PREFIX", "~/.local/root-oracle"))
 
 
 @dataclass(frozen=True)
@@ -72,29 +76,34 @@ def _ask(command: Sequence[str]) -> str | None:
     return done.stdout.strip() if done.returncode == 0 else None
 
 
-def python_for(version: str) -> str | None:
-    """The ``pythonX.Y`` ROOT's bindings were built for: on the path, or Homebrew's."""
-    name = f"python{version}"
-    found = shutil.which(name)
-    if found:
-        return found
-    for prefix in BREW_PREFIXES:
-        candidate = Path(prefix) / f"python@{version}" / "bin" / name
-        if candidate.is_file():
-            return str(candidate)
-    return None
+def python_for(version: str, bindir: str = "") -> str | None:
+    """The Python ROOT's bindings are for: the prefix's own, else ``pythonX.Y`` on the path."""
+    own = Path(bindir) / "python" if bindir else None
+    if own is not None and own.is_file():
+        return str(own)
+    return shutil.which(f"python{version}") if version else None
 
 
-def find_oracle(root_config: str = "root-config", python: str | None = None) -> Oracle | None:
-    """The installed ROOT, if ``root-config`` answers; ``None`` if there is none."""
-    config = shutil.which(root_config) or root_config
+def root_config(prefix: Path | None = None) -> str:
+    """The ``root-config`` of the oracle prefix: the one given, the default, or the path's."""
+    for candidate in (prefix, DEFAULT_PREFIX):
+        if candidate is not None:
+            config = Path(candidate).expanduser() / "bin" / "root-config"
+            if config.is_file():
+                return str(config)
+    return "root-config"
+
+
+def find_oracle(config: str = "root-config", python: str | None = None) -> Oracle | None:
+    """The ROOT a ``root-config`` belongs to, if it answers; ``None`` if there is none."""
+    config = shutil.which(config) or config
     version = _ask([config, "--version"])
     if version is None:
         return None
     bindir = _ask([config, "--bindir"]) or str(Path(config).parent)
     features = frozenset((_ask([config, "--features"]) or "").split())
     if python is None:
-        python = python_for(_ask([config, "--python-version"]) or "")
+        python = python_for(_ask([config, "--python-version"]) or "", bindir)
     return Oracle(
         root=str(Path(bindir) / "root"),
         version=version,
