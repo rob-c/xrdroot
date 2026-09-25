@@ -30,9 +30,14 @@ class Writer:
         self.lines.append(INDENT * self.depth + text if text else "")
         self.places.append(where)
 
-    def blank(self) -> None:
-        if self.lines and self.lines[-1]:
-            self.line("")
+    def blank(self, count: int = 1) -> None:
+        """Blank lines, up to ``count`` of them in a row, never at the very top."""
+        trailing = 0
+        while trailing < len(self.lines) and not self.lines[-1 - trailing]:
+            trailing += 1
+        if self.lines and trailing < count:
+            for _ in range(count - trailing):
+                self.line("")
 
     @contextmanager
     def indented(self) -> Iterator[None]:

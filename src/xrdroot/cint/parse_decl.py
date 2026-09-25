@@ -243,7 +243,8 @@ class Parser(StmtParser):
         if self.at_("(") and self._is_function():
             kind = "operator" if name.startswith("operator") else "function"
             return self.function_rest(where, spec, ctype, scope, name, kind)
-        return self._variables(where, spec, name, self.dimensions(ctype))
+        qualified = "::".join([*scope, name])
+        return self._variables(where, spec, qualified, self.dimensions(ctype))
 
     def _variables(self, where: Where, spec: Specifiers, name: str, ctype: CType) -> Stmt:
         first = VarDecl(where, name, ctype, static=spec.static)
@@ -477,6 +478,7 @@ class Parser(StmtParser):
             self.type_id()
         if name is not None:
             self.types.add(name)
+            self.aliases[name] = CType("int")
         items: list[tuple[str, Expr | None]] = []
         if self.accept(";"):
             return EnumDecl(where, name, items, scoped)

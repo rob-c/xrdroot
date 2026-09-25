@@ -191,10 +191,6 @@ class ExprEmitter(NameEmitter):
         return f"{self.at(node.left, P.SHIFT)} << {right}", P.SHIFT
 
 
-def _spelled(ctype: CType) -> str:
-    stars = "*" * ctype.pointer or "[]"
-    return f"{ctype.name}{stars}"
-
     # -- unary ---------------------------------------------------------------
 
     def _unary(self, node: Unary) -> Out:
@@ -459,3 +455,8 @@ def zero(ctype: CType) -> str:
     if ctype.floating:
         return "0.0"
     return "0"
+
+
+def _spelled(ctype: CType) -> str:
+    stars = "*" * ctype.pointer or "[]"
+    return f"{ctype.name}{stars}"

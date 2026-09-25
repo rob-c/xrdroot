@@ -33,6 +33,8 @@ __all__ = [
     "deref",
     "preinc",
     "postinc",
+    "INTEGRAL",
+    "REAL",
 ]
 
 #: The NumPy type an array of each C++ arithmetic type is made of.
@@ -98,6 +100,13 @@ def _object_array(dims: tuple[int, ...], init: Any, make: Callable[[], Any] | No
         for index, value in enumerate(list(init)[: dims[0]]):
             out[index] = value
     return out
+
+
+#: What an argument for an integer parameter may be: a Python or a NumPy integer.
+INTEGRAL = (int, np.integer)
+
+#: What an argument for a floating parameter may be: any real number.
+REAL = (int, float, np.integer, np.floating)
 
 
 class Overloaded:

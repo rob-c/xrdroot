@@ -59,8 +59,6 @@ class EmitterBase:
         self.out = Writer()
         self.scope = Scope("module")
         self._counter = 0
-        #: The function being written, whose ``global`` and ``nonlocal`` names are gathered.
-        self.function: Any = None
 
     # -- refusing ---------------------------------------------------------------
 

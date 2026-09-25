@@ -160,6 +160,8 @@ class Program:
         self.cells: dict[int, set[str]] = {}
         #: The globals whose address is taken somewhere.
         self.global_cells: set[str] = set()
+        #: The out-of-class definitions of static members, written in their class instead.
+        self.class_statics: set[int] = set()
         self._flatten(unit.decls)
         self._attach()
         self._escapes()
@@ -181,9 +183,23 @@ class Program:
             self._enum(decl, None)
         elif isinstance(decl, DeclStmt):
             for var in decl.decls:
-                self.globals[var.name] = var
+                self._global(var)
         elif isinstance(decl, Typedef):
             self.aliases[decl.name] = decl.ctype
+
+    def _global(self, var: VarDecl) -> None:
+        """A variable at namespace scope - or ``int Foo::n = 3;``, a static member's definition."""
+        if "::" not in var.name:
+            self.globals[var.name] = var
+            return
+        parts = var.name.split("::")
+        var.name = parts[-1]
+        owner = self.classes.get(parts[-2])
+        if owner is None:
+            self.globals[var.name] = var
+            return
+        owner.statics[var.name] = var
+        self.class_statics.add(id(var))
 
     def _class(self, decl: ClassDecl) -> None:
         if decl.forward:

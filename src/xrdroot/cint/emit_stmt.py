@@ -263,9 +263,16 @@ class StmtEmitter(CallEmitter):
     # -- loops ---------------------------------------------------------------------
 
     def loop_body(self, body: Stmt, loop: Loop) -> None:
+        """A loop's body, indented, with ``break`` and ``continue`` meaning this loop."""
+        with self.out.indented():
+            self.loop_statements(body, loop)
+
+    def loop_statements(self, body: Stmt, loop: Loop) -> None:
+        """A loop's body at the indentation already open."""
         self.loops.append(loop)
         try:
-            self.body(body)
+            with self.scoped():
+                self.statement(body)
         finally:
             self.loops.pop()
 
@@ -277,7 +284,7 @@ class StmtEmitter(CallEmitter):
                 self.out.line(f"if not ({test}):", node.where)
                 with self.out.indented():
                     self.out.line("break", node.where)
-                self.loop_body(node.body, Loop("loop"))
+                self.loop_statements(node.body, Loop("loop"))
             return
         self.out.line(f"while {self.condition(node.cond)}:", node.where)
         self.loop_body(node.body, Loop("loop"))
@@ -290,11 +297,11 @@ class StmtEmitter(CallEmitter):
             self.out.line(f"while {first} or {test}:", node.where)
             with self.out.indented():
                 self.out.line(f"{first} = False", node.where)
-                self.loop_body(node.body, Loop("loop"))
+                self.loop_statements(node.body, Loop("loop"))
             return
         self.out.line("while True:", node.where)
         with self.out.indented():
-            self.loop_body(node.body, Loop("loop"))
+            self.loop_statements(node.body, Loop("loop"))
             self.out.line(f"if not ({self.condition(node.cond)}):", node.cond.where)
             with self.out.indented():
                 self.out.line("break", node.cond.where)
@@ -309,7 +316,7 @@ class StmtEmitter(CallEmitter):
             self.out.line(f"while {test}:", node.where)
             steps = _items(node.step)
             with self.out.indented():
-                self.loop_body(node.body, Loop("loop", steps))
+                self.loop_statements(node.body, Loop("loop", steps))
                 for step in steps:
                     self.expression_statement(step)
 
