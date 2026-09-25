@@ -118,8 +118,6 @@ class CallEmitter(ExprEmitter):
 
     def _smart(self, func: Name, node: Call) -> Out | None:
         """``std::unique_ptr<T>(p)``: the pointer it holds, which is all a Python name is."""
-        if func.parts[0] != "std":
-            return None
         if not node.args:
             return "None", P.ATOM
         return self.expr(node.args[0])
@@ -145,8 +143,6 @@ class CallEmitter(ExprEmitter):
         raise self.refuse(f"{func.text}() where its result is used", node)
 
     def _sort(self, func: Name, node: Call) -> Out | None:
-        if func.parts[0] != "std" and func.last in ("sort", "reverse"):
-            return None
         helper = "sort_range" if func.last in ("sort", "stable_sort") else "reverse_range"
         if len(node.args) < 2:
             raise self.refuse(f"std::{func.last} without a range", node)

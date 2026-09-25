@@ -69,7 +69,7 @@ ROOT_MEMBER = re.compile(r"^f[A-Z]\w*$")
 def type_text(ctype: Any) -> str:
     """A type as C++ spells it, for a template argument: ``double``, ``std::pair<int,float>``."""
     if not isinstance(ctype, CType):
-        return str(ctype)
+        return str(getattr(ctype, "value", ctype))
     text = ctype.name
     if ctype.args:
         text += "<" + ",".join(type_text(arg) for arg in ctype.args) + ">"
