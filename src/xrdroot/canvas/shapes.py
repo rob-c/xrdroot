@@ -219,19 +219,23 @@ def marker(scene: Scene, prim: Primitive, _option: str) -> None:
 def _points(prim: Primitive) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
     """The ``fN`` points of a polyline or polymarker, ``fX`` and ``fY``."""
     count = int(prim.get("fN", 0) or 0)
-    xs = np.asarray(prim.get("fX", []) or [], dtype=float)[:count]
-    ys = np.asarray(prim.get("fY", []) or [], dtype=float)[:count]
+    xs = np.asarray(_or_none(prim.get("fX")), dtype=float)[:count]
+    ys = np.asarray(_or_none(prim.get("fY")), dtype=float)[:count]
     return xs, ys
 
 
-def polyline(scene: Scene, prim: Primitive, _option: str) -> None:
-    """A ``TPolyLine``: its points joined, or filled as an area when its option has ``f``."""
+def _or_none(values: Any) -> Any:
+    return [] if values is None else values
+
+
+def polyline(scene: Scene, prim: Primitive, option: str) -> None:
+    """A ``TPolyLine``: its points joined, or an area when its option, or how it was drawn, has ``f``."""
     from matplotlib.lines import Line2D
     from matplotlib.patches import Polygon
 
     xs, ys = _points(prim)
     where = scene.where(prim.ndc)
-    if "F" in str(prim.get("fOption", "")).upper():
+    if "F" in (str(prim.get("fOption", "")) + option).upper():
         scene.ax.add_artist(
             Polygon(
                 np.column_stack([xs, ys]),
