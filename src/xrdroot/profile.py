@@ -155,6 +155,10 @@ class Profile(Histogram):
             self.members["fBinSumw2"] = squares
         return squares
 
+    def _drop_sumw2(self) -> None:
+        """``TProfile::Sumw2(false)``: forget the squared weights, never the squared values."""
+        self.members["fBinSumw2"] = np.zeros(0)
+
     def _value_squares(self) -> np.ndarray[Any, Any]:
         """The sum of ``w*y*y`` per bin, which a profile always keeps."""
         squares = self._sumw2()

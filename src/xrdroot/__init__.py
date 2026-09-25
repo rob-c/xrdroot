@@ -51,6 +51,7 @@ is there; it is a separate package that builds on this one.
 
 from __future__ import annotations
 
+from . import stats
 from .chain import Chain, ChainedBranch, chain
 from .efficiency import Efficiency
 from .entries import EntryList
@@ -62,6 +63,7 @@ from .hist import Axis, Histogram
 from .profile import Profile
 from .rdf import EnableImplicitMT, RDataFrame, RunGraphs
 from .rntuple import RField, RNTuple, WritableRNTuple
+from .slicing import loc, overflow, rebin, underflow
 from .sparse import SparseHistogram
 from .stacks import MultiGraph, Stack
 from .tree import Branch, Group, Jagged, TTree
@@ -101,6 +103,13 @@ __all__ = [
     "Stack",
     "Graph",
     "MultiGraph",
+    # indexing, as UHI does it
+    "loc",
+    "rebin",
+    "underflow",
+    "overflow",
+    # statistics
+    "stats",
     # analysis
     "RDataFrame",
     "RunGraphs",

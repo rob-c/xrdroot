@@ -17,7 +17,7 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
-from . import arithmetic, filling, moments, reshaping
+from . import arithmetic, compare, distribution, filling, moments, reshaping, slicing
 from .booking import AXIS_STYLE, FILL, LINE, MARKER, histogram_members
 from .booking import axis_members as _axis
 from .draw import axes, bar, missing_picture, shade
@@ -131,6 +131,14 @@ class Axis:
         else:
             found[inside] = np.searchsorted(self.edges(), x[inside], side="right")
         return found
+
+    def index(self, value: float) -> int:
+        """The bin ``value`` falls in, from zero: ``-1`` below the axis, ``nbins`` above it.
+
+        That is UHI's numbering, which its locators - :class:`~xrdroot.loc`,
+        and ``boost_histogram.loc`` too - ask an axis for.
+        """
+        return int(self.find_bin(value)) - 1
 
     def root_centers(self) -> np.ndarray[Any, Any]:
         """``TAxis::GetBinCenter`` of every bin, the two flow bins included.
@@ -847,6 +855,88 @@ class Histogram:
     def profile_y(self, name: str | None = None, x_range: Any = None) -> Any:
         """``ProfileY``: a :class:`~.profile.Profile` of the mean of x in each bin of y."""
         return reshaping.profiled(self, 1, name, x_range)
+
+    # -- comparing, indexing and reading as a distribution ------------------------
+
+    def kolmogorov_test(self, other: Histogram, option: str = "", *, seed: Any = None) -> float:
+        """``KolmogorovTest``: the probability that ``other`` has this one's shape.
+
+            >>> h1.kolmogorov_test(h2)             # h1->KolmogorovTest(h2)     # doctest: +SKIP
+            >>> h1.kolmogorov_test(h2, "UON")      # flow in, totals compared  # doctest: +SKIP
+            >>> h1.kolmogorov_test(h2, "M")        # the largest distance      # doctest: +SKIP
+
+        ROOT's options, as ROOT reads them: ``"U"`` and ``"O"`` take the
+        underflow and overflow in, ``"N"`` combines the shape with the
+        totals, ``"M"`` gives back the largest distance, ``"D"`` prints
+        ROOT's debug lines, and ``"X"`` or ``"X=n"`` gives the fraction of
+        ``n`` pseudo-experiments - 1000 by default - straying further than
+        these two do. Those are drawn from NumPy's generator seeded with
+        ``seed``, ``TRandom3``'s default of 4357 unless given, so they repeat
+        from run to run; they are not ``gRandom``'s draws, so that one
+        number is ROOT's procedure rather than ROOT's result.
+        """
+        return compare.kolmogorov_test(self, other, option, compare.SEED if seed is None else seed)
+
+    def chi2_test(self, other: Histogram, option: str = "UU") -> float:
+        """``Chi2Test``: the p-value of the two being the same, by Gagunashvili's test.
+
+            >>> data.chi2_test(mc, "UW")                    # doctest: +SKIP
+            >>> data.chi2_test(mc, "UW CHI2/NDF")           # doctest: +SKIP
+
+        ``"UU"`` compares two counts, ``"UW"`` a count against a weighted
+        histogram and ``"WW"`` two weighted ones; ``"NORM"`` goes with
+        ``"UU"`` for scaled counts, ``"UF"`` and ``"OF"`` take the flow in,
+        ``"P"`` prints ROOT's summary line, and ``"CHI2"`` or ``"CHI2/NDF"``
+        give that back instead of the p-value.
+        """
+        return compare.chi2_test(self, other, option)
+
+    def chi2_test_full(self, other: Histogram, option: str = "UU") -> compare.Chi2Result:
+        """``Chi2TestX``: the chi-square, ndf, ROOT's ``igood`` flag, p-value and residuals."""
+        return compare.chi2_test_full(self, other, option)
+
+    def __getitem__(self, index: Any) -> Any:
+        """UHI's indexing: a bin, a sum of bins, or a histogram cut, rebinned or summed.
+
+        See :mod:`xrdroot.slicing` for the rules, which are UHI's, and the
+        bookkeeping, which is ROOT's.
+        """
+        return slicing.get(self, index)
+
+    def __setitem__(self, index: Any, value: Any) -> None:
+        """UHI's setting of bins: ``SetBinContent`` for every bin the index names."""
+        slicing.put(self, index, value)
+
+    def cumulative(self, forward: bool = True, suffix: str = "_cumulative") -> Histogram:
+        """``GetCumulative``: a new histogram of the sum of every bin up to each one.
+
+        ``forward=False`` sums from each bin to the end instead; past one
+        axis it is every bin below and to the left, as ROOT has it.
+        """
+        return distribution.cumulative(self, forward, suffix)
+
+    def quantiles(self, probabilities: Any = None) -> np.ndarray[Any, Any]:
+        """``GetQuantiles``: where the distribution passes each probability, from 0 to 1."""
+        return distribution.quantiles(self, probabilities)
+
+    def smooth(self, ntimes: int = 1) -> None:
+        """``Smooth``: the bins replaced by the 353QH-twice smoothing of them, in place."""
+        distribution.smooth(self, ntimes)
+
+    def sumw2(self, keep: bool = True) -> None:
+        """``Sumw2``: start keeping the squares of the weights - or, ``keep=False``, stop.
+
+        Started on a histogram already filled, the squares are what its bins
+        hold, every fill so far having had a weight of one.
+        """
+        if keep:
+            self._ensure_sumw2()
+        else:
+            self._drop_sumw2()
+
+    def _drop_sumw2(self) -> None:
+        """``Sumw2(false)``: forget the squares, so each error is the root of its content."""
+        self._core["fSumw2"] = np.zeros(0)
 
     def plot(self, ax: Any = None, **options: Any) -> Any:
         """Draw onto matplotlib axes, made fresh unless ``ax`` brings some.

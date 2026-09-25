@@ -288,6 +288,122 @@ new edges refuses an edge the old axis does not have, since merging bins can
 never split one. `projection("xy")` keeps the axes in the order named, which
 is the reverse of ROOT's `Project3D` letters.
 
+### Comparing two histograms
+
+ROOT's two tests of whether two histograms show the same thing are here as
+ROOT's code has them, down to the order the sums are added in:
+
+```python
+data.chi2_test(mc, "UW")  # the p-value: a count against a weighted histogram
+data.chi2_test(mc, "UW CHI2/NDF")  # or the chi-square over its degrees of freedom
+found = data.chi2_test_full(mc, "UW")  # Chi2TestX: chi2, ndf, igood, p, residuals
+data.kolmogorov_test(mc)  # the probability that the shapes agree
+data.kolmogorov_test(mc, "M"), data.kolmogorov_test(mc, "UON")
+xrdroot.stats.prob(chi2, ndf), xrdroot.stats.kolmogorov_prob(z)
+```
+
+| ROOT | xrdroot |
+| --- | --- |
+| `h1->Chi2Test(h2, "UU")` | `h1.chi2_test(h2)` — `"UU"`, `"UW"`, `"WW"`, `"NORM"`, `"UF"`, `"OF"`, `"P"` |
+| `h1->Chi2Test(h2, "CHI2")`, `"CHI2/NDF"` | `h1.chi2_test(h2, "CHI2")`, `"CHI2/NDF"` |
+| `h1->Chi2TestX(h2, chi2, ndf, igood, "UW", res)` | `h1.chi2_test_full(h2, "UW")` — a named tuple, `residuals` an array |
+| `h1->KolmogorovTest(h2, "UON")` | `h1.kolmogorov_test(h2, "UON")` — `"U"`, `"O"`, `"N"`, `"M"`, `"D"`, `"X"` |
+| `TMath::Prob(chi2, ndf)` | `xrdroot.stats.prob(chi2, ndf)` |
+| `TMath::KolmogorovProb(z)` | `xrdroot.stats.kolmogorov_prob(z)` |
+| `ROOT::Math::inc_gamma(a, x)`, `inc_gamma_c` | `xrdroot.stats.incomplete_gamma(a, x)`, `incomplete_gamma_c` |
+| `TH1::SmoothArray(n, xx, ntimes)` | `xrdroot.stats.smooth_array(xx, ntimes)` |
+
+The chi-square is Gagunashvili's, as ROOT's is: `"UU"` for two counts —
+the default — `"UW"` for a count against a weighted histogram, the count
+first, and `"WW"` for two weighted ones, with an option naming none of them
+letting the histograms' own sums say which. A bin empty in both is skipped
+and takes a degree of freedom with it; where the weighted comparison would
+divide zero by zero, ROOT adds an entry to the count and to its total, for
+the rest of the bins too, and so does this. The test on `tutorials/math/chi2test.C`
+gives ROOT's documented 21.09 with a p-value of 0.33. `TMath::Prob` is the
+incomplete gamma function of Cephes that ROOT's MathCore carries, and
+`TMath::KolmogorovProb` CERNLIB's `PROBKL` as ROOT translated it; neither needs
+SciPy.
+
+Where ROOT prints an error and returns zero — histograms binned differently,
+an empty one, errors of zero on both sides — this refuses with the reason,
+since a zero is a p-value and would be read as one. Profiles are refused.
+ROOT's warnings, for a test of counts asked of weighted histograms, are
+Python's `RuntimeWarning`. Option `"X"` of the Kolmogorov test is ROOT's
+procedure — pseudo-experiments drawn from the histogram of more entries, the
+fraction straying further than the data — but the draws are NumPy's,
+seeded with `TRandom3`'s default of 4357 unless `seed=` says otherwise, so the
+number repeats from run to run and is not the one `gRandom` would give. An axis
+range set with `SetRange` is not applied: every bin on the axis is compared.
+
+### Indexing and slicing
+
+A histogram is indexed the way [UHI](https://uhi.readthedocs.io/en/latest/indexing.html)
+says, as `hist` and `boost-histogram` are — and their `bh.loc`, `bh.rebin`,
+`bh.underflow` and `bh.overflow` work here too:
+
+```python
+from xrdroot import loc, overflow, rebin, underflow
+
+h[3], h[-1]  # a bin's content, counted from zero
+h[underflow], h[overflow], h[loc(1.5)], h[loc(1.5) + 1]
+h[2:8], h[loc(0.5) : loc(2.0)]  # a new histogram: what is cut away goes to the flow
+h[::rebin(2)], h[2:8:rebin(3)]  # bins merged, those left over to the overflow
+h[::sum], h[0:len:sum]  # a number: flow and all, or only the axis
+h2[:, sum], h2[{1: sum}], h2[3, :]  # an axis summed away, or one bin of it
+h[5] = 7.0; h[...] = values  # SetBinContent, flow too when two longer
+```
+
+| ROOT | xrdroot |
+| --- | --- |
+| `h->GetBinContent(i + 1)` | `h[i]` |
+| `h->GetBinContent(0)`, `(nbins + 1)` | `h[underflow]`, `h[overflow]` |
+| `h->GetBinContent(h->FindBin(x))` | `h[loc(x)]` |
+| `h->SetBinContent(i + 1, v)` | `h[i] = v` |
+| `h->Rebin(2)` | `h[::rebin(2)]` |
+| `h2->ProjectionX()`, `ProjectionX("", 1, ny)` | `h2[:, sum]`, `h2[:, 0:len:sum]` |
+| `h->Integral(0, nbins + 1)`, `Integral()` | `h[::sum]`, `h[0:len:sum]` |
+
+The bookkeeping is ROOT's wherever ROOT has the same operation. An axis
+summed away is ROOT's projection with that range, keeping its rules for what
+the result's running sums and entries are. A cut or a rebinning is `Rebin`
+with bins falling into the flow: the entries stay, since every fill is still
+in some bin, and the running sums stay while nothing moved into the flow and
+are made from the bins once anything did. Setting bins is `SetBinContent`
+bin by bin — one more entry each, the running sums made from the bins, the
+squares of the weights left alone. A profile is cut and rebinned by its sums,
+so its means come out right, and a bin of it is its mean; summing its bins,
+or setting one, is refused.
+
+### A histogram as a distribution
+
+```python
+h.cumulative()  # GetCumulative: every bin up to each one
+h.cumulative(forward=False, suffix="_eff")  # from each one to the end
+h.quantiles([0.25, 0.5, 0.75])  # GetQuantiles
+h.smooth(2)  # Smooth: 353QH twice, done two times over, in place
+h.sumw2(), h.sumw2(False)  # start or stop keeping the squares of the weights
+```
+
+| ROOT | xrdroot |
+| --- | --- |
+| `h->GetCumulative()`, `GetCumulative(kFALSE, "_eff")` | `h.cumulative()`, `h.cumulative(False, "_eff")` |
+| `h->GetQuantiles(n, xq, p)` | `xq = h.quantiles(p)` |
+| `h->GetQuantiles(nbins + 1, xq)` | `xq = h.quantiles()` |
+| `h->Smooth(ntimes)` | `h.smooth(ntimes)` |
+| `h->Sumw2()`, `h->Sumw2(kFALSE)` | `h.sumw2()`, `h.sumw2(False)` |
+
+A cumulative of two or three axes is every bin below and to the left of each,
+by the inclusion and exclusion ROOT 6.42 uses, each neighbour read back as it
+was stored, so a `TH1F`'s rounds as ROOT's does. A quantile inside a bin is
+on the straight line across it, and at a probability the distribution reaches
+exactly it is ROOT's choice: past any empty bins at zero, the middle of an
+empty stretch elsewhere. Smoothing is HBOOK's `hsmoof` as ROOT translated it —
+running medians of three, five and three, a quadratic over the plateaus they
+leave, a running mean, and all of it again on what was left over — and it
+changes the contents only, as ROOT's does: the errors, the running sums and
+the entries still describe what was filled.
+
 ## Graphs
 
 A `TGraph`, `TGraphErrors`, `TGraphAsymmErrors` or `TGraphMultiErrors` comes
@@ -313,6 +429,21 @@ systematic, say — and `g.layers` is those pairs of bars in the order they were
 added. Asking such a graph for `yerr` raises rather than picking a layer or
 summing them for you, because how to combine them is physics, not format. For
 every other graph `layers` is simply `(yerr,)`, or `()` when none were kept.
+
+A graph works out what ROOT's `TGraph` does from its points:
+
+```python
+g.eval(x)  # Eval: straight lines between points, and past the ends along them
+g.integral(), g.integral(0, 5)  # the area of the polygon the points make
+g.sort()  # in increasing x, error bars and all, in place
+g.mean(), g.rms(1)  # GetMean(1), GetRMS(2): of the points, unweighted
+```
+
+`eval` walks the points in the order they were added, as ROOT's `Eval`
+does without `SetBit(kIsSortedX)`: past an end it extrapolates along the two
+points that walk found last, which for points out of order are not always the
+two nearest. Sorting keeps points at the same `x` in the order they had, where
+ROOT's comparison leaves them to its C++ library.
 
 ### Several at once
 

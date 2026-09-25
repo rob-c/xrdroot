@@ -105,7 +105,14 @@ h.mean(), h.std(), h.integral(), h.rebin(4), h / other
 ```
 
 Profiles and efficiencies book and fill the same way, and the arithmetic,
-rebinning and projections are ROOT's, errors and all.
+rebinning and projections are ROOT's, errors and all. So are the tests that
+compare two histograms, and a histogram indexes the way `hist` does:
+
+```python
+data.chi2_test(mc, "UW"), data.kolmogorov_test(mc)     # Chi2Test, KolmogorovTest
+h[xrdroot.loc(10.0):xrdroot.loc(50.0)], h2[:, sum]    # UHI slicing, ROOT's bookkeeping
+h.cumulative(), h.quantiles([0.5]), h.smooth()         # GetCumulative, GetQuantiles, Smooth
+```
 
 ## Analysis
 

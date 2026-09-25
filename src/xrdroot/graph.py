@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 from xrdclient._compat import zip_strict
 
+from . import graphmath
 from .draw import axes
 from .efficiency import Efficiency
 from .errors import FormatError, UnsupportedFeatureError
@@ -219,6 +220,33 @@ class Graph:
             xerr=axis.widths() / 2,
             yerr=histogram.errors(),
         )
+
+    def eval(self, x: Any) -> Any:
+        """``Eval``: the graph at ``x`` along straight lines between points, past the ends too.
+
+            >>> Graph.new("g", [0, 1, 2], [0, 10, 40]).eval([0.5, 3.0]).tolist()
+            [5.0, 70.0]
+
+        As ROOT's ``Eval`` does it without a spline: the points need not be
+        in order, and past either end it extrapolates along the last two.
+        """
+        return graphmath.evaluate(self, x)
+
+    def integral(self, first: int = 0, last: int = -1) -> float:
+        """``Integral``: the area of the polygon the points make, from ``first`` to ``last``."""
+        return graphmath.integral(self, int(first), int(last))
+
+    def sort(self) -> None:
+        """``Sort``: the points put in increasing ``x``, in place, error bars and all."""
+        graphmath.sort(self)
+
+    def mean(self, axis: int = 0) -> float:
+        """``GetMean``: the mean of the points' ``x``, or ``y`` for ``axis=1``."""
+        return graphmath.mean(self, axis)
+
+    def rms(self, axis: int = 0) -> float:
+        """``GetRMS``: the spread of the points' ``x``, or ``y`` for ``axis=1``."""
+        return graphmath.rms(self, axis)
 
     def plot(self, ax: Any = None, **options: Any) -> Any:
         """Draw onto matplotlib axes, made fresh unless ``ax`` brings some.
