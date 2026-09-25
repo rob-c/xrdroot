@@ -9,6 +9,7 @@ the entries a loop, a ``Draw`` or a ``Scan`` goes through.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import numpy as np
@@ -116,6 +117,7 @@ def _opened(name: str, filename: Any) -> tuple[Any, str]:
     from . import wrap
 
     alias, _, tree_name = name.rpartition("=")
-    source = filename if hasattr(filename, "Get") else open_root(str(filename))
+    named = isinstance(filename, (str, os.PathLike))
+    source = open_root(os.fspath(filename)) if named else filename
     found = source.Get(tree_name) if hasattr(source, "Get") else wrap(source[tree_name])
     return found, alias or tree_name

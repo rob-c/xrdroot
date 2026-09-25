@@ -27,6 +27,7 @@ from typing import Any
 import numpy as np
 
 from ...tree import Jagged, concatenate
+from ..stl import cpp_name
 from .addresses import Address
 from .leaflist import LEAF_CLASSES, TYPE_NAMES
 
@@ -79,7 +80,7 @@ class Slot:
     def typename(self) -> str:
         """What ``TLeaf::GetTypeName`` says: ``Float_t``, or the vector's class."""
         if self.kind == VECTOR:
-            return f"vector<{self.address.vector.value_type}>"  # type: ignore[attr-defined]
+            return f"vector<{cpp_name(self.dtype)}>"
         if self.kind == TEXT and not self.title.endswith("/C"):
             return "string"
         return TYPE_NAMES[self.code]
