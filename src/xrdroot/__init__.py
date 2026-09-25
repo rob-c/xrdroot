@@ -29,7 +29,9 @@ written as many files as one, a tree reads its friends beside it, and an
 :class:`RDataFrame` is ROOT's declarative analysis over a tree, a chain or an
 RNTuple: lazy, in one pass, with C++ expressions and ``ROOT::VecOps``
 evaluated over whole batches of entries, and shared across processes by
-:func:`EnableImplicitMT`.
+:func:`EnableImplicitMT`. :data:`gRandom` and :class:`TRandom3` are ROOT's
+random numbers to the bit, an array at a time, with the rest of ROOT's
+generators in :mod:`xrdroot.random`.
 What it does not do is every ROOT class ever written: one whose layout the
 file does not describe, or one that streams itself in some way of its own, is
 refused by name with the class in the message, because a plausible misreading
@@ -61,6 +63,7 @@ from .formula import Formula, FormulaError, compile_formula
 from .graph import Graph
 from .hist import Axis, Histogram
 from .profile import Profile
+from .random import TRandom3, gRandom
 from .rdf import EnableImplicitMT, RDataFrame, RunGraphs
 from .rntuple import RField, RNTuple, WritableRNTuple
 from .slicing import loc, overflow, rebin, underflow
@@ -114,6 +117,9 @@ __all__ = [
     "RDataFrame",
     "RunGraphs",
     "EnableImplicitMT",
+    # random numbers
+    "TRandom3",
+    "gRandom",
     # expressions
     "compile_formula",
     "Formula",

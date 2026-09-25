@@ -404,6 +404,106 @@ leave, a running mean, and all of it again on what was left over — and it
 changes the contents only, as ROOT's does: the errors, the running sums and
 the entries still describe what was filled.
 
+## Random numbers
+
+A macro that generates anything — a toy study, a smearing, a histogram filled
+from `gRandom` — can only be checked against what it produced with the
+generator it was written for. `xrdroot.random` is ROOT's generators, to the
+bit: the same seed gives the same `Rndm()` values in the same order, and every
+distribution follows ROOT's own algorithm with ROOT's constants, so it takes
+the same draws and returns the same numbers. Every call takes `n` for an array
+of that many — exactly the numbers `n` calls in ROOT would give, leaving the
+generator exactly where they would — and without it gives one.
+
+```python
+from xrdroot import gRandom, TRandom3
+
+r = TRandom3(4357)                  # gRandom's own seed
+r.rndm(5)                           # five gRandom->Rndm()
+smeared = r.gaus(pt, 0.02 * pt)     # one Gaus(pt[i], 0.02*pt[i]) per entry
+counts = r.poisson(3.2, n=10_000)
+x, y = r.rannor(1000)
+```
+
+| ROOT | xrdroot |
+| --- | --- |
+| `gRandom` | `xrdroot.gRandom`, a `TRandom3` at seed 4357 |
+| `TRandom3 r(seed)`, `TRandom2`, `TRandom1(seed, lux)`, `TRandom` | `TRandom3(seed)`, `TRandom2(seed)`, `TRandom1(seed, lux)`, `TRandom(seed)` in `xrdroot.random` |
+| `r.Rndm()`, `r.RndmArray(n, a)` | `r.rndm()`, `r.rndm(n)` |
+| `Uniform(x1)`, `Uniform(x1, x2)` | `r.uniform(x1)`, `r.uniform(x1, x2)` |
+| `Gaus(mean, sigma)` | `r.gaus(mean, sigma)` |
+| `Rannor(a, b)` | `a, b = r.rannor()` — the `Float_t` overload's are `np.float32(a)` |
+| `Exp(tau)`, `Integer(imax)` | `r.exp(tau)`, `r.integer(imax)` |
+| `Poisson(mean)`, `PoissonD(mean)` | `r.poisson(mean)`, `r.poisson_d(mean)` |
+| `Binomial(ntot, prob)` | `r.binomial(ntot, prob)` |
+| `Landau(mean, sigma)`, `BreitWigner(mean, gamma)` | `r.landau(mean, sigma)`, `r.breit_wigner(mean, gamma)` |
+| `Circle(x, y, r)`, `Sphere(x, y, z, r)` | `x, y = r.circle(radius)`, `x, y, z = r.sphere(radius)` |
+| `h->GetRandom(rng)` | `rng.from_distribution(h.values(), h.axes[0])` |
+| `SetSeed(s)`, `GetSeed()` | `r.set_seed(s)`, `r.get_seed()` |
+| the object written to a file | `r.state` — ROOT's data members by name — and `r.set_state(...)`, or pickle it |
+
+Parameters can be arrays: `r.gaus(means, sigmas)` draws one number for each.
+The ones that decide how many draws a number takes — Poisson's mean,
+Binomial's `ntot` and `prob`, Landau's `sigma` — are one number for the whole
+call, since ROOT's algorithm for a mean of 3 and one for a mean of 300 take
+their draws differently.
+
+**How exact.** `TRandom3` is the Mersenne Twister; its words are NumPy's
+legacy `MT19937`'s, which knows nothing of ROOT, the first few for three seeds
+are the ones go-hep's `rrand` pins, and filling histograms from it at seed
+4357 reproduces, bin for bin and bit for bit, the files ROOT macros wrote in
+the test data (`tefficiency.root`, `tprofile.root` — `Rndm` and `Rannor`).
+All four generators are held draw for draw, over thousands of draws taken in
+every mixture of one at a time and arrays, to ROOT's C++ transcribed a
+statement at a time — `TRandom1` at every luxury level, down to its ring of
+24 floats and its carry. The distributions are ROOT's code with ROOT's
+arithmetic in ROOT's order; `Gaus`, `Exp`, `Rannor` and `Poisson` reproduce
+go-hep's pinned numbers, which come from its own transcription of the same
+C++. `log`, `exp`, `sin`, `cos` and `tan` are the C library's, which is what
+ROOT calls: NumPy's are used only after they have been seen to agree with it
+exactly on this machine, and `LnGamma` is the C library's `lgamma` rather than
+Python's own, which differs from it in the last place about half the time.
+No ROOT-made numbers for `Gaus`, `Poisson` or `Landau` were to hand, so those
+rest on the transcription rather than on ROOT's output.
+
+**How fast.** Everything is an array at a time. `TRandom3` makes words with
+NumPy's compiled twister from ROOT's state: ten million draws take about
+0.2 s. `TRandom2` steps a few thousand streams side by side, each started
+further on by a jump matrix (about 0.6 s for ten million); `TRandom1` runs
+RANLUX as the LCG it is on 576-bit numbers, one big-integer multiplication per
+24 numbers (about 0.4 s for a million, where ROOT's loop costs 80 ns a draw).
+The rejection algorithms — `Gaus`, `Poisson`, `Sphere` — work out, for every
+draw, what the number starting there would be and where the next would start,
+then follow those links from the first draw by pointer doubling, so they take
+exactly ROOT's draws without a Python loop per draw: a million `Gaus` in
+about 0.5 s, a million `Poisson(100)` in about 1 s. `Poisson` below a mean of
+25 multiplies draws until the product crosses `exp(-mean)`, about mean + 1
+draws a count, and every product is formed in ROOT's order before it is
+believed, so it costs about 0.2 µs per draw it uses: a million `Poisson(3)` in
+about 1 s, `Poisson(24)` in about 5 s. One number at a time goes through
+ROOT's loop written out in Python instead — a couple of microseconds for a
+`Gaus`. Draws are made ahead and held; `state`, `get_seed` and pickling
+report the generator after exactly the draws handed out.
+
+**Seeds.** A seed is ROOT's: an unsigned 32-bit number to a constructor, an
+unsigned 64-bit one to `set_seed`, cut to 32 bits where ROOT's member is a
+`UInt_t`. A seed of 0 asks ROOT for an unrepeatable stream, taken from a UUID
+— `TRandom3` fills its state from a `TRandom2` seeded that way and throws the
+first ten draws away — and that is what it does here, from a random UUID; it
+is a valid stream but never the same twice, and never ROOT's. `get_seed`
+answers what ROOT's `GetSeed` does, which for `TRandom3` is the next word of
+state: 4357 only until the first draw. `TRandom1()` with no seed takes the
+next of ROOT's table of 215 seeds, as ROOT's default constructor does.
+
+`from_distribution(contents, axis, n)` is `TH1::GetRandom`: the cumulative
+integral summed in bin order, the bin found as `TMath::BinarySearch` finds it,
+and the number placed on a straight line within it, with an even axis's edges
+worked out from its ends the way `TAxis` does. `width=True` is ROOT's
+`"width"` option; a histogram with nothing in it gives 0 and draws nothing,
+and one with a negative bin is refused, where ROOT would draw from a NaN
+integral. ROOT's newer engines — `TRandomMixMax`, `TRandomRanluxpp`,
+`TRandomMT64` — are not here.
+
 ## Graphs
 
 A `TGraph`, `TGraphErrors`, `TGraphAsymmErrors` or `TGraphMultiErrors` comes
