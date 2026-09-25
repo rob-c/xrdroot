@@ -295,10 +295,20 @@ def test_a_multigraph_draws_each_graph_with_its_option_and_its_title():
     with open_root(f"{DATA}/tgme.root") as root:
         held = root["mg"]
     made = picture(held, "AP PLC")
-    assert kinds(made) == [Points] * 3 and made.frame.title == held.title
+    # The three graphs, then the pol1 ROOT fitted to them all together.
+    assert kinds(made) == [Points] * 3 + [Curve] and made.frame.title == held.title
     assert made.layers[0].look.color != made.layers[2].look.color
-    assert kinds(picture(held)) == [Curve, Points] * 3
+    assert kinds(picture(held)) == [Curve, Points] * 3 + [Curve]
     assert isinstance(held, MultiGraph)
+
+
+def test_a_fit_made_to_a_multigraph_is_drawn_over_its_range():
+    with open_root(f"{DATA}/tgme.root") as root:
+        held = root["mg"]
+    (fit,) = held.functions
+    line = picture(held).layers[-1]
+    assert (line.x[0], line.x[-1]) == pytest.approx(fit.range)
+    assert line.y.tolist() == pytest.approx(fit(line.x).tolist())
 
 
 # -- the picture as a whole -----------------------------------------------------------------------

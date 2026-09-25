@@ -17,7 +17,7 @@ import numpy as np
 from ..hist import Histogram
 from ..stacks import MultiGraph, Stack
 from .binned import Binned, binned_layers
-from .drawers import default_graph, graph, graph_titles, titles
+from .drawers import attached, default_graph, graph, graph_titles, titles
 from .model import Bars, Frame
 from .request import Request, styled
 
@@ -98,10 +98,15 @@ def stack(obj: Stack, request: Request) -> tuple[list[Any], Frame]:
 
 
 def multigraph(obj: MultiGraph, request: Request) -> tuple[list[Any], Frame]:
-    """A ``TMultiGraph``: every graph with the option, on one frame titled by the multigraph."""
+    """A ``TMultiGraph``: every graph with the option, on one frame titled by the multigraph.
+
+    A fit made to the graphs together hangs on the multigraph rather than on
+    any one of them, and ROOT draws it over them all, as it does a graph's own.
+    """
     layers: list[Any] = []
     graphs = list(obj)
     for index, item in enumerate(graphs):
         chosen = default_graph(item, request.chosen)
         layers += graph(item, request.again(chosen, index, len(graphs)))[0]
+    layers += attached(obj.functions, request)
     return layers, graph_titles(obj)
