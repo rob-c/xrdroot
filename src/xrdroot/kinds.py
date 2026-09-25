@@ -3,8 +3,9 @@
 A file describes a histogram the way it describes any other class, and read
 member by member that is what it would be: a dictionary. For the classes
 analysis actually handles - histograms, profiles, graphs, efficiencies,
-sparse histograms, the lists that draw several at once, entry lists, and
-the functions a fit is made with -
+sparse histograms, the lists that draw several at once, entry lists, the
+functions a fit is made with, and canvases with the pads and drawing
+classes they hold -
 that dictionary is handed to the class that knows what the members mean.
 This is the one table saying which, used for a key of a file and for an
 object met inside another alike, so the two can never disagree.

@@ -10,8 +10,9 @@ nothing mathematical in it left as the plain text it is.
 
 What matplotlib's mathtext has no equivalent of is translated to the
 nearest thing it does: ``#splitline`` is two lines stacked as a fraction
-with no bar, and ``#font``, ``#color``, ``#scale``, ``#kern`` and
-``#lower`` keep their text and drop the adjustment. A ``#`` command this
+with no bar, ``#left`` and ``#right`` keep their delimiter at the size of the
+text, and ``#font``, ``#color``, ``#scale``, ``#kern`` and ``#lower`` keep
+their text and drop the adjustment. A ``#`` command this
 does not know is kept as the word it is, rather than handed to mathtext to
 fail on.
 """

@@ -155,7 +155,10 @@ h.GetValue().plot(); print(df.Report().GetValue())
 ## Drawing
 
 Histograms and graphs draw themselves: `.plot()` onto matplotlib axes when
-matplotlib is there, `.text()` into plain characters when it is not.
+matplotlib is there, `.text()` into plain characters when it is not. A
+`TCanvas` saved in a file draws the way it looked in ROOT - its pads, what
+each drew by its draw option, text in ROOT's `#` mathematics, legends and
+stats boxes, in ROOT's colours: `f["c1"].save("c1.png")`.
 
 ## Where this sits
 

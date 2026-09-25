@@ -1,6 +1,6 @@
 # ROOT files used by the tests
 
-Forty-four small ROOT files, taken unchanged from the [go-hep](https://github.com/go-hep/hep)
+Forty-five small ROOT files, taken unchanged from the [go-hep](https://github.com/go-hep/hep)
 project's `groot/testdata`, and used here to check that `xrdclient.root` reads what
 ROOT wrote. They are here rather than generated because the only honest test
 of a reader is bytes somebody else's writer produced. The writer this library
@@ -53,6 +53,7 @@ The layouts it writes trees with were harvested the same way — from
 | `join4.root` | one tree of eleven entries and one sharing column names with the three above: a friend refused, and a name two friends share |
 | `tefficiency.root` | `TEfficiency` in one, two and three dimensions, saved with ROOT's defaults |
 | `tprofile.root` | a `TProfile` and a `TProfile2D`, whose bins are means |
+| `tcanvas.root` | a `TCanvas` of one pad drawing a graph `"alp"`, saved undrawn: the canvas's own streamer, the option kept beside each primitive, and the donor of the `TPad` layout the crafted canvases are written with |
 | `uproot-issue-227b.root` | a `TProfile3D`, and so a `TH3D`: the donor of the three-dimensional layouts |
 
 No file here holds a `TEntryList`, `TEventList`, `THnSparse` or `THStack`,
@@ -61,7 +62,12 @@ writes the classes member by member from the layouts their C++ headers
 declare, beside the description of ROOT's own classes `gauss-h1.root` carries,
 and `test_root_friends.py` writes a tree and then its record again with a
 `TFriendElement` list in it. Those check a layout is read faithfully, not that
-the layout is ROOT's; nothing made that way is kept here.
+the layout is ROOT's; nothing made that way is kept here. The same goes for
+canvases: `tcanvas.root` is the only one here, a single pad, so
+`tests/canvases.py` writes nested pads and the drawing classes - text,
+lines, paves, stats boxes, legends, colours - from `tcanvas.root`'s `TPad`
+and the members their headers declare, and `TCanvas` in the order its own
+streamer writes it.
 
 `uproot-issue-227b.root` is the one exception to where these came from: ROOT
 6.22 wrote it for uproot's issue 227, and it is taken unchanged from

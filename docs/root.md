@@ -852,8 +852,9 @@ ROOT's binomial likelihood of an efficiency, is not here.
 
 ## Drawing
 
-ROOT draws through a `TCanvas`, which this library does not carry. What it
-has instead is the two ways Python usually looks at data. `plot()` draws onto
+ROOT draws through a `TCanvas`; one saved in a file draws as it was (see
+[Canvases](#canvases)). For everything else there are the two ways Python
+usually looks at data. `plot()` draws onto
 matplotlib axes — made on demand, or brought along — and returns them, so
 styling and saving carry on where it left off:
 
@@ -877,6 +878,78 @@ print(f["tge"].text())  # a grid of stars with the axis ends labelled
 A graph of layered error bars draws every layer over the same points; a
 three-dimensional histogram has no honest flat picture and refuses both ways,
 saying to slice `values()` down to the two dimensions you want to see.
+
+## Canvases
+
+A `TCanvas` saved in a file reads as a `Canvas`, and draws the way it looked
+in ROOT: a matplotlib figure the canvas's size, one axes per pad, and in each
+the things the pad drew, each with the option it was drawn with.
+
+```python
+c = f["c1"]
+c.width, c.height, c.title  # fCw and fCh, in pixels
+[pad.name for pad in c.pads]  # the pads inside it, which may hold pads of their own
+[(type(obj).__name__, option) for obj, option in c.primitives]  # what it drew, and how
+c.save("c1.png")  # or .pdf, .svg - whatever matplotlib writes
+fig = c.plot()  # the figure itself, to keep styling
+```
+
+**What is read.** The canvas — its size, its window and its flags, which
+`TCanvas::Streamer` writes in an order of its own that no file describes —
+and the pad under it: where each pad sits (`fXlowNDC`, `fWNDC`...), its
+margins, its range in the units of its axes (`fX1` to `fY2`) and the frame's
+as last drawn (`fUxmin` to `fUymax`), `fLogx`/`fLogy`/`fLogz`,
+`fGridx`/`fGridy`, `fTickx`/`fTicky`, its fill and border. A pad's list of
+primitives keeps the option beside each entry — `"hist same"`, `"ap"`,
+`"colz"` — as `Pad.primitives`, a list of `(object, option)`; the list
+itself, anywhere in any file, is a `list` that carries them as `.options`.
+Histograms, profiles, graphs, stacks, multigraphs and functions come back as
+the classes they always are. The drawing classes — `TFrame`, `TPave`,
+`TPaveText`, `TPavesText`, `TPaveLabel`, `TPaveStats`, `TPaletteAxis`,
+`TLegend` and `TLegendEntry`, `TText`, `TLatex`, `TLine`, `TArrow`, `TBox`,
+`TWbox`, `TEllipse`, `TMarker`, `TGaxis` and `TColor` — come back as a
+`Primitive`: the class, and its members by name however deep in its bases
+ROOT keeps them (`text["fTextSize"]`). The colours a canvas saved with it,
+its `ListOfColors` and palette, are used to draw it and kept out of
+`primitives`.
+
+**What is drawn**, and by what option:
+
+| Class | Drawn as |
+| --- | --- |
+| a histogram, one dimension | `HIST` its outline, filled or hatched by its fill; `E`, `E0`, `E1` error bars with markers (`E1` with ends, `E0` on empty bins too); `E2` boxes, `E3`/`E4` a band; `P`, `*H` markers; `L`, `C` a line through the bins; `B`, `BAR` bars of `fBarWidth` at `fBarOffset`; `TEXT` the contents. A profile, or a histogram keeping its squared weights, draws error bars unasked, as ROOT does |
+| a histogram, two dimensions | `COL`, `COLZ` a colour mesh in the palette (ROOT 6's `kBird`, or the one saved), empty bins undrawn, `SetLogz` a logarithmic scale, and `Z` the colour scale where its `TPaletteAxis` was or in the right margin; `BOX`, `CONT`, `TEXT` |
+| a graph, multigraph | `A` the axes, `P`, `*` markers, `L`, `C` a line, error bars by default (`Z` without ends, `X` none), `2` boxes, `3`, `4` a band, `F` the area, `B` bars; each graph of a multigraph by its own option |
+| a stack | stacked, the top first so every fill shows; `NOSTACK` each by its own option |
+| a function | a line over its range, of `fNpx` points; a histogram's or graph's fits are drawn with it, but not after `HIST` |
+| stats box | a saved `TPaveStats` with the lines it was saved with, a name on the left and its value on the right; a histogram saved without one, not drawn `SAME` nor told `kNoStats`, gets `gStyle`'s — its name, entries, mean and standard deviation (`SetOptStat(1111)`) |
+| title | the `title` pave a drawn pad saved; one saved undrawn gets its histogram's or graph's title at the top, as `gStyle` puts it |
+| `TText`, `TLatex` | at `fX`, `fY` in the axes' units or, `SetNDC`, the pad's fractions; `TLatex`'s `#` mathematics in matplotlib's mathtext — Greek letters and symbols, `^{}` and `_{}`, `#sqrt`, `#frac`, `#bar` and the other accents, `#it` and `#bf`, `#splitline` as two stacked lines; `#font`, `#color`, `#scale`, `#kern` and `#lower` keep their text and drop the adjustment |
+| `TLine`, `TArrow`, `TBox`, `TEllipse`, `TMarker` | as their attributes say; an arrow's head by its `fOption` (`"|>"`, `"<|>"`, `"->-"`...), an ellipse's slice by `fPhimin` and `fPhimax` |
+| `TPave`, `TPaveText`, `TPaveLabel`, `TLegend` | the box, its border and shadow (on the sides `fOption` names), and its lines stacked in it, or its entries in `fNColumns` columns, each a symbol — `l` line, `p` marker, `f` fill, `e` error bar, `h` a header — drawn in the style of the thing it stands for |
+
+Colours are ROOT's by index: the fifty named ones, the spectrum after them,
+the colour circles `kRed` to `kCyan` with their rings, `kGray`, and — only
+approximately, lightened or darkened from their base — the colour rectangles
+`kOrange` to `kPink`; a canvas saved with its colours draws in those. Line
+styles, marker styles and sizes, fill styles (hollow, solid, the 3000s as
+hatches, the 4000s as transparency), fonts (family, italic, bold) and
+alignment are ROOT's numbers translated; a size is in pixels for a font of
+precision 3 and a fraction of the pad's shorter side otherwise, the figure
+drawn at 100 dots to the inch so that one of ROOT's pixels is one of its.
+Text left at size 0 in a pave or a legend is sized to fit, as ROOT sizes it.
+
+**What is left out**, with a warning naming every one: a class the file
+does not describe, or does but this does not draw — `TGaxis`, a `TButton`,
+anything of a GUI — a three-dimensional histogram, a function of two or
+three variables, and a function that cannot be evaluated here. A
+two-dimensional histogram drawn `LEGO`, `SURF` or with no option at all is
+drawn as `COL`, and a curve (`C`) with straight lines, matplotlib having no
+equivalent of either. Writing a canvas is not supported; reading one never
+stands in the way of writing what it drew.
+
+`xrdroot.canvas.render(obj, path)` saves a `Canvas`, a `Pad`, or the members
+of either as a dictionary, which is what a tool handed any object reaches for.
 
 ## Columns
 

@@ -36,7 +36,9 @@ generators in :mod:`xrdroot.random`. A :class:`Function` is ROOT's ``TF1``: a
 a fit, evaluated, differentiated and integrated over whole arrays, and
 ``h.fit("gaus")`` is ``TH1::Fit`` - ROOT's options, starting values and
 chi-squares, Minuit through iminuit - with :mod:`xrdroot.fit` beneath it and
-its :class:`FitResult` handed back.
+its :class:`FitResult` handed back. A saved ``TCanvas`` is a :class:`Canvas`
+of pads, each with what it drew and the option it drew it with, and
+``c.save("c1.png")`` draws it as ROOT did.
 What it does not do is every ROOT class ever written: one whose layout the
 file does not describe, or one that streams itself in some way of its own, is
 refused by name with the class in the message, because a plausible misreading
