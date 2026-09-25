@@ -33,7 +33,10 @@ evaluated over whole batches of entries, and shared across processes by
 random numbers to the bit, an array at a time, with the rest of ROOT's
 generators in :mod:`xrdroot.random`. A :class:`Function` is ROOT's ``TF1``: a
 ``TFormula`` or a Python model, read from a file or hung on a histogram by
-a fit, evaluated, differentiated and integrated over whole arrays.
+a fit, evaluated, differentiated and integrated over whole arrays, and
+``h.fit("gaus")`` is ``TH1::Fit`` - ROOT's options, starting values and
+chi-squares, Minuit through iminuit - with :mod:`xrdroot.fit` beneath it and
+its :class:`FitResult` handed back.
 What it does not do is every ROOT class ever written: one whose layout the
 file does not describe, or one that streams itself in some way of its own, is
 refused by name with the class in the message, because a plausible misreading
@@ -55,12 +58,13 @@ is there; it is a separate package that builds on this one.
 
 from __future__ import annotations
 
-from . import stats
+from . import fit, stats
 from .chain import Chain, ChainedBranch, chain
 from .efficiency import Efficiency
 from .entries import EntryList
 from .errors import FormatError, ROOTError, UnsupportedFeatureError
 from .file import Directory, Key, ROOTFile, open_root
+from .fit import FitResult
 from .formula import Formula, FormulaError, compile_formula
 from .function import Function
 from .graph import Graph
@@ -110,6 +114,9 @@ __all__ = [
     "Graph",
     "MultiGraph",
     "Function",
+    # fitting
+    "fit",
+    "FitResult",
     # indexing, as UHI does it
     "loc",
     "rebin",

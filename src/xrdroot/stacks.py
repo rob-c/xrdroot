@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from .errors import FormatError
+from .function.attached import listed
 from .graph import Graph
 from .hist import Histogram
 
@@ -71,6 +72,33 @@ class MultiGraph(_Held):
     __slots__ = ()
     held = "fGraphs"
     kind = Graph
+
+    @property
+    def functions(self) -> list[Any]:
+        """``GetListOfFunctions``: the fits made to all the graphs together."""
+        return listed(self.members)
+
+    def fit(
+        self,
+        model: Any,
+        option: str = "",
+        range: Any = None,
+        *,
+        parameters: Any = None,
+        limits: Any = None,
+        fixed: Any = None,
+        npar: int | None = None,
+    ) -> Any:
+        """``TMultiGraph::Fit``: one fit to the points of every graph, as :meth:`Graph.fit`.
+
+        The data are of the most elaborate kind any graph's bars are - so in
+        a multigraph with errors, a graph without them has no points to give.
+        """
+        from .fit import fit_object
+
+        return fit_object(
+            self, model, option, range, parameters=parameters, limits=limits, fixed=fixed, npar=npar
+        )
 
 
 class Stack(_Held):

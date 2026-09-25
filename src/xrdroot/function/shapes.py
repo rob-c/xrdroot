@@ -336,3 +336,50 @@ def expand(formula: str, known: tuple[str, ...] | None = None) -> Expanded:
         return f"[{names[int(label)] if label.isdigit() else label}]"
 
     return Expanded(LABEL.sub(spelled, written), tuple(names), special is not None)
+
+
+#: ``TFormula::fNumber`` for a formula that is one predefined shape alone:
+#: what ``TH1::Fit`` starts a fit from, and ``TF1::Integral`` integrates in
+#: closed form. A ``polN`` is 300 plus its degree.
+NUMBERS: dict[str, int] = {
+    "gaus": 100,
+    "gausn": 100,
+    "xygaus": 110,
+    "bigaus": 112,
+    "xyzgaus": 120,
+    "expo": 200,
+    "xyexpo": 210,
+    "landau": 400,
+    "landaun": 400,
+    "xylandau": 410,
+    "xylandaun": 410,
+    "crystalball": 500,
+    "crystalballn": 500,
+}
+#: The shapes ROOT marks ``kNormalized``, whose closed-form integral drops the width.
+NORMALIZED = ("gausn", "landaun", "crystalballn", "xylandaun")
+
+
+def recognised(text: str, names: tuple[str, ...]) -> str | None:
+    """The predefined shape a formula is, written out as ROOT keeps it, or ``None``.
+
+    ``TFormula`` sets ``fNumber`` only when the whole formula was one shape;
+    a formula read back from a file has lost the word, so the text is
+    compared with each shape's expansion under the same parameter names -
+    and a polynomial with that many parameters is a ``polN`` of one degree
+    fewer.
+    """
+    compact = re.sub(r"\s+", "", text)
+    for shape in (*NUMBERS, f"pol{max(len(names) - 1, 0)}"):
+        written = expand(shape, names)
+        if len(written.names) == len(names) and written.text == compact:
+            return shape
+    return None
+
+
+def number(shape: str | None) -> int:
+    """``TFormula::GetNumber`` for a recognised shape, and 0 for none."""
+    if shape is None:
+        return 0
+    series = SERIES.match(shape)
+    return 300 + int(series.group(2)) if series is not None else NUMBERS[shape]

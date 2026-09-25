@@ -35,12 +35,16 @@ dependencies = [
 plot = ["matplotlib>=3.5"]
 lz4 = ["lz4>=4", "xxhash>=3"]
 zstd = ["zstandard>=0.21"]
+# Minuit, for the fits that are not linear in their parameters: TH1::Fit's
+# MIGRAD, HESSE and MINOS, through the Minuit2 C++ iminuit wraps.
+fit = ["iminuit>=2.20"]
 dev = [
   # The libraries a tree or a histogram can be handed to, so that every one of
   # those hand-overs is exercised by the suite rather than trusted.
   "awkward>=2",
   "boost-histogram>=1.4",
   "hist>=2.7",
+  "iminuit>=2.20",
   "pandas>=1.5",
   "polars>=1",
   "pyarrow>=14",
@@ -116,6 +120,13 @@ mypy_path = "src"
 # hole in our own checking.
 [[tool.mypy.overrides]]
 module = ["lz4.*", "zstandard.*", "tensorflow.*"]
+ignore_missing_imports = true
+
+# iminuit ships no py.typed marker. It is imported in one place, behind a
+# refusal naming the extra that installs it, and everything it hands back is
+# turned into NumPy arrays and floats there.
+[[tool.mypy.overrides]]
+module = ["iminuit", "iminuit.*"]
 ignore_missing_imports = true
 
 # These two are typed but not always there: xxhash comes only with the lz4

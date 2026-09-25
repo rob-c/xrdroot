@@ -125,6 +125,18 @@ f(xs), f.gradient(xs), f.integral(0, 10)            # TF1::Eval, GradientPar, In
 h.attach(f); out["h"] = h                             # written with its fit
 ```
 
+And fitting is ROOT's: `TH1::Fit` and `TGraph::Fit`, their options, their
+starting values and their chi-squares, Minuit through iminuit
+(`pip install xrdroot[fit]`) and polynomials by exact least squares, with the
+fit left on the histogram as ROOT's `TF1` records it; `FillRandom` and
+`GetRandom` draw ROOT's numbers from ROOT's seed:
+
+```python
+h.fill_random("gaus", 10_000)                          # h->FillRandom("gaus", 10000)
+r = h.fit("gaus", "L")                                 # h->Fit("gaus", "L")
+r.parameters, r.errors, r.chi2, r.ndf; print(r.summary())
+```
+
 ## Analysis
 
 `RDataFrame` is ROOT's declarative analysis — ROOT's methods, ROOT's C++

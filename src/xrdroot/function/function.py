@@ -30,7 +30,7 @@ import numpy as np
 
 from ..errors import UnsupportedFeatureError
 from ..formula.errors import FormulaError
-from . import numeric, saved
+from . import analytic, numeric, sampling, saved
 from .language import parse
 from .members import (
     CLASSES,
@@ -41,7 +41,7 @@ from .members import (
     ranges_of,
 )
 from .nodes import Env, Node, Var, is_zero
-from .shapes import LABEL, expand, param_order
+from .shapes import LABEL, NORMALIZED, expand, number, param_order, recognised
 
 __all__ = ["Function", "FUNCTIONS"]
 
@@ -378,7 +378,7 @@ class Function:
     def fixed(self) -> tuple[bool, ...]:
         """Whether each parameter is fixed, which ROOT says with equal, non-zero limits."""
         low, high = self._per_parameter("fParMin"), self._per_parameter("fParMax")
-        return tuple(bool(a * b != 0 and a >= b) for a, b in zip(low, high))
+        return tuple(bool(a >= b and a * b != 0) for a, b in zip(low, high))
 
     @fixed.setter
     def fixed(self, flags: Sequence[bool]) -> None:
@@ -466,7 +466,7 @@ class Function:
             return
         self._f1["fNormIntegral"] = 0.0
         low, high = self.range
-        self._f1["fNormIntegral"] = numeric.integrate(self.evaluate, low, high)
+        self._f1["fNormIntegral"] = self._integrated(low, high, 1e-12)
 
     # -- evaluation ------------------------------------------------------------
 
@@ -611,10 +611,65 @@ class Function:
             return own
         return float(low), float(high)
 
+    @property
+    def predefined(self) -> str | None:
+        """The predefined shape the formula is alone - ``"gaus"``, ``"pol2"`` - or ``None``."""
+        if self.formula is None:
+            return None
+        return recognised(self.formula, self.parameter_names)
+
+    @property
+    def number(self) -> int:
+        """``GetNumber``: ROOT's number for a predefined shape, 100 for ``gaus``, else 0.
+
+        It is what tells ``TH1::Fit`` to guess a ``gaus`` or an ``expo``'s
+        starting values from the data, to fit a ``polN`` by linear least
+        squares, and ``TF1::Integral`` to integrate in closed form.
+        """
+        return number(self.predefined)
+
     def integral(self, a: float, b: float, epsrel: float = 1e-12) -> float:
-        """``Integral``: from ``a`` to ``b``, either of them infinite, to ``epsrel``."""
+        """``Integral``: from ``a`` to ``b``, either of them infinite, to ``epsrel``.
+
+        A ``gaus``, ``expo``, ``landau`` or ``polN`` is integrated in closed
+        form, as ``TF1::Integral`` integrates it; anything else numerically,
+        to ``epsrel`` relative and absolute - or to ROOT's default of
+        ``1e-9`` for an ``epsrel`` of zero, as ``FillRandom`` asks for.
+        """
         self._one_variable("integral")
-        return numeric.integrate(self.evaluate, float(a), float(b), epsrel, epsrel)
+        if self.normalized:
+            return _numerically(self.evaluate, float(a), float(b), epsrel)
+        return self._integrated(float(a), float(b), epsrel)
+
+    def _integrated(self, a: float, b: float, epsrel: float) -> float:
+        """The integral before normalisation: ``AnalyticalIntegral`` where it has one."""
+        shape = self.predefined
+        if shape is not None:
+            params = [float(value) for value in self.parameters]
+            found = analytic.integral(number(shape), params, a, b, shape in NORMALIZED)
+            if not np.isnan(found):
+                return found
+        return _numerically(self._unscaled, a, b, epsrel)
+
+    def _unscaled(self, x: Any) -> Any:
+        return np.asarray(self._raw(self._columns(x), self.parameters), dtype=np.float64)
+
+    def get_random(self, n: int | None = None, *, rng: Any = None, range: Any = None) -> Any:
+        """``GetRandom``: numbers distributed as the function, drawn as ROOT draws them.
+
+            >>> Function("g", "gaus", range=(-3, 3), parameters=[1, 0, 1]).get_random(5)
+            ... # doctest: +SKIP
+
+        ROOT tabulates the integral at ``fNpx`` points over the range, fits
+        a parabola to each interval, and inverts it for every ``Rndm()``;
+        this is that table and that inversion, drawing from ``rng`` -
+        :data:`~xrdroot.gRandom` unless given - exactly as ROOT's loop
+        does. ``range=(low, high)`` is ``GetRandom(xmin, xmax)``, which
+        draws inside the table's span until a number lands in it.
+        """
+        low, high = self._one_variable("get_random")
+        table = sampling.table(self._integrated, low, high, self._npx())
+        return sampling.draw(table, n, rng, range)
 
     def derivative(self, x: Any, eps: float = DERIVATIVE_STEP) -> Any:
         """``Derivative``: ``df/dx``, Richardson's, with a step of ``eps`` times the range."""
@@ -682,6 +737,16 @@ class Function:
 
 #: The members each axis's range is kept in, by layer.
 _LIMIT_NAMES = (("fXmin", "fXmax"), ("fYmin", "fYmax"), ("fZmin", "fZmax"))
+
+
+#: ``IntegratorOneDimOptions``' default tolerances, taken when zero is asked for.
+DEFAULT_TOLERANCE = 1e-9
+
+
+def _numerically(f: Any, a: float, b: float, epsrel: float) -> float:
+    """``TF1::IntegralOneDim``: ``epsrel`` for both tolerances, ROOT's default for zero."""
+    tolerance = epsrel if epsrel > 0 else DEFAULT_TOLERANCE
+    return numeric.integrate(f, a, b, tolerance, tolerance)
 
 
 def _numbered(count: int) -> tuple[str, ...]:

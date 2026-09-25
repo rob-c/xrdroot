@@ -20,7 +20,7 @@ import math
 import numpy as np
 import pytest
 
-from xrdroot import Histogram, Profile, UnsupportedFeatureError, stats
+from xrdroot import Histogram, Profile, TRandom3, UnsupportedFeatureError, stats
 
 #: ``chi2test.C``'s unweighted histogram, before the 17 events are added.
 COUNTS = [0, 1, 0, 1, 1, 6, 7, 2, 22, 30, 27, 20, 13, 9, 9, 13, 19, 11, 9, 0]
@@ -320,12 +320,13 @@ def test_option_x_counts_the_pseudo_experiments_that_stray_further_repeatably():
     one, other = Histogram.book("a", (20, -3, 3)), Histogram.book("b", (20, -3, 3))
     one.fill(rng.normal(size=60))
     other.fill(rng.normal(0.3, size=80))
-    found = one.kolmogorov_test(other, "X=200")
+    found = one.kolmogorov_test(other, "X=200", rng=TRandom3(4357))
     assert 0 < found < 1 and found * 200 == round(found * 200)
-    assert one.kolmogorov_test(other, "X=200") == found  # the same draws each time
-    assert 0 < one.kolmogorov_test(other, "X=200", seed=np.random.default_rng(9)) < 1
+    assert one.kolmogorov_test(other, "X=200", rng=TRandom3(4357)) == found  # the same draws
+    assert 0 < one.kolmogorov_test(other, "X=200", rng=TRandom3(9)) < 1
+    assert 0 < one.kolmogorov_test(other, "X=200") < 1  # gRandom's, moving it on
     with pytest.warns(RuntimeWarning, match="0 is not a number of pseudo-experiments"):
-        assert 0 <= one.kolmogorov_test(other, "X=0", seed=5) <= 1
+        assert 0 <= one.kolmogorov_test(other, "X=0", rng=TRandom3(5)) <= 1
 
 
 def test_option_x_draws_many_entries_per_bin_by_poisson_and_corrects_the_total():
@@ -334,7 +335,7 @@ def test_option_x_draws_many_entries_per_bin_by_poisson_and_corrects_the_total()
     small, large = Histogram.book("s", (2, 0, 2)), Histogram.book("l", (2, 0, 2))
     small.fill(np.repeat([0.5, 1.5], [1, 100]))
     large.fill(np.repeat([0.5, 1.5], [3, 120]))
-    found = small.kolmogorov_test(large, "X=2000", seed=3)
+    found = small.kolmogorov_test(large, "X=2000", rng=TRandom3(3))
     assert 0 < found < 1
 
 

@@ -1,6 +1,6 @@
 # ROOT files used by the tests
 
-Forty-three small ROOT files, taken unchanged from the [go-hep](https://github.com/go-hep/hep)
+Forty-four small ROOT files, taken unchanged from the [go-hep](https://github.com/go-hep/hep)
 project's `groot/testdata`, and used here to check that `xrdclient.root` reads what
 ROOT wrote. They are here rather than generated because the only honest test
 of a reader is bytes somebody else's writer produced. The writer this library
@@ -19,7 +19,7 @@ The layouts it writes trees with were harvested the same way — from
 | `leaves.root` | the same again with the leaf classes at the edges, including the `Double32_t` and `Float16_t` packings |
 | `padding.root` | branches holding several leaves each, where the entry record has holes in it |
 | `tntuple.root` | a `TNtuple`, which is a tree with another record wrapped round it |
-| `dirs-6.14.00.root` | nested directories, and a histogram filled without weights, whose errors are the root of its counts |
+| `dirs-6.14.00.root` | nested directories, and a histogram filled without weights - by `FillRandom("gaus", 5)` from `gRandom` at its first seed - whose errors are the root of its counts |
 | `embedded-std-vector.root` | a `std::vector` member split out of a C++ class, read as rows |
 | `pod-advanced.root` | a branch written in two baskets, so that a range crossing the boundary is read from both |
 | `std-map-split1.root` | an object split into sub-branches, five kinds of `std::map` among them |
@@ -45,6 +45,7 @@ The layouts it writes trees with were harvested the same way — from
 | `tconfidence-level.root` | a `TObjArray` member, a class of no members at all, and a `vector<pair<double,double>>` |
 | `tformula.root` | `TF1`s of a formula and of C++ code, the ROOT 6.24 `TFormula` with its parameter names in a map, a `vector<TF1*>`, and a function's `fSave` samples |
 | `tformula-v14.root` | the same functions written by ROOT 6.34, whose `TFormula` is version 14 and carries `fNumber` |
+| `embedded-tbox.root` | a `TH1F` ROOT filled with `FillRandom("gaus", 5)` from `gRandom` at its first seed, with a `TBox` among its functions |
 | `tgme.root` | a `TGraphMultiErrors` whose containers are written field by field, and a `TMultiGraph` fitted with `pol1`, whose `fSave` is ROOT's own evaluation of it |
 | `chain.1.root`, `chain.2.root` | one tree of whole objects written as two files, read as one chain |
 | `chain.flat.1.root`, `chain.flat.2.root` | thirty-five columns in two files of five entries, each value the negative of its entry across both |

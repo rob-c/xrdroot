@@ -261,6 +261,9 @@ eff.fill(fired, pt)  # whether each entry passed, then where it is
 | `h3->Project3D("yx")`, `Project3D("x")` | `h3.projection("xy")`, `h3.projection("x")` |
 | `h2->ProfileX()`, `ProfileY()` | `h2.profile_x()`, `h2.profile_y()` |
 | `TGraphErrors(h)`, `e->CreateGraph()` | `Graph.from_histogram(h)`, `Graph.from_histogram(e)` |
+| `h->FillRandom("gaus", n)`, `FillRandom(f, n, rng)` | `h.fill_random("gaus", n)`, `h.fill_random(f, n, rng=rng)` |
+| `h->FillRandom(h2, n)` | `h.fill_random(h2, n)` |
+| `h->Fit("gaus")` and the rest | `h.fit("gaus")` — see [Fitting](#fitting) |
 
 The numbers are ROOT's, to the bit: the suite runs go-hep's ROOT macros for
 `tefficiency.root` and `tprofile.root` again, drawing `gRandom`'s very numbers,
@@ -332,9 +335,11 @@ since a zero is a p-value and would be read as one. Profiles are refused.
 ROOT's warnings, for a test of counts asked of weighted histograms, are
 Python's `RuntimeWarning`. Option `"X"` of the Kolmogorov test is ROOT's
 procedure — pseudo-experiments drawn from the histogram of more entries, the
-fraction straying further than the data — but the draws are NumPy's,
-seeded with `TRandom3`'s default of 4357 unless `seed=` says otherwise, so the
-number repeats from run to run and is not the one `gRandom` would give. An axis
+fraction straying further than the data — and ROOT's draws: each
+pseudo-experiment is `FillRandom` from that histogram, a Poisson count per
+bin corrected entry by entry past ten entries a bin and `GetRandom` for each
+entry below, taken from `gRandom` unless `rng=` gives another generator. So
+it moves `gRandom` on, as ROOT's does, and `rng=TRandom3(seed)` repeats. An axis
 range set with `SetRange` is not applied: every bin on the axis is compared.
 
 ### Indexing and slicing
@@ -440,6 +445,8 @@ x, y = r.rannor(1000)
 | `Landau(mean, sigma)`, `BreitWigner(mean, gamma)` | `r.landau(mean, sigma)`, `r.breit_wigner(mean, gamma)` |
 | `Circle(x, y, r)`, `Sphere(x, y, z, r)` | `x, y = r.circle(radius)`, `x, y, z = r.sphere(radius)` |
 | `h->GetRandom(rng)` | `rng.from_distribution(h.values(), h.axes[0])` |
+| `f->GetRandom()`, `f->GetRandom(xmin, xmax)` | `f.get_random()`, `f.get_random(n, range=(xmin, xmax))` |
+| `h->FillRandom("gaus", n)` | `h.fill_random("gaus", n)` — from `gRandom` unless `rng=` |
 | `SetSeed(s)`, `GetSeed()` | `r.set_seed(s)`, `r.get_seed()` |
 | the object written to a file | `r.state` — ROOT's data members by name — and `r.set_state(...)`, or pickle it |
 
@@ -495,6 +502,37 @@ is a valid stream but never the same twice, and never ROOT's. `get_seed`
 answers what ROOT's `GetSeed` does, which for `TRandom3` is the next word of
 state: 4357 only until the first draw. `TRandom1()` with no seed takes the
 next of ROOT's table of 215 seeds, as ROOT's default constructor does.
+
+`f.get_random(n)` is `TF1::GetRandom`: the cumulative integral at `fNpx`
+points over the function's range — of `log10(x)` when the range starts above
+zero and spans more than `fNpx` times itself — a parabola fitted to it in each
+interval from the integral over the interval and over its first half, the
+interval found with `TMath::BinarySearch` and the parabola solved, one
+`Rndm()` a number. `range=(xmin, xmax)` is the second `GetRandom`, drawing
+`Uniform(pmin, pmax)` between the table entries either side and drawing again
+until a number lands inside, one `Rndm()` a try. `h.fill_random(source, n)`
+is `TH1::FillRandom`: from a function, its integral over each bin of the
+histogram's axis range summed into a table, and each entry placed on the
+straight line across the bin its `Rndm()` falls in; from a histogram,
+`GetRandom` for each entry, or past ten entries a bin a Poisson count per bin
+and single entries added or taken away until there are exactly `n`, the sums
+then made again from the bins, as `ResetStats` makes them. `"gaus"` and the
+other names are `gROOT`'s standard functions, over `(-1, 1)` with the
+parameters `InitStandardFunctions` gives them. Both are ROOT's loops,
+statement for statement, and are held draw for draw to them written out one
+number at a time; `dirs-6.14.00.root` and `embedded-tbox.root` hold
+histograms ROOT filled with `h->FillRandom("gaus", 5)` straight after
+starting, which filled here from `TRandom3()` are the same doubles —
+contents, entries and running sums. The integrals are `TF1::Integral`'s: in
+closed form for `gaus`, `gausn`, `expo`, `landau`, `landaun` and `polN`, as
+ROOT's `AnalyticalIntegral` has them — Cephes's error function and CERNLIB's
+`DISLAN`, operation for operation — and numerically otherwise, where ROOT's
+adaptive GSL integrator and this one agree to their tolerance rather than to
+the bit. ROOT's `FillRandom(h, n, rng)` takes the entries it adds from
+`gRandom` whatever it was given; here they come from `rng`, which is the same
+thing whenever `rng` is `gRandom`. Filling at random is for one axis:
+`TH2::FillRandom` integrates a `TF2` over every cell adaptively, and is not
+here.
 
 `from_distribution(contents, axis, n)` is `TH1::GetRandom`: the cumulative
 integral summed in bin order, the bin found as `TMath::BinarySearch` finds it,
@@ -608,6 +646,8 @@ decay = Function.from_callable("decay", lambda x, p: p[0] * np.exp(-x / p[1]), 2
 | `SetNormalized(true)` | `f.normalized = True` |
 | `Clone("g")` | `f.copy("g")` |
 | `h->GetListOfFunctions()`, `h->Fit(f)` leaving `f` on `h` | `h.functions`, `h.attach(f)` — and a graph's the same |
+| `GetNumber()` | `f.number` — 100 for `gaus`, 300 + N for `polN`; `f.predefined` names the shape |
+| `GetRandom()`, `GetRandom(xmin, xmax)` | `f.get_random(n)`, `f.get_random(n, range=(xmin, xmax))` |
 
 The language is ROOT 6's: `x`, `y` and `z` — or `x[0]`, `x[1]`, `x[2]` —
 parameters by number `[0]` or by name `[mean]`, `^` and `**` for a power,
@@ -631,8 +671,9 @@ sum or product of them; where it calls something with no derivative written
 down, such as `TMath::Landau`, the parameters inside that call are
 differentiated as `TF1::GradientPar` does it — two central differences of
 steps `h` and `h/2`, combined, with `h` a hundredth of the parameter's error
-— and only those. Integrals are adaptive 21-point Gauss-Kronrod to
-`TF1::Integral`'s tolerance of `1e-12`; extrema and `x_at` are
+— and only those. Integrals of `gaus`, `expo`, `landau` and `polN`
+are ROOT's closed forms, and of anything else adaptive 21-point Gauss-Kronrod
+to `TF1::Integral`'s tolerance of `1e-12`; extrema and `x_at` are
 `BrentMinimizer1D`'s scan of `fNpx` points and Brent's search inside the
 bracket; the derivative is `RichardsonDerivator`'s, with a step of a
 thousandth of the range. A normalised function is divided by its integral,
@@ -660,6 +701,154 @@ the bins of the histogram it was fitted to; and a `TF1NormSum` or
 `TF1Convolution` on its own, which comes back as its members. A `TF1` from
 ROOT 5, which was a `TFormula` rather than holding one, comes back as its
 members too, so the histogram it hangs off still reads.
+
+## Fitting
+
+`h.fit(model, option)` is `TH1::Fit`, and `g.fit(...)` `TGraph::Fit`, step for
+step: the same points taken from the histogram or the graph, the same
+starting values for a built-in shape, the same chi-square or likelihood,
+MIGRAD set up as ROOT sets it up, a polynomial solved exactly rather than
+iterated, and the fitted function left on what was fitted with what ROOT's
+`TF1` records. Minuit comes from [iminuit](https://scikit-hep.org/iminuit/),
+which is Minuit2's C++: `pip install xrdroot[fit]`. Without it the fits that
+are linear in their parameters still work, and the rest refuse, naming the
+extra.
+
+```python
+r = h.fit("gaus")  # h->Fit("gaus"): prints ROOT's lines unless "Q"
+r = h.fit("gaus", "L R")  # a likelihood fit, in the function's range
+r = h.fit(f, "S", range=(0, 5), parameters=[100, 2.5, 0.5], fixed={"Mean": 2.5})
+r.parameters, r.errors, r.covariance, r.correlation, r.chi2, r.ndf, r.prob
+r.parameter("Sigma"), r.error(2), r.minos, r.status, r.valid, r.edm, r.nfev
+print(r.summary())  # FitResult::Print, word for word
+h.functions[0]  # the fitted TF1, as ROOT hangs it on the histogram
+
+g.fit("pol1")  # a TGraphErrors: its errors; with x errors, the effective variance
+mg.fit("pol1", "F")  # a TMultiGraph, all of its graphs at once
+p.fit("pol1"), h2.fit("xygaus")  # a TProfile's means; a TH2 with a TF2
+h.fit(lambda x, p: p[0] * np.exp(-x / p[1]), npar=2, parameters=[100, 2])
+
+from xrdroot.fit import minimize, unbinned
+
+minimize(lambda p: (p[0] - 1) ** 2 + (p[1] - 2) ** 2, [0, 0], minos=True)  # Minuit itself
+unbinned(x, "gaus", parameters=[1, 0, 1], range=(-5, 5))  # an unbinned likelihood
+```
+
+| ROOT | xrdroot |
+| --- | --- |
+| `h->Fit("gaus")` | `h.fit("gaus")` |
+| `h->Fit("gaus", "L R")`, `h->Fit(f, "Q", "", 0, 5)` | `h.fit("gaus", "L R")`, `h.fit(f, "Q", (0, 5))` |
+| `TFitResultPtr r = h->Fit(f, "S")` | `r = h.fit(f, "S")` — a `FitResult`, whatever the options |
+| `r->Parameter(0)`, `r->ParError(0)` | `r.parameter(0)`, `r.error(0)` — or by name |
+| `r->LowerError(0)`, `r->UpperError(0)` | `r.lower_error(0)`, `r.upper_error(0)` — Minos's, with `"E"` |
+| `r->Chi2()`, `r->Ndf()`, `r->Prob()`, `r->MinFcnValue()` | `r.chi2`, `r.ndf`, `r.prob`, `r.fcn` |
+| `r->GetCovarianceMatrix()`, `GetCorrelationMatrix()` | `r.covariance`, `r.correlation` |
+| `r->Status()`, `r->IsValid()`, `r->Edm()`, `r->NCalls()` | `r.status`, `r.valid`, `r.edm`, `r.nfev` |
+| `r->Print("V")` | `print(r.summary(covariance=True))` |
+| `int(h->Fit(...))` | `int(r)` — the status |
+| `f->SetParameters(...)`, `SetParLimits`, `FixParameter` before a fit | `parameters=`, `limits=`, `fixed=`, or the `Function`'s own methods |
+| `f->GetChisquare()`, `GetNDF()`, `GetNumberFitPoints()` | `f.fit_result` |
+| `gr->Fit("pol1")`, `mg->Fit("pol1", "F")` | `gr.fit("pol1")`, `mg.fit("pol1", "F")` |
+| `gMinuit`, `ROOT::Math::Minimizer` with an FCN | `xrdroot.fit.minimize(fcn, x0, ...)` |
+| `TTree::UnbinnedFit`, `Fitter::LikelihoodFit` on `UnBinData` | `xrdroot.fit.unbinned(data, model, ...)` |
+
+The options are ROOT's letters, read as `FitOptionsMake` reads them — any
+order, either case, a word such as `WIDTH` or `MULTI` taken out before its
+letters count:
+
+| Option | What it does | Here |
+| --- | --- | --- |
+| (none) | Neyman chi-square over the bins with entries, errors from the bins | as ROOT |
+| `L` | Poisson likelihood with Baker and Cousins's constant, empty bins in; `chi2` is twice the minimum | as ROOT |
+| `WL` | the weighted likelihood: errors corrected by the Hessian of the weights squared | as ROOT; plain `L`, with ROOT's warning, for a histogram without `Sumw2` |
+| `L MULTI` | the multinomial likelihood: not extended, so the normalisation is to be held | as ROOT |
+| `P`, `PW` | Pearson's chi-square, the expected errors — over the bins' weights for `PW` | as ROOT |
+| `W`, `WW` | every error one — the empty bins in too for `WW` — and scaled by `sqrt(chi2/ndf)` after | as ROOT |
+| `I` | the function's average over each bin | a 21-point Gauss-Kronrod rule per bin (10-point Gauss per axis in more), where ROOT's adaptive integrator agrees to 1e-9 |
+| `WIDTH`, `NORMWIDTH` | the function times the bin's width, or its width over the narrowest | as ROOT |
+| `R` | the function's range | as ROOT: only the bins whose centres are inside |
+| `B` | the parameters and limits given, no guess for a built-in shape | as ROOT |
+| `E` | HESSE and MINOS after MIGRAD | as ROOT; not for `WL`, as ROOT has it |
+| `M` | look for a better minimum | MIGRAD run again from where it stopped: Minuit2 has no `IMPROVE` |
+| `G` | the function's gradient | Minuit's numerical one, as without `G`; it takes the fit off the linear fitter, as in ROOT |
+| `F` | Minuit, even for a `polN` | as ROOT |
+| `S`, `C`, `SERIAL`, `MULTITHREAD` | a result object; no chi-square for a linear fit; how to run | nothing to do: the result is always an object, the chi-square always there |
+| `Q`, `V`, `VV`, `VVV` | quiet, or the covariance too | as ROOT |
+| `N`, `0`, `+` | not stored; stored but not drawn (`kNotDraw`); added rather than replacing | as ROOT |
+| `U` | the FCN set on `TVirtualFitter` | there is none, so an ordinary fit, which is what ROOT does without one |
+| `EX0`, `ROB` (graphs) | no x errors; the robust linear fit | `EX0` as ROOT; `ROB` refused by name |
+
+**What a fit is.** For a histogram the points are its bins inside the axis
+range — x outermost, then y — at their centres, or their edges for `I` and
+`WIDTH`; a range, given or the function's with `R`, keeps the bins whose
+centres are inside it. A bin of no error is left out of a chi-square unless
+`WW` or `P`, and given an error of one in a likelihood. For a graph its error
+bars decide, as `GetDataType` decides: no errors — fitted with errors of one,
+scaled after; errors in y; errors in x as well, and then the effective
+variance, `ey^2 + (ex f'(x))^2` with `f'` Richardson's derivative at ROOT's
+step; or asymmetric errors, the lower where the function is below the point
+and the upper where it is above. A multigraph takes the most elaborate kind
+of any of its graphs, which leaves a plain `TGraph` in it with no points to
+give, as in ROOT. Every term is capped at `DBL_MAX / n`, and the terms are
+added in order.
+
+**Where it starts.** A `gaus` or `landau` starts at the points' weighted mean
+and RMS and a height halfway between the largest value and a Gaussian's of
+that area — and its width is bounded to `[0, 10 RMS]`, which stays on the
+fitted function, as in ROOT; an `expo` at the line through the logarithms of
+its two ends; an `xygaus` or `bigaus` at both. Every parameter is then set
+up from the function: fixed where `FixParameter` marked it, bounded where it
+has limits, and its first step its error if it has one, a tenth of its range
+if bounded, 30% of its value otherwise. MIGRAD runs once, with ROOT's
+tolerance of 0.01 and strategy 1, no SIMPLEX first, an error definition of
+one for a chi-square and a half for a likelihood; the status is
+`Minuit2Minimizer::ExamineMinimum`'s. A fit of a name ROOT keeps in
+`gROOT` — `"gaus"`, `"pol1"`, `"expo"`, `"landau"`, `"xygaus"` — starts from
+that function as ROOT makes it, over `(-1, 1)` with its standard parameters,
+which is why `"R"` with one of those names fits over `(-1, 1)`, as in ROOT.
+Any other formula is fitted over the object's own range from its
+`parameters=`, or zeros.
+
+**Linear least squares.** A function linear in its parameters, fitted by a
+chi-square without an option that needs Minuit and without x errors, is
+solved exactly, as `TLinearFitter` solves a `polN`: the parameters, the
+covariance and the chi-square to rounding, with a fixed parameter's term
+moved to the other side. Whether it is linear is asked of the function
+itself, by evaluating it, so `"[0]*sin(x) + [1]"` is solved exactly too,
+where ROOT would give it to Minuit; the minimum is the one Minuit converges
+to.
+
+**What is recorded.** The function fitted — the one given, or ROOT's standard
+one for a name — is left with the fitted parameters, their errors in
+`fParErrors`, and `fChisquare`, `fNDF` and `fNpfits`; unless `N`, a copy of it
+is put in the histogram's or graph's functions, replacing every function
+there unless `+`, with its range set to the one drawn — the fit's range, or
+the histogram's axis range, or a graph's frame — and sampled into `fSave`
+over it as `TF1::Save` samples it: at the bin centres for a histogram over
+more than `fNpx` times its lower end, at `fNpx + 1` points otherwise. A file
+written with it is one ROOT reads as fitted. A `TF2` fitted to a `TH2` is
+recorded the same way, but a histogram holding one cannot yet be written,
+since no `TF2` layout is to hand to write it by.
+
+**How close to ROOT.** `tgme.root`'s multigraph was fitted by ROOT 6.24 with
+`mg->Fit("pol1", "FQ")`: three graphs, one without errors, one with
+symmetric errors in x and y, one asymmetric in y. The chi-square here at
+ROOT's parameters is ROOT's to the last bit, and refitted, the parameters
+are ROOT's to a part in 10^10, the chi-square to 10^-15 and the errors to
+10^-6: Minuit2, from ROOT's own starting point - `gROOT`'s `pol1` at its
+standard parameters of one - took ROOT's steps. ROOT from 6.38 starts a
+straight line through errors in x from an unweighted least-squares line
+(`InitPolynom`); this starts it where 6.24 did, since that is the ROOT the
+file came from. The linear fits are the normal equations' answer, to 10^-12.
+ROOT's own documented numbers come out: `stress.cxx`'s integral of a fitted
+triple Gaussian over `[-8, 6]` from `FillRandom` at seed 65539, 1923.74578
+to within its tolerance of 10 (it is 0.9 off), PyROOT's fit of a Python
+Gaussian to `FillRandom("gaus", 200000)` with its 96 degrees of freedom, and
+the Minuit example `Ifit.C` that PyROOT's tests check, four parameters and
+four errors to two decimal places. Where the fit is Minuit's and no ROOT
+answer is to hand, the minimum is checked on a grid of the parameters by
+brute force, and against the exact linear solution. A `TEfficiency::Fit`,
+ROOT's binomial likelihood of an efficiency, is not here.
 
 ## Drawing
 

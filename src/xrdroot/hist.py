@@ -17,7 +17,7 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
-from . import arithmetic, compare, distribution, filling, moments, reshaping, slicing
+from . import arithmetic, compare, distribution, filling, fillrandom, moments, reshaping, slicing
 from .booking import AXIS_STYLE, FILL, LINE, MARKER, histogram_members
 from .booking import axis_members as _axis
 from .draw import axes, bar, missing_picture, shade
@@ -662,6 +662,52 @@ class Histogram:
         coordinates, weights = filling.arrays(given, weight)
         filling.fill_histogram(self, coordinates, weights)
 
+    def fill_random(self, source: Any, n: int, *, rng: Any = None) -> None:
+        """``FillRandom``: ``n`` entries drawn from a function, or from another histogram.
+
+            >>> h.fill_random("gaus", 10_000)              # h->FillRandom("gaus", 10000)
+            ... # doctest: +SKIP
+            >>> h.fill_random(f, 500, rng=TRandom3(1))     # doctest: +SKIP
+            >>> h.fill_random(template, 1000)              # h->FillRandom(template, 1000)
+            ... # doctest: +SKIP
+
+        ``source`` is a :class:`~xrdroot.Function`, the name of one of ROOT's
+        standard functions - ``"gaus"`` is ``gROOT``'s, over ``(-1, 1)`` with
+        a width of one, as in ROOT - or a :class:`Histogram`. The draws are
+        ``rng``'s, :data:`~xrdroot.gRandom` unless given, taken exactly as
+        ROOT takes them (see :mod:`xrdroot.fillrandom`), so the same seed
+        fills the same histogram ROOT fills.
+        """
+        fillrandom.fill_random(self, source, n, rng)
+
+    def fit(
+        self,
+        model: Any,
+        option: str = "",
+        range: Any = None,
+        *,
+        parameters: Any = None,
+        limits: Any = None,
+        fixed: Any = None,
+        npar: int | None = None,
+    ) -> Any:
+        """``Fit``: fit ``model`` to the bins, as ``TH1::Fit`` does, and give back the result.
+
+            >>> r = h.fit("gaus")                   # h->Fit("gaus")          # doctest: +SKIP
+            >>> r = h.fit("gaus", "L R", (0, 5))    # likelihood, in a range  # doctest: +SKIP
+            >>> r.parameters, r.errors, r.chi2, r.ndf                     # doctest: +SKIP
+
+        ``model`` is a predefined shape's name, a formula, a
+        :class:`~xrdroot.Function`, or a Python ``fn(x, params)`` with
+        ``npar`` parameters; the options are ROOT's letters. See
+        :mod:`xrdroot.fit` for what each does and how closely.
+        """
+        from .fit import fit_object
+
+        return fit_object(
+            self, model, option, range, parameters=parameters, limits=limits, fixed=fixed, npar=npar
+        )
+
     # -- statistics ------------------------------------------------------------
 
     def mean(self, axis: int = 0) -> float:
@@ -868,7 +914,7 @@ class Histogram:
 
     # -- comparing, indexing and reading as a distribution ------------------------
 
-    def kolmogorov_test(self, other: Histogram, option: str = "", *, seed: Any = None) -> float:
+    def kolmogorov_test(self, other: Histogram, option: str = "", *, rng: Any = None) -> float:
         """``KolmogorovTest``: the probability that ``other`` has this one's shape.
 
             >>> h1.kolmogorov_test(h2)             # h1->KolmogorovTest(h2)     # doctest: +SKIP
@@ -880,12 +926,12 @@ class Histogram:
         totals, ``"M"`` gives back the largest distance, ``"D"`` prints
         ROOT's debug lines, and ``"X"`` or ``"X=n"`` gives the fraction of
         ``n`` pseudo-experiments - 1000 by default - straying further than
-        these two do. Those are drawn from NumPy's generator seeded with
-        ``seed``, ``TRandom3``'s default of 4357 unless given, so they repeat
-        from run to run; they are not ``gRandom``'s draws, so that one
-        number is ROOT's procedure rather than ROOT's result.
+        these two do. Those are ROOT's own, filled by ``FillRandom`` from
+        ``rng`` - :data:`~xrdroot.gRandom` unless given, as in ROOT - draw
+        for draw, so the same generator in the same state gives ROOT's
+        answer; pass ``rng=TRandom3(seed)`` for one that repeats.
         """
-        return compare.kolmogorov_test(self, other, option, compare.SEED if seed is None else seed)
+        return compare.kolmogorov_test(self, other, option, rng)
 
     def chi2_test(self, other: Histogram, option: str = "UU") -> float:
         """``Chi2Test``: the p-value of the two being the same, by Gagunashvili's test.

@@ -92,6 +92,33 @@ class Graph:
         """Hang ``function`` - a :class:`~xrdroot.Function`, a fit - on this graph."""
         self.functions.append(function)
 
+    def fit(
+        self,
+        model: Any,
+        option: str = "",
+        range: Any = None,
+        *,
+        parameters: Any = None,
+        limits: Any = None,
+        fixed: Any = None,
+        npar: int | None = None,
+    ) -> Any:
+        """``TGraph::Fit``: fit ``model`` to the points, their error bars deciding the chi-square.
+
+            >>> r = graph.fit("pol1")            # gr->Fit("pol1")          # doctest: +SKIP
+            >>> r = graph.fit("gaus", "EX0")     # ignoring the x errors    # doctest: +SKIP
+
+        Errors in y weigh the points; errors in x as well make it the
+        effective-variance chi-square, and asymmetric ones take the side
+        facing the function; a graph with no errors is fitted with errors
+        of one, scaled afterwards. See :mod:`xrdroot.fit`.
+        """
+        from .fit import fit_object
+
+        return fit_object(
+            self, model, option, range, parameters=parameters, limits=limits, fixed=fixed, npar=npar
+        )
+
     def __len__(self) -> int:
         return len(self.x)
 

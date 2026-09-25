@@ -29,21 +29,18 @@ import numpy as np
 
 from .errors import UnsupportedFeatureError
 from .filling import running
+from .fillrandom import POISSON_PER_BIN, from_parent
 from .moments import statistics
 from .reshaping import _low_edge
 from .stats import kolmogorov_prob, prob
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
-    from .hist import Histogram
+    from .hist import Axis, Histogram
 
 __all__ = ["Chi2Result", "chi2_test", "chi2_test_full", "kolmogorov_test"]
 
 #: How many pseudo-experiments option ``"X"`` makes unless ``"X=n"`` says.
 EXPERIMENTS = 1000
-
-#: The seed option ``"X"`` draws from unless told otherwise: ``TRandom3``'s
-#: own default, so a run is repeatable without anyone choosing a number.
-SEED = 4357
 
 #: ``AreEqualRel``'s tolerance for two bin edges ``KolmogorovTest`` calls one.
 EDGE_PRECISION = 1e-15
@@ -174,63 +171,46 @@ def _experiments(option: str) -> int:
     return count
 
 
-def _cdf(parent: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
-    """``ComputeIntegral``: the cumulative sum from zero, normalised to end at one."""
-    summed = np.add.accumulate(np.concatenate(([0.0], parent)))
-    return summed / summed[-1]
+def _toy(parent: np.ndarray[Any, Any], count: int, rng: Any, axis: Axis) -> np.ndarray[Any, Any]:
+    """``FillRandom(&hparent, count)`` into an emptied copy: the bins it leaves, flow aside.
 
-
-def _drawn(cdf: np.ndarray[Any, Any], count: int, rng: Any) -> np.ndarray[Any, Any]:
-    """The bins ``GetRandom`` lands ``count`` draws in, from its binary search of the CDF."""
-    return np.searchsorted(cdf[:-1], rng.random(count), side="right") - 1
-
-
-def _toy(parent: np.ndarray[Any, Any], count: int, rng: Any) -> np.ndarray[Any, Any]:
-    """``FillRandom(parent, count)``: a histogram of ``count`` entries drawn from ``parent``.
-
-    Past ten entries a bin, ROOT draws a Poisson number for each bin and then
-    adds or takes away single entries until there are exactly ``count``; below
-    that it draws every entry. Both are done here the same way, from NumPy's
-    generator rather than ``gRandom``.
+    Past ten entries a bin ROOT draws a Poisson count for every bin and
+    then adds or takes away single entries until there are exactly
+    ``count``; below that it draws every entry with ``GetRandom``. Both are
+    ROOT's own, draw for draw (see :mod:`xrdroot.fillrandom`).
     """
-    made = np.zeros(len(parent))
-    total = running(0.0, parent)
-    if total == 0:
-        return made
-    cdf = _cdf(parent)
-    if count <= 10 * len(parent):
-        np.add.at(made, _drawn(cdf, count, rng), 1.0)
-        return made
-    made += rng.poisson(parent * count / total)
-    generated = int(made.sum())
-    np.add.at(made, _drawn(cdf, max(count - generated, 0), rng), 1.0)
-    while generated > count:
-        at = int(_drawn(cdf, 1, rng)[0])
-        if made[at] > 0:
-            made[at] -= 1.0
-            generated -= 1
-    return made
+    cells = np.zeros(axis.nbins + 2)
+    if not parent.any():
+        return cells[1:-1]
+    if count > POISSON_PER_BIN * axis.nbins:
+        from_parent(cells, None, axis, parent, axis, count, rng)
+    else:
+        np.add.at(cells, axis.find_bin(rng.from_distribution(parent, axis, count)), 1.0)
+    return cells[1:-1]
 
 
 def _pseudo_probability(
-    inner: tuple[Any, Any], one: _Side, other: _Side, dfmax: float, count: int, seed: Any
+    inner: tuple[Any, Any], sides: tuple[_Side, _Side], dfmax: float, count: int, context: Any
 ) -> float:
     """Option ``"X"``: the fraction of pseudo-experiments that stray further than the data.
 
     The parent is the histogram of more effective entries - or the exact one,
     if either is - with any negative bin emptied, and only its bins on the
     axis, whatever the flow options; each pseudo-experiment draws as many
-    entries as each side is worth, and a side that is exact is the parent
-    itself. When only the second is exact that parent is the first, and it
-    is set against pseudo-experiments drawn from itself: that is ROOT's code.
+    entries as each side is worth, the first then the second, from
+    ``gRandom`` unless another generator is given, and a side that is exact
+    is the parent itself. When only the second is exact that parent is the
+    first, and it is set against pseudo-experiments drawn from itself: that
+    is ROOT's code.
     """
-    rng = np.random.default_rng(seed)
+    rng, axis = context
+    one, other = sides
     parent = inner[0] if one.exact or one.effective > other.effective else inner[1]
     shape = np.maximum(parent, 0.0)
     beyond = 0
     for _ in range(count):
-        first = shape if one.exact else _toy(shape, int(one.effective), rng)
-        second = shape if other.exact else _toy(shape, int(other.effective), rng)
+        first = shape if one.exact else _toy(shape, int(one.effective), rng, axis)
+        second = shape if other.exact else _toy(shape, int(other.effective), rng, axis)
         beyond += _distance(first, second) > dfmax
     return beyond / count
 
@@ -258,7 +238,7 @@ def _probabilities(opt: str, mine: _Side, theirs: _Side, dfmax: float) -> tuple[
     return probability, 0.0, 0.0
 
 
-def kolmogorov_test(one: Histogram, other: Histogram, option: str, seed: Any) -> float:
+def kolmogorov_test(one: Histogram, other: Histogram, option: str, rng: Any = None) -> float:
     """``TH1::KolmogorovTest``: the probability that the two have the same shape.
 
     The options are ROOT's letters, in any order and either case: ``"U"``
@@ -275,7 +255,11 @@ def kolmogorov_test(one: Histogram, other: Histogram, option: str, seed: Any) ->
     if "X" in opt:
         count = _experiments(opt)
         inner = [h._bins.astype(np.float64)[1 : h.axes[0].nbins + 1] for h in (one, other)]
-        pseudo = _pseudo_probability((inner[0], inner[1]), mine, theirs, dfmax, count, seed)
+        if rng is None:
+            from .random import gRandom as rng
+        pseudo = _pseudo_probability(
+            (inner[0], inner[1]), (mine, theirs), dfmax, count, (rng, one.axes[0])
+        )
     if "D" in opt:
         found = (probability, dfmax, shape, totals, pseudo, count)
         _debug(opt, [(one, mine), (other, theirs)], found)
