@@ -216,6 +216,78 @@ def marker(scene: Scene, prim: Primitive, _option: str) -> None:
     )
 
 
+def _points(prim: Primitive) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
+    """The ``fN`` points of a polyline or polymarker, ``fX`` and ``fY``."""
+    count = int(prim.get("fN", 0) or 0)
+    xs = np.asarray(prim.get("fX", []) or [], dtype=float)[:count]
+    ys = np.asarray(prim.get("fY", []) or [], dtype=float)[:count]
+    return xs, ys
+
+
+def polyline(scene: Scene, prim: Primitive, _option: str) -> None:
+    """A ``TPolyLine``: its points joined, or filled as an area when its option has ``f``."""
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Polygon
+
+    xs, ys = _points(prim)
+    where = scene.where(prim.ndc)
+    if "F" in str(prim.get("fOption", "")).upper():
+        scene.ax.add_artist(
+            Polygon(
+                np.column_stack([xs, ys]),
+                closed=True,
+                transform=where,
+                clip_on=False,
+                zorder=scene.layer(),
+                **patch_style(scene, prim, outline=False),
+            )
+        )
+        return
+    scene.ax.add_artist(
+        Line2D(xs, ys, transform=where, clip_on=False, zorder=scene.layer(), **scene.line(prim))
+    )
+
+
+def polymarker(scene: Scene, prim: Primitive, _option: str) -> None:
+    """A ``TPolyMarker``: a marker at each of its points."""
+    from matplotlib.lines import Line2D
+
+    xs, ys = _points(prim)
+    scene.ax.add_artist(
+        Line2D(
+            xs,
+            ys,
+            linestyle="none",
+            transform=scene.where(prim.ndc),
+            clip_on=False,
+            zorder=scene.layer(),
+            **scene.marker(prim),
+        )
+    )
+
+
+def crown(scene: Scene, prim: Primitive, _option: str) -> None:
+    """A ``TCrown``: the ring between two radii, or the slice of it between two angles."""
+    from matplotlib.patches import Polygon
+
+    turn = np.radians(
+        np.linspace(float(prim.get("fPhimin", 0.0)), float(prim.get("fPhimax", 360.0)), 91)
+    )
+    inner, outer = float(prim.get("fR1", 0.0)), float(prim.get("fR2", 0.0))
+    xs = np.concatenate([outer * np.cos(turn), inner * np.cos(turn[::-1])])
+    ys = np.concatenate([outer * np.sin(turn), inner * np.sin(turn[::-1])])
+    scene.ax.add_artist(
+        Polygon(
+            np.column_stack([xs + float(prim.get("fX1", 0.0)), ys + float(prim.get("fY1", 0.0))]),
+            closed=True,
+            transform=scene.ax.transData,
+            clip_on=False,
+            zorder=scene.layer(),
+            **patch_style(scene, prim),
+        )
+    )
+
+
 #: How each of these classes draws.
 SHAPES = {
     "TText": text,
@@ -225,5 +297,9 @@ SHAPES = {
     "TBox": box,
     "TWbox": box,
     "TEllipse": ellipse,
+    "TArc": ellipse,
+    "TCrown": crown,
     "TMarker": marker,
+    "TPolyLine": polyline,
+    "TPolyMarker": polymarker,
 }

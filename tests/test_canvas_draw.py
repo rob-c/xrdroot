@@ -1028,7 +1028,7 @@ def test_roots_attribute_numbers_mean_what_tattline_tattmarker_and_tattfill_say(
 
 
 def test_what_a_canvas_does_not_draw_is_named_in_a_warning():
-    axis = prim("TGaxis", fName="axis")
+    axis = prim("TButton", fName="axis")
     quiet = [prim("TFrame"), prim("TPaletteAxis"), prim("TLegendEntry")]
     with pytest.warns(CanvasWarning) as caught:
         make([("TUnknown", ""), (axis, ""), (object(), ""), *((q, "") for q in quiet)]).plot()
@@ -1036,7 +1036,7 @@ def test_what_a_canvas_does_not_draw_is_named_in_a_warning():
     message = str(warning.message)
     assert "3 things" in message
     assert "TUnknown (a class this file does not describe)" in message
-    assert "TGaxis 'axis'" in message
+    assert "TButton 'axis'" in message
     assert "object" in message
 
 
@@ -1090,3 +1090,102 @@ def test_a_hatch_takes_its_colour_where_this_matplotlib_keeps_one(monkeypatch):
 
     monkeypatch.setattr(builtins, "__import__", missing)
     assert shapes._hatch_colour() == "hatchcolor"
+
+
+# -- polylines, crowns, arcs and axes of their own ------------------------------------
+
+
+def test_a_polyline_is_its_points_joined_or_filled_and_a_polymarker_marks_them():
+    xs, ys = [0.1, 0.5, 0.9], [0.1, 0.9, 0.1]
+    shapes = [
+        prim("TPolyLine", fN=3, fX=xs, fY=ys, fOption="", fLineColor=2),
+        prim("TPolyLine", fN=3, fX=xs, fY=ys, fOption="f", fFillColor=3),
+        prim("TPolyMarker", fN=2, fX=xs, fY=ys, fMarkerStyle=20),
+    ]
+    ax = make([(shape, "") for shape in shapes]).plot().axes[0]
+    line, markers = ax.lines
+    assert list(line.get_xdata()) == xs and line.get_color() == (1.0, 0.0, 0.0)
+    assert list(markers.get_xdata()) == xs[:2] and markers.get_linestyle() == "None"
+    (area,) = [p for p in ax.patches if isinstance(p, Polygon)]
+    assert tuple(area.get_facecolor()[:3]) == (0.0, 1.0, 0.0)
+
+
+def test_a_crown_is_the_ring_between_its_radii_and_an_arc_an_ellipse_of_one_radius():
+    shapes = [
+        prim("TCrown", fX1=0.5, fY1=0.5, fR1=0.1, fR2=0.2, fPhimin=0.0, fPhimax=360.0),
+        prim("TArc", fX1=0.5, fY1=0.5, fR1=0.3, fR2=0.3, fPhimin=0.0, fPhimax=360.0),
+    ]
+    ax = make([(shape, "") for shape in shapes]).plot().axes[0]
+    ring, arc = [p for p in ax.patches if isinstance(p, Polygon)]
+    radii = np.hypot(*(ring.get_xy() - 0.5).T)
+    assert radii.min() == pytest.approx(0.1) and radii.max() == pytest.approx(0.2)
+    assert np.hypot(*(arc.get_xy() - 0.5).T).max() == pytest.approx(0.3)
+
+
+def _axis(**members):
+    base = {
+        "fX1": 0.1, "fY1": 0.2, "fX2": 0.9, "fY2": 0.2, "fWmin": 0.0, "fWmax": 10.0,
+        "fNdiv": 510, "fChopt": "", "fTitle": "", "fLabelSize": 0.04, "fTickSize": 0.03,
+    }  # fmt: skip
+    return prim("TGaxis", **{**base, **members})
+
+
+def test_an_axis_of_its_own_is_graduated_over_its_scale_and_labelled_on_the_other_side():
+    ax = make([(_axis(fTitle="x [cm]"), "")]).plot().axes[0]
+    labels = [t.get_text() for t in ax.texts]
+    assert labels[:3] == ["0", "1", "2"] and labels[-1] == "x [cm]"
+    assert ax.texts[0].get_va() == "top"  # ticks stand up, labels hang below
+    _line, first_tick = ax.lines[:2]
+    assert first_tick.get_ydata()[1] > first_tick.get_ydata()[0]
+
+
+def test_an_axis_says_by_its_chopt_which_side_its_ticks_and_labels_go_and_whether_logarithmic():
+    vertical = _axis(fX1=0.9, fY1=0.1, fX2=0.9, fY2=0.9, fChopt="-=", fBits=0x03000000 | NDC)
+    log = _axis(fWmin=1.0, fWmax=1000.0, fChopt="G+-")
+    bare = _axis(fChopt="U")
+    ax = make([(vertical, ""), (log, ""), (bare, "")]).plot().axes[0]
+    labels = [t.get_text() for t in ax.texts]
+    assert ax.texts[0].get_ha() == "left"  # "-" and "=": ticks and labels to the right
+    assert "1000" in labels and "100" in labels
+    assert len(labels) == 11 + 4  # the bare axis has none
+
+
+def test_graduations_keep_to_the_scale_and_divide_as_asked():
+    from xrdroot.canvas.gaxis import _fraction, graduations
+
+    assert list(graduations(0.0, 1.0, 505, log=False)) == pytest.approx(
+        [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    )
+    assert list(graduations(10.0, 0.0, 2, log=False)) == pytest.approx([0.0, 5.0, 10.0])
+    assert list(graduations(0.0, 1.0, 510, log=True))[-1] == pytest.approx(1.0)
+    assert list(_fraction(np.array([1.0]), 1.0, 1.0, log=False)) == [0.0]
+
+
+def test_a_histogram_with_a_range_is_framed_by_its_range():
+    h = filled()
+    h._core["fXaxis"]["fFirst"], h._core["fXaxis"]["fLast"] = 3, 5
+    _fig, ax = _drawn(h, "hist")
+    assert ax.get_xlim() == pytest.approx((2.0, 5.0))
+    assert ax.get_ylim()[1] == pytest.approx(3 * 1.05)
+    h._core["fXaxis"]["fLast"] = 99  # a range off the axis is all of it
+    assert _drawn(h, "hist")[1].get_xlim() == pytest.approx((0.0, 10.0))
+
+
+def test_a_two_dimensional_histogram_with_a_range_is_framed_by_both():
+    h2 = Histogram.book("h2", (4, 0.0, 4.0), (4, 0.0, 4.0))
+    h2.fill([0.5], [1.5])
+    h2._core["fYaxis"]["fFirst"], h2._core["fYaxis"]["fLast"] = 2, 3
+    _fig, ax = _drawn(h2, "col")
+    assert (ax.get_xlim(), ax.get_ylim()) == ((0.0, 4.0), (1.0, 3.0))
+
+
+def test_an_efficiency_frames_its_pad_and_is_drawn_as_points_or_a_grid():
+    from xrdroot.efficiency import Efficiency
+
+    e = Efficiency.book("e", (4, 0.0, 4.0))
+    e.fill([True, False, True, True], [0.5, 1.5, 2.5, 3.5])
+    _fig, ax = _drawn(e, "")
+    assert ax.get_xlim() == (0.0, 4.0) and ax.get_ylim()[0] == pytest.approx(0.0)
+    e2 = Efficiency.book("e2", (2, 0.0, 2.0), (2, 0.0, 4.0))
+    e2.fill([True], [0.5], [1.0])
+    assert _drawn(e2, "colz")[1].get_ylim() == (0.0, 4.0)
