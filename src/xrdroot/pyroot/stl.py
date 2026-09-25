@@ -32,6 +32,7 @@ name, as the rest of ``xrdroot.pyroot`` refuses what it does not have.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Iterator
 from typing import Any
 
@@ -111,7 +112,7 @@ STRINGS = ("string", "std::string", "TString")
 def _spelled(name: str) -> str:
     """A C++ type name with its ``std::`` and spare spaces taken out."""
     text = " ".join(name.replace("std::", "").split())
-    return text.replace("< ", "<").replace(" >", ">").replace(" ,", ",").replace(", ", ",")
+    return re.sub(r"\s*([<>,])\s*", r"\1", text)
 
 
 def _split_arguments(text: str) -> list[str]:
