@@ -1,13 +1,14 @@
-"""Reading the ROOT files ROOT's own tutorials ship.
+"""Reading the ROOT files ROOT's own tutorials ship, or download.
 
-These three are under ``tests/data/tutorials`` because each once failed to
-open: two trees older than ROOT 5 whose fixed fields no hard-coded layout
-had right, and a gallery of pictures, which stream themselves as PNGs. The
-tree values asserted were checked against uproot where uproot can read the
-file (``mlpHiggs.root``); ``stock.root`` is compressed with the pre-2005
-algorithm, which uproot does not undo, and its values are the prices the
-tutorial says it holds. The pixels were checked against Pillow's decoding
-of the same PNGs.
+These are under ``tests/data/tutorials`` because each once failed to open:
+two trees older than ROOT 5 whose fixed fields no hard-coded layout had
+right, a gallery of pictures, which stream themselves as PNGs, and a
+detector geometry whose materials hold a null array. The tree values
+asserted were checked against uproot where uproot can read the file
+(``mlpHiggs.root``) and against ROOT 6.40 everywhere; ``stock.root`` is
+compressed with the pre-2005 algorithm, which uproot does not undo, and its
+values are the prices the tutorial says it holds. The pixels were checked
+against Pillow's decoding of the same PNGs.
 """
 
 from __future__ import annotations
@@ -60,6 +61,31 @@ def test_a_tree_written_by_ROOT_4_reads_the_prices_the_portfolio_is_made_of():
                 "fCloseAdj": 8798,
             }
         ]
+
+
+def test_a_geometry_reads_whole_with_the_volumes_and_materials_ROOT_finds_in_it():
+    """``brahms.root`` is the BRAHMS detector the ``geomBrahms`` tutorial imports.
+
+    Its mixtures keep ``fNatoms`` as a null pointer, which ROOT writes as a
+    zero marker and no values - the byte that once threw the rest out. The
+    counts, names and densities are the ones ROOT 6.40 reads from it.
+    """
+    with open_root(TUTORIALS / "brahms.root") as root:
+        geometry = root["brahms"]
+    assert (len(geometry["fVolumes"]), len(geometry["fShapes"]), len(geometry["fMedia"])) == (
+        278,
+        279,
+        37,
+    )
+    materials = geometry["fMaterials"]
+    names = [(m.get("TGeoMaterial") or m)["TNamed"]["fName"] for m in materials]
+    assert (len(names), names[:5]) == (31, ["helium", "carbon", "aluminum", "iron", "air"])
+    assert (materials[3]["fDensity"], materials[9]["TGeoMaterial"]["fDensity"]) == (7.87, 0.000717)
+    assert materials[9]["fNatoms"].tolist() == []
+    cave = geometry["fMasterVolume"]
+    assert (cave["TNamed"]["fName"], cave["TNamed"]["fTitle"]) == ("CAVE", "Top volume")
+    assert [cave["fShape"][d] for d in ("fDX", "fDY", "fDZ")] == [800.0, 250.0, 2500.0]
+    assert len([node for node in cave["fNodes"] if node is not None]) == 23
 
 
 def test_a_picture_in_a_file_reads_as_the_PNG_it_was_written_as():

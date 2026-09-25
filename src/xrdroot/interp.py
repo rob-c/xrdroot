@@ -623,11 +623,14 @@ def _pointer(prim: Prim, unpack: Unpack | None, count: tuple[str, ...]) -> Step:
 
     ``count`` is where in the entry read so far the length is, which is a
     member of the same class or one of a base it inherits - ``TArrayD`` holds
-    as many values as the ``fN`` its ``TArray`` base declares.
+    as many values as the ``fN`` its ``TArray`` base declares. A marker of
+    zero is a pointer that was null when it was written, and nothing follows
+    it, whatever the count says.
     """
 
     def step(buf: Buffer, row: dict[str, Any]) -> Any:
-        buf.u8()  # the marker saying the pointer was not null when it was written
+        if not buf.u8():
+            return _numbers(prim, unpack, buf, 0)
         where: Any = row
         for key in count:
             where = where[key]
