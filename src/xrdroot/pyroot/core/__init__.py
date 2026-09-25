@@ -40,6 +40,7 @@ FAMILIES = (
     "graphs",
     "efficiencies",
     "files",
+    "rootns",
 )
 
 

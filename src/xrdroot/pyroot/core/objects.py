@@ -299,7 +299,7 @@ class TObject:
         message("Info", f"{self.ClassName()}::{method}", fmt, *args)
 
     def __repr__(self) -> str:
-        return f'<cppyy.gbl.{self.ClassName()} object ("{self.GetName()}") at {hex(id(self))}>'
+        return f"<cppyy.gbl.{self.ClassName()} object at {hex(id(self))}>"
 
 
 class TNamed(TObject):
@@ -356,7 +356,7 @@ ATTRIBUTES: dict[str, dict[str, Any]] = {
 }
 
 #: What each member is kept as: a colour or a style is an int, a size a float.
-_FLOATS = {"fMarkerSize", "fTextAngle", "fTextSize", "fLineWidth"}
+_FLOATS = {"fMarkerSize", "fTextAngle", "fTextSize"}
 
 
 def attribute_home(obj: Any, group: str) -> dict[str, Any]:

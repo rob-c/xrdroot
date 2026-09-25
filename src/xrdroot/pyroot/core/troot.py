@@ -27,10 +27,10 @@ from .strings import TString
 
 __all__ = ["TROOT", "gROOT", "gInterpreter", "TInterpreter", "set_line_processor"]
 
-#: ROOT's release the namespace follows: ``ROOT_RELEASE``, and its number two ways.
-RELEASE = "6.41/01"
-VERSION_INT = 64101
-VERSION_CODE = (6 << 16) + (41 << 8) + 1
+#: ROOT's release the namespace follows - the oracle it is checked against - two ways more.
+RELEASE = "6.40.04"
+VERSION_INT = 64004
+VERSION_CODE = (6 << 16) + (40 << 8) + 4
 
 #: Whatever runs a line of C++ once the translator installs it with
 #: :func:`set_line_processor`.
@@ -59,7 +59,7 @@ def _processor(what: str) -> Callable[..., Any]:
 class TROOT(TDirectory):
     """``TROOT``: the session, and the directory at the top of every other."""
 
-    def __init__(self, name: str = "Rint", title: str = "The ROOT of EVERYTHING") -> None:
+    def __init__(self, name: str = "PyROOT", title: str = "The ROOT of EVERYTHING") -> None:
         super().__init__(name, title)
         from ... import session
 
@@ -186,7 +186,7 @@ class TROOT(TDirectory):
         return False
 
     def GetVersion(self) -> str:
-        """``GetVersion``: ROOT's release this namespace follows, ``6.41/01``."""
+        """``GetVersion``: ROOT's release this namespace follows, ``6.40.04``."""
         return RELEASE
 
     def GetVersionInt(self) -> int:

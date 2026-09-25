@@ -124,7 +124,7 @@ class TDirectory(TNamed):
         if rest:
             below = self.GetDirectory(head)
             return None if below is None else below.Get(rest)
-        return self.FindObject(name)
+        return self._list.FindObject(name)
 
     def GetObject(self, namecycle: Any, holder: Any = None) -> Any:
         """``GetObject``: what ``Get`` finds, handed back (a pointer to fill is ignored)."""
@@ -158,7 +158,7 @@ class TDirectory(TNamed):
         return None if self._mother is None else self._mother.GetFile()
 
     def GetPath(self) -> str:
-        """``GetPath``: ``file.root:/dir/sub``, or ``Rint:/`` for memory."""
+        """``GetPath``: ``file.root:/dir/sub``, or ``PyROOT:/`` for memory."""
         if self._mother is None:
             return f"{self.GetName()}:/"
         above = self._mother.GetPath().rstrip("/")

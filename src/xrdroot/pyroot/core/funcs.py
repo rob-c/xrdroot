@@ -180,10 +180,8 @@ class TFormula(TNamed):
         return names.index(str(name)) if str(name) in names else -1
 
     def GetExpFormula(self, option: str = "") -> str:
-        """``GetExpFormula``: the expression, parameters by number as ROOT writes them."""
-        import re
-
-        return re.sub(r"\[p(\d+)\]", r"[\1]", str(self._xrd.formula or ""))
+        """``GetExpFormula``: the expression as ROOT keeps it, parameters by name."""
+        return str(self._xrd.formula or "")
 
     def GetFormula(self) -> Any:
         return self
@@ -440,8 +438,8 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
             print(f"Formula based function:     {self.GetName()} ")
             TFormula.Print(self, option)
             return
-        print(f"Interpreted based function: {self.GetName()}(double *x, double *p).  "
-              f"Ndim = {self.GetNdim()}, Npar = {self.GetNpar()}  ")  # fmt: skip
+        print(f"Compiled based function: {self.GetName()}  based on a functor object.  "
+              f"Ndim = {self.GetNdim()}, Npar = {self.GetNpar()}")  # fmt: skip
         if "V" in str(option).upper():
             self._print_parameters(" %20s =  %10f ")
 

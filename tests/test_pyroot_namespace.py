@@ -5,9 +5,9 @@ from __future__ import annotations
 import importlib
 
 import pytest
-from pyrootsupport import fresh
 
 import xrdroot.pyroot as ROOT
+from pyrootsupport import fresh
 from xrdroot.pyroot.core import cformat
 
 
