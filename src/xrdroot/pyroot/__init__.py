@@ -1,10 +1,12 @@
-"""ROOT's own Python namespace, over this library: ``import xrdroot.pyroot as ROOT``.
+"""``import ROOT``, as xrdroot: PyROOT's names over this library's objects.
 
-The namespace is put together from the modules listed in :data:`SUBMODULES`,
-each re-exporting its ``__all__`` here, so a script written for PyROOT finds
-``ROOT.TCanvas`` and ``ROOT.gStyle`` where it looks for them. A name ROOT has
-and this does not yet is refused by name, so that what is missing can be
-counted rather than guessed.
+A placeholder for the namespace the ``core`` agent owns, following the shared
+contract exactly so that the two can be put together by uniting the lists: the
+namespace is built from :data:`SUBMODULES`, each a module under this package
+whose ``__all__`` is re-exported here, and a module that is not there yet is
+passed over rather than failing the import. A name ROOT has and nothing here
+provides is refused by name, so that a tutorial run over this can count what
+is missing.
 """
 
 from __future__ import annotations
@@ -13,19 +15,20 @@ import importlib
 import importlib.util
 from typing import Any
 
-#: The modules under this package whose ``__all__`` make up the namespace.
-SUBMODULES = ["core", "graphics"]
+#: The modules this namespace is made of, in the order their names are taken.
+SUBMODULES = ["core", "stl", "trees", "rdf", "graphics"]
 
 __all__: list[str] = []
 
 
 def _gather() -> None:
-    """Import every module of :data:`SUBMODULES` there is, and take its names."""
+    """Import every submodule that is there and take in the names it exports."""
     for name in SUBMODULES:
-        if importlib.util.find_spec(f"{__name__}.{name}") is None:
-            continue  # another branch's module, not merged in yet
-        module = importlib.import_module(f"{__name__}.{name}")
-        for exported in getattr(module, "__all__", ()):
+        full = f"{__name__}.{name}"
+        if importlib.util.find_spec(full) is None:  # pragma: no cover - the others' modules
+            continue
+        module = importlib.import_module(full)
+        for exported in module.__all__:
             globals()[exported] = getattr(module, exported)
             __all__.append(exported)
 

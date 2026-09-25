@@ -1936,6 +1936,74 @@ The result is a tree laid out the way ROOT lays one out, down to the record
 versions and the `fLeaves` references pointing at the very leaves the branches
 hold, so ROOT, uproot and this library's own reader all walk it the same way.
 
+### Trees the way ROOT writes them
+
+`xrdroot.pyroot` is `import ROOT` for a PyROOT script or a translated macro,
+and its `TTree` is filled the way ROOT's tutorials fill one: an address bound
+to each branch, the value at the address changed, then `Fill`, which reads
+every address at that moment.
+
+```python
+import numpy as np
+import xrdroot
+from xrdroot.pyroot import TTree, std
+
+px, n, e = np.zeros(1, "f"), np.zeros(1, "i"), np.zeros(10)
+hits = std.vector["float"]()
+tree = TTree("t1", "a simple tree")
+tree.Branch("px", px, "px/F")
+tree.Branch("n", n, "n/I")
+tree.Branch("e", e, "e[n]/D")           # counted by n, as ROOT's x[n]/F is
+tree.Branch("hits", hits)                # a std::vector: rows of different lengths
+for i in range(1000):
+    px[0], n[0] = np.random.normal(), i % 10
+    e[: n[0]] = np.random.exponential(size=n[0])
+    hits.assign(np.random.normal(size=i % 4))
+    tree.Fill()
+with xrdroot.create("tree1.root") as f:
+    tree.SetDirectory(f)
+    tree.Write()
+```
+
+An address is anything that can be read and changed in place: a NumPy array,
+an `array.array`, a `ctypes` number or array, a `std.vector` or `std.string`,
+or any object with a `.value` - which is what the macro translator makes of
+`Float_t px;`. A Python `float` is refused by name, because a tree that read a
+copy would fill every entry with the first one's value. A leaf list is
+ROOT's: `x/D`, `x[3]/F`, `x[n]/F` counted by an integer branch declared
+before it, and `a/I:b:c/F` of several leaves, which are given a struct - a
+NumPy structured array, a `ctypes.Structure`, an array of the leaves one after
+another, or an object whose attributes they are named after. A branch given
+no leaf list takes its type from its address.
+
+Two things are written differently from ROOT, because this writer lays a
+tree out a leaf to a branch and rows the leaf-list way: the leaves of a leaf
+list are each a branch of their own (`a`, `b` and `c` above), and a
+`std::vector` is written as rows with a counter branch of its own
+(`nhits`), which ROOT reads as `hits[nhits]/F`. While the tree is being
+filled, `Print`, `GetListOfBranches` and `GetBranch` show it as it was
+declared.
+
+Reading is `SetBranchAddress` and `GetEntry`, served a thousand entries at a
+time so that the entry-by-entry loop costs a read per branch per thousand;
+`tree.px` after `GetEntry`, `for event in tree`, `TTreeReader` with
+`TTreeReaderValue["float"]` and `TTreeReaderArray["double"]`, `GetLeaf(...).GetValue()`,
+`SetBranchStatus`, `AddFriend` (read entry for entry, or by `BuildIndex`),
+`SetEntryList`, `CloneTree`, `CopyTree`, `TChain.Add` with wildcards, and
+`Draw`, `Scan`, `Show` and `Print` with ROOT's arguments, return values and
+text all work the same on a tree being filled and on one read from a file.
+`Print`'s byte counts are this writer's baskets', and a tree not yet written
+prints its branches as ROOT's "One basket in memory".
+
+`xrdroot.pyroot.std` has the containers a script hands a tree:
+`std.vector["float"]()` - the spelling the translator writes for
+`std::vector<float> v;`, the same class as `std.vector("float")` and
+`std.vector[np.float32]` - with `push_back`, `size`, `[]` and `data()`, a
+view of its NumPy storage; `std.map["std::string", "int"]`, `std.pair` and
+`std.string`. `ROOT.RDataFrame` is xrdroot's frame taking these trees, with
+`AsNumpy` giving an array per entry of a collection, `ROOT.RDF.FromNumpy`,
+`ROOT.RDF.RunGraphs`, and `ROOT.RVec` and `ROOT.VecOps` over NumPy.
+
 ### Directories
 
 A name with a `/` in it goes into a directory, and every directory along the

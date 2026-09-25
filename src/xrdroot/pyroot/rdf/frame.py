@@ -1,0 +1,178 @@
+"""``ROOT.RDataFrame``: xrdroot's ``RDataFrame``, taking and giving back PyROOT's objects.
+
+The frame itself is :class:`xrdroot.RDataFrame`, which already has ROOT's
+methods and runs ROOT's C++ expressions over whole batches. What this adds is
+the boundary: a frame is made from a ``TTree`` or ``TChain`` of
+:mod:`xrdroot.pyroot.trees` as well as from files, a result's value is handed
+back as the PyROOT object ``core`` wraps it in, ``AsNumpy`` gives its dict at
+once as PyROOT's does - a NumPy array for each entry of a collection - and
+``RDF.FromNumpy`` makes a frame of a dict of arrays.
+"""
+
+from __future__ import annotations
+
+import io
+from collections.abc import Iterable, Iterator
+from typing import Any
+
+import numpy as np
+
+from ... import rdf as _rdf
+from ...tree import Jagged
+from ..stl import is_vector
+from ..trees import hooks
+
+__all__ = ["RDataFrame", "RResultPtr", "RDF"]
+
+
+def _unwrapped(value: Any) -> Any:
+    """What xrdroot takes for a PyROOT argument: a tree's own, a list for a vector of names."""
+    if isinstance(value, (RDataFrame, RResultPtr)):
+        return value._inner
+    if hasattr(value, "_xrd"):
+        return value._xrd
+    if is_vector(value):
+        return [str(each) for each in value]
+    return value
+
+
+def _wrapped(value: Any) -> Any:
+    """What a PyROOT script is given back for what xrdroot returned."""
+    if isinstance(value, _rdf.RDataFrame):
+        return RDataFrame._of(value)
+    if isinstance(value, _rdf.Result) or hasattr(value, "IsReady"):
+        return RResultPtr(value)  # a booked result, or a booked Snapshot
+    return value
+
+
+class RResultPtr:
+    """``RResultPtr``: a booked result; its value, when asked for, as a PyROOT object."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    def __repr__(self) -> str:
+        return repr(self._inner)
+
+    def GetValue(self) -> Any:
+        return _wrapped(hooks.wrap(self._inner.GetValue()))
+
+    GetPtr = GetValue
+
+    def IsReady(self) -> bool:
+        return bool(self._inner.IsReady())
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self.GetValue(), name)
+
+    def __float__(self) -> float:
+        return float(self.GetValue())
+
+    def __int__(self) -> int:
+        return int(self.GetValue())
+
+    def __index__(self) -> int:
+        return int(self.GetValue())
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(self.GetValue())
+
+    def __len__(self) -> int:
+        return len(self.GetValue())
+
+    def __getitem__(self, key: Any) -> Any:
+        return self.GetValue()[key]
+
+    def __str__(self) -> str:
+        return str(self.GetValue())
+
+
+def _column(values: Any) -> Any:
+    """A column as ``AsNumpy`` gives it: an array, with an array per entry of a collection."""
+    if isinstance(values, Jagged):
+        made = np.empty(len(values), dtype=object)
+        for at in range(len(values)):
+            made[at] = np.asarray(values[at])
+        return made
+    return np.asarray(values)
+
+
+class RDataFrame:
+    """``ROOT.RDataFrame``, and every node a transformation of it makes."""
+
+    def __init__(self, *arguments: Any, **options: Any) -> None:
+        given = [_unwrapped(each) for each in arguments[:2]]
+        self._inner = _rdf.RDataFrame(*given, **options)
+
+    @classmethod
+    def _of(cls, inner: Any) -> RDataFrame:
+        made = cls.__new__(cls)
+        made._inner = inner
+        return made
+
+    def __repr__(self) -> str:
+        return repr(self._inner)
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        found = getattr(self._inner, name)
+        if not callable(found):
+            return found
+
+        def method(*arguments: Any, **options: Any) -> Any:
+            given = [_unwrapped(each) for each in arguments]
+            return _wrapped(found(*given, **{k: _unwrapped(v) for k, v in options.items()}))
+
+        return method
+
+    def AsNumpy(self, columns: Any = None, exclude: Any = None, lazy: bool = False) -> Any:
+        """Every column asked for, read now, as a dict of NumPy arrays."""
+        found = self._inner.AsNumpy(_unwrapped(columns), _unwrapped(exclude))
+        return {name: _column(values) for name, values in found.GetValue().items()}
+
+
+def _from_numpy(columns: dict[str, Any]) -> RDataFrame:
+    """``RDF.FromNumpy``: a frame of a dict of arrays, a column per key."""
+    from ... import create, open_root
+
+    buffer = io.BytesIO()
+    with create(buffer) as out:
+        out["numpy"] = {str(name): np.asarray(values) for name, values in columns.items()}
+    return RDataFrame(open_root(io.BytesIO(buffer.getvalue()))["numpy"])
+
+
+def _model(*parts: Any) -> tuple[Any, ...]:
+    """``TH1DModel`` and its kin: the tuple xrdroot books from, in the constructor's order."""
+    return tuple(list(part) if isinstance(part, np.ndarray) else part for part in parts)
+
+
+def _run_graphs(results: Iterable[Any]) -> int:
+    return int(_rdf.RunGraphs([_unwrapped(each) for each in results]))
+
+
+class _RDF:
+    """``ROOT.RDF``: the functions and models that go with ``RDataFrame``."""
+
+    RunGraphs = staticmethod(_run_graphs)
+    FromNumpy = staticmethod(_from_numpy)
+    MakeNumpyDataFrame = staticmethod(_from_numpy)
+    TH1DModel = staticmethod(_model)
+    TH2DModel = staticmethod(_model)
+    TH3DModel = staticmethod(_model)
+    TProfile1DModel = staticmethod(_model)
+    TProfile2DModel = staticmethod(_model)
+    RNode = RDataFrame
+    RResultPtr = RResultPtr
+
+    def __getattr__(self, name: str) -> Any:
+        raise AttributeError(f"ROOT has RDF.{name}; xrdroot.pyroot does not yet")
+
+    def __repr__(self) -> str:
+        return "<namespace ROOT::RDF>"
+
+
+#: ``ROOT.RDF``.
+RDF = _RDF()
