@@ -28,6 +28,7 @@ from typing import Any
 
 import numpy as np
 
+from ..display import Displayed
 from ..errors import UnsupportedFeatureError
 from ..formula.errors import FormulaError
 from . import analytic, numeric, sampling, saved
@@ -92,7 +93,7 @@ def _ordered(names: Sequence[str]) -> dict[str, int]:
     return {names[i]: i for i in sorted(range(len(names)), key=lambda i: param_order(names[i]))}
 
 
-class Function:
+class Function(Displayed):
     """A function of one, two or three variables and some parameters, as ROOT's ``TF1`` is.
 
         >>> f = Function("decay", "[N]*exp(-x/[tau])", range=(0, 10), parameters=[100, 2])

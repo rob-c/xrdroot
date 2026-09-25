@@ -50,6 +50,7 @@ from .graph import GRAPHS, Graph
 from .hist import HISTOGRAMS, Histogram
 from .interp import ARRAYS, MEMBER_WISE, OFFSET_L, OFFSET_P
 from .profile import PROFILES
+from .stacks import MultiGraph
 from .winfo import INFOS, SUBVERSIONS, WRITER_VERSION, Element
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
@@ -156,8 +157,11 @@ PAIR_CHECKSUM = 0xD7BED200
 STL_VERSION = 9
 
 #: The objects this writer writes by their members, and the classes they are.
-WRITABLE = (Histogram, Graph, Efficiency, Function)
-OBJECTS = (*HISTOGRAMS, *PROFILES, *EFFICIENCIES, *GRAPHS, *FUNCTIONS)
+WRITABLE = (Histogram, Graph, Efficiency, Function, MultiGraph)
+OBJECTS = (*HISTOGRAMS, *PROFILES, *EFFICIENCIES, *GRAPHS, *FUNCTIONS, "TMultiGraph")
+#: What a list may hold to be written: functions - the fits a histogram or a
+#: graph carries - and graphs, which is what a ``TMultiGraph`` keeps.
+LISTED = (Function, Graph)
 
 
 def packed_now() -> int:
@@ -419,20 +423,20 @@ def _row(value: Any) -> dict[str, Any]:
 def _list(
     buf: WBuffer, classname: str, entries: Any, used: dict[str, None], bits: int = BITS
 ) -> None:
-    """A ``TList`` of functions - the fits a histogram or graph carries - or of nothing.
+    """A ``TList`` of functions or graphs - fits, or a multigraph's graphs - or of nothing.
 
     Each entry is the object naming its class, then the option it was added
-    with, which for a fit is none. Anything but a function is refused: what
-    a list carries could be anything at all, and writing it wrongly would be
-    worse than refusing.
+    with, which is written as none. Anything else is refused: what a list
+    carries could be anything at all, and writing it wrongly would be worse
+    than refusing.
     """
     held = list(entries or ())
-    strangers = [type(entry).__name__ for entry in held if not isinstance(entry, Function)]
+    strangers = [type(entry).__name__ for entry in held if not isinstance(entry, LISTED)]
     if strangers:
         raise UnsupportedFeatureError(
             f"a {classname} holding {', '.join(strangers)} is not written: a list of "
-            f"functions is, and what else a list carries could be anything at all, "
-            f"which writing wrongly would be worse than refusing; take them out first"
+            f"functions or graphs is, and what else a list carries could be anything at "
+            f"all, which writing wrongly would be worse than refusing; take them out first"
         )
     index = buf.start(5)
     buf.tobject(bits)
@@ -701,22 +705,35 @@ def _closure(seeds: dict[str, None]) -> list[str]:
     return list(ordered)
 
 
-def _streamers(used: dict[str, None]) -> bytes:
+def _streamers(
+    used: dict[str, None], carried: Mapping[tuple[str, int], bytes] | None = None
+) -> bytes:
     """The ``StreamerInfo`` record: what this file says its classes look like.
 
     Emitted from :data:`~.winfo.INFOS` verbatim, checksums and all, so the
     file describes its classes exactly as the ROOT that the descriptions were
-    harvested from would have.
+    harvested from would have - and then whatever descriptions ``carried``
+    brings from other files, for records copied from them as they were.
     """
     names = _closure(used)
+    extra = carried_entries(names, carried)
     buf = WBuffer()
     index = buf.start(5)
     buf.tobject()
     buf.string("")
-    buf.i32(len(names))
+    buf.i32(len(names) + len(extra))
     buf.raw(_info_entries(names))
+    buf.raw(b"".join(extra))
     buf.end(index)
     return bytes(buf.data)
+
+
+def carried_entries(
+    names: list[str], carried: Mapping[tuple[str, int], bytes] | None
+) -> list[bytes]:
+    """The carried descriptions of every class and version ``names`` leave out."""
+    known = {(name, INFOS[name][1]) for name in names}
+    return [entry for key, entry in (carried or {}).items() if key not in known]
 
 
 def _info_entries(names: list[str]) -> bytes:
@@ -788,7 +805,8 @@ def _payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]]:
         return _object_payload(Histogram.of(obj))
     raise UnsupportedFeatureError(
         f"a {type(obj).__name__} is not something this writer puts in a ROOT "
-        f"file: it takes a Histogram, a Profile, an Efficiency, a Graph, a Function, any "
+        f"file: it takes a Histogram, a Profile, an Efficiency, a Graph, a MultiGraph, "
+        f"a Function, any "
         f"histogram that speaks the "
         f"plotting protocol (hist, boost-histogram), a (values, edges) pair "
         f"from numpy.histogram, a str, or a one-dimensional array of numbers"
@@ -836,7 +854,7 @@ def _array_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
 
 
 def _object_payload(
-    value: Histogram | Graph | Efficiency | Function,
+    value: Histogram | Graph | Efficiency | Function | MultiGraph,
 ) -> tuple[str, bytes, tuple[str, ...]]:
     classname = value.classname
     if classname not in INFOS:
@@ -878,14 +896,22 @@ def _wide(*seeks: int) -> bool:
 
 
 def _key_fields(
-    buf: WBuffer, seek: int, pdir: int, sizes: tuple[int, int, int], cycle: int, datime: int
+    buf: WBuffer,
+    seek: int,
+    pdir: int,
+    sizes: tuple[int, int, int],
+    cycle: int,
+    datime: int,
+    wide: bool = False,
 ) -> None:
     """The fixed part of a key, small or wide as the places it holds decide.
 
     ``sizes`` are the record's length on file, the object's length, and the
-    key's own length, in the order the key holds them.
+    key's own length, in the order the key holds them. ``wide`` asks for the
+    wide layout wherever the key lands, which is how ROOT writes every basket
+    and so what a basket copied as it was needs to keep its length.
     """
-    wide = _wide(seek, pdir)
+    wide = wide or _wide(seek, pdir)
     nbytes, objlen, keylen = sizes
     buf.i32(nbytes)
     buf.u16(KEY_VERSION + (WIDE if wide else 0))
@@ -1051,6 +1077,7 @@ class WritableDirectory:
         *,
         title: str | None = None,
         basket_size: int = BASKET_BYTES,
+        counters: Mapping[str, Any] | None = None,
     ) -> WritableTree:
         """A tree in this directory, to be filled entry by entry.
 
@@ -1067,14 +1094,16 @@ class WritableDirectory:
         gather - ``basket_size`` bytes of a column at a time - so the tree
         can be far larger than memory, and the tree's own record is written
         when the file closes. A name with a ``/`` in it puts the tree in the
-        directory it names.
+        directory it names. A counter is a 32-bit int unless ``counters``
+        gives its name another integer type, as ROOT's ``n/b`` would be.
         """
         from .wtree import WritableTree
 
         here, leaf = self._place(name)
         here._check_leaf(leaf)
         _checked(title or "", "title")
-        tree = WritableTree(here, leaf, title or "", columns, basket_size, here._next_cycle(leaf))
+        cycle = here._next_cycle(leaf)
+        tree = WritableTree(here, leaf, title or "", columns, basket_size, cycle, counters)
         self._file._trees.append(tree)
         self._file._used.update(dict.fromkeys(tree.classes))
         return tree
@@ -1205,14 +1234,17 @@ class WritableDirectory:
             return 0
         return CODES[file._algorithm] * 100 + (file._level or 0)
 
-    def _key_length(self, classname: str, name: str, title: str, extra: int = 0) -> int:
+    def _key_length(
+        self, classname: str, name: str, title: str, extra: int = 0, wide: bool = False
+    ) -> int:
         """How long the key of the next record put here will be.
 
         A tree has to know before it writes a record, because the record
         counts places from the start of its key; and whether that key is
-        small or wide depends on where it lands, which is here and now.
+        small or wide depends on where it lands, which is here and now -
+        unless ``wide`` asks for the wide layout wherever it lands.
         """
-        wide = _wide(self._file._out.size, self._seek)
+        wide = wide or _wide(self._file._out.size, self._seek)
         return _keylen(classname, name, title, extra) + (WIDER if wide else 0)
 
     def _put(
@@ -1225,6 +1257,9 @@ class WritableDirectory:
         listed: bool,
         packed: bool = True,
         extra: bytes = b"",
+        *,
+        objlen: int | None = None,
+        wide: bool = False,
     ) -> tuple[int, int]:
         """One record in this directory: its key, then its payload, compressed
         when that is smaller.
@@ -1238,14 +1273,22 @@ class WritableDirectory:
         whatever the file's setting, because ROOT - and the reader here -
         parses them without looking at the lengths that would say they were
         compressed.
+
+        ``objlen`` says the payload is already as it goes on file - a record
+        copied from another file, compressed or not - and is how long the
+        object it holds is; nothing is squeezed then. ``wide`` asks for the
+        wide key wherever the record lands, as :func:`_key_fields` has it.
         """
         file = self._file
         seek = file._out.size
-        body = file._squeeze(payload) if packed else payload
-        keylen = self._key_length(classname, name, title, len(extra))
+        body = payload
+        if objlen is None:
+            body = file._squeeze(payload) if packed else payload
+            objlen = len(payload)
+        keylen = self._key_length(classname, name, title, len(extra), wide)
         key = WBuffer()
-        sizes = (keylen + len(body), len(payload), keylen)
-        _key_fields(key, seek, self._seek, sizes, cycle, file._datime)
+        sizes = (keylen + len(body), objlen, keylen)
+        _key_fields(key, seek, self._seek, sizes, cycle, file._datime, wide)
         key.string(classname)
         key.string(name)
         key.string(title)
@@ -1362,6 +1405,10 @@ class WritableFile(WritableDirectory):
         #: The gaps the file already had, and the records this session let go.
         self._gaps: list[tuple[int, int]] = []
         self._freed: list[tuple[int, int]] = []
+        #: Descriptions of classes carried over from other files, by class
+        #: and version, each a ``TStreamerInfo`` list entry that stands on its
+        #: own: what a record copied as it was needs the file to say about it.
+        self._carried: dict[tuple[str, int], bytes] = {}
 
     def __repr__(self) -> str:
         state = "closed" if self._closed else f"{len(self._keys)} keys so far"
@@ -1406,7 +1453,7 @@ class WritableFile(WritableDirectory):
 
     def _write_streamers(self) -> tuple[int, int]:
         """The file's ``StreamerInfo`` record, and where it went."""
-        info = _streamers(self._used)
+        info = _streamers(self._used, self._carried)
         return self._put("TList", "StreamerInfo", "Doubly linked list", info, 1, listed=False)
 
     def _write_free(self) -> tuple[int, tuple[int, int, int]]:

@@ -119,6 +119,12 @@ class Chain(Drawable):
     def __repr__(self) -> str:
         return f"<Chain {self.tree_name!r} over {len(self._links)} files>"
 
+    def _repr_html_(self) -> str:
+        """A notebook's table of the files, opening none that is not open already."""
+        from .plot.notebook import chain_table
+
+        return chain_table(self.tree_name, self.files, self._counts)
+
     @property
     def name(self) -> str:
         return self.tree_name

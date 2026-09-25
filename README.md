@@ -31,8 +31,8 @@ spectrum = f["h_pt"].to_hist()                       # a hist.Hist, flow and all
 
 That brings `xrdclient` with it, which is where `root://`, `https://`,
 HEP WebDAV and `s3://` come from, and NumPy, which is what everything is read
-into. Nothing else is required. `matplotlib` makes histograms and graphs draw
-themselves onto axes; the `lz4` extra (`lz4` and `xxhash`) makes LZ4 some sixty
+into. Nothing else is required. `matplotlib`, `plotly` or `bokeh` make things
+draw themselves (`mplhep` adds the experiments' styles); the `lz4` extra (`lz4` and `xxhash`) makes LZ4 some sixty
 times faster than the pure-Python codec that is always there, and `zstandard`
 reads zstd before Python 3.14. pandas, Awkward, pyarrow, Polars and `hist` are
 used when asked for and never required.
@@ -92,6 +92,11 @@ A name with a `/` in it — `f["runs/4711/h_pt"]` — goes into ROOT directories
 made on the way; a file past 2 GB takes ROOT's wide layout as ROOT does; and
 `xrdroot.update` opens a file that is already there, ROOT's or anyone's, to
 add to it, leaving it byte for byte as it was if the `with` block fails.
+
+`xrdroot.merge` is `hadd` — histograms added up, graphs gathered, trees
+concatenated with their baskets copied across byte for byte, flag for flag on
+the command line as `xrdroot merge` — and `xrdroot.copy` is `rootcp`, or
+`TTree::CopyTree` given a cut.
 
 ## Histograms to fill
 
@@ -154,11 +159,24 @@ h.GetValue().plot(); print(df.Report().GetValue())
 
 ## Drawing
 
-Histograms and graphs draw themselves: `.plot()` onto matplotlib axes when
-matplotlib is there, `.text()` into plain characters when it is not. A
-`TCanvas` saved in a file draws the way it looked in ROOT - its pads, what
-each drew by its draw option, text in ROOT's `#` mathematics, legends and
-stats boxes, in ROOT's colours: `f["c1"].save("c1.png")`.
+Everything drawable draws itself with ROOT's options, defaults and colours:
+`.plot()` onto matplotlib axes, a plotly or a bokeh figure (`backend=`), or
+into plain characters; `xrdroot.plot.ratio`, `compare` and `stack` make the
+plots of several things, in ROOT's style or an experiment's; and a notebook
+shows each as its picture, and a tree or file as a table. A `TCanvas` saved
+in a file draws the way it looked in ROOT - its pads, what each drew by its
+draw option, text in ROOT's `#` mathematics, legends and stats boxes, in
+ROOT's colours: `f["c1"].save("c1.png")`.
+
+## The shell and the command line
+
+`xrdroot f.root` is `root -l f.root`: a Python prompt with `_file0`, `gROOT`,
+`gDirectory` and ROOT's `.ls`, `.cd` and `.x` — IPython's if it is there — and
+`xrdroot ls`, `dump`, `diff`, `print`, `scan`, `draw` and `info` are ROOT's and
+go-hep's command-line kit, over any URL.
+
+    xrdroot ls -t root://eos.example.org//store/events.root
+    xrdroot diff before.root after.root && echo same
 
 ## Where this sits
 

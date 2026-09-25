@@ -48,6 +48,10 @@ LEAF_REASONS = {
 
 UNSIGNED = {"b": "B", "h": "H", "i": "I", "q": "Q"}
 
+#: The integer leaves, by how their ``fMinimum`` and ``fMaximum`` are read:
+#: the largest value a counter ever held is what a copy of it has to say too.
+LIMITS = {"TLeafB": "i8", "TLeafS": "i16", "TLeafI": "i32", "TLeafL": "i64"}
+
 
 class LeafRecord:
     """One column's description, as the file states it."""
@@ -62,6 +66,7 @@ class LeafRecord:
         "unsigned",
         "count",
         "ltype",
+        "maximum",
     )
 
     def __init__(self, classname: str) -> None:
@@ -73,6 +78,9 @@ class LeafRecord:
         self.count: LeafRecord | None = None
         #: The streamer type a ``TLeafElement`` names; ``-1`` for a whole object.
         self.ltype = -1
+        #: The largest value an integer leaf recorded - what a counter says
+        #: its longest row was - and zero for any other leaf.
+        self.maximum = 0
 
     def __repr__(self) -> str:
         return f"<LeafRecord {self.name!r} of class {self.classname}>"
@@ -172,6 +180,10 @@ def read_leaf(buf: Buffer, classname: str) -> LeafRecord:
     if classname == "TLeafElement":
         buf.i32()  # which member of the class this is, which its name says too
         leaf.ltype = buf.i32()
+    elif classname in LIMITS:
+        read = getattr(buf, LIMITS[classname])
+        read()  # fMinimum, which nothing needs
+        leaf.maximum = read()
     buf.resume(end)
     return leaf
 

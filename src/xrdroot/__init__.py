@@ -36,7 +36,12 @@ generators in :mod:`xrdroot.random`. A :class:`Function` is ROOT's ``TF1``: a
 a fit, evaluated, differentiated and integrated over whole arrays, and
 ``h.fit("gaus")`` is ``TH1::Fit`` - ROOT's options, starting values and
 chi-squares, Minuit through iminuit - with :mod:`xrdroot.fit` beneath it and
-its :class:`FitResult` handed back. A saved ``TCanvas`` is a :class:`Canvas`
+its :class:`FitResult` handed back. :data:`gROOT` and :data:`gDirectory` are
+ROOT's session - the open files, where you are in them, a name looked up
+the way ROOT's prompt looks it up - for the shell ``xrdroot`` starts and the
+macros it runs, beside ``xrdroot ls``, ``dump``, ``diff`` and the rest of
+ROOT's command-line kit (``%load_ext xrdroot`` brings the prompt's commands
+into IPython). A saved ``TCanvas`` is a :class:`Canvas`
 of pads, each with what it drew and the option it drew it with, and
 ``c.save("c1.png")`` draws it as ROOT did.
 What it does not do is every ROOT class ever written: one whose layout the
@@ -50,9 +55,15 @@ histograms and graphs - read from another file, made by ``hist`` or
 :func:`numpy.histogram`, or built from plain numbers with
 :meth:`Histogram.new` and :meth:`Graph.new` - along with strings and arrays,
 in directories of their own if their names say so; and :func:`update` adds
-to a file that is already there. And both classes draw themselves:
-``.plot()`` onto matplotlib axes if matplotlib is there, ``.text()`` into
-characters with nothing installed at all.
+to a file that is already there. And everything drawable draws itself,
+with ROOT's options, defaults and colours: ``.plot()`` onto matplotlib
+axes, a plotly or a bokeh figure, or into characters with nothing installed
+at all, with :mod:`xrdroot.plot` for ratio plots, comparisons, stacks and
+experiments' styles - and a notebook shows each as its picture.
+
+:func:`merge` is ``hadd``: many files made into one, histograms added up and
+trees concatenated with their baskets copied across as they are; and
+:func:`copy` is ``rootcp``, or ``TTree::CopyTree`` given a cut.
 
 :mod:`xrdml` turns what comes out into tensors, if PyTorch or TensorFlow
 is there; it is a separate package that builds on this one.
@@ -60,7 +71,9 @@ is there; it is a separate package that builds on this one.
 
 from __future__ import annotations
 
-from . import fit, stats
+from typing import Any
+
+from . import fit, plot, stats
 from .canvas import Canvas
 from .chain import Chain, ChainedBranch, chain
 from .efficiency import Efficiency
@@ -72,10 +85,12 @@ from .formula import Formula, FormulaError, compile_formula
 from .function import Function
 from .graph import Graph
 from .hist import Axis, Histogram
+from .merging import Merged, MergeWarning, copy, merge
 from .profile import Profile
 from .random import TRandom3, gRandom
 from .rdf import EnableImplicitMT, RDataFrame, RunGraphs
 from .rntuple import RField, RNTuple, WritableRNTuple
+from .session import gDirectory, gROOT
 from .slicing import loc, overflow, rebin, underflow
 from .sparse import SparseHistogram
 from .stacks import MultiGraph, Stack
@@ -98,6 +113,11 @@ __all__ = [
     "WritableDirectory",
     "WritableTree",
     "WritableRNTuple",
+    # merging and copying, as hadd and rootcp do
+    "merge",
+    "copy",
+    "Merged",
+    "MergeWarning",
     # data
     "TTree",
     "Branch",
@@ -128,6 +148,8 @@ __all__ = [
     "overflow",
     # statistics
     "stats",
+    # drawing
+    "plot",
     # analysis
     "RDataFrame",
     "RunGraphs",
@@ -135,6 +157,9 @@ __all__ = [
     # random numbers
     "TRandom3",
     "gRandom",
+    # the session
+    "gROOT",
+    "gDirectory",
     # expressions
     "compile_formula",
     "Formula",
@@ -144,3 +169,10 @@ __all__ = [
     "FormatError",
     "UnsupportedFeatureError",
 ]
+
+
+def load_ipython_extension(ipython: Any) -> None:
+    """``%load_ext xrdroot``: ROOT's prompt commands, and ``%root_ls`` and friends, in IPython."""
+    from .cli.magics import load
+
+    load(ipython)

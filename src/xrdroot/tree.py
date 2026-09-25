@@ -675,6 +675,12 @@ class TTree(Drawable):
             f"and {self.num_entries} entries>"
         )
 
+    def _repr_html_(self) -> str:
+        """A notebook's table of the branches, read from the tree's header alone."""
+        from .plot.notebook import tree_table
+
+        return tree_table(self)
+
     def __len__(self) -> int:
         return self.num_entries
 

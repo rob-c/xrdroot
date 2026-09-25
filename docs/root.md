@@ -852,22 +852,140 @@ ROOT's binomial likelihood of an efficiency, is not here.
 
 ## Drawing
 
-ROOT draws through a `TCanvas`; one saved in a file draws as it was (see
-[Canvases](#canvases)). For everything else there are the two ways Python
-usually looks at data. `plot()` draws onto
-matplotlib axes — made on demand, or brought along — and returns them, so
-styling and saving carry on where it left off:
+ROOT draws on a `TCanvas`; one saved in a file draws as it was (see
+[Canvases](#canvases)). Everything else draws through the libraries Python
+already draws with — matplotlib, plotly and bokeh — or in plain characters, and everything drawn has the
+same `plot()`:
 
 ```python
-ax = f["h1d"].plot()  # steps for 1D, a shaded mesh for 2D
-f["tge"].plot(ax=ax, color="crimson")  # points with their error bars
-ax.figure.savefig("both.png")
+ax = f["h_pt"].plot()  # ROOT's default: HIST, or E once it keeps Sumw2
+f["h_pt_mc"].plot(option="HIST SAME", color="kRed+1", label="MC")
+ax.figure.savefig("pt.pdf")
+
+fig = f["h2"].plot(backend="plotly", option="LEGO2Z")  # turn it round in a notebook
+xrdroot.plot.set_backend("bokeh")  # from now on, unless a call says otherwise
+print(f["h_pt"].plot(backend="text"))  # a terminal, a log, a CI transcript
 ```
 
-matplotlib is not a dependency; `pip install xrdroot[plot]` brings it,
-and without it `plot()` refuses with both ways out by name. The other way is
-`text()`, which needs nothing installed at all and goes anywhere a string
-goes — a terminal, a log file, a CI transcript:
+`obj.plot(ax=None, backend=None, option="", **style)` is the same on a
+histogram, profile, efficiency, graph (plain, with errors, asymmetric or in
+layers), multigraph, stack and function, and `xrdroot.plot.plot(obj, ...)`
+is the same again. What comes back is the backend's own object — matplotlib
+`Axes`, a plotly `Figure`, a bokeh `figure`, a `str` — so styling, saving
+and laying out carry on with the library's own calls, and `ax=` draws onto
+one you already have. Only the text backend needs nothing installed;
+`pip install xrdroot[plot]`, `[plotly]`, `[bokeh]` and `[hep]` (mplhep)
+bring the others, and one that is missing is refused with the command that
+installs it.
+
+What is drawn does not change with the backend. The object becomes a
+picture first — its layers of steps, points, bands, curves and shaded
+cells, and the frame round them (`xrdroot.plot.picture(obj, option)` shows
+it) — and every backend draws that picture. The look is ROOT's, read off
+the object: `fLineColor`, `fFillStyle`, `fMarkerStyle` and the rest,
+through ROOT's own colour table (indices 0–50, the pretty palette, the
+Petroff sets and the colour wheel, `kRed+1` and all, to the bit) and its
+markers; a fit hung on a histogram or graph is drawn over it in its red, as
+ROOT draws it, unless the fit was made with option `0`.
+
+### Options
+
+Options are ROOT's, in any case and run together as ROOT takes them
+(`"E1SAME"`, `"colz"`). One this does not draw is refused by name with why,
+and so is one that means nothing for the object — `COLZ` on a 1-D
+histogram — rather than being quietly ignored.
+
+| ROOT | What it draws | Here |
+| --- | --- | --- |
+| *(none)*, 1-D | `HIST`, or `E` once `Sumw2` is kept; a profile `E` | same, with fits drawn |
+| *(none)*, 2-D | `COL` | `COLZ`: the colours need their scale |
+| *(none)*, graph | `ALP`, or the graph's `fOption` | same |
+| *(none)*, efficiency | `AP`, or `COLZ` in 2-D | same |
+| *(none)*, TF1 / TF2 | a line / `CONT3` lines | same, at `fNpx` (and `fNpy`) points |
+| `HIST` | the outline, and no fits | steps |
+| `E`, `E0`, `E1` | error bars; `E0` for empty bins too, `E1` with ticks | same; `X0` drops the x bars |
+| `E2` | error boxes | filled boxes and markers |
+| `E3`, `E4` | a band through the bars' ends, `E4` smoothed | same |
+| `P`, `*`, `L`, `C` | markers, stars, a line, a smooth line | same |
+| `B` | bars | same |
+| `TEXT`, `TEXTnn` | the values, at `nn` degrees | same |
+| `COL`, `COLZ` | shaded cells, with the scale | same; empty cells unpainted |
+| `BOX` | a box per cell, as big as its content | same |
+| `CONT`, `CONT0`–`CONT4` | filled bands; `CONT1`–`3` lines | same, `levels=` of them |
+| `LEGO`, `SURF` (and their numbers) | 3-D blocks, a surface | matplotlib 3-D axes, plotly surfaces; bokeh refuses |
+| 3-D histogram, `BOX`, `ISO` | boxes, iso-surfaces | plotly markers, isosurfaces; the others refuse |
+| `A`, `2`, `3`, `4`, `X`, `Z` (graphs) | axes, error boxes, bands, no bars, no ticks | same |
+| `SAME` | onto the current pad | onto what that backend last drew on |
+| `NORM` | scaled to a sum of one | same; refused for a profile's means |
+| `FUNC` | the fits alone | same |
+| `NOSTACK`, `NOSTACKB` (stacks) | overlaid, side by side | same |
+| `PLC`, `PMC`, `PFC` | colours from the palette | same, spread across it |
+| `LOGX`, `LOGY`, `LOGZ` | not options: set on the pad | `logx=True`, `logy=True`, `logz=True` |
+| `SCAT`, `ARR`, `PIE`, `POL`, `CYL`, `SPH`, `PSR`, `CANDLE`, `VIOLIN`, `TRI`, `SPEC`, `GL…`, `E5`, `E6`, `HBAR`, `PADS` | — | refused, each with why |
+
+### Style keywords
+
+`color`, `linewidth`, `linestyle`, `fill`, `alpha`, `hatch`, `marker`,
+`markersize`, `markercolor` and `label` restyle the marks — a colour may be
+ROOT's (`2`, `"kAzure-3"`) or any the backend knows, a marker ROOT's style
+number (`20`) or a shape; `title`, `xlabel`, `ylabel`, `zlabel`, `logx`,
+`logy`, `logz`, `xlim`, `ylim`, `legend` and `grid` set the frame;
+`palette` shades a grid (`"bird"`, ROOT's default, `"viridis"`, or a colour
+map of the backend's), and `levels` counts contours. Any other keyword is
+the backend's own and is handed to its call for the first layer, so
+`zorder=3` reaches matplotlib and `opacity=0.5` plotly.
+
+### Ratios, comparisons and stacks
+
+```python
+upper, lower = xrdroot.plot.ratio(data, mc, labels=["data", "MC"])  # TRatioPlot
+fig = xrdroot.plot.ratio(h, h.functions[0], "diffsig", backend="plotly")  # pulls
+ax = xrdroot.plot.compare([h_2016, h_2017, h_2018], norm=True)
+ax = xrdroot.plot.stack([ttbar, wjets, qcd], ["tt", "W+jets", "QCD"])
+data.plot(ax=ax, option="E SAME", label="data")
+```
+
+`ratio` is `TRatioPlot`: the two above, their ratio below on a shared x
+axis about a dashed line — `divsym` (the default) with the errors of both as
+`TH1::Divide` gives them, `pois` with the interval on a ratio of two counts
+as `TGraphAsymmErrors::Divide` gives it, `diff` and `diffsig`. Against a
+function it is the residuals or the pulls of a fit. matplotlib gives back
+the two axes, plotly one figure of two rows, bokeh a column of two figures.
+`compare` overlays several things in colours told apart — ROOT's ten
+Petroff colours unless told — with a legend; `stack` piles histograms as
+`THStack` does, each filled, the first at the bottom, and takes a stack's
+options (`NOSTACK`, `NOSTACKB`). A `THStack` read from a file draws itself
+the same way.
+
+### Styles and labels
+
+```python
+ax = h.plot(style="ROOT")  # built in: ROOT's ticks, frame and axis titles
+upper, lower = xrdroot.plot.ratio(data, mc, style="CMS")  # mplhep's
+xrdroot.plot.label(upper, "CMS", "Preliminary", lumi=138, energy=13)
+xrdroot.plot.use_style("ATLAS")  # every matplotlib plot from now on
+```
+
+`style="ROOT"` needs nothing installed and styles plotly and bokeh too;
+`"CMS"`, `"ATLAS"`, `"LHCb"`, `"ALICE"` and the rest are mplhep's, for
+matplotlib, and refused with the install command when mplhep is not there.
+`label` writes the experiment in bold, its text after it, and the
+luminosity and energy on the right, on whichever backend drew the plot.
+
+### Notebooks
+
+Left at the end of a Jupyter cell, a histogram, graph, profile, efficiency,
+stack or function shows as its picture — a small SVG, drawn on a figure
+pyplot never hears of so it is not shown twice, or plotly's HTML when
+plotly is the backend set. Showing never fails a cell: whatever goes wrong
+falls back to the picture in characters, and then to the `repr`. A tree, a
+chain, an RNTuple and a directory show as a table of their branches, files,
+fields or keys — names, types, entries, classes and cycles — made from
+what was read when they were opened, without reading a basket.
+
+### Characters
+
+`text()` is the plainest picture of all, and needs nothing:
 
 ```python
 print(f["h1d"].text())  # one line per bin: its edges, a bar and the value
@@ -875,9 +993,8 @@ print(f["h2d"].text())  # a shaded grid, y upward
 print(f["tge"].text())  # a grid of stars with the axis ends labelled
 ```
 
-A graph of layered error bars draws every layer over the same points; a
-three-dimensional histogram has no honest flat picture and refuses both ways,
-saying to slice `values()` down to the two dimensions you want to see.
+A 3-D histogram has no honest flat picture in characters or in
+matplotlib, and says to slice `values()` down or draw it with plotly.
 
 ## Canvases
 
@@ -913,26 +1030,23 @@ ROOT keeps them (`text["fTextSize"]`). The colours a canvas saved with it,
 its `ListOfColors` and palette, are used to draw it and kept out of
 `primitives`.
 
-**What is drawn**, and by what option:
+**What is drawn**, and by what option. The data — histograms, profiles,
+graphs, multigraphs, stacks and functions — is drawn as [Drawing](#drawing)
+draws it: the option the pad kept, read the same way, the same attributes
+read off the object, the same layers, onto the pad's axes. What a pad adds:
 
 | Class | Drawn as |
 | --- | --- |
-| a histogram, one dimension | `HIST` its outline, filled or hatched by its fill; `E`, `E0`, `E1` error bars with markers (`E1` with ends, `E0` on empty bins too); `E2` boxes, `E3`/`E4` a band; `P`, `*H` markers; `L`, `C` a line through the bins; `B`, `BAR` bars of `fBarWidth` at `fBarOffset`; `TEXT` the contents. A profile, or a histogram keeping its squared weights, draws error bars unasked, as ROOT does |
-| a histogram, two dimensions | `COL`, `COLZ` a colour mesh in the palette (ROOT 6's `kBird`, or the one saved), empty bins undrawn, `SetLogz` a logarithmic scale, and `Z` the colour scale where its `TPaletteAxis` was or in the right margin; `BOX`, `CONT`, `TEXT` |
-| a graph, multigraph | `A` the axes, `P`, `*` markers, `L`, `C` a line, error bars by default (`Z` without ends, `X` none), `2` boxes, `3`, `4` a band, `F` the area, `B` bars; each graph of a multigraph by its own option |
-| a stack | stacked, the top first so every fill shows; `NOSTACK` each by its own option |
-| a function | a line over its range, of `fNpx` points; a histogram's or graph's fits are drawn with it, but not after `HIST` |
+| data | onto the pad's frame, whose range, scales and titles are the pad's; a `COLZ` scale where its `TPaletteAxis` was, or in the pad's right margin; each graph of a multigraph by the option it was added with, and the multigraph's fits over them; in the colours and palette the canvas saved, when it saved any |
 | stats box | a saved `TPaveStats` with the lines it was saved with, a name on the left and its value on the right; a histogram saved without one, not drawn `SAME` nor told `kNoStats`, gets `gStyle`'s — its name, entries, mean and standard deviation (`SetOptStat(1111)`) |
 | title | the `title` pave a drawn pad saved; one saved undrawn gets its histogram's or graph's title at the top, as `gStyle` puts it |
 | `TText`, `TLatex` | at `fX`, `fY` in the axes' units or, `SetNDC`, the pad's fractions; `TLatex`'s `#` mathematics in matplotlib's mathtext — Greek letters and symbols, `^{}` and `_{}`, `#sqrt`, `#frac`, `#bar` and the other accents, `#it` and `#bf`, `#splitline` as two stacked lines; `#font`, `#color`, `#scale`, `#kern` and `#lower` keep their text and drop the adjustment |
 | `TLine`, `TArrow`, `TBox`, `TEllipse`, `TMarker` | as their attributes say; an arrow's head by its `fOption` (`"|>"`, `"<|>"`, `"->-"`...), an ellipse's slice by `fPhimin` and `fPhimax` |
 | `TPave`, `TPaveText`, `TPaveLabel`, `TLegend` | the box, its border and shadow (on the sides `fOption` names), and its lines stacked in it, or its entries in `fNColumns` columns, each a symbol — `l` line, `p` marker, `f` fill, `e` error bar, `h` a header — drawn in the style of the thing it stands for |
 
-Colours are ROOT's by index: the fifty named ones, the spectrum after them,
-the colour circles `kRed` to `kCyan` with their rings, `kGray`, and — only
-approximately, lightened or darkened from their base — the colour rectangles
-`kOrange` to `kPink`; a canvas saved with its colours draws in those. Line
-styles, marker styles and sizes, fill styles (hollow, solid, the 3000s as
+Colours are ROOT's by index, from the table [Drawing](#drawing) uses —
+ROOT's own, `kOrange` to `kPink` and all — and a canvas saved with its
+colours draws in those. Line styles, marker styles and sizes, fill styles (hollow, solid, the 3000s as
 hatches, the 4000s as transparency), fonts (family, italic, bold) and
 alignment are ROOT's numbers translated; a size is in pixels for a font of
 precision 3 and a fraction of the pad's shorter side otherwise, the figure
@@ -941,11 +1055,11 @@ Text left at size 0 in a pave or a legend is sized to fit, as ROOT sizes it.
 
 **What is left out**, with a warning naming every one: a class the file
 does not describe, or does but this does not draw — `TGaxis`, a `TButton`,
-anything of a GUI — a three-dimensional histogram, a function of two or
-three variables, and a function that cannot be evaluated here. A
-two-dimensional histogram drawn `LEGO`, `SURF` or with no option at all is
-drawn as `COL`, and a curve (`C`) with straight lines, matplotlib having no
-equivalent of either. Writing a canvas is not supported; reading one never
+anything of a GUI — a three-dimensional histogram, and a function that
+cannot be evaluated here. An option ROOT takes that is not drawn here
+(`SCAT`, `*H`, the `[]` of an asymmetric graph) is drawn as the object would
+be without it, and so is `LEGO` or `SURF`, a pad's axes being flat; each is
+said in the warning. Writing a canvas is not supported; reading one never
 stands in the way of writing what it drew.
 
 `xrdroot.canvas.render(obj, path)` saves a `Canvas`, a `Pad`, or the members
@@ -1809,6 +1923,141 @@ hundred sets of them — is [`xrddatasets`](https://github.com/rob-c/xrddatasets
 which is built on this package and publishes the catalogue those files are
 served from.
 
+## Merging and copying
+
+`merge` is ROOT's `hadd`, and `copy` is `rootcp` — or, given a cut,
+`TTree::CopyTree`. Neither needs ROOT, and both work on anything this
+library opens and writes, local or remote.
+
+```python
+import xrdroot
+
+xrdroot.merge("all.root", ["run1.root", "run2.root", "run3.root"])
+xrdroot.merge("all.root", paths, compression=505, force=True)    # hadd -f505
+xrdroot.copy("in.root", "out.root", ["hists/*", "events"])       # rootcp
+xrdroot.copy("in.root", "skim.root", "events", cut="nMuon >= 2",
+             columns=["nMuon", "Muon_pt"])                       # TTree::CopyTree
+```
+
+Every name in every input is merged with the same name in the others, the
+way ROOT's `TFileMerger` does it: directories are walked all the way down,
+empty ones kept, and a name only a later file holds is taken up too. The
+inputs are opened one at a time, in order, and closed before the next, so a
+thousand of them cost one open file and the histograms being added up. What
+comes back is a `Merged`: what became of each path, how many tree baskets
+went across as they were, were packed again or were left where they were, and
+how many entries were read and written the slow way.
+
+| What | Merged as | ROOT's |
+| --- | --- | --- |
+| `TH1`, `TH2`, `TH3` of every storage | bins, squares of weights, running sums and entries added; the same binning required | `TH1::Merge` |
+| `TProfile`, `TProfile2D`, `TProfile3D` | the sums of each bin, its weights and their squares added | `TProfile::Merge` |
+| `TEfficiency` | passed added to passed, total to total | `TEfficiency::Merge` |
+| `TGraph`, `TGraphErrors`, `TGraphAsymmErrors` | the points of each after the last's, error bars of the first graph's kind | `TGraph::Merge` |
+| `TMultiGraph` | the graphs of each after the last's | `TMultiGraph::Merge` |
+| `TTree`, `TNtuple` | every input's entries one after another; baskets copied as they are where they can be | `TTree::Merge` with `"fast"` |
+| `ROOT::RNTuple` | every input's entries one after another, read and written again | `RNTupleMerger` |
+| anything else — `TF1`, `TObjString`, a string, a class of your own | carried over from every input as it was, a cycle each, with a `MergeWarning` saying so once | the pass-through for a class with no `Merge` |
+
+Two histograms binned differently are refused by name rather than added bin
+by bin into the wrong bins — ROOT's extendable and labelled axes are not
+merged here — and so are two trees whose branches differ, two RNTuples whose
+fields do, or one name holding different classes in different files. The
+refusal names the object and the file, and a merge that raises leaves no
+output behind.
+
+Something ROOT does that is worth knowing: an object ROOT has no `Merge`
+for is not "kept from the first file" but written from *every* file that has
+it, one cycle each, and reading the name gives the last. This does the same.
+A multigraph's graphs keep their data but not the draw option each was added
+with, which the reader does not keep.
+
+### The fast way
+
+A tree is mostly its baskets, and a basket does not know which file it is
+in. So a merged tree's baskets are the inputs' baskets, read and written
+again byte for byte behind new keys, and only its `TTree` and `TBranch`
+records are new — with each branch's leaf made again as ROOT made it: the
+same leaf class, a counter of the same integer type, the largest count and
+the longest string its inputs had. Nothing is decompressed, let alone decoded.
+
+That needs every branch to be one this writer makes the same way: a number,
+a fixed run of them, a run counted by another branch, or a string, each a
+branch of one leaf. A basket goes across as it was when its input was
+compressed as the output is, or with `keep_compression` (`hadd -fk`), which is
+what leaving `compression` alone means; otherwise it is decompressed and
+compressed again, still without decoding an entry. ROOT writes every basket's
+key in its wide form so that a basket's table of entry offsets, which counts
+from the start of its key, never moves; a basket is copied in the width its
+key had for the same reason, and only one whose key has to grow — a
+small-keyed basket landing past 2 GB, or a tree copied under a longer name —
+has that table moved along, the basket unpacked for it and packed again.
+Baskets ROOT kept inside a branch's record become baskets of their own.
+
+A tree with a branch this writer does not make that way — a `TLeafG`, a
+packed `Float16_t`, an STL vector ROOT wrote as a `TBranchElement` — goes the
+slow way: its entries read a batch at a time and written through
+`WritableTree`, as the nearest thing this writer makes. What neither way can
+carry — a split object, a leaf list, an unreadable column — is refused by name.
+`fast=False` (`hadd -O`) sends every tree the slow way.
+
+Ten files of a million entries each — a float64, an int32, a bool and a
+jagged float32, 178 MB between them — merge in about 3 s the fast way, 6 s
+when every basket is packed again for another compression, and 31 s the slow
+way; the fast way is the time it takes to copy the bytes.
+
+### `hadd` flags
+
+The command line takes `hadd`'s flags as `hadd` spells them:
+`xrdroot merge [flags] TARGET SOURCES...`.
+
+| `hadd` | `xrdroot merge` | `xrdroot.merge(...)` |
+| --- | --- | --- |
+| `-f` | `-f` | `force=True` |
+| `-f505`, `-f[0-509]` | `-f505` | `compression=505` (or `"zstd"`, or `("zstd", 5)`) |
+| `-fk`, `-fk505` | `-fk`, `-fk505` | `keep_compression=True` |
+| `-ff` | `-ff` | `keep_compression=False`, `compression` left alone |
+| `-a` | `-a` | `append=True` |
+| `-k` | `-k` | `skip_errors=True` |
+| `-O` | `-O` | `fast=False` |
+| `-T` | `-T` | `trees=False` |
+| `-L FILE -Ltype SkipListed` | the same | `skip_keys=[...]` |
+| `-L FILE -Ltype OnlyListed` | the same | `only_keys=[...]` |
+| `-v LEVEL` | `-v LEVEL` | — |
+| `-j N`, `-n N` | taken and ignored | — |
+
+One default differs: with no `-f` setting `hadd` writes ROOT's 101, where this
+keeps the first input's setting and copies baskets as they are — `-f101` asks
+for `hadd`'s. `-j` is taken and ignored because the inputs are merged in one
+process, one at a time; `-n` because only one input is ever open. With `-a`
+what the output already holds is the first input: its trees' baskets are
+left where they are and pointed at, and each merged object is a new cycle of
+its name. `skip_keys` and `only_keys` take names, paths from the top of the
+file, or shell patterns of either; a directory named in `only_keys` is taken
+whole.
+
+### Copying
+
+`copy(source, destination, keys)` copies what `keys` names — everything at
+the top of the file, directories and all, when `None`; a path or shell
+pattern, or a list of them; or a mapping of each path to a new one. An object
+goes across as the very record it was, and the destination is made to
+describe its classes as the source did, so a class this library has no
+layout for reads back exactly as it read before. The destination is added to
+if it is there, and a name already in it becomes its next cycle; it can also
+be a directory of a file being written, which is left open.
+
+A tree goes across as its baskets. `columns` naming branches keeps the fast
+way — only those branches' baskets go, with the counters their runs need —
+while `cut`, or `columns` as a mapping of name to expression, reads the
+entries through the formula engine and writes only those that pass;
+`tree_filter`, given each tree's path, says which trees they apply to.
+
+On the command line, `xrdroot cp SOURCE... DEST` names what to take the way
+`rootcp` does, `file.root:path` with a shell pattern allowed, and `DEST` may
+be `out.root:directory`; `--cut`, `--columns a,b`, `-c 505` and `--recreate`
+are the rest.
+
 ## RNTuple
 
 RNTuple is ROOT 7's successor to the `TTree`: a column of plain values for
@@ -1907,6 +2156,118 @@ this writes is read back by uproot and by go-hep, which checks every checksum.
 Records, nested collections, variants and the lossy float encodings are not
 written: their layout is well defined, but a writer that gets one subtly wrong
 makes files ROOT misreads, and each is refused by name until it is here.
+
+## The shell and command-line tools
+
+`pip install` puts an `xrdroot` command on the path — `python -m xrdroot` is the
+same thing — and it is ROOT's prompt and ROOT's command-line kit at once, over
+any URL `open_root` takes: a local path, `root://`, `https://`, `s3://`.
+
+```console
+$ xrdroot events.root                   # root -l events.root: a prompt, with _file0
+$ xrdroot ls -t root://host//events.root
+$ xrdroot dump events.root:dir/h        # every bin, point and entry, as text
+$ xrdroot diff before.root after.root   # exit status 0 the same, 1 different
+$ xrdroot print events.root:h -o h.png  # or .pdf, .svg
+$ xrdroot scan events.root:Events "pt:eta" "pt > 30"
+$ xrdroot draw events.root:Events pt -o pt.png
+$ xrdroot info events.root              # version, compression, UUID, sizes, classes
+```
+
+A thing inside a file is `FILE:path`. A URL has colons of its own, so the
+path is split off at the last `.root` that a `:` follows —
+`root://host:1094//f.root:dir/h` is the file `root://host:1094//f.root` and
+the path `dir/h` — and a file whose name does not end in `.root` names its
+path with `-k` instead. A refusal is one line on standard error and exit
+status 2.
+
+| ROOT | here |
+| --- | --- |
+| `root -l f.root` | `xrdroot f.root` — `_file0`, `_file1`… as ROOT names them, and a `.py` among them run as a macro; `-q` leaves after |
+| `.ls`, `.pwd`, `.cd dir`, `.q` | the same, at the prompt: `print(gROOT.ls())`, `gROOT.cd("dir")`… |
+| `.x macro.C(1, 2)` | `.x macro.py(1, 2)` — or `gROOT.macro("macro.py", 1, 2)` — runs the file, then its function of the same name |
+| `gROOT`, `gDirectory`, `gFile` | `xrdroot.gROOT`, `xrdroot.gDirectory`; the file is `gROOT.cd()`'s answer, or `_file0` |
+| `TFile::Open(url)` | `gROOT.open(url)`, which goes into the file as ROOT's does |
+| `gROOT->Get("f.root:/dir/h")`, `FindObject("h")` | `gROOT.get("f.root:/dir/h")`, `gROOT["h"]` |
+| `TBrowser` | not provided: `xrdroot ls -t` for what a file holds, `dump` for what is in it, `print` or `.plot()` to see it |
+| `rootls -t -l` | `xrdroot ls -t -l` |
+| `rootprint`, `root-print` | `xrdroot print` |
+| `rootdiff`, `root-diff` | `xrdroot diff`, with `--atol`, `--rtol` and `-k` |
+| `root-dump` | `xrdroot dump`, with `-n` entries of each tree |
+| `TTree::Scan`, `TTree::Draw` | `xrdroot scan`, `xrdroot draw` |
+| `hadd`, `rootcp` | the `merge` and `cp` subcommands, where `xrdroot.merge` is installed |
+
+### The prompt
+
+`xrdroot` with no subcommand is a Python prompt — IPython if it is installed,
+the standard library's otherwise — holding everything `from xrdroot import *`
+brings, and NumPy as `np`. A line starting in its first column with one of
+ROOT's dot-commands is the Python it stands for; anything else is Python, so
+`h = _file0["h1d"]` and `.ls` sit side by side. `.help` lists the commands.
+
+```text
+$ xrdroot tests/data/dirs-6.14.00.root
+>>> .cd dir1/dir11
+>>> .ls
+TDirectoryFile*		dir11	tests/data/dirs-6.14.00.root:/dir1/dir11
+  KEY: TH1F	h1;1	h1
+>>> gDirectory["h1"].sum()
+5.0
+```
+
+In IPython or Jupyter, `%load_ext xrdroot` brings the same: the names, the
+dot-commands, `%root_ls [dir]`, `%root_open FILE` (the next `_fileN`), and a
+`%%root_macro` cell magic that runs its cell as `.x` runs a macro.
+
+### gROOT
+
+`gROOT` is ROOT's session made an object you can ask for — nothing else in the
+library looks at it, so a program that never imports it never has one.
+
+```python
+from xrdroot import gROOT, gDirectory
+
+f = gROOT.open("dirs.root")        # held open, and the session goes into it
+gROOT.cd("dir1/dir11")             # "..", "/dir2", "other.root:/dir" and a Directory work too
+gROOT.pwd()                        # 'dirs.root:/dir1/dir11'
+print(gROOT.ls())                  # ROOT's TFile** / KEY: listing
+gROOT["h1"]                        # here, then memory, then every open file
+gROOT.get("dirs.root:/dir1/dir11/h1")
+gROOT.add(Histogram.book("h", (10, 0, 1)))   # TH1::AddDirectory, said out loud
+gROOT.files                        # every file open in the process, open_root's too
+gROOT.close_all()                  # the files gROOT opened; open_root's are their opener's
+```
+
+A bare name is looked for where ROOT's `FindObject` looks: the current
+directory, then the objects `add` put in memory, then each open file in the
+order it was opened. `gDirectory` is whichever directory the session is in
+when it is used — the session itself at the top — rather than the one it was
+in when it was imported.
+
+### The subcommands
+
+`ls` is a line per key — class, name, title, cycle — walking directories all
+the way down; `-t` lists every tree's and RNTuple's columns with their types
+and entries, `-l` adds each record's bytes on disk and uncompressed, the ratio,
+its date and each column's baskets. `dump` writes every key out: a tree an
+entry and a column at a time, `[001][pt]: 42.5` as go-hep's `root-dump` does, a
+histogram every bin with its edges and error, a graph every point with its
+bars, a function its formula and parameters, anything else as it reads.
+`diff` compares names, classes and values — a histogram's edges, contents,
+errors and entries, a graph's points and bars, a tree column by column a batch
+at a time — and says the first difference in each; numbers are the same
+within `--atol` and `--rtol`, exactly unless told. `print` draws through
+`.plot()` and saves the figure in the format the file name ends in, a whole
+directory at once into `out_<path>.png` files, or prints the `.text()`
+picture without `-o`; a `TCanvas` is drawn by `xrdroot.canvas` where that is
+installed and refused by name where it is not. `info` is the header: the ROOT
+release, the seek width, the file's size, its compression in words, its UUID,
+where its free segments and class descriptions are, and every class it
+describes.
+
+Every subcommand is a module `xrdroot.cli.<name>` with an `add_parser(subparsers)`
+and a `run(args)`, named in the list `xrdroot.cli.COMMANDS`; adding one is
+writing the module and adding its name to that list.
 
 ## Compression
 

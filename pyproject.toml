@@ -31,8 +31,17 @@ dependencies = [
   "numpy>=1.22",
 ]
 
+# ``xrdroot`` is ROOT's prompt and its command-line kit: ``xrdroot f.root``
+# is ``root -l f.root``, and ``xrdroot ls``, ``dump``, ``diff``... the rest.
+[project.scripts]
+xrdroot = "xrdroot.cli:main"
+
 [project.optional-dependencies]
 plot = ["matplotlib>=3.5"]
+# The other two libraries plots are drawn with, and the experiments' styles.
+plotly = ["plotly>=5.11"]
+bokeh = ["bokeh>=3.1"]
+hep = ["mplhep>=0.3"]
 lz4 = ["lz4>=4", "xxhash>=3"]
 zstd = ["zstandard>=0.21"]
 # Minuit, for the fits that are not linear in their parameters: TH1::Fit's
@@ -45,6 +54,11 @@ dev = [
   "boost-histogram>=1.4",
   "hist>=2.7",
   "iminuit>=2.20",
+  # Every backend a picture is drawn with, so each is drawn with for real.
+  "matplotlib>=3.5",
+  "plotly>=5.11",
+  "bokeh>=3.1",
+  "mplhep>=0.3",
   "pandas>=1.5",
   "polars>=1",
   "pyarrow>=14",
@@ -136,6 +150,16 @@ ignore_missing_imports = true
 # back, and that is the same answer on every interpreter.
 [[tool.mypy.overrides]]
 module = ["xxhash", "xxhash.*", "compression", "compression.*"]
+ignore_missing_imports = true
+
+# plotly and mplhep ship no py.typed marker, and bokeh's modules use syntax
+# newer than the floor this is checked against. All three are reached only
+# inside the backend that draws with them, where everything they hand back
+# is the caller's to keep, so none is followed into.
+[[tool.mypy.overrides]]
+module = ["plotly", "plotly.*", "bokeh", "bokeh.*", "mplhep", "mplhep.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
 ignore_missing_imports = true
 
 # matplotlib drags numpy in, whose stubs use syntax newer than the floor this

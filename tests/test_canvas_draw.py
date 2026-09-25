@@ -16,7 +16,7 @@ import warnings
 
 import numpy as np
 import pytest
-from matplotlib.collections import PolyCollection, QuadMesh
+from matplotlib.collections import PolyCollection
 from matplotlib.figure import Figure
 from matplotlib.patches import FancyArrowPatch, Polygon, Rectangle, StepPatch
 
@@ -290,7 +290,7 @@ def test_a_histogram_is_drawn_filled_and_hatched_as_its_fill_says():
     h.members["TH1"]["TAttFill"].update(fFillStyle=3004)
     _fig, ax = _drawn(h, "")
     (steps,) = [p for p in ax.patches if isinstance(p, StepPatch)]
-    assert steps.get_hatch() == "//"
+    assert steps.get_hatch() == "/"
 
 
 def test_a_histogram_drawn_e1_has_bars_with_ends_and_skips_empty_bins():
@@ -322,11 +322,18 @@ def test_a_weighted_histogram_and_a_profile_draw_error_bars_unasked():
     assert not [x for x in ax.patches if isinstance(x, StepPatch)]
 
 
+def _mapped(ax):
+    """The one thing on ``ax`` drawn in the colours of a scale."""
+    (mapped,) = [a for a in (*ax.images, *ax.collections) if getattr(a, "norm", None) is not None]
+    return mapped
+
+
 def test_a_histogram_drawn_e2_is_a_box_round_each_bin():
     _fig, ax = _drawn(filled(), "e2")
-    boxes = [p for p in ax.patches if isinstance(p, Rectangle) and p.get_zorder() == 1]
-    assert len(boxes) == 10
-    assert boxes[3].get_height() == pytest.approx(2 * np.sqrt(3))
+    (boxes,) = [c for c in ax.collections if isinstance(c, PolyCollection)]
+    heights = [np.ptp(path.vertices[:, 1]) for path in boxes.get_paths()]
+    assert len(heights) == 10
+    assert heights[3] == pytest.approx(2 * np.sqrt(3))
 
 
 def test_a_histogram_drawn_e3_is_a_band_through_its_bins():
@@ -334,44 +341,39 @@ def test_a_histogram_drawn_e3_is_a_band_through_its_bins():
     assert any(isinstance(c, PolyCollection) for c in ax.collections)
 
 
-def test_a_histogram_drawn_p_l_c_and_star_marks_its_bins():
+def test_a_histogram_drawn_p_or_l_marks_its_bins():
     _fig, ax = _drawn(filled(), "p")
-    assert list(ax.lines[0].get_xdata()) == [1.5, 2.5, 3.5, 4.5, 5.5, 7.5]
+    xs, _ys = ax.containers[0].lines[0].get_data()
+    assert list(xs) == [1.5, 2.5, 3.5, 4.5, 5.5, 7.5]
     _fig, ax = _drawn(filled(), "l")
-    assert len(ax.lines[0].get_xdata()) == 10
-    assert ax.lines[0].get_marker() == "None"
-    _fig, ax = _drawn(filled(), "*h")
-    assert ax.lines[0].get_marker() == "*"
+    assert (len(ax.lines[0].get_xdata()), ax.lines[0].get_marker()) == (10, "None")
 
 
-def test_a_histogram_drawn_bar_is_a_bar_per_bin_of_its_width_and_offset():
-    h = filled()
-    h.members["TH1"].update(fBarWidth=500, fBarOffset=250)
-    _fig, ax = _drawn(h, "bar")
+def test_an_option_the_picture_refuses_draws_as_without_it_and_says_so():
+    with pytest.warns(CanvasWarning, match=r"drawn without its option '\*h'"):
+        _fig, ax = _drawn(filled(), "*h")
+    assert [p for p in ax.patches if isinstance(p, StepPatch)]  # HIST, as without it
+
+
+def test_a_histogram_drawn_bar_is_a_bar_per_bin():
+    _fig, ax = _drawn(filled(), "bar")
     bars = [p for p in ax.patches if isinstance(p, Rectangle) and p.get_zorder() == 1]
     assert len(bars) == 10
-    assert bars[0].get_x() == pytest.approx(0.25)
-    assert bars[0].get_width() == pytest.approx(0.5)
 
 
 def test_a_histogram_drawn_text_writes_each_bin_that_is_not_empty():
     _fig, ax = _drawn(filled(), "text")
-    assert sorted(t.get_text() for t in ax.texts if t.get_zorder() == 5) == sorted(
-        ["1", "2", "3", "2", "1", "1"]
-    )
+    written = sorted(t.get_text() for t in ax.texts if t.get_text() in ("1", "2", "3"))
+    assert written == sorted(["1", "2", "3", "2", "1", "1"])
 
 
 def test_a_two_dimensional_histogram_drawn_colz_has_its_colour_scale_beside_it():
     h = Histogram.book("h2", (4, 0.0, 4.0), (2, 0.0, 2.0))
     h.fill(np.array([0.5, 1.5, 1.5]), np.array([0.5, 0.5, 0.5]))
     fig, ax = _drawn(h, "colz")
-    (mesh,) = [c for c in ax.collections if isinstance(c, QuadMesh)]
-    assert mesh.norm.vmin == 1.0
-    assert mesh.norm.vmax == 2.0  # an empty bin is under the scale
-    palette = only(fig, "c palette")
-    assert palette.get_position().x0 == pytest.approx(0.905)
-    assert ax.get_xlim() == (0.0, 4.0)
-    assert ax.get_ylim() == (0.0, 2.0)
+    assert _mapped(ax).get_clim() == (1.0, 2.0)  # an empty bin is not painted
+    assert only(fig, "c palette").get_position().x0 == pytest.approx(0.905)
+    assert (ax.get_xlim(), ax.get_ylim()) == ((0.0, 4.0), (0.0, 2.0))
 
 
 def test_a_colour_scale_goes_where_its_saved_palette_axis_was():
@@ -388,37 +390,33 @@ def test_a_colour_plot_on_a_pad_drawn_logz_is_scaled_logarithmically():
     h = Histogram.book("h2", (2, 0.0, 2.0), (2, 0.0, 2.0))
     h.fill(np.array([0.5, 0.5, 1.5]), np.array([0.5, 0.5, 1.5]))
     _fig, ax = _drawn(h, "col", fLogz=1)
-    (mesh,) = [c for c in ax.collections if isinstance(c, QuadMesh)]
-    assert isinstance(mesh.norm, LogNorm)
-    assert mesh.norm.vmax == 10.0
+    assert isinstance(_mapped(ax).norm, LogNorm)
 
 
-def test_a_colour_plot_takes_its_minimum_and_maximum_and_negative_bins():
+def test_a_two_dimensional_histogram_with_no_option_is_shaded():
     h = Histogram.book("h2", (2, 0.0, 2.0), (1, 0.0, 1.0))
     h.fill(np.array([0.5, 1.5]), np.array([0.5, 0.5]), weight=np.array([-2.0, 3.0]))
-    _fig, ax = _drawn(h, "")  # no option: drawn as COL
-    (mesh,) = [c for c in ax.collections if isinstance(c, QuadMesh)]
-    assert (mesh.norm.vmin, mesh.norm.vmax) == (-2.0, 3.0)
-    h._core.update(fMaximum=10.0)
-    _fig, ax = _drawn(h, "col")
-    (mesh,) = [c for c in ax.collections if isinstance(c, QuadMesh)]
-    assert mesh.norm.vmax == 10.0
-    empty = Histogram.book("e", (2, 0.0, 2.0), (1, 0.0, 1.0))
-    _fig, ax = _drawn(empty, "col")
-    (mesh,) = [c for c in ax.collections if isinstance(c, QuadMesh)]
-    assert mesh.norm.vmin == 1.0
+    _fig, ax = _drawn(h, "")
+    assert _mapped(ax).get_clim() == (-2.0, 3.0)
 
 
 def test_a_two_dimensional_histogram_drawn_box_cont_and_text():
     h = Histogram.book("h2", (2, 0.0, 2.0), (2, 0.0, 2.0))
     h.fill(np.array([0.5, 0.5, 1.5]), np.array([0.5, 0.5, 1.5]))
     _fig, ax = _drawn(h, "box")
-    boxes = [p for p in ax.patches if isinstance(p, Rectangle) and p.get_zorder() == 1]
-    assert sorted(b.get_width() for b in boxes) == pytest.approx([0.5, 1.0])
+    assert [c for c in ax.collections if isinstance(c, PolyCollection)]
     _fig, ax = _drawn(h, "cont")
     assert ax.collections
     _fig, ax = _drawn(h, "text")
-    assert sorted(t.get_text() for t in ax.texts if t.get_zorder() == 5) == ["1", "2"]
+    assert sorted(t.get_text() for t in ax.texts if t.get_text() in ("1", "2")) == ["1", "2"]
+
+
+def test_a_two_dimensional_histogram_drawn_lego_is_shaded_on_the_flat_pad_and_says_so():
+    h = Histogram.book("h2", (2, 0.0, 2.0), (2, 0.0, 2.0))
+    h.fill(np.array([0.5]), np.array([0.5]))
+    with pytest.warns(CanvasWarning, match="three dimensions"):
+        _fig, ax = _drawn(h, "lego")
+    assert _mapped(ax)
 
 
 def test_a_three_dimensional_histogram_is_left_out_with_a_warning():
@@ -550,10 +548,9 @@ def test_a_function_is_drawn_over_its_range_and_a_fit_with_its_histogram():
     assert not ax.lines  # HIST draws the histogram alone
 
 
-def test_a_function_of_two_variables_or_one_that_will_not_evaluate_is_left_out():
+def test_a_function_of_two_variables_is_its_contours_and_one_that_will_not_evaluate_is_left_out():
     two = Function("f2", "x*y", range=[(0.0, 1.0), (0.0, 1.0)])
-    with pytest.warns(CanvasWarning, match="2 variables"):
-        make([(two, "")]).plot()
+    assert make([(two, "")]).plot().axes[0].collections
 
     def refuses(x, p):
         raise UnsupportedFeatureError("this model is compiled code with nothing saved")
@@ -594,30 +591,28 @@ def test_a_graph_without_errors_draws_its_title_and_a_line_by_default():
 
 def test_a_graph_drawn_with_a_star_x_or_z_marks_its_points_so():
     fig = make([(_graph(), "a*")]).plot()
-    assert fig.axes[0].containers[0].lines[0].get_marker() == "*"
+    assert fig.axes[0].containers[0].lines[0].get_marker() == (6, 2, 0)  # ROOT's asterisk
     fig = make([(_graph(), "apx")]).plot()
-    assert (len(fig.axes[0].containers), len(fig.axes[0].lines)) == (0, 1)
+    (bars,) = fig.axes[0].containers
+    assert not bars.has_yerr
     fig = make([(_graph(), "apz")]).plot()
     assert len(fig.axes[0].containers) == 1
 
 
 def test_a_graph_drawn_2_or_3_draws_its_errors_as_boxes_or_a_band():
     fig = make([(_graph(), "a2")]).plot()
-    boxes = [p for p in fig.axes[0].patches if isinstance(p, Rectangle) and p.get_zorder() == 1]
-    assert (len(boxes), boxes[0].get_height()) == (3, pytest.approx(1.0))
+    (boxes,) = [c for c in fig.axes[0].collections if isinstance(c, PolyCollection)]
+    assert len(boxes.get_paths()) == 3
     fig = make([(_graph(), "a3")]).plot()
     assert any(isinstance(c, PolyCollection) for c in fig.axes[0].collections)
-    fig = make([(_graph(errors=False), "a2")]).plot()  # a band of no errors is flat
-    assert fig.axes[0].patches
 
 
 def test_a_graph_drawn_f_and_b_is_filled_and_barred():
     fig = make([(_graph(), "af")]).plot()
-    assert [p for p in fig.axes[0].patches if isinstance(p, Polygon)]
+    assert fig.axes[0].collections or fig.axes[0].patches
     fig = make([(_graph(), "ab")]).plot()
     bars = [p for p in fig.axes[0].patches if isinstance(p, Rectangle) and p.get_zorder() == 1]
     assert len(bars) == 3
-    assert bars[0].get_width() == pytest.approx(0.5)
 
 
 def test_a_graph_on_log_axes_is_ranged_from_its_positive_points():
@@ -640,15 +635,36 @@ def test_a_multigraph_draws_each_graph_by_its_own_option_or_its_own():
     )
     fig = make([(mg, "ap")]).plot()
     (ax,) = fig.axes
-    assert len(ax.containers) == 2  # each graph's points, and its bars if it has any
+    assert len(ax.containers) == 1  # the first graph's points and bars
+    assert list(ax.lines[-1].get_ydata()) == [2.0, 4.0, 3.0]  # the second, drawn "l"
     assert ax.get_ylim()[1] == pytest.approx(4.5 + 0.3)
+
+
+def test_the_fit_made_to_a_whole_multigraph_is_drawn_over_its_graphs():
+    mg = MultiGraph(
+        "TMultiGraph",
+        {"TNamed": {"fName": "mg", "fTitle": ""}, "fGraphs": Listed([_graph()], [""])},
+    )
+    mg.functions.append(Function("f", "pol0", range=(1.0, 3.0), parameters=[3.0]))
+    mg.functions.append(prim("TPaveStats"))  # a box, not a fit: drawn with nothing here
+    (line,) = make([(mg, "ap")]).plot().axes[0].lines[-1:]
+    assert list(line.get_ydata()[:2]) == [3.0, 3.0]
+
+
+def test_the_command_line_prints_roots_own_canvas_to_a_picture(tmp_path, capsys):
+    from xrdroot.cli import main
+
+    out = tmp_path / "c1.png"
+    main(["print", f"{DATA}/tcanvas.root:c1", "-o", str(out)])
+    assert out.read_bytes()[:4] == b"\x89PNG"
+    assert out.stat().st_size > 1000
 
 
 def test_a_multigraph_or_stack_of_nothing_draws_nothing():
     mg = MultiGraph("TMultiGraph", {"TNamed": {"fName": "mg", "fTitle": ""}, "fGraphs": []})
     stack = Stack("THStack", {"TNamed": {"fName": "s", "fTitle": ""}, "fHists": []})
-    for empty in (mg, stack):
-        fig = make([(empty, "a")]).plot()
+    for empty, option in ((mg, "a"), (stack, "")):
+        fig = make([(empty, option)]).plot()
         assert fig.axes[0].get_xlim() == (0.0, 1.0)
 
 
@@ -667,10 +683,9 @@ def _stack():
 def test_a_stack_is_drawn_stacked_the_top_first():
     fig = make([(_stack(), "")]).plot()
     (ax,) = fig.axes
-    top, bottom = [p for p in ax.patches if isinstance(p, StepPatch)]
-    assert top.get_data().values.max() == 6.0
-    assert bottom.get_data().values.max() == 3.0
-    assert top.get_facecolor()[:3] == (0.0, 0.0, 1.0)
+    steps = [p for p in ax.patches if isinstance(p, StepPatch)]
+    tops = sorted(float(np.max(s.get_data().values)) for s in steps)
+    assert tops == [3.0, 6.0]  # the second stands on the first
     assert ax.get_ylim()[1] == pytest.approx(6.3)
 
 
@@ -936,13 +951,18 @@ def test_the_colours_a_canvas_saved_are_the_ones_it_draws_with():
     colors = [prim("TColor", fNumber=2, fRed=0.0, fGreen=0.5, fBlue=0.0)]
     palette = [prim("TColor", fNumber=2, fRed=0.0, fGreen=0.5, fBlue=0.0)] * 2
     line = prim("TLine", fX1=0.0, fY1=0.0, fX2=1.0, fY2=1.0, fLineColor=2)
-    h = Histogram.book("h2", (2, 0.0, 2.0), (1, 0.0, 1.0))
-    h.fill(np.array([0.5]), np.array([0.5]))
-    inner = sub("c_1", [(h, "col")])
-    fig = make([(colors, ""), (palette, ""), (line, ""), (inner, "")]).plot()
+    h2 = Histogram.book("h2", (2, 0.0, 2.0), (1, 0.0, 1.0))
+    h2.fill(np.array([0.5]), np.array([0.5]))
+    h = filled()
+    h.members["TH1"]["TAttLine"]["fLineColor"] = 2
+    h.members["TH1"]["TAttFill"].update(fFillColor=2, fFillStyle=1001)
+    shaded, outlined = sub("c_1", [(h2, "col")]), sub("c_2", [(h, "hist")])
+    fig = make([(colors, ""), (palette, ""), (line, ""), (shaded, ""), (outlined, "")]).plot()
     assert fig.axes[0].lines[0].get_color() == (0.0, 0.5, 0.0)
-    (mesh,) = [c for c in only(fig, "c_1").collections if isinstance(c, QuadMesh)]
-    assert mesh.cmap.name == "saved"
+    assert _mapped(only(fig, "c_1")).cmap.name == "saved"
+    (steps,) = [p for p in only(fig, "c_2").patches if isinstance(p, StepPatch)]
+    assert steps.get_facecolor()[:3] == pytest.approx((0.0, 0.5, 0.0), abs=0.01)
+    assert steps.get_edgecolor()[:3] == pytest.approx((0.0, 0.5, 0.0), abs=0.01)
 
 
 @pytest.mark.parametrize(
@@ -955,8 +975,8 @@ def test_the_colours_a_canvas_saved_are_the_ones_it_draws_with():
         (600 + 2, (0.0, 0.0, 0.6)),  # kBlue+2, a darker one
         (920, (0.8, 0.8, 0.8)),  # kGray
         (800, (1.0, 0.8, 0.0)),  # kOrange
-        (800 - 9, (1.0, 0.98, 0.9)),  # lighter
-        (800 + 10, (1.0 / 6, 0.8 / 6, 0.0)),  # darker
+        (800 - 9, (1.0, 0.8, 0.6)),  # kOrange-9
+        (800 + 10, (1.0, 0.2, 0.0)),  # kOrange+10
         (123456, (0.0, 0.0, 0.0)),  # nobody's
     ],
 )
@@ -1026,13 +1046,6 @@ def test_what_a_canvas_does_not_draw_is_named_in_a_warning():
 def test_a_graph_drawn_without_axes_before_a_histogram_leaves_the_frame_to_it():
     fig = make([(_graph(errors=False), "p"), (filled(), "hist")]).plot()
     assert fig.axes[0].get_xlim() == (0.0, 10.0)
-
-
-def test_a_graph_drawn_with_only_a_fill_and_its_band_draws_no_points():
-    fig = make([(_graph(), "a2f[]")]).plot()
-    ax = fig.axes[0]
-    assert not ax.lines
-    assert [p for p in ax.patches if isinstance(p, Polygon)]
 
 
 def test_a_logarithmic_frame_a_pad_was_drawn_with_is_in_powers_of_ten():

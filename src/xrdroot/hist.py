@@ -20,7 +20,8 @@ import numpy as np
 from . import arithmetic, compare, distribution, filling, fillrandom, moments, reshaping, slicing
 from .booking import AXIS_STYLE, FILL, LINE, MARKER, histogram_members
 from .booking import axis_members as _axis
-from .draw import axes, bar, missing_picture, shade
+from .display import Displayed
+from .draw import bar, missing_picture, shade
 from .errors import FormatError, UnsupportedFeatureError
 from .function.attached import listed
 from .interp import ARRAYS
@@ -218,7 +219,7 @@ def _moment_homes(row: dict[str, Any], found: dict[str, dict[str, Any]]) -> None
             _moment_homes(value, found)
 
 
-class Histogram:
+class Histogram(Displayed):
     """A histogram: its bins, what is in them, and the axes they lie on.
 
     Bins are counted the way Python counts, from zero and without the two
@@ -993,30 +994,6 @@ class Histogram:
     def _drop_sumw2(self) -> None:
         """``Sumw2(false)``: forget the squares, so each error is the root of its content."""
         self._core["fSumw2"] = np.zeros(0)
-
-    def plot(self, ax: Any = None, **options: Any) -> Any:
-        """Draw onto matplotlib axes, made fresh unless ``ax`` brings some.
-
-        One dimension draws as steps, two as a shaded mesh; three have no
-        flat picture and refuse rather than pretending. The axes come back,
-        so styling and saving carry on where this left off - and matplotlib
-        not being installed refuses with the two ways out by name.
-        """
-        if len(self.axes) > 2:
-            raise missing_picture("histogram", len(self.axes))
-        if ax is None:
-            ax = axes()
-        if len(self.axes) == 1:
-            ax.stairs(self.values(), self.edges(), **options)
-        else:
-            ax.pcolormesh(self.edges(0), self.edges(1), self.values().T, **options)
-        if self.title:
-            ax.set_title(self.title)
-        if self.axes[0].title:
-            ax.set_xlabel(self.axes[0].title)
-        if len(self.axes) > 1 and self.axes[1].title:
-            ax.set_ylabel(self.axes[1].title)
-        return ax
 
     def text(self, width: int = 60) -> str:
         """The histogram drawn with characters, for a terminal or a log file.

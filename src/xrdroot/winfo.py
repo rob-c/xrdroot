@@ -28,6 +28,11 @@ wrote as well. That ``TFormula`` is version 13, the last without
 ``fNumber``; ROOT 6.34 reads it. ``TF2`` and ``TF3`` have no donor here at
 all, so they are read - a file describes them - but not written.
 
+That ``TMultiGraph`` is the donor of its own class too: version 2, which
+holds nothing but a name and pointers - to the list of its graphs, its
+functions and the histogram it draws its axes on - so the graphs in it are
+described as ``graphs.root`` describes them.
+
 Eleven histogram classes - ``TH1C``, ``TH1S`` and ``TH1I``, the same three
 and ``TH2F`` in two dimensions, and the other four ``TH3`` classes - have no
 donor of that vintage here. Each is nothing but two bases, a ``TH1``, ``TH2``
@@ -469,6 +474,20 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
          48, 8, 0, 0, (0, 0, 0, 0, 0), 'double*', (4, 'fNpoints', 'TGraph')),
         ('TStreamerBasicPointer', 'fEYhigh', '[fNpoints] array of Y high errors',
          48, 8, 0, 0, (0, 0, 0, 0, 0), 'double*', (4, 'fNpoints', 'TGraph')),
+    )),
+    "TMultiGraph": (0xe0893cd5, 2, (
+        ('TStreamerBase', 'TNamed', 'The basis for a named object (name, title)',
+         67, 0, 0, 0, (0, -541636036, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerObjectPointer', 'fGraphs', 'Pointer to list of TGraphs',
+         64, 8, 0, 0, (0, 0, 0, 0, 0), 'TList*', ()),
+        ('TStreamerObjectPointer', 'fFunctions', 'Pointer to list of functions (fits and user)',
+         64, 8, 0, 0, (0, 0, 0, 0, 0), 'TList*', ()),
+        ('TStreamerObjectPointer', 'fHistogram', 'Pointer to histogram used for drawing axis',
+         64, 8, 0, 0, (0, 0, 0, 0, 0), 'TH1F*', ()),
+        ('TStreamerBasicType', 'fMaximum', 'Maximum value for plotting along y',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fMinimum', 'Minimum value for plotting along y',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
     )),
     "TTree": (0x58a396eb, 19, (
         ('TStreamerBase', 'TNamed', 'The basis for a named object (name, title)',

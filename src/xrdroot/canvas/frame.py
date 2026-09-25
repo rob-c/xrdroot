@@ -27,7 +27,7 @@ from ..hist import Histogram
 from ..stacks import MultiGraph, Stack
 from . import styles
 from .model import Pad, lookup
-from .options import histogram_option
+from .options import ERRORS, histogram_option
 from .scene import Scene
 
 __all__ = ["open_axes", "dress"]
@@ -86,7 +86,7 @@ def _histogram_extent(h: Histogram, option: str, log: bool) -> Extent:
     if len(h.axes) > 1:
         return axis.low, h.axes[1].low, axis.high, h.axes[1].high
     values = h.values()
-    if histogram_option(option) & {"E", "E0", "E1", "E2", "E3", "E4"} or h.weighted:
+    if histogram_option(option) & ERRORS or h.weighted:
         values = np.concatenate([values - h.errors(), values + h.errors()])
     low, high = _histogram_y(values, log)
     return axis.low, _limit(h, "fMinimum", low), axis.high, _limit(h, "fMaximum", high)

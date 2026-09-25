@@ -1,15 +1,16 @@
-"""ROOT's draw options, read the way ``THistPainter`` and ``TGraphPainter`` read them.
+"""The little of ROOT's draw options a pad needs to know before anything is drawn.
 
-An option is letters run together with no separator - ``"hist same"``,
-``"e1p"``, ``"colz"``, ``"alp"`` - and ROOT picks it apart by looking for
-the words it knows, the long ones first so that ``COLZ`` is not read as
-``COL`` and a stray ``Z``. The histogram's words and the graph's letters
-are different languages, so each has a reader of its own.
+What an option draws is :mod:`xrdroot.plot`'s to say. What a pad needs
+beforehand is less: whether something is drawn ``SAME``, over the frame
+another drew, and whether a histogram is drawn with its errors, which its
+frame then makes room for. An option is words run together with nothing
+between them - ``"hist same"``, ``"e1p"`` - found the long ones first, so
+that ``E1`` is not read as ``E`` and a stray ``1``.
 """
 
 from __future__ import annotations
 
-__all__ = ["graph_option", "histogram_option", "strip_same"]
+__all__ = ["ERRORS", "histogram_option", "strip_same"]
 
 #: The words of a histogram's option, the longer of any two that overlap first.
 HISTOGRAM_WORDS = (
@@ -20,10 +21,6 @@ HISTOGRAM_WORDS = (
 )  # fmt: skip
 #: The error-bar options of a histogram.
 ERRORS = frozenset({"E", "E0", "E1", "E2", "E3", "E4", "E5", "E6"})
-#: What a histogram can be drawn as, besides its outline.
-SHAPES = frozenset({"P", "P0", "L", "C", "B", "BAR", "*H", "TEXT"}) | ERRORS
-#: The pictures of a two-dimensional histogram this draws: each is itself.
-PICTURES_2D = frozenset({"COL", "COLZ", "BOX", "TEXT", "CONT", "CONTZ"})
 
 
 def strip_same(option: str) -> str:
@@ -42,19 +39,4 @@ def histogram_option(option: str) -> frozenset[str]:
         if word in rest:
             found.add(word)
             rest = rest.replace(word, " ")
-    return frozenset(found)
-
-
-def graph_option(option: str) -> frozenset[str]:
-    """The letters of a graph's draw option, with ``A`` for axes: ``"ap"`` is ``{"A", "P"}``.
-
-    A graph given no way of drawing its points - no line, curve, markers,
-    bars or fill - is drawn as a line through them, as ROOT draws one.
-    """
-    rest = strip_same(option).replace(" ", "")
-    found = {letter for letter in rest if letter in "ALCP*BFXZ12345"}
-    if "[]" in rest:
-        found.add("[]")
-    if not found & set("LCP*BF"):
-        found.add("L")
     return frozenset(found)
