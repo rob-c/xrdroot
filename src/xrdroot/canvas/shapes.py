@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 
+from . import styles
 from .latex import translate
 from .model import Primitive
 from .scene import Scene
@@ -24,6 +25,9 @@ __all__ = ["SHAPES", "draw_text"]
 ELLIPSE_POINTS = 181
 #: How long an arrow's head is when ``fArrowSize`` was never set, as a fraction of the pad.
 ARROW_SIZE = 0.05
+#: How much bigger than ``fArrowSize`` of the pad's height matplotlib's arrow must be
+#: scaled for its head to be as long as ``TArrow::PaintArrowNDC`` draws one.
+HEAD = 3.0
 
 
 def draw_text(scene: Scene, text: str, x: float, y: float, style: dict[str, Any], ndc: bool) -> Any:
@@ -101,7 +105,7 @@ def arrow(scene: Scene, prim: Primitive, _option: str) -> None:
         (xs[0], ys[0]),
         (xs[1], ys[1]),
         arrowstyle=_arrowstyle(str(prim.get("fOption", "|>"))),
-        mutation_scale=size * scene.pixels[1] * 0.5,
+        mutation_scale=styles.points(HEAD * size * scene.pixels[1]),
         transform=scene.where(prim.ndc),
         clip_on=False,
         zorder=scene.layer(),
@@ -161,7 +165,7 @@ def box(scene: Scene, prim: Primitive, _option: str) -> None:
             transform=scene.ax.transData,
             clip_on=False,
             zorder=scene.layer(),
-            **patch_style(scene, prim),
+            **patch_style(scene, prim, outline=scene.fill(prim) is None),
         )
     )
 
@@ -216,6 +220,82 @@ def marker(scene: Scene, prim: Primitive, _option: str) -> None:
     )
 
 
+def _points(prim: Primitive) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
+    """The ``fN`` points of a polyline or polymarker, ``fX`` and ``fY``."""
+    count = int(prim.get("fN", 0) or 0)
+    xs = np.asarray(_or_none(prim.get("fX")), dtype=float)[:count]
+    ys = np.asarray(_or_none(prim.get("fY")), dtype=float)[:count]
+    return xs, ys
+
+
+def _or_none(values: Any) -> Any:
+    return [] if values is None else values
+
+
+def polyline(scene: Scene, prim: Primitive, option: str) -> None:
+    """A ``TPolyLine``: its points joined, or an area when it is drawn with ``f``."""
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Polygon
+
+    xs, ys = _points(prim)
+    where = scene.where(prim.ndc)
+    if "F" in (str(prim.get("fOption", "")) + option).upper():
+        scene.ax.add_artist(
+            Polygon(
+                np.column_stack([xs, ys]),
+                closed=True,
+                transform=where,
+                clip_on=False,
+                zorder=scene.layer(),
+                **patch_style(scene, prim, outline=False),
+            )
+        )
+        return
+    scene.ax.add_artist(
+        Line2D(xs, ys, transform=where, clip_on=False, zorder=scene.layer(), **scene.line(prim))
+    )
+
+
+def polymarker(scene: Scene, prim: Primitive, _option: str) -> None:
+    """A ``TPolyMarker``: a marker at each of its points."""
+    from matplotlib.lines import Line2D
+
+    xs, ys = _points(prim)
+    scene.ax.add_artist(
+        Line2D(
+            xs,
+            ys,
+            linestyle="none",
+            transform=scene.where(prim.ndc),
+            clip_on=False,
+            zorder=scene.layer(),
+            **scene.marker(prim),
+        )
+    )
+
+
+def crown(scene: Scene, prim: Primitive, _option: str) -> None:
+    """A ``TCrown``: the ring between two radii, or the slice of it between two angles."""
+    from matplotlib.patches import Polygon
+
+    turn = np.radians(
+        np.linspace(float(prim.get("fPhimin", 0.0)), float(prim.get("fPhimax", 360.0)), 91)
+    )
+    inner, outer = float(prim.get("fR1", 0.0)), float(prim.get("fR2", 0.0))
+    xs = np.concatenate([outer * np.cos(turn), inner * np.cos(turn[::-1])])
+    ys = np.concatenate([outer * np.sin(turn), inner * np.sin(turn[::-1])])
+    scene.ax.add_artist(
+        Polygon(
+            np.column_stack([xs + float(prim.get("fX1", 0.0)), ys + float(prim.get("fY1", 0.0))]),
+            closed=True,
+            transform=scene.ax.transData,
+            clip_on=False,
+            zorder=scene.layer(),
+            **patch_style(scene, prim),
+        )
+    )
+
+
 #: How each of these classes draws.
 SHAPES = {
     "TText": text,
@@ -225,5 +305,9 @@ SHAPES = {
     "TBox": box,
     "TWbox": box,
     "TEllipse": ellipse,
+    "TArc": ellipse,
+    "TCrown": crown,
     "TMarker": marker,
+    "TPolyLine": polyline,
+    "TPolyMarker": polymarker,
 }

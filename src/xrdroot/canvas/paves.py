@@ -15,6 +15,7 @@ is done here the same way.
 
 from __future__ import annotations
 
+import functools
 import math
 from typing import Any
 
@@ -102,11 +103,39 @@ def pave(scene: Scene, prim: Primitive, _option: str) -> None:
     draw_box(scene, prim)
 
 
-def _fitted(scene: Scene, height: float, width: float, longest: int, fit: float) -> float:
+@functools.lru_cache(maxsize=4096)
+def _em_width(text: str, font: int) -> float:
+    """How wide ``text`` is drawn in ``font``, in units of its size, as matplotlib lays it out.
+
+    Text that matplotlib cannot lay out - mathematics it does not know - is
+    taken as :data:`CHARACTER` of its size per character.
+    """
+    from matplotlib.font_manager import FontProperties
+    from matplotlib.textpath import TextPath
+
+    family, style, weight, _pixels = styles.font(font)
+    shown = translate(text)
+    if not shown.strip():
+        return 0.0
+    prop = FontProperties(
+        family=family, style=style, weight=weight, math_fontfamily=styles.MATH[family]
+    )
+    try:
+        return float(TextPath((0, 0), shown, size=1, prop=prop).get_extents().width)
+    except ValueError:
+        return CHARACTER * len(text)
+
+
+def ems(texts: list[str], font: Any = 42) -> float:
+    """The widest of ``texts`` in ``font``, in units of its size."""
+    return max((_em_width(str(text), int(font or 42)) for text in texts), default=0.0)
+
+
+def _fitted(scene: Scene, height: float, width: float, longest: float, fit: float) -> float:
     """The pixels text sized to fit a line ``height`` by ``width`` of the pad takes."""
     size = fit * height * scene.pixels[1]
     if longest:
-        size = min(size, (1 - 2 * MARGIN) * width * scene.pixels[0] / (CHARACTER * longest))
+        size = min(size, (1 - 2 * MARGIN) * width * scene.pixels[0] / longest)
     return size
 
 
@@ -134,7 +163,8 @@ def draw_lines(
     if not texts:
         return
     step = (y2 - y1) / len(lines)
-    longest = max(len(str(line.get("fTitle", ""))) for line in texts)
+    font = lookup(holder, "fTextFont", 42)
+    longest = ems([str(line.get("fTitle", "")) for line in texts], font)
     fitted = _fitted(scene, step, x2 - x1, longest, FIT)
     for index, line in enumerate(lines):
         if line in texts:
@@ -171,7 +201,13 @@ def pave_label(scene: Scene, prim: Primitive, _option: str) -> None:
     """A ``TPaveLabel``: a box with one label in the middle of it."""
     x1, y1, x2, y2 = draw_box(scene, prim)
     label = str(prim.get("fLabel", ""))
-    style = scene.text(prim, None, styles.points(_fitted(scene, y2 - y1, x2 - x1, len(label), FIT)))
+    style = scene.text(
+        prim,
+        None,
+        styles.points(
+            _fitted(scene, y2 - y1, x2 - x1, ems([label], prim.get("fTextFont", 42)), FIT)
+        ),
+    )
     if float(prim.get("fTextSize", 0.0) or 0.0):
         style["fontsize"] = scene.text_points(prim.get("fTextSize"), prim.get("fTextFont", 42))
     style["ha"], style["va"] = "center", "center"
@@ -191,7 +227,7 @@ def columns(
     """
     x1, y1, x2, y2 = corners
     step = (y2 - y1) / max(len(rows), 1)
-    longest = max((len(left) + len(right) + 2 for left, right in rows), default=0)
+    longest = ems([f"{left}  {right}" for left, right in rows], lookup(holder, "fTextFont", 42))
     size = _line_size(scene, None, holder, _fitted(scene, step, x2 - x1, longest, FIT))
     for index, (left, right) in enumerate(rows):
         y = y2 - (index + 0.5) * step
@@ -296,7 +332,7 @@ def legend(scene: Scene, prim: Primitive, _option: str) -> None:
     rows = math.ceil(len(entries) / columns_)
     margin = float(prim.get("fMargin", 0.25) or 0.25)
     x1, y1, x2, y2 = corners
-    longest = max(len(str(entry.get("fLabel", ""))) for entry in entries)
+    longest = ems([str(entry.get("fLabel", "")) for entry in entries], prim.get("fTextFont", 42))
     fitted = _fitted(
         scene, (y2 - y1) / rows, (x2 - x1) * (1 - margin) / columns_, longest, LEGEND_FIT
     )
