@@ -3,9 +3,10 @@
 The strongest check is ROOT's own files. ``tefficiency.root`` and
 ``tprofile.root`` were made by go-hep's ``gen-teff.go`` and
 ``gen-tprofile.go``, ROOT macros that fill from ``gRandom`` - a ``TRandom3``
-at its default seed - and ``support.root_uniforms`` draws those same numbers
-bit for bit. So the macros can be run again here, entry for entry, and what
-comes out compared with what ROOT wrote: every bin, every square of weights,
+at its default seed - and ``xrdroot.random.TRandom3``, which
+``support.root_uniforms`` draws from, gives those same numbers bit for bit.
+So the macros can be run again here, entry for entry, and what comes out
+compared with what ROOT wrote: every bin, every square of weights,
 every running sum and the count of entries, to the last bit. Where no macro
 exists the expected numbers are worked out by hand from ROOT's source.
 """
