@@ -48,6 +48,7 @@ class TLatex(TText):
 
     classname = "TLatex"
     groups: ClassVar[tuple[str, ...]] = ("text", "line")
+    defaults: ClassVar[dict[str, Any]] = {"fLineWidth": 2}
 
     def DrawLatex(self, x: float, y: float, text: str) -> Any:
         return self._draw_at(x, y, text, False)
@@ -90,7 +91,7 @@ class TGaxis(Drawn):
         super().__init__(
             fX1=float(xmin), fY1=float(ymin), fX2=float(xmax), fY2=float(ymax),
             fNdiv=int(ndiv), fChopt=str(chopt), fGridLength=float(gridlength),
-            fLabelSize=0.04, fLabelFont=42, fLabelColor=1, fLabelOffset=0.005,
+            fLabelSize=0.04, fLabelFont=62, fLabelColor=1, fLabelOffset=0.005,
             fTitleSize=0.04, fTitleOffset=1.0, fTickSize=0.03, fMaxDigits=5,
             fFunctionName="", fWmin=0.0, fWmax=1.0,
         )  # fmt: skip

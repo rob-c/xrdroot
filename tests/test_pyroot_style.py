@@ -101,7 +101,7 @@ def test_a_palette_is_one_of_roots_by_number_or_name_or_one_of_ones_own():
 def test_tcolor_finds_a_colour_by_value_or_makes_it():
     assert ROOT.TColor.GetColor("#ff0000") == 2 and ROOT.TColor.GetColor(1.0, 0.0, 0.0) == 2
     made = ROOT.TColor.GetColor(10, 20, 30)
-    assert made == ROOT.TColor.GetFreeColorIndex() - 1
+    assert made == ROOT.TColor.GetFreeColorIndex() - 1 == 1179  # after kBird's, as in ROOT
     assert ROOT.TColor.GetColor(10, 20, 30) == made
     with pytest.raises(ValueError, match="'red' is not"):
         ROOT.TColor.GetColor("red")

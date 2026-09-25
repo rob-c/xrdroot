@@ -86,7 +86,7 @@ def _title(pad: Any, obj: Any) -> list[TPaveText]:
     pave.members.update(
         fName="title", fBorderSize=gStyle.GetTitleBorderSize(),
         fFillColor=gStyle.GetTitleFillColor(), fFillStyle=gStyle.GetTitleStyle(),
-        fTextFont=gStyle.GetTitleFont(""), fTextSize=size, fTextColor=gStyle.GetTitleTextColor(),
+        fTextFont=gStyle.GetTitleFont(""), fTextSize=0.0, fTextColor=gStyle.GetTitleTextColor(),
         fTextAlign=22,
     )  # fmt: skip
     pave.AddText(title)

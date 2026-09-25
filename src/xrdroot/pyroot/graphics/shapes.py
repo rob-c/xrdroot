@@ -70,6 +70,7 @@ class TArrow(TLine):
     ) -> None:  # fmt: skip
         super().__init__(x1, y1, x2, y2)
         self.members.update(fArrowSize=float(arrowsize), fOption=str(option), fAngle=60.0)
+        self.members.update(fFillColor=1, fFillStyle=1001)
 
     def SetOption(self, option: str = ">") -> None:
         self.members["fOption"] = str(option)

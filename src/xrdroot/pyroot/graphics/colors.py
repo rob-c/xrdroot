@@ -88,6 +88,9 @@ GRADIENTS: dict[int, tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]] =
 }  # fmt: skip
 #: The palette ``SetPalette(1)`` gives: ROOT's first, fifty colours from violet to red.
 PRETTY = list(range(51, 101))
+#: The last colour ROOT makes when it starts - the last of ``kBird``'s, which it
+#: lays at once - so that the first a macro makes is numbered as in ROOT.
+BUILT_IN = 1178
 #: How many colours one of ROOT's own palettes has.
 PALETTE_SIZE = 255
 
@@ -106,7 +109,7 @@ def rgb_of(index: int) -> RGB:
 
 def free_index() -> int:
     """``TColor::GetFreeColorIndex``: the first index above every colour there is."""
-    return max(max(COLORS), max(MADE, default=0)) + 1
+    return max(BUILT_IN, max(MADE, default=0)) + 1
 
 
 def _register(index: int, rgb: RGB, alpha: float = 1.0) -> int:
