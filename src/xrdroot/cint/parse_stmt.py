@@ -97,7 +97,7 @@ class StmtParser(ExprParser):
 
     def looks_declaration(self) -> bool:
         """Does a declaration start here - a type, a declarator's name, then what ends one?"""
-        return self.trial(self._declaration_head) is not None
+        return self.lookahead(self._declaration_head)
 
     def _declaration_head(self) -> bool:
         spec = self.specifiers()

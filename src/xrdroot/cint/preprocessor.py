@@ -57,6 +57,9 @@ PREDEFINED = f"""
 #define TESTBIT(n, i) ((bool)(((n) & BIT(i)) != 0))
 #define _R__UNIQUE_(X) X
 #define R__DEPRECATED(maj, min, reason)
+#define RQ_OBJECT(name)
+#define R__CLING_PTRCHECK(on)
+#define _QUOTE_(name) #name
 """
 
 #: The extensions a local file an ``#include`` names may be read from.

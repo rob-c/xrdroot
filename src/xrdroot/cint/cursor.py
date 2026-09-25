@@ -172,6 +172,13 @@ class Cursor:
             del self.variables[depth:]
             return None
 
+    def lookahead(self, parse: Callable[[], object]) -> bool:
+        """Does ``parse`` read from here? The cursor stays where it is either way."""
+        at, tokens, angle = self.at, self.tokens, self.angle
+        found = self.trial(parse) is not None
+        self.at, self.tokens, self.angle = at, tokens, angle
+        return found
+
     def split_shift(self) -> None:
         """Make a ``>>`` that closes two template argument lists into two ``>``."""
         token = self.peek()
