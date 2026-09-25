@@ -25,8 +25,12 @@ from typing import Any
 
 import numpy as np
 
+from .arithmetic import compatible
+from .booking import FILL, LINE, MARKER, split_title
 from .errors import FormatError, UnsupportedFeatureError
+from .filling import arrays, fill_histogram
 from .hist import Histogram
+from .moments import statistics as get_stats
 
 __all__ = ["EFFICIENCIES", "METHODS", "Efficiency", "beta_quantile", "regularized_beta"]
 
@@ -235,6 +239,61 @@ def _central(a: float, b: float, level: float) -> tuple[float, float]:
     return beta_quantile((1.0 - level) / 2.0, a, b), beta_quantile((1.0 + level) / 2.0, a, b)
 
 
+#: What a freshly made ``TEfficiency`` holds beside its histograms, as ROOT
+#: makes one: a flat Beta prior, ``kDefConfLevel`` - one Gaussian sigma, to
+#: the digits ROOT writes it with - Clopper-Pearson, a weight of one, and a
+#: fill colour of its own.
+DEFAULTS = {
+    "fBeta_alpha": 1.0,
+    "fBeta_beta": 1.0,
+    "fConfLevel": 0.682689492137,
+    "fStatisticOption": 0,
+    "fWeight": 1.0,
+}
+EFFICIENCY_FILL = {**FILL, "fFillColor": 19}
+
+#: The bits every freshly made object carries: on the heap, and not deleted.
+FRESH = 0x03000000
+
+
+def _suffixed(title: str, suffix: str) -> str:
+    """A title with ``suffix`` after its first part, before any axis titles."""
+    head, semicolon, rest = str(title).partition(";")
+    return head + suffix + semicolon + rest
+
+
+def _members(
+    name: str, title: str, passed: Histogram, total: Histogram, bits: int
+) -> dict[str, Any]:
+    """Every member of a ``TEfficiency`` holding ``passed`` and ``total``."""
+    return {
+        "TNamed": {"fName": str(name), "fTitle": str(title), "fBits": FRESH | bits},
+        "TAttLine": dict(LINE),
+        "TAttFill": dict(EFFICIENCY_FILL),
+        "TAttMarker": dict(MARKER),
+        **DEFAULTS,
+        "fBeta_bin_params": [],
+        "fFunctions": [],
+        "fPassedHistogram": passed,
+        "fTotalHistogram": total,
+    }
+
+
+def _same(one: float, other: float, tolerance: float) -> bool:
+    """``TMath::AreEqualRel``: equal to within a fraction of their size."""
+    return abs(one - other) <= 0.5 * tolerance * (abs(one) + abs(other))
+
+
+def _filled_with_weights(passed: Histogram, total: Histogram) -> bool:
+    """``TEfficiency::CheckWeights``: whether the sums of weights are not simply counts."""
+    if passed._sumw2() is None and total._sumw2() is None:
+        return False
+    tolerance = 1e-5 if total.classname == "TH1F" else 1e-12
+    return not all(
+        _same(found[0], found[1], tolerance) for found in (get_stats(passed), get_stats(total))
+    )
+
+
 class Efficiency:
     """A ``TEfficiency``: what passed, out of what was tried, bin by bin.
 
@@ -405,6 +464,96 @@ class Efficiency:
         values = self.values(flow, method)
         low, high = self.intervals(level, method, flow)
         return values - low, high - values
+
+    # -- booking and filling ----------------------------------------------------
+
+    @classmethod
+    def book(cls, name: str, *axes: Any, title: str = "") -> Efficiency:
+        """An empty efficiency of one, two or three axes, as ROOT's constructors make one.
+
+            >>> eff = Efficiency.book("trigger", (20, 0, 100))    # TEfficiency(..., 20, 0, 100)
+
+        The axes are given as :meth:`Histogram.book` takes them. The two
+        histograms are named and titled as ROOT names them - ``trigger_total``
+        and ``trigger_passed``, the title with `` (total)`` and `` (passed)``
+        after it - and the settings are ROOT's defaults: Clopper-Pearson at
+        one sigma, and a flat prior.
+        """
+        main, _titles = split_title(title)
+        total = Histogram.book(f"{name}_total", *axes, title=_suffixed(title, " (total)"))
+        passed = Histogram.book(f"{name}_passed", *axes, title=_suffixed(title, " (passed)"))
+        return cls("TEfficiency", _members(name, main, passed, total, 0))
+
+    @classmethod
+    def from_histograms(
+        cls, passed: Histogram, total: Histogram, name: str | None = None
+    ) -> Efficiency:
+        """``TEfficiency(passed, total)``: an efficiency from two histograms already filled.
+
+        They must be binned alike, and what passed can be no more than what
+        was tried in any bin, flow bins included - ROOT's ``CheckConsistency``.
+        Both are copied, and renamed after the efficiency, which is called
+        ``name`` or, as ROOT calls it, ``total``'s name with ``_clone`` after.
+        Histograms filled with weights make an efficiency that says so.
+        """
+        for histogram in (passed, total):
+            if not isinstance(histogram, Histogram) or histogram.kind != "COUNT":
+                raise TypeError(
+                    "an efficiency is made from two histograms of counts, what passed and what "
+                    f"was tried; a {type(histogram).__name__} of kind "
+                    f"{getattr(histogram, 'kind', None)!r} is not one"
+                )
+        compatible(passed, total)
+        over = int(np.count_nonzero(passed.values(flow=True) > total.values(flow=True)))
+        if over:
+            raise ValueError(
+                f"{passed.name!r} holds more than {total.name!r} in {over} bins, and what "
+                f"passed must be a part of what was tried, bin by bin, flow bins included"
+            )
+        called = name or f"{total.name}_clone"
+        bits = USE_WEIGHTS if _filled_with_weights(passed, total) else 0
+        members = _members(
+            called,
+            "efficiency",
+            passed.copy(f"{called}_passed"),
+            total.copy(f"{called}_total"),
+            bits,
+        )
+        return cls("TEfficiency", members)
+
+    def fill(
+        self, passed: Any, x: Any, y: Any = None, z: Any = None, *, weight: Any = None
+    ) -> None:
+        """``Fill`` - or ``FillWeighted``, given a weight - for every entry.
+
+            >>> eff.fill(fired, pt)                                   # doctest: +SKIP
+
+        ``passed`` says, entry by entry, whether it passed; every entry goes
+        into the total and the ones that passed into the passed histogram,
+        with ROOT's bookkeeping in both. A weight, even of one, is ROOT's
+        ``FillWeighted``: the efficiency is marked as weighted, and both
+        histograms keep the squares of their weights from then on.
+        """
+        given = [value for value in (x, y, z) if value is not None]
+        if len(given) != len(self.axes):
+            raise ValueError(
+                f"{self.name!r} has {len(self.axes)} axes, and filling it takes whether each "
+                f"entry passed and then one coordinate per axis, not {len(given)}"
+            )
+        flat, weights = arrays([passed, *given], weight)
+        if weight is not None:
+            self._use_weights()
+        chosen = flat[0] != 0
+        coordinates = flat[1:]
+        fill_histogram(self.total, coordinates, weights)
+        fill_histogram(self.passed, [value[chosen] for value in coordinates], weights[chosen])
+
+    def _use_weights(self) -> None:
+        """``SetUseWeightedEvents``: say so, and keep the squares of the weights in both."""
+        named = self.members["TNamed"]
+        named["fBits"] = int(named.get("fBits", FRESH)) | USE_WEIGHTS
+        self.total._ensure_sumw2()
+        self.passed._ensure_sumw2()
 
     def to_numpy(self, flow: bool = False) -> tuple[np.ndarray[Any, Any], ...]:
         """The efficiency and each axis's edges, the way :func:`numpy.histogram` gives them."""

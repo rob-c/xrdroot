@@ -1,22 +1,42 @@
 """What the classes this library writes look like, harvested rather than typed.
 
 Every entry here was read out of the streamer information ROOT itself wrote
-into the files under ``tests/data`` (``gauss-h1.root``, ``gauss-h2.root``,
-``graphs.root`` and ``small-flat-tree.root``, all written by ROOT 6.08), by
-``read_streamers`` - the same code that reads any other file. Three leaf
-classes no 6.08 donor happens to contain - ``TLeafO``, ``TLeafB`` and
-``TLeafS`` - come from ``leaves.root`` instead, which ROOT 6.28 wrote; the two
-vintages describe every leaf class they share identically down to the
-checksum, and differ only in comments nothing reads.
+into the files under ``tests/data``, by a walk of the same records
+``read_streamers`` reads. The tree, graph and collection classes come from
+``gauss-h1.root``, ``gauss-h2.root``, ``graphs.root`` and
+``small-flat-tree.root``, all written by ROOT 6.08; three leaf classes no 6.08
+donor happens to contain - ``TLeafO``, ``TLeafB`` and ``TLeafS`` - come from
+``leaves.root`` instead, which ROOT 6.28 wrote, and the two vintages describe
+every leaf class they share identically down to the checksum.
+
+The histogram family is one vintage newer. A profile, an efficiency and a
+three-dimensional histogram have no 6.08 donor here, and a ``TProfile`` built
+on one ``TH1D`` beside a ``TH1F`` built on another would be a file describing
+two different ``TH1`` classes by the one name. So all of it comes from files
+ROOT 6.22 and 6.24 wrote: ``TH1``, ``TH1D``, ``TH2``, ``TH2D``, ``TProfile``
+and ``TProfile2D`` from ``tprofile.root``, ``TH1F`` from ``tgme.root``,
+``TEfficiency`` from ``tconfidence-level.root``, and ``TH3``, ``TH3D``,
+``TAtt3D`` and ``TProfile3D`` from ``uproot-issue-227b.root``. That vintage
+adds ``fStatOverflows`` to the end of ``TH1``, where a reader of the older
+layout steps over it.
+
+Eleven histogram classes - ``TH1C``, ``TH1S`` and ``TH1I``, the same three
+and ``TH2F`` in two dimensions, and the other four ``TH3`` classes - have no
+donor of that vintage here. Each is nothing but two bases, a ``TH1``, ``TH2``
+or ``TH3`` and the ``TArray`` it keeps its bins in, so its elements are those
+bases exactly as the harvested classes carry them, and its checksum is what
+ROOT's ``TClass::GetCheckSum`` makes of them: the class name, then each base's
+name and checksum. That calculation reproduces every harvested checksum in
+this table, which the tests hold it to, and the seven of the eleven that
+ROOT's own streamer dump in go-hep contains come out as ROOT has them.
 
 Writing carries these descriptions back out verbatim, checksums and all, so a
 file written here says exactly what a ROOT of that vintage would say about the
 same classes, and anything reading it - ROOT, this library, or another - walks
 the bytes by the same map they were written from.
 
-Regenerate with ``gen_winfo.py`` against the donor files rather than editing:
-a hand-edited layout is a guess, and a guess about layout is how physics data
-gets misread.
+Regenerate from the donor files rather than editing: a hand-edited layout is a
+guess, and a guess about layout is how physics data gets misread.
 """
 
 from __future__ import annotations
@@ -35,55 +55,111 @@ SUBVERSIONS = {
     "TStreamerObject": 2,
     "TStreamerObjectAny": 2,
     "TStreamerObjectPointer": 2,
+    "TStreamerSTL": 3,
 }
 
 #: One element of one class: its ``TStreamerElement`` subclass, name, title,
 #: streamer type, size, array length, array dimensions, the five maximum
 #: indices, the type name, and whatever extra fields the subclass adds - the
-#: base class version for a ``TStreamerBase``, and the counter's version, name
-#: and class for a ``TStreamerBasicPointer``.
+#: base class version for a ``TStreamerBase``, the counter's version, name
+#: and class for a ``TStreamerBasicPointer``, and the kind of container and
+#: of what it holds for a ``TStreamerSTL``.
 Element = tuple[str, str, str, int, int, int, int, tuple[int, ...], str, tuple[object, ...]]
 
 #: Every class this library can write: its checksum, version and elements,
 #: exactly as the donor files describe them.
 INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
-    "TH1D": (0xf03880de, 2, (
+    "TH1C": (0x36f6e4ad, 3, (
         ('TStreamerBase', 'TH1', '1-Dim histogram base class',
-         0, 0, 0, 0, (0, 1063172259, 0, 0, 0), 'BASE', (7,)),
-        ('TStreamerBase', 'TArrayD', 'Array of doubles',
-         0, 0, 0, 0, (0, 1899622196, 0, 0, 0), 'BASE', (1,)),
+         0, 0, 0, 0, (0, 473383108, 0, 0, 0), 'BASE', (8,)),
+        ('TStreamerBase', 'TArrayC', 'Array of chars',
+         0, 0, 0, 0, (0, -1366845130, 0, 0, 0), 'BASE', (1,)),
     )),
-    "TH1F": (0xd91ac083, 2, (
+    "TH1S": (0x8c4d9dcb, 3, (
         ('TStreamerBase', 'TH1', '1-Dim histogram base class',
-         0, 0, 0, 0, (0, 1063172259, 0, 0, 0), 'BASE', (7,)),
+         0, 0, 0, 0, (0, 473383108, 0, 0, 0), 'BASE', (8,)),
+        ('TStreamerBase', 'TArrayS', 'Array of shorts',
+         0, 0, 0, 0, (0, 56398612, 0, 0, 0), 'BASE', (1,)),
+    )),
+    "TH1I": (0x627564f6, 3, (
+        ('TStreamerBase', 'TH1', '1-Dim histogram base class',
+         0, 0, 0, 0, (0, 473383108, 0, 0, 0), 'BASE', (8,)),
+        ('TStreamerBase', 'TArrayI', 'Array of ints',
+         0, 0, 0, 0, (0, -640323129, 0, 0, 0), 'BASE', (1,)),
+    )),
+    "TH1F": (0xe2939644, 3, (
+        ('TStreamerBase', 'TH1', '1-Dim histogram base class',
+         0, 0, 0, 0, (0, 473383108, 0, 0, 0), 'BASE', (8,)),
         ('TStreamerBase', 'TArrayF', 'Array of floats',
          0, 0, 0, 0, (0, 1510733553, 0, 0, 0), 'BASE', (1,)),
     )),
-    "TH2D": (0xc9d05875, 3, (
-        ('TStreamerBase', 'TH2', '2-Dim histogram base class',
-         0, 0, 0, 0, (0, -1959965212, 0, 0, 0), 'BASE', (4,)),
+    "TH1D": (0xf9b1569f, 3, (
+        ('TStreamerBase', 'TH1', '1-Dim histogram base class',
+         0, 0, 0, 0, (0, 473383108, 0, 0, 0), 'BASE', (8,)),
         ('TStreamerBase', 'TArrayD', 'Array of doubles',
          0, 0, 0, 0, (0, 1899622196, 0, 0, 0), 'BASE', (1,)),
     )),
-    "TH2F": (0xb2b2981a, 3, (
+    "TH2C": (0xbd0010fe, 4, (
         ('TStreamerBase', 'TH2', '2-Dim histogram base class',
-         0, 0, 0, 0, (0, -1959965212, 0, 0, 0), 'BASE', (4,)),
+         0, 0, 0, 0, (0, 25310335, 0, 0, 0), 'BASE', (5,)),
+        ('TStreamerBase', 'TArrayC', 'Array of chars',
+         0, 0, 0, 0, (0, -1366845130, 0, 0, 0), 'BASE', (1,)),
+    )),
+    "TH2S": (0x1256ca1c, 4, (
+        ('TStreamerBase', 'TH2', '2-Dim histogram base class',
+         0, 0, 0, 0, (0, 25310335, 0, 0, 0), 'BASE', (5,)),
+        ('TStreamerBase', 'TArrayS', 'Array of shorts',
+         0, 0, 0, 0, (0, 56398612, 0, 0, 0), 'BASE', (1,)),
+    )),
+    "TH2I": (0xe87e9147, 4, (
+        ('TStreamerBase', 'TH2', '2-Dim histogram base class',
+         0, 0, 0, 0, (0, 25310335, 0, 0, 0), 'BASE', (5,)),
+        ('TStreamerBase', 'TArrayI', 'Array of ints',
+         0, 0, 0, 0, (0, -640323129, 0, 0, 0), 'BASE', (1,)),
+    )),
+    "TH2F": (0x689cc295, 4, (
+        ('TStreamerBase', 'TH2', '2-Dim histogram base class',
+         0, 0, 0, 0, (0, 25310335, 0, 0, 0), 'BASE', (5,)),
         ('TStreamerBase', 'TArrayF', 'Array of floats',
          0, 0, 0, 0, (0, 1510733553, 0, 0, 0), 'BASE', (1,)),
     )),
-    "TH2": (0x8b2d4de4, 4, (
-        ('TStreamerBase', 'TH1', '1-Dim histogram base class',
-         0, 0, 0, 0, (0, 1063172259, 0, 0, 0), 'BASE', (7,)),
-        ('TStreamerBasicType', 'fScalefactor', 'Scale factor',
-         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
-        ('TStreamerBasicType', 'fTsumwy', 'Total Sum of weight*Y',
-         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
-        ('TStreamerBasicType', 'fTsumwy2', 'Total Sum of weight*Y*Y',
-         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
-        ('TStreamerBasicType', 'fTsumwxy', 'Total Sum of weight*X*Y',
-         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+    "TH2D": (0x7fba82f0, 4, (
+        ('TStreamerBase', 'TH2', '2-Dim histogram base class',
+         0, 0, 0, 0, (0, 25310335, 0, 0, 0), 'BASE', (5,)),
+        ('TStreamerBase', 'TArrayD', 'Array of doubles',
+         0, 0, 0, 0, (0, 1899622196, 0, 0, 0), 'BASE', (1,)),
     )),
-    "TH1": (0x3f5eb8a3, 7, (
+    "TH3C": (0xa1ff8d94, 4, (
+        ('TStreamerBase', 'TH3', '3-Dim histogram base class',
+         0, 0, 0, 0, (0, 1121076319, 0, 0, 0), 'BASE', (6,)),
+        ('TStreamerBase', 'TArrayC', 'Array of chars',
+         0, 0, 0, 0, (0, -1366845130, 0, 0, 0), 'BASE', (1,)),
+    )),
+    "TH3S": (0xf75646b2, 4, (
+        ('TStreamerBase', 'TH3', '3-Dim histogram base class',
+         0, 0, 0, 0, (0, 1121076319, 0, 0, 0), 'BASE', (6,)),
+        ('TStreamerBase', 'TArrayS', 'Array of shorts',
+         0, 0, 0, 0, (0, 56398612, 0, 0, 0), 'BASE', (1,)),
+    )),
+    "TH3I": (0xcd7e0ddd, 4, (
+        ('TStreamerBase', 'TH3', '3-Dim histogram base class',
+         0, 0, 0, 0, (0, 1121076319, 0, 0, 0), 'BASE', (6,)),
+        ('TStreamerBase', 'TArrayI', 'Array of ints',
+         0, 0, 0, 0, (0, -640323129, 0, 0, 0), 'BASE', (1,)),
+    )),
+    "TH3F": (0x4d9c3f2b, 4, (
+        ('TStreamerBase', 'TH3', '3-Dim histogram base class',
+         0, 0, 0, 0, (0, 1121076319, 0, 0, 0), 'BASE', (6,)),
+        ('TStreamerBase', 'TArrayF', 'Array of floats',
+         0, 0, 0, 0, (0, 1510733553, 0, 0, 0), 'BASE', (1,)),
+    )),
+    "TH3D": (0x64b9ff86, 4, (
+        ('TStreamerBase', 'TH3', '3-Dim histogram base class',
+         0, 0, 0, 0, (0, 1121076319, 0, 0, 0), 'BASE', (6,)),
+        ('TStreamerBase', 'TArrayD', 'Array of doubles',
+         0, 0, 0, 0, (0, 1899622196, 0, 0, 0), 'BASE', (1,)),
+    )),
+    "TH1": (0x1c3740c4, 8, (
         ('TStreamerBase', 'TNamed', 'The basis for a named object (name, title)',
          67, 0, 0, 0, (0, -541636036, 0, 0, 0), 'BASE', (1,)),
         ('TStreamerBase', 'TAttLine', 'Line attributes',
@@ -131,9 +207,133 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
         ('TStreamerBasicType', 'fBufferSize', 'fBuffer size',
          6, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
         ('TStreamerBasicPointer', 'fBuffer', '[fBufferSize] entry buffer',
-         48, 8, 0, 0, (0, 0, 0, 0, 0), 'double*', (7, 'fBufferSize', 'TH1')),
+         48, 8, 0, 0, (0, 0, 0, 0, 0), 'double*', (8, 'fBufferSize', 'TH1')),
         ('TStreamerBasicType', 'fBinStatErrOpt', 'option for bin statistical errors',
          3, 4, 0, 0, (0, 0, 0, 0, 0), 'TH1::EBinErrorOpt', ()),
+        ('TStreamerBasicType', 'fStatOverflows',
+         'per object flag to use under/overflows in statistics',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'TH1::EStatOverflows', ()),
+    )),
+    "TH2": (0x0182347f, 5, (
+        ('TStreamerBase', 'TH1', '1-Dim histogram base class',
+         0, 0, 0, 0, (0, 473383108, 0, 0, 0), 'BASE', (8,)),
+        ('TStreamerBasicType', 'fScalefactor', 'Scale factor',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwy', 'Total Sum of weight*Y',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwy2', 'Total Sum of weight*Y*Y',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwxy', 'Total Sum of weight*X*Y',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+    )),
+    "TH3": (0x42d2445f, 6, (
+        ('TStreamerBase', 'TH1', '1-Dim histogram base class',
+         0, 0, 0, 0, (0, 473383108, 0, 0, 0), 'BASE', (8,)),
+        ('TStreamerBase', 'TAtt3D', '3D attributes',
+         0, 0, 0, 0, (0, 30074, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerBasicType', 'fTsumwy', 'Total Sum of weight*Y',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwy2', 'Total Sum of weight*Y*Y',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwxy', 'Total Sum of weight*X*Y',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwz', 'Total Sum of weight*Z',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwz2', 'Total Sum of weight*Z*Z',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwxz', 'Total Sum of weight*X*Z',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwyz', 'Total Sum of weight*Y*Z',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+    )),
+    "TAtt3D": (0x0000757a, 1, (
+    )),
+    "TProfile": (0x4bedee54, 7, (
+        ('TStreamerBase', 'TH1D', '1-Dim histograms (one double per channel)',
+         0, 0, 0, 0, (0, -105818465, 0, 0, 0), 'BASE', (3,)),
+        ('TStreamerObjectAny', 'fBinEntries', 'number of entries per bin',
+         62, 24, 0, 0, (0, 0, 0, 0, 0), 'TArrayD', ()),
+        ('TStreamerBasicType', 'fErrorMode', 'Option to compute errors',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'EErrorType', ()),
+        ('TStreamerBasicType', 'fYmin', 'Lower limit in Y (if set)',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fYmax', 'Upper limit in Y (if set)',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwy', 'Total Sum of weight*Y',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwy2', 'Total Sum of weight*Y*Y',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerObjectAny', 'fBinSumw2', 'Array of sum of squares of weights per bin',
+         62, 24, 0, 0, (0, 0, 0, 0, 0), 'TArrayD', ()),
+    )),
+    "TProfile2D": (0x36a142ac, 8, (
+        ('TStreamerBase', 'TH2D', '2-Dim histograms (one double per channel)',
+         0, 0, 0, 0, (0, 2142929648, 0, 0, 0), 'BASE', (4,)),
+        ('TStreamerObjectAny', 'fBinEntries', 'number of entries per bin',
+         62, 24, 0, 0, (0, 0, 0, 0, 0), 'TArrayD', ()),
+        ('TStreamerBasicType', 'fErrorMode', 'Option to compute errors',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'EErrorType', ()),
+        ('TStreamerBasicType', 'fZmin', 'Lower limit in Z (if set)',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fZmax', 'Upper limit in Z (if set)',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwz', 'Total Sum of weight*Z',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwz2', 'Total Sum of weight*Z*Z',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerObjectAny', 'fBinSumw2', 'Array of sum of squares of weights per bin',
+         62, 24, 0, 0, (0, 0, 0, 0, 0), 'TArrayD', ()),
+    )),
+    "TProfile3D": (0xf60c6814, 8, (
+        ('TStreamerBase', 'TH3D', '3-Dim histograms (one double per channel)',
+         0, 0, 0, 0, (0, 1689911174, 0, 0, 0), 'BASE', (4,)),
+        ('TStreamerObjectAny', 'fBinEntries', 'number of entries per bin',
+         62, 24, 0, 0, (0, 0, 0, 0, 0), 'TArrayD', ()),
+        ('TStreamerBasicType', 'fErrorMode', 'Option to compute errors',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'EErrorType', ()),
+        ('TStreamerBasicType', 'fTmin', 'Lower limit in T (if set)',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTmax', 'Upper limit in T (if set)',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwt', 'Total Sum of weight*T',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fTsumwt2', 'Total Sum of weight*T*T',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerObjectAny', 'fBinSumw2', 'Array of sum of squares of weights per bin',
+         62, 24, 0, 0, (0, 0, 0, 0, 0), 'TArrayD', ()),
+    )),
+    "TEfficiency": (0x52931aeb, 2, (
+        ('TStreamerBase', 'TNamed', 'The basis for a named object (name, title)',
+         67, 0, 0, 0, (0, -541636036, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerBase', 'TAttLine', 'Line attributes',
+         0, 0, 0, 0, (0, -1811462839, 0, 0, 0), 'BASE', (2,)),
+        ('TStreamerBase', 'TAttFill', 'Fill area attributes',
+         0, 0, 0, 0, (0, -2545006, 0, 0, 0), 'BASE', (2,)),
+        ('TStreamerBase', 'TAttMarker', 'Marker attributes',
+         0, 0, 0, 0, (0, 689802220, 0, 0, 0), 'BASE', (2,)),
+        ('TStreamerBasicType', 'fBeta_alpha',
+         'global parameter for prior beta distribution (default = 1)',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fBeta_beta',
+         'global parameter for prior beta distribution (default = 1)',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerSTL', 'fBeta_bin_params',
+         'parameter for prior beta distribution different bin by bin',
+         500, 24, 0, 0, (0, 0, 0, 0, 0), 'vector<pair<double,double> >', (1, 61)),
+        ('TStreamerBasicType', 'fConfLevel', 'confidence level (default = 0.683, 1 sigma)',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerObjectPointer', 'fFunctions', '->pointer to list of functions',
+         63, 8, 0, 0, (0, 0, 0, 0, 0), 'TList*', ()),
+        ('TStreamerObjectPointer', 'fPassedHistogram',
+         'histogram for events which passed certain criteria',
+         64, 8, 0, 0, (0, 0, 0, 0, 0), 'TH1*', ()),
+        ('TStreamerBasicType', 'fStatisticOption',
+         'defines how the confidence intervals are determined',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'TEfficiency::EStatOption', ()),
+        ('TStreamerObjectPointer', 'fTotalHistogram', 'histogram for total number of events',
+         64, 8, 0, 0, (0, 0, 0, 0, 0), 'TH1*', ()),
+        ('TStreamerBasicType', 'fWeight', 'weight for all events (default = 1)',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
     )),
     "TGraph": (0x05f7f465, 4, (
         ('TStreamerBase', 'TNamed', 'The basis for a named object (name, title)',

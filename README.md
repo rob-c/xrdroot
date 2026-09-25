@@ -70,8 +70,9 @@ refusal.
 ## What it writes
 
 `xrdroot.create` makes a new ROOT file anywhere the client can put bytes:
-trees, histograms of one, two and three dimensions, graphs, strings and arrays
-of numbers, under every compression ROOT itself writes. Records go out as they
+trees, histograms of one, two and three dimensions in every storage ROOT has,
+profiles, efficiencies, graphs, strings and arrays of numbers, under every
+compression ROOT itself writes. Records go out as they
 are made, so a file far larger than memory is written in the memory of a
 basket per column.
 
@@ -91,6 +92,20 @@ A name with a `/` in it — `f["runs/4711/h_pt"]` — goes into ROOT directories
 made on the way; a file past 2 GB takes ROOT's wide layout as ROOT does; and
 `xrdroot.update` opens a file that is already there, ROOT's or anyone's, to
 add to it, leaving it byte for byte as it was if the `with` block fails.
+
+## Histograms to fill
+
+A histogram is also something to fill and compute with, the way ROOT's `TH1`
+is, with ROOT's bookkeeping to the last bit:
+
+```python
+h = xrdroot.Histogram.book("pt", (100, 0.0, 200.0))    # TH1D("pt", "", 100, 0, 200)
+h.fill(pt, weight=w)                                   # arrays, not one at a time
+h.mean(), h.std(), h.integral(), h.rebin(4), h / other
+```
+
+Profiles and efficiencies book and fill the same way, and the arithmetic,
+rebinning and projections are ROOT's, errors and all.
 
 ## Drawing
 

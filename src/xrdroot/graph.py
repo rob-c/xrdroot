@@ -14,8 +14,9 @@ import numpy as np
 from xrdclient._compat import zip_strict
 
 from .draw import axes
+from .efficiency import Efficiency
 from .errors import FormatError, UnsupportedFeatureError
-from .hist import FILL, LINE, MARKER
+from .hist import FILL, LINE, MARKER, Histogram
 
 __all__ = ["GRAPHS", "Graph"]
 
@@ -187,6 +188,38 @@ class Graph:
             return cls("TGraphErrors", _even_members(core, across, upward, zeros))
         return cls("TGraphAsymmErrors", _uneven_members(core, across, upward, zeros))
 
+    @classmethod
+    def from_histogram(cls, histogram: Any, name: str | None = None) -> Graph:
+        """A point per bin of a one-dimensional histogram, profile or efficiency.
+
+            >>> Graph.from_histogram(h)              # TGraphErrors(h)      # doctest: +SKIP
+            >>> Graph.from_histogram(eff)            # eff->CreateGraph()   # doctest: +SKIP
+
+        Each point is at its bin's centre, half a bin wide either way, as
+        ROOT's ``TGraphErrors(const TH1*)`` puts it: a histogram's or a
+        profile's height is its content and the bar its error. An
+        efficiency's is the efficiency, with the bars of its interval - so
+        the graph is a ``TGraphAsymmErrors`` - and a bin nothing was tried in
+        has no point at all, as ``TEfficiency::CreateGraph`` leaves it out.
+        """
+        if isinstance(histogram, Efficiency):
+            return _efficiency_graph(cls, histogram, name)
+        if not isinstance(histogram, Histogram) or len(histogram.axes) != 1:
+            raise ValueError(
+                "a graph is made from a histogram, profile or efficiency of one axis, a point "
+                f"per bin, and a {getattr(histogram, 'classname', type(histogram).__name__)} of "
+                f"{len(getattr(histogram, 'axes', ()))} axes is not one"
+            )
+        axis = histogram.axes[0]
+        return cls.new(
+            name or histogram.name,
+            axis.centers(),
+            histogram.values(),
+            title=histogram.title,
+            xerr=axis.widths() / 2,
+            yerr=histogram.errors(),
+        )
+
     def plot(self, ax: Any = None, **options: Any) -> Any:
         """Draw onto matplotlib axes, made fresh unless ``ax`` brings some.
 
@@ -274,6 +307,27 @@ def _even_sides(
             f"point, or a (low, high) pair of runs"
         )
     return (bars, bars, False)
+
+
+def _efficiency_graph(cls: type[Graph], efficiency: Efficiency, name: str | None) -> Graph:
+    """``TEfficiency::CreateGraph``: the bins anything was tried in, with their intervals."""
+    if len(efficiency.axes) != 1:
+        raise ValueError(
+            f"{efficiency.name!r} has {len(efficiency.axes)} axes, and a graph is made from an "
+            f"efficiency of one"
+        )
+    axis = efficiency.axes[0]
+    tried = efficiency.total.values() != 0
+    low, high = efficiency.errors()
+    half = axis.widths()[tried] / 2
+    return cls.new(
+        name or efficiency.name,
+        axis.centers()[tried],
+        efficiency.values()[tried],
+        title=efficiency.title,
+        xerr=(half, half),
+        yerr=(low[tried], high[tried]),
+    )
 
 
 def _graph_core(

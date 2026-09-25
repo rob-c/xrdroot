@@ -42,10 +42,12 @@ from xrdclient.url import parse
 
 from .buffer import BYTE_COUNT_MASK, IS_REFERENCED, NEW_CLASS_TAG
 from .compression import CODES, LEVELS, compress
+from .efficiency import EFFICIENCIES, Efficiency
 from .errors import UnsupportedFeatureError
 from .graph import GRAPHS, Graph
 from .hist import HISTOGRAMS, Histogram
-from .interp import ARRAYS, OFFSET_L, OFFSET_P
+from .interp import ARRAYS, MEMBER_WISE, OFFSET_L, OFFSET_P
+from .profile import PROFILES
 from .winfo import INFOS, SUBVERSIONS, WRITER_VERSION, Element
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
@@ -56,6 +58,9 @@ __all__ = ["create", "WritableFile", "WritableDirectory"]
 
 #: The bits a freshly made object carries: on the heap, and not deleted.
 BITS = 0x03000000
+#: ``TCollection::kUseRWLock``, which ROOT sets on the list of functions every
+#: histogram it makes carries.
+USE_RWLOCK = 1 << 16
 #: What every ROOT file starts with.
 MAGIC = b"root"
 #: Where the first record starts; the hundred bytes before it are the header.
@@ -128,6 +133,25 @@ ARRAY_CLASSES = {
 #: The lists this writer will write - empty, because what a list holds could
 #: be anything at all, and only nothing is nothing in every layout.
 LISTS = ("TList", "THashList")
+
+#: Members the layouts this writer carries have and an object read from an
+#: older file lacks, with what ROOT gives a freshly made object: a histogram
+#: from ROOT 6.08 keeps no ``fStatOverflows``, and ``kNeutral`` - follow the
+#: global setting, which leaves the flow out of the statistics - is ROOT's.
+DEFAULTS = {"fStatOverflows": 2}
+
+#: The one STL member of any class this writer carries: the prior a
+#: ``TEfficiency`` keeps bin by bin, a vector of pairs of doubles.
+PAIRS = "vector<pair<double,double> >"
+#: The record ROOT 6.24 writes that vector in: its version with the
+#: member-wise bit set, because the firsts and the seconds go in two blocks,
+#: and the checksum it gives ``pair<double,double>``, which has no version.
+PAIRS_VERSION = MEMBER_WISE | 9
+PAIR_CHECKSUM = 0xD7BED200
+
+#: The objects this writer writes by their members, and the classes they are.
+WRITABLE = (Histogram, Graph, Efficiency)
+OBJECTS = (*HISTOGRAMS, *PROFILES, *EFFICIENCIES, *GRAPHS)
 
 
 def packed_now() -> int:
@@ -233,10 +257,10 @@ class WBuffer:
         self.u32(unique)
         self.u32(bits & ~IS_REFERENCED)
 
-    def named(self, name: str, title: str) -> None:
+    def named(self, name: str, title: str, bits: int = BITS) -> None:
         """A ``TNamed`` base: a record holding the object bits and two strings."""
         index = self.start(1)
-        self.tobject()
+        self.tobject(bits)
         self.string(name)
         self.string(title)
         self.end(index)
@@ -378,7 +402,7 @@ def _array(buf: WBuffer, classname: str, values: Any) -> None:
     _numbers(buf, ARRAYS[classname].typecode, values)
 
 
-def _list(buf: WBuffer, classname: str, entries: Any) -> None:
+def _list(buf: WBuffer, classname: str, entries: Any, bits: int = BITS) -> None:
     """An empty ``TList``, which is the only list this writer will write."""
     if entries:
         raise UnsupportedFeatureError(
@@ -387,7 +411,7 @@ def _list(buf: WBuffer, classname: str, entries: Any) -> None:
             f"be worse than refusing; empty it first"
         )
     index = buf.start(5)
-    buf.tobject()
+    buf.tobject(bits)
     buf.string("")
     buf.i32(0)
     buf.end(index)
@@ -427,7 +451,7 @@ def _pointed(buf: WBuffer, typename: str, value: Any, used: dict[str, None]) -> 
         buf.u32(0)
         return
     classname = typename.rstrip("*")
-    if isinstance(value, (Histogram, Graph)):
+    if isinstance(value, WRITABLE):
         classname, value = value.classname, value.members
     elif isinstance(value, (list, tuple)):
         _list(buf, classname, value)  # non-empty here, so this refuses by name
@@ -439,12 +463,18 @@ def _pointed(buf: WBuffer, typename: str, value: Any, used: dict[str, None]) -> 
 def _element(buf: WBuffer, element: Element, row: dict[str, Any], used: dict[str, None]) -> None:
     """One member of one class, laid out exactly as its element describes."""
     _kind, name, _title, stype, _size, alen, _adim, _maxidx, typename, extras = element
-    value = row.get(name)
+    value = row.get(name, DEFAULTS.get(name))
     if _base_element(buf, name, stype, value, used):
+        return
+    if name == "fFunctions" and "fNcells" in row:  # a histogram's, which ROOT locks
+        _list(buf, "TList", value, BITS | USE_RWLOCK)
         return
     if _object_element(buf, stype, typename, value, used):
         return
     if _number_element(buf, name, stype, alen, extras, value, row):
+        return
+    if stype == 500 and typename == PAIRS:
+        _pairs(buf, value)
         return
     raise UnsupportedFeatureError(
         f"{name} is of streamer type {stype}, which this writer does not lay out"
@@ -465,6 +495,23 @@ def _base_element(buf: WBuffer, name: str, stype: int, value: Any, used: dict[st
     return True
 
 
+def _pairs(buf: WBuffer, value: Any) -> None:
+    """A vector of pairs of doubles, the way ROOT writes one inside an object.
+
+    Member-wise, as every container of pairs is: the record, the checksum
+    standing in for the pair's missing version, the count, and then every
+    first followed by every second.
+    """
+    pairs = np.asarray(value if value is not None else (), dtype=np.float64).reshape(-1, 2)
+    index = buf.start(PAIRS_VERSION)
+    buf.i16(0)
+    buf.u32(PAIR_CHECKSUM)
+    buf.u32(len(pairs))
+    _numbers(buf, "d", pairs[:, 0])
+    _numbers(buf, "d", pairs[:, 1])
+    buf.end(index)
+
+
 def _write_tobject(buf: WBuffer, value: Any) -> None:
     bits = value if isinstance(value, dict) else {}
     buf.tobject(int(bits.get("fBits", BITS)), int(bits.get("fUniqueID", 0)))
@@ -472,7 +519,9 @@ def _write_tobject(buf: WBuffer, value: Any) -> None:
 
 def _write_tnamed(buf: WBuffer, value: Any) -> None:
     named = value if isinstance(value, dict) else {}
-    buf.named(str(named.get("fName", "")), str(named.get("fTitle", "")))
+    # The bits go out as they came in: a TEfficiency keeps its settings there.
+    bits = int(named.get("fBits", BITS))
+    buf.named(str(named.get("fName", "")), str(named.get("fTitle", "")), bits)
 
 
 def _write_base(buf: WBuffer, name: str, value: Any, used: dict[str, None]) -> None:
@@ -516,19 +565,29 @@ def _number_element(
             raise ValueError(f"{name} holds {len(values)} values where {alen} were declared")
         _numbers(buf, FORMS[stype - OFFSET_L], values)
     elif stype - OFFSET_P in FORMS:  # a counted array, x[n], behind its marker
-        counter = str(extras[1])
-        try:
-            count = int(_find(row, counter))
-        except KeyError:
-            raise ValueError(f"{name} is counted by {counter}, which is not here") from None
-        values = list(value if value is not None else ())
-        if len(values) < count:
-            raise ValueError(f"{name} holds {len(values)} values where {counter} says {count}")
-        buf.u8(1)
-        _numbers(buf, FORMS[stype - OFFSET_P], values[:count])
+        _counted(buf, name, FORMS[stype - OFFSET_P], str(extras[1]), value, row)
     else:
         return False
     return True
+
+
+def _counted(
+    buf: WBuffer, name: str, form: str, counter: str, value: Any, row: dict[str, Any]
+) -> None:
+    """A counted array, ``x[n]``: the marker a pointer carries, then ``n`` values.
+
+    ROOT marks a null pointer with a zero, and the pointer of an array of
+    nothing is null, so an empty one is marked that way too.
+    """
+    try:
+        count = int(_find(row, counter))
+    except KeyError:
+        raise ValueError(f"{name} is counted by {counter}, which is not here") from None
+    values = list(value if value is not None else ())
+    if len(values) < count:
+        raise ValueError(f"{name} holds {len(values)} values where {counter} says {count}")
+    buf.u8(1 if count else 0)
+    _numbers(buf, form, values[:count])
 
 
 def _closure(seeds: dict[str, None]) -> list[str]:
@@ -622,6 +681,9 @@ def _info_element(buf: WBuffer, element: Element) -> None:
         buf.i32(int(str(extras[0])))
         buf.string(str(extras[1]))
         buf.string(str(extras[2]))
+    elif kind == "TStreamerSTL":
+        buf.i32(int(str(extras[0])))
+        buf.i32(int(str(extras[1])))
     buf.end(sub)
     buf.end(tag)
 
@@ -632,13 +694,14 @@ def _payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]]:
         return _string_payload(obj)
     if isinstance(obj, (array.array, np.ndarray)):
         return _array_payload(obj)
-    if isinstance(obj, (Histogram, Graph)):
+    if isinstance(obj, WRITABLE):
         return _object_payload(obj)
     if Histogram.recognises(obj):
         return _object_payload(Histogram.of(obj))
     raise UnsupportedFeatureError(
         f"a {type(obj).__name__} is not something this writer puts in a ROOT "
-        f"file: it takes a Histogram, a Graph, any histogram that speaks the "
+        f"file: it takes a Histogram, a Profile, an Efficiency, a Graph, any "
+        f"histogram that speaks the "
         f"plotting protocol (hist, boost-histogram), a (values, edges) pair "
         f"from numpy.histogram, a str, or a one-dimensional array of numbers"
     )
@@ -684,10 +747,10 @@ def _array_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
     return classname, bytes(buf.data), ()
 
 
-def _object_payload(value: Histogram | Graph) -> tuple[str, bytes, tuple[str, ...]]:
+def _object_payload(value: Histogram | Graph | Efficiency) -> tuple[str, bytes, tuple[str, ...]]:
     classname = value.classname
     if classname not in INFOS:
-        writable = ", ".join(name for name in INFOS if name in HISTOGRAMS or name in GRAPHS)
+        writable = ", ".join(name for name in INFOS if name in OBJECTS)
         raise UnsupportedFeatureError(
             f"a {classname} is not a class this writer carries a layout for; "
             f"the ones it does are {writable}"
@@ -883,7 +946,7 @@ class WritableDirectory:
             return
         classname, payload, used = _payload(obj)
         if title is None:
-            title = obj.title if isinstance(obj, (Histogram, Graph)) else ""
+            title = obj.title if isinstance(obj, WRITABLE) else ""
         _checked(title, "title")
         self._file._used.update(dict.fromkeys(used))
         self._put(classname, name, title, payload, self._next_cycle(name), listed=True)

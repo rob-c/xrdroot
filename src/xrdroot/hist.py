@@ -12,56 +12,23 @@ from __future__ import annotations
 
 import array
 import math
+from collections.abc import Iterable
 from typing import Any, NamedTuple
 
 import numpy as np
 
+from . import arithmetic, filling, moments, reshaping
+from .booking import AXIS_STYLE, FILL, LINE, MARKER, histogram_members
+from .booking import axis_members as _axis
 from .draw import axes, bar, missing_picture, shade
 from .errors import FormatError, UnsupportedFeatureError
+from .interp import ARRAYS
 
-__all__ = ["HISTOGRAMS", "Axis", "Histogram", "Traits"]
+__all__ = ["AXIS_STYLE", "FILL", "HISTOGRAMS", "LINE", "MARKER", "Axis", "Histogram", "Traits"]
 
 #: The histogram classes this reads: one, two and three dimensions, in each of
 #: the types ROOT keeps bin contents in.
 HISTOGRAMS = tuple(f"TH{dimension}{kind}" for dimension in (1, 2, 3) for kind in "CSILFD")
-
-#: What a freshly made object draws like: ROOT's own defaults, spelled out.
-LINE = {"fLineColor": 1, "fLineStyle": 1, "fLineWidth": 1}
-FILL = {"fFillColor": 0, "fFillStyle": 1001}
-MARKER = {"fMarkerColor": 1, "fMarkerStyle": 1, "fMarkerSize": 1.0}
-AXIS_STYLE = {
-    "fNdivisions": 510,
-    "fAxisColor": 1,
-    "fLabelColor": 1,
-    "fLabelFont": 42,
-    "fLabelOffset": 0.005,
-    "fLabelSize": 0.035,
-    "fTickLength": 0.03,
-    "fTitleOffset": 1.0,
-    "fTitleSize": 0.035,
-    "fTitleColor": 1,
-    "fTitleFont": 42,
-}
-
-
-def _axis(name: str, nbins: int, low: float, high: float, edges: Any) -> dict[str, Any]:
-    """The members of one freshly made ``TAxis``."""
-    return {
-        "TNamed": {"fName": name, "fTitle": ""},
-        "TAttAxis": dict(AXIS_STYLE),
-        "fNbins": nbins,
-        "fXmin": low,
-        "fXmax": high,
-        "fXbins": np.asarray(edges, dtype=np.float64),
-        "fFirst": 0,
-        "fLast": 0,
-        "fBits2": 0,
-        "fTimeDisplay": False,
-        "fTimeFormat": "",
-        "fLabels": None,
-        "fModLabs": None,
-    }
-
 
 class Traits(NamedTuple):
     """What kind of axis this is, in the words the plotting libraries ask in.
@@ -140,6 +107,53 @@ class Axis:
         width = (self.high - self.low) / self.nbins
         return np.append(self.low + width * np.arange(self.nbins), self.high)
 
+    @property
+    def even(self) -> bool:
+        """Is it evenly binned - ROOT's fixed binning, which keeps only its ends?"""
+        return len(self._edges) != self.nbins + 1
+
+    def find_bin(self, x: Any) -> np.ndarray[Any, Any]:
+        """ROOT's bin number for each ``x``, as ``TAxis::FindBin`` gives it.
+
+        Zero is the underflow and ``nbins + 1`` the overflow, which takes the
+        upper edge of the last bin and a NaN too. An even axis works the bin
+        out as ROOT does, ``1 + int(nbins * (x - low) / (high - low))``, which
+        is not always the bin a search of the edges would find a hair from an
+        edge; an uneven one searches its edges, as ROOT does.
+        """
+        x = np.asarray(x, dtype=np.float64)
+        found = np.full(x.shape, self.nbins + 1, dtype=np.int64)
+        found[x < self.low] = 0
+        inside = (x >= self.low) & (x < self.high)
+        if self.even:
+            step = self.nbins * (x[inside] - self.low) / (self.high - self.low)
+            found[inside] = 1 + step.astype(np.int64)
+        else:
+            found[inside] = np.searchsorted(self.edges(), x[inside], side="right")
+        return found
+
+    def root_centers(self) -> np.ndarray[Any, Any]:
+        """``TAxis::GetBinCenter`` of every bin, the two flow bins included.
+
+        The statistics ROOT works out from bins are worked out from these, so
+        they are ROOT's doubles: ``low + (bin - 1) * width + width / 2`` on an
+        even axis, and the low edge plus half the width on an uneven one - but
+        for the flow bins, which take the even formula whatever the axis.
+        """
+        width = (self.high - self.low) / self.nbins
+        found = self.low + (np.arange(self.nbins + 2) - 1) * width + 0.5 * width
+        if not self.even:
+            edges = self.edges()
+            found[1:-1] = edges[:-1] + 0.5 * (edges[1:] - edges[:-1])
+        return found
+
+    def root_widths(self) -> np.ndarray[Any, Any]:
+        """``TAxis::GetBinWidth`` of every bin, the flow bins taking their neighbour's."""
+        if self.even:
+            return np.full(self.nbins + 2, (self.high - self.low) / self.nbins)
+        widths = np.diff(self.edges())
+        return np.concatenate((widths[:1], widths, widths[-1:]))
+
     def centers(self) -> np.ndarray[Any, Any]:
         """The middle of each bin, which is what a point is usually drawn at."""
         edges = self.edges()
@@ -165,23 +179,34 @@ def _core(row: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def _contents(row: dict[str, Any]) -> np.ndarray[Any, Any] | None:
-    """The bins themselves, which are the array base the class inherits.
+def _contents(row: dict[str, Any]) -> tuple[dict[str, Any], str] | None:
+    """Where the bins themselves are: the array base the class inherits.
 
     Read from a file they are a NumPy array; members put together by hand may
     hold them as an :class:`array.array`, which is taken the same way. A class
     built on a histogram - a profile is a ``TH1D`` with more on top - keeps
-    them one base further down, and they are looked for there too.
+    them one base further down, and they are looked for there too. What comes
+    back is the dictionary holding them and the name they are held under, so
+    a histogram that is filled changes its members, not a copy of them.
     """
     for name, value in row.items():
         if name.startswith("TArray") and isinstance(value, (np.ndarray, array.array)):
-            return np.asarray(value)
+            return row, name
     for value in row.values():
         if isinstance(value, dict) and "fNcells" not in value:
             found = _contents(value)
             if found is not None:
                 return found
     return None
+
+
+def _moment_homes(row: dict[str, Any], found: dict[str, dict[str, Any]]) -> None:
+    """Which dictionary holds each of the moments, wherever the class keeps it."""
+    for name, value in row.items():
+        if name.startswith("fTsumw"):
+            found[name] = row
+        elif isinstance(value, dict):
+            _moment_homes(value, found)
 
 
 class Histogram:
@@ -199,27 +224,99 @@ class Histogram:
     ``values``, ``variances``, ``counts`` and ``axes`` - so any of those takes
     one as it stands, and :meth:`to_hist` and :meth:`to_numpy` hand it over
     outright.
+
+    It is also a histogram to fill and compute with, the way ROOT's ``TH1``
+    is: :meth:`book` one, :meth:`fill` it, ask it its :meth:`mean` or its
+    :meth:`integral`, add, scale, divide, rebin and project it. The members
+    stay the whole of its state throughout - filling changes the arrays and
+    the moments they hold, in place - so what is written is always exactly
+    what was computed. Methods named after ROOT's own that change a
+    histogram in ROOT - :meth:`fill`, :meth:`add`, :meth:`scale`,
+    :meth:`multiply`, :meth:`divide`, :meth:`reset` - change this one in
+    place; the operators, :meth:`copy`, :meth:`normalized`, :meth:`rebin`
+    and the projections make a new one and leave this as it was.
     """
 
-    __slots__ = ("classname", "members", "axes", "_core", "_bins", "_widths")
+    __slots__ = ("classname", "members", "axes", "_core", "_home", "_key", "_widths")
 
     def __init__(self, classname: str, members: dict[str, Any]) -> None:
-        core, bins = _core(members), _contents(members)
-        if core is None or bins is None:
+        core, contents = _core(members), _contents(members)
+        if core is None or contents is None:
             raise FormatError(f"a {classname} was written without its bins or its axes")
         #: The class the file says this is, such as ``TH1D``.
         self.classname = classname
         #: Every member, as it was written, for whatever is not here by name.
         self.members = members
-        self._core, self._bins = core, bins
+        self._core = core
+        self._home, self._key = contents
         #: One :class:`Axis` per dimension, x first.
         self.axes = tuple(Axis(core[f"f{letter}axis"]) for letter in "XYZ"[: self._dimensions()])
         self._widths = [len(axis) + 2 for axis in self.axes]
         cells = math.prod(self._widths)
-        if len(bins) < cells:
+        if len(self._bins) < cells:
             raise FormatError(
-                f"a {classname} of {cells} bins counting the ends holds only {len(bins)} values"
+                f"a {classname} of {cells} bins counting the ends holds only "
+                f"{len(self._bins)} values"
             )
+
+    # -- the state the members hold, for what changes it --------------------
+
+    @property
+    def _bins(self) -> np.ndarray[Any, Any]:
+        """Every bin, flow and all, as the members hold them."""
+        return np.asarray(self._home[self._key])
+
+    def _cells(self) -> np.ndarray[Any, Any]:
+        """The bins as an array that can be changed in place, and is the member.
+
+        What a file gave may be read-only, or in the file's byte order; the
+        first change makes it an ordinary array of the storage's own type and
+        puts that in the members, so the members and the change are one.
+        """
+        held = self._home[self._key]
+        dtype = np.dtype(ARRAYS[self._key].typename)
+        if not (isinstance(held, np.ndarray) and held.dtype == dtype and held.flags.writeable):
+            held = np.array(held, dtype=dtype)
+            self._home[self._key] = held
+        return held
+
+    def _writable(self, home: dict[str, Any], name: str) -> np.ndarray[Any, Any] | None:
+        """A per-bin array of doubles as one to change in place, or ``None`` if unkept."""
+        held = home.get(name)
+        if held is None or len(held) != len(self._bins):
+            return None
+        if not (isinstance(held, np.ndarray) and held.dtype == np.float64 and held.flags.writeable):
+            held = np.array(held, dtype=np.float64)
+            home[name] = held
+        return held
+
+    def _sumw2(self) -> np.ndarray[Any, Any] | None:
+        """The sum of squared weights per bin, or ``None`` for a histogram not keeping it."""
+        return self._writable(self._core, "fSumw2")
+
+    def _ensure_sumw2(self) -> np.ndarray[Any, Any]:
+        """``TH1::Sumw2``: start keeping the squares, from what the bins already hold.
+
+        Every entry so far had a weight of one, so each bin's square of
+        weights is its content - or nothing at all, before any entry.
+        """
+        squares = self._sumw2()
+        if squares is None:
+            squares = np.zeros(len(self._bins))
+            if self.entries > 0:
+                squares[:] = np.abs(self._bins.astype(np.float64))
+            self._core["fSumw2"] = squares
+        return squares
+
+    def _moment_homes(self) -> dict[str, dict[str, Any]]:
+        """The dictionary holding each moment, by the moment's member name."""
+        found: dict[str, dict[str, Any]] = {}
+        _moment_homes(self.members, found)
+        return found
+
+    def _moment_names(self) -> tuple[str, ...]:
+        """The moments ROOT's ``GetStats`` gives for this class, in its order."""
+        return moments.NAMES[len(self.axes)]
 
     def _dimensions(self) -> int:
         """How many axes this class has, which a ``TH2F`` says in its name."""
@@ -437,6 +534,320 @@ class Histogram:
             or all(hasattr(obj, part) for part in ("kind", "values", "variances", "axes"))
         )
 
+    # -- ROOT's per-class hooks, which a profile answers its own way ----------
+
+    def _from_bins(self, total_weight: float) -> bool:
+        """Whether ``GetStats`` must make the running sums again from the bins."""
+        return total_weight == 0 and self.entries > 0
+
+    def _moment_axes(self) -> int:
+        """How many axes the running sums describe: the binned ones."""
+        return len(self.axes)
+
+    def _flat_inner(self, values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+        """The bins on every axis, flow left out, in ROOT's order: x fastest."""
+        return values[(slice(1, -1),) * len(self.axes)].ravel(order="F")
+
+    def _centre_grid(self) -> list[np.ndarray[Any, Any]]:
+        """Each axis's bin centre at every bin on the axes, in ROOT's order."""
+        centres = [axis.root_centers()[1:-1] for axis in self.axes]
+        grids = np.meshgrid(*centres, indexing="ij")
+        return [grid.ravel(order="F") for grid in grids]
+
+    def _bin_terms(self) -> dict[str, np.ndarray[Any, Any]]:
+        """What each bin adds to every running sum when they are made from the bins.
+
+        The bin content is the weight, its error squared the square of the
+        weight, and the bin centre the coordinate - ``TH1::GetStats``.
+        """
+        weights = self._flat_inner(self.values(flow=True).astype(np.float64))
+        errors = self._flat_inner(self.errors(flow=True))
+        terms = dict(filling.axis_terms(weights, self._centre_grid()))
+        terms["fTsumw2"] = errors * errors
+        return terms
+
+    def _bin_errors(self) -> np.ndarray[Any, Any]:
+        """``GetBinError`` of every bin, flow and all, in the order they are kept."""
+        return np.sqrt(np.abs(self._variance_cells()))
+
+    def _variance_cells(self) -> np.ndarray[Any, Any]:
+        """``GetBinErrorSqUnchecked`` of every bin: the square of weights, or the content."""
+        squares = self._sumw2()
+        return squares.copy() if squares is not None else self._bins.astype(np.float64)
+
+    def _per_cell(self) -> list[np.ndarray[Any, Any]]:
+        """Every array of one number per bin beside the bins themselves."""
+        squares = self._sumw2()
+        return [] if squares is None else [squares]
+
+    def _merge_cells(self, other: Histogram) -> None:
+        """What ``TH1::Merge`` does to the bins for each histogram merged in."""
+        if self._sumw2() is None and other._sumw2() is not None:
+            self._ensure_sumw2()
+        filling.add_to_cells(self._cells(), other._bins.astype(np.float64))
+        squares = self._sumw2()
+        if squares is not None:
+            squares += other._variance_cells()
+
+    # -- booking, filling and copying ----------------------------------------
+
+    @classmethod
+    def book(
+        cls,
+        name: str,
+        *axes: Any,
+        title: str = "",
+        kind: str = "D",
+        labels: Any = None,
+    ) -> Histogram:
+        """An empty histogram of one, two or three axes, as ROOT's constructors make one.
+
+            >>> h = Histogram.book("h", (100, 0.0, 1.0))           # TH1D("h", "", 100, 0, 1)
+            >>> h2 = Histogram.book("h2", (10, 0, 1), [0, 1, 5, 10], kind="F")
+            >>> h2.classname
+            'TH2F'
+
+        Each axis is ``(nbins, low, high)`` - a tuple, for ROOT's evenly
+        binned axis - or every edge in order, as a list or an array. ``kind``
+        is the storage, ROOT's last letter: ``"D"`` for doubles, ``"F"`` for
+        floats, and ``"C"``, ``"S"`` and ``"I"`` for integers of 8, 16 and 32
+        bits, which saturate and keep whole numbers as ROOT's do. A title of
+        ``"title;x;y"`` gives the axes their titles as ROOT's does, and
+        ``labels`` gives them outright.
+        """
+        classname, members = histogram_members(name, axes, title, kind, labels)
+        return cls(classname, members)
+
+    def copy(self, name: str | None = None) -> Histogram:
+        """``Clone``: the same histogram, sharing nothing, renamed if ``name`` is given."""
+        return arithmetic.copied(self, name)
+
+    def fill(self, x: Any, y: Any = None, z: Any = None, *, weight: Any = None) -> None:
+        """``Fill``: add entries, one coordinate per axis, each an array or a number.
+
+            >>> h.fill(np.random.normal(size=1000))                  # doctest: +SKIP
+            >>> h2.fill(xs, ys, weight=ws)                            # doctest: +SKIP
+
+        Exactly ROOT's bookkeeping, in the order ROOT would have met the
+        entries one at a time: every entry counts towards :attr:`entries`,
+        one off the ends of an axis goes to its flow bin - the upper edge of
+        the last bin and a NaN to the overflow - and only those on every axis
+        count towards the moments. The squares of the weights start being
+        kept at the first weight that is not one.
+        """
+        given = [value for value in (x, y, z) if value is not None]
+        if len(given) != len(self.axes):
+            raise ValueError(
+                f"{self.name!r} has {len(self.axes)} axes, and filling it takes one coordinate "
+                f"per axis, not {len(given)}"
+            )
+        coordinates, weights = filling.arrays(given, weight)
+        filling.fill_histogram(self, coordinates, weights)
+
+    # -- statistics ------------------------------------------------------------
+
+    def mean(self, axis: int = 0) -> float:
+        """``GetMean``: the mean of what was filled along one axis, x being 0."""
+        return moments.mean(self, axis)
+
+    def std(self, axis: int = 0) -> float:
+        """``GetStdDev``: the standard deviation of what was filled along one axis."""
+        return moments.std(self, axis)
+
+    def mean_error(self, axis: int = 0) -> float:
+        """``GetMeanError``: the standard deviation over the root of the effective entries."""
+        return moments.mean_error(self, axis)
+
+    def std_error(self, axis: int = 0) -> float:
+        """``GetStdDevError``: the error on the standard deviation, as ROOT quotes it."""
+        return moments.std_error(self, axis)
+
+    def skewness(self, axis: int = 0) -> float:
+        """``GetSkewness``: the third moment about the mean, in units of the spread."""
+        return moments.central_moment(self, axis, 3)
+
+    def kurtosis(self, axis: int = 0) -> float:
+        """``GetKurtosis``: the fourth moment about the mean, less the three a Gaussian has."""
+        return moments.central_moment(self, axis, 4)
+
+    def skewness_error(self) -> float:
+        """``GetSkewness(11)``: ``sqrt(6 / n)``, the error for a Gaussian parent."""
+        count = self.effective_entries
+        return math.sqrt(6.0 / count) if count > 0 else 0.0
+
+    def kurtosis_error(self) -> float:
+        """``GetKurtosis(11)``: ``sqrt(24 / n)``, the error for a Gaussian parent."""
+        count = self.effective_entries
+        return math.sqrt(24.0 / count) if count > 0 else 0.0
+
+    @property
+    def effective_entries(self) -> float:
+        """``GetEffectiveEntries``: the number of unweighted entries worth as much."""
+        return moments.effective_entries(self)
+
+    def integral(self, low_bin: Any = None, high_bin: Any = None, width: bool = False) -> float:
+        """``Integral``: the sum of the bins from ``low_bin`` to ``high_bin``, both included.
+
+        The bins are ROOT's numbers - 0 the underflow, ``nbins + 1`` the
+        overflow - and the default is every bin on the axes and no flow. For
+        more than one axis give a number for x alone or one per axis.
+        ``width`` multiplies each bin by its width, or its area or volume.
+        """
+        return moments.integral(self, low_bin, high_bin, width)[0]
+
+    def integral_error(
+        self, low_bin: Any = None, high_bin: Any = None, width: bool = False
+    ) -> float:
+        """The error on :meth:`integral`, as ``IntegralAndError`` gives it."""
+        return moments.integral(self, low_bin, high_bin, width)[1]
+
+    def find_bin(self, x: Any, y: Any = None, z: Any = None) -> Any:
+        """``FindBin``: ROOT's global bin number, flow counted, for each coordinate given."""
+        return moments.find_bin(self, [value for value in (x, y, z) if value is not None])
+
+    def interpolate(self, x: Any) -> Any:
+        """``Interpolate``: the content at ``x``, on a line between neighbouring bin centres."""
+        return moments.interpolate(self, x)
+
+    def maximum(self) -> float:
+        """``GetMaximum``: the largest bin on the axes, or the maximum it was given."""
+        return moments.extreme(self, True)
+
+    def minimum(self) -> float:
+        """``GetMinimum``: the smallest bin on the axes, or the minimum it was given."""
+        return moments.extreme(self, False)
+
+    def argmax(self) -> Any:
+        """Where the largest bin is: an index into :meth:`values`, a tuple past one axis."""
+        return moments.extreme_index(self, True)
+
+    def argmin(self) -> Any:
+        """Where the smallest bin is: an index into :meth:`values`, a tuple past one axis."""
+        return moments.extreme_index(self, False)
+
+    # -- arithmetic ------------------------------------------------------------
+
+    def add(self, other: Histogram, c: float = 1.0) -> None:
+        """``Add(other, c)``: add ``c`` times ``other`` to this one, in place."""
+        arithmetic.add(self, other, float(c))
+
+    def scale(self, c: float, width: bool = False) -> None:
+        """``Scale(c)``, in place; ``width`` is ROOT's ``"width"``, dividing by bin size too."""
+        arithmetic.scale(self, float(c), width)
+
+    def multiply(self, other: Histogram) -> None:
+        """``Multiply(other)``: this times ``other`` bin by bin, in place."""
+        arithmetic.multiply(self, other)
+
+    def divide(self, other: Histogram, binomial: bool = False) -> None:
+        """``Divide(other)``, in place; ``binomial`` is ROOT's option ``"B"``, for efficiencies."""
+        arithmetic.divide(self, other, binomial)
+
+    def reset(self) -> None:
+        """``Reset``: empty every bin and every sum, keeping the binning."""
+        arithmetic.reset(self)
+
+    def normalized(self, width: bool = False) -> Histogram:
+        """A copy whose bins add to one; with ``width``, a density whose area is one."""
+        return arithmetic.normalized(self, width)
+
+    @classmethod
+    def merge(cls, histograms: Iterable[Histogram]) -> Histogram:
+        """``TH1::Merge``, as ``hadd`` does it: everything the histograms hold, added up."""
+        return arithmetic.merge(histograms)
+
+    def __add__(self, other: Histogram) -> Histogram:
+        made = self.copy()
+        made += other
+        return made
+
+    def __radd__(self, other: Any) -> Histogram:
+        if isinstance(other, (int, float)) and other == 0:
+            return self.copy()  # what sum() starts from
+        return NotImplemented
+
+    def __sub__(self, other: Histogram) -> Histogram:
+        made = self.copy()
+        made -= other
+        return made
+
+    def __mul__(self, other: Any) -> Histogram:
+        made = self.copy()
+        made *= other
+        return made
+
+    __rmul__ = __mul__
+
+    def __truediv__(self, other: Any) -> Histogram:
+        made = self.copy()
+        made /= other
+        return made
+
+    def __iadd__(self, other: Histogram) -> Histogram:
+        self.add(_histogram_operand(other, "adding"))
+        return self
+
+    def __isub__(self, other: Histogram) -> Histogram:
+        self.add(_histogram_operand(other, "subtracting"), -1.0)
+        return self
+
+    def __imul__(self, other: Any) -> Histogram:
+        if isinstance(other, Histogram):
+            self.multiply(other)
+        else:
+            self.scale(_number_operand(other, "multiplying"))
+        return self
+
+    def __itruediv__(self, other: Any) -> Histogram:
+        if isinstance(other, Histogram):
+            self.divide(other)
+        else:
+            self.scale(1.0 / _number_operand(other, "dividing"))
+        return self
+
+    # -- reshaping -------------------------------------------------------------
+
+    def rebin(self, *groups: Any, name: str | None = None) -> Histogram:
+        """``Rebin`` and ``Rebin2D``: a new histogram with neighbouring bins merged.
+
+            >>> h.rebin(4)                     # every four bins made one    # doctest: +SKIP
+            >>> h.rebin([0, 0.1, 0.5, 1])      # onto edges the axis has     # doctest: +SKIP
+            >>> h2.rebin(2, 5)                 # two in x, five in y         # doctest: +SKIP
+
+        A group that does not divide the axis leaves its last bins over,
+        and they go to the overflow, as ROOT's do. New edges must each be an
+        edge of the old axis, since merging can only join bins.
+        """
+        return reshaping.rebinned(self, groups, name)
+
+    def projection(self, axes: str, name: str | None = None, ranges: Any = None) -> Histogram:
+        """``Project3D``, and the projections of two dimensions: the other axes summed away.
+
+        ``axes`` names the axes kept, in the order the new histogram has them:
+        ``"x"``, or ``"xy"`` for x along the new x axis and y along the new y.
+        (ROOT's ``Project3D("xy")`` puts them the other way round; here the
+        letters are simply in order.) ``ranges`` maps an axis summed over to
+        its first and last bin in ROOT's numbering; by default every bin,
+        flow and all, is summed.
+        """
+        return reshaping.projection(self, axes, name, ranges)
+
+    def projection_x(self, name: str | None = None, y_range: Any = None) -> Histogram:
+        """``ProjectionX``: sum over y - its bins ``y_range``, first and last, if given."""
+        return reshaping.projection(self, "x", name, {"y": y_range})
+
+    def projection_y(self, name: str | None = None, x_range: Any = None) -> Histogram:
+        """``ProjectionY``: sum over x - its bins ``x_range``, first and last, if given."""
+        return reshaping.projection(self, "y", name, {"x": x_range})
+
+    def profile_x(self, name: str | None = None, y_range: Any = None) -> Any:
+        """``ProfileX``: a :class:`~.profile.Profile` of the mean of y in each bin of x."""
+        return reshaping.profiled(self, 0, name, y_range)
+
+    def profile_y(self, name: str | None = None, x_range: Any = None) -> Any:
+        """``ProfileY``: a :class:`~.profile.Profile` of the mean of x in each bin of y."""
+        return reshaping.profiled(self, 1, name, x_range)
+
     def plot(self, ax: Any = None, **options: Any) -> Any:
         """Draw onto matplotlib axes, made fresh unless ``ax`` brings some.
 
@@ -477,6 +888,26 @@ class Histogram:
     def __repr__(self) -> str:
         shape = " x ".join(str(count) for count in self.shape)
         return f"<{self.classname} {self.name!r} of {shape} bins, {self.entries:g} entries>"
+
+
+def _histogram_operand(other: Any, operation: str) -> Histogram:
+    """The other side of ``+`` or ``-``, which is a histogram or nothing ROOT has."""
+    if not isinstance(other, Histogram):
+        raise TypeError(
+            f"{operation} a {type(other).__name__} and a histogram is not a thing ROOT does: "
+            f"it adds histograms to histograms, and scales them by numbers"
+        )
+    return other
+
+
+def _number_operand(other: Any, operation: str) -> float:
+    """The number on the other side of ``*`` or ``/``, refusing what is not one."""
+    if isinstance(other, bool) or not isinstance(other, (int, float, np.number)):
+        raise TypeError(
+            f"{operation} a histogram by a {type(other).__name__} is not a thing ROOT does: "
+            f"it takes a number, or another histogram binned the same way"
+        )
+    return float(other)
 
 
 def _shape_text(shape: tuple[int, ...]) -> str:
@@ -640,6 +1071,7 @@ def _histogram_core(
         "fBufferSize": 0,
         "fBuffer": np.zeros(0),
         "fBinStatErrOpt": 0,
+        "fStatOverflows": 2,
     }
 
 
