@@ -65,4 +65,6 @@ def number(text: str, where: Where) -> tuple[int | float, str]:
     floating = FLOATING.match(plain)
     if floating is not None:
         return _floating(floating)
+    if re.match(r"^[\d.']+(?:[eE][+-]?\d+)?[A-Za-z_]\w*$", text):
+        raise Refusal(f"{text} is a user-defined literal, which calls an operator\"\" of its own", where)
     raise Refusal(f"{text} is not a number literal C++ has", where)

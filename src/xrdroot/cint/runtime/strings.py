@@ -1,0 +1,148 @@
+"""C strings and ``std::string`` as Python ``str``, with C's functions over them.
+
+A ``char name[20]``, a ``const char*`` and a ``std::string`` all become a
+Python ``str`` here; ``sprintf(name, ...)`` and ``strcpy(name, ...)`` become
+assignments to ``name``. What is left is the functions that read strings:
+``strlen``, ``strcmp``, ``atoi``, ``std::to_string`` (which formats a double
+with ``%f``, as C++ says), and the ``std::string`` members the translator
+rewrites to Python when the type says a value is a string.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+__all__ = [
+    "strlen",
+    "strcmp",
+    "strncmp",
+    "strcasecmp",
+    "strstr",
+    "strchr",
+    "atoi",
+    "atol",
+    "atof",
+    "stoi",
+    "stod",
+    "to_string",
+    "char_at",
+    "npos",
+    "find",
+    "rfind",
+    "substr",
+    "cstr",
+]
+
+#: ``std::string::npos``: what ``find`` gives back when there is nothing to find.
+npos = 2**64 - 1
+
+
+def cstr(value: Any) -> str:
+    """Anything a macro treats as text - a TString, a char, None - as a Python ``str``."""
+    if value is None:
+        return ""
+    if isinstance(value, int):
+        return chr(value)
+    return str(value)
+
+
+def strlen(text: Any) -> int:
+    return len(cstr(text))
+
+
+def _compare(a: str, b: str) -> int:
+    return (a > b) - (a < b)
+
+
+def strcmp(a: Any, b: Any) -> int:
+    """C's ``strcmp``: negative, zero or positive, as ``a`` sorts before, with or after ``b``."""
+    return _compare(cstr(a), cstr(b))
+
+
+def strncmp(a: Any, b: Any, count: int) -> int:
+    return _compare(cstr(a)[: int(count)], cstr(b)[: int(count)])
+
+
+def strcasecmp(a: Any, b: Any) -> int:
+    return _compare(cstr(a).lower(), cstr(b).lower())
+
+
+def strstr(haystack: Any, needle: Any) -> str | None:
+    """C's ``strstr``: the rest of ``haystack`` from where ``needle`` is, or ``None``."""
+    text = cstr(haystack)
+    at = text.find(cstr(needle))
+    return None if at < 0 else text[at:]
+
+
+def strchr(haystack: Any, char: Any) -> str | None:
+    return strstr(haystack, cstr(char))
+
+
+def _leading(text: Any, pattern: str) -> str:
+    found = re.match(pattern, cstr(text).lstrip())
+    return found.group() if found else ""
+
+
+def atoi(text: Any) -> int:
+    """C's ``atoi``: the integer the text starts with, ``0`` if none."""
+    digits = _leading(text, r"[+-]?\d+")
+    return int(digits) if digits else 0
+
+
+atol = atoi
+
+
+def atof(text: Any) -> float:
+    """C's ``atof``: the number the text starts with, ``0.0`` if none."""
+    number = _leading(text, r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|[+-]?(?:inf|nan)")
+    return float(number) if number else 0.0
+
+
+def stoi(text: Any, *rest: Any) -> int:
+    """``std::stoi``, which throws where ``atoi`` gives ``0``."""
+    digits = _leading(text, r"[+-]?\d+")
+    if not digits:
+        raise ValueError(f"std::stoi: {cstr(text)!r} does not start with a number")
+    return int(digits)
+
+
+def stod(text: Any, *rest: Any) -> float:
+    if not _leading(text, r"[+-]?(?:\d|\.\d|inf|nan)"):
+        raise ValueError(f"std::stod: {cstr(text)!r} does not start with a number")
+    return atof(text)
+
+
+def to_string(value: Any) -> str:
+    """``std::to_string``: an integer as digits, a floating value with ``%f``."""
+    if isinstance(value, bool) or hasattr(value, "__index__"):
+        return str(int(value))
+    return "%f" % float(value)
+
+
+def char_at(text: Any, index: Any) -> int:
+    """``s[i]`` of a string, as the ``char`` - a number - C++ gives."""
+    string = cstr(text)
+    at = int(index)
+    return ord(string[at]) if at < len(string) else 0
+
+
+def find(text: Any, what: Any, start: int = 0) -> int:
+    """``std::string::find``: where ``what`` first is, or :data:`npos`."""
+    at = cstr(text).find(cstr(what), int(start))
+    return npos if at < 0 else at
+
+
+def rfind(text: Any, what: Any, start: int = npos) -> int:
+    string = cstr(text)
+    at = string.rfind(cstr(what), 0, min(int(start), len(string)) + len(cstr(what)))
+    return npos if at < 0 else at
+
+
+def substr(text: Any, start: int = 0, count: int = npos) -> str:
+    """``std::string::substr(start, count)``."""
+    string = cstr(text)
+    begin = int(start)
+    if begin > len(string):
+        raise IndexError(f"substr starts at {begin}, past the end of a string {len(string)} long")
+    return string[begin : begin + min(int(count), len(string))]

@@ -58,6 +58,7 @@ PREDEFINED = f"""
 #define _R__UNIQUE_(X) X
 #define R__DEPRECATED(maj, min, reason)
 #define RQ_OBJECT(name)
+#define Q_OBJECT
 #define R__CLING_PTRCHECK(on)
 #define _QUOTE_(name) #name
 """

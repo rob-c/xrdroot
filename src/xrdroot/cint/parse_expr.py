@@ -169,9 +169,14 @@ class ExprParser(TypeParser):
 
     def _c_cast(self) -> Expr:
         where = self.take().where
-        ctype = self.type_id(strict=True)
+        strict = self.trial(lambda: self.type_id(strict=True))
+        ctype = strict or self.type_id()
         self.expect(")")
         token = self.peek()
+        if strict is None and not _pointerish(ctype) and token.kind not in ("id", "num"):
+            raise NoParse
+        if strict is None and token.kind == "id" and token.text in KEYWORDS - {"this", "new"}:
+            raise NoParse
         if token.kind == "op" and token.text not in PREFIX and not token.is_("(", "{", "::"):
             raise NoParse
         if token.kind == "eof" or token.is_("*", "&", "+", "-") and not _pointerish(ctype):
@@ -560,14 +565,15 @@ class ExprParser(TypeParser):
         args: list[Any] = []
         try:
             while not self.at_(">", ">>"):
-                args.append(self.type_id(strict=True))
+                number = self.peek().kind == "num"
+                args.append(self._number() if number else self.type_id(strict=True))
                 if not self.accept(","):
                     break
             self.split_shift()
             self.expect(">")
         finally:
             self.angle -= 1
-        if not self.at_("(", "::", "{"):
+        if not self.at_("(", "::", "{", ",", ")"):
             raise NoParse
         return args
 
