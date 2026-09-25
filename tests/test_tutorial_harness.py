@@ -623,3 +623,25 @@ def test_the_cli_runs_uncompared_without_root(tree, tmp_path, capsys, monkeypatc
     assert cli.main([*argv, "--python", "/no/python"]) == 0
     doc = json.loads((tmp_path / "o" / "results.json").read_text())
     assert doc["counts"]["FAIL"] == 1 and doc["meta"]["xrdroot_has_run"] is False
+
+
+def test_the_cli_can_assume_the_build_options_of_a_root_not_here(tree, capsys, monkeypatch):
+    monkeypatch.setattr(cli, "find_oracle", lambda *args: None)
+    assert cli.main(["list", "--tutorials", str(tree), "--features", "roofit,xml"]) == 0
+    assert "roofit/r.C\ttutorial-roofit-r\trc=0" in capsys.readouterr().out
+
+
+def test_imports_from_root_that_find_nothing_are_missing_names():
+    named = _traceback("ImportError: cannot import name 'TCanvas' from 'xrdroot.pyroot' (/x.py)")
+    assert classify.failure(result(exit_code=1, stderr=named)).reason == "missing ROOT.TCanvas"
+    module = _traceback("ModuleNotFoundError: No module named 'ROOT.VecOps'")
+    assert classify.failure(result(exit_code=1, stderr=module)).reason == "missing ROOT.VecOps"
+
+
+def test_the_cpp_each_tutorial_hands_over_is_masked_from_its_reason():
+    stderr = _traceback(
+        "xrdroot.errors.UnsupportedFeatureError: gROOT.ProcessLine('.! x') runs C++"
+    )
+    assert classify.failure(result(exit_code=1, stderr=stderr)).reason == (
+        "UnsupportedFeatureError: gROOT.ProcessLine(...) runs C++"
+    )

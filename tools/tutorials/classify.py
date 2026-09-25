@@ -91,7 +91,20 @@ def last_exception(stderr: str) -> tuple[str, str] | None:
     return None
 
 
+#: ``from ROOT import X`` or ``import ROOT.X`` finding nothing, as Python words it.
+_MISSING_IMPORT = re.compile(
+    r"cannot import name '(?P<name>\w+)' from '(?:ROOT|xrdroot\.pyroot)'"
+    r"|No module named '(?:ROOT|xrdroot\.pyroot)\.(?P<name2>[\w.]+)'"
+)
+
+
 def _masked(message: str) -> str:
+    """The message with what varies between tutorials hitting one gap masked.
+
+    Paths, line numbers and numbers go, and so do the C++ handed to
+    ``ProcessLine`` or ``Declare``, which is each tutorial's own.
+    """
+    message = re.sub(r"\((['\"]).*?\1\)", "(...)", message)
     message = re.sub(r"(/[\w.@+-]+)+/?", "<path>", message)
     message = re.sub(r"\bline \d+\b", "line <n>", message)
     message = re.sub(r"(?<![\w.])[-+]?\d+(\.\d+)?(e[-+]?\d+)?\b", "<n>", message)
@@ -118,6 +131,10 @@ def reason_of(kind: str, message: str) -> Verdict:
         if attribute:
             return Verdict("FAIL", attribute)
     if short in ("ModuleNotFoundError", "ImportError"):
+        imported = _MISSING_IMPORT.search(message)
+        if imported:
+            name = imported.group("name") or imported.group("name2")
+            return Verdict("FAIL", f"missing ROOT.{name}")
         return Verdict("FAIL", f"{short}: {_masked(message)}")
     status = "UNSUPPORTED" if _REFUSING.search(short) or _REFUSING.search(message) else "FAIL"
     return Verdict(status, f"{short}: {_masked(message)}" if message else short)

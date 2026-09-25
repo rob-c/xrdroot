@@ -65,12 +65,19 @@ def _common(command: argparse.ArgumentParser) -> None:
     command.add_argument("--cache", type=Path, default=DEFAULT_CACHE, help="the oracle cache")
     command.add_argument("--root-config", default="root-config", help="the ROOT to compare with")
     command.add_argument("--root-python", help="the Python whose PyROOT runs .py tutorials")
+    command.add_argument(
+        "--features",
+        help="ROOT build options to assume, space-separated, instead of root-config's "
+        "(with no ROOT here: which tutorials a ROOT built so would run)",
+    )
 
 
 def _catalogue(args: argparse.Namespace) -> tuple[dict[str, Any], Any]:
     oracle = find_oracle(args.root_config, args.root_python)
     tutorials = args.tutorials.resolve()
     features = oracle.features if oracle is not None else frozenset()
+    if args.features is not None:
+        features = frozenset(args.features.replace(",", " ").split())
     python = (oracle.python if oracle is not None else None) or ""
     module = oracle.has_module if oracle is not None else (lambda name: False)
     found = catalog(
