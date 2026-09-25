@@ -213,6 +213,9 @@ def test_draw_frame_uses_the_core_th1f_when_there_is_one(monkeypatch):
         def SetStats(self, on):
             self.stats = on
 
+        def SetDirectory(self, where):
+            self.directory = where
+
     monkeypatch.setattr(core, "TH1F", TH1F, raising=False)
     c = ROOT.TCanvas("c", "c")
     assert c.DrawFrame(0, 0, 5, 5) is made[0] and made[0].stats == 0
