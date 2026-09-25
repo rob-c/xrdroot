@@ -17,6 +17,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import os
+import sys
 from typing import Any, Callable
 
 from ...errors import UnsupportedFeatureError
@@ -42,10 +43,20 @@ def set_line_processor(fn: Callable[..., Any] | None) -> None:
     _PROCESSOR[:] = [] if fn is None else [fn]
 
 
+def _translator(name: str) -> Any:
+    """The translator's function ``name`` - at its top or in ``execute`` - or ``None``."""
+    if importlib.util.find_spec("xrdroot.cint") is None:
+        return None
+    found = getattr(importlib.import_module("xrdroot.cint"), name, None)
+    if found is None and importlib.util.find_spec("xrdroot.cint.execute") is not None:
+        found = getattr(importlib.import_module("xrdroot.cint.execute"), name, None)
+    return found
+
+
 def _processor(what: str) -> Callable[..., Any]:
     """The translator's ``process_line``, found or loaded, or a refusal naming it."""
-    if not _PROCESSOR and importlib.util.find_spec("xrdroot.cint") is not None:
-        found = getattr(importlib.import_module("xrdroot.cint"), "process_line", None)
+    if not _PROCESSOR:
+        found = _translator("process_line")
         if found is not None:
             set_line_processor(found)
     if not _PROCESSOR:
@@ -339,8 +350,20 @@ class TInterpreter:
     """``gInterpreter``: C++ declared and run - by :mod:`xrdroot.cint`, when it is there."""
 
     def Declare(self, code: Any) -> bool:
-        """``Declare``: C++ declarations, handed to the translator."""
-        _processor("gInterpreter.Declare")(str(code))
+        """``Declare``: C++ declarations, translated, and what they declare put in the namespace.
+
+        As PyROOT makes ``ROOT.f`` of a function declared, the functions and
+        classes the translation defines become names of ``xrdroot.pyroot``.
+        """
+        running = _translator("run_source")
+        if running is None:
+            _processor("gInterpreter.Declare")(str(code))
+            return True
+        declared = running(str(code), "<Declare>", call=False)
+        namespace = sys.modules["xrdroot.pyroot"].__dict__
+        for name, value in declared.items():
+            if getattr(value, "__module__", None) == "__cint__" and not name.startswith("_"):
+                namespace[name] = value
         return True
 
     def ProcessLine(self, line: Any, error: Any = None) -> Any:

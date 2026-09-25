@@ -109,6 +109,7 @@ def test_cpp_goes_to_the_translator_when_it_is_installed(monkeypatch):
     fake = types.ModuleType("xrdroot.cint")
     fake.process_line = lambda text: seen.append(text) or 7
     monkeypatch.setitem(sys.modules, "xrdroot.cint", fake)
+    monkeypatch.setitem(sys.modules, "xrdroot.cint.execute", types.ModuleType("execute"))
     monkeypatch.setattr(troot.importlib.util, "find_spec", lambda name: True)
     try:
         assert ROOT.gROOT.ProcessLine("1+1") == 7 and ROOT.gROOT.ProcessLineSync("a") == 7
@@ -122,8 +123,37 @@ def test_cpp_goes_to_the_translator_when_it_is_installed(monkeypatch):
     ROOT.gInterpreter.AddIncludePath("-I.")
 
 
+def test_a_declaration_puts_what_it_declares_in_the_namespace(monkeypatch):
+    def declared():
+        return 42
+
+    declared.__module__ = "__cint__"
+    execute = types.ModuleType("xrdroot.cint.execute")
+    execute.run_source = lambda code, file, call: {"answer": declared, "_hidden": declared, "np": 1}
+    execute.process_line = lambda text: 7
+    monkeypatch.setitem(sys.modules, "xrdroot.cint", types.ModuleType("xrdroot.cint"))
+    monkeypatch.setitem(sys.modules, "xrdroot.cint.execute", execute)
+    monkeypatch.setattr(troot.importlib.util, "find_spec", lambda name: True)
+    try:
+        assert ROOT.gInterpreter.Declare("int answer() { return 42; }")
+        assert (
+            ROOT.answer() == 42
+            and "_hidden" not in ROOT.__dict__
+            and ROOT.gROOT.ProcessLine("x") == 7
+        )
+    finally:
+        troot.set_line_processor(None)
+        ROOT.__dict__.pop("answer", None)
+
+
+def test_the_translator_is_not_looked_for_without_it(monkeypatch):
+    monkeypatch.setattr(troot.importlib.util, "find_spec", lambda name: None)
+    assert troot._translator("run_source") is None
+
+
 def test_a_translator_module_without_process_line_is_still_refused(monkeypatch):
     monkeypatch.setitem(sys.modules, "xrdroot.cint", types.ModuleType("xrdroot.cint"))
+    monkeypatch.setitem(sys.modules, "xrdroot.cint.execute", types.ModuleType("execute"))
     monkeypatch.setattr(troot.importlib.util, "find_spec", lambda name: True)
     with pytest.raises(UnsupportedFeatureError):
         ROOT.gROOT.ProcessLine("1")
