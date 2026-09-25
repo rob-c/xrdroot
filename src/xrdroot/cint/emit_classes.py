@@ -137,6 +137,8 @@ class ClassEmitter(FunctionEmitter):
             for name in klass.constants:
                 symbols[name] = Symbol(name, "static", f"{klass.name}.{name}", CType("int"))
             for name, funcs in klass.methods.items():
+                if name in (klass.name, "~" + klass.name):
+                    continue
                 static = any(func.static for func in funcs)
                 kind, py = ("static", f"{klass.name}.{name}") if static else ("method", name)
                 symbols[name] = Symbol(name, kind, py, owner=klass.name)
@@ -176,6 +178,7 @@ class ClassEmitter(FunctionEmitter):
             lambda func, py: self.function(
                 func, py, method=True, prologue=lambda: self.initialise(info, func)
             ),
+            method=True,
         )
 
     def _default_init(self, info: ClassInfo, aggregate: bool) -> None:
@@ -241,6 +244,7 @@ class ClassEmitter(FunctionEmitter):
             py,
             funcs,
             lambda func, each: self.function(func, each, method=not static, decorator=decorator),
+            method=not static,
         )
 
     def _method_name(self, func: Function) -> str:

@@ -101,6 +101,8 @@ class StmtParser(ExprParser):
         return self.lookahead(self._declaration_head)
 
     def _declaration_head(self) -> bool:
+        if self.peek().text in self.functions and self.peek(1).is_("("):
+            raise NoParse
         spec = self.specifiers()
         if self.at_("[") and spec.ctype.is_auto:
             return True

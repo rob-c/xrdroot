@@ -132,6 +132,14 @@ class TMath:
         return True
 
 
+class TString(str):
+    def Data(self) -> str:
+        return str(self)
+
+    def Length(self) -> int:
+        return len(self)
+
+
 class Vector(list):  # type: ignore[type-arg]
     def push_back(self, value: Any) -> None:
         self.append(value)
@@ -162,7 +170,7 @@ def fake() -> types.SimpleNamespace:
 
     std = types.SimpleNamespace(vector=_Template(Vector))
     return types.SimpleNamespace(
-        TH1F=TH1, TH1D=TH1, TH1I=TH1, TRandom3=TRandom3, gRandom=TRandom3(), TMath=TMath,
+        TString=TString, TH1F=TH1, TH1D=TH1, TH1I=TH1, TRandom3=TRandom3, gRandom=TRandom3(), TMath=TMath,
         TCanvas=canvas, TGraph=Named, TF1=Named, TLegend=Named, TFile=Named,
         kRed=632, kBlue=600, kGreen=416, gPad=Named("pad"), gStyle=Named("style"),
         std=std, canvases=canvases,

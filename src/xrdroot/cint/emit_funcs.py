@@ -120,7 +120,12 @@ class FunctionEmitter(VariableEmitter):
     # -- overloads ---------------------------------------------------------------
 
     def overloaded(
-        self, name: str, py: str, funcs: list[Function], emit: Callable[[Function, str], None]
+        self,
+        name: str,
+        py: str,
+        funcs: list[Function],
+        emit: Callable[[Function, str], None],
+        method: bool = False,
     ) -> None:
         """Every function of an overload set, and the dispatcher that chooses between them."""
         if len(funcs) == 1:
@@ -132,15 +137,20 @@ class FunctionEmitter(VariableEmitter):
             each = f"{py}__{index}"
             emit(func, each)
             self.out.blank()
-            candidates.append(self._candidate(func, each))
+            candidates.append(self._candidate(func, each, method))
         self.out.line(f"{py} = Overloaded({name!r}, {', '.join(candidates)})", funcs[0].where)
 
     @staticmethod
-    def _candidate(func: Function, py: str) -> str:
-        fewest = sum(1 for param in func.params if param.default is None)
-        most = 255 if func.variadic else len(func.params)
-        kinds = ", ".join(kind_of(param.ctype) for param in func.params)
-        return f"({py}, {fewest}, {most}, ({kinds}{',' if len(func.params) == 1 else ''}))"
+    def _candidate(func: Function, py: str, method: bool) -> str:
+        """``(f__1, fewest, most, kinds)``, counting ``self`` for a method."""
+        own = 1 if method else 0
+        fewest = own + sum(1 for param in func.params if param.default is None)
+        most = 255 if func.variadic else own + len(func.params)
+        kinds = [kind_of(param.ctype) for param in func.params]
+        if method:
+            kinds.insert(0, "None")
+        listed = ", ".join(kinds)
+        return f"({py}, {fewest}, {most}, ({listed}{',' if len(kinds) == 1 else ''}))"
 
     # -- lambdas -----------------------------------------------------------------
 

@@ -201,7 +201,7 @@ class TypeParser(Cursor):
     def declarator(self, base: CType) -> tuple[str, CType]:
         """A declarator that must name something: its name, and the full type it gives it."""
         ctype = self.pointers(base)
-        if self.at_("(") and self.peek(1).is_("*", "&"):
+        if self.at_("(") and self.peek(1).is_("*"):
             return self._function_pointer(abstract=False), CType("function", callable=True)
         name = self.identifier()
         return name, self.dimensions(ctype)
@@ -215,7 +215,7 @@ class TypeParser(Cursor):
             if token.kind == "id":
                 name = token.text
         self.expect(")")
-        if not abstract and not name:
+        if not abstract and (not name or not self.at_("(", "[")):
             raise NoParse
         self.dimensions(CType("function"))
         if self.at_("("):
