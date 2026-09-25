@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from xrdclient.url import parse
 
+from .drawable import Drawable
 from .errors import UnsupportedFeatureError
 from .tree import DEFAULT_STEP, _bounds, concatenate, scattered
 
@@ -83,7 +84,7 @@ class _Link:
         return str(self.target)
 
 
-class Chain:
+class Chain(Drawable):
     """Trees of one name across many files, read as one tree.
 
         >>> events = xrdroot.chain("Events", ["a.root", "b.root"])   # doctest: +SKIP

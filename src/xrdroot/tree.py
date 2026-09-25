@@ -16,6 +16,7 @@ import numpy as np
 
 from .buffer import Buffer, gather
 from .compression import decompress
+from .drawable import Drawable
 from .errors import UnsupportedFeatureError
 from .interp import Column, Flat, Members, Refused, Rows, Values, build
 
@@ -573,7 +574,7 @@ class Group(Branch):
         return rows
 
 
-class TTree:
+class TTree(Drawable):
     """A tree, and the columns in it.
 
         >>> tree                                   # doctest: +SKIP

@@ -493,6 +493,100 @@ that do; a member of an object the tree holds whole; a method other than
 beside another looped over outside the index, which ROOT runs as two nested
 loops.
 
+## Draw and Scan
+
+`tree.draw` is ROOT's `TTree::Draw`, and `tree.scan` its `TTree::Scan`, on a
+tree, a tree with friends and a chain alike:
+
+```python
+h = tree.draw("jet_pt", "Sum$(jet_pt > 30) > 1")  # a TH1F called htemp
+h.entries, h.mean(), h.std(), h.selected  # selected: what Draw returns
+h2 = tree.draw("eta:phi>>map(64, -3.2, 3.2, 50, -2.5, 2.5)", "pt > 20")
+p = tree.draw("response:pt", "", "prof")  # a TProfile of response in bins of pt
+print(tree.scan("run:event:nJet", "nJet > 4", entries=100))
+```
+
+The tree is read a batch at a time — `step` entries, a hundred thousand
+unless told — so memory is one batch and never the tree. Every axis, the
+selection and the weight are evaluated together in one loop, as ROOT's
+`TTreeFormulaManager` runs them: their collections are paired element by
+element up to the shortest, a number per entry goes with every element, and
+`met` drawn with a cut on the jets is filled once for every jet that passes.
+The selection's value *multiplies* the weight — a cut gives 0 or 1, a number
+is a weight — and a fill of weight zero is not made. What is filled is
+filled through `Histogram.fill`, in the order ROOT would meet it, so the
+bins, the entries and the moments are ROOT's.
+
+Given no binning, a draw books what ROOT books: a `TH1F` of 100 bins, a
+`TH2F` of 40 a side, a `TH3F` of 20, a `TProfile` of 100 or a `TProfile2D`
+of 20 by 20, named `htemp`, titled with the expression and `{selection}`,
+its axes titled with their expressions. The first `estimate` fills — ROOT's
+`TTree::GetEstimate()`, a million — are held back to find the axes with
+`THLimitsFinder`, ported statement by statement: the range widened by a
+tenth, a bin width rounded to 1, 2 or 5 times a power of ten, and bins a
+whole number wide when the expression is a lone integer branch, `Entry$`,
+`Length$` or `Iteration$`. After those, a value off an end doubles the axis
+until it is on it, as `TH1::ExtendAxis` does for ROOT's own `htemp`, and a
+NaN stops a histogram extending at all. So a draw of a billion entries ends
+up with the axes ROOT would give it too.
+
+| ROOT | xrdroot |
+| --- | --- |
+| `t->Draw("x")` | `t.draw("x")` — a `TH1F` named `htemp` |
+| `t->Draw("x", "y > 2")`, `t->Draw("x", "w")` | `t.draw("x", "y > 2")`, `t.draw("x", "w")` — the selection is a weight |
+| `t->SetWeight(2); t->Draw("x")` | `t.draw("x", weight=2)`, or `weight="w_expr"` |
+| `t->Draw("y:x")`, `t->Draw("z:y:x")` | `t.draw("y:x")`, `t.draw("z:y:x")` — the vertical axis first |
+| `t->Draw("x>>h(100, 0, 10)")` | the same, or `t.draw("x", bins=(100, 0, 10), name="h")` |
+| `t->Draw("y:x>>h(10, 0, 1, 20, -1, 1)")` | the same, or `bins=[(10, 0, 1), (20, -1, 1)]` |
+| `t->Draw("x>>h(50)")` | the same, or `bins=50`: 50 bins, the ends found |
+| variable bins, `TH1D h(..., n, edges); t->Draw("x>>h")` | `bins=[0, 1, 5, 10]` |
+| `t->Draw("x>>+h")` | `t.draw("x>>+h", histograms=d)` — `d` stands for `gDirectory` |
+| `t->Draw("y:x", "", "prof")`, `"profs"`, `"profi"`, `"profg"` | the same — a `TProfile`, with its error option |
+| `t->Draw("z:y:x", "", "prof")` | the same — a `TProfile2D` |
+| `t->Draw("y:x", "", "p")`, `"l"`, `"*"` | the same — the scatter of points, as a `Graph` named `Graph` |
+| `t->Draw("x", "", "e")`, `"norm"` | the same: squares of weights kept, and scaled to a sum of one |
+| `t->Draw("x", "", "goff")` | every draw; draw onto matplotlib with `ax=` |
+| `t->Draw("x", "", "", n, first)` | `t.draw("x", entries=n, first_entry=first)` |
+| `t->SetEstimate(n)` | `t.draw(..., estimate=n)` |
+| `t->GetSelectedRows()`, `Draw`'s return value | `h.selected` |
+| `t->Scan("a:b", "c > 0")` | `print(t.scan("a:b", "c > 0"))` |
+| `t->Scan()`, `t->Scan("*")` | `t.scan("")` — the first eight columns — and `t.scan()` — all |
+| `t->Scan("a", "", "colsize=12 precision=4")` | `t.scan("a", width=12, precision=4)` |
+| `SetScanRedirect`, `SetScanFileName` | `t.scan(..., file=handle)`; the text also comes back |
+| `TChain::Draw`, a friend's `t->Draw("f.x")` | `chain.draw(...)`, `t.draw("f.x")` |
+
+The result is a `Histogram`, `Profile` or `Graph` like any other — to fill
+more, compute with, plot, or write to a file — carrying `selected`, the
+number of fills made, and (for a histogram) `extendable`. `>>name` names what
+is filled; with `histograms=` — a dict standing for `gDirectory` — the result
+is put in it under its name, `>>name` refills a histogram already there
+from nothing, as ROOT resets it, and `>>+name` adds to it: to a histogram of
+your own too, whose entries then grow by what was selected. Brackets after a
+name that is there make a new one, as ROOT deletes the old. A histogram of
+the wrong shape for the expression is refused where ROOT would warn and
+replace it.
+
+A `y:x` draw with no option fills a `TH2F`: this is ROOT's `goff`, since
+nothing is drawn unless `ax=` is given, and with `goff` ROOT fills the
+`htemp` it otherwise leaves empty behind a scatter plot. Options asking for
+points or lines — `p`, `l`, `*`, unless `col`, `box` or another binned style
+is there too — give the scatter itself, as a `Graph` of every fill in order,
+which does hold all of them. `same` does nothing. `para`, `candle`, `gl5d`
+and filling an entry list with `>>list` are refused by name, and so is an
+expression of strings, which ROOT bins by label.
+
+`scan` prints ROOT's table to the character: the eleven-star corner, the
+`*    Row   *` and `* Instance *` columns, each number through `%9.9g`
+trimmed before its exponent when too wide, a column as wide as its name from
+nine to twenty characters, names too long cut to `...`, and
+`==> 3 selected entries` under a selection. An expression over a collection
+prints a row per element; the columns go down together only when the
+selection loops too, as ROOT synchronises them, and otherwise each runs to
+its own length with the ones that run out left blank. It returns the text and
+writes it to `file` as it goes; ROOT's pause every fifty rows is not made,
+and `"*"` means the columns this reads, under their names here — ROOT spells
+a plain leaf `x.x`.
+
 ## Chains
 
 A dataset is rarely one file. `xrdroot.chain` reads the tree of one name in
