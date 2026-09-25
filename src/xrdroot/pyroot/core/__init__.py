@@ -58,7 +58,6 @@ def _gather(namespace: dict[str, Any]) -> list[str]:
 
 from . import rmath as Math  # noqa: E402
 from . import tmath as TMath  # noqa: E402
-
 from .mathtools import Fit  # noqa: E402
 
 __all__ = [*_gather(globals()), "TMath", "Math", "Fit", "draw_hook", "set_draw_hook", "DRAWN"]

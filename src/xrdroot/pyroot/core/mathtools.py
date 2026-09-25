@@ -220,7 +220,7 @@ class _FCNResult:
         return getattr(self._result, name)
 
     def Print(self, stream: Any = None, covariance: bool = False) -> None:
-        """``Print(std::cout)``: ROOT's summary of a minimisation - its ``MinFCN``, not a chi-square."""
+        """``Print(std::cout)``: ROOT's summary of a minimisation, ``MinFCN``, no chi-square."""
         lines = self._result._xrd.summary(covariance=covariance).splitlines()
         print("\n".join(line for line in lines if not line.startswith("Chi2 ")))
 
