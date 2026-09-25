@@ -13,7 +13,6 @@ kit takes over ``Draw``; see :mod:`.hooks`.
 from __future__ import annotations
 
 import importlib
-import importlib.util  # TEMP
 from typing import Any
 
 from .hooks import DRAWN, draw_hook, set_draw_hook
@@ -40,7 +39,6 @@ FAMILIES = (
     "fits",
     "graphs",
     "efficiencies",
-    "splines",
     "files",
 )
 
@@ -49,8 +47,6 @@ def _gather(namespace: dict[str, Any]) -> list[str]:
     """Each family's ``__all__``, put in ``namespace``, and the names gathered."""
     names: list[str] = []
     for family in FAMILIES:
-        if importlib.util.find_spec(f"{__name__}.{family}") is None:  # TEMP
-            continue
         found = importlib.import_module(f"{__name__}.{family}")
         for name in found.__all__:
             namespace[name] = getattr(found, name)
