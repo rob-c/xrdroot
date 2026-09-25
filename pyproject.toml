@@ -53,6 +53,10 @@ dev = [
   "awkward>=2",
   "boost-histogram>=1.4",
   "hist>=2.7",
+  # The C codecs the lz4 extra brings, so the fast paths are the ones tested;
+  # the pure-Python ones are tested directly beside them.
+  "lz4>=4",
+  "xxhash>=3",
   "iminuit>=2.20",
   # Every backend a picture is drawn with, so each is drawn with for real.
   "matplotlib>=3.5",

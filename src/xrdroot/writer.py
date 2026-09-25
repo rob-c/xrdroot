@@ -682,6 +682,17 @@ def _counted(
     _numbers(buf, form, values[:count])
 
 
+def _held(kind: str, name: str, stype: int, typename: str) -> str | None:
+    """The class one element brings in with it: a base, an object, a string, or none."""
+    if kind == "TStreamerBase":
+        return name
+    if stype in (61, 62, 63, 64, 68, 69):
+        return typename.rstrip("*")
+    if stype == 65:
+        return "TString"
+    return None
+
+
 def _closure(seeds: dict[str, None]) -> list[str]:
     """Every class the seeds reach through bases and members, in met order."""
     ordered = dict.fromkeys(seeds)
@@ -691,15 +702,8 @@ def _closure(seeds: dict[str, None]) -> list[str]:
         if info is None:
             continue
         for kind, name, _t, stype, _s, _a, _d, _m, typename, _x in info[2]:
-            if kind == "TStreamerBase":
-                held = name
-            elif stype in (61, 62, 63, 64, 68, 69):
-                held = typename.rstrip("*")
-            elif stype == 65:
-                held = "TString"
-            else:
-                continue
-            if held in INFOS and held not in ordered:
+            held = _held(kind, name, stype, typename)
+            if held is not None and held in INFOS and held not in ordered:
                 ordered[held] = None
                 queue.append(held)
     return list(ordered)

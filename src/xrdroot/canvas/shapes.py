@@ -141,9 +141,7 @@ def _hatch_colour() -> str:
         from matplotlib.patches import Patch
     except ImportError:
         return "hatchcolor"
-    if hasattr(Patch, "set_hatchcolor"):
-        return "hatchcolor"
-    return "edgecolor"  # pragma: no cover - matplotlib before 3.10
+    return "hatchcolor" if hasattr(Patch, "set_hatchcolor") else "edgecolor"
 
 
 #: What a patch's hatch colour is called here.

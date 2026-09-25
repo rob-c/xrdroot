@@ -31,9 +31,9 @@ def _dimuon(df: RDataFrame) -> RDataFrame:
     return opposite.Define("Dimuon_mass", "InvariantMass(Muon_pt, Muon_eta, Muon_phi, Muon_mass)")
 
 
-def _by_hand(columns: dict) -> np.ndarray:
-    """The dimuon masses, in NumPy, one event at a time as the C++ loop takes them."""
-    masses = []
+def _pairs(columns: dict) -> tuple[np.ndarray, np.ndarray]:
+    """The dimuon masses and energies, in NumPy, one event at a time as the C++ loop takes them."""
+    masses, energies = [], []
     for event in range(len(columns["nMuon"])):
         rows = [columns[f"Muon_{name}"][event] for name in ("pt", "eta", "phi", "mass", "charge")]
         if len(rows[0]) != 2 or rows[4][0] == rows[4][1]:
@@ -43,22 +43,27 @@ def _by_hand(columns: dict) -> np.ndarray:
         e = np.sqrt(x * x + y * y + z * z + mass * mass)
         total = [part.sum(dtype=np.float32) for part in (x, y, z, e)]
         masses.append(np.sqrt(total[3] ** 2 - total[0] ** 2 - total[1] ** 2 - total[2] ** 2))
-    return np.asarray(masses, np.float32)
+        energies.append(total[3])
+    return np.asarray(masses, np.float32), np.asarray(energies, np.float64)
 
 
-def _same_masses(found: np.ndarray, wanted: np.ndarray) -> bool:
+def _by_hand(columns: dict) -> np.ndarray:
+    """The dimuon masses alone."""
+    return _pairs(columns)[0]
+
+
+def _same_masses(found: np.ndarray, columns: dict) -> bool:
     """Masses equal to what single precision can say, which is less than it looks.
 
-    A pair's mass is the root of ``E**2 - p**2``, and near threshold that
-    difference cancels most of the float32 digits of each: the same pair
-    worked out with another NumPy's sin, cos and sinh - SIMD versions differ
-    by platform - can move by a few parts in a million. The honest bound is
-    some hundreds of float32 steps of ``m**2`` near threshold, where ``E**2``
-    is many times it, and a few elsewhere.
+    A pair's mass is the root of ``E**2 - p**2``, and for a light pair of
+    energetic muons that difference cancels most of the float32 digits of
+    each: the same pair worked out with another NumPy's sin, cos and sinh -
+    SIMD versions differ by platform - moves by a few float32 steps of
+    ``E**2``, however small the mass. That is the honest bound.
     """
+    wanted, energies = _pairs(columns)
     squares = np.abs(found.astype(np.float64) ** 2 - wanted.astype(np.float64) ** 2)
-    scale = np.maximum(wanted.astype(np.float64), 1.0) ** 2
-    return bool(len(found) == len(wanted) and np.all(squares <= 512 * 2.0**-23 * scale))
+    return bool(len(found) == len(wanted) and np.all(squares <= 64 * 2.0**-23 * energies**2))
 
 
 def _counts(masses: np.ndarray) -> np.ndarray:
@@ -74,7 +79,7 @@ def test_the_dimuon_spectrum_of_a_tree_is_numpy_by_hand(tmp_path):
             df.Report(),
         )
         wanted = _by_hand(muon_columns(5000))
-        assert _same_masses(masses.GetValue(), wanted)
+        assert _same_masses(masses.GetValue(), muon_columns(5000))
         assert h.GetValue().values().tolist() == _counts(masses.GetValue()).tolist()
         assert h.GetValue().entries == len(wanted)
         cuts = report.GetValue()
@@ -129,7 +134,7 @@ def test_roots_own_open_data_dimuons(tmp_path):
         )
         df = RDataFrame(events)
         masses = _dimuon(df).Take("Dimuon_mass").GetValue()
-        assert _same_masses(masses, _by_hand(columns))
+        assert _same_masses(masses, columns)
         assert len(masses) > 100
         assert df.GetColumnType("nMuon") == "ROOT::RNTupleCardinality<std::uint32_t>"
         assert df.GetColumnType("Muon_charge") == "ROOT::VecOps::RVec<std::int32_t>"

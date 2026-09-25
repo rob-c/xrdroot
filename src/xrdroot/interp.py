@@ -1230,11 +1230,10 @@ def _primitive_element(
     for base in (0, OFFSET_L, OFFSET_P):
         kind = leaf.ltype - base
         prim = BASIC.get(kind)
-        if prim is None:
-            if kind in PACKED:
-                return _packed_member(branch, leaf, source, kind, base == OFFSET_P)
-            continue
-        if base == OFFSET_P:
-            return Rows(prim, 1, False)  # one marker byte, then the counted values
-        return Flat(prim, leaf.length)
+        if prim is not None:
+            if base == OFFSET_P:
+                return Rows(prim, 1, False)  # one marker byte, then the counted values
+            return Flat(prim, leaf.length)
+        if kind in PACKED:
+            return _packed_member(branch, leaf, source, kind, base == OFFSET_P)
     return None
