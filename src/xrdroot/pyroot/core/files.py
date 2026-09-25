@@ -464,7 +464,8 @@ def _file_title(reading: Any) -> str:
 
     source = reading._source
     begin = struct.unpack(">i", source.read(8, 4))[0]
-    return str(Key(Buffer(source.read(begin, 512))).title)
+    nbytes = struct.unpack(">i", source.read(begin, 4))[0]
+    return str(Key(Buffer(source.read(begin, min(nbytes, 512)))).title)
 
 
 def _exists(name: str) -> bool:
