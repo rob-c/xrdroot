@@ -215,20 +215,34 @@ def _fallback_similarity(expected: Path, actual: Path) -> ImageScore:
     return ImageScore(round(score, 4), "numpy-pooled-grey", note)
 
 
+def _size_note(expected: Path, actual: Path) -> str:
+    """What to say about two pictures' sizes: nothing when they are the same."""
+    one, two = _grey(expected), _grey(actual)
+    return "" if one.shape == two.shape else f"sizes {one.shape[::-1]} and {two.shape[::-1]}"
+
+
 def image_similarity(expected: Path, actual: Path) -> ImageScore:
-    """The graphics layer's comparison if it has one, else the NumPy fallback."""
-    comparer = _external_comparer()
-    if comparer is not None:
-        try:
-            found = comparer(str(expected), str(actual))
-            score = found[0] if isinstance(found, tuple) else getattr(found, "score", found)
-            return ImageScore(round(float(score), 4), "xrdroot.pyroot.graphics.compare_images")
-        except Exception as why:
-            return ImageScore(0.0, "xrdroot.pyroot.graphics.compare_images", f"failed: {why}")
+    """The graphics layer's comparison if it has one, else the NumPy fallback.
+
+    Both pictures are decoded here first whichever scores them, so a picture
+    that is not one, or two of different sizes, is said the same way either
+    way - the graphics layer's score resizes silently, and a canvas saved at
+    the wrong size is a difference worth reporting in its own right.
+    """
     try:
-        return _fallback_similarity(expected, actual)
+        note = _size_note(expected, actual)
     except Exception as why:
         return ImageScore(0.0, "numpy-pooled-grey", f"cannot decode: {why}")
+    comparer = _external_comparer()
+    if comparer is None:
+        return _fallback_similarity(expected, actual)
+    method = "xrdroot.pyroot.graphics.compare_images"
+    try:
+        found = comparer(str(expected), str(actual))
+    except Exception as why:
+        return ImageScore(0.0, method, f"failed: {why}")
+    score = found[0] if isinstance(found, tuple) else getattr(found, "score", found)
+    return ImageScore(round(float(score), 4), method, note)
 
 
 # --- every output ----------------------------------------------------------
