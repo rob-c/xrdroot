@@ -118,6 +118,9 @@ class TClass:
 class TObject:
     """``TObject``: the root of ROOT's classes, and of every class here."""
 
+    #: What ``ClassDef`` says of the class, which is a ``TObject``'s title.
+    CLASS_TITLE = "Basic ROOT object"
+
     def __init__(self, *args: Any) -> None:
         self._bits = 0
         self._unique_id = 0
@@ -148,8 +151,8 @@ class TObject:
         return self.ClassName()
 
     def GetTitle(self) -> str:
-        """A ``TObject`` has no title."""
-        return ""
+        """A ``TObject``'s title is its class's description, as ``ClassDef`` gave it."""
+        return self.CLASS_TITLE
 
     def GetIconName(self) -> str:
         return self.GetName()
