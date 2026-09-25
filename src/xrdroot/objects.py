@@ -129,10 +129,17 @@ class BranchRecord:
         "baskets",
         "streamed",
         "whole",
+        "basket_size",
+        "tot_bytes",
+        "zip_bytes",
     )
 
     def __init__(self) -> None:
         self.name = self.title = ""
+        #: The size ROOT aimed each basket at, and the bytes of the branch's
+        #: baskets before and after compression - what ``TTree::Print`` says.
+        self.basket_size = 0
+        self.tot_bytes = self.zip_bytes = 0
         #: The C++ class a ``TBranchElement`` belongs to; empty for a plain branch.
         self.classname = ""
         self.entry_offset_len = 0
@@ -218,7 +225,8 @@ def _branch_header(
 ) -> tuple[int, int]:
     if version > 7:
         buf.skip_record()  # TAttFill
-    buf.i32(), buf.i32()  # compression and target basket size
+    buf.i32()  # compression
+    branch.basket_size = buf.i32()
     branch.entry_offset_len = buf.i32()
     write_basket = buf.i32()
     buf.i64() if modern else buf.i32()
@@ -237,10 +245,10 @@ def _branch_counts(buf: Buffer, branch: BranchRecord, version: int, modern: bool
         branch.entries = buf.i64()
         if version >= 11:
             branch.first_entry = buf.i64()
-        buf.i64(), buf.i64()
+        branch.tot_bytes, branch.zip_bytes = buf.i64(), buf.i64()
     else:
         branch.entries = int(buf.f64())
-        buf.f64(), buf.f64()
+        branch.tot_bytes, branch.zip_bytes = int(buf.f64()), int(buf.f64())
 
 
 def _branch_contents(buf: Buffer, branch: BranchRecord) -> None:
