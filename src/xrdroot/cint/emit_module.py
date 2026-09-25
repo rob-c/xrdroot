@@ -17,7 +17,7 @@ from typing import Any
 from .ctype import CType
 from .emit_classes import ClassEmitter
 from .emit_vars import addressable
-from .nodes import ClassDecl, DeclStmt, EnumDecl, Function, Namespace, Stmt
+from .nodes import ClassDecl, DeclStmt, EnumDecl, Function, Namespace, Stmt, VarDecl
 from .program import Program
 from .symbols import Symbol, python_name
 from .writer import Writer

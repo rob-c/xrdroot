@@ -47,7 +47,6 @@ from .nodes import (
     Expr,
     ExprStmt,
     For,
-    Function,
     If,
     Index,
     InitList,
@@ -146,10 +145,6 @@ class StmtEmitter(CallEmitter):
 
     def _enum_statement(self, node: EnumDecl) -> None:
         self.local_enum(node)
-
-    def _function_statement(self, node: Function) -> None:
-        if node.body is not None:
-            raise self.refuse("a function defined inside another function", node)
 
     # -- expression statements -------------------------------------------------
 
@@ -396,8 +391,6 @@ class StmtEmitter(CallEmitter):
         raise NotImplementedError
 
     def _break(self, node: Break) -> None:
-        if self.loops and self.loops[-1].kind == "switch":
-            raise self.refuse("a break in the middle of a case", node)
         self.out.line("break", node.where)
 
     def _continue(self, node: Continue) -> None:
@@ -668,7 +661,6 @@ class StmtEmitter(CallEmitter):
         Typedef: _nothing,
         ClassDecl: _class_statement,
         EnumDecl: _enum_statement,
-        Function: _function_statement,
         If: _if,
         While: _while,
         DoWhile: _do,
@@ -725,8 +717,6 @@ def _counter(node: For) -> tuple[VarDecl, str, Expr, int] | None:
     decl = init.decls[0]
     bound = bound_of(node.cond, decl.name)
     step = is_literal_step(node.step, decl.name) if node.step is not None else None
-    if bound is None or step is None or decl.style not in ("=", None, "{}"):
-        return None
-    if decl.style == "{}":
+    if bound is None or step is None or decl.style not in ("=", None):
         return None
     return decl, bound[0], bound[1], step

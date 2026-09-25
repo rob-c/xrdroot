@@ -90,7 +90,7 @@ def test_number_literals_are_worth_what_cpp_says(text: str, value: float, ctype:
 def test_what_is_no_number_is_refused_and_a_user_literal_named() -> None:
     with pytest.raises(Refusal, match="1_GeV is a user-defined literal"):
         number("1_GeV", Where("m.C", 1))
-    with pytest.raises(Refusal, match="1.2.3 is not a number literal"):
+    with pytest.raises(Refusal, match=r"1\.2\.3 is not a number literal"):
         number("1.2.3", Where("m.C", 1))
 
 
@@ -109,7 +109,7 @@ def test_macros_expand_as_the_preprocessor_expands_them() -> None:
     N __LINE__ __FILE__
     """
     assert words(source, "m.C") == (
-        "int x1 = ( ( 10 + 1 ) * ( 10 + 1 ) ) ; const char * s = \"a \\\"q\\\" b\" ; "
+        'int x1 = ( ( 10 + 1 ) * ( 10 + 1 ) ) ; const char * s = "a \\"q\\" b" ; '
         'printf ( "%d %d" , 1 , 2 ) ; 0 ; SELF + 1 ; SQ ; x ; N 12 "m.C"'
     )
 
