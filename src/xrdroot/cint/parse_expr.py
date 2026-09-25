@@ -248,9 +248,13 @@ class ExprParser(TypeParser):
         while True:
             token = self.peek()
             handler = self._POSTFIX.get(token.text) if token.kind == "op" else None
-            if handler is None:
+            if handler is None or (token.is_("{") and not self._constructs(expr)):
                 return expr
             expr = handler(self, expr)
+
+    def _constructs(self, expr: Expr) -> bool:
+        """Is ``expr {`` a type built from a braced list - ``T{a, b}`` - rather than a block?"""
+        return isinstance(expr, Name) and self._type_name(expr)
 
     def _call(self, expr: Expr) -> Expr:
         where = self.peek().where
@@ -302,8 +306,7 @@ class ExprParser(TypeParser):
         return Unary(token.where, token.text, expr, postfix=True)
 
     def _braces(self, expr: Expr) -> Expr:
-        if not isinstance(expr, Name) or not self._type_name(expr):
-            return expr
+        assert isinstance(expr, Name)
         braced = self.braced()
         braced.ctype = CType(canonical(expr.text), expr.targs or [])
         return braced
@@ -344,8 +347,6 @@ class ExprParser(TypeParser):
         token = self.take()
         value, ctype = number(token.text, token.where)
         kind = "int" if isinstance(value, int) else "float"
-        if self.peek().kind == "id" and not self.peek().space:
-            raise self.refuse(f"{token.text}{self.peek().text} is a user-defined literal")
         return Literal(token.where, kind, value, ctype)
 
     def _string(self) -> Expr:
@@ -585,8 +586,6 @@ class ExprParser(TypeParser):
 
 def _casts(known: bool, ctype: CType, token: Token) -> bool:
     """Is ``(T)`` followed by ``token`` a cast - rather than a bracketed name in an expression?"""
-    if token.kind == "eof":
-        return False
     if not known and not _operand_after_unknown(ctype, token):
         return False
     if token.kind == "op" and token.text not in PREFIX and not token.is_("(", "{", "::"):

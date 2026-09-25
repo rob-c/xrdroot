@@ -18,6 +18,7 @@ from .base import TAKEN, Out, P
 from .ctype import CType
 from .infer import Inference
 from .nodes import Literal, Name
+from .operators import python_operator
 from .symbols import Symbol
 
 __all__ = ["NameEmitter", "STD", "type_text"]
@@ -125,7 +126,7 @@ class NameEmitter(Inference):
             found = info.statics.get(name)
             return Symbol(name, "static", f"{klass}.{name}", found.ctype if found else None)
         if name in info.methods:
-            return Symbol(name, "static", f"{klass}.{name}", owner=klass)
+            return Symbol(name, "static", f"{klass}.{python_operator(name)}", owner=klass)
         if name == klass:
             return self.lookup(klass)
         return None

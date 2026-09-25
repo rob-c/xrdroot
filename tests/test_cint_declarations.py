@@ -29,7 +29,10 @@ def body(source: str) -> str:
         ("double d = {2};", "d = 2.0"),
         ("std::vector<int> v = {1, 2};", "v = ROOT.std.vector['int']([1, 2])"),
         ("TLorentzVector v[2];", "v = array('TLorentzVector', 2, make=ROOT.TLorentzVector)"),
-        ('char names[2][8] = {"a", "b"}; char more[3][4];', "names = array('char*', 2, ['a', 'b'])"),
+        (
+            'char names[2][8] = {"a", "b"}; char more[3][4];',
+            "names = array('char*', 2, ['a', 'b'])",
+        ),
         ("char more[3][4];", "more = array('char*', 3, [])"),
         ('char s[] = "abc"; int n = sizeof(s);', "s = 'abc'"),
         ("double a[3]; void *p = &a;", "a = array('double', 3)"),

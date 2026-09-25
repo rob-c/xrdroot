@@ -15,6 +15,7 @@ from typing import Any
 from .ctype import CType
 from .errors import Refusal, Where
 from .nodes import Node
+from .operators import python_operator
 from .program import Program
 from .runtime import __all__ as RUNTIME_NAMES
 from .symbols import Scope, Symbol, python_name
@@ -118,6 +119,6 @@ class EmitterBase:
         """``TMath::Pi`` as ``ROOT.TMath.Pi``, ``ROOT::Math::X`` as ``ROOT.Math.X``."""
         rest = parts[1:] if parts[0] == "ROOT" and len(parts) > 1 else parts
         text = "ROOT"
-        for part in rest:
+        for part in map(python_operator, rest):
             text = f"getattr({text}, {part!r})" if keyword.iskeyword(part) else f"{text}.{part}"
         return text

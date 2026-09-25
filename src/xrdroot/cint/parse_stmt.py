@@ -106,8 +106,6 @@ class StmtParser(ExprParser):
         spec = self.specifiers()
         if spec.ctype.is_auto and self._binding_ahead():
             return True
-        if self.at_(";") and spec.words - {"const"}:
-            raise NoParse
         self.declarator(spec.ctype)
         if not self.at_(*DECLARATOR_ENDS):
             raise NoParse

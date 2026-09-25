@@ -38,6 +38,7 @@ from .nodes import (
     Throw,
     Unary,
 )
+from .operators import python_operator
 
 __all__ = ["ExprEmitter", "COMPARISONS", "zero"]
 
@@ -366,6 +367,7 @@ class ExprEmitter(NameEmitter):
     @staticmethod
     def attribute(obj: str, name: str) -> str:
         """``obj.name``, or ``getattr(obj, 'import')`` when the name is one of Python's keywords."""
+        name = python_operator(name)
         if keyword.iskeyword(name):
             return f"getattr({obj}, {name!r})"
         return f"{obj}.{name}"

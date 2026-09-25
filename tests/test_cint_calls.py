@@ -23,26 +23,48 @@ def body(source: str) -> str:
 @pytest.mark.parametrize(
     ("source", "text"),
     [
-        ('auto h = std::make_unique<TH1F>("h", "h", 2, 0, 1); printf("%s\\n", h->GetName());',
-         "h\n"),
-        ('std::shared_ptr<TH1F> s = std::make_shared<TH1F>("s", "s", 1, 0, 1);'
-         'TH1F *raw = s.get(); printf("%s\\n", raw->GetName());', "s\n"),
-        ("std::unique_ptr<TH1F> e = std::unique_ptr<TH1F>(); printf(\"%d\\n\", e == nullptr);",
-         "1\n"),
-        ('std::unique_ptr<TH1F> r(new TH1F("r", "r", 1, 0, 1)); TH1F *x = r.release();'
-         'printf("%s\\n", x->GetName());', "r\n"),
-        ('printf("%g %d %g\\n", std::numeric_limits<double>::max(),'
-         " std::numeric_limits<int>::min(), std::numeric_limits<float>::epsilon());",
-         "1.79769e+308 -2147483648 1.19209e-07\n"),
-        ('double a[4] = {3, 1, 2, 0}; std::sort(a, a + 3); printf("%g %g\\n", a[0], a[3]);',
-         "1 0\n"),
-        ("std::vector<int> v; v.push_back(3); v.push_back(1); v.push_back(2);"
-         'std::sort(v.begin() + 1, v.end()); printf("%d %d %d\\n", v[0], v[1], v[2]);',
-         "3 1 2\n"),
-        ('std::vector<int> v; v.push_back(1); v.push_back(2); std::reverse(v.begin(), v.end());'
-         'printf("%d\\n", v[0]);', "2\n"),
-        ('std::vector<double> v; v.push_back(1.5); v.push_back(2);'
-         'printf("%g\\n", std::accumulate(v.begin(), v.end(), 0.0));', "3.5\n"),
+        (
+            'auto h = std::make_unique<TH1F>("h", "h", 2, 0, 1); printf("%s\\n", h->GetName());',
+            "h\n",
+        ),
+        (
+            'std::shared_ptr<TH1F> s = std::make_shared<TH1F>("s", "s", 1, 0, 1);'
+            'TH1F *raw = s.get(); printf("%s\\n", raw->GetName());',
+            "s\n",
+        ),
+        (
+            'std::unique_ptr<TH1F> e = std::unique_ptr<TH1F>(); printf("%d\\n", e == nullptr);',
+            "1\n",
+        ),
+        (
+            'std::unique_ptr<TH1F> r(new TH1F("r", "r", 1, 0, 1)); TH1F *x = r.release();'
+            'printf("%s\\n", x->GetName());',
+            "r\n",
+        ),
+        (
+            'printf("%g %d %g\\n", std::numeric_limits<double>::max(),'
+            " std::numeric_limits<int>::min(), std::numeric_limits<float>::epsilon());",
+            "1.79769e+308 -2147483648 1.19209e-07\n",
+        ),
+        (
+            'double a[4] = {3, 1, 2, 0}; std::sort(a, a + 3); printf("%g %g\\n", a[0], a[3]);',
+            "1 0\n",
+        ),
+        (
+            "std::vector<int> v; v.push_back(3); v.push_back(1); v.push_back(2);"
+            'std::sort(v.begin() + 1, v.end()); printf("%d %d %d\\n", v[0], v[1], v[2]);',
+            "3 1 2\n",
+        ),
+        (
+            "std::vector<int> v; v.push_back(1); v.push_back(2); std::reverse(v.begin(), v.end());"
+            'printf("%d\\n", v[0]);',
+            "2\n",
+        ),
+        (
+            "std::vector<double> v; v.push_back(1.5); v.push_back(2);"
+            'printf("%g\\n", std::accumulate(v.begin(), v.end(), 0.0));',
+            "3.5\n",
+        ),
         ('double w[3] = {1, 2, 3}; printf("%g\\n", std::accumulate(w, w + 2, 10.0));', "13\n"),
         ('printf("%d %d %d\\n", abs(-3), std::max(2, 5), std::min(1.5, 0.5) < 1);', "3 5 1\n"),
         ('long big = 5; unsigned char c = 260; printf("%ld %d\\n", big, c);', "5 4\n"),
@@ -61,11 +83,11 @@ def test_library_calls_do_what_the_library_does(
 @pytest.mark.parametrize(
     ("source", "fragment"),
     [
-        ("auto f = Format(\"x\");", "f = ROOT.Format('x')"),
+        ('auto f = Format("x");', "f = ROOT.Format('x')"),
         ("auto g = std::make_unique(3);", "g = ROOT.std.make_unique(3)"),
         ("auto a = (*fp)(2); auto b = f()();", "b = ROOT.f()()"),
         ("std::vector<std::array<int, 3>> v;", "ROOT.std.vector['std::array<int,3>']()"),
-        ("fprintf(stderr, \"x\");", "fprintf('stderr', 'x')"),
+        ('fprintf(stderr, "x");', "fprintf('stderr', 'x')"),
     ],
 )
 def test_calls_are_written_as_their_python(source: str, fragment: str) -> None:

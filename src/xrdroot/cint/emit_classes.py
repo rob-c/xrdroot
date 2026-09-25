@@ -15,42 +15,11 @@ from __future__ import annotations
 from .ctype import CType
 from .emit_funcs import FunctionEmitter
 from .nodes import ClassDecl, EnumDecl, Expr, Function, Literal, Unary, VarDecl
+from .operators import DUNDERS
 from .program import ClassInfo
 from .symbols import Symbol, python_name
 
-__all__ = ["ClassEmitter", "DUNDERS"]
-
-#: Each operator as the method Python calls for it: with an argument, and without one.
-DUNDERS = {
-    "operator+": ("__add__", "__pos__"),
-    "operator-": ("__sub__", "__neg__"),
-    "operator*": ("__mul__", None),
-    "operator/": ("__truediv__", None),
-    "operator%": ("__mod__", None),
-    "operator==": ("__eq__", None),
-    "operator!=": ("__ne__", None),
-    "operator<": ("__lt__", None),
-    "operator>": ("__gt__", None),
-    "operator<=": ("__le__", None),
-    "operator>=": ("__ge__", None),
-    "operator[]": ("__getitem__", None),
-    "operator()": ("__call__", "__call__"),
-    "operator+=": ("__iadd__", None),
-    "operator-=": ("__isub__", None),
-    "operator*=": ("__imul__", None),
-    "operator/=": ("__itruediv__", None),
-    "operator&": ("__and__", None),
-    "operator|": ("__or__", None),
-    "operator^": ("__xor__", None),
-    "operator~": (None, "__invert__"),
-    "operator<<": ("__lshift__", None),
-    "operator>>": ("__rshift__", None),
-    "operator=": ("_assign", None),
-    "operator bool": (None, "__bool__"),
-    "operator double": (None, "__float__"),
-    "operator float": (None, "__float__"),
-    "operator int": (None, "__int__"),
-}
+__all__ = ["ClassEmitter"]
 
 
 class ClassEmitter(FunctionEmitter):
