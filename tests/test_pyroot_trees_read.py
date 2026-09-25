@@ -100,7 +100,7 @@ def test_an_address_holding_an_array_is_filled_where_it_is(tree):
     tree.SetBranchAddress("s", text)
     tree.GetEntry(3)
     assert held.value is before and before.tolist() == [3, 4, 5]
-    assert bytes(text).startswith(b"e3\\0")
+    assert bytes(text).startswith(b"e3\0")
 
 
 def test_an_address_too_small_for_an_entry_is_refused_with_both_sizes(tree):
