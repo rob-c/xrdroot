@@ -43,6 +43,9 @@ TOP = "Rint"
 #: ``root://host:1094//f.root:dir/h`` - stay in the file.
 LOCATION = re.compile(r"^(?P<file>.*\.root)(?::(?P<path>.*))?$", re.DOTALL)
 
+#: The extensions of a C++ macro, which ``.x`` hands to :mod:`xrdroot.cint` to translate.
+CXX_MACROS = (".C", ".c", ".cxx", ".cpp", ".cc")
+
 #: What ``.help`` at the prompt prints.
 HELP = """\
 ROOT's prompt commands, and what each is here:
@@ -50,6 +53,7 @@ ROOT's prompt commands, and what each is here:
   .pwd             print(gROOT.pwd())     where the session is
   .cd [dir]        gROOT.cd("dir")        a directory, "file.root:/dir", ".." or the top
   .x macro.py(a)   gROOT.macro(...)       run a Python macro, then its function of the same name
+  .x macro.C(a)    gROOT.macro(...)       translate a C++ macro into Python, and run it the same way
   .q               exit()                 leave
   .help            this text
 Everything in xrdroot is here by name, with numpy as np. gROOT.get("name")
@@ -371,7 +375,11 @@ class Session:
         ``args``, and what it returns comes back, as ROOT's ``.x`` does for a
         C++ macro; one that defines no such function is just run.
         """
-        where = Path(path)
+        where = Path(str(path).rstrip("+"))
+        if where.suffix in CXX_MACROS:
+            from .cint.execute import run as run_cxx
+
+            return run_cxx(where, args)
         namespace = self.run(where.read_text(), str(where))
         entry = namespace.get(where.stem)
         if callable(entry):
@@ -382,6 +390,13 @@ class Session:
                 f"{', '.join(map(repr, args))} to"
             )
         return None
+
+    @staticmethod
+    def ProcessLine(line: str) -> Any:
+        """``gROOT->ProcessLine(line)``: C++ statements, or ``.x``/``.L`` of a C++ macro."""
+        from .cint.execute import process_line
+
+        return process_line(line)
 
     @staticmethod
     def help() -> str:

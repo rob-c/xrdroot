@@ -2336,7 +2336,8 @@ status 2.
 | --- | --- |
 | `root -l f.root` | `xrdroot f.root` — `_file0`, `_file1`… as ROOT names them, and a `.py` among them run as a macro; `-q` leaves after |
 | `.ls`, `.pwd`, `.cd dir`, `.q` | the same, at the prompt: `print(gROOT.ls())`, `gROOT.cd("dir")`… |
-| `.x macro.C(1, 2)` | `.x macro.py(1, 2)` — or `gROOT.macro("macro.py", 1, 2)` — runs the file, then its function of the same name |
+| `.x macro.C(1, 2)` | `.x macro.py(1, 2)` — or `gROOT.macro("macro.py", 1, 2)` — runs the file, then its function of the same name; a `.C` is [translated from C++](#running-root-macros) first |
+| `root -b -q macro.C` | `xrdroot run macro.C` |
 | `gROOT`, `gDirectory`, `gFile` | `xrdroot.gROOT`, `xrdroot.gDirectory`; the file is `gROOT.cd()`'s answer, or `_file0` |
 | `TFile::Open(url)` | `gROOT.open(url)`, which goes into the file as ROOT's does |
 | `gROOT->Get("f.root:/dir/h")`, `FindObject("h")` | `gROOT.get("f.root:/dir/h")`, `gROOT["h"]` |
@@ -2419,6 +2420,109 @@ describes.
 Every subcommand is a module `xrdroot.cli.<name>` with an `add_parser(subparsers)`
 and a `run(args)`, named in the list `xrdroot.cli.COMMANDS`; adding one is
 writing the module and adding its name to that list.
+
+## Running ROOT macros
+
+A ROOT macro is C++ as Cling reads it. `xrdroot.cint` translates it into
+Python and runs that: `xrdroot run` is `root -b -q`, and `.x` at the prompt
+takes a `.C` as readily as a `.py`.
+
+```console
+$ xrdroot run hsimple.C
+$ xrdroot run 'fit.C(1000, "gaus")'       # .x fit.C(1000, "gaus"): the function fit, called
+$ xrdroot run hsimple.C+                  # ACLiC's + runs the same way: nothing to compile
+$ xrdroot run hsimple.C --python          # the translation, printed; nothing run
+$ xrdroot run script.py                   # a PyROOT script, `import ROOT` being xrdroot.pyroot
+```
+
+```python
+from xrdroot import cint
+
+cint.run("hsimple.C")                      # the function named like the file, called
+cint.run("fit.C", args=(1000,))
+python = cint.translate(open("fit.C").read(), "fit.C")   # readable Python, to keep
+cint.process_line('printf("%d\\n", 7 / 2)')              # gROOT->ProcessLine
+cint.load("helpers.C")                     # .L: what it defines, nothing called
+gROOT.macro("hsimple.C")                   # .x at the prompt
+```
+
+A macro runs as ROOT runs it: the function named like the file is called
+with the arguments `.x` gave, an unnamed macro — a file that is a single
+`{ ... }` block — runs its block, and a file with neither just defines what
+it declares. Translations are kept under `$XRDROOT_CINT_CACHE` (by default
+`~/.cache/xrdroot/cint`), filed by a hash of the macro, of every local header
+it reads, and of the translator itself, so nothing stale is ever run.
+
+### What the Python looks like
+
+```cpp
+void count(int n = 10) {
+   TH1F *h = new TH1F("h", "h", 10, 0, 1);
+   Float_t px, py;
+   for (int i = 0; i < n; i++) {
+      gRandom->Rannor(px, py);
+      h->Fill(px);
+   }
+   printf("%d entries, %d halves\n", (int)h->GetEntries(), n / 2);
+}
+```
+
+```python
+from xrdroot.cint.runtime import *  # noqa: F403
+
+
+def count(n=10):
+    h = ROOT.TH1F('h', 'h', 10, 0, 1)
+    px = Cell(0.0, 'float')
+    py = Cell(0.0, 'float')
+    for i in range(0, n):
+        ROOT.gRandom.Rannor(px, py)
+        h.Fill(px.value)
+    printf('%d entries, %d halves\n', int(h.GetEntries()), idiv(n, 2))
+```
+
+Every name the macro did not declare is ROOT's, spelled `ROOT.<name>` and
+looked up in `xrdroot.pyroot` when first used (`ROOT.bind(namespace)` points it
+anywhere else); `std::vector<double>` is `ROOT.std.vector['double']`. The
+runtime supplies what C++ has and Python lacks:
+
+| C++ | Python |
+| --- | --- |
+| `7 / 2`, `-7 % 2` of integers | `idiv(7, 2)`, `imod(-7, 2)` — truncating toward zero; `div`/`mod` where the types are not known |
+| `int n = x;`, `float f = x;`, `unsigned u = -1;` | `int(x)`, `f32(x)`, `u32(-1)`: C's conversion on every store |
+| `&x`, a variable handed to `double&` or to ROOT's `Rannor(px, py)` | a `Cell`, read and written as `.value` — ROOT's address contract |
+| `&a[i]`, pointer arithmetic on a number array | a NumPy view `a[i:]` |
+| `double a[3] = {1}`, `TH1F *h[4]` | `array('double', 3, [1])` (NumPy, of the declared width), a list of `None` |
+| `printf`, `sprintf(buf, ...)`, `Printf`, `Form`, `Info` | the C formatting, exactly: `%u`, `%x` of negatives, `%ld`, `%c`, `%*d` |
+| `std::cout << x << std::setw(6) << std::fixed` | `cout << x << setw(6) << fixed`: iostreams' six significant digits, flags and widths |
+| `std::string`, `const char*`, `char buf[64]` | `str`, with `.size()`, `.substr()`, `.find()` and `strlen`, `strcmp`, `atof` rewritten |
+| `p == 0`, `if (!h)` for a pointer | `p is None`, `if h is None` |
+| `std::sort(v.begin(), v.end(), less)`, `std::swap(a, b)` | `sort_range(v, 0, None, less)`, `a, b = b, a` |
+| overloaded functions and constructors | `f__1`, `f__2` and an `Overloaded` choosing by count, then type |
+| classes, inheritance (from ROOT's too), operators | Python classes; `operator+` is `__add__`, `~T()` is `_destruct`, called by `delete` |
+| `switch`, `do`/`while`, `for`, `continue` | `if`/`elif` chains (a one-pass loop when a case falls through), `range` when the bound cannot change |
+| lambdas, `[x]` and `[&]` | a `def` before the statement; by-value captures bound as defaults, by-reference ones `nonlocal` |
+
+An error as the macro runs is reported at its C++ line — `hsimple.C:42:
+ZeroDivisionError: integer division by zero` — through the translation's
+source map.
+
+### What is refused
+
+Anything the translator cannot turn into Python that does the same thing it
+refuses, by name and at the C++ line, before running any of it:
+`tutorials/foo.C:42: pointer arithmetic on a char* is not something this
+translator turns into Python`. Among them: `goto`, placement `new`, assigning
+through `f(i) = v` (a `TMatrix`'s element, say), a whole object assigned
+through a pointer, a local object whose destructor does something (Python
+runs none at the end of a scope), variadic templates, template value
+parameters, specialisations of class templates, bit-fields, user-defined
+literals, and inline assembly.
+
+`python tools/cint_survey.py ROOT/tutorials` translates every tutorial macro
+and counts what translates, what is refused and why, and what (never, one
+hopes) crashes. Against ROOT 6.40.04's 910 macros it translates 88.7% into
+Python that compiles.
 
 ## Compression
 
