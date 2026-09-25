@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import glob
 import os
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -205,23 +205,30 @@ class Chain:
         *,
         library: str = "np",
         entries: Any = None,
+        cut: str | None = None,
+        aliases: Mapping[str, str] | None = None,
     ) -> Any:
         """Several columns at once, over the same range of the chain's entries.
 
         As :meth:`~.tree.TTree.arrays`, with the entries counted across every
         file; ``entries`` is a set of those numbers, or an
         :class:`~.entries.EntryList` - one made over a chain has a list per
-        file, and each file's is taken from it.
+        file, and each file's is taken from it. Expressions, ``cut`` and
+        ``aliases`` are as a tree has them, ``Entry$`` counting across the
+        chain and ``LocalEntry$`` within each file.
         """
-        from .library import convert
+        from .formula.select import select
 
-        wanted = self.readable() if names is None else list(names)
-        if entries is None:
-            columns = {name: self[name].array(entry_start, entry_stop) for name in wanted}
-        else:
-            rows = self._selected(entries)
-            columns = {name: self[name].pick(rows) for name in wanted}
-        return convert(columns, library)
+        return select(
+            self,
+            names,
+            entry_start,
+            entry_stop,
+            library=library,
+            entries=entries,
+            cut=cut,
+            aliases=aliases,
+        )
 
     def _selected(self, entries: Any) -> np.ndarray[Any, Any]:
         from .entries import EntryList, selected
@@ -243,18 +250,22 @@ class Chain:
         entry_start: int = 0,
         entry_stop: int | None = None,
         library: str = "np",
+        cut: str | None = None,
+        aliases: Mapping[str, str] | None = None,
     ) -> Iterator[Any]:
         """Walk the chain in batches of ``step`` entries, whichever files they are in.
 
         A batch that runs off the end of one file carries on into the next,
         so every batch but the last is ``step`` long however the files are
-        cut.
+        cut - before ``cut``, if there is one, takes out what it does not pass.
         """
         if step <= 0:
             raise ValueError("step must be at least one entry")
         at, stop = _bounds(self.num_entries, entry_start, entry_stop)
         while at < stop:
-            yield self.arrays(names, at, min(at + step, stop), library=library)
+            yield self.arrays(
+                names, at, min(at + step, stop), library=library, cut=cut, aliases=aliases
+            )
             at += step
 
     def close(self) -> None:

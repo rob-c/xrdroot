@@ -327,6 +327,86 @@ for batch in tree.iterate(["Muon_pt", "Muon_eta"], step=50_000):
 `tree.arrays()` is the same for one range, and takes every readable column
 when it is not told which.
 
+## Expressions
+
+A name `arrays` is given that is not a branch is a `TTree::Draw` expression —
+ROOT's `TTreeFormula` language — and comes back under its own text. `cut` is a
+selection in the same language:
+
+```python
+batch = tree.arrays(
+    ["nJet", "Sum$(jet_pt > 30)", "jet_pt * cosh(jet_eta)"],
+    cut="nJet >= 2 && met > 50",
+    aliases={"met": "sqrt(met_x*met_x + met_y*met_y)"},
+)
+batch["Sum$(jet_pt > 30)"]  # array([2., 3., 1., ...]), one per entry
+batch["jet_pt * cosh(jet_eta)"]  # a Jagged, one per jet
+```
+
+Only the branches the expressions and the cut need are read, once each, and
+`iterate` and a chain's `arrays` take the same arguments. The language on its
+own is `xrdroot.compile_formula`, for anything built on top of it:
+
+```python
+f = xrdroot.compile_formula("Max$(jet_pt)", tree.keys())
+f.branches  # ('jet_pt',) — resolved to the tree's own names
+f.evaluate(tree.arrays(f.branches))  # array([88., 0., 41.5, ...])
+values, valid = f.evaluate_masked(columns)  # where an index ran off the end
+```
+
+Everything is evaluated over the whole batch at once, on the flat values and
+offsets a `Jagged` is made of: `Sum$(jet_pt > 30)` over a million entries of
+six jets each takes about 80 ms, and `jet_pt * cosh(jet_eta)` about 125 ms,
+against some 75 ms for the same arithmetic written in NumPy by hand.
+
+| ROOT | Here |
+| --- | --- |
+| `+ - * /`, `%`, `& \| << >> ~`, `== != < <= > >=`, `&& \|\| !`, `? :` | the same, with C's precedence; arithmetic in `double`, so `3/2` is `1.5`; `%` and the bitwise operators on integers truncated toward zero |
+| `x^2` | a power, as ROOT's formulas have always read it — not C's exclusive or |
+| `(int)x`, `int(x)`, `(double)`, `(float)`, `(bool)`, `Long64_t`… | C++'s conversions |
+| `1`, `0x1f`, `2.5f`, `1e3`, `"text"` | numbers as C++ writes them, and strings to compare a string branch with |
+| `TMath::Abs`, `Sqrt`, `Power`, `Exp`, `Log`, `Log10`, trigonometry and its inverses and hyperbolics, `ATan2`, `Min`, `Max`, `Floor`, `Ceil`, `Nint`, `Sign`, `Hypot`, `Erf`, `Erfc`, `Gamma`, `Gaus`, `BreitWigner`, `IsNaN`, `Finite`, `Even`, `Odd`, `Pi()`, `TwoPi()`, `E()`… | the same functions, over whole arrays |
+| `abs`, `fabs`, `sqrt`, `pow`, `exp`, `log`, `sin`… `fmod`, `round`, `min`, `max`, `std::` in front of any | C's `<cmath>` |
+| `strstr(s, "abc")`, `s == "abc"` | string branches: containment and equality |
+| `evt.P3.Px`, `P3.Px`, `friend.x`, `ArrayI16` for `ArrayI16[10]` | branch names; the longest branch a dotted name spells wins |
+| `x[0]`, `m[1][2]`, `x[n-1]`, `m[][2]`, `x[]` | an index, any expression; `[]` loops over the dimension |
+| `x.size()`, `@x.size()` | how many elements a collection holds; without `@`, of each innermost one |
+| `Length$(x)`, `Sum$(x)`, `Min$(x)`, `Max$(x)`, `MinIf$(x, c)`, `MaxIf$(x, c)` | one value per entry over the elements of `x`; `0` for an entry with none |
+| `Alt$(x[3], -1)` | `x[3]`, or `-1` where there is no `x[3]` |
+| `Entry$`, `Entries$`, `LocalEntry$`, `Iteration$`, `Length$` | where the loop is |
+
+**The implicit loop.** A branch that is a collection makes the expression one
+value per *element*: `jet_pt * 2` is a `Jagged` of one value per jet. Every
+dimension not given an index is looped over; the dimensions looped over are
+matched left to right across the branches, ignoring the ones given an index;
+and dimensions matched together share one index and run to the *shortest* of
+them, as ROOT documents. A number per entry, or `jet_pt[0]`, goes with every
+element. So with `m` a `[3][3]` array and `v` one of five, `m - v` is nine
+values, `m[i][j] - v[i]`; `m[][2] - v` is three; and `pt + eta` over three and
+two elements is two — where go-hep's port refuses collections of different
+lengths, this does what ROOT does. `Formula.per_element` says which kind an
+expression is, when it was compiled against a mapping of names to their
+dimensions, as `arrays` compiles it.
+
+**What is missing.** `pt[3]` of an entry with two jets has no value. ROOT's
+`Draw` leaves such an entry out, and so does `evaluate`: a row of elements
+loses the missing ones, and a value per entry is `NaN`. `evaluate_masked`
+gives the mask instead, and `Alt$` the fallback. A cut leaves out entries whose
+cut is missing too.
+
+**Cuts.** A cut that is one value per entry keeps the entries where it is
+nonzero. One that loops — `jet_pt > 30` — is applied element by element, as
+`Draw` applies it, to every column that is one value per element: expressions
+that loop, variable-length branches and fixed arrays alike, pairing its
+elements with theirs up to the shorter of the two. An entry is kept when any
+of its elements passes, so the columns still line up.
+
+What it will not do is refused by name: a name no branch has, with the nearest
+that do; a member of an object the tree holds whole; a method other than
+`size()`; and one of ROOT's rarer loops — a branch indexed by a collection
+beside another looped over outside the index, which ROOT runs as two nested
+loops.
+
 ## Chains
 
 A dataset is rarely one file. `xrdroot.chain` reads the tree of one name in

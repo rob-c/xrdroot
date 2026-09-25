@@ -23,7 +23,9 @@ and a graph as a :class:`Graph` you can walk a point at a time; a profile is a
 :class:`Profile`, an efficiency an :class:`Efficiency` with ROOT's intervals,
 and a sparse histogram a :class:`SparseHistogram`. :func:`chain` reads a tree
 written as many files as one, a tree reads its friends beside it, and an
-:class:`EntryList` picks the entries to read.
+:class:`EntryList` picks the entries to read. :func:`compile_formula` makes a
+``TTree::Draw`` expression, evaluated over whole columns at once, and
+``tree.arrays(["Sum$(pt > 30)"], cut="n > 1")`` reads them by their text.
 What it does not do is every ROOT class ever written: one whose layout the
 file does not describe, or one that streams itself in some way of its own, is
 refused by name with the class in the message, because a plausible misreading
@@ -50,6 +52,7 @@ from .efficiency import Efficiency
 from .entries import EntryList
 from .errors import FormatError, ROOTError, UnsupportedFeatureError
 from .file import Directory, Key, ROOTFile, open_root
+from .formula import Formula, FormulaError, compile_formula
 from .graph import Graph
 from .hist import Axis, Histogram
 from .profile import Profile
@@ -93,6 +96,10 @@ __all__ = [
     "Stack",
     "Graph",
     "MultiGraph",
+    # expressions
+    "compile_formula",
+    "Formula",
+    "FormulaError",
     # errors
     "ROOTError",
     "FormatError",

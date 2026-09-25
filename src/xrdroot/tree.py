@@ -9,7 +9,7 @@ laptop: the bytes that cross the wire are the ones asked for.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -802,11 +802,14 @@ class TTree:
         *,
         library: str = "np",
         entries: Any = None,
+        cut: str | None = None,
+        aliases: Mapping[str, str] | None = None,
     ) -> Any:
         """Several columns at once, over the same range of entries.
 
             >>> tree.arrays(["pt", "eta"], library="pd")      # doctest: +SKIP
             >>> tree.arrays(["pt"], entries=f["selected"])    # doctest: +SKIP
+            >>> tree.arrays(["Sum$(jet_pt > 30)"], cut="nJet >= 2")   # doctest: +SKIP
 
         With no names, every column this reader can decode; the ones it cannot
         are in :attr:`unreadable` with the reason, rather than quietly missing.
@@ -818,16 +821,25 @@ class TTree:
         :class:`~.entries.EntryList` - the list for this tree, if it keeps one
         per tree - an array of entry numbers, or a mask of one bool per entry.
         Only the baskets holding them are read.
-        """
-        from .library import convert
 
-        wanted = self.readable() if names is None else list(names)
-        if entries is None:
-            columns = {name: self[name].array(entry_start, entry_stop) for name in wanted}
-        else:
-            rows = self._selected(entries)
-            columns = {name: self[name].pick(rows) for name in wanted}
-        return convert(columns, library)
+        A name that is not a branch is a ``TTree::Draw`` expression, given
+        back under its own text, and ``cut`` is a selection in the same
+        language; ``aliases`` are names standing for expressions, as ROOT's
+        ``SetAlias`` makes them. Only the branches they need are read. See
+        :mod:`xrdroot.formula.select` for how a cut over a collection applies.
+        """
+        from .formula.select import select
+
+        return select(
+            self,
+            names,
+            entry_start,
+            entry_stop,
+            library=library,
+            entries=entries,
+            cut=cut,
+            aliases=aliases,
+        )
 
     def _selected(self, entries: Any) -> np.ndarray[Any, Any]:
         from .entries import selected
@@ -843,6 +855,8 @@ class TTree:
         entry_stop: int | None = None,
         library: str = "np",
         entries: Any = None,
+        cut: str | None = None,
+        aliases: Mapping[str, str] | None = None,
     ) -> Iterator[Any]:
         """Walk the tree in batches, reading only what each batch needs.
 
@@ -852,18 +866,21 @@ class TTree:
         This is the one to reach for over a network: memory is one step, not
         one file, and a tree far larger than the machine goes through it.
         With ``entries``, the batches are ``step`` of the entries named at a
-        time rather than ``step`` of the tree's.
+        time rather than ``step`` of the tree's. Expressions, ``cut`` and
+        ``aliases`` are as :meth:`arrays` has them, a cut leaving each batch
+        shorter than ``step`` by the entries it did not pass.
         """
         if step <= 0:
             raise ValueError("step must be at least one entry")
+        chosen: dict[str, Any] = {"library": library, "cut": cut, "aliases": aliases}
         if entries is not None:
             rows = self._selected(entries)
             for at in range(0, len(rows), step):
-                yield self.arrays(names, library=library, entries=rows[at : at + step])
+                yield self.arrays(names, entries=rows[at : at + step], **chosen)
             return
         # The same counting from the end that one branch's ``array`` does, so a
         # negative start or stop means here what it means there.
         at, stop = _bounds(self.num_entries, entry_start, entry_stop)
         while at < stop:
-            yield self.arrays(names, at, min(at + step, stop), library=library)
+            yield self.arrays(names, at, min(at + step, stop), **chosen)
             at += step
