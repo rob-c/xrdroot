@@ -32,6 +32,7 @@ __all__ = [
     "i32",
     "i64",
     "comma",
+    "c_exit",
 ]
 
 
@@ -126,3 +127,8 @@ def i64(value: Any) -> int:
 def comma(*values: Any) -> Any:
     """C's comma operator: everything evaluated, left to right, and the last one's value."""
     return values[-1]
+
+
+def c_exit(code: Any = 0) -> Any:
+    """C's ``exit(code)``: the macro stops, with that status."""
+    raise SystemExit(int(code))

@@ -1,0 +1,304 @@
+"""Calls, and the stores C converts: where a macro meets ROOT, the library and itself.
+
+A call to one of the macro's functions is a Python call, with a variable
+handed to a ``double&`` parameter handed as its cell. A call to a ROOT
+method is ``obj.Method(args)`` - ROOT's names are kept exactly - with the
+variables ROOT writes through (``Rannor(px, py)``) handed as cells. The
+standard library's calls that have no pyroot counterpart are rewritten:
+``std::string``'s members become Python's, ``std::make_unique<T>(a)`` is
+``T(a)``, ``std::sort(v.begin(), v.end())`` sorts ``v`` in place.
+
+:meth:`CallEmitter.store` is C's conversion on assignment, written out: an
+``int`` stored from a ``double`` is truncated, a ``float`` rounded, an
+``unsigned`` wrapped, an object copied.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from .base import Out, P
+from .ctype import CType
+from .emit_expr import ExprEmitter, zero
+from .emit_names import type_text
+from .nodes import Binary, Call, Expr, Index, InitList, Literal, Member, Name, Unary
+
+__all__ = ["CallEmitter", "WRAPS"]
+
+#: The integer types a store must wrap to their width, and the runtime helper that does.
+WRAPS = {
+    "unsigned int": "u32",
+    "unsigned long": "u64",
+    "unsigned long long": "u64",
+    "unsigned short": "u16",
+    "unsigned char": "u8",
+    "short": "i16",
+    "char": "i8",
+    "signed char": "i8",
+}
+
+#: ``std::numeric_limits<T>``'s members, for the floating types and the integer ones.
+LIMITS = {
+    ("double", "max"): "1.7976931348623157e+308",
+    ("double", "min"): "2.2250738585072014e-308",
+    ("double", "lowest"): "-1.7976931348623157e+308",
+    ("double", "epsilon"): "2.220446049250313e-16",
+    ("double", "infinity"): "float('inf')",
+    ("double", "quiet_NaN"): "float('nan')",
+    ("float", "max"): "3.4028234663852886e+38",
+    ("float", "min"): "1.1754943508222875e-38",
+    ("float", "lowest"): "-3.4028234663852886e+38",
+    ("float", "epsilon"): "1.1920928955078125e-07",
+    ("float", "infinity"): "float('inf')",
+    ("float", "quiet_NaN"): "float('nan')",
+    ("int", "max"): "2147483647",
+    ("int", "min"): "-2147483648",
+    ("int", "lowest"): "-2147483648",
+    ("unsigned int", "max"): "4294967295",
+    ("long", "max"): "9223372036854775807",
+    ("long", "min"): "-9223372036854775808",
+    ("long long", "max"): "9223372036854775807",
+    ("unsigned long", "max"): "18446744073709551615",
+}
+
+
+def _lvalue(node: Expr) -> bool:
+    return isinstance(node, (Name, Member, Index)) or (
+        isinstance(node, Unary) and node.op == "*"
+    )
+
+
+class CallEmitter(ExprEmitter):
+    """The emitter's layer for calls and converting stores."""
+
+    # -- arguments -------------------------------------------------------------
+
+    def arguments(self, node: Call) -> str:
+        """A call's arguments, with those passed by reference passed as something writable."""
+        positions = set(self.program.reference_positions(node))
+        items = []
+        for index, arg in enumerate(node.args):
+            if index in positions and _lvalue(arg) and not self._object(arg):
+                items.append(self.reference(arg))
+            else:
+                items.append(self.value(arg))
+        return ", ".join(items)
+
+    def _object(self, arg: Expr) -> bool:
+        found = self.typeof(arg)
+        return found is not None and found.is_class and not found.pointer
+
+    # -- the calls -------------------------------------------------------------
+
+    def call(self, node: Call) -> Out:
+        func = node.func
+        if isinstance(func, Name):
+            return self.named_call(func, node)
+        if isinstance(func, Member):
+            return self.method_call(func, node)
+        return f"{self.at(func, P.POSTFIX)}({self.arguments(node)})", P.POSTFIX
+
+    def named_call(self, func: Name, node: Call) -> Out:
+        symbol = self.symbol(func)
+        if symbol is not None:
+            return f"{self.use(symbol)[0]}({self.arguments(node)})", P.POSTFIX
+        special = self._LIBRARY.get(func.last)
+        if special is not None and (len(func.parts) == 1 or func.parts[0] in ("std", "TString")):
+            found = special(self, func, node)
+            if found is not None:
+                return found
+        return f"{self.library(func)[0]}({self.arguments(node)})", P.POSTFIX
+
+    def _make(self, func: Name, node: Call) -> Out | None:
+        if not func.targs or not isinstance(func.targs[0], CType):
+            return None
+        return f"{self.class_expr(func.targs[0])}({self.arguments(node)})", P.POSTFIX
+
+    def _limits(self, func: Name, node: Call) -> Out | None:
+        if len(func.parts) < 2 or func.parts[-2] != "numeric_limits" or not func.targs:
+            return None
+        kind = type_text(func.targs[0])
+        value = LIMITS.get((kind, func.last))
+        if value is None:
+            raise self.refuse(f"std::numeric_limits<{kind}>::{func.last}()", node)
+        return value, P.ATOM
+
+    def _format(self, func: Name, node: Call) -> Out | None:
+        if func.parts != ["TString", "Format"]:
+            return None
+        return f"ROOT.TString(cformat({self.arguments(node)}))", P.POSTFIX
+
+    def _exit(self, func: Name, node: Call) -> Out | None:
+        return f"c_exit({self.arguments(node)})", P.POSTFIX
+
+    def _unsupported(self, func: Name, node: Call) -> Out | None:
+        raise self.refuse(f"{func.text}() where its result is used", node)
+
+    def _sort(self, func: Name, node: Call) -> Out | None:
+        if func.parts[0] != "std" and func.last in ("sort", "reverse"):
+            return None
+        helper = "sort_range" if func.last in ("sort", "stable_sort") else "reverse_range"
+        if len(node.args) < 2:
+            raise self.refuse(f"std::{func.last} without a range", node)
+        container, start, stop = self.iterator_range(node.args[0], node.args[1], node)
+        extra = "".join(f", {self.value(arg)}" for arg in node.args[2:3])
+        return f"{helper}({container}, {start}, {stop}{extra})", P.POSTFIX
+
+    def _accumulate(self, func: Name, node: Call) -> Out | None:
+        if len(node.args) != 3:
+            raise self.refuse("std::accumulate with an operation of its own", node)
+        container, start, stop = self.iterator_range(node.args[0], node.args[1], node)
+        stop_text = "" if stop == "None" else stop
+        items = f"{container}[{start}:{stop_text}]"
+        return f"sum({items}, {self.value(node.args[2])})", P.POSTFIX
+
+    def iterator_range(self, first: Expr, last: Expr, node: Expr) -> tuple[str, str, str]:
+        """``v.begin(), v.end()`` or ``a, a + n``: the container, start and stop they mean."""
+        container, start = self._iterator(first, node, "begin")
+        other, stop = self._iterator(last, node, "end")
+        if other != container:
+            raise self.refuse("a range whose two ends are in different containers", node)
+        return container, start, stop
+
+    def _iterator(self, it: Expr, node: Expr, end: str) -> tuple[str, str]:
+        offset = "0"
+        if isinstance(it, Call) and len(it.args) == 0 and isinstance(it.func, Member):
+            if it.func.name in ("begin", "cbegin"):
+                return self.value(it.func.obj), "0"
+            if it.func.name in ("end", "cend"):
+                return self.value(it.func.obj), "None"
+        if isinstance(it, Binary) and it.op == "+":
+            base, _ = self._iterator(it.left, node, end)
+            return base, self.value(it.right)
+        found = self.typeof(it)
+        if found is not None and (found.is_array or found.is_pointer):
+            return self.value(it), offset
+        raise self.refuse("an iterator this translator cannot follow back to its container", node)
+
+    _LIBRARY: dict[str, Callable[[CallEmitter, Name, Call], Out | None]] = {
+        "make_unique": _make,
+        "make_shared": _make,
+        "max": _limits,
+        "min": _limits,
+        "lowest": _limits,
+        "epsilon": _limits,
+        "infinity": _limits,
+        "quiet_NaN": _limits,
+        "Format": _format,
+        "exit": _exit,
+        "abort": _exit,
+        "sort": _sort,
+        "stable_sort": _sort,
+        "reverse": _sort,
+        "accumulate": _accumulate,
+        "sprintf": _unsupported,
+        "snprintf": _unsupported,
+        "strcpy": _unsupported,
+        "strcat": _unsupported,
+        "swap": _unsupported,
+        "max_element": _unsupported,
+        "min_element": _unsupported,
+        "find_if": _unsupported,
+        "getline": _unsupported,
+    }
+
+    # -- methods -----------------------------------------------------------------
+
+    def method_call(self, func: Member, node: Call) -> Out:
+        owner = self.typeof(func.obj)
+        if owner is not None and owner.is_string and not owner.dims:
+            return self._string_method(func, node)
+        if owner is not None and owner.is_smart and not func.arrow:
+            return self._smart_method(func, node)
+        if func.name == "what" and owner is not None and "exception" in owner.name:
+            return f"str({self.value(func.obj)})", P.POSTFIX
+        return f"{self.value(func)}({self.arguments(node)})", P.POSTFIX
+
+    def _string_method(self, func: Member, node: Call) -> Out:
+        obj = self.value(func.obj)
+        args = [self.value(arg) for arg in node.args]
+        rewrite = STRING_METHODS.get(func.name)
+        if rewrite is None:
+            raise self.refuse(f"std::string::{func.name}()", node)
+        return rewrite(obj, args), P.POSTFIX
+
+    def _smart_method(self, func: Member, node: Call) -> Out:
+        if func.name in ("get", "release", "operator->"):
+            return self.expr(func.obj)
+        raise self.refuse(f"the smart pointer's {func.name}() where its result is used", node)
+
+    # -- converting stores ---------------------------------------------------------
+
+    def store(self, ctype: CType | None, node: Expr) -> str:
+        """``node`` as stored into a ``ctype``: converted as C converts on assignment."""
+        if ctype is None or ctype.is_array:
+            return self.value(node)
+        if isinstance(node, InitList) and node.ctype is None and ctype.scalar:
+            return self.store(ctype, node.items[0]) if node.items else zero(ctype)
+        if ctype.scalar:
+            return self._arithmetic_store(ctype, node)
+        text = self.value(node)
+        if ctype.is_class and not ctype.pointer and not ctype.reference and _lvalue(node):
+            found = self.typeof(node)
+            if found is not None and found.is_class and not found.pointer:
+                return f"value_copy({text})"
+        return text
+
+    def _arithmetic_store(self, ctype: CType, node: Expr) -> str:
+        source = self.typeof(node)
+        if ctype.is_bool:
+            return self.value(node) if source is not None and source.is_bool else (
+                f"bool({self.condition(node)})"
+            )
+        if ctype.integral:
+            return self._integral_store(ctype, source, node)
+        if ctype.name == "float":
+            return f"f32({self.value(node)})"
+        if isinstance(node, Literal) and node.kind in ("int", "char"):
+            return repr(float(node.value))
+        if source is not None and source.integral:
+            return f"float({self.value(node)})"
+        return self.value(node)
+
+    def _integral_store(self, ctype: CType, source: CType | None, node: Expr) -> str:
+        text = self.value(node)
+        if source is not None and source.name == ctype.name and source.scalar:
+            return text
+        if isinstance(node, Literal) and node.kind in ("int", "char", "bool"):
+            return str(_wrapped(int(node.value), ctype))
+        wrap = WRAPS.get(ctype.name)
+        if wrap is not None:
+            return f"{wrap}({text})"
+        if source is not None and source.integral and not source.is_bool:
+            return text
+        return f"int({text})"
+
+
+def _wrapped(value: int, ctype: CType) -> int:
+    bits = {"u8": 8, "i8": 8, "u16": 16, "i16": 16, "u32": 32, "u64": 64}
+    wrap = WRAPS.get(ctype.name)
+    if wrap is None:
+        return value
+    width = bits[wrap]
+    value &= (1 << width) - 1
+    if wrap.startswith("i") and value >> (width - 1):
+        value -= 1 << width
+    return value
+
+
+#: ``std::string``'s members, as the Python over a ``str`` that does what each does.
+STRING_METHODS: dict[str, Callable[[str, list[str]], str]] = {
+    "c_str": lambda obj, args: obj,
+    "data": lambda obj, args: obj,
+    "size": lambda obj, args: f"len({obj})",
+    "length": lambda obj, args: f"len({obj})",
+    "empty": lambda obj, args: f"(len({obj}) == 0)",
+    "substr": lambda obj, args: f"substr({', '.join([obj, *args])})",
+    "find": lambda obj, args: f"find({', '.join([obj, *args])})",
+    "rfind": lambda obj, args: f"rfind({', '.join([obj, *args])})",
+    "compare": lambda obj, args: f"strcmp({obj}, {args[0]})",
+    "at": lambda obj, args: f"char_at({obj}, {args[0]})",
+    "front": lambda obj, args: f"char_at({obj}, 0)",
+    "back": lambda obj, args: f"char_at({obj}, len({obj}) - 1)",
+    "Data": lambda obj, args: obj,
+}

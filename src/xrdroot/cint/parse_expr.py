@@ -535,7 +535,8 @@ class ExprParser(TypeParser):
                 parts.append("~" + self.identifier())
                 break
             parts.append(self.identifier())
-            targs = self._name_targs(parts) if self.at_("<") else None
+            if self.at_("<"):
+                targs = self._name_targs(parts) or targs
             if not (self.at_("::") and self.peek(1).kind == "id" or self._scoped_operator()):
                 break
             self.take()

@@ -28,6 +28,11 @@ __all__ = [
     "iterate",
     "sort_range",
     "reverse_range",
+    "CppException",
+    "throw",
+    "deref",
+    "preinc",
+    "postinc",
 ]
 
 #: The NumPy type an array of each C++ arithmetic type is made of.
@@ -218,3 +223,44 @@ def reverse_range(container: Any, start: int, stop: Any) -> None:
     """``std::reverse(begin, end)``, in place."""
     end = len(container) if stop is None else int(stop)
     container[start:end] = list(container[start:end])[::-1]
+
+
+class CppException(Exception):
+    """A C++ ``throw`` of anything: the value thrown, and ``what()`` as ``std::exception`` has."""
+
+    def __init__(self, value: Any = None) -> None:
+        super().__init__(value)
+        self.value = value
+
+    def what(self) -> str:
+        what = getattr(self.value, "what", None)
+        return str(what() if callable(what) else self.value)
+
+
+def throw(value: Any = None) -> Any:
+    """``throw value`` where C++ allows it as an expression, in a ``?:``."""
+    if isinstance(value, BaseException):
+        raise value
+    raise CppException(value)
+
+
+def deref(pointer: Any) -> Any:
+    """``*p`` when the type of ``p`` was not known: a cell's value, an array's first element."""
+    if isinstance(pointer, (np.ndarray, list)):
+        return pointer[0]
+    if hasattr(pointer, "value") and type(pointer).__name__ in ("Cell", "ItemRef", "AttrRef"):
+        return pointer.value
+    return pointer
+
+
+def preinc(ref: Any, delta: Any) -> Any:
+    """``++x`` of something held by reference: add, store, give back the new value."""
+    ref.value = ref.value + delta
+    return ref.value
+
+
+def postinc(ref: Any, delta: Any) -> Any:
+    """``x++`` of something held by reference: add and store, give back the old value."""
+    old = ref.value
+    ref.value = old + delta
+    return old
