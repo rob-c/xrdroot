@@ -191,6 +191,12 @@ class TDirectoryFile(TDirectory):
             self._writer = top.mkdir(path) if path else top
         return self._writer
 
+    @property
+    def _xrd(self) -> Any:
+        """What another part of the kit writes a tree into: the xrdroot directory, keys noted."""
+        writable = self._writable()
+        return None if writable is None else _Noting(writable, self)
+
     def _keys_from(self, reader: Any) -> None:
         if reader is None:
             return
@@ -251,7 +257,8 @@ class TDirectoryFile(TDirectory):
 
     def _fetched(self, label: str, key: TKey) -> Any:
         """Read one record; a histogram or tree of the newest cycle stays in memory here."""
-        found = wrap(self._reader()[label])
+        read = self._reader()[label]
+        found = _tree(read, key) or wrap(read)
         if not isinstance(found, TObject):
             found = TOther(key.GetClassName(), found)
         newest = key is self.GetKey(key.GetName())
@@ -388,9 +395,13 @@ class TDirectoryFile(TDirectory):
             key.ls(mark)
 
     def Close(self, option: str = "") -> None:
-        """``Close``: forget what is in memory here, and every directory below."""
+        """``Close``: trees not yet written written, then what is in memory here forgotten."""
         for below in self._subdirs.values():
             below.Close(option)
+        if self._writable() is not None:
+            for tree in [obj for obj in self._list if _inherits(obj, "TTree")]:
+                if not getattr(tree, "_written", True):
+                    tree.Write()
         self.Clear()
         here = current_directory()
         if here is self:
@@ -401,6 +412,39 @@ def _top() -> Any:
     from .troot import gROOT
 
     return gROOT
+
+
+#: The classes of tree a key may label, which the trees part of the kit reads.
+TREES = ("TTree", "TNtuple", "TNtupleD")
+
+
+def _tree(read: Any, key: TKey) -> Any:
+    """A tree read, as the trees part of the kit hands one back - ``None`` for anything else."""
+    import importlib
+    import importlib.util
+
+    if key.GetClassName() not in TREES or importlib.util.find_spec("xrdroot.pyroot.trees") is None:
+        return None
+    trees = importlib.import_module("xrdroot.pyroot.trees")
+    return trees.wrap(read, key.GetClassName(), key._key)
+
+
+class _Noting:
+    """A writable xrdroot directory that notes, as a key of its owner, each tree made in it."""
+
+    def __init__(self, writable: Any, owner: TDirectoryFile) -> None:
+        self._writable, self._owner = writable, owner
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._writable, name)
+
+    def tree(self, name: str, *args: Any, **kwargs: Any) -> Any:
+        """``tree``: the tree made as the writable directory makes it, and its key noted."""
+        made = self._writable.tree(name, *args, **kwargs)
+        held = self._owner._list.FindObject(name)
+        classname = held.ClassName() if held is not None else "TTree"
+        self._owner._note_key(name, str(kwargs.get("title") or ""), classname)
+        return made
 
 
 def _inherits(obj: Any, kind: str) -> bool:

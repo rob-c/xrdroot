@@ -1,14 +1,14 @@
-"""What the trees stand on until ``xrdroot.pyroot.core`` is beside them.
+"""What the trees stand on: the core's classes, and the hooks the core sets.
 
 A tree is a ``TNamed`` with ROOT's line, fill and marker attributes; it goes
 into the directory that is current when it is made, and what its ``Draw``
 fills is kept in ``gDirectory`` and drawn on the current pad. All of that is
-``core``'s and ``graphics``'s to own, so this module keeps the smallest
-stand-in for each, in one place, for them to replace:
+``core``'s and ``graphics``'s to own, and this module is where they meet:
 
-* :class:`_TObjectLike` is the base every class here derives from - to be
-  ``core``'s ``TNamed`` with ``TAttLine``, ``TAttFill`` and ``TAttMarker``.
-* :data:`hooks` holds four functions ``core`` sets when it is imported:
+* :class:`_TObjectLike` is the base every class here derives from: the
+  core's ``TNamed`` with ``TAttLine``, ``TAttFill`` and ``TAttMarker``.
+* :data:`hooks` holds four functions the core sets when it is imported
+  (:mod:`xrdroot.pyroot.core.treelinks`):
   ``directory()`` (the writable directory a new tree goes into - ``None``,
   a tree in memory, until a file is open), ``registry()`` (the mapping of
   name to xrdroot object that stands for ``gDirectory`` when ``Draw`` fills
@@ -24,19 +24,9 @@ from __future__ import annotations
 from collections.abc import Callable, MutableMapping
 from typing import Any
 
-__all__ = ["_TObjectLike", "hooks", "ListOf"]
+from ..core.objects import TAttFill, TAttLine, TAttMarker, TNamed, TObject
 
-#: The attributes ``TAttLine``, ``TAttFill`` and ``TAttMarker`` give a tree, at ROOT's defaults.
-ATTRIBUTES: dict[str, Any] = {
-    "LineColor": 1,
-    "LineStyle": 1,
-    "LineWidth": 1,
-    "FillColor": 0,
-    "FillStyle": 1001,
-    "MarkerColor": 1,
-    "MarkerStyle": 1,
-    "MarkerSize": 1.0,
-}
+__all__ = ["_TObjectLike", "hooks", "ListOf"]
 
 
 class _Hooks:
@@ -57,61 +47,46 @@ class _Hooks:
 hooks = _Hooks()
 
 
-class _TObjectLike:
-    """``TNamed``, with the line, fill and marker attributes a tree has.
+class _TObjectLike(TNamed, TAttLine, TAttFill, TAttMarker):
+    """``TNamed``, with the line, fill and marker attributes a tree has: the core's own.
 
-    To be replaced by ``core``'s classes: this is only what the trees call.
-    ``SetLineColor(2)`` and ``GetLineColor()`` and the rest are kept and given
-    back, since a tree's own drawing is ``graphics``'s to do with them.
+    ``ClassName`` and ``InheritsFrom`` go by :attr:`_classname`, the C++ class
+    each class here stands for, so a ``TNtuple`` says it is one; the rest -
+    ``SetLineColor`` and its kin, ``Print``, ``ls``, bits - is ``TNamed``'s.
     """
 
     #: The C++ class this stands for, which ``ClassName`` says.
     _classname = "TObject"
 
     def __init__(self, name: str = "", title: str = "") -> None:
-        self._name = str(name)
-        self._title = str(title)
-        self._attributes = dict(ATTRIBUTES)
-
-    def GetName(self) -> str:
-        return self._name
-
-    def GetTitle(self) -> str:
-        return self._title
-
-    def SetName(self, name: str) -> None:
-        self._name = str(name)
-
-    def SetTitle(self, title: str = "") -> None:
-        self._title = str(title)
-
-    def SetNameTitle(self, name: str, title: str) -> None:
-        self.SetName(name)
-        self.SetTitle(title)
+        TNamed.__init__(self, str(name), str(title))
 
     def ClassName(self) -> str:
         return self._classname
 
-    def InheritsFrom(self, classname: str) -> bool:
+    def InheritsFrom(self, classname: Any) -> bool:
         """Whether this is a ``classname``, by the C++ names of this class and its bases."""
-        return any(getattr(kind, "_classname", None) == classname for kind in type(self).__mro__)
+        wanted = classname.GetName() if hasattr(classname, "GetName") else str(classname)
+        mine = any(getattr(kind, "_classname", None) == wanted for kind in type(self).__mro__)
+        return mine or TNamed.InheritsFrom(self, wanted)
 
     def __getattr__(self, name: str) -> Any:
-        verb, attribute = name[:3], name[3:]
-        if verb in ("Set", "Get") and attribute in ATTRIBUTES:
-            if verb == "Get":
-                return lambda: self._attributes[attribute]
-            return lambda value: self._attributes.__setitem__(attribute, value)
+        """A method ROOT's class may have and this one has not, refused by name."""
+        if name.startswith("_"):
+            raise AttributeError(name)
         raise AttributeError(
             f"ROOT's {self._classname} has {name}, or does not; xrdroot.pyroot's does not"
         )
 
 
-class ListOf(list):  # type: ignore[type-arg]
-    """``TObjArray``, as far as a tree's lists need one: a list with ROOT's methods.
+class ListOf(list, TObject):  # type: ignore[type-arg]
+    """``TObjArray``, as a tree's lists are: a Python list, and a ``TObject`` of ROOT's."""
 
-    To be replaced by ``core``'s ``TObjArray``.
-    """
+    def ClassName(self) -> str:
+        return "TObjArray"
+
+    def GetName(self) -> str:
+        return "TObjArray"
 
     def GetEntries(self) -> int:
         return len(self)
@@ -135,3 +110,13 @@ class ListOf(list):  # type: ignore[type-arg]
 
     def Last(self) -> Any:
         return self.At(len(self) - 1)
+
+
+def _connect() -> None:
+    """Take the core's hooks, if the core finished loading before the trees did."""
+    from ..core import treelinks
+
+    treelinks.connect()
+
+
+_connect()

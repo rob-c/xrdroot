@@ -67,6 +67,9 @@ class Booked:
             self._xrd = args[0]._xrd.copy()
         else:
             self._xrd = self._booked(args)
+        from .wrapping import remember
+
+        remember(self._xrd, self)
         if self._default_sumw2[0]:
             self._xrd.sumw2()
         if args and self._add_directory[0]:
@@ -95,8 +98,11 @@ class Booked:
 
     def _replace(self, xrd: Any) -> None:
         """Stand for a new xrdroot histogram from now on - what an in-place ``Rebin`` makes."""
+        from .wrapping import remember
+
         self._xrd = xrd
         self._axis_cache = {}
+        remember(xrd, self)
 
     @classmethod
     def AddDirectory(cls, add: bool = True) -> None:

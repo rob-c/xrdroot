@@ -19,7 +19,7 @@ import numpy as np
 from ...function import Function
 from .objects import TAttFill, TAttLine, TAttMarker, TNamed
 from .refs import store
-from .wrapping import adopt, register, unwrap, wrap
+from .wrapping import adopt, register, remember, unwrap, wrap
 
 __all__ = ["TF1", "TF2", "TF3", "TFormula"]
 
@@ -246,6 +246,7 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
             self._xrd = name._xrd.copy()
         else:
             self._xrd = self._made(str(name), source, rest)
+        remember(self._xrd, self)
         if name:
             _register(self)
 

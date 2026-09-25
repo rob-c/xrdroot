@@ -14,7 +14,7 @@ import numpy as np
 from ...efficiency import METHODS, Efficiency
 from .histcore import axis_specs
 from .objects import TAttFill, TAttLine, TAttMarker, TNamed
-from .wrapping import adopt, register, unwrap, wrap
+from .wrapping import adopt, register, remember, unwrap, wrap
 
 __all__ = ["TEfficiency"]
 
@@ -39,6 +39,7 @@ class TEfficiency(TNamed, TAttLine, TAttFill, TAttMarker):
             self._xrd = Efficiency.book(str(args[0]), *specs, title=str(args[1]))
         else:
             self._xrd = Efficiency.book("eff", (1, 0.0, 1.0))
+        remember(self._xrd, self)
 
     def _adopted(self, xrd: Any) -> None:
         TNamed.__init__(self)

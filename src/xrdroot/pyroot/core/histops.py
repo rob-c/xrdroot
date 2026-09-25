@@ -73,6 +73,8 @@ class Operations:
     _xrd: Any
     _core: Any
     _replace: Any
+    _axes: Any
+    _widths: Any
     GetName: Any
     SetName: Any
 
@@ -354,9 +356,8 @@ class Operations:
         nbins = len(integral) - 1
         ibin = int(np.searchsorted(integral[:nbins], r1, side="right")) - 1
         axis = self.GetXaxis()  # type: ignore[attr-defined]
-        return float(axis.GetBinLowEdge(ibin + 1)) + axis.GetBinWidth(ibin + 1) * _within(
-            r1, integral[ibin], integral[ibin + 1]
-        )
+        step = _within(r1, integral[ibin], integral[ibin + 1])
+        return float(axis.GetBinLowEdge(ibin + 1) + axis.GetBinWidth(ibin + 1) * step)
 
     def GetRandom2(self, x: Any = None, y: Any = None, rng: Any = None) -> tuple[float, float]:
         """``GetRandom2(x, y)``: a point drawn from a two-dimensional histogram."""
