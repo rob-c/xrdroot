@@ -55,6 +55,13 @@ class RootProxy:
                 raise
         return importlib.import_module(f"{DEFAULT}.stl").std
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        """``gErrorIgnoreLevel = kWarning``: a macro assigning one of ROOT's globals."""
+        if name.startswith("_"):
+            object.__setattr__(self, name, value)
+            return
+        setattr(self.namespace(), name, value)
+
     def __repr__(self) -> str:
         return "<ROOT, the names a translated macro did not declare>"
 

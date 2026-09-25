@@ -110,7 +110,8 @@ class TypeParser(Cursor):
         alias = self.aliases.get("::".join(parts)) or self.aliases.get(parts[-1])
         if alias is not None and not args:
             return replace(alias)
-        return CType(canonical(self._standard_type(parts)), args)
+        name = canonical(self._standard_type(parts))
+        return CType(name, args, callable=name == "std::function")
 
     def _standard_type(self, parts: list[str]) -> str:
         """``vector`` means ``std::vector`` when it is the standard's, not the macro's own."""

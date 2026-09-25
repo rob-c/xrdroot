@@ -147,7 +147,7 @@ class VariableEmitter(StmtEmitter):
         if not decl.ctype.reference or init is None or not _value_like(ctype, init):
             return None
         if isinstance(init, Name):
-            return init if self.symbol(init) is not None else None
+            return init
         return init if isinstance(init, (Index, Member)) and self._fixed(init) else None
 
     def _fixed(self, init: Expr) -> bool:
@@ -336,6 +336,9 @@ def _sized(ctype: CType | None, decl: VarDecl) -> CType | None:
     """``int a[] = {1, 2, 3}`` has the size its initialiser gives it, which ``sizeof`` needs."""
     if ctype is None or not ctype.dims or ctype.dims[0] is not None:
         return ctype
-    if not isinstance(decl.init, InitList):
+    init = decl.init
+    if isinstance(init, Literal) and init.kind == "str":
+        return replace(ctype, dims=[len(init.value) + 1, *ctype.dims[1:]])
+    if not isinstance(init, InitList):
         return ctype
-    return replace(ctype, dims=[len(decl.init.items), *ctype.dims[1:]])
+    return replace(ctype, dims=[len(init.items), *ctype.dims[1:]])

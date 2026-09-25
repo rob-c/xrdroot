@@ -201,3 +201,10 @@ def test_a_string_stream_reads_its_string() -> None:
 def test_arguments_of_no_candidates_kinds_go_to_the_first_that_takes_as_many() -> None:
     only = rt.Overloaded("g", (lambda a: f"got {a}", 1, 1, (rt.INTEGRAL,)))
     assert only("text") == "got text"
+
+
+def test_a_macro_assigning_one_of_roots_globals_assigns_it_in_root() -> None:
+    bound = types.SimpleNamespace(gErrorIgnoreLevel=0)
+    with rt.ROOT.bind(bound):
+        rt.ROOT.gErrorIgnoreLevel = 2000
+    assert bound.gErrorIgnoreLevel == 2000
