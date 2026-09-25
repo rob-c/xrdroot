@@ -72,6 +72,8 @@ class FunctionEmitter(VariableEmitter):
                 self._function_body(func, py, method, decorator, prologue)
         finally:
             self.contexts.pop()
+        for offset, (line, where) in enumerate(context.statics):
+            self.out.insert(context.start + offset, line, where)
 
     def _function_body(
         self,

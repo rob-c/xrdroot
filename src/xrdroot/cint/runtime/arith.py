@@ -33,6 +33,7 @@ __all__ = [
     "i64",
     "comma",
     "c_exit",
+    "cassert",
 ]
 
 
@@ -132,3 +133,9 @@ def comma(*values: Any) -> Any:
 def c_exit(code: Any = 0) -> Any:
     """C's ``exit(code)``: the macro stops, with that status."""
     raise SystemExit(int(code))
+
+
+def cassert(condition: Any, *message: Any) -> None:
+    """C's ``assert``: a failed one stops the macro, saying what was asserted."""
+    if not condition:
+        raise AssertionError("an assert in the macro failed")

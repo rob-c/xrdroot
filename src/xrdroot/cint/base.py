@@ -7,6 +7,7 @@ bottom layer, with the scope chain, the naming rules and the way to refuse.
 
 from __future__ import annotations
 
+import keyword
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -112,4 +113,7 @@ class EmitterBase:
     def root(parts: list[str]) -> str:
         """``TMath::Pi`` as ``ROOT.TMath.Pi``, ``ROOT::Math::X`` as ``ROOT.Math.X``."""
         rest = parts[1:] if parts[0] == "ROOT" and len(parts) > 1 else parts
-        return "ROOT." + ".".join(rest)
+        text = "ROOT"
+        for part in rest:
+            text = f"getattr({text}, {part!r})" if keyword.iskeyword(part) else f"{text}.{part}"
+        return text

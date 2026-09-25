@@ -112,6 +112,8 @@ class Translator(ClassEmitter):
             return
         if decl.name in self._emitted or decl.body is None:
             return
+        if decl.kind == "operator":
+            raise self.refuse(f"the operator {decl.name[8:]} defined outside a class", decl)
         self._emitted.add(decl.name)
         symbol = self.lookup(decl.name)
         py = symbol.py if symbol is not None else python_name(decl.name)

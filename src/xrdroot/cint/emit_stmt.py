@@ -136,6 +136,8 @@ class StmtEmitter(CallEmitter):
             found = self.typeof(target.operand)
             if found is None or found.is_object_pointer:
                 raise self.refuse("assigning a whole object through a pointer to it", expr)
+        if isinstance(target, Call):
+            raise self.refuse("assigning to what a call returns by reference, f(i) = v", expr)
         if isinstance(target, Index):
             owner = self.typeof(target.obj)
             if owner is not None and owner.is_string and not owner.dims:

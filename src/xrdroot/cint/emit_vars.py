@@ -42,8 +42,10 @@ class Context:
     nonlocals: set[str] = field(default_factory=set)
     declared: set[int] = field(default_factory=set)
     cells: set[str] = field(default_factory=set)
-    #: Where the ``def`` line is, so ``global`` can be put after it once known.
+    #: Where the ``def`` line is, so a static local can be put before it.
     start: int = 0
+    #: The module-level lines a static local becomes, written before the function.
+    statics: list[Any] = field(default_factory=list)
 
 
 class VariableEmitter(StmtEmitter):
@@ -265,8 +267,7 @@ class VariableEmitter(StmtEmitter):
         owner = getattr(context.owner, "name", "macro")
         symbol = self.declare(decl.name, "global", ctype)
         symbol.py = self.fresh(f"{owner}_{decl.name}")
-        self.out.insert(context.start, f"{symbol.py} = {value}", decl.where)
-        context.start += 1
+        context.statics.append((f"{symbol.py} = {value}", decl.where))
 
 
 def _container(ctype: CType) -> bool:

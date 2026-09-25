@@ -47,7 +47,13 @@ STD = {
 }
 
 #: C's names that are the runtime's under another name.
-C_NAMES = {"abs": "cabs", "round": "cround", "stdout": "'stdout'", "stderr": "'stderr'"}
+C_NAMES = {
+    "abs": "cabs",
+    "round": "cround",
+    "assert": "cassert",
+    "stdout": "'stdout'",
+    "stderr": "'stderr'",
+}
 
 #: ROOT's constants that are Python's own.
 ROOT_CONSTANTS = {"kTRUE": "True", "kFALSE": "False", "kNPOS": "npos"}
