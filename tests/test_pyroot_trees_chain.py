@@ -127,7 +127,7 @@ def test_a_reader_walks_a_range_and_is_set_to_any_entry(files):
         reader.Restart()
         reader.SetEntriesRange(4, 7)
         assert list(reader) == [4, 5, 6]
-        assert (reader.SetEntry(8), reader.SetEntry(3), x.__deref__()) == (8, 0, 3.0)
+        assert (reader.SetEntry(8), reader.SetEntry(3), x.__deref__()) == (7, 0, 3.0)
         reader.SetEntry(5)
         assert (v.GetSize(), v.size(), v[1], v.At(0), v.IsEmpty()) == (2, 2, 5.0, 5.0, False)
         assert list(iter(v)) == [5.0, 5.0]

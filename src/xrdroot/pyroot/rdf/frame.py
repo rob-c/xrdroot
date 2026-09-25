@@ -5,7 +5,7 @@ methods and runs ROOT's C++ expressions over whole batches. What this adds is
 the boundary: a frame is made from a ``TTree`` or ``TChain`` of
 :mod:`xrdroot.pyroot.trees` as well as from files, a result's value is handed
 back as the PyROOT object ``core`` wraps it in, ``AsNumpy`` gives its dict at
-once as PyROOT's does - an ``RVec`` for each entry of a collection - and
+once as PyROOT's does - a NumPy array for each entry of a collection - and
 ``RDF.FromNumpy`` makes a frame of a dict of arrays.
 """
 
@@ -21,7 +21,6 @@ from ... import rdf as _rdf
 from ...tree import Jagged
 from ..stl import is_vector
 from ..trees import hooks
-from .rvec import RVec
 
 __all__ = ["RDataFrame", "RResultPtr", "RDF"]
 
@@ -91,11 +90,11 @@ class RResultPtr:
 
 
 def _column(values: Any) -> Any:
-    """A column as ``AsNumpy`` gives it: an array, with an ``RVec`` per entry of a collection."""
+    """A column as ``AsNumpy`` gives it: an array, with an array per entry of a collection."""
     if isinstance(values, Jagged):
         made = np.empty(len(values), dtype=object)
         for at in range(len(values)):
-            made[at] = RVec[values.content.dtype](values[at])
+            made[at] = np.asarray(values[at])
         return made
     return np.asarray(values)
 

@@ -26,7 +26,7 @@ from .core import python_value
 __all__ = ["TTreeReader", "TTreeReaderValue", "TTreeReaderArray"]
 
 #: ``TTreeReader::EEntryStatus``: what ``SetEntry`` says.
-ENTRY_VALID, ENTRY_NOT_LOADED, ENTRY_NOT_FOUND, ENTRY_BEYOND_END = 0, 1, 3, 8
+ENTRY_VALID, ENTRY_NO_TREE, ENTRY_BEYOND_END = 0, 2, 7
 
 
 def _tree_of(tree: Any, where: Any) -> Any:
@@ -75,7 +75,7 @@ class TTreeReader(_TObjectLike):
         """Make ``entry`` the current one; ``0``, ``kEntryValid``, if it is there."""
         self._entry = int(entry)
         if self._tree is None:
-            return ENTRY_NOT_LOADED
+            return ENTRY_NO_TREE
         if not 0 <= self._entry < self._stop():
             return ENTRY_BEYOND_END
         number = self._entry if self._list is None else self._list.GetEntry(self._entry)

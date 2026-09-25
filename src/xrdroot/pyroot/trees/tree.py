@@ -48,6 +48,20 @@ def _declared(address: Any, name: str) -> list[Leaf]:
     return [Leaf(name, str(code), size, None, name if size == 1 else f"{name}[{size}]")]
 
 
+def _slot(branch: str, leaf: Leaf, address: Any, title: str | None) -> Slot:
+    """The slot for one leaf: the branch's own name and title if it is the only leaf."""
+    name = branch if title is not None else leaf.name
+    return Slot(
+        name,
+        branch,
+        leaf.code,
+        address,
+        size=leaf.size,
+        counter=leaf.counter,
+        title=leaf.title if title is None else title,
+    )
+
+
 class TTree(_Player):
     """``TTree``: see the module's docstring."""
 
@@ -69,13 +83,7 @@ class TTree(_Player):
     ) -> TBranch:
         """A new branch, read from ``address`` at every ``Fill``: see the module's docstring."""
         store = self._writable("Branch")
-        if store.entries:
-            raise ValueError(
-                f"{self._name!r} already has {store.entries} entries, and a branch added now "
-                f"would have none for them; declare every branch before the first Fill"
-            )
-        if any(slot.branch == name for slot in store.slots.values()):
-            raise ValueError(f"{self._name!r} already has a branch called {name!r}")
+        self._require_new(name)
         what = f"the branch {name!r}"
         if isinstance(leaflist, str):
             leaves = parse(leaflist)
@@ -86,24 +94,24 @@ class TTree(_Player):
         title = leaflist if isinstance(leaflist, str) else name
         for leaf, one in zip(leaves, addresses):
             self._check_counter(leaf, name)
-            leaf_title = title if len(leaves) == 1 else leaf.title
-            store.add(
-                Slot(
-                    leaf.name if len(leaves) > 1 else name,
-                    name,
-                    leaf.code,
-                    one,
-                    size=leaf.size,
-                    counter=leaf.counter,
-                    title=leaf_title,
-                )
-            )
+            store.add(_slot(name, leaf, one, title if len(leaves) == 1 else None))
         if len(leaves) > 1:
             store.titles[name] = title
         self._changed()
         branch = self.GetBranch(name)
         assert branch is not None
         return branch
+
+    def _require_new(self, name: str) -> None:
+        """A branch can be added before the first entry, under a name not taken."""
+        store = self._writable("Branch")
+        if store.entries:
+            raise ValueError(
+                f"{self._name!r} already has {store.entries} entries, and a branch added now "
+                f"would have none for them; declare every branch before the first Fill"
+            )
+        if any(slot.branch == name for slot in store.slots.values()):
+            raise ValueError(f"{self._name!r} already has a branch called {name!r}")
 
     def _addressed(self, address: Any, leaves: list[Leaf], what: str) -> list[Any]:
         if len(leaves) == 1:

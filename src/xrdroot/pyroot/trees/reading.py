@@ -121,7 +121,10 @@ class _Reading(_TreeCore):
 
     def LoadTree(self, entry: int) -> int:
         """Make ``entry`` the one being read; which it is in its own tree comes back."""
-        return int(entry) if 0 <= entry < self.GetEntries() else -2
+        if not 0 <= entry < self.GetEntries():
+            return -2
+        self._read_entry = int(entry)
+        return int(entry)
 
     def GetTree(self) -> Any:
         return self

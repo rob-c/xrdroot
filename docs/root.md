@@ -1918,7 +1918,7 @@ prints its branches as ROOT's "One basket in memory".
 `std.vector[np.float32]` - with `push_back`, `size`, `[]` and `data()`, a
 view of its NumPy storage; `std.map["std::string", "int"]`, `std.pair` and
 `std.string`. `ROOT.RDataFrame` is xrdroot's frame taking these trees, with
-`AsNumpy` giving an `RVec` per entry of a collection, `ROOT.RDF.FromNumpy`,
+`AsNumpy` giving an array per entry of a collection, `ROOT.RDF.FromNumpy`,
 `ROOT.RDF.RunGraphs`, and `ROOT.RVec` and `ROOT.VecOps` over NumPy.
 
 ### Directories

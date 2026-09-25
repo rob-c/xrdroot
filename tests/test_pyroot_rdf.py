@@ -55,7 +55,7 @@ def test_as_numpy_gives_its_columns_at_once_with_an_rvec_per_collection():
         t.Fill()
     got = ROOT.RDataFrame(t).Define("s", "Sum(v)").AsNumpy(ROOT.std.vector["string"](["s", "v"]))
     assert got["s"].tolist() == [0.0, 0.0, 1.0] and got["v"].dtype == object
-    assert isinstance(got["v"][2], ROOT.RVec["float"]) and list(got["v"][2]) == [0.0, 1.0]
+    assert (type(got["v"][2]), list(got["v"][2])) == (np.ndarray, [0.0, 1.0])
     assert list(_frame().AsNumpy(["x"], exclude=None)) == ["x"]
 
 
