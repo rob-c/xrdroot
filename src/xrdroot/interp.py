@@ -631,12 +631,17 @@ def _pointer(prim: Prim, unpack: Unpack | None, count: tuple[str, ...]) -> Step:
     def step(buf: Buffer, row: dict[str, Any]) -> Any:
         if not buf.u8():
             return _numbers(prim, unpack, buf, 0)
-        where: Any = row
-        for key in count:
-            where = where[key]
-        return _numbers(prim, unpack, buf, int(where))
+        return _numbers(prim, unpack, buf, int(_counted(row, count)))
 
     return step
+
+
+def _counted(row: dict[str, Any], where: tuple[str, ...]) -> Any:
+    """The count a member was said to hold, found where in the row it was read."""
+    found: Any = row
+    for key in where:
+        found = found[key]
+    return found
 
 
 class _Described(dict[str, Any]):
@@ -1007,6 +1012,40 @@ def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> St
     return _plainly(_objects(_embedded(name, source, seen), _fields(name, source, seen)))
 
 
+#: The streamer type of a ``TStreamerLoop``: ``x[n]`` of a class.
+STREAM_LOOP = 501
+
+
+def _loop_step(
+    member: Member, source: Source, seen: tuple[str, ...], before: dict[str, tuple[str, ...]]
+) -> Step | None:
+    """How a ``TStreamerLoop`` reads, or ``None`` for a member that is not one.
+
+    It is ``MyClass* x; //[n]`` - ``TH2Poly`` keeps a ``TList`` per cell of
+    its partition that way - and ROOT writes it as one record holding the
+    ``n`` objects, each streaming itself, or for ``MyClass**`` each a pointer
+    naming its class.
+    """
+    if member.stype != STREAM_LOOP:
+        return None
+    where = before.get(member.count)
+    if where is None:
+        raise _Unreadable(f"{member.name!r}, which is counted by a member written after it")
+    if member.typename.endswith("**"):
+        classes = _Described(source, ())
+        one: Callable[[Buffer], Any] = lambda buf: buf.any(classes)  # noqa: E731
+    else:
+        one = _embedded(member.typename.rstrip("*"), source, seen)
+
+    def step(buf: Buffer, row: dict[str, Any]) -> list[Any]:
+        _version, end = buf.header()
+        items = [one(buf) for _ in range(int(_counted(row, where)))]
+        buf.resume(end)
+        return items
+
+    return step
+
+
 def _step(
     member: Member, source: Source, seen: tuple[str, ...], before: dict[str, tuple[str, ...]]
 ) -> Step:
@@ -1015,7 +1054,7 @@ def _step(
     A member is numbers, a whole object, or a string or container, asked in
     that order; one that is none of them is refused by the kind it is.
     """
-    step = _numeric_step(member, before)
+    step = _numeric_step(member, before) or _loop_step(member, source, seen, before)
     if step is None:
         step = _object_step(member, source, seen)
     if step is None:

@@ -13,13 +13,16 @@ from __future__ import annotations
 import io
 import pathlib
 import shutil
+import struct
+from typing import Any
 
 import pytest
 
 from xrdroot import UnsupportedFeatureError, open_root
+from xrdroot.buffer import BYTE_COUNT_MASK, Buffer
 from xrdroot.file import Source
 from xrdroot.friends import basket_source
-from xrdroot.interp import Refused, build
+from xrdroot.interp import STREAM_LOOP, Refused, build, whole_object
 from xrdroot.objects import BranchRecord, LeafRecord
 from xrdroot.streamers import Member
 
@@ -100,3 +103,47 @@ def test_a_vector_with_an_allocator_named_reads_as_the_vector_it_is():
         assert events["rec_part_px_VecOps"].array(0, 1)[0][:2].tolist() == pytest.approx(
             [-0.100937, -0.178590], rel=1e-5
         )
+
+
+# -- a TStreamerLoop, as TH2Poly keeps its partition ------------------------
+
+
+def looped_source(**members: Member) -> Any:
+    """A file whose streamer information describes ``Holder`` as the members given."""
+    source = type("Described", (), {})()
+    source.streamers = lambda: {"Holder": dict(members)}
+    return source
+
+
+def record(version: int, body: bytes) -> bytes:
+    return struct.pack(">IH", BYTE_COUNT_MASK | (2 + len(body)), version) + body
+
+
+def empty_list() -> bytes:
+    """A ``TList`` holding nothing: its ``TObject``, no name, no entries."""
+    return record(5, struct.pack(">HII", 1, 0, 0) + b"\x00" + struct.pack(">i", 0))
+
+
+COUNT = Member("fN", "", 6, "int", 0)
+
+
+def test_a_loop_over_objects_reads_as_many_as_its_counter_says():
+    """``TH2Poly::fCells`` is ``TList* fCells; //[fNCells]``: one record, the lists inside."""
+    loop = Member("fCells", "[fN]", STREAM_LOOP, "TList*", 0, "fN")
+    column = whole_object("Holder", looped_source(fN=COUNT, fCells=loop))
+    raw = record(1, struct.pack(">i", 2) + record(1, empty_list() * 2))
+    assert column.value(Buffer(raw), 0) == {"fN": 2, "fCells": [[], []]}
+
+
+def test_a_loop_over_pointers_reads_each_by_the_class_it_names():
+    loop = Member("fCells", "[fN]", STREAM_LOOP, "TList**", 0, "fN")
+    column = whole_object("Holder", looped_source(fN=COUNT, fCells=loop))
+    raw = record(1, struct.pack(">i", 2) + record(1, struct.pack(">II", 0, 0)))
+    assert column.value(Buffer(raw), 0) == {"fN": 2, "fCells": [None, None]}
+
+
+def test_a_loop_counted_by_a_member_written_after_it_is_refused_by_name():
+    loop = Member("fCells", "[fN]", STREAM_LOOP, "TList*", 0, "fN")
+    column = whole_object("Holder", looped_source(fCells=loop, fN=COUNT))
+    assert isinstance(column, Refused)
+    assert "counted by a member written after it" in column.reason
