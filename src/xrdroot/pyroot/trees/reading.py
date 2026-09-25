@@ -28,6 +28,14 @@ __all__ = ["_Reading"]
 MATCH, MISSING_BRANCH = 0, -5
 
 
+def _bound(address: Any, leaves: list[Any], what: str) -> list[Any]:
+    """The address each leaf reads into: the one given, or each member of it, in order."""
+    if len(leaves) == 1:
+        return [address_of(address, what)]
+    sizes = [each.size for each in leaves]
+    return members_of(address, [each.name for each in leaves], sizes, what)
+
+
 class _Reading(_TreeCore):
     """Addresses bound to branches, and entries read into them."""
 
@@ -46,14 +54,8 @@ class _Reading(_TreeCore):
         if branch is None and leaf is None:
             print(f"Error in <TTree::SetBranchAddress>: unknown branch -> {name}", file=sys.stderr)
             return MISSING_BRANCH
-        leaves = branch.leaves if branch is not None else [leaf]
-        what = f"the branch {name!r}"
-        if len(leaves) == 1:
-            bound = [address_of(address, what)]
-        else:
-            sizes = [each.size for each in leaves]
-            bound = members_of(address, [each.name for each in leaves], sizes, what)
-        for each, one in zip(leaves, bound):
+        leaves: list[Any] = branch.leaves if branch is not None else [leaf]
+        for each, one in zip(leaves, _bound(address, leaves, f"the branch {name!r}")):
             self._addresses[each.column] = one
             self._rebind(each.column, one)
         return MATCH
@@ -157,10 +159,10 @@ class _Reading(_TreeCore):
         return found  # type: ignore[no-any-return]
 
     def GetListOfBranches(self) -> ListOf:
-        return ListOf(TBranch(self, branch) for branch in self._layout())  # type: ignore[arg-type]
+        return ListOf(TBranch(self, branch) for branch in self._layout())
 
     def GetListOfLeaves(self) -> ListOf:
-        return ListOf(TLeaf(self, leaf) for leaf in self._leaves())  # type: ignore[arg-type]
+        return ListOf(TLeaf(self, leaf) for leaf in self._leaves())
 
     def GetLeaf(self, name: str, leafname: str | None = None) -> TLeaf | None:
         """The leaf ``name`` - or ``leafname`` of the branch ``name`` - or ``None``."""
@@ -168,4 +170,4 @@ class _Reading(_TreeCore):
             branch = self.GetBranch(name)
             return None if branch is None else branch.GetLeaf(leafname)
         leaf = self._leaf_info(name.replace("/", "."))
-        return None if leaf is None else TLeaf(self, leaf)  # type: ignore[arg-type]
+        return None if leaf is None else TLeaf(self, leaf)

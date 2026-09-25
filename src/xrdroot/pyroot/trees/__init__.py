@@ -38,7 +38,7 @@ __all__ = [
 ]
 
 #: The class each of ROOT's tree classes is read back as.
-CLASSES: dict[str, type] = {"TTree": TTree, "TNtuple": TNtuple, "TNtupleD": TNtupleD}
+CLASSES: dict[str, Any] = {"TTree": TTree, "TNtuple": TNtuple, "TNtupleD": TNtupleD}
 
 
 def wrap(source: Any, classname: str = "TTree") -> Any:
@@ -49,4 +49,3 @@ def wrap(source: Any, classname: str = "TTree") -> Any:
         made._files = [(name, source.name) for name in source.files]
         return made
     return CLASSES.get(classname, TTree)._over(source, classname)
-

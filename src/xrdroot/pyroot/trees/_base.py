@@ -50,9 +50,7 @@ class _Hooks:
         self.directory: Callable[[], Any] = lambda: None
         self.registry: Callable[[], MutableMapping[str, Any]] = lambda: self.objects
         self.wrap: Callable[[Any], Any] = lambda obj: obj
-        self.draw: Callable[[Any, str], None] = lambda obj, option: self.drawn.append(
-            (obj, option)
-        )
+        self.draw: Callable[[Any, str], None] = lambda obj, option: self.drawn.append((obj, option))
 
 
 #: Where ``core`` and ``graphics`` connect: see the module's docstring.

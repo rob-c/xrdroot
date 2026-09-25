@@ -38,8 +38,8 @@ def _declared(address: Any, name: str) -> list[Leaf]:
     """The leaf a branch declared without a leaf list is: what its address holds."""
     if address.text:
         return [Leaf(name, "C", 1, None, name)]
-    code = None if address.dtype is None else PLATFORM.get(address.dtype.char, address.dtype.char)
-    if code not in CODES:
+    code = "" if address.dtype is None else PLATFORM.get(address.dtype.char, address.dtype.char)
+    if not code or code not in CODES:
         raise TypeError(
             f"the branch {name!r} was given no leaf list, and what its address holds does "
             f"not say its type; give one, as in Branch({name!r}, x, '{name}/D')"
@@ -87,8 +87,17 @@ class TTree(_Player):
         for leaf, one in zip(leaves, addresses):
             self._check_counter(leaf, name)
             leaf_title = title if len(leaves) == 1 else leaf.title
-            store.add(Slot(leaf.name if len(leaves) > 1 else name, name, leaf.code, one,
-                           size=leaf.size, counter=leaf.counter, title=leaf_title))
+            store.add(
+                Slot(
+                    leaf.name if len(leaves) > 1 else name,
+                    name,
+                    leaf.code,
+                    one,
+                    size=leaf.size,
+                    counter=leaf.counter,
+                    title=leaf_title,
+                )
+            )
         self._changed()
         branch = self.GetBranch(name)
         assert branch is not None
@@ -124,7 +133,7 @@ class TTree(_Player):
 
     def Fill(self) -> int:
         """Read every branch's address as one more entry; the bytes it took come back."""
-        nbytes = self._writable("Fill").fill()
+        nbytes = int(self._writable("Fill").fill())
         self._changed()
         return nbytes
 
@@ -160,7 +169,10 @@ class TTree(_Player):
         return clone(self, TTree(self._name, self._title), 0, stop, None)  # type: ignore[no-any-return]
 
     def CopyTree(
-        self, selection: str = "", option: str = "", nentries: int = MAX_ENTRIES,
+        self,
+        selection: str = "",
+        option: str = "",
+        nentries: int = MAX_ENTRIES,
         firstentry: int = 0,
     ) -> TTree:
         """A tree of the same branches, holding the entries ``selection`` keeps."""
@@ -204,4 +216,3 @@ class TTree(_Player):
 
     def Refresh(self) -> None:
         """Read the header again, for a tree another process writes; nothing to do here."""
-

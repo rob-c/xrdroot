@@ -43,16 +43,17 @@ def _letter(code: str) -> str:
 def read_file(tree: Any, filename: str, descriptor: str, delimiter: str) -> int:
     """Fill ``tree`` from the lines of ``filename``; how many were read comes back."""
     with open(filename) as text:
-        lines = [line.rstrip("\n") for line in text]
-    wanted = [line for line in lines if line.strip() and not line.lstrip().startswith("#")]
+        wanted = [line.rstrip("\n") for line in text if _wanted(line)]
     if not descriptor and not tree._writable("ReadFile").slots and wanted:
         descriptor, wanted = wanted[0].strip(), wanted[1:]
     addresses = _branches(tree, descriptor)
-    read = 0
     for line in wanted:
-        values = _values(line, delimiter)
-        for address, value in zip(addresses, values):
+        for address, value in zip(addresses, _values(line, delimiter)):
             address.put(value if address.text else float(value))
         tree.Fill()
-        read += 1
-    return read
+    return len(wanted)
+
+
+def _wanted(line: str) -> bool:
+    """Whether a line holds values: not empty, and not a comment."""
+    return bool(line.strip()) and not line.lstrip().startswith("#")

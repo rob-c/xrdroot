@@ -127,7 +127,7 @@ def _split_arguments(text: str) -> list[str]:
 
 
 def _templated(text: str) -> Any:
-    """A type name with template arguments: ``vector<float>``, ``map<string,int>``, ``pair<...>``."""
+    """A type with template arguments: ``vector<float>``, ``map<string,int>``, ``pair<...>``."""
     outer, _, inner = text.partition("<")
     maker = TEMPLATES.get(outer)
     if maker is None or not inner.endswith(">"):
@@ -144,12 +144,10 @@ def element_type(given: Any) -> Any:
     A string's element type is :class:`string`; a vector's, map's or pair's is
     its class, so a ``vector<vector<int>>`` holds ``vector<int>`` objects.
     """
-    if isinstance(given, type) and given in PYTHON_TYPES:
-        return np.dtype(PYTHON_TYPES[given])
-    if isinstance(given, type) and issubclass(given, (string, _Container, str)):
-        return string if issubclass(given, str) else given
-    if isinstance(given, np.dtype) or (isinstance(given, type) and issubclass(given, np.generic)):
-        return np.dtype(given)
+    if isinstance(given, type):
+        return _class_type(given)
+    if isinstance(given, np.dtype):
+        return given
     if not isinstance(given, str):
         raise TypeError(f"{given!r} is not a type an STL container can hold")
     text = _spelled(given)
@@ -158,6 +156,19 @@ def element_type(given: Any) -> Any:
     if text in STRINGS:
         return string
     return _templated(text)
+
+
+def _class_type(given: type) -> Any:
+    """An element type given as a class: a Python or NumPy number, a string, a container."""
+    if given in PYTHON_TYPES:
+        return np.dtype(PYTHON_TYPES[given])
+    if issubclass(given, np.generic):
+        return np.dtype(given)
+    if issubclass(given, (string, _Container)):
+        return given
+    if issubclass(given, str):
+        return string
+    raise TypeError(f"{given.__name__} is not a type an STL container can hold")
 
 
 def cpp_name(kind: Any) -> str:
@@ -463,7 +474,7 @@ class _ObjectVector(_Container):
 
     def __eq__(self, other: object) -> bool:
         try:
-            return self._items == list(other)  # type: ignore[call-overload]
+            return bool(self._items == list(other))  # type: ignore[call-overload]
         except TypeError:
             return False
 

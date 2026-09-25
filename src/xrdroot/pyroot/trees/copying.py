@@ -55,7 +55,7 @@ class Follow(Address):
 
 def _code(sample: Any) -> str:
     dtype = sample.content.dtype if isinstance(sample, Jagged) else np.asarray(sample).dtype
-    return PLATFORM.get(dtype.char, dtype.char)
+    return str(PLATFORM.get(dtype.char, dtype.char))
 
 
 def _wanted(tree: Any) -> list[Any]:

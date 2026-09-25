@@ -25,8 +25,8 @@ from typing import Any
 
 import numpy as np
 
-from ..stl import string
 from ..stl import is_vector as _is_vector
+from ..stl import string
 
 __all__ = ["Address", "address_of", "members_of"]
 
@@ -238,13 +238,19 @@ def members_of(given: Any, names: list[str], sizes: list[int], what: str) -> lis
         assert isinstance(whole, View)
         starts = np.cumsum([0, *sizes[:-1]])
         return [View(whole.view, int(start)) for start in starts]
+    _require_members(given, names, what)
+    return [_member(given, name, what) for name in names]
+
+
+def _require_members(given: Any, names: list[str], what: str) -> None:
     missing = [name for name in names if not hasattr(given, name)]
+    if len(missing) == len(names):
+        raise _refused(given, what)
     if missing:
-        raise _refused(given, what) if len(missing) == len(names) else AttributeError(
+        raise AttributeError(
             f"{what} has leaves {', '.join(names)}, and the {type(given).__name__} it was "
             f"given has no {', '.join(missing)}"
         )
-    return [_member(given, name, what) for name in names]
 
 
 def _member(given: Any, name: str, what: str) -> Address:

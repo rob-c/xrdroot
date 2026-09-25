@@ -13,8 +13,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-
-
 __all__ = ["Batch", "STEP"]
 
 #: How many entries are read at once.

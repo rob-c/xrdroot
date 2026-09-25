@@ -32,7 +32,7 @@ from ..stl import _Template, _Vector, cpp_name
 __all__ = ["RVec", "RVecF", "RVecD", "RVecI", "RVecL", "RVecB", "VecOps"]
 
 
-class _RVec(np.lib.mixins.NDArrayOperatorsMixin, _Vector):
+class _RVec(np.lib.mixins.NDArrayOperatorsMixin, _Vector):  # type: ignore[misc]
     """An ``RVec`` of one element type: a vector that does NumPy's arithmetic."""
 
     __slots__ = ()
@@ -50,13 +50,13 @@ class _RVec(np.lib.mixins.NDArrayOperatorsMixin, _Vector):
             return _made(self.data()[np.asarray(index)])
         return _Vector.__getitem__(self, index)
 
-    def __eq__(self, other: object) -> Any:  # type: ignore[override]
+    def __eq__(self, other: object) -> Any:
         return _made(np.equal(self.data(), np.asarray(other)))
 
-    def __ne__(self, other: object) -> Any:  # type: ignore[override]
+    def __ne__(self, other: object) -> Any:
         return _made(np.not_equal(self.data(), np.asarray(other)))
 
-    __hash__ = None  # type: ignore[assignment]
+    __hash__ = None
 
 
 def _rvec_class(kind: Any) -> type:

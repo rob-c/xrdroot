@@ -220,7 +220,7 @@ class Store:
 def _nbytes(slot: Slot, value: Any) -> int:
     if slot.kind == TEXT:
         return len(str(value)) + 1
-    return int(np.size(value)) * slot.dtype.itemsize
+    return int(np.size(value)) * int(slot.dtype.itemsize)
 
 
 def memory_tree(name: str, write: Any) -> Any:

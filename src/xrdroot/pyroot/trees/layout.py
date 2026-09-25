@@ -93,12 +93,12 @@ def _stored(name: str, leaves: list[LeafInfo], store: Store, stats: Any) -> Bran
     title = leaves[0].title if len(leaves) == 1 else ":".join(leaf.title for leaf in leaves)
     classname = leaves[0].typename if leaves[0].vector else ""
     records = [stats.branches[leaf.name].record for leaf in leaves] if stats is not None else []
-    return BranchInfo(
-        name,
-        title,
-        classname,
-        leaves,
-        store.entries,
+    return BranchInfo(name, title, classname, leaves, store.entries, *_sizes(records))
+
+
+def _sizes(records: list[Any]) -> tuple[int, int, int, int]:
+    """What a branch's records say its baskets hold: bytes, zipped bytes, count, size."""
+    return (
         sum(record.tot_bytes for record in records),
         sum(record.zip_bytes for record in records),
         max((len(record.basket_seek) for record in records), default=0),
@@ -154,4 +154,3 @@ def _recorded(record: Any, leaves: list[LeafInfo]) -> BranchInfo:
         len(record.basket_seek),
         record.basket_size,
     )
-

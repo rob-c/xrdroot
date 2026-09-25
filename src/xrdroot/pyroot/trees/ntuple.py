@@ -39,7 +39,7 @@ class TNtuple(TTree):
     def GetNvar(self) -> int:
         return len(self._layout())
 
-    def Fill(self, *values: Any) -> int:  # type: ignore[override]
+    def Fill(self, *values: Any) -> int:
         """One entry: a value for every variable, in order, or one sequence of them."""
         self._writable("Fill")
         given = values[0] if len(values) == 1 and np.ndim(values[0]) == 1 else values
@@ -54,8 +54,10 @@ class TNtuple(TTree):
     def GetArgs(self) -> np.ndarray[Any, Any]:
         """The values of the entry last read, one per variable, in order."""
         return np.array(
-            [0 if self._current(column) is None else self._current(column) for column in
-             self._columns()],
+            [
+                0 if self._current(column) is None else self._current(column)
+                for column in self._columns()
+            ],
             dtype=self._code,
         )
 

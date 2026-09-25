@@ -99,7 +99,7 @@ class TTreeReader(_TObjectLike):
     def GetEntries(self, force: bool = False) -> int:
         if self._tree is None:
             return 0
-        return self._tree.GetEntries() if self._list is None else self._list.GetN()
+        return int(self._tree.GetEntries() if self._list is None else self._list.GetN())
 
     def GetTree(self) -> Any:
         return self._tree
@@ -125,7 +125,7 @@ class _Read:
         self._reader = reader
         self._name = str(name)
         tree = reader._tree
-        self._leaf = tree._leaf_info(self._name) if tree is not None else None
+        self._leaf: Any = tree._leaf_info(self._name) if tree is not None else None
         if tree is not None and self._leaf is None:
             raise KeyError(
                 f"the tree {tree.GetName()!r} has no branch called {self._name!r} to read"
