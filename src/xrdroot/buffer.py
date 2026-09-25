@@ -21,7 +21,7 @@ import numpy as np
 
 from .errors import FormatError, UnsupportedFeatureError
 
-__all__ = ["Buffer", "as_datetime", "gather", "numbers", "on_disk"]
+__all__ = ["Buffer", "Listed", "as_datetime", "gather", "numbers", "on_disk"]
 
 
 @cache
@@ -110,7 +110,25 @@ _I16 = struct.Struct(">h")
 _U32 = struct.Struct(">I")
 _I32 = struct.Struct(">i")
 _I64 = struct.Struct(">q")
+_F32 = struct.Struct(">f")
 _F64 = struct.Struct(">d")
+
+
+class Listed(list[Any]):
+    """What a ``TList`` held, with the option each entry was added under.
+
+    The options are drawing rather than data - ``"hist same"`` beside a
+    histogram in a pad, ``"lp"`` beside a legend's entry - so a list reads as
+    the plain list it is, and only what draws a canvas looks at
+    :attr:`options`, one string per entry and in the same order.
+    """
+
+    #: The option each entry was added under, ``""`` for none.
+    options: list[str]
+
+    def __init__(self, items: Any = (), options: Any = ()) -> None:
+        super().__init__(items)
+        self.options = list(options)
 
 
 class Buffer:
@@ -167,6 +185,9 @@ class Buffer:
 
     def i64(self) -> int:
         return int(self._take(_I64))
+
+    def f32(self) -> float:
+        return float(self._take(_F32))
 
     def f64(self) -> float:
         return float(self._take(_F64))
@@ -312,21 +333,22 @@ class Buffer:
         self.refs[start + MAP_OFFSET] = obj
         return obj
 
-    def tlist(self, classes: dict[str, Any]) -> list[Any]:
+    def tlist(self, classes: dict[str, Any]) -> Listed:
         """A ``TList``: like a ``TObjArray``, but each entry carries an option.
 
-        The option is a string nobody reading data wants, written after the
-        object it belongs to, so it has to be stepped over one at a time.
+        The option is a string written after the object it belongs to - how
+        a pad was told to draw it - which is kept beside the list, as
+        :attr:`Listed.options`, for the one reader that wants it.
         """
         version, end = self.header()
         if version <= 3:
             raise FormatError(f"a TList of version {version} is older than any that names itself")
         self.tobject()
         self.string()
-        items = []
+        items = Listed()
         for _ in range(self.i32()):
             items.append(self.any(classes))
-            self.string()  # the option it was added under, which is drawing, not data
+            items.options.append(self.string())
         self.resume(end)
         return items
 

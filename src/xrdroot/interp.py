@@ -691,7 +691,26 @@ def _embedded(name: str, source: Source, seen: tuple[str, ...]) -> Callable[[Buf
     if name in ARRAYS:
         prim = ARRAYS[name]
         return lambda buf: _numbers(prim, None, buf, buf.i32())
+    by_hand = _by_hand(name, source, seen)
+    if by_hand is not None:
+        return by_hand
     return _streamed(_members(name, source, seen))
+
+
+def _by_hand(name: str, source: Source, seen: tuple[str, ...]) -> Callable[[Buffer], Any] | None:
+    """How a class that streams itself by hand reads, or ``None`` for any other.
+
+    ROOT writes no description of such a class - a ``TCanvas`` is the one
+    this reader knows - so its reader is written out in
+    :mod:`.canvas.streamer`, and handed a way to read the described classes
+    it is made of.
+    """
+    from .canvas.streamer import STREAMED
+
+    make = STREAMED.get(name)
+    if make is None:
+        return None
+    return make(lambda held: _streamed(_members(held, source, (*seen, name))))
 
 
 def _fields(name: str, source: Source, seen: tuple[str, ...]) -> list[tuple[str, Step]] | None:
@@ -855,6 +874,11 @@ def _reader(node: Any) -> Callable[[Buffer], Any]:
     return _sequence(node.item)
 
 
+#: Bases a class declares that write nothing at all: ``TQObject``, the
+#: signals and slots under every pad, streams itself as no bytes, not even
+#: a record, and a file does not describe it.
+SILENT_BASES = frozenset({"TQObject"})
+
 #: The bases ROOT's own kit gives a class, which stream themselves in a shape
 #: that is always the same, keyed by the streamer type that declares them.
 _KIT_BASES: dict[int, Callable[[Buffer], dict[str, Any]]] = {
@@ -931,6 +955,8 @@ def _object_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step 
         return _plainly(_datime)  # a class of its own that writes no record
     if member.stype in _KIT_BASES:
         return _plainly(_KIT_BASES[member.stype])
+    if member.stype == 0 and member.name in SILENT_BASES:
+        return _plainly(lambda _buf: {})
     if member.stype - OFFSET_L in (61, 62):
         # A fixed-size array of a class, written one object after another.
         one = _embedded(member.typename, source, seen)
@@ -1079,9 +1105,12 @@ def whole_object(name: str, source: Source) -> Values | Refused:
     if name in LISTS + OBJECT_ARRAYS + CLONES:
         # A collection streams itself, so the file describing it would not help.
         return Values("list", _embedded(name, source, ()))
-    if source.streamers().get(name) is None:
-        return Refused("this file's streamer information does not describe its layout")
     try:
+        by_hand = _by_hand(name, source, ())
+        if by_hand is not None:
+            return Values("dict", by_hand)
+        if source.streamers().get(name) is None:
+            return Refused("this file's streamer information does not describe its layout")
         return Values("dict", _streamed(_members(name, source)))
     except _Unreadable as why:
         return Refused(f"it holds {why.reason}")
