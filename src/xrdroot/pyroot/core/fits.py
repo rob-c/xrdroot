@@ -210,12 +210,14 @@ def _model(f1: Any) -> Any:
     return unwrap(named) if named is not None and named.GetName() not in ("gaus", "expo", "landau") else f1
 
 
-def fit(target: Any, f1: Any, option: str, goption: str, span: tuple[float, float]) -> TFitResultPtr:
+def fit(
+    target: Any, f1: Any, option: str, goption: str, span: tuple[float, float], xrd: Any = None
+) -> TFitResultPtr:
     """``Fit`` of a histogram, a graph or a multigraph, as ``TH1::Fit`` and ``TGraph::Fit`` run it."""
     low, high = float(span[0]), float(span[1])
     chosen = (low, high) if low < high else None
     try:
-        found = unwrap(target).fit(_model(f1), str(option), chosen)
+        found = (unwrap(target) if xrd is None else xrd).fit(_model(f1), str(option), chosen)
     except ValueError as why:
         message("Warning", "Fit", "Fit data is empty (%s)", str(why))
         return TFitResultPtr(None, -1)
