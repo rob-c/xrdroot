@@ -16,6 +16,7 @@ from typing import Any
 
 from .ctype import CType
 from .emit_classes import ClassEmitter
+from .emit_vars import addressable
 from .nodes import ClassDecl, DeclStmt, EnumDecl, Function, Namespace, Stmt
 from .program import Program
 from .symbols import Symbol, python_name
@@ -84,7 +85,7 @@ class Translator(ClassEmitter):
         for name in self.program.functions:
             add(Symbol(name, "function", python_name(name)))
         for name, var in self.program.globals.items():
-            cell = name in self.program.global_cells
+            cell = name in self.program.global_cells and addressable(var.ctype)
             add(Symbol(name, "global", python_name(name), var.ctype, cell=cell))
 
     def top(self, decl: object) -> None:

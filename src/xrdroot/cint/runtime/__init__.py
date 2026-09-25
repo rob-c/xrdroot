@@ -20,6 +20,8 @@ from .cmath import *  # noqa: F403
 from .cmath import __all__ as _cmath
 from .objects import *  # noqa: F403
 from .objects import __all__ as _objects
+from .istreams import *  # noqa: F403
+from .istreams import __all__ as _istreams
 from .printf import *  # noqa: F403
 from .printf import __all__ as _printf
 from .root import ROOT, RootProxy
@@ -29,4 +31,4 @@ from .strings import *  # noqa: F403
 from .strings import __all__ as _strings
 
 __all__ = ["ROOT", "RootProxy", *_arith, *_cells, *_cmath, *_objects, *_printf, *_streams,
-           *_strings]
+           *_strings, *_istreams]

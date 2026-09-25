@@ -124,3 +124,23 @@ differences but the shape of an empty struct.
 
 scikit-hep-testdata is BSD-3-Clause too; its licence is in
 `rntuple/LICENSE.scikit-hep-testdata`.
+
+## ROOT tutorial macros
+
+`cint/` holds seven of ROOT's own tutorial macros, copied unchanged from ROOT
+6.40.04's `tutorials/` (with the data file one of them reads), laid out under
+the same directories. They are what `xrdroot.cint` is tested end to end on:
+translated into Python and run against a small fake ROOT, because the only
+honest test of a translator is C++ somebody else wrote. ROOT is LGPL-2.1; its
+licence notice is `cint/LICENSE.root` and the licence itself
+`cint/LGPL2_1.txt`.
+
+| File | What it is there for |
+| --- | --- |
+| `math/permute.C` | `printf` of `char` arithmetic, `do`/`while`, a `for` whose step is a `printf`, references bound to array elements |
+| `math/ChebyshevPol.C` | `TF1`s built in a loop, `TString::Format`, a ternary giving a `TString` |
+| `math/Legendre.C` | an array of pointers to `TF1`, each built with `new` |
+| `hist/hist000_TH1_first.C` | a `std::unique_ptr<TFile>`, a histogram on the stack, a range-for over a `std::array` |
+| `hist/hist001_TH1_fillrandom.C` | a histogram filled by `FillRandom`, written with `WriteObject(&h, ...)` |
+| `visualisation/graphs/gr001_simple.C` | arrays filled in a loop, `sin`, `std::ifstream` read with `>>` |
+| `visualisation/graphs/data_basic.txt` | the numbers `gr001_simple.C` reads |

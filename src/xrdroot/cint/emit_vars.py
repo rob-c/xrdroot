@@ -95,7 +95,7 @@ class VariableEmitter(StmtEmitter):
             return
         self._destructible(decl, ctype)
         value = self.initial(decl, ctype)
-        cell = decl.name in self.cell_names()
+        cell = decl.name in self.cell_names() and addressable(ctype)
         symbol = self.declare(decl.name, "local", ctype, cell=cell)
         self.write_variable(symbol, value, decl)
 
@@ -203,8 +203,14 @@ class VariableEmitter(StmtEmitter):
             return f"cstr({self.value(args[0])})" if len(args) == 1 else self._string_of(args)
         items = ", ".join(self.value(arg) for arg in args)
         if decl.style == "{}" and _container(ctype):
-            return f"{self.class_expr(ctype)}([{items}])"
+            return self._container_of(ctype, items)
         return f"{self.class_expr(ctype)}({items})"
+
+    def _container_of(self, ctype: CType, items: str) -> str:
+        """A container from a braced list; a plain list when C++ deduced its type from one."""
+        if not ctype.args:
+            return f"[{items}]"
+        return f"{self.class_expr(ctype)}([{items}])"
 
     def _string_of(self, args: list[Expr]) -> str:
         count, char = (self.value(arg) for arg in args[:2])
@@ -217,7 +223,7 @@ class VariableEmitter(StmtEmitter):
                 return self.store(ctype, init.items[0]) if init.items else zero(ctype)
             items = ", ".join(self.value(item) for item in init.items)
             if _container(ctype):
-                return f"{self.class_expr(ctype)}([{items}])"
+                return self._container_of(ctype, items)
             return f"{self.class_expr(ctype)}({items})"
         if ctype.name in STRING_CLASSES and not ctype.pointer:
             found = self.typeof(init)
@@ -286,6 +292,13 @@ class VariableEmitter(StmtEmitter):
         symbol = self.declare(decl.name, "global", ctype)
         symbol.py = self.fresh(f"{owner}_{decl.name}")
         context.statics.append((f"{symbol.py} = {value}", decl.where))
+
+
+def addressable(ctype: CType | None) -> bool:
+    """Does ``&x`` need a cell - is ``x`` a value, not an object whose address is itself?"""
+    if ctype is None or ctype.dims:
+        return False
+    return ctype.scalar or ctype.is_string or ctype.pointer > 0 or ctype.is_smart
 
 
 def _container(ctype: CType) -> bool:

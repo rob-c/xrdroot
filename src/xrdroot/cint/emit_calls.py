@@ -115,6 +115,14 @@ class CallEmitter(ExprEmitter):
             return None
         return f"{self.class_expr(func.targs[0])}({self.arguments(node)})", P.POSTFIX
 
+    def _smart(self, func: Name, node: Call) -> Out | None:
+        """``std::unique_ptr<T>(p)``: the pointer it holds, which is all a Python name is."""
+        if func.parts[0] != "std":
+            return None
+        if not node.args:
+            return "None", P.ATOM
+        return self.expr(node.args[0])
+
     def _limits(self, func: Name, node: Call) -> Out | None:
         if len(func.parts) < 2 or func.parts[-2] != "numeric_limits" or not func.targs:
             return None
@@ -177,6 +185,8 @@ class CallEmitter(ExprEmitter):
         raise self.refuse("an iterator this translator cannot follow back to its container", node)
 
     _LIBRARY: ClassVar[dict[str, Callable[[CallEmitter, Name, Call], Out | None]]] = {
+        "unique_ptr": _smart,
+        "shared_ptr": _smart,
         "make_unique": _make,
         "make_shared": _make,
         "max": _limits,

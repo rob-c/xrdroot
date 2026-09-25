@@ -586,7 +586,17 @@ class StmtEmitter(CallEmitter):
         a, b = (self.value(arg) for arg in expr.args)
         self.out.line(f"{a}, {b} = {b}, {a}", expr.where)
 
+    def _getline(self, expr: Call) -> None:
+        if len(expr.args) < 2:
+            raise self.refuse("std::getline without a string to read into", expr)
+        target = expr.args[1]
+        if isinstance(target, Name) and self.symbol(target) is not None:
+            self.assigned(self.symbol(target))
+        line = f"{self.value(target)} = {self.value(expr.args[0])}.getline()"
+        self.out.line(line, expr.where)
+
     _WRITERS: ClassVar[dict[str, Callable[[StmtEmitter, Call], None]]] = {
+        "getline": _getline,
         "sprintf": _sprintf,
         "snprintf": _snprintf,
         "strcpy": _strcpy,

@@ -190,6 +190,9 @@ class Inference(EmitterBase):
         if len(parts) != 1:
             return None
         name = parts[0]
+        if name in ("unique_ptr", "shared_ptr", "make_unique", "make_shared"):
+            return CType(f"std::{name.replace('make_', '')}_ptr".replace("_ptr_ptr", "_ptr"),
+                         list(func.targs or []))
         if name in ("min", "max") and len(node.args) == 2:
             return arithmetic_result(self.typeof(node.args[0]), self.typeof(node.args[1]))
         if name == "abs" and node.args:

@@ -26,7 +26,7 @@ __all__ = ["NameEmitter", "STD", "type_text"]
 STD = {
     **{name: name for name in """cout cerr clog endl flush fixed scientific left right
         boolalpha noboolalpha hex dec oct showpos noshowpos setw setprecision setfill
-        defaultfloat ostringstream stringstream sqrt cbrt exp exp2 expm1 log log10 log2
+        defaultfloat ostringstream ifstream istringstream sqrt cbrt exp exp2 expm1 log log10 log2
         log1p pow sin cos tan asin acos atan atan2 sinh cosh tanh asinh acosh atanh fabs
         floor ceil trunc fmod hypot erf erfc tgamma lgamma isnan isinf isfinite copysign
         fmin fmax to_string stoi stod min max strlen strcmp atoi atof""".split()},

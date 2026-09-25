@@ -16,7 +16,7 @@ from typing import Any
 
 from .base import Out, P
 from .ctype import CType
-from .emit_vars import Context, VariableEmitter
+from .emit_vars import Context, VariableEmitter, addressable
 from .nodes import Function, Lambda, Param
 from .program import by_reference
 
@@ -49,7 +49,7 @@ class FunctionEmitter(VariableEmitter):
             default = ""
             if param.default is not None:
                 default = "=" + self.store(param.ctype.value(), param.default)
-            cell = by_reference(param.ctype) or name in cells
+            cell = by_reference(param.ctype) or (name in cells and addressable(param.ctype))
             symbol = self.declare(name, "param", param.ctype.value(), cell=cell)
             items.append(symbol.py + default)
         return items

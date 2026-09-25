@@ -132,6 +132,27 @@ class TMath:
         return True
 
 
+class TFile(Named):
+    """A file that remembers every file opened, so a test can look at what was written."""
+
+    opened: list[TFile] = []
+
+    @staticmethod
+    def Open(name: str, *rest: Any) -> TFile:
+        made = TFile(name, *rest)
+        TFile.opened.append(made)
+        return made
+
+
+class ROOTSession(Named):
+    def __init__(self, tutorials: str) -> None:
+        super().__init__("gROOT")
+        self.tutorials = tutorials
+
+    def GetTutorialDir(self) -> str:
+        return self.tutorials
+
+
 class TString(str):
     def Data(self) -> str:
         return str(self)
@@ -159,8 +180,18 @@ class _Template:
         return self.kind
 
 
-def fake() -> types.SimpleNamespace:
+def fake(tutorials: str = ".") -> types.SimpleNamespace:
     """A fresh fake ROOT namespace, with a canvas list tests can look at."""
+    TFile.opened = []
+    made: list[Named] = []
+
+    def remembered(kind: type) -> Any:
+        def build(*args: Any) -> Any:
+            thing = kind(*args)
+            made.append(thing)
+            return thing
+
+        return build
     canvases: list[Named] = []
 
     def canvas(*args: Any) -> Named:
@@ -169,9 +200,24 @@ def fake() -> types.SimpleNamespace:
         return made
 
     std = types.SimpleNamespace(vector=_Template(Vector))
+    colours = {"kRed": 632, "kBlue": 600, "kGreen": 416, "kMagenta": 616, "kCyan": 432,
+               "kYellow": 400, "kOrange": 800, "kSolid": 1}
     return types.SimpleNamespace(
-        TString=TString, TH1F=TH1, TH1D=TH1, TH1I=TH1, TRandom3=TRandom3, gRandom=TRandom3(), TMath=TMath,
-        TCanvas=canvas, TGraph=Named, TF1=Named, TLegend=Named, TFile=Named,
-        kRed=632, kBlue=600, kGreen=416, gPad=Named("pad"), gStyle=Named("style"),
-        std=std, canvases=canvases,
+        TString=TString,
+        TH1F=remembered(TH1),
+        TH1D=remembered(TH1),
+        TRandom3=TRandom3,
+        gRandom=TRandom3(),
+        TMath=TMath,
+        TCanvas=canvas,
+        TGraph=remembered(Named),
+        TF1=remembered(Named),
+        TLegend=remembered(Named),
+        TFile=TFile,
+        gROOT=ROOTSession(tutorials),
+        gPad=Named("pad"),
+        std=std,
+        canvases=canvases,
+        made=made,
+        **colours,
     )
