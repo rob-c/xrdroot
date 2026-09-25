@@ -2280,6 +2280,14 @@ rather than decoded. zstd uses Python 3.14's own `compression.zstd` where there
 is one and the `zstandard` package otherwise, and is the one case where a file
 may need something installed.
 
+## Leaf lists with arrays in them
+
+A branch made from a leaf list — `"n/I:px[n]/F:py[n]/F:q2/F"` — writes each
+entry's leaves one after another, so where `py` and `q2` are depends on
+`n`. Each leaf of such a branch reads the way ROOT reads it, by walking the
+entry from its front with the counters it passes; only a counter that comes
+after the array it counts, or a string among the leaves, is refused.
+
 ## Split collections, and baskets in another file
 
 A `TClonesArray`, or a `std::vector` of a class, split into members is a

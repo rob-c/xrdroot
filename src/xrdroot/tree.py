@@ -19,6 +19,7 @@ from .compression import decompress
 from .drawable import Drawable
 from .errors import UnsupportedFeatureError
 from .interp import Column, Each, Flat, Members, Refused, Rows, Values, build
+from .leaflist import walkable, walked
 
 if TYPE_CHECKING:
     from .file import Source
@@ -384,7 +385,7 @@ class Branch:
                 f"{self.name!r} holds {self.column.reason}; tree.unreadable lists every "
                 f"column this file has that cannot be read, each with its reason"
             )
-        if self.is_jagged and len(self.record.leaves) > 1:
+        if self.is_jagged and len(self.record.leaves) > 1 and not walkable(self.record):
             raise UnsupportedFeatureError(
                 f"{self.name!r} is a variable-length leaf sharing a branch with "
                 f"{len(self.record.leaves) - 1} others, where the file does not say alone how "
@@ -447,6 +448,8 @@ class Branch:
         self._refuse_if_unreadable()
         start, stop = self._bounds(entry_start, entry_stop)
         column = self.column
+        if walkable(self.record):
+            return walked(self, start, stop)
         if isinstance(column, Values):
             return self._objects(column, start, stop)
         if isinstance(column, Rows):
