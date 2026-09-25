@@ -95,8 +95,6 @@ class EmitterBase:
         return self.scope.add(symbol)
 
     def _clashes(self, py: str) -> bool:
-        if self.scope.kind not in ("block", "function"):
-            return False
         scope: Scope | None = self.scope
         while scope is not None and scope.kind in ("block", "function"):
             if any(s.py == py and s.kind in ("local", "param") for s in scope.symbols.values()):

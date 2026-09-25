@@ -10,7 +10,6 @@ is most of ROOT's methods; there the runtime decides (:func:`div`).
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import replace
 from typing import Any, ClassVar
 
 from .base import EmitterBase
@@ -253,18 +252,6 @@ class Inference(EmitterBase):
         Member: _type_member,
     }
 
-    def is_integral(self, node: Expr) -> bool:
-        found = self.typeof(node)
-        return found is not None and found.integral
-
-    def is_floating(self, node: Expr) -> bool:
-        found = self.typeof(node)
-        return found is not None and found.floating
-
     def is_pointer(self, node: Expr) -> bool:
         found = self.typeof(node)
         return found is not None and (found.is_object_pointer or found.name == "nullptr_t")
-
-    @staticmethod
-    def deref_type(ctype: CType) -> CType:
-        return replace(ctype, pointer=max(ctype.pointer - 1, 0))

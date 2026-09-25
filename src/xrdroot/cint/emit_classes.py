@@ -73,8 +73,6 @@ class ClassEmitter(FunctionEmitter):
     # -- classes -------------------------------------------------------------------
 
     def class_def(self, decl: ClassDecl) -> None:
-        if decl.forward:
-            return
         info = self.program.classes[decl.name]
         for nested in info.types:
             self.top(nested)
@@ -93,8 +91,7 @@ class ClassEmitter(FunctionEmitter):
 
     def _class_symbol(self, name: str) -> Symbol:
         symbol = self.lookup(name)
-        if symbol is None:
-            symbol = self.scope.add(Symbol(name, "class", python_name(name)))
+        assert symbol is not None, f"every class is declared before it is written: {name}"
         return symbol
 
     def _base(self, ctype: CType) -> str:

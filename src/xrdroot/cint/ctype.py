@@ -186,11 +186,6 @@ class CType:
     #: A pointer to a function or a ``std::function``: something to call.
     callable: bool = False
 
-    def __repr__(self) -> str:
-        stars = "*" * self.pointer + ("&" if self.reference else "")
-        dims = "".join("[]" for _ in self.dims)
-        return f"<CType {'const ' if self.const else ''}{self.name}{stars}{dims}>"
-
     # -- what kind of thing it is ------------------------------------------
 
     @property
@@ -217,10 +212,6 @@ class CType:
     @property
     def floating(self) -> bool:
         return self.scalar and self.name in FLOATING
-
-    @property
-    def unsigned(self) -> bool:
-        return self.integral and (self.name.startswith("unsigned") or self.name == "bool")
 
     @property
     def is_char(self) -> bool:

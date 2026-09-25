@@ -72,8 +72,6 @@ OUT_PARAMETERS: dict[tuple[str, int], tuple[int, ...]] = {
 
 def children(node: Any) -> Iterator[Node]:
     """The nodes directly inside ``node``, in the order they were written."""
-    if not dataclasses.is_dataclass(node):
-        return
     for item in dataclasses.fields(node):
         yield from _nodes(getattr(node, item.name))
 
@@ -212,8 +210,6 @@ class Program:
         self.class_statics.add(id(var))
 
     def _class(self, decl: ClassDecl) -> None:
-        if decl.forward:
-            return
         info = self.classes.setdefault(decl.name, ClassInfo(decl))
         info.decl = decl
         for member in decl.members:

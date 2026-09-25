@@ -390,8 +390,6 @@ class ClassDecl(Stmt):
     bases: list[Base]
     members: list[Stmt]
     template: list[str] | None = None
-    #: Declared with ``struct Foo;`` and nothing more.
-    forward: bool = False
     #: Variables declared after the closing brace, ``struct P {...} p;``.
     declarators: list[VarDecl] = field(default_factory=list)
 

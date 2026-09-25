@@ -316,11 +316,9 @@ class Parser(StmtParser):
             parts.append(self.identifier())
             if self.at_("<") and parts[-1] in self.templates:
                 self.skip_brackets()
-            if not (self.at_("::") and (self.peek(1).kind == "id" or self.peek(1).is_("~"))):
+            if not (self.at_("::") and self.peek(1).kind == "id"):
                 return parts[:-1], parts[-1]
             self.take()
-            if self.accept("~"):
-                return parts, "~" + self.identifier()
 
     def _is_function(self) -> bool:
         return self.lookahead(self._parameters_then)
@@ -393,7 +391,7 @@ class Parser(StmtParser):
     # -- classes and enums ------------------------------------------------------
 
     def class_declaration(self) -> ClassDecl:
-        """``class Foo : public TObject { ... };`` - or its forward declaration."""
+        """``class Foo : public TObject { ... };``, with any variables declared after it."""
         where = self.where
         kind = self.take().text
         self.attributes()
@@ -404,8 +402,6 @@ class Parser(StmtParser):
         if self.at_("<"):
             self.skip_brackets()
         self.accept("final")
-        if self.accept(";"):
-            return ClassDecl(where, name, kind, [], [], forward=True)
         bases = self._bases() if self.accept(":") else []
         decl = ClassDecl(where, name, kind, bases, self._members(name))
         if not self.at_(";"):

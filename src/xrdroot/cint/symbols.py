@@ -141,19 +141,8 @@ class Scope:
     def visible(self, name: str) -> bool:
         """Is ``name`` declared in an enclosing scope of this function, so a new one shadows?"""
         scope: Scope | None = self
-        while scope is not None and scope.kind in ("block", "function"):
+        while scope is not None and scope.kind == "block":
             if name in scope.symbols:
                 return True
-            if scope.kind == "function":
-                return False
             scope = scope.parent
-        return False
-
-    def taken(self) -> set[str]:
-        """Every Python name in use in this function's scopes."""
-        names: set[str] = set()
-        scope: Scope | None = self
-        while scope is not None:
-            names.update(symbol.py for symbol in scope.symbols.values())
-            scope = scope.parent
-        return names
+        return scope is not None and scope.kind == "function" and name in scope.symbols

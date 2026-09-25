@@ -538,8 +538,6 @@ class ExprParser(TypeParser):
         """``operator+`` or ``~Name`` where a name's next part stands, else ``None``."""
         if self.at_("operator"):
             return self.operator_name()
-        if self.accept("~"):
-            return "~" + self.identifier()
         return None
 
     def _standard(self, parts: list[str]) -> list[str]:
@@ -554,7 +552,7 @@ class ExprParser(TypeParser):
     functions: set[str]
 
     def _scoped_operator(self) -> bool:
-        return self.at_("::") and self.peek(1).is_("operator", "~")
+        return self.at_("::") and self.peek(1).is_("operator")
 
     def _name_targs(self, parts: list[str]) -> list[Any] | None:
         last = parts[-1]

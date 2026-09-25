@@ -190,10 +190,6 @@ class Cursor:
         if token.is_(">>"):
             half = Token("op", ">", token.where)
             self.tokens = [*self.tokens[: self.at], half, half, *self.tokens[self.at + 1 :]]
-        elif token.is_(">>="):
-            half = Token("op", ">", token.where)
-            rest = Token("op", ">=", token.where)
-            self.tokens = [*self.tokens[: self.at], half, rest, *self.tokens[self.at + 1 :]]
 
     # -- scopes ---------------------------------------------------------------
 

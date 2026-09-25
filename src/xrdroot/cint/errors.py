@@ -27,12 +27,6 @@ class Where:
     def __repr__(self) -> str:
         return f"{self.file}:{self.line}"
 
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, Where) and (self.file, self.line) == (other.file, other.line)
-
-    def __hash__(self) -> int:
-        return hash((self.file, self.line))
-
 
 class CintError(ROOTError):
     """Base of what :mod:`xrdroot.cint` raises: a sentence, and the C++ line it is about."""

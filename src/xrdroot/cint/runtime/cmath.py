@@ -162,8 +162,6 @@ def pow(base: Any, exponent: Any) -> float:
         return INF
     try:
         return float(math.pow(float(base), float(exponent)))
-    except ZeroDivisionError:
-        return INF
     except ValueError:
         return NAN
     except OverflowError:
