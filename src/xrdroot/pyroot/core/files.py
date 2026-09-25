@@ -22,6 +22,7 @@ import os
 import struct
 from typing import Any
 
+from ...errors import ROOTError
 from .collections import TList
 from .directories import TDirectory, current_directory, set_current
 from .messages import message
@@ -175,7 +176,12 @@ class TDirectoryFile(TDirectory):
         if top is None:
             return None
         path = self._path()
-        return top[path] if path and path in top else (top if not path else None)
+        if not path:
+            return top
+        try:
+            return top[path]
+        except KeyError:
+            return None  # a directory made in this session, not on file yet
 
     def _writable(self) -> Any:
         """The xrdroot directory this writes into, or ``None`` for a file opened to read.
@@ -512,7 +518,7 @@ class TFile(TDirectoryFile):
 
         try:
             self._reading = open_root(name)
-        except (OSError, ValueError) as why:
+        except (OSError, ValueError, ROOTError) as why:
             missing = isinstance(why, FileNotFoundError)
             text = "file %s does not exist" if missing else "file %s is not a ROOT file"
             message("Error", "TFile::TFile", text, name)
