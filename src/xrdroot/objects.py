@@ -199,17 +199,45 @@ def read_branch(buf: Buffer) -> BranchRecord:
     marker in front of them says.
     """
     version, end = buf.header()
-    if version < 6:
+    if version < 5:
         raise UnsupportedFeatureError(
-            f"this file has a branch older than any ROOT 4 wrote (TBranch version {version}); "
-            f"copy it forward with hadd from any ROOT 5 or 6 and it will open"
+            f"this file has a TBranch of version {version}, older than any this reader follows, "
+            f"which kept no sizes for its baskets; copy it forward with hadd from any later "
+            f"ROOT and it will open"
         )
     modern = version >= 10
     branch = BranchRecord()
     branch.name, branch.title = buf.named()
+    if version == 5:
+        return _ancient_branch(buf, branch, end)
     write_basket, max_baskets = _branch_header(buf, branch, version, modern)
     _branch_contents(buf, branch)
     _basket_tables(buf, branch, modern, max_baskets, write_basket)
+    _inline_basket_bounds(branch)
+    buf.resume(end)
+    return branch
+
+
+def _ancient_branch(buf: Buffer, branch: BranchRecord, end: int | None) -> BranchRecord:
+    """A ``TBranch`` of version 5, as ROOT 2 wrote it and ``TBranch::Streamer`` reads it.
+
+    The counters come in another order, the offset of the branch after its
+    byte counts, and each table of the baskets carries its own length: the
+    first entries by how many were written, the sizes as a counted array,
+    and the seek points as a count ROOT ignores and then one per basket slot.
+    """
+    buf.i32(), buf.i32()  # compression and target basket size
+    branch.entry_offset_len = buf.i32()
+    max_baskets, written = buf.i32(), buf.i32()
+    buf.i32()  # the entry the next basket would start at
+    branch.entries = int(buf.f64())
+    buf.f64(), buf.f64(), buf.i32()  # bytes both ways, and the offset in the parent
+    _branch_contents(buf, branch)
+    branch.basket_entry = buf.i32s(buf.i32())[: written + 1]
+    branch.basket_bytes = buf.i32s(buf.i32())[:written]
+    buf.i32()
+    branch.basket_seek = buf.i32s(max_baskets)[:written]
+    buf.string()  # the file the baskets are in, empty for this one
     _inline_basket_bounds(branch)
     buf.resume(end)
     return branch
@@ -373,13 +401,10 @@ def read_tree(buf: Buffer, source: Source, name: str, classname: str = "TTree") 
 
     _tuple_header(buf, classname)
     version, end = buf.header()
-    if version < 5:
-        raise UnsupportedFeatureError(
-            f"this tree was written by ROOT 3 or older (TTree version {version}), which this "
-            f"reader does not go back to; hadd it forward first"
-        )
     title = buf.named()[1]
-    if DESCRIBED_TREES[0] <= version <= DESCRIBED_TREES[1]:
+    if version < 5:
+        entries = _ancient_tree_fields(buf)
+    elif DESCRIBED_TREES[0] <= version <= DESCRIBED_TREES[1]:
         entries = _described_tree_fields(buf, source, version)
     else:
         entries = _tree_fields(buf, version, version > 5)
@@ -388,6 +413,30 @@ def read_tree(buf: Buffer, source: Source, name: str, classname: str = "TTree") 
     friends = _tree_friends(buf, version)
     buf.resume(end)
     return TTree(name, title, entries, branches, source, friends)
+
+
+#: How long ROOT 2's ``TAttLine``, ``TAttFill`` and ``TAttMarker`` are after
+#: their version, which is all they had in front of them: three shorts, two,
+#: and two and a float.
+ANCIENT_ATTRIBUTES = (6, 4, 8)
+
+
+def _ancient_tree_fields(buf: Buffer) -> int:
+    """The fields of a tree ROOT 2 or 3 wrote, before streamer information existed.
+
+    ``TTree::Streamer`` still reads these versions by hand, in this order:
+    the three attribute records, the scan field and two limits as 32-bit
+    integers, the entries and the bytes written as doubles, then the autosave
+    size and the estimate - and then, as later, the branches.
+    """
+    for size in ANCIENT_ATTRIBUTES:
+        _version, end = buf.header()
+        buf.take(size) if end is None else buf.resume(end)
+    buf.i32(), buf.i32(), buf.i32()  # the scan field, the loop and memory limits
+    entries = int(buf.f64())
+    buf.f64(), buf.f64()  # bytes before and after compression
+    buf.i32(), buf.i32()  # the autosave size and the estimate
+    return entries
 
 
 #: The ``TTree`` versions, from ROOT 3.02 to 5.08, whose fixed fields changed

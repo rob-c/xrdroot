@@ -353,10 +353,16 @@ class Buffer:
         return items
 
     def objarray(self, classes: dict[str, Any]) -> list[Any]:
-        """A ``TObjArray``: the container ROOT keeps branches and leaves in."""
-        _version, end = self.header()
-        self.tobject()
-        self.string()  # the array's own name, always empty in a tree
+        """A ``TObjArray``: the container ROOT keeps branches and leaves in.
+
+        ROOT 2 wrote version 2 of it, with no ``TObject`` in front and every
+        slot of its capacity written out, the empty ones as null pointers.
+        """
+        version, end = self.header()
+        if version > 2:
+            self.tobject()
+        if version > 1:
+            self.string()  # the array's own name, always empty in a tree
         size, _low = self.i32(), self.i32()
         items = [self.any(classes) for _ in range(size)]
         self.resume(end)

@@ -2286,7 +2286,34 @@ A tree written by ROOT 4 opens like any other. Those files count entries in
 doubles and keep their seek points in 32-bit integers, and one small enough
 never to have been flushed holds its baskets inside the branch record rather
 than out in the file — all of which is read here, so a decade-old Geant4 run
-needs no copying forward first. ROOT 3 and older are refused by name.
+needs no copying forward first.
+
+Older trees open too, back to the ROOT 2.24 of the H1 files ROOT's
+`h1analysis` tutorial reads. A `TTree` of versions 6 to 15 — ROOT 3.02 to
+5.08, whose fields changed from release to release — is read the way ROOT
+reads it, member by member from the description of `TTree` the file itself
+carries; one older than that is read the way `TTree::Streamer` still reads
+it by hand, as is the `TBranch` of version 5 under it and the arrays ROOT 2
+wrote without a byte count. Only a `TBranch` older than version 5, which kept
+no sizes for its baskets, is refused by name.
+
+## Pictures
+
+A `TASImage` — the picture a canvas is saved as, or an image read into ROOT
+— streams itself as its name and the PNG it would have saved, and it reads
+as an `xrdroot.Image`:
+
+```python
+>>> image = xrdroot.open_root("gallery.root")["hsimple.png."]
+>>> image.width, image.height, image.array.shape
+(696, 472, (472, 696, 4))
+>>> image.save("hsimple.png")      # the stored bytes, as they are
+>>> image.save("hsimple.jpg")      # the pixels, through matplotlib
+```
+
+`.png` is the stored PNG untouched and `.array` is its pixels as RGBA
+`uint8`, decoded with nothing but `zlib` and NumPy. An image kept as a grid
+of values and a palette rather than as a PNG is refused by name.
 
 ## What it refuses, and why by name
 
@@ -2317,7 +2344,8 @@ What is named that way:
   names, is read);
 - a graph of layered y errors asked for `yerr`, because summing the layers
   would be an answer this reader made up;
-- trees written by ROOT 3 or older.
+- a `TBranch` older than version 5, which kept no
+  sizes for its baskets.
 
 A class the file describes as having no members at all — `TLimit` is one —
 reads as the empty `dict` it honestly is, rather than being refused.
