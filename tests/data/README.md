@@ -28,6 +28,7 @@ The layouts it writes trees with were harvested the same way — from
 | `small-evnt-tree-nosplit.root` | the same class and the same hundred events written whole, one object per entry |
 | `std-map-split0.root` | the same maps as `std-map-split1.root`, written whole rather than split |
 | `tlv-split99.root` | a `TLorentzVector`, which inherits `TObject` and streams itself |
+| `small-flat-tree.root-6.40.txt` | not a ROOT file: what ROOT 6.40.04's `TTree::Print()` and `Show(3)` print for `small-flat-tree.root`, captured from ROOT itself |
 | `tlv-split00.root` | the same ten of them in a `TBranchObject`, which names its class every entry |
 | `tbase.root` | two classes deriving from one base, one of them redeclaring a member of it |
 | `rvec.root` | forty-odd `ROOT::VecOps::RVec` branches, the vector an `RDataFrame` writes |
