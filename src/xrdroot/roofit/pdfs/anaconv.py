@@ -34,7 +34,9 @@ def decay_type(value: Any) -> int:
     """A decay type given as ROOT's enumerator - a number - or, as PyROOT allows, by its name."""
     if isinstance(value, str):
         if value not in DECAY_TYPES:
-            raise ValueError(f"'{value}' is not a decay type: use SingleSided, DoubleSided or Flipped.")
+            raise ValueError(
+                f"'{value}' is not a decay type: use SingleSided, DoubleSided or Flipped."
+            )
         return DECAY_TYPES[value]
     return int(value)
 
@@ -141,7 +143,9 @@ class RooAbsAnaConvPdf(RooAbsPdf):
         for index, conv in enumerate(self.convs):
             weight = part(index)
             if np.any(np.asarray(weight) != 0.0):
-                total = total + np.where(np.asarray(weight) != 0.0, conv_value(conv, ctx) * weight, 0.0)
+                total = total + np.where(
+                    np.asarray(weight) != 0.0, conv_value(conv, ctx) * weight, 0.0
+                )
         return total
 
     def compute(self, ctx: Context) -> Any:
@@ -164,7 +168,11 @@ class RooAbsAnaConvPdf(RooAbsPdf):
         coef_set, conv_set = self._split(frozenset(names))
         total: Any = 0.0
         for index, conv in enumerate(self.convs):
-            weight = CoefVar(self, index).integrate(coef_set, ctx, rng) if coef_set else self.coef(index, ctx)
+            weight = (
+                CoefVar(self, index).integrate(coef_set, ctx, rng)
+                if coef_set
+                else self.coef(index, ctx)
+            )
             if np.any(np.asarray(weight) != 0.0):
                 total = total + weight * conv.integrate(conv_set, ctx, rng)
         return total
@@ -188,10 +196,47 @@ class RooAbsAnaConvPdf(RooAbsPdf):
     def gen_context(self, names: frozenset[str], proto: Any = None) -> Any:
         from ..generation.convolution import context_for_convolution
 
-        return context_for_convolution(self, names, proto)
+        return context_for_convolution(self.snapshot(), names, proto)
+
+    def snapshot(self) -> Any:
+        """The copy a generator makes (``RooArgSet::snapshot``), inputs matched *by name*.
+
+        RooFit's deep copy clones each input the first time its name is met,
+        walking the inputs depth first, and connects every input of that name
+        to that one clone - so two different variables that share a name
+        become one, the first met. This density with its inputs matched the
+        same way; itself when no two of them share a name.
+        """
+        first: dict[str, Any] = {self.GetName(): self}
+
+        def walk(node: Any) -> None:
+            for server in node.servers():
+                if server.GetName() not in first:
+                    first[server.GetName()] = server
+                    walk(server)
+
+        walk(self)
+        moved = {
+            id(one): first[one.GetName()]
+            for one in self.servers()
+            if first[one.GetName()] is not one
+        }
+        if not moved:
+            return self
+        made = self.clone()
+        for proxy in made._proxies:
+            if not proxy.many and id(proxy.target) in moved:
+                proxy.target = moved[id(proxy.target)]
+        for key, one in list(vars(made).items()):
+            if id(one) in moved:
+                setattr(made, key, moved[id(one)])
+        return made
 
     def printMultiline(self, contents: int, verbose: bool, indent: str) -> str:
-        text = super().printMultiline(contents, verbose, indent) + f"{indent}--- RooAbsAnaConvPdf ---\n"
+        text = (
+            super().printMultiline(contents, verbose, indent)
+            + f"{indent}--- RooAbsAnaConvPdf ---\n"
+        )
         return text + "".join(conv.printMultiline(contents, verbose, indent) for conv in self.convs)
 
 

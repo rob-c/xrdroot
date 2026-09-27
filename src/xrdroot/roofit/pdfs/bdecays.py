@@ -14,6 +14,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+import numpy as np
+
 from ..real import Context, value_of
 from .anaconv import RooAbsAnaConvPdf, decay_type
 from .basic import ref
@@ -67,7 +69,10 @@ class _TaggedCP(RooAbsAnaConvPdf):
         while True:
             t = draw_time(self._type, tau, rng)
             most, weight = self.acceptance(tag, t)
-            if inside(t, bounds) and most * rng.Rndm() < weight:
+            accept = (
+                most * rng.Rndm() < weight
+            )  # drawn whether or not the time is in range, as in RooFit
+            if inside(t, bounds) and accept:
                 found[self.t.GetName()] = t
                 return found
 
@@ -105,7 +110,7 @@ class RooBCPEffDecay(_TaggedCP):
         if not names:
             return self.coef(index, ctx)
         al = self.absLambda.compute(ctx)
-        return (1 + al * al) if index == self._basis_exp else 0.0 * al
+        return (1 + al * al) if index == self._basis_exp else np.zeros(np.shape(al))
 
     def acceptance(self, tag: float, t: float) -> tuple[float, float]:
         al, arg, cp = value(self.absLambda), value(self.argLambda), value(self.CPeigenval)
@@ -113,9 +118,9 @@ class RooBCPEffDecay(_TaggedCP):
         max_dil = 1.0
         al2 = al * al
         most = (1 + al2) + abs(max_dil * cp * al * arg) + abs(max_dil * (1 - al2) / 2)
-        weight = ((1 + al2) / 2 * (1 - tag * dw) - (tag * (1 - 2 * w)) * (cp * al * arg) * math.sin(dm * t)
-                  - (tag * (1 - 2 * w)) * (1 - al2) / 2 * math.cos(dm * t))  # fmt: skip
-        return most, weight
+        dilution = tag * (1 - 2 * w)
+        weight = (1 + al2) / 2 * (1 - tag * dw) - dilution * (cp * al * arg) * math.sin(dm * t)
+        return most, weight - dilution * (1 - al2) / 2 * math.cos(dm * t)
 
 
 class RooBCPGenDecay(_TaggedCP):
@@ -138,7 +143,9 @@ class RooBCPGenDecay(_TaggedCP):
 
     def _parts(self, tag: Any, ctx: Context) -> tuple[Any, Any]:
         dw, w, mu = self.delMistag.compute(ctx), self.avgMistag.compute(ctx), self.mu.compute(ctx)
-        return (1 - tag * dw + mu * tag * (1.0 - 2.0 * w)), (tag * (1 - 2 * w) + mu * (1.0 - tag * dw))
+        return (1 - tag * dw + mu * tag * (1.0 - 2.0 * w)), (
+            tag * (1 - 2 * w) + mu * (1.0 - tag * dw)
+        )
 
     def coef(self, index: int, ctx: Context) -> Any:
         flat, oscillating = self._parts(self.tag.compute(ctx), ctx)
@@ -153,8 +160,12 @@ class RooBCPGenDecay(_TaggedCP):
             return self.coef(index, ctx)
         mu = self.mu.compute(ctx)
         if index == self._basis_exp:
-            return 2.0 + 0.0 * mu
-        return 2 * mu * self.S.compute(ctx) if index == self._basis_sin else -2 * mu * self.C.compute(ctx)
+            return 2.0
+        return (
+            2 * mu * self.S.compute(ctx)
+            if index == self._basis_sin
+            else -2 * mu * self.C.compute(ctx)
+        )
 
     def acceptance(self, tag: float, t: float) -> tuple[float, float]:
         s, c, dm = value(self.S), value(self.C), value(self.dm)
@@ -191,25 +202,35 @@ class RooBDecay(RooAbsAnaConvPdf):
     def init_generator(self, code: int) -> None:
         """Nothing to prepare: the time is drawn under an exponential envelope."""
 
+    def _trial(self, rng: Any, gammamin: float, bounds: tuple[float, float]) -> Any:
+        """A time drawn under the envelope - on a random side if double sided - or None if outside."""
+        t = -math.log(rng.Rndm()) / gammamin
+        if self._type == 2 or (self._type == 1 and rng.Rndm() < 0.5):
+            t *= -1
+        return None if t < bounds[0] or t > bounds[1] else t
+
     def generate_event(self, code: int, rng: Any, bounds: Any = None) -> dict[str, float]:
         """``generateEvent``: a time under the envelope ``exp(-gamma_min |t|)``, accepted by the density."""
-        low, high = bounds or (self.t.getMin(), self.t.getMax())
-        tau, dgamma, dm = value(self.tau), value(self.dgamma), value(self.dm)
-        f0, f1, f2, f3 = (value(one) for one in self.fs)
-        gammamin = 1 / tau - abs(dgamma) / 2
+        bounds = bounds or (self.t.getMin(), self.t.getMax())
+        params = tuple(value(one) for one in (self.tau, self.dgamma, self.dm, *self.fs))
+        gammamin = 1 / params[0] - abs(params[1]) / 2
         while True:
-            t = -math.log(rng.Rndm()) / gammamin
-            if self._type == 2 or (self._type == 1 and rng.Rndm() < 0.5):
-                t *= -1
-            if t < low or t > high:
+            t = self._trial(rng, gammamin, bounds)
+            if t is None:
                 continue
-            ft = abs(t)
-            f = math.exp(-ft / tau) * (f0 * math.cosh(dgamma * t / 2) + f1 * math.sinh(dgamma * t / 2)
-                                       + f2 * math.cos(dm * t) + f3 * math.sin(dm * t))  # fmt: skip
-            envelope = 1.001 * math.exp(-ft * gammamin) * (abs(f0) + abs(f1) + math.sqrt(f2 * f2 + f3 * f3))
+            f, envelope = _density_and_envelope(t, params, gammamin)
             if f < 0 or envelope < f:
-                raise RuntimeError(f"RooBDecay::generateEvent({self.GetName()}): the density is below zero or "
-                                   "above its envelope, so no event can be drawn.")  # fmt: skip
+                raise RuntimeError(f"RooBDecay::generateEvent({self.GetName()}): the density is below zero "
+                                   "or above its envelope, so no event can be drawn.")  # fmt: skip
             if envelope * rng.Rndm() > f:
                 continue
             return {self.t.GetName(): t}
+
+
+def _density_and_envelope(t: float, params: tuple[float, ...], gammamin: float) -> tuple[float, float]:
+    """The decay's value at ``t`` and the envelope's, ``1.001 exp(-gamma_min |t|) (|f0| + |f1| + ...)``."""
+    tau, dgamma, dm, f0, f1, f2, f3 = params
+    ft = abs(t)
+    f = math.exp(-ft / tau) * (f0 * math.cosh(dgamma * t / 2) + f1 * math.sinh(dgamma * t / 2)
+                               + f2 * math.cos(dm * t) + f3 * math.sin(dm * t))  # fmt: skip
+    return f, 1.001 * math.exp(-ft * gammamin) * (abs(f0) + abs(f1) + math.sqrt(f2 * f2 + f3 * f3))

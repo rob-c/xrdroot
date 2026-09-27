@@ -28,7 +28,14 @@ from ..pdf import RooAbsPdf
 from ..real import Context
 from .basic import ref
 
-__all__ = ["BASIS_CODES", "GENERIC", "RooResolutionModel", "RooTruthModel", "basis_sign", "basis_type"]
+__all__ = [
+    "BASIS_CODES",
+    "GENERIC",
+    "RooResolutionModel",
+    "RooTruthModel",
+    "basis_sign",
+    "basis_type",
+]
 
 #: ``basisCode``: the basis formulas both models know - spaces removed - and their codes.
 BASIS_CODES = {
@@ -118,7 +125,9 @@ class RooResolutionModel(RooAbsPdf):
 
 def _sided(x: Any, sign: int, value: Any) -> Any:
     """``value`` where the basis lives, zero on the side of zero it does not."""
-    outside = (x > 0.0) if sign < 0 else (x < 0.0) if sign > 0 else np.zeros(np.shape(x), dtype=bool)
+    outside = (
+        (x > 0.0) if sign < 0 else (x < 0.0) if sign > 0 else np.zeros(np.shape(x), dtype=bool)
+    )
     return np.where(outside, 0.0, value)
 
 
@@ -178,7 +187,9 @@ class RooTruthModel(RooResolutionModel):
         kind = basis_type(self._basis_code)
         tau, dm = self.basis_values(ctx)
         dm = dm if kind in (SIN, COS, SINH, COSH) else math.nan
-        return definite(kind, self.x.getMin(rng), self.x.getMax(rng), tau, dm, basis_sign(self._basis_code))
+        return definite(
+            kind, self.x.getMin(rng), self.x.getMax(rng), tau, dm, basis_sign(self._basis_code)
+        )
 
     def generator_code(self, names: frozenset[str]) -> int:
         return 1 if names == frozenset([self.x.GetName()]) else 0

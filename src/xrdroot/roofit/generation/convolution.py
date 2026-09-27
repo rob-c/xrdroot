@@ -26,7 +26,13 @@ from ..real import value_of
 from ..rng import generator
 from .contexts import Context, NumericContext
 
-__all__ = ["AcceptReject", "ConvolutionContext", "DecayContext", "context_for_convolution", "widened"]
+__all__ = [
+    "AcceptReject",
+    "ConvolutionContext",
+    "DecayContext",
+    "context_for_convolution",
+    "widened",
+]
 
 #: ``nTrial0D``: the trial draws per category state before an accept/reject sampler of categories starts.
 TRIALS_PER_STATE = 100
@@ -50,13 +56,19 @@ def widened(var: Any) -> Iterator[None]:
 class AcceptReject:
     """``RooAcceptReject`` over categories only: trial draws find the maximum, then events are accepted."""
 
-    def __init__(self, pdf: Any, categories: list[Any], over: frozenset[str], names: frozenset[str]) -> None:
+    def __init__(
+        self, pdf: Any, categories: list[Any], over: frozenset[str], names: frozenset[str]
+    ) -> None:
         self.categories = categories
         norm = value_of(pdf.integrate(names, {}))
 
         def density(states: tuple[float, ...]) -> float:
             ctx = {one.GetName(): state for one, state in zip(categories, states)}
-            return value_of(pdf.integrate(over, ctx)) / norm if over else value_of(pdf.compute(ctx)) / norm
+            return (
+                value_of(pdf.integrate(over, ctx)) / norm
+                if over
+                else value_of(pdf.compute(ctx)) / norm
+            )
 
         self.density = density
         self.min_trials = TRIALS_PER_STATE * math.prod(len(one.states()) for one in categories)
@@ -159,7 +171,9 @@ def context_for_convolution(pdf: Any, names: frozenset[str], proto: Any = None) 
     if not pdf.gen_code(frozenset([time]), True)[0]:
         reasons += "PDF does not support internal generation of convolution observable. "
     if not (model.generator_code(frozenset([time])) and model.is_direct_gen_safe(time)):
-        reasons += "Resolution model does not support internal generation of convolution observable. "
+        reasons += (
+            "Resolution model does not support internal generation of convolution observable. "
+        )
     if reasons:
         log(pdf, INFO, "Generation", f"RooAbsAnaConvPdf::genContext({pdf.GetName()}) Using regular accept/reject "
             f"generator for convolution p.d.f because: {reasons}")  # fmt: skip

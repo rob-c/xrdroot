@@ -46,27 +46,43 @@ def _sides(sign: int, plus: Any, minus: Any) -> Array:
     return result
 
 
-def _gaussian(xmin: float, xmax: float, mean: Array, sigma: Array, code: int, asymptotic: bool) -> Array:
+def _gaussian(
+    xmin: float, xmax: float, mean: Array, sigma: Array, code: int, asymptotic: bool
+) -> Array:
     xscale = ROOT2 * sigma
     xpmin, xpmax = (xmin - mean) / xscale, (xmax - mean) / xscale
     result = 1.0 + 0.0 * xpmin if asymptotic else 0.5 * (mf.erf(xpmax) - mf.erf(xpmin))
     return result * 2 if code and basis_sign(code) == 0 else result
 
 
-def _polynomial(kind: int, tau: float, xp: tuple[Array, Array], u: tuple[Array, Array], c: Array) -> Array:
+def _parts(xp: tuple[Array, Array], u: tuple[Array, Array], c: Array) -> tuple[Array, ...]:
+    """The ``erf``, Gaussian and ``exp * erfc`` terms at both ends that both polynomial bases use."""
     (xpmin, xpmax), (umin, umax) = xp, u
     f0 = mf.erf(-umax) - mf.erf(-umin)
     ea1, ea2 = np.exp(-umax * umax), np.exp(-umin * umin)
     tmp1, tmp2 = np.exp(-xpmax) * mf.erfc(-umax + c), np.exp(-xpmin) * mf.erfc(-umin + c)
-    expc2 = np.exp(c * c)
-    if kind == LIN:
-        return -tau * (f0 + (2 * c / ROOTPI) * (ea1 - ea2) + (1 - 2 * c * c) * expc2 * (tmp1 - tmp2)
-                       + expc2 * (xpmax * tmp1 - xpmin * tmp2))  # fmt: skip
-    f2 = umax * ea1 - umin * ea2
-    f4, f5 = xpmax * tmp1 - xpmin * tmp2, xpmax * xpmax * tmp1 - xpmin * xpmin * tmp2
-    return -tau * (2 * f0 + (4 * c / ROOTPI) * ((1 - c * c) * (ea1 - ea2) + c * f2)
-                   + (2 * c * c * (2 * c * c - 1) + 2) * expc2 * (tmp1 - tmp2) - (4 * c * c - 2) * expc2 * f4
-                   + expc2 * f5)  # fmt: skip
+    return f0, ea1, ea2, tmp1, tmp2, np.exp(c * c)
+
+
+def _linear(tau: float, xp: tuple[Array, Array], u: tuple[Array, Array], c: Array) -> Array:
+    f0, ea1, ea2, tmp1, tmp2, expc2 = _parts(xp, u, c)
+    f3 = xp[1] * tmp1 - xp[0] * tmp2
+    return -tau * (f0 + (2 * c / ROOTPI) * (ea1 - ea2) + (1 - 2 * c * c) * expc2 * (tmp1 - tmp2)
+                   + expc2 * f3)  # fmt: skip
+
+
+def _quadratic_head(f0: Array, f1: Array, f2: Array, c: Array) -> Array:
+    return 2 * f0 + (4 * c / ROOTPI) * ((1 - c * c) * f1 + c * f2)
+
+
+def _quadratic(tau: float, xp: tuple[Array, Array], u: tuple[Array, Array], c: Array) -> Array:
+    (xpmin, xpmax), (umin, umax) = xp, u
+    f0, ea1, ea2, tmp1, tmp2, expc2 = _parts(xp, u, c)
+    head = _quadratic_head(f0, ea1 - ea2, umax * ea1 - umin * ea2, c)
+    f4 = xpmax * tmp1 - xpmin * tmp2
+    f5 = xpmax * xpmax * tmp1 - xpmin * xpmin * tmp2
+    third = (2 * c * c * (2 * c * c - 1) + 2) * expc2 * (tmp1 - tmp2)
+    return -tau * (head + third - (4 * c * c - 2) * expc2 * f4 + expc2 * f5)
 
 
 def _hyperbolic(kind: int, sign: int, tau: float, y: float, u: tuple[Array, Array], c: Array,
@@ -86,9 +102,25 @@ def _oscillating(kind: int, sign: int, tau: float, x: float, u: tuple[Array, Arr
     part = 1 if kind == SIN else 0
     factor = -1.0 if kind == SIN else 1.0
     if kind == SIN and x == 0:
-        return 0.0 * c
+        return np.zeros(np.shape(c))
     return _sides(sign, lambda: factor * cerf_int(+1, -x, tau, -umin, -umax, c, asymptotic)[part],
                   lambda: factor * cerf_int(-1, x, tau, umin, umax, c, asymptotic)[part])  # fmt: skip
+
+
+def _decay(kind: int, sign: int, bounds: tuple[float, float], mean: Array, sigma: Array,
+           tau: float, p2: float, asymptotic: bool) -> Array:  # fmt: skip
+    """The integral of the Gaussian convolved with a basis of lifetime ``tau``."""
+    omega = p2 if kind in (SIN, COS) else 0.0
+    c = sigma / (ROOT2 * tau)
+    xp = ((bounds[0] - mean) / tau, (bounds[1] - mean) / tau)
+    u = (xp[0] / (2 * c), xp[1] / (2 * c))
+    if kind == EXP or (kind == COS and omega == 0.0):
+        return _oscillating(COS, sign, tau, 0.0, u, c, asymptotic)
+    if kind in (SIN, COS):
+        return _oscillating(kind, sign, tau, omega * tau, u, c, asymptotic)
+    if kind in (COSH, SINH):
+        return _hyperbolic(kind, sign, tau, tau * p2 / 2, u, c, asymptotic)
+    return (_linear if kind == LIN else _quadratic)(tau, xp, u, c)
 
 
 def integral(bounds: tuple[float, float], mean: Array, sigma: Array, p1: float, p2: float, code: int,
@@ -98,19 +130,8 @@ def integral(bounds: tuple[float, float], mean: Array, sigma: Array, p1: float, 
     tau = p1 if code else 0.0
     if kind == COSH and p2 == 0:
         kind = EXP
-    xmin, xmax = bounds
     if kind == NONE or (kind in (EXP, COS) and tau == 0.0):
-        return _gaussian(xmin, xmax, mean, sigma, code, asymptotic)
-    omega = p2 if kind in (SIN, COS) else 0.0
+        return _gaussian(bounds[0], bounds[1], mean, sigma, code, asymptotic)
     if tau == 0.0:
-        return 0.0 * sigma
-    c = sigma / (ROOT2 * tau)
-    xp = ((xmin - mean) / tau, (xmax - mean) / tau)
-    u = (xp[0] / (2 * c), xp[1] / (2 * c))
-    if kind == EXP or (kind == COS and omega == 0.0):
-        return _oscillating(COS, sign, tau, 0.0, u, c, asymptotic)
-    if kind in (SIN, COS):
-        return _oscillating(kind, sign, tau, omega * tau, u, c, asymptotic)
-    if kind in (COSH, SINH):
-        return _hyperbolic(kind, sign, tau, tau * p2 / 2, u, c, asymptotic)
-    return _polynomial(kind, tau, xp, u, c)
+        return np.zeros(np.broadcast(mean, sigma).shape)
+    return _decay(kind, sign, bounds, mean, sigma, tau, p2, asymptotic)

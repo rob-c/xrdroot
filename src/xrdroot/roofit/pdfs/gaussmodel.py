@@ -21,7 +21,19 @@ from .. import mathfuncs as mf
 from ..cerf import eval_cerf
 from ..real import Context
 from .basic import ref
-from .resolution import COS, COSH, EXP, LIN, NONE, QUAD, SIN, SINH, RooResolutionModel, basis_sign, basis_type
+from .resolution import (
+    COS,
+    COSH,
+    EXP,
+    LIN,
+    NONE,
+    QUAD,
+    SIN,
+    SINH,
+    RooResolutionModel,
+    basis_sign,
+    basis_type,
+)
 
 __all__ = ["RooGaussModel"]
 
@@ -44,17 +56,24 @@ def _both_sides(sign: int, plus: Any, minus: Any) -> Any:
 
 
 def _exp_like(sign: int, u: Array, c: Array) -> Array:
-    return _both_sides(sign, lambda: np.real(eval_cerf(0.0, -u, c)), lambda: np.real(eval_cerf(0.0, u, c)))
+    return _both_sides(
+        sign, lambda: np.real(eval_cerf(0.0, -u, c)), lambda: np.real(eval_cerf(0.0, u, c))
+    )
 
 
 def _hyperbolic(kind: int, sign: int, u: Array, c: Array, y: float) -> Array:
     sgn = 1.0 if kind == COSH else -1.0
 
     def plus() -> Array:
-        return 0.5 * (np.real(eval_cerf(0.0, -u, c * (1 - y))) + sgn * np.real(eval_cerf(0.0, -u, c * (1 + y))))
+        return 0.5 * (
+            np.real(eval_cerf(0.0, -u, c * (1 - y)))
+            + sgn * np.real(eval_cerf(0.0, -u, c * (1 + y)))
+        )
 
     def minus() -> Array:
-        return 0.5 * (sgn * np.real(eval_cerf(0.0, u, c * (1 - y))) + np.real(eval_cerf(0.0, u, c * (1 + y))))
+        return 0.5 * (
+            sgn * np.real(eval_cerf(0.0, u, c * (1 - y))) + np.real(eval_cerf(0.0, u, c * (1 + y)))
+        )
 
     return _both_sides(sign, plus, minus)
 
@@ -72,11 +91,26 @@ def _polynomial(kind: int, xprime: Array, u: Array, c: Array) -> Array:
 def _oscillating(kind: int, sign: int, omega_tau: float, u: Array, c: Array) -> Array:
     if kind == SIN:
         if omega_tau == 0.0:
-            return 0.0 * u
+            return np.zeros(np.shape(u))
         return _both_sides(sign, lambda: -np.imag(eval_cerf(-omega_tau, -u, c)),
                            lambda: -np.imag(eval_cerf(omega_tau, u, c)))  # fmt: skip
     return _both_sides(sign, lambda: np.real(eval_cerf(-omega_tau, -u, c)),
                        lambda: np.real(eval_cerf(omega_tau, u, c)))  # fmt: skip
+
+
+def _decay(kind: int, sign: int, x: Array, mean: Array, sigma: Array, tau: float, p2: float) -> Array:
+    """The Gaussian convolved with a basis of lifetime ``tau`` and frequency - or width - ``p2``."""
+    omega_tau = (p2 if kind in (SIN, COS) else 0.0) * tau
+    xprime = (x - mean) / tau
+    c = sigma / (ROOT2 * tau)
+    u = xprime / (2 * c)
+    if kind == EXP or (kind == COS and omega_tau == 0.0):
+        return _exp_like(sign, u, c)
+    if kind in (SIN, COS):
+        return _oscillating(kind, sign, omega_tau, u, c)
+    if kind in (COSH, SINH):
+        return _hyperbolic(kind, sign, u, c, tau * p2 / 2)
+    return _polynomial(kind, xprime, u, c)
 
 
 def convolved(x: Array, mean: Array, sigma: Array, p1: float, p2: float, code: int) -> Array:
@@ -90,19 +124,8 @@ def convolved(x: Array, mean: Array, sigma: Array, p1: float, p2: float, code: i
         result = np.exp(-0.5 * xprime * xprime) / (sigma * ROOT2PI)
         return result * 2 if code and sign == 0 else result
     if tau == 0.0:
-        return 0.0 * x
-    omega_tau = (p2 if kind in (SIN, COS) else 0.0) * tau
-    y = tau * (p2 if kind in (SINH, COSH) else 0.0) / 2
-    xprime = (x - mean) / tau
-    c = sigma / (ROOT2 * tau)
-    u = xprime / (2 * c)
-    if kind == EXP or (kind == COS and omega_tau == 0.0):
-        return _exp_like(sign, u, c)
-    if kind in (SIN, COS):
-        return _oscillating(kind, sign, omega_tau, u, c)
-    if kind in (COSH, SINH):
-        return _hyperbolic(kind, sign, u, c, y)
-    return _polynomial(kind, xprime, u, c)
+        return np.zeros(np.broadcast(x, mean, sigma).shape)
+    return _decay(kind, sign, x, mean, sigma, tau, p2)
 
 
 class RooGaussModel(RooResolutionModel):
@@ -125,14 +148,18 @@ class RooGaussModel(RooResolutionModel):
         self._asymp_int = bool(flag)
 
     def _scaled(self, ctx: Context) -> tuple[Array, Array]:
-        return self.mean.compute(ctx) * self.msf.compute(ctx), self.sigma.compute(ctx) * self.ssf.compute(ctx)
+        return self.mean.compute(ctx) * self.msf.compute(ctx), self.sigma.compute(
+            ctx
+        ) * self.ssf.compute(ctx)
 
     def compute(self, ctx: Context) -> Any:
         x = np.asarray(self.x.compute(ctx), dtype=np.float64)
         mean, sigma = self._scaled(ctx)
         p1, p2 = self.basis_values(ctx)
         if np.ndim(p1) or np.ndim(p2):
-            return np.vectorize(convolved, otypes=[np.float64])(x, mean, sigma, p1, p2, self._basis_code)
+            return np.vectorize(convolved, otypes=[np.float64])(
+                x, mean, sigma, p1, p2, self._basis_code
+            )
         with np.errstate(all="ignore"):
             return convolved(x, mean, sigma, float(p1), float(p2), self._basis_code)
 
@@ -155,7 +182,9 @@ class RooGaussModel(RooResolutionModel):
         p1, p2 = self.basis_values(ctx)
         bounds = (self.x.getMin(rng), self.x.getMax(rng))
         with np.errstate(all="ignore"):
-            found = integral(bounds, mean, sigma, float(p1), float(p2), self._basis_code, self._asymp_int)
+            found = integral(
+                bounds, mean, sigma, float(p1), float(p2), self._basis_code, self._asymp_int
+            )
         return found * ssf_int
 
     def generator_code(self, names: frozenset[str]) -> int:

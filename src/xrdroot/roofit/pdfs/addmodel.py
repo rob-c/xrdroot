@@ -25,7 +25,9 @@ __all__ = ["RooAddModel"]
 class RooAddModel(RooResolutionModel):
     """``RooAddModel(name, title, [models], [fractions])``: the last model takes what is left."""
 
-    def __init__(self, name: Any, title: Any, pdfList: Any, coefList: Any, ownPdfList: bool = False) -> None:
+    def __init__(
+        self, name: Any, title: Any, pdfList: Any, coefList: Any, ownPdfList: bool = False
+    ) -> None:
         pdfs, coefs = as_list(pdfList), [ref(one) for one in as_list(coefList)]
         if len(pdfs) > len(coefs) + 1 or len(pdfs) < len(coefs):
             raise ValueError(f"RooAddModel::RooAddModel({name}) number of pdfs and coefficients "
@@ -99,13 +101,19 @@ class RooAddModel(RooResolutionModel):
         for fraction, model in zip(self.fractions({}), self.pdfs):
             share = float(np.asarray(fraction))
             if low < draw < low + share:
-                return dict(model.generate_event(model.generator_code(frozenset([self.x.GetName()])), rng, bounds))
+                return dict(
+                    model.generate_event(
+                        model.generator_code(frozenset([self.x.GetName()])), rng, bounds
+                    )
+                )
             low += share
         return self.generate_event(code, rng, bounds)
 
     def printMetaArgs(self) -> str:
         text = ""
         for i, model in enumerate(self.pdfs):
-            text += (" + " if i else "") + (f"{self.coefs[i].GetName()} * " if i < len(self.coefs) else "")
+            text += (" + " if i else "") + (
+                f"{self.coefs[i].GetName()} * " if i < len(self.coefs) else ""
+            )
             text += model.GetName()
         return text + " "

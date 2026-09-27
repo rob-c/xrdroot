@@ -109,17 +109,25 @@ def plot_pdf(pdf: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
     """``pdf.plotOn(frame, options...)``: add the density's curve - or curves, one per range - to ``frame``."""
     from .ranges import plan
 
+    from .projections import view
+
     options = commands(args, kwargs)
     options.warn_duplicates(f"RooAbsPdf::plotOn({pdf.GetName()})")
+    if "Asymmetry" in options:
+        from .asymmetry import plot_asymmetry
+
+        return plot_asymmetry(pdf, frame, options)
     nset = _norm_vars(pdf, frame)
-    _announce_plot(pdf, frame, nset)
+    seen = view(pdf, frame, options)
+    nset -= frozenset(seen.averaged)
+    _announce_plot(pdf, frame, nset, seen)
     chosen, suffix = _selected(pdf, options)
     made = plan(pdf, frame, options, nset)
     scale = made.scale
     if made.post_scale:
         scale /= _range_fraction(pdf, frame, nset, made.norm_range, made.pieces)
     for low, high in made.pieces:
-        _add_curve(pdf, frame, options, nset, scale, chosen, suffix, (low, high, made.wings))
+        _add_curve(pdf, frame, options, nset, scale, chosen, suffix, (low, high, made.wings), seen)
     return frame
 
 
@@ -134,21 +142,24 @@ def _range_fraction(pdf: Any, frame: Any, nset: frozenset[str], rng: Any,
     return float(np.asarray(pdf.fraction(name | (nset - name), {}, nset, rng)))
 
 
-def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str]) -> None:
-    """What RooFit says when it plots: the projection, and the two integrals it makes for it."""
+def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], seen: Any) -> None:
+    """What RooFit says when it plots: the projection - in the frame's order - and its integrals."""
     from ..integration import announce, integral_name
+    from .projections import announce_average
 
-    projected = nset - {frame.getPlotVar().GetName()}
+    projected = frozenset(seen.projected)
     if projected:
-        order = [one.GetName() for one in pdf.leaves() if one.GetName() in projected]
         log(pdf, INFO, "Plotting", f"RooAbsReal::plotOn({pdf.GetName()}) plot on "
-            f"{frame.getPlotVar().GetName()} integrates over variables ({','.join(order)})")  # fmt: skip
+            f"{frame.getPlotVar().GetName()} integrates over variables ({','.join(seen.projected)})")  # fmt: skip
+    announce_average(pdf, frame, seen)
     announce(pdf, nset)
     if not projected:
         announce(pdf, nset)
         return
     norm = ",".join(one.GetName() for one in pdf.leaves() if one.GetName() in nset)
-    announce(pdf, projected, label=f"{integral_name(pdf, projected, None)}_Norm[{norm}]")
+    special = getattr(pdf, "announce_projection", None)
+    if special is None or not special(projected, nset):
+        announce(pdf, projected, label=f"{integral_name(pdf, projected, None)}_Norm[{norm}]")
 
 
 def plot_function(func: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
@@ -160,20 +171,25 @@ def plot_function(func: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str
 
 
 def _add_curve(func: Any, frame: Any, options: Commands, nset: frozenset[str], scale: float,
-               chosen: set[str] | None, suffix: str, piece: Any = None) -> Any:  # fmt: skip
+               chosen: set[str] | None, suffix: str, piece: Any = None, seen: Any = None) -> Any:  # fmt: skip
     """Sample the projection over the frame's variable and put the curve on the frame."""
     var = frame.getPlotVar()
     low, high, wings = piece if piece is not None else (*_range(frame, options)[:2], True)
-    projected = frozenset(nset - {var.GetName()})
+    projected = frozenset(seen.projected) if seen is not None else frozenset(nset - {var.GetName()})
     name = var.GetName()
+
+    def projection(ctx: Any) -> Any:
+        if projected:
+            return func.fraction(projected, ctx, nset, None)
+        return func.value(ctx, nset)
 
     def curve_at(xs: Any) -> Any:
         ctx = {name: np.asarray(xs, dtype=np.float64)}
         if not nset:
             return func.compute(ctx) * np.ones(len(xs)) * scale
-        if projected:
-            return func.fraction(projected, ctx, nset, None) * scale
-        return func.value(ctx, nset) * scale
+        if seen is not None and seen.averaged:
+            return seen.average(projection, ctx) * scale
+        return projection(ctx) * scale
 
     precision = float(options.get("Precision", 0, 1e-3))
     with selection.selecting(chosen):

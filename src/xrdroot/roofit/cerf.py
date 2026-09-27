@@ -93,10 +93,9 @@ def _taylor(zre: Array, zim: Array) -> tuple[Array, Array, Array]:
     return near, sumre, np.where(zre < 0.0, -sumim, sumim)
 
 
-def _continued_fraction(zre: Array, zim: Array, negimz: Array) -> tuple[Array, Array]:
-    """``w(z)`` far from the origin, for ``Im z >= 0`` - flipped back if ``z`` was below the axis."""
-    z2re, z2im = (zre + zim) * (zre - zim), 2.0 * zre * zim
-    cfre, cfim, cfnorm = np.ones_like(zre), np.zeros_like(zre), np.ones_like(zre)
+def _fraction_steps(z2re: Array, z2im: Array) -> tuple[Array, Array, Array]:
+    """The continued fraction's ``NCF`` steps, from the innermost out."""
+    cfre, cfim, cfnorm = np.ones_like(z2re), np.zeros_like(z2re), np.ones_like(z2re)
     for k in range(NCF, 0, -1):
         cfre = +(k / 2.0) * cfre / cfnorm
         cfim = -(k / 2.0) * cfim / cfnorm
@@ -105,29 +104,42 @@ def _continued_fraction(zre: Array, zim: Array, negimz: Array) -> tuple[Array, A
         else:
             cfre = cfre + 1.0
         cfnorm = cfre * cfre + cfim * cfim
+    return cfre, cfim, cfnorm
+
+
+def _continued_fraction(zre: Array, zim: Array, negimz: Array) -> tuple[Array, Array]:
+    """``w(z)`` far from the origin, for ``Im z >= 0`` - flipped back if ``z`` was below the axis."""
+    z2re, z2im = (zre + zim) * (zre - zim), 2.0 * zre * zim
+    cfre, cfim, cfnorm = _fraction_steps(z2re, z2im)
     sumre = (zim * cfre - zre * cfim) * ISQRTPI / cfnorm
     sumim = -(zre * cfre + zim * cfim) * ISQRTPI / cfnorm
     ez2re, ez2im = _cexp(-z2re, -z2im)
-    return (np.where(negimz, 2.0 * ez2re - sumre, sumre), np.where(negimz, 2.0 * ez2im - sumim, sumim))
+    return (np.where(negimz, 2.0 * ez2re - sumre, sumre),
+            np.where(negimz, 2.0 * ez2im - sumim, sumim))  # fmt: skip
+
+
+def _numerators(tmzre: Array, tmzim: Array) -> tuple[Array, ...]:
+    """``1 -/+ exp(i tm z)``, and each times ``tm z``: the numerators of the Fourier sum's terms."""
+    eitmzre, eitmzim = _cexp(-tmzim, tmzre)
+    n = (1.0 - eitmzre, -eitmzim, 1.0 + eitmzre, +eitmzim)
+    return n + (tmzre * n[0] - tmzim * n[1], tmzre * n[1] + tmzim * n[0],
+                tmzre * n[2] - tmzim * n[3], tmzre * n[3] + tmzim * n[2])  # fmt: skip
 
 
 def _fourier_terms(zre: Array, zim: Array, znorm: Array) -> tuple[Array, Array]:
     """The Fourier sum's real and imaginary parts, before they are turned into ``w(z)``."""
     tmzre, tmzim = TM * zre, TM * zim
-    eitmzre, eitmzim = _cexp(-tmzim, tmzre)
-    numer = (1.0 - eitmzre, -eitmzim, 1.0 + eitmzre, +eitmzim)
-    numertmz = (tmzre * numer[0] - tmzim * numer[1], tmzre * numer[1] + tmzim * numer[0],
-                tmzre * numer[2] - tmzim * numer[3], tmzre * numer[3] + tmzim * numer[2])  # fmt: skip
+    numer = _numerators(tmzre, tmzim)
     reimtmzm2 = -2.0 * tmzre * tmzim
     imtmz2, reimtmzm22 = tmzim * tmzim, reimtmzm2 * reimtmzm2
     sumre = (-A[0] / znorm) * (numer[0] * zre + numer[1] * zim)
     sumim = (-A[0] / znorm) * (numer[1] * zre - numer[0] * zim)
     for i in range(N):
-        j = (i << 1) & 2
+        j = 4 + ((i << 1) & 2)
         wk = imtmz2 + (NPI[i] + tmzre) * (NPI[i] - tmzre)
         f = 2.0 * TM * A[i] / (wk * wk + reimtmzm22)
-        sumre = sumre - f * (numertmz[j] * wk + numertmz[j + 1] * reimtmzm2)
-        sumim = sumim - f * (numertmz[j + 1] * wk - numertmz[j] * reimtmzm2)
+        sumre = sumre - f * (numer[j] * wk + numer[j + 1] * reimtmzm2)
+        sumim = sumim - f * (numer[j + 1] * wk - numer[j] * reimtmzm2)
     return sumre, sumim
 
 
