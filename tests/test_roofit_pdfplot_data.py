@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
 import pytest
 
 from xrdroot.roofit.binning import RooBinning
@@ -81,7 +80,7 @@ def test_a_frame_is_the_variables_range_in_its_bins_titled_after_it() -> None:
 
 
 def test_a_frame_takes_bins_a_range_a_title_and_a_name() -> None:
-    """``frame(Bins(10), Range("win"), Title("T"), Name("fr"))``, ``frame(5)``, ``frame(-4, 4, 8)``."""
+    """``frame(Bins(10), Range("win"), Title("T"), Name("fr"))``, ``frame(5)``, ``frame(-4, 4)``."""
     x, _ = generated()
     named = x.frame(Bins=10, Range="win", Title="T", Name="fr")
     assert (named.GetName(), named.GetTitle(), named.GetNbinsX()) == ("fr", "T", 10)
@@ -444,3 +443,77 @@ def test_a_hist_made_by_hand_counts_the_events_of_its_points_in_a_range() -> Non
     assert made.fit_range_events() == 0.0
     made.raw_entries = 12.0
     assert made.fit_range_events() == 12.0
+
+
+def test_a_binned_dataset_is_drawn_in_its_own_bins_as_root_draws_it() -> None:
+    """A ``RooDataHist`` of 120 events brings its binning: the points are ROOT's."""
+    from xrdroot.roofit.data.datahist import RooDataHist
+
+    x = RooRealVar("x", "x", 0, -10, 10)
+    x.setBins(20)
+    g1 = RooGaussian("g1", "g1", x, RooRealVar("m1", "m1", 1), RooRealVar("s1", "s1", 1.5))
+    generator().SetSeed(4357)
+    binned = RooDataHist("dh", "dh", [x], g1.generate([x], 120))
+    frame = x.frame()
+    binned.plotOn(frame)
+    hist = frame.getObject(0)
+    assert hist.GetName() == "h_dh"
+    counts = [0, 0, 0, 0, 0, 0, 0, 3, 7, 19, 42, 20, 15, 13, 1, 0, 0, 0, 0, 0]
+    assert [p[1] for p in points(hist)] == counts
+    assert flat(points(hist)[9:11]) == pytest.approx(
+        [-0.5, 19, 4.3202194, 5.4351962, 0.5, 42, 6.4548307, 7.5321802], rel=1e-7
+    )
+
+
+def test_the_graphics_layer_may_install_its_own_axes_and_paves() -> None:
+    """``set_axis`` and ``set_pave`` are the hooks the pyroot layer puts its classes in by."""
+    from xrdroot.roofit.plot import frame as frames
+    from xrdroot.roofit.plot import params
+
+    x, _ = generated()
+    made: list[Any] = []
+
+    def axis(row: Any, owner: Any) -> str:
+        made.append(row)
+        return "axis"
+
+    def pave(*args: Any) -> Any:
+        made.append(args)
+        return params.Pave(*args)
+
+    frames.set_axis(axis)
+    params.set_pave(pave)
+    try:
+        frame = x.frame()
+        assert frame.GetXaxis() == "axis"
+        RooGaussian("g", "g", x, 0.0, 1.0).paramOn(frame)
+    finally:
+        frames.set_axis(frames.Axis)
+        params.set_pave(params.Pave)
+    assert made[0] is frame.axis("x")
+    assert made[1][4] == "BRNDC"
+
+
+def test_a_hist_with_no_nominal_width_leaves_the_frames_bin_width_as_it_was() -> None:
+    """The first data to set the scale set the events; a width of zero changes nothing."""
+    from xrdroot.roofit.plot.hist import RooHist
+
+    x, _ = generated()
+    frame = x.frame()
+    made = RooHist("h", "", [0.5], [4.0], [0.5], [0.5], [2.0], [2.0])
+    made.entries = 4.0
+    frame.add_plotable(made, "P")
+    assert (frame.getFitRangeNEvt(), frame.getFitRangeBinW()) == (4.0, 1.0)
+    assert frame.getFitRangeNEvt(0.0, 1.0) == 4.0
+    frame.addObject(RooHist("other", ""), "P")
+    frame.setInvisible("other")
+    assert [one[2] for one in frame.items] == [False, True]
+
+
+def test_a_frame_names_its_class_and_title_as_a_printable() -> None:
+    """``RooPrintable``'s class name and title of a frame: ``RooPlot``, ``A RooPlot of "x"``."""
+    from xrdroot.roofit.printing import kClassName, kInline, kTitle
+
+    x, _ = generated()
+    frame = x.frame(Name="fr")
+    assert frame.printStream(kClassName | kTitle, kInline) == 'RooPlot:: "A RooPlot of "x""'

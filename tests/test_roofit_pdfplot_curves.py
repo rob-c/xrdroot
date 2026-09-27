@@ -29,8 +29,8 @@ DEFAULT = [7.657572721, 28.93940264, 44.81222085, 23.06003285, 0.4972392925]
 EMPTY = [0.0255252424, 0.09646467545, 0.1493740695, 0.07686677616, 0.001657464308]
 #: The curves' heights are ROOT's to the ten figures it printed.
 REL = 1e-9
-#: What the engine is being changed to do: a failure here is expected until then, a pass welcome.
-PENDING = {"strict": False}
+#: What the engine is being changed to do is marked ``xfail(strict=False)``: a failure there is
+#: expected until then, a pass welcome.
 
 
 def heights(curve: Any, xs: Any = XS) -> list[float]:
@@ -153,7 +153,7 @@ def test_an_extended_density_is_drawn_for_the_events_it_expects() -> None:
 
 
 @pytest.mark.xfail(
-    **PENDING,
+    strict=False,
     reason="pdfplot.py:121-128: on an empty frame ROOT draws what an extended pdf expects",
 )
 def test_an_extended_density_on_an_empty_frame_is_drawn_for_the_events_it_expects() -> None:
@@ -243,7 +243,7 @@ def test_a_named_range_and_a_normalisation_range_are_said_as_root_says(capsys: A
 
 
 @pytest.mark.xfail(
-    **PENDING,
+    strict=False,
     reason="hist.py:94-101: ROOT counts the data in a range by the bin centres inside it",
 )
 def test_a_curve_over_a_named_range_is_normalised_to_the_bins_whose_centres_are_inside() -> None:
@@ -261,7 +261,7 @@ def test_a_curve_over_a_named_range_is_normalised_to_the_bins_whose_centres_are_
 
 
 @pytest.mark.xfail(
-    **PENDING, reason="curves.py:221-224: ROOT's curve names say their Range and NormRange"
+    strict=False, reason="curves.py:221-224: ROOT's curve names say their Range and NormRange"
 )
 def test_a_curve_drawn_over_a_range_is_named_after_it_as_root_names_it() -> None:
     """``_Range[win]``, ``_Range[-3_3]``, ``_Range[win]_NormRange[win]``, ``_Range[a,b]``."""
@@ -281,7 +281,7 @@ def test_a_curve_drawn_over_a_range_is_named_after_it_as_root_names_it() -> None
 
 
 @pytest.mark.xfail(
-    **PENDING, reason="realplot.py:57, curve.py:75-85: VLines drops to zero at the range's ends"
+    strict=False, reason="realplot.py:57, curve.py:75-85: VLines drops to zero at the range's ends"
 )
 def test_vertical_lines_close_a_ranged_curve_at_its_ends_as_root_draws_them() -> None:
     """``VLines``: a point a thousandth of a step outside each end, at zero - no wings."""
@@ -380,7 +380,7 @@ def test_a_function_is_drawn_as_it_is_scaled_only_if_asked() -> None:
     assert frame.getObject(2).GetN() == 42
 
 
-@pytest.mark.xfail(**PENDING, reason="curves.py:221: ROOT names a function's curve fx_Norm[x]")
+@pytest.mark.xfail(strict=False, reason="curves.py:221: ROOT names a function's curve fx_Norm[x]")
 def test_a_functions_curve_is_named_for_its_frames_variable() -> None:
     """ROOT calls the curve of ``fx`` drawn on ``x`` ``fx_Norm[x]``."""
     from xrdroot.roofit.functions import RooFormulaVar
@@ -393,7 +393,7 @@ def test_a_functions_curve_is_named_for_its_frames_variable() -> None:
 
 
 @pytest.mark.xfail(
-    **PENDING, reason="realplot.py:58-59: ROOT divides a ranged function by its integral there"
+    strict=False, reason="realplot.py:58-59: ROOT divides a ranged function by its integral there"
 )
 def test_a_function_drawn_over_a_range_is_divided_by_its_integral_there() -> None:
     """``Normalization(2)`` over ``[-2, 2]``: twice ``x*x + 1`` over its integral there, 28/3."""
@@ -497,7 +497,7 @@ def test_a_sampled_error_band_takes_the_central_quantiles_of_curves_of_drawn_par
 
 
 @pytest.mark.xfail(
-    **PENDING,
+    strict=False,
     reason="pdfplot.py:148 strips Components before band.py re-plots: ROOT's band is the part's",
 )
 def test_an_error_band_of_a_component_is_drawn_round_that_component() -> None:
@@ -698,7 +698,7 @@ def test_a_product_on_a_frame_of_one_observable_integrates_the_other_out(capsys:
 
 
 @pytest.mark.xfail(
-    **PENDING, reason="curves.py:220-221: ROOT names a projection prod_Int[y]_Norm[x,y]"
+    strict=False, reason="curves.py:220-221: ROOT names a projection prod_Int[y]_Norm[x,y]"
 )
 def test_a_projection_is_named_after_the_integral_it_takes_as_root_names_it() -> None:
     """ROOT calls the curve of ``prod`` integrated over ``y`` ``prod_Int[y]_Norm[x,y]``."""
@@ -784,7 +784,8 @@ def test_an_error_band_round_a_function_is_the_propagation_of_the_fits_errors() 
 
 
 @pytest.mark.xfail(
-    **PENDING, reason="realplot.py:38: with DrawOption('P') ROOT draws the band as bin-centred bars"
+    strict=False,
+    reason="realplot.py:38: with DrawOption('P') ROOT draws the band as bin-centred bars",
 )
 def test_an_error_band_drawn_as_points_is_a_point_per_bin_as_root_draws_it() -> None:
     """``VisualizeError`` with ``DrawOption("P")``: ROOT's 20 points, one per bin."""
