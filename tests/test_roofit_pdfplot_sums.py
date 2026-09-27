@@ -507,3 +507,60 @@ def test_a_simultaneous_density_expects_its_current_channels_events_as_root_does
     sx = RooSimultaneous("sx", "sx", [e1, e2], c.cat)
     c.cat.setLabel("ctl")
     assert sx.expectedEvents([c.x]) == 40.0
+
+
+def extended_gaussian() -> tuple[RooRealVar, RooGaussian, RooRealVar, RooExtendPdf]:
+    x = RooRealVar("x", "x", 0.5, -10, 10)
+    x.setBins(20)
+    sx = RooRealVar("sx", "sx", 2, 0.1, 10)
+    gx = RooGaussian("gx", "gx", x, RooRealVar("mx", "mx", 1), sx)
+    nsig = RooRealVar("nsig", "nsig", 150, 0, 1000)
+    return x, gx, nsig, RooExtendPdf("ext", "ext", gx, nsig)
+
+
+def test_an_extended_density_fitted_finds_the_number_of_events_as_root_does() -> None:
+    """An extended fit of 180 events: the yield is ROOT's, and so is the likelihood."""
+    x, gx, nsig, ext = extended_gaussian()
+    generator().SetSeed(4357)
+    data = gx.generate([x], 180)
+    result = ext.fitTo(data, PrintLevel=-1, Save=True)
+    assert nsig.getVal() == pytest.approx(179.994722932, rel=1e-8)
+    assert result.minNll() == pytest.approx(-371.157925298, rel=1e-10)
+    frame = x.frame()
+    data.plotOn(frame)
+    ext.plotOn(frame, Range=(-3.0, 3.0))
+    curve = frame.getObject(1)
+    assert curve.GetN() == 37
+    assert [float(curve.interpolate(v)) for v in (-2.0, 0.4, 2.0)] == pytest.approx(
+        [12.00562362, 33.9157324, 31.40462305], rel=1e-8
+    )
+
+
+def test_an_extended_factor_of_a_product_gives_the_product_its_value() -> None:
+    """Unnormalised, an extended density is its shape: in a product, it multiplies as that."""
+    from xrdroot.roofit.pdfs.prodpdf import RooProdPdf
+
+    _, gx, _, ext = extended_gaussian()
+    y = RooRealVar("y", "y", 1.5, -5, 5)
+    gy = RooGaussian("gy", "gy", y, 0.5, 1.5)
+    both = RooProdPdf("both", "both", [ext, gy])
+    assert both.getVal() == pytest.approx(gx.getVal() * gy.getVal(), rel=REL)
+    assert ext.selfNormalized() is True
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="extend.py:63-66: ROOT generates a RooExtendPdf by its own accept-reject, not its "
+    "density's direct generator",
+)
+def test_an_extended_density_draws_its_events_as_root_does() -> None:
+    """ROOT's first five events of the extended Gaussian after ``SetSeed(4357)``."""
+    x, _, _, ext = extended_gaussian()
+    generator().SetSeed(4357)
+    assert column(ext.generate([x], 5), "x") == [
+        -0.5169668318431775,
+        1.330020600798889,
+        -1.285572673636679,
+        1.149962531744677,
+        -1.1411667457119279,
+    ]
