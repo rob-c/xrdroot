@@ -95,6 +95,16 @@ class RooPlot(RooPrintable):
     def SetName(self, name: str) -> None:
         self._name = str(name)
 
+    def Clone(self, name: Any = None) -> RooPlot:
+        """A frame of copies of what this one holds - its histogram and each thing drawn on it."""
+        import copy
+
+        made = copy.copy(self)
+        made.hist = copy.deepcopy(self.hist)
+        made.items = [(copy.deepcopy(obj), option, invisible) for obj, option, invisible in self.items]
+        made._name = self._name if name is None else str(name)
+        return made
+
     def GetTitle(self) -> str:
         return str(self.hist.members["TH1"]["TNamed"]["fTitle"])
 

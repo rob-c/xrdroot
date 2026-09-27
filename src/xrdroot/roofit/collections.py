@@ -180,6 +180,12 @@ class RooAbsCollection(RooPrintable):
         names = {one.GetName() for one in _flat(other)}
         return self._like(one for one in self._list if one.GetName() in names)
 
+    def Clone(self, name: Any = None) -> RooAbsCollection:
+        """A collection of the same members - not copies of them - called ``name``."""
+        made = self._like(self._list)
+        made._name = self._name if name is None else str(name)
+        return made
+
     def snapshot(self, deepCopy: bool = True) -> RooAbsCollection:
         """Copies of the members, their values as they are now."""
         return self._like(one.clone(one.GetName()) for one in self._list)
@@ -285,6 +291,10 @@ class RooAbsCollection(RooPrintable):
 
     def __repr__(self) -> str:
         return f"<{type(self).__name__} {self.printValue()}>"
+
+    def __str__(self) -> str:
+        """What PyROOT prints of a collection: cppyy's view of it, pointers to its members."""
+        return "{ " + ", ".join(f"@{hex(id(one))}" for one in self._list) + " }"
 
 
 class RooArgSet(RooAbsCollection):
