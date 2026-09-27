@@ -213,7 +213,7 @@ class RooAddPdf(RooAbsPdf):
         parts = [f"{c.GetName()} * {p.GetName()}" for c, p in zip(self.coefs, self.pdfs)]
         if len(self.pdfs) > len(self.coefs):
             parts.append(f"[%] * {self.pdfs[len(self.coefs)].GetName()}")
-        if not self.coefs:
+        if not len(self.coefs):
             parts = [p.GetName() for p in self.pdfs]
         return " + ".join(parts) + " "
 

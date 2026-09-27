@@ -15,7 +15,6 @@ from typing import Any
 
 import numpy as np
 
-from ..cmdargs import RooCmdArg
 from ..messages import INFO, WARNING, log
 from ..printing import g
 from .cmdlist import CmdList
@@ -224,7 +223,3 @@ def band(func: Any, frame: Any, cmds: CmdList, options: Any) -> Any:
     if "MoveToBack" in final:
         frame.items.insert(0, frame.items.pop())
     return frame
-
-
-def moved_command(name: str, *args: Any) -> RooCmdArg:
-    return RooCmdArg(name, *args)

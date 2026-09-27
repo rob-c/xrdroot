@@ -75,8 +75,10 @@ def _extra_axes(options: Any) -> list[tuple[Any, Any]]:
 
 
 def _book(name: str, axes: list[tuple[Any, Any]]) -> Histogram:
+    """``RooAbsRealLValue::createHistogram``'s histogram: ``h__x_y``, "Histogram of h__x_y"."""
     edges = [_binning(var, command) for var, command in axes]
-    return Histogram.book(name, *[list(e) for e in edges], title=name)
+    full = name + "_" + "".join("_" + var.GetName() for var, _ in axes)
+    return Histogram.book(full, *[list(e) for e in edges], title=f"Histogram of {full}")
 
 
 def _own_name(first: Any, args: tuple[Any, ...]) -> Any:

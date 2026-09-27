@@ -33,14 +33,14 @@ def _gamma_quantile(p: float, shape: float) -> float:
     low, high = 0.0, max(1.0, shape)
     while incomplete_gamma(shape, high) < p:
         high *= 2.0
-    for _ in range(200):
+    steps = 0
+    while steps < 200 and high - low > 1e-15 * high:
         mid = 0.5 * (low + high)
         if incomplete_gamma(shape, mid) < p:
             low = mid
         else:
             high = mid
-        if high - low <= 1e-15 * high:
-            break
+        steps += 1
     return 0.5 * (low + high)
 
 

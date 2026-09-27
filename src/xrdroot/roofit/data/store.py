@@ -113,10 +113,8 @@ class RooAbsData(RooPrintable):
 
     def _load(self, index: int) -> None:
         self._current = index
-        for one in self._vars:
-            column = self._columns.get(one.GetName())
-            if column is not None and index < len(column):
-                one.load_value(column[index])
+        for one in self._vars:  # every variable has its column, as long as the dataset
+            one.load_value(self._columns[one.GetName()][index])
 
     def weight(self) -> float:
         index = getattr(self, "_current", 0)

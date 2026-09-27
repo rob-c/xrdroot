@@ -16,7 +16,7 @@ from ..cmdargs import Commands, RooCmdArg
 from ..messages import ERROR, INFO, log
 from ..printing import g
 from .cmdlist import CmdList
-from .curves import _announce_plot, _norm_vars, _selected
+from .curves import _norm_vars, _selected
 
 __all__ = ["pdf_plot"]
 
@@ -166,7 +166,3 @@ def _components(options: Commands) -> Commands:
     if found is None:
         found = options.get("SelectCompSet")
     return Commands([RooCmdArg("Components", found)] if found is not None else [])
-
-
-def announce(pdf: Any, frame: Any) -> None:
-    _announce_plot(pdf, frame, _norm_vars(pdf, frame))

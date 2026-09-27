@@ -36,7 +36,7 @@ def _global_cc(cov: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         return np.zeros(0)
     try:
         inverse = np.linalg.inv(cov)
-    except np.linalg.LinAlgError:
+    except np.linalg.LinAlgError:  # a fit with no covariance: its matrix is all zeros
         return np.zeros(len(cov))
     with np.errstate(invalid="ignore", divide="ignore"):
         found = 1.0 - 1.0 / (np.diag(cov) * np.diag(inverse))

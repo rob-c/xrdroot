@@ -141,4 +141,4 @@ class SumContext(Context):
             if low < draw < low + share:
                 return part.event(remaining)
             low += share
-        return self.event(remaining)  # a draw on a threshold picks nothing, and RooFit draws again
+        return self.event(remaining)  # pragma: no cover - a draw exactly on a threshold: redrawn

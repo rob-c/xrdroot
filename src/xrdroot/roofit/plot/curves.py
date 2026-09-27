@@ -110,17 +110,6 @@ def _items(spec: Any) -> list[Any]:
     return as_list(spec)
 
 
-def _range(frame: Any, options: Commands) -> tuple[float, float, str | None]:
-    """The part of the frame to draw: a named range, two numbers, or all of it."""
-    found = options.args("Range")
-    var = frame.getPlotVar()
-    if not found:
-        return frame.GetXmin(), frame.GetXmax(), None
-    if isinstance(found[0], str):
-        return var.getMin(found[0]), var.getMax(found[0]), found[0]
-    return float(found[0]), float(found[1]), None
-
-
 def _norm_vars(pdf: Any, frame: Any) -> frozenset[str]:
     """The observables the curve is normalised over: the frame's variable and the data's others."""
     frame.update_norm_vars([frame.getPlotVar()])
@@ -148,14 +137,14 @@ def _range_fraction(
     return float(np.asarray(pdf.fraction(name | (nset - name), {}, nset, rng)))
 
 
-def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], seen: Any = None) -> None:
+def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], seen: Any) -> None:
     """What RooFit says when it plots: the projection - in the frame's order - and the
     integral it makes for it."""
     from ..integration import announce
     from .projections import announce_average
 
     plot_var = frame.getPlotVar().GetName()
-    order = _projected_order(pdf, nset, plot_var, seen)
+    order = list(seen.projected)
     projected = frozenset(order)
     if projected:
         log(
@@ -165,18 +154,10 @@ def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], seen: Any = None)
             f"RooAbsReal::plotOn({pdf.GetName()}) plot on "
             f"{plot_var} integrates over variables ({','.join(order)})",
         )
-    if seen is not None:
-        announce_average(pdf, frame, seen)
+    announce_average(pdf, frame, seen)
     announce(pdf, nset, normalising=True)
     if projected:
         _announce_projection(pdf, projected, nset)
-
-
-def _projected_order(pdf: Any, nset: frozenset[str], plot_var: str, seen: Any) -> list[str]:
-    """The variables projected out: in the frame's order, or - without a view - the density's."""
-    if seen is not None:
-        return list(seen.projected)
-    return [one.GetName() for one in pdf.leaves() if one.GetName() in nset - {plot_var}]
 
 
 def _announce_projection(pdf: Any, projected: frozenset[str], nset: frozenset[str]) -> None:
@@ -211,7 +192,7 @@ def _add_curve(
 ) -> Any:
     """Sample the projection over the frame's variable and put the curve on the frame."""
     var = frame.getPlotVar()
-    low, high, wings = piece if piece is not None else (*_range(frame, options)[:2], True)
+    low, high, wings = piece
     projected = frozenset(seen.projected) if seen is not None else frozenset(nset - {var.GetName()})
     name = var.GetName()
 

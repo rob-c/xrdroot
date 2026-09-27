@@ -72,11 +72,8 @@ def _extrapolate(h: list[float], s: list[Any]) -> tuple[Any, Any]:
             den = w / (xa[i] - xa[i + m])
             d[i] = xa[i + m] * den
             c[i] = xa[i] * den
-        if 2 * (ns + 1) < N_POINTS - m:
-            error = c[ns + 1]
-        else:
-            error = d[ns]
-            ns -= 1
+        error = d[ns]  # the steps shrink, so the tableau is always walked up from its last row
+        ns -= 1
         value = value + error
     return value, error
 

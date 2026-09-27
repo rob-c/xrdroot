@@ -12,8 +12,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
-
 from .. import copies
 from ..cmdargs import RooCmdArg
 from .cmdlist import CmdList
@@ -80,7 +78,3 @@ def _extent(frame: Any, options: Any) -> tuple[float, float, Any, Any]:
         adjust = bool(options.get("RangeWithName", 1, True))
         return var.getMin(name), var.getMax(name), adjust, norm_range or name
     return frame.GetXmin(), frame.GetXmax(), False, norm_range
-
-
-def evaluate_scale(values: Any) -> Any:
-    return np.asarray(values, dtype=np.float64)

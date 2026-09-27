@@ -91,6 +91,4 @@ class CmdList:
         try:
             yield
         finally:
-            for one in args:
-                if any(item is one for item in self.items):
-                    self.items.remove(one)
+            self.items[:] = [item for item in self.items if all(item is not one for one in args)]

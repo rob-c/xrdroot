@@ -141,11 +141,6 @@ def test_a_sum_of_extended_densities_takes_their_yields_for_coefficients() -> No
     assert both.extendMode() == MUST_BE_EXTENDED
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="addpdf.py:210: a RooArgList is always true, so a sum without coefficients prints "
-    "'[%] * e1'",
-)
 def test_a_sum_of_extended_densities_prints_them_plainly(capsys: Any) -> None:
     """ROOT prints ``e1 + e2`` for a sum whose components bring their own yields."""
     s = Sum()

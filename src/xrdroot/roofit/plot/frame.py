@@ -186,7 +186,7 @@ class RooPlot(RooPrintable):
             ymin -= pad
         if self.GetMaximum() < ymax:
             self.SetMaximum(ymax)
-            self.hist.members["TH1"]["fArray"] = _with_first(self.hist, ymax)
+            self.hist.members["TArrayD"][1] = ymax  # RooFit's SetBinContent(1, ymax), for unzooming
         if self.GetMinimum() > ymin:
             self.SetMinimum(ymin)
         if not self.axis("y")["TNamed"]["fTitle"]:
@@ -290,15 +290,6 @@ class RooPlot(RooPrintable):
 
     def printValue(self) -> str:
         return "(" + ",".join(obj.GetName() for obj, _, _ in self.items) + ")"
-
-
-def _with_first(hist: Histogram, value: float) -> Any:
-    values = hist.members["TH1"].get("fArray")
-    if values is None:
-        return values
-    values = values.copy()
-    values[1] = value
-    return values
 
 
 def _bars(item: Any) -> tuple[Any, Any]:

@@ -120,7 +120,7 @@ class RooAbsReal(RooAbsArg):
 
         return make_integral(self, iset, args, kwargs)
 
-    def createHistogram(self, name: str, first: Any, *args: Any, **kwargs: Any) -> Any:
+    def createHistogram(self, name: str, first: Any = None, *args: Any, **kwargs: Any) -> Any:
         """``createHistogram(name, x, Binning(...), YVar(y, ...))``: a ``TH1`` of this function's
         values."""
         from .histograms import function_histogram
