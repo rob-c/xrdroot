@@ -110,7 +110,7 @@ class Generator:
     def _event(self, i: int, total: int) -> dict[str, float]:
         """Event ``i``: the prototype's values, then the context's draws, then the uniform ones."""
         loaded = self._load(i)
-        row = self.context.event(total - i)
+        row: dict[str, float] = self.context.event(total - i)
         row.update(loaded)
         row.update({one.GetName(): _uniform(one) for one in self.uniform})
         return row

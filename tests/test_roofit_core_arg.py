@@ -146,7 +146,7 @@ def test_the_servers_of_a_node_are_each_listed_once_in_declared_order() -> None:
 
 def test_the_walks_hand_back_the_variables_parameters_and_observables_root_does() -> None:
     """Constants are no variables, and the parameters are the variables less the observables."""
-    x, m, _s, g = gaussian()
+    x, _m, _s, g = gaussian()
     c = RooConstVar("c", "c", 3.0)
     node = Summed("f2", x, [c])
     assert [one.GetName() for one in node.getVariables()] == ["x"]
