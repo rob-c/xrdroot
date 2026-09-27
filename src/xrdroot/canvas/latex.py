@@ -88,6 +88,8 @@ ESCAPES = {
     "#": r"\#",
     "{": r"\{",
     "}": r"\}",
+    "_": r"\_",  # a mark taken as a script's character: ``h__x`` is h, subscript _, then x
+    "^": r"\^{}",
 }
 #: What makes a string mathematics rather than plain text.
 MARKS = "#^_"
@@ -217,12 +219,20 @@ def _body(reader: _Reader, closing: str = "") -> str:
         char = reader.take()
         if char in MARKS or char == "{":
             parts.append(_plain("".join(run)))
+            if not run and _scripted(parts, char):
+                parts.append("{}")  # ``x_y_z``: TLatex's second subscript, mathtext's own base
             run = []
             parts.append(_special(reader, char))
         else:
             run.append(char)
     parts.append(_plain("".join(run)))
     return "".join(parts)
+
+
+def _scripted(parts: list[str], mark: str) -> bool:
+    """Whether what comes last is already a ``mark`` script, which mathtext will not double."""
+    last = next((one for one in reversed(parts) if one), "")
+    return mark in "^_" and last.startswith(mark + "{")
 
 
 def _special(reader: _Reader, char: str) -> str:

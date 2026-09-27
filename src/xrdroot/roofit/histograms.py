@@ -135,14 +135,21 @@ def function_histogram(
     return WRAP[0](made)
 
 
+def _normalised_parts(func: Any, nset: frozenset[str]) -> list[tuple[Any, frozenset[str]]]:
+    """What is normalised: a product of independent factors factor by factor, else the whole."""
+    if hasattr(func, "factor_nset") and not func._conditional:
+        return [(one, func.factor_nset(one, nset)) for one in func.pdfs]
+    return [(func, nset)]
+
+
 def _values(func: Any, ctx: dict[str, Any], nset: frozenset[str], volumes: Any) -> Any:
     """Each bin's content: a density's normalised value times the bin's volume, or the value."""
     if not hasattr(func, "canBeExtended"):
         return np.broadcast_to(np.asarray(func.compute(ctx), dtype=np.float64), (len(volumes),))
     from .integration import announce
 
-    for _ in range(2):  # the projection's normalisation, and its clone's: RooFit makes both
-        announce(func, nset)
+    for part, own in _normalised_parts(func, nset):  # the projection's normalisation
+        announce(part, own)
     values = np.asarray(func.value(ctx, nset), dtype=np.float64)
     return np.broadcast_to(values, (len(volumes),)) * volumes
 

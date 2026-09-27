@@ -90,7 +90,72 @@ def context_for(
         from .acceptreject import AcceptRejectContext
 
         return AcceptRejectContext(pdf, names, conditional)
+    direct = _direct_part(pdf, names)
+    if direct is not None:
+        return MixedContext(pdf, names, *direct)
     return NumericContext(pdf, names)
+
+
+def _direct_part(pdf: Any, names: frozenset[str]) -> tuple[frozenset[str], int] | None:
+    """``getGenerator`` over the observables safe to draw directly: the first the density can
+    draw itself - ``x`` of a Gaussian whose mean is a function of ``y`` - and its code."""
+    if len(names) < 2 or not hasattr(pdf, "generator_code"):
+        return None
+    for one in pdf.leaves():
+        own = frozenset([one.GetName()])
+        if one.GetName() in names and _direct_safe(pdf, one.GetName()):
+            code = pdf.generator_code(own)
+            if code:
+                return own, code
+    return None
+
+
+def _direct_safe(pdf: Any, name: str) -> bool:
+    """``isDirectGenSafe``: a server of the density itself, and of nothing else it serves."""
+    servers = pdf.servers()
+    mine = [one for one in servers if one.GetName() == name]
+    return bool(mine) and not any(
+        name in one.dependents() for one in servers if one.GetName() != name
+    )
+
+
+class MixedContext(Context):
+    """``RooGenContext`` drawing some observables itself and the rest numerically: TFoam over
+    the rest, by the density integrated over the direct ones, then the density's own draw."""
+
+    def __init__(self, pdf: Any, names: frozenset[str], direct: frozenset[str], code: int) -> None:
+        from ..integration import announce
+        from .foam import FoamGenerator
+
+        super().__init__(pdf, names)
+        self.code, self.direct = code, direct
+        self.order = [one for one in pdf.leaves() if one.GetName() in names - direct]
+        keys = [one.GetName() for one in self.order]
+        announce(pdf, names, normalising=True)  # the accept-reject function's own integral
+
+        def density(points: Any) -> Any:
+            ctx = {key: points[:, i] for i, key in enumerate(keys)}
+            return np.broadcast_to(pdf.fraction(direct, ctx, names, None), (len(points),))
+
+        ranges = [(one.getMin(), one.getMax()) for one in self.order]
+        self.sampler = FoamGenerator(density, ranges, generator(), vectorized=True)
+
+    def event(self, remaining: int) -> dict[str, float]:
+        found = {one.GetName(): float(v) for one, v in zip(self.order, self.sampler.generate())}
+        for one in self.order:
+            one.load_value(found[one.GetName()])
+        found.update(self.pdf.generate_event(self.code, generator()))
+        return found
+
+
+def _factor_context(factor: Any, own: frozenset[str]) -> Context:
+    """A factor's own ``RooGenContext``, which normalises its copy of the factor as the top
+    context does its density: twice."""
+    from ..integration import announce
+
+    for _ in range(2):
+        announce(factor, own, normalising=True)
+    return context_for(factor, own)
 
 
 class ProductContext(Context):
@@ -107,7 +172,7 @@ class ProductContext(Context):
             for factor in ready:
                 own = pdf.factor_nset(factor, names)
                 if own:
-                    self.parts.append(context_for(factor, own))
+                    self.parts.append(_factor_context(factor, own))
                 done |= own
                 waiting.remove(factor)
 
