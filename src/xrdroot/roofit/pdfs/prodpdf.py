@@ -43,8 +43,11 @@ def _factors(args: tuple[Any, ...]) -> tuple[list[Any], dict[str, tuple[frozense
 class RooProdPdf(RooAbsPdf):
     """A product of densities."""
 
-    def __init__(self, name: Any, title: Any = "", *args: Any) -> None:
+    def __init__(self, name: Any, title: Any = "", *args: Any, **kwargs: Any) -> None:
         super().__init__(name, title)
+        from ..cmdargs import make
+
+        args = args + tuple(make(key, value) for key, value in kwargs.items())
         numbers = [a for a in args if isinstance(a, (int, float)) and not isinstance(a, bool)]
         pdfs, self._conditional = _factors(tuple(a for a in args if a not in numbers or isinstance(a, bool)))
         self._cutoff = float(numbers[0]) if numbers else 0.0

@@ -62,7 +62,7 @@ class RooAddPdf(RooAbsPdf):
         self._recursive = recursive
         self._all_extendable = not coefs
         self._have_last = False
-        if len(pdfs) > len(coefs) + 1 or len(pdfs) < len(coefs):
+        if coefs and (len(pdfs) > len(coefs) + 1 or len(pdfs) < len(coefs)):
             raise ValueError(f"RooAddPdf::RooAddPdf({self._name}) number of pdfs and coefficients "
                              "inconsistent, must have Npdf=Ncoef or Npdf=Ncoef+1.")  # fmt: skip
         if recursive and len(pdfs) != len(coefs) + 1:

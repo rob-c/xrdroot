@@ -38,6 +38,7 @@ MODULES = {
     "pdfs.generic": ["RooGenericPdf"],
     "pdfs.histpdf": ["RooHistFunc", "RooHistPdf"],
     "pdfs.realsum": ["RooRealSumPdf"],
+    "pdfs.multivar": ["RooMultiVarGaussian"],
     "pdfs.prodpdf": ["RooProdPdf"],
     "pdfs.simultaneous": ["RooSimultaneous"],
     "pdfs.shapes": ["RooArgusBG", "RooBifurGauss", "RooBreitWigner", "RooCBShape", "RooLandau",

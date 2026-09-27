@@ -180,6 +180,23 @@ class RooFitResult(RooPrintable):
             par.setVal(float(value))
         return made
 
+    def createHessePdf(self, params: Any) -> Any:
+        """``createHessePdf``: the fit as a Gaussian in ``params``, centred on the fitted values."""
+        from ..pdfs.multivar import RooMultiVarGaussian
+
+        names = self._final.names()
+        chosen = sorted((p for p in as_list(params) if p.GetName() in names), key=lambda p: names.index(p.GetName()))
+        index = [names.index(p.GetName()) for p in chosen]
+        centres = []
+        for i in index:
+            made = self._final[i].clone(f"{names[i]}_centralvalue")
+            made.setConstant(True)
+            centres.append(made)
+        cov = self._cov[np.ix_(index, index)]
+        if len(index) < len(names):
+            cov = np.linalg.inv(np.linalg.inv(self._cov)[np.ix_(index, index)])
+        return RooMultiVarGaussian(f"pdf_{self._name}", f"P.d.f of {self._title}", chosen, centres, cov)
+
     def params(self) -> RooArgSet:
         return RooArgSet(self._final)
 

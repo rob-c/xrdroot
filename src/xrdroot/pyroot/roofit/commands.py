@@ -50,6 +50,9 @@ COMMANDS = (
 
 def _command(name: str) -> Any:
     def made(*args: Any, **kwargs: Any) -> RooCmdArg:
+        for first in ("var", "what"):  # YVar(var=y, ...), Format(what="NE", ...): PyROOT's names
+            if first in kwargs:
+                args = (kwargs.pop(first), *args)
         if kwargs:  # FitOptions(Save=True), Format("NE", AutoPrecision=1)...
             from ...roofit.cmdargs import make
 

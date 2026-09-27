@@ -177,7 +177,8 @@ class RooAbsArg(RooPrintable):
     def getObservables(self, observables: Any = None, valueOnly: bool = True) -> RooArgSet:
         """The variables that are among ``observables``."""
         wanted = set(_observable_names(observables))
-        return RooArgSet([one for one in self.getVariables() if one.GetName() in wanted])
+        return RooArgSet([one for one in self.leaves()
+                          if one.GetName() in wanted and not one.InheritsFrom("RooConstVar")])
 
     def getComponents(self) -> RooArgSet:
         return RooArgSet([node for node in self._walk() if not node.isFundamental()])

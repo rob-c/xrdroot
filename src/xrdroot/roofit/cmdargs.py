@@ -72,6 +72,8 @@ class RooCmdArg:
         self.args = tuple(args) if args else DEFAULTS.get(self.name, ())
         if self.name in STRING_FORMS and self.args and isinstance(self.args[0], str):
             self.args = (_read_string(self.name, self.args[0]), *self.args[1:])
+        if self.name == "DataError" and self.args and self.args[0] is None:
+            self.args = (ERROR_TYPES["None"], *self.args[1:])  # PyROOT's DataError=None
 
     def value(self, index: int = 0, default: Any = None) -> Any:
         """Its ``index``-th value, or ``default`` if it was made with fewer."""
@@ -103,8 +105,12 @@ def make(name: str, value: Any) -> RooCmdArg:
     """The command a PyROOT keyword stands for: ``Save=True`` is ``Save(True)``."""
     if name in FLAGS:
         return RooCmdArg(name) if value else RooCmdArg()
-    if isinstance(value, tuple):
+    if isinstance(value, (tuple, list)):
         return RooCmdArg(name, *value)
+    if isinstance(value, dict):  # YVar=dict(var=y, Binning=50): the command made from keywords
+        given = dict(value)
+        first = [given.pop(key) for key in ("var", "what") if key in given]
+        return RooCmdArg(name, *first, *(make(key, one) for key, one in given.items()))
     return RooCmdArg(name, value)
 
 

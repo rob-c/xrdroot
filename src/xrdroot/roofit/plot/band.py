@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 
 from ..cmdargs import RooCmdArg
-from ..messages import WARNING, log
+from ..messages import INFO, WARNING, log
 from ..printing import g
 from .cmdlist import CmdList
 from .curve import RooCurve
@@ -61,10 +61,12 @@ def _moved(func: Any, frame: Any, arguments: CmdList, par: Any, value: float) ->
         par.setVal(before)
 
 
-def _variations(func: Any, frame: Any, arguments: CmdList, fit: Any, z: float) -> tuple[list[Any], Any]:
+def _variations(func: Any, frame: Any, arguments: CmdList, fit: Any, z: float,
+                wanted: Any) -> tuple[list[Any], Any]:  # fmt: skip
     """The curves with each parameter up and down by ``z`` errors, and the correlations."""
     finals = [p for p in fit.floatParsFinal() if p.getError() > p.getVal() * np.finfo(float).eps]
-    mine = {p.GetName(): p for p in func.getParameters(frame.norm_vars or [])}
+    mine = {p.GetName(): p for p in func.getParameters(frame.norm_vars or [])
+            if wanted is None or p.GetName() in wanted}  # fmt: skip
     chosen = [p for p in finals if p.GetName() in mine]
     names = fit.floatParsFinal().names()
     index = [names.index(p.GetName()) for p in chosen]
@@ -104,13 +106,66 @@ def _band_curve(centre: Any, pairs: list[Any], corr: Any) -> RooCurve:
     return made
 
 
+def _sampled(func: Any, frame: Any, arguments: CmdList, fit: Any, z: float, centre: Any,
+             wanted: Any) -> RooCurve:  # fmt: skip
+    """The band from curves of parameters drawn from the fit's Gaussian: their central quantiles."""
+    finals = set(fit.floatParsFinal().names())
+    params = [p for p in func.getObservables(fit.floatParsFinal())
+              if p.GetName() in finals and (wanted is None or p.GetName() in wanted)]  # fmt: skip
+    density = fit.createHessePdf(params)
+    n = max(int(100.0 / math.erfc(z / math.sqrt(2.0))), 100)
+    log(func, INFO, "Plotting", f"RooAbsReal::plotOn({func.GetName()}) INFO: visualizing {g(z)}-sigma "
+        f"uncertainties in parameters ({','.join(p.GetName() for p in params)}) from fit result "
+        f"{fit.GetName()} using {n} samplings.")  # fmt: skip
+    ymin, ymax = frame.GetMinimum(), frame.GetMaximum()
+    drawn = density.generate(params, n)
+    saved = [(p, p.getVal()) for p in params]
+    curves = []
+    for i in range(drawn.numEntries()):
+        for par in params:
+            par.setVal(float(drawn.column(par.GetName())[i]))
+        curves.append(_plot_again(func, frame, arguments))
+    for par, value in saved:
+        par.setVal(value)
+    frame.SetMinimum(ymin)
+    frame.SetMaximum(ymax)
+    delta = int(len(curves) * math.erfc(z / math.sqrt(2.0)) / 2 + 0.5)
+    ys = np.sort(np.array([c.interpolate(centre.x) for c in curves]), axis=0)
+    low, high = ys[delta], ys[len(curves) - delta]
+    made = RooCurve(f"{centre.GetName()}_errorband", "", np.concatenate([centre.x, centre.x[::-1]]),
+                    np.concatenate([low, high[::-1]]))  # fmt: skip
+    made._core["TAttLine"]["fLineWidth"] = 1
+    made._core["TAttLine"]["fLineColor"] = CYAN
+    made._core["TAttFill"]["fFillColor"] = CYAN
+    return made
+
+
+def _visualize(given: tuple[Any, ...]) -> tuple[Any, Any, float, bool]:
+    """``VisualizeError(fit, [params,] Z=1, linear=True)``: its fit, parameters, ``Z`` and method."""
+    fit, rest = given[0], list(given[1:])
+    wanted = None
+    if rest and not isinstance(rest[0], (int, float)):
+        wanted = {one.GetName() for one in _as_list(rest.pop(0))}
+    z = float(rest[0]) if rest else 1.0
+    linear = bool(rest[1]) if len(rest) > 1 else True
+    return fit, wanted, z, linear
+
+
+def _as_list(items: Any) -> list[Any]:
+    from ..collections import as_list
+
+    return as_list(items)
+
+
 def band(func: Any, frame: Any, cmds: CmdList, options: Any) -> Any:
-    fit = options.get("VisualizeError")
-    z = float(options.get("VisualizeError", 1, 1.0))
+    fit, wanted, z, linear = _visualize(options.args("VisualizeError"))
     arguments = _arguments(cmds)
     centre = _plot_again(func, frame, arguments)
-    pairs, corr = _variations(func, frame, arguments, fit, z)
-    made = _band_curve(centre, pairs, corr)
+    if linear:
+        pairs, corr = _variations(func, frame, arguments, fit, z, wanted)
+        made = _band_curve(centre, pairs, corr)
+    else:
+        made = _sampled(func, frame, arguments, fit, z, centre, wanted)
     final = cmds.process(f"RooAbsPdf::plotOn({func.GetName()})")
     style(made, final)
     if "Name" in final:
