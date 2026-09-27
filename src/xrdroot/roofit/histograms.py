@@ -13,6 +13,7 @@ the pyroot ``TH1`` that stands for it.
 from __future__ import annotations
 
 import itertools
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -103,11 +104,24 @@ def data_histogram(data: Any, first: Any, args: tuple[Any, ...], kwargs: dict[st
     return WRAP[0](made)
 
 
+def _by_names(func: Any, names: str, counts: tuple[Any, ...]) -> tuple[str, Any, tuple[Any, ...]]:
+    """``createHistogram("x,y", nx, ny)``: the function's name, ``x``, and ``Binning(nx)``,
+    ``YVar(y, Binning(ny))`` - ROOT's own translation."""
+    variables = [func.variable(one) for one in re.split("[,:]", names) if one]
+    bins = [int(one) for one in counts if one is not None] + [0, 0, 0]
+    made: list[Any] = [RooCmdArg("Binning", bins[0])] if bins[0] > 0 else []
+    for axis, var, count in zip(("YVar", "ZVar"), variables[1:], bins[1:]):
+        made.append(RooCmdArg(axis, var, *([RooCmdArg("Binning", count)] if count > 0 else [])))
+    return func.GetName(), variables[0], tuple(made)
+
+
 def function_histogram(
     func: Any, name: str, first: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
 ) -> Any:
     """``RooAbsReal::createHistogram``: the function at each bin's centre, a density times the
     volume."""
+    if not hasattr(first, "GetName"):  # createHistogram("x,y", 50, 50): names and bin counts
+        name, first, args = _by_names(func, str(name), (first, *args))
     axes = _axes(first, args, kwargs, func.variable)
     made = _book(str(name), axes)
     edges = [_binning(var, command) for var, command in axes]
@@ -115,6 +129,11 @@ def function_histogram(
     ctx = {var.GetName(): grid[:, i] for i, (var, _) in enumerate(axes)}
     nset = frozenset(ctx)
     is_pdf = hasattr(func, "canBeExtended")
+    if is_pdf:
+        from .integration import announce
+
+        for _ in range(2):  # the projection's normalisation, and its clone's: RooFit makes both
+            announce(func, nset)
     values = np.asarray(func.value(ctx, nset) if is_pdf else func.compute(ctx), dtype=np.float64)
     values = np.broadcast_to(values, (len(grid),)) * (volumes if is_pdf else 1.0)
     made.fill(*[grid[:, i] for i in range(len(axes))], weight=values)

@@ -134,7 +134,7 @@ class RooNLLVar(RooAbsReal):
             )
 
     def _constrained(self, constraint: Any) -> frozenset[str]:
-        return frozenset(one.GetName() for one in constraint.leaves())
+        return frozenset(one.GetName() for one in constraint.getVariables())  # not its constants
 
     def defaultErrorLevel(self) -> float:
         return 0.5
