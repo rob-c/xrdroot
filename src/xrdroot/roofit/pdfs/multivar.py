@@ -9,6 +9,7 @@ outside its variable's range.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import numpy as np
@@ -55,6 +56,14 @@ class RooMultiVarGaussian(RooAbsPdf):
             for j, dj in enumerate(diffs):
                 alpha = alpha + di * self.inverse[i, j] * dj
         return np.exp(-0.5 * alpha)
+
+    def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
+        """Over all its variables - as RooFit, over the whole real line, ranges aside."""
+        mine = frozenset(x.GetName() for x in self.xs)
+        return mine if names >= mine else frozenset()
+
+    def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
+        return math.sqrt((2 * math.pi) ** len(self.xs) * float(np.linalg.det(self.cov)))
 
     def generator_code(self, names: frozenset[str]) -> int:
         return -1 if names == frozenset(x.GetName() for x in self.xs) else 0
