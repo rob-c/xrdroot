@@ -98,42 +98,6 @@ def _range(frame: Any, options: Commands) -> tuple[float, float, str | None]:
     return float(found[0]), float(found[1]), None
 
 
-def _scale(pdf: Any, frame: Any, options: Commands, nset: frozenset[str]) -> float:
-    """``RooAbsPdf::plotOn``'s scale factor: events on the frame (or expected), times the bin width."""
-    scale = float(options.get("Normalization", 0, 1.0))
-    kind = int(options.get("Normalization", 1, RELATIVE))
-    if kind == RAW:
-        return scale
-    expected = pdf.expected(nset) if kind == RELATIVE_EXPECTED else 1.0
-    events = frame.getFitRangeNEvt()
-    if events and kind == RELATIVE:
-        scale *= _events(pdf, frame, options, nset)
-    elif kind == RELATIVE_EXPECTED:
-        scale *= expected
-    elif kind == NUM_EVENT:
-        scale /= expected
-    return scale * frame.getFitRangeBinW()
-
-
-#: ``RooAbsReal::ScaleType``.
-RELATIVE, NUM_EVENT, RELATIVE_EXPECTED, RAW = 0, 1, 2, 3
-
-
-def _events(pdf: Any, frame: Any, options: Commands, nset: frozenset[str]) -> float:
-    """How many events the curve stands for: in the norm range, or the density's expectation."""
-    if "NormRange" in options:
-        var = frame.getPlotVar()
-        names = [n for n in str(options.get("NormRange")).split(",") if n]
-        log(pdf, INFO, "Plotting", f"RooAbsPdf::plotOn({pdf.GetName()}) p.d.f. curve is normalized "
-            f"using explicit choice of ranges '{options.get('NormRange')}'")  # fmt: skip
-        return float(sum(frame.getFitRangeNEvt(var.getMin(n), var.getMax(n)) for n in names))
-    if pdf.canBeExtended():
-        expected = pdf.expected(nset)
-        if expected > 0:
-            return float(expected)
-    return float(frame.getFitRangeNEvt())
-
-
 def _norm_vars(pdf: Any, frame: Any) -> frozenset[str]:
     """The observables the curve is normalised over: the frame's variable and the data's others."""
     frame.update_norm_vars([frame.getPlotVar()])
@@ -142,14 +106,32 @@ def _norm_vars(pdf: Any, frame: Any) -> frozenset[str]:
 
 
 def plot_pdf(pdf: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
-    """``pdf.plotOn(frame, options...)``: add the density's curve to ``frame``."""
+    """``pdf.plotOn(frame, options...)``: add the density's curve - or curves, one per range - to ``frame``."""
+    from .ranges import plan
+
     options = commands(args, kwargs)
     options.warn_duplicates(f"RooAbsPdf::plotOn({pdf.GetName()})")
     nset = _norm_vars(pdf, frame)
     _announce_plot(pdf, frame, nset)
-    scale = _scale(pdf, frame, options, nset)
     chosen, suffix = _selected(pdf, options)
-    return _add_curve(pdf, frame, options, nset, scale, chosen, suffix)
+    made = plan(pdf, frame, options, nset)
+    scale = made.scale
+    if made.post_scale:
+        scale /= _range_fraction(pdf, frame, nset, made.norm_range, made.pieces)
+    for low, high in made.pieces:
+        _add_curve(pdf, frame, options, nset, scale, chosen, suffix, (low, high, made.wings))
+    return frame
+
+
+def _range_fraction(pdf: Any, frame: Any, nset: frozenset[str], rng: Any,
+                    pieces: list[tuple[float, float]]) -> float:  # fmt: skip
+    """The fraction of the curve's projection in the normalisation range: ``postRangeFracScale``."""
+    var = frame.getPlotVar()
+    if not rng:
+        var.setRange("plotRange", pieces[0][0], pieces[0][1])
+        rng = "plotRange"
+    name = frozenset([var.GetName()])
+    return float(np.asarray(pdf.fraction(name | (nset - name), {}, nset, rng)))
 
 
 def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str]) -> None:
@@ -173,14 +155,15 @@ def plot_function(func: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str
     """``RooAbsReal::plotOn``: a function, drawn as it is - scaled only if asked."""
     options = commands(args, kwargs)
     scale = float(options.get("Normalization", 0, 1.0))
-    return _add_curve(func, frame, options, frozenset(), scale, None, "")
+    low, high, _ = _range(frame, options)
+    return _add_curve(func, frame, options, frozenset(), scale, None, "", (low, high, "Range" not in options))
 
 
 def _add_curve(func: Any, frame: Any, options: Commands, nset: frozenset[str], scale: float,
-               chosen: set[str] | None, suffix: str) -> Any:  # fmt: skip
+               chosen: set[str] | None, suffix: str, piece: Any = None) -> Any:  # fmt: skip
     """Sample the projection over the frame's variable and put the curve on the frame."""
     var = frame.getPlotVar()
-    low, high, _ = _range(frame, options)
+    low, high, wings = piece if piece is not None else (*_range(frame, options)[:2], True)
     projected = frozenset(nset - {var.GetName()})
     name = var.GetName()
 
@@ -193,7 +176,6 @@ def _add_curve(func: Any, frame: Any, options: Commands, nset: frozenset[str], s
         return func.value(ctx, nset) * scale
 
     precision = float(options.get("Precision", 0, 1e-3))
-    wings = int(options.get("VLines", 0, 2)) == 2 or "VLines" not in options
     with selection.selecting(chosen):
         xs, ys = sample(curve_at, low, high, frame.GetNbinsX(), precision, wings)
     norm = ",".join(sorted(nset, key=lambda n: [v.GetName() for v in func.leaves()].index(n)))

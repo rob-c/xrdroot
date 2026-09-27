@@ -169,6 +169,14 @@ class RooMinimizer:
         self._max_fcn = max(self._max_fcn, value)
         return value
 
+    def _step(self, par: Any) -> float:
+        """The first step, with RooFit's word - when verbose - for a parameter that had no error."""
+        step = first_step(par)
+        if self.verbose and par.getError() <= 0:
+            log(self, WARNING, "Minimization", "RooAbsMinimizerFcn::synchronize: WARNING: no initial "
+                f"error estimate available for {par.GetName()}: using {g(step)}")  # fmt: skip
+        return step
+
     def _settings(self) -> Any:
         """A Minuit over the parameters as they are now: values, first steps, limits, fixed."""
         module = iminuit()
@@ -179,7 +187,7 @@ class RooMinimizer:
         minuit.tol = self.eps
         minuit.strategy = self.strategy
         minuit.print_level = 0
-        minuit.errors = [first_step(p) for p in self.params]
+        minuit.errors = [self._step(p) for p in self.params]
         minuit.limits = [(p.getMin() if p.hasMin() else -np.inf, p.getMax() if p.hasMax() else np.inf)
                          for p in self.params]  # fmt: skip
         minuit.fixed = [p.isConstant() for p in self.params]

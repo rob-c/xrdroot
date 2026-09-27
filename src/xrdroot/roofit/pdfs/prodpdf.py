@@ -88,6 +88,9 @@ class RooProdPdf(RooAbsPdf):
     def fraction(self, names: frozenset[str], ctx: Context, nset: Any, rng: Any,
                  norm_rng: Any = None) -> Any:  # fmt: skip
         nset = frozenset(nset)
+        if rng and "," in str(rng):  # a product of sums is not a sum of products: part by part
+            return sum(self.fraction(names, ctx, nset, part, norm_rng)
+                       for part in str(rng).split(",") if part)  # fmt: skip
         if not self._factorizes(nset) or self._conditional:
             return super().fraction(names, ctx, nset, rng, norm_rng)
         found: Any = 1.0
@@ -99,7 +102,17 @@ class RooProdPdf(RooAbsPdf):
         return found
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
-        return frozenset()
+        """A product of factors of separate observables integrates factor by factor."""
+        if self._conditional or not self._factorizes(frozenset(names)):
+            return frozenset()
+        return frozenset(names)
+
+    def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
+        found: Any = 1.0
+        for pdf in self.pdfs:
+            part = names & pdf.dependents()
+            found = found * (pdf.integrate(part, ctx, rng) if part else pdf.compute(ctx))
+        return found
 
     # -- extended and generation --------------------------------------------------
 

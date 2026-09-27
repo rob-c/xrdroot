@@ -113,11 +113,18 @@ class RooAddPdf(RooAbsPdf):
         return [*values, last]
 
     def value(self, ctx: Context, nset: Any = None, rng: Any = None) -> Any:
+        """The sum - its coefficients those of the full range, then normalised within ``rng``."""
         total: Any = 0.0
-        for coef, pdf in zip(self.coefficients(ctx, nset), self.pdfs):
+        coefs = self.coefficients(ctx, nset)
+        for coef, pdf in zip(coefs, self.pdfs):
             if active(pdf):
-                total = total + coef * pdf.value(ctx, nset, rng)
-        return total
+                total = total + coef * pdf.value(ctx, nset, None if nset else rng)
+        if not rng or not nset:
+            return total
+        inside: Any = 0.0
+        for coef, pdf in zip(coefs, self.pdfs):
+            inside = inside + coef * pdf.fraction(frozenset(nset), ctx, nset, rng)
+        return total / inside
 
     def compute(self, ctx: Context) -> Any:
         return self.value(ctx, None)

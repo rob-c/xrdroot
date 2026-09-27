@@ -53,11 +53,29 @@ def _constraints(pdf: Any, data: Any, options: Commands) -> list[Any]:
     return found
 
 
+def _fit_range_attributes(pdf: Any, data: Any, rng: Any) -> None:
+    """``resetFitrangeAttributes``: ranges ``fit_nll_<pdf>_<data>`` of the fit's, for plotting in."""
+    pdf.removeStringAttribute("fitrange")
+    if not rng:
+        return
+    base = f"fit_nll_{pdf.GetName()}_{data.GetName()}"
+    parts = [one for one in str(rng).split(",") if one]
+    names = []
+    for part in parts:
+        name = base + (f"_{part}" if len(parts) > 1 else "")
+        for var in pdf.getObservables(data):
+            if var.InheritsFrom("RooRealVar"):
+                var.setRange(name, var.getMin(part), var.getMax(part))
+        names.append(name)
+    pdf.setStringAttribute("fitrange", ",".join(names))
+
+
 def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
     """The likelihood the options describe, with the lines RooFit prints while making it."""
     started = time.perf_counter()
     extended = _extended(pdf, options)
     rng = _range(options)
+    _fit_range_attributes(pdf, data, rng)
     normalized = pdf.normalized_name(pdf.getObservables(data), rng) if hasattr(
         pdf, "normalized_name") else pdf.GetName()  # fmt: skip
     log(pdf, INFO, "Fitting", f"RooAbsPdf::fitTo({normalized}) fixing normalization set for "
