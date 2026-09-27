@@ -498,3 +498,15 @@ def test_the_small_helpers_copy_variables_and_print_values() -> None:
         True,
         False,
     )
+
+
+def test_a_tree_every_variable_can_hold_is_imported_silently_and_cut_with_its_weights(
+    capsys: Any,
+) -> None:
+    """Nothing out of range, nothing said; a cut then drops events and their weights together."""
+    x, y = xy()
+    w = RooRealVar("w", "w", 0, 100)
+    source = Tree(x=[1.0, 2.0, 3.0], y=[-1.0, 0.5, 2.0], w=[0.5, 1.5, 2.5])
+    d = RooDataSet("d", "d", RooArgSet([x, y, w]), Import=source, WeightVar="w", Cut="y>0")
+    assert capsys.readouterr().out == ""
+    assert (list(d.column("x")), list(d.weights()), d.sumEntries()) == ([2.0, 3.0], [1.5, 2.5], 4.0)
