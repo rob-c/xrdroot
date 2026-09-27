@@ -93,6 +93,8 @@ class RooAbsPdf(RooAbsReal):
         """``RooNormalizedPdf``'s name: ``g_over_g_Int[x]``, or ``g_over_g_Int[x|left,right]``."""
         from .integration import integral_name
 
+        if self.selfNormalized():
+            return self._name
         names = frozenset(one.GetName() for one in as_list(observables)) & self.dependents()
         return f"{self._name}_over_{integral_name(self, names, rng)}"
 

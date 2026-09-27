@@ -32,7 +32,7 @@ COMMANDS = (
     "IntegratedObservables", "IntrinsicBinning", "Invisible", "Label", "LatexStyle",
     "LatexTableStyle", "Layout", "LineColor", "LineStyle", "LineWidth", "Link", "MarkerColor",
     "MarkerSize", "MarkerStyle", "MaxCalls", "Minimizer", "Minos", "ModularL", "MoveToBack",
-    "MultiArg", "Name", "NoRecursion", "Normalization", "NormRange", "NumCPU", "NumEvents",
+    "MultiArg", "Name", "NoRecursion", "NormSet", "Normalization", "NormRange", "NumCPU", "NumEvents",
     "NumIntConfig", "ObjectName", "Offset", "Optimize", "OutputFile", "OutputStream",
     "OwnLinked", "Parameters", "Precision", "Prefix", "PrintEvalErrors", "PrintLevel",
     "ProjWData", "Project", "ProjectionRange", "ProtoData", "Range", "RecoverFromUndefinedRegions",
@@ -42,7 +42,7 @@ COMMANDS = (
     "ShiftToZero", "ShowAsymError", "ShowConstants", "ShowError", "ShowName", "ShowProgress",
     "ShowUnit", "ShowValue", "Sibling", "Silence", "Slice", "SplitParam",
     "SplitParamConstrained", "SplitRange", "StoreAsymError", "StoreError", "Strategy",
-    "SumCoefRange", "SumW2Error", "SupNormSet", "TLatexStyle", "TagName", "Timer", "Title",
+    "SumCoefRange", "SumW2Error", "SupNormSet", "SelectCompSet", "SliceCat", "TLatexStyle", "TagName", "Timer", "Title",
     "Topic", "VLines", "VerbatimName", "Verbose", "VisualizeError", "Warnings", "Weight",
     "WeightVar", "What", "XErrorSize", "YVar", "ZVar",
 )  # fmt: skip

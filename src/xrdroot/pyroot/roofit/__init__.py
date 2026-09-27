@@ -11,56 +11,23 @@ core part has one).
 
 from __future__ import annotations
 
-import importlib
 from typing import Any
 
 from ...roofit.plot import frame as _frame
+from ...roofit.plot import params as _params
+from ...roofit.registry import classes
 from ..core import draw_hook
 from .commands import RooFit
-
-#: The engine's modules, and the names each gives ``ROOT``.
-EXPORTS = {
-    "arg": ["RooAbsArg"],
-    "binning": ["RooAbsBinning", "RooBinning", "RooRangeBinning", "RooUniformBinning"],
-    "cmdargs": ["RooCmdArg", "RooLinkedList"],
-    "collections": ["RooAbsCollection", "RooArgList", "RooArgSet"],
-    "categories": ["RooAbsCategory", "RooCategory"],
-    "data.datahist": ["RooDataHist"],
-    "data.dataset": ["RooDataSet"],
-    "data.store": ["RooAbsData"],
-    "fitting.minimizer": ["RooMinimizer"],
-    "fitting.nll": ["RooNLLVar"],
-    "fitting.result": ["RooFitResult"],
-    "functions": ["RooAddition", "RooFormulaVar", "RooPolyVar", "RooProduct"],
-    "matrix": ["TMatrixDSym", "TVectorD"],
-    "messages": ["RooMsgService"],
-    "pdf": ["RooAbsPdf"],
-    "pdfs.addpdf": ["RooAddPdf", "RooRecursiveFraction"],
-    "pdfs.generic": ["RooGenericPdf"],
-    "pdfs.prodpdf": ["RooProdPdf"],
-    "pdfs.shapes": ["RooArgusBG", "RooBifurGauss", "RooBreitWigner", "RooCBShape", "RooLandau",
-                    "RooLognormal", "RooPoisson"],
-    "pdfs.basic": ["RooChebychev", "RooExponential", "RooGaussian", "RooPolynomial", "RooUniform"],
-    "plot.curve": ["RooCurve"],
-    "plot.frame": ["RooPlot"],
-    "plot.hist": ["RooHist"],
-    "printing": ["RooPrintable"],
-    "real": ["RooAbsReal"],
-    "rng": ["RooRandom"],
-    "variables": ["RooAbsRealLValue", "RooConstVar", "RooRealVar"],
-}
 
 __all__ = ["RooFit"]
 
 
 def _gather() -> None:
-    for module, names in EXPORTS.items():
-        found = importlib.import_module(f"xrdroot.roofit.{module}")
-        for name in names:
-            if name in ("TMatrixDSym", "TVectorD") and name in globals():
-                continue  # pragma: no cover - the core part's own
-            globals()[name] = getattr(found, name)
-            __all__.append(name)
+    for name, cls in classes().items():
+        if not name.startswith("Roo"):
+            continue  # TMatrixDSym and the like are the core part's to give
+        globals()[name] = cls
+        __all__.append(name)
 
 
 def _axis() -> Any:
@@ -72,6 +39,16 @@ def _axis() -> Any:
     return TAxis._of  # pragma: no cover - once the core part is merged
 
 
+def _pave() -> Any:
+    """The graphics part's ``TPaveText``, which a ``paramOn`` box is, or the engine's stand-in."""
+    try:
+        from ..graphics.paves import TPaveText
+    except ImportError:  # pragma: no cover - the graphics part is always there
+        return _params.Pave
+    return TPaveText
+
+
 _gather()
+_params.set_pave(_pave())
 _frame.set_drawer(draw_hook)
 _frame.set_axis(_axis())

@@ -80,18 +80,30 @@ class RooNLLVar(RooAbsReal):
 
     def evaluate_nll(self) -> float:
         """The likelihood at the parameters' values now, or :class:`Invalid`."""
-        probs = np.asarray(self.pdf.value(dict(self.columns), self.nset, self.rng), dtype=np.float64)
-        total, badness = _log_terms(probs, self.w)
-        if self.extended:
-            total += self.pdf.extendedTerm(self.sumw, self.pdf.expected(self.nset, self.rng))
+        self._badness = 0.0
+        channels = getattr(self.pdf, "channel_terms", None)
+        total = channels(self) if channels is not None else self.channel(self.pdf, None)
         for constraint in self.constraints:
-            found = float(np.asarray(constraint.value({}, constraint.dependents() & self._constrained(constraint))))
+            found = float(np.asarray(constraint.value({}, self._constrained(constraint))))
             total -= math.log(found) if found > 0 else math.nan
-        if badness or math.isnan(total):
-            return Invalid.of(badness or 1.0)
+        if self._badness or math.isnan(total):
+            return Invalid.of(self._badness or 1.0)
         if self.offset and self._offset_value == 0.0:
             self._offset_value = total
         return total - self._offset_value
+
+    def channel(self, pdf: Any, keep: Any) -> float:
+        """``-sum w log p`` of the events ``keep`` selects - all, for ``None`` - and their Poisson term."""
+        columns = self.columns if keep is None else {k: v[keep] for k, v in self.columns.items()}
+        weights = self.w if keep is None else self.w[keep]
+        nset = self.nset & pdf.dependents() if keep is not None else self.nset
+        probs = np.asarray(pdf.value(dict(columns), nset, self.rng), dtype=np.float64)
+        total, badness = _log_terms(probs, weights)
+        self._badness += badness
+        if self.extended and pdf.canBeExtended():
+            sumw = math.fsum(weights.tolist())
+            total += pdf.extendedTerm(sumw, pdf.expected(nset, self.rng))
+        return total
 
     def _constrained(self, constraint: Any) -> frozenset[str]:
         return frozenset(one.GetName() for one in constraint.leaves())

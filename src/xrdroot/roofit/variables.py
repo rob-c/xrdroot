@@ -267,6 +267,14 @@ class RooRealVar(RooAbsRealLValue):
             self._error = other._error
             self._asym = other._asym
 
+    def format(self, *args: Any) -> str:
+        """``format(sigDigits, options)`` or ``format(Format(...))``: the variable as text."""
+        from .formatting import format_command, format_var
+
+        if args and hasattr(args[0], "args"):
+            return format_command(self, args[0])
+        return format_var(self, int(args[0]) if args else 2, str(args[1]) if len(args) > 1 else "")
+
     # -- printing -----------------------------------------------------------------
 
     def defaultPrintContents(self, option: Any) -> int:
