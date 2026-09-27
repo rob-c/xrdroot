@@ -27,6 +27,17 @@ def test_save_as_writes_the_format_its_suffix_names(tmp_path, suffix, capsys):
     assert f"{suffix} file {path} has been created" in capsys.readouterr().err
 
 
+def test_a_gif_is_a_gif_whichever_matplotlib_draws_it(tmp_path):
+    """matplotlib before 3.11 writes no GIF, so Pillow writes it from the PNG, on every one."""
+    from PIL import Image
+
+    path = tmp_path / "c.gif"
+    _canvas().SaveAs(str(path))
+    assert path.read_bytes()[:6] in (b"GIF87a", b"GIF89a")
+    with Image.open(path) as image:
+        assert image.size == (296, 172)
+
+
 def test_a_png_is_the_canvas_size_in_pixels(tmp_path):
     from matplotlib.image import imread
 
@@ -77,6 +88,10 @@ def test_a_pdf_book_is_opened_filled_and_closed_as_roots_brackets_say(tmp_path):
     c.Print(f"{tmp_path / 'left.pdf'}[")
     output.close_books()
     assert not output.BOOKS
+    c.Print(f"{tmp_path / 'blank.pdf'}[")
+    c.Print(f"{tmp_path / 'blank.pdf'}]")
+    # a book no page was added to is no file, whichever matplotlib - and none warns of it
+    assert not (tmp_path / "left.pdf").exists() and not (tmp_path / "blank.pdf").exists()
 
 
 def test_compare_images_is_one_for_the_same_picture_and_less_for_another(tmp_path):
