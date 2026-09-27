@@ -9,6 +9,7 @@ byte count the record started with and never has to know the rest.
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -17,6 +18,7 @@ from .errors import FormatError, UnsupportedFeatureError
 
 if TYPE_CHECKING:
     from .file import Source
+    from .streamers import Member
     from .tree import Basket
 
 __all__ = ["TREE_CLASSES", "FriendRecord", "read_tree"]
@@ -132,6 +134,8 @@ class BranchRecord:
         "basket_size",
         "tot_bytes",
         "zip_bytes",
+        "collection",
+        "file_name",
     )
 
     def __init__(self) -> None:
@@ -151,13 +155,19 @@ class BranchRecord:
         self.branches: list[BranchRecord] = []
         #: Baskets written into this record rather than out to one of their
         #: own, which a tree too small to have flushed never does.
-        self.baskets: list[Basket] = []
+        self.baskets: list[Basket | None] = []
         #: Did the class stream itself, record and all, rather than the file's
         #: streamer information writing out its members bare?
         self.streamed = False
         #: Does this branch hold the whole class it names, rather than one
         #: member of one? ROOT says so by giving it no member to point at.
         self.whole = False
+        #: Is this the branch a split collection's members hang from, whose
+        #: baskets hold how many objects each entry has and nothing else?
+        self.collection = False
+        #: The file the baskets were written to, when ROOT was told to put
+        #: them in one of their own; empty for the file the tree is in.
+        self.file_name = ""
 
     def __repr__(self) -> str:
         return f"<BranchRecord {self.name!r} with {len(self.basket_seek)} baskets>"
@@ -204,17 +214,46 @@ def read_branch(buf: Buffer) -> BranchRecord:
     marker in front of them says.
     """
     version, end = buf.header()
-    if version < 6:
+    if version < 5:
         raise UnsupportedFeatureError(
-            f"this file has a branch older than any ROOT 4 wrote (TBranch version {version}); "
-            f"copy it forward with hadd from any ROOT 5 or 6 and it will open"
+            f"this file has a TBranch of version {version}, older than any this reader follows, "
+            f"which kept no sizes for its baskets; copy it forward with hadd from any later "
+            f"ROOT and it will open"
         )
     modern = version >= 10
     branch = BranchRecord()
     branch.name, branch.title = buf.named()
+    if version == 5:
+        return _ancient_branch(buf, branch, end)
     write_basket, max_baskets = _branch_header(buf, branch, version, modern)
     _branch_contents(buf, branch)
     _basket_tables(buf, branch, modern, max_baskets, write_basket)
+    branch.file_name = buf.string()
+    _inline_basket_bounds(branch)
+    buf.resume(end)
+    return branch
+
+
+def _ancient_branch(buf: Buffer, branch: BranchRecord, end: int | None) -> BranchRecord:
+    """A ``TBranch`` of version 5, as ROOT 2 wrote it and ``TBranch::Streamer`` reads it.
+
+    The counters come in another order, the offset of the branch after its
+    byte counts, and each table of the baskets carries its own length: the
+    first entries by how many were written, the sizes as a counted array,
+    and the seek points as a count ROOT ignores and then one per basket slot.
+    """
+    buf.i32(), buf.i32()  # compression and target basket size
+    branch.entry_offset_len = buf.i32()
+    max_baskets, written = buf.i32(), buf.i32()
+    buf.i32()  # the entry the next basket would start at
+    branch.entries = int(buf.f64())
+    buf.f64(), buf.f64(), buf.i32()  # bytes both ways, and the offset in the parent
+    _branch_contents(buf, branch)
+    branch.basket_entry = buf.i32s(buf.i32())[: written + 1]
+    branch.basket_bytes = buf.i32s(buf.i32())[:written]
+    buf.i32()
+    branch.basket_seek = buf.i32s(max_baskets)[:written]
+    branch.file_name = buf.string()
     _inline_basket_bounds(branch)
     buf.resume(end)
     return branch
@@ -275,12 +314,24 @@ def _basket_tables(
 
 
 def _inline_basket_bounds(branch: BranchRecord) -> None:
-    if not branch.baskets or branch.basket_seek:
-        return
-    bounds = [0]
-    for basket in branch.baskets:
+    """Where the held baskets' entries start: all of them, or the one after the flushed.
+
+    A tree saved while its last basket was still being filled - ``Write``
+    without a ``FlushBaskets`` - keeps that basket in the branch at the slot
+    after the ones written out, and its entries follow theirs.
+    """
+    written = len(branch.basket_seek)
+    after = branch.baskets[written:] if not written else branch.baskets[written : written + 1]
+    bounds = branch.basket_entry[: written + 1] if written else [0]
+    held: list[Basket | None] = []
+    for basket in after:
+        if basket is None:
+            break
+        held.append(basket)
         bounds.append(bounds[-1] + basket.nevbuf)
-    branch.basket_entry = bounds
+    branch.baskets = branch.baskets[:written] + held
+    if held:
+        branch.basket_entry = bounds
 
 
 def read_branch_element(buf: Buffer) -> BranchRecord:
@@ -298,9 +349,16 @@ def read_branch_element(buf: Buffer) -> BranchRecord:
         buf.u32()  # the checksum of the class this was written from
     buf.u16() if version >= 10 else buf.u32()  # that class's version
     branch.whole = buf.i32() < 0  # which member this is, and -1 for none of them
-    branch.streamed = buf.i32() < 0  # ROOT calls this fType, and -1 is the whole object
+    kind = buf.i32()  # ROOT calls this fType, and -1 is the whole object
+    branch.streamed = kind < 0
+    branch.collection = kind in SPLIT_COLLECTIONS
     buf.resume(end)
     return branch
+
+
+#: The ``fType`` of the branch a split ``TClonesArray`` or STL collection
+#: hangs from, whose own baskets hold only how many objects each entry has.
+SPLIT_COLLECTIONS = (3, 4)
 
 
 def read_branch_object(buf: Buffer) -> BranchRecord:
@@ -338,19 +396,19 @@ def read_basket(buf: Buffer) -> Basket | None:
     return Basket.inline(buf)
 
 
-def _held(items: list[Any]) -> list[Basket]:
-    """The baskets a branch record carries, up to the first one it does not.
+def _held(items: list[Any]) -> list[Basket | None]:
+    """The baskets a branch record carries, each in its own slot.
 
-    Anything past a gap has been flushed to a record of its own, and the
-    branch's seek table is what says where.
+    A slot whose basket was flushed to a record of its own is ``None``, and
+    the branch's seek table is what says where that one is; what is held is
+    either every basket of a tree never flushed, or the last one of a tree
+    saved with a basket still being filled.
     """
     from .tree import Basket
 
-    held = []
-    for item in items:
-        if not isinstance(item, Basket):
-            break
-        held.append(item)
+    held: list[Basket | None] = [item if isinstance(item, Basket) else None for item in items]
+    while held and held[-1] is None:
+        held.pop()
     return held
 
 
@@ -379,19 +437,91 @@ def read_tree(buf: Buffer, source: Source, name: str, classname: str = "TTree") 
 
     _tuple_header(buf, classname)
     version, end = buf.header()
-    if version < 5:
-        raise UnsupportedFeatureError(
-            f"this tree was written by ROOT 3 or older (TTree version {version}), which this "
-            f"reader does not go back to; hadd it forward first"
-        )
-    modern = version > 5  # ROOT 5 widened the counters; ROOT 4 kept them narrow
     title = buf.named()[1]
-    entries = _tree_fields(buf, version, modern)
+    if version < 5:
+        entries = _ancient_tree_fields(buf)
+    elif DESCRIBED_TREES[0] <= version <= DESCRIBED_TREES[1]:
+        entries = _described_tree_fields(buf, source, version)
+    else:
+        entries = _tree_fields(buf, version, version > 5)
 
     branches = [b for b in buf.objarray(CLASSES) if isinstance(b, BranchRecord)]
     friends = _tree_friends(buf, version)
     buf.resume(end)
     return TTree(name, title, entries, branches, source, friends)
+
+
+#: How long ROOT 2's ``TAttLine``, ``TAttFill`` and ``TAttMarker`` are after
+#: their version, which is all they had in front of them: three shorts, two,
+#: and two and a float.
+ANCIENT_ATTRIBUTES = (6, 4, 8)
+
+
+def _ancient_tree_fields(buf: Buffer) -> int:
+    """The fields of a tree ROOT 2 or 3 wrote, before streamer information existed.
+
+    ``TTree::Streamer`` still reads these versions by hand, in this order:
+    the three attribute records, the scan field and two limits as 32-bit
+    integers, the entries and the bytes written as doubles, then the autosave
+    size and the estimate - and then, as later, the branches.
+    """
+    for size in ANCIENT_ATTRIBUTES:
+        _version, end = buf.header()
+        buf.take(size) if end is None else buf.resume(end)
+    buf.i32(), buf.i32(), buf.i32()  # the scan field, the loop and memory limits
+    entries = int(buf.f64())
+    buf.f64(), buf.f64()  # bytes before and after compression
+    buf.i32(), buf.i32()  # the autosave size and the estimate
+    return entries
+
+
+#: The ``TTree`` versions, from ROOT 3.02 to 5.08, whose fixed fields changed
+#: from release to release - ``fWeight`` arriving, the counters staying
+#: doubles for years after ROOT 4 - and which are read the way ROOT itself
+#: reads them, by the file's own description of the class.
+DESCRIBED_TREES = (6, 15)
+
+#: How a fundamental member of such a tree is read, by its streamer type.
+TREE_MEMBER_READS = {3: "i32", 6: "i32", 8: "f64", 13: "u32", 16: "i64", 17: "i64"}
+
+
+def _described_tree_fields(buf: Buffer, source: Source | None, version: int) -> int:
+    """The fields in front of a middle-aged tree's branches, as its file lists them.
+
+    ROOT reads a ``TTree`` of these versions member by member from the
+    streamer information the file carries, so this does the same and stops
+    at ``fBranches``: the bases after ``TNamed`` are records stepped over,
+    and each number is read at the width the file declares it.
+    """
+    members = source.streamers().get("TTree", {}) if source is not None else {}
+    if "fBranches" not in members:
+        raise UnsupportedFeatureError(
+            f"this tree is TTree version {version}, whose fields changed from one ROOT "
+            f"release to the next, and its file does not describe the TTree class to say "
+            f"which of them it has; hadd it forward and it will open"
+        )
+    entries = 0
+    for member in itertools.takewhile(lambda m: m.name != "fBranches", members.values()):
+        value = _tree_member(buf, member, version)
+        if member.name == "fEntries":
+            entries = int(value)
+    return entries
+
+
+def _tree_member(buf: Buffer, member: Member, version: int) -> float:
+    """One member ahead of a described tree's branches: a base, or a number."""
+    if member.typename == "BASE":
+        if member.name != "TNamed":  # which the caller has already read
+            buf.skip_record()
+        return 0
+    read = TREE_MEMBER_READS.get(member.stype)
+    if read is None:
+        raise UnsupportedFeatureError(
+            f"this file describes TTree version {version} with a member {member.name} of "
+            f"type {member.typename}, which is not a number this reader expected there"
+        )
+    value: float = getattr(buf, read)()
+    return value
 
 
 def _tuple_header(buf: Buffer, classname: str) -> None:

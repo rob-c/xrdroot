@@ -85,6 +85,7 @@ from .formula import Formula, FormulaError, compile_formula
 from .function import Function
 from .graph import Graph
 from .hist import Axis, Histogram
+from .image import Image
 from .merging import Merged, MergeWarning, copy, merge
 from .profile import Profile
 from .random import TRandom3, gRandom
@@ -138,6 +139,7 @@ __all__ = [
     "MultiGraph",
     "Function",
     "Canvas",
+    "Image",
     # fitting
     "fit",
     "FitResult",

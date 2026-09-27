@@ -2535,13 +2535,76 @@ rather than decoded. zstd uses Python 3.14's own `compression.zstd` where there
 is one and the `zstandard` package otherwise, and is the one case where a file
 may need something installed.
 
+## Leaf lists with arrays in them
+
+A branch made from a leaf list — `"n/I:px[n]/F:py[n]/F:q2/F"` — writes each
+entry's leaves one after another, so where `py` and `q2` are depends on
+`n`. Each leaf of such a branch reads the way ROOT reads it, by walking the
+entry from its front with the counters it passes; only a counter that comes
+after the array it counts, or a string among the leaves, is refused.
+
+## Split collections, and baskets in another file
+
+A `TClonesArray`, or a `std::vector` of a class, split into members is a
+branch per member under one branch that holds how many objects each entry
+has. Each member reads as a row per entry, one value per object — an array
+member as the run of each object's values in turn, and a string, pointer or
+object as a list of one per object — and the branch they hang from reads as
+a dictionary per entry of those rows, as any split object does:
+
+```python
+>>> esd = xrdroot.open_root("alice_ESDs.root")["esdTree"]
+>>> esd["Tracks.fITSncls"].array(0, 1)[0][:5]
+array([5, 6, 6, 6, 6], dtype=int32)
+```
+
+A branch ROOT was told to write to a file of its own — `TBranch::SetFile`,
+which ALICE used for its `ESDfriend` — records that file's name, and its
+baskets are read from it, found beside the tree's own file the way a
+friend's is.
+
 ## Old files
 
 A tree written by ROOT 4 opens like any other. Those files count entries in
 doubles and keep their seek points in 32-bit integers, and one small enough
 never to have been flushed holds its baskets inside the branch record rather
 than out in the file — all of which is read here, so a decade-old Geant4 run
-needs no copying forward first. ROOT 3 and older are refused by name.
+needs no copying forward first. So is the last basket of a tree saved while
+it was still being filled, which the branch record keeps after the ones
+written out.
+
+Older trees open too, back to the ROOT 2.24 of the H1 files ROOT's
+`h1analysis` tutorial reads. A `TTree` of versions 6 to 15 — ROOT 3.02 to
+5.08, whose fields changed from release to release — is read the way ROOT
+reads it, member by member from the description of `TTree` the file itself
+carries; one older than that is read the way `TTree::Streamer` still reads
+it by hand, as is the `TBranch` of version 5 under it and the arrays ROOT 2
+wrote without a byte count. Only a `TBranch` older than version 5, which kept
+no sizes for its baskets, is refused by name.
+
+## Pictures
+
+A `TASImage` — the picture a canvas is saved as, or an image read into ROOT
+— streams itself as its name and the PNG it would have saved, and it reads
+as an `xrdroot.Image`:
+
+```python
+>>> image = xrdroot.open_root("gallery.root")["hsimple.png."]
+>>> image.width, image.height, image.array.shape
+(696, 472, (472, 696, 4))
+>>> image.save("hsimple.png")      # the stored bytes, as they are
+>>> image.save("hsimple.jpg")      # the pixels, through matplotlib
+```
+
+`.png` is the stored PNG untouched and `.array` is its pixels as RGBA
+`uint8`, decoded with nothing but `zlib` and NumPy.
+
+An image ROOT made from numbers — the `galaxy_image` tutorial's NGC 4254 —
+is kept as those numbers and the palette that colours them. It reads with
+`.values`, the grid top row first, and `.palette`, the stops and the 16-bit
+levels at each; `.array` colours it the way libAfterImage does, and is the
+same array as ROOT's own `GetArgbArray()` of that image, pixel for pixel.
+Its `.png` is those pixels encoded, since the file holds none.
 
 ## What it refuses, and why by name
 
@@ -2572,7 +2635,11 @@ What is named that way:
   names, is read);
 - a graph of layered y errors asked for `yerr`, because summing the layers
   would be an answer this reader made up;
-- trees written by ROOT 3 or older.
+- a container of numbers in each object of a split `TClonesArray` or vector
+  of a class: the entry holds one object's after another's with nothing to
+  say where each ends (numbers, strings, pointers and objects there are read);
+- a `TBranch` older than version 5, which kept no
+  sizes for its baskets.
 
 A class the file describes as having no members at all — `TLimit` is one —
 reads as the empty `dict` it honestly is, rather than being refused.
