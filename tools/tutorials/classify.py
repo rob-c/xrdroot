@@ -40,6 +40,7 @@ __all__ = [
     "oracle_failure",
     "reason_of",
     "last_exception",
+    "plain",
     "NO_RUN",
 ]
 
@@ -79,9 +80,19 @@ _REFUSING = re.compile(r"Unsupported|NotImplemented|Refus|NotSupported|does not 
                        r"|cannot translate|not yet", re.I)  # fmt: skip
 
 
+#: A terminal escape sequence: the colours Python 3.13 and later put in a traceback
+#: when ``FORCE_COLOR`` or a terminal asks for them.
+_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def plain(text: str) -> str:
+    """``text`` without its terminal colours, so a coloured traceback reads as a plain one."""
+    return _ESCAPE.sub("", text)
+
+
 def last_exception(stderr: str) -> tuple[str, str] | None:
-    """The exception a traceback ends with, as its type and its message."""
-    lines = stderr.splitlines()
+    """The exception a traceback ends with, as its type and its message - coloured or not."""
+    lines = plain(stderr).splitlines()
     if not any(line.startswith("Traceback (most recent call last)") for line in lines):
         return None
     for line in reversed(lines):
@@ -141,7 +152,7 @@ def reason_of(kind: str, message: str) -> Verdict:
 
 
 def _refusal_line(stderr: str) -> str | None:
-    for line in reversed(stderr.splitlines()):
+    for line in reversed(plain(stderr).splitlines()):
         match = _CLI_REFUSAL.match(line.strip())
         if match:
             return match.group("message")
@@ -149,7 +160,7 @@ def _refusal_line(stderr: str) -> str | None:
 
 
 def _fallback(result: RunResult) -> Verdict:
-    tail = [line.strip() for line in result.stderr.splitlines() if line.strip()]
+    tail = [line.strip() for line in plain(result.stderr).splitlines() if line.strip()]
     said = _masked(tail[-1]) if tail else "no message"
     return Verdict("FAIL", f"exit {result.exit_code}: {said}")
 

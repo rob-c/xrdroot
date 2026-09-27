@@ -369,6 +369,25 @@ def test_a_missing_pyroot_name_is_unsupported_by_name():
     )
 
 
+def test_a_coloured_traceback_is_classified_as_its_plain_self():
+    """Python 3.13 and later colour a traceback when ``FORCE_COLOR`` is set, as CI sets it."""
+    coloured = (
+        "\x1b[1;35mTraceback (most recent call last)\x1b[0m:\n"
+        '  File \x1b[35m"x.py"\x1b[0m, line \x1b[35m3\x1b[0m, in \x1b[35m<module>\x1b[0m\n'
+        "\x1b[1;35mAttributeError\x1b[0m: \x1b[35mROOT has TLorentzVector; xrdroot.pyroot does"
+        " not yet\x1b[0m\n"
+    )
+    assert classify.failure(result(exit_code=1, stderr=coloured)) == (
+        "UNSUPPORTED",
+        "missing ROOT.TLorentzVector",
+    )
+    said = classify.failure(result(exit_code=2, stderr="\x1b[31mxrdroot run: no such file\x1b[0m"))
+    assert said == ("FAIL", "no such file")
+    assert classify.failure(result(exit_code=3, stderr="\x1b[31mboom\x1b[0m")).reason == (
+        "exit 3: boom"
+    )
+
+
 def test_a_missing_method_is_named_by_its_class():
     stderr = _traceback("AttributeError: 'TLorentzVector' object has no attribute 'Boost'")
     assert classify.failure(result(exit_code=1, stderr=stderr)).reason == (
