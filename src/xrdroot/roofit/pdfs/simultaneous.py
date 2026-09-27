@@ -21,6 +21,15 @@ from ..real import Context
 __all__ = ["RooSimultaneous"]
 
 
+def _channels(args: tuple[Any, ...], index: Any) -> list[tuple[str, Any]]:
+    """The densities by state: from ``{label: pdf}`` maps, or a list in the category's order."""
+    found = [pair for arg in args if isinstance(arg, dict) for pair in arg.items()]
+    lists = [a for a in args if not isinstance(a, dict) and a is not index]
+    if len(lists) == 1:
+        found += [(label, pdf) for pdf, label in zip(as_list(lists[0]), index.states())]
+    return found
+
+
 class RooSimultaneous(RooAbsPdf):
     """A density per state of an index category."""
 
@@ -30,14 +39,8 @@ class RooSimultaneous(RooAbsPdf):
         self.index = self._proxy("indexCat", index)
         self.channels: dict[str, Any] = {}
         self.chosen = self._list_proxy("!pdfs", [])
-        for arg in args:
-            if isinstance(arg, dict):
-                for label, pdf in arg.items():
-                    self.addPdf(pdf, label)
-        lists = [a for a in args if not isinstance(a, dict) and a is not index]
-        if len(lists) == 1:
-            for pdf, (label, _) in zip(as_list(lists[0]), index.states().items()):
-                self.addPdf(pdf, label)
+        for label, pdf in _channels(args, index):
+            self.addPdf(pdf, label)
 
     def addPdf(self, pdf: Any, label: str) -> bool:
         if str(label) in self.channels:

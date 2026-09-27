@@ -59,9 +59,7 @@ def _fixed_total(weights: np.ndarray[Any, Any], counts: list[int], total: float)
 def binned(pdf: Any, variables: list[Any], count: Any, options: Any) -> Any:
     from ..data.datahist import RooDataHist
 
-    expected_data = bool(options.get("ExpectedData", 0, False)) or bool(
-        options.get("Asimov", 0, False)
-    )
+    expected_data = bool(options.get("ExpectedData", 0, False) or options.get("Asimov", 0, False))
     extended = bool(options.get("Extended", 0, False))
     names = frozenset(one.GetName() for one in variables)
     total = _count(pdf, names, count, expected_data or extended)
@@ -70,15 +68,19 @@ def binned(pdf: Any, variables: list[Any], count: Any, options: Any) -> Any:
     hist = RooDataHist(options.get("Name") or "genData", "genData", variables)
     ctx = {name: hist.column(name) for name in names}
     weights = np.asarray(pdf.value(ctx, names), dtype=np.float64) * hist.binVolumes()
-    if expected_data:
-        values = weights * total
-    elif extended:
-        values = np.array([generator().Poisson(w * total) for w in weights], dtype=np.float64)
-    else:
-        counts = [generator().Poisson(w * total) for w in weights]
-        values = np.array(_fixed_total(weights, counts, total), dtype=np.float64)
+    values = _contents(weights, total, expected_data, extended)
     hist._weights = values
     hist._sumw2 = (
         values.copy() if not expected_data else np.array([math.sqrt(v) ** 2 for v in values])
     )
     return hist
+
+
+def _contents(weights: Any, total: Any, expected_data: bool, extended: bool) -> Any:
+    """The bins' contents: expected, Poisson-varied, or Poisson-varied to add up to ``total``."""
+    if expected_data:
+        return weights * total
+    counts = [generator().Poisson(w * total) for w in weights]
+    if extended:
+        return np.array(counts, dtype=np.float64)
+    return np.array(_fixed_total(weights, counts, total), dtype=np.float64)

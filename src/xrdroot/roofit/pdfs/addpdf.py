@@ -63,7 +63,14 @@ class RooAddPdf(RooAbsPdf):
         pdfs, coefs, recursive = _arguments(args)
         self._recursive = recursive
         self._all_extendable = not coefs
-        self._have_last = False
+        self._check(pdfs, coefs, recursive)
+        made = self._recursive_coefs(pdfs, coefs) if recursive else list(coefs)
+        self._have_last = recursive or (bool(coefs) and len(coefs) == len(pdfs))
+        self.pdfs = self._list_proxy("!pdfs", pdfs)
+        self.coefs = self._list_proxy("!coefficients", made)
+
+    def _check(self, pdfs: list[Any], coefs: list[Any], recursive: bool) -> None:
+        """RooFit's refusals: counts that do not match, or components that cannot give yields."""
         if coefs and (len(pdfs) > len(coefs) + 1 or len(pdfs) < len(coefs)):
             raise ValueError(
                 f"RooAddPdf::RooAddPdf({self._name}) number of pdfs and coefficients "
@@ -74,17 +81,12 @@ class RooAddPdf(RooAbsPdf):
                 f"RooAddPdf::RooAddPdf({self._name}): Recursive fractions option can "
                 "only be used if Npdf=Ncoef+1."
             )
-        if self._all_extendable:
-            for pdf in pdfs:
-                if not pdf.canBeExtended():
-                    raise ValueError(
-                        f"RooAddPdf::RooAddPdf({self._name}) pdf {pdf.GetName()} is not "
-                        "extendable, RooAddPdf constructor call is invalid!"
-                    )
-        made = self._recursive_coefs(pdfs, coefs) if recursive else list(coefs)
-        self._have_last = recursive or (bool(coefs) and len(coefs) == len(pdfs))
-        self.pdfs = self._list_proxy("!pdfs", pdfs)
-        self.coefs = self._list_proxy("!coefficients", made)
+        for pdf in pdfs if not coefs else []:
+            if not pdf.canBeExtended():
+                raise ValueError(
+                    f"RooAddPdf::RooAddPdf({self._name}) pdf {pdf.GetName()} is not "
+                    "extendable, RooAddPdf constructor call is invalid!"
+                )
 
     def _recursive_coefs(self, pdfs: list[Any], coefs: list[Any]) -> list[Any]:
         made: list[Any] = []
@@ -120,6 +122,11 @@ class RooAddPdf(RooAbsPdf):
             total = sum(values)
             return [v / total for v in values]
         last = 1.0 - sum(values)
+        self._warn_sum(last)
+        return [*values, last]
+
+    def _warn_sum(self, last: Any) -> None:
+        """``updateCoefCache``'s warning of coefficients summing to more than one, or below 0."""
         if np.any(np.asarray(last) < 0) or np.any(np.asarray(last) > 1):
             log(
                 self,
@@ -129,7 +136,6 @@ class RooAddPdf(RooAbsPdf):
                 "PDF coefficients not in range [0-1], "
                 f"value={g(1 - np.asarray(last).reshape(-1)[0])}",
             )
-        return [*values, last]
 
     def value(self, ctx: Context, nset: Any = None, rng: Any = None) -> Any:
         """The sum - its coefficients those of the full range, then normalised within ``rng``."""
@@ -257,12 +263,13 @@ class RooAddPdf(RooAbsPdf):
 
 def _arguments(args: tuple[Any, ...]) -> tuple[list[Any], list[Any], bool]:
     """The components, the coefficients and the recursive flag, from either constructor."""
-    flags = [a for a in args if isinstance(a, bool)]
+    recursive = next((a for a in args if isinstance(a, bool)), False)
     rest = [a for a in args if not isinstance(a, bool)]
-    if rest and all(
-        not isinstance(a, (list, tuple, set)) and not hasattr(a, "_list") for a in rest
-    ):
-        if len(rest) == 3:  # RooAddPdf(name, title, pdf1, pdf2, coef1)
-            return [rest[0], rest[1]], [rest[2]], bool(flags and flags[0])
-    lists = [as_list(a) for a in rest]
-    return lists[0], (lists[1] if len(lists) > 1 else []), bool(flags and flags[0])
+    if len(rest) == 3 and not any(_is_list(a) for a in rest):  # (name, title, pdf1, pdf2, coef1)
+        return [rest[0], rest[1]], [rest[2]], recursive
+    lists = [*(as_list(a) for a in rest), []]
+    return lists[0], lists[1], recursive
+
+
+def _is_list(arg: Any) -> bool:
+    return isinstance(arg, (list, tuple, set)) or hasattr(arg, "_list")

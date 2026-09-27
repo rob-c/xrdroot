@@ -177,6 +177,11 @@ def cb_shape_integral(
     return float(result) if result != 0 else 1e-300
 
 
+def _cb_log_tail(scale: float, lmin: float, lmax: float, n: float) -> float:
+    """The tail's part for ``n`` near one, where its power becomes a logarithm."""
+    return float(scale * (lmin - lmax + 0.5 * (1.0 - n) * (lmin * lmin - lmax * lmax)))
+
+
 def _cb_tail(tmin: float, tmax: float | None, sig: float, abs_alpha: float, n: float) -> float:
     """The tail's part: from ``tmin`` to ``tmax``, or to where the core starts for ``None``."""
     r = n / abs_alpha
@@ -185,9 +190,7 @@ def _cb_tail(tmin: float, tmax: float | None, sig: float, abs_alpha: float, n: f
     if abs(n - 1.0) < 1.0e-05:
         lmin = math.log(b - tmin)
         lmax = math.log(r) if tmax is None else math.log(b - tmax)
-        return float(
-            a * r ** (n - 1) * sig * (lmin - lmax + 0.5 * (1.0 - n) * (lmin * lmin - lmax * lmax))
-        )
+        return _cb_log_tail(a * r ** (n - 1) * sig, lmin, lmax, n)
     upper = 1.0 if tmax is None else (r / (b - tmax)) ** (n - 1.0)
     return float(a * sig / (1.0 - n) * ((r / (b - tmin)) ** (n - 1.0) - upper))
 

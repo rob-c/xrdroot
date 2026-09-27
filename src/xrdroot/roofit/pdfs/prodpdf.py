@@ -29,16 +29,21 @@ def _factors(args: tuple[Any, ...]) -> tuple[list[Any], dict[str, tuple[frozense
     pdfs: list[Any] = []
     conditional: dict[str, tuple[frozenset[str], bool]] = {}
     for arg in args:
-        if isinstance(arg, RooCmdArg):
-            if arg.name == "Conditional":
-                chosen = as_list(arg.value(0))
-                observables = frozenset(one.GetName() for one in as_list(arg.value(1)))
-                for pdf in chosen:
-                    conditional[pdf.GetName()] = (observables, bool(arg.value(2, False)))
-                pdfs.extend(p for p in chosen if all(p is not q for q in pdfs))
-            continue
-        pdfs.extend(p for p in as_list(arg) if all(p is not q for q in pdfs))
+        if not isinstance(arg, RooCmdArg):
+            _add_new(pdfs, as_list(arg))
+        elif arg.name == "Conditional":
+            chosen = as_list(arg.value(0))
+            observables = frozenset(one.GetName() for one in as_list(arg.value(1)))
+            conditional.update(
+                {p.GetName(): (observables, bool(arg.value(2, False))) for p in chosen}
+            )
+            _add_new(pdfs, chosen)
     return pdfs, conditional
+
+
+def _add_new(pdfs: list[Any], more: list[Any]) -> None:
+    """``more`` added to ``pdfs``, but those already in it."""
+    pdfs.extend(p for p in more if all(p is not q for q in pdfs))
 
 
 class RooProdPdf(RooAbsPdf):

@@ -85,17 +85,17 @@ class RooArgusBG(_Shape):
         return _argus_part(m0, c, f2) - _argus_part(m0, c, f1)
 
 
+def _argus_negative(c: float, f: float) -> Any:
+    """The primitive's bracket for a falling exponential, ``c < 0``: with the error function."""
+    root = math.sqrt(-c * f)
+    return math.exp(c * f) * math.sqrt(f) / c + 0.5 / (-c) ** 1.5 * math.sqrt(math.pi) * math.erf(
+        root
+    )
+
+
 def _argus_part(m0: float, c: float, f: float) -> Any:
     if c < 0:
-        return (
-            -0.5
-            * m0
-            * m0
-            * (
-                math.exp(c * f) * math.sqrt(f) / c
-                + 0.5 / (-c) ** 1.5 * math.sqrt(math.pi) * math.erf(math.sqrt(-c * f))
-            )
-        )
+        return -0.5 * m0 * m0 * _argus_negative(c, f)
     if c == 0:
         return -m0 * m0 / 3.0 * f * math.sqrt(f)
     dawson = _dawson(math.sqrt(c * f))

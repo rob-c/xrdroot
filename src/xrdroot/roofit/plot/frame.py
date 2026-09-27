@@ -304,17 +304,21 @@ def _matches(obj: Any, name: Any, kind: Any) -> bool:
     return kind is None or obj.ClassName() == getattr(kind, "__name__", str(kind))
 
 
+def _extent(var: Any, numbers: list[Any]) -> tuple[Any, Any, int]:
+    """``frame(nbins)``, ``frame(low, high[, nbins])``: the range and bins, else the variable's."""
+    if len(numbers) == 1:
+        return var.getMin(), var.getMax(), int(numbers[0])
+    if len(numbers) >= 2:
+        bins = int(numbers[2]) if len(numbers) > 2 else var.getBins()
+        return float(numbers[0]), float(numbers[1]), bins
+    return var.getMin(), var.getMax(), var.getBins()
+
+
 def make_frame(var: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> RooPlot:
     """``var.frame(...)``: ``frame(nbins)``, ``frame(low, high, nbins)``, or options."""
     numbers = [a for a in args if isinstance(a, (int, float))]
     options = commands([a for a in args if not isinstance(a, (int, float))], kwargs)
-    low, high = var.getMin(), var.getMax()
-    bins = var.getBins()
-    if len(numbers) == 1:
-        bins = int(numbers[0])
-    elif len(numbers) >= 2:
-        low, high = float(numbers[0]), float(numbers[1])
-        bins = int(numbers[2]) if len(numbers) > 2 else bins
+    low, high, bins = _extent(var, numbers)
     if "Range" in options:
         rng = options.args("Range")
         low, high = (var.getMin(rng[0]), var.getMax(rng[0])) if isinstance(rng[0], str) else rng[:2]

@@ -31,27 +31,30 @@ def _histogram_of(obj: Any) -> Any:
     return getattr(obj, "_xrd", obj)
 
 
+def _arguments(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[list[Any], list[Any], Any]:
+    """The variables, the datasets to fill from, and the options, of a constructor's arguments."""
+    variables = [a for a in args if not isinstance(a, (RooCmdArg, RooAbsData))]
+    sources = [a for a in args if isinstance(a, RooAbsData)]
+    options = commands([a for a in args if isinstance(a, RooCmdArg)], kwargs)
+    return (as_list(variables[0]) if variables else []), sources, options
+
+
 class RooDataHist(RooAbsData):
     """Binned data over one or more variables."""
 
     def __init__(self, name: Any = "", title: Any = "", *args: Any, **kwargs: Any) -> None:
-        variables = [
-            a for a in args if not isinstance(a, RooCmdArg) and not isinstance(a, RooAbsData)
-        ]
-        sources = [a for a in args if isinstance(a, RooAbsData)]
-        options = commands([a for a in args if isinstance(a, RooCmdArg)], kwargs)
-        chosen = as_list(variables[0]) if variables else []
+        chosen, sources, options = _arguments(args, kwargs)
         super().__init__(name, title, chosen)
         self._weights = np.zeros(0)
         self._sumw2 = np.zeros(0)
         histogram = options.get("Import")
         if histogram is not None and not isinstance(histogram, RooAbsData):
             self._import(chosen, _histogram_of(histogram), bool(options.get("Import", 1, False)))
-        else:
-            self._empty()
-            source = sources[0] if sources else histogram
-            if source is not None:
-                self.add_data(source)
+            return
+        self._empty()
+        source = sources[0] if sources else histogram
+        if source is not None:
+            self.add_data(source)
 
     # -- bins ---------------------------------------------------------------------
 

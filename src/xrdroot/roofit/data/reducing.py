@@ -31,26 +31,46 @@ def _options(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     return commands(given, kwargs)
 
 
-def reduced(data: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
-    options = _options(args, kwargs)
+def _kept(data: Any, options: Any) -> Any:
+    """The events the ``Cut``, ``CutRange`` and ``EventRange`` options keep."""
     keep = data.mask(options.get("Cut"), options.get("CutRange"))
-    first, last = options.get("EventRange", 0, 0), options.get("EventRange", 1, data.numEntries())
     if "EventRange" in options:
+        first, last = (
+            options.get("EventRange", 0, 0),
+            options.get("EventRange", 1, data.numEntries()),
+        )
         window = np.zeros_like(keep)
         window[int(first) : int(last)] = True
         keep &= window
+    return keep
+
+
+def _chosen(data: Any, options: Any) -> list[Any]:
+    """The variables ``SelectVars`` keeps - all of them, without it."""
     chosen = options.get("SelectVars")
-    names = [one.GetName() for one in as_list(chosen)] if chosen is not None else None
-    variables = [one for one in data.get() if names is None or one.GetName() in names]
+    if chosen is None:
+        return list(data.get())
+    names = {one.GetName() for one in as_list(chosen)}
+    return [one for one in data.get() if one.GetName() in names]
+
+
+def _part(values: Any, keep: Any) -> Any:
+    return None if values is None else values[keep]
+
+
+def reduced(data: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    from .store import copies_of
+
+    options = _options(args, kwargs)
+    keep = _kept(data, options)
+    variables = _chosen(data, options)
     kind: Any = type(data)
     made = kind.__new__(kind)
     made.__dict__.update(data.__dict__)
-    from .store import copies_of
-
     made._vars = copies_of(variables)
     made._columns = {one.GetName(): data.column(one.GetName())[keep] for one in variables}
-    made._weights = None if data._weights is None else data._weights[keep]
-    made._sumw2 = None if data._sumw2 is None else data._sumw2[keep]
+    made._weights = _part(data._weights, keep)
+    made._sumw2 = _part(data._sumw2, keep)
     if "Name" in options:
         made.SetName(str(options.get("Name")))
     return made

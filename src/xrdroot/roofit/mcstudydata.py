@@ -23,27 +23,27 @@ def _pull(value: float, error: float, generated: float) -> float:
     return (value - generated) / error if error > 0 else 0.0
 
 
-def parameter_data(study: Any) -> Any:
-    from .data.dataset import RooDataSet
-
-    generated = {p.GetName(): v for p, v in study.gen_init}
-    variables = []
-    pulled = [par for par in study.fit_params if par.hasError(False)]
-    for par in study.fit_params:
-        variables.append(RooRealVar(par.GetName(), par.GetTitle(), par.getMin(), par.getMax()))
+def _variables(study: Any, pulled: list[Any]) -> list[Any]:
+    """The dataset's variables: each parameter, then its error and pull, then NLL and ngen."""
+    variables = [
+        RooRealVar(p.GetName(), p.GetTitle(), p.getMin(), p.getMax()) for p in study.fit_params
+    ]
     for par in study.fit_params:
         variables.append(RooRealVar(f"{par.GetName()}err", f"{par.GetTitle()} Error", -1e30, 1e30))
         if par in pulled:
             variables.append(
                 RooRealVar(f"{par.GetName()}pull", f"{par.GetTitle()} Pull", -1e30, 1e30)
             )
-    variables += [
+    return [
+        *variables,
         RooRealVar("NLL", "-log(Likelihood)", -1e30, 1e30),
         RooRealVar("ngen", "number of generated events", -1e30, 1e30),
     ]
-    data = RooDataSet(
-        f"fitParData_{study.fit_model.GetName()}", "Fit Parameters DataSet", variables
-    )
+
+
+def _columns(study: Any, variables: list[Any], pulled: list[Any]) -> dict[str, list[float]]:
+    """Each fit's row, and the pulls of the parameters that have errors."""
+    generated = {p.GetName(): v for p, v in study.gen_init}
     columns: dict[str, list[float]] = {v.GetName(): [] for v in variables}
     for row in study.rows:
         for key, value in row.items():
@@ -53,6 +53,18 @@ def parameter_data(study: Any) -> Any:
             columns[f"{name}pull"].append(
                 _pull(row[name], row[f"{name}err"], generated.get(name, 0.0))
             )
+    return columns
+
+
+def parameter_data(study: Any) -> Any:
+    from .data.dataset import RooDataSet
+
+    pulled = [par for par in study.fit_params if par.hasError(False)]
+    variables = _variables(study, pulled)
+    data = RooDataSet(
+        f"fitParData_{study.fit_model.GetName()}", "Fit Parameters DataSet", variables
+    )
+    columns = _columns(study, variables, pulled)
     data.add_columns({k: np.array(v, dtype=np.float64) for k, v in columns.items()})
     return data
 

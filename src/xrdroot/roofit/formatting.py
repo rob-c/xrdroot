@@ -31,30 +31,43 @@ def _digits(var: Any, sig: int, by_error: bool) -> tuple[int, int]:
     return max(-where_val, 0), max(-where_err, 0)
 
 
-def format_var(var: Any, sig: int = 2, options: str = "") -> str:
-    """``RooRealVar::format(sigDigits, options)``."""
-    opts = options.lower()
-    show_error = "e" in opts and var.hasError(False)
-    latex = "x" in opts or "y" in opts
-    by_error = (
-        (("e" in opts) and var.hasError(False) and not var.isConstant()) or "p" in opts
-    ) and "f" not in opts
-    val_digits, err_digits = _digits(var, max(sig, 1), by_error)
+def _by_error(var: Any, opts: str) -> bool:
+    """Whether the value's precision follows its error (``P``, or ``E`` of a floating variable)."""
+    if "f" in opts:
+        return False
+    return ("e" in opts and var.hasError(False) and not var.isConstant()) or "p" in opts
+
+
+def _head(var: Any, opts: str, latex: bool) -> str:
+    """The opening: ``$`` in LaTeX, the name or title and ``=``, and a space for a sign."""
     text = "$" if latex else ""
     label = var.GetTitle() if "t" in opts else (var.getPlotLabel() if "n" in opts else "")
     if label:
         text += label + " = "
-    if var.getVal() >= 0:
-        text += " "
+    return text + (" " if var.getVal() >= 0 else "")
+
+
+def _errors(var: Any, opts: str, latex: bool, digits: int) -> str:
+    """The error: symmetric ``+/- e``, or - with ``A`` and an asymmetric error - both of them."""
+    if "e" not in opts:
+        return ""
+    if "a" in opts and var.hasAsymError(False):
+        return _asymmetric(var.getAsymErrorLo(), var.getAsymErrorHi(), digits, opts, latex)
+    if not var.hasError(False):
+        return ""
+    sign = " #pm " if "l" in opts else ("\\pm " if latex else " +/- ")
+    return f"{sign}{var.getError():.{digits}f}"
+
+
+def format_var(var: Any, sig: int = 2, options: str = "") -> str:
+    """``RooRealVar::format(sigDigits, options)``."""
+    opts = options.lower()
+    latex = "x" in opts or "y" in opts
+    val_digits, err_digits = _digits(var, max(sig, 1), _by_error(var, opts))
+    text = _head(var, opts, latex)
     if "h" not in opts:
         text += f"{var.getVal():.{val_digits}f}"
-    asym = "a" in opts and var.hasAsymError(False)
-    if show_error and not asym:
-        sign = " #pm " if "l" in opts else ("\\pm " if latex else " +/- ")
-        text += f"{sign}{var.getError():.{err_digits}f}"
-    if asym and "e" in opts:
-        low, high = var.getAsymErrorLo(), var.getAsymErrorHi()
-        text += _asymmetric(low, high, err_digits, opts, latex)
+    text += _errors(var, opts, latex, err_digits)
     if var.getUnit() and "u" in opts:
         text += " " + var.getUnit()
     return text + ("$" if latex else "")

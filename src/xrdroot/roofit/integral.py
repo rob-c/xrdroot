@@ -99,17 +99,22 @@ def make_integral(
 ) -> RooRealIntegral:
     """``func.createIntegral(iset, [nset], [range], options...)``."""
     names = frozenset(one.GetName() for one in as_list(iset))
-    plain = [a for a in args if not isinstance(a, RooCmdArg)]
     options = commands([a for a in args if isinstance(a, RooCmdArg)], kwargs)
-    nset = options.get("NormSet") or options.get("SupNormSet")
-    rng = options.get("Range")
-    for arg in plain:
-        if isinstance(arg, str):
-            rng = arg
-        else:
-            nset = arg
+    nset, rng = _norm_and_range(args, options)
     norm = frozenset(one.GetName() for one in as_list(nset)) if nset is not None else None
     return RooRealIntegral(func, names, norm, rng)
+
+
+def _norm_and_range(args: tuple[Any, ...], options: Any) -> tuple[Any, Any]:
+    """The normalisation set and range: as options, or as plain arguments - a set, a name."""
+    nset = options.get("NormSet") or options.get("SupNormSet")
+    rng = options.get("Range")
+    for arg in args:
+        if isinstance(arg, str):
+            rng = arg
+        elif not isinstance(arg, RooCmdArg):
+            nset = arg
+    return nset, rng
 
 
 class RooCdf(RooAbsReal):

@@ -23,6 +23,13 @@ from .hist import AUTO, POISSON, SUMW2, from_counts
 __all__ = ["plot_data"]
 
 
+def _frame_edges(frame: Any, var: Any) -> np.ndarray[Any, Any]:
+    """The variable's own binning if it is not uniform, else the frame's bins."""
+    if not var.getBinning().isUniform():
+        return var.getBinning().array()
+    return np.linspace(frame.GetXmin(), frame.GetXmax(), frame.GetNbinsX() + 1)
+
+
 def _edges(frame: Any, options: Commands, data: Any = None) -> tuple[np.ndarray[Any, Any], bool]:
     """The bin edges, and whether the options chose them rather than the frame."""
     var = frame.getPlotVar()
@@ -31,9 +38,7 @@ def _edges(frame: Any, options: Commands, data: Any = None) -> tuple[np.ndarray[
     if not given and own is not None and own(var) is not None:
         return own(var).array(), True
     if not given:
-        if not var.getBinning().isUniform():
-            return var.getBinning().array(), False
-        return np.linspace(frame.GetXmin(), frame.GetXmax(), frame.GetNbinsX() + 1), False
+        return _frame_edges(frame, var), False
     first = given[0]
     if isinstance(first, RooAbsBinning):
         return first.array(), True

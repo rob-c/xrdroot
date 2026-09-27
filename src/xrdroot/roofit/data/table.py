@@ -87,6 +87,14 @@ def table_of(data: Any, category: Any, cut: Any = None) -> Roo1DTable:
     return Roo1DTable(category.GetName(), title, labels, counts)
 
 
+def _count(columns: list[Any], weights: Any, indices: list[int]) -> float:
+    """The weight of the events in the states ``indices``, one of each category."""
+    mask = np.ones(len(weights), dtype=bool)
+    for column, index in zip(columns, indices):
+        mask &= column == index
+    return float(np.sum(weights[mask]))
+
+
 def multi_table(data: Any, categories: list[Any], cut: Any = None) -> Roo1DTable:
     """A table over several categories at once: ``RooMultiCategory``'s states, the first fastest.
 
@@ -104,10 +112,7 @@ def multi_table(data: Any, categories: list[Any], cut: Any = None) -> Roo1DTable
     states = [list(one.states().items()) for one in ordered]
     for combination in itertools.product(*reversed(states)):
         chosen = list(reversed(combination))
-        mask = np.ones(len(weights), dtype=bool)
-        for column, (_, index) in zip(columns, chosen):
-            mask &= column == index
         labels.append("{" + ";".join(label for label, _ in chosen) + "}")
-        counts.append(float(np.sum(weights[mask])))
+        counts.append(_count(columns, weights, [index for _, index in chosen]))
     name = "(" + " x ".join(one.GetName() for one in ordered) + ")"
     return Roo1DTable(name, data.GetName() + (f"({cut})" if cut else ""), labels, counts)

@@ -206,28 +206,36 @@ class RooWorkspace(RooPrintable):
         """``RooWorkspace::Print``: each kind of content under its heading, sorted by name."""
         cout.write(f"\nRooWorkspace({self._name}) {self._title} contents\n\n")
         nodes = list(self._nodes.values())
-        variables = RooArgSet(
-            [n for n in nodes if n.InheritsFrom("RooRealVar") or n.InheritsFrom("RooCategory")]
-        )
-        if len(variables):
-            cout.write("variables\n---------\n" + variables.sorted_copy().printValue() + "\n\n")
+        _variables_section(nodes)
         _section("p.d.f.s\n-------\n", [n for n in nodes if n.InheritsFrom("RooAbsPdf")])
         _section("functions\n--------\n", [n for n in nodes if _is_function(n)])
-        if self._data:
-            cout.write("datasets\n--------\n")
-            for data in self._data.values():
-                cout.write(f"{data.ClassName()}::{data.GetName()}{data.get().printValue()}\n")
-            cout.write("\n")
-        if self._sets:
-            cout.write("named sets\n----------\n")
-            for key in sorted(self._sets):
-                cout.write(f"{key}:{self._sets[key].printValue()}\n")
-            cout.write("\n")
+        _lines(
+            "datasets\n--------\n",
+            [f"{d.ClassName()}::{d.GetName()}{d.get().printValue()}" for d in self._data.values()],
+        )
+        _lines(
+            "named sets\n----------\n",
+            [f"{k}:{self._sets[k].printValue()}" for k in sorted(self._sets)],
+        )
 
 
 def _is_function(node: Any) -> bool:
     kinds = ("RooAbsPdf", "RooConstVar", "RooRealVar", "RooAbsCategory")
     return node.InheritsFrom("RooAbsReal") and not any(node.InheritsFrom(k) for k in kinds)
+
+
+def _variables_section(nodes: list[Any]) -> None:
+    """The variables and categories, as one set's value - or nothing, if there are none."""
+    kinds = ("RooRealVar", "RooCategory")
+    variables = RooArgSet([n for n in nodes if any(n.InheritsFrom(k) for k in kinds)])
+    if len(variables):
+        cout.write("variables\n---------\n" + variables.sorted_copy().printValue() + "\n\n")
+
+
+def _lines(heading: str, lines: list[str]) -> None:
+    """A heading and its lines, and a blank line - or nothing, for no lines."""
+    if lines:
+        cout.write(heading + "".join(line + "\n" for line in lines) + "\n")
 
 
 def _section(heading: str, nodes: list[Any]) -> None:

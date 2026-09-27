@@ -34,6 +34,7 @@ def _flat(items: Iterable[Any]) -> Iterator[Any]:
 #: A collection of the same kind as the one a method is called on.
 _C = TypeVar("_C", bound="RooAbsCollection")
 
+
 class RooAbsCollection(RooPrintable):
     """What a set and a list share: their members, found by name or position."""
 

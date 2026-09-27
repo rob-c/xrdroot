@@ -58,11 +58,14 @@ def _axes(
     binnings = options.every("Binning")
     if isinstance(first, str):
         names = [one for one in first.split(",") if one]
-        return [
-            (known(name), binnings[i] if i < len(binnings) else None)
-            for i, name in enumerate(names)
-        ]
-    found = [(first, binnings[0] if binnings else None)]
+        padded = binnings + [None] * len(names)
+        return [(known(name), padded[i]) for i, name in enumerate(names)]
+    return [(first, binnings[0] if binnings else None), *_extra_axes(options)]
+
+
+def _extra_axes(options: Any) -> list[tuple[Any, Any]]:
+    """``YVar(y, Binning(...))`` and ``ZVar(z, ...)``: the further variables and their binnings."""
+    found = []
     for axis in ("YVar", "ZVar"):
         if axis in options:
             extra = options.get(axis, 1)
@@ -75,9 +78,22 @@ def _book(name: str, axes: list[tuple[Any, Any]]) -> Histogram:
     return Histogram.book(name, *[list(e) for e in edges], title=name)
 
 
+def _own_name(first: Any, args: tuple[Any, ...]) -> Any:
+    """``createHistogram("x")`` alone names the histogram after the variable; else the data does."""
+    return str(first) if isinstance(first, str) and "," not in first and not args else None
+
+
+def _grid(edges: list[Any]) -> tuple[Any, Any]:
+    """Every bin's centre, the first variable slowest, and every bin's volume."""
+    centres = [0.5 * (e[1:] + e[:-1]) for e in edges]
+    grid = np.array(list(itertools.product(*centres)))
+    volumes = np.prod(np.array(list(itertools.product(*[np.diff(e) for e in edges]))), axis=1)
+    return grid, volumes
+
+
 def data_histogram(data: Any, first: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """``RooAbsData::createHistogram``."""
-    name = str(first) if isinstance(first, str) and "," not in first and not args else None
+    name = _own_name(first, args)
     axes = _axes(first, tuple(a for a in args if not isinstance(a, str)), kwargs, data.variable)
     options = commands([a for a in args if isinstance(a, RooCmdArg)], kwargs)
     made = _book(name or data.GetName(), axes)
@@ -95,11 +111,9 @@ def function_histogram(
     axes = _axes(first, args, kwargs, func.variable)
     made = _book(str(name), axes)
     edges = [_binning(var, command) for var, command in axes]
-    centres = [0.5 * (e[1:] + e[:-1]) for e in edges]
-    grid = np.array(list(itertools.product(*centres)))
+    grid, volumes = _grid(edges)
     ctx = {var.GetName(): grid[:, i] for i, (var, _) in enumerate(axes)}
-    nset = frozenset(var.GetName() for var, _ in axes)
-    volumes = np.prod(np.array(list(itertools.product(*[np.diff(e) for e in edges]))), axis=1)
+    nset = frozenset(ctx)
     is_pdf = hasattr(func, "canBeExtended")
     values = np.asarray(func.value(ctx, nset) if is_pdf else func.compute(ctx), dtype=np.float64)
     values = np.broadcast_to(values, (len(grid),)) * (volumes if is_pdf else 1.0)

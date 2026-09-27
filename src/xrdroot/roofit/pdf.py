@@ -288,29 +288,37 @@ def normalized(raw: Any, norm: Any) -> Any:
     return found if found.ndim else float(found)
 
 
+def _shown_range(low: float, high: float, closed: bool) -> str:
+    """The safe range as ``RooHelpers`` prints it: ``(0, inf)``, ``[-1, 1]``."""
+    lower = "-inf" if low <= -1.7976931348623157e308 else g(low)
+    upper = "inf" if high >= 1.7976931348623157e308 else g(high)
+    return ("[" if closed else "(") + f"{lower}, {upper}" + ("]" if closed else ")")
+
+
+def _unsafe(param: Any, low: float, high: float, closed: bool) -> bool:
+    """Whether a parameter's range goes past - or, for an open range, reaches - the safe one."""
+    pmin, pmax = param.getMin(), param.getMax()
+    if pmin < low or pmax > high:
+        return True
+    return not closed and (pmin == low or pmax == high)
+
+
 def check_range(
     pdf: Any, params: Any, low: float, high: float = math.inf, closed: bool = False, extra: str = ""
 ) -> None:
     """``RooHelpers::checkRangeOfParameters``: warn of parameters that can leave their safe
     range."""
-    shown = ("[" if closed else "(") + ("-inf" if low <= -1.7976931348623157e308 else g(low))
-    shown += (
-        ", " + ("inf" if high >= 1.7976931348623157e308 else g(high)) + ("]" if closed else ")")
-    )
+    shown = _shown_range(low, high, closed)
     for param in as_list(params):
-        if not param.InheritsFrom("RooAbsRealLValue"):
-            continue
-        pmin, pmax = param.getMin(), param.getMax()
-        outside = pmin < low or pmax > high
-        if outside or (not closed and (pmin == low or pmax == high)):
+        if param.InheritsFrom("RooAbsRealLValue") and _unsafe(param, low, high, closed):
             log(
                 pdf,
                 WARNING,
                 "InputArguments",
                 f"The parameter '{param.GetName()}' with range "
-                f"[{g(pmin)}, {g(pmax)}] of the {pdf.ClassName()} '{pdf.GetName()}' exceeds the "
-                "safe "
-                f"range of {shown}. Advise to limit its range." + (f"\n{extra}" if extra else ""),
+                f"[{g(param.getMin())}, {g(param.getMax())}] of the {pdf.ClassName()} "
+                f"'{pdf.GetName()}' exceeds the safe range of {shown}. Advise to limit its range."
+                + (f"\n{extra}" if extra else ""),
             )
 
 

@@ -43,6 +43,20 @@ def _global_cc(cov: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
     return np.sqrt(np.clip(np.nan_to_num(found), 0.0, None))
 
 
+def _constants(minimizer: Any) -> RooArgList:
+    """Copies of the parameters held constant in the fit."""
+    return RooArgList([p.clone(p.GetName()) for p in minimizer.all_params if p.isConstant()])
+
+
+def _floating_covariance(minimizer: Any) -> np.ndarray[Any, Any]:
+    """Minuit's covariance of the floating parameters - zeros, if it has none."""
+    minuit = minimizer.minuit
+    index = [i for i, p in enumerate(minimizer.params) if not p.isConstant()]
+    if minuit.covariance is None:
+        return np.zeros((len(index), len(index)))
+    return np.array(minuit.covariance, dtype=np.float64)[np.ix_(index, index)]
+
+
 class RooFitResult(RooPrintable):
     """The outcome of one fit."""
 
@@ -71,21 +85,17 @@ class RooFitResult(RooPrintable):
         self._min_nll = float(minuit.fval)
         self._edm = float(minuit.fmin.edm)
         self._invalid = minimizer.invalid
-        self._const = RooArgList(
-            [p.clone(p.GetName()) for p in minimizer.all_params if p.isConstant()]
-        )
+        self._fill_parameters(minimizer)
+        self._cov = _floating_covariance(minimizer)
+        self._history = list(minimizer.history)
+
+    def _fill_parameters(self, minimizer: Any) -> None:
+        """The constant parameters, and the floating ones as they started and as they ended."""
+        self._const = _constants(minimizer)
         floating = [p for p in minimizer.params if not p.isConstant()]
         floating_names = {p.GetName() for p in floating}
         self._init = RooArgList([p for p in minimizer.init_params if p.GetName() in floating_names])
         self._final = RooArgList([p.clone(p.GetName()) for p in floating])
-        index = [i for i, p in enumerate(minimizer.params) if not p.isConstant()]
-        covariance = (
-            np.array(minuit.covariance, dtype=np.float64)
-            if minuit.covariance is not None
-            else (np.zeros((len(minimizer.params),) * 2))
-        )
-        self._cov = covariance[np.ix_(index, index)]
-        self._history = list(minimizer.history)
 
     # -- what it holds ------------------------------------------------------------
 

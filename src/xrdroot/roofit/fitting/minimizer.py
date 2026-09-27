@@ -333,17 +333,22 @@ class RooMinimizer:
             )
             self.status = -1
             return self.status
-        wanted = [p.GetName() for p in self.params if not p.isConstant()]
-        if params is not None:
-            names = {one.GetName() for one in as_list(params)}
-            wanted = [name for name in wanted if name in names]
-            if not wanted:
-                return self.status
+        wanted = self._minos_wanted(params)
+        if not wanted:
+            return self.status
         for name in wanted:
             self._minos_one(name)
         self._back_propagate(minos=True)
         self.history.append(("MINOS", self.status))
         return self.status
+
+    def _minos_wanted(self, params: Any) -> list[str]:
+        """The free parameters MINOS is run for: all of them, or those of ``params``."""
+        wanted = [p.GetName() for p in self.params if not p.isConstant()]
+        if params is None:
+            return wanted
+        names = {one.GetName() for one in as_list(params)}
+        return [name for name in wanted if name in names]
 
     def _minos_one(self, name: str) -> None:
         index = [p.GetName() for p in self.params].index(name)

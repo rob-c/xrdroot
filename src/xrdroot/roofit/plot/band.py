@@ -67,13 +67,7 @@ def _variations(
     func: Any, frame: Any, arguments: CmdList, fit: Any, z: float, wanted: Any
 ) -> tuple[list[Any], Any]:
     """The curves with each parameter up and down by ``z`` errors, and the correlations."""
-    finals = [p for p in fit.floatParsFinal() if p.getError() > p.getVal() * np.finfo(float).eps]
-    mine = {
-        p.GetName(): p
-        for p in func.getParameters(frame.norm_vars or [])
-        if wanted is None or p.GetName() in wanted
-    }
-    chosen = [p for p in finals if p.GetName() in mine]
+    mine, chosen = _varied(func, frame, fit, wanted)
     names = fit.floatParsFinal().names()
     index = [names.index(p.GetName()) for p in chosen]
     cov = np.array(fit.covarianceMatrix().values)[np.ix_(index, index)]
@@ -86,6 +80,17 @@ def _variations(
         pairs.append((up, down))
     sigma = np.sqrt(np.diag(cov))
     return pairs, cov / np.outer(sigma, sigma)
+
+
+def _varied(func: Any, frame: Any, fit: Any, wanted: Any) -> tuple[dict[str, Any], list[Any]]:
+    """The function's parameters by name, and the fitted ones - with an error - to vary."""
+    finals = [p for p in fit.floatParsFinal() if p.getError() > p.getVal() * np.finfo(float).eps]
+    mine = {
+        p.GetName(): p
+        for p in func.getParameters(frame.norm_vars or [])
+        if wanted is None or p.GetName() in wanted
+    }
+    return mine, [p for p in finals if p.GetName() in mine]
 
 
 def _warn_outside(func: Any, par: Any, centre: float, error: float, z: float) -> None:
@@ -121,28 +126,21 @@ def _band_curve(centre: Any, pairs: list[Any], corr: Any) -> RooCurve:
     return made
 
 
-def _sampled(
-    func: Any, frame: Any, arguments: CmdList, fit: Any, z: float, centre: Any, wanted: Any
-) -> RooCurve:
-    """The band from curves of parameters drawn from the fit's Gaussian: their central quantiles."""
+def _sampled_params(func: Any, fit: Any, wanted: Any) -> list[Any]:
+    """The function's fitted parameters - those asked for - in the function's order."""
     finals = set(fit.floatParsFinal().names())
-    params = [
+    return [
         p
         for p in func.getObservables(fit.floatParsFinal())
         if p.GetName() in finals and (wanted is None or p.GetName() in wanted)
     ]
-    density = fit.createHessePdf(params)
-    n = max(int(100.0 / math.erfc(z / math.sqrt(2.0))), 100)
-    log(
-        func,
-        INFO,
-        "Plotting",
-        f"RooAbsReal::plotOn({func.GetName()}) INFO: visualizing {g(z)}-sigma "
-        f"uncertainties in parameters ({','.join(p.GetName() for p in params)}) from fit result "
-        f"{fit.GetName()} using {n} samplings.",
-    )
+
+
+def _sampled_curves(
+    func: Any, frame: Any, arguments: CmdList, params: list[Any], drawn: Any
+) -> list[Any]:
+    """A curve for each drawn set of parameters, the parameters and the frame's range kept."""
     ymin, ymax = frame.GetMinimum(), frame.GetMaximum()
-    drawn = density.generate(params, n)
     saved = [(p, p.getVal()) for p in params]
     curves = []
     for i in range(drawn.numEntries()):
@@ -153,6 +151,25 @@ def _sampled(
         par.setVal(value)
     frame.SetMinimum(ymin)
     frame.SetMaximum(ymax)
+    return curves
+
+
+def _sampled(
+    func: Any, frame: Any, arguments: CmdList, fit: Any, z: float, centre: Any, wanted: Any
+) -> RooCurve:
+    """The band from curves of parameters drawn from the fit's Gaussian: their central quantiles."""
+    params = _sampled_params(func, fit, wanted)
+    density = fit.createHessePdf(params)
+    n = max(int(100.0 / math.erfc(z / math.sqrt(2.0))), 100)
+    log(
+        func,
+        INFO,
+        "Plotting",
+        f"RooAbsReal::plotOn({func.GetName()}) INFO: visualizing {g(z)}-sigma "
+        f"uncertainties in parameters ({','.join(p.GetName() for p in params)}) from fit result "
+        f"{fit.GetName()} using {n} samplings.",
+    )
+    curves = _sampled_curves(func, frame, arguments, params, density.generate(params, n))
     delta = int(len(curves) * math.erfc(z / math.sqrt(2.0)) / 2 + 0.5)
     ys = np.sort(np.array([c.interpolate(centre.x) for c in curves]), axis=0)
     low, high = ys[delta], ys[len(curves) - delta]

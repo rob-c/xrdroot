@@ -58,24 +58,9 @@ def set_pave(fn: Callable[..., Any]) -> None:
 def param_on(pdf: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     options = commands([a for a in args if hasattr(a, "name")], kwargs)
     label = str(options.get("Label", 0, "") or "")
-    xmin = float(options.get("Layout", 0, 0.65))
-    xmax = float(options.get("Layout", 1, 0.9))
-    ymax = int(float(options.get("Layout", 2, 0.9)) * 10000) / 10000.0
-    show_constants = bool(options.get("ShowConstants", 0, False))
-    params = pdf.getParameters(frame.norm_vars or [])
-    if "Parameters" in options:
-        wanted = {one.GetName() for one in as_list(options.get("Parameters"))}
-        params = [one for one in params if one.GetName() in wanted]
-    shown = [p for p in params if show_constants or not p.isConstant()]
+    shown = _shown(pdf, frame, options)
     lines = label.split("\n") if label else []
-    ymin = ymax - 0.06 * len(shown) - 0.06 * len(lines)
-    box = PAVE[0](xmin, ymax, xmax, ymin, "BRNDC")
-    box.SetName(f"{pdf.GetName()}_paramBox")
-    box.SetFillColor(0)
-    box.SetBorderSize(0)
-    box.SetTextAlign(12)
-    box.SetTextSize(0.04)
-    box.SetFillStyle(0)
+    box = _box(pdf, options, len(shown), len(lines))
     command = options.every("Format")
     for param in shown:
         box.AddText(format_command(param, command[-1]) if command else format_var(param, 2, "NELU"))
@@ -83,3 +68,28 @@ def param_on(pdf: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
         box.AddText(line)
     frame.addObject(box)
     return frame
+
+
+def _shown(pdf: Any, frame: Any, options: Any) -> list[Any]:
+    """The parameters the box lists: those asked for, the constant ones only if asked."""
+    params = pdf.getParameters(frame.norm_vars or [])
+    if "Parameters" in options:
+        wanted = {one.GetName() for one in as_list(options.get("Parameters"))}
+        params = [one for one in params if one.GetName() in wanted]
+    show_constants = bool(options.get("ShowConstants", 0, False))
+    return [p for p in params if show_constants or not p.isConstant()]
+
+
+def _box(pdf: Any, options: Any, params: int, lines: int) -> Any:
+    """The empty box where ``Layout`` puts it, tall enough for its parameters and label lines."""
+    xmin = float(options.get("Layout", 0, 0.65))
+    xmax = float(options.get("Layout", 1, 0.9))
+    ymax = int(float(options.get("Layout", 2, 0.9)) * 10000) / 10000.0
+    box = PAVE[0](xmin, ymax, xmax, ymax - 0.06 * params - 0.06 * lines, "BRNDC")
+    box.SetName(f"{pdf.GetName()}_paramBox")
+    box.SetFillColor(0)
+    box.SetBorderSize(0)
+    box.SetTextAlign(12)
+    box.SetTextSize(0.04)
+    box.SetFillStyle(0)
+    return box
