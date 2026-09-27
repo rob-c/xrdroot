@@ -333,3 +333,114 @@ def test_a_negative_count_with_poisson_errors_is_left_out_as_root_does(capsys: A
     assert "RooHistError::getPoissonInterval: cannot calculate interval for n = -3" in out
     assert "RooHist::addBin: unable to add bin with -3 events" in out
     assert frame.getObject(0).GetN() == 2
+
+
+def test_a_frame_finds_names_and_restyles_what_is_on_it() -> None:
+    """``findObject``, ``getObject``, ``nameOf``, ``getDrawOptions`` and ``setDrawOptions``."""
+    from xrdroot.roofit.plot.hist import RooHist
+
+    x, data = generated()
+    frame = x.frame()
+    data.plotOn(frame)
+    assert frame.findObject("h_gData").GetName() == "h_gData"
+    assert frame.findObject("h_gData", RooHist) is frame.getObject(0)
+    assert frame.findObject("h_gData", "RooCurve") is None
+    assert frame.findObject("nothing") is None
+    assert (frame.numItems(), frame.nameOf(0)) == (1, "h_gData")
+    assert frame.getDrawOptions("h_gData") == "P"
+    assert frame.getDrawOptions("nothing") == ""
+    assert frame.setDrawOptions("h_gData", "E") is True
+    assert frame.setDrawOptions("nothing", "E") is False
+    assert frame.getDrawOptions("h_gData") == "E"
+    frame.setInvisible("h_gData")
+    assert frame.items[0][2] is True
+    frame.setPadFactor(0.2)
+    assert frame.getPadFactor() == 0.2
+    frame.remove("h_gData")
+    assert frame.numItems() == 0
+
+
+def test_a_frame_keeps_the_maximum_and_minimum_it_is_given() -> None:
+    """``SetMaximum`` and ``SetMinimum`` hold until changed; unset, an empty frame's are zero."""
+    x2 = RooRealVar("x2", "x2", 0, 0, 1)
+    frame = x2.frame()
+    assert (frame.GetMaximum(), frame.GetMinimum()) == (0.0, 0.0)
+    frame.SetMaximum(3.0)
+    frame.SetMinimum(-1.0)
+    assert (frame.GetMaximum(), frame.GetMinimum()) == (3.0, -1.0)
+
+
+def test_a_frames_axes_are_titled_after_the_variable_and_the_data_and_can_be_retitled() -> None:
+    """``x (GeV)`` along, ``Events / ( 1 GeV )`` up; a macro may set either, or any attribute."""
+    x, data = generated()
+    x.setUnit("GeV")
+    frame = x.frame()
+    assert frame.GetXaxis().GetTitle() == "x (GeV)"
+    assert frame.GetYaxis().GetTitle() == ""
+    data.plotOn(frame)
+    assert frame.GetYaxis().GetTitle() == "Events / ( 1 GeV )"
+    frame.GetYaxis().SetTitle("counts")
+    frame.SetXTitle("mass")
+    assert (frame.GetXaxis().GetTitle(), frame.GetYaxis().GetTitle()) == ("mass", "counts")
+    frame.SetYTitle("n")
+    assert frame.GetYaxis().GetTitle() == "n"
+    axis = frame.GetYaxis()
+    axis.SetTitleOffset(1.4)
+    assert axis.GetTitleOffset() == pytest.approx(1.4)
+    with pytest.raises(AttributeError, match="a RooPlot's axis has no SetNothing here"):
+        axis.SetNothing(1)
+
+
+def test_drawing_a_frame_draws_its_axes_then_what_is_visible_on_it_then_its_axes_again() -> None:
+    """``RooPlot::Draw``: ``FUNC``, each visible item with its option, then ``AXISSAME``."""
+    from xrdroot.roofit.plot import frame as frames
+    from xrdroot.roofit.plot.params import Pave
+
+    x, data = generated()
+    frame = x.frame()
+    data.plotOn(frame)
+    data.plotOn(frame, Invisible=True)
+    frame.addObject(Pave(0.1, 0.2, 0.3, 0.4, "NDC"))
+    frame.addTH1(Pave(0.1, 0.2, 0.3, 0.4, "NDC"), "", True)
+    frame.setDrawOptions("h_gData", "")
+    drawn: list[tuple[Any, str]] = []
+    frames.set_drawer(lambda obj, option: drawn.append((obj, option)))
+    try:
+        frame.Draw("same")
+    finally:
+        frames.set_drawer(lambda obj, option: frames.DRAWN.append((obj, option)))
+    assert [option for _, option in drawn] == ["FUNCSAME", "LP", "", "AXISSAME"]
+    assert drawn[0][0] is frame.hist
+    frame.Draw()
+    assert frames.DRAWN[-4][1] == "FUNC"
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="frame.py:272-282: ROOT prints a frame as 'frame_x_...[x] = (::,::,TPaveText::box)'",
+)
+def test_a_frame_prints_its_variable_and_its_items_as_root_does(capsys: Any) -> None:
+    """ROOT's inline form names the variable, and - slicing its printables - prints ``::``."""
+    x, data = generated()
+    frame = x.frame()
+    data.plotOn(frame)
+    capsys.readouterr()
+    frame.Print()
+    out = capsys.readouterr().out
+    assert out.startswith("frame_x_") and out.endswith("[x] = (::)\n")
+
+
+def test_a_hist_made_by_hand_counts_the_events_of_its_points_in_a_range() -> None:
+    """Without the events behind it, a ``RooHist`` counts the heights of its points inside."""
+    from xrdroot.roofit.plot.hist import RooHist
+
+    made = RooHist(
+        "h", "", [0.5, 1.5, 2.5], [3.0, 4.0, 5.0], [0.5] * 3, [0.5] * 3, [1] * 3, [1] * 3
+    )
+    assert (made.GetN(), made.ClassName(), made.GetName()) == (3, "RooHist", "h")
+    made.SetName("renamed")
+    assert made.GetName() == "renamed"
+    assert made.events_between(1.0, 3.0) == 9.0
+    assert made.fit_range_events() == 0.0
+    made.raw_entries = 12.0
+    assert made.fit_range_events() == 12.0
