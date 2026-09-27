@@ -53,6 +53,10 @@ def generate(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
 
     variables, count, options = parse(args, kwargs)
     names = frozenset(one.GetName() for one in variables)
+    from ..integration import announce
+
+    for _ in range(2):  # the generator's own copy of the density, and its context's
+        announce(pdf, names)
     context = context_for(pdf, names)
     total = _how_many(pdf, names, count, options)
     if total < 0:

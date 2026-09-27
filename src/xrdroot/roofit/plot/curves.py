@@ -146,9 +146,27 @@ def plot_pdf(pdf: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
     options = commands(args, kwargs)
     options.warn_duplicates(f"RooAbsPdf::plotOn({pdf.GetName()})")
     nset = _norm_vars(pdf, frame)
+    _announce_plot(pdf, frame, nset)
     scale = _scale(pdf, frame, options, nset)
     chosen, suffix = _selected(pdf, options)
     return _add_curve(pdf, frame, options, nset, scale, chosen, suffix)
+
+
+def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str]) -> None:
+    """What RooFit says when it plots: the projection, and the two integrals it makes for it."""
+    from ..integration import announce, integral_name
+
+    projected = nset - {frame.getPlotVar().GetName()}
+    if projected:
+        order = [one.GetName() for one in pdf.leaves() if one.GetName() in projected]
+        log(pdf, INFO, "Plotting", f"RooAbsReal::plotOn({pdf.GetName()}) plot on "
+            f"{frame.getPlotVar().GetName()} integrates over variables ({','.join(order)})")  # fmt: skip
+    announce(pdf, nset)
+    if not projected:
+        announce(pdf, nset)
+        return
+    norm = ",".join(one.GetName() for one in pdf.leaves() if one.GetName() in nset)
+    announce(pdf, projected, label=f"{integral_name(pdf, projected, None)}_Norm[{norm}]")
 
 
 def plot_function(func: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:

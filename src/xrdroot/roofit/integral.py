@@ -36,6 +36,9 @@ class RooRealIntegral(RooAbsReal):
         self.func = self._proxy("!func", func)
         self.names, self.nset, self.rng = names, nset, rng
         self._announce()
+        from .integration import announce
+
+        announce(func, names, rng, self._name)
 
     def _announce(self) -> None:
         func, over = self.func, ",".join(sorted(self.names))

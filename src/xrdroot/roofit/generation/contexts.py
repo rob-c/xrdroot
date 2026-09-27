@@ -62,9 +62,11 @@ class NumericContext(Context):
         ranges = [(one.getMin(), one.getMax()) for one in self.order]
         keys = [one.GetName() for one in self.order]
 
+        norm = pdf.norm({}, names)  # constant while the parameters are: RooFit caches it too
+
         def density(points: Any) -> Any:
             ctx = {key: points[:, i] for i, key in enumerate(keys)}
-            return np.broadcast_to(pdf.value(ctx, names), (len(points),))
+            return np.broadcast_to(pdf.compute(ctx) / norm, (len(points),))
 
         self.sampler = FoamGenerator(density, ranges, generator(), vectorized=True)
 

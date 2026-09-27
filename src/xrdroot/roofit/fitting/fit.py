@@ -16,7 +16,6 @@ from typing import Any
 
 from ..cmdargs import Commands, commands
 from ..collections import as_list
-from ..integration import announce_scope
 from ..messages import INFO, log
 from .minimizer import RooMinimizer
 from .nll import RooNLLVar
@@ -78,7 +77,6 @@ def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
 
 def fit_to(pdf: Any, data: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """``pdf.fitTo(data, options...)``: the fit, and its result if ``Save()`` was given."""
-    announce_scope()
     options = commands(args, kwargs)
     nll = nll_options(pdf, data, options)
     log(pdf, INFO, "Fitting", f"RooAddition::defaultErrorLevel({nll.GetName()}) Summation contains "

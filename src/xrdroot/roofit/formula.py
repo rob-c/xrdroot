@@ -16,7 +16,7 @@ from typing import Any
 
 import numpy as np
 
-from ..formula import compile_formula
+from .compiled import Compiled
 from .collections import as_list
 
 __all__ = ["RooFormula", "translate"]
@@ -70,21 +70,16 @@ class RooFormula:
         self.args = as_list(dependents)
         self.text, self.used = translate(self.expression, self.args)
         aliases = [_alias(i) for i in range(len(self.args))]
-        self._compiled = compile_formula(self.text, aliases)
+        self._compiled = Compiled(self.text, aliases)
 
     def actual(self) -> list[Any]:
         """The variables the formula really uses, in the order given."""
         return [self.args[i] for i in self.used]
 
     def evaluate(self, ctx: dict[str, Any]) -> Any:
-        values = [np.asarray(self.args[i].compute(ctx), dtype=np.float64) for i in self.used]
-        shape = np.broadcast_shapes(*(v.shape for v in values)) if values else ()
-        columns = {_alias(i): np.broadcast_to(v, shape).reshape(-1)
-                   for i, v in zip(self.used, values)}  # fmt: skip
-        rows = int(np.prod(shape)) if shape else 1
-        found = self._compiled.evaluate(columns, rows=rows)
-        found = np.asarray(found, dtype=np.float64)
-        return found.reshape(shape) if shape else float(found.reshape(-1)[0])
+        values = {_alias(i): self.args[i].compute(ctx) for i in self.used}
+        found = self._compiled(values)
+        return found if np.ndim(found) else float(found)
 
     def GetTitle(self) -> str:
         return self.expression
