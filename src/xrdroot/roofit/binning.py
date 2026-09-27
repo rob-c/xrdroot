@@ -118,6 +118,11 @@ class RooUniformBinning(RooAbsBinning):
     def setBins(self, nbins: int) -> None:
         self._bins = int(nbins)
 
+    def binCenter(self, index: int) -> float:
+        """``xlo + (i + 0.5) w``, as ``RooUniformBinning`` works it out - not the edges' mean."""
+        width = (self.highBound() - self.lowBound()) / self._bins
+        return float(self.lowBound() + (index + 0.5) * width)
+
 
 class RooRangeBinning(RooUniformBinning):
     """A named range: one bin, its two ends."""
@@ -154,9 +159,10 @@ class RooBinning(RooAbsBinning):
             self.addBoundary(float(edge))
 
     def removeBoundary(self, boundary: float) -> bool:
+        """ROOT's answer, the other way round from what one expects: ``False`` if it was there."""
         before = len(self._edges)
         self._edges = [e for e in self._edges if e != boundary]
-        return len(self._edges) != before
+        return len(self._edges) == before
 
 
 #: The values being evaluated - a dataset's columns, say - that a parameterised

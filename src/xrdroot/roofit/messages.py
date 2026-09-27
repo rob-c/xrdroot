@@ -161,7 +161,7 @@ class RooMsgService:
         stream = StreamConfig(int(level), int(settings.get("Topic", ANY)))
         for key in ("ObjectName", "ClassName", "BaseClassName"):
             setattr(stream, key[0].lower() + key[1:], str(settings.get(key, "")))
-        stream.tagName = str(settings.get("LabelName", ""))
+        stream.tagName = str(settings.get("TagName", settings.get("LabelName", "")))
         stream.prefix = bool(settings.get("Prefix", True))
         stream.out = self._output(settings)
         self._streams.append(stream)

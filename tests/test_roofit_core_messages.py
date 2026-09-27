@@ -270,7 +270,6 @@ def test_each_level_has_the_name_roots_prefix_gives_it(level: int, name: str) ->
     assert messages.LEVELS[level] == name
 
 
-@pytest.mark.xfail(strict=True, reason="addStream reads the tag from LabelName, not TagName")
 def test_a_stream_restricted_by_tag_name_takes_only_tagged_objects() -> None:
     """ROOT's option is ``RooFit::TagName("tag")``; the stream must then list ``TagLabel``."""
     service = RooMsgService()

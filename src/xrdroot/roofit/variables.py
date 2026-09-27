@@ -91,10 +91,10 @@ class RooAbsRealLValue(RooAbsReal):
         return str(name) in self._shared
 
     def hasRange(self, name: Any) -> bool:
-        return not name or str(name) in self._shared
+        return name is None or (bool(name) and str(name) in self._shared)
 
     def getBinningNames(self) -> list[str]:
-        return ["", *self._shared]
+        return ["", *sorted(self._shared)]
 
     def getMin(self, name: Any = None) -> Any:  # an array, for a range whose end is a column
         return self.getBinning(name).lowBound()
@@ -181,8 +181,7 @@ class RooRealVar(RooAbsRealLValue):
                 "new fit max. smaller than min., setting max. to min.",
             )
             high = low
-        self._binning.setRange(low, high)
-        self._val = min(max(self._val, low), high)
+        self._binning.setRange(low, high)  # the value is left as it is: only setVal checks it
 
     def _param_range(self, low: Any, high: Any) -> None:
         """``setRange(tmin, tmax)``: ends that are functions, read whenever the range is asked
@@ -209,20 +208,50 @@ class RooRealVar(RooAbsRealLValue):
     def setMin(self, *args: Any) -> None:
         name, value = (args[0], float(args[1])) if len(args) == 2 else (None, float(args[0]))
         if name:
-            self._set_named_range(str(name), value, self.getMax(name))
-        else:
-            self.setRange(value, max(value, self.getMax()))
+            self._named(str(name)).setRange(value, max(value, self.getMax(name)))
+            return
+        if value > self.getMax():
+            self._warn_end("setMin", "min. larger than max., setting min. to max.")
+            value = self.getMax()
+        self._binning.setRange(value, self.getMax())
+        self._val = min(max(self._val, value), self.getMax())
 
     def setMax(self, *args: Any) -> None:
         name, value = (args[0], float(args[1])) if len(args) == 2 else (None, float(args[0]))
         if name:
-            self._set_named_range(str(name), self.getMin(name), value)
-        else:
-            self.setRange(min(value, self.getMin()), value)
+            low = self.getMin(name)
+            self._named(str(name)).setRange(low, max(low, value))
+            return
+        if value < self.getMin():
+            self._warn_end("setMax", "max. smaller than min., setting max. to min.")
+            value = self.getMin()
+        self._binning.setRange(self.getMin(), value)
+        self._val = min(max(self._val, self.getMin()), value)
+
+    def _warn_end(self, method: str, text: str) -> None:
+        log(
+            self,
+            WARNING,
+            "InputArguments",
+            f"RooRealVar::{method}({self._name}): Proposed new fit {text}",
+        )
+
+    def _named(self, name: str) -> Any:
+        """``getBinning(name, true, true)``: the named range - made, and said, if it is new."""
+        if name not in self._shared:
+            log(
+                self,
+                INFO,
+                "Eval",
+                f"RooRealVar::getBinning({self._name}) new range named '{name}' "
+                "created with default bounds",
+            )
+        return self.getBinning(name, createOnTheFly=True)
 
     def removeRange(self, name: Any = None) -> None:
+        """``removeMin(name); removeMax(name)``: a named range stays, its ends at infinity."""
         if name:
-            self._shared.pop(str(name), None)
+            self._named(str(name)).setRange(-INFINITY, INFINITY)
         else:
             self._binning.setRange(-INFINITY, INFINITY)
 
@@ -278,16 +307,16 @@ class RooRealVar(RooAbsRealLValue):
         return self._error >= 0 if allowZero else self._error > 0
 
     def getAsymErrorLo(self) -> float:
-        return self._asym[0]
+        return self._asym[0] if self._asym[0] <= 0 else 0.0
 
     def getAsymErrorHi(self) -> float:
-        return self._asym[1]
+        return self._asym[1] if self._asym[1] >= 0 else 0.0
 
     def getErrorLo(self) -> float:
-        return self._asym[0] if self.hasAsymError() else -self.getError()
+        return self._asym[0] if self._asym[0] <= 0 else -self._error
 
     def getErrorHi(self) -> float:
-        return self._asym[1] if self.hasAsymError() else self.getError()
+        return self._asym[1] if self._asym[1] >= 0 else self._error
 
     def setAsymError(self, low: float, high: float) -> None:
         self._asym = (float(low), float(high))

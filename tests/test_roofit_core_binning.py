@@ -118,7 +118,6 @@ def test_removing_a_boundary_merges_the_two_bins_beside_it() -> None:
     assert list(binning.array()) == [0.0, 2.0, 3.0, 8.0, 9.0, 10.0]
 
 
-@pytest.mark.xfail(strict=True, reason="RooBinning::removeBoundary returns kFALSE on success")
 def test_removing_a_boundary_says_false_when_it_was_there_as_root_does() -> None:
     """ROOT's ``removeBoundary`` returns ``false`` for a boundary removed, ``true`` for none."""
     binning = RooBinning(0, 10)

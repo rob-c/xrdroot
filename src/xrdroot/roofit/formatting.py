@@ -42,8 +42,10 @@ def _head(var: Any, opts: str, latex: bool) -> str:
     """The opening: ``$`` in LaTeX, the name or title and ``=``, and a space for a sign."""
     text = "$" if latex else ""
     label = var.GetTitle() if "t" in opts else (var.getPlotLabel() if "n" in opts else "")
+    if label and "v" in opts:
+        label += "+"  # RooFit's mark of a name taken verbatim
     if label:
-        text += label + " = "
+        text += label + (" $ & $ " if "y" in opts else " = ")
     return text + (" " if var.getVal() >= 0 else "")
 
 
@@ -94,8 +96,10 @@ def format_command(var: Any, command: Any) -> str:
             what, sig = what + "F", int(extra.value(0, 2))
         elif name == "TLatexStyle":
             what += "L"
-        elif name in ("LatexStyle", "LatexTableStyle"):
+        elif name == "LatexStyle":
             what += "X"
+        elif name == "LatexTableStyle":
+            what += "Y"
         elif name == "VerbatimName":
             what += "V"
     return format_var(var, sig, what)

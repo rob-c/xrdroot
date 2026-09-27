@@ -180,7 +180,6 @@ def test_a_threshold_category_is_the_state_of_the_first_threshold_above_the_valu
     assert not t.isFundamental()
 
 
-@pytest.mark.xfail(strict=True, reason="a computed category's getLabel reads its stored index")
 def test_a_threshold_category_labels_the_state_it_computes() -> None:
     """ROOT's labels for 0.5, 3 and 7 are ``low``, ``mid`` and ``high``."""
     x, t = thresholds()
@@ -215,7 +214,6 @@ def test_a_binning_category_is_the_bin_a_value_falls_in() -> None:
     assert list(bc.compute({"xb": np.array([-1.0, 9.9, 11.0])})) == [0.0, 3.0, 3.0]
 
 
-@pytest.mark.xfail(strict=True, reason="a computed category's getLabel reads its stored index")
 def test_a_binning_category_labels_the_bin_it_computes() -> None:
     """ROOT's label is ``xb_bin2`` for 6 in four bins over ``[0, 10]``."""
     xb = RooRealVar("xb", "xb", 6, 0, 10)
@@ -247,7 +245,6 @@ def test_a_mapped_category_maps_states_by_wildcard_onto_its_own() -> None:
     assert list(m.compute({"c": np.array([1.0, -1.0, 0.0, 5.0])})) == [1.0, 7.0, 0.0, 0.0]
 
 
-@pytest.mark.xfail(strict=True, reason="a computed category's getLabel reads its stored index")
 def test_a_mapped_category_labels_the_state_it_maps_onto() -> None:
     """ROOT's labels: ``Pos``, ``Neg`` and ``Other``."""
     c, m = mapped()
@@ -269,7 +266,6 @@ def test_a_multi_category_has_a_state_for_each_combination_of_its_inputs() -> No
     assert [one.GetName() for one in mc.inputs] == ["c", "d"]
 
 
-@pytest.mark.xfail(strict=True, reason="defineType refuses the ';' in a multi-category's labels")
 def test_a_multi_category_names_each_combination_as_root_does() -> None:
     """ROOT's states: ``{Plus;a}`` 0, ``{Minus;a}`` 1, ``{Zero;a}`` 2, ``{Plus;b}`` 3 ..."""
     c = signs()

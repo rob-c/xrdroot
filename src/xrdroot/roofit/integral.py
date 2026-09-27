@@ -28,7 +28,12 @@ class RooRealIntegral(RooAbsReal):
     """The integral of a function over some of its variables."""
 
     def __init__(
-        self, func: Any, names: frozenset[str], nset: frozenset[str] | None, rng: Any
+        self,
+        func: Any,
+        names: frozenset[str],
+        nset: frozenset[str] | None,
+        rng: Any,
+        others: Any = (),
     ) -> None:
         name = integral_name(func, names, rng)
         if nset:
@@ -37,6 +42,7 @@ class RooRealIntegral(RooAbsReal):
         super().__init__(name, f"Integral of {func.GetTitle()}")
         self.func = self._proxy("!func", func)
         self.names, self.nset, self.rng = names, nset, rng
+        self._others = list(others)
         self._announce()
         from .integration import announce
 
@@ -80,15 +86,32 @@ class RooRealIntegral(RooAbsReal):
                 f"integrated with code {code}",
             )
 
+    def _factorised(self) -> list[Any]:
+        """The variables integrated over that the function does not depend on: each is a width."""
+        return [one for one in self._others if one.GetName() not in self.func.dependents()]
+
     def compute(self, ctx: Context) -> Any:
         if self.nset:
             return self.func.fraction(self.names, ctx, self.nset, self.rng)
-        return self.func.integrate(self.names, ctx, self.rng)
+        found = self.func.integrate(self.names, ctx, self.rng)
+        for one in self._factorised():
+            found = found * (one.getMax(self.rng) - one.getMin(self.rng))
+        return found
 
     def printMetaArgs(self) -> str:
-        closed = self.func.analytic_names(self.names, self.rng) & self.names
-        kind = "Ana" if closed == self.names else "Num"
-        return f"Int {self.func.GetName()}d[{kind}]({','.join(sorted(self.names))}) "
+        """``Int f_Norm(y) d[Ana](x) d[Num](y)``: the function, and how each variable is done."""
+        names = self.names & self.func.dependents()
+        closed = self.func.analytic_names(names, self.rng) & names
+        analytic = sorted(closed | {one.GetName() for one in self._factorised()})
+        numeric = sorted(names - closed)
+        text = f"Int {self.func.GetName()}"
+        if self.nset:
+            text += f"_Norm({','.join(sorted(self.nset))}) "
+        if analytic:
+            text += f"d[Ana]({','.join(analytic)}) "
+        if numeric:
+            text += f" d[Num]({','.join(numeric)}) "
+        return text
 
     def printArgs(self) -> str:
         return "[ " + self.printMetaArgs() + "]"
@@ -102,7 +125,8 @@ def make_integral(
     options = commands([a for a in args if isinstance(a, RooCmdArg)], kwargs)
     nset, rng = _norm_and_range(args, options)
     norm = frozenset(one.GetName() for one in as_list(nset)) if nset is not None else None
-    return RooRealIntegral(func, names, norm, rng)
+    others = [one for one in as_list(iset) if one.GetName() not in func.dependents()]
+    return RooRealIntegral(func, names, norm, rng, others)
 
 
 def _norm_and_range(args: tuple[Any, ...], options: Any) -> tuple[Any, Any]:

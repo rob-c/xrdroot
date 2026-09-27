@@ -16,6 +16,7 @@ import numpy as np
 from . import mathfuncs as mf
 from .collections import as_list
 from .formula import RooFormula
+from .messages import INFO, log
 from .real import Context, RooAbsReal
 
 __all__ = ["RooAddition", "RooFormulaVar", "RooPolyVar", "RooProduct"]
@@ -96,6 +97,9 @@ class RooProduct(RooAbsReal):
             found = found * term.compute(ctx)
         return found
 
+    def printArgs(self) -> str:
+        return "[ " + " * ".join(term.GetName() for term in self.terms) + " ]"
+
 
 class RooAddition(RooAbsReal):
     """``RooAddition``: the sum of its terms, or of the products of two lists."""
@@ -112,5 +116,30 @@ class RooAddition(RooAbsReal):
             values = [a.compute(ctx) * b.compute(ctx) for a, b in zip(self.terms, self.second)]
         return np.sum(np.broadcast_arrays(*values), axis=0) if values else 0.0
 
+    def printArgs(self) -> str:
+        if self.second is not None:
+            return super().printArgs()
+        return "[ " + " + ".join(term.GetName() for term in self.terms) + " ]"
+
     def defaultErrorLevel(self) -> float:
+        """0.5 for a sum with a likelihood in it - RooFit says which - else 1."""
+        from .fitting.nll import RooNLLVar
+
+        found = next((one for one in self.getComponents() if isinstance(one, RooNLLVar)), None)
+        if found is None:
+            log(
+                self,
+                INFO,
+                "Fitting",
+                f"RooAddition::defaultErrorLevel({self._name}) WARNING: "
+                "Summation contains neither RooNLLVar nor RooChi2Var server, using default level of 1.0",
+            )
+            return 1.0
+        log(
+            self,
+            INFO,
+            "Fitting",
+            f"RooAddition::defaultErrorLevel({self._name}) Summation "
+            "contains a RooNLLVar, using its error level",
+        )
         return 0.5

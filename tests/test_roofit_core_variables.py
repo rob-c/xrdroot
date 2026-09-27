@@ -145,7 +145,6 @@ def test_a_range_given_backwards_warns_and_closes_at_its_low_end(
     )
 
 
-@pytest.mark.xfail(strict=True, reason="setRange clips the value; ROOT 6.40 leaves it alone")
 def test_narrowing_the_range_leaves_the_value_where_it_was() -> None:
     """ROOT's ``setRange(2, 5)`` on ``x = 1`` keeps 1: only ``setVal`` checks the range."""
     x = RooRealVar("x", "x", 1, -10, 10)
@@ -162,7 +161,6 @@ def test_raising_the_minimum_moves_the_value_up_with_it() -> None:
     assert (x.getMin(), x.getMax(), x.getVal()) == (3.0, 5.0, 3.0)
 
 
-@pytest.mark.xfail(strict=True, reason="setMax below the minimum moves the minimum down")
 def test_lowering_the_maximum_below_the_minimum_warns_and_closes_the_range(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -209,7 +207,6 @@ def test_one_end_of_a_named_range_can_be_moved_by_name() -> None:
     assert not x.inRange(5, "r")
 
 
-@pytest.mark.xfail(strict=True, reason="a range made by setMin/setMax is announced as setRange's")
 def test_a_named_range_made_by_one_end_is_announced_with_default_bounds(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -236,7 +233,6 @@ def test_an_unknown_range_or_binning_is_the_default_one() -> None:
     assert x.getRange("fly") == (-10.0, 10.0)
 
 
-@pytest.mark.xfail(strict=True, reason="hasRange('') is true here; ROOT has no range called ''")
 def test_the_default_range_is_not_a_named_one() -> None:
     """ROOT's ``hasRange("")`` is ``false``: the default range has no name to look up."""
     assert not RooRealVar("x", "x", 1, -10, 10).hasRange("")
@@ -247,7 +243,7 @@ def test_a_named_range_can_be_removed_and_the_default_one_opened_up() -> None:
     x = RooRealVar("x", "x", 1, 0, 10)
     x.setRange("r", 1, 2)
     x.removeRange("r")
-    assert not x.hasBinning("r")
+    assert x.hasBinning("r")
     x.removeMin()
     assert (x.hasMin(), x.getMax()) == (False, 10.0)
     x.removeMax()
@@ -257,7 +253,6 @@ def test_a_named_range_can_be_removed_and_the_default_one_opened_up() -> None:
     assert x.getRange() == (-INF, INF)
 
 
-@pytest.mark.xfail(strict=True, reason="removeRange(name) drops the range; ROOT opens it up")
 def test_removing_a_named_range_keeps_it_with_open_ends() -> None:
     """ROOT's ``removeRange("r")`` is ``removeMin("r"); removeMax("r")``: ``r`` still exists."""
     x = RooRealVar("x", "x", 1, 0, 10)
@@ -294,7 +289,6 @@ def test_a_named_binning_sits_beside_the_default_one() -> None:
     assert sorted(x.getBinningNames()) == ["", "B", "coarse"]
 
 
-@pytest.mark.xfail(strict=True, reason="bin centres come from edges; ROOT's from lo + (i+.5)*w")
 def test_a_bin_centre_is_roots_to_the_last_bit() -> None:
     """ROOT's ``binCenter`` is ``xlo + (i + 0.5) * binw``, here -2.8571428571428568."""
     x = RooRealVar("x", "x", 1, -10, 10)
@@ -303,7 +297,6 @@ def test_a_bin_centre_is_roots_to_the_last_bit() -> None:
     assert x.getVal() == -2.8571428571428568
 
 
-@pytest.mark.xfail(strict=True, reason="binning names come in the order made; ROOT's are sorted")
 def test_the_binning_names_come_in_roots_order() -> None:
     """ROOT lists ``["", "B", "coarse"]`` for binnings made as ``coarse`` and then ``B``."""
     x = RooRealVar("x", "x", 1, -10, 10)
@@ -388,7 +381,6 @@ def test_an_asymmetric_error_is_used_for_both_sides_once_set() -> None:
     assert not x.hasAsymError()
 
 
-@pytest.mark.xfail(strict=True, reason="getAsymErrorLo/Hi and getErrorLo/Hi differ from ROOT")
 def test_the_error_sides_of_a_fresh_or_cleared_variable_are_roots() -> None:
     """ROOT's fresh ``getErrorLo``/``Hi`` are 1 and -1, and a removed asymmetric error reads 0."""
     x = RooRealVar("x", "x", 1, -10, 10)

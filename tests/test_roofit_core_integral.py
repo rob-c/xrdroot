@@ -75,7 +75,6 @@ def test_a_normalised_integral_over_a_range_is_named_for_both() -> None:
         assert integral.getVal() == 0.8185950834234984
 
 
-@pytest.mark.xfail(strict=True, reason="the normalisation set is not printed as ROOT's _Norm(y)")
 def test_a_normalised_integral_prints_its_normalisation_set(capsys: Any) -> None:
     """ROOT prints ``Int g_Norm(y) d[Ana](y)`` for an integral normalised over ``y``."""
     y, g = gaussian()
@@ -102,7 +101,6 @@ def test_a_numerical_integral_is_marked_num_and_names_its_integrator(capsys: Any
     assert integral.printArgs().endswith("d[Num](y) ]")
 
 
-@pytest.mark.xfail(strict=True, reason="ROOT puts a space between the name and d[Num]")
 def test_a_numerical_integral_prints_as_roots(capsys: Any) -> None:
     """ROOT prints ``Int f d[Num](y)``: ``" d[Num]"`` starts with a space in its source."""
     y, g = gaussian()
@@ -113,7 +111,6 @@ def test_a_numerical_integral_prints_as_roots(capsys: Any) -> None:
     assert capsys.readouterr().out == "RooRealIntegral::f_Int[y][ Int f d[Num](y) ] = 83.3333\n"
 
 
-@pytest.mark.xfail(strict=True, reason="a variable the function does not use is not integrated")
 def test_an_integral_over_a_variable_the_function_does_not_use_is_times_its_range() -> None:
     """ROOT factorises such a variable out: ``g`` at y = 1 times the width 2 of ``z``."""
     _, g = gaussian()

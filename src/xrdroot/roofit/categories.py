@@ -63,12 +63,16 @@ class RooAbsCategory(RooAbsReal):
                 f"{label} already assigned or not allowed",
             )
             return True
-        self._states[label] = number
-        if len(self._states) == 1:
-            self._index = number
+        self._add_state(label, number)
         return False
 
     defineState = defineType
+
+    def _add_state(self, label: str, number: int) -> None:
+        """A state, unchecked: a multi-category's ``{a;b}`` has the semicolons users may not."""
+        self._states[label] = number
+        if len(self._states) == 1:
+            self._index = number
 
     def _next(self) -> int:
         return 1 + max(self._states.values()) if self._states else 0
@@ -226,13 +230,18 @@ class _Derived(RooAbsCategory):
         """The category a dataset keeps a column of: the same states, set rather than computed."""
         made = RooCategory(self._name, self._title)
         for label, index in self._states.items():
-            made.defineType(label, index)
+            made._add_state(label, index)
         return made
 
     def getIndex(self) -> int:
         return int(np.asarray(self.compute({})))
 
     getCurrentIndex = getIndex
+
+    def getLabel(self) -> str:
+        return self.lookupName(self.getIndex())
+
+    getCurrentLabel = getLabel
 
 
 class RooThresholdCategory(_Derived):
@@ -343,7 +352,7 @@ class RooMultiCategory(_Derived):
         lists = [list(one.states().items()) for one in ordered]
         for number, combination in enumerate(itertools.product(*reversed(lists))):
             labels = [label for label, _ in reversed(combination)]
-            self.defineType("{" + ";".join(labels) + "}", number)
+            self._add_state("{" + ";".join(labels) + "}", number)
 
     def compute(self, ctx: Context) -> Any:
         found: Any = 0.0

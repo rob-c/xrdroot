@@ -101,14 +101,12 @@ def test_an_addition_sums_its_terms_or_the_products_of_two_lists() -> None:
     np.testing.assert_array_equal(column, [2.0, 3.0])
 
 
-@pytest.mark.xfail(strict=True, reason="ROOT's level is 1.0 unless the sum holds a RooNLLVar")
 def test_an_addition_without_a_likelihood_has_an_error_level_of_one() -> None:
     """ROOT 6.40 answers 1.0, and logs that the sum holds neither an NLL nor a chi2."""
     x, a, b = variables()
     assert RooAddition("ad", "ad", [a, x, b]).defaultErrorLevel() == 1.0
 
 
-@pytest.mark.xfail(strict=True, reason="ROOT prints a product's and a sum's terms with operators")
 def test_a_product_and_a_sum_print_their_terms_joined_by_their_operator(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

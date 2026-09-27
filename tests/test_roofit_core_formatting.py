@@ -92,16 +92,12 @@ def test_a_format_command_ignores_what_it_does_not_know() -> None:
     assert format_command(var(*FITTED), command) == "mean =  1.017 +/- 0.030"
 
 
-@pytest.mark.xfail(
-    strict=True, reason="LatexTableStyle is ROOT's 'Y' table style, which is not implemented"
-)
 def test_a_latex_table_style_puts_the_name_and_value_in_two_columns() -> None:
     """``printLatex`` tables separate the name from the value with ``$ & $``, as ROOT does."""
     command = RooCmdArg("Format", "NE", RooCmdArg("LatexTableStyle"))
     assert var(*FITTED).format(command) == "$mean $ & $  1.017\\pm 0.030$"
 
 
-@pytest.mark.xfail(strict=True, reason="ROOT's VerbatimName marks the name with a '+'")
 def test_a_verbatim_name_is_printed_as_root_prints_it() -> None:
     """ROOT 6.40 prints ``mean+`` for ``Format("NE", VerbatimName())``."""
     command = RooCmdArg("Format", "NE", RooCmdArg("VerbatimName"))
