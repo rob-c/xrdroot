@@ -344,3 +344,45 @@ def test_a_binned_generation_without_a_count_needs_a_yield(capsys: Any) -> None:
         "and p.d.f does not provide expected number of events\n"
     )
     assert generator().Rndm() == 0.999741748906672
+
+
+def test_a_product_generating_only_some_observables_leaves_the_other_factors_out() -> None:
+    """``g(x) * gy(y)`` asked for x alone: gy has nothing to draw, and x is the Gaussian's own
+    draws, ROOT's."""
+    g, x, y, _ = _gauss()
+    gy = RooGaussian("gy", "gy", y, RooConstVar("two", "", 2), RooConstVar("one", "", 1))
+    data = RooProdPdf("prod", "prod", [g, gy]).generate([x], 3)
+    assert _column(data, "x") == FIRST[:3]
+    assert generator().Rndm() == 0.23165654274635017
+
+
+def test_a_narrow_peak_missed_by_the_trial_points_raises_the_maximum_when_found() -> None:
+    """A peak a thousandth wide on [-1, 1] is missed by the trial points; a trial that finds
+    it above the maximum raises the maximum, and the events are ROOT's."""
+    from xrdroot.roofit.pdfs.generic import RooGenericPdf
+
+    _, proto, _, _ = _proto()
+    generator().SetSeed(4357)
+    gy = RooGaussian(
+        "gy", "gy", proto.get().find("y"), RooConstVar("two", "", 2), RooConstVar("one", "", 1)
+    )
+    proto = gy.generate([proto.get().find("y")], 4)
+    xs = RooRealVar("xs", "xs", -1, 1)
+    w = RooRealVar("w", "w", 0.001, 0.0001, 1)
+    narrow = RooGenericPdf("narrow", "narrow", "exp(-0.5*(xs/w)*(xs/w))", [xs, w])
+    data = narrow.generate([xs], ProtoData=proto)
+    assert _column(data, "xs") == [
+        -0.00015525240451097488,
+        1.768115907907486e-05,
+        -0.00021979212760925293,
+        -0.00040001701563596725,
+    ]
+    assert generator().Rndm() == 0.5279981114435941
+
+
+def test_lowering_a_binned_sample_passes_over_bins_already_empty() -> None:
+    """Taking events away to reach two, a bin picked with nothing in it is passed over and
+    another picked: ROOT's counts and ROOT's generator after."""
+    g, _, x = _binned()
+    assert _counts(g.generateBinned([x], 2)) == [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    assert generator().Rndm() == 0.6992671962361783

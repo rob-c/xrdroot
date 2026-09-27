@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from xrdroot.roofit.pdf import RooAbsPdf, as_array, check_range, names, normalized
-from xrdroot.roofit.pdfs.basic import RooGaussian, RooPolynomial
+from xrdroot.roofit.pdfs.basic import RooExponential, RooGaussian, RooPolynomial
 from xrdroot.roofit.pdfs.extend import RooExtendPdf
 from xrdroot.roofit.variables import RooConstVar, RooRealVar
 
@@ -135,3 +135,55 @@ def test_names_and_arrays_are_had_from_whatever_holds_them() -> None:
     _, x, y = _gauss()
     assert names([x, y]) == frozenset(["x", "y"])
     assert as_array([1, 2]).dtype == np.float64
+
+
+def test_a_conditional_fit_normalises_each_event_at_its_own_conditional_value() -> None:
+    """The Gaussian's mean is each event's y: the norm is one per event, not one for all, and
+    the fitted width is ROOT's."""
+    from xrdroot.roofit.data.dataset import RooDataSet
+    from xrdroot.roofit.rng import generator
+
+    generator().SetSeed(4357)
+    x = RooRealVar("x", "x", -10, 10)
+    y = RooRealVar("y", "y", -2, 2)
+    s = RooRealVar("s", "s", 2, 0.1, 10)
+    gc = RooGaussian("gc", "gc", x, y, s)
+    proto = RooDataSet("proto", "proto", [y])
+    proto.add_columns({"y": np.array([-1.5, -0.5, 0.0, 0.7, 1.9])})
+    data = gc.generate([x], 20, ProtoData=proto)
+    s.setVal(1.0)
+    result = gc.fitTo(data, Save=True, PrintLevel=-1, ConditionalObservables=[y])
+    assert (s.getVal(), s.getError()) == pytest.approx((1.619789494366564, 0.2558258583956), 1e-8)
+    assert result.minNll() == pytest.approx(38.028886252088455, abs=1e-9)
+
+
+def test_a_range_that_ends_at_a_per_event_value_normalises_each_event_there() -> None:
+    """``t.setRange(0, tmax)`` with tmax an observable: each event's exponential is normalised
+    on its own [0, tmax] - ROOT's fit."""
+    from xrdroot.roofit.data.dataset import RooDataSet
+
+    t = RooRealVar("t", "t", 0, 10)
+    tmax = RooRealVar("tmax", "tmax", 1, 10)
+    t.setRange(RooConstVar("zero", "", 0), tmax)
+    c = RooRealVar("c", "c", -0.5, -3, 0)
+    ex = RooExponential("ex", "ex", t, c)
+    data = RooDataSet("dt", "dt", [t, tmax])
+    data.add_columns(
+        {
+            "t": np.array([0.2, 0.5, 1.5, 2.5, 0.1, 4.0, 0.9]),
+            "tmax": np.array([1.0, 3.0, 2.0, 6.0, 1.5, 8.0, 1.2]),
+        }
+    )
+    result = ex.fitTo(data, Save=True, PrintLevel=-1, ConditionalObservables=[tmax])
+    assert (c.getVal(), c.getError()) == pytest.approx((-0.1725560550447029, 0.31789133100), 1e-8)
+    assert result.minNll() == pytest.approx(6.110393063026177, abs=1e-9)
+
+
+def test_the_integral_of_a_density_over_part_of_its_range_is_its_share_there() -> None:
+    """``createIntegral(x, NormSet(x), Range("narrow"))``: the normalised density's share of
+    [-1, 1], ROOT's value."""
+    x = RooRealVar("x", "x", 1.0, -10, 10)
+    x.setRange("narrow", -1, 1)
+    g = RooGaussian("g", "g", x, RooRealVar("m", "m", 0, -5, 5), RooConstVar("two", "", 2.0))
+    found = g.createIntegral([x], NormSet=[x], Range="narrow")
+    assert found.getVal() == pytest.approx(0.3829251420802139, rel=1e-14)

@@ -316,3 +316,33 @@ def test_hesse_and_minos_after_a_minimum_that_is_not_valid_fail_as_in_root(
     result = g.fitTo(data, Save=True, PrintLevel=-1, MaxCalls=5, Minos=True)
     codes = [result.statusCodeHistory(i) for i in range(result.numStatusHistory())]
     assert (codes, result.covQual()) == ([-1, 304, -1], 0)
+
+
+def test_a_simultaneous_fit_in_a_range_restricts_only_the_real_observables() -> None:
+    """``Range("sig")`` of a simultaneous fit names a fit range for x, not for the category:
+    ROOT's fit and its range name."""
+    sim, both, _, params = _simultaneous()
+    both.get().find("x").setRange("sig", -3, 3)
+    result = sim.fitTo(both, Save=True, PrintLevel=-1, Range="sig")
+    expected = [-0.43098936677384614, 2.2234689275327986, 0.46333665670326774]
+    assert [p.getVal() for p in params] == pytest.approx(expected, rel=1e-9)
+    assert result.minNll() == pytest.approx(82.15972244588107, abs=1e-9)
+    assert sim.getStringAttribute("fitrange") == "fit_nll_sim_d"
+
+
+@pytest.mark.xfail(strict=True, reason="a sum of a likelihood has the data's x as a parameter")
+def test_a_likelihood_can_be_minimised_as_a_term_of_a_sum() -> None:
+    """A sum holding the likelihood has the likelihood's parameters - m and s, not the
+    observable - takes its error level, one half, and is minimised to ROOT's fit."""
+    from xrdroot.roofit.fitting.minimizer import RooMinimizer
+    from xrdroot.roofit.functions import RooAddition
+
+    g, data, _, m, s = _gauss()
+    total = RooAddition("total", "total", [g.createNLL(data)])
+    assert total.getVal() == 102.53261229765363
+    minimizer = RooMinimizer(total)
+    minimizer.setPrintLevel(-1)
+    assert minimizer.migrad() == 0
+    minimizer.hesse()
+    assert _fitted(m, s) == pytest.approx(FULL, rel=1e-6)
+    assert total.getParameters().names() == ["m", "s"]

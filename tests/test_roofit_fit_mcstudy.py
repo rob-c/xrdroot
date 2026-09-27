@@ -350,3 +350,16 @@ def test_a_pull_plot_can_carry_a_gaussian_fitted_to_it() -> None:
     names = [frame.getObject(i).GetName() for i in range(int(frame.numItems()))]
     assert names == ["h_fitParData_g", "pullGauss_Norm[mpull]", "pullGauss_paramBox"]
     assert generator().Rndm() == 0.5572100724093616
+
+
+def test_a_fit_that_fails_keeps_its_result_but_gives_no_row() -> None:
+    """Only fits with status 0 make the parameter dataset, as in ``RooMCStudy::fitSample``; a
+    dictionary of options in ``FitOptions`` is taken as its keywords, and anything else in it
+    is passed over."""
+    g, x, _, _ = _gauss()
+    options = RooCmdArg("FitOptions", {"PrintLevel": -1, "MaxCalls": 5}, "mr")
+    study = RooMCStudy(g, [x], RooCmdArg("Silence", True), options)
+    study.generateAndFit(1, 40)
+    (result,) = study.results
+    assert (result.statusCodeHistory(0), result.status() != 0) == (-1, True)
+    assert study.fitParDataSet().numEntries() == 0

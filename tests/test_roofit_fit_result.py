@@ -299,6 +299,7 @@ def test_a_result_answers_to_its_name_and_class_and_an_empty_one_has_no_correlat
         "a result",
         "RooFitResult",
     )
+    assert result.printValue() == "0"
     fitted, _ = _gauss_fit()
     assert (fitted.GetName(), fitted.GetTitle()) == (
         "fitresult_g_gData",
