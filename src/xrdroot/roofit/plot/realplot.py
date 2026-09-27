@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 
+from .. import copies
 from ..cmdargs import RooCmdArg
 from .cmdlist import CmdList
 from .curves import _add_curve, _announce_plot, _range_fraction
@@ -43,7 +44,13 @@ def real_plot(
 
 
 def _draw(func: Any, frame: Any, options: Any, chosen: Any, nset: frozenset[str]) -> Any:
-    """One curve, over its range, scaled as the options say and normalised within ``NormRange``."""
+    """One curve, over its range, scaled as the options say and normalised within ``NormRange``,
+    drawn by RooFit's copy of the function made to plot it (:mod:`..copies`)."""
+    with copies.within(copies.copies_of(func, "plot", nset)):
+        return _drawn(func, frame, options, chosen, nset)
+
+
+def _drawn(func: Any, frame: Any, options: Any, chosen: Any, nset: frozenset[str]) -> Any:
     seen = None
     if nset:
         from .projections import view

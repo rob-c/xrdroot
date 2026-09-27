@@ -170,13 +170,19 @@ def numeric_names(func: Any, names: frozenset[str], rng: Any = None) -> list[str
     return [one.GetName() for one in func.leaves() if one.GetName() in names - closed]
 
 
-def announce(func: Any, names: frozenset[str], rng: Any = None, label: str | None = None) -> None:
+def announce(func: Any, names: frozenset[str], rng: Any = None, label: str | None = None,
+             normalising: bool = False) -> None:  # fmt: skip
     """``RooRealIntegral::init``'s line for a numerical integral, as RooFit prints it on making one.
 
     RooFit makes - and so announces - its integral objects at moments of its
-    own: twice when it sets up to generate, twice when it plots a curve,
-    never inside a fit. The callers here say when; this says what.
+    own: twice when it sets up to generate, once when it plots a curve, once
+    when a fit first evaluates its likelihood. The callers here say when;
+    this says what. A density that normalises itself through a cache of its
+    own (``normalised_by_cache``) makes no integral to normalise a copy for
+    generating or plotting - ``normalising`` - and says nothing then.
     """
+    if normalising and getattr(func, "normalised_by_cache", False):
+        return
     numeric = numeric_names(func, names, rng)
     if not numeric:
         return

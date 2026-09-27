@@ -145,7 +145,8 @@ def _range_fraction(
 
 
 def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], seen: Any = None) -> None:
-    """What RooFit says when it plots: the projection - in the frame's order - and its integrals."""
+    """What RooFit says when it plots: the projection - in the frame's order - and the
+    integral it makes for it."""
     from ..integration import announce, integral_name
     from .projections import announce_average
 
@@ -166,14 +167,14 @@ def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], seen: Any = None)
         )
     if seen is not None:
         announce_average(pdf, frame, seen)
-    announce(pdf, nset)
+    announce(pdf, nset, normalising=True)
     if not projected:
-        announce(pdf, nset)
         return
     norm = ",".join(one.GetName() for one in pdf.leaves() if one.GetName() in nset)
     special = getattr(pdf, "announce_projection", None)
     if special is None or not special(projected, nset):
-        announce(pdf, projected, label=f"{integral_name(pdf, projected, None)}_Norm[{norm}]")
+        label = f"{integral_name(pdf, projected, None)}_Norm[{norm}]"
+        announce(pdf, projected, label=label, normalising=True)
 
 
 def plot_function(func: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:

@@ -14,6 +14,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from .. import copies
 from ..cmdargs import Commands, commands
 from ..collections import as_list
 from ..messages import INFO, log
@@ -87,6 +88,8 @@ def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
     normalized = (
         pdf.normalized_name(observables, rng) if hasattr(pdf, "normalized_name") else pdf.GetName()
     )
+    observed = frozenset(one.GetName() for one in pdf.getObservables(data))
+    fitted = copies.copies_of(pdf, "fit", observed)
     log(
         pdf,
         INFO,
@@ -106,6 +109,7 @@ def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
         constraints=_constraints(pdf, data, options),
         name=f"nll_{normalized}_{data.GetName()}",
         offset=bool(options.get("Offset", 0, False)),
+        copies=fitted,
     )
     elapsed = (time.perf_counter() - started) * 1000
     log(pdf, INFO, "Fitting", f"Creation of NLL object took {elapsed:g} ms")

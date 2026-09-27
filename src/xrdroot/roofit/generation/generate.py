@@ -87,7 +87,7 @@ class Generator:
             reverse=True,
         )
         for _ in range(2):  # the generator's own copy of the density, and its context's
-            announce(pdf, self.names)
+            announce(pdf, self.names, normalising=True)
         self.context = _context(pdf, self.names, frozenset(one.GetName() for one in self.taken))
 
     def sample(self, total: int, name: str) -> Any:
