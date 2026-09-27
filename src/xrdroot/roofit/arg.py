@@ -17,6 +17,7 @@ anything else changing.
 from __future__ import annotations
 
 import copy
+import itertools
 from collections.abc import Iterator
 from typing import Any
 
@@ -35,6 +36,8 @@ __all__ = ["Proxy", "RooAbsArg", "graph_changed"]
 
 #: How many times any node's name or inputs have changed: what the cached walks are checked against.
 _GRAPH = [0]
+#: A number for each node made, in turn.
+_SERIALS = itertools.count()
 
 
 def graph_changed() -> None:
@@ -67,6 +70,7 @@ class RooAbsArg(RooPrintable):
     """A node of a model: named, titled, made of other nodes, with attributes."""
 
     def __init__(self, name: Any = "", title: Any = "") -> None:
+        self._serial = next(_SERIALS)  # the order objects are made in: a Python set's order
         self._name = str(name)
         self._title = str(title) if title is not None else ""
         self._proxies: list[Proxy] = []

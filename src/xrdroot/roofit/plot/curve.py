@@ -113,6 +113,10 @@ class RooCurve(Graph):
         """``RooCurve::interpolate``: the curve's height at ``x``, linearly between its points."""
         return np.interp(x, self.x, self.y)
 
+    def Eval(self, x: float) -> float:
+        """``TGraph::Eval``: the height at ``x``, linearly between the points."""
+        return float(self.interpolate(x))
+
     def average(self, low: float, high: float) -> float:
         """``RooCurve::average``: the mean height over ``[low, high]``, by the trapezoids of its
         points."""

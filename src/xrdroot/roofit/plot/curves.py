@@ -152,7 +152,8 @@ def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], seen: Any) -> Non
             INFO,
             "Plotting",
             f"RooAbsReal::plotOn({pdf.GetName()}) plot on "
-            f"{plot_var} integrates over variables ({','.join(order)})",
+            f"{plot_var} integrates over variables ({','.join(order)})"
+            + (f" in range {seen.range}" if seen.range else ""),
         )
     announce_average(pdf, frame, seen)
     announce(pdf, nset, normalising=True)
@@ -179,6 +180,18 @@ def plot_function(func: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str
     return real_plot(func, frame, CmdList.of(args, kwargs))
 
 
+def _curve_name(func: Any, nset: frozenset[str], projected: frozenset[str], rng: Any) -> str:
+    """``model_Norm[x]``, or ``model_Int[y|sig]_Norm[x,y]``: what RooFit calls the projection."""
+    if not nset:
+        return str(func.GetName())
+    from ..integration import integral_name
+
+    order = [v.GetName() for v in func.leaves()]
+    norm = ",".join(sorted(nset, key=order.index))
+    head = integral_name(func, projected, rng) if projected else func.GetName()
+    return f"{head}_Norm[{norm}]"
+
+
 def _add_curve(
     func: Any,
     frame: Any,
@@ -198,7 +211,7 @@ def _add_curve(
 
     def projection(ctx: Any) -> Any:
         if projected:
-            return func.fraction(projected, ctx, nset, None)
+            return func.fraction(projected, ctx, nset, seen.range if seen is not None else None)
         return func.value(ctx, nset)
 
     def curve_at(xs: Any) -> Any:
@@ -212,8 +225,7 @@ def _add_curve(
     precision = float(options.get("Precision", 0, 1e-3))
     with selection.selecting(chosen):
         xs, ys = sample(curve_at, low, high, frame.GetNbinsX(), precision, wings)
-    norm = ",".join(sorted(nset, key=lambda n: [v.GetName() for v in func.leaves()].index(n)))
-    label = f"{func.GetName()}_Norm[{norm}]" if nset else func.GetName()
+    label = _curve_name(func, nset, projected, seen.range if seen is not None else None)
     if seen is not None and seen.averaged:
         label += f"_DataAvg[{','.join(seen.averaged)}]"
     curve = RooCurve(label + suffix, f"Projection of {func.GetTitle()}", xs, ys)

@@ -24,6 +24,13 @@ __all__ = ["RooAbsCollection", "RooArgList", "RooArgSet", "as_list", "names_of"]
 
 
 def _flat(items: Iterable[Any]) -> Iterator[Any]:
+    """The members, collections opened up - a Python set's in the order they were made.
+
+    A set has no order ROOT can see either: PyROOT's runs order it by where the objects
+    happen to be in memory. The order they were made in is the nearest steady stand-in.
+    """
+    if isinstance(items, (set, frozenset)):
+        items = sorted(items, key=lambda one: getattr(one, "_serial", 0))
     for item in items:
         if isinstance(item, (RooAbsCollection, list, tuple, set, frozenset)):
             yield from _flat(item)

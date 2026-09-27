@@ -713,9 +713,6 @@ def test_a_product_on_a_frame_of_one_observable_integrates_the_other_out(capsys:
     assert heights(b, (1.5, 3.5)) == pytest.approx([39.80391292, 18.81941432], rel=REL)
 
 
-@pytest.mark.xfail(
-    strict=False, reason="curves.py:220-221: ROOT names a projection prod_Int[y]_Norm[x,y]"
-)
 def test_a_projection_is_named_after_the_integral_it_takes_as_root_names_it() -> None:
     """ROOT calls the curve of ``prod`` integrated over ``y`` ``prod_Int[y]_Norm[x,y]``."""
     p = Plane()

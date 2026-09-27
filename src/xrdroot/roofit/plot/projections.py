@@ -32,6 +32,8 @@ class View:
         self.averaged: list[str] = []
         self.data: Any = None
         self.binned = False
+        #: ``ProjectionRange``: the range the projected variables are integrated over.
+        self.range: Any = None
 
     def average(self, value: Any, ctx: dict[str, Any]) -> Any:
         """``RooDataWeightedAverage``: ``value`` averaged over the projection data's events."""
@@ -94,6 +96,7 @@ def _slice_set(pdf: Any, frame: Any, projected: list[str]) -> list[str]:
 def view(pdf: Any, frame: Any, options: Commands, function: str = "plotOn") -> View:
     """``makeProjectionSet`` and the rest of ``plotOn``'s preprocessing, with its messages."""
     made = View()
+    made.range = options.get("ProjectionRange") or None
     made.data, made.binned, data_vars = _projection_data(options)
     projected = _projected(pdf, frame, {category.GetName() for category, _ in sliced(options)})
     made.sliced = _slice_set(pdf, frame, projected)
