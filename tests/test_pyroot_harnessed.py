@@ -116,3 +116,15 @@ def test_a_two_dimensional_histogram_fills_at_random_as_root_does():
     g.FillRandom(ROOT.TH2D("empty", "", 2, 0, 1, 2, 0, 1), 10)
     g.FillRandom("f2", 0, ROOT.TRandom3(1))
     assert g.GetEntries() == 500
+
+
+def test_sequences_classes_by_name_and_thread_safety_as_root_names_them():
+    seq = ROOT.TSeqI(2, 8, 2)
+    ROOT.EnableThreadSafety()
+    ROOT.ROOT.EnableThreadSafety()
+    expect(
+        (list(seq), [2, 4, 6]),
+        ((len(seq), seq.size(), seq.front(), seq.back(), seq[1]), (3, 3, 2, 6, 4)),
+        (list(ROOT.ROOT.TSeqL(3)), [0, 1, 2]),
+        (ROOT.gROOT.GetClass("TH1F").InheritsFrom("TH1"), True),
+    )

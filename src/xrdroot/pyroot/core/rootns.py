@@ -20,7 +20,43 @@ __all__ = [
     "DisableImplicitMT",
     "IsImplicitMTEnabled",
     "GetThreadPoolSize",
+    "EnableThreadSafety",
+    "TSeqI",
+    "TSeqL",
+    "TSeqU",
 ]
+
+
+def EnableThreadSafety() -> None:
+    """``ROOT::EnableThreadSafety``: nothing to do - xrdroot's objects share no global lock."""
+
+
+class TSeqI:
+    """``ROOT::TSeqI(begin, end, step)``: the integers a ``for`` over it walks, as ``range``."""
+
+    def __init__(self, *bounds: int) -> None:
+        self._range = range(*(int(bound) for bound in bounds))
+
+    def __iter__(self) -> Any:
+        return iter(self._range)
+
+    def __len__(self) -> int:
+        return len(self._range)
+
+    def size(self) -> int:
+        return len(self._range)
+
+    def front(self) -> int:
+        return self._range[0]
+
+    def back(self) -> int:
+        return self._range[-1]
+
+    def __getitem__(self, index: int) -> int:
+        return self._range[index]
+
+
+TSeqL = TSeqU = TSeqI
 
 
 class _Namespace:
@@ -30,6 +66,7 @@ class _Namespace:
     DisableImplicitMT = staticmethod(DisableImplicitMT)
     IsImplicitMTEnabled = staticmethod(IsImplicitMTEnabled)
     GetThreadPoolSize = staticmethod(GetThreadPoolSize)
+    EnableThreadSafety = staticmethod(EnableThreadSafety)
 
     def __getattr__(self, name: str) -> Any:
         if name.startswith("__"):

@@ -248,6 +248,12 @@ class TROOT(TDirectory):
     def IsWebDisplay(self) -> bool:
         return False
 
+    def GetClass(self, name: Any) -> Any:
+        """``GetClass(name)``: the ``TClass`` of that name."""
+        from .objects import TClass
+
+        return TClass(str(name))
+
     def GetVersion(self) -> str:
         """``GetVersion``: ROOT's release this namespace follows, ``6.40.04``."""
         return RELEASE
