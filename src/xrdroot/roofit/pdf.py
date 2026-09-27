@@ -230,6 +230,16 @@ class RooAbsPdf(RooAbsReal):
 
         return fit_to(self, data, args, kwargs)
 
+    def createChi2(self, data: Any, *args: Any, **kwargs: Any) -> Any:
+        from .fitting.chi2 import create_chi2
+
+        return create_chi2(self, data, args, kwargs)
+
+    def chi2FitTo(self, data: Any, *args: Any, **kwargs: Any) -> Any:
+        from .fitting.chi2 import chi2_fit_to
+
+        return chi2_fit_to(self, data, args, kwargs)
+
     def createNLL(self, data: Any, *args: Any, **kwargs: Any) -> Any:
         from .fitting.nll import create_nll
 

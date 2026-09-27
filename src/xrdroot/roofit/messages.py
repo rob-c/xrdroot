@@ -232,7 +232,7 @@ class RooMsgService:
     def isActive(self, obj: Any, topic: int, level: int) -> bool:
         return self.activeStream(obj, topic, level) >= 0
 
-    def log(self, obj: Any, level: int, topic: str, text: str) -> None:
+    def log(self, obj: Any, level: int, topic: str, text: str, flush: bool = True) -> None:
         """Print ``text`` as a message of ``level`` on ``topic``, prefixed as its stream says."""
         if level >= ERROR:
             self.errors += 1
@@ -245,6 +245,9 @@ class RooMsgService:
             out.write("\n")
         self._last_level = level
         prefix = f"[#{found}] {LEVELS[level]}:{topic} -- " if stream.prefix else ""
+        if not flush and hasattr(out, "write_unflushed"):
+            out.write_unflushed(prefix + text + "\n")  # ended "\n", not std::endl
+            return
         out.write(prefix + text + "\n")
         out.flush()
 
@@ -294,6 +297,7 @@ def log_plain(obj: Any, level: int, topic: str, text: str) -> None:
         out.flush()
 
 
-def log(obj: Any, level: int, topic: str, text: str) -> None:
-    """``oocoutI(obj, topic) << text``, and its kin by ``level``."""
-    SERVICE.log(obj, level, topic, text)
+def log(obj: Any, level: int, topic: str, text: str, flush: bool = True) -> None:
+    """``oocoutI(obj, topic) << text``, and its kin by ``level`` - ``flush=False`` for a line
+    RooFit ends ``"\n"`` rather than ``std::endl``."""
+    SERVICE.log(obj, level, topic, text, flush)
