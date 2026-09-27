@@ -21,7 +21,7 @@ from ..cmdargs import commands
 from ..messages import INFO, log
 from ..printing import RooPrintable, address, g
 
-__all__ = ["RooPlot", "make_frame", "set_drawer"]
+__all__ = ["AXIS", "Axis", "RooPlot", "make_frame", "set_axis", "set_drawer"]
 
 #: ``TH1::kNoStats`` and ``TH1::kNoTitle``' neighbour: a frame never has a stats box.
 NO_STATS = 1 << 9
@@ -33,6 +33,36 @@ _DRAWER: list[Callable[[Any, str], Any]] = [lambda obj, option: DRAWN.append((ob
 def set_drawer(fn: Callable[[Any, str], Any]) -> None:
     """Make ``fn(obj, option)`` what drawing a frame's parts does."""
     _DRAWER[0] = fn
+
+
+class Axis:
+    """An axis of the frame, over its members: the little of ``TAxis`` a macro sets on one."""
+
+    def __init__(self, row: dict[str, Any], owner: Any = None) -> None:
+        self._row = row
+
+    def SetTitle(self, title: str = "") -> None:
+        self._row["TNamed"]["fTitle"] = str(title)
+
+    def GetTitle(self) -> str:
+        return str(self._row["TNamed"]["fTitle"])
+
+    def __getattr__(self, name: str) -> Any:
+        member = "f" + name[3:]
+        attributes = self.__dict__["_row"]["TAttAxis"]
+        if name.startswith("Set") and member in attributes:
+            return lambda value, *rest: attributes.__setitem__(member, type(attributes[member])(value))
+        if name.startswith("Get") and member in attributes:
+            return lambda: attributes[member]
+        raise AttributeError(f"a RooPlot's axis has no {name} here")
+
+
+#: What stands for an axis of a frame: the pyroot layer puts its ``TAxis`` here.
+AXIS: list[Callable[[dict[str, Any], Any], Any]] = [Axis]
+
+
+def set_axis(fn: Callable[[dict[str, Any], Any], Any]) -> None:
+    AXIS[0] = fn
 
 
 class RooPlot(RooPrintable):
@@ -96,6 +126,18 @@ class RooPlot(RooPrintable):
     def axis(self, which: str) -> dict[str, Any]:
         """The members of the ``"x"`` or ``"y"`` axis, which the pyroot layer's ``TAxis`` edits."""
         return self.hist.members["TH1"][f"f{which.upper()}axis"]  # type: ignore[no-any-return]
+
+    def GetXaxis(self) -> Any:
+        return AXIS[0](self.axis("x"), self.hist)
+
+    def GetYaxis(self) -> Any:
+        return AXIS[0](self.axis("y"), self.hist)
+
+    def SetXTitle(self, title: str) -> None:
+        self.axis("x")["TNamed"]["fTitle"] = str(title)
+
+    def SetYTitle(self, title: str) -> None:
+        self.axis("y")["TNamed"]["fTitle"] = str(title)
 
     def getPlotVar(self) -> Any:
         return self.var

@@ -16,7 +16,7 @@ import importlib.util
 from typing import Any
 
 #: The modules this namespace is made of, in the order their names are taken.
-SUBMODULES = ["core", "stl", "trees", "rdf", "graphics"]
+SUBMODULES = ["core", "stl", "trees", "rdf", "graphics", "roofit"]
 
 __all__: list[str] = []
 
