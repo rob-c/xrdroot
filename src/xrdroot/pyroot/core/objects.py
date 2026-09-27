@@ -401,6 +401,10 @@ def _kept(member: str, value: Any) -> Any:
     """A value as the member keeps it: a colour cast to int, a size to float."""
     if member in _FLOATS:
         return float(value)
+    if isinstance(value, str):  # SetLineColor("kBlue"), as PyROOT takes it
+        from .colors import named
+
+        return named(value)
     return int(value)
 
 

@@ -85,3 +85,17 @@ ENUMS: dict[str, Any] = {
 globals().update(ENUMS)
 
 __all__ = sorted(ENUMS)
+
+
+def named(text: str) -> int:
+    """``"kBlue"``, ``"kRed+2"``: what PyROOT makes of an enumerator's name given for a number."""
+    import re
+
+    found = re.match(r"^\s*(k\w+)\s*(?:([+-])\s*(\d+))?\s*$", text)
+    tables = (COLORS, LINE_STYLES, FILL_STYLES, MARKER_STYLES)
+    name = found.group(1) if found else ""
+    base = next((table[name] for table in tables if name in table), None)
+    if found is None or base is None:
+        raise ValueError(f"'{text}' is not the name of one of ROOT's colours or styles.")
+    offset = int(found.group(3) or 0)
+    return base - offset if found.group(2) == "-" else base + offset
