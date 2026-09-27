@@ -33,6 +33,7 @@ MODULES = {
     "pdfs.addpdf": ["RooAddPdf", "RooRecursiveFraction"],
     "pdfs.basic": ["RooChebychev", "RooExponential", "RooGaussian", "RooPolynomial", "RooUniform"],
     "pdfs.extend": ["RooExtendPdf"],
+    "pdfs.fftconv": ["RooFFTConvPdf"],
     "pdfs.generic": ["RooGenericPdf"],
     "pdfs.histpdf": ["RooHistFunc", "RooHistPdf"],
     "pdfs.keys": ["RooKeysPdf"],

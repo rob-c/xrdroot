@@ -14,6 +14,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from .. import copies
 from ..cmdargs import Commands, commands
 from ..collections import as_list
 from ..messages import INFO, log
@@ -78,6 +79,7 @@ def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
     _fit_range_attributes(pdf, data, rng)
     normalized = pdf.normalized_name(pdf.getObservables(data), rng) if hasattr(
         pdf, "normalized_name") else pdf.GetName()  # fmt: skip
+    fitted = copies.copies_of(pdf, "fit", frozenset(one.GetName() for one in pdf.getObservables(data)))
     log(pdf, INFO, "Fitting", f"RooAbsPdf::fitTo({normalized}) fixing normalization set for "
         "coefficient determination to observables in data")  # fmt: skip
     if not _SAID_LIBRARY[0]:
@@ -87,7 +89,7 @@ def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
                     conditional=options.get("ConditionalObservables", 0, ()),
                     constraints=_constraints(pdf, data, options),
                     name=f"nll_{normalized}_{data.GetName()}",
-                    offset=bool(options.get("Offset", 0, False)))  # fmt: skip
+                    offset=bool(options.get("Offset", 0, False)), copies=fitted)  # fmt: skip
     elapsed = (time.perf_counter() - started) * 1000
     log(pdf, INFO, "Fitting", f"Creation of NLL object took {elapsed:g} ms")
     return nll

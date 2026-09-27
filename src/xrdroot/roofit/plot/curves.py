@@ -16,7 +16,7 @@ from typing import Any
 
 import numpy as np
 
-from .. import selection
+from .. import copies, selection
 from ..cmdargs import Commands, commands
 from ..messages import INFO, log
 from .curve import RooCurve, sample
@@ -114,12 +114,13 @@ def plot_pdf(pdf: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
     nset = _norm_vars(pdf, frame)
     _announce_plot(pdf, frame, nset)
     chosen, suffix = _selected(pdf, options)
-    made = plan(pdf, frame, options, nset)
-    scale = made.scale
-    if made.post_scale:
-        scale /= _range_fraction(pdf, frame, nset, made.norm_range, made.pieces)
-    for low, high in made.pieces:
-        _add_curve(pdf, frame, options, nset, scale, chosen, suffix, (low, high, made.wings))
+    with copies.within(copies.copies_of(pdf, "plot", nset)):
+        made = plan(pdf, frame, options, nset)
+        scale = made.scale
+        if made.post_scale:
+            scale /= _range_fraction(pdf, frame, nset, made.norm_range, made.pieces)
+        for low, high in made.pieces:
+            _add_curve(pdf, frame, options, nset, scale, chosen, suffix, (low, high, made.wings))
     return frame
 
 

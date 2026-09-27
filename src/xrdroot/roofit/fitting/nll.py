@@ -49,7 +49,7 @@ class RooNLLVar(RooAbsReal):
 
     def __init__(self, pdf: Any, data: Any, *, extended: bool = False, rng: Any = None,
                  conditional: Any = (), constraints: Any = (), name: str = "",
-                 offset: bool = False) -> None:  # fmt: skip
+                 offset: bool = False, copies: Any = None) -> None:  # fmt: skip
         super().__init__(name or f"nll_{pdf.GetName()}_{data.GetName()}", "-log(likelihood)")
         self.pdf = self._proxy("function", pdf)
         self.data = data
@@ -66,12 +66,20 @@ class RooNLLVar(RooAbsReal):
         self.sumw = math.fsum(self.w.tolist())
         self.offset = offset
         self._offset_value = 0.0
+        #: The states of the fit's copy of the model, for the nodes that keep one (:mod:`..copies`).
+        self._copies = copies or {}
 
     def compute(self, ctx: Any) -> Any:
         return self.evaluate_nll()
 
     def evaluate_nll(self) -> float:
         """The likelihood at the parameters' values now, or a NaN carrying how bad it was."""
+        from ..copies import within
+
+        with within(self._copies):
+            return self._evaluate()
+
+    def _evaluate(self) -> float:
         self._badness = 0.0
         channels = getattr(self.pdf, "channel_terms", None)
         total = channels(self) if channels is not None else self.channel(self.pdf, None)
