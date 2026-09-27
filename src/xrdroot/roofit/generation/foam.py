@@ -77,9 +77,18 @@ class Foam:
     """
 
     def __init__(
-        self, density: Density, dim: int, rng: Any, *, n_cells: int = 1000,
-        n_sampl: int = 200, n_bin: int = 8, ev_per_bin: int = 25,
-        opt_drive: int = 2, opt_rej: int = 1, max_wt_rej: float = 1.1,
+        self,
+        density: Density,
+        dim: int,
+        rng: Any,
+        *,
+        n_cells: int = 1000,
+        n_sampl: int = 200,
+        n_bin: int = 8,
+        ev_per_bin: int = 25,
+        opt_drive: int = 2,
+        opt_rej: int = 1,
+        max_wt_rej: float = 1.1,
     ) -> None:
         _check_options(dim, n_sampl, n_bin, opt_drive)
         self.density = density
@@ -167,8 +176,7 @@ class Foam:
             prime += cell.prim
         if prime == 0.0:
             raise ValueError(
-                "The density is zero everywhere FOAM looked, so there is nothing "
-                "to generate from."
+                "The density is zero everywhere FOAM looked, so there is nothing to generate from."
             )
         self.prime = prime
         total = 0.0
@@ -407,7 +415,10 @@ def _varedu(sums: list[float], nent: float, content: Any, sumw2: Any) -> tuple[i
 
 
 def _best_run(
-    ssw_all: float, nent: float, content: list[Any], errors: list[float],
+    ssw_all: float,
+    nent: float,
+    content: list[Any],
+    errors: list[float],
 ) -> tuple[Any, float, float]:
     """The smallest spread over the runs of bins ``[lo, up]``, and the run, first found first."""
     n_bin = len(content)
@@ -460,8 +471,13 @@ class FoamGenerator:
     """
 
     def __init__(
-        self, function: Callable[[Any], Any], ranges: Any, rng: Any = None, *,
-        vectorized: bool = False, n_cells: int | None = None,
+        self,
+        function: Callable[[Any], Any],
+        ranges: Any,
+        rng: Any = None,
+        *,
+        vectorized: bool = False,
+        n_cells: int | None = None,
         n_sample: int = ROOFIT_SAMPLES,
     ) -> None:
         bounds = np.asarray(ranges, dtype=np.float64).reshape(-1, 2)
@@ -474,8 +490,11 @@ class FoamGenerator:
         if n_cells is None:
             n_cells = ROOFIT_CELLS.get(dim, ROOFIT_CELLS_ND)
         self.foam = Foam(
-            self._density, dim, TRandom3() if rng is None else rng,
-            n_cells=n_cells, n_sampl=n_sample,
+            self._density,
+            dim,
+            TRandom3() if rng is None else rng,
+            n_cells=n_cells,
+            n_sampl=n_sample,
         )
         self.foam.initialize()
 

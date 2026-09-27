@@ -94,7 +94,9 @@ class RooRandom:
 
     @staticmethod
     def setRandomGenerator(engine: Any) -> None:
-        made = engine if isinstance(engine, Generator) else Generator(getattr(engine, "_xrd", engine))
+        made = (
+            engine if isinstance(engine, Generator) else Generator(getattr(engine, "_xrd", engine))
+        )
         _GENERATOR[:] = [made]
 
     @staticmethod

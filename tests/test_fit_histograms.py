@@ -49,9 +49,10 @@ def test_a_polynomial_is_fitted_by_exact_linear_least_squares(capsys):
     np.testing.assert_allclose(result.covariance, np.linalg.inv(normal), rtol=1e-10)
     residual = (y - expected[0] - expected[1] * x) / e
     assert result.chi2 == pytest.approx(float(residual @ residual), rel=1e-12)
-    assert (result.minimizer, result.ndf, result.status, result.valid) == ("Linear", 10, 0, True)
+    assert result.minimizer == "Linear / Migrad"
+    assert (result.ndf, result.status, result.valid) == (10, 0, True)
     printed = capsys.readouterr().out.splitlines()
-    assert printed[0] == "*" * 40 and printed[1] == "Minimizer is Linear"
+    assert printed[0] == "*" * 40 and printed[1] == "Minimizer is Linear / Migrad"
     assert printed[2].startswith("Chi2                      = ")
     assert not any(line.startswith(("Edm", "NCalls")) for line in printed)
 
@@ -459,8 +460,10 @@ def test_a_two_dimensional_histogram_is_fitted_with_xygaus():
     np.testing.assert_allclose(h.functions[0].range, ((-3, 3), (-3, 3)), rtol=1e-15)
     assert h.fit("bigaus", "Q").parameter("Rho") == pytest.approx(0.0, abs=0.05)
     assert h.fit("xygaus", "IQ", (-2.0, 2.0)).valid
+    # A formula linear in its parameters is still Minuit's, unless written with "++",
+    # as ROOT 6.40 fits "[0] + [1]*x + [2]*y".
     linear = h.fit("[0] + [1]*x + [2]*y", "Q")
-    assert linear.minimizer == "Linear"
+    assert linear.minimizer == "Minuit2 / Migrad"
 
 
 def test_what_cannot_be_fitted_is_refused_by_name():
@@ -480,7 +483,7 @@ def test_without_iminuit_a_linear_fit_works_and_the_rest_asks_for_it(monkeypatch
 
     monkeypatch.setitem(sys.modules, "iminuit", None)
     h, *_ = straight_line()
-    assert h.fit("pol1", "Q").minimizer == "Linear"
+    assert h.fit("pol1", "Q").minimizer == "Linear / Migrad"
     with pytest.raises(UnsupportedFeatureError, match=r"pip install xrdroot\[fit\]"):
         gaussian().fit("gaus", "Q")
 

@@ -22,10 +22,10 @@ from typing import Any
 import numpy as np
 
 from ...fit.minuit import iminuit
+from .. import cout
 from ..collections import RooArgList, RooArgSet, as_list
 from ..messages import INFO, WARNING, log, log_plain
 from ..printing import PRECISION, g
-from .. import cout
 
 __all__ = ["RooMinimizer", "first_step"]
 
@@ -42,7 +42,7 @@ def first_step(par: Any) -> float:
             step = (high - value) / 2
         elif value - low < 2 * step:
             step = (value - low) / 2
-        return step if step != 0 else 0.1 * (high - low)
+        return float(step if step != 0 else 0.1 * (high - low))
     return 1.0
 
 
@@ -173,7 +173,8 @@ class RooMinimizer:
             evalerrors.collecting(False)
 
     def _handled(self, value: float) -> float:
-        """``applyEvalErrorHandling``: a value that cannot be had becomes the worst seen, and worse."""
+        """``applyEvalErrorHandling``: a value that cannot be had becomes the worst seen, and
+        worse."""
         from .. import evalerrors
 
         if not math.isfinite(value) or evalerrors.count() > 0 or value > 1e30:
@@ -201,12 +202,18 @@ class RooMinimizer:
         if self.print_eval_errors < 0:
             return
         if self.eval_error_wall:
-            text = ("RooAbsMinimizerFcn: Minimized function has error status.\nReturning maximum FCN so "
-                    f"far ({g(self._max_fcn, 6)}) to force MIGRAD to back out of this region. Error log "
-                    "follows.\n")  # fmt: skip
+            text = (
+                "RooAbsMinimizerFcn: Minimized function has error status.\nReturning maximum FCN "
+                "so "
+                f"far ({g(self._max_fcn, 6)}) to force MIGRAD to back out of this region. Error "
+                "log "
+                "follows.\n"
+            )
         else:
             text = "RooAbsMinimizerFcn: Minimized function has error status but is ignored.\n"
-        text += "Parameter values: " + "".join(f"\t{p.GetName()}={g(p.getVal(), 6)}" for p in self.params)
+        text += "Parameter values: " + "".join(
+            f"\t{p.GetName()}={g(p.getVal(), 6)}" for p in self.params
+        )
         text += "\n" + evalerrors.text(self.print_eval_errors)
         log_plain(self, WARNING, "Minimization", text + "\n")
 
@@ -214,30 +221,41 @@ class RooMinimizer:
         """The first step, with RooFit's word - when verbose - for a parameter that had no error."""
         step = first_step(par)
         if self.verbose and par.getError() <= 0:
-            log(self, WARNING, "Minimization", "RooAbsMinimizerFcn::synchronize: WARNING: no initial "
-                f"error estimate available for {par.GetName()}: using {g(step)}")  # fmt: skip
+            log(
+                self,
+                WARNING,
+                "Minimization",
+                "RooAbsMinimizerFcn::synchronize: WARNING: no initial "
+                f"error estimate available for {par.GetName()}: using {g(step)}",
+            )
         return step
 
     def _settings(self) -> Any:
         """A Minuit over the parameters as they are now: values, first steps, limits, fixed."""
         module = iminuit()
         values = [inside(p) for p in self.params]
-        minuit = module.Minuit(self._fcn, np.asarray(values, dtype=np.float64),
-                               name=tuple(p.GetName() for p in self.params))  # fmt: skip
+        minuit = module.Minuit(
+            self._fcn,
+            np.asarray(values, dtype=np.float64),
+            name=tuple(p.GetName() for p in self.params),
+        )
         minuit.errordef = self.errordef
         minuit.tol = self.eps
         minuit.strategy = self.strategy
         minuit.print_level = 0
         minuit.errors = [self._step(p) for p in self.params]
-        minuit.limits = [(p.getMin() if p.hasMin() else -np.inf, p.getMax() if p.hasMax() else np.inf)
-                         for p in self.params]  # fmt: skip
+        minuit.limits = [
+            (p.getMin() if p.hasMin() else -np.inf, p.getMax() if p.hasMax() else np.inf)
+            for p in self.params
+        ]
         minuit.fixed = [p.isConstant() for p in self.params]
         return minuit
 
     # -- running Minuit -----------------------------------------------------------
 
     def minimize(self, type: str = "", alg: str = "") -> int:
-        """``minimize(type, algorithm)``: MIGRAD - the default algorithm - from where the parameters are."""
+        """``minimize(type, algorithm)``: MIGRAD - the default algorithm - from where the parameters
+        are."""
         if type:
             self.setMinimizerType(type)
         if str(alg).lower() in ("simplex",):
@@ -258,8 +276,10 @@ class RooMinimizer:
 
     def _migrad(self, minuit: Any) -> None:
         if self.print_level >= 1:
-            cout.line(f"Minuit2Minimizer: Minimize with max-calls {self.max_calls} convergence for edm < "
-                  f"{g(self.eps)} strategy {self.strategy}")  # fmt: skip
+            cout.line(
+                f"Minuit2Minimizer: Minimize with max-calls {self.max_calls} convergence for edm < "
+                f"{g(self.eps)} strategy {self.strategy}"
+            )
         minuit.migrad(ncall=self.max_calls, iterate=1, use_simplex=False)
 
     def _run(self, label: str, run: Any) -> int:
@@ -267,8 +287,12 @@ class RooMinimizer:
             log(self, 4, "Minimization", "RooMinimizer::fitFCN(): FCN function has zero parameters")
             return -1
         self.minuit = self._settings()
-        log(self, INFO, "Minimization", "[fitFCN] No discrete parameters, performing continuous "
-            "minimization only")  # fmt: skip
+        log(
+            self,
+            INFO,
+            "Minimization",
+            "[fitFCN] No discrete parameters, performing continuous minimization only",
+        )
         run(self.minuit)
         self.minuit_status = _status(self.minuit.fmin)
         self.status = self.minuit_status if self.minuit.fmin.is_valid else -1
@@ -279,9 +303,15 @@ class RooMinimizer:
         return self.status
 
     def hesse(self) -> int:
-        """HESSE at the minimum MIGRAD found: the errors and the covariance, from second derivatives."""
+        """HESSE at the minimum MIGRAD found: the errors and the covariance, from second
+        derivatives."""
         if self.minuit is None:
-            log(self, WARNING, "Minimization", "RooMinimizer::hesse: Error, run Migrad before Hesse!")
+            log(
+                self,
+                WARNING,
+                "Minimization",
+                "RooMinimizer::hesse: Error, run Migrad before Hesse!",
+            )
             self.status = -1
             return self.status
         self.minuit.hesse(ncall=self.max_calls)
@@ -292,9 +322,15 @@ class RooMinimizer:
         return self.status
 
     def minos(self, params: Any = None) -> int:
-        """MINOS for ``params``, or every free parameter: errors from where the likelihood rises by one half."""
+        """MINOS for ``params``, or every free parameter: errors from where the likelihood rises by
+        one half."""
         if self.minuit is None:
-            log(self, WARNING, "Minimization", "RooMinimizer::minos: Error, run Migrad before Minos!")
+            log(
+                self,
+                WARNING,
+                "Minimization",
+                "RooMinimizer::minos: Error, run Migrad before Minos!",
+            )
             self.status = -1
             return self.status
         wanted = [p.GetName() for p in self.params if not p.isConstant()]
@@ -314,8 +350,11 @@ class RooMinimizer:
         if self.print_level >= 1:
             for side in ("LOWER", "UPPER"):
                 cout.line("*" * 102)
-                cout.line(f"Minuit2Minimizer::GetMinosError - Run MINOS {side} error for parameter #{index} : "
-                      f"{name} using max-calls {self.max_calls}, tolerance {g(self.eps)}")  # fmt: skip
+                cout.line(
+                    f"Minuit2Minimizer::GetMinosError - Run MINOS {side} error for parameter "
+                    f"#{index} : "
+                    f"{name} using max-calls {self.max_calls}, tolerance {g(self.eps)}"
+                )
         try:
             self.minuit.minos(name, ncall=self.max_calls)
         except RuntimeError:  # iminuit refuses MINOS at an invalid minimum, as MnMinos does
@@ -332,7 +371,9 @@ class RooMinimizer:
             if self.verbose and par.getVal() != value:  # SetPdfParamVal says so, as in a call
                 cout.write(f"{par.GetName()}={g(value, PRECISION[0])}, ")
             par.setVal(value)
-            par.setError(float(self.minuit.errors[index]) if not par.isConstant() else par.getError())
+            par.setError(
+                float(self.minuit.errors[index]) if not par.isConstant() else par.getError()
+            )
             error = self.minuit.merrors.get(par.GetName()) if minos else None
             if error is not None:
                 par.setAsymError(float(error.lower), float(error.upper))
@@ -361,14 +402,19 @@ class RooMinimizer:
     # -- the result ---------------------------------------------------------------
 
     def save(self, name: Any = None, title: Any = None) -> Any:
-        """``save``: a :class:`~xrdroot.roofit.fitting.result.RooFitResult` of the fit as it stands."""
+        """``save``: a :class:`~xrdroot.roofit.fitting.result.RooFitResult` of the fit as it
+        stands."""
         from .result import RooFitResult
 
         if self.minuit is None:
-            log(self, WARNING, "Minimization", "RooMinimizer::save: Error, run minimization before!")
+            log(
+                self, WARNING, "Minimization", "RooMinimizer::save: Error, run minimization before!"
+            )
             return None
-        found = RooFitResult(str(name) if name else self.function.GetName(),
-                             str(title) if title else self.function.GetTitle())  # fmt: skip
+        found = RooFitResult(
+            str(name) if name else self.function.GetName(),
+            str(title) if title else self.function.GetTitle(),
+        )
         found.fill(self)
         return found
 
@@ -388,8 +434,12 @@ class RooMinimizer:
 def _status(fmin: Any) -> int:
     """``Minuit2Minimizer::ExamineMinimum``: the last of its checks that fails wins."""
     status = 0 if fmin.has_posdef_covar else 5
-    for failed, code in ((fmin.has_made_posdef_covar, 1), (fmin.hesse_failed, 2),
-                         (fmin.is_above_max_edm, 3), (fmin.has_reached_call_limit, 4)):  # fmt: skip
+    for failed, code in (
+        (fmin.has_made_posdef_covar, 1),
+        (fmin.hesse_failed, 2),
+        (fmin.is_above_max_edm, 3),
+        (fmin.has_reached_call_limit, 4),
+    ):
         if failed:
             status = code
     return 6 if status == 0 and not fmin.is_valid else status
@@ -399,8 +449,12 @@ def cov_quality(fmin: Any) -> int:
     """``Minuit2Minimizer::CovMatrixStatus``: 3 accurate, 2 forced positive, 1 approximate."""
     if fmin is None:
         return -1
-    for flag, code in ((fmin.has_accurate_covar, 3), (fmin.has_made_posdef_covar, 2),
-                       (fmin.has_posdef_covar, 1), (fmin.has_covariance, 0)):  # fmt: skip
+    for flag, code in (
+        (fmin.has_accurate_covar, 3),
+        (fmin.has_made_posdef_covar, 2),
+        (fmin.has_posdef_covar, 1),
+        (fmin.has_covariance, 0),
+    ):
         if flag:
             return code
     return -1

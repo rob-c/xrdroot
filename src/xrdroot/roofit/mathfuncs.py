@@ -14,10 +14,20 @@ from typing import Any
 import numpy as np
 
 __all__ = [
-    "erf", "erfc", "lgamma", "gaussian_integral", "exponential_integral",
-    "polynomial", "polynomial_integral", "chebychev", "chebychev_integral",
-    "cb_shape", "cb_shape_integral", "bifurgauss_integral", "approx_erf",
-]  # fmt: skip
+    "erf",
+    "erfc",
+    "lgamma",
+    "gaussian_integral",
+    "exponential_integral",
+    "polynomial",
+    "polynomial_integral",
+    "chebychev",
+    "chebychev_integral",
+    "cb_shape",
+    "cb_shape_integral",
+    "bifurgauss_integral",
+    "approx_erf",
+]
 
 Array = Any
 
@@ -51,8 +61,11 @@ def gaussian_integral(low: Array, high: Array, mean: Array, sigma: Array) -> Arr
     smax = (high - mean) / xscale
     ecmin = erfc(np.abs(smin))
     ecmax = erfc(np.abs(smax))
-    cond = np.where(smin * smax < 0.0, 2.0 - (ecmin + ecmax),
-                    np.where(smax <= 0.0, ecmax - ecmin, ecmin - ecmax))  # fmt: skip
+    cond = np.where(
+        smin * smax < 0.0,
+        2.0 - (ecmin + ecmax),
+        np.where(smax <= 0.0, ecmax - ecmin, ecmin - ecmax),
+    )
     return scale * cond
 
 
@@ -71,8 +84,9 @@ def polynomial(coefs: list[Array], lowest: int, x: Array, pdf_mode: bool) -> Arr
     return value + (1.0 if pdf_mode and lowest > 0 else 0.0)
 
 
-def polynomial_integral(coefs: list[Array], lowest: int, low: Array, high: Array,
-                        pdf_mode: bool) -> Array:  # fmt: skip
+def polynomial_integral(
+    coefs: list[Array], lowest: int, low: Array, high: Array, pdf_mode: bool
+) -> Array:
     if not coefs:
         return (high - low) if pdf_mode and lowest > 0 else 0.0
     denom = lowest + len(coefs)
@@ -99,8 +113,9 @@ def chebychev(coefs: list[Array], x: Array, low: float, high: float) -> Array:
     return total
 
 
-def chebychev_integral(coefs: list[Array], low: float, high: float, full_low: float,
-                       full_high: float) -> Array:  # fmt: skip
+def chebychev_integral(
+    coefs: list[Array], low: float, high: float, full_low: float, full_high: float
+) -> Array:
     """``chebychevIntegral``: over [``full_low``, ``full_high``] of the series on [low, high]."""
     half = 0.5 * (high - low)
     mid = 0.5 * (high + low)
@@ -142,8 +157,9 @@ def cb_shape(m: Array, m0: Array, sigma: Array, alpha: Array, n: Array) -> Array
     return np.where(t >= -abs_alpha, np.exp(-0.5 * t * t), tail)
 
 
-def cb_shape_integral(low: float, high: float, m0: float, sigma: float, alpha: float,
-                      n: float) -> float:  # fmt: skip
+def cb_shape_integral(
+    low: float, high: float, m0: float, sigma: float, alpha: float, n: float
+) -> float:
     """``cbShapeIntegral``, over the core, the tail, or both."""
     sqrt_pi_over2, sqrt2 = 1.2533141373, 1.4142135624
     sig = abs(sigma)
@@ -169,9 +185,11 @@ def _cb_tail(tmin: float, tmax: float | None, sig: float, abs_alpha: float, n: f
     if abs(n - 1.0) < 1.0e-05:
         lmin = math.log(b - tmin)
         lmax = math.log(r) if tmax is None else math.log(b - tmax)
-        return a * r ** (n - 1) * sig * (lmin - lmax + 0.5 * (1.0 - n) * (lmin * lmin - lmax * lmax))
+        return float(
+            a * r ** (n - 1) * sig * (lmin - lmax + 0.5 * (1.0 - n) * (lmin * lmin - lmax * lmax))
+        )
     upper = 1.0 if tmax is None else (r / (b - tmax)) ** (n - 1.0)
-    return a * sig / (1.0 - n) * ((r / (b - tmin)) ** (n - 1.0) - upper)
+    return float(a * sig / (1.0 - n) * ((r / (b - tmin)) ** (n - 1.0) - upper))
 
 
 def bifurgauss_integral(low: float, high: float, mean: float, left: float, right: float) -> float:

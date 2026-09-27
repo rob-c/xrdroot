@@ -34,12 +34,13 @@ class RooExtendPdf(RooAbsPdf):
     def selfNormalized(self) -> bool:
         return True
 
-    def fraction(self, names: frozenset[str], ctx: Context, nset: Any, rng: Any,
-                 norm_rng: Any = None) -> Any:  # fmt: skip
+    def fraction(
+        self, names: frozenset[str], ctx: Context, nset: Any, rng: Any, norm_rng: Any = None
+    ) -> Any:
         return self.pdf.fraction(names, ctx, nset, rng, norm_rng)
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
-        return self.pdf.analytic_names(names, rng)
+        return frozenset(self.pdf.analytic_names(names, rng))
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
         return self.pdf.analytic(names, ctx, rng)

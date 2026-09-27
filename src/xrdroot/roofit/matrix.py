@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+
 from . import cout
 
 __all__ = ["TMatrixDSym", "TVectorD"]
@@ -21,8 +22,11 @@ class TMatrixDSym:
 
     def __init__(self, n: Any = 0, values: Any = None) -> None:
         if isinstance(n, TMatrixDSym):
-            values, n = n.values.copy(), n.values.shape[0]
-        self.values = np.zeros((int(n), int(n))) if values is None else np.array(values, dtype=np.float64)
+            other: Any = n
+            values, n = other.values.copy(), other.values.shape[0]
+        self.values = (
+            np.zeros((int(n), int(n))) if values is None else np.array(values, dtype=np.float64)
+        )
 
     def __call__(self, i: int, j: int) -> float:
         return float(self.values[i, j])

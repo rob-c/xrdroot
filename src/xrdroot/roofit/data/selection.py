@@ -34,8 +34,9 @@ def in_range(data: Any, rng: Any, variables: Any = None) -> np.ndarray[Any, Any]
 def _inside(data: Any, part: str, variables: Any) -> np.ndarray[Any, Any]:
     keep = np.ones(data.numEntries(), dtype=bool)
     for var in variables if variables is not None else data.get():
-        if not var.hasRange(part) or not (var.InheritsFrom("RooAbsRealLValue") or
-                                          var.InheritsFrom("RooCategory")):  # fmt: skip
+        if not var.hasRange(part) or not (
+            var.InheritsFrom("RooAbsRealLValue") or var.InheritsFrom("RooCategory")
+        ):
             continue
         column = data.column(var.GetName())
         if var.InheritsFrom("RooCategory"):

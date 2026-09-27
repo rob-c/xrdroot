@@ -19,8 +19,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .collections import RooArgList
 from ..errors import UnsupportedFeatureError as refuse
+from .collections import RooArgList
 
 __all__ = ["Factory", "split"]
 
@@ -67,13 +67,21 @@ class Factory:
 
     def build(self, text: str) -> Any:
         text = text.strip()
-        for method in (self._number, self._string, self._list, self._variable, self._call,
-                       self._existing):  # fmt: skip
+        for method in (
+            self._number,
+            self._string,
+            self._list,
+            self._variable,
+            self._call,
+            self._existing,
+        ):
             found = method(text)
             if found is not None:
                 return found
-        raise refuse(f"the factory cannot make sense of {text!r}: it is not a number, a variable, "
-                     "a list, or a class with arguments, and the workspace has nothing of that name")
+        raise refuse(
+            f"the factory cannot make sense of {text!r}: it is not a number, a variable, "
+            "a list, or a class with arguments, and the workspace has nothing of that name"
+        )
 
     def _number(self, text: str) -> Any:
         if not NUMBER.match(text):
@@ -139,8 +147,10 @@ class Factory:
 
         cls = find(kind)
         if cls is None:
-            raise refuse(f"the factory has no class {kind}: RooFit's classes here are those of "
-                         "xrdroot.roofit.registry")
+            raise refuse(
+                f"the factory has no class {kind}: RooFit's classes here are those of "
+                "xrdroot.roofit.registry"
+            )
         values = [self._argument(cls, arg) for arg in args]
         return cls(name, name, *values)
 

@@ -38,14 +38,21 @@ def import_slices(data: Any, options: Any) -> None:
         if not index.hasLabel(label):
             index.defineType(label)
             category.defineType(label)
-            log(data, INFO, "InputArguments", f"RooDataSet::ctor({data.GetName()}) defining state "
-                f'"{label}" in index category {index.GetName()}')  # fmt: skip
+            log(
+                data,
+                INFO,
+                "InputArguments",
+                f"RooDataSet::ctor({data.GetName()}) defining state "
+                f'"{label}" in index category {index.GetName()}',
+            )
         n = source.numEntries()
         for one in data.get():
             if one.GetName() == index.GetName():
                 columns[one.GetName()].append(np.full(n, float(index.lookupIndex(label))))
             else:
-                columns[one.GetName()].append(np.asarray(source.column(one.GetName()), dtype=np.float64))
+                columns[one.GetName()].append(
+                    np.asarray(source.column(one.GetName()), dtype=np.float64)
+                )
         weights.append(source.weights())
     for name, parts in columns.items():
         data._columns[name] = np.concatenate(parts) if parts else np.zeros(0)

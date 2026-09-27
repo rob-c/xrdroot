@@ -137,9 +137,9 @@ def test_a_function_whose_code_is_gone_and_saved_nothing_is_refused_when_evaluat
 
 def test_a_formula_this_cannot_evaluate_still_reads_and_falls_back_on_its_samples():
     f = Function("f", "[0]*x", parameters=[2])
-    f.members["fFormula"]["fFormula"] = "ROOT::Math::chisquared_pdf(x,[p0])"
+    f.members["fFormula"]["fFormula"] = "ROOT::Math::unheard_of_pdf(x,[p0])"
     kept = dress("TF1", f.members)
-    with pytest.raises(UnsupportedFeatureError, match=r"chisquared_pdf.*no saved values"):
+    with pytest.raises(UnsupportedFeatureError, match=r"unheard_of_pdf.*no saved values"):
         kept(1.0)
     kept.members["fSave"] = np.array([0.0, 2.0, 0.0, 1.0])
     assert dress("TF1", kept.members)(0.5) == 1.0

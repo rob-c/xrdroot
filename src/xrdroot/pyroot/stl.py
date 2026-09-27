@@ -673,9 +673,32 @@ TEMPLATES: dict[str, _Template] = {
 }
 
 
-class _Namespace:
-    """``ROOT.std``: the containers, and a refusal by name for the rest of it."""
+class _Stream:
+    """``std::cout`` and ``std::cerr``: what ``<<`` is given, written as text."""
 
+    def __init__(self, name: str) -> None:
+        self._name = name
+
+    def __lshift__(self, value: Any) -> _Stream:
+        import sys
+
+        target = sys.stdout if self._name == "cout" else sys.stderr
+        target.write(str(value))
+        return self
+
+    def flush(self) -> None:
+        """``flush``: every write goes out as it is made."""
+
+    def __repr__(self) -> str:
+        return f"<std::{self._name}>"
+
+
+class _Namespace:
+    """``ROOT.std``: the containers, the streams, and a refusal by name for the rest of it."""
+
+    cout = _Stream("cout")
+    cerr = _Stream("cerr")
+    endl = "\n"
     vector = TEMPLATES["vector"]
     map = TEMPLATES["map"]
     pair = TEMPLATES["pair"]

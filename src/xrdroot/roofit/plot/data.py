@@ -39,7 +39,11 @@ def _edges(frame: Any, options: Commands, data: Any = None) -> tuple[np.ndarray[
         return first.array(), True
     if isinstance(first, str):
         return var.getBinning(first).array(), True
-    low, high = (given[1], given[2]) if len(given) > 2 and given[1] != given[2] else (var.getMin(), var.getMax())
+    low, high = (
+        (given[1], given[2])
+        if len(given) > 2 and given[1] != given[2]
+        else (var.getMin(), var.getMax())
+    )
     return np.linspace(low, high, int(first) + 1), True
 
 
@@ -48,8 +52,13 @@ def _error_type(data: Any, options: Commands) -> int:
     if etype != AUTO:
         return etype
     if data.isNonPoissonWeighted():
-        log(data, INFO, "InputArguments", f"RooAbsData::plotOn({data.GetName()}) INFO: dataset has "
-            "non-integer weights, auto-selecting SumW2 errors instead of Poisson errors")  # fmt: skip
+        log(
+            data,
+            INFO,
+            "InputArguments",
+            f"RooAbsData::plotOn({data.GetName()}) INFO: dataset has "
+            "non-integer weights, auto-selecting SumW2 errors instead of Poisson errors",
+        )
         return SUMW2
     return POISSON
 
@@ -73,23 +82,41 @@ def plot_data(data: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, An
     sumw2, _ = np.histogram(values, bins=edges, weights=data.weights_squared()[keep])
     nominal = 0.0
     if chosen:
-        nominal = frame.getFitRangeBinW() if frame.getFitRangeNEvt() else float(np.mean(np.diff(edges)))
+        nominal = (
+            frame.getFitRangeBinW() if frame.getFitRangeNEvt() else float(np.mean(np.diff(edges)))
+        )
     etype = _error_type(data, options)
     name = str(options.get("Name", 0, "")) or _name(data, cut, rng)
-    hist = from_counts(name, edges, counts, sumw2, etype, nominal,
-                       float(options.get("XErrorSize", 0, 1.0)), float(options.get("Rescale", 0, 1.0)))
+    hist = from_counts(
+        name,
+        edges,
+        counts,
+        sumw2,
+        etype,
+        nominal,
+        float(options.get("XErrorSize", 0, 1.0)),
+        float(options.get("Rescale", 0, 1.0)),
+    )
     hist.y_label = _label(var, edges)
     if cut or rng:
         total = data.sumEntries()
-        log(data, INFO, "Plotting", f"RooTreeData::plotOn: plotting {g(float(np.sum(counts)))} events "
-            f"out of {g(total)} total events")  # fmt: skip
+        log(
+            data,
+            INFO,
+            "Plotting",
+            f"RooTreeData::plotOn: plotting {g(float(np.sum(counts)))} events "
+            f"out of {g(total)} total events",
+        )
         hist.raw_entries = total
     hist.data_values, hist.data_weights = values, weights
     style(hist, options)
     frame.update_norm_vars(list(data.get()))
-    frame.add_plotable(hist, str(options.get("DrawOption", 0, "P")),
-                       bool(options.get("Invisible", 0, False)),
-                       bool(options.get("RefreshNorm", 0, True)))  # fmt: skip
+    frame.add_plotable(
+        hist,
+        str(options.get("DrawOption", 0, "P")),
+        bool(options.get("Invisible", 0, False)),
+        bool(options.get("RefreshNorm", 0, True)),
+    )
     return frame
 
 

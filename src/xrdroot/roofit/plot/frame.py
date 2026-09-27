@@ -51,7 +51,9 @@ class Axis:
         member = "f" + name[3:]
         attributes = self.__dict__["_row"]["TAttAxis"]
         if name.startswith("Set") and member in attributes:
-            return lambda value, *rest: attributes.__setitem__(member, type(attributes[member])(value))
+            return lambda value, *rest: attributes.__setitem__(
+                member, type(attributes[member])(value)
+            )
         if name.startswith("Get") and member in attributes:
             return lambda: attributes[member]
         raise AttributeError(f"a RooPlot's axis has no {name} here")
@@ -70,7 +72,9 @@ class RooPlot(RooPrintable):
 
     def __init__(self, var: Any, low: float, high: float, bins: int) -> None:
         self.var = var
-        self.hist = Histogram.book(f"frame_{var.GetName()}_{address(self)[2:]}", (int(bins), low, high))
+        self.hist = Histogram.book(
+            f"frame_{var.GetName()}_{address(self)[2:]}", (int(bins), low, high)
+        )
         th1 = self.hist.members["TH1"]
         th1["fBits"] = NO_STATS
         th1["fXaxis"]["TNamed"]["fTitle"] = var.getTitle(True)
@@ -142,10 +146,14 @@ class RooPlot(RooPrintable):
     def getPlotVar(self) -> Any:
         return self.var
 
-    def getFitRangeNEvt(self, low: Any = None, high: Any = None) -> float:
+    def getFitRangeNEvt(self, low: Any = None, high: Any = None) -> Any:
         if low is None or self.norm_obj is None:
             return self.norm_events
-        return self.norm_events * self.norm_obj.events_between(low, high) / self.norm_obj.fit_range_events()
+        return (
+            self.norm_events
+            * self.norm_obj.events_between(low, high)
+            / self.norm_obj.fit_range_events()
+        )
 
     def getFitRangeBinW(self) -> float:
         return self.norm_bin_width
@@ -174,8 +182,9 @@ class RooPlot(RooPrintable):
         if not self.axis("y")["TNamed"]["fTitle"]:
             self.axis("y")["TNamed"]["fTitle"] = label
 
-    def add_plotable(self, item: Any, option: str, invisible: bool = False,
-                     refresh: bool = True) -> None:  # fmt: skip
+    def add_plotable(
+        self, item: Any, option: str, invisible: bool = False, refresh: bool = True
+    ) -> None:
         """``addPlotable``: a data histogram or a curve, and what it does to the frame."""
         ys, lows, highs = item.y, *_bars(item)
         self.update_y_axis(float((ys - lows).min()), float((ys + highs).max()), item.y_label)
@@ -184,16 +193,22 @@ class RooPlot(RooPrintable):
         self.items.append((item, option, invisible))
 
     def _normalise_to(self, item: Any, refresh: bool) -> None:
-        """``updateFitRangeNorm``: the first data - or new data, if asked - set the curves' scale."""
+        """``updateFitRangeNorm``: the first data - or new data, if asked - set the curves'
+        scale."""
         events = item.fit_range_events()
         if self.norm_events != 0:
             if not refresh:
                 return
             factor = self.norm_bin_width / item.fit_range_bin_width()
             if abs(events / factor - self.norm_events) > 1e-6:
-                log(self, INFO, "Plotting", f"RooPlot::updateFitRangeNorm: New event count of "
+                log(
+                    self,
+                    INFO,
+                    "Plotting",
+                    f"RooPlot::updateFitRangeNorm: New event count of "
                     f"{g(events / factor)} will supersede previous event count of "
-                    f"{g(self.norm_events)} for normalization of PDF projections")  # fmt: skip
+                    f"{g(self.norm_events)} for normalization of PDF projections",
+                )
             self.norm_events = events / factor
         else:
             self.norm_events = events
@@ -264,7 +279,7 @@ class RooPlot(RooPrintable):
         return "RooPlot"
 
     def printValue(self) -> str:
-        return f"(" + ",".join(obj.GetName() for obj, _, _ in self.items) + ")"
+        return "(" + ",".join(obj.GetName() for obj, _, _ in self.items) + ")"
 
 
 def _with_first(hist: Histogram, value: float) -> Any:

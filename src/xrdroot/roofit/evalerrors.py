@@ -29,8 +29,14 @@ def active() -> bool:
     return _ACTIVE[0]
 
 
-def record(key: Any, origin: Callable[[], str], message: str, servers: Callable[[], str],
-           times: int = 1, top: bool = False) -> None:  # fmt: skip
+def record(
+    key: Any,
+    origin: Callable[[], str],
+    message: str,
+    servers: Callable[[], str],
+    times: int = 1,
+    top: bool = False,
+) -> None:
     """Note ``times`` failures of ``key`` with ``message``; the descriptions are made once.
 
     The descriptions evaluate what they describe, which is not to fail twice,

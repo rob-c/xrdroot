@@ -35,7 +35,9 @@ class RooDataHist(RooAbsData):
     """Binned data over one or more variables."""
 
     def __init__(self, name: Any = "", title: Any = "", *args: Any, **kwargs: Any) -> None:
-        variables = [a for a in args if not isinstance(a, RooCmdArg) and not isinstance(a, RooAbsData)]
+        variables = [
+            a for a in args if not isinstance(a, RooCmdArg) and not isinstance(a, RooAbsData)
+        ]
         sources = [a for a in args if isinstance(a, RooAbsData)]
         options = commands([a for a in args if isinstance(a, RooCmdArg)], kwargs)
         chosen = as_list(variables[0]) if variables else []
@@ -53,6 +55,11 @@ class RooDataHist(RooAbsData):
 
     # -- bins ---------------------------------------------------------------------
 
+    def _grid_weights(self) -> np.ndarray[Any, Any]:
+        """The bins' weights: a binned dataset always has them."""
+        assert self._weights is not None
+        return self._weights
+
     def _edges(self) -> list[np.ndarray[Any, Any]]:
         return [one.getBinning().array() for one in self._vars]
 
@@ -61,7 +68,9 @@ class RooDataHist(RooAbsData):
         centres = [0.5 * (e[1:] + e[:-1]) for e in self._edges()]
         grid = list(itertools.product(*centres)) or [()]
         for index, one in enumerate(self._vars):
-            self._columns[one.GetName()] = np.array([point[index] for point in grid], dtype=np.float64)
+            self._columns[one.GetName()] = np.array(
+                [point[index] for point in grid], dtype=np.float64
+            )
         self._weights = np.zeros(len(grid))
         self._sumw2 = np.zeros(len(grid))
 
@@ -83,11 +92,13 @@ class RooDataHist(RooAbsData):
         bins = self._bin_of(columns)
         keep = bins >= 0
         weights = data.weights()[keep]
-        self._weights = self._weights + np.bincount(bins[keep], weights, len(self._weights))
-        self._sumw2 = self._sumw2 + np.bincount(bins[keep], weights**2, len(self._weights))
+        size = len(self._grid_weights())
+        self._weights = self._grid_weights() + np.bincount(bins[keep], weights, size)
+        self._sumw2 = self._sumw2 + np.bincount(bins[keep], weights**2, size)
 
     def _import(self, chosen: list[Any], histogram: Any, density: bool) -> None:
-        """``importTH1``: the histogram's bins inside the variables' ranges, the ranges widened to them."""
+        """``importTH1``: the histogram's bins inside the variables' ranges, the ranges widened to
+        them."""
         offsets = [self._adjust(var, histogram.axes[i]) for i, var in enumerate(chosen)]
         self._empty()
         values, errors = histogram.values(), histogram.errors()
@@ -99,23 +110,33 @@ class RooDataHist(RooAbsData):
             self._weights, self._sumw2 = self._weights * volume, self._sumw2 * volume
 
     def _adjust(self, var: Any, axis: Any) -> int:
-        """``_adjustBinning``: the variable's range moved out to the axis's bin edges; its first bin."""
+        """``_adjustBinning``: the variable's range moved out to the axis's bin edges; its first
+        bin."""
         edges = np.asarray(axis.edges(), dtype=np.float64)
         low, high = var.getMin(), var.getMax()
         tolerance = 1e-6 * (edges[-1] - edges[0]) / (len(edges) - 1)
         first = max(int(np.searchsorted(edges, low + tolerance, side="right")) - 1, 0)
         last = min(int(np.searchsorted(edges, high - tolerance, side="right")) - 1, len(edges) - 2)
         uniform = np.allclose(np.diff(edges), edges[1] - edges[0])
-        made: Any = (RooUniformBinning(edges[first], edges[last + 1], last - first + 1) if uniform
-                     else _binning(edges[first:last + 2]))  # fmt: skip
+        made: Any = (
+            RooUniformBinning(edges[first], edges[last + 1], last - first + 1)
+            if uniform
+            else _binning(edges[first : last + 2])
+        )
         if uniform:
             var.setRange(float(edges[first]), float(edges[last + 1]))
         else:
             var.setBinning(made)
         if abs(edges[first] - low) > tolerance or abs(edges[last + 1] - high) > tolerance:
-            log(self, INFO, "DataHandling", f"RooDataHist::adjustBinning({self._name}): fit range of "
-                f"variable {var.GetName()} expanded to nearest bin boundaries: [{g(low)},{g(high)}] --> "
-                f"[{g(edges[first])},{g(edges[last + 1])}]")  # fmt: skip
+            log(
+                self,
+                INFO,
+                "DataHandling",
+                f"RooDataHist::adjustBinning({self._name}): fit range of "
+                f"variable {var.GetName()} expanded to nearest bin boundaries: "
+                f"[{g(low)},{g(high)}] --> "
+                f"[{g(edges[first])},{g(edges[last + 1])}]",
+            )
         self._vars.find(var.GetName()).setBinning(made)
         return first
 
@@ -128,9 +149,10 @@ class RooDataHist(RooAbsData):
 
     def weight(self, *args: Any) -> float:
         if args:
-            bins = self._bin_of({one.GetName(): [args[0].find(one.GetName()).getVal()]
-                                 for one in self._vars})  # fmt: skip
-            return float(self._weights[bins[0]]) if bins[0] >= 0 else 0.0
+            bins = self._bin_of(
+                {one.GetName(): [args[0].find(one.GetName()).getVal()] for one in self._vars}
+            )
+            return float(self._grid_weights()[bins[0]]) if bins[0] >= 0 else 0.0
         return super().weight()
 
     def numEntries(self) -> int:

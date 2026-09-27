@@ -16,8 +16,8 @@ from typing import Any
 
 import numpy as np
 
-from .compiled import Compiled
 from .collections import as_list
+from .compiled import Compiled
 
 __all__ = ["RooFormula", "translate"]
 

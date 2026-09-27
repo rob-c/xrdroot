@@ -19,8 +19,11 @@ from typing import Any
 
 import numpy as np
 
+from . import evalerrors
+from .binning import evaluating
 from .collections import as_list
 from .messages import WARNING, log
+from .nanpack import pack
 from .printing import g
 from .real import Context, RooAbsReal, names_in, value_of
 
@@ -35,8 +38,10 @@ class RooAbsPdf(RooAbsReal):
 
     #: ``RooAbsPdf::CanNotBeExtended`` and the rest, as ROOT's class members.
     CanNotBeExtended, CanBeExtended, MustBeExtended = (
-        CAN_NOT_BE_EXTENDED, CAN_BE_EXTENDED, MUST_BE_EXTENDED
-    )  # fmt: skip
+        CAN_NOT_BE_EXTENDED,
+        CAN_BE_EXTENDED,
+        MUST_BE_EXTENDED,
+    )
 
     def __init__(self, name: Any = "", title: Any = "") -> None:
         super().__init__(name, title)
@@ -55,9 +60,9 @@ class RooAbsPdf(RooAbsReal):
         if not nset or self.selfNormalized():
             return raw
         norm = self.norm(ctx, nset, rng)
-        from . import evalerrors
-
-        if evalerrors.active():
+        if evalerrors.active() and not (
+            np.all(np.asarray(norm) > 0) and np.all(np.asarray(raw) >= 0)
+        ):
             self._log_failures(raw, norm, frozenset(nset), rng)
         return normalized(raw, norm)
 
@@ -69,38 +74,91 @@ class RooAbsPdf(RooAbsReal):
         from .integration import integral_name
 
         norm = integral_name(self, nset & self.dependents(), rng)
-        return (f"RooFit::Detail::RooNormalizedPdf::{self.normalized_label(nset, rng)}[ numerator="
-                f"{self._name} denominator={norm} ]")  # fmt: skip
+        return (
+            f"RooFit::Detail::RooNormalizedPdf::{self.normalized_label(nset, rng)}[ numerator="
+            f"{self._name} denominator={norm} ]"
+        )
 
     def normalized_servers(self, nset: frozenset[str], rng: Any = None) -> str:
         from .integration import integral_name
 
         norm = integral_name(self, nset & self.dependents(), rng)
-        return (f"numerator={self._name}={g(value_of(self.compute({})), 6)}, denominator={norm}="
-                f"{g(value_of(self.norm({}, nset, rng)), 6)}")  # fmt: skip
+        return (
+            f"numerator={self._name}={g(value_of(self.compute({})), 6)}, denominator={norm}="
+            f"{g(value_of(self.norm({}, nset, rng)), 6)}"
+        )
 
     def _log_failures(self, raw: Any, norm: Any, nset: frozenset[str], rng: Any) -> None:
         """``RooNormalizedPdf::doEval``'s messages, by kind - with its kernel's thresholds."""
-        from . import evalerrors
-
-        raw, norm = np.asarray(raw, dtype=np.float64), np.broadcast_to(np.asarray(norm), np.shape(raw))
+        raw, norm = (
+            np.asarray(raw, dtype=np.float64),
+            np.broadcast_to(np.asarray(norm), np.shape(raw)),
+        )
         bad_norm = (norm < 0) | ((norm == 0) & (raw != 0))
         negative = ~bad_norm & (raw < 0)
         nan = ~bad_norm & ~negative & np.isnan(raw)
-        counts = (int(np.count_nonzero(bad_norm)), int(np.count_nonzero(negative)), int(np.count_nonzero(nan)))
-        messages = ("p.d.f normalization integral is zero or negative",
-                    "p.d.f value is less than zero, trying to recover", "p.d.f value is Not-a-Number")
+        counts = (
+            int(np.count_nonzero(bad_norm)),
+            int(np.count_nonzero(negative)),
+            int(np.count_nonzero(nan)),
+        )
+        messages = (
+            "p.d.f normalization integral is zero or negative",
+            "p.d.f value is less than zero, trying to recover",
+            "p.d.f value is Not-a-Number",
+        )
         for kind, (number, message) in enumerate(zip(counts, messages)):
             if number > kind:  # the kernel reports a kind only above that many: RooFit's own quirk
-                evalerrors.record(("norm", id(self)), lambda: self.normalized_origin(nset, rng), message,
-                                  lambda: self.normalized_servers(nset, rng), number)
+                evalerrors.record(
+                    ("norm", id(self)),
+                    lambda: self.normalized_origin(nset, rng),
+                    message,
+                    lambda: self.normalized_servers(nset, rng),
+                    number,
+                )
 
     def norm(self, ctx: Context, nset: Any, rng: Any = None) -> Any:
         """The normalisation integral: over the observables in ``nset`` this depends on."""
         names = frozenset(nset) & self.dependents()
         if not names:
             return self.compute(ctx)
-        return self.integrate(names, ctx, rng or self._norm_range)
+        rng = rng or self._norm_range
+        with evaluating(ctx):  # a range with a column for an end is one per event
+            key = self._norm_key(names, ctx, rng)
+            cached = self.__dict__.get("_norm_cache")
+            if key is not None and cached is not None and cached[0] == key:
+                return cached[1]
+            found = self.integrate(names, ctx, rng)
+        if key is not None:
+            self.__dict__["_norm_cache"] = (key, found)
+        return found
+
+    def _norm_key(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
+        """What the normalisation depends on - the other variables' values and the ranges -
+        or ``None`` when one of them is a column, which is not worth remembering.
+
+        RooFit caches its normalisation integrals the same way, recomputing one
+        only when a parameter it depends on has changed.
+        """
+        values: list[tuple[Any, ...]] = []
+        for leaf in self.leaves():
+            name = leaf.GetName()
+            if name in names and not hasattr(
+                leaf, "getMin"
+            ):  # a category: all its states, or rng's
+                values.append((name,))
+                continue
+            if name in names:
+                ends = (leaf.getMin(rng), leaf.getMax(rng))
+                if np.ndim(ends[0]) or np.ndim(ends[1]):
+                    return None
+                values.append((name, *ends))
+                continue
+            value = ctx.get(name, None)
+            if value is not None and np.ndim(value):
+                return None
+            values.append((name, float(leaf.getVal() if value is None else value)))
+        return (names, rng, tuple(values))
 
     def getVal(self, nset: Any = None) -> float:
         names = names_in(nset)
@@ -122,8 +180,9 @@ class RooAbsPdf(RooAbsReal):
     def normRange(self) -> Any:
         return self._norm_range
 
-    def fraction(self, names: frozenset[str], ctx: Context, nset: Any, rng: Any,
-                 norm_rng: Any = None) -> Any:  # fmt: skip
+    def fraction(
+        self, names: frozenset[str], ctx: Context, nset: Any, rng: Any, norm_rng: Any = None
+    ) -> Any:
         """The integral over ``names`` in ``rng`` of the density normalised over ``nset``."""
         top = self.integrate(names, ctx, rng)
         return top / self.norm(ctx, nset, norm_rng)
@@ -216,9 +275,10 @@ def normalized(raw: Any, norm: Any) -> Any:
     as RooFit makes them, so that the likelihood can tell Minuit how far to
     back away; a NaN stays NaN, and nothing over nothing is nothing.
     """
-    from .nanpack import pack
-
     raw, norm = np.asarray(raw, dtype=np.float64), np.asarray(norm, dtype=np.float64)
+    if np.all(norm > 0) and np.all(raw >= 0):  # the usual case, and nothing to pack
+        found = raw / norm
+        return found if found.ndim else float(found)
     bad_norm = (norm < 0) | ((norm == 0) & (raw != 0))
     with np.errstate(divide="ignore", invalid="ignore"):
         found = np.where((raw == 0) & (norm == 0), 0.0, raw / norm)
@@ -228,20 +288,30 @@ def normalized(raw: Any, norm: Any) -> Any:
     return found if found.ndim else float(found)
 
 
-def check_range(pdf: Any, params: Any, low: float, high: float = math.inf,
-                closed: bool = False, extra: str = "") -> None:  # fmt: skip
-    """``RooHelpers::checkRangeOfParameters``: warn of parameters that can leave their safe range."""
+def check_range(
+    pdf: Any, params: Any, low: float, high: float = math.inf, closed: bool = False, extra: str = ""
+) -> None:
+    """``RooHelpers::checkRangeOfParameters``: warn of parameters that can leave their safe
+    range."""
     shown = ("[" if closed else "(") + ("-inf" if low <= -1.7976931348623157e308 else g(low))
-    shown += ", " + ("inf" if high >= 1.7976931348623157e308 else g(high)) + ("]" if closed else ")")
+    shown += (
+        ", " + ("inf" if high >= 1.7976931348623157e308 else g(high)) + ("]" if closed else ")")
+    )
     for param in as_list(params):
         if not param.InheritsFrom("RooAbsRealLValue"):
             continue
         pmin, pmax = param.getMin(), param.getMax()
         outside = pmin < low or pmax > high
         if outside or (not closed and (pmin == low or pmax == high)):
-            log(pdf, WARNING, "InputArguments", f"The parameter '{param.GetName()}' with range "
-                f"[{g(pmin)}, {g(pmax)}] of the {pdf.ClassName()} '{pdf.GetName()}' exceeds the safe "
-                f"range of {shown}. Advise to limit its range." + (f"\n{extra}" if extra else ""))
+            log(
+                pdf,
+                WARNING,
+                "InputArguments",
+                f"The parameter '{param.GetName()}' with range "
+                f"[{g(pmin)}, {g(pmax)}] of the {pdf.ClassName()} '{pdf.GetName()}' exceeds the "
+                "safe "
+                f"range of {shown}. Advise to limit its range." + (f"\n{extra}" if extra else ""),
+            )
 
 
 def names(items: Any) -> frozenset[str]:

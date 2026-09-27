@@ -33,8 +33,19 @@ class Cell:
     """
 
     __slots__ = (
-        "serial", "active", "parent", "dau0", "dau1", "best", "xdiv",
-        "intg", "driv", "prim", "volume", "posi", "size",
+        "serial",
+        "active",
+        "parent",
+        "dau0",
+        "dau1",
+        "best",
+        "xdiv",
+        "intg",
+        "driv",
+        "prim",
+        "volume",
+        "posi",
+        "size",
     )
 
     def __init__(self, parent: Cell | None, serial: int) -> None:

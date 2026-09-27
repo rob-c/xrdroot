@@ -28,8 +28,15 @@ EPSILON = 1e-9
 BLUE = 600
 
 
-def _refine(func: Callable[[float], float], x1: float, x2: float, y1: float, y2: float,
-            limits: tuple[float, float, float], out: list[tuple[float, float]]) -> None:  # fmt: skip
+def _refine(
+    func: Callable[[float], float],
+    x1: float,
+    x2: float,
+    y1: float,
+    y2: float,
+    limits: tuple[float, float, float],
+    out: list[tuple[float, float]],
+) -> None:
     """``addRange``: split ``[x1, x2]`` while its middle is off the line, then add its end."""
     min_dy, min_dx, epsilon = limits
     stack = [(x1, x2, y1, y2)]
@@ -47,8 +54,14 @@ def _refine(func: Callable[[float], float], x1: float, x2: float, y1: float, y2:
             out.append((b, yb))
 
 
-def sample(func: Callable[[Any], Any], low: float, high: float, bins: int,
-           precision: float = 1e-3, wings: bool = True) -> tuple[np.ndarray[Any, Any], ...]:  # fmt: skip
+def sample(
+    func: Callable[[Any], Any],
+    low: float,
+    high: float,
+    bins: int,
+    precision: float = 1e-3,
+    wings: bool = True,
+) -> tuple[np.ndarray[Any, Any], ...]:
     """``RooCurve::addPoints`` over ``bins + 1`` starting points; ``func`` takes an array."""
     count = bins + 1
     dx = (high - low) / (count - 1.0)
@@ -64,7 +77,9 @@ def sample(func: Callable[[Any], Any], low: float, high: float, bins: int,
     points.append((low, float(ys[0])))
     limits = (precision * span, precision * (high - low), (high - low) * EPSILON)
     for i in range(1, count):
-        _refine(scalar, float(xs[i - 1]), float(xs[i]), float(ys[i - 1]), float(ys[i]), limits, points)
+        _refine(
+            scalar, float(xs[i - 1]), float(xs[i]), float(ys[i - 1]), float(ys[i]), limits, points
+        )
     points.append((high, float(ys[-1])))
     if wings:
         points += [(high + dx, float(ys[-1])), (high + dx * 1.001, 0.0)]
@@ -99,7 +114,8 @@ class RooCurve(Graph):
         return np.interp(x, self.x, self.y)
 
     def average(self, low: float, high: float) -> float:
-        """``RooCurve::average``: the mean height over ``[low, high]``, by the trapezoids of its points."""
+        """``RooCurve::average``: the mean height over ``[low, high]``, by the trapezoids of its
+        points."""
         inside = (self.x > low) & (self.x < high)
         xs = np.concatenate([[low], self.x[inside], [high]])
         ys = np.concatenate([[self.interpolate(low)], self.y[inside], [self.interpolate(high)]])

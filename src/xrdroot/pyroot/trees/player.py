@@ -32,6 +32,15 @@ def _count(nentries: int) -> int | None:
     return None if nentries >= MAX_ENTRIES or nentries < 0 else int(nentries)
 
 
+def _entries_before(varexp: str, registry: Any) -> float:
+    """The entries of the histogram ``>>name`` fills, if it is there already - to count fills by."""
+    from ...drawspec import target
+
+    name = target(varexp).name
+    held = registry.get(name) if name is not None else None
+    return float(getattr(held, "entries", 0.0))
+
+
 class _Player(_Friends):
     """What a tree draws, scans and prints."""
 
@@ -44,7 +53,7 @@ class _Player(_Friends):
 
         return subset(backing, self._entry_list._entries(), self._name or "tree")
 
-    def Draw(
+    def Draw(  # type: ignore[override]  # TTree::Draw takes a tree's arguments, not TObject's
         self,
         varexp: str,
         selection: str = "",
@@ -56,20 +65,22 @@ class _Player(_Friends):
         text = str(varexp).strip()
         if text.startswith(">>"):
             return self._draw_list(text[2:].strip(), str(selection or ""), nentries, firstentry)
+        registry = hooks.registry()
+        before = _entries_before(text, registry)
         made = self._view().draw(
             text,
             str(selection or ""),
             str(option or ""),
             entries=_count(nentries),
             first_entry=int(firstentry),
-            histograms=hooks.registry(),
+            histograms=registry,
             aliases=self._aliases or None,
             weight=None if self._weight == 1 else self._weight,
             estimate=self._estimate,
         )
         if "goff" not in str(option).lower():
             hooks.draw(hooks.wrap(made), str(option or ""))
-        return int(made.selected)
+        return int(getattr(made, "selected", made.entries - before))
 
     def _draw_list(self, name: str, selection: str, nentries: int, firstentry: int) -> int:
         """``Draw(">>elist", cut)``: the entries the cut keeps, as a ``TEntryList``."""

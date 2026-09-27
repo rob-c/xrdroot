@@ -29,7 +29,7 @@ from .printing import g
 __all__ = ["Context", "RooAbsReal", "value_of"]
 
 #: A context: variable names to their values - a number, or an array of one per event.
-Context = dict
+Context = dict[str, Any]
 
 
 def value_of(result: Any) -> float:
@@ -120,6 +120,13 @@ class RooAbsReal(RooAbsArg):
 
         return make_integral(self, iset, args, kwargs)
 
+    def createHistogram(self, name: str, first: Any, *args: Any, **kwargs: Any) -> Any:
+        """``createHistogram(name, x, Binning(...), YVar(y, ...))``: a ``TH1`` of this function's
+        values."""
+        from .histograms import function_histogram
+
+        return function_histogram(self, name, first, args, kwargs)
+
     def createCdf(self, iset: Any, *args: Any, **kwargs: Any) -> Any:
         """``createCdf(iset)``: the integral from each variable's lower end up to its value."""
         from .integral import make_cdf
@@ -138,9 +145,7 @@ class RooAbsReal(RooAbsArg):
         return g(self.getVal())
 
     def printMultiline(self, contents: int, verbose: bool, indent: str) -> str:
-        return (
-            f"{indent}--- RooAbsReal ---\n\n{indent}  Plot label is \"{self.getPlotLabel()}\"\n"
-        )
+        return f'{indent}--- RooAbsReal ---\n\n{indent}  Plot label is "{self.getPlotLabel()}"\n'
 
 
 def names_in(nset: Any) -> frozenset[str] | None:

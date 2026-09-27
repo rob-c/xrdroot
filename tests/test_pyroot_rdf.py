@@ -30,7 +30,7 @@ def test_a_frame_of_numpy_arrays_defines_filters_and_books_as_root_does():
     assert isinstance(count, RResultPtr) and not count.IsReady()
     assert count.GetValue() == 6 and int(count) == 6 and float(count) == 6.0
     assert count.IsReady() and str(count) == "6" and "Result" in repr(count)
-    assert h.GetValue().name == "h" and h.GetPtr().entries == 6 and h.entries == 6
+    assert h.GetValue().GetName() == "h" and h.GetPtr().GetEntries() == 6 and h.GetEntries() == 6
     assert ROOT.RDF.MakeNumpyDataFrame({"a": np.ones(3)}).Count().GetValue() == 3
     assert "RNode" in repr(selected) and selected.GetFilterNames() == ["big"]
     with pytest.raises(AttributeError):

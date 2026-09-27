@@ -19,6 +19,7 @@ from ..cmdargs import RooCmdArg
 from ..collections import as_list
 from ..pdf import CAN_BE_EXTENDED, CAN_NOT_BE_EXTENDED, RooAbsPdf
 from ..real import Context
+from . import prodcond
 
 __all__ = ["RooProdPdf"]
 
@@ -43,21 +44,26 @@ def _factors(args: tuple[Any, ...]) -> tuple[list[Any], dict[str, tuple[frozense
 class RooProdPdf(RooAbsPdf):
     """A product of densities."""
 
-    def __init__(self, name: Any, title: Any = "", *args: Any) -> None:
+    def __init__(self, name: Any, title: Any = "", *args: Any, **kwargs: Any) -> None:
+        from ..cmdargs import make
+
         super().__init__(name, title)
+        args = args + tuple(make(key, value) for key, value in kwargs.items())  # Conditional=(...)
         numbers = [a for a in args if isinstance(a, (int, float)) and not isinstance(a, bool)]
-        pdfs, self._conditional = _factors(tuple(a for a in args if a not in numbers or isinstance(a, bool)))
+        pdfs, self._conditional = _factors(
+            tuple(a for a in args if a not in numbers or isinstance(a, bool))
+        )
         self._cutoff = float(numbers[0]) if numbers else 0.0
         self.pdfs = self._list_proxy("!pdfs", pdfs)
 
     def factor_nset(self, pdf: Any, nset: frozenset[str]) -> frozenset[str]:
         """What ``pdf`` is normalised over within ``nset``: all of it, or its conditional part."""
-        mine = nset & pdf.dependents()
+        mine = frozenset(nset & pdf.dependents())
         found = self._conditional.get(pdf.GetName())
         if found is None:
             return mine
         observables, reverse = found
-        return mine - observables if reverse else mine & observables
+        return frozenset(mine - observables if reverse else mine & observables)
 
     def _factorizes(self, nset: frozenset[str]) -> bool:
         seen: set[str] = set()
@@ -85,29 +91,56 @@ class RooProdPdf(RooAbsPdf):
             found = found * pdf.value(ctx, self.factor_nset(pdf, nset), rng)
         return found
 
-    def fraction(self, names: frozenset[str], ctx: Context, nset: Any, rng: Any,
-                 norm_rng: Any = None) -> Any:  # fmt: skip
+    def fraction(
+        self, names: frozenset[str], ctx: Context, nset: Any, rng: Any, norm_rng: Any = None
+    ) -> Any:
         nset = frozenset(nset)
         if rng and "," in str(rng):  # a product of sums is not a sum of products: part by part
-            return sum(self.fraction(names, ctx, nset, part, norm_rng)
-                       for part in str(rng).split(",") if part)  # fmt: skip
-        if not self._factorizes(nset) or self._conditional:
+            return sum(
+                self.fraction(names, ctx, nset, part, norm_rng)
+                for part in str(rng).split(",")
+                if part
+            )
+        if not self._factorizes(nset):
             return super().fraction(names, ctx, nset, rng, norm_rng)
+        if self._conditional:
+            return prodcond.fraction(self, frozenset(names), ctx, nset, rng, norm_rng)
         found: Any = 1.0
         for pdf in self.pdfs:
             mine = self.factor_nset(pdf, nset)
             part = names & mine
-            found = found * (pdf.fraction(part, ctx, mine, rng, norm_rng) if part
-                             else pdf.value(ctx, mine, norm_rng))  # fmt: skip
+            found = found * (
+                pdf.fraction(part, ctx, mine, rng, norm_rng)
+                if part
+                else pdf.value(ctx, mine, norm_rng)
+            )
         return found
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
-        """A product of factors of separate observables integrates factor by factor."""
-        if self._conditional or not self._factorizes(frozenset(names)):
+        """A product of factors of separate observables integrates factor by factor - with
+        conditional
+        factors, all but the variables some factor is conditional on and must be integrated with."""
+        names = frozenset(names)
+        if self._conditional and self._factorizes(names):
+            return names - prodcond.joint_names(self, names, names)
+        if self._conditional or not self._factorizes(names):
             return frozenset()
-        return frozenset(names)
+        return names
+
+    def announce_projection(self, names: frozenset[str], nset: frozenset[str]) -> bool:
+        """Say the ``SPECINT`` a plot projection over ``names`` makes, if it makes one."""
+        return bool(self._conditional) and prodcond.announce(self, names, nset)
+
+    def normalized_name(self, observables: Any, rng: Any = None) -> str:
+        """A product with conditional factors normalises itself, factor by factor: its own name."""
+        names = frozenset(one.GetName() for one in as_list(observables))
+        if self._conditional and self._factorizes(names & self.dependents()):
+            return self._name
+        return super().normalized_name(observables, rng)
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
+        if self._conditional:
+            return prodcond.fraction(self, names, ctx, names, rng)
         found: Any = 1.0
         for pdf in self.pdfs:
             part = names & pdf.dependents()

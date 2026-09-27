@@ -56,10 +56,29 @@ def poisson_interval(n: int, sigmas: float = 1.0) -> tuple[float, float]:
 class RooHist(Graph):
     """Points with asymmetric error bars, as RooFit draws data."""
 
-    def __init__(self, name: str = "", title: str = "", x: Any = (), y: Any = (),
-                 xlow: Any = (), xhigh: Any = (), ylow: Any = (), yhigh: Any = ()) -> None:  # fmt: skip
-        made = Graph.new(name, x, y, title=title, xerr=(np.asarray(xlow, float), np.asarray(xhigh, float)),
-                         yerr=(np.asarray(ylow, float), np.asarray(yhigh, float)))  # fmt: skip
+    #: The events plotted - their values and weights - for counting those in a range.
+    data_values: Any = None
+    data_weights: Any = None
+
+    def __init__(
+        self,
+        name: str = "",
+        title: str = "",
+        x: Any = (),
+        y: Any = (),
+        xlow: Any = (),
+        xhigh: Any = (),
+        ylow: Any = (),
+        yhigh: Any = (),
+    ) -> None:
+        made = Graph.new(
+            name,
+            x,
+            y,
+            title=title,
+            xerr=(np.asarray(xlow, float), np.asarray(xhigh, float)),
+            yerr=(np.asarray(ylow, float), np.asarray(yhigh, float)),
+        )
         super().__init__("TGraphAsymmErrors", made.members)
         self._core["TAttMarker"]["fMarkerStyle"] = 8
         #: How many events are in the plot's bins, and in all.
@@ -101,8 +120,16 @@ class RooHist(Graph):
         return np.asarray(core["fEYlow"]), np.asarray(core["fEYhigh"])
 
 
-def from_counts(name: str, edges: Any, counts: Any, sumw2: Any, etype: int,
-                nominal: float, x_error: float = 1.0, scale: float = 1.0) -> RooHist:  # fmt: skip
+def from_counts(
+    name: str,
+    edges: Any,
+    counts: Any,
+    sumw2: Any,
+    etype: int,
+    nominal: float,
+    x_error: float = 1.0,
+    scale: float = 1.0,
+) -> RooHist:
     """``RooHist(const TH1&, ...)``: a point per bin of ``counts`` over ``edges``."""
     edges = np.asarray(edges, dtype=np.float64)
     widths = np.diff(edges)
@@ -131,16 +158,27 @@ def _bars(name: str, counts: Any, sumw2: Any, etype: int) -> tuple[Any, Any]:
 
 
 def _poisson_bar(name: str, n: float) -> tuple[float, float]:
-    """``RooHist::addBin``: the Poisson bar - interpolated between integers for a fractional count."""
+    """``RooHist::addBin``: the Poisson bar - interpolated between integers for a fractional
+    count."""
     if n < 0:
-        log(None, WARNING, "Plotting", f"RooHist::addBin({name}) WARNING: negative entry set to zero "
-            "when Poisson error bars are requested")  # fmt: skip
+        log(
+            None,
+            WARNING,
+            "Plotting",
+            f"RooHist::addBin({name}) WARNING: negative entry set to zero "
+            "when Poisson error bars are requested",
+        )
     whole = int(n)
     if abs(n - whole) > 1e-5:
         low1, high1 = poisson_interval(max(whole, 0))
         low2, high2 = poisson_interval(max(whole + 1, 0))
-        log(None, WARNING, "Plotting", f"RooHist::addBin({name}) WARNING: non-integer bin entry {n:g} "
-            "with Poisson errors, interpolating between Poisson errors of adjacent integer")  # fmt: skip
+        log(
+            None,
+            WARNING,
+            "Plotting",
+            f"RooHist::addBin({name}) WARNING: non-integer bin entry {n:g} "
+            "with Poisson errors, interpolating between Poisson errors of adjacent integer",
+        )
         ym, yp = low1 + (n - whole) * (low2 - low1), high1 + (n - whole) * (high2 - high1)
     else:
         ym, yp = poisson_interval(max(whole, 0))

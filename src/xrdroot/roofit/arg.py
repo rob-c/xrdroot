@@ -20,6 +20,7 @@ import copy
 from collections.abc import Iterator
 from typing import Any
 
+from . import cout
 from .collections import RooArgList, RooArgSet, as_list
 from .printing import (
     RooPrintable,
@@ -29,9 +30,16 @@ from .printing import (
     kName,
     kValue,
 )
-from . import cout
 
-__all__ = ["Proxy", "RooAbsArg"]
+__all__ = ["Proxy", "RooAbsArg", "graph_changed"]
+
+#: How many times any node's name or inputs have changed: what the cached walks are checked against.
+_GRAPH = [0]
+
+
+def graph_changed() -> None:
+    """Forget every cached walk: a node was renamed, or given another input."""
+    _GRAPH[0] += 1
 
 
 class Proxy:
@@ -75,6 +83,7 @@ class RooAbsArg(RooPrintable):
 
     def SetName(self, name: str) -> None:
         self._name = str(name)
+        graph_changed()
 
     def SetTitle(self, title: str) -> None:
         self._title = str(title)
@@ -101,12 +110,14 @@ class RooAbsArg(RooPrintable):
     def _proxy(self, name: str, target: Any, shape: bool = False) -> Any:
         """Declare one input called ``name``; the argument itself is returned."""
         self._proxies.append(Proxy(name, target, False, shape))
+        graph_changed()
         return target
 
     def _list_proxy(self, name: str, targets: Any) -> RooArgList:
         """Declare a list of inputs called ``name``."""
         made = RooArgList(as_list(targets))
         self._proxies.append(Proxy(name, made, True))
+        graph_changed()
         return made
 
     def servers(self) -> list[Any]:
@@ -139,9 +150,17 @@ class RooAbsArg(RooPrintable):
             yield node
             stack[0:0] = node.servers()
 
+    def _walked(self) -> list[RooAbsArg]:
+        """:meth:`_walk`, remembered until the graph changes."""
+        cached = self.__dict__.get("_walk_cache")
+        if cached is None or cached[0] != _GRAPH[0]:
+            cached = (_GRAPH[0], list(self._walk()))
+            self.__dict__["_walk_cache"] = cached
+        return cached[1]
+
     def leaves(self) -> list[Any]:
         """The fundamental nodes under this one: its variables and constants."""
-        return [node for node in self._walk() if node.isFundamental()]
+        return [node for node in self._walked() if node.isFundamental()]
 
     def getVariables(self, stripDisconnected: bool = True) -> RooArgSet:
         return RooArgSet(
@@ -158,7 +177,13 @@ class RooAbsArg(RooPrintable):
     def getObservables(self, observables: Any = None, valueOnly: bool = True) -> RooArgSet:
         """The variables that are among ``observables``."""
         wanted = set(_observable_names(observables))
-        return RooArgSet([one for one in self.getVariables() if one.GetName() in wanted])
+        return RooArgSet(
+            [
+                one
+                for one in self.leaves()
+                if one.GetName() in wanted and not one.InheritsFrom("RooConstVar")
+            ]
+        )
 
     def getComponents(self) -> RooArgSet:
         return RooArgSet([node for node in self._walk() if not node.isFundamental()])
@@ -169,9 +194,13 @@ class RooAbsArg(RooPrintable):
 
     dependsOnValue = dependsOn
 
-    def dependents(self) -> set[str]:
+    def dependents(self) -> frozenset[str]:
         """The names of every variable this node depends on."""
-        return {one.GetName() for one in self.leaves()}
+        cached = self.__dict__.get("_dependents_cache")
+        if cached is None or cached[0] != _GRAPH[0]:
+            cached = (_GRAPH[0], frozenset(one.GetName() for one in self.leaves()))
+            self.__dict__["_dependents_cache"] = cached
+        return cached[1]
 
     def findServer(self, name: Any) -> Any:
         wanted = name if isinstance(name, str) else name.GetName()
@@ -277,16 +306,16 @@ class RooAbsArg(RooPrintable):
         """``Dirty`` or ``Clean``, as ROOT's value cache is when the tree is printed."""
         return "Dirty"
 
-    def printCompactTree(self, indent: str = "", filename: Any = None, namePat: Any = None,
-                         client: Any = None) -> None:  # fmt: skip
-        
+    def printCompactTree(
+        self, indent: str = "", filename: Any = None, namePat: Any = None, client: Any = None
+    ) -> None:
+
         cout.write(self.compact_tree(str(indent), None))
 
     def printComponentTree(self, indent: str = "", namePat: Any = None, nLevel: int = 999) -> None:
         if nLevel == 0 or self.isFundamental() or self.InheritsFrom("RooConstVar"):
             return
         if not namePat or str(namePat) in self._name:
-            
             cout.write(str(indent))
             self.Print()
         for server in self.servers():

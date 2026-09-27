@@ -9,7 +9,7 @@ Python iterable stand where one is wanted - ``{x}``, ``[a0, a1]`` - so
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
-from typing import Any
+from typing import Any, TypeVar
 
 from .printing import (
     RooPrintable,
@@ -29,6 +29,10 @@ def _flat(items: Iterable[Any]) -> Iterator[Any]:
             yield from _flat(item)
         else:
             yield item
+
+
+#: A collection of the same kind as the one a method is called on.
+_C = TypeVar("_C", bound="RooAbsCollection")
 
 
 class RooAbsCollection(RooPrintable):
@@ -51,7 +55,7 @@ class RooAbsCollection(RooPrintable):
     def add(self, item: Any, silent: bool = False) -> bool:
         """Add ``item``, or each of a collection's; a set refuses a name it has."""
         if isinstance(item, (RooAbsCollection, list, tuple, set, frozenset)):
-            return all([self.add(one, silent) for one in _flat(item)])
+            return all([self.add(one, silent) for one in _flat(item)])  # noqa: C419 - add all
         if self.unique and self.find(item.GetName()) is not None:
             return False
         self._list.append(item)
@@ -63,7 +67,7 @@ class RooAbsCollection(RooPrintable):
     def remove(self, item: Any, silent: bool = False, matchByNameOnly: bool = False) -> bool:
         """Take out ``item``, or each member of a collection, matched by name."""
         if isinstance(item, (RooAbsCollection, list, tuple, set)):
-            return all([self.remove(one) for one in _flat(item)])
+            return all([self.remove(one) for one in _flat(item)])  # noqa: C419 - remove all
         name = item.GetName()
         before = len(self._list)
         self._list = [one for one in self._list if one.GetName() != name]
@@ -231,11 +235,11 @@ class RooAbsCollection(RooPrintable):
     def sort(self, reverse: bool = False) -> None:
         self._list.sort(key=lambda one: one.GetName(), reverse=reverse)
 
-    def sorted_copy(self) -> RooAbsCollection:
+    def sorted_copy(self: _C) -> _C:
         """The same members sorted by name, as ``getParameters`` hands them back."""
         made = self._like(sorted(self._list, key=lambda one: one.GetName()))
         made._name = self._name
-        return made
+        return made  # type: ignore[return-value]
 
     def isConstant(self) -> bool:
         return all(one.isConstant() for one in self._list)

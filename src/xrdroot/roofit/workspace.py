@@ -15,11 +15,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from . import cout
 from .cmdargs import commands
 from .collections import RooArgSet, as_list
 from .messages import INFO, log
 from .printing import RooPrintable
-from . import cout
 
 __all__ = ["RooWorkspace"]
 
@@ -57,7 +57,7 @@ class RooWorkspace(RooPrintable):
         if hasattr(obj, "numEntries"):
             return self._import_data(obj, options)
         if isinstance(obj, (list, tuple, set)) or hasattr(obj, "_list"):
-            return all([self.Import(one, *args, **kwargs) for one in as_list(obj)])
+            return all([self.Import(one, *args, **kwargs) for one in as_list(obj)])  # noqa: C419
         if not hasattr(obj, "servers"):
             self._generic[obj.GetName()] = obj
             return False
@@ -75,17 +75,31 @@ class RooWorkspace(RooPrintable):
                 continue
             self._nodes[node.GetName()] = node
             if not silent and not node.InheritsFrom("RooConstVar"):
-                log(self, INFO, "ObjectHandling", f"RooWorkspace::import({self._name}) importing "
-                    f"{node.ClassName()}::{node.GetName()}")  # fmt: skip
+                log(
+                    self,
+                    INFO,
+                    "ObjectHandling",
+                    f"RooWorkspace::import({self._name}) importing "
+                    f"{node.ClassName()}::{node.GetName()}",
+                )
         return False
 
     def _import_data(self, data: Any, options: Any) -> bool:
-        log(self, INFO, "ObjectHandling", f"RooWorkspace::import({self._name}) importing dataset "
-            f"{data.GetName()}")  # fmt: skip
+        log(
+            self,
+            INFO,
+            "ObjectHandling",
+            f"RooWorkspace::import({self._name}) importing dataset {data.GetName()}",
+        )
         new = options.get("Rename")
         if new:
-            log(self, INFO, "ObjectHandling", f"RooWorkSpace::import({self._name}) changing name of "
-                f"dataset from  {data.GetName()} to {new}")  # fmt: skip
+            log(
+                self,
+                INFO,
+                "ObjectHandling",
+                f"RooWorkSpace::import({self._name}) changing name of "
+                f"dataset from  {data.GetName()} to {new}",
+            )
             data.SetName(str(new))
         self._data[data.GetName()] = data
         for var in data.get():
@@ -112,7 +126,9 @@ class RooWorkspace(RooPrintable):
     embeddedData = data
 
     def obj(self, name: str) -> Any:
-        return self._nodes.get(str(name)) or self._data.get(str(name)) or self._generic.get(str(name))
+        return (
+            self._nodes.get(str(name)) or self._data.get(str(name)) or self._generic.get(str(name))
+        )
 
     genobj = obj
 
@@ -146,8 +162,11 @@ class RooWorkspace(RooPrintable):
     # -- named sets and snapshots -------------------------------------------------
 
     def defineSet(self, name: str, content: Any, importMissing: bool = False) -> bool:
-        items = [self._nodes.get(n) for n in str(content).split(",")] if isinstance(content, str) else (
-            [self._nodes.get(one.GetName(), one) for one in as_list(content)])
+        items = (
+            [self._nodes.get(n) for n in str(content).split(",")]
+            if isinstance(content, str)
+            else ([self._nodes.get(one.GetName(), one) for one in as_list(content)])
+        )
         self._sets[str(name)] = RooArgSet([one for one in items if one is not None])
         return False
 
@@ -187,7 +206,9 @@ class RooWorkspace(RooPrintable):
         """``RooWorkspace::Print``: each kind of content under its heading, sorted by name."""
         cout.write(f"\nRooWorkspace({self._name}) {self._title} contents\n\n")
         nodes = list(self._nodes.values())
-        variables = RooArgSet([n for n in nodes if n.InheritsFrom("RooRealVar") or n.InheritsFrom("RooCategory")])
+        variables = RooArgSet(
+            [n for n in nodes if n.InheritsFrom("RooRealVar") or n.InheritsFrom("RooCategory")]
+        )
         if len(variables):
             cout.write("variables\n---------\n" + variables.sorted_copy().printValue() + "\n\n")
         _section("p.d.f.s\n-------\n", [n for n in nodes if n.InheritsFrom("RooAbsPdf")])

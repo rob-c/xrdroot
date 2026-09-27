@@ -1,4 +1,5 @@
-"""``RooRealVar::format``: a variable as text - ``mean = 1.02 +/- 0.03`` - to the precision its error says.
+"""``RooRealVar::format``: a variable as text - ``mean = 1.02 +/- 0.03`` - to the precision its
+error says.
 
 The value is rounded to as many decimals as its error has significant
 figures (two by default), which ``paramOn`` boxes and ``printLatex`` tables
@@ -17,7 +18,11 @@ __all__ = ["format_var", "format_command"]
 
 def _digits(var: Any, sig: int, by_error: bool) -> tuple[int, int]:
     value, error = var.getVal(), var.getError()
-    lead_val = math.floor(math.log10(abs(error + 1e-10))) if by_error else math.floor(math.log10(abs(value + 1e-10)))
+    lead_val = (
+        math.floor(math.log10(abs(error + 1e-10)))
+        if by_error
+        else math.floor(math.log10(abs(value + 1e-10)))
+    )
     if (by_error and value == 0 and error == 0) or (not by_error and value == 0):
         lead_val = 0
     lead_err = math.floor(math.log10(abs(error + 1e-10)))
@@ -31,7 +36,9 @@ def format_var(var: Any, sig: int = 2, options: str = "") -> str:
     opts = options.lower()
     show_error = "e" in opts and var.hasError(False)
     latex = "x" in opts or "y" in opts
-    by_error = ((("e" in opts) and var.hasError(False) and not var.isConstant()) or "p" in opts) and "f" not in opts
+    by_error = (
+        (("e" in opts) and var.hasError(False) and not var.isConstant()) or "p" in opts
+    ) and "f" not in opts
     val_digits, err_digits = _digits(var, max(sig, 1), by_error)
     text = "$" if latex else ""
     label = var.GetTitle() if "t" in opts else (var.getPlotLabel() if "n" in opts else "")

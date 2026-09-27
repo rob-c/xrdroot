@@ -34,20 +34,34 @@ class RooAbsCategory(RooAbsReal):
     # -- states -------------------------------------------------------------------
 
     def defineType(self, label: str, index: Any = None) -> bool:
-        """``defineType``: a new state; ``True`` - with an error - if its label or index is taken."""
+        """``defineType``: a new state; ``True`` - with an error - if its label or index is
+        taken."""
         label = str(label)
         if ";" in label:
-            log(self, ERROR, "InputArguments", f"RooCategory::defineType({self._name}): semicolons "
-                "not allowed in label name")  # fmt: skip
+            log(
+                self,
+                ERROR,
+                "InputArguments",
+                f"RooCategory::defineType({self._name}): semicolons not allowed in label name",
+            )
             return True
         number = self._next() if index is None else int(index)
         if number in self._states.values():
-            log(self, ERROR, "InputArguments", f"RooAbsCategory::defineState({self._name}): index "
-                f"{number} already assigned")  # fmt: skip
+            log(
+                self,
+                ERROR,
+                "InputArguments",
+                f"RooAbsCategory::defineState({self._name}): index {number} already assigned",
+            )
             return True
         if label in self._states:
-            log(self, ERROR, "InputArguments", f"RooAbsCategory::defineState({self._name}): label "
-                f"{label} already assigned or not allowed")  # fmt: skip
+            log(
+                self,
+                ERROR,
+                "InputArguments",
+                f"RooAbsCategory::defineState({self._name}): label "
+                f"{label} already assigned or not allowed",
+            )
             return True
         self._states[label] = number
         if len(self._states) == 1:
@@ -133,8 +147,13 @@ class RooCategory(RooAbsCategory):
     def setIndex(self, index: Any, printError: bool = True) -> bool:
         if not self.hasIndex(int(index)):
             if printError:
-                log(self, ERROR, "InputArguments", f"RooCategory: Trying to set invalid state "
-                    f"{int(index)} for category {self._name}")  # fmt: skip
+                log(
+                    self,
+                    ERROR,
+                    "InputArguments",
+                    f"RooCategory: Trying to set invalid state "
+                    f"{int(index)} for category {self._name}",
+                )
             return True
         self._index = int(index)
         return False
@@ -142,8 +161,12 @@ class RooCategory(RooAbsCategory):
     def setLabel(self, label: str, printError: bool = True) -> bool:
         if str(label) not in self._states:
             if printError:
-                log(self, ERROR, "InputArguments", f"Trying to set invalid state label '{label}' for "
-                    f"category {self._name}")  # fmt: skip
+                log(
+                    self,
+                    ERROR,
+                    "InputArguments",
+                    f"Trying to set invalid state label '{label}' for category {self._name}",
+                )
             return True
         self._index = self._states[str(label)]
         return False
@@ -213,9 +236,12 @@ class _Derived(RooAbsCategory):
 
 
 class RooThresholdCategory(_Derived):
-    """``RooThresholdCategory``: the state of the first threshold a value is below, else the default."""
+    """``RooThresholdCategory``: the state of the first threshold a value is below, else the
+    default."""
 
-    def __init__(self, name: Any, title: Any, x: Any, defaultLabel: str, defaultIndex: int = 0) -> None:
+    def __init__(
+        self, name: Any, title: Any, x: Any, defaultLabel: str, defaultIndex: int = 0
+    ) -> None:
         super().__init__(name, title)
         self.x = self._proxy("inputVar", x)
         self.defineType(defaultLabel, defaultIndex)
@@ -240,7 +266,9 @@ class RooThresholdCategory(_Derived):
 class RooBinningCategory(_Derived):
     """``RooBinningCategory``: the number of the bin of a named binning a value falls in."""
 
-    def __init__(self, name: Any, title: Any, x: Any, binningName: Any = None, catTypeName: str = "") -> None:
+    def __init__(
+        self, name: Any, title: Any, x: Any, binningName: Any = None, catTypeName: str = ""
+    ) -> None:
         super().__init__(name, title)
         self.x = self._proxy("inputVar", x)
         self._binning = binningName
@@ -251,5 +279,91 @@ class RooBinningCategory(_Derived):
     def compute(self, ctx: Context) -> Any:
         edges = self.x.getBinning(self._binning).array()
         x = np.asarray(self.x.compute(ctx), dtype=np.float64)
-        found = np.clip(np.searchsorted(edges, x, side="right") - 1, 0, len(edges) - 2).astype(np.float64)
+        found = np.clip(np.searchsorted(edges, x, side="right") - 1, 0, len(edges) - 2).astype(
+            np.float64
+        )
         return found if found.ndim else float(found)
+
+
+class RooMappedCategory(_Derived):
+    """``RooMappedCategory``: another category's states mapped - by wildcard - onto new ones."""
+
+    def __init__(
+        self,
+        name: Any,
+        title: Any,
+        input: Any,
+        defaultLabel: str = "NotMapped",
+        defaultIndex: Any = None,
+    ) -> None:
+        super().__init__(name, title)
+        self.input = self._proxy("inputCat", input)
+        self.defineType(defaultLabel, defaultIndex)
+        self._default = self.lookupIndex(defaultLabel)
+        self._rules: list[tuple[str, int]] = []
+
+    def map(self, pattern: str, label: str, index: Any = None) -> bool:
+        if not self.hasLabel(label):
+            self.defineType(label, index)
+        self._rules.append((str(pattern), self.lookupIndex(label)))
+        return False
+
+    def _target(self, source: str) -> int:
+        import fnmatch
+
+        return next(
+            (index for pattern, index in self._rules if fnmatch.fnmatchcase(source, pattern)),
+            self._default,
+        )
+
+    def compute(self, ctx: Context) -> Any:
+        values = np.asarray(self.input.compute(ctx), dtype=np.float64)
+        table = {
+            float(index): float(self._target(label)) for label, index in self.input.states().items()
+        }
+        found = np.vectorize(
+            lambda v: table.get(float(v), float(self._default)), otypes=[np.float64]
+        )(values)
+        return found if found.ndim else float(found)
+
+
+class RooMultiCategory(_Derived):
+    """``RooMultiCategory``: one state for each combination of several categories' states."""
+
+    def __init__(self, name: Any, title: Any, inputs: Any) -> None:
+        from .collections import as_list
+
+        super().__init__(name, title)
+        # a Python set has no order ROOT sees either: sorted by name, as ROOT's run
+        # happened to take them
+        ordered = sorted(as_list(inputs), key=lambda one: one.GetName())
+        self.inputs = self._list_proxy("inputCats", ordered)
+        import itertools
+
+        lists = [list(one.states().items()) for one in ordered]
+        for number, combination in enumerate(itertools.product(*reversed(lists))):
+            labels = [label for label, _ in reversed(combination)]
+            self.defineType("{" + ";".join(labels) + "}", number)
+
+    def compute(self, ctx: Context) -> Any:
+        found: Any = 0.0
+        stride = 1
+        for one in self.inputs:
+            position = {float(index): float(i) for i, index in enumerate(one.states().values())}
+            values = np.asarray(one.compute(ctx), dtype=np.float64)
+            found = found + stride * np.vectorize(position.get, otypes=[np.float64])(values)
+            stride *= len(position)
+        found = np.asarray(found, dtype=np.float64)
+        return found if found.ndim else float(found)
+
+
+class RooSuperCategory(RooMultiCategory):
+    """``RooSuperCategory``: a multi-category whose state can be set, setting its inputs'."""
+
+    def setLabel(self, label: str, printError: bool = True) -> bool:
+        if not self.hasLabel(label):
+            return True
+        labels = str(label).strip("{}").split(";")
+        for one, part in zip(self.inputs, labels):
+            one.setLabel(part)
+        return False

@@ -15,18 +15,41 @@ default, six significant figures (:func:`g`).
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, ClassVar
+
 from . import cout
 
 __all__ = [
-    "kName", "kClassName", "kValue", "kArgs", "kExtras", "kAddress", "kTitle",
-    "kCollectionHeader", "kInline", "kSingleLine", "kStandard", "kVerbose", "kTreeStructure",
-    "RooPrintable", "PRECISION", "g", "address", "style_of",
-]  # fmt: skip
+    "kName",
+    "kClassName",
+    "kValue",
+    "kArgs",
+    "kExtras",
+    "kAddress",
+    "kTitle",
+    "kCollectionHeader",
+    "kInline",
+    "kSingleLine",
+    "kStandard",
+    "kVerbose",
+    "kTreeStructure",
+    "RooPrintable",
+    "PRECISION",
+    "g",
+    "address",
+    "style_of",
+]
 
 #: ``RooPrintable::ContentsOption``.
 kName, kClassName, kValue, kArgs, kExtras, kAddress, kTitle, kCollectionHeader = (
-    1, 2, 4, 8, 16, 32, 64, 128,
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128,
 )
 #: ``RooPrintable::StyleOption``.
 kInline, kSingleLine, kStandard, kVerbose, kTreeStructure = range(1, 6)
@@ -64,7 +87,7 @@ class RooPrintable:
     """The printing every RooFit object shares: ``Print``, ``printStream`` and their parts."""
 
     #: ``RooPrintable::_nameLength``: the width names are printed in, when nonzero.
-    name_length = [0]
+    name_length: ClassVar[list[int]] = [0]
 
     def printName(self) -> str:
         return ""

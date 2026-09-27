@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from .binning import RooAbsBinning, RooRangeBinning, RooUniformBinning
+from .binning import RooAbsBinning, RooParamBinning, RooRangeBinning, RooUniformBinning
 from .messages import INFO, WARNING, log
 from .printing import g, kClassName, kExtras, kName, kValue
 from .real import Context, RooAbsReal
@@ -74,7 +74,9 @@ class RooAbsRealLValue(RooAbsReal):
 
     # -- ranges and binnings ------------------------------------------------------
 
-    def getBinning(self, name: Any = None, verbose: bool = True, createOnTheFly: bool = False) -> Any:
+    def getBinning(
+        self, name: Any = None, verbose: bool = True, createOnTheFly: bool = False
+    ) -> Any:
         if not name:
             return self._binning
         found = self._shared.get(str(name))
@@ -94,10 +96,10 @@ class RooAbsRealLValue(RooAbsReal):
     def getBinningNames(self) -> list[str]:
         return ["", *self._shared]
 
-    def getMin(self, name: Any = None) -> float:
+    def getMin(self, name: Any = None) -> Any:  # an array, for a range whose end is a column
         return self.getBinning(name).lowBound()
 
-    def getMax(self, name: Any = None) -> float:
+    def getMax(self, name: Any = None) -> Any:  # an array, for a range whose end is a column
         return self.getBinning(name).highBound()
 
     def getRange(self, name: Any = None) -> tuple[float, float]:
@@ -110,10 +112,10 @@ class RooAbsRealLValue(RooAbsReal):
         return not is_infinite(self.getMax(name))
 
     def inRange(self, value: float, name: Any = None) -> bool:
-        return self.getMin(name) <= float(value) <= self.getMax(name)
+        return bool(self.getMin(name) <= float(value) <= self.getMax(name))
 
     def getBins(self, name: Any = None) -> int:
-        return self.getBinning(name).numBins()
+        return int(self.getBinning(name).numBins())
 
     def numBins(self, name: Any = None) -> int:
         return self.getBins(name)
@@ -166,21 +168,43 @@ class RooRealVar(RooAbsRealLValue):
         if args and isinstance(args[0], str):
             self._set_named_range(args[0], float(args[1]), float(args[2]))
             return
+        if any(hasattr(one, "getVal") for one in args[:2]):
+            self._param_range(*args[:2])
+            return
         low, high = float(args[0]), float(args[1])
         if low > high:
-            log(self, WARNING, "InputArguments", f"RooRealVar::setRange({self._name}): Proposed "
-                "new fit max. smaller than min., setting max. to min.")  # fmt: skip
+            log(
+                self,
+                WARNING,
+                "InputArguments",
+                f"RooRealVar::setRange({self._name}): Proposed "
+                "new fit max. smaller than min., setting max. to min.",
+            )
             high = low
         self._binning.setRange(low, high)
         self._val = min(max(self._val, low), high)
+
+    def _param_range(self, low: Any, high: Any) -> None:
+        """``setRange(tmin, tmax)``: ends that are functions, read whenever the range is asked
+        for."""
+        ends = [
+            one if hasattr(one, "getVal") else RooConstVar(g(one), g(one), float(one))
+            for one in (low, high)
+        ]
+        self._binning = RooParamBinning(ends[0], ends[1], self._binning.numBins())
 
     def _set_named_range(self, name: str, low: float, high: float) -> None:
         exists = name in self._shared
         binning = self.getBinning(name, createOnTheFly=True)
         binning.setRange(low, max(low, high))
         if not exists:
-            log(self, INFO, "Eval", f"RooRealVar::setRange({self._name}) new range named "
-                f"'{name}' created with bounds [{g(low)},{g(high)}]")  # fmt: skip
+            log(
+                self,
+                INFO,
+                "Eval",
+                f"RooRealVar::setRange({self._name}) new range named "
+                f"'{name}' created with bounds [{g(low)},{g(high)}]",
+            )
 
     def setMin(self, *args: Any) -> None:
         name, value = (args[0], float(args[1])) if len(args) == 2 else (None, float(args[0]))
@@ -208,9 +232,26 @@ class RooRealVar(RooAbsRealLValue):
     def removeMax(self, name: Any = None) -> None:
         self._binning.setRange(self._binning.lowBound(), INFINITY)
 
+    def setBin(self, ibin: int, name: Any = None) -> None:
+        """``setBin``: the value set to the centre of bin ``ibin`` of the binning ``name``."""
+        from .messages import ERROR
+
+        if not 0 <= int(ibin) < self.getBins(name):
+            log(
+                self,
+                ERROR,
+                "InputArguments",
+                f"RooAbsRealLValue::setBin({self._name}) ERROR: bin index "
+                f"{int(ibin)} is out of range (0,{self.getBins(name) - 1})",
+            )
+            return
+        self.setVal(self.getBinning(name).binCenter(int(ibin)))
+
     def setBins(self, nbins: int, name: Any = None) -> None:
         if name:
-            self._shared[str(name)] = RooUniformBinning(self.getMin(), self.getMax(), nbins, str(name))
+            self._shared[str(name)] = RooUniformBinning(
+                self.getMin(), self.getMax(), nbins, str(name)
+            )
         else:
             self._binning = RooUniformBinning(self.getMin(), self.getMax(), nbins)
 

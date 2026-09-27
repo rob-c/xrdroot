@@ -23,14 +23,16 @@ from ..collections import RooArgList, as_list
 from ..messages import WARNING, log
 from ..pdf import CAN_NOT_BE_EXTENDED, MUST_BE_EXTENDED, RooAbsPdf
 from ..printing import g
-
-
-def g6(value: Any) -> str:
-    """A number as a fresh ``std::ostringstream`` prints one: six figures, whatever ``cout`` is at."""
-    return g(value, 6)
 from ..real import Context, RooAbsReal
 from ..selection import active
 from ..variables import RooConstVar
+
+
+def g6(value: Any) -> str:
+    """A number as a fresh ``std::ostringstream`` prints one: six figures, whatever ``cout`` is
+    at."""
+    return g(value, 6)
+
 
 __all__ = ["RooAddPdf", "RooRecursiveFraction"]
 
@@ -62,17 +64,23 @@ class RooAddPdf(RooAbsPdf):
         self._recursive = recursive
         self._all_extendable = not coefs
         self._have_last = False
-        if len(pdfs) > len(coefs) + 1 or len(pdfs) < len(coefs):
-            raise ValueError(f"RooAddPdf::RooAddPdf({self._name}) number of pdfs and coefficients "
-                             "inconsistent, must have Npdf=Ncoef or Npdf=Ncoef+1.")  # fmt: skip
+        if coefs and (len(pdfs) > len(coefs) + 1 or len(pdfs) < len(coefs)):
+            raise ValueError(
+                f"RooAddPdf::RooAddPdf({self._name}) number of pdfs and coefficients "
+                "inconsistent, must have Npdf=Ncoef or Npdf=Ncoef+1."
+            )
         if recursive and len(pdfs) != len(coefs) + 1:
-            raise ValueError(f"RooAddPdf::RooAddPdf({self._name}): Recursive fractions option can "
-                             "only be used if Npdf=Ncoef+1.")  # fmt: skip
+            raise ValueError(
+                f"RooAddPdf::RooAddPdf({self._name}): Recursive fractions option can "
+                "only be used if Npdf=Ncoef+1."
+            )
         if self._all_extendable:
             for pdf in pdfs:
                 if not pdf.canBeExtended():
-                    raise ValueError(f"RooAddPdf::RooAddPdf({self._name}) pdf {pdf.GetName()} is not "
-                                     "extendable, RooAddPdf constructor call is invalid!")  # fmt: skip
+                    raise ValueError(
+                        f"RooAddPdf::RooAddPdf({self._name}) pdf {pdf.GetName()} is not "
+                        "extendable, RooAddPdf constructor call is invalid!"
+                    )
         made = self._recursive_coefs(pdfs, coefs) if recursive else list(coefs)
         self._have_last = recursive or (bool(coefs) and len(coefs) == len(pdfs))
         self.pdfs = self._list_proxy("!pdfs", pdfs)
@@ -113,8 +121,14 @@ class RooAddPdf(RooAbsPdf):
             return [v / total for v in values]
         last = 1.0 - sum(values)
         if np.any(np.asarray(last) < 0) or np.any(np.asarray(last) > 1):
-            log(self, WARNING, "Eval", f"RooAddPdf::updateCoefCache({self._name}) WARNING: sum of "
-                f"PDF coefficients not in range [0-1], value={g(1 - np.asarray(last).reshape(-1)[0])}")
+            log(
+                self,
+                WARNING,
+                "Eval",
+                f"RooAddPdf::updateCoefCache({self._name}) WARNING: sum of "
+                "PDF coefficients not in range [0-1], "
+                f"value={g(1 - np.asarray(last).reshape(-1)[0])}",
+            )
         return [*values, last]
 
     def value(self, ctx: Context, nset: Any = None, rng: Any = None) -> Any:
@@ -146,8 +160,9 @@ class RooAddPdf(RooAbsPdf):
             total = total + coef * pdf.integrate(names, ctx, rng)
         return total
 
-    def fraction(self, names: frozenset[str], ctx: Context, nset: Any, rng: Any,
-                 norm_rng: Any = None) -> Any:  # fmt: skip
+    def fraction(
+        self, names: frozenset[str], ctx: Context, nset: Any, rng: Any, norm_rng: Any = None
+    ) -> Any:
         total: Any = 0.0
         for coef, pdf in zip(self.coefficients(ctx, nset), self.pdfs):
             total = total + coef * pdf.fraction(names, ctx, nset, rng, norm_rng)
@@ -169,7 +184,9 @@ class RooAddPdf(RooAbsPdf):
             return float(sum(yields))
         yields = [float(c.getVal()) for c in self.coefs]
         if rng and nset:
-            yields = [y * float(pdf.fraction(nset, {}, nset, rng)) for y, pdf in zip(yields, self.pdfs)]
+            yields = [
+                y * float(pdf.fraction(nset, {}, nset, rng)) for y, pdf in zip(yields, self.pdfs)
+            ]
         return float(sum(yields))
 
     def gen_context(self, names: frozenset[str]) -> Any:
@@ -195,9 +212,14 @@ class RooAddPdf(RooAbsPdf):
         return " + ".join(parts) + " "
 
     def compiled_origin(self, nset: frozenset[str], rng: Any = None) -> str:
-        """How RooFit describes this sum in a fit: its terms as the normalised densities they are."""
-        labels = [p.normalized_label(nset & p.dependents(), rng) if not p.selfNormalized() else p.GetName()
-                  for p in self.pdfs]
+        """How RooFit describes this sum in a fit: its terms as the normalised densities they
+        are."""
+        labels = [
+            p.normalized_label(nset & p.dependents(), rng)
+            if not p.selfNormalized()
+            else p.GetName()
+            for p in self.pdfs
+        ]
         parts = [f"{c.GetName()} * {label}" for c, label in zip(self.coefs, labels)]
         if len(labels) > len(self.coefs):
             parts.append(f"[%] * {labels[len(self.coefs)]}")
@@ -208,11 +230,23 @@ class RooAddPdf(RooAbsPdf):
         observables = [one for one in self.leaves() if one.GetName() in nset]
         terms = []
         for pdf in self.pdfs:
-            label = pdf.normalized_label(nset & pdf.dependents(), rng) if not pdf.selfNormalized() else pdf.GetName()
-            terms.append(f"{label} = {g6(float(np.asarray(pdf.value({}, nset & pdf.dependents(), rng))))}")
-        return ("!refCoefNorm=(" + ",".join(f"{o.GetName()} = {g6(o.getVal())}" for o in observables)
-                + "), !pdfs=(" + ",".join(terms) + "), !coefficients=("
-                + ",".join(f"{c.GetName()} = {g6(c.getVal())}" for c in self.coefs) + ")")  # fmt: skip
+            label = (
+                pdf.normalized_label(nset & pdf.dependents(), rng)
+                if not pdf.selfNormalized()
+                else pdf.GetName()
+            )
+            terms.append(
+                f"{label} = {g6(float(np.asarray(pdf.value({}, nset & pdf.dependents(), rng))))}"
+            )
+        return (
+            "!refCoefNorm=("
+            + ",".join(f"{o.GetName()} = {g6(o.getVal())}" for o in observables)
+            + "), !pdfs=("
+            + ",".join(terms)
+            + "), !coefficients=("
+            + ",".join(f"{c.GetName()} = {g6(c.getVal())}" for c in self.coefs)
+            + ")"
+        )
 
     def printValue(self) -> str:
         return f"{g(np.asarray(self.compute({})).reshape(-1)[0])}/1"
@@ -225,7 +259,9 @@ def _arguments(args: tuple[Any, ...]) -> tuple[list[Any], list[Any], bool]:
     """The components, the coefficients and the recursive flag, from either constructor."""
     flags = [a for a in args if isinstance(a, bool)]
     rest = [a for a in args if not isinstance(a, bool)]
-    if rest and all(not isinstance(a, (list, tuple, set)) and not hasattr(a, "_list") for a in rest):
+    if rest and all(
+        not isinstance(a, (list, tuple, set)) and not hasattr(a, "_list") for a in rest
+    ):
         if len(rest) == 3:  # RooAddPdf(name, title, pdf1, pdf2, coef1)
             return [rest[0], rest[1]], [rest[2]], bool(flags and flags[0])
     lists = [as_list(a) for a in rest]
