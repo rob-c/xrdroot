@@ -23,10 +23,13 @@ from .hist import AUTO, POISSON, SUMW2, from_counts
 __all__ = ["plot_data"]
 
 
-def _edges(frame: Any, options: Commands) -> tuple[np.ndarray[Any, Any], bool]:
+def _edges(frame: Any, options: Commands, data: Any = None) -> tuple[np.ndarray[Any, Any], bool]:
     """The bin edges, and whether the options chose them rather than the frame."""
     var = frame.getPlotVar()
     given = options.args("Binning")
+    own = getattr(data, "default_binning", None)
+    if not given and own is not None and own(var) is not None:
+        return own(var).array(), True
     if not given:
         if not var.getBinning().isUniform():
             return var.getBinning().array(), False
@@ -61,13 +64,13 @@ def plot_data(data: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, An
     """``data.plotOn(frame, options...)``."""
     options = commands(args, kwargs)
     var = frame.getPlotVar()
-    edges, chosen = _edges(frame, options)
+    edges, chosen = _edges(frame, options, data)
     cut, rng = options.get("Cut"), options.get("CutRange")
     keep = data.mask(cut, rng)
     values = data.column(var.GetName())[keep]
     weights = data.weights()[keep]
     counts, _ = np.histogram(values, bins=edges, weights=weights)
-    sumw2, _ = np.histogram(values, bins=edges, weights=weights**2)
+    sumw2, _ = np.histogram(values, bins=edges, weights=data.weights_squared()[keep])
     nominal = 0.0
     if chosen:
         nominal = frame.getFitRangeBinW() if frame.getFitRangeNEvt() else float(np.mean(np.diff(edges)))

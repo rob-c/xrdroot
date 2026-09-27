@@ -120,6 +120,18 @@ class RooAbsReal(RooAbsArg):
 
         return make_integral(self, iset, args, kwargs)
 
+    def createCdf(self, iset: Any, *args: Any, **kwargs: Any) -> Any:
+        """``createCdf(iset)``: the integral from each variable's lower end up to its value."""
+        from .integral import make_cdf
+
+        return make_cdf(self, iset)
+
+    def plotOn(self, frame: Any, *args: Any, **kwargs: Any) -> Any:
+        """``RooAbsReal::plotOn``: this function's curve on ``frame``, as it is."""
+        from .plot.curves import plot_function
+
+        return plot_function(self, frame, args, kwargs)
+
     # -- printing -----------------------------------------------------------------
 
     def printValue(self) -> str:

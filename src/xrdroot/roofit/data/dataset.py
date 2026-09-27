@@ -142,6 +142,14 @@ class RooDataSet(RooAbsData):
 
         return reduced(self, args, kwargs)
 
+    def binnedClone(self, name: Any = None, title: Any = None) -> Any:
+        """``binnedClone``: these events binned in their variables' binnings."""
+        from .datahist import RooDataHist
+
+        made = RooDataHist(name or f"{self._name}_binned", title or f"{self._title}_binned",
+                           list(self._vars), self)  # fmt: skip
+        return made
+
     # -- printing -----------------------------------------------------------------
 
     def printArgs(self) -> str:
