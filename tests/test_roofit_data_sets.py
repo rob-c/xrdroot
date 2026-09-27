@@ -277,3 +277,224 @@ def test_appending_and_adding_columns_grow_the_events_and_their_weights() -> Non
     assert (d.numEntries(), list(d.weights())) == (3, [3.0, 1.0, 1.0])
     b.add_columns({"x": [7.0]}, [2.5])
     assert list(b.weights()) == [1.0, 1.0, 2.5]
+
+
+def five_events() -> tuple[RooDataSet, RooRealVar, RooRealVar]:
+    x, y = xy()
+    d = RooDataSet("d", "d", RooArgSet([x, y]))
+    for i, value in enumerate([1.0, 2.0, 3.0, 4.0, 7.0]):
+        x.setVal(value)
+        y.setVal(-min(i, 3))
+        d.add(RooArgSet([x, y]))
+    return d, x, y
+
+
+def test_a_column_of_a_function_holds_its_value_at_every_event() -> None:
+    """``addColumn(f)`` is how a macro derives a quantity per event: ROOT's values of x*y+1.
+
+    ROOT's new variable is constant and unbounded; the engine's spans the values.
+    """
+    d, x, y = five_events()
+    f = RooFormulaVar("f", "f", "x*y+1", [x, y])
+    made = d.addColumn(f)
+    assert (made.GetName(), list(d.column("f"))) == ("f", [1.0, -1.0, -5.0, -11.0, -20.0])
+    assert [d.get(i).find("f").getVal() for i in range(5)] == [1.0, -1.0, -5.0, -11.0, -20.0]
+    assert d.printArgs() == "[x,y,f]"
+    empty = RooDataSet("e", "e", RooArgSet([x, y]))
+    assert (empty.addColumn(f).GetName(), len(empty.column("f"))) == ("f", 0)
+
+
+def test_a_column_of_a_threshold_category_is_a_category_of_its_states() -> None:
+    """A derived category becomes a plain category in the dataset, event by event as in ROOT."""
+    x = RooRealVar("x", "x", 0, 10)
+    d = RooDataSet("d", "d", x)
+    d.add_columns({"x": [i * 0.8 + 0.1 for i in range(12)]})
+    th = RooThresholdCategory("th", "th", x, "hi", 2)
+    th.addThreshold(3.0, "lo", 0)
+    th.addThreshold(6.0, "mid", 1)
+    made = d.addColumn(th)
+    assert (made.ClassName(), made.isFundamental()) == ("RooCategory", True)
+    labels = [d.get(i).find("th").getLabel() for i in range(12)]
+    assert labels == ["lo"] * 4 + ["mid"] * 4 + ["hi"] * 4
+
+
+def test_renaming_an_observable_renames_its_column() -> None:
+    """``changeObservableName`` renames a variable in place, its values going with it."""
+    d, *_ = five_events()
+    assert d.changeObservableName("y", "yy") is False
+    d.changeObservableName("q", "qq")  # no such observable: nothing changes
+    assert (d.printArgs(), list(d.column("yy"))) == ("[x,yy]", [0.0, -1.0, -2.0, -3.0, -3.0])
+    assert sorted(d.columns()) == ["x", "yy"]
+
+
+def test_global_observables_are_kept_as_copies() -> None:
+    """``GlobalObservables(g)`` hands the dataset its own copy of the constraint's centre."""
+    x = RooRealVar("x", "x", 0, 10)
+    g = RooRealVar("g", "g", 1.0)
+    bare = RooDataSet("b", "b", x)
+    d = RooDataSet("d", "d", x, GlobalObservables=RooArgSet([g]))
+    kept = d.getGlobalObservables()
+    assert bare.getGlobalObservables() is None
+    assert ([one.GetName() for one in kept], kept.find("g") is not g) == (["g"], True)
+    assert kept.find("g").getVal() == 1.0
+
+
+def test_a_reduced_dataset_keeps_only_the_events_the_cut_selects() -> None:
+    """``reduce("x>5")`` keeps the name and title, as ``RooDataSet::reduceEng`` does."""
+    d, *_ = filled()
+    r = d.reduce("x>5")
+    assert (r.GetName(), r.GetTitle(), r.numEntries(), r.printArgs()) == (
+        "d",
+        "d title",
+        5,
+        "[x,y,c]",
+    )
+    assert list(r.column("x")) == [5.5, 6.5, 7.5, 8.5, 9.5]
+    assert d.numEntries() == 10
+
+
+def test_a_reduced_dataset_can_drop_variables_and_keep_a_window_of_events(capsys: Any) -> None:
+    """``SelectVars`` and ``EventRange`` together: ROOT's four events of ``x`` alone."""
+    d, x, *_ = filled()
+    r = d.reduce(RooCmdArg("SelectVars", RooArgSet([x])), RooCmdArg("EventRange", 2, 6))
+    r.get(3)
+    r.Print("v")
+    assert capsys.readouterr().out == (
+        "DataStore d (d title)\n"
+        "  Contains 4 entries\n"
+        "  Observables: \n"
+        '    1)  x = 5.5  L(0 - 10)  "x"\n'
+    )
+    alone = d.reduce(RooArgSet([x]))
+    assert (alone.printArgs(), alone.numEntries()) == ("[x]", 10)
+
+
+def test_a_reduced_dataset_can_be_renamed_and_cut_to_a_range() -> None:
+    """``Name`` renames the reduction; ``CutRange`` keeps the events in a named range."""
+    d, x, *_ = filled()
+    x.setRange("low", 0, 3)
+    r = d.reduce(RooCmdArg("Cut", "x>1"), RooCmdArg("Name", "red"), CutRange="low")
+    assert (r.GetName(), list(r.column("x"))) == ("red", [1.5, 2.5])
+    w = RooRealVar("w", "w", 0, 10)
+    weighted = RooDataSet("wd", "wd", RooArgSet([x, w]), WeightVar="w")
+    weighted.add_columns({"x": [1.0, 2.0, 3.0]}, [0.5, 1.5, 2.5])
+    assert list(weighted.reduce("x>1").weights()) == [1.5, 2.5]
+
+
+def slices() -> tuple[RooRealVar, RooCategory, RooDataSet, RooDataSet]:
+    """A category of two states, and a dataset of three and one of two events for them."""
+    x = RooRealVar("x", "x", 0, 10)
+    s = RooCategory("s", "s")
+    s.defineType("phys")
+    s.defineType("ctl")
+    a = RooDataSet("a", "a", x)
+    a.add_columns({"x": [1.0, 2.0, 3.0]})
+    b = RooDataSet("b", "b", x)
+    b.add_columns({"x": [8.0, 9.0]})
+    return x, s, a, b
+
+
+def test_datasets_joined_by_an_index_come_in_the_order_of_the_states_labels() -> None:
+    """``Index(s), Import({...})``: ROOT walks a ``std::map``, so ``ctl`` comes before ``phys``."""
+    x, s, a, b = slices()
+    comb = RooDataSet("comb", "comb", x, Index=s, Import={"phys": a, "ctl": b})
+    found = [(comb.get(i).find("x").getVal(), comb.get(i).find("s").getLabel()) for i in range(5)]
+    assert found == [(8.0, "ctl"), (9.0, "ctl"), (1.0, "phys"), (2.0, "phys"), (3.0, "phys")]
+    assert (comb.printArgs(), comb.isWeighted()) == ("[x,s]", False)
+
+
+def test_datasets_joined_one_import_at_a_time_are_the_same_join() -> None:
+    """``Import("phys", a), Import("ctl", b)`` is the map given state by state."""
+    x, s, a, b = slices()
+    comb = RooDataSet(
+        "comb",
+        "comb",
+        RooArgSet([x, s]),
+        RooCmdArg("Index", s),
+        RooCmdArg("Import", "phys", a),
+        RooCmdArg("Import", "ctl", b),
+        RooCmdArg("Import", a),  # not a slice: passed over
+    )
+    assert list(comb.column("s")) == [1.0, 1.0, 0.0, 0.0, 0.0]
+    assert list(comb.column("x")) == [8.0, 9.0, 1.0, 2.0, 3.0]
+    single = RooDataSet("one", "one", x, RooCmdArg("Index", s), RooCmdArg("Import", "ctl", b))
+    assert list(single.column("s")) == [1.0, 1.0]
+
+
+def test_a_join_of_weighted_slices_is_weighted() -> None:
+    """A slice's weights come along; a join of none has no events."""
+    x, s, a, _ = slices()
+    w = RooRealVar("w", "w", 0, 10)
+    heavy = RooDataSet("h", "h", RooArgSet([x, w]), WeightVar="w")
+    heavy.add_columns({"x": [4.0]}, [2.5])
+    comb = RooDataSet("comb", "comb", x, Index=s, Import={"phys": a, "ctl": heavy})
+    assert list(comb.weights()) == [2.5, 1.0, 1.0, 1.0]
+    target = RooDataSet("t", "t", RooArgSet([x, w]), WeightVar="w", Index=s, Import={})
+    none = RooDataSet("n", "n", x, Index=s, Import={})
+    assert (target.numEntries(), target.isWeighted(), none.numEntries()) == (0, True, 0)
+    assert none.isWeighted() is False
+
+
+def test_a_slice_for_a_state_the_index_lacks_defines_the_state(capsys: Any) -> None:
+    """The engine defines the missing state and says so, as ROOT 6.28 did.
+
+    ROOT 6.40 refuses instead, with an error - see the report of this suite.
+    """
+    x, s, a, b = slices()
+    comb = RooDataSet("comb", "comb", x, Index=s, Import={"phys": a, "zz": b})
+    assert capsys.readouterr().out == (
+        '[#1] INFO:InputArguments -- RooDataSet::ctor(comb) defining state "zz" in index '
+        "category s\n"
+    )
+    assert (s.hasLabel("zz"), comb.get(4).find("s").getLabel()) == (True, "zz")
+
+
+def test_a_category_range_selects_the_events_in_its_states() -> None:
+    """A range of a category is a set of its states: ROOT's sums over ranges and cuts."""
+    x = RooRealVar("x", "x", 0, 10)
+    c = RooCategory("c", "c")
+    for label, index in (("A", 0), ("B", 1), ("C", 2)):
+        c.defineType(label, index)
+    d = RooDataSet("d", "d", RooArgSet([x, c]))
+    d.add_columns({"x": [i * 0.8 + 0.1 for i in range(12)], "c": [i % 3 for i in range(12)]})
+    c.setRange("r", "A,C")
+    assert (d.sumEntries("", "r"), d.sumEntries("c==c::B"), d.sumEntries("x>4 && c==1")) == (
+        8.0,
+        4.0,
+        2.0,
+    )
+    assert d.sumEntries("   ") == 12.0
+    x.setRange("mid", 2, 6)
+    assert list(in_range(d, "mid", [x]))[:6] == [False, False, False, True, True, True]
+    assert int(np.sum(in_range(d, "", [x]))) == 12
+
+
+def test_a_function_is_a_cut_where_it_is_not_zero() -> None:
+    """A cut may be a function object as well as a formula: events where it is nonzero pass."""
+    d, x, _ = five_events()
+    cut = RooFormulaVar("cut", "cut", "x>2.5", [x])
+    assert list(selected(d, cut)) == [False, False, True, True, True]
+    assert d.sumEntries(cut) == 3.0
+
+
+def test_a_binned_clone_bins_the_events_in_the_variables_binnings(capsys: Any) -> None:
+    """``binnedClone`` names the clone after the data, as ROOT names it."""
+    d, *_ = five_events()
+    bc = d.binnedClone()
+    bc.Print()
+    assert capsys.readouterr().out == "RooDataHist::d_binned[x,y] = 10000 bins (5 weights)\n"
+    assert (bc.GetName(), bc.GetTitle()) == ("d_binned", "d_binned")
+    named = d.binnedClone("b", "t")
+    assert (named.GetName(), named.GetTitle(), named.sum()) == ("b", "t", 5.0)
+
+
+def test_the_small_helpers_copy_variables_and_print_values() -> None:
+    """``as_set`` copies, ``value_text`` prints as ``%g``, ``is_arg`` knows RooFit's nodes."""
+    x = RooRealVar("x", "x", 0, 10)
+    copied = as_set([x])
+    assert (copied.find("x") is not x, value_text(0.1 + 0.2), is_arg(x), is_arg(3.0)) == (
+        True,
+        "0.3",
+        True,
+        False,
+    )
