@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from .binning import RooAbsBinning, RooRangeBinning, RooUniformBinning
+from .binning import RooAbsBinning, RooParamBinning, RooRangeBinning, RooUniformBinning
 from .messages import INFO, WARNING, log
 from .printing import g, kClassName, kExtras, kName, kValue
 from .real import Context, RooAbsReal
@@ -166,6 +166,9 @@ class RooRealVar(RooAbsRealLValue):
         if args and isinstance(args[0], str):
             self._set_named_range(args[0], float(args[1]), float(args[2]))
             return
+        if any(hasattr(one, "getVal") for one in args[:2]):
+            self._param_range(*args[:2])
+            return
         low, high = float(args[0]), float(args[1])
         if low > high:
             log(self, WARNING, "InputArguments", f"RooRealVar::setRange({self._name}): Proposed "
@@ -173,6 +176,11 @@ class RooRealVar(RooAbsRealLValue):
             high = low
         self._binning.setRange(low, high)
         self._val = min(max(self._val, low), high)
+
+    def _param_range(self, low: Any, high: Any) -> None:
+        """``setRange(tmin, tmax)``: ends that are functions, read whenever the range is asked for."""
+        ends = [one if hasattr(one, "getVal") else RooConstVar(g(one), g(one), float(one)) for one in (low, high)]
+        self._binning = RooParamBinning(ends[0], ends[1], self._binning.numBins())
 
     def _set_named_range(self, name: str, low: float, high: float) -> None:
         exists = name in self._shared

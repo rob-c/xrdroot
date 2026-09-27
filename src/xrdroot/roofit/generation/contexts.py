@@ -75,14 +75,18 @@ class NumericContext(Context):
         return {one.GetName(): float(v) for one, v in zip(self.order, point)}
 
 
-def context_for(pdf: Any, names: frozenset[str]) -> Context:
-    """The context RooFit would make for ``pdf`` to generate ``names``."""
+def context_for(pdf: Any, names: frozenset[str], conditional: frozenset[str] | None = None) -> Context:
+    """The context RooFit would make for ``pdf`` to generate ``names``, given ``conditional`` ones."""
     make = getattr(pdf, "gen_context", None)
     if make is not None:
         return make(names)  # type: ignore[no-any-return]
     code = pdf.generator_code(names) if hasattr(pdf, "generator_code") else 0
     if code:
         return DirectContext(pdf, names, code)
+    if conditional is not None:
+        from .acceptreject import AcceptRejectContext
+
+        return AcceptRejectContext(pdf, names, conditional)
     return NumericContext(pdf, names)
 
 

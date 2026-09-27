@@ -42,8 +42,11 @@ def real_plot(func: Any, frame: Any, cmds: CmdList, chosen: Any = None, nset: An
 
 def _draw(func: Any, frame: Any, options: Any, chosen: Any, nset: frozenset[str]) -> Any:
     """One curve, over its range, scaled as the options say and normalised within ``NormRange``."""
+    average = None
+    if nset and "ProjWData" in options:
+        nset, average = _data_average(func, frame, options, nset)
     if nset:
-        _announce_plot(func, frame, nset)
+        _announce_plot(func, frame, nset, average[2] if average else ())
     scale = float(options.get("Normalization", 0, 1.0))
     low, high, post, norm_range = _extent(frame, options)
     ranged = "Range" in options or "RangeWithName" in options
@@ -51,7 +54,23 @@ def _draw(func: Any, frame: Any, options: Any, chosen: Any, nset: frozenset[str]
     if nset and (post or "NormRange" in options):
         scale /= _range_fraction(func, frame, nset, norm_range, [(low, high)])
     suffix = str(options.get("CurveNameSuffix", 0, "") or "")
-    return _add_curve(func, frame, options, nset, scale, chosen, suffix, (low, high, wings))
+    return _add_curve(func, frame, options, nset, scale, chosen, suffix, (low, high, wings), average)
+
+
+def _data_average(func: Any, frame: Any, options: Any, nset: frozenset[str]) -> tuple[frozenset[str], Any]:
+    """``ProjWData``: the observables the projection data has, averaged over its events, not integrated.
+
+    The curve is then ``sum_i w_i f(x; y_i) / sum_i w_i`` - the density normalised
+    over the rest, at each event's ``y`` - as ``RooDataWeightedAverage`` has it.
+    """
+    data = next(one for one in options.args("ProjWData") if hasattr(one, "numEntries"))
+    held = [one.GetName() for one in data.get()]
+    needed = [name for name in held if name in nset - {frame.getPlotVar().GetName()}]
+    if not needed:
+        return nset, None
+    columns = {name: np.asarray(data.column(name), dtype=np.float64) for name in needed}
+    weights = np.asarray(data.weights(), dtype=np.float64)
+    return nset - frozenset(needed), (columns, weights, needed, len(needed) < len(held))
 
 
 def _extent(frame: Any, options: Any) -> tuple[float, float, Any, Any]:

@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 
 from . import evalerrors
+from .binning import evaluating
 from .collections import as_list
 from .nanpack import pack
 from .messages import WARNING, log
@@ -99,11 +100,12 @@ class RooAbsPdf(RooAbsReal):
         if not names:
             return self.compute(ctx)
         rng = rng or self._norm_range
-        key = self._norm_key(names, ctx, rng)
-        cached = self.__dict__.get("_norm_cache")
-        if key is not None and cached is not None and cached[0] == key:
-            return cached[1]
-        found = self.integrate(names, ctx, rng)
+        with evaluating(ctx):  # a range with a column for an end is one per event
+            key = self._norm_key(names, ctx, rng)
+            cached = self.__dict__.get("_norm_cache")
+            if key is not None and cached is not None and cached[0] == key:
+                return cached[1]
+            found = self.integrate(names, ctx, rng)
         if key is not None:
             self.__dict__["_norm_cache"] = (key, found)
         return found
@@ -119,7 +121,10 @@ class RooAbsPdf(RooAbsReal):
         for leaf in self.leaves():
             name = leaf.GetName()
             if name in names:
-                values.append((name, leaf.getMin(rng), leaf.getMax(rng)))
+                ends = (leaf.getMin(rng), leaf.getMax(rng))
+                if np.ndim(ends[0]) or np.ndim(ends[1]):
+                    return None
+                values.append((name, *ends))
                 continue
             value = ctx.get(name, None)
             if value is not None and np.ndim(value):

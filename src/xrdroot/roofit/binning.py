@@ -101,6 +101,10 @@ class RooAbsBinning:
     def isParameterized(self) -> bool:
         return False
 
+    def servers(self) -> list[Any]:
+        """The functions its ends are - none, for fixed ends."""
+        return []
+
 
 class RooUniformBinning(RooAbsBinning):
     """``n`` equal bins from ``low`` to ``high``."""
@@ -151,3 +155,62 @@ class RooBinning(RooAbsBinning):
         before = len(self._edges)
         self._edges = [e for e in self._edges if e != boundary]
         return len(self._edges) != before
+
+
+#: The values being evaluated - a dataset's columns, say - that a parameterised
+#: range reads its ends from, innermost last: ``RooParamBinning`` in an event loop.
+EVALUATING: list[Any] = []
+
+
+class evaluating:  # noqa: N801 - used as a ``with`` statement, like ``open``
+    """``with evaluating(ctx):``: parameterised ranges read their ends from ``ctx`` meanwhile."""
+
+    def __init__(self, ctx: Any) -> None:
+        self.ctx = ctx
+
+    def __enter__(self) -> None:
+        EVALUATING.append(self.ctx)
+
+    def __exit__(self, *exc: Any) -> None:
+        EVALUATING.pop()
+
+
+def _end(function: Any) -> Any:
+    """An end's value: from the values being evaluated if they have it - a column, perhaps."""
+    if EVALUATING and function.GetName() in EVALUATING[-1]:
+        return function.compute(EVALUATING[-1])
+    return function.getVal()
+
+
+class RooParamBinning(RooUniformBinning):
+    """``setRange(tmin, tmax)`` with functions as its ends: a range that moves with them.
+
+    The ends are read whenever asked for, so a range whose low end is a
+    variable of the data is a different range for every event.
+    """
+
+    def __init__(self, low: Any, high: Any, nbins: int = 100, name: str = "") -> None:
+        super().__init__(0.0, 1.0, nbins, name)
+        self.xlo, self.xhi = low, high
+
+    def lowBound(self) -> Any:
+        return _end(self.xlo)
+
+    def highBound(self) -> Any:
+        return _end(self.xhi)
+
+    def setRange(self, low: float, high: float) -> None:
+        raise ValueError("RooParamBinning::setRange: a range whose ends are functions cannot be moved: "
+                         "set the functions instead.")  # fmt: skip
+
+    def array(self) -> np.ndarray[Any, Any]:
+        return np.linspace(float(self.lowBound()), float(self.highBound()), self._bins + 1)
+
+    def clone(self, name: Any = None) -> Any:
+        return RooParamBinning(self.xlo, self.xhi, self._bins, self._name if name is None else str(name))
+
+    def isParameterized(self) -> bool:
+        return True
+
+    def servers(self) -> list[Any]:
+        return [self.xlo, self.xhi]

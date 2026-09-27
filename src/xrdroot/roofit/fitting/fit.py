@@ -76,8 +76,9 @@ def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
     extended = _extended(pdf, options)
     rng = _range(options)
     _fit_range_attributes(pdf, data, rng)
-    normalized = pdf.normalized_name(pdf.getObservables(data), rng) if hasattr(
-        pdf, "normalized_name") else pdf.GetName()  # fmt: skip
+    given = {one.GetName() for one in as_list(options.get("ConditionalObservables", 0, ()))}
+    normalized = pdf.normalized_name([one for one in pdf.getObservables(data) if one.GetName() not in given],
+                                     rng) if hasattr(pdf, "normalized_name") else pdf.GetName()  # fmt: skip
     log(pdf, INFO, "Fitting", f"RooAbsPdf::fitTo({normalized}) fixing normalization set for "
         "coefficient determination to observables in data")  # fmt: skip
     if not _SAID_LIBRARY[0]:

@@ -127,15 +127,17 @@ def _range_fraction(pdf: Any, frame: Any, nset: frozenset[str], rng: Any,
     return float(np.asarray(pdf.fraction(name | (nset - name), {}, nset, rng)))
 
 
-def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str]) -> None:
+def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], averaged: Any = ()) -> None:
     """What RooFit says when it plots: the projection, and the two integrals it makes for it."""
     from ..integration import announce, integral_name
 
     projected = nset - {frame.getPlotVar().GetName()}
+    start = f"RooAbsReal::plotOn({pdf.GetName()}) plot on {frame.getPlotVar().GetName()}"
     if projected:
         order = [one.GetName() for one in pdf.leaves() if one.GetName() in projected]
-        log(pdf, INFO, "Plotting", f"RooAbsReal::plotOn({pdf.GetName()}) plot on "
-            f"{frame.getPlotVar().GetName()} integrates over variables ({','.join(order)})")  # fmt: skip
+        log(pdf, INFO, "Plotting", f"{start} integrates over variables ({','.join(order)})")
+    if averaged:
+        log(pdf, INFO, "Plotting", f"{start} averages using data variables ({','.join(averaged)})")
     announce(pdf, nset)
     if not projected:
         announce(pdf, nset)
@@ -153,14 +155,25 @@ def plot_function(func: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str
 
 
 def _add_curve(func: Any, frame: Any, options: Commands, nset: frozenset[str], scale: float,
-               chosen: set[str] | None, suffix: str, piece: Any = None) -> Any:  # fmt: skip
+               chosen: set[str] | None, suffix: str, piece: Any = None,
+               average: Any = None) -> Any:  # fmt: skip
     """Sample the projection over the frame's variable and put the curve on the frame."""
     var = frame.getPlotVar()
     low, high, wings = piece if piece is not None else (*_range(frame, options)[:2], True)
     projected = frozenset(nset - {var.GetName()})
     name = var.GetName()
 
+    def averaged(xs: Any) -> Any:
+        columns, weights = average[0], average[1]
+        ctx = {name: np.repeat(np.asarray(xs, dtype=np.float64), len(weights))}
+        ctx.update({key: np.tile(column, len(xs)) for key, column in columns.items()})
+        found = np.asarray(func.value(ctx, nset) if not projected else func.fraction(projected, ctx, nset, None))
+        return np.broadcast_to(found, (len(xs) * len(weights),)).reshape(len(xs), -1) @ weights \
+            / np.sum(weights) * scale
+
     def curve_at(xs: Any) -> Any:
+        if average is not None:
+            return averaged(xs)
         ctx = {name: np.asarray(xs, dtype=np.float64)}
         if not nset:
             return func.compute(ctx) * np.ones(len(xs)) * scale
@@ -173,6 +186,8 @@ def _add_curve(func: Any, frame: Any, options: Commands, nset: frozenset[str], s
         xs, ys = sample(curve_at, low, high, frame.GetNbinsX(), precision, wings)
     norm = ",".join(sorted(nset, key=lambda n: [v.GetName() for v in func.leaves()].index(n)))
     label = f"{func.GetName()}_Norm[{norm}]" if nset else func.GetName()
+    if average is not None:
+        label += f"_DataAvg[{','.join(average[2])}]"
     curve = RooCurve(label + suffix, f"Projection of {func.GetTitle()}", xs, ys)
     if "Name" in options:
         curve.SetName(str(options.get("Name")))

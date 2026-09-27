@@ -33,9 +33,13 @@ def parse(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[list[Any], Any
 
 
 def _how_many(pdf: Any, names: frozenset[str], count: Any, options: Any) -> int:
-    """``RooAbsGenContext::generate``: the events asked for - or expected - Poisson-varied if extended."""
+    """``RooAbsGenContext::generate``: the events asked for - or expected, or as many as the
+    prototype data has - Poisson-varied if extended."""
     extended = bool(options.get("Extended", 0, False))
     wanted = float(count) if count is not None else 0.0
+    proto = options.get("ProtoData")
+    if wanted <= 0 and proto is not None:
+        wanted = float(proto.numEntries())
     if wanted <= 0:
         if not pdf.canBeExtended():
             log(pdf, ERROR, "Generation", f"RooGenContext::{pdf.GetName()}:generate: PDF not "
@@ -59,17 +63,21 @@ def _uniform(var: Any) -> float:
 class Generator:
     """A density's generator context, made once, drawing sample after sample: ``RooAbsGenContext``."""
 
-    def __init__(self, pdf: Any, variables: list[Any]) -> None:
+    def __init__(self, pdf: Any, variables: list[Any], proto: Any = None) -> None:
         from ..integration import announce
 
         self.pdf = pdf
-        self.variables = variables
-        self.names = frozenset(one.GetName() for one in variables) & pdf.dependents()
+        self.proto = proto
+        asked = {one.GetName() for one in variables}
+        self.taken = [one for one in (proto.get() if proto is not None else []) if one.GetName() not in asked]
+        self.variables = variables + self.taken
+        self.names = frozenset(asked) & pdf.dependents()
+        self.targets = _targets(pdf, {one.GetName() for one in self.taken})
         self.uniform = sorted((one for one in variables if one.GetName() not in self.names),
                               key=lambda v: v.GetName(), reverse=True)  # fmt: skip
         for _ in range(2):  # the generator's own copy of the density, and its context's
             announce(pdf, self.names)
-        self.context = context_for(pdf, self.names)
+        self.context = context_for(pdf, self.names, frozenset(self.targets) if self.taken else None)
 
     def sample(self, total: int, name: str) -> Any:
         """``generate(n)``: a dataset of ``total`` events, the density's variables left as they were."""
@@ -77,9 +85,12 @@ class Generator:
 
         data = RooDataSet(name, f"Generated From {self.pdf.GetName()}", self.variables)
         saved = [(one, one.getVal()) for one in self.pdf.leaves() if one.GetName() in self.names]
+        saved += [(one, one.getVal()) for group in self.targets.values() for one in group]
         rows = []
         for i in range(total):
+            loaded = self._load(i)
             row = self.context.event(total - i)
+            row.update(loaded)
             row.update({one.GetName(): _uniform(one) for one in self.uniform})
             rows.append(row)
         for one, value in saved:
@@ -88,11 +99,33 @@ class Generator:
                           for one in self.variables})  # fmt: skip
         return data
 
+    def _load(self, i: int) -> dict[str, float]:
+        """The prototype data's event ``i`` - round again if there are more to draw - in its variables."""
+        if not self.taken:
+            return {}
+        index = i % self.proto.numEntries()
+        loaded = {one.GetName(): float(self.proto.column(one.GetName())[index]) for one in self.taken}
+        for name, value in loaded.items():
+            for one in self.targets.get(name, []):
+                one.load_value(value)
+        return loaded
+
+
+def _targets(pdf: Any, names: set[str]) -> dict[str, list[Any]]:
+    """The objects under ``pdf`` called ``names``: its variables, and those its ranges end at."""
+    found: dict[str, list[Any]] = {}
+    for leaf in pdf.leaves():
+        ends = leaf.getBinning().servers() if hasattr(leaf, "getBinning") else []
+        for one in [leaf, *ends]:
+            if one.GetName() in names and all(one is not other for other in found.get(one.GetName(), [])):
+                found.setdefault(one.GetName(), []).append(one)
+    return found
+
 
 def generate(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """``pdf.generate(vars, n, options...)``: a new dataset of generated events."""
     variables, count, options = parse(args, kwargs)
-    made = Generator(pdf, variables)
+    made = Generator(pdf, variables, options.get("ProtoData"))
     total = _how_many(pdf, made.names, count, options)
     if total < 0:
         return None
