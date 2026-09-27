@@ -25,7 +25,7 @@ from ..messages import WARNING, log
 __all__ = ["RooHist", "poisson_interval"]
 
 #: ``RooAbsData::ErrorType``.
-POISSON, SUMW2, NONE, EXPECTED, AUTO = 0, 1, 2, 3, 4
+POISSON, SUMW2, NONE, AUTO, EXPECTED = 0, 1, 2, 3, 4
 
 
 def _gamma_quantile(p: float, shape: float) -> float:

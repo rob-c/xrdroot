@@ -21,7 +21,7 @@ from .curves import _announce_plot, _norm_vars, _selected
 __all__ = ["pdf_plot"]
 
 #: ``RooAbsReal::ScaleType``.
-RELATIVE, NUM_EVENT, RELATIVE_EXPECTED, RAW = 0, 1, 2, 3
+RAW, RELATIVE, NUM_EVENT, RELATIVE_EXPECTED = 0, 1, 2, 3
 #: What ``plotOn`` says of a fit range it plots in, after the options it added.
 FIT_RANGE_ADVICE = (
     " was specified. Plotting / normalising in fit range. To override, do one of the following"

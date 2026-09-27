@@ -214,10 +214,6 @@ def test_an_argus_is_normalised_in_closed_form_for_a_falling_or_flat_slope() -> 
     assert argus.getVal() == 0.0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="shapes.py:109: _dawson returns the integral of exp(t^2), not Dawson's function",
-)
 def test_an_argus_is_normalised_in_closed_form_for_a_rising_slope() -> None:
     """For ``c > 0`` ROOT's closed form takes Dawson's function, ``exp(-x^2) int exp(t^2)``."""
     from xrdroot.roofit.pdfs.shapes import RooArgusBG

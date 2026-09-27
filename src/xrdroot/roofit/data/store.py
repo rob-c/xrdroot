@@ -33,7 +33,7 @@ class RooAbsData(RooPrintable):
     """Events: a column per variable, and a weight per event."""
 
     #: ``RooAbsData::ErrorType``: how data points' error bars are drawn.
-    Poisson, SumW2, NONE, Expected, Auto = 0, 1, 2, 3, 4
+    Poisson, SumW2, NONE, Auto, Expected = 0, 1, 2, 3, 4
 
     def __init__(self, name: Any = "", title: Any = "", variables: Any = ()) -> None:
         self._name = str(name)

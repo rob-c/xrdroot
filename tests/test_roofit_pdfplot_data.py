@@ -315,11 +315,6 @@ def test_fractional_counts_with_poisson_errors_are_warned_of_by_the_histograms_n
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="hist.py:28, cmdargs.py ERROR_TYPES: ROOT's ErrorType is Poisson 0, SumW2 1, None 2, "
-    "Auto 3, Expected 4",
-)
 def test_data_error_three_is_roots_automatic_choice() -> None:
     """``RooAbsData::Auto`` is 3 in ROOT: for these weights it chooses sums of squares."""
     x, data = weighted(FRACTIONAL)

@@ -209,7 +209,7 @@ class _Namespace:
         for name, bit in messages.TOPICS.items():
             setattr(self, name, bit)
         self.NumIntegration = messages.TOPICS["NumericIntegration"]
-        self.Relative, self.NumEvent, self.RelativeExpected, self.Raw = 0, 1, 2, 3
+        self.Raw, self.Relative, self.NumEvent, self.RelativeExpected = 0, 1, 2, 3
 
     @staticmethod
     def RooConst(value: float) -> RooConstVar:

@@ -85,7 +85,7 @@ COLOUR_WORDS = {
 #: ``interpretLineStyleString``.
 LINE_STYLES = {"-": 1, "--": 2, ":": 3, "-.": 4}
 #: ``RooAbsData::errorTypeFromString``.
-ERROR_TYPES = {"Poisson": 0, "SumW2": 1, "None": 2, "Expected": 3, "Auto": 4}
+ERROR_TYPES = {"Poisson": 0, "SumW2": 1, "None": 2, "Auto": 3, "Expected": 4}
 #: The commands whose first argument ROOT also takes as a string, and how it reads it.
 STRING_FORMS: dict[str, dict[str, int]] = {
     "LineColor": COLOUR_WORDS,
