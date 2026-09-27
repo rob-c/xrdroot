@@ -62,12 +62,9 @@ def test_a_sum_of_fractions_is_normalised_component_by_component() -> None:
     assert integral(s.add, [s.x], "win") == pytest.approx(2.93614542948, rel=REL)
     three = RooAddPdf("add3", "add3", s.g1, s.g2, s.f)
     assert three.getVal([s.x]) == pytest.approx(0.124034881813, rel=REL)
-    assert s.add.extendMode() == CAN_NOT_BE_EXTENDED
-    assert list(s.add.pdfList()) == [s.g1, s.g2]
-    assert list(s.add.coefList()) == [s.f]
-    assert s.add.servers() == [s.g1, s.f, s.g2]
-    assert s.add.state_word() == "Clean"
-    assert s.add.normalized_name([s.x]) == "add"
+    assert (s.add.extendMode(), s.add.state_word()) == (CAN_NOT_BE_EXTENDED, "Clean")
+    assert [list(s.add.pdfList()), list(s.add.coefList())] == [[s.g1, s.g2], [s.f]]
+    assert (s.add.servers(), s.add.normalized_name([s.x])) == ([s.g1, s.f, s.g2], "add")
 
 
 def test_a_sum_prints_its_terms_and_the_rest_as_root_does(capsys: Any) -> None:
@@ -420,13 +417,9 @@ def test_a_simultaneous_density_is_its_current_states_density() -> None:
     assert sim.getVal([c.x]) == pytest.approx(0.0249482283928, rel=REL)
     assert sim.getVal([c.x, c.cat]) == pytest.approx(0.0249482283928, rel=REL)
     assert sim.getVal() == pytest.approx(c.e.getVal(), rel=REL)
-    assert sim.extendMode() == CAN_NOT_BE_EXTENDED
-    assert sim.getPdf("phys") is c.g
-    assert sim.getPdf("none") is None
-    assert sim.indexCat() is c.cat
-    assert sim.servers() == [c.cat, c.e, c.g]
-    assert sim.printMetaArgs() == ""
-    assert sim.addPdf(c.g, "phys") is True
+    assert (sim.extendMode(), sim.printMetaArgs()) == (CAN_NOT_BE_EXTENDED, "")
+    assert (sim.getPdf("phys"), sim.getPdf("none"), sim.indexCat()) == (c.g, None, c.cat)
+    assert (sim.servers(), sim.addPdf(c.g, "phys")) == ([c.cat, c.e, c.g], True)
 
 
 def test_a_simultaneous_density_takes_a_list_in_the_order_of_the_states() -> None:

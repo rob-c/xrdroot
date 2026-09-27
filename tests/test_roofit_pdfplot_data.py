@@ -353,14 +353,11 @@ def test_a_frame_finds_names_and_restyles_what_is_on_it() -> None:
     data.plotOn(frame)
     assert frame.findObject("h_gData").GetName() == "h_gData"
     assert frame.findObject("h_gData", RooHist) is frame.getObject(0)
-    assert frame.findObject("h_gData", "RooCurve") is None
-    assert frame.findObject("nothing") is None
+    assert (frame.findObject("h_gData", "RooCurve"), frame.findObject("nothing")) == (None, None)
     assert (frame.numItems(), frame.nameOf(0)) == (1, "h_gData")
-    assert frame.getDrawOptions("h_gData") == "P"
-    assert frame.getDrawOptions("nothing") == ""
-    assert frame.setDrawOptions("h_gData", "E") is True
-    assert frame.setDrawOptions("nothing", "E") is False
-    assert frame.getDrawOptions("h_gData") == "E"
+    assert (frame.getDrawOptions("h_gData"), frame.getDrawOptions("nothing")) == ("P", "")
+    changed = (frame.setDrawOptions("h_gData", "E"), frame.setDrawOptions("nothing", "E"))
+    assert (changed, frame.getDrawOptions("h_gData")) == ((True, False), "E")
     frame.setInvisible("h_gData")
     assert frame.items[0][2] is True
     frame.setPadFactor(0.2)

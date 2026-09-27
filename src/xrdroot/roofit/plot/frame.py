@@ -101,7 +101,7 @@ class RooPlot(RooPrintable):
 
         made = copy.copy(self)
         made.hist = copy.deepcopy(self.hist)
-        made.items = [(copy.deepcopy(obj), option, invisible) for obj, option, invisible in self.items]
+        made.items = [(copy.deepcopy(obj), option, hidden) for obj, option, hidden in self.items]
         made._name = self._name if name is None else str(name)
         return made
 

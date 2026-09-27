@@ -97,6 +97,20 @@ def test_a_density_is_drawn_for_the_events_of_the_data_on_the_frame() -> None:
     assert heights(curve) == pytest.approx(DEFAULT, rel=REL)
 
 
+def selected_lines(out: str) -> list[str]:
+    return [line for line in out.splitlines() if "selected" in line]
+
+
+def selections(*chosen: str) -> list[str]:
+    """What ``plotOn`` says of each ``Components``: those chosen directly, and none indirectly."""
+    start = "[#1] INFO:Plotting -- RooAbsPdf::plotOn(model)"
+    return [
+        f"{start} {kind} selected PDF components: ({found})"
+        for one in chosen
+        for kind, found in (("directly", one), ("indirectly", ""))
+    ]
+
+
 def test_components_are_drawn_by_name_by_set_and_by_pattern_as_root_says(capsys: Any) -> None:
     """``Components("g2")``, ``Components(g1)``, ``Components("g*")``: each said, each named."""
     m = Model()
@@ -104,12 +118,7 @@ def test_components_are_drawn_by_name_by_set_and_by_pattern_as_root_says(capsys:
     m.model.plotOn(frame, Components="g2", LineStyle=2, LineColor=2)
     m.model.plotOn(frame, Components=[m.g1], LineWidth=1)
     m.model.plotOn(frame, Components="g*")
-    lines = [line for line in capsys.readouterr().out.splitlines() if "selected" in line]
-    assert lines == [
-        f"[#1] INFO:Plotting -- RooAbsPdf::plotOn(model) {kind} selected PDF components: ({found})"
-        for found in ("g2", "g1", "g1,g2")
-        for kind, found in (("directly", found), ("indirectly", ""))
-    ]
+    assert selected_lines(capsys.readouterr().out) == selections("g2", "g1", "g1,g2")
     g2, g1, both = frame.getObject(1), frame.getObject(2), frame.getObject(3)
     assert (g2.GetName(), g2.GetN()) == ("model_Norm[x]_Comp[g2]", 55)
     assert heights(g2) == pytest.approx(
@@ -121,9 +130,8 @@ def test_components_are_drawn_by_name_by_set_and_by_pattern_as_root_says(capsys:
     )
     assert (both.GetName(), both.GetN()) == ("model_Norm[x]_Comp[g*]", 66)
     assert heights(both) == pytest.approx(DEFAULT, rel=REL)
-    assert g2._core["TAttLine"]["fLineStyle"] == 2
-    assert g2._core["TAttLine"]["fLineColor"] == 2
-    assert g1._core["TAttLine"]["fLineWidth"] == 1
+    styles = (g2._core["TAttLine"], g1._core["TAttLine"])
+    assert (styles[0]["fLineStyle"], styles[0]["fLineColor"], styles[1]["fLineWidth"]) == (2, 2, 1)
 
 
 def test_a_curve_is_scaled_by_a_factor_by_a_number_of_events_or_as_it_is() -> None:
@@ -646,11 +654,12 @@ def test_a_densitys_parameters_are_boxed_on_the_frame_as_root_writes_them() -> N
     g1.paramOn(frame, Layout=(0.55, 0.95, 0.8), Label="fit\nresult", ShowConstants=True)
     g1.paramOn(frame, RooCmdArg("Parameters", [m1]), Format=("NE", RooCmdArg("AutoPrecision", 1)))
     plain, labelled, chosen = (frame.getObject(i) for i in (1, 2, 3))
-    assert plain.GetName() == "g1_paramBox"
-    assert plain.ClassName() == "TPaveText"
-    assert plain.lines == ["m1 =  0.95 #pm 0.14", "s1 =  1.45 #pm 0.10"]
-    assert labelled.lines == ["m1 =  0.95 #pm 0.14", "s1 =  1.45 #pm 0.10", "fit", "result"]
-    assert chosen.lines == ["m1 =  0.9 +/- 0.1"]
+    assert (plain.GetName(), plain.ClassName()) == ("g1_paramBox", "TPaveText")
+    assert [plain.lines, labelled.lines, chosen.lines] == [
+        ["m1 =  0.95 #pm 0.14", "s1 =  1.45 #pm 0.10"],
+        ["m1 =  0.95 #pm 0.14", "s1 =  1.45 #pm 0.10", "fit", "result"],
+        ["m1 =  0.9 +/- 0.1"],
+    ]
     corners = [sorted(one.corners[i] for i in (1, 3)) for one in (plain, labelled, chosen)]
     assert [v for pair in corners for v in pair] == pytest.approx([0.78, 0.9, 0.56, 0.8, 0.84, 0.9])
     assert (plain.corners[0], plain.corners[2], labelled.corners[0]) == (0.65, 0.9, 0.55)
