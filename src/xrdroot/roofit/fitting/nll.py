@@ -57,6 +57,7 @@ class RooNLLVar(RooAbsReal):
         rng: Any = None,
         conditional: Any = (),
         constraints: Any = (),
+        constrained: Any = None,
         name: str = "",
         offset: bool = False,
         copies: Any = None,
@@ -67,6 +68,7 @@ class RooNLLVar(RooAbsReal):
         self.extended = bool(extended)
         self.rng = rng or None
         self.constraints = [self._proxy("constraint", c) for c in as_list(constraints)]
+        self._constrained_over = constrained
         conditional_names = {one.GetName() for one in as_list(conditional)}
         self.nset = frozenset(
             one.GetName()
@@ -150,7 +152,8 @@ class RooNLLVar(RooAbsReal):
             )
 
     def _constrained(self, constraint: Any) -> frozenset[str]:
-        return frozenset(one.GetName() for one in constraint.getVariables())  # not its constants
+        found = frozenset(one.GetName() for one in constraint.getVariables())  # not its constants
+        return found if self._constrained_over is None else found & self._constrained_over
 
     def defaultErrorLevel(self) -> float:
         return 0.5

@@ -93,7 +93,25 @@ class RooProdPdf(RooAbsPdf):
             return super().value(ctx, nset, rng)
         found: Any = 1.0
         for pdf in self.pdfs:
-            found = found * pdf.value(ctx, self.factor_nset(pdf, nset), rng)
+            mine = self.factor_nset(pdf, nset)
+            if mine:  # a factor of none of the observables - a constraint - is left out
+                found = found * pdf.value(ctx, mine, rng)
+        return found
+
+    def constraint_terms(
+        self, observables: frozenset[str], params: list[Any], strip: bool
+    ) -> list[Any]:
+        """``getConstraints``: the factors of none of the observables, but of the parameters -
+        of those the other factors have too, unless the parameters were named."""
+        names = {one.GetName() for one in params}
+        found = []
+        for pdf in self.pdfs:
+            mine = pdf.dependents()
+            if mine & observables or not mine & names:
+                continue
+            others = frozenset().union(*(q.dependents() for q in self.pdfs if q is not pdf))
+            if not strip or mine & names & others:
+                found.append(pdf)
         return found
 
     def fraction(
@@ -137,11 +155,8 @@ class RooProdPdf(RooAbsPdf):
         return bool(self._conditional) and prodcond.announce(self, names, nset)
 
     def normalized_name(self, observables: Any, rng: Any = None) -> str:
-        """A product with conditional factors normalises itself, factor by factor: its own name."""
-        names = frozenset(one.GetName() for one in as_list(observables))
-        if self._conditional and self._factorizes(names & self.dependents()):
-            return self._name
-        return super().normalized_name(observables, rng)
+        """A product normalises itself, factor by factor - ``selfNormalized``: its own name."""
+        return self._name
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
         if self._conditional:
