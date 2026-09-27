@@ -18,7 +18,6 @@ from ..cmdargs import RooCmdArg, commands
 from ..collections import as_list
 from ..messages import ERROR, log
 from ..rng import generator
-from .contexts import context_for
 
 __all__ = ["generate", "generate_binned", "parse"]
 
@@ -60,7 +59,6 @@ def generate(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """``pdf.generate(vars, n, options...)``: a new dataset of generated events."""
     from ..data.dataset import RooDataSet
     from ..integration import announce
-
     from .proto import ProtoFeed
 
     variables, count, options = parse(args, kwargs)
