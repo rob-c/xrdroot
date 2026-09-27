@@ -282,3 +282,228 @@ def test_a_sum_of_extended_densities_fitted_in_a_range_expects_their_yields_ther
     inside = 100 * integral(s.g1, [s.x], "win") / integral(s.g1, [s.x])
     inside += 50 * integral(s.g2, [s.x], "win") / integral(s.g2, [s.x])
     assert both.expected(names, "win") == pytest.approx(inside, rel=REL)
+
+
+class Product:
+    """``gx(x) gy(y)``: a product of densities of separate observables."""
+
+    def __init__(self) -> None:
+        from xrdroot.roofit.pdfs.prodpdf import RooProdPdf
+
+        self.x = RooRealVar("x", "x", 0.5, -10, 10)
+        self.x.setRange("win", -1.5, 2.5)
+        self.y = RooRealVar("y", "y", 1.5, -5, 5)
+        self.y.setRange("win", -1, 3)
+        sx, sy = RooRealVar("sx", "sx", 2, 0.1, 10), RooRealVar("sy", "sy", 1.5, 0.1, 10)
+        self.gx = RooGaussian("gx", "gx", self.x, RooRealVar("mx", "mx", 1), sx)
+        self.gy = RooGaussian("gy", "gy", self.y, RooRealVar("my", "my", 0.5), sy)
+        self.prod = RooProdPdf("prod", "prod", [self.gx, self.gy])
+
+
+def test_a_product_of_separate_observables_is_normalised_factor_by_factor() -> None:
+    """Each factor normalised over its own observables: the product is normalised as it is."""
+    p = Product()
+    assert p.prod.getVal() == pytest.approx(0.776101302995, rel=REL)
+    assert p.prod.getVal([p.x, p.y]) == pytest.approx(0.0412343220226, rel=REL)
+    assert integral(p.prod, [p.x, p.y], "win") == pytest.approx(9.98789751997, rel=REL)
+    assert integral(p.prod, [p.x]) == pytest.approx(4.0142883139, rel=REL)
+    assert list(p.prod.pdfList()) == [p.gx, p.gy]
+    assert p.prod.state_word() == "Dirty"
+    assert p.prod.extendMode() == CAN_NOT_BE_EXTENDED
+
+
+def test_a_product_takes_a_cutoff_number_and_ignores_commands_it_does_not_know() -> None:
+    """``RooProdPdf(name, title, pdf1, pdf2, cutOff)`` is the same product."""
+    from xrdroot.roofit.pdfs.prodpdf import RooProdPdf
+
+    p = Product()
+    cut = RooProdPdf("cut", "cut", p.gx, p.gy, 1e-5, RooCmdArg("Unknown", 1))
+    assert cut.getVal([p.x, p.y]) == pytest.approx(0.0412343220226, rel=REL)
+    assert cut._cutoff == 1e-5
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="prodpdf.py:89-92: ROOT takes a factor with no observable in the normalisation set as 1",
+)
+def test_a_product_normalised_over_one_factors_observables_drops_the_other_factor() -> None:
+    """ROOT's ``prod.getVal([x])`` is ``gx`` normalised - ``gy``'s value plays no part."""
+    p = Product()
+    assert p.prod.getVal([p.x]) == pytest.approx(0.193334718961, rel=REL)
+    p.y.setVal(-2.5)
+    assert p.prod.getVal([p.x]) == pytest.approx(0.193334718961, rel=REL)
+    assert p.prod.getVal([p.y]) == pytest.approx(0.0360470665125, rel=REL)
+
+
+@pytest.mark.xfail(
+    strict=True, reason="prodpdf.py: ROOT prints a product's factors, 'gx * gy', and '/1'"
+)
+def test_a_product_prints_its_factors_as_root_does(capsys: Any) -> None:
+    """``RooProdPdf::prod[ gx * gy ] = 0.776101/1``."""
+    p = Product()
+    capsys.readouterr()
+    p.prod.Print()
+    assert capsys.readouterr().out == "RooProdPdf::prod[ gx * gy ] = 0.776101/1\n"
+
+
+def test_a_product_of_factors_sharing_an_observable_is_normalised_numerically() -> None:
+    """``gx(x) e(x)`` does not factorise: the product is normalised as a whole."""
+    from xrdroot.roofit.pdfs.prodpdf import RooProdPdf
+
+    p = Product()
+    e = RooExponential("ex", "ex", p.x, RooRealVar("c", "c", -0.2, -2, -0.01))
+    shared = RooProdPdf("shared", "shared", [p.gx, e])
+    assert shared.getVal([p.x]) == pytest.approx(0.197239793463, rel=1e-9)
+    assert shared.analytic_names(frozenset(["x"]), None) == frozenset()
+    assert shared.getVal() == pytest.approx(p.gx.getVal() * e.getVal(), rel=REL)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="prodpdf.py:141-148: ROOT integrates factors sharing an observable one by one",
+)
+def test_a_product_of_factors_sharing_an_observable_integrates_as_root_does() -> None:
+    """ROOT's ``createIntegral`` of ``gx(x) e(x)`` is the product of the factors' integrals."""
+    from xrdroot.roofit.pdfs.prodpdf import RooProdPdf
+
+    p = Product()
+    e = RooExponential("ex", "ex", p.x, RooRealVar("c", "c", -0.2, -2, -0.01))
+    shared = RooProdPdf("shared", "shared", [p.gx, e])
+    assert integral(shared, [p.x], "win") == pytest.approx(12.4413287728, rel=1e-9)
+    assert integral(shared, [p.x]) == pytest.approx(181.823195698, rel=1e-9)
+
+
+def test_a_product_with_an_extended_factor_expects_that_factors_yield() -> None:
+    """The first extended factor says how many events the product expects."""
+    from xrdroot.roofit.pdfs.prodpdf import RooProdPdf
+
+    p = Product()
+    ext = RooExtendPdf("ext", "ext", p.gx, RooRealVar("n", "n", 250, 0, 1000))
+    pe = RooProdPdf("pe", "pe", [ext, p.gy])
+    assert pe.expectedEvents([p.x, p.y]) == 250.0
+    assert pe.extendMode() == 1
+    assert p.prod.expected(frozenset(["x", "y"])) == 0.0
+
+
+def test_a_product_draws_each_factors_observables_from_that_factor_as_root_does() -> None:
+    """The events are ROOT's to the last bit."""
+    p = Product()
+    generator().SetSeed(4357)
+    drawn = p.prod.generate([p.x, p.y], 3)
+    assert column(drawn, "x") + column(drawn, "y") == [
+        2.997865435218796,
+        2.5635925123910157,
+        2.648527370025855,
+        -0.1521465841215104,
+        0.4549208430107683,
+        0.41492401178145255,
+    ]
+
+
+class Channels:
+    """A Gaussian for state ``phys`` and an exponential for ``ctl``."""
+
+    def __init__(self) -> None:
+        from xrdroot.roofit.categories import RooCategory
+
+        self.x = RooRealVar("x", "x", 0.5, -10, 10)
+        self.g = RooGaussian("g1", "g1", self.x, RooRealVar("m1", "m1", 1, -5, 5), 2.0)
+        self.e = RooExponential("e", "e", self.x, RooRealVar("c", "c", -0.2, -2, -0.01))
+        self.cat = RooCategory("cat", "cat", {"phys": 0, "ctl": 1})
+
+
+def test_a_simultaneous_density_is_its_current_states_density() -> None:
+    """The category's state picks the density, each normalised over its own observables."""
+    from xrdroot.roofit.pdfs.simultaneous import RooSimultaneous
+
+    c = Channels()
+    sim = RooSimultaneous("sim", "sim", {"phys": c.g, "ctl": c.e}, c.cat)
+    c.cat.setLabel("phys")
+    assert sim.getVal([c.x]) == pytest.approx(0.193334718961, rel=REL)
+    c.cat.setLabel("ctl")
+    assert sim.getVal([c.x]) == pytest.approx(0.0249482283928, rel=REL)
+    assert sim.getVal([c.x, c.cat]) == pytest.approx(0.0249482283928, rel=REL)
+    assert sim.getVal() == pytest.approx(c.e.getVal(), rel=REL)
+    assert sim.extendMode() == CAN_NOT_BE_EXTENDED
+    assert sim.getPdf("phys") is c.g
+    assert sim.getPdf("none") is None
+    assert sim.indexCat() is c.cat
+    assert sim.servers() == [c.cat, c.e, c.g]
+    assert sim.printMetaArgs() == ""
+    assert sim.addPdf(c.g, "phys") is True
+
+
+def test_a_simultaneous_density_takes_a_list_in_the_order_of_the_states() -> None:
+    """``RooSimultaneous(name, title, [pdfs], cat)``: the first density for the first state."""
+    from xrdroot.roofit.pdfs.simultaneous import RooSimultaneous
+
+    c = Channels()
+    sim = RooSimultaneous("sim", "sim", [c.g, c.e], c.cat)
+    assert (sim.getPdf("phys"), sim.getPdf("ctl")) == (c.g, c.e)
+
+
+def extend_modes() -> dict[str, int]:
+    from xrdroot.roofit.pdfs.simultaneous import RooSimultaneous
+
+    c = Channels()
+    g2 = RooGaussian("g2", "g2", c.x, -1.0, 3.0)
+    n1, n2 = RooRealVar("n1", "n1", 100, 0, 1000), RooRealVar("n2", "n2", 40, 0, 1000)
+    must = RooAddPdf("must", "must", [c.g, g2], [n1, n2])
+    can = RooExtendPdf("can", "can", c.g, n1)
+    combos = {
+        "must_not": (must, g2),
+        "must_can": (must, can),
+        "must_must": (must, must),
+        "can_not": (can, g2),
+        "can_can": (can, can),
+        "not_not": (c.g, g2),
+    }
+    return {
+        label: RooSimultaneous(f"s{label}", "s", {"A": a, "B": b}, c.cat).extendMode()
+        for label, (a, b) in combos.items()
+    }
+
+
+def test_a_simultaneous_density_of_extended_channels_is_extended() -> None:
+    """All channels able to be extended, or all bound to be, make the whole so."""
+    modes = extend_modes()
+    assert (modes["must_must"], modes["can_can"], modes["not_not"]) == (2, 1, 0)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="simultaneous.py:96-102: ROOT's mode is Must if any channel must, Can if any can",
+)
+def test_a_simultaneous_density_is_extended_if_any_channel_is_as_root_says() -> None:
+    """ROOT 6.40: one channel that must be extended makes the whole so; one that can, can."""
+    modes = extend_modes()
+    assert (modes["must_not"], modes["must_can"], modes["can_not"]) == (2, 2, 1)
+
+
+def test_a_simultaneous_density_expects_the_events_of_all_its_channels_over_the_category() -> None:
+    """Normalised over the category too, it expects every channel's events."""
+    from xrdroot.roofit.pdfs.simultaneous import RooSimultaneous
+
+    c = Channels()
+    n1, n2 = RooRealVar("n1", "n1", 100, 0, 1000), RooRealVar("n2", "n2", 40, 0, 1000)
+    e1, e2 = RooExtendPdf("e1", "e1", c.g, n1), RooExtendPdf("e2", "e2", c.e, n2)
+    sx = RooSimultaneous("sx", "sx", [e1, e2], c.cat)
+    assert sx.extendMode() == 1
+    assert sx.expectedEvents([c.x, c.cat]) == 140.0
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="simultaneous.py:104-105: without the category in nset ROOT expects the current "
+    "state's events",
+)
+def test_a_simultaneous_density_expects_its_current_channels_events_as_root_does() -> None:
+    """Asked over ``x`` alone, ROOT's simultaneous density expects the current channel's."""
+    from xrdroot.roofit.pdfs.simultaneous import RooSimultaneous
+
+    c = Channels()
+    n1, n2 = RooRealVar("n1", "n1", 100, 0, 1000), RooRealVar("n2", "n2", 40, 0, 1000)
+    e1, e2 = RooExtendPdf("e1", "e1", c.g, n1), RooExtendPdf("e2", "e2", c.e, n2)
+    sx = RooSimultaneous("sx", "sx", [e1, e2], c.cat)
+    c.cat.setLabel("ctl")
+    assert sx.expectedEvents([c.x]) == 40.0
