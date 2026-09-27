@@ -28,7 +28,7 @@ from typing import Any
 
 import numpy as np
 
-from ..data.interpolate import bin_numbers, weights_interpolated
+from ..data.interpolate import Axis, clone_rows, weights_interpolated
 from ..integration import announce
 from ..messages import WARNING, log
 from ..pdf import normalized
@@ -125,7 +125,7 @@ class FFTCache:
         self.hist_obs = hist_obs
         self.names = [one.GetName() for one in hist_obs]
         self.binnings = [cache_binning(one) for one in hist_obs]
-        self.edges = [np.asarray(b.array(), dtype=np.float64) for b in self.binnings]
+        self.axes = [Axis.of(b) for b in self.binnings]
         self.axis = self.names.index(conv.x.GetName())
         x = conv.x
         x.setRange(f"refrange_fft_{conv.GetName()}", self.binnings[self.axis].lowBound(),
@@ -159,7 +159,7 @@ class FFTCache:
     def _slices(self) -> list[tuple[str, np.ndarray[Any, Any]]]:
         """The other observables' values at every slice: each bin centre of each, all combined."""
         others = [(i, name) for i, name in enumerate(self.names) if i != self.axis]
-        centres = [0.5 * (self.edges[i][1:] + self.edges[i][:-1]) for i, _ in others]
+        centres = [self.axes[i].centres(np.arange(self.axes[i].count)) for i, _ in others]
         grid = np.meshgrid(*centres, indexing="ij") if centres else []
         return [(name, values.reshape(-1)) for (_, name), values in zip(others, grid)]
 
@@ -171,7 +171,8 @@ class FFTCache:
         nbuf, n2, zero = scan_layout(n, low, high, self.conv.getBufferFraction(), shift, strategy == EXTEND)
         width = (high - low) / n
         if strategy == EXTEND:
-            count, start, step = n2, low - nbuf * width, (high - low + 2 * nbuf * width) / n2
+            start = low - nbuf * width
+            count, step = n2, (high + nbuf * width - start) / n2
         else:
             count, start, step = n, low, width
         at = dict(ctx)
@@ -193,15 +194,18 @@ class FFTCache:
         n = self.binnings[self.axis].numBins()
         index = (np.arange(n) + zero + (n2 - n) // 2) % n2
         weights = output[:, index]
-        shape = [len(e) - 1 for e in self.edges]
+        shape = [a.count for a in self.axes]
         others = [s for i, s in enumerate(shape) if i != self.axis]
         return np.moveaxis(weights.reshape(*others, n), -1, self.axis)
 
     # -- reading it ---------------------------------------------------------------
 
     def _parameters(self) -> list[Any]:
-        """What the histogram depends on besides its observables: RooFit's change tracker's list."""
-        mine = set(self.names) | self.conv.pdf_observable_names(self.names)
+        """What RooFit's change tracker watches: the variables, less the observables of a cache
+        of the density's observables - so a cache observable of a cache that does not hold it
+        is not watched, and the cache is not refilled when it changes, as in RooFit."""
+        final = self.conv.pdf_observable_names(self.names)
+        mine = final | {one.GetName() for one in self.conv.actual_observables(frozenset(final))}
         return [one for one in self.conv.leaves() if one.GetName() not in mine]
 
     def weights(self, ctx: Context) -> np.ndarray[Any, Any]:
@@ -247,14 +251,15 @@ class FFTCache:
         points = [np.asarray(obs.compute(ctx), dtype=np.float64) for obs in self.conv.pdf_observables(self.hist_obs)]
         shape = np.broadcast_shapes(*(p.shape for p in points))
         points = [np.broadcast_to(p, shape).reshape(-1) for p in points]
-        widths = np.meshgrid(*(np.diff(e) for e in self.edges), indexing="ij")
+        widths = np.meshgrid(*(a.widths() for a in self.axes), indexing="ij")
         density = weights / np.prod(widths, axis=0)
         order = self.conv.getInterpolationOrder()
         if order > 0 and len(points) <= 2:
-            found = weights_interpolated(self.edges, density, points, order)
+            rows = clone_rows(self.hist_obs[-1], self.axes[-1].low, self.axes[-1].high)
+            found = weights_interpolated(self.axes, density, points, order, rows=rows)
         else:
-            found = density[tuple(bin_numbers(e, p) for e, p in zip(self.edges, points))]
-        inside = np.all([(p >= e[0]) & (p <= e[-1]) for e, p in zip(self.edges, points)], axis=0)
+            found = density[tuple(a.numbers(p) for a, p in zip(self.axes, points))]
+        inside = np.all([(p >= a.low) & (p <= a.high) for a, p in zip(self.axes, points)], axis=0)
         found = np.maximum(np.where(inside, found, 0.0), 0.0).reshape(shape)
         return found if found.ndim else float(found)
 
@@ -271,9 +276,9 @@ class FFTCache:
         total = np.sum(weights, axis=summed)
         if not kept:
             return float(total)
-        widths = np.meshgrid(*(np.diff(self.edges[i]) for i in kept), indexing="ij")
+        widths = np.meshgrid(*(self.axes[i].widths() for i in kept), indexing="ij")
         total = total / np.prod(widths, axis=0)
         observables = self.conv.pdf_observables(self.hist_obs)
-        index = tuple(bin_numbers(self.edges[i], np.asarray(observables[i].compute(ctx), dtype=np.float64))
+        index = tuple(self.axes[i].numbers(np.asarray(observables[i].compute(ctx), dtype=np.float64))
                       for i in kept)  # fmt: skip
         return total[index]

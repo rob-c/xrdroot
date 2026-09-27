@@ -32,8 +32,8 @@ from ..collections import as_list
 from ..integration import numeric
 from ..messages import ERROR, INFO, log
 from ..pdf import RooAbsPdf, normalized
-from ..printing import address
-from ..real import Context
+from ..printing import address, g
+from ..real import Context, value_of
 from .. import copies
 from .fftcache import EXTEND, FLAT, MIRROR, FFTCache
 
@@ -166,6 +166,10 @@ class RooFFTConvPdf(RooAbsPdf):
         from ..collections import RooArgSet
 
         return RooArgSet(self._cache_obs)
+
+    def printValue(self) -> str:
+        """``getVal()`` - which, for a cached density, forgets the last normalisation - so no ``/norm``."""
+        return g(value_of(self.compute({})))
 
     def printMetaArgs(self) -> str:
         x = self.x.GetName()

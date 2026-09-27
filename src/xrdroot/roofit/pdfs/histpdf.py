@@ -20,7 +20,7 @@ from typing import Any
 import numpy as np
 
 from ..collections import as_list
-from ..data.interpolate import weights_interpolated
+from ..data.interpolate import Axis, clone_rows, weights_interpolated
 from ..messages import ERROR, log
 from ..pdf import RooAbsPdf
 from ..real import Context, RooAbsReal
@@ -46,6 +46,8 @@ class _Histogram:
         self.data = data
         #: The histogram's variable each observable is looked up as, in the observables' order.
         self._hist_vars = [data.get().find(one.GetName()) for one in as_list(histObs)]
+        #: The variables as given, whose own binnings the density's copies of them keep.
+        self._given = {one.GetName(): one for one in as_list(histObs)}
         self.order = int(order)
         self._cdf = False
         real = [one for one in data.get() if not hasattr(one, "lookupIndex")]
@@ -88,10 +90,12 @@ class _Histogram:
         return (np.maximum(found, 0.0) if self.density else found).reshape(shape)
 
     def _interpolated(self, columns: dict[str, Any], weights: Any) -> Any:
-        edges = [var.getBinning().array() for var in self.data.get()]
-        grid = weights.reshape([len(e) - 1 for e in edges])
+        axes = [Axis.of(var.getBinning()) for var in self.data.get()]
+        grid = weights.reshape([a.count for a in axes])
         points = [columns[var.GetName()] for var in self.data.get()]
-        return weights_interpolated(edges, grid, points, self.order, self._cdf)
+        last = list(self.data.get())[-1]
+        rows = clone_rows(self._given.get(last.GetName(), last), axes[-1].low, axes[-1].high)
+        return weights_interpolated(axes, grid, points, self.order, self._cdf, rows)
 
     def _value(self, ctx: Context) -> Any:
         found = self._weights(ctx)
