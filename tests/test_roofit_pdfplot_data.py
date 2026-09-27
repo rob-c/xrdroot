@@ -43,6 +43,16 @@ DEFAULT = [
 ]
 
 
+@pytest.fixture
+def engine_standins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The engine's own axis and box, whichever kit another test has installed meanwhile."""
+    from xrdroot.roofit.plot import frame as frames
+    from xrdroot.roofit.plot import params
+
+    monkeypatch.setattr(frames, "AXIS", [frames.Axis])
+    monkeypatch.setattr(params, "PAVE", [params.Pave])
+
+
 def points(hist: Any) -> list[tuple[float, ...]]:
     low, high = hist.errors()
     return [
@@ -369,6 +379,7 @@ def test_a_frame_keeps_the_maximum_and_minimum_it_is_given() -> None:
     assert (frame.GetMaximum(), frame.GetMinimum()) == (3.0, -1.0)
 
 
+@pytest.mark.usefixtures("engine_standins")
 def test_a_frames_axes_are_titled_after_the_variable_and_the_data_and_can_be_retitled() -> None:
     """``x (GeV)`` along, ``Events / ( 1 GeV )`` up; a macro may set either, or any attribute."""
     x, data = generated()

@@ -322,10 +322,6 @@ def test_a_product_takes_a_cutoff_number_and_ignores_commands_it_does_not_know()
     assert cut._cutoff == 1e-5
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="prodpdf.py:89-92: ROOT takes a factor with no observable in the normalisation set as 1",
-)
 def test_a_product_normalised_over_one_factors_observables_drops_the_other_factor() -> None:
     """ROOT's ``prod.getVal([x])`` is ``gx`` normalised - ``gy``'s value plays no part."""
     p = Product()

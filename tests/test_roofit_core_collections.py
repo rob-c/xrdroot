@@ -229,9 +229,9 @@ def test_a_collection_header_names_the_collection_above_its_members() -> None:
 
 
 def test_an_empty_collection_prints_empty_brackets_and_reprs_its_members() -> None:
-    """The value of a collection is its member names in brackets, and ``str`` is just that."""
+    """The value of a collection is its member names in brackets; ``str`` is cppyy's pointers."""
     x, m, _ = variables()
-    assert str(RooArgList(x, m)) == "(x,mean)"
+    assert re.fullmatch(r"\{ @0x[0-9a-f]+, @0x[0-9a-f]+ \}", str(RooArgList(x, m)))
     assert repr(RooArgSet(x, m)) == "<RooArgSet (x,mean)>"
     assert RooArgSet().printValue() == "()"
 

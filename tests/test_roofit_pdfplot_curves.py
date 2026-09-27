@@ -33,6 +33,16 @@ REL = 1e-9
 #: expected until then, a pass welcome.
 
 
+@pytest.fixture
+def engine_standins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The engine's own axis and box, whichever kit another test has installed meanwhile."""
+    from xrdroot.roofit.plot import frame as frames
+    from xrdroot.roofit.plot import params
+
+    monkeypatch.setattr(frames, "AXIS", [frames.Axis])
+    monkeypatch.setattr(params, "PAVE", [params.Pave])
+
+
 def heights(curve: Any, xs: Any = XS) -> list[float]:
     return [float(curve.interpolate(x)) for x in xs]
 
@@ -618,6 +628,7 @@ def test_a_slice_of_a_simultaneous_density_is_its_channel_weighted_by_its_share(
     assert heights(curve) == pytest.approx(CONTROL, rel=REL)
 
 
+@pytest.mark.usefixtures("engine_standins")
 def test_a_densitys_parameters_are_boxed_on_the_frame_as_root_writes_them() -> None:
     """``paramOn``: one line per free parameter, ``RooRealVar::format(2, "NELU")``."""
     from xrdroot.roofit.plot import params
