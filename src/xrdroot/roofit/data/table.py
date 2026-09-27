@@ -40,7 +40,9 @@ class Roo1DTable(RooPrintable):
         return kName | kClassName | kValue
 
     def printValue(self) -> str:
-        parts = [f"{label}={g(count)}" for label, count in zip(self.labels, self.counts) if count > 0]
+        parts = [
+            f"{label}={g(count)}" for label, count in zip(self.labels, self.counts) if count > 0
+        ]
         return "(" + ",".join(parts) + ")"
 
     def printMultiline(self, contents: int, verbose: bool, indent: str) -> str:
@@ -73,8 +75,11 @@ def table_of(data: Any, category: Any, cut: Any = None) -> Roo1DTable:
         return multi_table(data, as_list(category), cut)
     keep = data.mask(cut or None)
     found = data.variable(category.GetName())
-    column = (data.column(category.GetName()) if found is not None else
-              np.broadcast_to(category.compute(context_of(data)), keep.shape))[keep]  # fmt: skip
+    column = (
+        data.column(category.GetName())
+        if found is not None
+        else np.broadcast_to(category.compute(context_of(data)), keep.shape)
+    )[keep]
     weights = data.weights()[keep]
     labels = list(category.states())
     counts = [float(np.sum(weights[column == category.states()[label]])) for label in labels]

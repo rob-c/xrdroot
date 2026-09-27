@@ -25,10 +25,10 @@ RELATIVE, NUM_EVENT, RELATIVE_EXPECTED, RAW = 0, 1, 2, 3
 #: What ``plotOn`` says of a fit range it plots in, after the options it added.
 FIT_RANGE_ADVICE = (
     " was specified. Plotting / normalising in fit range. To override, do one of the following"
-    "\n\t- Clear the automatic fit range attribute: <pdf>.removeStringAttribute(\"fitrange\");"
-    "\n\t- Explicitly specify the plotting range: Range(\"<rangeName>\")."
-    "\n\t- Explicitly specify where to compute the normalisation: NormRange(\"<rangeName>\")."
-    "\n\tThe default (full) range can be denoted with Range(\"\") / NormRange(\"\")."
+    '\n\t- Clear the automatic fit range attribute: <pdf>.removeStringAttribute("fitrange");'
+    '\n\t- Explicitly specify the plotting range: Range("<rangeName>").'
+    '\n\t- Explicitly specify where to compute the normalisation: NormRange("<rangeName>").'
+    '\n\tThe default (full) range can be denoted with Range("") / NormRange("").'
 )
 
 
@@ -41,9 +41,16 @@ def _fit_range_options(pdf: Any, cmds: CmdList) -> list[RooCmdArg]:
     if fitted and not cmds.has("NormRange"):
         added.append(RooCmdArg("NormRange", fitted))
     if added:
-        said = " and ".join("Range()" if a.name == "RangeWithName" else "NormRange()" for a in added)
-        log(pdf, INFO, "Plotting", f"RooAbsPdf::plotOn({pdf.GetName()}) p.d.f was fitted in a subrange "
-            f"and no explicit {said}" + FIT_RANGE_ADVICE)  # fmt: skip
+        said = " and ".join(
+            "Range()" if a.name == "RangeWithName" else "NormRange()" for a in added
+        )
+        log(
+            pdf,
+            INFO,
+            "Plotting",
+            f"RooAbsPdf::plotOn({pdf.GetName()}) p.d.f was fitted in a subrange "
+            f"and no explicit {said}" + FIT_RANGE_ADVICE,
+        )
     return added
 
 
@@ -53,14 +60,20 @@ def _limits(pdf: Any, frame: Any, text: Any) -> list[tuple[float, float]]:
     found = []
     for name in str(text).split(","):
         if name and not var.hasRange(name):
-            log(pdf, ERROR, "Plotting", f"Range '{name}' not defined for variable '{var.GetName()}'. "
-                "Ignoring ...")  # fmt: skip
+            log(
+                pdf,
+                ERROR,
+                "Plotting",
+                f"Range '{name}' not defined for variable '{var.GetName()}'. Ignoring ...",
+            )
             continue
         found.append((var.getMin(name or None), var.getMax(name or None)))
     return found
 
 
-def _custom_ranges(pdf: Any, frame: Any, options: Commands) -> tuple[list[tuple[float, float]], bool]:
+def _custom_ranges(
+    pdf: Any, frame: Any, options: Commands
+) -> tuple[list[tuple[float, float]], bool]:
     """The ranges the curve is normalised to the data of, said as ``plotOn`` says them."""
     name = pdf.GetName()
     rest = "" if "NormRange" in options else ", curve is normalized to data in {} range"
@@ -69,17 +82,32 @@ def _custom_ranges(pdf: Any, frame: Any, options: Commands) -> tuple[list[tuple[
     if "Range" in options:
         low, high = options.get("Range", 0), options.get("Range", 1)
         limits, adjust = [(float(low), float(high))], bool(options.get("Range", 2, True))
-        log(pdf, INFO, "Plotting", f"RooAbsPdf::plotOn({name}) only plotting range [{g(low)},{g(high)}]"
-            + rest.format("given" if adjust else "full"))  # fmt: skip
+        log(
+            pdf,
+            INFO,
+            "Plotting",
+            f"RooAbsPdf::plotOn({name}) only plotting range [{g(low)},{g(high)}]"
+            + rest.format("given" if adjust else "full"),
+        )
     elif "RangeWithName" in options:
         text = options.get("RangeWithName")
         limits, adjust = _limits(pdf, frame, text), bool(options.get("RangeWithName", 1, True))
-        log(pdf, INFO, "Plotting", f"RooAbsPdf::plotOn({name}) only plotting range '{text}'"
-            + rest.format("given" if adjust else "full"))  # fmt: skip
+        log(
+            pdf,
+            INFO,
+            "Plotting",
+            f"RooAbsPdf::plotOn({name}) only plotting range '{text}'"
+            + rest.format("given" if adjust else "full"),
+        )
     if "NormRange" in options:
         limits, adjust = _limits(pdf, frame, options.get("NormRange")), True
-        log(pdf, INFO, "Plotting", f"RooAbsPdf::plotOn({name}) p.d.f. curve is normalized using "
-            f"explicit choice of ranges '{options.get('NormRange')}'")  # fmt: skip
+        log(
+            pdf,
+            INFO,
+            "Plotting",
+            f"RooAbsPdf::plotOn({name}) p.d.f. curve is normalized using "
+            f"explicit choice of ranges '{options.get('NormRange')}'",
+        )
     return limits, adjust
 
 

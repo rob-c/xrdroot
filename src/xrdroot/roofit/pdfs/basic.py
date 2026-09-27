@@ -79,7 +79,9 @@ class RooGaussian(RooAbsPdf):
 class RooExponential(RooAbsPdf):
     """``RooExponential``: ``exp(c x)`` - or ``exp(-c x)`` if asked to negate ``c``."""
 
-    def __init__(self, name: Any, title: Any, x: Any, c: Any, negateCoefficient: bool = False) -> None:
+    def __init__(
+        self, name: Any, title: Any, x: Any, c: Any, negateCoefficient: bool = False
+    ) -> None:
         super().__init__(name, title)
         self.x = self._proxy("x", ref(x))
         self.c = self._proxy("c", ref(c))
@@ -109,9 +111,12 @@ class RooExponential(RooAbsPdf):
 
 
 class RooPolynomial(RooAbsPdf):
-    """``RooPolynomial``: ``1 + a1 x + a2 x^2 ...`` - the constant term implied from ``lowestOrder``."""
+    """``RooPolynomial``: ``1 + a1 x + a2 x^2 ...`` - the constant term implied from
+    ``lowestOrder``."""
 
-    def __init__(self, name: Any, title: Any, x: Any, coefList: Any = (), lowestOrder: int = 1) -> None:
+    def __init__(
+        self, name: Any, title: Any, x: Any, coefList: Any = (), lowestOrder: int = 1
+    ) -> None:
         super().__init__(name, title)
         self.x = self._proxy("x", ref(x))
         self.coefs = self._list_proxy("coefList", [ref(c) for c in _items(coefList)])
@@ -128,7 +133,9 @@ class RooPolynomial(RooAbsPdf):
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
         coefs = [c.compute(ctx) for c in self.coefs]
-        return mf.polynomial_integral(coefs, self._lowest, self.x.getMin(rng), self.x.getMax(rng), True)
+        return mf.polynomial_integral(
+            coefs, self._lowest, self.x.getMin(rng), self.x.getMax(rng), True
+        )
 
 
 class RooChebychev(RooAbsPdf):
@@ -183,11 +190,15 @@ class RooUniform(RooAbsPdf):
     def generator_code(self, names: frozenset[str]) -> int:
         return 1 if names and names <= frozenset(one.GetName() for one in self.xs) else 0
 
-    def generate_event(self, code: int, rng: Any, names: frozenset[str] = frozenset()) -> dict[str, float]:
+    def generate_event(
+        self, code: int, rng: Any, names: frozenset[str] = frozenset()
+    ) -> dict[str, float]:
         found = {}
         for one in self.xs:
             if not names or one.GetName() in names:
-                found[one.GetName()] = one.getMin() + float(rng.rndm()) * (one.getMax() - one.getMin())
+                found[one.GetName()] = one.getMin() + float(rng.rndm()) * (
+                    one.getMax() - one.getMin()
+                )
         return found
 
 

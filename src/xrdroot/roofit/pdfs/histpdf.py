@@ -29,18 +29,27 @@ class _Histogram:
         self.data = data
         self.order = int(order)
         if self.order > 1:
-            log(self, WARNING, "Eval", f"{self.ClassName()}::{self.GetName()} interpolates to order "  # type: ignore[attr-defined]
-                f"{self.order} as xrdroot does - linearly - not as RooFit's polynomial does")  # fmt: skip
+            log(
+                self,
+                WARNING,
+                "Eval",
+                f"{self.ClassName()}::{self.GetName()} interpolates to order "  # type: ignore[attr-defined]
+                f"{self.order} as xrdroot does - linearly - not as RooFit's polynomial does",
+            )
 
     def _weights(self, ctx: Context, density: bool) -> Any:
-        columns = {mine.GetName(): np.atleast_1d(np.asarray(obs.compute(ctx), dtype=np.float64))
-                   for mine, obs in zip(self.data.get(), self.observables)}  # fmt: skip
+        columns = {
+            mine.GetName(): np.atleast_1d(np.asarray(obs.compute(ctx), dtype=np.float64))
+            for mine, obs in zip(self.data.get(), self.observables)
+        }
         if self.order >= 1 and len(columns) == 1:
             return self._interpolated(next(iter(columns.values())), density)
         bins = self.data._bin_of(columns)
         weights = self.data.weights()
         volumes = self.data.binVolumes() if density else np.ones(len(weights))
-        found = np.where(bins >= 0, weights[np.clip(bins, 0, None)] / volumes[np.clip(bins, 0, None)], 0.0)
+        found = np.where(
+            bins >= 0, weights[np.clip(bins, 0, None)] / volumes[np.clip(bins, 0, None)], 0.0
+        )
         return np.maximum(found, 0.0)
 
     def _interpolated(self, x: Any, density: bool) -> Any:

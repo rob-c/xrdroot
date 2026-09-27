@@ -121,7 +121,8 @@ class RooAbsReal(RooAbsArg):
         return make_integral(self, iset, args, kwargs)
 
     def createHistogram(self, name: str, first: Any, *args: Any, **kwargs: Any) -> Any:
-        """``createHistogram(name, x, Binning(...), YVar(y, ...))``: a ``TH1`` of this function's values."""
+        """``createHistogram(name, x, Binning(...), YVar(y, ...))``: a ``TH1`` of this function's
+        values."""
         from .histograms import function_histogram
 
         return function_histogram(self, name, first, args, kwargs)
@@ -144,9 +145,7 @@ class RooAbsReal(RooAbsArg):
         return g(self.getVal())
 
     def printMultiline(self, contents: int, verbose: bool, indent: str) -> str:
-        return (
-            f"{indent}--- RooAbsReal ---\n\n{indent}  Plot label is \"{self.getPlotLabel()}\"\n"
-        )
+        return f'{indent}--- RooAbsReal ---\n\n{indent}  Plot label is "{self.getPlotLabel()}"\n'
 
 
 def names_in(nset: Any) -> frozenset[str] | None:

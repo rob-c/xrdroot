@@ -48,9 +48,18 @@ def _log_terms(probs: np.ndarray[Any, Any], weights: np.ndarray[Any, Any]) -> tu
 class RooNLLVar(RooAbsReal):
     """The likelihood of ``pdf`` for ``data``, a function of the density's parameters."""
 
-    def __init__(self, pdf: Any, data: Any, *, extended: bool = False, rng: Any = None,
-                 conditional: Any = (), constraints: Any = (), name: str = "",
-                 offset: bool = False) -> None:  # fmt: skip
+    def __init__(
+        self,
+        pdf: Any,
+        data: Any,
+        *,
+        extended: bool = False,
+        rng: Any = None,
+        conditional: Any = (),
+        constraints: Any = (),
+        name: str = "",
+        offset: bool = False,
+    ) -> None:
         super().__init__(name or f"nll_{pdf.GetName()}_{data.GetName()}", "-log(likelihood)")
         self.pdf = self._proxy("function", pdf)
         self.data = data
@@ -59,7 +68,9 @@ class RooNLLVar(RooAbsReal):
         self.constraints = [self._proxy("constraint", c) for c in as_list(constraints)]
         conditional_names = {one.GetName() for one in as_list(conditional)}
         self.nset = frozenset(
-            one.GetName() for one in pdf.getObservables(data) if one.GetName() not in conditional_names
+            one.GetName()
+            for one in pdf.getObservables(data)
+            if one.GetName() not in conditional_names
         )
         keep = data.mask(None, self.rng) & (data.weights() != 0)
         self.columns = {k: v[keep] for k, v in data.columns().items()}
@@ -88,7 +99,8 @@ class RooNLLVar(RooAbsReal):
         return total - self._offset_value
 
     def channel(self, pdf: Any, keep: Any, simulated: int = 0) -> float:
-        """``-sum w log p`` of the events ``keep`` selects - all, for ``None`` - and their Poisson term."""
+        """``-sum w log p`` of the events ``keep`` selects - all, for ``None`` - and their Poisson
+        term."""
         columns = self.columns if keep is None else {k: v[keep] for k, v in self.columns.items()}
         weights = self.w if keep is None else self.w[keep]
         nset = self.nset & pdf.dependents() if keep is not None else self.nset
@@ -98,7 +110,9 @@ class RooNLLVar(RooAbsReal):
         self._badness += badness
         if self.extended and pdf.canBeExtended():
             sumw = math.fsum(weights.tolist())
-            total.total += pdf.extendedTerm(sumw, pdf.expected(nset, self.rng))  # onto the sum, not the carry
+            total.total += pdf.extendedTerm(
+                sumw, pdf.expected(nset, self.rng)
+            )  # onto the sum, not the carry
         if simulated:
             total.add(float(math.fsum(weights.tolist())) * math.log(simulated))
         return total.total
@@ -111,9 +125,13 @@ class RooNLLVar(RooAbsReal):
             return
         probs = np.broadcast_to(probs, weights.shape)[weights != 0]
         key, origin, servers = _top_node(pdf, nset, self.rng)
-        for message, number in (("getLogVal() top-level p.d.f not greater than zero", probs <= 0),
-                                ("getLogVal() top-level p.d.f evaluates to NaN", np.isnan(probs))):
-            evalerrors.record(key, origin, message, servers, int(np.count_nonzero(number)), top=True)
+        for message, number in (
+            ("getLogVal() top-level p.d.f not greater than zero", probs <= 0),
+            ("getLogVal() top-level p.d.f evaluates to NaN", np.isnan(probs)),
+        ):
+            evalerrors.record(
+                key, origin, message, servers, int(np.count_nonzero(number)), top=True
+            )
 
     def _constrained(self, constraint: Any) -> frozenset[str]:
         return frozenset(one.GetName() for one in constraint.leaves())
@@ -125,7 +143,9 @@ class RooNLLVar(RooAbsReal):
         found = RooArgSet(self.pdf.getParameters(self.data))
         for constraint in self.constraints:
             found.add(constraint.getParameters(self.data))
-        return RooArgSet([one for one in found if one.GetName() not in _names(observables)]).sorted_copy()
+        return RooArgSet(
+            [one for one in found if one.GetName() not in _names(observables)]
+        ).sorted_copy()
 
     def getVal(self, nset: Any = None) -> float:
         return float(self.evaluate_nll())
@@ -134,7 +154,11 @@ class RooNLLVar(RooAbsReal):
 def _top_node(pdf: Any, nset: frozenset[str], rng: Any) -> tuple[Any, Any, Any]:
     """What RooFit calls the density a likelihood takes the logarithm of, and its inputs' values."""
     if not pdf.selfNormalized():
-        return ("norm", id(pdf)), lambda: pdf.normalized_origin(nset, rng), lambda: pdf.normalized_servers(nset, rng)
+        return (
+            ("norm", id(pdf)),
+            lambda: pdf.normalized_origin(nset, rng),
+            lambda: pdf.normalized_servers(nset, rng),
+        )
     describe = getattr(pdf, "compiled_origin", None)
     if describe is None:
         return ("pdf", id(pdf)), lambda: f"{pdf.ClassName()}::{pdf.GetName()}", lambda: ""

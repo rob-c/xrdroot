@@ -22,36 +22,81 @@ __all__ = ["DEFAULTS", "FLAGS", "Commands", "RooCmdArg", "RooLinkedList", "comma
 
 #: The default arguments of RooFit's command functions, from ``RooGlobalFunc.h``.
 DEFAULTS: dict[str, tuple[Any, ...]] = {
-    "Save": (True,), "Extended": (True,), "Verbose": (True,), "Timer": (True,),
-    "Warnings": (True,), "InitialHesse": (True,), "Hesse": (True,), "Minos": (True,),
-    "SplitRange": (True,), "ShowConstants": (True,), "AutoBinned": (True,),
-    "ExpectedData": (True,), "Asimov": (True,), "IntrinsicBinning": (True,),
-    "Silence": (True,), "Binned": (True,), "FitGauss": (True,), "TLatexStyle": (True,),
-    "LatexStyle": (True,), "LatexTableStyle": (True,), "VerbatimName": (True,),
-    "RecycleConflictNodes": (True,), "Embedded": (True,), "NoRecursion": (True,),
-    "Invisible": (True,), "Offset": (True,), "Optimize": (2,), "AutoPrecision": (2,),
-    "FixedPrecision": (2,), "AutoBinning": (100, 0.1), "AutoSymBinning": (100, 0.1),
-    "ModularL": (False,), "ShowProgress": (), "MoveToBack": (), "ShiftToZero": (),
-    "VLines": (), "Prefix": (True,), "ShowValue": (True,), "ShowError": (True,),
-    "ShowName": (True,), "ShowUnit": (True,), "ShowAsymError": (True,),
-}  # fmt: skip
+    "Save": (True,),
+    "Extended": (True,),
+    "Verbose": (True,),
+    "Timer": (True,),
+    "Warnings": (True,),
+    "InitialHesse": (True,),
+    "Hesse": (True,),
+    "Minos": (True,),
+    "SplitRange": (True,),
+    "ShowConstants": (True,),
+    "AutoBinned": (True,),
+    "ExpectedData": (True,),
+    "Asimov": (True,),
+    "IntrinsicBinning": (True,),
+    "Silence": (True,),
+    "Binned": (True,),
+    "FitGauss": (True,),
+    "TLatexStyle": (True,),
+    "LatexStyle": (True,),
+    "LatexTableStyle": (True,),
+    "VerbatimName": (True,),
+    "RecycleConflictNodes": (True,),
+    "Embedded": (True,),
+    "NoRecursion": (True,),
+    "Invisible": (True,),
+    "Offset": (True,),
+    "Optimize": (2,),
+    "AutoPrecision": (2,),
+    "FixedPrecision": (2,),
+    "AutoBinning": (100, 0.1),
+    "AutoSymBinning": (100, 0.1),
+    "ModularL": (False,),
+    "ShowProgress": (),
+    "MoveToBack": (),
+    "ShiftToZero": (),
+    "VLines": (),
+    "Prefix": (True,),
+    "ShowValue": (True,),
+    "ShowError": (True,),
+    "ShowName": (True,),
+    "ShowUnit": (True,),
+    "ShowAsymError": (True,),
+}
 #: Commands whose keyword form takes only ``True`` (made) or ``False`` (left out).
 FLAGS = frozenset({"MoveToBack", "ShiftToZero", "VLines", "ShowProgress"})
 
 
 #: ``TColorNumber(std::string)``: matplotlib's colour letters, and the two enumerated names.
-COLOUR_WORDS = {"r": 632, "b": 600, "g": 416, "y": 400, "w": 0, "k": 1, "m": 616, "c": 432,
-                "kWhite": 0, "kBlack": 1}  # fmt: skip
+COLOUR_WORDS = {
+    "r": 632,
+    "b": 600,
+    "g": 416,
+    "y": 400,
+    "w": 0,
+    "k": 1,
+    "m": 616,
+    "c": 432,
+    "kWhite": 0,
+    "kBlack": 1,
+}
 #: ``interpretLineStyleString``.
 LINE_STYLES = {"-": 1, "--": 2, ":": 3, "-.": 4}
 #: ``RooAbsData::errorTypeFromString``.
 ERROR_TYPES = {"Poisson": 0, "SumW2": 1, "None": 2, "Expected": 3, "Auto": 4}
 #: The commands whose first argument ROOT also takes as a string, and how it reads it.
 STRING_FORMS: dict[str, dict[str, int]] = {
-    "LineColor": COLOUR_WORDS, "FillColor": COLOUR_WORDS, "MarkerColor": COLOUR_WORDS,
-    "Color": COLOUR_WORDS, "LineStyle": LINE_STYLES, "FillStyle": {}, "MarkerStyle": {},
+    "LineColor": COLOUR_WORDS,
+    "FillColor": COLOUR_WORDS,
+    "MarkerColor": COLOUR_WORDS,
+    "Color": COLOUR_WORDS,
+    "LineStyle": LINE_STYLES,
+    "FillStyle": {},
+    "MarkerStyle": {},
     "DataError": ERROR_TYPES,
-}  # fmt: skip
+}
 
 
 def _read_string(name: str, value: str) -> int:
@@ -119,7 +164,8 @@ def make(name: str, value: Any) -> RooCmdArg:
 
 
 class Commands:
-    """The options a call was given, by name: the last of each name, as ``RooCmdConfig`` takes it."""
+    """The options a call was given, by name: the last of each name, as ``RooCmdConfig`` takes
+    it."""
 
     def __init__(self, given: Iterable[RooCmdArg]) -> None:
         self.given = [one for one in given if one.name]
@@ -134,8 +180,12 @@ class Commands:
         seen: set[str] = set()
         for one in self.given:
             if one.name in seen:
-                log(None, WARNING, "InputArguments",
-                    f"{context} WARNING: argument {one.name} is duplicated")  # fmt: skip
+                log(
+                    None,
+                    WARNING,
+                    "InputArguments",
+                    f"{context} WARNING: argument {one.name} is duplicated",
+                )
             seen.add(one.name)
 
     def __contains__(self, name: str) -> bool:

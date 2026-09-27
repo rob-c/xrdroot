@@ -50,7 +50,8 @@ def _pave() -> Any:
 
 
 def _histogram_wrapper() -> Any:
-    """The core part's wrapping of an :class:`xrdroot.Histogram` as a ``TH1``, or none (the swap point)."""
+    """The core part's wrapping of an :class:`xrdroot.Histogram` as a ``TH1``, or none (the swap
+    point)."""
     try:
         from ..core.wrapping import wrap
     except ImportError:

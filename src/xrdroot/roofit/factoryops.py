@@ -95,9 +95,31 @@ def _refused(kind: str) -> Callable[[Any, str, list[str]], Any]:
 
 #: The operators by name.
 OPERATORS: dict[str, Callable[[Any, str, list[str]], Any]] = {
-    "SUM": _sum, "PROD": _prod, "EXPR": _formula("pdf"), "expr": _formula("function"),
-    "GENERIC": _formula("pdf"), "sum": _values("sum"), "prod": _values("prod"), "SIMUL": _simul,
-    **{kind: _refused(kind) for kind in ("FCONV", "NCONV", "SIMCLONE", "EDIT", "CEXPR", "cexpr",
-                                         "taylorexpand", "int", "deriv", "cdf", "PROJ", "nconv",
-                                         "lagrangianmorph", "dataobs")},
-}  # fmt: skip
+    "SUM": _sum,
+    "PROD": _prod,
+    "EXPR": _formula("pdf"),
+    "expr": _formula("function"),
+    "GENERIC": _formula("pdf"),
+    "sum": _values("sum"),
+    "prod": _values("prod"),
+    "SIMUL": _simul,
+    **{
+        kind: _refused(kind)
+        for kind in (
+            "FCONV",
+            "NCONV",
+            "SIMCLONE",
+            "EDIT",
+            "CEXPR",
+            "cexpr",
+            "taylorexpand",
+            "int",
+            "deriv",
+            "cdf",
+            "PROJ",
+            "nconv",
+            "lagrangianmorph",
+            "dataobs",
+        )
+    },
+}

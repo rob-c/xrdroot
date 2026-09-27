@@ -57,7 +57,9 @@ class RooFormulaVar(RooAbsReal):
 class RooPolyVar(RooAbsReal):
     """``RooPolyVar``: ``a0 + a1 x + a2 x^2 ...`` from ``lowestOrder`` up."""
 
-    def __init__(self, name: Any, title: Any, x: Any, coefList: Any = (), lowestOrder: int = 0) -> None:
+    def __init__(
+        self, name: Any, title: Any, x: Any, coefList: Any = (), lowestOrder: int = 0
+    ) -> None:
         from .pdfs.basic import ref
 
         super().__init__(name, title)
@@ -76,7 +78,9 @@ class RooPolyVar(RooAbsReal):
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
         coefs = [c.compute(ctx) for c in self.coefs]
-        return mf.polynomial_integral(coefs, self._lowest, self.x.getMin(rng), self.x.getMax(rng), False)
+        return mf.polynomial_integral(
+            coefs, self._lowest, self.x.getMin(rng), self.x.getMax(rng), False
+        )
 
 
 class RooProduct(RooAbsReal):

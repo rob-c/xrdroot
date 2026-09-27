@@ -33,7 +33,7 @@ class RooMCStudy:
         self.extended = bool(options.get("Extended", 0, False))
         self.binned = bool(options.get("Binned", 0, False))
         self.fit_options = _fit_options(options)
-        self.gen_params = [p for p in model.getParameters(self.observables)]
+        self.gen_params = list(model.getParameters(self.observables))
         self.gen_init = [(p, p.getVal()) for p in self.gen_params]
         self.fit_params = list(self.fit_model.getParameters(self.observables))
         self.fit_init = [p.clone(p.GetName()) for p in self.fit_params]
@@ -45,12 +45,22 @@ class RooMCStudy:
 
     # -- running ------------------------------------------------------------------
 
-    def generateAndFit(self, nSamples: int, nEvtPerSample: int = 0, keepGenData: bool = False,
-                       asciiFilePat: Any = None) -> bool:  # fmt: skip
+    def generateAndFit(
+        self,
+        nSamples: int,
+        nEvtPerSample: int = 0,
+        keepGenData: bool = False,
+        asciiFilePat: Any = None,
+    ) -> bool:
         return self._run(True, True, int(nSamples), int(nEvtPerSample), keepGenData)
 
-    def generate(self, nSamples: int, nEvtPerSample: int = 0, keepGenData: bool = False,
-                 asciiFilePat: Any = None) -> bool:  # fmt: skip
+    def generate(
+        self,
+        nSamples: int,
+        nEvtPerSample: int = 0,
+        keepGenData: bool = False,
+        asciiFilePat: Any = None,
+    ) -> bool:
         return self._run(True, False, int(nSamples), int(nEvtPerSample), True)
 
     def fit(self, nSamples: int, *args: Any) -> bool:
@@ -67,7 +77,9 @@ class RooMCStudy:
             while samples:
                 samples -= 1
                 if samples % prescale == 0:
-                    log(self.fit_model, PROGRESS, "Generation", f"RooMCStudy::run: sample {samples}")
+                    log(
+                        self.fit_model, PROGRESS, "Generation", f"RooMCStudy::run: sample {samples}"
+                    )
                 sample = self._sample(events)
                 if keep:
                     self.samples.append(sample)
@@ -98,8 +110,11 @@ class RooMCStudy:
             par.copy_value_from(start)
         if sample.sumEntries() <= 0:
             return
-        options = [*self.fit_options, RooCmdArg("Save", True),
-                   RooCmdArg("PrintLevel", -1 if self.silence else 1)]  # fmt: skip
+        options = [
+            *self.fit_options,
+            RooCmdArg("Save", True),
+            RooCmdArg("PrintLevel", -1 if self.silence else 1),
+        ]
         result = self.fit_model.fitTo(sample, *options)
         self.results.append(result)
         if result.status() == 0:
@@ -112,9 +127,12 @@ class RooMCStudy:
         """``calcPulls``' warning for each parameter without an error, which has no pull."""
         for par in self.fit_params:
             if not par.hasError(False):
-                warn(self.fit_model, f"Fit parameter '{par.GetName()}' does not have an error. A pull "
-                     "distribution cannot be generated. This might be caused by the parameter being "
-                     "constant or because the fits were not run.")  # fmt: skip
+                warn(
+                    self.fit_model,
+                    f"Fit parameter '{par.GetName()}' does not have an error. A pull "
+                    "distribution cannot be generated. This might be caused by the parameter being "
+                    "constant or because the fits were not run.",
+                )
 
     # -- what was found -----------------------------------------------------------
 
@@ -126,10 +144,13 @@ class RooMCStudy:
 
     def fitParams(self, index: int) -> RooArgSet:
         row = self.rows[int(index)]
-        return RooArgSet([RooRealVar(p.GetName(), p.GetTitle(), row[p.GetName()]) for p in self.fit_params])
+        return RooArgSet(
+            [RooRealVar(p.GetName(), p.GetTitle(), row[p.GetName()]) for p in self.fit_params]
+        )
 
     def fitParDataSet(self) -> Any:
-        """``fitParDataSet``: every good fit's parameters, errors, pulls, minimum and event count."""
+        """``fitParDataSet``: every good fit's parameters, errors, pulls, minimum and event
+        count."""
         if self._data is None:
             from .mcstudydata import parameter_data
 

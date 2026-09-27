@@ -42,13 +42,18 @@ def _how_many(pdf: Any, names: frozenset[str], count: Any, options: Any) -> int:
         wanted = float(proto.numEntries())
     if wanted <= 0:
         if not pdf.canBeExtended():
-            log(pdf, ERROR, "Generation", f"RooGenContext::{pdf.GetName()}:generate: PDF not "
-                "extendable: cannot calculate expected number of events")  # fmt: skip
+            log(
+                pdf,
+                ERROR,
+                "Generation",
+                f"RooGenContext::{pdf.GetName()}:generate: PDF not "
+                "extendable: cannot calculate expected number of events",
+            )
             return -1
         wanted = pdf.expected(names)
     if extended:
-        return int(generator().Poisson(wanted))
-    return int(math.ceil(wanted))  # events are drawn while there are fewer than asked for
+        return generator().Poisson(wanted)
+    return math.ceil(wanted)  # events are drawn while there are fewer than asked for
 
 
 def _uniform(var: Any) -> float:
@@ -61,7 +66,8 @@ def _uniform(var: Any) -> float:
 
 
 class Generator:
-    """A density's generator context, made once, drawing sample after sample: ``RooAbsGenContext``."""
+    """A density's generator context, made once, drawing sample after sample:
+    ``RooAbsGenContext``."""
 
     def __init__(self, pdf: Any, variables: list[Any], proto: Any = None) -> None:
         from ..integration import announce
@@ -69,18 +75,24 @@ class Generator:
         self.pdf = pdf
         self.proto = proto
         asked = {one.GetName() for one in variables}
-        self.taken = [one for one in (proto.get() if proto is not None else []) if one.GetName() not in asked]
+        self.taken = [
+            one for one in (proto.get() if proto is not None else []) if one.GetName() not in asked
+        ]
         self.variables = variables + self.taken
         self.names = frozenset(asked) & pdf.dependents()
         self.targets = _targets(pdf, {one.GetName() for one in self.taken})
-        self.uniform = sorted((one for one in variables if one.GetName() not in self.names),
-                              key=lambda v: v.GetName(), reverse=True)  # fmt: skip
+        self.uniform = sorted(
+            (one for one in variables if one.GetName() not in self.names),
+            key=lambda v: v.GetName(),
+            reverse=True,
+        )
         for _ in range(2):  # the generator's own copy of the density, and its context's
             announce(pdf, self.names)
         self.context = _context(pdf, self.names, frozenset(one.GetName() for one in self.taken))
 
     def sample(self, total: int, name: str) -> Any:
-        """``generate(n)``: a dataset of ``total`` events, the density's variables left as they were."""
+        """``generate(n)``: a dataset of ``total`` events, the density's variables left as they
+        were."""
         from ..data.dataset import RooDataSet
 
         data = RooDataSet(name, f"Generated From {self.pdf.GetName()}", self.variables)
@@ -95,16 +107,23 @@ class Generator:
             rows.append(row)
         for one, value in saved:
             one.load_value(value)
-        data.add_columns({one.GetName(): np.array([r[one.GetName()] for r in rows], dtype=np.float64)
-                          for one in self.variables})  # fmt: skip
+        data.add_columns(
+            {
+                one.GetName(): np.array([r[one.GetName()] for r in rows], dtype=np.float64)
+                for one in self.variables
+            }
+        )
         return data
 
     def _load(self, i: int) -> dict[str, float]:
-        """The prototype data's event ``i`` - round again if there are more to draw - in its variables."""
+        """The prototype data's event ``i`` - round again if there are more to draw - in its
+        variables."""
         if not self.taken:
             return {}
         index = i % self.proto.numEntries()
-        loaded = {one.GetName(): float(self.proto.column(one.GetName())[index]) for one in self.taken}
+        loaded = {
+            one.GetName(): float(self.proto.column(one.GetName())[index]) for one in self.taken
+        }
         for name, value in loaded.items():
             for one in self.targets.get(name, []):
                 one.load_value(value)
@@ -127,7 +146,9 @@ def _targets(pdf: Any, names: set[str]) -> dict[str, list[Any]]:
     for leaf in pdf.leaves():
         ends = leaf.getBinning().servers() if hasattr(leaf, "getBinning") else []
         for one in [leaf, *ends]:
-            if one.GetName() in names and all(one is not other for other in found.get(one.GetName(), [])):
+            if one.GetName() in names and all(
+                one is not other for other in found.get(one.GetName(), [])
+            ):
                 found.setdefault(one.GetName(), []).append(one)
     return found
 

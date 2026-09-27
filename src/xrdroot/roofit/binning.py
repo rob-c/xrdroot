@@ -109,7 +109,9 @@ class RooAbsBinning:
 class RooUniformBinning(RooAbsBinning):
     """``n`` equal bins from ``low`` to ``high``."""
 
-    def __init__(self, low: float = 0.0, high: float = 1.0, nbins: int = 100, name: str = "") -> None:
+    def __init__(
+        self, low: float = 0.0, high: float = 1.0, nbins: int = 100, name: str = ""
+    ) -> None:
         super().__init__(low, high, name)
         self._bins = int(nbins)
 
@@ -135,7 +137,7 @@ class RooBinning(RooAbsBinning):
             self._uniform = False
             self._edges = list(np.linspace(numbers[1], numbers[2], int(numbers[0]) + 1))
             return
-        low, high = (numbers + [-math.inf, math.inf][len(numbers):])[:2]
+        low, high = (numbers + [-math.inf, math.inf][len(numbers) :])[:2]
         super().__init__(low, high, name)
         self._uniform = False
 
@@ -162,7 +164,7 @@ class RooBinning(RooAbsBinning):
 EVALUATING: list[Any] = []
 
 
-class evaluating:  # noqa: N801 - used as a ``with`` statement, like ``open``
+class evaluating:
     """``with evaluating(ctx):``: parameterised ranges read their ends from ``ctx`` meanwhile."""
 
     def __init__(self, ctx: Any) -> None:
@@ -200,14 +202,18 @@ class RooParamBinning(RooUniformBinning):
         return _end(self.xhi)
 
     def setRange(self, low: float, high: float) -> None:
-        raise ValueError("RooParamBinning::setRange: a range whose ends are functions cannot be moved: "
-                         "set the functions instead.")  # fmt: skip
+        raise ValueError(
+            "RooParamBinning::setRange: a range whose ends are functions cannot be moved: "
+            "set the functions instead."
+        )
 
     def array(self) -> np.ndarray[Any, Any]:
         return np.linspace(float(self.lowBound()), float(self.highBound()), self._bins + 1)
 
     def clone(self, name: Any = None) -> Any:
-        return RooParamBinning(self.xlo, self.xhi, self._bins, self._name if name is None else str(name))
+        return RooParamBinning(
+            self.xlo, self.xhi, self._bins, self._name if name is None else str(name)
+        )
 
     def isParameterized(self) -> bool:
         return True

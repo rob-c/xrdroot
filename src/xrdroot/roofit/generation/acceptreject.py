@@ -47,11 +47,19 @@ class AcceptRejectContext(Context):
         """``RooAcceptReject::getFuncMax``: 1.05 times the largest value at the trial points."""
         trials = TRIALS[min(len(sampled), 3)]
         if len(sampled) > 1:
-            log(None, WARNING, "Generation", f"RooAcceptReject::ctor({self.pdf.GetName()}_AccRej) WARNING: "
-                f"performing accept/reject sampling on a p.d.f in {len(sampled)} dimensions without prior "
-                f"knowledge on maximum value of p.d.f. Determining maximum value by taking {trials} trial "
-                "samples. If p.d.f contains sharp peaks smaller than average distance between trial sampling "
-                "points these may be missed and p.d.f. may be sampled incorrectly.")  # fmt: skip
+            log(
+                None,
+                WARNING,
+                "Generation",
+                f"RooAcceptReject::ctor({self.pdf.GetName()}_AccRej) WARNING: "
+                f"performing accept/reject sampling on a p.d.f in {len(sampled)} dimensions "
+                "without prior "
+                "knowledge on maximum value of p.d.f. Determining maximum value by taking "
+                f"{trials} trial "
+                "samples. If p.d.f contains sharp peaks smaller than average distance between "
+                "trial sampling "
+                "points these may be missed and p.d.f. may be sampled incorrectly.",
+            )
         saved = [(one, one.getVal()) for one in sampled]
         largest = 0.0
         for _ in range(trials):

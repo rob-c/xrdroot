@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 
 from .. import selection
-from ..cmdargs import Commands, commands
+from ..cmdargs import Commands
 from ..messages import INFO, log
 from .curve import RooCurve, sample
 
@@ -27,11 +27,15 @@ __all__ = ["plot_pdf", "plot_function", "style"]
 COLOURS = {"r": 632, "b": 600, "g": 416, "k": 1, "m": 616, "c": 432, "y": 400, "w": 0}
 #: The plotting options that set an attribute, and the member each sets.
 STYLE = {
-    "LineColor": ("TAttLine", "fLineColor"), "LineStyle": ("TAttLine", "fLineStyle"),
-    "LineWidth": ("TAttLine", "fLineWidth"), "FillColor": ("TAttFill", "fFillColor"),
-    "FillStyle": ("TAttFill", "fFillStyle"), "MarkerColor": ("TAttMarker", "fMarkerColor"),
-    "MarkerStyle": ("TAttMarker", "fMarkerStyle"), "MarkerSize": ("TAttMarker", "fMarkerSize"),
-}  # fmt: skip
+    "LineColor": ("TAttLine", "fLineColor"),
+    "LineStyle": ("TAttLine", "fLineStyle"),
+    "LineWidth": ("TAttLine", "fLineWidth"),
+    "FillColor": ("TAttFill", "fFillColor"),
+    "FillStyle": ("TAttFill", "fFillStyle"),
+    "MarkerColor": ("TAttMarker", "fMarkerColor"),
+    "MarkerStyle": ("TAttMarker", "fMarkerStyle"),
+    "MarkerSize": ("TAttMarker", "fMarkerSize"),
+}
 
 
 def colour(value: Any) -> Any:
@@ -57,17 +61,29 @@ def _selected(pdf: Any, options: Commands) -> tuple[set[str] | None, str]:
         # selectByName: each pattern in turn, as RooFit matches them
         direct = []
         for pattern in patterns:
-            direct += [b for b in branches if fnmatch.fnmatchcase(b.GetName(), pattern) and b not in direct]
+            direct += [
+                b for b in branches if fnmatch.fnmatchcase(b.GetName(), pattern) and b not in direct
+            ]
         suffix = f"_Comp[{spec}]"
     else:
         wanted = {one.GetName() for one in _items(spec)}
         direct = [b for b in branches if b.GetName() in wanted]
         suffix = "_Comp[" + ",".join(one.GetName() for one in _items(spec)) + "]"
-    log(pdf, INFO, "Plotting", f"RooAbsPdf::plotOn({pdf.GetName()}) directly selected PDF components: "
-        f"({','.join(b.GetName() for b in direct)})")  # fmt: skip
+    log(
+        pdf,
+        INFO,
+        "Plotting",
+        f"RooAbsPdf::plotOn({pdf.GetName()}) directly selected PDF components: "
+        f"({','.join(b.GetName() for b in direct)})",
+    )
     indirect = _indirect(pdf, branches, direct)
-    log(pdf, INFO, "Plotting", f"RooAbsPdf::plotOn({pdf.GetName()}) indirectly selected PDF components: "
-        f"({','.join(b.GetName() for b in indirect)})")  # fmt: skip
+    log(
+        pdf,
+        INFO,
+        "Plotting",
+        f"RooAbsPdf::plotOn({pdf.GetName()}) indirectly selected PDF components: "
+        f"({','.join(b.GetName() for b in indirect)})",
+    )
     return {b.GetName() for b in direct + indirect}, suffix
 
 
@@ -116,8 +132,9 @@ def plot_pdf(pdf: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
     return pdf_plot(pdf, frame, CmdList.of(args, kwargs))
 
 
-def _range_fraction(pdf: Any, frame: Any, nset: frozenset[str], rng: Any,
-                    pieces: list[tuple[float, float]]) -> float:  # fmt: skip
+def _range_fraction(
+    pdf: Any, frame: Any, nset: frozenset[str], rng: Any, pieces: list[tuple[float, float]]
+) -> float:
     """The fraction of the curve's projection in the normalisation range: ``postRangeFracScale``."""
     var = frame.getPlotVar()
     if not rng:
@@ -133,12 +150,20 @@ def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], seen: Any = None)
     from .projections import announce_average
 
     plot_var = frame.getPlotVar().GetName()
-    order = list(seen.projected) if seen is not None else [
-        one.GetName() for one in pdf.leaves() if one.GetName() in nset - {plot_var}]
+    order = (
+        list(seen.projected)
+        if seen is not None
+        else [one.GetName() for one in pdf.leaves() if one.GetName() in nset - {plot_var}]
+    )
     projected = frozenset(order)
     if projected:
-        log(pdf, INFO, "Plotting", f"RooAbsReal::plotOn({pdf.GetName()}) plot on "
-            f"{plot_var} integrates over variables ({','.join(order)})")  # fmt: skip
+        log(
+            pdf,
+            INFO,
+            "Plotting",
+            f"RooAbsReal::plotOn({pdf.GetName()}) plot on "
+            f"{plot_var} integrates over variables ({','.join(order)})",
+        )
     if seen is not None:
         announce_average(pdf, frame, seen)
     announce(pdf, nset)
@@ -159,8 +184,17 @@ def plot_function(func: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str
     return real_plot(func, frame, CmdList.of(args, kwargs))
 
 
-def _add_curve(func: Any, frame: Any, options: Commands, nset: frozenset[str], scale: float,
-               chosen: set[str] | None, suffix: str, piece: Any = None, seen: Any = None) -> Any:  # fmt: skip
+def _add_curve(
+    func: Any,
+    frame: Any,
+    options: Commands,
+    nset: frozenset[str],
+    scale: float,
+    chosen: set[str] | None,
+    suffix: str,
+    piece: Any = None,
+    seen: Any = None,
+) -> Any:
     """Sample the projection over the frame's variable and put the curve on the frame."""
     var = frame.getPlotVar()
     low, high, wings = piece if piece is not None else (*_range(frame, options)[:2], True)

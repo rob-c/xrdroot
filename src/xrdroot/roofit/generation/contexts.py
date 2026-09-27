@@ -75,8 +75,11 @@ class NumericContext(Context):
         return {one.GetName(): float(v) for one, v in zip(self.order, point)}
 
 
-def context_for(pdf: Any, names: frozenset[str], conditional: frozenset[str] | None = None) -> Context:
-    """The context RooFit would make for ``pdf`` to generate ``names``, given ``conditional`` ones."""
+def context_for(
+    pdf: Any, names: frozenset[str], conditional: frozenset[str] | None = None
+) -> Context:
+    """The context RooFit would make for ``pdf`` to generate ``names``, given ``conditional``
+    ones."""
     make = getattr(pdf, "gen_context", None)
     if make is not None:
         return make(names)  # type: ignore[no-any-return]
@@ -91,7 +94,8 @@ def context_for(pdf: Any, names: frozenset[str], conditional: frozenset[str] | N
 
 
 class ProductContext(Context):
-    """``RooProdGenContext``: each factor draws its own observables, those it is conditional on first."""
+    """``RooProdGenContext``: each factor draws its own observables, those it is conditional on
+    first."""
 
     def __init__(self, pdf: Any, names: frozenset[str]) -> None:
         super().__init__(pdf, names)
@@ -128,7 +132,9 @@ class SumContext(Context):
         self.parts = [context_for(component, names) for component in pdf.pdfs]
 
     def event(self, remaining: int) -> dict[str, float]:
-        shares = [float(np.asarray(c).reshape(-1)[0]) for c in self.pdf.coefficients({}, self.names)]
+        shares = [
+            float(np.asarray(c).reshape(-1)[0]) for c in self.pdf.coefficients({}, self.names)
+        ]
         draw = generator().Rndm()
         low = 0.0
         for share, part in zip(shares, self.parts):

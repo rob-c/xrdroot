@@ -27,7 +27,9 @@ __all__ = ["RooRealIntegral", "make_integral", "make_cdf"]
 class RooRealIntegral(RooAbsReal):
     """The integral of a function over some of its variables."""
 
-    def __init__(self, func: Any, names: frozenset[str], nset: frozenset[str] | None, rng: Any) -> None:
+    def __init__(
+        self, func: Any, names: frozenset[str], nset: frozenset[str] | None, rng: Any
+    ) -> None:
         name = integral_name(func, names, rng)
         if nset:
             order = [one.GetName() for one in func.leaves() if one.GetName() in nset]
@@ -43,20 +45,40 @@ class RooRealIntegral(RooAbsReal):
     def _announce(self) -> None:
         func, over = self.func, ",".join(sorted(self.names))
         norm = ",".join(sorted(self.nset or ()))
-        log(self, INFO, "Integration", f"RooRealIntegral::ctor({self._name}) Constructing integral of "
+        log(
+            self,
+            INFO,
+            "Integration",
+            f"RooRealIntegral::ctor({self._name}) Constructing integral of "
             f"function {func.GetName()} over observables({over}) with normalization ({norm}) with "
-            f"range identifier {self.rng or '<none>'}")  # fmt: skip
+            f"range identifier {self.rng or '<none>'}",
+        )
         closed = func.analytic_names(self.names, self.rng) & self.names
         for name in sorted(self.names):
-            log(self, INFO, "Integration", f"{func.GetName()}: Observable {name} is suitable for "
-                "analytical integration (if supported by p.d.f)")  # fmt: skip
+            log(
+                self,
+                INFO,
+                "Integration",
+                f"{func.GetName()}: Observable {name} is suitable for "
+                "analytical integration (if supported by p.d.f)",
+            )
         if closed:
             code = func.integral_code(closed)
             text = ",".join(sorted(closed))
-            log(self, INFO, "Integration", f"{func.GetName()}: Function integrated observables ({text}) "
-                f"internally with code {code}")  # fmt: skip
-            log(self, INFO, "Integration", f"{func.GetName()}: Observables ({text}) are analytically "
-                f"integrated with code {code}")  # fmt: skip
+            log(
+                self,
+                INFO,
+                "Integration",
+                f"{func.GetName()}: Function integrated observables ({text}) "
+                f"internally with code {code}",
+            )
+            log(
+                self,
+                INFO,
+                "Integration",
+                f"{func.GetName()}: Observables ({text}) are analytically "
+                f"integrated with code {code}",
+            )
 
     def compute(self, ctx: Context) -> Any:
         if self.nset:
@@ -72,7 +94,9 @@ class RooRealIntegral(RooAbsReal):
         return "[ " + self.printMetaArgs() + "]"
 
 
-def make_integral(func: Any, iset: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> RooRealIntegral:
+def make_integral(
+    func: Any, iset: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> RooRealIntegral:
     """``func.createIntegral(iset, [nset], [range], options...)``."""
     names = frozenset(one.GetName() for one in as_list(iset))
     plain = [a for a in args if not isinstance(a, RooCmdArg)]
@@ -93,8 +117,10 @@ class RooCdf(RooAbsReal):
 
     def __init__(self, func: Any, names: frozenset[str]) -> None:
         order = [one.GetName() for one in func.leaves() if one.GetName() in names]
-        super().__init__(f"{func.GetName()}_Int[{','.join(order)}_prime]_Norm[{','.join(order)}]",
-                         f"Integral of {func.GetTitle()}")  # fmt: skip
+        super().__init__(
+            f"{func.GetName()}_Int[{','.join(order)}_prime]_Norm[{','.join(order)}]",
+            f"Integral of {func.GetTitle()}",
+        )
         self.func = self._proxy("!func", func)
         self.names = names
 

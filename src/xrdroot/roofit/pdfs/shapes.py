@@ -19,8 +19,15 @@ from ..pdf import RooAbsPdf, check_range
 from ..real import Context
 from .basic import ref
 
-__all__ = ["RooArgusBG", "RooBifurGauss", "RooBreitWigner", "RooCBShape", "RooLandau",
-           "RooLognormal", "RooPoisson"]  # fmt: skip
+__all__ = [
+    "RooArgusBG",
+    "RooBifurGauss",
+    "RooBreitWigner",
+    "RooCBShape",
+    "RooLandau",
+    "RooLognormal",
+    "RooPoisson",
+]
 
 
 class _Shape(RooAbsPdf):
@@ -39,7 +46,11 @@ class _Shape(RooAbsPdf):
 
     def over(self, key: str, names: frozenset[str]) -> frozenset[str]:
         arg = getattr(self, key)
-        return frozenset([arg.GetName()]) if arg.isFundamental() and arg.GetName() in names else frozenset()
+        return (
+            frozenset([arg.GetName()])
+            if arg.isFundamental() and arg.GetName() in names
+            else frozenset()
+        )
 
 
 class RooArgusBG(_Shape):
@@ -59,7 +70,9 @@ class RooArgusBG(_Shape):
         return np.where(m >= m0, 0.0, found)
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
-        return self.over("m", names) if self.p.isConstant() and self.p.getVal() == 0.5 else frozenset()
+        return (
+            self.over("m", names) if self.p.isConstant() and self.p.getVal() == 0.5 else frozenset()
+        )
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
         m0, c = self.v("m0", ctx), self.v("c", ctx)
@@ -70,8 +83,15 @@ class RooArgusBG(_Shape):
 
 def _argus_part(m0: float, c: float, f: float) -> float:
     if c < 0:
-        return -0.5 * m0 * m0 * (math.exp(c * f) * math.sqrt(f) / c
-                                 + 0.5 / (-c) ** 1.5 * math.sqrt(math.pi) * math.erf(math.sqrt(-c * f)))
+        return (
+            -0.5
+            * m0
+            * m0
+            * (
+                math.exp(c * f) * math.sqrt(f) / c
+                + 0.5 / (-c) ** 1.5 * math.sqrt(math.pi) * math.erf(math.sqrt(-c * f))
+            )
+        )
     if c == 0:
         return -m0 * m0 / 3.0 * f * math.sqrt(f)
     dawson = _dawson(math.sqrt(c * f))
@@ -79,7 +99,8 @@ def _argus_part(m0: float, c: float, f: float) -> float:
 
 
 def _dawson(x: float) -> float:
-    """``sqrt(pi)/2 Im w(x)`` for real ``x``: ``exp(-x^2) * integral_0^x exp(t^2) dt`` times ``exp``."""
+    """``sqrt(pi)/2 Im w(x)`` for real ``x``: ``exp(-x^2) * integral_0^x exp(t^2) dt`` times
+    ``exp``."""
     ts = np.linspace(0.0, x, 2001)
     return float(np.trapezoid(np.exp(ts * ts - x * x), ts)) * math.exp(x * x) if x else 0.0
 
@@ -145,7 +166,9 @@ class RooBreitWigner(_Shape):
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
         mean, width = self.v("mean", ctx), self.v("width", ctx)
         c = 2.0 / width
-        return c * (np.arctan(c * (self.x.getMax(rng) - mean)) - np.arctan(c * (self.x.getMin(rng) - mean)))
+        return c * (
+            np.arctan(c * (self.x.getMax(rng) - mean)) - np.arctan(c * (self.x.getMin(rng) - mean))
+        )
 
 
 class RooLandau(_Shape):
@@ -165,7 +188,10 @@ class RooLandau(_Shape):
         return self.over("x", names)
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
-        mean, sigma = float(np.asarray(self.v("mean", ctx))), float(np.asarray(self.v("sigma", ctx)))
+        mean, sigma = (
+            float(np.asarray(self.v("mean", ctx))),
+            float(np.asarray(self.v("sigma", ctx))),
+        )
         high = landau_cdf(self.x.getMax(rng), sigma, mean)
         return sigma * (high - landau_cdf(self.x.getMin(rng), sigma, mean))
 
@@ -245,7 +271,9 @@ class RooPoisson(_Shape):
                 return incomplete_gamma_c(last, mean) - incomplete_gamma_c(first, mean)
             return incomplete_gamma(first, mean) - incomplete_gamma(last, mean)
         ix = 1 + (x if self._no_rounding else math.floor(x))
-        return incomplete_gamma(ix, self.mean.getMax(rng)) - incomplete_gamma(ix, self.mean.getMin(rng))
+        return incomplete_gamma(ix, self.mean.getMax(rng)) - incomplete_gamma(
+            ix, self.mean.getMin(rng)
+        )
 
     def generator_code(self, names: frozenset[str]) -> int:
         return 1 if names and names == self.over("x", names) else 0

@@ -20,6 +20,7 @@ import copy
 from collections.abc import Iterator
 from typing import Any
 
+from . import cout
 from .collections import RooArgList, RooArgSet, as_list
 from .printing import (
     RooPrintable,
@@ -29,7 +30,6 @@ from .printing import (
     kName,
     kValue,
 )
-from . import cout
 
 __all__ = ["Proxy", "RooAbsArg", "graph_changed"]
 
@@ -177,8 +177,13 @@ class RooAbsArg(RooPrintable):
     def getObservables(self, observables: Any = None, valueOnly: bool = True) -> RooArgSet:
         """The variables that are among ``observables``."""
         wanted = set(_observable_names(observables))
-        return RooArgSet([one for one in self.leaves()
-                          if one.GetName() in wanted and not one.InheritsFrom("RooConstVar")])
+        return RooArgSet(
+            [
+                one
+                for one in self.leaves()
+                if one.GetName() in wanted and not one.InheritsFrom("RooConstVar")
+            ]
+        )
 
     def getComponents(self) -> RooArgSet:
         return RooArgSet([node for node in self._walk() if not node.isFundamental()])
@@ -301,16 +306,16 @@ class RooAbsArg(RooPrintable):
         """``Dirty`` or ``Clean``, as ROOT's value cache is when the tree is printed."""
         return "Dirty"
 
-    def printCompactTree(self, indent: str = "", filename: Any = None, namePat: Any = None,
-                         client: Any = None) -> None:  # fmt: skip
-        
+    def printCompactTree(
+        self, indent: str = "", filename: Any = None, namePat: Any = None, client: Any = None
+    ) -> None:
+
         cout.write(self.compact_tree(str(indent), None))
 
     def printComponentTree(self, indent: str = "", namePat: Any = None, nLevel: int = 999) -> None:
         if nLevel == 0 or self.isFundamental() or self.InheritsFrom("RooConstVar"):
             return
         if not namePat or str(namePat) in self._name:
-            
             cout.write(str(indent))
             self.Print()
         for server in self.servers():

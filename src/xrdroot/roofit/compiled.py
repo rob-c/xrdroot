@@ -53,7 +53,9 @@ def _binary(node: Binary) -> Closure:
 
 def _ternary(node: Ternary) -> Closure:
     test, then, otherwise = _compile(node.condition), _compile(node.then), _compile(node.otherwise)
-    return lambda values: np.where(ops.truth(np.asarray(test(values))), then(values), otherwise(values))
+    return lambda values: np.where(
+        ops.truth(np.asarray(test(values))), then(values), otherwise(values)
+    )
 
 
 def _call(node: Call) -> Closure:
@@ -69,9 +71,14 @@ def _cast(node: Cast) -> Closure:
 
 #: How each kind of node is compiled.
 COMPILERS: dict[type, Callable[[Any], Closure]] = {
-    Number: _number, Ref: _ref, Unary: _unary, Binary: _binary, Ternary: _ternary,
-    Call: _call, Cast: _cast,
-}  # fmt: skip
+    Number: _number,
+    Ref: _ref,
+    Unary: _unary,
+    Binary: _binary,
+    Ternary: _ternary,
+    Call: _call,
+    Cast: _cast,
+}
 
 
 def _compile(node: Node) -> Closure:

@@ -22,10 +22,12 @@ __all__ = ["RooFitResult"]
 
 #: ``covQual``'s words, as the table says them.
 QUALITY = {
-    -1: "Unknown, matrix was externally provided", 0: "Not calculated at all",
-    1: "Approximation only, not accurate", 2: "Full matrix, but forced positive-definite",
+    -1: "Unknown, matrix was externally provided",
+    0: "Not calculated at all",
+    1: "Approximation only, not accurate",
+    2: "Full matrix, but forced positive-definite",
     3: "Full, accurate covariance matrix",
-}  # fmt: skip
+}
 
 
 def _global_cc(cov: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
@@ -69,14 +71,19 @@ class RooFitResult(RooPrintable):
         self._min_nll = float(minuit.fval)
         self._edm = float(minuit.fmin.edm)
         self._invalid = minimizer.invalid
-        self._const = RooArgList([p.clone(p.GetName()) for p in minimizer.all_params if p.isConstant()])
+        self._const = RooArgList(
+            [p.clone(p.GetName()) for p in minimizer.all_params if p.isConstant()]
+        )
         floating = [p for p in minimizer.params if not p.isConstant()]
         floating_names = {p.GetName() for p in floating}
         self._init = RooArgList([p for p in minimizer.init_params if p.GetName() in floating_names])
         self._final = RooArgList([p.clone(p.GetName()) for p in floating])
         index = [i for i, p in enumerate(minimizer.params) if not p.isConstant()]
-        covariance = np.array(minuit.covariance, dtype=np.float64) if minuit.covariance is not None else (
-            np.zeros((len(minimizer.params),) * 2))
+        covariance = (
+            np.array(minuit.covariance, dtype=np.float64)
+            if minuit.covariance is not None
+            else (np.zeros((len(minimizer.params),) * 2))
+        )
         self._cov = covariance[np.ix_(index, index)]
         self._history = list(minimizer.history)
 
@@ -141,13 +148,20 @@ class RooFitResult(RooPrintable):
         return TMatrixDSym(len(self._cov), np.nan_to_num(corr))
 
     def correlation(self, one: Any, two: Any = None) -> Any:
-        """The correlation of two parameters, by name or by variable; of one, its row as variables."""
+        """The correlation of two parameters, by name or by variable; of one, its row as
+        variables."""
         self._show_global = True
         names = self._final.names()
         first = names.index(one if isinstance(one, str) else one.GetName())
         if two is None:
-            return RooArgList([RooRealVar(f"C[{names[first]},{n}]", "", float(self.correlationMatrix()(first, j)))
-                               for j, n in enumerate(names)])  # fmt: skip
+            return RooArgList(
+                [
+                    RooRealVar(
+                        f"C[{names[first]},{n}]", "", float(self.correlationMatrix()(first, j))
+                    )
+                    for j, n in enumerate(names)
+                ]
+            )
         second = names.index(two if isinstance(two, str) else two.GetName())
         return float(self.correlationMatrix()(first, second))
 
@@ -155,8 +169,12 @@ class RooFitResult(RooPrintable):
         self._show_global = True
         values = _global_cc(self._cov)
         if par is None:
-            return RooArgList([RooRealVar(f"GC[{n}]", "", float(v)) for n, v in zip(self._final.names(), values)])
-        return float(values[self._final.names().index(par if isinstance(par, str) else par.GetName())])
+            return RooArgList(
+                [RooRealVar(f"GC[{n}]", "", float(v)) for n, v in zip(self._final.names(), values)]
+            )
+        return float(
+            values[self._final.names().index(par if isinstance(par, str) else par.GetName())]
+        )
 
     def reducedCovarianceMatrix(self, params: Any) -> TMatrixDSym:
         """The covariance of ``params`` alone - the others taken as fixed at their values."""
@@ -169,7 +187,8 @@ class RooFitResult(RooPrintable):
         return self.reducedCovarianceMatrix(params)
 
     def randomizePars(self) -> RooArgList:
-        """The final parameters drawn anew from their Gaussian covariance, with RooFit's generator."""
+        """The final parameters drawn anew from their Gaussian covariance, with RooFit's
+        generator."""
         from ..rng import generator
 
         chol = np.linalg.cholesky(self._cov)
@@ -185,7 +204,10 @@ class RooFitResult(RooPrintable):
         from ..pdfs.multivar import RooMultiVarGaussian
 
         names = self._final.names()
-        chosen = sorted((p for p in as_list(params) if p.GetName() in names), key=lambda p: names.index(p.GetName()))
+        chosen = sorted(
+            (p for p in as_list(params) if p.GetName() in names),
+            key=lambda p: names.index(p.GetName()),
+        )
         index = [names.index(p.GetName()) for p in chosen]
         centres = []
         for i in index:
@@ -195,7 +217,9 @@ class RooFitResult(RooPrintable):
         cov = self._cov[np.ix_(index, index)]
         if len(index) < len(names):
             cov = np.linalg.inv(np.linalg.inv(self._cov)[np.ix_(index, index)])
-        return RooMultiVarGaussian(f"pdf_{self._name}", f"P.d.f of {self._title}", chosen, centres, cov)
+        return RooMultiVarGaussian(
+            f"pdf_{self._name}", f"P.d.f of {self._title}", chosen, centres, cov
+        )
 
     def params(self) -> RooArgSet:
         return RooArgSet(self._final)
@@ -223,35 +247,50 @@ class RooFitResult(RooPrintable):
         return kVerbose if "v" in str(option or "").lower() else kStandard
 
     def printMultiline(self, contents: int, verbose: bool, indent: str) -> str:
-        """``RooFitResult::printMultiline``: the minimum, the matrix quality, the status, the table."""
-        text = (f"\n{indent}  RooFitResult: minimized FCN value: {g(self._min_nll)}, estimated distance "
-                f"to minimum: {g(self._edm)}\n{indent}                covariance matrix quality: "
-                f"{QUALITY.get(self._cov_qual, '')}\n{indent}                Status : ")  # fmt: skip
+        """``RooFitResult::printMultiline``: the minimum, the matrix quality, the status, the
+        table."""
+        text = (
+            f"\n{indent}  RooFitResult: minimized FCN value: {g(self._min_nll)}, estimated "
+            "distance "
+            f"to minimum: {g(self._edm)}\n{indent}                covariance matrix quality: "
+            f"{QUALITY.get(self._cov_qual, '')}\n{indent}                Status : "
+        )
         text += "".join(f"{label}={code} " for label, code in self._history) + "\n\n"
         text += self._verbose_table(indent) if verbose else self._table(indent)
         return text + "\n"
 
     def _table(self, indent: str) -> str:
-        text = (f"{indent}    Floating Parameter    FinalValue +/-  Error   \n"
-                f"{indent}  --------------------  --------------------------\n")  # fmt: skip
+        text = (
+            f"{indent}    Floating Parameter    FinalValue +/-  Error   \n"
+            f"{indent}  --------------------  --------------------------\n"
+        )
         for par in self._final:
-            text += (f"{indent}  {par.GetName():>20}  {par.getVal():12.4e} +/- "
-                     f"{par.getError():9.2e}\n")  # fmt: skip
+            text += (
+                f"{indent}  {par.GetName():>20}  {par.getVal():12.4e} +/- {par.getError():9.2e}\n"
+            )
         return text
 
     def _verbose_table(self, indent: str) -> str:
         text = self._constants(indent)
         asym = any(par.hasAsymError() for par in self._final)
         if asym:
-            text += (f"{indent}    Floating Parameter  InitialValue    FinalValue (+HiError,-LoError)    "
-                     f"GblCorr.\n{indent}  --------------------  ------------  "
-                     "----------------------------------  --------\n")  # fmt: skip
+            text += (
+                f"{indent}    Floating Parameter  InitialValue    FinalValue (+HiError,-LoError)   "
+                " "
+                f"GblCorr.\n{indent}  --------------------  ------------  "
+                "----------------------------------  --------\n"
+            )
         else:
-            text += (f"{indent}    Floating Parameter  InitialValue    FinalValue +/-  Error     GblCorr.\n"
-                     f"{indent}  --------------------  ------------  --------------------------  --------\n")
+            text += (
+                f"{indent}    Floating Parameter  InitialValue    FinalValue +/-  Error     "
+                "GblCorr.\n"
+                f"{indent}  --------------------  ------------  --------------------------  "
+                "--------\n"
+            )
         correlations = _global_cc(self._cov) if self._show_global else None
         for index, (start, par) in enumerate(zip(self._init, self._final)):
-            text += f"{indent}  {par.GetName():>20}{indent}  {start.getVal():12.4e}{indent}  {par.getVal():12.4e}"
+            text += f"{indent}  {par.GetName():>20}{indent}  {start.getVal():12.4e}"
+            text += f"{indent}  {par.getVal():12.4e}"
             if par.hasAsymError():
                 text += f" (+{par.getAsymErrorHi():8.2e},-{-par.getAsymErrorLo():8.2e})".rjust(21)
             else:
@@ -263,8 +302,10 @@ class RooFitResult(RooPrintable):
     def _constants(self, indent: str) -> str:
         if not len(self._const):
             return ""
-        text = (f"{indent}    Constant Parameter    Value     \n"
-                f"{indent}  --------------------  ------------\n")  # fmt: skip
+        text = (
+            f"{indent}    Constant Parameter    Value     \n"
+            f"{indent}  --------------------  ------------\n"
+        )
         for par in self._const:
             value = f"{par.getVal():12.4e}" if par.InheritsFrom("RooRealVar") else par.printValue()
             text += f"{indent}  {par.GetName():>20}  {value:>12}\n"

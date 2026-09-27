@@ -34,23 +34,34 @@ def parameter_data(study: Any) -> Any:
     for par in study.fit_params:
         variables.append(RooRealVar(f"{par.GetName()}err", f"{par.GetTitle()} Error", -1e30, 1e30))
         if par in pulled:
-            variables.append(RooRealVar(f"{par.GetName()}pull", f"{par.GetTitle()} Pull", -1e30, 1e30))
-    variables += [RooRealVar("NLL", "-log(Likelihood)", -1e30, 1e30),
-                  RooRealVar("ngen", "number of generated events", -1e30, 1e30)]  # fmt: skip
-    data = RooDataSet(f"fitParData_{study.fit_model.GetName()}", "Fit Parameters DataSet", variables)
+            variables.append(
+                RooRealVar(f"{par.GetName()}pull", f"{par.GetTitle()} Pull", -1e30, 1e30)
+            )
+    variables += [
+        RooRealVar("NLL", "-log(Likelihood)", -1e30, 1e30),
+        RooRealVar("ngen", "number of generated events", -1e30, 1e30),
+    ]
+    data = RooDataSet(
+        f"fitParData_{study.fit_model.GetName()}", "Fit Parameters DataSet", variables
+    )
     columns: dict[str, list[float]] = {v.GetName(): [] for v in variables}
     for row in study.rows:
         for key, value in row.items():
             columns[key].append(value)
         for par in pulled:
             name = par.GetName()
-            columns[f"{name}pull"].append(_pull(row[name], row[f"{name}err"], generated.get(name, 0.0)))
+            columns[f"{name}pull"].append(
+                _pull(row[name], row[f"{name}err"], generated.get(name, 0.0))
+            )
     data.add_columns({k: np.array(v, dtype=np.float64) for k, v in columns.items()})
     return data
 
 
-def _auto(values: np.ndarray[Any, Any], var: Any, margin: float, symmetric: bool) -> tuple[float, float]:
-    """``RooAbsData::getRange``: the values' extent and a margin, symmetric about the mean if asked."""
+def _auto(
+    values: np.ndarray[Any, Any], var: Any, margin: float, symmetric: bool
+) -> tuple[float, float]:
+    """``RooAbsData::getRange``: the values' extent and a margin, symmetric about the mean if
+    asked."""
     low, high = float(values.min()), float(values.max())
     if symmetric:
         mean = float(np.mean(values))
@@ -62,8 +73,9 @@ def _auto(values: np.ndarray[Any, Any], var: Any, margin: float, symmetric: bool
     return max(low, var.getMin()), min(high, var.getMax())
 
 
-def plot_column(study: Any, name: str, args: tuple[Any, ...], kwargs: dict[str, Any],
-                symmetric: bool) -> Any:  # fmt: skip
+def plot_column(
+    study: Any, name: str, args: tuple[Any, ...], kwargs: dict[str, Any], symmetric: bool
+) -> Any:
     """A frame of one column of the study's dataset, and that column plotted on it."""
     data = study.fitParDataSet()
     options = commands([a for a in args if isinstance(a, RooCmdArg)], kwargs)
@@ -102,8 +114,9 @@ def _fit_gauss(frame: Any, data: Any) -> None:
     mean, sigma, gauss = w.var("pullMean"), w.var("pullSigma"), w.pdf("pullGauss")
     gauss.fitTo(data, RooCmdArg("Minos", False), RooCmdArg("PrintLevel", -1))
     gauss.plotOn(frame)
-    label = (f"Fit parameters:\n#mu: {format_var(mean, 2, 'ELU')}\n#sigma: "
-             f"{format_var(sigma, 2, 'ELU')}")  # fmt: skip
+    label = (
+        f"Fit parameters:\n#mu: {format_var(mean, 2, 'ELU')}\n#sigma: {format_var(sigma, 2, 'ELU')}"
+    )
     mean.setConstant(True)
     sigma.setConstant(True)
     gauss.paramOn(frame, RooCmdArg("Label", label), RooCmdArg("Layout", 0.60, 0.9, 0.9))

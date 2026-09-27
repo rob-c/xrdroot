@@ -11,9 +11,9 @@ changes what is printed here exactly as it would in ROOT.
 
 from __future__ import annotations
 
-
 from dataclasses import dataclass, field, replace
-from typing import IO, Any
+from typing import Any
+
 from . import cout
 
 __all__ = [
@@ -34,24 +34,52 @@ __all__ = [
 #: ``RooFit::MsgLevel``.
 DEBUG, INFO, PROGRESS, WARNING, ERROR, FATAL = range(6)
 #: Each level's name, as the prefix of a message says it.
-LEVELS = {DEBUG: "DEBUG", INFO: "INFO", PROGRESS: "PROGRESS", WARNING: "WARNING",
-          ERROR: "ERROR", FATAL: "FATAL"}  # fmt: skip
+LEVELS = {
+    DEBUG: "DEBUG",
+    INFO: "INFO",
+    PROGRESS: "PROGRESS",
+    WARNING: "WARNING",
+    ERROR: "ERROR",
+    FATAL: "FATAL",
+}
 #: ``RooFit::MsgTopic``: each topic's bit, in the order ``Print`` lists them.
 TOPICS = {
-    "Generation": 1, "Minimization": 2, "Plotting": 4, "Fitting": 8, "Integration": 16,
-    "LinkStateMgmt": 32, "Eval": 64, "Caching": 128, "Optimization": 256,
-    "ObjectHandling": 512, "InputArguments": 1024, "Tracing": 2048, "Contents": 4096,
-    "DataHandling": 8192, "NumericIntegration": 16384, "FastEvaluations": 1 << 15,
-    "HistFactory": 1 << 16, "IO": 1 << 17,
-}  # fmt: skip
+    "Generation": 1,
+    "Minimization": 2,
+    "Plotting": 4,
+    "Fitting": 8,
+    "Integration": 16,
+    "LinkStateMgmt": 32,
+    "Eval": 64,
+    "Caching": 128,
+    "Optimization": 256,
+    "ObjectHandling": 512,
+    "InputArguments": 1024,
+    "Tracing": 2048,
+    "Contents": 4096,
+    "DataHandling": 8192,
+    "NumericIntegration": 16384,
+    "FastEvaluations": 1 << 15,
+    "HistFactory": 1 << 16,
+    "IO": 1 << 17,
+}
 #: The topic a stream takes when none is named: every one.
 ANY = 0xFFFFF
 #: The topics ``reset`` gives the second stream, which prints ``INFO``.
 INFO_TOPICS = sum(
     TOPICS[name]
-    for name in ("Eval", "Plotting", "Fitting", "Minimization", "Caching", "ObjectHandling",
-                 "NumericIntegration", "InputArguments", "DataHandling")
-)  # fmt: skip
+    for name in (
+        "Eval",
+        "Plotting",
+        "Fitting",
+        "Minimization",
+        "Caching",
+        "ObjectHandling",
+        "NumericIntegration",
+        "InputArguments",
+        "DataHandling",
+    )
+)
 
 
 @dataclass
@@ -80,7 +108,8 @@ class StreamConfig:
         return not (self.objectName or self.className or self.baseClassName or self.tagName)
 
     def match(self, level: int, topic: int, obj: Any) -> bool:
-        """``StreamConfig::match``: whether a message of ``level`` on ``topic`` about ``obj`` goes here."""
+        """``StreamConfig::match``: whether a message of ``level`` on ``topic`` about ``obj`` goes
+        here."""
         if not self.active or level < self.minLevel or not self.topic & topic:
             return False
         if self.universal:
@@ -125,7 +154,8 @@ class RooMsgService:
     # -- streams ------------------------------------------------------------------
 
     def addStream(self, level: int, *commands: Any, **options: Any) -> int:
-        """A new stream from ``level`` up, with ``Topic``, ``ClassName``... as ``RooCmdArg``s or keywords."""
+        """A new stream from ``level`` up, with ``Topic``, ``ClassName``... as ``RooCmdArg``s or
+        keywords."""
         settings = {command.name: command.value() for command in commands if command.name}
         settings.update(options)
         stream = StreamConfig(int(level), int(settings.get("Topic", ANY)))
@@ -142,7 +172,7 @@ class RooMsgService:
         if "OutputStream" in settings:
             return settings["OutputStream"]
         name = settings.get("OutputFile")
-        return open(str(name), "w") if name else None  # noqa: SIM115 - the stream keeps it
+        return open(str(name), "w") if name else None
 
     def deleteStream(self, index: int) -> None:
         del self._streams[int(index)]
@@ -230,12 +260,16 @@ class RooMsgService:
         if stream.topic == ANY:
             topics = " Any "
         else:
-            topics = "".join(f"{name} " for name, bit in TOPICS.items() if bit & stream.topic and name != "IO")
+            topics = "".join(
+                f"{name} " for name, bit in TOPICS.items() if bit & stream.topic and name != "IO"
+            )
         text = f"[{index}] MinLevel = {LEVELS[stream.minLevel]} Topic = {topics}"
         for label, value in (
-            ("ObjectName", stream.objectName), ("ClassName", stream.className),
-            ("BaseClassName", stream.baseClassName), ("TagLabel", stream.tagName),
-        ):  # fmt: skip
+            ("ObjectName", stream.objectName),
+            ("ClassName", stream.className),
+            ("BaseClassName", stream.baseClassName),
+            ("TagLabel", stream.tagName),
+        ):
             if value:
                 text += f" {label} = {value}"
         if every and not stream.active:

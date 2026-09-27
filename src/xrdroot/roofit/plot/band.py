@@ -34,7 +34,7 @@ def _plot_again(target: Any, frame: Any, arguments: CmdList) -> Any:
     from .realplot import real_plot
 
     copy = arguments.copy()
-    copy.strip("FillColor")
+    copy.strip("FillColor")  # noqa: B005 - a command list's strip, by name
     if hasattr(target, "canBeExtended"):
         pdf_plot(target, frame, copy)
     else:
@@ -45,10 +45,12 @@ def _plot_again(target: Any, frame: Any, arguments: CmdList) -> Any:
 
 
 def _arguments(cmds: CmdList) -> CmdList:
-    """The options the curves are drawn with: no ``VisualizeError``, no scale ``plotOn`` made itself."""
+    """The options the curves are drawn with: no ``VisualizeError``, no scale ``plotOn`` made
+    itself."""
     kept = CmdList(one for one in cmds.items if one.name not in ("VisualizeError", "MoveToBack"))
-    kept.items = [one for one in kept.items
-                  if not (one.name == "Normalization" and one.value(2, 0))]  # fmt: skip
+    kept.items = [
+        one for one in kept.items if not (one.name == "Normalization" and one.value(2, 0))
+    ]
     return kept
 
 
@@ -61,12 +63,16 @@ def _moved(func: Any, frame: Any, arguments: CmdList, par: Any, value: float) ->
         par.setVal(before)
 
 
-def _variations(func: Any, frame: Any, arguments: CmdList, fit: Any, z: float,
-                wanted: Any) -> tuple[list[Any], Any]:  # fmt: skip
+def _variations(
+    func: Any, frame: Any, arguments: CmdList, fit: Any, z: float, wanted: Any
+) -> tuple[list[Any], Any]:
     """The curves with each parameter up and down by ``z`` errors, and the correlations."""
     finals = [p for p in fit.floatParsFinal() if p.getError() > p.getVal() * np.finfo(float).eps]
-    mine = {p.GetName(): p for p in func.getParameters(frame.norm_vars or [])
-            if wanted is None or p.GetName() in wanted}  # fmt: skip
+    mine = {
+        p.GetName(): p
+        for p in func.getParameters(frame.norm_vars or [])
+        if wanted is None or p.GetName() in wanted
+    }
     chosen = [p for p in finals if p.GetName() in mine]
     names = fit.floatParsFinal().names()
     index = [names.index(p.GetName()) for p in chosen]
@@ -86,16 +92,25 @@ def _warn_outside(func: Any, par: Any, centre: float, error: float, z: float) ->
     low, high = centre - z * error, centre + z * error
     if par.inRange(high) and par.inRange(low):
         return
-    log(func, WARNING, "Plotting", f"RooAbsReal::plotOn({func.GetName()}): the {g(z)}-sigma error band for "
-        f"the parameter \"{par.GetName()}\" is invalid because the variations ({g(low)}, {g(high)}) are "
-        f"outside the defined range [{g(par.getMin())}, {g(par.getMax())}]!\n                         The "
-        "variations will be clipped inside the range. This might or might not be acceptable in your "
-        "usecase.")  # fmt: skip
+    log(
+        func,
+        WARNING,
+        "Plotting",
+        f"RooAbsReal::plotOn({func.GetName()}): the {g(z)}-sigma error band for "
+        f'the parameter "{par.GetName()}" is invalid because the variations '
+        f"({g(low)}, {g(high)}) are outside the defined range "
+        f"[{g(par.getMin())}, {g(par.getMax())}]!\n                         The "
+        "variations will be clipped inside the range. This might or might not be acceptable in "
+        "your "
+        "usecase.",
+    )
 
 
 def _band_curve(centre: Any, pairs: list[Any], corr: Any) -> RooCurve:
     """``makeErrorBand``: along the central curve and back, ``sqrt(F C F)`` either side."""
-    f = np.array([(up.interpolate(centre.x) - down.interpolate(centre.x)) / 2 for up, down in pairs])
+    f = np.array(
+        [(up.interpolate(centre.x) - down.interpolate(centre.x)) / 2 for up, down in pairs]
+    )
     half = np.sqrt(np.einsum("in,ij,jn->n", f, corr, f)) if len(pairs) else np.zeros(len(centre.x))
     xs = np.concatenate([centre.x, centre.x[::-1]])
     ys = np.concatenate([centre.y + half, (centre.y - half)[::-1]])
@@ -106,17 +121,26 @@ def _band_curve(centre: Any, pairs: list[Any], corr: Any) -> RooCurve:
     return made
 
 
-def _sampled(func: Any, frame: Any, arguments: CmdList, fit: Any, z: float, centre: Any,
-             wanted: Any) -> RooCurve:  # fmt: skip
+def _sampled(
+    func: Any, frame: Any, arguments: CmdList, fit: Any, z: float, centre: Any, wanted: Any
+) -> RooCurve:
     """The band from curves of parameters drawn from the fit's Gaussian: their central quantiles."""
     finals = set(fit.floatParsFinal().names())
-    params = [p for p in func.getObservables(fit.floatParsFinal())
-              if p.GetName() in finals and (wanted is None or p.GetName() in wanted)]  # fmt: skip
+    params = [
+        p
+        for p in func.getObservables(fit.floatParsFinal())
+        if p.GetName() in finals and (wanted is None or p.GetName() in wanted)
+    ]
     density = fit.createHessePdf(params)
     n = max(int(100.0 / math.erfc(z / math.sqrt(2.0))), 100)
-    log(func, INFO, "Plotting", f"RooAbsReal::plotOn({func.GetName()}) INFO: visualizing {g(z)}-sigma "
+    log(
+        func,
+        INFO,
+        "Plotting",
+        f"RooAbsReal::plotOn({func.GetName()}) INFO: visualizing {g(z)}-sigma "
         f"uncertainties in parameters ({','.join(p.GetName() for p in params)}) from fit result "
-        f"{fit.GetName()} using {n} samplings.")  # fmt: skip
+        f"{fit.GetName()} using {n} samplings.",
+    )
     ymin, ymax = frame.GetMinimum(), frame.GetMaximum()
     drawn = density.generate(params, n)
     saved = [(p, p.getVal()) for p in params]
@@ -132,8 +156,12 @@ def _sampled(func: Any, frame: Any, arguments: CmdList, fit: Any, z: float, cent
     delta = int(len(curves) * math.erfc(z / math.sqrt(2.0)) / 2 + 0.5)
     ys = np.sort(np.array([c.interpolate(centre.x) for c in curves]), axis=0)
     low, high = ys[delta], ys[len(curves) - delta]
-    made = RooCurve(f"{centre.GetName()}_errorband", "", np.concatenate([centre.x, centre.x[::-1]]),
-                    np.concatenate([low, high[::-1]]))  # fmt: skip
+    made = RooCurve(
+        f"{centre.GetName()}_errorband",
+        "",
+        np.concatenate([centre.x, centre.x[::-1]]),
+        np.concatenate([low, high[::-1]]),
+    )
     made._core["TAttLine"]["fLineWidth"] = 1
     made._core["TAttLine"]["fLineColor"] = CYAN
     made._core["TAttFill"]["fFillColor"] = CYAN
@@ -141,7 +169,8 @@ def _sampled(func: Any, frame: Any, arguments: CmdList, fit: Any, z: float, cent
 
 
 def _visualize(given: tuple[Any, ...]) -> tuple[Any, Any, float, bool]:
-    """``VisualizeError(fit, [params,] Z=1, linear=True)``: its fit, parameters, ``Z`` and method."""
+    """``VisualizeError(fit, [params,] Z=1, linear=True)``: its fit, parameters, ``Z`` and
+    method."""
     fit, rest = given[0], list(given[1:])
     wanted = None
     if rest and not isinstance(rest[0], (int, float)):
@@ -172,7 +201,9 @@ def band(func: Any, frame: Any, cmds: CmdList, options: Any) -> Any:
         made.SetName(str(final.get("Name")))
     elif final.get("CurveNameSuffix"):
         made.SetName(made.GetName() + str(final.get("CurveNameSuffix")))
-    frame.add_plotable(made, str(final.get("DrawOption", 0, "F")), bool(final.get("Invisible", 0, False)))
+    frame.add_plotable(
+        made, str(final.get("DrawOption", 0, "F")), bool(final.get("Invisible", 0, False))
+    )
     if "MoveToBack" in final:
         frame.items.insert(0, frame.items.pop())
     return frame

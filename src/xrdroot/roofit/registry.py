@@ -16,8 +16,15 @@ __all__ = ["MODULES", "classes", "find"]
 MODULES = {
     "arg": ["RooAbsArg"],
     "binning": ["RooAbsBinning", "RooBinning", "RooRangeBinning", "RooUniformBinning"],
-    "categories": ["RooAbsCategory", "RooBinningCategory", "RooCategory", "RooMappedCategory",
-                   "RooMultiCategory", "RooSuperCategory", "RooThresholdCategory"],
+    "categories": [
+        "RooAbsCategory",
+        "RooBinningCategory",
+        "RooCategory",
+        "RooMappedCategory",
+        "RooMultiCategory",
+        "RooSuperCategory",
+        "RooThresholdCategory",
+    ],
     "cmdargs": ["RooCmdArg", "RooLinkedList"],
     "collections": ["RooAbsCollection", "RooArgList", "RooArgSet"],
     "data.datahist": ["RooDataHist"],
@@ -47,8 +54,15 @@ MODULES = {
     "pdfs.resolution": ["RooResolutionModel", "RooTruthModel"],
     "pdfs.prodpdf": ["RooProdPdf"],
     "pdfs.simultaneous": ["RooSimultaneous"],
-    "pdfs.shapes": ["RooArgusBG", "RooBifurGauss", "RooBreitWigner", "RooCBShape", "RooLandau",
-                    "RooLognormal", "RooPoisson"],
+    "pdfs.shapes": [
+        "RooArgusBG",
+        "RooBifurGauss",
+        "RooBreitWigner",
+        "RooCBShape",
+        "RooLandau",
+        "RooLognormal",
+        "RooPoisson",
+    ],
     "plot.curve": ["RooCurve"],
     "plot.frame": ["RooPlot"],
     "plot.hist": ["RooHist"],
@@ -57,7 +71,7 @@ MODULES = {
     "rng": ["RooRandom"],
     "variables": ["RooAbsRealLValue", "RooConstVar", "RooRealVar"],
     "workspace": ["RooWorkspace"],
-}  # fmt: skip
+}
 
 
 def classes() -> dict[str, Any]:

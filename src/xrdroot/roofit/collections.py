@@ -51,7 +51,7 @@ class RooAbsCollection(RooPrintable):
     def add(self, item: Any, silent: bool = False) -> bool:
         """Add ``item``, or each of a collection's; a set refuses a name it has."""
         if isinstance(item, (RooAbsCollection, list, tuple, set, frozenset)):
-            return all([self.add(one, silent) for one in _flat(item)])
+            return all([self.add(one, silent) for one in _flat(item)])  # noqa: C419 - add all
         if self.unique and self.find(item.GetName()) is not None:
             return False
         self._list.append(item)
@@ -63,7 +63,7 @@ class RooAbsCollection(RooPrintable):
     def remove(self, item: Any, silent: bool = False, matchByNameOnly: bool = False) -> bool:
         """Take out ``item``, or each member of a collection, matched by name."""
         if isinstance(item, (RooAbsCollection, list, tuple, set)):
-            return all([self.remove(one) for one in _flat(item)])
+            return all([self.remove(one) for one in _flat(item)])  # noqa: C419 - remove all
         name = item.GetName()
         before = len(self._list)
         self._list = [one for one in self._list if one.GetName() != name]

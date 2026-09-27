@@ -50,7 +50,9 @@ class RooProdPdf(RooAbsPdf):
         super().__init__(name, title)
         args = args + tuple(make(key, value) for key, value in kwargs.items())  # Conditional=(...)
         numbers = [a for a in args if isinstance(a, (int, float)) and not isinstance(a, bool)]
-        pdfs, self._conditional = _factors(tuple(a for a in args if a not in numbers or isinstance(a, bool)))
+        pdfs, self._conditional = _factors(
+            tuple(a for a in args if a not in numbers or isinstance(a, bool))
+        )
         self._cutoff = float(numbers[0]) if numbers else 0.0
         self.pdfs = self._list_proxy("!pdfs", pdfs)
 
@@ -89,12 +91,16 @@ class RooProdPdf(RooAbsPdf):
             found = found * pdf.value(ctx, self.factor_nset(pdf, nset), rng)
         return found
 
-    def fraction(self, names: frozenset[str], ctx: Context, nset: Any, rng: Any,
-                 norm_rng: Any = None) -> Any:  # fmt: skip
+    def fraction(
+        self, names: frozenset[str], ctx: Context, nset: Any, rng: Any, norm_rng: Any = None
+    ) -> Any:
         nset = frozenset(nset)
         if rng and "," in str(rng):  # a product of sums is not a sum of products: part by part
-            return sum(self.fraction(names, ctx, nset, part, norm_rng)
-                       for part in str(rng).split(",") if part)  # fmt: skip
+            return sum(
+                self.fraction(names, ctx, nset, part, norm_rng)
+                for part in str(rng).split(",")
+                if part
+            )
         if not self._factorizes(nset):
             return super().fraction(names, ctx, nset, rng, norm_rng)
         if self._conditional:
@@ -103,12 +109,16 @@ class RooProdPdf(RooAbsPdf):
         for pdf in self.pdfs:
             mine = self.factor_nset(pdf, nset)
             part = names & mine
-            found = found * (pdf.fraction(part, ctx, mine, rng, norm_rng) if part
-                             else pdf.value(ctx, mine, norm_rng))  # fmt: skip
+            found = found * (
+                pdf.fraction(part, ctx, mine, rng, norm_rng)
+                if part
+                else pdf.value(ctx, mine, norm_rng)
+            )
         return found
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
-        """A product of factors of separate observables integrates factor by factor - with conditional
+        """A product of factors of separate observables integrates factor by factor - with
+        conditional
         factors, all but the variables some factor is conditional on and must be integrated with."""
         names = frozenset(names)
         if self._conditional and self._factorizes(names):

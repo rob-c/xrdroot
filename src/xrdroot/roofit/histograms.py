@@ -1,4 +1,5 @@
-"""``createHistogram``: a dataset, or a function, as a ROOT histogram of one, two or three variables.
+"""``createHistogram``: a dataset, or a function, as a ROOT histogram of one, two or three
+variables.
 
 ``data.createHistogram("h", x, Binning(20), YVar(y, Binning(10)))`` - or
 ``data.createHistogram("x,y", Binning(20), Binning(20))`` - fills an
@@ -40,17 +41,27 @@ def _binning(var: Any, command: Any) -> np.ndarray[Any, Any]:
         return first.array()
     if isinstance(first, str):
         return var.getBinning(first).array()
-    low, high = (command.value(1), command.value(2)) if command.value(2) is not None else (var.getMin(), var.getMax())
+    low, high = (
+        (command.value(1), command.value(2))
+        if command.value(2) is not None
+        else (var.getMin(), var.getMax())
+    )
     return np.linspace(float(low), float(high), int(first) + 1)
 
 
-def _axes(first: Any, args: tuple[Any, ...], kwargs: dict[str, Any], known: Any) -> list[tuple[Any, Any]]:
-    """Each variable and its binning command: ``x, Binning, YVar(y, Binning)``, or ``"x,y"`` and bins."""
+def _axes(
+    first: Any, args: tuple[Any, ...], kwargs: dict[str, Any], known: Any
+) -> list[tuple[Any, Any]]:
+    """Each variable and its binning command: ``x, Binning, YVar(y, Binning)``, or ``"x,y"`` and
+    bins."""
     options = commands([a for a in args if isinstance(a, RooCmdArg)], kwargs)
     binnings = options.every("Binning")
     if isinstance(first, str):
         names = [one for one in first.split(",") if one]
-        return [(known(name), binnings[i] if i < len(binnings) else None) for i, name in enumerate(names)]
+        return [
+            (known(name), binnings[i] if i < len(binnings) else None)
+            for i, name in enumerate(names)
+        ]
     found = [(first, binnings[0] if binnings else None)]
     for axis in ("YVar", "ZVar"):
         if axis in options:
@@ -76,9 +87,11 @@ def data_histogram(data: Any, first: Any, args: tuple[Any, ...], kwargs: dict[st
     return WRAP[0](made)
 
 
-def function_histogram(func: Any, name: str, first: Any, args: tuple[Any, ...],
-                       kwargs: dict[str, Any]) -> Any:  # fmt: skip
-    """``RooAbsReal::createHistogram``: the function at each bin's centre, a density times the volume."""
+def function_histogram(
+    func: Any, name: str, first: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> Any:
+    """``RooAbsReal::createHistogram``: the function at each bin's centre, a density times the
+    volume."""
     axes = _axes(first, args, kwargs, func.variable)
     made = _book(str(name), axes)
     edges = [_binning(var, command) for var, command in axes]

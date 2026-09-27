@@ -1,4 +1,5 @@
-"""``RooRealSumPdf``: a density that is a sum of functions times coefficients, normalised as a whole.
+"""``RooRealSumPdf``: a density that is a sum of functions times coefficients, normalised as a
+whole.
 
 Unlike a :class:`~.addpdf.RooAddPdf` of densities, the terms are functions -
 amplitudes, histograms - that need not be positive nor normalised; the
@@ -19,7 +20,9 @@ __all__ = ["RooRealSumPdf"]
 class RooRealSumPdf(RooAbsPdf):
     """``c1 f1 + c2 f2 + ...``, or with one coefficient fewer, the last ``1 - sum``."""
 
-    def __init__(self, name: Any, title: Any, funcs: Any, coefs: Any, extended: bool = False) -> None:
+    def __init__(
+        self, name: Any, title: Any, funcs: Any, coefs: Any, extended: bool = False
+    ) -> None:
         super().__init__(name, title)
         self.funcs = self._list_proxy("!funcList", as_list(funcs))
         self.coefs = self._list_proxy("!coefList", as_list(coefs))

@@ -69,7 +69,8 @@ class RooMultiVarGaussian(RooAbsPdf):
         return -1 if names == frozenset(x.GetName() for x in self.xs) else 0
 
     def generate_event(self, code: int, rng: Any) -> dict[str, float]:
-        """``generateEvent``: ``L z + mu`` - summed as ``TVectorD *= TMatrixD`` sums - until inside."""
+        """``generateEvent``: ``L z + mu`` - summed as ``TVectorD *= TMatrixD`` sums - until
+        inside."""
         n = len(self.xs)
         while True:
             z = [rng.Gaus(0.0, 1.0) for _ in range(n)]

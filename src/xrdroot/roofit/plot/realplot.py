@@ -21,7 +21,9 @@ from .curves import _add_curve, _announce_plot, _range_fraction
 __all__ = ["real_plot"]
 
 
-def real_plot(func: Any, frame: Any, cmds: CmdList, chosen: Any = None, nset: Any = frozenset()) -> Any:
+def real_plot(
+    func: Any, frame: Any, cmds: CmdList, chosen: Any = None, nset: Any = frozenset()
+) -> Any:
     """``RooAbsReal::plotOn(frame, argList)``."""
     ranges = cmds.find("RangeWithName")
     if ranges is not None and "," in str(ranges.value(0)):

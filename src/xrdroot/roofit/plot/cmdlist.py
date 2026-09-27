@@ -59,7 +59,12 @@ class CmdList:
         seen: set[str] = set()
         for one in self.items:
             if one.name in seen:
-                log(None, WARNING, "InputArguments", f"{context} WARNING: argument {one.name} is duplicated")
+                log(
+                    None,
+                    WARNING,
+                    "InputArguments",
+                    f"{context} WARNING: argument {one.name} is duplicated",
+                )
             seen.add(one.name)
         return self.options()
 

@@ -158,18 +158,27 @@ class RooAbsData(RooPrintable):
         """``addColumn``: a new column of ``func``'s value at every event, and its variable."""
         from .selection import context_of
 
-        values = np.broadcast_to(np.asarray(func.compute(context_of(self)), dtype=np.float64),
-                                 (self.numEntries(),)).copy()  # fmt: skip
-        made = func.as_fundamental() if hasattr(func, "as_fundamental") else _real_copy(func, values)
+        values = np.broadcast_to(
+            np.asarray(func.compute(context_of(self)), dtype=np.float64), (self.numEntries(),)
+        ).copy()
+        made = (
+            func.as_fundamental() if hasattr(func, "as_fundamental") else _real_copy(func, values)
+        )
         self._vars.add(made)
         self._columns[made.GetName()] = values
         return made
 
     def createHistogram(self, first: Any, *args: Any, **kwargs: Any) -> Any:
-        """``createHistogram(name, x, ...)`` or ``createHistogram("x,y", ...)``: a ``TH1`` of the events."""
+        """``createHistogram(name, x, ...)`` or ``createHistogram("x,y", ...)``: a ``TH1`` of the
+        events."""
         from ..histograms import data_histogram
 
-        if isinstance(first, str) and args and hasattr(args[0], "GetName") and not hasattr(args[0], "args"):
+        if (
+            isinstance(first, str)
+            and args
+            and hasattr(args[0], "GetName")
+            and not hasattr(args[0], "args")
+        ):
             made = data_histogram(self, args[0], args[1:], kwargs)
             made_name = getattr(made, "SetName", None)
             if made_name is not None:
@@ -213,7 +222,9 @@ class RooAbsData(RooPrintable):
         from ..printing import kExtras, kTitle, kVerbose
 
         text += f"{indent}  Observables: \n"
-        return text + self._vars.printStream(kName | kValue | kExtras | kTitle, kVerbose, indent + "  ")
+        return text + self._vars.printStream(
+            kName | kValue | kExtras | kTitle, kVerbose, indent + "  "
+        )
 
     def __repr__(self) -> str:
         return f"<{self.ClassName()}::{self._name} {self.numEntries()} entries>"

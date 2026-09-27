@@ -74,7 +74,9 @@ class RooAbsRealLValue(RooAbsReal):
 
     # -- ranges and binnings ------------------------------------------------------
 
-    def getBinning(self, name: Any = None, verbose: bool = True, createOnTheFly: bool = False) -> Any:
+    def getBinning(
+        self, name: Any = None, verbose: bool = True, createOnTheFly: bool = False
+    ) -> Any:
         if not name:
             return self._binning
         found = self._shared.get(str(name))
@@ -171,15 +173,24 @@ class RooRealVar(RooAbsRealLValue):
             return
         low, high = float(args[0]), float(args[1])
         if low > high:
-            log(self, WARNING, "InputArguments", f"RooRealVar::setRange({self._name}): Proposed "
-                "new fit max. smaller than min., setting max. to min.")  # fmt: skip
+            log(
+                self,
+                WARNING,
+                "InputArguments",
+                f"RooRealVar::setRange({self._name}): Proposed "
+                "new fit max. smaller than min., setting max. to min.",
+            )
             high = low
         self._binning.setRange(low, high)
         self._val = min(max(self._val, low), high)
 
     def _param_range(self, low: Any, high: Any) -> None:
-        """``setRange(tmin, tmax)``: ends that are functions, read whenever the range is asked for."""
-        ends = [one if hasattr(one, "getVal") else RooConstVar(g(one), g(one), float(one)) for one in (low, high)]
+        """``setRange(tmin, tmax)``: ends that are functions, read whenever the range is asked
+        for."""
+        ends = [
+            one if hasattr(one, "getVal") else RooConstVar(g(one), g(one), float(one))
+            for one in (low, high)
+        ]
         self._binning = RooParamBinning(ends[0], ends[1], self._binning.numBins())
 
     def _set_named_range(self, name: str, low: float, high: float) -> None:
@@ -187,8 +198,13 @@ class RooRealVar(RooAbsRealLValue):
         binning = self.getBinning(name, createOnTheFly=True)
         binning.setRange(low, max(low, high))
         if not exists:
-            log(self, INFO, "Eval", f"RooRealVar::setRange({self._name}) new range named "
-                f"'{name}' created with bounds [{g(low)},{g(high)}]")  # fmt: skip
+            log(
+                self,
+                INFO,
+                "Eval",
+                f"RooRealVar::setRange({self._name}) new range named "
+                f"'{name}' created with bounds [{g(low)},{g(high)}]",
+            )
 
     def setMin(self, *args: Any) -> None:
         name, value = (args[0], float(args[1])) if len(args) == 2 else (None, float(args[0]))
@@ -221,14 +237,21 @@ class RooRealVar(RooAbsRealLValue):
         from .messages import ERROR
 
         if not 0 <= int(ibin) < self.getBins(name):
-            log(self, ERROR, "InputArguments", f"RooAbsRealLValue::setBin({self._name}) ERROR: bin index "
-                f"{int(ibin)} is out of range (0,{self.getBins(name) - 1})")  # fmt: skip
+            log(
+                self,
+                ERROR,
+                "InputArguments",
+                f"RooAbsRealLValue::setBin({self._name}) ERROR: bin index "
+                f"{int(ibin)} is out of range (0,{self.getBins(name) - 1})",
+            )
             return
         self.setVal(self.getBinning(name).binCenter(int(ibin)))
 
     def setBins(self, nbins: int, name: Any = None) -> None:
         if name:
-            self._shared[str(name)] = RooUniformBinning(self.getMin(), self.getMax(), nbins, str(name))
+            self._shared[str(name)] = RooUniformBinning(
+                self.getMin(), self.getMax(), nbins, str(name)
+            )
         else:
             self._binning = RooUniformBinning(self.getMin(), self.getMax(), nbins)
 

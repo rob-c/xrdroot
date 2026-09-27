@@ -19,6 +19,11 @@ def rename_all(top: Any, suffix: str, existing: dict[str, Any]) -> None:
         if node.isFundamental():
             continue
         new = f"{node.GetName()}_{suffix}"
-        log(None, INFO, "ObjectHandling", "RooWorkspace::import(w) Resolving name conflict in "
-            f"workspace by changing name of imported node  {node.GetName()} to {new}")  # fmt: skip
+        log(
+            None,
+            INFO,
+            "ObjectHandling",
+            "RooWorkspace::import(w) Resolving name conflict in "
+            f"workspace by changing name of imported node  {node.GetName()} to {new}",
+        )
         node.SetName(new)

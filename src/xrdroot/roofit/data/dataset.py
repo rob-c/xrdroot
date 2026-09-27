@@ -1,4 +1,5 @@
-"""``RooDataSet``: unbinned events, made empty, imported from a tree or another dataset, or generated.
+"""``RooDataSet``: unbinned events, made empty, imported from a tree or another dataset, or
+generated.
 
 ``RooDataSet("d", "d", {x, y}, Import(tree), Cut("y>0"), WeightVar("w"))``
 takes the tree's columns for the variables, drops the events outside a
@@ -39,9 +40,12 @@ class RooDataSet(RooAbsData):
         options = commands(rest, kwargs)
         weight = _weight_name(options)
         index = options.get("Index")
-        chosen = as_list(variables) + ([index] if index is not None and
-                                       index.GetName() not in [v.GetName() for v in as_list(variables)]
-                                       else [])  # fmt: skip
+        chosen = as_list(variables) + (
+            [index]
+            if index is not None
+            and index.GetName() not in [v.GetName() for v in as_list(variables)]
+            else []
+        )
         super().__init__(name, title, [v for v in chosen if v.GetName() != weight])
         self._weight_var = None
         if weight:
@@ -67,38 +71,62 @@ class RooDataSet(RooAbsData):
 
     def _import(self, source: Any, weight: str) -> None:
         """Take in a tree's or a dataset's events, skipping those a variable cannot hold."""
-        n = source.numEntries() if isinstance(source, RooAbsData) else len(getattr(source, "_xrd", source))
+        n = (
+            source.numEntries()
+            if isinstance(source, RooAbsData)
+            else len(getattr(source, "_xrd", source))
+        )
         columns = {one.GetName(): _column_of(source, one.GetName()) for one in self._vars}
         keep = np.ones(n, dtype=bool)
         if not isinstance(source, RooAbsData):
             keep = self._accommodated(columns, n)
         self._columns = {k: v[keep] for k, v in columns.items()}
         if weight:
-            wsource = source.weights() if isinstance(source, RooAbsData) and source.isWeighted() else (
-                _column_of(source, weight))
+            wsource = (
+                source.weights()
+                if isinstance(source, RooAbsData) and source.isWeighted()
+                else (_column_of(source, weight))
+            )
             self._weights = np.asarray(wsource, dtype=np.float64)[keep]
         elif isinstance(source, RooAbsData) and source.isWeighted():
             self._weights = source.weights()[keep]
 
     def _accommodated(self, columns: dict[str, Any], n: int) -> np.ndarray[Any, Any]:
-        """``RooTreeDataStore::loadValues``: which events every variable can hold, and a word for the rest."""
+        """``RooTreeDataStore::loadValues``: which events every variable can hold, and a word for
+        the rest."""
         keep = np.ones(n, dtype=bool)
         invalid = 0
         for i in range(n):
-            bad = next((one for one in self._vars if not one.can_hold(columns[one.GetName()][i])), None)
+            bad = next(
+                (one for one in self._vars if not one.can_hold(columns[one.GetName()][i])), None
+            )
             if bad is None:
                 continue
             keep[i] = False
             invalid += 1
             if invalid < 5:
-                log(self, INFO, "DataHandling", f"RooTreeDataStore::loadValues({self._name}) Skipping "
+                log(
+                    self,
+                    INFO,
+                    "DataHandling",
+                    f"RooTreeDataStore::loadValues({self._name}) Skipping "
                     f"event #{i} because {bad.GetName()} cannot accommodate the value "
-                    f"{bad.value_text(columns[bad.GetName()][i])}")  # fmt: skip
+                    f"{bad.value_text(columns[bad.GetName()][i])}",
+                )
             elif invalid == 5:
-                log(self, INFO, "DataHandling", f"RooTreeDataStore::loadValues({self._name}) Skipping ...")
+                log(
+                    self,
+                    INFO,
+                    "DataHandling",
+                    f"RooTreeDataStore::loadValues({self._name}) Skipping ...",
+                )
         if invalid:
-            log(self, WARNING, "DataHandling", f"RooTreeDataStore::loadValues({self._name}) Ignored "
-                f"{invalid} out-of-range events")  # fmt: skip
+            log(
+                self,
+                WARNING,
+                "DataHandling",
+                f"RooTreeDataStore::loadValues({self._name}) Ignored {invalid} out-of-range events",
+            )
         return keep
 
     def _keep(self, keep: np.ndarray[Any, Any]) -> None:
@@ -117,11 +145,17 @@ class RooDataSet(RooAbsData):
         if self._weight_var is not None:
             self._weights = np.append(self.weights()[: self.numEntries() - 1], float(weight))
         elif weight != 1.0 or weightError != 0.0:
-            log(self, 4, "InputArguments", f"RooDataSet::add(dataset={self._name}) WARNING: You are "
-                "adding a weight but no weight variable exists. The weight will be ignored.")
+            log(
+                self,
+                4,
+                "InputArguments",
+                f"RooDataSet::add(dataset={self._name}) WARNING: You are "
+                "adding a weight but no weight variable exists. The weight will be ignored.",
+            )
 
     def add_columns(self, columns: dict[str, Any], weights: Any = None) -> None:
-        """Many events at once, a column for each variable, and their weights if weights are kept."""
+        """Many events at once, a column for each variable, and their weights if weights are
+        kept."""
         before = self.numEntries()
         for one in self._vars:
             self._columns[one.GetName()] = np.concatenate(
@@ -133,11 +167,14 @@ class RooDataSet(RooAbsData):
             self._weights = np.concatenate([self.weights()[:before], extra])
 
     def append(self, other: RooDataSet) -> None:
-        self.add_columns({one.GetName(): other.column(one.GetName()) for one in self._vars},
-                         other.weights() if other.isWeighted() or self.isWeighted() else None)
+        self.add_columns(
+            {one.GetName(): other.column(one.GetName()) for one in self._vars},
+            other.weights() if other.isWeighted() or self.isWeighted() else None,
+        )
 
     def reduce(self, *args: Any, **kwargs: Any) -> RooDataSet:
-        """A new dataset of fewer variables (``SelectVars``), events (``Cut``, ``CutRange``, ``EventRange``)."""
+        """A new dataset of fewer variables (``SelectVars``), events (``Cut``, ``CutRange``,
+        ``EventRange``)."""
         from .reducing import reduced
 
         return reduced(self, args, kwargs)
@@ -146,8 +183,9 @@ class RooDataSet(RooAbsData):
         """``binnedClone``: these events binned in their variables' binnings."""
         from .datahist import RooDataHist
 
-        made = RooDataHist(name or f"{self._name}_binned", title or f"{self._title}_binned",
-                           list(self._vars), self)  # fmt: skip
+        made = RooDataHist(
+            name or f"{self._name}_binned", title or f"{self._title}_binned", list(self._vars), self
+        )
         return made
 
     # -- printing -----------------------------------------------------------------
@@ -167,8 +205,10 @@ class RooDataSet(RooAbsData):
     def printMultiline(self, contents: int, verbose: bool, indent: str) -> str:
         text = super().printMultiline(contents, verbose, indent)
         if self._weight_var is not None:
-            text += (f'{indent}  Dataset variable "{self._weight_var.GetName()}" is interpreted as '
-                     "the event weight\n")  # fmt: skip
+            text += (
+                f'{indent}  Dataset variable "{self._weight_var.GetName()}" is interpreted as '
+                "the event weight\n"
+            )
         return text
 
 

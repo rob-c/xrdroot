@@ -81,8 +81,15 @@ def _extrapolate(h: list[float], s: list[Any]) -> tuple[Any, Any]:
     return value, error
 
 
-def romberg(func: Integrand, low: float, high: float, trapezoid: bool = True,
-            eps_abs: float = EPS, eps_rel: float = EPS, name: str = "") -> Any:  # fmt: skip
+def romberg(
+    func: Integrand,
+    low: float,
+    high: float,
+    trapezoid: bool = True,
+    eps_abs: float = EPS,
+    eps_rel: float = EPS,
+    name: str = "",
+) -> Any:
     """``RooFit::Detail::integrate1d``: the integral of ``func`` from ``low`` to ``high``."""
     if high - low == 0.0:
         return 0.0 * func(np.array([low]))[..., 0]
@@ -98,8 +105,13 @@ def romberg(func: Integrand, low: float, high: float, trapezoid: bool = True,
             if np.all(np.abs(error) <= bound):
                 return value
         h.append(h[-1] / 4.0 if trapezoid else h[-1] / 9.0)
-    log(None, WARNING, "Integration", f"RooRombergIntegrator::integral: integral of {name} over "
-        f"range ({low:g},{high:g}) did not converge after {MAX_STEPS} steps")  # fmt: skip
+    log(
+        None,
+        WARNING,
+        "Integration",
+        f"RooRombergIntegrator::integral: integral of {name} over "
+        f"range ({low:g},{high:g}) did not converge after {MAX_STEPS} steps",
+    )
     return s[-1]
 
 
@@ -113,8 +125,11 @@ def improper(func: Integrand, low: float, high: float, name: str = "") -> Any:
     inv = _inverted(func)
     open_low, open_high = np.isinf(low), np.isinf(high)
     if open_low and open_high:
-        return (romberg(func, -1.0, 1.0, name=name) + romberg(inv, -1.0, 0.0, False, name=name)
-                + romberg(inv, 0.0, 1.0, False, name=name))  # fmt: skip
+        return (
+            romberg(func, -1.0, 1.0, name=name)
+            + romberg(inv, -1.0, 0.0, False, name=name)
+            + romberg(inv, 0.0, 1.0, False, name=name)
+        )
     if open_low:
         if high >= 0:
             return romberg(inv, -1.0, 0.0, False, name=name) + romberg(func, -1.0, high, name=name)
@@ -133,9 +148,12 @@ def integrate_1d(func: Integrand, low: float, high: float, name: str = "") -> An
 
 # -- integrals of a model's functions ----------------------------------------------
 
+
 def _expanded(ctx: dict[str, Any]) -> dict[str, Any]:
     """``ctx`` with a new last axis on every array, for the points to integrate at."""
-    return {k: (v[..., None] if isinstance(v, np.ndarray) and v.ndim else v) for k, v in ctx.items()}
+    return {
+        k: (v[..., None] if isinstance(v, np.ndarray) and v.ndim else v) for k, v in ctx.items()
+    }
 
 
 def integral_name(func: Any, names: frozenset[str], rng: Any) -> str:
@@ -165,8 +183,13 @@ def announce(func: Any, names: frozenset[str], rng: Any = None, label: str | Non
     method = "RooIntegrator1D" if len(numeric) == 1 else "RooAdaptiveIntegratorND"
     if len(numeric) == 1 and any(np.isinf(func.bounds(numeric[0], rng))):
         method = "RooImproperIntegrator1D"
-    log(func, INFO, "NumericIntegration", f"RooRealIntegral::init({label or integral_name(func, names, rng)}) "
-        f"using numeric integrator {method} to calculate Int({','.join(numeric)})")  # fmt: skip
+    log(
+        func,
+        INFO,
+        "NumericIntegration",
+        f"RooRealIntegral::init({label or integral_name(func, names, rng)}) "
+        f"using numeric integrator {method} to calculate Int({','.join(numeric)})",
+    )
 
 
 def integral(func: Any, names: frozenset[str], ctx: dict[str, Any], rng: Any = None) -> Any:
@@ -194,8 +217,13 @@ def _over(func: Any, names: frozenset[str], ctx: dict[str, Any], rng: Any) -> An
     return numeric(func, rest, inner, ctx, rng)
 
 
-def numeric(func: Any, rest: list[str], inner: Callable[[dict[str, Any]], Any],
-            ctx: dict[str, Any], rng: Any) -> Any:  # fmt: skip
+def numeric(
+    func: Any,
+    rest: list[str],
+    inner: Callable[[dict[str, Any]], Any],
+    ctx: dict[str, Any],
+    rng: Any,
+) -> Any:
     """``inner`` integrated over the variables ``rest``: in one dimension by Romberg, in more
     by ROOT's adaptive cubature, as ``RooRealIntegral`` picks them."""
     bounds = [func.bounds(name, rng) for name in rest]
@@ -204,8 +232,13 @@ def numeric(func: Any, rest: list[str], inner: Callable[[dict[str, Any]], Any],
     return _nested(func, rest, inner, ctx, rng)
 
 
-def _nested(func: Any, rest: list[str], inner: Callable[[dict[str, Any]], Any],
-            ctx: dict[str, Any], rng: Any) -> Any:  # fmt: skip
+def _nested(
+    func: Any,
+    rest: list[str],
+    inner: Callable[[dict[str, Any]], Any],
+    ctx: dict[str, Any],
+    rng: Any,
+) -> Any:
     name, *others = rest
     low, high = func.bounds(name, rng)
 
@@ -218,8 +251,13 @@ def _nested(func: Any, rest: list[str], inner: Callable[[dict[str, Any]], Any],
     return integrate_1d(along, low, high, func.GetName())
 
 
-def _cubature(func: Any, rest: list[str], inner: Callable[[dict[str, Any]], Any],
-              ctx: dict[str, Any], bounds: list[tuple[float, float]]) -> Any:  # fmt: skip
+def _cubature(
+    func: Any,
+    rest: list[str],
+    inner: Callable[[dict[str, Any]], Any],
+    ctx: dict[str, Any],
+    bounds: list[tuple[float, float]],
+) -> Any:
     """``RooAdaptiveIntegratorND``, once for each event if the context has events."""
     from .cubature import integrate_nd
 

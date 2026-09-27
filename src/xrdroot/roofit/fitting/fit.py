@@ -31,8 +31,12 @@ def _extended(pdf: Any, options: Commands) -> bool:
     if "Extended" in options:
         return bool(options.get("Extended"))
     if pdf.canBeExtended():
-        log(pdf, INFO, "Minimization", "p.d.f. provides expected number of events, including "
-            "extended term in likelihood.")  # fmt: skip
+        log(
+            pdf,
+            INFO,
+            "Minimization",
+            "p.d.f. provides expected number of events, including extended term in likelihood.",
+        )
         return True
     return False
 
@@ -45,7 +49,8 @@ def _range(options: Commands) -> Any:
 
 
 def _constraints(pdf: Any, data: Any, options: Commands) -> list[Any]:
-    """The constraint terms: those the density carries and ``Constrain`` names, and external ones."""
+    """The constraint terms: those the density carries and ``Constrain`` names, and external
+    ones."""
     found = list(as_list(options.get("ExternalConstraints")))
     carried = getattr(pdf, "constraint_terms", None)
     if carried is not None:
@@ -54,7 +59,8 @@ def _constraints(pdf: Any, data: Any, options: Commands) -> list[Any]:
 
 
 def _fit_range_attributes(pdf: Any, data: Any, rng: Any) -> None:
-    """``resetFitrangeAttributes``: ranges ``fit_nll_<pdf>_<data>`` of the fit's, for plotting in."""
+    """``resetFitrangeAttributes``: ranges ``fit_nll_<pdf>_<data>`` of the fit's, for plotting
+    in."""
     pdf.removeStringAttribute("fitrange")
     if not rng:
         return
@@ -78,18 +84,29 @@ def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
     _fit_range_attributes(pdf, data, rng)
     conditional = {one.GetName() for one in as_list(options.get("ConditionalObservables", 0, ()))}
     observables = [one for one in pdf.getObservables(data) if one.GetName() not in conditional]
-    normalized = pdf.normalized_name(observables, rng) if hasattr(
-        pdf, "normalized_name") else pdf.GetName()  # fmt: skip
-    log(pdf, INFO, "Fitting", f"RooAbsPdf::fitTo({normalized}) fixing normalization set for "
-        "coefficient determination to observables in data")  # fmt: skip
+    normalized = (
+        pdf.normalized_name(observables, rng) if hasattr(pdf, "normalized_name") else pdf.GetName()
+    )
+    log(
+        pdf,
+        INFO,
+        "Fitting",
+        f"RooAbsPdf::fitTo({normalized}) fixing normalization set for "
+        "coefficient determination to observables in data",
+    )
     if not _SAID_LIBRARY[0]:
         _SAID_LIBRARY[0] = True
         log(pdf, INFO, "Fitting", "using generic CPU library compiled with no vectorizations")
-    nll = RooNLLVar(pdf, data, extended=extended, rng=rng,
-                    conditional=options.get("ConditionalObservables", 0, ()),
-                    constraints=_constraints(pdf, data, options),
-                    name=f"nll_{normalized}_{data.GetName()}",
-                    offset=bool(options.get("Offset", 0, False)))  # fmt: skip
+    nll = RooNLLVar(
+        pdf,
+        data,
+        extended=extended,
+        rng=rng,
+        conditional=options.get("ConditionalObservables", 0, ()),
+        constraints=_constraints(pdf, data, options),
+        name=f"nll_{normalized}_{data.GetName()}",
+        offset=bool(options.get("Offset", 0, False)),
+    )
     elapsed = (time.perf_counter() - started) * 1000
     log(pdf, INFO, "Fitting", f"Creation of NLL object took {elapsed:g} ms")
     return nll
@@ -100,8 +117,13 @@ def fit_to(pdf: Any, data: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -
     options = commands(args, kwargs)
     options.warn_duplicates(f"fitTo({pdf.GetName()})")
     nll = nll_options(pdf, data, options)
-    log(pdf, INFO, "Fitting", f"RooAddition::defaultErrorLevel({nll.GetName()}) Summation contains "
-        "a RooNLLVar, using its error level")  # fmt: skip
+    log(
+        pdf,
+        INFO,
+        "Fitting",
+        f"RooAddition::defaultErrorLevel({nll.GetName()}) Summation contains "
+        "a RooNLLVar, using its error level",
+    )
     minimizer = RooMinimizer(nll)
     _configure(minimizer, options)
     minimizer.minimize(options.get("Minimizer", 0, ""), options.get("Minimizer", 1, ""))
@@ -112,8 +134,10 @@ def fit_to(pdf: Any, data: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -
         minimizer.minos(None if minos is True else minos)
     if not options.get("Save", 0, False):
         return None
-    return minimizer.save(f"fitresult_{pdf.GetName()}_{data.GetName()}",
-                          f"Result of fit of p.d.f. {pdf.GetName()} to dataset {data.GetName()}")
+    return minimizer.save(
+        f"fitresult_{pdf.GetName()}_{data.GetName()}",
+        f"Result of fit of p.d.f. {pdf.GetName()} to dataset {data.GetName()}",
+    )
 
 
 def _configure(minimizer: RooMinimizer, options: Commands) -> None:
