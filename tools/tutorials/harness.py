@@ -195,6 +195,11 @@ class Harness:
         env = ci_environment(tutorial) if tutorial is not None else dict(os.environ)
         if self.settings.xrdroot_src is not None:
             env["PYTHONPATH"] = str(self.settings.xrdroot_src)
+        # ROOT answers gROOT->GetTutorialDir() with the tutorials it was
+        # installed with, which a hundred-odd tutorials read their data from;
+        # xrdroot has none of its own, so it is told where the ones being run
+        # are, and both sides read the same files.
+        env.setdefault("ROOT_TUTORIAL_DIR", str(self.settings.tutorials))
         return env
 
     def _probe(self, code: str) -> bool:

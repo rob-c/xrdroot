@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from tools.tutorials import catalog as cat
 from tools.tutorials import classify, cli, compare, report, runner
+from tools.tutorials import harness as harnessing
 from tools.tutorials.cmake import Interpreter, Token, commands, glob_regex, tokens
 from tools.tutorials.environment import Oracle, cmake_variables, targets
 from tools.tutorials.harness import Harness, Settings, oracle_key, selected
@@ -668,3 +669,12 @@ def test_an_oracle_only_run_does_not_blame_xrdroot(harness):
     records = {record["path"]: record for record in harness.run()}
     assert records["hist/writer.C"]["status"] == "SKIP"
     assert records["hist/writer.C"]["oracle"]["exit_code"] == 0
+
+
+def test_xrdroot_is_told_where_the_tutorials_are_as_root_knows_its_own(tmp_path, monkeypatch):
+    monkeypatch.delenv("ROOT_TUTORIAL_DIR", raising=False)
+    made = harnessing.Harness.__new__(harnessing.Harness)
+    made.settings = harnessing.Settings(tutorials=tmp_path)
+    assert made._xrdroot_env()["ROOT_TUTORIAL_DIR"] == str(tmp_path)
+    monkeypatch.setenv("ROOT_TUTORIAL_DIR", "/elsewhere")
+    assert made._xrdroot_env()["ROOT_TUTORIAL_DIR"] == "/elsewhere"

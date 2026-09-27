@@ -1067,6 +1067,94 @@ stands in the way of writing what it drew.
 `xrdroot.canvas.render(obj, path)` saves a `Canvas`, a `Pad`, or the members
 of either as a dictionary, which is what a tool handed any object reaches for.
 
+## A ROOT you can import
+
+`import xrdroot.pyroot as ROOT` is ROOT's own Python namespace - the one a
+PyROOT script is written against - over this library. Its classes have
+ROOT's names, take ROOT's arguments in ROOT's order with ROOT's defaults, and
+print what ROOT prints; underneath, each keeps the xrdroot object it stands
+for in `._xrd`, so a `TH1F` is a `Histogram`, a `TGraph` a `Graph`, a `TF1`
+a `Function`, and everything written, fitted or drawn is done by the rest of
+the library.
+
+```python
+import xrdroot.pyroot as ROOT
+
+f = ROOT.TFile("hsimple.root", "RECREATE", "Demo ROOT file with histograms")
+hpx = ROOT.TH1F("hpx", "This is the px distribution", 100, -4, 4)
+hprof = ROOT.TProfile("hprof", "Profile of pz versus px", 100, -4, 4, 0, 20)
+for i in range(25000):
+    px, py = ROOT.gRandom.Rannor()              # or Rannor(a, b) into ctypes doubles
+    hpx.Fill(px)
+    hprof.Fill(px, px * px + py * py)
+r = hpx.Fit("gaus", "S")                         # prints ROOT's fit summary
+print(r.Parameter(2), hpx.GetFunction("gaus").GetChisquare())
+f.Write()                                        # every histogram booked since the file opened
+f.ls()
+f.Close()
+```
+
+**Where things are kept.** As in ROOT, a histogram made while a file is
+open is kept in that file's directory - `gDirectory` - and `Write()` writes
+what the directory holds; made with no file open, it is kept in `gROOT`,
+where `gROOT.FindObject("hpx")` finds it. One made with a name already kept
+there replaces it, with ROOT's `Replacing existing TH1F: hpx (Potential
+memory leak)` on standard error; `SetDirectory(ROOT.nullptr)` keeps it
+nowhere, and `TH1.AddDirectory(False)` stops the keeping altogether. A
+`TF1` goes into `gROOT.GetListOfFunctions()`, so `FillRandom("myfunc")` and
+`Fit("myfunc")` find it by name. `TFile.Get` hands back ROOT's classes - a
+`TH1F` read is a `TH1F` - and keeps a histogram or tree it read, so a second
+`Get` is the same object; `f.hpx` is `f.Get("hpx")`, as in PyROOT.
+`TFile("x.root", "READ" | "RECREATE" | "UPDATE" | "NEW")` reads with
+`open_root`, writes with `create` and adds with `update`, any URL they take,
+and a file that will not open is a zombie with ROOT's error, `TFile.Open`
+handing back `None`.
+
+**What prints.** `Print` and `ls` print what ROOT prints for the common
+cases - `TH1.Print Name  = h, Entries= 1, Total sum= 1` and its bins with
+`"all"`, a graph's `x[0]=1, y[0]=2`, `TFile**`/`TFile*` and each `KEY:` line
+with `[current cycle]` and `[backup cycle]`, the `Formula based function:`
+of a `TF1`, a `TLorentzVector`'s `(x,y,z,t)=(...)`, `TStopwatch`'s `Real
+time 0:00:01, CP time 0.990` - and each was checked against ROOT 6.40. ROOT's
+messages go to standard error as `Warning in <TROOT::Append>: ...`,
+`gErrorIgnoreLevel` obeyed.
+
+**Numbers ROOT's way.** `gRandom` is `xrdroot.random.gRandom`, so the same
+seed gives ROOT's draws, and `FillRandom` and `GetRandom` take theirs from it
+as ROOT does. Statistics honour an axis's range as ROOT's do - after
+`GetXaxis().SetRangeUser(a, b)`, `GetMean` and `Integral` are of the bins in
+it - and `UnZoom`, like ROOT's, needs a pad. `TMath` is the whole of ROOT's
+commonly used set (`Prob`, `Gaus`, `Landau`, `Poisson`, `BinomialI`,
+`StudentQuantile` by Hill's algorithm as ROOT's, `KolmogorovTest`, `Median`,
+`RMS` with ROOT's `n - 1`, `Sort`, `BinarySearch`, `Nint` rounding halves to
+even...) and `ROOT.Math` MathCore's distributions (`normal_cdf`,
+`chisquared_cdf_c`, `tdistribution_quantile`, `gamma_pdf`, `poisson_cdf`,
+`beta_quantile`...), all checked against what ROOT 6.40 answers. Every
+`ROOT.Math` function, the Legendre polynomials among them, may be written in
+a formula too, as C++ lets ROOT's be: `TF1("f", "ROOT::Math::normal_pdf(x,
+[0], [1])", -5, 5)`. A histogram filled by label is one of categories, as in
+ROOT: a new label takes the next free bin, a full axis doubles, and
+`LabelsDeflate` and `LabelsOption("a")` trim and sort it.
+
+| What | ROOT's names here |
+| --- | --- |
+| objects | `TObject` (`GetName`, `ClassName`, `IsA().GetName()`, `InheritsFrom`, `Clone`, `Copy`, `Draw`, `DrawClone`, `Print`, `ls`, `Write`, `SaveAs`, bits), `TNamed`, `TClass`, the `TAttLine`/`TAttFill`/`TAttMarker`/`TAttText` setters and getters - kept in the xrdroot object's own members - and every `EColor`, style, palette and `kTRUE`/`kFALSE` as ints, so `kRed + 2` is 634 |
+| the session | `gROOT` (`SetBatch`, `IsBatch`, `GetListOfFiles`/`Canvases`/`Functions`/`Styles`, `FindObject`, `GetFunction`, `SetStyle`, `ProcessLine` and `gInterpreter.Declare` through `xrdroot.cint`, `Reset`, `GetVersion` as `6.40.04`, `GetTutorialDir` from `$ROOT_TUTORIAL_DIR`), `gDirectory`, `TDirectory.TContext`, `gSystem` (`Load` and `AddIncludePath` succeed and do nothing; `Getenv`, `Setenv`, `Exec`, `AccessPathName` - true when the path is **not** there, as ROOT's is - `mkdir`, `Which`, `BaseName`, `DirName`, `ProcessEvents`, `Sleep`...), `ROOT.ROOT.EnableImplicitMT`, `TSeqI`, `Float_t`/`Int_t` and the other number types as casts, `Info`/`Warning`/`Error`, `SetOwnership`, `nullptr` |
+| text and time | `TString` (a string that changes in place: `ReplaceAll`, `Append`, `ToLower`, `Contains`, `Tokenize`, `Form`, `TString.Format`...), `Form` and `Printf` with `printf`'s formats, `TStopwatch`, `TBenchmark`/`gBenchmark`, `TDatime` |
+| files | `TFile`, `TDirectoryFile` (`Get`, `GetListOfKeys`, `GetKey`, `mkdir`, `cd`, `GetDirectory`, `Write`, `WriteObject`, `ls`, `Close`, a context manager), `TKey` (`GetName`, `GetClassName`, `GetCycle`, `ReadObj`) |
+| histograms | `TH1`/`TH2`/`TH3` in `C`, `S`, `I`, `F` and `D` (arguments by position or by name, `nbinsx=`...), `TProfile`, `TProfile2D`, `TProfile3D`: `Fill`, `FillN`, `Get`/`SetBinContent` and `Error` by global or per-axis bin, `GetBin`, `FindBin`, `GetMean`, `GetStdDev`, `GetRMS`, `GetEntries`, `Integral`, `IntegralAndError`, `GetMaximum`/`MaximumBin`, `SetMaximum`/`Minimum`, `Scale`, `Add`, `Multiply`, `Divide`, `Rebin`, `ProjectionX`/`Y`, `ProfileX`/`Y`, `Project3D`, `GetCumulative`, `Fit`, `GetFunction`, `FillRandom`, `GetRandom`, `KolmogorovTest`, `Chi2Test`, `Smooth`, `Sumw2`, `Reset`, `SetStats`, `Print`; `TAxis` (`SetTitle`, `SetRange`, `SetRangeUser`, `SetBinLabel`, `GetBinCenter`...); `THStack`; UHI's `values()`, `variances()`, `h[...]` |
+| graphs | `TGraph`, `TGraphErrors`, `TGraphAsymmErrors` (`SetPoint` past the end grows it, `GetPoint`, `GetX`, `SetPointError`, `Eval`, `Fit`, `GetHistogram` - ROOT's frame, a tenth wider than the points), `TMultiGraph` |
+| functions and fits | `TF1`, `TF2`, `TF3`, `TFormula` - from a formula, or from a Python `fn(x, p)` as PyROOT calls it - with `SetParameters`, `SetParNames`, `SetParLimits`, `FixParameter`, `Eval`, `Integral`, `Derivative`, `GetMaximumX`, `GetX`, `GetRandom`, `Moment`; `TFitResultPtr` and `TFitResult` (`Parameter`, `ParError`, `Chi2`, `Ndf`, `Prob`, `GetCovarianceMatrix`, `Print`); `TVirtualFitter.GetFitter().GetConfidenceIntervals`, the latest fit's band; `IntegralError`; `TEfficiency` |
+| mathematics | `TMath`, `ROOT.Math` (its distributions, `MinimizerOptions`, and GenVector's `PtEtaPhiMVector`, `PxPyPzEVector`, `XYZVector`... kept in their own coordinates and printed as `operator<<` prints them, with `VectorUtil`), `TVector2`, `TVector3`, `TRotation`, `TLorentzVector`, `TRandom`, `TRandom1`, `TRandom2`, `TRandom3` |
+| containers | `TList`, `TObjArray`, `THashList`, `TIter`, `TObjString` |
+
+The namespace is put together from `xrdroot.pyroot.SUBMODULES`: this core,
+the trees (`TTree`, `TChain`, `RDataFrame`...), the STL stand-ins, RDF and
+the graphics, each a part of the kit that may or may not be installed. A
+name ROOT has and none of them does is refused by name - `ROOT has
+TGraphPolar; xrdroot.pyroot does not yet` - so a script says exactly what it
+missed.
+
 ## Canvases you draw on
 
 `xrdroot.pyroot` is ROOT's own Python namespace, and its graphics are ROOT's

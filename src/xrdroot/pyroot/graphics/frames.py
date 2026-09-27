@@ -70,6 +70,7 @@ def frame_histogram(xmin: float, ymin: float, xmax: float, ymax: float, title: s
     maker = getattr(core, "TH1F", None)
     if maker is not None:
         made = maker("hframe", title, BINS, xmin, xmax)
+        made.SetDirectory(None)  # a pad's frame, kept in no directory, as ROOT's DrawFrame keeps it
         made.SetMinimum(ymin)
         made.SetMaximum(ymax)
         made.SetStats(0)

@@ -174,9 +174,12 @@ def test_a_profile_along_x_is_the_mean_of_y_in_each_bin_of_x():
     assert isinstance(made, Profile) and made.name == "h_pfx"
     assert made.values().tolist() == [7 / 3, 1.0]
     assert made.bin_entries().tolist() == [3, 1]
-    # The content two went in as a weight of two, so ROOT started keeping squares.
-    assert made.members["fBinSumw2"].tolist() == [0, 5, 1, 0]
-    assert made.entries == 16 / 6
+    # The content two went in as a weight of two, but a histogram of counts is
+    # profiled without squares of weights - ROOT 6.40 keeps none, and so its
+    # effective entries are the counts.
+    assert made.members["fBinSumw2"].tolist() == []
+    assert made.entries == 4
+    assert made.errors().tolist()[0] == pytest.approx(0.5443310539518169)
 
 
 def test_a_profile_along_y_is_the_mean_of_x_in_each_bin_of_y():

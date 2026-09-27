@@ -48,8 +48,8 @@ __all__ = ["fit_object"]
 
 #: ``TF1::kNotDraw``, which option ``0`` sets on the function it stores.
 NOT_DRAW = 1 << 9
-#: ``TFitResult``'s name for linear least squares.
-LINEAR = "Linear"
+#: ``TFitResult``'s name for linear least squares, as ROOT 6.40 gives it.
+LINEAR = "Linear / Migrad"
 #: The number of a ``polN``: 300 plus its degree.
 POLYNOMIAL = 300
 
@@ -303,8 +303,12 @@ def _minimised(
     opts: FitOptions, data: FitData, function: Function, linear_allowed: bool
 ) -> FitResult:
     number = function.number
+    # ROOT fits linearly only what TF1::IsLinear says is: a polN, or a formula of "++" terms.
+    roots_linear = POLYNOMIAL <= number < POLYNOMIAL + 100 or "++" in (function.formula or "")
     basis = (
-        linear.design(function, data.coordinates(), function.parameters) if linear_allowed else None
+        linear.design(function, data.coordinates(), function.parameters)
+        if linear_allowed and roots_linear
+        else None
     )
     if basis is not None:
         return _by_least_squares(data, function, basis)

@@ -68,10 +68,11 @@ def test_x_errors_make_it_the_effective_variance_chi_square():
     expected = np.sum((Y - a - b * X) ** 2 / (ey**2 + (ex * b) ** 2))
     assert result.chi2 == pytest.approx(expected, rel=1e-9)
     ignoring = graph.fit("pol1", "EX0 Q")  # without the x errors: plain, and linear
-    assert ignoring.minimizer == "Linear"
+    assert ignoring.minimizer == "Linear / Migrad"
     zero_x = Graph.new("z", X, Y, xerr=np.zeros(5), yerr=ey)
-    assert zero_x.fit("pol1", "Q").minimizer == "Linear"
-    assert graph.fit("pol0", "Q").minimizer == "Linear"  # a constant has no slope to widen by
+    assert zero_x.fit("pol1", "Q").minimizer == "Linear / Migrad"
+    # A constant has no slope to widen by.
+    assert graph.fit("pol0", "Q").minimizer == "Linear / Migrad"
 
 
 def test_asymmetric_errors_take_the_side_facing_the_function():
