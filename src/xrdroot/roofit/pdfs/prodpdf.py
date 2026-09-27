@@ -94,6 +94,8 @@ class RooProdPdf(RooAbsPdf):
         if rng and "," in str(rng):  # a product of sums is not a sum of products: part by part
             return sum(self.fraction(names, ctx, nset, part, norm_rng)
                        for part in str(rng).split(",") if part)  # fmt: skip
+        if self._conditional and self._factorizes(nset) and not rng and not norm_rng:
+            return self._conditional_fraction(names, ctx, nset)
         if not self._factorizes(nset) or self._conditional:
             return super().fraction(names, ctx, nset, rng, norm_rng)
         found: Any = 1.0
@@ -103,6 +105,54 @@ class RooProdPdf(RooAbsPdf):
             found = found * (pdf.fraction(part, ctx, mine, rng, norm_rng) if part
                              else pdf.value(ctx, mine, norm_rng))  # fmt: skip
         return found
+
+    def _projection(self, names: frozenset[str], nset: frozenset[str]) -> tuple[list[Any], list[str]]:
+        """The factors left once those integrating to one over ``names`` are dropped, and what of
+        ``names`` must be integrated numerically: RooFit's ``getPartIntList``, conditionals and all.
+
+        A factor integrates to one - whatever else it depends on - when it is
+        normalised over observables all integrated and no other factor left
+        depends on them: ``x`` of ``g(x|y)`` first, then ``y`` of ``h(y)``.
+        """
+        kept = list(self.pdfs)
+        dropped = True
+        while dropped:
+            dropped = False
+            for pdf in kept:
+                mine = self.factor_nset(pdf, nset)
+                others = [q for q in kept if q is not pdf and q.dependents() & mine]
+                if mine and mine <= names and not others:
+                    kept.remove(pdf)
+                    dropped = True
+                    break
+        rest = frozenset().union(*(pdf.dependents() & names for pdf in kept)) if kept else frozenset()
+        return kept, [one.GetName() for one in self.leaves() if one.GetName() in rest]
+
+    def _conditional_fraction(self, names: frozenset[str], ctx: Context, nset: frozenset[str]) -> Any:
+        from ..integration import numeric
+
+        kept, rest = self._projection(names, nset)
+
+        def inner(c: Context) -> Any:
+            found: Any = 1.0
+            for pdf in kept:
+                found = found * pdf.value(c, self.factor_nset(pdf, nset))
+            return found
+
+        return numeric(self, rest, inner, ctx, None) if rest else inner(ctx)
+
+    def numeric_part(self, names: frozenset[str], nset: frozenset[str], rng: Any) -> Any:
+        """What RooFit integrates numerically over ``names`` - and calls it - for a conditional product."""
+        if not self._conditional or rng or not self._factorizes(nset):
+            return None
+        kept, rest = self._projection(names, nset)
+        terms = []
+        for pdf in kept:
+            if pdf.dependents() & frozenset(rest):
+                mine = self.factor_nset(pdf, nset)
+                order = [one.GetName() for one in pdf.leaves() if one.GetName() in mine]
+                terms.append(f"{pdf.GetName()}_NORM[{','.join(order)}]")
+        return rest, f"SPECINT[{'_X_'.join(terms)}]_Int[{','.join(rest)}]"
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         """A product of factors of separate observables integrates factor by factor."""

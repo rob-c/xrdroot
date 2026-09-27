@@ -152,14 +152,20 @@ def numeric_names(func: Any, names: frozenset[str], rng: Any = None) -> list[str
     return [one.GetName() for one in func.leaves() if one.GetName() in names - closed]
 
 
-def announce(func: Any, names: frozenset[str], rng: Any = None, label: str | None = None) -> None:
+def announce(func: Any, names: frozenset[str], rng: Any = None, label: str | None = None,
+             nset: Any = None) -> None:  # fmt: skip
     """``RooRealIntegral::init``'s line for a numerical integral, as RooFit prints it on making one.
 
     RooFit makes - and so announces - its integral objects at moments of its
     own: twice when it sets up to generate, twice when it plots a curve,
     never inside a fit. The callers here say when; this says what.
     """
-    numeric = numeric_names(func, names, rng)
+    own = getattr(func, "numeric_part", None)
+    found = own(frozenset(names), frozenset(nset or names), rng) if own is not None else None
+    if found is not None:
+        numeric, label = found
+    else:
+        numeric = numeric_names(func, names, rng)
     if not numeric:
         return
     method = "RooIntegrator1D" if len(numeric) == 1 else "RooAdaptiveIntegratorND"

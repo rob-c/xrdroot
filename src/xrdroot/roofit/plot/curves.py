@@ -143,7 +143,7 @@ def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], averaged: Any = (
         announce(pdf, nset)
         return
     norm = ",".join(one.GetName() for one in pdf.leaves() if one.GetName() in nset)
-    announce(pdf, projected, label=f"{integral_name(pdf, projected, None)}_Norm[{norm}]")
+    announce(pdf, projected, label=f"{integral_name(pdf, projected, None)}_Norm[{norm}]", nset=nset)
 
 
 def plot_function(func: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
