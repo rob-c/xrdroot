@@ -151,6 +151,11 @@ class RooAbsData(RooPrintable):
         self._columns[new] = self._columns.pop(old)
         return False
 
+    def plotOn(self, frame: Any, *args: Any, **kwargs: Any) -> Any:
+        from ..plot.data import plot_data
+
+        return plot_data(self, frame, args, kwargs)
+
     # -- printing -----------------------------------------------------------------
 
     def printName(self) -> str:

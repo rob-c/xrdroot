@@ -24,6 +24,7 @@ from ..messages import WARNING, log
 from ..pdf import CAN_NOT_BE_EXTENDED, MUST_BE_EXTENDED, RooAbsPdf
 from ..printing import g
 from ..real import Context, RooAbsReal
+from ..selection import active
 from ..variables import RooConstVar
 
 __all__ = ["RooAddPdf", "RooRecursiveFraction"]
@@ -114,7 +115,8 @@ class RooAddPdf(RooAbsPdf):
     def value(self, ctx: Context, nset: Any = None, rng: Any = None) -> Any:
         total: Any = 0.0
         for coef, pdf in zip(self.coefficients(ctx, nset), self.pdfs):
-            total = total + coef * pdf.value(ctx, nset, rng)
+            if active(pdf):
+                total = total + coef * pdf.value(ctx, nset, rng)
         return total
 
     def compute(self, ctx: Context) -> Any:
