@@ -1,4 +1,4 @@
-"""The copies of a model RooFit makes to fit, plot or generate with - for nodes whose state shows it.
+"""The copies of a model RooFit fits, plots and generates with - for nodes whose state shows it.
 
 RooFit does not fit, plot or sample the model it is handed but a clone of
 it, and a clone starts with empty caches. For most nodes that is invisible;
@@ -23,7 +23,7 @@ _ACTIVE: list[dict[int, Any]] = []
 
 
 def copies_of(top: Any, purpose: str, nset: frozenset[str]) -> dict[int, Any]:
-    """The state of each node under ``top`` that keeps one, as a clone made to ``purpose`` has it."""
+    """The state of each node under ``top`` that keeps one, as a clone made to ``purpose`` has."""
     found: dict[int, Any] = {}
     for node in top._walk():
         make = getattr(node, "copy_for", None)

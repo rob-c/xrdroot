@@ -65,7 +65,7 @@ def generate(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     names = frozenset(one.GetName() for one in variables) & pdf.dependents()
     uniform = sorted((one for one in variables if one.GetName() not in names), key=lambda v: v.GetName(), reverse=True)
     for _ in range(2):  # the generator's own copy of the density, and its context's
-        announce(pdf, names)
+        announce(pdf, names, normalising=True)
     context = context_for(pdf, names)
     total = _how_many(pdf, names, count, options)
     if total < 0:

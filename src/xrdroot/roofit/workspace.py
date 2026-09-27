@@ -216,3 +216,7 @@ def _section(heading: str, nodes: list[Any]) -> None:
     for node in sorted(nodes, key=lambda n: n.GetName()):
         node.Print()
     cout.write("\n")
+
+
+#: ``w->import(...)``: C++ spells ``Import`` as ROOT does; Python cannot name a method ``import``.
+setattr(RooWorkspace, "import", RooWorkspace.Import)

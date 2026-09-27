@@ -17,15 +17,19 @@ Everything here is evaluated for every event at once: arrays of shape
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-__all__ = ["Axis", "bin_numbers", "clone_rows", "neville", "weights_interpolated"]
+if TYPE_CHECKING:
+    from typing import TypeAlias
 
-Array = np.ndarray[Any, Any]
+__all__ = ["Axis", "clone_rows", "neville", "weights_interpolated"]
+
+#: An array of numbers, one per event - or per point, per event.
+Array: TypeAlias = "np.ndarray[Any, Any]"
 #: Given each event's bin numbers along the interpolated variable, the weights there.
-Lookup = Callable[[Array], Array]
+Lookup: TypeAlias = "Callable[[Array], Array]"
 
 
 def neville(xa: Array, ya: Array, x: Array) -> Array:
@@ -46,7 +50,9 @@ def neville(xa: Array, ya: Array, x: Array) -> Array:
         den = (c[1 : n - m + 1] - d[: n - m]) / (ho - hp)
         d[: n - m], c[: n - m] = hp * den, ho * den
         upper = 2 * (ns + 1) < n - m
-        y = y + np.where(upper, c[np.clip(ns + 1, 0, n - 1), columns], d[np.clip(ns, 0, n - 1), columns])
+        y = y + np.where(
+            upper, c[np.clip(ns + 1, 0, n - 1), columns], d[np.clip(ns, 0, n - 1), columns]
+        )
         ns = np.where(upper, ns, ns - 1)
     return y
 
@@ -89,11 +95,6 @@ class Axis:
         return np.full(self.count, self.width) if self.uniform else np.diff(self.edges)
 
 
-def bin_numbers(axis: Axis, x: Array) -> Array:
-    """``RooAbsBinning::binNumber`` of each value."""
-    return axis.numbers(x)
-
-
 def clone_rows(var: Any, low: float, high: float) -> Axis:
     """``var``'s own binning moved to ``[low, high]``: what a density's copy of it has.
 
@@ -117,7 +118,9 @@ def _points(axis: Axis, x: Array, order: int) -> tuple[Array, Array, Array]:
     first = central - order // 2 - (x < axis.centres(central)).astype(np.int64)
     wanted = first[None, :] + np.arange(order + 1)[:, None]
     over, under = wanted >= nbins, wanted < 0
-    index = np.clip(np.where(over, 2 * nbins - wanted - 1, np.where(under, -wanted - 1, wanted)), 0, nbins - 1)
+    index = np.clip(
+        np.where(over, 2 * nbins - wanted - 1, np.where(under, -wanted - 1, wanted)), 0, nbins - 1
+    )
     where = axis.centres(index)
     where = np.where(over, 2 * axis.high - where, np.where(under, 2 * axis.low - where, where))
     return wanted, index, where

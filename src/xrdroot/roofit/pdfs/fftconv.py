@@ -25,8 +25,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
-
+from .. import copies
 from ..binning import RooUniformBinning
 from ..collections import as_list
 from ..integration import numeric
@@ -34,8 +33,7 @@ from ..messages import ERROR, INFO, log
 from ..pdf import RooAbsPdf, normalized
 from ..printing import address, g
 from ..real import Context, value_of
-from .. import copies
-from .fftcache import EXTEND, FLAT, MIRROR, FFTCache
+from .fftcache import EXTEND, FLAT, MIRROR, FFTCache, sums_over
 
 __all__ = ["RooFFTConvPdf"]
 
@@ -43,13 +41,23 @@ __all__ = ["RooFFTConvPdf"]
 FFT_BINS = 1024
 
 
-def said_numeric(conv: Any, names: list[str], label: str, rng: Any = None) -> None:
-    """``RooRealIntegral::init``'s line for an integral over ``names`` that is taken numerically."""
+def said_numeric(conv: Any, names: list[str], label: str) -> None:
+    """``RooRealIntegral::init``'s line for an integral over ``names`` - a finite range's."""
     method = "RooIntegrator1D" if len(names) == 1 else "RooAdaptiveIntegratorND"
-    if len(names) == 1 and any(np.isinf(conv.bounds(names[0], rng))):
-        method = "RooImproperIntegrator1D"
-    log(conv, INFO, "NumericIntegration", f"RooRealIntegral::init({label}) using numeric integrator "
+    log(conv, INFO, "NumericIntegration", f"RooRealIntegral::init({label}) using numeric "
+        "integrator "
         f"{method} to calculate Int({','.join(names)})")  # fmt: skip
+
+
+def _kept(obs: Any, cached: set[str]) -> bool:
+    """Whether a cache keeps an observable of its set: a category, or one asked to be cached."""
+    return hasattr(obs, "lookupIndex") or obs.GetName() in cached
+
+
+def _add(found: list[Any], obs: Any) -> None:
+    """``RooArgSet::add(obs, silent)``: the observable, unless one of its name is there."""
+    if all(obs.GetName() != seen.GetName() for seen in found):
+        found.append(obs)
 
 
 class _Caches:
@@ -64,14 +72,13 @@ class _Caches:
         self.slots = list(slots)
         self.purpose = purpose
         self.made: dict[frozenset[str], FFTCache] = {}
-        self.said_numeric = False
 
     def cache(self, nset: frozenset[str]) -> FFTCache:
         found = self.made.get(nset)
         return found if found is not None else self._make(nset)
 
     def _make(self, nset: frozenset[str]) -> FFTCache:
-        """``getCache``: make and fill the cache, and say so - with RooFit's name for its density."""
+        """``getCache``: make and fill the cache, and say so - with RooFit's name for it."""
         conv = self.conv
         made = FFTCache(conv, conv.actual_observables(nset), nset)
         made.weights({})
@@ -80,8 +87,10 @@ class _Caches:
         self.made[nset] = made
         ordered = conv.ordered(nset)
         name = conv.cache_name(made.hist_obs, ordered)
-        log(conv, INFO, "Caching", f"RooAbsCachedPdf::getCache({conv.GetName()}) creating new cache "
-            f"{address(made)} with pdf {name} for nset ({','.join(ordered)}) with code {self.slots.index(nset)}")  # fmt: skip
+        code = self.slots.index(nset)
+        log(conv, INFO, "Caching", f"RooAbsCachedPdf::getCache({conv.GetName()}) creating new "
+            f"cache {address(made)} with pdf {name} for nset ({','.join(ordered)}) "
+            f"with code {code}")  # fmt: skip
         if nset and self.purpose != "fit" and not made.analytic_over(nset):
             said_numeric(conv, ordered, f"{name}_Int[{','.join(ordered)}]")
         return made
@@ -93,6 +102,8 @@ class _Caches:
 class RooFFTConvPdf(RooAbsPdf):
     """The convolution of two densities of one observable, computed by FFT."""
 
+    #: A cached density normalises itself: it makes no integral for a copy to plot or generate with.
+    normalised_by_cache = True
     #: ``RooFFTConvPdf::BufStrat``: how the buffers either side of the range are filled.
     Extend, Mirror, Flat = EXTEND, MIRROR, FLAT
 
@@ -100,7 +111,7 @@ class RooFFTConvPdf(RooAbsPdf):
         super().__init__(name, title)
         form = 0 if isinstance(args[1], RooAbsPdf) else 1
         xprime = args[0] if form else None
-        convVar, pdf1, pdf2 = args[form:form + 3]
+        convVar, pdf1, pdf2 = args[form : form + 3]
         self._order = int(args[form + 3]) if len(args) > form + 3 else 2
         self.x = self._proxy("!x", convVar)
         self.xprime = self._proxy("!xprime", xprime) if xprime is not None else None
@@ -114,19 +125,23 @@ class RooFFTConvPdf(RooAbsPdf):
         self._caches = _Caches(self, [], "original")
 
     def _prepare_binning(self) -> None:
-        """``prepareFFTBinning``: give the observable a "cache" binning of 930 bins if it has none."""
+        """``prepareFFTBinning``: give the observable a "cache" binning of 930 bins if none."""
         x = self.x
         if x.hasBinning("cache"):
             return
         binning = x.getBinning()
         optimal = int(FFT_BINS / (1.0 + self._fraction))
         if binning.numBins() < optimal and binning.isUniform():
-            log(self, INFO, "Caching", f"Changing internal binning of variable '{x.GetName()}' in FFT "
-                f"'{self.GetName()}' from {binning.numBins()} to {optimal} to improve the precision of the "
-                "numerical FFT. This can be done manually by setting an additional binning named 'cache'.")  # fmt: skip
-            x.setBinning(RooUniformBinning(binning.lowBound(), binning.highBound(), optimal), "cache")
+            log(self, INFO, "Caching", f"Changing internal binning of variable '{x.GetName()}' "
+                f"in FFT '{self.GetName()}' from {binning.numBins()} to {optimal} to improve the "
+                "precision of the numerical FFT. This can be done manually by setting an "
+                "additional binning named 'cache'.")  # fmt: skip
+            x.setBinning(
+                RooUniformBinning(binning.lowBound(), binning.highBound(), optimal), "cache"
+            )
         else:
-            log(self, ERROR, "Caching", f"The internal binning of variable {x.GetName()} is not uniform. "
+            log(self, ERROR, "Caching", f"The internal binning of variable {x.GetName()} is not "
+                "uniform. "
                 "The numerical FFT will likely yield wrong results.")  # fmt: skip
             x.setBinning(binning, "cache")
 
@@ -134,16 +149,16 @@ class RooFFTConvPdf(RooAbsPdf):
 
     def setBufferFraction(self, frac: float) -> None:
         if frac < 0:
-            log(self, ERROR, "InputArguments", f"RooFFTConvPdf::setBufferFraction({self.GetName()}) fraction "
+            name = self.GetName()
+            log(self, ERROR, "InputArguments", f"RooFFTConvPdf::setBufferFraction({name}) "
+                "fraction "
                 "should be greater than or equal to zero")  # fmt: skip
             return
         self._fraction = float(frac)
         self._caches.sterilize()
 
-    def getBufferFraction(self) -> float:
+    def bufferFraction(self) -> float:
         return self._fraction
-
-    bufferFraction = getBufferFraction
 
     def setBufferStrategy(self, bs: int) -> None:
         self._strategy = int(bs)
@@ -168,7 +183,7 @@ class RooFFTConvPdf(RooAbsPdf):
         return RooArgSet(self._cache_obs)
 
     def printValue(self) -> str:
-        """``getVal()`` - which, for a cached density, forgets the last normalisation - so no ``/norm``."""
+        """``getVal()`` - a cached density's forgets its last normalisation: no ``/norm``."""
         return g(value_of(self.compute({})))
 
     def printMetaArgs(self) -> str:
@@ -192,17 +207,20 @@ class RooFFTConvPdf(RooAbsPdf):
         if it is in ``nset``, or with every observable of ``nset`` otherwise."""
         found = self._observables_of(nset)
         cached = {one.GetName() for one in self._cache_obs}
-        if self.x.GetName() in nset or cached:
-            found = [one for one in found if hasattr(one, "lookupIndex") or one.GetName() in cached]
-        for one in [self.x, *(self._cache_obs if self.x.GetName() in nset else [])]:
-            if all(one.GetName() != seen.GetName() for seen in found):
-                found.append(one)
+        inside = self.x.GetName() in nset
+        if inside or cached:
+            found = [one for one in found if _kept(one, cached)]
+        for one in [self.x, *(self._cache_obs if inside else [])]:
+            _add(found, one)
         return found
 
     def pdf_observables(self, hist_obs: list[Any]) -> list[Any]:
-        """``pdfObservable``: each histogram observable as the density reads it - ``xprime`` for ``x``."""
+        """``pdfObservable``: each histogram observable as the density reads it - x as xprime."""
         mine = self.x.GetName()
-        return [self.xprime if self.xprime is not None and one.GetName() == mine else one for one in hist_obs]
+        return [
+            self.xprime if self.xprime is not None and one.GetName() == mine else one
+            for one in hist_obs
+        ]
 
     def pdf_observable_names(self, names: list[str]) -> set[str]:
         """The variables the density's observables are made of, for the histogram of ``names``."""
@@ -213,7 +231,9 @@ class RooFFTConvPdf(RooAbsPdf):
 
     def ordered(self, nset: frozenset[str]) -> list[str]:
         """``nset``'s names as RooFit keeps the set: the first density's variables first."""
-        order = [one.GetName() for one in (*self.pdf1.leaves(), *self.pdf2.leaves(), *self.leaves())]
+        order = [
+            one.GetName() for one in (*self.pdf1.leaves(), *self.pdf2.leaves(), *self.leaves())
+        ]
         return sorted(nset, key=lambda name: order.index(name) if name in order else len(order))
 
     def cache_name(self, hist_obs: list[Any], ordered: list[str]) -> str:
@@ -260,7 +280,9 @@ class RooFFTConvPdf(RooAbsPdf):
         caches = self._active()
         return self._norm(caches, caches.cache(names), names, ctx, rng)
 
-    def _norm(self, caches: _Caches, cache: FFTCache, names: frozenset[str], ctx: Context, rng: Any) -> Any:
+    def _norm(
+        self, caches: _Caches, cache: FFTCache, names: frozenset[str], ctx: Context, rng: Any
+    ) -> Any:
         """The integral over ``names`` a fit or the cache's own density divides by.
 
         A sum of weights when the histogram's observables are the density's;
@@ -271,40 +293,43 @@ class RooFFTConvPdf(RooAbsPdf):
         if cache.analytic_over(names):
             return cache.summed(names, ctx)
         if caches.purpose == "fit":
-            if not caches.said_numeric:
-                caches.said_numeric = True
-                said_numeric(self, sorted(names), f"{self.GetName()}_Int[{','.join(sorted(names))}]", rng)
             cache = caches.cache(frozenset())
         order = [one.GetName() for one in self.leaves() if one.GetName() in names]
         return numeric(self, order, cache.raw, ctx, rng)
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
-        """``forceAnalyticalInt``: every observable - the cache's density integrates itself."""
-        return frozenset(names) & self.dependents()
+        """``getAnalyticalIntegralWN``: every observable, if the cache's density sums over them.
+
+        When it cannot - the density of a function of the observable - RooFit
+        integrates the convolution itself numerically, and so does this.
+        """
+        names = frozenset(names) & self.dependents()
+        observables = self.pdf_observables(self.actual_observables(names))
+        return names if names and not rng and sums_over(observables, names) else frozenset()
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
-        """The integral of the cache for ``names``: its sum of weights, or numerically if not that."""
+        """The integral of the cache for ``names``: its sum of weights."""
         names = frozenset(names)
-        cache = self._active().cache(names)
-        if not rng and cache.analytic_over(names):
-            return cache.summed(names, ctx)
-        order = [one.GetName() for one in self.leaves() if one.GetName() in names]
-        return numeric(self, order, cache.raw, ctx, rng)
+        return self._active().cache(names).summed(names, ctx)
 
     # -- generating ---------------------------------------------------------------
 
     def gen_context(self, names: frozenset[str]) -> Any:
-        """``genContext``: the sum of the two densities' own events if both draw them, else sampling."""
+        """``genContext``: the sum of the densities' own events if both draw them, else sampling."""
         from .fftgen import ConvolutionContext, SampledContext
 
-        if names == frozenset([self.x.GetName()]) and all(self._draws(pdf) for pdf in (self.pdf1, self.pdf2)):
+        if names == frozenset([self.x.GetName()]) and all(
+            self._draws(pdf) for pdf in (self.pdf1, self.pdf2)
+        ):
             return ConvolutionContext(self, names)
         return SampledContext(self, names)
 
     def _draws(self, pdf: Any) -> bool:
-        """``getGenerator`` and ``isDirectGenSafe``: whether ``pdf`` draws the observable itself, safely."""
+        """``getGenerator`` and ``isDirectGenSafe``: whether ``pdf`` safely draws the observable."""
         code = getattr(pdf, "generator_code", None)
         mine = self.x.GetName()
         if code is None or not code(frozenset([mine])) or pdf.findServer(mine) is None:
             return False
-        return not any(server.GetName() != mine and mine in server.dependents() for server in pdf.servers())
+        return not any(
+            server.GetName() != mine and mine in server.dependents() for server in pdf.servers()
+        )

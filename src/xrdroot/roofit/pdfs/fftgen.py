@@ -25,7 +25,7 @@ __all__ = ["ConvolutionContext", "SampledContext"]
 
 @contextmanager
 def _opened(var: Any) -> Iterator[None]:
-    """``removeMin()`` and ``removeMax()`` on the generator's copy of ``var``: its range open, a while."""
+    """``removeMin()`` and ``removeMax()`` on the generator's copy of ``var``: its range opened."""
     binning = var.getBinning()
     saved = binning.lowBound(), binning.highBound()
     binning.setRange(-np.inf, np.inf)
@@ -56,7 +56,7 @@ class ConvolutionContext(Context):
 
 
 class SampledContext(Context):
-    """``RooGenContext`` with TFoam: the normalised convolution sampled over the observables' ranges."""
+    """``RooGenContext`` with TFoam: the normalised convolution sampled over its observables."""
 
     def __init__(self, pdf: Any, names: frozenset[str]) -> None:
         from ..generation.foam import FoamGenerator

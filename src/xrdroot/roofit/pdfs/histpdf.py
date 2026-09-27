@@ -42,7 +42,8 @@ class _Histogram:
     density = True
 
     def _setup(self, variables: Any, histObs: Any, data: Any, order: int) -> None:
-        self.observables = self._list_proxy("pdfObs", as_list(variables))  # type: ignore[attr-defined]
+        proxy = self._list_proxy  # type: ignore[attr-defined]
+        self.observables = proxy("pdfObs", as_list(variables))
         self.data = data
         #: The histogram's variable each observable is looked up as, in the observables' order.
         self._hist_vars = [data.get().find(one.GetName()) for one in as_list(histObs)]
@@ -52,7 +53,8 @@ class _Histogram:
         self._cdf = False
         real = [one for one in data.get() if not hasattr(one, "lookupIndex")]
         if self.order > 0 and len(real) > 2:
-            log(self, ERROR, "InputArguments", f"RooDataHist::weight({data.GetName()}) interpolation in "
+            log(self, ERROR, "InputArguments", f"RooDataHist::weight({data.GetName()}) "
+                "interpolation in "
                 f"{len(real)} dimensions not yet implemented")  # fmt: skip
 
     def setInterpolationOrder(self, order: int) -> None:
@@ -105,11 +107,13 @@ class _Histogram:
         return self.data
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
-        """All the observables, over their full range: the sum of the weights, as RooFit's code 1 is."""
+        """All the observables over their full range: the sum of the weights, RooFit's code 1."""
         mine = frozenset(one.GetName() for one in self.observables)
-        full = all(_full_range(obs, var, rng) for obs, var in zip(self.observables, self._hist_vars))
-        fundamental = all(one.isFundamental() for one in self.observables)
-        return mine if mine <= names and fundamental and full else frozenset()
+        if not (mine <= names and all(one.isFundamental() for one in self.observables)):
+            return frozenset()
+        pairs = zip(self.observables, self._hist_vars)
+        full = all(_full_range(obs, var, rng) for obs, var in pairs)
+        return mine if full else frozenset()
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
         return self.data.sum(not self.density)

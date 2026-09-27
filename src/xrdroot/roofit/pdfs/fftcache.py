@@ -84,8 +84,8 @@ def buffered(values: np.ndarray[Any, Any], nbuf: int, strategy: int) -> np.ndarr
     themselves, so ``values`` already has them.
     """
     if strategy == MIRROR:
-        low = values[..., 1:nbuf + 1][..., ::-1]
-        high = values[..., values.shape[-1] - nbuf:][..., ::-1]
+        low = values[..., 1 : nbuf + 1][..., ::-1]
+        high = values[..., values.shape[-1] - nbuf :][..., ::-1]
     elif strategy == FLAT:
         low = np.repeat(values[..., :1], nbuf, axis=-1)
         high = np.repeat(values[..., -1:], nbuf, axis=-1)
@@ -95,14 +95,18 @@ def buffered(values: np.ndarray[Any, Any], nbuf: int, strategy: int) -> np.ndarr
 
 
 def sums_over(observables: list[Any], names: frozenset[str]) -> bool:
-    """``RooHistPdf::getAnalyticalIntegral``: whether the integral over ``names`` is a sum of weights.
+    """``RooHistPdf::getAnalyticalIntegral``: whether the integral over ``names`` is a sum.
 
     It is when each observable ``names`` touch is the histogram's own
     variable - not a function of one - and the histogram holds every one.
     """
     touched = [obs for obs in observables if obs.dependents() & names]
     held = {obs.GetName() for obs in observables}
-    return bool(touched) and all(obs.isFundamental() and obs.GetName() in names for obs in touched) and names <= held
+    return (
+        bool(touched)
+        and all(obs.isFundamental() and obs.GetName() in names for obs in touched)
+        and names <= held
+    )
 
 
 @contextmanager
@@ -133,9 +137,10 @@ class FFTCache:
         self.norms = (self._norm_of(conv.pdf1, 0.0), self._norm_of(conv.pdf2, conv._shift2))
         count = self.binnings[self.axis].numBins()
         if count < FEW_BINS:
-            log(conv, WARNING, "Eval", f"The FFT convolution '{conv.GetName()}' will run with {count} bins. "
-                "A decent accuracy for difficult convolutions is typically only reached with n >= 1000. "
-                f"Suggest to increase the number of bins of the observable '{x.GetName()}'.")  # fmt: skip
+            log(conv, WARNING, "Eval", f"The FFT convolution '{conv.GetName()}' will run with "
+                f"{count} bins. A decent accuracy for difficult convolutions is typically only "
+                "reached with n >= 1000. Suggest to increase the number of bins of the observable "
+                f"'{x.GetName()}'.")  # fmt: skip
         self._key: Any = None
         self._grid: Any = None
 
@@ -150,7 +155,7 @@ class FFTCache:
         """
         names = frozenset(self.names) & pdf.dependents()
         if not names:
-            return float(np.asarray(pdf.compute({})))
+            return 1.0  # RooFit's unit normalisation for a density of none of them
         announce(pdf, names, label=f"{pdf.GetName()}_Int[{','.join(sorted(names))}]")
         binning = self.binnings[self.axis]
         with _range_moved(self.conv.x, binning.lowBound() - shift, binning.highBound() - shift):
@@ -163,12 +168,16 @@ class FFTCache:
         grid = np.meshgrid(*centres, indexing="ij") if centres else []
         return [(name, values.reshape(-1)) for (_, name), values in zip(others, grid)]
 
-    def _sampled(self, pdf: Any, norm: float, shift: float, ctx: Context) -> tuple[np.ndarray[Any, Any], int]:
+    def _sampled(
+        self, pdf: Any, norm: float, shift: float, ctx: Context
+    ) -> tuple[np.ndarray[Any, Any], int]:
         """``scanPdf``: the density at the bins' centres, normalised, buffered and rotated."""
         binning = self.binnings[self.axis]
         n, low, high = binning.numBins(), binning.lowBound(), binning.highBound()
         strategy = self.conv.bufferStrategy()
-        nbuf, n2, zero = scan_layout(n, low, high, self.conv.getBufferFraction(), shift, strategy == EXTEND)
+        nbuf, n2, zero = scan_layout(
+            n, low, high, self.conv.bufferFraction(), shift, strategy == EXTEND
+        )
         width = (high - low) / n
         if strategy == EXTEND:
             start = low - nbuf * width
@@ -223,12 +232,12 @@ class FFTCache:
         if not params:
             yield None, ctx
             return
-        shape = np.broadcast_shapes(*(np.shape(v) for v in ctx.values()))
-        table = np.stack([np.broadcast_to(ctx[one.GetName()], shape).reshape(-1) for one in params], axis=1)
+        flat = _flattened(ctx)
+        table = np.stack([flat[one.GetName()] for one in params], axis=1)
         values, inverse = np.unique(table, axis=0, return_inverse=True)
         for row, found in enumerate(values):
             keep = inverse.reshape(-1) == row
-            one = {k: (np.broadcast_to(v, shape).reshape(-1)[keep] if np.ndim(v) else v) for k, v in ctx.items()}
+            one = {k: v[keep] if np.ndim(v) else v for k, v in flat.items()}
             one.update({p.GetName(): float(v) for p, v in zip(params, found)})
             yield keep, one
 
@@ -240,34 +249,43 @@ class FFTCache:
         shape = np.broadcast_shapes(*(np.shape(v) for v in ctx.values()))
         found = np.empty(int(np.prod(shape)))
         for keep, one in groups:
-            found[keep] = np.broadcast_to(read(self.weights(one), one), (int(np.count_nonzero(keep)),))
+            found[keep] = np.broadcast_to(
+                read(self.weights(one), one), (int(np.count_nonzero(keep)),)
+            )
         return found.reshape(shape)
 
     def raw(self, ctx: Context) -> Any:
         """``RooHistPdf::evaluate``: the weight over the bin volume at the observables' values."""
         return self.per_event(ctx, self._read)
 
-    def _read(self, weights: np.ndarray[Any, Any], ctx: Context) -> Any:
-        points = [np.asarray(obs.compute(ctx), dtype=np.float64) for obs in self.conv.pdf_observables(self.hist_obs)]
+    def _points(self, ctx: Context) -> tuple[list[np.ndarray[Any, Any]], tuple[int, ...]]:
+        """The density's observables at ``ctx``, as flat arrays of one shape - and that shape."""
+        observables = self.conv.pdf_observables(self.hist_obs)
+        points = [np.asarray(obs.compute(ctx), dtype=np.float64) for obs in observables]
         shape = np.broadcast_shapes(*(p.shape for p in points))
-        points = [np.broadcast_to(p, shape).reshape(-1) for p in points]
+        return [np.broadcast_to(p, shape).reshape(-1) for p in points], shape
+
+    def _read(self, weights: np.ndarray[Any, Any], ctx: Context) -> Any:
+        points, shape = self._points(ctx)
         widths = np.meshgrid(*(a.widths() for a in self.axes), indexing="ij")
-        density = weights / np.prod(widths, axis=0)
-        order = self.conv.getInterpolationOrder()
-        if order > 0 and len(points) <= 2:
-            rows = clone_rows(self.hist_obs[-1], self.axes[-1].low, self.axes[-1].high)
-            found = weights_interpolated(self.axes, density, points, order, rows=rows)
-        else:
-            found = density[tuple(a.numbers(p) for a, p in zip(self.axes, points))]
+        found = self._looked_up(weights / np.prod(widths, axis=0), points)
         inside = np.all([(p >= a.low) & (p <= a.high) for a, p in zip(self.axes, points)], axis=0)
         found = np.maximum(np.where(inside, found, 0.0), 0.0).reshape(shape)
         return found if found.ndim else float(found)
+
+    def _looked_up(self, density: np.ndarray[Any, Any], points: list[Any]) -> Any:
+        """``weightFast``: the bin's density, or - with an order - the interpolation of it."""
+        order = self.conv.getInterpolationOrder()
+        if order > 0 and len(points) <= 2:
+            rows = clone_rows(self.hist_obs[-1], self.axes[-1].low, self.axes[-1].high)
+            return weights_interpolated(self.axes, density, points, order, rows=rows)
+        return density[tuple(a.numbers(p) for a, p in zip(self.axes, points))]
 
     def analytic_over(self, names: frozenset[str]) -> bool:
         return sums_over(self.conv.pdf_observables(self.hist_obs), names)
 
     def summed(self, names: frozenset[str], ctx: Context) -> Any:
-        """``RooDataHist::sum``: the weights summed over ``names``, in the bins of the rest at ``ctx``."""
+        """``RooDataHist::sum``: the weights summed over ``names``, in the rest's bins."""
         return self.per_event(ctx, lambda weights, one: self._sum(weights, names, one))
 
     def _sum(self, weights: np.ndarray[Any, Any], names: frozenset[str], ctx: Context) -> Any:
@@ -277,8 +295,12 @@ class FFTCache:
         if not kept:
             return float(total)
         widths = np.meshgrid(*(self.axes[i].widths() for i in kept), indexing="ij")
-        total = total / np.prod(widths, axis=0)
-        observables = self.conv.pdf_observables(self.hist_obs)
-        index = tuple(self.axes[i].numbers(np.asarray(observables[i].compute(ctx), dtype=np.float64))
-                      for i in kept)  # fmt: skip
-        return total[index]
+        points, shape = self._points(ctx)
+        index = tuple(self.axes[i].numbers(points[i]) for i in kept)
+        return (total / np.prod(widths, axis=0))[index].reshape(shape)
+
+
+def _flattened(ctx: Context) -> Context:
+    """``ctx`` with every array broadcast to one flat length - and its numbers as they are."""
+    shape = np.broadcast_shapes(*(np.shape(v) for v in ctx.values()))
+    return {k: np.broadcast_to(v, shape).reshape(-1) if np.ndim(v) else v for k, v in ctx.items()}

@@ -144,11 +144,12 @@ def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str]) -> None:
         order = [one.GetName() for one in pdf.leaves() if one.GetName() in projected]
         log(pdf, INFO, "Plotting", f"RooAbsReal::plotOn({pdf.GetName()}) plot on "
             f"{frame.getPlotVar().GetName()} integrates over variables ({','.join(order)})")  # fmt: skip
-    announce(pdf, nset)
+    announce(pdf, nset, normalising=True)
     if not projected:
         return
     norm = ",".join(one.GetName() for one in pdf.leaves() if one.GetName() in nset)
-    announce(pdf, projected, label=f"{integral_name(pdf, projected, None)}_Norm[{norm}]")
+    label = f"{integral_name(pdf, projected, None)}_Norm[{norm}]"
+    announce(pdf, projected, label=label, normalising=True)
 
 
 def plot_function(func: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
