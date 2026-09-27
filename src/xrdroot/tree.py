@@ -18,7 +18,8 @@ from .buffer import Buffer, gather
 from .compression import decompress
 from .drawable import Drawable
 from .errors import UnsupportedFeatureError
-from .interp import Column, Flat, Members, Refused, Rows, Values, build
+from .interp import Column, Each, Flat, Members, Refused, Rows, Values, build
+from .leaflist import walkable, walked
 
 if TYPE_CHECKING:
     from .file import Source
@@ -384,7 +385,7 @@ class Branch:
                 f"{self.name!r} holds {self.column.reason}; tree.unreadable lists every "
                 f"column this file has that cannot be read, each with its reason"
             )
-        if self.is_jagged and len(self.record.leaves) > 1:
+        if self.is_jagged and len(self.record.leaves) > 1 and not walkable(self.record):
             raise UnsupportedFeatureError(
                 f"{self.name!r} is a variable-length leaf sharing a branch with "
                 f"{len(self.record.leaves) - 1} others, where the file does not say alone how "
@@ -405,12 +406,18 @@ class Branch:
 
     def basket(self, index: int) -> Basket:
         """Read one basket, remembering the last so a small step is not a reread."""
-        if index < len(self.record.baskets):
-            return self.record.baskets[index]  # already here, and never on its own
+        held = self.record.baskets[index] if index < len(self.record.baskets) else None
+        if held is not None:
+            return held  # already here, and never on its own
         if self._cached is not None and self._cached[0] == index:
             return self._cached[1]
+        source = self._source
+        if self.record.file_name:
+            from .friends import basket_source
+
+            source = basket_source(self.record.file_name, source)
         basket = Basket.keyed(
-            self._source,
+            source,
             self.record.basket_seek[index],
             self.record.basket_bytes[index],
             self.record.entry_offset_len > 0,
@@ -441,6 +448,8 @@ class Branch:
         self._refuse_if_unreadable()
         start, stop = self._bounds(entry_start, entry_stop)
         column = self.column
+        if walkable(self.record):
+            return walked(self, start, stop)
         if isinstance(column, Values):
             return self._objects(column, start, stop)
         if isinstance(column, Rows):
@@ -499,8 +508,15 @@ class Branch:
             reader = Buffer(basket.data, basket.keylen)
             for entry in range(low, high):
                 at = basket.start_of(entry, self.leaf.offset) + basket.keylen
-                out.append(column.value(reader, at))
+                out.append(self._object(column, reader, basket, entry, at))
         return out
+
+    @staticmethod
+    def _object(column: Values, reader: Buffer, basket: Basket, entry: int, at: int) -> Any:
+        """One entry's value; for each object of a split collection, the entry's list of them."""
+        if isinstance(column, Each):
+            return column.items(reader, at, basket.end_of(entry) + basket.keylen)
+        return column.value(reader, at)
 
 
 class Group(Branch):
@@ -631,13 +647,16 @@ class TTree(Drawable):
         A branch that holds no baskets but has branches under it is ROOT's
         way of writing a split object: nothing of it is in the file except
         its members, so it becomes a :class:`Group` over them rather than a
-        column that cannot be read.
+        column that cannot be read. So is the branch a split ``TClonesArray``
+        or vector of a class hangs from, whose baskets hold only how many
+        objects each entry has.
         """
         from .objects import LeafRecord
 
         many = len(record.leaves) > 1
         labels = self._add_leaves(record, source, many)
-        split = record.branches and not record.basket_seek and not many
+        empty = not record.basket_seek or record.collection
+        split = record.branches and empty and not many
         if not split:
             self._add_children(record, source)
             return labels

@@ -86,6 +86,45 @@ files, and it is the whole of what is required to redistribute them.
 scikit-hep-testdata is BSD-3-Clause too; its licence is in
 `rntuple/LICENSE.scikit-hep-testdata`.
 
+## Written by ROOT 6.40
+
+`tclonesarray-split.root` and `tclonesarray-split-baskets.root` were written
+by ROOT 6.40.04 from `tclonesarray_split.C`, the macro beside them, run
+interpreted (`root -b -q tclonesarray_split.C`): a `TClonesArray` of a class
+split into members, one of them a `Double32_t` with a range, one an array and
+one a `TString`, and a branch `n` whose baskets ROOT was told, with
+`TBranch::SetFile`, to write to the second file. They are here because no
+file anywhere else in this corpus splits a collection of objects, which the
+ALICE files ROOT's event-display tutorials download do throughout.
+
+`tail-basket.root` was written the same way from `tail_basket.C`: a branch
+that flushed three baskets and was then written, with `WriteTObject` rather
+than `TTree::Write`, while its fourth was still being filled, so that basket
+is kept inside the branch record after the three out in the file - as ALICE's
+ESD trees keep theirs. It is the only file here that holds a basket that way.
+
+`uproot-issue-172.root` is from go-hep's `groot/testdata/uproot`, which took
+it from scikit-hep-testdata: `RVec`s written by ROOT 6.20, whose type names an
+`RAdoptAllocator`.
+
+## ROOT's tutorials
+
+The files under `tutorials/` are the ones ROOT's own tutorials ship beside
+their macros, taken unchanged from ROOT's `tutorials` directory, or that they download. Each is
+here because it once would not open, and each is a writer this corpus had
+nothing else from.
+
+| File | What it is there for |
+| --- | --- |
+| `mlpHiggs.root` | two trees ROOT 3.04 wrote, `TTree` version 9: doubles for counters and a weight, read by the file's own description of the class (`legacy/mlp`) |
+| `stock.root` | ten trees ROOT 4.00 wrote, `TTree` version 11, compressed with the pre-2005 algorithm, an object split into members (`math/quadp`) |
+| `gallery.root` | seven `TASImage`s, which stream themselves as PNGs (`gallery.root`, beside the tutorials) |
+| `fitpanel_playback.root` | a `TRecorder` the file does not describe, read by its declaration, and the trees of GUI events it replays; downloaded by `math/fit/fitpanel_playback.C` |
+| `brahms.root` | the BRAHMS detector as a `TGeoManager`, whose mixtures write a null `fNatoms` as a zero marker and nothing else; downloaded by `visualisation/geom/geomBrahms.C` from root.cern/files |
+
+ROOT is LGPL-2.1-or-later; its licence notice and the text of the LGPL are
+in `tutorials/LICENSE.root`.
+
 ## RNTuple
 
 The twenty-three files under `rntuple/` are RNTuples ROOT wrote, taken
