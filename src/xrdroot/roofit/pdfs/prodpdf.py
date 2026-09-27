@@ -58,12 +58,12 @@ class RooProdPdf(RooAbsPdf):
 
     def factor_nset(self, pdf: Any, nset: frozenset[str]) -> frozenset[str]:
         """What ``pdf`` is normalised over within ``nset``: all of it, or its conditional part."""
-        mine = nset & pdf.dependents()
+        mine = frozenset(nset & pdf.dependents())
         found = self._conditional.get(pdf.GetName())
         if found is None:
             return mine
         observables, reverse = found
-        return mine - observables if reverse else mine & observables
+        return frozenset(mine - observables if reverse else mine & observables)
 
     def _factorizes(self, nset: frozenset[str]) -> bool:
         seen: set[str] = set()

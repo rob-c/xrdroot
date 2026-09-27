@@ -41,6 +41,10 @@ class _Shape(RooAbsPdf):
         for key, arg in zip(self.inputs, args):
             setattr(self, key, self._proxy(key, ref(arg)))
 
+    def __getattr__(self, key: str) -> Any:
+        """Only for what is not there - the inputs are set by name - so, always a refusal."""
+        raise AttributeError(f"{type(self).__name__} has no input or member called {key!r}.")
+
     def v(self, key: str, ctx: Context) -> Any:
         return getattr(self, key).compute(ctx)
 
@@ -81,7 +85,7 @@ class RooArgusBG(_Shape):
         return _argus_part(m0, c, f2) - _argus_part(m0, c, f1)
 
 
-def _argus_part(m0: float, c: float, f: float) -> float:
+def _argus_part(m0: float, c: float, f: float) -> Any:
     if c < 0:
         return (
             -0.5

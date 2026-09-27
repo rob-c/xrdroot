@@ -22,7 +22,8 @@ class TMatrixDSym:
 
     def __init__(self, n: Any = 0, values: Any = None) -> None:
         if isinstance(n, TMatrixDSym):
-            values, n = n.values.copy(), n.values.shape[0]
+            other: Any = n
+            values, n = other.values.copy(), other.values.shape[0]
         self.values = (
             np.zeros((int(n), int(n))) if values is None else np.array(values, dtype=np.float64)
         )

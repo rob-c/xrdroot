@@ -130,7 +130,7 @@ def _scale(pdf: Any, frame: Any, options: Commands, nset: frozenset[str]) -> flo
         scale *= expected
     elif kind == NUM_EVENT:
         scale /= expected
-    return scale * frame.getFitRangeBinW()
+    return float(scale * frame.getFitRangeBinW())
 
 
 def pdf_plot(pdf: Any, frame: Any, cmds: CmdList) -> Any:

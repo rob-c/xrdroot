@@ -12,7 +12,7 @@ changes what is printed here exactly as it would in ROOT.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, Callable
 
 from . import cout
 
@@ -117,7 +117,7 @@ class StreamConfig:
         return obj is not None and self._about(obj)
 
     def _about(self, obj: Any) -> bool:
-        checks = (
+        checks: tuple[tuple[Any, Callable[[], Any]], ...] = (
             (self.objectName, lambda: obj.GetName() == self.objectName),
             (self.className, lambda: obj.ClassName() == self.className),
             (self.baseClassName, lambda: obj.InheritsFrom(self.baseClassName)),

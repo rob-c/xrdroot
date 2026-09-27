@@ -102,6 +102,7 @@ class RooMCStudy:
             count = int(generator().Poisson(events or expected))
         if self.binned:
             return self.gen_model.generateBinned(self.observables, count)
+        assert self._generator is not None  # made for every unbinned study
         return self._generator.sample(count, f"{self.gen_model.GetName()}Data")
 
     def _fit_sample(self, sample: Any) -> None:

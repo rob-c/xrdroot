@@ -29,7 +29,7 @@ from .printing import g
 __all__ = ["Context", "RooAbsReal", "value_of"]
 
 #: A context: variable names to their values - a number, or an array of one per event.
-Context = dict
+Context = dict[str, Any]
 
 
 def value_of(result: Any) -> float:

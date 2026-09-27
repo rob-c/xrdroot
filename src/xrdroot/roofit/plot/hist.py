@@ -56,6 +56,10 @@ def poisson_interval(n: int, sigmas: float = 1.0) -> tuple[float, float]:
 class RooHist(Graph):
     """Points with asymmetric error bars, as RooFit draws data."""
 
+    #: The events plotted - their values and weights - for counting those in a range.
+    data_values: Any = None
+    data_weights: Any = None
+
     def __init__(
         self,
         name: str = "",

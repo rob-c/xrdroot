@@ -140,7 +140,7 @@ class RooAbsPdf(RooAbsReal):
         RooFit caches its normalisation integrals the same way, recomputing one
         only when a parameter it depends on has changed.
         """
-        values = []
+        values: list[tuple[Any, ...]] = []
         for leaf in self.leaves():
             name = leaf.GetName()
             if name in names and not hasattr(

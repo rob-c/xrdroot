@@ -55,6 +55,11 @@ class RooDataHist(RooAbsData):
 
     # -- bins ---------------------------------------------------------------------
 
+    def _grid_weights(self) -> np.ndarray[Any, Any]:
+        """The bins' weights: a binned dataset always has them."""
+        assert self._weights is not None
+        return self._weights
+
     def _edges(self) -> list[np.ndarray[Any, Any]]:
         return [one.getBinning().array() for one in self._vars]
 
@@ -87,8 +92,9 @@ class RooDataHist(RooAbsData):
         bins = self._bin_of(columns)
         keep = bins >= 0
         weights = data.weights()[keep]
-        self._weights = self._weights + np.bincount(bins[keep], weights, len(self._weights))
-        self._sumw2 = self._sumw2 + np.bincount(bins[keep], weights**2, len(self._weights))
+        size = len(self._grid_weights())
+        self._weights = self._grid_weights() + np.bincount(bins[keep], weights, size)
+        self._sumw2 = self._sumw2 + np.bincount(bins[keep], weights**2, size)
 
     def _import(self, chosen: list[Any], histogram: Any, density: bool) -> None:
         """``importTH1``: the histogram's bins inside the variables' ranges, the ranges widened to
@@ -146,7 +152,7 @@ class RooDataHist(RooAbsData):
             bins = self._bin_of(
                 {one.GetName(): [args[0].find(one.GetName()).getVal()] for one in self._vars}
             )
-            return float(self._weights[bins[0]]) if bins[0] >= 0 else 0.0
+            return float(self._grid_weights()[bins[0]]) if bins[0] >= 0 else 0.0
         return super().weight()
 
     def numEntries(self) -> int:

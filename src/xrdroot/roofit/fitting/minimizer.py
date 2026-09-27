@@ -42,7 +42,7 @@ def first_step(par: Any) -> float:
             step = (high - value) / 2
         elif value - low < 2 * step:
             step = (value - low) / 2
-        return step if step != 0 else 0.1 * (high - low)
+        return float(step if step != 0 else 0.1 * (high - low))
     return 1.0
 
 

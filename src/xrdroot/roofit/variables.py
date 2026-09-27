@@ -96,10 +96,10 @@ class RooAbsRealLValue(RooAbsReal):
     def getBinningNames(self) -> list[str]:
         return ["", *self._shared]
 
-    def getMin(self, name: Any = None) -> float:
+    def getMin(self, name: Any = None) -> Any:  # an array, for a range whose end is a column
         return self.getBinning(name).lowBound()
 
-    def getMax(self, name: Any = None) -> float:
+    def getMax(self, name: Any = None) -> Any:  # an array, for a range whose end is a column
         return self.getBinning(name).highBound()
 
     def getRange(self, name: Any = None) -> tuple[float, float]:
@@ -112,10 +112,10 @@ class RooAbsRealLValue(RooAbsReal):
         return not is_infinite(self.getMax(name))
 
     def inRange(self, value: float, name: Any = None) -> bool:
-        return self.getMin(name) <= float(value) <= self.getMax(name)
+        return bool(self.getMin(name) <= float(value) <= self.getMax(name))
 
     def getBins(self, name: Any = None) -> int:
-        return self.getBinning(name).numBins()
+        return int(self.getBinning(name).numBins())
 
     def numBins(self, name: Any = None) -> int:
         return self.getBins(name)

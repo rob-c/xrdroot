@@ -146,7 +146,7 @@ class RooPlot(RooPrintable):
     def getPlotVar(self) -> Any:
         return self.var
 
-    def getFitRangeNEvt(self, low: Any = None, high: Any = None) -> float:
+    def getFitRangeNEvt(self, low: Any = None, high: Any = None) -> Any:
         if low is None or self.norm_obj is None:
             return self.norm_events
         return (

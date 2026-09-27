@@ -62,7 +62,7 @@ def _uniform(var: Any) -> float:
     if hasattr(var, "lookupIndex"):
         labels = list(var.states())
         return float(var.states()[labels[rng.Integer(len(labels))]])
-    return var.getMin() + rng.Rndm() * (var.getMax() - var.getMin())
+    return float(var.getMin() + rng.Rndm() * (var.getMax() - var.getMin()))
 
 
 class Generator:

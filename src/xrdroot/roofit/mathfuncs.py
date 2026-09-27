@@ -185,11 +185,11 @@ def _cb_tail(tmin: float, tmax: float | None, sig: float, abs_alpha: float, n: f
     if abs(n - 1.0) < 1.0e-05:
         lmin = math.log(b - tmin)
         lmax = math.log(r) if tmax is None else math.log(b - tmax)
-        return (
+        return float(
             a * r ** (n - 1) * sig * (lmin - lmax + 0.5 * (1.0 - n) * (lmin * lmin - lmax * lmax))
         )
     upper = 1.0 if tmax is None else (r / (b - tmax)) ** (n - 1.0)
-    return a * sig / (1.0 - n) * ((r / (b - tmin)) ** (n - 1.0) - upper)
+    return float(a * sig / (1.0 - n) * ((r / (b - tmin)) ** (n - 1.0) - upper))
 
 
 def bifurgauss_integral(low: float, high: float, mean: float, left: float, right: float) -> float:

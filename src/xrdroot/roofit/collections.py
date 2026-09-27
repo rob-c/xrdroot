@@ -9,7 +9,7 @@ Python iterable stand where one is wanted - ``{x}``, ``[a0, a1]`` - so
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
-from typing import Any
+from typing import Any, TypeVar
 
 from .printing import (
     RooPrintable,
@@ -30,6 +30,9 @@ def _flat(items: Iterable[Any]) -> Iterator[Any]:
         else:
             yield item
 
+
+#: A collection of the same kind as the one a method is called on.
+_C = TypeVar("_C", bound="RooAbsCollection")
 
 class RooAbsCollection(RooPrintable):
     """What a set and a list share: their members, found by name or position."""
@@ -231,11 +234,11 @@ class RooAbsCollection(RooPrintable):
     def sort(self, reverse: bool = False) -> None:
         self._list.sort(key=lambda one: one.GetName(), reverse=reverse)
 
-    def sorted_copy(self) -> RooAbsCollection:
+    def sorted_copy(self: _C) -> _C:
         """The same members sorted by name, as ``getParameters`` hands them back."""
         made = self._like(sorted(self._list, key=lambda one: one.GetName()))
         made._name = self._name
-        return made
+        return made  # type: ignore[return-value]
 
     def isConstant(self) -> bool:
         return all(one.isConstant() for one in self._list)

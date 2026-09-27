@@ -172,7 +172,7 @@ class RooDataSet(RooAbsData):
             other.weights() if other.isWeighted() or self.isWeighted() else None,
         )
 
-    def reduce(self, *args: Any, **kwargs: Any) -> RooDataSet:
+    def reduce(self, *args: Any, **kwargs: Any) -> Any:
         """A new dataset of fewer variables (``SelectVars``), events (``Cut``, ``CutRange``,
         ``EventRange``)."""
         from .reducing import reduced
