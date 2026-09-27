@@ -221,7 +221,6 @@ def test_a_simultaneous_likelihood_is_each_channels_with_roots_log_term() -> Non
 CONSTRAINED = (0.4460531001250796, 1.913884680325121, 0.09428786806491227, 0.1922650951844156)
 
 
-@pytest.mark.xfail(strict=True, reason="a constraint is normalised over its constants too")
 def test_an_external_constraint_pulls_the_fit_as_roots_does() -> None:
     """``ExternalConstraints`` multiplies the likelihood by the constraint, normalised over the
     fit's parameters (ROOT: "normalize constraints with respect to the parameters (m,s)")."""
@@ -234,7 +233,6 @@ def test_an_external_constraint_pulls_the_fit_as_roots_does() -> None:
     assert result.minNll() == pytest.approx(102.17618960920294, abs=1e-8)
 
 
-@pytest.mark.xfail(strict=True, reason="a factor of parameters alone is scored once per event")
 def test_a_product_with_a_factor_of_parameters_only_takes_it_as_a_constraint() -> None:
     """ROOT finds ``mc`` in ``g * mc`` depends on no observable and takes it once, as a
     constraint - the same fit as ``ExternalConstraints``."""
