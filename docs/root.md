@@ -1236,6 +1236,81 @@ are - files or arrays - as their structural similarity, 1 for the same
 picture: scikit-image's when it is installed, else the same formula in
 NumPy.
 
+## RooFit
+
+`ROOT.RooRealVar`, `ROOT.RooGaussian`, `ROOT.RooFit.Save()` and the rest of
+RooFit are here too, over an engine of its own, `xrdroot.roofit`, which has
+only NumPy, this library's fitting, histograms, graphs and random numbers
+under it. A RooFit script runs unchanged, and what it prints is what ROOT
+6.40 prints: the same generated events, the same fit, the same
+`RooFitResult`, the same messages in the same order.
+
+```python
+import xrdroot.pyroot as ROOT
+
+x = ROOT.RooRealVar("x", "x", -10, 10)
+mean = ROOT.RooRealVar("mean", "mean of gaussian", 1, -10, 10)
+sigma = ROOT.RooRealVar("sigma", "width of gaussian", 1, 0.1, 10)
+gauss = ROOT.RooGaussian("gauss", "gaussian PDF", x, mean, sigma)
+
+data = gauss.generate({x}, 10000)          # RooRandom's TRandom3: ROOT's events
+r = gauss.fitTo(data, Save=True, PrintLevel=-1)
+r.Print()                                  # ROOT's table, to the digit
+frame = x.frame(Title="Gaussian pdf")
+data.plotOn(frame)
+gauss.plotOn(frame, LineColor="r")
+gauss.paramOn(frame)
+frame.Draw()
+```
+
+**Why the numbers are ROOT's.**
+- **Densities** are computed as RooFit's batch kernels compute them, and normalised by
+  RooFit's own closed forms. Where there is no closed form, the integral is numerical, by
+  RooFit's integrators ported step for step: Romberg in one dimension, adaptive cubature in
+  more. Each is announced where RooFit announces one.
+- **Likelihoods** are summed with RooFit's Kahan sum.
+  - A value that cannot be had - a negative density, say - is packed as RooFit packs it, and
+    scored as it scores it.
+  - The minimiser is Minuit2 through iminuit, set up as RooFit sets it up: its step sizes,
+    tolerance, strategy, call limit and error level.
+- **Generation** draws from `RooRandom`'s own `TRandom3` in RooFit's order, through the same
+  generator contexts:
+  - a density's own generator where it has one;
+  - TFoam, ported bit for bit, where it has none;
+  - accept-reject for a density that is conditional on prototype data.
+- **Plots** follow `plotOn`'s option list as RooFit reads it, warnings about repeated options
+  included. A curve is sampled adaptively, as `RooCurve` samples one, and data carry
+  Poisson intervals.
+
+**What it has.**
+- **Variables and functions**: `RooRealVar` (named ranges, and ranges with functions for
+  ends), `RooConstVar`, `RooCategory` and its derived kinds, `RooFormulaVar`,
+  `RooGenericPdf`, `RooPolyVar`, `RooProduct` and `RooAddition`.
+- **Densities**: the standard shapes (Gaussian, exponential, polynomial, Chebychev, ARGUS,
+  Crystal Ball, Breit-Wigner, Landau, Poisson...).
+- **Compositions**: sums (`RooAddPdf`, recursive fractions too), products with conditional
+  factors, `RooExtendPdf`, `RooSimultaneous`, `RooRealSumPdf`, `RooHistPdf`,
+  `RooMultiVarGaussian`, and the resolution models and B decays.
+- **Data**: `RooDataSet` and `RooDataHist` (imported from trees, histograms or slices;
+  reduced, appended, binned, tabulated) and `createHistogram`.
+- **Fitting**: `fitTo` and its options, `createNLL`, `RooMinimizer` (MIGRAD, HESSE, MINOS)
+  and `RooFitResult`, including `createHessePdf`, `randomizePars` and `correlation`.
+- **Studies and plots**: `RooMCStudy`; `RooPlot` with components, ranges, slices,
+  projections over data, error bands, pulls, residuals and `paramOn`.
+- **The workspace**: `RooWorkspace` with its factory language (`SUM`, `PROD`, `EXPR`,
+  `SIMUL`...).
+- **Messages**: `RooMsgService`.
+
+**What it refuses.** A class or method RooFit has that this engine does not is refused by
+name, like the rest of the namespace: `ROOT has RooCustomizer; xrdroot.pyroot does not yet`.
+The same goes for, among others:
+- `RooNDKeysPdf`, `RooEffProd`, `RooLagrangianMorphFunc`, `RooMultiPdf`, `RooParamHistFunc`,
+  and the `RooMCStudy` add-on modules;
+- `RooAbsPdf.defaultIntegratorConfig` and the graph printers.
+
+Refusing is better than a curve or a fit that is almost ROOT's. A workspace read from a ROOT
+file is refused as well, because the file holds C++ code for it to compile.
+
 ## Columns
 
 ```python
