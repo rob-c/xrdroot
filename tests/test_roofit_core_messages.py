@@ -268,3 +268,11 @@ def test_the_module_functions_print_through_the_one_service(capsys: Any) -> None
 def test_each_level_has_the_name_roots_prefix_gives_it(level: int, name: str) -> None:
     """The prefix spells a level as ``RooFit::MsgLevel`` names it."""
     assert messages.LEVELS[level] == name
+
+
+@pytest.mark.xfail(strict=True, reason="addStream reads the tag from LabelName, not TagName")
+def test_a_stream_restricted_by_tag_name_takes_only_tagged_objects() -> None:
+    """ROOT's option is ``RooFit::TagName("tag")``; the stream must then list ``TagLabel``."""
+    service = RooMsgService()
+    index = service.addStream(DEBUG, RooCmdArg("TagName", "tag"))
+    assert service.getStream(index).tagName == "tag"
