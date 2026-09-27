@@ -9,6 +9,7 @@ where a number is Minuit's, it agrees to Minuit's tolerance.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any
 
@@ -17,6 +18,7 @@ import pytest
 from xrdroot.roofit.fitting.minimizer import RooMinimizer, as_set, cov_quality, first_step
 from xrdroot.roofit.fitting.minimizer import _status as status_of
 from xrdroot.roofit.pdfs.basic import RooGaussian, RooPolynomial
+from xrdroot.roofit.printing import PRECISION
 from xrdroot.roofit.rng import generator
 from xrdroot.roofit.variables import RooRealVar
 
@@ -418,6 +420,16 @@ def test_the_call_count_adds_up_over_runs() -> None:
     assert minimizer.evalCounter() > first
 
 
+@pytest.fixture
+def _cout_precision() -> Iterator[None]:
+    """A verbose fit leaves ``std::cout`` at four digits, as ROOT's does, for the rest of the
+    process: put it back for the tests that follow."""
+    before = PRECISION[0]
+    yield
+    PRECISION[0] = before
+
+
+@pytest.mark.usefixtures("_cout_precision")
 def test_a_verbose_fit_says_each_parameter_it_moves_and_each_value_it_finds(capsys: Any) -> None:
     """``Verbose()`` shows the first steps RooFit picked and every point Minuit tried, in
     ROOT's text - its precision dropping to four digits after the first value."""
@@ -468,6 +480,7 @@ def test_a_parameter_without_limits_steps_by_one() -> None:
     assert first_step(par) == 1.0
 
 
+@pytest.mark.usefixtures("_cout_precision")
 def test_a_fit_at_a_parameter_limit_starts_inside_it_as_minuit_does(capsys: Any) -> None:
     """Minuit2 moves a value on a limit in by a tenth of its step before the first call: ROOT's
     first points are 4.9 and -4.9, not the limits."""
