@@ -520,10 +520,11 @@ class Channels:
 
         self.x = RooRealVar("x", "x", 0, -10, 10)
         self.x.setBins(20)
-        self.g1 = RooGaussian(
-            "g1", "g1", self.x, RooRealVar("m1", "m1", 1), RooRealVar("s1", "", 1.5)
-        )
-        self.e = RooExponential("e", "e", self.x, RooRealVar("c", "c", -0.2, -2, -0.01))
+        self.m1 = RooRealVar("m1", "m1", 1, -5, 5)
+        self.s1 = RooRealVar("s1", "s1", 1.5, 0.1, 10)
+        self.c = RooRealVar("c", "c", -0.2, -2, -0.01)
+        self.g1 = RooGaussian("g1", "g1", self.x, self.m1, self.s1)
+        self.e = RooExponential("e", "e", self.x, self.c)
         self.cat = RooCategory("cat", "cat", {"phys": 0, "ctl": 1})
         self.sim = RooSimultaneous("sim", "sim", {"phys": self.g1, "ctl": self.e}, self.cat)
         generator().SetSeed(4357)
@@ -652,3 +653,170 @@ def test_a_densitys_parameters_are_boxed_on_the_frame_as_root_writes_them() -> N
     assert params.PAVE[0] is params.Pave
     with pytest.raises(AttributeError):
         plain.GetNothing  # noqa: B018
+
+
+class Plane:
+    """``gx(x) gy(y)`` and 200 of its events: data with an observable the frame's is not."""
+
+    def __init__(self) -> None:
+        from xrdroot.roofit.pdfs.prodpdf import RooProdPdf
+
+        self.x = RooRealVar("x", "x", 0.5, -10, 10)
+        self.x.setBins(20)
+        self.x.setRange("a", -8, -2)
+        self.x.setRange("b", 1, 4)
+        self.y = RooRealVar("y", "y", 1.5, -5, 5)
+        sx, sy = RooRealVar("sx", "sx", 2, 0.1, 10), RooRealVar("sy", "sy", 1.5, 0.1, 10)
+        self.gx = RooGaussian("gx", "gx", self.x, RooRealVar("mx", "mx", 1), sx)
+        self.gy = RooGaussian("gy", "gy", self.y, RooRealVar("my", "my", 0.5), sy)
+        self.prod = RooProdPdf("prod", "prod", [self.gx, self.gy])
+        generator().SetSeed(4357)
+        self.data = self.prod.generate([self.x, self.y], 200)
+        self.frame = self.x.frame()
+        self.data.plotOn(self.frame)
+
+
+def test_a_product_on_a_frame_of_one_observable_integrates_the_other_out(capsys: Any) -> None:
+    """The data have ``y`` too: the curve is the product integrated over ``y``, and says so."""
+    p = Plane()
+    capsys.readouterr()
+    p.prod.plotOn(p.frame)
+    assert (
+        "[#1] INFO:Plotting -- RooAbsReal::plotOn(prod) plot on x integrates over variables (y)"
+        in capsys.readouterr().out
+    )
+    curve = p.frame.getObject(1)
+    assert curve.GetN() == 72
+    assert heights(curve) == pytest.approx(
+        [0.009847661683, 21.7896206, 38.1279411, 25.40053019, 0.02816016818], rel=REL
+    )
+    p.prod.plotOn(p.frame, Range="a,b")
+    a, b = p.frame.getObject(2), p.frame.getObject(3)
+    assert (a.GetN(), b.GetN()) == (31, 24)
+    assert heights(a, (-6.0, -3.0)) == pytest.approx([0.09230457581, 5.571589548], rel=REL)
+    assert heights(b, (1.5, 3.5)) == pytest.approx([39.80391292, 18.81941432], rel=REL)
+
+
+@pytest.mark.xfail(
+    **PENDING, reason="curves.py:220-221: ROOT names a projection prod_Int[y]_Norm[x,y]"
+)
+def test_a_projection_is_named_after_the_integral_it_takes_as_root_names_it() -> None:
+    """ROOT calls the curve of ``prod`` integrated over ``y`` ``prod_Int[y]_Norm[x,y]``."""
+    p = Plane()
+    p.prod.plotOn(p.frame)
+    assert p.frame.nameOf(1) == "prod_Int[y]_Norm[x,y]"
+
+
+def test_a_product_of_factors_sharing_an_observable_is_drawn_over_a_range() -> None:
+    """``gx(x) e(x)`` normalised numerically, drawn over ``[-3, 3]`` for one event per bin."""
+    from xrdroot.roofit.pdfs.basic import RooExponential
+    from xrdroot.roofit.pdfs.prodpdf import RooProdPdf
+
+    p = Plane()
+    e = RooExponential("ex", "ex", p.x, RooRealVar("c", "c", -0.2, -2, -0.01))
+    shared = RooProdPdf("shared", "shared", [p.gx, e])
+    frame = p.x.frame()
+    shared.plotOn(frame, Range=(-3.0, 3.0))
+    curve = frame.getObject(0)
+    assert curve.GetN() == 36
+    assert heights(curve, (-2.0, 0.4, 2.0)) == pytest.approx(
+        [0.1260623831, 0.229457551, 0.1538194145], rel=1e-8
+    )
+
+
+def test_components_inside_a_sum_of_sums_are_drawn_with_the_sums_that_hold_them(
+    capsys: Any,
+) -> None:
+    """``Components("g1")`` of ``outer = f inner + (1-f) e``: ``inner`` is selected indirectly."""
+    from xrdroot.roofit.pdfs.basic import RooExponential
+
+    m = Model()
+    e = RooExponential("e", "e", m.x, RooRealVar("c", "c", -0.2, -2, -0.01))
+    g2 = RooGaussian("g2", "g2", m.x, RooRealVar("m2", "m2", -2, -5, 5), m.s1)
+    inner = RooAddPdf("inner", "inner", [m.g1, g2], [RooRealVar("f2", "f2", 0.5, 0, 1)])
+    outer = RooAddPdf("outer", "outer", [inner, e], [m.f])
+    frame = m.x.frame()
+    capsys.readouterr()
+    outer.plotOn(frame, Components="g1")
+    outer.plotOn(frame, Components="inner")
+    prefix = "[#1] INFO:Plotting -- RooAbsPdf::plotOn(outer) "
+    assert capsys.readouterr().out.splitlines() == [
+        prefix + "directly selected PDF components: (g1)",
+        prefix + "indirectly selected PDF components: (inner)",
+        prefix + "directly selected PDF components: (inner)",
+        prefix + "indirectly selected PDF components: (g1,g2)",
+    ]
+    g1, whole = frame.getObject(0), frame.getObject(1)
+    assert (g1.GetN(), whole.GetN()) == (68, 82)
+    assert heights(g1) == pytest.approx(
+        [2.503518648e-08, 0.01816161857, 0.04907927187, 0.02394051573, 2.268951105e-07], rel=REL
+    )
+    assert heights(whole) == pytest.approx(
+        [0.0001493242911, 0.06426106277, 0.06383325261, 0.02415883694, 2.268975761e-07], rel=REL
+    )
+
+
+def test_a_step_is_sampled_down_to_the_smallest_step_a_curve_takes() -> None:
+    """At ``Precision(1e-12)`` a jump is halved until the step is a billionth of the range."""
+    from xrdroot.roofit.functions import RooFormulaVar
+
+    m = Model()
+    step = RooFormulaVar("step", "step", "(x>0.3)*1.0+1.0", [m.x])
+    frame = m.x.frame()
+    step.plotOn(frame, Precision=1e-12)
+    assert frame.getObject(0).GetN() == 50
+
+
+def test_an_error_band_round_a_function_is_the_propagation_of_the_fits_errors() -> None:
+    """``RooAbsReal::plotOn`` with ``VisualizeError``: ``m1 x + s1`` and its band, as ROOT's."""
+    from xrdroot.roofit.functions import RooFormulaVar
+
+    m = Model()
+    generator().SetSeed(4357)
+    data = m.g1.generate([m.x], 200)
+    result = m.g1.fitTo(data, PrintLevel=-1, Save=True)
+    line = RooFormulaVar("fn", "fn", "m1*x+s1", [m.x, m.m1, m.s1])
+    frame = m.x.frame()
+    line.plotOn(frame, VisualizeError=result)
+    band = frame.getObject(0)
+    assert band.GetN() == 52
+    assert band_points(band) == pytest.approx([-3.4323194, 2.4874468, 1.4588458], rel=1e-7)
+
+
+@pytest.mark.xfail(
+    **PENDING, reason="realplot.py:38: with DrawOption('P') ROOT draws the band as bin-centred bars"
+)
+def test_an_error_band_drawn_as_points_is_a_point_per_bin_as_root_draws_it() -> None:
+    """``VisualizeError`` with ``DrawOption("P")``: ROOT's 20 points, one per bin."""
+    from xrdroot.roofit.functions import RooFormulaVar
+
+    m = Model()
+    generator().SetSeed(4357)
+    data = m.g1.generate([m.x], 200)
+    result = m.g1.fitTo(data, PrintLevel=-1, Save=True)
+    line = RooFormulaVar("fn", "fn", "m1*x+s1", [m.x, m.m1, m.s1])
+    frame = m.x.frame()
+    line.plotOn(frame, VisualizeError=result, DrawOption="P")
+    assert frame.getObject(0).GetN() == 20
+
+
+def test_a_simultaneous_density_is_drawn_over_a_range_and_with_an_error_band() -> None:
+    """``ProjWData`` with ``Range(-3, 3)``, and with ``VisualizeError`` of a simultaneous fit."""
+    c = Channels()
+    c.m1.setVal(0.5)
+    c.c.setVal(-0.5)
+    result = c.sim.fitTo(c.data, PrintLevel=-1, Save=True)
+    assert (c.m1.getVal(), c.c.getVal()) == pytest.approx(
+        (0.900439836041, -0.205447100448), rel=1e-7
+    )
+    assert result.minNll() == pytest.approx(554.849098372, rel=1e-10)
+    c.sim.plotOn(c.frame, ProjWData=([c.cat], c.data), Range=(-3.0, 3.0))
+    curve = c.frame.getObject(1)
+    assert curve.GetN() == 48
+    assert heights(curve, (-2.0, 0.4, 2.0)) == pytest.approx(
+        [7.695168375, 31.91583307, 25.39912006], rel=1e-8
+    )
+    c.sim.plotOn(c.frame, ProjWData=([c.cat], c.data), VisualizeError=result)
+    band = c.frame.getObject(2)
+    assert (band.GetName(), band.GetN()) == ("sim_Norm[x]_errorband", 164)
+    assert band.y[5] == pytest.approx(13.290092, rel=1e-7)
