@@ -1,4 +1,4 @@
-"""``RooDecay`` and ``RooBMixDecay``: an exponential decay, and B0 mixing, convolved with a resolution.
+"""``RooDecay`` and ``RooBMixDecay``: an exponential decay, and B0 mixing, with a resolution.
 
 ``RooDecay`` is one basis, ``exp(-t/tau)`` for positive times, ``exp(t/tau)``
 flipped or ``exp(-|t|/tau)`` on both sides. ``RooBMixDecay`` adds the
@@ -72,10 +72,22 @@ class RooDecay(RooAbsAnaConvPdf):
 
 
 class RooBMixDecay(RooAbsAnaConvPdf):
-    """``RooBMixDecay``: B0-B0bar mixing - ``(1 - tag dw) + mix (1 - 2w) cos(dm t)`` times the decay."""
+    """``RooBMixDecay``: B0 mixing - ``(1 - tag dw) + mix (1 - 2w) cos(dm t)`` times the decay."""
 
-    def __init__(self, name: Any, title: Any, t: Any, mixState: Any, tagFlav: Any, tau: Any, dm: Any,
-                 mistag: Any, delMistag: Any, model: Any, type: Any = 1) -> None:  # fmt: skip
+    def __init__(
+        self,
+        name: Any,
+        title: Any,
+        t: Any,
+        mixState: Any,
+        tagFlav: Any,
+        tau: Any,
+        dm: Any,
+        mistag: Any,
+        delMistag: Any,
+        model: Any,
+        type: Any = 1,
+    ) -> None:
         super().__init__(name, title, model, t)
         self._type = decay_type(type)
         self.mistag = self._proxy("mistag", ref(mistag))
@@ -110,7 +122,7 @@ class RooBMixDecay(RooAbsAnaConvPdf):
         return 2.0 * self.coef(index, ctx) if tag and not mix else 0.0
 
     def gen_code(self, direct: frozenset[str], static_ok: bool) -> tuple[int, frozenset[str]]:
-        """``getGenerator``: 4 for time, mixing and flavour, 3 without the flavour, 2 without the mixing."""
+        """``getGenerator``: 4 for time, mixing and flavour, 3 without flavour, 2 without mixing."""
         t, mix, tag = self.t.GetName(), self.mixState.GetName(), self.tagFlav.GetName()
         if t not in direct:
             return 0, frozenset()
@@ -123,7 +135,7 @@ class RooBMixDecay(RooAbsAnaConvPdf):
         return value_of(self.integrate(frozenset(names), {k: float(v) for k, v in states.items()}))
 
     def init_generator(self, code: int) -> None:
-        """``initGenerator``: the fractions of mixed events, and of B0 among each, from the integrals."""
+        """``initGenerator``: the fraction of mixed events, and of B0 in each, from integrals."""
         t, mix, tag = self.t.GetName(), self.mixState.GetName(), self.tagFlav.GetName()
         if code == 2:
             self._fractions = (0.0, self._int({t}, **{tag: 1}) / self._int({t, tag}), 0.0, 0.0)
@@ -132,8 +144,12 @@ class RooBMixDecay(RooAbsAnaConvPdf):
         elif code == 4:
             total, mixed = self._int({t, mix, tag}), self._int({t, tag}, **{mix: -1})
             unmixed_b0 = self._int({t}, **{mix: 1, tag: 1})
-            self._fractions = (mixed / total, 0.0, self._int({t}, **{mix: -1, tag: 1}) / mixed,
-                               unmixed_b0 / (total - mixed))  # fmt: skip
+            self._fractions = (
+                mixed / total,
+                0.0,
+                self._int({t}, **{mix: -1, tag: 1}) / mixed,
+                unmixed_b0 / (total - mixed),
+            )
 
     def _draw_states(self, code: int, rng: Any) -> dict[str, float]:
         mix_frac, flav_frac, flav_mixed, flav_unmixed = self._fractions

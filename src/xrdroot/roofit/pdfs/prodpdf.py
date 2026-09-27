@@ -95,10 +95,10 @@ class RooProdPdf(RooAbsPdf):
         if rng and "," in str(rng):  # a product of sums is not a sum of products: part by part
             return sum(self.fraction(names, ctx, nset, part, norm_rng)
                        for part in str(rng).split(",") if part)  # fmt: skip
-        if self._conditional and self._factorizes(nset):
-            return prodcond.fraction(self, frozenset(names), ctx, nset, rng, norm_rng)
-        if not self._factorizes(nset) or self._conditional:
+        if not self._factorizes(nset):
             return super().fraction(names, ctx, nset, rng, norm_rng)
+        if self._conditional:
+            return prodcond.fraction(self, frozenset(names), ctx, nset, rng, norm_rng)
         found: Any = 1.0
         for pdf in self.pdfs:
             mine = self.factor_nset(pdf, nset)

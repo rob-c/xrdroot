@@ -65,8 +65,7 @@ def generate(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
 
     variables, count, options = parse(args, kwargs)
     feed = ProtoFeed(pdf, options.get("ProtoData"))
-    names = frozenset(one.GetName() for one in variables) & pdf.dependents() - feed.names
-    uniform = sorted((one for one in variables if one.GetName() not in names), key=lambda v: v.GetName(), reverse=True)
+    names, uniform = _split(pdf, variables, feed.names)
     for _ in range(2):  # the generator's own copy of the density, and its context's
         announce(pdf, names)
     context = feed.context(pdf, names)
@@ -77,6 +76,24 @@ def generate(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     variables = variables + feed.extra(variables)
     data = RooDataSet(name, f"Generated From {pdf.GetName()}", variables)
     saved = [(one, one.getVal()) for one in pdf.leaves() if one.GetName() in names | feed.names]
+    rows = _draw(context, total, feed, uniform)
+    for one, value in saved:
+        one.load_value(value)
+    data.add_columns({one.GetName(): np.array([r[one.GetName()] for r in rows], dtype=np.float64)
+                      for one in variables})  # fmt: skip
+    return data
+
+
+def _split(pdf: Any, variables: list[Any], known: frozenset[str]) -> tuple[frozenset[str], list[Any]]:
+    """The variables the density generates, and those it does not depend on - drawn uniformly."""
+    names = frozenset(one.GetName() for one in variables) & pdf.dependents() - known
+    uniform = sorted((one for one in variables if one.GetName() not in names | known),
+                     key=lambda v: v.GetName(), reverse=True)  # fmt: skip
+    return names, uniform
+
+
+def _draw(context: Any, total: int, feed: Any, uniform: list[Any]) -> list[dict[str, float]]:
+    """The events: each prototype event's values, then the context's draws, then the uniform ones."""
     rows = []
     for i in range(total):
         known = feed.load(i)
@@ -84,11 +101,7 @@ def generate(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         row.update(known)
         row.update({one.GetName(): _uniform(one) for one in uniform})
         rows.append(row)
-    for one, value in saved:
-        one.load_value(value)
-    data.add_columns({one.GetName(): np.array([r[one.GetName()] for r in rows], dtype=np.float64)
-                      for one in variables})  # fmt: skip
-    return data
+    return rows
 
 
 def generate_binned(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:

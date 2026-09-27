@@ -1,4 +1,4 @@
-"""``RooAbsAnaConvPdf``: a density made of basis functions, each convolved with a resolution in closed form.
+"""``RooAbsAnaConvPdf``: a density of basis functions, each convolved with a resolution.
 
 A decay is ``sum_k coef_k * basis_k(t)``; convolved with a resolution
 model it is ``sum_k coef_k * (basis_k (x) R)(t)``, and the model knows
@@ -46,7 +46,7 @@ def _is_category(arg: Any) -> bool:
 
 
 class CoefVar(RooAbsReal):
-    """``RooConvCoefVar``: one basis function's coefficient, as a function that can be integrated."""
+    """``RooConvCoefVar``: one basis function's coefficient, as a function to integrate."""
 
     def __init__(self, pdf: Any, index: int) -> None:
         super().__init__(f"{pdf.GetName()}_coefVar_{index}", "coefVar")
@@ -58,10 +58,10 @@ class CoefVar(RooAbsReal):
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         cats = frozenset(one.GetName() for one in self.leaves() if _is_category(one)) & names
-        return cats | self.pdf.coef_analytic_names(self.index, names, rng)
+        return cats | frozenset(self.pdf.coef_analytic_names(self.index, names, rng))
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
-        """The closed form over what the density has one for, summed over the other categories' states."""
+        """The closed form where the density has one, summed over the other categories' states."""
         closed = self.pdf.coef_analytic_names(self.index, names, rng) & names
         summed = [one for one in self.leaves() if one.GetName() in names - closed]
         total: Any = 0.0
@@ -92,10 +92,15 @@ class RooAbsAnaConvPdf(RooAbsPdf):
         return self._cvar
 
     def declareBasis(self, expression: str, params: Any) -> int:
-        """``declareBasis``: the basis ``expression`` of the time and ``params``, convolved; its index."""
+        """``declareBasis``: the basis ``expression`` of the time and ``params``; its index."""
         if not self.model.isBasisSupported(expression):
-            log(self, ERROR, "InputArguments", f"RooAbsAnaConvPdf::declareBasis({self.GetName()}): resolution "
-                f"model {self.model.GetName()} doesn't support basis function {expression}")  # fmt: skip
+            log(
+                self,
+                ERROR,
+                "InputArguments",
+                f"RooAbsAnaConvPdf::declareBasis({self.GetName()}): resolution "
+                f"model {self.model.GetName()} doesn't support basis function {expression}",
+            )
             return -1
         basis = make_basis(self, expression, params)
         self._basis_list.append(basis)
@@ -103,7 +108,7 @@ class RooAbsAnaConvPdf(RooAbsPdf):
         return len(self.convs) - 1
 
     def with_model(self, model: Any) -> Any:
-        """``changeModel``: a copy convolved with ``model`` instead - as a generator uses the truth model."""
+        """``changeModel``: a copy with ``model`` - as a generator uses the truth model."""
         made = self.clone()
         made.model = model
         made.convs = RooArgList([model.convolution(basis, made) for basis in self._basis_list])
@@ -124,11 +129,11 @@ class RooAbsAnaConvPdf(RooAbsPdf):
         return float(np.asarray(self.coef(index, {})))
 
     def coef_analytic_names(self, index: int, names: frozenset[str], rng: Any) -> frozenset[str]:
-        """``getCoefAnalyticalIntegral``: which of ``names`` the coefficients integrate in closed form."""
+        """``getCoefAnalyticalIntegral``: which ``names`` the coefficients have closed forms for."""
         return frozenset()
 
     def coef_analytic(self, index: int, names: frozenset[str], ctx: Context, rng: Any) -> Any:
-        """``coefAnalyticalIntegral``: the coefficient integrated over ``names``; itself over none."""
+        """``coefAnalyticalIntegral``: the coefficient integrated over ``names``, or itself."""
         return self.coef(index, ctx)
 
     def coef_servers(self) -> list[Any]:
@@ -180,13 +185,13 @@ class RooAbsAnaConvPdf(RooAbsPdf):
     def normalized_name(self, observables: Any, rng: Any = None) -> str:
         """A single convolution is what RooFit's fit evaluates, so its name is the one printed."""
         if len(self.convs) == 1:
-            return self.convs[0].normalized_name(observables, rng)
+            return str(self.convs[0].normalized_name(observables, rng))
         return super().normalized_name(observables, rng)
 
     # -- generation ---------------------------------------------------------------
 
     def is_direct_gen_safe(self, name: str) -> bool:
-        """``isDirectGenSafe``: the time with the truth model; else a direct input nothing else uses."""
+        """``isDirectGenSafe``: the time with the truth model; else an input nothing else uses."""
         if name == self._cvar.GetName() and self.model.is_truth():
             return True
         if not any(one.GetName() == name for one in self.servers()):

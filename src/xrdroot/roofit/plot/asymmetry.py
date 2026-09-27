@@ -35,18 +35,33 @@ def plot_asymmetry(pdf: Any, frame: Any, options: Commands) -> Any:
     category = options.get("Asymmetry")
     name, var = category.GetName(), frame.getPlotVar()
     if name not in pdf.dependents():
-        log(pdf, ERROR, "Plotting", f"RooAbsReal::plotAsymOn({pdf.GetName()}) function doesn't depend on "
-            f"asymmetry category {name}")  # fmt: skip
+        log(
+            pdf,
+            ERROR,
+            "Plotting",
+            f"RooAbsReal::plotAsymOn({pdf.GetName()}) function doesn't depend on "
+            f"asymmetry category {name}",
+        )
         return frame
     if not _is_sign_type(category):
-        log(pdf, ERROR, "Plotting", f"RooAbsReal::plotAsymOn({pdf.GetName()}) asymmetry category must have 2 "
-            "or 3 states with index values -1,0,1")  # fmt: skip
+        log(
+            pdf,
+            ERROR,
+            "Plotting",
+            f"RooAbsReal::plotAsymOn({pdf.GetName()}) asymmetry category must have 2 "
+            "or 3 states with index values -1,0,1",
+        )
         return frame
     seen = view(pdf, frame, options, "plotAsymOn")
     projected = [one for one in seen.projected if one != name]
     if projected:
-        log(pdf, INFO, "Plotting", f"RooAbsReal::plotAsymOn({pdf.GetName()}) plot on {var.GetName()} "
-            f"projects variables ({','.join(projected)})")  # fmt: skip
+        log(
+            pdf,
+            INFO,
+            "Plotting",
+            f"RooAbsReal::plotAsymOn({pdf.GetName()}) plot on {var.GetName()} "
+            f"projects variables ({','.join(projected)})",
+        )
     nset = frozenset([var.GetName(), name, *projected, *seen.sliced])
     scale = float(options.get("Normalization", 0, 1.0))
 
@@ -62,8 +77,14 @@ def plot_asymmetry(pdf: Any, frame: Any, options: Commands) -> Any:
         plus, minus = projection({**ctx, name: 1.0}), projection({**ctx, name: -1.0})
         return np.broadcast_to((plus - minus) / (plus + minus), np.shape(xs)) * scale
 
-    xs, ys = sample(asymmetry, frame.GetXmin(), frame.GetXmax(), frame.GetNbinsX(),
-                    float(options.get("Precision", 0, 1e-3)), True)  # fmt: skip
+    xs, ys = sample(
+        asymmetry,
+        frame.GetXmin(),
+        frame.GetXmax(),
+        frame.GetNbinsX(),
+        float(options.get("Precision", 0, 1e-3)),
+        True,
+    )
     curve = RooCurve(
         f"{pdf.GetName()}_Asym[{name}]", f"{name} Asymmetry of {pdf.GetTitle()}", xs, ys
     )

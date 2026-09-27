@@ -51,7 +51,7 @@ class View:
 
 
 def sliced(options: Commands) -> list[tuple[Any, str]]:
-    """The ``Slice`` options' categories and states - each category set to its state, as ROOT sets it."""
+    """The ``Slice`` options' categories and states - each set to its state, as ROOT sets it."""
     found: list[tuple[Any, str]] = []
     for one in options.every("Slice") + options.every("SliceCat"):
         pairs = (
@@ -65,17 +65,21 @@ def sliced(options: Commands) -> list[tuple[Any, str]]:
     return found
 
 
-def _projection_data(options: Commands) -> tuple[Any, bool]:
+def _projection_data(options: Commands) -> tuple[Any, bool, set[str]]:
+    """``ProjWData([set,] data[, binned])``: the data, whether to bin it, the variables to use."""
     args = options.args("ProjWData")
     if not args:
-        return None, False
+        return None, False, set()
     if hasattr(args[0], "numEntries"):
-        return args[0], bool(args[1]) if len(args) > 1 else False
-    return args[1], bool(args[2]) if len(args) > 2 else False
+        data, binned, wanted = args[0], args[1:2], None
+    else:
+        data, binned, wanted = args[1], args[2:3], {one.GetName() for one in as_list(args[0])}
+    names = {one.GetName() for one in as_list(data.get())}
+    return data, bool(binned and binned[0]), names if wanted is None else names & wanted
 
 
 def _projected(pdf: Any, frame: Any, held: set[str]) -> list[str]:
-    """``makeProjectionSet``: the frame's variables the density depends on, but its own and ``held``."""
+    """``makeProjectionSet``: the frame's variables the density has, but its own and ``held``."""
     plot_var, deps = frame.getPlotVar().GetName(), pdf.dependents()
     names = [one.GetName() for one in frame.norm_vars or ()]
     return [one for one in names if one != plot_var and one in deps and one not in held]
@@ -88,16 +92,19 @@ def _slice_set(pdf: Any, frame: Any, projected: list[str]) -> list[str]:
 
 
 def view(pdf: Any, frame: Any, options: Commands, function: str = "plotOn") -> View:
-    """``makeProjectionSet`` and the rest of ``RooAbsReal::plotOn``'s preprocessing, with its messages."""
+    """``makeProjectionSet`` and the rest of ``plotOn``'s preprocessing, with its messages."""
     made = View()
-    made.data, made.binned = _projection_data(options)
+    made.data, made.binned, data_vars = _projection_data(options)
     projected = _projected(pdf, frame, {category.GetName() for category, _ in sliced(options)})
     made.sliced = _slice_set(pdf, frame, projected)
     if made.sliced:
-        log(pdf, INFO, "Plotting", f"RooAbsReal::{function}({pdf.GetName()}) plot on "
-            f"{frame.getPlotVar().GetName()} represents a slice in ({','.join(made.sliced)})")  # fmt: skip
-    data = as_list(made.data.get()) if made.data is not None else []
-    data_vars = {one.GetName() for one in data}
+        log(
+            pdf,
+            INFO,
+            "Plotting",
+            f"RooAbsReal::{function}({pdf.GetName()}) plot on "
+            f"{frame.getPlotVar().GetName()} represents a slice in ({','.join(made.sliced)})",
+        )
     made.averaged = [one for one in projected if one in data_vars]
     made.projected = [one for one in projected if one not in data_vars]
     return made
@@ -105,6 +112,11 @@ def view(pdf: Any, frame: Any, options: Commands, function: str = "plotOn") -> V
 
 def announce_average(pdf: Any, frame: Any, made: View) -> None:
     if made.averaged:
-        log(pdf, INFO, "Plotting", f"RooAbsReal::plotOn({pdf.GetName()}) plot on "
+        log(
+            pdf,
+            INFO,
+            "Plotting",
+            f"RooAbsReal::plotOn({pdf.GetName()}) plot on "
             f"{frame.getPlotVar().GetName()} averages using data variables "
-            f"({','.join(made.averaged)})")  # fmt: skip
+            f"({','.join(made.averaged)})",
+        )

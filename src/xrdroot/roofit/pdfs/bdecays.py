@@ -23,7 +23,7 @@ from .decays import draw_time, inside, value
 
 __all__ = ["RooBCPEffDecay", "RooBCPGenDecay", "RooBDecay"]
 
-#: The exponential basis of each decay type - ``Flipped``'s with RooFit's own typo, which it refuses.
+#: The exponential basis of each decay type - ``Flipped``'s with RooFit's typo, which it refuses.
 CP_EXPONENTIAL = {0: "exp(-@0/@1)", 2: "exp(@0)/@1)", 1: "exp(-abs(@0)/@1)"}
 #: The time dependence of each decay type, which the oscillating bases multiply.
 SIDES = {0: "exp(-@0/@1)", 2: "exp(@0/@1)", 1: "exp(-abs(@0)/@1)"}
@@ -31,6 +31,13 @@ SIDES = {0: "exp(-@0/@1)", 2: "exp(@0/@1)", 1: "exp(-abs(@0)/@1)"}
 
 class _TaggedCP(RooAbsAnaConvPdf):
     """What the two CP decays share: three bases, a tag, and the tag drawn from its B0 fraction."""
+
+    #: The inputs each CP decay declares - the time, the tag, lifetime and frequency - and its type.
+    t: Any
+    tag: Any
+    tau: Any
+    dm: Any
+    _type: int
 
     def _declare(self) -> None:
         params = [self.tau, self.dm]
@@ -78,11 +85,25 @@ class _TaggedCP(RooAbsAnaConvPdf):
 
 
 class RooBCPEffDecay(_TaggedCP):
-    """``RooBCPEffDecay``: CP violation with ``|lambda|`` and ``Im lambda``, B0/B0bar efficiencies."""
+    """``RooBCPEffDecay``: CP violation of ``|lambda|`` and ``Im lambda``, B0/B0bar efficiencies."""
 
-    def __init__(self, name: Any, title: Any, t: Any, tag: Any, tau: Any, dm: Any, avgMistag: Any,
-                 CPeigenval: Any, absLambda: Any, argLambda: Any, effRatio: Any, delMistag: Any,
-                 model: Any, type: Any = 1) -> None:  # fmt: skip
+    def __init__(
+        self,
+        name: Any,
+        title: Any,
+        t: Any,
+        tag: Any,
+        tau: Any,
+        dm: Any,
+        avgMistag: Any,
+        CPeigenval: Any,
+        absLambda: Any,
+        argLambda: Any,
+        effRatio: Any,
+        delMistag: Any,
+        model: Any,
+        type: Any = 1,
+    ) -> None:
         super().__init__(name, title, model, t)
         self.absLambda = self._proxy("absLambda", ref(absLambda))
         self.argLambda = self._proxy("argLambda", ref(argLambda))
@@ -124,10 +145,24 @@ class RooBCPEffDecay(_TaggedCP):
 
 
 class RooBCPGenDecay(_TaggedCP):
-    """``RooBCPGenDecay``: CP violation with the ``C`` and ``S`` coefficients and a tag asymmetry ``mu``."""
+    """``RooBCPGenDecay``: CP violation of coefficients ``C`` and ``S``, a tag asymmetry ``mu``."""
 
-    def __init__(self, name: Any, title: Any, t: Any, tag: Any, tau: Any, dm: Any, avgMistag: Any,
-                 avgC: Any, avgS: Any, delMistag: Any, mu: Any, model: Any, type: Any = 1) -> None:  # fmt: skip
+    def __init__(
+        self,
+        name: Any,
+        title: Any,
+        t: Any,
+        tag: Any,
+        tau: Any,
+        dm: Any,
+        avgMistag: Any,
+        avgC: Any,
+        avgS: Any,
+        delMistag: Any,
+        mu: Any,
+        model: Any,
+        type: Any = 1,
+    ) -> None:
         super().__init__(name, title, model, t)
         self.C = self._proxy("C", ref(avgC))
         self.S = self._proxy("S", ref(avgS))
@@ -141,14 +176,14 @@ class RooBCPGenDecay(_TaggedCP):
         self._type = decay_type(type)
         self._declare()
 
-    def _parts(self, tag: Any, ctx: Context) -> tuple[Any, Any]:
+    def _dilutions(self, tag: Any, ctx: Context) -> tuple[Any, Any]:
         dw, w, mu = self.delMistag.compute(ctx), self.avgMistag.compute(ctx), self.mu.compute(ctx)
         return (1 - tag * dw + mu * tag * (1.0 - 2.0 * w)), (
             tag * (1 - 2 * w) + mu * (1.0 - tag * dw)
         )
 
     def coef(self, index: int, ctx: Context) -> Any:
-        flat, oscillating = self._parts(self.tag.compute(ctx), ctx)
+        flat, oscillating = self._dilutions(self.tag.compute(ctx), ctx)
         if index == self._basis_exp:
             return flat
         if index == self._basis_sin:
@@ -169,17 +204,31 @@ class RooBCPGenDecay(_TaggedCP):
 
     def acceptance(self, tag: float, t: float) -> tuple[float, float]:
         s, c, dm = value(self.S), value(self.C), value(self.dm)
-        flat, oscillating = self._parts(tag, {})
+        flat, oscillating = self._dilutions(tag, {})
         max_dil = 1.0
         most = 2 + abs(max_dil * s) + abs(max_dil * c)
         return most, flat + oscillating * s * math.sin(dm * t) - oscillating * c * math.cos(dm * t)
 
 
 class RooBDecay(RooAbsAnaConvPdf):
-    """``RooBDecay``: ``f0 cosh(dG t/2) + f1 sinh(dG t/2) + f2 cos(dm t) + f3 sin(dm t)`` times the decay."""
+    """``RooBDecay``: the decay times ``f0 cosh(dG t/2) + f1 sinh(dG t/2) + f2 cos(dm t)
+    + f3 sin(dm t)``."""
 
-    def __init__(self, name: Any, title: Any, t: Any, tau: Any, dgamma: Any, f0: Any, f1: Any, f2: Any,
-                 f3: Any, dm: Any, model: Any, type: Any = 1) -> None:  # fmt: skip
+    def __init__(
+        self,
+        name: Any,
+        title: Any,
+        t: Any,
+        tau: Any,
+        dgamma: Any,
+        f0: Any,
+        f1: Any,
+        f2: Any,
+        f3: Any,
+        dm: Any,
+        model: Any,
+        type: Any = 1,
+    ) -> None:
         super().__init__(name, title, model, t)
         self.t = self._proxy("t", t)
         self.tau = self._proxy("tau", ref(tau))
@@ -188,8 +237,12 @@ class RooBDecay(RooAbsAnaConvPdf):
         self.dm = self._proxy("dm", ref(dm))
         self._type = decay_type(type)
         side = SIDES[self._type]
-        for form, params in (("cosh(@0*@2/2)", [self.tau, self.dgamma]), ("sinh(@0*@2/2)", [self.tau, self.dgamma]),
-                             ("cos(@0*@2)", [self.tau, self.dm]), ("sin(@0*@2)", [self.tau, self.dm])):  # fmt: skip
+        for form, params in (
+            ("cosh(@0*@2/2)", [self.tau, self.dgamma]),
+            ("sinh(@0*@2/2)", [self.tau, self.dgamma]),
+            ("cos(@0*@2)", [self.tau, self.dm]),
+            ("sin(@0*@2)", [self.tau, self.dm]),
+        ):
             self.declareBasis(f"{side}*{form}", params)
 
     def coef(self, index: int, ctx: Context) -> Any:
@@ -203,14 +256,14 @@ class RooBDecay(RooAbsAnaConvPdf):
         """Nothing to prepare: the time is drawn under an exponential envelope."""
 
     def _trial(self, rng: Any, gammamin: float, bounds: tuple[float, float]) -> Any:
-        """A time drawn under the envelope - on a random side if double sided - or None if outside."""
+        """A time drawn under the envelope - on a random side if double sided - or None outside."""
         t = -math.log(rng.Rndm()) / gammamin
         if self._type == 2 or (self._type == 1 and rng.Rndm() < 0.5):
             t *= -1
         return None if t < bounds[0] or t > bounds[1] else t
 
     def generate_event(self, code: int, rng: Any, bounds: Any = None) -> dict[str, float]:
-        """``generateEvent``: a time under the envelope ``exp(-gamma_min |t|)``, accepted by the density."""
+        """``generateEvent``: a time under the envelope ``exp(-gamma_min |t|)``, then accepted."""
         bounds = bounds or (self.t.getMin(), self.t.getMax())
         params = tuple(value(one) for one in (self.tau, self.dgamma, self.dm, *self.fs))
         gammamin = 1 / params[0] - abs(params[1]) / 2
@@ -220,17 +273,25 @@ class RooBDecay(RooAbsAnaConvPdf):
                 continue
             f, envelope = _density_and_envelope(t, params, gammamin)
             if f < 0 or envelope < f:
-                raise RuntimeError(f"RooBDecay::generateEvent({self.GetName()}): the density is below zero "
-                                   "or above its envelope, so no event can be drawn.")  # fmt: skip
+                raise RuntimeError(
+                    f"RooBDecay::generateEvent({self.GetName()}): the density is below zero "
+                    "or above its envelope, so no event can be drawn."
+                )
             if envelope * rng.Rndm() > f:
                 continue
             return {self.t.GetName(): t}
 
 
-def _density_and_envelope(t: float, params: tuple[float, ...], gammamin: float) -> tuple[float, float]:
-    """The decay's value at ``t`` and the envelope's, ``1.001 exp(-gamma_min |t|) (|f0| + |f1| + ...)``."""
+def _density_and_envelope(
+    t: float, params: tuple[float, ...], gammamin: float
+) -> tuple[float, float]:
+    """The decay's value at ``t``, and the envelope's, ``1.001 exp(-gamma_min |t|) (|f0|...)``."""
     tau, dgamma, dm, f0, f1, f2, f3 = params
     ft = abs(t)
-    f = math.exp(-ft / tau) * (f0 * math.cosh(dgamma * t / 2) + f1 * math.sinh(dgamma * t / 2)
-                               + f2 * math.cos(dm * t) + f3 * math.sin(dm * t))  # fmt: skip
+    f = math.exp(-ft / tau) * (
+        f0 * math.cosh(dgamma * t / 2)
+        + f1 * math.sinh(dgamma * t / 2)
+        + f2 * math.cos(dm * t)
+        + f3 * math.sin(dm * t)
+    )
     return f, 1.001 * math.exp(-ft * gammamin) * (abs(f0) + abs(f1) + math.sqrt(f2 * f2 + f3 * f3))

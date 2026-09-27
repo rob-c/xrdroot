@@ -1,4 +1,4 @@
-"""``RooTruthModel::analyticalIntegral``: the basis functions' integrals, from their antiderivatives.
+"""``RooTruthModel::analyticalIntegral``: the basis functions' integrals, by antiderivative.
 
 Each basis function of positive times has an antiderivative that is zero
 below zero (``x -> max(x, 0)``); the negative-time half is the same
@@ -66,13 +66,18 @@ def _cosh(x: Array, tau: Array, dm: Array) -> Array:
 
 #: Per basis type: its antiderivative for positive times, and whether the basis is even in time.
 ANTIDERIVATIVES: dict[int, tuple[Callable[[Array, Array, Array], Array], bool]] = {
-    1: (_exp, True), 2: (_sin, False), 3: (_cos, True), 4: (_lin, False),
-    5: (_quad, True), 6: (_cosh, True), 7: (_sinh, False),
-}  # fmt: skip
+    1: (_exp, True),
+    2: (_sin, False),
+    3: (_cos, True),
+    4: (_lin, False),
+    5: (_quad, True),
+    6: (_cosh, True),
+    7: (_sinh, False),
+}
 
 
 def definite(kind: int, xmin: float, xmax: float, tau: Array, dm: Array, sign: int) -> Array:
-    """``definiteIntegral``: the integral from ``xmin`` to ``xmax`` of the basis of type ``kind``."""
+    """``definiteIntegral``: the integral from ``xmin`` to ``xmax`` of the basis ``kind``."""
     antiderivative, symmetric = ANTIDERIVATIVES[kind]
     tau = np.asarray(tau, dtype=np.float64)
     with np.errstate(all="ignore"):

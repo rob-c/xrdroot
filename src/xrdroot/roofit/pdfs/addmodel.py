@@ -1,4 +1,4 @@
-"""``RooAddModel``: a sum of resolution models - ``f gm1 + (1-f) gm2`` - that is a resolution model too.
+"""``RooAddModel``: a sum of resolution models - ``f gm1 + (1-f) gm2`` - and a resolution model.
 
 Its convolution with a basis function is the sum of its components'
 convolutions with the same fractions (``convolution`` builds a new sum of
@@ -30,8 +30,10 @@ class RooAddModel(RooResolutionModel):
     ) -> None:
         pdfs, coefs = as_list(pdfList), [ref(one) for one in as_list(coefList)]
         if len(pdfs) > len(coefs) + 1 or len(pdfs) < len(coefs):
-            raise ValueError(f"RooAddModel::RooAddModel({name}) number of pdfs and coefficients "
-                             "inconsistent, must have Npdf=Ncoef or Npdf=Ncoef+1.")  # fmt: skip
+            raise ValueError(
+                f"RooAddModel::RooAddModel({name}) number of pdfs and coefficients "
+                "inconsistent, must have Npdf=Ncoef or Npdf=Ncoef+1."
+            )
         super().__init__(name, title, pdfs[0].convVar())
         self.pdfs = self._list_proxy("!pdfs", pdfs)
         self.coefs = self._list_proxy("!coefficients", coefs)
@@ -44,9 +46,12 @@ class RooAddModel(RooResolutionModel):
 
     def convolution(self, basis: Any, owner: Any) -> Any:
         """The sum of the components' convolutions with ``basis``, with the same fractions."""
-        made = RooAddModel(f"{self.GetName()}_conv_{basis.GetName()}_[{owner.GetName()}]",
-                           f"{self.GetTitle()} convoluted with basis function {basis.GetName()}",
-                           [model.convolution(basis, owner) for model in self.pdfs], list(self.coefs))  # fmt: skip
+        made = RooAddModel(
+            f"{self.GetName()}_conv_{basis.GetName()}_[{owner.GetName()}]",
+            f"{self.GetTitle()} convoluted with basis function {basis.GetName()}",
+            [model.convolution(basis, owner) for model in self.pdfs],
+            list(self.coefs),
+        )
         made._attributes = set(self._attributes)
         made._strings = dict(self._strings)
         made.changeBasis(basis)

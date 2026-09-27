@@ -25,7 +25,7 @@ class ProtoFeed:
     """A prototype dataset's events, handed to the density one at a time."""
 
     def __init__(self, pdf: Any, data: Any) -> None:
-        """The feed of ``data``'s events to ``pdf`` - one that feeds nothing if ``data`` is ``None``."""
+        """The feed of ``data``'s events to ``pdf`` - of nothing if ``data`` is ``None``."""
         self.variables = list(as_list(data.get())) if data is not None else []
         self.names = frozenset(one.GetName() for one in self.variables)
         self.columns = {name: np.asarray(data.column(name)) for name in self.names}
@@ -33,7 +33,7 @@ class ProtoFeed:
         self.targets = [pdf.variable(name) for name in sorted(self.names & pdf.dependents())]
 
     def context(self, pdf: Any, names: frozenset[str]) -> Context:
-        """The density's context, told which variables come from the prototype if it wants to know."""
+        """The density's context, told the prototype's variables if it wants to know them."""
         make = getattr(pdf, "gen_context", None)
         if self.names and make is not None and "proto" in inspect.signature(make).parameters:
             return make(names, proto=self.names)  # type: ignore[no-any-return]
@@ -44,7 +44,7 @@ class ProtoFeed:
         return asked if asked is not None or not self.names else self.size
 
     def load(self, index: int) -> dict[str, float]:
-        """The prototype's event ``index`` - from the start again past its end - set on the density."""
+        """The prototype's event ``index`` - round again past its end - set on the density."""
         row = {name: float(column[index % self.size]) for name, column in self.columns.items()}
         for one in self.targets:
             one.load_value(row[one.GetName()])

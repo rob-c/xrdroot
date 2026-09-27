@@ -15,7 +15,6 @@
 
 from __future__ import annotations
 
-import itertools
 import math
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -34,7 +33,7 @@ __all__ = [
     "widened",
 ]
 
-#: ``nTrial0D``: the trial draws per category state before an accept/reject sampler of categories starts.
+#: ``nTrial0D``: the trial draws per category state an accept/reject sampler starts with.
 TRIALS_PER_STATE = 100
 #: No bounds: what ``removeMin``/``removeMax`` leave of a variable's range.
 UNBOUNDED = (-math.inf, math.inf)
@@ -42,7 +41,7 @@ UNBOUNDED = (-math.inf, math.inf)
 
 @contextmanager
 def widened(var: Any) -> Iterator[None]:
-    """``removeMin(); removeMax()`` on ``var`` for a while, as a generator's copy of the time has it."""
+    """``removeMin(); removeMax()`` on ``var`` for a while, as a generator's copy has it."""
     saved = var._binning
     var._binning = saved.clone()
     var.removeMin()
@@ -54,7 +53,7 @@ def widened(var: Any) -> Iterator[None]:
 
 
 class AcceptReject:
-    """``RooAcceptReject`` over categories only: trial draws find the maximum, then events are accepted."""
+    """``RooAcceptReject`` over categories: trial draws find the maximum, then it accepts."""
 
     def __init__(
         self, pdf: Any, categories: list[Any], over: frozenset[str], names: frozenset[str]
@@ -110,10 +109,16 @@ class AcceptReject:
 
 
 class DecayContext(Context):
-    """``RooGenContext`` for a decay that draws its own time: its generator, after accept/reject if needed."""
+    """``RooGenContext`` for a decay that draws its own time - after accept/reject if need be."""
 
-    def __init__(self, pdf: Any, names: frozenset[str], proto: frozenset[str], forced: frozenset[str],
-                 bounds: Any = None) -> None:  # fmt: skip
+    def __init__(
+        self,
+        pdf: Any,
+        names: frozenset[str],
+        proto: frozenset[str],
+        forced: frozenset[str],
+        bounds: Any = None,
+    ) -> None:
         super().__init__(pdf, names)
         self.bounds = bounds
         direct = frozenset(one for one in names if one in forced or pdf.is_direct_gen_safe(one))
@@ -136,7 +141,7 @@ class DecayContext(Context):
 
 
 class ConvolutionContext(Context):
-    """``RooConvGenContext``: the decay drawn with the truth model, the resolution's smearing added."""
+    """``RooConvGenContext``: the truth model's decay plus the resolution's smearing."""
 
     def __init__(self, pdf: Any, names: frozenset[str], proto: frozenset[str]) -> None:
         from ..pdfs.resolution import RooTruthModel
@@ -145,8 +150,9 @@ class ConvolutionContext(Context):
         self.time = pdf.conv_var()
         twin = pdf.with_model(RooTruthModel("truthModel", "Truth resolution model", self.time))
         with widened(self.time):
-            self.decay = DecayContext(twin, names & twin.dependents(), proto, frozenset([self.time.GetName()]),
-                                      UNBOUNDED)  # fmt: skip
+            self.decay = DecayContext(
+                twin, names & twin.dependents(), proto, frozenset([self.time.GetName()]), UNBOUNDED
+            )
         self.smearing = pdf.model
         self.code = self.smearing.generator_code(frozenset([self.time.GetName()]))
 
@@ -175,13 +181,14 @@ def context_for_convolution(pdf: Any, names: frozenset[str], proto: Any = None) 
             "Resolution model does not support internal generation of convolution observable. "
         )
     if reasons:
-        log(pdf, INFO, "Generation", f"RooAbsAnaConvPdf::genContext({pdf.GetName()}) Using regular accept/reject "
-            f"generator for convolution p.d.f because: {reasons}")  # fmt: skip
+        log(
+            pdf,
+            INFO,
+            "Generation",
+            f"RooAbsAnaConvPdf::genContext({pdf.GetName()}) Using regular accept/reject "
+            f"generator for convolution p.d.f because: {reasons}",
+        )
         return NumericContext(pdf, names)
     if model.is_truth():
         return DecayContext(pdf, names, proto, frozenset([time]))
     return ConvolutionContext(pdf, names, proto)
-
-
-def _states(categories: list[Any]) -> Iterator[tuple[int, ...]]:
-    return itertools.product(*(list(one.states().values()) for one in categories))

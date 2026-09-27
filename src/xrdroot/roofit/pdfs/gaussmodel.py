@@ -27,7 +27,6 @@ from .resolution import (
     EXP,
     LIN,
     NONE,
-    QUAD,
     SIN,
     SINH,
     RooResolutionModel,
@@ -46,7 +45,7 @@ Array = Any
 
 
 def _both_sides(sign: int, plus: Any, minus: Any) -> Any:
-    """The positive-time term where the basis has one, plus the negative-time term where it has one."""
+    """The positive-time term where the basis has one, plus the negative-time one likewise."""
     result: Any = 0.0
     if sign != -1:
         result = result + plus()
@@ -92,13 +91,21 @@ def _oscillating(kind: int, sign: int, omega_tau: float, u: Array, c: Array) -> 
     if kind == SIN:
         if omega_tau == 0.0:
             return np.zeros(np.shape(u))
-        return _both_sides(sign, lambda: -np.imag(eval_cerf(-omega_tau, -u, c)),
-                           lambda: -np.imag(eval_cerf(omega_tau, u, c)))  # fmt: skip
-    return _both_sides(sign, lambda: np.real(eval_cerf(-omega_tau, -u, c)),
-                       lambda: np.real(eval_cerf(omega_tau, u, c)))  # fmt: skip
+        return _both_sides(
+            sign,
+            lambda: -np.imag(eval_cerf(-omega_tau, -u, c)),
+            lambda: -np.imag(eval_cerf(omega_tau, u, c)),
+        )
+    return _both_sides(
+        sign,
+        lambda: np.real(eval_cerf(-omega_tau, -u, c)),
+        lambda: np.real(eval_cerf(omega_tau, u, c)),
+    )
 
 
-def _decay(kind: int, sign: int, x: Array, mean: Array, sigma: Array, tau: float, p2: float) -> Array:
+def _decay(
+    kind: int, sign: int, x: Array, mean: Array, sigma: Array, tau: float, p2: float
+) -> Array:
     """The Gaussian convolved with a basis of lifetime ``tau`` and frequency - or width - ``p2``."""
     omega_tau = (p2 if kind in (SIN, COS) else 0.0) * tau
     xprime = (x - mean) / tau
@@ -113,6 +120,13 @@ def _decay(kind: int, sign: int, x: Array, mean: Array, sigma: Array, tau: float
     return _polynomial(kind, xprime, u, c)
 
 
+def _gaussian(x: Array, mean: Array, sigma: Array, doubled: bool) -> Array:
+    """The Gaussian itself - twice over for a basis of both sides with no lifetime."""
+    xprime = (x - mean) / sigma
+    result = np.exp(-0.5 * xprime * xprime) / (sigma * ROOT2PI)
+    return result * 2 if doubled else result
+
+
 def convolved(x: Array, mean: Array, sigma: Array, p1: float, p2: float, code: int) -> Array:
     """``RooGaussModel::evaluate``: the Gaussian convolved with the basis of ``code``."""
     kind, sign = basis_type(code), basis_sign(code)
@@ -120,9 +134,7 @@ def convolved(x: Array, mean: Array, sigma: Array, p1: float, p2: float, code: i
     if kind == COSH and p2 == 0:
         kind = EXP
     if kind == NONE or (kind in (EXP, COS) and tau == 0.0):
-        xprime = (x - mean) / sigma
-        result = np.exp(-0.5 * xprime * xprime) / (sigma * ROOT2PI)
-        return result * 2 if code and sign == 0 else result
+        return _gaussian(x, mean, sigma, bool(code) and sign == 0)
     if tau == 0.0:
         return np.zeros(np.broadcast(x, mean, sigma).shape)
     return _decay(kind, sign, x, mean, sigma, tau, p2)
@@ -191,7 +203,7 @@ class RooGaussModel(RooResolutionModel):
         return 1 if names == frozenset([self.x.GetName()]) else 0
 
     def generate_event(self, code: int, rng: Any, bounds: Any = None) -> dict[str, float]:
-        """``generateEvent``: a Gaussian draw, drawn again until it is inside ``bounds`` (the range)."""
+        """``generateEvent``: a Gaussian draw, drawn again until it is inside ``bounds``."""
         low, high = bounds if bounds is not None else (self.x.getMin(), self.x.getMax())
         mean, sigma = (float(np.asarray(one)) for one in self._scaled({}))
         while True:
