@@ -1,0 +1,84 @@
+"""RooFit's generator contexts: how each kind of density draws one event.
+
+``pdf.generate(x, 1000)`` asks the density for a *context* and the context
+for an event a thousand times. The context is RooFit's choice, made the way
+RooFit makes it, because it decides which random numbers are drawn in what
+order:
+
+* a density that samples its own observables - a Gaussian - draws them
+  itself (``RooGenContext`` with the density's ``generateEvent``);
+* a sum draws a uniform number to pick a component, then an event of that
+  component (``RooAddGenContext``);
+* a product draws each factor's observables from that factor
+  (``RooProdGenContext``);
+* anything else is sampled numerically, by TFoam as ``RooFoamGenerator``
+  drives it (:mod:`.foam`).
+
+Every context is made - and every numerical sampler initialised, which
+draws numbers too - before the first event is drawn, as in RooFit.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+
+from ..rng import generator
+
+__all__ = ["Context", "DirectContext", "context_for"]
+
+
+class Context:
+    """How one density draws its observables ``names``, an event at a time."""
+
+    def __init__(self, pdf: Any, names: frozenset[str]) -> None:
+        self.pdf = pdf
+        self.names = names
+
+    def event(self, remaining: int) -> dict[str, float]:
+        raise NotImplementedError
+
+
+class DirectContext(Context):
+    """``RooGenContext`` with the density's own generator for every observable."""
+
+    def __init__(self, pdf: Any, names: frozenset[str], code: int) -> None:
+        super().__init__(pdf, names)
+        self.code = code
+
+    def event(self, remaining: int) -> dict[str, float]:
+        return dict(self.pdf.generate_event(self.code, generator()))
+
+
+class NumericContext(Context):
+    """``RooGenContext`` with the default sampler: TFoam over the observables' ranges."""
+
+    def __init__(self, pdf: Any, names: frozenset[str]) -> None:
+        from .foam import FoamGenerator
+
+        super().__init__(pdf, names)
+        self.order = [one for one in pdf.leaves() if one.GetName() in names]
+        ranges = [(one.getMin(), one.getMax()) for one in self.order]
+        keys = [one.GetName() for one in self.order]
+
+        def density(points: Any) -> Any:
+            ctx = {key: points[:, i] for i, key in enumerate(keys)}
+            return np.broadcast_to(pdf.value(ctx, names), (len(points),))
+
+        self.sampler = FoamGenerator(density, ranges, generator(), vectorized=True)
+
+    def event(self, remaining: int) -> dict[str, float]:
+        point = self.sampler.generate()
+        return {one.GetName(): float(v) for one, v in zip(self.order, point)}
+
+
+def context_for(pdf: Any, names: frozenset[str]) -> Context:
+    """The context RooFit would make for ``pdf`` to generate ``names``."""
+    make = getattr(pdf, "gen_context", None)
+    if make is not None:
+        return make(names)  # type: ignore[no-any-return]
+    code = pdf.generator_code(names) if hasattr(pdf, "generator_code") else 0
+    if code:
+        return DirectContext(pdf, names, code)
+    return NumericContext(pdf, names)
