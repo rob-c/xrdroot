@@ -1290,13 +1290,18 @@ frame.Draw()
   Crystal Ball, Breit-Wigner, Landau, Poisson...).
 - **Compositions**: sums (`RooAddPdf`, recursive fractions too), products with conditional
   factors, `RooExtendPdf`, `RooSimultaneous`, `RooRealSumPdf`, `RooHistPdf`,
-  `RooMultiVarGaussian`, and the resolution models and B decays.
+  `RooMultiVarGaussian`, `RooFFTConvPdf`, `RooKeysPdf`, and the resolution models and B
+  decays.
 - **Data**: `RooDataSet` and `RooDataHist` (imported from trees, histograms or slices;
-  reduced, appended, binned, tabulated) and `createHistogram`.
+  reduced, appended, binned, tabulated; with global observables) and `createHistogram`.
+- **Generation**: `generate` and `generateBinned`, prototype data (`ProtoData`) included.
 - **Fitting**: `fitTo` and its options, `createNLL`, `RooMinimizer` (MIGRAD, HESSE, MINOS)
   and `RooFitResult`, including `createHessePdf`, `randomizePars` and `correlation`.
-- **Studies and plots**: `RooMCStudy`; `RooPlot` with components, ranges, slices,
-  projections over data, error bands, pulls, residuals and `paramOn`.
+  Constraint terms are found in products, or given, and normalised over the global
+  observables, as RooFit does.
+- **Studies and plots**: `RooMCStudy`; `RooPlot` with components, ranges, projection
+  ranges, slices, projections over data, error bands, `chiSquare`, `residHist`, `pullHist`
+  and `paramOn`.
 - **The workspace**: `RooWorkspace` with its factory language (`SUM`, `PROD`, `EXPR`,
   `SIMUL`...).
 - **Messages**: `RooMsgService`.
