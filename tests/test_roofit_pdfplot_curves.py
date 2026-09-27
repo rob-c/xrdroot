@@ -507,3 +507,139 @@ def test_an_error_band_of_a_component_is_drawn_round_that_component() -> None:
     band = fit.frame.getObject(1)
     assert (band.GetName(), band.GetN()) == ("model_Norm[x]_Comp[e]_errorband_Comp[e]", 72)
     assert band.y[5] == pytest.approx(31.470797, rel=1e-7)
+
+
+class Channels:
+    """A Gaussian for ``phys`` and an exponential for ``ctl``, and 120 and 80 events of them."""
+
+    def __init__(self) -> None:
+        from xrdroot.roofit.categories import RooCategory
+        from xrdroot.roofit.data.dataset import RooDataSet
+        from xrdroot.roofit.pdfs.basic import RooExponential
+        from xrdroot.roofit.pdfs.simultaneous import RooSimultaneous
+
+        self.x = RooRealVar("x", "x", 0, -10, 10)
+        self.x.setBins(20)
+        self.g1 = RooGaussian(
+            "g1", "g1", self.x, RooRealVar("m1", "m1", 1), RooRealVar("s1", "", 1.5)
+        )
+        self.e = RooExponential("e", "e", self.x, RooRealVar("c", "c", -0.2, -2, -0.01))
+        self.cat = RooCategory("cat", "cat", {"phys": 0, "ctl": 1})
+        self.sim = RooSimultaneous("sim", "sim", {"phys": self.g1, "ctl": self.e}, self.cat)
+        generator().SetSeed(4357)
+        phys, ctl = self.g1.generate([self.x], 120), self.e.generate([self.x], 80)
+        self.data = RooDataSet(
+            "combined", "combined", [self.x], Index=self.cat, Import={"phys": phys, "ctl": ctl}
+        )
+        self.frame = self.x.frame()
+        self.data.plotOn(self.frame)
+
+
+AVERAGES = (
+    "[#1] INFO:Plotting -- RooSimultaneous::plotOn(sim) plot on x averages with data index "
+    "category (cat)"
+)
+#: ``e``'s part of the channels' average: 80 of the 200 events.
+CONTROL = [9.50925692, 2.81342429, 2.045829609, 1.237351128, 0.3807555732]
+
+
+def test_a_simultaneous_density_is_drawn_as_its_channels_averaged_as_the_data_weigh_them(
+    capsys: Any,
+) -> None:
+    """``ProjWData(cat, data)``: 120/200 of ``g1`` and 80/200 of ``e``, each normalised."""
+    c = Channels()
+    capsys.readouterr()
+    c.sim.plotOn(c.frame, ProjWData=([c.cat], c.data))
+    assert capsys.readouterr().out.splitlines() == [AVERAGES, AVERAGES]
+    curve = c.frame.getObject(1)
+    assert (curve.GetName(), curve.GetN()) == ("sim_Norm[x]", 74)
+    assert heights(curve) == pytest.approx(
+        [9.509267459, 13.70125737, 31.48384171, 15.60166056, 0.3808917102], rel=REL
+    )
+
+
+def test_a_component_of_a_simultaneous_density_is_drawn_as_its_share_of_the_average() -> None:
+    """``Components("e")`` with ``ProjWData``: the control channel's part of the average."""
+    c = Channels()
+    c.sim.plotOn(c.frame, ProjWData=([c.cat], c.data), Components="e")
+    curve = c.frame.getObject(1)
+    assert (curve.GetName(), curve.GetN()) == ("sim_Norm[x]_Comp[e]", 36)
+    assert heights(curve) == pytest.approx(CONTROL, rel=REL)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="simultaneous.py:163-164: ROOT refuses to draw a simultaneous density without "
+    "projection data for its index category",
+)
+def test_a_simultaneous_density_without_projection_data_is_refused_as_root_refuses_it(
+    capsys: Any,
+) -> None:
+    """ROOT says it must have a projection dataset for the index category, and draws nothing."""
+    c = Channels()
+    capsys.readouterr()
+    c.sim.plotOn(c.frame)
+    assert capsys.readouterr().out == (
+        "[#0] ERROR:InputArguments -- RooSimultaneous::plotOn(sim) ERROR: must have a projection "
+        "dataset for index category\n"
+    )
+    assert c.frame.numItems() == 1
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="simultaneous.py:182,188-189: ROOT draws a slice as its channel, e_Norm[x], weighted "
+    "by that channel's share of the projection data",
+)
+def test_a_slice_of_a_simultaneous_density_is_its_channel_weighted_by_its_share(
+    capsys: Any,
+) -> None:
+    """``Slice(cat, "ctl")``: ROOT draws ``e`` for its 80 of the 200 events, and says so."""
+    c = Channels()
+    capsys.readouterr()
+    c.sim.plotOn(c.frame, Slice=(c.cat, "ctl"), ProjWData=([c.cat], c.data))
+    assert capsys.readouterr().out.splitlines() == [
+        "[#1] INFO:Plotting -- RooSimultaneous::plotOn(sim) plot on x represents a slice in the "
+        "index category (cat)",
+        "[#1] INFO:Plotting -- RooAbsReal::plotOn(e) slice variable cat was not projected anyway",
+    ]
+    curve = c.frame.getObject(1)
+    assert curve.GetName() == "e_Norm[x]"
+    assert heights(curve) == pytest.approx(CONTROL, rel=REL)
+
+
+def test_a_densitys_parameters_are_boxed_on_the_frame_as_root_writes_them() -> None:
+    """``paramOn``: one line per free parameter, ``RooRealVar::format(2, "NELU")``."""
+    from xrdroot.roofit.plot import params
+
+    x = RooRealVar("x", "x", 0, -10, 10)
+    x.setBins(20)
+    m1, s1 = RooRealVar("m1", "mean", 1, -5, 5), RooRealVar("s1", "#sigma", 1.5, 0.1, 10)
+    g1 = RooGaussian("g1", "g1", x, m1, s1)
+    generator().SetSeed(4357)
+    data = g1.generate([x], 100)
+    g1.fitTo(data, PrintLevel=-1)
+    frame = x.frame()
+    data.plotOn(frame)
+    g1.paramOn(frame)
+    g1.paramOn(frame, Layout=(0.55, 0.95, 0.8), Label="fit\nresult", ShowConstants=True)
+    g1.paramOn(frame, RooCmdArg("Parameters", [m1]), Format=("NE", RooCmdArg("AutoPrecision", 1)))
+    plain, labelled, chosen = (frame.getObject(i) for i in (1, 2, 3))
+    assert plain.GetName() == "g1_paramBox"
+    assert plain.ClassName() == "TPaveText"
+    assert plain.lines == ["m1 =  0.95 #pm 0.14", "s1 =  1.45 #pm 0.10"]
+    assert labelled.lines == ["m1 =  0.95 #pm 0.14", "s1 =  1.45 #pm 0.10", "fit", "result"]
+    assert chosen.lines == ["m1 =  0.9 +/- 0.1"]
+    corners = [sorted(one.corners[i] for i in (1, 3)) for one in (plain, labelled, chosen)]
+    assert [v for pair in corners for v in pair] == pytest.approx([0.78, 0.9, 0.56, 0.8, 0.84, 0.9])
+    assert (plain.corners[0], plain.corners[2], labelled.corners[0]) == (0.65, 0.9, 0.55)
+    assert plain.attributes == {
+        "FillColor": 0,
+        "BorderSize": 0,
+        "TextAlign": 12,
+        "TextSize": 0.04,
+        "FillStyle": 0,
+    }
+    assert params.PAVE[0] is params.Pave
+    with pytest.raises(AttributeError):
+        plain.GetNothing  # noqa: B018
