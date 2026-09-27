@@ -22,11 +22,12 @@ import numpy as np
 from ..cmdargs import commands
 from ..collections import RooArgSet, as_list
 from ..real import RooAbsReal
+from .kahan import Kahan
 
 __all__ = ["RooNLLVar", "create_nll"]
 
 
-def _log_terms(probs: np.ndarray[Any, Any], weights: np.ndarray[Any, Any]) -> tuple[float, float]:
+def _log_terms(probs: np.ndarray[Any, Any], weights: np.ndarray[Any, Any]) -> tuple[Kahan, float]:
     """``reduceNLL``: the sum of ``-w log p``, and the badness of the events that have none.
 
     A value at or below zero is as bad as it is below zero, a NaN as bad as
@@ -41,7 +42,7 @@ def _log_terms(probs: np.ndarray[Any, Any], weights: np.ndarray[Any, Any]) -> tu
     badness = float(np.sum(np.where(probs <= 0, -probs, 0.0)) + np.sum(unpack(probs)))
     with np.errstate(divide="ignore", invalid="ignore"):
         terms = -weights * np.log(probs)
-    return math.fsum(terms.tolist()), badness
+    return Kahan().extend(terms.tolist()), badness
 
 
 class RooNLLVar(RooAbsReal):
@@ -86,7 +87,7 @@ class RooNLLVar(RooAbsReal):
             self._offset_value = total
         return total - self._offset_value
 
-    def channel(self, pdf: Any, keep: Any) -> float:
+    def channel(self, pdf: Any, keep: Any, simulated: int = 0) -> float:
         """``-sum w log p`` of the events ``keep`` selects - all, for ``None`` - and their Poisson term."""
         columns = self.columns if keep is None else {k: v[keep] for k, v in self.columns.items()}
         weights = self.w if keep is None else self.w[keep]
@@ -97,8 +98,10 @@ class RooNLLVar(RooAbsReal):
         self._badness += badness
         if self.extended and pdf.canBeExtended():
             sumw = math.fsum(weights.tolist())
-            total += pdf.extendedTerm(sumw, pdf.expected(nset, self.rng))
-        return total
+            total.total += pdf.extendedTerm(sumw, pdf.expected(nset, self.rng))  # onto the sum, not the carry
+        if simulated:
+            total.add(float(math.fsum(weights.tolist())) * math.log(simulated))
+        return total.total
 
     def _log_top(self, pdf: Any, probs: Any, weights: Any, nset: frozenset[str]) -> None:
         """The likelihood's own messages: each event whose density is not positive, or NaN."""

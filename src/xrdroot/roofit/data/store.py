@@ -165,6 +165,20 @@ class RooAbsData(RooPrintable):
         self._columns[made.GetName()] = values
         return made
 
+    def createHistogram(self, first: Any, *args: Any, **kwargs: Any) -> Any:
+        """``createHistogram(name, x, ...)`` or ``createHistogram("x,y", ...)``: a ``TH1`` of the events."""
+        from ..histograms import data_histogram
+
+        if isinstance(first, str) and args and hasattr(args[0], "GetName") and not hasattr(args[0], "args"):
+            made = data_histogram(self, args[0], args[1:], kwargs)
+            made_name = getattr(made, "SetName", None)
+            if made_name is not None:
+                made_name(first)
+            else:
+                made.members["TH1"]["TNamed"]["fName"] = first
+            return made
+        return data_histogram(self, first, args, kwargs)
+
     def table(self, category: Any, cut: Any = None, options: Any = None) -> Any:
         """``table(cat, [cut])``: the events in each state of a category."""
         from .table import table_of

@@ -120,6 +120,12 @@ class RooAbsReal(RooAbsArg):
 
         return make_integral(self, iset, args, kwargs)
 
+    def createHistogram(self, name: str, first: Any, *args: Any, **kwargs: Any) -> Any:
+        """``createHistogram(name, x, Binning(...), YVar(y, ...))``: a ``TH1`` of this function's values."""
+        from .histograms import function_histogram
+
+        return function_histogram(self, name, first, args, kwargs)
+
     def createCdf(self, iset: Any, *args: Any, **kwargs: Any) -> Any:
         """``createCdf(iset)``: the integral from each variable's lower end up to its value."""
         from .integral import make_cdf

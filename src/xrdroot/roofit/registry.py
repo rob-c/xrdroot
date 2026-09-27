@@ -16,7 +16,8 @@ __all__ = ["MODULES", "classes", "find"]
 MODULES = {
     "arg": ["RooAbsArg"],
     "binning": ["RooAbsBinning", "RooBinning", "RooRangeBinning", "RooUniformBinning"],
-    "categories": ["RooAbsCategory", "RooBinningCategory", "RooCategory", "RooThresholdCategory"],
+    "categories": ["RooAbsCategory", "RooBinningCategory", "RooCategory", "RooMappedCategory",
+                   "RooMultiCategory", "RooSuperCategory", "RooThresholdCategory"],
     "cmdargs": ["RooCmdArg", "RooLinkedList"],
     "collections": ["RooAbsCollection", "RooArgList", "RooArgSet"],
     "data.datahist": ["RooDataHist"],
@@ -28,6 +29,7 @@ MODULES = {
     "functions": ["RooAddition", "RooFormulaVar", "RooPolyVar", "RooProduct"],
     "integral": ["RooRealIntegral"],
     "matrix": ["TMatrixDSym", "TVectorD"],
+    "mcstudy": ["RooMCStudy"],
     "messages": ["RooMsgService"],
     "pdf": ["RooAbsPdf"],
     "pdfs.addpdf": ["RooAddPdf", "RooRecursiveFraction"],

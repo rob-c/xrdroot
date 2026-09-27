@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...roofit import histograms as _histograms
 from ...roofit.plot import frame as _frame
 from ...roofit.plot import params as _params
 from ...roofit.registry import classes
@@ -48,7 +49,17 @@ def _pave() -> Any:
     return TPaveText
 
 
+def _histogram_wrapper() -> Any:
+    """The core part's wrapping of an :class:`xrdroot.Histogram` as a ``TH1``, or none (the swap point)."""
+    try:
+        from ..core.wrapping import wrap
+    except ImportError:
+        return lambda made: made
+    return wrap  # pragma: no cover - once the core part is merged
+
+
 _gather()
+_histograms.set_wrapper(_histogram_wrapper())
 _params.set_pave(_pave())
 _frame.set_drawer(draw_hook)
 _frame.set_axis(_axis())

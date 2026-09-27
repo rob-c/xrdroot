@@ -19,7 +19,9 @@ from typing import Any
 
 import numpy as np
 
+from . import evalerrors
 from .collections import as_list
+from .nanpack import pack
 from .messages import WARNING, log
 from .printing import g
 from .real import Context, RooAbsReal, names_in, value_of
@@ -55,9 +57,7 @@ class RooAbsPdf(RooAbsReal):
         if not nset or self.selfNormalized():
             return raw
         norm = self.norm(ctx, nset, rng)
-        from . import evalerrors
-
-        if evalerrors.active():
+        if evalerrors.active() and not (np.all(np.asarray(norm) > 0) and np.all(np.asarray(raw) >= 0)):
             self._log_failures(raw, norm, frozenset(nset), rng)
         return normalized(raw, norm)
 
@@ -81,8 +81,6 @@ class RooAbsPdf(RooAbsReal):
 
     def _log_failures(self, raw: Any, norm: Any, nset: frozenset[str], rng: Any) -> None:
         """``RooNormalizedPdf::doEval``'s messages, by kind - with its kernel's thresholds."""
-        from . import evalerrors
-
         raw, norm = np.asarray(raw, dtype=np.float64), np.broadcast_to(np.asarray(norm), np.shape(raw))
         bad_norm = (norm < 0) | ((norm == 0) & (raw != 0))
         negative = ~bad_norm & (raw < 0)
@@ -100,7 +98,34 @@ class RooAbsPdf(RooAbsReal):
         names = frozenset(nset) & self.dependents()
         if not names:
             return self.compute(ctx)
-        return self.integrate(names, ctx, rng or self._norm_range)
+        rng = rng or self._norm_range
+        key = self._norm_key(names, ctx, rng)
+        cached = self.__dict__.get("_norm_cache")
+        if key is not None and cached is not None and cached[0] == key:
+            return cached[1]
+        found = self.integrate(names, ctx, rng)
+        if key is not None:
+            self.__dict__["_norm_cache"] = (key, found)
+        return found
+
+    def _norm_key(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
+        """What the normalisation depends on - the other variables' values and the ranges -
+        or ``None`` when one of them is a column, which is not worth remembering.
+
+        RooFit caches its normalisation integrals the same way, recomputing one
+        only when a parameter it depends on has changed.
+        """
+        values = []
+        for leaf in self.leaves():
+            name = leaf.GetName()
+            if name in names:
+                values.append((name, leaf.getMin(rng), leaf.getMax(rng)))
+                continue
+            value = ctx.get(name, None)
+            if value is not None and np.ndim(value):
+                return None
+            values.append((name, float(leaf.getVal() if value is None else value)))
+        return (names, rng, tuple(values))
 
     def getVal(self, nset: Any = None) -> float:
         names = names_in(nset)
@@ -216,9 +241,10 @@ def normalized(raw: Any, norm: Any) -> Any:
     as RooFit makes them, so that the likelihood can tell Minuit how far to
     back away; a NaN stays NaN, and nothing over nothing is nothing.
     """
-    from .nanpack import pack
-
     raw, norm = np.asarray(raw, dtype=np.float64), np.asarray(norm, dtype=np.float64)
+    if np.all(norm > 0) and np.all(raw >= 0):  # the usual case, and nothing to pack
+        found = raw / norm
+        return found if found.ndim else float(found)
     bad_norm = (norm < 0) | ((norm == 0) & (raw != 0))
     with np.errstate(divide="ignore", invalid="ignore"):
         found = np.where((raw == 0) & (norm == 0), 0.0, raw / norm)

@@ -253,3 +253,74 @@ class RooBinningCategory(_Derived):
         x = np.asarray(self.x.compute(ctx), dtype=np.float64)
         found = np.clip(np.searchsorted(edges, x, side="right") - 1, 0, len(edges) - 2).astype(np.float64)
         return found if found.ndim else float(found)
+
+
+class RooMappedCategory(_Derived):
+    """``RooMappedCategory``: another category's states mapped - by wildcard - onto new ones."""
+
+    def __init__(self, name: Any, title: Any, input: Any, defaultLabel: str = "NotMapped",
+                 defaultIndex: Any = None) -> None:  # fmt: skip
+        super().__init__(name, title)
+        self.input = self._proxy("inputCat", input)
+        self.defineType(defaultLabel, defaultIndex)
+        self._default = self.lookupIndex(defaultLabel)
+        self._rules: list[tuple[str, int]] = []
+
+    def map(self, pattern: str, label: str, index: Any = None) -> bool:
+        if not self.hasLabel(label):
+            self.defineType(label, index)
+        self._rules.append((str(pattern), self.lookupIndex(label)))
+        return False
+
+    def _target(self, source: str) -> int:
+        import fnmatch
+
+        return next((index for pattern, index in self._rules if fnmatch.fnmatchcase(source, pattern)),
+                    self._default)  # fmt: skip
+
+    def compute(self, ctx: Context) -> Any:
+        values = np.asarray(self.input.compute(ctx), dtype=np.float64)
+        table = {float(index): float(self._target(label)) for label, index in self.input.states().items()}
+        found = np.vectorize(lambda v: table.get(float(v), float(self._default)), otypes=[np.float64])(values)
+        return found if found.ndim else float(found)
+
+
+class RooMultiCategory(_Derived):
+    """``RooMultiCategory``: one state for each combination of several categories' states."""
+
+    def __init__(self, name: Any, title: Any, inputs: Any) -> None:
+        from .collections import as_list
+
+        super().__init__(name, title)
+        # a Python set has no order ROOT sees either: sorted by name, as ROOT's run happened to take them
+        ordered = sorted(as_list(inputs), key=lambda one: one.GetName())
+        self.inputs = self._list_proxy("inputCats", ordered)
+        import itertools
+
+        lists = [list(one.states().items()) for one in ordered]
+        for number, combination in enumerate(itertools.product(*reversed(lists))):
+            labels = [label for label, _ in reversed(combination)]
+            self.defineType("{" + ";".join(labels) + "}", number)
+
+    def compute(self, ctx: Context) -> Any:
+        found: Any = 0.0
+        stride = 1
+        for one in self.inputs:
+            position = {float(index): float(i) for i, index in enumerate(one.states().values())}
+            values = np.asarray(one.compute(ctx), dtype=np.float64)
+            found = found + stride * np.vectorize(position.get, otypes=[np.float64])(values)
+            stride *= len(position)
+        found = np.asarray(found, dtype=np.float64)
+        return found if found.ndim else float(found)
+
+
+class RooSuperCategory(RooMultiCategory):
+    """``RooSuperCategory``: a multi-category whose state can be set, setting its inputs'."""
+
+    def setLabel(self, label: str, printError: bool = True) -> bool:
+        if not self.hasLabel(label):
+            return True
+        labels = str(label).strip("{}").split(";")
+        for one, part in zip(self.inputs, labels):
+            one.setLabel(part)
+        return False

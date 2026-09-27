@@ -56,33 +56,47 @@ def _uniform(var: Any) -> float:
     return var.getMin() + rng.Rndm() * (var.getMax() - var.getMin())
 
 
+class Generator:
+    """A density's generator context, made once, drawing sample after sample: ``RooAbsGenContext``."""
+
+    def __init__(self, pdf: Any, variables: list[Any]) -> None:
+        from ..integration import announce
+
+        self.pdf = pdf
+        self.variables = variables
+        self.names = frozenset(one.GetName() for one in variables) & pdf.dependents()
+        self.uniform = sorted((one for one in variables if one.GetName() not in self.names),
+                              key=lambda v: v.GetName(), reverse=True)  # fmt: skip
+        for _ in range(2):  # the generator's own copy of the density, and its context's
+            announce(pdf, self.names)
+        self.context = context_for(pdf, self.names)
+
+    def sample(self, total: int, name: str) -> Any:
+        """``generate(n)``: a dataset of ``total`` events, the density's variables left as they were."""
+        from ..data.dataset import RooDataSet
+
+        data = RooDataSet(name, f"Generated From {self.pdf.GetName()}", self.variables)
+        saved = [(one, one.getVal()) for one in self.pdf.leaves() if one.GetName() in self.names]
+        rows = []
+        for i in range(total):
+            row = self.context.event(total - i)
+            row.update({one.GetName(): _uniform(one) for one in self.uniform})
+            rows.append(row)
+        for one, value in saved:
+            one.load_value(value)
+        data.add_columns({one.GetName(): np.array([r[one.GetName()] for r in rows], dtype=np.float64)
+                          for one in self.variables})  # fmt: skip
+        return data
+
+
 def generate(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """``pdf.generate(vars, n, options...)``: a new dataset of generated events."""
-    from ..data.dataset import RooDataSet
-    from ..integration import announce
-
     variables, count, options = parse(args, kwargs)
-    names = frozenset(one.GetName() for one in variables) & pdf.dependents()
-    uniform = sorted((one for one in variables if one.GetName() not in names), key=lambda v: v.GetName(), reverse=True)
-    for _ in range(2):  # the generator's own copy of the density, and its context's
-        announce(pdf, names)
-    context = context_for(pdf, names)
-    total = _how_many(pdf, names, count, options)
+    made = Generator(pdf, variables)
+    total = _how_many(pdf, made.names, count, options)
     if total < 0:
         return None
-    name = options.get("Name") or f"{pdf.GetName()}Data"
-    data = RooDataSet(name, f"Generated From {pdf.GetName()}", variables)
-    saved = [(one, one.getVal()) for one in pdf.leaves() if one.GetName() in names]
-    rows = []
-    for i in range(total):
-        row = context.event(total - i)
-        row.update({one.GetName(): _uniform(one) for one in uniform})
-        rows.append(row)
-    for one, value in saved:
-        one.load_value(value)
-    data.add_columns({one.GetName(): np.array([r[one.GetName()] for r in rows], dtype=np.float64)
-                      for one in variables})  # fmt: skip
-    return data
+    return made.sample(total, options.get("Name") or f"{pdf.GetName()}Data")
 
 
 def generate_binned(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:

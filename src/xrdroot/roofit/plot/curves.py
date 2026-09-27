@@ -106,21 +106,11 @@ def _norm_vars(pdf: Any, frame: Any) -> frozenset[str]:
 
 
 def plot_pdf(pdf: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
-    """``pdf.plotOn(frame, options...)``: add the density's curve - or curves, one per range - to ``frame``."""
-    from .ranges import plan
+    """``pdf.plotOn(frame, options...)``: RooFit's own sequence, :func:`.pdfplot.pdf_plot`."""
+    from .cmdlist import CmdList
+    from .pdfplot import pdf_plot
 
-    options = commands(args, kwargs)
-    options.warn_duplicates(f"RooAbsPdf::plotOn({pdf.GetName()})")
-    nset = _norm_vars(pdf, frame)
-    _announce_plot(pdf, frame, nset)
-    chosen, suffix = _selected(pdf, options)
-    made = plan(pdf, frame, options, nset)
-    scale = made.scale
-    if made.post_scale:
-        scale /= _range_fraction(pdf, frame, nset, made.norm_range, made.pieces)
-    for low, high in made.pieces:
-        _add_curve(pdf, frame, options, nset, scale, chosen, suffix, (low, high, made.wings))
-    return frame
+    return pdf_plot(pdf, frame, CmdList.of(args, kwargs))
 
 
 def _range_fraction(pdf: Any, frame: Any, nset: frozenset[str], rng: Any,
@@ -153,10 +143,10 @@ def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str]) -> None:
 
 def plot_function(func: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """``RooAbsReal::plotOn``: a function, drawn as it is - scaled only if asked."""
-    options = commands(args, kwargs)
-    scale = float(options.get("Normalization", 0, 1.0))
-    low, high, _ = _range(frame, options)
-    return _add_curve(func, frame, options, frozenset(), scale, None, "", (low, high, "Range" not in options))
+    from .cmdlist import CmdList
+    from .realplot import real_plot
+
+    return real_plot(func, frame, CmdList.of(args, kwargs))
 
 
 def _add_curve(func: Any, frame: Any, options: Commands, nset: frozenset[str], scale: float,

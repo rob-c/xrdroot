@@ -31,7 +31,15 @@ from .printing import (
 )
 from . import cout
 
-__all__ = ["Proxy", "RooAbsArg"]
+__all__ = ["Proxy", "RooAbsArg", "graph_changed"]
+
+#: How many times any node's name or inputs have changed: what the cached walks are checked against.
+_GRAPH = [0]
+
+
+def graph_changed() -> None:
+    """Forget every cached walk: a node was renamed, or given another input."""
+    _GRAPH[0] += 1
 
 
 class Proxy:
@@ -75,6 +83,7 @@ class RooAbsArg(RooPrintable):
 
     def SetName(self, name: str) -> None:
         self._name = str(name)
+        graph_changed()
 
     def SetTitle(self, title: str) -> None:
         self._title = str(title)
@@ -101,12 +110,14 @@ class RooAbsArg(RooPrintable):
     def _proxy(self, name: str, target: Any, shape: bool = False) -> Any:
         """Declare one input called ``name``; the argument itself is returned."""
         self._proxies.append(Proxy(name, target, False, shape))
+        graph_changed()
         return target
 
     def _list_proxy(self, name: str, targets: Any) -> RooArgList:
         """Declare a list of inputs called ``name``."""
         made = RooArgList(as_list(targets))
         self._proxies.append(Proxy(name, made, True))
+        graph_changed()
         return made
 
     def servers(self) -> list[Any]:
@@ -139,9 +150,17 @@ class RooAbsArg(RooPrintable):
             yield node
             stack[0:0] = node.servers()
 
+    def _walked(self) -> list[RooAbsArg]:
+        """:meth:`_walk`, remembered until the graph changes."""
+        cached = self.__dict__.get("_walk_cache")
+        if cached is None or cached[0] != _GRAPH[0]:
+            cached = (_GRAPH[0], list(self._walk()))
+            self.__dict__["_walk_cache"] = cached
+        return cached[1]
+
     def leaves(self) -> list[Any]:
         """The fundamental nodes under this one: its variables and constants."""
-        return [node for node in self._walk() if node.isFundamental()]
+        return [node for node in self._walked() if node.isFundamental()]
 
     def getVariables(self, stripDisconnected: bool = True) -> RooArgSet:
         return RooArgSet(
@@ -169,9 +188,13 @@ class RooAbsArg(RooPrintable):
 
     dependsOnValue = dependsOn
 
-    def dependents(self) -> set[str]:
+    def dependents(self) -> frozenset[str]:
         """The names of every variable this node depends on."""
-        return {one.GetName() for one in self.leaves()}
+        cached = self.__dict__.get("_dependents_cache")
+        if cached is None or cached[0] != _GRAPH[0]:
+            cached = (_GRAPH[0], frozenset(one.GetName() for one in self.leaves()))
+            self.__dict__["_dependents_cache"] = cached
+        return cached[1]
 
     def findServer(self, name: Any) -> Any:
         wanted = name if isinstance(name, str) else name.GetName()

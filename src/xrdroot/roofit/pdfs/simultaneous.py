@@ -86,7 +86,7 @@ class RooSimultaneous(RooAbsPdf):
             keep = states == self.index.lookupIndex(label)
             if not keep.any():
                 continue
-            total += nll.channel(pdf, keep) + float(np.sum(nll.w[keep])) * math.log(count)
+            total += nll.channel(pdf, keep, count if count > 1 else 0)
         return total
 
     # -- extended -----------------------------------------------------------------

@@ -96,6 +96,7 @@ def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
 def fit_to(pdf: Any, data: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """``pdf.fitTo(data, options...)``: the fit, and its result if ``Save()`` was given."""
     options = commands(args, kwargs)
+    options.warn_duplicates(f"fitTo({pdf.GetName()})")
     nll = nll_options(pdf, data, options)
     log(pdf, INFO, "Fitting", f"RooAddition::defaultErrorLevel({nll.GetName()}) Summation contains "
         "a RooNLLVar, using its error level")  # fmt: skip
