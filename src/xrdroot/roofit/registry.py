@@ -35,6 +35,7 @@ MODULES = {
     "pdfs.extend": ["RooExtendPdf"],
     "pdfs.generic": ["RooGenericPdf"],
     "pdfs.histpdf": ["RooHistFunc", "RooHistPdf"],
+    "pdfs.keys": ["RooKeysPdf"],
     "pdfs.realsum": ["RooRealSumPdf"],
     "pdfs.prodpdf": ["RooProdPdf"],
     "pdfs.simultaneous": ["RooSimultaneous"],
