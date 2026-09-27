@@ -21,6 +21,7 @@ import numpy as np
 from ...graph import Graph
 from ...stats import incomplete_gamma
 from ..messages import WARNING, log
+from .points import GraphAccess
 
 __all__ = ["RooHist", "poisson_interval"]
 
@@ -53,7 +54,7 @@ def poisson_interval(n: int, sigmas: float = 1.0) -> tuple[float, float]:
     return _gamma_quantile(0.5 * alpha, float(n)), _gamma_quantile(1.0 - 0.5 * alpha, n + 1.0)
 
 
-class RooHist(Graph):
+class RooHist(GraphAccess, Graph):
     """Points with asymmetric error bars, as RooFit draws data."""
 
     #: The events plotted - their values and weights - for counting those in a range.
@@ -99,9 +100,6 @@ class RooHist(Graph):
     def fit_range_bin_width(self) -> float:
         return self.nominal_width
 
-    def GetN(self) -> int:
-        return len(self.x)
-
     def ClassName(self) -> str:
         return "RooHist"
 
@@ -110,6 +108,12 @@ class RooHist(Graph):
 
     def SetName(self, name: str) -> None:
         self._core["TNamed"]["fName"] = str(name)
+
+    def GetTitle(self) -> str:
+        return str(self._core["TNamed"]["fTitle"])
+
+    def SetTitle(self, title: str) -> None:
+        self._core["TNamed"]["fTitle"] = str(title)
 
     def errors(self) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
         core = self.members

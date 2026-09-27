@@ -202,6 +202,12 @@ class RooPlot(RooPrintable):
             self._normalise_to(item, refresh)
         self.items.append((item, option, invisible))
 
+    def addPlotable(
+        self, item: Any, option: str = "", invisible: bool = False, refreshNorm: bool = False
+    ) -> None:
+        """``addPlotable(hist, "P")``: a residual or pull histogram, say, put on the frame."""
+        self.add_plotable(item, option, invisible, refreshNorm)
+
     def _normalise_to(self, item: Any, refresh: bool) -> None:
         """``updateFitRangeNorm``: the first data - or new data, if asked - set the curves'
         scale."""
@@ -234,6 +240,30 @@ class RooPlot(RooPrintable):
     def update_norm_vars(self, variables: Any) -> None:
         if self.norm_vars is None:
             self.norm_vars = list(variables)
+
+    def chiSquare(self, *args: Any) -> float:
+        """``chiSquare(nFitParam=0)`` or ``chiSquare(curvename, histname, nFitParam=0)``: the
+        last - or the named - curve against the last - or the named - data, per degree of
+        freedom."""
+        from .residuals import chi_square
+
+        if args and isinstance(args[0], (int, float)):
+            return chi_square(self, None, None, int(args[0]))
+        names = [*args[:2], None, None][:2]
+        return chi_square(self, names[0], names[1], int(args[2]) if len(args) > 2 else 0)
+
+    def residHist(
+        self, histname: Any = None, curvename: Any = None, normalize: bool = False,
+        useAverage: bool = True,
+    ) -> Any:  # fmt: skip
+        """The data less the curve, point by point: ``RooPlot::residHist``."""
+        from .residuals import residuals
+
+        return residuals(self, histname, curvename, normalize, useAverage)
+
+    def pullHist(self, histname: Any = None, curvename: Any = None, useAverage: bool = True) -> Any:
+        """The data less the curve in units of the data's errors: ``RooPlot::pullHist``."""
+        return self.residHist(histname, curvename, True, useAverage)
 
     def findObject(self, name: Any = None, kind: Any = None) -> Any:
         """The item called ``name`` - or the last item, for none - optionally of a kind."""

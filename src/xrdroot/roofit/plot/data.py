@@ -103,6 +103,7 @@ def plot_data(data: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, An
         float(options.get("Rescale", 0, 1.0)),
     )
     hist.y_label = _label(var, edges)
+    hist.SetTitle(f"Histogram of {data.GetName()}_plot__{var.GetName()}")  # the TH1 filled
     if cut or rng:
         total = data.sumEntries()
         log(

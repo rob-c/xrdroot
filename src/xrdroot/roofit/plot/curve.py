@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 
 from ...graph import Graph
+from .points import GraphAccess
 
 __all__ = ["RooCurve", "sample"]
 
@@ -87,7 +88,7 @@ def sample(
     return np.array([p[0] for p in ordered]), np.array([p[1] for p in ordered])
 
 
-class RooCurve(Graph):
+class RooCurve(GraphAccess, Graph):
     """A sampled function, drawn as a line."""
 
     def __init__(self, name: str, title: str, x: Any, y: Any) -> None:
@@ -103,11 +104,11 @@ class RooCurve(Graph):
     def SetName(self, name: str) -> None:
         self._core["TNamed"]["fName"] = str(name)
 
+    def GetTitle(self) -> str:
+        return str(self._core["TNamed"]["fTitle"])
+
     def ClassName(self) -> str:
         return "RooCurve"
-
-    def GetN(self) -> int:
-        return len(self.x)
 
     def interpolate(self, x: Any) -> Any:
         """``RooCurve::interpolate``: the curve's height at ``x``, linearly between its points."""
@@ -118,10 +119,28 @@ class RooCurve(Graph):
         return float(self.interpolate(x))
 
     def average(self, low: float, high: float) -> float:
-        """``RooCurve::average``: the mean height over ``[low, high]``, by the trapezoids of its
-        points."""
-        inside = (self.x > low) & (self.x < high)
-        xs = np.concatenate([[low], self.x[inside], [high]])
-        ys = np.concatenate([[self.interpolate(low)], self.y[inside], [self.interpolate(high)]])
-        area = float(np.sum(0.5 * (ys[1:] + ys[:-1]) * np.diff(xs)))
-        return area / (high - low) if high > low else float(ys[0])
+        """``RooCurve::average``: the mean height over ``[low, high]``, by the trapezoids from
+        ``low`` to the nearest point inside, between the points, and on to ``high``."""
+        y_low, y_high = float(self.interpolate(low)), float(self.interpolate(high))
+        if high <= low:
+            return y_low  # an interval of no width: the height there
+        first, last = self._inner_points(low, high)
+        xs, ys = self.x, self.y
+        total = (xs[first] - low) * (y_low + ys[first]) / 2
+        for i in range(first, last):
+            total += (xs[i + 1] - xs[i]) * (ys[i] + ys[i + 1]) / 2
+        total += (high - xs[last]) * (ys[last] + y_high) / 2
+        return float(total / (high - low))
+
+    def _inner_points(self, low: float, high: float) -> tuple[int, int]:
+        """The first and last points inside ``[low, high]``, give or take a thousandth of it:
+        the nearest to each end, stepped inwards if it is outside."""
+        first, last = self._nearest(low), self._nearest(high)
+        tolerance = 1e-3 * (high - low)
+        first += 1 if self.x[first] - low < -tolerance else 0
+        last -= 1 if self.x[last] - high > tolerance else 0
+        return first, last
+
+    def _nearest(self, x: float) -> int:
+        """``findPoint``: the point closest to ``x``."""
+        return int(np.argmin(np.abs(self.x - x)))
