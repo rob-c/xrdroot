@@ -38,10 +38,12 @@ FAMILIES = (
     "stacks",
     "funcs",
     "fits",
+    "fitters",
     "graphs",
     "efficiencies",
     "files",
     "rootns",
+    "typedefs",
 )
 
 
@@ -62,6 +64,7 @@ from .mathtools import Fit  # noqa: E402
 
 __all__ = [*_gather(globals()), "TMath", "Math", "Fit", "draw_hook", "set_draw_hook", "DRAWN"]
 
+from . import mathformula as _mathformula  # noqa: E402, F401 - ROOT::Math in formulas
 from . import treelinks  # noqa: E402
 
 treelinks.connect()

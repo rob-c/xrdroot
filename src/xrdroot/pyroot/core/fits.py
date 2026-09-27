@@ -227,5 +227,8 @@ def fit(
     except ValueError as why:
         message("Warning", "Fit", "Fit data is empty (%s)", str(why))
         return TFitResultPtr(None, -1)
+    from .fitters import LATEST
+
+    LATEST["result"] = found
     name = f"TFitResult-{target.GetName()}-{getattr(unwrap(f1), 'name', f1)}"
     return TFitResultPtr(TFitResult(found, name))

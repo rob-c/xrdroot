@@ -12,7 +12,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import xrdroot.pyroot as ROOT
-from xrdroot.pyroot.core import directories, files, hooks
+from xrdroot.pyroot.core import directories, files, fitters, hooks
 
 
 def expect(*checks: tuple[Any, Any]) -> None:
@@ -57,3 +57,4 @@ def _reset() -> None:
     ROOT.gRandom.SetSeed(4357)
     ROOT.__dict__.pop("gErrorIgnoreLevel", None)
     ROOT.gErrorIgnoreLevel = ROOT.kUnset
+    fitters.LATEST["result"] = None

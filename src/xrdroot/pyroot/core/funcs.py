@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import inspect
 import re
+from enum import IntEnum
 from functools import partial
 from typing import Any, Callable
 
 import numpy as np
 
 from ...function import Function
+from ...function.members import UNSET
 from .objects import TAttFill, TAttLine, TAttMarker, TNamed
 from .refs import store
 from .wrapping import adopt, register, remember, unwrap, wrap
@@ -270,20 +272,31 @@ class TFormula(TNamed):
                 print(c_format(line, *(values if line.startswith("Par") else values[1:])))
 
 
+class EAddToList(IntEnum):
+    """``TF1::EAddToList``: whether a new function goes in ``gROOT``'s list of functions."""
+
+    kDefault = 0
+    kAdd = 1
+    kNo = 2
+
+
 class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
     """``TF1``: a function of one variable, from a formula or from Python code."""
 
     CLASS_TITLE = "The Parametric 1-D function"
     DIM = 1
+    EAddToList = EAddToList
 
     def __init__(self, name: Any = "", source: Any = None, *rest: Any) -> None:
         TNamed.__init__(self)
+        listed = EAddToList.kNo not in [v for v in rest if isinstance(v, EAddToList)]
+        rest = tuple(v for v in rest if not isinstance(v, EAddToList))
         if isinstance(name, TF1):
             self._xrd = name._xrd.copy()
         else:
             self._xrd = self._made(str(name), source, rest)
         remember(self._xrd, self)
-        if name:
+        if name and listed:
             _register(self)
 
     def _made(self, name: str, source: Any, rest: tuple[Any, ...]) -> Function:
@@ -416,6 +429,34 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
         limits = [float(a), float(b), *(float(value) for value in rest[: 2 * self.GetNdim() - 2])]
         return _gauss_legendre(self._xrd, limits)
 
+    def IntegralError(
+        self, a: float, b: float, params: Any = None, covmat: Any = None, epsilon: float = 1e-2
+    ) -> float:
+        """``IntegralError(a, b[, params, covmat])``: the integral's error from the parameters'.
+
+        The covariance is ``covmat``, a flat ``npar*npar`` array, or else the
+        latest fit's, as ROOT takes it from ``TVirtualFitter``; each
+        parameter's effect is the integral's derivative in it.
+        """
+        from .fitters import LATEST
+
+        kept = np.array(self.GetParameters(), dtype=np.float64)
+        given = kept if params is None else np.asarray(params, dtype=np.float64)[: len(kept)]
+        chosen = LATEST["result"].covariance if covmat is None else covmat
+        cov = np.asarray(chosen, dtype=np.float64).reshape(len(kept), len(kept))
+        grad = np.zeros(len(kept))
+        for index, value in enumerate(given):
+            step = 1e-3 * max(abs(value), 1.0)
+            sides = []
+            for shift in (step, -step):
+                moved = given.copy()
+                moved[index] = value + shift
+                self.SetParameters(moved)
+                sides.append(self.Integral(a, b))
+            grad[index] = (sides[0] - sides[1]) / (2 * step)
+        self.SetParameters(kept)
+        return float(np.sqrt(max(grad @ cov @ grad, 0.0)))
+
     def Derivative(self, x: float, params: Any = None, eps: float = 0.001) -> float:
         if params is not None:
             self.SetParameters(params)
@@ -512,17 +553,53 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
         return made
 
     def GetHistogram(self) -> Any:
-        """``GetHistogram``: the function sampled at the centres of ``Npx`` bins over its range."""
+        """``GetHistogram``: the function sampled at the centres of ``Npx`` bins over its range.
+
+        ROOT keeps the one histogram, so titles set on its axes stay; it is
+        sampled afresh each time it is asked for, as ROOT does on each paint.
+        """
         from ...hist import Histogram
 
         low, high = self.GetXmin(), self.GetXmax()
         edges = np.linspace(low, high, self.GetNpx() + 1)
         centres = 0.5 * (edges[1:] + edges[:-1])
         values = np.asarray(self._xrd(centres), dtype=np.float64)
-        made = Histogram.new(
-            "Func", edges, values, title=self.GetTitle(), errors=np.zeros(len(values))
-        )
-        return wrap(made)
+        grid = (low, high, self.GetNpx())
+        kept = self.__dict__.get("_histogram")
+        if kept is not None and self.__dict__.get("_grid") == grid:
+            kept._xrd._cells()[1:-1] = values
+        else:
+            self.__dict__["_grid"] = grid
+            made = Histogram.new(
+                "Func", edges, values, title=self.GetTitle(), errors=np.zeros(len(values))
+            )
+            kept = self.__dict__["_histogram"] = wrap(made)
+        kept.SetMinimum(self.GetMinimumStored())
+        kept.SetMaximum(self.GetMaximumStored())
+        return kept
+
+    def GetXaxis(self) -> Any:
+        return self.GetHistogram().GetXaxis()
+
+    def GetYaxis(self) -> Any:
+        return self.GetHistogram().GetYaxis()
+
+    def GetZaxis(self) -> Any:
+        return self.GetHistogram().GetZaxis()
+
+    def SetMaximum(self, maximum: float = UNSET) -> None:
+        """``SetMaximum``: the top of the frame the function is drawn in."""
+        self._xrd._f1["fMaximum"] = float(maximum)
+
+    def SetMinimum(self, minimum: float = UNSET) -> None:
+        """``SetMinimum``: the bottom of the frame the function is drawn in."""
+        self._xrd._f1["fMinimum"] = float(minimum)
+
+    def GetMaximumStored(self) -> float:
+        return float(self._xrd._f1.get("fMaximum", UNSET))
+
+    def GetMinimumStored(self) -> float:
+        return float(self._xrd._f1.get("fMinimum", UNSET))
 
 
 def _gauss_legendre(function: Any, limits: list[float], order: int = 48) -> float:

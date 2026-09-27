@@ -182,6 +182,15 @@ class Booked:
         for letter, label in zip("xyz", parts[1:]):
             self._core()[f"f{letter.upper()}axis"]["TNamed"]["fTitle"] = label
 
+    def SetXTitle(self, title: Any) -> None:
+        self.GetXaxis().SetTitle(title)
+
+    def SetYTitle(self, title: Any) -> None:
+        self.GetYaxis().SetTitle(title)
+
+    def SetZTitle(self, title: Any) -> None:
+        self.GetZaxis().SetTitle(title)
+
     def SetNameTitle(self, name: Any, title: Any) -> None:
         self.SetName(name)
         self.SetTitle(title)

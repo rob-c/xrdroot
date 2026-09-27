@@ -17,6 +17,11 @@ from ...stats import incomplete_gamma, incomplete_gamma_c
 from . import distributions as dist
 from .genvector import *  # noqa: F403
 from .genvector import __all__ as _vectors
+from .legendres import (  # noqa: F401 - ROOT::Math's Legendre polynomials, by name
+    assoc_legendre,
+    legendre,
+    sph_legendre,
+)
 from .mathtools import (  # noqa: F401 - ROOT::Math's function objects and tools, by name
     Factory,
     Functor,
@@ -368,5 +373,8 @@ __all__ = sorted(
         "Integrator",
         "IntegratorOneDim",
         "RootFinder",
+        "assoc_legendre",
+        "legendre",
+        "sph_legendre",
     ]
 )
