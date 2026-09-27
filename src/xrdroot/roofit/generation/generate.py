@@ -77,7 +77,7 @@ class Generator:
                               key=lambda v: v.GetName(), reverse=True)  # fmt: skip
         for _ in range(2):  # the generator's own copy of the density, and its context's
             announce(pdf, self.names)
-        self.context = context_for(pdf, self.names, frozenset(self.targets) if self.taken else None)
+        self.context = _context(pdf, self.names, frozenset(one.GetName() for one in self.taken))
 
     def sample(self, total: int, name: str) -> Any:
         """``generate(n)``: a dataset of ``total`` events, the density's variables left as they were."""
@@ -109,6 +109,16 @@ class Generator:
             for one in self.targets.get(name, []):
                 one.load_value(value)
         return loaded
+
+
+def _context(pdf: Any, names: frozenset[str], proto: frozenset[str]) -> Any:
+    """The density's context, told the prototype's variables if it has any - and wants to know."""
+    import inspect
+
+    make = getattr(pdf, "gen_context", None)
+    if proto and make is not None and "proto" in inspect.signature(make).parameters:
+        return make(names, proto=proto)
+    return context_for(pdf, names, proto & pdf.dependents() if proto else None)
 
 
 def _targets(pdf: Any, names: set[str]) -> dict[str, list[Any]]:

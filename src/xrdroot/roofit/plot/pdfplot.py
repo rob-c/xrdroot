@@ -111,6 +111,10 @@ def pdf_plot(pdf: Any, frame: Any, cmds: CmdList) -> Any:
 
     with cmds.adding(*_fit_range_options(pdf, cmds)):
         options = cmds.process(f"RooAbsPdf::plotOn({pdf.GetName()})")
+        if "Asymmetry" in options:
+            from .asymmetry import plot_asymmetry
+
+            return plot_asymmetry(pdf, frame, options)
         nset = _norm_vars(pdf, frame)
         chosen, suffix = _selected(pdf, _components(options))
         cmds.strip("SelectCompSet", "SelectCompSpec")

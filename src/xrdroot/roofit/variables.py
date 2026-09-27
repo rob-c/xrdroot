@@ -216,6 +216,16 @@ class RooRealVar(RooAbsRealLValue):
     def removeMax(self, name: Any = None) -> None:
         self._binning.setRange(self._binning.lowBound(), INFINITY)
 
+    def setBin(self, ibin: int, name: Any = None) -> None:
+        """``setBin``: the value set to the centre of bin ``ibin`` of the binning ``name``."""
+        from .messages import ERROR
+
+        if not 0 <= int(ibin) < self.getBins(name):
+            log(self, ERROR, "InputArguments", f"RooAbsRealLValue::setBin({self._name}) ERROR: bin index "
+                f"{int(ibin)} is out of range (0,{self.getBins(name) - 1})")  # fmt: skip
+            return
+        self.setVal(self.getBinning(name).binCenter(int(ibin)))
+
     def setBins(self, nbins: int, name: Any = None) -> None:
         if name:
             self._shared[str(name)] = RooUniformBinning(self.getMin(), self.getMax(), nbins, str(name))

@@ -120,6 +120,9 @@ class RooAbsPdf(RooAbsReal):
         values = []
         for leaf in self.leaves():
             name = leaf.GetName()
+            if name in names and not hasattr(leaf, "getMin"):  # a category: all its states, or rng's
+                values.append((name,))
+                continue
             if name in names:
                 ends = (leaf.getMin(rng), leaf.getMax(rng))
                 if np.ndim(ends[0]) or np.ndim(ends[1]):

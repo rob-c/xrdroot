@@ -101,13 +101,17 @@ class RooLinkedList(list):  # type: ignore[type-arg]
         return len(self)
 
 
+#: The commands that take a map - of labels to datasets or densities, of categories to states.
+MAPS = frozenset(["Import", "Link", "Slice"])
+
+
 def make(name: str, value: Any) -> RooCmdArg:
     """The command a PyROOT keyword stands for: ``Save=True`` is ``Save(True)``."""
     if name in FLAGS:
         return RooCmdArg(name) if value else RooCmdArg()
     if isinstance(value, (tuple, list)):
         return RooCmdArg(name, *value)
-    if isinstance(value, dict):  # YVar=dict(var=y, Binning=50): the command made from keywords
+    if isinstance(value, dict) and name not in MAPS:  # YVar=dict(var=y, Binning=50)
         given = dict(value)
         first = [given.pop(key) for key in ("var", "what") if key in given]
         return RooCmdArg(name, *first, *(make(key, one) for key, one in given.items()))
