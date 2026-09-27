@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from xrdroot.roofit.cmdargs import RooCmdArg
 from xrdroot.roofit.pdfs.addpdf import RooAddPdf
 from xrdroot.roofit.pdfs.basic import RooGaussian
 from xrdroot.roofit.plot.pdfplot import NUM_EVENT, RAW, RELATIVE_EXPECTED
@@ -291,3 +292,218 @@ def test_vertical_lines_close_a_ranged_curve_at_its_ends_as_root_draws_them() ->
     assert curve.GetN() == 38
     assert (curve.x[0], curve.y[0]) == pytest.approx((-1.5002, 0.0))
     assert (curve.x[-1], curve.y[-1]) == pytest.approx((2.5002, 0.0))
+
+
+FIT_RANGE = (
+    "[#1] INFO:Plotting -- RooAbsPdf::plotOn(model) p.d.f was fitted in a subrange and no "
+    "explicit Range() and NormRange() was specified. Plotting / normalising in fit range. To "
+    "override, do one of the following\n"
+    '\t- Clear the automatic fit range attribute: <pdf>.removeStringAttribute("fitrange");\n'
+    '\t- Explicitly specify the plotting range: Range("<rangeName>").\n'
+    '\t- Explicitly specify where to compute the normalisation: NormRange("<rangeName>").\n'
+    '\tThe default (full) range can be denoted with Range("") / NormRange("").\n'
+)
+
+
+def test_a_density_fitted_in_a_range_is_drawn_in_it_unless_told_otherwise(capsys: Any) -> None:
+    """After ``fitTo(Range("win"))`` the curve is drawn and normalised in the fit's range."""
+    m = Model()
+    data = m.data()
+    m.model.fitTo(data, Range="win", PrintLevel=-1)
+    frame = m.x.frame()
+    data.plotOn(frame)
+    capsys.readouterr()
+    m.model.plotOn(frame)
+    prefix = "[#1] INFO:Plotting -- RooAbsPdf::plotOn(model) "
+    assert capsys.readouterr().out == (
+        FIT_RANGE
+        + prefix
+        + "only plotting range 'fit_nll_model_modelData'\n"
+        + prefix
+        + "p.d.f. curve is normalized using explicit choice of ranges 'fit_nll_model_modelData'\n"
+    )
+    assert frame.getObject(1).GetN() == 60
+    m.model.plotOn(frame, Range="", NormRange="")
+    full = frame.getObject(2)
+    assert full.GetN() == 69
+    assert heights(full) == pytest.approx(
+        [10.06249305, 21.06118863, 30.84258269, 18.68275245, 6.602053066], rel=1e-6
+    )
+    m.model.removeStringAttribute("fitrange")
+    capsys.readouterr()
+    m.model.plotOn(frame)
+    assert "fitted in a subrange" not in capsys.readouterr().out
+
+
+def test_an_option_given_twice_is_warned_of_by_each_plot_on_that_reads_it(capsys: Any) -> None:
+    """The last of a name wins, and both ``RooAbsPdf::plotOn`` and ``RooAbsReal::plotOn`` say so."""
+    m = Model()
+    frame = m.frame()
+    capsys.readouterr()
+    m.model.plotOn(frame, RooCmdArg("LineColor", 3), RooCmdArg("LineColor", 4))
+    assert capsys.readouterr().out.splitlines() == [
+        "[#0] WARNING:InputArguments -- RooAbsPdf::plotOn(model) WARNING: argument LineColor is "
+        "duplicated",
+        "[#0] WARNING:InputArguments -- RooAbsReal::plotOn(model) WARNING: argument LineColor is "
+        "duplicated",
+    ]
+    assert frame.getObject(1)._core["TAttLine"]["fLineColor"] == 4
+
+
+def test_a_curve_is_named_hidden_and_put_at_the_back_as_asked() -> None:
+    """``Name``, ``Invisible`` and ``MoveToBack``: the frame's list, as ROOT's shows it."""
+    m = Model()
+    frame = m.frame()
+    m.model.plotOn(frame)
+    m.model.plotOn(frame, Name="twice", Invisible=True, MoveToBack=True)
+    assert [frame.nameOf(i) for i in range(3)] == ["twice", "h_modelData", "model_Norm[x]"]
+    assert frame.items[0][2] is True
+
+
+def test_a_function_is_drawn_as_it_is_scaled_only_if_asked() -> None:
+    """``RooAbsReal::plotOn``: ``x*x + 1`` as it is, twice it, and at a coarser precision."""
+    from xrdroot.roofit.functions import RooFormulaVar
+
+    m = Model()
+    fx = RooFormulaVar("fx", "fx", "x*x+1", [m.x])
+    frame = m.x.frame()
+    fx.plotOn(frame)
+    fx.plotOn(frame, Precision=1e-2, DrawOption="F", FillColor=5)
+    plain, coarse = frame.getObject(0), frame.getObject(1)
+    assert (plain.GetN(), coarse.GetN()) == (46, 26)
+    assert heights(plain) == pytest.approx([54.35, 2.5, 1.2, 9.45, 78.5], rel=REL)
+    assert heights(coarse) == pytest.approx([54.5, 2.6, 1.4, 9.5, 78.6], rel=REL)
+    assert frame.GetMaximum() == pytest.approx(106.05, rel=REL)
+    assert frame.items[1][1] == "F"
+    assert coarse._core["TAttFill"]["fFillColor"] == 5
+    fx.plotOn(frame, Normalization=2.0, Range=(-2.0, 2.0))
+    assert frame.getObject(2).GetN() == 42
+
+
+@pytest.mark.xfail(**PENDING, reason="curves.py:221: ROOT names a function's curve fx_Norm[x]")
+def test_a_functions_curve_is_named_for_its_frames_variable() -> None:
+    """ROOT calls the curve of ``fx`` drawn on ``x`` ``fx_Norm[x]``."""
+    from xrdroot.roofit.functions import RooFormulaVar
+
+    m = Model()
+    fx = RooFormulaVar("fx", "fx", "x*x+1", [m.x])
+    frame = m.x.frame()
+    fx.plotOn(frame)
+    assert frame.nameOf(0) == "fx_Norm[x]"
+
+
+@pytest.mark.xfail(
+    **PENDING, reason="realplot.py:58-59: ROOT divides a ranged function by its integral there"
+)
+def test_a_function_drawn_over_a_range_is_divided_by_its_integral_there() -> None:
+    """``Normalization(2)`` over ``[-2, 2]``: twice ``x*x + 1`` over its integral there, 28/3."""
+    from xrdroot.roofit.functions import RooFormulaVar
+
+    m = Model()
+    fx = RooFormulaVar("fx", "fx", "x*x+1", [m.x])
+    frame = m.x.frame()
+    fx.plotOn(frame, Normalization=2.0, Range=(-2.0, 2.0))
+    assert heights(frame.getObject(0), (-1.5, 0.4, 1.5)) == pytest.approx(
+        [0.6964285714, 0.2485714286, 0.6964285714], rel=REL
+    )
+
+
+class Fitted:
+    """``f g1 + (1-f) e`` fitted to 300 of its events: the fit a band is drawn from."""
+
+    def __init__(self) -> None:
+        from xrdroot.roofit.pdfs.basic import RooExponential
+
+        self.x = RooRealVar("x", "x", 0, -10, 10)
+        self.x.setBins(20)
+        self.m1 = RooRealVar("m1", "m1", 1, -5, 5)
+        self.s1 = RooRealVar("s1", "s1", 1.5, 0.1, 10)
+        g1 = RooGaussian("g1", "g1", self.x, self.m1, self.s1)
+        e = RooExponential("e", "e", self.x, RooRealVar("c", "c", -0.2, -2, -0.01))
+        self.f = RooRealVar("f", "f", 0.4, 0, 1)
+        self.model = RooAddPdf("model", "model", [g1, e], [self.f])
+        generator().SetSeed(4357)
+        self.data = self.model.generate([self.x], 300)
+        self.result = self.model.fitTo(self.data, PrintLevel=-1, Save=True)
+        self.frame = self.x.frame()
+        self.data.plotOn(self.frame)
+
+
+def band_points(curve: Any) -> list[float]:
+    """The band's heights at the points ROOT's were printed at: out along the top, back below."""
+    n = curve.GetN()
+    return [float(curve.y[i]) for i in (5, n // 4, (3 * n) // 4)]
+
+
+def test_an_error_band_is_the_linear_propagation_of_the_fits_errors_as_root_draws_it() -> None:
+    """``VisualizeError(fit)``: ``sqrt(F C F)`` round the curve, out and back, filled cyan."""
+    fit = Fitted()
+    assert fit.f.getVal() == pytest.approx(0.446675644201, rel=1e-9)
+    fit.model.plotOn(fit.frame, VisualizeError=fit.result)
+    band = fit.frame.getObject(1)
+    assert (band.GetName(), band.GetN()) == ("model_Norm[x]_errorband", 160)
+    assert (band.x[0], band.x[80], band.x[159]) == pytest.approx((-11.001, 11.001, -11.001))
+    assert band_points(band) == pytest.approx([31.465995, 36.9911, 30.740347], rel=1e-7)
+    assert fit.frame.items[1][1] == "F"
+    assert band._core["TAttFill"]["fFillColor"] == 432
+    assert band._core["TAttLine"]["fLineWidth"] == 1
+
+
+def test_an_error_band_of_some_parameters_at_some_sigmas_is_named_and_coloured_as_asked() -> None:
+    """``VisualizeError(fit, f, 2)``: only ``f`` moved, by two of its errors."""
+    fit = Fitted()
+    fit.model.plotOn(
+        fit.frame, VisualizeError=(fit.result, [fit.f], 2.0), FillColor=3, Name="fband"
+    )
+    band = fit.frame.getObject(1)
+    assert band.GetName() == "fband"
+    assert band_points(band) == pytest.approx([33.267369, 39.243247, 28.536645], rel=1e-7)
+    assert band._core["TAttFill"]["fFillColor"] == 3
+
+
+def test_an_error_band_beyond_a_parameters_range_is_clipped_and_warned_of(capsys: Any) -> None:
+    """Three sigmas of ``m1`` leave ``[1, 1.5]``: RooFit says so and clips the variations."""
+    fit = Fitted()
+    fit.m1.setRange(1.0, 1.5)
+    capsys.readouterr()
+    fit.model.plotOn(fit.frame, VisualizeError=(fit.result, [fit.m1], 3.0))
+    assert (
+        "[#0] WARNING:Plotting -- RooAbsReal::plotOn(model): the 3-sigma error band for the "
+        'parameter "m1" is invalid because the variations (0.67137, 1.80919) are outside the '
+        "defined range [1, 1.5]!\n                         The variations will be clipped inside "
+        "the range. This might or might not be acceptable in your usecase.\n"
+    ) in capsys.readouterr().out
+    assert band_points(fit.frame.getObject(1)) == pytest.approx(
+        [28.805649, 34.976239, 32.398993], rel=1e-7
+    )
+
+
+def test_a_sampled_error_band_takes_the_central_quantiles_of_curves_of_drawn_parameters(
+    capsys: Any,
+) -> None:
+    """``VisualizeError(fit, 0.1, False)``: 108 parameter sets drawn from the fit, as ROOT draws."""
+    fit = Fitted()
+    capsys.readouterr()
+    generator().SetSeed(4357)
+    fit.model.plotOn(fit.frame, VisualizeError=(fit.result, 0.1, False), MoveToBack=True)
+    assert (
+        "[#1] INFO:Plotting -- RooAbsReal::plotOn(model) INFO: visualizing 0.1-sigma uncertainties "
+        "in parameters (m1,s1,f,c) from fit result fitresult_model_modelData using 108 samplings."
+    ) in capsys.readouterr().out
+    band = fit.frame.getObject(0)
+    assert band.GetName() == "model_Norm[x]_errorband"
+    assert band_points(band) == pytest.approx([28.26745, 33.892244, 34.095749], rel=1e-7)
+    assert fit.frame.GetMaximum() == pytest.approx(44.07103, rel=1e-7)
+
+
+@pytest.mark.xfail(
+    **PENDING,
+    reason="pdfplot.py:148 strips Components before band.py re-plots: ROOT's band is the part's",
+)
+def test_an_error_band_of_a_component_is_drawn_round_that_component() -> None:
+    """``VisualizeError`` with ``Components("e")``: 72 points round ``e``, named as ROOT does."""
+    fit = Fitted()
+    fit.model.plotOn(fit.frame, VisualizeError=(fit.result, 1.0, True), Components="e")
+    band = fit.frame.getObject(1)
+    assert (band.GetName(), band.GetN()) == ("model_Norm[x]_Comp[e]_errorband_Comp[e]", 72)
+    assert band.y[5] == pytest.approx(31.470797, rel=1e-7)
