@@ -23,6 +23,11 @@ from ..collections import RooArgList, as_list
 from ..messages import WARNING, log
 from ..pdf import CAN_NOT_BE_EXTENDED, MUST_BE_EXTENDED, RooAbsPdf
 from ..printing import g
+
+
+def g6(value: Any) -> str:
+    """A number as a fresh ``std::ostringstream`` prints one: six figures, whatever ``cout`` is at."""
+    return g(value, 6)
 from ..real import Context, RooAbsReal
 from ..selection import active
 from ..variables import RooConstVar
@@ -188,6 +193,26 @@ class RooAddPdf(RooAbsPdf):
         if not self.coefs:
             parts = [p.GetName() for p in self.pdfs]
         return " + ".join(parts) + " "
+
+    def compiled_origin(self, nset: frozenset[str], rng: Any = None) -> str:
+        """How RooFit describes this sum in a fit: its terms as the normalised densities they are."""
+        labels = [p.normalized_label(nset & p.dependents(), rng) if not p.selfNormalized() else p.GetName()
+                  for p in self.pdfs]
+        parts = [f"{c.GetName()} * {label}" for c, label in zip(self.coefs, labels)]
+        if len(labels) > len(self.coefs):
+            parts.append(f"[%] * {labels[len(self.coefs)]}")
+        return f"RooAddPdf::{self._name}[ " + " + ".join(parts) + " ]"
+
+    def compiled_servers(self, nset: frozenset[str], rng: Any = None) -> str:
+        """Its inputs' values now: the observables, the normalised terms, the coefficients."""
+        observables = [one for one in self.leaves() if one.GetName() in nset]
+        terms = []
+        for pdf in self.pdfs:
+            label = pdf.normalized_label(nset & pdf.dependents(), rng) if not pdf.selfNormalized() else pdf.GetName()
+            terms.append(f"{label} = {g6(float(np.asarray(pdf.value({}, nset & pdf.dependents(), rng))))}")
+        return ("!refCoefNorm=(" + ",".join(f"{o.GetName()} = {g6(o.getVal())}" for o in observables)
+                + "), !pdfs=(" + ",".join(terms) + "), !coefficients=("
+                + ",".join(f"{c.GetName()} = {g6(c.getVal())}" for c in self.coefs) + ")")  # fmt: skip
 
     def printValue(self) -> str:
         return f"{g(np.asarray(self.compute({})).reshape(-1)[0])}/1"

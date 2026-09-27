@@ -199,8 +199,8 @@ class TPad(Drawn):
     def Draw(self, option: str = "") -> None:
         """Draw this pad in the current one; a canvas is drawn already."""
         parent = current()
-        if parent is None or parent is self or self.mother is not None:
-            return
+        if parent is None or self.mother is not None or parent.GetCanvas() is self.GetCanvas():
+            return  # drawn already: in its own canvas, or this pad is the canvas holding the current pad
         parent._adopt(self)
 
     def Clear(self, option: str = "") -> None:

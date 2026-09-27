@@ -120,5 +120,6 @@ def _configure(minimizer: RooMinimizer, options: Commands) -> None:
     minimizer.setVerbose(bool(options.get("Verbose", 0, False)))
     minimizer.setEvalErrorWall(bool(options.get("EvalErrorWall", 0, True)))
     minimizer.setRecoverFromNaNStrength(float(options.get("RecoverFromUndefinedRegions", 0, 10.0)))
+    minimizer.setPrintEvalErrors(int(options.get("PrintEvalErrors", 0, 10)))
     if "MaxCalls" in options:
         minimizer.setMaxFunctionCalls(int(options.get("MaxCalls")))

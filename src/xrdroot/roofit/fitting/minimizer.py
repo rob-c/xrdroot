@@ -23,7 +23,7 @@ import numpy as np
 
 from ...fit.minuit import iminuit
 from ..collections import RooArgList, RooArgSet, as_list
-from ..messages import INFO, WARNING, log
+from ..messages import INFO, WARNING, log, log_plain
 from ..printing import PRECISION, g
 from .. import cout
 
@@ -86,6 +86,9 @@ class RooMinimizer:
         self.history: list[tuple[str, int]] = []
         self.minimizer_type = "Minuit2"
         self.invalid = 0
+        self.evaluations = 0
+        self._offset = 0.0
+        self.print_eval_errors = 10
         self._max_fcn = -math.inf
         self._last: list[float] = []
 
@@ -126,7 +129,8 @@ class RooMinimizer:
         self.function.offset = bool(flag)
 
     def setPrintEvalErrors(self, n: int) -> None:
-        """How many evaluation errors to print: none are listed here."""
+        """How many evaluation errors of each object to list when a point fails; -1 for none."""
+        self.print_eval_errors = int(n)
 
     def optimizeConst(self, flag: int) -> None:
         """Constant-term optimisation changes how fast, not what: nothing to do."""
@@ -149,25 +153,62 @@ class RooMinimizer:
                 if self.verbose:
                     cout.write(f"{par.GetName()}={g(float(value), PRECISION[0])}, ")
                 par.setVal(float(value))
-        evaluate = getattr(self.function, "evaluate_nll", None)
-        value = self._handled(evaluate() if evaluate is not None else float(self.function.getVal()))
+        value = self._handled(self._evaluate())
+        self.evaluations += 1
         if self.verbose:
             cout.write(f"\nprevFCN = {g(value, 10)}  ")
             PRECISION[0] = 4  # RooFit leaves std::cout at four digits from here on
         return value
 
+    def _evaluate(self) -> float:
+        """The function's value, its evaluation errors collected as RooFit collects them."""
+        from .. import evalerrors
+
+        evalerrors.clear()
+        evalerrors.collecting(True)
+        try:
+            evaluate = getattr(self.function, "evaluate_nll", None)
+            return evaluate() if evaluate is not None else float(self.function.getVal())
+        finally:
+            evalerrors.collecting(False)
+
     def _handled(self, value: float) -> float:
         """``applyEvalErrorHandling``: a value that cannot be had becomes the worst seen, and worse."""
-        if not math.isfinite(value) or value > 1e30:
+        from .. import evalerrors
+
+        if not math.isfinite(value) or evalerrors.count() > 0 or value > 1e30:
+            self._print_errors()
+            evalerrors.clear()
             self.invalid += 1
             if self.eval_error_wall:
-                badness = float(getattr(value, "badness", 0.0))
+                from ..nanpack import unpack
+
+                badness = float(unpack(value))
                 return (self._max_fcn if math.isfinite(self._max_fcn) else 0.0) + (
                     self.recover_strength * badness
                 )
             return value
+        if self.evaluations > 0 and self.evaluations == self.invalid:
+            self._offset = -value
+        value += self._offset
         self._max_fcn = max(self._max_fcn, value)
         return value
+
+    def _print_errors(self) -> None:
+        """``RooAbsMinimizerFcn::printEvalErrors``: why this point failed, as a warning."""
+        from .. import evalerrors
+
+        if self.print_eval_errors < 0:
+            return
+        if self.eval_error_wall:
+            text = ("RooAbsMinimizerFcn: Minimized function has error status.\nReturning maximum FCN so "
+                    f"far ({g(self._max_fcn, 6)}) to force MIGRAD to back out of this region. Error log "
+                    "follows.\n")  # fmt: skip
+        else:
+            text = "RooAbsMinimizerFcn: Minimized function has error status but is ignored.\n"
+        text += "Parameter values: " + "".join(f"\t{p.GetName()}={g(p.getVal(), 6)}" for p in self.params)
+        text += "\n" + evalerrors.text(self.print_eval_errors)
+        log_plain(self, WARNING, "Minimization", text + "\n")
 
     def _step(self, par: Any) -> float:
         """The first step, with RooFit's word - when verbose - for a parameter that had no error."""
@@ -225,9 +266,9 @@ class RooMinimizer:
         if not self.params:
             log(self, 4, "Minimization", "RooMinimizer::fitFCN(): FCN function has zero parameters")
             return -1
+        self.minuit = self._settings()
         log(self, INFO, "Minimization", "[fitFCN] No discrete parameters, performing continuous "
             "minimization only")  # fmt: skip
-        self.minuit = self._settings()
         run(self.minuit)
         self.minuit_status = _status(self.minuit.fmin)
         self.status = self.minuit_status if self.minuit.fmin.is_valid else -1
@@ -287,7 +328,10 @@ class RooMinimizer:
     def _back_propagate(self, minos: bool) -> None:
         """``BackProp``: the parameters take Minuit's values and errors - and MINOS's, if it ran."""
         for index, par in enumerate(self.params):
-            par.setVal(float(self.minuit.values[index]))
+            value = float(self.minuit.values[index])
+            if self.verbose and par.getVal() != value:  # SetPdfParamVal says so, as in a call
+                cout.write(f"{par.GetName()}={g(value, PRECISION[0])}, ")
+            par.setVal(value)
             par.setError(float(self.minuit.errors[index]) if not par.isConstant() else par.getError())
             error = self.minuit.merrors.get(par.GetName()) if minos else None
             if error is not None:

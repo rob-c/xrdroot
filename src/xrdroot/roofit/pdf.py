@@ -54,7 +54,46 @@ class RooAbsPdf(RooAbsReal):
         raw = self.compute(ctx)
         if not nset or self.selfNormalized():
             return raw
-        return raw / self.norm(ctx, nset, rng)
+        norm = self.norm(ctx, nset, rng)
+        from . import evalerrors
+
+        if evalerrors.active():
+            self._log_failures(raw, norm, frozenset(nset), rng)
+        return normalized(raw, norm)
+
+    def normalized_label(self, nset: frozenset[str], rng: Any = None) -> str:
+        """``g_over_g_Int[x]``: what RooFit calls this density normalised over ``nset``."""
+        return self.normalized_name(list(self._by_names(nset)), rng)
+
+    def normalized_origin(self, nset: frozenset[str], rng: Any = None) -> str:
+        from .integration import integral_name
+
+        norm = integral_name(self, nset & self.dependents(), rng)
+        return (f"RooFit::Detail::RooNormalizedPdf::{self.normalized_label(nset, rng)}[ numerator="
+                f"{self._name} denominator={norm} ]")  # fmt: skip
+
+    def normalized_servers(self, nset: frozenset[str], rng: Any = None) -> str:
+        from .integration import integral_name
+
+        norm = integral_name(self, nset & self.dependents(), rng)
+        return (f"numerator={self._name}={g(value_of(self.compute({})), 6)}, denominator={norm}="
+                f"{g(value_of(self.norm({}, nset, rng)), 6)}")  # fmt: skip
+
+    def _log_failures(self, raw: Any, norm: Any, nset: frozenset[str], rng: Any) -> None:
+        """``RooNormalizedPdf::doEval``'s messages, by kind - with its kernel's thresholds."""
+        from . import evalerrors
+
+        raw, norm = np.asarray(raw, dtype=np.float64), np.broadcast_to(np.asarray(norm), np.shape(raw))
+        bad_norm = (norm < 0) | ((norm == 0) & (raw != 0))
+        negative = ~bad_norm & (raw < 0)
+        nan = ~bad_norm & ~negative & np.isnan(raw)
+        counts = (int(np.count_nonzero(bad_norm)), int(np.count_nonzero(negative)), int(np.count_nonzero(nan)))
+        messages = ("p.d.f normalization integral is zero or negative",
+                    "p.d.f value is less than zero, trying to recover", "p.d.f value is Not-a-Number")
+        for kind, (number, message) in enumerate(zip(counts, messages)):
+            if number > kind:  # the kernel reports a kind only above that many: RooFit's own quirk
+                evalerrors.record(("norm", id(self)), lambda: self.normalized_origin(nset, rng), message,
+                                  lambda: self.normalized_servers(nset, rng), number)
 
     def norm(self, ctx: Context, nset: Any, rng: Any = None) -> Any:
         """The normalisation integral: over the observables in ``nset`` this depends on."""
@@ -167,6 +206,26 @@ class RooAbsPdf(RooAbsReal):
 
     def _by_names(self, names: frozenset[str]) -> list[Any]:
         return [one for one in self.leaves() if one.GetName() in names]
+
+
+def normalized(raw: Any, norm: Any) -> Any:
+    """``computeNormalizedPdf``: ``raw / norm``, or a NaN saying how bad it is where that is wrong.
+
+    A normalisation below zero - or zero under a value that is not - and a
+    value below zero give NaNs whose payload is how far below zero they are,
+    as RooFit makes them, so that the likelihood can tell Minuit how far to
+    back away; a NaN stays NaN, and nothing over nothing is nothing.
+    """
+    from .nanpack import pack
+
+    raw, norm = np.asarray(raw, dtype=np.float64), np.asarray(norm, dtype=np.float64)
+    bad_norm = (norm < 0) | ((norm == 0) & (raw != 0))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        found = np.where((raw == 0) & (norm == 0), 0.0, raw / norm)
+    found = np.where(np.isnan(raw), raw, found)
+    found = np.where(raw < 0, pack(-raw), found)
+    found = np.where(bad_norm, pack(-norm + np.where(raw < 0, -raw, 0.0)), found)
+    return found if found.ndim else float(found)
 
 
 def check_range(pdf: Any, params: Any, low: float, high: float = math.inf,

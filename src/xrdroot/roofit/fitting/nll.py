@@ -9,7 +9,7 @@ values and a sum that rounds differently moves where it stops.
 
 An event where the density is not positive, or not a number, makes the
 likelihood "invalid": RooFit then hands Minuit a value made worse by how
-bad the events were (:class:`Invalid`), so that it backs out of the region.
+bad the events were (:mod:`..nanpack`), so that it backs out of the region.
 """
 
 from __future__ import annotations
@@ -23,30 +23,22 @@ from ..cmdargs import commands
 from ..collections import RooArgSet, as_list
 from ..real import RooAbsReal
 
-__all__ = ["Invalid", "RooNLLVar", "create_nll"]
-
-
-class Invalid(float):
-    """A likelihood that could not be computed, carrying how bad its events were."""
-
-    badness: float = 0.0
-
-    @classmethod
-    def of(cls, badness: float) -> Invalid:
-        made = cls(math.nan)
-        made.badness = badness
-        return made
+__all__ = ["RooNLLVar", "create_nll"]
 
 
 def _log_terms(probs: np.ndarray[Any, Any], weights: np.ndarray[Any, Any]) -> tuple[float, float]:
-    """``reduceNLL``: the sum of ``-w log p``, and the badness of the events that have none."""
+    """``reduceNLL``: the sum of ``-w log p``, and the badness of the events that have none.
+
+    A value at or below zero is as bad as it is below zero, a NaN as bad as
+    its payload says (:mod:`..nanpack`) - an untagged NaN not at all, so the
+    sum stays NaN - which is how ``getLog`` in ``RooBatchCompute`` scores them.
+    """
+    from ..nanpack import unpack
+
     probs = np.broadcast_to(probs, weights.shape)
     keep = weights != 0
     probs, weights = probs[keep], weights[keep]
-    bad = ~(probs > 0)
-    badness = float(np.sum(np.where(np.isnan(probs[bad]), 0.0, -probs[bad]))) if bad.any() else 0.0
-    if bad.any() and badness == 0.0:
-        badness = float(np.count_nonzero(bad))
+    badness = float(np.sum(np.where(probs <= 0, -probs, 0.0)) + np.sum(unpack(probs)))
     with np.errstate(divide="ignore", invalid="ignore"):
         terms = -weights * np.log(probs)
     return math.fsum(terms.tolist()), badness
@@ -79,15 +71,17 @@ class RooNLLVar(RooAbsReal):
         return self.evaluate_nll()
 
     def evaluate_nll(self) -> float:
-        """The likelihood at the parameters' values now, or :class:`Invalid`."""
+        """The likelihood at the parameters' values now, or a NaN carrying how bad it was."""
         self._badness = 0.0
         channels = getattr(self.pdf, "channel_terms", None)
         total = channels(self) if channels is not None else self.channel(self.pdf, None)
         for constraint in self.constraints:
             found = float(np.asarray(constraint.value({}, self._constrained(constraint))))
             total -= math.log(found) if found > 0 else math.nan
-        if self._badness or math.isnan(total):
-            return Invalid.of(self._badness or 1.0)
+        if self._badness:
+            from ..nanpack import pack
+
+            return float(pack(self._badness))
         if self.offset and self._offset_value == 0.0:
             self._offset_value = total
         return total - self._offset_value
@@ -99,11 +93,24 @@ class RooNLLVar(RooAbsReal):
         nset = self.nset & pdf.dependents() if keep is not None else self.nset
         probs = np.asarray(pdf.value(dict(columns), nset, self.rng), dtype=np.float64)
         total, badness = _log_terms(probs, weights)
+        self._log_top(pdf, probs, weights, nset)
         self._badness += badness
         if self.extended and pdf.canBeExtended():
             sumw = math.fsum(weights.tolist())
             total += pdf.extendedTerm(sumw, pdf.expected(nset, self.rng))
         return total
+
+    def _log_top(self, pdf: Any, probs: Any, weights: Any, nset: frozenset[str]) -> None:
+        """The likelihood's own messages: each event whose density is not positive, or NaN."""
+        from .. import evalerrors
+
+        if not evalerrors.active():
+            return
+        probs = np.broadcast_to(probs, weights.shape)[weights != 0]
+        key, origin, servers = _top_node(pdf, nset, self.rng)
+        for message, number in (("getLogVal() top-level p.d.f not greater than zero", probs <= 0),
+                                ("getLogVal() top-level p.d.f evaluates to NaN", np.isnan(probs))):
+            evalerrors.record(key, origin, message, servers, int(np.count_nonzero(number)), top=True)
 
     def _constrained(self, constraint: Any) -> frozenset[str]:
         return frozenset(one.GetName() for one in constraint.leaves())
@@ -119,6 +126,16 @@ class RooNLLVar(RooAbsReal):
 
     def getVal(self, nset: Any = None) -> float:
         return float(self.evaluate_nll())
+
+
+def _top_node(pdf: Any, nset: frozenset[str], rng: Any) -> tuple[Any, Any, Any]:
+    """What RooFit calls the density a likelihood takes the logarithm of, and its inputs' values."""
+    if not pdf.selfNormalized():
+        return ("norm", id(pdf)), lambda: pdf.normalized_origin(nset, rng), lambda: pdf.normalized_servers(nset, rng)
+    describe = getattr(pdf, "compiled_origin", None)
+    if describe is None:
+        return ("pdf", id(pdf)), lambda: f"{pdf.ClassName()}::{pdf.GetName()}", lambda: ""
+    return ("pdf", id(pdf)), lambda: describe(nset, rng), lambda: pdf.compiled_servers(nset, rng)
 
 
 def _names(items: Any) -> set[str]:

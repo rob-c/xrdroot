@@ -251,6 +251,15 @@ def service() -> RooMsgService:
     return SERVICE
 
 
+def log_plain(obj: Any, level: int, topic: str, text: str) -> None:
+    """``ooccoutW(obj, topic) << text``: to the stream that takes it, without the prefix."""
+    found = SERVICE.activeStream(obj, TOPICS[topic], level)
+    if found >= 0:
+        out = SERVICE.getStream(found).stream()
+        out.write(text)
+        out.flush()
+
+
 def log(obj: Any, level: int, topic: str, text: str) -> None:
     """``oocoutI(obj, topic) << text``, and its kin by ``level``."""
     SERVICE.log(obj, level, topic, text)
