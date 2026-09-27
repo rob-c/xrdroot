@@ -29,6 +29,7 @@ from .printing import (
     kName,
     kValue,
 )
+from . import cout
 
 __all__ = ["Proxy", "RooAbsArg"]
 
@@ -278,17 +279,15 @@ class RooAbsArg(RooPrintable):
 
     def printCompactTree(self, indent: str = "", filename: Any = None, namePat: Any = None,
                          client: Any = None) -> None:  # fmt: skip
-        import sys
-
-        sys.stdout.write(self.compact_tree(str(indent), None))
+        
+        cout.write(self.compact_tree(str(indent), None))
 
     def printComponentTree(self, indent: str = "", namePat: Any = None, nLevel: int = 999) -> None:
         if nLevel == 0 or self.isFundamental() or self.InheritsFrom("RooConstVar"):
             return
         if not namePat or str(namePat) in self._name:
-            import sys
-
-            sys.stdout.write(str(indent))
+            
+            cout.write(str(indent))
             self.Print()
         for server in self.servers():
             server.printComponentTree(str(indent) + "  ", namePat, nLevel - 1)

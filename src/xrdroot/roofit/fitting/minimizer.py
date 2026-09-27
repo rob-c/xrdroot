@@ -17,7 +17,6 @@ worst value seen so far plus ten times how bad it was, so MIGRAD backs away
 from __future__ import annotations
 
 import math
-import sys
 from typing import Any
 
 import numpy as np
@@ -26,6 +25,7 @@ from ...fit.minuit import iminuit
 from ..collections import RooArgList, RooArgSet, as_list
 from ..messages import INFO, WARNING, log
 from ..printing import PRECISION, g
+from .. import cout
 
 __all__ = ["RooMinimizer", "first_step"]
 
@@ -147,12 +147,12 @@ class RooMinimizer:
         for par, value in zip(self.params, x):
             if par.getVal() != float(value):
                 if self.verbose:
-                    sys.stdout.write(f"{par.GetName()}={g(float(value), PRECISION[0])}, ")
+                    cout.write(f"{par.GetName()}={g(float(value), PRECISION[0])}, ")
                 par.setVal(float(value))
         evaluate = getattr(self.function, "evaluate_nll", None)
         value = self._handled(evaluate() if evaluate is not None else float(self.function.getVal()))
         if self.verbose:
-            sys.stdout.write(f"\nprevFCN = {g(value, 10)}  ")
+            cout.write(f"\nprevFCN = {g(value, 10)}  ")
             PRECISION[0] = 4  # RooFit leaves std::cout at four digits from here on
         return value
 
@@ -209,7 +209,7 @@ class RooMinimizer:
 
     def _migrad(self, minuit: Any) -> None:
         if self.print_level >= 1:
-            print(f"Minuit2Minimizer: Minimize with max-calls {self.max_calls} convergence for edm < "
+            cout.line(f"Minuit2Minimizer: Minimize with max-calls {self.max_calls} convergence for edm < "
                   f"{g(self.eps)} strategy {self.strategy}")  # fmt: skip
         minuit.migrad(ncall=self.max_calls, iterate=1, use_simplex=False)
 
@@ -264,8 +264,8 @@ class RooMinimizer:
         index = [p.GetName() for p in self.params].index(name)
         if self.print_level >= 1:
             for side in ("LOWER", "UPPER"):
-                print("*" * 102)
-                print(f"Minuit2Minimizer::GetMinosError - Run MINOS {side} error for parameter #{index} : "
+                cout.line("*" * 102)
+                cout.line(f"Minuit2Minimizer::GetMinosError - Run MINOS {side} error for parameter #{index} : "
                       f"{name} using max-calls {self.max_calls}, tolerance {g(self.eps)}")  # fmt: skip
         try:
             self.minuit.minos(name, ncall=self.max_calls)
@@ -273,8 +273,8 @@ class RooMinimizer:
             return
         error = self.minuit.merrors[name]
         if self.print_level >= 1:
-            print(f"Minos: Lower error for parameter {name}  :  {g(error.lower)}")
-            print(f"Minos: Upper error for parameter {name}  :  {g(error.upper)}")
+            cout.line(f"Minos: Lower error for parameter {name}  :  {g(error.lower)}")
+            cout.line(f"Minos: Upper error for parameter {name}  :  {g(error.upper)}")
 
     def _back_propagate(self, minos: bool) -> None:
         """``BackProp``: the parameters take Minuit's values and errors - and MINOS's, if it ran."""
@@ -291,20 +291,20 @@ class RooMinimizer:
         """``Minuit2Minimizer::PrintResults``."""
         fmin = self.minuit.fmin
         word = "Valid" if fmin.is_valid else "Invalid"
-        print(f"Minuit2Minimizer : {word} minimum - status = {self.minuit_status}")
-        print(f"FVAL  = {g(fmin.fval, 18)}")
-        print(f"Edm   = {g(fmin.edm, 18)}")
-        print(f"Nfcn  = {fmin.nfcn}")
+        cout.line(f"Minuit2Minimizer : {word} minimum - status = {self.minuit_status}")
+        cout.line(f"FVAL  = {g(fmin.fval, 18)}")
+        cout.line(f"Edm   = {g(fmin.edm, 18)}")
+        cout.line(f"Nfcn  = {fmin.nfcn}")
         if not fmin.is_valid:
             return
         for index, par in enumerate(self.params):
             value = g(self.minuit.values[index])
             if self.minuit.fixed[index]:
-                print(f"{par.GetName()}\t  = {value}\t (fixed)")
+                cout.line(f"{par.GetName()}\t  = {value}\t (fixed)")
                 continue
             error = g(self.minuit.errors[index])
             limited = "\t(limited)" if par.hasMin() or par.hasMax() else ""
-            print(f"{par.GetName()}\t  = {value}\t +/-  {error}{limited}")
+            cout.line(f"{par.GetName()}\t  = {value}\t +/-  {error}{limited}")
 
     # -- the result ---------------------------------------------------------------
 

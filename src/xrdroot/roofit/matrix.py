@@ -8,10 +8,10 @@ This is that much of the class, over a NumPy array.
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 import numpy as np
+from . import cout
 
 __all__ = ["TMatrixDSym", "TVectorD"]
 
@@ -50,8 +50,7 @@ class TMatrixDSym:
         return ""
 
     def Print(self, option: str = "") -> None:
-        sys.stdout.write(matrix_text(self.values))
-        sys.stdout.flush()
+        cout.write(matrix_text(self.values))
 
     def __array__(self, dtype: Any = None) -> np.ndarray[Any, Any]:
         return self.values if dtype is None else self.values.astype(dtype)

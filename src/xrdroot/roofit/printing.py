@@ -15,8 +15,8 @@ default, six significant figures (:func:`g`).
 from __future__ import annotations
 
 import math
-import sys
 from typing import Any
+from . import cout
 
 __all__ = [
     "kName", "kClassName", "kValue", "kArgs", "kExtras", "kAddress", "kTitle",
@@ -135,10 +135,9 @@ class RooPrintable:
 
     def Print(self, option: str = "") -> None:
         """Print to standard output as ROOT's ``Print(option)`` does."""
-        sys.stdout.write(
+        cout.write(
             self.printStream(self.defaultPrintContents(option), self.defaultPrintStyle(option))
         )
-        sys.stdout.flush()
 
     def __str__(self) -> str:
         return self.printStream(self.defaultPrintContents("I"), kInline)

@@ -11,9 +11,10 @@ changes what is printed here exactly as it would in ROOT.
 
 from __future__ import annotations
 
-import sys
+
 from dataclasses import dataclass, field, replace
 from typing import IO, Any
+from . import cout
 
 __all__ = [
     "LEVELS",
@@ -95,8 +96,8 @@ class StreamConfig:
         )
         return all(check() for wanted, check in checks if wanted)
 
-    def stream(self) -> IO[str]:
-        return self.out if self.out is not None else sys.stdout
+    def stream(self) -> Any:
+        return self.out if self.out is not None else cout.STREAM
 
 
 class RooMsgService:
@@ -154,13 +155,13 @@ class RooMsgService:
 
     def setStreamStatus(self, index: int, active: bool) -> None:
         if not 0 <= int(index) < len(self._streams):
-            print(f"RooMsgService::setStreamStatus() ERROR: invalid stream ID {index}")
+            cout.line(f"RooMsgService::setStreamStatus() ERROR: invalid stream ID {index}")
             return
         self._streams[int(index)].active = bool(active)
 
     def getStreamStatus(self, index: int) -> bool:
         if not 0 <= int(index) < len(self._streams):
-            print(f"RooMsgService::getStreamStatus() ERROR: invalid stream ID {index}")
+            cout.line(f"RooMsgService::getStreamStatus() ERROR: invalid stream ID {index}")
             return False
         return self._streams[int(index)].active
 
@@ -219,10 +220,10 @@ class RooMsgService:
 
     def Print(self, options: str = "") -> None:
         every = "v" in str(options).lower()
-        print("All Message streams" if every else "Active Message streams")
+        cout.line("All Message streams" if every else "Active Message streams")
         for index, stream in enumerate(self._streams):
             if stream.active or every:
-                print(self._described(index, stream, every))
+                cout.line(self._described(index, stream, every))
 
     @staticmethod
     def _described(index: int, stream: StreamConfig, every: bool) -> str:
