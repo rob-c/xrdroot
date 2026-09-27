@@ -24,3 +24,15 @@ def test_a_gaussian_in_x_about_a_function_of_y_draws_x_itself_and_y_by_foam() ->
         (2.4388942853547633, -4.842276310082525),
     ]
     assert RooRandom.randomGenerator().Rndm() == 0.2977002162951976
+
+
+def test_observables_the_density_cannot_draw_itself_are_all_sampled_numerically() -> None:
+    """A width has no generator, and ``y`` under a mean ``f(y)`` is not safe to draw directly."""
+    from xrdroot.roofit.generation.contexts import MixedContext, NumericContext, context_for
+
+    x, y = RooRealVar("x", "x", -5, 5), RooRealVar("y", "y", -5, 5)
+    s = RooRealVar("s", "s", 1.0, 0.5, 2.0)
+    fy = RooPolyVar("fy", "fy", y, [RooRealVar("a0", "a0", -0.5), RooRealVar("a1", "a1", 0.5)])
+    model = RooGaussian("model", "model", x, fy, s)
+    chosen = (context_for(model, frozenset(["s", "y"])), context_for(model, frozenset(["x", "y"])))
+    assert (type(chosen[0]), type(chosen[1])) == (NumericContext, MixedContext)

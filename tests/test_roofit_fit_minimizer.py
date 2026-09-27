@@ -575,7 +575,6 @@ def test_the_settings_roofit_takes_for_its_own_reasons_change_nothing() -> None:
     assert as_set([RooRealVar("p", "p", 1)]).names() == ["p"]
 
 
-@pytest.mark.xfail(strict=True, reason="an invalid minimum's FVAL and Edm print 18 digits")
 def test_an_invalid_minimum_prints_its_value_at_six_digits(capsys: Any) -> None:
     """Minuit2 prints an invalid minimum without raising the stream's precision."""
     g, data, _, _ = _gauss()

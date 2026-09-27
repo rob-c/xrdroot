@@ -45,6 +45,13 @@ def _log_terms(probs: np.ndarray[Any, Any], weights: np.ndarray[Any, Any]) -> tu
     return Kahan().extend(terms.tolist()), badness
 
 
+def _normalised_over(pdf: Any, data: Any, conditional: Any) -> frozenset[str]:
+    """The observables the density is normalised over: the data's, but the conditional ones."""
+    given = {one.GetName() for one in as_list(conditional)}
+    observed = [one.GetName() for one in pdf.getObservables(data)]
+    return frozenset(name for name in observed if name not in given)
+
+
 class RooNLLVar(RooAbsReal):
     """The likelihood of ``pdf`` for ``data``, a function of the density's parameters."""
 
@@ -58,6 +65,7 @@ class RooNLLVar(RooAbsReal):
         conditional: Any = (),
         constraints: Any = (),
         constrained: Any = None,
+        global_values: Any = None,
         name: str = "",
         offset: bool = False,
         copies: Any = None,
@@ -69,12 +77,8 @@ class RooNLLVar(RooAbsReal):
         self.rng = rng or None
         self.constraints = [self._proxy("constraint", c) for c in as_list(constraints)]
         self._constrained_over = constrained
-        conditional_names = {one.GetName() for one in as_list(conditional)}
-        self.nset = frozenset(
-            one.GetName()
-            for one in pdf.getObservables(data)
-            if one.GetName() not in conditional_names
-        )
+        self._global_values = dict(global_values or {})
+        self.nset = _normalised_over(pdf, data, conditional)
         keep = data.mask(None, self.rng) & (data.weights() != 0)
         self.columns = {k: v[keep] for k, v in data.columns().items()}
         self.w = data.weights()[keep]
@@ -106,7 +110,8 @@ class RooNLLVar(RooAbsReal):
         channels = getattr(self.pdf, "channel_terms", None)
         total = channels(self) if channels is not None else self.channel(self.pdf, None)
         for constraint in self.constraints:
-            found = float(np.asarray(constraint.value({}, self._constrained(constraint))))
+            nset = self._constrained(constraint)
+            found = float(np.asarray(constraint.value(dict(self._global_values), nset)))
             total -= math.log(found) if found > 0 else math.nan
         if self._badness:
             from ..nanpack import pack

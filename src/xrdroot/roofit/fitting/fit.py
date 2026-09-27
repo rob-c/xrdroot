@@ -49,7 +49,9 @@ def _range(options: Commands) -> Any:
     return found[0] if isinstance(found[0], str) else None
 
 
-def _constraints(pdf: Any, data: Any, options: Commands) -> tuple[list[Any], frozenset[str]]:
+def _constraints(
+    pdf: Any, data: Any, options: Commands
+) -> tuple[list[Any], frozenset[str], dict[str, float]]:
     """``createConstraintTerm``: the constraint terms - those the density carries on the
     parameters ``Constrain`` names (or on any of its parameters), and external ones - and the
     parameters they are normalised over, said as RooFit says them."""
@@ -60,12 +62,57 @@ def _constraints(pdf: Any, data: Any, options: Commands) -> tuple[list[Any], fro
     found = carried(observables, params, given is None) if carried is not None else []
     found += list(as_list(options.get("ExternalConstraints")))
     names = sorted(one.GetName() for one in params)
-    if found:
-        log(pdf, INFO, "Minimization", " Including the following constraint terms in "
-            f"minimization: ({','.join(one.GetName() for one in found)})")  # fmt: skip
-        log(pdf, INFO, "Minimization", "The global observables are not defined , normalize "
-            f"constraints with respect to the parameters ({','.join(names)})")  # fmt: skip
-    return found, frozenset(names)
+    if not found:
+        return found, frozenset(names), {}
+    log(pdf, INFO, "Minimization", " Including the following constraint terms in "
+        f"minimization: ({','.join(one.GetName() for one in found)})")  # fmt: skip
+    over, values = _global_observables(pdf, data, options, names)
+    return found, over, values
+
+
+def _from_data(
+    pdf: Any, names: list[str] | None, values: dict[str, float]
+) -> tuple[frozenset[str], dict[str, float]]:
+    """Global observables the dataset carries: all of them, or those named - their values the
+    dataset's."""
+    if names is None:
+        names = list(values)
+        text = (
+            "The following global observables have been automatically defined according to "
+            f"the dataset which also provides their values: ({','.join(names)})"
+        )
+    else:
+        common = ",".join(n for n in values if n in names)
+        text = (
+            f"The following global observables have been defined: ({','.join(names)}), with "
+            f"the values of ({common}) obtained from the dataset and the other values from the "
+            "model."
+        )
+    log(pdf, INFO, "Minimization", text)
+    return frozenset(names), {k: v for k, v in values.items() if k in names}
+
+
+def _global_observables(
+    pdf: Any, data: Any, options: Commands, params: list[str]
+) -> tuple[frozenset[str], dict[str, float]]:
+    """What the constraints are normalised over - the global observables, or else the
+    parameters - and the global observables' values taken from the data, said as RooFit does."""
+    given = options.get("GlobalObservables")
+    stored = (
+        data.getGlobalObservables()
+        if options.get("GlobalObservablesSource", 0, "data") == "data"
+        else None
+    )
+    names = [one.GetName() for one in as_list(given)] if given is not None else None
+    if stored:
+        return _from_data(pdf, names, {one.GetName(): one.getVal() for one in stored})
+    if names is not None:
+        log(pdf, INFO, "Minimization", "The following global observables have been defined and "
+            f"their values are taken from the model: ({','.join(names)})")  # fmt: skip
+        return frozenset(names), {}
+    log(pdf, INFO, "Minimization", "The global observables are not defined , normalize "
+        f"constraints with respect to the parameters ({','.join(params)})")  # fmt: skip
+    return frozenset(params), {}
 
 
 def _fit_range_attributes(pdf: Any, data: Any, rng: Any) -> None:
@@ -98,7 +145,7 @@ def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
         pdf.normalized_name(observables, rng) if hasattr(pdf, "normalized_name") else pdf.GetName()
     )
     observed = frozenset(one.GetName() for one in pdf.getObservables(data))
-    constraints, constrained = _constraints(pdf, data, options)
+    constraints, constrained, global_values = _constraints(pdf, data, options)
     fitted = copies.copies_of(pdf, "fit", observed)
     log(
         pdf,
@@ -118,6 +165,7 @@ def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
         conditional=options.get("ConditionalObservables", 0, ()),
         constraints=constraints,
         constrained=constrained,
+        global_values=global_values,
         name=f"nll_{normalized}_{data.GetName()}",
         offset=bool(options.get("Offset", 0, False)),
         copies=fitted,

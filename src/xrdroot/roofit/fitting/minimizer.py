@@ -390,8 +390,9 @@ class RooMinimizer:
         fmin = self.minuit.fmin
         word = "Valid" if fmin.is_valid else "Invalid"
         cout.line(f"Minuit2Minimizer : {word} minimum - status = {self.minuit_status}")
-        cout.line(f"FVAL  = {g(fmin.fval, 18)}")
-        cout.line(f"Edm   = {g(fmin.edm, 18)}")
+        digits = 18 if fmin.is_valid else PRECISION[0]  # an invalid minimum at cout's precision
+        cout.line(f"FVAL  = {g(fmin.fval, digits)}")
+        cout.line(f"Edm   = {g(fmin.edm, digits)}")
         cout.line(f"Nfcn  = {fmin.nfcn}")
         if not fmin.is_valid:
             return
