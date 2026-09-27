@@ -14,6 +14,7 @@ import numpy as np
 
 from ...function.analytic import landau_cdf
 from ...function.special import landau_pdf
+from ...random import libm
 from .. import mathfuncs as mf
 from ..pdf import RooAbsPdf, check_range
 from ..real import Context
@@ -70,7 +71,7 @@ class RooArgusBG(_Shape):
         t = m / m0
         u = 1 - t * t
         with np.errstate(all="ignore"):
-            found = m * np.exp(c * u + p * np.log(u))
+            found = m * libm.exp(c * u + p * libm.log(u))
         return np.where(m >= m0, 0.0, found)
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
@@ -105,7 +106,7 @@ def _argus_part(m0: float, c: float, f: float) -> Any:
 def _dawson(x: float) -> float:
     """Dawson's function, ``exp(-x^2) * integral_0^x exp(t^2) dt``: ``sqrt(pi)/2 Im w(x)``."""
     ts = np.linspace(0.0, x, 2001)
-    return float(np.trapezoid(np.exp(ts * ts - x * x), ts)) if x else 0.0
+    return float(np.trapezoid(libm.exp(ts * ts - x * x), ts)) if x else 0.0
 
 
 class RooCBShape(_Shape):
@@ -123,8 +124,8 @@ class RooCBShape(_Shape):
         t = (m - m0) / s
         core = (a > 0) & (t >= -a) | (a < 0) & (-t >= a)
         with np.errstate(all="ignore"):
-            tail = n * np.log(n / (n - a * a - a * t)) - 0.5 * a * a
-        return np.exp(np.where(core, -0.5 * t * t, tail))
+            tail = n * libm.log(n / (n - a * a - a * t)) - 0.5 * a * a
+        return libm.exp(np.where(core, -0.5 * t * t, tail))
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         return self.over("m", names)
@@ -143,7 +144,7 @@ class RooBifurGauss(_Shape):
         x, mean, left, right = (self.v(k, ctx) for k in self.inputs)
         arg = x - mean
         arg = np.where(arg < 0, arg / left, arg / right)
-        return np.exp(-0.5 * arg * arg)
+        return libm.exp(-0.5 * arg * arg)
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         return self.over("x", names)
@@ -170,7 +171,7 @@ class RooBreitWigner(_Shape):
         mean, width = self.v("mean", ctx), self.v("width", ctx)
         c = 2.0 / width
         return c * (
-            np.arctan(c * (self.x.getMax(rng) - mean)) - np.arctan(c * (self.x.getMin(rng) - mean))
+            libm.atan(c * (self.x.getMax(rng) - mean)) - libm.atan(c * (self.x.getMin(rng) - mean))
         )
 
 
@@ -216,9 +217,9 @@ class RooLognormal(_Shape):
 
     def compute(self, ctx: Context) -> Any:
         x, m0, k = (self.v(key, ctx) for key in self.inputs)
-        lnk = np.abs(np.log(k))
-        arg = np.log(x / m0) / lnk
-        return np.exp(-0.5 * arg * arg) / (x * lnk * 2.506628274631000502415765284811)
+        lnk = np.abs(libm.log(k))
+        arg = libm.log(x / m0) / lnk
+        return libm.exp(-0.5 * arg * arg) / (x * lnk * 2.506628274631000502415765284811)
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         return self.over("x", names)
@@ -248,8 +249,8 @@ class RooPoisson(_Shape):
         x, mean = self.v("x", ctx), self.v("mean", ctx)
         k = x if self._no_rounding else np.floor(x)
         with np.errstate(all="ignore"):
-            found = np.exp(k * np.log(mean) - mean - mf.lgamma(np.asarray(k) + 1.0))
-        found = np.where(k < 0, 0.0, np.where(k == 0, 1 / np.exp(mean), found))
+            found = libm.exp(k * libm.log(mean) - mean - mf.lgamma(np.asarray(k) + 1.0))
+        found = np.where(k < 0, 0.0, np.where(k == 0, 1 / libm.exp(mean), found))
         return np.where(self._protect & (np.asarray(mean) < 0), 1e-3, found)
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:

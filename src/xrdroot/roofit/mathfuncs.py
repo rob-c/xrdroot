@@ -13,6 +13,8 @@ from typing import Any
 
 import numpy as np
 
+from ..random import libm
+
 __all__ = [
     "erf",
     "erfc",
@@ -71,7 +73,7 @@ def gaussian_integral(low: Array, high: Array, mean: Array, sigma: Array) -> Arr
 
 def exponential_integral(low: Array, high: Array, c: Array) -> Array:
     with np.errstate(divide="ignore", invalid="ignore"):
-        found = (np.exp(c * high) - np.exp(c * low)) / c
+        found = (libm.exp(c * high) - libm.exp(c * low)) / c
     return np.where(c == 0.0, high - low, found)
 
 
@@ -150,11 +152,11 @@ def cb_shape(m: Array, m0: Array, sigma: Array, alpha: Array, n: Array) -> Array
     t = np.where(alpha < 0, -t, t)
     abs_alpha = np.abs(alpha)
     r = n / abs_alpha
-    a = np.exp(-0.5 * abs_alpha * abs_alpha)
+    a = libm.exp(-0.5 * abs_alpha * abs_alpha)
     b = r - abs_alpha
     with np.errstate(all="ignore"):
-        tail = a * np.power(r / (b - t), n)
-    return np.where(t >= -abs_alpha, np.exp(-0.5 * t * t), tail)
+        tail = a * libm.power(r / (b - t), n)
+    return np.where(t >= -abs_alpha, libm.exp(-0.5 * t * t), tail)
 
 
 def cb_shape_integral(

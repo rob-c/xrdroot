@@ -292,3 +292,18 @@ def test_numpys_functions_are_used_only_where_they_are_the_c_librarys():
     exact = libm.choose(lambda x: np.nextafter(np.log(x), 0), math.log, 0.1, 1.0)
     values = np.array([[0.5, 0.25], [0.125, 0.3]])
     assert np.array_equal(exact(values), [[math.log(x) for x in row] for row in values.tolist()])
+    assert exact(0.5) == math.log(0.5) and np.ndim(exact(0.5)) == 0
+    # pow, of two arguments, the same way: kept where it raises as the C library does, else
+    # the C library's, broadcast as NumPy would.
+    same_pow = np.vectorize(math.pow)
+    assert libm.choose_pow(same_pow, math.pow) is same_pow
+    exact_pow = libm.choose_pow(lambda b, p: np.power(b, p) * (1 + 2**-52), math.pow)
+    assert np.array_equal(
+        exact_pow(values, [2.5, -1.5]), np.vectorize(math.pow)(values, [2.5, -1.5])
+    )
+    assert exact_pow(2.0, 0.5) == math.sqrt(2.0) and np.ndim(exact_pow(2.0, 0.5)) == 0
+    # Where Python's math raises, C overflows to infinity or leaves the domain for a NaN.
+    scaled = libm.choose(lambda x: np.log(x) * (1 + 2**-52), math.log, 0.1, 1.0)
+    edges = scaled(np.array([0.0, -1.0, math.inf]))
+    assert edges[0] == -math.inf and math.isnan(edges[1]) and edges[2] == math.inf
+    assert exact_pow(0.0, -1.0) == math.inf and exact_pow(10.0, 400.0) == math.inf

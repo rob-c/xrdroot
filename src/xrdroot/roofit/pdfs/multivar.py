@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 
+from ...random import libm
 from ..collections import as_list
 from ..pdf import RooAbsPdf
 from ..real import Context
@@ -55,7 +56,7 @@ class RooMultiVarGaussian(RooAbsPdf):
         for i, di in enumerate(diffs):
             for j, dj in enumerate(diffs):
                 alpha = alpha + di * self.inverse[i, j] * dj
-        return np.exp(-0.5 * alpha)
+        return libm.exp(-0.5 * alpha)
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         """Over all its variables - as RooFit, over the whole real line, ranges aside."""

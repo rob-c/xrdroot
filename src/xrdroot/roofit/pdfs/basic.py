@@ -13,6 +13,7 @@ from typing import Any
 
 import numpy as np
 
+from ...random import libm
 from .. import mathfuncs as mf
 from ..pdf import RooAbsPdf, check_range
 from ..real import Context
@@ -43,7 +44,7 @@ class RooGaussian(RooAbsPdf):
     def compute(self, ctx: Context) -> Any:
         arg = self.x.compute(ctx) - self.mean.compute(ctx)
         sig = self.sigma.compute(ctx)
-        return np.exp(-0.5 * arg * arg / (sig * sig))
+        return libm.exp(-0.5 * arg * arg / (sig * sig))
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         for one in (self.x, self.mean):
@@ -92,7 +93,7 @@ class RooExponential(RooAbsPdf):
         return -found if self._negate else found
 
     def compute(self, ctx: Context) -> Any:
-        return np.exp(self._coef(ctx) * self.x.compute(ctx))
+        return libm.exp(self._coef(ctx) * self.x.compute(ctx))
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         for one in (self.x, self.c):

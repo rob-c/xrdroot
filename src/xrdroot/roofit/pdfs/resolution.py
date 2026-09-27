@@ -23,6 +23,7 @@ from typing import Any
 
 import numpy as np
 
+from ...random import libm
 from ..functions import RooFormulaVar
 from ..pdf import RooAbsPdf
 from ..real import Context
@@ -147,18 +148,18 @@ def _sided(x: Any, sign: int, value: Any) -> Any:
 
 def _truth_basis(kind: int, x: Any, tau: Any, dm: Any) -> Any:
     """``computeTruthModel*Basis``: the basis itself, as RooFit's batch kernels compute it."""
-    decay = np.exp(-np.abs(x) / tau)
+    decay = libm.exp(-np.abs(x) / tau)
     if kind == SIN:
-        return decay * np.sin(x * dm)
+        return decay * libm.sin(x * dm)
     if kind == COS:
-        return decay * np.cos(x * dm)
+        return decay * libm.cos(x * dm)
     if kind in (LIN, QUAD):
         scaled = np.abs(x) / tau
-        return np.exp(-scaled) * scaled * (scaled if kind == QUAD else 1.0)
+        return libm.exp(-scaled) * scaled * (scaled if kind == QUAD else 1.0)
     if kind == SINH:
-        return decay * np.sinh(x * dm * 0.5)
+        return decay * libm.sinh(x * dm * 0.5)
     if kind == COSH:
-        return decay * np.cosh(x * dm * 0.5)
+        return decay * libm.cosh(x * dm * 0.5)
     return decay
 
 

@@ -6,7 +6,10 @@ of the decay's lifetime and frequency and the resolution's width. RooFit
 computes it with Manuel Schiller's approximation - a Fourier sum, a
 continued fraction far from the origin and Taylor series near the poles of
 the sum - and so does this module, operation for operation and on NumPy
-arrays, so that a convolution here has ROOT's value to the last bit.
+arrays, with the C library's ``exp``, ``cos`` and ``sin`` that ROOT calls
+(:mod:`xrdroot.random.libm`), so that a convolution here has ROOT's value to
+the last bit - ROOT's on the same C library, since two libraries' ``cos``
+can differ in the last place, and a sum that cancels can make that several.
 
 :func:`eval_cerf` is ``evalCerf``, ``exp(-u^2) w(swt c + i(u+c))``, which is
 what ``RooGaussModel`` asks for; along the imaginary axis it is a real
@@ -21,6 +24,7 @@ from typing import Any
 
 import numpy as np
 
+from ..random import libm
 from . import mathfuncs as mf
 
 __all__ = ["eval_cerf", "eval_cerf_approx", "faddeeva_fast"]
@@ -140,8 +144,8 @@ Array = Any
 
 def _cexp(re: Array, im: Array) -> tuple[Array, Array]:
     """``cexp``: ``exp(re + i im)`` as its real and imaginary parts."""
-    e = np.exp(re)
-    return e * np.cos(im), e * np.sin(im)
+    e = libm.exp(re)
+    return e * libm.cos(im), e * libm.sin(im)
 
 
 def _taylor(zre: Array, zim: Array) -> tuple[Array, Array, Array]:
@@ -306,10 +310,10 @@ def eval_cerf(swt: Array, u: Array, c: Array) -> Array:
     axis, general = safe & (swt == 0.0), safe & (swt != 0.0)
     with np.errstate(all="ignore"):
         if axis.any():
-            found[axis] = np.exp(c[axis] * (c[axis] + 2.0 * u[axis])) * mf.erfc(z[axis])
+            found[axis] = libm.exp(c[axis] * (c[axis] + 2.0 * u[axis])) * mf.erfc(z[axis])
         if general.any():
             w = np.atleast_1d(faddeeva_fast(_complex(swt[general] * c[general], z[general])))
-            scale = np.exp(-u[general] * u[general])
+            scale = libm.exp(-u[general] * u[general])
             found[general] = _complex(scale * w.real, scale * w.imag)
         if not safe.all():
             found[~safe] = eval_cerf_approx(swt[~safe], u[~safe], c[~safe])

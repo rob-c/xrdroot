@@ -19,6 +19,7 @@ from typing import Any
 
 import numpy as np
 
+from ...random import libm
 from ..pdf import RooAbsPdf
 from ..real import Context
 
@@ -55,7 +56,7 @@ def _kernel_sums(
         index = np.arange(len(points))
         inside = (index[None, :] >= low[:, None]) & (index[None, :] < high[:, None])
         r = (x[:, None] - points[None, :]) / sigma
-        found[start : start + CHUNK] = np.sum(np.where(inside, np.exp(-0.5 * r * r), 0.0), axis=1)
+        found[start : start + CHUNK] = np.sum(np.where(inside, libm.exp(-0.5 * r * r), 0.0), axis=1)
     return found / (sigma * math.sqrt(2.0 * math.pi))
 
 
@@ -151,7 +152,7 @@ class RooKeysPdf(RooAbsPdf):
         centres, widths, xlo, xhi = centres[keep], self._widths[keep], xlo[keep], xhi[keep]
         ratio = self._point_weights[keep] / widths
         chi, inside = self._chi(centres, widths, xlo, xhi)
-        return np.sum(np.where(inside, ratio[:, None] * np.exp(-chi * chi), 0.0), axis=0)
+        return np.sum(np.where(inside, ratio[:, None] * libm.exp(-chi * chi), 0.0), axis=0)
 
     def _chi(self, centres: Any, widths: Any, xlo: Any, xhi: Any) -> tuple[Any, Any]:
         """Each kernel's argument at the table's points - stepped from its first bin, as ROOT

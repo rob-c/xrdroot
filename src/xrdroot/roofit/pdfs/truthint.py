@@ -13,55 +13,57 @@ from typing import Any
 
 import numpy as np
 
+from ...random import libm
+
 __all__ = ["definite"]
 
 Array = Any
 
 
 def _exp(x: Array, tau: Array, dm: Array) -> Array:
-    return -tau * np.exp(-np.maximum(x, 0.0) / tau)
+    return -tau * libm.exp(-np.maximum(x, 0.0) / tau)
 
 
 def _lin(x: Array, tau: Array, dm: Array) -> Array:
     x = np.maximum(x, 0.0)
-    return -(tau + x) * np.exp(-x / tau)
+    return -(tau + x) * libm.exp(-x / tau)
 
 
 def _quad(x: Array, tau: Array, dm: Array) -> Array:
     x = np.maximum(x, 0.0)
-    return -(np.exp(-x / tau) * (2 * tau * tau + x * x + 2 * tau * x)) / tau
+    return -(libm.exp(-x / tau) * (2 * tau * tau + x * x + 2 * tau * x)) / tau
 
 
 def _common(x: Array, tau: Array, dm: Array) -> Array:
-    return tau * np.exp(-x / tau) / (dm * dm * tau * tau + 1.0)
+    return tau * libm.exp(-x / tau) / (dm * dm * tau * tau + 1.0)
 
 
 def _common_hyperbolic(x: Array, tau: Array, dm: Array) -> Array:
-    return 2 * tau * np.exp(-x / tau) / (dm * dm * tau * tau - 4.0)
+    return 2 * tau * libm.exp(-x / tau) / (dm * dm * tau * tau - 4.0)
 
 
 def _sin(x: Array, tau: Array, dm: Array) -> Array:
     x = np.maximum(x, 0.0)
     fac = _common(x, tau, dm)
-    return np.where(fac != 0.0, fac * (-tau * dm * np.cos(dm * x) - np.sin(dm * x)), 0.0)
+    return np.where(fac != 0.0, fac * (-tau * dm * libm.cos(dm * x) - libm.sin(dm * x)), 0.0)
 
 
 def _cos(x: Array, tau: Array, dm: Array) -> Array:
     x = np.maximum(x, 0.0)
     fac = _common(x, tau, dm)
-    return np.where(fac != 0.0, fac * (tau * dm * np.sin(dm * x) - np.cos(dm * x)), 0.0)
+    return np.where(fac != 0.0, fac * (tau * dm * libm.sin(dm * x) - libm.cos(dm * x)), 0.0)
 
 
 def _sinh(x: Array, tau: Array, dm: Array) -> Array:
     x = np.maximum(x, 0.0)
     fac, arg = _common_hyperbolic(x, tau, dm), 0.5 * dm * x
-    return np.where(fac != 0.0, fac * (tau * dm * np.cosh(arg) - 2.0 * np.sinh(arg)), 0.0)
+    return np.where(fac != 0.0, fac * (tau * dm * libm.cosh(arg) - 2.0 * libm.sinh(arg)), 0.0)
 
 
 def _cosh(x: Array, tau: Array, dm: Array) -> Array:
     x = np.maximum(x, 0.0)
     fac, arg = _common_hyperbolic(x, tau, dm), 0.5 * dm * x
-    return np.where(fac != 0.0, fac * (tau * dm * np.sinh(arg) + 2.0 * np.cosh(arg)), 0.0)
+    return np.where(fac != 0.0, fac * (tau * dm * libm.sinh(arg) + 2.0 * libm.cosh(arg)), 0.0)
 
 
 #: Per basis type: its antiderivative for positive times, and whether the basis is even in time.

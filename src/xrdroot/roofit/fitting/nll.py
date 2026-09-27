@@ -19,6 +19,7 @@ from typing import Any
 
 import numpy as np
 
+from ...random import libm
 from ..cmdargs import commands
 from ..collections import RooArgSet, as_list
 from ..real import RooAbsReal
@@ -41,7 +42,7 @@ def _log_terms(probs: np.ndarray[Any, Any], weights: np.ndarray[Any, Any]) -> tu
     probs, weights = probs[keep], weights[keep]
     badness = float(np.sum(np.where(probs <= 0, -probs, 0.0)) + np.sum(unpack(probs)))
     with np.errstate(divide="ignore", invalid="ignore"):
-        terms = -weights * np.log(probs)
+        terms = -weights * libm.log(probs)
     return Kahan().extend(terms.tolist()), badness
 
 

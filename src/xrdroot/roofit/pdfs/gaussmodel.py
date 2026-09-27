@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 
+from ...random import libm
 from .. import mathfuncs as mf
 from ..cerf import eval_cerf
 from ..real import Context
@@ -79,8 +80,8 @@ def _hyperbolic(kind: int, sign: int, u: Array, c: Array, y: float) -> Array:
 
 def _polynomial(kind: int, xprime: Array, u: Array, c: Array) -> Array:
     """The linear and quadratic bases, of positive times only."""
-    f0 = np.exp(-xprime + c * c) * mf.erfc(-u + c)
-    f1 = np.exp(-u * u)
+    f0 = libm.exp(-xprime + c * c) * mf.erfc(-u + c)
+    f1 = libm.exp(-u * u)
     x2c2 = xprime - 2 * c * c
     if kind == LIN:
         return x2c2 * f0 + (2 * c / ROOTPI) * f1
@@ -123,7 +124,7 @@ def _decay(
 def _gaussian(x: Array, mean: Array, sigma: Array, doubled: bool) -> Array:
     """The Gaussian itself - twice over for a basis of both sides with no lifetime."""
     xprime = (x - mean) / sigma
-    result = np.exp(-0.5 * xprime * xprime) / (sigma * ROOT2PI)
+    result = libm.exp(-0.5 * xprime * xprime) / (sigma * ROOT2PI)
     return result * 2 if doubled else result
 
 

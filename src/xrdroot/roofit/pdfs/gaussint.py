@@ -12,6 +12,7 @@ from typing import Any
 
 import numpy as np
 
+from ...random import libm
 from .. import mathfuncs as mf
 from ..cerf import eval_cerf
 from .gaussmodel import ROOT2, ROOTPI
@@ -60,9 +61,9 @@ def _parts(xp: tuple[Array, Array], u: tuple[Array, Array], c: Array) -> tuple[A
     """The ``erf``, Gaussian and ``exp * erfc`` terms at both ends, as both polynomials use them."""
     (xpmin, xpmax), (umin, umax) = xp, u
     f0 = mf.erf(-umax) - mf.erf(-umin)
-    ea1, ea2 = np.exp(-umax * umax), np.exp(-umin * umin)
-    tmp1, tmp2 = np.exp(-xpmax) * mf.erfc(-umax + c), np.exp(-xpmin) * mf.erfc(-umin + c)
-    return f0, ea1, ea2, tmp1, tmp2, np.exp(c * c)
+    ea1, ea2 = libm.exp(-umax * umax), libm.exp(-umin * umin)
+    tmp1, tmp2 = libm.exp(-xpmax) * mf.erfc(-umax + c), libm.exp(-xpmin) * mf.erfc(-umin + c)
+    return f0, ea1, ea2, tmp1, tmp2, libm.exp(c * c)
 
 
 def _linear(tau: float, xp: tuple[Array, Array], u: tuple[Array, Array], c: Array) -> Array:
