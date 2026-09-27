@@ -34,6 +34,8 @@ MODULES = {
     "pdfs.basic": ["RooChebychev", "RooExponential", "RooGaussian", "RooPolynomial", "RooUniform"],
     "pdfs.extend": ["RooExtendPdf"],
     "pdfs.generic": ["RooGenericPdf"],
+    "pdfs.histpdf": ["RooHistFunc", "RooHistPdf"],
+    "pdfs.realsum": ["RooRealSumPdf"],
     "pdfs.prodpdf": ["RooProdPdf"],
     "pdfs.simultaneous": ["RooSimultaneous"],
     "pdfs.shapes": ["RooArgusBG", "RooBifurGauss", "RooBreitWigner", "RooCBShape", "RooLandau",
