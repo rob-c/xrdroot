@@ -821,3 +821,14 @@ def test_a_simultaneous_density_is_drawn_over_a_range_and_with_an_error_band() -
     band = c.frame.getObject(2)
     assert (band.GetName(), band.GetN()) == ("sim_Norm[x]_errorband", 164)
     assert band.y[5] == pytest.approx(13.290092, rel=1e-7)
+
+
+def test_a_curves_average_over_an_interval_is_the_trapezoids_of_its_points() -> None:
+    """``RooCurve::average``: the mean height of the curve between two ends, as ROOT's."""
+    m = Model()
+    frame = m.x.frame()
+    m.g1.plotOn(frame)
+    curve = frame.getObject(0)
+    assert curve.average(-1.0, 1.0) == pytest.approx(0.204268437974, rel=1e-9)
+    assert curve.average(0.0, 3.0) == pytest.approx(0.218640352779, rel=1e-9)
+    assert curve.average(1.0, 1.0) == pytest.approx(float(curve.interpolate(1.0)), rel=REL)

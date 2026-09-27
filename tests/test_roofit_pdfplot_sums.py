@@ -564,3 +564,38 @@ def test_an_extended_density_draws_its_events_as_root_does() -> None:
         1.149962531744677,
         -1.1411667457119279,
     ]
+
+
+def test_a_simultaneous_fit_with_an_empty_channel_is_the_other_channels_fit() -> None:
+    """Events of ``phys`` only: the ``ctl`` channel adds nothing but the category's ``log 2``."""
+    from xrdroot.roofit.categories import RooCategory
+    from xrdroot.roofit.data.dataset import RooDataSet
+    from xrdroot.roofit.pdfs.simultaneous import RooSimultaneous
+
+    x = RooRealVar("x", "x", 0, -10, 10)
+    m1, s1 = RooRealVar("m1", "m1", 1, -5, 5), RooRealVar("s1", "s1", 1.5, 0.1, 10)
+    g1 = RooGaussian("g1", "g1", x, m1, s1)
+    e = RooExponential("e", "e", x, RooRealVar("c", "c", -0.2, -2, -0.01))
+    cat = RooCategory("cat", "cat", {"phys": 0, "ctl": 1})
+    sim = RooSimultaneous("sim", "sim", {"phys": g1, "ctl": e}, cat)
+    generator().SetSeed(4357)
+    only = RooDataSet("only", "only", [x], Index=cat, Import={"phys": g1.generate([x], 100)})
+    m1.setVal(0.5)
+    result = sim.fitTo(only, PrintLevel=-1, Save=True)
+    assert m1.getVal() == pytest.approx(0.947422348681, rel=1e-7)
+    assert result.minNll() == pytest.approx(248.294478361, rel=1e-10)
+
+
+def test_a_simultaneous_density_in_a_product_is_its_current_channel() -> None:
+    """Unnormalised in a product, a simultaneous density is its current state's density."""
+    from xrdroot.roofit.pdfs.prodpdf import RooProdPdf
+    from xrdroot.roofit.pdfs.simultaneous import RooSimultaneous
+
+    c = Channels()
+    sim = RooSimultaneous("sim", "sim", {"phys": c.g, "ctl": c.e}, c.cat)
+    y = RooRealVar("y", "y", 1.5, -5, 5)
+    gy = RooGaussian("gy", "gy", y, 0.5, 1.5)
+    c.cat.setLabel("ctl")
+    both = RooProdPdf("both", "both", [sim, gy])
+    assert both.getVal() == pytest.approx(c.e.getVal() * gy.getVal(), rel=REL)
+    assert sim.selfNormalized() is True

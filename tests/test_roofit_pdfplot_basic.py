@@ -545,3 +545,13 @@ def test_a_multivariate_gaussian_draws_again_until_its_event_is_inside_the_range
         -0.06010554265230894,
         -0.11343465095806327,
     ]
+
+
+def test_a_poisson_draws_again_a_count_outside_the_range() -> None:
+    """A mean of 4.2 on ``[0, 3]``: counts above three are drawn again, as ROOT draws them."""
+    from xrdroot.roofit.pdfs.shapes import RooPoisson
+
+    n = RooRealVar("n", "n", 1, 0, 3)
+    po = RooPoisson("po", "po", n, RooRealVar("mu", "mu", 4.2))
+    generator().SetSeed(4357)
+    assert column(po.generate([n], 6), "n") == [3.0, 1.0, 3.0, 2.0, 2.0, 2.0]
