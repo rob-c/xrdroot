@@ -34,10 +34,14 @@ def in_range(data: Any, rng: Any, variables: Any = None) -> np.ndarray[Any, Any]
 def _inside(data: Any, part: str, variables: Any) -> np.ndarray[Any, Any]:
     keep = np.ones(data.numEntries(), dtype=bool)
     for var in variables if variables is not None else data.get():
-        if not var.InheritsFrom("RooAbsRealLValue") or not var.hasRange(part):
+        if not var.hasRange(part) or not (var.InheritsFrom("RooAbsRealLValue") or
+                                          var.InheritsFrom("RooCategory")):  # fmt: skip
             continue
         column = data.column(var.GetName())
-        keep &= (column >= var.getMin(part)) & (column <= var.getMax(part))
+        if var.InheritsFrom("RooCategory"):
+            keep &= np.isin(column, var.range_indices(part))
+        else:
+            keep &= (column >= var.getMin(part)) & (column <= var.getMax(part))
     return keep
 
 

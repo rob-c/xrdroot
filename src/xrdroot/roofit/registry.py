@@ -16,7 +16,7 @@ __all__ = ["MODULES", "classes", "find"]
 MODULES = {
     "arg": ["RooAbsArg"],
     "binning": ["RooAbsBinning", "RooBinning", "RooRangeBinning", "RooUniformBinning"],
-    "categories": ["RooAbsCategory", "RooCategory"],
+    "categories": ["RooAbsCategory", "RooBinningCategory", "RooCategory", "RooThresholdCategory"],
     "cmdargs": ["RooCmdArg", "RooLinkedList"],
     "collections": ["RooAbsCollection", "RooArgList", "RooArgSet"],
     "data.datahist": ["RooDataHist"],

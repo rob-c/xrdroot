@@ -47,14 +47,23 @@ def _how_many(pdf: Any, names: frozenset[str], count: Any, options: Any) -> int:
     return int(math.ceil(wanted))  # events are drawn while there are fewer than asked for
 
 
+def _uniform(var: Any) -> float:
+    """``randomize``: a value drawn uniformly - a category's state by its order of definition."""
+    rng = generator()
+    if hasattr(var, "lookupIndex"):
+        labels = list(var.states())
+        return float(var.states()[labels[rng.Integer(len(labels))]])
+    return var.getMin() + rng.Rndm() * (var.getMax() - var.getMin())
+
+
 def generate(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """``pdf.generate(vars, n, options...)``: a new dataset of generated events."""
     from ..data.dataset import RooDataSet
-
-    variables, count, options = parse(args, kwargs)
-    names = frozenset(one.GetName() for one in variables)
     from ..integration import announce
 
+    variables, count, options = parse(args, kwargs)
+    names = frozenset(one.GetName() for one in variables) & pdf.dependents()
+    uniform = sorted((one for one in variables if one.GetName() not in names), key=lambda v: v.GetName(), reverse=True)
     for _ in range(2):  # the generator's own copy of the density, and its context's
         announce(pdf, names)
     context = context_for(pdf, names)
@@ -64,7 +73,11 @@ def generate(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     name = options.get("Name") or f"{pdf.GetName()}Data"
     data = RooDataSet(name, f"Generated From {pdf.GetName()}", variables)
     saved = [(one, one.getVal()) for one in pdf.leaves() if one.GetName() in names]
-    rows = [context.event(total - i) for i in range(total)]
+    rows = []
+    for i in range(total):
+        row = context.event(total - i)
+        row.update({one.GetName(): _uniform(one) for one in uniform})
+        rows.append(row)
     for one, value in saved:
         one.load_value(value)
     data.add_columns({one.GetName(): np.array([r[one.GetName()] for r in rows], dtype=np.float64)

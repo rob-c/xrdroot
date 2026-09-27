@@ -154,6 +154,23 @@ class RooAbsData(RooPrintable):
         self._columns[new] = self._columns.pop(old)
         return False
 
+    def addColumn(self, func: Any, adjustRange: bool = True) -> Any:
+        """``addColumn``: a new column of ``func``'s value at every event, and its variable."""
+        from .selection import context_of
+
+        values = np.broadcast_to(np.asarray(func.compute(context_of(self)), dtype=np.float64),
+                                 (self.numEntries(),)).copy()  # fmt: skip
+        made = func.as_fundamental() if hasattr(func, "as_fundamental") else _real_copy(func, values)
+        self._vars.add(made)
+        self._columns[made.GetName()] = values
+        return made
+
+    def table(self, category: Any, cut: Any = None, options: Any = None) -> Any:
+        """``table(cat, [cut])``: the events in each state of a category."""
+        from .table import table_of
+
+        return table_of(self, category, cut)
+
     def plotOn(self, frame: Any, *args: Any, **kwargs: Any) -> Any:
         from ..plot.data import plot_data
 
@@ -186,6 +203,14 @@ class RooAbsData(RooPrintable):
 
     def __repr__(self) -> str:
         return f"<{self.ClassName()}::{self._name} {self.numEntries()} entries>"
+
+
+def _real_copy(func: Any, values: np.ndarray[Any, Any]) -> Any:
+    """A variable standing for a function's column, its range the values' own."""
+    from ..variables import RooRealVar
+
+    low, high = (float(values.min()), float(values.max())) if len(values) else (0.0, 1.0)
+    return RooRealVar(func.GetName(), func.GetTitle(), low, high)
 
 
 def value_text(value: Any) -> str:

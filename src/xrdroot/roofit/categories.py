@@ -11,11 +11,13 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+
 from .messages import ERROR, log
 from .printing import kClassName, kName, kValue
 from .real import Context, RooAbsReal
 
-__all__ = ["RooAbsCategory", "RooCategory"]
+__all__ = ["RooAbsCategory", "RooBinningCategory", "RooCategory", "RooThresholdCategory"]
 
 
 class RooAbsCategory(RooAbsReal):
@@ -117,6 +119,8 @@ class RooCategory(RooAbsCategory):
 
     def __init__(self, name: Any = "", title: Any = "", states: Any = None) -> None:
         super().__init__(name, title)
+        #: The named ranges - sets of labels - shared with every copy, as RooFit shares them.
+        self._ranges: dict[str, list[str]] = {}
         for label, index in (states or {}).items():
             self.defineType(label, index)
 
@@ -154,14 +158,19 @@ class RooCategory(RooAbsCategory):
         self.setAttribute("Constant", bool(value))
 
     def setRange(self, name: str, labels: str) -> None:
-        self._ranges = getattr(self, "_ranges", {})
         self._ranges[str(name)] = [one for one in str(labels).split(",") if one]
 
+    def addToRange(self, name: str, labels: str) -> None:
+        self._ranges.setdefault(str(name), []).extend(one for one in str(labels).split(",") if one)
+
+    def range_indices(self, name: str) -> list[int]:
+        return [self.lookupIndex(label) for label in self._ranges.get(str(name), [])]
+
     def inRange(self, name: str) -> bool:
-        return self.getLabel() in getattr(self, "_ranges", {}).get(str(name), [self.getLabel()])
+        return self.getLabel() in self._ranges.get(str(name), [self.getLabel()])
 
     def hasRange(self, name: Any) -> bool:
-        return not name or str(name) in getattr(self, "_ranges", {})
+        return not name or str(name) in self._ranges
 
     # -- as a dataset keeps it ----------------------------------------------------
 
@@ -182,3 +191,65 @@ class RooCategory(RooAbsCategory):
 
     def _copy_state(self, other: Any) -> None:
         self._states = dict(other._states)
+
+
+class _Derived(RooAbsCategory):
+    """A category computed from other values - not set, but worked out, event by event."""
+
+    def isFundamental(self) -> bool:
+        return False
+
+    def as_fundamental(self) -> RooCategory:
+        """The category a dataset keeps a column of: the same states, set rather than computed."""
+        made = RooCategory(self._name, self._title)
+        for label, index in self._states.items():
+            made.defineType(label, index)
+        return made
+
+    def getIndex(self) -> int:
+        return int(np.asarray(self.compute({})))
+
+    getCurrentIndex = getIndex
+
+
+class RooThresholdCategory(_Derived):
+    """``RooThresholdCategory``: the state of the first threshold a value is below, else the default."""
+
+    def __init__(self, name: Any, title: Any, x: Any, defaultLabel: str, defaultIndex: int = 0) -> None:
+        super().__init__(name, title)
+        self.x = self._proxy("inputVar", x)
+        self.defineType(defaultLabel, defaultIndex)
+        self._default = int(defaultIndex)
+        self._thresholds: list[tuple[float, int]] = []
+
+    def addThreshold(self, upperLimit: float, label: str, index: Any = None) -> bool:
+        if not self.hasLabel(label):
+            self.defineType(label, index)
+        self._thresholds.append((float(upperLimit), self.lookupIndex(label)))
+        self._thresholds.sort(key=lambda pair: pair[0])
+        return False
+
+    def compute(self, ctx: Context) -> Any:
+        x = np.asarray(self.x.compute(ctx), dtype=np.float64)
+        found = np.full(x.shape, float(self._default))
+        for limit, index in reversed(self._thresholds):
+            found = np.where(x < limit, float(index), found)
+        return found if found.ndim else float(found)
+
+
+class RooBinningCategory(_Derived):
+    """``RooBinningCategory``: the number of the bin of a named binning a value falls in."""
+
+    def __init__(self, name: Any, title: Any, x: Any, binningName: Any = None, catTypeName: str = "") -> None:
+        super().__init__(name, title)
+        self.x = self._proxy("inputVar", x)
+        self._binning = binningName
+        prefix = catTypeName or f"{x.GetName()}_{binningName or ''}_bin".replace("__", "_")
+        for index in range(x.getBins(binningName)):
+            self.defineType(f"{prefix}{index}", index)
+
+    def compute(self, ctx: Context) -> Any:
+        edges = self.x.getBinning(self._binning).array()
+        x = np.asarray(self.x.compute(ctx), dtype=np.float64)
+        found = np.clip(np.searchsorted(edges, x, side="right") - 1, 0, len(edges) - 2).astype(np.float64)
+        return found if found.ndim else float(found)
