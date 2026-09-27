@@ -103,9 +103,11 @@ class RooAbsData(RooPrintable):
         w = self._weights
         return bool(np.any((w != np.floor(w)) | (w < 0)))
 
-    def get(self, index: Any = None) -> RooArgSet:
-        """The variables - set to event ``index``'s values if one is named."""
+    def get(self, index: Any = None) -> Any:
+        """The variables - set to event ``index``'s values if one is named; none past the end."""
         if index is not None:
+            if not 0 <= int(index) < self.numEntries():
+                return None
             self._load(int(index))
         return self._vars
 
@@ -184,7 +186,7 @@ class RooAbsData(RooPrintable):
             if made_name is not None:
                 made_name(first)
             else:
-                made.members["TH1"]["TNamed"]["fName"] = first
+                made._core["TNamed"]["fName"] = first
             return made
         return data_histogram(self, first, args, kwargs)
 

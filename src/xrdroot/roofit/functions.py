@@ -132,7 +132,8 @@ class RooAddition(RooAbsReal):
                 INFO,
                 "Fitting",
                 f"RooAddition::defaultErrorLevel({self._name}) WARNING: "
-                "Summation contains neither RooNLLVar nor RooChi2Var server, using default level of 1.0",
+                "Summation contains neither RooNLLVar nor RooChi2Var server, "
+                "using default level of 1.0",
             )
             return 1.0
         log(

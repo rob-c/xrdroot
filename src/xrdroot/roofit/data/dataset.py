@@ -133,8 +133,6 @@ class RooDataSet(RooAbsData):
         self._columns = {k: v[keep] for k, v in self._columns.items()}
         if self._weights is not None:
             self._weights = self._weights[keep]
-        if self._sumw2 is not None:
-            self._sumw2 = self._sumw2[keep]
 
     def add(self, row: Any, weight: float = 1.0, weightError: float = 0.0) -> None:
         """One more event: the values ``row`` holds now, weighing ``weight`` if weights are kept."""
@@ -169,7 +167,7 @@ class RooDataSet(RooAbsData):
     def append(self, other: RooDataSet) -> None:
         self.add_columns(
             {one.GetName(): other.column(one.GetName()) for one in self._vars},
-            other.weights() if other.isWeighted() or self.isWeighted() else None,
+            other.weights() if self.isWeighted() else None,
         )
 
     def reduce(self, *args: Any, **kwargs: Any) -> Any:

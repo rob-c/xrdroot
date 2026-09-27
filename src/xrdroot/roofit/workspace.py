@@ -100,7 +100,7 @@ class RooWorkspace(RooPrintable):
                 f"RooWorkSpace::import({self._name}) changing name of "
                 f"dataset from  {data.GetName()} to {new}",
             )
-            data.SetName(str(new))
+            data = _renamed(data, str(new))
         self._data[data.GetName()] = data
         for var in data.get():
             self._nodes.setdefault(var.GetName(), var)
@@ -222,6 +222,15 @@ class RooWorkspace(RooPrintable):
 def _is_function(node: Any) -> bool:
     kinds = ("RooAbsPdf", "RooConstVar", "RooRealVar", "RooAbsCategory")
     return node.InheritsFrom("RooAbsReal") and not any(node.InheritsFrom(k) for k in kinds)
+
+
+def _renamed(data: Any, name: str) -> Any:
+    """A copy of ``data`` called ``name``: the caller's own dataset keeps its name."""
+    import copy
+
+    made = copy.copy(data)
+    made.SetName(name)
+    return made
 
 
 def _variables_section(nodes: list[Any]) -> None:
