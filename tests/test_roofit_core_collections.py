@@ -83,6 +83,12 @@ def test_members_are_found_by_name_by_object_and_by_position() -> None:
     assert held.containsInstance(x)
     assert not held.containsInstance(RooRealVar("x", "x", 0.0))
     assert held.index("mean") == 1 and held.index(m) == 1 and held.index(s) == -1
+
+
+def test_members_are_found_by_position_and_by_subscript() -> None:
+    """``at``, ``first`` and ``[]`` find members by position or name, and say so when not."""
+    x, m, _s = variables()
+    held = RooArgList(x, m)
     assert held.at(0) is x and held.at(2) is None and held.at(-1) is None
     assert held.first() is x and RooArgList().first() is None
     assert held["mean"] is m and held[1] is m

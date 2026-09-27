@@ -267,18 +267,34 @@ def _cubature(
     """``RooAdaptiveIntegratorND``, once for each event if the context has events."""
     from .cubature import integrate_nd
 
-    arrays = {k: v for k, v in ctx.items() if isinstance(v, np.ndarray) and v.ndim}
-    shape = np.broadcast_shapes(*(v.shape for v in arrays.values())) if arrays else ()
+    shape, events = _events(ctx)
     lows, highs = [b[0] for b in bounds], [b[1] for b in bounds]
     found = np.empty(shape)
-    for index in np.ndindex(*shape) if shape else [()]:
+    for index, c in events:
+        found[index] = integrate_nd(_integrand(inner, c, rest), lows, highs, vectorized=True).value
+    return found if shape else float(found)
+
+
+def _events(ctx: dict[str, Any]) -> tuple[Any, list[tuple[Any, dict[str, Any]]]]:
+    """The shape of the context's columns, and each event's own context - one, if it has none."""
+    arrays = {k: v for k, v in ctx.items() if isinstance(v, np.ndarray) and v.ndim}
+    if not arrays:
+        return (), [((), dict(ctx))]
+    shape = np.broadcast_shapes(*(v.shape for v in arrays.values()))
+    events = []
+    for index in np.ndindex(*shape):
         c = dict(ctx)
         c.update({k: np.broadcast_to(v, shape)[index] for k, v in arrays.items()})
+        events.append((index, c))
+    return shape, events
 
-        def at(points: np.ndarray[Any, Any], c: dict[str, Any] = c) -> Any:
-            cc = dict(c)
-            cc.update({name: points[:, i] for i, name in enumerate(rest)})
-            return np.broadcast_to(inner(cc), (len(points),))
 
-        found[index] = integrate_nd(at, lows, highs, vectorized=True).value
-    return found if shape else float(found)
+def _integrand(inner: Callable[[dict[str, Any]], Any], ctx: dict[str, Any], rest: list[str]) -> Any:
+    """``inner`` at points of the variables ``rest``, the rest of one event's values as ``ctx``."""
+
+    def at(points: np.ndarray[Any, Any]) -> Any:
+        cc = dict(ctx)
+        cc.update({name: points[:, i] for i, name in enumerate(rest)})
+        return np.broadcast_to(inner(cc), (len(points),))
+
+    return at

@@ -75,17 +75,11 @@ class Generator:
         self.pdf = pdf
         self.proto = proto
         asked = {one.GetName() for one in variables}
-        self.taken = [
-            one for one in (proto.get() if proto is not None else []) if one.GetName() not in asked
-        ]
+        self.taken = _taken(proto, asked)
         self.variables = variables + self.taken
         self.names = frozenset(asked) & pdf.dependents()
         self.targets = _targets(pdf, {one.GetName() for one in self.taken})
-        self.uniform = sorted(
-            (one for one in variables if one.GetName() not in self.names),
-            key=lambda v: v.GetName(),
-            reverse=True,
-        )
+        self.uniform = _uniformly_drawn(variables, self.names)
         for _ in range(2):  # the generator's own copy of the density, and its context's
             announce(pdf, self.names, normalising=True)
         self.context = _context(pdf, self.names, frozenset(one.GetName() for one in self.taken))
@@ -96,15 +90,8 @@ class Generator:
         from ..data.dataset import RooDataSet
 
         data = RooDataSet(name, f"Generated From {self.pdf.GetName()}", self.variables)
-        saved = [(one, one.getVal()) for one in self.pdf.leaves() if one.GetName() in self.names]
-        saved += [(one, one.getVal()) for group in self.targets.values() for one in group]
-        rows = []
-        for i in range(total):
-            loaded = self._load(i)
-            row = self.context.event(total - i)
-            row.update(loaded)
-            row.update({one.GetName(): _uniform(one) for one in self.uniform})
-            rows.append(row)
+        saved = self._saved()
+        rows = [self._event(i, total) for i in range(total)]
         for one, value in saved:
             one.load_value(value)
         data.add_columns(
@@ -114,6 +101,19 @@ class Generator:
             }
         )
         return data
+
+    def _saved(self) -> list[tuple[Any, float]]:
+        """The values generating moves - the observables', the prototype's - to be put back."""
+        saved = [(one, one.getVal()) for one in self.pdf.leaves() if one.GetName() in self.names]
+        return saved + [(one, one.getVal()) for group in self.targets.values() for one in group]
+
+    def _event(self, i: int, total: int) -> dict[str, float]:
+        """Event ``i``: the prototype's values, then the context's draws, then the uniform ones."""
+        loaded = self._load(i)
+        row = self.context.event(total - i)
+        row.update(loaded)
+        row.update({one.GetName(): _uniform(one) for one in self.uniform})
+        return row
 
     def _load(self, i: int) -> dict[str, float]:
         """The prototype data's event ``i`` - round again if there are more to draw - in its
@@ -128,6 +128,17 @@ class Generator:
             for one in self.targets.get(name, []):
                 one.load_value(value)
         return loaded
+
+
+def _taken(proto: Any, asked: set[str]) -> list[Any]:
+    """The prototype's variables that are not generated: taken from it, event by event."""
+    return [one for one in (proto.get() if proto is not None else []) if one.GetName() not in asked]
+
+
+def _uniformly_drawn(variables: list[Any], names: frozenset[str]) -> list[Any]:
+    """The variables asked for that the density does not depend on, in RooFit's order."""
+    chosen = [one for one in variables if one.GetName() not in names]
+    return sorted(chosen, key=lambda v: v.GetName(), reverse=True)
 
 
 def _context(pdf: Any, names: frozenset[str], proto: frozenset[str]) -> Any:

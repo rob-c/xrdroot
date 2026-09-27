@@ -155,6 +155,13 @@ def test_the_walks_hand_back_the_variables_parameters_and_observables_root_does(
     assert [one.GetName() for one in g.getParameters()] == ["mean", "sigma", "x"]
     assert [one.GetName() for one in g.getObservables()] == []
     assert [one.GetName() for one in g.getComponents()] == ["g"]
+
+
+def test_what_a_node_depends_on_is_its_variables_and_constants_below_it() -> None:
+    """``dependsOn`` looks through the graph; ``dependents`` names the variables, once."""
+    x, m, _s, g = gaussian()
+    c = RooConstVar("c", "c", 3.0)
+    node = Summed("f2", x, [c])
     assert node.dependsOn(c) and g.dependsOn(x) and not g.dependsOn(c)
     assert not g.dependsOn(x, ignoreArg=x)
     assert g.dependsOnValue(RooArgSet(m))

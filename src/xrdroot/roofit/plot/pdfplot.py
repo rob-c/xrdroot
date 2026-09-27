@@ -117,20 +117,21 @@ def _scale(pdf: Any, frame: Any, options: Commands, nset: frozenset[str]) -> flo
     kind = int(options.get("Normalization", 1, RELATIVE))
     if kind == RAW:
         return scale
-    expected = pdf.expected(nset) if kind == RELATIVE_EXPECTED else 1.0
     if frame.getFitRangeNEvt() and kind == RELATIVE:
-        limits, adjust = _custom_ranges(pdf, frame, options)
-        if limits and adjust:
-            scale *= sum(frame.getFitRangeNEvt(low, high) for low, high in limits) / expected
-        elif pdf.canBeExtended() and pdf.expected(nset) > 0:
-            scale *= pdf.expected(nset) / expected
-        else:
-            scale *= frame.getFitRangeNEvt() / expected
+        scale *= _events(pdf, frame, options, nset)
     elif kind == RELATIVE_EXPECTED:
-        scale *= expected
-    elif kind == NUM_EVENT:
-        scale /= expected
+        scale *= pdf.expected(nset)
     return float(scale * frame.getFitRangeBinW())
+
+
+def _events(pdf: Any, frame: Any, options: Commands, nset: frozenset[str]) -> Any:
+    """The events a relative scale stands for: the data's in the ranges, or the expected."""
+    limits, adjust = _custom_ranges(pdf, frame, options)
+    if limits and adjust:
+        return sum(frame.getFitRangeNEvt(low, high) for low, high in limits)
+    if pdf.canBeExtended() and pdf.expected(nset) > 0:
+        return pdf.expected(nset)
+    return frame.getFitRangeNEvt()
 
 
 def pdf_plot(pdf: Any, frame: Any, cmds: CmdList) -> Any:

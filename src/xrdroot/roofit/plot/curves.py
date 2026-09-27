@@ -56,19 +56,7 @@ def _selected(pdf: Any, options: Commands) -> tuple[set[str] | None, str]:
     if spec is None:
         return None, ""
     branches = [node for node in pdf._walk() if not node.isFundamental()]
-    if isinstance(spec, str):
-        patterns = [p for p in spec.split(",") if p]
-        # selectByName: each pattern in turn, as RooFit matches them
-        direct = []
-        for pattern in patterns:
-            direct += [
-                b for b in branches if fnmatch.fnmatchcase(b.GetName(), pattern) and b not in direct
-            ]
-        suffix = f"_Comp[{spec}]"
-    else:
-        wanted = {one.GetName() for one in _items(spec)}
-        direct = [b for b in branches if b.GetName() in wanted]
-        suffix = "_Comp[" + ",".join(one.GetName() for one in _items(spec)) + "]"
+    direct, suffix = _direct(branches, spec)
     log(
         pdf,
         INFO,
@@ -85,6 +73,22 @@ def _selected(pdf: Any, options: Commands) -> tuple[set[str] | None, str]:
         f"({','.join(b.GetName() for b in indirect)})",
     )
     return {b.GetName() for b in direct + indirect}, suffix
+
+
+def _direct(branches: list[Any], spec: Any) -> tuple[list[Any], str]:
+    """The components chosen by name patterns - each pattern in turn, as ``selectByName``
+    matches them - or by the objects themselves, and the curve's name suffix."""
+    if not isinstance(spec, str):
+        wanted = [one.GetName() for one in _items(spec)]
+        return [b for b in branches if b.GetName() in wanted], "_Comp[" + ",".join(wanted) + "]"
+    direct: list[Any] = []
+    for pattern in filter(None, spec.split(",")):
+        direct += [b for b in _matching(branches, pattern) if b not in direct]
+    return direct, f"_Comp[{spec}]"
+
+
+def _matching(branches: list[Any], pattern: str) -> list[Any]:
+    return [b for b in branches if fnmatch.fnmatchcase(b.GetName(), pattern)]
 
 
 def _indirect(pdf: Any, branches: list[Any], direct: list[Any]) -> list[Any]:
@@ -147,15 +151,11 @@ def _range_fraction(
 def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], seen: Any = None) -> None:
     """What RooFit says when it plots: the projection - in the frame's order - and the
     integral it makes for it."""
-    from ..integration import announce, integral_name
+    from ..integration import announce
     from .projections import announce_average
 
     plot_var = frame.getPlotVar().GetName()
-    order = (
-        list(seen.projected)
-        if seen is not None
-        else [one.GetName() for one in pdf.leaves() if one.GetName() in nset - {plot_var}]
-    )
+    order = _projected_order(pdf, nset, plot_var, seen)
     projected = frozenset(order)
     if projected:
         log(
@@ -168,11 +168,24 @@ def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], seen: Any = None)
     if seen is not None:
         announce_average(pdf, frame, seen)
     announce(pdf, nset, normalising=True)
-    if not projected:
-        return
-    norm = ",".join(one.GetName() for one in pdf.leaves() if one.GetName() in nset)
+    if projected:
+        _announce_projection(pdf, projected, nset)
+
+
+def _projected_order(pdf: Any, nset: frozenset[str], plot_var: str, seen: Any) -> list[str]:
+    """The variables projected out: in the frame's order, or - without a view - the density's."""
+    if seen is not None:
+        return list(seen.projected)
+    return [one.GetName() for one in pdf.leaves() if one.GetName() in nset - {plot_var}]
+
+
+def _announce_projection(pdf: Any, projected: frozenset[str], nset: frozenset[str]) -> None:
+    """The projection integral's line: the density's own, or ``Int[y]_Norm[x,y]``."""
+    from ..integration import announce, integral_name
+
     special = getattr(pdf, "announce_projection", None)
     if special is None or not special(projected, nset):
+        norm = ",".join(one.GetName() for one in pdf.leaves() if one.GetName() in nset)
         label = f"{integral_name(pdf, projected, None)}_Norm[{norm}]"
         announce(pdf, projected, label=label, normalising=True)
 

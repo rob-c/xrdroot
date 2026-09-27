@@ -31,19 +31,36 @@ def test_the_generator_is_made_once_at_the_default_seed() -> None:
 def test_each_of_roots_draws_comes_out_as_root_draws_it() -> None:
     """The sequence, drawn through every method in turn, is ROOT's to the bit."""
     r = RooRandom.randomGenerator()
-    assert r.Rndm() == 0.999741748906672
-    assert r.Uniform(2.0) == 0.32581975078210235
-    assert r.Uniform(1.0, 3.0) == 1.5652356105856597
-    assert r.Gaus(1.0, 2.0) == 2.5635925123910157
-    assert r.Poisson(3.5) == 6
-    assert r.Integer(10) == 6
-    assert r.Exp(2.0) == 2.3063209812835783
-    assert r.Landau(1.0, 0.5) == 3.9551010442761845
-    assert r.BreitWigner(1.0, 0.5) == 1.0154701439475784
-    assert r.Binomial(10, 0.3) == 5
-    assert RooRandom.uniform() == 0.8983048577792943
-    assert RooRandom.integer(7) == 4
-    assert RooRandom.gaussian() == 2.060902142594318
+    drawn = [
+        r.Rndm(),
+        r.Uniform(2.0),
+        r.Uniform(1.0, 3.0),
+        r.Gaus(1.0, 2.0),
+        r.Poisson(3.5),
+        r.Integer(10),
+        r.Exp(2.0),
+        r.Landau(1.0, 0.5),
+        r.BreitWigner(1.0, 0.5),
+        r.Binomial(10, 0.3),
+        RooRandom.uniform(),
+        RooRandom.integer(7),
+        RooRandom.gaussian(),
+    ]
+    assert drawn == [
+        0.999741748906672,
+        0.32581975078210235,
+        1.5652356105856597,
+        2.5635925123910157,
+        6,
+        6,
+        2.3063209812835783,
+        3.9551010442761845,
+        1.0154701439475784,
+        5,
+        0.8983048577792943,
+        4,
+        2.060902142594318,
+    ]
 
 
 def test_a_reseeded_generator_fills_an_array_as_root_does() -> None:

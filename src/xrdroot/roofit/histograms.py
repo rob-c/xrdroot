@@ -128,16 +128,21 @@ def function_histogram(
     grid, volumes = _grid(edges)
     ctx = {var.GetName(): grid[:, i] for i, (var, _) in enumerate(axes)}
     nset = frozenset(ctx)
-    is_pdf = hasattr(func, "canBeExtended")
-    if is_pdf:
-        from .integration import announce
-
-        for _ in range(2):  # the projection's normalisation, and its clone's: RooFit makes both
-            announce(func, nset)
-    values = np.asarray(func.value(ctx, nset) if is_pdf else func.compute(ctx), dtype=np.float64)
-    values = np.broadcast_to(values, (len(grid),)) * (volumes if is_pdf else 1.0)
+    values = _values(func, ctx, nset, volumes)
     made.fill(*[grid[:, i] for i in range(len(axes))], weight=values)
     return WRAP[0](made)
+
+
+def _values(func: Any, ctx: dict[str, Any], nset: frozenset[str], volumes: Any) -> Any:
+    """Each bin's content: a density's normalised value times the bin's volume, or the value."""
+    if not hasattr(func, "canBeExtended"):
+        return np.broadcast_to(np.asarray(func.compute(ctx), dtype=np.float64), (len(volumes),))
+    from .integration import announce
+
+    for _ in range(2):  # the projection's normalisation, and its clone's: RooFit makes both
+        announce(func, nset)
+    values = np.asarray(func.value(ctx, nset), dtype=np.float64)
+    return np.broadcast_to(values, (len(volumes),)) * volumes
 
 
 def names_of(items: Any) -> list[str]:
