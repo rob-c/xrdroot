@@ -54,7 +54,10 @@ def _selected(pdf: Any, options: Commands) -> tuple[set[str] | None, str]:
     branches = [node for node in pdf._walk() if not node.isFundamental()]
     if isinstance(spec, str):
         patterns = [p for p in spec.split(",") if p]
-        direct = [b for b in branches if any(fnmatch.fnmatchcase(b.GetName(), p) for p in patterns)]
+        # selectByName: each pattern in turn, as RooFit matches them
+        direct = []
+        for pattern in patterns:
+            direct += [b for b in branches if fnmatch.fnmatchcase(b.GetName(), pattern) and b not in direct]
         suffix = f"_Comp[{spec}]"
     else:
         wanted = {one.GetName() for one in _items(spec)}

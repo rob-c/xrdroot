@@ -54,7 +54,10 @@ class RooSimultaneous(RooAbsPdf):
         return self.index
 
     def servers(self) -> list[Any]:
-        return [self.index, *self.channels.values()]
+        return [self.index, *(self.channels[label] for label in sorted(self.channels))]
+
+    def plotOn(self, frame: Any, *args: Any, **kwargs: Any) -> Any:
+        return plot_simultaneous(self, frame, args, kwargs)
 
     # -- values -------------------------------------------------------------------
 
@@ -102,3 +105,77 @@ class RooSimultaneous(RooAbsPdf):
 
     def printMetaArgs(self) -> str:
         return ""
+
+
+class _Projection(RooAbsPdf):
+    """The simultaneous density averaged over its category as the projection data weigh the states."""
+
+    def __init__(self, sim: Any, weights: dict[str, float]) -> None:
+        super().__init__(sim.GetName(), sim.GetTitle())
+        self.sim = sim
+        self.weights = weights
+        self.parts = self._list_proxy("!pdfs", [sim.channels[label] for label in weights])
+
+    def value(self, ctx: Context, nset: Any = None, rng: Any = None) -> Any:
+        from ..selection import active
+
+        total: Any = 0.0
+        for (label, weight), pdf in zip(self.weights.items(), self.parts):
+            if active(pdf):
+                own = frozenset(nset or ()) & pdf.dependents()
+                total = total + weight * pdf.value(ctx, own, rng)
+        return total
+
+    def compute(self, ctx: Context) -> Any:
+        return self.value(ctx, None)
+
+    def selfNormalized(self) -> bool:
+        return True
+
+    def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
+        return names
+
+    def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
+        return self.fraction(names, ctx, names, rng)
+
+    def fraction(self, names: frozenset[str], ctx: Context, nset: Any, rng: Any,
+                 norm_rng: Any = None) -> Any:  # fmt: skip
+        total: Any = 0.0
+        for (label, weight), pdf in zip(self.weights.items(), self.parts):
+            own = frozenset(nset or ()) & pdf.dependents()
+            total = total + weight * pdf.fraction(names & own, ctx, own, rng, norm_rng)
+        return total
+
+
+def plot_simultaneous(sim: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    """``RooSimultaneous::plotOn``: with ``ProjWData``, the channels averaged as the data weigh them."""
+    from ..messages import INFO, log
+    from ..plot.cmdlist import CmdList
+    from ..plot.pdfplot import pdf_plot
+
+    cmds = CmdList.of(args, kwargs)
+    projection = cmds.find("ProjWData")
+    sliced = cmds.find("Slice")
+    if projection is None and sliced is None:
+        return pdf_plot(sim, frame, cmds)
+    data = projection.value(1) if projection is not None and projection.value(1) is not None else (
+        projection.value(0) if projection is not None else None)
+    weights = _weights(sim, data, sliced)
+    if not (cmds.has("SelectCompSpec") or cmds.has("SelectCompSet")):
+        for _ in range(2):
+            log(sim, INFO, "Plotting", f"RooSimultaneous::plotOn({sim.GetName()}) plot on "
+                f"{frame.getPlotVar().GetName()} averages with data index category ({sim.index.GetName()})")
+    cmds.strip("ProjWData", "Slice")
+    return pdf_plot(_Projection(sim, weights), frame, cmds)
+
+
+def _weights(sim: Any, data: Any, sliced: Any) -> dict[str, float]:
+    """Each channel's share: its events in the projection data - or one, for the slice chosen."""
+    labels = sorted(sim.channels)
+    if sliced is not None:
+        return {str(sliced.value(1)): 1.0}
+    column = data.column(sim.index.GetName())
+    weights = data.weights()
+    total = float(np.sum(weights))
+    return {label: float(np.sum(weights[column == sim.index.lookupIndex(label)])) / total
+            for label in labels}  # fmt: skip
