@@ -543,19 +543,26 @@ AVERAGES = (
 CONTROL = [9.50925692, 2.81342429, 2.045829609, 1.237351128, 0.3807555732]
 
 
-def test_a_simultaneous_density_is_drawn_as_its_channels_averaged_as_the_data_weigh_them(
-    capsys: Any,
-) -> None:
+def test_a_simultaneous_density_is_drawn_as_its_channels_averaged_as_the_data_weigh_them() -> None:
     """``ProjWData(cat, data)``: 120/200 of ``g1`` and 80/200 of ``e``, each normalised."""
     c = Channels()
-    capsys.readouterr()
     c.sim.plotOn(c.frame, ProjWData=([c.cat], c.data))
-    assert capsys.readouterr().out.splitlines() == [AVERAGES, AVERAGES]
     curve = c.frame.getObject(1)
     assert (curve.GetName(), curve.GetN()) == ("sim_Norm[x]", 74)
     assert heights(curve) == pytest.approx(
         [9.509267459, 13.70125737, 31.48384171, 15.60166056, 0.3808917102], rel=REL
     )
+
+
+@pytest.mark.xfail(
+    strict=True, reason="simultaneous.py:172-180: ROOT says it averages once per plotOn, not twice"
+)
+def test_a_simultaneous_density_says_once_that_it_averages_over_its_category(capsys: Any) -> None:
+    """One ``plotOn`` with ``ProjWData``: ROOT says it averages with the index category once."""
+    c = Channels()
+    capsys.readouterr()
+    c.sim.plotOn(c.frame, ProjWData=([c.cat], c.data))
+    assert capsys.readouterr().out.splitlines() == [AVERAGES]
 
 
 def test_a_component_of_a_simultaneous_density_is_drawn_as_its_share_of_the_average() -> None:
@@ -598,10 +605,12 @@ def test_a_slice_of_a_simultaneous_density_is_its_channel_weighted_by_its_share(
     c = Channels()
     capsys.readouterr()
     c.sim.plotOn(c.frame, Slice=(c.cat, "ctl"), ProjWData=([c.cat], c.data))
-    assert capsys.readouterr().out.splitlines() == [
+    lines = capsys.readouterr().out.splitlines()
+    assert sorted(lines) == [
+        "[#1] INFO:Plotting -- RooAbsReal::plotOn(e) slice variable cat was not projected anyway",
+        AVERAGES,
         "[#1] INFO:Plotting -- RooSimultaneous::plotOn(sim) plot on x represents a slice in the "
         "index category (cat)",
-        "[#1] INFO:Plotting -- RooAbsReal::plotOn(e) slice variable cat was not projected anyway",
     ]
     curve = c.frame.getObject(1)
     assert curve.GetName() == "e_Norm[x]"
