@@ -14,6 +14,8 @@ from typing import Any
 
 import numpy as np
 
+from .messages import message
+
 __all__: list[str] = []
 
 
@@ -69,9 +71,25 @@ class Bins:
         if args and np.ndim(args[0]) > 0:
             return self._fill_arrays(args)
         coordinates = [self._coordinate(at, value) for at, value in enumerate(args[: self.DIM])]
+        if any(coordinate is None for coordinate in coordinates):
+            return -1
         weight = float(args[self.DIM]) if len(args) > self.DIM else 1.0
+        frozen = self._frozen_moments(args)
         self._xrd.fill(*coordinates, weight=None if weight == 1.0 else weight)
+        self._core().update(frozen)
         return int(self._xrd.find_bin(*coordinates))
+
+    def _frozen_moments(self, args: tuple[Any, ...]) -> dict[str, Any]:
+        """The sums along each axis filled by label that may grow: ROOT leaves those alone."""
+        axes = self._axes()  # type: ignore[attr-defined]
+        letters = [
+            letter
+            for letter, axis, value in zip("xyz", axes, args)
+            if isinstance(value, str) and axis.CanExtend() and axis.IsAlphanumeric()
+        ]
+        core = self._core()
+        return {key: core[key] for key in core if key.startswith("fTsumw")
+                and any(letter in key[6:] for letter in letters)}  # fmt: skip
 
     def _fill_arrays(self, args: tuple[Any, ...]) -> int:
         """``Fill(xs[, ys][, ws])`` - PyROOT's - an entry for each element: ``-1``, no one bin."""
@@ -80,14 +98,38 @@ class Bins:
         self._xrd.fill(*columns, weight=weights)
         return -1
 
-    def _coordinate(self, at: int, value: Any) -> float:
+    def _coordinate(self, at: int, value: Any) -> float | None:
+        """Where a value falls; a new label takes the next free bin, as ``TAxis::FindBin`` does.
+
+        The first label makes an axis that can be one of categories extendable
+        and alphanumeric; one past its last bin doubles it if it may grow, and
+        is ignored, with ROOT's ``Info``, if it is not of categories.
+        """
         if not isinstance(value, str):
             return float(value)
-        axis = (self.GetXaxis, self.GetYaxis, self.GetZaxis)[at]()  # type: ignore[attr-defined]
+        axis = self._axes()[at]  # type: ignore[attr-defined]
         found = axis.FindFixBin(value)
-        if found < 0:
-            found = len(axis._labels()) + 1
-            axis.SetBinLabel(found, value)
+        if found >= 0:
+            return float(axis.GetBinCenter(found))
+        if not axis._labels() and axis.CanBeAlphanumeric():
+            axis.SetCanExtend(True)
+            axis.SetAlphanumeric(True)
+        if not axis.IsAlphanumeric():
+            message("Info", "FindBin", "Label %s is not in the list and the axis is not "
+                    "alphanumeric - ignore it", value)  # fmt: skip
+            return None
+        return self._labelled(at, value)
+
+    def _labelled(self, at: int, value: str) -> float:
+        """A new label's bin: the next free one, the axis doubled first if full and able to grow."""
+        from .deflate import inflated
+
+        axis = self._axes()[at]  # type: ignore[attr-defined]
+        found = len(axis._labels()) + 1
+        if found > axis.GetNbins() and axis.CanExtend():
+            self._replace(inflated(self, at))  # type: ignore[attr-defined]
+            axis = self._axes()[at]  # type: ignore[attr-defined]
+        axis.SetBinLabel(found, value)
         return float(axis.GetBinCenter(found))
 
     def FillN(self, ntimes: int, x: Any, *rest: Any) -> None:

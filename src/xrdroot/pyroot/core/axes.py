@@ -33,6 +33,8 @@ ROTATE_TITLE = 1 << 15
 CENTER_LABELS = 1 << 14
 NO_EXPONENT = 1 << 17
 MORE_LOG_LABELS = 1 << 16
+#: ``TAxis``'s bits in its ``fBits2``: of categories, able to grow, never of categories.
+ALPHANUMERIC, CAN_EXTEND, NOT_ALPHA = 1, 2, 4
 
 
 def _axis_setter(member: str) -> Any:
@@ -322,8 +324,31 @@ class TAxis(TNamed, TAttAxis):
     def SetTimeOffset(self, toffset: float, option: str = "local") -> None:
         self._row["fTimeFormat"] = f"{self.GetTimeFormat().split('%F')[0]}%F{toffset}"
 
+    def _bit2(self, bit: int) -> bool:
+        return bool(int(self._row.get("fBits2", 0)) & bit)
+
+    def _set_bit2(self, bit: int, on: bool) -> None:
+        held = int(self._row.get("fBits2", 0))
+        self._row["fBits2"] = held | bit if on else held & ~bit
+
     def CanExtend(self) -> bool:
-        return False
+        """``CanExtend``: whether a fill past the axis, or by a new label, doubles it."""
+        return self._bit2(CAN_EXTEND)
 
     def SetCanExtend(self, extend: bool) -> None:
-        """``SetCanExtend``: axes here keep the range they were booked with."""
+        self._set_bit2(CAN_EXTEND, bool(extend))
+
+    def IsAlphanumeric(self) -> bool:
+        """``IsAlphanumeric``: whether the axis is one of categories, filled by label."""
+        return self._bit2(ALPHANUMERIC)
+
+    def SetAlphanumeric(self, alphanumeric: bool = True) -> None:
+        self._set_bit2(ALPHANUMERIC, bool(alphanumeric))
+
+    def CanBeAlphanumeric(self) -> bool:
+        return not self._bit2(NOT_ALPHA) and not self.IsVariableBinSize()
+
+    def SetNoAlphanumeric(self, no: bool = True) -> None:
+        self._set_bit2(NOT_ALPHA, bool(no))
+        if no:
+            self._set_bit2(ALPHANUMERIC, False)

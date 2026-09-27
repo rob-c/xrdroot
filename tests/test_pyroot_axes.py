@@ -153,7 +153,7 @@ def test_labels_time_and_extending_are_kept_for_the_drawing():
         (axis.GetTimeFormat(), "%H:%M%F100"),
     )
     axis.SetCanExtend(True)
-    assert not axis.CanExtend()
+    assert axis.CanExtend()
 
 
 def test_statistics_extremes_and_their_errors():

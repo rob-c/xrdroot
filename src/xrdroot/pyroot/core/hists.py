@@ -86,6 +86,35 @@ class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarke
             line = f" fSumw{index}={self.GetBinContent(bin):g}, {where}"
             print(f"{line}, error={self.GetBinError(bin):g}" if keep_errors else line)
 
+    def LabelsDeflate(self, ax: str = "X") -> None:
+        """``LabelsDeflate(ax)``: cut an axis of labels down to the bins up to its last label."""
+        from .deflate import deflated
+
+        made = deflated(self, "XYZ".index(str(ax).upper()[:1] or "X"))
+        if made is not None:
+            self._replace(made)
+
+    def LabelsOption(self, option: str = "h", ax: str = "X") -> None:
+        """``LabelsOption(option, ax)``: how an axis' labels are drawn, and their order.
+
+        ``h``, ``v``, ``u`` and ``d`` turn the labels; ``a`` sorts the bins by
+        label, ``>`` and ``<`` by content, down and up, as ROOT's does.
+        """
+        text = str(option)
+        axis = self._axes()["XYZ".index(str(ax).upper()[:1] or "X")]
+        axis.LabelsOption(text)
+        order = next((key for key in "a><" if key in text), None)
+        if order is not None and self.GetDimension() == 1:
+            from .deflate import sorted_by_label
+
+            sorted_by_label(self, order)
+
+    def LabelsInflate(self, ax: str = "X") -> None:
+        """``LabelsInflate(ax)``: double an axis' bins, each as wide, its contents kept."""
+        from .deflate import inflated
+
+        self._replace(inflated(self, "XYZ".index(str(ax).upper()[:1] or "X")))
+
     # -- UHI, as PyROOT's histograms speak it -----------------------------------------------
 
     def values(self, flow: bool = False) -> np.ndarray[Any, Any]:

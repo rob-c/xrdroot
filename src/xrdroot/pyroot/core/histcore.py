@@ -264,13 +264,14 @@ class Booked:
 
     def SetCanExtend(self, bits: int) -> int:
         """``SetCanExtend``: which axes may grow for a label or a value past them; noted."""
-        before = int(self.__dict__.get("_extend", 0))
-        self.__dict__["_extend"] = int(bits)
+        axes = self._axes()  # type: ignore[attr-defined]
+        before = sum(1 << at for at, axis in enumerate(axes) if axis.CanExtend())
+        for at, axis in enumerate(axes):
+            axis.SetCanExtend(bool(int(bits) & (1 << at)))
         return before
 
     def CanExtendAllAxes(self) -> bool:
-        every = (1 << self.GetDimension()) - 1
-        return (int(self.__dict__.get("_extend", 0)) & every) == every
+        return all(axis.CanExtend() for axis in self._axes())  # type: ignore[attr-defined]
 
     def SetBarWidth(self, width: float = 0.5) -> None:
         """``SetBarWidth``: a bar's width for ``Draw("bar")``, as a fraction of the bin."""
