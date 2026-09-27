@@ -29,18 +29,27 @@ import numpy as np
 
 from ..binning import RooUniformBinning
 from ..collections import as_list
-from ..integration import announce, numeric
+from ..integration import numeric
 from ..messages import ERROR, INFO, log
 from ..pdf import RooAbsPdf, normalized
 from ..printing import address
 from ..real import Context
 from .. import copies
-from .fftcache import EXTEND, FLAT, MIRROR, FFTCache, sums_over
+from .fftcache import EXTEND, FLAT, MIRROR, FFTCache
 
 __all__ = ["RooFFTConvPdf"]
 
 #: The most FFT bins RooFit aims for: with the default buffer, 930 bins make 1024.
 FFT_BINS = 1024
+
+
+def said_numeric(conv: Any, names: list[str], label: str, rng: Any = None) -> None:
+    """``RooRealIntegral::init``'s line for an integral over ``names`` that is taken numerically."""
+    method = "RooIntegrator1D" if len(names) == 1 else "RooAdaptiveIntegratorND"
+    if len(names) == 1 and any(np.isinf(conv.bounds(names[0], rng))):
+        method = "RooImproperIntegrator1D"
+    log(conv, INFO, "NumericIntegration", f"RooRealIntegral::init({label}) using numeric integrator "
+        f"{method} to calculate Int({','.join(names)})")  # fmt: skip
 
 
 class _Caches:
@@ -74,7 +83,7 @@ class _Caches:
         log(conv, INFO, "Caching", f"RooAbsCachedPdf::getCache({conv.GetName()}) creating new cache "
             f"{address(made)} with pdf {name} for nset ({','.join(ordered)}) with code {self.slots.index(nset)}")  # fmt: skip
         if nset and self.purpose != "fit" and not made.analytic_over(nset):
-            announce(conv, nset, label=f"{name}_Int[{','.join(ordered)}]")
+            said_numeric(conv, ordered, f"{name}_Int[{','.join(ordered)}]")
         return made
 
     def sterilize(self) -> None:
@@ -260,19 +269,23 @@ class RooFFTConvPdf(RooAbsPdf):
         if caches.purpose == "fit":
             if not caches.said_numeric:
                 caches.said_numeric = True
-                announce(self, names, rng, label=f"{self.GetName()}_Int[{','.join(sorted(names))}]")
+                said_numeric(self, sorted(names), f"{self.GetName()}_Int[{','.join(sorted(names))}]", rng)
             cache = caches.cache(frozenset())
         order = [one.GetName() for one in self.leaves() if one.GetName() in names]
         return numeric(self, order, cache.raw, ctx, rng)
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
-        """``forceAnalyticalInt``: the histogram's sums, when they are the integral over ``names``."""
-        names = frozenset(names) & self.dependents()
-        observables = self.pdf_observables(self.actual_observables(names))
-        return names if names and not rng and sums_over(observables, names) else frozenset()
+        """``forceAnalyticalInt``: every observable - the cache's density integrates itself."""
+        return frozenset(names) & self.dependents()
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
-        return self._active().cache(frozenset(names)).summed(frozenset(names), ctx)
+        """The integral of the cache for ``names``: its sum of weights, or numerically if not that."""
+        names = frozenset(names)
+        cache = self._active().cache(names)
+        if not rng and cache.analytic_over(names):
+            return cache.summed(names, ctx)
+        order = [one.GetName() for one in self.leaves() if one.GetName() in names]
+        return numeric(self, order, cache.raw, ctx, rng)
 
     # -- generating ---------------------------------------------------------------
 

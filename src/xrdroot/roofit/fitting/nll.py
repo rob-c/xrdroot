@@ -68,6 +68,7 @@ class RooNLLVar(RooAbsReal):
         self._offset_value = 0.0
         #: The states of the fit's copy of the model, for the nodes that keep one (:mod:`..copies`).
         self._copies = copies or {}
+        self._announced = False
 
     def compute(self, ctx: Any) -> Any:
         return self.evaluate_nll()
@@ -77,6 +78,11 @@ class RooNLLVar(RooAbsReal):
         from ..copies import within
 
         with within(self._copies):
+            if not self._announced:  # the fit's copy makes its normalisation integral on first use
+                from ..integration import announce
+
+                self._announced = True
+                announce(self.pdf, self.nset, self.rng)
             return self._evaluate()
 
     def _evaluate(self) -> float:

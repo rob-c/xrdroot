@@ -136,7 +136,7 @@ def _range_fraction(pdf: Any, frame: Any, nset: frozenset[str], rng: Any,
 
 
 def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str]) -> None:
-    """What RooFit says when it plots: the projection, and the two integrals it makes for it."""
+    """What RooFit says when it plots: the projection, and the integrals it makes for it."""
     from ..integration import announce, integral_name
 
     projected = nset - {frame.getPlotVar().GetName()}
@@ -146,7 +146,6 @@ def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str]) -> None:
             f"{frame.getPlotVar().GetName()} integrates over variables ({','.join(order)})")  # fmt: skip
     announce(pdf, nset)
     if not projected:
-        announce(pdf, nset)
         return
     norm = ",".join(one.GetName() for one in pdf.leaves() if one.GetName() in nset)
     announce(pdf, projected, label=f"{integral_name(pdf, projected, None)}_Norm[{norm}]")

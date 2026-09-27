@@ -156,8 +156,9 @@ def announce(func: Any, names: frozenset[str], rng: Any = None, label: str | Non
     """``RooRealIntegral::init``'s line for a numerical integral, as RooFit prints it on making one.
 
     RooFit makes - and so announces - its integral objects at moments of its
-    own: twice when it sets up to generate, twice when it plots a curve,
-    never inside a fit. The callers here say when; this says what.
+    own: twice when it sets up to generate, once when it plots a curve, once
+    when a fit first evaluates its likelihood. The callers here say when;
+    this says what.
     """
     numeric = numeric_names(func, names, rng)
     if not numeric:
