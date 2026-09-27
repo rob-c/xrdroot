@@ -19,7 +19,7 @@ from . import cout
 from .cmdargs import commands
 from .collections import RooArgSet, as_list
 from .messages import INFO, log
-from .printing import RooPrintable
+from .printing import RooPrintable, g
 
 __all__ = ["RooWorkspace"]
 
@@ -33,7 +33,7 @@ class RooWorkspace(RooPrintable):
         self._nodes: dict[str, Any] = {}
         self._data: dict[str, Any] = {}
         self._sets: dict[str, RooArgSet] = {}
-        self._snapshots: dict[str, list[tuple[str, float]]] = {}
+        self._snapshots: dict[str, list[Any]] = {}
         self._generic: dict[str, Any] = {}
         #: The factory's ``$Typedef`` names for classes.
         self._aliases: dict[str, str] = {}
@@ -181,19 +181,22 @@ class RooWorkspace(RooPrintable):
         return self._sets.get(str(name))
 
     def saveSnapshot(self, name: str, params: Any, importValues: bool = False) -> bool:
-        items = self._resolve(params)
-        self._snapshots[str(name)] = [(one.GetName(), one.getVal()) for one in items]
+        """Copies of the parameters - value, error and whether constant - in the workspace's
+        order of its nodes."""
+        wanted = {one.GetName() for one in self._resolve(params)}
+        chosen = [one for key, one in self._nodes.items() if key in wanted]
+        self._snapshots[str(name)] = [one.clone(one.GetName()) for one in chosen]
         return False
 
     def loadSnapshot(self, name: str) -> bool:
-        for key, value in self._snapshots.get(str(name), []):
-            self._nodes[key].setVal(value)
+        for saved in self._snapshots.get(str(name), []):
+            node = self._nodes[saved.GetName()]
+            node.copy_value_from(saved)
+            node.setConstant(saved.isConstant())
         return str(name) in self._snapshots
 
     def getSnapshot(self, name: str) -> Any:
-        from .variables import RooRealVar
-
-        return RooArgSet([RooRealVar(k, k, v) for k, v in self._snapshots.get(str(name), [])])
+        return RooArgSet(list(self._snapshots.get(str(name), [])))
 
     def _resolve(self, params: Any) -> list[Any]:
         if isinstance(params, str):
@@ -201,6 +204,13 @@ class RooWorkspace(RooPrintable):
         return as_list(params)
 
     # -- printing -----------------------------------------------------------------
+
+    def _snapshot_lines(self) -> list[str]:
+        """``reference_fit = (a0=0.488363 +/- 0.0241765,sigma1=0.5[C])``: each snapshot's line."""
+        return [
+            f"{name} = ({','.join(_snapshot_value(one) for one in saved)})"
+            for name, saved in self._snapshots.items()
+        ]
 
     def Print(self, option: str = "") -> None:
         """``RooWorkspace::Print``: each kind of content under its heading, sorted by name."""
@@ -213,6 +223,7 @@ class RooWorkspace(RooPrintable):
             "datasets\n--------\n",
             [f"{d.ClassName()}::{d.GetName()}{d.get().printValue()}" for d in self._data.values()],
         )
+        _lines("parameter snapshots\n-------------------\n", self._snapshot_lines())
         _lines(
             "named sets\n----------\n",
             [f"{k}:{self._sets[k].printValue()}" for k in sorted(self._sets)],
@@ -222,6 +233,15 @@ class RooWorkspace(RooPrintable):
 def _is_function(node: Any) -> bool:
     kinds = ("RooAbsPdf", "RooConstVar", "RooRealVar", "RooAbsCategory")
     return node.InheritsFrom("RooAbsReal") and not any(node.InheritsFrom(k) for k in kinds)
+
+
+def _snapshot_value(var: Any) -> str:
+    """``a0=0.488363 +/- 0.0241765``, ``sigma1=0.5[C]``: a saved parameter as ROOT lists it."""
+    if var.isConstant():
+        return f"{var.GetName()}={g(var.getVal())}[C]"
+    if var.hasError():
+        return f"{var.GetName()}={g(var.getVal())} +/- {g(var.getError())}"
+    return f"{var.GetName()}={g(var.getVal())}"
 
 
 def _renamed(data: Any, name: str) -> Any:

@@ -24,7 +24,7 @@ import numpy as np
 from ...fit.minuit import iminuit
 from .. import cout
 from ..collections import RooArgList, RooArgSet, as_list
-from ..messages import INFO, WARNING, log, log_plain
+from ..messages import ERROR, INFO, WARNING, log, log_plain
 from ..printing import PRECISION, g
 
 __all__ = ["RooMinimizer", "first_step"]
@@ -315,8 +315,14 @@ class RooMinimizer:
             self.status = -1
             return self.status
         self.minuit.hesse(ncall=self.max_calls)
-        failed = self.minuit.fmin.hesse_failed or not self.minuit.fmin.has_covariance
-        self.status = getattr(self, "minuit_status", 0) + (100 if failed else 0)
+        self.status = getattr(self, "minuit_status", 0) + 100 * _hesse_code(self.minuit.fmin)
+        if self.status >= 100:
+            log(
+                self,
+                ERROR,
+                "Minimization",
+                "RooMinimizer::calculateHessErrors() Error when calculating Hessian",
+            )
         self._back_propagate(minos=False)
         self.history.append(("HESSE", self.status))
         return self.status
@@ -468,3 +474,13 @@ def cov_quality(fmin: Any) -> int:
 
 def as_set(items: Any) -> RooArgSet:
     return RooArgSet(as_list(items))
+
+
+def _hesse_code(fmin: Any) -> int:
+    """``Minuit2Minimizer::Hesse``'s code for a HESSE that gave no covariance: 1 it failed,
+    3 the matrix is not positive definite, 4 otherwise; 0 for one that gave it."""
+    if fmin.has_covariance:
+        return 0
+    if fmin.hesse_failed:
+        return 1
+    return 3 if not fmin.has_posdef_covar else 4
