@@ -102,25 +102,37 @@ def test_a_minos_fit_prints_roots_tables_standard_and_verbose(capsys: Any) -> No
     assert capsys.readouterr().out == MINOS_STANDARD
 
 
-def test_a_fit_result_holds_roots_minimum_status_history_and_covariance() -> None:
-    """Scripts read the numbers, not the table: each accessor must say what ROOT's says."""
-    result, _ = _minos_fit()
-    assert (result.status(), result.covQual(), result.numInvalidNLL()) == (0, 3, 0)
-    assert result.minNll() == pytest.approx(531.6869729962241, abs=1e-9)
-    assert result.edm() == pytest.approx(0.00029442734112466887, rel=1e-6)
-    history = [
+def _history(result: Any) -> list[tuple[str, int]]:
+    return [
         (result.statusLabelHistory(i), result.statusCodeHistory(i))
         for i in range(result.numStatusHistory())
     ]
-    assert history == [("MINIMIZE", 0), ("HESSE", 0), ("MINOS", 0)]
-    cov = result.covarianceMatrix()
-    for i, row in enumerate(MINOS_COVARIANCE):
-        for j, value in enumerate(row):
-            assert cov(i, j) == pytest.approx(value, rel=1e-6)
-    assert result.floatParsInit().names() == ["c", "f", "m", "s"]
-    assert [p.getVal() for p in result.floatParsInit()] == [-0.1, 0.7, 0.0, 2.0]
-    assert result.params().names() == ["c", "f", "m", "s"]
-    assert len(result.constPars()) == 0
+
+
+def _matrix(matrix: Any, size: int) -> list[list[float]]:
+    return [[matrix(i, j) for j in range(size)] for i in range(size)]
+
+
+def test_a_fit_result_holds_roots_minimum_and_status_history() -> None:
+    """Scripts read the numbers, not the table: each accessor must say what ROOT's says."""
+    result, _ = _minos_fit()
+    assert (result.status(), result.covQual(), result.numInvalidNLL()) == (0, 3, 0)
+    assert (result.minNll(), result.edm()) == pytest.approx(
+        (531.6869729962241, 0.00029442734112466887), rel=1e-6
+    )
+    assert result.minNll() == pytest.approx(531.6869729962241, abs=1e-9)
+    assert _history(result) == [("MINIMIZE", 0), ("HESSE", 0), ("MINOS", 0)]
+
+
+def test_a_fit_result_holds_roots_covariance_and_starting_values() -> None:
+    """The covariance is ROOT's to Minuit's tolerance, and the starting values are kept."""
+    result, _ = _minos_fit()
+    found = _matrix(result.covarianceMatrix(), 4)
+    for row, expected in zip(found, MINOS_COVARIANCE):
+        assert row == pytest.approx(expected, rel=1e-6)
+    init = result.floatParsInit()
+    assert (init.names(), [p.getVal() for p in init]) == (["c", "f", "m", "s"], [-0.1, 0.7, 0, 2])
+    assert (result.params().names(), len(result.constPars())) == (["c", "f", "m", "s"], 0)
 
 
 def test_global_correlations_are_printed_once_they_have_been_asked_for(capsys: Any) -> None:

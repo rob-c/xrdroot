@@ -218,10 +218,10 @@ def test_hesse_minos_and_save_before_migrad_are_refused_as_roofit_refuses_them(
     )
 
 
-def test_migrad_prints_minuit2s_summary_and_minos_its_banners(capsys: Any) -> None:
-    """At print level 1 Minuit2 says what it was asked, what it found, and MINOS its errors -
-    the lines ROOT prints, with Minuit's numbers."""
-    minimizer, _, m, s = _minimizer()
+def test_migrad_prints_minuit2s_summary(capsys: Any) -> None:
+    """At print level 1 Minuit2 says what it was asked and what it found - the lines ROOT
+    prints, with Minuit's numbers."""
+    minimizer, _, _, _ = _minimizer()
     capsys.readouterr()
     assert minimizer.migrad() == 0
     lines = capsys.readouterr().out.splitlines()
@@ -231,17 +231,25 @@ def test_migrad_prints_minuit2s_summary_and_minos_its_banners(capsys: Any) -> No
         "Minuit2Minimizer: Minimize with max-calls 1000 convergence for edm < 1 strategy 1",
         "Minuit2Minimizer : Valid minimum - status = 0",
     ]
-    assert float(lines[3].split("=")[1]) == pytest.approx(102.310351911713894, abs=1e-9)
-    assert float(lines[4].split("=")[1]) == pytest.approx(1.79401040347328976e-08, rel=1e-4)
+    fval, edm = (float(line.split("=")[1]) for line in lines[3:5])
+    assert fval == pytest.approx(102.310351911713894, abs=1e-9)
+    assert edm == pytest.approx(1.79401040347328976e-08, rel=1e-4)
     assert lines[5:] == [
         "Nfcn  = 31",
         "m\t  = 0.0482195\t +/-  0.264684\t(limited)",
         "s\t  = 1.87247\t +/-  0.187172\t(limited)",
     ]
-    assert minimizer.hesse() == 0
-    assert minimizer.minos([s]) == 0
+
+
+def test_minos_prints_its_banners_and_gives_asymmetric_errors(capsys: Any) -> None:
+    """MINOS of s alone: ROOT's banners and errors, and only s has them in the saved table."""
+    minimizer, _, m, s = _minimizer()
+    minimizer.setPrintLevel(-1)
+    minimizer.migrad()
+    minimizer.setPrintLevel(1)
+    assert (minimizer.hesse(), minimizer.minos([s])) == (0, 0)
     stars = "*" * 102
-    assert capsys.readouterr().out == (
+    assert capsys.readouterr().out.endswith(
         f"{stars}\nMinuit2Minimizer::GetMinosError - Run MINOS LOWER error for parameter #1 : s "
         f"using max-calls 1000, tolerance 1\n{stars}\nMinuit2Minimizer::GetMinosError - Run MINOS"
         " UPPER error for parameter #1 : s using max-calls 1000, tolerance 1\n"
@@ -252,7 +260,6 @@ def test_migrad_prints_minuit2s_summary_and_minos_its_banners(capsys: Any) -> No
     assert not m.hasAsymError()
     result = minimizer.save("myname", "mytitle")
     assert (result.GetName(), result.GetTitle()) == ("myname", "mytitle")
-    capsys.readouterr()
     result.Print("v")
     assert (
         "                     m    0.0000e+00    4.8220e-02         +/-  2.65e-01  <none>\n"

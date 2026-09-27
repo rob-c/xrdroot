@@ -80,22 +80,30 @@ IN_SIG = (-0.7324308607875208, 1.8699027615477501, 0.43356387917279515, 0.440000
 IN_SIDES = (0.30589711838871025, 2.0767443668082466, 0.3374142495939065, 0.2684803207744433)
 
 
-def test_a_fit_in_a_range_normalises_there_and_names_its_ranges_for_plotting() -> None:
-    """``Range("sig")`` keeps the events there and normalises over it; ``Range("left,right")``
-    joins two, and the density remembers them as ``fit_nll_<pdf>_<data>[_<range>]``."""
-    g, data, x, m, s = _gauss()
-    x.setRange("sig", -3, 3)
-    result = g.fitTo(data, Save=True, PrintLevel=-1, Range="sig")
+def _in_range(name: str) -> tuple[Any, Any, Any, Any]:
+    g, data, x, _, _ = _gauss()
+    for label, low, high in (("sig", -3, 3), ("left", -10, -1), ("right", 1, 10)):
+        x.setRange(label, low, high)
+    result = g.fitTo(data, Save=True, PrintLevel=-1, Range=name)
+    return result, g, x, data
+
+
+def test_a_fit_in_a_range_normalises_there_and_names_its_range_for_plotting() -> None:
+    """``Range("sig")`` keeps the events there and normalises over it, and the density
+    remembers it as ``fit_nll_<pdf>_<data>``: ROOT's fit."""
+    result, g, x, _ = _in_range("sig")
+    m, s = (g.getParameters([x]).find(n) for n in ("m", "s"))
     assert _fitted(m, s) == pytest.approx(IN_SIG, rel=1e-8)
     assert result.minNll() == pytest.approx(74.95574471337984, abs=1e-9)
     assert g.getStringAttribute("fitrange") == "fit_nll_g_gData"
     assert (x.getMin("fit_nll_g_gData"), x.getMax("fit_nll_g_gData")) == (-3.0, 3.0)
-    for one, value in ((m, 0.0), (s, 2.0)):
-        one.setVal(value)
-        one.setError(0)
-    x.setRange("left", -10, -1)
-    x.setRange("right", 1, 10)
-    result = g.fitTo(data, Save=True, PrintLevel=-1, Range="left,right")
+
+
+def test_a_fit_in_two_ranges_joins_them_and_names_each() -> None:
+    """``Range("left,right")`` fits the events in either; each range is remembered as
+    ``fit_nll_<pdf>_<data>_<range>``, and a fit without a range forgets them."""
+    result, g, x, data = _in_range("left,right")
+    m, s = (g.getParameters([x]).find(n) for n in ("m", "s"))
     assert _fitted(m, s) == pytest.approx(IN_SIDES, rel=1e-8)
     assert result.minNll() == pytest.approx(48.8809414365939, abs=1e-9)
     assert g.getStringAttribute("fitrange") == "fit_nll_g_gData_left,fit_nll_g_gData_right"

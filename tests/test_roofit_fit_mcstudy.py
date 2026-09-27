@@ -69,15 +69,27 @@ def _rows(data: Any, names: list[str]) -> list[list[float]]:
     return [[float(data.column(n)[i]) for n in names] for i in range(data.numEntries())]
 
 
-def test_a_study_generates_and_fits_each_sample_as_root_does(capsys: Any) -> None:
-    """Three samples of 40 events: ROOT's events, and each fit's values, errors, pulls against
-    the generating values, minimum and event count - the samples counted down as they go."""
+def _progress(out: str) -> list[str]:
+    return [line for line in out.splitlines() if "PROGRESS" in line]
+
+
+def _first_events(study: Any, count: int) -> list[float]:
+    return [float(study.genData(i).column("x")[0]) for i in range(count)]
+
+
+def _basic() -> tuple[Any, Any, Any]:
     g, x, m, s = _gauss()
     study = RooMCStudy(g, [x], RooCmdArg("Silence", True), QUIET)
-    capsys.readouterr()
     assert study.generateAndFit(3, 40, True) is False
-    out = capsys.readouterr().out
-    assert [line for line in out.splitlines() if "PROGRESS" in line] == [
+    return study, m, s
+
+
+def test_a_study_generates_and_fits_each_sample_as_root_does(capsys: Any) -> None:
+    """Three samples of 40 events: each fit's values, errors, pulls against the generating
+    values, minimum and event count - the samples counted down as they go."""
+    capsys.readouterr()
+    study, _, _ = _basic()
+    assert _progress(capsys.readouterr().out) == [
         f"[#0] PROGRESS:Generation -- RooMCStudy::run: sample {n}" for n in (2, 1, 0)
     ]
     data = study.fitParDataSet()
@@ -89,13 +101,16 @@ def test_a_study_generates_and_fits_each_sample_as_root_does(capsys: Any) -> Non
     assert sorted(data.get().names()) == sorted(ROOT_ORDER)
     for found, expected in zip(_rows(data, ROOT_ORDER), BASIC):
         assert found == pytest.approx(expected, rel=1e-7)
-    assert [float(study.genData(i).column("x")[0]) for i in range(3)] == [
-        1.9978654352187961,
-        -2.3205870192854925,
-        1.8649088608290905,
-    ]
-    assert study.fitParams(2).names() == ["m", "s"]
-    assert [p.getVal() for p in study.fitParams(2)] == pytest.approx(BASIC[2][:2], rel=1e-9)
+
+
+def test_a_study_keeps_roots_samples_and_leaves_the_last_fit_in_place() -> None:
+    """The kept samples are ROOT's events, the last fit's parameters are where the fit left
+    them, and the generator is where ROOT's is."""
+    study, m, s = _basic()
+    assert _first_events(study, 3) == [1.9978654352187961, -2.3205870192854925, 1.8649088608290905]
+    params = study.fitParams(2)
+    assert params.names() == ["m", "s"]
+    assert [p.getVal() for p in params] == pytest.approx(BASIC[2][:2], rel=1e-9)
     assert (m.getVal(), s.getVal()) == pytest.approx(BASIC[2][:2], rel=1e-9)
     assert generator().Rndm() == 0.49709826125763357
 
@@ -208,7 +223,7 @@ def test_a_long_study_says_how_far_it_is_every_hundredth_of_the_way(capsys: Any)
     study = RooMCStudy(g, [x], QUIET)
     capsys.readouterr()
     study.generate(200, 1)
-    progress = [line for line in capsys.readouterr().out.splitlines() if "PROGRESS" in line]
+    progress = _progress(capsys.readouterr().out)
     assert len(progress) == 100
     assert progress[:2] == [
         "[#0] PROGRESS:Generation -- RooMCStudy::run: sample 198",
