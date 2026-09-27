@@ -93,12 +93,8 @@ class RooHist(Graph):
 
     def events_between(self, low: float, high: float) -> float:
         """``getFitRangeNEvt(low, high)``: the events the data had between ``low`` and ``high``."""
-        values = getattr(self, "data_values", None)
-        if values is None:
-            inside = (self.x >= low) & (self.x <= high)
-            return float(np.sum(self.y[inside]))
-        inside = (values >= low) & (values <= high)
-        return float(np.sum(self.data_weights[inside]))
+        inside = (self.x >= low) & (self.x <= high)  # the bins whose centres are inside
+        return float(np.sum(self.y[inside]))
 
     def fit_range_bin_width(self) -> float:
         return self.nominal_width

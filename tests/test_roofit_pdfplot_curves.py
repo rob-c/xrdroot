@@ -260,10 +260,6 @@ def test_a_named_range_and_a_normalisation_range_are_said_as_root_says(capsys: A
     assert [frame.getObject(i).GetN() for i in (1, 2, 3)] == [36, 36, 66]
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="hist.py:94-101: ROOT counts the data in a range by the bin centres inside it",
-)
 def test_a_curve_over_a_named_range_is_normalised_to_the_bins_whose_centres_are_inside() -> None:
     """``RooHist::getFitRangeNEvt(-1.5, 2.5)`` sums the bins centred in the range: 5 bins here."""
     m = Model()
