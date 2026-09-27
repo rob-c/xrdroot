@@ -59,7 +59,10 @@ def generate(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         return None
     name = options.get("Name") or f"{pdf.GetName()}Data"
     data = RooDataSet(name, f"Generated From {pdf.GetName()}", variables)
+    saved = [(one, one.getVal()) for one in pdf.leaves() if one.GetName() in names]
     rows = [context.event(total - i) for i in range(total)]
+    for one, value in saved:
+        one.load_value(value)
     data.add_columns({one.GetName(): np.array([r[one.GetName()] for r in rows], dtype=np.float64)
                       for one in variables})  # fmt: skip
     return data

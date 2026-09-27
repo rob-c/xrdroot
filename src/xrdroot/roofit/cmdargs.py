@@ -39,12 +39,39 @@ DEFAULTS: dict[str, tuple[Any, ...]] = {
 FLAGS = frozenset({"MoveToBack", "ShiftToZero", "VLines", "ShowProgress"})
 
 
+#: ``TColorNumber(std::string)``: matplotlib's colour letters, and the two enumerated names.
+COLOUR_WORDS = {"r": 632, "b": 600, "g": 416, "y": 400, "w": 0, "k": 1, "m": 616, "c": 432,
+                "kWhite": 0, "kBlack": 1}  # fmt: skip
+#: ``interpretLineStyleString``.
+LINE_STYLES = {"-": 1, "--": 2, ":": 3, "-.": 4}
+#: ``RooAbsData::errorTypeFromString``.
+ERROR_TYPES = {"Poisson": 0, "SumW2": 1, "None": 2, "Expected": 3, "Auto": 4}
+#: The commands whose first argument ROOT also takes as a string, and how it reads it.
+STRING_FORMS: dict[str, dict[str, int]] = {
+    "LineColor": COLOUR_WORDS, "FillColor": COLOUR_WORDS, "MarkerColor": COLOUR_WORDS,
+    "Color": COLOUR_WORDS, "LineStyle": LINE_STYLES, "FillStyle": {}, "MarkerStyle": {},
+    "DataError": ERROR_TYPES,
+}  # fmt: skip
+
+
+def _read_string(name: str, value: str) -> int:
+    """A string where ROOT's command takes a number: a colour, a style, an error type."""
+    table = STRING_FORMS[name]
+    if value in table:
+        return table[value]
+    from .names import named_constant
+
+    return named_constant(value)
+
+
 class RooCmdArg:
     """One named option and the values it was made with: ``RooFit::Save(true)``."""
 
     def __init__(self, name: str = "", *args: Any) -> None:
         self.name = str(name)
         self.args = tuple(args) if args else DEFAULTS.get(self.name, ())
+        if self.name in STRING_FORMS and self.args and isinstance(self.args[0], str):
+            self.args = (_read_string(self.name, self.args[0]), *self.args[1:])
 
     def value(self, index: int = 0, default: Any = None) -> Any:
         """Its ``index``-th value, or ``default`` if it was made with fewer."""

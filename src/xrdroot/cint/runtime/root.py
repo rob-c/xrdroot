@@ -21,6 +21,10 @@ __all__ = ["RootProxy", "ROOT"]
 
 #: The module ROOT's names come from when nothing else was bound.
 DEFAULT = "xrdroot.pyroot"
+#: Namespaces whose names a macro uses unqualified - every RooFit tutorial says
+#: ``using namespace RooFit`` - looked in when ROOT itself has no such name. A macro
+#: without the ``using`` would not have compiled, so looking there is never wrong.
+USED = ("RooFit", "RooStats")
 
 
 class RootProxy:
@@ -52,8 +56,17 @@ class RootProxy:
             return getattr(namespace, name)
         except AttributeError:
             if name != "std":
-                raise
+                return self._used(namespace, name)
         return importlib.import_module(f"{DEFAULT}.stl").std
+
+    @staticmethod
+    def _used(namespace: Any, name: str) -> Any:
+        """``name`` from a namespace of :data:`USED`, or the refusal ROOT's own lookup gave."""
+        for used in USED:
+            found = getattr(getattr(namespace, used, None), name, None)
+            if found is not None:
+                return found
+        return getattr(namespace, name)
 
     def __setattr__(self, name: str, value: Any) -> None:
         """``gErrorIgnoreLevel = kWarning``: a macro assigning one of ROOT's globals."""

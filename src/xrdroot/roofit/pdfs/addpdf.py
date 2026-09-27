@@ -160,6 +160,11 @@ class RooAddPdf(RooAbsPdf):
             yields = [y * float(pdf.fraction(nset, {}, nset, rng)) for y, pdf in zip(yields, self.pdfs)]
         return float(sum(yields))
 
+    def gen_context(self, names: frozenset[str]) -> Any:
+        from ..generation.contexts import SumContext
+
+        return SumContext(self, names)
+
     def pdfList(self) -> RooArgList:
         return self.pdfs
 

@@ -82,3 +82,51 @@ def context_for(pdf: Any, names: frozenset[str]) -> Context:
     if code:
         return DirectContext(pdf, names, code)
     return NumericContext(pdf, names)
+
+
+class ProductContext(Context):
+    """``RooProdGenContext``: each factor draws its own observables, those it is conditional on first."""
+
+    def __init__(self, pdf: Any, names: frozenset[str]) -> None:
+        super().__init__(pdf, names)
+        self.parts: list[Context] = []
+        done: set[str] = set()
+        waiting = list(pdf.pdfs)
+        while waiting:
+            ready = [f for f in waiting if not ((self._imports(f) - done) & names)] or waiting[:]
+            for factor in ready:
+                own = pdf.factor_nset(factor, names)
+                if own:
+                    self.parts.append(context_for(factor, own))
+                done |= own
+                waiting.remove(factor)
+
+    def _imports(self, factor: Any) -> set[str]:
+        return set(factor.dependents() & self.names) - set(self.pdf.factor_nset(factor, self.names))
+
+    def event(self, remaining: int) -> dict[str, float]:
+        found: dict[str, float] = {}
+        for part in self.parts:
+            drawn = part.event(remaining)
+            for name, value in drawn.items():
+                self.pdf.variable(name).load_value(value)
+            found.update(drawn)
+        return found
+
+
+class SumContext(Context):
+    """``RooAddGenContext``: a uniform draw picks the component, which draws the event."""
+
+    def __init__(self, pdf: Any, names: frozenset[str]) -> None:
+        super().__init__(pdf, names)
+        self.parts = [context_for(component, names) for component in pdf.pdfs]
+
+    def event(self, remaining: int) -> dict[str, float]:
+        shares = [float(np.asarray(c).reshape(-1)[0]) for c in self.pdf.coefficients({}, self.names)]
+        draw = generator().Rndm()
+        low = 0.0
+        for share, part in zip(shares, self.parts):
+            if low < draw < low + share:
+                return part.event(remaining)
+            low += share
+        return self.event(remaining)  # a draw on a threshold picks nothing, and RooFit draws again

@@ -46,6 +46,24 @@ def first_step(par: Any) -> float:
     return 1.0
 
 
+def inside(par: Any) -> float:
+    """Where Minuit2 starts a parameter: a tenth of its step inside a limit it sits on or beyond.
+
+    ``MnUserParameterState::SetLimits`` moves a value at or past an end in by
+    ``0.1 * error`` before the first call, so a fit whose parameter was
+    clipped to a limit starts just off it - as iminuit does not by itself.
+    """
+    value = par.getVal()
+    if par.isConstant():
+        return float(value)
+    step = first_step(par)
+    if par.hasMin() and par.getMin() >= value:
+        return float(par.getMin() + 0.1 * step)
+    if par.hasMax() and value >= par.getMax():
+        return float(par.getMax() - 0.1 * step)
+    return float(value)
+
+
 class RooMinimizer:
     """Minuit, minimising ``function`` over its free parameters."""
 
@@ -154,7 +172,7 @@ class RooMinimizer:
     def _settings(self) -> Any:
         """A Minuit over the parameters as they are now: values, first steps, limits, fixed."""
         module = iminuit()
-        values = [p.getVal() for p in self.params]
+        values = [inside(p) for p in self.params]
         minuit = module.Minuit(self._fcn, np.asarray(values, dtype=np.float64),
                                name=tuple(p.GetName() for p in self.params))  # fmt: skip
         minuit.errordef = self.errordef
