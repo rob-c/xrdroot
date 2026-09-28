@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from .crossval import CrossValidation
+from .experimental import Compute, RReader, RStandardScaler
 from .factory import Factory
 from .genetic import GeneticAlgorithm, GeneticFitter, IFitterTarget, Interval
 from .loader import DataLoader
@@ -30,6 +31,7 @@ from .methods.category import MethodCategory
 from .methods.cuts import MethodCuts
 from .reader import Reader
 from .tools import Tools, gConfig, gTools
+from .tensor import AsTensor, MemoryLayout, RTensor
 from .types import Types
 
 __all__ = [
@@ -51,4 +53,11 @@ __all__ = [
 ]
 
 #: ``TMVA::Experimental``'s classes, by name.
-EXPERIMENTAL: dict[str, Any] = {}
+EXPERIMENTAL: dict[str, Any] = {
+    "RTensor": RTensor,
+    "AsTensor": AsTensor,
+    "MemoryLayout": MemoryLayout,
+    "RReader": RReader,
+    "RStandardScaler": RStandardScaler,
+    "Compute": Compute,
+}

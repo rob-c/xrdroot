@@ -30,7 +30,10 @@ __all__ = ["model_of", "is_model"]
 
 
 def is_model(given: Any) -> bool:
-    """Is this a model rather than a column's name?"""
+    """Is this a model rather than a column's name? A braced ``{"h", "title", 30, 0, 1}`` is."""
+    if isinstance(given, list):
+        return len(given) > 1 and isinstance(given[0], str) and not all(
+            isinstance(each, str) for each in given)
     return isinstance(given, (tuple, Histogram))
 
 
