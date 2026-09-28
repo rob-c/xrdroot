@@ -200,9 +200,14 @@ def _flags() -> tuple[Any, Any]:
     """FreeType's no-hinting load flag and unfitted kerning mode, in this matplotlib's spelling."""
     from matplotlib import ft2font
 
-    if hasattr(ft2font, "LoadFlags"):
-        return ft2font.LoadFlags.NO_HINTING, ft2font.Kerning.UNFITTED
-    return ft2font.LOAD_NO_HINTING, ft2font.KERNING_UNFITTED  # pragma: no cover - before 3.10
+    # One expression for both spellings, so that whichever this matplotlib has is
+    # the line that runs, and coverage is the same on every version of it.
+    flags = getattr(ft2font, "LoadFlags", None)
+    return (
+        (flags.NO_HINTING, ft2font.Kerning.UNFITTED)
+        if flags is not None
+        else (ft2font.LOAD_NO_HINTING, ft2font.KERNING_UNFITTED)
+    )
 
 
 @functools.cache

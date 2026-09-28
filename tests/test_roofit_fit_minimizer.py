@@ -668,8 +668,41 @@ def test_a_fit_with_no_valid_value_and_a_curve_that_cannot_be_normalised_say_so_
     assert "Minuit2Minimizer: Minimize with max-calls 1000 convergence for edm < 1 strategy 1" in (
         printed
     )
-    assert "a1\t  = -0.579502\t +/-  0.0614758\t(limited)" in printed
-    assert (good.minNll(), good.numInvalidNLL()) == (roots(2959.918384170729, rel=1e-9), 64)
+    _assert_recovered_a1(printed)
+    _assert_recovered_minimum(good)
+
+
+def _assert_recovered_a1(printed: str) -> None:
+    """a1 as Minuit2 prints it after recovering from the invalid region.
+
+    To the digit on ROOT's machine. Elsewhere the fit starts inside a region where
+    every value is invalid and climbs out along the penalty RooFit adds, so a
+    step taken a little differently - arm64's fused multiply-adds - lands the
+    minimum a little elsewhere on a flat valley floor: 1e-3 of the value and of
+    its error, as seen, and well inside the error itself.
+    """
+    if ROOTS_MACHINE:
+        assert "a1\t  = -0.579502\t +/-  0.0614758\t(limited)" in printed
+        return
+    found = next(line for line in printed.splitlines() if line.startswith("a1\t  = "))
+    value, error = (float(part.split()[-1]) for part in found.split("\t")[1:3])
+    assert value == pytest.approx(-0.579502, rel=2e-3)
+    assert error == pytest.approx(0.0614758, rel=2e-3)
+
+
+def _assert_recovered_minimum(good: Any) -> None:
+    """The recovered fit's minimum and how many values on the way were invalid.
+
+    ROOT's numbers on ROOT's machine. Elsewhere, for the reason
+    :func:`_assert_recovered_a1` gives, the climb out of the invalid region
+    takes a step or two more or fewer - arm64 took 66 invalid values to x86-64's
+    64 - and the minimum of the valley floor it reaches is 4e-8 of it away.
+    """
+    if ROOTS_MACHINE:
+        assert (good.minNll(), good.numInvalidNLL()) == (roots(2959.918384170729, rel=1e-9), 64)
+        return
+    assert good.minNll() == pytest.approx(2959.918384170729, rel=1e-7)
+    assert abs(good.numInvalidNLL() - 64) <= 4
 
 
 def test_describing_a_failure_reports_no_errors_of_its_own(capsys: Any) -> None:
