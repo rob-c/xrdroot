@@ -533,9 +533,9 @@ class ExprEmitter(NameEmitter):
 
     def class_expr(self, ctype: CType) -> str:
         """The Python that builds a ``ctype``: the macro's class, ``str``, or ROOT's class."""
-        name = ctype.name
+        name = "::".join(self._unqualified(ctype.name.split("::")))
         if name in self.program.classes:
-            symbol = self.lookup(name)
+            symbol = self.class_symbols.get(name) or self.lookup(name)
             return symbol.py if symbol is not None else name
         if ctype.is_string:
             return "str"

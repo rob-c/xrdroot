@@ -427,6 +427,23 @@ class StmtParser(ExprParser):
                 self.take()
         self.take()
 
+    def _local_namespace(self) -> Stmt:
+        """``namespace GUI = ROOT::GUITutorials;`` in a function: a second name for one."""
+        where = self.take().where
+        name = self.identifier()
+        self.expect("=")
+        return self.namespace_alias(where, name)
+
+    def namespace_alias(self, where: Where, name: str) -> Stmt:
+        """What follows ``namespace name =``: the namespace ``name`` now stands for."""
+        self.accept("::")
+        parts = [self.identifier()]
+        while self.accept("::"):
+            parts.append(self.identifier())
+        self.expect(";")
+        self.namespace_aliases[name] = self.unaliased(parts)
+        return Empty(where)
+
     def _static_assert(self) -> Stmt:
         where = self.take().where
         self.skip_brackets()
@@ -460,6 +477,7 @@ class StmtParser(ExprParser):
         "using": _using,
         "typedef": _typedef,
         "static_assert": _static_assert,
+        "namespace": _local_namespace,
         "struct": _local_type,
         "class": _local_type,
         "union": _local_type,

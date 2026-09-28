@@ -133,7 +133,7 @@ class TypeParser(Cursor):
             parts.append(self.take().text)
             args = self.template_args() if self.at_("<") else []
             if not (self.at_("::") and self.peek(1).kind == "id"):
-                return parts, args
+                return self.unaliased(parts), args
             self.take()
 
     # -- template arguments ---------------------------------------------------

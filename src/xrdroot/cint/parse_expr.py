@@ -291,6 +291,10 @@ class ExprParser(TypeParser):
     def _member(self, expr: Expr) -> Expr:
         token = self.take()
         self.accept("template")
+        while self.peek().kind == "id" and self.peek(1).is_("::"):
+            # ``h->TF1::GetXaxis()``: a base's member by name, which is the member itself here.
+            self.take()
+            self.take()
         if self.accept("~"):
             name = "~" + self.identifier()
         elif self.at_("operator"):
@@ -537,7 +541,7 @@ class ExprParser(TypeParser):
             if not ((self.at_("::") and self.peek(1).kind == "id") or self._scoped_operator()):
                 break
             self.take()
-        return Name(where, self._standard(parts), targs, rooted)
+        return Name(where, self._standard(self.unaliased(parts)), targs, rooted)
 
     def _special_part(self) -> str | None:
         """``operator+`` or ``~Name`` where a name's next part stands, else ``None``."""

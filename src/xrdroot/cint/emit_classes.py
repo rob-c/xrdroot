@@ -94,7 +94,7 @@ class ClassEmitter(FunctionEmitter):
         raise NotImplementedError
 
     def _class_symbol(self, name: str) -> Symbol:
-        symbol = self.lookup(name)
+        symbol = self.class_symbols.get(name) or self.lookup(name)
         assert symbol is not None, f"every class is declared before it is written: {name}"
         return symbol
 

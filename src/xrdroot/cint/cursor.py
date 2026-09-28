@@ -121,6 +121,14 @@ class Cursor:
         self.variables: list[set[str]] = [set()]
         #: Nonzero while ``>`` closes a template argument list rather than comparing.
         self.angle = 0
+        #: ``namespace GUI = ROOT::GUITutorials;``: each alias, and the namespace it names.
+        self.namespace_aliases: dict[str, list[str]] = {}
+
+    def unaliased(self, parts: list[str]) -> list[str]:
+        """``GUI::WorldMap`` as ``ROOT::GUITutorials::WorldMap``, when ``GUI`` is an alias."""
+        if len(parts) > 1 and parts[0] in self.namespace_aliases:
+            return [*self.namespace_aliases[parts[0]], *parts[1:]]
+        return parts
 
     # -- looking --------------------------------------------------------------
 

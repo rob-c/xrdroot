@@ -18,12 +18,15 @@ from .errors import Where
 from .nodes import (
     Base,
     Block,
+    Call,
     ClassDecl,
     DeclStmt,
     Empty,
     EnumDecl,
     Expr,
+    ExprStmt,
     Function,
+    Member,
     Namespace,
     Param,
     Stmt,
@@ -108,7 +111,20 @@ class Parser(StmtParser):
         handler = self._TOP.get(token.text) if token.kind in ("id", "op") else None
         if handler is not None:
             return handler(self)
-        return self.function_or_variable()
+        statement = self.trial(self._top_statement) if token.kind == "id" else None
+        return statement or self.function_or_variable()
+
+    def _top_statement(self) -> Stmt:
+        """``RooMsgService::instance().setGlobalKillBelow(...);`` outside any function.
+
+        Cling runs a statement at namespace scope as it reads it; a method
+        called on something is the one kind no declaration reads like.
+        """
+        expr = self.expression()
+        self.expect(";")
+        if not (isinstance(expr, Call) and isinstance(expr.func, Member)):
+            raise NoParse
+        return ExprStmt(expr.where, expr)
 
     def _namespace(self) -> Stmt:
         where = self.take().where
@@ -118,8 +134,7 @@ class Parser(StmtParser):
             self.accept("::")
         name = "::".join(parts) or None
         if self.accept("="):
-            self.skip_to(";")
-            return Empty(where)
+            return self.namespace_alias(where, name or "")
         self.expect("{")
         body: list[Stmt] = []
         while not self.accept("}"):
@@ -196,8 +211,13 @@ class Parser(StmtParser):
                 self.type_id()
             return name
         where = self.where
-        spec = self.specifiers()
-        name, ctype = self.declarator(spec.ctype)
+        ctype = self.pointers(self.specifiers().ctype)
+        if self.at_("=", ",", ">"):
+            # ``std::enable_if_t<...> = 0``: unnamed, choosing overloads, and nothing to pass.
+            if self.accept("="):
+                self.constant()
+            return "_"
+        name, ctype = self.declarator(ctype)
         default = self.constant() if self.accept("=") else None
         self.template_values.append(Param(where, name, ctype, default))
         return name

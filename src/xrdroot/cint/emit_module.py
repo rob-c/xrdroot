@@ -18,7 +18,7 @@ from typing import Any
 from .ctype import CType
 from .emit_classes import ClassEmitter
 from .emit_vars import addressable, sized
-from .nodes import ClassDecl, DeclStmt, EnumDecl, Function, Namespace, Stmt, VarDecl
+from .nodes import ClassDecl, DeclStmt, EnumDecl, ExprStmt, Function, Namespace, Stmt, VarDecl
 from .program import Program
 from .returned import spelling
 from .symbols import Symbol, python_name
@@ -83,12 +83,14 @@ class Translator(ClassEmitter):
         add = self.scope.add
         scoped = [name for name, enum in self.program.enums.items() if enum.scoped]
         for name in [*self.program.classes, *scoped]:
-            add(Symbol(name, "class", python_name(name)))
+            self.class_symbols[name] = add(Symbol(name, "class", python_name(name)))
         for name, home in self.program.constants.items():
             py = f"{home}.{name}" if home else python_name(name)
             add(Symbol(name, "constant", py, CType("int")))
         for name in self.program.functions:
-            add(Symbol(name, "function", python_name(name)))
+            # ``class WorldMap`` and ``void WorldMap()``: the class keeps the Python name.
+            clash = "_function" if name in self.class_symbols else ""
+            add(Symbol(name, "function", python_name(name) + clash))
         self._predeclare_globals()
 
     def _predeclare_globals(self) -> None:
@@ -128,6 +130,10 @@ class Translator(ClassEmitter):
             self._globals(decl)
         elif isinstance(decl, Function):
             self._free_function(decl)
+        elif isinstance(decl, ExprStmt):
+            # Run as the module is loaded, as Cling runs it as the file is read.
+            self.out.blank(2)
+            self.expression_statement(decl.expr)
 
     def declarators(self, decls: list[VarDecl]) -> None:
         if self.scope.kind == "module":
