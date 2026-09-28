@@ -1,45 +1,43 @@
-"""Paves: the boxes of text a pad draws over its frame.
+"""Paves: the boxes of text a pad draws over its frame, as ROOT paints them.
 
-A ``TPave`` is a box with a border and a shadow, placed in NDC when its
-``fOption`` says so (``"brNDC"``, the usual) and in the axes' units when it
-does not; the letters before ``NDC`` say which sides the shadow falls on.
-A ``TPaveText`` stacks lines of text in it, a ``TPaveStats`` is one of
-those whose lines are a histogram's statistics - two columns, a name and a
-value - and a ``TLegend`` is a pave of entries, each a symbol drawn the way
-the thing it stands for is drawn, and a label.
+A ``TPave`` is a box with a border and a shadow (``TPave::PaintPave``),
+placed in NDC when its ``fOption`` says so (``"brNDC"``, the usual) and in
+the axes' units when it does not; the letters before ``NDC`` say which
+sides the shadow falls on. A ``TPaveText`` stacks lines of text in it, each
+a row of the box's height (``TPaveText::PaintPrimitives``), a ``TPaveLabel``
+is one label as big as fits, a ``TPaveStats`` is a pave of a histogram's
+statistics - a title, then names on the left and values on the right - and
+a ``TLegend`` is a pave of entries, each a symbol drawn the way the thing it
+stands for is drawn, and a label (:mod:`.legend`).
 
-ROOT sizes text left at size 0 to fit: a line of a pave takes most of the
-height a line has, and a legend's label most of the height of a row. That
-is done here the same way.
+Text left at size 0 is sized as ROOT sizes it: most of a row's height, and
+smaller if the widest line would not fit, measured as ``TLatex`` measures
+it.
 """
 
 from __future__ import annotations
 
-import functools
-import math
 from typing import Any
 
 from . import styles
-from .latex import translate
+from .latex import formula_form, paint_latex
 from .model import Primitive, lookup
 from .scene import Scene
-from .shapes import draw_text, patch_style
+from .shapes import patch_style, write
 
-__all__ = ["PAVES", "pave_box", "draw_lines"]
+__all__ = ["PAVES", "draw_box", "pave_box", "text_width"]
 
-#: How much of a line's height text sized to fit takes, as ROOT's ``TPaveText`` does.
-FIT = 0.85
-#: How much of a row of a legend its label takes, when sized to fit.
-LEGEND_FIT = 0.6
-#: The room kept either side of a line of text in a pave, as a fraction of its width.
+#: How much of a row text sized to fit takes in a ``TPaveText``, and in a ``TPaveStats``.
+FIT, STATS_FIT = 0.85, 0.92
+#: How much of the box the widest line may take in each.
+WIDEST, STATS_WIDEST = 0.92, 0.98
+#: ``TPave``'s ``fMargin`` when it was never set: the room either side of a line.
 MARGIN = 0.05
-#: How wide a character of text is, roughly, as a fraction of its size.
-CHARACTER = 0.5
-#: How far a legend's symbol reaches either side of its middle, as a fraction of the room it has.
-SYMBOL = 0.35
+
+Corners = tuple[float, float, float, float]
 
 
-def pave_box(scene: Scene, prim: Any) -> tuple[float, float, float, float]:
+def pave_box(scene: Scene, prim: Any) -> Corners:
     """A pave's corners as fractions of the pad: ``x1, y1, x2, y2``."""
     if "NDC" in str(lookup(prim, "fOption", "")).upper():
         return tuple(
@@ -50,51 +48,72 @@ def pave_box(scene: Scene, prim: Any) -> tuple[float, float, float, float]:
     return x1, y1, x2, y2
 
 
-def _shadow(scene: Scene, prim: Any, corners: tuple[float, float, float, float]) -> None:
-    """The shadow of a border wider than a pixel, on the sides ``fOption`` names."""
-    from matplotlib.patches import Rectangle
+def text_width(scene: Scene, text: str, size: float, font: int) -> float:
+    """``TLatex::GetXsize`` as a fraction of the pad: how wide ``text`` is laid out."""
+    return formula_form(text, size, font, scene.whole, scene.height).width / scene.pixels[0]
 
-    border = int(lookup(prim, "fBorderSize", 0))
-    if border <= 1:
-        return
-    option = str(lookup(prim, "fOption", "br")).lower().replace("ndc", "") or "br"
-    dx, dy = border / scene.pixels[0], border / scene.pixels[1]
+
+def _polygon(scene: Scene, points: list[tuple[float, float]], **style: Any) -> None:
+    from matplotlib.patches import Polygon
+
+    scene.ax.add_artist(Polygon(points, closed=True, transform=scene.ndc, clip_on=False,
+                                zorder=scene.layer(), **style))  # fmt: skip
+
+
+def _outline(scene: Scene, prim: Any, points: list[tuple[float, float]]) -> None:
+    from matplotlib.lines import Line2D
+
+    xs, ys = zip(*points)
+    scene.ax.add_artist(Line2D(xs, ys, transform=scene.ndc, clip_on=False, zorder=scene.layer(),
+                               **scene.line(prim)))  # fmt: skip
+
+
+def _box(scene: Scene, prim: Any, corners: Corners, outlined: bool) -> None:
+    """``TPad::PaintBox``: the fill its style asks for, and the outline if asked or hollow."""
     x1, y1, x2, y2 = corners
-    across = dx if "r" in option else -dx
-    up = -dy if "b" in option else dy
-    scene.ax.add_artist(
-        Rectangle(
-            (x1 + across, y1 + up),
-            x2 - x1,
-            y2 - y1,
-            transform=scene.ndc,
-            clip_on=False,
-            zorder=scene.layer(),
-            facecolor=scene.colors.rgb(lookup(prim, "fShadowColor", 1)),
-            edgecolor="none",
-        )
-    )
+    fill_style = int(lookup(prim, "fFillStyle", 1001) or 0)
+    fills, _hatch, _alpha = styles.fill(fill_style)
+    square = [(x1, y1), (x1, y2), (x2, y2), (x2, y1)]
+    if fills:
+        made = patch_style(scene, prim, outline=False)
+        _polygon(scene, square, **made)
+    if outlined or 0 <= fill_style < 1000:
+        _outline(scene, prim, square + [square[0]])
 
 
-def draw_box(scene: Scene, prim: Any) -> tuple[float, float, float, float]:
-    """A pave's box, shadow and border, and where it is."""
-    from matplotlib.patches import Rectangle
+def _shadow(scene: Scene, prim: Any, corners: Corners, border: int) -> list[tuple[float, float]]:
+    """The six corners of a pave's shadow, on the sides ``fOption`` names, within the pad."""
+    x1, y1, x2, y2 = corners
+    wx, wy = border / scene.pixels[0], border / scene.pixels[1]
+    option = str(lookup(prim, "fOption", "br")).lower()
+    if "tr" in option:
+        points = [(x1 + 1.5 * wx, y2), (x1 + 1.5 * wx, y2 + wy), (x2 + wx, y2 + wy),
+                  (x2 + wx, y1 + 1.5 * wy), (x2, y1 + 1.5 * wy), (x2, y2)]  # fmt: skip
+    elif "tl" in option:
+        points = [(x1 - wx, y1 + 1.5 * wy), (x1 - wx, y2 + wy), (x2 - 1.5 * wx, y2 + wy),
+                  (x2 - 1.5 * wx, y2), (x1, y2), (x1, y1 + 1.5 * wy)]  # fmt: skip
+    elif "bl" in option:
+        points = [(x1 - wx, y2 - 1.5 * wy), (x1 - wx, y1 - wy), (x2 - 1.5 * wx, y1 - wy),
+                  (x2 - 1.5 * wx, y1), (x1, y1), (x1, y2 - 1.5 * wy)]  # fmt: skip
+    else:
+        points = [(x1 + 1.5 * wx, y1), (x1 + 1.5 * wx, y1 - wy), (x2 + wx, y1 - wy),
+                  (x2 + wx, y2 - 1.5 * wy), (x2, y2 - 1.5 * wy), (x2, y1)]  # fmt: skip
+    return [(min(max(x, 0.0), 1.0), min(max(y, 0.0), 1.0)) for x, y in points]
 
+
+def draw_box(scene: Scene, prim: Any) -> Corners:
+    """``TPave::PaintPave``: a pave's box, and for a border over a pixel its shadow and outline."""
     corners = pave_box(scene, prim)
-    _shadow(scene, prim, corners)
+    border = int(lookup(prim, "fBorderSize", 0) or 0)
+    if border <= 0 and int(lookup(prim, "fFillStyle", 1001) or 0) <= 0:
+        return corners
+    _box(scene, prim, corners, border == 1)
+    if border <= 1 or "nb" in str(lookup(prim, "fOption", "")).lower():
+        return corners
+    shade = scene.colors.rgb(lookup(prim, "fShadowColor", 1))
+    _polygon(scene, _shadow(scene, prim, corners, border), facecolor=shade, edgecolor="none", linewidth=0.0)
     x1, y1, x2, y2 = corners
-    outlined = int(lookup(prim, "fBorderSize", 0)) > 0
-    scene.ax.add_artist(
-        Rectangle(
-            (x1, y1),
-            x2 - x1,
-            y2 - y1,
-            transform=scene.ndc,
-            clip_on=False,
-            zorder=scene.layer(),
-            **patch_style(scene, prim, outline=outlined),
-        )
-    )
+    _outline(scene, prim, [(x1, y1), (x1, y2), (x2, y2), (x2, y1), (x1, y1)])
     return corners
 
 
@@ -103,92 +122,77 @@ def pave(scene: Scene, prim: Primitive, _option: str) -> None:
     draw_box(scene, prim)
 
 
-@functools.lru_cache(maxsize=4096)
-def _em_width(text: str, font: int) -> float:
-    """How wide ``text`` is drawn in ``font``, in units of its size, as matplotlib lays it out.
-
-    Text that matplotlib cannot lay out - mathematics it does not know - is
-    taken as :data:`CHARACTER` of its size per character.
-    """
-    from matplotlib.font_manager import FontProperties
-    from matplotlib.textpath import TextPath
-
-    family, style, weight, _pixels = styles.font(font)
-    shown = translate(text)
-    if not shown.strip():
-        return 0.0
-    prop = FontProperties(
-        family=family, style=style, weight=weight, math_fontfamily=styles.MATH[family]
-    )
-    try:
-        return float(TextPath((0, 0), shown, size=1, prop=prop).get_extents().width)
-    except ValueError:
-        return CHARACTER * len(text)
+# -- a pave of lines ---------------------------------------------------------------------------
 
 
-def ems(texts: list[str], font: Any = 42) -> float:
-    """The widest of ``texts`` in ``font``, in units of its size."""
-    return max((_em_width(str(text), int(font or 42)) for text in texts), default=0.0)
+def _is_text(line: Any) -> bool:
+    return getattr(line, "classname", "") in ("TText", "TLatex")
 
 
-def _fitted(scene: Scene, height: float, width: float, longest: float, fit: float) -> float:
-    """The pixels text sized to fit a line ``height`` by ``width`` of the pad takes."""
-    size = fit * height * scene.pixels[1]
-    if longest:
-        size = min(size, (1 - 2 * MARGIN) * width * scene.pixels[0] / longest)
+def _fitted(scene: Scene, holder: Any, lines: list[Any], row: float, width: float) -> float:
+    """A ``TPaveText``'s text size when it was left at 0: 0.85 of a row, less if a line is too wide."""
+    size = FIT * row
+    font = int(lookup(holder, "fTextFont", 42) or 42)
+    widths = [
+        text_width(scene, str(line.get("fTitle", "")), size, int(line.get("fTextFont", 0) or font))
+        for line in lines
+        if getattr(line, "classname", "") == "TLatex" and not float(line.get("fTextSize", 0) or 0)
+    ]
+    longest = max(widths, default=0.0)
+    if longest > WIDEST * width:
+        size *= WIDEST * width / longest
     return size
 
 
-def _line_size(scene: Scene, line: Any, holder: Any, fitted: float) -> float:
-    """The size of one line of a pave, in points: its own, the pave's, or fitted."""
-    for source in (line, holder):
-        size = float(lookup(source, "fTextSize", 0.0) or 0.0)
-        if size:
-            return scene.text_points(size, lookup(source, "fTextFont", 42) or 42)
-    return styles.points(fitted)
+def _own(line: Any, holder: Any, name: str, size: float) -> Any:
+    """A line's attribute, or its pave's where the line left it at 0."""
+    value = lookup(line, name, 0) or 0
+    if value:
+        return value
+    return size if name == "fTextSize" else lookup(holder, name, 0)
 
 
-def _line_x(corners: tuple[float, float, float, float], across: str) -> float:
-    x1, _y1, x2, _y2 = corners
-    width = x2 - x1
-    return {"left": x1 + MARGIN * width, "center": (x1 + x2) / 2}.get(across, x2 - MARGIN * width)
-
-
-def draw_lines(
-    scene: Scene, holder: Any, lines: list[Any], corners: tuple[float, float, float, float]
-) -> None:
-    """The lines of a pave, stacked from the top, each a row of the pave's height."""
+def _text_line(scene: Scene, holder: Any, line: Any, corners: Corners, at_y: float, size: float) -> None:
+    """One ``TText`` or ``TLatex`` line of a pave, where its own place says or in its row."""
     x1, y1, x2, y2 = corners
-    texts = [line for line in lines if getattr(line, "classname", "") in ("TText", "TLatex")]
-    if not texts:
-        return
-    step = (y2 - y1) / len(lines)
-    font = lookup(holder, "fTextFont", 42)
-    longest = ems([str(line.get("fTitle", "")) for line in texts], font)
-    fitted = _fitted(scene, step, x2 - x1, longest, FIT)
-    for index, line in enumerate(lines):
-        if line in texts:
-            _pave_line(scene, holder, line, corners, y2 - (index + 0.5) * step, fitted)
+    attributes = {
+        "font": int(_own(line, holder, "fTextFont", size) or 42),
+        "size": float(_own(line, holder, "fTextSize", size)),
+        "color": int(_own(line, holder, "fTextColor", size)),
+        "align": int(_own(line, holder, "fTextAlign", size) or 22),
+        "angle": float(lookup(line, "fTextAngle", 0.0) or 0.0),
+        "line": int(lookup(line, "fLineWidth", 2) or 2),
+    }
+    margin = float(lookup(holder, "fMargin", MARGIN) or 0.0) * (x2 - x1)
+    xl, yl = float(line.get("fX", 0.0) or 0.0), float(line.get("fY", 0.0) or 0.0)
+    across = attributes["align"] // 10
+    x = x1 + xl * (x2 - x1) if 0 < xl < 1 else {1: x1 + margin, 2: 0.5 * (x1 + x2)}.get(across, x2 - margin)
+    y = y1 + yl * (y2 - y1) if 0 < yl < 1 else at_y
+    write(scene, str(line.get("fTitle", "")), scene.pixel(x, y), attributes, line.classname == "TLatex")
 
 
-def _pave_line(
-    scene: Scene,
-    holder: Any,
-    line: Primitive,
-    corners: tuple[float, float, float, float],
-    y: float,
-    fitted: float,
-) -> None:
-    """One line of text in a pave, where its own place says or in its row."""
-    style = scene.text(line, holder, _line_size(scene, line, holder, fitted))
-    if not lookup(line, "fTextAlign", 0) and not lookup(holder, "fTextAlign", 0):
-        style["ha"], style["va"] = "left", "center"
-    style["va"] = "center" if style["va"] == "bottom" else style["va"]
+def _rule(scene: Scene, line: Any, corners: Corners, at_y: float) -> None:
+    """A ``TLine`` in a pave: across it at its row, or where its ends say, as fractions of it."""
     x1, y1, x2, y2 = corners
-    x, placed_y = float(line.get("fX", 0.0)), float(line.get("fY", 0.0))
-    at_x = x1 + x * (x2 - x1) if x else _line_x(corners, style["ha"])
-    at_y = y1 + placed_y * (y2 - y1) if placed_y else y
-    draw_text(scene, translate(str(line.get("fTitle", ""))), at_x, at_y, style, ndc=True)
+    ends = [float(line.get(name, 0.0) or 0.0) for name in ("fX1", "fX2", "fY1", "fY2")]
+    xs = [x1 + ends[0] * (x2 - x1) if ends[0] else x1, x1 + ends[1] * (x2 - x1) if ends[1] else x2]
+    ys = [y1 + ends[2] * (y2 - y1) if ends[2] else at_y, y1 + ends[3] * (y2 - y1) if ends[3] else at_y]
+    _outline(scene, line, list(zip(xs, ys)))
+
+
+def draw_lines(scene: Scene, holder: Any, lines: list[Any], corners: Corners) -> None:
+    """``TPaveText::PaintPrimitives``: the pave's lines, each a row from the top."""
+    x1, y1, x2, y2 = corners
+    rows = len(lines) or 5
+    row = (y2 - y1) / rows
+    size = float(lookup(holder, "fTextSize", 0.0) or 0.0) or _fitted(scene, holder, lines, row, x2 - x1)
+    at_y = y2 + 0.5 * row
+    for line in lines:
+        if getattr(line, "classname", "") == "TLine":
+            _rule(scene, line, corners, at_y)
+        elif _is_text(line):
+            at_y -= row
+            _text_line(scene, holder, line, corners, at_y, size)
 
 
 def pave_text(scene: Scene, prim: Primitive, _option: str) -> None:
@@ -197,177 +201,141 @@ def pave_text(scene: Scene, prim: Primitive, _option: str) -> None:
     draw_lines(scene, prim, list(prim.get("fLines") or []), corners)
 
 
-def pave_label(scene: Scene, prim: Primitive, _option: str) -> None:
-    """A ``TPaveLabel``: a box with one label in the middle of it."""
-    x1, y1, x2, y2 = draw_box(scene, prim)
-    label = str(prim.get("fLabel", ""))
-    style = scene.text(
-        prim,
-        None,
-        styles.points(
-            _fitted(scene, y2 - y1, x2 - x1, ems([label], prim.get("fTextFont", 42)), FIT)
-        ),
-    )
-    if float(prim.get("fTextSize", 0.0) or 0.0):
-        style["fontsize"] = scene.text_points(prim.get("fTextSize"), prim.get("fTextFont", 42))
-    style["ha"], style["va"] = "center", "center"
-    draw_text(scene, translate(label), (x1 + x2) / 2, (y1 + y2) / 2, style, ndc=True)
+# -- a label -----------------------------------------------------------------------------------
+
+#: How much of a character ``TPaveLabel`` does not count each of these as.
+SPECIALS = {"!": 1.0, "?": 1.5, "#": 1.0, "`": 1.0, "^": 1.5, "~": 1.0, "&": 2.0, "\\": 3.0}
 
 
-def columns(
-    scene: Scene,
-    holder: Any,
-    rows: list[tuple[str, str]],
-    corners: tuple[float, float, float, float],
-) -> None:
-    """Lines of two columns - a name on the left, its value on the right - under a title.
+def _extent(scene: Scene, text: str, size: float, font: int) -> tuple[int, int]:
+    """``TText::GetTextExtent``: how wide and tall ``text`` is, in pixels, at ``size`` of the pad."""
+    from . import fonts
+    from .text import symbol_text
 
-    That is how a stats box is drawn: the first line alone, centred, and
-    every one after split at its ``=``.
-    """
+    found = fonts.extent(symbol_text(text, font), font, fonts.measure_em(size * min(scene.whole)))
+    return found.width, found.ascent + found.descent
+
+
+def _label_size(scene: Scene, prim: Any, label: str, corners: Corners) -> float:
+    """``TPaveLabel``'s text size: its own, or for 0 (or 0.99) as big as the box has room for."""
     x1, y1, x2, y2 = corners
-    step = (y2 - y1) / max(len(rows), 1)
-    longest = ems([f"{left}  {right}" for left, right in rows], lookup(holder, "fTextFont", 42))
-    size = _line_size(scene, None, holder, _fitted(scene, step, x2 - x1, longest, FIT))
-    for index, (left, right) in enumerate(rows):
-        y = y2 - (index + 0.5) * step
-        style = scene.text(holder, None, size)
-        style["va"] = "center"
-        if not right:
-            style["ha"] = "center"
-            draw_text(scene, translate(left), (x1 + x2) / 2, y, style, ndc=True)
-            continue
-        style["ha"] = "left"
-        draw_text(scene, translate(left), _line_x(corners, "left"), y, style, ndc=True)
-        style["ha"] = "right"
-        draw_text(scene, translate(right), _line_x(corners, "right"), y, style, ndc=True)
+    font = int(prim.get("fTextFont", 42) or 42)
+    size = float(prim.get("fTextSize", 0.0) or 0.0)
+    if font % 10 > 2:
+        return size
+    automatic = size == 0 or abs(size - 0.99) < 0.001
+    size = size or 0.99
+    wide, high = scene.whole
+    rows = abs(round(high * (1 - y1)) - round(high * (1 - y2)))
+    size = size * rows / high * (high / wide if wide < high else 1.0)
+    if not automatic:
+        return size
+    width, tall = _extent(scene, label, size, font)
+    size = tall / high
+    across = abs(round(wide * x2) - round(wide * x1))
+    last = width
+    while width > 0.99 * across:
+        size *= 0.99 * across / width
+        width, tall = _extent(scene, label, size, font)
+        if width == last:
+            break
+        last = width
+    return size
 
 
-def split(text: str) -> tuple[str, str]:
-    """A line of a stats box as its name and its value."""
-    name, equals, value = text.partition("=")
-    return (name.strip(), value.strip()) if equals else (text.strip(), "")
+def pave_label(scene: Scene, prim: Primitive, _option: str) -> None:
+    """A ``TPaveLabel``: a box with one label in it, as big as fits unless sized."""
+    corners = draw_box(scene, prim)
+    label = str(prim.get("fLabel", ""))
+    if len(label) - int(sum(SPECIALS.get(char, 0.0) for char in label) + 0.5) <= 0:
+        return
+    if not _extent(scene, label, 0.99, int(prim.get("fTextFont", 42) or 42))[0]:
+        return
+    x1, y1, x2, y2 = corners
+    align = int(prim.get("fTextAlign", 22) or 22)
+    across, up = divmod(align, 10)
+    x = {1: x1 + 0.02 * (x2 - x1), 3: x2 - 0.02 * (x2 - x1)}.get(across, 0.5 * (x1 + x2))
+    y = {1: y1 + 0.02 * (y2 - y1), 3: y2 - 0.02 * (y2 - y1)}.get(up, 0.5 * (y1 + y2))
+    attributes = scene.attributes(prim, size=_label_size(scene, prim, label, corners), align=align)
+    paint_latex(scene, label, scene.pixel(x, y), attributes)
+
+
+# -- statistics ----------------------------------------------------------------------------------
+
+
+def _stats_sizes(scene: Scene, prim: Any, lines: list[Any], row: float, width: float) -> tuple[float, float]:
+    """``TPaveStats``'s text size and title size when left at 0: most of a row, less to fit."""
+    size = STATS_FIT * row
+    title, tokens = size, [0.0, 0.0]
+    margin = float(lookup(prim, "fMargin", MARGIN) or 0.0) * width
+    named = int(lookup(prim, "fOptStat", 0) or 0) % 10
+    font = int(lookup(prim, "fTextFont", 42) or 42)
+    for line in lines:
+        text, own = str(line.get("fTitle", "")), int(line.get("fTextFont", 0) or font)
+        if "=" in text and named == 0:
+            for index, token in enumerate([one for one in text.split("=") if one][:2]):
+                tokens[index] = max(tokens[index], text_width(scene, token, size, own))
+        elif "|" not in text:
+            named = 0
+            long = text_width(scene, text, title, own) + 2 * margin
+            title *= STATS_WIDEST * width / long if long > STATS_WIDEST * width else 1.0
+    longest = tokens[0] + tokens[1] + 2 * margin
+    return size * (STATS_WIDEST * width / longest if longest > STATS_WIDEST * width else 1.0), title
+
+
+def _stats_attributes(prim: Any, line: Any, size: float) -> dict[str, Any]:
+    return {
+        "font": int(_own(line, prim, "fTextFont", size) or 42),
+        "size": float(_own(line, prim, "fTextSize", size)),
+        "color": int(_own(line, prim, "fTextColor", size)),
+        "angle": float(lookup(line, "fTextAngle", 0.0) or 0.0),
+        "line": 2,
+    }
+
+
+def _stats_pair(scene: Scene, text: str, y: float, corners: Corners, margin: float, base: dict[str, Any]) -> None:
+    """A line of statistics: its name at the left, its value at the right, a minus a minus sign."""
+    x1, _y1, x2, _y2 = corners
+    for index, token in enumerate([one for one in text.split("=") if one]):
+        if index == 0:
+            paint_latex(scene, token, scene.pixel(x1 + margin, y), dict(base, align=12))
+        else:
+            shown = token.strip().replace("-", "#minus")
+            paint_latex(scene, shown, scene.pixel(x2 - margin, y), dict(base, align=32))
 
 
 def stats_box(scene: Scene, prim: Primitive, _option: str) -> None:
-    """A ``TPaveStats`` saved with its lines: the lines as they were drawn."""
+    """``TPaveStats::Paint``: the box, the histogram's name over a rule, and its statistics."""
     corners = draw_box(scene, prim)
-    lines = [
-        str(line.get("fTitle", "")) for line in prim.get("fLines") or [] if hasattr(line, "get")
-    ]
-    rows = [(lines[0].strip(), "")] + [split(line) for line in lines[1:]] if lines else []
-    columns(scene, prim, rows, corners)
-
-
-# -- legends -------------------------------------------------------------------
-
-
-def _symbol(scene: Scene, entry: Any, option: str, cell: tuple[float, float, float, float]) -> None:
-    """A legend entry's symbol: the fill, line, error bar and marker it asks for."""
-    from matplotlib.lines import Line2D
-    from matplotlib.patches import Rectangle
-
-    x, y, room, height = cell
-    source = entry.get("fObject") if entry.get("fObject") is not None else entry
-    if "f" in option:
-        scene.ax.add_artist(
-            Rectangle(
-                (x - SYMBOL * room, y - SYMBOL * height),
-                2 * SYMBOL * room,
-                2 * SYMBOL * height,
-                transform=scene.ndc,
-                clip_on=False,
-                zorder=scene.layer(),
-                **patch_style(scene, source, outline="l" in option),
-            )
-        )
-    lines = []
-    if "l" in option and "f" not in option:
-        lines.append(([x - SYMBOL * room, x + SYMBOL * room], [y, y]))
-    if "e" in option:
-        lines.append(([x, x], [y - SYMBOL * height, y + SYMBOL * height]))
-    for xs, ys in lines:
-        scene.ax.add_artist(
-            Line2D(
-                xs,
-                ys,
-                transform=scene.ndc,
-                clip_on=False,
-                zorder=scene.layer(),
-                **scene.line(source),
-            )
-        )
-    if "p" in option:
-        scene.ax.add_artist(
-            Line2D(
-                [x],
-                [y],
-                linestyle="none",
-                transform=scene.ndc,
-                clip_on=False,
-                zorder=scene.layer(),
-                **scene.marker(source),
-            )
-        )
-
-
-def _cell(
-    corners: tuple[float, float, float, float], index: int, columns_: int, rows: int, margin: float
-) -> tuple[float, float, float, float]:
-    """Where one entry of a legend goes: its symbol's middle, and the room it has."""
-    x1, y1, x2, y2 = corners
-    width, height = (x2 - x1) / columns_, (y2 - y1) / rows
-    column, row = index % columns_, index // columns_
-    room = margin * width
-    return x1 + column * width + room / 2, y2 - (row + 0.5) * height, room / 2, height / 2
-
-
-def legend(scene: Scene, prim: Primitive, _option: str) -> None:
-    """A ``TLegend``: its box, and each entry's symbol and label in rows and columns."""
-    corners = draw_box(scene, prim)
-    entries = list(prim.get("fPrimitives") or [])
-    if not entries:
+    lines = [line for line in prim.get("fLines") or [] if getattr(line, "classname", "") == "TLatex"]
+    if not lines:
         return
-    columns_ = max(int(prim.get("fNColumns", 1) or 1), 1)
-    rows = math.ceil(len(entries) / columns_)
-    margin = float(prim.get("fMargin", 0.25) or 0.25)
     x1, y1, x2, y2 = corners
-    longest = ems([str(entry.get("fLabel", "")) for entry in entries], prim.get("fTextFont", 42))
-    fitted = _fitted(
-        scene, (y2 - y1) / rows, (x2 - x1) * (1 - margin) / columns_, longest, LEGEND_FIT
-    )
-    for index, entry in enumerate(entries):
-        _entry(scene, prim, entry, _cell(corners, index, columns_, rows, margin), fitted)
+    row = (y2 - y1) / len(lines)
+    size = float(lookup(prim, "fTextSize", 0.0) or 0.0)
+    title = size
+    if not size:
+        size, title = _stats_sizes(scene, prim, lines, row, x2 - x1)
+    margin = float(lookup(prim, "fMargin", MARGIN) or 0.0) * (x2 - x1)
+    named = int(lookup(prim, "fOptStat", 0) or 0) % 10
+    y = y2 + 0.5 * row
+    for line in lines:
+        y -= row
+        text = str(line.get("fTitle", ""))
+        base = _stats_attributes(prim, line, size)
+        if "=" in text and named == 0:
+            _stats_pair(scene, text, y, corners, margin, base)
+            continue
+        named = 0
+        paint_latex(scene, text, scene.pixel(0.5 * (x1 + x2), y), dict(base, align=22, size=title))
+        _outline(scene, prim, [(x1, y2 - row), (x2, y2 - row)])
 
 
-def _entry(
-    scene: Scene,
-    holder: Primitive,
-    entry: Any,
-    cell: tuple[float, float, float, float],
-    fitted: float,
-) -> None:
-    """One entry of a legend: a header across the whole row, or a symbol and a label."""
-    option = str(entry.get("fOption", "")).lower()
-    x, y, room, _height = cell
-    style = scene.text(entry, holder, _line_size(scene, entry, holder, fitted))
-    style["va"] = "center"
-    label = translate(str(entry.get("fLabel", "")))
-    if "h" in option:
-        style["ha"] = "left"
-        draw_text(scene, label, x - room, y, style, ndc=True)
-        return
-    _symbol(scene, entry, option, cell)
-    style["ha"] = "left"
-    draw_text(scene, label, x + room * 1.2, y, style, ndc=True)
-
-
-#: How each of these classes draws.
+#: How each of these classes draws; a legend's own painter is added by :mod:`.legend`.
 PAVES = {
     "TPave": pave,
     "TPaveText": pave_text,
     "TPavesText": pave_text,
     "TPaveLabel": pave_label,
     "TPaveStats": stats_box,
-    "TLegend": legend,
 }

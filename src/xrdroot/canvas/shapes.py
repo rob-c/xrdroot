@@ -15,11 +15,12 @@ from typing import Any
 import numpy as np
 
 from . import styles
-from .latex import translate
+from .latex import paint_latex
 from .model import Primitive
 from .scene import Scene
+from .text import glyphs, pixel_size
 
-__all__ = ["SHAPES", "draw_text"]
+__all__ = ["SHAPES", "canvas_point", "write"]
 
 #: The points an ellipse's outline is drawn with, round a whole turn.
 ELLIPSE_POINTS = 181
@@ -30,24 +31,25 @@ ARROW_SIZE = 0.05
 HEAD = 3.0
 
 
-def draw_text(scene: Scene, text: str, x: float, y: float, style: dict[str, Any], ndc: bool) -> Any:
-    """One string at ``(x, y)``, already translated, in the style given."""
-    return scene.ax.text(
-        x, y, text, transform=scene.where(ndc), clip_on=False, zorder=scene.layer(), **style
-    )
+def canvas_point(scene: Scene, x: float, y: float, ndc: bool) -> tuple[float, float]:
+    """A point of the pad - in NDC, or in its axes' units - as the canvas's pixel."""
+    u, v = (x, y) if ndc else scene.to_ndc(x, y)
+    return scene.pixel(u, v)
+
+
+def write(scene: Scene, text: str, at: tuple[float, float], attributes: dict[str, Any], latex: bool = True) -> None:
+    """``text`` at canvas pixel ``at``: a ``TLatex``'s formula, or a ``TText``'s string as it is."""
+    if latex:
+        paint_latex(scene, text, at, attributes)
+        return
+    font = int(attributes["font"])
+    glyphs(scene, text, at, font, pixel_size(scene, float(attributes["size"]), font),
+           scene.colors.rgb(attributes["color"]), int(attributes["align"]), float(attributes["angle"]))  # fmt: skip
 
 
 def _text(scene: Scene, prim: Primitive, latex: bool) -> None:
-    title = str(prim.get("fTitle", ""))
-    shown = translate(title) if latex else title.replace("$", r"\$")
-    draw_text(
-        scene,
-        shown,
-        float(prim.get("fX", 0.0)),
-        float(prim.get("fY", 0.0)),
-        scene.text(prim),
-        prim.ndc,
-    )
+    at = canvas_point(scene, float(prim.get("fX", 0.0)), float(prim.get("fY", 0.0)), prim.ndc)
+    write(scene, str(prim.get("fTitle", "")), at, scene.attributes(prim), latex)
 
 
 def text(scene: Scene, prim: Primitive, _option: str) -> None:

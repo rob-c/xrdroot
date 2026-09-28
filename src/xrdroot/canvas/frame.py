@@ -192,14 +192,6 @@ def extent(obj: Any, option: str, pad: Pad) -> Extent:
     return 0.0, 0.0, 1.0, 1.0
 
 
-def _logarithmic(axis: Any) -> None:
-    """An axis scaled logarithmically, labelled with plain numbers as ROOT labels one."""
-    from matplotlib.ticker import LogFormatter
-
-    axis.set_major_formatter(LogFormatter())
-    axis.set_minor_formatter(LogFormatter(minor_thresholds=(1, 0.4)))
-
-
 def open_axes(scene: Scene) -> None:
     """The pad's axes: over its frame, scaled and ranged, or over all of it, bare."""
     pad = scene.pad
@@ -219,13 +211,12 @@ def open_axes(scene: Scene) -> None:
         ax.set_ylim(y1, y2)
         ax.set_axis_off()
         return
-    for scale, axis, log in (
-        (ax.set_xscale, ax.xaxis, pad.logx),
-        (ax.set_yscale, ax.yaxis, pad.logy),
-    ):
-        if log:
-            scale("log")
-            _logarithmic(axis)
+    if pad.logx:
+        ax.set_xscale("log")
+    if pad.logy:
+        ax.set_yscale("log")
+    ax.xaxis.set_visible(False)  # ROOT's axes are painted over the frame, as ``TGaxis`` paints them
+    ax.yaxis.set_visible(False)
     worked_out = extent(*scene.owner, pad)
     xmin, ymin, xmax, ymax = _usable(pad.frame, worked_out) if pad.painted else worked_out
     ax.set_xlim(*_positive(xmin, xmax, pad.logx))
@@ -299,82 +290,16 @@ def _frame(scene: Scene) -> None:
         spine.set_linewidth(styles.points(float(style["fLineWidth"])))
 
 
-def _label(scene: Scene, axis: Any, which: str) -> None:
-    """One axis's title, at its far end, and its tick labels, sized as ``TAttAxis`` says."""
-    title = str(lookup(axis, "fTitle", "") or "")
-    label_size = scene.text_points(
-        lookup(axis, "fLabelSize", LABEL_SIZE), lookup(axis, "fLabelFont", 42)
-    )
-    title_size = scene.text_points(
-        lookup(axis, "fTitleSize", TITLE_SIZE), lookup(axis, "fTitleFont", 42)
-    )
-    color = scene.colors.rgb(lookup(axis, "fLabelColor", 1))
-    scene.ax.tick_params(axis=which, labelsize=label_size, labelcolor=color)
-    from .latex import translate
-
-    setter = scene.ax.set_xlabel if which == "x" else scene.ax.set_ylabel
-    where = {"loc": "right"} if which == "x" else {"loc": "top"}
-    setter(
-        translate(title),
-        fontsize=title_size,
-        color=scene.colors.rgb(lookup(axis, "fTitleColor", 1)),
-        **where,
-    )
-
-
-def _plain(value: float, _position: Any = None) -> str:
-    """A tick's label as ROOT writes it: the number, with no zeros after its point."""
-    return f"{value:.6g}" if abs(value) > 1e-12 else "0"
-
-
-def _divided(axis: Any, attributes: Any, log: bool) -> None:
-    """A linear axis's ticks as ``fNdivisions`` asks: up to its units of round steps, each
-    divided by its tens, labelled as plain numbers."""
-    if log:
-        return
-    from matplotlib.ticker import AutoMinorLocator, FuncFormatter, MaxNLocator
-
-    divisions = abs(int(lookup(attributes, "fNdivisions", 510) or 510))
-    axis.set_major_locator(MaxNLocator(nbins=divisions % 100 or 10, steps=[1, 2, 2.5, 5, 10]))
-    axis.set_minor_locator(AutoMinorLocator((divisions // 100) % 100 or 5))
-    axis.set_major_formatter(FuncFormatter(_plain))
-
-
-def _ticks(scene: Scene, source: Any) -> None:
-    """Ticks inside the frame, on the far sides too when the pad asks for them."""
-    tickx, ticky = scene.pad.ticks
-    frame_w = scene.ax.get_position().width * scene.figure.get_figwidth() * styles.DPI
-    frame_h = scene.ax.get_position().height * scene.figure.get_figheight() * styles.DPI
-    xaxis, yaxis = lookup(source, "fXaxis"), lookup(source, "fYaxis")
-    xlength = styles.points(float(lookup(xaxis, "fTickLength", TICK_LENGTH)) * frame_h)
-    ylength = styles.points(float(lookup(yaxis, "fTickLength", TICK_LENGTH)) * frame_w)
-    scene.ax.minorticks_on()
-    _divided(scene.ax.xaxis, xaxis, scene.pad.logx)
-    _divided(scene.ax.yaxis, yaxis, scene.pad.logy)
-    scene.ax.tick_params(axis="x", which="major", direction="in", length=xlength, top=bool(tickx))
-    scene.ax.tick_params(
-        axis="x", which="minor", direction="in", length=xlength / 2, top=bool(tickx)
-    )
-    scene.ax.tick_params(axis="y", which="major", direction="in", length=ylength, right=bool(ticky))
-    scene.ax.tick_params(
-        axis="y", which="minor", direction="in", length=ylength / 2, right=bool(ticky)
-    )
 
 
 def dress(scene: Scene) -> None:
-    """The frame's fill, outline, ticks, grid and axis titles, once everything is drawn."""
+    """The frame's fill and outline, and its axes painted over them, once everything is drawn."""
     if scene.owner is None:
         return
-    source = _axes_of(scene.owner[0])
+    from .dressing import dress_axes
+
     _frame(scene)
-    _ticks(scene, source)
-    gridx, gridy = scene.pad.grid
-    if gridx:
-        scene.ax.grid(True, axis="x", which="major", linestyle=":", color="black", linewidth=0.5)
-    if gridy:
-        scene.ax.grid(True, axis="y", which="major", linestyle=":", color="black", linewidth=0.5)
-    _label(scene, lookup(source, "fXaxis") if source is not None else None, "x")
-    _label(scene, lookup(source, "fYaxis") if source is not None else None, "y")
+    dress_axes(scene, _axes_of(scene.owner[0]))
 
 
 def default_title(scene: Scene) -> None:
@@ -385,9 +310,7 @@ def default_title(scene: Scene) -> None:
     title = str(getattr(obj, "title", "") or "")
     if not title or int(lookup(obj, "fBits", 0) or 0) & NO_TITLE:
         return
-    from .latex import translate
-    from .shapes import draw_text
+    from .latex import paint_latex
 
-    style = scene.text(None, None, scene.text_points(TITLE_SIZE_PAD))
-    style["ha"], style["va"] = "center", "top"
-    draw_text(scene, translate(title), TITLE_X, TITLE_Y, style, ndc=True)
+    attributes = {"font": 42, "size": TITLE_SIZE_PAD, "color": 1, "align": 23, "angle": 0.0}
+    paint_latex(scene, title, scene.pixel(TITLE_X, TITLE_Y), attributes)

@@ -17,7 +17,7 @@ from typing import Any
 from ..function import Function
 from ..stats import prob
 from .model import Primitive, lookup
-from .paves import columns, draw_box
+from .paves import stats_box
 from .scene import Scene
 
 __all__ = ["default_stats", "stats_rows"]
@@ -151,7 +151,8 @@ def default_stats(scene: Scene, h: Any) -> None:
         "fLineColor": 1,
         "fTextFont": 42,
         "fTextSize": 0.0,
+        "fOptStat": OPT_STAT,
+        "fLines": [Primitive("TLatex", {"fTitle": f"{name} = {value}" if value else name}) for name, value in rows],
     }
-    box = Primitive("TPaveStats", corners)
-    columns(scene, box, rows, draw_box(scene, box))
+    stats_box(scene, Primitive("TPaveStats", corners), "")
     scene.stats += 1

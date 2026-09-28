@@ -35,6 +35,7 @@ from ..plot import picture
 from ..plot.backends.withmatplotlib import DRAWN
 from ..plot.model import Frame, Mesh, Picture
 from ..stacks import MultiGraph, Stack
+from .datapaint import PAINTED
 from .model import lookup
 from .options import strip_same
 from .paves import stats_box
@@ -102,6 +103,9 @@ def _draw(scene: Scene, obj: Any, drawn: Picture) -> None:
     limits = ax.get_xlim(), ax.get_ylim()
     frame = Frame(logz=scene.pad.logz)
     for index, layer in enumerate(drawn.layers):
+        if type(layer) in PAINTED:
+            PAINTED[type(layer)](scene, layer)
+            continue
         scale = isinstance(layer, Mesh) and layer.scale
         if isinstance(layer, Mesh):
             layer = layer._replace(scale=False)  # the pad places it, not matplotlib

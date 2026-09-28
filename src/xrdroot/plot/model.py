@@ -54,6 +54,11 @@ class Look(NamedTuple):
     marker_color: str | None = "#000000"
     marker_size: float = 1.0
     label: str | None = None
+    #: ROOT's own numbers for the line's and marker's styles and the fill's, for a
+    #: painter that draws them as ROOT does rather than as the nearest named one.
+    line_style: int = 1
+    marker_style: int = 1
+    fill_style: int = 0
 
 
 class Steps(NamedTuple):

@@ -41,6 +41,9 @@ class Scene:
         "ndc",
         "stats",
         "depth",
+        "canvas",
+        "whole",
+        "display",
     )
 
     def __init__(
@@ -59,15 +62,24 @@ class Scene:
         self.colors = colors
         #: Where the pad is on the figure, as fractions: left, bottom, width, height.
         self.box = box
+        #: How big the canvas is, in ROOT's pixels.
+        self.canvas = (float(canvas_pixels[0]), float(canvas_pixels[1]))
         #: How big the pad is, in ROOT's pixels.
         self.pixels = (box[2] * canvas_pixels[0], box[3] * canvas_pixels[1])
+        #: The pad's width and height in whole pixels, as ``XtoPixel(fX2)`` and
+        #: ``YtoPixel(fY1)`` round them: what text is sized against.
+        self.whole = (round(self.pixels[0]), round(self.pixels[1]))
         #: The classes met that this does not draw, for the warning at the end.
         self.skipped = skipped
         #: What drew the frame and its axes - the first histogram, or a graph drawn "A".
         self.owner: tuple[Any, str] | None = None
         self.ax: Any = None
+        width, height = self.canvas
         #: Pad NDC into the figure's display, for what is placed by fractions.
         self.ndc = Affine2D().scale(box[2], box[3]).translate(box[0], box[1]) + figure.transFigure
+        #: The canvas's pixels, ``y`` from the top, into the figure's display: where
+        #: text is put, at the pixel's corner, as FreeType's bitmaps are.
+        self.display = Affine2D().scale(1 / width, -1 / height).translate(0, 1) + figure.transFigure
         #: How many stats boxes the pad has drawn, which offsets each new one.
         self.stats = 0
         self.depth = 0
@@ -94,6 +106,17 @@ class Scene:
         pixel_sized = styles.font(font)[3]
         size = float(size)
         return styles.points(size if pixel_sized else size * self.shorter)
+
+    @property
+    def height(self) -> float:
+        """``TLatex::GetHeight``: the pad's shorter side in pixels, unrounded."""
+        return min(self.pixels)
+
+    def pixel(self, u: float, v: float) -> tuple[float, float]:
+        """A point of the pad in NDC as the canvas's pixel, ``y`` from the top, unrounded."""
+        x, y, w, h = self.box
+        width, height = self.canvas
+        return (x + u * w) * width, (1 - y - v * h) * height
 
     def to_ndc(self, x: float, y: float) -> tuple[float, float]:
         """A point in the pad's axes' units, as a fraction of the pad."""
@@ -164,6 +187,23 @@ class Scene:
             "va": up,
             "rotation": float(lookup(obj, "fTextAngle", 0.0)),
         }
+
+
+    def attributes(self, obj: Any, inherited: Any = None, **given: Any) -> dict[str, Any]:
+        """``TAttText`` as :func:`~.latex.paint_latex` takes it, with ``given`` over it.
+
+        A member left at zero takes ``inherited``'s, as :meth:`text` has it.
+        """
+        found = {
+            "font": int(_attribute(obj, inherited, "fTextFont", 42)),
+            "size": float(_attribute(obj, inherited, "fTextSize", TEXT_SIZE)),
+            "color": int(_attribute(obj, inherited, "fTextColor", 1)),
+            "align": int(_attribute(obj, inherited, "fTextAlign", 11)),
+            "angle": float(lookup(obj, "fTextAngle", 0.0) or 0.0),
+            "line": int(lookup(obj, "fLineWidth", 2) or 2),
+        }
+        found.update(given)
+        return found
 
 
 def _attribute(obj: Any, inherited: Any, name: str, default: Any) -> Any:

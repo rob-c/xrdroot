@@ -23,6 +23,7 @@ from .colors import Colors
 from .data import paint_data
 from .frame import default_title, dress, open_axes
 from .gaxis import GAXIS
+from .legend import LEGEND
 from .model import Canvas, Pad, Primitive
 from .paves import PAVES
 from .scene import Scene
@@ -37,7 +38,7 @@ QUIET = frozenset({"TFrame", "TPaletteAxis", "TLegendEntry", "TColor"})
 BEVEL = 0.4
 
 #: Every drawing class this draws, and how.
-PAINTERS = {**SHAPES, **PAVES, **GAXIS}
+PAINTERS = {**SHAPES, **PAVES, **LEGEND, **GAXIS}
 
 
 class CanvasWarning(UserWarning):
@@ -147,14 +148,40 @@ def _paint_pad(
     return scene
 
 
+def _snapped(figure: Any) -> None:
+    """Every line and fill put on whole pixels, as ``TImageDump`` rounds each point to one.
+
+    matplotlib snaps a path's points to the middles of pixels for a line of
+    odd width and to their corners for a fill - where ROOT's ``Nint`` puts
+    them - but of its own accord only for paths of straight runs; this asks
+    it for every path, curves and markers too. Text is placed on whole
+    pixels already.
+    """
+    from matplotlib.text import Text
+
+    from .marks import MARKER_GID
+
+    for artist in figure.findobj(lambda found: not isinstance(found, Text)):
+        if artist.get_gid() != MARKER_GID:
+            artist.set_snap(True)
+
+
 def paint(canvas: Canvas, figure: Any = None) -> Any:
     """``canvas`` drawn onto ``figure``, or onto a new figure the canvas's size."""
     try:
-        from matplotlib.figure import Figure
+        from matplotlib import rc_context
     except ImportError:
         raise UnsupportedFeatureError(
             "drawing a canvas needs matplotlib, which is not installed: pip install matplotlib"
         ) from None
+    with rc_context(styles.DRAWING):
+        return _paint_canvas(canvas, figure)
+
+
+def _paint_canvas(canvas: Canvas, figure: Any) -> Any:
+    """The canvas drawn, with matplotlib set to draw as ROOT does."""
+    from matplotlib.figure import Figure
+
     if figure is None:
         figure = Figure(
             figsize=(canvas.width / styles.DPI, canvas.height / styles.DPI), dpi=styles.DPI
@@ -163,6 +190,7 @@ def paint(canvas: Canvas, figure: Any = None) -> Any:
     figure.set_facecolor(colors.rgb(canvas.get("fFillColor", 0)))
     skipped: list[str] = []
     _paint_pad(figure, canvas, (0.0, 0.0, 1.0, 1.0), colors, canvas, skipped)
+    _snapped(figure)
     if skipped:
         warnings.warn(
             f"canvas {canvas.name!r} holds {len(skipped)} things this does not draw, "

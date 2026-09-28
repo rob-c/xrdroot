@@ -133,8 +133,12 @@ def attached(functions: list[Any], request: Request) -> list[Any]:
 
 
 def _default_flat(histogram: Histogram, chosen: Chosen) -> Chosen:
-    """``HIST``, or ``E`` for a profile or a histogram keeping the squares of its weights."""
-    if chosen.drawing or chosen.has("FUNC"):
+    """``HIST``, or ``E`` for a profile or a histogram keeping the squares of its weights.
+
+    ``AXIS`` draws the frame's axes and nothing of the histogram, as ``FUNC``
+    draws only its functions.
+    """
+    if chosen.drawing or chosen.has("FUNC") or chosen.has("AXIS"):
         return chosen
     errors = histogram.kind == "MEAN" or histogram.weighted
     return chosen._replace(words=chosen.words | {"E" if errors else "HIST"})
