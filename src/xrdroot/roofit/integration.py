@@ -188,15 +188,21 @@ def announce(func: Any, names: frozenset[str], rng: Any = None, label: str | Non
     numeric = numeric_names(func, names, rng)
     if not numeric:
         return
-    method = "RooIntegrator1D" if len(numeric) == 1 else "RooAdaptiveIntegratorND"
-    if len(numeric) == 1 and any(np.isinf(func.bounds(numeric[0], rng))):
-        method = "RooImproperIntegrator1D"
     log(
         func,
         INFO,
         "NumericIntegration",
-        f"RooRealIntegral::init({label or integral_name(func, names, rng)}) "
-        f"using numeric integrator {method} to calculate Int({','.join(numeric)})",
+        f"RooRealIntegral::init({label or integral_name(func, names, rng)}) using numeric "
+        f"integrator {_integrator(func, numeric, rng)} to calculate Int({','.join(numeric)})",
+    )
+
+
+def _integrator(func: Any, numeric: list[str], rng: Any) -> str:
+    """The integrator RooFit picks: by the number of variables, and for one, by open ends."""
+    if len(numeric) > 1:
+        return "RooAdaptiveIntegratorND"
+    return "RooImproperIntegrator1D" if any(np.isinf(func.bounds(numeric[0], rng))) else (
+        "RooIntegrator1D"
     )
 
 

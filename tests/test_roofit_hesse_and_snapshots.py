@@ -20,14 +20,39 @@ def fmin(**flags: bool) -> Any:
 
 
 def test_hesse_scores_what_it_could_not_do_as_minuit2_does() -> None:
-    """0 with a covariance; without one, 1 failed, 3 not positive definite, 4 otherwise."""
+    """0 with a covariance; without one, 3 not positive definite, 1 failed, 4 otherwise - and a
+    failed HESSE has none, whatever iminuit still shows."""
     codes = [
         minimizer._hesse_code(fmin(has_covariance=True)),
         minimizer._hesse_code(fmin(hesse_failed=True)),
         minimizer._hesse_code(fmin(has_posdef_covar=False)),
         minimizer._hesse_code(fmin()),
+        minimizer._hesse_code(fmin(has_covariance=True, hesse_failed=True, has_posdef_covar=False)),
     ]
-    assert codes == [0, 1, 3, 4]
+    assert codes == [0, 1, 3, 4, 3]
+
+
+def test_a_hessian_a_parameter_does_not_move_fails_with_roots_status_302(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """rf510's background-only fit: a signal shape under a zero fraction. ROOT's 302, and error."""
+    from xrdroot.roofit.pdfs.addpdf import RooAddPdf
+    from xrdroot.roofit.pdfs.basic import RooPolynomial
+
+    x = RooRealVar("x", "x", 0, 10)
+    mean = RooRealVar("mean", "mean", 5, 0, 10)
+    g = RooGaussian("g", "g", x, mean, RooRealVar("s", "s", 1))
+    a1 = RooRealVar("a1", "a1", 0.2, -1.0, 1.0)
+    frac = RooRealVar("f", "f", 0.5, 0, 1)
+    model = RooAddPdf("model", "model", [RooPolynomial("p", "p", x, [a1]), g], [frac])
+    RooRandom.randomGenerator().SetSeed(4357)
+    data = model.generate([x], 1000)
+    frac.setVal(1)
+    frac.setConstant(True)
+    capsys.readouterr()
+    result = model.fitTo(data, PrintLevel=-1, Save=True)
+    assert result.status() == 302
+    assert "Error when calculating Hessian" in capsys.readouterr().out
 
 
 def test_a_hesse_without_a_covariance_is_reported_and_scored(
@@ -58,6 +83,7 @@ def test_a_snapshot_keeps_values_errors_and_constness_and_prints_them(
     w = RooWorkspace("w", "w")
     w.Import(RooGaussian("g", "g", x, m, s), Silence=True)
     w.Import(t, Silence=True)
+    m, s = w.var("m"), w.var("s")  # the workspace's copies, which its snapshots are of
     m.setError(0.2)
     s.setConstant(True)
     w.saveSnapshot("reference_fit", "t,s,m")

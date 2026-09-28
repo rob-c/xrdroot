@@ -141,14 +141,16 @@ class RooNLLVar(RooAbsReal):
         self._log_top(pdf, probs, weights, nset)
         self._badness += badness
         if self.extended and pdf.canBeExtended():
-            sumw = math.fsum(given.tolist())
-            sumw2 = math.fsum(weights.tolist()) if self._weight_squared else 0.0
-            total.total += pdf.extendedTerm(
-                sumw, pdf.expected(nset, self.rng), sumw2
-            )  # onto the sum, not the carry
+            total.total += self._extended_term(pdf, given, weights, nset)  # not onto the carry
         if simulated:
             total.add(float(math.fsum(weights.tolist())) * math.log(simulated))
         return total.total
+
+    def _extended_term(self, pdf: Any, given: Any, weights: Any, nset: frozenset[str]) -> float:
+        """The Poisson term, scaled by ``sum w^2 / sum w`` when the weights are squared."""
+        sumw = math.fsum(given.tolist())
+        sumw2 = math.fsum(weights.tolist()) if self._weight_squared else 0.0
+        return float(pdf.extendedTerm(sumw, pdf.expected(nset, self.rng), sumw2))
 
     def _log_top(self, pdf: Any, probs: Any, weights: Any, nset: frozenset[str]) -> None:
         """The likelihood's own messages: each event whose density is not positive, or NaN."""

@@ -62,8 +62,10 @@ class Factory:
         self.w = workspace
 
     def keep(self, obj: Any) -> Any:
+        """``obj`` imported, and the workspace's copy of it - what the factory hands back."""
         self.w.Import(obj, Silence=True)
-        return obj
+        found = self.w.arg(obj.GetName()) if hasattr(obj, "servers") else None
+        return obj if found is None else found
 
     def build(self, text: str) -> Any:
         text = text.strip()

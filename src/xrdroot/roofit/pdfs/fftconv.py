@@ -145,6 +145,14 @@ class RooFFTConvPdf(RooAbsPdf):
                 "The numerical FFT will likely yield wrong results.")  # fmt: skip
             x.setBinning(binning, "cache")
 
+    def getParameters(self, observables: Any = None, stripDisconnected: bool = True) -> Any:
+        """The parameters - never the convolution variable, which a convolution over a function
+        of the observable (``cos(psi)``, convolved in ``psi``) integrates away."""
+        found = super().getParameters(observables, stripDisconnected)
+        if self.xprime is not None:
+            found.remove(self.x)
+        return found
+
     # -- settings -----------------------------------------------------------------
 
     def setBufferFraction(self, frac: float) -> None:

@@ -488,10 +488,16 @@ def as_set(items: Any) -> RooArgSet:
 
 
 def _hesse_code(fmin: Any) -> int:
-    """``Minuit2Minimizer::Hesse``'s code for a HESSE that gave no covariance: 1 it failed,
-    3 the matrix is not positive definite, 4 otherwise; 0 for one that gave it."""
-    if fmin.has_covariance:
+    """``Minuit2Minimizer::Hesse``'s code for a HESSE that gave no covariance: 3 the matrix is
+    not positive definite, else 1 it failed, else 4; 0 for one that gave it.
+
+    A failed HESSE leaves Minuit2's user state without a covariance, though
+    iminuit still shows the one it had. ``Hesse`` tests the matrix after the
+    failure (``if failed 1; if not inverted 2; else if not positive 3``), so
+    a failure over a matrix that is not positive definite scores 3.
+    """
+    if fmin.has_covariance and not fmin.hesse_failed:
         return 0
-    if fmin.hesse_failed:
-        return 1
-    return 3 if not fmin.has_posdef_covar else 4
+    if not fmin.has_posdef_covar:
+        return 3
+    return 1 if fmin.hesse_failed else 4

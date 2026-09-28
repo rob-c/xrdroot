@@ -182,9 +182,7 @@ def fit_to(pdf: Any, data: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -
     options = commands(args, kwargs)
     options.warn_duplicates(f"fitTo({pdf.GetName()})")
     nll = nll_options(pdf, data, options)
-    sumw2 = int(options.get("SumW2Error", 0, -1))
-    if data.isNonPoissonWeighted() and sumw2 == -1 and "AsymptoticError" not in options:
-        log(pdf, WARNING, "InputArguments", f"RooAbsPdf::fitTo({pdf.GetName()}): {WEIGHTED}")
+    sumw2 = _sumw2_option(pdf, data, options)
     log(
         pdf,
         INFO,
@@ -201,8 +199,19 @@ def fit_to(pdf: Any, data: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -
     minos = options.get("Minos")
     if minos:
         minimizer.minos(None if minos is True else minos)
-    if not options.get("Save", 0, False):
-        return None
+    return _saved(pdf, data, minimizer, quality) if options.get("Save", 0, False) else None
+
+
+def _sumw2_option(pdf: Any, data: Any, options: Commands) -> int:
+    """``SumW2Error``: 1, 0, or -1 untold - which, for weighted data, RooFit warns of."""
+    sumw2 = int(options.get("SumW2Error", 0, -1))
+    if data.isNonPoissonWeighted() and sumw2 == -1 and "AsymptoticError" not in options:
+        log(pdf, WARNING, "InputArguments", f"RooAbsPdf::fitTo({pdf.GetName()}): {WEIGHTED}")
+    return sumw2
+
+
+def _saved(pdf: Any, data: Any, minimizer: RooMinimizer, quality: int | None) -> Any:
+    """``Save()``'s result - its covariance's quality the correction's, if one was made."""
     found = minimizer.save(
         f"fitresult_{pdf.GetName()}_{data.GetName()}",
         f"Result of fit of p.d.f. {pdf.GetName()} to dataset {data.GetName()}",
