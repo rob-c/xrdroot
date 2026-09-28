@@ -119,8 +119,8 @@ class RooAddPdf(RooAbsPdf):
             return [one / total for one in yields]
         values = [c.compute(ctx) for c in self.coefs]
         if self._have_last:
-            total = sum(values)
-            return [v / total for v in values]
+            inverse = 1.0 / sum(values)  # RooFit multiplies by the reciprocal, not divides
+            return [v * inverse for v in values]
         last = 1.0 - sum(values)
         self._warn_sum(last)
         return [*values, last]
@@ -138,18 +138,38 @@ class RooAddPdf(RooAbsPdf):
             )
 
     def value(self, ctx: Context, nset: Any = None, rng: Any = None) -> Any:
-        """The sum - its coefficients those of the full range, then normalised within ``rng``."""
-        total: Any = 0.0
+        """The sum - its coefficients those of the full range, then normalised within ``rng``.
+
+        In a range RooFit projects the coefficients (``updateCoefficients``):
+        each is multiplied by its component's share of ``rng`` (:meth:`_shares`),
+        the products divided by their sum, and each component normalised over
+        ``rng`` - the same density as normalising the full-range sum, but
+        rounded as RooFit rounds it, which a fit's last steps depend on.
+        """
         coefs = self.coefficients(ctx, nset)
+        if rng and nset:
+            coefs = [c * share for c, share in zip(coefs, self._shares(ctx, nset, rng))]
+            projected: Any = 0.0
+            for coef in coefs:
+                projected = projected + coef
+            coefs = [coef / projected for coef in coefs]
+        else:
+            rng = None if nset else rng
+        total: Any = 0.0
         for coef, pdf in zip(coefs, self.pdfs):
             if active(pdf):
-                total = total + coef * pdf.value(ctx, nset, None if nset else rng)
-        if not rng or not nset:
-            return total
-        inside: Any = 0.0
-        for coef, pdf in zip(coefs, self.pdfs):
-            inside = inside + coef * pdf.fraction(frozenset(nset), ctx, nset, rng)
-        return total / inside
+                total = total + coef * pdf.value(ctx, nset, rng)
+        return total
+
+    def _shares(self, ctx: Context, nset: Any, rng: Any) -> list[Any]:
+        """Each component's share of the range ``rng``, as RooFit's projection rounds it.
+
+        RooFit divides the integral over ``rng`` - normalised there, so one -
+        by the full integral normalised over ``rng``: one over ``I / I(rng)``,
+        not ``I(rng) / I``, which is the same fraction a bit away.
+        """
+        names = frozenset(nset)
+        return [1.0 / pdf.fraction(names, ctx, nset, None, rng) for pdf in self.pdfs]
 
     def compute(self, ctx: Context) -> Any:
         return self.value(ctx, None)
@@ -183,17 +203,23 @@ class RooAddPdf(RooAbsPdf):
         extendable = (self._have_last and not self._recursive) or self._all_extendable
         return MUST_BE_EXTENDED if extendable else CAN_NOT_BE_EXTENDED
 
-    def expected(self, nset: Any, rng: Any = None) -> float:
-        """The total yield - of the events inside ``rng`` if one is given."""
+    def expected(self, nset: Any, rng: Any = None, fit: bool = False) -> float:
+        """The total yield - of the events inside the fit range ``rng`` if one is given.
+
+        Each component's yield - its coefficient, or what it expects over
+        everything - is scaled by its share of ``rng`` (:meth:`_shares`), as
+        RooFit's ``expectedEvents`` projects it.
+        """
         if self._all_extendable:
-            yields = [pdf.expected(nset, rng) for pdf in self.pdfs]
-            return float(sum(yields))
-        yields = [float(c.getVal()) for c in self.coefs]
+            yields = [pdf.expected(nset, None, fit) for pdf in self.pdfs]
+        else:
+            yields = [float(c.getVal()) for c in self.coefs]
         if rng and nset:
-            yields = [
-                y * float(pdf.fraction(nset, {}, nset, rng)) for y, pdf in zip(yields, self.pdfs)
-            ]
-        return float(sum(yields))
+            yields = [float(share) * y for share, y in zip(self._shares({}, nset, rng), yields)]
+        total = 0.0
+        for one in yields:
+            total += one
+        return total
 
     def gen_context(self, names: frozenset[str]) -> Any:
         from ..generation.contexts import SumContext

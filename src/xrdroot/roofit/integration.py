@@ -228,11 +228,15 @@ def numeric(
     rng: Any,
 ) -> Any:
     """``inner`` integrated over the variables ``rest``: in one dimension by Romberg, in more
-    by ROOT's adaptive cubature, as ``RooRealIntegral`` picks them."""
+    by ROOT's adaptive cubature, as ``RooRealIntegral`` picks them - evaluating the density
+    one point at a time, as ``evaluate()`` does, even inside a likelihood (:mod:`.kernels`)."""
+    from .kernels import scalar
+
     bounds = [func.bounds(name, rng) for name in rest]
-    if len(rest) > 1 and not any(np.isinf(b).any() for b in (np.array(bounds),)):
-        return _cubature(func, rest, inner, ctx, bounds)
-    return _nested(func, rest, inner, ctx, rng)
+    with scalar():
+        if len(rest) > 1 and not any(np.isinf(b).any() for b in (np.array(bounds),)):
+            return _cubature(func, rest, inner, ctx, bounds)
+        return _nested(func, rest, inner, ctx, rng)
 
 
 def _nested(

@@ -40,7 +40,7 @@ class RooChi2Var(RooAbsReal):
         self.nset = frozenset(one.GetName() for one in pdf.getObservables(data))
         self.offset = False
 
-    def getParameters(self, observables: Any = None, stripDisconnected: bool = True) -> RooArgSet:
+    def _parameters(self, observables: Any) -> RooArgSet:
         return RooArgSet(self.pdf.getParameters(self.data))
 
     def defaultErrorLevel(self) -> float:

@@ -207,8 +207,15 @@ class RooAbsPdf(RooAbsReal):
     def mustBeExtended(self) -> bool:
         return self.extendMode() == MUST_BE_EXTENDED
 
-    def expected(self, nset: Any, rng: Any = None) -> float:
-        """How many events the density expects, in ``rng`` if it is given."""
+    def expected(self, nset: Any, rng: Any = None, fit: bool = False) -> float:
+        """How many events the density expects, in the fit range ``rng`` if it is given.
+
+        ``fit`` asks for the number as a likelihood computes it: RooFit's
+        likelihood evaluates the expected events through compiled nodes that
+        round some divisions as multiplications by a reciprocal, where
+        ``expectedEvents`` divides - the same number to within a bit or two,
+        and the likelihood's last bit is what Minuit steps by.
+        """
         return 0.0
 
     def expectedEvents(self, nset: Any = None) -> float:

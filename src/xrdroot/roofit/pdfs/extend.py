@@ -48,16 +48,23 @@ class RooExtendPdf(RooAbsPdf):
     def extendMode(self) -> int:
         return CAN_BE_EXTENDED
 
-    def expected(self, nset: Any, rng: Any = None) -> float:
-        """``n`` - scaled from its range to all of it - and to the fit's range, if there is one."""
+    def expected(self, nset: Any, rng: Any = None, fit: bool = False) -> float:
+        """``n``, scaled from its own range to the one the density is normalised over.
+
+        ROOT divides ``n`` by the integral over the extension's range of the
+        density normalised where the fit normalises it - the fit's range
+        ``rng``, else everywhere; a likelihood (``fit``) rounds that as ``n``
+        times the reciprocal of ``I(range) / I(rng)``. With no range of its
+        own ``n`` is what the fit's range expects, unscaled: ROOT does not
+        shrink it to the part of the data fitted.
+        """
         found = float(self.n.getVal())
         names = frozenset(nset or ())
         if self._range and names:
-            found /= float(self.pdf.fraction(names, {}, names, self._range))
-        if rng and names:
-            found *= float(self.pdf.fraction(names, {}, names, rng))
+            share = float(self.pdf.fraction(names, {}, names, self._range, rng))
+            found = found * (1.0 / share) if fit else found / share
         if self.pdf.canBeExtended():
-            found *= self.pdf.expected(nset, rng)
+            found *= self.pdf.expected(nset, rng, fit)
         return found
 
     def gen_context(self, names: frozenset[str]) -> Any:

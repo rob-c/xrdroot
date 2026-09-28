@@ -53,7 +53,7 @@ class RooRealSumPdf(RooAbsPdf):
     def extendMode(self) -> int:
         return CAN_BE_EXTENDED if self._extended else CAN_NOT_BE_EXTENDED
 
-    def expected(self, nset: Any, rng: Any = None) -> float:
+    def expected(self, nset: Any, rng: Any = None, fit: bool = False) -> float:
         return float(self.integrate(frozenset(nset or ()), {}, rng))
 
     def printMetaArgs(self) -> str:

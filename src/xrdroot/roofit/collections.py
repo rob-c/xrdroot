@@ -193,9 +193,18 @@ class RooAbsCollection(RooPrintable):
         made._name = self._name if name is None else str(name)
         return made
 
-    def snapshot(self, deepCopy: bool = True) -> RooAbsCollection:
-        """Copies of the members, their values as they are now."""
-        return self._like(one.clone(one.GetName()) for one in self._list)
+    def snapshot(self, *given: Any) -> Any:
+        """Copies of the members, their values as they are now.
+
+        ``snapshot(output)`` - ROOT's other overload - adds the copies to a
+        collection the caller holds instead, and returns ``false`` for no error,
+        as a macro saving its parameters to restore them later calls it.
+        """
+        copies = self._like(one.clone(one.GetName()) for one in self._list)
+        if given and isinstance(given[0], RooAbsCollection):
+            given[0].add(copies, True)
+            return False
+        return copies
 
     def assign(self, other: Iterable[Any]) -> RooAbsCollection:
         """Take the values of ``other``'s members of the same names."""
