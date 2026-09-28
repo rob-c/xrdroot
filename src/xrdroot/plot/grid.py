@@ -45,9 +45,16 @@ def _mesh(grid: Grid, request: Request) -> list[Any]:
 
 
 def _boxes(grid: Grid, request: Request) -> list[Any]:
-    """``BOX``: a box per cell whose sides are the cell's in proportion to its value."""
-    top = np.max(np.abs(grid.values)) if grid.values.size else 0.0
-    share = np.abs(grid.values) / top if top else np.zeros_like(grid.values)
+    """``BOX``: a box per cell whose area is the cell's in proportion to its value.
+
+    ``THistPainter::PaintBoxes`` measures from the lowest content, or 0 if
+    that is lower: a cell at it has no box, and the fullest fills its cell.
+    """
+    values = np.abs(grid.values)
+    low = max(float(np.min(grid.values)), 0.0) if grid.values.size else 0.0
+    top = max(float(np.max(values)), 0.0) if grid.values.size else 0.0
+    span = top - low
+    share = np.sqrt(np.clip(values - low, 0.0, None) / span) if span else np.zeros_like(values)
     xs, ys = np.meshgrid(_centres(grid.xedges), _centres(grid.yedges), indexing="ij")
     wide, high = np.meshgrid(np.diff(grid.xedges), np.diff(grid.yedges), indexing="ij")
     keep = share > 0
@@ -67,6 +74,8 @@ def _contour(filled: bool) -> Callable[[Grid, Request], list[Any]]:
                 request.chosen.has("Z"),
                 request.levels,
                 filled,
+                0 if filled else request.chosen.contour,
+                grid.look,
             )
         ]
 

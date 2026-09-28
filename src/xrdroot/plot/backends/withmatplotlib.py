@@ -208,7 +208,8 @@ def _band(ax: Any, layer: Band, frame: Frame, native: dict[str, Any]) -> Any:
 def _area(ax: Any, layer: Area, frame: Frame, native: dict[str, Any]) -> Any:
     look = layer.look
     label = {} if look.label is None else {"label": look.label}
-    return ax.fill(layer.x, layer.y, facecolor=look.fill, alpha=look.alpha, hatch=look.hatch, linewidth=0,
+    return ax.fill(layer.x, layer.y, facecolor=look.fill, alpha=look.alpha, hatch=look.hatch,
+                   linewidth=0,
                    **label, **native)[0]  # fmt: skip
 
 

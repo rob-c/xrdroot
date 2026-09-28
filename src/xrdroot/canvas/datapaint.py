@@ -28,27 +28,31 @@ __all__ = ["PAINTED", "pixels_of"]
 
 #: ``gStyle``'s ``fEndErrorSize``: the pixels an error bar's end reaches either side.
 END_ERROR = 2
-#: ``TGraphPainter``'s ``cxx`` and ``cyy``: how much of a marker, from style 20, an error bar leaves out.
-GAP_X = (1.0, 1.0, 0.5, 0.5, 1.0, 1.0, 0.5, 0.6, 1.0, 0.5, 0.5, 1.0, 0.5, 0.6, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-         0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 1.0)  # fmt: skip
-GAP_Y = (1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-         0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 1.0)  # fmt: skip
+#: ``TGraphPainter``'s ``cxx``: how much of a marker, from style 20 on, an error bar
+#: leaves out across.
+GAP_X = (1.0, 1.0, 0.5, 0.5, 1.0, 1.0, 0.5, 0.6, 1.0, 0.5, 0.5, 1.0, 0.5, 0.6, 1.0,
+         1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 1.0)  # fmt: skip
+#: ``TGraphPainter``'s ``cyy``: the same, up.
+GAP_Y = (1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5, 1.0, 1.0, 1.0, 1.0,
+         1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 1.0)  # fmt: skip
+#: The fill style an area, band or box is drawn in when it has none: solid.
+SOLID = 1001
 
 
 def pixels_of(scene: Scene, xs: Any, ys: Any) -> np.ndarray[Any, Any]:
     """Points in the axes' units as the canvas's pixels, ``y`` down, unrounded."""
-    shown = scene.ax.transData.transform(np.column_stack([np.asarray(xs, float), np.asarray(ys, float)]))
+    points = np.column_stack([np.asarray(xs, float), np.asarray(ys, float)])
+    shown = scene.ax.transData.transform(points)
     shown[:, 1] = scene.canvas[1] - shown[:, 1]
     return shown
 
 
-def _line_style(look: Look) -> dict[str, Any]:
-    width = max(float(look.width), 1.0)
-    return {"color": look.color, "linewidth": styles.points(width), "linestyle": styles.dashes(look.line_style, width)}
-
-
 def _clipped(scene: Scene, pixels: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
-    """Points far outside the pad brought in along their lines, so no line is millions of pixels long."""
+    """Points far outside the pad brought in along their lines.
+
+    Without it a line to a point millions of pixels away would be rasterised
+    all the way there.
+    """
     limit = 4.0 * max(scene.canvas)
     return np.clip(pixels, -limit, limit)
 
@@ -66,12 +70,13 @@ def _fill(scene: Scene, pixels: np.ndarray[Any, Any], look: Look) -> None:
     """A filled area through ``pixels``, clipped to the frame, hatched as its fill style says."""
     from matplotlib.patches import Polygon
 
-    fills, hatch, alpha = styles.fill(look.fill_style or 1001)
+    fills, hatch, alpha = styles.fill(look.fill_style or SOLID)
     if not fills or look.fill is None:
         return
     face = look.fill if hatch is None else "none"
-    polygon = Polygon(np.rint(pixels), closed=True, transform=scene.display, zorder=scene.layer(),
-                      facecolor=face, edgecolor="none", linewidth=0.0, alpha=look.alpha * alpha)  # fmt: skip
+    polygon = Polygon(np.rint(pixels), closed=True, transform=scene.display,
+                      zorder=scene.layer(), facecolor=face, edgecolor="none", linewidth=0.0,
+                      alpha=look.alpha * alpha)  # fmt: skip
     if hatch is not None:
         polygon.set_hatch(hatch)
         polygon.set_edgecolor(look.fill)
@@ -113,40 +118,53 @@ def paint_steps(scene: Scene, layer: Steps) -> None:
         if layer.baseline is not None:
             low = np.maximum(np.asarray(layer.baseline, float) * np.ones(len(low)), ymin)
         area_x = np.concatenate([steps_x, steps_x[::-1]])
-        area_y = np.concatenate([np.repeat(np.asarray(layer.values, float), 2), np.repeat(low, 2)[::-1]])
+        tops = np.repeat(np.asarray(layer.values, float), 2)
+        area_y = np.concatenate([tops, np.repeat(low, 2)[::-1]])
         _fill(scene, pixels_of(scene, area_x, area_y), layer.look)
     polyline(scene, pixels_of(scene, xs, ys), layer.look)
 
 
 def paint_curve(scene: Scene, layer: Curve) -> None:
+    """A graph's or function's line through its points, clipped to the frame."""
     polyline(scene, pixels_of(scene, layer.x, layer.y), layer.look)
+
+
+def _solid(look: Look) -> Look:
+    """``look``, filled solid when it has no fill style of its own."""
+    return look._replace(fill_style=look.fill_style or SOLID)
 
 
 def paint_area(scene: Scene, layer: Area) -> None:
     """A graph's ``F``: the polygon through its points, filled in its fill attributes."""
-    _fill(scene, pixels_of(scene, layer.x, layer.y), layer.look._replace(fill_style=layer.look.fill_style or 1001))
+    _fill(scene, pixels_of(scene, layer.x, layer.y), _solid(layer.look))
 
 
 def paint_band(scene: Scene, layer: Band) -> None:
+    """A band of errors: out along its tops and back along its bottoms, filled."""
     xs = np.concatenate([np.asarray(layer.x, float), np.asarray(layer.x, float)[::-1]])
     ys = np.concatenate([np.asarray(layer.high, float), np.asarray(layer.low, float)[::-1]])
-    _fill(scene, pixels_of(scene, xs, ys), layer.look._replace(fill_style=layer.look.fill_style or 1001))
+    _fill(scene, pixels_of(scene, xs, ys), _solid(layer.look))
 
 
 def _rectangles(scene: Scene, x0: Any, x1: Any, y0: Any, y1: Any, look: Look) -> None:
-    for a, b, c, d in zip(np.asarray(x0, float), np.asarray(x1, float), np.asarray(y0, float), np.asarray(y1, float)):
+    """Each rectangle filled if ``look`` has a fill, or else outlined as a closed line."""
+    columns = (np.asarray(x0, float), np.asarray(x1, float),
+               np.asarray(y0, float), np.asarray(y1, float))  # fmt: skip
+    for a, b, c, d in zip(*columns):
         corners = pixels_of(scene, [a, b, b, a], [c, c, d, d])
         if look.fill is not None:
-            _fill(scene, corners, look._replace(fill_style=look.fill_style or 1001))
+            _fill(scene, corners, _solid(look))
         else:
             polyline(scene, np.vstack([corners, corners[:1]]), look)
 
 
 def paint_boxes(scene: Scene, layer: Boxes) -> None:
+    """Boxes of errors: a rectangle round each point's, filled or outlined."""
     _rectangles(scene, layer.x0, layer.x1, layer.y0, layer.y1, layer.look)
 
 
 def paint_bars(scene: Scene, layer: Bars) -> None:
+    """Bars: a rectangle from zero up to each value, between its left and right."""
     base = np.zeros_like(np.asarray(layer.values, float))
     _rectangles(scene, layer.left, layer.right, base, layer.values, layer.look)
 
@@ -164,7 +182,11 @@ def _gaps(look: Look) -> tuple[float, float]:
 
 
 def _bar(start: float, end: float, limit: float, beyond: bool) -> tuple[float, bool] | None:
-    """One arm of an error bar, from the marker's edge to its end or the frame: the end, and whether clipped."""
+    """One arm of an error bar, from the marker's edge to its end or the frame.
+
+    Returns where the arm stops and whether the frame cut it short, or
+    nothing when the marker covers all of it.
+    """
     clipped = end < limit if beyond else end > limit
     stop = limit if clipped else end
     if (stop > start) if beyond else (stop < start):
@@ -172,8 +194,9 @@ def _bar(start: float, end: float, limit: float, beyond: bool) -> tuple[float, b
     return stop, clipped
 
 
-def _arms(centre: tuple[float, float], ends: tuple[float, float, float, float], frame: tuple[float, ...],
-          gaps: tuple[float, float], caps: bool) -> list[tuple[float, float, float, float]]:  # fmt: skip
+def _arms(centre: tuple[float, float], ends: tuple[float, float, float, float],
+          frame: tuple[float, ...], gaps: tuple[float, float],
+          caps: bool) -> list[tuple[float, float, float, float]]:  # fmt: skip
     """The segments of one point's error bars, in pixels: up, down, left, right, and their ends."""
     px, py = centre
     up, down, left, right = ends
@@ -192,7 +215,8 @@ def _arms(centre: tuple[float, float], ends: tuple[float, float, float, float], 
         segments.append((px, start, px, stop) if vertical else (start, py, stop, py))
         if caps and not clipped:
             e = END_ERROR
-            segments.append((px - e, stop, px + e, stop) if vertical else (stop, py - e, stop, py + e))
+            cap = (px - e, stop, px + e, stop) if vertical else (stop, py - e, stop, py + e)
+            segments.append(cap)
     return segments
 
 
@@ -200,7 +224,8 @@ def paint_points(scene: Scene, layer: Points) -> None:
     """``TGraphPainter::PaintGraphAsymmErrors``: each point in the frame's bars, then its marker."""
     (xmin, xmax), (ymin, ymax) = scene.ax.get_xlim(), scene.ax.get_ylim()
     x, y = np.asarray(layer.x, float), np.asarray(layer.y, float)
-    inside = (x >= min(xmin, xmax)) & (x <= max(xmin, xmax)) & (y >= min(ymin, ymax)) & (y <= max(ymin, ymax))
+    inside = ((x >= min(xmin, xmax)) & (x <= max(xmin, xmax))
+              & (y >= min(ymin, ymax)) & (y <= max(ymin, ymax)))  # fmt: skip
     centre = pixels_of(scene, x, y)
     ups = pixels_of(scene, x, y + np.asarray(layer.yhigh, float))[:, 1]
     downs = pixels_of(scene, x, y - np.asarray(layer.ylow, float))[:, 1]
@@ -213,16 +238,17 @@ def paint_points(scene: Scene, layer: Points) -> None:
     for index in np.flatnonzero(inside):
         ends = (ups[index], downs[index], lefts[index], rights[index])
         segments += _arms(tuple(centre[index]), ends, frame, gaps, layer.caps)
-    if segments and layer.look.color:
+    look = layer.look
+    if segments and look.color:
         clip = frame_clip(scene)
         for x1, y1, x2, y2 in segments:
-            add_line(scene, [(x1, y1), (x2, y2)], layer.look.color, round(layer.look.width), 1, clip)
-    if layer.look.marker is not None:
-        draw_markers(scene, centre[inside], layer.look.marker_style, layer.look.marker_size, layer.look.marker_color)
+            add_line(scene, [(x1, y1), (x2, y2)], look.color, round(look.width), 1, clip)
+    if look.marker is not None:
+        draw_markers(scene, centre[inside], look.marker_style, look.marker_size, look.marker_color)
 
 
 #: The layers painted here, by their kind; the rest are drawn by :mod:`xrdroot.plot`.
 PAINTED = {
-    Steps: paint_steps, Curve: paint_curve, Band: paint_band, Boxes: paint_boxes, Bars: paint_bars, Area: paint_area,
-    Points: paint_points,
+    Steps: paint_steps, Curve: paint_curve, Band: paint_band, Boxes: paint_boxes,
+    Bars: paint_bars, Area: paint_area, Points: paint_points,
 }  # fmt: skip

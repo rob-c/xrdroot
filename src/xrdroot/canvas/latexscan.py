@@ -68,6 +68,7 @@ class Found:
 
 
 def _escaped(text: str, at: int) -> bool:
+    """Whether the character at ``at`` has an ``@`` before it, and so is text."""
     return at > 0 and text[at - 1] == "@"
 
 
@@ -110,18 +111,29 @@ def _limits(found: Found, text: str, at: int) -> None:
                 found.close_curly = at - 5
 
 
-def _named(text: str, at: int) -> str:
-    """The command at ``at``, the ``#`` read: its name, or empty for none ROOT knows."""
-    after = text[at + 1 :]
+def _tried(after: str) -> str:
+    """The first of :data:`TRIED` that ``after`` starts with, followed as ROOT wants it."""
     for name, opening in TRIED:
-        if after.startswith(name) and (not opening or after[len(name) : len(name) + 1] in opening):
-            if not opening or len(after) > len(name):
-                return name
+        if not after.startswith(name):
+            continue
+        if not opening:
+            return name
+        if after[len(name) : len(name) + 1] in opening and len(after) > len(name):
+            return name
+    return ""
+
+
+def _named(text: str, at: int) -> str:
+    """The command at ``at``, the ``#`` read: its name, or empty for none ROOT knows.
+
+    ROOT tries its hand-drawn commands first, then the Greek letters and the
+    accents by the first that fits, and last the symbols by the longest.
+    """
+    after = text[at + 1 :]
+    hit = _tried(after)
     for table in (GREEK, ABOVE):
-        hit = next((name for name in table if after.startswith(name)), "")
-        if hit:
-            return hit
-    return max((name for name in SPECIAL if after.startswith(name)), key=len, default="")
+        hit = hit or next((name for name in table if after.startswith(name)), "")
+    return hit or max((name for name in SPECIAL if after.startswith(name)), key=len, default="")
 
 
 def scan(text: str) -> Found:
@@ -143,19 +155,31 @@ def scan(text: str) -> Found:
 
 def _count(found: Found, text: str, at: int, char: str, level: int, square: int) -> tuple[int, int]:
     """The depth of braces and of brackets after ``char``, each counted outside the other."""
-    if char == "{" and square == 0 and not _escaped(text, at):
-        level += 1
-    elif char == "}" and square == 0:
-        level -= 0 if _escaped(text, at) else 1
-        if level == 0:
-            _closing(found, text, at)
-    elif char == "[" and level == 0 and not _escaped(text, at):
-        square += 1
-    elif char == "]" and level == 0:
-        square -= 0 if _escaped(text, at) else 1
-        if square < 0:
-            raise LatexError('Missing "["')
+    if char in "{}" and square == 0:
+        return _braces(found, text, at, char, level), square
+    if char in "[]" and level == 0:
+        return level, _brackets(text, at, char, square)
     return level, square
+
+
+def _braces(found: Found, text: str, at: int, char: str, level: int) -> int:
+    """The depth of braces after a ``{`` or ``}`` outside brackets; an escaped one is text."""
+    if char == "{":
+        return level if _escaped(text, at) else level + 1
+    level -= 0 if _escaped(text, at) else 1
+    if level == 0:
+        _closing(found, text, at)
+    return level
+
+
+def _brackets(text: str, at: int, char: str, square: int) -> int:
+    """The depth of brackets after a ``[`` or ``]`` outside braces; a ``]`` too many is refused."""
+    if char == "[":
+        return square if _escaped(text, at) else square + 1
+    square -= 0 if _escaped(text, at) else 1
+    if square < 0:
+        raise LatexError('Missing "["')
+    return square
 
 
 #: ``#left`` and ``#right`` of each delimiter, and the operator a ``#left`` becomes.
@@ -190,6 +214,7 @@ class _Checker:
     """One pass of ``CheckLatexSyntax``: every brace and bracket counted, or escaped."""
 
     def __init__(self) -> None:
+        """Nothing counted yet: every open brace, bracket and fraction, and what they close with."""
         self.curly = self.square = self.fracs = 0
         self.bracketed = self.square_curly = self.paired = self.curly_curly = 0
         self.out: list[str] = []
@@ -205,6 +230,7 @@ class _Checker:
         return 0
 
     def opened(self, kind: str) -> None:
+        """A keyword opening a brace (``curly``), a bracket (``square``) or two (``paired``)."""
         if kind == "square":
             self.bracketed += 1
             self.square += 1
@@ -233,6 +259,7 @@ class _Checker:
         return 2
 
     def single(self, char: str) -> int:
+        """One character: a ``}`` closing what is open, a loose brace or bracket escaped."""
         if char == "}" and self.curly:
             self.curly -= 1
         elif char in "[]{}":
@@ -241,6 +268,7 @@ class _Checker:
         return 1
 
     def verdict(self) -> None:
+        """ROOT's refusal of the first thing left open or unmatched, in ROOT's order and words."""
         errors = (
             (self.bracketed != self.square_curly, 'Invalid number of "]{"'),
             (self.paired != self.curly_curly, 'Error in syntax of  "#frac"'),

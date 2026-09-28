@@ -78,6 +78,10 @@ def _histogram_y(values: np.ndarray[Any, Any], log: bool) -> tuple[float, float]
 
 
 def _limit(obj: Any, name: str, fallback: float) -> float:
+    """``fMinimum`` or ``fMaximum`` if the histogram was given one, or else ``fallback``.
+
+    ROOT keeps ``-1111`` in them to mean unset, so the frame fits the bins.
+    """
     value = lookup(obj, name)
     return fallback if value is None or float(value) == -1111 else float(value)
 
@@ -105,6 +109,11 @@ def _ends(h: Any, axis: int) -> tuple[float, float]:
 
 
 def _histogram_extent(h: Histogram, option: str, log: bool) -> Extent:
+    """A histogram's frame: its axes' ranges, and in one dimension the bins' heights round them.
+
+    Error bars, drawn or implied by weights, reach the frame too, as
+    ``THistPainter`` counts them.
+    """
     (xlow, xhigh) = _ends(h, 0)
     if len(h.axes) > 1:
         ylow, yhigh = _ends(h, 1)
@@ -127,15 +136,23 @@ def _efficiency_extent(e: Efficiency, pad: Pad) -> Extent:
     return axis.low, y0, axis.high, y1
 
 
+def _log_spread(values: np.ndarray[Any, Any], high: float) -> tuple[float, float]:
+    """A logarithmic axis's range: half its lowest positive value to twice its highest.
+
+    With nothing positive to show it starts at a tenth, which a log scale can draw.
+    """
+    positive = values[values > 0]
+    low = float(positive.min()) if positive.size else 0.1
+    return low * 0.5, max(high, low) * 2.0
+
+
 def _spread(values: np.ndarray[Any, Any], log: bool, floor: bool) -> tuple[float, float]:
     """A tenth of the spread of ``values`` either side, not below zero if none are."""
     if not values.size:
         return 0.0, 1.0
     low, high = float(values.min()), float(values.max())
     if log:
-        positive = values[values > 0]
-        low = float(positive.min()) if positive.size else 0.1
-        return low * 0.5, max(high, low) * 2.0
+        return _log_spread(values, high)
     if high == low:
         high = low + 1.0
     margin = GRAPH_MARGIN * (high - low)
@@ -148,6 +165,7 @@ def _spread(values: np.ndarray[Any, Any], log: bool, floor: bool) -> tuple[float
 
 
 def _graph_points(graphs: list[Graph]) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
+    """Every graph's points reached out to the ends of their error bars, which the frame spans."""
     xs, ys = [], []
     for g in graphs:
         xlow, xhigh = g.xerr if g.xerr is not None else (0.0, 0.0)
@@ -158,6 +176,11 @@ def _graph_points(graphs: list[Graph]) -> tuple[np.ndarray[Any, Any], np.ndarray
 
 
 def _graphs_extent(graphs: list[Graph], pad: Pad) -> Extent:
+    """The frame ``TGraphPainter`` makes for graphs: their points, and a tenth more round them.
+
+    An x range of values none above zero ends at zero rather than past it; the
+    y range is left its margin.
+    """
     xs, ys = _graph_points(graphs)
     x0, x1 = _spread(xs, pad.logx, floor=False)
     y0, y1 = _spread(ys, pad.logy, floor=True)
@@ -165,6 +188,7 @@ def _graphs_extent(graphs: list[Graph], pad: Pad) -> Extent:
 
 
 def _function_extent(f: Function, log: bool) -> Extent:
+    """A function's frame: its range, and the heights it reaches, sampled as ``TF1`` draws it."""
     if f.dimensions != 1:
         return 0.0, 0.0, 1.0, 1.0  # it is not drawn, and says so when it is not
     low, high = (float(end) for end in f.range[:2])

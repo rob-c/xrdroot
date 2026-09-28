@@ -25,6 +25,7 @@ class Spec(NamedTuple):
     angle: float
 
     def sized(self, size: float) -> Spec:
+        """The same spec at another size, as a script or ``#scale`` takes it."""
         return self._replace(size=size)
 
 
@@ -37,11 +38,13 @@ class Form(NamedTuple):
 
     @property
     def height(self) -> float:
+        """How tall the piece is, over and under together, as ``TLatexFormSize::Height``."""
         return self.over + self.under
 
     def beside(self, other: Form) -> Form:
         """Two pieces side by side, as ``TLatexFormSize::operator+`` puts them."""
-        return Form(self.width + other.width, max(self.over, other.over), max(self.under, other.under))
+        over, under = max(self.over, other.over), max(self.under, other.under)
+        return Form(self.width + other.width, over, under)
 
 
 class Mark(NamedTuple):
@@ -82,9 +85,10 @@ EMPTY = Box(Form(0.0, 0.0, 0.0), _nothing)
 
 
 def placed(parts: list[tuple[Box, float, float]], marks: tuple[Mark, ...] = ()) -> Painter:
-    """A painter putting each box at its offset from the piece's point, then ``marks`` moved there."""
+    """A painter putting each box at its offset from the piece's point, then ``marks`` there."""
 
     def paint(x: float, y: float, out: list[Mark]) -> None:
+        """Every part's marks, then this piece's own, from ``(x, y)``."""
         for box, dx, dy in parts:
             box.paint(x + dx, y + dy, out)
         for mark in marks:

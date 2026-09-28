@@ -73,6 +73,7 @@ class Layout:
     """
 
     def __init__(self, basis: float, height: float, origin: float, line: int = 2) -> None:
+        """A layout with nothing analysed yet; each piece is analysed once, then remembered."""
         self.basis = basis
         self.height = height
         self.origin = origin
@@ -87,6 +88,7 @@ class Layout:
         return self._boxes[key]
 
     def _analysed(self, text: str, spec: Spec, italic: bool) -> Box:
+        """One piece split at its first operator, by the first of :data:`OPERATORS` it has."""
         if not text:
             return EMPTY
         found = scan(text)
@@ -118,6 +120,7 @@ class Layout:
         shown = plain_text(text)
 
         def paint(x: float, y: float, marks: list[Mark]) -> None:
+            """The run as one string at ``(x, y)``."""
             marks.append(Mark("text", ((x, y),), spec, shown))
 
         return Box(self.measure(text, spec), paint)
@@ -134,7 +137,8 @@ def _split(layout: Layout, text: str, spec: Spec, _small: Spec, found: Found, it
     """A ``}`` with more after it: the piece up to it, and the rest beside it."""
     first = layout.analyse(text[: found.close_curly + 1], spec, italic)
     rest = layout.analyse(text[found.close_curly + 1 :], spec, italic)
-    return Box(first.form.beside(rest.form), placed([(rest, first.form.width, 0.0), (first, 0.0, 0.0)]))
+    parts = [(rest, first.form.width, 0.0), (first, 0.0, 0.0)]
+    return Box(first.form.beside(rest.form), placed(parts))
 
 
 def _base(layout: Layout, text: str, at: int, spec: Spec, italic: bool) -> tuple[Form, Box]:
@@ -167,16 +171,24 @@ def _both(layout: Layout, text: str, spec: Spec, small: Spec, found: Found, ital
     two, three = first.form, second.form
     if power_first:
         up, down = -one.over * FACTOR_POS - two.under, one.under + three.over * FACTOR_POS
-        form = Form(one.width + max(two.width, three.width), one.over * FACTOR_POS + two.height,
-                    one.under + three.height - three.over * (1 - FACTOR_POS))
+        form = Form(
+            one.width + max(two.width, three.width),
+            one.over * FACTOR_POS + two.height,
+            one.under + three.height - three.over * (1 - FACTOR_POS),
+        )
     else:
         up, down = one.under + two.over * FACTOR_POS, -one.over * FACTOR_POS - three.under
-        form = Form(one.width + max(two.width, three.width), one.over * FACTOR_POS + three.height,
-                    one.under + two.height - two.over * (1 - FACTOR_POS))
+        form = Form(
+            one.width + max(two.width, three.width),
+            one.over * FACTOR_POS + three.height,
+            one.under + two.height - two.over * (1 - FACTOR_POS),
+        )
     return Box(form, placed([(second, one.width, down), (first, one.width, up), (base, 0.0, 0.0)]))
 
 
-def _both_limits(one: Form, base: Box, first: Box, second: Box, power_first: bool, place: int) -> Box:
+def _both_limits(
+    one: Form, base: Box, first: Box, second: Box, power_first: bool, place: int
+) -> Box:
     """Limits over and under an ``#int`` or ``#sum``, each centred on it."""
     under, over = LIMITS[place]
     two, three = first.form, second.form
@@ -212,7 +224,9 @@ def _power(layout: Layout, text: str, spec: Spec, small: Spec, found: Found, ita
         return Box(form, placed([(script, pos2, -one.over * 1.75 - two.under), (base, pos, 0.0)]))
     over = one.over if one.over > 0 else 1.5 * two.over
     form = Form(one.width + two.width, one.over * FACTOR_POS + two.over, one.under)
-    return Box(form, placed([(script, one.width, -over * FACTOR_POS - two.under), (base, 0.0, 0.0)]))
+    return Box(
+        form, placed([(script, one.width, -over * FACTOR_POS - two.under), (base, 0.0, 0.0)])
+    )
 
 
 def _under(layout: Layout, text: str, spec: Spec, small: Spec, found: Found, italic: bool) -> Box:
@@ -225,7 +239,8 @@ def _under(layout: Layout, text: str, spec: Spec, small: Spec, found: Found, ita
         form = Form(max(one.width, two.width), one.over, one.under * 0.9 + two.height)
         return Box(form, placed([(script, pos2, one.under * 0.9 + two.over), (base, pos, 0.0)]))
     form = Form(one.width + two.width, one.over, one.under + two.under + two.over * FACTOR_POS)
-    return Box(form, placed([(script, one.width, one.under + two.over * FACTOR_POS), (base, 0.0, 0.0)]))
+    parts = [(script, one.width, one.under + two.over * FACTOR_POS), (base, 0.0, 0.0)]
+    return Box(form, placed(parts))
 
 
 OPERATORS: tuple[tuple[Callable[[Found, str], bool], Callable[..., Box]], ...] = (
@@ -240,7 +255,9 @@ OPERATORS: tuple[tuple[Callable[[Found, str], bool], Callable[..., Box]], ...] =
 # -- painting a formula -----------------------------------------------------------------
 
 
-def _turned(point: tuple[float, float], origin: tuple[float, float], angle: float) -> tuple[float, float]:
+def _turned(
+    point: tuple[float, float], origin: tuple[float, float], angle: float
+) -> tuple[float, float]:
     """``TLatex::Rotate``: a point of the unturned layout, turned round the text's origin."""
     turn = math.radians(angle)
     cos, sin = math.cos(turn), math.sin(turn)
@@ -260,7 +277,9 @@ def draw_marks(scene: Scene, marks: list[Mark], origin: tuple[float, float], bas
             latexmarks.draw_shape(scene, mark, [(nint(x), nint(y)) for x, y in points], color)
 
 
-def paint_latex(scene: Scene, text: str, at: tuple[float, float], attributes: dict[str, Any]) -> None:
+def paint_latex(
+    scene: Scene, text: str, at: tuple[float, float], attributes: dict[str, Any]
+) -> None:
     """``TLatex::PaintLatex``: ``text`` at canvas pixel ``at``, aligned as ``fTextAlign`` says.
 
     ``attributes`` are the ``TLatex``'s: ``font``, ``size`` (of the pad, or
@@ -271,20 +290,28 @@ def paint_latex(scene: Scene, text: str, at: tuple[float, float], attributes: di
     if size <= 0 or not text:
         return
     if font % 10 < 2:
-        glyphs(scene, text, at, font, size * min(scene.whole), scene.colors.rgb(attributes["color"]),
-               int(attributes["align"]), float(attributes["angle"]))
+        color = scene.colors.rgb(attributes["color"])
+        glyphs(scene, text, at, font, size * min(scene.whole), color,
+               int(attributes["align"]), float(attributes["angle"]))  # fmt: skip
         return
     if font % 10 > 2:
         size, font = size / min(scene.whole), 10 * (font // 10) + 2
     try:
-        _laid_out(scene, check(text.replace("#hbox", "#mbox").replace("\\", "#")), at, size, font, attributes)
+        checked = check(text.replace("#hbox", "#mbox").replace("\\", "#"))
+        _laid_out(scene, checked, at, size, font, attributes)
     except LatexError:
         return  # ROOT says what is wrong on its standard error, and draws nothing
 
 
 def _laid_out(
-    scene: Scene, text: str, at: tuple[float, float], size: float, font: int, attributes: dict[str, Any]
+    scene: Scene,
+    text: str,
+    at: tuple[float, float],
+    size: float,
+    font: int,
+    attributes: dict[str, Any],
 ) -> None:
+    """A formula ``check`` passed, laid out at ``size`` in ``font``, aligned on ``at`` and drawn."""
     basis = float(min(scene.whole))
     layout = Layout(basis, scene.height, size, int(attributes.get("line", 2)))
     spec = Spec(size, font, int(attributes["color"]), float(attributes["angle"]))

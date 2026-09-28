@@ -21,7 +21,6 @@ import warnings
 
 import numpy as np
 import pytest
-from matplotlib.collections import PolyCollection
 from matplotlib.colors import to_rgb
 from matplotlib.figure import Figure
 from matplotlib.patches import Polygon, Rectangle
@@ -355,7 +354,7 @@ def test_a_histogram_is_drawn_filled_and_hatched_as_its_fill_says():
     h = filled()
     h.members["TH1"]["TAttFill"].update(fFillColor=2, fFillStyle=1001)
     _fig, ax = _drawn(h, "")
-    (area,) = fills(ax)[:1]
+    area = fills(ax)[0]
     assert area.get_facecolor()[:3] == (1.0, 0.0, 0.0)
     h.members["TH1"]["TAttFill"].update(fFillStyle=3004)
     _fig, ax = _drawn(h, "")
@@ -365,7 +364,7 @@ def test_a_histogram_is_drawn_filled_and_hatched_as_its_fill_says():
 def _bars(ax):
     """Each error bar's upright arms, as the column they stand in and their ends' rows."""
     arms = [line for line in polylines(ax, clipped=True) if len(line) == 2]
-    upright = [line for line in arms if line[0][0] == line[1][0] and abs(line[0][1] - line[1][1]) > 4]
+    upright = [a for a in arms if a[0][0] == a[1][0] and abs(a[0][1] - a[1][1]) > 4]
     return sorted({(line[0][0], line[0][1]) for line in upright})
 
 
@@ -373,7 +372,8 @@ def test_a_histogram_drawn_e1_has_bars_with_ends_and_skips_empty_bins():
     h = filled()
     _fig, ax = _drawn(h, "e1")
     (centres,) = marks(ax)
-    assert [x for x, _ in centres.get_offsets()] == [m + 0.5 for m in (154, 210, 266, 322, 378, 490)]
+    columns = [154, 210, 266, 322, 378, 490]
+    assert [x for x, _ in centres.get_offsets()] == [m + 0.5 for m in columns]
     assert [column for column, _ in _bars(ax)] == [154, 210, 266, 322, 378, 490]
     ends = [line for line in polylines(ax, clipped=True) if line[0][1] == line[1][1]]
     assert [[152, 289], [156, 289]] in ends  # a cap of two pixels either side of the arm
@@ -487,9 +487,9 @@ def test_a_two_dimensional_histogram_drawn_box_cont_and_text():
     h.fill(np.array([0.5, 0.5, 1.5]), np.array([0.5, 0.5, 1.5]))
     _fig, ax = _drawn(h, "box")
     boxes = [line for line in polylines(ax, clipped=True) if len(line) == 5]
-    assert boxes == [  # the fullest bin fills its cell, the other a box half as wide
+    assert boxes == [  # the fullest bin fills its cell, the other a box of half its area
         [[70, 450], [350, 450], [350, 250], [70, 250], [70, 450]],
-        [[420, 200], [560, 200], [560, 100], [420, 100], [420, 200]],
+        [[391, 221], [589, 221], [589, 79], [391, 79], [391, 221]],
     ]
     _fig, ax = _drawn(h, "cont")
     assert ax.collections
@@ -497,17 +497,16 @@ def test_a_two_dimensional_histogram_drawn_box_cont_and_text():
     assert sorted(t for t in data_words(ax) if t in ("1", "2")) == ["1", "2"]
 
 
-def test_a_two_dimensional_histogram_drawn_lego_or_surf_stands_in_a_box_with_no_frame():
+@pytest.mark.parametrize("option", ["lego", "surf"])
+def test_a_two_dimensional_histogram_drawn_lego_or_surf_stands_in_a_box_with_no_frame(option):
     h = Histogram.book("h2", (2, 0.0, 2.0), (2, 0.0, 2.0))
     h.fill(np.array([0.5]), np.array([0.5]))
-    for option in ("lego", "surf"):
-        _fig, ax = _drawn(h, option)
-        assert not ax.axison
-        front = [a for a in lines(ax) if a.dashes == () and len(a.lines) == 2]
-        assert [len(line) for line in front[-1].lines] == [4, 4]  # the box's two front faces
-        levels = [a for a in lines(ax) if a.dashes == (1, 2)]
-        assert levels  # the back walls, lined at the z axis's divisions
-        assert {"0", "1", "2"} <= set(words(ax))  # and its axes, labelled
+    _fig, ax = _drawn(h, option)
+    assert not ax.axison
+    front = [a for a in lines(ax) if a.dashes == () and len(a.lines) == 2]
+    assert [len(line) for line in front[-1].lines] == [4, 4]  # the box's two front faces
+    assert [a for a in lines(ax) if a.dashes == (1, 2)]  # its back walls lined at z's divisions
+    assert {"0", "1", "2"} <= set(words(ax))  # and its axes, labelled
 
 
 def test_a_three_dimensional_histogram_is_left_out_with_a_warning():
@@ -702,7 +701,7 @@ def test_a_graph_drawn_with_a_star_x_or_z_marks_its_points_so():
 def test_a_graph_drawn_2_or_3_draws_its_errors_as_boxes_or_a_band():
     fig = make([(_graph(), "a2")]).plot()
     boxes = fills(fig.axes[0])
-    assert [np.asarray(box.get_xy())[:4].tolist() for box in boxes][0] == [
+    assert np.asarray(boxes[0].get_xy())[:4].tolist() == [
         [117.0, 417.0], [159.0, 417.0], [159.0, 306.0], [117.0, 306.0],
     ]  # fmt: skip
     assert len(boxes) == 3
@@ -714,7 +713,8 @@ def test_a_graph_drawn_2_or_3_draws_its_errors_as_boxes_or_a_band():
 def test_a_graph_drawn_f_and_b_is_filled_and_barred():
     fig = make([(_graph(), "af")]).plot()
     (area,) = fills(fig.axes[0])
-    assert np.asarray(area.get_xy())[:3].tolist() == [[138.0, 361.0], [350.0, 139.0], [562.0, 250.0]]
+    corners = np.asarray(area.get_xy())[:3].tolist()
+    assert corners == [[138.0, 361.0], [350.0, 139.0], [562.0, 250.0]]
     fig = make([(_graph(), "ab")]).plot()
     bars = [line for line in polylines(fig.axes[0], clipped=True) if len(line) == 5]
     assert len(bars) == 3
@@ -826,12 +826,13 @@ def test_latex_is_laid_out_as_tlatex_lays_it_out_at_its_place_in_ndc():
         assert (piece.get_ha(), piece.get_va()) == ("left", "baseline")
     assert root.get_position() == (102, 134) and rest.get_position() == (112, 128)  # up the slope
     sign = lines(fig.axes[0], (1.0, 0.0, 0.0))  # the root sign, drawn: its tick and its top
-    assert [a.lines[0].tolist() for a in sign] == [[[89, 126], [98, 137]], [[98, 137], [90, 118], [102, 111]]]
+    tick, top = [a.lines[0].tolist() for a in sign]
+    assert (tick, top) == ([[89, 126], [98, 137]], [[98, 137], [90, 118], [102, 111]])
     assert fig.axes[0].texts[0].get_transform() is not fig.axes[0].transData  # in pixels
 
 
 def test_text_is_placed_by_the_axes_units_and_sized_in_pixels_for_precision_3():
-    fig, texts = _texts()
+    _fig, texts = _texts()
     plain = texts["cost $5"]  # a TText is not TLatex: its dollar sign is a dollar sign
     assert plain.get_position() == (350, 323)  # 5 and 1 in a frame of 0 to 10 and 0 to 3.15
     assert plain.get_fontsize() == pytest.approx(18 * 0.72)  # 20 pixels as FreeType draws them
@@ -923,7 +924,8 @@ def test_a_pave_text_stacks_its_lines_in_its_box_with_its_shadow():
     assert box_edge == [[70, 200], [70, 50], [350, 50], [350, 200], [70, 200]]
     assert rule == [[70, 106], [350, 106]]  # a line at x 0 is ruled right across the box
     texts = written(ax)
-    assert texts["first"].get_position()[1] < texts["α"].get_position()[1]  # down the box
+    alpha = texts["\u03b1"]  # the Greek letter, from the Symbol font
+    assert texts["first"].get_position()[1] < alpha.get_position()[1]  # down the box
     assert texts["placed"].get_position() == (190, 167)  # centred where it was put, in the box
 
 
@@ -934,7 +936,8 @@ def test_a_pave_placed_in_the_axes_units_is_converted_to_the_pads():
     fig = make([(filled(), "hist"), (pave, "")]).plot()
     (box,) = [p for p in fills(fig.axes[0]) if p.get_xy()[0][0] == pytest.approx(0.1)]
     top = 0.1 + 1.5 / 3.15 * 0.8
-    np.testing.assert_allclose(box.get_xy(), [[0.1, 0.1], [0.1, top], [0.5, top], [0.5, 0.1], [0.1, 0.1]])
+    corners = [[0.1, 0.1], [0.1, top], [0.5, top], [0.5, 0.1], [0.1, 0.1]]
+    np.testing.assert_allclose(box.get_xy(), corners)
     assert len(lines(fig.axes[0], clipped=False)) > 1  # with no border, only the stats box's
 
 

@@ -30,11 +30,12 @@ LIMIT = 30000
 SYMBOLS: dict[str, str] = {
     **dict(zip("abcdefghijklmnopqrstuvwxyz", "αβχδεφγηιϕκλμνοπθρστυϖωξψζ")),
     **dict(zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "ΑΒΧΔΕΦΓΗΙϑΚΛΜΝΟΠΘΡΣΤΥςΩΞΨΖ")),
-    '"': "∀", "$": "∃", "'": "∋", "*": "∗", "-": "−", "@": "≅", "\\": "∴", "^": "⊥",
-    "`": "‾", "~": "∼",
+    # The glyphs themselves are the point of this table, look-alikes and all.
+    '"': "∀", "$": "∃", "'": "∋", "*": "∗", "-": "−", "@": "≅",  # noqa: RUF001
+    "\\": "∴", "^": "⊥", "`": "‾", "~": "∼",  # noqa: RUF001
     **dict(zip(
         (chr(code) for code in range(0xA1, 0xFF)),
-        "ϒ′≤⁄∞ƒ♣♦♥♠↔←↑→↓°±″≥×∝∂•÷≠≡≈…⏐⎯↵ℵℑℜ℘⊗⊕∅∩∪⊃⊇⊄⊂⊆∈∉∠∇®©™∏√⋅¬∧∨⇔⇐⇑⇒⇓◊⟨®©™∑⎛⎜⎝⎡⎢⎣⎧⎨⎩⎪ "
+        "ϒ′≤⁄∞ƒ♣♦♥♠↔←↑→↓°±″≥×∝∂•÷≠≡≈…⏐⎯↵ℵℑℜ℘⊗⊕∅∩∪⊃⊇⊄⊂⊆∈∉∠∇®©™∏√⋅¬∧∨⇔⇐⇑⇒⇓◊⟨®©™∑⎛⎜⎝⎡⎢⎣⎧⎨⎩⎪ "  # noqa: RUF001
         "⟩∫⌠⎮⌡⎞⎟⎠⎤⎥⎦⎫⎬⎭",
     )),
 }  # fmt: skip
@@ -49,11 +50,12 @@ def symbol_text(text: str, font: int) -> str:
 
 def nint(value: float) -> int:
     """``TMath::Nint`` of a pixel, within ``pixel_boundary``'s limits."""
-    return int(round(max(-LIMIT, min(LIMIT, value))))
+    # int() stays: a numpy float rounds to a numpy float, not to an int.
+    return int(round(max(-LIMIT, min(LIMIT, value))))  # noqa: RUF046
 
 
 def pixel_size(scene: Scene, size: float, font: int) -> float:
-    """A ``fTextSize`` in pixels: of the pad's shorter side, or for precision 3 itself, truncated."""
+    """A ``fTextSize`` in pixels: of the pad's shorter side, or for precision 3 itself, cut."""
     if int(font) % 10 == 3:
         return float(int(size))
     return float(size) * min(scene.whole)

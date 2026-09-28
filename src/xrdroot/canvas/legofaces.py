@@ -17,12 +17,13 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 from .lego import EPS, MovingScreen, Point, Segment
-from .view3d import RAD
+from .view3d import RAD, View3D
 
-__all__ = ["back_box", "draw_face", "front_box", "lego_cells", "surface_cells"]
+__all__ = ["back_box", "box_corners", "draw_face", "front_box", "lego_cells", "surface_cells"]
 
-#: The back walls' corners, and the front edges', as ``BackBox`` and ``FrontBox`` number them.
+#: The back walls' corners, as ``BackBox`` numbers them.
 BACK = ((1, 4, 8, 5), (4, 3, 7, 8))
+#: The front edges' corners, as ``FrontBox`` numbers them.
 FRONT = ((1, 2, 6, 5), (2, 3, 7, 6))
 #: What the box is drawn in: black, a pixel wide, solid (its levels dotted).
 BOX = (1, 1, 1)
@@ -40,17 +41,19 @@ def _segments(screen: MovingScreen, a: Point, b: Point, look: tuple[int, int, in
     for t0, t1 in parts:
         if abs(t0 - t1) > EPS:
             screen.segments.append(Segment(ax + (bx - ax) * t0, ay + (by - ay) * t0,
-                                           ax + (bx - ax) * t1, ay + (by - ay) * t1, color, width, style))  # fmt: skip
+                                           ax + (bx - ax) * t1, ay + (by - ay) * t1,
+                                           color, width, style))  # fmt: skip
 
 
-def level_lines(screen: MovingScreen, points: list[Point], values: list[float]) -> list[tuple[Point, Point]]:
+def level_lines(screen: MovingScreen, points: list[Point],
+                values: list[float]) -> list[tuple[Point, Point]]:  # fmt: skip
     """``FindLevelLines``: where a face crosses each level, as the ends of a line across it."""
     if not screen.levels:
         return []
     low, high = min(values), max(values)
     if low >= screen.levels[-1] or high <= screen.levels[0]:
         return []
-    lines = []
+    lines: list[tuple[Point, Point]] = []
     for level in screen.levels:
         if low >= level:
             continue
@@ -74,15 +77,24 @@ def _crossings(points: list[Point], values: list[float], level: float) -> list[P
             continue
         span = values[j] - values[i]
         d1, d2 = d1 / span, d2 / span
-        found.append(tuple(d2 * points[i][k] - d1 * points[j][k] for k in range(3)))  # type: ignore[misc]
+        found.append(_between(points[i], points[j], d1, d2))
         if len(found) == 2:
             break
     return found
 
 
+def _between(p: Point, q: Point, d1: float, d2: float) -> Point:
+    """The point ``d2`` of ``p`` less ``d1`` of ``q``: where an edge crosses a level."""
+    return (d2 * p[0] - d1 * q[0], d2 * p[1] - d1 * q[1], d2 * p[2] - d1 * q[2])
+
+
 def draw_face(screen: MovingScreen, points: list[Point], values: list[float] | None,
-              look: tuple[int, int, int], levels: tuple[int, int, int] | None = None) -> None:  # fmt: skip
-    """``DrawFaceMove1`` (with ``values``, its level lines) or ``DrawFaceMove2``: a face, then the screen widened."""
+              look: tuple[int, int, int],
+              levels: tuple[int, int, int] | None = None) -> None:  # fmt: skip
+    """``DrawFaceMove1`` (with ``values``, its level lines) or ``DrawFaceMove2``.
+
+    The face's visible edges are drawn, then the screen is widened by it.
+    """
     if values is not None and levels is not None:
         for a, b in level_lines(screen, points, values):
             _segments(screen, a, b, levels)
@@ -93,10 +105,19 @@ def draw_face(screen: MovingScreen, points: list[Point], values: list[float] | N
         screen.cover(points[i], points[(i + 1) % count])
 
 
-def _box_corners(screen: MovingScreen, angle: float = 90.0) -> list[Point]:
-    """The box's corners as ``BackBox`` and ``FrontBox`` take them: turned by the angle between x and y."""
+def box_corners(view: View3D, angle: float = 90.0) -> list[Point]:
+    """The box's corners as ``BackBox``, ``FrontBox`` and ``PaintLegoAxis`` take them.
+
+    Each is turned by ``angle``, the angle between the x and y axes, which
+    ROOT keeps at 90 degrees for a cartesian plot.
+    """
     cosa, sina = math.cos(RAD * angle), math.sin(RAD * angle)
-    return [(x + y * cosa, y * sina, z) for x, y, z in screen.view.corners().vertices]
+    return [(x + y * cosa, y * sina, z) for x, y, z in view.corners().vertices]
+
+
+def _box_corners(screen: MovingScreen) -> list[Point]:
+    """The corners of the box the screen looks at, as :func:`box_corners` turns them."""
+    return box_corners(screen.view)
 
 
 def back_box(screen: MovingScreen) -> None:
@@ -129,8 +150,9 @@ def _sides(view: Any) -> tuple[bool, ...]:
     return (y < 0, x > 0, y > 0, x < 0, z < 0, z > 0)
 
 
-def lego_cells(screen: MovingScreen, nx: int, ny: int, cell: Callable[[int, int], Any], look: tuple[int, int, int]) -> None:
-    """``LegoCartesian``: each bin a block from ``zmin`` to its content, its seen sides and ends drawn."""
+def lego_cells(screen: MovingScreen, nx: int, ny: int, cell: Callable[[int, int], Any],
+               look: tuple[int, int, int]) -> None:  # fmt: skip
+    """``LegoCartesian``: each bin a block from ``zmin`` to its content, its seen faces drawn."""
     xs, ys = _order(screen.view, nx, ny)
     seen = _sides(screen.view)
     for iy in ys:
@@ -142,8 +164,9 @@ def lego_cells(screen: MovingScreen, nx: int, ny: int, cell: Callable[[int, int]
                 draw_face(screen, side, None, look)
 
 
-def _block_faces(low: list[Point], high: list[Point], seen: tuple[bool, ...], sided: bool) -> Iterator[list[Point]]:
-    """A block's faces in ``LegoCartesian``'s order: its sides if it has height, its bottom, its top."""
+def _block_faces(low: list[Point], high: list[Point], seen: tuple[bool, ...],
+                 sided: bool) -> Iterator[list[Point]]:  # fmt: skip
+    """A block's faces in ``LegoCartesian``'s order: sides if it has height, bottom, top."""
     for i in range(4 if sided else 0):
         if seen[i]:
             j = (i + 1) % 4
@@ -154,9 +177,13 @@ def _block_faces(low: list[Point], high: list[Point], seen: tuple[bool, ...], si
         yield high
 
 
-def surface_cells(screen: MovingScreen, nx: int, ny: int, cell: Callable[[int, int], list[Point]],
+def surface_cells(screen: MovingScreen, nx: int, ny: int,
+                  cell: Callable[[int, int], list[Point]],
                   look: tuple[int, int, int]) -> None:  # fmt: skip
-    """``SurfaceCartesian``: each square between four bins' middles, with its level lines, front first."""
+    """``SurfaceCartesian``: each square between four bins' middles, level lines and all.
+
+    The squares are drawn from the front to the back.
+    """
     xs, ys = _order(screen.view, nx, ny)
     color, width, _style = look
     for iy in ys:

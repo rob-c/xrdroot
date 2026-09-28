@@ -35,6 +35,9 @@ SPELLINGS = {
     "PLC": "PLC", "PMC": "PMC", "PFC": "PFC", "TEXT": "TEXT",
 }  # fmt: skip
 
+#: The contour lines each spelling draws, as ``THistPainter`` numbers them.
+CONTOURS = {"CONT1": 11, "CONT2": 12, "CONT3": 13}
+
 #: Spellings ROOT takes that are not drawn here, and why not.
 REFUSED = {
     "SCAT": "ROOT itself has retired the scatter plot of a histogram; COL shades the same bins",
@@ -94,6 +97,9 @@ class Chosen(NamedTuple):
 
     words: frozenset[str]
     angle: float = 0.0
+    #: ``THistPainter``'s ``Hoption.Contour`` for the lines of ``CONT1`` (each level in its
+    #: colour), ``CONT2`` (in its line style) and ``CONT3`` (all in the histogram's): 11 to 13.
+    contour: int = 0
 
     def has(self, *words: str) -> bool:
         """Does the option ask for any of ``words``?"""
@@ -151,4 +157,5 @@ def choose(option: str, kind: str) -> Chosen:
     """
     pairs, angle = _split(option)
     _refuse(pairs, kind)
-    return Chosen(frozenset(word for _, word in pairs), angle)
+    contour = max((CONTOURS.get(spelling, 0) for spelling, _ in pairs), default=0)
+    return Chosen(frozenset(word for _, word in pairs), angle, contour)

@@ -125,3 +125,9 @@ def test_the_backend_set_is_the_one_drawn_with():
 def test_html_is_a_div_with_plotlys_script_from_its_cdn():
     made = withplotly.html(picture(gauss()))
     assert made.startswith("<div") and "cdn.plot.ly" in made
+
+
+def test_a_graph_drawn_f_is_a_trace_filled_to_itself():
+    figure = points().plot(backend="plotly", option="AF", fill="kRed")
+    (area,) = [trace for trace in figure.data if trace.fill == "toself"]
+    assert list(area.x) == [1, 2, 3]

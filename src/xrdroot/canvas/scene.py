@@ -164,38 +164,11 @@ class Scene:
             "markeredgecolor": color,
         }
 
-    def text(self, obj: Any, inherited: Any = None, size: float | None = None) -> dict[str, Any]:
-        """``TAttText`` as a font, size, colour and alignment.
-
-        A member left at zero - as a line of a pave or an entry of a legend
-        leaves it - takes the value of ``inherited``, the pave or legend it
-        is in, as ROOT's painters do.
-        """
-        font = _attribute(obj, inherited, "fTextFont", 42)
-        family, style, weight, _pixels = styles.font(font)
-        across, up = styles.align(_attribute(obj, inherited, "fTextAlign", 11))
-        points = (
-            size
-            if size is not None
-            else self.text_points(_attribute(obj, inherited, "fTextSize", TEXT_SIZE), font)
-        )
-        return {
-            "fontsize": points,
-            "color": self.colors.rgb(_attribute(obj, inherited, "fTextColor", 1)),
-            "family": family,
-            "style": style,
-            "weight": weight,
-            "math_fontfamily": styles.MATH[family],
-            "ha": across,
-            "va": up,
-            "rotation": float(lookup(obj, "fTextAngle", 0.0)),
-        }
-
-
     def attributes(self, obj: Any, inherited: Any = None, **given: Any) -> dict[str, Any]:
         """``TAttText`` as :func:`~.latex.paint_latex` takes it, with ``given`` over it.
 
-        A member left at zero takes ``inherited``'s, as :meth:`text` has it.
+        A member left at zero - as a pave's line or a legend's entry leaves one - takes
+        ``inherited``'s, the pave's or legend's, as ROOT's painters do.
         """
         found = {
             "font": int(_attribute(obj, inherited, "fTextFont", 42)),

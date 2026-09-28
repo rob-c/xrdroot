@@ -27,8 +27,6 @@ __all__ = ["TFrame", "decorate", "frame_of_pad"]
 
 #: How much wider a stats box that describes a fit is, as ``PaintStat`` makes it.
 FIT_WIDTH = 1.8
-#: How wide a character of a title is, as a fraction of its size, to size its box.
-CHARACTER = 0.5
 
 
 class TFrame(TWbox):
@@ -93,7 +91,8 @@ def _title(pad: Any, obj: Any) -> list[TPaveText]:
 
 
 def _title_size(pad: Any, title: str) -> tuple[float, float]:
-    """``THistPainter::PaintTitle``'s box: ``gStyle``'s, or as tall and wide as the title in ``gStyle``'s text font."""
+    """``THistPainter::PaintTitle``'s box: ``gStyle``'s, or as tall and wide as the title in
+    ``gStyle``'s text font."""
     from ...canvas.latex import formula_form
 
     height = gStyle.GetTitleH()
@@ -107,7 +106,8 @@ def _title_size(pad: Any, title: str) -> tuple[float, float]:
     if width > 0:
         return height, width
     wide, high = _pad_pixels(pad)
-    form = formula_form(title, height, int(gStyle.GetTextFont()), (round(wide), round(high)), min(wide, high))
+    whole = (round(wide), round(high))
+    form = formula_form(title, height, int(gStyle.GetTextFont()), whole, min(wide, high))
     height = max(height, 1.2 * form.height / high)
     return height, min(0.7, 0.02 + form.width / wide)
 

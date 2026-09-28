@@ -14,7 +14,6 @@ from typing import Any
 
 import numpy as np
 
-from . import styles
 from .latex import paint_latex
 from .model import Primitive, lookup
 from .scene import Scene
@@ -37,17 +36,20 @@ def canvas_point(scene: Scene, x: float, y: float, ndc: bool) -> tuple[float, fl
     return scene.pixel(u, v)
 
 
-def write(scene: Scene, text: str, at: tuple[float, float], attributes: dict[str, Any], latex: bool = True) -> None:
+def write(scene: Scene, text: str, at: tuple[float, float], attributes: dict[str, Any],
+          latex: bool = True) -> None:  # fmt: skip
     """``text`` at canvas pixel ``at``: a ``TLatex``'s formula, or a ``TText``'s string as it is."""
     if latex:
         paint_latex(scene, text, at, attributes)
         return
     font = int(attributes["font"])
-    glyphs(scene, text, at, font, pixel_size(scene, float(attributes["size"]), font),
-           scene.colors.rgb(attributes["color"]), int(attributes["align"]), float(attributes["angle"]))  # fmt: skip
+    size = pixel_size(scene, float(attributes["size"]), font)
+    glyphs(scene, text, at, font, size, scene.colors.rgb(attributes["color"]),
+           int(attributes["align"]), float(attributes["angle"]))  # fmt: skip
 
 
 def _text(scene: Scene, prim: Primitive, latex: bool) -> None:
+    """A ``TText`` or ``TLatex`` at ``(fX, fY)``, in NDC or the axes' units as its bit says."""
     at = canvas_point(scene, float(prim.get("fX", 0.0)), float(prim.get("fY", 0.0)), prim.ndc)
     write(scene, str(prim.get("fTitle", "")), at, scene.attributes(prim), latex)
 
@@ -63,6 +65,7 @@ def latex(scene: Scene, prim: Primitive, _option: str) -> None:
 
 
 def _ends(prim: Primitive) -> tuple[list[float], list[float]]:
+    """A line's, arrow's or box's two ends: ``fX1`` and ``fX2``, and ``fY1`` and ``fY2``."""
     return (
         [float(prim.get("fX1", 0.0)), float(prim.get("fX2", 0.0))],
         [float(prim.get("fY1", 0.0)), float(prim.get("fY2", 0.0))],
@@ -85,17 +88,29 @@ def line(scene: Scene, prim: Primitive, _option: str) -> None:
     _line_of(scene, prim, [canvas_point(scene, x, y, prim.ndc) for x, y in zip(xs, ys)])
 
 
-def _head(tip: tuple[float, float], along: tuple[float, float], length: float, half: float) -> list[tuple[float, float]]:
+def _head(tip: tuple[float, float], along: tuple[float, float], length: float,
+          half: float) -> list[tuple[float, float]]:  # fmt: skip
     """An arrow's head at ``tip``, pointing along ``along``: its two back corners about the tip."""
     (x, y), (cos, sin) = tip, along
     return [(x - length * cos - sin * half, y - length * sin + cos * half), (x, y),
             (x - length * cos + sin * half, y - length * sin - cos * half)]  # fmt: skip
 
 
-def _heads(scene: Scene, prim: Primitive, option: str, ends: tuple[Any, Any], sizes: tuple[float, float]) -> None:
-    """``TArrow::PaintArrow``'s heads: an open ``>``, or a ``|>`` filled and outlined."""
+def _fill_head(scene: Scene, prim: Primitive, corners: list[tuple[float, float]]) -> None:
+    """A closed head's inside, in the arrow's fill colour; ROOT leaves it empty for colour 0."""
     from matplotlib.patches import Polygon
 
+    if not int(lookup(prim, "fFillColor", 0) or 0):
+        return
+    colour = scene.colors.rgb(lookup(prim, "fFillColor", 0))
+    scene.ax.add_artist(Polygon([(x, y) for x, y in corners], closed=True, transform=scene.display,
+                                clip_on=False, zorder=scene.layer(), linewidth=0.0,
+                                edgecolor="none", facecolor=colour))  # fmt: skip
+
+
+def _heads(scene: Scene, prim: Primitive, option: str, ends: tuple[Any, Any],
+           sizes: tuple[float, float]) -> None:  # fmt: skip
+    """``TArrow::PaintArrow``'s heads: an open ``>``, or a ``|>`` filled and outlined."""
     (start, end), (length, half) = ends, sizes
     dx, dy = end[0] - start[0], end[1] - start[1]
     span = math.hypot(dx, dy) or 1.0
@@ -105,10 +120,7 @@ def _heads(scene: Scene, prim: Primitive, option: str, ends: tuple[Any, Any], si
             continue
         corners = _head(tip, (sign * cos, sign * sin), length, half)
         if closed in option:
-            if int(lookup(prim, "fFillColor", 0) or 0):
-                scene.ax.add_artist(Polygon([(x, y) for x, y in corners], closed=True, transform=scene.display,
-                                            clip_on=False, zorder=scene.layer(), linewidth=0.0, edgecolor="none",
-                                            facecolor=scene.colors.rgb(lookup(prim, "fFillColor", 0))))  # fmt: skip
+            _fill_head(scene, prim, corners)
             corners = corners + corners[:1]
         _line_of(scene, prim, corners, 1)
 
@@ -122,9 +134,21 @@ def arrow(scene: Scene, prim: Primitive, _option: str) -> None:
     xs, ys = _ends(prim)
     start, end = (canvas_point(scene, x, y, prim.ndc) for x, y in zip(xs, ys))
     option = str(prim.get("fOption", "") or "|>")
+    length, half = _head_size(scene, prim)
+    _line_of(scene, prim, _shaft(start, end, option, length))
+    _heads(scene, prim, option, (start, end), (length, half))
+
+
+def _head_size(scene: Scene, prim: Primitive) -> tuple[float, float]:
+    """How long an arrow's head is, and how far either side of the shaft its back corners are."""
     size = float(prim.get("fArrowSize", 0.0) or 0.0) or ARROW_SIZE
     length = 0.7 * size * max(scene.canvas)
-    half = length * math.tan(math.pi * float(prim.get("fAngle", 60.0) or 60.0) / 360)
+    return length, length * math.tan(math.pi * float(prim.get("fAngle", 60.0) or 60.0) / 360)
+
+
+def _shaft(start: tuple[float, float], end: tuple[float, float], option: str,
+           length: float) -> list[tuple[float, float]]:  # fmt: skip
+    """An arrow's shaft: it stops where a closed head begins, unless that head is mid-way."""
     dx, dy = end[0] - start[0], end[1] - start[1]
     span = math.hypot(dx, dy) or 1.0
     shaft_start, shaft_end = start, end
@@ -132,8 +156,7 @@ def arrow(scene: Scene, prim: Primitive, _option: str) -> None:
         shaft_end = (end[0] - dx / span * length, end[1] - dy / span * length)
     if "<|" in option and "-<|-" not in option:
         shaft_start = (start[0] + dx / span * length, start[1] + dy / span * length)
-    _line_of(scene, prim, [shaft_start, shaft_end])
-    _heads(scene, prim, option, (start, end), (length, half))
+    return [shaft_start, shaft_end]
 
 
 def patch_style(scene: Scene, prim: Any, outline: bool = True) -> dict[str, Any]:
@@ -248,6 +271,7 @@ def _points(prim: Primitive) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]
 
 
 def _or_none(values: Any) -> Any:
+    """``values``, or no values where the file kept none."""
     return [] if values is None else values
 
 

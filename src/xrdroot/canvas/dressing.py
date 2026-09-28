@@ -37,7 +37,11 @@ GRID_STYLE, GRID_WIDTH = 3, 1
 
 
 def axis_of(members: Any, **placed: Any) -> Axis:
-    """An :class:`~.axis.Axis` with the attributes of a ``TAxis``, ``TGaxis::ImportAxisAttributes``'s."""
+    """An :class:`~.axis.Axis` with a ``TAxis``'s attributes.
+
+    These are what ``TGaxis::ImportAxisAttributes`` copies, so a frame's axis is
+    painted just as a ``TGaxis`` would be with them.
+    """
     bits = int(lookup(members, "fBits", 0) or 0)
     return Axis(
         ndiv=int(lookup(members, "fNdivisions", 510)),
@@ -70,7 +74,10 @@ def draw_painted(scene: Scene, painted: Painted, axis: Axis) -> None:
 
 
 def _divisions(ndiv: int, scene: Scene) -> int:
-    """``fNdivisions`` over 1000, whose primaries scale with the pad's width, as ``PaintAxis`` has it."""
+    """``fNdivisions`` over 1000, whose primaries scale with the pad's width.
+
+    ``PaintAxis`` does this so a narrow pad is not crowded with labels.
+    """
     if ndiv <= 1000:
         return ndiv
     primary = max(1, ndiv % 100)
@@ -78,6 +85,12 @@ def _divisions(ndiv: int, scene: Scene) -> int:
 
 
 def _chopt(ndiv: int, grid: bool, log: bool) -> str:
+    """The ``chopt`` ``THistPainter::PaintAxis`` gives a frame's axis.
+
+    Its ticks and labels are sized as the ``TAxis`` says (``S``), and it is left
+    unoptimised when ``fNdivisions`` is negative (``N``), gridded (``W``) if the
+    pad is, and logarithmic (``G``) if the pad's scale is.
+    """
     return "SDH" + ("N" if ndiv < 0 else "") + ("W" if grid else "") + ("G" if log else "")
 
 
@@ -91,19 +104,20 @@ def dress_axes(scene: Scene, source: Any) -> None:
     gridx, gridy = pad.grid
 
     def pixel(u: float, v: float) -> tuple[int, int]:
+        """A point of NDC in the whole pixels ``PaintAxis`` measures its title's angle in."""
         px, py = scene.pixel(u, v)
         return nint(px), nint(py)
 
-    xaxis = axis_of(lookup(source, "fXaxis") or {}, x0=x0, y0=y0, x1=x1, y1=y0, wmin=xmin, wmax=xmax,
-                    grid_length=y1 - y0, pad=scene.pixels)  # fmt: skip
+    xaxis = axis_of(lookup(source, "fXaxis") or {}, x0=x0, y0=y0, x1=x1, y1=y0,
+                    wmin=xmin, wmax=xmax, grid_length=y1 - y0, pad=scene.pixels)  # fmt: skip
     ndiv = _divisions(xaxis.ndiv, scene)
     xaxis = replace(xaxis, ndiv=abs(ndiv), chopt=_chopt(ndiv, gridx, pad.logx))
     _paint(scene, xaxis, pixel)
     if tickx:
         twin = xaxis.chopt.replace("W", "z") + "-" + ("U" if tickx < 2 else "")
         _paint(scene, replace(xaxis, y0=y1, y1=y1, chopt=twin, title=""), pixel)
-    yaxis = axis_of(lookup(source, "fYaxis") or {}, x0=x0, y0=y0, x1=x0, y1=y1, wmin=ymin, wmax=ymax,
-                    grid_length=x1 - x0, pad=scene.pixels)  # fmt: skip
+    yaxis = axis_of(lookup(source, "fYaxis") or {}, x0=x0, y0=y0, x1=x0, y1=y1,
+                    wmin=ymin, wmax=ymax, grid_length=x1 - x0, pad=scene.pixels)  # fmt: skip
     ndiv = yaxis.ndiv
     yaxis = replace(yaxis, ndiv=abs(ndiv), chopt=_chopt(ndiv, gridy, pad.logy))
     _paint(scene, yaxis, pixel)
@@ -114,4 +128,5 @@ def dress_axes(scene: Scene, source: Any) -> None:
 
 
 def _paint(scene: Scene, axis: Axis, pixel: Any) -> None:
+    """One of the frame's axes, worked out as ``TGaxis::PaintAxis`` would and drawn in the pad."""
     draw_painted(scene, paint_axis(axis, pixel), axis)

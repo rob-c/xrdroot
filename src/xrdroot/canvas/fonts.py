@@ -98,6 +98,7 @@ class Extent(NamedTuple):
 
 
 def _weight(entry: Any) -> int:
+    """A face's weight as a number, matplotlib's names for it read as bold or regular."""
     weight = entry.weight
     if isinstance(weight, str):
         return BOLD if "bold" in weight.lower() or weight.lower() == "heavy" else 400
@@ -120,7 +121,7 @@ def _matches(entry: Any, family: str, italic: bool, bold: bool) -> bool:
     )
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def face(code: int) -> str:
     """The file ``fTextFont`` ``code`` is drawn from: the first of its faces installed.
 
@@ -132,11 +133,15 @@ def face(code: int) -> str:
     faces, italic, bold = FONTS.get(int(code) // 10, FONTS[4])
     entries = font_manager.fontManager.ttflist
     for family in faces:
-        found = sorted(entry.fname for entry in entries if _matches(entry, family, italic, bold))
+        found: list[str] = sorted(
+            entry.fname for entry in entries if _matches(entry, family, italic, bold)
+        )
         if found:
             return found[0]
     prop = font_manager.FontProperties(
-        family="DejaVu Sans", style="italic" if italic else "normal", weight="bold" if bold else "normal"
+        family="DejaVu Sans",
+        style="italic" if italic else "normal",
+        weight="bold" if bold else "normal",
     )
     return str(font_manager.findfont(prop))
 
@@ -146,14 +151,16 @@ def face(code: int) -> str:
 SYMBOL_FALLBACKS = ("STIXGeneral", "STIXSizeOneSym")
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _fallback(family: str) -> str:
+    """The file matplotlib finds for ``family``, looked for once."""
     from matplotlib import font_manager
 
     return str(font_manager.findfont(font_manager.FontProperties(family=family)))
 
 
 def _has(path: str, text: str) -> bool:
+    """Whether the face in ``path`` has a glyph for every character of ``text``."""
     font = _font(path)
     return all(font.get_char_index(ord(char)) for char in text)
 
@@ -198,7 +205,7 @@ def _flags() -> tuple[Any, Any]:
     return ft2font.LOAD_NO_HINTING, ft2font.KERNING_UNFITTED  # pragma: no cover - before 3.10
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _font(path: str) -> Any:
     """A FreeType face of its own for measuring, laid out at one pixel to the pixel.
 
@@ -218,10 +225,12 @@ def _font(path: str) -> Any:
 
 
 def _floor(value: int) -> int:
+    """FreeType's 26.6 fixed point to whole pixels, rounded down, as ``FT_FLOOR`` does."""
     return value // 64
 
 
 def _ceil(value: int) -> int:
+    """FreeType's 26.6 fixed point to whole pixels, rounded up, as ``FT_CEIL`` does."""
     return -(-value // 64)
 
 

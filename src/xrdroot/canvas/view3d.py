@@ -19,6 +19,13 @@ __all__ = ["View3D"]
 
 #: Degrees to radians, as ``TView3D`` spells it.
 RAD = math.atan(1.0) * 4.0 / 180.0
+#: ``AxisVertex``'s corners in drawing order, by which way x and y face the eye.
+CORNER_ORDER = ((2, 3, 4, 1, 6, 7, 8, 5), (3, 4, 1, 2, 7, 8, 5, 6),
+                (1, 2, 3, 4, 5, 6, 7, 8), (4, 1, 2, 3, 8, 5, 6, 7))  # fmt: skip
+#: ``AxisVertex``'s x and y axes' ends, by which way x, y and z face the eye.
+AXIS_ENDS = ((3, 2, 1, 2), (2, 1, 3, 2), (1, 2, 2, 3), (2, 3, 2, 1), (4, 1, 4, 3), (3, 4, 4, 1),
+             (4, 3, 1, 4), (1, 4, 3, 4), (8, 5, 8, 7), (7, 8, 8, 5), (8, 7, 5, 8), (5, 8, 7, 8),
+             (7, 6, 5, 6), (6, 5, 7, 6), (5, 6, 6, 7), (6, 7, 6, 5))  # fmt: skip
 
 
 class Corners(NamedTuple):
@@ -30,17 +37,30 @@ class Corners(NamedTuple):
     z: tuple[int, int]
 
 
-def _direction(scale: list[float], centre: list[float], angles: tuple[float, float, float, float, float, float]) -> list[float]:
-    """``DefineViewDirection``: the matrix taking the box's points to the normalised view."""
-    cosphi, sinphi, costhe, sinthe, cospsi, sinpsi = angles
-    tran = [1 / scale[0], 0, 0, -centre[0] / scale[0],
+#: The sines and cosines ``DefineViewDirection`` is given: of phi, theta and psi, cosine first.
+Angles = tuple[float, float, float, float, float, float]
+
+
+def _translation(scale: list[float], centre: list[float]) -> list[float]:
+    """``DefineViewDirection``'s ``tran``: the box centred and shrunk into a unit sphere."""
+    return [1 / scale[0], 0, 0, -centre[0] / scale[0],
             0, 1 / scale[1], 0, -centre[1] / scale[1],
             0, 0, 1 / scale[2], -centre[2] / scale[2],
             0, 0, 0, 1]  # fmt: skip
+
+
+def _rotation(angles: Angles) -> list[float]:
+    """``DefineViewDirection``'s ``rota``: the three rows turning the box to face the eye."""
+    cosphi, sinphi, costhe, sinthe, cospsi, sinpsi = angles
     c1, s1, c2, s2, c3, s3 = cospsi, sinpsi, costhe, sinthe, -sinphi, cosphi
-    rota = [c1 * c3 - s1 * c2 * s3, c1 * s3 + s1 * c2 * c3, s1 * s2, 0,
+    return [c1 * c3 - s1 * c2 * s3, c1 * s3 + s1 * c2 * c3, s1 * s2, 0,
             -s1 * c3 - c1 * c2 * s3, -s1 * s3 + c1 * c2 * c3, c1 * s2, 0,
             s2 * s3, -s2 * c3, c2, 0]  # fmt: skip
+
+
+def _direction(scale: list[float], centre: list[float], angles: Angles) -> list[float]:
+    """``DefineViewDirection``: the matrix taking the box's points to the normalised view."""
+    tran, rota = _translation(scale, centre), _rotation(angles)
     made = [0.0] * 16
     for row in range(3):
         for column in range(4):
@@ -85,18 +105,15 @@ class View3D:
                 + z * (t[0] * t[5] - t[1] * t[4]))  # fmt: skip
 
     def corners(self) -> Corners:
-        """``AxisVertex``: the box's corners, in the order the painters walk them, and the axes' ends."""
+        """``AxisVertex``: the box's corners, in the order the painters walk them, and axis ends."""
         lo, hi = self.rmin, self.rmax
-        p = [(lo[0], lo[1], lo[2]), (hi[0], lo[1], lo[2]), (hi[0], hi[1], lo[2]), (lo[0], hi[1], lo[2]),
-             (lo[0], lo[1], hi[2]), (hi[0], lo[1], hi[2]), (hi[0], hi[1], hi[2]), (lo[0], hi[1], hi[2])]  # fmt: skip
-        nodes = ((2, 3, 4, 1, 6, 7, 8, 5), (3, 4, 1, 2, 7, 8, 5, 6), (1, 2, 3, 4, 5, 6, 7, 8), (4, 1, 2, 3, 8, 5, 6, 7))
-        ends = ((3, 2, 1, 2), (2, 1, 3, 2), (1, 2, 2, 3), (2, 3, 2, 1), (4, 1, 4, 3), (3, 4, 4, 1),
-                (4, 3, 1, 4), (1, 4, 3, 4), (8, 5, 8, 7), (7, 8, 8, 5), (8, 7, 5, 8), (5, 8, 7, 8),
-                (7, 6, 5, 6), (6, 5, 7, 6), (5, 6, 6, 7), (6, 7, 6, 5))  # fmt: skip
+        p = [(lo[0], lo[1], lo[2]), (hi[0], lo[1], lo[2]), (hi[0], hi[1], lo[2]),
+             (lo[0], hi[1], lo[2]), (lo[0], lo[1], hi[2]), (hi[0], lo[1], hi[2]),
+             (hi[0], hi[1], hi[2]), (lo[0], hi[1], hi[2])]  # fmt: skip
         case = (1 if self.tnorm[8] <= 0 else 0) + (2 if self.tnorm[9] <= 0 else 0)
-        vertices = tuple(p[k - 1] for k in nodes[case])
+        vertices = tuple(p[k - 1] for k in CORNER_ORDER[case])
         case += (4 if self.tnorm[10] < 0 else 0) + (8 if self.tnorm[6] < 0 else 0)
-        ix1, ix2, iy1, iy2 = ends[case]
+        ix1, ix2, iy1, iy2 = AXIS_ENDS[case]
         return Corners(vertices, (ix1, ix2), (iy1, iy2), (1, 5) if case < 8 else (3, 7))
 
     def extent(self) -> tuple[float, float]:
@@ -110,7 +127,9 @@ class View3D:
             reach.append(total)
         return reach[0], reach[1]
 
-    def pad_range(self, margins: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+    def pad_range(
+        self, margins: tuple[float, float, float, float]
+    ) -> tuple[float, float, float, float]:
         """``PadRange``: the pad's ``x1, y1, x2, y2`` that put the box's shadow in the frame."""
         left, right, bottom, top = margins
         across, up = self.extent()

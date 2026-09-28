@@ -96,14 +96,16 @@ def marker_path(style: int, size: float) -> tuple[Any, bool, int]:
 
     base, m = base_style(style), marker_pixels(style, size)
     if base in (1, 6, 7):
-        squares = [Path.unit_rectangle().transformed(_shift(dx - 0.5, dy - 0.5)) for dx, dy in _dots(base)]
+        square = Path.unit_rectangle()
+        squares = [square.transformed(_shift(dx - 0.5, dy - 0.5)) for dx, dy in _dots(base)]
         return Path.make_compound_path(*squares), True, 0
     if base in (20, 24):
         radius = int(m / 2)
         circle = Path.circle((0.0, 0.0), radius + (0.5 if base == 20 else 0.0))
         return circle, base == 20, line_width(style)
     if base in STROKES:
-        lines = [Path([(math.floor(x1 * m), math.floor(y1 * m)), (math.floor(x2 * m), math.floor(y2 * m))])
+        lines = [Path([(math.floor(x1 * m), math.floor(y1 * m)),
+                       (math.floor(x2 * m), math.floor(y2 * m))])
                  for x1, y1, x2, y2 in STROKES[base]]  # fmt: skip
         return Path.make_compound_path(*lines), False, line_width(style)
     points, filled = SHAPES.get(base, SHAPES[21])
@@ -112,13 +114,15 @@ def marker_path(style: int, size: float) -> tuple[Any, bool, int]:
 
 
 def _shift(dx: float, dy: float) -> Any:
+    """A move by ``dx`` and ``dy`` pixels, placing a dot marker's square about its point."""
     from matplotlib.transforms import Affine2D
 
     return Affine2D().translate(dx, dy)
 
 
-def draw_markers(scene: Any, pixels: np.ndarray[Any, Any], style: int, size: float, color: Any) -> None:
-    """A marker at each of ``pixels`` - the canvas's, ``y`` down, rounded - as ``TImageDump`` draws them."""
+def draw_markers(scene: Any, pixels: np.ndarray[Any, Any], style: int, size: float,
+                 color: Any) -> None:  # fmt: skip
+    """A marker at each of ``pixels`` - the canvas's, ``y`` down, rounded - as ``TImageDump``'s."""
     from matplotlib.collections import PathCollection
     from matplotlib.transforms import Affine2D
 

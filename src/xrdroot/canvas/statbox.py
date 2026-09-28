@@ -55,6 +55,7 @@ def _moment(name: str, what: str, error: str) -> Rows:
     """One line per axis of a moment, with its error when the digit is 2."""
 
     def rows(h: Any, digit: int) -> list[tuple[str, str]]:
+        """``name`` of each axis of ``h`` - or of it alone when it has one - and its value."""
         axes = len(h.axes)
         made = []
         for axis in range(axes):
@@ -73,6 +74,7 @@ def _single(name: str, what: Callable[[Any], float], any_axes: bool = False,
     """One line of one number - of a one-dimensional histogram, unless ``any_axes``."""
 
     def rows(h: Any, _digit: int) -> list[tuple[str, str]]:
+        """``name`` and ``h``'s number, or nothing for a histogram this line is not shown for."""
         if len(h.axes) > 1 and not any_axes:
             return []
         return [(name, shown(what(h)))]
@@ -160,7 +162,10 @@ def default_stats(scene: Scene, h: Any) -> None:
         "fTextFont": 42,
         "fTextSize": 0.0,
         "fOptStat": OPT_STAT,
-        "fLines": [Primitive("TLatex", {"fTitle": f"{name} = {value}" if value else name}) for name, value in rows],
+        "fLines": [
+            Primitive("TLatex", {"fTitle": f"{name} = {value}" if value else name})
+            for name, value in rows
+        ],
     }
     stats_box(scene, Primitive("TPaveStats", corners), "")
     scene.stats += 1

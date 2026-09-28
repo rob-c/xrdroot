@@ -37,9 +37,11 @@ class TText(Drawn):
         return made
 
     def _draw_text(self, x: float, y: float, text: str, ndc: bool) -> Any:
-        """``TText::DrawText``: a new ``TText`` - never a formula - with this one's text attributes."""
+        """``TText::DrawText``: a new ``TText`` - never a formula - in this one's text
+        attributes."""
         made = TText(x, y, text)
-        made.members.update({name: value for name, value in self.members.items() if name.startswith("fText")})
+        own = {name: value for name, value in self.members.items() if name.startswith("fText")}
+        made.members.update(own)
         made.SetBit(NDC_BIT, ndc)
         made.Draw()
         return made

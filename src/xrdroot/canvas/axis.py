@@ -8,7 +8,7 @@ it, half that for a secondary tick, a quarter for a tertiary), its labels
 ``fLabelOffset`` of the pad beyond them, and its title ``1.6`` times its size
 times ``fTitleOffset`` further. The divisions are ``THLimitsFinder::Optimize``'s
 round numbers, the labels printed in the fewest digits that tell them
-apart, with a ``×10^n`` of the whole axis when they would be too long, and a
+apart, with a ``#times10^{n}`` of the whole axis when they would be too long, and a
 minus sign ``#minus``. A logarithmic axis has a label per decade - ``1``,
 ``10``, ``10^{2}`` - and ticks at each whole multiple.
 
@@ -103,26 +103,54 @@ class _Geometry(NamedTuple):
     phil: float
 
 
-def _geometry(axis: Axis, options: str, pixel: Any) -> _Geometry:
+def _snapped(value: float) -> float:
+    """A cosine or sine as ``PaintAxis`` keeps it: nothing, when it is all but nothing."""
+    return 0.0 if abs(value) <= EPSILON else value
+
+
+def _pixel_angle(axis: Axis, pixel: Any) -> float:
+    """``phil``: the axis's angle measured in whole pixels, which its title is turned by."""
+    (px0, py0), (px1, py1) = pixel(axis.x0, axis.y0), pixel(axis.x1, axis.y1)
+    if axis.x0 < axis.x1:
+        return math.atan2(py0 - py1, px1 - px0)
+    return math.atan2(py1 - py0, px0 - px1)
+
+
+def _direction(axis: Axis, pixel: Any) -> tuple[float, float, float]:
+    """The axis's cosine and sine in NDC, and its angle in pixels.
+
+    An upright axis is straight up or down, with no pixels to measure it by.
+    """
     x0, y0, x1, y1 = axis.x0, axis.y0, axis.x1, axis.y1
     if x0 == x1:
         phi = 0.5 * math.pi if y1 >= y0 else 1.5 * math.pi
         phil = phi
     else:
         phi = math.atan2(y1 - y0, x1 - x0)
-        (px0, py0), (px1, py1) = pixel(x0, y0), pixel(x1, y1)
-        phil = math.atan2(py0 - py1, px1 - px0) if x0 < x1 else math.atan2(py1 - py0, px0 - px1)
-    cos, sin = math.cos(phi), math.sin(phi)
-    cos, sin = (0.0 if abs(cos) <= EPSILON else cos), (0.0 if abs(sin) <= EPSILON else sin)
+        phil = _pixel_angle(axis, pixel)
+    return _snapped(math.cos(phi)), _snapped(math.sin(phi)), phil
+
+
+def _sides(axis: Axis, options: str) -> tuple[int, int]:
+    """``mside`` and ``lside``: which side of the axis its ticks and its labels go.
+
+    ``+`` and ``-`` put the ticks above or below, both of them either side, and
+    ``=`` puts the labels on the ticks' side rather than the other; an upright
+    axis going up has its ticks on its left unless told.
+    """
     plus, minus = "+" in options, "-" in options
-    mside = -1 if x0 == x1 and y1 > y0 else 1
-    mside = 0 if plus and minus else (1 if plus else (-1 if minus else mside))
-    lside = -mside
-    if "=" in options:
-        lside = mside
     if plus and minus:
-        lside = 1 if "=" in options else -1
-    length = math.hypot(x1 - x0, y1 - y0)
+        return 0, (1 if "=" in options else -1)
+    upright = -1 if axis.x0 == axis.x1 and axis.y1 > axis.y0 else 1
+    mside = 1 if plus else (-1 if minus else upright)
+    return mside, (mside if "=" in options else -mside)
+
+
+def _geometry(axis: Axis, options: str, pixel: Any) -> _Geometry:
+    """Where the axis points and which sides it is dressed on, which all the rest is placed by."""
+    cos, sin, phil = _direction(axis, pixel)
+    mside, lside = _sides(axis, options)
+    length = math.hypot(axis.x1 - axis.x0, axis.y1 - axis.y0)
     return _Geometry(cos, sin, length, mside, lside, phil)
 
 
@@ -149,20 +177,27 @@ class _Binning:
     length: float = 0.0
 
 
-def _optimised(axis: Axis, options: str, log: bool) -> _Binning:
-    """``PaintAxis``'s optimisation: round primary divisions, and secondaries within them."""
-    n1a, n2a, n3a = _divisions(axis.ndiv)
-    nn3 = max(n3a, 1)
-    nn2 = max(n2a, 1) * nn3
-    plain = _Binning(True, axis.wmin, axis.wmax, n1a, nn2, nn3, max(n1a, 1) * nn2 + 1)
-    if "N" in options or axis.wmin == axis.wmax or axis.ndiv == 0 or n1a <= 1 or log:
-        return plain
+def _unoptimised(axis: Axis, options: str, log: bool, n1a: int) -> bool:
+    """Whether the divisions are taken as they are: asked not to (``N``), or nothing to divide."""
+    return "N" in options or axis.wmin == axis.wmax or axis.ndiv == 0 or n1a <= 1 or log
+
+
+def _trimmed(axis: Axis, n1a: int) -> tuple[float, float, int, float]:
+    """``THLimitsFinder::Optimize``'s round divisions, less any that fall off the axis's ends."""
     low, high, nbins, width = optimize(axis.wmin, axis.wmax, n1a)
     if axis.wmin - low > EPSILON:
         low, nbins = low + width, nbins - 1
     if high - axis.wmax > EPSILON:
         high, nbins = high - width, nbins - 1
-    start, end = _optimised_ends(axis, low, high)
+    return low, high, nbins, width
+
+
+def _subdivisions(low: float, width: float, n2a: int, n3a: int) -> tuple[int, int]:
+    """``nn2`` and ``nn3``: the ticks per primary and per secondary division, themselves rounded.
+
+    The secondaries are optimised within the first primary division, and the
+    tertiaries within the first secondary, as ``PaintAxis`` does.
+    """
     nb2, low2, width2 = n2a, low, 0.0
     if n2a > 1 and width > 0:
         low2, _high2, nb2, width2 = optimize(low, low + width, n2a)
@@ -170,22 +205,46 @@ def _optimised(axis: Axis, options: str, log: bool) -> _Binning:
     if n3a > 1 and width2 > 0:
         nb3 = optimize(low2, low2 + width2, n3a)[2]
     nn3 = max(nb3, 1)
-    nn2 = max(nb2, 1) * nn3
-    found = _Binning(False, low, high, nbins, nn2, nn3, max(nbins, 1) * nn2 + 1, start, end)
+    return max(nb2, 1) * nn3, nn3
+
+
+def _measured(found: _Binning, axis: Axis) -> _Binning:
+    """The optimised axis's length, and how far short of each end of the whole it stops."""
+    start, end = found.start, found.end
     found.length = math.hypot(end[0] - start[0], end[1] - start[1])
     found.before = math.hypot(start[0] - axis.x0, start[1] - axis.y0)
     found.after = math.hypot(axis.x1 - end[0], axis.y1 - end[1])
-    if found.length < EPSILON:
+    return found
+
+
+def _optimised(axis: Axis, options: str, log: bool) -> _Binning:
+    """``PaintAxis``'s optimisation: round primary divisions, and secondaries within them."""
+    n1a, n2a, n3a = _divisions(axis.ndiv)
+    nn3 = max(n3a, 1)
+    nn2 = max(n2a, 1) * nn3
+    plain = _Binning(True, axis.wmin, axis.wmax, n1a, nn2, nn3, max(n1a, 1) * nn2 + 1)
+    if _unoptimised(axis, options, log, n1a):
+        return plain
+    low, high, nbins, width = _trimmed(axis, n1a)
+    start, end = _optimised_ends(axis, low, high)
+    nn2, nn3 = _subdivisions(low, width, n2a, n3a)
+    found = _Binning(False, low, high, nbins, nn2, nn3, max(nbins, 1) * nn2 + 1, start, end)
+    if _measured(found, axis).length < EPSILON:
         return _Binning(True, axis.wmin, axis.wmax, n1a, nn2, nn3, plain.nticks)
     return found
 
 
-def _optimised_ends(axis: Axis, low: float, high: float) -> tuple[tuple[float, float], tuple[float, float]]:
+def _optimised_ends(
+    axis: Axis, low: float, high: float
+) -> tuple[tuple[float, float], tuple[float, float]]:
     """Where the first and last round division fall along the axis, in NDC."""
     span = axis.wmax - axis.wmin
     if axis.x1 == axis.x0:
         slope = (axis.y1 - axis.y0) / span
-        return (axis.x0, slope * (low - axis.wmin) + axis.y0), (axis.x1, slope * (high - axis.wmin) + axis.y0)
+        return (
+            (axis.x0, slope * (low - axis.wmin) + axis.y0),
+            (axis.x1, slope * (high - axis.wmin) + axis.y0),
+        )
     slope = (axis.x1 - axis.x0) / span
     xs = (slope * (low - axis.wmin) + axis.x0, slope * (high - axis.wmin) + axis.x0)
     if axis.y1 == axis.y0:
@@ -195,33 +254,62 @@ def _optimised_ends(axis: Axis, low: float, high: float) -> tuple[tuple[float, f
     return (xs[0], alfa * xs[0] + beta), (xs[1], alfa * xs[1] + beta)
 
 
-def _ticks(axis: Axis, geo: _Geometry, binning: _Binning, options: str, out: Painted) -> None:
-    """The linear axis's ticks, and its grid at each primary one."""
+def _tick_length(axis: Axis, geo: _Geometry, options: str) -> float:
+    """A primary tick's length in NDC, signed by its side: ``fTickSize`` of the axis if ``S``."""
     size = axis.tick_size if "S" in options else 0.03
-    first = (1 if geo.mside >= 0 else -1) * geo.length * size
-    ticks = (first, first / 2, first / 4)
-    origin = (axis.x0, axis.y0) if binning.noopt else binning.start
-    length = geo.length if binning.noopt else binning.length
-    step = length / (binning.nticks - 1)
-    before = min(int(binning.before / step + EPSILON), 1000) if binning.before else 0
-    after = min(int(binning.after / step + EPSILON), 1000) if binning.after else 0
+    return (1 if geo.mside >= 0 else -1) * geo.length * size
+
+
+def _grid_side(axis: Axis) -> int:
+    """Which way the grid runs from the axis: back across the frame from an upright one going up."""
+    return -1 if axis.x0 == axis.x1 and axis.y1 > axis.y0 else 1
+
+
+def _span(axis: Axis, geo: _Geometry, binning: _Binning) -> tuple[tuple[float, float], float]:
+    """Where the divisions start and how long they run: the whole axis, or its optimised part."""
+    if binning.noopt:
+        return (axis.x0, axis.y0), geo.length
+    return binning.start, binning.length
+
+
+def _beyond(distance: float, step: float) -> int:
+    """How many whole steps fit in the stretch the optimisation left off an end, at most 1000."""
+    return min(int(distance / step + EPSILON), 1000) if distance else 0
+
+
+def _tick_places(binning: _Binning, step: float) -> list[tuple[int, float]]:
+    """Each tick's index and how far along it is: the divisions, then those before and after."""
+    before, after = _beyond(binning.before, step), _beyond(binning.after, step)
     places = [(k, k * step) for k in range(binning.nticks)]
     places += [(k, -k * step) for k in range(1, before + 1)]
     places += [(k, (binning.nticks - 1 + k) * step) for k in range(1, after + 1)]
-    side = -1 if axis.x0 == axis.x1 and axis.y1 > axis.y0 else 1
-    for index, along in places:
-        level = 0 if index % binning.nn2 == 0 else (1 if index % binning.nn3 == 0 else 2)
-        across = 0.0 if geo.mside else -ticks[level]
-        out.lines.append((*_rotate(along, ticks[level], geo, origin), *_rotate(along, across, geo, origin)))
-        if "W" in options and level == 0:
-            out.grid.append((*_rotate(along, side * axis.grid_length, geo, origin), *_rotate(along, 0.0, geo, origin)))
+    return places
+
+
+def _level(index: int, binning: _Binning) -> int:
+    """Whether tick ``index`` is primary (0), secondary (1) or tertiary (2)."""
+    if index % binning.nn2 == 0:
+        return 0
+    return 1 if index % binning.nn3 == 0 else 2
+
+
+def _ticks(axis: Axis, geo: _Geometry, binning: _Binning, options: str, out: Painted) -> None:
+    """The linear axis's ticks, and its grid at each primary one."""
+    first = _tick_length(axis, geo, options)
+    ticks = (first, first / 2, first / 4)
+    origin, length = _span(axis, geo, binning)
+    step = length / (binning.nticks - 1)
+    side = _grid_side(axis)
+    for index, along in _tick_places(binning, step):
+        level = _level(index, binning)
+        _tick(out, geo, origin, along, ticks[level], options, side, axis.grid_length, level == 0)
 
 
 # -- the numbers ----------------------------------------------------------------------------
 
 
 class _Format(NamedTuple):
-    """How the labels are printed: the format, the first value and the step, and a ``×10^n``."""
+    """How the labels are printed: the format, the first value and step, and a ``#times10^n``."""
 
     format: str
     first: float
@@ -230,7 +318,10 @@ class _Format(NamedTuple):
 
 
 def _scaled(ww: float, first: float, step: float, up: bool) -> tuple[int, float, float, float]:
-    """The labels divided (``up``) or multiplied by ten until they are short, by powers of a thousand."""
+    """The labels divided (``up``) or multiplied by ten until they are short.
+
+    The exponent goes by powers of a thousand, so it reads as the engineers' units do.
+    """
     exponent = 0
     small = 1 / 10 ** (MAX_DIGITS - 2)
     while True:
@@ -242,7 +333,10 @@ def _scaled(ww: float, first: float, step: float, up: bool) -> tuple[int, float,
 
 
 def _tiny(ww: float) -> int | None:
-    """For steps under the fewest digits' last: the power of a thousand small labels are shown times."""
+    """For steps under the fewest digits' last: the power of a thousand the labels are shown times.
+
+    ``None`` when the labels themselves are not small, and so need no exponent.
+    """
     af = math.log10(ww) + EPSILON
     if af >= 0:
         return None
@@ -250,7 +344,9 @@ def _tiny(ww: float) -> int | None:
     return iexe + {1: 2, 2: 1}.get(iexe % 3, 0)
 
 
-def _finished(if1: int, if2: int, first: float, step: float, exponent: int, negative: bool = False) -> _Format:
+def _finished(
+    if1: int, if2: int, first: float, step: float, exponent: int, negative: bool = False
+) -> _Format:
     """The format of ``if1`` digits, ``if2`` after the point, widened until the step shows."""
     if1 = min(if1 + (1 if negative else 0), 32)
     while step < 10.0 ** (-if2):
@@ -259,24 +355,51 @@ def _finished(if1: int, if2: int, first: float, step: float, exponent: int, nega
     return _Format(f"%{if1}.{if2}f" if if2 > 0 else f"%{if1 + 1}.1f", first, step, exponent)
 
 
+def _tiny_format(
+    wmin: float, wmax: float, n1a: int, ww: float, negative: bool
+) -> _Format | None:
+    """The format of steps too small for ``fAxisMaxDigits`` digits, times a power of a thousand.
+
+    ``None`` when the steps are not that small, or the labels are not, and the
+    ordinary format will do.
+    """
+    if abs(wmax - wmin) / n1a >= 10.0 ** (-MAX_DIGITS):
+        return None
+    iexe = _tiny(ww)
+    if iexe is None:
+        return None
+    first, step = wmin * 10**iexe, (wmax - wmin) / n1a * 10**iexe
+    return _finished(MAX_DIGITS, MAX_DIGITS - 2, first, step, -iexe, negative)
+
+
+def _figures(ww: float) -> int:
+    """``nf``: how many figures the largest label has before its point, or less its zeros after."""
+    af = (math.log10(ww) if ww >= 1 else math.log10(ww * 0.0001)) + EPSILON
+    return int(af) + 1
+
+
+def _decimals(ww: float, wmin: float, wmax: float, n1a: int) -> int:
+    """``na``: the figures after the point, more of them the smaller the labels and their steps."""
+    na = max((MAX_DIGITS - i for i in range(MAX_DIGITS - 1, 0, -1) if abs(ww) < 10**i), default=0)
+    ndyn = n1a
+    while ndyn and abs((wmax - wmin) / ndyn) <= 0.999 and na < MAX_DIGITS - 2:
+        na, ndyn = na + 1, ndyn // 10
+    return na
+
+
 def _label_format(wmin: float, wmax: float, n1a: int, no_exponent: bool) -> _Format:
     """``PaintAxis``'s choice of format for the labels of a linear axis."""
     first, step = wmin, (wmax - wmin) / n1a
     ww = max(abs(wmin), abs(wmax)) or 1.0
     negative = min(wmin, wmax) < 0
-    if not no_exponent and abs(wmax - wmin) / n1a < 10.0 ** (-MAX_DIGITS):
-        iexe = _tiny(ww)
-        if iexe is not None:
-            return _finished(MAX_DIGITS, MAX_DIGITS - 2, first * 10**iexe, step * 10**iexe, -iexe, negative)
-    af = (math.log10(ww) if ww >= 1 else math.log10(ww * 0.0001)) + EPSILON
-    nf = int(af) + 1
+    tiny = None if no_exponent else _tiny_format(wmin, wmax, n1a, ww, negative)
+    if tiny is not None:
+        return tiny
+    nf = _figures(ww)
     exponent = 0
     if not no_exponent and (nf > MAX_DIGITS or nf < -MAX_DIGITS):
         exponent, ww, first, step = _scaled(ww, first, step, nf > MAX_DIGITS)
-    na = max((MAX_DIGITS - i for i in range(MAX_DIGITS - 1, 0, -1) if abs(ww) < 10**i), default=0)
-    ndyn = n1a
-    while ndyn and abs((wmax - wmin) / ndyn) <= 0.999 and na < MAX_DIGITS - 2:
-        na, ndyn = na + 1, ndyn // 10
+    na = _decimals(ww, wmin, wmax, n1a)
     return _finished(max(nf + na, MAX_DIGITS) + 1, na, first, step, exponent, negative)
 
 
@@ -314,68 +437,95 @@ def _label_text(axis: Axis, geo: _Geometry, options: str, log: bool) -> _Text:
         across = 2
     elif geo.cos * geo.sin:
         across = 1 if geo.cos * geo.sin > 0 else 3
-    return _Text(height, axis.label_size, 10 * across + up, _label_offset(axis, geo, options, log, height))
+    offset = _label_offset(axis, geo, options, log, height)
+    return _Text(height, axis.label_size, 10 * across + up, offset)
+
+
+def _upright_offset(offset: float, tick: float, geo: _Geometry, options: str) -> float:
+    """An upright axis's ``ylabel``: past its ticks on their side, or off the other."""
+    if "+" in options and "-" not in options:
+        return offset / 2 + tick if "=" in options else -offset
+    return offset + (tick if geo.lside < 0 else 0.0)
+
+
+def _level_offset(
+    offset: float, tick: float, geo: _Geometry, options: str, log: bool, height: float
+) -> float:
+    """A level axis's ``ylabel``: below it, past its ticks if they hang down, or above it.
+
+    A logarithmic axis's labels, with their raised exponents, sit half a label lower.
+    """
+    if "-" in options and "+" not in options:
+        found = offset + 0.5 * height + abs(tick)
+    else:
+        found = -offset - (abs(tick) if geo.mside <= 0 else 0.0)
+    return found - (0.5 * height if log else 0.0)
 
 
 def _label_offset(axis: Axis, geo: _Geometry, options: str, log: bool, height: float) -> float:
     """``ylabel``: how far across the axis its labels are put, in NDC."""
-    plus, minus = "+" in options, "-" in options
-    tick = (1 if geo.mside >= 0 else -1) * geo.length * (axis.tick_size if "S" in options else 0.03)
+    tick = _tick_length(axis, geo, options)
     offset = axis.label_offset
     if axis.x0 == axis.x1:
-        if plus and not minus:
-            return offset / 2 + tick if "=" in options else -offset
-        return offset + (tick if geo.lside < 0 else 0.0)
+        return _upright_offset(offset, tick, geo, options)
     if axis.y0 == axis.y1:
-        if minus and not plus:
-            found = offset + 0.5 * height + abs(tick)
-        else:
-            found = -offset - (abs(tick) if geo.mside <= 0 else 0.0)
-        return found - (0.5 * height if log else 0.0)
+        return _level_offset(offset, tick, geo, options, log, height)
     return offset if geo.mside + geo.lside >= 0 else -offset
 
 
-def _linear_labels(axis: Axis, geo: _Geometry, binning: _Binning, text: _Text, out: Painted, options: str) -> None:
-    """The labels of a linear axis, one per primary division, and its ``×10^n`` if it has one."""
+def _exponent_label(axis: Axis, geo: _Geometry, text: _Text, exponent: int) -> Label:
+    """The ``#times10^{n}`` the labels are all shown times, just past the axis's far end.
+
+    It is written upright in the labels' font, made precise-size if it is not.
+    """
+    along = (geo.length if axis.x0 != axis.x1 else axis.y1 - axis.y0) + 0.1 * text.height
+    u, v = _rotate(along, 0.0, geo, (axis.x0, axis.y0))
+    font = axis.label_font if axis.label_font % 10 >= 2 else axis.label_font // 10 * 10 + 2
+    shown = f"#times10^{{{exponent}}}".replace("-", "#minus")
+    return Label(shown, u, v, 11, 0.0, font, text.size, axis.label_color)
+
+
+def _linear_labels(
+    axis: Axis, geo: _Geometry, binning: _Binning, text: _Text, out: Painted, options: str
+) -> None:
+    """The labels of a linear axis, one per primary division, and its ``#times10^n`` if any."""
     if not binning.n1a:
         return
     form = _label_format(binning.wmin, binning.wmax, binning.n1a, "noexponent" in axis.bits)
-    origin = (axis.x0, axis.y0) if binning.noopt else binning.start
-    length = geo.length if binning.noopt else binning.length
+    origin, length = _span(axis, geo, binning)
     step = length / binning.n1a
     centred = "M" in options or "centerlabels" in axis.bits
+    shift = 0.5 * step if centred else 0.0
+    drop = 0.80 * text.height if axis.y0 == axis.y1 else 0.0
     value = form.first
-    for k in range((binning.n1a - 1 if centred else binning.n1a) + 1):
-        along = step * k + (0.5 * step if centred else 0.0)
+    for k in range(binning.n1a + (0 if centred else 1)):
         label = _printed(value, form.format, "." in options)
         value += form.step
-        u, v = _rotate(along, text.offset, geo, origin)
-        if axis.y0 == axis.y1:
-            v -= 0.80 * text.height
-        out.labels.append(Label(label.replace("-", "#minus"), u, v, text.align, 0.0,
+        u, v = _rotate(step * k + shift, text.offset, geo, origin)
+        out.labels.append(Label(label.replace("-", "#minus"), u, v - drop, text.align, 0.0,
                                 axis.label_font, text.size, axis.label_color))  # fmt: skip
     if form.exponent:
-        along = (geo.length if axis.x0 != axis.x1 else axis.y1 - axis.y0) + 0.1 * text.height
-        u, v = _rotate(along, 0.0, geo, (axis.x0, axis.y0))
-        font = axis.label_font if axis.label_font % 10 >= 2 else axis.label_font // 10 * 10 + 2
-        out.labels.append(Label(f"#times10^{{{form.exponent}}}".replace("-", "#minus"), u, v, 11, 0.0,
-                                font, text.size, axis.label_color))  # fmt: skip
+        out.labels.append(_exponent_label(axis, geo, text, form.exponent))
 
 
 # -- logarithmic axes -------------------------------------------------------------------------
 
 
 class _Decades(NamedTuple):
-    """A logarithmic axis's decades: the first, how many, the NDC per decade, and the first label."""
+    """A logarithmic axis's decades: the first, how many, NDC per decade, and the first label."""
 
     low: float
     first: int
-    count: int
+    total: int
     scale: float
     number: int
 
 
 def _decades(axis: Axis, geo: _Geometry) -> _Decades:
+    """The decades a logarithmic axis spans, its ends nudged a millionth outward as ROOT does.
+
+    The nudge keeps an end that is a whole decade from being lost to rounding.
+    """
     low = math.log10(axis.wmin)
     low += 1e-6 if low > 0 else -1e-6
     high = math.log10(axis.wmax)
@@ -385,7 +535,9 @@ def _decades(axis: Axis, geo: _Geometry) -> _Decades:
     return _Decades(low, first, last - first + 1, geo.length / (high - low), number)
 
 
-def _log_label(axis: Axis, geo: _Geometry, text: _Text, number: int, at: tuple[float, float]) -> Label:
+def _log_label(
+    axis: Axis, geo: _Geometry, text: _Text, number: int, at: tuple[float, float]
+) -> Label:
     """One decade's label: ``1``, ``10``, ``10^{n}``, or the number itself without exponents."""
     u, v = at
     if axis.x0 == axis.x1:
@@ -399,37 +551,81 @@ def _log_label(axis: Axis, geo: _Geometry, text: _Text, number: int, at: tuple[f
         shown = f"{10.0**number:f}".rstrip("0").rstrip(".")
     else:
         shown = {0: "1", 1: "10"}.get(number, f"10^{{{number}}}")
-    return Label(shown.replace("-", "#minus"), u, v, text.align, 0.0, axis.label_font, text.size, axis.label_color)
+    return Label(shown.replace("-", "#minus"), u, v, text.align, 0.0,
+                 axis.label_font, text.size, axis.label_color)  # fmt: skip
+
+
+def _labelled(axis: Axis, options: str) -> bool:
+    """Whether the axis is labelled: not when told ``U``, nor when its labels are off the pad."""
+    return "U" not in options and axis.label_offset <= 1.1
+
+
+def _log_shift(axis: Axis) -> float:
+    """How many label heights a logarithmic axis's labels move off it, beyond ``ylabel``."""
+    if axis.x0 == axis.x1:
+        return 0.33
+    return -0.65 if axis.y0 == axis.y1 else 0.0
+
+
+@dataclass
+class _LogWalk:
+    """``PaintAxis``'s walk along a logarithmic axis, decade by decade.
+
+    It keeps what the walk carries from one decade to the next - how far off the
+    axis the labels are, and the number of the next one - so each step can be
+    taken on its own.
+    """
+
+    axis: Axis
+    geo: _Geometry
+    text: _Text
+    options: str
+    out: Painted
+    decades: _Decades
+    first: float
+    offset: float
+    number: int
+
+    def decade(self, j: int) -> bool:
+        """Decade ``j``'s long tick, label and short ticks; whether the axis goes on past it."""
+        decade = self.decades.first - 2 + j
+        if j == 1:
+            self.offset += self.text.height * _log_shift(self.axis)
+        along = self.decades.scale * (decade - self.decades.low)
+        if along >= 0 and not self._primary(j, along):
+            return False
+        n1a = self.axis.ndiv % 100
+        return _multiples(self.axis, self.geo, self.decades, decade, self.first / 2,
+                          self.options, self.out, n1a)  # fmt: skip
+
+    def _primary(self, j: int, along: float) -> bool:
+        """The decade's own tick and label, at ``along``; whether the axis goes on past it."""
+        axis, geo, origin = self.axis, self.geo, (self.axis.x0, self.axis.y0)
+        if along - geo.length > EPSILON:
+            return False
+        _tick(self.out, geo, origin, along, self.first, self.options, _grid_side(axis),
+              axis.grid_length)  # fmt: skip
+        if not _labelled(axis, self.options):
+            return True
+        n1a = axis.ndiv % 100
+        if not n1a:
+            return False
+        if _shows(self.decades.total, n1a, j):
+            at = _rotate(along, self.offset, geo, origin)
+            self.out.labels.append(_log_label(axis, geo, self.text, self.number, at))
+        self.number += 1
+        return True
 
 
 def _log_ticks(axis: Axis, geo: _Geometry, text: _Text, options: str, out: Painted) -> None:
     """A logarithmic axis: a long tick and a label at each decade, short ones at its multiples."""
     if axis.wmin <= 0 or axis.wmax <= 0 or axis.wmin == axis.wmax:
         return
-    size = axis.tick_size if "S" in options else 0.03
-    first = (1 if geo.mside >= 0 else -1) * geo.length * size
     decades = _decades(axis, geo)
-    n1a = axis.ndiv % 100
-    offset, number = text.offset, decades.number
-    origin = (axis.x0, axis.y0)
-    side = -1 if axis.x0 == axis.x1 and axis.y1 > axis.y0 else 1
-    labelled = "U" not in options and axis.label_offset <= 1.1
-    for j in range(1, decades.count + 1):
-        decade = decades.first - 2 + j
-        if j == 1:
-            offset += text.height * (0.33 if axis.x0 == axis.x1 else -0.65 if axis.y0 == axis.y1 else 0.0)
-        along = decades.scale * (decade - decades.low)
-        if along >= 0:
-            if along - geo.length > EPSILON:
-                return
-            _tick(out, geo, origin, along, first, options, side, axis.grid_length)
-            if labelled:
-                if not n1a:
-                    return
-                if _shows(decades.count, n1a, j):
-                    out.labels.append(_log_label(axis, geo, text, number, _rotate(along, offset, geo, origin)))
-                number += 1
-        if not _multiples(axis, geo, decades, decade, first / 2, options, out, n1a):
+    first = _tick_length(axis, geo, options)
+    walk = _LogWalk(axis, geo, text, options, out, decades, first, text.offset, decades.number)
+    for j in range(1, decades.total + 1):
+        if not walk.decade(j):
             return
 
 
@@ -445,25 +641,25 @@ def _tick(out: Painted, geo: _Geometry, origin: tuple[float, float], along: floa
     across = 0.0 if geo.mside else -length
     out.lines.append((*_rotate(along, length, geo, origin), *_rotate(along, across, geo, origin)))
     if gridded and "W" in options:
-        out.grid.append((*_rotate(along, side * grid, geo, origin), *_rotate(along, 0.0, geo, origin)))
+        far, near = _rotate(along, side * grid, geo, origin), _rotate(along, 0.0, geo, origin)
+        out.grid.append((*far, *near))
 
 
-def _multiples(axis: Axis, geo: _Geometry, decades: _Decades, decade: int, length: float, options: str,
-               out: Painted, n1a: int) -> bool:  # fmt: skip
+def _multiples(axis: Axis, geo: _Geometry, decades: _Decades, decade: int, length: float,
+               options: str, out: Painted, n1a: int) -> bool:  # fmt: skip
     """The ticks at 2 to 9 times a decade, all of them or only 5 when there are many decades.
 
     Returns whether the axis goes on past them.
     """
-    origin = (axis.x0, axis.y0)
-    side = -1 if axis.x0 == axis.x1 and axis.y1 > axis.y0 else 1
+    origin, side = (axis.x0, axis.y0), _grid_side(axis)
     for k in range(2, 10):
         along = decades.scale * (math.log10(k) + decade - decades.low)
         if along < 0:
             continue
         if along > geo.length:
             return False
-        if decades.count <= n1a * 2 or k == 5:
-            gridded = decades.count <= 5 and axis.ndiv > 100
+        if decades.total <= n1a * 2 or k == 5:
+            gridded = decades.total <= 5 and axis.ndiv > 100
             _tick(out, geo, origin, along, length, options, side, axis.grid_length, gridded)
     return True
 
@@ -471,29 +667,45 @@ def _multiples(axis: Axis, geo: _Geometry, decades: _Decades, decade: int, lengt
 # -- the title ---------------------------------------------------------------------------------
 
 
-def _title(axis: Axis, geo: _Geometry, out: Painted) -> None:
-    """The axis's title, beyond its labels, at its far end or its middle, turned along it."""
+def _title_height(axis: Axis) -> float:
+    """The title's height in NDC: a precise size in pixels is a fraction of the pad across it."""
     height = axis.title_size
     if axis.title_font % 10 > 2:
         height /= axis.pad[0] if axis.x1 == axis.x0 else axis.pad[1]
+    return height
+
+
+def _title_turn(axis: Axis, geo: _Geometry, centre: bool) -> tuple[int, float]:
+    """The title's alignment and angle: along the axis, or turned about (``rotatetitle``).
+
+    A title at the far end is aligned by that end, which a turn or a reversed
+    axis puts on its other side.
+    """
+    forward = axis.x1 >= axis.x0
+    if "rotatetitle" in axis.bits:
+        return (22 if centre else (12 if forward else 32)), geo.phil + math.pi
+    return (22 if centre else (32 if forward else 12)), geo.phil
+
+
+def _title(axis: Axis, geo: _Geometry, out: Painted) -> None:
+    """The axis's title, beyond its labels, at its far end or its middle, turned along it."""
+    height = _title_height(axis)
     offset = axis.title_offset or 1.0
-    across = geo.lside * (1.6 if axis.x1 == axis.x0 or axis.y1 == axis.y0 else 1.3) * height * offset
+    widen = 1.6 if axis.x1 == axis.x0 or axis.y1 == axis.y0 else 1.3
+    across = geo.lside * widen * height * offset
     centre = "centertitle" in axis.bits
     along = 0.5 * geo.length if centre else geo.length
-    forward = axis.x1 >= axis.x0
-    angle = geo.phil
-    if "rotatetitle" in axis.bits:
-        align = 22 if centre else (12 if forward else 32)
-        angle += math.pi
-    else:
-        align = 22 if centre else (32 if forward else 12)
+    align, angle = _title_turn(axis, geo, centre)
     u, v = _rotate(along, across, geo, (axis.x0, axis.y0))
-    out.labels.append(Label(axis.title, u, v, align, math.degrees(angle), axis.title_font, axis.title_size,
-                            axis.title_color))  # fmt: skip
+    out.labels.append(Label(axis.title, u, v, align, math.degrees(angle),
+                            axis.title_font, axis.title_size, axis.title_color))  # fmt: skip
 
 
 def paint_axis(axis: Axis, pixel: Any) -> Painted:
-    """Everything ``TGaxis::PaintAxis`` paints for ``axis``; ``pixel`` turns NDC into whole pixels."""
+    """Everything ``TGaxis::PaintAxis`` paints for ``axis``.
+
+    ``pixel`` turns a point of NDC into whole pixels, which the title's angle is measured in.
+    """
     options = axis.chopt
     log = "G" in options
     geo = _geometry(axis, options, pixel)
@@ -508,7 +720,7 @@ def paint_axis(axis: Axis, pixel: Any) -> Painted:
     else:
         binning = _optimised(axis, options, log)
         _ticks(axis, geo, binning, options, out)
-        if "U" not in options and axis.label_offset <= 1.1:
+        if _labelled(axis, options):
             _linear_labels(axis, geo, binning, text, out, options)
     if axis.title:
         _title(axis, geo, out)

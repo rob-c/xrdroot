@@ -118,11 +118,21 @@ def _grid(edges: list[Any]) -> tuple[Any, Any]:
     return grid, volumes
 
 
+def _named_first(first: Any, args: tuple[Any, ...]) -> tuple[Any, Any, tuple[Any, ...]]:
+    """The histogram's own name, if the call gave one, its first variable and the rest.
+
+    ``createHistogram("x,y", x, ...)`` is the overload that takes a name and
+    then a variable - ROOT's ``x,y__x_y`` - where ``createHistogram("x,y")``
+    alone is the one that takes the variables' names.
+    """
+    if isinstance(first, str) and args and hasattr(args[0], "getMin"):
+        return first, args[0], args[1:]
+    return _own_name(first, args), first, args
+
+
 def data_histogram(data: Any, first: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """``RooAbsData::createHistogram``."""
-    name = _own_name(first, args)
-    if isinstance(first, str) and args and hasattr(args[0], "GetName"):  # (name, x, ...)
-        name, first, args = first, args[0], args[1:]
+    name, first, args = _named_first(first, args)
     axes = _axes(first, tuple(a for a in args if not isinstance(a, str)), kwargs, data.variable)
     options = commands([a for a in args if isinstance(a, RooCmdArg)], kwargs)
     made = _book(name or data.GetName(), axes)

@@ -33,6 +33,7 @@ TOUCH = 1e-6
 #: What an untouched slice's edges are.
 VERY_BIG = 9e99
 
+#: A point of the box: x, y and z in the histogram's units.
 Point = tuple[float, float, float]
 
 
@@ -56,10 +57,12 @@ class _Scan:
         self.seen = -1
 
     def _open(self, at: float) -> None:
+        """The line comes into sight at ``at``: a part begins there."""
         self.seen = 1
         self.parts.append([at, math.nan])
 
     def _close(self, at: float) -> None:
+        """The line goes out of sight at ``at``: the last part ends there."""
         self.parts[-1][1] = at
 
     @staticmethod
@@ -68,7 +71,7 @@ class _Scan:
         return 0 if above > TOUCH else (2 if below < -TOUCH else 1)
 
     def step(self, at: float, dt: float, gaps: tuple[float, float, float, float]) -> None:
-        """One slice: whether the line is seen at its left end, and where it crosses the screen's edges."""
+        """One slice: whether the line is seen at its left end, and where it crosses the screen."""
         up1, down1, up2, down2 = gaps
         left = self._case(up1, down1)
         if left != 1 and self.seen <= 0:
@@ -92,9 +95,24 @@ class _Scan:
             self._open(crossing_up if case == 3 else crossing_down)
 
     def finished(self) -> list[tuple[float, float]]:
+        """The parts seen, a part still open at the line's end ending there."""
         if self.seen > 0:
             self._close(1.0)
         return [(start, end) for start, end in self.parts]
+
+
+def _uncovered(y1: float, y2: float, top: float, bottom: float) -> list[tuple[float, float]]:
+    """The parts of an upright line from ``y1`` up to ``y2`` outside ``bottom`` to ``top``."""
+    if not (y1 < top and y2 > bottom):
+        return [(0.0, 1.0)]
+    if y1 >= bottom and y2 <= top:
+        return []
+    parts = []
+    if bottom > y1:
+        parts.append((0.0, (bottom - y1) / (y2 - y1)))
+    if top < y2:
+        parts.append(((top - y1) / (y2 - y1), 1.0))
+    return parts
 
 
 class MovingScreen:
@@ -125,7 +143,7 @@ class MovingScreen:
         self.levels = [start + i * width for i in range(count + 1)]
 
     def _slices(self, a: Point, b: Point) -> tuple[float, float, float, float, bool]:
-        """An edge's ends across and up the screen, left to right, and whether it was turned round."""
+        """An edge's ends across and up the screen, left to right, and whether they were swapped."""
         x1, y1, _z1 = self.view.screen(a)
         x2, y2, _z2 = self.view.screen(b)
         if x1 >= x2:
@@ -143,26 +161,23 @@ class MovingScreen:
             parts, back = self._upright(y1, y2, i1, back)
         return [(1 - t0, 1 - t1) for t0, t1 in parts] if back else parts
 
-    def _upright(self, y1: float, y2: float, i1: int, back: bool) -> tuple[list[tuple[float, float]], bool]:
+    def _upright(self, y1: float, y2: float, i1: int,
+                 back: bool) -> tuple[list[tuple[float, float]], bool]:  # fmt: skip
         """A line within one slice: seen where it reaches above or below what is drawn there."""
-        if y2 <= y1:
-            if y2 == y1:
-                return [], back
+        if y2 == y1:
+            return [], back
+        if y2 < y1:
             back = not back
             y1, y2 = y2, y1
+        top, bottom = self._drawn(i1)
+        return _uncovered(y1, y2, top, bottom), back
+
+    def _drawn(self, i1: int) -> tuple[float, float]:
+        """The highest and lowest drawn at slice ``i1``'s left end, and the last one's right end."""
         top, bottom = self.up[2 * i1 - 2], self.down[2 * i1 - 2]
         if i1 != 1:
             top, bottom = max(top, self.up[2 * i1 - 3]), min(bottom, self.down[2 * i1 - 3])
-        if not (y1 < top and y2 > bottom):
-            return [(0.0, 1.0)], back
-        if y1 >= bottom and y2 <= top:
-            return [], back
-        parts = []
-        if bottom > y1:
-            parts.append((0.0, (bottom - y1) / (y2 - y1)))
-        if top < y2:
-            parts.append(((top - y1) / (y2 - y1), 1.0))
-        return parts, back
+        return top, bottom
 
     def _sloped(self, y1: float, y2: float, i1: int, i2: int) -> list[tuple[float, float]]:
         """A line across slices ``i1`` to ``i2``: in and out of sight at each slice's ends."""
@@ -171,8 +186,9 @@ class MovingScreen:
         dy, dt = (y2 - y1) / span, 1 / span
         for i in range(i1, i2):
             yy1 = y1 + dy * (i - i1)
-            state.step(dt * (i - i1), dt, (yy1 - self.up[2 * i - 2], yy1 - self.down[2 * i - 2],
-                                            yy1 + dy - self.up[2 * i - 1], yy1 + dy - self.down[2 * i - 1]))
+            gaps = (yy1 - self.up[2 * i - 2], yy1 - self.down[2 * i - 2],
+                    yy1 + dy - self.up[2 * i - 1], yy1 + dy - self.down[2 * i - 1])  # fmt: skip
+            state.step(dt * (i - i1), dt, gaps)
             if len(state.parts) + 1 >= 100:
                 break
         return state.finished()

@@ -1,100 +1,73 @@
-"""ROOT's ``#`` mathematics, as the mathtext matplotlib draws.
+"""ROOT's ``#`` mathematics, laid out as ``TLatex`` lays it out, against ROOT's own sizes.
 
-Every translation is also handed to matplotlib's own mathtext parser, so a
-string that translates but will not draw is a failure here rather than in
-somebody's saved canvas.
+ROOT 6.40.04 measured each of these strings - ``TLatex::GetXsize`` and
+``GetYsize`` for a ``TLatex`` of font 42 and size 0.05, NDC, in a 700 by 500
+canvas (a pad of 696 by 472 pixels) - on macOS, whose TeX Gyre Heros has
+Helvetica's widths. Laid out here in the first Helvetica installed, each is
+ROOT's to the fraction of a pixel ROOT keeps. Where only a wider face is
+installed - matplotlib's DejaVu Sans, which is a tenth or so wider and taller
+- each is held to a quarter of ROOT's instead, which is what the layout,
+rather than the face, is answerable for.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
-from matplotlib.mathtext import MathTextParser
 
-from xrdroot.canvas.latex import ACCENTS, FACES, SYMBOLS, translate
+from xrdroot.canvas import fonts
+from xrdroot.canvas.latex import formula_form
 
-PARSER = MathTextParser("agg")
-
-
-def drawable(text: str) -> bool:
-    PARSER.parse(text, 72)
-    return True
-
-
-@pytest.mark.parametrize(
-    ("root", "mathtext"),
-    [
-        ("Entries", "Entries"),
-        ("cost $5", r"cost \$5"),
-        ("#mu^{+}#mu^{-}", r"${\mu}^{\mathrm{+}}{\mu}^{\mathrm{-}}$"),
-        ("#sqrt{s} = 13 TeV", r"$\sqrt{\mathrm{s}}\mathrm{\ =\ 13\ TeV}$"),
-        ("#sqrt[3]{x}", r"$\sqrt[3]{\mathrm{x}}$"),
-        ("p_{T} [GeV]", r"$\mathrm{p}_{\mathrm{T}}\mathrm{\ [GeV]}$"),
-        ("x_1", r"$\mathrm{x}_{\mathrm{1}}$"),
-        ("h__x", r"$\mathrm{h}_{\mathrm{\_}}\mathrm{x}$"),
-        ("h__x_y_z", r"$\mathrm{h}_{\mathrm{\_}}\mathrm{x}_{\mathrm{y}}{}_{\mathrm{z}}$"),
-        ("a^^b", r"$\mathrm{a}^{\mathrm{\^{}}}\mathrm{b}$"),
-        ("#bar{p}p #rightarrow X", r"$\bar{\mathrm{p}}\mathrm{p\ }{\rightarrow}\mathrm{\ X}$"),
-        ("x #pm 1%", r"$\mathrm{x\ }{\pm}\mathrm{\ 1\%}$"),
-        ("#splitline{a}{b}", r"$\genfrac{}{}{0}{}{\mathrm{a}}{\mathrm{b}}$"),
-        ("#frac{1}{2}", r"$\frac{\mathrm{1}}{\mathrm{2}}$"),
-        ("#it{p}_{T}", r"${\mathit{p}}_{\mathrm{T}}$"),
-        ("#bf{b}", r"${\mathbf{b}}$"),
-        ("#font[42]{f} #color[2]{c}", r"${\mathrm{f}}\mathrm{\ }{\mathrm{c}}$"),
-        ("#left(x#right)", r"$\mathrm{(}\mathrm{x}\mathrm{)}$"),
-        ("#left{x#right}", r"$\mathrm{\{}\mathrm{x}\mathrm{\}}$"),
-        ("{a}^{2}", r"${\mathrm{a}}^{\mathrm{2}}$"),
-        ("#unknown", r"$\mathrm{unknown}$"),
-        ("#{", r"$\mathrm{\{}$"),
-        ("#Alpha #Omega", r"${\mathrm{A}}\mathrm{\ }{\Omega}$"),
-        ("a}#b", r"$\mathrm{a\}}\mathrm{b}$"),
-        ("#&", r"$\mathrm{&}$"),
-        ("#sqrt", r"$\sqrt{\ }$"),
-        ("x^{}", r"$\mathrm{x}^{\ }$"),
-    ],
+#: Whether ROOT's 4x is a face with Helvetica's widths here, as it was where ROOT measured.
+HELVETICA = Path(fonts.face(42)).stem.lower().replace(" ", "").startswith(
+    ("helvetica", "texgyreheros", "nimbussans", "arial")
 )
-def test_root_latex_translates_to_mathtext_matplotlib_draws(root, mathtext):
-    assert translate(root) == mathtext
-    assert drawable(mathtext)
+#: The pad ROOT measured in: a 700 by 500 canvas's, less its window's edges.
+PAD = (696, 472)
+
+#: Each string, and ROOT's width and height of it in the pad's pixels.
+MEASURED = [
+    ("x", 11.0, 12.0),
+    ("x^{2}", 19.0, 18.2),
+    ("x_{i}", 14.0, 18.6),
+    ("x^{2}_{i}", 19.0, 24.8),
+    ("#sqrt{x}", 22.8, 17.9),
+    ("#sqrt[3]{x}", 25.16, 29.9),
+    ("#bar{x}", 11.0, 19.87),
+    ("#hat{x}", 11.0, 19.87),
+    ("#vec{v}", 11.0, 17.9),
+    ("#tilde{n}", 11.0, 19.87),
+    ("#dot{x}", 11.0, 19.87),
+    ("#ddot{x}", 11.0, 19.87),
+    ("#left[x#right]", 28.7, 12.0),
+    ("#left|x#right|", 28.7, 12.0),
+    ("#left{x#right}", 18.5, 12.0),
+    ("#font[12]{a}", 11.0, 11.0),
+    ("#it{i}", 6.0, 16.0),
+    ("#scale[2]{s}", 21.0, 25.0),
+    ("#mbox{m}", 17.0, 12.0),
+    ("#hbar", 11.8, 11.8),
+    ("#odot", 11.8, 11.8),
+    ("p_{T} [GeV]", 82.0, 28.6),
+    ("Events / ( 0.5 x 0.5 )", 196.0, 22.0),
+]
 
 
-@pytest.mark.parametrize("name", sorted({*SYMBOLS, *ACCENTS, *FACES}))
-def test_every_command_this_knows_draws(name):
-    argument = "{x}" if name in ACCENTS or name in FACES else ""
-    assert drawable(translate(f"#{name}{argument}"))
+def roots(value: float) -> object:
+    """ROOT's measure, to the hundredth of a pixel with Helvetica and to a quarter without."""
+    return pytest.approx(value, abs=0.01) if HELVETICA else pytest.approx(value, rel=0.25)
 
 
-def test_a_delimiter_with_nothing_after_it_is_nothing():
-    assert translate("#left") == ""
+@pytest.mark.parametrize(("text", "width", "height"), MEASURED)
+def test_tlatex_is_as_wide_and_as_tall_as_root_measures_it(text, width, height):
+    form = formula_form(text, 0.05, 42, PAD, float(PAD[1]))
+    assert (form.width, form.over + form.under) == (roots(width), roots(height))
 
 
-def test_a_group_left_open_ends_where_the_text_does():
-    assert drawable(translate("x^{2"))
-    assert drawable(translate("#sqrt[3{x}"))
-
-
-def test_a_mark_this_matplotlib_cannot_draw_keeps_its_text(monkeypatch):
-    from xrdroot.canvas import latex
-
-    monkeypatch.setattr(latex, "mathtext_draws", lambda command: command != "underline")
-    assert translate("#underline{x}") == r"$\mathrm{x}$"
-    assert translate("#bar{x}") == r"$\bar{\mathrm{x}}$"
-
-
-def test_without_matplotlib_the_translation_is_still_the_whole_one(monkeypatch):
-    import builtins
-
-    from xrdroot.canvas import latex
-
-    real = builtins.__import__
-
-    def missing(name, *args, **kwargs):
-        if name.startswith("matplotlib"):
-            raise ImportError(name)
-        return real(name, *args, **kwargs)
-
-    latex.mathtext_draws.cache_clear()
-    monkeypatch.setattr(builtins, "__import__", missing)
-    try:
-        assert latex.mathtext_draws("underline")
-    finally:
-        latex.mathtext_draws.cache_clear()
+@pytest.mark.parametrize("text", ["x^{2", "#perp"])
+def test_what_root_cannot_lay_out_has_no_size(text):
+    """A brace left open is refused, as ``CheckLatexSyntax`` refuses it; ``#perp`` is drawn
+    as lines of its own, and measures nothing."""
+    form = formula_form(text, 0.05, 42, PAD, float(PAD[1]))
+    assert (form.width, form.over + form.under) == (0.0, 0.0)

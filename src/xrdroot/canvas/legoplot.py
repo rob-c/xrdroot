@@ -26,7 +26,7 @@ from .axis import paint_axis
 from .dressing import axis_of, draw_painted
 from .frame import shown_bins
 from .lego import MovingScreen, Segment
-from .legofaces import back_box, front_box, lego_cells, surface_cells
+from .legofaces import back_box, box_corners, front_box, lego_cells, surface_cells
 from .model import lookup
 from .raster import add_line
 from .scene import Scene
@@ -39,6 +39,10 @@ __all__ = ["paint_three_d", "three_d_kind"]
 TOP_MARGIN = 0.05
 #: The pad's view angles when never set: ``fTheta`` and ``fPhi``.
 THETA, PHI = 30.0, 30.0
+#: ``PaintLegoAxis``'s nearness, in NDC, below which an axis's ends are one point and it is
+#: left out: the x and y axes', and the z axis's.
+SHORT_AXIS = 0.001
+SHORT_Z_AXIS = 0.1
 
 
 def three_d_kind(option: str) -> str:
@@ -50,7 +54,8 @@ def three_d_kind(option: str) -> str:
 def _z_range(values: np.ndarray[Any, Any], h: Any) -> tuple[float, float]:
     """``TableInit``'s z range, and ``PaintLego``'s extra margin on top."""
     zmin, zmax = float(values.min()), float(values.max())
-    stored_max, stored_min = float(lookup(h, "fMaximum", -1111)), float(lookup(h, "fMinimum", -1111))
+    stored_max = float(lookup(h, "fMaximum", -1111))
+    stored_min = float(lookup(h, "fMinimum", -1111))
     zmax = stored_max if stored_max != -1111 else zmax + TOP_MARGIN * (zmax - zmin)
     if stored_min != -1111:
         zmin = stored_min
@@ -78,24 +83,28 @@ class _Table:
         self.zmax = zmax
 
     def box(self) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+        """The box's lowest and highest corners: the shown bins' edges, and the z range."""
         return (float(self.xedges[0]), float(self.yedges[0]), self.zmin), (
             float(self.xedges[-1]), float(self.yedges[-1]), self.ztop)  # fmt: skip
 
     def clamp(self, value: float) -> float:
+        """A bin's content kept within the z range, as ``TableInit`` draws it."""
         return min(max(float(value), self.zmin), self.zmax)
 
     def block(self, ix: int, iy: int) -> tuple[list[tuple[float, float]], tuple[float, float]]:
         """``LegoFunction``: a bin's corners and its block's bottom and top."""
         x1, x2 = float(self.xedges[ix - 1]), float(self.xedges[ix])
         y1, y2 = float(self.yedges[iy - 1]), float(self.yedges[iy])
-        return [(x1, y1), (x2, y1), (x2, y2), (x1, y2)], (self.zmin, self.clamp(self.values[ix - 1, iy - 1]))
+        top = self.clamp(self.values[ix - 1, iy - 1])
+        return [(x1, y1), (x2, y1), (x2, y2), (x1, y2)], (self.zmin, top)
 
     def square(self, ix: int, iy: int) -> list[tuple[float, float, float]]:
         """``SurfaceFunction``: the middles of four neighbouring bins, at their contents."""
         xs = 0.5 * (self.xedges[:-1] + self.xedges[1:])
         ys = 0.5 * (self.yedges[:-1] + self.yedges[1:])
         corners = ((0, 0), (1, 0), (1, 1), (0, 1))
-        return [(float(xs[ix - 1 + a]), float(ys[iy - 1 + b]), self.clamp(self.values[ix - 1 + a, iy - 1 + b]))
+        return [(float(xs[ix - 1 + a]), float(ys[iy - 1 + b]),
+                 self.clamp(self.values[ix - 1 + a, iy - 1 + b]))
                 for a, b in corners]  # fmt: skip
 
 
@@ -107,9 +116,11 @@ class _Pad:
         self.x1, self.y1, self.x2, self.y2 = pad_range
 
     def ndc(self, x: float, y: float) -> tuple[float, float]:
+        """A point of the pad's range in the pad's NDC."""
         return (x - self.x1) / (self.x2 - self.x1), (y - self.y1) / (self.y2 - self.y1)
 
     def pixel(self, x: float, y: float) -> tuple[float, float]:
+        """A point of the pad's range as the canvas's pixel, unrounded."""
         return self.scene.pixel(*self.ndc(x, y))
 
 
@@ -123,25 +134,56 @@ def _draw_segments(pad: _Pad, segments: list[Segment]) -> None:
         add_line(pad.scene, lines, pad.scene.colors.rgb(color), width, style, many=True)
 
 
+#: An axis's two ends in the pad's coordinates.
+Ends = list[tuple[float, float]]
+
+
+def _axis_ends(view: View3D) -> dict[str, Ends]:
+    """``PaintLegoAxis``'s ends of the x, y and z axes: the box's corners ``AxisVertex`` picks.
+
+    A y axis that is all but upright is made exactly so.
+    """
+    corners = box_corners(view)
+    ends = view.corners()
+    tips = {name: [view.to_ndc(corners[k - 1])[:2] for k in pair]
+            for name, pair in zip("xyz", (ends.x, ends.y, ends.z))}  # fmt: skip
+    if abs(tips["y"][0][0] - tips["y"][1][0]) < SHORT_AXIS:
+        tips["y"][1] = (tips["y"][0][0], tips["y"][1][1])
+    return tips
+
+
+def _axis_option(name: str, a: tuple[float, float], b: tuple[float, float]) -> str | None:
+    """The ``TGaxis`` option an axis is drawn with - its ticks' side - or none if it is too short.
+
+    z's ticks go the way it runs up; x's and y's the way they run left.
+    """
+    if name == "z":
+        sign, far = ("+" if b[1] > a[1] else "-"), SHORT_Z_AXIS
+    else:
+        sign, far = ("+" if a[0] > b[0] else "-"), SHORT_AXIS
+    if abs(a[0] - b[0]) < far and abs(a[1] - b[1]) <= far:
+        return None
+    return "SDH=" + sign
+
+
 def _axes(pad: _Pad, view: View3D, h: Any) -> None:
     """``PaintLegoAxis``: x and y along the box's front bottom edges, z up its side."""
-    import math
-
-    corners = [(x + y * math.cos(math.radians(90.0)), y, z) for x, y, z in view.corners().vertices]
-    ends = view.corners()
-    tips = {name: [view.to_ndc(corners[k - 1])[:2] for k in pair] for name, pair in zip("xyz", (ends.x, ends.y, ends.z))}
-    if abs(tips["y"][0][0] - tips["y"][1][0]) < 0.001:
-        tips["y"][1] = (tips["y"][0][0], tips["y"][1][1])
+    tips = _axis_ends(view)
     for index, name in enumerate("xyz"):
         (a, b) = tips[name]
-        sign = ("+" if b[1] > a[1] else "-") if name == "z" else ("+" if a[0] > b[0] else "-")
-        far = 0.1 if name == "z" else 0.001
-        if abs(a[0] - b[0]) < far and abs(a[1] - b[1]) <= far:
-            continue
-        _one_axis(pad, h, index, (a, b), "SDH=" + sign, (view.rmin[index], view.rmax[index]))
+        chopt = _axis_option(name, a, b)
+        if chopt is not None:
+            _one_axis(pad, h, index, (a, b), chopt, (view.rmin[index], view.rmax[index]))
 
 
-def _one_axis(pad: _Pad, h: Any, index: int, ends: Any, chopt: str, span: tuple[float, float]) -> None:
+def _one_axis(pad: _Pad, h: Any, index: int, ends: Any, chopt: str,
+              span: tuple[float, float]) -> None:  # fmt: skip
+    """One of the box's axes as a ``TGaxis`` from the histogram's axis.
+
+    As ``PaintLegoAxis`` sets it: its divisions never optimised when they
+    are negative, x's and y's labels pushed out past their ticks, and y's
+    title offset one and a half when it has none.
+    """
     members = lookup(h, f"f{'XYZ'[index]}axis") or {}
     (x0, y0), (x1, y1) = (pad.ndc(*end) for end in ends)
     axis = axis_of(members, x0=x0, y0=y0, x1=x1, y1=y1, wmin=span[0], wmax=span[1], chopt=chopt,
@@ -154,6 +196,7 @@ def _one_axis(pad: _Pad, h: Any, index: int, ends: Any, chopt: str, span: tuple[
         axis = replace(axis, title_offset=1.5)
 
     def pixel(u: float, v: float) -> tuple[int, int]:
+        """A point of the pad's NDC as the whole pixel ``TGaxis`` rounds it to."""
         px, py = pad.scene.pixel(u, v)
         return nint(px), nint(py)
 
@@ -171,7 +214,8 @@ def paint_three_d(scene: Scene, h: Any, option: str) -> None:
     screen = MovingScreen(view)
     zaxis = lookup(h, "fZaxis") or {}
     screen.grid_levels(int(lookup(zaxis, "fNdivisions", 510)) % 100)
-    look = (int(lookup(h, "fLineColor", 1)), int(lookup(h, "fLineWidth", 1)), int(lookup(h, "fLineStyle", 1)))
+    look = (int(lookup(h, "fLineColor", 1)), int(lookup(h, "fLineWidth", 1)),
+            int(lookup(h, "fLineStyle", 1)))  # fmt: skip
     nx, ny = table.values.shape
     if three_d_kind(option) == "LEGO":
         lego_cells(screen, nx, ny, table.block, look)
@@ -179,6 +223,7 @@ def paint_three_d(scene: Scene, h: Any, option: str) -> None:
         surface_cells(screen, nx - 1, ny - 1, table.square, look)
     back_box(screen)
     _draw_segments(pad, screen.segments)
-    add_line(scene, [[pad.pixel(x, y) for x, y in line] for line in front_box(screen)], scene.colors.rgb(1), many=True)
+    front = [[pad.pixel(x, y) for x, y in line] for line in front_box(screen)]
+    add_line(scene, front, scene.colors.rgb(1), many=True)
     _axes(pad, view, h)
 

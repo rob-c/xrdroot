@@ -73,9 +73,13 @@ def positional(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[Any, ...]
 #: ``TH1::UseCurrentStyle``: the attributes a histogram made in a session takes
 #: from ``gStyle``, by the base that keeps each, against the style's field.
 STYLED = {
-    "TAttLine": {"fLineColor": "HistLineColor", "fLineStyle": "HistLineStyle", "fLineWidth": "HistLineWidth"},
+    "TAttLine": {
+        "fLineColor": "HistLineColor", "fLineStyle": "HistLineStyle", "fLineWidth": "HistLineWidth",
+    },
     "TAttFill": {"fFillColor": "HistFillColor", "fFillStyle": "HistFillStyle"},
-    "TAttMarker": {"fMarkerColor": "MarkerColor", "fMarkerStyle": "MarkerStyle", "fMarkerSize": "MarkerSize"},
+    "TAttMarker": {
+        "fMarkerColor": "MarkerColor", "fMarkerStyle": "MarkerStyle", "fMarkerSize": "MarkerSize",
+    },
 }
 
 
@@ -84,9 +88,7 @@ def _in_style(made: Any) -> Any:
     from ..graphics.style import gStyle
 
     for base, fields in STYLED.items():
-        held = made._core.get(base)
-        if isinstance(held, dict):
-            held.update({member: gStyle.values[field] for member, field in fields.items()})
+        made._core[base].update({member: gStyle.values[field] for member, field in fields.items()})
     return made
 
 

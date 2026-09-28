@@ -439,3 +439,16 @@ def test_a_histogram_of_a_density_is_its_probability_in_each_bin() -> None:
     assert h.values().tolist() == pytest.approx([*expected, expected[1], expected[0]], rel=1e-7)
     f = RooFormulaVar("f", "f", "x*x", [x])
     assert f.createHistogram("fh", x, RooCmdArg("Binning", 5)).values().shape == (5,)
+
+
+def test_a_name_then_a_variable_names_the_histogram_and_its_axes_are_titled_as_root_does() -> None:
+    """``createHistogram("x,y", x, ...)`` is the overload of a name and a variable: ROOT's
+    ``x,y__x_y``, its axes titled with the variables' titles and units, and its contents'
+    axis "Events / ( w x h )" of the bins' widths."""
+    d, x, y = ten_weighted()
+    y.setUnit("cm")
+    made = d.createHistogram("x,y", x, RooCmdArg("Binning", 5), YVar=(y, RooCmdArg("Binning", 2)))
+    assert made.name == "x,y__x_y"
+    assert made.title == "Histogram of x,y__x_y"
+    titles = [made._core[f"f{axis}axis"]["TNamed"]["fTitle"] for axis in "XYZ"]
+    assert titles == ["x", "y (cm)", "Events / ( 2 x 5 cm )"]

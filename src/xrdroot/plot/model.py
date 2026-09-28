@@ -118,7 +118,8 @@ class Band(NamedTuple):
 
 
 class Area(NamedTuple):
-    """The shape ``(x, y)`` bounds, filled: a graph's ``F``, closed from its last point to its first."""
+    """The shape ``(x, y)`` bounds, filled: a graph's ``F``, closed from its last point to its
+    first."""
 
     x: Array
     y: Array
@@ -168,6 +169,10 @@ class Contour(NamedTuple):
     scale: bool = False
     levels: int = 20
     filled: bool = True
+    #: Which lines: ``CONT1``'s 11, ``CONT2``'s 12, ``CONT3``'s 13, or 0 for either's own.
+    mode: int = 0
+    #: The histogram's look, whose line ``CONT3`` draws every level in.
+    look: Any = None
 
 
 class Surface(NamedTuple):

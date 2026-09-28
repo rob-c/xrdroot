@@ -24,7 +24,8 @@ said too.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
 
 from ..efficiency import Efficiency
 from ..errors import ROOTError
@@ -33,9 +34,11 @@ from ..graph import Graph
 from ..hist import Histogram
 from ..plot import picture
 from ..plot.backends.withmatplotlib import DRAWN
-from ..plot.model import Frame, Mesh, Picture
+from ..plot.model import Contour, Frame, Mesh, Picture
 from ..stacks import MultiGraph, Stack
+from .contour import paint_contour_lines
 from .datapaint import PAINTED
+from .legobox import paint_h3_boxes
 from .model import lookup
 from .options import strip_same
 from .paves import stats_box
@@ -94,6 +97,7 @@ def _plain(option: str) -> str:
 
 
 def _named(obj: Any) -> str:
+    """How a warning names what it leaves out: its class and its name, as ROOT would print them."""
     return f"{obj.classname} {obj.name!r}"
 
 
@@ -103,8 +107,12 @@ def _draw(scene: Scene, obj: Any, drawn: Picture) -> None:
     limits = ax.get_xlim(), ax.get_ylim()
     frame = Frame(logz=scene.pad.logz)
     for index, layer in enumerate(drawn.layers):
+        if isinstance(layer, Contour) and layer.mode:
+            paint_contour_lines(scene, layer)
+            continue
         if type(layer) in PAINTED:
-            PAINTED[type(layer)](scene, layer)
+            painter = cast("Callable[[Scene, Any], None]", PAINTED[type(layer)])
+            painter(scene, layer)
             continue
         scale = isinstance(layer, Mesh) and layer.scale
         if isinstance(layer, Mesh):
@@ -178,18 +186,28 @@ def _stats_made(scene: Scene, obj: Any, option: str) -> bool:
 
 
 def paint_histogram(scene: Scene, h: Histogram, option: str) -> None:
-    """A histogram of one or two dimensions, by its draw option, with its stats box."""
-    if len(h.axes) > 2:
-        scene.skipped.append(f"{_named(h)} (three dimensions have no flat picture)")
-        return
+    """A histogram by its draw option, with its stats box: in three dimensions for ``LEGO``
+    and ``SURF``, and a histogram of three as its boxes."""
     from .legoplot import paint_three_d, three_d_kind
 
-    if len(h.axes) == 2 and three_d_kind(option) and "SAME" not in option.upper():
+    upper = option.upper()
+    if len(h.axes) > 2:
+        if not _boxed(upper):
+            scene.skipped.append(f"{_named(h)} (only LEGO and BOX draw three dimensions here)")
+            return
+        scene.solid = True
+        paint_h3_boxes(scene, h, option)
+    elif len(h.axes) == 2 and three_d_kind(option) and "SAME" not in upper:
         scene.solid = True
         paint_three_d(scene, h, option)
     else:
         _paint(scene, h, option)
     _stats(scene, h, option)
+
+
+def _boxed(upper: str) -> bool:
+    """Whether a three-dimensional histogram's option draws it as boxes: ``LEGO`` or ``BOX``."""
+    return ("LEGO" in upper or "BOX" in upper) and "SAME" not in upper
 
 
 def paint_graph(scene: Scene, g: Graph, option: str) -> None:

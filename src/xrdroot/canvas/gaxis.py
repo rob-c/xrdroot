@@ -37,6 +37,11 @@ def _ends(scene: Scene, prim: Primitive) -> tuple[float, float, float, float]:
 
 
 def _axis(scene: Scene, prim: Primitive) -> Axis:
+    """The :class:`~.axis.Axis` a saved ``TGaxis`` is, with ``TGaxis``'s own defaults.
+
+    A ``TGaxis`` keeps its title's font and colour as its ``TAttText``, and its
+    line's colour as its ``TAttLine``, where a ``TAxis`` has members of its own.
+    """
     x0, y0, x1, y1 = _ends(scene, prim)
     label_size = float(prim.get("fLabelSize", LABEL_SIZE))
     return Axis(
@@ -59,6 +64,7 @@ def gaxis(scene: Scene, prim: Primitive, _option: str) -> None:
     """The line, its ticks, their labels and its title, where and as ``fChopt`` says."""
 
     def pixel(u: float, v: float) -> tuple[int, int]:
+        """A point of NDC in the whole pixels ``PaintAxis`` measures its title's angle in."""
         px, py = scene.pixel(u, v)
         return nint(px), nint(py)
 
