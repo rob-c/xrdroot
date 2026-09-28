@@ -24,6 +24,16 @@ from .store import RooAbsData, copies_of
 __all__ = ["RooDataSet"]
 
 
+def _by_name(row: Any) -> dict[str, Any]:
+    """The variables an event is read from, by name: a set's, or a Python set's or list's.
+
+    ``RooDataSet::add`` assigns the row's values to the dataset's own
+    variables by name, so a PyROOT script's ``d.add({x, y})`` adds what ``x``
+    and ``y`` hold now, as ``d.add(RooArgSet(x, y))`` does.
+    """
+    return {one.GetName(): one for one in as_list(row)}
+
+
 def _column_of(source: Any, name: str) -> np.ndarray[Any, Any]:
     """A tree's or a dataset's column ``name``, as floats."""
     if isinstance(source, RooAbsData):
@@ -136,8 +146,9 @@ class RooDataSet(RooAbsData):
 
     def add(self, row: Any, weight: float = 1.0, weightError: float = 0.0) -> None:
         """One more event: the values ``row`` holds now, weighing ``weight`` if weights are kept."""
+        given = _by_name(row)
         for one in self._vars:
-            found = row.find(one.GetName()) if hasattr(row, "find") else None
+            found = given.get(one.GetName())
             value = (found if found is not None else one).stored_value()
             self._columns[one.GetName()] = np.append(self._columns[one.GetName()], value)
         if self._weight_var is not None:

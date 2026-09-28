@@ -211,3 +211,18 @@ def test_a_binned_clone_prints_its_bins_with_its_variables_at_the_last_bin(capsy
         f"  Observables:     {observable}",
     ]
     assert binned.printMultiline(0, False, "").splitlines()[-1] == "  Observables (x)"
+
+
+def test_a_dataset_adds_what_a_python_sets_variables_hold_now():
+    # rf303_conditional.py fills its dataset this way; ROOT's first event is (y, x) as set.
+    x = ROOT.RooRealVar("x", "x", -10, 10)
+    y = ROOT.RooRealVar("y", "y", -10, 10)
+    coord = {x, y}
+    d = ROOT.RooDataSet("d", "d", coord)
+    x.setVal(4.5599)
+    y.setVal(9.98933)
+    d.add(coord)
+    d.add([x])
+    row = d.get(0)
+    assert (row.getRealValue("x"), row.getRealValue("y")) == (4.5599, 9.98933)
+    assert d.get(1).getRealValue("x") == 4.5599
