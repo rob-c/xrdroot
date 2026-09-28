@@ -180,7 +180,8 @@ class Display:
         return self.AsString()
 
     def Print(self) -> None:
-        print(self, end="")
+        """The box on ``std::cout``, unflushed as ROOT leaves it: after a script's own prints."""
+        printf(self.AsString())
 
     as_string = AsString
     print = Print
