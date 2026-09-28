@@ -31,7 +31,7 @@ def _by_name(row: Any) -> dict[str, Any]:
     variables by name, so a PyROOT script's ``d.add({x, y})`` adds what ``x``
     and ``y`` hold now, as ``d.add(RooArgSet(x, y))`` does.
     """
-    return {one.GetName(): one for one in as_list(row)}
+    return {one.GetName(): one for one in as_list(row) if hasattr(one, "GetName")}
 
 
 def _column_of(source: Any, name: str) -> np.ndarray[Any, Any]:
