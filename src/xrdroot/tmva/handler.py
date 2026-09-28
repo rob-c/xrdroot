@@ -142,37 +142,41 @@ class TransformationHandler:
     def prepare(self, events: Events) -> Events:
         """``CalcTransformations``: each prepared in turn, the result described; the events made."""
         current = events
+        nclasses = self.dsi.GetNClasses()
         for transform in self.transforms:
             announced = transform.announce()
             if announced:
                 Logger(transform.__class__.__name__).info(announced)
-            transform.prepare(current)
-            current = self._through(transform, current)
+            transform.prepare(current, nclasses)
+            current = self._through(transform, current, None)
         self.print_stats(current)
         return current
 
-    def _through(self, transform: Transform, events: Events) -> Events:
-        made = events.with_values(transform.apply(events.values))
-        if transform.targets and events.targets.shape[1] and hasattr(transform, "apply_targets"):
-            made.targets = transform.apply_targets(events.targets)
+    def _through(self, transform: Transform, events: Events, cls: int | None) -> Events:
+        made = events.with_values(transform.apply(events.values, cls))
+        apply_targets = getattr(transform, "apply_targets", None)
+        if apply_targets is not None and events.targets.shape[1]:
+            made.targets = apply_targets(events.targets, events.values.shape[1], cls)
         return made
 
-    def apply(self, events: Events) -> Events:
-        """``events`` through every transformation."""
+    def apply(self, events: Events, cls: int | None = None) -> Events:
+        """``events`` through every transformation, with class ``cls``'s parameters if given."""
         for transform in self.transforms:
-            events = self._through(transform, events)
+            events = self._through(transform, events, cls)
         return events
 
-    def apply_values(self, values: Any) -> Any:
+    def apply_values(self, values: Any, cls: int | None = None) -> Any:
         for transform in self.transforms:
-            values = transform.apply(values)
+            values = transform.apply(values, cls)
         return values
 
-    def inverse_targets(self, targets: Any) -> Any:
+    def inverse_targets(self, targets: Any, cls: int | None = None) -> Any:
         """A regression's output taken back through the target transformations, last first."""
+        nvar = self.dsi.GetNVariables()
         for transform in reversed(self.transforms):
-            if transform.targets:
-                targets = transform.inverse(targets)
+            inverse = getattr(transform, "inverse_targets", None)
+            if inverse is not None:
+                targets = inverse(targets, nvar, cls)
         return targets
 
     def print_stats(self, events: Events) -> None:

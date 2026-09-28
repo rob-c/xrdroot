@@ -22,9 +22,10 @@ __all__ = ["RootProxy", "ROOT"]
 #: The module ROOT's names come from when nothing else was bound.
 DEFAULT = "xrdroot.pyroot"
 #: Namespaces whose names a macro uses unqualified - every RooFit tutorial says
-#: ``using namespace RooFit`` - looked in when ROOT itself has no such name. A macro
-#: without the ``using`` would not have compiled, so looking there is never wrong.
-USED = ("RooFit", "RooStats")
+#: ``using namespace RooFit``, TMVA's say ``using namespace TMVA`` - looked in when
+#: ROOT itself has no such name. A macro without the ``using`` would not have
+#: compiled, so looking there is never wrong.
+USED = ("RooFit", "RooStats", "TMVA", "TMVA.Experimental")
 
 
 class RootProxy:
@@ -63,7 +64,7 @@ class RootProxy:
     def _used(namespace: Any, name: str) -> Any:
         """``name`` from a namespace of :data:`USED`, or the refusal ROOT's own lookup gave."""
         for used in USED:
-            found = getattr(getattr(namespace, used, None), name, None)
+            found = getattr(_member(namespace, used), name, None)
             if found is not None:
                 return found
         return getattr(namespace, name)
@@ -77,6 +78,13 @@ class RootProxy:
 
     def __repr__(self) -> str:
         return "<ROOT, the names a translated macro did not declare>"
+
+
+def _member(namespace: Any, dotted: str) -> Any:
+    """``TMVA.Experimental`` of a namespace: each name in turn, or ``None`` where one is missing."""
+    for name in dotted.split("."):
+        namespace = getattr(namespace, name, None)
+    return namespace
 
 
 ROOT = RootProxy()

@@ -35,6 +35,7 @@ PREDEFINED = f"""
 #define R__UNIX 1
 #define R__LINUX 1
 #define R__USE_IMT 1
+#define R__HAS_TMVACPU 1
 #define ROOT_VERSION_CODE {ROOT_VERSION}
 #define ROOT_VERSION(a, b, c) (((a) << 16) + ((b) << 8) + (c))
 #define R__LOAD_LIBRARY(x)

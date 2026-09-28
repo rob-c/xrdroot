@@ -658,6 +658,60 @@ class _Map(_Container):
         if key not in self:
             self[key] = value
 
+    def begin(self) -> _MapIterator:
+        """``begin()``: an iterator at the first key, which ``it += 1`` moves along."""
+        return _MapIterator(self, 0)
+
+    def end(self) -> _MapIterator:
+        """``end()``: the iterator one past the last key."""
+        return _MapIterator(self, len(self._items))
+
+    def find(self, key: Any) -> _MapIterator:
+        """``find(key)``: an iterator at ``key``, or ``end()`` for a key not there."""
+        keys = self.keys()
+        found = self._key(key)
+        return _MapIterator(self, keys.index(found) if found in self._items else len(keys))
+
+
+class _MapIterator:
+    """A ``std::map`` iterator: ``it->first``, ``it->second`` (assignable), ``++it``."""
+
+    def __init__(self, owner: _Map, position: int) -> None:
+        self._owner, self._position = owner, position
+
+    def _key(self) -> Any:
+        return self._owner.keys()[self._position]
+
+    @property
+    def first(self) -> Any:
+        return self._key()
+
+    @property
+    def second(self) -> Any:
+        return self._owner[self._key()]
+
+    @second.setter
+    def second(self, value: Any) -> None:
+        self._owner[self._key()] = value
+
+    def __iadd__(self, step: int) -> _MapIterator:
+        self._position += int(step)
+        return self
+
+    def __add__(self, step: int) -> _MapIterator:
+        return _MapIterator(self._owner, self._position + int(step))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, _MapIterator):
+            return NotImplemented
+        return self._owner is other._owner and self._position == other._position
+
+    def __ne__(self, other: object) -> bool:
+        equal = self.__eq__(other)
+        return equal if equal is NotImplemented else not equal
+
+    __hash__ = None  # type: ignore[assignment]
+
 
 def _map_class(key: Any, value: Any) -> type:
     name = f"map<{cpp_name(key)},{cpp_name(value)}>"

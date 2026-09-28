@@ -23,8 +23,9 @@ from ..stats import smooth_array
 from . import hists
 from .log import Logger
 from .options import Options
+from .xmlfile import Node, number
 
-__all__ = ["PDF", "PDFSettings", "settings"]
+__all__ = ["PDF", "PDFSettings", "pdf_from_xml", "settings"]
 
 #: ``PDF::fgNbin_PdfHist``: the bins the spline is sampled into.
 NBIN_PDF_HIST = 10000
@@ -236,6 +237,75 @@ class PDF:
             return np.maximum(self._contents[bins - 1], EPSILON)
         axis = self.fine.axes[0]
         return interpolate(self._contents, self._centres, axis.low, axis.high, x)
+
+    def integral_between(self, low: float, high: float) -> float:
+        """``GetIntegral(xmin, xmax)``: the fine bins between two points, part-bins at the ends."""
+        axis = self.fine.axes[0]
+        first = max(int(axis.find_bin(low)), 1)
+        last = min(int(axis.find_bin(high)), axis.nbins)
+        if last < first:
+            return 0.0
+        edges = axis.edges()
+        widths = np.float32(np.diff(edges))[first - 1 : last].astype(np.float64)
+        widths[0] = np.float32(edges[first] - low)
+        if last > first:
+            widths[-1] = np.float32(high - edges[last - 1])
+        widths = np.where((widths < 0) & (widths > -1.0e-8), 0.0, widths)
+        return float(np.dot(self._contents[first - 1 : last], widths))
+
+    def add_xml(self, parent: Node) -> None:
+        """``PDF::AddXMLTo``: the settings, and the original histogram it is rebuilt from."""
+        low, high = self.spec.smoothing()
+        node = parent.add(
+            "PDF",
+            Name=self.name,
+            MinNSmooth=low,
+            MaxNSmooth=high,
+            InterpolMethod=INTERPOLATIONS.get(self.spec.interpolation, 2),
+            KDE_type=1,
+            KDE_iter=1,
+            KDE_border=1,
+            KDE_finefactor=number(1.0),
+        )
+        axis = self.original.axes[0]
+        contents = hists.bins(self.original)[1:-1]
+        histogram = node.add(
+            "Histogram",
+            Name=self.original.name,
+            NBins=axis.nbins,
+            XMin=number(axis.low),
+            XMax=number(axis.high),
+            HasEquidistantBins=int(axis.even),
+        )
+        histogram.block(contents)
+        if not axis.even:
+            node.add("HistogramBinning", NBins=axis.nbins).block(axis.edges())
+
+
+#: ``PDF::EInterpolateMethod``, by the names the options give them.
+INTERPOLATIONS = {"Spline0": 0, "Spline1": 1, "Spline2": 2, "Spline3": 3, "Spline5": 5, "KDE": 6}
+
+
+def pdf_from_xml(node: Any, normalise: bool = True) -> PDF:
+    """``PDF::ReadXML``: the density rebuilt from its original histogram, as TMVA rebuilds it."""
+    methods = {number: name for name, number in INTERPOLATIONS.items()}
+    low, high = int(node.get("MinNSmooth", 0)), int(node.get("MaxNSmooth", 0))
+    spec = PDFSettings(
+        low, low, high, interpolation=methods.get(int(node.get("InterpolMethod", 2)))
+    )
+    source = node.find("Histogram")
+    name = str(source.get("Name"))
+    nbins = int(source.get("NBins"))
+    contents = [float(token) for token in (source.text or "").split()][:nbins]
+    if int(source.get("HasEquidistantBins", 1)):
+        made = hists.book(name, name, nbins, float(source.get("XMin")), float(source.get("XMax")))
+    else:
+        edges = [float(token) for token in (node.find("HistogramBinning").text or "").split()]
+        made = hists.book_edges(name, name, edges[: nbins + 1])
+    hists.set_bins(made, [0.0, *contents, 0.0], entries=nbins)
+    pdf = PDF(str(node.get("Name")), spec, normalise)
+    base = name[: -len("_original")] if name.endswith("_original") else name
+    return pdf.build(hists.renamed(made, base))
 
 
 def _smooth(histogram: Histogram, low: int, high: int) -> None:

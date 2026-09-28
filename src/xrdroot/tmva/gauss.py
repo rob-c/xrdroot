@@ -40,7 +40,7 @@ def _edges(values: Any, weights: Any) -> list[float]:
     order = np.argsort(values, kind="stable")
     ordered = np.asarray(values, dtype=np.float32)[order]
     ordered_weights = np.asarray(weights, dtype=np.float32)[order]
-    total = np.float32(np.sum(np.asarray(weights, dtype=np.float32), dtype=np.float32))
+    total = np.cumsum(np.asarray(weights, dtype=np.float32), dtype=np.float32)[-1]
     per_bin = max(np.float32(total / NBINSMAX), np.float32(np.min(ordered_weights) * NEVMIN))
     edges = [float(ordered[0] - EDGE_EPS), float(ordered[0])]
     running, last = np.float32(0), ordered[0]
@@ -71,22 +71,21 @@ def _cumulative(values: Any, weights: Any, index: int) -> PDF:
 class Gauss(Transform):
     """``VarTransform=G``: each variable made Gaussian."""
 
-    letter, name = "G", "Gauss"
+    letter, name, xml_name = "G", "Gauss", "Gauss"
     flat = False
 
     def announce(self) -> str:
         return "Preparing the Gaussian transformation..."
 
-    def prepare(self, events: Events) -> None:
-        chosen = self._chosen(events)
-        self.pdfs = [
-            _cumulative(chosen.values[:, index], chosen.weights, index)
-            for index in range(chosen.values.shape[1])
+    def fit(self, events: Events) -> Any:
+        return [
+            _cumulative(events.values[:, index], events.weights, index)
+            for index in range(events.values.shape[1])
         ]
 
-    def apply(self, values: Any) -> Any:
+    def apply(self, values: Any, cls: int | None = None) -> Any:
         columns = []
-        for index, pdf in enumerate(self.pdfs):
+        for index, pdf in enumerate(self.which(cls)):
             cumulant = np.clip(pdf.value(values[:, index]), CUMULANT_EDGE, 1.0 - CUMULANT_EDGE)
             if self.flat:
                 columns.append(cumulant)
@@ -99,4 +98,4 @@ class Gauss(Transform):
 class Uniform(Gauss):
     """``VarTransform=U``: each variable made flat."""
 
-    letter, name, flat = "U", "Uniform", True
+    letter, name, xml_name, flat = "U", "Uniform", "Uniform", True
