@@ -143,7 +143,9 @@ def _above(threshold: Any) -> Any:
     return np.where(single > threshold, single, np.nextafter(single, np.float32(np.inf)))
 
 
-def from_sklearn(fitted: Any, signal_column: int | None, limit: float, response: Any = None) -> Tree:
+def from_sklearn(
+    fitted: Any, signal_column: int | None, limit: float, response: Any = None
+) -> Tree:
     """A scikit-learn tree as TMVA's: its cuts, purities, leaf types and leaf responses.
 
     ``signal_column`` is the class column holding the signal in the tree's

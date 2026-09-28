@@ -133,16 +133,24 @@ class MethodKNN(Method):
         if self.opt("UseWeight"):
             weight = weight * self.weights[index]
         if self.analysis == REGRESSION:
-            found = (weight[:, :, None] * self.targets[index]).sum(axis=1) / weight.sum(axis=1)[:, None]
+            found = (weight[:, :, None] * self.targets[index]).sum(axis=1) / weight.sum(axis=1)[
+                :, None
+            ]
             return self.handler.inverse_targets(found)
         return (weight * (self.types[index] == 1)).sum(axis=1) / weight.sum(axis=1)
 
     def add_weights(self, node: Node) -> None:
-        weights = node.add("Weights", NEvents=len(self.values), NVar=self.values.shape[1],
-                           NTgt=self.targets.shape[1])
+        weights = node.add(
+            "Weights",
+            NEvents=len(self.values),
+            NVar=self.values.shape[1],
+            NTgt=self.targets.shape[1],
+        )
         for row in range(len(self.values)):
             numbers = [*self.values[row], *self.targets[row]]
-            event = weights.add("Event", Type=int(self.types[row]), Weight=number(self.weights[row]))
+            event = weights.add(
+                "Event", Type=int(self.types[row]), Weight=number(self.weights[row])
+            )
             event.text = " ".join(number(value) for value in numbers)
 
     def read_weights(self, node: Any) -> None:

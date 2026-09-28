@@ -54,7 +54,9 @@ def _activation(torch: Any, name: str, x: Any) -> Any:
     return functions.get(name, lambda value: value)(x)
 
 
-def _forward(torch: Any, layers: list[Any], net: Network, x: Any, dropout: tuple[float, ...], training: bool) -> Any:
+def _forward(
+    torch: Any, layers: list[Any], net: Network, x: Any, dropout: tuple[float, ...], training: bool
+) -> Any:
     for index, (layer, name) in enumerate(zip(layers, net.activations)):
         rate = dropout[index] if index < len(dropout) else 0.0
         if training and rate > 0:
@@ -78,30 +80,48 @@ def _loss(torch: Any, kind: str, raw: Any, target: Any, weights: Any) -> Any:
 def _optimiser(torch: Any, layers: list[Any], settings: Descent) -> Any:
     parameters = [p for layer in layers for p in layer.parameters()]
     if settings.optimizer.upper() == "ADAM":
-        return torch.optim.Adam(parameters, lr=settings.learning_rate, eps=1e-7,
-                                weight_decay=settings.decay)
-    return torch.optim.SGD(parameters, lr=settings.learning_rate, momentum=settings.momentum,
-                           weight_decay=settings.decay)
+        return torch.optim.Adam(
+            parameters, lr=settings.learning_rate, eps=1e-7, weight_decay=settings.decay
+        )
+    return torch.optim.SGD(
+        parameters,
+        lr=settings.learning_rate,
+        momentum=settings.momentum,
+        weight_decay=settings.decay,
+    )
 
 
 def _copied(layers: list[Any], net: Network) -> Network:
-    pairs = [(layer.weight.detach().numpy().copy(), layer.bias.detach().numpy().copy()) for layer in layers]
+    pairs = [
+        (layer.weight.detach().numpy().copy(), layer.bias.detach().numpy().copy())
+        for layer in layers
+    ]
     return Network(pairs, list(net.activations), net.output)
 
 
-def _evaluate(torch: Any, layers: list[Any], net: Network, data: tuple[Any, Any, Any], kind: str) -> float:
+def _evaluate(
+    torch: Any, layers: list[Any], net: Network, data: tuple[Any, Any, Any], kind: str
+) -> float:
     with torch.no_grad():
         raw = _forward(torch, layers, net, data[0], (), False)
         return float(_loss(torch, kind, raw, data[1], data[2]))
 
 
-def train_descent(net: Network, train: tuple[Any, Any, Any], valid: tuple[Any, Any, Any], kind: str,
-                  settings: Descent, report: Any = None) -> Network:
+def train_descent(
+    net: Network,
+    train: tuple[Any, Any, Any],
+    valid: tuple[Any, Any, Any],
+    kind: str,
+    settings: Descent,
+    report: Any = None,
+) -> Network:
     """Minibatch epochs in PyTorch until the validation loss stops improving; the best network."""
     torch = importlib.import_module("torch")
     torch.manual_seed(settings.seed)
-    tensors = [tuple(torch.as_tensor(np.asarray(part, dtype=np.float64)) for part in data)
-               for data in (train, valid)]
+    tensors = [
+        tuple(torch.as_tensor(np.asarray(part, dtype=np.float64)) for part in data)
+        for data in (train, valid)
+    ]
     layers = _layers(torch, net)
     optimiser = _optimiser(torch, layers, settings)
     rng = np.random.default_rng(settings.seed)

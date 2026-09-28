@@ -53,13 +53,17 @@ class MethodLikelihood(Method):
 
     def _specs(self, index: int) -> tuple[Any, Any]:
         base = settings(self.options)
-        return settings(self.options, f"Sig[{index}]", base), settings(self.options, f"Bkg[{index}]", base)
+        return settings(self.options, f"Sig[{index}]", base), settings(
+            self.options, f"Bkg[{index}]", base
+        )
 
     def _by_class(self, events: Events) -> tuple[Any, Any]:
         """Each event's values transformed with the signal class's, and the background's, parameters."""
         signal = self.dsi.GetSignalClassIndex()
         background = 1 - signal
-        return self.handler.apply(events, signal).values, self.handler.apply(events, background).values
+        return self.handler.apply(events, signal).values, self.handler.apply(
+            events, background
+        ).values
 
     def train(self, events: Events) -> None:
         raw = self.raw_train if self.raw_train is not None else events
@@ -72,21 +76,33 @@ class MethodLikelihood(Method):
         own = np.where(signal[:, None], as_s, as_b)
         fewest = min(int(signal.sum()), int((~signal).sum()))
         self.log.info("Filling reference histograms")
-        filled = [self._fill(index, own[:, index], signal, raw.weights, low[index], high[index], fewest)
-                  for index in range(len(low))]
+        filled = [
+            self._fill(index, own[:, index], signal, raw.weights, low[index], high[index], fewest)
+            for index in range(len(low))
+        ]
         self.log.info("Building PDF out of reference histograms")
         self.pdfs = []
         for index, (sig, bgd) in enumerate(filled):
             spec_s, spec_b = self._specs(index)
-            self.pdfs.append((
-                PDF(f"{self.name} PDF Sig[{index}]", spec_s).build(sig),
-                PDF(f"{self.name} PDF Bkg[{index}]", spec_b).build(bgd),
-            ))
+            self.pdfs.append(
+                (
+                    PDF(f"{self.name} PDF Sig[{index}]", spec_s).build(sig),
+                    PDF(f"{self.name} PDF Bkg[{index}]", spec_b).build(bgd),
+                )
+            )
         self.reference = filled
         self._train_events = raw
 
-    def _fill(self, index: int, values: Any, signal: Any, weights: Any, low: float, high: float,
-              fewest: int) -> tuple[Any, Any]:
+    def _fill(
+        self,
+        index: int,
+        values: Any,
+        signal: Any,
+        weights: Any,
+        low: float,
+        high: float,
+        fewest: int,
+    ) -> tuple[Any, Any]:
         """The signal and background reference histograms of one variable."""
         info = self.dsi.variables[index]
         spec_s, spec_b = self._specs(index)
@@ -96,7 +112,9 @@ class MethodLikelihood(Method):
             ranges = [(stop - start, start, stop)] * 2
         else:
             ranges = [(spec.hist_bins(fewest), low, high) for spec in (spec_s, spec_b)]
-        clamped = np.where(values >= high, high - 1.0e-10, np.where(values < low, low + 1.0e-10, values))
+        clamped = np.where(
+            values >= high, high - 1.0e-10, np.where(values < low, low + 1.0e-10, values)
+        )
         w = np.asarray(weights, dtype=np.float32).astype(np.float64)
         made = []
         for (nbins, a, b), mask, suffix, label in (
@@ -116,7 +134,9 @@ class MethodLikelihood(Method):
                 continue
             for values, pdf, product in ((as_s, pdf_s, ps), (as_b, pdf_b, pb)):
                 x = values[:, index]
-                x = np.where(x >= pdf_s.xmax, pdf_s.xmax - 1.0e-10, np.where(x < pdf_s.xmin, pdf_s.xmin, x))
+                x = np.where(
+                    x >= pdf_s.xmax, pdf_s.xmax - 1.0e-10, np.where(x < pdf_s.xmin, pdf_s.xmin, x)
+                )
                 product *= np.maximum(pdf.value(x, floor=0.0), EPSILON)
         return transform_output(ps, pb, bool(self.opt("TransformOutput")))
 
@@ -155,8 +175,10 @@ class MethodLikelihood(Method):
                 output.write(directory, histogram)
             output.write(directory, self._check(pdf_s, index))
             for histogram in (sig, bgd):
-                output.write(directory, hists.renamed(histogram.copy(), histogram.name + "_nice",
-                                                      histogram.title))
+                output.write(
+                    directory,
+                    hists.renamed(histogram.copy(), histogram.name + "_nice", histogram.title),
+                )
 
     def _check(self, pdf: PDF, index: int) -> Any:
         """``<var>_additional_check``: the signal density sampled in 15000 steps."""

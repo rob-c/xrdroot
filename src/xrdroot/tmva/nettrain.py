@@ -21,8 +21,13 @@ from .networks import Network, activate, softmax
 __all__ = ["Descent", "initial_network", "loss_and_gradient", "train_bfgs", "train_descent"]
 
 
-def initial_network(sizes: list[int], activations: list[str], output: str, seed: int = 0,
-                    scheme: str = "xavieruniform") -> Network:
+def initial_network(
+    sizes: list[int],
+    activations: list[str],
+    output: str,
+    seed: int = 0,
+    scheme: str = "xavieruniform",
+) -> Network:
     """A network of the given layer sizes, its weights drawn as ``WeightInitialization`` says."""
     rng = np.random.default_rng(seed)
     made = Network(output=output)
@@ -84,8 +89,15 @@ def _loss(kind: str, raw: Any, target: Any, weights: Any) -> tuple[float, Any]:
     return value / total, weights[:, None] * difference / total
 
 
-def loss_and_gradient(net: Network, values: Any, target: Any, weights: Any, kind: str,
-                      decay: float = 0.0, masks: list[Any] | None = None) -> tuple[float, list[Any]]:
+def loss_and_gradient(
+    net: Network,
+    values: Any,
+    target: Any,
+    weights: Any,
+    kind: str,
+    decay: float = 0.0,
+    masks: list[Any] | None = None,
+) -> tuple[float, list[Any]]:
     """The loss and every layer's ``(dW, db)``, by back propagation."""
     inputs, outputs = _forward(net, values, masks)
     value, delta = _loss(kind, outputs[-1][1], target, weights)
@@ -116,8 +128,9 @@ def _unflat(net: Network, flat: Any) -> None:
         position += size + len(bias)
 
 
-def train_bfgs(net: Network, values: Any, target: Any, weights: Any, kind: str, cycles: int,
-               decay: float = 0.0) -> float:
+def train_bfgs(
+    net: Network, values: Any, target: Any, weights: Any, kind: str, cycles: int, decay: float = 0.0
+) -> float:
     """BFGS - SciPy's limited-memory one - on the whole training sample; the final loss."""
     from scipy.optimize import minimize
 
@@ -126,8 +139,9 @@ def train_bfgs(net: Network, values: Any, target: Any, weights: Any, kind: str, 
         value, grads = loss_and_gradient(net, values, target, weights, kind, decay)
         return value, np.concatenate([np.concatenate([g.ravel(), b]) for g, b in grads])
 
-    found = minimize(objective, _flat(net), jac=True, method="L-BFGS-B",
-                     options={"maxiter": max(int(cycles), 1)})
+    found = minimize(
+        objective, _flat(net), jac=True, method="L-BFGS-B", options={"maxiter": max(int(cycles), 1)}
+    )
     _unflat(net, found.x)
     return float(found.fun)
 
@@ -164,7 +178,9 @@ def _step(net: Network, grads: list[Any], state: dict[str, Any], settings: Desce
     """One update of every layer, by ADAM or by momentum SGD."""
     state["t"] += 1
     for index, ((w, b), (gw, gb)) in enumerate(zip(net.layers, grads)):
-        moments = state.setdefault(index, [np.zeros_like(w), np.zeros_like(b), np.zeros_like(w), np.zeros_like(b)])
+        moments = state.setdefault(
+            index, [np.zeros_like(w), np.zeros_like(b), np.zeros_like(w), np.zeros_like(b)]
+        )
         if settings.optimizer.upper() == "ADAM":
             new = _adam(moments, (w, b), (gw, gb), state["t"], settings.learning_rate)
         else:
@@ -174,7 +190,9 @@ def _step(net: Network, grads: list[Any], state: dict[str, Any], settings: Desce
         net.layers[index] = new
 
 
-def _adam(moments: list[Any], params: tuple[Any, Any], grads: tuple[Any, Any], t: int, rate: float) -> tuple[Any, Any]:
+def _adam(
+    moments: list[Any], params: tuple[Any, Any], grads: tuple[Any, Any], t: int, rate: float
+) -> tuple[Any, Any]:
     beta1, beta2, eps = 0.9, 0.999, 1e-7
     updated = []
     for which in range(2):
@@ -186,8 +204,14 @@ def _adam(moments: list[Any], params: tuple[Any, Any], grads: tuple[Any, Any], t
     return updated[0], updated[1]
 
 
-def train_descent(net: Network, train: tuple[Any, Any, Any], valid: tuple[Any, Any, Any], kind: str,
-                  settings: Descent, report: Any = None) -> Network:
+def train_descent(
+    net: Network,
+    train: tuple[Any, Any, Any],
+    valid: tuple[Any, Any, Any],
+    kind: str,
+    settings: Descent,
+    report: Any = None,
+) -> Network:
     """Minibatch epochs until the validation loss stops improving; the best network seen."""
     rng = np.random.default_rng(settings.seed)
     values, target, weights = train
@@ -197,8 +221,9 @@ def train_descent(net: Network, train: tuple[Any, Any, Any], valid: tuple[Any, A
         for start in range(0, len(values), settings.batch_size):
             batch = order[start : start + settings.batch_size]
             masks = _masks(rng, net, len(batch), settings.dropout)
-            _, grads = loss_and_gradient(net, values[batch], target[batch], weights[batch], kind,
-                                         settings.decay, masks)
+            _, grads = loss_and_gradient(
+                net, values[batch], target[batch], weights[batch], kind, settings.decay, masks
+            )
             _step(net, grads, state, settings)
         train_loss = loss_and_gradient(net, *train, kind)[0]
         valid_loss = loss_and_gradient(net, *valid, kind)[0]

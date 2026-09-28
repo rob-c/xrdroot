@@ -102,7 +102,8 @@ class MethodBDT(Method):
             loss=str(self.opt("RegressionLossFunctionBDTG")),
             huber_quantile=float(self.opt("HuberQuantile")),
             r2_loss=str(self.opt("AdaBoostR2Loss")).lower(),
-            inverse_negative=str(self.opt("NegWeightTreatment")).lower() == "inverseboostnegweights",
+            inverse_negative=str(self.opt("NegWeightTreatment")).lower()
+            == "inverseboostnegweights",
         )
 
     def train(self, events: Events) -> None:
@@ -133,7 +134,9 @@ class MethodBDT(Method):
                     "Multiclass is currently only supported by gradient boost. "
                     "Please change boost option accordingly (BoostType=Grad)."
                 )
-            return boosting.multiclass(settings, values, events.classes, weights, self.dsi.GetNClasses())
+            return boosting.multiclass(
+                settings, values, events.classes, weights, self.dsi.GetNClasses()
+            )
         if self.analysis == REGRESSION:
             target = events.targets[:, 0]
             if settings.boost == "Grad":
@@ -206,7 +209,9 @@ class MethodBDT(Method):
 
     def read_weights(self, node: Any) -> None:
         trees = [read_tree(item) for item in children(node, "BinaryTree")]
-        weights = [float(np.float32(item.get("boostWeight"))) for item in children(node, "BinaryTree")]
+        weights = [
+            float(np.float32(item.get("boostWeight"))) for item in children(node, "BinaryTree")
+        ]
         self.forest = boosting.Forest(trees, weights)
         if not trees:
             raise Logger("BDT").fatal("The weight file holds no trees")

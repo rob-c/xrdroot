@@ -84,8 +84,9 @@ class MethodMLP(Method):
 
     def process_options(self) -> None:
         nout = {REGRESSION: self.dsi.GetNTargets(), MULTICLASS: self.dsi.GetNClasses()}
-        self.sizes = layer_sizes(str(self.opt("HiddenLayers")), self.dsi.GetNVariables(),
-                                 nout.get(self.analysis, 1))
+        self.sizes = layer_sizes(
+            str(self.opt("HiddenLayers")), self.dsi.GetNVariables(), nout.get(self.analysis, 1)
+        )
         self.hidden = ACTIVATIONS.get(str(self.opt("NeuronType")).lower(), "sigmoid")
         output = {CLASSIFICATION: "sigmoid", MULTICLASS: "softmax"}.get(self.analysis, "linear")
         activations = [self.hidden] * (len(self.sizes) - 2) + ["linear"]
@@ -107,9 +108,13 @@ class MethodMLP(Method):
         else:
             batch = int(self.opt("BatchSize"))
             settings = Descent(
-                learning_rate=float(self.opt("LearningRate")), momentum=0.0,
+                learning_rate=float(self.opt("LearningRate")),
+                momentum=0.0,
                 batch_size=batch if batch > 0 else 1 if len(values) < 2 else min(len(values), 32),
-                convergence_steps=cycles, max_epochs=cycles, decay=decay, optimizer="SGD",
+                convergence_steps=cycles,
+                max_epochs=cycles,
+                decay=decay,
+                optimizer="SGD",
             )
             data = (values, target, events.weights)
             self.network = train_descent(self.network, data, data, kind, settings)
@@ -119,11 +124,15 @@ class MethodMLP(Method):
 
     def _regulator_line(self, events: Events, target: Any, kind: str) -> None:
         """TMVA's closing line of a regulated training: the training and test losses."""
-        train_error = loss_and_gradient(self.network, events.values, target, events.weights, kind)[0]
+        train_error = loss_and_gradient(self.network, events.values, target, events.weights, kind)[
+            0
+        ]
         test = self.loader.dataset().test if self.loader is not None else events
         transformed = self.handler.apply(test)
         test_target, _ = targets_of(self, transformed)
-        test_error = loss_and_gradient(self.network, transformed.values, test_target, transformed.weights, kind)[0]
+        test_error = loss_and_gradient(
+            self.network, transformed.values, test_target, transformed.weights, kind
+        )[0]
         self.log.info(
             f"Finalizing handling of Regulator terms, trainE={train_error:g} testE={test_error:g}"
         )

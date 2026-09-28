@@ -33,16 +33,26 @@ FIT_METHODS = {"MC": 0, "GA": 1, "SA": 2, "MINUIT": 3, "EventScan": 4, "MCEvents
 #: How the optimisation method is described, by its name.
 FIT_NAMES = {"MC": "Monte Carlo", "EventScan": "Full Event Scan (slow)", "MINUIT": "MINUIT"}
 #: What reading a weight file says of each fitter.
-READ_NAMES = {0: "sample of MC events", 5: "sample of MC-Event events", 1: "Genetic Algorithm",
-              2: "Simulated Annealing algorithm", 4: "Full Event Scan"}
+READ_NAMES = {
+    0: "sample of MC events",
+    5: "sample of MC-Event events",
+    1: "Genetic Algorithm",
+    2: "Simulated Annealing algorithm",
+    4: "Full Event Scan",
+}
 
 
 class MethodCuts(Method):
     """``TMVA::MethodCuts``."""
 
     type_name = "Cuts"
-    defaults = {"FitMethod": "GA", "EffMethod": "EffSel", "SampleSize": 100000, "Sigma": -1.0,
-                "Seed": 100}
+    defaults = {
+        "FitMethod": "GA",
+        "EffMethod": "EffSel",
+        "SampleSize": 100000,
+        "Sigma": -1.0,
+        "Seed": 100,
+    }
 
     def process_options(self) -> None:
         nvar = self.dsi.GetNVariables()
@@ -98,7 +108,9 @@ class MethodCuts(Method):
     def train(self, events: Events) -> None:
         if self.handler.transforms:
             self.handler.print_stats(events)
-        sample = Sample(events.values, events.classes == self.dsi.GetSignalClassIndex(), events.weights)
+        sample = Sample(
+            events.values, events.classes == self.dsi.GetSignalClassIndex(), events.weights
+        )
         intervals = self._intervals(sample)
         self.table = CutTable(nvar=len(self.forced))
         if self.fit == "MC":
@@ -148,7 +160,9 @@ class MethodCuts(Method):
         for index in range(len(lower)):
             low, high = self.intervals[2 * index].low, self.intervals[2 * index].high
             width = high - low if high > low else 1.0
-            penalty += ((high - upper[index]) / width) ** 2 + 4 * ((low - lower[index]) / width) ** 2
+            penalty += ((high - upper[index]) / width) ** 2 + 4 * (
+                (low - lower[index]) / width
+            ) ** 2
         return 10.0 + penalty if effs < 1.0e-4 else 10.0 * (1.0 - 10.0 * effs)
 
     def _force(self) -> None:
@@ -188,8 +202,13 @@ class MethodCuts(Method):
         if last.xml_name != "Decorrelation":
             return [f"{label}_[transformed]" for label in labels]
         matrix = last.which(None)
-        return ["".join(f"{' + ' if value > 0 else ' - '}{abs(value):10.5g}*[{name}]"
-                        for value, name in zip(row, labels)) for row in matrix]
+        return [
+            "".join(
+                f"{' + ' if value > 0 else ' - '}{abs(value):10.5g}*[{name}]"
+                for value, name in zip(row, labels)
+            )
+            for row in matrix
+        ]
 
     def print_cuts(self, effs: float) -> None:
         """``PrintCuts``: the cuts at a signal efficiency, as TMVA's table of them."""
@@ -231,17 +250,24 @@ class MethodCuts(Method):
 
     def monitoring(self, output: Any, directory: str) -> None:
         self.log.info(f"{output.GetName()}:/{directory}")
-        made = hists.book(f"{self.testvar}_effBvsSLocal", f"{self.name} efficiency of B vs S", 100, 0.0, 1.0)
+        made = hists.book(
+            f"{self.testvar}_effBvsSLocal", f"{self.name} efficiency of B vs S", 100, 0.0, 1.0
+        )
         hists.set_bins(made, np.concatenate(([0.0], self.table.effb, [0.0])), entries=100)
         output.write(directory, made)
 
     def add_weights(self, node: Node) -> None:
-        weights = node.add("Weights", OptimisationMethod=0, FitMethod=FIT_METHODS[self.fit],
-                           nbins=self.table.nbins)
+        weights = node.add(
+            "Weights", OptimisationMethod=0, FitMethod=FIT_METHODS[self.fit], nbins=self.table.nbins
+        )
         for index in range(self.table.nbins):
             true_effs = index / self.table.nbins
-            item = weights.add("Bin", ibin=index + 1, effS=number(true_effs if true_effs > 1e-10 else 0.0),
-                               effB=number(self.table.effb[index]))
+            item = weights.add(
+                "Bin",
+                ibin=index + 1,
+                effS=number(true_effs if true_effs > 1e-10 else 0.0),
+                effB=number(self.table.effb[index]),
+            )
             cuts = item.add("Cuts")
             for var in range(self.table.lower.shape[1]):
                 cuts.set(f"cutMin_{var}", number(self.table.lower[index, var]))
@@ -266,22 +292,30 @@ class MethodCuts(Method):
 
     def _sample(self, events: Events) -> Sample:
         transformed = self.handler.apply(events)
-        return Sample(transformed.values, events.classes == self.dsi.GetSignalClassIndex(), events.weights)
+        return Sample(
+            transformed.values, events.classes == self.dsi.GetSignalClassIndex(), events.weights
+        )
 
     def _table_efficiencies(self, sample: Sample) -> tuple[Any, Any]:
         return sample.efficiencies(self.table.lower, self.table.upper)
 
     def _hist(self, suffix: str, title: str, contents: Any, high: float = 1.0) -> Any:
         made = hists.book(f"{self.testvar}{suffix}", title, self.table.nbins, 0.0, high)
-        return hists.set_bins(made, np.concatenate(([0.0], contents, [0.0])), entries=self.table.nbins)
+        return hists.set_bins(
+            made, np.concatenate(([0.0], contents, [0.0])), entries=self.table.nbins
+        )
 
-    def classifier_evaluation(self, test: Events, train: Events) -> tuple[dict[str, Any], list[Any]]:
+    def classifier_evaluation(
+        self, test: Events, train: Events
+    ) -> tuple[dict[str, Any], list[Any]]:
         """``MethodCuts::GetEfficiency`` and ``GetTrainingEfficiency``: the table read on each sample."""
         from ..pdf import spline1
 
         warn = Logger("Cuts")
-        warn.warning("You have asked for histogram MVA_EFF_BvsS which does not seem to exist in "
-                     "*Results* .. better don't use it ")
+        warn.warning(
+            "You have asked for histogram MVA_EFF_BvsS which does not seem to exist in "
+            "*Results* .. better don't use it "
+        )
         if self.handler.transforms:
             self.handler.print_stats(self.handler.apply(test))
         effs, effb = self._table_efficiencies(self._sample(test))
@@ -295,20 +329,28 @@ class MethodCuts(Method):
             self._hist("_effS", f"{self.testvar} (signal)", effs, 1.000001),
             self._hist("_effB", f"{self.testvar} (background)", effb, 1.000001),
         ]
-        warn.warning("You have asked for histogram EFF_BVSS_TR which does not seem to exist in "
-                     "*Results* .. better don't use it ")
+        warn.warning(
+            "You have asked for histogram EFF_BVSS_TR which does not seem to exist in "
+            "*Results* .. better don't use it "
+        )
         if self.handler.transforms:
             self.handler.print_stats(self.handler.apply(train))
         train_s, train_b = self._table_efficiencies(self._sample(train))
         kept = self.table.bins(train_s) == np.arange(1, self.table.nbins + 1)
         training = np.where(kept, train_b, -0.1)
-        made += [self._hist("_trainingEffBvsS", self.testvar, training),
-                 self._hist("_trainingRejBvsS", self.testvar, np.where(kept, 1.0 - train_b, 0.0))]
+        made += [
+            self._hist("_trainingEffBvsS", self.testvar, training),
+            self._hist("_trainingRejBvsS", self.testvar, np.where(kept, 1.0 - train_b, 0.0)),
+        ]
         steps = (np.arange(1, 1001) - 0.5) / np.float32(1000)
         test_curve = spline1(xs, ys, steps)
         train_curve = spline1(centres.astype(np.float64), training, steps)
-        found: dict[str, Any] = {"sig": -1.0, "sep": -1.0, "name": self.name,
-                                 "area": float(np.mean(1.0 - test_curve))}
+        found: dict[str, Any] = {
+            "sig": -1.0,
+            "sep": -1.0,
+            "name": self.name,
+            "area": float(np.mean(1.0 - test_curve)),
+        }
         found["roc"] = found["area"]
         for level in (0.01, 0.10, 0.30):
             found[f"eff{level}"] = _crossing(steps, test_curve, np.float32(level))

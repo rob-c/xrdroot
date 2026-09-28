@@ -76,7 +76,9 @@ class Interval:
     def GetElement(self, index: int) -> float:
         """The ``index``-th of the discrete values."""
         if self.nbins <= 0 or not 0 <= index < self.nbins:
-            raise Logger("Interval").fatal(f"bin {index} out of range of a {self.nbins}-bin interval")
+            raise Logger("Interval").fatal(
+                f"bin {index} out of range of a {self.nbins}-bin interval"
+            )
         return self.low + (float(index) / (self.nbins - 1)) * (self.high - self.low)
 
     def GetStepSize(self, _: int = 0) -> float:
@@ -91,8 +93,9 @@ class GeneticRange:
         self.low, self.high = interval.low, interval.high
         self.length = self.high - self.low
 
-    def random_value(self, near: bool = False, value: float = 0.0, spread: float = 0.1,
-                     mirror: bool = False) -> float:
+    def random_value(
+        self, near: bool = False, value: float = 0.0, spread: float = 0.1, mirror: bool = False
+    ) -> float:
         """``Random``: a discrete value, the one value of an empty range, a Gaussian step, or anywhere."""
         if self.interval.nbins > 0:
             draw = float(self.random.uniform(0.0, 1.0))
@@ -107,7 +110,9 @@ class GeneticRange:
     def _wrap(self, value: float) -> float:
         """``ReMap``: a value past one end brought in from the other."""
         while self.low < self.high and not self.low <= value < self.high:
-            value = value - self.low + self.high if value < self.low else value - self.high + self.low
+            value = (
+                value - self.low + self.high if value < self.low else value - self.high + self.low
+            )
         return value
 
     def _mirror(self, value: float) -> float:
@@ -164,8 +169,14 @@ class GeneticPopulation:
         ]
         return Genes(factors)
 
-    def Mutate(self, probability: float, start: int, near: bool = False, spread: float = 0.1,
-               mirror: bool = False) -> None:
+    def Mutate(
+        self,
+        probability: float,
+        start: int,
+        near: bool = False,
+        spread: float = 0.1,
+        mirror: bool = False,
+    ) -> None:
         """``Mutate``: each parameter of each gene from ``start`` on redrawn with ``probability`` %."""
         for genes in self.genes[start:]:
             for i, current in enumerate(genes.factors):
@@ -307,8 +318,16 @@ class GeneticFitter:
         self.seed = parsed.integer("Seed", 100)
         self.log = Logger("FitterBase")
 
-    def SetParameters(self, cycles: int, steps: int, pop_size: int, sc_steps: int, sc_rate: int,
-                      sc_factor: float, conv_crit: float) -> None:
+    def SetParameters(
+        self,
+        cycles: int,
+        steps: int,
+        pop_size: int,
+        sc_steps: int,
+        sc_rate: int,
+        sc_factor: float,
+        conv_crit: float,
+    ) -> None:
         self.cycles, self.steps, self.pop_size = int(cycles), int(steps), int(pop_size)
         self.sc_steps, self.sc_rate = int(sc_steps), int(sc_rate)
         self.sc_factor, self.conv_crit = float(sc_factor), float(conv_crit)

@@ -12,6 +12,7 @@ from ..method import Method
 from .bdt import MethodBDT
 from .cuts import MethodCuts
 from .dl import MethodDL, MethodDNN
+from .fda import MethodFDA
 from .knn import MethodKNN
 from .likelihood import MethodLikelihood
 from .linear import MethodFisher, MethodLD
@@ -34,5 +35,6 @@ REGISTRY: dict[str, type[Method]] = {
         MethodKNN,
         MethodSVM,
         MethodCuts,
+        MethodFDA,
     )
 }

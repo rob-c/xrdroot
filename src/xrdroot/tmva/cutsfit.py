@@ -70,7 +70,9 @@ class CutTable:
 
     def bins(self, effs: Any) -> Any:
         """``FindBin`` of each signal efficiency, from 1."""
-        return np.where(effs < 1.0, (np.floor(np.asarray(effs) * self.nbins)).astype(int) + 1, self.nbins + 1)
+        return np.where(
+            effs < 1.0, (np.floor(np.asarray(effs) * self.nbins)).astype(int) + 1, self.nbins + 1
+        )
 
     def offer(self, effs: Any, effb: Any, lower: Any, upper: Any) -> None:
         """Each box, in order, kept where its background efficiency beats its bin's."""

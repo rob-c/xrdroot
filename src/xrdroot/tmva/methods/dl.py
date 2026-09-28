@@ -28,8 +28,13 @@ from .mlp import outputs, targets_of
 __all__ = ["MethodDL", "MethodDNN", "parse_layout", "strategy_phases"]
 
 #: The arithmetic a layer width may be written in.
-OPERATORS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
-             ast.Div: operator.floordiv, ast.FloorDiv: operator.floordiv}
+OPERATORS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.floordiv,
+    ast.FloorDiv: operator.floordiv,
+}
 #: The layer kinds TMVA's DL has that this does not.
 REFUSED = ("CONV", "MAXPOOL", "RESHAPE", "RNN", "LSTM", "GRU", "BNORM", "PADDING2D")
 
@@ -78,16 +83,20 @@ def strategy_phases(text: str) -> list[Descent]:
     for block in (piece for piece in text.split("|") if piece.strip()):
         values = dict(item.split("=", 1) for item in block.split(",") if "=" in item)
         drop = tuple(float(x) for x in values.get("DropConfig", "0.0").split("+") if x)
-        phases.append(Descent(
-            learning_rate=float(values.get("LearningRate", 1e-5)),
-            momentum=float(values.get("Momentum", 0.3)),
-            batch_size=int(float(values.get("BatchSize", 30))),
-            convergence_steps=int(float(values.get("ConvergenceSteps", 100))),
-            max_epochs=int(float(values.get("MaxEpochs", 2000))),
-            decay=float(values.get("WeightDecay", 0.0)) if values.get("Regularization", "NONE").upper() == "L2" else 0.0,
-            dropout=drop,
-            optimizer=values.get("Optimizer", "ADAM").upper(),
-        ))
+        phases.append(
+            Descent(
+                learning_rate=float(values.get("LearningRate", 1e-5)),
+                momentum=float(values.get("Momentum", 0.3)),
+                batch_size=int(float(values.get("BatchSize", 30))),
+                convergence_steps=int(float(values.get("ConvergenceSteps", 100))),
+                max_epochs=int(float(values.get("MaxEpochs", 2000))),
+                decay=float(values.get("WeightDecay", 0.0))
+                if values.get("Regularization", "NONE").upper() == "L2"
+                else 0.0,
+                dropout=drop,
+                optimizer=values.get("Optimizer", "ADAM").upper(),
+            )
+        )
     return phases
 
 
@@ -121,8 +130,9 @@ class MethodDL(Method):
             raise self.log.fatal(str(why)) from why
         output = {CLASSIFICATION: "sigmoid", MULTICLASS: "softmax"}.get(self.analysis, "linear")
         seed = int(self.opt("RandomSeed"))
-        self.network = initial_network(self.sizes, self.activations, output, seed,
-                                       str(self.opt("WeightInitialization")))
+        self.network = initial_network(
+            self.sizes, self.activations, output, seed, str(self.opt("WeightInitialization"))
+        )
 
     def _validation_count(self, total: int) -> int:
         text = str(self.opt("ValidationSize")).strip()
@@ -152,7 +162,9 @@ class MethodDL(Method):
         import sys
 
         self.log.info("*****   Deep Learning Network *****")
-        loss = "C" if self.analysis == CLASSIFICATION else "M" if self.analysis == REGRESSION else "S"
+        loss = (
+            "C" if self.analysis == CLASSIFICATION else "M" if self.analysis == REGRESSION else "S"
+        )
         sys.stdout.write(
             f"DEEP NEURAL NETWORK:   Depth = {len(self.sizes) - 1}  Input = ( 1, 1, {self.sizes[0]} )  "
             f"Loss function = {loss}\n"

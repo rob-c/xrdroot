@@ -102,14 +102,28 @@ class Network:
         """``MethodDL::AddWeightsXMLTo``: the dense layers as TMVA's DL writes them."""
         first = self.layers[0][0].shape[1]
         weights = parent.add(
-            "Weights", NetDepth=len(self.layers), InputDepth=1, InputHeight=1, InputWidth=first,
-            BatchSize=1, BatchDepth=1, BatchHeight=1, BatchWidth=first, LossFunction=loss,
-            Initialization="F", Regularization=0, OutputFunction=output, WeightDecay=number(0.0),
+            "Weights",
+            NetDepth=len(self.layers),
+            InputDepth=1,
+            InputHeight=1,
+            InputWidth=first,
+            BatchSize=1,
+            BatchDepth=1,
+            BatchHeight=1,
+            BatchWidth=first,
+            LossFunction=loss,
+            Initialization="F",
+            Regularization=0,
+            OutputFunction=output,
+            WeightDecay=number(0.0),
         )
         for (matrix, bias), name in zip(self.layers, self.activations):
-            layer = weights.add("DenseLayer", Width=matrix.shape[0],
-                                ActivationFunction=DL_ACTIVATIONS.index(name))
-            layer.add("Weights", Rows=matrix.shape[0], Columns=matrix.shape[1]).block(np.ravel(matrix), 16)
+            layer = weights.add(
+                "DenseLayer", Width=matrix.shape[0], ActivationFunction=DL_ACTIVATIONS.index(name)
+            )
+            layer.add("Weights", Rows=matrix.shape[0], Columns=matrix.shape[1]).block(
+                np.ravel(matrix), 16
+            )
             layer.add("Biases", Rows=matrix.shape[0], Columns=1).block(bias, 16)
 
 
@@ -133,6 +147,8 @@ def dl_from_xml(node: Any) -> Network:
     for layer in children(node, "DenseLayer"):
         matrix, bias = layer.find("Weights"), layer.find("Biases")
         rows, columns = int(matrix.get("Rows")), int(matrix.get("Columns"))
-        made.layers.append((np.array(floats(matrix)).reshape(rows, columns), np.array(floats(bias))))
+        made.layers.append(
+            (np.array(floats(matrix)).reshape(rows, columns), np.array(floats(bias)))
+        )
         made.activations.append(DL_ACTIVATIONS[int(layer.get("ActivationFunction", 0))])
     return made

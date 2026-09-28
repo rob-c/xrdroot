@@ -30,7 +30,11 @@ def _kernel(kind: str, gamma: Any, order: int, theta: float, a: Any, b: Any) -> 
         return (a @ b.T + theta) ** order
     if kind == "MultiGauss":
         scaled_a, scaled_b = a / np.sqrt(gamma), b / np.sqrt(gamma)
-        squared = (scaled_a**2).sum(1)[:, None] + (scaled_b**2).sum(1)[None, :] - 2 * scaled_a @ scaled_b.T
+        squared = (
+            (scaled_a**2).sum(1)[:, None]
+            + (scaled_b**2).sum(1)[None, :]
+            - 2 * scaled_a @ scaled_b.T
+        )
         return np.exp(-np.maximum(squared, 0.0))
     squared = (a**2).sum(1)[:, None] + (b**2).sum(1)[None, :] - 2 * a @ b.T
     return np.exp(-gamma * np.maximum(squared, 0.0))
@@ -68,7 +72,12 @@ class MethodSVM(Method):
 
     def _sklearn_kernel(self) -> dict[str, Any]:
         if self.kind == "Polynomial":
-            return {"kernel": "poly", "degree": int(self.opt("Order")), "coef0": float(self.opt("Theta")), "gamma": 1.0}
+            return {
+                "kernel": "poly",
+                "degree": int(self.opt("Order")),
+                "coef0": float(self.opt("Theta")),
+                "gamma": 1.0,
+            }
         if self.kind == "MultiGauss":
             return {"kernel": lambda a, b: _kernel("MultiGauss", self.gamma, 0, 0.0, a, b)}
         return {"kernel": "rbf", "gamma": self.gamma}
@@ -85,9 +94,15 @@ class MethodSVM(Method):
         values = np.asarray(events.values, dtype=np.float64)
         self.log.info(f"Building SVM Working Set...with {len(values)} event instances")
         self.log.info("Sorry, no computing time forecast available for SVM, please wait ...")
-        options = {"C": float(self.opt("C")), "tol": float(self.opt("Tol")), **self._sklearn_kernel()}
+        options = {
+            "C": float(self.opt("C")),
+            "tol": float(self.opt("Tol")),
+            **self._sklearn_kernel(),
+        }
         if self.analysis == REGRESSION:
-            fitted = svm.SVR(**options).fit(values, events.targets[:, 0], sample_weight=events.weights)
+            fitted = svm.SVR(**options).fit(
+                values, events.targets[:, 0], sample_weight=events.weights
+            )
             self._store(fitted, values, 1.0)
             return
         signal = events.classes == self.dsi.GetSignalClassIndex()
@@ -107,8 +122,14 @@ class MethodSVM(Method):
         self.bias = float(np.asarray(fitted.intercept_)[0]) * sign
 
     def _decision(self, values: Any) -> Any:
-        kernel = _kernel(self.kind, self.gamma, int(self.opt("Order")), float(self.opt("Theta")),
-                         self.vectors, np.asarray(values, dtype=np.float64))
+        kernel = _kernel(
+            self.kind,
+            self.gamma,
+            int(self.opt("Order")),
+            float(self.opt("Theta")),
+            self.vectors,
+            np.asarray(values, dtype=np.float64),
+        )
         return (self.alphas * self.flags) @ kernel - self.bias
 
     def evaluate(self, values: Any) -> Any:
@@ -118,9 +139,15 @@ class MethodSVM(Method):
         return 1.0 / (1.0 + np.exp(f))
 
     def add_weights(self, node: Node) -> None:
-        weights = node.add("Weights", fBparm=number(self.bias), fGamma=number(np.mean(self.gamma)),
-                           fGammaList=str(self.opt("GammaList")), fTheta=number(self.opt("Theta")),
-                           fOrder=int(self.opt("Order")), NSupVec=len(self.alphas))
+        weights = node.add(
+            "Weights",
+            fBparm=number(self.bias),
+            fGamma=number(np.mean(self.gamma)),
+            fGammaList=str(self.opt("GammaList")),
+            fTheta=number(self.opt("Theta")),
+            fOrder=int(self.opt("Order")),
+            NSupVec=len(self.alphas),
+        )
         for number_, (alpha, flag, vector) in enumerate(zip(self.alphas, self.flags, self.vectors)):
             row = [number_ + 1, flag, alpha, 0.0, *vector]
             weights.add("SupportVector", Rows=1, Columns=len(row)).block(row, 15)

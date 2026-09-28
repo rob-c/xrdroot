@@ -16,20 +16,27 @@ import numpy as np
 
 from ..dataset import Events
 from ..log import Logger
-from ..method import CLASSIFICATION, MULTICLASS, REGRESSION, Method
+from ..method import CLASSIFICATION, REGRESSION, Method
 from ..xmlfile import Node, children, number
 
-__all__ = ["MethodFisher", "MethodLD", "coefficient_table"]
+__all__ = ["MethodFisher", "MethodLD", "coefficient_table", "formatted_values"]
 
 
 def coefficient_table(labels: list[str], values: list[float]) -> list[str]:
-    """``Tools::FormattedOutput`` of coefficients: ``Variable:  Coefficient:`` and the rows."""
-    width = max([8, *(len(label) for label in labels)])
-    column = max(len("Coefficient") + 1, width)
+    """The coefficients' table: ``Variable:  Coefficient:`` and the rows."""
+    return formatted_values(labels, values, "Variable", "Coefficient", "{:+1.3f}")
+
+
+def formatted_values(
+    labels: list[str], values: list[float], title_vars: str, title_values: str, fmt: str
+) -> list[str]:
+    """``Tools::FormattedOutput`` of values: a titled column of names and one of values."""
+    width = max([7, len(title_vars), *(len(label) for label in labels)])
+    column = max(len(title_values) + 1, width)
     rule = "-" * (width + column + 3)
-    rows = [rule, "Variable".rjust(width) + ":" + "Coefficient".rjust(column + 1) + ":", rule]
+    rows = [rule, title_vars.rjust(width) + ":" + title_values.rjust(column + 1) + ":", rule]
     for label, value in zip(labels, values):
-        rows.append(label.rjust(width) + ":" + format(value, "+1.3f").rjust(column + 1))
+        rows.append(label.rjust(width) + ":" + fmt.format(value).rjust(column + 1))
     return [*rows, rule]
 
 
@@ -66,7 +73,7 @@ class MethodLD(Method):
     """``TMVA::MethodLD``: the linear discriminant, for classification and regression."""
 
     type_name = "LD"
-    analyses = frozenset({CLASSIFICATION, REGRESSION, MULTICLASS})
+    analyses = frozenset({CLASSIFICATION, REGRESSION})
     needs_data = True
 
     def train(self, events: Events) -> None:

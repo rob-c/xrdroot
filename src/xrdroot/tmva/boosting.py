@@ -76,7 +76,9 @@ def _sklearn() -> Any:
     return tree
 
 
-def _grow(settings: Settings, values: Any, labels: Any, weights: Any, seed: int, classify: bool) -> Any:
+def _grow(
+    settings: Settings, values: Any, labels: Any, weights: Any, seed: int, classify: bool
+) -> Any:
     """One scikit-learn tree, grown as the options ask, on the events with non-zero weight."""
     module = _sklearn()
     keep = weights > 0
@@ -103,10 +105,14 @@ def _importance(fitted: Any) -> Any:
         if left < 0:
             continue
         total = inner.weighted_n_node_samples[node]
-        gain = inner.impurity[node] - (
-            inner.weighted_n_node_samples[left] * inner.impurity[left]
-            + inner.weighted_n_node_samples[right] * inner.impurity[right]
-        ) / total
+        gain = (
+            inner.impurity[node]
+            - (
+                inner.weighted_n_node_samples[left] * inner.impurity[left]
+                + inner.weighted_n_node_samples[right] * inner.impurity[right]
+            )
+            / total
+        )
         found[inner.feature[node]] += (gain * total) ** 2
     total = found.sum()
     return found / total if total > np.finfo(np.float64).eps else found
@@ -240,7 +246,11 @@ def gradboost(settings: Settings, values: Any, signal: Any, weights: Any) -> For
         fitted = _grow(settings, values, target, sample, itree, False)
         leaves = fitted.apply(np.asarray(values, dtype=np.float32))
         spread = np.abs(target) * (1.0 - np.abs(target))
-        response = settings.shrinkage * 0.5 * _leaf_responses(fitted, leaves, target * sample, spread * sample)
+        response = (
+            settings.shrinkage
+            * 0.5
+            * _leaf_responses(fitted, leaves, target * sample, spread * sample)
+        )
         tree = from_sklearn(fitted, None, settings.purity_limit, response)
         residual += tree.respond(values, False)
         target = label - 1.0 / (1.0 + np.exp(-2.0 * residual))
@@ -255,7 +265,9 @@ def softmax(scores: Any) -> Any:
     return exponentials / exponentials.sum(axis=1, keepdims=True)
 
 
-def multiclass(settings: Settings, values: Any, classes: Any, weights: Any, nclasses: int) -> Forest:
+def multiclass(
+    settings: Settings, values: Any, classes: Any, weights: Any, nclasses: int
+) -> Forest:
     """``BoostType=Grad`` for several classes: a tree per class per step, and the softmax residuals."""
     booster = Booster(settings, values, weights)
     truth = (classes[:, None] == np.arange(nclasses)).astype(np.float64)
@@ -353,14 +365,18 @@ def regression(settings: Settings, values: Any, target: Any, weights: Any) -> Fo
     return booster.finish()
 
 
-def _leaf_fits(loss: RegressionLoss, fitted: Any, leaves: Any, residuals: Any, booster: Booster) -> Any:
+def _leaf_fits(
+    loss: RegressionLoss, fitted: Any, leaves: Any, residuals: Any, booster: Booster
+) -> Any:
     """Each leaf's fit over its drawn events - an event drawn twice counting twice."""
     found = np.zeros(fitted.tree_.node_count)
     counts = booster.counts.astype(np.int64)
     for leaf in np.unique(leaves[counts > 0]):
         at = (leaves == leaf) & (counts > 0)
         repeat = counts[at]
-        found[leaf] = loss.fit(np.repeat(residuals[at], repeat), np.repeat(booster.weights[at], repeat))
+        found[leaf] = loss.fit(
+            np.repeat(residuals[at], repeat), np.repeat(booster.weights[at], repeat)
+        )
     return found
 
 
