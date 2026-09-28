@@ -424,7 +424,8 @@ class Harness:
         if theirs.exit_code != ours.exit_code:
             found.append(("exit code", f"exit code {ours.exit_code}, ROOT {theirs.exit_code}"))
         paths = (self._paths(theirs), self._paths(ours))
-        stdout = compare_streams(theirs.stdout, ours.stdout, paths, self.settings.tolerance)
+        python = tutorial.language == "py"
+        stdout = compare_streams(theirs.stdout, ours.stdout, paths, self.settings.tolerance, python)
         if stdout is not None:
             found.append(("stdout", f"stdout {stdout}"))
         for compared in compare_files(

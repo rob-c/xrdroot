@@ -127,14 +127,36 @@ def first_difference(
     return None
 
 
+#: RooFit's lists of the variables a plot integrates or projects over, in a set's order.
+PLOTTED_OVER = re.compile(r"(\) plot on \S+ (?:integrates over|projects) variables \()([^)]*)\)")
+
+
+def _sorted_sets(line: str) -> str:
+    """A plot's integrated and projected variables by name, whatever order the set had.
+
+    A PyROOT script's ``{dt, mixState, tagFlav}`` is a Python set, which
+    orders ROOT's proxies by their addresses: ROOT itself lists the
+    variables in a different order from one run to the next. A C++ macro's
+    order is fixed, and is compared as it is.
+    """
+    return PLOTTED_OVER.sub(lambda m: m[1] + ",".join(sorted(m[2].split(","))) + ")", line)
+
+
 def compare_streams(
     expected: str,
     actual: str,
     paths: tuple[Mapping[str, str], Mapping[str, str]],
     tolerance: Tolerance,
+    python: bool = False,
 ) -> str | None:
-    """The first difference between two runs' output, each normalised by its own paths."""
-    return first_difference(normalise(expected, paths[0]), normalise(actual, paths[1]), tolerance)
+    """The first difference between two runs' output, each normalised by its own paths.
+
+    ``python`` says the runs were a PyROOT script's, whose sets have no order.
+    """
+    one, two = normalise(expected, paths[0]), normalise(actual, paths[1])
+    if python:
+        one, two = [_sorted_sets(line) for line in one], [_sorted_sets(line) for line in two]
+    return first_difference(one, two, tolerance)
 
 
 # --- ROOT files ------------------------------------------------------------

@@ -572,6 +572,20 @@ def test_xrdroot_runs_a_macro_without_logon_macros_when_root_does(tree, tmp_path
     assert loud is not None and loud[-2:] == ["run", "demoshelp.C"]
 
 
+def test_a_pyroot_scripts_plotted_variables_are_compared_whatever_their_order():
+    # rf108_plotbinning.py's line under ROOT 6.40, and xrdroot's, from the same Python set.
+    root = (
+        "[#1] INFO:Plotting -- RooAbsReal::plotOn(bmix) plot on dt integrates over variables "
+        "(tagFlav,mixState)"
+    )
+    mine = root.replace("(tagFlav,mixState)", "(mixState,tagFlav)")
+    paths: tuple[dict[str, str], dict[str, str]] = ({}, {})
+    assert compare.compare_streams(root, mine, paths, TOLERANCE, python=True) is None
+    assert compare.compare_streams(root, mine, paths, TOLERANCE) is not None
+    other = mine.replace("tagFlav", "dt")
+    assert compare.compare_streams(root, other, paths, TOLERANCE, python=True) is not None
+
+
 def test_roots_own_tutorial_directory_is_masked_as_the_tutorials(harness):
     harness.oracle = Oracle(root="root", version="v", rootsys="/opt/root")
     paths = harness._paths(runner.RunResult([], 0, False, 0.0, "", "", workdir="/w"))
