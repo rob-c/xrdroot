@@ -188,6 +188,8 @@ class CType:
     dims: list[Any] = field(default_factory=list)
     #: A pointer to a function or a ``std::function``: something to call.
     callable: bool = False
+    #: The enum an ``int`` is of, when it is one: what a free ``operator<<`` is chosen by.
+    enum: str | None = None
 
     # -- what kind of thing it is ------------------------------------------
 

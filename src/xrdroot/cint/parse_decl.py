@@ -72,7 +72,7 @@ class Parser(StmtParser):
             if name is not None:
                 self.types.add(name)
                 if token.is_("enum"):
-                    self.aliases[name] = CType("int")
+                    self.aliases[name] = CType("int", enum=name)
             elif token.kind == "id" and tokens[index + 1].is_("(") and depth == 0:
                 self.functions.add(token.text)
         self._prescan_templates(tokens)
@@ -547,7 +547,7 @@ class Parser(StmtParser):
             self.type_id()
         if name is not None:
             self.types.add(name)
-            self.aliases[name] = CType("int")
+            self.aliases[name] = CType("int", enum=name)
         if self.accept(";"):
             return EnumDecl(where, name, [], scoped)
         decl = EnumDecl(where, name, self._enumerators(), scoped)

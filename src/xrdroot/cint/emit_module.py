@@ -92,6 +92,14 @@ class Translator(ClassEmitter):
             clash = "_function" if name in self.class_symbols else ""
             add(Symbol(name, "function", python_name(name) + clash))
         self._predeclare_globals()
+        self._predeclare_writers()
+
+    def _predeclare_writers(self) -> None:
+        """Each ``operator<<`` the macro writes a type with, named before ``cout << t`` calls it."""
+        for func in self.program.functions.get("operator<<", []):
+            kind = _written_type(func)
+            if kind is not None:
+                self.stream_writers[kind] = "ostream_" + python_name(kind.replace("::", "_"))
 
     def _predeclare_globals(self) -> None:
         add = self.scope.add
@@ -160,12 +168,30 @@ class Translator(ClassEmitter):
         if decl.name in self._emitted or decl.body is None:
             return
         if decl.kind == "operator":
-            raise self.refuse(f"the operator {decl.name[8:]} defined outside a class", decl)
+            self._stream_operator(decl)
+            return
         self._emitted.add(decl.name)
         symbol = self.lookup(decl.name)
         py = symbol.py if symbol is not None else python_name(decl.name)
         self.out.blank(2)
         self.overloaded(decl.name, py, self.program.overloads(decl.name), self.function)
+        self.out.blank()
+
+    def _stream_operator(self, decl: Function) -> None:
+        """``ostream &operator<<(ostream &os, const T &t)``: a function ``cout << t`` calls.
+
+        It is called where the type of what is written says it is a ``T``, and
+        for one of the macro's classes the runtime is told of it too, for the
+        values whose type the translation cannot see.
+        """
+        kind = _written_type(decl)
+        if kind is None:
+            raise self.refuse(f"the operator {decl.name[8:]} defined outside a class", decl)
+        py = self.stream_writers[kind]
+        self.out.blank(2)
+        self.function(decl, py)
+        if kind in self.program.classes:
+            self.out.line(f"stream_formatter({self.class_expr(CType(kind))}, {py})", decl.where)
         self.out.blank()
 
     def _unnamed(self) -> None:
@@ -201,3 +227,13 @@ def _namespaces(decls: list[Stmt]) -> set[str]:
                 found.update(decl.name.split("::"))
             found |= _namespaces(decl.body)
     return found
+
+
+def _written_type(func: Function) -> str | None:
+    """``T`` of ``ostream &operator<<(ostream &, const T &)``, if ``func`` is one."""
+    if func.name != "operator<<" or len(func.params) != 2 or func.body is None:
+        return None
+    if "stream" not in func.params[0].ctype.name:
+        return None
+    kind = func.params[1].ctype
+    return None if kind.pointer else (kind.enum or kind.name)

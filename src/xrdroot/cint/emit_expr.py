@@ -243,6 +243,9 @@ class ExprEmitter(NameEmitter):
             return self.extraction(node)
         right = self.at(node.right, P.SHIFT + 1)
         found = self.typeof(node.right)
+        writer = self.stream_writers.get(_written_as(found))
+        if writer is not None:
+            return f"{writer}({self.value(node.left)}, {self.value(node.right)})", P.POSTFIX
         if found is not None and found.is_char:
             right = f"chr({self.value(node.right)})"
         return f"{self.at(node.left, P.SHIFT)} << {right}", P.SHIFT
@@ -576,6 +579,13 @@ def zero(ctype: CType) -> str:
     if ctype.floating:
         return "0.0"
     return "0"
+
+
+def _written_as(ctype: CType | None) -> str:
+    """The type a free ``operator<<`` would be for, to write a value of ``ctype``."""
+    if ctype is None or ctype.pointer:
+        return ""
+    return ctype.enum or ctype.name
 
 
 def _object_value(ctype: CType | None) -> bool:
