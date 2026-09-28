@@ -85,7 +85,7 @@ def test_a_methods_members_are_its_objects(source: str, fragment: str) -> None:
         ('const char *s = "abc"; const char *t = s + 1;', r"pointer arithmetic on a char\*"),
         ("double a[3]; double *p = a - 1;", r"pointer arithmetic on a double\[\]"),
         ("TH1F *hs[2]; TH1F **p = hs + 1;", r"pointer arithmetic on a TH1F\* is"),
-        ("std::ifstream in; if (in >> x) {}", "reading from a stream with >> inside"),
+        ("std::ifstream in[2]; if (in[0] >> x) {}", "from a stream that is not a variable"),
         ("int x = f()++;", "changing this in the middle of an expression"),
         ("int x = gCount++;", "changing this in the middle of an expression"),
         ("h->~TH1F();", "calling the destructor ~TH1F by hand"),

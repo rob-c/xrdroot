@@ -630,7 +630,8 @@ class StmtEmitter(CallEmitter):
         target = expr.args[1]
         if isinstance(target, Name) and self.symbol(target) is not None:
             self.assigned(self.symbol(target))
-        line = f"{self.value(target)} = {self.value(expr.args[0])}.getline()"
+        delimiter = "".join(self.value(arg) for arg in expr.args[2:3])
+        line = f"{self.value(target)} = {self.value(expr.args[0])}.getline({delimiter})"
         self.out.line(line, expr.where)
 
     def _transform(self, expr: Call) -> None:

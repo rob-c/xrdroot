@@ -237,7 +237,7 @@ class ExprEmitter(NameEmitter):
 
     def _shift(self, node: Binary) -> Out:
         if node.op == ">>":
-            raise self.refuse("reading from a stream with >> inside an expression", node)
+            return self.extraction(node)
         right = self.at(node.right, P.SHIFT + 1)
         found = self.typeof(node.right)
         if found is not None and found.is_char:
@@ -357,6 +357,9 @@ class ExprEmitter(NameEmitter):
     def call_assignment(self, node: Assign) -> str:
         raise NotImplementedError
 
+    def extraction(self, node: Binary) -> Out:
+        raise NotImplementedError
+
     def stored_through(self, node: Assign) -> str | None:
         """``f(i) = v`` and ``*p = v`` of a pointer to an object or of unknown type, if it is one.
 
@@ -378,11 +381,13 @@ class ExprEmitter(NameEmitter):
         stored = self.stored_through(node)
         if stored is not None:
             return stored, P.POSTFIX
-        value = self.assigned_value(node)
-        name = self.local_name(node.target)
+        return self.store_expression(node.target, self.assigned_value(node))
+
+    def store_expression(self, target: Expr, value: str) -> Out:
+        """Python that stores ``value`` in ``target`` and is worth it, as C++'s ``=`` is."""
+        name = self.local_name(target)
         if name is not None:
             return f"({name} := {value})", P.ATOM
-        target = node.target
         if isinstance(target, Index):
             obj, index = self.value(target.obj), self.value(target.index)
             return f"set_item({obj}, {index}, {value})", P.POSTFIX

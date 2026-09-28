@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-__all__ = ["istream", "ifstream", "istringstream"]
+__all__ = ["istream", "ifstream", "istringstream", "stream_after", "find_if"]
 
 #: What ``>>`` reads for each kind of target: the text it takes, from the front of the rest.
 PATTERNS = {
@@ -64,12 +64,13 @@ class istream:
             return float(word)
         return ord(word) if kind == "char" else word
 
-    def getline(self) -> str:
-        """``std::getline(stream, line)``: the rest of the current line."""
+    def getline(self, delimiter: Any = "\n") -> str:
+        """``std::getline(stream, line[, delimiter])``: the text up to the next delimiter."""
         if self._at >= len(self._text):
             self._failed = True
             return ""
-        end = self._text.find("\n", self._at)
+        stop = chr(delimiter) if isinstance(delimiter, int) else str(delimiter)
+        end = self._text.find(stop, self._at)
         end = len(self._text) if end < 0 else end
         line = self._text[self._at : end]
         self._at = end + 1
@@ -123,3 +124,26 @@ class istringstream(istream):
             self._text, self._at, self._failed = f"{text}", 0, False
             return ""
         return self._text
+
+
+def stream_after(stream: Any, *stored: Any) -> Any:
+    """The stream a read inside an expression read from, once what it read has been stored.
+
+    ``while (in >> a >> b)`` tests the stream after both reads, as C++'s
+    ``>>`` returns it; the reads are this call's arguments, made in order.
+    """
+    return stream
+
+
+def find_if(first: Any, last: Any, predicate: Any) -> Any:
+    """``std::find_if``: the first item from ``first`` on that ``predicate`` holds for, else None.
+
+    ``first`` is anything Python iterates; ``last`` is where to stop, when an
+    item is it. The item found is what dereferencing the iterator gives.
+    """
+    for item in first:
+        if last is not None and item is last:
+            break
+        if predicate(item):
+            return item
+    return None

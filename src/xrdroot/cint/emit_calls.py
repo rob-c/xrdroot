@@ -196,6 +196,45 @@ class CallEmitter(ExprEmitter):
         suffix = func.last[len('operator""') :]
         return f"user_literal({suffix!r}, {self.value(node.args[0])})", P.POSTFIX
 
+    def _getline_value(self, func: Name, node: Call) -> Out | None:
+        """``while (std::getline(in, line))``: the line stored, and the stream, to be tested."""
+        if len(node.args) < 2:
+            raise self.refuse("std::getline without a string to read into", node)
+        stream = self._stream(node.args[0])
+        delimiter = "".join(self.value(arg) for arg in node.args[2:3])
+        stored = self.store_expression(node.args[1], f"{stream}.getline({delimiter})")[0]
+        return f"stream_after({stream}, {stored})", P.POSTFIX
+
+    def extraction(self, node: Binary) -> Out:
+        """``while (in >> a >> b)``: each value read and stored in turn, then the stream."""
+        targets: list[Expr] = []
+        root: Expr = node
+        while isinstance(root, Binary) and root.op == ">>":
+            targets.insert(0, root.right)
+            root = root.left
+        stream = self._stream(root)
+        stores = []
+        for target in targets:
+            kind = self.typeof(target)
+            read = f"{stream}.extract({kind.name if kind is not None else 'double'!r})"
+            stores.append(self.store_expression(target, read)[0])
+        return f"stream_after({stream}, {', '.join(stores)})", P.POSTFIX
+
+    def _stream(self, node: Expr) -> str:
+        """The stream a read in an expression reads from, which the Python names twice."""
+        if not isinstance(node, Name):
+            why = "reading inside an expression from a stream that is not a variable"
+            raise self.refuse(why, node)
+        return self.value(node)
+
+    def _find_if(self, func: Name, node: Call) -> Out | None:
+        """``std::find_if(first, last, pred)`` over ROOT's iterators: what it finds, or None."""
+        if len(node.args) != 3 or self._container_end(node.args[0]) is not None:
+            why = "std::find_if over a container, whose iterator Python has none of"
+            raise self.refuse(why, node)
+        args = ", ".join(self.value(arg) for arg in node.args)
+        return f"find_if({args})", P.POSTFIX
+
     def _unsupported(self, func: Name, node: Call) -> Out | None:
         raise self.refuse(f"{func.text}() where its result is used", node)
 
@@ -267,8 +306,8 @@ class CallEmitter(ExprEmitter):
         "swap": _unsupported,
         "max_element": _unsupported,
         "min_element": _unsupported,
-        "find_if": _unsupported,
-        "getline": _unsupported,
+        "find_if": _find_if,
+        "getline": _getline_value,
         **dict.fromkeys(['operator""' + suffix for suffix in SUFFIXES], _suffixed),
     }
 
