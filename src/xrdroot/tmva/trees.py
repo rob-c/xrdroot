@@ -18,7 +18,7 @@ import numpy as np
 
 from .xmlfile import Node, number
 
-__all__ = ["Tree", "from_sklearn", "read_tree"]
+__all__ = ["Packed", "Tree", "forest_responses", "from_sklearn", "read_tree"]
 
 
 @dataclass
@@ -179,3 +179,65 @@ def from_sklearn(
         ntype,
         depth,
     )
+
+
+#: How many events a whole forest is walked with at once.
+CHUNK = 2048
+
+
+@dataclass
+class Packed:
+    """A forest's trees laid end to end as one array of nodes, to be walked all at once."""
+
+    trees: list[Tree]
+    offsets: Any = None
+
+    def __post_init__(self) -> None:
+        trees = self.trees
+        self.fallback = any(tree.fisher for tree in trees)
+        self.offsets = np.cumsum([0] + [len(tree.var) for tree in trees[:-1]])
+        self.var = np.concatenate([tree.var for tree in trees])
+        self.cut = np.concatenate([tree.cut for tree in trees])
+        self.goes_right = np.concatenate([tree.ctype for tree in trees]) == 1
+        self.left = np.concatenate(
+            [np.where(t.left >= 0, t.left + s, -1) for t, s in zip(trees, self.offsets)]
+        )
+        self.right = np.concatenate(
+            [np.where(t.right >= 0, t.right + s, -1) for t, s in zip(trees, self.offsets)]
+        )
+        self.values = {
+            what: np.concatenate([getattr(t, what) for t in trees]).astype(np.float64)
+            for what in ("response", "purity", "ntype")
+        }
+
+    def responses(self, values: Any, what: str = "response") -> Any:
+        """Every tree's leaf value - ``response``, ``purity`` or ``ntype`` - for every event.
+
+        All the trees are walked at once, a level at a time, so that a forest of
+        hundreds of trees costs a few NumPy passes rather than a pass per tree; a
+        forest with Fisher-discriminant cuts is walked a tree at a time.
+        """
+        if self.fallback:
+            return np.array([t.respond(values, what == "ntype", what) for t in self.trees])
+        found = []
+        for start in range(0, len(values), CHUNK):
+            block = np.asarray(values[start : start + CHUNK])
+            node = np.repeat(self.offsets[:, None], len(block), axis=1)
+            column = np.broadcast_to(np.arange(len(block)), node.shape)
+            while True:
+                inner = self.left[node] >= 0
+                if not inner.any():
+                    break
+                here = node[inner]
+                x = block[column[inner], np.maximum(self.var[here], 0)].astype(np.float64)
+                right = (x >= self.cut[here]) == self.goes_right[here]
+                node[inner] = np.where(right, self.right[here], self.left[here])
+            found.append(self.values[what][node])
+        return np.concatenate(found, axis=1) if found else np.zeros((len(self.trees), 0))
+
+
+def forest_responses(trees: list[Tree], values: Any, what: str = "response") -> Any:
+    """:meth:`Packed.responses` of ``trees``, packed for the one call."""
+    if not trees:
+        return np.zeros((0, len(values)))
+    return Packed(trees).responses(values, what)

@@ -179,8 +179,9 @@ class MethodRuleFit(Method):
     def evaluate(self, values: Any) -> Any:
         values = np.asarray(values, dtype=np.float64)
         output = np.full(len(values), self.offset)
-        for rule in self.rules:
-            output += rule.coefficient * rule.inside(values)
+        if self.rules:
+            coefficients = np.array([rule.coefficient for rule in self.rules])
+            output += rule_matrix(self.rules, values) @ coefficients
         if self.use_linear:
             clipped = np.clip(values, self.lin_dm, self.lin_dp)
             output += clipped @ (self.lin_coef * self.lin_norm)

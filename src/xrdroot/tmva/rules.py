@@ -106,7 +106,15 @@ def grow_rules(
 
 
 def rule_matrix(rules: list[Rule], values: Any) -> Any:
-    """Each rule's value for every event: a column of 0s and 1s per rule."""
+    """Each rule's value for every event: a column of 0s and 1s per rule, all rules at once."""
+    values = np.asarray(values, dtype=np.float64)
     if not rules:
         return np.zeros((len(values), 0))
-    return np.stack([rule.inside(values) for rule in rules], axis=1).astype(np.float64)
+    low = np.full((len(rules), values.shape[1]), -np.inf)
+    high = np.full((len(rules), values.shape[1]), np.inf)
+    for row, rule in enumerate(rules):
+        for index, (lower, upper) in rule.cuts.items():
+            low[row, index] = -np.inf if lower is None else lower
+            high[row, index] = np.inf if upper is None else upper
+    inside = (values[:, None, :] > low[None]) & (values[:, None, :] < high[None])
+    return np.all(inside, axis=2).astype(np.float64)

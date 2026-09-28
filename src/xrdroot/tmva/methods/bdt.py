@@ -23,7 +23,7 @@ from .. import boosting
 from ..dataset import Events
 from ..log import Logger
 from ..method import CLASSIFICATION, MULTICLASS, REGRESSION, Method
-from ..trees import read_tree
+from ..trees import Packed, read_tree
 from ..xmlfile import Node, children
 
 __all__ = ["MethodBDT"]
@@ -158,23 +158,33 @@ class MethodBDT(Method):
         if self.analysis == REGRESSION:
             return self._regression(values)[:, None]
         if self.boost == "Grad":
-            total = sum(tree.respond(values, False) for tree in trees)
+            total = self._responses(values).sum(axis=0)
             return 2.0 / (1.0 + np.exp(-2.0 * total)) - 1.0
         what = "ntype" if self.yes_no else "purity"
-        total = sum(w * tree.respond(values, self.yes_no, what) for w, tree in zip(weights, trees))
+        total = weights @ self._responses(values, what)
         norm = float(np.sum(weights))
         return total / norm if norm > np.finfo(np.float64).eps else np.zeros(len(values))
 
+    def _responses(self, values: Any, what: str = "response") -> Any:
+        """Every tree's leaf value for every event, the forest packed once for all calls."""
+        packed = getattr(self, "_packed", None)
+        if (
+            packed is None
+            or packed.trees is not self.forest.trees
+            or len(packed.offsets) != len(self.forest.trees)
+        ):
+            packed = self._packed = Packed(self.forest.trees)
+        return packed.responses(values, what)
+
     def _multiclass(self, values: Any) -> Any:
         nclasses = self.dsi.GetNClasses()
-        scores = np.zeros((len(values), nclasses))
-        for index, tree in enumerate(self.forest.trees):
-            scores[:, index % nclasses] += tree.respond(values, False)
+        responses = self._responses(values)
+        scores = np.stack([responses[k::nclasses].sum(axis=0) for k in range(nclasses)], axis=1)
         return boosting.softmax(scores)
 
     def _regression(self, values: Any) -> Any:
         trees, weights = self.forest.trees, np.asarray(self.forest.weights, dtype=np.float64)
-        responses = np.array([tree.respond(values, False) for tree in trees])
+        responses = self._responses(values)
         if self.boost == "Grad":
             output = responses.sum(axis=0) + weights[0]
         elif self.boost == "AdaBoostR2":
