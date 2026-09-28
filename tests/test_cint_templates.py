@@ -50,6 +50,11 @@ def test_a_value_parameter_keeps_its_default_after_a_variadic_function() -> None
     assert "b = Box()" in built
 
 
+def test_std_copy_into_an_array_roots_method_gives_writes_it_from_its_start() -> None:
+    source = "void t() { std::vector<int> r; std::copy(r.begin(), r.end(), gd.GetData()); }"
+    assert "    transformed(r, 0, None, ROOT.gd.GetData(), 0, None)\n" in translate(source, "t.C")
+
+
 def test_std_copy_without_a_destination_is_refused() -> None:
     from xrdroot.cint import Refusal
 

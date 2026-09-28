@@ -674,11 +674,18 @@ class StmtEmitter(CallEmitter):
         """``std::transform`` or ``std::copy`` of ``[first, last)`` into ``out``, stored anew."""
         first, last, out = expr.args[:3]
         source, start, stop = self.iterator_range(first, last, expr)
-        target, at = self._iterator(out, expr, "begin")
+        if self._container_end(out) is None and self.typeof(out) is None:
+            # ROOT's ``GetData()`` and the like: an array, written from its start.
+            target, at = self.value(out), "0"
+        else:
+            target, at = self._iterator(out, expr, "begin")
         root = out.func.obj if isinstance(out, Call) and isinstance(out.func, Member) else out
+        call = f"transformed({source}, {start}, {stop}, {target}, {at}, {op})"
+        if isinstance(out, Call) and self._container_end(out) is None:
+            self.out.line(call, expr.where)
+            return
         if isinstance(root, Name):
             self.assigned(self.symbol(root))
-        call = f"transformed({source}, {start}, {stop}, {target}, {at}, {op})"
         self.out.line(f"{target} = {call}", expr.where)
 
     _WRITERS: ClassVar[dict[str, Callable[[StmtEmitter, Call], None]]] = {
