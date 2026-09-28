@@ -130,13 +130,12 @@ def draw_markers(scene: Any, pixels: np.ndarray[Any, Any], style: int, size: flo
     collection = PathCollection(
         [path.transformed(Affine2D().scale(1, -1))], offsets=points, transform=scale,
         facecolors=[color] if filled else ["none"], edgecolors=["none"] if filled else [color],
-        linewidths=[0.72 * max(width, 1)], zorder=scene.layer(), clip_on=True,
+        linewidths=[0.72 * max(width, 1)], zorder=scene.layer(), clip_on=False,
     )  # fmt: skip
     if hasattr(collection, "set_offset_transform"):
         collection.set_offset_transform(scene.display)
     else:  # pragma: no cover - matplotlib before 3.6 keeps it unexposed
         collection._transOffset = scene.display
-    collection.set_clip_box(scene.ax.bbox)
     collection.set_gid(MARKER_GID)
     scene.ax.add_collection(collection, autolim=False)
 

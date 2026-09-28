@@ -34,8 +34,8 @@ SYMBOLS: dict[str, str] = {
     "`": "‾", "~": "∼",
     **dict(zip(
         (chr(code) for code in range(0xA1, 0xFF)),
-        "ϒ′≤⁄∞ƒ♣♦♥♠↔←↑→↓°±″≥×∝∂•÷≠≡≈…⏐⎯↵ℵℑℜ℘⊗⊕∅∩∪⊃⊇⊄⊂⊆∈∉∠∇®©™∏√⋅¬∧∨⇔⇐⇑⇒⇓◊〈®©™∑⎛⎜⎝⎡⎢⎣⎧⎨⎩⎪ "
-        "〉∫⌠⎮⌡⎞⎟⎠⎤⎥⎦⎫⎬⎭",
+        "ϒ′≤⁄∞ƒ♣♦♥♠↔←↑→↓°±″≥×∝∂•÷≠≡≈…⏐⎯↵ℵℑℜ℘⊗⊕∅∩∪⊃⊇⊄⊂⊆∈∉∠∇®©™∏√⋅¬∧∨⇔⇐⇑⇒⇓◊⟨®©™∑⎛⎜⎝⎡⎢⎣⎧⎨⎩⎪ "
+        "⟩∫⌠⎮⌡⎞⎟⎠⎤⎥⎦⎫⎬⎭",
     )),
 }  # fmt: skip
 
@@ -94,7 +94,7 @@ def glyphs(
         y,
         shown,
         transform=scene.display,
-        fontproperties=fonts.properties(int(font)),
+        fontproperties=fonts.properties(int(font), shown),
         fontsize=em * 72.0 / scene.figure.dpi,
         color=color,
         ha="left",

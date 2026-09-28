@@ -13,7 +13,7 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
-from .model import Band, Bars, Boxes, Curve, Look, Points
+from .model import Area, Band, Bars, Boxes, Curve, Look, Points
 from .request import Request
 
 __all__ = ["Scatter", "scatter_layers"]
@@ -83,6 +83,13 @@ def _band(points: Scatter, request: Request) -> list[Any]:
     ]
 
 
+def _area(points: Scatter, request: Request) -> list[Any]:
+    """``F``: the shape the points go round, filled - under the line, if there is one."""
+    if not request.chosen.has("F") or request.chosen.has("C"):
+        return []
+    return [Area(points.x, points.y, _shaded(points.look))]
+
+
 def _line(points: Scatter, request: Request) -> list[Any]:
     chosen = request.chosen
     if not chosen.has("L", "C"):
@@ -107,8 +114,8 @@ def _markers(points: Scatter, request: Request) -> list[Any]:
     return made
 
 
-#: ``TGraphPainter``'s order: bars, boxes and bands underneath, then lines, then markers.
-ORDER = (_bars, _boxes, _band, _line, _markers)
+#: ``TGraphPainter``'s order: bars, boxes and bands underneath, then fills and lines, then markers.
+ORDER = (_bars, _boxes, _band, _area, _line, _markers)
 
 
 def scatter_layers(points: Scatter, request: Request) -> list[Any]:

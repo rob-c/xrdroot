@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any, NamedTuple, Union
 
 __all__ = [
+    "Area",
     "Band",
     "Bars",
     "Boxes",
@@ -116,6 +117,14 @@ class Band(NamedTuple):
     smooth: bool = False
 
 
+class Area(NamedTuple):
+    """The shape ``(x, y)`` bounds, filled: a graph's ``F``, closed from its last point to its first."""
+
+    x: Array
+    y: Array
+    look: Look
+
+
 class Curve(NamedTuple):
     """A line through ``(x, y)``: ``L``, ``C`` smoothed, and every function."""
 
@@ -183,7 +192,7 @@ class Cloud(NamedTuple):
     iso: bool = False
 
 
-Layer = Union[Steps, Bars, Points, Boxes, Band, Curve, Labels, Mesh, Contour, Surface, Cloud]
+Layer = Union[Steps, Bars, Points, Boxes, Band, Area, Curve, Labels, Mesh, Contour, Surface, Cloud]
 
 #: The layers that need axes with depth to be drawn on.
 DEEP = (Surface, Cloud)

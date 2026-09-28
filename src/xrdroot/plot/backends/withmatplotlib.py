@@ -19,6 +19,7 @@ import numpy as np
 from ...errors import UnsupportedFeatureError
 from .. import colors
 from ..model import (
+    Area,
     Band,
     Bars,
     Boxes,
@@ -204,6 +205,13 @@ def _band(ax: Any, layer: Band, frame: Frame, native: dict[str, Any]) -> Any:
     )  # fmt: skip
 
 
+def _area(ax: Any, layer: Area, frame: Frame, native: dict[str, Any]) -> Any:
+    look = layer.look
+    label = {} if look.label is None else {"label": look.label}
+    return ax.fill(layer.x, layer.y, facecolor=look.fill, alpha=look.alpha, hatch=look.hatch, linewidth=0,
+                   **label, **native)[0]  # fmt: skip
+
+
 def _curve(ax: Any, layer: Curve, frame: Frame, native: dict[str, Any]) -> Any:
     x, y = smoothed(layer.x, layer.y) if layer.smooth else (layer.x, layer.y)
     return ax.plot(x, y, **{**_line(layer.look), **native})
@@ -286,7 +294,7 @@ def _cloud(ax: Any, layer: Cloud, frame: Frame, native: dict[str, Any]) -> Any:
 
 #: Each kind of layer, against what draws it.
 DRAWN: dict[type, Callable[[Any, Any, Frame, dict[str, Any]], Any]] = {
-    Steps: _steps, Bars: _bars, Points: _points, Boxes: _boxes, Band: _band,
+    Steps: _steps, Bars: _bars, Points: _points, Boxes: _boxes, Band: _band, Area: _area,
     Curve: _curve, Labels: _labels, Mesh: _mesh, Contour: _contour, Surface: _surface,
     Cloud: _cloud,
 }  # fmt: skip

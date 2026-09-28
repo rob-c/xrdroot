@@ -51,8 +51,9 @@ MONO = (
     "FreeMono", "TeX Gyre Cursor", "Nimbus Mono PS", "Nimbus Mono L", "Courier New",
     "Liberation Mono", "Courier", "DejaVu Sans Mono",
 )  # fmt: skip
-#: The face ROOT's Symbol font is drawn in: matplotlib's own STIX, its Greek a Times's.
-SYMBOL = ("STIXGeneral",)
+#: The faces ROOT's Symbol font is drawn in: a Symbol of Adobe's widths if one is
+#: installed, else matplotlib's own STIX, its Greek a Times's.
+SYMBOL = ("Symbol", "Standard Symbols PS", "STIXGeneral")
 #: Each ``fTextFont // 10``: the faces it may be, and whether italic and bold.
 FONTS: dict[int, tuple[tuple[str, ...], bool, bool]] = {
     0: (SANS, False, True),
@@ -140,11 +141,41 @@ def face(code: int) -> str:
     return str(font_manager.findfont(prop))
 
 
-def properties(code: int) -> Any:
-    """The ``FontProperties`` matplotlib draws ``fTextFont`` ``code`` with."""
+#: Where a Symbol character its face has not is looked for: matplotlib's STIX, and
+#: its face of the pieces of big brackets.
+SYMBOL_FALLBACKS = ("STIXGeneral", "STIXSizeOneSym")
+
+
+@functools.lru_cache(maxsize=None)
+def _fallback(family: str) -> str:
+    from matplotlib import font_manager
+
+    return str(font_manager.findfont(font_manager.FontProperties(family=family)))
+
+
+def _has(path: str, text: str) -> bool:
+    font = _font(path)
+    return all(font.get_char_index(ord(char)) for char in text)
+
+
+@functools.lru_cache(maxsize=4096)
+def face_of(code: int, text: str) -> str:
+    """The file ``text`` in ``fTextFont`` ``code`` is drawn from.
+
+    A Symbol character the installed Symbol has no glyph for is drawn from
+    the first of matplotlib's STIX faces that has it.
+    """
+    own = face(code)
+    if int(code) // 10 not in (12, 15) or not text or _has(own, text):
+        return own
+    return next((path for path in map(_fallback, SYMBOL_FALLBACKS) if _has(path, text)), own)
+
+
+def properties(code: int, text: str = "") -> Any:
+    """The ``FontProperties`` matplotlib draws ``text`` in ``fTextFont`` ``code`` with."""
     from matplotlib.font_manager import FontProperties
 
-    return FontProperties(fname=face(code))
+    return FontProperties(fname=face_of(code, text))
 
 
 def measure_em(pixels: float) -> int:
@@ -200,7 +231,7 @@ def extent(text: str, code: int, em: int) -> Extent:
 
     Characters the face has no glyph for are left out, as ROOT leaves them.
     """
-    font = _font(face(code))
+    font = _font(face_of(code, text))
     font.set_size(float(em), 72.0)
     no_hinting, unfitted = _flags()
     pen = top = 0

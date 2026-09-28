@@ -17,6 +17,7 @@ import numpy as np
 
 from .. import colors
 from ..model import (
+    Area,
     Band,
     Bars,
     Boxes,
@@ -169,6 +170,14 @@ def _band(layer: Band, frame: Frame) -> list[Any]:
     ]  # fmt: skip
 
 
+def _area(layer: Area, frame: Frame) -> list[Any]:
+    look = layer.look
+    return [
+        _go().Scatter(x=layer.x, y=layer.y, mode="lines", fill="toself", fillcolor=look.fill,
+                      opacity=look.alpha, line={"width": 0}, **_named(look))
+    ]  # fmt: skip
+
+
 def _curve(layer: Curve, frame: Frame) -> list[Any]:
     look = layer.look
     line = {**_line(look), "shape": "spline" if layer.smooth else "linear"}
@@ -249,7 +258,7 @@ def _cloud(layer: Cloud, frame: Frame) -> list[Any]:
 
 #: Each kind of layer, against what makes its traces.
 TRACES: dict[type, Callable[[Any, Frame], list[Any]]] = {
-    Steps: _steps, Bars: _bars, Points: _points, Boxes: _boxes, Band: _band,
+    Steps: _steps, Bars: _bars, Points: _points, Boxes: _boxes, Band: _band, Area: _area,
     Curve: _curve, Labels: _labels, Mesh: _mesh, Contour: _contour, Surface: _surface,
     Cloud: _cloud,
 }  # fmt: skip

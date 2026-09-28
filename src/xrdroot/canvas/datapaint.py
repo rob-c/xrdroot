@@ -18,7 +18,7 @@ from typing import Any
 
 import numpy as np
 
-from ..plot.model import Band, Bars, Boxes, Curve, Look, Points, Steps
+from ..plot.model import Area, Band, Bars, Boxes, Curve, Look, Points, Steps
 from . import styles
 from .marks import draw_markers
 from .raster import add_line, frame_clip
@@ -111,6 +111,11 @@ def paint_steps(scene: Scene, layer: Steps) -> None:
 
 def paint_curve(scene: Scene, layer: Curve) -> None:
     polyline(scene, pixels_of(scene, layer.x, layer.y), layer.look)
+
+
+def paint_area(scene: Scene, layer: Area) -> None:
+    """A graph's ``F``: the polygon through its points, filled in its fill attributes."""
+    _fill(scene, pixels_of(scene, layer.x, layer.y), layer.look._replace(fill_style=layer.look.fill_style or 1001))
 
 
 def paint_band(scene: Scene, layer: Band) -> None:
@@ -209,6 +214,6 @@ def paint_points(scene: Scene, layer: Points) -> None:
 
 #: The layers painted here, by their kind; the rest are drawn by :mod:`xrdroot.plot`.
 PAINTED = {
-    Steps: paint_steps, Curve: paint_curve, Band: paint_band, Boxes: paint_boxes, Bars: paint_bars,
+    Steps: paint_steps, Curve: paint_curve, Band: paint_band, Boxes: paint_boxes, Bars: paint_bars, Area: paint_area,
     Points: paint_points,
 }  # fmt: skip
