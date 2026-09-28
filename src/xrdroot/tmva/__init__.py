@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from .crossval import CrossValidation
+from .rbdt import RBDT, SaveXGBoost
 from .experimental import Compute, RReader, RStandardScaler
 from .factory import Factory
 from .genetic import GeneticAlgorithm, GeneticFitter, IFitterTarget, Interval
@@ -60,4 +61,6 @@ EXPERIMENTAL: dict[str, Any] = {
     "RReader": RReader,
     "RStandardScaler": RStandardScaler,
     "Compute": Compute,
+    "RBDT": RBDT,
+    "SaveXGBoost": SaveXGBoost,
 }
