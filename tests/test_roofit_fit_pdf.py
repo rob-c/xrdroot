@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from refmachine import FIT_REL, roots
 from xrdroot.roofit.pdf import RooAbsPdf, as_array, check_range, names, normalized
 from xrdroot.roofit.pdfs.basic import RooExponential, RooGaussian, RooPolynomial
 from xrdroot.roofit.pdfs.extend import RooExtendPdf
@@ -49,11 +50,13 @@ def test_a_norm_over_variables_the_density_does_not_depend_on_is_one() -> None:
 
 def test_a_norm_range_normalises_over_part_of_the_range_until_it_is_cleared() -> None:
     """``setNormRange("narrow")`` normalises over [-1, 1]: ROOT's 0.4597; cleared, the whole
-    range again."""
+    range again. The norm is ``2 - 2 erfc(1/sqrt(8))``, and off ROOT's machine an ``erfc`` an
+    ulp away, doubled and taken from 2, leaves the value a few ulps away: within 2e-15."""
     g, x, _ = _gauss()
     x.setRange("narrow", -1, 1)
     g.setNormRange("narrow")
-    assert (g.normRange(), g.getVal([x])) == ("narrow", 0.45970542269959436)
+    assert g.normRange() == "narrow"
+    assert g.getVal([x]) == roots(0.45970542269959436, rel=2e-15)
     g.setNormRange("")
     assert not g.normRange()
     assert g.getVal([x]) == 0.17603276430228695
@@ -153,7 +156,9 @@ def test_a_conditional_fit_normalises_each_event_at_its_own_conditional_value() 
     data = gc.generate([x], 20, ProtoData=proto)
     s.setVal(1.0)
     result = gc.fitTo(data, Save=True, PrintLevel=-1, ConditionalObservables=[y])
-    assert (s.getVal(), s.getError()) == pytest.approx((1.619789494366564, 0.2558258583956), 1e-8)
+    assert (s.getVal(), s.getError()) == pytest.approx(
+        (1.619789494366564, 0.2558258583956), rel=FIT_REL
+    )
     assert result.minNll() == pytest.approx(38.028886252088455, abs=1e-9)
 
 
@@ -175,7 +180,9 @@ def test_a_range_that_ends_at_a_per_event_value_normalises_each_event_there() ->
         }
     )
     result = ex.fitTo(data, Save=True, PrintLevel=-1, ConditionalObservables=[tmax])
-    assert (c.getVal(), c.getError()) == pytest.approx((-0.1725560550447029, 0.31789133100), 1e-8)
+    assert (c.getVal(), c.getError()) == pytest.approx(
+        (-0.1725560550447029, 0.31789133100), rel=FIT_REL
+    )
     assert result.minNll() == pytest.approx(6.110393063026177, abs=1e-9)
 
 

@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from refmachine import ROOTS_MACHINE
 from xrdroot.roofit.cmdargs import RooCmdArg
 from xrdroot.roofit.pdfs.addpdf import RooAddPdf
 from xrdroot.roofit.pdfs.basic import RooGaussian
@@ -340,8 +341,12 @@ def test_a_density_fitted_in_a_range_is_drawn_in_it_unless_told_otherwise(capsys
     m.model.plotOn(frame, Range="", NormRange="")
     full = frame.getObject(2)
     assert full.GetN() == 69
+    # The fit saw only [-1.5, 2.5]: the tails at -7.3 and 8.8 are its five parameters carried
+    # far outside, which move by a millionth where MIGRAD stops a step apart - as it does off
+    # ROOT's machine, where the likelihood is an ulp away: 1.1e-6 seen there, 1e-5 allowed.
     assert heights(full) == pytest.approx(
-        [10.06249305, 21.06118863, 30.84258269, 18.68275245, 6.602053066], rel=1e-6
+        [10.06249305, 21.06118863, 30.84258269, 18.68275245, 6.602053066],
+        rel=1e-6 if ROOTS_MACHINE else 1e-5,
     )
     m.model.removeStringAttribute("fitrange")
     capsys.readouterr()

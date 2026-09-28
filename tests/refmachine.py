@@ -25,7 +25,7 @@ from typing import Any
 
 import pytest
 
-__all__ = ["ROOTS_MACHINE", "roots"]
+__all__ = ["FIT_REL", "ROOTS_MACHINE", "roots"]
 
 #: Whether this is the kind of machine the references were printed on - which
 #: ``XRDROOT_TEST_OTHER_MACHINE=1`` denies, to try the tolerances where it is.
@@ -34,6 +34,14 @@ ROOTS_MACHINE = (
     and platform.machine() == "x86_64"
     and not os.environ.get("XRDROOT_TEST_OTHER_MACHINE")
 )
+
+
+#: How close a fitted value or HESSE error is to ROOT's: 1e-8 on ROOT's machine, and 1e-7
+#: elsewhere. HESSE's errors are second differences over steps Minuit2 sizes from the
+#: likelihood's precision, so each carries a relative error of about sqrt(eps) = 1.5e-8, and
+#: a likelihood an ulp away - or Minuit2's own arithmetic fused differently - moves it by
+#: that: the fits seen off ROOT's machine differ by up to 1.8e-8.
+FIT_REL = 1e-8 if ROOTS_MACHINE else 1e-7
 
 
 def roots(expected: Any, **tolerance: float) -> Any:

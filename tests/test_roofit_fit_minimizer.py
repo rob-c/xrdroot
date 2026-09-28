@@ -9,12 +9,14 @@ where a number is Minuit's, it agrees to Minuit's tolerance.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+from refmachine import ROOTS_MACHINE, roots
 from xrdroot.roofit.fitting.minimizer import RooMinimizer, as_set, cov_quality, first_step
 from xrdroot.roofit.fitting.minimizer import _status as status_of
 from xrdroot.roofit.pdfs.basic import RooGaussian, RooPolynomial
@@ -370,14 +372,16 @@ def test_minimize_takes_minuit2_with_migrad_or_simplex() -> None:
 
 def test_migrad_and_hesse_count_roots_calls() -> None:
     """The number of likelihood evaluations is how one compares fits' cost: ROOT's 42 after
-    MIGRAD and HESSE, 105 after MINOS too."""
+    MIGRAD and HESSE, 105 after MINOS too. MINOS searches for each crossing until it is within a
+    tolerance, and off ROOT's machine - a likelihood an ulp away, Minuit2 built for arm64 with
+    its multiplies and adds fused - one search can end a call sooner or later: 104 is seen."""
     minimizer, _, _, _ = _minimizer((0.3, 1.5))
     minimizer.setPrintLevel(-1)
     minimizer.migrad()
     minimizer.hesse()
     assert minimizer.evalCounter() == 42
     minimizer.minos()
-    assert minimizer.evalCounter() == 105
+    assert minimizer.evalCounter() == roots(105, abs=4)
 
 
 def test_strategy_tolerance_and_error_level_change_the_fit_as_in_root() -> None:
@@ -451,12 +455,28 @@ def test_a_verbose_fit_says_each_parameter_it_moves_and_each_value_it_finds(caps
         "error estimate available for {}: using {}\n"
     )
     assert warning.format("m", "1") + warning.format("s", "0.7") in out
-    assert (
-        "m=0.2, \nprevFCN = 38.79413316  m=0.2101, \nprevFCN = 38.83576049  m=0.1899, \n"
-    ) in out
-    assert out.endswith("prevFCN = 37.76774481  m=-0.2628, s=1.598, ")
-    assert out.count("prevFCN") == 31
+    if ROOTS_MACHINE:
+        assert (
+            "m=0.2, \nprevFCN = 38.79413316  m=0.2101, \nprevFCN = 38.83576049  m=0.1899, \n"
+        ) in out
+        assert out.endswith("prevFCN = 37.76774481  m=-0.2628, s=1.598, ")
+        assert out.count("prevFCN") == 31
+    # Elsewhere a parameter can come back from Minuit2's sine transform an ulp off and be said
+    # to have moved, and the walk down can take other steps; the first steps in m, and what the
+    # likelihood was there, are the same.
+    assert _moved(out, "m")[:3] == ["0.2", "0.2101", "0.1899"]
+    assert _found(out)[:2] == [38.79413316, 38.83576049]
     assert (m.getVal(), s.getVal()) == pytest.approx((-0.26275685043154534, 1.5982264153830419))
+
+
+def _moved(out: str, name: str) -> list[str]:
+    """The values a verbose fit said ``name`` was moved to, call after call."""
+    return re.findall(rf"(?m)(?:^|\s){name}=([^,\s]+),", out)
+
+
+def _found(out: str) -> list[float]:
+    """The likelihood's values a verbose fit said it found, call after call."""
+    return [float(chunk.split()[0]) for chunk in out.split("\nprevFCN = ")[1:]]
 
 
 #: A parameter's range and value, and the first step RooFit gives it without an error.
@@ -501,7 +521,12 @@ def test_a_fit_at_a_parameter_limit_starts_inside_it_as_minuit_does(capsys: Any)
         minimizer.setMaxFunctionCalls(1)
         capsys.readouterr()
         minimizer.migrad()
-        assert start + "\nprevFCN = " in capsys.readouterr().out
+        out = capsys.readouterr().out
+        if ROOTS_MACHINE:
+            assert start + "\nprevFCN = " in out
+        # s, which it did not move, may come back from Minuit2's sine transform an ulp off
+        # and be said to have moved too - but the first m it is given is 4.9, not the limit.
+        assert _moved(out, "m")[0] == start[2:-2]
 
 
 def test_minuit2s_status_is_the_last_of_its_checks_that_fails() -> None:

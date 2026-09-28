@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from refmachine import FIT_REL
 from xrdroot.roofit.cmdargs import RooCmdArg
 from xrdroot.roofit.fitting.kahan import Kahan
 from xrdroot.roofit.pdfs.basic import RooGaussian
@@ -55,8 +56,10 @@ def test_an_extendable_density_is_fitted_extended_unless_told_otherwise(capsys: 
     )
     assert "RooAddition::defaultErrorLevel(nll_e_gData) Summation contains a RooNLLVar" in out
     expected = [0.047947128523434246, 1.8725234971696316, 0.26469131791535994, 0.1871843089097]
-    assert _fitted(m, s) == pytest.approx(expected, rel=1e-8)
-    assert (n.getVal(), n.getError()) == pytest.approx((50.00014283647089, 7.0475412438586), 1e-8)
+    assert _fitted(m, s) == pytest.approx(expected, rel=FIT_REL)
+    assert (n.getVal(), n.getError()) == pytest.approx(
+        (50.00014283647089, 7.0475412438586), rel=FIT_REL
+    )
     assert result.minNll() == pytest.approx(-43.29079796820673, abs=1e-9)
     for one, value in ((m, 0.0), (s, 2.0), (n, 40.0)):
         one.setVal(value)
@@ -71,7 +74,7 @@ def test_extended_on_a_density_that_expects_nothing_fits_as_if_it_were_not() -> 
     """``Extended(true)`` where the density has no yield adds no term: ROOT's plain fit."""
     g, data, _, m, s = _gauss()
     result = g.fitTo(data, Save=True, PrintLevel=-1, Extended=True)
-    assert _fitted(m, s) == pytest.approx(FULL, rel=1e-8)
+    assert _fitted(m, s) == pytest.approx(FULL, rel=FIT_REL)
     assert result.minNll() == pytest.approx(FULL_NLL, abs=1e-9)
 
 
@@ -93,7 +96,7 @@ def test_a_fit_in_a_range_normalises_there_and_names_its_range_for_plotting() ->
     remembers it as ``fit_nll_<pdf>_<data>``: ROOT's fit."""
     result, g, x, _ = _in_range("sig")
     m, s = (g.getParameters([x]).find(n) for n in ("m", "s"))
-    assert _fitted(m, s) == pytest.approx(IN_SIG, rel=1e-8)
+    assert _fitted(m, s) == pytest.approx(IN_SIG, rel=FIT_REL)
     assert result.minNll() == pytest.approx(74.95574471337984, abs=1e-9)
     assert g.getStringAttribute("fitrange") == "fit_nll_g_gData"
     assert (x.getMin("fit_nll_g_gData"), x.getMax("fit_nll_g_gData")) == (-3.0, 3.0)
@@ -104,7 +107,7 @@ def test_a_fit_in_two_ranges_joins_them_and_names_each() -> None:
     ``fit_nll_<pdf>_<data>_<range>``, and a fit without a range forgets them."""
     result, g, x, data = _in_range("left,right")
     m, s = (g.getParameters([x]).find(n) for n in ("m", "s"))
-    assert _fitted(m, s) == pytest.approx(IN_SIDES, rel=1e-8)
+    assert _fitted(m, s) == pytest.approx(IN_SIDES, rel=FIT_REL)
     assert result.minNll() == pytest.approx(48.8809414365939, abs=1e-9)
     assert g.getStringAttribute("fitrange") == "fit_nll_g_gData_left,fit_nll_g_gData_right"
     assert (x.getMin("fit_nll_g_gData_left"), x.getMax("fit_nll_g_gData_right")) == (-10.0, 10.0)
@@ -117,7 +120,7 @@ def test_a_fit_in_a_range_given_by_its_ends_is_the_fit_in_that_range() -> None:
     """ROOT makes ``Range(-3, 3)`` a range called ``fit`` and fits there, as in ``"sig"``."""
     g, data, _, m, s = _gauss()
     result = g.fitTo(data, Save=True, PrintLevel=-1, Range=(-3, 3))
-    assert _fitted(m, s) == pytest.approx(IN_SIG, rel=1e-8)
+    assert _fitted(m, s) == pytest.approx(IN_SIG, rel=FIT_REL)
     assert result.minNll() == pytest.approx(74.95574471337984, abs=1e-9)
     assert g.getStringAttribute("fitrange") == "fit_nll_g_gData"
 
@@ -146,7 +149,7 @@ def test_a_duplicated_option_is_named_and_minos_can_be_asked_for_some_parameters
     )
     assert m.hasAsymError() and not s.hasAsymError()
     assert (m.getAsymErrorLo(), m.getAsymErrorHi()) == pytest.approx(
-        (-0.26617755034923724, 0.2661034440297161), rel=1e-8
+        (-0.26617755034923724, 0.2661034440297161), rel=FIT_REL
     )
 
 
