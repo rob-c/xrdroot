@@ -36,6 +36,8 @@ SUBMODULES = [
     "rdf",
     "graphics",
     "roofit",
+    "tcut",
+    "tmva",
 ]
 
 __all__: list[str] = []
