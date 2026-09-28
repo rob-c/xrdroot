@@ -164,3 +164,8 @@ class RooPrintable:
 
     def __str__(self) -> str:
         return self.printStream(self.defaultPrintContents("I"), kInline)
+
+    def cxx_ostream(self) -> str:
+        """``std::cout << obj``: RooFit's ``operator<<``, the inline print - ``(a,b,c)`` for a
+        set, whatever Python's ``print`` shows of it."""
+        return RooPrintable.__str__(self)
