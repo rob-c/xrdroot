@@ -193,8 +193,10 @@ def paint_histogram(scene: Scene, h: Histogram, option: str) -> None:
     upper = option.upper()
     if len(h.axes) > 2:
         if not _boxed(upper):
-            scene.skipped.append(f"{_named(h)} (only LEGO and BOX draw three dimensions here)")
+            scene.skipped.append(f"{_named(h)} (only LEGO, BOX and ISO draw three dimensions here)")
             return
+        if "ISO" in upper:
+            scene.skipped.append(f"{_named(h)}'s isosurface (ISO draws its box and axes alone)")
         scene.solid = True
         paint_h3_boxes(scene, h, option)
     elif len(h.axes) == 2 and three_d_kind(option) and "SAME" not in upper:
@@ -206,8 +208,8 @@ def paint_histogram(scene: Scene, h: Histogram, option: str) -> None:
 
 
 def _boxed(upper: str) -> bool:
-    """Whether a three-dimensional histogram's option draws it as boxes: ``LEGO`` or ``BOX``."""
-    return ("LEGO" in upper or "BOX" in upper) and "SAME" not in upper
+    """Whether a three-dimensional histogram's option draws its box: ``LEGO``, ``BOX``, ``ISO``."""
+    return any(word in upper for word in ("LEGO", "BOX", "ISO")) and "SAME" not in upper
 
 
 def paint_graph(scene: Scene, g: Graph, option: str) -> None:

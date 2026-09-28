@@ -229,23 +229,42 @@ def test_a_pad_draws_alone_filling_a_figure():
     assert only(fig, "p").get_position().bounds == pytest.approx((0.1, 0.1, 0.8, 0.8))
 
 
-def test_a_pad_is_scaled_gridded_and_ticked_as_it_says():
-    h = filled()
-    fig = make([(h, "")], fLogy=1, fLogx=1, fGridx=True, fGridy=True, fTickx=1, fTicky=1).plot()
-    (ax,) = fig.axes
-    assert ax.get_xscale() == ax.get_yscale() == "log"
-    grid = polylines(ax) and [line for a in lines(ax) if a.dashes == (1, 2) for line in a.lines]
+def _grid_lines(ax):
+    """The dotted lines of a pad's grid: those straight up, and those straight across."""
+    grid = [line for a in lines(ax) if a.dashes == (1, 2) for line in a.lines]
     upright = [line for line in grid if line[0, 0] == line[1, 0]]
-    across = [line for line in grid if line[0, 1] == line[1, 1]]
+    return upright, [line for line in grid if line[0, 1] == line[1, 1]]
+
+
+def _reach(line, axis):
+    """How far a line of pixels reaches along ``axis``: its lowest and highest pixel."""
+    values = [point[axis] for point in line]
+    return min(values), max(values)
+
+
+def _decorated():
+    """A histogram on a pad scaled, gridded and ticked on all four sides."""
+    pad = {"fLogy": 1, "fLogx": 1, "fGridx": True, "fGridy": True, "fTickx": 1, "fTicky": 1}
+    (ax,) = make([(filled(), "")], **pad).plot().axes
+    return ax
+
+
+def test_a_pad_is_scaled_and_gridded_as_it_says():
+    ax = _decorated()
+    assert ax.get_xscale() == ax.get_yscale() == "log"
+    assert ax.get_ylim() == pytest.approx((0.5, 6.0))  # half the lowest bin, twice the highest
+    upright, across = _grid_lines(ax)
     assert upright and across  # dotted across the frame at each tick, both ways
     assert all(sorted(line[:, 1]) == [50, 450] for line in upright)
-    ticked = [line for line in polylines(ax, (0.0, 0.0, 0.0), clipped=False) if len(line) == 2]
-    assert any(min(y for _, y in line) == 50 < max(y for _, y in line) < 70 for line in ticked)
-    assert any(max(x for x, _ in line) == 630 > min(x for x, _ in line) > 610 for line in ticked)
-    low, high = ax.get_ylim()
-    assert low == pytest.approx(0.5) and high == pytest.approx(
-        6.0
-    )  # half the lowest bin, twice the highest
+
+
+def test_a_pad_ticked_on_its_far_sides_has_ticks_under_its_top_and_in_from_its_right():
+    ticked = [line for line in polylines(_decorated(), (0.0, 0.0, 0.0), clipped=False)
+              if len(line) == 2]  # fmt: skip
+    tops = [_reach(line, 1) for line in ticked]
+    rights = [_reach(line, 0) for line in ticked]
+    assert any(low == 50 < high < 70 for low, high in tops)
+    assert any(high == 630 > low > 610 for low, high in rights)
 
 
 def test_a_pad_drawn_before_it_was_saved_keeps_the_frame_it_was_drawn_with():

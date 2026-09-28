@@ -65,7 +65,8 @@ _CLASSIC: dict[str, Any] = {
 
 #: What each of ROOT's named styles changes of ``Modern``.
 STYLES: dict[str, dict[str, Any]] = {
-    "Modern": {},
+    # ``Modern`` places a y axis's title by its labels' width: an offset of 0, "automatic".
+    "Modern": {"TitleOffset:Y": 0.0},
     "Classic": _CLASSIC,
     "Default": _CLASSIC,
     "Plain": {

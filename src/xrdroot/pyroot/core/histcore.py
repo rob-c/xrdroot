@@ -84,11 +84,15 @@ STYLED = {
 
 
 def _in_style(made: Any) -> Any:
-    """A histogram as ``TH1::Build`` leaves it: drawn in ``gStyle``'s histogram attributes."""
+    """A histogram as ``TH1::Build`` leaves it: drawn in ``gStyle``'s histogram attributes, its
+    axes in ``gStyle``'s - ``TAxis::ResetAttAxis`` of each."""
     from ..graphics.style import gStyle
 
     for base, fields in STYLED.items():
         made._core[base].update({member: gStyle.values[field] for member, field in fields.items()})
+    for letter in "XYZ":  # a TH1 has all three, its y and z unbinned
+        own = gStyle.axes[letter]
+        made._core[f"f{letter}axis"]["TAttAxis"].update({f"f{field}": own[field] for field in own})
     return made
 
 

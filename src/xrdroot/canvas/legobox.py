@@ -145,7 +145,7 @@ def paint_h3_boxes(scene: Scene, h: Any, option: str) -> None:
     screen = RasterScreen()
     look = (int(lookup(h, "fLineColor", 1)), int(lookup(h, "fLineWidth", 1)),
             int(lookup(h, "fLineStyle", 1)))  # fmt: skip
-    segments = _boxes(view, screen, h, look)
+    segments = [] if "ISO" in option.upper() else _boxes(view, screen, h, look)
     zaxis = lookup(h, "fZaxis") or {}
     segments += _back_box(view, screen, int(lookup(zaxis, "fNdivisions", 510)) % 100)
     _draw_segments(pad, segments)

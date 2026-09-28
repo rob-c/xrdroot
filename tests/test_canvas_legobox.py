@@ -48,8 +48,11 @@ def test_the_fuller_bin_has_the_bigger_box_and_an_empty_one_none():
     assert across(8.0, 8.0) > across(8.0, 1.0) > across(8.0)
 
 
-def test_a_histogram_of_equal_contents_draws_no_boxes_and_one_without_lego_is_left_out():
+def test_a_histogram_of_equal_contents_draws_no_boxes_and_one_without_lego_or_box_no_box():
     ax = make([(_cube(), "box")]).plot().axes[0]
     assert all(a.color == (0.0, 0.0, 0.0) for a in lines(ax))  # the box round them, and no boxes
-    with pytest.warns(match="only LEGO and BOX"):
-        make([(_cube(1.0), "iso")]).plot()
+    with pytest.warns(match="only LEGO, BOX and ISO"):
+        make([(_cube(1.0), "")]).plot()
+    with pytest.warns(match="isosurface"):  # ISO draws its box and axes, and says what it left
+        ax = make([(_cube(1.0), "iso")]).plot().axes[0]
+    assert all(a.color == (0.0, 0.0, 0.0) for a in lines(ax))

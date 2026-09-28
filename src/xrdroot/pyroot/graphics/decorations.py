@@ -166,7 +166,7 @@ def _stats(pad: Any, obj: Any, option: str) -> list[TPaveStats]:
 
 def _rows(obj: Any, option: str, stat: int, fit: int) -> list[tuple[str, str]]:
     """The lines of a stats box: a histogram's statistics and fit, or a graph's fit."""
-    if isinstance(obj, Histogram) and len(obj.axes) <= 2 and shows_stats(obj, option):
+    if isinstance(obj, Histogram) and shows_stats(obj, option):
         return stats_rows(obj, stat) + fit_rows(obj, fit)
     if isinstance(obj, Graph) and "SAME" not in option.upper():
         return fit_rows(obj, fit)
