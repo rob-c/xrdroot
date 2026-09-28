@@ -76,6 +76,14 @@ def test_run_runs_the_working_directorys_logon_and_logoff_macros_around_a_macro_
     assert capsys.readouterr().out == "no logon for PyROOT\n"
     assert main(["run", "-n", "quiet.C"]) == 0  # as `root -n`, which hsimple.C runs under
     assert capsys.readouterr().out == ""
+
+
+def test_run_prints_and_exits_with_a_returned_value_between_the_logon_macros(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    write(tmp_path, "rootlogon.C", LOGON)
+    write(tmp_path, "rootlogoff.C", LOGOFF)
     # hsimple.C returns its file: under -n no logon speaks, and root -q exits 255.
     write(tmp_path, "gives.C", 'TH1F *gives() { printf("made\\n"); return nullptr; }')
     write(tmp_path, "file.C", "int file() { return 300; }")
