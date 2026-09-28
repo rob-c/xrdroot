@@ -13,7 +13,14 @@ import re
 
 from .errors import Refusal, Where
 
-__all__ = ["number"]
+__all__ = ["number", "user_literal", "SUFFIXES"]
+
+#: The user-defined literal suffixes whose ``operator""`` the library defines, and whose
+#: value the runtime's ``user_literal`` makes: ROOT 7's pad lengths and ``std::chrono``'s.
+SUFFIXES = frozenset({"_normal", "_px", "_user", "ns", "us", "ms", "s", "min", "h"})
+
+#: A number followed by a suffix that is no C++ number's own.
+SUFFIXED = re.compile(r"^(?P<number>[\d.']+(?:[eE][+-]?\d+)?)(?P<suffix>[A-Za-z_]\w*)$")
 
 #: An integer literal: its digits in some base, then its suffix.
 INTEGER = re.compile(
@@ -69,3 +76,11 @@ def number(text: str, where: Where) -> tuple[int | float, str]:
         why = f'{text} is a user-defined literal, which calls an operator"" of its own'
         raise Refusal(why, where)
     raise Refusal(f"{text} is not a number literal C++ has", where)
+
+
+def user_literal(text: str) -> tuple[str, str] | None:
+    """``0.1_normal`` as ``("0.1", "_normal")`` when the suffix is one of :data:`SUFFIXES`."""
+    found = SUFFIXED.match(text)
+    if found is None or found["suffix"] not in SUFFIXES:
+        return None
+    return found["number"], found["suffix"]

@@ -22,6 +22,7 @@ from .base import Out, P
 from .ctype import CType
 from .emit_expr import ExprEmitter, zero
 from .emit_names import type_text
+from .literals import SUFFIXES
 from .nodes import Binary, Call, Expr, Index, InitList, Literal, Member, Name, Unary
 
 __all__ = ["CallEmitter", "WRAPS"]
@@ -147,6 +148,11 @@ class CallEmitter(ExprEmitter):
     def _exit(self, func: Name, node: Call) -> Out | None:
         return f"c_exit({self.arguments(node)})", P.POSTFIX
 
+    def _suffixed(self, func: Name, node: Call) -> Out | None:
+        """``0.1_normal``, ``100us``: the value the library's ``operator""`` makes of a number."""
+        suffix = func.last[len('operator""') :]
+        return f"user_literal({suffix!r}, {self.value(node.args[0])})", P.POSTFIX
+
     def _unsupported(self, func: Name, node: Call) -> Out | None:
         raise self.refuse(f"{func.text}() where its result is used", node)
 
@@ -220,6 +226,7 @@ class CallEmitter(ExprEmitter):
         "min_element": _unsupported,
         "find_if": _unsupported,
         "getline": _unsupported,
+        **dict.fromkeys(['operator""' + suffix for suffix in SUFFIXES], _suffixed),
     }
 
     # -- methods -----------------------------------------------------------------

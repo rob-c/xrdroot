@@ -29,6 +29,8 @@ from .streams import *  # noqa: F403
 from .streams import __all__ as _streams
 from .strings import *  # noqa: F403
 from .strings import __all__ as _strings
+from .units import *  # noqa: F403
+from .units import __all__ as _units
 
 __all__ = [
     "ROOT",
@@ -41,4 +43,5 @@ __all__ = [
     *_streams,
     *_strings,
     *_istreams,
+    *_units,
 ]

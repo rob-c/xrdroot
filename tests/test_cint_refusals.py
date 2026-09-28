@@ -52,7 +52,7 @@ def test_the_corners_of_the_grammar_are_read(source: str, fragment: str) -> None
         ("typedef struct { int a; } T;", "a typedef of a class defined in place"),
         ("struct { int a; } s;", "an unnamed struct, which has no name"),
         ("int n = sizeof...(args);", "sizeof of a type whose size"),
-        ("int x = 10ms;", "10ms is a user-defined literal"),
+        ("int x = 10_km;", "10_km is a user-defined literal"),
     ],
 )
 def test_constructs_with_no_python_are_refused_by_name_at_their_line(source: str, why: str) -> None:

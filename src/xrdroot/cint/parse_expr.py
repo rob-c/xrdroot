@@ -15,7 +15,7 @@ from typing import Any, ClassVar
 
 from .ctype import BUILTIN_WORDS, CType, builtin_name, canonical
 from .cursor import KEYWORDS, KNOWN_TEMPLATES, STD_NAMES, NoParse
-from .literals import number
+from .literals import number, user_literal
 from .nodes import (
     Assign,
     Binary,
@@ -345,6 +345,14 @@ class ExprParser(TypeParser):
 
     def _number(self) -> Expr:
         token = self.take()
+        suffixed = user_literal(token.text)
+        if suffixed is not None:
+            # ``0.1_normal`` is a call of the library's ``operator""_normal`` on ``0.1``.
+            digits, suffix = suffixed
+            value, ctype = number(digits, token.where)
+            kind = "int" if isinstance(value, int) else "float"
+            operand = Literal(token.where, kind, value, ctype)
+            return Call(token.where, Name(token.where, ['operator""' + suffix]), [operand])
         value, ctype = number(token.text, token.where)
         kind = "int" if isinstance(value, int) else "float"
         return Literal(token.where, kind, value, ctype)
