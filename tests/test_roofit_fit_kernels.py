@@ -142,3 +142,40 @@ def test_rf204bs_four_fits_in_ranges_are_roots(capsys: Any) -> None:
         assert nsig.getVal() == 1.3503490751791414e-08
     assert 0 <= nsig.getVal() < 0.1
     capsys.readouterr()
+
+
+def test_rf312s_fit_in_two_boxes_normalises_the_products_over_their_union(capsys: Any) -> None:
+    """rf312: signal and background, each a product in x and y, fitted in SB1 and SB2 - two
+    boxes whose union is no product of a range in x and one in y, so each product is
+    normalised over the union as a whole. ROOT, after the fits in SB1 and SB2 the macro makes
+    first: -log L 27252.6103596355 at f 0.5008165.
+    The values are held to FIT_REL; the HESSE errors, second differences over steps sized
+    from the likelihood's precision, to 1e-6, where they are seen 4e-7 from ROOT's."""
+    from xrdroot.roofit.pdfs.basic import RooPolynomial
+    from xrdroot.roofit.pdfs.prodpdf import RooProdPdf
+
+    generator().SetSeed(4357)
+    x = RooRealVar("x", "x", -10, 10)
+    y = RooRealVar("y", "y", -10, 10)
+    mx = RooRealVar("mx", "mx", 1, -10, 10)
+    my = RooRealVar("my", "my", 1, -10, 10)
+    sig = RooProdPdf("sig", "sig", RooGaussian("gx", "gx", x, mx, 1.0),
+                     RooGaussian("gy", "gy", y, my, 1.0))  # fmt: skip
+    bkg = RooProdPdf("bkg", "bkg", RooPolynomial("px", "px", x), RooPolynomial("py", "py", y))
+    f = RooRealVar("f", "f", 0.0, 1.0)
+    model = RooAddPdf("model", "model", [sig, bkg], [f])
+    data = model.generate([x, y], 10000)
+    for name, xs, ys in (("SB1", (-10, 10), (-10, 0)), ("SB2", (-10, 0), (0, 10))):
+        x.setRange(name, *xs)
+        y.setRange(name, *ys)
+    for one in ("SB1", "SB2"):  # as rf312: the third fit starts where the second stopped
+        model.fitTo(data, Range=one, PrintLevel=-1)
+    result = model.fitTo(data, Range="SB1,SB2", Save=True, PrintLevel=-1)
+    assert (result.minNll(), f.getVal(), mx.getVal(), my.getVal()) == pytest.approx(
+        (27252.610359635513, 0.50081651004420857, 1.0099636628548818, 0.96347760234355384),
+        rel=FIT_REL,
+    )
+    assert (f.getError(), mx.getError(), my.getError()) == pytest.approx(
+        (0.012867773417363282, 0.032636482849011994, 0.033060902584331975), rel=1e-6
+    )
+    capsys.readouterr()
