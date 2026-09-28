@@ -18,6 +18,7 @@ from .pdefoam import MethodPDEFoam
 from .rulefit import MethodRuleFit
 from .crossvalidation import MethodCrossValidation
 from .category import MethodCategory
+from .pymva import MethodPyAdaBoost, MethodPyGTB, MethodPyRandomForest
 from .knn import MethodKNN
 from .likelihood import MethodLikelihood
 from .linear import MethodFisher, MethodLD
@@ -46,5 +47,8 @@ REGISTRY: dict[str, type[Method]] = {
         MethodRuleFit,
         MethodCrossValidation,
         MethodCategory,
+        MethodPyRandomForest,
+        MethodPyAdaBoost,
+        MethodPyGTB,
     )
 }
