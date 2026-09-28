@@ -669,7 +669,7 @@ def test_a_fit_with_no_valid_value_and_a_curve_that_cannot_be_normalised_say_so_
         printed
     )
     _assert_recovered_a1(printed)
-    assert (good.minNll(), good.numInvalidNLL()) == (roots(2959.918384170729, rel=1e-9), 64)
+    _assert_recovered_minimum(good)
 
 
 def _assert_recovered_a1(printed: str) -> None:
@@ -688,6 +688,21 @@ def _assert_recovered_a1(printed: str) -> None:
     value, error = (float(part.split()[-1]) for part in found.split("\t")[1:3])
     assert value == pytest.approx(-0.579502, rel=2e-3)
     assert error == pytest.approx(0.0614758, rel=2e-3)
+
+
+def _assert_recovered_minimum(good: Any) -> None:
+    """The recovered fit's minimum and how many values on the way were invalid.
+
+    ROOT's numbers on ROOT's machine. Elsewhere, for the reason
+    :func:`_assert_recovered_a1` gives, the climb out of the invalid region
+    takes a step or two more or fewer - arm64 took 66 invalid values to x86-64's
+    64 - and the minimum of the valley floor it reaches is 4e-8 of it away.
+    """
+    if ROOTS_MACHINE:
+        assert (good.minNll(), good.numInvalidNLL()) == (roots(2959.918384170729, rel=1e-9), 64)
+        return
+    assert good.minNll() == pytest.approx(2959.918384170729, rel=1e-7)
+    assert abs(good.numInvalidNLL() - 64) <= 4
 
 
 def test_describing_a_failure_reports_no_errors_of_its_own(capsys: Any) -> None:
