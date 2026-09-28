@@ -369,13 +369,13 @@ def test_aggregate_folds_each_batch_into_a_copy_of_init(tmp_path):
 
 def test_as_numpy_gives_every_column_or_those_asked_for(flat):
     everything = flat.Define("twice", "Int32 * 2").AsNumpy().GetValue()
-    assert list(everything)[:2] == ["twice", "Int32"] and len(everything) == 21
+    assert list(everything) == sorted(everything) and len(everything) == 21
     picked = flat.AsNumpy(["Int32", "SliceInt32"]).GetValue()
     assert picked["SliceInt32"].tolist()[:3] == [[], [1], [2, 2]]
     assert list(flat.AsNumpy("^Array.*32$").GetValue()) == [
+        "ArrayFloat32",
         "ArrayInt32",
         "ArrayUInt32",
-        "ArrayFloat32",
     ]
     assert "Str" not in flat.AsNumpy(exclude=["Str"]).GetValue()
     assert flat.AsNumpy(["Int32"])["Int32"][:2].tolist() == [0, 1]
@@ -397,22 +397,22 @@ def test_the_display_is_a_box_of_the_first_entries(flat):
     shown = flat.Display(["Int32", "SliceFloat64", "Str"], 3).GetValue()
     lines = str(shown).splitlines()
     assert lines[:3] == [
-        "+-----+-------+--------------+---------+",
-        "| Row | Int32 | SliceFloat64 | Str     |",
-        "+-----+-------+--------------+---------+",
+        "+-----+-------+--------------+-----------+",
+        "| Row | Int32 | SliceFloat64 | Str       | ",
+        "+-----+-------+--------------+-----------+",
     ]
     assert lines[7:9] == [
-        "| 2   | 2     | 2.0          | evt-002 |",
-        "|     |       | 2.0          |         |",
+        '| 2   | 2     | 2.000000     | "evt-002" | ',
+        "|     |       | 2.000000     |           | ",
     ]
-    assert lines[-1] == "..." and shown.AsString() == shown.as_string()
+    assert lines[-1].startswith("+-") and shown.AsString() == shown.as_string()
     few = flat.Range(2).Display(["ArrayInt32"], 5, elements=2).GetValue()
     assert str(few).splitlines()[3:6] == [
-        "| 0   | 0          |",
-        "|     | 0          |",
-        "|     | ...        |",
+        "| 0   | 0          | ",
+        "|     | 0          | ",
+        "|     | ...        | ",
     ]
-    assert not str(few).endswith("...")
+    assert str(few).endswith("-+\n")
     everything = flat.Display(rows=1).GetValue()
     assert "SliceUInt64" in str(everything)
 
@@ -468,7 +468,8 @@ def test_stats_are_a_tstatistic_of_a_column(xyn):
 
 def test_what_a_frame_can_say_about_itself(flat):
     df = flat.Define("twice", "ArrayFloat64 * 2").Define("half", "Int32 / 2.f").Alias("i", "Int32")
-    assert df.GetColumnNames()[:3] == ["twice", "half", "i"] and df.columns == df.GetColumnNames()
+    names = df.GetColumnNames()
+    assert names == sorted(names) and {"twice", "half", "i"} <= set(names) and df.columns == names
     assert df.GetDefinedColumnNames() == ["twice", "half"]
     assert df.HasColumn("i") and not df.HasColumn("rdfentry") and df.GetNSlots() == 1
     types = {
@@ -531,7 +532,7 @@ def test_snake_case_spells_everything_too(xyn):
     df = xyn.define("z", "x * 2").filter("z > 10", "cut").alias("zz", "z").redefine("z", "z + 1")
     assert df.count().get_value() == 94 and df.sum("zz").value == sum(2 * i for i in range(6, 100))
     assert df.histo1d(("h", "", 10, 0, 200), "z").entries == 94
-    assert df.get_column_names()[:2] == ["z", "zz"] and df.get_filter_names() == ["cut"]
+    assert df.get_column_names()[-2:] == ["z", "zz"] and df.get_filter_names() == ["cut"]
     assert df.as_numpy(["n"])["n"][0] == 6 and df.report().GetValue()["cut"].passed == 94
 
 
@@ -581,7 +582,7 @@ def test_what_combinations_gives_is_a_column_of_several_collections():
         [[], [], [0], [], [], [0]],
         [[], [], [1], [], [], [1]],
     )
-    assert "| 2   | [0]   |" in str(pairs.Display(["pairs"], 3).GetValue())
+    assert "| 2   | [0]   | " in str(pairs.Display(["pairs"], 3).GetValue())
     with RDataFrame(6, step=4) as split:
         again = split.Define("v", "Range(rdfentry_ % 3)").Define("p", "Combinations(v, 2)")
         assert again.Take("p").GetValue()[1].tolist() == second.tolist()

@@ -50,6 +50,24 @@ def _script(path: Path) -> int:
     return 0
 
 
+#: The macros ``root`` runs from the working directory as it starts and as it ends -
+#: ``Rint.Logon`` and ``Rint.Logoff`` in ROOT's ``system.rootrc``.
+LOGON, LOGOFF = "rootlogon.C", "rootlogoff.C"
+
+
+def _session_macro(name: str, use_cache: bool) -> None:
+    """Run ``rootlogon.C`` or ``rootlogoff.C`` if the working directory has one, as root does.
+
+    ``root -b -q -l file.C`` still runs both (only ``-n`` stops them), so a
+    macro run beside them prints what they print before and after its own.
+    A Python script does not: PyROOT looks only for ``.rootlogon.C``.
+    """
+    from ..cint.execute import run as run_macro
+
+    if Path(name).is_file():
+        run_macro(Path(name), use_cache=use_cache)
+
+
 def run(args: argparse.Namespace) -> int:
     from ..cint import translate_file
     from ..cint.execute import arguments, split_call
@@ -62,5 +80,7 @@ def run(args: argparse.Namespace) -> int:
     if args.python:
         sys.stdout.write(translate_file(path))
         return 0
+    _session_macro(LOGON, not args.no_cache)
     run_macro(path, arguments(given), use_cache=not args.no_cache)
+    _session_macro(LOGOFF, not args.no_cache)
     return 0

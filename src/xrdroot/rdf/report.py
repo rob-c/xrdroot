@@ -109,14 +109,34 @@ def _at(values: Any, row: int) -> Any:
     return values[row]
 
 
+def _text(value: Any) -> str:
+    """One value as ROOT's display prints it.
+
+    ROOT prints a column's values the way ``std::to_string`` would: floating
+    point always with six decimals (``4.000000``, never ``4.0``), booleans as
+    ``true`` and ``false``, strings in double quotes, and every integer -
+    ``char`` included - as its number.
+    """
+    if isinstance(value, (bool, np.bool_)):
+        return "true" if value else "false"
+    if isinstance(value, (float, np.floating)):
+        return f"{float(value):f}"
+    if isinstance(value, (bytes, np.bytes_)):
+        value = value.decode(errors="replace")
+    if isinstance(value, str):
+        return f'"{value}"'
+    return str(value)
+
+
 def _cell(value: Any, limit: int) -> list[str]:
     """A value as the lines of its cell: one for a number, one per element of a collection."""
-    if isinstance(value, (np.ndarray, list, tuple)) and not isinstance(value, str):
-        items = [str(item) for item in list(value)[:limit]]
+    if isinstance(value, (np.ndarray, list, tuple)):
+        text = str if isinstance(value, tuple) else _text
+        items = [text(item) for item in list(value)[:limit]]
         if len(value) > limit:
             items.append("...")
         return items or [""]
-    return [str(value)]
+    return [_text(value)]
 
 
 class Display:
@@ -125,11 +145,10 @@ class Display:
     >>> print(df.Display(["x", "pt"], 3).GetValue())    # doctest: +SKIP
     """
 
-    def __init__(self, columns: dict[str, Any], rows: int, elements: int, more: bool) -> None:
+    def __init__(self, columns: dict[str, Any], rows: int, elements: int) -> None:
         self.columns = columns
         self.rows = rows
         self.elements = elements
-        self.more = more
 
     def _cells(self) -> list[list[list[str]]]:
         return [
@@ -139,7 +158,11 @@ class Display:
         ]
 
     def AsString(self) -> str:
-        """The box, as ROOT's ``RDisplay::AsString`` draws it."""
+        """The box, as ROOT's ``RDisplay::AsString`` draws it, every line ended.
+
+        Nothing marks entries left out: ROOT's box ends at the last rule
+        whether or not the data had more entries than were asked for.
+        """
         header = ["Row", *self.columns]
         table = self._cells()
         widths = _widths(header, table)
@@ -148,15 +171,13 @@ class Display:
         for cells in table:
             lines += _block(cells, widths)
             lines.append(rule)
-        if self.more:
-            lines.append("...")
-        return "\n".join(lines)
+        return "".join(line + "\n" for line in lines)
 
     def __str__(self) -> str:
         return self.AsString()
 
     def Print(self) -> None:
-        print(self)
+        print(self, end="")
 
     as_string = AsString
     print = Print
@@ -178,4 +199,5 @@ def _block(cells: list[list[str]], widths: list[int]) -> list[str]:
 
 
 def _line(texts: Sequence[str], widths: Sequence[int]) -> str:
-    return "|" + "|".join(f" {text:<{width}} " for text, width in zip(texts, widths)) + "|"
+    """One line of the box; ROOT ends every line of text, not of rules, with a blank."""
+    return "|" + "|".join(f" {text:<{width}} " for text, width in zip(texts, widths)) + "| "

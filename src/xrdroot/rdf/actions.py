@@ -567,7 +567,7 @@ class DisplayAction(Action):
             each.name: joined([part[at] for part in acc]) for at, each in enumerate(self.inputs)
         }
         shown = min(self._length(acc), self.rows)
-        return Display(columns, shown, self.elements, self._length(acc) > self.rows)
+        return Display(columns, shown, self.elements)
 
 
 class Report(Action):

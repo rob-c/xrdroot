@@ -524,7 +524,16 @@ class RDataFrame:
     # -- what there is ---------------------------------------------------------------
 
     def GetColumnNames(self) -> list[str]:
-        """Every column this frame can use: those defined here first, then the data's."""
+        """Every column this frame can use, defined or the data's, in alphabetical order.
+
+        ROOT gathers the names into a set and sorts them, so this order - and
+        so the order of ``Display``, ``AsNumpy`` and ``Snapshot`` when not
+        told which columns - is by name, not by when a column was defined.
+        """
+        return sorted(self._in_order())
+
+    def _in_order(self) -> list[str]:
+        """Every column: those defined here first, in turn, then the data's - as ``Snapshot``."""
         mine = [name for name in self._defined if name in self._columns]
         return mine + [name for name in self._columns if name not in SPECIAL and name not in mine]
 
@@ -668,20 +677,21 @@ class RDataFrame:
 
     def _names(self, columns: Any, exclude: Any, what: str) -> list[str]:
         """The columns an action takes: every one readable, those a pattern finds, or a list."""
+        order = self._in_order() if what == "Snapshot" else self.GetColumnNames()
         if columns is None:
-            chosen = self._readable()
+            chosen = self._readable(order)
         elif isinstance(columns, str):
             pattern = re.compile(columns)
-            chosen = [name for name in self.GetColumnNames() if pattern.search(name)]
+            chosen = [name for name in order if pattern.search(name)]
         else:
             chosen = list(columns)
         left_out = set(_as_names(exclude or []))
         return [name for name in chosen if name not in left_out]
 
-    def _readable(self) -> list[str]:
-        """Every column that can be read or computed: the data's that decode, and the made."""
+    def _readable(self, order: list[str]) -> list[str]:
+        """The columns of ``order`` that can be read or computed: data that decode, or made."""
         readable = set(self._graph.source.readable())
-        return [name for name in self.GetColumnNames() if name in readable or self._made(name)]
+        return [name for name in order if name in readable or self._made(name)]
 
     def _made(self, name: str) -> bool:
         return not isinstance(self._columns[name], SourceColumn)

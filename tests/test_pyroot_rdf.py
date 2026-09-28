@@ -22,6 +22,35 @@ def _frame():
     return ROOT.RDF.FromNumpy({"x": np.arange(10.0), "n": np.arange(10, dtype=np.int32)})
 
 
+def test_a_display_prints_every_column_by_name_with_roots_digits(capsys):
+    x = np.array([1, 2, 3], dtype=np.int32)
+    y = np.array([4, 5, 6], dtype=np.float64)
+    ROOT.RDF.FromNumpy({"x": x, "y": y}).Define("z", "x + y").Display().Print()
+    # What df032_RDFFromNumpy.py prints under ROOT 6.40, trailing blanks and all.
+    assert capsys.readouterr().out == (
+        "+-----+---+----------+----------+\n"
+        "| Row | x | y        | z        | \n"
+        "+-----+---+----------+----------+\n"
+        "| 0   | 1 | 4.000000 | 5.000000 | \n"
+        "+-----+---+----------+----------+\n"
+        "| 1   | 2 | 5.000000 | 7.000000 | \n"
+        "+-----+---+----------+----------+\n"
+        "| 2   | 3 | 6.000000 | 9.000000 | \n"
+        "+-----+---+----------+----------+\n"
+    )
+
+
+def test_a_display_quotes_strings_and_spells_booleans_as_cpp_does():
+    words = np.array(["hi", "yo"])
+    df = ROOT.RDF.FromNumpy({"s": words, "b": np.array([True, False]), "f": np.array([1e20, 0])})
+    shown = df.Display(["s", "b", "f"], 1).AsString()
+    # ROOT's box for std::string, bool and a double of 1e20.
+    assert shown.splitlines()[3] == '| 0   | "hi" | true | 100000000000000000000.000000 | '
+    assert df.Display(["b"], 2).AsString().splitlines()[5] == "| 1   | false | "
+    raw = xrdroot.rdf.Display({"c": np.array([b"ab"])}, 1, 10).AsString()
+    assert raw.splitlines()[3] == '| 0   | "ab" | '
+
+
 def test_a_frame_of_numpy_arrays_defines_filters_and_books_as_root_does():
     df = _frame()
     selected = df.Define("z", "x * n").Filter("z > 10", "big")

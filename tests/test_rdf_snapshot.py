@@ -51,9 +51,14 @@ def test_the_columns_default_to_every_one_or_those_a_pattern_finds(tmp_path):
     with RDataFrame("tree", write_xyn(tmp_path / "in.root")) as df:
         made = df.Define("z", "x + y")
         with made.Snapshot("all", str(tmp_path / "all.root")) as back:
-            assert back.GetColumnNames() == ["z", "x", "y", "n"]
+            assert back.GetColumnNames() == ["n", "x", "y", "z"]
         with made.Snapshot("some", str(tmp_path / "some.root"), "^[xz]$") as back:
-            assert back.GetColumnNames() == ["z", "x"]
+            assert back.GetColumnNames() == ["x", "z"]
+    # ROOT writes the defined columns first, then the data's; it lists them all by name.
+    with xrdroot.open_root(str(tmp_path / "all.root")) as f:
+        assert list(f["all"].branches) == ["z", "x", "y", "n"]
+    with xrdroot.open_root(str(tmp_path / "some.root")) as f:
+        assert list(f["some"].branches) == ["z", "x"]
 
 
 def test_a_lazy_snapshot_waits_for_the_loop(tmp_path):

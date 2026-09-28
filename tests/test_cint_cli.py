@@ -41,6 +41,40 @@ def test_run_runs_a_macro_with_its_arguments(
     assert capsys.readouterr().out == "1264\n1896\n"
 
 
+#: ``tutorials/rootlogon.C`` and ``rootlogoff.C``, as ROOT 6.40 ships them.
+LOGON = """{
+   printf("\\nWelcome to the ROOT tutorials\\n\\n");
+   printf("\\nType \\".x demos.C\\" to get a toolbar from which to execute the demos\\n");
+   printf("\\nType \\".x demoshelp.C\\" to see the help window\\n\\n");
+   printf("==> Many tutorials use the file hsimple.root produced by hsimple.C\\n");
+   printf("==> It is recommended to execute hsimple.C before any other script\\n\\n");
+}
+"""
+LOGOFF = '{\n   printf("\\nTaking a break from ROOT? Hope to see you back!\\n\\n");\n}\n'
+
+
+def test_run_runs_the_working_directorys_logon_and_logoff_macros_around_a_macro_as_root_does(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    write(tmp_path, "quiet.C", "void quiet() {}")
+    write(tmp_path, "rootlogon.C", LOGON)
+    write(tmp_path, "rootlogoff.C", LOGOFF)
+    write(tmp_path, "script.py", "print('no logon for PyROOT')\n")
+    assert main(["run", "quiet.C"]) == 0
+    # What `root -b -q -l demoshelp.C` prints in ROOT's tutorials directory.
+    assert capsys.readouterr().out == (
+        "\nWelcome to the ROOT tutorials\n\n"
+        '\nType ".x demos.C" to get a toolbar from which to execute the demos\n'
+        '\nType ".x demoshelp.C" to see the help window\n\n'
+        "==> Many tutorials use the file hsimple.root produced by hsimple.C\n"
+        "==> It is recommended to execute hsimple.C before any other script\n\n"
+        "\nTaking a break from ROOT? Hope to see you back!\n\n"
+    )
+    assert main(["run", "script.py"]) == 0
+    assert capsys.readouterr().out == "no logon for PyROOT\n"
+
+
 def test_run_prints_the_translation_when_asked(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
