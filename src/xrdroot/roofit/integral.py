@@ -34,6 +34,7 @@ class RooRealIntegral(RooAbsReal):
         nset: frozenset[str] | None,
         rng: Any,
         others: Any = (),
+        announce: bool = True,
     ) -> None:
         name = integral_name(func, names, rng)
         if nset:
@@ -44,9 +45,14 @@ class RooRealIntegral(RooAbsReal):
         self.names, self.nset, self.rng = names, nset, rng
         self._others = list(others)
         self._announce()
+        if announce:
+            self.announce_numeric()
+
+    def announce_numeric(self) -> None:
+        """``RooRealIntegral::init``'s line, if part of the integral is numerical."""
         from .integration import announce
 
-        announce(func, names, rng, self._name)
+        announce(self.func, self.names, self.rng, self._name)
 
     def _announce(self) -> None:
         func, over = self.func, ",".join(sorted(self.names))
@@ -126,7 +132,50 @@ def make_integral(
     nset, rng = _norm_and_range(args, options)
     norm = frozenset(one.GetName() for one in as_list(nset)) if nset is not None else None
     others = [one for one in as_list(iset) if one.GetName() not in func.dependents()]
-    return RooRealIntegral(func, names, norm, rng, others)
+    return _recursive(func, names, norm, rng, others)
+
+
+def _recursive(
+    func: Any, names: frozenset[str], nset: Any, rng: Any, others: list[Any]
+) -> RooRealIntegral:
+    """``createIntObj``: integrals of integrals, when ranges are functions of other variables.
+
+    A variable whose range in ``rng`` has ends made of other integrated
+    variables - ``y`` in ``[0.1*x, 0.9*x]`` - is integrated only after those
+    it is not an end of, each step integrating the last (only the innermost
+    normalised): ``p_Int[z|R]_Norm[x,y,z]_Int[y|R]_Int[x|R]``. RooFit makes a
+    numerical integrator when first evaluating, outermost first, so the
+    steps say so in that order.
+    """
+    steps: list[RooRealIntegral] = []
+    left = frozenset(names)
+    while True:
+        inner = _innermost(func, left, rng)
+        if not inner or inner == left:
+            inner = left
+        mine = [one for one in others if one.GetName() in inner]
+        steps.append(RooRealIntegral(func, inner, nset, rng, mine, announce=False))
+        func, nset, left = steps[-1], None, left - inner
+        if not left:
+            break
+    for step in reversed(steps):
+        step.announce_numeric()
+    return steps[-1]
+
+
+def _innermost(func: Any, names: frozenset[str], rng: Any) -> frozenset[str]:
+    """``findInnerMostIntegration``: the variables no other's range in ``rng`` is made of."""
+    if not rng:
+        return names
+    serving: set[str] = set()
+    for leaf in func.leaves():
+        if leaf.GetName() not in names or not hasattr(leaf, "getBinning"):
+            continue
+        binning = leaf.getBinning(rng)
+        if binning.isParameterized():
+            ends = binning.servers()
+            serving |= set().union(*(end.dependents() for end in ends)) & names
+    return names - serving
 
 
 def _norm_and_range(args: tuple[Any, ...], options: Any) -> tuple[Any, Any]:

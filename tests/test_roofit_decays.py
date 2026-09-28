@@ -702,6 +702,20 @@ def test_a_decay_with_per_event_errors_is_fitted_and_averaged_over_them_as_root_
     assert found == pytest.approx(expected, rel=1e-9)
 
 
+def test_a_histogram_over_a_per_event_error_says_once_the_convolution_integrates_it_numerically(
+    capsys: Any,
+) -> None:
+    """``createHistogram(dt, YVar(dterr))`` of rf306: no closed form of the convolution in dterr."""
+    dt, dterr, _, _, decay, _ = _per_event_errors()
+    capsys.readouterr()
+    for _ in range(2):
+        decay.createHistogram("hh_decay", dt, RooCmdArg("Binning", 5), YVar=(dterr, {"Binning": 5}))
+    assert capsys.readouterr().out.splitlines() == [
+        "[#1] INFO:NumericIntegration -- RooRealIntegral::init(gm1_conv_exp(-abs(@0)/@1)_dt_tau_"
+        "[decay_gm]_Int[dt,dterr]) using numeric integrator RooIntegrator1D to calculate Int(dterr)"
+    ]
+
+
 def test_the_gaussian_integrates_over_a_flat_scale_factor_and_asymptotically_when_told_to() -> None:
     dt = RooRealVar("dt", "dt", -10, 10)
     tau = RooRealVar("tau", "tau", 1.548)

@@ -282,6 +282,8 @@ class RooAbsCollection(RooPrintable):
 
     def defaultPrintContents(self, option: Any) -> int:
         text = str(option or "")
+        if text == "I":  # inline, as operator<< prints: the members' names alone
+            return kValue
         if "v" in text:
             from .printing import kAddress, kArgs, kExtras, kTitle
 

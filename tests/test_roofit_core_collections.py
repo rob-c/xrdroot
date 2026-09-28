@@ -269,3 +269,16 @@ def test_anything_iterable_stands_for_a_list_of_arguments() -> None:
     assert as_list([x, (m, frozenset({s}))]) == [x, m, s]
     assert as_list(RooArgList(x, c)) == [x, c]
     assert names_of({x}) == ["x"]
+
+
+def test_a_set_streamed_to_cout_prints_its_names_as_roofits_operator_does(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """rf508's ``cout << "sclone = " << (*sclone)``: ``(a,b)``, not PyROOT's pointers."""
+    from xrdroot.cint.runtime import cout, endl
+
+    a, b = RooRealVar("a", "a", 1, 0, 2), RooRealVar("b", "b", 1, 0, 2)
+    clone = RooArgSet(a, b).Clone("sclone")
+    cout << "sclone = " << clone << endl
+    assert capsys.readouterr().out == "sclone = (a,b)\n"
+    assert str(clone).startswith("{ @0x")

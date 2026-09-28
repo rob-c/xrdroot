@@ -137,3 +137,30 @@ def test_a_cdf_is_named_as_roots() -> None:
     """ROOT's cdf is an integral of a clone ``g_cdf`` over ``y_prime`` in the range ``CDF``."""
     y, g = gaussian()
     assert g.createCdf(RooArgSet(y)).GetName() == "g_cdf_Int[y_prime|CDF]_Norm[y_prime]"
+
+
+def test_ranges_made_of_other_variables_integrate_recursively_as_roots(capsys: Any) -> None:
+    """rf313: ``y`` in ``[0.1x, 0.9x]`` and ``z`` in ``[0, 0.1y^2]`` - ROOT's lines and values."""
+    from refmachine import roots
+    from xrdroot.roofit.pdfs.basic import RooPolynomial, ref
+    from xrdroot.roofit.pdfs.prodpdf import RooProdPdf
+
+    x, y, z = (RooRealVar(name, name, 0, 10) for name in "xyz")
+    z0 = RooRealVar("z0", "z0", -0.1, 1)
+    parts = [RooPolynomial("px", "px", x, ref(0.0)), RooPolynomial("py", "py", y, ref(0.0))]
+    pxyz = RooProdPdf("pxyz", "pxyz", RooArgSet(*parts, RooPolynomial("pz", "pz", z, z0)))
+    y.setRange("R", RooFormulaVar("ylo", "0.1*x", [x]), RooFormulaVar("yhi", "0.9*x", [x]))
+    z.setRange("R", RooFormulaVar("zlo", "0.0*y", [y]), RooFormulaVar("zhi", "0.1*y*y", [y]))
+    capsys.readouterr()
+    whole = pxyz.createIntegral(RooArgSet(x, y, z), RooArgSet(x, y, z), "R")
+    head = "[#1] INFO:NumericIntegration -- RooRealIntegral::init("
+    head += "pxyz_Int[z|R]_Norm[x,y,z]_Int[y|R]"
+    tail = "using numeric integrator RooIntegrator1D to calculate"
+    assert capsys.readouterr().out.splitlines() == [
+        f"{head}_Int[x|R]) {tail} Int(x)",
+        f"{head}) {tail} Int(y)",
+    ]
+    assert whole.getVal() == roots(0.03229312820512821, rel=1e-12)
+    z0.setVal(0.5)
+    assert whole.getVal() == roots(0.03139238095238096, rel=1e-12)
+    assert y.getMin("R") == pytest.approx(0.5)  # outside an integral, the ends' current values

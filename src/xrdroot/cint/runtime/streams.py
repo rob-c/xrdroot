@@ -141,7 +141,8 @@ class ostream:
             return self._floating(float(value))
         if value is None:
             return "0"
-        return str(value)
+        inline = getattr(value, "cxx_ostream", None)  # a class with an operator<< of its own
+        return str(inline() if callable(inline) else value)
 
     def _integer(self, value: int) -> str:
         if self.base == 16:

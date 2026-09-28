@@ -774,6 +774,22 @@ def test_components_inside_a_sum_of_sums_are_drawn_with_the_sums_that_hold_them(
     )
 
 
+def test_components_given_as_several_objects_select_them_all(capsys: Any) -> None:
+    """``Components(bkg, sig2)`` is RooFit's variadic set of both, as rf205_compplot.C says."""
+    from xrdroot.pyroot.roofit.commands import RooFit
+
+    m = Model()
+    frame = m.x.frame()
+    capsys.readouterr()
+    m.model.plotOn(frame, RooFit.Components(m.g2, m.g1))
+    prefix = "[#1] INFO:Plotting -- RooAbsPdf::plotOn(model) "
+    assert capsys.readouterr().out.splitlines() == [
+        prefix + "directly selected PDF components: (g1,g2)",
+        prefix + "indirectly selected PDF components: ()",
+    ]
+    assert frame.getObject(0).GetName() == "model_Norm[x]_Comp[g2,g1]"
+
+
 def test_a_step_is_sampled_down_to_the_smallest_step_a_curve_takes() -> None:
     """At ``Precision(1e-12)`` a jump is halved until the step is a billionth of the range."""
     from xrdroot.roofit.functions import RooFormulaVar

@@ -292,3 +292,25 @@ def test_a_super_category_sets_its_inputs_when_its_state_is_set() -> None:
     assert s.setLabel("{Minus}") is False
     assert (c.getLabel(), s.getIndex()) == ("Minus", 1)
     assert s.setLabel("{nope}") is True
+
+
+def test_variables_the_density_ignores_are_drawn_uniformly_in_the_order_asked_for() -> None:
+    """rf406: ROOT's counts for ``{x, b0flav, tagCat}``, and the other way round."""
+    from xrdroot.roofit.pdfs.basic import RooPolynomial
+    from xrdroot.roofit.rng import generator
+
+    tag = RooCategory("tagCat", "Tagging category")
+    for state in ("Lepton", "Kaon", "NetTagger-1", "NetTagger-2"):
+        tag.defineType(state)
+    flavour = RooCategory("b0flav", "B0 flavour eigenstate")
+    flavour.defineType("B0", -1)
+    flavour.defineType("B0bar", 1)
+    x = RooRealVar("x", "x", 0, 10)
+    p = RooPolynomial("p", "p", x)
+    counts = []
+    for order in ([x, flavour, tag], [x, tag, flavour]):
+        generator().SetSeed(4357)
+        data = p.generate(order, 10000)
+        tags = data.table(tag)
+        counts.append((tags.get("Lepton") + tags.get("Kaon"), data.table(flavour).get("B0")))
+    assert counts == [(5040, 5058), (5058, 5040)]

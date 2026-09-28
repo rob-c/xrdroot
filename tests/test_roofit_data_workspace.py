@@ -61,11 +61,14 @@ def test_importing_a_model_imports_every_node_saying_so_as_root_does(capsys: Any
         "[#1] INFO:ObjectHandling -- RooWorkspace::import(w) importing RooRealVar::s\n"
     )
     assert (w.var("x") is x, w.pdf("g") is g, w["m"].GetName(), w.arg("nothing")) == (
-        True,
-        True,
+        False,
+        False,
         "m",
         None,
     )
+    assert w.pdf("g").servers()[0] is w.var("x")  # the copy is made of the workspace's copies
+    x.setVal(3.0)  # rf510: what is changed outside after the import stays outside
+    assert w.var("x").getVal() == 0.0
 
 
 def test_importing_a_dataset_and_renaming_it_is_said_as_root_says_it(capsys: Any) -> None:
@@ -133,7 +136,12 @@ def test_the_kinds_of_contents_are_listed_apart() -> None:
     names = [sorted(one.GetName() for one in found)
              for found in (w.allVars(), w.allCats(), w.allPdfs(), w.allFunctions())]  # fmt: skip
     assert names == [["m", "s", "x"], ["c"], ["g"], ["f"]]
-    assert (w.function("f") is f, w.cat("c") is c, w.catfunc("c") is c) == (True, True, True)
+    assert (w.function("f").GetName(), w.cat("c").GetName(), w.catfunc("c") is w.cat("c")) == (
+        "f",
+        "c",
+        True,
+    )
+    assert w.function("f").servers()[0] is w.var("x")  # imported after g: its x, not a new one
 
 
 def test_a_workspace_prints_each_kind_of_content_under_its_heading(capsys: Any) -> None:
@@ -188,8 +196,9 @@ def test_a_snapshot_saves_parameter_values_and_loads_them_back() -> None:
     w.Import(g, Silence=True)
     assert w.saveSnapshot("snap", "m,s,nothing") is False
     w.saveSnapshot("listed", RooArgSet([m]))
-    m.setVal(0.5)
-    assert (w.loadSnapshot("snap"), m.getVal(), w.loadSnapshot("none")) == (True, 0.0, False)
+    w.var("m").setVal(0.5)
+    loaded = (w.loadSnapshot("snap"), w.var("m").getVal(), w.loadSnapshot("none"))
+    assert loaded == (True, 0.0, False)
     saved = w.getSnapshot("listed")
     assert ([one.GetName() for one in saved], saved.find("m").getVal()) == (["m"], 0.0)
     assert len(w.getSnapshot("none")) == 0
@@ -209,7 +218,8 @@ def test_renaming_all_nodes_on_import_gives_each_its_suffix(capsys: Any) -> None
         "by changing name of imported node  g to g_v2\n"
         "[#1] INFO:ObjectHandling -- RooWorkspace::import(w) importing RooGaussian::g_v2\n"
     )
-    assert w.pdf("g_v2") is g
+    renamed = w.pdf("g_v2")
+    assert (g.GetName(), renamed is g, renamed.servers()[0] is w.var("x")) == ("g", False, True)
 
 
 def printed(capsys: Any, obj: Any) -> str:

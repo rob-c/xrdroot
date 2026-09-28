@@ -6,9 +6,10 @@ once by name - saying so for each, as RooFit does - and ``w["x"]``,
 ``w.factory("Gaussian::g(x[-10,10],m[0],s[1])")`` builds pieces from
 RooFit's factory language (:mod:`.factory`) and imports them.
 
-The workspace holds the objects imported, not copies of them: a variable
-changed outside is changed inside. ROOT's workspace holds clones, which
-matters only to a macro that changes one and expects the other to stay put.
+The workspace holds clones, as ROOT's does: a variable changed outside
+after the import is not changed inside - rf510 fixes a fraction of its model
+after importing it, and fits the workspace's copy free. A node the
+workspace already has by name is not copied again: the clone uses it.
 """
 
 from __future__ import annotations
@@ -67,6 +68,7 @@ class RooWorkspace(RooPrintable):
         from .editing import rename_all
 
         suffix = options.get("RenameAllNodes")
+        top = self._cloned(top, renaming=bool(suffix))
         if suffix:
             rename_all(top, str(suffix), self._nodes)
         silent = bool(options.get("Silence", 0, False))
@@ -83,6 +85,18 @@ class RooWorkspace(RooPrintable):
                     f"{node.ClassName()}::{node.GetName()}",
                 )
         return False
+
+    def _cloned(self, top: Any, renaming: bool) -> Any:
+        """``top`` and what it is made of, copied - but for the nodes the workspace has by name
+        already (only the variables, when the rest is being renamed), which the copy uses."""
+        import copy
+
+        kept = {
+            id(node): self._nodes[node.GetName()]
+            for node in top._walk()
+            if node.GetName() in self._nodes and (node.isFundamental() or not renaming)
+        }
+        return copy.deepcopy(top, kept)
 
     def _import_data(self, data: Any, options: Any) -> bool:
         log(

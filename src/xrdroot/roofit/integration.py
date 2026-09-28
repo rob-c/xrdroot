@@ -22,6 +22,7 @@ from typing import Any
 
 import numpy as np
 
+from .binning import evaluating
 from .messages import INFO, WARNING, log
 
 __all__ = ["EPS", "announce", "integral", "improper", "integrate_1d", "numeric_names", "romberg"]
@@ -35,14 +36,15 @@ N_POINTS = 5
 Integrand = Callable[[np.ndarray[Any, Any]], Any]
 
 
-def _trapezoids(func: Integrand, saved: Any, n: int, low: float, high: float) -> Any:
+def _trapezoids(func: Integrand, saved: Any, n: int, low: Any, high: Any) -> Any:
+    """One refinement of the trapezoid rule; ends may be arrays - a range per outer point."""
     width = high - low
     if n == 1:
-        values = func(np.array([low, high]))
+        values = func(np.stack(np.broadcast_arrays(low, high), axis=-1))
         return 0.5 * width * (values[..., 0] + values[..., 1])
     count = 1 << (n - 2)
-    step = width / count
-    points = low + (0.5 + np.arange(count)) * step
+    step = np.asarray(width / count)[..., None]
+    points = np.asarray(low)[..., None] + (0.5 + np.arange(count)) * step
     return 0.5 * (saved + width * np.sum(func(points), axis=-1) / count)
 
 
@@ -88,7 +90,7 @@ def romberg(
     name: str = "",
 ) -> Any:
     """``RooFit::Detail::integrate1d``: the integral of ``func`` from ``low`` to ``high``."""
-    if high - low == 0.0:
+    if np.ndim(low) == np.ndim(high) == 0 and high - low == 0.0:
         return 0.0 * func(np.array([low]))[..., 0]
     h = [1.0]
     s: list[Any] = []
@@ -138,7 +140,7 @@ def improper(func: Integrand, low: float, high: float, name: str = "") -> Any:
 
 def integrate_1d(func: Integrand, low: float, high: float, name: str = "") -> Any:
     """``RooIntegrator1D`` over a closed range, ``RooImproperIntegrator1D`` over an open one."""
-    if np.isinf(low) or np.isinf(high):
+    if np.any(np.isinf(low)) or np.any(np.isinf(high)):
         return improper(func, low, high, name)
     return romberg(func, low, high, name=name)
 
@@ -180,18 +182,27 @@ def announce(func: Any, names: frozenset[str], rng: Any = None, label: str | Non
     """
     if normalising and getattr(func, "normalised_by_cache", False):
         return
+    inner = getattr(func, "announce_inner", None)
+    if inner is not None:  # integrals a closed form is made of, which may themselves be numeric
+        inner(frozenset(names), rng)
     numeric = numeric_names(func, names, rng)
     if not numeric:
         return
-    method = "RooIntegrator1D" if len(numeric) == 1 else "RooAdaptiveIntegratorND"
-    if len(numeric) == 1 and any(np.isinf(func.bounds(numeric[0], rng))):
-        method = "RooImproperIntegrator1D"
     log(
         func,
         INFO,
         "NumericIntegration",
-        f"RooRealIntegral::init({label or integral_name(func, names, rng)}) "
-        f"using numeric integrator {method} to calculate Int({','.join(numeric)})",
+        f"RooRealIntegral::init({label or integral_name(func, names, rng)}) using numeric "
+        f"integrator {_integrator(func, numeric, rng)} to calculate Int({','.join(numeric)})",
+    )
+
+
+def _integrator(func: Any, numeric: list[str], rng: Any) -> str:
+    """The integrator RooFit picks: by the number of variables, and for one, by open ends."""
+    if len(numeric) > 1:
+        return "RooAdaptiveIntegratorND"
+    return "RooImproperIntegrator1D" if any(np.isinf(func.bounds(numeric[0], rng))) else (
+        "RooIntegrator1D"
     )
 
 
@@ -247,12 +258,14 @@ def _nested(
     rng: Any,
 ) -> Any:
     name, *others = rest
-    low, high = func.bounds(name, rng)
+    with evaluating(ctx):  # a range whose ends are functions of the variables outside
+        low, high = func.bounds(name, rng)
 
     def along(points: np.ndarray[Any, Any]) -> Any:
         c = _expanded(ctx)
         c[name] = points
-        values = _nested(func, others, inner, c, rng) if others else inner(c)
+        with evaluating(c):
+            values = _nested(func, others, inner, c, rng) if others else inner(c)
         return np.broadcast_to(values, np.broadcast(values, points).shape)
 
     return integrate_1d(along, low, high, func.GetName())

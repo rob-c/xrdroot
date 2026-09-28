@@ -91,6 +91,8 @@ class RooMinimizer:
         self.print_eval_errors = 10
         self._max_fcn = -math.inf
         self._last: list[float] = []
+        #: ``applyCovarianceMatrix``'s matrix, which a saved result then carries instead.
+        self.external_covariance: Any = None
 
     # -- settings -----------------------------------------------------------------
 
@@ -411,6 +413,15 @@ class RooMinimizer:
             limited = "\t(limited)" if par.hasMin() or par.hasMax() else ""
             cout.line(f"{par.GetName()}\t  = {value}\t +/-  {error}{limited}")
 
+    def applyCovarianceMatrix(self, matrix: Any) -> None:
+        """``applyCovarianceMatrix``: the floating parameters' errors, and the covariance a saved
+        result carries, from ``matrix`` rather than from HESSE."""
+        found = np.array([[matrix[i][j] for j in range(len(self.params))]
+                          for i in range(len(self.params))], dtype=np.float64)  # fmt: skip
+        self.external_covariance = found
+        for index, par in enumerate(self.params):
+            par.setError(math.sqrt(found[index, index]))
+
     # -- the result ---------------------------------------------------------------
 
     def save(self, name: Any = None, title: Any = None) -> Any:
@@ -477,10 +488,17 @@ def as_set(items: Any) -> RooArgSet:
 
 
 def _hesse_code(fmin: Any) -> int:
-    """``Minuit2Minimizer::Hesse``'s code for a HESSE that gave no covariance: 1 it failed,
-    3 the matrix is not positive definite, 4 otherwise; 0 for one that gave it."""
-    if fmin.has_covariance:
+    """``Minuit2Minimizer::Hesse``'s code for a HESSE that gave no covariance: 3 the matrix is
+    not positive definite, else 1 it failed, else 4; 0 for one that gave it.
+
+    A HESSE that failed over a matrix not positive definite leaves Minuit2's
+    user state without a covariance, though iminuit still shows the one it
+    had (a failure flag with a good matrix is MIGRAD's own, and harmless).
+    ``Hesse`` tests the matrix after the failure (``if failed 1; if not
+    inverted 2; else if not positive 3``), so that failure scores 3.
+    """
+    if fmin.has_covariance and (fmin.has_posdef_covar or not fmin.hesse_failed):
         return 0
-    if fmin.hesse_failed:
-        return 1
-    return 3 if not fmin.has_posdef_covar else 4
+    if not fmin.has_posdef_covar:
+        return 3
+    return 1 if fmin.hesse_failed else 4
