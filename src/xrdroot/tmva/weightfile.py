@@ -111,5 +111,6 @@ def read_method(
     pdfs = children(root.find("MVAPdfs")) if root.find("MVAPdfs") is not None else []
     if len(pdfs) == 2:
         method.mva_pdfs = (pdf_from_xml(pdfs[0]), pdf_from_xml(pdfs[1]))
+    method.source = path
     method.read_weights(root.find("Weights"))
     return method

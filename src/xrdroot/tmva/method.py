@@ -93,6 +93,8 @@ class Method:
         self.log = Logger(self.name)
         self.handler = TransformationHandler(dsi, self.name)
         self.weight_dir = weight_dir
+        #: The weight file the method was read from, if it was.
+        self.source = ""
         self.mva_pdfs: tuple[PDF, PDF] | None = None
         self.train_time = 0.0
         self.n_train = 0
