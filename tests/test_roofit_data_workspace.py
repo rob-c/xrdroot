@@ -204,6 +204,27 @@ def test_a_snapshot_saves_parameter_values_and_loads_them_back() -> None:
     assert len(w.getSnapshot("none")) == 0
 
 
+def test_a_snapshot_importing_values_takes_the_given_parameters_not_the_workspaces() -> None:
+    """``saveSnapshot(name, params, true)``, as ``rf510_wsnamedsets.C`` saves its fits.
+
+    The workspace holds copies of what it imported, so the model fitted
+    outside it moved its own parameters only: the snapshot takes theirs.
+    """
+    w = RooWorkspace("w")
+    g, _, m, _ = gaussian()
+    w.Import(g, Silence=True)
+    m.setVal(0.25)
+    m.setError(0.125)
+    m.setConstant(True)
+    w.saveSnapshot("theirs", RooArgSet([m]), True)
+    w.saveSnapshot("ours", RooArgSet([m]))
+    theirs, ours = w.getSnapshot("theirs").find("m"), w.getSnapshot("ours").find("m")
+    assert (theirs.getVal(), theirs.getError(), theirs.isConstant()) == (0.25, 0.125, True)
+    assert (ours.getVal(), ours.isConstant(), w.var("m").getVal()) == (0.0, False, 0.0)
+    w.loadSnapshot("theirs")
+    assert (w.var("m").getVal(), w.var("m").isConstant()) == (0.25, True)
+
+
 def test_renaming_all_nodes_on_import_gives_each_its_suffix(capsys: Any) -> None:
     """``RenameAllNodes("v2")`` renames the non-fundamental nodes in ROOT's words."""
     w = RooWorkspace("w")

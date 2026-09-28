@@ -196,10 +196,21 @@ class RooWorkspace(RooPrintable):
 
     def saveSnapshot(self, name: str, params: Any, importValues: bool = False) -> bool:
         """Copies of the parameters - value, error and whether constant - in the workspace's
-        order of its nodes."""
-        wanted = {one.GetName() for one in self._resolve(params)}
-        chosen = [one for key, one in self._nodes.items() if key in wanted]
-        self._snapshots[str(name)] = [one.clone(one.GetName()) for one in chosen]
+        order of its nodes.
+
+        The copies are of the workspace's own nodes; with ``importValues`` they
+        then take the values of the ``params`` given, as ROOT's ``assign``
+        does - how ``rf510_wsnamedsets.C`` saves the fit of the model it
+        imported, whose own parameters the workspace holds copies of.
+        """
+        given = {one.GetName(): one for one in self._resolve(params)}
+        chosen = [one for key, one in self._nodes.items() if key in given]
+        copies = [one.clone(one.GetName()) for one in chosen]
+        for copy in copies if importValues else ():
+            theirs = given[copy.GetName()]
+            copy.copy_value_from(theirs)
+            copy.setConstant(theirs.isConstant())
+        self._snapshots[str(name)] = copies
         return False
 
     def loadSnapshot(self, name: str) -> bool:
