@@ -34,7 +34,6 @@ class RooRealIntegral(RooAbsReal):
         nset: frozenset[str] | None,
         rng: Any,
         others: Any = (),
-        announce: bool = True,
     ) -> None:
         name = integral_name(func, names, rng)
         if nset:
@@ -44,9 +43,7 @@ class RooRealIntegral(RooAbsReal):
         self.func = self._proxy("!func", func)
         self.names, self.nset, self.rng = names, nset, rng
         self._others = list(others)
-        self._announce()
-        if announce:
-            self.announce_numeric()
+        self._announce()  # the numerical part is said by who made it: see _recursive
 
     def announce_numeric(self) -> None:
         """``RooRealIntegral::init``'s line, if part of the integral is numerical."""
@@ -154,7 +151,7 @@ def _recursive(
         if not inner or inner == left:
             inner = left
         mine = [one for one in others if one.GetName() in inner]
-        steps.append(RooRealIntegral(func, inner, nset, rng, mine, announce=False))
+        steps.append(RooRealIntegral(func, inner, nset, rng, mine))
         func, nset, left = steps[-1], None, left - inner
         if not left:
             break

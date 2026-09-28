@@ -22,9 +22,9 @@ import numpy as np
 from . import evalerrors
 from .binning import evaluating
 from .collections import as_list
-from .messages import WARNING, log
+from .messages import ERROR, WARNING, log
 from .nanpack import pack
-from .printing import g
+from .printing import g, kArgs, kClassName, kInline, kName, kValue
 from .real import Context, RooAbsReal, names_in, value_of
 
 __all__ = ["RooAbsPdf", "check_range"]
@@ -64,7 +64,18 @@ class RooAbsPdf(RooAbsReal):
             np.all(np.asarray(norm) > 0) and np.all(np.asarray(raw) >= 0)
         ):
             self._log_failures(raw, norm, frozenset(nset), rng)
+        elif np.ndim(norm) == 0 and (norm < 0 or (norm == 0 and np.any(np.asarray(raw) != 0))):
+            self.logEvalError(f"p.d.f normalization integral is zero or negative: {float(norm):f}")
         return normalized(raw, norm)
+
+    def logEvalError(self, message: str) -> None:
+        """``RooAbsReal::logEvalError`` outside a fit: the error printed at once - the object,
+        the message, and each input's value as its proxy prints it."""
+        servers = ", ".join(_proxy_values(p) for p in self._proxies)
+        origin = self.printStream(kClassName | kName | kArgs, kInline)
+        text = f"RooAbsReal::logEvalError({self._name}) evaluation error, \n origin       : "
+        text += f"{origin}\n message      : {message}\n server values: {servers}"
+        log(self, ERROR, "Eval", text)
 
     def normalized_label(self, nset: frozenset[str], rng: Any = None) -> str:
         """``g_over_g_Int[x]``: what RooFit calls this density normalised over ``nset``."""
@@ -338,3 +349,11 @@ def names(items: Any) -> frozenset[str]:
 
 def as_array(value: Any) -> np.ndarray[Any, Any]:
     return np.asarray(value, dtype=np.float64)
+
+
+def _proxy_values(proxy: Any) -> str:
+    """``RooAbsProxy::print(os, addContents=true)``: ``x=x=0``, or ``c=(a = 1 +/- 0,b = 2)``."""
+    if proxy.many:
+        inline = ",".join(one.printStream(kValue | kName, kInline) for one in proxy.target)
+        return f"{proxy.name}=({inline})"
+    return f"{proxy.name}={proxy.target.GetName()}={g(proxy.target.getVal())}"

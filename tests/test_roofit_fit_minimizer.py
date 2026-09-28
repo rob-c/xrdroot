@@ -116,7 +116,6 @@ def test_a_fit_that_starts_where_nothing_can_be_had_backs_out_to_roots_minimum(
     assert a.getError() == pytest.approx(0.30692319873640106, rel=1e-6)
 
 
-@pytest.mark.xfail(strict=True, reason="minNll keeps the offset RooFit adds after bad points")
 def test_the_minimum_after_bad_points_is_the_likelihood_without_minuits_offset(
     capsys: Any,
 ) -> None:
@@ -619,3 +618,55 @@ def test_simplex_says_what_it_was_asked_as_migrad_does(capsys: Any) -> None:
     assert (
         "Minuit2Minimizer: Minimize with max-calls 1000 convergence for edm < 1 strategy 2" in out
     )
+
+
+#: rf612's messages, as ROOT printed them for the fit below and the curve after it.
+RF612 = [
+    "[#0] ERROR:Minimization -- RooMinimizer: all function calls during minimization gave "
+    "invalid NLL values!",
+    "[#0] ERROR:Minimization -- RooMinimizer::calculateHessErrors() Error when calculating "
+    "Hessian",
+    "[#0] ERROR:Minimization -- RooMinimizer: all function calls during minimization gave "
+    "invalid NLL values!",
+    "[#0] ERROR:Eval -- RooAbsReal::logEvalError(pol3) evaluation error, ",
+    " origin       : RooPolynomial::pol3[ x=x coefList=(a1,a2,a3) ]",
+    " message      : p.d.f normalization integral is zero or negative: -2220.000000",
+    " server values: x=x=0, coefList=(a1 = 10 +/- 0,a2 = -1 +/- 0,a3 = 0.01)",
+]
+
+
+def test_a_fit_with_no_valid_value_and_a_curve_that_cannot_be_normalised_say_so_as_root(
+    capsys: Any,
+) -> None:
+    """rf612: without recovery every call is invalid - RooFit says so after MIGRAD and after
+    HESSE - and the curve of the unnormalisable density logs its error once. With recovery the
+    Minuit2 lines appear at ``PrintLevel(0)``, and the minimum carries the offset back."""
+    from xrdroot.roofit.cmdargs import RooCmdArg
+    from xrdroot.roofit.plot.frame import make_frame
+
+    x = RooRealVar("x", "x", -15, 15)
+    a1, a2 = RooRealVar("a1", "a1", -0.5, -10.0, 20.0), RooRealVar("a2", "a2", 0.2, -10.0, 20.0)
+    pdf = RooPolynomial("pol3", "pol3", x, [a1, a2, RooRealVar("a3", "a3", 0.01)])
+    generator().SetSeed(4357)
+    data = pdf.generate([x], 1000)
+
+    def fit(strength: float, level: int) -> Any:
+        a1.setVal(10.0)
+        a2.setVal(-1.0)
+        options = [RooCmdArg("RecoverFromUndefinedRegions", strength),
+                   RooCmdArg("PrintEvalErrors", -1), RooCmdArg("PrintLevel", level)]  # fmt: skip
+        return pdf.fitTo(data, RooCmdArg("Save"), *options)
+
+    capsys.readouterr()
+    bad = fit(0.0, -1)
+    pdf.plotOn(make_frame(x, (), {}))
+    lines = [one for one in capsys.readouterr().out.splitlines() if "INFO" not in one]
+    assert lines == RF612
+    assert (bad.minNll(), bad.status(), bad.numInvalidNLL()) == (0.0, 302, 23)
+    good = fit(1.0, 0)
+    printed = capsys.readouterr().out
+    assert "Minuit2Minimizer: Minimize with max-calls 1000 convergence for edm < 1 strategy 1" in (
+        printed
+    )
+    assert "a1\t  = -0.579502\t +/-  0.0614758\t(limited)" in printed
+    assert (good.minNll(), good.numInvalidNLL()) == (roots(2959.918384170729, rel=1e-9), 64)
