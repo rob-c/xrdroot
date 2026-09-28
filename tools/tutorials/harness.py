@@ -439,9 +439,16 @@ class Harness:
         return "DIFF", found[0][0]
 
     def _paths(self, result: RunResult) -> dict[str, str]:
+        """The directories a run's output names, each masked as what it is.
+
+        ROOT's ``gROOT->GetTutorialDir()`` is its installation's own
+        ``tutorials`` - not the checkout the harness was given, which is what
+        xrdroot answers - so both are masked the same: as the tutorials.
+        """
         paths = {result.workdir: "<workdir>", str(self.settings.tutorials): "<tutorials>"}
         if self.oracle is not None and self.oracle.rootsys:
             paths[self.oracle.rootsys] = "<rootsys>"
+            paths[str(Path(self.oracle.rootsys) / "tutorials")] = "<tutorials>"
         return paths
 
 

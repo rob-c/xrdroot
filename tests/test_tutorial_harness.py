@@ -557,6 +557,14 @@ def test_output_differences_make_a_diff(harness):
     assert records["hist/rc.C"]["reason"] == "stdout"
 
 
+def test_roots_own_tutorial_directory_is_masked_as_the_tutorials(harness):
+    harness.oracle = Oracle(root="root", version="v", rootsys="/opt/root")
+    paths = harness._paths(runner.RunResult([], 0, False, 0.0, "", "", workdir="/w"))
+    line = "Current directory: '/opt/root/tutorials/io/tcontext_2.root'."
+    assert compare.normalise(line, paths) == ["Current directory: '<tutorials>/io/tcontext_2.root'."]
+    assert compare.normalise("/opt/root/lib", paths) == ["<rootsys>/lib"]
+
+
 def test_without_run_or_oracle_the_reasons_say_so(tree, tmp_path):
     found = cat.catalog(tree, {})
     settings = Settings(
