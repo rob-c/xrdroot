@@ -122,7 +122,10 @@ class CallEmitter(ExprEmitter):
         return ", ".join(items)
 
     def _object(self, arg: Expr) -> bool:
+        """An object, or an array: what a callee writes into is already what is handed over."""
         found = self.typeof(arg)
+        if found is not None and found.dims:
+            return True
         return found is not None and found.is_class and not found.pointer
 
     # -- the calls -------------------------------------------------------------

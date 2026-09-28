@@ -50,3 +50,8 @@ def test_cs_named_types_and_unnamed_parameters_of_every_type_declare_prototypes(
     text = translate(source, "t.C")
     assert "stamps = array('long', 3)" in text and "later = stamps[1:]" in text
     assert "f = None" in text
+
+
+def test_an_array_roots_method_writes_into_is_handed_over_as_it_is() -> None:
+    text = translate("void t() { double lo[3], hi[3]; view->GetRange(lo, hi); }", "t.C")
+    assert "ROOT.view.GetRange(lo, hi)" in text
