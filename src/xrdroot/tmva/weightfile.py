@@ -94,7 +94,7 @@ def method_class(type_name: str) -> type[Method]:
 
     found = REGISTRY.get(type_name)
     if found is None:
-        raise Logger("Reader").fatal(
+        raise Logger("Reader").refuse(
             f"The weight file is of a {type_name} method, which xrdroot's TMVA does not have"
         )
     return found

@@ -68,7 +68,7 @@ class MethodFDA(Method):
             ("Converger", str(self.opt("Converger")), ("None",)),
         ):
             if value not in known:
-                raise self.log.fatal(
+                raise self.log.refuse(
                     f"{what}={value} is a fitter of TMVA's FDA xrdroot does not have; it has "
                     "the genetic algorithm (GA) and Monte Carlo sampling (MC), and no converger"
                 )

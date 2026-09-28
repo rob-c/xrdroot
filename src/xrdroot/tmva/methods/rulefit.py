@@ -71,7 +71,7 @@ class MethodRuleFit(Method):
     def process_options(self) -> None:
         module = str(self.opt("RuleFitModule")).lower()
         if module != "rftmva":
-            raise self.log.fatal(
+            raise self.log.refuse(
                 f"RuleFitModule={self.opt('RuleFitModule')} is Friedman's own RuleFit program, "
                 "which xrdroot does not run; it has TMVA's module, RuleFitModule=RFTMVA"
             )

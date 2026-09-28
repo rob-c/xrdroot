@@ -85,6 +85,9 @@ class TTree(_Player):
         store = self._writable("Branch")
         self._require_new(name)
         what = f"the branch {name!r}"
+        if isinstance(address, str) and leaflist is not None and not isinstance(leaflist, str):
+            # Branch(name, "std::vector<float>", &object): the class named, the object after it.
+            address, leaflist = leaflist, None
         if isinstance(leaflist, str):
             leaves = parse(leaflist)
             addresses = self._addressed(address, leaves, what)

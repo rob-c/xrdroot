@@ -167,7 +167,7 @@ class PDF:
     def build(self, histogram: Histogram) -> PDF:
         """``BuildPDF``: smooth, spline and sample ``histogram``."""
         if self.spec.interpolation in ("Spline3", "Spline5", "KDE"):
-            raise self.log.fatal(
+            raise self.log.refuse(
                 f"PDFInterpol={self.spec.interpolation} is a TMVA interpolation xrdroot does not "
                 "have; Spline0, Spline1 and Spline2 are the ones it has"
             )

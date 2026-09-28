@@ -23,11 +23,12 @@ from typing import Any
 
 from .crossval import CrossValidation
 from .rbdt import RBDT, SaveXGBoost
+from .envelope import Classification
 from .experimental import Compute, RReader, RStandardScaler
 from .factory import Factory
 from .genetic import GeneticAlgorithm, GeneticFitter, IFitterTarget, Interval
 from .loader import DataLoader
-from .log import TMVAError
+from .log import Config, TMVAError
 from .methods.category import MethodCategory
 from .methods.cuts import MethodCuts
 from .reader import Reader
@@ -36,6 +37,7 @@ from .tensor import AsTensor, MemoryLayout, RTensor
 from .types import Types
 
 __all__ = [
+    "Config",
     "CrossValidation",
     "DataLoader",
     "Factory",
@@ -63,4 +65,5 @@ EXPERIMENTAL: dict[str, Any] = {
     "Compute": Compute,
     "RBDT": RBDT,
     "SaveXGBoost": SaveXGBoost,
+    "Classification": Classification,
 }

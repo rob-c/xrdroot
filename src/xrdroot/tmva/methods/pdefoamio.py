@@ -46,7 +46,7 @@ def read_foams(path: str, names: list[str], dim: int, log: Logger) -> list[Cells
                 tree = source[name]
                 columns = tree.arrays(list(Cells(dim, 0).columns()))
             except (KeyError, ROOTError, TypeError, AttributeError):
-                raise log.fatal(
+                raise log.refuse(
                     f"The foam {name} of {path} is not one xrdroot wrote: TMVA's own foam files "
                     "hold PDEFoam objects, which xrdroot cannot read; retrain the method with "
                     "xrdroot"

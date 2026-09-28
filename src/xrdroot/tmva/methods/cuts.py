@@ -61,7 +61,7 @@ class MethodCuts(Method):
         self.range_max = self.options.array("CutRangeMax", nvar, -1.0)
         self.fit = str(self.opt("FitMethod"))
         if self.fit not in ("MC", "GA"):
-            raise self.log.fatal(
+            raise self.log.refuse(
                 f"FitMethod={self.fit} is a fit method of TMVA's Cuts xrdroot does not have; "
                 "it has MC and GA"
             )

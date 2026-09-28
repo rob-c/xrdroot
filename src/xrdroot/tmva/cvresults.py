@@ -7,7 +7,6 @@ from typing import Any
 
 import numpy as np
 
-from ..pyroot.core.objects import templated
 from .log import Logger
 from .tools import CxxVector
 
@@ -108,9 +107,23 @@ class CrossValidationResult:
 class MethodInfo(dict):  # type: ignore[type-arg]
     """``OptionMap`` of a booked method: ``GetValue<TString>("MethodName")``."""
 
-    @templated
-    def GetValue(self, key: Any) -> Any:
-        return self[str(key)]
+    @property
+    def GetValue(self) -> _Getter:
+        """``GetValue<T>(key)``: the value, whatever ``T`` - called with the type or without."""
+        return _Getter(self)
+
+
+class _Getter:
+    """A method a macro calls as ``GetValue(key)`` or as ``GetValue['TString'](key)``."""
+
+    def __init__(self, owner: MethodInfo) -> None:
+        self.owner = owner
+
+    def __getitem__(self, _: Any) -> _Getter:
+        return self
+
+    def __call__(self, key: Any) -> Any:
+        return self.owner[str(key)]
 
 
 def _named_split(expression: str, spectators: list[Any], folds: int, values: Any) -> Any:

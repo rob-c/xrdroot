@@ -60,12 +60,12 @@ class MethodPDEFoam(Method):
             ("MultiTargetRegression", False),
         ):
             if self.opt(name) != allowed:
-                raise self.log.fatal(
+                raise self.log.refuse(
                     f"{name}={self.opt(name)} is an option of TMVA's PDEFoam xrdroot does not "
                     f"have; it grows its foams with {name}={allowed} only"
                 )
         if self.analysis == REGRESSION and self.dsi.GetNTargets() > 1:
-            raise self.log.fatal(
+            raise self.log.refuse(
                 "PDEFoam's multi-target regression xrdroot does not have; it regresses one target"
             )
         self.separate = bool(self.opt("SigBgSeparate")) and self.analysis == CLASSIFICATION

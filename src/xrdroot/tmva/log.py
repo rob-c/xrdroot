@@ -19,7 +19,7 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
-from ..errors import ROOTError
+from ..errors import ROOTError, UnsupportedFeatureError
 
 __all__ = [
     "CONFIG",
@@ -76,6 +76,10 @@ class TMVAError(ROOTError, RuntimeError):
     """What TMVA's ``kFATAL`` throws: the message it printed last."""
 
 
+class TMVAUnsupported(TMVAError, UnsupportedFeatureError):
+    """A ``kFATAL`` of xrdroot's own: something TMVA does that xrdroot does not."""
+
+
 @dataclass
 class Config:
     """``TMVA::gConfig()``: colour, silence and the progress bar, shared by all of TMVA."""
@@ -83,6 +87,32 @@ class Config:
     use_color: bool = True
     silent: bool = False
     draw_progress_bar: bool = False
+    workers: int = 1
+
+    @staticmethod
+    def Instance() -> Config:
+        """``TMVA::Config::Instance()``: the one configuration."""
+        return CONFIG
+
+    def SetUseColor(self, on: bool) -> None:
+        self.use_color = bool(on)
+
+    def SetSilent(self, on: bool) -> None:
+        self.silent = bool(on)
+
+    def SetDrawProgressBar(self, on: bool) -> None:
+        self.draw_progress_bar = bool(on)
+
+    def SetNumWorkers(self, count: int) -> None:
+        self.workers = int(count)
+
+    def GetNumWorkers(self) -> int:
+        return self.workers
+
+    def GetNCpu(self) -> int:
+        import os
+
+        return os.cpu_count() or 1
 
 
 #: The one configuration, as TMVA has one.
@@ -142,6 +172,12 @@ class Logger:
 
     def error(self, text: Any = "") -> None:
         self.send(ERROR, text)
+
+    def refuse(self, text: Any) -> TMVAError:
+        """``fatal`` for what TMVA does and xrdroot does not: the error is also a refusal."""
+        self.send(FATAL, text)
+        sys.stdout.write("***> abort program execution\n")
+        return TMVAUnsupported(str(text))
 
     def fatal(self, text: Any) -> TMVAError:
         """Print a fatal message and hand back the error to raise, as TMVA throws after it."""

@@ -67,7 +67,7 @@ class MethodPDERS(Method):
             ("KernelEstimator", self.kernel, KERNELS),
         ):
             if value not in known:
-                raise self.log.fatal(
+                raise self.log.refuse(
                     f"{what}={value} is an option of TMVA's PDERS xrdroot does not have; it has "
                     + ", ".join(known)
                 )
