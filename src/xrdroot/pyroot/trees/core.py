@@ -19,6 +19,7 @@ from ._base import _TObjectLike, hooks
 from .addresses import Address
 from .batch import Batch
 from .layout import BranchInfo, from_store, from_tree
+from .memory import circular, tree_record
 from .store import Store, memory_tree
 
 __all__ = ["_TreeCore", "python_value"]
@@ -119,9 +120,19 @@ class _TreeCore(_TObjectLike):
             if self._store is not None:
                 stats = self._backing() if self._store.slots else None
                 self._layout_cache = from_store(self._store, stats, self._written)
+                if self._in_memory():
+                    self._layout_cache = circular(self._layout_cache, self._name, self._store)
             else:
                 self._layout_cache = from_tree(_first_tree(self._source))
         return self._layout_cache
+
+    def _in_memory(self) -> bool:
+        """Whether this is a circular tree not written: its one basket, in memory, ROOT counts."""
+        return self._store is not None and bool(self._store.circular) and not self._written
+
+    def _record(self, layout: list[BranchInfo]) -> int | None:
+        """The length of the tree's record ``Print`` adds to the baskets, when it is known."""
+        return tree_record(self._name, self._title, layout) if self._in_memory() else None
 
     def _leaves(self) -> list[Any]:
         return [leaf for branch in self._layout() for leaf in branch.leaves]

@@ -42,17 +42,23 @@ def _ratio(tot: int, zipped: int) -> float:
 
 
 def tree_lines(
-    name: str, title: str, entries: int, branches: Sequence[BranchInfo], key: Any = None
+    name: str,
+    title: str,
+    entries: int,
+    branches: Sequence[BranchInfo],
+    key: Any = None,
+    record: int | None = None,
 ) -> list[str]:
     """The header ``TTree::Print`` puts above the branches.
 
     ROOT counts the tree's own key and record in its totals; ``key`` is the
     :class:`xrdroot.Key` the tree was read from, when whoever read it says,
-    and without it the totals are the baskets' alone.
+    ``record`` the length of a tree in memory's record, when it is known, and
+    without either the totals are the baskets' alone.
     """
     tot = sum(branch.tot_bytes for branch in branches)
     zipped = sum(branch.zip_bytes for branch in branches)
-    total = tot if key is None else tot + key.keylen + key.objlen
+    total = tot + (record or 0) if key is None else tot + key.keylen + key.objlen
     on_file = zipped if key is None else zipped + key.nbytes
     return [
         STARS,

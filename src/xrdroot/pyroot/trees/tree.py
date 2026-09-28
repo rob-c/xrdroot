@@ -218,7 +218,9 @@ class TTree(_Player):
         return 0
 
     def SetCircular(self, maxentries: int) -> None:
-        """ROOT's circular buffer of entries, which a tree here does not keep."""
+        """Keep at most ``maxentries`` entries, the newest, in memory; 0 or less keeps all."""
+        self._writable("SetCircular").circular = max(int(maxentries), 0)
+        self._changed()
 
     def OptimizeBaskets(self, maxmemory: int = 10_000_000, minComp: float = 1.1) -> None:
         """What ROOT does to basket sizes; nothing to do here."""

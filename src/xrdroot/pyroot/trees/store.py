@@ -165,6 +165,8 @@ class Store:
         #: The title of each branch of several leaves: the leaf list it was given.
         self.titles: dict[str, str] = {}
         self.entries = 0
+        #: ``SetCircular``'s most entries kept; 0 for a tree that keeps every one.
+        self.circular = 0
 
     def add(self, slot: Slot) -> None:
         self.slots[slot.name] = slot
@@ -186,7 +188,20 @@ class Store:
         for slot, value in read:  # only once every address has been read without complaint
             slot.keep(value)
         self.entries += 1
+        if self.circular and self.entries > self.circular:
+            self._keep_last(self.circular - self.circular // 10)
         return sum(_nbytes(slot, value) for slot, value in read)
+
+    def _keep_last(self, count: int) -> None:
+        """``TTree::KeepCircular``: only the newest ``count`` entries stay.
+
+        ROOT lets a circular tree pass its most entries by one, then moves
+        its baskets' oldest entries out until nine tenths of the most are left.
+        """
+        for slot in self.slots.values():
+            column = slot.column()
+            slot.chunks = [column[len(column) - count :]]
+        self.entries = count
 
     def extend(self, columns: Mapping[str, Any], count: int) -> None:
         """Take in many entries at once, a column for every slot, as a copy of a tree does."""
