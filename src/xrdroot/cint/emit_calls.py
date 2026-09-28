@@ -20,10 +20,11 @@ from typing import ClassVar
 
 from .base import Out, P
 from .ctype import CType
+from .cursor import looks_like_type
 from .emit_expr import ExprEmitter, zero
 from .emit_names import type_text
 from .literals import SUFFIXES
-from .nodes import Binary, Call, Expr, Index, InitList, Literal, Member, Name, Unary
+from .nodes import Assign, Binary, Call, Expr, Index, InitList, Literal, Member, Name, Unary
 
 __all__ = ["CallEmitter", "WRAPS"]
 
@@ -65,6 +66,18 @@ LIMITS = {
     ("long long", "max"): "9223372036854775807",
     ("unsigned long", "max"): "18446744073709551615",
 }
+
+
+def _tuple(items: list[str]) -> str:
+    """Python's spelling of a tuple of ``items``: ``()``, ``(a,)``, ``(a, b)``."""
+    return f"({items[0]},)" if len(items) == 1 else f"({', '.join(items)})"
+
+
+def _plain(node: Expr) -> bool:
+    """An argument evaluated twice to the same effect: a name, a literal, arithmetic on them."""
+    if isinstance(node, Binary):
+        return _plain(node.left) and _plain(node.right)
+    return isinstance(node, (Name, Literal))
 
 
 def _lvalue(node: Expr) -> bool:
@@ -261,6 +274,46 @@ class CallEmitter(ExprEmitter):
         if func.name in ("get", "release", "operator->"):
             return self.expr(func.obj)
         raise self.refuse(f"the smart pointer's {func.name}() where its result is used", node)
+
+    # -- assigning through a returned reference ------------------------------------
+
+    def call_assignment(self, node: Assign) -> str:
+        """``f(i) = v``: what the call returns a reference to, written through the runtime."""
+        target = node.target
+        assert isinstance(target, Call)
+        if node.op != "=" and not all(_plain(arg) for arg in target.args):
+            raise self.refuse("a compound assignment to a call whose arguments change things", node)
+        value = self.assigned_value(node)
+        func = target.func
+        args = _tuple([self.value(arg) for arg in target.args])
+        if isinstance(func, Member):
+            return self._method_assignment(func, target, args, value)
+        self._own_reference(func, "its operator()", node)
+        if isinstance(func, Name) and self._names_class(func):
+            # ``TMatrixDColumn(A, 0) = 1.0``: a temporary built, and assigned into.
+            return f"assign_into({self.value(target)}, {value})"
+        return f"assign_call({self.at(func, P.POSTFIX)}, {args}, {value})"
+
+    def _method_assignment(self, func: Member, target: Call, args: str, value: str) -> str:
+        """``obj.m(args) = v``: an element for ``at``, else through the runtime's ``Set``/copy."""
+        self._own_reference(func.obj, f"its method {func.name}", target)
+        obj = self.value(func.obj)
+        if func.name == "at" and len(target.args) == 1:
+            return f"set_item({obj}, {self.value(target.args[0])}, {value})"
+        return f"assign_method({obj}, {func.name!r}, {args}, {value})"
+
+    def _names_class(self, func: Name) -> bool:
+        symbol = self.symbol(func)
+        if symbol is not None:
+            return symbol.kind == "class"
+        return looks_like_type(func.parts, set(self.program.classes))
+
+    def _own_reference(self, obj: Expr, what: str, node: Expr) -> None:
+        """Refuse a reference one of the macro's own classes returns: Python returns a value."""
+        found = self.typeof(obj)
+        if found is not None and found.name in self.program.classes:
+            why = f"assigning to what the macro's class {found.name} returns from {what}"
+            raise self.refuse(why, node)
 
     # -- converting stores ---------------------------------------------------------
 

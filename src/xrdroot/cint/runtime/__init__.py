@@ -24,6 +24,8 @@ from .objects import *  # noqa: F403
 from .objects import __all__ as _objects
 from .printf import *  # noqa: F403
 from .printf import __all__ as _printf
+from .references import *  # noqa: F403
+from .references import __all__ as _references
 from .root import ROOT, RootProxy
 from .streams import *  # noqa: F403
 from .streams import __all__ as _streams
@@ -44,4 +46,5 @@ __all__ = [
     *_strings,
     *_istreams,
     *_units,
+    *_references,
 ]

@@ -354,7 +354,30 @@ class ExprEmitter(NameEmitter):
 
     # -- assignment inside an expression -------------------------------------
 
+    def call_assignment(self, node: Assign) -> str:
+        raise NotImplementedError
+
+    def stored_through(self, node: Assign) -> str | None:
+        """``f(i) = v`` and ``*p = v`` of a pointer to an object or of unknown type, if it is one.
+
+        What ``*p`` is cannot be rebound in Python, so the store goes through
+        the runtime: into the cell ``p`` is (a smart pointer to a value that
+        ROOT made, say), or into the object it points at.
+        """
+        target = node.target
+        if isinstance(target, Call):
+            return self.call_assignment(node)
+        if not (isinstance(target, Unary) and target.op == "*"):
+            return None
+        found = self.typeof(target.operand)
+        if found is not None and not found.is_object_pointer:
+            return None
+        return f"store_through({self.value(target.operand)}, {self.assigned_value(node)})"
+
     def _assign(self, node: Assign) -> Out:
+        stored = self.stored_through(node)
+        if stored is not None:
+            return stored, P.POSTFIX
         value = self.assigned_value(node)
         name = self.local_name(node.target)
         if name is not None:

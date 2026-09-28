@@ -160,6 +160,10 @@ class StmtEmitter(CallEmitter):
 
     def _assign_statement(self, expr: Assign) -> bool:
         target = expr.target
+        stored = self.stored_through(expr)
+        if stored is not None:
+            self.out.line(stored, expr.where)
+            return True
         refusal = self._unassignable(target)
         if refusal is not None:
             raise self.refuse(refusal, expr)
@@ -174,8 +178,6 @@ class StmtEmitter(CallEmitter):
 
     def _unassignable(self, target: Expr) -> str | None:
         """Why assigning to ``target`` has no Python that does the same, if it has none."""
-        if isinstance(target, Call):
-            return "assigning to what a call returns by reference, f(i) = v"
         if isinstance(target, Unary):
             return self._through_pointer(target)
         if isinstance(target, Index):
@@ -189,9 +191,6 @@ class StmtEmitter(CallEmitter):
     def _through_pointer(self, target: Unary) -> str | None:
         if target.op != "*":
             return "assigning to something that is not a variable"
-        found = self.typeof(target.operand)
-        if found is None or found.is_object_pointer:
-            return "assigning a whole object through a pointer to it"
         return None
 
     def _in_place(self, expr: Assign) -> bool:

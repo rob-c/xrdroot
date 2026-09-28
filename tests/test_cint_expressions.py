@@ -92,8 +92,7 @@ def test_a_methods_members_are_its_objects(source: str, fragment: str) -> None:
         ("int n = sizeof(TH1F);", "sizeof of a type whose size"),
         ("int a = (delete p, 0);", "delete inside an expression"),
         ("std::string s; s[0] = 'x';", "changing one character of a string in place"),
-        ("TH1F *h; *h = *g;", "assigning a whole object through a pointer"),
-        ("m(0, 1) = 2;", r"assigning to what a call returns by reference"),
+        ("m(i++, 1) += 2;", "a compound assignment to a call whose arguments change things"),
     ],
 )
 def test_what_has_no_python_that_does_the_same_is_refused(source: str, why: str) -> None:
