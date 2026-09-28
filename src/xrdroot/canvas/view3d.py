@@ -13,7 +13,7 @@ range is then set so that the box's shadow fills the frame
 from __future__ import annotations
 
 import math
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 __all__ = ["View3D"]
 
@@ -97,6 +97,19 @@ class View3D:
         t = self.tn
         return (t[0] * x + t[1] * y + t[2] * z + t[3], t[4] * x + t[5] * y + t[6] * z + t[7],
                 t[8] * x + t[9] * y + t[10] * z + t[11])  # fmt: skip
+
+    def normal_to_ndc(self, normal: Any) -> Any:
+        """``NormalWCtoNDC``: a surface's normal as the view turns it, by ``fTnorm``'s cofactors.
+
+        Each of the three is the triple product of the normal with two rows of
+        the view's matrix, taken round in turn.
+        """
+        import numpy as np
+
+        t = self.tnorm
+        a, b, c = np.array(t[0:3]), np.array(t[4:7]), np.array(t[8:11])
+        given = np.array([float(v) for v in normal])
+        return np.array([given @ np.cross(b, c), given @ np.cross(c, a), given @ np.cross(a, b)])
 
     def normal(self, x: float, y: float, z: float) -> float:
         """``FindNormal``: which way a face with normal ``(x, y, z)`` faces, by its sign."""

@@ -53,9 +53,11 @@ def test_a_histogram_of_equal_contents_draws_no_boxes_and_one_without_lego_or_bo
     assert all(a.color == (0.0, 0.0, 0.0) for a in lines(ax))  # the box round them, and no boxes
     with pytest.warns(match="only LEGO, BOX and ISO"):
         make([(_cube(1.0), "")]).plot()
-    with pytest.warns(match="isosurface"):  # ISO draws its box and axes, and says what it left
-        ax = make([(_cube(1.0), "iso")]).plot().axes[0]
-    assert all(a.color == (0.0, 0.0, 0.0) for a in lines(ax))
+    ax = make([(_cube(1.0), "iso")]).plot().axes[0]  # a surface round the one full bin
+    assert all(a.color == (0.0, 0.0, 0.0) for a in lines(ax))  # and no boxes
+    assert [c for c in ax.collections if type(c).__name__ == "PolyCollection"]
+    ax = make([(_cube(), "iso")]).plot().axes[0]  # contents all at their mean: no surface
+    assert not ax.collections
 
 
 def test_a_bin_below_the_histograms_own_minimum_has_no_box():

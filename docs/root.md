@@ -1046,6 +1046,8 @@ read off the object, the same layers, onto the pad's axes. What a pad adds:
 | `TGaxis` | as `TGaxis::PaintAxis` draws one, and a frame's axes too: a line graduated from `fWmin` to `fWmax` in round steps as `fNdiv` asks (`THLimitsFinder`'s), logarithmically for `G` in `fChopt`, its ticks on the side `+` or `-` names and its labels opposite (or with them, `=`; none, `U`), a common `×10^n` where the labels would be long, its title at its far end |
 | `TPave`, `TPaveText`, `TPaveLabel`, `TLegend` | the box, its border and shadow (on the sides `fOption` names), and its lines stacked in it, or its entries in `fNColumns` columns as wide as their widest labels, each a symbol — `l` line, `p` marker, `f` fill, `e` error bar, `h` a header of its own row — drawn in the style of the thing it stands for |
 | `LEGO`, `SURF` | a two-dimensional histogram as `THistPainter::PaintLego` and `PaintSurface` draw it: seen from the pad's `fTheta` and `fPhi` through `TView3D`, its blocks or its mesh drawn front to back with the lines behind them hidden (`TPainter3dAlgorithms`' moving screen), the box's back walls lined at the z axis's divisions, and its three axes along the box's nearer edges |
+| three dimensions | a `TH3` drawn `LEGO` or `BOX` as `PaintH3BoxRaster` draws it, a box in each bin as big as the cube root of its share of the highest, hidden lines hidden by the raster screen; drawn `ISO`, the surface where its contents cross their mean, lit as `PaintH3Iso` lights it and filled in 28 shades of its fill colour - found through tetrahedra where ROOT uses its own marching cubes, so its triangles differ a little |
+| `CONT1`, `CONT2`, `CONT3` | contour lines as `PaintContour` finds them, cell by cell of the bins' centres at `gStyle`'s twenty levels: each level in its palette colour, its line style, or all in the histogram's own line |
 
 Colours are ROOT's by index, from the table [Drawing](#drawing) uses —
 ROOT's own, `kOrange` to `kPink` and all — and a canvas saved with its
@@ -1085,7 +1087,8 @@ anything of a GUI — a three-dimensional histogram, and a function that
 cannot be evaluated here. An option ROOT takes that is not drawn here
 (`SCAT`, `*H`, the `[]` of an asymmetric graph) is drawn as the object would
 be without it; each is said in the warning. `LEGO` and `SURF` are drawn
-in three dimensions; a three-dimensional histogram's `BOX` and `ISO` are not. Writing a canvas is not supported; reading one never
+in three dimensions, and so is a three-dimensional histogram drawn `LEGO`,
+`BOX` or `ISO`; one drawn with no option, a scatter of points in ROOT, is not. Writing a canvas is not supported; reading one never
 stands in the way of writing what it drew.
 
 `xrdroot.canvas.render(obj, path)` saves a `Canvas`, a `Pad`, or the members

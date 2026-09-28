@@ -146,23 +146,55 @@ def _back_box(view: View3D, screen: RasterScreen, ndivz: int) -> list[Segment]:
     return segments
 
 
-def paint_h3_boxes(scene: Scene, h: Any, option: str) -> None:
-    """A three-dimensional histogram as its boxes, in the box round them, with its axes."""
-    scene.ax.set_axis_off()  # no frame: the box is drawn instead
+def _isosurface(scene: Scene, pad: _Pad, view: View3D, h: Any) -> None:
+    """``PaintH3Iso``'s surface at the mean content of every bin, over the back box."""
+    from matplotlib.collections import PolyCollection
+
+    from .iso import iso_polygons, isosurface
+
+    values = h.values()
+    centres = [0.5 * (e[1:] + e[:-1]) for e in (axis.edges() for axis in h.axes)]
+    triangles = isosurface(values, centres, float(np.sum(values)) / values.size)
+    shade = scene.colors.rgb(lookup(h, "fFillColor", 1))
+    background = scene.colors.rgb(scene.pad.get("fFillColor", 0))
+    polygons = iso_polygons(view, triangles, shade, background)
+    if not polygons:
+        return
+    shapes = [np.rint([pad.pixel(x, y) for x, y in points]) for points, _colour in polygons]
+    faces = PolyCollection(shapes, facecolors=[colour for _points, colour in polygons],
+                           edgecolors="none", linewidths=0.0, transform=scene.display,
+                           clip_on=False, zorder=scene.layer())  # fmt: skip
+    scene.ax.add_collection(faces, autolim=False)
+
+
+def _view_of(scene: Scene, h: Any) -> View3D:
+    """The histogram's box seen from the pad's ``fTheta`` and ``fPhi``, as ``PaintH3`` sets it."""
     edges, _values = _edges(h)
     rmin = tuple(float(e[0]) for e in edges)
     rmax = tuple(float(e[-1]) for e in edges)
     theta = float(scene.pad.get("fTheta", THETA))
     phi = float(scene.pad.get("fPhi", PHI))
-    view = View3D(rmin, rmax, -90 - phi, 90 - theta)  # type: ignore[arg-type]
-    pad = _Pad(scene, view.pad_range(scene.pad.margins))
-    screen = RasterScreen()
+    return View3D(rmin, rmax, -90 - phi, 90 - theta)  # type: ignore[arg-type]
+
+
+def _inside(view: View3D, screen: RasterScreen, h: Any, iso: bool) -> list[Segment]:
+    """The boxes' visible edges, unless it is an isosurface that is drawn, then the back box's."""
     look = (int(lookup(h, "fLineColor", 1)), int(lookup(h, "fLineWidth", 1)),
             int(lookup(h, "fLineStyle", 1)))  # fmt: skip
-    segments = [] if "ISO" in option.upper() else _boxes(view, screen, h, look)
+    segments = [] if iso else _boxes(view, screen, h, look)
     zaxis = lookup(h, "fZaxis") or {}
-    segments += _back_box(view, screen, int(lookup(zaxis, "fNdivisions", 510)) % 100)
-    _draw_segments(pad, segments)
+    return segments + _back_box(view, screen, int(lookup(zaxis, "fNdivisions", 510)) % 100)
+
+
+def paint_h3_boxes(scene: Scene, h: Any, option: str) -> None:
+    """A three-dimensional histogram as its boxes, or its isosurface, in its box, with axes."""
+    scene.ax.set_axis_off()  # no frame: the box is drawn instead
+    view = _view_of(scene, h)
+    pad = _Pad(scene, view.pad_range(scene.pad.margins))
+    iso = "ISO" in option.upper()
+    _draw_segments(pad, _inside(view, RasterScreen(), h, iso))
+    if iso:
+        _isosurface(scene, pad, view, h)
     corners = [view.to_ndc(p) for p in box_corners(view)]
     fronts = [[pad.pixel(corners[k - 1][0], corners[k - 1][1]) for k in face] for face in FRONT]
     add_line(scene, fronts, scene.colors.rgb(1), many=True)

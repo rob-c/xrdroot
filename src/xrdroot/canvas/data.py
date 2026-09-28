@@ -187,7 +187,7 @@ def _stats_made(scene: Scene, obj: Any, option: str) -> bool:
 
 def paint_histogram(scene: Scene, h: Histogram, option: str) -> None:
     """A histogram by its draw option, with its stats box: in three dimensions for ``LEGO``
-    and ``SURF``, and a histogram of three as its boxes."""
+    and ``SURF``, and a histogram of three as its boxes or its isosurface."""
     from .legoplot import paint_three_d, three_d_kind
 
     upper = option.upper()
@@ -195,8 +195,6 @@ def paint_histogram(scene: Scene, h: Histogram, option: str) -> None:
         if not _boxed(upper):
             scene.skipped.append(f"{_named(h)} (only LEGO, BOX and ISO draw three dimensions here)")
             return
-        if "ISO" in upper:
-            scene.skipped.append(f"{_named(h)}'s isosurface (ISO draws its box and axes alone)")
         scene.solid = True
         paint_h3_boxes(scene, h, option)
     elif len(h.axes) == 2 and three_d_kind(option) and "SAME" not in upper:
