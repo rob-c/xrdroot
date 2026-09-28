@@ -19,6 +19,9 @@ from .options import Chosen
 
 __all__ = ["Request", "styled"]
 
+#: The marker style ROOT draws option ``*`` with: ``kStar``.
+ASTERISK = 3
+
 
 class Request(NamedTuple):
     """The option read, the caller's look, and where this thing is among others."""
@@ -57,6 +60,6 @@ def styled(members: Any, request: Request, markers: bool = True) -> Look:
     """The look an object is drawn in: its own attributes, the palette's, then the caller's."""
     base = _from_palette(look(members, markers), request)
     if request.chosen.has("*"):
-        base = base._replace(marker="asterisk", hollow=False)
+        base = base._replace(marker="asterisk", hollow=False, marker_style=ASTERISK)
     own = request.each[request.place] if request.place < len(request.each) else {}
     return restyled(base, {**request.marks, **own})

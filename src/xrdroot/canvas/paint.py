@@ -170,6 +170,7 @@ def paint(canvas: Canvas, figure: Any = None) -> Any:
     """``canvas`` drawn onto ``figure``, or onto a new figure the canvas's size."""
     try:
         from matplotlib import rc_context
+        from matplotlib.figure import Figure  # noqa: F401 - what the canvas is drawn on
     except ImportError:
         raise UnsupportedFeatureError(
             "drawing a canvas needs matplotlib, which is not installed: pip install matplotlib"

@@ -6,7 +6,12 @@ classes as :class:`~xrdroot.canvas.Primitive` - which is what reading one
 gives back, and the tests check what lands on the figure: an axes per pad
 where the pad's margins put its frame, the data by its draw option, text,
 lines, paves and legends where ROOT would put them, in ROOT's colours. One
-test draws ROOT's own ``tcanvas.root``; none compares pixels.
+test draws ROOT's own ``tcanvas.root``; none compares pictures.
+
+What ROOT draws as lines of whole pixels is drawn here the same way, as a
+:class:`~xrdroot.canvas.raster.PixelLine` holding its polylines in the
+canvas's pixels (``y`` down), and its text as matplotlib text placed in
+those pixels too; the tests read both back.
 """
 
 from __future__ import annotations
@@ -17,13 +22,16 @@ import warnings
 import numpy as np
 import pytest
 from matplotlib.collections import PolyCollection
+from matplotlib.colors import to_rgb
 from matplotlib.figure import Figure
-from matplotlib.patches import FancyArrowPatch, Polygon, Rectangle, StepPatch
+from matplotlib.patches import Polygon, Rectangle
 
 from xrdroot import Canvas, Function, Graph, Histogram, UnsupportedFeatureError, open_root
 from xrdroot.buffer import Listed
 from xrdroot.canvas import Pad, Primitive, render
+from xrdroot.canvas.marks import MARKER_GID
 from xrdroot.canvas.paint import CanvasWarning
+from xrdroot.canvas.raster import PixelLine
 from xrdroot.profile import Profile
 from xrdroot.stacks import MultiGraph, Stack
 
@@ -100,6 +108,46 @@ def only(fig, label):
     return ax
 
 
+def lines(ax, color=None, clipped=None):
+    """The pixel lines on ``ax``, those of one colour, or those clipped to a frame or not."""
+    found = [a for a in ax.get_children() if isinstance(a, PixelLine)]
+    if color is not None:
+        found = [a for a in found if to_rgb(a.color) == color]
+    if clipped is not None:
+        found = [a for a in found if (a.pixel_clip is not None) == clipped]
+    return found
+
+
+def polylines(ax, color=None, clipped=None):
+    """Every polyline those lines hold, as lists of pixels."""
+    return [line.tolist() for a in lines(ax, color, clipped) for line in a.lines]
+
+
+def words(ax):
+    """What is written on ``ax``, a piece at a time, without the spaces round each."""
+    return [t.get_text().strip() for t in ax.texts]
+
+
+def data_words(ax):
+    """What is written on ``ax`` in its data's units: a bin's content, drawn ``TEXT``."""
+    return [t.get_text() for t in ax.texts if t.get_transform() is ax.transData]
+
+
+def written(ax):
+    """The pieces of text on ``ax`` by what they say."""
+    return {t.get_text().strip(): t for t in ax.texts}
+
+
+def marks(ax):
+    """The markers on ``ax``, in one collection per drawing, placed at pixels' centres."""
+    return [c for c in ax.collections if c.get_gid() == MARKER_GID]
+
+
+def fills(ax):
+    """The filled polygons on ``ax`` in the canvas's pixels: bands, boxes, bars and areas."""
+    return [p for p in ax.get_children() if isinstance(p, Polygon)]
+
+
 # -- ROOT's own canvas -----------------------------------------------------------
 
 
@@ -111,10 +159,13 @@ def test_roots_canvas_draws_one_axes_where_its_margins_put_the_frame():
     assert ax.get_label() == "c1"
     assert ax.get_position().bounds == pytest.approx((0.1, 0.1, 0.8, 0.8))
     assert tuple(fig.get_size_inches() * fig.dpi) == pytest.approx((296, 372))
-    _xs, ys = ax.lines[0].get_data()
-    assert list(ys) == [0.0, 2.0, 4.0, 1.0, 3.0]  # "alp": a line through the points
-    assert ax.get_xlim() == pytest.approx((-0.4, 4.4))  # a tenth of their spread each side
-    assert ax.get_ylim() == pytest.approx((0.0, 4.4))  # not below zero, as none are
+    # "alp": a line through the points, in the frame's pixels, and a marker on each
+    (graph, _fit) = lines(ax, clipped=True)
+    assert graph.lines[0].tolist() == [[30, 335], [83, 200], [137, 64], [191, 267], [245, 132]]
+    assert len(marks(ax)[0].get_offsets()) == 5
+    # a tenth of their spread each side, but not below zero where none of them are
+    assert ax.get_xlim() == pytest.approx((0.0, 4.4))
+    assert ax.get_ylim() == pytest.approx((0.0, 4.4))
 
 
 def test_a_canvas_saves_as_png_pdf_and_svg(tmp_path):
@@ -184,10 +235,14 @@ def test_a_pad_is_scaled_gridded_and_ticked_as_it_says():
     fig = make([(h, "")], fLogy=1, fLogx=1, fGridx=True, fGridy=True, fTickx=1, fTicky=1).plot()
     (ax,) = fig.axes
     assert ax.get_xscale() == ax.get_yscale() == "log"
-    assert ax.xaxis._major_tick_kw["gridOn"]
-    assert ax.yaxis._major_tick_kw["gridOn"]
-    assert ax.xaxis._major_tick_kw["tick2On"]
-    assert ax.yaxis._major_tick_kw["tick2On"]
+    grid = polylines(ax) and [line for a in lines(ax) if a.dashes == (1, 2) for line in a.lines]
+    upright = [line for line in grid if line[0, 0] == line[1, 0]]
+    across = [line for line in grid if line[0, 1] == line[1, 1]]
+    assert upright and across  # dotted across the frame at each tick, both ways
+    assert all(sorted(line[:, 1]) == [50, 450] for line in upright)
+    ticked = [line for line in polylines(ax, (0.0, 0.0, 0.0), clipped=False) if len(line) == 2]
+    assert any(min(y for _, y in line) == 50 < max(y for _, y in line) < 70 for line in ticked)
+    assert any(max(x for x, _ in line) == 630 > min(x for x, _ in line) > 610 for line in ticked)
     low, high = ax.get_ylim()
     assert low == pytest.approx(0.5) and high == pytest.approx(
         6.0
@@ -205,7 +260,9 @@ def test_a_pad_drawn_before_it_was_saved_keeps_the_frame_it_was_drawn_with():
     backs = [p for p in ax.patches if isinstance(p, Rectangle) and p.get_zorder() == -50]
     assert backs
     assert backs[0].get_facecolor()[:3] == (1.0, 1.0, 0.0)
-    assert ax.spines["bottom"].get_edgecolor()[:3] == (1.0, 0.0, 0.0)
+    (edge,) = lines(ax, (1.0, 0.0, 0.0))
+    assert edge.thick == 3
+    assert edge.lines[0].tolist() == [[70, 50], [630, 50], [630, 450], [70, 450], [70, 50]]
 
 
 def test_a_pad_with_no_frame_is_ranged_by_its_own_coordinates():
@@ -214,7 +271,7 @@ def test_a_pad_with_no_frame_is_ranged_by_its_own_coordinates():
     (ax,) = fig.axes
     assert ax.get_xlim() == (0.0, 40.0)
     assert not ax.axison
-    assert list(ax.lines[0].get_xdata()) == [10.0, 20.0]
+    assert polylines(ax) == [[[175, 375], [350, 250]]]  # a quarter and a half of 700 by 500
 
 
 @pytest.mark.parametrize(("mode", "top"), [(1, "light"), (-1, "dark")])
@@ -240,7 +297,7 @@ def test_a_frame_without_a_tframe_takes_its_pads_frame_colours():
     (ax,) = fig.axes
     backs = [p for p in ax.patches if p.get_zorder() == -50]
     assert backs[0].get_facecolor()[:3] == (0.0, 1.0, 0.0)
-    assert ax.spines["left"].get_edgecolor()[:3] == (0.0, 0.0, 1.0)
+    assert len(lines(ax, (0.0, 0.0, 1.0))) == 1  # the frame's edge
 
 
 def test_a_hollow_frame_is_not_filled():
@@ -256,18 +313,32 @@ def _drawn(h, option, **pad):
     return fig, only(fig, "c")
 
 
+#: The frame of a 700 by 500 canvas with ROOT's margins, in its pixels: left, top, right, bottom.
+FRAME = (70, 50, 630, 450)
+#: The pixel rows of 0, 1, 2 and 3 in a frame reaching 3.15, and the middles of its bins.
+ROWS = {0: 450, 1: 323, 2: 196, 3: 69}
+MIDDLES = [98, 154, 210, 266, 322, 378, 434, 490, 546, 602]
+
+
+def _levels(outline):
+    """The rows a histogram's outline runs along, a bin at a time."""
+    points = outline.lines[0]
+    return [int(points[i, 1]) for i in range(1, len(points), 2)]
+
+
 def test_a_histogram_drawn_hist_is_its_outline_with_its_axis_titles_and_title():
     h = filled(title="p_{T} spectrum")
     h.axes[0].title = "p_{T} [GeV]"
     h.members["TH1"]["fXaxis"]["TNamed"]["fTitle"] = "p_{T} [GeV]"
     h.members["TH1"]["TAttLine"]["fLineColor"] = 4
     _fig, ax = _drawn(h, "hist")
-    (steps,) = [p for p in ax.patches if isinstance(p, StepPatch)]
-    np.testing.assert_array_equal(steps.get_data().values, h.values())
-    assert steps.get_edgecolor()[:3] == (0.0, 0.0, 1.0)
-    assert ax.get_xlabel() == r"$\mathrm{p}_{\mathrm{T}}\mathrm{\ [GeV]}$"
-    assert ax.get_title() == ""  # the title is the pad's, drawn in NDC
-    assert r"$\mathrm{p}_{\mathrm{T}}\mathrm{\ spectrum}$" in [t.get_text() for t in ax.texts]
+    (outline,) = lines(ax, (0.0, 0.0, 1.0))
+    assert outline.pixel_clip == FRAME
+    assert _levels(outline) == [ROWS[int(v)] for v in h.values()]
+    said = words(ax)
+    assert said.count("p") == said.count("T") == 2  # in the title, and under the axis
+    assert "[GeV]" in said and "spectrum" in said
+    assert ax.get_xlabel() == ax.get_title() == ""  # both are drawn as ROOT draws them
     assert ax.get_xlim() == (0.0, 10.0)
     assert ax.get_ylim() == pytest.approx((0.0, 3.15))  # five percent over the highest bin
 
@@ -277,49 +348,55 @@ def test_a_histogram_with_no_title_bit_or_title_draws_none():
     named = h.members["TH1"]["TNamed"]
     named["fBits"] = named.get("fBits", 0) | 1 << 17
     _fig, ax = _drawn(h, "hist")
-    assert "shown" not in [t.get_text() for t in ax.texts]
+    assert "shown" not in words(ax)
 
 
 def test_a_histogram_is_drawn_filled_and_hatched_as_its_fill_says():
     h = filled()
     h.members["TH1"]["TAttFill"].update(fFillColor=2, fFillStyle=1001)
     _fig, ax = _drawn(h, "")
-    (steps,) = [p for p in ax.patches if isinstance(p, StepPatch)]
-    assert steps.get_fill()
-    assert steps.get_facecolor()[:3] == (1.0, 0.0, 0.0)
+    (area,) = fills(ax)[:1]
+    assert area.get_facecolor()[:3] == (1.0, 0.0, 0.0)
     h.members["TH1"]["TAttFill"].update(fFillStyle=3004)
     _fig, ax = _drawn(h, "")
-    (steps,) = [p for p in ax.patches if isinstance(p, StepPatch)]
-    assert steps.get_hatch() == "/"
+    assert [p.get_hatch() for p in fills(ax)][:1] == ["//"]
+
+
+def _bars(ax):
+    """Each error bar's upright arms, as the column they stand in and their ends' rows."""
+    arms = [line for line in polylines(ax, clipped=True) if len(line) == 2]
+    upright = [line for line in arms if line[0][0] == line[1][0] and abs(line[0][1] - line[1][1]) > 4]
+    return sorted({(line[0][0], line[0][1]) for line in upright})
 
 
 def test_a_histogram_drawn_e1_has_bars_with_ends_and_skips_empty_bins():
     h = filled()
     _fig, ax = _drawn(h, "e1")
-    (bars,) = ax.containers
-    xs, ys = bars.lines[0].get_data()
-    assert list(xs) == [1.5, 2.5, 3.5, 4.5, 5.5, 7.5]
-    assert list(ys) == [1, 2, 3, 2, 1, 1]
-    assert bars.lines[1]  # the ends
+    (centres,) = marks(ax)
+    assert [x for x, _ in centres.get_offsets()] == [m + 0.5 for m in (154, 210, 266, 322, 378, 490)]
+    assert [column for column, _ in _bars(ax)] == [154, 210, 266, 322, 378, 490]
+    ends = [line for line in polylines(ax, clipped=True) if line[0][1] == line[1][1]]
+    assert [[152, 289], [156, 289]] in ends  # a cap of two pixels either side of the arm
     assert ax.get_ylim()[1] == pytest.approx((3 + np.sqrt(3)) * 1.05)
 
 
 def test_a_histogram_drawn_e0_keeps_its_empty_bins():
     _fig, ax = _drawn(filled(), "e0")
-    xs, _ys = ax.containers[0].lines[0].get_data()
-    assert len(xs) == 10
+    columns = {line[0][0] for line in polylines(ax, clipped=True) if len(line) == 2}
+    assert set(MIDDLES) <= columns
 
 
 def test_a_weighted_histogram_and_a_profile_draw_error_bars_unasked():
     h = filled()
     h.sumw2()
     _fig, ax = _drawn(h, "")
-    assert ax.containers
+    assert _bars(ax) and marks(ax)
     p = Profile.book("p", (4, 0.0, 4.0))
     p.fill(np.array([0.5, 1.5]), np.array([2.0, 3.0]))
     _fig, ax = _drawn(p, "")
-    assert ax.containers
-    assert not [x for x in ax.patches if isinstance(x, StepPatch)]
+    # one entry a bin has no spread: a point and its bin's width, and no outline
+    assert marks(ax)[0].get_offsets().tolist() == [[140.5, 196.5], [280.5, 69.5]]
+    assert polylines(ax, clipped=True)[:2] == [[[140, 196], [70, 196]], [[140, 196], [210, 196]]]
 
 
 def _mapped(ax):
@@ -330,41 +407,46 @@ def _mapped(ax):
 
 def test_a_histogram_drawn_e2_is_a_box_round_each_bin():
     _fig, ax = _drawn(filled(), "e2")
-    (boxes,) = [c for c in ax.collections if isinstance(c, PolyCollection)]
-    heights = [np.ptp(path.vertices[:, 1]) for path in boxes.get_paths()]
-    assert len(heights) == 10
-    assert heights[3] == pytest.approx(2 * np.sqrt(3))
+    boxes = fills(ax)[:10]
+    heights = [np.ptp(np.asarray(box.get_xy())[:, 1]) for box in boxes]
+    assert heights[3] == round(2 * np.sqrt(3) / ax.get_ylim()[1] * 400)  # 3, give or take its root
+    assert heights[0] == 0  # an empty bin's box is flat
 
 
 def test_a_histogram_drawn_e3_is_a_band_through_its_bins():
     _fig, ax = _drawn(filled(), "e3")
-    assert any(isinstance(c, PolyCollection) for c in ax.collections)
+    (band,) = fills(ax)[:1]
+    assert [int(x) for x, _ in band.get_xy()][:6] == MIDDLES[:6]
 
 
 def test_a_histogram_drawn_p_or_l_marks_its_bins():
     _fig, ax = _drawn(filled(), "p")
-    xs, _ys = ax.containers[0].lines[0].get_data()
-    assert list(xs) == [1.5, 2.5, 3.5, 4.5, 5.5, 7.5]
+    (centres,) = marks(ax)
+    assert [x - 0.5 for x, _ in centres.get_offsets()] == [154, 210, 266, 322, 378, 490]
     _fig, ax = _drawn(filled(), "l")
-    assert (len(ax.lines[0].get_xdata()), ax.lines[0].get_marker()) == (10, "None")
+    (line,) = lines(ax, clipped=True)
+    assert [x for x, _ in line.lines[0]] == MIDDLES
+    assert not marks(ax)
 
 
 def test_an_option_the_picture_refuses_draws_as_without_it_and_says_so():
     with pytest.warns(CanvasWarning, match=r"drawn without its option '\*h'"):
         _fig, ax = _drawn(filled(), "*h")
-    assert [p for p in ax.patches if isinstance(p, StepPatch)]  # HIST, as without it
+    (outline,) = lines(ax, clipped=True)  # HIST, as without it
+    assert len(outline.lines[0]) == 20
 
 
 def test_a_histogram_drawn_bar_is_a_bar_per_bin():
     _fig, ax = _drawn(filled(), "bar")
-    bars = [p for p in ax.patches if isinstance(p, Rectangle) and p.get_zorder() == 1]
+    bars = [line for line in polylines(ax, clipped=True) if len(line) == 5]
     assert len(bars) == 10
+    assert bars[3] == [[244, 450], [288, 450], [288, 69], [244, 69], [244, 450]]  # a tenth in
 
 
 def test_a_histogram_drawn_text_writes_each_bin_that_is_not_empty():
     _fig, ax = _drawn(filled(), "text")
-    written = sorted(t.get_text() for t in ax.texts if t.get_text() in ("1", "2", "3"))
-    assert written == sorted(["1", "2", "3", "2", "1", "1"])
+    shown = sorted(t for t in data_words(ax) if t in ("1", "2", "3"))
+    assert shown == sorted(["1", "2", "3", "2", "1", "1"])
 
 
 def test_a_two_dimensional_histogram_drawn_colz_has_its_colour_scale_beside_it():
@@ -404,19 +486,28 @@ def test_a_two_dimensional_histogram_drawn_box_cont_and_text():
     h = Histogram.book("h2", (2, 0.0, 2.0), (2, 0.0, 2.0))
     h.fill(np.array([0.5, 0.5, 1.5]), np.array([0.5, 0.5, 1.5]))
     _fig, ax = _drawn(h, "box")
-    assert [c for c in ax.collections if isinstance(c, PolyCollection)]
+    boxes = [line for line in polylines(ax, clipped=True) if len(line) == 5]
+    assert boxes == [  # the fullest bin fills its cell, the other a box half as wide
+        [[70, 450], [350, 450], [350, 250], [70, 250], [70, 450]],
+        [[420, 200], [560, 200], [560, 100], [420, 100], [420, 200]],
+    ]
     _fig, ax = _drawn(h, "cont")
     assert ax.collections
     _fig, ax = _drawn(h, "text")
-    assert sorted(t.get_text() for t in ax.texts if t.get_text() in ("1", "2")) == ["1", "2"]
+    assert sorted(t for t in data_words(ax) if t in ("1", "2")) == ["1", "2"]
 
 
-def test_a_two_dimensional_histogram_drawn_lego_is_shaded_on_the_flat_pad_and_says_so():
+def test_a_two_dimensional_histogram_drawn_lego_or_surf_stands_in_a_box_with_no_frame():
     h = Histogram.book("h2", (2, 0.0, 2.0), (2, 0.0, 2.0))
     h.fill(np.array([0.5]), np.array([0.5]))
-    with pytest.warns(CanvasWarning, match="three dimensions"):
-        _fig, ax = _drawn(h, "lego")
-    assert _mapped(ax)
+    for option in ("lego", "surf"):
+        _fig, ax = _drawn(h, option)
+        assert not ax.axison
+        front = [a for a in lines(ax) if a.dashes == () and len(a.lines) == 2]
+        assert [len(line) for line in front[-1].lines] == [4, 4]  # the box's two front faces
+        levels = [a for a in lines(ax) if a.dashes == (1, 2)]
+        assert levels  # the back walls, lined at the z axis's divisions
+        assert {"0", "1", "2"} <= set(words(ax))  # and its axes, labelled
 
 
 def test_a_three_dimensional_histogram_is_left_out_with_a_warning():
@@ -430,7 +521,7 @@ def test_a_three_dimensional_histogram_is_left_out_with_a_warning():
 
 def test_a_histogram_saved_without_a_stats_box_is_drawn_with_gstyles():
     _fig, ax = _drawn(filled(), "")
-    texts = [t.get_text() for t in ax.texts]
+    texts = words(ax)
     for expected in ("h", "Entries", "10", "Mean", "3.45", "Std Dev", "1.739"):
         assert expected in texts
 
@@ -453,7 +544,8 @@ def test_a_histogram_told_kno_stats_or_drawn_same_has_no_stats_box():
 
 def test_a_saved_stats_box_is_drawn_with_the_lines_it_was_saved_with():
     h = filled()
-    lines = Listed([prim("TText", fTitle="h"), prim("TText", fTitle="Entries = 10"), "TUnknown"])
+    # only TLatex lines are painted, as TPaveStats::Paint paints them
+    saved = Listed([prim("TLatex", fTitle="h"), prim("TLatex", fTitle="Entries = 10"), "TUnknown"])
     h.functions.append(
         prim(
             "TPaveStats",
@@ -462,14 +554,14 @@ def test_a_saved_stats_box_is_drawn_with_the_lines_it_was_saved_with():
             fX2NDC=0.9,
             fY2NDC=0.9,
             fOption="brNDC",
-            fLines=lines,
+            fLines=saved,
             fTextSize=0.0,
             fBorderSize=1,
             fOptStat=11,
         )
     )
     _fig, ax = _drawn(h, "")
-    texts = [t.get_text() for t in ax.texts]
+    texts = words(ax)
     assert texts.count("Entries") == 1
     assert "10" in texts
     assert "Mean" not in texts
@@ -524,7 +616,7 @@ def test_a_stats_box_describes_the_fit_hung_on_the_histogram_as_fOptFit_asks():
 def test_a_second_stats_box_made_in_a_pad_goes_below_the_first():
     fig = make([(filled(name="a"), ""), (filled(name="b"), "sames")]).plot()
     tops = [t.get_position()[1] for t in fig.axes[0].texts if t.get_text() in ("a", "b")]
-    assert tops[0] > tops[1]
+    assert tops[0] < tops[1]  # rows of pixels count down the canvas
 
 
 # -- functions --------------------------------------------------------------------
@@ -534,18 +626,20 @@ def test_a_function_is_drawn_over_its_range_and_a_fit_with_its_histogram():
     f = Function("f", "pol1", range=(0.0, 10.0), parameters=[1.0, 2.0])
     fig = make([(f, "")]).plot()
     (ax,) = fig.axes
-    (line,) = ax.lines
-    assert line.get_xdata()[0] == 0.0
-    assert line.get_ydata()[-1] == pytest.approx(21.0)
+    (line,) = lines(ax, clipped=True)
+    assert line.lines[0][0].tolist() == [70, 432]  # 1 at the left edge of a frame up to 22.05
+    assert line.lines[0][-1].tolist() == [630, round(450 - 21 / 22.05 * 400)]
+    assert (line.color, line.thick) == ("#ff0000", 2)  # gStyle's function colour and width
     h = filled()
     h.attach(Function("fit", "pol0", range=(0.0, 10.0), parameters=[2.0]))
     hidden = Function("hidden", "pol0", range=(0.0, 10.0), parameters=[9.0])
     hidden.members["TNamed"]["fBits"] = hidden.members["TNamed"].get("fBits", 0) | 1 << 9
     h.attach(hidden)
     _fig, ax = _drawn(h, "")
-    assert [list(line.get_ydata()[:1]) for line in ax.lines] == [[2.0]]
+    (fit,) = lines(ax, (1.0, 0.0, 0.0), clipped=True)
+    assert {y for _, y in fit.lines[0]} == {ROWS[2]}  # the fit, not the hidden function
     _fig, ax = _drawn(h, "hist")
-    assert not ax.lines  # HIST draws the histogram alone
+    assert not lines(ax, (1.0, 0.0, 0.0))  # HIST draws the histogram alone
 
 
 def test_a_function_of_two_variables_is_its_contours_and_one_that_will_not_evaluate_is_left_out():
@@ -575,8 +669,9 @@ def _graph(errors=True):
 def test_a_graph_drawn_ap_is_markers_and_bars_on_axes_it_makes():
     fig = make([(_graph(), "ap")]).plot()
     (ax,) = fig.axes
-    (bars,) = ax.containers
-    assert list(bars.lines[0].get_ydata()) == [2.0, 4.0, 3.0]
+    (centres,) = marks(ax)
+    assert centres.get_offsets().tolist() == [[138.5, 361.5], [350.5, 139.5], [562.5, 250.5]]
+    assert [[136, 306], [140, 306]] in polylines(ax)  # the top of the first bar
     assert ax.get_xlim() == pytest.approx((0.9 - 0.22, 3.1 + 0.22))
     assert ax.get_ylim() == pytest.approx((1.5 - 0.3, 4.5 + 0.3))
 
@@ -584,34 +679,44 @@ def test_a_graph_drawn_ap_is_markers_and_bars_on_axes_it_makes():
 def test_a_graph_without_errors_draws_its_title_and_a_line_by_default():
     fig = make([(_graph(errors=False), "a")]).plot()
     (ax,) = fig.axes
-    assert list(ax.lines[0].get_ydata()) == [2.0, 4.0, 3.0]
-    assert r"$\mathrm{the\ graph}$" not in [t.get_text() for t in ax.texts]
-    assert "the graph" in [t.get_text() for t in ax.texts]
+    (line,) = lines(ax, clipped=True)
+    assert line.lines[0].tolist() == [[117, 417], [350, 83], [583, 250]]
+    assert "the graph" in words(ax)
 
 
 def test_a_graph_drawn_with_a_star_x_or_z_marks_its_points_so():
+    from xrdroot.canvas.marks import marker_path
+
     fig = make([(_graph(), "a*")]).plot()
-    assert fig.axes[0].containers[0].lines[0].get_marker() == (6, 2, 0)  # ROOT's asterisk
+    (stars,) = marks(fig.axes[0])
+    star = stars.get_paths()[0]  # ROOT's asterisk, kStar: four strokes through the point
+    assert star.codes.tolist() == [1, 2] * 4
+    assert len(star.vertices) == len(marker_path(3, 1.0)[0].vertices)
     fig = make([(_graph(), "apx")]).plot()
-    (bars,) = fig.axes[0].containers
-    assert not bars.has_yerr
+    assert not polylines(fig.axes[0], clipped=True) and marks(fig.axes[0])
     fig = make([(_graph(), "apz")]).plot()
-    assert len(fig.axes[0].containers) == 1
+    arms = polylines(fig.axes[0], clipped=True)
+    assert len(arms) == 12 and [[136, 306], [140, 306]] not in arms  # bars without their ends
 
 
 def test_a_graph_drawn_2_or_3_draws_its_errors_as_boxes_or_a_band():
     fig = make([(_graph(), "a2")]).plot()
-    (boxes,) = [c for c in fig.axes[0].collections if isinstance(c, PolyCollection)]
-    assert len(boxes.get_paths()) == 3
+    boxes = fills(fig.axes[0])
+    assert [np.asarray(box.get_xy())[:4].tolist() for box in boxes][0] == [
+        [117.0, 417.0], [159.0, 417.0], [159.0, 306.0], [117.0, 306.0],
+    ]  # fmt: skip
+    assert len(boxes) == 3
     fig = make([(_graph(), "a3")]).plot()
-    assert any(isinstance(c, PolyCollection) for c in fig.axes[0].collections)
+    (band,) = fills(fig.axes[0])
+    assert len(band.get_xy()) >= 6  # up the tops of the bars and back down their bottoms
 
 
 def test_a_graph_drawn_f_and_b_is_filled_and_barred():
     fig = make([(_graph(), "af")]).plot()
-    assert fig.axes[0].collections or fig.axes[0].patches
+    (area,) = fills(fig.axes[0])
+    assert np.asarray(area.get_xy())[:3].tolist() == [[138.0, 361.0], [350.0, 139.0], [562.0, 250.0]]
     fig = make([(_graph(), "ab")]).plot()
-    bars = [p for p in fig.axes[0].patches if isinstance(p, Rectangle) and p.get_zorder() == 1]
+    bars = [line for line in polylines(fig.axes[0], clipped=True) if len(line) == 5]
     assert len(bars) == 3
 
 
@@ -624,7 +729,8 @@ def test_a_graph_drawn_same_after_a_histogram_takes_its_axes():
     fig = make([(filled(), "hist"), (_graph(errors=False), "p")]).plot()
     (ax,) = fig.axes
     assert ax.get_xlim() == (0.0, 10.0)
-    assert len(ax.lines) == 1
+    (points,) = marks(ax)  # the point above the frame is left out
+    assert points.get_offsets().tolist() == [[126.5, 196.5], [238.5, 69.5]]
 
 
 def test_a_multigraph_draws_each_graph_by_its_own_option_or_its_own():
@@ -635,8 +741,8 @@ def test_a_multigraph_draws_each_graph_by_its_own_option_or_its_own():
     )
     fig = make([(mg, "ap")]).plot()
     (ax,) = fig.axes
-    assert len(ax.containers) == 1  # the first graph's points and bars
-    assert list(ax.lines[-1].get_ydata()) == [2.0, 4.0, 3.0]  # the second, drawn "l"
+    assert len(marks(ax)) == 1  # the first graph's points and bars
+    assert polylines(ax, clipped=True)[-1] == [[138, 361], [350, 139], [562, 250]]  # the second
     assert ax.get_ylim()[1] == pytest.approx(4.5 + 0.3)
 
 
@@ -647,8 +753,8 @@ def test_the_fit_made_to_a_whole_multigraph_is_drawn_over_its_graphs():
     )
     mg.functions.append(Function("f", "pol0", range=(1.0, 3.0), parameters=[3.0]))
     mg.functions.append(prim("TPaveStats"))  # a box, not a fit: drawn with nothing here
-    (line,) = make([(mg, "ap")]).plot().axes[0].lines[-1:]
-    assert list(line.get_ydata()[:2]) == [3.0, 3.0]
+    (fit,) = lines(make([(mg, "ap")]).plot().axes[0], (1.0, 0.0, 0.0))
+    assert {y for _, y in fit.lines[0]} == {250}  # 3, in a frame from 1.2 to 4.8
 
 
 def test_the_command_line_prints_roots_own_canvas_to_a_picture(tmp_path, capsys):
@@ -680,19 +786,23 @@ def _stack():
     )
 
 
-def test_a_stack_is_drawn_stacked_the_top_first():
+def test_a_stack_is_drawn_each_histogram_on_the_ones_added_before_it():
     fig = make([(_stack(), "")]).plot()
     (ax,) = fig.axes
-    steps = [p for p in ax.patches if isinstance(p, StepPatch)]
-    tops = sorted(float(np.max(s.get_data().values)) for s in steps)
-    assert tops == [3.0, 6.0]  # the second stands on the first
+    outlines = lines(ax, clipped=True)
+    tops = [int(min(y for _, y in outline.lines[0])) for outline in outlines]
+    assert tops == [round(450 - 3 / 6.3 * 400), round(450 - 6 / 6.3 * 400)]  # the second on top
+    first, second = fills(ax)
+    assert (first.get_facecolor()[:3], second.get_facecolor()[:3]) == ((1, 0, 0), (0, 0, 1))
+    bottom = np.asarray(second.get_xy())[len(second.get_xy()) // 2 :, 1]
+    assert min(bottom) == tops[0]  # filled down to the first's top, which still shows
     assert ax.get_ylim()[1] == pytest.approx(6.3)
 
 
 def test_a_stack_drawn_nostack_draws_each_histogram_by_itself():
     fig = make([(_stack(), "nostack")]).plot()
-    steps = [p for p in fig.axes[0].patches if isinstance(p, StepPatch)]
-    assert [s.get_data().values.max() for s in steps] == [3.0, 3.0]
+    outlines = lines(fig.axes[0], clipped=True)
+    assert len({int(min(y for _, y in outline.lines[0])) for outline in outlines}) == 1
 
 
 # -- text, lines and shapes -------------------------------------------------------
@@ -705,32 +815,36 @@ def _texts():
     )  # fmt: skip
     text = prim("TText", fTitle="cost $5", fX=5.0, fY=1.0, fTextFont=43, fTextSize=20)
     fig = make([(filled(), "hist"), (latex, ""), (text, "")]).plot()
-    return fig, {t.get_text(): t for t in fig.axes[0].texts}
+    return fig, written(fig.axes[0])
 
 
-def test_latex_is_drawn_in_mathtext_at_its_place_in_ndc():
+def test_latex_is_laid_out_as_tlatex_lays_it_out_at_its_place_in_ndc():
     fig, texts = _texts()
-    drawn = texts[r"$\sqrt{\mathrm{s}}\mathrm{\ =\ 13\ TeV}$"]
-    assert (drawn.get_color(), drawn.get_rotation()) == ((1.0, 0.0, 0.0), 30.0)
-    assert (drawn.get_ha(), drawn.get_va()) == ("center", "center")
-    at = fig.transFigure.inverted().transform(drawn.get_transform().transform(drawn.get_position()))
-    assert tuple(at) == pytest.approx((0.2, 0.8))
+    root, rest = texts["s"], texts["= 13 TeV"]  # the root's argument, then the rest beside it
+    for piece in (root, rest):
+        assert (piece.get_color(), piece.get_rotation()) == ((1.0, 0.0, 0.0), 30.0)
+        assert (piece.get_ha(), piece.get_va()) == ("left", "baseline")
+    assert root.get_position() == (102, 134) and rest.get_position() == (112, 128)  # up the slope
+    sign = lines(fig.axes[0], (1.0, 0.0, 0.0))  # the root sign, drawn: its tick and its top
+    assert [a.lines[0].tolist() for a in sign] == [[[89, 126], [98, 137]], [[98, 137], [90, 118], [102, 111]]]
+    assert fig.axes[0].texts[0].get_transform() is not fig.axes[0].transData  # in pixels
 
 
-def test_text_is_drawn_as_it_is_in_the_axes_units_sized_in_pixels_for_precision_3():
+def test_text_is_placed_by_the_axes_units_and_sized_in_pixels_for_precision_3():
     fig, texts = _texts()
-    plain = texts[r"cost \$5"]
-    assert plain.get_fontsize() == pytest.approx(14.4)
-    assert plain.get_transform() is fig.axes[0].transData
+    plain = texts["cost $5"]  # a TText is not TLatex: its dollar sign is a dollar sign
+    assert plain.get_position() == (350, 323)  # 5 and 1 in a frame of 0 to 10 and 0 to 3.15
+    assert plain.get_fontsize() == pytest.approx(18 * 0.72)  # 20 pixels as FreeType draws them
 
 
 def test_a_text_size_is_a_fraction_of_the_shorter_side_of_its_pad():
     latex = prim("TLatex", fTitle="x", fX=0.5, fY=0.5, fTextSize=0.1, fTextFont=132)
     fig = make([(latex, "")], width=800, height=400).plot()
     (text,) = fig.axes[0].texts
-    assert text.get_fontsize() == pytest.approx(0.1 * 400 * 0.72)
-    assert text.get_fontfamily() == ["serif"]
-    assert text.get_fontstyle() == "normal"
+    # 40 pixels, as TTF sizes it: int(40 * 0.93376068 + 0.5) = 37, in points at 72 a 100 pixels
+    assert text.get_fontsize() == pytest.approx(37 * 0.72)
+    assert text.get_position() == (400, 200)
+    assert text.get_fontproperties().get_style() == "normal"
 
 
 def _shapes():
@@ -750,18 +864,22 @@ def _shapes():
 
 def test_lines_and_markers_are_drawn_in_their_style_and_place():
     ax = _shapes()
-    first, second, marker = ax.lines
-    assert (first.get_color(), first.get_linestyle()) == ((1.0, 0.0, 0.0), "--")
-    assert (first.get_transform() is ax.transData, second.get_transform() is ax.transData) == (
-        True, False,
-    )  # fmt: skip
+    dashed, plain = lines(ax)[:2]
+    assert (dashed.color, dashed.thick, dashed.dashes) == ((1.0, 0.0, 0.0), 2, (3, 3))
+    assert dashed.lines[0].tolist() == [[70, 450], [630, 50]]
+    assert plain.lines[0].tolist() == [[70, 50], [630, 450]]  # the same place, in NDC
+    (marker,) = ax.lines
     assert (marker.get_marker(), marker.get_markerfacecolor()) == ("o", "none")
     assert marker.get_markersize() == pytest.approx(16 * 0.72)
 
 
 def test_arrows_and_boxes_are_drawn_in_their_style_and_place():
     ax = _shapes()
-    assert len([p for p in ax.patches if isinstance(p, FancyArrowPatch)]) == 2
+    drawn = polylines(ax)[2:7]
+    assert drawn[0] == [[94, 250], [606, 250]]  # the shaft stops where a closed head begins
+    assert drawn[1] == [[606, 264], [630, 250], [606, 236], [606, 264]]
+    assert drawn[2] == [[94, 236], [70, 250], [94, 264], [94, 236]]
+    assert drawn[3:] == [[[70, 300], [630, 300]], [[606, 314], [630, 300], [606, 286]]]
     (box,) = [p for p in ax.patches if p.get_hatch()]
     assert (box.get_x(), box.get_y(), box.get_width()) == pytest.approx((0.2, 0.6, 0.4))
 
@@ -773,27 +891,11 @@ def test_an_ellipse_is_drawn_whole_or_as_the_slice_it_is_limited_to():
     assert slice_.get_xy()[-2] == pytest.approx((0.5, 0.5))  # a slice closes on its centre
 
 
-def test_arrow_options_name_the_ends_their_heads_are_on():
-    from xrdroot.canvas.shapes import _arrowstyle
-
-    assert [_arrowstyle(o) for o in (">", "|>", "<", "<|", "<>", "<|>", "->-", "-<|-", "")] == [
-        "->",
-        "-|>",
-        "<-",
-        "<|-",
-        "<->",
-        "<|-|>",
-        "->",
-        "<|-",
-        "-",
-    ]
-
-
 # -- paves and legends -------------------------------------------------------------
 
 
 def test_a_pave_text_stacks_its_lines_in_its_box_with_its_shadow():
-    lines = [
+    held = [
         prim("TText", fTitle="first", fTextSize=0.0, fTextAlign=0),
         prim("TLatex", fTitle="#alpha", fTextSize=0.0, fTextAlign=0),
         prim("TLine", fX1=0.0),
@@ -806,7 +908,7 @@ def test_a_pave_text_stacks_its_lines_in_its_box_with_its_shadow():
         fX2NDC=0.5,
         fY2NDC=0.9,
         fOption="tlNDC",
-        fLines=lines,
+        fLines=held,
         fTextSize=0.0,
         fTextAlign=0,
         fBorderSize=3,
@@ -815,13 +917,14 @@ def test_a_pave_text_stacks_its_lines_in_its_box_with_its_shadow():
     )
     fig = make([(pave, "")]).plot()
     ax = fig.axes[0]
-    shadow, box = [p for p in ax.patches if isinstance(p, Rectangle) and p.get_zorder() > 3]
-    assert shadow.get_x() < box.get_x()
-    assert shadow.get_y() > box.get_y()  # top left
-    texts = {t.get_text(): t for t in ax.texts}
-    assert texts["first"].get_position()[1] > texts[r"${\alpha}$"].get_position()[1]
-    assert texts["first"].get_ha() == "left"
-    assert texts["placed"].get_position() == pytest.approx((0.3, 0.675))
+    box, shadow = fills(ax)
+    assert np.max(np.asarray(shadow.get_xy())[:, 1]) > np.max(np.asarray(box.get_xy())[:, 1])
+    box_edge, rule = polylines(ax)
+    assert box_edge == [[70, 200], [70, 50], [350, 50], [350, 200], [70, 200]]
+    assert rule == [[70, 106], [350, 106]]  # a line at x 0 is ruled right across the box
+    texts = written(ax)
+    assert texts["first"].get_position()[1] < texts["α"].get_position()[1]  # down the box
+    assert texts["placed"].get_position() == (190, 167)  # centred where it was put, in the box
 
 
 def test_a_pave_placed_in_the_axes_units_is_converted_to_the_pads():
@@ -829,10 +932,10 @@ def test_a_pave_placed_in_the_axes_units_is_converted_to_the_pads():
         "TPaveText", fX1=0.0, fY1=0.0, fX2=5.0, fY2=1.5, fOption="br", fLines=[], fBorderSize=0
     )
     fig = make([(filled(), "hist"), (pave, "")]).plot()
-    boxes = [p for p in fig.axes[0].patches if isinstance(p, Rectangle) and p.get_zorder() > 3]
-    (box,) = [p for p in boxes if p.get_x() == pytest.approx(0.1)]  # the other is the stats box
-    assert box.get_width() == pytest.approx(0.4)
-    assert box.get_linewidth() == 0.0
+    (box,) = [p for p in fills(fig.axes[0]) if p.get_xy()[0][0] == pytest.approx(0.1)]
+    top = 0.1 + 1.5 / 3.15 * 0.8
+    np.testing.assert_allclose(box.get_xy(), [[0.1, 0.1], [0.1, top], [0.5, top], [0.5, 0.1], [0.1, 0.1]])
+    assert len(lines(fig.axes[0], clipped=False)) > 1  # with no border, only the stats box's
 
 
 def test_a_pave_a_pave_label_and_a_title_pave_are_drawn():
@@ -860,13 +963,12 @@ def test_a_pave_a_pave_label_and_a_title_pave_are_drawn():
         "TPave", fX1NDC=0.1, fY1NDC=0.3, fX2NDC=0.4, fY2NDC=0.4, fOption="NDC", fBorderSize=1
     )
     fig = make([(label, ""), (sized, ""), (plain, "")]).plot()
-    texts = {t.get_text(): t for t in fig.axes[0].texts}
-    assert texts["label"].get_position() == pytest.approx((0.25, 0.15))
-    assert texts["sized"].get_fontsize() == pytest.approx(0.5 * 500 * 0.72)
-    assert (
-        len([p for p in fig.axes[0].patches if isinstance(p, Rectangle) and p.get_zorder() > 3])
-        == 3
-    )
+    texts = written(fig.axes[0])
+    assert texts["label"].get_position() == (74, 449)  # in from the box's corner, by fTextAlign
+    # half the box's 50 pixels, as FreeType sizes them: int(25 * 0.93376068 + 0.5) = 23
+    assert texts["sized"].get_fontsize() == pytest.approx(23 * 0.72)
+    assert len(fills(fig.axes[0])) == 3
+    assert polylines(fig.axes[0]) == [[[70, 350], [70, 300], [280, 300], [280, 350], [70, 350]]]
 
 
 def test_a_painted_pads_title_pave_stands_in_for_the_histograms_title():
@@ -884,12 +986,8 @@ def test_a_painted_pads_title_pave_stands_in_for_the_histograms_title():
     frame = prim("TFrame")
     painted = {"fUxmax": 10.0, "fUymax": 5.0}
     fig = make([(filled(title="own title"), ""), (frame, ""), (title, "")], **painted).plot()
-    texts = [t.get_text() for t in fig.axes[0].texts]
-    assert (
-        "saved title" in texts
-        and r"$\mathrm{own\ title}$" not in texts
-        and "own title" not in texts
-    )
+    texts = words(fig.axes[0])
+    assert "saved title" in texts and "own title" not in texts
     assert "Entries" not in texts  # nor was a stats box saved with it
 
 
@@ -919,13 +1017,15 @@ def test_a_legend_draws_each_entry_s_symbol_and_label_in_rows_and_columns():
     )
     fig = make([(legend, "")]).plot()
     ax = fig.axes[0]
-    texts = {t.get_text(): t.get_position()[1] for t in ax.texts}
-    assert set(texts) == {"Header", "data", "fill", r"${\mu}$"}
-    assert texts["Header"] == texts["data"] > texts["fill"]  # two columns, rows downwards
-    red = [line for line in ax.lines if line.get_color() == (1.0, 0.0, 0.0)]
-    assert len(red) == 2  # data's line and bar, in the histogram's colour
-    green = [p for p in ax.patches if p.get_facecolor()[:3] == (0.0, 1.0, 0.0)]
-    assert green[0].get_linewidth() > 0
+    texts = {text: piece.get_position() for text, piece in written(ax).items()}
+    assert set(texts) == {"Header", "data", "fill", "μ"}
+    # the header a row of its own, then two columns, rows downwards
+    assert texts["Header"][1] < texts["data"][1] == texts["fill"][1] < texts["μ"][1]
+    assert texts["data"][0] == texts["μ"][0] < texts["fill"][0]
+    red = polylines(ax, (1.0, 0.0, 0.0))
+    assert red == [[[355, 150], [380, 150]], [[368, 150], [368, 130]], [[368, 150], [368, 170]]]
+    (green,) = [p for p in fills(ax) if p.get_facecolor()[:3] == (0.0, 1.0, 0.0)]
+    assert np.asarray(green.get_xy())[0].tolist() == pytest.approx([0.762, 0.653], abs=1e-3)
 
 
 def test_an_empty_legend_is_its_box():
@@ -941,7 +1041,7 @@ def test_an_empty_legend_is_its_box():
     )
     fig = make([(legend, "")]).plot()
     assert not fig.axes[0].texts
-    assert fig.axes[0].patches
+    assert polylines(fig.axes[0]) == [[[350, 250], [350, 50], [630, 50], [630, 250], [350, 250]]]
 
 
 # -- colours ----------------------------------------------------------------------
@@ -958,11 +1058,12 @@ def test_the_colours_a_canvas_saved_are_the_ones_it_draws_with():
     h.members["TH1"]["TAttFill"].update(fFillColor=2, fFillStyle=1001)
     shaded, outlined = sub("c_1", [(h2, "col")]), sub("c_2", [(h, "hist")])
     fig = make([(colors, ""), (palette, ""), (line, ""), (shaded, ""), (outlined, "")]).plot()
-    assert fig.axes[0].lines[0].get_color() == (0.0, 0.5, 0.0)
+    assert [a.color for a in lines(fig.axes[0])] == [(0.0, 0.5, 0.0)]
     assert _mapped(only(fig, "c_1")).cmap.name == "saved"
-    (steps,) = [p for p in only(fig, "c_2").patches if isinstance(p, StepPatch)]
-    assert steps.get_facecolor()[:3] == pytest.approx((0.0, 0.5, 0.0), abs=0.01)
-    assert steps.get_edgecolor()[:3] == pytest.approx((0.0, 0.5, 0.0), abs=0.01)
+    (area,) = fills(only(fig, "c_2"))[:1]
+    assert area.get_facecolor()[:3] == pytest.approx((0.0, 0.5, 0.0), abs=0.01)
+    (outline,) = lines(only(fig, "c_2"), clipped=True)
+    assert to_rgb(outline.color) == pytest.approx((0.0, 0.5, 0.0), abs=0.01)
 
 
 @pytest.mark.parametrize(
@@ -1001,7 +1102,7 @@ def test_roots_colour_table_has_its_spectrum_and_takes_what_a_canvas_saved():
     [
         (("dashes", 1), "solid"),
         (("dashes", 99), "solid"),
-        (("dashes", 2, 2.0), (0, (3.0, 3.0))),
+        (("dashes", 2, 2.0), (0, (1.5, 1.5))),  # "12 12" a quarter as long, in widths of 2
         (("marker", 20), ("o", True)),
         (("marker", 999), ("o", True)),
         (("marker_size", 1, 5.0), pytest.approx(0.72)),
@@ -1132,11 +1233,13 @@ def _axis(**members):
 
 def test_an_axis_of_its_own_is_graduated_over_its_scale_and_labelled_on_the_other_side():
     ax = make([(_axis(fTitle="x [cm]"), "")]).plot().axes[0]
-    labels = [t.get_text() for t in ax.texts]
-    assert labels[:3] == ["0", "1", "2"] and labels[-1] == "x [cm]"
-    assert ax.texts[0].get_va() == "top"  # ticks stand up, labels hang below
-    _line, first_tick = ax.lines[:2]
-    assert first_tick.get_ydata()[1] > first_tick.get_ydata()[0]
+    labels = words(ax)
+    assert labels == [str(n) for n in range(11)] + ["x [cm]"]
+    drawn = polylines(ax)
+    assert drawn[0] == [[70, 400], [630, 400]]  # the axis, a fifth of the way up
+    assert drawn[1] == [[70, 388], [70, 400]]  # ticks stand up from it: 0.03 of its length
+    assert drawn[2] == [[81, 394], [81, 400]]  # and the secondary ones half as long
+    assert all(t.get_position()[1] > 400 for t in ax.texts)  # labels hang below
 
 
 def test_an_axis_says_by_its_chopt_which_side_its_ticks_and_labels_go_and_whether_logarithmic():
@@ -1144,21 +1247,26 @@ def test_an_axis_says_by_its_chopt_which_side_its_ticks_and_labels_go_and_whethe
     log = _axis(fWmin=1.0, fWmax=1000.0, fChopt="G+-")
     bare = _axis(fChopt="U")
     ax = make([(vertical, ""), (log, ""), (bare, "")]).plot().axes[0]
-    labels = [t.get_text() for t in ax.texts]
-    assert ax.texts[0].get_ha() == "left"  # "-" and "=": ticks and labels to the right
-    assert "1000" in labels and "100" in labels
-    assert len(labels) == 11 + 4  # the bare axis has none
+    labels = words(ax)
+    assert labels[:11] == [str(n) for n in range(11)]
+    assert labels[11:] == ["1", "10", "2", "10", "3", "10"]  # 1, 10 and 10 to the 2 and 3
+    drawn = polylines(ax)
+    assert drawn[1] == [[647, 450], [630, 450]]  # "-": the vertical axis's ticks to its right
+    assert [[70, 388], [70, 412]] in drawn  # "+-": the logarithmic one's either side of it
+    assert [[70, 400], [630, 400]] in drawn  # and the bare axis a line alone
 
 
-def test_graduations_keep_to_the_scale_and_divide_as_asked():
-    from xrdroot.canvas.gaxis import _fraction, graduations
-
-    assert list(graduations(0.0, 1.0, 505, log=False)) == pytest.approx(
-        [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-    )
-    assert list(graduations(10.0, 0.0, 2, log=False)) == pytest.approx([0.0, 5.0, 10.0])
-    assert list(graduations(0.0, 1.0, 510, log=True))[-1] == pytest.approx(1.0)
-    assert list(_fraction(np.array([1.0]), 1.0, 1.0, log=False)) == [0.0]
+@pytest.mark.parametrize(
+    ("members", "labels"),
+    [
+        ({"fNdiv": 505}, ["0", "2", "4", "6", "8", "10"]),
+        ({"fNdiv": 2}, ["0", "5", "10"]),
+        ({"fWmin": 0.0, "fWmax": 1.0, "fNdiv": 505}, ["0", "0.2", "0.4", "0.6", "0.8", "1"]),
+    ],
+)
+def test_graduations_keep_to_the_scale_and_divide_as_asked(members, labels):
+    ax = make([(_axis(**members), "")]).plot().axes[0]
+    assert words(ax) == labels
 
 
 def test_a_histogram_with_a_range_is_framed_by_its_range():
@@ -1191,28 +1299,9 @@ def test_an_efficiency_frames_its_pad_and_is_drawn_as_points_or_a_grid():
     assert _drawn(e2, "colz")[1].get_ylim() == (0.0, 4.0)
 
 
-def test_text_is_fitted_by_its_measured_width_or_a_guess_when_it_cannot_be_laid_out(monkeypatch):
-    from matplotlib import textpath
-
-    from xrdroot.canvas import paves
-
-    assert paves.ems(["WWWW"], 42) > paves.ems(["iiii"], 42) > 0
-    assert paves.ems([""]) == 0.0 and paves.ems([]) == 0.0
-
-    def refuses(*args, **kwargs):
-        raise ValueError("no")
-
-    monkeypatch.setattr(textpath, "TextPath", refuses)
-    paves._em_width.cache_clear()
-    assert paves._em_width("abcd", 42) == pytest.approx(4 * paves.CHARACTER)
-    paves._em_width.cache_clear()
-
-
 def test_tick_labels_are_plain_numbers_and_divisions_follow_fndivisions():
-    from xrdroot.canvas.frame import _plain
-
-    assert (_plain(2.0), _plain(2.5), _plain(1e-17), _plain(-3.0)) == ("2", "2.5", "0", "-3")
     h = filled()
     h._core["fXaxis"]["TAttAxis"]["fNdivisions"] = 505
     _fig, ax = _drawn(h, "hist")
-    assert len(ax.get_xticks()) <= 7
+    below = [t for t in ax.texts if t.get_position()[1] > 460]
+    assert [t.get_text() for t in below] == ["0", "2", "4", "6", "8", "10"]

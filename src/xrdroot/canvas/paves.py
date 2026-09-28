@@ -146,12 +146,16 @@ def _fitted(scene: Scene, holder: Any, lines: list[Any], row: float, width: floa
     return size
 
 
+#: ``TAttText``'s own colour, for a pave that never had one set.
+UNSET = {"fTextColor": 1}
+
+
 def _own(line: Any, holder: Any, name: str, size: float) -> Any:
     """A line's attribute, or its pave's where the line left it at 0."""
     value = lookup(line, name, 0) or 0
     if value:
         return value
-    return size if name == "fTextSize" else lookup(holder, name, 0)
+    return size if name == "fTextSize" else lookup(holder, name, UNSET.get(name, 0))
 
 
 def _text_line(scene: Scene, holder: Any, line: Any, corners: Corners, at_y: float, size: float) -> None:

@@ -82,21 +82,44 @@ def legend(scene: Scene, prim: Primitive, _option: str) -> None:
     autosize = not size
     if autosize:
         size = _autosize(rows, prim, entries)
+    widths = _column_widths(rows, prim, entries, size, autosize)
+    gap = float(prim.get("fColumnSeparation", 0.0) or 0.0) * (rows.x2 - rows.x1) / max(rows.columns - 1, 1)
     at_y = rows.y2 + 0.5 * rows.space
-    for index, entry in enumerate(entries):
-        column = index % rows.columns if rows.columns > 1 else 0
+    column = 0
+    for entry in entries:
         if column == 0:
             at_y -= rows.space
-        _entry(rows, prim, entry, at_y, size, autosize)
+        span = (rows.x1, rows.x2)
+        if "h" not in str(entry.get("fOption", "")).lower() and rows.columns > 1:
+            left = rows.x1 + sum(widths[:column]) + column * gap
+            span, column = (left, left + widths[column]), (column + 1) % rows.columns
+        _entry(rows, prim, entry, (span, at_y), size, autosize)
 
 
-def _entry(rows: _Rows, prim: Primitive, entry: Any, at_y: float, size: float, autosize: bool) -> None:
+def _column_widths(rows: _Rows, prim: Primitive, entries: list[Any], size: float, autosize: bool) -> list[float]:
+    """Each column's width in NDC: its widest label's share of the room for labels, and the margin."""
+    widths, column = [0.0] * rows.columns, 0
+    for entry in entries:
+        if "h" in str(entry.get("fOption", "")).lower():
+            continue
+        own = float(entry.get("fTextSize", 0.0) or 0.0) or size
+        label = str(entry.get("fLabel", ""))
+        widths[column] = max(widths[column], rows.width(label, own, _font(entry, prim, autosize)))
+        column = (column + 1) % rows.columns
+    share = 1.0 - float(prim.get("fMargin", 0.25))
+    if rows.columns > 1:
+        share -= float(prim.get("fColumnSeparation", 0.0) or 0.0)
+    total = sum(widths) / share
+    return [(width / total if total else 0.0) * (rows.x2 - rows.x1) + rows.margin for width in widths]
+
+
+def _entry(rows: _Rows, prim: Primitive, entry: Any, place: Any, size: float, autosize: bool) -> None:
     """One entry: its label after the margin, and the symbol of what it stands for in the margin."""
+    (x1, x2), at_y = place
     option = str(entry.get("fOption", "")).lower()
     align = int(entry.get("fTextAlign", 0) or prim.get("fTextAlign", 12) or 12)
     across, up = divmod(align, 10)
     margin = rows.margin / 10 if "h" in option else rows.margin
-    x1, x2 = rows.x1, rows.x2
     x = {1: x1 + margin, 2: 0.5 * (x1 + margin + x2)}.get(across, x2 - margin / 10)
     half = rows.space / 2
     y = {1: at_y - (1 - rows.separation) * half, 3: at_y + (1 - rows.separation) * half}.get(up, at_y)

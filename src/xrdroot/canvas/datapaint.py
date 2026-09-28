@@ -98,13 +98,22 @@ def _outline(scene: Scene, layer: Steps) -> tuple[np.ndarray[Any, Any], np.ndarr
 
 
 def paint_steps(scene: Scene, layer: Steps) -> None:
+    """A histogram's fill and outline; a stacked one's fill reaches down only to the one below.
+
+    ``THStack`` paints the sum of all its histograms first and each lower
+    sum over it, so each fill shows from the one below it to its own top:
+    the area between the two steps, drawn here in the order they are added.
+    """
     xs, ys = _outline(scene, layer)
     if layer.look.fill is not None:
         (_, _), (ymin, ymax) = scene.ax.get_xlim(), scene.ax.get_ylim()
-        base = min(max(0.0, ymin), ymax)
         edges = np.asarray(layer.edges, float)
-        area_x = np.concatenate([[edges[0]], np.repeat(edges, 2)[1:-1], [edges[-1]]])
-        area_y = np.concatenate([[base], np.repeat(np.asarray(layer.values, float), 2), [base]])
+        steps_x = np.repeat(edges, 2)[1:-1]
+        low = np.full(len(layer.values), min(max(0.0, ymin), ymax))
+        if layer.baseline is not None:
+            low = np.maximum(np.asarray(layer.baseline, float) * np.ones(len(low)), ymin)
+        area_x = np.concatenate([steps_x, steps_x[::-1]])
+        area_y = np.concatenate([np.repeat(np.asarray(layer.values, float), 2), np.repeat(low, 2)[::-1]])
         _fill(scene, pixels_of(scene, area_x, area_y), layer.look)
     polyline(scene, pixels_of(scene, xs, ys), layer.look)
 
