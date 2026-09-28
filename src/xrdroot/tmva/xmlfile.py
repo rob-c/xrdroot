@@ -52,6 +52,8 @@ class Node:
         if not self.children:
             return [f"{pad}<{self.tag}{attributes}>{escape(self.text or '')}</{self.tag}>"]
         inner = [line for node in self.children for line in node.lines(depth + 1)]
+        if self.text is not None:
+            inner.insert(0, "  " * (depth + 1) + escape(self.text))
         return [f"{pad}<{self.tag}{attributes}>", *inner, f"{pad}</{self.tag}>"]
 
     def block(self, values: Any, digits: int = 8, depth_hint: int = 0) -> Node:
