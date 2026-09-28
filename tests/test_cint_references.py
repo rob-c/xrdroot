@@ -45,7 +45,8 @@ class Matrix:
         ("c.ParSettings(i) = s;", "assign_method(ROOT.c, 'ParSettings', (ROOT.i,), ROOT.s)"),
         ("items.at(k - 1) = x;", "set_item(ROOT.items, ROOT.k - 1, ROOT.x)"),
         ("TMatrixDColumn(A, 0) = 1.0;", "assign_into(ROOT.TMatrixDColumn(ROOT.A, 0), 1.0)"),
-        ("auto pt = model->MakeField<float>(\"pt\"); *pt = 1;", "store_through(pt, 1)"),
+        ("auto pt = model->MakeField<float>(\"pt\"); *pt = 1;", "pt[0] = f32(1)"),
+        ("auto pt = make(); *pt = 1;", "store_through(pt, 1)"),
         ("TH1F *h; *h = *g;", "store_through(h, deref(ROOT.g))"),
         ("int n = (*id = 3);", "n = int(store_through(ROOT.id, 3))"),
     ],
@@ -54,6 +55,16 @@ def test_an_assignment_through_a_reference_goes_through_the_runtime(
     source: str, fragment: str
 ) -> None:
     assert fragment in body(source)
+
+
+def test_a_field_an_rntuple_model_makes_is_a_pointer_to_its_type() -> None:
+    source = """auto n = model->MakeField<float>("n"); auto s = model->MakeField<std::string>("s");
+    std::istringstream in("2 x"); in >> *n >> *s; auto *q = get(); in >> *q; *n = 1;"""
+    text = body(source)
+    assert "n[0] = in_.extract('float')" in text
+    assert "store_through(s, in_.extract('std::string'))" in text
+    assert "store_through(q, in_.extract('double'))" in text
+    assert "    n[0] = f32(1)\n" in text
 
 
 def test_a_reference_the_macros_own_class_returns_is_refused() -> None:

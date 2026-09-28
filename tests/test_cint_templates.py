@@ -53,6 +53,12 @@ def test_a_value_parameter_keeps_its_default_after_a_variadic_function() -> None
 def test_std_copy_into_an_array_roots_method_gives_writes_it_from_its_start() -> None:
     source = "void t() { std::vector<int> r; std::copy(r.begin(), r.end(), gd.GetData()); }"
     assert "    transformed(r, 0, None, ROOT.gd.GetData(), 0, None)\n" in translate(source, "t.C")
+    offset = source.replace("gd.GetData()", "gd.GetData() + n")
+    assert "    transformed(r, 0, None, ROOT.gd.GetData(), ROOT.n, None)\n" in translate(offset, "")
+    begun = source.replace("gd.GetData()", "v.begin() + 1 + k")
+    assert "v = transformed(r, 0, None, ROOT.v, 1 + ROOT.k, None)" in translate(begun, "")
+    member = source.replace("gd.GetData()", "box.items.begin()")
+    assert "box.items = transformed(r, 0, None, ROOT.box.items, 0, None)" in translate(member, "")
 
 
 def test_std_copy_without_a_destination_is_refused() -> None:

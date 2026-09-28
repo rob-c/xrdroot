@@ -370,12 +370,16 @@ class ExprEmitter(NameEmitter):
         target = node.target
         if isinstance(target, Call):
             return self.call_assignment(node)
+        if not self._held_through(target):
+            return None
+        return self.store_expression(target, self.assigned_value(node))[0]
+
+    def _held_through(self, target: Expr) -> bool:
+        """Is ``target`` ``*p`` of a pointer to an object, or to what this translator cannot say?"""
         if not (isinstance(target, Unary) and target.op == "*"):
-            return None
+            return False
         found = self.typeof(target.operand)
-        if found is not None and not found.is_object_pointer:
-            return None
-        return f"store_through({self.value(target.operand)}, {self.assigned_value(node)})"
+        return found is None or found.is_object_pointer
 
     def _assign(self, node: Assign) -> Out:
         stored = self.stored_through(node)
@@ -393,6 +397,9 @@ class ExprEmitter(NameEmitter):
             return f"set_item({obj}, {index}, {value})", P.POSTFIX
         if isinstance(target, Member):
             return f"set_attr({self.value(target.obj)}, {target.name!r}, {value})", P.POSTFIX
+        if self._held_through(target):
+            assert isinstance(target, Unary)
+            return f"store_through({self.value(target.operand)}, {value})", P.POSTFIX
         reference = self.reference(target)
         return f"set_attr({reference}, 'value', {value})", P.POSTFIX
 

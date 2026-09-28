@@ -274,7 +274,11 @@ class StmtEmitter(CallEmitter):
         for target in targets:
             kind = self.typeof(target)
             name = kind.name if kind is not None else "double"
-            self.out.line(f"{self.value(target)} = {stream}.extract({name!r})", expr.where)
+            read = f"{stream}.extract({name!r})"
+            if self._held_through(target):
+                self.out.line(self.store_expression(target, read)[0], expr.where)
+            else:
+                self.out.line(f"{self.value(target)} = {read}", expr.where)
         return True
 
     def _call_statement(self, expr: Call) -> bool:
@@ -674,19 +678,32 @@ class StmtEmitter(CallEmitter):
         """``std::transform`` or ``std::copy`` of ``[first, last)`` into ``out``, stored anew."""
         first, last, out = expr.args[:3]
         source, start, stop = self.iterator_range(first, last, expr)
-        if self._container_end(out) is None and self.typeof(out) is None:
-            # ROOT's ``GetData()`` and the like: an array, written from its start.
-            target, at = self.value(out), "0"
-        else:
-            target, at = self._iterator(out, expr, "begin")
-        root = out.func.obj if isinstance(out, Call) and isinstance(out.func, Member) else out
+        target, at = self._destination(out, expr)
         call = f"transformed({source}, {start}, {stop}, {target}, {at}, {op})"
-        if isinstance(out, Call) and self._container_end(out) is None:
+        root = out
+        while isinstance(root, Binary):
+            root = root.left
+        if isinstance(root, Call) and self._container_end(root) is not None:
+            assert isinstance(root.func, Member)
+            root = root.func.obj
+        if not isinstance(root, (Name, Member, Index)):
+            # Written in place: a string made anew has nowhere to be stored.
             self.out.line(call, expr.where)
             return
         if isinstance(root, Name):
             self.assigned(self.symbol(root))
         self.out.line(f"{target} = {call}", expr.where)
+
+    def _destination(self, out: Expr, expr: Call) -> tuple[str, str]:
+        """Where ``std::copy`` writes: a container or array, and the index it starts at."""
+        if isinstance(out, Binary) and out.op == "+":
+            target, at = self._destination(out.left, expr)
+            offset = self.value(out.right)
+            return target, offset if at == "0" else f"{at} + {offset}"
+        if self._container_end(out) is None and self.typeof(out) is None:
+            # ROOT's ``GetData()`` and the like: an array, written from its start.
+            return self.value(out), "0"
+        return self._iterator(out, expr, "begin")
 
     _WRITERS: ClassVar[dict[str, Callable[[StmtEmitter, Call], None]]] = {
         "transform": _transform,
