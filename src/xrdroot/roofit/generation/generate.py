@@ -136,9 +136,14 @@ def _taken(proto: Any, asked: set[str]) -> list[Any]:
 
 
 def _uniformly_drawn(variables: list[Any], names: frozenset[str]) -> list[Any]:
-    """The variables asked for that the density does not depend on, in RooFit's order."""
-    chosen = [one for one in variables if one.GetName() not in names]
-    return sorted(chosen, key=lambda v: v.GetName(), reverse=True)
+    """The variables asked for that the density does not depend on, in the order asked for.
+
+    ``RooGenContext`` randomizes them in the order of its snapshot of the
+    variables asked for - so ``{x, b0flav, tagCat}`` draws ``b0flav`` first.
+    From a Python set that order is the set's, which PyROOT's proxies hash
+    by address: ROOT's own order then changes from one process to the next.
+    """
+    return [one for one in variables if one.GetName() not in names]
 
 
 def _context(pdf: Any, names: frozenset[str], proto: frozenset[str]) -> Any:
