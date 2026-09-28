@@ -62,3 +62,23 @@ def test_a_line_through_many_gaps_keeps_only_the_first_hundred():
     screen = RasterScreen()
     screen.cells[:, ::2] = True
     assert len(screen.visible((-1.0, 0.0), (1.0, 0.0))) == MOST
+
+
+def test_a_steep_line_through_many_gaps_keeps_only_the_first_hundred_too():
+    screen = RasterScreen()
+    screen.cells[::2, :] = True
+    assert len(screen.visible((0.0, -1.0), (0.01, 1.0))) == MOST
+
+
+def test_a_line_starting_behind_a_face_is_in_sight_only_past_it():
+    screen = RasterScreen()
+    screen.fill([(-0.6, -0.1), (-0.4, -0.1), (-0.4, 0.1), (-0.6, 0.1)])
+    ((start, end),) = screen.visible((-0.5, 0.0), (0.5, 0.0))
+    assert start == pytest.approx(0.1, abs=0.01) and end == 1.0
+
+
+def test_a_face_reaching_off_the_screen_covers_only_the_cells_on_it():
+    screen = RasterScreen()
+    screen.fill([(-0.1, 0.9), (0.1, 0.9), (0.1, 1.5), (-0.1, 1.5)])
+    rows = [row for row in range(800) if screen.cells[row].any()]
+    assert (rows[0], rows[-1]) == (screen.cell(0.0, 0.9)[1], 799)  # up to the screen's top

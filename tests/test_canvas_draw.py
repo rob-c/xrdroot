@@ -899,7 +899,8 @@ def test_arrows_and_boxes_are_drawn_in_their_style_and_place():
     assert drawn[0] == [[94, 250], [606, 250]]  # the shaft stops where a closed head begins
     assert drawn[1] == [[606, 264], [630, 250], [606, 236], [606, 264]]
     assert drawn[2] == [[94, 236], [70, 250], [94, 264], [94, 236]]
-    assert drawn[3:] == [[[70, 300], [630, 300]], [[606, 314], [630, 300], [606, 286]]]
+    # "->-": the head half its length past the shaft's middle, and the shaft whole
+    assert drawn[3:] == [[[70, 300], [630, 300]], [[338, 314], [362, 300], [338, 286]]]
     (box,) = [p for p in ax.patches if p.get_hatch()]
     assert (box.get_x(), box.get_y(), box.get_width()) == pytest.approx((0.2, 0.6, 0.4))
 

@@ -426,8 +426,9 @@ def _setting(text: str, found: Found, name: str, pattern: re.Pattern[str]) -> fl
 def _set(layout: Layout, text: str, spec: Spec, found: Found, italic: bool, name: str) -> Box:
     """``#color``, ``#font``, ``#scale``, ``#url``, ``#kern`` and ``#lower`` on what follows."""
     after = text[found.square_curly + 1 :] if found.square_curly > -1 else ""
-    if name == "url":
-        _setting(text, found, name, re.compile(r".*"))
+    if name == "url":  # a link, which a picture has nowhere to go: the text alone
+        if found.square_curly == -1:
+            raise LatexError("Missing setting. Syntax is #url[nb]{ ... }")
         return layout.analyse(after, spec, italic)
     value = _setting(text, found, name, INTEGER if name in ("color", "font") else REAL)
     changed = {

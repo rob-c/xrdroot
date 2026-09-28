@@ -75,6 +75,18 @@ def _box(view: View3D, screen: RasterScreen, corners: list[Any], draw: Any) -> N
         screen.fill(points)
 
 
+#: ``TH1``'s ``fMinimum`` and ``fMaximum`` when never set.
+UNSET = -1111.0
+
+
+def _extremes(h: Any, values: np.ndarray[Any, Any]) -> tuple[float, float]:
+    """``GetMinimum`` and ``GetMaximum``: the histogram's own, if set, else its bins'."""
+    lowest = float(lookup(h, "fMinimum", UNSET))
+    highest = float(lookup(h, "fMaximum", UNSET))
+    return (float(np.min(values)) if lowest == UNSET else lowest,
+            float(np.max(values)) if highest == UNSET else highest)  # fmt: skip
+
+
 class _Bins:
     """The shown bins: their middles, widths and contents, and the range boxes are sized over."""
 
@@ -82,15 +94,16 @@ class _Bins:
         edges, self.values = _edges(h)
         self.middles = [0.5 * (e[1:] + e[:-1]) for e in edges]
         self.widths = [np.diff(e) for e in edges]
-        self.low = max(float(np.min(self.values)), 0.0)
-        self.high = max(abs(float(np.max(self.values))), abs(float(np.min(self.values))))
+        lowest, highest = _extremes(h, self.values)
+        self.low = max(lowest, 0.0)
+        self.high = max(abs(highest), abs(lowest))
 
     def scale(self, where: tuple[int, int, int]) -> float:
         """How big a bin's box is: the cube root of its share of the range, halved; 0 for none."""
         w = min(abs(float(self.values[where])), self.high)
         if w < self.low:
             return 0.0
-        return ((w - self.low) / (self.high - self.low)) ** (1.0 / 3.0) / 2.0
+        return float(((w - self.low) / (self.high - self.low)) ** (1.0 / 3.0) / 2.0)
 
     def corners(self, view: View3D, where: tuple[int, int, int], scale: float) -> list[Any]:
         """A bin's box's eight corners, as the view lays them flat."""
@@ -118,7 +131,8 @@ def _back_box(view: View3D, screen: RasterScreen, ndivz: int) -> list[Segment]:
     """``BackBox`` drawn by ``DrawFaceRaster1``: the back walls' levels dotted, then their edges."""
     low, high = view.rmin[2], view.rmax[2]
     start, _end, count, width = optimize(low, high, ndivz)
-    levels = SimpleNamespace(levels=[start + i * width for i in range(count + 1)])
+    # level_lines reads a screen's levels, and nothing else of it
+    levels: Any = SimpleNamespace(levels=[start + i * width for i in range(count + 1)])
     corners = box_corners(view)
     segments: list[Segment] = []
     for face in BACK:

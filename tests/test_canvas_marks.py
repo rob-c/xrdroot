@@ -15,8 +15,8 @@ gets no marker.
 from __future__ import annotations
 
 import pytest
-from test_canvas_draw import filled, fills, lines, make, marks, polylines
 
+from test_canvas_draw import filled, fills, lines, make, marks, polylines
 from xrdroot import Graph
 from xrdroot.canvas import datapaint
 from xrdroot.canvas.marks import marker_path, marker_pixels

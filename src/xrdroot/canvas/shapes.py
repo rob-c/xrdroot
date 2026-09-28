@@ -115,7 +115,8 @@ def _heads(scene: Scene, prim: Primitive, option: str, ends: tuple[Any, Any],
     dx, dy = end[0] - start[0], end[1] - start[1]
     span = math.hypot(dx, dy) or 1.0
     cos, sin = dx / span, dy / span
-    for mark, closed, tip, sign in ((">", "|>", end, 1.0), ("<", "<|", start, -1.0)):
+    tips = _tips(start, end, option, (cos * length / 2, sin * length / 2))
+    for mark, closed, tip, sign in ((">", "|>", tips[0], 1.0), ("<", "<|", tips[1], -1.0)):
         if mark not in option:
             continue
         corners = _head(tip, (sign * cos, sign * sin), length, half)
@@ -125,18 +126,53 @@ def _heads(scene: Scene, prim: Primitive, option: str, ends: tuple[Any, Any],
         _line_of(scene, prim, corners, 1)
 
 
-def arrow(scene: Scene, prim: Primitive, _option: str) -> None:
+Point2 = tuple[float, float]
+
+
+def _tips(start: Point2, end: Point2, option: str, half_head: Point2) -> tuple[Point2, Point2]:
+    """Where the heads' tips are: at the ends, or half a head past the middle for ``->-``."""
+    middle = (0.5 * (start[0] + end[0]), 0.5 * (start[1] + end[1]))
+    ahead, behind = end, start
+    if "->-" in option or "-|>-" in option:
+        ahead = (middle[0] + half_head[0], middle[1] + half_head[1])
+    if "-<-" in option or "-<|-" in option:
+        behind = (middle[0] - half_head[0], middle[1] - half_head[1])
+    return ahead, behind
+
+
+def _bars(start: tuple[float, float], end: tuple[float, float], option: str,
+          half: float) -> tuple[str, list[list[tuple[float, float]]]]:  # fmt: skip
+    """``|-`` and ``-|``: a bar across the start or the end, and the option with the bar read."""
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    span = math.hypot(dx, dy) or 1.0
+    across = (dy / span * half, -dx / span * half)
+    bars = []
+    if option.startswith("|-"):
+        bars.append([(start[0] - across[0], start[1] - across[1]),
+                     (start[0] + across[0], start[1] + across[1])])  # fmt: skip
+        option = " " + option[1:]
+    if option.endswith("-|"):
+        bars.append([(end[0] - across[0], end[1] - across[1]),
+                     (end[0] + across[0], end[1] + across[1])])  # fmt: skip
+        option = option[:-1] + " "
+    return option, bars
+
+
+def arrow(scene: Scene, prim: Primitive, option: str) -> None:
     """``TArrow::PaintArrow``: the shaft, then a head at either end or both, by its ``fOption``.
 
     ROOT sizes the head in units of the canvas's longer side: ``0.7`` of
     ``fArrowSize`` long, as wide as ``fAngle`` (60 degrees unless set) opens.
+    The option the arrow was drawn with, if it was given one, stands before its own.
     """
     xs, ys = _ends(prim)
     start, end = (canvas_point(scene, x, y, prim.ndc) for x, y in zip(xs, ys))
-    option = str(prim.get("fOption", "") or "|>")
     length, half = _head_size(scene, prim)
-    _line_of(scene, prim, _shaft(start, end, option, length))
-    _heads(scene, prim, option, (start, end), (length, half))
+    shape, bars = _bars(start, end, str(option or prim.get("fOption", "") or ""), half)
+    for bar in bars:
+        _line_of(scene, prim, bar)
+    _line_of(scene, prim, _shaft(start, end, shape, length))
+    _heads(scene, prim, shape, (start, end), (length, half))
 
 
 def _head_size(scene: Scene, prim: Primitive) -> tuple[float, float]:

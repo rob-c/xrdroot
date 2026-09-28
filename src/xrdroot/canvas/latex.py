@@ -335,7 +335,6 @@ def formula_form(text: str, size: float, font: int, whole: tuple[int, int], heig
     if font % 10 > 2:
         size, font = size / basis, 10 * (font // 10) + 2
     try:
-        checked = check(text)
-    except LatexError:
+        return Layout(basis, height, size).analyse(check(text), Spec(size, font, 1, 0.0)).form
+    except LatexError:  # what ROOT refuses measures nothing, as GetXsize and GetYsize give
         return Form(0.0, 0.0, 0.0)
-    return Layout(basis, height, size).analyse(checked, Spec(size, font, 1, 0.0)).form

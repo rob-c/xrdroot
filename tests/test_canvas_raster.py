@@ -19,8 +19,8 @@ from types import SimpleNamespace
 import numpy as np
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.image import imread
-from test_canvas_draw import NDC, lines, make, prim
 
+from test_canvas_draw import NDC, lines, make, prim
 from xrdroot.canvas.raster import (
     PixelLine,
     dashed_pixels,
@@ -105,7 +105,7 @@ def test_a_line_that_never_leaves_its_first_pixel_sets_none():
     assert polyline_pixels(np.array([(4, 4), (4, 4)])).shape == (0, 2)
 
 
-def test_a_dashed_tline_on_a_canvas_is_dashed_as_timagedump_dashes_it(tmp_path):
+def test_a_dashed_tline_on_a_canvas_is_dashed_as_timagedump_dashes_it():
     fig = make([(_line(0.1, 0.2, 0.9, 0.2, fLineStyle=2), ""),
                 (_line(0.1, 0.1, 0.9, 0.5, fLineStyle=3, fLineWidth=3), "")],
                width=300, height=300).plot()  # fmt: skip
@@ -162,3 +162,8 @@ def test_a_hidden_pixel_line_or_one_clipped_away_sets_no_pixel():
     raster.draw()
     rgb = np.asarray(raster.buffer_rgba())[..., :3]
     assert not ((rgb[..., 0] > 200) & (rgb[..., 1] < 50)).any()
+
+
+def test_a_wide_line_that_goes_nowhere_is_not_drawn_as_asim_line_to_draws_none():
+    """A dash of a thick dotted line rounds to no length where ROOT's brush is not stamped."""
+    assert segment_pixels(5, 5, 5, 5, 3) == ([], [])

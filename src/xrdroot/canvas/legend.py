@@ -86,7 +86,7 @@ def _autosize(rows: _Rows, prim: Primitive, entries: list[Any]) -> float:
     widths, header = _widths(rows, entries, lambda entry: (size, _font(entry, prim, True)))
     widest = max(header, sum(widths))
     size = min(size, tallest)
-    return min(size, size * (rows.x2 - rows.x1) * rows.share / widest) if widest else size
+    return float(min(size, size * (rows.x2 - rows.x1) * rows.share / widest) if widest else size)
 
 
 def _column_widths(rows: _Rows, prim: Primitive, entries: list[Any], size: float,

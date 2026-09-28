@@ -56,3 +56,16 @@ def test_a_histogram_of_equal_contents_draws_no_boxes_and_one_without_lego_or_bo
     with pytest.warns(match="isosurface"):  # ISO draws its box and axes, and says what it left
         ax = make([(_cube(1.0), "iso")]).plot().axes[0]
     assert all(a.color == (0.0, 0.0, 0.0) for a in lines(ax))
+
+
+def test_a_bin_below_the_histograms_own_minimum_has_no_box():
+    """``PaintH3BoxRaster`` measures from ``GetMinimum``: ``fMinimum`` when it was set."""
+
+    def blue(h):
+        ax = make([(h, "lego")]).plot().axes[0]
+        return sum(len(line) for a in lines(ax, (0.0, 0.0, 1.0)) for line in a.lines)
+
+    both = _cube(8.0, 1.0)
+    floor = _cube(8.0, 1.0)
+    floor.members["TH3"]["TH1"]["fMinimum"] = 2.0
+    assert 0 < blue(floor) < blue(both)

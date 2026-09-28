@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from test_canvas_draw import lines, make
 
+from test_canvas_draw import lines, make
 from xrdroot import Histogram
 from xrdroot.canvas import legofaces, legoplot
 

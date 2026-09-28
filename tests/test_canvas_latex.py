@@ -71,3 +71,18 @@ def test_what_root_cannot_lay_out_has_no_size(text):
     as lines of its own, and measures nothing."""
     form = formula_form(text, 0.05, 42, PAD, float(PAD[1]))
     assert (form.width, form.over + form.under) == (0.0, 0.0)
+
+
+@pytest.mark.parametrize(
+    "text", ["#color{x}", "#color[a]{x}", "#frac{a}}{b}", "x^{#font[}]{a}", "#url{x}"]
+)
+def test_a_setting_or_a_group_root_refuses_measures_nothing_rather_than_failing(text):
+    """ROOT's ``GetXsize`` and ``GetYsize`` are 0 for each of these, and a legend or a pave
+    sizing its text by one must go on."""
+    form = formula_form(text, 0.05, 42, PAD, float(PAD[1]))
+    assert (form.width, form.over, form.under) == (0.0, 0.0, 0.0)
+
+
+def test_a_link_is_no_setting_and_its_text_is_laid_out_alone():
+    linked = formula_form("#url[https://root.cern]{x}", 0.05, 42, PAD, float(PAD[1]))
+    assert linked == formula_form("x", 0.05, 42, PAD, float(PAD[1]))

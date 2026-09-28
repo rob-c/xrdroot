@@ -79,7 +79,13 @@ def _bresenham(x1: int, y1: int, x2: int, y2: int, last: bool = False) -> Pixels
 
 
 def _brushed(x1: int, y1: int, x2: int, y2: int, thick: int) -> Pixels:
-    """``DrawWideLine``: a ``thick`` square brush, centred on each pixel of the line."""
+    """``DrawWideLine``: a ``thick`` square brush, centred on each pixel of the line.
+
+    A line that goes nowhere - a dash rounded to no length - libAfterImage's
+    ``asim_line_to`` does not draw at all.
+    """
+    if (x1, y1) == (x2, y2):
+        return [], []
     xs, ys = _bresenham(x1, y1, x2, y2, last=True)
     offsets = range(-(thick // 2), thick - thick // 2)
     return ([x + dx for x in xs for dx in offsets for _ in offsets],

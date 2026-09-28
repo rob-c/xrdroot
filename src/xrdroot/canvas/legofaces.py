@@ -59,28 +59,31 @@ def level_lines(screen: MovingScreen, points: list[Point],
             continue
         if high < level or len(lines) >= 200:
             break
+        # low < level <= high: the face's edges cross the level at least twice
         found = _crossings(points, values, level)
-        if len(found) == 2:
-            lines.append((found[0], found[1]))
+        lines.append((found[0], found[1]))
     return lines
 
 
 def _crossings(points: list[Point], values: list[float], level: float) -> list[Point]:
-    """The first two points where the face's edges cross ``level``."""
-    found: list[Point] = []
+    """The first two points where the face's edges cross ``level``.
+
+    A level strictly inside a face's range is crossed by at least two of its
+    edges, going round it; ``FindLevelLines`` keeps the first two.
+    """
     count = len(points)
-    for i in range(count):
+
+    def crossing(i: int) -> Point | None:
         j = (i + 1) % count
         d1 = (values[i] - level) or 1e-99
         d2 = (values[j] - level) or 1e-99
         if d1 * d2 > 0:
-            continue
+            return None
         span = values[j] - values[i]
-        d1, d2 = d1 / span, d2 / span
-        found.append(_between(points[i], points[j], d1, d2))
-        if len(found) == 2:
-            break
-    return found
+        return _between(points[i], points[j], d1 / span, d2 / span)
+
+    found = [point for point in map(crossing, range(count)) if point is not None]
+    return found[:2]
 
 
 def _between(p: Point, q: Point, d1: float, d2: float) -> Point:

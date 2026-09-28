@@ -62,7 +62,17 @@ def test_cont1_colours_each_level_and_cont2_gives_each_a_line_style(option, diff
     assert len({str(getattr(a, differ)) for a in drawn}) > 1
 
 
+#: A cell whose crossings come out of order, walked round from its lowest corner: three
+#: levels cross it, two of them on both sides of a saddle.
+TANGLED = np.array([[0.0, 2.5], [1.5, 0.0]])
+
+
+def test_crossings_that_come_out_of_order_are_turned_about_until_each_pair_is_one_level():
+    segments = contour_segments([0.0, 1.0], [0.0, 1.0], TANGLED, [0.0, 1.0, 2.0, 3.0])
+    assert len(segments) == 3
+    assert all(start.level == end.level for start, end in segments)
+
+
 def test_a_cell_whose_crossings_will_not_pair_is_let_go(monkeypatch):
     monkeypatch.setattr(contour, "REORDERS", -1)
-    values = np.array([[0.0, 2.0], [2.0, 0.0]])
-    assert contour_segments([0.0, 1.0], [0.0, 1.0], values, [0.0, 1.0]) == []
+    assert contour_segments([0.0, 1.0], [0.0, 1.0], TANGLED, [0.0, 1.0, 2.0, 3.0]) == []
