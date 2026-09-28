@@ -216,11 +216,11 @@ def test_rntuples_in_several_files_travel_to_workers_by_where_they_are(tmp_path)
         assert (len(again), again.boundaries()) == (40, [0, 20, 40])
         again.close()
         everything = df.AsNumpy().GetValue()
-        assert list(everything) == [
-            "nMuon",
-            "Muon_pt",
-            "Muon_eta",
-            "Muon_phi",
-            "Muon_mass",
+        assert list(everything) == [  # by name, as ROOT's GetColumnNames sorts them
             "Muon_charge",
+            "Muon_eta",
+            "Muon_mass",
+            "Muon_phi",
+            "Muon_pt",
+            "nMuon",
         ]
