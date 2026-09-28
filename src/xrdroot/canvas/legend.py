@@ -115,14 +115,14 @@ def _source(entry: Any) -> Any:
 
 
 def _segments(rows: _Rows, style: Any, segments: list[tuple[float, float, float, float]]) -> None:
-    from matplotlib.collections import LineCollection
+    """``PaintSegmentsNDC``: each segment of a symbol, in the entry's object's line attributes."""
+    from .raster import add_line
 
-    if segments:
-        line = rows.scene.line(style)
-        rows.scene.ax.add_collection(LineCollection(
-            [((a, b), (c, d)) for a, b, c, d in segments], transform=rows.scene.ndc, colors=[line["color"]],
-            linewidths=[line["linewidth"]], linestyles=[line["linestyle"]], zorder=rows.scene.layer(), clip_on=False,
-        ))  # fmt: skip
+    scene = rows.scene
+    width = int(lookup(style, "fLineWidth", 1) or 0)
+    color = scene.colors.rgb(lookup(style, "fLineColor", 1))
+    for a, b, c, d in segments if width > 0 else []:
+        add_line(scene, [scene.pixel(a, b), scene.pixel(c, d)], color, width, lookup(style, "fLineStyle", 1))
 
 
 def _symbol(rows: _Rows, entry: Any, option: str, centre: tuple[float, float]) -> None:

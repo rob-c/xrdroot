@@ -16,7 +16,7 @@ import numpy as np
 
 from . import styles
 from .latex import paint_latex
-from .model import Primitive
+from .model import Primitive, lookup
 from .scene import Scene
 from .text import glyphs, pixel_size
 
@@ -69,54 +69,71 @@ def _ends(prim: Primitive) -> tuple[list[float], list[float]]:
     )
 
 
+def _line_of(scene: Scene, prim: Any, points: list[tuple[float, float]], style: Any = None) -> None:
+    """A line through canvas ``points`` in ``prim``'s colour, width and style (or ``style``)."""
+    from .raster import add_line
+
+    width = int(lookup(prim, "fLineWidth", 1) or 0)
+    if width > 0:
+        chosen = lookup(prim, "fLineStyle", 1) if style is None else style
+        add_line(scene, points, scene.colors.rgb(lookup(prim, "fLineColor", 1)), width, chosen)
+
+
 def line(scene: Scene, prim: Primitive, _option: str) -> None:
     """A ``TLine``, from ``(fX1, fY1)`` to ``(fX2, fY2)``."""
-    from matplotlib.lines import Line2D
-
     xs, ys = _ends(prim)
-    scene.ax.add_artist(
-        Line2D(
-            xs,
-            ys,
-            transform=scene.where(prim.ndc),
-            clip_on=False,
-            zorder=scene.layer(),
-            **scene.line(prim),
-        )
-    )
+    _line_of(scene, prim, [canvas_point(scene, x, y, prim.ndc) for x, y in zip(xs, ys)])
 
 
-def _arrowstyle(shape: str) -> str:
-    """ROOT's ``"|>"``, ``"<|>"``, ``"->-"`` and the rest, as matplotlib's arrow styles."""
-    filled = "|" in shape
-    core = shape.strip("-")  # an arrow drawn in the middle, "->-", heads the same way
-    start = ("<|" if filled else "<") if core.startswith("<") else ""
-    end = ("|>" if filled else ">") if core.endswith(">") else ""
-    return f"{start}-{end}"
+def _head(tip: tuple[float, float], along: tuple[float, float], length: float, half: float) -> list[tuple[float, float]]:
+    """An arrow's head at ``tip``, pointing along ``along``: its two back corners about the tip."""
+    (x, y), (cos, sin) = tip, along
+    return [(x - length * cos - sin * half, y - length * sin + cos * half), (x, y),
+            (x - length * cos + sin * half, y - length * sin - cos * half)]  # fmt: skip
+
+
+def _heads(scene: Scene, prim: Primitive, option: str, ends: tuple[Any, Any], sizes: tuple[float, float]) -> None:
+    """``TArrow::PaintArrow``'s heads: an open ``>``, or a ``|>`` filled and outlined."""
+    from matplotlib.patches import Polygon
+
+    (start, end), (length, half) = ends, sizes
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    span = math.hypot(dx, dy) or 1.0
+    cos, sin = dx / span, dy / span
+    for mark, closed, tip, sign in ((">", "|>", end, 1.0), ("<", "<|", start, -1.0)):
+        if mark not in option:
+            continue
+        corners = _head(tip, (sign * cos, sign * sin), length, half)
+        if closed in option:
+            if int(lookup(prim, "fFillColor", 0) or 0):
+                scene.ax.add_artist(Polygon([(x, y) for x, y in corners], closed=True, transform=scene.display,
+                                            clip_on=False, zorder=scene.layer(), linewidth=0.0, edgecolor="none",
+                                            facecolor=scene.colors.rgb(lookup(prim, "fFillColor", 0))))  # fmt: skip
+            corners = corners + corners[:1]
+        _line_of(scene, prim, corners, 1)
 
 
 def arrow(scene: Scene, prim: Primitive, _option: str) -> None:
-    """A ``TArrow``: a line with a head at either end, or both, by its ``fOption``."""
-    from matplotlib.patches import FancyArrowPatch
+    """``TArrow::PaintArrow``: the shaft, then a head at either end or both, by its ``fOption``.
 
+    ROOT sizes the head in units of the canvas's longer side: ``0.7`` of
+    ``fArrowSize`` long, as wide as ``fAngle`` (60 degrees unless set) opens.
+    """
     xs, ys = _ends(prim)
-    style = scene.line(prim)
-    size = float(prim.get("fArrowSize", 0.0)) or ARROW_SIZE
-    filled = scene.fill(prim)
-    patch = FancyArrowPatch(
-        (xs[0], ys[0]),
-        (xs[1], ys[1]),
-        arrowstyle=_arrowstyle(str(prim.get("fOption", "|>"))),
-        mutation_scale=styles.points(HEAD * size * scene.pixels[1]),
-        transform=scene.where(prim.ndc),
-        clip_on=False,
-        zorder=scene.layer(),
-        edgecolor=style["color"],
-        linewidth=style["linewidth"],
-        linestyle=style["linestyle"],
-        facecolor=filled["facecolor"] if filled else style["color"],
-    )
-    scene.ax.add_artist(patch)
+    start, end = (canvas_point(scene, x, y, prim.ndc) for x, y in zip(xs, ys))
+    option = str(prim.get("fOption", "") or "|>")
+    size = float(prim.get("fArrowSize", 0.0) or 0.0) or ARROW_SIZE
+    length = 0.7 * size * max(scene.canvas)
+    half = length * math.tan(math.pi * float(prim.get("fAngle", 60.0) or 60.0) / 360)
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    span = math.hypot(dx, dy) or 1.0
+    shaft_start, shaft_end = start, end
+    if "|>" in option and "-|>-" not in option:
+        shaft_end = (end[0] - dx / span * length, end[1] - dy / span * length)
+    if "<|" in option and "-<|-" not in option:
+        shaft_start = (start[0] + dx / span * length, start[1] + dy / span * length)
+    _line_of(scene, prim, [shaft_start, shaft_end])
+    _heads(scene, prim, option, (start, end), (length, half))
 
 
 def patch_style(scene: Scene, prim: Any, outline: bool = True) -> dict[str, Any]:

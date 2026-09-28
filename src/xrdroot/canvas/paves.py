@@ -61,11 +61,13 @@ def _polygon(scene: Scene, points: list[tuple[float, float]], **style: Any) -> N
 
 
 def _outline(scene: Scene, prim: Any, points: list[tuple[float, float]]) -> None:
-    from matplotlib.lines import Line2D
+    """A line through points of the pad in NDC, in ``prim``'s line attributes."""
+    from .raster import add_line
 
-    xs, ys = zip(*points)
-    scene.ax.add_artist(Line2D(xs, ys, transform=scene.ndc, clip_on=False, zorder=scene.layer(),
-                               **scene.line(prim)))  # fmt: skip
+    width = int(lookup(prim, "fLineWidth", 1) or 0)
+    if width > 0:
+        color = scene.colors.rgb(lookup(prim, "fLineColor", 1))
+        add_line(scene, [scene.pixel(u, v) for u, v in points], color, width, lookup(prim, "fLineStyle", 1))
 
 
 def _box(scene: Scene, prim: Any, corners: Corners, outlined: bool) -> None:

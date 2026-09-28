@@ -418,15 +418,12 @@ BY_NAME: dict[str, Callable[..., Box]] = {
 
 def draw_shape(scene: Any, mark: Mark, points: list[tuple[int, int]], color: Any) -> None:
     """A formula's line or filled shape, at whole pixels of the canvas."""
-    from matplotlib.lines import Line2D
     from matplotlib.patches import Polygon
 
-    from .styles import points as to_points
+    from .raster import add_line
 
     if mark.kind == "fill":
         scene.ax.add_artist(Polygon(points, closed=True, transform=scene.display, clip_on=False,
                                     zorder=scene.layer(), facecolor=color, edgecolor=color, linewidth=0.0))
         return
-    xs, ys = zip(*points)
-    scene.ax.add_artist(Line2D(xs, ys, transform=scene.display, clip_on=False, zorder=scene.layer(),
-                               color=color, linewidth=to_points(mark.width)))  # fmt: skip
+    add_line(scene, points, color, mark.width)

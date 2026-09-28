@@ -21,6 +21,7 @@ import numpy as np
 from ..plot.model import Band, Bars, Boxes, Curve, Look, Points, Steps
 from . import styles
 from .marks import draw_markers
+from .raster import add_line, frame_clip
 from .scene import Scene
 
 __all__ = ["PAINTED", "pixels_of"]
@@ -46,20 +47,19 @@ def _line_style(look: Look) -> dict[str, Any]:
     return {"color": look.color, "linewidth": styles.points(width), "linestyle": styles.dashes(look.line_style, width)}
 
 
+def _clipped(scene: Scene, pixels: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+    """Points far outside the pad brought in along their lines, so no line is millions of pixels long."""
+    limit = 4.0 * max(scene.canvas)
+    return np.clip(pixels, -limit, limit)
+
+
 def polyline(scene: Scene, pixels: np.ndarray[Any, Any], look: Look, clip: bool = True) -> None:
     """A line through ``pixels``, each rounded to the whole pixel ``TImageDump`` puts it at."""
-    from matplotlib.lines import Line2D
-
     finite = pixels[np.all(np.isfinite(pixels), axis=1)]
     if len(finite) < 2 or not look.color or look.width <= 0:
         return
-    whole = np.rint(finite)
-    line = Line2D(whole[:, 0], whole[:, 1], transform=scene.display, zorder=scene.layer(), **_line_style(look))
-    scene.ax.add_artist(line)
-    if clip:
-        line.set_clip_path(scene.ax.patch)
-    else:
-        line.set_clip_on(False)
+    add_line(scene, _clipped(scene, finite), look.color, round(look.width), look.line_style,
+             frame_clip(scene) if clip else None)  # fmt: skip
 
 
 def _fill(scene: Scene, pixels: np.ndarray[Any, Any], look: Look) -> None:
@@ -184,8 +184,6 @@ def _arms(centre: tuple[float, float], ends: tuple[float, float, float, float], 
 
 def paint_points(scene: Scene, layer: Points) -> None:
     """``TGraphPainter::PaintGraphAsymmErrors``: each point in the frame's bars, then its marker."""
-    from matplotlib.collections import LineCollection
-
     (xmin, xmax), (ymin, ymax) = scene.ax.get_xlim(), scene.ax.get_ylim()
     x, y = np.asarray(layer.x, float), np.asarray(layer.y, float)
     inside = (x >= min(xmin, xmax)) & (x <= max(xmin, xmax)) & (y >= min(ymin, ymax)) & (y <= max(ymin, ymax))
@@ -202,12 +200,9 @@ def paint_points(scene: Scene, layer: Points) -> None:
         ends = (ups[index], downs[index], lefts[index], rights[index])
         segments += _arms(tuple(centre[index]), ends, frame, gaps, layer.caps)
     if segments and layer.look.color:
-        whole = np.rint(np.asarray(segments, float)).reshape(-1, 2, 2)
-        style = _line_style(layer.look)
-        bars = LineCollection(whole, transform=scene.display, colors=[style["color"]], linewidths=[style["linewidth"]],
-                              zorder=scene.layer())  # fmt: skip
-        scene.ax.add_collection(bars, autolim=False)
-        bars.set_clip_path(scene.ax.patch)
+        clip = frame_clip(scene)
+        for x1, y1, x2, y2 in segments:
+            add_line(scene, [(x1, y1), (x2, y2)], layer.look.color, round(layer.look.width), 1, clip)
     if layer.look.marker is not None:
         draw_markers(scene, centre[inside], layer.look.marker_style, layer.look.marker_size, layer.look.marker_color)
 

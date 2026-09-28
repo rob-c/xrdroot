@@ -136,11 +136,15 @@ def _spread(values: np.ndarray[Any, Any], log: bool, floor: bool) -> tuple[float
         positive = values[values > 0]
         low = float(positive.min()) if positive.size else 0.1
         return low * 0.5, max(high, low) * 2.0
-    margin = GRAPH_MARGIN * ((high - low) or abs(high) or 1.0)
-    bottom = low - margin
-    if floor and low >= 0 and bottom < 0:
-        bottom = 0.0
-    return bottom, high + margin
+    if high == low:
+        high = low + 1.0
+    margin = GRAPH_MARGIN * (high - low)
+    bottom, top = low - margin, high + margin
+    if bottom < 0 and low >= 0:
+        bottom = 0.9 * low  # TGraphPainter keeps a range of positive values positive
+    if not floor and top > 0 and high <= 0:
+        top = 0.0
+    return bottom, top
 
 
 def _graph_points(graphs: list[Graph]) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
@@ -285,9 +289,13 @@ def _frame(scene: Scene) -> None:
                 edgecolor="none",
             )
         )
+    from .raster import add_line, frame_clip
+
     for spine in scene.ax.spines.values():
-        spine.set_color(scene.colors.rgb(style["fLineColor"]))
-        spine.set_linewidth(styles.points(float(style["fLineWidth"])))
+        spine.set_visible(False)
+    x0, y0, x1, y1 = frame_clip(scene)
+    corners = [(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)]
+    add_line(scene, corners, scene.colors.rgb(style["fLineColor"]), int(style["fLineWidth"]))
 
 
 

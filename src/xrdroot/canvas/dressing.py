@@ -18,10 +18,10 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from . import styles
 from .axis import Axis, Painted, paint_axis
 from .latex import paint_latex
 from .model import lookup
+from .raster import add_line
 from .scene import Scene
 from .text import nint
 
@@ -59,16 +59,10 @@ def axis_of(members: Any, **placed: Any) -> Axis:
 
 def draw_painted(scene: Scene, painted: Painted, axis: Axis) -> None:
     """An axis's segments, its grid, and its labels and title, drawn in the pad."""
-    from matplotlib.collections import LineCollection
-
     color = scene.colors.rgb(axis.line_color)
     for segments, style in ((painted.lines, 1), (painted.grid, GRID_STYLE)):
-        if segments:
-            scene.ax.add_collection(LineCollection(
-                [((x1, y1), (x2, y2)) for x1, y1, x2, y2 in segments],
-                transform=scene.ndc, colors=[color], linewidths=[styles.points(1)],
-                linestyles=[styles.dashes(style, GRID_WIDTH)], zorder=scene.layer(), clip_on=False,
-            ))  # fmt: skip
+        for x1, y1, x2, y2 in segments:
+            add_line(scene, [scene.pixel(x1, y1), scene.pixel(x2, y2)], color, GRID_WIDTH, style)
     for label in painted.labels:
         attributes = {"font": label.font, "size": label.size, "color": label.color,
                       "align": label.align, "angle": label.angle, "line": 2}  # fmt: skip
