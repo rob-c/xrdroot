@@ -11,8 +11,9 @@ from __future__ import annotations
 from typing import Any
 
 from .. import tmva as _tmva
+from ..tmva import batches as _batches
 
-__all__ = ["TMVA"]
+__all__ = ["Experimental", "TMVA"]
 
 
 class _Namespace:
@@ -42,4 +43,10 @@ TMVA = _Namespace(
         "TMVAGui": _gui,
         "Experimental": _Namespace("TMVA::Experimental", dict(_tmva.EXPERIMENTAL)),
     },
+)
+
+#: ``ROOT.Experimental``: of it, the machine-learning data loader.
+Experimental = _Namespace(
+    "ROOT::Experimental",
+    {"ML": _Namespace("ROOT::Experimental::ML", {"RDataLoader": _batches.RDataLoader})},
 )
