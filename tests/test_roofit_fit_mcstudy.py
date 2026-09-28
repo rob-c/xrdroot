@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from refmachine import FIT_REL, roots
+from refmachine import FIT_REL, ROOTS_MACHINE, roots
 from xrdroot.roofit.cmdargs import RooCmdArg
 from xrdroot.roofit.mcstudy import RooMCStudy
 from xrdroot.roofit.pdfs.basic import RooGaussian
@@ -345,7 +345,8 @@ def test_a_study_frames_each_column_round_its_values_as_root_does() -> None:
     framed = (-0.6044825678778627, 0.23432560590854157, 100)
     assert _framed(study.plotParam(m)) == roots(framed, rel=FIT_REL)
     low, high, bins = _framed(study.plotError(s))
-    assert (low, high) == pytest.approx((0.2325135271368771, 0.2854185997174309), rel=1e-9)
+    errors = (0.2325135271368771, 0.2854185997174309)  # HESSE's: see FIT_REL off ROOT's machine
+    assert (low, high) == pytest.approx(errors, rel=1e-9 if ROOTS_MACHINE else FIT_REL)
     assert bins == 100
     low, high, bins = _framed(study.plotNLL())
     assert (low, high) == pytest.approx((60.50522646887346, 66.41738344466413), rel=1e-12)
