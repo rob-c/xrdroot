@@ -194,9 +194,11 @@ class ExprParser(TypeParser):
 
     def _new(self) -> Expr:
         where = self.take().where
-        if self.at_("("):
-            raise self.refuse("placement new, which builds an object in memory given to it")
+        place = self._parenthesised() if self.at_("(") else None
         ctype = self.pointers(self.specifiers().ctype)
+        if place is not None:
+            # ``new (slot) T(args)``: built in memory given to it, a TClonesArray's slot.
+            return New(where, ctype, self.arguments() if self.at_("(") else [], place=place)
         count = None
         if self.accept("["):
             count = self.expression()

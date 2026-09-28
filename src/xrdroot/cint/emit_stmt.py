@@ -130,8 +130,35 @@ class StmtEmitter(CallEmitter):
 
     def _block_statement(self, node: Block) -> None:
         with self.scoped():
-            for stmt in node.body:
+            self.statements(node.body)
+
+    def statements(self, body: list[Stmt]) -> None:
+        """Statements in a row; after a local whose destructor does something, the rest in a
+        ``try`` whose ``finally`` runs it - where C++ runs it, as the scope ends, whatever way.
+        """
+        for index, stmt in enumerate(body):
+            outer, self.destructed = self.destructed, [] if isinstance(stmt, DeclStmt) else None
+            try:
                 self.statement(stmt)
+                ending = self.destructed
+            finally:
+                self.destructed = outer
+            if ending:
+                self._destroyed_after(body[index + 1 :], ending, stmt)
+                return
+
+    def _destroyed_after(self, rest: list[Stmt], ending: list[str], stmt: Stmt) -> None:
+        self.out.line("try:", stmt.where)
+        with self.out.indented():
+            self.statements(rest)
+        self.out.line("finally:", stmt.where)
+        with self.out.indented():
+            for name in reversed(ending):
+                self.out.line(f"{name}._destruct()", stmt.where)
+
+    #: The locals just declared whose destructors must run as their scope ends, or ``None``
+    #: where no scope of statements is being written for them to end with.
+    destructed: list[str] | None = None
 
     def _declarations(self, node: DeclStmt) -> None:
         for decl in node.decls:
@@ -472,8 +499,7 @@ class StmtEmitter(CallEmitter):
         with self.out.indented(), self.scoped():
             if fall is not None:
                 self.out.line(f"{fall[0]} = True", fall[1])
-            for stmt in body:
-                self.statement(stmt)
+            self.statements(body)
 
     def _falling_switch(
         self, node: Switch, subject: str, groups: list[tuple[list[Case], list[Stmt]]]

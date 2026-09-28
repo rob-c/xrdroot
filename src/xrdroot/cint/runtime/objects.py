@@ -20,6 +20,7 @@ __all__ = [
     "array",
     "Overloaded",
     "delete",
+    "construct_at",
     "value_copy",
     "dynamic_cast",
     "set_item",
@@ -154,6 +155,21 @@ def delete(obj: Any) -> None:
     close = getattr(obj, "Close", None)
     if callable(close) and hasattr(obj, "IsOpen"):
         close()
+
+
+def construct_at(container: Any, index: Any, obj: Any) -> Any:
+    """``new (clones[i]) T(args)``: ``obj`` put in slot ``index`` - ROOT's ``AddAt``, or ``[i] =``.
+
+    A ``TClonesArray`` hands placement new the memory of its slot ``i``;
+    here the object is built first and the array given it, which is the
+    same array of the same objects afterwards.
+    """
+    add = getattr(container, "AddAt", None)
+    if callable(add):
+        add(obj, int(index))
+    else:
+        container[index] = obj
+    return obj
 
 
 def value_copy(value: Any) -> Any:

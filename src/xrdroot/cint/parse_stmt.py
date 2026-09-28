@@ -53,7 +53,7 @@ DECLARATOR_ENDS = frozenset({"=", ";", "(", "[", ",", "{", ":"})
 class StmtParser(ExprParser):
     """The part of the parser that reads statements."""
 
-    def class_declaration(self) -> ClassDecl:
+    def class_declaration(self, name: str | None = None, typedef: bool = False) -> ClassDecl:
         raise NotImplementedError
 
     def enum_declaration(self) -> EnumDecl:
@@ -371,14 +371,30 @@ class StmtParser(ExprParser):
 
     def _typedef(self) -> Stmt:
         where = self.take().where
-        if self.at_("struct", "class", "union", "enum") and self._defines_type():
-            raise self.refuse("a typedef of a class defined in place, typedef struct {...} T")
+        if self.at_("struct", "class", "union") and self._defines_type():
+            return self._typedef_class()
+        if self.at_("enum") and self._defines_type():
+            raise self.refuse("a typedef of an enum defined in place, typedef enum {...} T")
         spec = self.specifiers()
         name, ctype = self.declarator(spec.ctype)
         while self.accept(","):
             self.declarator(spec.ctype)
         self.expect(";")
         return self.alias(Typedef(where, name, ctype))
+
+    def _typedef_class(self) -> Stmt:
+        """``typedef struct [Tag] {...} T, *PT;``: the class, named ``Tag``, or ``T`` if unnamed."""
+        named = not self.peek(1).is_("{")
+        return self.class_declaration(None if named else self._alias_after_body(), typedef=True)
+
+    def _alias_after_body(self) -> str:
+        """The first name after the ``{...}`` of an unnamed class, which the typedef gives it."""
+        start = self.at
+        self.take()
+        self.skip_brackets()
+        name = self.identifier()
+        self.at = start
+        return name
 
     def _defines_type(self) -> bool:
         """Does ``struct X`` here go on to define ``X`` - ``{`` or a base list after its name?"""

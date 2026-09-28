@@ -174,6 +174,8 @@ class New(Expr):
     args: list[Expr] | None
     count: Expr | None = None
     braces: bool = False
+    #: Where placement new builds the object: ``slot`` of ``new (slot) T(...)``.
+    place: Expr | None = None
 
 
 @dataclass(eq=False)

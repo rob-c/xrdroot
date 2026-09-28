@@ -459,6 +459,8 @@ class ExprEmitter(NameEmitter):
 
     def _new(self, node: New) -> Out:
         ctype = node.ctype
+        if node.place is not None:
+            return self._placed(node), P.POSTFIX
         if node.count is not None:
             return self.new_array(ctype, node.count), P.POSTFIX
         args = self.constructor_arguments(ctype, node.args or [])
@@ -467,6 +469,16 @@ class ExprEmitter(NameEmitter):
             initial = self.store(ctype, first) if first is not None else zero(ctype)
             return f"Cell({initial}, {ctype.name!r})", P.POSTFIX
         return f"{self.class_expr(ctype)}({args})", P.POSTFIX
+
+    def _placed(self, node: New) -> str:
+        """``new (clones[i]) T(args)``: a ``T`` built and put in slot ``i`` of the array."""
+        place = node.place
+        if not isinstance(place, Index) or not node.ctype.is_class or node.ctype.pointer:
+            why = "placement new of anything but an object into an element of an array"
+            raise self.refuse(why, node)
+        args = self.constructor_arguments(node.ctype, node.args or [])
+        built = f"{self.class_expr(node.ctype)}({args})"
+        return f"construct_at({self.value(place.obj)}, {self.value(place.index)}, {built})"
 
     def new_array(self, ctype: CType, count: Expr) -> str:
         """``new T[n]``: an array of ``n`` zeros, or of ``None`` for pointers and objects."""

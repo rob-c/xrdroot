@@ -27,6 +27,7 @@ from .nodes import (
     Namespace,
     Param,
     Stmt,
+    Typedef,
     Unit,
     VarDecl,
 )
@@ -400,24 +401,40 @@ class Parser(StmtParser):
 
     # -- classes and enums ------------------------------------------------------
 
-    def class_declaration(self) -> ClassDecl:
-        """``class Foo : public TObject { ... };``, with any variables declared after it."""
+    def class_declaration(self, name: str | None = None, typedef: bool = False) -> ClassDecl:
+        """``class Foo : public TObject { ... };``, with any variables declared after it.
+
+        ``name`` names a class the macro leaves unnamed, as ``typedef struct {...} T``
+        does; with ``typedef`` the names after the body are the typedef's, not variables.
+        """
         where = self.where
         kind = self.take().text
         self.attributes()
-        if self.peek().kind != "id" or self.peek().text in KEYWORDS:
-            raise self.refuse(f"an unnamed {kind}, which has no name to make a Python class of")
-        name = self.take().text
+        if name is None:
+            if self.peek().kind != "id" or self.peek().text in KEYWORDS:
+                raise self.refuse(f"an unnamed {kind}, which has no name to make a Python class of")
+            name = self.take().text
         self.types.add(name)
         if self.at_("<"):
             raise self.refuse(f"a specialisation of the class template {name}")
         self.accept("final")
         bases = self._bases() if self.accept(":") else []
         decl = ClassDecl(where, name, kind, bases, self._members(name))
-        if not self.at_(";"):
+        if typedef:
+            self._class_aliases(name)
+        elif not self.at_(";"):
             decl.declarators = self.declarators(Specifiers(CType(name), set()))
         self.expect(";")
         return decl
+
+    def _class_aliases(self, name: str) -> None:
+        """``} T, *PT;`` of a ``typedef struct``: each a name for the class, or a pointer to it."""
+        while True:
+            where = self.where
+            ctype = self.pointers(CType(name))
+            self.alias(Typedef(where, self.identifier(), ctype))
+            if not self.accept(","):
+                return
 
     def _bases(self) -> list[Base]:
         bases: list[Base] = []

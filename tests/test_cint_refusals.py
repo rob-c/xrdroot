@@ -49,7 +49,7 @@ def test_the_corners_of_the_grammar_are_read(source: str, fragment: str) -> None
         ("switch (x) case 1: break;", "a switch whose body is not a block"),
         ("switch (x) { case 1 ... 3: break; }", "a case range"),
         ('asm("nop");', "inline assembly"),
-        ("typedef struct { int a; } T;", "a typedef of a class defined in place"),
+        ("typedef enum { kA } E;", "a typedef of an enum defined in place"),
         ("struct { int a; } s;", "an unnamed struct, which has no name"),
         ("int n = sizeof...(args);", "sizeof of a type whose size"),
         ("int x = 10_km;", "10_km is a user-defined literal"),

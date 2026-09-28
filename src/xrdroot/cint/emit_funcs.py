@@ -97,8 +97,7 @@ class FunctionEmitter(VariableEmitter):
             if prologue is not None:
                 prologue()
             assert func.body is not None, "only a function with a body is written"
-            for stmt in func.body.body:
-                self.statement(stmt)
+            self.statements(func.body.body)
             self._declare_scopes(context, head, func)
         self.template_names -= template
 
@@ -198,8 +197,7 @@ class FunctionEmitter(VariableEmitter):
         head = self.out.mark()
         self.loops, saved = [], self.loops
         try:
-            for stmt in node.body.body:
-                self.statement(stmt)
+            self.statements(node.body.body)
         finally:
             self.loops = saved
         self._declare_scopes(context, head, node)

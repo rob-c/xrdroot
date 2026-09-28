@@ -102,25 +102,34 @@ class VariableEmitter(StmtEmitter):
         if alias is not None:
             self.declare(decl.name, "local", ctype, alias=alias)
             return
-        self._destructible(decl, ctype)
+        destructs = self._destructible(decl, ctype)
         value = self.initial(decl, ctype)
         cell = decl.name in self.cell_names() and addressable(ctype)
         symbol = self.declare(decl.name, "local", ctype, cell=cell)
         self.write_variable(symbol, value, decl)
+        if destructs:
+            assert self.destructed is not None
+            self.destructed.append(symbol.py)
 
-    def _destructible(self, decl: VarDecl, ctype: CType | None) -> None:
-        """Refuse a local object whose destructor C++ would run where Python runs none."""
+    def _destructible(self, decl: VarDecl, ctype: CType | None) -> bool:
+        """Does ``decl`` hold an object whose destructor does something as its scope ends?
+
+        In a row of statements the rest of them go in a ``try`` that runs it
+        (see :meth:`statements`); anywhere else - a ``for``'s first clause, an
+        ``if``'s condition - it is refused.
+        """
         if ctype is None or ctype.pointer or ctype.reference or ctype.dims:
-            return
+            return False
         info = self.program.classes.get(ctype.name)
         if info is None:
-            return
+            return False
         destructors = info.methods.get("~" + info.name, [])
-        if any(func.body is not None for func in destructors):
-            raise self.refuse(
-                f"the local {info.name} {decl.name}, whose destructor C++ runs as the scope ends",
-                decl,
-            )
+        if not any(func.body is not None for func in destructors):
+            return False
+        if self.destructed is None:
+            why = f"the local {info.name} {decl.name} declared in a condition or a for's first part"
+            raise self.refuse(f"{why}, whose destructor C++ runs as that statement ends", decl)
+        return True
 
     def write_variable(self, symbol: Symbol, value: str, decl: VarDecl) -> None:
         if symbol.cell:
