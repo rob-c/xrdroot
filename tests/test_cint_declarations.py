@@ -49,7 +49,7 @@ def test_a_declaration_starts_its_variable_as_cpp_does(source: str, fragment: st
         ("auto [a, b];", "a structured binding with nothing to unpack"),
         ("auto x;", "auto x with nothing to take its type from"),
         ("int a[];", r"the array a\[\] with no size to give it"),
-        ("char s[4] = {'a', 'b'};", "the character array s initialised one char at a time"),
+        ("char c = 'x'; char s[4] = {c, 'b'};", "the character array s initialised one char"),
     ],
 )
 def test_declarations_with_no_python_that_does_the_same_are_refused(source: str, why: str) -> None:

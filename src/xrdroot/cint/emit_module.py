@@ -17,7 +17,7 @@ from typing import Any
 
 from .ctype import CType
 from .emit_classes import ClassEmitter
-from .emit_vars import addressable
+from .emit_vars import addressable, sized
 from .nodes import ClassDecl, DeclStmt, EnumDecl, Function, Namespace, Stmt, VarDecl
 from .program import Program
 from .returned import spelling
@@ -144,7 +144,7 @@ class Translator(ClassEmitter):
                 continue
             symbol = self.lookup(var.name)
             assert symbol is not None
-            ctype = self.declared_type(var)
+            ctype = sized(self.declared_type(var), var)
             symbol.ctype = ctype
             self.write_variable(symbol, self.initial(var, ctype), var)
 

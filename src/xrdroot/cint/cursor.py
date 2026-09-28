@@ -56,7 +56,8 @@ KNOWN_TEMPLATES = frozenset(
     TTreeReaderArray RResultPtr RNode TArrayT atomic optional variant valarray bitset
     initializer_list less greater hash reference_wrapper weak_ptr remove_reference decay
     is_same enable_if RVecOps span TNDArrayT THnT THnSparseT RHist RVec RTensor
-    TMatrixTRow TMatrixTColumn TMatrixTDiag""".split()
+    TMatrixTRow TMatrixTColumn TMatrixTDiag duration time_point dynamic_range_cast
+    static_range_cast""".split()
 )
 
 #: What a ROOT class name looks like, when nothing declared it: TH1F, RooRealVar, RVec...
@@ -72,8 +73,12 @@ STD_TYPES = frozenset(
     istringstream ifstream ofstream fstream ostream istream string_view size_t iterator
     runtime_error exception optional variant atomic bitset valarray initializer_list
     int32_t uint32_t int64_t uint64_t uint8_t ptrdiff_t mutex thread chrono mt19937
-    default_random_engine uniform_real_distribution normal_distribution""".split()
+    default_random_engine uniform_real_distribution normal_distribution nano micro milli ratio
+    duration time_point""".split()
 )
+
+#: C's types that are named, not keywords, and a macro uses without declaring.
+C_TYPES = frozenset({"FILE", "time_t", "va_list", "clock_t"})
 
 
 class NoParse(Exception):
@@ -84,6 +89,8 @@ def looks_like_type(parts: list[str], known: set[str]) -> bool:
     """Would ``a::b::c`` be the name of a type, from its spelling and what has been declared?"""
     last = parts[-1]
     if last in known or last in BUILTIN_WORDS or "::".join(parts) in ROOT_TYPEDEFS:
+        return True
+    if len(parts) == 1 and last in C_TYPES:
         return True
     if len(parts) > 1:
         return _qualified_type(parts, known)

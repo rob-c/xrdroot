@@ -222,6 +222,9 @@ class ExprEmitter(NameEmitter):
     def _offset(self, node: Binary) -> Out:
         left = self.typeof(node.left)
         assert left is not None
+        if left.is_string and node.op == "+" and not left.dims:
+            # ``slash + 1``: the C string from there on, which is what reading it gives.
+            return f"{self.at(node.left, P.POSTFIX)}[{self.value(node.right)}:]", P.POSTFIX
         if node.op == "-" or left.is_string or not left.element().scalar:
             raise self.refuse(f"pointer arithmetic on a {_spelled(left)}", node)
         return f"{self.at(node.left, P.POSTFIX)}[{self.value(node.right)}:]", P.POSTFIX

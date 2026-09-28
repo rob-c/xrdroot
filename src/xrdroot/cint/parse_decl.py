@@ -342,9 +342,13 @@ class Parser(StmtParser):
             self.pop()
         if not self.at_(*AFTER_PARAMETERS):
             raise NoParse
-        if self.at_(";") and not all(p.name or self.is_type([p.ctype.name]) for p in params):
+        if self.at_(";") and not all(self._named_or_typed(p) for p in params):
             raise NoParse
         return True
+
+    def _named_or_typed(self, param: Param) -> bool:
+        """A prototype's parameter: named, or of a type known to be one (``UInt_t``, ``FILE *``)."""
+        return bool(param.name) or param.ctype.arithmetic or self.is_type([param.ctype.name])
 
     def function_rest(
         self,

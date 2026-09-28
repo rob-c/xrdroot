@@ -20,6 +20,7 @@ __all__ = [
     "strcasecmp",
     "strstr",
     "strchr",
+    "strrchr",
     "atoi",
     "atol",
     "atof",
@@ -85,6 +86,13 @@ def strstr(haystack: Any, needle: Any) -> str | None:
 
 def strchr(haystack: Any, char: Any) -> str | None:
     return strstr(haystack, cstr(char))
+
+
+def strrchr(haystack: Any, char: Any) -> str | None:
+    """C's ``strrchr``: the rest of ``haystack`` from the last ``char`` in it, or ``None``."""
+    text = cstr(haystack)
+    at = text.rfind(cstr(char))
+    return None if at < 0 else text[at:]
 
 
 def _leading(text: Any, pattern: str) -> str:

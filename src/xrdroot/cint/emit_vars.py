@@ -97,7 +97,7 @@ class VariableEmitter(StmtEmitter):
         if decl.static and self.contexts:
             self.static_local(decl)
             return
-        ctype = _sized(self.declared_type(decl), decl)
+        ctype = sized(self.declared_type(decl), decl)
         alias = self.alias_of(decl, ctype)
         if alias is not None:
             self.declare(decl.name, "local", ctype, alias=alias)
@@ -286,13 +286,11 @@ class VariableEmitter(StmtEmitter):
 
     def _dimensions(self, decl: VarDecl, ctype: CType, init: Expr | None) -> str:
         dims = []
-        for index, dim in enumerate(ctype.dims):
+        for dim in ctype.dims:
             if dim is None:
-                if not isinstance(init, InitList) or index:
-                    raise self.refuse(f"the array {decl.name}[] with no size to give it", decl)
-                dims.append(str(len(init.items)))
-            else:
-                dims.append(str(dim) if isinstance(dim, int) else self.value(dim))
+                # A size an initialiser gives was given it by ``sized``; this has none.
+                raise self.refuse(f"the array {decl.name}[] with no size to give it", decl)
+            dims.append(str(dim) if isinstance(dim, int) else self.value(dim))
         return dims[0] if len(dims) == 1 else f"({', '.join(dims)})"
 
     def _char_array(self, decl: VarDecl, ctype: CType, init: Expr | None) -> str:
@@ -304,8 +302,7 @@ class VariableEmitter(StmtEmitter):
         if init is None:
             return "''"
         if isinstance(init, InitList):
-            why = f"the character array {decl.name} initialised one char at a time"
-            raise self.refuse(why, decl)
+            return repr(_characters(init, decl, self.refuse))
         return self.value(init)
 
     def static_local(self, decl: VarDecl) -> None:
@@ -316,7 +313,7 @@ class VariableEmitter(StmtEmitter):
         value is a constant, which C++ (and the translation) sets before
         anything runs.
         """
-        ctype = _sized(self.declared_type(decl), decl)
+        ctype = sized(self.declared_type(decl), decl)
         kind = f", {ctype.name!r}" if ctype is not None and ctype.scalar else ""
         symbol = self.declare(decl.name, "local", ctype, cell=True)
         symbol.py = self.fresh(f"{self._static_owner()}_{decl.name}")
@@ -350,6 +347,15 @@ def _constant_static(decl: VarDecl, ctype: CType | None) -> bool:
     return not any(isinstance(node, (Name, Call, New, Lambda, This)) for node in walk(decl))
 
 
+def _characters(init: InitList, decl: VarDecl, refuse: Any) -> str:
+    """``char s[8] = {'a', 'b', 0}``: the C string the characters spell, to the first NUL."""
+    if not all(isinstance(item, Literal) and item.kind in ("char", "int") for item in init.items):
+        why = f"the character array {decl.name} initialised one char at a time from variables"
+        raise refuse(why, decl)
+    text = "".join(chr(int(item.value)) for item in init.items)  # type: ignore[attr-defined]
+    return text.split("\0", 1)[0]
+
+
 def _value_like(ctype: CType | None, init: Expr) -> bool:
     """Is what a reference is bound to a number or string - not an object, already shared?"""
     if ctype is None:
@@ -374,7 +380,7 @@ def _container(ctype: CType) -> bool:
     return ctype.name.split("::")[-1] in CONTAINERS
 
 
-def _sized(ctype: CType | None, decl: VarDecl) -> CType | None:
+def sized(ctype: CType | None, decl: VarDecl) -> CType | None:
     """``int a[] = {1, 2, 3}`` has the size its initialiser gives it, which ``sizeof`` needs."""
     if ctype is None or not ctype.dims or ctype.dims[0] is not None:
         return ctype
