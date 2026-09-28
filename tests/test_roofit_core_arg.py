@@ -157,6 +157,18 @@ def test_the_walks_hand_back_the_variables_parameters_and_observables_root_does(
     assert [one.GetName() for one in g.getComponents()] == ["g"]
 
 
+def test_the_parameters_asked_for_into_a_set_are_added_to_it_sorted_as_root_sorts_them() -> None:
+    """``getParameters(observables, outputSet)`` fills the caller's set and returns false, as
+    ROOT does: what the set held stays, the rest is added, and the whole is sorted by name."""
+    x, _m, s, g = gaussian()
+    held = RooArgSet(s)
+    assert g.getParameters(RooArgSet(x), held) is False
+    assert [one.GetName() for one in held] == ["mean", "sigma"]
+    everything = RooArgSet()
+    assert g.getParameters(None, everything, True) is False
+    assert [one.GetName() for one in everything] == ["mean", "sigma", "x"]
+
+
 def test_what_a_node_depends_on_is_its_variables_and_constants_below_it() -> None:
     """``dependsOn`` looks through the graph; ``dependents`` names the variables, once."""
     x, m, _s, g = gaussian()
