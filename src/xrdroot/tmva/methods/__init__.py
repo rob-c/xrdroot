@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from ..method import Method
 from .bdt import MethodBDT
+from .dl import MethodDL, MethodDNN
 from .likelihood import MethodLikelihood
 from .linear import MethodFisher, MethodLD
+from .mlp import MethodMLP
 
 __all__ = ["REGISTRY", "Method"]
 
@@ -23,5 +25,8 @@ REGISTRY: dict[str, type[Method]] = {
         MethodFisher,
         MethodLikelihood,
         MethodBDT,
+        MethodMLP,
+        MethodDL,
+        MethodDNN,
     )
 }
