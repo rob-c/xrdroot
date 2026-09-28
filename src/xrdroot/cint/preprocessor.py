@@ -13,6 +13,7 @@ housekeeping macros - ``ClassDef``, ``ClassImp``, ``R__LOAD_LIBRARY``,
 
 from __future__ import annotations
 
+import re
 from collections import deque
 from collections.abc import Callable
 from pathlib import Path
@@ -27,6 +28,8 @@ __all__ = ["Macro", "Preprocessor", "preprocess", "PREDEFINED"]
 ROOT_VERSION = (6 << 16) | (40 << 8) | 4
 
 #: The macros defined before a macro's first line: Cling's, the platform's and ROOT's own.
+#: ``R__HAS_MATHMORE`` is RConfigure.h's for a ROOT built with MathMore, as the ROOT
+#: releases (and the one tutorials are compared against) are: its macros take that branch.
 PREDEFINED = f"""
 #define __CLING__ 1
 #define __cplusplus 201703L
@@ -35,6 +38,7 @@ PREDEFINED = f"""
 #define R__UNIX 1
 #define R__LINUX 1
 #define R__USE_IMT 1
+#define R__HAS_MATHMORE 1
 #define ROOT_VERSION_CODE {ROOT_VERSION}
 #define ROOT_VERSION(a, b, c) (((a) << 16) + ((b) << 8) + (c))
 #define R__LOAD_LIBRARY(x)
@@ -65,6 +69,21 @@ PREDEFINED = f"""
 
 #: The extensions a local file an ``#include`` names may be read from.
 MAXIMUM_DEPTH = 40
+
+
+#: Headers of the libraries whose programs are not macros ROOT runs, and what each is.
+OUT_OF_SCOPE = (
+    (re.compile(r"^(?:Q[A-Z]\w*|Qt\w+/.*)$"), "a Qt widget program, which builds against Qt"),
+    (re.compile(r"^(?:sycl/.*|CL/sycl\.hpp)$"), "a SYCL program, which runs on a device queue"),
+)
+
+
+def _in_scope(header: str, where: Where) -> None:
+    """Refuse a program built on Qt or SYCL: C++ that no Python translation runs."""
+    for pattern, what in OUT_OF_SCOPE:
+        if pattern.match(header):
+            why = f"#include <{header}> makes this {what}: a program, not a macro, out of scope"
+            raise Refusal(why, where)
 
 
 class Macro:
@@ -225,6 +244,7 @@ class Preprocessor:
 
     def _include(self, words: list[Token], where: Where, out: list[Token]) -> None:
         words = self.expand(words)
+        _in_scope("".join(word.text for word in words).strip('<>"'), where)
         if not words or words[0].kind != "str":
             return
         name = words[0].text[1:-1]
