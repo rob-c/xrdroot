@@ -9,7 +9,9 @@ file descriptor, past Python's buffer, when a PyROOT script is running
 (``import ROOT`` is :mod:`xrdroot.pyroot`) and standard output is the
 process's own and not a terminal. Everywhere else - a translated macro,
 whose ``cout`` is Python's stream too, or a test capturing output - they go
-to ``sys.stdout`` like anything else.
+to ``sys.stdout`` like anything else. When ``xrdroot run`` has split standard
+output (:mod:`xrdroot.stdio`) the lines go to its C buffer instead, which
+keeps the same order and also writes out whenever it fills, as C's does.
 """
 
 from __future__ import annotations
@@ -17,6 +19,8 @@ from __future__ import annotations
 import atexit
 import os
 import sys
+
+from .. import stdio
 
 __all__ = ["line", "write"]
 
@@ -36,6 +40,9 @@ PENDING: list[str] = []
 
 def write(text: str) -> None:
     """Print ``text`` as C++'s ``std::cout`` would."""
+    if stdio.active():
+        stdio.cwrite(text)
+        return
     if _direct():
         os.write(1, ("".join(PENDING) + text).encode())
         PENDING.clear()
@@ -46,6 +53,9 @@ def write(text: str) -> None:
 
 def write_unflushed(text: str) -> None:
     """``std::cout << text`` with no ``std::endl``: out with the next flush, or at the end."""
+    if stdio.active():
+        stdio.printf(text)
+        return
     if not _direct():
         write(text)
         return

@@ -14,6 +14,8 @@ from typing import Any
 
 import numpy as np
 
+from ..stdio import printf
+
 __all__ = ["CutInfo", "CutFlowReport", "Display"]
 
 
@@ -96,7 +98,8 @@ class CutFlowReport:
         return "\n".join(lines)
 
     def Print(self) -> None:
-        print(self)
+        """Every line, with ``printf`` as ROOT prints them: unflushed, after a script's own."""
+        printf("".join(line + "\n" for line in str(self).splitlines()))
 
     at = At
     print = Print

@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 
 from ...hist import Histogram
+from ...stdio import unflushed
 from .histbins import Bins
 from .histcore import Booked
 from .histops import Operations
@@ -44,7 +45,15 @@ class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarke
     kNoAxis, kXaxis, kYaxis, kZaxis, kAllAxes = 0, 1, 2, 4, 7
 
     def Print(self, option: str = "") -> None:
-        """``Print``: ROOT's one-line summary; ``"all"``, ``"range"`` or ``"base"`` more."""
+        """``Print``: ROOT's one-line summary; ``"all"``, ``"range"`` or ``"base"`` more.
+
+        ROOT prints it all with ``printf`` and never flushes, so from a script
+        into a pipe it comes after the script's own lines (:mod:`xrdroot.stdio`).
+        """
+        with unflushed():
+            self._print(option)
+
+    def _print(self, option: str) -> None:
         entries = int(self.GetEntries())
         print(
             f"TH1.Print Name  = {self.GetName()}, Entries= {entries}, "

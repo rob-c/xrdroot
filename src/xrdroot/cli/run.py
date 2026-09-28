@@ -42,11 +42,18 @@ def add_parser(subparsers: Any) -> None:
 
 
 def _script(path: Path) -> int:
-    """A PyROOT script, run with ``import ROOT`` meaning :mod:`xrdroot.pyroot`."""
+    """A PyROOT script, run with ``import ROOT`` meaning :mod:`xrdroot.pyroot`.
+
+    Its standard output is :func:`xrdroot.stdio.split`, so that what it
+    prints and what ROOT prints arrive in the order they would from PyROOT.
+    """
     import importlib
 
+    from ..stdio import split
+
     sys.modules["ROOT"] = importlib.import_module("xrdroot.pyroot")
-    runpy.run_path(str(path), run_name="__main__")
+    with split():
+        runpy.run_path(str(path), run_name="__main__")
     return 0
 
 
