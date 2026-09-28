@@ -26,8 +26,11 @@ def canonical(arg: RooCmdArg) -> RooCmdArg:
     if arg.name == "Range" and arg.args and isinstance(arg.args[0], str):
         return RooCmdArg("RangeWithName", *arg.args)
     if arg.name == "Components":
-        kind = "SelectCompSpec" if isinstance(arg.value(0), str) else "SelectCompSet"
-        return RooCmdArg(kind, *arg.args)
+        if isinstance(arg.value(0), str):
+            return RooCmdArg("SelectCompSpec", *arg.args)
+        # Components(bkg, sig2) is one set of both, as RooFit's variadic Components makes it.
+        chosen = list(arg.args) if len(arg.args) > 1 else arg.value(0)
+        return RooCmdArg("SelectCompSet", chosen)
     return arg
 
 
