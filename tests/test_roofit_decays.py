@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from refmachine import ROOTS_MACHINE
 from xrdroot.roofit.categories import RooCategory
 from xrdroot.roofit.cerf import eval_cerf, eval_cerf_approx, faddeeva_fast
 from xrdroot.roofit.cmdargs import RooCmdArg
@@ -52,10 +53,16 @@ FADDEEVA = [
 
 
 def test_the_faddeeva_function_is_roots_to_the_last_bit() -> None:
+    """ROOT's bits on ROOT's machine. On another C library ``exp``, ``cos`` and ``sin`` may each
+    be an ulp away, and where ``2 exp(-z^2)`` and the sum nearly cancel - the real part at
+    1.5 - 0.3i is -0.03 from terms of 0.14 - an ulp of a term is several of the part's; of
+    ``|w|`` it is under one, so ``w`` is held within 1e-15 of ``|w|``, some nine ulps."""
     z = np.array([complex(*point) for point, _ in FADDEEVA])
     found = faddeeva_fast(z)
     for w, (_, (re, im)) in zip(found, FADDEEVA):
-        assert (float(w.real), float(w.imag)) == (re, im)
+        if ROOTS_MACHINE:
+            assert (float(w.real), float(w.imag)) == (re, im)
+        assert abs(complex(w) - complex(re, im)) <= 1e-15 * abs(complex(re, im))
     assert faddeeva_fast(complex(0.1, 0.2)) == complex(*FADDEEVA[0][1])
 
 

@@ -7,7 +7,9 @@ integrand written in C++. The RooFit ones came from
 logged that it chose ``RooAdaptiveIntegratorND``. The values, the relative
 errors, the statuses and the evaluation counts are all compared exactly,
 because the port makes the same cuts in the same order and adds up the
-same terms in the same order as ROOT.
+same terms in the same order as ROOT - given the integrand's values. Those
+come from the C library's ``exp`` and ``cos``, and where another library
+rounds some in the last place the comparison is :func:`like_roots`'s.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from refmachine import ROOTS_MACHINE
 from xrdroot.roofit import cubature
 from xrdroot.roofit.cubature import Cubature, adaptive_integral, integrate_nd
 
@@ -65,6 +68,24 @@ def roofit_peak(x: Sequence[float]) -> float:
     return 1.0 / (1e-12 + (x[0] - 0.3) * (x[0] - 0.3) + (x[1] - 0.6) * (x[1] - 0.6))
 
 
+def like_roots(result: Any, expected: tuple[float, float, int, int], dimensions: int) -> None:
+    """``result`` is ROOT's ``expected`` to the bit on ROOT's machine. On another libm, an
+    integrand an ulp away can tip one region's error past another's, so the rule cuts a region
+    more or fewer: the value is still ROOT's within the error either estimates (and in fact to
+    ~1e-13), the error estimate within a hundredth of ROOT's, the status ROOT's, and the count
+    ROOT's give or take a few whole regions, of ``2^n + 2n^2 + 2n + 1`` points each."""
+    if ROOTS_MACHINE:
+        assert result == expected
+        return
+    value, relerr, status, neval = expected
+    per_region = 2**dimensions + 2 * dimensions**2 + 2 * dimensions + 1
+    assert result.status == status
+    assert result.value == pytest.approx(value, rel=max(relerr, result.relerr))
+    assert result.relerr == pytest.approx(relerr, rel=1e-2)
+    assert (result.neval - neval) % per_region == 0
+    assert abs(result.neval - neval) <= 0.01 * neval
+
+
 def test_a_smooth_two_dimensional_integral_matches_root() -> None:
     result = adaptive_integral(gauss2, [-1, -1], [1, 1])
     assert result == (2.2309851414231288, 9.004896973777259e-08, 0, 1785)
@@ -77,12 +98,12 @@ def test_a_peaked_two_dimensional_integral_matches_root() -> None:
 
 def test_a_three_dimensional_integral_matches_root() -> None:
     result = adaptive_integral(skewed3, [-1, -2, -1.5], [2, 1, 1.5])
-    assert result == (2.041070799900186, 9.995693990188707e-08, 0, 318747)
+    like_roots(result, (2.041070799900186, 9.995693990188707e-08, 0, 318747), 3)
 
 
 def test_a_four_dimensional_integral_matches_root() -> None:
     result = adaptive_integral(wave4, [0, 0, 0, 0], [1, 2, 1, 2])
-    assert result == (2.929072991235859, 9.986214265040135e-08, 0, 83961)
+    like_roots(result, (2.929072991235859, 9.986214265040135e-08, 0, 83961), 4)
 
 
 def test_a_polynomial_is_exact_after_one_rule() -> None:
@@ -123,7 +144,7 @@ def test_reversed_limits_are_integrated_as_root_integrates_them() -> None:
 
 def test_a_maximum_below_the_minimum_becomes_ten_times_the_minimum() -> None:
     result = adaptive_integral(gauss2, [-1, -1], [1, 1], max_pts=10, min_pts=40)
-    assert result == (2.230985180356792, 1.6246258803536053e-06, 1, 391)
+    like_roots(result, (2.230985180356792, 1.6246258803536053e-06, 1, 391), 2)
 
 
 def test_a_nan_integrand_cuts_the_first_axis_until_the_evaluations_run_out() -> None:
