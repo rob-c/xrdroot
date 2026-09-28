@@ -7,8 +7,11 @@
 
 A C++ macro is translated into Python by :mod:`xrdroot.cint` and run, and the
 function named like its file called with the arguments given in brackets, as
-``root`` does; ``file.C+`` runs the same way. A Python script is run as a
-PyROOT script, with ``import ROOT`` giving :mod:`xrdroot.pyroot`.
+``root`` does; ``file.C+`` runs the same way. What the function returns is
+printed as cling prints it, ``(TCanvas *) 0x...``, and is the exit status, as
+``root -q`` makes it: ``hsimple.C``, returning its ``TFile *``, exits 255.
+A Python script is run as a PyROOT script, with ``import ROOT`` giving
+:mod:`xrdroot.pyroot`.
 """
 
 from __future__ import annotations
@@ -52,8 +55,7 @@ def _script(path: Path) -> int:
 
 def run(args: argparse.Namespace) -> int:
     from ..cint import translate_file
-    from ..cint.execute import arguments, split_call
-    from ..cint.execute import run as run_macro
+    from ..cint.execute import arguments, run_and_quit, split_call
 
     path_text, given = split_call(args.macro)
     path = Path(path_text)
@@ -62,5 +64,4 @@ def run(args: argparse.Namespace) -> int:
     if args.python:
         sys.stdout.write(translate_file(path))
         return 0
-    run_macro(path, arguments(given), use_cache=not args.no_cache)
-    return 0
+    return run_and_quit(path, arguments(given), use_cache=not args.no_cache)

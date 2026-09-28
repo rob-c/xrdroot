@@ -36,9 +36,10 @@ def test_run_runs_a_macro_with_its_arguments(
     path = write(
         tmp_path, "count.C", 'int count(int n = 2) { printf("%d\\n", n * kRed); return 7; }'
     )
-    assert main(["run", str(path)]) == 0
-    assert main(["run", f"{path}(3)", "--no-cache"]) == 0
-    assert capsys.readouterr().out == "1264\n1896\n"
+    # What the macro returns cling prints, and root -q exits with.
+    assert main(["run", str(path)]) == 7
+    assert main(["run", f"{path}(3)", "--no-cache"]) == 7
+    assert capsys.readouterr().out == "1264\n(int) 7\n1896\n(int) 7\n"
 
 
 def test_run_prints_the_translation_when_asked(

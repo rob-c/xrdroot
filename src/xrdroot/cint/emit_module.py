@@ -19,6 +19,7 @@ from .emit_classes import ClassEmitter
 from .emit_vars import addressable
 from .nodes import ClassDecl, DeclStmt, EnumDecl, Function, Namespace, Stmt, VarDecl
 from .program import Program
+from .returned import spelling
 from .symbols import Symbol, python_name
 from .writer import Writer
 
@@ -52,6 +53,8 @@ class Translator(ClassEmitter):
         self._emitted: set[str] = set()
         #: The Python name of the function running the macro runs, once known.
         self.entry: str | None = None
+        #: The type the entry returns as cling spells it, for ``root -q`` to print and exit with.
+        self.entry_returns: str | None = None
 
     def function_named(self, symbol: Symbol) -> list[Any]:
         if symbol.owner is not None:
@@ -150,6 +153,7 @@ class Translator(ClassEmitter):
             symbol = self.lookup(self.stem)
             if symbol is not None and symbol.kind == "function":
                 self.entry = symbol.py
+                self.entry_returns = spelling(self.program.overloads(self.stem)[0].returns)
         if self.entry is None:
             return
         self.out.blank(2)
