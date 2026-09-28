@@ -45,6 +45,9 @@ __all__ = ["WritableTree", "BASKET_BYTES"]
 #: The record versions written here, which are the ones :mod:`.winfo`
 #: describes: what the file says about its classes is what its records are.
 TREE_VERSION = 19
+#: The classes a tree can be written as, and the version of the record each wraps round
+#: the tree's own - a ``TNtuple`` is a tree followed by how many variables it has.
+TREE_KINDS = {"TTree": None, "TNtuple": 2, "TNtupleD": 1}
 BRANCH_VERSION = 12
 LEAF_VERSION = 2
 SUBLEAF_VERSION = 1
@@ -908,7 +911,14 @@ class WritableTree:
         basket_size: int,
         cycle: int,
         counters: Mapping[str, Any] | None = None,
+        *,
+        classname: str = "TTree",
     ) -> None:
+        if classname not in TREE_KINDS:
+            raise ValueError(
+                f"a tree is written as one of {', '.join(TREE_KINDS)}, and {classname!r} "
+                f"is none of them"
+            )
         if not isinstance(columns, Mapping):
             raise TypeError(
                 f"the columns are a {type(columns).__name__}; a tree is declared with a "
@@ -926,6 +936,8 @@ class WritableTree:
         #: What the tree is called, and what it says it is.
         self.name = name
         self.title = title
+        #: The class the tree is written as: a ``TTree``, or a ``TNtuple`` or ``TNtupleD``.
+        self.classname = classname
         self._entries = 0
         self._columns: dict[str, _Column] = {}
         self._counters: dict[str, _Counter] = {}
@@ -983,7 +995,8 @@ class WritableTree:
     @property
     def classes(self) -> tuple[str, ...]:
         """The classes this tree will be made of, for the file to describe."""
-        return ("TTree", "TBranch", *dict.fromkeys(c.classname for c in self._branches))
+        leaves = [column.classname for column in self._branches]
+        return tuple(dict.fromkeys((self.classname, "TTree", "TBranch", *leaves)))
 
     def fill(self, **values: Any) -> None:
         """Add one entry, with a value for every column.
@@ -1190,9 +1203,9 @@ class WritableTree:
         """Flush what is left, then write the record that ties it all together."""
         for column in self._branches:
             self._flush(column)
-        keylen = self._file._key_length("TTree", self.name, self.title)
+        keylen = self._file._key_length(self.classname, self.name, self.title)
         payload = self._payload(keylen)
-        self._file._put("TTree", self.name, self.title, payload, self._cycle, listed=True)
+        self._file._put(self.classname, self.name, self.title, payload, self._cycle, listed=True)
 
     def _payload(self, origin: int) -> bytes:
         """The tree's own record: its fields, its branches, then its leaves.
@@ -1204,6 +1217,16 @@ class WritableTree:
         column's leaf points at its counter's the same way.
         """
         buf = WBuffer()
+        wrapper = TREE_KINDS[self.classname]
+        outer = buf.start(wrapper) if wrapper is not None else None
+        self._tree_record(buf, origin)
+        if outer is not None:
+            buf.i32(len(self._branches))  # the ntuple's fNvar: a variable a branch
+            buf.end(outer)
+        return bytes(buf.data)
+
+    def _tree_record(self, buf: WBuffer, origin: int) -> None:
+        """The ``TTree`` itself: the whole record, or the base of a ``TNtuple``'s."""
         index = buf.start(TREE_VERSION)
         buf.named(self.name, self.title)
         _attributes(buf)
@@ -1242,7 +1265,6 @@ class WritableTree:
         buf.u32(0)  # fUserInfo: none
         buf.u32(0)  # fBranchRef: none
         buf.end(index)
-        return bytes(buf.data)
 
     def _write_branches(self, buf: WBuffer, origin: int) -> dict[str, int]:
         """Every branch in order; where each one's leaf landed comes back."""

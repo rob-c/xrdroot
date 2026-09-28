@@ -1082,6 +1082,7 @@ class WritableDirectory:
         title: str | None = None,
         basket_size: int = BASKET_BYTES,
         counters: Mapping[str, Any] | None = None,
+        classname: str = "TTree",
     ) -> WritableTree:
         """A tree in this directory, to be filled entry by entry.
 
@@ -1100,6 +1101,8 @@ class WritableDirectory:
         when the file closes. A name with a ``/`` in it puts the tree in the
         directory it names. A counter is a 32-bit int unless ``counters``
         gives its name another integer type, as ROOT's ``n/b`` would be.
+        ``classname`` writes the tree as a ``TNtuple`` or ``TNtupleD`` instead,
+        as ROOT writes one: the same tree, and how many variables it has.
         """
         from .wtree import WritableTree
 
@@ -1107,7 +1110,9 @@ class WritableDirectory:
         here._check_leaf(leaf)
         _checked(title or "", "title")
         cycle = here._next_cycle(leaf)
-        tree = WritableTree(here, leaf, title or "", columns, basket_size, cycle, counters)
+        tree = WritableTree(
+            here, leaf, title or "", columns, basket_size, cycle, counters, classname=classname
+        )
         self._file._trees.append(tree)
         self._file._used.update(dict.fromkeys(tree.classes))
         return tree

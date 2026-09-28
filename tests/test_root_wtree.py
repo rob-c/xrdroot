@@ -630,3 +630,37 @@ def test_a_column_knows_how_it_will_be_spelled():
     assert (column.typename, column.size, column.unsigned) == ("uint8", 784, True)
     plain = _Column("x", "d", 1, 32_000)
     assert (plain.title, plain.leaf_title) == ("x/D", "x")
+
+
+# -- ntuples ---------------------------------------------------------------
+
+
+def test_an_ntuple_is_a_tree_record_wrapped_in_its_own_with_how_many_variables_it_has():
+    data = written(
+        {"px": "f", "py": "f"}, [{"px": 1.5, "py": -2.0}], name="nt", classname="TNtuple"
+    )
+    buf, version, end = tree_record(data, "nt")
+    assert version == INFOS["TNtuple"][1] == 2
+    assert buf.skip_record() == TREE_VERSION  # the whole tree, as the ntuple's base
+    assert buf.i32() == 2  # fNvar
+    assert buf.pos == end
+    with read_back(data) as back:
+        assert back.key("nt").classname == "TNtuple"
+        assert back["nt"].arrays()["py"].tolist() == [-2.0]
+        described = back._source.streamers()
+        assert list(described["TNtuple"]) == ["TTree", "fNvar"]
+        assert "TTree" in described
+
+
+def test_an_ntuple_of_doubles_is_a_tntupled():
+    data = written({"a": float}, [{"a": 0.25}], name="nd", classname="TNtupleD")
+    _buf, version, _end = tree_record(data, "nd")
+    assert version == INFOS["TNtupleD"][1] == 1
+    with read_back(data) as back:
+        assert back.key("nd").classname == "TNtupleD"
+        assert back["nd"].arrays()["a"].tolist() == [0.25]
+
+
+def test_a_tree_is_written_as_no_class_but_a_tree_or_an_ntuple():
+    with pytest.raises(ValueError, match="TTree, TNtuple, TNtupleD, and 'TChain' is none"):
+        written({"x": float}, [], classname="TChain")
