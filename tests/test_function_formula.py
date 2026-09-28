@@ -103,10 +103,14 @@ def test_every_shape_root_names_the_parameters_of_is_named_as_root_names_them():
     assert Function("f", "gaus+expo").parameter_names == ("p0", "p1", "p2")
 
 
-def test_a_shape_inside_a_longer_formula_is_bracketed_so_it_stays_whole():
-    f = Function("f", "x/gaus", parameters=[2, 0, 1])
-    assert f.formula.startswith("x/([p0]*exp(")
-    assert f(1.0) == pytest.approx(1 / (2 * math.exp(-0.5)), rel=1e-15)
+def test_a_shape_inside_a_longer_formula_goes_in_unbracketed_as_root_puts_it():
+    # ROOT 6.40 writes these out so, and evaluates x/gaus as x/[p0]*exp(...): 0.9466395729327749.
+    f = Function("f", "x/gaus(0)", parameters=[1.5, 2.0, 0.5])
+    assert f.formula == "x/[p0]*exp(-0.5*((x-[p1])/[p2])*((x-[p1])/[p2]))"
+    assert f(1.7) == pytest.approx(0.9466395729327749, rel=1e-15)
+    g = Function("g", "x*gaus(0) + [3]*x", parameters=[1.0, 0.0, 1.0, 1.0])
+    assert g.formula.startswith("x*[p0]*exp(-0.5*((x-[p1])/[p2])")
+    assert Function("h", "x*pol1(0)").formula == "x*([p0]+[p1]*x)"  # a series stays bracketed
 
 
 def test_shapes_start_their_parameters_where_they_are_told():

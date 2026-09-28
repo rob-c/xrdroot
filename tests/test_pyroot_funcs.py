@@ -9,6 +9,7 @@ import math
 import numpy as np
 import pytest
 
+import xrdroot
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect, fresh
 from xrdroot.pyroot.core import funcs
@@ -285,3 +286,21 @@ def test_standard_functions_are_made_when_first_asked():
         (funcs._arguments(print), 2),
         (funcs._arguments(lambda *a: 0), 2),
     )
+
+
+def test_a_formula_is_written_as_a_tformula_and_a_function_using_it_as_root_expands_it(tmp_path):
+    # hist002_TH1_fillrandom_userfunc: ROOT 6.40's file holds a TFormula and this TF1's text.
+    form1 = ROOT.TFormula("form1", "abs(sin(x)/x)")
+    sqroot = ROOT.TF1("sqroot", "x*gaus(0) + [3]*form1", 0.0, 10.0)
+    assert form1.ClassName() == "TFormula"
+    path = str(tmp_path / "formula.root")
+    out = ROOT.TFile.Open(path, "RECREATE")
+    out.WriteObject(form1, form1.GetName())
+    out.WriteObject(sqroot, sqroot.GetName())
+    out.Close()
+    with xrdroot.open_root(path) as back:
+        assert back.key("form1").classname == "TFormula"
+        assert back["form1"].formula == "abs(sin(x)/x)"
+        assert back["sqroot"].formula == (
+            "x*[p0]*exp(-0.5*((x-[p1])/[p2])*((x-[p1])/[p2]))+[p3]*(abs(sin(x)/x))"
+        )

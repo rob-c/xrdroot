@@ -122,7 +122,8 @@ class TFormula(TNamed):
     def __init__(self, name: Any = "", formula: Any = "", *rest: Any) -> None:
         super().__init__()
         text = composed(str(formula)) if formula else "0"
-        self._xrd = Function(str(name), text, title=str(formula) or "0")
+        # A formula is a TFormula of its own, as ROOT writes one, not the TF1 holding it.
+        self._xrd = Function(str(name), text, title=str(formula) or "0").as_formula()
         remember(self._xrd, self)
         if name:
             _register(self)

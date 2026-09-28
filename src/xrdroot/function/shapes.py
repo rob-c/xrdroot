@@ -16,6 +16,13 @@ one shape - ``gaus``, ``expo``, ``landau`` - gets ROOT's names for its
 parameters, ``Constant``, ``Mean``, ``Sigma`` and the rest; every other
 parameter written by number is called ``p`` and its number, as ROOT calls
 it.
+
+A shape goes into the formula as ROOT puts it there, in place and - but for
+the series, ``polN``, which ROOT brackets - without brackets round it. So
+``x*gaus(0)`` is ``x*[p0]*exp(...)``, as ROOT 6.40 writes it out, and
+``x/gaus(0)`` is ``x/[p0]*exp(...)``: ROOT divides by the constant and
+multiplies by the exponential, and so does this, rather than dividing by the
+whole Gaussian the formula seems to say.
 """
 
 from __future__ import annotations
@@ -200,18 +207,13 @@ def _body(shape: str, variables: tuple[str, ...], offset: int, names: list[str])
         body = body.replace(f"{{V{index}}}", variable)
     count = max(int(label) for label in LABEL.findall(body)) + 1
     labels = _labelled(shape, _numbered(offset, names, count), count)
-    return "(" + LABEL.sub(lambda found: labels[int(found.group(1))], body) + ")"
+    return LABEL.sub(lambda found: labels[int(found.group(1))], body)
 
 
 def _expand_one(
     text: str, at: int, word: str, shape: tuple[str, tuple[str, ...]]
 ) -> tuple[str, int]:
-    """One shape at ``at``: what it stands for, and where the text carries on.
-
-    A shape inside a longer formula is bracketed, so ``x/gaus`` divides by
-    the whole Gaussian; one that is the whole formula is written as ROOT
-    writes it, without.
-    """
+    """One shape at ``at``: what it stands for, and where the text carries on."""
     end = at + len(word)
     args: list[str] = []
     if end < len(text) and text[end] == "(":
@@ -219,9 +221,7 @@ def _expand_one(
         args, end = _split(text[end + 1 : close]), close + 1
     variables, rest = _variables(shape[0], shape[1], args)
     offset, names = _parameters(shape[0], rest)
-    body = _body(shape[0], variables, offset, names)
-    whole = at == 0 and end == len(text) and not SERIES.match(shape[0])
-    return (body[1:-1] if whole else body), end
+    return _body(shape[0], variables, offset, names), end
 
 
 def _coordinate(text: str, found: re.Match[str]) -> tuple[str, int]:
