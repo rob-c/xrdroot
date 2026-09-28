@@ -301,8 +301,11 @@ def _frame(scene: Scene) -> None:
 
 
 def dress(scene: Scene) -> None:
-    """The frame's fill and outline, and its axes painted over them, once everything is drawn."""
-    if scene.owner is None:
+    """The frame's fill and outline, and its axes painted over them, once everything is drawn.
+
+    A lego or surface plot has neither: its box and axes are its own.
+    """
+    if scene.owner is None or scene.solid:
         return
     from .dressing import dress_axes
 

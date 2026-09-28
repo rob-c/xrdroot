@@ -182,7 +182,13 @@ def paint_histogram(scene: Scene, h: Histogram, option: str) -> None:
     if len(h.axes) > 2:
         scene.skipped.append(f"{_named(h)} (three dimensions have no flat picture)")
         return
-    _paint(scene, h, option)
+    from .legoplot import paint_three_d, three_d_kind
+
+    if len(h.axes) == 2 and three_d_kind(option) and "SAME" not in option.upper():
+        scene.solid = True
+        paint_three_d(scene, h, option)
+    else:
+        _paint(scene, h, option)
     _stats(scene, h, option)
 
 

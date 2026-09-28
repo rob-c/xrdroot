@@ -56,7 +56,9 @@ def _histogram_wrapper() -> Any:
         from ..core.wrapping import wrap
     except ImportError:
         return lambda made: made
-    return wrap  # pragma: no cover - once the core part is merged
+    from ..core.histcore import _in_style
+
+    return lambda made: wrap(_in_style(made))  # as TH1::Build styles every histogram
 
 
 _gather()

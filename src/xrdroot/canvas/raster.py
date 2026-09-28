@@ -173,9 +173,10 @@ def root_dashes(style: Any) -> tuple[int, ...]:
     return tuple(length // 4 for length in LINE_STYLES.get(int(style), ()))
 
 
-def add_line(scene: Any, points: Any, color: Any, thick: Any = 1, style: Any = 1, clip: Any = None) -> PixelLine:
-    """A :class:`PixelLine` through canvas ``points``, added to the pad over what is there."""
-    line = PixelLine(scene, points, color, int(thick), root_dashes(style), clip)
+def add_line(scene: Any, points: Any, color: Any, thick: Any = 1, style: Any = 1, clip: Any = None,
+             many: bool = False) -> PixelLine:  # fmt: skip
+    """A :class:`PixelLine` through canvas ``points`` (or, ``many``, each of a list), over what is there."""
+    line = PixelLine(scene, points, color, int(thick), root_dashes(style), clip, many)
     line.set_zorder(scene.layer())
     scene.ax.add_artist(line)
     line.set_clip_on(False)
@@ -217,17 +218,20 @@ def _artist_base() -> Any:
 
 
 class PixelLine(_artist_base()):  # type: ignore[misc]
-    """A ROOT line - a polyline of whole pixels - drawn pixel for pixel in a raster.
+    """ROOT lines - polylines of whole pixels - drawn pixel for pixel in a raster.
 
     ``points`` are the canvas's pixels, ``y`` down, as ``TImageDump`` rounds
-    them; ``clip`` is the box of pixels, inclusive, that is drawn in.
-    Vector output strokes the same line ``thick`` pixels wide.
+    them: one polyline, or with ``many`` a list of them; ``clip`` is the box
+    of pixels, inclusive, that is drawn in. Vector output strokes the same
+    lines ``thick`` pixels wide.
     """
 
     def __init__(self, scene: Any, points: Any, color: Any, thick: int = 1, dashes: tuple[int, ...] = (),
-                 clip: tuple[int, int, int, int] | None = None) -> None:  # fmt: skip
+                 clip: tuple[int, int, int, int] | None = None, many: bool = False) -> None:  # fmt: skip
         super().__init__()
-        self.points = np.rint(np.asarray(points, dtype=float)).astype(np.int64)
+        lines = points if many else [points]
+        self.lines = [np.rint(np.asarray(line, dtype=float)).astype(np.int64) for line in lines]
+        self.lines = [line for line in self.lines if len(line) >= 2]
         self.color = color
         self.thick = max(int(thick), 1)
         self.dashes = tuple(dashes)
@@ -235,9 +239,15 @@ class PixelLine(_artist_base()):  # type: ignore[misc]
         self.canvas_size = scene.canvas
         self.to_figure = scene.display
 
+    @property
+    def points(self) -> np.ndarray[Any, Any]:
+        """The first polyline's points."""
+        return self.lines[0] if self.lines else np.zeros((0, 2), dtype=np.int64)
+
     def pixels(self) -> np.ndarray[Any, Any]:
-        """Every pixel the line sets, inside its clip."""
-        found = polyline_pixels(self.points, self.thick, self.dashes)
+        """Every pixel the lines set, inside their clip."""
+        parts = [polyline_pixels(line, self.thick, self.dashes) for line in self.lines]
+        found = np.unique(np.concatenate(parts), axis=0) if parts else np.zeros((0, 2), dtype=np.int64)
         if self.pixel_clip is not None and len(found):
             x0, y0, x1, y1 = self.pixel_clip
             keep = (found[:, 0] >= x0) & (found[:, 0] <= x1) & (found[:, 1] >= y0) & (found[:, 1] <= y1)
@@ -245,7 +255,7 @@ class PixelLine(_artist_base()):  # type: ignore[misc]
         return found
 
     def draw(self, renderer: Any) -> None:
-        if not self.get_visible() or len(self.points) < 2:
+        if not self.get_visible() or not self.lines:
             return
         from matplotlib.backends.backend_agg import RendererAgg
 
@@ -279,6 +289,6 @@ class PixelLine(_artist_base()):  # type: ignore[misc]
         gc.set_linewidth(0.72 * self.thick)
         if self.dashes:
             gc.set_dashes(0, [0.72 * length for length in self.dashes])
-        centres = self.points.astype(float) + 0.5
-        renderer.draw_path(gc, Path(centres), self.to_figure, None)
+        for line in self.lines:
+            renderer.draw_path(gc, Path(line.astype(float) + 0.5), self.to_figure, None)
         gc.restore()

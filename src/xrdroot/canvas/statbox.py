@@ -28,6 +28,8 @@ OPT_STAT = 1111
 OPT_FIT = 0
 #: ``gStyle``'s place for a stats box: its top right corner and its size, in NDC.
 STAT_X, STAT_Y, STAT_W = 0.98, 0.935, 0.2
+#: Below how many entries ``PaintStat`` writes them as a whole number.
+ENTRIES_WHOLE = 1e7
 #: How tall each line of a stats box made from ``gStyle`` is.
 STAT_LINE = 0.04
 #: ``TH1::kNoStats``: the bit a histogram drawn without a stats box carries.
@@ -39,6 +41,11 @@ NOT_DRAW = 1 << 9
 def _value(number: float) -> str:
     """A number as ``gStyle``'s ``"6.4g"`` writes it."""
     return f"{number:.4g}"
+
+
+def _entries(number: float) -> str:
+    """The entries as ``PaintStat`` writes them: whole below ten million, else ``"14.7g"``."""
+    return str(int(number + 0.5)) if number < ENTRIES_WHOLE else f"{number:.7g}"
 
 
 Rows = Callable[[Any, int], list[tuple[str, str]]]
@@ -61,20 +68,21 @@ def _moment(name: str, what: str, error: str) -> Rows:
     return rows
 
 
-def _single(name: str, what: Callable[[Any], float], any_axes: bool = False) -> Rows:
+def _single(name: str, what: Callable[[Any], float], any_axes: bool = False,
+            shown: Callable[[float], str] = _value) -> Rows:  # fmt: skip
     """One line of one number - of a one-dimensional histogram, unless ``any_axes``."""
 
     def rows(h: Any, _digit: int) -> list[tuple[str, str]]:
         if len(h.axes) > 1 and not any_axes:
             return []
-        return [(name, _value(what(h)))]
+        return [(name, shown(what(h)))]
 
     return rows
 
 
 #: What each digit of ``fOptStat`` after the first asks for, the lowest first.
 STAT_LINES: tuple[Rows, ...] = (
-    _single("Entries", lambda h: h.entries, any_axes=True),
+    _single("Entries", lambda h: h.entries, any_axes=True, shown=_entries),
     _moment("Mean", "mean", "mean_error"),
     _moment("Std Dev", "std", "std_error"),
     _single("Underflow", lambda h: float(h.values(flow=True)[0])),

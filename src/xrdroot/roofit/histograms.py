@@ -78,7 +78,31 @@ def _book(name: str, axes: list[tuple[Any, Any]]) -> Histogram:
     """``RooAbsRealLValue::createHistogram``'s histogram: ``h__x_y``, "Histogram of h__x_y"."""
     edges = [_binning(var, command) for var, command in axes]
     full = name + "_" + "".join("_" + var.GetName() for var, _ in axes)
-    return Histogram.book(full, *[list(e) for e in edges], title=f"Histogram of {full}")
+    made = Histogram.book(full, *[list(e) for e in edges], title=f"Histogram of {full}")
+    titles = [_titled(var) for var, _ in axes]
+    if len(axes) < 3:
+        widths = " x ".join(_width(var, e) for (var, _), e in zip(axes, edges))
+        titles.append(f"{EVENTS} / ( {widths} )")
+    for letter, title in zip("xyz", titles):
+        made._core[f"f{letter.upper()}axis"]["TNamed"]["fTitle"] = title
+    return made
+
+
+#: ``createHistogram``'s label for the contents' axis, before the bins' widths.
+EVENTS = "Events"
+
+
+def _titled(var: Any) -> str:
+    """``getTitle(true)``: the variable's title, and its unit in brackets if it has one."""
+    unit = str(var.getUnit() or "")
+    return f"{var.GetTitle()} ({unit})" if unit else str(var.GetTitle())
+
+
+def _width(var: Any, edges: Any) -> str:
+    """One bin's average width, as ``%g`` writes it, and the variable's unit."""
+    unit = str(var.getUnit() or "")
+    width = f"{(float(edges[-1]) - float(edges[0])) / (len(edges) - 1):g}"
+    return f"{width} {unit}" if unit else width
 
 
 def _own_name(first: Any, args: tuple[Any, ...]) -> Any:
@@ -97,6 +121,8 @@ def _grid(edges: list[Any]) -> tuple[Any, Any]:
 def data_histogram(data: Any, first: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """``RooAbsData::createHistogram``."""
     name = _own_name(first, args)
+    if isinstance(first, str) and args and hasattr(args[0], "GetName"):  # (name, x, ...)
+        name, first, args = first, args[0], args[1:]
     axes = _axes(first, tuple(a for a in args if not isinstance(a, str)), kwargs, data.variable)
     options = commands([a for a in args if isinstance(a, RooCmdArg)], kwargs)
     made = _book(name or data.GetName(), axes)

@@ -44,6 +44,7 @@ class Scene:
         "canvas",
         "whole",
         "display",
+        "solid",
     )
 
     def __init__(
@@ -83,6 +84,8 @@ class Scene:
         #: How many stats boxes the pad has drawn, which offsets each new one.
         self.stats = 0
         self.depth = 0
+        #: Whether the pad drew its data in three dimensions, with a box and no frame.
+        self.solid = False
 
     def layer(self) -> float:
         """The next height to draw at, over everything drawn in the pad before.
