@@ -415,7 +415,8 @@ class TDirectoryFile(TDirectory):
             below.Close(option)
         if self._writable() is not None:
             for tree in [obj for obj in self._list if _inherits(obj, "TTree")]:
-                if not getattr(tree, "_written", True):
+                # A tree with no name, as ``new TTree()`` makes, has no key to be written under.
+                if not getattr(tree, "_written", True) and tree.GetName():
                     tree.Write()
         self.Clear()
         here = current_directory()

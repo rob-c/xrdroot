@@ -170,6 +170,13 @@ class MethodDL(Method):
         fraction = float(text)
         return int(total * fraction) if fraction < 1 else int(fraction)
 
+    def setup(self) -> None:
+        if self.opt("V"):
+            from ..optiondump import DL_OPTIONS, print_parsed
+
+            print_parsed(self.log, self.options.text, DL_OPTIONS)
+        super().setup()
+
     def booked(self) -> None:
         """``ProcessOptions``' word on the architecture, which is always the CPU here."""
         if str(self.opt("Architecture")).upper() == "GPU":
@@ -193,6 +200,8 @@ class MethodDL(Method):
         train = (events.values[:ntrain], target[:ntrain], events.weights[:ntrain])
         valid = (events.values[ntrain:], target[ntrain:], events.weights[ntrain:])
         self.history = {"trainingError": [], "valError": []}
+        # TMVA's squared error is the mean, not half of it, as the descent's loss is.
+        self._scale = 2.0 if kind not in ("ce", "softmax") else 1.0
         self.log.info("Compute initial loss  on the validation data ")
         for number, phase in enumerate(phases, 1):
             phase.seed = int(self.opt("RandomSeed")) + number
@@ -242,6 +251,7 @@ class MethodDL(Method):
         self.log.info("   Start epoch iteration ...")
 
     def _report(self, epoch: int, train: float, valid: float, improved: bool, since: int) -> None:
+        train, valid = train * self._scale, valid * self._scale
         now = time.perf_counter()
         spent, self._clock = now - self._clock, now
         self.history["trainingError"].append((epoch, train))
