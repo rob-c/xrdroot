@@ -180,6 +180,9 @@ def announce(func: Any, names: frozenset[str], rng: Any = None, label: str | Non
     """
     if normalising and getattr(func, "normalised_by_cache", False):
         return
+    inner = getattr(func, "announce_inner", None)
+    if inner is not None:  # integrals a closed form is made of, which may themselves be numeric
+        inner(frozenset(names), rng)
     numeric = numeric_names(func, names, rng)
     if not numeric:
         return

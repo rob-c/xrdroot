@@ -169,6 +169,24 @@ class RooAbsAnaConvPdf(RooAbsPdf):
     def integral_code(self, names: frozenset[str]) -> int:
         return 1
 
+    def announce_inner(self, names: frozenset[str], rng: Any) -> None:
+        """The convolutions' own integrals over ``names``, said the first time each is made.
+
+        RooFit integrates the density in closed form by integrating each
+        convolution over its variables (``conv->getNorm(intConvSet)``); a
+        convolution without a closed form in one of them - a per-event error
+        scaling the resolution - is a numerical ``RooRealIntegral`` then,
+        announced once and kept in the convolution's cache.
+        """
+        from ..integration import announce
+
+        conv_set = self._split(frozenset(names) & self.dependents())[1]
+        for conv in self.convs if conv_set else ():
+            made = conv.__dict__.setdefault("_integrals_made", set())
+            if (conv_set, rng) not in made:
+                made.add((conv_set, rng))
+                announce(conv, conv_set, rng)
+
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
         coef_set, conv_set = self._split(frozenset(names))
         total: Any = 0.0
