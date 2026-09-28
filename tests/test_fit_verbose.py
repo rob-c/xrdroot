@@ -147,3 +147,18 @@ def test_the_call_limit_is_fitters_and_an_invalid_minimum_reports_no_parameters(
     assert "b\t  = 2\t (fixed)" in fixed.minuit2_report(1220, 0.01, 1).splitlines()
     limited = FitResult(**one, fcn=1.0, bounded=[True])
     assert "a\t  = 1\t +/-  0.5\t(limited)" in limited.minuit2_report(1105, 0.01, 1)
+
+
+def test_ncalls_counts_migrads_calls_and_not_minos(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """minuit2GausFit.C's fit 2, ``E``: ROOT printed ``NCalls = 69``, MIGRAD's alone."""
+    ROOT.gRandom = ROOT.TRandom3()
+    h2 = ROOT.TH1D("h2_Minuit2", "Chi2 Fit with Minos Error", 100, -5, 5.0)
+    for _ in range(1000):
+        h2.Fill(ROOT.gRandom.Gaus(0, 1))
+    h2.Fit("gaus", "E")
+    lines = capsys.readouterr().out.splitlines()
+    assert "NCalls                    =           69" in lines
+    assert lines[-3].startswith("Constant                  =      36.3132   +/-   ")
+    assert lines[-3].endswith("-1.51651     +1.53547      (Minos) ")

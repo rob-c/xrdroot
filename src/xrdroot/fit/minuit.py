@@ -136,9 +136,10 @@ def minimize(
     minuit.migrad(ncall=ncall, iterate=1, use_simplex=False)
     if improve:
         minuit.migrad(ncall=ncall, iterate=1, use_simplex=False)
+    calls = int(minuit.nfcn)
     if hesse or minos:
         minuit.hesse()
-    return _result(minuit, labels, minos)
+    return _result(minuit, labels, minos, calls)
 
 
 def hessian(
@@ -185,7 +186,13 @@ def _minos(minuit: Any, labels: Sequence[str]) -> dict[str, tuple[float, float]]
     return found
 
 
-def _result(minuit: Any, labels: Sequence[str], minos: bool) -> FitResult:
+def _result(minuit: Any, labels: Sequence[str], minos: bool, calls: int) -> FitResult:
+    """What the fit found; ``calls`` are MIGRAD's, as ROOT's ``NCalls`` counts them.
+
+    HESSE and MINOS call the function too, but ROOT reports the calls of the
+    minimisation alone - option ``E``'s fit says the same ``NCalls`` as one
+    without it.
+    """
     fixed = [bool(flag) for flag in minuit.fixed]
     found_minos = _minos(minuit, labels) if minos else {}
     covariance = (
@@ -202,7 +209,7 @@ def _result(minuit: Any, labels: Sequence[str], minos: bool) -> FitResult:
         names=labels,
         fcn=float(minuit.fval),
         edm=float(minuit.fmin.edm),
-        nfev=int(minuit.nfcn),
+        nfev=calls,
         status=_status(minuit.fmin),
         valid=bool(minuit.valid),
         minos=found_minos,
