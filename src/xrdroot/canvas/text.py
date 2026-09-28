@@ -15,7 +15,9 @@ and is what :mod:`.latex` draws each piece of a formula with.
 
 from __future__ import annotations
 
+import functools
 import math
+import warnings
 from typing import Any
 
 from . import fonts
@@ -91,7 +93,7 @@ def glyphs(
         return None
     across, up = _alignment(fonts.extent(shown, int(font), em), align, angle)
     x, y = nint(at[0]) - across, nint(at[1]) + up
-    return scene.ax.text(
+    drawn = _glyph_text()(
         x,
         y,
         shown,
@@ -106,3 +108,32 @@ def glyphs(
         clip_on=False,
         zorder=scene.layer(),
     )
+    scene.ax.add_artist(drawn)
+    return drawn
+
+
+#: What matplotlib says of a letter a face has no glyph for, which it asks the Symbol font
+#: for when measuring a line's height by "lp" - before 3.7 without falling back to another.
+MEASURING = r"Glyph (108|112) \((l|p)\) missing"
+
+
+@functools.cache
+def _glyph_text() -> Any:
+    """matplotlib's ``Text``, drawn without its warning that the Symbol font has no "lp".
+
+    matplotlib sizes each line of a text by the height of "lp" in the text's
+    own face; ROOT's Symbol has Greek where those letters are, and a Symbol
+    with no Latin at all leaves matplotlib before 3.7 warning of the letters
+    it never draws.
+    """
+    from matplotlib.text import Text
+
+    class GlyphText(Text):  # type: ignore[misc]
+        """A string of ROOT's glyphs, one face and size, placed at a pixel."""
+
+        def draw(self, renderer: Any) -> None:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", MEASURING, UserWarning)
+                super().draw(renderer)
+
+    return GlyphText
