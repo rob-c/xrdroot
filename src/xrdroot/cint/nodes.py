@@ -375,6 +375,8 @@ class Function(Stmt):
     template: list[str] | None = None
     #: ``= 0``, ``= default``, ``= delete``: declared, and never to be given a body.
     special: str | None = None
+    #: The template's value parameters, ``N`` of ``template <unsigned N>``, as parameters.
+    values: list[Param] = field(default_factory=list)
 
 
 @dataclass(eq=False)

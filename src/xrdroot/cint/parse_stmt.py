@@ -489,7 +489,10 @@ class StmtParser(ExprParser):
 
 
 def _decayed(ctype: CType) -> CType:
-    """An array parameter is a pointer, as C++ says: ``double x[]`` is ``double *x``."""
-    if not ctype.dims:
+    """An array parameter is a pointer, as C++ says: ``double x[]`` is ``double *x``.
+
+    A reference to an array, ``double (&x)[N]``, stays the array it is.
+    """
+    if not ctype.dims or ctype.reference:
         return ctype
     return CType(ctype.name, ctype.args, ctype.pointer + 1, ctype.reference, ctype.const)

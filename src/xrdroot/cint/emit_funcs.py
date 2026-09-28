@@ -17,7 +17,7 @@ from typing import Any
 from .base import Out, P
 from .ctype import CType
 from .emit_vars import Context, VariableEmitter, addressable
-from .nodes import Function, Lambda, Param
+from .nodes import Function, Lambda, Name, Param
 from .program import by_reference
 
 __all__ = ["FunctionEmitter", "kind_of"]
@@ -86,12 +86,14 @@ class FunctionEmitter(VariableEmitter):
         params = self.parameters(func.params, method)
         if func.variadic:
             params.append("*varargs")
+        params.extend(self._value_parameters(func, "*varargs" in params))
         if decorator:
             self.out.line(decorator, func.where)
         self.out.line(f"def {py}({', '.join(params)}):", func.where)
         with self.out.indented():
             head = self.out.mark()
             self._wrap_parameters(func)
+            self._deduce_values(func)
             if prologue is not None:
                 prologue()
             assert func.body is not None, "only a function with a body is written"
@@ -99,6 +101,29 @@ class FunctionEmitter(VariableEmitter):
                 self.statement(stmt)
             self._declare_scopes(context, head, func)
         self.template_names -= template
+
+    def _value_parameters(self, func: Function, starred: bool) -> list[str]:
+        """``template <unsigned N>``: ``N`` as a keyword the call's ``f<3>(...)`` gives."""
+        if not func.values:
+            return []
+        items = [] if starred else ["*"]
+        for param in func.values:
+            symbol = self.declare(str(param.name), "param", param.ctype.value())
+            default = self.value(param.default) if param.default is not None else "None"
+            items.append(f"{symbol.py}={default}")
+        return items
+
+    def _deduce_values(self, func: Function) -> None:
+        """A value parameter no call gave is deduced, as C++ deduces it, from an array's size."""
+        for value in func.values:
+            source = next((p for p in func.params if _sized_by(p, str(value.name))), None)
+            if source is None:
+                continue
+            own, array = self.lookup(str(value.name)), self.lookup(source.name or "")
+            assert own is not None and array is not None
+            self.out.line(f"if {own.py} is None:", value.where)
+            with self.out.indented():
+                self.out.line(f"{own.py} = len({array.py})", value.where)
 
     def _wrap_parameters(self, func: Function) -> None:
         """A parameter passed by value whose address is taken goes into a cell on entry."""
@@ -189,6 +214,12 @@ class FunctionEmitter(VariableEmitter):
             if symbol is not None and symbol.kind in ("local", "param") and not symbol.cell:
                 found.append(f"{symbol.py}={symbol.py}")
         return found
+
+
+def _sized_by(param: Param, name: str) -> bool:
+    """Is ``param`` an array whose first dimension is the template parameter ``name``?"""
+    dims = param.ctype.dims
+    return bool(dims) and isinstance(dims[0], Name) and dims[0].parts == [name]
 
 
 def _specificity(func: Function) -> tuple[int, ...]:

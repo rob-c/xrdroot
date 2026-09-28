@@ -636,17 +636,27 @@ class StmtEmitter(CallEmitter):
     def _transform(self, expr: Call) -> None:
         if len(expr.args) != 4:
             raise self.refuse("std::transform of two ranges into a third", expr)
-        first, last, out, op = expr.args
+        self._copied_range(expr, self.value(expr.args[3]))
+
+    def _copy(self, expr: Call) -> None:
+        if len(expr.args) != 3:
+            raise self.refuse("std::copy without a range and a place to copy it to", expr)
+        self._copied_range(expr, "None")
+
+    def _copied_range(self, expr: Call, op: str) -> None:
+        """``std::transform`` or ``std::copy`` of ``[first, last)`` into ``out``, stored anew."""
+        first, last, out = expr.args[:3]
         source, start, stop = self.iterator_range(first, last, expr)
         target, at = self._iterator(out, expr, "begin")
         root = out.func.obj if isinstance(out, Call) and isinstance(out.func, Member) else out
         if isinstance(root, Name):
             self.assigned(self.symbol(root))
-        call = f"transformed({source}, {start}, {stop}, {target}, {at}, {self.value(op)})"
+        call = f"transformed({source}, {start}, {stop}, {target}, {at}, {op})"
         self.out.line(f"{target} = {call}", expr.where)
 
     _WRITERS: ClassVar[dict[str, Callable[[StmtEmitter, Call], None]]] = {
         "transform": _transform,
+        "copy": _copy,
         "getline": _getline,
         "sprintf": _sprintf,
         "snprintf": _snprintf,

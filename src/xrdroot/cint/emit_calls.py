@@ -24,7 +24,20 @@ from .cursor import looks_like_type
 from .emit_expr import ExprEmitter, zero
 from .emit_names import type_text
 from .literals import SUFFIXES
-from .nodes import Assign, Binary, Call, Expr, Index, InitList, Literal, Member, Name, Unary
+from .nodes import (
+    Assign,
+    Binary,
+    Call,
+    Expr,
+    Function,
+    Index,
+    InitList,
+    Literal,
+    Member,
+    Name,
+    Unary,
+)
+from .symbols import Symbol
 
 __all__ = ["CallEmitter", "WRAPS"]
 
@@ -125,13 +138,30 @@ class CallEmitter(ExprEmitter):
     def named_call(self, func: Name, node: Call) -> Out:
         symbol = self.symbol(func)
         if symbol is not None:
-            return f"{self.use(symbol)[0]}({self.arguments(node)})", P.POSTFIX
+            given = [self.arguments(node), self._template_values(func, symbol)]
+            args = ", ".join(filter(None, given))
+            return f"{self.use(symbol)[0]}({args})", P.POSTFIX
         special = self._LIBRARY.get(func.last)
         if special is not None and (len(func.parts) == 1 or func.parts[0] in ("std", "TString")):
             found = special(self, func, node)
             if found is not None:
                 return found
         return f"{self.library(func)[0]}({self.arguments(node)})", P.POSTFIX
+
+    def _template_values(self, func: Name, symbol: Symbol) -> str:
+        """``f<3>(a)``: the value template arguments, as the keywords the function takes."""
+        chosen = self._valued(symbol) if func.targs else None
+        if chosen is None:
+            return ""
+        values = {str(param.name) for param in chosen.values}
+        pairs = zip(chosen.template or [], func.targs or [])
+        return ", ".join(f"{name}={self.value(arg)}" for name, arg in pairs if name in values)
+
+    def _valued(self, symbol: Symbol) -> Function | None:
+        """The function template with value parameters that ``symbol`` names, if it is one."""
+        if symbol.kind not in ("function", "static", "method"):
+            return None
+        return next((f for f in self.function_named(symbol) if f.values), None)
 
     def _make(self, func: Name, node: Call) -> Out | None:
         if not func.targs or not isinstance(func.targs[0], CType):

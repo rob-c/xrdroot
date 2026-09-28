@@ -205,12 +205,19 @@ def toupper(char: Any) -> int:
     return ord(chr(int(char)).upper()) if 0 <= int(char) < 128 else int(char)
 
 
+def _same(item: Any) -> Any:
+    return item
+
+
 def transformed(source: Any, start: Any, stop: Any, target: Any, at: Any, op: Any) -> Any:
     """``std::transform(first, last, out, op)``: ``target`` with ``op`` of each source item.
 
     A string is rebuilt, one ``char`` (a number) at a time, and handed back
-    for the translation to store; a container is written in place.
+    for the translation to store; a container is written in place. With no
+    ``op`` it is ``std::copy``.
     """
+    if op is None:
+        op = _same
     if isinstance(source, str) or isinstance(target, str):
         codes = [ord(c) for c in cstr(source)][int(start) : stop]
         made = "".join(chr(int(op(code)) % 256) for code in codes)

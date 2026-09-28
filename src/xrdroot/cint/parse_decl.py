@@ -25,6 +25,7 @@ from .nodes import (
     Expr,
     Function,
     Namespace,
+    Param,
     Stmt,
     Unit,
     VarDecl,
@@ -149,8 +150,13 @@ class Parser(StmtParser):
         if not self.at_("<"):
             self.skip_to(";")
             return Empty(where)
+        self.template_values = []
         names = self.template_parameters()
+        values = self.template_values
         if self.at_("class", "struct", "union") and self._defines_type():
+            if values:
+                why = f"the template parameter {values[0].name}, a value a class template is given"
+                raise self.refuse(why)
             decl = self.class_declaration()
             decl.template = names
             return decl
@@ -161,6 +167,7 @@ class Parser(StmtParser):
         if not isinstance(stmt, Function):
             raise self.refuse("a variable template", where)
         stmt.template = names
+        stmt.values = values
         return stmt
 
     def template_parameters(self) -> list[str]:
@@ -187,9 +194,15 @@ class Parser(StmtParser):
             if self.accept("="):
                 self.type_id()
             return name
+        where = self.where
         spec = self.specifiers()
-        name, _ = self.declarator(spec.ctype)
-        raise self.refuse(f"the template parameter {name}, a value a template is given")
+        name, ctype = self.declarator(spec.ctype)
+        default = self.constant() if self.accept("=") else None
+        self.template_values.append(Param(where, name, ctype, default))
+        return name
+
+    #: The value parameters of the template being read, ``N`` of ``template <int N>``.
+    template_values: list[Param]
 
     _TOP: ClassVar[dict[str, Callable[[Parser], Stmt]]] = {
         ";": StmtParser._empty,
