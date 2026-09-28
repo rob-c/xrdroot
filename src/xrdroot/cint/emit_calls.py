@@ -283,7 +283,8 @@ class CallEmitter(ExprEmitter):
         if ctype.integral:
             return self._integral_store(ctype, source, node)
         if ctype.name == "float":
-            return f"f32({self.value(node)})"
+            value = self.value(node)
+            return value if self.single(node) else f"f32({value})"
         return self._double_store(source, node)
 
     def _bool_store(self, source: CType | None, node: Expr) -> str:

@@ -290,6 +290,62 @@ def test_reset_stats_works_the_entries_out_from_the_bins():
     )
 
 
+#: Ten fills, the first and last in the flow bins.
+FLOW_FILLS = (-1.0, 0.5, 1.5, 1.5, 2.5, 3.5, 4.5, 4.5, 4.5, 7.0)
+
+
+def test_reset_stats_counts_the_flow_bins_in_the_entries_as_root_640_does():
+    # Each number is ROOT 6.40.04's own for the same histogram.
+    h = ROOT.TH1D("h", "", 5, 0.0, 5.0)
+    for x in FLOW_FILLS:
+        h.Fill(x)
+    h.ResetStats()
+    assert h.GetEntries() == 10
+    w = ROOT.TH1D("w", "", 5, 0.0, 5.0)
+    w.Sumw2()
+    for x in FLOW_FILLS:
+        w.Fill(x, 2.0 if x > 4 else 1.0)
+    w.ResetStats()
+    assert w.GetEntries() == pytest.approx(8.909090909090908, rel=1e-15)  # 14 * 14 / 22
+    w.Add(w, -0.5)
+    assert w.GetEntries() == pytest.approx(1.7818181818181817, rel=1e-15)
+
+
+def test_reset_stats_keeps_the_sign_of_a_negative_total():
+    h = ROOT.TH1D("n", "", 5, 0.0, 5.0)
+    h.Fill(-1.0)
+    h.Fill(2.0)
+    h.SetBinContent(0, -3.0)
+    h.ResetStats()
+    assert h.GetEntries() == -2
+    s = ROOT.TH1D("s", "", 5, 0.0, 5.0)
+    s.Sumw2()
+    s.Fill(2.0)
+    s.Fill(-1.0, -3.0)
+    s.ResetStats()
+    assert s.GetEntries() == pytest.approx(0.4, rel=1e-15)  # (-2)^2 / 10
+    z = ROOT.TH1D("z", "", 5, 0.0, 5.0)
+    z.Sumw2()
+    z.Fill(2.0, 2.0)
+    z.Fill(-1.0, -2.0)
+    z.ResetStats()
+    assert z.GetEntries() == 0
+
+
+def test_reset_stats_of_a_grid_and_a_profile_takes_every_bin():
+    g = ROOT.TH2D("g", "", 2, 0, 2, 2, 0, 2)
+    for x, y in ((-1, -1), (0.5, 3), (0.5, 0.5)):
+        g.Fill(x, y)
+    g.ResetStats()
+    assert g.GetEntries() == 3
+    p = ROOT.TProfile("p", "", 2, 0, 2)
+    for x, y in ((-1, 3), (0.5, 2), (0.5, 4)):
+        p.Fill(x, y)
+    p.ResetStats()
+    # ROOT's 72: the means, 3 + 3, squared, over the one bin's error squared, 1/2.
+    assert p.GetEntries() == pytest.approx(72.00000000000001, rel=1e-15)
+
+
 def test_python_sees_a_histogram_as_uhi_does():
     h = ROOT.TH1D("h", "", 3, 0, 3)
     h.Fill(0.5, 2.0)

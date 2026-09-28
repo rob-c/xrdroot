@@ -191,6 +191,22 @@ class Function(Displayed):
         made._adopt(classname, members, None)
         return made
 
+    def as_formula(self) -> Function:
+        """The ``TFormula`` this function computes, as an object of its own.
+
+        That is what ROOT writes for a ``TFormula`` made by name - the
+        formula, its parameters and its variables, and none of a ``TF1``'s
+        range or fit - and what reads back as one.
+        """
+        if self._formula is None:
+            raise UnsupportedFeatureError(
+                f"{self.name!r} is computed by code rather than by a formula, so there is "
+                f"no TFormula to make of it"
+            )
+        made = type(self).__new__(type(self))
+        made._adopt("TFormula", self._formula, None)
+        return made
+
     def _adopt(self, classname: str, members: dict[str, Any], model: Model | None) -> None:
         #: The class ROOT calls it: ``TF1``, ``TF2``, ``TF3`` or ``TFormula``.
         self.classname = classname

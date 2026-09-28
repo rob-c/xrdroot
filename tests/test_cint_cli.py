@@ -36,9 +36,9 @@ def test_run_runs_a_macro_with_its_arguments(
     path = write(
         tmp_path, "count.C", 'int count(int n = 2) { printf("%d\\n", n * kRed); return 7; }'
     )
-    assert main(["run", str(path)]) == 0
-    assert main(["run", f"{path}(3)", "--no-cache"]) == 0
-    # As root -b -q does, the value the function gives back is printed after it runs.
+    # What the macro returns cling prints, and root -q exits with.
+    assert main(["run", str(path)]) == 7
+    assert main(["run", f"{path}(3)", "--no-cache"]) == 7
     assert capsys.readouterr().out == "1264\n(int) 7\n1896\n(int) 7\n"
 
 
@@ -76,6 +76,16 @@ def test_run_runs_the_working_directorys_logon_and_logoff_macros_around_a_macro_
     assert capsys.readouterr().out == "no logon for PyROOT\n"
     assert main(["run", "-n", "quiet.C"]) == 0  # as `root -n`, which hsimple.C runs under
     assert capsys.readouterr().out == ""
+    # hsimple.C returns its file: under -n no logon speaks, and root -q exits 255.
+    write(tmp_path, "gives.C", 'TH1F *gives() { printf("made\\n"); return nullptr; }')
+    write(tmp_path, "file.C", "int file() { return 300; }")
+    assert main(["run", "-n", "file.C"]) == 255
+    assert capsys.readouterr().out == "(int) 300\n"
+    assert main(["run", "gives.C"]) == 0
+    printed = capsys.readouterr().out
+    assert printed.startswith("\nWelcome") and printed.endswith(
+        "made\n(TH1F *) nullptr\n\nTaking a break from ROOT? Hope to see you back!\n\n"
+    )
 
 
 def test_run_prints_the_translation_when_asked(

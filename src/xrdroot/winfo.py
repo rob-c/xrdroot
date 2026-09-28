@@ -33,6 +33,15 @@ holds nothing but a name and pointers - to the list of its graphs, its
 functions and the histogram it draws its axes on - so the graphs in it are
 described as ``graphs.root`` describes them.
 
+``TNtuple`` and ``TNtupleD`` are derived the same way. The one donor here,
+``tntuple.root``, is of the 6.24 vintage and builds its ``TNtuple`` on a
+``TTree`` of version 20, where this writer's is 19; but either class is only
+a ``TTree`` base and ``Int_t fNvar``, exactly as that donor and ROOT 6.40
+itself describe them, and the checksum - worked out as for the histograms,
+now with the one member counted too - comes out as ROOT's for the version-20
+base (``0xb8a51cab`` and ``0x8de8d873``), so over the version-19 base it is
+what ROOT would make of it there.
+
 Eleven histogram classes - ``TH1C``, ``TH1S`` and ``TH1I``, the same three
 and ``TH2F`` in two dimensions, and the other four ``TH3`` classes - have no
 donor of that vintage here. Each is nothing but two bases, a ``TH1``, ``TH2``
@@ -566,6 +575,18 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
          64, 8, 0, 0, (0, 0, 0, 0, 0), 'TList*', ()),
         ('TStreamerObjectPointer', 'fBranchRef', 'Branch supporting the TRefTable (if any)',
          64, 8, 0, 0, (0, 0, 0, 0, 0), 'TBranchRef*', ()),
+    )),
+    "TNtuple": (0xa5e66297, 2, (
+        ('TStreamerBase', 'TTree', 'Tree descriptor (the main ROOT I/O class)',
+         0, 0, 0, 0, (0, 1487116011, 0, 0, 0), 'BASE', (19,)),
+        ('TStreamerBasicType', 'fNvar', 'Number of columns',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+    )),
+    "TNtupleD": (0x7b2a1e5f, 1, (
+        ('TStreamerBase', 'TTree', 'Tree descriptor (the main ROOT I/O class)',
+         0, 0, 0, 0, (0, 1487116011, 0, 0, 0), 'BASE', (19,)),
+        ('TStreamerBasicType', 'fNvar', 'Number of columns',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
     )),
     "TBranch": (0x59108cb8, 12, (
         ('TStreamerBase', 'TNamed', 'The basis for a named object (name, title)',

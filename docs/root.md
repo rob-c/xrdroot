@@ -2603,6 +2603,12 @@ $ xrdroot run hsimple.C --python          # the translation, printed; nothing ru
 $ xrdroot run script.py                   # a PyROOT script, `import ROOT` being xrdroot.pyroot
 ```
 
+What the macro's function returns is printed after its output as Cling
+prints it - `(int) 3`, `(TCanvas *) 0x7f...`, `(double) 2.7000000` - and is
+the exit status, as `root -q` makes it: a value from 0 to 255 as it is,
+anything else, a pointer included, as 255. So `hsimple.C`, which returns
+its `TFile *`, exits 255, as ROOT's CI expects of it.
+
 ```python
 from xrdroot import cint
 

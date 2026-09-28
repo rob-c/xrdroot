@@ -280,3 +280,21 @@ def test_the_list_of_functions_is_made_when_an_object_has_none():
     assert listed(core) == [] and core["fFunctions"] == []
     core = {"fFunctions": ("a",)}
     assert listed(core) == ["a"]
+
+
+def test_a_functions_formula_is_a_tformula_of_its_own_that_writes_and_reads_back_as_one():
+    formula = Function("form1", "abs(sin(x)/x)").as_formula()
+    assert formula.classname == "TFormula" and formula.name == "form1"
+    buffer = io.BytesIO()
+    with create(buffer) as out:
+        out["form1"] = formula
+    with open_root(io.BytesIO(buffer.getvalue())) as back:
+        assert back.key("form1").classname == "TFormula"
+        assert back["form1"].formula == "abs(sin(x)/x)"
+        assert back["form1"](2.0) == pytest.approx(abs(math.sin(2.0) / 2.0), rel=1e-15)
+
+
+def test_a_function_of_code_has_no_formula_to_be_a_tformula():
+    coded = Function.from_callable("c", lambda x, p: x, 0)
+    with pytest.raises(UnsupportedFeatureError, match="computed by code rather than by a formula"):
+        coded.as_formula()

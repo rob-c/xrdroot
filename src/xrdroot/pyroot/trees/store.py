@@ -219,9 +219,11 @@ class Store:
         counted = self.counters()
         return {name: slot.spec() for name, slot in self.slots.items() if name not in counted}
 
-    def write(self, directory: Any, name: str, title: str) -> Any:
-        """Write every entry into ``directory``, as a tree of this name and title."""
-        tree = directory.tree(name, self.specs(), title=title, counters=self.counters())
+    def write(self, directory: Any, name: str, title: str, classname: str = "TTree") -> Any:
+        """Write every entry into ``directory``, as a tree of this name, title and class."""
+        tree = directory.tree(
+            name, self.specs(), title=title, counters=self.counters(), classname=classname
+        )
         if self.entries:
             tree.extend(self.columns())
         return tree

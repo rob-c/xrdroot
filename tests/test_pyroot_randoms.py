@@ -119,3 +119,16 @@ def test_grandom_is_xrdroots_and_a_replacement_is_followed():
         assert randoms.current_generator() is replacement._xrd
     finally:
         ROOT.gRandom = randoms.gRandom
+
+
+def test_a_translated_float_filled_by_reference_is_rounded_as_cpp_rounds_it():
+    from xrdroot.cint.runtime import Cell
+
+    r = ROOT.TRandom3(1)
+    px, py, wide = Cell(0.0, "float"), Cell(0.0, "float"), Cell(0.0, "double")
+    x, y = r.Rannor(px, py)
+    r.SetSeed(1)
+    r.Rannor(wide, None)
+    # Rannor(Float_t&, Float_t&) draws in double and rounds as it stores, as ROOT's does.
+    assert (px.value, py.value) == (float(np.float32(x)), float(np.float32(y)))
+    assert px.value != x and wide.value == x

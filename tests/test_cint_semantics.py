@@ -138,3 +138,18 @@ def test_strings_are_written_and_read_as_c_and_std_string_are(
     printf("%s\\n", ("x" + std::to_string(3)).c_str());
     """
     assert block(capsys, source) == "h07_x 5 bcd 6 lit 0\nx3\n"
+
+
+def test_arithmetic_on_floats_is_rounded_to_a_float_after_every_operation(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # ROOT 6.40 prints these: a float plus a float is a float, a float times a double a double.
+    source = """
+    float a = 16777216.0f, b = 1.0f, x = 0.1f; int n = 3;
+    double d = a + b - a; double y = x * n; double z = x * 3.0; double q = x / 3;
+    printf("%g %.12f %.12f %.12f\\n", d, y, z, q);
+    printf("%.12f\\n", x * x + x);
+    """
+    assert (
+        block(capsys, source) == "0 0.300000011921 0.300000004470 0.033333335072\n0.109999999404\n"
+    )

@@ -6,6 +6,15 @@ help, chosen by the types :mod:`xrdroot.cint.infer` found: ``/`` of two
 integers is ``idiv``, ``%`` is ``imod``, ``&&`` is ``and`` - wrapped in
 ``bool`` where its value, not its truth, is used - a pointer compared with
 ``0`` is compared with ``None``, ``p++`` inside an expression is a walrus.
+
+Arithmetic C does in ``float`` - ``+``, ``-``, ``*`` and ``/`` of floats, or
+of a float and an integer - is rounded to single precision after every
+operation, as ROOT's compiled macros round it: ``pz = px*px + py*py`` of
+three ``Float_t`` is ``f32(f32(px * px) + f32(py * py))``, not the sum in
+double rounded once, which differs in the last bit a fifth of the time - and
+``hsimple.C``'s profile errors, built on sums of ``pz`` squared, by more.
+Python's double arithmetic on two single-precision values rounds exactly as
+single precision would, so rounding each result is all it takes.
 """
 
 from __future__ import annotations
@@ -53,6 +62,9 @@ DIVISIONS = {
     ("%", "floating"): "fmod",
     ("%", "unknown"): "mod",
 }
+
+#: The operators whose result in ``float`` is rounded to a float.
+SINGLE = frozenset({"+", "-", "*", "/"})
 
 #: The operators whose Python is C's own, and their Python precedence.
 PLAIN = {
@@ -118,6 +130,18 @@ class ExprEmitter(NameEmitter):
     # -- binary ----------------------------------------------------------------
 
     def _binary(self, node: Binary) -> Out:
+        if node.op in SINGLE and self.single(node):
+            return f"f32({self._operation(node)[0]})", P.POSTFIX
+        return self._operation(node)
+
+    def single(self, node: Expr) -> bool:
+        """Is ``node`` an operation C does in ``float``, whose result the Python rounds?"""
+        if not isinstance(node, Binary) or node.op not in SINGLE:
+            return False
+        found = self.typeof(node)
+        return found is not None and found.floating and found.name == "float"
+
+    def _operation(self, node: Binary) -> Out:
         op = node.op
         if op in ("&&", "||"):
             return f"bool({self.condition(node)})", P.POSTFIX

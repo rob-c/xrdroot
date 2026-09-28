@@ -277,6 +277,16 @@ def test_an_ntuple_is_filled_with_its_values_in_order_or_one_sequence_of_them(tm
     assert double.GetArgs().tolist() == [0, 0]
     double.Fill(0.1, 0.2)
     assert _written(tmp_path, double, "d")["a"].dtype == np.float64
+    with xrdroot.open_root(str(tmp_path / "out.root")) as f:
+        assert f.key("d").classname == "TNtupleD"  # written as what it is, as ROOT writes it
+
+
+def test_an_ntuple_is_written_as_a_tntuple_not_a_ttree(tmp_path):
+    ntuple = TNtuple("ntuple", "Demo ntuple", "px:py")
+    ntuple.Fill(1, 2)
+    _written(tmp_path, ntuple, "ntuple")
+    with xrdroot.open_root(str(tmp_path / "out.root")) as f:
+        assert f.key("ntuple").classname == "TNtuple"
 
 
 def test_read_file_takes_its_branches_from_the_descriptor_or_the_first_line(tmp_path):

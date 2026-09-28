@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+
 __all__ = ["store", "load", "store_many"]
 
 
@@ -31,6 +33,9 @@ def store(target: Any, value: Any) -> None:
             f"a {type(target).__name__} is not somewhere to put a number: hand over a NumPy "
             f"array, an array.array, a ctypes number or anything with a .value"
         )
+    if getattr(target, "ctype", None) == "float":
+        # A translated macro's Float_t, which C++ would have rounded as it was set.
+        value = float(np.float32(value))
     target.value = value
 
 

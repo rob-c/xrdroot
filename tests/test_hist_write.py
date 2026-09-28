@@ -219,3 +219,14 @@ def test_a_histogram_from_an_older_root_gains_the_member_the_newer_layout_has():
     with read_back(written(h=old)) as back:
         assert back["h"].members["TH1"]["fStatOverflows"] == 2
         assert back["h"].values(flow=True).tolist() == old.values(flow=True).tolist()
+
+
+def test_the_ntuple_checksums_are_roots_calculation_over_the_tree_this_writer_writes():
+    # Over ROOT 6.40's own TTree, version 20, the calculation gives ROOT's checksums...
+    for name, root in (("TNtuple", 0xB8A51CAB), ("TNtupleD", 0x8DE8D873)):
+        _stored, _version, (base, nvar) = INFOS[name]
+        over_v20 = (*base[:7], (0, 0x7264E07F, 0, 0, 0), *base[8:])
+        assert checksum(name, [over_v20, nvar]) == root, name
+        # ...so over the version-19 TTree written here it is what ROOT would make of that.
+        assert checksum(name, [base, nvar]) == INFOS[name][0], name
+        assert base[7][1] & 0xFFFFFFFF == INFOS["TTree"][0] and base[9] == (INFOS["TTree"][1],)

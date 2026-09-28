@@ -18,14 +18,22 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any
 
-from . import cache
+from . import cache, returned
 from .errors import MacroError, Refusal, Where
 from .runtime import ROOT, cerr, clog, cout
 from .runtime.streams import ostream
-from .shown import shown
 from .translation import Translation, translation
 
-__all__ = ["run", "run_source", "load", "process_line", "split_call", "arguments", "EXTENSIONS"]
+__all__ = [
+    "run",
+    "run_and_quit",
+    "run_source",
+    "load",
+    "process_line",
+    "split_call",
+    "arguments",
+    "EXTENSIONS",
+]
 
 #: The file extensions of a C++ macro.
 EXTENSIONS = (".C", ".c", ".cxx", ".cpp", ".cc", ".h", ".hxx")
@@ -117,14 +125,15 @@ def run_source(
     root: Any = None,
     use_cache: bool = False,
     call: bool = True,
-    show: bool = False,
 ) -> Any:
-    """Translate and run a macro's text; call its function (or unnamed block) with ``args``.
+    """Translate and run a macro's text; call its function (or unnamed block) with ``args``."""
+    return _executed(source, file, args, root=root, use_cache=use_cache, call=call)[0]
 
-    With ``show``, what the function gives back is printed as cling prints
-    it (:mod:`~xrdroot.cint.shown`) - as ``root file.C`` does for the macro
-    it was told to run.
-    """
+
+def _executed(
+    source: str, file: str, args: tuple[Any, ...], *, root: Any, use_cache: bool, call: bool
+) -> tuple[Any, Translation]:
+    """What running the macro gave, and the translation that was run."""
     made = _translated(source, file, use_cache)
     label = f"<translation of {file}>"
     namespace: dict[str, Any] = {"__name__": "__cint__", "__file__": file}
@@ -134,17 +143,14 @@ def run_source(
         with _placed(made, label):
             exec(compile(made.python, label, "exec"), namespace)
         if not call:
-            return namespace
+            return namespace, made
         entry = _entry(made, namespace, file, args)
         if entry is None:
-            return None
+            return None, made
         with _placed(made, label):
             result = entry(*args)
-    line = shown(made.returns, result) if show and made.returns is not None else None
-    if line is not None:
-        sys.stdout.write(line + "\n")
     sys.stdout.flush()
-    return result
+    return result, made
 
 
 def _entry(made: Translation, namespace: dict[str, Any], file: str, args: tuple[Any, ...]) -> Any:
@@ -161,17 +167,30 @@ def _entry(made: Translation, namespace: dict[str, Any], file: str, args: tuple[
 
 
 def run(
-    path: str | Path,
-    args: tuple[Any, ...] = (),
-    *,
-    root: Any = None,
-    use_cache: bool = True,
-    show: bool = False,
+    path: str | Path, args: tuple[Any, ...] = (), *, root: Any = None, use_cache: bool = True
 ) -> Any:
     """``.x path(args)``: translate the macro at ``path`` and run it, as ROOT would."""
     where = Path(str(path).rstrip("+"))
     source = where.read_text(encoding="utf-8", errors="replace")
-    return run_source(source, str(where), tuple(args), root=root, use_cache=use_cache, show=show)
+    return run_source(source, str(where), tuple(args), root=root, use_cache=use_cache)
+
+
+def run_and_quit(path: str | Path, args: tuple[Any, ...] = (), *, use_cache: bool = True) -> int:
+    """``root -b -q path(args)``: run the macro, print what it returned, give ROOT's exit status.
+
+    Cling prints the returned value after the macro's own output, and ROOT
+    quitting exits with it - see :mod:`xrdroot.cint.returned`.
+    """
+    where = Path(str(path).rstrip("+"))
+    source = where.read_text(encoding="utf-8", errors="replace")
+    value, made = _executed(
+        source, str(where), tuple(args), root=None, use_cache=use_cache, call=True
+    )
+    line = returned.shown(value, made.returns)
+    if line is not None:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+    return returned.status(value, made.returns)
 
 
 def load(path: str | Path, *, root: Any = None) -> dict[str, Any]:
