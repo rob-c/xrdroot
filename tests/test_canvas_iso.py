@@ -1,4 +1,4 @@
-"""``PaintH3Iso``'s isosurface: where the contents cross their mean, lit and shaded as ROOT lights it.
+"""``PaintH3Iso``'s isosurface: where the contents cross their mean, lit as ROOT lights it.
 
 Each cell of eight bin centres is cut into six tetrahedra; the surface
 crosses a tetrahedron in a triangle when one corner is on the other side
