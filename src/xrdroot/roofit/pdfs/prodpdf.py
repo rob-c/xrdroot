@@ -107,11 +107,10 @@ class RooProdPdf(RooAbsPdf):
         found = []
         for pdf in self.pdfs:
             mine = pdf.dependents()
-            if mine & observables or not mine & names:
-                continue
-            others = frozenset().union(*(q.dependents() for q in self.pdfs if q is not pdf))
-            if not strip or mine & names & others:
-                found.append(pdf)
+            if not mine & observables and mine & names:
+                others = frozenset().union(*(q.dependents() for q in self.pdfs if q is not pdf))
+                if not strip or mine & names & others:
+                    found.append(pdf)
         return found
 
     def fraction(

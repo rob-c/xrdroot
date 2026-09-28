@@ -34,16 +34,18 @@ def in_range(data: Any, rng: Any, variables: Any = None) -> np.ndarray[Any, Any]
 def _inside(data: Any, part: str, variables: Any) -> np.ndarray[Any, Any]:
     keep = np.ones(data.numEntries(), dtype=bool)
     for var in variables if variables is not None else data.get():
-        if not var.hasRange(part) or not (
+        if var.hasRange(part) and (
             var.InheritsFrom("RooAbsRealLValue") or var.InheritsFrom("RooCategory")
         ):
-            continue
-        column = data.column(var.GetName())
-        if var.InheritsFrom("RooCategory"):
-            keep &= np.isin(column, var.range_indices(part))
-        else:
-            keep &= (column >= var.getMin(part)) & (column <= var.getMax(part))
+            keep &= _in_range_of(data.column(var.GetName()), var, part)
     return keep
+
+
+def _in_range_of(column: Any, var: Any, part: str) -> np.ndarray[Any, Any]:
+    """The events whose ``var`` is in its range ``part``: among its states, or between its ends."""
+    if var.InheritsFrom("RooCategory"):
+        return np.asarray(np.isin(column, var.range_indices(part)))
+    return np.asarray((column >= var.getMin(part)) & (column <= var.getMax(part)))
 
 
 def selected(data: Any, cut: Any = None, rng: Any = None) -> np.ndarray[Any, Any]:
