@@ -15,6 +15,7 @@ from .dl import MethodDL, MethodDNN
 from .fda import MethodFDA
 from .pders import MethodPDERS
 from .pdefoam import MethodPDEFoam
+from .rulefit import MethodRuleFit
 from .knn import MethodKNN
 from .likelihood import MethodLikelihood
 from .linear import MethodFisher, MethodLD
@@ -40,5 +41,6 @@ REGISTRY: dict[str, type[Method]] = {
         MethodFDA,
         MethodPDERS,
         MethodPDEFoam,
+        MethodRuleFit,
     )
 }
