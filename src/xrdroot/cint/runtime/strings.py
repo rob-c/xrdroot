@@ -32,6 +32,14 @@ __all__ = [
     "rfind",
     "substr",
     "cstr",
+    "find_first_of",
+    "find_last_of",
+    "find_first_not_of",
+    "find_last_not_of",
+    "resize",
+    "tolower",
+    "toupper",
+    "transformed",
 ]
 
 #: ``std::string::npos``: what ``find`` gives back when there is nothing to find.
@@ -146,3 +154,69 @@ def substr(text: Any, start: int = 0, count: int = npos) -> str:
     if begin > len(string):
         raise IndexError(f"substr starts at {begin}, past the end of a string {len(string)} long")
     return string[begin : begin + min(int(count), len(string))]
+
+
+def _first(text: Any, chars: Any, start: Any, inside: bool) -> int:
+    string, wanted = cstr(text), cstr(chars)
+    for at in range(int(start), len(string)):
+        if (string[at] in wanted) == inside:
+            return at
+    return npos
+
+
+def _last(text: Any, chars: Any, start: Any, inside: bool) -> int:
+    string, wanted = cstr(text), cstr(chars)
+    for at in range(min(int(start), len(string) - 1), -1, -1):
+        if (string[at] in wanted) == inside:
+            return at
+    return npos
+
+
+def find_first_of(text: Any, chars: Any, start: Any = 0) -> int:
+    """``s.find_first_of(chars)``: where the first of any of ``chars`` is, or :data:`npos`."""
+    return _first(text, chars, start, True)
+
+
+def find_first_not_of(text: Any, chars: Any, start: Any = 0) -> int:
+    return _first(text, chars, start, False)
+
+
+def find_last_of(text: Any, chars: Any, start: Any = npos) -> int:
+    """``s.find_last_of(chars)``: where the last of any of ``chars`` is, or :data:`npos`."""
+    return _last(text, chars, start, True)
+
+
+def find_last_not_of(text: Any, chars: Any, start: Any = npos) -> int:
+    return _last(text, chars, start, False)
+
+
+def resize(text: Any, count: Any, fill: Any = 0) -> str:
+    """``s.resize(n[, c])``: cut to ``n`` characters, or padded to them with ``c`` (a NUL)."""
+    string, size = cstr(text), int(count)
+    return string[:size] + cstr(fill) * max(size - len(string), 0)
+
+
+def tolower(char: Any) -> int:
+    """C's ``tolower`` of a character, which is a number."""
+    return ord(chr(int(char)).lower()) if 0 <= int(char) < 128 else int(char)
+
+
+def toupper(char: Any) -> int:
+    return ord(chr(int(char)).upper()) if 0 <= int(char) < 128 else int(char)
+
+
+def transformed(source: Any, start: Any, stop: Any, target: Any, at: Any, op: Any) -> Any:
+    """``std::transform(first, last, out, op)``: ``target`` with ``op`` of each source item.
+
+    A string is rebuilt, one ``char`` (a number) at a time, and handed back
+    for the translation to store; a container is written in place.
+    """
+    if isinstance(source, str) or isinstance(target, str):
+        codes = [ord(c) for c in cstr(source)][int(start) : stop]
+        made = "".join(chr(int(op(code)) % 256) for code in codes)
+        text, begin = cstr(target), int(at)
+        return text[:begin] + made + text[begin + len(made) :]
+    items = list(source[int(start) : stop])
+    for offset, item in enumerate(items):
+        target[int(at) + offset] = op(item)
+    return target

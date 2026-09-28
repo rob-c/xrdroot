@@ -634,7 +634,20 @@ class StmtEmitter(CallEmitter):
         line = f"{self.value(target)} = {self.value(expr.args[0])}.getline()"
         self.out.line(line, expr.where)
 
+    def _transform(self, expr: Call) -> None:
+        if len(expr.args) != 4:
+            raise self.refuse("std::transform of two ranges into a third", expr)
+        first, last, out, op = expr.args
+        source, start, stop = self.iterator_range(first, last, expr)
+        target, at = self._iterator(out, expr, "begin")
+        root = out.func.obj if isinstance(out, Call) and isinstance(out.func, Member) else out
+        if isinstance(root, Name):
+            self.assigned(self.symbol(root))
+        call = f"transformed({source}, {start}, {stop}, {target}, {at}, {self.value(op)})"
+        self.out.line(f"{target} = {call}", expr.where)
+
     _WRITERS: ClassVar[dict[str, Callable[[StmtEmitter, Call], None]]] = {
+        "transform": _transform,
         "getline": _getline,
         "sprintf": _sprintf,
         "snprintf": _snprintf,
@@ -704,6 +717,10 @@ def _string_statement(target: str, name: str, args: list[str]) -> str | None:
         return f"{target} += cstr({args[0]})"
     if name == "clear":
         return f"{target} = ''"
+    if name == "assign" and len(args) == 1:
+        return f"{target} = cstr({args[0]})"
+    if name == "resize":
+        return f"{target} = resize({', '.join([target, *args])})"
     return None
 
 

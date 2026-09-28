@@ -327,6 +327,11 @@ def _wrapped(value: int, ctype: CType) -> int:
     return value
 
 
+def _runtime_method(name: str) -> Callable[[str, list[str]], str]:
+    """A string member the runtime has a function of the same name for, the string first."""
+    return lambda obj, args: f"{name}({', '.join([obj, *args])})"
+
+
 #: ``std::string``'s members, as the Python over a ``str`` that does what each does.
 STRING_METHODS: dict[str, Callable[[str, list[str]], str]] = {
     "c_str": lambda obj, args: obj,
@@ -337,6 +342,10 @@ STRING_METHODS: dict[str, Callable[[str, list[str]], str]] = {
     "substr": lambda obj, args: f"substr({', '.join([obj, *args])})",
     "find": lambda obj, args: f"find({', '.join([obj, *args])})",
     "rfind": lambda obj, args: f"rfind({', '.join([obj, *args])})",
+    **{
+        name: _runtime_method(name)
+        for name in ("find_first_of", "find_last_of", "find_first_not_of", "find_last_not_of")
+    },
     "compare": lambda obj, args: f"strcmp({obj}, {args[0]})",
     "at": lambda obj, args: f"char_at({obj}, {args[0]})",
     "front": lambda obj, args: f"char_at({obj}, 0)",
