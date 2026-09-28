@@ -138,15 +138,24 @@ def _typecode(name: str, spec: Any) -> tuple[str, Any]:
     return _code(name, spec), length
 
 
+def _leaf_names(length: Any) -> bool:
+    """Is this a leaf list's names, ``("Signal", "bg0")``? Each is checked as a name if so."""
+    if not isinstance(length, (tuple, list)) or not length:
+        return False
+    if not all(isinstance(each, str) for each in length):
+        return False
+    for leaf in length:
+        _require_name(leaf, "leaf")
+    return True
+
+
 def _length(name: str, length: Any) -> int | str | tuple[str, ...]:
     """How many values a column's entries hold, the counter that says so, or its leaves' names."""
     if length is None:
         return f"n{name}"
     if isinstance(length, str):
         return length
-    if isinstance(length, (tuple, list)) and length and all(isinstance(n, str) for n in length):
-        for leaf in length:
-            _require_name(leaf, "leaf")
+    if _leaf_names(length):
         return tuple(length)
     if not isinstance(length, int) or isinstance(length, bool) or length < 1:
         raise ValueError(

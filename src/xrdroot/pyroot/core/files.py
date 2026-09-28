@@ -409,15 +409,18 @@ class TDirectoryFile(TDirectory):
         for key, mark in zip(keys, _listing_marks(keys)):
             key.ls(mark)
 
+    def _write_trees(self) -> None:
+        """The trees not yet written - but not one with no name, as ``new TTree()`` makes."""
+        for tree in [obj for obj in self._list if _inherits(obj, "TTree")]:
+            if not getattr(tree, "_written", True) and tree.GetName():
+                tree.Write()
+
     def Close(self, option: str = "") -> None:
         """``Close``: trees not yet written written, then what is in memory here forgotten."""
         for below in self._subdirs.values():
             below.Close(option)
         if self._writable() is not None:
-            for tree in [obj for obj in self._list if _inherits(obj, "TTree")]:
-                # A tree with no name, as ``new TTree()`` makes, has no key to be written under.
-                if not getattr(tree, "_written", True) and tree.GetName():
-                    tree.Write()
+            self._write_trees()
         self.Clear()
         here = current_directory()
         if here is self:

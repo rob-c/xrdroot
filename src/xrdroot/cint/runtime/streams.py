@@ -102,6 +102,12 @@ def setfill(char: Any) -> Manipulator:
     return Manipulator("setfill", fill=chr(char) if isinstance(char, int) else str(char))
 
 
+def _dereferenced(value: Any) -> Any:
+    """``*it`` of an STL iterator handed to a stream: what it points at."""
+    deref = getattr(type(value), "__deref__", None)
+    return value if deref is None else deref(value)
+
+
 class ostream:
     """A C++ output stream over a Python text file: ``<<`` writes, as C++ would format it."""
 
@@ -152,9 +158,7 @@ class ostream:
 
     def format(self, value: Any) -> str:
         """``value`` as this stream, in its present state, would write it."""
-        deref = getattr(type(value), "__deref__", None)  # ``*it`` of an STL iterator
-        if deref is not None:
-            value = deref(value)
+        value = _dereferenced(value)
         if isinstance(value, bool):
             return ("true" if value else "false") if self.alpha else str(int(value))
         if isinstance(value, str):
