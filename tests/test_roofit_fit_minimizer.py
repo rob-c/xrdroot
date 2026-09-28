@@ -670,3 +670,21 @@ def test_a_fit_with_no_valid_value_and_a_curve_that_cannot_be_normalised_say_so_
     )
     assert "a1\t  = -0.579502\t +/-  0.0614758\t(limited)" in printed
     assert (good.minNll(), good.numInvalidNLL()) == (roots(2959.918384170729, rel=1e-9), 64)
+
+
+def test_describing_a_failure_reports_no_errors_of_its_own(capsys: Any) -> None:
+    """rf506: the values a failure's log lists are evaluated quietly, not logged again."""
+    from xrdroot.roofit import evalerrors
+
+    x = RooRealVar("x", "x", 0, 1)
+    p = RooPolynomial("p", "p", x, [RooRealVar("a", "a", -5.0)])
+    capsys.readouterr()
+    evalerrors.collecting(True)
+    try:
+        evalerrors.record("k", lambda: str(p.value({}, {"x"})), "m", lambda: "")
+    finally:
+        evalerrors.collecting(False)
+        evalerrors.clear()
+    assert capsys.readouterr().out == ""
+    p.value({}, {"x"})
+    assert "normalization integral is zero or negative: -1.500000" in capsys.readouterr().out

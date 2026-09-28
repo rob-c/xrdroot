@@ -64,7 +64,7 @@ class RooAbsPdf(RooAbsReal):
             np.all(np.asarray(norm) > 0) and np.all(np.asarray(raw) >= 0)
         ):
             self._log_failures(raw, norm, frozenset(nset), rng)
-        elif np.ndim(norm) == 0 and (norm < 0 or (norm == 0 and np.any(np.asarray(raw) != 0))):
+        elif not evalerrors.quiet() and _unnormalisable(raw, norm):
             self.logEvalError(f"p.d.f normalization integral is zero or negative: {float(norm):f}")
         return normalized(raw, norm)
 
@@ -357,3 +357,8 @@ def _proxy_values(proxy: Any) -> str:
         inline = ",".join(one.printStream(kValue | kName, kInline) for one in proxy.target)
         return f"{proxy.name}=({inline})"
     return f"{proxy.name}={proxy.target.GetName()}={g(proxy.target.getVal())}"
+
+
+def _unnormalisable(raw: Any, norm: Any) -> bool:
+    """``RooAbsPdf::getValV``'s test: one normalisation, negative - or zero under a value."""
+    return bool(np.ndim(norm) == 0 and (norm < 0 or (norm == 0 and np.any(np.asarray(raw) != 0))))
