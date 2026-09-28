@@ -127,9 +127,28 @@ def _split_arguments(text: str) -> list[str]:
     return [part.strip() for part in parts]
 
 
+#: The classes standing for element types kept as they are given: ``TH1F*``, ``Interval*``.
+_OPAQUE: dict[str, type] = {}
+
+
+def _opaque(text: str) -> type:
+    """An element type that is neither a number, a string nor a container: kept as given.
+
+    A ``std::vector<TMVA::Interval*>`` holds whatever objects are pushed into
+    it - the pointers C++ would hold are the objects themselves here.
+    """
+    made = _OPAQUE.get(text)
+    if made is None:
+        made = type(text, (), {"__cpp_name__": text, "opaque": True})
+        _OPAQUE[text] = made
+    return made
+
+
 def _templated(text: str) -> Any:
     """A type with template arguments: ``vector<float>``, ``map<string,int>``, ``pair<...>``."""
     outer, _, inner = text.partition("<")
+    if not inner and re.fullmatch(r"[A-Za-z_][\w:]*\s*\**", text):
+        return _opaque(text)
     maker = TEMPLATES.get(outer)
     if maker is None or not inner.endswith(">"):
         raise TypeError(
@@ -183,6 +202,8 @@ def _converted(kind: Any, value: Any) -> Any:
     """A value as an element of this type is kept: a string, or a container made from it."""
     if kind is string:
         return string(value)
+    if getattr(kind, "opaque", False):
+        return value
     if isinstance(value, kind):
         return value
     return kind(value)
@@ -437,6 +458,13 @@ class _Vector(_Container):
     def back(self) -> Any:
         return self[-1]
 
+    def begin(self) -> _VectorIterator:
+        """``begin()``: an iterator at the first element, which ``*it`` and ``it += 1`` use."""
+        return _VectorIterator(self, 0)
+
+    def end(self) -> _VectorIterator:
+        return _VectorIterator(self, self._size)
+
 
 class _ObjectVector(_Container):
     """``std::vector`` of strings or of other containers, kept in a list."""
@@ -517,6 +545,62 @@ class _ObjectVector(_Container):
 
     def back(self) -> Any:
         return self._items[-1]
+
+    def begin(self) -> _VectorIterator:
+        """``begin()``: an iterator at the first element, which ``*it`` and ``it += 1`` use."""
+        return _VectorIterator(self, 0)
+
+    def end(self) -> _VectorIterator:
+        return _VectorIterator(self, len(self._items))
+
+
+class _VectorIterator:
+    """A ``std::vector`` iterator: ``*it`` - here the iterator itself - is the element it is at.
+
+    A translated macro writes ``(*it)->GetMin()`` as ``it.GetMin()`` and
+    ``cout << *it`` as ``cout << it``, so the element's attributes are the
+    iterator's, and :meth:`__deref__` is what a stream writes.
+    """
+
+    def __init__(self, owner: Any, position: int) -> None:
+        self._owner, self._position = owner, position
+
+    def __deref__(self) -> Any:
+        return self._owner[self._position]
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return getattr(self.__deref__(), name)
+
+    def __float__(self) -> float:
+        return float(self.__deref__())
+
+    def __iadd__(self, step: int) -> _VectorIterator:
+        self._position += int(step)
+        return self
+
+    def __add__(self, step: int) -> _VectorIterator:
+        return _VectorIterator(self._owner, self._position + int(step))
+
+    def __sub__(self, other: Any) -> Any:
+        if isinstance(other, _VectorIterator):
+            return self._position - other._position
+        return _VectorIterator(self._owner, self._position - int(other))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, _VectorIterator):
+            return NotImplemented
+        return self._owner is other._owner and self._position == other._position
+
+    def __ne__(self, other: object) -> bool:
+        equal = self.__eq__(other)
+        return equal if equal is NotImplemented else not equal
+
+    def __lt__(self, other: _VectorIterator) -> bool:
+        return self._position < other._position
+
+    __hash__ = None  # type: ignore[assignment]
 
 
 def _vector_class(kind: Any) -> type:

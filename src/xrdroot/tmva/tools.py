@@ -15,8 +15,8 @@ from .log import CONFIG, Config
 __all__ = ["Tools", "gConfig", "gTools"]
 
 
-class StringVector(list):  # type: ignore[type-arg]
-    """``std::vector<TString>``, as ``SplitString`` hands one back: a list with ``size()``."""
+class CxxVector(list):  # type: ignore[type-arg]
+    """A ``std::vector`` TMVA hands back: a list, with ``size()``, ``at()`` and iterators."""
 
     def size(self) -> int:
         return len(self)
@@ -26,6 +26,54 @@ class StringVector(list):  # type: ignore[type-arg]
 
     def push_back(self, value: Any) -> None:
         self.append(value)
+
+    def empty(self) -> bool:
+        return not self
+
+    def begin(self) -> Iterator:
+        return Iterator(self, 0)
+
+    def end(self) -> Iterator:
+        return Iterator(self, len(self))
+
+
+class Iterator:
+    """An iterator into a :class:`CxxVector`: ``*it`` is the iterator itself, as a macro reads it."""
+
+    def __init__(self, owner: list[Any], position: int) -> None:
+        self.owner, self.position = owner, position
+
+    def __deref__(self) -> Any:
+        return self.owner[self.position]
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return getattr(self.__deref__(), name)
+
+    def __float__(self) -> float:
+        return float(self.__deref__())
+
+    def __iadd__(self, step: int) -> Iterator:
+        self.position += int(step)
+        return self
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Iterator):
+            return NotImplemented
+        return self.owner is other.owner and self.position == other.position
+
+    def __ne__(self, other: object) -> bool:
+        return not self == other
+
+    def __lt__(self, other: Iterator) -> bool:
+        return self.position < other.position
+
+    __hash__ = None  # type: ignore[assignment]
+
+
+#: ``std::vector<TString>``, as ``SplitString`` hands one back.
+StringVector = CxxVector
 
 
 class Tools:

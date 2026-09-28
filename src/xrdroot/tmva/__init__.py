@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from .factory import Factory
+from .genetic import GeneticAlgorithm, GeneticFitter, IFitterTarget, Interval
 from .loader import DataLoader
 from .log import TMVAError
 from .tools import Tools, gConfig, gTools
@@ -30,6 +31,10 @@ from .types import Types
 __all__ = [
     "DataLoader",
     "Factory",
+    "GeneticAlgorithm",
+    "GeneticFitter",
+    "IFitterTarget",
+    "Interval",
     "TMVAError",
     "Tools",
     "Types",

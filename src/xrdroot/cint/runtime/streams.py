@@ -131,6 +131,9 @@ class ostream:
 
     def format(self, value: Any) -> str:
         """``value`` as this stream, in its present state, would write it."""
+        deref = getattr(type(value), "__deref__", None)  # ``*it`` of an STL iterator
+        if deref is not None:
+            value = deref(value)
         if isinstance(value, bool):
             return ("true" if value else "false") if self.alpha else str(int(value))
         if isinstance(value, str):
