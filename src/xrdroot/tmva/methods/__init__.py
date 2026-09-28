@@ -9,6 +9,7 @@ refused by name when it is booked.
 from __future__ import annotations
 
 from ..method import Method
+from .bdt import MethodBDT
 from .likelihood import MethodLikelihood
 from .linear import MethodFisher, MethodLD
 
@@ -21,5 +22,6 @@ REGISTRY: dict[str, type[Method]] = {
         MethodLD,
         MethodFisher,
         MethodLikelihood,
+        MethodBDT,
     )
 }
