@@ -285,13 +285,35 @@ def test_setting_a_bin_is_set_bin_content_one_entry_more_and_the_sums_from_the_b
 def test_setting_a_slice_takes_one_value_per_bin_or_one_for_all():
     h = five()
     h[1:3] = [8.0, 9.0]
-    assert h.values().tolist() == [1.0, 8.0, 9.0, 1.0, 3.0] and h.entries == 12
+    # ROOT 6.40's SetSliceContent resets the statistics: every bin's weight, flow too, is 24.
+    assert h.values().tolist() == [1.0, 8.0, 9.0, 1.0, 3.0] and h.entries == 24
+    assert h.mean() == pytest.approx(2.3636363636363638, rel=1e-15)
     h[...] = 4.0
     assert h.values(flow=True).tolist() == [1.0, 4.0, 4.0, 4.0, 4.0, 4.0, 1.0]
+    assert h.entries == 22
     h[:] = np.arange(7.0)  # two more than the axis: the flow bins too, as UHI has it
-    assert h.values(flow=True).tolist() == list(range(7))
+    assert h.values(flow=True).tolist() == list(range(7)) and h.entries == 21
     with pytest.raises(ValueError, match=r"values of shape \(3,\) do not fit the \(2,\) bins"):
         h[1:3] = [1.0, 2.0, 3.0]
+
+
+def test_setting_a_slice_of_a_weighted_histogram_leaves_the_effective_entries():
+    h = Histogram.book("h", (5, 0.0, 5.0))
+    h.sumw2()
+    h.fill(FILLS)
+    h[1:3] = [8.0, 9.0]
+    # ROOT 6.40: 24 over every bin, squared, over the squares left as they were, 10.
+    assert h.entries == pytest.approx(57.6, rel=1e-15)
+    assert h.variances(flow=True).tolist() == [1.0, 1.0, 2.0, 1.0, 1.0, 3.0, 1.0]
+
+
+def test_setting_a_row_of_a_grid_counts_its_bins_and_setting_one_bin_one_more():
+    g = Histogram.book("g", (3, 0.0, 3.0), (3, 0.0, 3.0))
+    g.fill([1.0], [1.0])
+    g[:, 1] = [1.0, 2.0, 3.0, 4.0, 5.0]
+    assert g.entries == 15  # as ROOT 6.40 has it: the row written over the one fill
+    g[1, 1] = 7.0
+    assert g.entries == 16
 
 
 def test_setting_a_grid_takes_the_flow_along_whichever_axis_has_room_for_it():

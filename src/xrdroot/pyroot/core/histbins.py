@@ -222,7 +222,10 @@ class Bins:
         self._xrd.reset()
 
     def ResetStats(self) -> None:
-        """``ResetStats``: the running sums made again from the bins."""
-        core = self._core()
-        core["fTsumw"], core["fEntries"] = 0.0, 1.0
-        core["fEntries"] = float(self._xrd.effective_entries)
+        """``ResetStats``: the running sums made again from the bins, the entries from all of them.
+
+        See :func:`xrdroot.arithmetic.reset_statistics` for how ROOT 6.40 counts them.
+        """
+        from ...arithmetic import reset_statistics
+
+        reset_statistics(self._xrd)

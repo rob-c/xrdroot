@@ -50,7 +50,8 @@ def test_subtracting_makes_the_running_sums_again_from_the_bins():
     assert difference.values().tolist() == [0, -2]
     assert moments(difference)[0] == -2 and moments(difference)[2] == -3
     assert difference.mean() == 1.5
-    assert difference.entries == 2  # |sum of weights|, a negative total having no effective count
+    # ROOT 6.40's ResetStats: the total squared over the squared errors, (-2)^2 / (6 + 4).
+    assert difference.entries == pytest.approx(0.4, rel=1e-15)
 
 
 def test_a_normalisation_set_on_the_histogram_added_is_honoured():

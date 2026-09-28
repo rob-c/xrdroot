@@ -93,17 +93,28 @@ def put_statistics(histogram: Histogram, found: list[float]) -> None:
 def reset_statistics(histogram: Histogram) -> None:
     """``ResetStats``: throw the running sums away and make them again from the bins.
 
-    The entries go the same way: the total weight, or the effective number
-    of entries when the histogram keeps the squares of its weights.
+    The entries go the same way, but over every bin, the flow ones too, as
+    ROOT 6.40 counts them: the total weight, sign and all, or - when the
+    histogram keeps the squares of its weights - the effective number of
+    entries, the total squared over the sum of the squared errors. ROOT's
+    own runs say so: ten fills of which two fell in the flow reset to ten
+    entries, not eight, and a bin set to ``-3`` in an otherwise single-fill
+    histogram resets it to ``-2``.
     """
     core = histogram._core
     histogram._moment_homes()["fTsumw"]["fTsumw"] = 0.0
     core["fEntries"] = 1.0
-    found = statistics(histogram)
-    put_statistics(histogram, found)
-    core["fEntries"] = abs(found[0])
-    if len(core["fSumw2"]) and found[0] > 0 and found[1] > 0:
-        core["fEntries"] = found[0] * found[0] / found[1]
+    put_statistics(histogram, statistics(histogram))
+    core["fEntries"] = _entries_of_every_bin(histogram)
+
+
+def _entries_of_every_bin(histogram: Histogram) -> float:
+    """The entries ``ResetStats`` works out: every bin's weight, or their effective number."""
+    total = float(histogram.values(flow=True).astype(np.float64).sum())
+    if not len(histogram._core["fSumw2"]):
+        return total
+    squares = float(np.sum(histogram.variances(flow=True), dtype=np.float64))
+    return total * total / squares if squares > 0 else total
 
 
 def _forget_limits(histogram: Histogram) -> None:

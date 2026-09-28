@@ -24,9 +24,13 @@ summed away is ROOT's projection - ``ProjectionX`` with a range - and keeps
 its rules for the running sums and the entries. A cut or a rebinning is
 ``TH1::Rebin`` with bins dropping into the flow: the entries stay, as every
 fill is still in some bin, and the running sums are kept when nothing moved
-into the flow and made again from the bins when anything did. Setting bins
-is ``SetBinContent`` once a bin: one more entry each, and the running sums
-made again from the bins, the squares of the weights left as they were.
+into the flow and made again from the bins when anything did. Setting one
+bin is ``SetBinContent``: one more entry, and the running sums made again
+from the bins when next asked for. Setting through a slice is ROOT 6.40's
+``SetSliceContent``: the bins written and then ``ResetStats``, so the entries
+become the total weight - ``h[...] = counts`` of ten values in thirty bins
+gives ten entries, not thirty. Either way the squares of the weights are left
+as they were.
 """
 
 from __future__ import annotations
@@ -38,7 +42,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, Union
 
 import numpy as np
 
-from .arithmetic import copied
+from .arithmetic import copied, reset_statistics
 from .booking import Binning
 from .errors import UnsupportedFeatureError
 from .filling import running, store_cells
@@ -443,7 +447,7 @@ def _with_flow(histogram: Histogram, block: list[Any], given: Any) -> tuple[Any,
 
 
 def put(histogram: Histogram, index: Any, value: Any) -> None:
-    """``h[index] = value``: bins set as ``SetBinContent`` sets them, one entry more a bin."""
+    """``h[index] = value``: a bin as ``SetBinContent`` sets it, a slice as ``SetSliceContent``."""
     if histogram.kind == "MEAN":
         raise UnsupportedFeatureError(
             f"{histogram.name!r} is a profile, whose bins are means of what was filled, and "
@@ -460,5 +464,8 @@ def put(histogram: Histogram, index: Any, value: Any) -> None:
             f"are set into: give one per bin, or one for all of them"
         ) from None
     store_cells(histogram._cells(), full.ravel(order="F"))
-    histogram._core["fEntries"] = histogram.entries + int(np.size(full[block]))
+    if any(isinstance(part, slice) for part in block):
+        reset_statistics(histogram)
+        return
+    histogram._core["fEntries"] = histogram.entries + 1
     histogram._moment_homes()["fTsumw"]["fTsumw"] = 0.0
