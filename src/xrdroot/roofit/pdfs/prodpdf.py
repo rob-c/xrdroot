@@ -85,11 +85,22 @@ class RooProdPdf(RooAbsPdf):
             found = found * pdf.compute(ctx)
         return found
 
+    def _boxes(self, nset: frozenset[str], rng: Any) -> bool:
+        """Whether ``rng`` is several ranges over more than one factor's observables.
+
+        Two boxes in ``x`` and ``y`` - rf312's side bands - are no range in
+        ``x`` times one in ``y``: the product is normalised over their union
+        as a whole, not factor by factor.
+        """
+        if rng is None or "," not in str(rng):
+            return False
+        return sum(1 for pdf in self.pdfs if self.factor_nset(pdf, nset)) > 1
+
     def value(self, ctx: Context, nset: Any = None, rng: Any = None) -> Any:
         if not nset:
             return self.compute(ctx)
         nset = frozenset(nset)
-        if not self._factorizes(nset):
+        if self._boxes(nset, rng) or not self._factorizes(nset):
             return super().value(ctx, nset, rng)
         found: Any = 1.0
         for pdf in self.pdfs:

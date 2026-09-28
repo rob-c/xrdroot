@@ -166,10 +166,17 @@ class RooAddPdf(RooAbsPdf):
 
         RooFit divides the integral over ``rng`` - normalised there, so one -
         by the full integral normalised over ``rng``: one over ``I / I(rng)``,
-        not ``I(rng) / I``, which is the same fraction a bit away.
+        not ``I(rng) / I``, which is the same fraction a bit away. The two are
+        each component's own integrals, ``rng`` taken part by part if it is
+        several ranges: a product of densities over two boxes in ``x`` and
+        ``y`` is no product of its factors' integrals over the union.
         """
         names = frozenset(nset)
-        return [1.0 / pdf.fraction(names, ctx, nset, None, rng) for pdf in self.pdfs]
+        shares = []
+        for pdf in self.pdfs:
+            mine = names & pdf.dependents()
+            shares.append(1.0 / (pdf.integrate(mine, ctx, None) / pdf.integrate(mine, ctx, rng)))
+        return shares
 
     def compute(self, ctx: Context) -> Any:
         return self.value(ctx, None)
