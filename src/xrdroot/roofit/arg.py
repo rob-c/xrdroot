@@ -171,8 +171,24 @@ class RooAbsArg(RooPrintable):
             [one for one in self.leaves() if not one.InheritsFrom("RooConstVar")]
         ).sorted_copy()
 
-    def getParameters(self, observables: Any = None, stripDisconnected: bool = True) -> RooArgSet:
-        """The variables that are not ``observables`` - a set, or a dataset's columns."""
+    def getParameters(self, observables: Any = None, *rest: Any) -> Any:
+        """The variables that are not ``observables`` - a set, or a dataset's columns.
+
+        ROOT has a second overload, ``getParameters(observables, outputSet)``,
+        which adds the parameters to a set the caller holds - kept sorted by
+        name, as ROOT sorts it - and returns ``false`` for no error. A macro
+        that snapshots that set to restore its parameters between fits relies
+        on it being filled; the trailing ``stripDisconnected`` changes nothing.
+        """
+        found = self._parameters(observables)
+        if rest and isinstance(rest[0], RooArgSet):
+            rest[0].add(found, True)
+            rest[0].sort()
+            return False
+        return found
+
+    def _parameters(self, observables: Any) -> RooArgSet:
+        """``getParameters``' set: what a node that is not a plain function overrides."""
         exclude = set(_observable_names(observables))
         return RooArgSet(
             [one for one in self.getVariables() if one.GetName() not in exclude]

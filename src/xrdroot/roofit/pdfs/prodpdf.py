@@ -174,9 +174,9 @@ class RooProdPdf(RooAbsPdf):
     def extendMode(self) -> int:
         return CAN_BE_EXTENDED if self._extended() is not None else CAN_NOT_BE_EXTENDED
 
-    def expected(self, nset: Any, rng: Any = None) -> float:
+    def expected(self, nset: Any, rng: Any = None, fit: bool = False) -> float:
         found = self._extended()
-        return 0.0 if found is None else float(found.expected(nset, rng))
+        return 0.0 if found is None else float(found.expected(nset, rng, fit))
 
     def gen_context(self, names: frozenset[str]) -> Any:
         from ..generation.contexts import ProductContext

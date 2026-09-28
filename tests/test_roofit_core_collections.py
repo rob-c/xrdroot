@@ -134,6 +134,20 @@ def test_a_snapshot_keeps_the_values_the_members_had() -> None:
     assert x.getVal() == 2.0
 
 
+def test_a_snapshot_into_a_set_of_ones_own_fills_it_and_says_no_error() -> None:
+    """``snapshot(output)``, as rf613 calls it: the copies go into the caller's set, and ROOT
+    returns false - no error - so that restoring from it after a fit restores the values."""
+    x, m, _ = variables()
+    x.setError(0.5)
+    saved = RooArgSet()
+    assert RooArgSet(x, m).snapshot(saved) is False
+    assert saved.names() == ["x", "mean"] and saved.find("x") is not x
+    x.setVal(4.0)
+    x.setError(0.1)
+    RooArgSet(x, m).assign(saved)
+    assert (x.getVal(), x.getError()) == (1.0, 0.5)
+
+
 def test_real_values_are_set_and_read_by_name() -> None:
     """``setRealValue`` returns true for an error - a name not held - as ROOT does."""
     x, m, _ = variables()

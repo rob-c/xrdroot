@@ -104,8 +104,8 @@ class RooSimultaneous(RooAbsPdf):
             )
         return CAN_NOT_BE_EXTENDED
 
-    def expected(self, nset: Any, rng: Any = None) -> float:
-        return float(sum(pdf.expected(nset, rng) for pdf in self.channels.values()))
+    def expected(self, nset: Any, rng: Any = None, fit: bool = False) -> float:
+        return float(sum(pdf.expected(nset, rng, fit) for pdf in self.channels.values()))
 
     def printMetaArgs(self) -> str:
         return ""

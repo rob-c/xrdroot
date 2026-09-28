@@ -80,3 +80,23 @@ def test_the_models_values_are_taken_when_the_source_says_so(capsys: Any) -> Non
         "[#1] INFO:Minimization -- The following global observables have been defined and "
         "their values are taken from the model: (mu_obs)"
     )
+
+
+def test_parameters_restored_as_rf613_restores_them_start_the_next_fit_where_the_first_did(
+    capsys: Any,
+) -> None:
+    """rf613 fills sets of its own - ``getParameters(obs, set)``, ``snapshot(set)`` - and
+    assigns the snapshot back between fits: values and errors, so the second fit starts, and
+    ends, where the first did - as in ROOT, whose rf613 prints the same result twice."""
+    from xrdroot.roofit.collections import RooArgSet
+
+    model, data, mu, mu_obs = constrained()
+    params, saved = RooArgSet(), RooArgSet()
+    model.getParameters(data.get(), params)
+    params.snapshot(saved)
+    first = model.fitTo(data, GlobalObservables=mu_obs, PrintLevel=-1, Save=True)
+    params.assign(saved)
+    assert (mu.getVal(), mu.getError()) == (0.0, 0.0)
+    second = model.fitTo(data, PrintLevel=-1, Save=True)
+    assert (second.minNll(), second.edm()) == (first.minNll(), first.edm())
+    capsys.readouterr()

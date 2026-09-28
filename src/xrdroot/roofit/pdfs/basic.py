@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 
 from ...random import libm
+from .. import kernels
 from .. import mathfuncs as mf
 from ..pdf import RooAbsPdf, check_range
 from ..real import Context
@@ -42,8 +43,11 @@ class RooGaussian(RooAbsPdf):
         check_range(self, [self.sigma], 0.0)
 
     def compute(self, ctx: Context) -> Any:
+        """``evaluate()``, or - for a likelihood's events - ``computeGaussian``'s rounding."""
         arg = self.x.compute(ctx) - self.mean.compute(ctx)
         sig = self.sigma.compute(ctx)
+        if kernels.active():
+            return kernels.fast_exp(arg * arg * (-0.5 / (sig * sig)))
         return libm.exp(-0.5 * arg * arg / (sig * sig))
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
@@ -93,7 +97,9 @@ class RooExponential(RooAbsPdf):
         return -found if self._negate else found
 
     def compute(self, ctx: Context) -> Any:
-        return libm.exp(self._coef(ctx) * self.x.compute(ctx))
+        """``exp(c x)`` - with VDT's ``fast_exp`` for a likelihood's events, as its kernel."""
+        exp = kernels.fast_exp if kernels.active() else libm.exp
+        return exp(self._coef(ctx) * self.x.compute(ctx))
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         for one in (self.x, self.c):

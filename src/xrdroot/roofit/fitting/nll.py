@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 
 from ...random import libm
+from .. import kernels
 from ..cmdargs import commands
 from ..collections import RooArgSet, as_list
 from ..real import RooAbsReal
@@ -128,14 +129,15 @@ class RooNLLVar(RooAbsReal):
         columns = self.columns if keep is None else {k: v[keep] for k, v in self.columns.items()}
         weights = self.w if keep is None else self.w[keep]
         nset = self.nset & pdf.dependents() if keep is not None else self.nset
-        probs = np.asarray(pdf.value(dict(columns), nset, self.rng), dtype=np.float64)
+        with kernels.likelihood():
+            probs = np.asarray(pdf.value(dict(columns), nset, self.rng), dtype=np.float64)
         total, badness = _log_terms(probs, weights)
         self._log_top(pdf, probs, weights, nset)
         self._badness += badness
         if self.extended and pdf.canBeExtended():
             sumw = math.fsum(weights.tolist())
             total.total += pdf.extendedTerm(
-                sumw, pdf.expected(nset, self.rng)
+                sumw, pdf.expected(nset, self.rng, fit=True)
             )  # onto the sum, not the carry
         if simulated:
             total.add(float(math.fsum(weights.tolist())) * math.log(simulated))
