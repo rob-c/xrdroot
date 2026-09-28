@@ -20,9 +20,24 @@ from typing import ClassVar
 
 from .base import Out, P
 from .ctype import CType
+from .cursor import looks_like_type
 from .emit_expr import ExprEmitter, zero
 from .emit_names import type_text
-from .nodes import Binary, Call, Expr, Index, InitList, Literal, Member, Name, Unary
+from .literals import SUFFIXES
+from .nodes import (
+    Assign,
+    Binary,
+    Call,
+    Expr,
+    Function,
+    Index,
+    InitList,
+    Literal,
+    Member,
+    Name,
+    Unary,
+)
+from .symbols import Symbol
 
 __all__ = ["CallEmitter", "WRAPS"]
 
@@ -66,6 +81,18 @@ LIMITS = {
 }
 
 
+def _tuple(items: list[str]) -> str:
+    """Python's spelling of a tuple of ``items``: ``()``, ``(a,)``, ``(a, b)``."""
+    return f"({items[0]},)" if len(items) == 1 else f"({', '.join(items)})"
+
+
+def _plain(node: Expr) -> bool:
+    """An argument evaluated twice to the same effect: a name, a literal, arithmetic on them."""
+    if isinstance(node, Binary):
+        return _plain(node.left) and _plain(node.right)
+    return isinstance(node, (Name, Literal))
+
+
 def _lvalue(node: Expr) -> bool:
     return isinstance(node, (Name, Member, Index)) or (isinstance(node, Unary) and node.op == "*")
 
@@ -95,7 +122,10 @@ class CallEmitter(ExprEmitter):
         return ", ".join(items)
 
     def _object(self, arg: Expr) -> bool:
+        """An object, or an array: what a callee writes into is already what is handed over."""
         found = self.typeof(arg)
+        if found is not None and found.dims:
+            return True
         return found is not None and found.is_class and not found.pointer
 
     # -- the calls -------------------------------------------------------------
@@ -111,13 +141,30 @@ class CallEmitter(ExprEmitter):
     def named_call(self, func: Name, node: Call) -> Out:
         symbol = self.symbol(func)
         if symbol is not None:
-            return f"{self.use(symbol)[0]}({self.arguments(node)})", P.POSTFIX
+            given = [self.arguments(node), self._template_values(func, symbol)]
+            args = ", ".join(filter(None, given))
+            return f"{self.use(symbol)[0]}({args})", P.POSTFIX
         special = self._LIBRARY.get(func.last)
         if special is not None and (len(func.parts) == 1 or func.parts[0] in ("std", "TString")):
             found = special(self, func, node)
             if found is not None:
                 return found
         return f"{self.library(func)[0]}({self.arguments(node)})", P.POSTFIX
+
+    def _template_values(self, func: Name, symbol: Symbol) -> str:
+        """``f<3>(a)``: the value template arguments, as the keywords the function takes."""
+        chosen = self._valued(symbol) if func.targs else None
+        if chosen is None:
+            return ""
+        values = {str(param.name) for param in chosen.values}
+        pairs = zip(chosen.template or [], func.targs or [])
+        return ", ".join(f"{name}={self.value(arg)}" for name, arg in pairs if name in values)
+
+    def _valued(self, symbol: Symbol) -> Function | None:
+        """The function template with value parameters that ``symbol`` names, if it is one."""
+        if symbol.kind not in ("function", "static", "method"):
+            return None
+        return next((f for f in self.function_named(symbol) if f.values), None)
 
     def _make(self, func: Name, node: Call) -> Out | None:
         if not func.targs or not isinstance(func.targs[0], CType):
@@ -146,6 +193,50 @@ class CallEmitter(ExprEmitter):
 
     def _exit(self, func: Name, node: Call) -> Out | None:
         return f"c_exit({self.arguments(node)})", P.POSTFIX
+
+    def _suffixed(self, func: Name, node: Call) -> Out | None:
+        """``0.1_normal``, ``100us``: the value the library's ``operator""`` makes of a number."""
+        suffix = func.last[len('operator""') :]
+        return f"user_literal({suffix!r}, {self.value(node.args[0])})", P.POSTFIX
+
+    def _getline_value(self, func: Name, node: Call) -> Out | None:
+        """``while (std::getline(in, line))``: the line stored, and the stream, to be tested."""
+        if len(node.args) < 2:
+            raise self.refuse("std::getline without a string to read into", node)
+        stream = self._stream(node.args[0])
+        delimiter = "".join(self.value(arg) for arg in node.args[2:3])
+        stored = self.store_expression(node.args[1], f"{stream}.getline({delimiter})")[0]
+        return f"stream_after({stream}, {stored})", P.POSTFIX
+
+    def extraction(self, node: Binary) -> Out:
+        """``while (in >> a >> b)``: each value read and stored in turn, then the stream."""
+        targets: list[Expr] = []
+        root: Expr = node
+        while isinstance(root, Binary) and root.op == ">>":
+            targets.insert(0, root.right)
+            root = root.left
+        stream = self._stream(root)
+        stores = []
+        for target in targets:
+            kind = self.typeof(target)
+            read = f"{stream}.extract({kind.name if kind is not None else 'double'!r})"
+            stores.append(self.store_expression(target, read)[0])
+        return f"stream_after({stream}, {', '.join(stores)})", P.POSTFIX
+
+    def _stream(self, node: Expr) -> str:
+        """The stream a read in an expression reads from, which the Python names twice."""
+        if not isinstance(node, Name):
+            why = "reading inside an expression from a stream that is not a variable"
+            raise self.refuse(why, node)
+        return self.value(node)
+
+    def _find_if(self, func: Name, node: Call) -> Out | None:
+        """``std::find_if(first, last, pred)`` over ROOT's iterators: what it finds, or None."""
+        if len(node.args) != 3 or self._container_end(node.args[0]) is not None:
+            why = "std::find_if over a container, whose iterator Python has none of"
+            raise self.refuse(why, node)
+        args = ", ".join(self.value(arg) for arg in node.args)
+        return f"find_if({args})", P.POSTFIX
 
     def _unsupported(self, func: Name, node: Call) -> Out | None:
         raise self.refuse(f"{func.text}() where its result is used", node)
@@ -218,8 +309,9 @@ class CallEmitter(ExprEmitter):
         "swap": _unsupported,
         "max_element": _unsupported,
         "min_element": _unsupported,
-        "find_if": _unsupported,
-        "getline": _unsupported,
+        "find_if": _find_if,
+        "getline": _getline_value,
+        **dict.fromkeys(['operator""' + suffix for suffix in SUFFIXES], _suffixed),
     }
 
     # -- methods -----------------------------------------------------------------
@@ -230,6 +322,9 @@ class CallEmitter(ExprEmitter):
             special = self._typed_method(owner, func, node)
             if special is not None:
                 return special
+        elif func.name == "c_str" and not node.args and not func.arrow:
+            # Only a std::string has c_str(), and a std::string is a str here, whoever made it.
+            return f"cstr({self.value(func.obj)})", P.POSTFIX
         return f"{self.value(func)}({self.arguments(node)})", P.POSTFIX
 
     def _typed_method(self, owner: CType, func: Member, node: Call) -> Out | None:
@@ -254,6 +349,46 @@ class CallEmitter(ExprEmitter):
         if func.name in ("get", "release", "operator->"):
             return self.expr(func.obj)
         raise self.refuse(f"the smart pointer's {func.name}() where its result is used", node)
+
+    # -- assigning through a returned reference ------------------------------------
+
+    def call_assignment(self, node: Assign) -> str:
+        """``f(i) = v``: what the call returns a reference to, written through the runtime."""
+        target = node.target
+        assert isinstance(target, Call)
+        if node.op != "=" and not all(_plain(arg) for arg in target.args):
+            raise self.refuse("a compound assignment to a call whose arguments change things", node)
+        value = self.assigned_value(node)
+        func = target.func
+        args = _tuple([self.value(arg) for arg in target.args])
+        if isinstance(func, Member):
+            return self._method_assignment(func, target, args, value)
+        self._own_reference(func, "its operator()", node)
+        if isinstance(func, Name) and self._names_class(func):
+            # ``TMatrixDColumn(A, 0) = 1.0``: a temporary built, and assigned into.
+            return f"assign_into({self.value(target)}, {value})"
+        return f"assign_call({self.at(func, P.POSTFIX)}, {args}, {value})"
+
+    def _method_assignment(self, func: Member, target: Call, args: str, value: str) -> str:
+        """``obj.m(args) = v``: an element for ``at``, else through the runtime's ``Set``/copy."""
+        self._own_reference(func.obj, f"its method {func.name}", target)
+        obj = self.value(func.obj)
+        if func.name == "at" and len(target.args) == 1:
+            return f"set_item({obj}, {self.value(target.args[0])}, {value})"
+        return f"assign_method({obj}, {func.name!r}, {args}, {value})"
+
+    def _names_class(self, func: Name) -> bool:
+        symbol = self.symbol(func)
+        if symbol is not None:
+            return symbol.kind == "class"
+        return looks_like_type(func.parts, set(self.program.classes))
+
+    def _own_reference(self, obj: Expr, what: str, node: Expr) -> None:
+        """Refuse a reference one of the macro's own classes returns: Python returns a value."""
+        found = self.typeof(obj)
+        if found is not None and found.name in self.program.classes:
+            why = f"assigning to what the macro's class {found.name} returns from {what}"
+            raise self.refuse(why, node)
 
     # -- converting stores ---------------------------------------------------------
 
@@ -327,6 +462,11 @@ def _wrapped(value: int, ctype: CType) -> int:
     return value
 
 
+def _runtime_method(name: str) -> Callable[[str, list[str]], str]:
+    """A string member the runtime has a function of the same name for, the string first."""
+    return lambda obj, args: f"{name}({', '.join([obj, *args])})"
+
+
 #: ``std::string``'s members, as the Python over a ``str`` that does what each does.
 STRING_METHODS: dict[str, Callable[[str, list[str]], str]] = {
     "c_str": lambda obj, args: obj,
@@ -337,6 +477,10 @@ STRING_METHODS: dict[str, Callable[[str, list[str]], str]] = {
     "substr": lambda obj, args: f"substr({', '.join([obj, *args])})",
     "find": lambda obj, args: f"find({', '.join([obj, *args])})",
     "rfind": lambda obj, args: f"rfind({', '.join([obj, *args])})",
+    **{
+        name: _runtime_method(name)
+        for name in ("find_first_of", "find_last_of", "find_first_not_of", "find_last_not_of")
+    },
     "compare": lambda obj, args: f"strcmp({obj}, {args[0]})",
     "at": lambda obj, args: f"char_at({obj}, {args[0]})",
     "front": lambda obj, args: f"char_at({obj}, 0)",

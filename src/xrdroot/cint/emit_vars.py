@@ -11,6 +11,7 @@ for it.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -18,7 +19,20 @@ from .ctype import CType
 from .emit_expr import zero
 from .emit_names import type_text
 from .emit_stmt import StmtEmitter
-from .nodes import Call, Expr, Index, InitList, Literal, Member, Name, Unary, VarDecl
+from .nodes import (
+    Call,
+    Expr,
+    Index,
+    InitList,
+    Lambda,
+    Literal,
+    Member,
+    Name,
+    New,
+    This,
+    Unary,
+    VarDecl,
+)
 from .program import walk
 from .symbols import Symbol
 
@@ -26,6 +40,9 @@ __all__ = ["VariableEmitter", "Context"]
 
 #: The standard containers, which are built from a Python list of what a braced list holds.
 CONTAINERS = ("vector", "list", "deque", "set", "array", "map", "unordered_map", "RVec")
+
+#: The standard's lock guards, which give their mutex back as their scope ends.
+GUARDS = frozenset({"std::lock_guard", "std::unique_lock", "std::scoped_lock"})
 
 #: The ROOT string class, which a C string stored into one is converted to.
 STRING_CLASSES = frozenset({"TString"})
@@ -42,10 +59,6 @@ class Context:
     nonlocals: set[str] = field(default_factory=set)
     declared: set[int] = field(default_factory=set)
     cells: set[str] = field(default_factory=set)
-    #: Where the ``def`` line is, so a static local can be put before it.
-    start: int = 0
-    #: The module-level lines a static local becomes, written before the function.
-    statics: list[Any] = field(default_factory=list)
 
 
 class VariableEmitter(StmtEmitter):
@@ -87,30 +100,42 @@ class VariableEmitter(StmtEmitter):
         if decl.static and self.contexts:
             self.static_local(decl)
             return
-        ctype = _sized(self.declared_type(decl), decl)
+        ctype = sized(self.declared_type(decl), decl)
         alias = self.alias_of(decl, ctype)
         if alias is not None:
             self.declare(decl.name, "local", ctype, alias=alias)
             return
-        self._destructible(decl, ctype)
+        destructs = self._destructible(decl, ctype)
         value = self.initial(decl, ctype)
         cell = decl.name in self.cell_names() and addressable(ctype)
         symbol = self.declare(decl.name, "local", ctype, cell=cell)
         self.write_variable(symbol, value, decl)
+        if destructs:
+            assert self.destructed is not None
+            self.destructed.append(symbol.py)
 
-    def _destructible(self, decl: VarDecl, ctype: CType | None) -> None:
-        """Refuse a local object whose destructor C++ would run where Python runs none."""
+    def _destructible(self, decl: VarDecl, ctype: CType | None) -> bool:
+        """Does ``decl`` hold an object whose destructor does something as its scope ends?
+
+        In a row of statements the rest of them go in a ``try`` that runs it
+        (see :meth:`statements`); anywhere else - a ``for``'s first clause, an
+        ``if``'s condition - it is refused.
+        """
         if ctype is None or ctype.pointer or ctype.reference or ctype.dims:
-            return
-        info = self.program.classes.get(ctype.name)
-        if info is None:
-            return
-        destructors = info.methods.get("~" + info.name, [])
-        if any(func.body is not None for func in destructors):
-            raise self.refuse(
-                f"the local {info.name} {decl.name}, whose destructor C++ runs as the scope ends",
-                decl,
-            )
+            return False
+        if not (ctype.name in GUARDS or self._destructs(ctype.name)):
+            return False
+        if self.destructed is None:
+            where = "declared in a condition or a for's first part"
+            why = f"the local {ctype.name} {decl.name} {where}, whose destructor C++ runs"
+            raise self.refuse(f"{why} as that statement ends", decl)
+        return True
+
+    def _destructs(self, name: str) -> bool:
+        """Does the macro's class ``name`` have a destructor with a body?"""
+        info = self.program.classes.get(name)
+        destructors = info.methods.get("~" + info.name, []) if info is not None else []
+        return any(func.body is not None for func in destructors)
 
     def write_variable(self, symbol: Symbol, value: str, decl: VarDecl) -> None:
         if symbol.cell:
@@ -267,13 +292,11 @@ class VariableEmitter(StmtEmitter):
 
     def _dimensions(self, decl: VarDecl, ctype: CType, init: Expr | None) -> str:
         dims = []
-        for index, dim in enumerate(ctype.dims):
+        for dim in ctype.dims:
             if dim is None:
-                if not isinstance(init, InitList) or index:
-                    raise self.refuse(f"the array {decl.name}[] with no size to give it", decl)
-                dims.append(str(len(init.items)))
-            else:
-                dims.append(str(dim) if isinstance(dim, int) else self.value(dim))
+                # A size an initialiser gives was given it by ``sized``; this has none.
+                raise self.refuse(f"the array {decl.name}[] with no size to give it", decl)
+            dims.append(str(dim) if isinstance(dim, int) else self.value(dim))
         return dims[0] if len(dims) == 1 else f"({', '.join(dims)})"
 
     def _char_array(self, decl: VarDecl, ctype: CType, init: Expr | None) -> str:
@@ -285,26 +308,58 @@ class VariableEmitter(StmtEmitter):
         if init is None:
             return "''"
         if isinstance(init, InitList):
-            why = f"the character array {decl.name} initialised one char at a time"
-            raise self.refuse(why, decl)
+            return repr(_characters(init, decl, self.refuse))
         return self.value(init)
 
     def static_local(self, decl: VarDecl) -> None:
-        """A ``static`` local: a module-level variable, initialised once, before the function."""
-        context = self.contexts[-1]
-        if context.kind != "function" or self.scope.klass:
-            raise self.refuse(f"the static local {decl.name} in a method or lambda", decl)
-        for node in walk(decl):
-            if isinstance(node, Name) and self.symbol(node) is not None:
-                if self.symbol(node).kind in ("local", "param"):  # type: ignore[union-attr]
-                    why = f"the static local {decl.name} initialised from a local"
-                    raise self.refuse(why, decl)
-        ctype = self.declared_type(decl)
+        """A ``static`` local: one :class:`Static` for the program's life, made at module level.
+
+        C++ initialises a static local the first time control reaches its
+        declaration, and never again; so does the translation, unless the
+        value is a constant, which C++ (and the translation) sets before
+        anything runs.
+        """
+        ctype = sized(self.declared_type(decl), decl)
+        kind = f", {ctype.name!r}" if ctype is not None and ctype.scalar else ""
+        symbol = self.declare(decl.name, "local", ctype, cell=True)
+        symbol.py = self.fresh(f"{self._static_owner()}_{decl.name}")
+        if _constant_static(decl, ctype):
+            value = self.initial(decl, ctype)
+            self.module_statics.append((f"{symbol.py} = Static({value}{kind})", decl.where))
+            return
+        initial = zero(ctype) if ctype is not None and ctype.scalar else "None"
+        holder = f"{symbol.py} = Static({initial}{kind}, ready=False)"
+        self.module_statics.append((holder, decl.where))
         value = self.initial(decl, ctype)
-        owner = getattr(context.owner, "name", "macro")
-        symbol = self.declare(decl.name, "global", ctype)
-        symbol.py = self.fresh(f"{owner}_{decl.name}")
-        context.statics.append((f"{symbol.py} = {value}", decl.where))
+        self.out.line(f"if not {symbol.py}.ready:", decl.where)
+        with self.out.indented():
+            self.out.line(f"{symbol.py}.value = {value}", decl.where)
+            self.out.line(f"{symbol.py}.ready = True", decl.where)
+
+    def _static_owner(self) -> str:
+        """The name a static local's holder is filed under: its class and function."""
+        owner = getattr(self.contexts[-1].owner, "name", "lambda")
+        stem = f"{self.scope.klass}_{owner}" if self.scope.klass else owner
+        return re.sub(r"\W", "_", stem).strip("_") or "static"
+
+    #: The module-level lines the static locals of the declaration being written become.
+    module_statics: list[tuple[str, Any]]
+
+
+def _constant_static(decl: VarDecl, ctype: CType | None) -> bool:
+    """Is a static local's first value a constant, which C++ sets before anything runs?"""
+    if ctype is None or not (ctype.pointer or ctype.arithmetic or ctype.is_string):
+        return False
+    return not any(isinstance(node, (Name, Call, New, Lambda, This)) for node in walk(decl))
+
+
+def _characters(init: InitList, decl: VarDecl, refuse: Any) -> str:
+    """``char s[8] = {'a', 'b', 0}``: the C string the characters spell, to the first NUL."""
+    if not all(isinstance(item, Literal) and item.kind in ("char", "int") for item in init.items):
+        why = f"the character array {decl.name} initialised one char at a time from variables"
+        raise refuse(why, decl)
+    text = "".join(chr(int(item.value)) for item in init.items)  # type: ignore[attr-defined]
+    return text.split("\0", 1)[0]
 
 
 def _value_like(ctype: CType | None, init: Expr) -> bool:
@@ -331,7 +386,7 @@ def _container(ctype: CType) -> bool:
     return ctype.name.split("::")[-1] in CONTAINERS
 
 
-def _sized(ctype: CType | None, decl: VarDecl) -> CType | None:
+def sized(ctype: CType | None, decl: VarDecl) -> CType | None:
     """``int a[] = {1, 2, 3}`` has the size its initialiser gives it, which ``sizeof`` needs."""
     if ctype is None or not ctype.dims or ctype.dims[0] is not None:
         return ctype

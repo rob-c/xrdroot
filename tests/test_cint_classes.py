@@ -79,9 +79,28 @@ def test_a_class_is_built_and_used_as_cpp_builds_and_uses_it(
     assert output(capsys, source) == "6 2 8 3 1 3.5\ngone\n"
 
 
-def test_a_local_object_whose_destructor_does_something_is_refused() -> None:
-    source = 'struct Noisy { ~Noisy() { printf("gone"); } };\nvoid t() { Noisy n; }'
-    with pytest.raises(Refusal, match=r"t.C:2: the local Noisy n, whose destructor C\+\+ runs"):
+def test_a_local_objects_destructor_runs_as_its_scope_ends_in_reverse_order(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = """
+    struct D { int n; D(int k) : n(k) {} ~D() { printf("~%d ", n); } };
+    int t() {
+      D a(1);
+      { D b(2), c(3); printf("in "); }
+      for (int i = 0; i < 2; i++) { D e(10 + i); if (i) break; }
+      auto f = []() { D g(7); return 5; };
+      int five = f();
+      if (five) { D h(8); return five; }
+      return 0;
+    }
+    """
+    assert run_source(source, "t.C", root=fake()) == 5
+    assert capsys.readouterr().out == "in ~3 ~2 ~10 ~11 ~7 ~8 ~1 "
+
+
+def test_a_destructed_local_in_a_for_or_condition_is_refused() -> None:
+    source = 'struct Noisy { ~Noisy() { printf("gone"); } };\nvoid t() { for (Noisy n; ;) break; }'
+    with pytest.raises(Refusal, match=r"t.C:2: the local Noisy n declared in a condition or a for"):
         run_source(source, "t.C", root=fake())
 
 

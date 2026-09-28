@@ -47,7 +47,7 @@ from .nodes import (
     Throw,
     Unary,
 )
-from .operators import python_operator
+from .operators import DUNDERS, python_operator
 
 __all__ = ["ExprEmitter", "COMPARISONS", "zero"]
 
@@ -222,6 +222,9 @@ class ExprEmitter(NameEmitter):
     def _offset(self, node: Binary) -> Out:
         left = self.typeof(node.left)
         assert left is not None
+        if left.is_string and node.op == "+" and not left.dims:
+            # ``slash + 1``: the C string from there on, which is what reading it gives.
+            return f"{self.at(node.left, P.POSTFIX)}[{self.value(node.right)}:]", P.POSTFIX
         if node.op == "-" or left.is_string or not left.element().scalar:
             raise self.refuse(f"pointer arithmetic on a {_spelled(left)}", node)
         return f"{self.at(node.left, P.POSTFIX)}[{self.value(node.right)}:]", P.POSTFIX
@@ -237,9 +240,12 @@ class ExprEmitter(NameEmitter):
 
     def _shift(self, node: Binary) -> Out:
         if node.op == ">>":
-            raise self.refuse("reading from a stream with >> inside an expression", node)
+            return self.extraction(node)
         right = self.at(node.right, P.SHIFT + 1)
         found = self.typeof(node.right)
+        writer = self.stream_writers.get(_written_as(found))
+        if writer is not None:
+            return f"{writer}({self.value(node.left)}, {self.value(node.right)})", P.POSTFIX
         if found is not None and found.is_char:
             right = f"chr({self.value(node.right)})"
         return f"{self.at(node.left, P.SHIFT)} << {right}", P.SHIFT
@@ -265,6 +271,9 @@ class ExprEmitter(NameEmitter):
         found = self.typeof(operand)
         if found is None:
             return f"deref({self.value(operand)})", P.POSTFIX
+        own = self.own_operator(operand, "operator*", 0)
+        if own is not None:
+            return own, P.POSTFIX
         if found.is_object_pointer or (found.is_class and not found.pointer):
             return self.expr(operand)
         return f"{self.at(operand, P.POSTFIX)}[0]", P.POSTFIX
@@ -285,10 +294,10 @@ class ExprEmitter(NameEmitter):
         symbol = self.symbol(operand)
         if symbol is None:
             return self.expr(operand)
-        if symbol.cell and symbol.alias is None:
+        found = self.typeof(operand)
+        if symbol.cell and symbol.alias is None and not _object_value(found):
             prefix = "self." if symbol.kind == "field" else ""
             return prefix + symbol.py, P.POSTFIX
-        found = self.typeof(operand)
         if symbol.kind == "field" and found is not None and found.scalar:
             return f"AttrRef(self, {symbol.py!r})", P.POSTFIX
         return self.expr(operand)
@@ -343,7 +352,30 @@ class ExprEmitter(NameEmitter):
     def assigned(self, symbol: Any) -> None:
         """Note that the function being written assigns ``symbol``: a global needs declaring."""
 
+    def own_operator(self, operand: Expr, name: str, operands: int) -> str | None:
+        """The method of the macro's class ``operand`` is, for its ``name`` operator, if it has one.
+
+        ``operands`` is how many the method takes besides the object: ``it++``
+        is ``operator++(int)``, ``++it`` and ``*it`` take none.
+        """
+        if not any(len(func.params) == operands for func in self._operators(operand, name)):
+            return None
+        binary, unary = DUNDERS[name]
+        chosen = binary if operands else unary
+        return f"{self.at(operand, P.POSTFIX)}.{chosen}({'0' if operands else ''})"
+
+    def _operators(self, operand: Expr, name: str) -> list[Any]:
+        """The ``name`` operators of the macro's class an object ``operand`` is of, if any."""
+        found = self.typeof(operand)
+        if found is None or found.pointer:
+            return []
+        info = self.program.classes.get(found.name)
+        return info.methods.get(name, []) if info is not None else []
+
     def increment(self, node: Unary) -> Out:
+        own = self.own_operator(node.operand, "operator" + node.op, int(node.postfix))
+        if own is not None:
+            return own, P.POSTFIX
         delta = "1" if node.op == "++" else "-1"
         name = self.local_name(node.operand)
         if name is not None:
@@ -354,17 +386,52 @@ class ExprEmitter(NameEmitter):
 
     # -- assignment inside an expression -------------------------------------
 
+    def call_assignment(self, node: Assign) -> str:
+        raise NotImplementedError
+
+    def extraction(self, node: Binary) -> Out:
+        raise NotImplementedError
+
+    def stored_through(self, node: Assign) -> str | None:
+        """``f(i) = v`` and ``*p = v`` of a pointer to an object or of unknown type, if it is one.
+
+        What ``*p`` is cannot be rebound in Python, so the store goes through
+        the runtime: into the cell ``p`` is (a smart pointer to a value that
+        ROOT made, say), or into the object it points at.
+        """
+        target = node.target
+        if isinstance(target, Call):
+            return self.call_assignment(node)
+        if not self._held_through(target):
+            return None
+        return self.store_expression(target, self.assigned_value(node))[0]
+
+    def _held_through(self, target: Expr) -> bool:
+        """Is ``target`` ``*p`` of a pointer to an object, or to what this translator cannot say?"""
+        if not (isinstance(target, Unary) and target.op == "*"):
+            return False
+        found = self.typeof(target.operand)
+        return found is None or found.is_object_pointer
+
     def _assign(self, node: Assign) -> Out:
-        value = self.assigned_value(node)
-        name = self.local_name(node.target)
+        stored = self.stored_through(node)
+        if stored is not None:
+            return stored, P.POSTFIX
+        return self.store_expression(node.target, self.assigned_value(node))
+
+    def store_expression(self, target: Expr, value: str) -> Out:
+        """Python that stores ``value`` in ``target`` and is worth it, as C++'s ``=`` is."""
+        name = self.local_name(target)
         if name is not None:
             return f"({name} := {value})", P.ATOM
-        target = node.target
         if isinstance(target, Index):
             obj, index = self.value(target.obj), self.value(target.index)
             return f"set_item({obj}, {index}, {value})", P.POSTFIX
         if isinstance(target, Member):
             return f"set_attr({self.value(target.obj)}, {target.name!r}, {value})", P.POSTFIX
+        if self._held_through(target):
+            assert isinstance(target, Unary)
+            return f"store_through({self.value(target.operand)}, {value})", P.POSTFIX
         reference = self.reference(target)
         return f"set_attr({reference}, 'value', {value})", P.POSTFIX
 
@@ -431,6 +498,8 @@ class ExprEmitter(NameEmitter):
 
     def _new(self, node: New) -> Out:
         ctype = node.ctype
+        if node.place is not None:
+            return self._placed(node), P.POSTFIX
         if node.count is not None:
             return self.new_array(ctype, node.count), P.POSTFIX
         args = self.constructor_arguments(ctype, node.args or [])
@@ -439,6 +508,16 @@ class ExprEmitter(NameEmitter):
             initial = self.store(ctype, first) if first is not None else zero(ctype)
             return f"Cell({initial}, {ctype.name!r})", P.POSTFIX
         return f"{self.class_expr(ctype)}({args})", P.POSTFIX
+
+    def _placed(self, node: New) -> str:
+        """``new (clones[i]) T(args)``: a ``T`` built and put in slot ``i`` of the array."""
+        place = node.place
+        if not isinstance(place, Index) or not node.ctype.is_class or node.ctype.pointer:
+            why = "placement new of anything but an object into an element of an array"
+            raise self.refuse(why, node)
+        args = self.constructor_arguments(node.ctype, node.args or [])
+        built = f"{self.class_expr(node.ctype)}({args})"
+        return f"construct_at({self.value(place.obj)}, {self.value(place.index)}, {built})"
 
     def new_array(self, ctype: CType, count: Expr) -> str:
         """``new T[n]``: an array of ``n`` zeros, or of ``None`` for pointers and objects."""
@@ -483,9 +562,9 @@ class ExprEmitter(NameEmitter):
 
     def class_expr(self, ctype: CType) -> str:
         """The Python that builds a ``ctype``: the macro's class, ``str``, or ROOT's class."""
-        name = ctype.name
+        name = "::".join(self._unqualified(ctype.name.split("::")))
         if name in self.program.classes:
-            symbol = self.lookup(name)
+            symbol = self.class_symbols.get(name) or self.lookup(name)
             return symbol.py if symbol is not None else name
         if ctype.is_string:
             return "str"
@@ -526,6 +605,18 @@ def zero(ctype: CType) -> str:
     if ctype.floating:
         return "0.0"
     return "0"
+
+
+def _written_as(ctype: CType | None) -> str:
+    """The type a free ``operator<<`` would be for, to write a value of ``ctype``."""
+    if ctype is None or ctype.pointer:
+        return ""
+    return ctype.enum or ctype.name
+
+
+def _object_value(ctype: CType | None) -> bool:
+    """An object held by value - whose address is the object, even when a cell holds it."""
+    return ctype is not None and ctype.is_class and not ctype.pointer and not ctype.is_smart
 
 
 def _spelled(ctype: CType) -> str:

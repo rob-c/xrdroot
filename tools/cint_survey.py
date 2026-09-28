@@ -2,6 +2,7 @@
 
     $ python tools/cint_survey.py ROOT/tutorials
     $ python tools/cint_survey.py ROOT/tutorials --top 40 --list refused
+    $ python tools/cint_survey.py ROOT/tutorials --min-percent 97   # a ratchet: exits 1 below
 
 Every ``.C``, ``.cxx`` and ``.cpp`` under the directory is translated with
 :func:`xrdroot.cint.translate` and the Python it gives is compiled. Each file
@@ -10,6 +11,10 @@ named a construct it will not translate - the refusals are grouped by what
 they name, with the construct's wording kept and the specifics dropped), or
 *crashed* (anything else, including Python that does not compile: a bug
 here, never the macro's fault).
+
+With ``--min-percent`` the survey is a ratchet: it exits 1 when fewer than
+that percentage of the macros translate, or when any crashes, so a change
+that loses ground fails where the number is checked.
 """
 
 from __future__ import annotations
@@ -58,7 +63,22 @@ def _one(path: Path) -> tuple[str, str]:
 
 
 def report(root: Path, top: int, listing: str | None) -> str:
-    files, outcome = survey(root)
+    return render(root, *survey(root), top, listing)
+
+
+def translated_percent(files: list[Path], outcome: dict[str, list[tuple[Path, str]]]) -> float:
+    """The percentage of ``files`` that translated."""
+    return 100 * len(outcome["translated"]) / (len(files) or 1)
+
+
+def render(
+    root: Path,
+    files: list[Path],
+    outcome: dict[str, list[tuple[Path, str]]],
+    top: int,
+    listing: str | None,
+) -> str:
+    """The survey's report: the counts, the reasons grouped, and any listing asked for."""
     total = len(files) or 1
     lines = [f"{len(files)} macros under {root}"]
     for kind in ("translated", "refused", "crashed"):
@@ -84,8 +104,20 @@ def main(argv: list[str] | None = None) -> int:
         choices=("translated", "refused", "crashed"),
         help="also list every file of one kind",
     )
+    parser.add_argument(
+        "--min-percent",
+        type=float,
+        help="exit 1 if fewer than this percentage translate, or any crashes",
+    )
     args = parser.parse_args(argv)
-    print(report(args.tutorials, args.top, args.list))
+    files, outcome = survey(args.tutorials)
+    print(render(args.tutorials, files, outcome, args.top, args.list))
+    if args.min_percent is None:
+        return 0
+    percent = translated_percent(files, outcome)
+    if percent < args.min_percent or outcome["crashed"]:
+        print(f"\n{percent:.1f}% translate, and the floor is {args.min_percent:g}%")
+        return 1
     return 0
 
 

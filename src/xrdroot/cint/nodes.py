@@ -174,6 +174,8 @@ class New(Expr):
     args: list[Expr] | None
     count: Expr | None = None
     braces: bool = False
+    #: Where placement new builds the object: ``slot`` of ``new (slot) T(...)``.
+    place: Expr | None = None
 
 
 @dataclass(eq=False)
@@ -375,6 +377,8 @@ class Function(Stmt):
     template: list[str] | None = None
     #: ``= 0``, ``= default``, ``= delete``: declared, and never to be given a body.
     special: str | None = None
+    #: The template's value parameters, ``N`` of ``template <unsigned N>``, as parameters.
+    values: list[Param] = field(default_factory=list)
 
 
 @dataclass(eq=False)

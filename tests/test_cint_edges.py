@@ -149,7 +149,7 @@ def test_a_specialisation_of_a_class_template_is_refused() -> None:
     ("source", "why"),
     [
         ("void t() {", "an expression was expected, and the end of the macro is there"),
-        ("struct A { A operator*() { return *this; } };", r"the operator \* with this many"),
+        ("struct A { A operator/() { return *this; } };", r"the operator / with this many"),
         ("void t() { int n = sizeof(double[n]); }", "sizeof of a type whose size"),
     ],
 )
@@ -261,7 +261,7 @@ def test_members_declared_after_their_definitions_and_types_named_through_classe
     [
         ("static_assert(1", "the macro ends in the middle"),
         ("void t() { int (*p) = nullptr; }", "assigning to something that is not a variable"),
-        ("template <int N> int times(int x) { return N * x; }", "the template parameter N, a"),
+        ("template <int N> struct Fixed { int a[N]; };", "N, a value a class template is given"),
         ("template <typename T> T half = T(1) / 2;", "a variable template"),
     ],
 )

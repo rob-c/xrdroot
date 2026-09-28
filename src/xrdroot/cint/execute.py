@@ -21,7 +21,7 @@ from typing import Any
 from . import cache, returned
 from .errors import MacroError, Refusal, Where
 from .runtime import ROOT, cerr, clog, cout
-from .runtime.streams import ostream
+from .runtime.streams import FORMATTERS, ostream
 from .translation import Translation, translation
 
 __all__ = [
@@ -77,7 +77,8 @@ class _Taker:
 
 
 def _reset_streams() -> None:
-    """Every run starts with ``cout`` as C++ starts it: six digits, no ``fixed``."""
+    """Every run starts with ``cout`` as C++ starts it: six digits, no ``fixed``, no writers."""
+    FORMATTERS.clear()
     fresh = ostream()
     for stream in (cout, cerr, clog):
         for name in ("floatfield", "adjust", "alpha", "base", "plus", "width", "digits", "fill"):

@@ -12,12 +12,13 @@ the function of its file's name. At the bottom, ``if __name__ ==
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any
 
 from .ctype import CType
 from .emit_classes import ClassEmitter
-from .emit_vars import addressable
-from .nodes import ClassDecl, DeclStmt, EnumDecl, Function, Namespace, Stmt, VarDecl
+from .emit_vars import addressable, sized
+from .nodes import ClassDecl, DeclStmt, EnumDecl, ExprStmt, Function, Namespace, Stmt, VarDecl
 from .program import Program
 from .returned import spelling
 from .symbols import Symbol, python_name
@@ -51,6 +52,9 @@ class Translator(ClassEmitter):
         self.namespaces = _namespaces(program.unit.decls)
         self.scope_where = program.unit.where
         self._emitted: set[str] = set()
+        self.module_statics = []
+        #: How deep :meth:`top` is: a class's nested types are written by it too.
+        self._depth = 0
         #: The Python name of the function running the macro runs, once known.
         self.entry: str | None = None
         #: The type the entry returns as cling spells it, for ``root -q`` to print and exit with.
@@ -79,13 +83,23 @@ class Translator(ClassEmitter):
         add = self.scope.add
         scoped = [name for name, enum in self.program.enums.items() if enum.scoped]
         for name in [*self.program.classes, *scoped]:
-            add(Symbol(name, "class", python_name(name)))
+            self.class_symbols[name] = add(Symbol(name, "class", python_name(name)))
         for name, home in self.program.constants.items():
             py = f"{home}.{name}" if home else python_name(name)
             add(Symbol(name, "constant", py, CType("int")))
         for name in self.program.functions:
-            add(Symbol(name, "function", python_name(name)))
+            # ``class WorldMap`` and ``void WorldMap()``: the class keeps the Python name.
+            clash = "_function" if name in self.class_symbols else ""
+            add(Symbol(name, "function", python_name(name) + clash))
         self._predeclare_globals()
+        self._predeclare_writers()
+
+    def _predeclare_writers(self) -> None:
+        """Each ``operator<<`` the macro writes a type with, named before ``cout << t`` calls it."""
+        for func in self.program.functions.get("operator<<", []):
+            kind = _written_type(func)
+            if kind is not None:
+                self.stream_writers[kind] = "ostream_" + python_name(kind.replace("::", "_"))
 
     def _predeclare_globals(self) -> None:
         add = self.scope.add
@@ -95,6 +109,27 @@ class Translator(ClassEmitter):
             add(Symbol(name, "global", python_name(name), var.ctype, cell=cell))
 
     def top(self, decl: object) -> None:
+        """One declaration at namespace scope, the static locals in it made just before it."""
+        self._outermost(lambda: self._top(decl))
+
+    def _outermost(self, write: Callable[[], None]) -> None:
+        """What ``write`` writes, preceded - if it is at the top - by its static locals' holders."""
+        mark = self.out.mark()
+        self._depth += 1
+        try:
+            write()
+        finally:
+            self._depth -= 1
+        if not self._depth:
+            self._statics_at(mark)
+
+    def _statics_at(self, mark: int) -> None:
+        """The holders of the static locals just written, put at module level at ``mark``."""
+        for offset, (line, where) in enumerate(self.module_statics):
+            self.out.insert(mark + offset, line, where)
+        self.module_statics = []
+
+    def _top(self, decl: object) -> None:
         if isinstance(decl, ClassDecl):
             self.class_def(decl)
         elif isinstance(decl, EnumDecl):
@@ -103,6 +138,10 @@ class Translator(ClassEmitter):
             self._globals(decl)
         elif isinstance(decl, Function):
             self._free_function(decl)
+        elif isinstance(decl, ExprStmt):
+            # Run as the module is loaded, as Cling runs it as the file is read.
+            self.out.blank(2)
+            self.expression_statement(decl.expr)
 
     def declarators(self, decls: list[VarDecl]) -> None:
         if self.scope.kind == "module":
@@ -119,7 +158,7 @@ class Translator(ClassEmitter):
                 continue
             symbol = self.lookup(var.name)
             assert symbol is not None
-            ctype = self.declared_type(var)
+            ctype = sized(self.declared_type(var), var)
             symbol.ctype = ctype
             self.write_variable(symbol, self.initial(var, ctype), var)
 
@@ -129,12 +168,30 @@ class Translator(ClassEmitter):
         if decl.name in self._emitted or decl.body is None:
             return
         if decl.kind == "operator":
-            raise self.refuse(f"the operator {decl.name[8:]} defined outside a class", decl)
+            self._stream_operator(decl)
+            return
         self._emitted.add(decl.name)
         symbol = self.lookup(decl.name)
         py = symbol.py if symbol is not None else python_name(decl.name)
         self.out.blank(2)
         self.overloaded(decl.name, py, self.program.overloads(decl.name), self.function)
+        self.out.blank()
+
+    def _stream_operator(self, decl: Function) -> None:
+        """``ostream &operator<<(ostream &os, const T &t)``: a function ``cout << t`` calls.
+
+        It is called where the type of what is written says it is a ``T``, and
+        for one of the macro's classes the runtime is told of it too, for the
+        values whose type the translation cannot see.
+        """
+        kind = _written_type(decl)
+        if kind is None:
+            raise self.refuse(f"the operator {decl.name[8:]} defined outside a class", decl)
+        py = self.stream_writers[kind]
+        self.out.blank(2)
+        self.function(decl, py)
+        if kind in self.program.classes:
+            self.out.line(f"stream_formatter({self.class_expr(CType(kind))}, {py})", decl.where)
         self.out.blank()
 
     def _unnamed(self) -> None:
@@ -145,7 +202,7 @@ class Translator(ClassEmitter):
         func = Function(block.where, name, CType("void"), [], block)
         self.program.cells[id(func)] = self.program.cell_names(self.program.unit)
         self.out.blank(2)
-        self.function(func, name)
+        self._outermost(lambda: self.function(func, name))
         self.entry = name
 
     def _footer(self) -> None:
@@ -170,3 +227,13 @@ def _namespaces(decls: list[Stmt]) -> set[str]:
                 found.update(decl.name.split("::"))
             found |= _namespaces(decl.body)
     return found
+
+
+def _written_type(func: Function) -> str | None:
+    """``T`` of ``ostream &operator<<(ostream &, const T &)``, if ``func`` is one."""
+    if func.name != "operator<<" or len(func.params) != 2 or func.body is None:
+        return None
+    if "stream" not in func.params[0].ctype.name:
+        return None
+    kind = func.params[1].ctype
+    return None if kind.pointer else (kind.enum or kind.name)

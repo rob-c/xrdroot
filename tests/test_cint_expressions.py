@@ -82,18 +82,17 @@ def test_a_methods_members_are_its_objects(source: str, fragment: str) -> None:
     [
         ("int x = a.*p;", r"t.C:2: the operator \.\*"),
         ("int x = a <=> b;", "the operator <=>"),
-        ('const char *s = "abc"; const char *t = s + 1;', r"pointer arithmetic on a char\*"),
+        ('const char *s = "abc"; const char *t = s - 1;', r"pointer arithmetic on a char\*"),
         ("double a[3]; double *p = a - 1;", r"pointer arithmetic on a double\[\]"),
         ("TH1F *hs[2]; TH1F **p = hs + 1;", r"pointer arithmetic on a TH1F\* is"),
-        ("std::ifstream in; if (in >> x) {}", "reading from a stream with >> inside"),
+        ("std::ifstream in[2]; if (in[0] >> x) {}", "from a stream that is not a variable"),
         ("int x = f()++;", "changing this in the middle of an expression"),
         ("int x = gCount++;", "changing this in the middle of an expression"),
         ("h->~TH1F();", "calling the destructor ~TH1F by hand"),
         ("int n = sizeof(TH1F);", "sizeof of a type whose size"),
         ("int a = (delete p, 0);", "delete inside an expression"),
         ("std::string s; s[0] = 'x';", "changing one character of a string in place"),
-        ("TH1F *h; *h = *g;", "assigning a whole object through a pointer"),
-        ("m(0, 1) = 2;", r"assigning to what a call returns by reference"),
+        ("m(i++, 1) += 2;", "a compound assignment to a call whose arguments change things"),
     ],
 )
 def test_what_has_no_python_that_does_the_same_is_refused(source: str, why: str) -> None:

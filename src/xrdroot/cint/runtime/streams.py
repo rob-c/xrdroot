@@ -39,7 +39,24 @@ __all__ = [
     "setprecision",
     "setfill",
     "Manipulator",
+    "stream_formatter",
 ]
+
+#: The macro's own ``operator<<(ostream&, const T&)``, by the class ``T`` it writes.
+FORMATTERS: dict[type, Any] = {}
+
+
+def stream_formatter(kind: type, writer: Any) -> None:
+    """Remember that ``os << t`` of a ``kind`` is ``writer(os, t)``, as the macro defines it."""
+    FORMATTERS[kind] = writer
+
+
+def _formatter(value: Any) -> Any:
+    for kind in type(value).__mro__:
+        found = FORMATTERS.get(kind)
+        if found is not None:
+            return found
+    return None
 
 
 class Manipulator:
@@ -114,6 +131,10 @@ class ostream:
             if self._pending:
                 self.target.write(self._pending)
                 self._pending = ""
+            return self
+        writer = _formatter(value)
+        if writer is not None:
+            writer(self, value)
             return self
         text = self.format(value)
         self.write(self.pad(text))

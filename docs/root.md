@@ -2713,17 +2713,40 @@ source map.
 Anything the translator cannot turn into Python that does the same thing it
 refuses, by name and at the C++ line, before running any of it:
 `tutorials/foo.C:42: pointer arithmetic on a char* is not something this
-translator turns into Python`. Among them: `goto`, placement `new`, assigning
-through `f(i) = v` (a `TMatrix`'s element, say), a whole object assigned
-through a pointer, a local object whose destructor does something (Python
-runs none at the end of a scope), variadic templates, template value
-parameters, specialisations of class templates, bit-fields, user-defined
-literals, and inline assembly.
+translator turns into Python`. Among them: `goto`, placement `new` anywhere
+but an element of an array (a `TClonesArray`'s slot), variadic templates,
+value parameters of class templates, specialisations of class templates,
+bit-fields, user-defined literals other than the library's (ROOT 7's
+`0.1_normal`, `20_px`, `80_user` and `std::chrono`'s `100us`), assigning one
+character of a `std::string` in place, and inline assembly. A program built
+against Qt or SYCL - what `#include <QWidget>` or `<sycl/sycl.hpp>` says a
+file is - is refused as a program, not a macro.
+
+Some C++ has a Python that does the same only with the runtime's help:
+
+| C++ | Python |
+| --- | --- |
+| `m(i, j) = v`, `p.X() = v`, `TMatrixDColumn(A, 0) = 1` | `assign_call`, `assign_method`, `assign_into`: an object's `__setcall__`, its `Set<Name>`, or a copy into it |
+| `*p = v` of a pointer to an object, or of a type not known | `store_through(p, v)`: into the cell or the object |
+| `static int n = f(x);` in a function, method or lambda | a module-level `Static`, initialised the first time its line is reached |
+| a local whose destructor does something | the rest of its block in a `try`, whose `finally` runs `_destruct`s in reverse order |
+| `template <unsigned N> f(T (&a)[N])` | `N` a keyword argument, `f<3>(a)` giving it, `len(a)` otherwise |
+| `while (std::getline(in, s))`, `while (in >> a >> b)` | each value stored, then the stream tested: `stream_after(in, ...)` |
+| `new (clones[i]) T(args)` | `construct_at(clones, i, T(args))` - ROOT's `AddAt` |
+| `ostream &operator<<(ostream &, const T &)` | a function `cout << t` calls where `t` is a `T`, registered with the runtime for the macro's classes |
+| a class's `operator++()`, `operator++(int)`, `operator*` | `_preinc`, `_postinc`, `_deref`, which `++it`, `it++`, `*it` and a range-for call |
+| `std::thread`, `std::mutex`, `std::lock_guard`, `std::atomic`, `std::condition_variable` | the runtime's, over Python's `threading`; a guard gives its mutex back as its scope ends |
+| `std::chrono::milliseconds(20)`, `high_resolution_clock::now()`, `duration_cast<T>(d)` | `chrono.milliseconds(20)` and the rest: durations that `count()` in their ticks |
 
 `python tools/cint_survey.py ROOT/tutorials` translates every tutorial macro
 and counts what translates, what is refused and why, and what (never, one
-hopes) crashes. Against ROOT 6.40.04's 910 macros it translates 88.7% into
-Python that compiles.
+hopes) crashes; `--min-percent 98` makes it a ratchet that exits 1 below
+that, or on any crash. Against ROOT 6.40.04's 910 macros it translates 900,
+98.9%, into Python that compiles. Of the ten left, seven are the Qt and SYCL
+programs; the other three are a class template with a value parameter
+(`df018_customActions.C`), R's `ROOTR_EXPOSED_CLASS` macro, which only
+ROOT-R defines (`math/r/Functor.C`), and a string written one character at a
+time (`view3ds.C`).
 
 ## Compression
 

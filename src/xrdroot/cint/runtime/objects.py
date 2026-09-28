@@ -20,6 +20,7 @@ __all__ = [
     "array",
     "Overloaded",
     "delete",
+    "construct_at",
     "value_copy",
     "dynamic_cast",
     "set_item",
@@ -156,6 +157,21 @@ def delete(obj: Any) -> None:
         close()
 
 
+def construct_at(container: Any, index: Any, obj: Any) -> Any:
+    """``new (clones[i]) T(args)``: ``obj`` put in slot ``index`` - ROOT's ``AddAt``, or ``[i] =``.
+
+    A ``TClonesArray`` hands placement new the memory of its slot ``i``;
+    here the object is built first and the array given it, which is the
+    same array of the same objects afterwards.
+    """
+    add = getattr(container, "AddAt", None)
+    if callable(add):
+        add(obj, int(index))
+    else:
+        container[index] = obj
+    return obj
+
+
 def value_copy(value: Any) -> Any:
     """``T b = a;`` for an object: a copy of it, not the same object under a second name."""
     if value is None or isinstance(value, (int, float, str, bool)):
@@ -216,7 +232,21 @@ def iterate(container: Any) -> Iterable[Any]:
     items = getattr(container, "items", None)
     if callable(items) and not isinstance(container, np.ndarray):
         return [Pair(key, value) for key, value in items()]
-    return container  # type: ignore[no-any-return]
+    if hasattr(container, "_deref") or not hasattr(type(container), "begin"):
+        return container  # type: ignore[no-any-return]
+    return _walked(container)
+
+
+def _walked(container: Any) -> Iterator[Any]:
+    """A range-for over a class of the macro's own with ``begin()`` and ``end()``.
+
+    Its iterators are the macro's too: ``*it`` is their ``_deref``, ``++it``
+    their ``_preinc``, and ``it != end`` their ``__ne__``, as C++ calls them.
+    """
+    it, end = container.begin(), container.end()
+    while it != end:
+        yield it._deref()
+        it._preinc()
 
 
 def sort_range(

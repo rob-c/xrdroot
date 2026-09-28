@@ -130,8 +130,35 @@ class StmtEmitter(CallEmitter):
 
     def _block_statement(self, node: Block) -> None:
         with self.scoped():
-            for stmt in node.body:
+            self.statements(node.body)
+
+    def statements(self, body: list[Stmt]) -> None:
+        """Statements in a row; after a local whose destructor does something, the rest in a
+        ``try`` whose ``finally`` runs it - where C++ runs it, as the scope ends, whatever way.
+        """
+        for index, stmt in enumerate(body):
+            outer, self.destructed = self.destructed, [] if isinstance(stmt, DeclStmt) else None
+            try:
                 self.statement(stmt)
+                ending = self.destructed
+            finally:
+                self.destructed = outer
+            if ending:
+                self._destroyed_after(body[index + 1 :], ending, stmt)
+                return
+
+    def _destroyed_after(self, rest: list[Stmt], ending: list[str], stmt: Stmt) -> None:
+        self.out.line("try:", stmt.where)
+        with self.out.indented():
+            self.statements(rest)
+        self.out.line("finally:", stmt.where)
+        with self.out.indented():
+            for name in reversed(ending):
+                self.out.line(f"{name}._destruct()", stmt.where)
+
+    #: The locals just declared whose destructors must run as their scope ends, or ``None``
+    #: where no scope of statements is being written for them to end with.
+    destructed: list[str] | None = None
 
     def _declarations(self, node: DeclStmt) -> None:
         for decl in node.decls:
@@ -160,6 +187,10 @@ class StmtEmitter(CallEmitter):
 
     def _assign_statement(self, expr: Assign) -> bool:
         target = expr.target
+        stored = self.stored_through(expr)
+        if stored is not None:
+            self.out.line(stored, expr.where)
+            return True
         refusal = self._unassignable(target)
         if refusal is not None:
             raise self.refuse(refusal, expr)
@@ -174,8 +205,6 @@ class StmtEmitter(CallEmitter):
 
     def _unassignable(self, target: Expr) -> str | None:
         """Why assigning to ``target`` has no Python that does the same, if it has none."""
-        if isinstance(target, Call):
-            return "assigning to what a call returns by reference, f(i) = v"
         if isinstance(target, Unary):
             return self._through_pointer(target)
         if isinstance(target, Index):
@@ -189,9 +218,6 @@ class StmtEmitter(CallEmitter):
     def _through_pointer(self, target: Unary) -> str | None:
         if target.op != "*":
             return "assigning to something that is not a variable"
-        found = self.typeof(target.operand)
-        if found is None or found.is_object_pointer:
-            return "assigning a whole object through a pointer to it"
         return None
 
     def _in_place(self, expr: Assign) -> bool:
@@ -209,6 +235,10 @@ class StmtEmitter(CallEmitter):
     def _increment_statement(self, expr: Unary) -> bool:
         if expr.op not in ("++", "--"):
             return False
+        own = self.own_operator(expr.operand, "operator" + expr.op, int(expr.postfix))
+        if own is not None:
+            self.out.line(own, expr.where)
+            return True
         op = "+=" if expr.op == "++" else "-="
         one = Literal(expr.where, "int", 1, "int")
         return self._assign_statement(Assign(expr.where, op, expr.operand, one))
@@ -248,7 +278,11 @@ class StmtEmitter(CallEmitter):
         for target in targets:
             kind = self.typeof(target)
             name = kind.name if kind is not None else "double"
-            self.out.line(f"{self.value(target)} = {stream}.extract({name!r})", expr.where)
+            read = f"{stream}.extract({name!r})"
+            if self._held_through(target):
+                self.out.line(self.store_expression(target, read)[0], expr.where)
+            else:
+                self.out.line(f"{self.value(target)} = {read}", expr.where)
         return True
 
     def _call_statement(self, expr: Call) -> bool:
@@ -473,8 +507,7 @@ class StmtEmitter(CallEmitter):
         with self.out.indented(), self.scoped():
             if fall is not None:
                 self.out.line(f"{fall[0]} = True", fall[1])
-            for stmt in body:
-                self.statement(stmt)
+            self.statements(body)
 
     def _falling_switch(
         self, node: Switch, subject: str, groups: list[tuple[list[Case], list[Stmt]]]
@@ -631,10 +664,54 @@ class StmtEmitter(CallEmitter):
         target = expr.args[1]
         if isinstance(target, Name) and self.symbol(target) is not None:
             self.assigned(self.symbol(target))
-        line = f"{self.value(target)} = {self.value(expr.args[0])}.getline()"
+        delimiter = "".join(self.value(arg) for arg in expr.args[2:3])
+        line = f"{self.value(target)} = {self.value(expr.args[0])}.getline({delimiter})"
         self.out.line(line, expr.where)
 
+    def _transform(self, expr: Call) -> None:
+        if len(expr.args) != 4:
+            raise self.refuse("std::transform of two ranges into a third", expr)
+        self._copied_range(expr, self.value(expr.args[3]))
+
+    def _copy(self, expr: Call) -> None:
+        if len(expr.args) != 3:
+            raise self.refuse("std::copy without a range and a place to copy it to", expr)
+        self._copied_range(expr, "None")
+
+    def _copied_range(self, expr: Call, op: str) -> None:
+        """``std::transform`` or ``std::copy`` of ``[first, last)`` into ``out``, stored anew."""
+        first, last, out = expr.args[:3]
+        source, start, stop = self.iterator_range(first, last, expr)
+        target, at = self._destination(out, expr)
+        call = f"transformed({source}, {start}, {stop}, {target}, {at}, {op})"
+        root = out
+        while isinstance(root, Binary):
+            root = root.left
+        if isinstance(root, Call) and self._container_end(root) is not None:
+            assert isinstance(root.func, Member)
+            root = root.func.obj
+        if not isinstance(root, (Name, Member, Index)):
+            # Written in place: a string made anew has nowhere to be stored.
+            self.out.line(call, expr.where)
+            return
+        if isinstance(root, Name):
+            self.assigned(self.symbol(root))
+        self.out.line(f"{target} = {call}", expr.where)
+
+    def _destination(self, out: Expr, expr: Call) -> tuple[str, str]:
+        """Where ``std::copy`` writes: a container or array, and the index it starts at."""
+        if isinstance(out, Binary) and out.op == "+":
+            target, at = self._destination(out.left, expr)
+            offset = self.value(out.right)
+            return target, offset if at == "0" else f"{at} + {offset}"
+        if self._container_end(out) is None and self.typeof(out) is None:
+            # ROOT's ``GetData()`` and the like: an array, written from its start.
+            return self.value(out), "0"
+        return self._iterator(out, expr, "begin")
+
     _WRITERS: ClassVar[dict[str, Callable[[StmtEmitter, Call], None]]] = {
+        "transform": _transform,
+        "copy": _copy,
         "getline": _getline,
         "sprintf": _sprintf,
         "snprintf": _snprintf,
@@ -704,6 +781,10 @@ def _string_statement(target: str, name: str, args: list[str]) -> str | None:
         return f"{target} += cstr({args[0]})"
     if name == "clear":
         return f"{target} = ''"
+    if name == "assign" and len(args) == 1:
+        return f"{target} = cstr({args[0]})"
+    if name == "resize":
+        return f"{target} = resize({', '.join([target, *args])})"
     return None
 
 

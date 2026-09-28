@@ -15,7 +15,7 @@ from typing import Any, ClassVar
 
 from .ctype import BUILTIN_WORDS, CType, builtin_name, canonical
 from .cursor import KEYWORDS, KNOWN_TEMPLATES, STD_NAMES, NoParse
-from .literals import number
+from .literals import number, user_literal
 from .nodes import (
     Assign,
     Binary,
@@ -194,9 +194,11 @@ class ExprParser(TypeParser):
 
     def _new(self) -> Expr:
         where = self.take().where
-        if self.at_("("):
-            raise self.refuse("placement new, which builds an object in memory given to it")
+        place = self._parenthesised() if self.at_("(") else None
         ctype = self.pointers(self.specifiers().ctype)
+        if place is not None:
+            # ``new (slot) T(args)``: built in memory given to it, a TClonesArray's slot.
+            return New(where, ctype, self.arguments() if self.at_("(") else [], place=place)
         count = None
         if self.accept("["):
             count = self.expression()
@@ -289,6 +291,10 @@ class ExprParser(TypeParser):
     def _member(self, expr: Expr) -> Expr:
         token = self.take()
         self.accept("template")
+        while self.peek().kind == "id" and self.peek(1).is_("::"):
+            # ``h->TF1::GetXaxis()``: a base's member by name, which is the member itself here.
+            self.take()
+            self.take()
         if self.accept("~"):
             name = "~" + self.identifier()
         elif self.at_("operator"):
@@ -345,6 +351,14 @@ class ExprParser(TypeParser):
 
     def _number(self) -> Expr:
         token = self.take()
+        suffixed = user_literal(token.text)
+        if suffixed is not None:
+            # ``0.1_normal`` is a call of the library's ``operator""_normal`` on ``0.1``.
+            digits, suffix = suffixed
+            value, ctype = number(digits, token.where)
+            kind = "int" if isinstance(value, int) else "float"
+            operand = Literal(token.where, kind, value, ctype)
+            return Call(token.where, Name(token.where, ['operator""' + suffix]), [operand])
         value, ctype = number(token.text, token.where)
         kind = "int" if isinstance(value, int) else "float"
         return Literal(token.where, kind, value, ctype)
@@ -527,7 +541,7 @@ class ExprParser(TypeParser):
             if not ((self.at_("::") and self.peek(1).kind == "id") or self._scoped_operator()):
                 break
             self.take()
-        return Name(where, self._standard(parts), targs, rooted)
+        return Name(where, self._standard(self.unaliased(parts)), targs, rooted)
 
     def _special_part(self) -> str | None:
         """``operator+`` or ``~Name`` where a name's next part stands, else ``None``."""

@@ -18,14 +18,19 @@ from .errors import Where
 from .nodes import (
     Base,
     Block,
+    Call,
     ClassDecl,
     DeclStmt,
     Empty,
     EnumDecl,
     Expr,
+    ExprStmt,
     Function,
+    Member,
     Namespace,
+    Param,
     Stmt,
+    Typedef,
     Unit,
     VarDecl,
 )
@@ -67,7 +72,7 @@ class Parser(StmtParser):
             if name is not None:
                 self.types.add(name)
                 if token.is_("enum"):
-                    self.aliases[name] = CType("int")
+                    self.aliases[name] = CType("int", enum=name)
             elif token.kind == "id" and tokens[index + 1].is_("(") and depth == 0:
                 self.functions.add(token.text)
         self._prescan_templates(tokens)
@@ -106,7 +111,20 @@ class Parser(StmtParser):
         handler = self._TOP.get(token.text) if token.kind in ("id", "op") else None
         if handler is not None:
             return handler(self)
-        return self.function_or_variable()
+        statement = self.trial(self._top_statement) if token.kind == "id" else None
+        return statement or self.function_or_variable()
+
+    def _top_statement(self) -> Stmt:
+        """``RooMsgService::instance().setGlobalKillBelow(...);`` outside any function.
+
+        Cling runs a statement at namespace scope as it reads it; a method
+        called on something is the one kind no declaration reads like.
+        """
+        expr = self.expression()
+        self.expect(";")
+        if not (isinstance(expr, Call) and isinstance(expr.func, Member)):
+            raise NoParse
+        return ExprStmt(expr.where, expr)
 
     def _namespace(self) -> Stmt:
         where = self.take().where
@@ -116,8 +134,7 @@ class Parser(StmtParser):
             self.accept("::")
         name = "::".join(parts) or None
         if self.accept("="):
-            self.skip_to(";")
-            return Empty(where)
+            return self.namespace_alias(where, name or "")
         self.expect("{")
         body: list[Stmt] = []
         while not self.accept("}"):
@@ -149,8 +166,13 @@ class Parser(StmtParser):
         if not self.at_("<"):
             self.skip_to(";")
             return Empty(where)
+        self.template_values = []
         names = self.template_parameters()
+        values = self.template_values
         if self.at_("class", "struct", "union") and self._defines_type():
+            if values:
+                why = f"the template parameter {values[0].name}, a value a class template is given"
+                raise self.refuse(why)
             decl = self.class_declaration()
             decl.template = names
             return decl
@@ -161,6 +183,7 @@ class Parser(StmtParser):
         if not isinstance(stmt, Function):
             raise self.refuse("a variable template", where)
         stmt.template = names
+        stmt.values = values
         return stmt
 
     def template_parameters(self) -> list[str]:
@@ -187,9 +210,20 @@ class Parser(StmtParser):
             if self.accept("="):
                 self.type_id()
             return name
-        spec = self.specifiers()
-        name, _ = self.declarator(spec.ctype)
-        raise self.refuse(f"the template parameter {name}, a value a template is given")
+        where = self.where
+        ctype = self.pointers(self.specifiers().ctype)
+        if self.at_("=", ",", ">"):
+            # ``std::enable_if_t<...> = 0``: unnamed, choosing overloads, and nothing to pass.
+            if self.accept("="):
+                self.constant()
+            return "_"
+        name, ctype = self.declarator(ctype)
+        default = self.constant() if self.accept("=") else None
+        self.template_values.append(Param(where, name, ctype, default))
+        return name
+
+    #: The value parameters of the template being read, ``N`` of ``template <int N>``.
+    template_values: list[Param]
 
     _TOP: ClassVar[dict[str, Callable[[Parser], Stmt]]] = {
         ";": StmtParser._empty,
@@ -328,9 +362,13 @@ class Parser(StmtParser):
             self.pop()
         if not self.at_(*AFTER_PARAMETERS):
             raise NoParse
-        if self.at_(";") and not all(p.name or self.is_type([p.ctype.name]) for p in params):
+        if self.at_(";") and not all(self._named_or_typed(p) for p in params):
             raise NoParse
         return True
+
+    def _named_or_typed(self, param: Param) -> bool:
+        """A prototype's parameter: named, or of a type known to be one (``UInt_t``, ``FILE *``)."""
+        return bool(param.name) or param.ctype.arithmetic or self.is_type([param.ctype.name])
 
     def function_rest(
         self,
@@ -387,24 +425,40 @@ class Parser(StmtParser):
 
     # -- classes and enums ------------------------------------------------------
 
-    def class_declaration(self) -> ClassDecl:
-        """``class Foo : public TObject { ... };``, with any variables declared after it."""
+    def class_declaration(self, name: str | None = None, typedef: bool = False) -> ClassDecl:
+        """``class Foo : public TObject { ... };``, with any variables declared after it.
+
+        ``name`` names a class the macro leaves unnamed, as ``typedef struct {...} T``
+        does; with ``typedef`` the names after the body are the typedef's, not variables.
+        """
         where = self.where
         kind = self.take().text
         self.attributes()
-        if self.peek().kind != "id" or self.peek().text in KEYWORDS:
-            raise self.refuse(f"an unnamed {kind}, which has no name to make a Python class of")
-        name = self.take().text
+        if name is None:
+            if self.peek().kind != "id" or self.peek().text in KEYWORDS:
+                raise self.refuse(f"an unnamed {kind}, which has no name to make a Python class of")
+            name = self.take().text
         self.types.add(name)
         if self.at_("<"):
             raise self.refuse(f"a specialisation of the class template {name}")
         self.accept("final")
         bases = self._bases() if self.accept(":") else []
         decl = ClassDecl(where, name, kind, bases, self._members(name))
-        if not self.at_(";"):
+        if typedef:
+            self._class_aliases(name)
+        elif not self.at_(";"):
             decl.declarators = self.declarators(Specifiers(CType(name), set()))
         self.expect(";")
         return decl
+
+    def _class_aliases(self, name: str) -> None:
+        """``} T, *PT;`` of a ``typedef struct``: each a name for the class, or a pointer to it."""
+        while True:
+            where = self.where
+            ctype = self.pointers(CType(name))
+            self.alias(Typedef(where, self.identifier(), ctype))
+            if not self.accept(","):
+                return
 
     def _bases(self) -> list[Base]:
         bases: list[Base] = []
@@ -493,7 +547,7 @@ class Parser(StmtParser):
             self.type_id()
         if name is not None:
             self.types.add(name)
-            self.aliases[name] = CType("int")
+            self.aliases[name] = CType("int", enum=name)
         if self.accept(";"):
             return EnumDecl(where, name, [], scoped)
         decl = EnumDecl(where, name, self._enumerators(), scoped)

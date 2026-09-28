@@ -89,6 +89,9 @@ ROOT_TYPEDEFS = {
     "size_t": "unsigned long",
     "ssize_t": "long",
     "ptrdiff_t": "long",
+    "time_t": "long",
+    "std::time_t": "long",
+    "clock_t": "long",
     "int8_t": "signed char",
     "uint8_t": "unsigned char",
     "int16_t": "short",
@@ -185,6 +188,8 @@ class CType:
     dims: list[Any] = field(default_factory=list)
     #: A pointer to a function or a ``std::function``: something to call.
     callable: bool = False
+    #: The enum an ``int`` is of, when it is one: what a free ``operator<<`` is chosen by.
+    enum: str | None = None
 
     # -- what kind of thing it is ------------------------------------------
 
@@ -272,7 +277,7 @@ class CType:
         """``sizeof`` this type, when it is one this translator knows the size of."""
         if self.pointer and not self.dims:
             return 8
-        base = SIZES.get(self.name)
+        base = 8 if self.pointer else SIZES.get(self.name)
         if base is None:
             return None
         count = 1

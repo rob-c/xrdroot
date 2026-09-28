@@ -10,6 +10,7 @@ is most of ROOT's methods; there the runtime decides (:func:`div`).
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any, ClassVar
 
 from .base import EmitterBase
@@ -87,6 +88,14 @@ def arithmetic_result(left: CType | None, right: CType | None) -> CType | None:
         if value == rank:
             return CType(name)
     return INT  # pragma: no cover - every rank is some type's
+
+
+def _made_field(func: Member) -> CType | None:
+    """RNTupleModel's ``MakeField<T>``: the ``shared_ptr<T>`` an entry is written through."""
+    first = func.targs[0] if func.targs else None
+    if func.name != "MakeField" or not isinstance(first, CType):
+        return None
+    return replace(first, pointer=first.pointer + 1)
 
 
 class Inference(EmitterBase):
@@ -214,10 +223,10 @@ class Inference(EmitterBase):
         owner = self.typeof(func.obj)
         if owner is not None and owner.is_string and func.name in ("size", "length"):
             return CType("unsigned long")
-        if owner is None:
-            return None
-        info = self.program.classes.get(owner.name)
-        methods = info.methods.get(func.name, []) if info is not None else []
+        info = self.program.classes.get(owner.name) if owner is not None else None
+        if info is None:
+            return _made_field(func)
+        methods = info.methods.get(func.name, [])
         return methods[0].returns if methods else None
 
     def _type_member(self, node: Member) -> CType | None:

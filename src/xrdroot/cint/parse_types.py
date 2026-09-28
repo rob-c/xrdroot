@@ -133,7 +133,7 @@ class TypeParser(Cursor):
             parts.append(self.take().text)
             args = self.template_args() if self.at_("<") else []
             if not (self.at_("::") and self.peek(1).kind == "id"):
-                return parts, args
+                return self.unaliased(parts), args
             self.take()
 
     # -- template arguments ---------------------------------------------------
@@ -209,6 +209,13 @@ class TypeParser(Cursor):
     def declarator(self, base: CType) -> tuple[str, CType]:
         """A declarator that must name something: its name, and the full type it gives it."""
         ctype = self.pointers(base)
+        if self.at_("(") and self.peek(1).is_("&") and self.peek(3).is_(")"):
+            # ``T (&name)[N]``: a reference to an array, which is the array itself here.
+            self.take()
+            self.take()
+            name = self.identifier()
+            self.expect(")")
+            return name, replace(self.dimensions(ctype), reference=True)
         if self.at_("(") and self.peek(1).is_("*"):
             return self._function_pointer(abstract=False), CType("function", callable=True)
         name = self.identifier()

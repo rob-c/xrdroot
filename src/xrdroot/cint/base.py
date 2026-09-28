@@ -61,6 +61,10 @@ class EmitterBase:
         self.out = Writer()
         self.scope = Scope("module")
         self._counter = 0
+        #: The macro's classes by name - kept apart, as a function of the same name hides one.
+        self.class_symbols: dict[str, Symbol] = {}
+        #: The macro's free ``operator<<(ostream&, const T&)``: ``T``, and its Python name.
+        self.stream_writers: dict[str, str] = {}
 
     # -- refusing ---------------------------------------------------------------
 

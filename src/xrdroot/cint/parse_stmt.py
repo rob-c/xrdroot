@@ -53,7 +53,7 @@ DECLARATOR_ENDS = frozenset({"=", ";", "(", "[", ",", "{", ":"})
 class StmtParser(ExprParser):
     """The part of the parser that reads statements."""
 
-    def class_declaration(self) -> ClassDecl:
+    def class_declaration(self, name: str | None = None, typedef: bool = False) -> ClassDecl:
         raise NotImplementedError
 
     def enum_declaration(self) -> EnumDecl:
@@ -80,7 +80,10 @@ class StmtParser(ExprParser):
         if handler is not None:
             return handler(self)
         if token.kind == "id" and token.text not in KEYWORDS and self.peek(1).is_(":"):
-            raise self.refuse(f"the label {token.text}:, which only a goto jumps to")
+            # A label is only somewhere for a goto to go, and every goto is refused.
+            self.take()
+            self.take()
+            return self.statement() if not self.at_("}") else Empty(token.where)
         if self.looks_declaration():
             return self.declaration_statement()
         expr = self.expression()
@@ -371,14 +374,30 @@ class StmtParser(ExprParser):
 
     def _typedef(self) -> Stmt:
         where = self.take().where
-        if self.at_("struct", "class", "union", "enum") and self._defines_type():
-            raise self.refuse("a typedef of a class defined in place, typedef struct {...} T")
+        if self.at_("struct", "class", "union") and self._defines_type():
+            return self._typedef_class()
+        if self.at_("enum") and self._defines_type():
+            raise self.refuse("a typedef of an enum defined in place, typedef enum {...} T")
         spec = self.specifiers()
         name, ctype = self.declarator(spec.ctype)
         while self.accept(","):
             self.declarator(spec.ctype)
         self.expect(";")
         return self.alias(Typedef(where, name, ctype))
+
+    def _typedef_class(self) -> Stmt:
+        """``typedef struct [Tag] {...} T, *PT;``: the class, named ``Tag``, or ``T`` if unnamed."""
+        named = not self.peek(1).is_("{")
+        return self.class_declaration(None if named else self._alias_after_body(), typedef=True)
+
+    def _alias_after_body(self) -> str:
+        """The first name after the ``{...}`` of an unnamed class, which the typedef gives it."""
+        start = self.at
+        self.take()
+        self.skip_brackets()
+        name = self.identifier()
+        self.at = start
+        return name
 
     def _defines_type(self) -> bool:
         """Does ``struct X`` here go on to define ``X`` - ``{`` or a base list after its name?"""
@@ -410,6 +429,23 @@ class StmtParser(ExprParser):
             else:
                 self.take()
         self.take()
+
+    def _local_namespace(self) -> Stmt:
+        """``namespace GUI = ROOT::GUITutorials;`` in a function: a second name for one."""
+        where = self.take().where
+        name = self.identifier()
+        self.expect("=")
+        return self.namespace_alias(where, name)
+
+    def namespace_alias(self, where: Where, name: str) -> Stmt:
+        """What follows ``namespace name =``: the namespace ``name`` now stands for."""
+        self.accept("::")
+        parts = [self.identifier()]
+        while self.accept("::"):
+            parts.append(self.identifier())
+        self.expect(";")
+        self.namespace_aliases[name] = self.unaliased(parts)
+        return Empty(where)
 
     def _static_assert(self) -> Stmt:
         where = self.take().where
@@ -444,6 +480,7 @@ class StmtParser(ExprParser):
         "using": _using,
         "typedef": _typedef,
         "static_assert": _static_assert,
+        "namespace": _local_namespace,
         "struct": _local_type,
         "class": _local_type,
         "union": _local_type,
@@ -489,7 +526,10 @@ class StmtParser(ExprParser):
 
 
 def _decayed(ctype: CType) -> CType:
-    """An array parameter is a pointer, as C++ says: ``double x[]`` is ``double *x``."""
-    if not ctype.dims:
+    """An array parameter is a pointer, as C++ says: ``double x[]`` is ``double *x``.
+
+    A reference to an array, ``double (&x)[N]``, stays the array it is.
+    """
+    if not ctype.dims or ctype.reference:
         return ctype
     return CType(ctype.name, ctype.args, ctype.pointer + 1, ctype.reference, ctype.const)
