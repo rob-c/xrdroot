@@ -668,8 +668,26 @@ def test_a_fit_with_no_valid_value_and_a_curve_that_cannot_be_normalised_say_so_
     assert "Minuit2Minimizer: Minimize with max-calls 1000 convergence for edm < 1 strategy 1" in (
         printed
     )
-    assert "a1\t  = -0.579502\t +/-  0.0614758\t(limited)" in printed
+    _assert_recovered_a1(printed)
     assert (good.minNll(), good.numInvalidNLL()) == (roots(2959.918384170729, rel=1e-9), 64)
+
+
+def _assert_recovered_a1(printed: str) -> None:
+    """a1 as Minuit2 prints it after recovering from the invalid region.
+
+    To the digit on ROOT's machine. Elsewhere the fit starts inside a region where
+    every value is invalid and climbs out along the penalty RooFit adds, so a
+    step taken a little differently - arm64's fused multiply-adds - lands the
+    minimum a little elsewhere on a flat valley floor: 1e-3 of the value and of
+    its error, as seen, and well inside the error itself.
+    """
+    if ROOTS_MACHINE:
+        assert "a1\t  = -0.579502\t +/-  0.0614758\t(limited)" in printed
+        return
+    found = next(line for line in printed.splitlines() if line.startswith("a1\t  = "))
+    value, error = (float(part.split()[-1]) for part in found.split("\t")[1:3])
+    assert value == pytest.approx(-0.579502, rel=2e-3)
+    assert error == pytest.approx(0.0614758, rel=2e-3)
 
 
 def test_describing_a_failure_reports_no_errors_of_its_own(capsys: Any) -> None:

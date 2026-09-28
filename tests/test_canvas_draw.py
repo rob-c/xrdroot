@@ -17,6 +17,7 @@ those pixels too; the tests read both back.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 import warnings
 
 import numpy as np
@@ -27,12 +28,20 @@ from matplotlib.patches import Polygon, Rectangle
 
 from xrdroot import Canvas, Function, Graph, Histogram, UnsupportedFeatureError, open_root
 from xrdroot.buffer import Listed
-from xrdroot.canvas import Pad, Primitive, render
+from xrdroot.canvas import Pad, Primitive, fonts, render
 from xrdroot.canvas.marks import MARKER_GID
 from xrdroot.canvas.paint import CanvasWarning
 from xrdroot.canvas.raster import PixelLine
 from xrdroot.profile import Profile
 from xrdroot.stacks import MultiGraph, Stack
+
+#: Whether font 42 is a Helvetica here, as it was where ROOT drew the references.
+HELVETICA = (
+    Path(fonts.face(42))
+    .stem.lower()
+    .replace(" ", "")
+    .startswith(("helvetica", "texgyreheros", "nimbussans", "arial"))
+)
 
 DATA = __file__.rsplit("/", 1)[0] + "/data"
 
@@ -843,10 +852,15 @@ def test_latex_is_laid_out_as_tlatex_lays_it_out_at_its_place_in_ndc():
     for piece in (root, rest):
         assert (piece.get_color(), piece.get_rotation()) == ((1.0, 0.0, 0.0), 30.0)
         assert (piece.get_ha(), piece.get_va()) == ("left", "baseline")
-    assert root.get_position() == (102, 134) and rest.get_position() == (112, 128)  # up the slope
+    # ROOT's pixels to the pixel with a Helvetica to measure by; with another font the
+    # pieces are laid out from that font's widths and heights, a pixel or two away.
+    near = 0 if HELVETICA else 2
+    assert np.allclose(root.get_position(), (102, 134), atol=near)
+    assert np.allclose(rest.get_position(), (112, 128), atol=near)  # up the slope
     sign = lines(fig.axes[0], (1.0, 0.0, 0.0))  # the root sign, drawn: its tick and its top
     tick, top = [a.lines[0].tolist() for a in sign]
-    assert (tick, top) == ([[89, 126], [98, 137]], [[98, 137], [90, 118], [102, 111]])
+    assert np.allclose(tick, [[89, 126], [98, 137]], atol=near)
+    assert np.allclose(top, [[98, 137], [90, 118], [102, 111]], atol=near)
     assert fig.axes[0].texts[0].get_transform() is not fig.axes[0].transData  # in pixels
 
 
