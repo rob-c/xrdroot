@@ -557,6 +557,15 @@ def test_output_differences_make_a_diff(harness):
     assert records["hist/rc.C"]["reason"] == "stdout"
 
 
+def test_xrdroot_runs_a_macro_without_logon_macros_when_root_does(tree, tmp_path):
+    made = Harness(Settings(tutorials=tree), {}, None, log=lambda line: None)
+    made.has_run = True
+    quiet = made.xrdroot_command(cat.Tutorial("hsimple.C", flags=("-b", "-n", "-q")))
+    assert quiet is not None and quiet[-2:] == ["-n", "hsimple.C"]
+    loud = made.xrdroot_command(cat.Tutorial("demoshelp.C"))
+    assert loud is not None and loud[-2:] == ["run", "demoshelp.C"]
+
+
 def test_roots_own_tutorial_directory_is_masked_as_the_tutorials(harness):
     harness.oracle = Oracle(root="root", version="v", rootsys="/opt/root")
     paths = harness._paths(runner.RunResult([], 0, False, 0.0, "", "", workdir="/w"))

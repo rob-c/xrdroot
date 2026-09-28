@@ -251,8 +251,9 @@ class Harness:
         """How xrdroot runs the tutorial - or None when the xrdroot under test cannot."""
         name = PurePosixPath(tutorial.path).name
         python = self.settings.xrdroot_python
-        if self.has_run:
-            return [python, "-m", "xrdroot", "run", name]
+        if self.has_run:  # ROOT's -n, no logon macros, is the one flag a run can differ by
+            quiet = ["-n"] if tutorial.language == "cxx" and "-n" in tutorial.flags else []
+            return [python, "-m", "xrdroot", "run", *quiet, name]
         if tutorial.language == "py" and self.has_pyroot:
             return [python, "-c", _PY_SHIM, name]
         return None

@@ -39,6 +39,12 @@ def add_parser(subparsers: Any) -> None:
         action="store_true",
         help="translate afresh rather than use a translation kept from before",
     )
+    parser.add_argument(
+        "-n",
+        dest="no_logon",
+        action="store_true",
+        help="as root -n: run no rootlogon.C or rootlogoff.C from the working directory",
+    )
 
 
 def _script(path: Path) -> int:
@@ -80,7 +86,10 @@ def run(args: argparse.Namespace) -> int:
     if args.python:
         sys.stdout.write(translate_file(path))
         return 0
-    _session_macro(LOGON, not args.no_cache)
+    logons = () if args.no_logon else (LOGON, LOGOFF)
+    for name in logons[:1]:
+        _session_macro(name, not args.no_cache)
     run_macro(path, arguments(given), use_cache=not args.no_cache)
-    _session_macro(LOGOFF, not args.no_cache)
+    for name in logons[1:]:
+        _session_macro(name, not args.no_cache)
     return 0

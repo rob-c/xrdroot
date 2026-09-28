@@ -73,6 +73,8 @@ def test_run_runs_the_working_directorys_logon_and_logoff_macros_around_a_macro_
     )
     assert main(["run", "script.py"]) == 0
     assert capsys.readouterr().out == "no logon for PyROOT\n"
+    assert main(["run", "-n", "quiet.C"]) == 0  # as `root -n`, which hsimple.C runs under
+    assert capsys.readouterr().out == ""
 
 
 def test_run_prints_the_translation_when_asked(
