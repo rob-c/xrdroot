@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from ..method import Method
 from .bdt import MethodBDT
+from .cuts import MethodCuts
 from .dl import MethodDL, MethodDNN
 from .knn import MethodKNN
 from .likelihood import MethodLikelihood
@@ -32,5 +33,6 @@ REGISTRY: dict[str, type[Method]] = {
         MethodDNN,
         MethodKNN,
         MethodSVM,
+        MethodCuts,
     )
 }

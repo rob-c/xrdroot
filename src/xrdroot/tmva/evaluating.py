@@ -46,6 +46,13 @@ class Evaluating:
         self.log.info("")
         dataset = item.loader.dataset()
         test = dataset.test
+        special = getattr(method, "classifier_evaluation", None)
+        if special is not None:
+            found, made = special(test, dataset.train)
+            for histogram in made:
+                self.output.write(method_directory(method), histogram)
+            self._write_evaluation(item, test)
+            return dict(found)
         if method.handler.transforms:
             method.handler.print_stats(method.handler.apply(test))
         method.log.header(
