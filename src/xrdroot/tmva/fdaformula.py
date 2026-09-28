@@ -43,6 +43,7 @@ FUNCTIONS = {
     "sqrt": np.sqrt,
     "abs": np.abs,
     "fabs": np.abs,
+    "int": np.trunc,
     "pow": np.power,
     "Power": np.power,
     "Exp": np.exp,
@@ -63,6 +64,7 @@ FUNCTIONS = {
 }
 #: The operators, by their node types.
 BINARY = {
+    ast.Mod: np.fmod,
     ast.Add: np.add,
     ast.Sub: np.subtract,
     ast.Mult: np.multiply,
