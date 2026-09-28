@@ -82,7 +82,7 @@ class RooFitResult(RooPrintable):
         minuit = minimizer.minuit
         self._status = minimizer.status
         self._cov_qual = cov_quality(minuit.fmin)
-        self._min_nll = float(minuit.fval)
+        self._min_nll = float(minuit.fval) - minimizer.offset()
         self._edm = float(minuit.fmin.edm)
         self._invalid = minimizer.invalid
         self._fill_parameters(minimizer)

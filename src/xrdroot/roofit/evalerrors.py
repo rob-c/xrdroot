@@ -21,12 +21,21 @@ _LOG: dict[Any, tuple[str, list[tuple[str, str]]]] = {}
 _ACTIVE = [False]
 
 
+#: Whether a failure is being described: what that evaluates is not to report errors at all.
+_DESCRIBING = [False]
+
+
 def collecting(flag: bool) -> None:
     _ACTIVE[0] = bool(flag)
 
 
 def active() -> bool:
     return _ACTIVE[0]
+
+
+def quiet() -> bool:
+    """Whether errors are neither collected nor printed: while a failure is being described."""
+    return _DESCRIBING[0]
 
 
 def record(
@@ -45,7 +54,7 @@ def record(
     """
     if not _ACTIVE[0] or times <= 0:
         return
-    _ACTIVE[0] = False
+    _ACTIVE[0], _DESCRIBING[0] = False, True
     try:
         if key not in _LOG:
             entry: tuple[str, list[tuple[str, str]]] = (origin(), [])
@@ -57,7 +66,7 @@ def record(
             _LOG.setdefault(key, entry)
         line = (message, servers())
     finally:
-        _ACTIVE[0] = True
+        _ACTIVE[0], _DESCRIBING[0] = True, False
     _LOG[key][1].extend([line] * times)
 
 

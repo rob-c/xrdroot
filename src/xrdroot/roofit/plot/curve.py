@@ -70,6 +70,8 @@ def sample(
     probe = xs.copy()
     probe[-1] -= 1e-9 * dx
     ys = np.asarray(func(probe), dtype=np.float64).reshape(-1) * np.ones(count)
+    if np.all(np.isnan(ys)):  # a density that cannot be normalised: nothing to refine
+        return xs, ys
     span = float(np.max(ys) - np.min(ys))
     scalar = lambda x: float(np.asarray(func(np.array([x]))).reshape(-1)[0])  # noqa: E731
     points: list[tuple[float, float]] = []

@@ -43,7 +43,7 @@ class RooRealIntegral(RooAbsReal):
         self.func = self._proxy("!func", func)
         self.names, self.nset, self.rng = names, nset, rng
         self._others = list(others)
-        self._announce()  # the numerical integrator's line is make_integral's to say
+        self._announce()  # the numerical part is said by who made it: see _recursive
 
     def announce_numeric(self) -> None:
         """``RooRealIntegral::init``'s line, if part of the integral is numerical."""

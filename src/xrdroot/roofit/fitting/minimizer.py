@@ -197,6 +197,11 @@ class RooMinimizer:
         self._max_fcn = max(self._max_fcn, value)
         return value
 
+    def offset(self) -> float:
+        """What the values Minuit sees were moved by: minus the first valid value, when every one
+        before it was invalid - ``_funcOffset``, which a saved result adds back."""
+        return self._offset
+
     def _print_errors(self) -> None:
         """``RooAbsMinimizerFcn::printEvalErrors``: why this point failed, as a warning."""
         from .. import evalerrors
@@ -277,7 +282,7 @@ class RooMinimizer:
         return self._run("SEEK", self._migrad)
 
     def _migrad(self, minuit: Any) -> None:
-        if self.print_level >= 1:
+        if self.print_level >= 0:  # Minuit's level is RooFit's plus one
             cout.line(
                 f"Minuit2Minimizer: Minimize with max-calls {self.max_calls} convergence for edm < "
                 f"{g(self.eps)} strategy {self.strategy}"
@@ -298,11 +303,18 @@ class RooMinimizer:
         run(self.minuit)
         self.minuit_status = _status(self.minuit.fmin)
         self.status = self.minuit_status if self.minuit.fmin.is_valid else -1
-        if self.print_level >= 1:
+        if self.print_level >= 0:  # Minuit's level is RooFit's plus one
             self._print_results()
+        self._determine_status()
         self._back_propagate(minos=False)
         self.history.append((label, self.status))
         return self.status
+
+    def _determine_status(self) -> None:
+        """``determineStatus``: after each step, an error if no call so far gave a valid value."""
+        if self.evaluations <= self.invalid:
+            text = "RooMinimizer: all function calls during minimization gave invalid NLL values!"
+            log(self, ERROR, "Minimization", text)
 
     def hesse(self) -> int:
         """HESSE at the minimum MIGRAD found: the errors and the covariance, from second
@@ -325,6 +337,7 @@ class RooMinimizer:
                 "Minimization",
                 "RooMinimizer::calculateHessErrors() Error when calculating Hessian",
             )
+        self._determine_status()
         self._back_propagate(minos=False)
         self.history.append(("HESSE", self.status))
         return self.status
@@ -360,7 +373,7 @@ class RooMinimizer:
 
     def _minos_one(self, name: str) -> None:
         index = [p.GetName() for p in self.params].index(name)
-        if self.print_level >= 1:
+        if self.print_level >= 0:  # Minuit's level is RooFit's plus one
             for side in ("LOWER", "UPPER"):
                 cout.line("*" * 102)
                 cout.line(
@@ -373,7 +386,7 @@ class RooMinimizer:
         except RuntimeError:  # iminuit refuses MINOS at an invalid minimum, as MnMinos does
             return
         error = self.minuit.merrors[name]
-        if self.print_level >= 1:
+        if self.print_level >= 0:  # Minuit's level is RooFit's plus one
             cout.line(f"Minos: Lower error for parameter {name}  :  {g(error.lower)}")
             cout.line(f"Minos: Upper error for parameter {name}  :  {g(error.upper)}")
 
