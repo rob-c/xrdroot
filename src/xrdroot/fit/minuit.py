@@ -106,6 +106,7 @@ def minimize(
     improve: bool = False,
     tolerance: float = TOLERANCE,
     strategy: int = STRATEGY,
+    ncall: int | None = None,
 ) -> FitResult:
     """Minimise ``fcn(params)`` from ``x0`` with MIGRAD, as ``ROOT::Math::Minimizer`` does.
 
@@ -118,6 +119,8 @@ def minimize(
     0.5 for a negative log-likelihood. ``hesse`` runs HESSE after MIGRAD,
     ``minos`` MINOS for every free parameter, and ``improve`` - ROOT's
     option ``M`` - MIGRAD a second time from where the first stopped.
+    ``ncall`` limits the calls each MIGRAD may make; Minuit2's own limit
+    (``200 + 100 n + 5 n^2``) unless given.
     """
     npar = len(np.atleast_1d(x0))
     labels = tuple(names) if names is not None else tuple(f"p{i}" for i in range(npar))
@@ -130,12 +133,13 @@ def minimize(
         "fixed": fixed,
     }
     minuit = _configured(fcn, x0, labels, options)
-    minuit.migrad(iterate=1, use_simplex=False)
+    minuit.migrad(ncall=ncall, iterate=1, use_simplex=False)
     if improve:
-        minuit.migrad(iterate=1, use_simplex=False)
+        minuit.migrad(ncall=ncall, iterate=1, use_simplex=False)
+    calls = int(minuit.nfcn)
     if hesse or minos:
         minuit.hesse()
-    return _result(minuit, labels, minos)
+    return _result(minuit, labels, minos, calls)
 
 
 def hessian(
@@ -182,7 +186,13 @@ def _minos(minuit: Any, labels: Sequence[str]) -> dict[str, tuple[float, float]]
     return found
 
 
-def _result(minuit: Any, labels: Sequence[str], minos: bool) -> FitResult:
+def _result(minuit: Any, labels: Sequence[str], minos: bool, calls: int) -> FitResult:
+    """What the fit found; ``calls`` are MIGRAD's, as ROOT's ``NCalls`` counts them.
+
+    HESSE and MINOS call the function too, but ROOT reports the calls of the
+    minimisation alone - option ``E``'s fit says the same ``NCalls`` as one
+    without it.
+    """
     fixed = [bool(flag) for flag in minuit.fixed]
     found_minos = _minos(minuit, labels) if minos else {}
     covariance = (
@@ -199,7 +209,7 @@ def _result(minuit: Any, labels: Sequence[str], minos: bool) -> FitResult:
         names=labels,
         fcn=float(minuit.fval),
         edm=float(minuit.fmin.edm),
-        nfev=int(minuit.nfcn),
+        nfev=calls,
         status=_status(minuit.fmin),
         valid=bool(minuit.valid),
         minos=found_minos,

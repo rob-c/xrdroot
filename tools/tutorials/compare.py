@@ -55,6 +55,8 @@ REWRITES = [
         "<date>",
     ),
     (re.compile(r"\b\d{1,2}:\d{2}:\d{2}\b"), "<time>"),
+    # TStopwatch's times as the fitting tutorials print them: "RT=  0.902 s, Cpu=  0.460 s".
+    (re.compile(r"\bRT= *\d+\.\d+ s, Cpu= *\d+\.\d+ s\b"), "RT=<time>, Cpu=<time>"),
     (re.compile(r"(/private)?/(var/folders|tmp)/\S*?tutorial-[^/\s]+"), "<workdir>"),
     (re.compile(r"[ \t]+"), " "),
 ]  # fmt: skip

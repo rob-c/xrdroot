@@ -22,6 +22,7 @@ from . import cache
 from .errors import MacroError, Refusal, Where
 from .runtime import ROOT, cerr, clog, cout
 from .runtime.streams import ostream
+from .shown import shown
 from .translation import Translation, translation
 
 __all__ = ["run", "run_source", "load", "process_line", "split_call", "arguments", "EXTENSIONS"]
@@ -116,8 +117,14 @@ def run_source(
     root: Any = None,
     use_cache: bool = False,
     call: bool = True,
+    show: bool = False,
 ) -> Any:
-    """Translate and run a macro's text; call its function (or unnamed block) with ``args``."""
+    """Translate and run a macro's text; call its function (or unnamed block) with ``args``.
+
+    With ``show``, what the function gives back is printed as cling prints
+    it (:mod:`~xrdroot.cint.shown`) - as ``root file.C`` does for the macro
+    it was told to run.
+    """
     made = _translated(source, file, use_cache)
     label = f"<translation of {file}>"
     namespace: dict[str, Any] = {"__name__": "__cint__", "__file__": file}
@@ -133,6 +140,9 @@ def run_source(
             return None
         with _placed(made, label):
             result = entry(*args)
+    line = shown(made.returns, result) if show and made.returns is not None else None
+    if line is not None:
+        sys.stdout.write(line + "\n")
     sys.stdout.flush()
     return result
 
@@ -151,12 +161,17 @@ def _entry(made: Translation, namespace: dict[str, Any], file: str, args: tuple[
 
 
 def run(
-    path: str | Path, args: tuple[Any, ...] = (), *, root: Any = None, use_cache: bool = True
+    path: str | Path,
+    args: tuple[Any, ...] = (),
+    *,
+    root: Any = None,
+    use_cache: bool = True,
+    show: bool = False,
 ) -> Any:
     """``.x path(args)``: translate the macro at ``path`` and run it, as ROOT would."""
     where = Path(str(path).rstrip("+"))
     source = where.read_text(encoding="utf-8", errors="replace")
-    return run_source(source, str(where), tuple(args), root=root, use_cache=use_cache)
+    return run_source(source, str(where), tuple(args), root=root, use_cache=use_cache, show=show)
 
 
 def load(path: str | Path, *, root: Any = None) -> dict[str, Any]:

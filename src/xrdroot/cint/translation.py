@@ -29,6 +29,8 @@ class Translation:
     included: list[str] = field(default_factory=list)
     #: Whether the macro is an unnamed one, ``{ ... }``, which takes no arguments.
     unnamed: bool = False
+    #: The type the macro's function gives back, as cling names it; None for ``void``.
+    returns: str | None = None
 
 
 def translation(
@@ -48,4 +50,5 @@ def translation(
         translator.entry,
         [str(path) for path in included],
         unit.unnamed is not None,
+        translator.entry_returns,
     )

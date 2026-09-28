@@ -127,8 +127,16 @@ class TDirectory(TNamed):
         return self._list.FindObject(name)
 
     def GetObject(self, namecycle: Any, holder: Any = None) -> Any:
-        """``GetObject``: what ``Get`` finds, handed back (a pointer to fill is ignored)."""
-        return self.Get(namecycle)
+        """``GetObject(name, ptr)``: what ``Get`` finds, into ``ptr`` - and handed back.
+
+        C++ passes the pointer by reference to be set, ``nullptr`` if nothing is
+        found; the translator hands over a cell (anything with a ``.value``),
+        which is set the same way. Anything else given is left alone.
+        """
+        found = self.Get(namecycle)
+        if hasattr(holder, "value"):
+            holder.value = found
+        return found
 
     def GetDirectory(self, path: Any, printError: bool = False, funcname: str = "") -> Any:
         """``GetDirectory``: the directory at ``path`` below this one, or ``None``."""

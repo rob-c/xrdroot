@@ -263,6 +263,12 @@ def test_normalising_drops_what_differs_between_runs():
     assert lines == ["object at 0x<addr>", "made on <date>", "a b", "<workdir>/file"]
 
 
+def test_a_stopwatchs_times_are_masked_and_the_rest_of_its_line_kept():
+    """minuit2FitBench2D.C prints each fitter's real and CPU time, which differ run to run."""
+    lines = compare.normalise("Fumili, npass=0  : RT=  2.013 s, Cpu=  0.110 s\nRT= 1 s")
+    assert lines == ["Fumili, npass=0 : RT=<time>, Cpu=<time>", "RT= 1 s"]
+
+
 def test_numbers_are_equal_within_the_relative_tolerance():
     assert compare.same_line("mean = 1.0000001", "mean = 1.0", TOLERANCE)
     assert not compare.same_line("mean = 1.1", "mean = 1.0", TOLERANCE)

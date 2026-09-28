@@ -256,7 +256,7 @@ def _minimised(fcn: Any, start: Any, names: list[str]) -> Any:
     made.tol, made.strategy = core.TOLERANCE, core.STRATEGY
     made.errors = core.default_steps(start)
     made.migrad(iterate=1, use_simplex=False)
-    return core._result(made, names, False)
+    return core._result(made, names, False, int(made.nfcn))
 
 
 class _FitNamespace:
