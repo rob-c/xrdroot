@@ -1041,10 +1041,13 @@ read off the object, the same layers, onto the pad's axes. What a pad adds:
 | data | onto the pad's frame, whose range, scales and titles are the pad's; a `COLZ` scale where its `TPaletteAxis` was, or in the pad's right margin; each graph of a multigraph by the option it was added with, and the multigraph's fits over them; in the colours and palette the canvas saved, when it saved any |
 | stats box | a saved `TPaveStats` with the lines it was saved with, a name on the left and its value on the right; a histogram saved without one, not drawn `SAME` nor told `kNoStats`, gets `gStyle`'s — its name, entries, mean and standard deviation (`SetOptStat(1111)`) |
 | title | the `title` pave a drawn pad saved; one saved undrawn gets its histogram's or graph's title at the top, as `gStyle` puts it |
-| `TText`, `TLatex` | at `fX`, `fY` in the axes' units or, `SetNDC`, the pad's fractions; `TLatex`'s `#` mathematics in matplotlib's mathtext — Greek letters and symbols, `^{}` and `_{}`, `#sqrt`, `#frac`, `#bar` and the other accents, `#it` and `#bf`, `#splitline` as two stacked lines; `#font`, `#color`, `#scale`, `#kern` and `#lower` keep their text and drop the adjustment |
+| `TText`, `TLatex` | at `fX`, `fY` in the axes' units or, `SetNDC`, the pad's fractions; `TLatex`'s `#` mathematics laid out as `TLatex` lays it out — Greek letters and symbols from the Symbol font, `^{}` and `_{}`, `#sqrt` and `#sqrt[n]`, `#frac`, `#splitline`, `#sum` and `#int` with their limits, `#bar` and the other accents drawn as lines, `#left` and `#right` brackets grown to fit, `#it`, `#bf`, `#font`, `#color`, `#scale`, `#kern`, `#lower` — and a string whose braces do not match drawn as nothing, as ROOT draws it |
 | `TLine`, `TArrow`, `TBox`, `TEllipse`, `TArc`, `TCrown`, `TMarker`, `TPolyLine`, `TPolyMarker` | as their attributes say; an arrow's head by its `fOption` (`"|>"`, `"<|>"`, `"->-"`...), an ellipse's or a crown's slice by `fPhimin` and `fPhimax`, a polyline filled when drawn `f`, a box outlined only when it is hollow |
-| `TGaxis` | a line graduated from `fWmin` to `fWmax` in round steps as `fNdiv` asks, logarithmically for `G` in `fChopt`, its ticks on the side `+` or `-` names and its labels opposite (or with them, `=`; none, `U`), its title at its far end |
-| `TPave`, `TPaveText`, `TPaveLabel`, `TLegend` | the box, its border and shadow (on the sides `fOption` names), and its lines stacked in it, or its entries in `fNColumns` columns, each a symbol — `l` line, `p` marker, `f` fill, `e` error bar, `h` a header — drawn in the style of the thing it stands for |
+| `TGaxis` | as `TGaxis::PaintAxis` draws one, and a frame's axes too: a line graduated from `fWmin` to `fWmax` in round steps as `fNdiv` asks (`THLimitsFinder`'s), logarithmically for `G` in `fChopt`, its ticks on the side `+` or `-` names and its labels opposite (or with them, `=`; none, `U`), a common `×10^n` where the labels would be long, its title at its far end |
+| `TPave`, `TPaveText`, `TPaveLabel`, `TLegend` | the box, its border and shadow (on the sides `fOption` names), and its lines stacked in it, or its entries in `fNColumns` columns as wide as their widest labels, each a symbol — `l` line, `p` marker, `f` fill, `e` error bar, `h` a header of its own row — drawn in the style of the thing it stands for |
+| `LEGO`, `SURF` | a two-dimensional histogram as `THistPainter::PaintLego` and `PaintSurface` draw it: seen from the pad's `fTheta` and `fPhi` through `TView3D`, its blocks or its mesh drawn front to back with the lines behind them hidden (`TPainter3dAlgorithms`' moving screen), the box's back walls lined at the z axis's divisions, and its three axes along the box's nearer edges |
+| three dimensions | a `TH3` drawn `LEGO` or `BOX` as `PaintH3BoxRaster` draws it, a box in each bin as big as the cube root of its share of the highest, hidden lines hidden by the raster screen; drawn `ISO`, the surface where its contents cross their mean, lit as `PaintH3Iso` lights it and filled in 28 shades of its fill colour - found through tetrahedra where ROOT uses its own marching cubes, so its triangles differ a little |
+| `CONT1`, `CONT2`, `CONT3` | contour lines as `PaintContour` finds them, cell by cell of the bins' centres at `gStyle`'s twenty levels: each level in its palette colour, its line style, or all in the histogram's own line |
 
 Colours are ROOT's by index, from the table [Drawing](#drawing) uses —
 ROOT's own, `kOrange` to `kPink` and all — and a canvas saved with its
@@ -1055,13 +1058,37 @@ precision 3 and a fraction of the pad's shorter side otherwise, the figure
 drawn at 100 dots to the inch so that one of ROOT's pixels is one of its.
 Text left at size 0 in a pave or a legend is sized to fit, as ROOT sizes it.
 
+**How it is drawn**, to be ROOT's picture pixel for pixel where it can. ROOT
+draws a canvas saved as a PNG in batch through `TImageDump`, and so does
+this, onto matplotlib's Agg: every point is rounded to a whole pixel as
+`TImageDump` rounds it, and every line is set pixel by pixel as `TASImage`
+sets it — straight runs as runs, slopes by Bresenham's walk, wide lines with
+a square brush, dashes a quarter of `TStyle`'s lengths — rather than
+stroked. A marker is `TImageDump`'s shape for its style, at its size in whole
+pixels. Text is placed as FreeType places it for ROOT: unhinted, at
+`TTF`'s size of the pad's shorter side times 0.93376, aligned by the glyphs'
+advances and ascents. Saved as a PDF or an SVG, the same lines are stroked.
+
+**Fonts.** ROOT's fonts 4x are TeX Gyre Heros, a Helvetica; 1x to 3x and 13x
+FreeSerif, a Times; 8x to 11x FreeMono, a Courier; 12x and 15x its Symbol.
+None of them is shipped here, and none is needed: each is the first
+TrueType face installed of a list with the same widths - for 4x `TeX Gyre
+Heros`, `Nimbus Sans`, `Helvetica`, `Arial`, `Liberation Sans`, `FreeSans`,
+then `DejaVu Sans`, which matplotlib always has; the Times and Courier lists
+are alike. Helvetica's widths are the ones the picture is laid out to; with
+`DejaVu Sans`, which is wider, text is wider and what is sized to fit is
+smaller. Greek letters and symbols come from a `Symbol` font when one is
+installed (macOS has one with ROOT's advances), else from matplotlib's own
+`STIX`.
+
 **What is left out**, with a warning naming every one: a class the file
 does not describe, or does but this does not draw — a `TButton`,
 anything of a GUI — a three-dimensional histogram, and a function that
 cannot be evaluated here. An option ROOT takes that is not drawn here
 (`SCAT`, `*H`, the `[]` of an asymmetric graph) is drawn as the object would
-be without it, and so is `LEGO` or `SURF`, a pad's axes being flat; each is
-said in the warning. Writing a canvas is not supported; reading one never
+be without it; each is said in the warning. `LEGO` and `SURF` are drawn
+in three dimensions, and so is a three-dimensional histogram drawn `LEGO`,
+`BOX` or `ISO`; one drawn with no option, a scatter of points in ROOT, is not. Writing a canvas is not supported; reading one never
 stands in the way of writing what it drew.
 
 `xrdroot.canvas.render(obj, path)` saves a `Canvas`, a `Pad`, or the members

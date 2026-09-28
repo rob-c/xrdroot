@@ -18,6 +18,7 @@ import numpy as np
 from ...errors import UnsupportedFeatureError
 from .. import colors
 from ..model import (
+    Area,
     Band,
     Bars,
     Boxes,
@@ -170,6 +171,10 @@ def _band(fig: Any, layer: Band, frame: Frame, native: dict[str, Any]) -> Any:
     return fig.varea(x=x, y1=low, y2=high, **_fill(look), **_legend(look), **native)
 
 
+def _area(fig: Any, layer: Area, frame: Frame, native: dict[str, Any]) -> Any:
+    return fig.patch(x=layer.x, y=layer.y, **_fill(layer.look), **_legend(layer.look), **native)
+
+
 def _curve(fig: Any, layer: Curve, frame: Frame, native: dict[str, Any]) -> Any:
     from ..smooth import smoothed
 
@@ -253,7 +258,7 @@ def _deep(fig: Any, layer: Any, frame: Frame, native: dict[str, Any]) -> Any:
 
 #: Each kind of layer, against what draws it.
 DRAWN: dict[type, Callable[[Any, Any, Frame, dict[str, Any]], Any]] = {
-    Steps: _steps, Bars: _bars, Points: _points, Boxes: _boxes, Band: _band,
+    Steps: _steps, Bars: _bars, Points: _points, Boxes: _boxes, Band: _band, Area: _area,
     Curve: _curve, Labels: _labels, Mesh: _mesh, Contour: _contour, Surface: _deep,
     Cloud: _deep,
 }  # fmt: skip

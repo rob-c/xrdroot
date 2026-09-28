@@ -36,11 +36,21 @@ class TText(Drawn):
         made.Draw()
         return made
 
+    def _draw_text(self, x: float, y: float, text: str, ndc: bool) -> Any:
+        """``TText::DrawText``: a new ``TText`` - never a formula - in this one's text
+        attributes."""
+        made = TText(x, y, text)
+        own = {name: value for name, value in self.members.items() if name.startswith("fText")}
+        made.members.update(own)
+        made.SetBit(NDC_BIT, ndc)
+        made.Draw()
+        return made
+
     def DrawText(self, x: float, y: float, text: str) -> Any:
-        return self._draw_at(x, y, text, False)
+        return self._draw_text(x, y, text, False)
 
     def DrawTextNDC(self, x: float, y: float, text: str) -> Any:
-        return self._draw_at(x, y, text, True)
+        return self._draw_text(x, y, text, True)
 
 
 class TLatex(TText):

@@ -118,7 +118,7 @@ def test_the_kits_hooks_are_the_core_parts_when_it_has_them() -> None:
     from xrdroot.pyroot.core.wrapping import wrap
     from xrdroot.pyroot.graphics.paves import TPaveText
 
-    assert (kit._axis() == TAxis._of, kit._histogram_wrapper() is wrap) == (True, True)
+    assert (kit._axis() == TAxis._of, kit._histogram_wrapper().wraps is wrap) == (True, True)
     assert kit._pave() is TPaveText
 
 

@@ -60,15 +60,20 @@ def _announce(what: str) -> None:
 
 def save(pad: Any, filename: str, option: str = "") -> None:
     """Write ``pad`` to ``filename``, or add it to the book of that name, as ROOT does."""
+    from matplotlib import rc_context
+
+    from ...canvas.styles import DRAWING
+
     name, kind, bracket = _split(str(filename), str(option))
-    if kind == "pdf" and (bracket or name in BOOKS):
-        _book(pad, name, bracket)
-        return
-    figure = _figure(pad)
-    if kind == "gif":
-        _gif(figure, name)
-    else:
-        figure.savefig(name, format=kind, dpi=figure.dpi)
+    with rc_context(DRAWING):  # text is drawn when saved, and drawn as ROOT's only so
+        if kind == "pdf" and (bracket or name in BOOKS):
+            _book(pad, name, bracket)
+            return
+        figure = _figure(pad)
+        if kind == "gif":
+            _gif(figure, name)
+        else:
+            figure.savefig(name, format=kind, dpi=figure.dpi)
     _announce(f"{kind} file {name} has been created")
 
 

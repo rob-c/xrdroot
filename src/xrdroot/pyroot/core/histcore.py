@@ -70,6 +70,32 @@ def positional(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[Any, ...]
     return tuple(named[key] for key in order if key in named) + args[len(KEYWORDS) :]
 
 
+#: ``TH1::UseCurrentStyle``: the attributes a histogram made in a session takes
+#: from ``gStyle``, by the base that keeps each, against the style's field.
+STYLED = {
+    "TAttLine": {
+        "fLineColor": "HistLineColor", "fLineStyle": "HistLineStyle", "fLineWidth": "HistLineWidth",
+    },
+    "TAttFill": {"fFillColor": "HistFillColor", "fFillStyle": "HistFillStyle"},
+    "TAttMarker": {
+        "fMarkerColor": "MarkerColor", "fMarkerStyle": "MarkerStyle", "fMarkerSize": "MarkerSize",
+    },
+}
+
+
+def _in_style(made: Any) -> Any:
+    """A histogram as ``TH1::Build`` leaves it: drawn in ``gStyle``'s histogram attributes, its
+    axes in ``gStyle``'s - ``TAxis::ResetAttAxis`` of each."""
+    from ..graphics.style import gStyle
+
+    for base, fields in STYLED.items():
+        made._core[base].update({member: gStyle.values[field] for member, field in fields.items()})
+    for letter in "XYZ":  # a TH1 has all three, its y and z unbinned
+        own = gStyle.axes[letter]
+        made._core[f"f{letter}axis"]["TAttAxis"].update({f"f{field}": own[field] for field in own})
+    return made
+
+
 class Booked:
     """The construction, naming and keeping of a histogram, whatever its kind."""
 
@@ -105,12 +131,12 @@ class Booked:
         from ...hist import Histogram
 
         if not args:
-            return Histogram.book("", *[(1, 0.0, 1.0)] * self.DIM, kind=self.KIND)
+            return _in_style(Histogram.book("", *[(1, 0.0, 1.0)] * self.DIM, kind=self.KIND))
         specs, _rest = axis_specs(args[2:], self.DIM)
         made = Histogram.book(str(args[0]), *specs, title=str(args[1]), kind=self.KIND)
         for letter, label in zip("XYZ", str(args[1]).split(";")[1:]):
             made._core[f"f{letter}axis"]["TNamed"]["fTitle"] = label
-        return made
+        return _in_style(made)
 
     def _adopted(self, xrd: Any) -> None:
         """Stand for ``xrd``, one read from a file or made by xrdroot, in no directory."""

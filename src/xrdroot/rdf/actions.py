@@ -404,7 +404,8 @@ class GraphAction(Action):
     def finish(self, acc: Any, flow: dict[int, tuple[int, int]]) -> Any:
         xs = np.concatenate([part[0] for part in acc])
         ys = np.concatenate([part[1] for part in acc])
-        return TGraph.new("Graph", xs, ys, title="Graph")
+        across, up = (column.name for column in self.inputs)
+        return TGraph.new(f"{up}_vs_{across}", xs, ys, title=f"{up} vs {across}")
 
 
 class Take(Action):

@@ -170,22 +170,9 @@ class RooAbsData(RooPrintable):
 
     def createHistogram(self, first: Any, *args: Any, **kwargs: Any) -> Any:
         """``createHistogram(name, x, ...)`` or ``createHistogram("x,y", ...)``: a ``TH1`` of the
-        events."""
+        events, named as ``RooAbsRealLValue::createHistogram`` names it - ``name__x_y``."""
         from ..histograms import data_histogram
 
-        if (
-            isinstance(first, str)
-            and args
-            and hasattr(args[0], "GetName")
-            and not hasattr(args[0], "args")
-        ):
-            made = data_histogram(self, args[0], args[1:], kwargs)
-            made_name = getattr(made, "SetName", None)
-            if made_name is not None:
-                made_name(first)
-            else:
-                made._core["TNamed"]["fName"] = first
-            return made
         return data_histogram(self, first, args, kwargs)
 
     def table(self, category: Any, cut: Any = None, options: Any = None) -> Any:

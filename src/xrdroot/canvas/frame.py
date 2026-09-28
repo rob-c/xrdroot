@@ -78,6 +78,10 @@ def _histogram_y(values: np.ndarray[Any, Any], log: bool) -> tuple[float, float]
 
 
 def _limit(obj: Any, name: str, fallback: float) -> float:
+    """``fMinimum`` or ``fMaximum`` if the histogram was given one, or else ``fallback``.
+
+    ROOT keeps ``-1111`` in them to mean unset, so the frame fits the bins.
+    """
     value = lookup(obj, name)
     return fallback if value is None or float(value) == -1111 else float(value)
 
@@ -105,6 +109,11 @@ def _ends(h: Any, axis: int) -> tuple[float, float]:
 
 
 def _histogram_extent(h: Histogram, option: str, log: bool) -> Extent:
+    """A histogram's frame: its axes' ranges, and in one dimension the bins' heights round them.
+
+    Error bars, drawn or implied by weights, reach the frame too, as
+    ``THistPainter`` counts them.
+    """
     (xlow, xhigh) = _ends(h, 0)
     if len(h.axes) > 1:
         ylow, yhigh = _ends(h, 1)
@@ -127,23 +136,36 @@ def _efficiency_extent(e: Efficiency, pad: Pad) -> Extent:
     return axis.low, y0, axis.high, y1
 
 
+def _log_spread(values: np.ndarray[Any, Any], high: float) -> tuple[float, float]:
+    """A logarithmic axis's range: half its lowest positive value to twice its highest.
+
+    With nothing positive to show it starts at a tenth, which a log scale can draw.
+    """
+    positive = values[values > 0]
+    low = float(positive.min()) if positive.size else 0.1
+    return low * 0.5, max(high, low) * 2.0
+
+
 def _spread(values: np.ndarray[Any, Any], log: bool, floor: bool) -> tuple[float, float]:
     """A tenth of the spread of ``values`` either side, not below zero if none are."""
     if not values.size:
         return 0.0, 1.0
     low, high = float(values.min()), float(values.max())
     if log:
-        positive = values[values > 0]
-        low = float(positive.min()) if positive.size else 0.1
-        return low * 0.5, max(high, low) * 2.0
-    margin = GRAPH_MARGIN * ((high - low) or abs(high) or 1.0)
-    bottom = low - margin
-    if floor and low >= 0 and bottom < 0:
-        bottom = 0.0
-    return bottom, high + margin
+        return _log_spread(values, high)
+    if high == low:
+        high = low + 1.0
+    margin = GRAPH_MARGIN * (high - low)
+    bottom, top = low - margin, high + margin
+    if bottom < 0 and low >= 0:
+        bottom = 0.9 * low  # TGraphPainter keeps a range of positive values positive
+    if not floor and top > 0 and high <= 0:
+        top = 0.0
+    return bottom, top
 
 
 def _graph_points(graphs: list[Graph]) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
+    """Every graph's points reached out to the ends of their error bars, which the frame spans."""
     xs, ys = [], []
     for g in graphs:
         xlow, xhigh = g.xerr if g.xerr is not None else (0.0, 0.0)
@@ -154,6 +176,11 @@ def _graph_points(graphs: list[Graph]) -> tuple[np.ndarray[Any, Any], np.ndarray
 
 
 def _graphs_extent(graphs: list[Graph], pad: Pad) -> Extent:
+    """The frame ``TGraphPainter`` makes for graphs: their points, and a tenth more round them.
+
+    An x range of values none above zero ends at zero rather than past it; the
+    y range is left its margin.
+    """
     xs, ys = _graph_points(graphs)
     x0, x1 = _spread(xs, pad.logx, floor=False)
     y0, y1 = _spread(ys, pad.logy, floor=True)
@@ -161,6 +188,7 @@ def _graphs_extent(graphs: list[Graph], pad: Pad) -> Extent:
 
 
 def _function_extent(f: Function, log: bool) -> Extent:
+    """A function's frame: its range, and the heights it reaches, sampled as ``TF1`` draws it."""
     if f.dimensions != 1:
         return 0.0, 0.0, 1.0, 1.0  # it is not drawn, and says so when it is not
     low, high = (float(end) for end in f.range[:2])
@@ -192,14 +220,6 @@ def extent(obj: Any, option: str, pad: Pad) -> Extent:
     return 0.0, 0.0, 1.0, 1.0
 
 
-def _logarithmic(axis: Any) -> None:
-    """An axis scaled logarithmically, labelled with plain numbers as ROOT labels one."""
-    from matplotlib.ticker import LogFormatter
-
-    axis.set_major_formatter(LogFormatter())
-    axis.set_minor_formatter(LogFormatter(minor_thresholds=(1, 0.4)))
-
-
 def open_axes(scene: Scene) -> None:
     """The pad's axes: over its frame, scaled and ranged, or over all of it, bare."""
     pad = scene.pad
@@ -219,13 +239,12 @@ def open_axes(scene: Scene) -> None:
         ax.set_ylim(y1, y2)
         ax.set_axis_off()
         return
-    for scale, axis, log in (
-        (ax.set_xscale, ax.xaxis, pad.logx),
-        (ax.set_yscale, ax.yaxis, pad.logy),
-    ):
-        if log:
-            scale("log")
-            _logarithmic(axis)
+    if pad.logx:
+        ax.set_xscale("log")
+    if pad.logy:
+        ax.set_yscale("log")
+    ax.xaxis.set_visible(False)  # ROOT's axes are painted over the frame, as ``TGaxis`` paints them
+    ax.yaxis.set_visible(False)
     worked_out = extent(*scene.owner, pad)
     xmin, ymin, xmax, ymax = _usable(pad.frame, worked_out) if pad.painted else worked_out
     ax.set_xlim(*_positive(xmin, xmax, pad.logx))
@@ -294,87 +313,28 @@ def _frame(scene: Scene) -> None:
                 edgecolor="none",
             )
         )
+    from .raster import add_line, frame_clip
+
     for spine in scene.ax.spines.values():
-        spine.set_color(scene.colors.rgb(style["fLineColor"]))
-        spine.set_linewidth(styles.points(float(style["fLineWidth"])))
+        spine.set_visible(False)
+    x0, y0, x1, y1 = frame_clip(scene)
+    corners = [(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)]
+    add_line(scene, corners, scene.colors.rgb(style["fLineColor"]), int(style["fLineWidth"]))
 
 
-def _label(scene: Scene, axis: Any, which: str) -> None:
-    """One axis's title, at its far end, and its tick labels, sized as ``TAttAxis`` says."""
-    title = str(lookup(axis, "fTitle", "") or "")
-    label_size = scene.text_points(
-        lookup(axis, "fLabelSize", LABEL_SIZE), lookup(axis, "fLabelFont", 42)
-    )
-    title_size = scene.text_points(
-        lookup(axis, "fTitleSize", TITLE_SIZE), lookup(axis, "fTitleFont", 42)
-    )
-    color = scene.colors.rgb(lookup(axis, "fLabelColor", 1))
-    scene.ax.tick_params(axis=which, labelsize=label_size, labelcolor=color)
-    from .latex import translate
-
-    setter = scene.ax.set_xlabel if which == "x" else scene.ax.set_ylabel
-    where = {"loc": "right"} if which == "x" else {"loc": "top"}
-    setter(
-        translate(title),
-        fontsize=title_size,
-        color=scene.colors.rgb(lookup(axis, "fTitleColor", 1)),
-        **where,
-    )
-
-
-def _plain(value: float, _position: Any = None) -> str:
-    """A tick's label as ROOT writes it: the number, with no zeros after its point."""
-    return f"{value:.6g}" if abs(value) > 1e-12 else "0"
-
-
-def _divided(axis: Any, attributes: Any, log: bool) -> None:
-    """A linear axis's ticks as ``fNdivisions`` asks: up to its units of round steps, each
-    divided by its tens, labelled as plain numbers."""
-    if log:
-        return
-    from matplotlib.ticker import AutoMinorLocator, FuncFormatter, MaxNLocator
-
-    divisions = abs(int(lookup(attributes, "fNdivisions", 510) or 510))
-    axis.set_major_locator(MaxNLocator(nbins=divisions % 100 or 10, steps=[1, 2, 2.5, 5, 10]))
-    axis.set_minor_locator(AutoMinorLocator((divisions // 100) % 100 or 5))
-    axis.set_major_formatter(FuncFormatter(_plain))
-
-
-def _ticks(scene: Scene, source: Any) -> None:
-    """Ticks inside the frame, on the far sides too when the pad asks for them."""
-    tickx, ticky = scene.pad.ticks
-    frame_w = scene.ax.get_position().width * scene.figure.get_figwidth() * styles.DPI
-    frame_h = scene.ax.get_position().height * scene.figure.get_figheight() * styles.DPI
-    xaxis, yaxis = lookup(source, "fXaxis"), lookup(source, "fYaxis")
-    xlength = styles.points(float(lookup(xaxis, "fTickLength", TICK_LENGTH)) * frame_h)
-    ylength = styles.points(float(lookup(yaxis, "fTickLength", TICK_LENGTH)) * frame_w)
-    scene.ax.minorticks_on()
-    _divided(scene.ax.xaxis, xaxis, scene.pad.logx)
-    _divided(scene.ax.yaxis, yaxis, scene.pad.logy)
-    scene.ax.tick_params(axis="x", which="major", direction="in", length=xlength, top=bool(tickx))
-    scene.ax.tick_params(
-        axis="x", which="minor", direction="in", length=xlength / 2, top=bool(tickx)
-    )
-    scene.ax.tick_params(axis="y", which="major", direction="in", length=ylength, right=bool(ticky))
-    scene.ax.tick_params(
-        axis="y", which="minor", direction="in", length=ylength / 2, right=bool(ticky)
-    )
 
 
 def dress(scene: Scene) -> None:
-    """The frame's fill, outline, ticks, grid and axis titles, once everything is drawn."""
-    if scene.owner is None:
+    """The frame's fill and outline, and its axes painted over them, once everything is drawn.
+
+    A lego or surface plot has neither: its box and axes are its own.
+    """
+    if scene.owner is None or scene.solid:
         return
-    source = _axes_of(scene.owner[0])
+    from .dressing import dress_axes
+
     _frame(scene)
-    _ticks(scene, source)
-    gridx, gridy = scene.pad.grid
-    if gridx:
-        scene.ax.grid(True, axis="x", which="major", linestyle=":", color="black", linewidth=0.5)
-    if gridy:
-        scene.ax.grid(True, axis="y", which="major", linestyle=":", color="black", linewidth=0.5)
-    _label(scene, lookup(source, "fXaxis") if source is not None else None, "x")
-    _label(scene, lookup(source, "fYaxis") if source is not None else None, "y")
+    dress_axes(scene, _axes_of(scene.owner[0]))
 
 
 def default_title(scene: Scene) -> None:
@@ -385,9 +345,7 @@ def default_title(scene: Scene) -> None:
     title = str(getattr(obj, "title", "") or "")
     if not title or int(lookup(obj, "fBits", 0) or 0) & NO_TITLE:
         return
-    from .latex import translate
-    from .shapes import draw_text
+    from .latex import paint_latex
 
-    style = scene.text(None, None, scene.text_points(TITLE_SIZE_PAD))
-    style["ha"], style["va"] = "center", "top"
-    draw_text(scene, translate(title), TITLE_X, TITLE_Y, style, ndc=True)
+    attributes = {"font": 42, "size": TITLE_SIZE_PAD, "color": 1, "align": 23, "angle": 0.0}
+    paint_latex(scene, title, scene.pixel(TITLE_X, TITLE_Y), attributes)

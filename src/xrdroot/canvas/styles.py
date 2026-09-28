@@ -14,6 +14,7 @@ from typing import Any
 
 __all__ = [
     "DPI",
+    "DRAWING",
     "align",
     "dashes",
     "fill",
@@ -25,6 +26,18 @@ __all__ = [
 
 #: The resolution a canvas is drawn at: one ROOT pixel is one figure pixel.
 DPI = 100
+#: matplotlib's settings a canvas is drawn and saved with, to draw as ``TASImage``
+#: draws: lines and fills without smoothing, a line's ends where it stops, and
+#: FreeType's glyphs unhinted; a hatch's lines a pixel wide.
+DRAWING: dict[str, Any] = {
+    "lines.antialiased": False,
+    "patch.antialiased": False,
+    "lines.solid_capstyle": "butt",
+    "lines.dash_capstyle": "butt",
+    "lines.solid_joinstyle": "miter",
+    "text.hinting": "no_hinting",
+    "hatch.linewidth": 72.0 / DPI,
+}
 #: Points in a pixel at that resolution.
 POINTS_PER_PIXEL = 72.0 / DPI
 
@@ -40,9 +53,6 @@ LINE_STYLES: dict[int, tuple[float, ...]] = {
     9: (80, 20),
     10: (80, 40, 4, 40),
 }
-#: How much shorter the dashes are drawn than ROOT's pixel lengths: ROOT's
-#: are drawn at half size on a screen of its own resolution.
-DASH_SCALE = 0.5
 
 #: ``TAttMarker``'s styles, as matplotlib's markers and whether they are filled.
 MARKERS: dict[int, tuple[str, bool]] = {
@@ -129,12 +139,17 @@ def points(pixels: float) -> float:
 
 
 def dashes(style: Any, width: float = 1.0) -> Any:
-    """A matplotlib line style for ROOT's ``fLineStyle``, solid for one unknown."""
+    """A matplotlib line style for ROOT's ``fLineStyle``, solid for one unknown.
+
+    ``TImageDump`` draws a dash a quarter of ``gStyle``'s length for it, in
+    whole pixels, however wide the line; matplotlib measures dashes in line
+    widths, so each is divided by the width.
+    """
     lengths = LINE_STYLES.get(int(style))
     if lengths is None:
         return "solid"
-    scale = DASH_SCALE / max(float(width), 1.0)
-    return (0, tuple(length * scale for length in lengths))
+    wide = max(float(width), 1.0)
+    return (0, tuple(max(length // 4, 1) / wide for length in lengths))
 
 
 def marker(style: Any) -> tuple[str, bool]:

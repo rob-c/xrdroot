@@ -255,7 +255,13 @@ class Pad:
 
         ``options`` are :meth:`matplotlib.figure.Figure.savefig`'s.
         """
-        self.plot().savefig(path, **options)
+        from matplotlib import rc_context
+
+        from .styles import DRAWING
+
+        figure = self.plot()
+        with rc_context(DRAWING):  # the text is drawn now, and unhinted only by this
+            figure.savefig(path, **options)
         return path
 
     def save_as(self, path: Any, **options: Any) -> Any:

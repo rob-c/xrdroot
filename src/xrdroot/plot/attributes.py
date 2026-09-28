@@ -137,6 +137,9 @@ def look(members: Any, markers: bool = False) -> Look:
         hollow=hollow,
         marker_color=color(marker.get("fMarkerColor", 1)),
         marker_size=float(marker.get("fMarkerSize", 1.0)),
+        line_style=int(line.get("fLineStyle", 1)),
+        marker_style=int(marker.get("fMarkerStyle", 1)),
+        fill_style=int(fill.get("fFillStyle", SOLID)) if filled is not None else 0,
     )
 
 

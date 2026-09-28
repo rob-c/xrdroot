@@ -246,3 +246,19 @@ def test_raw_data_is_drawn_found_and_labelled_by_its_own_name_and_title():
     assert c.FindObject("raw") is h and legend.AddEntry(h).GetLabel() == "A Gaussian"
     copy = legend.DrawClone()
     assert copy is not legend and c.primitives[-1][0] is copy
+
+
+def test_a_title_box_is_gstyles_size_when_it_sets_one_and_a_pixel_font_is_sized_in_pixels():
+    ROOT.gStyle.SetTitleH(0.08)
+    ROOT.gStyle.SetTitleW(0.3)
+    c = ROOT.TCanvas("c", "c")
+    gaussian().Draw()
+    c.Update()
+    title = c.GetPrimitive("title")
+    assert title.GetY2NDC() - title.GetY1NDC() == pytest.approx(0.08)
+    assert title.GetX2NDC() - title.GetX1NDC() == pytest.approx(0.3)
+    ROOT.gStyle.SetTitleH(0.0)
+    ROOT.gStyle.SetTitleFont(43, "")  # 20 pixels, whatever the pad
+    ROOT.gStyle.SetTitleFontSize(20)
+    height, _width = decorations._title_size(c, "A Gaussian")
+    assert height == pytest.approx(1.1 * 20 / max(decorations._pad_pixels(c)))

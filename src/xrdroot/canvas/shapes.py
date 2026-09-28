@@ -14,12 +14,12 @@ from typing import Any
 
 import numpy as np
 
-from . import styles
-from .latex import translate
-from .model import Primitive
+from .latex import paint_latex
+from .model import Primitive, lookup
 from .scene import Scene
+from .text import glyphs, pixel_size
 
-__all__ = ["SHAPES", "draw_text"]
+__all__ = ["SHAPES", "canvas_point", "write"]
 
 #: The points an ellipse's outline is drawn with, round a whole turn.
 ELLIPSE_POINTS = 181
@@ -30,24 +30,28 @@ ARROW_SIZE = 0.05
 HEAD = 3.0
 
 
-def draw_text(scene: Scene, text: str, x: float, y: float, style: dict[str, Any], ndc: bool) -> Any:
-    """One string at ``(x, y)``, already translated, in the style given."""
-    return scene.ax.text(
-        x, y, text, transform=scene.where(ndc), clip_on=False, zorder=scene.layer(), **style
-    )
+def canvas_point(scene: Scene, x: float, y: float, ndc: bool) -> tuple[float, float]:
+    """A point of the pad - in NDC, or in its axes' units - as the canvas's pixel."""
+    u, v = (x, y) if ndc else scene.to_ndc(x, y)
+    return scene.pixel(u, v)
+
+
+def write(scene: Scene, text: str, at: tuple[float, float], attributes: dict[str, Any],
+          latex: bool = True) -> None:  # fmt: skip
+    """``text`` at canvas pixel ``at``: a ``TLatex``'s formula, or a ``TText``'s string as it is."""
+    if latex:
+        paint_latex(scene, text, at, attributes)
+        return
+    font = int(attributes["font"])
+    size = pixel_size(scene, float(attributes["size"]), font)
+    glyphs(scene, text, at, font, size, scene.colors.rgb(attributes["color"]),
+           int(attributes["align"]), float(attributes["angle"]))  # fmt: skip
 
 
 def _text(scene: Scene, prim: Primitive, latex: bool) -> None:
-    title = str(prim.get("fTitle", ""))
-    shown = translate(title) if latex else title.replace("$", r"\$")
-    draw_text(
-        scene,
-        shown,
-        float(prim.get("fX", 0.0)),
-        float(prim.get("fY", 0.0)),
-        scene.text(prim),
-        prim.ndc,
-    )
+    """A ``TText`` or ``TLatex`` at ``(fX, fY)``, in NDC or the axes' units as its bit says."""
+    at = canvas_point(scene, float(prim.get("fX", 0.0)), float(prim.get("fY", 0.0)), prim.ndc)
+    write(scene, str(prim.get("fTitle", "")), at, scene.attributes(prim), latex)
 
 
 def text(scene: Scene, prim: Primitive, _option: str) -> None:
@@ -61,60 +65,134 @@ def latex(scene: Scene, prim: Primitive, _option: str) -> None:
 
 
 def _ends(prim: Primitive) -> tuple[list[float], list[float]]:
+    """A line's, arrow's or box's two ends: ``fX1`` and ``fX2``, and ``fY1`` and ``fY2``."""
     return (
         [float(prim.get("fX1", 0.0)), float(prim.get("fX2", 0.0))],
         [float(prim.get("fY1", 0.0)), float(prim.get("fY2", 0.0))],
     )
 
 
+def _line_of(scene: Scene, prim: Any, points: list[tuple[float, float]], style: Any = None) -> None:
+    """A line through canvas ``points`` in ``prim``'s colour, width and style (or ``style``)."""
+    from .raster import add_line
+
+    width = int(lookup(prim, "fLineWidth", 1) or 0)
+    if width > 0:
+        chosen = lookup(prim, "fLineStyle", 1) if style is None else style
+        add_line(scene, points, scene.colors.rgb(lookup(prim, "fLineColor", 1)), width, chosen)
+
+
 def line(scene: Scene, prim: Primitive, _option: str) -> None:
     """A ``TLine``, from ``(fX1, fY1)`` to ``(fX2, fY2)``."""
-    from matplotlib.lines import Line2D
-
     xs, ys = _ends(prim)
-    scene.ax.add_artist(
-        Line2D(
-            xs,
-            ys,
-            transform=scene.where(prim.ndc),
-            clip_on=False,
-            zorder=scene.layer(),
-            **scene.line(prim),
-        )
-    )
+    _line_of(scene, prim, [canvas_point(scene, x, y, prim.ndc) for x, y in zip(xs, ys)])
 
 
-def _arrowstyle(shape: str) -> str:
-    """ROOT's ``"|>"``, ``"<|>"``, ``"->-"`` and the rest, as matplotlib's arrow styles."""
-    filled = "|" in shape
-    core = shape.strip("-")  # an arrow drawn in the middle, "->-", heads the same way
-    start = ("<|" if filled else "<") if core.startswith("<") else ""
-    end = ("|>" if filled else ">") if core.endswith(">") else ""
-    return f"{start}-{end}"
+def _head(tip: tuple[float, float], along: tuple[float, float], length: float,
+          half: float) -> list[tuple[float, float]]:  # fmt: skip
+    """An arrow's head at ``tip``, pointing along ``along``: its two back corners about the tip."""
+    (x, y), (cos, sin) = tip, along
+    return [(x - length * cos - sin * half, y - length * sin + cos * half), (x, y),
+            (x - length * cos + sin * half, y - length * sin - cos * half)]  # fmt: skip
 
 
-def arrow(scene: Scene, prim: Primitive, _option: str) -> None:
-    """A ``TArrow``: a line with a head at either end, or both, by its ``fOption``."""
-    from matplotlib.patches import FancyArrowPatch
+def _fill_head(scene: Scene, prim: Primitive, corners: list[tuple[float, float]]) -> None:
+    """A closed head's inside, in the arrow's fill colour; ROOT leaves it empty for colour 0."""
+    from matplotlib.patches import Polygon
 
+    if not int(lookup(prim, "fFillColor", 0) or 0):
+        return
+    colour = scene.colors.rgb(lookup(prim, "fFillColor", 0))
+    scene.ax.add_artist(Polygon([(x, y) for x, y in corners], closed=True, transform=scene.display,
+                                clip_on=False, zorder=scene.layer(), linewidth=0.0,
+                                edgecolor="none", facecolor=colour))  # fmt: skip
+
+
+def _heads(scene: Scene, prim: Primitive, option: str, ends: tuple[Any, Any],
+           sizes: tuple[float, float]) -> None:  # fmt: skip
+    """``TArrow::PaintArrow``'s heads: an open ``>``, or a ``|>`` filled and outlined."""
+    (start, end), (length, half) = ends, sizes
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    span = math.hypot(dx, dy) or 1.0
+    cos, sin = dx / span, dy / span
+    tips = _tips(start, end, option, (cos * length / 2, sin * length / 2))
+    for mark, closed, tip, sign in ((">", "|>", tips[0], 1.0), ("<", "<|", tips[1], -1.0)):
+        if mark not in option:
+            continue
+        corners = _head(tip, (sign * cos, sign * sin), length, half)
+        if closed in option:
+            _fill_head(scene, prim, corners)
+            corners = corners + corners[:1]
+        _line_of(scene, prim, corners, 1)
+
+
+Point2 = tuple[float, float]
+
+
+def _tips(start: Point2, end: Point2, option: str, half_head: Point2) -> tuple[Point2, Point2]:
+    """Where the heads' tips are: at the ends, or half a head past the middle for ``->-``."""
+    middle = (0.5 * (start[0] + end[0]), 0.5 * (start[1] + end[1]))
+    ahead, behind = end, start
+    if "->-" in option or "-|>-" in option:
+        ahead = (middle[0] + half_head[0], middle[1] + half_head[1])
+    if "-<-" in option or "-<|-" in option:
+        behind = (middle[0] - half_head[0], middle[1] - half_head[1])
+    return ahead, behind
+
+
+def _bars(start: tuple[float, float], end: tuple[float, float], option: str,
+          half: float) -> tuple[str, list[list[tuple[float, float]]]]:  # fmt: skip
+    """``|-`` and ``-|``: a bar across the start or the end, and the option with the bar read."""
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    span = math.hypot(dx, dy) or 1.0
+    across = (dy / span * half, -dx / span * half)
+    bars = []
+    if option.startswith("|-"):
+        bars.append([(start[0] - across[0], start[1] - across[1]),
+                     (start[0] + across[0], start[1] + across[1])])  # fmt: skip
+        option = " " + option[1:]
+    if option.endswith("-|"):
+        bars.append([(end[0] - across[0], end[1] - across[1]),
+                     (end[0] + across[0], end[1] + across[1])])  # fmt: skip
+        option = option[:-1] + " "
+    return option, bars
+
+
+def arrow(scene: Scene, prim: Primitive, option: str) -> None:
+    """``TArrow::PaintArrow``: the shaft, then a head at either end or both, by its ``fOption``.
+
+    ROOT sizes the head in units of the canvas's longer side: ``0.7`` of
+    ``fArrowSize`` long, as wide as ``fAngle`` (60 degrees unless set) opens.
+    The option the arrow was drawn with, if it was given one, stands before its own.
+    """
     xs, ys = _ends(prim)
-    style = scene.line(prim)
-    size = float(prim.get("fArrowSize", 0.0)) or ARROW_SIZE
-    filled = scene.fill(prim)
-    patch = FancyArrowPatch(
-        (xs[0], ys[0]),
-        (xs[1], ys[1]),
-        arrowstyle=_arrowstyle(str(prim.get("fOption", "|>"))),
-        mutation_scale=styles.points(HEAD * size * scene.pixels[1]),
-        transform=scene.where(prim.ndc),
-        clip_on=False,
-        zorder=scene.layer(),
-        edgecolor=style["color"],
-        linewidth=style["linewidth"],
-        linestyle=style["linestyle"],
-        facecolor=filled["facecolor"] if filled else style["color"],
-    )
-    scene.ax.add_artist(patch)
+    start, end = (canvas_point(scene, x, y, prim.ndc) for x, y in zip(xs, ys))
+    length, half = _head_size(scene, prim)
+    shape, bars = _bars(start, end, str(option or prim.get("fOption", "") or ""), half)
+    for bar in bars:
+        _line_of(scene, prim, bar)
+    _line_of(scene, prim, _shaft(start, end, shape, length))
+    _heads(scene, prim, shape, (start, end), (length, half))
+
+
+def _head_size(scene: Scene, prim: Primitive) -> tuple[float, float]:
+    """How long an arrow's head is, and how far either side of the shaft its back corners are."""
+    size = float(prim.get("fArrowSize", 0.0) or 0.0) or ARROW_SIZE
+    length = 0.7 * size * max(scene.canvas)
+    return length, length * math.tan(math.pi * float(prim.get("fAngle", 60.0) or 60.0) / 360)
+
+
+def _shaft(start: tuple[float, float], end: tuple[float, float], option: str,
+           length: float) -> list[tuple[float, float]]:  # fmt: skip
+    """An arrow's shaft: it stops where a closed head begins, unless that head is mid-way."""
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    span = math.hypot(dx, dy) or 1.0
+    shaft_start, shaft_end = start, end
+    if "|>" in option and "-|>-" not in option:
+        shaft_end = (end[0] - dx / span * length, end[1] - dy / span * length)
+    if "<|" in option and "-<|-" not in option:
+        shaft_start = (start[0] + dx / span * length, start[1] + dy / span * length)
+    return [shaft_start, shaft_end]
 
 
 def patch_style(scene: Scene, prim: Any, outline: bool = True) -> dict[str, Any]:
@@ -229,6 +307,7 @@ def _points(prim: Primitive) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]
 
 
 def _or_none(values: Any) -> Any:
+    """``values``, or no values where the file kept none."""
     return [] if values is None else values
 
 

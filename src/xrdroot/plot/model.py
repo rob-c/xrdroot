@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any, NamedTuple, Union
 
 __all__ = [
+    "Area",
     "Band",
     "Bars",
     "Boxes",
@@ -54,6 +55,11 @@ class Look(NamedTuple):
     marker_color: str | None = "#000000"
     marker_size: float = 1.0
     label: str | None = None
+    #: ROOT's own numbers for the line's and marker's styles and the fill's, for a
+    #: painter that draws them as ROOT does rather than as the nearest named one.
+    line_style: int = 1
+    marker_style: int = 1
+    fill_style: int = 0
 
 
 class Steps(NamedTuple):
@@ -111,6 +117,15 @@ class Band(NamedTuple):
     smooth: bool = False
 
 
+class Area(NamedTuple):
+    """The shape ``(x, y)`` bounds, filled: a graph's ``F``, closed from its last point to its
+    first."""
+
+    x: Array
+    y: Array
+    look: Look
+
+
 class Curve(NamedTuple):
     """A line through ``(x, y)``: ``L``, ``C`` smoothed, and every function."""
 
@@ -154,6 +169,10 @@ class Contour(NamedTuple):
     scale: bool = False
     levels: int = 20
     filled: bool = True
+    #: Which lines: ``CONT1``'s 11, ``CONT2``'s 12, ``CONT3``'s 13, or 0 for either's own.
+    mode: int = 0
+    #: The histogram's look, whose line ``CONT3`` draws every level in.
+    look: Any = None
 
 
 class Surface(NamedTuple):
@@ -178,7 +197,7 @@ class Cloud(NamedTuple):
     iso: bool = False
 
 
-Layer = Union[Steps, Bars, Points, Boxes, Band, Curve, Labels, Mesh, Contour, Surface, Cloud]
+Layer = Union[Steps, Bars, Points, Boxes, Band, Area, Curve, Labels, Mesh, Contour, Surface, Cloud]
 
 #: The layers that need axes with depth to be drawn on.
 DEEP = (Surface, Cloud)

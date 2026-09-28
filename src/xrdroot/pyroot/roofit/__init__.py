@@ -51,12 +51,22 @@ def _pave() -> Any:
 
 def _histogram_wrapper() -> Any:
     """The core part's wrapping of an :class:`xrdroot.Histogram` as a ``TH1``, or none (the swap
-    point)."""
+    point).
+
+    The histogram is put in ``gStyle``'s attributes first, as ``TH1::Build``
+    puts every histogram ROOT books, the ones ``createHistogram`` makes too.
+    """
     try:
         from ..core.wrapping import wrap
     except ImportError:
         return lambda made: made
-    return wrap  # pragma: no cover - once the core part is merged
+    from ..core.histcore import _in_style
+
+    def styled(made: Any) -> Any:
+        return wrap(_in_style(made))
+
+    styled.wraps = wrap  # type: ignore[attr-defined]
+    return styled
 
 
 _gather()

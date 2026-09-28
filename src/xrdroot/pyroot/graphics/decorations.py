@@ -27,8 +27,6 @@ __all__ = ["TFrame", "decorate", "frame_of_pad"]
 
 #: How much wider a stats box that describes a fit is, as ``PaintStat`` makes it.
 FIT_WIDTH = 1.8
-#: How wide a character of a title is, as a fraction of its size, to size its box.
-CHARACTER = 0.5
 
 
 class TFrame(TWbox):
@@ -78,9 +76,7 @@ def _title(pad: Any, obj: Any) -> list[TPaveText]:
     if not gStyle.GetOptTitle() or not title or int(lookup(obj, "fBits", 0) or 0) & NO_TITLE:
         pad.made.pop("title", None)
         return []
-    size = gStyle.GetTitleFontSize()
-    height = gStyle.GetTitleH() or (1.1 * size if size > 0 else 0.05)
-    width = gStyle.GetTitleW() or min(0.7, 0.02 + _text_width(pad, title, size or height))
+    height, width = _title_size(pad, title)
     x1, y1 = _aligned(gStyle.GetTitleX(), gStyle.GetTitleY(), width, height)
     pave = TPaveText(x1, y1, x1 + width, y1 + height, "blNDC")
     pave.members.update(
@@ -94,12 +90,34 @@ def _title(pad: Any, obj: Any) -> list[TPaveText]:
     return [pave]
 
 
-def _text_width(pad: Any, text: str, size: float) -> float:
-    """Roughly how wide ``text`` is at ``size``, as a fraction of the pad's width."""
+def _title_size(pad: Any, title: str) -> tuple[float, float]:
+    """``THistPainter::PaintTitle``'s box: ``gStyle``'s, or as tall and wide as the title in
+    ``gStyle``'s text font."""
+    from ...canvas.latex import formula_form
+
+    height = gStyle.GetTitleH()
+    if height <= 0:
+        size = gStyle.GetTitleFontSize()
+        if gStyle.GetTitleFont("") % 10 == 3:
+            size /= max(_pad_pixels(pad))
+        height = 1.1 * size
+    height = height if height > 0 else 0.05
+    width = gStyle.GetTitleW()
+    if width > 0:
+        return height, width
+    wide, high = _pad_pixels(pad)
+    whole = (round(wide), round(high))
+    form = formula_form(title, height, int(gStyle.GetTextFont()), whole, min(wide, high))
+    height = max(height, 1.2 * form.height / high)
+    return height, min(0.7, 0.02 + form.width / wide)
+
+
+def _pad_pixels(pad: Any) -> tuple[float, float]:
+    """How wide and tall a pad is in its canvas's pixels."""
     canvas = pad.GetCanvas()
     wide = float(canvas.members.get("fCw", 700)) * _fraction(pad, "fWNDC")
     high = float(canvas.members.get("fCh", 500)) * _fraction(pad, "fHNDC")
-    return len(text) * CHARACTER * size * min(wide, high) / max(wide, 1.0)
+    return wide, high
 
 
 def _fraction(pad: Any, member: str) -> float:
@@ -148,7 +166,7 @@ def _stats(pad: Any, obj: Any, option: str) -> list[TPaveStats]:
 
 def _rows(obj: Any, option: str, stat: int, fit: int) -> list[tuple[str, str]]:
     """The lines of a stats box: a histogram's statistics and fit, or a graph's fit."""
-    if isinstance(obj, Histogram) and len(obj.axes) <= 2 and shows_stats(obj, option):
+    if isinstance(obj, Histogram) and shows_stats(obj, option):
         return stats_rows(obj, stat) + fit_rows(obj, fit)
     if isinstance(obj, Graph) and "SAME" not in option.upper():
         return fit_rows(obj, fit)

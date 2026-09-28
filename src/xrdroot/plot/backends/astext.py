@@ -20,6 +20,7 @@ import numpy as np
 from ...draw import bar, shade
 from ...errors import UnsupportedFeatureError
 from ..model import (
+    Area,
     Band,
     Bars,
     Boxes,
@@ -114,6 +115,7 @@ WRITTEN: dict[type, Callable[[Any], str]] = {
     Points: lambda layer: stars(layer.x, layer.y),
     Curve: lambda layer: stars(layer.x, layer.y),
     Band: lambda layer: stars(layer.x, (layer.low + layer.high) / 2),
+    Area: lambda layer: stars(layer.x, layer.y),
     Boxes: lambda layer: stars((layer.x0 + layer.x1) / 2, (layer.y0 + layer.y1) / 2),
     Labels: lambda layer: "",
     Mesh: lambda layer: shades(layer.values),

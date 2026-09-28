@@ -77,7 +77,8 @@ def test_a_graph_draws_its_line_markers_and_both_sides_of_its_bars():
 def test_a_graphs_boxes_are_hollow_outlines_for_box_and_filled_for_errors():
     ax = grid().plot(option="BOX")
     boxes = ax.collections[0]
-    assert len(boxes.get_facecolor()) == 0 and len(boxes.get_paths()) == 9
+    # the emptiest cell has none: PaintBoxes measures each from the lowest content
+    assert len(boxes.get_facecolor()) == 0 and len(boxes.get_paths()) == 8
 
 
 def test_a_2d_histogram_is_an_image_with_its_scale_and_a_log_scale_for_logz():
@@ -156,3 +157,9 @@ def test_an_svg_is_drawn_without_pyplot_hearing_of_it():
     assert drawn.lstrip().startswith("<?xml") and "<svg" in drawn
     assert pyplot.get_fignums() == before
     assert "<svg" in withmatplotlib.svg(picture(grid(), "SURF"))
+
+
+def test_a_graph_drawn_f_is_the_shape_its_points_bound_filled():
+    ax = points().plot(option="AF", fill="kRed", label="scan")
+    (area,) = [p for p in ax.patches if p.get_label() == "scan"]
+    assert area.get_xy()[:3].tolist() == [[1.0, 2.0], [2.0, 3.0], [3.0, 1.0]]

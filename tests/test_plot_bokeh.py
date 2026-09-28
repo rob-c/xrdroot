@@ -113,3 +113,9 @@ def test_same_and_a_figure_given_are_drawn_on_and_legend_false_hides_it():
     mine = figure()
     assert curve().plot(ax=mine, backend="bokeh", line_alpha=0.5) is mine
     assert mine.renderers[0].glyph.line_alpha == 0.5
+
+
+def test_a_graph_drawn_f_is_a_patch_through_its_points():
+    fig = points().plot(backend="bokeh", option="AF", fill="kRed")
+    (patch,) = [r for r in fig.renderers if type(r.glyph).__name__ == "Patch"]
+    assert list(patch.data_source.data["x"]) == [1, 2, 3]
