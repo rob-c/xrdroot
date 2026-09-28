@@ -2735,6 +2735,8 @@ Some C++ has a Python that does the same only with the runtime's help:
 | `new (clones[i]) T(args)` | `construct_at(clones, i, T(args))` - ROOT's `AddAt` |
 | `ostream &operator<<(ostream &, const T &)` | a function `cout << t` calls where `t` is a `T`, registered with the runtime for the macro's classes |
 | a class's `operator++()`, `operator++(int)`, `operator*` | `_preinc`, `_postinc`, `_deref`, which `++it`, `it++`, `*it` and a range-for call |
+| `std::thread`, `std::mutex`, `std::lock_guard`, `std::atomic`, `std::condition_variable` | the runtime's, over Python's `threading`; a guard gives its mutex back as its scope ends |
+| `std::chrono::milliseconds(20)`, `high_resolution_clock::now()`, `duration_cast<T>(d)` | `chrono.milliseconds(20)` and the rest: durations that `count()` in their ticks |
 
 `python tools/cint_survey.py ROOT/tutorials` translates every tutorial macro
 and counts what translates, what is refused and why, and what (never, one
