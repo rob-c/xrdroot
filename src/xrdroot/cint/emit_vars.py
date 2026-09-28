@@ -41,6 +41,9 @@ __all__ = ["VariableEmitter", "Context"]
 #: The standard containers, which are built from a Python list of what a braced list holds.
 CONTAINERS = ("vector", "list", "deque", "set", "array", "map", "unordered_map", "RVec")
 
+#: The standard's lock guards, which give their mutex back as their scope ends.
+GUARDS = frozenset({"std::lock_guard", "std::unique_lock", "std::scoped_lock"})
+
 #: The ROOT string class, which a C string stored into one is converted to.
 STRING_CLASSES = frozenset({"TString"})
 
@@ -120,16 +123,19 @@ class VariableEmitter(StmtEmitter):
         """
         if ctype is None or ctype.pointer or ctype.reference or ctype.dims:
             return False
-        info = self.program.classes.get(ctype.name)
-        if info is None:
-            return False
-        destructors = info.methods.get("~" + info.name, [])
-        if not any(func.body is not None for func in destructors):
+        if not (ctype.name in GUARDS or self._destructs(ctype.name)):
             return False
         if self.destructed is None:
-            why = f"the local {info.name} {decl.name} declared in a condition or a for's first part"
-            raise self.refuse(f"{why}, whose destructor C++ runs as that statement ends", decl)
+            where = "declared in a condition or a for's first part"
+            why = f"the local {ctype.name} {decl.name} {where}, whose destructor C++ runs"
+            raise self.refuse(f"{why} as that statement ends", decl)
         return True
+
+    def _destructs(self, name: str) -> bool:
+        """Does the macro's class ``name`` have a destructor with a body?"""
+        info = self.program.classes.get(name)
+        destructors = info.methods.get("~" + info.name, []) if info is not None else []
+        return any(func.body is not None for func in destructors)
 
     def write_variable(self, symbol: Symbol, value: str, decl: VarDecl) -> None:
         if symbol.cell:

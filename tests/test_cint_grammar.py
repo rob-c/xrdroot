@@ -64,7 +64,7 @@ def test_a_chrono_duration_and_a_range_cast_take_template_arguments() -> None:
       for (auto *v : dynamic_range_cast<FlexibleInterpVar *>(ws->allFunctions())) {}
     }"""
     text = translate(source, "t.C")
-    assert "ROOT.std.chrono.duration['double', 'std::nano'](500)" in text
+    assert "this_thread.sleep_for(chrono.duration['double', 'std::nano'](500))" in text
     assert "dynamic_range_cast['FlexibleInterpVar*']" in text
 
 

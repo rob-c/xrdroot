@@ -10,6 +10,7 @@ from the runtime (``printf``, ``sqrt``, ``M_PI``), or else ROOT's:
 
 from __future__ import annotations
 
+import keyword
 import re
 from collections.abc import Callable
 from typing import Any
@@ -32,7 +33,9 @@ STD = {
         defaultfloat ostringstream ifstream istringstream sqrt cbrt exp exp2 expm1 log log10 log2
         log1p pow sin cos tan asin acos atan atan2 sinh cosh tanh asinh acosh atanh fabs
         floor ceil trunc fmod hypot erf erfc tgamma lgamma isnan isinf isfinite copysign
-        fmin fmax to_string stoi stod min max strlen strcmp atoi atof tolower toupper""".split()
+        fmin fmax to_string stoi stod min max strlen strcmp atoi atof tolower toupper thread mutex
+        recursive_mutex lock_guard unique_lock scoped_lock atomic condition_variable ref
+        cref""".split()
     },
     "string": "str",
     "string_view": "str",
@@ -50,6 +53,9 @@ STD = {
     "exception": "Exception",
     "stringstream": "ostringstream",
 }
+
+#: The ``std::`` namespaces whose members the runtime has, as objects of those names.
+STD_NAMESPACES = frozenset({"chrono", "this_thread"})
 
 #: C's names that are the runtime's under another name.
 C_NAMES = {
@@ -152,13 +158,27 @@ class NameEmitter(Inference):
     def library(self, node: Name) -> Out:
         """A name the macro did not declare: the standard library's, C's, or ROOT's."""
         parts = node.parts
-        if parts[0] == "std" and len(parts) == 2 and parts[1] in STD:
-            return STD[parts[1]], P.ATOM
-        if parts[0] == "std" and parts[-1] == "npos":
-            return "npos", P.ATOM
+        found = self._standard(node) if parts[0] == "std" else None
+        if found is not None:
+            return found
         if len(parts) == 1:
             return self._plain(node)
         return self.root(parts) + self.targs(node.targs), P.POSTFIX
+
+    def _standard(self, node: Name) -> Out | None:
+        """A ``std::`` name the runtime has - ``cout``, ``npos``, ``chrono::seconds`` - if it is."""
+        parts = node.parts
+        if len(parts) == 2 and parts[1] in STD:
+            return STD[parts[1]], P.ATOM
+        if parts[-1] == "npos":
+            return "npos", P.ATOM
+        if len(parts) < 3 or parts[1] not in STD_NAMESPACES:
+            return None
+        # ``std::chrono::milliseconds``, ``std::this_thread::sleep_for``: the runtime's.
+        text = parts[1]
+        for part in parts[2:]:
+            text = f"getattr({text}, {part!r})" if keyword.iskeyword(part) else f"{text}.{part}"
+        return text + self.targs(node.targs), P.POSTFIX
 
     def _plain(self, node: Name) -> Out:
         name = node.last
