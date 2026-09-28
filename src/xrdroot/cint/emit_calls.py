@@ -322,6 +322,9 @@ class CallEmitter(ExprEmitter):
             special = self._typed_method(owner, func, node)
             if special is not None:
                 return special
+        elif func.name == "c_str" and not node.args and not func.arrow:
+            # Only a std::string has c_str(), and a std::string is a str here, whoever made it.
+            return f"cstr({self.value(func.obj)})", P.POSTFIX
         return f"{self.value(func)}({self.arguments(node)})", P.POSTFIX
 
     def _typed_method(self, owner: CType, func: Member, node: Call) -> Out | None:

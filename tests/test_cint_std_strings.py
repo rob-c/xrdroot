@@ -83,3 +83,8 @@ def test_the_runtime_string_searches_give_npos_when_nothing_is_found() -> None:
     assert find_last_of("a/b/c", "/", 2) == 1
     assert resize("ab", 4) == "ab\0\0"
     assert tolower(ord("Q")) == ord("q") and tolower(200) == 200 and toupper(200) == 200
+
+
+def test_c_str_of_a_string_whose_type_is_not_known_is_the_string() -> None:
+    text = translate("void t() { printf(\"%s\", ss.str().c_str()); p->c_str(); }", "t.C")
+    assert "printf('%s', cstr(ROOT.ss.str()))" in text and "ROOT.p.c_str()" in text
