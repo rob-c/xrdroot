@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .crossval import CrossValidation
 from .factory import Factory
 from .genetic import GeneticAlgorithm, GeneticFitter, IFitterTarget, Interval
 from .loader import DataLoader
@@ -31,6 +32,7 @@ from .tools import Tools, gConfig, gTools
 from .types import Types
 
 __all__ = [
+    "CrossValidation",
     "DataLoader",
     "Factory",
     "GeneticAlgorithm",

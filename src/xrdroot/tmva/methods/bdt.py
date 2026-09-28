@@ -212,6 +212,8 @@ class MethodBDT(Method):
 
     def monitoring(self, output: Any, directory: str) -> None:
         """``WriteMonitoringHistosToFile``: the ``MonitorNtuple`` of each tree's boosting."""
+        if output.silent:
+            return
         self.log.info(f"{output.GetName()}:/{directory}")
         count = len(self.forest.trees)
         columns = {

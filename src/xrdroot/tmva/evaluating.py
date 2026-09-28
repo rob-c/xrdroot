@@ -39,6 +39,8 @@ class Evaluating(EvaluatingModes):
     log: Logger
     analysis: int
     roc: bool
+    #: Each data set's evaluation, as the tables were made of it, for the envelopes to read.
+    last_rows: dict[str, list[dict[str, Any]]]
 
     def _evaluate_classifier(self, item: Booked) -> dict[str, Any]:
         """``TestClassification`` and every number TMVA quotes for one classifier."""
@@ -118,6 +120,8 @@ class Evaluating(EvaluatingModes):
         efficiencies = item.efficiencies
         for histogram in efficiencies.histograms.values() if efficiencies else ():
             self.output.write(where, histogram)
+        if self.output.silent:
+            return
         transformed = method.handler.apply(test)
         method.handler.print_stats(transformed)
         note = method.handler.name if method.handler.transforms else ""
@@ -198,14 +202,18 @@ class Evaluating(EvaluatingModes):
             return
         for name in sorted(self.booked):
             items = self.booked[name]
+            rows: list[dict[str, Any]] = []
             if self.analysis == CLASSIFICATION:
                 rows = [self._evaluate_classifier(item) for item in items]
                 if self.roc:
                     self._classification_tables(name, rows)
             elif self.analysis == REGRESSION:
-                self._regression_tables(name, [self._evaluate_regression(i) for i in items])
+                rows = [self._evaluate_regression(i) for i in items]
+                self._regression_tables(name, rows)
             elif self.analysis == MULTICLASS:
-                self._multiclass_tables(name, [self._evaluate_multiclass(i) for i in items])
+                rows = [self._evaluate_multiclass(i) for i in items]
+                self._multiclass_tables(name, rows)
+            self.last_rows[name] = rows
             self._write_trees(name, items)
         self.log.header(f"{color('bold')}Thank you for using TMVA!{color('reset')}")
         self.log.info(

@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 
+from ..pyroot.core.objects import templated
 from .log import Logger
 from .tools import CxxVector
 
@@ -107,6 +108,7 @@ class CrossValidationResult:
 class MethodInfo(dict):  # type: ignore[type-arg]
     """``OptionMap`` of a booked method: ``GetValue<TString>("MethodName")``."""
 
+    @templated
     def GetValue(self, key: Any) -> Any:
         return self[str(key)]
 

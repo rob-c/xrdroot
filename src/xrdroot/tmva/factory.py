@@ -39,6 +39,20 @@ ANALYSIS_WORDS = {
 }
 #: The fewest training events a method is trained with.
 MIN_TRAINING_EVENTS = 10
+#: The ROOT release, and its date, a Factory's greeting names.
+ROOT_VERSION, ROOT_DATE = "6.40.04", "Aug 27, 2026"
+#: TMVA's release, and its date.
+TMVA_VERSION = "4.2.1, Feb 5, 2015"
+#: ``kLogoWelcomeMsg``: the logo a Factory greets with.
+LOGO = (
+    "",
+    "_/_/_/_/_/ _|      _|  _|      _|    _|_|   ",
+    "   _/      _|_|  _|_|  _|      _|  _|    _| ",
+    "  _/       _|  _|  _|  _|      _|  _|_|_|_| ",
+    " _/        _|      _|    _|  _|    _|    _| ",
+    "_/         _|      _|      _|      _|    _| ",
+    "",
+)
 
 
 @dataclass
@@ -83,6 +97,17 @@ class Factory(Training, Evaluating):
         self.analysis = ANALYSES.get(word, -1)
         self.log = Logger("Factory")
         self.booked: dict[str, list[Booked]] = {}
+        self.last_rows: dict[str, list[dict[str, Any]]] = {}
+        if target is None:
+            self._greet()
+
+    def _greet(self) -> None:
+        """``Greetings``: what a Factory made without a file says first, logo and all."""
+        self.log.header(f"You are running ROOT Version: {ROOT_VERSION}, {ROOT_DATE}")
+        for line in LOGO:
+            self.log.info(line)
+        self.log.info(f"___________TMVA Version {TMVA_VERSION}")
+        self.log.info("")
 
     # -- booking --------------------------------------------------------------------------
 
