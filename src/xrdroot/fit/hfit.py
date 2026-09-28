@@ -256,6 +256,7 @@ def _by_minuit(opts: FitOptions, data: FitData, function: Function) -> FitResult
         minos=opts.errors and not weighted,
         hesse=opts.errors,
         improve=opts.more,
+        ncall=max_calls(function.npar),
         **_settings(function),
     )
     if weighted and found.valid:
@@ -495,9 +496,17 @@ def fit_object(
     if not data.size:
         raise ValueError(f"there are no points to fit in {obj.name!r}: ROOT's Fit data is empty")
     found = _minimised(opts, data, function, _is_linear(opts, data))
+    by_minuit = found.minimizer != LINEAR
+    if opts.verbose and by_minuit:
+        print(found.minuit2_report(max_calls(function.npar), minuit.TOLERANCE, minuit.STRATEGY))
     _finished(found, data, opts)
     _record(function, found, data)
     found.function = function if opts.nostore else _store(obj, kind, function, opts, spans)
     if not opts.quiet:
-        print(found.summary(covariance=opts.verbose > 0))
+        print(found.summary(covariance=opts.verbose > 0 and not by_minuit))
     return found
+
+
+def max_calls(npar: int) -> int:
+    """``Fitter``'s call limit for MIGRAD when none is set: ``1000 + 100 n + 5 n^2``."""
+    return 1000 + 100 * npar + 5 * npar * npar

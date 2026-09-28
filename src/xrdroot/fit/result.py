@@ -213,17 +213,50 @@ class FitResult:
         return text + self._matrices() if covariance else text
 
     def _matrices(self) -> str:
-        """``PrintCovMatrix``: the covariance and the correlation, of the free parameters."""
+        """``PrintCovMatrix``: the covariance and the correlation, of the free parameters.
+
+        Each matrix is set off by one blank line before its title and one after.
+        """
         free = [i for i, flag in enumerate(self.fixed) if not flag]
         names = [self.parameter_names[i] for i in free]
         out = []
         for title, matrix in (("Covariance", self.covariance), ("Correlation", self.correlation)):
-            out.append(f"\n\n{title} Matrix:\n")
+            out += ["", f"{title} Matrix:", ""]
             out.append(" " * 12 + "\t" + "".join(f"{name:>12}" for name in names))
             for i, name in zip(free, names):
                 row = "".join(f"{format(matrix[i, j], '.5g'):>12}" for j in free)
                 out.append(f"{name:<12}\t{row}")
-        return "\n".join(out)
+        return "".join("\n" + line for line in out)
+
+    def minuit2_report(self, calls: int, tolerance: float, strategy: int) -> str:
+        """What ``Minuit2Minimizer`` itself prints of a verbose fit, before ``Print``'s block.
+
+        ``Minimize`` says the call limit, tolerance and strategy it was given;
+        ``PrintResults`` the minimum, its function value and distance to the
+        minimum to eighteen figures, and each parameter; then, the minimum
+        being valid, the matrices. An invalid minimum's values are at six
+        figures, and nothing follows them.
+        """
+        word = "Valid" if self.valid else "Invalid"
+        figures = 18 if self.valid else 6
+        lines = [
+            f"Minuit2Minimizer: Minimize with max-calls {calls} convergence for edm < "
+            f"{tolerance:g} strategy {strategy}",
+            f"Minuit2Minimizer : {word} minimum - status = {self.status}",
+            f"FVAL  = {self.fcn:.{figures}g}",
+            f"Edm   = {self.edm:.{figures}g}",
+            f"Nfcn  = {self.nfev}",
+        ]
+        if not self.valid:
+            return "\n".join(lines)
+        for index, name in enumerate(self.parameter_names):
+            value = _g(self.parameters[index])
+            if self.fixed[index]:
+                lines.append(f"{name}\t  = {value}\t (fixed)")
+                continue
+            limited = "\t(limited)" if self.bounded[index] else ""
+            lines.append(f"{name}\t  = {value}\t +/-  {_g(self.errors[index])}{limited}")
+        return "\n".join(lines) + self._matrices()
 
     def __repr__(self) -> str:
         pairs = ", ".join(

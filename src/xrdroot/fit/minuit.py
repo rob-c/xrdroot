@@ -106,6 +106,7 @@ def minimize(
     improve: bool = False,
     tolerance: float = TOLERANCE,
     strategy: int = STRATEGY,
+    ncall: int | None = None,
 ) -> FitResult:
     """Minimise ``fcn(params)`` from ``x0`` with MIGRAD, as ``ROOT::Math::Minimizer`` does.
 
@@ -118,6 +119,8 @@ def minimize(
     0.5 for a negative log-likelihood. ``hesse`` runs HESSE after MIGRAD,
     ``minos`` MINOS for every free parameter, and ``improve`` - ROOT's
     option ``M`` - MIGRAD a second time from where the first stopped.
+    ``ncall`` limits the calls each MIGRAD may make; Minuit2's own limit
+    (``200 + 100 n + 5 n^2``) unless given.
     """
     npar = len(np.atleast_1d(x0))
     labels = tuple(names) if names is not None else tuple(f"p{i}" for i in range(npar))
@@ -130,9 +133,9 @@ def minimize(
         "fixed": fixed,
     }
     minuit = _configured(fcn, x0, labels, options)
-    minuit.migrad(iterate=1, use_simplex=False)
+    minuit.migrad(ncall=ncall, iterate=1, use_simplex=False)
     if improve:
-        minuit.migrad(iterate=1, use_simplex=False)
+        minuit.migrad(ncall=ncall, iterate=1, use_simplex=False)
     if hesse or minos:
         minuit.hesse()
     return _result(minuit, labels, minos)

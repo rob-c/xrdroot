@@ -265,3 +265,24 @@ def test_a_memory_directory_below_a_file_is_one_on_file_too():
     back = ROOT.TFile("deep.root")
     assert back.Get("a/b/h").GetNbinsX() == 1
     back.Close()
+
+
+def test_get_object_fills_the_pointer_it_is_handed_as_the_translator_hands_one():
+    """FitHistoInFile.C's ``f->GetObject("histo", histo)``: the pointer is set, or nulled."""
+
+    class Pointer:
+        value: object = "unset"
+
+    out = ROOT.TFile("objects.root", "RECREATE")
+    ROOT.TH1D("histo", "t", 2, 0, 1).Fill(0.5)
+    out.Write()
+    out.Close()
+    back = ROOT.TFile("objects.root")
+    found, missing = Pointer(), Pointer()
+    assert back.GetObject("histo", found) is found.value
+    assert (found.value.GetEntries(), back.GetObject("nothing", missing), missing.value) == (
+        1,
+        None,
+        None,
+    )
+    assert back.GetObject("histo", "not a pointer").GetName() == "histo"

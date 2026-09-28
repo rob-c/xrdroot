@@ -69,5 +69,5 @@ def run(args: argparse.Namespace) -> int:
     if args.python:
         sys.stdout.write(translate_file(path))
         return 0
-    run_macro(path, arguments(given), use_cache=not args.no_cache)
+    run_macro(path, arguments(given), use_cache=not args.no_cache, show=True)
     return 0

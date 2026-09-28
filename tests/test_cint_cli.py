@@ -38,7 +38,8 @@ def test_run_runs_a_macro_with_its_arguments(
     )
     assert main(["run", str(path)]) == 0
     assert main(["run", f"{path}(3)", "--no-cache"]) == 0
-    assert capsys.readouterr().out == "1264\n1896\n"
+    # As root -b -q does, the value the function gives back is printed after it runs.
+    assert capsys.readouterr().out == "1264\n(int) 7\n1896\n(int) 7\n"
 
 
 def test_run_prints_the_translation_when_asked(
