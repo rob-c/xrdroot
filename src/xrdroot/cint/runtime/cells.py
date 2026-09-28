@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["Cell", "ItemRef", "AttrRef"]
+__all__ = ["Cell", "Static", "ItemRef", "AttrRef"]
 
 
 class Cell:
@@ -44,6 +44,22 @@ class Cell:
     def __setitem__(self, index: int, value: Any) -> None:
         _only_zero(index)
         self.value = value
+
+
+class Static(Cell):
+    """A static local: one cell for the whole run, and whether it has been initialised yet.
+
+    C++ initialises a static local the first time its declaration is
+    reached; the translation tests ``ready`` there, and sets it once the
+    value is in - so an initialiser that throws is tried again next time,
+    as C++ tries it.
+    """
+
+    __slots__ = ("ready",)
+
+    def __init__(self, value: Any = 0, ctype: str | None = None, ready: bool = True) -> None:
+        super().__init__(value, ctype)
+        self.ready = ready
 
 
 def _only_zero(index: Any) -> None:

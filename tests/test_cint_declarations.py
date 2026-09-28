@@ -50,8 +50,6 @@ def test_a_declaration_starts_its_variable_as_cpp_does(source: str, fragment: st
         ("auto x;", "auto x with nothing to take its type from"),
         ("int a[];", r"the array a\[\] with no size to give it"),
         ("char s[4] = {'a', 'b'};", "the character array s initialised one char at a time"),
-        ("int n = 3; static int m = n;", "the static local m initialised from a local"),
-        ("auto f = []() { static int calls = 0; return calls; };", "the static local calls in a"),
     ],
 )
 def test_declarations_with_no_python_that_does_the_same_are_refused(source: str, why: str) -> None:
@@ -62,11 +60,6 @@ def test_declarations_with_no_python_that_does_the_same_are_refused(source: str,
 def test_a_template_parameter_type_cannot_be_built_from_nothing() -> None:
     with pytest.raises(Refusal, match="a variable of the template parameter type T"):
         translate("template <typename T> T zero() { T x; return x; }", "t.C")
-
-
-def test_a_static_local_in_a_method_is_refused() -> None:
-    with pytest.raises(Refusal, match="the static local n in a method or lambda"):
-        translate("struct A { int f() { static int n = 0; return n; } };", "t.C")
 
 
 def test_a_static_local_keeps_its_value_between_calls(capsys: pytest.CaptureFixture[str]) -> None:

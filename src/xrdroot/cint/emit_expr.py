@@ -285,10 +285,10 @@ class ExprEmitter(NameEmitter):
         symbol = self.symbol(operand)
         if symbol is None:
             return self.expr(operand)
-        if symbol.cell and symbol.alias is None:
+        found = self.typeof(operand)
+        if symbol.cell and symbol.alias is None and not _object_value(found):
             prefix = "self." if symbol.kind == "field" else ""
             return prefix + symbol.py, P.POSTFIX
-        found = self.typeof(operand)
         if symbol.kind == "field" and found is not None and found.scalar:
             return f"AttrRef(self, {symbol.py!r})", P.POSTFIX
         return self.expr(operand)
@@ -526,6 +526,11 @@ def zero(ctype: CType) -> str:
     if ctype.floating:
         return "0.0"
     return "0"
+
+
+def _object_value(ctype: CType | None) -> bool:
+    """An object held by value - whose address is the object, even when a cell holds it."""
+    return ctype is not None and ctype.is_class and not ctype.pointer and not ctype.is_smart
 
 
 def _spelled(ctype: CType) -> str:

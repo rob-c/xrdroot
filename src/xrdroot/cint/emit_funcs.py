@@ -65,15 +65,12 @@ class FunctionEmitter(VariableEmitter):
         """``def py(...):`` and the body of ``func``, in a scope of its own."""
         context = Context(func, func.returns if func.kind != "constructor" else None)
         context.cells = self.program.cell_names(func)
-        context.start = self.out.mark()
         self.contexts.append(context)
         try:
             with self.scoped("function", function=func):
                 self._function_body(func, py, method, decorator, prologue)
         finally:
             self.contexts.pop()
-        for offset, (line, where) in enumerate(context.statics):
-            self.out.insert(context.start + offset, line, where)
 
     def _function_body(
         self,

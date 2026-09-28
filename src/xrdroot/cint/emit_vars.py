@@ -11,6 +11,7 @@ for it.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -18,7 +19,20 @@ from .ctype import CType
 from .emit_expr import zero
 from .emit_names import type_text
 from .emit_stmt import StmtEmitter
-from .nodes import Call, Expr, Index, InitList, Literal, Member, Name, Unary, VarDecl
+from .nodes import (
+    Call,
+    Expr,
+    Index,
+    InitList,
+    Lambda,
+    Literal,
+    Member,
+    Name,
+    New,
+    This,
+    Unary,
+    VarDecl,
+)
 from .program import walk
 from .symbols import Symbol
 
@@ -42,10 +56,6 @@ class Context:
     nonlocals: set[str] = field(default_factory=set)
     declared: set[int] = field(default_factory=set)
     cells: set[str] = field(default_factory=set)
-    #: Where the ``def`` line is, so a static local can be put before it.
-    start: int = 0
-    #: The module-level lines a static local becomes, written before the function.
-    statics: list[Any] = field(default_factory=list)
 
 
 class VariableEmitter(StmtEmitter):
@@ -290,21 +300,45 @@ class VariableEmitter(StmtEmitter):
         return self.value(init)
 
     def static_local(self, decl: VarDecl) -> None:
-        """A ``static`` local: a module-level variable, initialised once, before the function."""
-        context = self.contexts[-1]
-        if context.kind != "function" or self.scope.klass:
-            raise self.refuse(f"the static local {decl.name} in a method or lambda", decl)
-        for node in walk(decl):
-            if isinstance(node, Name) and self.symbol(node) is not None:
-                if self.symbol(node).kind in ("local", "param"):  # type: ignore[union-attr]
-                    why = f"the static local {decl.name} initialised from a local"
-                    raise self.refuse(why, decl)
-        ctype = self.declared_type(decl)
+        """A ``static`` local: one :class:`Static` for the program's life, made at module level.
+
+        C++ initialises a static local the first time control reaches its
+        declaration, and never again; so does the translation, unless the
+        value is a constant, which C++ (and the translation) sets before
+        anything runs.
+        """
+        ctype = _sized(self.declared_type(decl), decl)
+        kind = f", {ctype.name!r}" if ctype is not None and ctype.scalar else ""
+        symbol = self.declare(decl.name, "local", ctype, cell=True)
+        symbol.py = self.fresh(f"{self._static_owner()}_{decl.name}")
+        if _constant_static(decl, ctype):
+            value = self.initial(decl, ctype)
+            self.module_statics.append((f"{symbol.py} = Static({value}{kind})", decl.where))
+            return
+        initial = zero(ctype) if ctype is not None and ctype.scalar else "None"
+        holder = f"{symbol.py} = Static({initial}{kind}, ready=False)"
+        self.module_statics.append((holder, decl.where))
         value = self.initial(decl, ctype)
-        owner = getattr(context.owner, "name", "macro")
-        symbol = self.declare(decl.name, "global", ctype)
-        symbol.py = self.fresh(f"{owner}_{decl.name}")
-        context.statics.append((f"{symbol.py} = {value}", decl.where))
+        self.out.line(f"if not {symbol.py}.ready:", decl.where)
+        with self.out.indented():
+            self.out.line(f"{symbol.py}.value = {value}", decl.where)
+            self.out.line(f"{symbol.py}.ready = True", decl.where)
+
+    def _static_owner(self) -> str:
+        """The name a static local's holder is filed under: its class and function."""
+        owner = getattr(self.contexts[-1].owner, "name", "lambda")
+        stem = f"{self.scope.klass}_{owner}" if self.scope.klass else owner
+        return re.sub(r"\W", "_", stem).strip("_") or "static"
+
+    #: The module-level lines the static locals of the declaration being written become.
+    module_statics: list[tuple[str, Any]]
+
+
+def _constant_static(decl: VarDecl, ctype: CType | None) -> bool:
+    """Is a static local's first value a constant, which C++ sets before anything runs?"""
+    if ctype is None or not (ctype.pointer or ctype.arithmetic or ctype.is_string):
+        return False
+    return not any(isinstance(node, (Name, Call, New, Lambda, This)) for node in walk(decl))
 
 
 def _value_like(ctype: CType | None, init: Expr) -> bool:
