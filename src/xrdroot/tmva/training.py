@@ -25,25 +25,60 @@ if TYPE_CHECKING:
     from .loader import DataLoader
     from .output import Output
 
-__all__ = ["Training", "evaluate_sample"]
+__all__ = ["Training", "evaluate_sample", "results_histograms"]
 
 #: The fewest training events a method is trained with.
 MIN_TRAINING_EVENTS = 10
 
 
 def evaluate_sample(method: Method, events: Events, kind: str, dataset: str) -> Any:
-    """``GetMvaValues`` over a sample, with the lines TMVA prints about it."""
-    header = f"[{dataset}] : Evaluation of {method.name} on {kind} sample ({len(events)} events)"
-    method.log.header(header)
-    method.log.header(header)
+    """``GetMvaValues`` over a sample, with the lines TMVA prints about it.
+
+    A regression's or a multiclass classifier's outputs come back a row per
+    event, a column per target or class, as ``AddRegressionOutput`` and
+    ``AddMulticlassOutput`` gather them.
+    """
+    if method.analysis == CLASSIFICATION:
+        header = (
+            f"[{dataset}] : Evaluation of {method.name} on {kind} sample ({len(events)} events)"
+        )
+        method.log.header(header)
+        method.log.header(header)
+    else:
+        method.log.info(f"Dataset[{dataset}] : Create results for {kind}")
+        what = "Evaluation" if method.analysis == REGRESSION else "Multiclass evaluation"
+        method.log.info(f"Dataset[{dataset}] : {what} of {method.name} on {kind} sample")
     start = time.perf_counter()
     values = method.mva(events)
     elapsed = time.perf_counter() - start
+    line = f"Elapsed time for evaluation of {len(events)} events: {elapsed:.3g} sec       "
+    if method.analysis != CLASSIFICATION:
+        method.log.info(f"Dataset[{dataset}] : {line}")
+        return np.asarray(values, dtype=np.float64).reshape(len(events), -1)
     for _ in range(2):
-        method.log.info(
-            f"Elapsed time for evaluation of {len(events)} events: {elapsed:.3g} sec       "
-        )
+        method.log.info(line)
     return values
+
+
+def results_histograms(method: Method, events: Events, values: Any, kind: str) -> list[Any]:
+    """``CreateDeviationHistograms`` or ``CreateMulticlass*Histos`` of one sample's outputs."""
+    log = method.log
+    if method.analysis == REGRESSION:
+        from .regeval import deviation_histograms
+
+        log.info("Create variable histograms")
+        log.info("Create regression target histograms")
+        log.info("Create regression average deviation")
+        made = deviation_histograms(f"{method.testvar}{kind}", method.dsi, events, values)
+        log.info("Results created")
+        return made
+    from .multieval import performance_graphs, response_histograms
+
+    prefix = f"{method.testvar}_{kind.capitalize()}"
+    log.info("Creating multiclass response histograms...")
+    made = response_histograms(prefix, method.dsi, events, values)
+    log.info("Creating multiclass performance histograms...")
+    return made + performance_graphs(prefix, method.dsi, events, values)
 
 
 def method_directory(method: Method) -> str:
@@ -89,9 +124,17 @@ class Training:
                 self.output.write(f"{where}/CorrelationPlots", histogram)
             if definition.startswith("I"):
                 identity = plots
+                if len(loader.info.targets) == 1:
+                    from .varrank import regression_rankings
+
+                    identity.rankings = regression_rankings(loader.info, transformed, handler.stats)
         if identity is not None and identity.separations:
             self.log.info("Ranking input variables (method unspecific)...")
             print_ranking("IdTransformation", "Separation", identity.separations)
+        elif identity is not None and identity.rankings:
+            self.log.info("Ranking input variables (method unspecific)...")
+            for title, entries in identity.rankings:
+                print_ranking("IdTransformation", title, entries)
 
     def _correlation_hists(self, loader: DataLoader) -> None:
         from ..hist import Histogram
@@ -157,10 +200,13 @@ class Training:
         self.log.info(
             f"Elapsed time for training with {len(train)} events: {method.train_time:.3g} sec         "
         )
-        if method.analysis == CLASSIFICATION:
-            item.train_values = evaluate_sample(method, train, "training", method.dsi.name)
-            if method.has_mva_pdfs():
-                self._create_mva_pdfs(item, train, where)
+        item.train_values = evaluate_sample(method, train, "training", method.dsi.name)
+        if method.analysis == CLASSIFICATION and method.has_mva_pdfs():
+            self._create_mva_pdfs(item, train, where)
+        elif method.analysis != CLASSIFICATION:
+            item.extra["train_results"] = results_histograms(
+                method, train, item.train_values, "train"
+            )
         if self.persistence:
             method.write_weight_file()
         method.monitoring(self.output, where)
@@ -221,8 +267,28 @@ class Training:
                 self.log.info("")
             if self.analysis != REGRESSION:
                 self._rank(items)
+            for item in items:
+                self._save_history(item.method)
             if self.persistence:
                 self._recreate(items)
+
+    def _save_history(self, method: Method) -> None:
+        """``TrainingHistory::SaveHistory``: each recorded quantity a ``TH1D``, printed and written."""
+        history = getattr(method, "history", None)
+        if self.output.silent or not history:
+            return
+        for key in sorted(history):
+            points = history[key]
+            if not points:
+                continue
+            first, last = float(points[0][0]), float(points[-1][0])
+            step = (last - first) / (len(points) - 1) if len(points) > 1 else 0.0
+            name = f"TrainingHistory_{method.name}_{key}"
+            made = hists.book(name, name, len(points), first - 0.5 * step, last + 0.5 * step, "D")
+            contents = np.array([0.0, *(value for _, value in points), 0.0])
+            hists.set_bins(made, contents, entries=0)
+            print(f"TH1.Print Name  = {name}, Entries= 0, Total sum= {contents.sum():g}")
+            self.output.write(method_directory(method), made)
 
     def _check_training(self, item: Booked) -> None:
         info = item.loader.info
@@ -270,6 +336,10 @@ class Training:
                 self.log.info("")
                 test = item.loader.dataset().test
                 item.test_values = evaluate_sample(method, test, "testing", method.dsi.name)
+                if method.analysis != CLASSIFICATION:
+                    item.extra["test_results"] = results_histograms(
+                        method, test, item.test_values, "test"
+                    )
                 if method.analysis == CLASSIFICATION and method.mva_pdfs is not None:
                     values = np.asarray(item.test_values, dtype=np.float64)
                     item.test_proba = np.asarray(method.proba(values, 0.5), dtype=np.float32)

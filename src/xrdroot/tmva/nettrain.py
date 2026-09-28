@@ -159,6 +159,8 @@ class Descent:
     dropout: tuple[float, ...] = ()
     optimizer: str = "ADAM"
     seed: int = 0
+    #: ``ERegularization``'s character: ``0`` for none, ``1`` for L1, ``2`` for L2.
+    regularization: str = "0"
 
 
 def _masks(rng: Any, net: Network, size: int, dropout: tuple[float, ...]) -> list[Any]:

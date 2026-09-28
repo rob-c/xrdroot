@@ -269,6 +269,10 @@ class DataLoader:
             self.AddCut(args[0], "Signal")
             self.AddCut(args[1], "Background")
         elif len(args) == 2:
+            for number, cls in enumerate(self.info.classes):
+                self.info.log.info(
+                    f"Dataset[{self.info.name}] : Class index : {number}  name : {cls.name}"
+                )
             self.AddCut(args[0])
         self.info.split_options = options
         self._changed()

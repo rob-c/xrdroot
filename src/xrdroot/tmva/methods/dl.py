@@ -16,11 +16,12 @@ from __future__ import annotations
 
 import ast
 import operator
+import time
 from typing import Any
 
 from ..dataset import Events
 from ..method import CLASSIFICATION, MULTICLASS, REGRESSION, Method
-from ..nettrain import Descent, initial_network, train_descent
+from ..nettrain import loss_and_gradient, Descent, initial_network, train_descent
 from ..networks import ACTIVATIONS, dl_from_xml
 from ..xmlfile import Node
 from .mlp import outputs, targets_of
@@ -77,6 +78,10 @@ def parse_layout(layout: str, nvar: int, nout: int) -> tuple[list[int], list[str
     return sizes, activations
 
 
+#: ``ERegularization``, as the training phase's header prints it.
+REGULARIZATION = {"L1": "1", "L2": "2"}
+
+
 def strategy_phases(text: str) -> list[Descent]:
     """``TrainingStrategy``: each ``|``-separated phase's settings, TMVA's defaults for the rest."""
     phases = []
@@ -95,9 +100,33 @@ def strategy_phases(text: str) -> list[Descent]:
                 else 0.0,
                 dropout=drop,
                 optimizer=values.get("Optimizer", "ADAM").upper(),
+                regularization=REGULARIZATION.get(
+                    values.get("Regularization", "NONE").upper(), "0"
+                ),
             )
         )
     return phases
+
+
+#: ``ErrorStrategy``, as the network's summary letters its loss function.
+LOSS_LETTERS = {"CROSSENTROPY": "C", "SUMOFSQUARES": "R", "MUTUALEXCLUSIVE": "M"}
+#: TMVA's names of the activation functions.
+ACTIVATION_NAMES = {
+    "linear": "Identity",
+    "relu": "Relu",
+    "sigmoid": "Sigmoid",
+    "tanh": "Tanh",
+    "symmrelu": "SymmRelu",
+    "softsign": "SoftSign",
+    "gauss": "Gauss",
+}
+#: The optimizers' parameters and their defaults, as the training phase's header lists them.
+OPTIMIZER_PARAMETERS = {
+    "ADAM": " (beta1=0.9,beta2=0.999,eps=1e-07)",
+    "ADAGRAD": " (eps=1e-08)",
+    "RMSPROP": " (eps=1e-07,rho=0.9)",
+    "ADADELTA": " (eps=1e-08,rho=0.95)",
+}
 
 
 class MethodDL(Method):
@@ -141,6 +170,17 @@ class MethodDL(Method):
         fraction = float(text)
         return int(total * fraction) if fraction < 1 else int(fraction)
 
+    def booked(self) -> None:
+        """``ProcessOptions``' word on the architecture, which is always the CPU here."""
+        if str(self.opt("Architecture")).upper() == "GPU":
+            self.log.error(
+                "CUDA backend not enabled. Please make sure you have CUDA installed and it was "
+                "successfully detected by CMAKE by using -Dtmva-gpu=On  "
+            )
+            self.log.info("Will now use instead the CPU architecture !")
+        self.log.info("Will now use the CPU architecture with BLAS and IMT support !")
+        super().booked()
+
     def train(self, events: Events) -> None:
         target, kind = targets_of(self, events)
         nvalid = self._validation_count(len(events))
@@ -148,49 +188,71 @@ class MethodDL(Method):
         self.log.info("Start of deep neural network training on CPU using MT,  nthreads = 1")
         self.log.info("")
         self.handler.print_stats(events)
-        self._describe(ntrain, nvalid)
+        phases = strategy_phases(str(self.opt("TrainingStrategy")))
+        self._describe(ntrain, nvalid, phases[0].batch_size if phases else 30)
         train = (events.values[:ntrain], target[:ntrain], events.weights[:ntrain])
         valid = (events.values[ntrain:], target[ntrain:], events.weights[ntrain:])
-        self.history: list[float] = []
-        for number, phase in enumerate(strategy_phases(str(self.opt("TrainingStrategy"))), 1):
+        self.history = {"trainingError": [], "valError": []}
+        self.log.info("Compute initial loss  on the validation data ")
+        for number, phase in enumerate(phases, 1):
             phase.seed = int(self.opt("RandomSeed")) + number
-            self._phase_header(number, phase)
+            self._phase_header(
+                number, len(phases), phase, loss_and_gradient(self.network, *valid, kind)[0]
+            )
+            self._clock = time.perf_counter()
+            self._batch = (ntrain, phase.batch_size)
             self.network = _trainer()(self.network, train, valid, kind, phase, self._report)
         self.log.info("")
 
-    def _describe(self, ntrain: int, nvalid: int) -> None:
+    def _describe(self, ntrain: int, nvalid: int, batch: int) -> None:
         import sys
 
         self.log.info("*****   Deep Learning Network *****")
-        loss = (
-            "C" if self.analysis == CLASSIFICATION else "M" if self.analysis == REGRESSION else "S"
-        )
+        strategy = str(self.opt("ErrorStrategy")).upper()
+        loss = LOSS_LETTERS.get(strategy, "C")
         sys.stdout.write(
             f"DEEP NEURAL NETWORK:   Depth = {len(self.sizes) - 1}  Input = ( 1, 1, {self.sizes[0]} )  "
-            f"Loss function = {loss}\n"
+            f"Batch size = {batch}  Loss function = {loss}\n"
         )
+        phases = strategy_phases(str(self.opt("TrainingStrategy")))
+        drops = phases[0].dropout if phases else ()
         for index, (width, name) in enumerate(zip(self.sizes[1:], self.activations)):
-            sys.stdout.write(
-                f"\tLayer {index}\t DENSE Layer: \t ( Input = {self.sizes[index]:5d} , Width = "
-                f"{width:5d} ) \t Activation Function = {name.capitalize()}\n"
+            line = (
+                f"\tLayer {index}\t DENSE Layer: \t ( Input ={self.sizes[index]:6d} , Width ="
+                f"{width:6d} ) \tOutput = ( {1:2d} ,{batch:6d} ,{width:6d} ) \t Activation Function = "
+                f"{ACTIVATION_NAMES.get(name, name.capitalize())}"
             )
+            if index < len(drops) and drops[index] != 0:
+                line += f"\t Dropout prob. = {1 - drops[index]:g}"
+            sys.stdout.write(line + "\n")
         self.log.info(f"Using {ntrain} events for training and {nvalid} for testing")
 
-    def _phase_header(self, number: int, phase: Descent) -> None:
+    def _phase_header(self, number: int, total: int, phase: Descent, initial: float) -> None:
+        parameters = OPTIMIZER_PARAMETERS.get(phase.optimizer, "")
         self.log.info(
-            f"Training phase {number}:  Optimizer {phase.optimizer} Learning rate = "
-            f"{phase.learning_rate:g}"
+            f"Training phase {number} of {total}:  Optimizer {phase.optimizer}{parameters} "
+            f"Learning rate = {phase.learning_rate:g} regularization {phase.regularization} "
+            f"minimum error = {initial:g}"
         )
         self.log.info("-" * 62)
-        self.log.info("     Epoch |   Train Err.   Val. Err. Conv. Steps")
+        self.log.info(
+            "     Epoch |   Train Err.   Val. Err.  t(s)/epoch   t(s)/Loss   nEvents/s Conv. Steps"
+        )
         self.log.info("-" * 62)
         self.log.info("   Start epoch iteration ...")
 
     def _report(self, epoch: int, train: float, valid: float, improved: bool, since: int) -> None:
-        self.history.append(train)
+        now = time.perf_counter()
+        spent, self._clock = now - self._clock, now
+        self.history["trainingError"].append((epoch, train))
+        self.history["valError"].append((epoch, valid))
         if improved:
             self.log.info(f"{epoch:>10d} Minimum Test error found - save the configuration ")
-        self.log.info(f"{epoch:>10d} | {train:>12.6g} {valid:>11.6g} {since:>11d}")
+        rate = self._batch[0] / spent if spent > 0 else 0.0
+        self.log.info(
+            f"{epoch:>10d} | {train:>12.6g}{valid:>12.6g}{spent:>12.6g}{spent / 10:>12.6g}"
+            f"{rate:>12.6g}{since:>12d}"
+        )
 
     def evaluate(self, values: Any) -> Any:
         return outputs(self, self.network, values)

@@ -11,13 +11,14 @@ there. A Factory made without a file writes nothing, as TMVA's
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
 from .dataset import DataSetInfo, Events
 
-__all__ = ["Output", "event_tree"]
+__all__ = ["LeafList", "Output", "event_tree"]
 
 
 class Output:
@@ -68,8 +69,14 @@ class Output:
         from ..wtree import spec_of
 
         target = self.directory(path)._xrd
-        specs = {column: spec_of(column, values) for column, values in columns.items()}
-        target.tree(name, specs, title=title or name).extend(columns)
+        specs = {
+            column: ("f", values.leaves)
+            if isinstance(values, LeafList)
+            else spec_of(column, values)
+            for column, values in columns.items()
+        }
+        data = {k: v.values if isinstance(v, LeafList) else v for k, v in columns.items()}
+        target.tree(name, specs, title=title or name).extend(data)
 
 
 def event_tree(dsi: DataSetInfo, events: Events, outputs: dict[str, Any]) -> dict[str, Any]:
@@ -86,6 +93,25 @@ def event_tree(dsi: DataSetInfo, events: Events, outputs: dict[str, Any]) -> dic
     for index, info in enumerate(dsi.spectators):
         columns[info.label] = events.spectators[:, index].astype(np.float32)
     columns["weight"] = events.weights.astype(np.float32)
+    labels = (
+        [info.name for info in dsi.classes]
+        if len(dsi.classes) > 2
+        else [info.label for info in dsi.targets]
+    )
     for name in sorted(outputs):
-        columns[name] = np.asarray(outputs[name], dtype=np.float32)
+        values = np.asarray(outputs[name], dtype=np.float32)
+        if values.ndim == 2 and values.shape[1] == 1:
+            values = values[:, 0]
+        if values.ndim == 1:
+            columns[name] = values
+            continue
+        columns[name] = LeafList(values, tuple(labels[: values.shape[1]]))
     return columns
+
+
+@dataclass
+class LeafList:
+    """A branch of one ``Float_t`` leaf per class or target, ``Signal/F:bg0/F``, as TMVA writes."""
+
+    values: Any
+    leaves: tuple[str, ...]

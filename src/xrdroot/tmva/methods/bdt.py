@@ -37,6 +37,8 @@ class MethodBDT(Method):
 
     type_name = "BDT"
     analyses = frozenset({CLASSIFICATION, REGRESSION, MULTICLASS})
+    #: ``ProcessOptions`` asks the data set whether it has negative weights.
+    needs_data = True
     defaults = {
         "NTrees": 800,
         "MaxDepth": 3,
@@ -82,6 +84,15 @@ class MethodBDT(Method):
         if regression:
             self.yes_no = False
         self.forest = boosting.Forest()
+
+    def booked(self) -> None:
+        if str(self.opt("BoostType")) == "Grad" and not self.options.given("NegWeightTreatment"):
+            self.log.info(
+                "the option NegWeightTreatment=InverseBoostNegWeights does not exist for "
+                "BoostType=Grad"
+            )
+            self.log.info("--> change to new default NegWeightTreatment=Pray")
+        super().booked()
 
     def settings(self) -> boosting.Settings:
         text = str(self.opt("MinNodeSize")).rstrip("%")

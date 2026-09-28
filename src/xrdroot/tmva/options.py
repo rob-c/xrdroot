@@ -52,6 +52,8 @@ class Options:
         self.text = str(text)
         self._values: dict[str, Any] = {}
         self._arrays: dict[str, dict[int, str]] = {}
+        #: Every option given twice, and the value it had before, as ``ParseOptions`` warns.
+        self.repeated: list[tuple[str, Any]] = []
         for token in self.text.split(":"):
             self._take(token.strip().lstrip("~"))
 
@@ -64,6 +66,8 @@ class Options:
             return
         name, value, index = _split(token)
         if index is None:
+            if name in self._values:
+                self.repeated.append((name, self._values[name]))
             self._values[name] = value
         else:
             self._arrays.setdefault(name, {})[index] = str(value)

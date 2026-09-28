@@ -55,6 +55,8 @@ class VariablePlots:
         self.histograms: list[Histogram] = []
         self.correlations: list[Histogram] = []
         self.separations: list[tuple[str, float]] = []
+        #: A regression's rankings: each title and its variables' values.
+        self.rankings: list[tuple[str, list[tuple[str, float]]]] = []
 
 
 def _infos(dsi: DataSetInfo) -> list[tuple[VariableInfo, str]]:

@@ -144,6 +144,8 @@ class Method:
 
     def setup(self) -> None:
         """``ProcessBaseOptions``: the transformations the method's ``VarTransform`` names."""
+        for name, before in self.options.repeated:
+            self.log.warning(f"Value for option {name} was previously set to {before}")
         self.handler.create(str(self.opt("VarTransform")), self.log)
 
     #: Does booking the method build the data set, as ``LD``'s ``ProcessOptions`` does?

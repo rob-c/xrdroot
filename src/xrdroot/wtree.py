@@ -118,14 +118,14 @@ def _require_name(name: Any, what: str) -> None:
         )
 
 
-def _typecode(name: str, spec: Any) -> tuple[str, int | str]:
+def _typecode(name: str, spec: Any) -> tuple[str, Any]:
     """What a column was declared as: a type code, and values per entry.
 
     The count is a number for a column of fixed size, or the name of the
     counter saying how many there are for one that changes - ``None`` in the
     declaration asks for a counter of its own, ``n`` and the column's name.
     """
-    length: int | str = 1
+    length: Any = 1
     if isinstance(spec, (tuple, list)):
         if len(spec) != 2:
             raise ValueError(
@@ -138,12 +138,16 @@ def _typecode(name: str, spec: Any) -> tuple[str, int | str]:
     return _code(name, spec), length
 
 
-def _length(name: str, length: Any) -> int | str:
-    """How many values a column's entries hold, or the counter that says so."""
+def _length(name: str, length: Any) -> int | str | tuple[str, ...]:
+    """How many values a column's entries hold, the counter that says so, or its leaves' names."""
     if length is None:
         return f"n{name}"
     if isinstance(length, str):
         return length
+    if isinstance(length, (tuple, list)) and length and all(isinstance(n, str) for n in length):
+        for leaf in length:
+            _require_name(leaf, "leaf")
+        return tuple(length)
     if not isinstance(length, int) or isinstance(length, bool) or length < 1:
         raise ValueError(
             f"the column {name!r} says {length!r} values per entry, which is not a "
@@ -513,6 +517,25 @@ class _Counter(_Column):
         self.maximum = max(self.maximum, int(found.max()))
 
 
+class _Record(_Column):
+    """A leaf list, ``a/F:b/F:c/F``: one value per leaf each entry, laid out as an array is.
+
+    A reader sees a branch of several leaves, each at its offset in the entry,
+    which is how ROOT writes ``Branch(name, &struct, "a/F:b/F")`` - and how
+    TMVA's multiclass outputs are written.
+    """
+
+    __slots__ = ("leaves",)
+
+    def __init__(self, name: str, typecode: str, leaves: tuple[str, ...], basket_size: int) -> None:
+        super().__init__(name, typecode, len(leaves), basket_size)
+        self.leaves = leaves
+
+    @property
+    def title(self) -> str:
+        return ":".join(f"{leaf}/{self.letter}" for leaf in self.leaves)
+
+
 def _room(size: int, entries: int) -> int:
     """How big ROOT's table of entry offsets had grown by the time a basket filled.
 
@@ -742,20 +765,23 @@ def _attributes(buf: WBuffer) -> None:
     buf.end(index)
 
 
-def _leaf(buf: WBuffer, column: _Column, count: int) -> int:
+def _leaf(
+    buf: WBuffer, column: _Column, count: int, part: tuple[str, str, int, int] | None = None
+) -> int:
     """One ``TLeaf``; where it landed comes back, for the tree to point at.
 
     ``count`` is the reference to the counter's leaf, already written in the
     branch before this one, for a column whose length it gives - or zero, the
     null pointer, for a column whose size is its own.
     """
+    name, title, length, offset = part or (column.name, column.leaf_title, column.leaf_len, 0)
     at = buf.tag(column.classname)
     outer = buf.start(SUBLEAF_VERSION)
     inner = buf.start(LEAF_VERSION)
-    buf.named(column.name, column.leaf_title)
-    buf.i32(column.leaf_len)
+    buf.named(name, title)
+    buf.i32(length)
     buf.i32(column.itemsize)
-    buf.i32(0)  # fOffset: one leaf per branch, so an entry starts where it starts
+    buf.i32(offset)  # fOffset: where in an entry the leaf's value starts
     buf.u8(int(column.is_range))
     buf.u8(int(column.unsigned))
     buf.u32(count)  # fLeafCount
@@ -772,8 +798,8 @@ def _table(buf: WBuffer, values: list[int], width: int, code: str) -> None:
     buf.raw(struct.pack(f">{width}{code}", *values, *([0] * (width - len(values)))))
 
 
-def _branch(buf: WBuffer, column: _Column, entries: int, compress: int, count: int) -> int:
-    """One ``TBranch``, leaf and all; where its leaf landed comes back."""
+def _branch(buf: WBuffer, column: _Column, entries: int, compress: int, count: int) -> list[int]:
+    """One ``TBranch``, leaves and all; where its leaves landed comes back."""
     at = buf.tag("TBranch")
     index = buf.start(BRANCH_VERSION)
     buf.named(column.name, column.title)
@@ -797,8 +823,12 @@ def _branch(buf: WBuffer, column: _Column, entries: int, compress: int, count: i
     buf.i64(column.zip_bytes)
     empty = _objarray(buf, 0)  # fBranches: a column has nothing under it
     buf.end(empty)
-    leaves = _objarray(buf, 1)
-    place = _leaf(buf, column, count)
+    if isinstance(column, _Record):
+        parts = [(leaf, leaf, 1, k * column.itemsize) for k, leaf in enumerate(column.leaves)]
+    else:
+        parts = [None]
+    leaves = _objarray(buf, len(parts))
+    place = [_leaf(buf, column, count, part) for part in parts]
     buf.end(leaves)
     baskets = _objarray(buf, written + 1)  # fBaskets: all on file, none in here
     buf.raw(bytes(4 * (written + 1)))
@@ -859,6 +889,8 @@ def _declared(
     typecode, length = _typecode(name, spec)
     if isinstance(length, int):
         return _Column(name, typecode, length, basket_size)
+    if isinstance(length, tuple):
+        return _Record(name, typecode, length, basket_size)
     _require_name(length, "counter")
     if length not in counters:
         counters[length] = _Counter(length, basket_size, _counter_code(length, types))
@@ -1253,8 +1285,9 @@ class WritableTree:
         branches = _objarray(buf, len(columns))
         places = self._write_branches(buf, origin)
         buf.end(branches)
-        leaves = _objarray(buf, len(columns))
-        for place in places.values():
+        every = [place for found in places.values() for place in found]
+        leaves = _objarray(buf, len(every))
+        for place in every:
             buf.u32(origin + place + MAP_OFFSET)  # the leaf itself is in its branch
         buf.end(leaves)
         buf.u32(0)  # fAliases: none
@@ -1266,14 +1299,14 @@ class WritableTree:
         buf.u32(0)  # fBranchRef: none
         buf.end(index)
 
-    def _write_branches(self, buf: WBuffer, origin: int) -> dict[str, int]:
-        """Every branch in order; where each one's leaf landed comes back."""
+    def _write_branches(self, buf: WBuffer, origin: int) -> dict[str, list[int]]:
+        """Every branch in order; where each one's leaves landed comes back."""
         compress = self._file._codes
-        places: dict[str, int] = {}
+        places: dict[str, list[int]] = {}
         for column in self._branches:
             count = 0
             if isinstance(column, _Rows):
-                count = origin + places[column.counter.name] + MAP_OFFSET
+                count = origin + places[column.counter.name][0] + MAP_OFFSET
             places[column.name] = _branch(buf, column, self._entries, compress, count)
         return places
 

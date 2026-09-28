@@ -7,9 +7,10 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from .efficiency import Efficiencies
+from .evalmodes import EvaluatingModes
 from .evaluation import roc_curve, roc_integral, test_classification
 from .log import Logger, color
-from .method import CLASSIFICATION, REGRESSION
+from .method import CLASSIFICATION, MULTICLASS, REGRESSION
 from .output import event_tree
 from .plots import plot_variables
 from .training import method_directory
@@ -30,7 +31,7 @@ def _signal(item: Booked, classes: Any) -> Any:
     return classes == item.method.dsi.GetSignalClassIndex()
 
 
-class Evaluating:
+class Evaluating(EvaluatingModes):
     """``EvaluateAllMethods`` and the ROC queries, for :class:`~.factory.Factory` to inherit."""
 
     booked: dict[str, list[Booked]]
@@ -89,10 +90,16 @@ class Evaluating:
             found[f"train{level}"] = efficiencies.training_efficiency(level)
         return found
 
-    def _write_evaluation(self, item: Booked, test: Any) -> None:
-        """``WriteEvaluationHistosToFile``: the densities, the results, the variables' plots."""
+    def _write_evaluation(self, item: Booked, test: Any, before: Any = (), after: Any = ()) -> None:
+        """``WriteEvaluationHistosToFile``: the densities, the results, the variables' plots.
+
+        ``before`` is the rest of what the testing results hold, ``after`` what the
+        training results hold, written after the plots.
+        """
         method = item.method
         where = method_directory(method)
+        for histogram in before:
+            self.output.write(where, histogram)
         for pdf in method.mva_pdfs or ():
             for histogram in (pdf.original, pdf.smoothed, pdf.fine):
                 self.output.write(where, histogram)
@@ -119,6 +126,8 @@ class Evaluating:
             self.output.write(where, histogram)
         for histogram in plots.correlations:
             self.output.write(f"{where}/CorrelationPlots", histogram)
+        for histogram in after:
+            self.output.write(where, histogram)
 
     def _roc(self, item: Booked) -> float:
         test = item.loader.dataset().test
@@ -193,6 +202,10 @@ class Evaluating:
                 rows = [self._evaluate_classifier(item) for item in items]
                 if self.roc:
                     self._classification_tables(name, rows)
+            elif self.analysis == REGRESSION:
+                self._regression_tables(name, [self._evaluate_regression(i) for i in items])
+            elif self.analysis == MULTICLASS:
+                self._multiclass_tables(name, [self._evaluate_multiclass(i) for i in items])
             self._write_trees(name, items)
         self.log.header(f"{color('bold')}Thank you for using TMVA!{color('reset')}")
         self.log.info(

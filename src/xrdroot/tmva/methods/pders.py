@@ -104,7 +104,7 @@ class MethodPDERS(Method):
         if self.mode in ("RMS", "Adaptive"):
             self.delta = (average * frac).astype(f32)
         elif self.mode == "MinMax":
-            spans = [info.max - info.min for info in self.dsi.variables]
+            spans = [info.maximum - info.minimum for info in self.dsi.variables]
             self.delta = (np.asarray(spans) * float(frac)).astype(f32)
         else:
             self.delta = np.full(tree.values.shape[1], frac, dtype=f32)

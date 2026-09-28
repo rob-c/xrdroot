@@ -179,6 +179,8 @@ class TDirectory(TNamed):
     def cd(self, path: Any = None) -> bool:
         """``cd``: make this directory - or the one ``path`` names below it - the current one."""
         target = self if not path else self.GetDirectory(path)
+        if target is None and path and ":" in str(path):
+            target = _in_open_file(str(path))
         if target is None:
             message("Error", f"{self.ClassName()}::cd", "Unknown directory %s", str(path))
             return False
@@ -322,3 +324,14 @@ class _CurrentDirectory:
 
 #: ``gDirectory``, always the current directory.
 gDirectory: Any = _CurrentDirectory()
+
+
+def _in_open_file(path: str) -> Any:
+    """``file.root:/dir``: the directory ``dir`` of the open file called ``file.root``, if any."""
+    from .troot import gROOT
+
+    name, _, inside = path.partition(":")
+    for opened in gROOT.GetListOfFiles():
+        if opened.GetName() == name:
+            return opened.GetDirectory(inside) if inside.strip("/") else opened
+    return None

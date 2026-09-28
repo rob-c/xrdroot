@@ -71,6 +71,11 @@ class MethodPDEFoam(Method):
         self.separate = bool(self.opt("SigBgSeparate")) and self.analysis == CLASSIFICATION
         self.foams: list[Cells] = []
 
+    def booked(self) -> None:
+        """A regression's ``ProcessOptions`` counts the targets, which builds the data set."""
+        if self.analysis == REGRESSION and self.loader is not None:
+            self.loader.dataset()
+
     # -- training -------------------------------------------------------------------------
 
     def _grow(self, name: str, events: Events, kind: str, marks: Any, say: str) -> Foam:
