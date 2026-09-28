@@ -17,6 +17,7 @@ from .pders import MethodPDERS
 from .pdefoam import MethodPDEFoam
 from .rulefit import MethodRuleFit
 from .crossvalidation import MethodCrossValidation
+from .category import MethodCategory
 from .knn import MethodKNN
 from .likelihood import MethodLikelihood
 from .linear import MethodFisher, MethodLD
@@ -44,5 +45,6 @@ REGISTRY: dict[str, type[Method]] = {
         MethodPDEFoam,
         MethodRuleFit,
         MethodCrossValidation,
+        MethodCategory,
     )
 }

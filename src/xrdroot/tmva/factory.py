@@ -148,6 +148,8 @@ class Factory(Training, Evaluating):
         weight_dir = f"{loader.GetName()}/weights" if self.persistence else ""
         made = kind(self.job, title, loader.info, str(options), weight_dir, analysis)
         made.loader = loader
+        made.base_directory = lambda: self._base_directory(made)
+        made.output = self.output
         if analysis not in made.analyses:
             self._incapable(made, loader, analysis)
             return None

@@ -74,6 +74,7 @@ class Evaluating(EvaluatingModes):
         top = tested.xmax + 0.00001
         efficiencies.test(values, signal, test.weights, tested.xmin, top)
         train = dataset.train
+        method.sample_kind = ""
         train_values = method.mva(train)
         efficiencies.train(
             train_values, _signal(item, train.classes), train.weights, tested.xmin, top

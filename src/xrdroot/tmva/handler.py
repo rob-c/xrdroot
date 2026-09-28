@@ -130,7 +130,8 @@ class TransformationHandler:
 
     def _selection(self, transform: Transform, log: Logger) -> None:
         """The ``Transformation, Variable selection :`` listing of what goes in and out."""
-        log.info("Transformation, Variable selection : ")
+        # A header of the transformation's own logger, which has no name to show.
+        Logger("").header("Transformation, Variable selection : ")
         for variable in self.dsi.variables:
             log.info(
                 f"Input : variable '{variable.label}' <---> Output : variable '{variable.label}'"

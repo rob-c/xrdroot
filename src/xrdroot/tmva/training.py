@@ -42,12 +42,13 @@ def evaluate_sample(method: Method, events: Events, kind: str, dataset: str) -> 
         header = (
             f"[{dataset}] : Evaluation of {method.name} on {kind} sample ({len(events)} events)"
         )
-        method.log.header(header)
-        method.log.header(header)
+        for _ in range(method.evaluation_headers):
+            method.log.header(header)
     else:
         method.log.info(f"Dataset[{dataset}] : Create results for {kind}")
         what = "Evaluation" if method.analysis == REGRESSION else "Multiclass evaluation"
         method.log.info(f"Dataset[{dataset}] : {what} of {method.name} on {kind} sample")
+    method.sample_kind = kind
     start = time.perf_counter()
     values = method.mva(events)
     elapsed = time.perf_counter() - start
@@ -260,6 +261,7 @@ class Training:
                 self._write_data_information(item.loader)
                 words = {REGRESSION: "Regression", MULTICLASS: "Multiclass classification"}
                 what = words.get(item.method.analysis, "Classification")
+                item.loader.dataset()
                 self.log.header(f"Train method: {item.method.name} for {what}")
                 self.log.info("")
                 self._train_one(item)

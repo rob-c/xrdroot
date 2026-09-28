@@ -95,6 +95,12 @@ class Method:
         self.weight_dir = weight_dir
         #: The weight file the method was read from, if it was.
         self.source = ""
+        #: Which sample - "training" or "testing" - the method is being evaluated on.
+        self.sample_kind = ""
+        #: ``BaseDir``: the Factory's making of the method's directory in the output file.
+        self.base_directory: Any = None
+        #: The Factory's output, for a method that writes as it trains.
+        self.output: Any = None
         self.mva_pdfs: tuple[PDF, PDF] | None = None
         self.train_time = 0.0
         self.n_train = 0
@@ -148,6 +154,8 @@ class Method:
             self.log.warning(f"Value for option {name} was previously set to {before}")
         self.handler.create(str(self.opt("VarTransform")), self.log)
 
+    #: How often ``GetMvaValues`` says which sample it evaluates: twice, but once for a Category.
+    evaluation_headers: ClassVar[int] = 2
     #: Does booking the method build the data set, as ``LD``'s ``ProcessOptions`` does?
     needs_data: ClassVar[bool] = False
 

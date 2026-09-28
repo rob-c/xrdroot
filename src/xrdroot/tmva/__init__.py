@@ -26,6 +26,7 @@ from .factory import Factory
 from .genetic import GeneticAlgorithm, GeneticFitter, IFitterTarget, Interval
 from .loader import DataLoader
 from .log import TMVAError
+from .methods.category import MethodCategory
 from .methods.cuts import MethodCuts
 from .reader import Reader
 from .tools import Tools, gConfig, gTools
@@ -39,6 +40,7 @@ __all__ = [
     "GeneticFitter",
     "IFitterTarget",
     "Interval",
+    "MethodCategory",
     "MethodCuts",
     "Reader",
     "TMVAError",

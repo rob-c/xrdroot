@@ -128,7 +128,6 @@ class MethodFisher(Method):
 
     type_name = "Fisher"
     defaults = {"Method": "Fisher"}
-    needs_data = True
 
     def train(self, events: Events) -> None:
         signal = events.classes == self.dsi.GetSignalClassIndex()

@@ -130,6 +130,19 @@ def _trimmed(events: Events, wanted: int, spec: SplitSpec, rng: Any) -> Events:
     return events.take(keep)
 
 
+def _say_scaling(count: ClassCounts, spec: SplitSpec, name: str) -> None:
+    """What ``MixEvents`` says of a preselection that kept fewer than all of a class's events."""
+    if count.cut_scaling() >= 1:
+        return
+    if spec.scale_with_presel:
+        what = "scaling the number of requested training/testing events\n to be scaled by the "
+        what += "preselection efficiency"
+    else:
+        what = "interpreting the requested number of training/testing events\n to be the number "
+        what += "of events AFTER your preselection cuts"
+    Logger("DataSetFactory").info(f"Dataset[{name}] :  you have opted for {what}")
+
+
 def _gathered(count: ClassCounts, kind: int, shape: tuple[int, int, int]) -> Events:
     return Events.joined(count.events.get(kind, []), *shape)
 
@@ -142,6 +155,7 @@ def _assign(
     undefined = _gathered(count, MAX_TREE_TYPE, shape)
     avail = (len(train), len(test), len(undefined))
     wanted = _requested(count, sum(avail), spec)
+    _say_scaling(count, spec, name)
     use_train, use_test, want_train, want_test = _numbers(*wanted, avail)
     if spec.split_mode == "ALTERNATE":
         train, test = _alternate(train, test, undefined, want_train)
@@ -155,7 +169,13 @@ def _assign(
         train = Events.joined([train, undefined.take(np.arange(to_train))], *shape)
         rest = undefined.take(np.arange(to_train, to_train + to_test))
         test = Events.joined([test, rest], *shape)
-    Logger("DataSetFactory").info("")
+    scale = float(np.float32(count.cut_scaling()))
+    if spec.scale_with_presel and scale < 1:
+        Logger("DataSetFactory").info(
+            f" ( {count.train_requested} * {scale:g} preselection efficiency)"
+        )
+    else:
+        Logger("DataSetFactory").info("")
     return [_trimmed(train, want_train, spec, rng), _trimmed(test, want_test, spec, rng)]
 
 

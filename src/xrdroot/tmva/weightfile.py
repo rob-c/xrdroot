@@ -20,7 +20,7 @@ from .trafoxml import read_transformations
 from .variables import VariableInfo
 from .xmlfile import children, load
 
-__all__ = ["method_class", "options_text", "read_method", "read_variables"]
+__all__ = ["method_class", "options_text", "read_method", "read_method_node", "read_variables"]
 
 
 def options_text(root: Any) -> str:
@@ -72,6 +72,22 @@ def _dataset_info(root: Any, dsi: DataSetInfo | None) -> DataSetInfo:
     return made
 
 
+def read_method_node(
+    root: Any, type_name: str, name: str, info: DataSetInfo, job: str, path: str = ""
+) -> Method:
+    """A method from the element holding its state: a weight file's root, or a ``SubMethod``."""
+    method = method_class(type_name)(job, name, info, options_text(root), "", _analysis(root))
+    transformations = root.find("Transformations")
+    if transformations is not None:
+        read_transformations(transformations, method.handler)
+    pdfs = children(root.find("MVAPdfs")) if root.find("MVAPdfs") is not None else []
+    if len(pdfs) == 2:
+        method.mva_pdfs = (pdf_from_xml(pdfs[0]), pdf_from_xml(pdfs[1]))
+    method.source = path
+    method.read_weights(root.find("Weights"))
+    return method
+
+
 def method_class(type_name: str) -> type[Method]:
     """The class of the method a weight file is of, or the refusal of one there is not."""
     from .methods import REGISTRY
@@ -102,15 +118,5 @@ def read_method(
     )
     root = load(path)
     type_name, _, name = str(root.get("Method")).partition("::")
-    kind = method_class(type_name)
-    info = _dataset_info(root, dsi)
-    method = kind(job, name, info, options_text(root), "", _analysis(root))
-    transformations = root.find("Transformations")
-    if transformations is not None:
-        read_transformations(transformations, method.handler)
-    pdfs = children(root.find("MVAPdfs")) if root.find("MVAPdfs") is not None else []
-    if len(pdfs) == 2:
-        method.mva_pdfs = (pdf_from_xml(pdfs[0]), pdf_from_xml(pdfs[1]))
-    method.source = path
-    method.read_weights(root.find("Weights"))
+    method = read_method_node(root, type_name, name, _dataset_info(root, dsi), job, path)
     return method

@@ -101,6 +101,8 @@ class MethodCrossValidation(Method):
 
     def write_weight_file(self) -> None:
         super().write_weight_file()
+        if self.analysis != CLASSIFICATION:
+            return
         for text in ("MakeClassSpecificHeader", "MakeClassSpecific"):
             self.log.warning(f"{text} not implemented for CrossValidation")
 
