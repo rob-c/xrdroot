@@ -95,6 +95,8 @@ class Method:
         self.n_train = 0
         #: The loader the method was booked with, which the Factory sets.
         self.loader: Any = None
+        #: The training events before any transformation, for a method that transforms per class.
+        self.raw_train: Events | None = None
         self.values = {
             name: _typed(d, self.options, name) for name, d in self.all_defaults().items()
         }

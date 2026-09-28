@@ -151,6 +151,7 @@ class Training:
         transformed = method.handler.prepare(train) if method.handler.transforms else train
         start = time.perf_counter()
         method.n_train = len(train)
+        method.raw_train = train
         method.train(transformed)
         method.train_time = time.perf_counter() - start
         self.log.info(

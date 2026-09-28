@@ -134,7 +134,9 @@ def spline1(xs: Any, ys: Any, x: Any) -> Any:
     return ys[i] + (x - xs[i]) * (ys[i] - ys[other]) / (xs[i] - xs[other])
 
 
-def interpolate(contents: Any, centres: Any, low: float, high: float, x: Any) -> Any:
+def interpolate(
+    contents: Any, centres: Any, low: float, high: float, x: Any, floor: float = EPSILON
+) -> Any:
     """``PDF::GetVal``'s reading of a fine, evenly binned histogram: a line between bin centres.
 
     ``contents`` and ``centres`` are the inner bins only, of an axis from
@@ -150,7 +152,7 @@ def interpolate(contents: Any, centres: Any, low: float, high: float, x: Any) ->
     other = np.where(up, bins + 1, bins - 1)
     dy = contents[bins] - contents[other]
     value = contents[bins] + (x - centres[bins]) * dy / (centres[bins] - centres[other])
-    return np.maximum(value, EPSILON)
+    return np.maximum(value, floor)
 
 
 class PDF:
@@ -229,14 +231,14 @@ class PDF:
     def xmax(self) -> float:
         return float(self.smoothed.axes[0].high)
 
-    def value(self, x: Any) -> Any:
-        """``GetVal``: the density at each ``x``."""
+    def value(self, x: Any, floor: float = EPSILON) -> Any:
+        """``GetVal``: the density at each ``x``, never below ``floor``."""
         x = np.asarray(x, dtype=np.float64)
         if self.spec.interpolation == "Spline0":
             bins = np.clip(self.fine.axes[0].find_bin(x), 1, len(self._contents))
-            return np.maximum(self._contents[bins - 1], EPSILON)
+            return np.maximum(self._contents[bins - 1], floor)
         axis = self.fine.axes[0]
-        return interpolate(self._contents, self._centres, axis.low, axis.high, x)
+        return interpolate(self._contents, self._centres, axis.low, axis.high, x, floor)
 
     def integral_between(self, low: float, high: float) -> float:
         """``GetIntegral(xmin, xmax)``: the fine bins between two points, part-bins at the ends."""
