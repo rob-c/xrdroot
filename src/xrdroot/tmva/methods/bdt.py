@@ -69,13 +69,13 @@ class MethodBDT(Method):
         regression = self.analysis == REGRESSION
         given = self.options.given
         if regression and not given("MaxDepth"):
-            self.values["MaxDepth"] = 50
+            self.option_values["MaxDepth"] = 50
         if regression and not given("BoostType"):
-            self.values["BoostType"] = "AdaBoostR2"
+            self.option_values["BoostType"] = "AdaBoostR2"
         if regression and not given("MinNodeSize"):
-            self.values["MinNodeSize"] = "0.2%"
+            self.option_values["MinNodeSize"] = "0.2%"
         if not given("UseNvars"):
-            self.values["UseNvars"] = int(np.sqrt(self.dsi.GetNVariables()) + 0.6)
+            self.option_values["UseNvars"] = int(np.sqrt(self.dsi.GetNVariables()) + 0.6)
         boost = str(self.opt("BoostType"))
         self.boost = "AdaBoost" if boost == "RealAdaBoost" else boost
         self.yes_no = bool(self.opt("UseYesNoLeaf")) and boost not in ("RealAdaBoost", "AdaCost")

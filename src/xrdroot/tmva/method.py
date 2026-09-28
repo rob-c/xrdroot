@@ -58,8 +58,11 @@ def _typed(default: Any, options: Options, name: str) -> Any:
 
 
 def _option_text(value: Any) -> str:
+    """An option's value as TMVA's weight file writes it: ``True``, ``850``, ``5.000000e-01``."""
     if isinstance(value, bool):
         return "True" if value else "False"
+    if isinstance(value, float):
+        return format(value, "e")
     return str(value)
 
 
@@ -97,7 +100,7 @@ class Method:
         self.loader: Any = None
         #: The training events before any transformation, for a method that transforms per class.
         self.raw_train: Events | None = None
-        self.values = {
+        self.option_values = {
             name: _typed(d, self.options, name) for name, d in self.all_defaults().items()
         }
         self.process_options()
@@ -108,7 +111,7 @@ class Method:
 
     def opt(self, name: str) -> Any:
         """The value of option ``name``: what the string said, or its default."""
-        return self.values[name]
+        return self.option_values[name]
 
     def process_options(self) -> None:
         """``ProcessOptions``: whatever a method works out from its options once they are read."""
@@ -236,7 +239,7 @@ class Method:
 
     def _options(self, root: Node) -> None:
         node = root.add("Options")
-        for name, value in self.values.items():
+        for name, value in self.option_values.items():
             option = node.add(
                 "Option", name=name, modified="Yes" if self.options.given(name) else "No"
             )
