@@ -91,6 +91,8 @@ class RooMinimizer:
         self.print_eval_errors = 10
         self._max_fcn = -math.inf
         self._last: list[float] = []
+        #: ``applyCovarianceMatrix``'s matrix, which a saved result then carries instead.
+        self.external_covariance: Any = None
 
     # -- settings -----------------------------------------------------------------
 
@@ -410,6 +412,15 @@ class RooMinimizer:
             error = g(self.minuit.errors[index])
             limited = "\t(limited)" if par.hasMin() or par.hasMax() else ""
             cout.line(f"{par.GetName()}\t  = {value}\t +/-  {error}{limited}")
+
+    def applyCovarianceMatrix(self, matrix: Any) -> None:
+        """``applyCovarianceMatrix``: the floating parameters' errors, and the covariance a saved
+        result carries, from ``matrix`` rather than from HESSE."""
+        found = np.array([[matrix[i][j] for j in range(len(self.params))]
+                          for i in range(len(self.params))], dtype=np.float64)  # fmt: skip
+        self.external_covariance = found
+        for index, par in enumerate(self.params):
+            par.setError(math.sqrt(found[index, index]))
 
     # -- the result ---------------------------------------------------------------
 

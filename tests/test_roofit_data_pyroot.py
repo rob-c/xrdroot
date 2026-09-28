@@ -129,3 +129,85 @@ def test_without_the_core_parts_the_engines_stand_ins_serve(monkeypatch: Any) ->
     assert kit._axis() is frame.Axis
     made = object()
     assert kit._histogram_wrapper()(made) is made
+
+
+def _weighted() -> tuple[Any, ...]:
+    """rf403's model: a flat density's 200 events weighted ``x*x+10``, and a parabola to fit."""
+    ROOT.RooRandom.randomGenerator().SetSeed(4357)
+    x = ROOT.RooRealVar("x", "x", -10, 10)
+    data = ROOT.RooPolynomial("px", "px", x).generate({x}, 200)
+    data.addColumn(ROOT.RooFormulaVar("w", "event weight", "(x*x+10)", [x]))
+    wdata = ROOT.RooDataSet(data.GetName(), data.GetTitle(), data.get(), Import=data, WeightVar="w")
+    a1, a2 = ROOT.RooRealVar("a1", "a1", 0, -1, 1), ROOT.RooRealVar("a2", "a2", 1, 0, 10)
+    p2 = ROOT.RooPolynomial("p2", "p2", x, [ROOT.RooRealVar("a0", "a0", 1), a1, a2], 0)
+    return x, wdata, a1, a2, p2
+
+
+def test_a_weighted_fit_warns_and_sumw2_corrects_its_errors_as_root_does(capsys: Any) -> None:
+    """ROOT's warning, then with ``SumW2Error`` its second HESSE and ``V C^-1 V``'s errors."""
+    from refmachine import roots
+
+    _, wdata, a1, a2, p2 = _weighted()
+    capsys.readouterr()
+    p2.fitTo(wdata, PrintLevel=-1)
+    warned = [line for line in capsys.readouterr().out.splitlines() if "WARNING" in line]
+    assert warned == [
+        "[#0] WARNING:InputArguments -- RooAbsPdf::fitTo(p2): WARNING: a likelihood fit is "
+        "requested of what appears to be weighted data."
+    ]
+    assert (a1.getError(), a2.getError()) == roots((0.008124401125600644, 0.004725590174225074),
+                                                   rel=1e-7)  # fmt: skip
+    a1.setVal(0), a2.setVal(1), a1.setError(0), a2.setError(0)
+    r = p2.fitTo(wdata, Save=True, SumW2Error=True, PrintLevel=-1)
+    said = capsys.readouterr().out
+    assert "WARNING" not in said and said.splitlines()[-1] == (
+        "[#1] INFO:Fitting -- RooAbsPdf::fitTo(p2) Calculating sum-of-weights-squared "
+        "correction matrix for covariance matrix"
+    )
+    errors = (a1.getError(), a2.getError(), r.covarianceMatrix()(0, 1))
+    assert errors == pytest.approx((0.06099054077538379, 0.05810222152516743,
+                                    0.0007353183966308126), rel=1e-7)  # fmt: skip
+    assert (r.edm(), r.minNll(), r.covQual()) == pytest.approx(
+        (16314.401342266516, 23656.91371382899, 3), rel=1e-7
+    )
+    r.Print()
+    assert "Status : MINIMIZE=0 HESSE=0 HESSE=0" in capsys.readouterr().out
+
+
+def test_a_sumw2_correction_is_refused_when_the_squared_weights_hessian_is_singular(
+    capsys: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RooFit's error when the weight-squared covariance has no Cholesky decomposition."""
+    import numpy as np
+
+    _, wdata, _, _, p2 = _weighted()
+
+    def singular(matrix: Any) -> Any:
+        raise np.linalg.LinAlgError("not positive definite")
+
+    monkeypatch.setattr(np.linalg, "cholesky", singular)
+    capsys.readouterr()
+    r = p2.fitTo(wdata, Save=True, SumW2Error=True, PrintLevel=-1)
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "[#0] ERROR:Fitting -- RooAbsPdf::fitTo(p2) ERROR: Cannot apply sum-of-weights correction "
+        "to covariance matrix: correction matrix calculated with weight-squared is singular"
+    )
+    assert r.covQual() == -1
+
+
+def test_a_binned_clone_prints_its_bins_with_its_variables_at_the_last_bin(capsys: Any) -> None:
+    """``binnedClone()->Print("v")``, as rf403 prints it: RooFit leaves ``x`` at the last bin."""
+    _, wdata, *_ = _weighted()
+    binned = wdata.binnedClone()
+    binned.Print("v")
+    observable = '1)  x = 9.9  L(-10 - 10)  "x"'
+    assert capsys.readouterr().out.splitlines() == [
+        "DataStore pxData_binned (Generated From px_binned)",
+        "  Contains 100 entries",
+        "  Observables: ",
+        f"    {observable}",
+        "Binned Dataset pxData_binned (Generated From px_binned)",
+        "  Contains 100 bins with a total weight of 8464.53",
+        f"  Observables:     {observable}",
+    ]
+    assert binned.printMultiline(0, False, "").splitlines()[-1] == "  Observables (x)"

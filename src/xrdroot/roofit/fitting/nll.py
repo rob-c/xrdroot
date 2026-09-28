@@ -89,6 +89,13 @@ class RooNLLVar(RooAbsReal):
         #: The states of the fit's copy of the model, for the nodes that keep one (:mod:`..copies`).
         self._copies = copies
         self._announced = False
+        #: ``applyWeightSquared``: each event counts with its weight squared, for SumW2Error.
+        self._weight_squared = False
+
+    def applyWeightSquared(self, flag: bool) -> None:
+        """Count each event with its weight squared - the likelihood whose HESSE corrects
+        ``SumW2Error``'s covariance - or, again, with its weight."""
+        self._weight_squared = bool(flag)
 
     def compute(self, ctx: Any) -> Any:
         return self.evaluate_nll()
@@ -126,16 +133,18 @@ class RooNLLVar(RooAbsReal):
         """``-sum w log p`` of the events ``keep`` selects - all, for ``None`` - and their Poisson
         term."""
         columns = self.columns if keep is None else {k: v[keep] for k, v in self.columns.items()}
-        weights = self.w if keep is None else self.w[keep]
+        given = self.w if keep is None else self.w[keep]
+        weights = given * given if self._weight_squared else given
         nset = self.nset & pdf.dependents() if keep is not None else self.nset
         probs = np.asarray(pdf.value(dict(columns), nset, self.rng), dtype=np.float64)
         total, badness = _log_terms(probs, weights)
         self._log_top(pdf, probs, weights, nset)
         self._badness += badness
         if self.extended and pdf.canBeExtended():
-            sumw = math.fsum(weights.tolist())
+            sumw = math.fsum(given.tolist())
+            sumw2 = math.fsum(weights.tolist()) if self._weight_squared else 0.0
             total.total += pdf.extendedTerm(
-                sumw, pdf.expected(nset, self.rng)
+                sumw, pdf.expected(nset, self.rng), sumw2
             )  # onto the sum, not the carry
         if simulated:
             total.add(float(math.fsum(weights.tolist())) * math.log(simulated))

@@ -76,6 +76,8 @@ class RooDataHist(RooAbsData):
             )
         self._weights = np.zeros(len(grid))
         self._sumw2 = np.zeros(len(grid))
+        for one, centre in zip(self._vars, grid[-1]):  # RooFit's variables end at the last bin
+            one.setVal(float(centre))
 
     def _bin_of(self, columns: dict[str, Any]) -> np.ndarray[Any, Any]:
         """The flat bin number of each event, or -1 for one outside every range."""
@@ -187,6 +189,20 @@ class RooDataHist(RooAbsData):
 
     def printArgs(self) -> str:
         return "[" + ",".join(one.GetName() for one in self._vars) + "]"
+
+    def printMultiline(self, contents: int, verbose: bool, indent: str) -> str:
+        """The store's lines, then the binned dataset's own: its bins, their weight, its
+        variables - listed straight after ``Observables:``, as RooFit leaves them."""
+        from ..printing import kExtras, kName, kTitle, kValue, kVerbose
+
+        text = super().printMultiline(contents, verbose, indent)
+        text += f"{indent}Binned Dataset {self._name} ({self._title})\n"
+        text += f"{indent}  Contains {self.numEntries()} bins with a total weight of "
+        text += f"{g(self.sumEntries())}\n"
+        if not verbose:
+            return text + f"{indent}  Observables {self._vars.printValue()}\n"
+        listed = self._vars.printStream(kName | kValue | kExtras | kTitle, kVerbose, indent + "  ")
+        return text + f"{indent}  Observables: " + listed
 
 
 def _binning(edges: np.ndarray[Any, Any]) -> RooBinning:

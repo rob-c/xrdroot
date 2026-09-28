@@ -14,10 +14,12 @@ from __future__ import annotations
 import time
 from typing import Any
 
+import numpy as np
+
 from .. import copies
 from ..cmdargs import Commands, commands
 from ..collections import as_list
-from ..messages import INFO, log
+from ..messages import ERROR, INFO, WARNING, log
 from .minimizer import RooMinimizer
 from .nll import RooNLLVar
 
@@ -180,6 +182,9 @@ def fit_to(pdf: Any, data: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -
     options = commands(args, kwargs)
     options.warn_duplicates(f"fitTo({pdf.GetName()})")
     nll = nll_options(pdf, data, options)
+    sumw2 = int(options.get("SumW2Error", 0, -1))
+    if data.isNonPoissonWeighted() and sumw2 == -1 and "AsymptoticError" not in options:
+        log(pdf, WARNING, "InputArguments", f"RooAbsPdf::fitTo({pdf.GetName()}): {WEIGHTED}")
     log(
         pdf,
         INFO,
@@ -192,15 +197,59 @@ def fit_to(pdf: Any, data: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -
     minimizer.minimize(options.get("Minimizer", 0, ""), options.get("Minimizer", 1, ""))
     if options.get("Hesse", 0, True):
         minimizer.hesse()
+    quality = _sumw2_corrected(pdf, minimizer, nll) if sumw2 == 1 and minimizer.params else None
     minos = options.get("Minos")
     if minos:
         minimizer.minos(None if minos is True else minos)
     if not options.get("Save", 0, False):
         return None
-    return minimizer.save(
+    found = minimizer.save(
         f"fitresult_{pdf.GetName()}_{data.GetName()}",
         f"Result of fit of p.d.f. {pdf.GetName()} to dataset {data.GetName()}",
     )
+    if quality is not None:
+        found.setCovQual(quality)
+    return found
+
+
+#: What RooFit says of a likelihood fit to weighted data told nothing of its errors.
+WEIGHTED = """WARNING: a likelihood fit is requested of what appears to be weighted data.
+       While the estimated values of the parameters will always be calculated taking the weights into account,
+       there are multiple ways to estimate the errors of the parameters. You are advised to make an
+       explicit choice for the error calculation:
+           - Either provide SumW2Error(true), to calculate a sum-of-weights-corrected HESSE error matrix
+             (error will be proportional to the number of events in MC).
+           - Or provide SumW2Error(false), to return errors from original HESSE error matrix
+             (which will be proportional to the sum of the weights, i.e., a dataset with <sum of weights> events).
+           - Or provide AsymptoticError(true), to use the asymptotically correct expression
+             (for details see https://arxiv.org/abs/1911.01303).\""""  # noqa: E501
+
+
+def _sumw2_corrected(pdf: Any, minimizer: RooMinimizer, nll: RooNLLVar) -> int:
+    """``calcSumW2CorrectedCovariance``: the covariance ``V C^-1 V`` - ``V`` HESSE's, ``C``
+    HESSE's again of the likelihood with every weight squared - and its quality.
+
+    The second HESSE is a step of the fit as any other: the status carries a
+    second ``HESSE=``, and the distance to the minimum is the one it finds,
+    measured on the squared-weight likelihood.
+    """
+    first = minimizer.save()
+    nll.applyWeightSquared(True)
+    log(pdf, INFO, "Fitting", f"RooAbsPdf::fitTo({pdf.GetName()}) Calculating "
+        "sum-of-weights-squared correction matrix for covariance matrix")  # fmt: skip
+    minimizer.hesse()
+    second = minimizer.save()
+    nll.applyWeightSquared(False)
+    v, c = first._cov, second._cov
+    try:
+        np.linalg.cholesky(c)
+    except np.linalg.LinAlgError:
+        log(pdf, ERROR, "Fitting", f"RooAbsPdf::fitTo({pdf.GetName()}) ERROR: Cannot apply "
+            "sum-of-weights correction to covariance matrix: correction matrix calculated with "
+            "weight-squared is singular")  # fmt: skip
+        return -1
+    minimizer.applyCovarianceMatrix(v @ np.linalg.inv(c) @ v.T)
+    return int(min(first.covQual(), second.covQual()))
 
 
 def _configure(minimizer: RooMinimizer, options: Commands) -> None:

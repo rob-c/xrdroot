@@ -86,7 +86,8 @@ class RooFitResult(RooPrintable):
         self._edm = float(minuit.fmin.edm)
         self._invalid = minimizer.invalid
         self._fill_parameters(minimizer)
-        self._cov = _floating_covariance(minimizer)
+        external = minimizer.external_covariance
+        self._cov = _floating_covariance(minimizer) if external is None else external.copy()
         self._history = list(minimizer.history)
 
     def _fill_parameters(self, minimizer: Any) -> None:
