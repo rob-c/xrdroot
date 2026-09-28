@@ -47,7 +47,7 @@ from .nodes import (
     Throw,
     Unary,
 )
-from .operators import python_operator
+from .operators import DUNDERS, python_operator
 
 __all__ = ["ExprEmitter", "COMPARISONS", "zero"]
 
@@ -271,6 +271,9 @@ class ExprEmitter(NameEmitter):
         found = self.typeof(operand)
         if found is None:
             return f"deref({self.value(operand)})", P.POSTFIX
+        own = self.own_operator(operand, "operator*", 0)
+        if own is not None:
+            return own, P.POSTFIX
         if found.is_object_pointer or (found.is_class and not found.pointer):
             return self.expr(operand)
         return f"{self.at(operand, P.POSTFIX)}[0]", P.POSTFIX
@@ -349,7 +352,30 @@ class ExprEmitter(NameEmitter):
     def assigned(self, symbol: Any) -> None:
         """Note that the function being written assigns ``symbol``: a global needs declaring."""
 
+    def own_operator(self, operand: Expr, name: str, operands: int) -> str | None:
+        """The method of the macro's class ``operand`` is, for its ``name`` operator, if it has one.
+
+        ``operands`` is how many the method takes besides the object: ``it++``
+        is ``operator++(int)``, ``++it`` and ``*it`` take none.
+        """
+        if not any(len(func.params) == operands for func in self._operators(operand, name)):
+            return None
+        binary, unary = DUNDERS[name]
+        chosen = binary if operands else unary
+        return f"{self.at(operand, P.POSTFIX)}.{chosen}({'0' if operands else ''})"
+
+    def _operators(self, operand: Expr, name: str) -> list[Any]:
+        """The ``name`` operators of the macro's class an object ``operand`` is of, if any."""
+        found = self.typeof(operand)
+        if found is None or found.pointer:
+            return []
+        info = self.program.classes.get(found.name)
+        return info.methods.get(name, []) if info is not None else []
+
     def increment(self, node: Unary) -> Out:
+        own = self.own_operator(node.operand, "operator" + node.op, int(node.postfix))
+        if own is not None:
+            return own, P.POSTFIX
         delta = "1" if node.op == "++" else "-1"
         name = self.local_name(node.operand)
         if name is not None:

@@ -66,3 +66,8 @@ def test_a_chrono_duration_and_a_range_cast_take_template_arguments() -> None:
     text = translate(source, "t.C")
     assert "ROOT.std.chrono.duration['double', 'std::nano'](500)" in text
     assert "dynamic_range_cast['FlexibleInterpVar*']" in text
+
+
+def test_a_label_no_goto_jumps_to_is_passed_over() -> None:
+    text = translate("void t() { int n = 1;\n file: n = 2;\n { done: } }", "t.C")
+    assert "    n = 2\n" in text and "file" not in text.split("def t", 1)[1]

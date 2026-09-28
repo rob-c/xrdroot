@@ -80,7 +80,10 @@ class StmtParser(ExprParser):
         if handler is not None:
             return handler(self)
         if token.kind == "id" and token.text not in KEYWORDS and self.peek(1).is_(":"):
-            raise self.refuse(f"the label {token.text}:, which only a goto jumps to")
+            # A label is only somewhere for a goto to go, and every goto is refused.
+            self.take()
+            self.take()
+            return self.statement() if not self.at_("}") else Empty(token.where)
         if self.looks_declaration():
             return self.declaration_statement()
         expr = self.expression()

@@ -232,7 +232,21 @@ def iterate(container: Any) -> Iterable[Any]:
     items = getattr(container, "items", None)
     if callable(items) and not isinstance(container, np.ndarray):
         return [Pair(key, value) for key, value in items()]
-    return container  # type: ignore[no-any-return]
+    if hasattr(container, "_deref") or not hasattr(type(container), "begin"):
+        return container  # type: ignore[no-any-return]
+    return _walked(container)
+
+
+def _walked(container: Any) -> Iterator[Any]:
+    """A range-for over a class of the macro's own with ``begin()`` and ``end()``.
+
+    Its iterators are the macro's too: ``*it`` is their ``_deref``, ``++it``
+    their ``_preinc``, and ``it != end`` their ``__ne__``, as C++ calls them.
+    """
+    it, end = container.begin(), container.end()
+    while it != end:
+        yield it._deref()
+        it._preinc()
 
 
 def sort_range(

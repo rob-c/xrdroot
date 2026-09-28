@@ -203,9 +203,14 @@ class ClassEmitter(FunctionEmitter):
 
     def _method(self, info: ClassInfo, name: str, funcs: list[Function]) -> None:
         funcs = [func for func in funcs if func.kind not in ("constructor",)]
-        if not funcs:
-            return
-        py = self._method_name(funcs[0])
+        # ``operator++()`` and ``operator++(int)`` are two Python methods, not one set.
+        named: dict[str, list[Function]] = {}
+        for func in funcs:
+            named.setdefault(self._method_name(func), []).append(func)
+        for py, group in named.items():
+            self._method_set(name, py, group)
+
+    def _method_set(self, name: str, py: str, funcs: list[Function]) -> None:
         static = funcs[0].static
         self.out.blank()
         decorator = "@staticmethod" if static and len(funcs) == 1 else None

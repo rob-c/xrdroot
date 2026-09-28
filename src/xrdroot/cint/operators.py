@@ -14,7 +14,7 @@ __all__ = ["DUNDERS", "python_operator"]
 DUNDERS = {
     "operator+": ("__add__", "__pos__"),
     "operator-": ("__sub__", "__neg__"),
-    "operator*": ("__mul__", None),
+    "operator*": ("__mul__", "_deref"),
     "operator/": ("__truediv__", None),
     "operator%": ("__mod__", None),
     "operator==": ("__eq__", None),
@@ -36,6 +36,9 @@ DUNDERS = {
     "operator<<": ("__lshift__", None),
     "operator>>": ("__rshift__", None),
     "operator=": ("_assign", None),
+    "operator++": ("_postinc", "_preinc"),
+    "operator--": ("_postdec", "_predec"),
+    "operator->": (None, "_arrow"),
     "operator bool": (None, "__bool__"),
     "operator double": (None, "__float__"),
     "operator float": (None, "__float__"),

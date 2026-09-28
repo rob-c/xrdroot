@@ -235,6 +235,10 @@ class StmtEmitter(CallEmitter):
     def _increment_statement(self, expr: Unary) -> bool:
         if expr.op not in ("++", "--"):
             return False
+        own = self.own_operator(expr.operand, "operator" + expr.op, int(expr.postfix))
+        if own is not None:
+            self.out.line(own, expr.where)
+            return True
         op = "+=" if expr.op == "++" else "-="
         one = Literal(expr.where, "int", 1, "int")
         return self._assign_statement(Assign(expr.where, op, expr.operand, one))

@@ -36,3 +36,22 @@ def test_the_survey_counts_what_translates_is_refused_and_crashes(
 def test_a_reason_keeps_its_wording_and_drops_its_particulars() -> None:
     why = "the static local 'count' in f() on line 12 is refused"
     assert cint_survey.reason(why) == "the static local … in … on line … is refused"
+
+
+def test_every_tutorial_kept_here_translates_and_the_ratchet_holds() -> None:
+    # The full tree (ROOT 6.40.04's 910 macros) is surveyed by hand, as
+    # docs/root.md records; the copies kept here must all still translate.
+    tutorials = Path(__file__).parent / "data" / "cint"
+    files, outcome = cint_survey.survey(tutorials)
+    assert files and not outcome["refused"] and not outcome["crashed"]
+    assert cint_survey.main([str(tutorials), "--min-percent", "100"]) == 0
+
+
+def test_the_ratchet_fails_below_its_floor(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "good.C").write_text("void good() {}\n")
+    (tmp_path / "jump.C").write_text("void jump() { goto end; }\n")
+    assert cint_survey.main([str(tmp_path), "--min-percent", "50"]) == 0
+    assert cint_survey.main([str(tmp_path), "--min-percent", "95"]) == 1
+    assert "50.0% translate, and the floor is 95%" in capsys.readouterr().out

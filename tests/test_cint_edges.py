@@ -149,7 +149,7 @@ def test_a_specialisation_of_a_class_template_is_refused() -> None:
     ("source", "why"),
     [
         ("void t() {", "an expression was expected, and the end of the macro is there"),
-        ("struct A { A operator*() { return *this; } };", r"the operator \* with this many"),
+        ("struct A { A operator/() { return *this; } };", r"the operator / with this many"),
         ("void t() { int n = sizeof(double[n]); }", "sizeof of a type whose size"),
     ],
 )

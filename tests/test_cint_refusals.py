@@ -37,7 +37,6 @@ def test_the_corners_of_the_grammar_are_read(source: str, fragment: str) -> None
     ("source", "why"),
     [
         ("goto end; end: ;", "goto, which jumps to a label"),
-        ("end: return;", "the label end:, which only a goto jumps to"),
         ("char buf[8]; TH1F *h = new (buf) TH1F();", "placement new"),
         ("auto a = alignof(int);", "alignof is not something"),
         ("auto a = typeid(x);", "typeid is not something"),
@@ -71,8 +70,8 @@ def test_constructs_with_no_python_are_refused_by_name_at_their_line(source: str
         ("int f() try { return 1; } catch (...) { return 0; }", "a function-try-block"),
         ("struct A { int bits : 3; };", "the bit-field bits"),
         (
-            "template void f<int>(int);\nstruct B { B operator++() { return *this; } };",
-            "the operator \\+\\+ defined for a class",
+            "template void f<int>(int);\nstruct B { B operator,(B o) { return *this; } };",
+            "the operator , defined for a class",
         ),
         (
             "struct V { int x; };\nV operator+(V a, V b) { return a; }",
