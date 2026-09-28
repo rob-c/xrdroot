@@ -53,6 +53,30 @@ def _no_pooled_connections():
     SESSIONS.clear()
 
 
+#: ROOT's globals a macro or a script may assign to, which live on the shared
+#: ``xrdroot.pyroot`` namespace: ``gRandom = new TRandom3(0)`` in one test must
+#: not decide what another draws.
+ROOT_GLOBALS = ("gRandom", "gStyle", "gErrorIgnoreLevel", "gDebug", "gBenchmark")
+
+
+@pytest.fixture(autouse=True)
+def _root_globals_restored():
+    """Put back whatever of ROOT's globals a test reassigned, as it found them."""
+    import sys
+
+    namespace = sys.modules.get("xrdroot.pyroot")
+    if namespace is None:
+        yield
+        return
+    saved = {name: namespace.__dict__[name] for name in ROOT_GLOBALS if name in namespace.__dict__}
+    yield
+    for name in ROOT_GLOBALS:
+        if name in saved:
+            namespace.__dict__[name] = saved[name]
+        else:
+            namespace.__dict__.pop(name, None)
+
+
 @pytest.fixture
 def config() -> Config:
     """A config that never reaches the network or the local filesystem."""
