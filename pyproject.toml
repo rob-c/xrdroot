@@ -47,6 +47,11 @@ zstd = ["zstandard>=0.21"]
 # Minuit, for the fits that are not linear in their parameters: TH1::Fit's
 # MIGRAD, HESSE and MINOS, through the Minuit2 C++ iminuit wraps.
 fit = ["iminuit>=2.20"]
+# TMVA's learners: scikit-learn grows the decision trees, the SVM and the
+# PyMVA ensembles, SciPy's L-BFGS trains the MLP, XGBoost is what
+# SaveXGBoost and RBDT read, and PyTorch - where it has a wheel - trains the
+# deep networks (NumPy's own descent does when it does not).
+tmva = ["scikit-learn>=1.3", "scipy>=1.10", "xgboost>=2", "torch>=2; platform_machine != 'x86_64' or sys_platform != 'darwin'"]
 dev = [
   # The libraries a tree or a histogram can be handed to, so that every one of
   # those hand-overs is exercised by the suite rather than trusted.
@@ -67,6 +72,11 @@ dev = [
   "polars>=1",
   "pyarrow>=14",
   "complexipy>=6,<7",
+  # TMVA's learners, so every method is trained for real; PyTorch is left out,
+  # its adapter being tested against a stand-in, as it has no wheel everywhere.
+  "scikit-learn>=1.3",
+  "scipy>=1.10",
+  "xgboost>=2",
   "mypy>=1.10",
   "pytest>=8",
   "pytest-cov",
@@ -145,6 +155,13 @@ ignore_missing_imports = true
 # turned into NumPy arrays and floats there.
 [[tool.mypy.overrides]]
 module = ["iminuit", "iminuit.*"]
+ignore_missing_imports = true
+
+# TMVA's learners ship no stubs (scikit-learn, SciPy's optimizers, XGBoost)
+# or are not always installed (PyTorch). Each is reached inside the method
+# that trains with it, and what it hands back is made NumPy arrays there.
+[[tool.mypy.overrides]]
+module = ["sklearn", "sklearn.*", "scipy", "scipy.*", "xgboost", "xgboost.*", "torch", "torch.*"]
 ignore_missing_imports = true
 
 # These two are typed but not always there: xxhash comes only with the lz4

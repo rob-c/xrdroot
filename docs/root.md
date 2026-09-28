@@ -1343,6 +1343,107 @@ The same goes for, among others:
 Refusing is better than a curve or a fit that is almost ROOT's. A workspace read from a ROOT
 file is refused as well, because the file holds C++ code for it to compile.
 
+## TMVA
+
+`ROOT.TMVA.Factory`, `ROOT.TMVA.DataLoader`, `ROOT.TMVA.Reader` and the rest of TMVA are
+here, over an engine of its own, `xrdroot.tmva`, with NumPy under it and scikit-learn,
+SciPy, XGBoost and - where it has a wheel - PyTorch for the methods that learn
+iteratively (`pip install xrdroot[tmva]`). A TMVA macro runs unchanged: its option
+strings are read as TMVA reads them, and it prints TMVA's messages and tables, writes
+TMVA's output file - `dataset/InputVariables_*`, `Method_<type>/<title>`, `TestTree` and
+`TrainTree` - and TMVA's weight files, `dataset/weights/<job>_<title>.weights.xml`.
+
+```python
+import xrdroot.pyroot as ROOT
+
+loader = ROOT.TMVA.DataLoader("dataset")
+for name in ("var1", "var2", "var3", "var4"):
+    loader.AddVariable(name, "F")
+loader.AddSignalTree(signal)
+loader.AddBackgroundTree(background)
+loader.PrepareTrainingAndTestTree("", "SplitMode=Random:NormMode=NumEvents:!V")
+
+output = ROOT.TFile.Open("TMVAC.root", "RECREATE")
+factory = ROOT.TMVA.Factory("TMVAClassification", output, "!V:AnalysisType=Classification")
+factory.BookMethod(loader, ROOT.TMVA.Types.kBDT, "BDT", "NTrees=850:MaxDepth=3")
+factory.TrainAllMethods(); factory.TestAllMethods(); factory.EvaluateAllMethods()
+print(factory.GetROCIntegral(loader, "BDT"))
+
+reader = ROOT.TMVA.Reader("!Color:!Silent")      # and back, one event at a time
+```
+
+**ROOT to xrdroot.**
+- **The data set** - the split, the renormalisation, the correlation matrices - is TMVA's
+  to the digit: the events are drawn from TMVA's `TRandom3(SplitSeed)` and shuffled as
+  libc++'s `std::shuffle` shuffles them.
+- **The transformations** (`I`, `N`, `D`, `P`, `G`, `U` and chains of them, per class or
+  for all) are TMVA's, PCA's eigenvectors by the same Householder reduction and QL iterations
+  (JAMA's, as `TMatrixDSymEigen` has them), signs and all.
+- **The evaluation** is TMVA's: the efficiencies from its 10000-bin cumulative histograms
+  and root finder, the ROC integral from `ROCCurve`, the regression's biases, RMS and
+  mutual information, the multiclass 1-vs-rest tables and confusion matrices.
+- **The Reader** takes `&var` addresses (cells) from a macro and one-element arrays from
+  Python; `EvaluateMVA`, `EvaluateRegression`, `EvaluateMulticlass`, `GetProba`,
+  `GetRarity`, `GetMVAError` and `FindMVA` are TMVA's. It reads every weight file the
+  Factory here writes, and TMVA's own for the methods listed below as read.
+- **CrossValidation** splits folds by `SplitExpr` or TMVA's own shuffled draw, trains a
+  method per fold and a `CrossValidation` method over them; the Envelope
+  `TMVA::Experimental::Classification` is here too.
+- **`TMVA::Experimental`**: `RTensor`, `AsTensor`, `RReader`, `Compute`,
+  `RStandardScaler`, `RBDT` and `SaveXGBoost`; and `ROOT.Experimental.ML.RDataLoader`.
+- **The genetic algorithm** (`GeneticFitter`, `IFitterTarget`, `Interval`) is TMVA's, draw
+  for draw.
+
+**The methods, and what trains them.** Where the method is TMVA's closed form or TMVA's
+own sampler, it is ported, and its outputs are TMVA's to single precision; where TMVA
+trains iteratively, a library does, with TMVA's options mapped onto it.
+
+| Method | Trained by | Against TMVA 6.40 (the tutorials' samples) |
+|---|---|---|
+| `LD`, `Fisher` (and `Mahalanobis`) | TMVA's sums and inversions | coefficients and outputs exact |
+| `Likelihood` (`Spline0`-`Spline2` PDFs, `TransformOutput`) | TMVA's PDFs, smoothing and interpolation | outputs exact, ranking too |
+| `Cuts` (`FitMethod=MC`, `GA`; `FMax`/`FMin`/`FSmart`) | TMVA's Monte Carlo and genetic samplers | cuts and efficiencies exact |
+| `FDA` (`FitMethod=MC`, `GA`) | TMVA's samplers over the user's formula | MC exact; GA see below |
+| `PDERS` (every kernel; `Unscaled`, `MinMax`, `RMS`, `Adaptive`) | TMVA's adaptive box, in single precision | outputs exact, search tree written node for node |
+| `PDEFoam` (one foam, two, multiclass, regression) | TMVA's foam, draw for draw | outputs exact |
+| `KNN` | brute-force neighbours, TMVA's scaling and kernels | outputs exact |
+| `SVM` | scikit-learn `SVC`/`SVR`, TMVA's per-event costs | ROC integral exact to three places |
+| `BDT` (`AdaBoost`, `RealAdaBoost`, `Grad`, `Bagging`, `AdaBoostR2`; regression, multiclass) | scikit-learn trees, TMVA's boosting and bagging | ROC 0.888 vs 0.889 |
+| `MLP` (`BFGS`, `BP`; Bayesian regulator) | NumPy back-propagation, SciPy's L-BFGS | ROC 0.921 vs 0.919 |
+| `DL`/`DNN` (dense layers) | PyTorch, or NumPy's own Adam/SGD without it | ROC 0.921 vs 0.919 |
+| `RuleFit` (`RFTMVA`) | a boosted scikit-learn forest, a gradient-directed path | ROC 0.893 vs 0.875 |
+| `Category` | its sub-methods, each over its own data set | as its sub-methods |
+| `CrossValidation` | its folds' methods | as they |
+| `PyRandomForest`, `PyAdaBoost`, `PyGTB` | scikit-learn, as TMVA's PyMVA wraps it | - |
+
+The mapping onto scikit-learn: a BDT's `MaxDepth`, `MinNodeSize` (as
+`min_weight_fraction_leaf`), `SeparationType` (`GiniIndex` and `CrossEntropy`; the other
+separations are grown as `GiniIndex`), `UseNvars` and
+`UseRandomisedTrees` (`max_features`) grow each tree; TMVA's own code does the boosting -
+the event weights, the tree weights, `Shrinkage`, `UseBaggedBoost` with TMVA's
+`TRandom3` draws - and the trees are written in TMVA's `<BinaryTree>` XML and read back by
+xrdroot's own evaluator, which reads TMVA's BDT weight files too.
+
+**Why some are not TMVA's to the digit.** A decision tree grown by scikit-learn splits
+where TMVA's `nCuts` grid does not; a network's weights start from another generator; and
+TMVA's `FDA_GA` and `TMVAGAexample` draw from a generator seeded from the clock
+(`GeneticAlgorithm`'s store is `TRandom3(0)`), so ROOT does not repeat itself either.
+TMVA's ROC integral of an output with many equal values depends on how its C++ library's
+`std::sort` orders them; xrdroot keeps the order stable, which can move the third decimal
+(PDEFoam's 0.830 against 0.829). After reading a weight file TMVA does not process a
+method's options again, so a PDERS read back evaluates with the box kernel, whatever was
+booked - xrdroot does the same, since that is what TMVA's test outputs are.
+
+**What it refuses.** A method this engine does not have is refused by name when booked or
+read: `HMatrix`, `CFMlpANN`, `TMlpANN`, `BoostedFisher` (TMVA's generalised boosting),
+`PyKeras` and `PyTorch` (a user's own model file), and SOFIE. So are the options that need
+what is not here: `FitMethod=SA` and `MINUIT` and a MINUIT `Converger`, RuleFit's
+`RFFriedman`, the `Spline3`, `Spline5` and `KDE` PDFs, PDEFoam's decision-tree cell splitting and kernels, and the DL layers other
+than dense (`CONV`, `MAXPOOL`, `RNN`, `LSTM`, `GRU`, `BNORM`...). PDE-Foam writes its foams
+beside the weight file as trees of cells; TMVA's own `_foams.root`, which holds `PDEFoam`
+objects, is refused when read, and `RStandardScaler.Save` and `SaveXGBoost` write trees that
+xrdroot reads but ROOT does not. TMVA's standalone `.class.C` files are not written.
+
 ## Columns
 
 ```python
