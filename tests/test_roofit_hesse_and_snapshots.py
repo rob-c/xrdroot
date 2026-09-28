@@ -28,8 +28,9 @@ def test_hesse_scores_what_it_could_not_do_as_minuit2_does() -> None:
         minimizer._hesse_code(fmin(has_posdef_covar=False)),
         minimizer._hesse_code(fmin()),
         minimizer._hesse_code(fmin(has_covariance=True, hesse_failed=True, has_posdef_covar=False)),
+        minimizer._hesse_code(fmin(has_covariance=True, hesse_failed=True)),
     ]
-    assert codes == [0, 1, 3, 4, 3]
+    assert codes == [0, 1, 3, 4, 3, 0]
 
 
 def test_a_hessian_a_parameter_does_not_move_fails_with_roots_status_302(
