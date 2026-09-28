@@ -705,8 +705,8 @@ def test_a_decay_with_per_event_errors_is_fitted_and_averaged_over_them_as_root_
 def test_a_histogram_over_a_per_event_error_says_once_the_convolution_integrates_it_numerically(
     capsys: Any,
 ) -> None:
-    """``createHistogram(dt, YVar(dterr))`` of rf306: the convolution has no closed form in dterr."""
-    dt, dterr, bias, sigma, decay, landau = _per_event_errors()
+    """``createHistogram(dt, YVar(dterr))`` of rf306: no closed form of the convolution in dterr."""
+    dt, dterr, _, _, decay, _ = _per_event_errors()
     capsys.readouterr()
     for _ in range(2):
         decay.createHistogram("hh_decay", dt, RooCmdArg("Binning", 5), YVar=(dterr, {"Binning": 5}))

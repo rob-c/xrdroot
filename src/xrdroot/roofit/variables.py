@@ -166,6 +166,9 @@ class RooRealVar(RooAbsRealLValue):
     def setRange(self, *args: Any) -> None:
         """``setRange(min, max)``, or ``setRange(name, min, max)`` for a named range."""
         if args and isinstance(args[0], str):
+            if any(hasattr(one, "getVal") for one in args[1:3]):
+                self._shared[args[0]] = self._param_binning(args[1], args[2], 100, args[0])
+                return  # RooFit says nothing of a named range whose ends are functions
             self._set_named_range(args[0], float(args[1]), float(args[2]))
             return
         if any(hasattr(one, "getVal") for one in args[:2]):
@@ -186,11 +189,16 @@ class RooRealVar(RooAbsRealLValue):
     def _param_range(self, low: Any, high: Any) -> None:
         """``setRange(tmin, tmax)``: ends that are functions, read whenever the range is asked
         for."""
+        self._binning = self._param_binning(low, high, self._binning.numBins())
+
+    @staticmethod
+    def _param_binning(low: Any, high: Any, bins: int = 100, name: str = "") -> RooParamBinning:
+        """A range whose ends are functions - numbers are made constants - of ``bins`` bins."""
         ends = [
             one if hasattr(one, "getVal") else RooConstVar(g(one), g(one), float(one))
             for one in (low, high)
         ]
-        self._binning = RooParamBinning(ends[0], ends[1], self._binning.numBins())
+        return RooParamBinning(ends[0], ends[1], bins, name)
 
     def _set_named_range(self, name: str, low: float, high: float) -> None:
         exists = name in self._shared

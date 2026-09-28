@@ -184,9 +184,15 @@ class evaluating:
 
 
 def _end(function: Any) -> Any:
-    """An end's value: from the values being evaluated if they have it - a column, perhaps."""
-    if EVALUATING and function.GetName() in EVALUATING[-1]:
-        return function.compute(EVALUATING[-1])
+    """An end's value: from the values being evaluated if they have it - a column, perhaps.
+
+    An end that is a function of variables being evaluated - ``0.1*x`` while
+    an integral runs over ``x`` - is computed from their values there.
+    """
+    if EVALUATING:
+        ctx = EVALUATING[-1]
+        if function.GetName() in ctx or not function.dependents().isdisjoint(ctx):
+            return function.compute(ctx)
     return function.getVal()
 
 

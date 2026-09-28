@@ -22,6 +22,7 @@ from typing import Any
 
 import numpy as np
 
+from .binning import evaluating
 from .messages import INFO, WARNING, log
 
 __all__ = ["EPS", "announce", "integral", "improper", "integrate_1d", "numeric_names", "romberg"]
@@ -35,14 +36,15 @@ N_POINTS = 5
 Integrand = Callable[[np.ndarray[Any, Any]], Any]
 
 
-def _trapezoids(func: Integrand, saved: Any, n: int, low: float, high: float) -> Any:
+def _trapezoids(func: Integrand, saved: Any, n: int, low: Any, high: Any) -> Any:
+    """One refinement of the trapezoid rule; ends may be arrays - a range per outer point."""
     width = high - low
     if n == 1:
-        values = func(np.array([low, high]))
+        values = func(np.stack(np.broadcast_arrays(low, high), axis=-1))
         return 0.5 * width * (values[..., 0] + values[..., 1])
     count = 1 << (n - 2)
-    step = width / count
-    points = low + (0.5 + np.arange(count)) * step
+    step = np.asarray(width / count)[..., None]
+    points = np.asarray(low)[..., None] + (0.5 + np.arange(count)) * step
     return 0.5 * (saved + width * np.sum(func(points), axis=-1) / count)
 
 
@@ -88,7 +90,7 @@ def romberg(
     name: str = "",
 ) -> Any:
     """``RooFit::Detail::integrate1d``: the integral of ``func`` from ``low`` to ``high``."""
-    if high - low == 0.0:
+    if np.ndim(low) == np.ndim(high) == 0 and high - low == 0.0:
         return 0.0 * func(np.array([low]))[..., 0]
     h = [1.0]
     s: list[Any] = []
@@ -138,7 +140,7 @@ def improper(func: Integrand, low: float, high: float, name: str = "") -> Any:
 
 def integrate_1d(func: Integrand, low: float, high: float, name: str = "") -> Any:
     """``RooIntegrator1D`` over a closed range, ``RooImproperIntegrator1D`` over an open one."""
-    if np.isinf(low) or np.isinf(high):
+    if np.any(np.isinf(low)) or np.any(np.isinf(high)):
         return improper(func, low, high, name)
     return romberg(func, low, high, name=name)
 
@@ -246,12 +248,14 @@ def _nested(
     rng: Any,
 ) -> Any:
     name, *others = rest
-    low, high = func.bounds(name, rng)
+    with evaluating(ctx):  # a range whose ends are functions of the variables outside
+        low, high = func.bounds(name, rng)
 
     def along(points: np.ndarray[Any, Any]) -> Any:
         c = _expanded(ctx)
         c[name] = points
-        values = _nested(func, others, inner, c, rng) if others else inner(c)
+        with evaluating(c):
+            values = _nested(func, others, inner, c, rng) if others else inner(c)
         return np.broadcast_to(values, np.broadcast(values, points).shape)
 
     return integrate_1d(along, low, high, func.GetName())
