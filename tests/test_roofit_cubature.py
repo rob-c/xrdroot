@@ -22,6 +22,7 @@ import numpy as np
 import pytest
 
 from refmachine import ROOTS_MACHINE
+from xrdroot.random import libm
 from xrdroot.roofit import cubature
 from xrdroot.roofit.cubature import Cubature, adaptive_integral, integrate_nd
 
@@ -31,7 +32,7 @@ def gauss2(x: Sequence[float]) -> float:
 
 
 def gauss2_many(points: Any) -> Any:
-    return np.exp(-points[:, 0] * points[:, 0] - points[:, 1] * points[:, 1])
+    return libm.exp(-points[:, 0] * points[:, 0] - points[:, 1] * points[:, 1])  # math.exp's
 
 
 def peak2(x: Sequence[float]) -> float:
