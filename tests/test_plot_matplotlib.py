@@ -141,14 +141,30 @@ def test_the_librarys_own_keywords_reach_the_first_layer_only():
     assert ax.lines[0].get_zorder() == 7 and ax.lines[1].get_zorder() != 7
 
 
-def test_a_million_cells_draw_in_well_under_a_couple_of_seconds():
-    made = Histogram.book("big", (1000, 0, 1), (1000, 0, 1))
+def _drawn(cells: int) -> tuple[float, object]:
+    """The seconds a ``cells`` by ``cells`` histogram takes to draw to a PNG, and its axes."""
+    made = Histogram.book("big", (cells, 0, 1), (cells, 0, 1))
     rng = np.random.default_rng(3)
     made.fill(rng.random(100_000), rng.random(100_000))
     started = time.perf_counter()
     ax = made.plot()
     ax.figure.savefig(io.BytesIO(), format="png")
-    assert time.perf_counter() - started < 5.0
+    return time.perf_counter() - started, ax
+
+
+def test_a_million_cells_draw_in_well_under_a_couple_of_seconds():
+    """A million cells are one image, not a million rectangles, so they draw in a few times
+    what a hundred cells take - about three, here: the same figure, axes and PNG, and a
+    bigger picture in it. A wall clock alone fails on a machine busy with other things, so
+    the measure is a hundred cells drawn on the same machine just before - the best of three
+    of those and of two of the million, so that a moment's stall in one draw is not taken
+    for its cost. Twenty times is a wide margin, and still far short of drawing the cells one
+    by one, which takes minutes."""
+    _drawn(10)  # the first draw loads fonts and the like: it is not timed
+    small = min(_drawn(10)[0] for _ in range(3))
+    (big, ax), (again, _) = _drawn(1000), _drawn(1000)
+    assert len(ax.images) == 1 and not ax.patches and not ax.collections
+    assert min(big, again) < 20 * small
 
 
 def test_an_svg_is_drawn_without_pyplot_hearing_of_it():
