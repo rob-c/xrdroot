@@ -37,6 +37,7 @@ SUBMODULES = [
     "graphics",
     "graphics.ratioplot",
     "roofit",
+    "roostats",
     "tcut",
     "tmva",
     "spectra.tspectrum",

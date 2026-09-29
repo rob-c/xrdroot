@@ -60,9 +60,14 @@ class RooWorkspace(RooPrintable):
         if isinstance(obj, (list, tuple, set)) or hasattr(obj, "_list"):
             return all([self.Import(one, *args, **kwargs) for one in as_list(obj)])  # noqa: C419
         if not hasattr(obj, "servers"):
-            self._generic[obj.GetName()] = obj
-            return False
+            return self._import_generic(obj)
         return self._import_node(obj, options)
+
+    def _import_generic(self, obj: Any) -> bool:
+        """``import(TObject&)``: a copy of anything else - a ModelConfig, a histogram - by name."""
+        clone = getattr(obj, "Clone", None)
+        self._generic[obj.GetName()] = clone() if callable(clone) else obj
+        return False
 
     def _import_node(self, top: Any, options: Any) -> bool:
         from .editing import rename_all
@@ -176,6 +181,12 @@ class RooWorkspace(RooPrintable):
     # -- named sets and snapshots -------------------------------------------------
 
     def defineSet(self, name: str, content: Any, importMissing: bool = False) -> bool:
+        """A named set of the workspace's nodes - those named in ``content`` - importing any it
+        lacks when ``importMissing`` says to."""
+        if not isinstance(content, str) and importMissing:
+            for one in as_list(content):
+                if one.GetName() not in self._nodes:
+                    self.Import(one)
         items = (
             [self._nodes.get(n) for n in str(content).split(",")]
             if isinstance(content, str)
@@ -183,6 +194,14 @@ class RooWorkspace(RooPrintable):
         )
         self._sets[str(name)] = RooArgSet([one for one in items if one is not None])
         return False
+
+    def removeSet(self, name: str) -> bool:
+        """Forget the named set ``name``; ``True`` if there was none."""
+        return self._sets.pop(str(name), None) is None
+
+    def argSet(self, names: str) -> RooArgSet:
+        """The workspace's nodes named in the comma-separated ``names``."""
+        return RooArgSet([self._nodes[n] for n in str(names).split(",") if n in self._nodes])
 
     def extendSet(self, name: str, names: str) -> bool:
         found = self._sets.setdefault(str(name), RooArgSet())
@@ -252,6 +271,10 @@ class RooWorkspace(RooPrintable):
         _lines(
             "named sets\n----------\n",
             [f"{k}:{self._sets[k].printValue()}" for k in sorted(self._sets)],
+        )
+        _lines(
+            "generic objects\n---------------\n",
+            [f"{o.ClassName()}::{o.GetName()}" for o in self._generic.values()],
         )
 
 
