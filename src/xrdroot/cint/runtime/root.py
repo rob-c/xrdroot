@@ -22,12 +22,13 @@ __all__ = ["RootProxy", "ROOT"]
 #: The module ROOT's names come from when nothing else was bound.
 DEFAULT = "xrdroot.pyroot"
 #: Namespaces whose names a macro uses unqualified - every RooFit tutorial says
-#: ``using namespace RooFit``, TMVA's say ``using namespace TMVA`` - looked in when
+#: ``using namespace RooFit``, TMVA's say ``using namespace TMVA``, dataframe ones
+#: ``using namespace ROOT::RDF`` - looked in when
 #: ROOT itself has no such name. A macro without the ``using`` would not have
 #: compiled, so looking there is never wrong. ``RooStats::HistFactory``'s functions
 #: are called unqualified by argument-dependent lookup - ``MakeModelAndMeasurementFast(meas)``
 #: of a ``HistFactory::Measurement`` - which finds them there too.
-USED = ("RooFit", "RooStats", "RooStats.HistFactory", "TMVA", "TMVA.Experimental")
+USED = ("RooFit", "RooStats", "RooStats.HistFactory", "TMVA", "TMVA.Experimental", "RDF")
 #: What the macros run so far declared at their top - functions and classes - by name, as
 #: cling keeps them: a line run later (``ProcessLine("Pal1();")``, a ``TExec``) finds them.
 DECLARED: dict[str, Any] = {}

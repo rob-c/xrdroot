@@ -265,6 +265,8 @@ def open_named(name: str, files: Any) -> Source:
 
 def wrap(data: Any) -> Source:
     """A tree, chain or RNTuple handed over as it is, which the frame leaves open."""
+    if isinstance(data, Source):
+        return data
     if isinstance(data, (TTree, Chain, RNTuple)):
         return Table(data)
     raise UnsupportedFeatureError(

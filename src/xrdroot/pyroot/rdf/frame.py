@@ -12,7 +12,7 @@ once as PyROOT's does - a NumPy array for each entry of a collection - and
 from __future__ import annotations
 
 import io
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from typing import Any
 
 import numpy as np
@@ -21,6 +21,8 @@ from ... import rdf as _rdf
 from ...tree import Jagged
 from ..stl import is_vector
 from ..trees import hooks
+from .datasources import RCsvDS, csv_source, lazy_source, sqlite_source
+from .entrywise import per_entry
 
 __all__ = ["RDataFrame", "RResultPtr", "RDF"]
 
@@ -99,6 +101,21 @@ def _column(values: Any) -> Any:
     return np.asarray(values)
 
 
+class _Method:
+    """A frame's method, called with PyROOT's objects; ``m['double']`` - a macro's C++ template
+    arguments - is the same method, since a column's type is read from the data."""
+
+    def __init__(self, name: str, found: Callable[..., Any]) -> None:
+        self.name, self.found = name, found
+
+    def __call__(self, *arguments: Any, **options: Any) -> Any:
+        given = per_entry(self.name, [_unwrapped(each) for each in arguments])
+        return _wrapped(self.found(*given, **{k: _unwrapped(v) for k, v in options.items()}))
+
+    def __getitem__(self, types: Any) -> _Method:
+        return self
+
+
 class RDataFrame:
     """``ROOT.RDataFrame``, and every node a transformation of it makes."""
 
@@ -122,11 +139,7 @@ class RDataFrame:
         if not callable(found):
             return found
 
-        def method(*arguments: Any, **options: Any) -> Any:
-            given = [_unwrapped(each) for each in arguments]
-            return _wrapped(found(*given, **{k: _unwrapped(v) for k, v in options.items()}))
-
-        return method
+        return _Method(name, found)
 
     def AsNumpy(self, columns: Any = None, exclude: Any = None, lazy: bool = False) -> Any:
         """Every column asked for, read now, as a dict of NumPy arrays."""
@@ -144,6 +157,21 @@ def _from_numpy(columns: dict[str, Any]) -> RDataFrame:
     return RDataFrame(open_root(io.BytesIO(buffer.getvalue()))["numpy"])
 
 
+def _from_csv(*arguments: Any, **options: Any) -> RDataFrame:
+    """``RDF.FromCSV``: a frame over a CSV file's columns (see :mod:`.datasources`)."""
+    return RDataFrame(csv_source(*arguments, **options))
+
+
+def _from_sqlite(fileName: Any, query: Any) -> RDataFrame:
+    """``RDF.FromSqlite``: a frame over the rows an SQL query gives."""
+    return RDataFrame(sqlite_source(fileName, query))
+
+
+def _from_results(*pairs: Any) -> RDataFrame:
+    """``RDF.MakeLazyDataFrame``: a frame over columns ``Take`` booked."""
+    return RDataFrame(lazy_source(*pairs))
+
+
 def _model(*parts: Any) -> tuple[Any, ...]:
     """``TH1DModel`` and its kin: the tuple xrdroot books from, in the constructor's order."""
     return tuple(list(part) if isinstance(part, np.ndarray) else part for part in parts)
@@ -159,6 +187,12 @@ class _RDF:
     RunGraphs = staticmethod(_run_graphs)
     FromNumpy = staticmethod(_from_numpy)
     MakeNumpyDataFrame = staticmethod(_from_numpy)
+    FromCSV = staticmethod(_from_csv)
+    MakeCsvDataFrame = staticmethod(_from_csv)
+    FromSqlite = staticmethod(_from_sqlite)
+    MakeLazyDataFrame = staticmethod(_from_results)
+    MakeSqliteDataFrame = staticmethod(_from_sqlite)
+    RCsvDS = RCsvDS
     TH1DModel = staticmethod(_model)
     TH2DModel = staticmethod(_model)
     TH3DModel = staticmethod(_model)

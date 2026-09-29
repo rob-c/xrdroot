@@ -18,6 +18,7 @@ kept too.
 from __future__ import annotations
 
 import atexit
+import io
 import os
 import struct
 from typing import Any
@@ -492,6 +493,13 @@ def _local(name: str) -> bool:
     return "://" not in name or name.startswith("file://")
 
 
+def _fetched(name: str) -> Any:
+    """What a file is read from: its path, or - for a URL - the bytes fetched from it."""
+    from ...remote import fetch, is_remote
+
+    return io.BytesIO(fetch(name)) if is_remote(name) else name
+
+
 class TFile(TDirectoryFile):
     """``TFile``: a ROOT file - read, made anew, or added to - and the directory at its top."""
 
@@ -531,7 +539,7 @@ class TFile(TDirectoryFile):
         from ... import open_root
 
         try:
-            self._reading = open_root(name)
+            self._reading = open_root(_fetched(name))
         except (OSError, ValueError, ROOTError) as why:
             missing = isinstance(why, FileNotFoundError)
             text = "file %s does not exist" if missing else "file %s is not a ROOT file"
