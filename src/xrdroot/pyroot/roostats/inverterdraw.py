@@ -68,16 +68,36 @@ def _extra(plot: Any, option: str, observed: Any) -> list[Any]:
     return drawn
 
 
-def draw(plot: Any, option: str) -> list[Any]:
-    from ..graphics.legend import TLegend
-    from ..graphics.pads import current
-
+def _curves(plot: Any, option: str) -> tuple[Any, Any, Any]:
+    """The observed curve and the expected bands, as ``OBS`` and ``EXP`` ask - and the graph
+    whose frame the axes are, if drawn here."""
     axis = "SAME" not in option
     observed = frame = expected = None
     if "OBS" in option or "EXP" not in option:
         observed, frame = _observed(plot, axis)
     if "EXP" in option or "OBS" not in option:
         expected, frame = _expected(plot, axis, frame)
+    return observed, expected, frame
+
+
+def _legend(observed: Any, expected: Any, extra: list[Any], tall: bool) -> Any:
+    """The legend: the observed curve and the other CLs, then the bands, median first."""
+    from ..graphics.legend import TLegend
+
+    legend = TLegend(0.6, 0.6, 0.9, 0.6 + (0.3 if tall else 0.15))
+    for one in ([observed] if observed is not None else []) + extra:
+        legend.AddEntry(one, "", "PEL")
+    graphs = list(expected.GetListOfGraphs()) if expected is not None else []
+    for i in range(len(graphs) - 1, -1, -1):
+        legend.AddEntry(graphs[i], "", "L" if i == len(graphs) - 1 else "F")
+    legend.Draw()
+    return legend
+
+
+def draw(plot: Any, option: str) -> list[Any]:
+    from ..graphics.pads import current
+
+    observed, expected, frame = _curves(plot, option)
     kept = [one for one in (observed, expected) if one is not None]
     if frame is not None:
         kept.append(_size_line(plot, frame))
@@ -85,14 +105,7 @@ def draw(plot: Any, option: str) -> list[Any]:
     if observed is not None:
         observed.Draw("PL")
     tall = expected is not None or "2CL" in option or "CLB" in option
-    legend = TLegend(0.6, 0.6, 0.9, 0.6 + (0.3 if tall else 0.15))
-    for one in ([observed] if observed is not None else []) + extra:
-        legend.AddEntry(one, "", "PEL")
-    if expected is not None:
-        graphs = list(expected.GetListOfGraphs())
-        for i in range(len(graphs) - 1, -1, -1):
-            legend.AddEntry(graphs[i], "", "L" if i == len(graphs) - 1 else "F")
-    legend.Draw()
+    legend = _legend(observed, expected, extra, tall)
     pad = current()
     if pad is not None:
         pad.RedrawAxis()

@@ -29,13 +29,9 @@ def _mode(option: str) -> str:
     return next((mode for word, mode in _MODES if word in upper), "")
 
 
-def make_plot(results: Any, option: str = "") -> Any:
-    """``MakePlot``: the observed ``CLs`` - or what ``option`` names - against the parameter,
-    the points it could not compute skipped with a warning."""
-    from ..core import TGraphErrors
-
-    mode = _mode(option)
-    xs, ys, errors = [], [], []
+def _observed_points(results: Any, mode: str) -> list[tuple[float, float, float]]:
+    """Each point's level and error, in order - those that are not a probability left out."""
+    kept = []
     for i in sorted_order(results._x):
         value = results.GetYValue(i) if not mode else getattr(results, mode)(i)
         error = results.GetYError(i) if not mode else getattr(results, f"{mode}Error")(i)
@@ -44,11 +40,19 @@ def make_plot(results: Any, option: str = "") -> Any:
                              f"of {value:f} at x={results.GetXValue(i):f} (failed fit?). Skipping "
                              "this point.\n")  # fmt: skip
             continue
-        xs.append(results.GetXValue(i))
-        ys.append(value)
-        errors.append(error)
-    graph = TGraphErrors(len(xs))
-    for i, (x, y, e) in enumerate(zip(xs, ys, errors)):
+        kept.append((results.GetXValue(i), value, error))
+    return kept
+
+
+def make_plot(results: Any, option: str = "") -> Any:
+    """``MakePlot``: the observed ``CLs`` - or what ``option`` names - against the parameter,
+    the points it could not compute skipped with a warning."""
+    from ..core import TGraphErrors
+
+    mode = _mode(option)
+    kept = _observed_points(results, mode)
+    graph = TGraphErrors(len(kept))
+    for i, (x, y, e) in enumerate(kept):
         graph.SetPoint(i, x, y)
         graph.SetPointError(i, 0.0, e)
     name = {"CLb": "CLb", "CLsplusb": "CLs+b"}.get(mode, "CLs" if mode or results._use_cls
@@ -77,6 +81,29 @@ def _quantiles(values: list[float], asymptotic: bool, nsig1: float, nsig2: float
     return [quantile(values, 0.5 if s == 0.0 else gaussian_cdf(s)) for s in sigmas]
 
 
+def _fill_bands(results: Any, median: Any, bands: list[Any], nsig: tuple[float, float]) -> None:
+    """Each point with expected p-values: the median, and the bands' ends about it."""
+    asymptotic = results.GetNullTestStatDist(0) is None and results.GetAltTestStatDist(0) is None
+    at = 0
+    for i in sorted_order(results._x):
+        dist = results.GetExpectedPValueDist(i)
+        if dist is None:
+            continue
+        q = _quantiles(dist.GetSamplingDistribution(), asymptotic, *nsig)
+        x = results.GetXValue(i)
+        median.SetPoint(at, x, q[2])
+        for band, (low, high) in zip(bands, ((q[1], q[3]), (q[0], q[4]))):
+            _band_point(band, at, x, (low, q[2], high))
+        at += 1
+
+
+def _band_point(band: Any, at: int, x: float, q: tuple[float, float, float]) -> None:
+    if band is not None:
+        band.SetPoint(at, x, q[1])
+        band.SetPointEYlow(at, q[1] - q[0])
+        band.SetPointEYhigh(at, q[2] - q[1])
+
+
 def make_expected_plot(plot: Any, results: Any, nsig1: float = 1.0, nsig2: float = 2.0) -> Any:
     """``MakeExpectedPlot``: the median expected curve, dashed, and its bands."""
     from ..core import TGraph, TGraphAsymmErrors, TMultiGraph
@@ -90,21 +117,7 @@ def make_expected_plot(plot: Any, results: Any, nsig1: float = 1.0, nsig2: float
     for band, nsig in zip(bands, (nsig1, nsig2)):
         if band is not None:
             band.SetTitle(_band_title(name, nsig))
-    asymptotic = results.GetNullTestStatDist(0) is None and results.GetAltTestStatDist(0) is None
-    at = 0
-    for i in sorted_order(results._x):
-        dist = results.GetExpectedPValueDist(i)
-        if dist is None:
-            continue
-        q = _quantiles(dist.GetSamplingDistribution(), asymptotic, nsig1, nsig2)
-        x = results.GetXValue(i)
-        median.SetPoint(at, x, q[2])
-        for band, (low, high) in zip(bands, ((q[1], q[3]), (q[0], q[4]))):
-            if band is not None:
-                band.SetPoint(at, x, q[2])
-                band.SetPointEYlow(at, q[2] - low)
-                band.SetPointEYhigh(at, high - q[2])
-        at += 1
+    _fill_bands(results, median, bands, (nsig1, nsig2))
     made = TMultiGraph(f"{plot.GetName()}_expected", f"Expected {plot.GetTitle()}")
     for band, colour in ((bands[1], YELLOW), (bands[0], GREEN)):
         if band is not None:

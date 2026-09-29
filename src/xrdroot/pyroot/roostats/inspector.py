@@ -26,14 +26,10 @@ class ProfileInspector:
 
         poi_set, nuisance, pdf = (config.GetParametersOfInterest(),
                                   config.GetNuisanceParameters(), config.GetPdf())  # fmt: skip
-        for missing, text in ((poi_set is None, "no parameters of interest"),
-                              (poi_set is not None and len(poi_set) != 1,
-                               "only one parameter of interest is supported currently"),
-                              (nuisance is None, "no nuisance parameters"),
-                              (pdf is None, "pdf not set")):  # fmt: skip
-            if missing:
-                log(None, ERROR, "InputArguments", text)
-                return None
+        refusal = _refusal(poi_set, nuisance, pdf)
+        if refusal:
+            log(None, ERROR, "InputArguments", refusal)
+            return None
         poi = next(iter(poi_set))
         profile = pdf.createNLL(data).createProfile(poi)
         low, high = poi.getMin(), poi.getMax()
@@ -55,3 +51,14 @@ class ProfileInspector:
             graph.SetTitle("")
             found.Add(graph)
         return found
+
+
+def _refusal(poi_set: Any, nuisance: Any, pdf: Any) -> str:
+    """What the configuration lacks for the plots, as ROOT says it - nothing if it is whole."""
+    if poi_set is None:
+        return "no parameters of interest"
+    if len(poi_set) != 1:
+        return "only one parameter of interest is supported currently"
+    if nuisance is None:
+        return "no nuisance parameters"
+    return "pdf not set" if pdf is None else ""

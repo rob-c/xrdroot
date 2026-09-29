@@ -87,11 +87,7 @@ class LikelihoodIntervalPlot(Named):
     def Draw(self, options: Any = "") -> None:
         """``LikelihoodIntervalPlot::Draw``: the profile of one parameter, or a contour of two."""
         own = self._interval.GetParameters()
-        extra = [p for p in self._params if own.find(p.GetName()) is None]
-        for par in extra:
-            log_plain(self, ERROR, "InputArguments", f"Parameter {par.GetName()}is not in the "
-                      "list of LikelihoodInterval parameters  - do not use for plotting \n")
-            self._params.remove(par)
+        self._drop_foreign(own)
         if len(self._params) > 2:
             log_plain(self, ERROR, "InputArguments", f"LikelihoodIntervalPlot::Draw("
                       f"{self._name}) ERROR: contours for more than 2 dimensions not "
@@ -110,10 +106,15 @@ class LikelihoodIntervalPlot(Named):
         else:
             self._draw_2d(profile, option)
 
+    def _drop_foreign(self, own: Any) -> None:
+        """The parameters to plot that are not the interval's: dropped, said."""
+        for par in [p for p in self._params if own.find(p.GetName()) is None]:
+            log_plain(self, ERROR, "InputArguments", f"Parameter {par.GetName()}is not in the "
+                      "list of LikelihoodInterval parameters  - do not use for plotting \n")
+            self._params.remove(par)
+
     def _draw_1d(self, profile: Any, option: str) -> None:
         """The profile on a frame - or as a ``TF1`` for ``"tf1"`` - with the cut and the ends."""
-        from ..graphics.shapes import TLine
-
         param = self._params[0]
         tf1 = "tf1" in option and "rooplot" not in option
         option = option.replace("rooplot", "").replace("tf1", "")
@@ -124,20 +125,25 @@ class LikelihoodIntervalPlot(Named):
         self._line_color = self._line_color or GREEN
         if tf1:
             x1, x2 = self._tf1(profile, var, param, (low, high), npoints, option)
-        else:
-            x1, x2, frame = self._frame(profile, var, param, npoints)
+            lines = self._cut_lines(low, high, x1, x2)
+            for line in (lines[2], lines[0], lines[1]):
+                line.Draw()
+            return
+        x1, x2, frame = self._frame(profile, var, param, npoints)
+        for line in self._cut_lines(low, high, x1, x2):
+            frame.addObject(line)
+        frame.Draw(option)
+
+    def _cut_lines(self, low: float, high: float, x1: float, x2: float) -> list[Any]:
+        """The interval's ends up to the cut, and the cut across."""
+        from ..graphics.shapes import TLine
+
         level = 0.5 * _chi2_quantile(self._interval.ConfidenceLevel(), 1)
         lines = [TLine(low, 0.0, low, level), TLine(high, 0.0, high, level),
                  TLine(x1, level, x2, level)]  # fmt: skip
         for line in lines:
             line.SetLineColor(self._line_color)
-        if tf1:
-            for line in (lines[2], lines[0], lines[1]):
-                line.Draw()
-            return
-        for line in lines:
-            frame.addObject(line)
-        frame.Draw(option)
+        return lines
 
     def _frame(self, profile: Any, var: Any, param: Any, npoints: int) -> tuple[float, float, Any]:
         xmin, xmax = (param.getMin(), param.getMax()) if self._x[0] >= self._x[1] else self._x
@@ -188,8 +194,6 @@ class LikelihoodIntervalPlot(Named):
 
     def _draw_2d(self, profile: Any, option: str) -> None:
         """Minuit's contour of the two parameters at the level, and the best fit as a marker."""
-        from ..core import TH2F, TGraph
-
         if "nominuit" in option or ("hist" in option and "nohist" not in option):
             raise UnsupportedFeatureError(
                 "LikelihoodIntervalPlot draws a two-parameter interval from Minuit's contour; "
@@ -198,16 +202,20 @@ class LikelihoodIntervalPlot(Named):
         option = option.replace("nohist", "").replace("minuit", "")
         px, py = self._params[0], self._params[1]
         best = self._interval.GetBestFitParameters()
-        for par in profile.getVariables():
-            found = best.find(par.GetName()) if best is not None else None
-            if found is not None:
-                par.setVal(found.getVal())
-        profile.getVal()
-        title = self._title or f"Contour of {py.GetName()} vs {px.GetName()}"
-        title = f"{title};{px.GetName()};{py.GetName()}"
+        _at_best(profile, best)
         npoints = self._npoints if self._npoints > 0 else 40
-        xmin, xmax = (px.getMin(), px.getMax()) if self._x[0] >= self._x[1] else self._x
-        ymin, ymax = (py.getMin(), py.getMax()) if self._y[0] >= self._y[1] else self._y
+        graph = self._contour(px, py, npoints)
+        if "c" not in option:
+            option += "L"
+        if "same" not in option:
+            self._frame_2d(px, py, npoints)
+        self._contour_style(graph, option)
+        self._best_marker(best, px, py)
+
+    def _contour(self, px: Any, py: Any, npoints: int) -> Any:
+        """``GetContourPoints``' contour as a closed ``TGraph``, said if short of points."""
+        from ..core import TGraph
+
         graph = TGraph(npoints + 1)
         xs, ys = [0.0] * (npoints + 1), [0.0] * (npoints + 1)
         found = self._interval.GetContourPoints(px, py, xs, ys, npoints)
@@ -219,18 +227,24 @@ class LikelihoodIntervalPlot(Named):
         for index in range(found, npoints):  # ROOT's loop, which skips as the points shift
             graph.RemovePoint(index)
         graph.SetPoint(found, xs[0], ys[0])
-        if "c" not in option:
-            option += "L"
-        if "same" not in option:
-            frame = TH2F("_hist2D", title, npoints, xmin, xmax, npoints, ymin, ymax)
-            frame.GetXaxis().SetTitle(px.GetName())
-            frame.GetYaxis().SetTitle(py.GetName())
-            frame.SetStats(False)
-            frame.SetFillStyle(self._fill_style)
-            frame.SetMaximum(1)
-            frame.Draw("AXIS")
-        self._contour_style(graph, option)
-        self._best_marker(best, px, py)
+        return graph
+
+    def _frame_2d(self, px: Any, py: Any, npoints: int) -> None:
+        """``_hist2D``: the axes, over the range set or the parameters'."""
+        from ..core import TH2F
+
+        title = self._title or f"Contour of {py.GetName()} vs {px.GetName()}"
+        title = f"{title};{px.GetName()};{py.GetName()}"
+        xmin, xmax = (px.getMin(), px.getMax()) if self._x[0] >= self._x[1] else self._x
+        ymin, ymax = (py.getMin(), py.getMax()) if self._y[0] >= self._y[1] else self._y
+        frame = TH2F("_hist2D", title, npoints, xmin, xmax, npoints, ymin, ymax)
+        frame.GetXaxis().SetTitle(px.GetName())
+        frame.GetYaxis().SetTitle(py.GetName())
+        frame.SetStats(False)
+        frame.SetFillStyle(self._fill_style)
+        frame.SetMaximum(1)
+        frame.Draw("AXIS")
+        self._kept_frame = frame
 
     def _contour_style(self, graph: Any, option: str) -> None:
         if self._line_color:
@@ -256,6 +270,15 @@ class LikelihoodIntervalPlot(Named):
         if self._color:
             marker.SetMarkerColor(self._color + 4 if self._color != BLACK else GRAY)
         marker.Draw("P")
+
+
+def _at_best(profile: Any, best: Any) -> None:
+    """The profile's variables at the best fit, and the profile evaluated there."""
+    for par in profile.getVariables():
+        found = best.find(par.GetName()) if best is not None else None
+        if found is not None:
+            par.setVal(found.getVal())
+    profile.getVal()
 
 
 def _colour(color: Any) -> int:

@@ -52,6 +52,23 @@ class SamplingDistPlot(Named):
             log(None, WARNING, "Plotting", "Empty sampling distribution given to plot. Skipping.")
             return 0.0
         weights = list(samplingDist.GetSampleWeights())
+        xlow, xup = self._range(values)
+        hist = TH1F(samplingDist.GetName(), samplingDist.GetTitle(), self._bins, xlow, xup)
+        hist.SetDirectory(0)
+        self._var_name = self._var_name or samplingDist.GetVarName()
+        hist.GetXaxis().SetTitle(self._var_name)
+        for i, value in enumerate(values):
+            hist.Fill(value, weights[i]) if weights else hist.Fill(value)
+        hist.Sumw2()
+        total = 1.0
+        if "NORMALIZE" in str(drawOptions).upper():
+            total = float(hist.Integral("width"))
+            hist.Scale(1.0 / total)
+        self._styled(hist, samplingDist)
+        return 1.0 / total
+
+    def _range(self, values: list[float]) -> tuple[float, float]:
+        """The histogram's range: the one set, or the finite values' and a bin and a half."""
         finite = [v for v in values if not math.isinf(v)]
         low, high = (min(finite), max(finite)) if finite else (math.inf, -math.inf)
         if low >= high:
@@ -61,18 +78,10 @@ class SamplingDistPlot(Named):
         width = (high - low) / self._bins
         xlow = self._x[0] if not math.isnan(self._x[0]) else low - 1.5 * width
         xup = self._x[1] if not math.isnan(self._x[1]) else high + 1.5 * width
-        hist = TH1F(samplingDist.GetName(), samplingDist.GetTitle(), self._bins, xlow, xup)
-        hist.SetDirectory(0)
-        self._var_name = self._var_name or samplingDist.GetVarName()
-        hist.GetXaxis().SetTitle(self._var_name)
-        for i, value in enumerate(values):
-            hist.Fill(value, weights[i]) if weights else hist.Fill(value)
-        hist.Sumw2()
-        options = str(drawOptions).upper()
-        total = 1.0
-        if "NORMALIZE" in options:
-            total = float(hist.Integral("width"))
-            hist.Scale(1.0 / total)
+        return xlow, xup
+
+    def _styled(self, hist: Any, samplingDist: Any) -> None:
+        """The next marker and colour, the histogram kept, and in the legend by its title."""
         hist.SetMarkerStyle(self._marker)
         hist.SetMarkerColor(self._color)
         hist.SetLineColor(self._color)
@@ -83,7 +92,6 @@ class SamplingDistPlot(Named):
         self._items.append(hist)
         if self._legend is not None and samplingDist.GetTitle():
             self._legend.AddEntry(hist, samplingDist.GetTitle(), "L")
-        return 1.0 / total
 
     def AddSamplingDistributionShaded(self, samplingDist: Any, minShaded: float, maxShaded: float,
                                       drawOptions: str = "NORMALIZE HIST") -> float:  # fmt: skip
@@ -226,23 +234,16 @@ class SamplingDistPlot(Named):
 
         self.ApplyDefaultStyle()
         low, high, top = self._extent()
-        bottom = math.nan
         low = self._x[0] if not math.isnan(self._x[0]) else low
         high = self._x[1] if not math.isnan(self._x[1]) else high
-        bottom = self._y[0] if not math.isnan(self._y[0]) else bottom
+        bottom = self._y[0]
         top = self._y[1] if not math.isnan(self._y[1]) else top
         plot = RooRealVar("xaxis", self._var_name, low, low, high).frame()
         plot.SetTitle("")
-        if not math.isnan(top):
-            plot.SetMaximum(top)
-        if not math.isnan(bottom):
-            plot.SetMinimum(bottom)
+        _bounded(plot, bottom, top)
         for hist in self._items:
             copy = hist.Clone()
-            if not math.isnan(top):
-                copy.SetMaximum(top)
-            if not math.isnan(bottom):
-                copy.SetMinimum(bottom)
+            _bounded(copy, bottom, top)
             copy.SetDirectory(0)
             plot.addTH1(copy, "")  # the histogram's own option, which is empty
         for other in self._others:
@@ -252,10 +253,7 @@ class SamplingDistPlot(Named):
         self._log_axes()
         self._plot = plot
         plot.Draw()
-        pad = current()
-        if pad is not None:
-            pad.SetLogx(self._log_x)
-            pad.SetLogy(self._log_y)
+        _logged(current(), self._log_x, self._log_y)
 
     def _log_axes(self) -> None:
         """``gStyle``'s log axes as the plot's - said, if the style is not applied."""
@@ -309,3 +307,17 @@ class HypoTestPlot(SamplingDistPlot):
             if dist is not None:
                 self.SetLineWidth(2, dist)
                 self.SetLineColor(color, dist)
+
+
+def _bounded(obj: Any, bottom: float, top: float) -> None:
+    """The frame's - or a histogram's - minimum and maximum, where set."""
+    if not math.isnan(top):
+        obj.SetMaximum(top)
+    if not math.isnan(bottom):
+        obj.SetMinimum(bottom)
+
+
+def _logged(pad: Any, log_x: bool, log_y: bool) -> None:
+    if pad is not None:
+        pad.SetLogx(log_x)
+        pad.SetLogy(log_y)
