@@ -38,15 +38,15 @@ class RooSimultaneous(RooAbsPdf):
         index = next(a for a in args if hasattr(a, "lookupIndex"))
         self.index = self._proxy("indexCat", index)
         self.channels: dict[str, Any] = {}
-        self.chosen = self._list_proxy("!pdfs", [])
         for label, pdf in _channels(args, index):
             self.addPdf(pdf, label)
 
     def addPdf(self, pdf: Any, label: str) -> bool:
+        """The density of the state ``label``, a proxy named after the state."""
         if str(label) in self.channels:
             return True
         self.channels[str(label)] = pdf
-        self.chosen.add(pdf)
+        self._proxy(str(label), pdf)
         return False
 
     def getPdf(self, label: Any) -> Any:
@@ -81,6 +81,18 @@ class RooSimultaneous(RooAbsPdf):
 
     def selfNormalized(self) -> bool:
         return True
+
+    def constraint_terms(
+        self, observables: frozenset[str], params: list[Any], strip: bool
+    ) -> list[Any]:
+        """Every channel's constraints, each once, in the channels' order."""
+        found: list[Any] = []
+        for pdf in self.channels.values():
+            terms = getattr(pdf, "constraint_terms", None)
+            for term in terms(observables, params, strip) if terms is not None else ():
+                if all(term is not seen for seen in found):
+                    found.append(term)
+        return found
 
     def channel_terms(self, nll: Any) -> float:
         """The likelihood of each channel's events, and ``N log(channels)``, summed."""

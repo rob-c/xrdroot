@@ -12,7 +12,7 @@ import math
 from typing import Any, ClassVar
 
 from ...efficiency import regularized_beta
-from ...fit.defaults import DEFAULTS
+from ...fit.defaults import DEFAULTS, minimizer_algo, minimizer_type, set_minimizer
 from ...function import special
 from ...stats import incomplete_gamma, incomplete_gamma_c
 from . import distributions as dist
@@ -326,18 +326,16 @@ class MinimizerOptions:
     _defaults: ClassVar[dict[str, Any]] = DEFAULTS
 
     @classmethod
-    def SetDefaultMinimizer(cls, name: Any, algorithm: Any = "") -> None:
-        cls._defaults["Minimizer"] = str(name)
-        if algorithm:
-            cls._defaults["Algorithm"] = str(algorithm)
+    def SetDefaultMinimizer(cls, name: Any, algorithm: Any = None) -> None:
+        set_minimizer(name, algorithm)
 
     @classmethod
     def DefaultMinimizerType(cls) -> str:
-        return str(cls._defaults["Minimizer"])
+        return minimizer_type()
 
     @classmethod
     def DefaultMinimizerAlgo(cls) -> str:
-        return str(cls._defaults["Algorithm"])
+        return minimizer_algo()
 
 
 def _default_accessors(key: str) -> None:

@@ -87,7 +87,7 @@ def test_importing_a_dataset_and_renaming_it_is_said_as_root_says_it(capsys: Any
         "[#1] INFO:ObjectHandling -- RooWorkSpace::import(w) changing name of dataset from  o to "
         "d2\n"
     )
-    assert (w.data("d") is d, w.embeddedData("d2").GetName(), w.obj("d") is d) == (
+    assert (w.data("d") is d, w.data("d2").GetName(), w.obj("d") is d) == (
         True,
         "d2",
         True,

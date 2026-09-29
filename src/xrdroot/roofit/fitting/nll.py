@@ -24,6 +24,7 @@ from .. import kernels
 from ..cmdargs import commands
 from ..collections import RooArgSet, as_list
 from ..real import RooAbsReal
+from .binned import binned_part, binned_terms
 from .kahan import Kahan
 
 __all__ = ["RooNLLVar", "create_nll"]
@@ -81,7 +82,9 @@ class RooNLLVar(RooAbsReal):
         self._constrained_over = constrained
         self._global_values = dict(global_values or {})
         self.nset = _normalised_over(pdf, data, conditional)
-        keep = data.mask(None, self.rng) & (data.weights() != 0)
+        #: Whether a channel is a binned likelihood, which counts its empty bins too.
+        self.binned = _any_binned(pdf)
+        keep = data.mask(None, self.rng) & ((data.weights() != 0) | self.binned)
         self.columns = {k: v[keep] for k, v in data.columns().items()}
         self.w = data.weights()[keep]
         self.sumw = math.fsum(self.w.tolist())
@@ -138,6 +141,9 @@ class RooNLLVar(RooAbsReal):
         term."""
         columns = self.columns if keep is None else {k: v[keep] for k, v in self.columns.items()}
         given = self.w if keep is None else self.w[keep]
+        binned = binned_part(pdf)
+        if binned is not None:
+            return self._binned_channel(binned, columns, given, simulated)
         weights = given * given if self._weight_squared else given
         nset = self.nset & pdf.dependents() if keep is not None else self.nset
         with kernels.likelihood():
@@ -149,6 +155,16 @@ class RooNLLVar(RooAbsReal):
             total.total += self._extended_term(pdf, given, weights, nset)  # not onto the carry
         if simulated:
             total.add(float(math.fsum(weights.tolist())) * math.log(simulated))
+        return total.total
+
+    def _binned_channel(self, binned: Any, columns: Any, given: Any, simulated: int) -> float:
+        """A binned channel: its bins' Poisson terms, and ``N log(channels)`` if simultaneous."""
+        weights = given * given if self._weight_squared else given
+        total, events, bad = binned_terms(binned, columns, weights)
+        if bad:
+            self._badness += float(bad)
+        if simulated:
+            total.add(events * math.log(simulated))
         return total.total
 
     def _extended_term(self, pdf: Any, given: Any, weights: Any, nset: frozenset[str]) -> float:
@@ -196,6 +212,13 @@ class RooNLLVar(RooAbsReal):
 
     def getVal(self, nset: Any = None) -> float:
         return float(self.evaluate_nll())
+
+
+def _any_binned(pdf: Any) -> bool:
+    """Whether the density - or one of a simultaneous density's channels - is binned."""
+    channels = getattr(pdf, "channels", None)
+    parts = list(channels.values()) if isinstance(channels, dict) else [pdf]
+    return any(binned_part(part) is not None for part in parts)
 
 
 def _top_node(pdf: Any, nset: frozenset[str], rng: Any) -> tuple[Any, Any, Any]:

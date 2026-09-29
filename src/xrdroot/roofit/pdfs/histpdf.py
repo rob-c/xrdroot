@@ -40,10 +40,13 @@ class _Histogram:
 
     #: Whether the value is the weight over the bin's volume - a density - or the weight.
     density = True
+    #: What the observables' proxy is called: ``pdfObs`` for the density, ``depList`` for the
+    #: function.
+    proxy_name = "pdfObs"
 
     def _setup(self, variables: Any, histObs: Any, data: Any, order: int) -> None:
         proxy = self._list_proxy  # type: ignore[attr-defined]
-        self.observables = proxy("pdfObs", as_list(variables))
+        self.observables = proxy(self.proxy_name, as_list(variables))
         self.data = data
         #: The histogram's variable each observable is looked up as, in the observables' order.
         self._hist_vars = [data.get().find(one.GetName()) for one in as_list(histObs)]
@@ -106,6 +109,26 @@ class _Histogram:
     def dataHist(self) -> Any:
         return self.data
 
+    def bin_index(self, ctx: Context) -> Any:
+        """``getBin``: the histogram's bin the observables are in, or -1 outside it."""
+        columns = {k: np.atleast_1d(v) for k, v in self._columns(ctx).items()}
+        shape = np.broadcast_shapes(*(one.shape for one in columns.values()))
+        found = self.data._bin_of({k: np.broadcast_to(v, shape) for k, v in columns.items()})
+        return found if any(np.ndim(v) for v in self._columns(ctx).values()) else int(found[0])
+
+    def bin_boundaries(self, name: str) -> Any:
+        """``binBoundaries``: the histogram's bin edges in ``name`` - none when interpolated."""
+        if self.order > 1:
+            return None
+        for obs, var in zip(self.observables, self._hist_vars):
+            if obs.GetName() == name:
+                return [float(e) for e in var.getBinning().array()]
+        return None
+
+    def isBinnedDistribution(self, obs: Any = None) -> bool:
+        """Binned where the value is the bin's, not interpolated between bins."""
+        return self.order == 0
+
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         """All the observables over their full range: the sum of the weights, RooFit's code 1."""
         mine = frozenset(one.GetName() for one in self.observables)
@@ -140,6 +163,7 @@ class RooHistFunc(_Histogram, RooAbsReal):
     """A binned dataset's weights, as a function."""
 
     density = False
+    proxy_name = "depList"
 
     def __init__(self, name: Any, title: Any, *args: Any, **kwargs: Any) -> None:
         RooAbsReal.__init__(self, name, title)

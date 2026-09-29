@@ -338,6 +338,10 @@ class Directory:
 
         if key.classname in TREE_CLASSES:
             return read_tree(key.buffer(self._source), self._source, key.name, key.classname)
+        if key.classname == "RooWorkspace":  # a whole model graph, by RooFit's own streamers
+            from .roofit.io.workspace import read_workspace
+
+            return read_workspace(key.buffer(self._source), self._source.streamers())
         from .interp import Refused, whole_object
 
         column = whole_object(key.classname, self._source)

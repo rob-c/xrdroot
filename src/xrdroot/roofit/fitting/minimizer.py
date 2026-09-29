@@ -21,6 +21,7 @@ from typing import Any
 
 import numpy as np
 
+from ...fit.defaults import minimizer_type
 from ...fit.minuit import iminuit
 from .. import cout
 from ..collections import RooArgList, RooArgSet, as_list
@@ -84,7 +85,7 @@ class RooMinimizer:
         self.minuit: Any = None
         self.status = 0
         self.history: list[tuple[str, int]] = []
-        self.minimizer_type = "Minuit2"
+        self.minimizer_type = minimizer_type()  # RooMinimizer asks for ROOT's default
         self.invalid = 0
         self.evaluations = 0
         self._offset = 0.0

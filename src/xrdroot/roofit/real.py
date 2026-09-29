@@ -85,6 +85,13 @@ class RooAbsReal(RooAbsArg):
     def isValueDirty(self) -> bool:
         return True
 
+    def setForceNumInt(self, flag: bool = True) -> None:
+        """Integrate numerically even over what the class has a closed form for."""
+        self._force_num_int = bool(flag)
+
+    def getForceNumInt(self) -> bool:
+        return bool(getattr(self, "_force_num_int", False))
+
     # -- integrals ----------------------------------------------------------------
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:

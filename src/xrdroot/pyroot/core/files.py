@@ -267,7 +267,7 @@ class TDirectoryFile(TDirectory):
         """Read one record; a histogram or tree of the newest cycle stays in memory here."""
         read = self._reader()[label]
         found = _tree(read, key) or wrap(read)
-        if not isinstance(found, TObject):
+        if not isinstance(found, TObject) and not _engine_own(found):
             found = TOther(key.GetClassName(), found)
         newest = key is self.GetKey(key.GetName())
         if newest and any(_inherits(found, kind) for kind in KEPT):
@@ -643,3 +643,9 @@ _OPEN: list[TFile] = []
 def _close_all() -> None:
     for opened in list(_OPEN):
         opened.Close()
+
+
+def _engine_own(obj: Any) -> bool:
+    """Whether ``obj`` is one of the RooFit or RooStats engine's objects - a workspace read from
+    the file - which speak ROOT's API themselves."""
+    return type(obj).__module__.startswith(("xrdroot.roofit", "xrdroot.roostats"))

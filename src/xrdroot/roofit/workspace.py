@@ -20,7 +20,7 @@ from . import cout
 from .cmdargs import commands
 from .collections import RooArgSet, as_list
 from .messages import INFO, log
-from .printing import RooPrintable, g
+from .printing import RooPrintable
 
 __all__ = ["RooWorkspace"]
 
@@ -36,6 +36,8 @@ class RooWorkspace(RooPrintable):
         self._sets: dict[str, RooArgSet] = {}
         self._snapshots: dict[str, list[Any]] = {}
         self._generic: dict[str, Any] = {}
+        #: The datasets the workspace's nodes hold - a ``RooHistFunc``'s - read from a file.
+        self._embedded: dict[str, Any] = {}
         #: The factory's ``$Typedef`` names for classes.
         self._aliases: dict[str, str] = {}
 
@@ -148,7 +150,8 @@ class RooWorkspace(RooPrintable):
     def data(self, name: str) -> Any:
         return self._data.get(str(name))
 
-    embeddedData = data
+    def embeddedData(self, name: str) -> Any:
+        return self._embedded.get(str(name))
 
     def obj(self, name: str) -> Any:
         return (
@@ -273,6 +276,9 @@ class RooWorkspace(RooPrintable):
             "datasets\n--------\n",
             [f"{d.ClassName()}::{d.GetName()}{d.get().printValue()}" for d in self._data.values()],
         )
+        embedded = [f"{d.ClassName()}::{d.GetName()}{d.get().printValue()}"
+                    for d in self._embedded.values()]  # fmt: skip
+        _lines(f"embedded datasets (in pdfs and functions)\n{'-' * 41}\n", embedded)
         _lines("parameter snapshots\n-------------------\n", self._snapshot_lines())
         _lines(
             "named sets\n----------\n",
@@ -290,12 +296,9 @@ def _is_function(node: Any) -> bool:
 
 
 def _snapshot_value(var: Any) -> str:
-    """``a0=0.488363 +/- 0.0241765``, ``sigma1=0.5[C]``: a saved parameter as ROOT lists it."""
-    if var.isConstant():
-        return f"{var.GetName()}={g(var.getVal())}[C]"
-    if var.hasError():
-        return f"{var.GetName()}={g(var.getVal())} +/- {g(var.getError())}"
-    return f"{var.GetName()}={g(var.getVal())}"
+    """``a0=0.488363 +/- 0.0241765``, ``sigma1=0.5[C]``, ``Lumi=1 +/- 0.1[C]``: a saved
+    parameter's value as it prints itself, and ``[C]`` for a constant one."""
+    return f"{var.GetName()}={var.printValue()}" + ("[C]" if var.isConstant() else "")
 
 
 def _renamed(data: Any, name: str) -> Any:

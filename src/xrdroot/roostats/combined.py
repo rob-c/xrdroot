@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..fit.defaults import default
+from ..fit.defaults import default, minimizer_algo
 from ..roofit.cmdargs import RooCmdArg
 from ..roofit.collections import RooArgSet, as_list
 from ..roofit.fitting.minimizer import RooMinimizer
@@ -103,7 +103,7 @@ class CombinedCalculator:
 def minimize_nll(nll: Any, owner: str = "ProfileLikelihoodCalcultor") -> Any:
     """``DoMinimizeNLL``: MIGRAD with the default strategy and tolerance, tried again - after a
     scan, then with strategy 1, then improved - while it fails; the fit as a result."""
-    kind, algorithm = "", str(default("Algorithm"))
+    kind, algorithm = "", minimizer_algo()
     strategy = int(default("Strategy"))
     minim = RooMinimizer(nll)
     minim.setStrategy(strategy)

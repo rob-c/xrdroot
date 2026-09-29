@@ -100,6 +100,18 @@ class RooProduct(RooAbsReal):
     def printArgs(self) -> str:
         return "[ " + " * ".join(term.GetName() for term in self.terms) + " ]"
 
+    def bin_boundaries(self, name: str) -> Any:
+        """``binBoundaries``: the first factor's that has any."""
+        from .pdfs.histfactory import _boundaries_of
+
+        return _boundaries_of(self.terms, name)
+
+    def isBinnedDistribution(self, obs: Any = None) -> bool:
+        """Binned when every factor that depends on ``obs`` is."""
+        from .pdfs.histfactory import _binned
+
+        return _binned(self.terms, obs)
+
 
 class RooAddition(RooAbsReal):
     """``RooAddition``: the sum of its terms, or of the products of two lists."""

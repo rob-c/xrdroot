@@ -162,10 +162,18 @@ def integral_name(func: Any, names: frozenset[str], rng: Any) -> str:
     return f"{func.GetName()}_Int[{','.join(order)}{suffix}]"
 
 
+def closed_names(func: Any, names: frozenset[str], rng: Any) -> frozenset[str]:
+    """What ``func`` integrates over in closed form - nothing, if it is told to integrate
+    numerically (``setForceNumInt``)."""
+    if getattr(func, "_force_num_int", False):
+        return frozenset()
+    return func.analytic_names(names, rng) & names
+
+
 def numeric_names(func: Any, names: frozenset[str], rng: Any = None) -> list[str]:
     """The variables of ``names`` that ``func`` has no closed form for, in its order."""
     names = frozenset(names) & func.dependents()
-    closed = func.analytic_names(names, rng) & names
+    closed = closed_names(func, names, rng)
     return [one.GetName() for one in func.leaves() if one.GetName() in names - closed]
 
 
@@ -199,6 +207,8 @@ def announce(func: Any, names: frozenset[str], rng: Any = None, label: str | Non
 
 def _integrator(func: Any, numeric: list[str], rng: Any) -> str:
     """The integrator RooFit picks: by the number of variables, and for one, by open ends."""
+    if _binned(func, numeric, rng):
+        return "RooBinIntegrator"
     if len(numeric) > 1:
         return "RooAdaptiveIntegratorND"
     return "RooImproperIntegrator1D" if any(np.isinf(func.bounds(numeric[0], rng))) else (
@@ -220,7 +230,7 @@ def integral(func: Any, names: frozenset[str], ctx: dict[str, Any], rng: Any = N
 
 def _over(func: Any, names: frozenset[str], ctx: dict[str, Any], rng: Any) -> Any:
     """Closed form over what the class can do, numerically over the rest."""
-    closed = func.analytic_names(names, rng) & names
+    closed = closed_names(func, names, rng)
     rest = [one.GetName() for one in func.leaves() if one.GetName() in names - closed]
     if not rest:
         return func.analytic(closed, ctx, rng)
@@ -244,10 +254,69 @@ def numeric(
     from .kernels import scalar
 
     bounds = [func.bounds(name, rng) for name in rest]
+    if _binned(func, rest, rng):
+        return _bins(func, rest, inner, ctx, bounds)
     with scalar():
         if len(rest) > 1 and not any(np.isinf(b).any() for b in (np.array(bounds),)):
             return _cubature(func, rest, inner, ctx, bounds)
         return _nested(func, rest, inner, ctx, rng)
+
+
+def _binned(func: Any, names: Any, rng: Any) -> bool:
+    """``RooNumIntFactory``'s override: a binned distribution over a closed range is summed bin by
+    bin, whatever integrator was configured."""
+    test = getattr(func, "isBinnedDistribution", None)
+    if test is None or not test(frozenset(names)):
+        return False
+    return not any(np.any(np.isinf(func.bounds(name, rng))) for name in names)
+
+
+def _edges(func: Any, name: str, low: float, high: float) -> list[float]:
+    """``RooBinIntegrator``'s bins in ``name``: the function's boundaries inside the range, the
+    range's ends added where they are not one - or 100 even bins, if it has none."""
+    found = getattr(func, "bin_boundaries", lambda _n: None)(name)
+    if found is None:
+        log(None, WARNING, "Integration", "RooBinIntegrator::RooBinIntegrator WARNING: integrand "
+            "provide no binning definition observable #0 substituting default binning of 100 "
+            "bins")  # fmt: skip
+        found = [low + j * (high - low) / 100 for j in range(101)]
+    edges = [e for e in found if low <= e <= high]
+    if not edges or edges[0] > low:
+        edges.insert(0, low)
+    if edges[-1] < high:
+        edges.append(high)
+    return edges
+
+
+def _bins(
+    func: Any,
+    rest: list[str],
+    inner: Callable[[dict[str, Any]], Any],
+    ctx: dict[str, Any],
+    bounds: list[tuple[float, float]],
+) -> Any:
+    """``RooBinIntegrator``: the integrand at the middle of every bin times its size, Kahan-summed
+    with the last variable's bins innermost."""
+    import itertools
+
+    grids = [_edges(func, name, float(low), float(high)) for name, (low, high) in zip(rest, bounds)]
+    total: Any = 0.0
+    carry: Any = 0.0
+    for cell in itertools.product(*(range(len(edges) - 1) for edges in grids)):
+        c = dict(ctx)
+        delta, width = 1.0, 1.0
+        for number, (name, edges, index) in enumerate(zip(rest, grids, cell)):
+            lo, hi = edges[index], edges[index + 1]
+            c[name] = (hi + lo) / 2.0
+            if number < len(rest) - 1:
+                delta = (hi - lo) * delta
+            else:
+                width = hi - lo
+        term = inner(c) * width * delta  # ROOT's order: the last width first, then the rest
+        y = term - carry
+        t = total + y
+        carry, total = (t - total) - y, t
+    return total
 
 
 def _nested(

@@ -202,7 +202,8 @@ class RooAbsData(RooPrintable):
 
     def printMultiline(self, contents: int, verbose: bool, indent: str) -> str:
         """The data store's lines: its name, how many events, and what variables."""
-        text = f"{indent}DataStore {self._name} ({self._title})\n"
+        title = getattr(self, "_store_title", None)  # a store read from a file names itself
+        text = f"{indent}DataStore {self._name} ({self._title if title is None else title})\n"
         text += f"{indent}  Contains {self.numEntries()} entries\n"
         if not verbose:
             return text + f"{indent}  Observables {self._vars.printValue()}\n"

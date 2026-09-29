@@ -56,6 +56,19 @@ class RooRealSumPdf(RooAbsPdf):
     def expected(self, nset: Any, rng: Any = None, fit: bool = False) -> float:
         return float(self.integrate(frozenset(nset or ()), {}, rng))
 
+    def bin_boundaries(self, name: str) -> Any:
+        """``binBoundaries``: every term's boundaries, merged."""
+        found: set[float] = set()
+        for func in self.funcs:
+            edges = getattr(func, "bin_boundaries", lambda _n: None)(name)
+            found |= set(edges or ())
+        return sorted(found) or None
+
+    def isBinnedDistribution(self, obs: Any = None) -> bool:
+        from .histfactory import _binned
+
+        return _binned(self.funcs, obs)
+
     def printMetaArgs(self) -> str:
         parts = [f"{c.GetName()} * {f.GetName()}" for c, f in zip(self.coefs, self.funcs)]
         if len(self.funcs) > len(self.coefs):
