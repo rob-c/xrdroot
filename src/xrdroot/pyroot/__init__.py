@@ -40,6 +40,7 @@ SUBMODULES = [
     "tmva",
     "spectra.tspectrum",
     "spectra.tspectrum2",
+    "spectra.transforms",
 ]
 
 __all__: list[str] = []
