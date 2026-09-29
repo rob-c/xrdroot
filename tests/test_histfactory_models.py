@@ -9,7 +9,8 @@ factor, a sample not normalised by the luminosity, Gaussian statistical errors b
 threshold in a bin, a parameter value set and one held constant. ROOT built the same two
 from the same histograms: the parameters, observables, global observables and datasets, the
 likelihood before and after the parameters are moved, which parameters are constant and the
-gammas' ranges and errors are ROOT's, and so is every message HistFactory gives.
+gammas' ranges and errors are ROOT's, and so is every message HistFactory gives - the
+likelihoods to the bit on ROOT's machine, and to ``NLL_REL`` elsewhere.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from typing import Any
 import pytest
 
 from histfactoryinputs import write_inputs
+from refmachine import roots
 from xrdroot.histfactory.channel import Channel
 from xrdroot.histfactory.make import MakeModelAndMeasurementFast
 from xrdroot.histfactory.measurement import Measurement
@@ -233,17 +235,38 @@ def summary(ws: Any, moves: Any, detail: bool = False) -> str:
     return "\n".join(lines) + "\n"
 
 
+#: How close a likelihood is to ROOT's off ROOT's machine: 1e-12 of itself. Each bin's term
+#: is ``n log(nu) - nu - lgamma(n + 1)`` with the C library's ``log`` and ``lgamma``, which
+#: glibc rounds otherwise than Apple in the last place now and then, and the terms - hundreds
+#: each for hf001's counts - cancel to a sum of a few, which moves by the terms' ulps: hf001's
+#: by 5e-14 of itself on Linux - where a term missing or mis-scaled would move it by far more.
+NLL_REL = 1e-12
+
+
+def held(text: str, exactly: bool = False) -> list[Any]:
+    """A summary's lines, its two likelihoods as numbers - ROOT's, held by ``roots``, unless
+    ``exactly`` - for comparing a summary with ROOT's."""
+    lines: list[Any] = []
+    for line in text.splitlines():
+        key, _, value = line.partition(" ")
+        if key in ("nll", "nll2"):
+            lines.append((key, float(value) if exactly else roots(float(value), rel=NLL_REL)))
+        else:
+            lines.append(line)
+    return lines
+
+
 def test_hf001s_model_is_roots(built_hf001: Built) -> None:
     """Sets, datasets, likelihood before and after a pull, constants and gammas: ROOT's."""
     moves = (("SigXsecOverSM", 1.3), ("alpha_syst2", 0.4), ("gamma_stat_channel1_bin_1", 1.1))
-    assert summary(built_hf001.ws, moves) == HF001
+    assert held(summary(built_hf001.ws, moves), exactly=True) == held(HF001)
 
 
 def test_the_channel_of_every_other_piece_is_roots(built_sink: Built) -> None:
     """Gamma, uniform and log-free systematics, shape systematics and factors: ROOT's model."""
     moves = (("mu", 1.3), ("alpha_shape", 0.7), ("beta_gsys", 1.1), ("gamma_ss1_bin_0", 0.9),
              ("gamma_free_bin_1", 1.2), ("gamma_stat_sink_bin_0", 1.05))  # fmt: skip
-    assert summary(built_sink.ws, moves) == SINK
+    assert held(summary(built_sink.ws, moves), exactly=True) == held(SINK)
 
 
 def roots_words(measurement: str) -> str:
@@ -533,7 +556,7 @@ def test_more_kinds_of_channel_build_roots_models_saying_what_root_says(
     """Uneven bins, two and three dimensions, a model of no parameter of interest: ROOT's."""
     monkeypatch.chdir(tmp_path)  # the plain model's prefix names no directory: it is written here
     built = Built(tmp_path, make, "results_h" if make is plain else None)
-    assert detailed(built.ws, moves) == expected
+    assert held(detailed(built.ws, moves), exactly=True) == held(expected)
     said = built.said.getvalue()
     said = said[said.index("[#2] INFO:HistFactory -- Making Model and Measurements"):]
     words = roots_words(built.meas.GetName())
@@ -562,6 +585,6 @@ def test_a_single_channels_model_makes_the_measurements_asimov_datasets(tmp_path
     with contextlib.redirect_stdout(io.StringIO()) as said:
         meas.CollectHistograms()
         ws = HistoToWorkspaceFactoryFast(meas).MakeSingleChannelModel(meas, meas.GetChannels()[0])
-    assert detailed(ws, (("mu", 1.3),)) == ASIM
+    assert held(detailed(ws, (("mu", 1.3),)), exactly=True) == held(ASIM)
     assert ("[#2] PROGRESS:HistFactory -- Generating additional Asimov Dataset: asimov_mu0\n"
             "Configuring Asimov Dataset: Setting mu = 0\n") in said.getvalue()
