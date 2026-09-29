@@ -113,7 +113,7 @@ class TPARA(_Flat):
 class TGTRA(_Flat):
     PARAMETERS = ("Dz", "Theta", "Phi", "Twist", "H1", "Bl1", "Tl1", "Alpha1", "H2", "Bl2", "Tl2",
                   "Alpha2")  # fmt: skip
-    BUILD = build.gtra
+    BUILD = build.old_gtra
 
 
 class TTUBE(TShape):

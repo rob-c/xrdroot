@@ -161,10 +161,14 @@ class TGeoRotation(TGeoMatrix):
     def SetAngles(self, *angles: float) -> None:
         self._set(_rotation_of(angles))
 
-    def GetAngles(self, *out: Any) -> None:
-        """``GetAngles(theta1, phi1, ..., phi3)``: GEANT3's six angles, into the cells given."""
-        for cell, value in zip(out, self._xrd.geant_angles()):
-            cell.value = value
+    def GetAngles(self, *out: Any) -> tuple[float, ...]:
+        """``GetAngles(phi, theta, psi)`` - Euler's - or GEANT3's six, into what is given."""
+        from ..core.refs import store
+
+        found = self._xrd.euler_angles() if len(out) == 3 else self._xrd.geant_angles()
+        for target, value in zip(out, found):
+            store(target, value)
+        return tuple(found)
 
     def SetMatrix(self, rotation: Any) -> None:
         self._set(Matrix(np.asarray(rotation, dtype=np.float64).reshape(3, 3)))

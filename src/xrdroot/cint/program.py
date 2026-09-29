@@ -76,6 +76,8 @@ OUT_PARAMETERS: dict[tuple[str, int], tuple[int, ...]] = {
     ("GetBackgroundParameters", 6): (0, 1, 2, 3, 4, 5),
     ("GetTailParameters", 6): (0, 1, 2, 3, 4, 5),
     ("GetTailParameters", 16): tuple(range(16)),
+    ("GetAngles", 3): (0, 1, 2),
+    ("GetAngles", 6): (0, 1, 2, 3, 4, 5),
 }
 
 

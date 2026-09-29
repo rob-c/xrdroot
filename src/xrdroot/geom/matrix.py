@@ -26,6 +26,8 @@ __all__ = ["Matrix", "IDENTITY"]
 DEGRAD = math.pi / 180.0
 #: How near to 0 or to 1 an element of a GEANT3 rotation is snapped to it.
 SNAP = 1e-15
+#: How near to a pole (theta 0 or 180) ``GetAngles`` takes a rotation to be at one.
+EULER_POLE = 1e-9
 
 
 def _snapped(value: float) -> float:
@@ -101,14 +103,28 @@ class Matrix:
         return bool(np.linalg.det(self.rotation) < 0)
 
     def geant_angles(self) -> tuple[float, ...]:
-        """The six GEANT3 angles back, in degrees: each local axis's theta and phi."""
+        """The six GEANT3 angles back, in degrees: each local axis's theta and phi (0..360)."""
         found: list[float] = []
         for column in self.rotation.T:
             theta = math.degrees(math.acos(max(-1.0, min(1.0, column[2]))))
             flat = abs(column[0]) < 1e-6 and abs(column[1]) < 1e-6
-            found += [theta, 0.0 if flat else math.degrees(math.atan2(column[1], column[0]))]
+            phi = 0.0 if flat else math.degrees(math.atan2(column[1], column[0]))
+            found += [theta, phi + 360.0 if phi < 0 else phi]
         return tuple(found)
 
+    def euler_angles(self) -> tuple[float, float, float]:
+        """Euler's ``phi, theta, psi`` back, in degrees, as ``TGeoRotation::GetAngles`` finds them.
+
+        With theta 0 or 180 only ``phi + psi`` is fixed, and ``psi`` is taken as 0.
+        """
+        m = self.rotation.reshape(9)
+        if abs(1.0 - abs(m[8])) < EULER_POLE:
+            return math.degrees(math.atan2(-m[8] * m[1], m[0])), math.degrees(math.acos(m[8])), 0.0
+        phi = math.atan2(m[2], -m[5])
+        sphi = math.sin(phi)
+        pole = abs(sphi) < EULER_POLE
+        theta = -math.asin(m[5] / math.cos(phi)) if pole else math.asin(m[2] / sphi)
+        return math.degrees(phi), math.degrees(theta), math.degrees(math.atan2(m[6], m[7]))
 
 #: The placement that leaves a daughter where its mother's origin is: ``gGeoIdentity``.
 IDENTITY = Matrix()

@@ -19,8 +19,8 @@ import numpy as np
 from .mesh import Mesh, circle_profile, extrusion, hexahedron, revolve
 
 __all__ = [
-    "box", "arb8", "trd1", "trd2", "para", "trap", "gtra", "tube", "cone", "pcon", "pgon",
-    "sphere", "torus", "eltu", "ctub", "paraboloid", "hype", "xtru", "tessellated",
+    "box", "arb8", "trd1", "trd2", "para", "trap", "gtra", "old_gtra", "tube", "cone", "pcon",
+    "pgon", "sphere", "torus", "eltu", "ctub", "paraboloid", "hype", "xtru", "tessellated",
 ]  # fmt: skip
 
 #: How many steps a curved profile (a sphere's, a paraboloid's) is drawn in.
@@ -96,6 +96,22 @@ def gtra(dz: float, theta: float, phi: float, twist: float, *faces: float) -> Me
         x, y = (corners[rows] - at).T
         corners[rows] = np.column_stack([x * c + y * s, -x * s + y * c]) + at
     return arb8(dz, corners)
+
+
+def old_gtra(dz: float, theta: float, phi: float, twist: float, *faces: float) -> Mesh:
+    """The old package's ``TGTRA``: unlike ``TGeoGtra``, its lower face starts at the origin,
+    its upper face is shifted by ``2 dz sin(theta)`` and turned by the whole ``twist``."""
+    h1, bl1, tl1, alpha1, h2, bl2, tl2, alpha2 = faces[:8]
+    th, ph, turn = math.radians(theta), math.radians(phi), math.radians(twist)
+    dx, dy = 2 * dz * math.sin(th) * math.cos(ph), 2 * dz * math.sin(th) * math.sin(ph)
+    dx1, dx2 = 2 * h1 * math.tan(math.radians(alpha1)), 2 * h2 * math.tan(math.radians(alpha2))
+    lower = [(-bl1, -h1), (-tl1 + dx1, h1), (tl1 + dx1, h1), (bl1, -h1)]
+    upper = np.array([(-bl2 + dx, -h2 + dy), (-tl2 + dx + dx2, h2 + dy),
+                      (tl2 + dx + dx2, h2 + dy), (bl2 + dx, -h2 + dy)])  # fmt: skip
+    x, y = upper.T
+    c, s = math.cos(turn), math.sin(turn)
+    turned = np.column_stack([x * c + y * s, -x * s + y * c])
+    return arb8(dz, np.concatenate([np.array(lower), turned]))
 
 
 def tube(rmin: float, rmax: float, dz: float, phi1: float = 0.0, phi2: float = 360.0,

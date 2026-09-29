@@ -42,7 +42,12 @@ class TGeoElement(TNamed):
         return self._a
 
     def Print(self, option: str = "") -> None:
-        print(f"Element: {self.GetName()}      Z={self._z}   A={self._a:6.2f} [g/mole]")
+        name, z, n, a = self.GetName(), self._z, float(self.N()), self._a
+        print(f"Element: {name}      Z={z}   N={n:f}   A={a:f} [g/mole]")
+
+    def N(self) -> int:
+        """The number of nucleons, ``Int_t(a)``, as ROOT's constructor keeps it."""
+        return int(self._a)
 
 
 def _numbers(args: tuple[Any, ...]) -> list[float]:
@@ -134,7 +139,7 @@ class TGeoMedium(TNamed):
         super().__init__(str(name).strip(), "")
         self._id = int(numed)
         self._material = material
-        self._params = [float(v) for v in (params if params is not None else [])][:20]
+        self._params = [float(v) for v in (params if params is not None else [])][:10]
         _manager().AddMedium(self)
 
     def GetId(self) -> int:

@@ -61,9 +61,13 @@ def _table(groups: tuple[str, ...]) -> dict[str, tuple[str, str, type]]:
 
 
 def _colour_named(name: str) -> int:
-    """A colour given by name - ``"kGreen"``, or ``"#rrggbb"`` - as ``TColorNumber`` takes one."""
+    """A colour given by name - ``"kGreen"``, ``"red"``, ``"r"`` or ``"#rrggbb"`` - as
+    ``TColorNumber`` takes one."""
     from ...roofit.names import named_constant
+    from ..core.colors import COLOR_NAMES
 
+    if name in COLOR_NAMES:
+        return COLOR_NAMES[name]
     try:
         return int(named_constant(name))
     except (KeyError, ValueError, TypeError):

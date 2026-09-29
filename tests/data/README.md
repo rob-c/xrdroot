@@ -106,6 +106,19 @@ than `TTree::Write`, while its fourth was still being filled, so that basket
 is kept inside the branch record after the three out in the file - as ALICE's
 ESD trees keep theirs. It is the only file here that holds a basket that way.
 
+`tgeometry-small-6.40.root` and `tgeometry-small-6.40.png` were made by ROOT
+6.40.04 from `mkgeom.C`, the macro beside them, run interpreted:
+a `TGeometry` of the old geometry package holding one of each shape its
+reader makes again - a box, both trapezoids, both general trapezoids, the
+four tubes and a sphere - placed as a tree of `TNode`s, two of them turned by
+a `TRotMatrix`, one hiding itself and showing its daughters, written to the
+file and drawn into the picture. The file is the only one here written by a
+class's own hand-made streamer rather than from its layout, and the picture
+is what `xrdroot.pyroot` draws of the same tree pixel for pixel.
+`tgeo-rootgeom-6.40.png` is ROOT 6.40.04's picture of its own tutorial
+`visualisation/geom/rootgeom.C`, drawn in batch into a 700 by 500 canvas: the
+`TGeo` wireframe in the pad's perspective the geometry painter is held to.
+
 `uproot-issue-172.root` is from go-hep's `groot/testdata/uproot`, which took
 it from scikit-hep-testdata: `RVec`s written by ROOT 6.20, whose type names an
 `RAdoptAllocator`.
@@ -170,7 +183,7 @@ scikit-hep-testdata is BSD-3-Clause too; its licence is in
 
 ## ROOT tutorial macros
 
-`cint/` holds seven of ROOT's own tutorial macros, copied unchanged from ROOT
+`cint/` holds eight of ROOT's own tutorial macros, copied unchanged from ROOT
 6.40.04's `tutorials/` (with the data file one of them reads), laid out under
 the same directories. They are what `xrdroot.cint` is tested end to end on:
 translated into Python and run against a small fake ROOT, because the only
@@ -187,3 +200,4 @@ licence notice is `cint/LICENSE.root` and the licence itself
 | `hist/hist001_TH1_fillrandom.C` | a histogram filled by `FillRandom`, written with `WriteObject(&h, ...)` |
 | `visualisation/graphs/gr001_simple.C` | arrays filled in a loop, `sin`, `std::ifstream` read with `>>` |
 | `visualisation/graphs/data_basic.txt` | the numbers `gr001_simple.C` reads |
+| `visualisation/geom/rootgeom.C` | a `TGeo` geometry of boxes, tube segments and a `TGeoArb8`, placed by translations, GEANT3 rotations and `TGeoCombiTrans`, drawn - run against the real `xrdroot.pyroot`, whose picture of it is held to ROOT's `tgeo-rootgeom-6.40.png` |

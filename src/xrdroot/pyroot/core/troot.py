@@ -191,7 +191,7 @@ class TROOT(TDirectory):
         holds, then ``gDirectory``."""
         if not isinstance(name, str):
             return self._list.FindObject(name)
-        found = self._listed(name)
+        found = self._found_listed(name)
         if found is not None:
             return found
         here = current_directory()
@@ -199,7 +199,7 @@ class TROOT(TDirectory):
         anywhere = _graphics("pads", "find_anywhere")
         return found if found is not None or anywhere is None else anywhere(name)
 
-    def _listed(self, name: str) -> Any:
+    def _found_listed(self, name: str) -> Any:
         """The first object of that name in ROOT's own lists, or inside one of its geometries."""
         for key in ("Files", "MappedFiles", "Functions", "Geometries", "Canvases", "Styles",
                     "Specials"):  # fmt: skip
