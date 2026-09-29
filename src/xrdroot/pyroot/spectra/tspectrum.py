@@ -175,32 +175,48 @@ class TSpectrum(Peaks):
     def Search(self, hin: Any, sigma: float = 2, option: str = "", threshold: float = 0.05) -> int:
         """``Search``: the peaks of ``hin`` - their bin centres in ``GetPositionX``, their contents
         in ``GetPositionY`` - marked on it, and it drawn, unless ``goff`` or ``nodraw``."""
-        if hin is None:
+        if hin is None or not self._searchable(hin):
             return 0
-        if hin.GetDimension() > 2:
-            self.Error("Search", "Only implemented for 1-d and 2-d histograms")
-            return 0
-        if threshold <= 0 or threshold >= 1:
-            self.Warning("Search", "threshold must 0<threshold<1, threshold=0.05 assumed")
-            threshold = 0.05
+        threshold = self._threshold(threshold)
         opt, (quiet, plain, hidden) = option_flags(option, "nobackground", "nomarkov", "nodraw")
         if hin.GetDimension() != 1:
             return 0
-        first, last = hin.GetXaxis().GetFirst(), hin.GetXaxis().GetLast()
-        size = last - first + 1
-        if sigma < 1:
-            sigma = min(max(size // self.fMaxPeaks, 1), WIDEST_SIGMA)
-        source = [hin.GetBinContent(i + first) for i in range(size)]
-        npeaks = self.SearchHighRes(source, [0.0] * size, size, sigma, 100 * threshold, not quiet,
-                                    self.fgIterations, not plain, self.fgAverageWindow)  # fmt: skip
-        for i in range(npeaks):
-            at = first + int(self.fPositionX[i] + 0.5)
-            self.fPositionX[i], self.fPositionY[i] = hin.GetBinCenter(at), hin.GetBinContent(at)
+        npeaks = self._search_bins(hin, sigma, threshold, not quiet, not plain)
         if "goff" in opt or not npeaks:
             return npeaks
         self._mark(hin, npeaks)
         if not hidden:
             hin.Draw(opt.replace(" ", "").replace(",", ""))
+        return npeaks
+
+    def _threshold(self, threshold: float) -> float:
+        """``threshold``, or ROOT's 0.05 - with its warning - for one not between 0 and 1."""
+        if threshold <= 0 or threshold >= 1:
+            self.Warning("Search", "threshold must 0<threshold<1, threshold=0.05 assumed")
+            return 0.05
+        return threshold
+
+    def _searchable(self, hin: Any) -> bool:
+        """Whether ``Search`` goes on with ``hin`` - refused, as ROOT does, past two dimensions."""
+        if hin.GetDimension() > 2:
+            self.Error("Search", "Only implemented for 1-d and 2-d histograms")
+            return False
+        return True
+
+    def _search_bins(
+        self, hin: Any, sigma: float, threshold: float, remove: bool, markov: bool
+    ) -> int:
+        """The peaks of the bins of ``hin``'s range, left as their bins' centres and contents."""
+        first, last = hin.GetXaxis().GetFirst(), hin.GetXaxis().GetLast()
+        size = last - first + 1
+        if sigma < 1:
+            sigma = min(max(size // self.fMaxPeaks, 1), WIDEST_SIGMA)
+        source = [hin.GetBinContent(i + first) for i in range(size)]
+        npeaks = self.SearchHighRes(source, [0.0] * size, size, sigma, 100 * threshold, remove,
+                                    self.fgIterations, markov, self.fgAverageWindow)  # fmt: skip
+        for i in range(npeaks):
+            at = first + int(self.fPositionX[i] + 0.5)
+            self.fPositionX[i], self.fPositionY[i] = hin.GetBinCenter(at), hin.GetBinContent(at)
         return npeaks
 
     @staticmethod
