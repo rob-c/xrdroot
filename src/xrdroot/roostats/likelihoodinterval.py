@@ -40,6 +40,8 @@ class LikelihoodInterval(ConfInterval):
         self._upper: dict[str, float] = {}
         self._minuit: Any = None
         self._params: list[Any] = []
+        #: The points MINOS asks for, while it runs.
+        self._seen: list[Any] | None = None
 
     def GetLikelihoodRatio(self) -> Any:
         return self._ratio
@@ -134,6 +136,8 @@ class LikelihoodInterval(ConfInterval):
         def fcn(x: Any) -> float:
             for par, value in zip(self._params, x):
                 par.setVal(float(value))
+            if self._seen is not None:
+                self._seen.append(tuple(float(v) for v in x))
             return float(nll.getVal())
 
         minuit = iminuit().Minuit(fcn, [p.getVal() for p in self._params],
@@ -154,12 +158,31 @@ class LikelihoodInterval(ConfInterval):
     def _minos(self, name: str, level: float) -> tuple[float, float]:
         """``GetMinosError`` at ``level``: nothing for an invalid minimum, as Minuit2 gives."""
         self._minuit.errordef = level
+        self._seen = []
         try:
             self._minuit.minos(name)
         except RuntimeError:  # an invalid minimum: Minuit2Minimizer returns no errors at all
             return 0.0, 0.0
+        finally:
+            seen, self._seen = self._seen, None
+        self._left_as_root_leaves(name, seen)
         found = self._minuit.merrors[name]
         return float(found.lower), float(found.upper)
+
+    def _left_as_root_leaves(self, name: str, seen: list[Any]) -> None:
+        """The parameters where ROOT's MINOS leaves them: at the last point of the upper search.
+
+        ``GetMinosError`` runs the lower search and then the upper one, where
+        iminuit's MINOS runs the upper first; each is a search of its own from
+        the minimum, the same either way, but the likelihood's parameters are
+        left where the last call put them - so they are put back there, the
+        last point beyond the minimum.
+        """
+        index = [p.GetName() for p in self._params].index(name)
+        at = float(self._minuit.values[index])
+        above = [point for point in seen if point[index] > at]
+        for par, value in zip(self._params, above[-1] if above else ()):
+            par.setVal(value)
 
     def GetContourPoints(self, paramX: Any, paramY: Any, x: Any, y: Any, npoints: int = 30) -> int:
         """``npoints`` points of the two-dimensional contour at the confidence level, into

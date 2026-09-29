@@ -125,7 +125,22 @@ def _histogram_extent(h: Histogram, option: str, log: bool) -> Extent:
     if words & ERRORS or (h.weighted and "HIST" not in words):
         values = np.concatenate([values - errors, values + errors])
     low, high = _histogram_y(values, log)
-    return xlow, _limit(h, "fMinimum", low), xhigh, _limit(h, "fMaximum", high)
+    low, high = _crossed(_limit(h, "fMinimum", low), _limit(h, "fMaximum", high), log)
+    return xlow, low, xhigh, high
+
+
+def _crossed(low: float, high: float, log: bool) -> tuple[float, float]:
+    """``PaintInit``'s answer to a minimum at or above the maximum - the one a plot given a
+    maximum of -1 and a minimum of 0 has: ``[0, 1]``, or doubled away from zero."""
+    if low < high:
+        return low, high
+    if log:
+        return (0.001 * high, high) if high > 0 else (low, high)
+    if low > 0:
+        return 0.0, 2.0 * high
+    if low < 0:
+        return 2.0 * low, 0.0
+    return 0.0, 1.0
 
 
 def _efficiency_extent(e: Efficiency, pad: Pad) -> Extent:

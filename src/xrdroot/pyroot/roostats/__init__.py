@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..roostats.registry import members
+from ...roostats.registry import members
+from . import plots
 
 __all__ = ["RooStats"]
 
@@ -33,4 +34,6 @@ class _Namespace:
 
 
 #: ``ROOT.RooStats``.
-RooStats = _Namespace("RooStats", members())
+RooStats = _Namespace(
+    "RooStats", {**members(), **{name: getattr(plots, name) for name in plots.__all__}}
+)

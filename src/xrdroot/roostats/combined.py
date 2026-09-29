@@ -195,4 +195,4 @@ class ProfileLikelihoodCalculator(CombinedCalculator):
 def _said(fit: Any) -> None:
     """``fit->printStream(oocoutI(nullptr, Minimization), ...)``: the result as an INFO line."""
     text = fit.printStream(fit.defaultPrintContents(None), fit.defaultPrintStyle(None))
-    log(None, INFO, "Minimization", text)
+    log(None, INFO, "Minimization", text[:-1])  # printStream ends its own line

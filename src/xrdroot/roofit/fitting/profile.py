@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 
 from ..collections import RooArgSet, as_list
-from ..messages import INFO, PROGRESS, log, log_plain, service
+from ..messages import ERROR, INFO, PROGRESS, log, log_plain, service
 from ..printing import g
 from ..real import RooAbsReal
 
@@ -45,6 +45,13 @@ class RooProfileLL(RooAbsReal):
         self._start_from_min = True
         self._cache: Any = None
         self._neval = 0
+        #: A plotted copy's own copies of the nuisance parameters, which its fits never touch.
+        self._detached: list[Any] | None = None
+
+    def _nuisances(self) -> list[Any]:
+        """The nuisance parameters as this profile holds them: the likelihood's, or a plotted
+        copy's own."""
+        return list(self._par) if self._detached is None else self._detached
 
     def nll(self) -> Any:
         return self._nll
@@ -76,6 +83,37 @@ class RooProfileLL(RooAbsReal):
 
     def createProfile(self, paramsOfInterest: Any) -> Any:
         return self._nll.createProfile(paramsOfInterest)
+
+    def plotOn(self, frame: Any, *args: Any, **kwargs: Any) -> Any:
+        """``RooAbsReal::plotOn``, which draws a deep copy of the profile - a fresh minimizer, a
+        minimum to find again - with the plotted parameter put back as it was afterwards.
+
+        The copy RooFit draws minimises the likelihood's own parameters but
+        keeps copies of its nuisance parameters of its own, so what it assigns
+        them from the minimum it copied does not reach the fit: each fit starts
+        where the last left the nuisance parameters, and they are left where
+        the last fit put them - and the parameter of interest, which the copy
+        fixes, without its error.
+        """
+        before = [(p, p.getVal()) for p in self._obs]
+        copy = self._plotted_copy()
+        try:
+            copy.getVal()  # RooRealIntegral's "kludge": the projection is evaluated once, as it is
+
+            return RooAbsReal.plotOn(copy, frame, *args, **kwargs)
+        finally:
+            for par, value in before:
+                par.setVal(value)
+
+    def _plotted_copy(self) -> RooProfileLL:
+        """``RooProfileLL``'s copy constructor as plotting makes it: the minima it knew, but not
+        that they hold, and nuisance parameters of its own (:meth:`plotOn`)."""
+        made = RooProfileLL(self._name, self._title, self._nll, list(self._obs))
+        made._param_abs_min = [p.clone(p.GetName()) for p in self._param_abs_min]
+        made._obs_abs_min = [p.clone(p.GetName()) for p in self._obs_abs_min]
+        made._start_from_min = self._start_from_min
+        made._detached = [p.clone(p.GetName()) for p in self._par]
+        return made
 
     # -- values -------------------------------------------------------------------
 
@@ -130,7 +168,7 @@ class RooProfileLL(RooAbsReal):
             one.setConstant(True)
         log_plain(self, PROGRESS, "Eval", ".")
         if self._start_from_min:
-            RooArgSet(list(self._par)).assign(self._param_abs_min)
+            RooArgSet(self._nuisances()).assign(self._param_abs_min)
         self._minimizer.zeroEvalCount()
         self._minimizer.migrad()
         self._neval = self._minimizer.evalCounter()
@@ -142,7 +180,7 @@ class RooProfileLL(RooAbsReal):
     def _validate(self) -> None:
         """``validateAbsMin``: the minimum over everything, found again when a nuisance
         parameter's constness has changed."""
-        for par in self._par if self._valid else ():
+        for par in self._nuisances() if self._valid else ():
             if self._param_fixed.get(par.GetName()) != par.isConstant():
                 was = "fixed" if self._param_fixed.get(par.GetName()) else "floating"
                 now = "fixed" if par.isConstant() else "floating"
@@ -160,16 +198,23 @@ class RooProfileLL(RooAbsReal):
         if self._minimizer is None:
             self._initialize()
         start = [(p, p.getVal()) for p in self._obs]
-        RooArgSet(list(self._par)).assign(self._param_abs_min)
+        RooArgSet(self._nuisances()).assign(self._param_abs_min)
         RooArgSet(list(self._obs)).assign(self._obs_abs_min)
         for one in self._obs:
             one.setConstant(False)
         self._minimizer.migrad()
         self._abs_min = float(self._nll.getVal())
         self._valid = True
-        self._param_abs_min = [p.clone(p.GetName()) for p in self._par if not p.isConstant()]
-        self._obs_abs_min = [p.clone(p.GetName()) for p in self._obs]
-        self._param_fixed = {p.GetName(): p.isConstant() for p in self._par}
+        mine = self._nuisances()
+        self._param_abs_min = [p.clone(p.GetName()) for p in mine if not p.isConstant()]
+        known = {p.GetName() for p in self._obs_abs_min}  # a copy's: addClone will not add them
+        for par in self._obs:
+            if par.GetName() in known:
+                log(None, ERROR, "InputArguments", "RooArgSet::checkForDup: ERROR argument with "
+                    f"name {par.GetName()} is already in this set")  # fmt: skip
+            else:
+                self._obs_abs_min.append(par.clone(par.GetName()))
+        self._param_fixed = {p.GetName(): p.isConstant() for p in mine}
         at = ", ".join(f"{p.GetName()}={g(p.getVal())}" for p in self._obs)
         log(self, INFO, "Minimization", f"RooProfileLL::evaluate({self._name}) minimum found at "
             f"({at})")  # fmt: skip
