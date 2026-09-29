@@ -128,24 +128,14 @@ class _Search:
     def close(self) -> Any:
         """Bracketing and bisection: ``True`` at the accuracy asked, ``False`` to fit, ``None``
         if a test failed."""
-        it = self.it
         while True:
-            if 0 < it._max_toys < it._toys_run:
-                log(None, WARNING, "Eval", "HypoTestInverter::RunLimit - maximum number of toys "
-                    "reached  ")  # fmt: skip
-                return False
-            self.estimate()
-            it._var.setError(self.error)
-            if self.error < self.tolerance():
-                if it._verbose > 1:
-                    log(None, INFO, "Eval", f"HypoTestInverter::RunLimit - reached accuracy "
-                        f"{g(self.error)} below {g(self.tolerance())}")  # fmt: skip
-                return True
+            stop = self._stop()
+            if stop is not None:
+                return stop
             mid = self.run(self.limit, "")
-            if mid is None:
-                return None
-            if mid[1] == -1:
-                log(None, ERROR, "Eval", "Hypotest failed")
+            if mid is None or mid[1] == -1:
+                if mid is not None:
+                    log(None, ERROR, "Eval", "Hypotest failed")
                 return None
             if abs(mid[0] - self.target) < 2 * mid[1]:
                 return self._edges()
@@ -154,39 +144,58 @@ class _Search:
             else:
                 self.r_min, self.cls_min = self.limit, mid
 
+    def _stop(self) -> Any:
+        """Before each step: ``False`` at the toys' limit, ``True`` at the accuracy asked."""
+        it = self.it
+        if 0 < it._max_toys < it._toys_run:
+            log(None, WARNING, "Eval", "HypoTestInverter::RunLimit - maximum number of toys "
+                "reached  ")  # fmt: skip
+            return False
+        self.estimate()
+        it._var.setError(self.error)
+        if self.error >= self.tolerance():
+            return None
+        if it._verbose > 1:
+            log(None, INFO, "Eval", f"HypoTestInverter::RunLimit - reached accuracy "
+                f"{g(self.error)} below {g(self.tolerance())}")  # fmt: skip
+        return True
+
     def _edges(self) -> Any:
         """The ends moved in towards a point within two errors of the target: the range to fit."""
         if self.it._verbose > 0:
             log(None, INFO, "Eval", "Trying to move the interval edges closer")
-        low_bound, high_bound = self.r_min, self.r_max
-        while self.cls_min[1] == 0 or abs(self.r_min - self.limit) > self.tolerance():
-            self.r_min = 0.5 * (self.r_min + self.limit)
-            found = self.run(self.r_min, " from below")
-            if found is None:
-                return None
-            self.cls_min = found
-            if abs(found[0] - self.target) <= 2 * found[1]:
-                break
-            low_bound = self.r_min
-        while self.cls_max[1] == 0 or abs(self.r_max - self.limit) > self.tolerance():
-            self.r_max = 0.5 * (self.r_max + self.limit)
-            found = self.run(self.r_max, " from above", self.r_min)
-            if found is None:
-                return None
-            self.cls_max = found
-            if abs(found[0] - self.target) <= 2 * found[1]:
-                break
-            high_bound = self.r_max
+        low_bound = self._move(True, self.r_min)
+        high_bound = self._move(False, self.r_max) if low_bound is not None else None
+        if low_bound is None or high_bound is None:
+            return None
         self.fit_range = (low_bound, high_bound)
         return False
+
+    def _move(self, lower: bool, bound: float) -> Any:
+        """One end halved towards the limit until close enough - or until its point is within two
+        errors of the target; the fit's bound on that side, or ``None`` if a test failed."""
+        while True:
+            end, cls = (self.r_min, self.cls_min) if lower else (self.r_max, self.cls_max)
+            if cls[1] != 0 and abs(end - self.limit) <= self.tolerance():
+                return bound
+            end = 0.5 * (end + self.limit)
+            found = self.run(end, " from below") if lower else self.run(end, " from above",
+                                                                      self.r_min)  # fmt: skip
+            if found is None:
+                return None
+            if lower:
+                self.r_min, self.cls_min = end, found
+            else:
+                self.r_max, self.cls_max = end, found
+            if abs(found[0] - self.target) <= 2 * found[1]:
+                return bound
+            bound = end
 
     def fit(self) -> Any:
         """No accuracy from the scan: ``target e^(b (x - limit))`` fitted to the points in the
         fit range - a point more at random in it each time - until the fitted limit is accurate
         enough; ``None`` if a test failed. The fitted function, for the picture."""
-        from ..pyroot.core import TF1
         from ..pyroot.roostats.inverterplot import make_plot
-        from ..roofit.rng import generator
 
         it = self.it
         low, high = self.fit_range
@@ -194,39 +203,61 @@ class _Search:
             log(None, INFO, "Eval", "HypoTestInverter::RunLimit - Before fit   --- \nLimit: "
                 f"{it._var.GetName()} < {g(self.limit)} +/- {g(self.error)} [{g(self.r_min)}, "
                 f"{g(self.r_max)}]")  # fmt: skip
+        expo = self._exponential(low, high)
+        self.error = max(abs(low - self.limit), abs(high - self.limit))
+        it._limit_plot = make_plot(it._results)
+        npoints = sum(1 for x in it._limit_plot.GetX() if low <= x <= high)
+        for i in range(9):
+            if self._fitted(expo, npoints, high - low):
+                break
+            if i != 8 and not self._trial(low, high):
+                return None
+            npoints += 1
+        return expo
+
+    def _exponential(self, low: float, high: float) -> Any:
+        """``expoFit``: through the target at the limit, of the slope between the ends."""
+        from ..pyroot.core import TF1
+
         expo = TF1("expoFit", "[0]*exp([1]*(x-[2]))", low, high)
         expo.FixParameter(0, self.target)
         slope = _log(self.cls_max[0] / self.cls_min[0]) / (self.r_max - self.r_min)
         expo.SetParameter(1, slope)
         expo.SetParameter(2, self.limit)
-        self.error = max(abs(low - self.limit), abs(high - self.limit))
-        it._limit_plot = make_plot(it._results)
-        npoints = sum(1 for x in it._limit_plot.GetX() if low <= x <= high)
-        for i in range(9):
-            it._limit_plot.Sort()
-            it._limit_plot.Fit(expo, "QNR EX0" if it._verbose <= 1 else "NR EXO")
-            value, error = expo.GetParameter(2), expo.GetParError(2)
-            if it._verbose:
-                log(None, INFO, "Eval", f"Fit to {npoints} points: {g(value)} +/- {g(error)}")
-            if self.r_min < value < self.r_max and error < 0.5 * (high - low):
-                self.limit, self.error = value, error
-                if self.error < self.tolerance():
-                    break
-            trial = generator().Rndm() * (high - low) + low
-            if i != 8 and not it.RunOnePoint(trial, True, self.target):
-                return None
-            npoints += 1
         return expo
 
+    def _fitted(self, expo: Any, npoints: int, width: float) -> bool:
+        """One fit: its limit kept if inside and precise - ``True`` once accurate enough."""
+        it = self.it
+        it._limit_plot.Sort()
+        it._limit_plot.Fit(expo, "QNR EX0" if it._verbose <= 1 else "NR EXO")
+        value, error = expo.GetParameter(2), expo.GetParError(2)
+        if it._verbose:
+            log(None, INFO, "Eval", f"Fit to {npoints} points: {g(value)} +/- {g(error)}")
+        if self.r_min < value < self.r_max and error < 0.5 * width:
+            self.limit, self.error = value, error
+            return bool(self.error < self.tolerance())
+        return False
 
-def run_limit(it: Any, abs_tol: float, rel_tol: float, hint: Any) -> tuple[bool, float, float]:
-    """The search, and the limit it found kept on the results as fitted."""
-    var = it._var
+    def _trial(self, low: float, high: float) -> bool:
+        from ..roofit.rng import generator
+
+        trial = generator().Rndm() * (high - low) + low
+        return bool(self.it.RunOnePoint(trial, True, self.target))
+
+
+def _hinted(var: Any, hint: Any) -> None:
+    """A hint narrows the range: from 0.3 to 3 times it, within the variable's."""
     if hint is not None and hint > var.getMin():
         var.setMax(min(3.0 * hint, var.getMax()))
         var.setMin(max(0.3 * hint, var.getMin()))
         log(None, INFO, "InputArguments", f"HypoTestInverter::RunLimit - Use hint value {g(hint)} "
             f"search in interval {g(var.getMin())} , {g(var.getMax())}")  # fmt: skip
+
+
+def _started(it: Any, abs_tol: float, rel_tol: float) -> _Search:
+    """The search over the variable's range, its accuracy the default where none is given."""
+    var = it._var
     accuracy = (abs_tol if abs_tol > 0 else inv.ABS_ACCURACY[0],
                 rel_tol if rel_tol > 0 else inv.REL_ACCURACY[0])  # fmt: skip
     search = _Search(it, it._size, accuracy)
@@ -236,28 +267,39 @@ def run_limit(it: Any, abs_tol: float, rel_tol: float, hint: Any) -> tuple[bool,
     search.error = 0.5 * (search.r_max - search.r_min)
     it._create_results()
     it._limit_plot = None
+    return search
+
+
+def _say(it: Any, text: str) -> None:
     if it._verbose > 0:
-        log(None, INFO, "Eval", "Search for upper limit to the limit")
+        log(None, INFO, "Eval", text)
+
+
+def _bracketed(it: Any, search: _Search) -> bool:
+    """The range's two ends found - the top where CLs is below the size, the bottom above."""
+    _say(it, "Search for upper limit to the limit")
     upper = _upper_end(it, search.r_max, search.target)
     if upper is None:
-        return False, search.limit, search.error
+        return False
     search.r_max, search.cls_max = upper
-    if it._verbose > 0:
-        log(None, INFO, "Eval", "HypoTestInverter::RunLimit - Search for lower limit to the limit")
+    _say(it, "HypoTestInverter::RunLimit - Search for lower limit to the limit")
     lower = _lower_end(it, search.r_min, search.r_max, search.target)
     if lower is None:
-        return False, search.limit, search.error
+        return False
     search.r_min, search.cls_min = lower
-    if it._verbose > 0:
-        log(None, INFO, "Eval", "HypoTestInverter::RunLimit - Now doing proper bracketing & "
-            "bisection")  # fmt: skip
+    return True
+
+
+def run_limit(it: Any, abs_tol: float, rel_tol: float, hint: Any) -> tuple[bool, float, float]:
+    """The search, and the limit it found kept on the results as fitted."""
+    _hinted(it._var, hint)
+    search = _started(it, abs_tol, rel_tol)
+    if not _bracketed(it, search):
+        return False, search.limit, search.error
+    _say(it, "HypoTestInverter::RunLimit - Now doing proper bracketing & bisection")
     done = search.close()
-    expo = None
-    if done is False:
-        expo = search.fit()
-        if expo is None:
-            return False, search.limit, search.error
-    elif done is None:
+    expo = search.fit() if done is False else None
+    if done is None or (done is False and expo is None):
         return False, search.limit, search.error
     return _finish(it, search, expo)
 
