@@ -1478,7 +1478,7 @@ frame.Draw()
   ends), `RooConstVar`, `RooCategory` and its derived kinds, `RooFormulaVar`,
   `RooGenericPdf`, `RooPolyVar`, `RooProduct` and `RooAddition`.
 - **Densities**: the standard shapes (Gaussian, exponential, polynomial, Chebychev, ARGUS,
-  Crystal Ball, Breit-Wigner, Landau, Poisson...).
+  Crystal Ball, Breit-Wigner, Landau, Poisson, gamma, chi-square, non-central chi-square...).
 - **Compositions**: sums (`RooAddPdf`, recursive fractions too), products with conditional
   factors, `RooExtendPdf`, `RooSimultaneous`, `RooRealSumPdf`, `RooHistPdf`,
   `RooMultiVarGaussian`, `RooFFTConvPdf`, `RooKeysPdf`, and the resolution models and B
@@ -1505,7 +1505,100 @@ The same goes for, among others:
 - `RooAbsPdf.defaultIntegratorConfig` and the graph printers.
 
 Refusing is better than a curve or a fit that is almost ROOT's. A workspace read from a ROOT
-file is refused as well, because the file holds C++ code for it to compile.
+file is read into the same engine, class by class; a class it has no maker for - or one whose
+C++ code the file holds for ROOT to compile - is refused by name.
+
+## RooStats
+
+`ROOT.RooStats` is RooStats 6.40 over the same engine: the calculators and intervals of a
+limit or a discovery, printing what ROOT prints and drawing from `RooRandom`'s `TRandom3` in
+ROOT's order, so toys are ROOT's toys.
+
+```python
+import xrdroot.pyroot as ROOT
+
+f = ROOT.TFile.Open("example_combined_GaussExample_model.root")   # hist2workspace's
+w = f.Get("combined")
+data, sb = w.data("obsData"), w.obj("ModelConfig")
+poi = sb.GetParametersOfInterest().first()
+b = sb.Clone("B")
+poi.setVal(0)
+b.SetSnapshot(ROOT.RooArgSet(poi))
+
+calc = ROOT.RooStats.AsymptoticCalculator(data, b, sb)
+calc.SetOneSided(True)
+inverter = ROOT.RooStats.HypoTestInverter(calc)
+inverter.UseCLs(True)
+inverter.SetFixedScan(6, 0, 3)
+result = inverter.GetInterval()
+print(result.UpperLimit(), result.GetExpectedUpperLimit(0))
+ROOT.RooStats.HypoTestInverterPlot("scan", "CLs scan", result).Draw("CLb 2CL")
+```
+
+**What it has.**
+- **Models**: `ModelConfig` - kept in its workspace by name, and read back with it - and the
+  helpers of `RooStatsUtils` (`FactorizePdf`, `MakeNuisancePdf`, `StripConstraints`,
+  `PValueToSignificance`, ...), `NumberCountingPdfFactory` and `NumberCountingUtils`.
+- **Intervals**: `ProfileLikelihoodCalculator` and `LikelihoodInterval` (with Minuit's
+  contours and `LikelihoodIntervalPlot`); `FeldmanCousins` and `NeymanConstruction` with
+  `ConfidenceBelt`; `BayesianCalculator` (numerical integration and scans, its posterior
+  plot); `MCMCCalculator`, `MetropolisHastings`, `MarkovChain`, the proposal functions and
+  `ProposalHelper`, `MCMCInterval` and `MCMCIntervalPlot`.
+- **Tests**: `ProfileLikelihoodTestStat` and the other test statistics, `ToyMCSampler`,
+  `FrequentistCalculator`, `HybridCalculator`, `AsymptoticCalculator` (its Asimov data,
+  global observables and expected p-values), `HypoTestResult`, `SamplingDistribution`,
+  `SamplingDistPlot` and `HypoTestPlot`.
+- **Limits**: `HypoTestInverter` - fixed scans and the automatic search - with
+  `HypoTestInverterResult` (interpolated and expected limits, `ExclusionCleanup`) and
+  `HypoTestInverterPlot`'s observed curve and expected bands.
+- **Inspection**: `ProfileInspector`.
+
+**Why the numbers are ROOT's.** The fits are RooFit's, set up as RooStats sets them up - its
+retries included. The one-dimensional minimisation, integration and root finding are
+MathCore's and GSL's, ported: Brent's minimiser and root finder, QAGS, and Cephes' normal
+quantiles. The asymptotic formulae are RooStats' own, step for step.
+
+**What it refuses**, by name: `BernsteinCorrection`, `SPlot`, `HypoTestInverter`'s rebuilt
+limit distributions, the spline interpolation of a scan, keys-based MCMC intervals, and
+PROOF.
+
+## HistFactory
+
+`ROOT.RooStats.HistFactory` builds a model from histograms, as `hist2workspace` and
+`MakeModelAndMeasurementFast` build it: the same `RooWorkspace`, the same `ModelConfig`, the
+same printout, on the RooFit engine - not a translation into another format - so everything
+RooStats does with a HistFactory model it does here.
+
+```python
+import xrdroot.pyroot as ROOT
+
+meas = ROOT.RooStats.HistFactory.Measurement("meas", "meas")
+meas.SetOutputFilePrefix("./results/example")
+meas.SetPOI("SigXsecOverSM")
+meas.AddConstantParam("Lumi")
+meas.SetLumi(1.0)
+meas.SetLumiRelErr(0.10)
+chan = ROOT.RooStats.HistFactory.Channel("channel1")
+chan.SetData("data", "data/example.root")
+chan.SetStatErrorConfig(0.05, "Poisson")
+signal = ROOT.RooStats.HistFactory.Sample("signal", "signal", "data/example.root")
+signal.AddOverallSys("syst1", 0.95, 1.05)
+signal.AddNormFactor("SigXsecOverSM", 1, 0, 3)
+chan.AddSample(signal)
+meas.AddChannel(chan)
+meas.CollectHistograms()
+w = ROOT.RooStats.HistFactory.MakeModelAndMeasurementFast(meas)
+```
+
+**What it has**: `Measurement`, `Channel`, `Sample` and `Data`; overall, shape and
+normalisation systematics (`OverallSys`, `HistoSys`, `NormFactor`, `ShapeSys`,
+`ShapeFactor`, `StatError`) with Gaussian, Poisson, Gamma and log-normal constraints;
+`FlexibleInterpVar`, `PiecewiseInterpolation` and `ParamHistFunc`; Asimov datasets;
+`PrintTree`. HistFactory workspaces written by ROOT are read.
+
+**What it refuses**: the XML configuration (`PrintXML`, `hist2workspace` itself), a shape
+factor's initial shape, and writing the workspace into the output file - the histograms are
+written, and the workspace is said not to be.
 
 ## TMVA
 
