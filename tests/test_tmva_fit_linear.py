@@ -62,5 +62,8 @@ def test_a_nearly_singular_matrix_is_warned_of(session, capsys):
 
 @pytest.mark.parametrize("kind", [LD, FISHER])
 def test_a_singular_matrix_is_refused(session, kind):
+    # A variable that is always zero gives a row and a column of zeros, whose determinant
+    # is exactly zero in any LAPACK; one that is 2*var1 is singular too, but the LU of it
+    # leaves rounding of 1e-12 or so in OpenBLAS, far above TMVA's 1e-119 threshold.
     with pytest.raises(TMVAError, match="matrix is singular"):
-        classify([(kind, "Linear", "!H:!V")], data=_scaled(("var1", "var2", "2*var1")))
+        classify([(kind, "Linear", "!H:!V")], data=_scaled(("var1", "var2", "0*var1")))

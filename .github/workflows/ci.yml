@@ -44,10 +44,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      # The package itself needs nothing compiled - no ROOT, no uproot, no
-      # numpy - but the zstd extra is installed so that the accelerated path
-      # is the one under test on every interpreter, rather than only on the
-      # 3.14s that carry `compression.zstd` in the standard library.
+      # The package needs no ROOT and nothing compiled of its own, only NumPy;
+      # the dev extra brings the libraries it hands data to and learns with, and
+      # the zstd extra is installed so that the accelerated path is the one under
+      # test on every interpreter, not only on the 3.14s that carry
+      # `compression.zstd` in the standard library.
+      # XGBoost's macOS wheels load libomp at import and do not bring it; the
+      # runner has no OpenMP of its own, so TMVA's RBDT tests would not import.
+      - if: runner.os == 'macOS'
+        run: brew install libomp
       - run: pip install -e ".[dev,zstd]"
       # pytest-cov rather than `coverage run`, because the workers xdist
       # spawns are separate processes and only pytest-cov collects them all.
