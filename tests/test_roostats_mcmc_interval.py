@@ -121,7 +121,7 @@ def test_keys_and_sparse_histograms_are_refused() -> None:
 def test_the_calculator_passes_its_settings_to_the_chain_and_the_interval(capsys: Any) -> None:
     from test_roostats_bayes_mcmc import gaussian, helped
 
-    w, config, data = gaussian("mu,sigma")
+    w, _config, data = gaussian("mu,sigma")
     mc = MCMCCalculator()
     assert mc.GetInterval() is None
     mc.SetData(data)

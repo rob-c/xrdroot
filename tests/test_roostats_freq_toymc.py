@@ -117,7 +117,7 @@ class _NaN:
 
 
 def test_the_settings_are_kept_and_what_the_sampler_lacks_is_said(capsys: Any) -> None:
-    y, _m, ext, obs, poi = _extended()
+    _y, _m, ext, obs, poi = _extended()
     sampler = _sampler(NumEventsTestStat(ext), 3, ext, obs, poi)
     sampler.AddTestStatistic()
     sampler.SetTestStatistic(NumEventsTestStat(ext), 1)
