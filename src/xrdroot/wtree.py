@@ -832,10 +832,9 @@ def _branch(buf: WBuffer, column: _Column, entries: int, compress: int, count: i
     buf.i64(column.zip_bytes)
     empty = _objarray(buf, 0)  # fBranches: a column has nothing under it
     buf.end(empty)
+    parts: list[tuple[str, str, int, int] | None] = [None]
     if isinstance(column, _Record):
         parts = [(leaf, leaf, 1, k * column.itemsize) for k, leaf in enumerate(column.leaves)]
-    else:
-        parts = [None]
     leaves = _objarray(buf, len(parts))
     place = [_leaf(buf, column, count, part) for part in parts]
     buf.end(leaves)
