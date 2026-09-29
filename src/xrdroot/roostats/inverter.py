@@ -58,9 +58,23 @@ def check_input_models(calc: Any, var: Any) -> None:
         log(None, ERROR, "InputArguments", "HypoTestInverter - B model has no pdf or observables "
             "defined")  # fmt: skip
         return
-    params = b.GetPdf().getParameters(b.GetObservables())
-    if params.find(var.GetName()) is None:
-        return
+    if b.GetPdf().getParameters(b.GetObservables()).find(var.GetName()) is not None:
+        _background_at_zero(b, var)
+
+
+def _one_point(nbins: int, xmin: float, xmax: float, where: str) -> int:
+    """A scan of one point, said - one at ``xMin`` if the range is empty."""
+    if nbins == 1 and xmin != xmax:
+        log(None, WARNING, "InputArguments", f"{where}nBins==1 -> I will run for xMin "
+            f"({g(xmin)})")  # fmt: skip
+    if xmin == xmax and nbins > 1:
+        log(None, WARNING, "InputArguments", f"{where}xMin==xMax -> I will enforce nBins==1")
+        return 1
+    return nbins
+
+
+def _background_at_zero(b: Any, var: Any) -> None:
+    """A warning, if the background model's snapshot does not have the parameter at zero."""
     snapshot = b.GetSnapshot()
     found = snapshot.find(var.GetName()) if snapshot is not None else None
     if found is None or found.getVal() != 0:
@@ -267,20 +281,25 @@ class HypoTestInverter:
         result.SetBackgroundAsAlt(True)
         shift = -self._num_err if result.GetPValueIsRightTail() else self._num_err
         result.SetTestStatisticData(result.GetTestStatisticData() + shift)
-        mid, err = self._cls(result)
-        if adaptive and self._kind in (kHybrid, kFrequentist):
-            self._calc.SetToys(N_TOYS[0] if self._use_cls else 1, 4 * N_TOYS[0])
-        while adaptive and err >= CL_ACCURACY[0] and (target == -1 or abs(mid - target) < 3 * err):
-            result.Append(self._calc.GetHypoTest())
-            mid, err = self._cls(result)
-            if self._verbose:
-                log(None, PROGRESS, "Eval", ("\tCLs = " if self._use_cls else "\tCLsplusb = ")
-                    + f"{g(mid)} +/- {g(err)}")  # fmt: skip
+        if adaptive:
+            self._more_toys(result, target)
         if self._verbose:
             self._said(result)
         if self._kind in (kFrequentist, kHybrid):
             self._rename(result)
         return result
+
+    def _more_toys(self, result: Any, target: float) -> None:
+        """More toys - ``fgNToys`` at a time - while the CL is imprecise and near ``target``."""
+        mid, err = self._cls(result)
+        if self._kind in (kHybrid, kFrequentist):
+            self._calc.SetToys(N_TOYS[0] if self._use_cls else 1, 4 * N_TOYS[0])
+        while err >= CL_ACCURACY[0] and (target == -1 or abs(mid - target) < 3 * err):
+            result.Append(self._calc.GetHypoTest())
+            mid, err = self._cls(result)
+            if self._verbose:
+                log(None, PROGRESS, "Eval", ("\tCLs = " if self._use_cls else "\tCLsplusb = ")
+                    + f"{g(mid)} +/- {g(err)}")  # fmt: skip
 
     def _said(self, result: Any) -> None:
         log(None, PROGRESS, "Eval", f"P values for  {self._var.GetName()} =  "
@@ -301,34 +320,32 @@ class HypoTestInverter:
     def _scan_range(self, nbins: int, xmin: float, xmax: float,
                     scan_log: bool) -> Any:  # fmt: skip
         """The scan's points and range, as ``RunFixedScan`` checks them - or ``None``."""
+        where = "HypoTestInverter::RunFixedScan - "
         if nbins <= 0:
-            log(None, ERROR, "InputArguments", "HypoTestInverter::RunFixedScan - Please provide "
-                "nBins>0")  # fmt: skip
+            log(None, ERROR, "InputArguments", f"{where}Please provide nBins>0")
             return None
-        if nbins == 1 and xmin != xmax:
-            log(None, WARNING, "InputArguments", "HypoTestInverter::RunFixedScan - nBins==1 -> I "
-                f"will run for xMin ({g(xmin)})")  # fmt: skip
-        if xmin == xmax and nbins > 1:
-            log(None, WARNING, "InputArguments", "HypoTestInverter::RunFixedScan - xMin==xMax -> I "
-                "will enforce nBins==1")  # fmt: skip
-            nbins = 1
+        nbins = _one_point(nbins, xmin, xmax, where)
         if xmin > xmax:
-            log(None, ERROR, "InputArguments", "HypoTestInverter::RunFixedScan - Please provide "
-                f"xMin ({g(xmin)}) smaller than xMax ({g(xmax)})")  # fmt: skip
+            log(None, ERROR, "InputArguments", f"{where}Please provide xMin ({g(xmin)}) smaller "
+                f"than xMax ({g(xmax)})")  # fmt: skip
             return None
-        if xmin < self._var.getMin():
-            xmin = self._var.getMin()
-            log(None, WARNING, "InputArguments", "HypoTestInverter::RunFixedScan - xMin < lower "
-                f"bound, using xmin = {g(xmin)}")  # fmt: skip
-        if xmax > self._var.getMax():
-            xmax = self._var.getMax()
-            log(None, WARNING, "InputArguments", "HypoTestInverter::RunFixedScan - xMax > upper "
-                f"bound, using xmax = {g(xmax)}")  # fmt: skip
+        xmin, xmax = self._within(xmin, xmax, where)
         if xmin <= 0 and scan_log:
-            log(None, ERROR, "InputArguments", "HypoTestInverter::RunFixedScan - cannot go in log "
-                "steps if xMin <= 0")  # fmt: skip
+            log(None, ERROR, "InputArguments", f"{where}cannot go in log steps if xMin <= 0")
             return None
         return nbins, xmin, xmax
+
+    def _within(self, xmin: float, xmax: float, where: str) -> tuple[float, float]:
+        """The range cut to the variable's, said."""
+        if xmin < self._var.getMin():
+            xmin = self._var.getMin()
+            log(None, WARNING, "InputArguments", f"{where}xMin < lower bound, using xmin = "
+                f"{g(xmin)}")  # fmt: skip
+        if xmax > self._var.getMax():
+            xmax = self._var.getMax()
+            log(None, WARNING, "InputArguments", f"{where}xMax > upper bound, using xmax = "
+                f"{g(xmax)}")  # fmt: skip
+        return xmin, xmax
 
     def RunFixedScan(self, nBins: int, xMin: float, xMax: float, scanLog: bool = False) -> bool:
         """Each of ``nBins`` points from ``xMin`` to ``xMax`` - evenly, or evenly in the log."""

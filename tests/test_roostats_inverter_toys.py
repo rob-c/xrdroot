@@ -502,3 +502,11 @@ def test_the_limit_error_fit_for_a_lower_limit_and_with_too_few_points(capsys: A
     assert limits.estimated_error(result, 0.05, False, 3.8, 3.95) == 0.0
     assert "no valid points - cannot estimate  the upper limit error" in capsys.readouterr().out
     assert result.FindInterpolatedLimit(0.05, False, 3.5, 3.9) == pytest.approx(3.85, abs=0.05)
+
+
+def test_an_adaptive_point_of_cls_plus_b_is_run_until_precise(capsys: Any) -> None:
+    it, calc = inverter()
+    it.UseCLs(False)
+    it.SetVerbose(1)
+    assert it.RunOnePoint(2.0, True, 0.5)
+    assert calc.calls > 1 and "\tCLsplusb = 0.5 +/- " in capsys.readouterr().out
