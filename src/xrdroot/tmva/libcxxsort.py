@@ -132,57 +132,69 @@ class _Sorter:
         k[at], idx[at] = pivot
         return at
 
+    def _past_less(self, at: int, pivot: float) -> int:
+        """``do ++at; while (*at < pivot)``."""
+        at += 1
+        while self.k[at] < pivot:
+            at += 1
+        return at
+
+    def _before_less(self, at: int, pivot: float) -> int:
+        """``do --at; while (!(*at < pivot))``."""
+        at -= 1
+        while not self.k[at] < pivot:
+            at -= 1
+        return at
+
+    def _past_not_greater(self, at: int, pivot: float) -> int:
+        """``do ++at; while (!(pivot < *at))``."""
+        at += 1
+        while not pivot < self.k[at]:
+            at += 1
+        return at
+
+    def _before_greater(self, at: int, pivot: float) -> int:
+        """``do --at; while (pivot < *at)``."""
+        at -= 1
+        while pivot < self.k[at]:
+            at -= 1
+        return at
+
     def equals_right(self, first: int, last: int) -> tuple[int, bool]:
         """``__partition_with_equals_on_right``: the pivot's place, and if nothing moved."""
         k = self.k
         begin, pivot = first, (k[first], self.i[first])
-        first += 1
-        while k[first] < pivot[0]:
-            first += 1
+        first = self._past_less(first, pivot[0])
         if begin == first - 1:
             while first < last:
                 last -= 1
                 if k[last] < pivot[0]:
                     break
         else:
-            last -= 1
-            while not k[last] < pivot[0]:
-                last -= 1
+            last = self._before_less(last, pivot[0])
         already = first >= last
         while first < last:
             self.swap(first, last)
-            first += 1
-            while k[first] < pivot[0]:
-                first += 1
-            last -= 1
-            while not k[last] < pivot[0]:
-                last -= 1
+            first = self._past_less(first, pivot[0])
+            last = self._before_less(last, pivot[0])
         return self._place(begin, first, pivot), already
 
     def equals_left(self, first: int, last: int) -> int:
-        """``__partition_with_equals_on_left``: after it, the first element greater than the pivot."""
+        """``__partition_with_equals_on_left``: after it, the first element above the pivot."""
         k = self.k
         begin, pivot = first, (k[first], self.i[first])
         if pivot[0] < k[last - 1]:
-            first += 1
-            while not pivot[0] < k[first]:
-                first += 1
+            first = self._past_not_greater(first, pivot[0])
         else:
             first += 1
             while first < last and not pivot[0] < k[first]:
                 first += 1
         if first < last:
-            last -= 1
-            while pivot[0] < k[last]:
-                last -= 1
+            last = self._before_greater(last, pivot[0])
         while first < last:
             self.swap(first, last)
-            first += 1
-            while not pivot[0] < k[first]:
-                first += 1
-            last -= 1
-            while pivot[0] < k[last]:
-                last -= 1
+            first = self._past_not_greater(first, pivot[0])
+            last = self._before_greater(last, pivot[0])
         self._place(begin, first, pivot)
         return first
 
@@ -201,13 +213,7 @@ class _Sorter:
     def introsort(self, first: int, last: int, depth: int, leftmost: bool = True) -> None:
         """``__introsort``: partition about the pivot, sort the left, loop on the right."""
         while True:
-            if self.small(first, last):
-                return
-            if last - first < LIMIT:
-                self.insertion(first, last, leftmost)
-                return
-            if depth == 0:
-                self._heap(first, last)
+            if self._finished(first, last, depth, leftmost):
                 return
             depth -= 1
             self._pivot(first, last)
@@ -216,18 +222,38 @@ class _Sorter:
                 continue
             i, already = self.equals_right(first, last)
             if already:
-                done_left = self.incomplete(first, i)
-                if self.incomplete(i + 1, last):
-                    if done_left:
+                done = self._settled(first, i, last)
+                if done is not None:
+                    if done == (first, last):
                         return
-                    last = i
-                    continue
-                if done_left:
-                    first = i + 1
+                    first, last = done
                     continue
             self.introsort(first, i, depth, leftmost)
             leftmost = False
             first = i + 1
+
+    def _finished(self, first: int, last: int, depth: int, leftmost: bool) -> bool:
+        """The ranges introsort sorts without partitioning: short ones, and any past its depth."""
+        if self.small(first, last):
+            return True
+        if last - first < LIMIT:
+            self.insertion(first, last, leftmost)
+            return True
+        if depth == 0:
+            self._heap(first, last)
+            return True
+        return False
+
+    def _settled(self, first: int, i: int, last: int) -> tuple[int, int] | None:
+        """After a partition that moved nothing, each side's incomplete insertion sort.
+
+        Both finished: the range as it was, meaning done. One finished: the other side,
+        to go on with. Neither: ``None``, to partition as usual.
+        """
+        left = self.incomplete(first, i)
+        if self.incomplete(i + 1, last):
+            return (first, last) if left else (first, i)
+        return (i + 1, last) if left else None
 
     def _heap(self, first: int, last: int) -> None:
         """``__partial_sort`` of the whole range, which a sort this deep falls back to."""
@@ -243,5 +269,5 @@ def order(keys: Any) -> Any:
     if len(keys) < 2 or np.all(np.diff(keys[stable]) != 0):
         return stable
     made = _Sorter(keys)
-    made.introsort(0, len(keys), 2 * (int(len(keys)).bit_length() - 1))
+    made.introsort(0, len(keys), 2 * (len(keys).bit_length() - 1))
     return np.asarray(made.i, dtype=np.int64)
