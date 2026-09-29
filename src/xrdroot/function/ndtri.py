@@ -1,6 +1,6 @@
 """``ROOT::Math::Cephes::ndtri``: the inverse of the normal distribution, as MathCore has it.
 
-``normal_quantile`` and ``normal_quantile_c`` are this, and the normal upper
+``normal_quantile_c`` is this, negated, and the normal upper
 tail ``normal_cdf_c`` is Cephes's ``erfc`` past one and ``1 - erf`` inside:
 MathCore's own, to the last bit, where the standard library rounds
 differently.
@@ -12,7 +12,7 @@ import math
 
 from .analytic import SQRT2, _p1evl, _polevl, erf, erfc
 
-__all__ = ["ndtri", "normal_cdf_c", "normal_quantile", "normal_quantile_c"]
+__all__ = ["ndtri", "normal_cdf_c", "normal_quantile_c"]
 
 #: ``sqrt(2 pi)``.
 S2PI = 2.50662827463100050242e0
@@ -58,10 +58,6 @@ def ndtri(y0: float) -> float:
     x1 = z * _polevl(z, P2 if far else P1) / _p1evl(z, Q2 if far else Q1)
     x = x0 - x1
     return x if upper else -x
-
-
-def normal_quantile(z: float, sigma: float = 1.0) -> float:
-    return sigma * ndtri(z)
 
 
 def normal_quantile_c(z: float, sigma: float = 1.0) -> float:

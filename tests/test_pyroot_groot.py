@@ -172,9 +172,11 @@ def test_a_declaration_puts_what_it_declares_in_the_namespace(monkeypatch):
     monkeypatch.setitem(sys.modules, "xrdroot.cint", types.ModuleType("xrdroot.cint"))
     monkeypatch.setitem(sys.modules, "xrdroot.cint.execute", execute)
     monkeypatch.setattr(troot.importlib.util, "find_spec", lambda name: True)
+    monkeypatch.setattr(troot, "_PRELUDE", {})  # the translator's own names, learnt once
     try:
         expect(
             (bool(ROOT.gInterpreter.Declare("int answer() { return 42; }")), True),
+            (bool(ROOT.gInterpreter.Declare("int again() { return 42; }")), True),
             (ROOT.answer(), 42),
             (bool("_hidden" not in ROOT.__dict__), True),
             (ROOT.gROOT.ProcessLine("x"), 7),

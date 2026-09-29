@@ -128,7 +128,7 @@ def _histogram_extent(h: Histogram, option: str, log: bool) -> Extent:
         low, high = _log_y(values, _limit(h, "fMinimum", -1111), _limit(h, "fMaximum", -1111))
         return xlow, low, xhigh, high
     low, high = _histogram_y(values, log)
-    low, high = _crossed(_limit(h, "fMinimum", low), _limit(h, "fMaximum", high), log)
+    low, high = _crossed(_limit(h, "fMinimum", low), _limit(h, "fMaximum", high))
     return xlow, low, xhigh, high
 
 
@@ -157,13 +157,11 @@ def _log_room(low: float, high: float, below: bool, above: bool) -> tuple[float,
     return low * (0.5 if below else 1.0), high * (2.0 if above else 1.0)
 
 
-def _crossed(low: float, high: float, log: bool) -> tuple[float, float]:
+def _crossed(low: float, high: float) -> tuple[float, float]:
     """``PaintInit``'s answer to a minimum at or above the maximum - the one a plot given a
     maximum of -1 and a minimum of 0 has: ``[0, 1]``, or doubled away from zero."""
     if low < high:
         return low, high
-    if log:
-        return (0.001 * high, high) if high > 0 else (low, high)
     if low > 0:
         return 0.0, 2.0 * high
     if low < 0:

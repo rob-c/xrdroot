@@ -172,9 +172,7 @@ def _normalized_name(pdf: Any, observables: list[Any], rng: Any) -> str:
     binned = binned_part(pdf)
     if binned is not None:
         return str(binned.GetName())
-    if hasattr(pdf, "normalized_name"):
-        return str(pdf.normalized_name(observables, rng))
-    return str(pdf.GetName())
+    return str(pdf.normalized_name(observables, rng))
 
 
 def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:

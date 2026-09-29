@@ -327,3 +327,17 @@ def test_stacks_and_multigraphs_read_from_members():
         (back.GetName(), "m"),
         (back.GetListOfGraphs().At(0).GetPointY(0), 2),
     )
+
+
+def test_one_side_of_a_points_bar_is_set_and_the_graph_grown_to_it() -> None:
+    """``SetPointEXlow`` and its kin: an asymmetric graph's sides; a symmetric one has none."""
+    a = ROOT.TGraphAsymmErrors(1)
+    a.SetPointEXlow(0, 0.1)
+    a.SetPointEXhigh(0, 0.2)
+    a.SetPointEYlow(2, 0.3)
+    a.SetPointEYhigh(2, 0.4)
+    assert (a.GetN(), a.GetErrorXlow(0), a.GetErrorXhigh(0)) == (3, 0.1, 0.2)
+    assert (a.GetErrorYlow(2), a.GetErrorYhigh(2)) == (0.3, 0.4)
+    e = ROOT.TGraphErrors(1)
+    e.SetPointEYlow(0, 0.5)
+    assert (e.GetN(), e.GetErrorYlow(0)) == (1, 0.0)

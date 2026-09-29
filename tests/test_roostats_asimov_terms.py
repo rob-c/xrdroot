@@ -139,3 +139,38 @@ def test_a_model_that_is_not_a_counting_model_has_no_asimov_event(capsys: Any) -
     assert "AsymptoticCalculator::SetObsExpected( RooGaussian ) : Has two observables ?? " in out
     assert "SetObsExpected( RooGaussian ) : Has two non-const arguments  " in out
     assert "SetObsExpected( RooGaussian ) : No observable?" in out
+
+
+def _nan_model() -> Any:
+    """``x`` in two bins, a density that is nowhere a number, extended to ten events."""
+    w = ROOT.RooWorkspace("w")
+    w.factory("EXPR::bad('sqrt(-1 - x*x)', x[0,1])")
+    w.var("x").setBins(2)
+    w.factory("ExtendPdf::ebad(bad, n[10])")
+    return w
+
+
+def test_asimov_data_that_sum_to_no_number_are_refused(capsys: Any) -> None:
+    from xrdroot.roostats import asimov
+
+    w = _nan_model()
+    assert asimov.GenerateAsimovData(w.pdf("ebad"), ROOT.RooArgSet(w.var("x"))) is None
+    assert "sum entries is nan" in capsys.readouterr().out
+    w.factory("Gaussian::good(x, 0.5, 1)")
+    w.factory("ExtendPdf::egood(good, m[5])")
+    w.factory("SIMUL::sim(c[A,B], A=egood, B=ebad)")
+    assert asimov.GenerateAsimovData(w.pdf("sim"), ROOT.RooArgSet(w.var("x"))) is None
+    assert "Error generating an Asimov data set for pdf ebad" in capsys.readouterr().out
+
+
+def test_the_factors_of_the_observables_are_kept_together() -> None:
+    from xrdroot.roostats import asimov
+
+    w = ROOT.RooWorkspace("w")
+    w.factory("Gaussian::gx(x[0,1], 0.5, 1)")
+    w.factory("Gaussian::gy(y[0,1], 0.5, 1)")
+    w.factory("Gaussian::gz(z[0,1], 0.5, 1)")
+    w.factory("PROD::p(gx, gy, gz)")
+    kept = asimov._observable_part(w.pdf("p"), ROOT.RooArgSet(w.var("x"), w.var("y")))
+    assert (kept.GetName(), [f.GetName() for f in kept.pdfList()]) == (
+        "observableProdPdf", ["gx", "gy"])  # fmt: skip

@@ -15,7 +15,7 @@ from typing import Any
 from ..roofit.collections import RooArgSet, as_list
 from ..roofit.messages import ERROR, INFO, WARNING, log
 
-__all__ = ["GenerateAsimovData", "SetPrintLevel", "print_level"]
+__all__ = ["GenerateAsimovData", "SetPrintLevel"]
 
 #: ``fgPrintLevel``: 0 quiet, 1 each dataset printed, 2 every bin said.
 _LEVEL = [1]
@@ -23,10 +23,6 @@ _LEVEL = [1]
 
 def SetPrintLevel(level: int) -> None:
     _LEVEL[0] = int(level)
-
-
-def print_level() -> int:
-    return _LEVEL[0]
 
 
 def _fill(pdf: Any, observables: list[Any], data: Any, index: int, volume: float) -> None:
