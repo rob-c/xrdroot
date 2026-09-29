@@ -64,14 +64,6 @@ def test_a_count_by_position_or_option_draws_that_many_named_after_the_density()
     assert _column(g.generate([x], 2.5), "x") == FIRST[:3]
 
 
-@pytest.mark.xfail(strict=True, reason="no count for a density without a yield is refused")
-def test_no_count_for_a_density_without_a_yield_is_an_empty_dataset() -> None:
-    """ROOT hands back an empty dataset, draws nothing, and says nothing."""
-    g, x, _, _ = _gauss()
-    assert g.generate([x]).numEntries() == 0
-    assert _column(g.generate([x], 2), "x") == FIRST[:2]
-
-
 def test_no_count_for_a_density_without_a_yield_is_an_empty_dataset(capsys: Any) -> None:
     """Asked for events and told nowhere how many, a density without a yield gives ROOT's
     ``emptyData`` - silently, drawing no number - named as asked."""
