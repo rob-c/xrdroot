@@ -217,7 +217,7 @@ class ProfileLikelihoodTestStat(TestStatistic):
         initial = float(first.getVal()) if first is not None else 0.0
         if self._detailed:
             self._output = RooArgSet()
-        with quieted(FATAL) if self._print_level < 3 else _nothing():
+        with self._quiet():
             nll = self._likelihood(data)
             attached = RooArgSet(list(nll.getParameters()))
             attached.assign(poi)
@@ -229,6 +229,10 @@ class ProfileLikelihoodTestStat(TestStatistic):
             pll = self._ratio(kind, uncond, cond, mu_hat, initial)
             attached.assign(before)
         return -1.0 if status_n or status_d else pll
+
+    def _quiet(self) -> Any:
+        """RooFit's messages held back below fatal ones - unless the print level is three."""
+        return quieted(FATAL) if self._print_level < 3 else _nothing()
 
     def _unconditional_fit(self, kind: int, nll: Any, attached: Any,
                        first: Any) -> tuple[float, float, int]:  # fmt: skip

@@ -214,6 +214,16 @@ class HypoTestResult(Named):
     def Print(self, option: str = "") -> None:
         """The p-values, significance and CLs - with their errors, from toys."""
         toys = self._alt is not None or self._null is not None
+        cout.write("\n".join(self._lines(toys)) + "\n")
+        for label, value, error in ((" - CL_b: ", self.CLb, self.CLbError),
+                                    (" - CL_s+b: ", self.CLsplusb, self.CLsplusbError),
+                                    (" - CL_s: ", self.CLs, self.CLsError)):  # fmt: skip
+            cout.write(label)  # before the value, which may complain as C++ reckons it
+            cout.write(g(value()))
+            cout.write((f" +/- {g(error())}" if toys else "") + "\n")
+
+    def _lines(self, toys: bool) -> list[str]:
+        """The printout's first lines: the p-value, significance, and toys and data if any."""
         lines = ["", f"Results {self._name}: "]
         lines.append(f" - Null p-value = {g(self.NullPValue())}"
                      + (f" +/- {g(self.NullPValueError())}" if toys else ""))  # fmt: skip
@@ -225,13 +235,7 @@ class HypoTestResult(Named):
             lines.append(f" - Number of Null toys: {self._null.GetSize()}")
         if self.HasTestStatisticData():
             lines.append(f" - Test statistic evaluated on data: {g(self._data_value)}")
-        cout.write("\n".join(lines) + "\n")
-        for label, value, error in ((" - CL_b: ", self.CLb, self.CLbError),
-                                    (" - CL_s+b: ", self.CLsplusb, self.CLsplusbError),
-                                    (" - CL_s: ", self.CLs, self.CLsError)):  # fmt: skip
-            cout.write(label)  # before the value, which may complain as C++ reckons it
-            cout.write(g(value()))
-            cout.write((f" +/- {g(error())}" if toys else "") + "\n")
+        return lines
 
 
 def _joined(mine: Any, other: Any) -> Any:

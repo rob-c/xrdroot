@@ -52,12 +52,15 @@ class SamplingDistribution(Named):
         if not data.numEntries() or not len(data.get()):
             self._var_name = given
             return
-        column = str(rest[0]) if rest and rest[0] else f"{self._name}_TS0"
-        if data.get().find(column) is None:
-            column = data.get()[0].GetName()
+        column = self._column(data, rest)
         self._var_name = given or data.get().find(column).GetTitle()
         self._values = [float(v) for v in data.column(column)]
         self._weights = [float(w) for w in data.weights()]
+
+    def _column(self, data: Any, rest: tuple[Any, ...]) -> str:
+        """The column asked for - ``<name>_TS0`` if none - or the first, if it is not there."""
+        column = str(rest[0]) if rest and rest[0] else f"{self._name}_TS0"
+        return column if data.get().find(column) is not None else str(data.get()[0].GetName())
 
     def GetVarName(self) -> str:
         return self._var_name

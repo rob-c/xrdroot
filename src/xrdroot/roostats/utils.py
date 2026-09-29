@@ -183,30 +183,40 @@ def MakeNuisancePdf(pdf: Any, observables: Any = None, name: str = "") -> Any:
 
 def StripConstraints(pdf: Any, observables: Any) -> Any:
     """A copy of ``pdf`` without its constraint terms - ``None`` if nothing else is left."""
-    from ..roofit.pdfs.prodpdf import RooProdPdf
-
     if pdf.InheritsFrom("RooProdPdf"):
-        kept = [k for k in (StripConstraints(one, observables) for one in pdf.pdfList()) if k]
-        if not kept:
-            return None
-        if len(kept) == 1:
-            return kept[0].clone(f"{kept[0].GetName()}_unconstrained")
-        return RooProdPdf(f"{pdf.GetName()}_unconstrained", f"{pdf.GetTitle()} without "
-                          "constraints", kept)  # fmt: skip
+        return _stripped_product(pdf, observables)
     if pdf.InheritsFrom("RooExtendPdf"):
-        from ..roofit.pdfs.extend import RooExtendPdf
-
-        inner, number = pdf.servers()[0], pdf.servers()[1]
-        stripped = StripConstraints(inner, observables)
-        if stripped is None:
-            return None
-        return RooExtendPdf(f"{pdf.GetName()}_unconstrained", f"{pdf.GetTitle()} without "
-                            "constraints", stripped, number)  # fmt: skip
+        return _stripped_extended(pdf, observables)
     if pdf.InheritsFrom("RooSimultaneous"):
         return _stripped_simultaneous(pdf, observables)
     if pdf.dependsOn(observables):
         return pdf.clone(f"{pdf.GetName()}_unconstrained")
     return None
+
+
+def _stripped_product(pdf: Any, observables: Any) -> Any:
+    """A product of its factors stripped - the one factor, if one is left."""
+    from ..roofit.pdfs.prodpdf import RooProdPdf
+
+    kept = [k for k in (StripConstraints(one, observables) for one in pdf.pdfList()) if k]
+    if not kept:
+        return None
+    if len(kept) == 1:
+        return kept[0].clone(f"{kept[0].GetName()}_unconstrained")
+    return RooProdPdf(f"{pdf.GetName()}_unconstrained", f"{pdf.GetTitle()} without "
+                      "constraints", kept)  # fmt: skip
+
+
+def _stripped_extended(pdf: Any, observables: Any) -> Any:
+    """An extended density of its density stripped, of the same yield."""
+    from ..roofit.pdfs.extend import RooExtendPdf
+
+    inner, number = pdf.servers()[0], pdf.servers()[1]
+    stripped = StripConstraints(inner, observables)
+    if stripped is None:
+        return None
+    return RooExtendPdf(f"{pdf.GetName()}_unconstrained", f"{pdf.GetTitle()} without "
+                        "constraints", stripped, number)  # fmt: skip
 
 
 def _stripped_simultaneous(sim: Any, observables: Any) -> Any:

@@ -198,7 +198,6 @@ class ProfileLikelihoodCalculator(CombinedCalculator):
     def GetHypoTest(self) -> Any:
         """The null parameters' p-value: half the chi-square tail of twice the likelihood's rise
         from the global fit to the fit with them fixed (the whole tail beyond one of them)."""
-        from ..stats import incomplete_gamma_c
         from .hypotest import HypoTestResult
 
         if self._data is None or self._pdf is None or not len(self._sets["null"]):
@@ -211,10 +210,7 @@ class ProfileLikelihoodCalculator(CombinedCalculator):
         at_mle = float(self._fit.minNll())
         old = self._fixed_at_null(constrained, null)
         at_null = _conditional_minimum(nll, constrained)
-        ndf = sum(1 for _, _, constant in null if not constant)
-        pvalue = incomplete_gamma_c(0.5 * ndf, max(at_null - at_mle, 0.0))  # 0 with no ndf
-        if ndf == 1:
-            pvalue *= 0.5
+        pvalue = _p_value(null, at_null - at_mle)
         for par, value in old:
             par.setVal(value)
             par.setConstant(False)
@@ -232,6 +228,16 @@ class ProfileLikelihoodCalculator(CombinedCalculator):
                 par.setVal(value)
                 par.setConstant(True)
         return old
+
+
+def _p_value(null: list[tuple[str, float, bool]], rise: float) -> float:
+    """The chi-square tail of the likelihood's rise, in as many degrees as the null frees - its
+    half for one."""
+    from ..stats import incomplete_gamma_c
+
+    ndf = sum(1 for _, _, constant in null if not constant)
+    pvalue = incomplete_gamma_c(0.5 * ndf, max(rise, 0.0))  # 0 with no ndf
+    return pvalue * 0.5 if ndf == 1 else pvalue
 
 
 def _conditional_minimum(nll: Any, constrained: Any) -> float:

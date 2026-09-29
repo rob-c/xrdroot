@@ -255,37 +255,41 @@ class FeldmanCousins:
         """``CreateParameterPoints``: a scan of the parameters of interest - and, with nuisance
         parameters, each point with them at the profile's conditional best fit."""
         from ..roofit.data.datahist import RooDataHist
-        from ..roofit.data.dataset import RooDataSet
-        from ..roofit.messages import FATAL
-        from .modelconfig import quieted
 
         poi = list(self._model.GetParametersOfInterest())
         nuisance = list(self._model.GetNuisanceParameters() or ())
         parameters = RooArgSet(poi + nuisance)
         if nuisance and len(parameters) != len(poi) and self._profile:
-            _generation("FeldmanCousins: Model has nuisance parameters, will do profile "
-                        "construction")  # fmt: skip
-            for one in poi:
-                one.setBins(self._bins)
-            scan = self._poi_to_test or RooDataHist("parameterScan", "", poi)
-            _generation(f"FeldmanCousins: # points to test = {scan.numEntries()}")
-            with quieted(FATAL):
-                from ..roofit.cmdargs import RooCmdArg
-
-                nll = self._model.GetPdf().createNLL(self._data, RooCmdArg("CloneData", False))
-                profile = nll.createProfile(poi)
-                points = RooDataSet("profileConstruction", "profileConstruction", list(parameters))
-                for i in range(scan.numEntries()):
-                    parameters.assign(scan.get(i))
-                    profile.getVal()
-                    points.add(parameters)
-            self._points = points
+            self._points = self._profile_points(poi, parameters)
             return
         _generation("FeldmanCousins: Model has no nuisance parameters")
         for one in parameters:
             one.setBins(self._bins)
         self._points = RooDataHist("parameterScan", "", list(parameters))
         _generation(f"FeldmanCousins: # points to test = {self._points.numEntries()}")
+
+    def _profile_points(self, poi: list[Any], parameters: Any) -> Any:
+        """The profile construction: each point of the scan, the nuisance parameters profiled."""
+        from ..roofit.cmdargs import RooCmdArg
+        from ..roofit.data.datahist import RooDataHist
+        from ..roofit.data.dataset import RooDataSet
+        from ..roofit.messages import FATAL
+        from .modelconfig import quieted
+
+        _generation("FeldmanCousins: Model has nuisance parameters, will do profile construction")
+        for one in poi:
+            one.setBins(self._bins)
+        scan = self._poi_to_test or RooDataHist("parameterScan", "", poi)
+        _generation(f"FeldmanCousins: # points to test = {scan.numEntries()}")
+        with quieted(FATAL):
+            nll = self._model.GetPdf().createNLL(self._data, RooCmdArg("CloneData", False))
+            profile = nll.createProfile(poi)
+            points = RooDataSet("profileConstruction", "profileConstruction", list(parameters))
+            for i in range(scan.numEntries()):
+                parameters.assign(scan.get(i))
+                profile.getVal()
+                points.add(parameters)
+        return points
 
     def GetInterval(self) -> Any:
         """The unified interval: the points the construction accepts."""

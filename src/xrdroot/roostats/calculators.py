@@ -290,6 +290,10 @@ class FrequentistCalculator(_Toys):
         cond = RooArgSet(list(model.GetConditionalObservables() or ()))
         glob = RooArgSet(list(model.GetGlobalObservables() or ()))
         self._profile_fit(model, params, rest, (cond, glob), which)
+        self._statistic_observables(cond, glob)
+
+    def _statistic_observables(self, cond: Any, glob: Any) -> None:
+        """The test statistic told the conditional and global observables."""
         statistic = self._sampler.GetTestStatistic() if self._sampler is not None else None
         if statistic is not None:
             statistic.SetConditionalObservables(cond)

@@ -95,32 +95,42 @@ class LikelihoodInterval(ConfInterval):
         name = param.GetName()
         if name in self._lower and name in self._upper:
             return self._lower[name], self._upper[name], True
-        names = [p.GetName() for p in floating(self._ratio)]
-        if name not in names:
-            log_plain(self, ERROR, "InputArguments", f"Error - invalid parameter {name} specified "
-                      "for finding the interval limits \n")  # fmt: skip
-            return 0.0, 0.0, False
-        if self._minuit is None and not self._create_minimizer():
-            log_plain(self, ERROR, "Eval", "Error returned from minimization of likelihood "
-                      "function - cannot find interval limits \n")  # fmt: skip
+        if not self._ready(name):
             return 0.0, 0.0, False
         level = chisquare_quantile(self.ConfidenceLevel(), 1) / 2
         low, high = self._minos(name, level)
         at = float(self._minuit.values[name])
-        if low == 0:
-            lower = float(param.getMin())
-            log_plain(self, WARNING, "Minimization", f"Warning: lower value for {name} is at "
-                      f"limit {g(lower)}\n")  # fmt: skip
-        else:
-            lower = at + low
-        if high == 0:
-            log_plain(self, WARNING, "Minimization", f"Warning: upper value for {name} is at "
-                      f"limit {g(before)}\n")  # fmt: skip
-            upper = float(param.getMax())
-        else:
-            upper = at + high
+        lower = at + low if low != 0 else self._at_limit(name, "lower", float(param.getMin()))
+        upper = at + high if high != 0 else self._at_limit(name, "upper", before,
+                                                           float(param.getMax()))  # fmt: skip
         self._lower[name], self._upper[name] = lower, upper
         return lower, upper, True
+
+    def _ready(self, name: str) -> bool:
+        """Whether the limits of ``name`` can be found: a free parameter, and a minimizer."""
+        if name not in [p.GetName() for p in floating(self._ratio)]:
+            log_plain(self, ERROR, "InputArguments", f"Error - invalid parameter {name} specified "
+                      "for finding the interval limits \n")  # fmt: skip
+            return False
+        if self._minuit is None and not self._create_minimizer():
+            log_plain(self, ERROR, "Eval", "Error returned from minimization of likelihood "
+                      "function - cannot find interval limits \n")  # fmt: skip
+            return False
+        return True
+
+    def _at_limit(self, name: str, side: str, said: float, value: Any = None) -> float:
+        """MINOS found no end: the parameter's own, said - the upper as it was before."""
+        log_plain(self, WARNING, "Minimization", f"Warning: {side} value for {name} is at limit "
+                  f"{g(said)}\n")  # fmt: skip
+        return said if value is None else float(value)
+
+    def _from_best(self) -> None:
+        """Each free parameter at its best-fit value and error."""
+        for par in self._params:
+            best = self._best.find(par.GetName()) if self._best is not None else None
+            if best is not None:
+                par.setVal(best.getVal())
+                par.setError(best.getError())
 
     def _create_minimizer(self) -> bool:
         """``CreateMinimizer``: Minuit2's MIGRAD on the likelihood, from the best fit, over every
@@ -130,11 +140,7 @@ class LikelihoodInterval(ConfInterval):
             return False
         nll = nll()
         self._params = floating(self._ratio)
-        for par in self._params:
-            best = self._best.find(par.GetName()) if self._best is not None else None
-            if best is not None:
-                par.setVal(best.getVal())
-                par.setError(best.getError())
+        self._from_best()
 
         def fcn(x: Any) -> float:
             for par, value in zip(self._params, x):
