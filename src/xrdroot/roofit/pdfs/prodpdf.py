@@ -46,6 +46,13 @@ def _add_new(pdfs: list[Any], more: list[Any]) -> None:
     pdfs.extend(p for p in more if all(p is not q for q in pdfs))
 
 
+def _ordered(args: tuple[Any, ...]) -> dict[str, tuple[str, ...]]:
+    """Each ``Conditional`` factor's observables, by the factor's name, in the order given."""
+    conditional = [a for a in args if isinstance(a, RooCmdArg) and a.name == "Conditional"]
+    return {p.GetName(): tuple(one.GetName() for one in as_list(a.value(1)))
+            for a in conditional for p in as_list(a.value(0))}  # fmt: skip
+
+
 class RooProdPdf(RooAbsPdf):
     """A product of densities."""
 
@@ -59,12 +66,7 @@ class RooProdPdf(RooAbsPdf):
             tuple(a for a in args if a not in numbers or isinstance(a, bool))
         )
         #: Each conditional factor's observables in the order they were given, for printing.
-        self._ordered = {
-            p.GetName(): tuple(one.GetName() for one in as_list(a.value(1)))
-            for a in args
-            if isinstance(a, RooCmdArg) and a.name == "Conditional"
-            for p in as_list(a.value(0))
-        }
+        self._ordered = _ordered(args)
         self._cutoff = float(numbers[0]) if numbers else 0.0
         self.pdfs = self._list_proxy("!pdfs", pdfs)
 

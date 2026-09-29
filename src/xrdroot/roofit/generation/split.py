@@ -11,6 +11,7 @@ joins them in one dataset (``hmaster``) indexed by the category.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import numpy as np
@@ -47,15 +48,19 @@ def binned_events(pdf: Any, observables: list[Any], count: float, extended: bool
                   expected_data: bool = False) -> Any:  # fmt: skip
     """``RooBinnedGenContext::generate``: each bin's expected events, Poisson-varied - or made
     to add up to ``count`` - as a weighted dataset of the bins' centres."""
+    _announce(pdf, observables)
+    return _binned(pdf, observables, count, extended, expected_data)
+
+
+def _binned(pdf: Any, observables: list[Any], count: float, extended: bool,
+            expected_data: bool = False) -> Any:  # fmt: skip
+    """:func:`binned_events` once its context is set up."""
     from ..cmdargs import RooCmdArg
     from ..data.datahist import RooDataHist
     from ..data.dataset import RooDataSet
 
     names = frozenset(one.GetName() for one in observables)
-    _announce(pdf, observables)
     events = _binned_total(pdf, names, float(count), extended or expected_data)
-    if events is None:
-        return None
     hist = RooDataHist("genData", "genData", observables)
     ctx = {name: hist.column(name) for name in names}
     weights = np.asarray(pdf.value(ctx, names), dtype=np.float64) * hist.binVolumes()
@@ -65,18 +70,16 @@ def binned_events(pdf: Any, observables: list[Any], count: float, extended: bool
     return data
 
 
-def _binned_total(pdf: Any, names: frozenset[str], events: float, exact: bool) -> Any:
-    """The events asked for, else the expected number - rounded, unless ``exact`` - or
-    ``None``, said, for a density that expects none."""
+def _binned_total(pdf: Any, names: frozenset[str], events: float, exact: bool) -> float:
+    """The events asked for, else the expected number - rounded, unless ``exact``.
+
+    Only a density with a yield comes here without a count: ``generate``
+    makes ``emptyData`` for the others, and a split context has none.
+    """
     if events > 0:
         return events
-    if not pdf.canBeExtended():
-        log(None, ERROR, "InputArguments", f"RooAbsPdf::generateBinned({pdf.GetName()}) "
-            "ERROR: No event count provided and p.d.f does not provide expected number of "
-            "events")  # fmt: skip
-        return None
     expected = pdf.expected(names)
-    return expected if exact else float(int(expected + 0.5))
+    return float(expected if exact else int(expected + 0.5))
 
 
 def _bin_counts(weights: Any, events: float, extended: bool, expected_data: bool) -> Any:
@@ -104,14 +107,15 @@ def split_events(sim: Any, variables: list[Any], count: float, extended: bool, a
             "component.")  # fmt: skip
         return None
     channels = list(sim.channels.items())
+    states = [_one_state(pdf, variables, auto, tag) for _, pdf in channels]  # all set up first
     wanted = _wanted(sim, channels, variables, count, extended)
-    index = sim.index
-    data = RooDataSet("hmaster", "hmaster", variables, RooCmdArg("WeightVar", "weight"))
-    for (label, pdf), number in zip(channels, wanted):
-        own = [one for one in variables if one.GetName() in pdf.dependents()]
-        part = _one_state(pdf, own, number, extended, auto, tag)
-        if part is not None:
-            _add_state(data, part, variables, own, index.GetName(), index.lookupIndex(label))
+    parts = [(label, own, run(number, extended))
+             for (label, _), (own, run), number in zip(channels, states, wanted)]  # fmt: skip
+    weighted = any(part.isWeighted() for _, _, part in parts)
+    data = RooDataSet("hmaster", "hmaster", variables,
+                      *([RooCmdArg("WeightVar", "weight")] if weighted else []))  # fmt: skip
+    for label, own, part in parts:
+        _add_state(data, part, variables, own, sim.index.GetName(), sim.index.lookupIndex(label))
     return data
 
 
@@ -153,17 +157,22 @@ def _shared(expected: list[float], events: float) -> list[float]:
     return found
 
 
-def _one_state(pdf: Any, own: list[Any], number: float, extended: bool, auto: bool,
-               tag: str) -> Any:  # fmt: skip
-    """One state's events, from the binned context where it is binned."""
-    from ..cmdargs import RooCmdArg
+def _one_state(pdf: Any, variables: list[Any], auto: bool, tag: str) -> Any:
+    """One state's context, set up - the binned one where it is binned - as its variables and
+    what draws its events, ``run(number, extended)``."""
+    from .generate import Generator
 
-    names = frozenset(one.GetName() for one in own)
-    if auto_binned(pdf, names, auto, tag):
-        return binned_events(pdf, own, number, extended)
-    if extended:
-        return pdf.generate(own, RooCmdArg("Extended"))
-    return pdf.generate(own, RooCmdArg("NumEvents", int(number)))
+    own = [one for one in variables if one.GetName() in pdf.dependents()]
+    if auto_binned(pdf, frozenset(one.GetName() for one in own), auto, tag):
+        _announce(pdf, own)
+        return own, lambda number, extended: _binned(pdf, own, number, extended)
+    made = Generator(pdf, own)
+
+    def run(number: float, extended: bool) -> Any:
+        total = generator().Poisson(number) if extended else math.ceil(number)
+        return made.sample(total, f"{pdf.GetName()}Data")
+
+    return own, run
 
 
 def _g(value: float) -> str:

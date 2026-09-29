@@ -72,16 +72,15 @@ def test_no_count_for_a_density_without_a_yield_is_an_empty_dataset() -> None:
     assert _column(g.generate([x], 2), "x") == FIRST[:2]
 
 
-def test_no_count_for_a_density_without_a_yield_is_refused_by_name(capsys: Any) -> None:
-    """Asked for events and told nowhere how many, xrdroot names the density and returns
-    nothing, drawing no number."""
+def test_no_count_for_a_density_without_a_yield_is_an_empty_dataset(capsys: Any) -> None:
+    """Asked for events and told nowhere how many, a density without a yield gives ROOT's
+    ``emptyData`` - silently, drawing no number - named as asked."""
     g, x, _, _ = _gauss()
     capsys.readouterr()
-    assert g.generate([x]) is None
-    assert capsys.readouterr().out == (
-        "[#0] ERROR:Generation -- RooGenContext::g:generate: PDF not extendable: cannot "
-        "calculate expected number of events\n"
-    )
+    empty = g.generate([x])
+    assert (empty.GetName(), empty.GetTitle(), empty.numEntries()) == ("emptyData", "emptyData", 0)
+    assert g.generate([x], Name="nn").GetName() == "nn"
+    assert capsys.readouterr().out == ""
     assert _column(g.generate([x], 2), "x") == FIRST[:2]
 
 
@@ -386,3 +385,12 @@ def test_lowering_a_binned_sample_passes_over_bins_already_empty() -> None:
     g, _, x = _binned()
     assert _counts(g.generateBinned([x], 2)) == [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
     assert generator().Rndm() == 0.6992671962361783
+
+
+def test_an_empty_prototype_and_no_count_is_an_empty_dataset() -> None:
+    """``RooAbsPdf::generate``: no events asked for, and a prototype of none, make none."""
+    from xrdroot.roofit.data.dataset import RooDataSet
+
+    gc, _, x, y = _proto()
+    empty = gc.generate([x], ProtoData=RooDataSet("p", "p", [y]), Name="none")
+    assert (empty.GetName(), empty.GetTitle(), empty.numEntries()) == ("none", "emptyData", 0)

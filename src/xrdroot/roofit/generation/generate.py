@@ -16,7 +16,6 @@ import numpy as np
 
 from ..cmdargs import RooCmdArg, commands
 from ..collections import as_list
-from ..messages import ERROR, log
 from ..rng import generator
 from .contexts import context_for
 
@@ -40,16 +39,7 @@ def _how_many(pdf: Any, names: frozenset[str], count: Any, options: Any) -> int:
     proto = options.get("ProtoData")
     if wanted <= 0 and proto is not None:
         wanted = float(proto.numEntries())
-    if wanted <= 0:
-        if not pdf.canBeExtended():
-            log(
-                pdf,
-                ERROR,
-                "Generation",
-                f"RooGenContext::{pdf.GetName()}:generate: PDF not "
-                "extendable: cannot calculate expected number of events",
-            )
-            return -1
+    if wanted <= 0:  # a density without a yield has made emptyData by now
         wanted = pdf.expected(names)
     if extended:
         return generator().Poisson(wanted)
@@ -173,17 +163,41 @@ def generate(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """``pdf.generate(vars, n, options...)``: a new dataset of generated events."""
     variables, count, options = parse(args, kwargs)
     if options.get("ProtoData") is None:
-        special = _special(pdf, variables, count, options)
-        if special is not None:
-            found = special()
-            if found is not None and options.get("Name"):
-                found.SetName(options.get("Name"))
-            return found
-    made = Generator(pdf, variables, options.get("ProtoData"))
+        found = _without_context(pdf, variables, count, options)
+        if found is not None:
+            return _named(found[0], options) if found else None
+    proto = options.get("ProtoData")
+    made = Generator(pdf, variables, proto)
+    if not count and proto is not None and proto.numEntries() == 0:
+        return _named(_empty(variables, options), options)
     total = _how_many(pdf, made.names, count, options)
-    if total < 0:
-        return None
     return made.sample(total, options.get("Name") or f"{pdf.GetName()}Data")
+
+
+def _without_context(pdf: Any, variables: list[Any], count: Any, options: Any) -> Any:
+    """``[data]`` made other than event by event - ``emptyData`` for no events of a density
+    without a yield, as ``RooAbsPdf::generate`` makes it - or ``[]`` for none, or ``None``."""
+    if not count and not pdf.canBeExtended():
+        return [_empty(variables, options)]
+    special = _special(pdf, variables, count, options)
+    if special is None:
+        return None
+    found = special()
+    return [] if found is None else [found]
+
+
+def _named(data: Any, options: Any) -> Any:
+    """``data``, renamed as ``Name`` asks."""
+    if options.get("Name"):
+        data.SetName(options.get("Name"))
+    return data
+
+
+def _empty(variables: list[Any], options: Any) -> Any:
+    """``RooAbsPdf::generate``'s ``emptyData``: no events asked for, none to be had."""
+    from ..data.dataset import RooDataSet
+
+    return RooDataSet("emptyData", "emptyData", variables)
 
 
 def _special(pdf: Any, variables: list[Any], count: Any, options: Any) -> Any:
