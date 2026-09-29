@@ -231,6 +231,10 @@ class BayesianCalculator(Named):
         log(self, INFO, "InputArguments", "BayesianCalculator:GetInterval Compute the interval "
             "from the posterior cdf ")  # fmt: skip
         poi = self._poi[0]
+        if self.GetPosteriorFunction() is None:
+            log(self, ERROR, "InputArguments", "BayesianCalculator::GetInterval() cannot make "
+                "posterior Function ")  # fmt: skip
+            return
         cdf = CdfFunction(self._log_like, [poi, *self._nuisance], self._prior, self._nll_min)
         if cdf.error:
             log(self, ERROR, "Eval", "BayesianCalculator: Numerical error computing CDF integral - "
@@ -260,8 +264,9 @@ class BayesianCalculator(Named):
     # -- the scanned posterior ----------------------------------------------------
 
     def _approximate(self) -> int:
-        """``ApproximatePosterior``: the posterior as a ``TF1`` of ``nbins`` points - the same
-        values, drawn and integrated at that many - said as RooStats says it."""
+        """``ApproximatePosterior``: the posterior as the clone of a ``TF1`` of ``nbins``
+        points - which ROOT's streamer saves as the posterior at the ``nbins + 1`` edges,
+        interpolated linearly between them - taking the posterior's place, as RooStats does."""
         bins = self._scan_bins if self._scan_bins > 0 else 100
         if self._scanned >= bins:
             return self._scanned
@@ -270,10 +275,10 @@ class BayesianCalculator(Named):
         log(self, INFO, "Eval", f"BayesianCalculator - scan posterior function in nbins = {bins}")
         self._scanned = bins
         poi = self._poi[0]
-        if not self._integrated.GetName().endswith("_approx"):
-            exact = self._integrated
-            self._integrated = Posterior(f"{exact.GetName()}_approx", lambda x: _at(exact, poi, x),
-                                         poi)  # fmt: skip
+        exact = self._integrated
+        low, high = float(poi.getMin()), float(poi.getMax())
+        saved = _saved(lambda x: _at(exact, poi, x), low, high, bins)
+        self._integrated = Posterior(f"{exact.GetName()}_approx", saved, poi)
         return bins
 
     def _posterior_at(self, x: float) -> float:
@@ -287,7 +292,10 @@ class BayesianCalculator(Named):
 
     def _from_scan(self, lower_cut: float, upper_cut: float) -> None:
         """``ComputeIntervalFromApproxPosterior``: ``TF1::GetQuantiles`` of the scan."""
-        npx = max(self._approximate(), 4)
+        scanned = self._approximate()
+        if not scanned:
+            return
+        npx = max(scanned, 4)
         poi = self._poi[0]
         low, high = float(poi.getMin()), float(poi.getMax())
         cuts = [lower_cut, upper_cut]
@@ -305,6 +313,8 @@ class BayesianCalculator(Named):
         """``ComputeShortestInterval``: the highest bins of the scan, down to the probability."""
         log(self, INFO, "Eval", "BayesianCalculator - computing shortest interval with CL = "
             f"{g(1.0 - self._size)}")  # fmt: skip
+        if not self._approximate():
+            return
         bins = self._histogram()
         poi = self._poi[0]
         low, high = float(poi.getMin()), float(poi.getMax())
@@ -314,7 +324,9 @@ class BayesianCalculator(Named):
         total = actual = 0.0
         upper, lower = low, high
         for index in order:
-            p = bins[index] / norm
+            # ROOT sorts the bins but reads the probability one bin down - the underflow's zero
+            # for the first - from ``TH1::GetArray``, which starts at the underflow.
+            p = (bins[index - 1] if index else 0.0) / norm
             total += p
             if total > 1.0 - self._size:
                 actual = total - p
@@ -356,6 +368,23 @@ def _at(function: Any, poi: Any, x: float) -> float:
     return float(function.getVal())
 
 
+def _saved(function: Any, low: float, high: float, npx: int) -> Any:
+    """``TF1::Save`` and ``TF1::GetSave``: ``function`` at ``npx + 1`` equidistant points,
+    and a straight line between the two about each ``x`` - nothing outside the range."""
+    dx = (high - low) / npx
+    values = [function(low + dx * i) for i in range(npx + 1)]
+
+    def interpolated(x: float) -> float:
+        if x < low or x > high:
+            return 0.0
+        bin_ = min(npx - 1, int((x - low) / dx))
+        xlow = low + bin_ * dx
+        xup, ylow, yup = xlow + dx, values[bin_], values[bin_ + 1]
+        return ((xup * ylow - xlow * yup) + x * (yup - ylow)) / dx
+
+    return interpolated
+
+
 def _quantiles(integral: Any, low: float, high: float, npx: int, probs: list[float]) -> list[float]:
     """``TF1::GetQuantiles``: each bin's integral, a parabola through each bin's cumulative
     integral, and the ``x`` each probability falls at."""
@@ -374,11 +403,11 @@ def _quantiles(integral: Any, low: float, high: float, npx: int, probs: list[flo
         alpha.append(x0)
         beta.append(r2 / dx - c * dx)
         gamma.append(2 * c)
-    return [_quantile(cumulative, alpha, beta, gamma, npx, dx, high, r) for r in probs]
+    return [_quantile(cumulative, alpha, beta, gamma, npx, high, r) for r in probs]
 
 
 def _quantile(cumulative: list[float], alpha: list[float], beta: list[float], gamma: list[float],
-              npx: int, dx: float, high: float, r: float) -> float:  # fmt: skip
+              npx: int, high: float, r: float) -> float:  # fmt: skip
     import bisect
 
     bin_ = max(bisect.bisect_right(cumulative, r) - 1, 0)
@@ -388,8 +417,13 @@ def _quantile(cumulative: list[float], alpha: list[float], beta: list[float], ga
         bin_ += 1
     rr = r - cumulative[bin_]
     if rr == 0.0:
-        return alpha[bin_] + (dx if cumulative[bin_ + 1] == r else 0.0)
-    fac = -2.0 * gamma[bin_] * rr / beta[bin_] / beta[bin_]
+        # ROOT adds ``dx`` here if the bin's upper cumulative is ``r`` too - which the search,
+        # finding the last point not above ``r``, never leaves it.
+        return alpha[bin_]
+    import numpy as np
+
+    with np.errstate(all="ignore"):  # C's division: a flat bin's zero slope gives inf or nan
+        fac = float(np.float64(-2.0 * gamma[bin_] * rr) / beta[bin_] / beta[bin_])
     if fac != 0 and fac <= 1:
         xx = (-beta[bin_] + math.sqrt(beta[bin_] * beta[bin_] + 2 * gamma[bin_] * rr)) / gamma[bin_]
     else:

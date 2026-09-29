@@ -25,6 +25,19 @@ def _same_point(point: Any, row: Any) -> bool:
     return all(one.getVal() == row.getRealValue(one.GetName()) for one in as_list(point))
 
 
+def _own_copy(data: Any) -> Any:
+    """``data.Clone("PointsToTestForBelt")``: the points with variables of their own, so that a
+    point read from the scan is not the row the belt reads to look it up."""
+    import copy
+
+    from ..roofit.data.store import copies_of
+
+    found = copy.copy(data)
+    found._vars = copies_of(as_list(data.get()))
+    found.SetName("PointsToTestForBelt")
+    return found
+
+
 class PointSetInterval(ConfInterval):
     """The points of a scan that a construction accepted."""
 
@@ -52,9 +65,12 @@ class PointSetInterval(ConfInterval):
         return any(_same_point(point, self._points.get(i)) for i in rows)
 
     def _range(self, param: Any) -> tuple[float, float]:
-        column = self._points.column(param.GetName()) if self._points.numEntries() else None
-        if column is None or not len(column):
+        """``RooDataSet::getRange``: the least and greatest kept - none, and said so, if none."""
+        if not self._points.numEntries():
+            log(None, ERROR, "InputArguments", f"RooDataSet::getRange({self._points.GetName()}) "
+                "WARNING: empty dataset")  # fmt: skip
             return 0.0, 0.0
+        column = self._points.column(param.GetName())
         return float(np.min(column)), float(np.max(column))
 
     def UpperLimit(self, param: Any) -> float:
@@ -91,7 +107,7 @@ class ConfidenceBelt(Named):
         title = rest[0] if rest and isinstance(rest[0], str) else None
         super().__init__(name, title)
         data = next((one for one in rest if hasattr(one, "numEntries")), None)
-        self._points = data
+        self._points = _own_copy(data) if data is not None else None
         self._regions: dict[int, AcceptanceRegion] = {}
         self._lookups: list[tuple[float, float]] = []
 

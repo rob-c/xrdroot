@@ -70,8 +70,9 @@ def _poisson(builder: Builder, record: Streamed) -> Any:
 def _polyvar(builder: Builder, record: Streamed) -> Any:
     from ..functions import RooPolyVar
 
+    lowest = int(record.get("_lowestOrder") or 0)
     return RooPolyVar(name_of(record), title_of(record), builder.proxy(record, "_x"),
-                      builder.listed(record, "_coefList"), int(record.get("_lowestOrder") or 0))  # fmt: skip
+                      builder.listed(record, "_coefList"), lowest)  # fmt: skip
 
 
 @maker("RooProduct")

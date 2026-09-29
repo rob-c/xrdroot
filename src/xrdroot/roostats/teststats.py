@@ -21,7 +21,7 @@ from ..roofit.messages import FATAL, WARNING, log
 from .modelconfig import quieted
 from .utils import RemoveConstantParameters
 
-__all__ = ["ProfileLikelihoodTestStat", "TestStatistic", "fit_nll"]
+__all__ = ["ProfileLikelihoodTestStat", "TestStatistic", "fit_as_args", "fit_nll"]
 
 #: ``fgAlwaysReuseNll``: every statistic gives its likelihood each toy's data, not a new one.
 _ALWAYS_REUSE = [True]
@@ -51,7 +51,8 @@ class TestStatistic:
 
 def fit_nll(nll: Any, strategy: int, tolerance: float, print_level: int, kind: str = "") -> Any:
     """``GetMinNLL``: MIGRAD's ``Minimize`` - Migrad, then Simplex and Migrad if it fails -
-    tried again as RooStats tries it while it fails; the fit's result."""
+    tried again as RooStats tries it while it fails, after a scan each time; the fit's
+    result."""
     minim = RooMinimizer(nll)
     minim.setStrategy(strategy)
     minim.setPrintLevel(-1 if print_level == 0 else print_level - 2)
@@ -60,10 +61,11 @@ def fit_nll(nll: Any, strategy: int, tolerance: float, print_level: int, kind: s
     algorithm = minimizer_algo()
     algorithm = "Minimize" if algorithm == "Migrad" else algorithm
     tries = 1
-    while tries <= 4:
+    while True:
         status = minim.minimize(kind, algorithm)
-        if status % 1000 == 0:
+        if status % 1000 == 0 or tries == 4:
             break
+        minim.minimize(kind, "Scan")
         if tries == 2 and strategy == 0:
             minim.setStrategy(1)
         elif tries == 2:
@@ -72,6 +74,29 @@ def fit_nll(nll: Any, strategy: int, tolerance: float, print_level: int, kind: s
             kind, algorithm = "Minuit", "migradimproved"
         tries += 1
     return minim.save()
+
+
+def fit_as_args(fit: Any, prefix: str, pulls: bool = False) -> list[Any]:
+    """``DetailedOutputAggregator::GetAsArgSet``: a fit's parameters - with their pulls from
+    their initial values, if asked - then its minimum, status, covariance quality and number of
+    invalid evaluations, each named with ``prefix``."""
+    from ..roofit.variables import RooRealVar
+
+    found = []
+    initial = fit.floatParsInit()
+    for par in fit.floatParsFinal():
+        name = f"{prefix}{par.GetName()}"
+        made = RooRealVar(name, f"{prefix}{par.GetTitle()}", par.getVal())
+        made.setError(par.getError())
+        found.append(made)
+        if pulls:
+            error, truth = par.getError(), initial.find(par.GetName()).getVal()
+            pull = (par.getVal() - truth) / error if error > 0 else 0.0
+            found.append(RooRealVar(f"{name}_pull", f"{name}_pull", pull))
+    for what, value in (("minNLL", fit.minNll()), ("fitStatus", fit.status()),
+                        ("covQual", fit.covQual()), ("numInvalidNLLEval", fit.numInvalidNLL())):
+        found.append(RooRealVar(f"{prefix}{what}", f"{prefix}{what}", value))
+    return found
 
 
 #: ``ProfileLikelihoodTestStat::LimitType``.
@@ -95,7 +120,8 @@ class ProfileLikelihoodTestStat(TestStatistic):
         self._conditional = RooArgSet()
         self._global = RooArgSet()
         self._var_name = "Profile Likelihood Ratio"
-        self._detailed: Any = None
+        self._detailed = self._pulls = False
+        self._output: Any = None
 
     def SetOneSided(self, flag: bool = True) -> None:
         self._limit = ONE_SIDED if flag else TWO_SIDED
@@ -150,10 +176,12 @@ class ProfileLikelihoodTestStat(TestStatistic):
         return self._pdf
 
     def EnableDetailedOutput(self, flag: bool = True, withErrorsAndPulls: bool = False) -> None:
-        self._detailed = {} if flag else None
+        self._detailed, self._pulls = bool(flag), bool(withErrorsAndPulls)
+        self._output = None
 
     def GetDetailedOutput(self) -> Any:
-        return None if not self._detailed else RooArgSet(list(self._detailed.values()))
+        """Each fit of the last evaluation, as ``fitUncond_`` and ``fitCond_`` variables."""
+        return self._output
 
     def Evaluate(self, data: Any, paramsOfInterest: Any) -> float:
         return self.EvaluateProfileLikelihood(0, data, paramsOfInterest)
@@ -176,8 +204,10 @@ class ProfileLikelihoodTestStat(TestStatistic):
         )
         return self._nll
 
-    def _minimum(self, nll: Any) -> tuple[float, int]:
+    def _minimum(self, nll: Any, prefix: str) -> tuple[float, int]:
         found = fit_nll(nll, self._strategy, self._tolerance, self._print_level, self._minimizer)
+        if self._detailed:
+            self._output.add(fit_as_args(found, prefix, self._pulls))
         return float(found.minNll()), int(found.status())
 
     def EvaluateProfileLikelihood(self, kind: int, data: Any, paramsOfInterest: Any) -> float:
@@ -185,6 +215,8 @@ class ProfileLikelihoodTestStat(TestStatistic):
         poi = as_list(paramsOfInterest)
         first = poi[0] if poi else None
         initial = float(first.getVal()) if first is not None else 0.0
+        if self._detailed:
+            self._output = RooArgSet()
         with quieted(FATAL) if self._print_level < 3 else _nothing():
             nll = self._likelihood(data)
             attached = RooArgSet(list(nll.getParameters()))
@@ -192,7 +224,7 @@ class ProfileLikelihoodTestStat(TestStatistic):
             before, point = attached.snapshot(), RooArgSet(poi).snapshot()
             uncond, mu_hat, status_d = 0.0, 0.0, 0
             if kind != 2:
-                uncond, status_d = self._fitted(nll, attached)
+                uncond, status_d = self._fitted(nll, attached, "fitUncond_")
                 mu_hat = attached.getRealValue(first.GetName()) if first is not None else 0.0
             cond, status_n = uncond, 0
             skip = not self._signed and kind == 0 and (
@@ -204,16 +236,16 @@ class ProfileLikelihoodTestStat(TestStatistic):
                     found = attached.find(par.GetName())
                     if found is not None:
                         found.setConstant(True)
-                cond, status_n = self._fitted(nll, attached)
+                cond, status_n = self._fitted(nll, attached, "fitCond_")
             pll = self._ratio(kind, uncond, cond, mu_hat, initial)
             attached.assign(before)
         return -1.0 if status_n or status_d else pll
 
-    def _fitted(self, nll: Any, attached: Any) -> tuple[float, int]:
+    def _fitted(self, nll: Any, attached: Any, prefix: str) -> tuple[float, int]:
         """The minimum over the free parameters - the value itself, if there are none."""
         if not any(not p.isConstant() for p in attached):
             return float(nll.getVal()), 0
-        return self._minimum(nll)
+        return self._minimum(nll, prefix)
 
     def _ratio(self, kind: int, uncond: float, cond: float, mu_hat: float, initial: float) -> float:
         if kind == 1:

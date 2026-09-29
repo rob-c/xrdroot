@@ -119,6 +119,7 @@ def minimize_nll(nll: Any, owner: str = "ProfileLikelihoodCalcultor") -> Any:
             break
         if tries < 4:
             log(None, WARNING, "Minimization", "    ----> Doing a re-scan first")
+            minim.minimize(kind, "Scan")
             if tries == 2 and strategy == 0:
                 log(None, WARNING, "Minimization", "    ----> trying with strategy = 1")
                 minim.setStrategy(1)
@@ -161,6 +162,8 @@ class ProfileLikelihoodCalculator(CombinedCalculator):
         )
         log(None, PROGRESS, "Minimization", "ProfileLikelihoodCalcultor::DoGLobalFit - find MLE ")
         self._fit = minimize_nll(nll)
+        if self._fit is None:  # no minimization ran: no result, and nothing said
+            return nll
         _said(self._fit)
         if self._fit.status() != 0:
             log(None, WARNING, "Minimization", "ProfileLikelihoodCalcultor::DoGlobalFit -  Global "
@@ -176,6 +179,8 @@ class ProfileLikelihoodCalculator(CombinedCalculator):
         if self._data is None or self._pdf is None or not len(self._sets["poi"]):
             return None
         nll = self.DoGlobalFit()
+        if self._fit is None:
+            return None
         profile = nll.createProfile(self._sets["poi"])
         fitted = RooArgSet(list(self._fit.floatParsFinal()))
         for par in self._sets["poi"]:
@@ -218,7 +223,7 @@ class ProfileLikelihoodCalculator(CombinedCalculator):
         else:
             at_null = float(nll.getVal())
         ndf = sum(1 for _, _, constant in null if not constant)
-        pvalue = incomplete_gamma_c(0.5 * ndf, max(at_null - at_mle, 0.0)) if ndf else 1.0
+        pvalue = incomplete_gamma_c(0.5 * ndf, max(at_null - at_mle, 0.0))  # 0 with no ndf
         if ndf == 1:
             pvalue *= 0.5
         for par, value in old:

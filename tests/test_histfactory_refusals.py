@@ -106,7 +106,7 @@ def test_a_combination_is_made_from_a_measurement_its_channels_made_on_the_way(
 
 
 def test_a_measurements_channel_with_its_histograms_unread_is_fatal(path: str,
-                                                                    tmp_path: Any) -> None:  # fmt: skip
+                                                                    tmp_path: Any) -> None:
     meas = measurement(str(tmp_path / "out"), channel("A", path))
     for call in (MakeModelAndMeasurementFast,
                  HistoToWorkspaceFactoryFast(meas).MakeCombinedModel):  # fmt: skip
@@ -133,7 +133,7 @@ def test_channels_whose_datasets_differ_are_refused_naming_the_difference(
 def test_a_first_channel_named_with_a_digit_is_refused(path: str, tmp_path: Any) -> None:
     meas = measurement(str(tmp_path / "out"), channel("1st", path))
     meas.CollectHistograms()
-    with pytest.raises(ValueError, match="cannot start with a digit. Got 1st"):
+    with pytest.raises(ValueError, match=r"cannot start with a digit\. Got 1st"):
         quietly(MakeModelAndMeasurementFast, meas)
 
 
@@ -149,7 +149,7 @@ def test_a_channel_without_samples_is_refused(tmp_path: Any) -> None:
 
 
 def test_a_channels_histograms_are_read_when_its_workspace_is_made(path: str,
-                                                                   tmp_path: Any) -> None:  # fmt: skip
+                                                                   tmp_path: Any) -> None:
     """The first sample's histogram not read yet: the channel collects its histograms."""
     ws = single(measurement(str(tmp_path / "out"), channel("A", path)))
     assert ws.data("obsData").sumEntries() == 234.0
@@ -246,7 +246,7 @@ def test_an_output_directory_that_cannot_be_made_is_fatal(path: str, tmp_path: A
 class Named:
     """A file, as far as its name goes."""
 
-    def GetName(self) -> str:  # noqa: N802 - ROOT's name
+    def GetName(self) -> str:
         return "out.root"
 
 
@@ -263,7 +263,7 @@ def test_writing_a_channel_whose_histograms_are_not_read_is_refused(capsys: Any)
 
 def test_with_histfactorys_messages_off_the_factory_prints_no_workspace(path: str,
                                                                         tmp_path: Any,
-                                                                        capsys: Any) -> None:  # fmt: skip
+                                                                        capsys: Any) -> None:
     """No ``Print`` of the channel's or the combined workspace, and no Asimov printout."""
     meas = measurement(str(tmp_path / "out"), channel("A", path), poi="")
     meas.CollectHistograms()
@@ -304,28 +304,28 @@ class Odd:
     def __init__(self, error: float) -> None:
         self.error = error
 
-    def GetNbinsX(self) -> int:  # noqa: N802 - ROOT's names
+    def GetNbinsX(self) -> int:
         return 1
 
-    def GetNbinsY(self) -> int:  # noqa: N802
+    def GetNbinsY(self) -> int:
         return 1
 
-    def GetNbinsZ(self) -> int:  # noqa: N802
+    def GetNbinsZ(self) -> int:
         return 1
 
-    def IsBinUnderflow(self, number: int) -> bool:  # noqa: N802
+    def IsBinUnderflow(self, number: int) -> bool:
         return number == 0
 
-    def IsBinOverflow(self, number: int) -> bool:  # noqa: N802
+    def IsBinOverflow(self, number: int) -> bool:
         return number > 1
 
-    def GetBinError(self, number: int) -> float:  # noqa: N802
+    def GetBinError(self, number: int) -> float:
         return self.error
 
-    def GetName(self) -> str:  # noqa: N802
+    def GetName(self) -> str:
         return "odd"
 
-    def Clone(self, name: str = "") -> Any:  # noqa: N802
+    def Clone(self, name: str = "") -> Any:
         return histogram([0.0], name)
 
 
@@ -342,7 +342,7 @@ def test_a_negative_bin_error_is_taken_as_none_and_one_not_a_number_is_refused(
 
 def test_a_copy_of_something_in_no_directory_is_just_its_clone() -> None:
     class Plain:
-        def Clone(self) -> str:  # noqa: N802 - ROOT's name
+        def Clone(self) -> str:
             return "clone"
 
     assert (_copied(Plain()), _copied(None)) == ("clone", None)

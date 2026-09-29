@@ -59,10 +59,19 @@ class Likelihood:
         self.max = 0.0
 
     def __call__(self, x: Any) -> float:
-        found = math.exp(-(self.nll(x) - self.offset))
+        nll = self.nll(x) - self.offset
+        try:
+            found = math.exp(-nll)
+        except OverflowError:  # C's exp is infinite there
+            found = math.inf
         if self.prior is not None:
             found *= self.prior(x)
-        self.max = max(self.max, found)
+        if found > self.max:
+            self.max = found
+            if found > 1e10:
+                where = "".join(f" x[{i} ] = {g(v)}" for i, v in enumerate(x))
+                log(None, WARNING, "Eval", "LikelihoodFunction::()  WARNING - Huge likelihood "
+                    f"value found for  parameters {where}  nll = {g(nll)} L = {g(found)}")
         return found
 
 
@@ -138,11 +147,10 @@ class CdfFunction:
         if x >= self.max_poi and self.has_norm:
             return 1.0 - self.offset
         start = 0.0
-        if self.has_norm:
+        if self.has_norm:  # from the nearest cached value below - the lower end is cached
             keys = sorted(self.cached)
             where = bisect.bisect_right(keys, x) - 1
-            if where >= 0:
-                self.lows[0], start = keys[where], self.cached[keys[where]]
+            self.lows[0], start = keys[where], self.cached[keys[where]]
         cdf, error = integrate(self.like, list(self.lows), list(self.highs))
         normcdf = cdf / self.norm
         if math.isnan(cdf) or cdf > 1.7976931348623157e308:

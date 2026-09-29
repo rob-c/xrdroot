@@ -13,6 +13,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+import numpy as np
+
 from ..roofit.collections import RooArgSet, as_list
 from ..roofit.messages import ERROR, INFO, PROGRESS, log, log_plain
 from ..roofit.rng import generator
@@ -205,7 +207,7 @@ class MetropolisHastings:
         """``CalcNLL``: the chain's negative log-likelihood of a function value."""
         if self._type == kLog:
             return value if self._sign == kNegative else -value
-        return -math.log(value) if self._sign == kPositive else -math.log(-value)
+        return -_c(np.log, value if self._sign == kPositive else -value)
 
     def _take(self, a: float) -> bool:
         """``ShouldTakeStep``: always uphill, else with the ratio's probability."""
@@ -219,7 +221,7 @@ class MetropolisHastings:
     def _ratio(self, x_value: float, candidate: float) -> float:
         if self._type == kLog:
             return x_value - candidate if self._sign == kPositive else candidate - x_value
-        return candidate / x_value
+        return _c(np.divide, candidate, x_value)
 
     def ConstructChain(self) -> Any:
         """The chain: ``numIters`` proposals, each taken or not, the points weighted by stays."""
@@ -242,8 +244,9 @@ class MetropolisHastings:
         with quieted(PROGRESS):
             x_value = self._start(x)
             chain = self._steps(chain, x, candidate, x_value)
-        rate = g_(chain.Size() / self._iters * 100)
-        log(None, INFO, "Eval", f"Proposal acceptance rate: {rate}%")
+        with np.errstate(all="ignore"):  # in single precision, as RooStats works it out
+            rate = float(np.float32(chain.Size()) / np.float32(self._iters) * np.float32(100))
+        log(None, INFO, "Eval", f"Proposal acceptance rate: {g_(rate)}%")
         log(None, INFO, "Eval", f"Number of steps in chain: {chain.Size()}")
         return chain
 
@@ -257,14 +260,15 @@ class MetropolisHastings:
             self._proposal.Propose(candidate, x)
             self._params.assign(candidate)
             value, failed = _evaluated(self._function)
-            if failed and self._type == kLog:
+            failed = failed and self._type == kLog  # an evaluation error, which only kLog heeds
+            if failed:
                 value = math.inf
             a = self._ratio(x_value, value)
             if not failed and not self._proposal.IsSymmetric(candidate, x):
                 there = self._proposal.GetProposalDensity(candidate, x)
                 back = self._proposal.GetProposalDensity(x, candidate)
-                a = a * back / there if self._type == kRegular else (
-                    a + math.log(there) - math.log(back))  # fmt: skip
+                a = a * _c(np.divide, back, there) if self._type == kRegular else (
+                    a + _c(np.log, there) - _c(np.log, back))  # fmt: skip
             if not failed and self._take(a):
                 if weight != 0:
                     chain.Add(x, self._nll(x_value), float(weight))
@@ -277,6 +281,13 @@ class MetropolisHastings:
             chain.Add(x, self._nll(x_value), float(weight))
         log_plain(None, PROGRESS, "Generation", "\n")
         return chain
+
+
+def _c(function: Any, *args: float) -> float:
+    """``function`` of ``args`` as C works it out: a zero's logarithm or quotient infinite, or
+    not a number, where Python would raise."""
+    with np.errstate(all="ignore"):
+        return float(function(*(np.float64(a) for a in args)))
 
 
 def g_(value: float) -> str:

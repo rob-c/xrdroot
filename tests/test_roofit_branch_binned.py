@@ -104,7 +104,7 @@ def test_a_binned_fit_is_roots_plain_and_with_sumw2_errors() -> None:
 
 
 def test_the_first_likelihood_says_which_library_it_computes_with(capsys: Any,
-                                                                  monkeypatch: Any) -> None:  # fmt: skip
+                                                                  monkeypatch: Any) -> None:
     """RooFit says once per session that it uses the generic CPU library."""
     monkeypatch.setattr(fit, "_SAID_LIBRARY", [False])
     ch = Channel()

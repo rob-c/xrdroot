@@ -111,21 +111,30 @@ class ModelConfig:
 
     # -- setting ------------------------------------------------------------------
 
-    def _define(self, key: str, items: Any, what: str) -> None:
-        """Name a set of the workspace's for ``key`` - ``<name>_POI`` and so on."""
+    def _define(self, key: str, items: Any, what: str, check: bool = True) -> None:
+        """Name a set of the workspace's for ``key`` - ``<name>_POI`` and so on - once each
+        member is known to be a variable (``check``); a global observable becomes constant."""
+        if isinstance(items, str):  # a list of the workspace's names
+            ws = self.GetWS()
+            if ws is None:
+                return
+            items = ws.argSet(items)
+        members = RooArgSet(as_list(items))
+        if check and not _only_parameters(members, f"ModelConfig::{what}"):
+            return
+        if key == "GlobalObservables":  # a fit never floats one
+            for one in members:
+                one.setAttribute("Constant", True)
         ws = self.GetWS()
         if ws is None:
             return
-        members = ws.argSet(items) if isinstance(items, str) else RooArgSet(as_list(items))
-        if not _only_parameters(members, f"ModelConfig::{what}"):
-            return
         self._names[key] = self._name + SETS[key]
-        with quieted():
-            ws.removeSet(self._names[key])
-            ws.defineSet(self._names[key], members, True)
+        _define_in_ws(ws, self._names[key], members)
 
     def SetParametersOfInterest(self, items: Any) -> None:
-        self._define("POI", items, "SetParametersOfInterest")
+        """By names, ``SetParameters``' own: its message names that instead."""
+        what = "SetParameters" if isinstance(items, str) else "SetParametersOfInterest"
+        self._define("POI", items, what)
 
     def SetParameters(self, items: Any) -> None:
         self._define("POI", items, "SetParameters")
@@ -143,15 +152,12 @@ class ModelConfig:
         self._define("ConditionalObservables", items, "SetConditionalObservables")
 
     def SetExternalConstraints(self, items: Any) -> None:
-        self._define("ExternalConstraints", items, "SetExternalConstraints")
+        """The constraint densities - not variables, so not checked as the other sets are."""
+        self._define("ExternalConstraints", items, "SetExternalConstraints", check=False)
 
     def SetGlobalObservables(self, items: Any) -> None:
         """The global observables, which become constant: a fit never floats one."""
-        ws = self.GetWS()
-        members = ws.argSet(items) if ws is not None and isinstance(items, str) else items
-        for one in () if isinstance(members, str) else as_list(members):
-            one.setAttribute("Constant", True)
-        self._define("GlobalObservables", members, "SetGlobalObservables")
+        self._define("GlobalObservables", items, "SetGlobalObservables")
 
     def SetPdf(self, pdf: Any) -> None:
         self._named_in_ws("Pdf", pdf, "pdf")
@@ -186,9 +192,7 @@ class ModelConfig:
         name = self._name + ("_" if self._name else "") + members.GetName()
         self._names["Snapshot"] = name + ("_" if name else "") + "snapshot"  # ModelConfig__snapshot
         ws.saveSnapshot(self._names["Snapshot"], members, True)
-        with quieted():
-            ws.removeSet(self._names["Snapshot"])
-            ws.defineSet(self._names["Snapshot"], members, True)
+        _define_in_ws(ws, self._names["Snapshot"], members)
 
     # -- getting ------------------------------------------------------------------
 
@@ -235,7 +239,7 @@ class ModelConfig:
         """A copy of the snapshot's values - the workspace's variables left as they were."""
         ws = self.GetWS()
         saved = self._set("Snapshot")
-        if not saved:
+        if saved is None or not len(saved):  # an empty snapshot is none, as in RooStats
             return None
         now = saved.snapshot()
         ws.loadSnapshot(self._names["Snapshot"])
@@ -319,6 +323,14 @@ class ModelConfig:
 
     def fitTo(self, data: Any, *args: Any, **kwargs: Any) -> Any:
         return self.GetPdf().fitTo(data, *self._options(args), **kwargs)
+
+
+def _define_in_ws(ws: Any, name: str, members: Any) -> None:
+    """``DefineSetInWS``: the named set ``name`` of the workspace's, replacing any it had."""
+    if ws.set(name) is not None:
+        ws.removeSet(name)
+    with quieted():
+        ws.defineSet(name, members, True)
 
 
 def _only_parameters(members: Any, prefix: str) -> bool:

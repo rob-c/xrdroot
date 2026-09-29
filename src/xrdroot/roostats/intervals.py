@@ -38,7 +38,10 @@ class Named:
         return f"RooStats::{type(self).__name__}"
 
     def InheritsFrom(self, name: Any) -> bool:
+        """Its own class or a base of it - ``TNamed`` and ``TObject`` among them."""
         wanted = str(name).replace("RooStats::", "")
+        if wanted in ("TNamed", "TObject"):
+            return True
         return any(klass.__name__ == wanted for klass in type(self).__mro__)
 
 

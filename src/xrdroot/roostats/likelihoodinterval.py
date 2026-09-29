@@ -12,9 +12,8 @@ two-dimensional level.
 
 from __future__ import annotations
 
+import sys
 from typing import Any
-
-import numpy as np
 
 from ..fit.defaults import default
 from ..fit.minuit import iminuit
@@ -81,14 +80,18 @@ class LikelihoodInterval(ConfInterval):
         return self._limits(param)[1]
 
     def FindLimits(self, param: Any, lower: Any = None, upper: Any = None) -> bool:
-        """Both ends, into ``lower`` and ``upper`` if they are cells; whether they were found."""
-        low, high, found = self._limits(param)
+        """Both ends, into ``lower`` and ``upper`` if they are cells - left as they were if the
+        ends are not found; whether they were."""
+        before = float(upper.value) if hasattr(upper, "value") else 0.0
+        low, high, found = self._limits(param, before)
         for cell, value in ((lower, low), (upper, high)):
-            if cell is not None and hasattr(cell, "value"):
+            if found and hasattr(cell, "value"):
                 cell.value = value
         return found
 
-    def _limits(self, param: Any) -> tuple[float, float, bool]:
+    def _limits(self, param: Any, before: float = 0.0) -> tuple[float, float, bool]:
+        """``FindLimits``: MINOS' ends, kept - or the parameter's own where MINOS gives none,
+        said as ROOT says it (the upper end's message naming ``upper`` as it was, ``before``)."""
         name = param.GetName()
         if name in self._lower and name in self._upper:
             return self._lower[name], self._upper[name], True
@@ -112,7 +115,7 @@ class LikelihoodInterval(ConfInterval):
             lower = at + low
         if high == 0:
             log_plain(self, WARNING, "Minimization", f"Warning: upper value for {name} is at "
-                      "limit 0\n")  # fmt: skip
+                      f"limit {g(before)}\n")  # fmt: skip
             upper = float(param.getMax())
         else:
             upper = at + high
@@ -149,22 +152,22 @@ class LikelihoodInterval(ConfInterval):
         minuit.errors = [p.getError() for p in self._params]
         minuit.limits = [(p.getMin(), p.getMax()) for p in self._params]
         minuit.migrad(iterate=1, use_simplex=False)
-        if not minuit.fmin.is_valid and not np.all(np.isfinite(minuit.values)):
+        self._minuit = minuit  # kept, as ROOT keeps its minimizer, even if its minimum is not
+        if not minuit.fmin.is_valid:
             log_plain(self, ERROR, "Minimization", "Error: Minimization failed  \n")
             return False
-        self._minuit = minuit
         return True
 
     def _minos(self, name: str, level: float) -> tuple[float, float]:
         """``GetMinosError`` at ``level``: nothing for an invalid minimum, as Minuit2 gives."""
+        if not self._minuit.fmin.is_valid:  # Minuit2Minimizer returns no errors at all
+            sys.stderr.write("Error in <Minuit2>: Minuit2Minimizer::GetMinosError Failed - "
+                             "invalid function minimum\n")  # fmt: skip
+            return 0.0, 0.0
         self._minuit.errordef = level
         self._seen = []
-        try:
-            self._minuit.minos(name)
-        except RuntimeError:  # an invalid minimum: Minuit2Minimizer returns no errors at all
-            return 0.0, 0.0
-        finally:
-            seen, self._seen = self._seen, None
+        self._minuit.minos(name)
+        seen, self._seen = self._seen, None
         self._left_as_root_leaves(name, seen)
         found = self._minuit.merrors[name]
         return float(found.lower), float(found.upper)
@@ -202,12 +205,13 @@ class LikelihoodInterval(ConfInterval):
         log(self, INFO, "Minimization", f"LikelihoodInterval - Finding the contour of "
             f"{paramX.GetName()} ( {ix} ) and {paramY.GetName()} ( {iy} ) ")  # fmt: skip
         points = _contour(self._minuit, ix, iy, int(npoints))
-        for index, (px, py) in enumerate(points[: int(npoints)]):
+        if points is None:
+            log(self, ERROR, "Minimization", "LikelihoodInterval - Error finding contour for "
+                f"parameters {paramX.GetName()} and {paramY.GetName()}")  # fmt: skip
+            return 0
+        for index, (px, py) in enumerate(points):
             x[index], y[index] = float(px), float(py)
-        if len(points) < int(npoints):
-            log(self, WARNING, "Minimization", "LikelihoodInterval -Warning - Less points "
-                f"calculated in contours np = {len(points)} / {npoints}")  # fmt: skip
-        return min(len(points), int(npoints))
+        return len(points)
 
 
 def floating(ratio: Any) -> list[Any]:
@@ -215,13 +219,22 @@ def floating(ratio: Any) -> list[Any]:
     return [p for p in RooArgList(list(ratio.getVariables())) if not p.isConstant()]
 
 
-def _contour(minuit: Any, ix: int, iy: int, npoints: int) -> list[Any]:
-    """``Minuit2Minimizer::Contour``: MnContours at the minimum's own error level.
+def _contour(minuit: Any, ix: int, iy: int, npoints: int) -> list[Any] | None:
+    """``Minuit2Minimizer::Contour``: MnContours at the minimum's own error level - ``None``,
+    with Minuit2's error, for an invalid minimum or any number of points but ``npoints``.
 
     iminuit's ``mncontour`` scales the level by a confidence it is given,
     which ``Contour`` does not, so MnContours is run here as ROOT runs it.
     """
     from iminuit._core import MnContours
 
+    if not minuit.fmin.is_valid:
+        sys.stderr.write("Error in <Minuit2>: Minuit2Minimizer::Contour Invalid function "
+                         "minimum\n")  # fmt: skip
+        return None
     found = MnContours(minuit._fcn, minuit._fmin._src, minuit.strategy)(ix, iy, npoints)
+    if len(found[2]) != npoints:
+        sys.stderr.write("Error in <Minuit2>: Minuit2Minimizer::Contour Invalid result from "
+                         "MnContours\n")  # fmt: skip
+        return None
     return list(found[2])

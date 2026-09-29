@@ -140,7 +140,9 @@ class MCMCInterval(ConfInterval):
             index = index * (len(edge) - 1) + found
         count = int(np.prod([len(e) - 1 for e in edges]))
         weights = np.bincount(index, np.asarray(self._chain.weights(self._burn_in)), count)
-        centres = list(itertools.product(*[0.5 * (e[1:] + e[:-1]) for e in edges]))
+        binnings = [p.getBinning() for p in self._params]  # RooDataHist's centres, as it has them
+        centres = list(itertools.product(*[[b.binCenter(i) for i in range(b.numBins())]
+                                           for b in binnings]))  # fmt: skip
         return centres, [float(w) for w in weights]
 
     def _by_hist(self) -> None:
@@ -192,6 +194,11 @@ class MCMCInterval(ConfInterval):
         if self._cutoff < 0:
             self._by_hist()
         names = [p.GetName() for p in self._params]
+        if self._cutoff < 0:
+            side, end = ("Upper", "getMax") if upper else ("Lower", "getMin")
+            log(None, ERROR, "Eval", f"In MCMCInterval::{side}LimitByDataHist: couldn't determine "
+                "cutoff.  Check that num burn in steps < num steps in the Markov chain.  "
+                f"Returning param.{end}().")  # fmt: skip
         if self._cutoff < 0 or param.GetName() not in names:
             return param.getMax() if upper else param.getMin()
         at = names.index(param.GetName())
@@ -218,6 +225,10 @@ class MCMCInterval(ConfInterval):
         values = self._chain.values(param.GetName())
         weights = self._chain.weights()
         if not self._vector:
+            if self._burn_in >= self._chain.Size():
+                log(None, ERROR, "InputArguments", "MCMCInterval::CreateVector: creation of "
+                    "vector failed: Number of burn-in steps (num steps to ignore) >= number of "
+                    "steps in Markov chain.")  # fmt: skip
             self._vector = sorted(range(self._burn_in, self._chain.Size()), key=lambda i: values[i])
             chosen = range(self._burn_in, self._chain.Size())
             self._vec_weight = _running_sum(weights[i] for i in chosen)
@@ -273,10 +284,10 @@ class MCMCInterval(ConfInterval):
             return bool(self._vector) and self._tf[0] <= x <= self._tf[1]
         if self._bins is None:
             return False
-        for centre, weight in zip(*self._bins):
-            if all(_in_bin(p, c, given) for p, c in zip(self._params, centre)):
-                return weight >= self._cutoff
-        return False
+        # ``RooDataHist::getIndex``: the bin the point is in - one always is, the bins clamped
+        weight = next(w for centre, w in zip(*self._bins)
+                      if all(_in_bin(p, c, given) for p, c in zip(self._params, centre)))
+        return bool(weight >= self._cutoff)
 
     def CheckParameters(self, point: Any) -> bool:
         return same_parameters(point, self._params)

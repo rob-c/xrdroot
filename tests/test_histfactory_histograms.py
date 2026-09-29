@@ -55,7 +55,7 @@ def full_channel(path: str) -> Channel:
 
 
 def test_a_channel_reads_every_histogram_it_names_opening_its_file_once(tmp_path: Any,
-                                                                        capsys: Any) -> None:  # fmt: skip
+                                                                        capsys: Any) -> None:
     path = write_inputs(tmp_path)
     made = full_channel(path)
     made.CollectHistograms()
@@ -96,7 +96,7 @@ def test_a_file_that_will_not_open_is_an_error_said_as_root_says(tmp_path: Any,
 
 
 def test_a_histogram_the_file_has_not_got_is_an_error_said_as_root_says(tmp_path: Any,
-                                                                        capsys: Any) -> None:  # fmt: skip
+                                                                        capsys: Any) -> None:
     path = write_inputs(tmp_path)
     made = Channel("c")
     made.SetData("nothing", path, "dir")
