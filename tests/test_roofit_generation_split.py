@@ -131,3 +131,15 @@ def test_a_sum_of_functions_not_binned_is_drawn_event_by_event() -> None:
     s = ROOT.RooRealSumPdf("s", "s", [f], [ROOT.RooRealVar("n", "n", 100.4, 0, 1000)], True)
     data = s.generate({x}, 3)
     assert (data.GetName(), data.numEntries(), data.isWeighted()) == ("sData", 3, False)
+
+
+def test_all_binned_draws_an_unbinned_density_bin_by_bin_as_root() -> None:
+    """``AllBinned()``: RooFit's binned tag ``*`` - every density binned, a Gaussian too."""
+    _seed(4357)
+    y = ROOT.RooRealVar("y", "", -5, 5)
+    y.setBins(5)
+    gauss = ROOT.RooGaussian("gs", "", y, ROOT.RooRealVar("m", "", 0.5, -1, 2),
+                             ROOT.RooRealVar("s", "", 1, 0.5, 2))  # fmt: skip
+    ext = ROOT.RooExtendPdf("ext", "", gauss, ROOT.RooRealVar("n", "", 10, 0, 100))
+    data = ext.generate({y}, ROOT.RooFit.Extended(), ROOT.RooFit.AllBinned())
+    assert (data.GetName(), data.numEntries(), data.sumEntries()) == ("wu", 5, 15.0)

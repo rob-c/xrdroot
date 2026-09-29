@@ -104,3 +104,56 @@ def test_every_five_hundred_toys_are_said(capfd: Any) -> None:
     assert capfd.readouterr().out == (
         "[#0] PROGRESS:Generation -- generated toys: 500 / 501 (tails: 500 / 1)\n")
     assert (found.GetSize(), sum(found.GetSamplingDistribution())) == (501, 1503.0)
+
+
+class _NaN:
+    """A test statistic that is never a number: every toy skipped."""
+
+    def Evaluate(self, data: Any, point: Any) -> float:
+        return float("nan")
+
+    def GetVarName(self) -> str:
+        return "nan"
+
+
+def test_the_settings_are_kept_and_what_the_sampler_lacks_is_said(capsys: Any) -> None:
+    y, _m, ext, obs, poi = _extended()
+    sampler = _sampler(NumEventsTestStat(ext), 3, ext, obs, poi)
+    sampler.AddTestStatistic()
+    sampler.SetTestStatistic(NumEventsTestStat(ext), 1)
+    sampler.SetTestSize(0.1)
+    assert sampler.ConfidenceLevel() == pytest.approx(0.9)
+    sampler.SetConfidenceLevel(0.8)
+    sampler.SetExpectedNuisancePar()
+    sampler.SetGenerateBinnedTag("")
+    sampler.SetGenerateAutoBinned(True)
+    sampler.SetSamplingDistName("")
+    assert sampler.GetSamplingDistName() == "Number of events"
+    ToyMCSampler.SetAlwaysUseMultiGen(False)
+    assert "No test statistic given. Doing nothing." in capsys.readouterr().out
+    sampler.GenerateGlobalObservables(ext)
+    assert "Global Observables not set." in capsys.readouterr().out
+    bare = ToyMCSampler(NumEventsTestStat(ext), 1)
+    bare.SetPdf(ext)
+    assert bare.GenerateToyData(poi, with_weight=True) == (None, 1.0)
+    assert "Observables not set." in capsys.readouterr().out
+
+
+def test_toys_whose_statistic_is_not_a_number_are_skipped(capsys: Any) -> None:
+    _y, _m, ext, obs, poi = _extended()
+    sampler = _sampler(_NaN(), 2, ext, obs, poi)
+    sampler.SetMaxToys(2)
+    sampler.GetSamplingDistribution(poi)
+    assert capsys.readouterr().out.count("skip: nan, 1") == 2
+
+
+def test_binned_toys_and_a_model_without_events_to_draw(capsys: Any) -> None:
+    y, _m, ext, obs, poi = _extended()
+    y.setBins(5)
+    sampler = _sampler(NumEventsTestStat(ext), 1, ext, obs, poi)
+    sampler.SetGenerateBinned(True)
+    assert sampler.GenerateToyData(poi).numEntries() == 5
+    gauss = ROOT.RooGaussian("g", "", y, ROOT.RooFit.RooConst(0), ROOT.RooFit.RooConst(1))
+    with pytest.raises(RuntimeError, match="pdf is not extended"):
+        sampler.Generate(gauss, obs)
+    assert "number of events per toy is zero" in capsys.readouterr().out

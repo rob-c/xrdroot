@@ -114,3 +114,47 @@ def helped(w: Any, cache: int = 50) -> ProposalHelper:
     helper.SetUpdateProposalParameters(True)
     helper.SetCacheSize(cache)
     return helper
+
+
+def _helped_chain(helper: ProposalHelper, w: Any, config: Any, data: Any) -> tuple[Any, ...]:
+    mc = MCMCCalculator(data, config)
+    mc.SetConfidenceLevel(0.9)
+    mc.SetNumBins(20)
+    mc.SetNumBurnInSteps(20)
+    mc.SetNumIters(300)
+    mc.SetProposalFunction(helper.GetProposalFunction())
+    interval = mc.GetInterval()
+    mu = w["mu"]
+    return (interval.LowerLimit(mu), interval.UpperLimit(mu), interval.GetActualConfidenceLevel(),
+            interval.GetChain().Size())
+
+
+@pytest.mark.parametrize(("settings", "expected"), [
+    ({}, (-0.95, 0.6500000000000001, 1.0, 146)),
+    ({"SetUniformFraction": 0.2, "SetWidthRangeDivisor": 3.0},
+     (-0.95, 0.8500000000000001, 1.0, 123)),
+    ({"SetCovMatrix": [[0.04, 0.005], [0.005, 0.02]]}, (-0.85, 0.55, 1.0, 222)),
+])  # fmt: skip
+def test_the_proposal_helpers_gaussian_walks_as_roots(settings: Any, expected: Any) -> None:
+    """ROOT 6.40's chains of the helper's Gaussian - with its widths a third of the ranges and
+    a fifth uniform, or a covariance matrix given - their intervals and lengths."""
+    w, config, data = gaussian("mu,sigma")
+    helper = helped(w)
+    for name, value in settings.items():
+        getattr(helper, name)(value)
+    assert _helped_chain(helper, w, config, data) == expected
+
+
+def test_the_helper_ignores_what_it_cannot_use_and_refuses_clues(capsys: Any) -> None:
+    from xrdroot.errors import UnsupportedFeatureError
+
+    w, _, _ = gaussian("mu,sigma")
+    helper = helped(w)
+    helper.SetWidthRangeDivisor(0.0)
+    helper.SetCacheSize(0)
+    assert "Requested non-positive cache size: 0. Cache size unchanged." in (
+        capsys.readouterr().out)  # fmt: skip
+    helper.SetPdf(w["normal"])
+    assert helper.GetProposalFunction().GetPdf().GetName() == "proposalFunction"
+    with pytest.raises(UnsupportedFeatureError, match="RooNDKeysPdf"):
+        helper.SetClues(None)

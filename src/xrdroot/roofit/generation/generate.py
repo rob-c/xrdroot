@@ -206,7 +206,8 @@ def _special(pdf: Any, variables: list[Any], count: Any, options: Any) -> Any:
 
     auto = bool(options.get("AutoBinned", 0, True))
     expected_data = bool(options.get("ExpectedData", 0, False))
-    tag = "*" if expected_data else str(options.get("GenBinned", 0, "") or "")
+    every = expected_data or bool(options.every("AllBinned"))  # binnedTag "*", as RooFit
+    tag = "*" if every else str(options.get("GenBinned", 0, "") or "")
     extended = bool(options.get("Extended", 0, False))
     names = frozenset(one.GetName() for one in variables)
     events = _special_count(pdf, names, count, extended)
