@@ -146,13 +146,32 @@ class CdfFunction:
             return -self.offset
         if x >= self.max_poi and self.has_norm:
             return 1.0 - self.offset
-        start = 0.0
-        if self.has_norm:  # from the nearest cached value below - the lower end is cached
-            keys = sorted(self.cached)
-            where = bisect.bisect_right(keys, x) - 1
-            self.lows[0], start = keys[where], self.cached[keys[where]]
+        start = self._from_cached(x) if self.has_norm else 0.0
         cdf, error = integrate(self.like, list(self.lows), list(self.highs))
-        normcdf = cdf / self.norm
+        self._checked(x, cdf, error)
+        if not self.has_norm:
+            log(None, INFO, "NumericIntegration", f"PosteriorCdfFunction - integral of posterior "
+                f"= {g(cdf)} +/- {g(error)}")  # fmt: skip
+            self.norm_error = error
+            return cdf
+        normcdf = cdf / self.norm + start
+        self.cached[x] = normcdf
+        errnorm = math.sqrt(error * error + normcdf * normcdf * self.norm_error**2) / self.norm
+        if normcdf > 1.0 + 3 * errnorm:
+            log(None, WARNING, "NumericIntegration", "PosteriorCdfFunction: normalized cdf values "
+                f"is larger than 1 x = {g(x)} normcdf(x) = {g(normcdf)} +/- "
+                f"{g(error / self.norm)}")  # fmt: skip
+        return normcdf - self.offset
+
+    def _from_cached(self, x: float) -> float:
+        """The integral starts at the nearest cached point below ``x`` - the lower end is one."""
+        keys = sorted(self.cached)
+        where = bisect.bisect_right(keys, x) - 1
+        self.lows[0] = keys[where]
+        return self.cached[keys[where]]
+
+    def _checked(self, x: float, cdf: float, error: float) -> None:
+        """A failed integral, or one too imprecise, said."""
         if math.isnan(cdf) or cdf > 1.7976931348623157e308:
             log_plain(None, ERROR, "NumericIntegration", "PosteriorFunction::Error computing "
                       f"integral - cdf = {g(cdf)}\n")  # fmt: skip
@@ -161,19 +180,6 @@ class CdfFunction:
             log(None, WARNING, "NumericIntegration", "PosteriorCdfFunction: integration error  is "
                 f"larger than 20 %   x0 = {g(self.lows[0])} x = {g(x)} cdf(x) = {g(cdf)} +/- "
                 f"{g(error)}")  # fmt: skip
-        if not self.has_norm:
-            log(None, INFO, "NumericIntegration", f"PosteriorCdfFunction - integral of posterior "
-                f"= {g(cdf)} +/- {g(error)}")  # fmt: skip
-            self.norm_error = error
-            return cdf
-        normcdf += start
-        self.cached[x] = normcdf
-        errnorm = math.sqrt(error * error + normcdf * normcdf * self.norm_error**2) / self.norm
-        if normcdf > 1.0 + 3 * errnorm:
-            log(None, WARNING, "NumericIntegration", "PosteriorCdfFunction: normalized cdf values "
-                f"is larger than 1 x = {g(x)} normcdf(x) = {g(normcdf)} +/- "
-                f"{g(error / self.norm)}")  # fmt: skip
-        return normcdf - self.offset
 
 
 class Posterior(RooAbsReal):
