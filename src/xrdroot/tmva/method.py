@@ -150,8 +150,11 @@ class Method:
 
     def setup(self) -> None:
         """``ProcessBaseOptions``: the transformations the method's ``VarTransform`` names."""
+        declared = {name.lower(): name for name in self.all_defaults()}
         for name, before in self.options.repeated:
-            self.log.warning(f"Value for option {name} was previously set to {before}")
+            # ``ParseOptions`` names the option as it was declared, not as it was written.
+            spelled = declared.get(name, name)
+            self.log.warning(f"Value for option {spelled} was previously set to {before}")
         self.handler.create(str(self.opt("VarTransform")), self.log)
 
     #: How often ``GetMvaValues`` says which sample it evaluates: twice, but once for a Category.

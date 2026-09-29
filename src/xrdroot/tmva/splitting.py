@@ -202,7 +202,23 @@ def mix_events(dsi: DataSetInfo, counts: list[ClassCounts], spec: SplitSpec) -> 
     test = _mixed([sample[1] for sample in samples], spec, shape)
     if spec.mix_mode == "RANDOM":
         train, test = _random_order(train, rng), _random_order(test, rng)
+    _check_sizes(dsi.name, train, test)
     return DataSet(train, test)
+
+
+def _check_sizes(name: str, train: Events, test: Events) -> None:
+    """A data set with nothing to train on stops the job; one with nothing to test on only warns."""
+    log = Logger("DataSetFactory")
+    if not len(train):
+        raise log.fatal(
+            f"Dataset {name} does not have any training events,"
+            " I better stop here and let you fix that one first "
+        )
+    if not len(test):
+        log.error(
+            f"Dataset {name} does not have any testing events, guess that will cause"
+            " problems later..but for now, I continue "
+        )
 
 
 def _random_order(events: Events, rng: Any) -> Events:

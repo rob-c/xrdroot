@@ -12,7 +12,7 @@ from tmvasupport import gaussian, session
 from xrdroot.tmva import TMVAError
 from xrdroot.tmva.dataset import DataSetInfo, Events
 from xrdroot.tmva.shuffle import RandomGenerator, draw_below
-from xrdroot.tmva.splitting import _interleaved, _numbers
+from xrdroot.tmva.splitting import _check_sizes, _interleaved, _numbers
 
 __all__ = ["session"]
 
@@ -161,3 +161,18 @@ def test_a_class_of_no_weight_is_renormalised_by_an_infinite_factor_as_cxx_divid
     from xrdroot.tmva.renorm import _ratio
 
     assert _ratio(4.0, 2.0) == 2.0 and _ratio(4.0, 0.0) == float("inf")
+
+
+def _events(count: int) -> Events:
+    empty = np.zeros((count, 0))
+    return Events(np.zeros((count, 1)), empty, empty, np.zeros(count, dtype=int), np.ones(count))
+
+
+def test_a_data_set_with_no_training_events_stops_the_job():
+    with pytest.raises(TMVAError, match="does not have any training events"):
+        _check_sizes("dataset", _events(0), _events(3))
+
+
+def test_a_data_set_with_no_testing_events_is_reported_and_kept(capsys):
+    _check_sizes("dataset", _events(3), _events(0))
+    assert "does not have any testing events" in capsys.readouterr().out

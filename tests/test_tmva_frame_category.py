@@ -130,3 +130,13 @@ def test_a_category_trained_without_an_output_writes_nothing_of_its_regions(sess
     category.output = None
     category.train(category.loader.dataset().train)
     assert "Train method: L for Classification" in capsys.readouterr().out
+
+
+def test_a_likelihood_in_a_region_too_small_for_its_bins_books_one_bin(session):
+    target = ROOT.TFile.Open("catlik.root", "RECREATE")
+    factory = ROOT.TMVA.Factory("job", target, "Silent:AnalysisType=Classification")
+    category = factory.BookMethod(loader(spectator=True), "Category", "Category", "")
+    category.AddMethod("var1>0", "var1:var2", "Likelihood", "Lik", "")
+    _run(factory)
+    target.Close()
+    assert 0.0 <= factory.GetROCIntegral("dataset", "Category") <= 1.0

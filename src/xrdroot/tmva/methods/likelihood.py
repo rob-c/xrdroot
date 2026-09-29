@@ -112,7 +112,9 @@ class MethodLikelihood(Method):
             start, stop = round(float(low)), round(float(high + 1))
             ranges = [(stop - start, start, stop)] * 2
         else:
-            ranges = [(spec.hist_bins(fewest), low, high) for spec in (spec_s, spec_b)]
+            # TH1's constructor books one bin where it is asked for none, as
+            # happens to a region of fewer events than NAvEvtPerBin.
+            ranges = [(max(spec.hist_bins(fewest), 1), low, high) for spec in (spec_s, spec_b)]
         clamped = np.where(
             values >= high, high - 1.0e-10, np.where(values < low, low + 1.0e-10, values)
         )

@@ -131,8 +131,8 @@ def test_a_weight_file_is_written_where_the_method_is_when_it_has_no_directory(s
 def test_an_option_given_twice_is_warned_of_when_the_method_is_booked(session, capsys):
     factory = ROOT.TMVA.Factory("job", "!V:AnalysisType=Classification")
     factory.BookMethod(loader(), "LD", "LD", "VarTransform=N:VarTransform=D")
-    printed = capsys.readouterr().out.lower()
-    assert "value for option vartransform was previously set to n" in printed
+    printed = capsys.readouterr().out
+    assert "Value for option VarTransform was previously set to N" in printed
 
 
 def test_a_factory_given_its_options_before_a_file_takes_them_as_its_options(session):
