@@ -46,6 +46,7 @@ SUBMODULES = [
     "roostats",
     "tcut",
     "th2poly",
+    "xmlengine",
     "tmva",
     "spectra.tspectrum",
     "spectra.tspectrum2",

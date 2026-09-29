@@ -18,6 +18,7 @@ from typing import Any
 __all__ = [
     "CType",
     "ROOT_TYPEDEFS",
+    "POINTER_TYPEDEFS",
     "canonical",
     "INTEGRAL",
     "FLOATING",
@@ -49,6 +50,11 @@ FLOATING = {"float": 32, "double": 64, "long double": 64}
 
 #: ``sizeof`` of every arithmetic type, in bytes.
 SIZES = {name: bits // 8 for name, bits in {**INTEGRAL, **FLOATING}.items()}
+
+#: ROOT's typedefs that are pointers to what a macro never sees inside - ``TXMLEngine``'s
+#: handles - which a macro copies, compares and passes by reference as the pointers they are.
+POINTER_TYPEDEFS = frozenset({"XMLNodePointer_t", "XMLAttrPointer_t", "XMLNsPointer_t",
+                              "XMLDocPointer_t"})  # fmt: skip
 
 #: ROOT's typedefs (RtypesCore.h) and the fixed-width ones, as the types they stand for.
 ROOT_TYPEDEFS = {

@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
-from .ctype import BUILTIN_WORDS, CType, builtin_name, canonical
+from .ctype import BUILTIN_WORDS, POINTER_TYPEDEFS, CType, builtin_name, canonical
 from .cursor import KEYWORDS, STD_NAMES, Cursor, NoParse
 
 __all__ = ["TypeParser", "Specifiers"]
@@ -111,6 +111,8 @@ class TypeParser(Cursor):
         if alias is not None and not args:
             return replace(alias)
         name = canonical(self._standard_type(parts))
+        if name in POINTER_TYPEDEFS:
+            return CType("void", pointer=1)
         return CType(name, args, callable=name == "std::function")
 
     def _standard_type(self, parts: list[str]) -> str:

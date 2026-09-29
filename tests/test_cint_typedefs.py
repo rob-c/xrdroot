@@ -33,3 +33,17 @@ def test_a_tagged_struct_is_its_tag_and_every_typedef_name_is_a_name_for_it(
     assert "class _Chunk:" in text and "c = _Chunk()" in text
     run_source(source, "t.C", root=fake())
     assert capsys.readouterr().out == "7\n"
+
+
+def test_roots_opaque_handles_are_pointers_shared_not_copied_and_passed_by_reference() -> None:
+    python = translate(
+        """
+    void walk(TXMLEngine &xml, XMLNodePointer_t node) {
+       XMLNodePointer_t child = xml.GetChild(node);
+       XMLNodePointer_t same = child;
+       xml.ShiftToNext(child);
+    }
+    """
+    )
+    assert "value_copy" not in python
+    assert "child = Cell(xml.GetChild(node))" in python and "xml.ShiftToNext(child)" in python
