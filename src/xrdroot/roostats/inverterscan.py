@@ -83,6 +83,11 @@ def _lower_search(it: Any, r_min: float, target: float) -> Any:
     return r_min, cls_min
 
 
+def _log(x: float) -> float:
+    """C's ``log``: minus infinity at zero, NaN below."""
+    return math.log(x) if x > 0 else (-math.inf if x == 0 else math.nan)
+
+
 class _Search:
     """The bracket being closed: its ends, ``CLs`` at each, and the limit's estimate."""
 
@@ -102,7 +107,7 @@ class _Search:
         self.limit, self.error = 0.5 * (self.r_min + self.r_max), 0.5 * (self.r_max - self.r_min)
         if inv.ALGORITHM[0] != "logSecant" or high[0] == 0:
             return
-        log_min, log_max, log_target = math.log(low[0]), math.log(high[0]), math.log(self.target)
+        log_min, log_max, log_target = _log(low[0]), _log(high[0]), _log(self.target)
         span = self.r_max - self.r_min
         self.limit = self.r_min + span * (log_target - log_min) / (log_max - log_min)
         if high[1] != 0 and low[1] != 0:
@@ -191,7 +196,7 @@ class _Search:
                 f"{g(self.r_max)}]")  # fmt: skip
         expo = TF1("expoFit", "[0]*exp([1]*(x-[2]))", low, high)
         expo.FixParameter(0, self.target)
-        slope = math.log(self.cls_max[0] / self.cls_min[0]) / (self.r_max - self.r_min)
+        slope = _log(self.cls_max[0] / self.cls_min[0]) / (self.r_max - self.r_min)
         expo.SetParameter(1, slope)
         expo.SetParameter(2, self.limit)
         self.error = max(abs(low - self.limit), abs(high - self.limit))

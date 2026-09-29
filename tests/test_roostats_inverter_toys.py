@@ -247,3 +247,89 @@ def test_a_point_outside_the_range_is_moved_to_its_end_and_a_repeat_merged(capsy
     assert "Running for mu = 6" in out and "P values for  mu =  6\n\tCLs      = " in out
     assert it._results.ArraySize() == 2
     assert it._results.GetResult(1).GetNullDistribution().GetSize() == 80
+
+
+def test_a_search_more_accurate_than_the_toys_ends_in_a_fit(capsys: Any) -> None:
+    """Asked for more accuracy than the toys give: the edges moved in about the crossing, then
+    an exponential fitted to the points there, and the picture drawn."""
+    ROOT.TCanvas("c", "c")
+    it, _ = inverter()
+    it.SetVerbose(1)
+    found, limit, _ = it.RunLimit(None, None, 1e-4, 1e-5)
+    assert found and limit == pytest.approx(3.85, abs=0.1)
+    out = capsys.readouterr().out
+    assert "Trying to move the interval edges closer" in out
+    assert "HypoTestInverter::RunLimit - Before fit   --- \nLimit: mu < " in out
+    assert "Fit to " in out
+    assert it.GetLimitPlot().GetN() > 3
+
+
+class AsymptoticCalculator(HypoTestCalculatorGeneric):
+    """The same p-values at every ``mu`` - or none at all."""
+
+    def __init__(self, sb: Any, b: Any, clsb: Any) -> None:
+        self._null, self._alt, self._data = sb, b, None
+        self._sampler, self.clsb = _Sampler(), clsb
+
+    def IsTwoSided(self) -> bool:
+        return False
+
+    def GetHypoTest(self) -> Any:
+        if self.clsb is None:
+            return None
+        made = HypoTestResult("flat", self.clsb, 1.0)
+        made.SetBackgroundAsAlt(True)
+        return made
+
+
+def flat(clsb: Any, cls: bool = True) -> Any:
+    _, sb, b = models()
+    it = ROOT.RooStats.HypoTestInverter(AsymptoticCalculator(sb, b, clsb))
+    it.UseCLs(cls)
+    return it
+
+
+@pytest.mark.parametrize(("clsb", "cls", "said"), [
+    (0.5, True, "Cannot determine upper limit of scan range. At mu = 384  still getting CLs = 0.5"),
+    (0.01, False, "Cannot determine lower limit of scan range. At mu = -96 still get CLsplusb = 0.01"),
+    (None, True, "Hypo test failed at x=2.20528 when trying to find limit."),
+    (None, False, "Hypotest failed at lower limit of scan range: 0"),
+])  # fmt: skip
+def test_an_automatic_search_that_cannot_bracket_the_limit_fails(capsys: Any, clsb: Any,
+                                                                  cls: bool, said: str) -> None:  # fmt: skip
+    it = flat(clsb, cls)
+    assert it.RunLimit()[0] is False
+    assert said in capsys.readouterr().out
+    flat(clsb, cls).GetInterval()
+    assert "HypoTestInverter::GetInterval - error running an auto scan " in capsys.readouterr().out
+
+
+def test_a_hint_narrows_the_search_and_a_toy_limit_stops_it(capsys: Any) -> None:
+    it, _ = inverter()
+    it.SetMaximumToys(1)
+    it.RunLimit(None, None, 0, 0, 3.0)
+    out = capsys.readouterr().out
+    assert "HypoTestInverter::RunLimit - Use hint value 3 search in interval 0.9 , 6" in out
+    assert "HypoTestInverter::RunLimit - maximum number of toys reached" in out
+
+
+def test_a_point_with_no_error_estimate_stops_the_search(monkeypatch: Any, capsys: Any) -> None:
+    from xrdroot.roostats import inverterscan
+
+    it, _ = inverter()
+    real = inverterscan._last
+    calls = iter(range(100))
+    monkeypatch.setattr(inverterscan, "_last",
+                        lambda results: real(results) if next(calls) < 1 else (0.05, -1.0))
+    assert it.RunLimit()[0] is False
+    assert "[#0] ERROR:Eval -- Hypotest failed\n" in capsys.readouterr().out
+
+
+def test_references_given_are_filled_with_the_limit_and_its_error() -> None:
+    class Ref:
+        value = 0.0
+
+    it, _ = inverter()
+    limit, error = Ref(), Ref()
+    assert it.RunLimit(limit, error) is True
+    assert limit.value == pytest.approx(3.85, abs=0.2) and error.value > 0
