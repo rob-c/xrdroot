@@ -10,7 +10,7 @@ that ``E1`` is not read as ``E`` and a stray ``1``.
 
 from __future__ import annotations
 
-__all__ = ["ERRORS", "histogram_option", "strip_same"]
+__all__ = ["ERRORS", "axisless", "histogram_option", "strip_same"]
 
 #: The words of a histogram's option, the longer of any two that overlap first.
 HISTOGRAM_WORDS = (
@@ -29,6 +29,22 @@ def strip_same(option: str) -> str:
     for word in ("SAMES", "SAME"):
         upper = upper.replace(word, "")
     return upper
+
+
+def axisless(option: str, graph: bool) -> bool:
+    """Whether ``option`` draws the frame bare, without its axes.
+
+    ``TGraphPainter`` reads any ``I`` in a graph's option so; ``THistPainter``
+    a histogram's ``A`` that is no part of a longer word - ``BAR``, ``AXIS``,
+    ``SAME``.
+    """
+    upper = option.upper()
+    if graph:
+        return "I" in upper
+    rest = upper.replace(" ", "")
+    for word in ("SAMES", "SAME", "AXIS", "BAR", "ARR"):
+        rest = rest.replace(word, " ")
+    return "A" in rest
 
 
 def histogram_option(option: str) -> frozenset[str]:

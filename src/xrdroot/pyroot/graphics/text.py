@@ -89,6 +89,7 @@ class TGaxis(Drawn):
         "Wmin": float, "Wmax": float, "LabelSize": float, "LabelFont": int,
         "LabelColor": int, "LabelOffset": float, "TitleSize": float, "TitleOffset": float,
         "TickSize": float, "Ndiv": int, "Chopt": str, "MaxDigits": int, "GridLength": float,
+        "X1": float, "Y1": float, "X2": float, "Y2": float, "TimeFormat": str,
     }  # fmt: skip
 
     def __init__(
@@ -124,6 +125,20 @@ class TGaxis(Drawn):
 
     def SetOption(self, chopt: str = "") -> None:
         self.members["fChopt"] = str(chopt)
+
+    def ChangeLabel(
+        self, labNum: int = 0, labAngle: float = -1.0, labSize: float = -1.0, labAlign: int = -1,
+        labColor: int = -1, labFont: int = -1, labText: str = "",
+    ) -> None:  # fmt: skip
+        """``ChangeLabel``: one label restyled - a size of zero erases it - or, for ``0``, none.
+
+        A second change of the same label replaces the first, as ROOT keeps one per number.
+        """
+        kept = [c for c in self.members.get("_changed_labels", []) if c[0] != int(labNum)]
+        if int(labNum):
+            kept.append((int(labNum), float(labAngle), float(labSize), int(labAlign),
+                         int(labColor), int(labFont), str(labText)))  # fmt: skip
+        self.members["_changed_labels"] = kept if int(labNum) else []
 
     def CenterTitle(self, center: bool = True) -> None:
         chopt = str(self.members["fChopt"]).replace("C", "")

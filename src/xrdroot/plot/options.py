@@ -31,7 +31,7 @@ SPELLINGS = {
     "LEGO": "LEGO", "LEGO1": "LEGO", "LEGO2": "LEGO", "LEGO3": "LEGO", "LEGO4": "LEGO",
     "SURF": "SURF", "SURF1": "SURF", "SURF2": "SURF", "SURF3": "SURF", "SURF4": "SURF",
     "SURF5": "SURF", "SURF6": "SURF", "SURF7": "SURF", "ISO": "ISO", "NOSTACK": "NOSTACK",
-    "NOSTACKB": "NOSTACKB", "A": "A", "F": "F", "2": "2", "3": "3", "4": "4", "X": "X",
+    "NOSTACKB": "NOSTACKB", "A": "A", "I": "I", "F": "F", "2": "2", "3": "3", "4": "4", "X": "X",
     "PLC": "PLC", "PMC": "PMC", "PFC": "PFC", "TEXT": "TEXT",
 }  # fmt: skip
 
@@ -74,11 +74,11 @@ _WORDS = re.compile(
     )
 )
 
-_HIST1 = {"SAME", "HIST", "FUNC", "NORM", "AXIS", "E", "E0", "E1", "E2", "E3", "E4", "P", "L",
+_HIST1 = {"SAME", "A", "HIST", "FUNC", "NORM", "AXIS", "E", "E0", "E1", "E2", "E3", "E4", "P", "L",
           "C", "B", "X0", "*", "][", "TEXT", "PLC", "PMC", "PFC"}  # fmt: skip
 _HIST2 = {"SAME", "FUNC", "NORM", "AXIS", "COL", "Z", "BOX", "CONT", "CONTL", "LEGO", "SURF",
           "TEXT"}  # fmt: skip
-_GRAPH = {"SAME", "A", "P", "L", "C", "*", "B", "F", "2", "3", "4", "X", "Z", "PLC", "PMC",
+_GRAPH = {"SAME", "A", "I", "P", "L", "C", "*", "B", "F", "2", "3", "4", "X", "Z", "PLC", "PMC",
           "PFC"}  # fmt: skip
 
 #: What each kind of thing can be asked to be drawn as.
@@ -112,7 +112,7 @@ class Chosen(NamedTuple):
     @property
     def drawing(self) -> frozenset[str]:
         """The words that say how to draw, rather than where or how much."""
-        return self.words - {"SAME", "NORM", "PLC", "PMC", "PFC", "A", "AXIS", "FUNC", "Z"}
+        return self.words - {"SAME", "NORM", "PLC", "PMC", "PFC", "A", "I", "AXIS", "FUNC", "Z"}
 
 
 def _split(option: str) -> tuple[list[tuple[str, str]], float]:

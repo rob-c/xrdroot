@@ -57,6 +57,7 @@ def _axis(scene: Scene, prim: Primitive) -> Axis:
         title_size=float(prim.get("fTitleSize", label_size)),
         title_font=int(prim.get("fTextFont", 62) or 62), title_color=int(prim.get("fTextColor", 1)),
         line_color=int(prim.get("fLineColor", 1)), pad=scene.pixels,
+        changed=tuple(prim.get("_changed_labels", ())),
     )  # fmt: skip
 
 

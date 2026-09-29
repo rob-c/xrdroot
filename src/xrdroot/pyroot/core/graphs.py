@@ -137,6 +137,8 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
             remember(self._cached, self)
         for group, values in self.__dict__.get("_atts", {}).items():
             self._cached._core[group] = values
+        if self._histogram is not None:  # the frame a script reached, which draws it as it is
+            self._cached._core["fHistogram"] = self._histogram._xrd
         return self._cached
 
     def _changed(self) -> None:
@@ -461,8 +463,18 @@ class TGraphAsymmErrors(TGraph):
     CLASS_TITLE = "A graph with asymmetric error bars"
 
     def Divide(self, passed: Any, total: Any, option: str = "cp") -> None:
-        """``Divide(pass, total)``: the efficiency in each bin, with its interval."""
-        self._from_histogram(passed, (total,))
+        """``Divide(pass, total, option)``: the efficiency - or ratio - in each bin, with its
+        interval, as :mod:`.divide` works them out."""
+        from .divide import divide
+
+        points = divide(passed, total, option)
+        if points is None:
+            return
+        columns = [np.array(column, dtype=np.float64) for column in zip(*points)] or [
+            np.zeros(0) for _ in range(6)
+        ]
+        self._points = (columns[0], columns[1])
+        self._bars = dict(zip(("exl", "exh", "eyl", "eyh"), columns[2:]))
         self._changed()
 
 

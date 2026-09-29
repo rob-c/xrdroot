@@ -60,6 +60,10 @@ class Axis:
     bits: frozenset[str] = frozenset()
     #: The pad's size in pixels, and ``gPad->GetWw() * GetWNDC()``.
     pad: tuple[float, float] = (1.0, 1.0)
+    #: ``TGaxis::ChangeLabel``'s changes: each ``(number, angle, size, align, color, font,
+    #: text)``, the number counted from one - or back from the last label, if negative - and
+    #: each attribute left as it is where it is negative, or the text where it is empty.
+    changed: tuple[tuple[Any, ...], ...] = ()
 
 
 class Label(NamedTuple):
@@ -485,6 +489,28 @@ def _exponent_label(axis: Axis, geo: _Geometry, text: _Text, exponent: int) -> L
     return Label(shown, u, v, 11, 0.0, font, text.size, axis.label_color)
 
 
+def _changed(axis: Axis, label: Label, number: int, nlabels: int) -> Label:
+    """``label``, the ``number``-th, as ``TGaxis::ChangeLabelAttributes`` restyles it.
+
+    A change numbered back from the end, ``-1`` the last, is the label
+    ``number + 2 + nlabels`` counts to, as ``FindModLab`` matches it; a size of
+    zero erases the label. The first change that matches is the one made.
+    """
+    found = [change for change in axis.changed
+             if change[0] == number or (change[0] < 0 and number == change[0] + 2 + nlabels)]  # fmt: skip
+    if not found:
+        return label
+    _, angle, size, align, color, font, text = found[0]
+    return label._replace(
+        angle=angle if angle >= 0 else label.angle,
+        size=size if size >= 0 else label.size,
+        align=align if align > 0 else label.align,
+        color=color if color >= 0 else label.color,
+        font=font if font > 0 else label.font,
+        text=text or label.text,
+    )  # fmt: skip
+
+
 def _linear_labels(
     axis: Axis, geo: _Geometry, binning: _Binning, text: _Text, out: Painted, options: str
 ) -> None:
@@ -502,8 +528,11 @@ def _linear_labels(
         label = _printed(value, form.format, "." in options)
         value += form.step
         u, v = _rotate(step * k + shift, text.offset, geo, origin)
-        out.labels.append(Label(label.replace("-", "#minus"), u, v - drop, text.align, 0.0,
-                                axis.label_font, text.size, axis.label_color))  # fmt: skip
+        made = Label(label, u, v - drop, text.align, 0.0, axis.label_font, text.size,
+                     axis.label_color)  # fmt: skip
+        made = _changed(axis, made, k + 1, binning.n1a - (1 if centred else 0))
+        if made.size:
+            out.labels.append(made._replace(text=made.text.replace("-", "#minus")))
     if form.exponent:
         out.labels.append(_exponent_label(axis, geo, text, form.exponent))
 

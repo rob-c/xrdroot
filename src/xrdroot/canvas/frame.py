@@ -28,7 +28,7 @@ from ..hist import Histogram
 from ..stacks import MultiGraph, Stack
 from . import styles
 from .model import Pad, lookup
-from .options import ERRORS, histogram_option
+from .options import ERRORS, axisless, histogram_option
 from .scene import Scene
 
 __all__ = ["open_axes", "dress", "extent", "owner", "shown_bins"]
@@ -187,6 +187,38 @@ def _graphs_extent(graphs: list[Graph], pad: Pad) -> Extent:
     return x0, y0, x1, y1
 
 
+def _limited_ends(h: Histogram) -> tuple[float, float]:
+    """Where a frame histogram's x axis starts and ends: its limits as they are now.
+
+    ``TAxis::SetLimits`` moves ``fXmin`` and ``fXmax`` and leaves the bins as
+    many; each edge is ``GetBinLowEdge``'s, ``fXmin`` and a whole number of widths.
+    """
+    members = lookup(h, "fXaxis") or {}
+    first, last = shown_bins(h)
+    low, high = float(lookup(members, "fXmin", 0.0)), float(lookup(members, "fXmax", 1.0))
+    width = (high - low) / h.axes[0].nbins
+    return low + first * width, low + last * width
+
+
+def _graph_extent(g: Graph, pad: Pad) -> Extent:
+    """A graph's frame: the histogram it was given to draw it in, or else its points'.
+
+    ``TGraphPainter`` paints the frame histogram a graph already has - one a
+    script reached through ``GetXaxis()`` and set limits and a range on - as it
+    is, its ``fMinimum`` and ``fMaximum`` its height; and the graph's own
+    ``SetMinimum`` and ``SetMaximum`` override either.
+    """
+    framing = lookup(g, "fHistogram")
+    if isinstance(framing, Histogram):
+        x0, x1 = _limited_ends(framing)
+        yaxis = lookup(framing, "fYaxis") or {}
+        y0 = _limit(framing, "fMinimum", float(lookup(yaxis, "fXmin", 0.0)))
+        y1 = _limit(framing, "fMaximum", float(lookup(yaxis, "fXmax", 1.0)))
+    else:
+        x0, y0, x1, y1 = _graphs_extent([g], pad)
+    return x0, _limit(g, "fMinimum", y0), x1, _limit(g, "fMaximum", y1)
+
+
 def _function_extent(f: Function, log: bool) -> Extent:
     """A function's frame: its range, and the heights it reaches, sampled as ``TF1`` draws it."""
     if f.dimensions != 1:
@@ -205,7 +237,7 @@ def extent(obj: Any, option: str, pad: Pad) -> Extent:
     if isinstance(obj, Histogram):
         return _histogram_extent(obj, option, pad.logy)
     if isinstance(obj, Graph):
-        return _graphs_extent([obj], pad)
+        return _graph_extent(obj, pad)
     if isinstance(obj, MultiGraph):
         return _graphs_extent(list(obj), pad)
     if isinstance(obj, Stack) and len(obj):
@@ -334,7 +366,9 @@ def dress(scene: Scene) -> None:
     from .dressing import dress_axes
 
     _frame(scene)
-    dress_axes(scene, _axes_of(scene.owner[0]))
+    obj, option = scene.owner
+    if not axisless(option, isinstance(obj, (Graph, MultiGraph))):
+        dress_axes(scene, _axes_of(obj))
 
 
 def default_title(scene: Scene) -> None:
