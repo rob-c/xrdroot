@@ -222,24 +222,40 @@ class ProfileLikelihoodTestStat(TestStatistic):
             attached = RooArgSet(list(nll.getParameters()))
             attached.assign(poi)
             before, point = attached.snapshot(), RooArgSet(poi).snapshot()
-            uncond, mu_hat, status_d = 0.0, 0.0, 0
-            if kind != 2:
-                uncond, status_d = self._fitted(nll, attached, "fitUncond_")
-                mu_hat = attached.getRealValue(first.GetName()) if first is not None else 0.0
+            uncond, mu_hat, status_d = self._unconditional_fit(kind, nll, attached, first)
             cond, status_n = uncond, 0
-            skip = not self._signed and kind == 0 and (
-                (self._limit == ONE_SIDED and mu_hat >= initial)
-                or (self._limit == ONE_SIDED_DISCOVERY and mu_hat <= initial))  # fmt: skip
-            if kind != 1 and not skip:
-                attached.assign(point)
-                for par in poi:
-                    found = attached.find(par.GetName())
-                    if found is not None:
-                        found.setConstant(True)
-                cond, status_n = self._fitted(nll, attached, "fitCond_")
+            if kind != 1 and not self._skipped(kind, mu_hat, initial):
+                cond, status_n = self._conditional_fit(nll, attached, point, poi)
             pll = self._ratio(kind, uncond, cond, mu_hat, initial)
             attached.assign(before)
         return -1.0 if status_n or status_d else pll
+
+    def _unconditional_fit(self, kind: int, nll: Any, attached: Any,
+                       first: Any) -> tuple[float, float, int]:  # fmt: skip
+        """The unconditional fit - none for the conditional minimum alone - and ``mu_hat``."""
+        if kind == 2:
+            return 0.0, 0.0, 0
+        uncond, status = self._fitted(nll, attached, "fitUncond_")
+        mu_hat = attached.getRealValue(first.GetName()) if first is not None else 0.0
+        return uncond, mu_hat, status
+
+    def _skipped(self, kind: int, mu_hat: float, initial: float) -> bool:
+        """The conditional fit left out: a one-sided ratio on the wrong side of ``mu_hat``."""
+        if self._signed or kind != 0:
+            return False
+        if self._limit == ONE_SIDED:
+            return mu_hat >= initial
+        return self._limit == ONE_SIDED_DISCOVERY and mu_hat <= initial
+
+    def _conditional_fit(self, nll: Any, attached: Any, point: Any,
+                     poi: list[Any]) -> tuple[float, int]:  # fmt: skip
+        """The fit with the parameters of interest held at the point tested."""
+        attached.assign(point)
+        for par in poi:
+            found = attached.find(par.GetName())
+            if found is not None:
+                found.setConstant(True)
+        return self._fitted(nll, attached, "fitCond_")
 
     def _fitted(self, nll: Any, attached: Any, prefix: str) -> tuple[float, int]:
         """The minimum over the free parameters - the value itself, if there are none."""
