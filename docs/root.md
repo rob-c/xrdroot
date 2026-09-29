@@ -1263,6 +1263,84 @@ are - files or arrays - as their structural similarity, 1 for the same
 picture: scikit-image's when it is installed, else the same formula in
 NumPy.
 
+## Spectra
+
+`TSpectrum` and `TSpectrum2` are Miroslav Morhac's spectrum processing, as
+ROOT's `hist/spectrum` has it: the background under peaks by SNIP clipping,
+Markov-chain smoothing, Gold's and Richardson-Lucy's deconvolution,
+unfolding through a response matrix, and the high-resolution peak search
+that deconvolves by a Gaussian before it looks. Each is ROOT's algorithm
+step for step (`xrdroot.spectrum`): a loop ROOT runs channel by channel is
+run here over the whole spectrum at once, but with every channel's sums
+added in ROOT's order from ROOT's first term, and a loop that feeds on
+itself is a loop over Python floats, which are C doubles - so every number
+is ROOT 6.40's to the last bit, checked against it on the tutorials'
+spectra and on every option: each filter order, window direction and
+smoothing width, Compton edges, boosted repetitions, and searches with and
+without background removal and smoothing.
+
+```python
+import numpy as np
+import xrdroot.pyroot as ROOT
+
+s = ROOT.TSpectrum()
+source = np.array([h.GetBinContent(i + 1) for i in range(1024)])
+s.Background(source, 1024, 20, ROOT.TSpectrum.kBackDecreasingWindow,
+             ROOT.TSpectrum.kBackOrder8, True, ROOT.TSpectrum.kBackSmoothing5, True)
+dest = np.zeros(1024)
+n = s.SearchHighRes(source, dest, 1024, 8, 2, True, 3, True, 3)
+print(s.GetPositionX()[:n])            # the peaks, in channels, highest first
+n = s.Search(h, 2, "", 0.10)           # on a histogram: bin centres, a TPolyMarker, drawn
+hb = s.Background(h, 20, "same")       # h_background, red, drawn over it
+```
+
+**Arrays in, answers in place.** Where ROOT takes a `Double_t *` and its
+size and leaves its answer there, so do these: a NumPy array - what a
+translated macro's `Double_t source[1024]` is - an `array.array` or a list,
+filled in place; a `Double_t **` is a list of rows (a macro's `new
+Double_t *[n]`, a vector's `data()`) or a two-dimensional array. The
+methods that can refuse hand back ROOT's own message - `"Too Large Clipping
+Window"` - and `None` otherwise, as ROOT's `const char *` is `nullptr`;
+`SearchHighRes` prints ROOT's `Error in <TSpectrum::SearchHighRes>` and
+finds nothing, and warns `Peak buffer full` as ROOT does. `GetPositionX`
+hands back the array itself, as ROOT hands back its pointer, so a macro
+indexes it; `Search` on a histogram works over its axis range, leaves bin
+centres and contents there, hangs a `TPolyMarker` of red triangles on the
+histogram - replacing the last - and draws it unless told `goff` or
+`nodraw`; `Print` prints ROOT's `Number of positions`.
+
+**ROOT's quirks, kept.** The smoothed eighth-order filter takes one of its
+terms with the wrong sign, the two-dimensional search smooths a
+non-square plane read from where ROOT's copy - at `2 * ssizex_ext` columns
+- leaves it, and the one-dimensional search reads its `H'y` shifted by the
+response's length: all as ROOT does, because what ROOT prints is what
+these print. The one place they part is where ROOT reads memory it never
+wrote: the last `length - 1` channels of a Richardson-Lucy deconvolution,
+never solved for, are whatever ROOT's heap held (often the previous
+deconvolution's leftovers) and are zero here.
+
+**Transforms.** `TSpectrumTransform` and `TSpectrum2Transform` are Morhac's
+fast orthogonal transforms of a spectrum whose length is a power of two:
+Haar, Walsh, cosine, sine, Fourier and Hartley, and the mixed
+Fourier-Walsh, Fourier-Haar, Walsh-Haar, cosine-Walsh, cosine-Haar,
+sine-Walsh and sine-Haar of any degree the spectrum allows, forward and
+back. `FilterZonal` sets the coefficients in a region to one value and
+`Enhance` multiplies them, each then transforming back. Each is ROOT's own
+arithmetic, stage by stage over ROOT's working space, so every coefficient
+is ROOT 6.40's to the last bit, and each object changes itself as ROOT's
+does: a one-dimensional cosine or sine transform doubles its size, and a
+cosine or sine mixed transform raises its degree, every time it runs; the
+two-dimensional filter scales what it returns back to the source's sum,
+and writes nothing when that sum is zero. What ROOT would do only by
+reading memory it never set is refused in a sentence: a second call
+reading past the source, or a degree raised until ROOT would divide by zero.
+
+| What | ROOT's names here |
+| --- | --- |
+| one dimension | `TSpectrum(maxpositions=100)`: `Background` (of an array, with `kBackIncreasingWindow`/`kBackDecreasingWindow`, `kBackOrder2`...`8`, `kBackSmoothing3`...`15` and Compton edges; or of a histogram, with the option words `BackIncreasingWindow`, `BackOrder4`, `nosmoothing`, `BackSmoothing7`, `Compton`, `same`), `SmoothMarkov`, `Deconvolution`, `DeconvolutionRL`, `Unfolding`, `SearchHighRes`, `Search1HighRes`, `Search` (`nobackground`, `nomarkov`, `nodraw`, `goff`), `StaticSearch`, `StaticBackground`, `GetPositionX`/`Y`, `GetNPeaks`, `SetAverageWindow`, `SetDeconIterations`, `SetResolution`, `Print` |
+| two dimensions | `TSpectrum2`: `Background` (`kBackSuccessiveFiltering`, `kBackOneStepFiltering`; of a `TH2` with `BackIncreasingWindow`, `BackOneStepFiltering`, `same`), `SmoothMarkov`, `Deconvolution`, `SearchHighRes`, `Search`, `StaticSearch`, `StaticBackground`, `GetPositionX`/`Y`, `Print` |
+| transforms | `TSpectrumTransform(size)` and `TSpectrum2Transform(sizeX, sizeY)`: `SetTransformType(kTransformHaar` ... `kTransformSinHaar, degree)`, `SetDirection(kTransformForward` or `kTransformInverse)`, `SetRegion`, `SetFilterCoeff`, `SetEnhanceCoeff`, `Transform(source, dest)`, `FilterZonal`, `Enhance` |
+
 ## RooFit
 
 `ROOT.RooRealVar`, `ROOT.RooGaussian`, `ROOT.RooFit.Save()` and the rest of
