@@ -16,7 +16,7 @@ from .drawn import Drawn
 from .shapes import TLine
 from .text import TLatex
 
-__all__ = ["TPave", "TPaveLabel", "TPaveStats", "TPaveText"]
+__all__ = ["TPave", "TPaveLabel", "TPaveStats", "TPaveText", "TPavesText"]
 
 #: A pave's corners, in the axes' units and in the pad's fractions.
 PAVE_FIELDS = {
@@ -199,3 +199,21 @@ class TPaveStats(TPaveText):
 
     def GetParent(self) -> Any:
         return self.parent
+
+
+class TPavesText(TPaveText):
+    """``TPavesText(x1, y1, x2, y2, npaves, option)``: a pave of text on a stack of paves."""
+
+    classname = "TPavesText"
+
+    def __init__(self, x1: float = 0.0, y1: float = 0.0, x2: float = 0.0, y2: float = 0.0,
+                 npaves: int = 5, option: str = "br") -> None:  # fmt: skip
+        super().__init__(x1, y1, x2, y2, option)
+        self.members["fNpaves"] = int(npaves)
+        self.members["fBorderSize"] = 1
+
+    def GetNpaves(self) -> int:
+        return int(self.members["fNpaves"])
+
+    def SetNpaves(self, npaves: int = 5) -> None:
+        self.members["fNpaves"] = int(npaves)

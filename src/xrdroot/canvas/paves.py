@@ -234,6 +234,23 @@ def pave_text(scene: Scene, prim: Primitive, _option: str) -> None:
     draw_lines(scene, prim, list(prim.get("fLines") or []), corners)
 
 
+def paves_text(scene: Scene, prim: Primitive, option: str) -> None:
+    """A ``TPavesText``: ``fNpaves - 1`` paves stacked behind, each three borders further off
+    - up and right for the ``br`` of its option - and the pave of text on top."""
+    x1, y1, x2, y2 = pave_box(scene, prim)
+    border = int(lookup(prim, "fBorderSize", 1) or 0)
+    held = str(lookup(prim, "fOption", "br"))
+    dx = 3 * (-1 if "l" in held else 1) * border / scene.pixels[0]
+    dy = 3 * (1 if "b" in held else -1) * border / scene.pixels[1]  # pixels count down
+    table = dict(getattr(prim, "_table", {}))
+    for behind in range(int(lookup(prim, "fNpaves", 5) or 0), 1, -1):
+        shift_x, shift_y = dx * (behind - 1), dy * (behind - 1)
+        moved = {"fX1NDC": x1 + shift_x, "fY1NDC": y1 - shift_y, "fX2NDC": x2 + shift_x,
+                 "fY2NDC": y2 - shift_y, "fOption": held + "NDC"}  # fmt: skip
+        draw_box(scene, Primitive(prim.classname, {**table, **moved}))
+    pave_text(scene, prim, option)
+
+
 # -- a label -----------------------------------------------------------------------------------
 
 #: How much of a character ``TPaveLabel`` does not count each of these as.
@@ -394,7 +411,7 @@ def stats_box(scene: Scene, prim: Primitive, _option: str) -> None:
 PAVES = {
     "TPave": pave,
     "TPaveText": pave_text,
-    "TPavesText": pave_text,
+    "TPavesText": paves_text,
     "TPaveLabel": pave_label,
     "TPaveStats": stats_box,
 }

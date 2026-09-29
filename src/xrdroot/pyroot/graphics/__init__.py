@@ -25,7 +25,7 @@ from .decorations import TFrame
 from .legend import TLegend, TLegendEntry
 from .output import close_books
 from .pads import TPad, gPad
-from .paves import TPave, TPaveLabel, TPaveStats, TPaveText
+from .paves import TPave, TPaveLabel, TPaveStats, TPavesText, TPaveText
 from .shapes import (
     TArc,
     TArrow,
@@ -47,7 +47,7 @@ __all__ = [
     # styles and colours
     "TStyle", "gStyle", "TColor",
     # text and paves
-    "TText", "TLatex", "TMathText", "TPave", "TPaveText", "TPaveLabel", "TPaveStats",
+    "TText", "TLatex", "TMathText", "TPave", "TPaveText", "TPavesText", "TPaveLabel", "TPaveStats",
     "TLegend", "TLegendEntry", "TGaxis",
     # shapes
     "TLine", "TArrow", "TBox", "TWbox", "TEllipse", "TArc", "TCrown", "TMarker",
