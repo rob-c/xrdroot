@@ -207,3 +207,31 @@ def test_the_fitter_root_makes_room_in_is_the_latest_fits(monkeypatch):
 
     monkeypatch.setitem(fitters.LATEST, "result", None)
     assert TVirtualFitter.Fitter(None, 40) is None
+
+
+def test_a_translated_macro_searches_its_c_arrays_and_its_array_of_rows(tmp_path, monkeypatch, capsys):
+    from xrdroot.cint import cache
+    from xrdroot.cint.execute import run
+
+    monkeypatch.setenv(cache.ENVIRONMENT, str(tmp_path / "cache"))
+    path = tmp_path / "hr.C"
+    path.write_text(
+        "void hr() {\n"
+        "   const Int_t n = 64;\n"
+        "   Double_t source[n], dest[n];\n"
+        "   for (Int_t i = 0; i < n; i++) source[i] = 100 / (1 + (i - 30) * (i - 30) / 4.0);\n"
+        "   TSpectrum *s = new TSpectrum();\n"
+        "   Int_t found = s->SearchHighRes(source, dest, n, 2, 5, kFALSE, 3, kFALSE, 3);\n"
+        "   Double_t **plane = new Double_t *[20];\n"
+        "   for (Int_t i = 0; i < 20; i++) {\n"
+        "      plane[i] = new Double_t[16];\n"
+        "      for (Int_t j = 0; j < 16; j++) plane[i][j] = 1 + (i == 9 && j == 7 ? 50 : 0);\n"
+        "   }\n"
+        "   TSpectrum2 s2;\n"
+        "   s2.Background(plane, 20, 16, 3, 3, TSpectrum2::kBackDecreasingWindow,\n"
+        "                 TSpectrum2::kBackSuccessiveFiltering);\n"
+        '   printf("%d %.1f %g\\n", found, s->GetPositionX()[0], plane[9][7]);\n'
+        "}\n"
+    )
+    run(path)
+    assert capsys.readouterr().out == "1 30.0 1\n"
