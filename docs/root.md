@@ -1384,6 +1384,26 @@ wrote: the last `length - 1` channels of a Richardson-Lucy deconvolution,
 never solved for, are whatever ROOT's heap held (often the previous
 deconvolution's leftovers) and are zero here.
 
+**Fitting peaks.** `TSpectrumFit` and `TSpectrum2Fit` are Morhac's peak
+fitters, step for step: peaks of one sigma - in two dimensions correlated
+Gaussians with a ridge along x and one along y beside each - with tails,
+steps and a linear or quadratic background, fitted by AWMI, the algorithm
+without matrix inversion, in which each parameter moves along its own
+gradient over its own curvature, or by Stiefel and Hestenes' conjugate
+gradients on the normal equations. A script calls them as ROOT's:
+`SetFitParameters(xmin, xmax, iterations, alpha, kFitOptimChiCounts,
+kFitAlphaHalving, kFitPower2, kFitTaylorOrderFirst)`, `SetPeakParameters`,
+then `FitAwmi(source)`, which leaves the fitted spectrum in `source`;
+`GetPositions`, `GetAmplitudes` and `GetAreas` (`GetVolumes` in two
+dimensions) give what was found, with their errors beside them, and
+`GetSigma(sigma, sigmaErr)` fills the variables it is handed. Every sum
+over the channels is added channel by channel in ROOT's order, with ROOT's
+own approximation to `erfc` and the C library's `exp`, so on ROOT's machine
+every chi, value and error is ROOT 6.40's to the last bit - but for a
+two-dimensional volume error ROOT builds from memory it never wrote, which
+is 0 here. ROOT's quirks are kept, because each changes the numbers, and
+what ROOT refuses is refused in ROOT's words.
+
 **Transforms.** `TSpectrumTransform` and `TSpectrum2Transform` are Morhac's
 fast orthogonal transforms of a spectrum whose length is a power of two:
 Haar, Walsh, cosine, sine, Fourier and Hartley, and the mixed
@@ -1405,6 +1425,7 @@ reading past the source, or a degree raised until ROOT would divide by zero.
 | one dimension | `TSpectrum(maxpositions=100)`: `Background` (of an array, with `kBackIncreasingWindow`/`kBackDecreasingWindow`, `kBackOrder2`...`8`, `kBackSmoothing3`...`15` and Compton edges; or of a histogram, with the option words `BackIncreasingWindow`, `BackOrder4`, `nosmoothing`, `BackSmoothing7`, `Compton`, `same`), `SmoothMarkov`, `Deconvolution`, `DeconvolutionRL`, `Unfolding`, `SearchHighRes`, `Search1HighRes`, `Search` (`nobackground`, `nomarkov`, `nodraw`, `goff`), `StaticSearch`, `StaticBackground`, `GetPositionX`/`Y`, `GetNPeaks`, `SetAverageWindow`, `SetDeconIterations`, `SetResolution`, `Print` |
 | two dimensions | `TSpectrum2`: `Background` (`kBackSuccessiveFiltering`, `kBackOneStepFiltering`; of a `TH2` with `BackIncreasingWindow`, `BackOneStepFiltering`, `same`), `SmoothMarkov`, `Deconvolution`, `SearchHighRes`, `Search`, `StaticSearch`, `StaticBackground`, `GetPositionX`/`Y`, `Print` |
 | transforms | `TSpectrumTransform(size)` and `TSpectrum2Transform(sizeX, sizeY)`: `SetTransformType(kTransformHaar` ... `kTransformSinHaar, degree)`, `SetDirection(kTransformForward` or `kTransformInverse)`, `SetRegion`, `SetFilterCoeff`, `SetEnhanceCoeff`, `Transform(source, dest)`, `FilterZonal`, `Enhance` |
+| fitting peaks | `TSpectrumFit(n)`, `TSpectrum2Fit(n)`: `SetFitParameters`, `SetPeakParameters`, `SetBackgroundParameters`, `SetTailParameters`, `FitAwmi`, `FitStiefel`, `GetPositions`, `GetPositionsErrors` (2-D `GetPositionErrors`), `GetAmplitudes`, `GetAmplitudesErrors` (2-D `GetAmplitudeErrors`), `GetAreas`/`GetAreasErrors` (2-D `GetVolumes`/`GetVolumeErrors`), `GetSigma` (2-D `GetSigmaX`/`GetSigmaY`/`GetRo`), `GetBackgroundParameters`, `GetTailParameters`, `GetChi`, the `kFit…` constants |
 
 ## RooFit
 

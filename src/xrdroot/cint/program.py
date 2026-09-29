@@ -69,6 +69,13 @@ OUT_PARAMETERS: dict[tuple[str, int], tuple[int, ...]] = {
     ("GetMinimumAndMaximum", 2): (0, 1),
     ("mnstat", 6): (0, 1, 2, 3, 4, 5),
     ("GetStats", 4): (0, 1, 2, 3),
+    ("GetSigma", 2): (0, 1),
+    ("GetSigmaX", 2): (0, 1),
+    ("GetSigmaY", 2): (0, 1),
+    ("GetRo", 2): (0, 1),
+    ("GetBackgroundParameters", 6): (0, 1, 2, 3, 4, 5),
+    ("GetTailParameters", 6): (0, 1, 2, 3, 4, 5),
+    ("GetTailParameters", 16): tuple(range(16)),
 }
 
 
