@@ -52,3 +52,50 @@ def test_groot_finds_a_colour_made_or_roots_own_and_none_for_one_not_there() -> 
     red = ROOT.gROOT.GetColor(2)
     expect((red.GetRed(), 1.0), (red.GetNumber(), 2), (ROOT.gROOT.GetColor(2), red),
            (ROOT.gROOT.GetColor(99999), None))  # fmt: skip
+
+
+#: A macro whose TExecs run its own functions, as ``multipalette.C`` and ``gr202`` do.
+EXEC_MACRO = """
+void mark() {
+   TLatex l;
+   l.SetTextColor(kBlue);
+   l.PaintText(0.5, 0.5, "painted");
+   l.PaintTextNDC(0.1, 0.1, "corner");
+   l.PaintLatex(0.2, 0.2, 30, 0.05, "#alpha");
+}
+void texec_macro() {
+   TCanvas *c = new TCanvas("c", "c", 200, 200);
+   TGraph *g = new TGraph(2);
+   g->SetPoint(0, 0, 0);
+   g->SetPoint(1, 1, 1);
+   g->GetListOfFunctions()->Add(new TExec("hung", "mark();"));
+   g->Draw("AL");
+   TExec *ex = new TExec("ex", "mark();");
+   ex->Draw();
+   c->AddExec("dynamic", "mark();");
+}
+"""
+
+
+def test_a_texec_runs_the_macro_s_own_functions_each_time_its_pad_is_painted(tmp_path: Any) -> None:
+    from xrdroot.cint.execute import run
+
+    (tmp_path / "texec_macro.C").write_text(EXEC_MACRO)
+    run(tmp_path / "texec_macro.C", use_cache=False)
+    canvas = ROOT.gPad.GetCanvas()
+    canvas.Update()
+    canvas.Update()  # painting again replaces what the last painting made
+    texts = [obj for obj, _ in canvas.primitives if obj.ClassName() == "TLatex"]
+    execs = canvas.GetListOfExecs()
+    canvas.DeleteExec("dynamic")
+    expect((len(texts), 6), (texts[0].GetTitle(), "painted"), (execs[0].GetAction(), "mark();"),
+           (canvas.GetListOfExecs(), []), (canvas.GetListOfPrimitives().FindObject("ex").GetName(),
+                                           "ex"))  # fmt: skip
+
+
+def test_text_painted_with_no_texec_running_is_drawn_in_the_pad() -> None:
+    ROOT.TCanvas("c", "c", 100, 100)
+    ROOT.TText().PaintText(0.1, 0.1, "here")
+    execute = ROOT.TExec("e", "")
+    execute.SetAction("1;")
+    expect((ROOT.gPad.primitives[0][0].GetTitle(), "here"), (execute.Exec(), []))

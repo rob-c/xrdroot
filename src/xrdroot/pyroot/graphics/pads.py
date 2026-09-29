@@ -211,6 +211,19 @@ class TPad(Drawn):
         self.members.pop("fView", None)
         set_current(self)
 
+    def AddExec(self, name: str, command: str) -> None:
+        """``AddExec``: a ``TExec`` ROOT runs at each mouse event in the pad - which, with no
+        mouse here, as in batch, is kept and never run."""
+        from .texec import TExec
+
+        self.__dict__.setdefault("_execs", []).append(TExec(name, command))
+
+    def GetListOfExecs(self) -> list[Any]:
+        return list(self.__dict__.get("_execs", []))
+
+    def DeleteExec(self, name: str) -> None:
+        self._execs = [one for one in self.GetListOfExecs() if one.GetName() != name]
+
     def GetView(self) -> Any:
         """The pad's 3-D view (``TView::CreateView``, or drawing a geometry, made it), or None."""
         return self.members.get("fView")
@@ -222,8 +235,14 @@ class TPad(Drawn):
         """Put ``obj`` in this pad, drawn with ``option``."""
         self.primitives.append((obj, str(option)))
 
-    def GetListOfPrimitives(self) -> list[Any]:
-        return [obj for obj, _ in self.primitives] + list(self.made.values())
+    def GetListOfPrimitives(self) -> Any:
+        """The pad's primitives as a ``TList``: what it draws, then what painting it made."""
+        from ..core.collections import TList
+
+        listed = TList()
+        for obj in [obj for obj, _ in self.primitives] + list(self.made.values()):
+            listed.Add(obj)
+        return listed
 
     def FindObject(self, name: Any) -> Any:
         """The object of that name - or that object - in this pad or any pad in it."""

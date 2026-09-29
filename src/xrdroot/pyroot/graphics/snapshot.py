@@ -79,6 +79,9 @@ def _painted(pad: TPad) -> list[tuple[Any, str]]:
     A helper may put what it paints into the pad beside itself, so the pad's
     primitives are walked as they were before any of them was asked.
     """
+    from .texec import run_hung
+
+    run_hung(pad)
     for obj, _ in list(pad.primitives):
         if _lays_out(obj):
             obj.paint_pad()

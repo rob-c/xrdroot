@@ -28,6 +28,9 @@ DEFAULT = "xrdroot.pyroot"
 #: are called unqualified by argument-dependent lookup - ``MakeModelAndMeasurementFast(meas)``
 #: of a ``HistFactory::Measurement`` - which finds them there too.
 USED = ("RooFit", "RooStats", "RooStats.HistFactory", "TMVA", "TMVA.Experimental")
+#: What the macros run so far declared at their top - functions and classes - by name, as
+#: cling keeps them: a line run later (``ProcessLine("Pal1();")``, a ``TExec``) finds them.
+DECLARED: dict[str, Any] = {}
 
 
 class RootProxy:
@@ -69,6 +72,8 @@ class RootProxy:
             found = getattr(_member(namespace, used), name, None)
             if found is not None:
                 return found
+        if name in DECLARED:
+            return DECLARED[name]
         return getattr(namespace, name)
 
     def __setattr__(self, name: str, value: Any) -> None:

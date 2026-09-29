@@ -147,6 +147,7 @@ def _executed(
         with binding:
             with _placed(made, label):
                 exec(compile(made.python, label, "exec"), namespace)
+            _declare(namespace)
             if not call:
                 return namespace, made
             entry = _entry(made, namespace, file, args)
@@ -158,6 +159,14 @@ def _executed(
         NULL_POINTER[0] = before
     sys.stdout.flush()
     return result, made
+
+
+def _declare(namespace: dict[str, Any]) -> None:
+    """Keep what a macro declared at its top where later lines of C++ look for it."""
+    from .runtime.root import DECLARED
+
+    DECLARED.update({name: value for name, value in namespace.items()
+                     if getattr(value, "__module__", None) == "__cint__"})  # fmt: skip
 
 
 def _entry(made: Translation, namespace: dict[str, Any], file: str, args: tuple[Any, ...]) -> Any:

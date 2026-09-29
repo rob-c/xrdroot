@@ -40,6 +40,7 @@ SUBMODULES = [
     "graphics.views3d",
     "graphics.polar",
     "graphics.polargraph",
+    "graphics.texec",
     "roofit",
     "roostats",
     "tcut",

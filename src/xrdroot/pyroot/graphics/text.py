@@ -52,6 +52,24 @@ class TText(Drawn):
     def DrawTextNDC(self, x: float, y: float, text: str) -> Any:
         return self._draw_text(x, y, text, True)
 
+    def _paint_at(self, x: float, y: float, text: str, ndc: bool, **text_members: Any) -> None:
+        """``PaintText``: ``text`` painted at ``(x, y)`` in this one's attributes - into what
+        a ``TExec`` running is painting, or else onto the current pad."""
+        from .texec import painted
+
+        made = self.Clone()
+        made.SetText(x, y, text)
+        made.SetBit(NDC_BIT, ndc)
+        made.members.update(text_members)
+        if not painted(made):
+            made.Draw()
+
+    def PaintText(self, x: float, y: float, text: str) -> None:
+        self._paint_at(x, y, str(text), False)
+
+    def PaintTextNDC(self, u: float, v: float, text: str) -> None:
+        self._paint_at(u, v, str(text), True)
+
 
 class TLatex(TText):
     """A string at ``(x, y)``, with ROOT's ``#`` mathematics drawn."""
@@ -65,6 +83,10 @@ class TLatex(TText):
 
     def DrawLatexNDC(self, x: float, y: float, text: str) -> Any:
         return self._draw_at(x, y, text, True)
+
+    def PaintLatex(self, x: float, y: float, angle: float, size: float, text: str) -> None:
+        """``PaintLatex``: ``text`` painted at ``(x, y)``, turned by ``angle``, at ``size``."""
+        self._paint_at(x, y, str(text), False, fTextAngle=float(angle), fTextSize=float(size))
 
 
 class TMathText(TText):
