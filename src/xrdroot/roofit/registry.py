@@ -45,6 +45,7 @@ MODULES = {
     "pdfs.anaconv": ["RooAbsAnaConvPdf"],
     "pdfs.basic": ["RooChebychev", "RooExponential", "RooGaussian", "RooPolynomial", "RooUniform"],
     "pdfs.chisquare": ["RooChiSquarePdf", "RooNonCentralChiSquare"],
+    "pdfs.gamma": ["RooGamma"],
     "pdfs.bdecays": ["RooBCPEffDecay", "RooBCPGenDecay", "RooBDecay"],
     "pdfs.decays": ["RooBMixDecay", "RooDecay"],
     "pdfs.extend": ["RooExtendPdf"],

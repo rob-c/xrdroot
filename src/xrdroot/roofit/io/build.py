@@ -52,7 +52,13 @@ class Builder:
                 f"the workspace holds a {record.cls} ({name_of(record)!r}), a class this RooFit "
                 "engine does not have, so the model it is part of cannot be read"
             )
-        made = make(self, record)
+        from ..pdf import UNCHECKED
+
+        UNCHECKED[0], was = True, UNCHECKED[0]
+        try:
+            made = make(self, record)
+        finally:
+            UNCHECKED[0] = was
         self.made[id(record)] = made
         if hasattr(made, "_attributes"):
             dress(made, record)

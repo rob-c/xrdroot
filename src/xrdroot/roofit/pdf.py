@@ -349,11 +349,17 @@ def _unsafe(param: Any, low: float, high: float, closed: bool) -> bool:
     return not closed and (pmin == low or pmax == high)
 
 
+#: Whether the range checks are off: a density read from a file is streamed, not constructed.
+UNCHECKED = [False]
+
+
 def check_range(
     pdf: Any, params: Any, low: float, high: float = math.inf, closed: bool = False, extra: str = ""
 ) -> None:
     """``RooHelpers::checkRangeOfParameters``: warn of parameters that can leave their safe
     range."""
+    if UNCHECKED[0]:
+        return
     shown = _shown_range(low, high, closed)
     for param in as_list(params):
         if param.InheritsFrom("RooAbsRealLValue") and _unsafe(param, low, high, closed):

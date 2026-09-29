@@ -133,17 +133,31 @@ def constraint_terms(ws: Any, meas: Any, prefix: str, interp_name: str, systemat
 
 
 def _gamma_constraint(ws: Any, name: str, relerr: float, names: list[str]) -> Any:
-    """A Gamma-constrained systematic's ``alphaOfBeta_<name>`` - none, for no uncertainty."""
-    from ..errors import UnsupportedFeatureError
+    """A Gamma-constrained systematic's ``alphaOfBeta_<name>``, ``sqrt(tau) (beta - 1)``, and
+    ``beta_<name>Constraint``: a ``RooGamma`` of shape ``nom_beta_<name> + 1`` - a global
+    observable - and scale ``1 / tau`` - none, for no uncertainty."""
+    from ..roofit.functions import RooAddition, RooPolyVar
+    from ..roofit.pdfs.basic import ref
+    from ..roofit.pdfs.gamma import RooGamma
+    from ..roofit.variables import RooRealVar
 
     if relerr <= 0:
         _hf(INFO, "HistoToWorkspaceFast::AddConstraintTerm - zero uncertainty assigned - skip "
             f"systematic  {name}")  # fmt: skip
         return None
-    raise UnsupportedFeatureError(
-        f"the Gamma constraint of the systematic {name} needs RooGamma, which xrdroot's RooFit "
-        "does not have yet; constrain it as the default Gaussian, or log-normal"
-    )
+    tau, root = 1.0 / (relerr * relerr), 1.0 / relerr
+    beta = emplace(ws, RooRealVar, f"beta_{name}", 1.0, 0.0, 10.0)
+    nominal = emplace(ws, RooRealVar, f"nom_{beta.GetName()}", tau, 0.0, 10.0)
+    theta = emplace(ws, RooRealVar, f"theta_{name}", 1.0 / tau)
+    alpha = emplace(ws, RooPolyVar, f"alphaOfBeta_{name}", beta,
+                    RooArgList([ref(-root), ref(root)]))
+    kappa = emplace(ws, RooAddition, f"k_{nominal.GetName()}", RooArgList([nominal, ref(1.0)]))
+    gamma = emplace(ws, RooGamma, f"{beta.GetName()}Constraint", beta, kappa, theta, ref(0.0))
+    names.append(gamma.GetName())
+    nominal.setConstant(True)
+    ws.set("globalObservables").add(nominal)
+    _hf(INFO, f"Added a gamma constraint for {name}")
+    return alpha
 
 
 def _lognormal(ws: Any, name: str, relerr: float, alpha: Any) -> Any:

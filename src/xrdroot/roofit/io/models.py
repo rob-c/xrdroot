@@ -28,6 +28,7 @@ SIMPLE: dict[str, tuple[str, tuple[str, ...]]] = {
     "RooLognormal": ("pdfs.shapes", ("x", "m0", "k")),
     "RooBreitWigner": ("pdfs.shapes", ("x", "mean", "width")),
     "RooExtendPdf": ("pdfs.extend", ("pdf", "n")),
+    "RooGamma": ("pdfs.gamma", ("x", "gamma", "beta", "mu")),
 }
 
 
@@ -63,6 +64,14 @@ def _poisson(builder: Builder, record: Streamed) -> Any:
                       builder.proxy(record, "mean"), bool(record.get("_noRounding")))  # fmt: skip
     made.protectNegativeMean(bool(record.get("_protectNegative")))
     return made
+
+
+@maker("RooPolyVar")
+def _polyvar(builder: Builder, record: Streamed) -> Any:
+    from ..functions import RooPolyVar
+
+    return RooPolyVar(name_of(record), title_of(record), builder.proxy(record, "_x"),
+                      builder.listed(record, "_coefList"), int(record.get("_lowestOrder") or 0))  # fmt: skip
 
 
 @maker("RooProduct")
