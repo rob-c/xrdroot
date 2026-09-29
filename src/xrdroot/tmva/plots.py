@@ -93,13 +93,21 @@ def plot_variables(
     return made
 
 
+def _span(low: float, high: float) -> tuple[float, float]:
+    """A scatter plot's range: a constant variable's widened, as ROOT would find its own."""
+    low, high = float(low), float(high)
+    if high > low:
+        return low, high
+    return low - 0.5, low + 0.5
+
+
 def _scatters(
     dsi: DataSetInfo, events: Events, values: Any, stats: Any, suffix: str
 ) -> list[Histogram]:
     """Every pair's scatter plot and profile, per class, as ``PlotVariables`` books them."""
     infos = _infos(dsi)
     made: list[Histogram] = []
-    low, high = stats[2], stats[3]
+    low, high = zip(*(_span(a, b) for a, b in zip(stats[2], stats[3])))
     for i, (info, _) in enumerate(infos):
         for j in range(i + 1, len(infos)):
             other = infos[j][0]

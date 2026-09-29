@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -258,3 +259,18 @@ def test_a_constant_variable_is_warned_about(session, capsys):
     made.AddBackgroundTree(_tree("B", {"x": -np.arange(10.0), "c": np.ones(10)}))
     made.dataset()
     assert "Variable c is constant" in capsys.readouterr().out
+
+
+def test_a_constant_variable_is_plotted_and_scattered_without_failing(session):
+    made = ROOT.TMVA.DataLoader("dataset")
+    made.AddVariable("x", "F")
+    made.AddVariable("c", "F")
+    made.AddSignalTree(_tree("S", {"x": np.arange(10.0), "c": np.ones(10)}))
+    made.AddBackgroundTree(_tree("B", {"x": -np.arange(10.0) - 1, "c": np.ones(10)}))
+    made.PrepareTrainingAndTestTree("", "SplitMode=Alternate:!V")
+    output = ROOT.TFile.Open("constant.root", "RECREATE")
+    factory = ROOT.TMVA.Factory("job", output, "!V:Silent:AnalysisType=Classification")
+    factory.BookMethod(made, "Cuts", "Cuts", "FitMethod=MC:SampleSize=50")
+    factory.TrainAllMethods()
+    output.Close()
+    assert Path("dataset/weights/job_Cuts.weights.xml").exists()
