@@ -421,8 +421,10 @@ def _entries_alike(passed: Any, total: Any) -> bool:
     """``TEfficiency::CheckEntries``: nothing passed that was not tried, flow bins and all."""
     for i in range(passed.GetNbinsX() + 2):
         if passed.GetBinContent(i) > total.GetBinContent(i):
-            message("Info", "TROOT::TEfficiency::CheckEntries",
-                    "Histograms are not consistent: passed bin content > total bin content")  # fmt: skip
+            message(
+                "Info", "TROOT::TEfficiency::CheckEntries",
+                "Histograms are not consistent: passed bin content > total bin content",
+            )  # fmt: skip
             return False
     return True
 
