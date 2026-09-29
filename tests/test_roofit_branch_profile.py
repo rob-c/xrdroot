@@ -5,7 +5,9 @@ Every number and message was printed by ROOT through PyROOT for a Gaussian's
 likelihood of 50 events drawn after ``SetSeed(4357)``: the profile's name,
 its values - one MIGRAD each, a ``.`` of progress each, asked again or not -
 the minimum it finds first, found again when a nuisance parameter is fixed,
-its plotted copy, and the minimizer's constant-term switch and call count.
+its plotted copy, and the minimizer's constant-term switch and call count. The values are
+ROOT's to the bit on ROOT's machine; elsewhere MIGRAD, compiled otherwise, stops a hair
+away, and the minima are held to ``PROFILE_REL`` and the fitted values to ``FIT_REL``.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from refmachine import FIT_REL, PROFILE_REL, roots
 from xrdroot.roofit.collections import RooArgSet
 from xrdroot.roofit.fitting.minimizer import RooMinimizer
 from xrdroot.roofit.fitting.nll import RooNLLVar
@@ -47,7 +50,7 @@ def test_a_profile_is_named_after_the_wrapper_and_minimises_first(capsys: Any) -
     assert [v.GetName() for v in prof.getVariables()] == ["m", "s"]
     capsys.readouterr()
     m.setVal(0.5)
-    assert prof.getVal() == 1.414842748782121
+    assert prof.getVal() == roots(1.414842748782121, rel=PROFILE_REL)
     assert capsys.readouterr().out == (
         f"[#1] INFO:Minimization -- RooProfileLL::evaluate({NAME}) Creating instance of MINUIT\n"
         "[#1] INFO:Fitting -- RooAddition::defaultErrorLevel(nll_g_over_g_Int[x]_gData) "
@@ -66,12 +69,13 @@ def test_asking_again_fits_again_while_a_nuisance_parameter_is_free(capsys: Any)
     m.setVal(0.5)
     prof.getVal()
     capsys.readouterr()
-    assert prof.getVal() == 1.414842748782121
+    assert prof.getVal() == roots(1.414842748782121, rel=PROFILE_REL)
     m.setVal(-0.3)
-    assert prof.getVal() == 0.8498003585962266
+    assert prof.getVal() == roots(0.8498003585962266, rel=PROFILE_REL)
     assert capsys.readouterr().out == f".{FIT}.{FIT}"
-    assert [(v.GetName(), v.getVal()) for v in prof.bestFitParams()] == [("s", 1.8724494468091268)]
-    assert [(v.GetName(), v.getVal()) for v in prof.bestFitObs()] == [("m", 0.04818179140205403)]
+    fitted = [(v.GetName(), v.getVal()) for v in (*prof.bestFitParams(), *prof.bestFitObs())]
+    assert fitted == [("s", roots(1.8724494468091268, rel=FIT_REL)),
+                      ("m", roots(0.04818179140205403, rel=FIT_REL))]  # fmt: skip
     s.setConstant(True)
     m.setVal(0.1)
     prof.getVal()
