@@ -316,6 +316,21 @@ class AsymptoticCalculator(HypoTestCalculatorGeneric):
         from .hypotest import HypoTestResult
 
         qtilde = self._use_qtilde(mu)
+        qmu = self._one_sided_q(qmu, mu)
+        tol = _tolerance()
+        qmu = 0.0 if -tol < qmu < 0 else qmu
+        qmu_a = 0.0 if -tol < qmu_a < 0 else qmu_a
+        pnull, palt = p_values(qmu, qmu_a, self._one_sided, self._discovery, qtilde, tol)
+        result = HypoTestResult("HypoTestAsymptotic_result", pnull, palt)
+        if asym.PRINT_LEVEL[0] > 0:
+            log(None, PROGRESS, "Eval", f"poi = {g(mu.getVal())} qmu = {g(qmu)} qmu_A = "
+                f"{g(qmu_a)} sigma = {g(_sigma(mu.getVal(), qmu_a))}  CLsplusb = {g(pnull)} "
+                f"CLb = {g(palt)} CLs = {g(result.CLs())}")  # fmt: skip
+        return result
+
+    def _one_sided_q(self, qmu: float, mu: Any) -> float:
+        """``qmu`` zero on the wrong side of the fit: above ``muHat`` for a limit, below it for a
+        discovery."""
         best = next(iter(self._best_poi)).getVal()
         if self._one_sided and best > mu.getVal():
             log(None, INFO, "Eval", "Using one-sided qmu - setting qmu to zero  muHat = "
@@ -325,19 +340,7 @@ class AsymptoticCalculator(HypoTestCalculatorGeneric):
             log(None, INFO, "Eval", "Using one-sided discovery qmu - setting qmu to zero  muHat = "
                 f"{g(best)} muTest = {g(mu.getVal())}")  # fmt: skip
             qmu = 0.0
-        tol = _tolerance()
-        qmu = 0.0 if -tol < qmu < 0 else qmu
-        qmu_a = 0.0 if -tol < qmu_a < 0 else qmu_a
-        pnull, palt = p_values(qmu, qmu_a, self._one_sided, self._discovery, qtilde, tol)
-        result = HypoTestResult("HypoTestAsymptotic_result", pnull, palt)
-        if asym.PRINT_LEVEL[0] > 0:
-            root_a = math.sqrt(qmu_a) if qmu_a > 0 else 0.0
-            sigma = mu.getVal() / root_a if root_a else math.copysign(math.inf, mu.getVal())
-            sigma = sigma if mu.getVal() or root_a else math.nan
-            log(None, PROGRESS, "Eval", f"poi = {g(mu.getVal())} qmu = {g(qmu)} qmu_A = "
-                f"{g(qmu_a)} sigma = {g(sigma)}  CLsplusb = {g(pnull)} CLb = {g(palt)} CLs = "
-                f"{g(result.CLs())}")  # fmt: skip
-        return result
+        return qmu
 
 
     @staticmethod
@@ -365,6 +368,14 @@ class _Restored:
 
     def __exit__(self, *exc: Any) -> None:
         self.undo()
+
+
+def _sigma(mu: float, qmu_a: float) -> float:
+    """``mu / sqrt(qmu_A)``, as C divides: infinite by zero, NaN for zero by zero."""
+    root_a = math.sqrt(qmu_a) if qmu_a > 0 else 0.0
+    if root_a:
+        return mu / root_a
+    return math.copysign(math.inf, mu) if mu else math.nan
 
 
 def _tolerance() -> float:

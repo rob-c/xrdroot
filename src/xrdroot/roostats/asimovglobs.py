@@ -36,24 +36,29 @@ def set_global_observables(model: Any, gobs: Any, nuisance: Any) -> None:
             _one(term, gobs, nuisance)
 
 
-def _one(term: Any, gobs: Any, nuisance: Any) -> None:
-    """One term: its global observable, its one free parameter, its server of the nuisance."""
+def _readable(term: Any, params: Any, observed: Any) -> bool:
+    """One global observable and one free parameter - else the term is skipped, said."""
     from .utils import RemoveConstantParameters
 
-    name, kind = term.GetName(), term.ClassName()
-    params, observed = term.getParameters(gobs), term.getObservables(gobs)
+    name = term.GetName()
     if len(observed) != 1:
         many = len(observed) > 1
         log(None, ERROR if many else WARNING, "Generation", f"{PREFIX}: constraint term  {name} "
             + ("has multiple global observables -cannot generate - skip it" if many else
                "has no global observables - skip it"))  # fmt: skip
-        return
-    target = next(iter(observed))
+        return False
     RemoveConstantParameters(params)
     if len(params) != 1:
         log(None, ERROR, "Generation", f"{PREFIX}:constraint term {name} has multiple floating "
             "params - cannot generate - skip it ")  # fmt: skip
-        return
+        return False
+    return True
+
+
+def _kind_checked(term: Any, target: Any) -> bool:
+    """The term's class warned of if unsupported, a Poisson made unrounded - and whether the
+    global observable is its own server, as all but a Gamma's must be."""
+    name, kind = term.GetName(), term.ClassName()
     if kind not in SUPPORTED:
         log(None, WARNING, "Generation", f"{PREFIX}:constraint term {name} of type {kind} is a "
             "non-supported type - result might be not correct ")  # fmt: skip
@@ -62,10 +67,22 @@ def _one(term: Any, gobs: Any, nuisance: Any) -> None:
     if term.findServer(target) is None and kind != "RooGamma":
         log(None, ERROR, "Generation", f"{PREFIX}:constraint term {name} has no direct dependence "
             "on global observable- cannot generate it ")  # fmt: skip
+        return False
+    return True
+
+
+def _one(term: Any, gobs: Any, nuisance: Any) -> None:
+    """One term: its global observable, its one free parameter, its server of the nuisance."""
+    params, observed = term.getParameters(gobs), term.getObservables(gobs)
+    if not _readable(term, params, observed):
         return
-    if not _set_from_server(term, target, nuisance, _theta(term) if kind == "RooGamma" else None):
+    target = next(iter(observed))
+    if not _kind_checked(term, target):
+        return
+    theta = _theta(term) if term.ClassName() == "RooGamma" else None
+    if not _set_from_server(term, target, nuisance, theta):
         log(None, ERROR, "Generation", f"{PREFIX} - can't find nuisance for constraint term - "
-            f"global observables will not be set to Asimov value {name}")  # fmt: skip
+            f"global observables will not be set to Asimov value {term.GetName()}")  # fmt: skip
         log(None, ERROR, "Generation", "Parameters: ")
         params.Print("V")
         log(None, ERROR, "Generation", "Observables: ")

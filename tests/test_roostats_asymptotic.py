@@ -348,3 +348,10 @@ def test_a_model_with_no_global_observables_and_a_quiet_nominal_asimov() -> None
     assert (result.NullPValue(), result.AlternatePValue()) == (1.0, 1.0)
     w.var("mu").setConstant(True)
     assert asymptotic.evaluate_nll(sb, data, ROOT.RooArgSet(w.var("mu"))) > 0
+
+
+def test_sigma_is_divided_as_c_divides() -> None:
+    from xrdroot.roostats.asymcalc import _sigma
+
+    assert _sigma(2.0, 4.0) == 1.0 and _sigma(1.0, 0.0) == math.inf
+    assert math.isnan(_sigma(0.0, 0.0))
