@@ -399,7 +399,6 @@ def test_a_function_is_drawn_as_it_is_scaled_only_if_asked() -> None:
     assert frame.getObject(2).GetN() == 42
 
 
-@pytest.mark.xfail(strict=False, reason="curves.py:221: ROOT names a function's curve fx_Norm[x]")
 def test_a_functions_curve_is_named_for_its_frames_variable() -> None:
     """ROOT calls the curve of ``fx`` drawn on ``x`` ``fx_Norm[x]``."""
     from xrdroot.roofit.functions import RooFormulaVar

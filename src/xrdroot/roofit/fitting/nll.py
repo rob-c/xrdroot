@@ -117,7 +117,21 @@ class RooNLLVar(RooAbsReal):
         self._weight_squared = bool(flag)
 
     def compute(self, ctx: Any) -> Any:
-        return self.evaluate_nll()
+        """The likelihood - at the parameters ``ctx`` gives values of, each in turn, as a plot
+        or an integral over a parameter asks: the others as they are."""
+        given = [one for one in self.pdf.leaves() if one.GetName() in ctx]
+        if not given:
+            return self.evaluate_nll()
+        values = np.broadcast_arrays(*(np.asarray(ctx[one.GetName()], float) for one in given))
+        saved = [one.getVal() for one in given]
+        found = np.empty(values[0].shape)
+        for index in np.ndindex(found.shape):
+            for one, column in zip(given, values):
+                one.setVal(float(column[index]))
+            found[index] = self.evaluate_nll()
+        for one, value in zip(given, saved):
+            one.setVal(value)
+        return found if found.ndim else float(found)
 
     def evaluate_nll(self) -> float:
         """The likelihood at the parameters' values now, or a NaN carrying how bad it was."""

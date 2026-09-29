@@ -59,7 +59,7 @@ def _drawn(func: Any, frame: Any, options: Any, chosen: Any, nset: frozenset[str
     scale = float(options.get("Normalization", 0, 1.0))
     low, high, post, norm_range = _extent(frame, options)
     ranged = "Range" in options or "RangeWithName" in options
-    wings = "VLines" in options or not ranged  # a range drawn has no wings, unless asked
+    wings = 1 if "VLines" in options else (0 if ranged else 2)  # a range has none, unasked
     if nset and (post or "NormRange" in options):
         scale /= _range_fraction(func, frame, nset, norm_range, [(low, high)])
     suffix = str(options.get("CurveNameSuffix", 0, "") or "")

@@ -180,10 +180,13 @@ def plot_function(func: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str
     return real_plot(func, frame, CmdList.of(args, kwargs))
 
 
-def _curve_name(func: Any, nset: frozenset[str], projected: frozenset[str], rng: Any) -> str:
-    """``model_Norm[x]``, or ``model_Int[y|sig]_Norm[x,y]``: what RooFit calls the projection."""
+def _curve_name(
+    func: Any, nset: frozenset[str], projected: frozenset[str], rng: Any, var: str
+) -> str:
+    """``model_Norm[x]``, or ``model_Int[y|sig]_Norm[x,y]``: what RooFit calls the projection -
+    a function's too, normalised over the frame's variable in name only."""
     if not nset:
-        return str(func.GetName())
+        return f"{func.GetName()}_Norm[{var}]"
     from ..integration import integral_name
 
     order = [v.GetName() for v in func.leaves()]
@@ -225,7 +228,7 @@ def _add_curve(
     precision = float(options.get("Precision", 0, 1e-3))
     with selection.selecting(chosen):
         xs, ys = sample(curve_at, low, high, frame.GetNbinsX(), precision, wings)
-    label = _curve_name(func, nset, projected, seen.range if seen is not None else None)
+    label = _curve_name(func, nset, projected, seen.range if seen is not None else None, name)
     if seen is not None and seen.averaged:
         label += f"_DataAvg[{','.join(seen.averaged)}]"
     curve = RooCurve(label + suffix, f"Projection of {func.GetTitle()}", xs, ys)

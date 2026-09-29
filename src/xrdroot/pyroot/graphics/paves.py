@@ -38,6 +38,7 @@ class TPave(Drawn):
         bordersize: int = 4, option: str = "br",
     ) -> None:  # fmt: skip
         option = "brNDC" if option.upper() == "NDC" else str(option)
+        (x1, x2), (y1, y2) = sorted((x1, x2)), sorted((y1, y2))  # TBox's: the corners in order
         super().__init__(
             fX1=float(x1), fY1=float(y1), fX2=float(x2), fY2=float(y2),
             fBorderSize=int(bordersize), fOption=option, fCornerRadius=0.0,
