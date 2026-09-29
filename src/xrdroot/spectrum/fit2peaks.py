@@ -156,20 +156,42 @@ def _sloped(p: Array, b: float, sigma: float) -> Array:
     return (-erfc(c)) / ((S2 * b) * sigma) - derfc(c) / (S2 * sigma)
 
 
+def plain(p: Array, b: float) -> Array:
+    """A tail's ``erfc(p/s2 + 1/2b)``."""
+    return erfc(p / S2 + 1 / (2 * b))
+
+
+def txy_term(p: Array, r: Array, q: dict[str, float], erx: Array, ery: Array) -> Array:
+    """``0.5 * txy * px * py`` of a 2-D tail whose two ``erfc`` halves are ``erx`` and ``ery``."""
+    px, py = pair(p / (S2 * q["bx"]), erx, r / (S2 * q["by"]), ery)
+    return ((0.5 * q["txy"]) * px) * py
+
+
+def _moved_tail(p: Array, r: Array, q: dict[str, float], by_x: bool) -> Array:
+    """The tail's term of ``Deri02`` or ``Derj02``: one half differentiated."""
+    if by_x:
+        return txy_term(p, r, q, _sloped(p, q["bx"], q["sigmax"]), plain(r, q["by"]))
+    return txy_term(p, r, q, plain(p, q["bx"]), _sloped(r, q["by"], q["sigmay"]))
+
+
+def _moved_step(p: Array, r: Array, q: dict[str, float], by_x: bool) -> Array:
+    """The step's term of ``Deri02`` or ``Derj02``."""
+    if by_x:
+        rx, ry = (-derfc(p / S2)) / (S2 * q["sigmax"]), erfc(r / S2)
+    else:
+        rx, ry = erfc(p / S2), (-derfc(r / S2)) / (S2 * q["sigmay"])
+    return ((0.5 * q["sxy"]) * rx) * ry
+
+
 def _moved2(p: Array, r: Array, q: dict[str, float], by_x: bool) -> Array:
     """``Deri02`` (``by_x``) or ``Derj02`` before the amplitude: a 2-D peak moved in x or y."""
-    ro, sx, sy, bx, by = q["ro"], q["sigmax"], q["sigmay"], q["bx"], q["by"]
-    e = (-(ro * r - p)) / sx if by_x else (-(ro * p - r)) / sy
+    ro = q["ro"]
+    e = (-(ro * r - p)) / q["sigmax"] if by_x else (-(ro * p - r)) / q["sigmay"]
     r1 = gauss2(p, r, ro) * (e / (1 - ro * ro))
     if q["txy"] != 0:
-        erx = _sloped(p, bx, sx) if by_x else erfc(p / S2 + 1 / (2 * bx))
-        ery = erfc(r / S2 + 1 / (2 * by)) if by_x else _sloped(r, by, sy)
-        px, py = pair(p / (S2 * bx), erx, r / (S2 * by), ery)
-        r1 = r1 + ((0.5 * q["txy"]) * px) * py
+        r1 = r1 + _moved_tail(p, r, q, by_x)
     if q["sxy"] != 0:
-        rx = (-derfc(p / S2)) / (S2 * sx) if by_x else erfc(p / S2)
-        ry = erfc(r / S2) if by_x else (-derfc(r / S2)) / (S2 * sy)
-        r1 = r1 + ((0.5 * q["sxy"]) * rx) * ry
+        r1 = r1 + _moved_step(p, r, q, by_x)
     return r1
 
 

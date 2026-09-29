@@ -20,7 +20,9 @@ from .fit2peaks import (
     near,
     offsets,
     pair,
+    plain,
     tailed,
+    txy_term,
     within,
 )  # fmt: skip
 from .fitpeaks import derfc, erfc, peaksum
@@ -37,7 +39,7 @@ def interleaved(first: Array, second: Array) -> Array:
     return peaksum(terms)
 
 
-def _sloped(p: Array, b: float, sigma: float) -> Array:
+def _sloped_by_sigma(p: Array, b: float, sigma: float) -> Array:
     """A tail's ``erfc`` differentiated by sigma, ``p`` times over, as ROOT writes it."""
     c = p / S2 + 1 / (2 * b)
     return ((-erfc(c)) * p) / ((S2 * b) * sigma) - (derfc(c) * p) / (S2 * sigma)
@@ -56,22 +58,32 @@ def _names(by_x: bool) -> tuple[str, str, str, str, str]:
     return ("sigmax", "tx", "sx", "bx", "ampx") if by_x else ("sigmay", "ty", "sy", "by", "ampy")
 
 
+def _sigma_tail(p: Array, r: Array, q: dict[str, float], by_x: bool) -> Array:
+    """The 2-D tail's term of ``Dersigmax`` or ``Dersigmay``."""
+    if by_x:
+        return txy_term(p, r, q, _sloped_by_sigma(p, q["bx"], q["sigmax"]), plain(r, q["by"]))
+    return txy_term(p, r, q, plain(p, q["bx"]), _sloped_by_sigma(r, q["by"], q["sigmay"]))
+
+
+def _sigma_step(p: Array, r: Array, q: dict[str, float], by_x: bool) -> Array:
+    """The 2-D step's term of ``Dersigmax`` or ``Dersigmay``."""
+    if by_x:
+        rx, ry = ((-derfc(p / S2)) * p) / (S2 * q["sigmax"]), erfc(r / S2)
+    else:
+        rx, ry = erfc(p / S2), ((-derfc(r / S2)) * r) / (S2 * q["sigmay"])
+    return ((0.5 * q["sxy"]) * rx) * ry
+
+
 def _peak_by_sigma(p: Array, r: Array, q: dict[str, float], by_x: bool) -> Array:
     """``Dersigmax``'s (or ``Dersigmay``'s) term for a 2-D peak of unit amplitude."""
-    ro, bx, by = q["ro"], q["bx"], q["by"]
-    own, other = (p, r) if by_x else (r, p)
-    sigma = q["sigmax"] if by_x else q["sigmay"]
-    b = (-((ro * p) * r - own * own)) / sigma
+    ro = q["ro"]
+    own = p if by_x else r
+    b = (-((ro * p) * r - own * own)) / q[_names(by_x)[0]]
     e = (gauss2(p, r, ro) * b) / (1 - ro * ro)
     if q["txy"] != 0:
-        erx = _sloped(p, bx, sigma) if by_x else erfc(p / S2 + 1 / (2 * bx))
-        ery = erfc(r / S2 + 1 / (2 * by)) if by_x else _sloped(r, by, sigma)
-        px, py = pair(p / (S2 * bx), erx, r / (S2 * by), ery)
-        e = e + ((0.5 * q["txy"]) * px) * py
+        e = e + _sigma_tail(p, r, q, by_x)
     if q["sxy"] != 0:
-        moved = ((-derfc(own / S2)) * own) / (S2 * sigma)
-        rx, ry = (moved, erfc(other / S2)) if by_x else (erfc(other / S2), moved)
-        e = e + ((0.5 * q["sxy"]) * rx) * ry
+        e = e + _sigma_step(p, r, q, by_x)
     return e
 
 
@@ -82,7 +94,7 @@ def _ridge_by_sigma(u: Array, q: dict[str, float], by_x: bool) -> Array:
     half = (u * u) / 2
     e = ((2 * half) * _below(half)) / sigma
     if q[t_name] != 0:
-        e = e + (0.5 * q[t_name]) * near(u / (S2 * b), _sloped(u, b, sigma))
+        e = e + (0.5 * q[t_name]) * near(u / (S2 * b), _sloped_by_sigma(u, b, sigma))
     if q[s_name] != 0:
         e = e + (0.5 * q[s_name]) * (((-derfc(u / S2)) * u) / (S2 * sigma))
     return e
@@ -103,18 +115,22 @@ def dersigmax(x: Array, y: Array, peaks: Peaks2, q: dict[str, float], by_x: bool
 def derdersigmax(x: Array, y: Array, peaks: Peaks2, q: dict[str, float],
                  by_x: bool = True) -> Array:  # fmt: skip
     """``Derdersigmax`` - or ``Derdersigmay``: the second derivative by sigma."""
-    ro = q["ro"]
     p, r, u, asked = _axes(x, y, peaks, q, by_x)
-    own, other = (p, r) if by_x else (r, p)
     sigma = q[_names(by_x)[0]]
-    b = (-((ro * p) * r - own * own)) / sigma
-    bend = ((3 * own) * own - ((2 * ro) * own) * other) / (sigma * sigma)
-    e = (gauss2(p, r, ro) * ((b * b) / (1 - ro * ro) - bend)) / (1 - ro * ro)
     half = (u * u) / 2
     ridge = (_below(half) * ((4 * half) * half - 6 * half)) / (sigma * sigma)
-    first = np.where(within(p, r), column(peaks.amp) * e, 0.0)
+    first = np.where(within(p, r), column(peaks.amp) * _peak_bend(p, r, q, by_x), 0.0)
     second = np.where(within(asked), column(getattr(peaks, _names(by_x)[4])) * ridge, 0.0)
     return interleaved(first, second)
+
+
+def _peak_bend(p: Array, r: Array, q: dict[str, float], by_x: bool) -> Array:
+    """``Derdersigmax``'s (or ``Derdersigmay``'s) term for a 2-D peak of unit amplitude."""
+    ro, sigma = q["ro"], q[_names(by_x)[0]]
+    own, other = (p, r) if by_x else (r, p)
+    b = (-((ro * p) * r - own * own)) / sigma
+    bend = ((3 * own) * own - ((2 * ro) * own) * other) / (sigma * sigma)
+    return (gauss2(p, r, ro) * ((b * b) / (1 - ro * ro) - bend)) / (1 - ro * ro)
 
 
 def derro(x: Array, y: Array, peaks: Peaks2, q: dict[str, float]) -> Array:

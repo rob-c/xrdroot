@@ -91,18 +91,28 @@ def _volumes(model: Peak2Model, fitted: Fitted, chi_er: float) -> tuple[list[flo
 
 def _results(model: Peak2Model, setup: Peak2Setup, fitted: Fitted, chi_er: float) -> FitResult:
     """ROOT's ``fAmpCalc``, ``fPositionErrX``, ``fVolume`` and the rest."""
-    at = {index: j for j, (index, _) in enumerate(model.free)}
-    starts = [float(setup.peaks[kind][k]) for k in range(model.count) for kind in PEAK]
-    starts += [float(setup.init[name]) for name in SHARED2]
-    found = [_value_error(fitted, at.get(n), start) for n, start in enumerate(starts)]
-    shared = 7 * model.count
-    parts = [(kind, slice(n, shared, 7)) for n, kind in enumerate(PEAK)]
-    parts += [(name, slice(shared + n, shared + n + 1)) for n, name in enumerate(SHARED2)]
-    values = {name: [v for v, _ in found[part]] for name, part in parts}
-    errors = {name: [e for _, e in found[part]] for name, part in parts}
+    found = _found(model, setup, fitted)
+    values = {name: [v for v, _ in found[part]] for name, part in _parts(model.count)}
+    errors = {name: [e for _, e in found[part]] for name, part in _parts(model.count)}
     volumes, volume_errors = _volumes(model, fitted, chi_er)
     values["volume"], errors["volume"] = volumes, list(volume_errors)
     return FitResult(values, errors, chi_er, None)
+
+
+def _found(model: Peak2Model, setup: Peak2Setup,
+           fitted: Fitted) -> list[tuple[float, float | None]]:  # fmt: skip
+    """Every parameter's value and error, in ROOT's order, fitted or fixed."""
+    at = {index: j for j, (index, _) in enumerate(model.free)}
+    starts = [float(setup.peaks[kind][k]) for k in range(model.count) for kind in PEAK]
+    starts += [float(setup.init[name]) for name in SHARED2]
+    return [_value_error(fitted, at.get(n), start) for n, start in enumerate(starts)]
+
+
+def _parts(count: int) -> list[tuple[str, slice]]:
+    """Where each kind of parameter is among all of them, for ``count`` peaks."""
+    shared = 7 * count
+    parts = [(kind, slice(n, shared, 7)) for n, kind in enumerate(PEAK)]
+    return parts + [(name, slice(shared + n, shared + n + 1)) for n, name in enumerate(SHARED2)]
 
 
 def fit2(source: Array, setup: Peak2Setup, settings: FitSettings2, stiefel: bool) -> FitResult:
