@@ -417,6 +417,9 @@ def default_title(scene: Scene) -> None:
         return
     obj = scene.owner[0]
     title = str(getattr(obj, "title", "") or "")
+    framing = lookup(obj, "fHistogram") if isinstance(obj, (Graph, MultiGraph)) else None
+    if isinstance(framing, Histogram) and framing.title:  # the frame's title is what is painted
+        title = framing.title
     if not title or int(lookup(obj, "fBits", 0) or 0) & NO_TITLE:
         return
     from .latex import paint_latex

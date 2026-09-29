@@ -92,7 +92,11 @@ ROOTS = [
 
 
 @pytest.fixture(autouse=True)
-def _fresh(tmp_path):
+def _fresh(tmp_path, monkeypatch):
+    """A fresh session - and no pad, as ROOT's script had none: ``UnZoom`` then does nothing."""
+    from xrdroot.pyroot.graphics import pads
+
+    monkeypatch.setattr(pads, "_CURRENT", [None])
     yield from fresh(tmp_path)
 
 

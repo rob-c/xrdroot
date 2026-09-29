@@ -13,6 +13,7 @@ from typing import Any
 
 import numpy as np
 
+from ...buffer import Listed as _Listed
 from ...stacks import MultiGraph, Stack
 from .collections import TList, TObjArray
 from .objects import TNamed
@@ -44,7 +45,8 @@ class _Holder(TNamed):
     @property
     def _xrd(self) -> Any:
         members = {"TNamed": {"fName": self.GetName(), "fTitle": self.GetTitle()},
-                   self.HELD: [unwrap(item) for item in self._held], "fFunctions": [],
+                   self.HELD: _Listed([unwrap(item) for item in self._held], self._options),
+                   "fFunctions": [],
                    "fHistogram": None, "fMinimum": self._extremes[0],
                    "fMaximum": self._extremes[1]}  # fmt: skip
         return self.XRD(self.ClassName(), members)
