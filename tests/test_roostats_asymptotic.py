@@ -232,3 +232,145 @@ def test_an_expected_p_value_that_cannot_be_found_is_minus_one(capfd: Any) -> No
         " interval \nInfo in <ROOT::Math::BrentMethods::MinimStep>: xmin = 0 xmax = 20 npts = 100\n"
         "Error in <ROOT::Math::BrentRootFinder>: Interval does not contain a root\n")
     assert "[#0] ERROR:Eval -- Error finding expected p-values - return -1\n" in said.out
+
+
+def test_the_asimov_makers_work_on_their_own_with_and_without_nuisance_parameters(
+        capsys: Any) -> None:  # fmt: skip
+    """``MakeAsimovData`` both ways: fitted to the data, or at the values given - a model with
+    no nuisance parameters but a global observable said so."""
+    w, data, sb, _b = counting()
+    calc = ROOT.RooStats.AsymptoticCalculator
+    globs = ROOT.RooArgSet()
+    made = calc.MakeAsimovData(data, sb, ROOT.RooArgSet(w.var("mu")), globs)
+    assert made.GetName() == "CountingAsimovData0" and len(globs) == 1
+    assert calc.GenerateAsimovData(sb.GetPdf(), sb.GetObservables()).numEntries() == 1
+    bare = ROOT.RooStats.ModelConfig("bare", w)
+    bare.SetPdf("model")
+    bare.SetObservables("n")
+    bare.SetParametersOfInterest("mu")
+    bare.SetGlobalObservables("nom")
+    none = ROOT.RooArgSet()
+    assert calc.MakeAsimovData(bare, ROOT.RooArgSet(), none).numEntries() == 1
+    assert "model does not have nuisance parameters but has global observables" in (
+        capsys.readouterr().out)  # fmt: skip
+    w.var("nu").setConstant(True)
+    assert calc.MakeAsimovData(data, bare, ROOT.RooArgSet(w.var("mu")), none) is not None
+    w.var("mu").setConstant(True)
+    assert calc.MakeAsimovData(data, bare, ROOT.RooArgSet(w.var("mu")), none) is not None
+
+
+def test_print_levels_say_more_or_nothing(capsys: Any) -> None:
+    """Level -1 says nothing of its set-up; level 2 lets RooFit's own messages through."""
+    _, data, sb, b = counting()
+    ROOT.RooStats.AsymptoticCalculator.SetPrintLevel(-1)
+    ROOT.RooStats.AsymptoticCalculator(data, sb, b)
+    assert "Initialize" not in capsys.readouterr().out
+    ROOT.RooStats.AsymptoticCalculator.SetPrintLevel(2)
+    ROOT.RooStats.AsymptoticCalculator(data, sb, b).GetHypoTest()
+    out = capsys.readouterr().out
+    assert ("AsymptoticCalculator::EvaluateNLL  ........ using  / Migrad with strategy  1 and "
+            "tolerance 1") in out
+
+
+def test_a_failing_fit_is_tried_again_then_gives_nan(monkeypatch: Any, capsys: Any) -> None:
+    """MIGRAD failing: a scan, strategy one - from zero - the improved MIGRAD, then NaN."""
+    from xrdroot.fit.defaults import DEFAULTS
+    from xrdroot.roofit.fitting.minimizer import RooMinimizer
+
+    _, data, sb, _ = counting()
+    asymptotic.PRINT_LEVEL[0] = 2
+    monkeypatch.setattr(RooMinimizer, "minimize", lambda self, *args: -1)
+    DEFAULTS["Strategy"] = 0
+    assert math.isnan(asymptotic.evaluate_nll(sb, data))
+    DEFAULTS["Strategy"] = 1
+    assert math.isnan(asymptotic.evaluate_nll(sb, data))
+    out = capsys.readouterr().out
+    assert out.count("----> Doing a re-scan first") == 2
+    assert out.count("----> trying with strategy = 1") == 1
+    assert out.count("----> trying with improve") == 2
+    assert out.count("FIT FAILED !- return a NaN NLL ") == 2
+
+
+def test_the_initial_offset_mode_reads_the_minimum_back_without_it() -> None:
+    from xrdroot.roostats import config
+
+    _, data, sb, _ = counting()
+    plain = asymptotic.evaluate_nll(sb, data)
+    ROOT.RooStats.SetNLLOffsetMode("initial")
+    assert ROOT.RooStats.NLLOffsetMode() == "initial"
+    assert ROOT.RooStats.GetGlobalRooStatsConfig().useLikelihoodOffset
+    assert asymptotic.evaluate_nll(sb, data) == pytest.approx(plain, abs=1e-6)
+    ROOT.RooStats.UseNLLOffset(False)
+    assert not config.CONFIG.useLikelihoodOffset
+
+
+def test_binned_data_sets_the_observables_bins_while_the_asimov_data_is_made(
+        capsys: Any) -> None:  # fmt: skip
+    """A ``RooDataHist`` of other bins: the observable binned as it, said - then as it was."""
+    w, data, sb, b = counting()
+    n = w.var("n")
+    n.setBins(10)
+    hist = ROOT.RooDataHist("h", "h", ROOT.RooArgSet(n), data)
+    n.setBins(30)
+    ROOT.RooStats.AsymptoticCalculator(hist, sb, b)
+    assert ("AsymptoticCalculator: number of bins in n are different than data bins  set the same "
+            "data bins 10 in range  [ 0 , 30 ]") in capsys.readouterr().out
+    assert n.getBins() == 30
+    same = ROOT.RooDataHist("s", "s", ROOT.RooArgSet(n), data)
+    ROOT.RooStats.AsymptoticCalculator(same, sb, b)
+    assert "are different than data bins" not in capsys.readouterr().out
+
+
+def test_asimov_data_that_cannot_be_made_stops_the_calculator(monkeypatch: Any,
+                                                              capsys: Any) -> None:  # fmt: skip
+    _, data, sb, b = counting()
+    monkeypatch.setattr(asymptotic, "make_asimov_data", lambda *args: None)
+    calc = ROOT.RooStats.AsymptoticCalculator(data, sb, b)
+    assert "Error : Asimov data set could not be generated" in capsys.readouterr().out
+    calc._initialized = True
+    assert calc.GetHypoTest() is None
+    assert "Asimov data set has not been generated - return nullptr result" in (
+        capsys.readouterr().out)  # fmt: skip
+
+
+def test_the_refits_say_their_new_ratios_at_print_level_one(monkeypatch: Any,
+                                                            capsys: Any) -> None:  # fmt: skip
+    calc = _scripted(monkeypatch, [9.0, 8.0, 9.0, 8.0])
+    asymptotic.PRINT_LEVEL[0] = 1
+    calc.GetHypoTest()
+    out = capsys.readouterr().out
+    assert "After unconditional refit,  new qmu value is 2" in out
+    assert "After unconditional Asimov refit,  new qmu_A value is 2" in out
+
+
+def test_a_one_sided_limit_zeroes_q_above_the_fit(monkeypatch: Any, capsys: Any) -> None:
+    calc = _scripted(monkeypatch, [10.5, 12.0])
+    next(iter(calc._best_poi)).setVal(2.0)
+    assert calc.GetHypoTest().NullPValue() == 0.5
+    assert "Using one-sided qmu - setting qmu to zero  muHat = 2 muTest = 1" in (
+        capsys.readouterr().out)  # fmt: skip
+
+
+def test_a_model_with_no_global_observables_and_a_quiet_nominal_asimov() -> None:
+    """No global observables to set; at print level -1 nothing said; a fixed parameter of
+    interest is left as it is."""
+    w = ROOT.RooWorkspace("w")
+    w.factory("Poisson::pois(n[0,30], sum::lam(prod::sig(mu[1,0,10], s[3]), b[5]))")
+    n = w.var("n")
+    n.setVal(8)
+    data = ROOT.RooDataSet("data", "data", ROOT.RooArgSet(n))
+    data.add(ROOT.RooArgSet(n))
+    sb = ROOT.RooStats.ModelConfig("sb", w)
+    sb.SetPdf("pois")
+    sb.SetObservables("n")
+    sb.SetParametersOfInterest("mu")
+    sb.SetSnapshot(ROOT.RooArgSet(w.var("mu")))
+    b = sb.Clone("b")
+    w.var("mu").setVal(0)
+    b.SetSnapshot(ROOT.RooArgSet(w.var("mu")))
+    ROOT.RooStats.AsymptoticCalculator.SetPrintLevel(-1)
+    calc = ROOT.RooStats.AsymptoticCalculator(data, b, sb, True)
+    result = calc.GetHypoTest()
+    assert (result.NullPValue(), result.AlternatePValue()) == (1.0, 1.0)
+    w.var("mu").setConstant(True)
+    assert asymptotic.evaluate_nll(sb, data, ROOT.RooArgSet(w.var("mu"))) > 0

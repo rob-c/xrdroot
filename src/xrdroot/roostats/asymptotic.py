@@ -63,7 +63,8 @@ def evaluate_nll(model: Any, data: Any, poi: Any = None) -> float:
         nll = model.createNLL(data, RooCmdArg("Constrain", constrained),
                               RooCmdArg("Offset", CONFIG.useLikelihoodOffset))  # fmt: skip
         fixed = _fixed_poi(nll, poi)
-        free = _free(nll.getVariables())
+        observed = {one.GetName() for one in data.get()}  # the likelihood's parameters, not these
+        free = _free([one for one in nll.getVariables() if one.GetName() not in observed])
         value = float(nll.getVal()) if not len(free) else _minimum(nll)
         for one in fixed:
             one.setConstant(False)
@@ -121,7 +122,9 @@ def _minimum(nll: Any) -> float:
         log(None, ERROR, "Fitting", "FIT FAILED !- return a NaN NLL ")
         return math.nan
     result = minim.save()
-    return float(nll.getVal()) if NLLOffsetMode() == "initial" else float(result.minNll())
+    if NLLOffsetMode() != "initial":
+        return float(result.minNll())
+    return float(nll.getVal()) + float(getattr(nll, "_offset_value", 0.0))  # the offset hidden
 
 
 def make_asimov_data(data: Any, model: Any, values: Any, globals_out: Any, gen_poi: Any = None
