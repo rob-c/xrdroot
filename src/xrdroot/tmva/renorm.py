@@ -31,15 +31,20 @@ def _sums(dsi: DataSetInfo, samples: list[list[Events]]) -> None:
     dsi.sums = sums
 
 
+def _ratio(size: float, total: float) -> float:
+    """``size / total`` as C++ divides floats: infinite, not an error, for a class of no weight."""
+    return size / total if total else float("inf")
+
+
 def _factors(samples: list[list[Events]], mode: str, dsi: DataSetInfo) -> list[float]:
     """Each class's renormalisation factor, or the refusal of a mode TMVA does not know."""
     sizes = [float(np.float32(len(train))) for train, _ in samples]
     totals = [float(np.sum(train.weights)) for train, _ in samples]
     if mode == "NUMEVENTS":
-        return [size / total for size, total in zip(sizes, totals)]
+        return [_ratio(size, total) for size, total in zip(sizes, totals)]
     if mode == "EQUALNUMEVENTS":
         _explain_equal(dsi)
-        return [sizes[0] / total for total in totals]
+        return [_ratio(sizes[0], total) for total in totals]
     raise Logger("DataSetFactory").fatal(
         f"Dataset[{dsi.name}] : <PrepareForTrainingAndTesting> Unknown NormMode: {mode}"
     )

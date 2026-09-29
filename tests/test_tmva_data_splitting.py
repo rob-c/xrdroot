@@ -155,3 +155,9 @@ def test_no_samples_joined_are_one_empty_sample():
 def test_an_odd_event_left_over_by_the_alternate_split_goes_to_training(session):
     _, dataset = _split("SplitMode=Alternate:MixMode=Block:nTrain_Signal=30:!V", signal=41)
     assert _counts(dataset, 0) == (21, 11)
+
+
+def test_a_class_of_no_weight_is_renormalised_by_an_infinite_factor_as_cxx_divides():
+    from xrdroot.tmva.renorm import _ratio
+
+    assert _ratio(4.0, 2.0) == 2.0 and _ratio(4.0, 0.0) == float("inf")
