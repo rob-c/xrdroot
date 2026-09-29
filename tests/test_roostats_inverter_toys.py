@@ -333,3 +333,70 @@ def test_references_given_are_filled_with_the_limit_and_its_error() -> None:
     limit, error = Ref(), Ref()
     assert it.RunLimit(limit, error) is True
     assert limit.value == pytest.approx(3.85, abs=0.2) and error.value > 0
+
+
+def _toy_scan() -> Any:
+    it, _ = inverter()
+    it.SetFixedScan(4, 1, 4)
+    return it.GetInterval()
+
+
+@pytest.mark.parametrize("option", ["", "OBS", "EXP", "SAME", "CLB 2CL", "EXP CLB"])
+def test_the_scan_is_drawn_with_its_bands_size_line_and_legend(tmp_path: Any, option: str) -> None:
+    canvas = ROOT.TCanvas("c", "c")
+    result = _toy_scan()
+    result.UseCLs(option != "EXP CLB")
+    plot = ROOT.RooStats.HypoTestInverterPlot(result)
+    assert plot.GetName() == result.GetName()
+    plot.Draw(option)
+    legend = plot._kept[-1]
+    assert legend.ClassName() == "TLegend"
+    canvas.SaveAs(str(tmp_path / "scan.png"))
+    assert (tmp_path / "scan.png").stat().st_size > 1000
+
+
+def test_the_plots_of_each_level_and_of_each_points_statistic(capfd: Any) -> None:
+    result = _toy_scan()
+    plot = ROOT.RooStats.HypoTestInverterPlot("p", "t", result)
+    names = [plot.MakePlot(opt).GetName() for opt in ("CLb", "CLs+b", "CLsplusb", "CLs", "")]
+    assert names == ["CLb_observed", "CLs+b_observed", "CLs+b_observed", "CLs_observed",
+                     "CLs_observed"]  # fmt: skip
+    bands = plot.MakeExpectedPlot(1.5, 0.5)
+    assert [one.GetTitle() for one in bands.GetListOfGraphs()] == [
+        "Expected CLs #pm 1.5 #sigma", "Expected CLs - Median"]  # fmt: skip
+    assert len(list(plot.MakeExpectedPlot(0.0, 0.0).GetListOfGraphs())) == 1
+    assert plot.MakeTestStatPlot(1, 0).ClassName().endswith("HypoTestPlot")
+    assert plot.MakeTestStatPlot(1, 1) is not None and plot.MakeTestStatPlot(1, 2) is not None
+    assert plot.MakeTestStatPlot(1, 3) is None and plot.MakeTestStatPlot(9, 0) is None
+    result._results[2] = HypoTestResult("bad", float("nan"), 0.5)
+    result._results[2].SetBackgroundAsAlt(True)
+    assert plot.MakePlot().GetN() == 3
+    assert ("Warning in <HypoTestInverterPlot::MakePlot>: Got a confidence level of nan at "
+            "x=3.000000 (failed fit?). Skipping this point.") in capfd.readouterr().err
+
+
+def test_a_scan_of_no_named_parameter_and_no_pad_draws_all_the_same(monkeypatch: Any) -> None:
+    from xrdroot.pyroot.graphics import pads
+    from xrdroot.roostats.inverterresult import HypoTestInverterResult
+
+    ROOT.TCanvas("c", "c")
+    bare = HypoTestInverterResult("bare")
+    for x in (1.0, 2.0):
+        bare.Add(x, HypoTestResult("p", 0.3 / x, 0.5))
+    plot = ROOT.RooStats.HypoTestInverterPlot(bare)
+    plot.Draw("OBS")
+    monkeypatch.setattr(pads, "current", lambda: None)
+    plot.Draw("OBS")
+    assert plot._kept[0].GetXaxis().GetTitle() == ""
+
+
+def test_the_expected_plot_leaves_out_a_point_with_no_expected_p_values() -> None:
+    from xrdroot.roostats.inverterresult import HypoTestInverterResult
+
+    mu = ROOT.RooRealVar("mu", "mu", 1, 0, 10)
+    r = HypoTestInverterResult("r", mu, 0.95)
+    r._two_sided = True
+    for x, p in ((1.0, 1.0), (2.0, 0.1)):
+        r.Add(x, HypoTestResult("p", p, 0.5))
+    bands = ROOT.RooStats.HypoTestInverterPlot(r).MakeExpectedPlot()
+    assert bands.GetListOfGraphs().At(2).GetN() == 1

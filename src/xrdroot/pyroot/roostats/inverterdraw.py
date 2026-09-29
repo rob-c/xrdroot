@@ -28,8 +28,7 @@ def _expected(plot: Any, axis: bool, frame: Any) -> tuple[Any, Any]:
     graphs = plot.MakeExpectedPlot()
     if axis and frame is None:
         graphs.Draw("A")
-        if graphs.GetHistogram() is not None:
-            graphs.GetHistogram().SetTitle(plot.GetTitle())
+        graphs.GetHistogram().SetTitle(plot.GetTitle())  # a multigraph's frame, always here
         return graphs, graphs.GetListOfGraphs().First()
     graphs.Draw()
     return graphs, frame

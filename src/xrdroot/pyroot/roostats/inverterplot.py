@@ -173,8 +173,7 @@ def draw_limit_plot(it: Any, target: float, limit: float, error: float, expo: An
     graph.GetXaxis().SetRangeUser(xmin, xmax)
     graph.GetYaxis().SetRangeUser(0.5 * target, 1.5 * target)
     graph.Draw("AP")
-    if expo is not None:
-        expo.Draw("SAME")
+    expo.Draw("SAME")  # the picture is made only by the fit, which the function is
     line = TLine(xs[0], target, xs[-1], target)
     line.SetLineColor(RED)
     line.SetLineWidth(2)
