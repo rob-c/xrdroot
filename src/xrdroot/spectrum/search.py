@@ -19,10 +19,13 @@ from .clipping import Array
 from .extend import cleared, extended, left_slope
 from .highres import deconvolved
 
-__all__ = ["Found", "search_high_res"]
+__all__ = ["THRESHOLD", "WIDEST", "Found", "search_high_res"]
 
 #: ``PEAK_WINDOW / 2``: a ``5 sigma`` at least this is too wide for ROOT.
 WIDEST = 512
+
+#: ROOT's error for a threshold that is not a percentage strictly between 0 and 100.
+THRESHOLD = "Invalid threshold, must be positive and less than 100"
 
 
 @dataclass
@@ -42,7 +45,7 @@ def _refusal(
     """ROOT's error for arguments it will not search with, or ``None``."""
     checks = (
         (sigma < 1, "Invalid sigma, must be greater than or equal to 1"),
-        (threshold <= 0 or threshold >= 100, "Invalid threshold, must be positive and less than 100"),
+        (threshold <= 0 or threshold >= 100, THRESHOLD),
         (int(5.0 * sigma + 0.5) >= WIDEST, "Too large sigma"),
         (markov and window <= 0, "Averaging window must be positive"),
         (remove and size < 2 * int(7 * sigma + 0.5) + 1, "Too large clipping window"),
