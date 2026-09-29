@@ -1263,6 +1263,64 @@ are - files or arrays - as their structural similarity, 1 for the same
 picture: scikit-image's when it is installed, else the same formula in
 NumPy.
 
+## Geometry
+
+A detector geometry is built as ROOT builds one - a `TGeoManager`, its
+materials and media, shapes made into volumes, and volumes placed in
+volumes by translations and rotations - and drawn in a pad as ROOT draws
+one in batch: a wireframe of every visible volume in the pad's perspective,
+each in its volume's line colour, style and width. The picture is pixel for
+pixel ROOT 6.40's for its `rootgeom.C` tutorial, and for a tree of the
+older `TGeometry` package's shapes, drawn from a macro or read back from
+the file ROOT wrote it to.
+
+```python
+import xrdroot.pyroot as ROOT
+
+geom = ROOT.TGeoManager("simple1", "Simple geometry")
+vacuum = ROOT.TGeoMedium("Vacuum", 1, ROOT.TGeoMaterial("Vacuum", 0, 0, 0))
+aluminium = ROOT.TGeoMedium("Al", 2, ROOT.TGeoMaterial("Al", 26.98, 13, 2.7))
+top = geom.MakeBox("TOP", vacuum, 270, 270, 120)
+geom.SetTopVolume(top)
+bar = geom.MakeTubs("bar", aluminium, 5, 15, 5, 90, 270)
+bar.SetLineColor(ROOT.kRed)
+top.AddNode(bar, 1, ROOT.TGeoCombiTrans(10, 0, 0, ROOT.TGeoRotation("r", 90, 0, 0)))
+geom.CloseGeometry()                 # counts nodes and levels, on standard error, as ROOT does
+top.Draw()
+ROOT.gPad.SaveAs("geometry.png")
+```
+
+**What is here.** Every `TGeo` solid ROOT tutorials build - boxes,
+trapezoids, `TGeoArb8`, parallelepipeds, tubes and cones and their segments,
+cut tubes, spheres, tori, elliptic tubes, paraboloids, hyperboloids,
+polycones and polygons, extruded polygons, tessellated solids (from
+Wavefront `.obj` files too) and Boolean composites, which are drawn as their
+components are; `TGeoTranslation`, `TGeoRotation` (Euler's angles or
+GEANT3's, and back), `TGeoCombiTrans`, `TGeoHMatrix`; `TGeoVolume`,
+`TGeoVolumeAssembly`, `TGeoNode`, `TGeoIterator` and iterator plugins; the
+visible depth and the visualisation options (`SetVisLevel`,
+`SetVisOption`, `SetTopVisible`, `VisibleDaughters`); and the old package's
+`TGeometry`, `TNode` with its seven visibility codes and `SetBomb`'s
+exploded view, `TBRIK` and its kin, `TMaterial`, `TRotMatrix`. A pad's 3-D
+view - `TView::CreateView`, `SetRange`, `RotateView`, `Front`/`Top`/`Side`
+- is shared with `TPolyLine3D` and `TPolyMarker3D`.
+
+**A scene to turn round.** `xrdroot.geom.backends` hands the same solids to
+plotly (`to_plotly`, a figure of shaded meshes for a notebook or an HTML
+page) or to pyvista (`to_pyvista`, rendered off-screen; `save(..., "x.png")`
+takes a screenshot with hidden surfaces hidden). Neither is needed for a
+pad's picture; both are the `geom` extra, `pip install xrdroot[geom]`, and
+asking for one that is not installed says so.
+
+**What is refused.** Whatever needs ROOT's navigator - where a point is,
+where a ray goes (`RandomRays`), which volumes overlap (`CheckOverlaps`),
+parallel worlds, physical nodes - is refused by name, as are GDML import
+and export, `TGeoVolume::Divide`, the table of radionuclides (read from a
+data file ROOT installs), and writing a `TGeometry`, whose streamer is
+ROOT's own code. The widgets that exist only to be clicked - `TControlBar`
+and `TSlider` - are refused too; a `TButton` is drawn, as a picture shows
+it.
+
 ## Ratio plots
 
 `TRatioPlot` is ROOT's plot of two histograms with their ratio beneath, or of

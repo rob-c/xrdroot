@@ -47,6 +47,9 @@ zstd = ["zstandard>=0.21"]
 # Minuit, for the fits that are not linear in their parameters: TH1::Fit's
 # MIGRAD, HESSE and MINOS, through the Minuit2 C++ iminuit wraps.
 fit = ["iminuit>=2.20"]
+# A geometry as a 3-D scene: pyvista renders it off-screen (hidden surfaces hidden),
+# plotly as a figure to turn round. A pad's picture of one needs neither.
+geom = ["pyvista>=0.43", "plotly>=5.11"]
 # TMVA's learners: scikit-learn grows the decision trees, the SVM and the
 # PyMVA ensembles, SciPy's L-BFGS trains the MLP, XGBoost is what
 # SaveXGBoost and RBDT read, and PyTorch - where it has a wheel - trains the
@@ -178,7 +181,7 @@ ignore_missing_imports = true
 # inside the backend that draws with them, where everything they hand back
 # is the caller's to keep, so none is followed into.
 [[tool.mypy.overrides]]
-module = ["plotly", "plotly.*", "bokeh", "bokeh.*", "mplhep", "mplhep.*"]
+module = ["plotly", "plotly.*", "bokeh", "bokeh.*", "mplhep", "mplhep.*", "pyvista", "pyvista.*"]
 follow_imports = "skip"
 follow_imports_for_stubs = true
 ignore_missing_imports = true
