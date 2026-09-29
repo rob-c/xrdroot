@@ -159,29 +159,38 @@ class Reader:
         kind = member.stype
         if kind == 0:
             return self.fill(base(member.name), member.name)
-        if kind == 66:
-            return self.tobject()
-        if kind == 67:
-            return self.tnamed()
-        if kind in BASIC:
-            return self.number(BASIC[kind])
-        if kind - 20 in BASIC:
-            return self.numbers(BASIC[kind - 20], member.length)
-        if kind - 40 in BASIC:  # x[n]: a marker byte, then the n its counter member holds
-            count = int(made.get(member.count, 0) or 0)
-            return self.numbers(BASIC[kind - 40], count) if self.buf.u8() else []
+        if kind in (66, 67):
+            return self.tobject() if kind == 66 else self.tnamed()
+        if kind in BASIC or kind - 20 in BASIC or kind - 40 in BASIC:
+            return self._numbers_member(member, made)
         if kind == 65:
             return self.buf.string()
-        if kind in (61, 62, 63):  # an object held by value, or by a pointer never null
-            return self.object(member.typename.rstrip("*"))
-        if kind in (64, 69):
-            return self.pointer()
-        if kind in (500, 300):
-            return self.container(member.typename)
+        if kind in (61, 62, 63, 64, 69, 500, 300):
+            return self._held_member(member)
         raise UnsupportedFeatureError(
             f"the member {member.name} of type {member.typename} is streamed as a kind "
             f"({kind}) this reader of RooFit's objects does not decode"
         )
+
+    def _held_member(self, member: Any) -> Any:
+        """An object held by value - or by a pointer never null - a pointer, or a container."""
+        kind = member.stype
+        if kind in (61, 62, 63):
+            return self.object(member.typename.rstrip("*"))
+        if kind in (64, 69):
+            return self.pointer()
+        return self.container(member.typename)
+
+    def _numbers_member(self, member: Any, made: Streamed) -> Any:
+        """A number, a fixed array of them, or ``x[n]``: a marker byte, then the ``n`` its
+        counter member holds."""
+        kind = member.stype
+        if kind in BASIC:
+            return self.number(BASIC[kind])
+        if kind - 20 in BASIC:
+            return self.numbers(BASIC[kind - 20], member.length)
+        count = int(made.get(member.count, 0) or 0)
+        return self.numbers(BASIC[kind - 40], count) if self.buf.u8() else []
 
     # -- containers ---------------------------------------------------------------
 

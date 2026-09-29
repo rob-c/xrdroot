@@ -24,27 +24,39 @@ def _variables(builder: Builder, record: Streamed, member: str) -> list[Any]:
     return [] if held is None else builder.nodes(held.get("_list"))
 
 
-@maker("RooDataSet")
-def _dataset(builder: Builder, record: Streamed) -> Any:
-    """The events of the vector store: a column per variable, and the weight variable's."""
-    from ..data.dataset import RooDataSet
-
+def _vector_store(record: Streamed) -> Any:
+    """The dataset's ``RooVectorDataStore`` - any other store refused."""
     store = record.get("_dstore")
     if store is None or store.cls != "RooVectorDataStore":
         kind = "no store" if store is None else f"a {store.cls}"
         raise UnsupportedFeatureError(f"the dataset {name_of(record)!r} is kept in {kind}; "
                                       "datasets are read from RooVectorDataStore")  # fmt: skip
+    return store
+
+
+def _store_columns(store: Any) -> dict[str, Any]:
+    """Each real and category vector of the store, by its variable's name."""
+    columns: dict[str, Any] = {}
+    for vector in (store.get("_realStoreList") or []) + (store.get("_realfStoreList") or []):
+        columns[name_of(vector.get("_nativeReal"))] = values_of(vector.get("_vec"))
+    for vector in store.get("_catStoreList") or []:
+        columns[name_of(vector.get("_cat"))] = np.asarray(vector.get("_vec"), dtype=np.float64)
+    return columns
+
+
+@maker("RooDataSet")
+def _dataset(builder: Builder, record: Streamed) -> Any:
+    """The events of the vector store: a column per variable, and the weight variable's."""
+    from ..data.dataset import RooDataSet
+
+    store = _vector_store(record)
     weight = record.get("_wgtVar")
     weight_name = name_of(weight) if weight is not None else ""
     variables = _variables(builder, record, "_varsNoWgt")
     options = {"WeightVar": weight_name} if weight_name else {}
     listed = variables + ([builder.node(weight)] if weight_name else [])
     made = RooDataSet(name_of(record), title_of(record), listed, **options)
-    columns: dict[str, Any] = {}
-    for vector in (store.get("_realStoreList") or []) + (store.get("_realfStoreList") or []):
-        columns[name_of(vector.get("_nativeReal"))] = values_of(vector.get("_vec"))
-    for vector in store.get("_catStoreList") or []:
-        columns[name_of(vector.get("_cat"))] = np.asarray(vector.get("_vec"), dtype=np.float64)
+    columns = _store_columns(store)
     made._columns = {one.GetName(): columns[one.GetName()] for one in made.get()}
     made._store_title = str(store.get("TNamed", {}).get("fTitle", ""))
     if weight_name:

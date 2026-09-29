@@ -18,13 +18,18 @@ from .stream import Streamed
 __all__ = ["read_workspace"]
 
 
+def _code_classes(record: Any) -> list[str]:
+    """The classes the code repository has: those related, then those of files."""
+    classes = [one[0] for one in record.get("relations") or ()]
+    files = [one[0] for one in record.get("files") or ()]
+    return classes + [one for one in files if one not in classes]
+
+
 def _check_code(record: Any) -> None:
     """Refuse a workspace whose code repository has classes this engine does not."""
     if record is None:
         return
-    classes = [one[0] for one in record.get("relations") or ()]
-    classes += [one[0] for one in record.get("files") or () if one[0] not in classes]
-    missing = [name for name in classes if name not in MAKERS]
+    missing = [name for name in _code_classes(record) if name not in MAKERS]
     if missing:
         raise UnsupportedFeatureError(
             f"the workspace carries the C++ code of {', '.join(missing)}, classes of its "
@@ -41,19 +46,29 @@ def _workspace(builder: Builder, record: Streamed) -> Any:
     builder.made[id(record)] = made  # a ModelConfig inside points back at it
     for node in builder.nodes(record.get("_allOwnedNodes").get("_list")):
         made._nodes.setdefault(node.GetName(), node)
-    for data in builder.nodes(record.get("_dataList").get("items")):
-        made._data[data.GetName()] = data
-    for data in builder.nodes(record.get("_embeddedDataList").get("items")):
-        made._embedded[data.GetName()] = data
-    for snapshot in record.get("_snapshots").get("items") or ():
-        made._snapshots[str(snapshot.get("_name"))] = builder.nodes(snapshot.get("_list"))
-    for name, content in (record.get("_namedSets") or {}).items():
-        made.defineSet(str(name), builder.nodes(content.get("_list")))
+    _read_data(builder, record, made)
+    _read_sets(builder, record, made)
     for generic in record.get("_genObjects").get("items") or ():
         held = generic.get("_list").get("items")[0] if generic.cls == "RooTObjWrap" else generic
         obj = builder.node(held)
         made._generic[obj.GetName()] = obj
     return made
+
+
+def _read_data(builder: Builder, record: Streamed, made: Any) -> None:
+    """The datasets - and those embedded in functions of the model."""
+    for data in builder.nodes(record.get("_dataList").get("items")):
+        made._data[data.GetName()] = data
+    for data in builder.nodes(record.get("_embeddedDataList").get("items")):
+        made._embedded[data.GetName()] = data
+
+
+def _read_sets(builder: Builder, record: Streamed, made: Any) -> None:
+    """The snapshots and the named sets."""
+    for snapshot in record.get("_snapshots").get("items") or ():
+        made._snapshots[str(snapshot.get("_name"))] = builder.nodes(snapshot.get("_list"))
+    for name, content in (record.get("_namedSets") or {}).items():
+        made.defineSet(str(name), builder.nodes(content.get("_list")))
 
 
 @maker("RooStats::ModelConfig")

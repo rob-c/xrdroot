@@ -97,7 +97,10 @@ def dress(node: Any, record: Streamed) -> None:
         node.setStringAttribute(str(key), str(value))
     if record.get("_forceNumInt"):
         node.setForceNumInt(True)
-    unit = record.get("_unit")
+    _unit(node, record.get("_unit"))
+
+
+def _unit(node: Any, unit: Any) -> None:
     if unit and hasattr(node, "setUnit"):
         node.setUnit(str(unit))
 
