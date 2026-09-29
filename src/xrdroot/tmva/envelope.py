@@ -18,6 +18,7 @@ import numpy as np
 from .evaluation import roc_curve, roc_integral
 from .log import CONFIG, Logger
 from .method import CLASSIFICATION, Method
+from .methods.cuts import MethodCuts
 from .options import Options
 from .tools import CxxVector
 
@@ -106,7 +107,7 @@ class Classification:
             method.raw_train = train
             method.train(method.handler.prepare(train) if method.handler.transforms else train)
             test = dataset.test
-            if method.type_name == "Cuts":
+            if isinstance(method, MethodCuts):
                 method.test_signal_eff = -1.0
             values = np.asarray(method.mva(test), dtype=np.float32)
             special = getattr(method, "classifier_evaluation", None)

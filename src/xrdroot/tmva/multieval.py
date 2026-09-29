@@ -48,7 +48,7 @@ def roc_summary(output: Any, events: Events, cls: int) -> tuple[float, float, fl
     weights = events.weights
     area = roc_integral(values, signal, weights)
     effs = [eff_s_for_eff_b(values, signal, weights, level) for level in (0.01, 0.10, 0.30)]
-    return (area, *effs)
+    return area, effs[0], effs[1], effs[2]
 
 
 def confusion(output: Any, events: Events, nclasses: int, level: float) -> Any:

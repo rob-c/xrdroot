@@ -10,19 +10,19 @@ from __future__ import annotations
 
 from ..method import Method
 from .bdt import MethodBDT
+from .category import MethodCategory
+from .crossvalidation import MethodCrossValidation
 from .cuts import MethodCuts
 from .dl import MethodDL, MethodDNN
 from .fda import MethodFDA
-from .pders import MethodPDERS
-from .pdefoam import MethodPDEFoam
-from .rulefit import MethodRuleFit
-from .crossvalidation import MethodCrossValidation
-from .category import MethodCategory
-from .pymva import MethodPyAdaBoost, MethodPyGTB, MethodPyRandomForest
 from .knn import MethodKNN
 from .likelihood import MethodLikelihood
 from .linear import MethodFisher, MethodLD
 from .mlp import MethodMLP
+from .pdefoam import MethodPDEFoam
+from .pders import MethodPDERS
+from .pymva import MethodPyAdaBoost, MethodPyGTB, MethodPyRandomForest
+from .rulefit import MethodRuleFit
 from .svm import MethodSVM
 
 __all__ = ["REGISTRY", "Method"]

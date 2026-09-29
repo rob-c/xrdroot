@@ -18,6 +18,7 @@ from typing import Any
 import numpy as np
 
 from ..hist import Histogram
+from ..limits import find_good_limits
 from . import hists
 from .dataset import DataSetInfo, Events
 
@@ -118,6 +119,21 @@ def test_regression(output: Any, target: Any, weights: Any) -> RegressionStats:
     )
 
 
+def _axis(nbins: int, low: float, high: float, values: Any) -> tuple[int, float, float]:
+    """An axis as TMVA books it - or, if it has no width, the one ROOT's buffer finds for it.
+
+    ROOT takes an axis whose low end is not below its high one - a regression
+    that hits every target exactly gives one - as asking for automatic
+    binning: it buffers what is filled and gives the axis the range of the
+    values, as ``THLimitsFinder::FindGoodLimits`` rounds it.
+    """
+    if low < high:
+        return nbins, low, high
+    ends = (float(np.min(values)), float(np.max(values))) if len(values) else (low, high)
+    found = find_good_limits(nbins, *ends)
+    return found.nbins, found.low, found.high
+
+
 def _deviation(
     name: str, x: Any, y: Any, low: float, high: float, titles: tuple[str, str]
 ) -> Histogram:
@@ -130,8 +146,8 @@ def _deviation(
     ymin, ymax = f32(ymin - f32(1.01) * step), f32(ymax + f32(1.01) * step)
     made = Histogram.book(
         name,
-        (50, float(xmin), float(xmax)),
-        (50, float(ymin), float(ymax)),
+        _axis(50, float(xmin), float(xmax), x),
+        _axis(50, float(ymin), float(ymax), y),
         title=f"{name};{titles[0]};{titles[1]}",
         kind="F",
     )
@@ -142,31 +158,26 @@ def _deviation(
 def _quadratic(name: str, squared: Any, weights: Any, cut: float | None) -> Histogram:
     """``QuadraticDeviation``: the squared deviations in 500 bins, up to 1.1 of the largest."""
     top = f32(cut) if cut is not None else f32(max(float(squared.max()), 0.0))
-    made = hists.book(
-        name, f"{name};Quadratic Deviation;Weighted Entries", 500, 0.0, float(f32(top * f32(1.1)))
-    )
     keep = np.ones(len(squared), dtype=bool) if cut is None else squared <= cut
+    nbins, low, high = _axis(500, 0.0, float(f32(top * f32(1.1))), squared[keep])
+    made = hists.book(name, f"{name};Quadratic Deviation;Weighted Entries", nbins, low, high)
     made.fill(squared[keep], weight=weights[keep])
     return made
 
 
 def quantile(histogram: Histogram, probability: float) -> float:
-    """``TH1::GetQuantiles`` of one probability, as ROOT interpolates it within a bin."""
-    contents = hists.bins(histogram)[1:-1]
-    total = contents.sum()
-    integral = np.concatenate(([0.0], np.cumsum(contents) / total)) if total else np.zeros(1)
-    nbins = len(contents)
-    ibin = max(int(np.searchsorted(integral, probability, side="right")) - 1, 0)
-    while ibin < nbins - 1 and integral[ibin + 1] == probability:
-        if integral[ibin + 2] != probability:
-            break
-        ibin += 1
-    edges = histogram.axes[0].edges()
-    found = float(edges[ibin])
-    step = integral[min(ibin + 1, nbins)] - integral[ibin]
-    if step > 0:
-        found += (edges[ibin + 1] - edges[ibin]) * (probability - integral[ibin]) / step
-    return found
+    """``TH1::GetQuantiles`` of one probability, as ROOT 6.40 answers it.
+
+    That is :func:`xrdroot.distribution.quantiles`' answer - within a bin on
+    the straight line across it, and on an edge where ROOT has its own rule.
+    An empty histogram, which ROOT refuses and leaves the answer unset for,
+    answers its low edge.
+    """
+    from ..distribution import quantiles
+
+    if not float(np.sum(hists.bins(histogram)[1:-1])):
+        return float(histogram.axes[0].low)
+    return float(quantiles(histogram, [probability])[0])
 
 
 def deviation_histograms(

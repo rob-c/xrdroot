@@ -106,7 +106,7 @@ class Training:
         if self.output.silent or self.output.exists(name):
             return
         self.output.directory(name)
-        dataset = loader.dataset()
+        loader.dataset()
         self._correlation_hists(loader)
         handlers = []
         for definition in self.transformations.split(";"):
@@ -115,27 +115,41 @@ class Training:
             handlers.append((definition, handler))
         identity = None
         for definition, handler in handlers:
-            transformed = handler.prepare(dataset.train)
-            suffix = handler.name or "Id"
-            plots = plot_variables(loader.info, transformed, handler.stats, f"_{suffix}", "")
-            where = f"{name}/InputVariables_{suffix}"
-            for histogram in plots.histograms:
-                self.output.write(where, histogram)
-            for histogram in plots.correlations:
-                self.output.write(f"{where}/CorrelationPlots", histogram)
+            plots = self._input_plots(loader, handler, definition.startswith("I"))
             if definition.startswith("I"):
                 identity = plots
-                if len(loader.info.targets) == 1:
-                    from .varrank import regression_rankings
+        if identity is not None:
+            self._rank_inputs(identity)
 
-                    identity.rankings = regression_rankings(loader.info, transformed, handler.stats)
-        if identity is not None and identity.separations:
+    def _input_plots(
+        self, loader: DataLoader, handler: TransformationHandler, identity: bool
+    ) -> Any:
+        """One transformation's plots of the input variables, written; for the identity, the
+        rankings of a regression's variables too."""
+        name = loader.GetName()
+        transformed = handler.prepare(loader.dataset().train)
+        suffix = handler.name or "Id"
+        plots = plot_variables(loader.info, transformed, handler.stats, f"_{suffix}", "")
+        where = f"{name}/InputVariables_{suffix}"
+        for histogram in plots.histograms:
+            self.output.write(where, histogram)
+        for histogram in plots.correlations:
+            self.output.write(f"{where}/CorrelationPlots", histogram)
+        if identity and len(loader.info.targets) == 1:
+            from .varrank import regression_rankings
+
+            plots.rankings = regression_rankings(loader.info, transformed, handler.stats)
+        return plots
+
+    def _rank_inputs(self, identity: Any) -> None:
+        """``Ranking input variables (method unspecific)``: by separation, or as regressed."""
+        rankings = (
+            [("Separation", identity.separations)] if identity.separations else identity.rankings
+        )
+        if rankings:
             self.log.info("Ranking input variables (method unspecific)...")
-            print_ranking("IdTransformation", "Separation", identity.separations)
-        elif identity is not None and identity.rankings:
-            self.log.info("Ranking input variables (method unspecific)...")
-            for title, entries in identity.rankings:
-                print_ranking("IdTransformation", title, entries)
+        for title, entries in rankings:
+            print_ranking("IdTransformation", title, entries)
 
     def _correlation_hists(self, loader: DataLoader) -> None:
         from ..hist import Histogram
@@ -171,7 +185,7 @@ class Training:
     # -- training -------------------------------------------------------------------------
 
     def _base_directory(self, method: Method) -> str:
-        """``BaseDir``: the method's directory, made with its ``TrainingPath`` and ``WeightFileName``."""
+        """``BaseDir``: the method's directory, with ``TrainingPath`` and ``WeightFileName``."""
         where = method_directory(method)
         if not self.output.silent and not self.output.exists(where):
             self.output.directory(
@@ -199,7 +213,8 @@ class Training:
         method.train(transformed)
         method.train_time = time.perf_counter() - start
         self.log.info(
-            f"Elapsed time for training with {len(train)} events: {method.train_time:.3g} sec         "
+            f"Elapsed time for training with {len(train)} events: "
+            f"{method.train_time:.3g} sec         "
         )
         item.train_values = evaluate_sample(method, train, "training", method.dsi.name)
         if method.analysis == CLASSIFICATION and method.has_mva_pdfs():
@@ -249,7 +264,7 @@ class Training:
                 self.output.write(where, histogram)
 
     def TrainAllMethods(self) -> None:
-        """Train every booked method, rank the variables, and read each back from its weight file."""
+        """Train every booked method, rank the variables, and read each back from its weights."""
         self.log.header(f"{color('bold')}Train all methods{color('reset')}")
         if not self.booked:
             self.log.info("...nothing found to train")
@@ -275,7 +290,7 @@ class Training:
                 self._recreate(items)
 
     def _save_history(self, method: Method) -> None:
-        """``TrainingHistory::SaveHistory``: each recorded quantity a ``TH1D``, printed and written."""
+        """``TrainingHistory::SaveHistory``: each quantity recorded a ``TH1D``, printed, written."""
         history = getattr(method, "history", None)
         if self.output.silent or not history:
             return
@@ -284,7 +299,8 @@ class Training:
             if not points:
                 continue
             first, last = float(points[0][0]), float(points[-1][0])
-            step = (last - first) / (len(points) - 1) if len(points) > 1 else 0.0
+            # One point gives TMVA's bin width 0/0; a bin of width one around it is a histogram.
+            step = (last - first) / (len(points) - 1) if len(points) > 1 else 1.0
             name = f"TrainingHistory_{method.name}_{key}"
             made = hists.book(name, name, len(points), first - 0.5 * step, last + 0.5 * step, "D")
             contents = np.array([0.0, *(value for _, value in points), 0.0])
@@ -347,5 +363,6 @@ class Training:
                     item.test_proba = np.asarray(method.proba(values, 0.5), dtype=np.float32)
                     item.extra["prob_test"] = item.test_proba
                     method.log.info(
-                        f"Dataset[{method.dsi.name}] : Evaluation of {method.name} on testing sample"
+                        f"Dataset[{method.dsi.name}] : Evaluation of {method.name} on testing "
+                        "sample"
                     )

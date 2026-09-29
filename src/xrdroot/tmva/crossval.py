@@ -12,7 +12,7 @@ file, over the whole sample for both.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -21,6 +21,10 @@ from .dataset import DataSet, Events
 from .factory import Factory, _method_name
 from .log import Logger
 from .options import Options
+
+if TYPE_CHECKING:
+    from .factory import Booked
+    from .loader import DataLoader
 
 __all__ = ["CrossValidation"]
 
@@ -45,11 +49,21 @@ def _joined(events: Events, parts: list[Any]) -> Events:
     return events.take(np.concatenate(parts) if parts else np.zeros(0, dtype=np.int64))
 
 
+def _factory_options(options: Options) -> str:
+    """The options of the Factories the cross-validation trains with: its own, passed on."""
+    factory = [f"AnalysisType={options.text_of('AnalysisType', 'Auto')}", "!DrawProgressBar"]
+    for flag, default in (("V", False), ("Correlations", False), ("ROC", True), ("Silent", False)):
+        factory.append(flag if options.flag(flag, default) else f"!{flag}")
+    if options.given("Transformations"):
+        factory.append(f"Transformations={options.text_of('Transformations')}")
+    return ":".join(factory)
+
+
 class CrossValidation:
     """``CrossValidation(job, loader, outputFile, options)`` - or ``(job, loader, options)``."""
 
     def __init__(self, job: Any, loader: Any, *args: Any) -> None:
-        target, text = (None, args[0]) if len(args) == 1 else ((args + (None, ""))[:2])
+        target, text = (None, args[0]) if len(args) == 1 else (*args, None, "")[:2]
         if isinstance(target, str):
             target, text = None, target
         self.job, self.loader, self.output_file = str(job), loader, target
@@ -61,18 +75,7 @@ class CrossValidation:
         self.ensembling = options.text_of("OutputEnsembling", "None")
         if self.split_type != "Deterministic" and self.split_expr:
             raise self.log.fatal("SplitExpr can only be used with Deterministic Splitting")
-        analysis = options.text_of("AnalysisType", "Auto")
-        factory = [f"AnalysisType={analysis}", "!DrawProgressBar"]
-        for flag, default in (
-            ("V", False),
-            ("Correlations", False),
-            ("ROC", True),
-            ("Silent", False),
-        ):
-            factory.append(flag if options.flag(flag, default) else f"!{flag}")
-        if options.given("Transformations"):
-            factory.append(f"Transformations={options.text_of('Transformations')}")
-        self.factory_options = ":".join(factory)
+        self.factory_options = _factory_options(options)
         self.fold_factory = Factory(self.job, self.factory_options)
         self.factory = (
             Factory(self.job, target, self.factory_options)
@@ -152,9 +155,8 @@ class CrossValidation:
         dataset = DataSet(_joined(train, others), _joined(train, [folds[fold]]))
         title = f"{info['MethodTitle']}_fold{fold + 1}"
         factory = self.fold_factory
-        factory.BookMethod(
-            FoldLoader(self.loader, dataset), info["MethodName"], title, info["MethodOptions"]
-        )
+        held_out = cast("DataLoader", FoldLoader(self.loader, dataset))
+        factory.BookMethod(held_out, info["MethodName"], title, info["MethodOptions"])
         item = factory._booked(self.loader.GetName(), title)
         if item is not None:
             factory._train_one(item)
@@ -168,37 +170,40 @@ class CrossValidation:
         for line in ("", "", RULE, text, RULE, ""):
             self.log.info(line)
 
+    def _cross_validate(
+        self, info: MethodInfo, folds: list[Any], recombined: DataLoader, mapping: Any
+    ) -> Booked:
+        """A method through its folds, then booked as a ``CrossValidation`` of the whole sample.
+
+        A ``CrossValidation`` method can do every analysis, so its booking is never refused.
+        """
+        self._banner(f"Processing folds for method {info['MethodTitle']}")
+        result = CrossValidationResult(self.nfolds)
+        for fold in range(self.nfolds):
+            result.Fill(self._process_fold(fold, info, folds))
+        self.results.append(result)
+        options = (
+            f"SplitExpr={self.split_expr}:NumFolds={self.nfolds}"
+            f":EncapsulatedMethodName={info['MethodTitle']}"
+            f":EncapsulatedMethodTypeName={info['MethodName']}"
+            f":OutputEnsembling={self.ensembling}"
+        )
+        self.factory.BookMethod(recombined, "CrossValidation", info["MethodTitle"], options)
+        item = self.factory.booked[self.loader.GetName()][-1]
+        item.method.event_folds = mapping  # type: ignore[attr-defined]
+        return item
+
     def Evaluate(self) -> None:
         """Every method through its folds, then all of them over the whole recombined sample."""
         folds = self._folds()
         train = self.loader.dataset().train
         whole = _joined(train, folds)
         mapping = np.concatenate([np.full(len(members), i) for i, members in enumerate(folds)])
-        recombined = FoldLoader(self.loader, DataSet(whole, whole))
-        booked = []
-        for info in self.methods:
-            self._banner(f"Processing folds for method {info['MethodTitle']}")
-            result = CrossValidationResult(self.nfolds)
-            for fold in range(self.nfolds):
-                result.Fill(self._process_fold(fold, info, folds))
-            self.results.append(result)
-            options = (
-                f"SplitExpr={self.split_expr}:NumFolds={self.nfolds}"
-                f":EncapsulatedMethodName={info['MethodTitle']}"
-                f":EncapsulatedMethodTypeName={info['MethodName']}"
-                f":OutputEnsembling={self.ensembling}"
-            )
-            method = self.factory.BookMethod(
-                recombined, "CrossValidation", info["MethodTitle"], options
-            )
-            if method is not None:
-                method.event_folds = mapping
-                booked.append(info["MethodTitle"])
+        # A fold's loader is what the Factory asks of a DataLoader, and no more.
+        recombined = cast("DataLoader", FoldLoader(self.loader, DataSet(whole, whole)))
+        booked = [self._cross_validate(info, folds, recombined, mapping) for info in self.methods]
         self._banner("Folds processed for all methods, evaluating.")
-        for title in booked:
-            item = self.factory._booked(self.loader.GetName(), title)
-            if item is None:
-                continue
+        for item in booked:
             if self.output_file is not None:
                 self.factory._write_data_information(recombined)
             self.factory._train_one(item)

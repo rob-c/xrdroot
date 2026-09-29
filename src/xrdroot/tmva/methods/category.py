@@ -47,14 +47,7 @@ def category_info(primary: DataSetInfo, cut: str, variables: str, title: str) ->
     made = DataSetInfo(f"{title}_dsi")
     made.targets = list(primary.targets)
     made.spectators = list(primary.spectators)
-    known = [*primary.variables, *primary.spectators]
-    for name in (piece for piece in variables.split(":") if piece):
-        found = [info for info in known if info.label == name]
-        if not found:
-            raise made.log.fatal(f"The variable {name} was not found and could not be added ")
-        made.variables.extend(found)
-    if not variables:
-        made.variables = list(primary.variables)
+    made.variables = _region_variables(primary, variables, made)
     for info in primary.classes:
         added = made.AddClass(info.name)
         added.weight, added.cut = info.weight, info.cut
@@ -62,6 +55,22 @@ def category_info(primary: DataSetInfo, cut: str, variables: str, title: str) ->
     made.split_options = f"{primary.split_options}:ScaleWithPreselEff"
     made.normalization = primary.normalization
     return made
+
+
+def _region_variables(
+    primary: DataSetInfo, variables: str, made: DataSetInfo
+) -> list[VariableInfo]:
+    """The variables and spectators ``variables`` names - or, if it names none, every variable."""
+    if not variables:
+        return list(primary.variables)
+    known = [*primary.variables, *primary.spectators]
+    chosen = []
+    for name in (piece for piece in variables.split(":") if piece):
+        found = [info for info in known if info.label == name]
+        if not found:
+            raise made.log.fatal(f"The variable {name} was not found and could not be added ")
+        chosen.extend(found)
+    return chosen
 
 
 class MethodCategory(Method):

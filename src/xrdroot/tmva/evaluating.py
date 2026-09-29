@@ -10,7 +10,7 @@ from .efficiency import Efficiencies
 from .evalmodes import EvaluatingModes
 from .evaluation import roc_curve, roc_integral, test_classification
 from .log import Logger, color
-from .method import CLASSIFICATION, MULTICLASS, REGRESSION
+from .method import CLASSIFICATION, REGRESSION
 from .output import event_tree
 from .plots import plot_variables
 from .training import method_directory
@@ -27,8 +27,35 @@ HLINE = "-" * 115
 EFFICIENCIES = (0.01, 0.10, 0.30)
 
 
+#: The testing histograms written of a classifier, in the order TMVA writes them.
+RESULT_KEYS = (
+    "MVA_S",
+    "MVA_B",
+    "proba_S",
+    "proba_B",
+    "rarity_S",
+    "rarity_B",
+    "MVA_HIGHBIN_S",
+    "MVA_HIGHBIN_B",
+)
+
+
 def _signal(item: Booked, classes: Any) -> Any:
     return classes == item.method.dsi.GetSignalClassIndex()
+
+
+def _results(item: Booked) -> list[Any]:
+    """What a method's results hold: its output densities, test histograms and efficiencies."""
+    made = [
+        histogram
+        for pdf in item.method.mva_pdfs or ()
+        for histogram in (pdf.original, pdf.smoothed, pdf.fine)
+    ]
+    tested = item.test.histograms if item.test is not None else {}
+    made += [tested[key] for key in RESULT_KEYS if key in tested]
+    efficiencies = item.efficiencies
+    made += list(efficiencies.histograms.values()) if efficiencies else []
+    return made
 
 
 class Evaluating(EvaluatingModes):
@@ -99,40 +126,26 @@ class Evaluating(EvaluatingModes):
         ``before`` is the rest of what the testing results hold, ``after`` what the
         training results hold, written after the plots.
         """
-        method = item.method
-        where = method_directory(method)
-        for histogram in before:
-            self.output.write(where, histogram)
-        for pdf in method.mva_pdfs or ():
-            for histogram in (pdf.original, pdf.smoothed, pdf.fine):
-                self.output.write(where, histogram)
-        for key in (
-            "MVA_S",
-            "MVA_B",
-            "proba_S",
-            "proba_B",
-            "rarity_S",
-            "rarity_B",
-            "MVA_HIGHBIN_S",
-            "MVA_HIGHBIN_B",
-        ):
-            if item.test is not None and key in item.test.histograms:
-                self.output.write(where, item.test.histograms[key])
-        efficiencies = item.efficiencies
-        for histogram in efficiencies.histograms.values() if efficiencies else ():
+        where = method_directory(item.method)
+        for histogram in [*before, *_results(item)]:
             self.output.write(where, histogram)
         if self.output.silent:
             return
-        transformed = method.handler.apply(test)
-        method.handler.print_stats(transformed)
-        note = method.handler.name if method.handler.transforms else ""
-        plots = plot_variables(method.dsi, transformed, method.handler.stats, "", note)
+        self._write_plots(where, item, test)
+        for histogram in after:
+            self.output.write(where, histogram)
+
+    def _write_plots(self, where: str, item: Booked, test: Any) -> None:
+        """The test sample's variables, as the method transforms them, plotted and written."""
+        handler = item.method.handler
+        transformed = handler.apply(test)
+        handler.print_stats(transformed)
+        note = handler.name if handler.transforms else ""
+        plots = plot_variables(item.method.dsi, transformed, handler.stats, "", note)
         for histogram in plots.histograms:
             self.output.write(where, histogram)
         for histogram in plots.correlations:
             self.output.write(f"{where}/CorrelationPlots", histogram)
-        for histogram in after:
-            self.output.write(where, histogram)
 
     def _roc(self, item: Booked) -> float:
         test = item.loader.dataset().test
@@ -159,7 +172,8 @@ class Evaluating(EvaluatingModes):
             "(from training sample) "
         )
         log.info(
-            "Name:                Method:          @B=0.01             @B=0.10            @B=0.30   "
+            "Name:                Method:          @B=0.01             @B=0.10            "
+            "@B=0.30   "
         )
         log.info(HLINE)
         for row in ranked:
@@ -185,9 +199,7 @@ class Evaluating(EvaluatingModes):
         ):
             outputs: dict[str, Any] = {}
             for item in items:
-                values = item.test_values if key == "test" else item.train_values
-                if values is not None:
-                    outputs[item.method.name] = values
+                outputs[item.method.name] = item.test_values if key == "test" else item.train_values
                 probability = item.extra.get(f"prob_{key}")
                 if probability is not None:
                     outputs[f"prob_{item.method.name}"] = probability
@@ -203,24 +215,27 @@ class Evaluating(EvaluatingModes):
             return
         for name in sorted(self.booked):
             items = self.booked[name]
-            rows: list[dict[str, Any]] = []
-            if self.analysis == CLASSIFICATION:
-                rows = [self._evaluate_classifier(item) for item in items]
-                if self.roc:
-                    self._classification_tables(name, rows)
-            elif self.analysis == REGRESSION:
-                rows = [self._evaluate_regression(i) for i in items]
-                self._regression_tables(name, rows)
-            elif self.analysis == MULTICLASS:
-                rows = [self._evaluate_multiclass(i) for i in items]
-                self._multiclass_tables(name, rows)
-            self.last_rows[name] = rows
+            self.last_rows[name] = self._evaluate_dataset(name, items)
             self._write_trees(name, items)
         self.log.header(f"{color('bold')}Thank you for using TMVA!{color('reset')}")
         self.log.info(
             f"{color('bold')}For citation information, please visit: "
             f"http://tmva.sf.net/citeTMVA.html{color('reset')}"
         )
+
+    def _evaluate_dataset(self, name: str, items: list[Booked]) -> list[dict[str, Any]]:
+        """Every method of one data set evaluated, and the tables of its analysis printed."""
+        if self.analysis == CLASSIFICATION:
+            rows = [self._evaluate_classifier(item) for item in items]
+            if self.roc:
+                self._classification_tables(name, rows)
+        elif self.analysis == REGRESSION:
+            rows = [self._evaluate_regression(item) for item in items]
+            self._regression_tables(name, rows)
+        else:  # booking has settled the analysis: this is a multiclass one
+            rows = [self._evaluate_multiclass(item) for item in items]
+            self._multiclass_tables(name, rows)
+        return rows
 
     # -- ROC queries ----------------------------------------------------------------------
 
@@ -250,7 +265,7 @@ class Evaluating(EvaluatingModes):
         return roc_integral(*self._sample(self._item(dataset, title), iClass, type))
 
     def GetROCCurve(self, dataset: Any, title: Any = None, *args: Any) -> Any:
-        """``Factory::GetROCCurve``: the curve as a ``TGraph`` - or, for a loader, every method's."""
+        """``Factory::GetROCCurve``: the curve as a ``TGraph`` - or, for a loader, every one."""
         from ..pyroot.core.graphs import TGraph
 
         if title is None or isinstance(title, bool):
@@ -287,5 +302,5 @@ class Evaluating(EvaluatingModes):
             graph.Draw("AL" if position == 0 else "L")
             legend.AddEntry(graph, item.method.name, "l")
         legend.Draw()
-        canvas._tmva_legend = legend
+        canvas._tmva_legend = legend  # type: ignore[attr-defined]
         return canvas

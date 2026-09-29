@@ -80,7 +80,7 @@ class Factory(Training, Evaluating):
     """``TMVA::Factory(jobName, outputFile, options)`` - or ``(jobName, options)``, with no file."""
 
     def __init__(self, job: Any, *args: Any) -> None:
-        target, options = (None, args[0]) if len(args) == 1 else ((args + (None, ""))[:2])
+        target, options = (None, args[0]) if len(args) == 1 else (*args, None, "")[:2]
         if isinstance(target, str):
             target, options = None, target
         self.job = str(job)

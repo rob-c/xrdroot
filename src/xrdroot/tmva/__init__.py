@@ -22,7 +22,6 @@ from __future__ import annotations
 from typing import Any
 
 from .crossval import CrossValidation
-from .rbdt import RBDT, SaveXGBoost
 from .envelope import Classification
 from .experimental import Compute, RReader, RStandardScaler
 from .factory import Factory
@@ -31,9 +30,10 @@ from .loader import DataLoader
 from .log import Config, TMVAError
 from .methods.category import MethodCategory
 from .methods.cuts import MethodCuts
+from .rbdt import RBDT, SaveXGBoost
 from .reader import Reader
-from .tools import Tools, gConfig, gTools
 from .tensor import AsTensor, MemoryLayout, RTensor
+from .tools import Tools, gConfig, gTools
 from .types import Types
 
 __all__ = [

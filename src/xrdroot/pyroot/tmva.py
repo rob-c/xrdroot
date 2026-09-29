@@ -1,4 +1,4 @@
-"""TMVA under ``import ROOT``: ``ROOT.TMVA.Factory``, ``ROOT.TMVA.Types.kBDT``, ``ROOT.TMVA.Reader``.
+"""TMVA under ``import ROOT``: ``ROOT.TMVA.Factory``, ``ROOT.TMVA.Types.kBDT``, the ``Reader``.
 
 ``ROOT.TMVA`` is a namespace of :mod:`xrdroot.tmva`'s classes by TMVA's
 names - the engine speaks TMVA's API already, so this only gathers it, as

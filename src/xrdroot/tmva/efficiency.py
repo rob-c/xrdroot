@@ -42,22 +42,36 @@ class Spline1:
         return spline1(self.x, self.y, np.asarray(x, dtype=np.float64))
 
 
-def _brent_step(a: float, b: float, c: float, fa: float, fb: float, fc: float, state: Any) -> Any:
-    """One step of ``RootFinder::Root``: the next step, by interpolation or by bisection."""
-    tol, m, d, e, same = state
+def _brent_step(
+    fa: float, fb: float, tol: float, m: float, d: float, e: float
+) -> tuple[float, float]:
+    """One step of ``RootFinder::Root``: the secant's, if it is small enough, or bisection.
+
+    TMVA's ``ac_equal`` is set on the first pass and never cleared, so the
+    inverse quadratic interpolation it guards is never taken: every
+    interpolation TMVA makes is the secant's, and so is every one here.
+    """
     if abs(e) < tol or abs(fa) <= abs(fb):
         return m, m
     s = fb / fa
-    if same:
-        p, q = 2 * m * s, 1 - s
-    else:
-        q, r = fa / fc, fb / fc
-        p = s * (2 * m * q * (q - r) - (b - a) * (r - 1))
-        q = (q - 1) * (r - 1) * (s - 1)
+    p, q = 2 * m * s, 1 - s
     q, p = (-q, p) if p > 0 else (q, -p)
     if 2 * p < min(3 * m * q - abs(tol * q), abs(e * q)):
         return p / q, d
     return m, m
+
+
+def _rename(
+    a: float, b: float, c: float, fa: float, fb: float, fc: float, d: float, e: float
+) -> tuple[float, float, float, float, float, float, float, float]:
+    """The start of each pass: ``c`` made to bracket the root with ``b``, ``b`` the better end."""
+    if (fb < 0 and fc < 0) or (fb > 0 and fc > 0):
+        c, fc = a, fa
+        d = e = b - a
+    if abs(fc) < abs(fb):
+        a, b, c = b, c, b
+        fa, fb, fc = fb, fc, fb
+    return a, b, c, fa, fb, fc, d, e
 
 
 def root(function: Callable[[float], float], low: float, high: float, target: float) -> float:
@@ -65,28 +79,21 @@ def root(function: Callable[[float], float], low: float, high: float, target: fl
 
     With no change of sign between the ends, TMVA warns and answers 1.
     """
-    a, b = low, high
+    a, b = float(low), float(high)
     fa, fb = function(a) - target, function(b) - target
     if fb * fa > 0:
         Logger("RootFinder").warning(
             f"<Root> initial interval w/o root: (a={a:g}, b={b:g}), refValue = {target:g}"
         )
         return 1.0
-    fc, c, d, e = fb, 0.0, 0.0, 0.0
-    same = False
+    c, fc, d, e = 0.0, fb, 0.0, 0.0
     for _ in range(101):
-        if (fb < 0 and fc < 0) or (fb > 0 and fc > 0):
-            same, c, fc = True, a, fa
-            d = e = b - a
-        if abs(fc) < abs(fb):
-            same = True
-            a, b, c = b, c, b
-            fa, fb, fc = fb, fc, fb
+        a, b, c, fa, fb, fc, d, e = _rename(a, b, c, fa, fb, fc, d, e)
         tol = 0.5 * 2.2204460492503131e-16 * abs(b)
         m = 0.5 * (c - b)
         if fb == 0 or abs(m) <= tol:
             return b
-        d, e = _brent_step(a, b, c, fa, fb, fc, (tol, m, d, e, same))
+        d, e = _brent_step(fa, fb, tol, m, d, e)
         a, fa = b, fb
         b += d if abs(d) > tol else (tol if m > 0 else -tol)
         fb = function(b) - target

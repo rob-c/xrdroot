@@ -18,7 +18,7 @@ from typing import Any
 import numpy as np
 
 from ..hist import Histogram
-from . import hists
+from . import hists, libcxxsort
 from .pdf import PDF, PDFSettings
 
 __all__ = [
@@ -57,7 +57,7 @@ def compute_stat(values: Any, signal: Any, weights: Any) -> tuple[float, ...]:
 
 
 def norm_hist(histogram: Histogram, norm: float = 1.0) -> float:
-    """``Tools::NormHist``: scaled so that its area - sum of weights times bin width - is ``norm``."""
+    """``Tools::NormHist``: scaled so that its area - weights times bin width - is ``norm``."""
     histogram.sumw2(True)
     total = float(np.sum(hists.bins(histogram)[1:-1]))
     if total == 0:
@@ -122,10 +122,49 @@ class ClassifierTest:
         return separation(self.pdf_s, self.pdf_b)
 
 
+#: What a method with output densities has histogrammed beside its output, and the suffix.
+EXTRAS = (("proba", "_Proba"), ("rarity", "_Rarity"))
+
+
 def _book(name: str, nbins: int, low: float, high: float) -> Histogram:
     made = hists.book(name, name, nbins, low, high, kind="D")
     made.sumw2(True)
     return made
+
+
+def _output_histograms(
+    testvar: str, low: float, top: float, asked: list[tuple[str, str]]
+) -> dict[str, Histogram]:
+    """The histograms of a classifier's test output, coarse and fine, and of what else was asked."""
+    specs = [
+        ("MVA_S", "_S", NBINS_MVA_OUTPUT, low, top),
+        ("MVA_B", "_B", NBINS_MVA_OUTPUT, low, top),
+        ("MVA_HIGHBIN_S", "_S_high", NBINS_HIGH, low, top),
+        ("MVA_HIGHBIN_B", "_B_high", NBINS_HIGH, low, top),
+    ]
+    specs += [
+        (f"{kind}_{side}", f"{name}_{side}", 40, 0.0, 1.0) for kind, name in asked for side in "SB"
+    ]
+    return {key: _book(testvar + suffix, nbins, a, b) for key, suffix, nbins, a, b in specs}
+
+
+def _described(values: Any, signal: Any, weights: Any) -> ClassifierTest:
+    """The output's statistics, and its range clipped to ten standard deviations of either class."""
+    mean_s, mean_b, rms_s, rms_b, low, high = compute_stat(values, signal, weights)
+    low = max(min(mean_s - 10 * rms_s, mean_b - 10 * rms_b), low)
+    high = min(max(mean_s + 10 * rms_s, mean_b + 10 * rms_b), high)
+    return ClassifierTest(mean_s, mean_b, rms_s, rms_b, low, high, mean_s > mean_b)
+
+
+def _fill_normalised(
+    histograms: dict[str, Histogram], sources: dict[str, Any], signal: Any, weights: Any
+) -> None:
+    """Each source's signal and background events filled into its two histograms, then normed."""
+    for side, mask in (("S", signal), ("B", ~signal)):
+        for source, data in sources.items():
+            histograms[f"{source}_{side}"].fill(np.asarray(data)[mask], weight=weights[mask])
+    for histogram in histograms.values():
+        norm_hist(histogram)
 
 
 def test_classification(
@@ -138,29 +177,12 @@ def test_classification(
     """
     values = np.asarray(values, dtype=np.float32).astype(np.float64)
     weights = np.asarray(weights, dtype=np.float32).astype(np.float64)
-    mean_s, mean_b, rms_s, rms_b, low, high = compute_stat(values, signal, weights)
-    low = max(min(mean_s - 10 * rms_s, mean_b - 10 * rms_b), low)
-    high = min(max(mean_s + 10 * rms_s, mean_b + 10 * rms_b), high)
-    top = high + 0.00001
-    made = ClassifierTest(mean_s, mean_b, rms_s, rms_b, low, high, mean_s > mean_b)
-    specs = {"MVA_S": ("_S", NBINS_MVA_OUTPUT), "MVA_B": ("_B", NBINS_MVA_OUTPUT)}
-    specs.update(
-        {"MVA_HIGHBIN_S": ("_S_high", NBINS_HIGH), "MVA_HIGHBIN_B": ("_B_high", NBINS_HIGH)}
-    )
-    for key, (suffix, nbins) in specs.items():
-        made.histograms[key] = _book(testvar + suffix, nbins, low, top)
-    for kind, name in (("proba", "_Proba"), ("rarity", "_Rarity")):
-        if extra and kind in extra:
-            for side in "SB":
-                made.histograms[f"{kind}_{side}"] = _book(f"{testvar}{name}_{side}", 40, 0.0, 1.0)
-    for side, mask in (("S", signal), ("B", ~signal)):
-        for key in (f"MVA_{side}", f"MVA_HIGHBIN_{side}"):
-            made.histograms[key].fill(values[mask], weight=weights[mask])
-        for kind in ("proba", "rarity"):
-            if extra and kind in extra:
-                made.histograms[f"{kind}_{side}"].fill(extra[kind][mask], weight=weights[mask])
-    for histogram in made.histograms.values():
-        norm_hist(histogram)
+    made = _described(values, signal, weights)
+    given = extra or {}
+    asked = [(kind, name) for kind, name in EXTRAS if kind in given]
+    made.histograms = _output_histograms(testvar, made.xmin, made.xmax + 0.00001, asked)
+    sources = {"MVA": values, "MVA_HIGHBIN": values, **{kind: given[kind] for kind, _ in asked}}
+    _fill_normalised(made.histograms, sources, signal, weights)
     spec = PDFSettings(nsmooth=0, min_nsmooth=0, max_nsmooth=0)
     made.pdf_s = PDF(" PDF Sig", spec).build(made.histograms["MVA_S"])
     made.pdf_b = PDF(" PDF Bkg", spec).build(made.histograms["MVA_B"])
@@ -169,7 +191,7 @@ def test_classification(
 
 def _rates(values: Any, signal: Any, weights: Any) -> tuple[Any, Any]:
     """``ROCCurve::ComputeSensitivity`` and ``ComputeSpecificity``, over every output value."""
-    order = np.argsort(np.asarray(values, dtype=np.float32), kind="stable")
+    order = libcxxsort.order(np.asarray(values, dtype=np.float32))
     weights = np.asarray(weights, dtype=np.float32).astype(np.float64)[order]
     signal = np.asarray(signal, dtype=bool)[order]
     negatives = np.cumsum(np.where(signal, 0.0, weights))

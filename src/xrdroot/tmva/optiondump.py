@@ -41,7 +41,8 @@ BASE_OPTIONS = (
     ),
 )
 #: ``MethodDL``'s own options.
-DL_OPTIONS = BASE_OPTIONS + (
+DL_OPTIONS = (
+    *BASE_OPTIONS,
     ("InputLayout", "0|0|0", "The Layout of the input"),
     ("BatchLayout", "0|0|0", "The Layout of the batch"),
     ("Layout", "DENSE|(N+100)*2|SOFTSIGN,DENSE|0|LINEAR", "Layout of the network."),

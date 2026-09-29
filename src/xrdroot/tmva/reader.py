@@ -18,6 +18,7 @@ import numpy as np
 from .dataset import DataSetInfo, Events
 from .log import CONFIG, Logger
 from .method import MULTICLASS, REGRESSION, Method
+from .methods.cuts import MethodCuts
 from .options import Options
 from .tools import CxxVector
 from .variables import VariableInfo
@@ -117,7 +118,7 @@ class Reader:
         """``EvaluateMVA(tag, aux=0)``, or ``(values, tag, aux)``: the method's output."""
         values, tag, rest = self._split(arguments)
         method = self._method(tag)
-        if method.type_name == "Cuts":
+        if isinstance(method, MethodCuts):
             method.test_signal_eff = float(rest[0]) if rest else -1.0
         events = self._event(values)
         output = float(np.ravel(method.mva(events))[0])

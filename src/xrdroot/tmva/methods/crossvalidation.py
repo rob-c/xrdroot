@@ -11,7 +11,7 @@ weight file only names them, so a reader needs the fold files beside it.
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -27,7 +27,7 @@ class MethodCrossValidation(Method):
 
     type_name = "CrossValidation"
     analyses = frozenset({CLASSIFICATION, REGRESSION, MULTICLASS})
-    defaults = {
+    defaults: ClassVar[dict[str, Any]] = {
         "EncapsulatedMethodName": "",
         "EncapsulatedMethodTypeName": "",
         "NumFolds": 2,
@@ -64,6 +64,9 @@ class MethodCrossValidation(Method):
         for fold in range(self.nfolds):
             path = self.fold_file(fold)
             self.log.info(f"Reading weightfile: {path}")
+            if not os.path.exists(path):
+                # As ``ReadStateFromFile`` says of it: a fold whose method was never trained.
+                raise self.log.fatal(f"Unable to open input weight file: {path}")
             self.folds.append(read_method(path, self.dsi, self.job, self.log))
 
     def booked(self) -> None:

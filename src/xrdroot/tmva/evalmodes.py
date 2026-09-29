@@ -216,16 +216,19 @@ def _confusion_tables(log: Logger, rows: list[dict[str, Any]]) -> None:
             # TMVA hands its printer the testing matrix as the training one and the other way
             # round, so what it heads "test (train)" is the training sample's, then the testing's.
             test, train = row["matrices"][("train", level)], row["matrices"][("test", level)]
-            log.info(f" {' ':<14}" + "".join(f" {name:<14}" for name in names))
-            log.info(f" {' ':<14}" + "".join(f" {' test (train)':<14}" for _ in names))
-            for i, own in enumerate(names):
-                cells = [
-                    f" {'-':<14}"
-                    if i == j
-                    else f" {f'{test[i, j]:<5.3f} ({train[i, j]:<5.3f})':<14}"
-                    for j in range(len(names))
-                ]
-                log.info(f" {own:<14}" + "".join(cells))
+            _confusion_matrix(log, names, test, train)
             log.info("")
     log.info(MULTI_LINE)
     log.info("")
+
+
+def _confusion_matrix(log: Logger, names: list[str], test: Any, train: Any) -> None:
+    """One confusion matrix: a row per class taken as signal, ``test (train)`` in each cell."""
+    log.info(f" {' ':<14}" + "".join(f" {name:<14}" for name in names))
+    log.info(f" {' ':<14}" + "".join(f" {' test (train)':<14}" for _ in names))
+    for i, own in enumerate(names):
+        cells = [
+            f" {'-':<14}" if i == j else f" {f'{test[i, j]:<5.3f} ({train[i, j]:<5.3f})':<14}"
+            for j in range(len(names))
+        ]
+        log.info(f" {own:<14}" + "".join(cells))

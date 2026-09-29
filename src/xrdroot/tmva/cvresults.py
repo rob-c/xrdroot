@@ -163,6 +163,37 @@ def _named_split(expression: str, spectators: list[Any], folds: int, values: Any
     return np.rint(np.asarray(function(columns), dtype=np.float64)).astype(np.int64)
 
 
+def _split_by_expression(
+    events: Any, spectators: list[Any], folds: int, expression: str
+) -> list[Any]:
+    """Each event to the fold its expression names, in the sample's order."""
+    found = np.broadcast_to(
+        _named_split(expression, spectators, folds, np.asarray(events.spectators)), (len(events),)
+    )
+    if np.any((found < 0) | (found >= folds)):
+        raise Logger("CvSplit").fatal(
+            "Output of splitExpr should be a non-negativeinteger between 0 and numFolds-1 "
+            "inclusive."
+        )
+    return [np.flatnonzero(found == fold).astype(np.int64) for fold in range(folds)]
+
+
+def _groups(events: Any, stratified: bool, seed: int) -> list[list[int]]:
+    """The events drawn into folds together: all of them, or - stratified - each class, shuffled."""
+    from .shuffle import RandomGenerator, shuffle
+
+    count = len(events)
+    if not stratified:
+        return [list(range(count))]
+    groups = [
+        [int(i) for i in np.flatnonzero(events.classes == cls)]
+        for cls in range(int(events.classes.max()) + 1 if count else 0)
+    ]
+    for members in groups:
+        shuffle(members, RandomGenerator(seed))
+    return groups
+
+
 def split_folds(
     events: Any,
     spectators: list[Any],
@@ -180,29 +211,10 @@ def split_folds(
     """
     from .shuffle import RandomGenerator, shuffle
 
-    count = len(events)
-    made: list[list[int]] = [[] for _ in range(folds)]
     if expression:
-        found = np.broadcast_to(
-            _named_split(expression, spectators, folds, np.asarray(events.spectators)), (count,)
-        )
-        if np.any((found < 0) | (found >= folds)):
-            raise Logger("CvSplit").fatal(
-                "Output of splitExpr should be a non-negativeinteger between 0 and numFolds-1 "
-                "inclusive."
-            )
-        for index, fold in enumerate(found):
-            made[int(fold)].append(index)
-        return [np.asarray(members, dtype=np.int64) for members in made]
-    groups = [list(range(count))]
-    if stratified:
-        groups = [
-            [int(i) for i in np.flatnonzero(events.classes == cls)]
-            for cls in range(int(events.classes.max()) + 1 if count else 0)
-        ]
-        for members in groups:
-            shuffle(members, RandomGenerator(seed))
-    for members in groups:
+        return _split_by_expression(events, spectators, folds, expression)
+    made: list[list[int]] = [[] for _ in range(folds)]
+    for members in _groups(events, stratified, seed):
         mapping = [i % folds for i in range(len(members))]
         shuffle(mapping, RandomGenerator(seed))
         for event, fold in zip(members, mapping):

@@ -8,9 +8,8 @@ import pytest
 
 import xrdroot
 import xrdroot.pyroot as ROOT
-from xrdroot.tmva import TMVAError
-
 from tmvasupport import classify, loader, session, weights
+from xrdroot.tmva import TMVAError
 
 __all__ = ["session"]
 
