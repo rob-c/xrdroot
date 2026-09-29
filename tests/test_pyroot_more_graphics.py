@@ -30,3 +30,25 @@ def test_a_stack_of_paves_is_drawn_behind_its_text(tmp_path: Any) -> None:
     paves.SetNpaves(2)
     expect((paves.GetNpaves(), 2), (paves.members["fBorderSize"], 1),
            (ROOT.TPavesText().ClassName(), "TPavesText"))  # fmt: skip
+
+
+def test_a_colour_with_an_opacity_is_one_of_its_own_found_again_by_both() -> None:
+    see_through = ROOT.TColor.GetColor(0.25, 0.25, 0.25, 0.55)
+    again = ROOT.TColor.GetColor(0.25, 0.25, 0.25, 0.55)
+    opaque = ROOT.TColor.GetColor(0.25, 0.25, 0.25, 1.0)
+    expect((again, see_through), (opaque != see_through, True),
+           (ROOT.gROOT.GetColor(see_through).GetAlpha(), 0.55))  # fmt: skip
+
+
+def test_a_canvas_says_it_is_drawn_without_opengl_whatever_the_style_prefers() -> None:
+    ROOT.gStyle.SetCanvasPreferGL(True)
+    canvas = ROOT.TCanvas("c", "c", 100, 100)
+    expect((ROOT.gStyle.GetCanvasPreferGL(), True), (canvas.UseGL(), False),
+           (canvas.IsWeb(), False))  # fmt: skip
+    ROOT.gStyle.SetCanvasPreferGL(False)
+
+
+def test_groot_finds_a_colour_made_or_roots_own_and_none_for_one_not_there() -> None:
+    red = ROOT.gROOT.GetColor(2)
+    expect((red.GetRed(), 1.0), (red.GetNumber(), 2), (ROOT.gROOT.GetColor(2), red),
+           (ROOT.gROOT.GetColor(99999), None))  # fmt: skip

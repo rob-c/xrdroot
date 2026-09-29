@@ -173,28 +173,42 @@ def _closest(rgb: RGB) -> int | None:
     """The index of a colour already defined as ``rgb`` to 255ths, or ``None``."""
     target = tuple(round(c * 255) for c in rgb)
     for index in sorted(set(COLORS) | set(MADE)):
-        if tuple(round(c * 255) for c in rgb_of(index)) == target:
+        opaque = ALPHA.get(index, 1.0) == 1.0  # one made see-through is not this colour
+        if opaque and tuple(round(c * 255) for c in rgb_of(index)) == target:
             return index
     return None
 
 
 def _get_color(*args: Any) -> int:
-    """``TColor::GetColor``: the index of a colour, made if no colour is it yet."""
+    """``TColor::GetColor``: the index of a colour, made if no colour is it yet.
+
+    A fourth number is its opacity, which a colour already made must share
+    to be the one found, as ROOT's search asks.
+    """
     if len(args) == 1:
         text = str(args[0])
         if not text.startswith("#") or len(text) != 7:
             raise ValueError(f"a colour by name is '#rrggbb', which {text!r} is not")
         rgb = _hex_rgb(text)
-    elif len(args) == 3:
+    elif len(args) in (3, 4):
         rgb = (_channel(args[0]), _channel(args[1]), _channel(args[2]))
     else:
         raise TypeError(
-            f"TColor::GetColor takes '#rrggbb' or red, green and blue, not {len(args)} arguments"
+            f"TColor::GetColor takes '#rrggbb', or red, green and blue and perhaps an opacity, "
+            f"not {len(args)} arguments"
         )
-    found = _closest(rgb)
+    alpha = min(max(float(args[3]), 0.0), 1.0) if len(args) == 4 else 1.0
+    found = _closest(rgb) if alpha == 1.0 else _closest_alpha(rgb, alpha)
     if found is not None:
         return found
-    return TColor(free_index(), *rgb).GetNumber()
+    return TColor(free_index(), *rgb, a=alpha).GetNumber()
+
+
+def _closest_alpha(rgb: RGB, alpha: float) -> int | None:
+    """A colour made with this opacity and ``rgb`` to 255ths, or ``None``."""
+    target = tuple(round(c * 255) for c in rgb)
+    return next((index for index in sorted(MADE) if ALPHA.get(index) == alpha
+                 and tuple(round(c * 255) for c in rgb_of(index)) == target), None)  # fmt: skip
 
 
 class TColor:
@@ -313,3 +327,15 @@ class TColor:
         from .style import gStyle
 
         return int(gStyle.GetNumberOfColors())
+
+def color_object(index: Any) -> TColor | None:
+    """``gROOT->GetColor(n)``: colour ``n`` as a ``TColor`` - one made, or one of ROOT's own -
+    or ``None`` for an index no colour has."""
+    number = int(index)
+    if number not in OBJECTS and (number in MADE or number in COLORS):
+        seen = TColor.__new__(TColor)
+        seen._number, seen._name = number, f"Color{number}"
+        OBJECTS[number] = seen
+    return OBJECTS.get(number)
+
+

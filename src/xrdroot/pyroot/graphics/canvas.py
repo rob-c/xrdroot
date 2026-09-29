@@ -61,6 +61,14 @@ class TCanvas(TPad):
         CANVASES.append(self)
         set_current(self)
 
+    def UseGL(self) -> bool:
+        """``UseGL``: false - pads here are drawn without OpenGL, as ROOT's are in batch."""
+        return False
+
+    def IsWeb(self) -> bool:
+        """``IsWeb``: false - no canvas here is shown in a browser."""
+        return False
+
     def GetWw(self) -> int:
         return int(self.members["fCw"])
 

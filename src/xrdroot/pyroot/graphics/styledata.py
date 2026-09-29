@@ -33,6 +33,8 @@ FIELDS: dict[str, Any] = {
     "FuncColor": 2, "FuncStyle": 1, "FuncWidth": 2,
     "GridColor": 0, "GridStyle": 3, "GridWidth": 1,
     "LegendBorderSize": 1, "LegendFillColor": 0, "LegendFont": 42, "LegendTextSize": 0.0,
+    # Kept to be asked back: with no OpenGL - as for ROOT in batch - pads draw without it.
+    "CanvasPreferGL": False,
     "LineColor": 1, "LineStyle": 1, "LineWidth": 1, "FillColor": 19, "FillStyle": 1001,
     "MarkerColor": 1, "MarkerStyle": 1, "MarkerSize": 1.0,
     "TextColor": 1, "TextFont": 62, "TextSize": 0.05, "TextAlign": 11, "TextAngle": 0.0,

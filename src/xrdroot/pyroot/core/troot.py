@@ -162,6 +162,11 @@ class TROOT(TDirectory):
     def GetListOfGeometries(self) -> TList:
         return self._listed("Geometries")
 
+    def GetColor(self, index: Any) -> Any:
+        """``GetColor(n)``: the graphics' ``TColor`` of index ``n``, or ``None``."""
+        found = _graphics("colors", "color_object")
+        return None if found is None else found(index)
+
     def GetListOfColors(self) -> TList:
         return self._listed("Colors")
 
