@@ -81,10 +81,15 @@ class Operations:
     # -- copies ---------------------------------------------------------------------------
 
     def Clone(self, newname: str = "") -> Any:
-        """``Clone``: the same histogram, sharing nothing, kept in the current directory."""
+        """``Clone``: the same histogram, sharing nothing, kept in the current directory.
+
+        It is kept beside the original of the same name, not in its place, and
+        without a word: ``TH1::Copy`` appends it as ``TDirectory::Append`` does
+        unless told to replace, and ``FindObject`` still finds the first.
+        """
         made = wrap(self._xrd.copy(str(newname) if newname else None))
         if made._add_directory[0]:
-            current_directory().Append(made, True)
+            current_directory().Append(made, False)
         return made
 
     def Copy(self, obj: Any) -> None:

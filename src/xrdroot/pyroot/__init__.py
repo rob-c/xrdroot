@@ -35,6 +35,7 @@ SUBMODULES = [
     "trees",
     "rdf",
     "graphics",
+    "graphics.ratioplot",
     "roofit",
     "tcut",
     "tmva",

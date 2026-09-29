@@ -112,7 +112,8 @@ def _histogram_extent(h: Histogram, option: str, log: bool) -> Extent:
     """A histogram's frame: its axes' ranges, and in one dimension the bins' heights round them.
 
     Error bars, drawn or implied by weights, reach the frame too, as
-    ``THistPainter`` counts them.
+    ``THistPainter`` counts them - but not for a histogram drawn ``HIST``,
+    which draws none.
     """
     (xlow, xhigh) = _ends(h, 0)
     if len(h.axes) > 1:
@@ -120,7 +121,8 @@ def _histogram_extent(h: Histogram, option: str, log: bool) -> Extent:
         return xlow, ylow, xhigh, yhigh
     first, last = shown_bins(h)
     values, errors = h.values()[first:last], h.errors()[first:last]
-    if histogram_option(option) & ERRORS or h.weighted:
+    words = histogram_option(option)
+    if words & ERRORS or (h.weighted and "HIST" not in words):
         values = np.concatenate([values - errors, values + errors])
     low, high = _histogram_y(values, log)
     return xlow, _limit(h, "fMinimum", low), xhigh, _limit(h, "fMaximum", high)

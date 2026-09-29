@@ -57,13 +57,16 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
     CLASS_TITLE = "Graph graphics class"
 
     def __init__(self, *args: Any) -> None:
-        TNamed.__init__(self, "Graph", "Graph")
+        # ROOT's default constructor leaves the name and title empty; the others name it "Graph".
+        TNamed.__init__(self, *(("Graph", "Graph") if args else ("", "")))
         self._points = np.zeros(0), np.zeros(0)
         self._bars = {key: np.zeros(0) for key in ERRORS[self._root_class()]}
         self._functions: list[Any] = []
         self._extremes = [-1111.0, -1111.0]
         self._histogram: Any = None
         self._cached: Any = None
+        # ROOT's graphs are made with TAttFill(0, 1000): no colour, but a solid fill once given one.
+        self.__dict__["_atts"] = {"TAttFill": {"fFillColor": 0, "fFillStyle": 1000}}
         self._construct(args)
 
     def _root_class(self) -> str:

@@ -97,11 +97,22 @@ def _line(points: Scatter, request: Request) -> list[Any]:
     return [Curve(points.x, points.y, points.look, smooth=chosen.has("C"))]
 
 
+def _has_errors(points: Scatter) -> bool:
+    return bool(points.layers) or bool(np.any(points.xlow) or np.any(points.xhigh))
+
+
 def _markers(points: Scatter, request: Request) -> list[Any]:
-    """The points, with a set of bars per layer unless ``X`` asks for none."""
+    """The points, with a set of bars per layer unless ``X`` asks for none.
+
+    A graph with errors has its bars drawn whether or not its markers are,
+    as ``TGraphPainter::PaintGraphErrors`` draws them - unless its errors are a
+    band (``3``, ``4``) instead.
+    """
     chosen = request.chosen
     if not chosen.has("P", "*"):
-        return []
+        if chosen.has("X", "3", "4") or not _has_errors(points):
+            return []
+        points = points._replace(look=points.look._replace(marker=None))
     zeros = np.zeros_like(points.x)
     layers = points.layers if points.layers and not chosen.has("X") else ((zeros, zeros),)
     xlow, xhigh = (zeros, zeros) if chosen.has("X") else (points.xlow, points.xhigh)
