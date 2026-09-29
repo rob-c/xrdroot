@@ -2,7 +2,8 @@
 
 ``n`` events of ``mu s + nu b`` with ``nu`` constrained by a Gaussian of its
 global observable ``nom``: the numbers are ROOT 6.40's for the same model -
-to the last bit, each model made afresh.
+to the last bit on ROOT's machine, each model made afresh, and elsewhere to
+``PROFILE_REL`` (:mod:`refmachine` says why).
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from typing import Any
 import pytest
 
 import xrdroot.pyroot as ROOT
+from refmachine import PROFILE_REL, roots
 from roostatsmodels import counting
 from xrdroot.roofit.messages import service
 from xrdroot.roostats import asymptotic
@@ -33,8 +35,8 @@ def test_a_discovery_test_gives_roots_p_values_to_the_bit(capsys: Any) -> None:
     _, data, sb, b = counting()
     calc = ROOT.RooStats.AsymptoticCalculator(data, sb, b)
     result = calc.GetHypoTest()
-    assert (result.NullPValue(), result.AlternatePValue(), result.CLs()) == (
-        0.1323978114646034, 0.49999163636481636, 3.776434299282125)  # fmt: skip
+    assert (result.NullPValue(), result.AlternatePValue(), result.CLs()) == roots(
+        (0.1323978114646034, 0.49999163636481636, 3.776434299282125), rel=PROFILE_REL)  # fmt: skip
     assert calc.IsOneSidedDiscovery() and not calc.IsTwoSided()
     out = capsys.readouterr().out
     assert "[#0] PROGRESS:Eval -- Best fitted POI value = 1 +/- 0.981559\n" in out
@@ -50,7 +52,7 @@ def test_a_limit_test_uses_qtilde_and_zeroes_q_above_the_fit(capsys: Any) -> Non
     calc.SetOneSided(True)
     result = calc.GetHypoTest()
     assert result.NullPValue() == 0.5
-    assert result.AlternatePValue() == 0.8528773942114782
+    assert result.AlternatePValue() == roots(0.8528773942114782, rel=PROFILE_REL)
     out = capsys.readouterr().out
     assert ("Minimum of POI is 0 corresponds to alt  snapshot   - using qtilde asymptotic "
             "formulae") in out
@@ -66,7 +68,7 @@ def test_nominal_asimov_data_keeps_the_nuisance_parameters_where_they_are() -> N
     calc.SetOneSided(True)
     calc.SetQTilde(False)
     result = calc.GetHypoTest()
-    assert result.AlternatePValue() == 0.8602865572138911
+    assert result.AlternatePValue() == roots(0.8602865572138911, rel=PROFILE_REL)
     assert w.var("nom").getVal() == 1.0
     asimov = calc.GetAsimovData()
     assert asimov.GetName() == "CountingAsimovData0" and asimov.numEntries() == 1

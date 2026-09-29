@@ -25,7 +25,7 @@ from typing import Any
 
 import pytest
 
-__all__ = ["FIT_REL", "ROOTS_MACHINE", "roots"]
+__all__ = ["FIT_REL", "PROFILE_REL", "ROOTS_MACHINE", "roots"]
 
 #: Whether this is the kind of machine the references were printed on - which
 #: ``XRDROOT_TEST_OTHER_MACHINE=1`` denies, to try the tolerances where it is.
@@ -42,6 +42,16 @@ ROOTS_MACHINE = (
 #: a likelihood an ulp away - or Minuit2's own arithmetic fused differently - moves it by
 #: that: the fits seen off ROOT's machine differ by up to 1.8e-8.
 FIT_REL = 1e-8 if ROOTS_MACHINE else 1e-7
+
+#: How close a number made from a minimised likelihood - the minimum itself, a profile's
+#: value, ``q = 2 ΔNLL`` and the p-values, CLs and limits made from it - is to ROOT's off
+#: ROOT's machine. There the likelihood is a few ulps away (glibc's ``lgamma(9)`` and ``erf``
+#: round otherwise than Apple's), so MIGRAD walks another path and stops at another point
+#: within its EDM of the minimum - 3e-13 on the counting model - and the minimum's value, flat
+#: to first order, moves by about that: the p-values and limits seen move by up to 1e-11 of
+#: themselves, the profile's value by 1e-12. 1e-9 leaves a hundredfold margin, and is still
+#: a millionth of the smallest change a formula or a fit gone wrong would make.
+PROFILE_REL = 1e-9
 
 
 def roots(expected: Any, **tolerance: float) -> Any:
