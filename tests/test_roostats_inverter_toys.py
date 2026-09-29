@@ -400,3 +400,103 @@ def test_the_expected_plot_leaves_out_a_point_with_no_expected_p_values() -> Non
         r.Add(x, HypoTestResult("p", p, 0.5))
     bands = ROOT.RooStats.HypoTestInverterPlot(r).MakeExpectedPlot()
     assert bands.GetListOfGraphs().At(2).GetN() == 1
+
+
+def test_the_inverter_is_made_from_models_or_calculators_and_checks_them(capsys: Any) -> None:
+    """Each calculator made from the models, the scanned variable guessed, the models checked."""
+    from xrdroot.roostats import inverter as inv
+
+    w, sb, b = models()
+    data = ROOT.RooDataSet("d", "d", ROOT.RooArgSet(w.var("x")))
+    data.add(ROOT.RooArgSet(w.var("x")))
+    kinds = []
+    for kind in (inv.kFrequentist, inv.kHybrid):
+        made = ROOT.RooStats.HypoTestInverter(data, sb, b, None, kind)
+        kinds.append((made._kind, type(made.GetHypoTestCalculator()).__name__))
+    assert kinds == [(2, "FrequentistCalculator"), (1, "HybridCalculator")]
+    none = ROOT.RooStats.HypoTestInverter(data, sb, b, None, inv.kUndefined)
+    assert none.GetHypoTestCalculator() is None and none.GetTestStatistic() is None
+    assert not none.SetTestStatistic("s")
+    none.SetData(data)
+    assert ROOT.RooStats.HypoTestInverter()._calc is None
+    w.var("mu").setVal(1)
+    b.SetSnapshot(ROOT.RooArgSet(w.var("mu")))
+    ROOT.RooStats.HypoTestInverter(HypoTestCalculatorGeneric(data, sb, b))
+    out = capsys.readouterr().out
+    assert "HypoTestInverter - Cannot guess the variable to scan " in out
+    assert "HypoTestInverter - Type of hypotest calculator is not supported " in out
+    assert "using a B model  with POI mu not equal to zero  user must check input" in out
+
+
+def test_the_scanned_variable_is_the_alternates_if_the_null_has_none(capsys: Any) -> None:
+    from xrdroot.roostats import inverter as inv
+
+    w, sb, b = models()
+    empty = ROOT.RooStats.ModelConfig("empty", w)
+    calc = FrequentistCalculator(empty, b)
+    assert inv.variable_to_scan(calc).GetName() == "mu"
+    assert inv.variable_to_scan(FrequentistCalculator(empty, empty)) is None
+    inv.check_input_models(FrequentistCalculator(sb, None), w.var("mu"))
+    inv.check_input_models(FrequentistCalculator(sb, empty), w.var("mu"))
+    inv.check_input_models(FrequentistCalculator(sb, b), w.var("x"))
+    out = capsys.readouterr().out
+    assert "FATAL:InputArguments -- HypoTestInverter - model are not existing" in out
+    assert "HypoTestInverter - B model has no pdf or observables defined" in out
+
+
+def test_settings_before_any_result_and_a_fixed_scan_that_fails(capsys: Any) -> None:
+    it, _ = inverter()
+    it.SetTestSize(0.1)
+    it.SetConfidenceLevel(0.9)
+    assert it._results is None
+    it.SetFixedScan(2, 3, 1)
+    it.GetInterval()
+    assert "HypoTestInverter::GetInterval - error running a fixed scan " in capsys.readouterr().out
+    bare = ROOT.RooStats.HypoTestInverter()
+    bare._var = ROOT.RooRealVar("v", "v", 0, 0, 1)
+    assert bare._create_results().GetName() == "result_v"
+
+
+def test_toy_points_with_errors_their_merges_cleanup_and_limit_distributions(capsys: Any) -> None:
+    """Eleven toys a point: the most precise point near the target, the toys per point after a
+    merge, the cleanup's quantiles of the toys, the limit distribution's minimum of ten."""
+    from xrdroot.roostats import inverterlimits as limits
+
+    it, _ = inverter(11)
+    it.SetFixedScan(4, 1, 4)
+    result = it.GetInterval()
+    assert limits.closest_point_index(result, 0.6) == 2
+    again, _ = inverter(11)
+    again.SetFixedScan(4, 1, 4)
+    result.Add(again.GetInterval())
+    assert "HypoTestInverterResult::Add  - new toys/point is 22" in capsys.readouterr().out
+    small, _ = inverter(5)
+    small.SetFixedScan(3, 1, 3)
+    assert small.GetInterval().GetUpperLimitDistribution().GetSize() == 10
+    assert "set a minimum size of 10 for limit distribution" in capsys.readouterr().out
+    eleven, _ = inverter(11)
+    eleven.SetFixedScan(4, 1, 4)
+    assert eleven.GetInterval().ExclusionCleanup() >= 0
+    forty, _ = inverter(40)
+    forty.SetFixedScan(3, 1, 3)
+    assert forty.GetInterval().ExclusionCleanup() == 0
+    assert "ExclusionCleanup - invalid size of sampling distribution" in capsys.readouterr().out
+
+
+def test_the_limit_error_fit_for_a_lower_limit_and_with_too_few_points(capsys: Any) -> None:
+    from xrdroot.roostats import inverterlimits as limits
+
+    it, _ = inverter()
+    it.SetFixedScan(5, 3.5, 3.9)
+    result = it.GetInterval()
+    result.UpperLimit()
+    assert limits.estimated_error(result, 0.05, True, 3.5, 3.9) >= 0.0
+    assert limits.estimated_error(result, 0.05, False, 3.55, 3.65) == 0.0
+    result._upper = float("nan")
+    assert limits.estimated_error(result, 0.05, False, 3.5, 3.9) == 0.0
+    result.UpperLimit()
+    assert limits.estimated_error(result, 0.05, False, 3.7, 3.9) >= 0.0
+    result.GetYError = lambda i: 0.0
+    assert limits.estimated_error(result, 0.05, False, 3.8, 3.95) == 0.0
+    assert "no valid points - cannot estimate  the upper limit error" in capsys.readouterr().out
+    assert result.FindInterpolatedLimit(0.05, False, 3.5, 3.9) == pytest.approx(3.85, abs=0.05)
