@@ -6,8 +6,6 @@ checked against ROOT's own digits."""
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from xrdroot.numerics.kronrod import qk21
@@ -45,11 +43,16 @@ def test_a_cubic_root_is_found_with_bisection_where_interpolation_is_unsafe() ->
 
 
 def test_wynns_table_filled_to_its_last_row_is_cut_back_by_one() -> None:
-    """Fifty estimates that never settle: the table keeps an even 48 rows, plus the newest."""
+    """Fifty estimates that never settle: the table keeps an even 48 rows, plus the newest.
+
+    The estimates are thirds, made by one correctly rounded division each, and Wynn's
+    table is sums and quotients of them, so its answer is the same to the bit on every
+    machine - which estimates made by ``sin``, the C library's, would not be.
+    """
     table = Table()
     for i in range(50):
-        table.append(math.sin(i * 1.7) * 10)
-    assert table.qelg() == (6.635559164849057, DBL_MAX)  # no three results yet: no error
+        table.append((-1) ** i * (1 + i % 7) / 3)
+    assert table.qelg() == (0.6089525190686361, DBL_MAX)  # no three results yet: no error
     assert table.n == 49 and table.nres == 1
 
 
