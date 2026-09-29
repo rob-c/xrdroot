@@ -35,9 +35,5 @@ def gather(size: int, rows: Any, columns: Any) -> np.ndarray[Any, np.dtype[np.in
 
 
 def ordered_sum(products: Array, axis: int = 0) -> Array:
-    """The sum along ``axis`` of ``products``, added in order from the first."""
-    if products.shape[axis] == 0:
-        shape = list(products.shape)
-        del shape[axis]
-        return np.zeros(shape)
+    """The sum along ``axis`` of ``products`` - never empty - added in order from the first."""
     return np.asarray(np.take(np.add.accumulate(products, axis=axis), -1, axis=axis))

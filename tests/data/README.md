@@ -31,6 +31,7 @@ The layouts it writes trees with were harvested the same way — from
 | `small-flat-tree.root-6.40.txt` | not a ROOT file: what ROOT 6.40.04's `TTree::Print()` and `Show(3)` print for `small-flat-tree.root`, captured from ROOT itself |
 | `spectrum-transform-6.40.txt` | not a ROOT file: what ROOT 6.40.04's `TSpectrumTransform` writes for every transform, direction and degree, and its `FilterZonal` and `Enhance`, as hex floats from `printf("%a")` |
 | `spectrum2-transform-6.40.txt` | the same for `TSpectrum2Transform` over a 4 by 8 spectrum |
+| `spectrum-6.40.txt` | not a ROOT file: `TSpectrum` and `TSpectrum2` - background, smoothing, deconvolution, unfolding, peak searches - as ROOT 6.40.04 printed them (`%.17g`) for the spectra `tests/spectrumcases.py` builds |
 | `tlv-split00.root` | the same ten of them in a `TBranchObject`, which names its class every entry |
 | `tbase.root` | two classes deriving from one base, one of them redeclaring a member of it |
 | `rvec.root` | forty-odd `ROOT::VecOps::RVec` branches, the vector an `RDataFrame` writes |

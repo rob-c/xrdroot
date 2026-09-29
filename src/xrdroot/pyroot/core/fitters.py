@@ -107,6 +107,12 @@ class TVirtualFitter(TNamed):
         return TBackCompFitter(LATEST["result"]) if LATEST["result"] is not None else None
 
     @staticmethod
+    def Fitter(obj: Any = None, maxpar: int = 25) -> Any:
+        """``TVirtualFitter::Fitter(obj, maxpar)``: the fitter, as ``GetFitter`` - where ROOT
+        would also make room for ``maxpar`` parameters, which a fit here never runs short of."""
+        return TVirtualFitter.GetFitter()
+
+    @staticmethod
     def SetDefaultFitter(name: Any = "") -> None:
         """``SetDefaultFitter``: noted; every xrdroot fit minimises with Minuit's Migrad."""
         TVirtualFitter._default = str(name) or "Minuit"

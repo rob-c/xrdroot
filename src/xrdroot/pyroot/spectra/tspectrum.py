@@ -67,7 +67,7 @@ class TSpectrum(Peaks):
         """``Background(h, nIter=20, option="")`` - a histogram of the background - or
         ``Background(spectrum, ssize, numberIterations, direction, filterOrder, smoothing,
         smoothWindow, compton)``, the background left in ``spectrum``."""
-        if args and _histogram(args[0]):
+        if args and (args[0] is None or _histogram(args[0])):
             return self._background_of(*args)
         return self._background(*args)
 
@@ -155,6 +155,8 @@ class TSpectrum(Peaks):
     # -- on histograms -----------------------------------------------------------------
 
     def _background_of(self, h: Any, nIter: int = 20, option: str = "") -> Any:
+        if h is None:
+            return None
         if h.GetDimension() != 1:
             self.Error("Background", "Only implemented for 1-d histograms")
             return None

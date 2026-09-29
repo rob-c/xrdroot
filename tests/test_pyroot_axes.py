@@ -277,3 +277,24 @@ def test_two_and_three_dimensional_profiles():
     p3 = ROOT.TProfile3D("p3", "", 1, 0, 1, 1, 0, 1, 1, 0, 1)
     p3.Fill(0.5, 0.5, 0.5, 7.0)
     assert p3.GetBinContent(1, 1, 1) == 7
+
+
+def test_set_axis_range_takes_the_bins_of_its_ends_or_past_the_axes_the_contents_range():
+    h = ROOT.TH1F("hsar", "", 10, 0, 10)
+    h.SetAxisRange(2.5, 6.5)
+    assert (h.GetXaxis().GetFirst(), h.GetXaxis().GetLast()) == (3, 7)
+    h.SetAxisRange(1, 50, "Y")
+    assert (h.GetMinimum(), h.GetMaximum()) == (1.0, 50.0)
+    h.SetAxisRange(0.5, 1.5, "w")
+    h.SetAxisRange(0.5, 1.5, "")
+    assert (h.GetXaxis().GetFirst(), h.GetXaxis().GetLast()) == (3, 7)
+    h2 = ROOT.TH2F("h2sar", "", 4, 0, 4, 8, 0, 8)
+    h2.SetAxisRange(2.5, 5.5, "y")
+    assert (h2.GetYaxis().GetFirst(), h2.GetYaxis().GetLast()) == (3, 6)
+
+
+def test_a_polyline_is_named_as_its_class_until_it_is_given_a_name():
+    marker = ROOT.TPolyMarker(2, [0.0, 1.0], [2.0, 3.0])
+    assert marker.GetName() == "TPolyMarker"
+    marker.SetName("mine")
+    assert (marker.GetName(), ROOT.TPolyLine().GetName()) == ("mine", "TPolyLine")
