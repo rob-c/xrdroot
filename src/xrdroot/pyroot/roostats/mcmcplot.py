@@ -94,15 +94,32 @@ class MCMCIntervalPlot(Named):
         """The interval: the shortest's highest bins, or the tail fraction's middle."""
         from ...roostats.mcmc import kShortest
 
-        if len(list(self._interval.GetAxes())) != 1:
-            from ...errors import UnsupportedFeatureError
-
-            raise UnsupportedFeatureError(
-                "MCMCIntervalPlot draws the interval of one parameter here; its contour of two "
-                "is not here yet"
-            )
         shortest = self._interval.GetIntervalType() == kShortest
-        self._draw_1d(str(options or ""), shortest)
+        dimension = len(list(self._interval.GetAxes()))
+        if dimension == 2 and shortest:
+            self._draw_2d(str(options or ""))
+        elif dimension == 1:
+            self._draw_1d(str(options or ""), shortest)
+        else:
+            where = "DrawHistInterval" if shortest else "DrawTailFractionInterval"
+            log(None, ERROR, "InputArguments", f"MCMCIntervalPlot::{where}:  Sorry: "
+                f"{dimension}-D plots not currently supported")  # fmt: skip
+
+    def _draw_2d(self, options: str) -> None:
+        """``DrawHistInterval`` of two parameters: the posterior's contour at the cutoff."""
+        import array
+
+        if self._posterior is None:
+            self._posterior = self._interval.GetPosteriorHist()
+        hist = self._posterior
+        hist.SetTitle(self._title if self._title else "")
+        hist.SetStats(False)
+        if "CONT2" not in options:
+            options += "CONT2"
+        hist.SetContour(1, array.array("d", [self._interval.GetHistCutoff()]))
+        hist.SetLineColor(self._line_color)
+        hist.SetLineWidth(self._line_width)
+        hist.Draw(options)
 
     def _draw_1d(self, options: str, shortest: bool) -> None:
         from ..graphics.shapes import TLine

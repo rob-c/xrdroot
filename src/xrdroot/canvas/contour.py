@@ -25,6 +25,8 @@ __all__ = ["contour_segments", "paint_contour_lines"]
 
 #: ``kMAXCONTOUR``: the most crossings a cell's edge may have noted.
 MAX_CONTOUR = 404
+#: The index of ``kBird``'s first colour, in a session that made no colours before it.
+BIRD_FIRST = 924
 #: How many times a cell's crossings may be turned about to pair them, before it is let go.
 REORDERS = 100
 
@@ -131,14 +133,16 @@ def _look_of(scene: Scene, layer: Any, level: int, count: int) -> tuple[Any, int
         shade = int((level + 0.99) * colours.N / count)
         if layer.mode == 11:
             color = colours(shade)[:3]
-        else:
-            style = shade % 5 or 5
+        else:  # the style is the palette colour's index, modulo five
+            index = scene.colors.palette[shade] if scene.colors.palette else BIRD_FIRST + shade
+            style = index % 5 or 5
     return color, width, style
 
 
 def paint_contour_lines(scene: Scene, layer: Any) -> None:
     """``CONT1``, ``CONT2`` or ``CONT3``: each level's segments, clipped to the frame."""
-    levels = levels_of(np.asarray(layer.values, float), int(layer.levels))
+    levels = list(getattr(layer, "contours", ()))
+    levels = levels or levels_of(np.asarray(layer.values, float), int(layer.levels))
     from .datapaint import pixels_of
 
     grouped: dict[tuple[Any, int, int], list[Any]] = {}

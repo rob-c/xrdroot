@@ -156,6 +156,35 @@ class Stats:
         spread = self.GetStdDev(axis1) * self.GetStdDev(axis2)
         return self.GetCovariance(axis1, axis2) / spread if spread else 0.0
 
+    # -- contours -------------------------------------------------------------------------
+
+    def SetContour(self, nlevels: int, levels: Any = None) -> None:
+        """``SetContour(n, levels)``: the levels ``CONT`` draws - those given, a user's, or
+        ``n`` evenly from the lowest content up to below the highest."""
+        self.ResetBit(1 << 10)
+        if int(nlevels) <= 0:
+            self._core()["fContour"] = np.zeros(0)
+            return
+        if levels is not None:
+            self.SetBit(1 << 10)
+            chosen = [float(levels[i]) for i in range(int(nlevels))]
+        else:
+            low, high = self.GetMinimum(), self.GetMaximum()
+            step = (high - low) / int(nlevels)
+            chosen = [low + step * i for i in range(int(nlevels))]
+        self._core()["fContour"] = np.asarray(chosen, dtype=np.float64)
+
+    def GetContour(self, levels: Any = None) -> int:
+        found = self._core().get("fContour")
+        count = 0 if found is None else len(found)
+        for i in range(count if levels is not None else 0):
+            levels[i] = float(found[i])
+        return count
+
+    def GetContourLevel(self, level: int) -> float:
+        found = self._core().get("fContour")
+        return float(found[level]) if found is not None and 0 <= level < len(found) else 0.0
+
     # -- extremes -------------------------------------------------------------------------
 
     def SetMaximum(self, maximum: float = UNSET) -> None:

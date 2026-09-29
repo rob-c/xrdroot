@@ -173,6 +173,8 @@ class Contour(NamedTuple):
     mode: int = 0
     #: The histogram's look, whose line ``CONT3`` draws every level in.
     look: Any = None
+    #: The user's levels, ``SetContour``'s: when given, drawn in place of the even ones.
+    contours: tuple[float, ...] = ()
 
 
 class Surface(NamedTuple):

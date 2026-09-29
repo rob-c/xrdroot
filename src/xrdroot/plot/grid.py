@@ -28,6 +28,8 @@ class Grid(NamedTuple):
     yedges: Any
     values: Any
     look: Look
+    #: The levels ``SetContour`` gave, for ``CONT`` - none, for gStyle's even ones.
+    contours: tuple[float, ...] = ()
 
 
 def _centres(edges: Any) -> Any:
@@ -76,6 +78,7 @@ def _contour(filled: bool) -> Callable[[Grid, Request], list[Any]]:
                 filled,
                 0 if filled else request.chosen.contour,
                 grid.look,
+                grid.contours,
             )
         ]
 

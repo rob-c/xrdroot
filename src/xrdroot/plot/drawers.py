@@ -183,6 +183,18 @@ def _default_grid(chosen: Chosen) -> Chosen:
     return chosen._replace(words=chosen.words | {"COL", "Z"})
 
 
+#: ``TH1::kUserContour``: the histogram's levels are the user's, not gStyle's to remake.
+USER_CONTOUR = 1 << 10
+
+
+def _user_contours(members: Any) -> tuple[float, ...]:
+    """The levels a user set with ``SetContour(n, levels)``, if one did."""
+    levels = held(members, "fContour")
+    if not int(held(members, "fBits") or 0) & USER_CONTOUR or levels is None:
+        return ()
+    return tuple(float(one) for one in levels)
+
+
 def _grid(histogram: Histogram, request: Request) -> tuple[list[Any], Frame]:
     chosen = _default_grid(request.chosen)
     scale = _normalised(histogram, chosen)
@@ -191,6 +203,7 @@ def _grid(histogram: Histogram, request: Request) -> tuple[list[Any], Frame]:
         histogram.edges(1),
         histogram.values() * scale,
         styled(histogram.members, request),
+        _user_contours(histogram.members),
     )
     layers = grid_layers(grid, request.again(chosen))
     return layers, titles(histogram, histogram.title)

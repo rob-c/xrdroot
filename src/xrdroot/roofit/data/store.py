@@ -149,6 +149,21 @@ class RooAbsData(RooPrintable):
 
         return sigma(self, var, cutSpec, cutRange)
 
+    def statOn(self, frame: Any, *args: Any, **kwargs: Any) -> Any:
+        from ..plot.statbox import stat_on
+
+        return stat_on(self, frame, args, kwargs)
+
+    def meanVar(self, var: Any, cutSpec: Any = None, cutRange: Any = None) -> Any:
+        from ..plot.statbox import mean_var
+
+        return mean_var(self, var, cutSpec, cutRange)
+
+    def rmsVar(self, var: Any, cutSpec: Any = None, cutRange: Any = None) -> Any:
+        from ..plot.statbox import rms_var
+
+        return rms_var(self, var, cutSpec, cutRange)
+
     def sumEntriesW2(self) -> float:
         return float(np.sum(self.weights_squared()))
 

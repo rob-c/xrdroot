@@ -17,7 +17,9 @@ __all__ = ["format_var", "format_command"]
 
 
 def _digits(var: Any, sig: int, by_error: bool) -> tuple[int, int]:
-    value, error = var.getVal(), var.getError()
+    """The decimals of the value and of the error - from the raw error, ``-1`` for none, as
+    RooFit reads ``_error``."""
+    value, error = var.getVal(), float(getattr(var, "_error", var.getError()))
     lead_val = (
         math.floor(math.log10(abs(error + 1e-10)))
         if by_error
