@@ -12,6 +12,7 @@ sets and says it.
 
 from __future__ import annotations
 
+import itertools
 from typing import Any
 
 from ..roofit.cmdargs import RooCmdArg
@@ -307,21 +308,19 @@ class HistoToWorkspaceFactoryFast:
             ws.set("globalObservables").add(ws.var(one.GetName()))
 
 
+def _bin_names(prefix: str, counts: list[int]) -> list[str]:
+    """``<prefix>_bin_<i>[_<j>[_<k>]]``, the first index fastest."""
+    indices = itertools.product(*(range(n) for n in reversed(counts)))
+    return [f"{prefix}_bin_" + "_".join(str(i) for i in reversed(one)) for one in indices]
+
+
 def create_param_set(ws: Any, prefix: str, obs: Any, low: Any = None, high: Any = None) -> Any:
     """``ParamHistFunc::createParamSet``: ``<prefix>_bin_<i>`` - ``_<i>_<j>`` in two dimensions,
     and so on - one per bin, imported, each one free from zero (and to ``high``)."""
     from ..roofit.variables import RooRealVar
 
-    counts = [one.numBins() for one in obs]
-    names = []
-    if len(counts) == 1:
-        names = [f"{prefix}_bin_{i}" for i in range(counts[0])]
-    elif len(counts) == 2:
-        names = [f"{prefix}_bin_{i}_{j}" for j in range(counts[1]) for i in range(counts[0])]
-    else:
-        names = [f"{prefix}_bin_{i}_{j}_{k}" for k in range(counts[2]) for j in range(counts[1])
-                 for i in range(counts[0])]  # fmt: skip
     found = RooArgList()
+    names = _bin_names(prefix, [one.numBins() for one in obs])
     for name in names:
         gamma = RooRealVar(name, name, 1.0)
         gamma.setMin(0.0)

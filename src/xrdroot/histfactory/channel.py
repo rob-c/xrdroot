@@ -124,25 +124,7 @@ class Channel:
                 data.SetHisto(_histogram(files, data.GetInputFile(), data.GetHistoPath(),
                                          data.GetHistoName()))  # fmt: skip
         for sample in self._samples:
-            sample.SetHisto(_histogram(files, sample.GetInputFile(), sample.GetHistoPath(),
-                                       sample.GetHistoName()))  # fmt: skip
-            stat = sample.GetStatError()
-            if stat.GetUseHisto():
-                stat.SetErrorHist(_histogram(files, stat.GetInputFile(), stat.GetHistoPath(),
-                                             stat.GetHistoName()))  # fmt: skip
-            for sys in [*sample.GetHistoSysList(), *sample.GetHistoFactorList()]:
-                sys.SetHistoLow(_histogram(files, sys.GetInputFileLow(), sys.GetHistoPathLow(),
-                                           sys.GetHistoNameLow()))  # fmt: skip
-                sys.SetHistoHigh(_histogram(files, sys.GetInputFileHigh(), sys.GetHistoPathHigh(),
-                                            sys.GetHistoNameHigh()))  # fmt: skip
-            for shape in sample.GetShapeSysList():
-                shape.SetErrorHist(_histogram(files, shape.GetInputFile(), shape.GetHistoPath(),
-                                              shape.GetHistoName()))  # fmt: skip
-            for factor in sample.GetShapeFactorList():
-                if factor.HasInitialShape():
-                    factor.SetInitialShape(_histogram(files, factor.GetInputFile(),
-                                                      factor.GetHistoPath(),
-                                                      factor.GetHistoName()))  # fmt: skip
+            _collect_sample(files, sample)
 
     def CheckHistograms(self) -> bool:
         """Whether every histogram is read - said, if one is not - and negative bins warned of."""
@@ -190,3 +172,25 @@ def _negative_bins(sample: Sample, channel: str) -> None:
     _hf(WARNING, f"WARNING: Nominal Histogram {hist.GetName()} for Sample = {sample.GetName()} "
         f"in Channel = {channel} has negative entries in bin numbers = ")  # fmt: skip
     cout.write(" , ".join(f"{i} : {g(v)}" for i, v in bad) + "\n")
+
+
+def _collect_sample(files: dict[str, Any], sample: Any) -> None:
+    """One sample's histograms: its own, its statistical error's, its systematics'."""
+    sample.SetHisto(_histogram(files, sample.GetInputFile(), sample.GetHistoPath(),
+                               sample.GetHistoName()))  # fmt: skip
+    stat = sample.GetStatError()
+    if stat.GetUseHisto():
+        stat.SetErrorHist(_histogram(files, stat.GetInputFile(), stat.GetHistoPath(),
+                                     stat.GetHistoName()))  # fmt: skip
+    for sys in [*sample.GetHistoSysList(), *sample.GetHistoFactorList()]:
+        sys.SetHistoLow(_histogram(files, sys.GetInputFileLow(), sys.GetHistoPathLow(),
+                                   sys.GetHistoNameLow()))  # fmt: skip
+        sys.SetHistoHigh(_histogram(files, sys.GetInputFileHigh(), sys.GetHistoPathHigh(),
+                                    sys.GetHistoNameHigh()))  # fmt: skip
+    for shape in sample.GetShapeSysList():
+        shape.SetErrorHist(_histogram(files, shape.GetInputFile(), shape.GetHistoPath(),
+                                      shape.GetHistoName()))  # fmt: skip
+    for factor in sample.GetShapeFactorList():
+        if factor.HasInitialShape():
+            factor.SetInitialShape(_histogram(files, factor.GetInputFile(), factor.GetHistoPath(),
+                                              factor.GetHistoName()))  # fmt: skip

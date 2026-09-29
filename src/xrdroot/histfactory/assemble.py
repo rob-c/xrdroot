@@ -83,23 +83,20 @@ def _hf_info_active() -> bool:
     return bool(service().isActive(None, TOPICS["HistFactory"], INFO))
 
 
-def finish(ws: Any, config: Any, channel: Any, names: list[str], state: dict[str, Any]) -> None:
-    """The channel's sets, ``model_<channel>`` and its ``ModelConfig``, its Asimov and observed
-    data - and the workspace printed, if HistFactory says what it does."""
-    from ..roofit.data.dataset import RooDataSet
-    from ..roofit.pdfs.prodpdf import RooProdPdf
-    from ..roostats import asimov
-
+def _constraints(ws: Any, state: dict[str, Any]) -> list[Any]:
+    """The channel's constraint terms - one missing from the workspace is fatal."""
     constraints = [ws.arg(one) for one in state["constraints"]]
     if any(one is None for one in constraints):
         missing = next(n for n, one in zip(state["constraints"], constraints) if one is None)
         log_fatal(f"Error: Cannot find arg set: {missing} in workspace: {ws.GetName()}")
-    likelihood = [ws.arg(f"{channel.GetName()}_model")]
-    ws.defineSet("constraintTerms", RooArgSet(constraints))
-    ws.defineSet("likelihoodTerms", RooArgSet(likelihood))
-    observables = RooArgList([ws.var(n) for n in names])
-    ws.defineSet("observables", ",".join(names))
-    ws.defineSet("observablesSet", ",".join(names))
+    return constraints
+
+
+def _model(ws: Any, channel: Any, constraints: list[Any], likelihood: list[Any],
+           observables: Any) -> Any:  # fmt: skip
+    """``model_<channel>``: the constraints times the channel's likelihood of its observables."""
+    from ..roofit.pdfs.prodpdf import RooProdPdf
+
     _hf(PROGRESS, "\n-----------------------------------------\n\timport model into workspace\n"
         "-----------------------------------------\n")  # fmt: skip
     model = RooProdPdf(f"model_{channel.GetName()}", "product of Poissons across bins for a "
@@ -109,13 +106,14 @@ def finish(ws: Any, config: Any, channel: Any, names: list[str], state: dict[str
     if data_hist is not None and data_hist.GetTitle():
         model.SetTitle(data_hist.GetTitle())
     ws.Import(model, RooCmdArg("RecycleConflictNodes"))
-    config.SetPdf(ws.pdf(model.GetName()))
-    config.SetObservables(observables)
-    config.SetGlobalObservables(ws.set("globalObservables"))
-    ws.Import(config, config.GetName())
-    asimov.SetPrintLevel(1 if _hf_info_active() else 0)
-    made = asimov.GenerateAsimovData(ws.pdf(model.GetName()), observables)
-    ws.Import(made, RooCmdArg("Rename", "asimovData"))
+    return model
+
+
+def _data(ws: Any, channel: Any, names: list[str]) -> None:
+    """The observed data, ``obsData``, and each additional dataset - one without a name fatal."""
+    from ..roofit.data.dataset import RooDataSet
+
+    data_hist = channel.GetData().GetHisto()
     if data_hist is not None:
         obs = RooDataSet("obsData", "", ws.set("observables"), RooCmdArg("WeightVar", "weightVar"))
         dataset(obs, data_hist, ws, names)
@@ -129,5 +127,28 @@ def finish(ws: Any, config: Any, channel: Any, names: list[str], state: dict[str
                           RooCmdArg("WeightVar", "weightVar"))  # fmt: skip
         dataset(more, extra.GetHisto(), ws, names)
         ws.Import(more)
+
+
+def finish(ws: Any, config: Any, channel: Any, names: list[str], state: dict[str, Any]) -> None:
+    """The channel's sets, ``model_<channel>`` and its ``ModelConfig``, its Asimov and observed
+    data - and the workspace printed, if HistFactory says what it does."""
+    from ..roostats import asimov
+
+    constraints = _constraints(ws, state)
+    likelihood = [ws.arg(f"{channel.GetName()}_model")]
+    ws.defineSet("constraintTerms", RooArgSet(constraints))
+    ws.defineSet("likelihoodTerms", RooArgSet(likelihood))
+    observables = RooArgList([ws.var(n) for n in names])
+    ws.defineSet("observables", ",".join(names))
+    ws.defineSet("observablesSet", ",".join(names))
+    model = _model(ws, channel, constraints, likelihood, observables)
+    config.SetPdf(ws.pdf(model.GetName()))
+    config.SetObservables(observables)
+    config.SetGlobalObservables(ws.set("globalObservables"))
+    ws.Import(config, config.GetName())
+    asimov.SetPrintLevel(1 if _hf_info_active() else 0)
+    made = asimov.GenerateAsimovData(ws.pdf(model.GetName()), observables)
+    ws.Import(made, RooCmdArg("Rename", "asimovData"))
+    _data(ws, channel, names)
     if _hf_info_active():
         ws.Print()

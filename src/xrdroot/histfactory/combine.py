@@ -36,16 +36,9 @@ def _consistent(workspaces: list[Any], names: list[str]) -> None:
             log_fatal(text + "All channel workspaces must contain exactly the same datasets.\n")
 
 
-def combined_model(factory: Any, names: list[str], workspaces: list[Any]) -> Any:
-    """``MakeCombinedModel``: the workspace ``combined``."""
-    from ..roofit.categories import RooCategory
-    from ..roofit.data.dataset import RooDataSet
-    from ..roofit.pdfs.simultaneous import RooSimultaneous
-    from ..roofit.workspace import RooWorkspace
-    from ..roostats import asimov
-    from ..roostats.modelconfig import ModelConfig
-    from .terms import emplace
-
+def _channels(names: list[str], workspaces: list[Any]) -> tuple[Any, Any, dict[str, Any]]:
+    """Every channel's observables, global observables and model - the first channel's name
+    not to start with a digit."""
     observables = RooArgList()
     for ws in workspaces:
         observables.add(list(ws.obj("ModelConfig").GetObservables()))
@@ -59,6 +52,44 @@ def combined_model(factory: Any, names: list[str], workspaces: list[Any]) -> Any
                              f"Got {name}")  # fmt: skip
         pdfs[name] = ws.pdf(f"model_{name}")
         glob.add(list(ws.obj("ModelConfig").GetGlobalObservables()), True)
+    return observables, glob, pdfs
+
+
+def _combined_data(combined: Any, names: list[str], workspaces: list[Any], observables: Any,
+                   category: Any) -> None:  # fmt: skip
+    """Each dataset of the channels but their Asimov data, combined by the category."""
+    from ..roofit.data.dataset import RooDataSet
+
+    for data in workspaces[0].allData():
+        if data.GetName() == "asimovData":
+            continue
+        parts = {n: ws.data(data.GetName()) for n, ws in zip(names, workspaces)}
+        combined.Import(RooDataSet(data.GetName(), "", list(observables),
+                                   RooCmdArg("Index", category),
+                                   RooCmdArg("WeightVar", "weightVar"),
+                                   RooCmdArg("Import", parts)))  # fmt: skip
+
+
+def _combined_asimov(combined: Any, observables: Any) -> None:
+    from ..roostats import asimov
+
+    _hf(PROGRESS, "\n-----------------------------------------\n\tcreate toy data\n"
+        "-----------------------------------------\n")  # fmt: skip
+    made = asimov.GenerateAsimovData(combined.pdf("simPdf"), observables)
+    if made is None:
+        log_fatal("Error: Failed to create combined asimov dataset")
+    combined.Import(made, RooCmdArg("Rename", "asimovData"))
+
+
+def combined_model(factory: Any, names: list[str], workspaces: list[Any]) -> Any:
+    """``MakeCombinedModel``: the workspace ``combined``."""
+    from ..roofit.categories import RooCategory
+    from ..roofit.pdfs.simultaneous import RooSimultaneous
+    from ..roofit.workspace import RooWorkspace
+    from ..roostats.modelconfig import ModelConfig
+    from .terms import emplace
+
+    observables, glob, pdfs = _channels(names, workspaces)
     _hf(PROGRESS, "\n-----------------------------------------\n\tEntering combination\n"
         "-----------------------------------------\n")  # fmt: skip
     combined = RooWorkspace("combined")
@@ -71,14 +102,7 @@ def combined_model(factory: Any, names: list[str], workspaces: list[Any]) -> Any
     combined.defineSet("observables", [*observables, category], True)
     config.SetObservables(combined.set("observables"))
     _consistent(workspaces, names)
-    for data in workspaces[0].allData():
-        if data.GetName() == "asimovData":
-            continue
-        parts = {n: ws.data(data.GetName()) for n, ws in zip(names, workspaces)}
-        combined.Import(RooDataSet(data.GetName(), "", list(observables),
-                                   RooCmdArg("Index", category),
-                                   RooCmdArg("WeightVar", "weightVar"),
-                                   RooCmdArg("Import", parts)))  # fmt: skip
+    _combined_data(combined, names, workspaces, observables, category)
     if _hf_info_active():
         combined.Print()
     _hf(PROGRESS, "\n-----------------------------------------\n\tImporting combined model\n"
@@ -87,13 +111,24 @@ def combined_model(factory: Any, names: list[str], workspaces: list[Any]) -> Any
     factory._set_values_and_constants(combined)
     config.SetPdf(combined.pdf("simPdf"))
     combined.Import(config, config.GetName())
-    _hf(PROGRESS, "\n-----------------------------------------\n\tcreate toy data\n"
-        "-----------------------------------------\n")  # fmt: skip
-    made = asimov.GenerateAsimovData(combined.pdf("simPdf"), observables)
-    if made is None:
-        log_fatal("Error: Failed to create combined asimov dataset")
-    combined.Import(made, RooCmdArg("Rename", "asimovData"))
+    _combined_asimov(combined, observables)
     return combined
+
+
+def _pois(ws: Any, pois: list[str]) -> list[Any]:
+    """The measurement's parameters of interest the workspace has - said, the missing ones too."""
+    if not pois:
+        _hf(WARNING, "No Parametetrs of interest are set")
+    _hf(INFO, "Setting Parameter(s) of Interest as: " + "".join(f"{p} " for p in pois))
+    params = []
+    for name in pois:
+        found = ws.var(name)
+        if found is None:
+            _hf(WARNING, f"WARNING: Can't find parameter of interest: {name} in Workspace. Not "
+                "setting in ModelConfig.")  # fmt: skip
+        else:
+            params.append(found)
+    return params
 
 
 def configure_for_measurement(model_name: str, ws: Any, measurement: Any) -> None:
@@ -106,18 +141,7 @@ def configure_for_measurement(model_name: str, ws: Any, measurement: Any) -> Non
     if config is None:
         log_fatal(f"Error: Did not find 'ModelConfig' object in file: {ws.GetName()}")
     pois = measurement.GetPOIList()
-    if not pois:
-        _hf(WARNING, "No Parametetrs of interest are set")
-    _hf(INFO, "Setting Parameter(s) of Interest as: " + "".join(f"{p} " for p in pois))
-    params = []
-    for name in pois:
-        found = ws.var(name)
-        if found is None:
-            _hf(WARNING, f"WARNING: Can't find parameter of interest: {name} in Workspace. Not "
-                "setting in ModelConfig.")  # fmt: skip
-        else:
-            params.append(found)
-    config.SetParametersOfInterest(RooArgSet(params))
+    config.SetParametersOfInterest(RooArgSet(_pois(ws, pois)))
     pdf = ws.pdf("newSimPdf") or ws.pdf(model_name)
     observables = ws.set("observables")
     if pois:
