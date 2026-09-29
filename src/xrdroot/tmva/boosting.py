@@ -59,7 +59,7 @@ class Forest:
 
 
 def bagged(size: int, trees: int, fraction: float) -> Any:
-    """``GetBaggedSubSample``: how often each event is drawn, as TMVA draws it for tree ``trees``."""
+    """``GetBaggedSubSample``: each event's draws, as TMVA draws them for tree ``trees``."""
     return np.asarray(TRandom3(100 * trees + 1234).poisson_d(fraction, size), dtype=np.float64)
 
 
@@ -97,7 +97,7 @@ def _grow(
 
 
 def _importance(fitted: Any) -> Any:
-    """``DecisionTree::GetVariableImportance``: each variable's share of the squared weighted gains."""
+    """``DecisionTree::GetVariableImportance``: each variable's share of the squared gains."""
     inner = fitted.tree_
     found = np.zeros(fitted.n_features_in_)
     for node in range(inner.node_count):
@@ -205,7 +205,7 @@ def _ada_boost(booster: Booster, signal: Any, output: Any, nodes: int) -> float:
 
 
 def adaboost(settings: Settings, values: Any, signal: Any, weights: Any) -> Forest:
-    """AdaBoost, RealAdaBoost or bagging of classification trees, as ``MethodBDT::Train`` runs them."""
+    """AdaBoost, RealAdaBoost or bagging of classifying trees, as ``MethodBDT::Train`` has it."""
     booster = Booster(settings, values, weights)
     booster.boost = normalised(signal, booster.weights)
     booster.counts = booster._bag()
@@ -234,7 +234,7 @@ def _leaf_responses(fitted: Any, leaves: Any, numerator: Any, denominator: Any) 
 
 
 def gradboost(settings: Settings, values: Any, signal: Any, weights: Any) -> Forest:
-    """``BoostType=Grad`` for two classes: the binomial log-likelihood, TMVA's residuals and steps."""
+    """``BoostType=Grad`` for two classes: the binomial log-likelihood, TMVA's residuals."""
     booster = Booster(settings, values, weights)
     booster.boost = normalised(signal, booster.weights)
     booster.counts = booster._bag()
@@ -268,7 +268,7 @@ def softmax(scores: Any) -> Any:
 def multiclass(
     settings: Settings, values: Any, classes: Any, weights: Any, nclasses: int
 ) -> Forest:
-    """``BoostType=Grad`` for several classes: a tree per class per step, and the softmax residuals."""
+    """``BoostType=Grad`` for several classes: a tree per class per step, softmax residuals."""
     booster = Booster(settings, values, weights)
     truth = (classes[:, None] == np.arange(nclasses)).astype(np.float64)
     target = truth - 1.0 / nclasses
@@ -292,7 +292,7 @@ def multiclass(
 
 
 def _weighted_quantile(residuals: Any, weights: Any, quantile: float) -> float:
-    """``HuberLossFunction::CalculateQuantile``: the residual where the weight passes the quantile."""
+    """``HuberLossFunction::CalculateQuantile``: the residual where the weight passes it."""
     order = np.argsort(residuals, kind="stable")
     ordered, running = residuals[order], np.cumsum(weights[order])
     if quantile == 0 or len(ordered) == 1:

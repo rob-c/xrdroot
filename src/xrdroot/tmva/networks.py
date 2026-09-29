@@ -86,7 +86,7 @@ class Network:
         return x
 
     def mlp_xml(self, parent: Node) -> None:
-        """``MethodANNBase::AddWeightsXMLTo``: each layer's neurons, a bias neuron last, and their synapses."""
+        """``MethodANNBase::AddWeightsXMLTo``: each layer's neurons and synapses, bias last."""
         weights = parent.add("Weights")
         layout = weights.add("Layout", NLayers=len(self.layers) + 1)
         for index, (matrix, bias) in enumerate(self.layers):
@@ -128,7 +128,7 @@ class Network:
 
 
 def mlp_from_xml(node: Any, hidden: str, output: str) -> Network:
-    """A network from ``MethodANNBase``'s ``<Layout>``: every layer's synapses, bias neurons last."""
+    """A network from ``MethodANNBase``'s ``<Layout>``: each layer's synapses, bias last."""
     layers = children(node.find("Layout"), "Layer")
     made = Network(output=output)
     for layer in layers[:-1]:
@@ -145,7 +145,8 @@ def dl_from_xml(node: Any) -> Network:
     functions = {"S": "sigmoid", "T": "softmax"}
     made = Network(output=functions.get(str(node.get("OutputFunction", "")), "linear"))
     for layer in children(node, "DenseLayer"):
-        matrix, bias = layer.find("Weights"), layer.find("Biases")
+        matrix: Any = layer.find("Weights")
+        bias: Any = layer.find("Biases")
         rows, columns = int(matrix.get("Rows")), int(matrix.get("Columns"))
         made.layers.append(
             (np.array(floats(matrix)).reshape(rows, columns), np.array(floats(bias)))

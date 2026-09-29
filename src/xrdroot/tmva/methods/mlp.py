@@ -13,7 +13,7 @@ MLP weight files are read.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -30,7 +30,7 @@ REGULATOR_DECAY = 1e-3
 
 
 def layer_sizes(spec: str, nvar: int, nout: int) -> list[int]:
-    """``ParseLayoutString``: ``"N+5,N"`` as the neurons of every layer, input and output included."""
+    """``ParseLayoutString``: ``"N+5,N"`` as every layer's neurons, input and output included."""
     sizes = [nvar]
     for piece in (part.strip() for part in spec.split(",") if part.strip()):
         count = 0
@@ -66,7 +66,7 @@ class MethodMLP(Method):
 
     type_name = "MLP"
     analyses = frozenset({CLASSIFICATION, REGRESSION, MULTICLASS})
-    defaults = {
+    defaults: ClassVar[dict[str, Any]] = {
         "NCycles": 500,
         "HiddenLayers": "N,N-1",
         "NeuronType": "sigmoid",

@@ -52,7 +52,7 @@ class Tree:
             node[inner] = np.where(right, self.right[current], self.left[current])
 
     def _projection(self, values: Any, nodes: Any) -> Any:
-        """Each event's value of the variable its node cuts on - or the node's Fisher discriminant."""
+        """Each event's value of the variable its node cuts on, or of its Fisher discriminant."""
         x = values[np.arange(len(nodes)), np.maximum(self.var[nodes], 0)].astype(np.float64)
         for index, coefficients in self.fisher.items():
             at = nodes == index
@@ -104,36 +104,50 @@ def _node_rows(element: Any, rows: list[dict[str, Any]], depth: int = 0) -> int:
     return index
 
 
-def read_tree(element: Any) -> Tree:
-    """``DecisionTree::CreateFromXML``: a tree from its ``<BinaryTree>``."""
-    rows: list[dict[str, Any]] = []
-    root = next(child for child in element if child.tag == "Node")
-    _node_rows(root, rows)
+def _column(rows: list[dict[str, Any]], key: str, default: Any, kind: Any) -> Any:
+    """One attribute of every node, as ``kind``; ``default`` where a node has it not, or empty."""
+    return np.array([kind(row.get(key, default) or default) for row in rows])
 
-    def column(key: str, default: Any, kind: Any) -> Any:
-        return np.array([kind(row.get(key, default) or default) for row in rows])
 
-    fisher = {}
+def _fisher(rows: list[dict[str, Any]]) -> dict[int, Any]:
+    """The coefficients ``fC0``, ``fC1``... of every node that has ``NCoef`` of them."""
+    found = {}
     for index, row in enumerate(rows):
         count = int(row.get("NCoef", 0) or 0)
         if count:
-            fisher[index] = np.array([float(row[f"fC{i}"]) for i in range(count)])
-    purity = column("purity", "nan", float)
+            found[index] = np.array([float(row[f"fC{i}"]) for i in range(count)])
+    return found
+
+
+def _purity(rows: list[dict[str, Any]]) -> Any:
+    """Each node's purity - or, in TMVA's older files, which have none, ``nS / (nS + nB)``."""
     if "purity" not in rows[0] and "nS" in rows[0]:
-        signal, background = column("nS", 0, float), column("nB", 0, float)
-        purity = signal / (signal + background)
+        signal, background = _column(rows, "nS", 0, float), _column(rows, "nB", 0, float)
+        return signal / (signal + background)
+    return _column(rows, "purity", "nan", float)
+
+
+def _single(values: Any) -> Any:
+    """Values as the single-precision numbers TMVA's nodes keep them in, widened back."""
+    return np.float32(values).astype(np.float64)
+
+
+def read_tree(element: Any) -> Tree:
+    """``DecisionTree::CreateFromXML``: a tree from its ``<BinaryTree>``."""
+    rows: list[dict[str, Any]] = []
+    _node_rows(next(child for child in element if child.tag == "Node"), rows)
     return Tree(
-        column("IVar", -1, int),
-        np.float32(column("Cut", 0.0, float)).astype(np.float64),
-        column("cType", 1, int),
+        _column(rows, "IVar", -1, int),
+        _single(_column(rows, "Cut", 0.0, float)),
+        _column(rows, "cType", 1, int),
         np.array([row["left"] for row in rows]),
         np.array([row["right"] for row in rows]),
-        np.float32(column("res", -99.0, float)).astype(np.float64),
-        np.float32(purity).astype(np.float64),
-        column("nType", 0, int),
-        column("depth", 0, int),
-        np.float32(column("rms", 0.0, float)).astype(np.float64),
-        fisher,
+        _single(_column(rows, "res", -99.0, float)),
+        _single(_purity(rows)),
+        _column(rows, "nType", 0, int),
+        _column(rows, "depth", 0, int),
+        _single(_column(rows, "rms", 0.0, float)),
+        _fisher(rows),
     )
 
 
@@ -196,17 +210,13 @@ class Packed:
         trees = self.trees
         self.fallback = any(tree.fisher for tree in trees)
         self.offsets = np.cumsum([0] + [len(tree.var) for tree in trees[:-1]])
-        self.var = np.concatenate([tree.var for tree in trees])
-        self.cut = np.concatenate([tree.cut for tree in trees])
-        self.goes_right = np.concatenate([tree.ctype for tree in trees]) == 1
-        self.left = np.concatenate(
-            [np.where(t.left >= 0, t.left + s, -1) for t, s in zip(trees, self.offsets)]
-        )
-        self.right = np.concatenate(
-            [np.where(t.right >= 0, t.right + s, -1) for t, s in zip(trees, self.offsets)]
-        )
+        self.var = _joined(trees, "var")
+        self.cut = _joined(trees, "cut")
+        self.goes_right = _joined(trees, "ctype") == 1
+        self.left = _shifted(trees, self.offsets, "left")
+        self.right = _shifted(trees, self.offsets, "right")
         self.values = {
-            what: np.concatenate([getattr(t, what) for t in trees]).astype(np.float64)
+            what: _joined(trees, what).astype(np.float64)
             for what in ("response", "purity", "ntype")
         }
 
@@ -234,6 +244,18 @@ class Packed:
                 node[inner] = np.where(right, self.right[here], self.left[here])
             found.append(self.values[what][node])
         return np.concatenate(found, axis=1) if found else np.zeros((len(self.trees), 0))
+
+
+def _joined(trees: list[Tree], member: str) -> Any:
+    """One member of every tree, laid end to end."""
+    return np.concatenate([getattr(tree, member) for tree in trees])
+
+
+def _shifted(trees: list[Tree], offsets: Any, side: str) -> Any:
+    """Every tree's children on one side, as rows of the packed forest; ``-1`` for a leaf's."""
+    return np.concatenate(
+        [np.where(getattr(t, side) >= 0, getattr(t, side) + s, -1) for t, s in zip(trees, offsets)]
+    )
 
 
 def forest_responses(trees: list[Tree], values: Any, what: str = "response") -> Any:

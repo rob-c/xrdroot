@@ -12,7 +12,7 @@ brute force in NumPy, which finds the same events a k-d tree finds.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -28,7 +28,7 @@ CHUNK = 512
 
 
 def scale_widths(values: Any, fraction: int) -> Any:
-    """``ComputeMetric``: each variable's width between the ``(100 - f)/2`` and ``100 - that`` points."""
+    """``ComputeMetric``: each variable's width, its ``(100 - f)/2`` to ``100 - that`` point."""
     size = len(values)
     low, high = (100 - fraction) // 2, 100 - (100 - fraction) // 2
     positions = (100 * np.arange(size)) // size
@@ -45,7 +45,7 @@ class MethodKNN(Method):
 
     type_name = "KNN"
     analyses = frozenset({CLASSIFICATION, REGRESSION})
-    defaults = {
+    defaults: ClassVar[dict[str, Any]] = {
         "nkNN": 20,
         "BalanceDepth": 6,
         "ScaleFrac": 0.8,
@@ -159,6 +159,8 @@ class MethodKNN(Method):
         table = np.array(rows, dtype=np.float64).reshape(len(rows), nvar + ntgt)
         self.values = table[:, :nvar].astype(np.float32)
         self.targets = table[:, nvar:].astype(np.float32)
-        self.types = np.array([int(item.get("Type")) for item in children(node, "Event")])
-        self.weights = np.array([float(item.get("Weight")) for item in children(node, "Event")])
+        self.types = np.array([int(str(item.get("Type"))) for item in children(node, "Event")])
+        self.weights = np.array(
+            [float(str(item.get("Weight"))) for item in children(node, "Event")]
+        )
         self._make()

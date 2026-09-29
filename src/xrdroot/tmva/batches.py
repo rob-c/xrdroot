@@ -11,7 +11,8 @@ batches of their own beside the inputs.
 
 from __future__ import annotations
 
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 import numpy as np
 
@@ -31,6 +32,28 @@ def _spread(column: Any, width: int) -> Any:
         found = np.asarray(values, dtype=np.float32)[:width]
         made[row, : len(found)] = found
     return made
+
+
+def _inputs(
+    found: dict[str, Any], names: list[str], sizes: dict[str, Any]
+) -> tuple[Any, list[str]]:
+    """The input columns as one table, and its columns' names - a vector's spread over several."""
+    parts, columns = [], []
+    for name in names:
+        if name in sizes:
+            parts.append(_spread(found[name], int(sizes[name])))
+            columns += [f"{name}_{i}" for i in range(int(sizes[name]))]
+        else:
+            parts.append(np.asarray(found[name], dtype=np.float32)[:, None])
+            columns.append(name)
+    return (np.hstack(parts) if parts else np.zeros((0, 0), dtype=np.float32)), columns
+
+
+def _stacked(found: dict[str, Any], names: list[str]) -> Any:
+    """The named columns side by side as ``float32``, or ``None`` for no names."""
+    if not names:
+        return None
+    return np.column_stack([np.asarray(found[name], dtype=np.float32) for name in names])
 
 
 class _Split:
@@ -58,7 +81,7 @@ class _Split:
 
 
 class RDataLoader:
-    """``RDataLoader(rdataframe, batch_size, target=None, weights=None, max_vec_sizes=None, ...)``."""
+    """``RDataLoader(rdataframe, batch_size, target, weights, max_vec_sizes, ...)``."""
 
     def __init__(
         self,
@@ -75,31 +98,13 @@ class RDataLoader:
         self.batch_size, self.shuffle = int(batch_size), bool(shuffle)
         self.drop_remainder = bool(drop_remainder)
         self.random = np.random.default_rng(set_seed or None)
-        sizes = dict(max_vec_sizes or {})
         targets, weighted = _names(target), _names(weights)
         names = [str(c) for c in rdataframe.GetColumnNames()]
         found = rdataframe.AsNumpy(names)
-        inputs, self.columns = [], []
-        for name in names:
-            if name in targets or name in weighted:
-                continue
-            if name in sizes:
-                inputs.append(_spread(found[name], int(sizes[name])))
-                self.columns += [f"{name}_{i}" for i in range(int(sizes[name]))]
-            else:
-                inputs.append(np.asarray(found[name], dtype=np.float32)[:, None])
-                self.columns.append(name)
-        self.inputs = np.hstack(inputs) if inputs else np.zeros((0, 0), dtype=np.float32)
-        self.targets = (
-            np.column_stack([np.asarray(found[t], dtype=np.float32) for t in targets])
-            if targets
-            else None
-        )
-        self.weights = (
-            np.column_stack([np.asarray(found[w], dtype=np.float32) for w in weighted])
-            if weighted
-            else None
-        )
+        inputs = [name for name in names if name not in targets and name not in weighted]
+        self.inputs, self.columns = _inputs(found, inputs, dict(max_vec_sizes or {}))
+        self.targets = _stacked(found, targets)
+        self.weights = _stacked(found, weighted)
 
     def train_test_split(self, test_size: float = 0.0) -> tuple[_Split, _Split]:
         count = len(self.inputs)

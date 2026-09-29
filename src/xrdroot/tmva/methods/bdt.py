@@ -15,7 +15,7 @@ are read and evaluated too.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -31,6 +31,9 @@ __all__ = ["MethodBDT"]
 #: ``SeparationType`` as scikit-learn's ``criterion``.
 CRITERIA = {"giniindex": "gini", "giniindexwithlaplace": "gini", "crossentropy": "entropy"}
 
+#: The options a regression's forest has other defaults of, as ``MethodBDT::Init`` sets them.
+REGRESSION_DEFAULTS = {"MaxDepth": 50, "BoostType": "AdaBoostR2", "MinNodeSize": "0.2%"}
+
 
 class MethodBDT(Method):
     """``TMVA::MethodBDT``."""
@@ -39,7 +42,7 @@ class MethodBDT(Method):
     analyses = frozenset({CLASSIFICATION, REGRESSION, MULTICLASS})
     #: ``ProcessOptions`` asks the data set whether it has negative weights.
     needs_data = True
-    defaults = {
+    defaults: ClassVar[dict[str, Any]] = {
         "NTrees": 800,
         "MaxDepth": 3,
         "MinNodeSize": "5%",
@@ -70,12 +73,9 @@ class MethodBDT(Method):
     def process_options(self) -> None:
         regression = self.analysis == REGRESSION
         given = self.options.given
-        if regression and not given("MaxDepth"):
-            self.option_values["MaxDepth"] = 50
-        if regression and not given("BoostType"):
-            self.option_values["BoostType"] = "AdaBoostR2"
-        if regression and not given("MinNodeSize"):
-            self.option_values["MinNodeSize"] = "0.2%"
+        for name, value in REGRESSION_DEFAULTS.items() if regression else ():
+            if not given(name):
+                self.option_values[name] = value
         if not given("UseNvars"):
             self.option_values["UseNvars"] = int(np.sqrt(self.dsi.GetNVariables()) + 0.6)
         boost = str(self.opt("BoostType"))
@@ -163,7 +163,7 @@ class MethodBDT(Method):
 
     def evaluate(self, values: Any) -> Any:
         values = np.asarray(values, dtype=np.float32)
-        trees, weights = self.forest.trees, np.asarray(self.forest.weights, dtype=np.float64)
+        weights = np.asarray(self.forest.weights, dtype=np.float64)
         if self.analysis == MULTICLASS:
             return self._multiclass(values)
         if self.analysis == REGRESSION:
@@ -194,7 +194,7 @@ class MethodBDT(Method):
         return boosting.softmax(scores)
 
     def _regression(self, values: Any) -> Any:
-        trees, weights = self.forest.trees, np.asarray(self.forest.weights, dtype=np.float64)
+        weights = np.asarray(self.forest.weights, dtype=np.float64)
         responses = self._responses(values)
         if self.boost == "Grad":
             output = responses.sum(axis=0) + weights[0]
@@ -248,7 +248,9 @@ def _weighted_median(responses: Any, weights: Any) -> Any:
     cumulative = np.cumsum(weights[order], axis=0)
     total = float(np.sum(weights))
     first = np.argmax(cumulative > total / 2.0, axis=0) + 1
-    low = np.maximum(first - ntrees // 6, 0)
+    # TMVA's lower end is ``UInt_t(t - n/6 - 0.5)``: one below ``t - n/6``, so that the tree
+    # the median falls in is always among those averaged - even in a forest of under six.
+    low = np.maximum(first - ntrees // 6 - 1, 0)
     high = np.minimum(first + ntrees // 6, ntrees)
     answer = np.empty(responses.shape[1])
     for event in range(responses.shape[1]):

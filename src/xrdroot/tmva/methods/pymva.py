@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 import pickle
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -28,9 +28,9 @@ class _PyMethod(Method):
     """The part the three share: options to keyword arguments, the pickle, the output."""
 
     #: The scikit-learn estimator's module and class, and the pickle's prefix.
-    estimator: tuple[str, str, str] = ("", "", "")
+    estimator: ClassVar[tuple[str, str, str]] = ("", "", "")
     #: TMVA's option name, and the estimator's keyword and how its value converts.
-    keywords: dict[str, tuple[str, Any]] = {}
+    keywords: ClassVar[dict[str, tuple[str, Any]]] = {}
 
     def _model_file(self) -> str:
         folder = os.path.dirname(self.source or self.weight_file)
@@ -67,7 +67,8 @@ class _PyMethod(Method):
 
     def read_weights(self, node: Any) -> None:
         with open(self._model_file(), "rb") as source:
-            self.model = pickle.load(source)  # noqa: S301 - the file this package wrote
+            # Unpickling runs what the file says; this is the file ``add_weights`` wrote.
+            self.model = pickle.load(source)
 
 
 def _depth(value: Any) -> Any:
@@ -78,8 +79,12 @@ class MethodPyRandomForest(_PyMethod):
     """``TMVA::MethodPyRandomForest``."""
 
     type_name = "PyRandomForest"
-    estimator = ("sklearn.ensemble", "RandomForestClassifier", "PyRFModel")
-    defaults = {
+    estimator: ClassVar[tuple[str, str, str]] = (
+        "sklearn.ensemble",
+        "RandomForestClassifier",
+        "PyRFModel",
+    )
+    defaults: ClassVar[dict[str, Any]] = {
         "NEstimators": 10,
         "Criterion": "gini",
         "MaxDepth": "None",
@@ -91,7 +96,7 @@ class MethodPyRandomForest(_PyMethod):
         "Bootstrap": True,
         "RandomState": "None",
     }
-    keywords = {
+    keywords: ClassVar[dict[str, tuple[str, Any]]] = {
         "NEstimators": ("n_estimators", int),
         "Criterion": ("criterion", str),
         "MaxDepth": ("max_depth", _depth),
@@ -109,9 +114,17 @@ class MethodPyAdaBoost(_PyMethod):
     """``TMVA::MethodPyAdaBoost``."""
 
     type_name = "PyAdaBoost"
-    estimator = ("sklearn.ensemble", "AdaBoostClassifier", "PyAdaBoostModel")
-    defaults = {"NEstimators": 50, "LearningRate": 1.0, "RandomState": "None"}
-    keywords = {
+    estimator: ClassVar[tuple[str, str, str]] = (
+        "sklearn.ensemble",
+        "AdaBoostClassifier",
+        "PyAdaBoostModel",
+    )
+    defaults: ClassVar[dict[str, Any]] = {
+        "NEstimators": 50,
+        "LearningRate": 1.0,
+        "RandomState": "None",
+    }
+    keywords: ClassVar[dict[str, tuple[str, Any]]] = {
         "NEstimators": ("n_estimators", int),
         "LearningRate": ("learning_rate", float),
         "RandomState": ("random_state", _depth),
@@ -122,8 +135,12 @@ class MethodPyGTB(_PyMethod):
     """``TMVA::MethodPyGTB``."""
 
     type_name = "PyGTB"
-    estimator = ("sklearn.ensemble", "GradientBoostingClassifier", "PyGTBModel")
-    defaults = {
+    estimator: ClassVar[tuple[str, str, str]] = (
+        "sklearn.ensemble",
+        "GradientBoostingClassifier",
+        "PyGTBModel",
+    )
+    defaults: ClassVar[dict[str, Any]] = {
         "Loss": "log_loss",
         "LearningRate": 0.1,
         "NEstimators": 100,
@@ -133,7 +150,7 @@ class MethodPyGTB(_PyMethod):
         "MaxDepth": 3,
         "RandomState": "None",
     }
-    keywords = {
+    keywords: ClassVar[dict[str, tuple[str, Any]]] = {
         "Loss": ("loss", lambda v: "log_loss" if str(v) == "deviance" else str(v)),
         "LearningRate": ("learning_rate", float),
         "NEstimators": ("n_estimators", int),

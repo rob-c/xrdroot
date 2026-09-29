@@ -107,6 +107,26 @@ def _evaluate(
         return float(_loss(torch, kind, raw, data[1], data[2]))
 
 
+def _epoch(
+    torch: Any,
+    layers: list[Any],
+    net: Network,
+    tensors: tuple[Any, ...],
+    order: Any,
+    kind: str,
+    settings: Descent,
+    optimiser: Any,
+) -> None:
+    """One epoch: each minibatch of ``order`` in turn, its loss back propagated and stepped on."""
+    for start in range(0, len(order), settings.batch_size):
+        batch = torch.as_tensor(order[start : start + settings.batch_size])
+        values, target, weights = (part[batch] for part in tensors)
+        optimiser.zero_grad()
+        raw = _forward(torch, layers, net, values, settings.dropout, True)
+        _loss(torch, kind, raw, target, weights).backward()
+        optimiser.step()
+
+
 def train_descent(
     net: Network,
     train: tuple[Any, Any, Any],
@@ -126,16 +146,9 @@ def train_descent(
     optimiser = _optimiser(torch, layers, settings)
     rng = np.random.default_rng(settings.seed)
     best, best_loss, since = net, np.inf, 0
-    size = len(train[0])
     for epoch in range(1, settings.max_epochs + 1):
-        order = rng.permutation(size)
-        for start in range(0, size, settings.batch_size):
-            batch = torch.as_tensor(order[start : start + settings.batch_size])
-            values, target, weights = (part[batch] for part in tensors[0])
-            optimiser.zero_grad()
-            raw = _forward(torch, layers, net, values, settings.dropout, True)
-            _loss(torch, kind, raw, target, weights).backward()
-            optimiser.step()
+        order = rng.permutation(len(train[0]))
+        _epoch(torch, layers, net, tensors[0], order, kind, settings, optimiser)
         train_loss = _evaluate(torch, layers, net, tensors[0], kind)
         valid_loss = _evaluate(torch, layers, net, tensors[1], kind)
         improved = valid_loss < best_loss

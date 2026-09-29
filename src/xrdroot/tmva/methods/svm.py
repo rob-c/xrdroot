@@ -12,7 +12,7 @@ the signal is high, and TMVA's own SVM weight files are read.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -45,7 +45,7 @@ class MethodSVM(Method):
 
     type_name = "SVM"
     analyses = frozenset({CLASSIFICATION, REGRESSION})
-    defaults = {
+    defaults: ClassVar[dict[str, Any]] = {
         "Kernel": "RBF",
         "Gamma": 1.0,
         "Order": 3,

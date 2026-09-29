@@ -74,7 +74,7 @@ def _forward(net: Network, values: Any, masks: list[Any] | None) -> tuple[list[A
 
 
 def _loss(kind: str, raw: Any, target: Any, weights: Any) -> tuple[float, Any]:
-    """The weighted loss per unit weight, and its gradient with respect to the last layer's values."""
+    """The weighted loss per unit weight, and its gradient in the last layer's values."""
     total = float(np.sum(weights))
     if kind == "ce":
         p = np.clip(activate("sigmoid", raw), 1e-15, 1 - 1e-15)
@@ -176,7 +176,7 @@ def _masks(rng: Any, net: Network, size: int, dropout: tuple[float, ...]) -> lis
     return made
 
 
-def _step(net: Network, grads: list[Any], state: dict[str, Any], settings: Descent) -> None:
+def _step(net: Network, grads: list[Any], state: dict[Any, Any], settings: Descent) -> None:
     """One update of every layer, by ADAM or by momentum SGD."""
     state["t"] += 1
     for index, ((w, b), (gw, gb)) in enumerate(zip(net.layers, grads)):
@@ -217,7 +217,8 @@ def train_descent(
     """Minibatch epochs until the validation loss stops improving; the best network seen."""
     rng = np.random.default_rng(settings.seed)
     values, target, weights = train
-    best, best_loss, since, state = _copy(net), np.inf, 0, {"t": 0}
+    state: dict[Any, Any] = {"t": 0}
+    best, best_loss, since = _copy(net), np.inf, 0
     for epoch in range(1, settings.max_epochs + 1):
         order = rng.permutation(len(values))
         for start in range(0, len(values), settings.batch_size):

@@ -1,4 +1,4 @@
-"""``TMVA::Experimental::RTensor``: an n-dimensional array over contiguous memory, row or column major.
+"""``TMVA::Experimental::RTensor``: an n-dimensional array, row or column major.
 
 An ``RTensor`` is a NumPy array underneath - made of zeros for a shape, or
 over the macro's own ``float data[]`` or ``std::vector`` without copying -
@@ -17,7 +17,7 @@ import numpy as np
 
 from .tools import CxxVector
 
-__all__ = ["AsTensor", "MemoryLayout", "RTensor"]
+__all__ = ["AsTensor", "MemoryLayout", "RTensor", "tensor_type"]
 
 #: The element types a tensor can be, by their C++ names.
 DTYPES = {
@@ -54,8 +54,7 @@ class RTensor:
     dtype: Any = np.float32
 
     def __class_getitem__(cls, kind: Any) -> type[RTensor]:
-        name = str(kind).replace("Float_t", "float").replace("Double_t", "double")
-        return type(f"RTensor<{name}>", (RTensor,), {"dtype": DTYPES.get(name, np.float32)})
+        return tensor_type(kind)
 
     def __init__(self, *args: Any) -> None:
         layout = MemoryLayout.RowMajor
@@ -124,6 +123,12 @@ class RTensor:
         return f"<RTensor {self.array.shape} {_printed(self.array)}>"
 
 
+def tensor_type(kind: Any) -> type[RTensor]:
+    """``RTensor<T>``: the tensor class of elements of C++ type ``kind`` - ``float`` if unknown."""
+    name = str(kind).replace("Float_t", "float").replace("Double_t", "double")
+    return type(f"RTensor<{name}>", (RTensor,), {"dtype": DTYPES.get(name, np.float32)})
+
+
 def _number(value: Any) -> str:
     """One element as ``std::ostream`` writes it, six significant figures."""
     return format(float(value), "g") if not isinstance(value, (bool, np.bool_)) else str(int(value))
@@ -143,7 +148,7 @@ class _AsTensor:
         self.dtype = dtype
 
     def __getitem__(self, kind: Any) -> _AsTensor:
-        return _AsTensor(RTensor[kind].dtype)
+        return _AsTensor(tensor_type(kind).dtype)
 
     def __call__(
         self, frame: Any, columns: Any = (), layout: Any = MemoryLayout.RowMajor
@@ -152,7 +157,7 @@ class _AsTensor:
         found = frame.AsNumpy(names)
         table = np.column_stack([np.asarray(found[name], dtype=self.dtype) for name in names])
         order = "C" if int(layout) == MemoryLayout.RowMajor else "F"
-        made = RTensor[_DTYPE_NAMES.get(self.dtype, "float")]
+        made = tensor_type(_DTYPE_NAMES.get(self.dtype, "float"))
         return made.wrap(np.asarray(table, order=order), MemoryLayout(int(layout)))
 
 

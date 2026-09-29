@@ -15,7 +15,7 @@ from typing import Any
 import numpy as np
 
 from .method import CLASSIFICATION, MULTICLASS, REGRESSION
-from .tensor import RTensor
+from .tensor import RTensor, tensor_type
 from .tools import CxxVector
 from .weightfile import read_method
 from .xmlfile import load
@@ -32,7 +32,8 @@ class RReader:
         self._events = Events
         self.path = str(path)
         root = load(self.path)
-        self.names = [str(item.get("Expression")) for item in root.find("Variables")]
+        variables: Any = root.find("Variables")
+        self.names = [str(item.get("Expression")) for item in variables]
         from .log import CONFIG
 
         # TMVA's RReader makes its reader "Silent".
@@ -65,7 +66,7 @@ class RReader:
         """One event's outputs as a vector, or every row of a tensor's as a tensor."""
         if isinstance(values, RTensor):
             found = self._answer(values.array).astype(np.float32)
-            return RTensor["float"].wrap(found[:, 0] if found.shape[1] == 1 else found)
+            return tensor_type("float").wrap(found[:, 0] if found.shape[1] == 1 else found)
         return CxxVector(float(v) for v in self._answer(list(values))[0].astype(np.float32))
 
 
@@ -89,7 +90,7 @@ class RStandardScaler:
     dtype: Any = np.float32
 
     def __class_getitem__(cls, kind: Any) -> type[RStandardScaler]:
-        dtype = RTensor[kind].dtype
+        dtype = tensor_type(kind).dtype
         return type(f"RStandardScaler<{kind}>", (RStandardScaler,), {"dtype": dtype})
 
     def __init__(self, title: Any = None, filename: Any = None) -> None:

@@ -17,11 +17,11 @@ from __future__ import annotations
 import ast
 import operator
 import time
-from typing import Any
+from typing import Any, ClassVar
 
 from ..dataset import Events
 from ..method import CLASSIFICATION, MULTICLASS, REGRESSION, Method
-from ..nettrain import loss_and_gradient, Descent, initial_network, train_descent
+from ..nettrain import Descent, initial_network, loss_and_gradient, train_descent
 from ..networks import ACTIVATIONS, dl_from_xml
 from ..xmlfile import Node
 from .mlp import outputs, targets_of
@@ -59,23 +59,33 @@ def parse_layout(layout: str, nvar: int, nout: int) -> tuple[list[int], list[str
     """``ParseDenseLayer`` of each layer: the network's sizes and its layers' activations."""
     sizes, activations = [nvar], []
     for layer in (piece for piece in layout.split(",") if piece.strip()):
-        parts = [part.strip() for part in layer.split("|") if part.strip()]
-        if parts and parts[0].upper() in REFUSED:
-            raise ValueError(
-                f"a {parts[0].upper()} layer is a kind of TMVA DL layer xrdroot does not have; "
-                "it has DENSE layers"
-            )
-        parts = [part for part in parts if part.upper() != "DENSE"]
-        activation, width = "tanh", 0
-        for part in parts:
-            if part.lower() in ACTIVATIONS:
-                activation = ACTIVATIONS[part.lower()]
-            else:
-                width = _width(part, nvar)
+        width, activation = _dense_layer(layer, nvar)
         activations.append(activation)
         sizes.append(width)
     sizes[-1] = nout
     return sizes, activations
+
+
+def _dense_layer(layer: str, nvar: int) -> tuple[int, str]:
+    """One ``DENSE|width|activation`` layer's width and activation - ``tanh`` if it names none."""
+    parts = [part.strip() for part in layer.split("|") if part.strip()]
+    _refuse(parts)
+    activation, width = "tanh", 0
+    for part in (part for part in parts if part.upper() != "DENSE"):
+        if part.lower() in ACTIVATIONS:
+            activation = ACTIVATIONS[part.lower()]
+        else:
+            width = _width(part, nvar)
+    return width, activation
+
+
+def _refuse(parts: list[str]) -> None:
+    """The refusal of a layer of a kind TMVA's DL has and this does not."""
+    if parts and parts[0].upper() in REFUSED:
+        raise ValueError(
+            f"a {parts[0].upper()} layer is a kind of TMVA DL layer xrdroot does not have; "
+            "it has DENSE layers"
+        )
 
 
 #: ``ERegularization``, as the training phase's header prints it.
@@ -134,7 +144,7 @@ class MethodDL(Method):
 
     type_name = "DL"
     analyses = frozenset({CLASSIFICATION, REGRESSION, MULTICLASS})
-    defaults = {
+    defaults: ClassVar[dict[str, Any]] = {
         "InputLayout": "0|0|0",
         "BatchLayout": "0|0|0",
         "Layout": "DENSE|(N+100)*2|SOFTSIGN,DENSE|0|LINEAR",
@@ -199,7 +209,7 @@ class MethodDL(Method):
         self._describe(ntrain, nvalid, phases[0].batch_size if phases else 30)
         train = (events.values[:ntrain], target[:ntrain], events.weights[:ntrain])
         valid = (events.values[ntrain:], target[ntrain:], events.weights[ntrain:])
-        self.history = {"trainingError": [], "valError": []}
+        self.history: dict[str, list[tuple[int, float]]] = {"trainingError": [], "valError": []}
         # TMVA's squared error is the mean, not half of it, as the descent's loss is.
         self._scale = 2.0 if kind not in ("ce", "softmax") else 1.0
         self.log.info("Compute initial loss  on the validation data ")
@@ -220,7 +230,8 @@ class MethodDL(Method):
         strategy = str(self.opt("ErrorStrategy")).upper()
         loss = LOSS_LETTERS.get(strategy, "C")
         sys.stdout.write(
-            f"DEEP NEURAL NETWORK:   Depth = {len(self.sizes) - 1}  Input = ( 1, 1, {self.sizes[0]} )  "
+            f"DEEP NEURAL NETWORK:   Depth = {len(self.sizes) - 1}  "
+            f"Input = ( 1, 1, {self.sizes[0]} )  "
             f"Batch size = {batch}  Loss function = {loss}\n"
         )
         phases = strategy_phases(str(self.opt("TrainingStrategy")))
@@ -228,7 +239,8 @@ class MethodDL(Method):
         for index, (width, name) in enumerate(zip(self.sizes[1:], self.activations)):
             line = (
                 f"\tLayer {index}\t DENSE Layer: \t ( Input ={self.sizes[index]:6d} , Width ="
-                f"{width:6d} ) \tOutput = ( {1:2d} ,{batch:6d} ,{width:6d} ) \t Activation Function = "
+                f"{width:6d} ) \tOutput = ( {1:2d} ,{batch:6d} ,{width:6d} ) \t "
+                "Activation Function = "
                 f"{ACTIVATION_NAMES.get(name, name.capitalize())}"
             )
             if index < len(drops) and drops[index] != 0:

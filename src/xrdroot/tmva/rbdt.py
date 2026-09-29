@@ -23,35 +23,45 @@ __all__ = ["RBDT", "SaveXGBoost"]
 LINKS = {"binary:logistic": 1, "reg:logistic": 1, "multi:softprob": 2, "multi:softmax": 2}
 
 
-def _base_score(config: dict[str, Any]) -> float:
+def _base_scores(config: dict[str, Any]) -> list[float]:
+    """The model's base score - or, from XGBoost 3 on, a multiclass model's one for each class."""
     text = str(config["learner"]["learner_model_param"].get("base_score", "0.5"))
-    return float(text.strip("[]").split(",")[0])
+    return [float(part) for part in text.strip("[]").split(",")]
+
+
+#: A saved tree's columns: its tree, a split's feature, threshold and children, a leaf's value.
+COLUMNS = ("tree", "feature", "threshold", "yes", "no", "missing", "value")
+
+
+def _flattened(tree: dict[str, Any], start: int) -> tuple[list[dict[str, Any]], dict[int, int]]:
+    """A tree's nodes, parents before children, and the row each node's id is at from ``start``."""
+    stack: list[dict[str, Any]] = [tree]
+    order: list[dict[str, Any]] = []
+    ids: dict[int, int] = {}
+    while stack:
+        node = stack.pop()
+        ids[int(node["nodeid"])] = start + len(order)
+        order.append(node)
+        stack.extend(reversed(node.get("children", [])))
+    return order, ids
+
+
+def _row(node: dict[str, Any], ids: dict[int, int]) -> tuple[Any, ...]:
+    """A node's feature, threshold, children and value; a leaf's split and children ``-1``."""
+    if "leaf" in node:
+        return -1, 0.0, -1, -1, -1, float(node["leaf"])
+    children = (ids[int(node[side])] for side in ("yes", "no", "missing"))
+    return (int(str(node["split"]).lstrip("f")), float(node["split_condition"]), *children, 0.0)
 
 
 def _nodes(dump: list[str]) -> dict[str, list[Any]]:
     """Every node of every tree, a row each, children as rows of the same table."""
-    rows: dict[str, list[Any]] = {
-        k: [] for k in ("tree", "feature", "threshold", "yes", "no", "missing", "value")
-    }
+    rows: dict[str, list[Any]] = {k: [] for k in COLUMNS}
     for index, text in enumerate(dump):
-        stack = [json.loads(text)]
-        start = len(rows["tree"])
-        ids: dict[int, int] = {}
-        order = []
-        while stack:
-            node = stack.pop()
-            ids[int(node["nodeid"])] = start + len(order)
-            order.append(node)
-            stack.extend(reversed(node.get("children", [])))
+        order, ids = _flattened(json.loads(text), len(rows["tree"]))
         for node in order:
-            leaf = "leaf" in node
-            rows["tree"].append(index)
-            rows["feature"].append(-1 if leaf else int(str(node["split"]).lstrip("f")))
-            rows["threshold"].append(0.0 if leaf else float(node["split_condition"]))
-            rows["yes"].append(-1 if leaf else ids[int(node["yes"])])
-            rows["no"].append(-1 if leaf else ids[int(node["no"])])
-            rows["missing"].append(-1 if leaf else ids[int(node["missing"])])
-            rows["value"].append(float(node["leaf"]) if leaf else 0.0)
+            for name, value in zip(COLUMNS, (index, *_row(node, ids))):
+                rows[name].append(value)
     return rows
 
 
@@ -69,7 +79,9 @@ def SaveXGBoost(model: Any, key: Any, filename: Any, num_inputs: int = 0, **_: A
         name: np.asarray(values, dtype=np.float64 if name in ("threshold", "value") else np.int32)
         for name, values in rows.items()
     }
-    columns["base_score"] = np.full(count, _base_score(config))
+    # Each tree's row keeps the base score of the class it adds to: tree ``k`` adds to ``k % n``.
+    bases = np.asarray(_base_scores(config), dtype=np.float64)
+    columns["base_score"] = bases[columns["tree"] % len(bases)]
     columns["link"] = np.full(count, LINKS.get(objective, 0), dtype=np.int32)
     columns["classes"] = np.full(count, classes, dtype=np.int32)
     columns["inputs"] = np.full(count, int(num_inputs), dtype=np.int32)
@@ -92,6 +104,8 @@ class RBDT:
         self.classes = int(self.nodes["classes"][0])
         self.base = float(self.nodes["base_score"][0])
         self.roots = np.flatnonzero(np.r_[True, np.diff(self.nodes["tree"]) != 0])
+        #: Each class's base margin, which its first tree's rows keep.
+        self.bases = self.nodes["base_score"][self.roots[: self.classes]]
 
     def _margins(self, x: Any) -> Any:
         values = np.asarray(x, dtype=np.float32)
@@ -113,8 +127,8 @@ class RBDT:
         return leaves.sum(axis=0)[:, None]
 
     def Compute(self, x: Any) -> Any:
-        """The model's output for each row: probabilities for a classifier, values for a regression."""
-        from .tensor import RTensor
+        """Each row's output: probabilities for a classifier, values for a regression."""
+        from .tensor import RTensor, tensor_type
         from .tools import CxxVector
 
         single = not isinstance(x, (np.ndarray, RTensor)) and not np.ndim(x) > 1
@@ -124,11 +138,12 @@ class RBDT:
             base = np.log(self.base / (1.0 - self.base))
             found = 1.0 / (1.0 + np.exp(-(margins + base)))
         elif self.link == 2:
+            margins = margins + self.bases
             shifted = np.exp(margins - margins.max(axis=1, keepdims=True))
             found = shifted / shifted.sum(axis=1, keepdims=True)
         else:
             found = margins + self.base
         found = found.astype(np.float32)
         if isinstance(x, RTensor):
-            return RTensor["float"].wrap(found)
+            return tensor_type("float").wrap(found)
         return CxxVector(float(v) for v in found[0]) if single else found
