@@ -200,13 +200,8 @@ class ToyMCSampler:
         rows: list[list[float]] = []
         weights: list[float] = []
         tails, i = 0.0, 0
-        while i < self._max_toys:
-            if tails >= self._tails and i + 1 > self._ntoys:
-                break
-            if i % 500 == 0 and i > 0:
-                text = f"generated toys: {i} / {self._ntoys}"
-                text += f" (tails: {tails:g} / {self._tails:g})" if self._tails else ""
-                log(None, PROGRESS, "Generation", text)
+        while i < self._max_toys and not (tails >= self._tails and i + 1 > self._ntoys):
+            self._progress(i, tails)
             variables.assign(saved)
             toy, weight = self.GenerateToyData(at, None, with_weight=True)
             variables.assign(self._point)
@@ -217,10 +212,22 @@ class ToyMCSampler:
                 continue
             rows.append(values)
             weights.append(weight)
-            if values[0] <= self._low or values[0] >= self._high:
-                tails += weight if weight >= 0.0 else 1.0
+            tails += self._in_tails(values[0], weight)
         variables.assign(saved)
         return self._as_data(rows, weights)
+
+    def _progress(self, i: int, tails: float) -> None:
+        """Every five hundred toys, how many - and in the tails, when toys run until enough are."""
+        if i % 500 == 0 and i > 0:
+            text = f"generated toys: {i} / {self._ntoys}"
+            text += f" (tails: {tails:g} / {self._tails:g})" if self._tails else ""
+            log(None, PROGRESS, "Generation", text)
+
+    def _in_tails(self, value: float, weight: float) -> float:
+        """A toy's count towards the tails: its weight - one, if negative - when it is in them."""
+        if value <= self._low or value >= self._high:
+            return weight if weight >= 0.0 else 1.0
+        return 0.0
 
     def _all_statistics(self, data: Any, variables: Any, point: Any = None) -> list[float]:
         """``EvaluateAllTestStatistics``: each statistic at the point, the model's variables put
@@ -269,26 +276,39 @@ class ToyMCSampler:
             return (None, 1.0) if with_weight else None
         variables = RooArgSet(list(self._pdf.getVariables()))
         variables.assign(as_list(point))
+        self._make_nuisance_sampler()
+        observables = self._generated_observables(pdf)
+        saved = variables.snapshot()
+        weight = self._nuisance_weight(point, variables)
+        data = self.Generate(pdf, observables)
+        variables.assign(saved)
+        return (data, weight) if with_weight else data
+
+    def _make_nuisance_sampler(self) -> None:
+        """The prior's sampler of the nuisance parameters, made the first time one is wanted."""
         if self._nuisance_sampler is None and self._prior is not None and self._nuisance:
             from .nuisance import NuisanceParametersSampler
 
             self._nuisance_sampler = NuisanceParametersSampler(
                 self._prior, self._nuisance, self._ntoys, self._expected_nuisance
             )
+
+    def _generated_observables(self, pdf: Any) -> RooArgSet:
+        """The observables to draw - the global ones drawn first, apart."""
         observables = RooArgSet(list(self._observables))
         if self._global is not None and len(self._global):
             for one in list(self._global):
                 observables.remove(one, True, True)
             self.GenerateGlobalObservables(pdf)
-        saved = variables.snapshot()
-        weight = 1.0
-        if self._nuisance_sampler is not None:
-            names = {one.GetName() for one in as_list(point)}
-            weight = self._nuisance_sampler.next_point(
-                RooArgSet([v for v in variables if v.GetName() not in names]))
-        data = self.Generate(pdf, observables)
-        variables.assign(saved)
-        return (data, weight) if with_weight else data
+        return observables
+
+    def _nuisance_weight(self, point: Any, variables: Any) -> float:
+        """The nuisance parameters drawn from the prior, and the toy's weight - one if none."""
+        if self._nuisance_sampler is None:
+            return 1.0
+        names = {one.GetName() for one in as_list(point)}
+        return float(self._nuisance_sampler.next_point(
+            RooArgSet([v for v in variables if v.GetName() not in names])))  # fmt: skip
 
     def GenerateGlobalObservables(self, pdf: Any) -> None:
         """New values of the global observables, drawn from their constraints."""

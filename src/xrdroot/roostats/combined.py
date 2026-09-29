@@ -210,18 +210,7 @@ class ProfileLikelihoodCalculator(CombinedCalculator):
         constrained = self._constrained()
         at_mle = float(self._fit.minNll())
         old = self._fixed_at_null(constrained, null)
-        at_null = at_mle
-        if any(not p.isConstant() for p in constrained):
-            log(None, PROGRESS, "Minimization", "ProfileLikelihoodCalcultor::GetHypoTest - do "
-                "conditional fit ")  # fmt: skip
-            fit = minimize_nll(nll)
-            at_null = float(fit.minNll())
-            _said(fit)
-            if fit.status() != 0:
-                log(None, WARNING, "Minimization", "ProfileLikelihoodCalcultor::GetHypotest -  "
-                    f"Conditional fit failed - status = {fit.status()}")  # fmt: skip
-        else:
-            at_null = float(nll.getVal())
+        at_null = _conditional_minimum(nll, constrained)
         ndf = sum(1 for _, _, constant in null if not constant)
         pvalue = incomplete_gamma_c(0.5 * ndf, max(at_null - at_mle, 0.0))  # 0 with no ndf
         if ndf == 1:
@@ -243,6 +232,20 @@ class ProfileLikelihoodCalculator(CombinedCalculator):
                 par.setVal(value)
                 par.setConstant(True)
         return old
+
+
+def _conditional_minimum(nll: Any, constrained: Any) -> float:
+    """The likelihood at the null: minimised over what is still free, or as it is."""
+    if not any(not p.isConstant() for p in constrained):
+        return float(nll.getVal())
+    log(None, PROGRESS, "Minimization", "ProfileLikelihoodCalcultor::GetHypoTest - do "
+        "conditional fit ")  # fmt: skip
+    fit = minimize_nll(nll)
+    _said(fit)
+    if fit.status() != 0:
+        log(None, WARNING, "Minimization", "ProfileLikelihoodCalcultor::GetHypotest -  "
+            f"Conditional fit failed - status = {fit.status()}")  # fmt: skip
+    return float(fit.minNll())
 
 
 def _said(fit: Any) -> None:

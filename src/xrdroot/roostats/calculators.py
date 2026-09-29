@@ -253,29 +253,14 @@ class FrequentistCalculator(_Toys):
         model = self._null if which == "Null" else self._alt
         self._sampler.SetGlobalObservables(model.GetGlobalObservables())
 
-    def _profiled(self, model: Any, mles: Any, which: str) -> None:
-        """The nuisance parameters at their best fit to the data with the parameters of interest
-        fixed - unless given, all of them."""
+    def _profile_fit(self, model: Any, params: Any, rest: Any, observables: tuple[Any, Any],
+                     which: str) -> None:  # fmt: skip
+        """The profile of the likelihood in ``rest``, fitted - its fit kept, if asked."""
         from ..roofit.cmdargs import RooCmdArg
         from ..roofit.messages import FATAL
         from .modelconfig import quieted
-        from .utils import RemoveConstantParameters
 
-        params = RooArgSet(list(model.GetPdf().getParameters(self._data)))
-        RemoveConstantParameters(params)
-        nuisance = model.GetNuisanceParameters()
-        if nuisance is None:
-            return
-        rest = RooArgSet([p for p in params if nuisance.find(p.GetName()) is None])
-        if mles is not None:
-            log(None, INFO, "InputArguments", f"Using given conditional MLEs for {which}.")
-            params.assign(mles)
-            rest.add(list(mles), True)
-            if not [p for p in nuisance if mles.find(p.GetName()) is None]:
-                return
-        log(None, INFO, "InputArguments", f"Profiling conditional MLEs for {which}.")
-        cond = RooArgSet(list(model.GetConditionalObservables() or ()))
-        glob = RooArgSet(list(model.GetGlobalObservables() or ()))
+        cond, glob = observables
         with quieted(FATAL):
             nll = model.GetPdf().createNLL(self._data, RooCmdArg("CloneData", False),
                                            RooCmdArg("Constrain", params),
@@ -287,10 +272,37 @@ class FrequentistCalculator(_Toys):
             profile.getVal()
             if self._fit_info is not None:
                 self._fit_info.add(_fit_as_set(profile.minimizer().save(), f"fit{which}_"))
+
+    def _profiled(self, model: Any, mles: Any, which: str) -> None:
+        """The nuisance parameters at their best fit to the data with the parameters of interest
+        fixed - unless given, all of them."""
+        from .utils import RemoveConstantParameters
+
+        params = RooArgSet(list(model.GetPdf().getParameters(self._data)))
+        RemoveConstantParameters(params)
+        nuisance = model.GetNuisanceParameters()
+        if nuisance is None:
+            return
+        rest = RooArgSet([p for p in params if nuisance.find(p.GetName()) is None])
+        if mles is not None and _given(params, rest, nuisance, mles, which):
+            return
+        log(None, INFO, "InputArguments", f"Profiling conditional MLEs for {which}.")
+        cond = RooArgSet(list(model.GetConditionalObservables() or ()))
+        glob = RooArgSet(list(model.GetGlobalObservables() or ()))
+        self._profile_fit(model, params, rest, (cond, glob), which)
         statistic = self._sampler.GetTestStatistic() if self._sampler is not None else None
         if statistic is not None:
             statistic.SetConditionalObservables(cond)
             statistic.SetGlobalObservables(glob)
+
+
+def _given(params: Any, rest: Any, nuisance: Any, mles: Any, which: str) -> bool:
+    """The conditional MLEs given, taken - and whether they are all the nuisance parameters,
+    so nothing is left to fit."""
+    log(None, INFO, "InputArguments", f"Using given conditional MLEs for {which}.")
+    params.assign(mles)
+    rest.add(list(mles), True)
+    return not [p for p in nuisance if mles.find(p.GetName()) is None]
 
 
 def _fit_as_set(fit: Any, prefix: str) -> list[Any]:
