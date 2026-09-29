@@ -40,11 +40,12 @@ def volume(a: float, sx: float, sy: float, ro: float) -> float:
 
 
 def _derivatives(a: float, q: dict[str, float]) -> dict[str, float]:
-    """``Derpa2``, ``Derpsigmax``, ``Derpsigmay`` and ``Derpro``, with ``a`` for the last three."""
+    """``Derpa2``, ``Derpsigmax``, ``Derpsigmay`` and ``Derpro``, with ``a`` for the last three.
+
+    They are asked for only of a peak whose volume is above 0, so ``1 - ro*ro`` is.
+    """
     sx, sy, ro = q["sigmax"], q["sigmay"], q["ro"]
-    r = _root(ro)
-    if r is None:
-        return dict.fromkeys(("amp", "sigmax", "sigmay", "ro"), 0.0)
+    r = math.sqrt(1 - ro * ro)
     return {
         "amp": (((2 * PI) * sx) * sy) * r,
         "sigmax": (((a * 2) * PI) * sy) * r,
@@ -126,5 +127,6 @@ def fit2(source: Array, setup: Peak2Setup, settings: FitSettings2, stiefel: bool
     fitted = run(model, y, settings, stiefel)
     chi_er = fitted.chi_cel / (len(y) - len(model.free))
     result = _results(model, setup, fitted, chi_er)
-    result.spectrum = model.shape().reshape(settings.xmax - settings.xmin + 1, -1)
+    with np.errstate(all="ignore"):
+        result.spectrum = model.shape().reshape(settings.xmax - settings.xmin + 1, -1)
     return result

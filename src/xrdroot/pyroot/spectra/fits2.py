@@ -34,6 +34,15 @@ _CHECKS = (
 _TAKEN = ("x", "y", "x1", "y1", "amp", "ampx", "ampy")
 
 
+def _shared_refusal(sigma_x: float, sigma_y: float, ro: float) -> str | None:
+    """What ``SetPeakParameters`` says of a sigma not above 0 or a correlation past 1."""
+    if sigma_x <= 0 or sigma_y <= 0:
+        return "Invalid sigma, must be > than 0"
+    if ro < -1 or ro > 1:
+        return "Invalid ro, must be from region <-1,1>"
+    return None
+
+
 class TSpectrum2Fit(_Options, TNamed):
     """ROOT's ``TSpectrum2Fit``: 2-D peaks with ridges, fitted by AWMI or Stiefel's method."""
 
@@ -90,24 +99,16 @@ class TSpectrum2Fit(_Options, TNamed):
         positions, the ridges' x and y positions, and the amplitudes of the
         peaks and of their x and y ridges, each followed by its fixes.
         """
-        if sigmaX <= 0 or sigmaY <= 0:
-            self.Error("SetPeakParameters", "Invalid sigma, must be > than 0")
-            return
-        if ro < -1 or ro > 1:
-            self.Error("SetPeakParameters", "Invalid ro, must be from region <-1,1>")
-            return
         count = self.fNPeaks
         starts = {kind: vector_in(peaks[2 * n], count).tolist() for n, kind in enumerate(_TAKEN)}
-        refused = self._refusal(starts)
+        refused = _shared_refusal(sigmaX, sigmaY, ro) or self._refusal(starts)
         if refused:
             self.Error("SetPeakParameters", refused)
             return
         for n, kind in enumerate(_TAKEN):
             self._setup.peaks[kind] = starts[kind]
             self._setup.fix[kind] = [bool(peaks[2 * n + 1][k]) for k in range(count)]
-        for name, value, fixed in (("sigmax", sigmaX, fixSigmaX), ("sigmay", sigmaY, fixSigmaY),
-                                   ("ro", ro, fixRo)):  # fmt: skip
-            self._setup.init[name], self._setup.fixed[name] = float(value), bool(fixed)
+        self._set(("sigmax", "sigmay", "ro"), (sigmaX, fixSigmaX, sigmaY, fixSigmaY, ro, fixRo))
 
     def _set(self, names: tuple[str, ...], values: tuple[Any, ...]) -> None:
         for n, name in enumerate(names):

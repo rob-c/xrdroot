@@ -360,10 +360,12 @@ def run(model: Model, y: Array, settings: FitSettings, stiefel: bool) -> Fitted:
     power = 2 if stiefel else settings.power
     fitted = Fitted(list(model.start))
     state = _State()
-    while state.iteration < settings.iterations:
-        der, temp, chi2 = gradient(model, y, settings, state)
-        fitted.temp = temp.tolist()
-        _stepped(model, y, fitted.xk, der, chi2, settings, state)
-        _error_sums(model, y, power, fitted)
-        state.iteration += 1
+    # A correlation of 1 divides by 0, as it does in ROOT: C's infinities, silently.
+    with np.errstate(all="ignore"):
+        while state.iteration < settings.iterations:
+            der, temp, chi2 = gradient(model, y, settings, state)
+            fitted.temp = temp.tolist()
+            _stepped(model, y, fitted.xk, der, chi2, settings, state)
+            _error_sums(model, y, power, fitted)
+            state.iteration += 1
     return fitted
