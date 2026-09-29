@@ -26,6 +26,15 @@ __all__ = ["TGeoManager", "gGeoManager", "current_manager", "TVirtualGeoPainter"
 
 #: The geometry being built: ``gGeoManager``, or nothing yet.
 _CURRENT: list[TGeoManager] = []
+#: ``TGeoManager::SetVerboseLevel``'s level - reports are said at 1 and above - and
+#: ``SetExportPrecision``'s digits, kept to be asked back.
+_SETTINGS = {"verbose": 1, "precision": 17}
+
+
+def _said(place: str, text: str) -> None:
+    """One of ``TGeoManager``'s reports, on standard error, unless it was told to be quiet."""
+    if _SETTINGS["verbose"] > 0:
+        Info(place, text)
 
 
 class TVirtualGeoPainter(TNamed):
@@ -59,7 +68,10 @@ class TGeoManager(Makers, TNamed):
         self._closed = False
         self._painter = TVirtualGeoPainter()
         _CURRENT[:] = [self]
-        Info("TGeoManager::TGeoManager", f"Geometry {self.GetName()}, {self.GetTitle()} created")
+        from ..core.troot import gROOT
+
+        gROOT.GetListOfGeometries().Add(self)
+        _said("TGeoManager::TGeoManager", f"Geometry {self.GetName()}, {self.GetTitle()} created")
 
     # -- what it lists ------------------------------------------------------------
 
@@ -124,7 +136,7 @@ class TGeoManager(Makers, TNamed):
 
     def SetTopVolume(self, volume: Any) -> None:
         self._top = volume
-        Info("TGeoManager::SetTopVolume",
+        _said("TGeoManager::SetTopVolume",
              f"Top volume is {volume.GetName()}. Master volume is {volume.GetName()}")  # fmt: skip
 
     def GetTopVolume(self) -> Any:
@@ -150,7 +162,7 @@ class TGeoManager(Makers, TNamed):
                               f"volume UID's in {self.GetTitle()}"),
             ("CloseGeometry", "----------------modeler ready----------------"),
         ):  # fmt: skip
-            Info(f"TGeoManager::{place}", said)
+            _said(f"TGeoManager::{place}", said)
         self._closed = True
 
     def _unique_volumes(self) -> int:
@@ -165,7 +177,7 @@ class TGeoManager(Makers, TNamed):
     def SetVisLevel(self, level: int = 3) -> None:
         if int(level) > 0:
             self._settings["vislevel"] = int(level)
-            Info("TGeoManager::SetVisLevel", "Automatic visible depth disabled")
+            _said("TGeoManager::SetVisLevel", "Automatic visible depth disabled")
 
     def GetVisLevel(self) -> int:
         return int(self._settings["vislevel"])
@@ -220,6 +232,37 @@ class TGeoManager(Makers, TNamed):
 
     def FindNode(self, *args: Any) -> Any:
         return self._navigation("FindNode")
+
+    @staticmethod
+    def SetVerboseLevel(level: int = 1) -> None:
+        _SETTINGS["verbose"] = int(level)
+
+    @staticmethod
+    def GetVerboseLevel() -> int:
+        return _SETTINGS["verbose"]
+
+    @staticmethod
+    def SetExportPrecision(precision: int) -> None:
+        _SETTINGS["precision"] = int(precision)
+
+    @staticmethod
+    def GetExportPrecision() -> int:
+        return _SETTINGS["precision"]
+
+    @staticmethod
+    def Import(filename: str, name: str = "", option: str = "") -> Any:
+        raise UnsupportedFeatureError(
+            f"TGeoManager::Import reads a geometry from GDML or from a TGeoManager ROOT wrote, "
+            f"neither of which xrdroot.pyroot reads; {filename!r} was not read - build the "
+            f"geometry with TGeoManager's own methods instead"
+        )
+
+    def GetElementTable(self) -> Any:
+        raise UnsupportedFeatureError(
+            "TGeoManager::GetElementTable is ROOT's table of elements and radionuclides, read "
+            "from the RadioNuclides.txt data file ROOT installs and xrdroot does not ship; the "
+            "decays it computes are not available here"
+        )
 
     def Export(self, filename: str, name: str = "", option: str = "vg") -> Any:
         raise UnsupportedFeatureError(

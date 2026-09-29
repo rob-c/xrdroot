@@ -27,7 +27,7 @@ from .collections import TList
 from .directories import TDirectory, current_directory, set_current
 from .messages import message
 from .objects import Indent, TNamed, TObject, templated
-from .wrapping import unwrap, wrap
+from .wrapping import from_members, unwrap, wrap
 
 __all__ = ["TFile", "TDirectoryFile", "TKey"]
 
@@ -268,7 +268,7 @@ class TDirectoryFile(TDirectory):
         read = self._reader()[label]
         found = _tree(read, key) or wrap(read)
         if not isinstance(found, TObject) and not _engine_own(found):
-            found = TOther(key.GetClassName(), found)
+            found = from_members(key.GetClassName(), found) or TOther(key.GetClassName(), found)
         newest = key is self.GetKey(key.GetName())
         if newest and any(_inherits(found, kind) for kind in KEPT):
             self.Append(found, True)

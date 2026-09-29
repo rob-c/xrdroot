@@ -82,3 +82,40 @@ class PerspectiveView:
         ahead = depth > 0
         safe = np.where(ahead, depth, 1.0)
         return np.where(ahead, screen[:, :2] / safe, screen[:, :2] * BEHIND)
+
+
+class ParallelView:
+    """``TView3D`` in parallel projection: the box ``rmin..rmax`` shrunk into a unit sphere, turned.
+
+    This is the view of kind 1 (``TView::CreateView(1)``), that of a lego
+    plot: ``DefineViewDirection``'s matrix, with no division by depth.
+    """
+
+    def __init__(self, rmin: Sequence[float], rmax: Sequence[float], longitude: float = -120.0,
+                 latitude: float = 60.0, psi: float = 0.0) -> None:  # fmt: skip
+        from ..canvas.view3d import View3D
+
+        low = tuple(float(v) for v in rmin)
+        high = tuple(float(v) for v in rmax)
+        made = View3D(low, high, longitude, latitude, psi)  # type: ignore[arg-type]
+        self.tnorm = np.asarray(made.tnorm[:12], dtype=np.float64).reshape(3, 4)
+
+    def project(self, points: Any) -> np.ndarray[Any, Any]:
+        """World points (N by 3) on the pad, in its ``-1..1`` range (N by 2)."""
+        world = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        return world @ self.tnorm[:2, :3].T + self.tnorm[:2, 3]
+
+
+def make_view(spec: dict[str, Any], low: Any, high: Any, aspect: float) -> Any:
+    """The view a pad's ``TView`` settings describe, over ``low..high`` unless it has a range.
+
+    ``spec`` is ``{"perspective", "rmin", "rmax", "longitude", "latitude", "psi"}``;
+    a range of ``None`` is found from what is painted, as ``SetAutoRange`` finds it.
+    """
+    rmin = low if spec.get("rmin") is None else spec["rmin"]
+    rmax = high if spec.get("rmax") is None else spec["rmax"]
+    angles = (float(spec.get("longitude", -120.0)), float(spec.get("latitude", 60.0)),
+              float(spec.get("psi", 0.0)))  # fmt: skip
+    if spec.get("perspective", True):
+        return PerspectiveView(rmin, rmax, *angles, aspect=aspect)
+    return ParallelView(rmin, rmax, *angles)

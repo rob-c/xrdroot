@@ -36,6 +36,8 @@ SUBMODULES = [
     "rdf",
     "graphics",
     "graphics.ratioplot",
+    "graphics.widgets",
+    "graphics.views3d",
     "roofit",
     "roostats",
     "tcut",
@@ -45,6 +47,8 @@ SUBMODULES = [
     "spectra.transforms",
     "spectra.fits",
     "geom",
+    "geom.legacy",
+    "geom.legacyshapes",
 ]
 
 __all__: list[str] = []
@@ -75,5 +79,10 @@ _gather()
 
 
 def __getattr__(name: str) -> Any:
-    """A name ROOT has and this namespace does not yet, refused by that name."""
+    """An object ``gROOT`` finds by that name, as PyROOT falls back to - ``ROOT.h1``, a
+    geometry's ``ROOT.YK01`` - or else a name ROOT has and this namespace does not yet."""
+    if not name.startswith("_"):
+        found = globals()["gROOT"].FindObject(name)
+        if found is not None:
+            return found
     raise AttributeError(f"ROOT has {name}; xrdroot.pyroot does not yet")

@@ -495,9 +495,12 @@ def _zero(word: Token) -> Token:
 
 
 def _position(token: Token) -> Token:
+    """``__LINE__``, or ``__FILE__`` - the whole path of a file there is, as cling gives it."""
     if token.text == "__LINE__":
         return Token("num", str(token.where.line), token.where)
-    return Token("str", '"' + token.where.file.replace("\\", "\\\\") + '"', token.where)
+    file = token.where.file
+    file = str(Path(file).absolute()) if Path(file).is_file() else file
+    return Token("str", '"' + file.replace("\\", "\\\\") + '"', token.where)
 
 
 def _read(path: Path) -> str:

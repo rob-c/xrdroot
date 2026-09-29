@@ -20,7 +20,7 @@ from typing import Any
 from ...canvas import Primitive
 from ...geom import IDENTITY, Matrix, Solid
 
-__all__ = ["solids", "primitive", "draw_volume", "walk"]
+__all__ = ["solids", "primitive", "draw_object", "draw_volume", "walk"]
 
 #: The visualisation options, as ``TVirtualGeoPainter``'s enumeration numbers them.
 VIS_DEFAULT, VIS_LEAVES, VIS_ONLY = 0, 1, 2
@@ -122,14 +122,23 @@ def primitive(volume: Any) -> Primitive:
     return Primitive("TGeoVolume", {"fName": volume.GetName(), "solids": solids(volume)})
 
 
-def draw_volume(volume: Any, option: str) -> None:
-    """``TGeoPainter::DrawVolume``: the pad cleared unless ``same``, the volume put in it."""
+def draw_object(obj: Any, option: str) -> None:
+    """``TGeoPainter::DrawVolume``, ``TNode::Draw``: the pad cleared unless ``same``, a
+    perspective view made for it if it has none, and ``obj`` put in it."""
     from ..core import hooks
     from ..graphics.canvas import default_canvas
     from ..graphics.pads import current
+    from ..graphics.views3d import PERSPECTIVE, TView3D
 
     pad = current() or default_canvas()
     if "same" not in option.lower():
         pad.Clear()
+    if pad.GetView() is None:
+        TView3D(PERSPECTIVE)
+    hooks.draw_hook(obj, option)
+
+
+def draw_volume(volume: Any, option: str) -> None:
+    """A volume drawn: the painter told which, then drawn as any 3-D object is."""
     _manager().GetGeomPainter().top = volume
-    hooks.draw_hook(volume, option)
+    draw_object(volume, option)

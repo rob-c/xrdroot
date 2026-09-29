@@ -6,7 +6,7 @@ placements above it. What it paints is a :class:`Solid` here - the shape's
 :class:`~.mesh.Mesh` in world coordinates, with the volume's line colour,
 style and width and its fill and transparency - and a list of those is all
 any of the three ways of drawing takes: the pad's wireframe
-(:func:`segments`), plotly's figure and pyvista's scene.
+(:mod:`.paint`), plotly's figure and pyvista's scene.
 """
 
 from __future__ import annotations
@@ -18,9 +18,8 @@ from typing import Any
 import numpy as np
 
 from .mesh import Mesh
-from .view import PerspectiveView
 
-__all__ = ["Solid", "extent", "segments"]
+__all__ = ["Solid", "extent"]
 
 
 @dataclass
@@ -44,17 +43,3 @@ def extent(solids: Sequence[Solid]) -> tuple[np.ndarray[Any, Any], np.ndarray[An
     every = np.concatenate(points)
     return every.min(axis=0), every.max(axis=0)
 
-
-def segments(solids: Sequence[Solid], view: PerspectiveView) -> list[np.ndarray[Any, Any]]:
-    """Each solid's edges on the pad (K by 2 by 2), in the ``-1..1`` range ``view`` projects to."""
-    drawn = []
-    for solid in solids:
-        flat = view.project(solid.mesh.points)
-        drawn.append(flat[solid.mesh.edges()])
-    return drawn
-
-
-def view_of(solids: Sequence[Solid], theta: float, phi: float, aspect: float) -> PerspectiveView:
-    """The perspective a pad of these angles and shape sees these solids in."""
-    low, high = extent(solids)
-    return PerspectiveView.from_pad(low, high, theta, phi, aspect)

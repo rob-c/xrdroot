@@ -88,8 +88,23 @@ globals().update(ENUMS)
 __all__ = sorted(ENUMS)
 
 
+#: The names ``TColorNumber`` takes besides the enumerators: matplotlib's one-letter
+#: colours, and the names ROOT's ``TColor::InitializeColors`` gives its first colours.
+COLOR_NAMES = {
+    "r": 2, "b": 4, "g": 3, "y": 5, "w": 0, "k": 1, "m": 6, "c": 7,
+    "background": 0, "black": 1, "red": 2, "green": 3, "blue": 4, "yellow": 5,
+    "magenta": 6, "cyan": 7, "white": 10, "editcol": 11,
+    **{f"grey{n}": n for n in range(12, 20)},
+}  # fmt: skip
+
+
 def named(text: str) -> int:
-    """``"kBlue"``, ``"kRed+2"``: what PyROOT makes of an enumerator's name given for a number."""
+    """``"kBlue"``, ``"kRed+2"``, ``"red"``, ``"r"``: what ``TColorNumber`` makes of a name."""
+    return COLOR_NAMES[text] if text in COLOR_NAMES else _enumerated(text)
+
+
+def _enumerated(text: str) -> int:
+    """An enumerator's name, perhaps plus or minus a number: ``"kRed+2"``."""
     import re
 
     found = re.match(r"^\s*(k\w+)\s*(?:([+-])\s*(\d+))?\s*$", text)

@@ -208,7 +208,15 @@ class TPad(Drawn):
         del option
         self.primitives = []
         self.made = {}
+        self.members.pop("fView", None)
         set_current(self)
+
+    def GetView(self) -> Any:
+        """The pad's 3-D view (``TView::CreateView``, or drawing a geometry, made it), or None."""
+        return self.members.get("fView")
+
+    def SetView(self, view: Any = None) -> None:
+        self.members["fView"] = view
 
     def add(self, obj: Any, option: str) -> None:
         """Put ``obj`` in this pad, drawn with ``option``."""

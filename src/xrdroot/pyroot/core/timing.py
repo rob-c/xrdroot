@@ -8,7 +8,7 @@ from typing import Any
 from .cformat import c_format
 from .objects import TNamed, TObject
 
-__all__ = ["TStopwatch", "TBenchmark", "gBenchmark", "TDatime", "TTimeStamp"]
+__all__ = ["TStopwatch", "TBenchmark", "gBenchmark", "TDatime", "TTimeStamp", "TTimer"]
 
 
 class TStopwatch(TObject):
@@ -221,3 +221,53 @@ class TTimeStamp(TDatime):
 
     def GetSec(self) -> int:
         return self.Convert()
+
+
+class TTimer(TObject):
+    """``TTimer([command | object,] ms[, synchronous])``: something to do every ``ms``.
+
+    ROOT runs a timer from its event loop, between the commands typed at its
+    prompt; a macro run in batch and ended (``root -b -q``) never gets back
+    to that loop, so its timer never fires - and here, with no event loop at
+    all, no timer does. Everything it was told is kept, to be asked back.
+    """
+
+    def __init__(self, *args: Any) -> None:
+        super().__init__()
+        given = list(args)
+        self._command = str(given.pop(0)) if given and isinstance(given[0], str) else ""
+        self._object = given.pop(0) if given and isinstance(given[0], TObject) else None
+        self._time = int(given[0]) if given else 0
+        self._running = False
+
+    def SetCommand(self, command: str) -> None:
+        self._command = str(command)
+
+    def GetCommand(self) -> str:
+        return self._command
+
+    def SetObject(self, obj: Any) -> None:
+        self._object = obj
+
+    def SetTime(self, ms: int) -> None:
+        self._time = int(ms)
+
+    def GetTime(self) -> int:
+        return self._time
+
+    def TurnOn(self) -> None:
+        self._running = True
+
+    def TurnOff(self) -> None:
+        self._running = False
+
+    def Start(self, ms: int = -1, single_shot: bool = False) -> None:
+        if int(ms) >= 0:
+            self._time = int(ms)
+        self.TurnOn()
+
+    def Stop(self) -> None:
+        self.TurnOff()
+
+    def IsRunning(self) -> bool:
+        return self._running

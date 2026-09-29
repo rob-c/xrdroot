@@ -187,18 +187,27 @@ class TROOT(TDirectory):
         return self._listed("Tasks")
 
     def FindObject(self, name: Any) -> Any:
-        """``FindObject``: the open files, the functions, canvases, styles, then ``gDirectory``."""
+        """``FindObject``: the open files, the functions, canvases, styles, what each geometry
+        holds, then ``gDirectory``."""
         if not isinstance(name, str):
             return self._list.FindObject(name)
+        found = self._listed(name)
+        if found is not None:
+            return found
+        here = current_directory()
+        found = here.Get(name) if here is not self else self._list.FindObject(name)
+        anywhere = _graphics("pads", "find_anywhere")
+        return found if found is not None or anywhere is None else anywhere(name)
+
+    def _listed(self, name: str) -> Any:
+        """The first object of that name in ROOT's own lists, or inside one of its geometries."""
         for key in ("Files", "MappedFiles", "Functions", "Geometries", "Canvases", "Styles",
                     "Specials"):  # fmt: skip
             found = self._lists[key].FindObject(name)
             if found is not None:
                 return found
-        here = current_directory()
-        found = here.Get(name) if here is not self else self._list.FindObject(name)
-        anywhere = _graphics("pads", "find_anywhere")
-        return found if found is not None or anywhere is None else anywhere(name)
+        inside = (geometry.FindObject(name) for geometry in self._lists["Geometries"])
+        return next((one for one in inside if one is not None), None)
 
     def FindObjectAny(self, name: Any) -> Any:
         """``FindObjectAny``: as ``FindObject``, then in every directory in memory below."""

@@ -17,6 +17,7 @@ theirs, are in :mod:`.legacy`.
 
 from __future__ import annotations
 
+from . import legacyread  # noqa: F401 - a TGeometry read from a file is made again
 from .iterators import TGeoIterator, TGeoIteratorPlugin
 from .manager import TGeoManager, TVirtualGeoPainter, gGeoManager
 from .materials import TGeoElement, TGeoMaterial, TGeoMedium, TGeoMixture
