@@ -45,40 +45,52 @@ def rescale_error(err: float, result_abs: float, result_asc: float) -> float:
     return err
 
 
+class _Sums:
+    """The rule's running sums: Gauss, Kronrod, of ``|f|``, and the values at each abscissa."""
+
+    def __init__(self, n: int, f_center: float, wg: tuple[float, ...], wgk: tuple[float, ...]
+                 ) -> None:  # fmt: skip
+        self.gauss = f_center * wg[n // 2 - 1] if n % 2 == 0 else 0.0
+        self.kronrod = f_center * wgk[n - 1]
+        self.abs = abs(self.kronrod)
+        self.fv1, self.fv2 = [0.0] * n, [0.0] * n
+
+    def pair(self, j: int, fval1: float, fval2: float, weight: float) -> None:
+        """The values either side at abscissa ``j``, into the Kronrod sums."""
+        self.fv1[j], self.fv2[j] = fval1, fval2
+        self.kronrod += weight * (fval1 + fval2)
+        self.abs += weight * (abs(fval1) + abs(fval2))
+
+
+def _asc(sums: _Sums, f_center: float, wgk: tuple[float, ...], n: int) -> float:
+    """The integral of ``|f - mean|``, unscaled."""
+    mean = sums.kronrod * 0.5
+    result_asc = wgk[n - 1] * abs(f_center - mean)
+    for j in range(n - 1):
+        result_asc += wgk[j] * (abs(sums.fv1[j] - mean) + abs(sums.fv2[j] - mean))
+    return result_asc
+
+
 def qk(xgk: tuple[float, ...], wg: tuple[float, ...], wgk: tuple[float, ...],
        f: Callable[[float], float], a: float, b: float) -> Rule:  # fmt: skip
     """``gsl_integration_qk``: result, error, integral of ``|f|``, of ``|f - mean|``."""
     n = len(xgk)
     center, half = 0.5 * (a + b), 0.5 * (b - a)
     f_center = f(center)
-    result_gauss = f_center * wg[n // 2 - 1] if n % 2 == 0 else 0.0
-    result_kronrod = f_center * wgk[n - 1]
-    result_abs = abs(result_kronrod)
-    fv1, fv2 = [0.0] * n, [0.0] * n
+    sums = _Sums(n, f_center, wg, wgk)
     for j in range((n - 1) // 2):
         jtw = j * 2 + 1
-        abscissa = half * xgk[jtw]
-        fval1, fval2 = f(center - abscissa), f(center + abscissa)
-        fv1[jtw], fv2[jtw] = fval1, fval2
-        result_gauss += wg[j] * (fval1 + fval2)
-        result_kronrod += wgk[jtw] * (fval1 + fval2)
-        result_abs += wgk[jtw] * (abs(fval1) + abs(fval2))
+        fval1, fval2 = f(center - half * xgk[jtw]), f(center + half * xgk[jtw])
+        sums.gauss += wg[j] * (fval1 + fval2)
+        sums.pair(jtw, fval1, fval2, wgk[jtw])
     for j in range(n // 2):
         jtwm1 = j * 2
-        abscissa = half * xgk[jtwm1]
-        fval1, fval2 = f(center - abscissa), f(center + abscissa)
-        fv1[jtwm1], fv2[jtwm1] = fval1, fval2
-        result_kronrod += wgk[jtwm1] * (fval1 + fval2)
-        result_abs += wgk[jtwm1] * (abs(fval1) + abs(fval2))
-    mean = result_kronrod * 0.5
-    result_asc = wgk[n - 1] * abs(f_center - mean)
-    for j in range(n - 1):
-        result_asc += wgk[j] * (abs(fv1[j] - mean) + abs(fv2[j] - mean))
-    err = (result_kronrod - result_gauss) * half
-    result_kronrod *= half
-    result_abs *= abs(half)
-    result_asc *= abs(half)
-    return result_kronrod, rescale_error(err, result_abs, result_asc), result_abs, result_asc
+        fval1, fval2 = f(center - half * xgk[jtwm1]), f(center + half * xgk[jtwm1])
+        sums.pair(jtwm1, fval1, fval2, wgk[jtwm1])
+    result_asc = _asc(sums, f_center, wgk, n) * abs(half)
+    err = (sums.kronrod - sums.gauss) * half
+    result_abs = sums.abs * abs(half)
+    return sums.kronrod * half, rescale_error(err, result_abs, result_asc), result_abs, result_asc
 
 
 def qk21(f: Callable[[float], float], a: float, b: float) -> Rule:

@@ -7,11 +7,18 @@ the error the spread of the last three results.
 
 from __future__ import annotations
 
+from typing import Any
+
 from .kronrod import DBL_EPSILON
 
 __all__ = ["DBL_MAX", "Table"]
 
 DBL_MAX = 1.7976931348623157e308
+
+
+def _near(u: float, v: float) -> bool:
+    """Whether two entries differ by no more than rounding: ``|u - v| <= max(|u|, |v|) eps``."""
+    return abs(u - v) <= max(abs(u), abs(v)) * DBL_EPSILON
 
 
 class Table:
@@ -32,46 +39,46 @@ class Table:
         epstab = self.rlist2
         n = self.n - 1
         current = epstab[n]
-        absolute, relative = DBL_MAX, 5 * DBL_EPSILON * abs(current)
-        newelm, n_orig, n_final = n // 2, n, n
-        nres_orig = self.nres
+        newelm, n_final, nres_orig = n // 2, n, self.nres
         result, abserr = current, DBL_MAX
         if n < 2:
-            return current, max(absolute, relative)
+            return current, max(DBL_MAX, 5 * DBL_EPSILON * abs(current))
         epstab[n + 2] = epstab[n]
         epstab[n] = DBL_MAX
         for i in range(newelm):
-            res = epstab[n - 2 * i + 2]
-            e0, e1, e2 = epstab[n - 2 * i - 2], epstab[n - 2 * i - 1], res
-            e1abs = abs(e1)
-            delta2 = e2 - e1
-            err2 = abs(delta2)
-            tol2 = max(abs(e2), e1abs) * DBL_EPSILON
-            delta3 = e1 - e0
-            err3 = abs(delta3)
-            tol3 = max(e1abs, abs(e0)) * DBL_EPSILON
-            if err2 <= tol2 and err3 <= tol3:
-                absolute = err2 + err3
-                relative = 5 * DBL_EPSILON * abs(res)
-                return res, max(absolute, relative)
-            e3 = epstab[n - 2 * i]
-            epstab[n - 2 * i] = e1
-            delta1 = e1 - e3
-            err1 = abs(delta1)
-            tol1 = max(e1abs, abs(e3)) * DBL_EPSILON
-            if err1 <= tol1 or err2 <= tol2 or err3 <= tol3:
+            found = self._element(n, i)
+            if isinstance(found, tuple):
+                return found
+            if found is None:
                 n_final = 2 * i
                 break
-            ss = (1 / delta1 + 1 / delta2) - 1 / delta3
-            if abs(ss * e1) <= 0.0001:
-                n_final = 2 * i
-                break
-            res = e1 + 1 / ss
-            epstab[n - 2 * i] = res
-            error = err2 + abs(res - e2) + err3
+            error, res = found, epstab[n - 2 * i]
             if error <= abserr:
                 abserr, result = error, res
-        return self._shift(result, abserr, n_orig, n_final, newelm, nres_orig)
+        return self._shift(result, abserr, n, n_final, newelm, nres_orig)
+
+    def _element(self, n: int, i: int) -> Any:
+        """One new element of the table: its error - ``None`` if the table is to be cut here,
+        or the answer itself if it has converged."""
+        epstab = self.rlist2
+        e0, e1, e2 = epstab[n - 2 * i - 2], epstab[n - 2 * i - 1], epstab[n - 2 * i + 2]
+        near2, near3 = _near(e2, e1), _near(e1, e0)
+        if near2 and near3:
+            return e2, max(abs(e2 - e1) + abs(e1 - e0), 5 * DBL_EPSILON * abs(e2))
+        e3 = epstab[n - 2 * i]
+        epstab[n - 2 * i] = e1
+        if _near(e1, e3) or near2 or near3:
+            return None
+        return self._extrapolated(n - 2 * i, e0, e1, e2, e3)
+
+    def _extrapolated(self, at: int, e0: float, e1: float, e2: float, e3: float) -> Any:
+        """Wynn's step: the new entry at ``at`` and its error - ``None`` if it is irregular."""
+        ss = (1 / (e1 - e3) + 1 / (e2 - e1)) - 1 / (e1 - e0)
+        if abs(ss * e1) <= 0.0001:
+            return None
+        res = e1 + 1 / ss
+        self.rlist2[at] = res
+        return abs(e2 - e1) + abs(res - e2) + abs(e1 - e0)
 
     def _shift(self, result: float, abserr: float, n_orig: int, n_final: int, newelm: int,
                nres_orig: int) -> tuple[float, float]:  # fmt: skip

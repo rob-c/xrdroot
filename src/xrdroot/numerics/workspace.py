@@ -50,31 +50,44 @@ class Workspace:
 
     def qpsrt(self) -> None:
         """Keep ``order`` descending by error, and point at the worst interval."""
-        last, limit, elist, order = self.size - 1, self.limit, self.elist, self.order
+        last, order = self.size - 1, self.order
         i_nrmax = self.nrmax
         i_maxerr = order[i_nrmax]
         if last < 2:
             order[0], order[1] = 0, 1
             self.i = i_maxerr
             return
-        errmax = elist[i_maxerr]
+        i_nrmax = self._raise(i_nrmax, self.elist[i_maxerr])
+        top = last if last < (self.limit // 2 + 2) else self.limit - last + 1
+        i = self._insert_max(i_nrmax, top, i_maxerr)
+        self._insert_last(i, top, last)
+        self.i = order[i_nrmax]
+        self.nrmax = i_nrmax
+
+    def _raise(self, i_nrmax: int, errmax: float) -> int:
+        """The worst interval's place, moved up past those with smaller errors."""
+        order, elist = self.order, self.elist
         while i_nrmax > 0 and errmax > elist[order[i_nrmax - 1]]:
             order[i_nrmax] = order[i_nrmax - 1]
             i_nrmax -= 1
-        top = last if last < (limit // 2 + 2) else limit - last + 1
-        i = i_nrmax + 1
+        return i_nrmax
+
+    def _insert_max(self, i_nrmax: int, top: int, i_maxerr: int) -> int:
+        order, elist = self.order, self.elist
+        errmax, i = elist[i_maxerr], i_nrmax + 1
         while i < top and errmax < elist[order[i]]:
             order[i - 1] = order[i]
             i += 1
         order[i - 1] = i_maxerr
-        errmin = elist[last]
-        k = top - 1
+        return i
+
+    def _insert_last(self, i: int, top: int, last: int) -> None:
+        order, elist = self.order, self.elist
+        errmin, k = elist[last], top - 1
         while k > i - 2 and errmin >= elist[order[k]]:
             order[k + 1] = order[k]
             k -= 1
         order[k + 1] = last
-        self.i = order[i_nrmax]
-        self.nrmax = i_nrmax
 
     def reset_nrmax(self) -> None:
         self.nrmax = 0
