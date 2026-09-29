@@ -41,6 +41,9 @@ class _State:
 def qags(f: Callable[[float], float], a: float, b: float, epsabs: float, epsrel: float,
          limit: int = 1000) -> tuple[float, float, int]:  # fmt: skip
     """The integral of ``f`` over ``[a, b]``, its error, and GSL's status."""
+    if epsabs <= 0 and (epsrel < 50 * DBL_EPSILON or epsrel < 0.5e-28):
+        raise ValueError("GSL's QAGS cannot achieve that tolerance: with no absolute tolerance, "
+                         "the relative one must be at least 50 times the double's epsilon")
     ws = Workspace(limit, a, b)
     result0, abserr0, resabs0, resasc0 = qk21(f, a, b)
     ws.set_initial(result0, abserr0)

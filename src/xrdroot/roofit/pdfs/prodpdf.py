@@ -176,6 +176,16 @@ class RooProdPdf(RooAbsPdf):
             if own and announce is not None:
                 announce(own)
 
+    def announce_inner(self, names: frozenset[str], rng: Any) -> None:
+        """A product's integral is its factors': each factor's integral over its part, said as
+        each is made - by a plot's copy of the product, say."""
+        from ..integration import announce
+
+        for pdf in self.pdfs:
+            own = self.factor_nset(pdf, frozenset(names))
+            if own:
+                announce(pdf, own, rng)
+
     def announce_projection(self, names: frozenset[str], nset: frozenset[str]) -> bool:
         """Say the ``SPECINT`` a plot projection over ``names`` makes, if it makes one."""
         return bool(self._conditional) and prodcond.announce(self, names, nset)

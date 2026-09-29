@@ -130,6 +130,8 @@ class RooNLLVar(RooAbsReal):
                 self._announced = True
                 if getattr(self.pdf, "channel_terms", None) is None:  # else: per channel
                     announce(self.pdf, self.nset, self.rng)
+                for constraint in reversed(self.constraints):  # last first, as RooFit compiles
+                    announce(constraint, self._constrained(constraint) & constraint.dependents())
             return self._evaluate()
 
     def _constraint_sum(self) -> float:

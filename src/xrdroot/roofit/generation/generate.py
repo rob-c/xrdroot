@@ -89,7 +89,7 @@ class Generator:
         were."""
         from ..data.dataset import RooDataSet
 
-        data = RooDataSet(name, f"Generated From {self.pdf.GetName()}", self.variables)
+        data = RooDataSet(name, f"Generated From {self.pdf.GetTitle()}", self.variables)
         saved = self._saved()
         rows = [self._event(i, total) for i in range(total)]
         for one, value in saved:

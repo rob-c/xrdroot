@@ -54,6 +54,12 @@ MODULES = {
     "pdfs.keys": ["RooKeysPdf"],
     "pdfs.realsum": ["RooRealSumPdf"],
     "pdfs.multivar": ["RooMultiVarGaussian"],
+    "pdfs.histfactory": [
+        "FlexibleInterpVar",
+        "ParamHistFunc",
+        "PiecewiseInterpolation",
+        "RooBinWidthFunction",
+    ],
     "pdfs.resolution": ["RooResolutionModel", "RooTruthModel"],
     "pdfs.prodpdf": ["RooProdPdf"],
     "pdfs.simultaneous": ["RooSimultaneous"],

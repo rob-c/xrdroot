@@ -204,17 +204,7 @@ def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
     nll.wrapper_name = "RooEvaluatorWrapper"
     elapsed = (time.perf_counter() - started) * 1000
     log(pdf, INFO, "Fitting", f"Creation of NLL object took {elapsed:g} ms")
-    _announce_constraints(nll)
     return nll
-
-
-def _announce_constraints(nll: Any) -> None:
-    """The constraints' numerical normalisation integrals - over a parameter that is the mean of
-    a Poisson through a product, say - said as the likelihood's graph is compiled: last first."""
-    from ..integration import announce
-
-    for constraint in reversed(nll.constraints):
-        announce(constraint, nll._constrained(constraint) & constraint.dependents())
 
 
 def fit_to(pdf: Any, data: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:

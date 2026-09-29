@@ -174,6 +174,9 @@ class RooDataSet(RooAbsData):
             added = self.numEntries() - before
             extra = np.ones(added) if weights is None else np.asarray(weights, dtype=np.float64)
             self._weights = np.concatenate([self.weights()[:before], extra])
+        if self.numEntries() > before:  # the dataset's variables hold the last event added
+            for one in self._vars:
+                one.load_value(float(self._columns[one.GetName()][-1]))
 
     def append(self, other: RooDataSet) -> None:
         self.add_columns(

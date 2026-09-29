@@ -31,6 +31,7 @@ MODULES: dict[str, list[str]] = {
     "markov": ["MarkovChain", "MetropolisHastings", "ProposalFunction", "SequentialProposal",
                "UniformProposal"],
     "mcmc": ["MCMCCalculator", "MCMCInterval"],
+    "proposals": ["PdfProposal", "ProposalHelper"],
     "calculators": ["FrequentistCalculator", "HybridCalculator", "HypoTestCalculatorGeneric"],
     "moretests": [
         "MaxLikelihoodEstimateTestStat",

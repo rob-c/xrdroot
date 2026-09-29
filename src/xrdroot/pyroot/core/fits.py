@@ -48,6 +48,12 @@ class TMatrixDSym:
         """The values, as the engine takes them."""
         return self._m
 
+    def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray[Any, Any]:
+        return np.asarray(self._m, dtype=dtype)
+
+    def __len__(self) -> int:
+        return int(self._m.shape[0])
+
     def GetNrows(self) -> int:
         return int(self._m.shape[0])
 

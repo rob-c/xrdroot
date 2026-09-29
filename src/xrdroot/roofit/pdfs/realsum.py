@@ -54,7 +54,12 @@ class RooRealSumPdf(RooAbsPdf):
         return CAN_BE_EXTENDED if self._extended else CAN_NOT_BE_EXTENDED
 
     def expected(self, nset: Any, rng: Any = None, fit: bool = False) -> float:
-        return float(self.integrate(frozenset(nset or ()), {}, rng))
+        """``getNorm(nset)``: the integral a normalised value divides by - made, and said, the
+        first time, as the normalisation cache makes it."""
+        names = frozenset(nset or ())
+        if names and not fit and not rng:
+            self._announce_norm(names & self.dependents())
+        return float(self.integrate(names, {}, rng))
 
     def bin_boundaries(self, name: str) -> Any:
         """``binBoundaries``: every term's boundaries, merged."""

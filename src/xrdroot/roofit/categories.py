@@ -102,7 +102,11 @@ class RooAbsCategory(RooAbsReal):
     numTypes = size
 
     def __iter__(self) -> Any:
-        return iter(self._states.items())
+        return iter([State(label, number) for label, number in self._states.items()])
+
+    def begin(self) -> Any:
+        """``begin()``: an iterator's first state - whose ``first`` is its label."""
+        return next(iter(self))
 
     def __len__(self) -> int:
         return len(self._states)
@@ -130,6 +134,21 @@ class RooAbsCategory(RooAbsReal):
 
     def defaultPrintContents(self, option: Any) -> int:
         return kName | kClassName | kValue
+
+
+class State(tuple):  # type: ignore[type-arg]
+    """A state as C++ iterates a category: ``std::pair<std::string, int>`` - a tuple too."""
+
+    def __new__(cls, label: str, index: int) -> State:
+        return super().__new__(cls, (label, index))
+
+    @property
+    def first(self) -> str:
+        return str(self[0])
+
+    @property
+    def second(self) -> int:
+        return int(self[1])
 
 
 class RooCategory(RooAbsCategory):

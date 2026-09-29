@@ -40,6 +40,9 @@ def value_of(result: Any) -> float:
 class RooAbsReal(RooAbsArg):
     """Anything with a real value: a variable, a function, a density."""
 
+    #: ``ScaleType``: what a plot's ``Normalization(n, type)`` means by ``n``.
+    Raw, Relative, NumEvent, RelativeExpected = 0, 1, 2, 3
+
     def __init__(self, name: Any = "", title: Any = "", unit: str = "") -> None:
         super().__init__(name, title)
         self._unit = str(unit)

@@ -125,6 +125,9 @@ class SamplingDistPlot(Named):
             self._legend.AddEntry(f, title, "L")
         self._others.append(f.Clone())
 
+    def SetAxisTitle(self, name: str) -> None:
+        self._var_name = str(name)
+
     def SetLegend(self, legend: Any) -> None:
         self._legend = legend
 

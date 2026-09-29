@@ -74,8 +74,9 @@ BITS = {
     "kWriteDelete": 1 << 2,
 }  # fmt: skip
 
-#: ``kTRUE`` and ``kFALSE``, and the rest of ``RtypesCore.h`` a script meets.
-TRUTH: dict[str, Any] = {"kTRUE": True, "kFALSE": False, "kMaxInt": 2**31 - 1}
+#: ``kTRUE`` and ``kFALSE``, and the rest of ``RtypesCore.h`` a script meets - and
+#: ``GuiTypes.h``'s ``kNone``, the null handle, which scripts take for "nothing yet".
+TRUTH: dict[str, Any] = {"kTRUE": True, "kFALSE": False, "kMaxInt": 2**31 - 1, "kNone": 0}
 
 #: Every enumerator here, by name.
 ENUMS: dict[str, Any] = {

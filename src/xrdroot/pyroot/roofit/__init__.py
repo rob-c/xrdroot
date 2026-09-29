@@ -20,12 +20,26 @@ from ...roofit.registry import classes
 from ..core import draw_hook
 from .commands import RooFit
 
-__all__ = ["RooFit"]
+__all__ = ["RooFit", "dynamic_range_cast", "static_range_cast"]
+
+#: The classes of RooFit's that ROOT has at its top level without the ``Roo`` of their name -
+#: HistFactory's, which ``FlexibleInterpVar`` is not: that is ``RooStats::HistFactory``'s.
+UNPREFIXED = frozenset({"ParamHistFunc", "PiecewiseInterpolation"})
+
+
+def static_range_cast(*given: Any) -> Any:
+    """``static_range_cast<T>(collection)``: the collection, whose members are what they are."""
+    return given[-1]
+
+
+def dynamic_range_cast(*given: Any) -> Any:
+    """``dynamic_range_cast<T>(collection)``: the collection, iterated as it is."""
+    return given[-1]
 
 
 def _gather() -> None:
     for name, cls in classes().items():
-        if not name.startswith("Roo"):
+        if not name.startswith("Roo") and name not in UNPREFIXED:
             continue  # TMatrixDSym and the like are the core part's to give
         globals()[name] = cls
         __all__.append(name)
