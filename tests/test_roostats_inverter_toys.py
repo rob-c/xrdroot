@@ -125,7 +125,7 @@ def test_the_limit_error_is_the_nearest_points_error_over_the_fitted_slope() -> 
 def test_an_automatic_toy_scan_brackets_bisects_and_fits(capsys: Any) -> None:
     """The top of the range where CLs is zero, the bottom at one - CLs from zero - then points
     run with toys until precise, and the limit where they cross the size."""
-    it, calc = inverter()
+    it, _calc = inverter()
     it.SetVerbose(2)
     result = it.GetInterval()
     assert result.UpperLimit() == pytest.approx(3.85, abs=0.19)  # the accuracy asked for
@@ -236,7 +236,7 @@ def test_a_failed_point_is_skipped_and_said(capsys: Any, mode: str, said: str) -
 
 
 def test_a_point_outside_the_range_is_moved_to_its_end_and_a_repeat_merged(capsys: Any) -> None:
-    it, calc = inverter()
+    it, _calc = inverter()
     it.SetVerbose(1)
     assert it.RunOnePoint(-1.0) and it.RunOnePoint(7.0) and it.RunOnePoint(6.0 * (1 + 1e-13))
     out = capsys.readouterr().out
