@@ -25,7 +25,7 @@ NBINS_2D = 300
 
 
 def _scatter(x: Any, y: Any, w: Any, xr: tuple[float, float], yr: tuple[float, float]) -> Any:
-    """Every bin, the flow bins at the edges, of ``TH2F(300, xr, 300, yr)`` filled with ``(x, y, w)``."""
+    """Every bin, the flow bins at the edges, of ``TH2F(300, xr, 300, yr)`` filled."""
     counts = np.zeros((NBINS_2D + 2, NBINS_2D + 2))
     ix = np.clip(np.floor(NBINS_2D * (x - xr[0]) / (xr[1] - xr[0])) + 1, 0, NBINS_2D + 1)
     iy = np.clip(np.floor(NBINS_2D * (y - yr[0]) / (yr[1] - yr[0])) + 1, 0, NBINS_2D + 1)
@@ -46,7 +46,7 @@ def _rebinned(full: Any) -> Any:
 
 
 def _transposed(full: Any) -> Any:
-    """``Tools::TransposeHist``: the in-range bins transposed, the flow bins left where they were."""
+    """``Tools::TransposeHist``: the in-range bins transposed, the flow bins left where they are."""
     made = full.copy()
     made[1:-1, 1:-1] = full[1:-1, 1:-1].T
     return made

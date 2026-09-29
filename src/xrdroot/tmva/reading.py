@@ -58,12 +58,13 @@ def backing(tree: Any) -> Any:
     return view() if view is not None else tree
 
 
-def _column(value: Any, info: VariableInfo, size: int) -> Any:
-    """One variable's values: the whole column, or one element of an array expression."""
-    array = np.asarray(value if info.index is None else _element(value, info.index))
-    if array.shape == ():
-        array = np.full(size, array)
-    return as_float(array)
+def _column(value: Any, info: VariableInfo) -> Any:
+    """One variable's values: the whole column, or one element of an array expression.
+
+    Every expression - a constant too - comes back from a tree's ``arrays`` a
+    value per entry, so the column is what it gave.
+    """
+    return as_float(value if info.index is None else _element(value, info.index))
 
 
 def _element(value: Any, index: int) -> Any:
@@ -83,7 +84,7 @@ def _block(infos: list[VariableInfo], found: dict[str, Any], size: int) -> Any:
     """The columns of ``infos`` side by side: a row per entry."""
     if not infos:
         return np.zeros((size, 0))
-    return np.column_stack([_column(found[info.expression], info, size) for info in infos])
+    return np.column_stack([_column(found[info.expression], info) for info in infos])
 
 
 def _weights(found: dict[str, Any], expression: str, tree_weight: float, size: int) -> Any:

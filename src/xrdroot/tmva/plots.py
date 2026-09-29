@@ -26,13 +26,11 @@ __all__ = ["VariablePlots", "plot_variables"]
 TIMES_RMS, NBINS_1D, NBINS_2D, MAX_SCATTER = 8.0, 40, 300, 20
 
 
-def _range(
-    info: VariableInfo, stats: tuple[float, float, float, float]
-) -> tuple[int, float, float]:
+def _range(info: VariableInfo, stats: tuple[float, ...]) -> tuple[int, float, float]:
     """The bins and range of one variable's histogram, as ``PlotVariables`` works them out."""
     mean, rms, low, high = stats
     if info.vartype == "I":
-        start, stop = int(round(low)), int(round(high + 1))
+        start, stop = round(low), round(high + 1)
         return stop - start, float(start), float(stop)
     xmin = max(low, mean - TIMES_RMS * rms)
     xmax = min(high, mean + TIMES_RMS * rms)
@@ -49,7 +47,7 @@ def _unit(title: str, unit: str) -> str:
 
 
 class VariablePlots:
-    """The histograms of one set of events, by where they go, and the separation of each variable."""
+    """The histograms of one set of events, by where they go, and each variable's separation."""
 
     def __init__(self) -> None:
         self.histograms: list[Histogram] = []

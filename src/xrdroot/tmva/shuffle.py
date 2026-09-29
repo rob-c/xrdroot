@@ -53,7 +53,7 @@ def draw_below(generator: Any, span: int) -> int:
     while True:
         value = generator() & mask
         if value < span:
-            return value
+            return int(value)
 
 
 def shuffle(items: list[Any], generator: Any) -> None:

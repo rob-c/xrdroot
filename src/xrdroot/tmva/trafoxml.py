@@ -36,7 +36,7 @@ def _selection(parent: Node, dsi: DataSetInfo, with_targets: bool) -> None:
 
 def _class_names(dsi: DataSetInfo, count: int) -> list[str]:
     names = [info.name for info in dsi.classes]
-    return (names + ["Combined"])[:count] if count > 1 else names[:count] or ["Combined"]
+    return [*names, "Combined"][:count] if count > 1 else names[:count] or ["Combined"]
 
 
 def _write_one(parent: Node, transform: Transform, dsi: DataSetInfo) -> None:

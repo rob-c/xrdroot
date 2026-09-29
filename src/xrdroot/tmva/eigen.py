@@ -47,7 +47,7 @@ def _reduce_row(v: Any, d: Any, e: Any, i: int, scale: float) -> float:
         v[j:i, j] -= d[j] * e[j:i] + e[j] * d[j:i]
         d[j] = v[i - 1, j]
         v[i, j] = 0.0
-    return h
+    return float(h)
 
 
 def _accumulate(v: Any, d: Any, e: Any, n: int) -> None:
@@ -88,6 +88,13 @@ def _tridiagonal(v: Any, d: Any, e: Any) -> None:
 
 def _rotate(v: Any, d: Any, e: Any, lo: int, m: int) -> float:
     """One implicit QL step on the block from ``lo`` to ``m``; the shift it made."""
+    shift, dl1 = _shift(d, e, lo)
+    _sweep(v, d, e, lo, m, dl1)
+    return float(shift)
+
+
+def _shift(d: Any, e: Any, lo: int) -> tuple[float, float]:
+    """The step's shift, taken off the block's diagonal; the shift and the new ``d[lo + 1]``."""
     g = d[lo]
     p = (d[lo + 1] - g) / (2.0 * e[lo])
     r = math.hypot(p, 1.0)
@@ -95,29 +102,37 @@ def _rotate(v: Any, d: Any, e: Any, lo: int, m: int) -> float:
         r = -r
     d[lo] = e[lo] / (p + r)
     d[lo + 1] = e[lo] * (p + r)
-    dl1 = d[lo + 1]
     h = g - d[lo]
     d[lo + 2 :] -= h
-    shift = h
+    return h, d[lo + 1]
+
+
+def _sweep(v: Any, d: Any, e: Any, lo: int, m: int, dl1: float) -> None:
+    """The plane rotations from ``m`` back up to ``lo``, the vectors turned with them."""
     p = d[m]
     c = c2 = c3 = 1.0
     el1 = e[lo + 1]
     s = s2 = 0.0
     for i in range(m - 1, lo - 1, -1):
         c3, c2, s2 = c2, c, s
-        g = c * e[i]
-        h = c * p
-        r = math.hypot(p, e[i])
-        e[i + 1] = s * r
-        s, c = e[i] / r, p / r
-        p = c * d[i] - s * g
-        d[i + 1] = h + s * (c * g + s * d[i])
-        column = v[:, i + 1].copy()
-        v[:, i + 1] = s * v[:, i] + c * column
-        v[:, i] = c * v[:, i] - s * column
+        p, c, s = _givens(v, d, e, i, p, c, s)
     p = -s * s2 * c3 * el1 * e[lo] / dl1
     e[lo], d[lo] = s * p, c * p
-    return float(shift)
+
+
+def _givens(v: Any, d: Any, e: Any, i: int, p: float, c: float, s: float) -> tuple[Any, Any, Any]:
+    """One rotation of the sweep, in the plane of ``i`` and ``i + 1``; the new ``p, c, s``."""
+    g = c * e[i]
+    h = c * p
+    r = math.hypot(p, e[i])
+    e[i + 1] = s * r
+    s, c = e[i] / r, p / r
+    p = c * d[i] - s * g
+    d[i + 1] = h + s * (c * g + s * d[i])
+    column = v[:, i + 1].copy()
+    v[:, i + 1] = s * v[:, i] + c * column
+    v[:, i] = c * v[:, i] - s * column
+    return p, c, s
 
 
 def _ql(v: Any, d: Any, e: Any) -> None:

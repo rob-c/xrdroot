@@ -38,7 +38,7 @@ class CxxVector(list):  # type: ignore[type-arg]
 
 
 class Iterator:
-    """An iterator into a :class:`CxxVector`: ``*it`` is the iterator itself, as a macro reads it."""
+    """An iterator into a :class:`CxxVector`: ``*it`` is the iterator itself, as macros read it."""
 
     def __init__(self, owner: list[Any], position: int) -> None:
         self.owner, self.position = owner, position

@@ -51,7 +51,7 @@ class Output:
         return path in self._made
 
     def write(self, path: str, obj: Any, name: str | None = None) -> None:
-        """``obj`` - an :class:`xrdroot.Histogram`, a string - written into the directory ``path``."""
+        """``obj`` - an :class:`xrdroot.Histogram`, a string - written into directory ``path``."""
         if self.silent:
             return
         directory = self.directory(path)
@@ -80,33 +80,44 @@ class Output:
 
 
 def event_tree(dsi: DataSetInfo, events: Events, outputs: dict[str, Any]) -> dict[str, Any]:
-    """The columns of TMVA's ``TestTree`` or ``TrainTree``: the events, then each method's output."""
-    names = [info.name for info in dsi.classes]
-    columns: dict[str, Any] = {
-        "classID": events.classes.astype(np.int32),
-        "className": [names[number] for number in events.classes],
-    }
-    for index, info in enumerate(dsi.variables):
-        columns[info.label] = events.values[:, index].astype(np.float32)
-    for index, info in enumerate(dsi.targets):
-        columns[info.label] = events.targets[:, index].astype(np.float32)
-    for index, info in enumerate(dsi.spectators):
-        columns[info.label] = events.spectators[:, index].astype(np.float32)
-    columns["weight"] = events.weights.astype(np.float32)
+    """The columns of TMVA's ``TestTree`` or ``TrainTree``: the events, then each method's."""
+    columns = _event_columns(dsi, events)
     labels = (
         [info.name for info in dsi.classes]
         if len(dsi.classes) > 2
         else [info.label for info in dsi.targets]
     )
     for name in sorted(outputs):
-        values = np.asarray(outputs[name], dtype=np.float32)
-        if values.ndim == 2 and values.shape[1] == 1:
-            values = values[:, 0]
-        if values.ndim == 1:
-            columns[name] = values
-            continue
-        columns[name] = LeafList(values, tuple(labels[: values.shape[1]]))
+        columns[name] = _output_column(outputs[name], labels)
     return columns
+
+
+def _event_columns(dsi: DataSetInfo, events: Events) -> dict[str, Any]:
+    """The events' own columns: class, variables, targets, spectators and weight, in that order."""
+    names = [info.name for info in dsi.classes]
+    columns: dict[str, Any] = {
+        "classID": events.classes.astype(np.int32),
+        "className": [names[number] for number in events.classes],
+    }
+    for infos, values in (
+        (dsi.variables, events.values),
+        (dsi.targets, events.targets),
+        (dsi.spectators, events.spectators),
+    ):
+        for index, info in enumerate(infos):
+            columns[info.label] = values[:, index].astype(np.float32)
+    columns["weight"] = events.weights.astype(np.float32)
+    return columns
+
+
+def _output_column(output: Any, labels: list[str]) -> Any:
+    """One method's output: a value per event, or - a class or target each - a leaf list."""
+    values = np.asarray(output, dtype=np.float32)
+    if values.ndim == 2 and values.shape[1] == 1:
+        values = values[:, 0]
+    if values.ndim == 1:
+        return values
+    return LeafList(values, tuple(labels[: values.shape[1]]))
 
 
 @dataclass

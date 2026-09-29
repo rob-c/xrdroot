@@ -93,15 +93,32 @@ def settings(options: Options, suffix: str = "", base: PDFSettings | None = None
 def _quadrax(x: Any, x1: Any, x2: Any, x3: Any, y1: Any, y2: Any, y3: Any) -> Any:
     """``TSpline2::Quadrax``: the parabola through three points, in single precision."""
     f = np.float32
-    x, x1, x2, x3 = f(x), f(x1), f(x2), f(x3)
-    y1, y2, y3 = f(y1), f(y2), f(y3)
-    a = y1 * (x2 - x3) + y2 * (x3 - x1) + y3 * (x1 - x2)
-    b = y1 * (x2 * x2 - x3 * x3) + y2 * (x3 * x3 - x1 * x1) + y3 * (x1 * x1 - x2 * x2)
-    c = y1 * (x2 - x3) * x2 * x3 + y2 * (x3 - x1) * x3 * x1 + y3 * (x1 - x2) * x1 * x2
+    x = f(x)
+    xs, ys = (f(x1), f(x2), f(x3)), (f(y1), f(y2), f(y3))
+    a, b, c = _linear(xs, ys), _square(xs, ys), _product(xs, ys)
+    x1, x2, x3 = xs
     denom = (x2 - x3) * (x3 - x1) * (x1 - x2)
     with np.errstate(all="ignore"):
         value = (-a * x * x + b * x - c) / denom
     return np.where(denom != 0, value, f(0)).astype(np.float64)
+
+
+def _linear(xs: tuple[Any, Any, Any], ys: tuple[Any, Any, Any]) -> Any:
+    """The parabola's coefficient ``a``, as ``Quadrax`` works it out, before the division."""
+    (x1, x2, x3), (y1, y2, y3) = xs, ys
+    return y1 * (x2 - x3) + y2 * (x3 - x1) + y3 * (x1 - x2)
+
+
+def _square(xs: tuple[Any, Any, Any], ys: tuple[Any, Any, Any]) -> Any:
+    """The parabola's coefficient ``b``, before the division."""
+    (x1, x2, x3), (y1, y2, y3) = xs, ys
+    return y1 * (x2 * x2 - x3 * x3) + y2 * (x3 * x3 - x1 * x1) + y3 * (x1 * x1 - x2 * x2)
+
+
+def _product(xs: tuple[Any, Any, Any], ys: tuple[Any, Any, Any]) -> Any:
+    """The parabola's coefficient ``c``, before the division."""
+    (x1, x2, x3), (y1, y2, y3) = xs, ys
+    return y1 * (x2 - x3) * x2 * x3 + y2 * (x3 - x1) * x3 * x1 + y3 * (x1 - x2) * x1 * x2
 
 
 def _bin_of(xs: Any, x: Any) -> Any:
@@ -293,7 +310,7 @@ def pdf_from_xml(node: Any, normalise: bool = True) -> PDF:
     methods = {number: name for name, number in INTERPOLATIONS.items()}
     low, high = int(node.get("MinNSmooth", 0)), int(node.get("MaxNSmooth", 0))
     spec = PDFSettings(
-        low, low, high, interpolation=methods.get(int(node.get("InterpolMethod", 2)))
+        low, low, high, interpolation=methods.get(int(node.get("InterpolMethod", 2)), "Spline2")
     )
     source = node.find("Histogram")
     name = str(source.get("Name"))
