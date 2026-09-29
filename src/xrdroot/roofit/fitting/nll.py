@@ -84,10 +84,7 @@ class RooNLLVar(RooAbsReal):
         self.nset = _normalised_over(pdf, data, conditional)
         #: Whether a channel is a binned likelihood, which counts its empty bins too.
         self.binned = _any_binned(pdf)
-        keep = data.mask(None, self.rng) & ((data.weights() != 0) | self.binned)
-        self.columns = {k: v[keep] for k, v in data.columns().items()}
-        self.w = data.weights()[keep]
-        self.sumw = math.fsum(self.w.tolist())
+        self._attach(data)
         self.offset = offset
         self._offset_value = 0.0
         #: The states of the fit's copy of the model, for the nodes that keep one (:mod:`..copies`).
@@ -98,6 +95,21 @@ class RooNLLVar(RooAbsReal):
         #: What ROOT 6.40 calls the likelihood ``createNLL`` hands out - a ``RooEvaluatorWrapper``
         #: round this sum - which a profile of it is named after; ``None`` for one made directly.
         self.wrapper_name: str | None = None
+
+    def _attach(self, data: Any) -> None:
+        """The events the likelihood sums: those in range, and weighing something - or all the
+        bins, for a binned channel."""
+        self.data = data
+        keep = data.mask(None, self.rng) & ((data.weights() != 0) | self.binned)
+        self.columns = {k: v[keep] for k, v in data.columns().items()}
+        self.w = data.weights()[keep]
+        self.sumw = math.fsum(self.w.tolist())
+
+    def setData(self, data: Any, cloneData: bool = True) -> bool:
+        """The likelihood of the same density for other data - a toy's, as RooStats reuses it."""
+        self._attach(data)
+        self._offset_value = 0.0
+        return True
 
     def applyWeightSquared(self, flag: bool) -> None:
         """Count each event with its weight squared - the likelihood whose HESSE corrects

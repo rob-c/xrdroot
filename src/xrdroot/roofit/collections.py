@@ -207,14 +207,28 @@ class RooAbsCollection(RooPrintable):
         return copies
 
     def assign(self, other: Iterable[Any]) -> RooAbsCollection:
-        """Take the values of ``other``'s members of the same names."""
+        """Take the values - errors too - and the constness of ``other``'s members of the same
+        names, as ``RooAbsCollection::assign`` takes them."""
         for one in _flat(other):
             mine = self.find(one.GetName())
             if mine is not None:
                 mine.copy_value_from(one)
+                if hasattr(one, "isConstant") and hasattr(mine, "setAttribute"):
+                    mine.setAttribute("Constant", bool(one.isConstant()))
         return self
 
-    assignValueOnly = assign
+    def assignValueOnly(self, other: Iterable[Any], forceIfSizeOne: bool = False) -> Any:
+        """Take only the values of ``other``'s members of the same names."""
+        for one in _flat(other):
+            mine = self.find(one.GetName())
+            if mine is None:
+                continue
+            if hasattr(mine, "_val"):
+                mine._val = float(one.getVal())
+            else:
+                mine.copy_value_from(one)
+        return self
+
     assignFast = assign
 
     def setRealValue(self, name: str, value: float, verbose: bool = False) -> bool:

@@ -198,8 +198,8 @@ class RooProfileLL(RooAbsReal):
         if self._minimizer is None:
             self._initialize()
         start = [(p, p.getVal()) for p in self._obs]
-        RooArgSet(self._nuisances()).assign(self._param_abs_min)
-        RooArgSet(list(self._obs)).assign(self._obs_abs_min)
+        RooArgSet(self._nuisances()).assignValueOnly(self._param_abs_min)
+        RooArgSet(list(self._obs)).assignValueOnly(self._obs_abs_min)
         for one in self._obs:
             one.setConstant(False)
         self._minimizer.migrad()

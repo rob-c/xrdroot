@@ -55,6 +55,28 @@ class RooSimultaneous(RooAbsPdf):
     def indexCat(self) -> Any:
         return self.index
 
+    def generateSimGlobal(self, whatVars: Any, nEvents: int) -> Any:
+        """``generateSimGlobal``: each channel's global observables from that channel's density,
+        state by state, every set collected in one dataset."""
+        from ..collections import RooArgSet
+        from ..data.dataset import RooDataSet
+
+        wanted = RooArgSet(as_list(whatVars))
+        placeholder = wanted.snapshot()
+        made = RooDataSet("gensimglobal", "gensimglobal", list(wanted))
+        for _ in range(int(nEvents)):
+            for label in sorted(self.index.states()):  # a category iterates its states by name
+                pdf = self.channels.get(label)
+                if pdf is None:
+                    continue
+                mine = pdf.getObservables(wanted)
+                if not len(mine):
+                    continue
+                one = pdf.generate(mine, 1)
+                placeholder.assign(one.get(0))
+            made.add(placeholder)
+        return made
+
     def servers(self) -> list[Any]:
         return [self.index, *(self.channels[label] for label in sorted(self.channels))]
 

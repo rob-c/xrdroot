@@ -17,7 +17,7 @@ from typing import Any
 
 from ..roofit import cout
 from ..roofit.collections import RooArgSet, as_list
-from ..roofit.messages import ERROR, log, service
+from ..roofit.messages import ERROR, INFO, log, log_plain, service
 
 __all__ = ["ModelConfig", "quieted"]
 
@@ -266,12 +266,15 @@ class ModelConfig:
             params = [p for p in params if not p.isConstant()]
             if params:
                 self.SetNuisanceParameters(params)
-        if printModelConfig:
-            self.Print()
+        if printModelConfig:  # to the INFO stream, as RooPrintable's default stream is made to be
+            log_plain(self, INFO, "InputArguments", self._text())
 
     def Print(self, option: str = "") -> None:
         """``ModelConfig::Print``: each set and density it names, in RooStats' order."""
-        cout.write(f"\n=== Using the following for {self._name} ===\n")
+        cout.write(self._text())
+
+    def _text(self) -> str:
+        text = f"\n=== Using the following for {self._name} ===\n"
         for label, get in (
             ("Observables:             ", self.GetObservables),
             ("Parameters of Interest:  ", self.GetParametersOfInterest),
@@ -285,13 +288,14 @@ class ModelConfig:
         ):
             found = get()
             if found is not None:
-                cout.write(label)
-                found.Print("")
+                text += label + found.printStream(found.defaultPrintContents(""),
+                                                  found.defaultPrintStyle(""))  # fmt: skip
         snapshot = self.GetSnapshot()
         if snapshot is not None:
-            cout.write("Snapshot:                \n")
-            snapshot.Print("v")
-        cout.write("\n")
+            text += "Snapshot:                \n"
+            text += snapshot.printStream(snapshot.defaultPrintContents("v"),
+                                         snapshot.defaultPrintStyle("v"))  # fmt: skip
+        return text + "\n"
 
     # -- fitting ------------------------------------------------------------------
 

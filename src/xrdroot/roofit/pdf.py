@@ -268,6 +268,10 @@ class RooAbsPdf(RooAbsReal):
 
         return generate(self, args, kwargs)
 
+    def generateSimGlobal(self, whatVars: Any, nEvents: int) -> Any:
+        """Global observables, ``nEvents`` sets of them: for a single density, ``generate``."""
+        return self.generate(whatVars, int(nEvents))
+
     def generateBinned(self, *args: Any, **kwargs: Any) -> Any:
         from .generation.generate import generate_binned
 
