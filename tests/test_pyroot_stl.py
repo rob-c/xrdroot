@@ -181,3 +181,54 @@ def test_a_vector_of_vectors_keeps_a_vector_it_is_given_as_it_is():
     outer.push_back(inner)
     assert outer[0] is inner and std.vector["int"]([1]) != 5
     assert stl.is_vector(outer) and stl.is_vector(inner) and not stl.is_vector([1])
+
+
+class _Interval:
+    def __init__(self, low: float) -> None:
+        self.low = low
+
+    def GetMin(self) -> float:
+        return self.low
+
+
+def test_a_vector_of_pointers_to_a_class_keeps_the_objects_pushed_into_it():
+    kind = std.vector["TMVA::Interval*"]
+    assert kind is std.vector["TMVA::Interval*"]
+    v = kind()
+    first = _Interval(1.0)
+    v.push_back(first)
+    v.push_back(_Interval(2.0))
+    assert v.back().low == 2.0
+    assert v.begin().GetMin() == 1.0
+    assert v.begin().__deref__() is first
+
+
+def test_a_vector_iterator_walks_to_end_and_measures_its_distance():
+    v = std.vector["double"]([1.5, 2.5, 3.5])
+    it = v.begin()
+    assert float(it) == 1.5
+    it += 1
+    assert float(it + 1) == 3.5
+    assert (v.end() - v.begin(), float(v.end() - 1)) == (3, 3.5)
+    assert it != v.end() and it < v.end() and v.end() == v.begin() + 3
+    assert (it == 1) is False and (it != 1) is True
+    with pytest.raises(AttributeError):
+        getattr(it, "__missing__")  # noqa: B009
+
+
+def test_a_vector_of_strings_is_walked_by_the_same_iterators():
+    v = std.vector["std::string"](["a", "b"])
+    assert str(v.back()) == "b"
+    assert v.end() - v.begin() == 2
+
+
+def test_a_map_iterator_reads_and_assigns_its_entries_and_finds_keys():
+    m = std.map["int", "double"]({2: 1.5, 1: 0.5})
+    it = m.begin()
+    assert (it.first, it.second) == (1, 0.5)
+    it.second = 4.0
+    assert m[1] == 4.0
+    it += 1
+    assert (it + 1) == m.end() and it != m.end()
+    assert m.find(2) == it and m.find(9) == m.end()
+    assert (it == 2) is False and (it != 2) is True
