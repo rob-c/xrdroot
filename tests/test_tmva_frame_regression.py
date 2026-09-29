@@ -113,6 +113,13 @@ def test_a_regression_that_hits_every_target_is_histogrammed_on_rounded_axes(ses
 
 
 def test_an_axis_of_no_width_and_nothing_in_it_is_widened_about_its_one_end():
-    nbins, low, high = regeval._axis(10, 0.0, 0.0, np.zeros(0))
+    nbins, low, high = regeval.hists.auto_axis(10, 0.0, 0.0, np.zeros(0))
     assert nbins == 10 and low < -0.9 and high > 0.9
-    assert regeval._axis(10, 0.0, 1.0, np.zeros(0)) == (10, 0.0, 1.0)
+    assert regeval.hists.auto_axis(10, 0.0, 1.0, np.zeros(0)) == (10, 0.0, 1.0)
+
+
+def test_a_constant_variable_is_histogrammed_on_the_range_roots_buffer_would_find():
+    made = regeval.hists.filled("c", "c", (40, 2.0, 2.0), np.full(5, 2.0))
+    edges = made.axes[0].edges()
+    assert edges[0] < 2.0 < edges[-1]
+    assert float(np.sum(regeval.hists.bins(made))) == 5.0

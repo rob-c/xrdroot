@@ -14,8 +14,34 @@ from typing import Any
 import numpy as np
 
 from ..hist import Histogram
+from ..limits import find_good_limits
 
-__all__ = ["book", "book_edges", "bins", "centers", "filled", "find_bin", "renamed", "set_bins"]
+__all__ = [
+    "auto_axis",
+    "book",
+    "book_edges",
+    "bins",
+    "centers",
+    "filled",
+    "find_bin",
+    "renamed",
+    "set_bins",
+]
+
+
+def auto_axis(nbins: int, low: float, high: float, values: Any) -> tuple[int, float, float]:
+    """An axis as TMVA books it - or, if it has no width, the one ROOT's buffer finds for it.
+
+    ROOT takes an axis whose low end is not below its high one - a constant
+    variable, or a regression that hits every target exactly, gives one - as
+    asking for automatic binning: it buffers what is filled and gives the axis
+    the range of the values, as ``THLimitsFinder::FindGoodLimits`` rounds it.
+    """
+    if low < high:
+        return nbins, low, high
+    ends = (float(np.min(values)), float(np.max(values))) if len(values) else (low, high)
+    found = find_good_limits(nbins, *ends)
+    return found.nbins, found.low, found.high
 
 
 def book(name: str, title: str, nbins: int, low: float, high: float, kind: str = "F") -> Histogram:
@@ -37,7 +63,7 @@ def filled(
     kind: str = "F",
 ) -> Histogram:
     """A histogram booked and filled, entry by entry as ``Fill(x, w)`` would fill it."""
-    made = book(name, title, *spec, kind=kind)
+    made = book(name, title, *auto_axis(*spec, values), kind=kind)
     if len(values):
         made.fill(np.asarray(values, dtype=np.float64), weight=weights)
     return made
