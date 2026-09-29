@@ -49,17 +49,16 @@ def test_the_accessors_give_each_points_numbers_and_refuse_a_missing_one(capsys:
     assert (r.ArraySize(), r.GetXValue(1), r.GetYValue(1), r.CLsplusb(1)) == (2, 2.0, 0.2, 0.2)
     assert (r.CLb(0), r.CLs(0), r.GetLastXValue(), r.GetLastYValue()) == (0.5, 0.8, 2.0, 0.2)
     assert (r.CLbError(0), r.CLsplusbError(0), r.CLsError(0), r.GetYError(0)) == (0, 0, 0, 0)
-    assert r.GetLastYError() == 0.0 and r.GetLastResult().NullPValue() == 0.2
+    assert (r.GetLastYError(), r.GetLastResult().NullPValue()) == (0.0, 0.2)
     assert (r.GetXValue(5), r.GetYValue(5), r.GetResult(-1)) == (-999.0, -999.0, None)
     assert "Problem: You are asking for an impossible array index value" in (
         capsys.readouterr().out)  # fmt: skip
-    assert r.GetBackgroundTestStatDist(7) is None
-    assert r.GetSignalAndBackgroundTestStatDist(7) is None
+    assert (r.GetBackgroundTestStatDist(7), r.GetSignalAndBackgroundTestStatDist(7)) == (None, None)
     r.SetTestSize(0.1)
     r.SetCLsCleanupThreshold(0.01)
     r.SetInterpolationOption(r.kSpline)
     assert (r.ConfidenceLevel(), r._cleanup, r.GetInterpolationOption()) == (0.9, 0.01, 1)
-    assert r.IsOneSided() and not r.IsTwoSided()
+    assert (r.IsOneSided(), r.IsTwoSided()) == (True, False)
 
 
 def test_a_point_added_again_is_merged_and_another_scan_merged_in(capsys: Any) -> None:

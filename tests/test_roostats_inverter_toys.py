@@ -144,21 +144,20 @@ def test_the_settings_are_kept_and_passed_to_the_results() -> None:
     it.SetTestSize(0.1)
     assert (it.Size(), it._results.ConfidenceLevel()) == (0.1, 0.9)
     it.SetConfidenceLevel(0.68)
-    assert it.ConfidenceLevel() == 0.68 and it._results.ConfidenceLevel() == 0.68
+    assert (it.ConfidenceLevel(), it._results.ConfidenceLevel()) == (0.68, 0.68)
     it.UseCLs(False)
     assert not it._results._use_cls
     it.SetMaximumToys(10)
     it.SetNumErr(0.5)
-    assert it.GetHypoTestCalculator() is calc
-    assert it.GetTestStatistic() == "stat"
-    assert it.SetTestStatistic("other") and calc._sampler.stat == "other"
+    assert (it.GetHypoTestCalculator(), it.GetTestStatistic()) == (calc, "stat")
+    assert (it.SetTestStatistic("other"), calc._sampler.stat) == (True, "other")
     it.SetData("data")
     assert calc.GetData() == "data"
     it.SetCloseProof(True)
     it.SetAutoScan()
     assert (it._nbins, it._xmin, it._xmax) == (0, 1.0, -1.0)
     it.Clear()
-    assert it._results is None and it.GetLimitPlot() is None
+    assert (it._results, it.GetLimitPlot()) == (None, None)
 
 
 def test_a_second_interval_is_a_copy_of_the_first(capsys: Any) -> None:

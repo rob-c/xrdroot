@@ -71,12 +71,11 @@ def test_the_shortest_interval_of_a_uniform_proposals_chain_is_roots(capfd) -> N
     assert entry(chain, 0) == FIRST
     assert entry(chain, 146) == (-0.5148513833992183, 1.2027744750957936, 1.0,
                                  14.938476231312256)  # fmt: skip
-    assert interval.GetName() == "MCMCInterval_"
-    assert interval.GetNumBurnInSteps() == 20
+    assert (interval.GetName(), interval.GetNumBurnInSteps()) == ("MCMCInterval_", 20)
     assert interval.ConfidenceLevel() == pytest.approx(0.9)
     out = capfd.readouterr().out
-    assert "Metropolis-Hastings progress: ...." in out
-    assert "Proposal acceptance rate: 49%" in out
+    said = ["Metropolis-Hastings progress: ....", "Proposal acceptance rate: 49%"]
+    assert [line for line in said if line not in out] == []
 
 
 def test_a_central_interval_walks_in_from_both_tails() -> None:

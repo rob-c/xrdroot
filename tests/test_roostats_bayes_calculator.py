@@ -69,6 +69,12 @@ def limits(interval: Any) -> tuple[float, float]:
     return interval.LowerLimit(), interval.UpperLimit()
 
 
+def said(out: str, *parts: str) -> None:
+    """Each of ``parts`` is in ``out``."""
+    for part in parts:
+        assert part in out
+
+
 def test_the_central_interval_is_where_the_cumulative_posterior_crosses_the_tails(capfd) -> None:
     """Without nuisance parameters the posterior is RooFit's formula of the likelihood; the
     ends are GSL's Brent roots of its QAGS integral, ROOT's to the last few bits."""
@@ -79,12 +85,11 @@ def test_the_central_interval_is_where_the_cumulative_posterior_crosses_the_tail
     assert interval.GetTitle() == "SimpleInterval from BayesianCalculator"
     assert interval.ConfidenceLevel() == pytest.approx(0.9)
     assert (bc.Size(), bc.ConfidenceLevel()) == pytest.approx((0.1, 0.9))
-    out = capfd.readouterr().out
-    assert "GetPosteriorFunction :  nll value 1.76199 poi value = 7.5005" in out
-    assert "minimum of NLL vs POI for POI =  2.4985 min NLL = -0.295836" in out
-    assert "BayesianCalculator:GetInterval Compute the interval from the posterior cdf" in out
-    assert "PosteriorCdfFunction - integral of posterior = 0.297017" in out
-    assert "found a valid interval : [0.881573 , 7.2523 ]" in out
+    said(capfd.readouterr().out, "GetPosteriorFunction :  nll value 1.76199 poi value = 7.5005",
+         "minimum of NLL vs POI for POI =  2.4985 min NLL = -0.295836",
+         "BayesianCalculator:GetInterval Compute the interval from the posterior cdf",
+         "PosteriorCdfFunction - integral of posterior = 0.297017",
+         "found a valid interval : [0.881573 , 7.2523 ]")  # fmt: skip
 
 
 def test_asking_again_recomputes_the_interval_and_says_so(capfd) -> None:
@@ -252,13 +257,11 @@ def test_a_calculator_without_a_model_says_what_it_misses(capfd) -> None:
     parameter of interest no interval either."""
     w, data = counting()
     empty = BayesianCalculator(data)
-    assert empty.GetPosteriorFunction() is None
-    assert empty.GetPosteriorPdf() is None
-    assert empty.GetPosteriorPlot() is None
-    assert empty.GetInterval() is None
-    out = capfd.readouterr().out
-    assert "BayesianCalculator::GetPosteriorPdf - missing pdf model" in out
-    assert "BayesianCalculator::GetInterval - no parameter of interest is set" in out
+    made = (empty.GetPosteriorFunction(), empty.GetPosteriorPdf(), empty.GetPosteriorPlot(),
+            empty.GetInterval())  # fmt: skip
+    assert made == (None, None, None, None)
+    said(capfd.readouterr().out, "BayesianCalculator::GetPosteriorPdf - missing pdf model",
+         "BayesianCalculator::GetInterval - no parameter of interest is set")  # fmt: skip
     unset = BayesianCalculator(data, w["pdf"], ROOT.RooArgSet())
     assert unset.GetPosteriorFunction() is None
     assert "missing parameter of interest" in capfd.readouterr().out

@@ -37,13 +37,12 @@ def test_a_simple_interval_holds_a_point_between_its_ends(capsys: Any) -> None:
     si = ROOT.RooStats.SimpleInterval("si", mu, -1.0, 2.0, 0.9)
     assert (si.GetName(), si.GetTitle(), si.ClassName()) == ("si", "si", "RooStats::SimpleInterval")
     assert (si.ConfidenceLevel(), si.LowerLimit(), si.UpperLimit()) == (0.9, -1.0, 2.0)
-    assert si.InheritsFrom("RooStats::ConfInterval") and si.InheritsFrom("TNamed")
-    assert not si.InheritsFrom("RooAbsArg")
+    kinds = ("RooStats::ConfInterval", "TNamed", "RooAbsArg")
+    assert [si.InheritsFrom(kind) for kind in kinds] == [True, True, False]
     assert si.IsInInterval(ROOT.RooArgSet(mu))
     mu.setVal(3.0)
-    assert not si.IsInInterval(ROOT.RooArgSet(mu))
-    assert not si.IsInInterval(ROOT.RooArgSet(nu))
-    assert not si.IsInInterval(ROOT.RooArgSet(mu, nu))
+    points = (ROOT.RooArgSet(mu), ROOT.RooArgSet(nu), ROOT.RooArgSet(mu, nu))
+    assert [si.IsInInterval(point) for point in points] == [False, False, False]
     assert capsys.readouterr().out == (
         "[#0] ERROR:InputArguments -- size is ok, but parameters don't match\n"
         "[#0] ERROR:InputArguments -- size is wrong, parameters don't match\n"

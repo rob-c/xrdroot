@@ -80,6 +80,13 @@ def test_the_interval_of_the_mean_is_minos_on_the_profile(capsys: Any) -> None:
     assert interval.UpperLimit(mu) == pytest.approx(1.1651937035400877, rel=1e-9)
     assert (mu.getVal(), s.getVal()) == pytest.approx(
         (1.1648941606047998, 0.7942849999333178), rel=1e-6)  # fmt: skip
+
+
+def test_the_interval_at_another_level_is_found_again(capsys: Any) -> None:
+    """At 95%, the limits found again - ``[0.4025888, 1.4374112]`` - and what lies within."""
+    w, data = gaussian()
+    mu, s = w.var("mu"), w.var("s")
+    interval = ROOT.RooStats.ProfileLikelihoodCalculator(data, config(w), 0.3173).GetInterval()
     interval.SetConfidenceLevel(0.95)
     lower, upper = ctypes.c_double(0), ctypes.c_double(0)
     assert interval.FindLimits(mu, lower, upper)

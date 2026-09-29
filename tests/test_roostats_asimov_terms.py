@@ -129,11 +129,9 @@ def test_a_model_that_is_not_a_counting_model_has_no_asimov_event(capsys: Any) -
     w.factory("Gaussian::free(y, m, s[1,0.1,2])")
     w.factory("Gaussian::fixed(y, 0, 1)")
     xy = ROOT.RooArgSet(w.var("x"), w.var("y"))
-    assert counting_asimov_data(w.pdf("l"), ROOT.RooArgSet(w.var("x"))) is None
-    assert counting_asimov_data(w.pdf("lg"), xy) is None
-    assert counting_asimov_data(w.pdf("xy"), xy) is None
-    assert counting_asimov_data(w.pdf("free"), ROOT.RooArgSet(w.var("y"))) is None
-    assert counting_asimov_data(w.pdf("fixed"), ROOT.RooArgSet(w.var("y"))) is None
+    x, y = ROOT.RooArgSet(w.var("x")), ROOT.RooArgSet(w.var("y"))
+    asked = [("l", x), ("lg", xy), ("xy", xy), ("free", y), ("fixed", y)]
+    assert [counting_asimov_data(w.pdf(name), obs) for name, obs in asked] == [None] * 5
     out = capsys.readouterr().out
     assert ("A counting model pdf must be either a RooProdPdf or a RooPoisson or a "
             "RooGaussian") in out
