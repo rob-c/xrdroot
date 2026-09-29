@@ -172,11 +172,39 @@ def _targets(pdf: Any, names: set[str]) -> dict[str, list[Any]]:
 def generate(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """``pdf.generate(vars, n, options...)``: a new dataset of generated events."""
     variables, count, options = parse(args, kwargs)
+    if options.get("ProtoData") is None:
+        special = _special(pdf, variables, count, options)
+        if special is not None:
+            found = special()
+            if found is not None and options.get("Name"):
+                found.SetName(options.get("Name"))
+            return found
     made = Generator(pdf, variables, options.get("ProtoData"))
     total = _how_many(pdf, made.names, count, options)
     if total < 0:
         return None
     return made.sample(total, options.get("Name") or f"{pdf.GetName()}Data")
+
+
+def _special(pdf: Any, variables: list[Any], count: Any, options: Any) -> Any:
+    """The binned or split context's generation, where ``autoGenContext`` would choose one."""
+    from .split import auto_binned, binned_events, split_events, splits
+
+    auto = bool(options.get("AutoBinned", 0, True))
+    expected_data = bool(options.get("ExpectedData", 0, False))
+    tag = "*" if expected_data else str(options.get("GenBinned", 0, "") or "")
+    extended = bool(options.get("Extended", 0, False))
+    names = frozenset(one.GetName() for one in variables)
+    events = float(count) if count is not None else 0.0
+    if extended and events == 0:
+        events = pdf.expected(names)
+    if splits(pdf, names, auto, tag):
+        return lambda: split_events(pdf, variables, events, extended, auto, tag)
+    own = names & pdf.dependents()
+    if auto_binned(pdf, own, auto, tag):
+        observables = [one for one in variables if one.GetName() in own]
+        return lambda: binned_events(pdf, observables, events, extended, expected_data)
+    return None
 
 
 def generate_binned(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:

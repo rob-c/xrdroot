@@ -132,14 +132,23 @@ class RooNLLVar(RooAbsReal):
                     announce(self.pdf, self.nset, self.rng)
             return self._evaluate()
 
+    def _constraint_sum(self) -> float:
+        """``RooConstraintSum``: ``-log`` of each constraint, summed on its own - the kernels'
+        values, as the likelihood's evaluator computes them - before it joins the rest."""
+        found = 0.0
+        for constraint in self.constraints:
+            nset = self._constrained(constraint)
+            with kernels.likelihood():
+                value = float(np.asarray(constraint.value(dict(self._global_values), nset)))
+            found -= math.log(value) if value > 0 else math.nan
+        return found
+
     def _evaluate(self) -> float:
         self._badness = 0.0
         channels = getattr(self.pdf, "channel_terms", None)
         total = channels(self) if channels is not None else self.channel(self.pdf, None)
-        for constraint in self.constraints:
-            nset = self._constrained(constraint)
-            found = float(np.asarray(constraint.value(dict(self._global_values), nset)))
-            total -= math.log(found) if found > 0 else math.nan
+        if self.constraints:
+            total = total + self._constraint_sum()
         if self._badness:
             from ..nanpack import pack
 

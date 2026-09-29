@@ -196,6 +196,12 @@ class RooProdPdf(RooAbsPdf):
         found = self._extended()
         return 0.0 if found is None else float(found.expected(nset, rng, fit))
 
+    def isBinnedDistribution(self, obs: Any = None) -> bool:
+        """Binned when every factor that depends on ``obs`` is."""
+        from .histfactory import _binned
+
+        return _binned(list(self.pdfs), obs)
+
     def gen_context(self, names: frozenset[str]) -> Any:
         from ..generation.contexts import ProductContext
 

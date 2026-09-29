@@ -66,10 +66,39 @@ def _constraints(
     names = sorted(one.GetName() for one in params)
     if not found:
         return found, frozenset(names), {}
+    names = _without_exclusive(pdf, found, names, observables)
     log(pdf, INFO, "Minimization", " Including the following constraint terms in "
         f"minimization: ({','.join(one.GetName() for one in found)})")  # fmt: skip
     over, values = _global_observables(pdf, data, options, names)
     return found, over, values
+
+
+def _without_exclusive(pdf: Any, constraints: list[Any], names: list[str],
+                       observables: frozenset[str]) -> list[str]:  # fmt: skip
+    """``getAllConstraints``' last step: the parameters only the constraints have - their
+    nominal values, say - taken out of those the constraints are normalised over."""
+    mine: set[str] = set()
+    for one in constraints:
+        mine |= set(one.dependents())
+    shared = _reachable(pdf, constraints) - observables
+    return [n for n in names if not (n in mine and n not in shared)]
+
+
+def _reachable(pdf: Any, stops: list[Any]) -> set[str]:
+    """The variables below ``pdf`` on a path that passes through none of ``stops``."""
+    seen: set[int] = set()
+    found: set[str] = set()
+    todo = [pdf]
+    while todo:
+        node = todo.pop()
+        if id(node) in seen or any(node is stop for stop in stops):
+            continue
+        seen.add(id(node))
+        servers = node.servers()
+        if not servers and node.isFundamental():
+            found.add(node.GetName())
+        todo.extend(servers)
+    return found
 
 
 def _from_data(

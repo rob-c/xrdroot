@@ -265,23 +265,36 @@ class RooPoisson(_Shape):
         return self.over("x", names) or self.over("mean", names)
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
+        """The integral over the count - or the mean - at each point asked about."""
+        if self.x.GetName() in names:
+            low, high = max(0.0, self.x.getMin(rng)), self.x.getMax(rng)
+            means = np.asarray(self.v("mean", ctx), dtype=np.float64)
+            found = [self._over_count(m, low, high) for m in means.ravel().tolist()]
+            return np.array(found).reshape(means.shape)[()]
+        xs = np.asarray(self.v("x", ctx), dtype=np.float64)
+        found = [self._over_mean(x, rng) for x in xs.ravel().tolist()]
+        return np.array(found).reshape(xs.shape)[()]
+
+    @staticmethod
+    def _over_count(mean: float, low: float, high: float) -> float:
+        """``poissonIntegral`` over the count, from ``low`` to ``high``, for one mean."""
         from ...stats import incomplete_gamma, incomplete_gamma_c
 
-        if self.x.GetName() in names:
-            mean = float(np.asarray(self.v("mean", ctx)))
-            low, high = max(0.0, self.x.getMin(rng)), self.x.getMax(rng)
-            if high < 0 or high < low:
-                return 0.0
-            delta = 100.0 * math.sqrt(mean)
-            if low < max(mean - delta, 0.0) and high > mean + delta:
-                return 1.0
-            first, last = int(low), int(min(high + 1, 4294967295.0))
-            if first == 0:
-                return incomplete_gamma_c(last, mean)
-            if first <= mean:
-                return incomplete_gamma_c(last, mean) - incomplete_gamma_c(first, mean)
-            return incomplete_gamma(first, mean) - incomplete_gamma(last, mean)
-        x = float(np.asarray(self.v("x", ctx)))
+        if high < 0 or high < low:
+            return 0.0
+        delta = 100.0 * math.sqrt(mean)
+        if low < max(mean - delta, 0.0) and high > mean + delta:
+            return 1.0
+        first, last = int(low), int(min(high + 1, 4294967295.0))
+        if first == 0:
+            return incomplete_gamma_c(last, mean)
+        if first <= mean:
+            return incomplete_gamma_c(last, mean) - incomplete_gamma_c(first, mean)
+        return incomplete_gamma(first, mean) - incomplete_gamma(last, mean)
+
+    def _over_mean(self, x: float, rng: Any) -> float:
+        from ...stats import incomplete_gamma
+
         ix = 1 + (x if self._no_rounding else math.floor(x))
         return incomplete_gamma(ix, self.mean.getMax(rng)) - incomplete_gamma(
             ix, self.mean.getMin(rng)

@@ -149,7 +149,7 @@ def test_an_open_dimension_among_several_is_integrated_one_variable_inside_anoth
     z = RooRealVar("z", "z", 0.5, 0.0, 2.0)
     fz = RooFormulaVar("fz", "fz", "exp(-x*x)*(1+z)", RooArgList(x, z))
     found = fz.integrate(frozenset({"x", "z"}), {"q": np.array([1.0, 2.5])})
-    assert float(found) == 7.089815418489046
+    assert float(found) == 7.089815418489048
 
 
 def spike(points: Any) -> Any:

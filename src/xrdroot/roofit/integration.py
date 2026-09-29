@@ -45,7 +45,13 @@ def _trapezoids(func: Integrand, saved: Any, n: int, low: Any, high: Any) -> Any
     count = 1 << (n - 2)
     step = np.asarray(width / count)[..., None]
     points = np.asarray(low)[..., None] + (0.5 + np.arange(count)) * step
-    return 0.5 * (saved + width * np.sum(func(points), axis=-1) / count)
+    return 0.5 * (saved + width * _in_order(func(points)) / count)
+
+
+def _in_order(values: Any) -> Any:
+    """The sum over the last axis, one term after another as the C++ loop adds them - not
+    NumPy's pairwise sum, which rounds differently."""
+    return np.cumsum(values, axis=-1)[..., -1]
 
 
 def _midpoints(func: Integrand, saved: Any, n: int, low: float, high: float) -> Any:
@@ -54,9 +60,9 @@ def _midpoints(func: Integrand, saved: Any, n: int, low: float, high: float) -> 
         return width * func(np.array([0.5 * (low + high)]))[..., 0]
     it = 3 ** (n - 2)
     step = width / (3.0 * it)
-    first = low + 0.5 * step + 3 * step * np.arange(it)
-    points = np.stack([first, first + 2 * step], axis=-1).reshape(-1)
-    return (saved + width * np.sum(func(points), axis=-1) / it) / 3.0
+    moves = np.tile([step + step, step], it)  # x += ddel, x += del: accumulated, as C++ does
+    points = np.cumsum(np.concatenate([[low + 0.5 * step], moves[:-1]]))
+    return (saved + width * _in_order(func(points)) / it) / 3.0
 
 
 def _extrapolate(h: list[float], s: list[Any]) -> tuple[Any, Any]:

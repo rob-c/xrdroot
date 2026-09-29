@@ -23,14 +23,30 @@ __all__ = ["TFitResult", "TFitResultPtr", "TMatrixDSym", "TMatrixD"]
 class TMatrixDSym:
     """A covariance or correlation matrix: indexed ``m[i][j]`` or ``m(i, j)``, printed as ROOT's."""
 
-    def __init__(self, values: Any) -> None:
+    def __init__(self, values: Any, ncols: Any = None) -> None:
+        if isinstance(values, (int, np.integer)):  # TMatrixDSym(n), TMatrixD(rows, cols): zeros
+            values = np.zeros((int(values), int(values if ncols is None else ncols)))
+        elif isinstance(values, TMatrixDSym):
+            values = values._m
         self._m = np.array(values, dtype=np.float64)
 
     def __call__(self, i: int, j: int) -> float:
         return float(self._m[i, j])
 
-    def __getitem__(self, i: int) -> Any:
-        return self._m[i]
+    def __setcall__(self, i: int, j: int, value: float) -> None:
+        """``m(i, j) = value``."""
+        self._m[i, j] = float(value)
+
+    def __getitem__(self, i: Any) -> Any:
+        return float(self._m[i]) if isinstance(i, tuple) else self._m[i]
+
+    def __setitem__(self, i: Any, value: Any) -> None:
+        """``m[i, j] = value`` - PyROOT's - or a whole row."""
+        self._m[i] = value
+
+    def matrix(self) -> np.ndarray[Any, Any]:
+        """The values, as the engine takes them."""
+        return self._m
 
     def GetNrows(self) -> int:
         return int(self._m.shape[0])
