@@ -24,7 +24,7 @@ import numpy as np
 from ...fit.minuit import iminuit
 from .. import cout
 from ..collections import RooArgList, RooArgSet, as_list
-from ..messages import ERROR, INFO, WARNING, log, log_plain
+from ..messages import ERROR, INFO, WARNING, log, log_plain, service
 from ..printing import PRECISION, g
 
 __all__ = ["RooMinimizer", "first_step"]
@@ -73,7 +73,7 @@ class RooMinimizer:
         self.params = [p for p in params if not p.isConstant()]
         self.all_params = params
         self.init_params = RooArgList([p.clone(p.GetName()) for p in self.params])
-        self.print_level = 1
+        self.print_level = -1 if service().silentMode() else 1
         self.strategy = 1
         self.eps = 1.0
         self.errordef = float(function.defaultErrorLevel())
@@ -397,9 +397,7 @@ class RooMinimizer:
             if self.verbose and par.getVal() != value:  # SetPdfParamVal says so, as in a call
                 cout.write(f"{par.GetName()}={g(value, PRECISION[0])}, ")
             par.setVal(value)
-            par.setError(
-                float(self.minuit.errors[index]) if not par.isConstant() else par.getError()
-            )
+            par.setError(float(self.minuit.errors[index]) if not par.isConstant() else 0.0)
             error = self.minuit.merrors.get(par.GetName()) if minos else None
             if error is not None:
                 par.setAsymError(float(error.lower), float(error.upper))

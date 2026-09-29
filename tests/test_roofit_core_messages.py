@@ -145,13 +145,20 @@ def test_errors_are_counted_whether_or_not_they_are_printed(capsys: Any) -> None
 
 
 def test_a_progress_line_is_ended_before_the_next_message(capsys: Any) -> None:
-    """Progress dots stay on one line until a message of another level starts a new one."""
+    """Progress dots about a node stay on one line until a message of another level about a node
+    starts a new one; a message about anything else - a minimizer, RooStats' ``nullptr`` - is
+    neither ended nor remembered, as ROOT's ``log`` for a ``TObject`` is not."""
+    from xrdroot.roofit.variables import RooRealVar
+
     service = RooMsgService()
-    service.log(None, PROGRESS, "Fitting", ".")
-    service.log(None, PROGRESS, "Fitting", ".")
-    service.log(None, INFO, "Fitting", "done")
+    node = RooRealVar("x", "x", 0.0)
+    service.log(node, PROGRESS, "Fitting", ".")
+    service.log(None, INFO, "Fitting", "about nothing")
+    service.log(node, PROGRESS, "Fitting", ".")
+    service.log(node, INFO, "Fitting", "done")
     assert capsys.readouterr().out == (
-        "[#0] PROGRESS:Fitting -- .\n[#0] PROGRESS:Fitting -- .\n\n[#1] INFO:Fitting -- done\n"
+        "[#0] PROGRESS:Fitting -- .\n[#1] INFO:Fitting -- about nothing\n"
+        "[#0] PROGRESS:Fitting -- .\n\n[#1] INFO:Fitting -- done\n"
     )
 
 

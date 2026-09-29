@@ -282,7 +282,8 @@ def test_minos_of_parameters_that_are_not_fitted_is_still_recorded() -> None:
 
 def test_a_parameter_made_constant_after_the_minimizer_is_fixed_in_minuit(capsys: Any) -> None:
     """RooFit reads the parameters' constness when it runs, not when it is made: the parameter
-    is fixed, printed as fixed, and keeps its error."""
+    is fixed, printed as fixed, and - as ROOT's ``BackProp`` takes Minuit2's zero error for a
+    fixed parameter - left with no error."""
     minimizer, _, m, s = _minimizer()
     minimizer.setPrintLevel(-1)
     minimizer.migrad()
@@ -296,7 +297,7 @@ def test_a_parameter_made_constant_after_the_minimizer_is_fixed_in_minuit(capsys
     assert m.getVal() == pytest.approx(0.048219535850741575, rel=1e-9)
     assert s.getVal() == pytest.approx(1.8724922220616362, rel=1e-9)
     assert s.getError() == pytest.approx(0.18717709190222154, rel=1e-8)
-    assert m.getError() == pytest.approx(0.264684, rel=1e-5)
+    assert m.getError() == 0.0
     minimizer.minos()
     assert not m.hasAsymError() and s.hasAsymError()
     result = minimizer.save()
@@ -318,7 +319,6 @@ def test_a_function_with_nothing_to_vary_is_not_minimised(capsys: Any) -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="the error level line is printed by fitTo, not here")
 def test_a_minimizer_says_which_error_level_its_function_takes(capsys: Any) -> None:
     """ROOT's ``RooMinimizer`` constructor itself prints where its error level comes from, so a
     minimizer made by hand says it too."""

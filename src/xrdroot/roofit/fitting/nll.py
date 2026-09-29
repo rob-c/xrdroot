@@ -176,6 +176,11 @@ class RooNLLVar(RooAbsReal):
         return found if self._constrained_over is None else found & self._constrained_over
 
     def defaultErrorLevel(self) -> float:
+        """One half - which RooFit's likelihood, a sum with a RooNLLVar in it, says it takes."""
+        from ..messages import INFO, log
+
+        log(self, INFO, "Fitting", f"RooAddition::defaultErrorLevel({self.GetName()}) "
+            "Summation contains a RooNLLVar, using its error level")  # fmt: skip
         return 0.5
 
     def getParameters(self, observables: Any = None, stripDisconnected: bool = True) -> RooArgSet:

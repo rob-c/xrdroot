@@ -241,15 +241,28 @@ class RooMsgService:
             return
         stream = self._streams[found]
         out = stream.stream()
-        if self._last_level == PROGRESS and level != PROGRESS:
-            out.write("\n")
-        self._last_level = level
+        self._track(out, obj, level)
         prefix = f"[#{found}] {LEVELS[level]}:{topic} -- " if stream.prefix else ""
         if not flush and hasattr(out, "write_unflushed"):
             out.write_unflushed(prefix + text + "\n")  # ended "\n", not std::endl
             return
         out.write(prefix + text + "\n")
         out.flush()
+
+    def _track(self, out: Any, obj: Any, level: int) -> None:
+        """A line ended between a progress message and one of another level - about a node.
+
+        ROOT's ``log`` for a ``RooAbsArg`` remembers the level of the last
+        message and ends the line of dots a progress message leaves before
+        anything else; its ``log`` for any other object - a minimizer, a
+        workspace, RooStats' ``nullptr`` - does neither, which is how a
+        profile likelihood's ``.`` and Minuit's next line end up on one line.
+        """
+        if not hasattr(obj, "_proxies"):
+            return
+        if self._last_level == PROGRESS and level != PROGRESS:
+            out.write("\n")
+        self._last_level = level
 
     def Print(self, options: str = "") -> None:
         every = "v" in str(options).lower()
@@ -293,6 +306,7 @@ def log_plain(obj: Any, level: int, topic: str, text: str) -> None:
     found = SERVICE.activeStream(obj, TOPICS[topic], level)
     if found >= 0:
         out = SERVICE.getStream(found).stream()
+        SERVICE._track(out, obj, level)
         out.write(text)
         out.flush()
 

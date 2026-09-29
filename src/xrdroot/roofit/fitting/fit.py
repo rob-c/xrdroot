@@ -183,13 +183,6 @@ def fit_to(pdf: Any, data: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -
     options.warn_duplicates(f"fitTo({pdf.GetName()})")
     nll = nll_options(pdf, data, options)
     sumw2 = _sumw2_option(pdf, data, options)
-    log(
-        pdf,
-        INFO,
-        "Fitting",
-        f"RooAddition::defaultErrorLevel({nll.GetName()}) Summation contains "
-        "a RooNLLVar, using its error level",
-    )
     minimizer = RooMinimizer(nll)
     _configure(minimizer, options)
     minimizer.minimize(options.get("Minimizer", 0, ""), options.get("Minimizer", 1, ""))
