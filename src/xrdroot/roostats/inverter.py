@@ -291,6 +291,8 @@ class HypoTestInverter:
     def _rename(self, result: Any) -> None:
         """The toys counted, and each distribution named for the point: ``<name>_<var>_1.00``."""
         null, alt = result.GetNullDistribution(), result.GetAltDistribution()
+        if null is None or alt is None:  # RooStats would read through the missing ones
+            return
         self._toys_run += alt.GetSize() + null.GetSize()
         at = f"{self._var.GetName()}_{self._var.getVal():4.2f}"
         null.SetName(f"{null.GetName()}_{at}")

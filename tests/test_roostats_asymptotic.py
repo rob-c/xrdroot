@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 import xrdroot.pyroot as ROOT
+from roostatsmodels import counting
 from xrdroot.roofit.messages import service
 from xrdroot.roostats import asymptotic
 from xrdroot.roostats.asympformulae import expected_p_values, p_values
@@ -24,33 +25,6 @@ def _quiet() -> Any:
     ROOT.RooStats.AsymptoticCalculator.SetPrintLevel(0)
     yield
     service().reset()
-
-
-def counting(n: float = 8.0) -> tuple[Any, Any, Any, Any]:
-    """The workspace, the data, and the S+B and B models."""
-    w = ROOT.RooWorkspace("w")
-    w.factory("Poisson::pois(n[0,30], sum::lam(prod::sig(mu[1,0,10], s[3]), "
-              "prod::bkg(nu[1,0,3], b[5])))")  # fmt: skip
-    w.factory("Gaussian::cons(nom[1,0,3], nu, sigma[0.2])")
-    w.factory("PROD::model(pois, cons)")
-    obs = w.var("n")
-    obs.setVal(n)
-    data = ROOT.RooDataSet("data", "data", ROOT.RooArgSet(obs))
-    data.add(ROOT.RooArgSet(obs))
-    sb = ROOT.RooStats.ModelConfig("sb", w)
-    sb.SetPdf("model")
-    sb.SetObservables("n")
-    sb.SetParametersOfInterest("mu")
-    sb.SetNuisanceParameters("nu")
-    sb.SetGlobalObservables("nom")
-    mu = w.var("mu")
-    mu.setVal(1)
-    sb.SetSnapshot(ROOT.RooArgSet(mu))
-    b = sb.Clone("b")
-    mu.setVal(0)
-    b.SetSnapshot(ROOT.RooArgSet(mu))
-    mu.setVal(1)
-    return w, data, sb, b
 
 
 def test_a_discovery_test_gives_roots_p_values_to_the_bit(capsys: Any) -> None:
