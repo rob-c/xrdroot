@@ -35,7 +35,9 @@ def _arguments(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[list[Any]
     """The variables, the datasets to fill from, and the options, of a constructor's arguments."""
     variables = [a for a in args if not isinstance(a, (RooCmdArg, RooAbsData))]
     sources = [a for a in args if isinstance(a, RooAbsData)]
-    options = commands([a for a in args if isinstance(a, RooCmdArg)], kwargs)
+    given = [a for a in args if isinstance(a, RooCmdArg)]
+    hists = [a for a in variables[1:] if hasattr(a, "_xrd")]  # (name, title, vars, TH1*)
+    options = commands([*given, RooCmdArg("Import", hists[0])] if hists else given, kwargs)
     return (as_list(variables[0]) if variables else []), sources, options
 
 

@@ -175,7 +175,21 @@ class RooAbsPdf(RooAbsReal):
         names = names_in(nset)
         if names:
             self._last_norm = names
+            self._announce_norm(names)
         return value_of(self.value({}, names))
+
+    def _announce_norm(self, names: frozenset[str]) -> None:
+        """The normalisation integral over ``names``, said the first time this density makes it -
+        once per set, as its normalisation cache keeps one."""
+        from .integration import announce
+
+        owner, made = self.__dict__.get("_norms_made", (None, set()))
+        if owner != id(self):  # a copy's cache is its own, and starts empty, as a clone's does
+            made = set()
+            self.__dict__["_norms_made"] = (id(self), made)
+        if names not in made:
+            made.add(names)
+            announce(self, names & self.dependents())
 
     def getNorm(self, nset: Any = None) -> float:
         names = names_in(nset)

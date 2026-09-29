@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...roostats.registry import members
-from . import plots
+from . import plots, sdplot
 
 __all__ = ["RooStats"]
 
@@ -33,7 +33,23 @@ class _Namespace:
         return f"<namespace {self._name}>"
 
 
+def _histfactory() -> dict[str, Any]:
+    """``RooStats::HistFactory``'s classes and functions."""
+    from ...histfactory import channel, factory, make, measurement, model, shapes, systematics
+    from ...roofit.pdfs.histfactory import FlexibleInterpVar
+
+    found: dict[str, Any] = {"FlexibleInterpVar": FlexibleInterpVar}
+    for module in (systematics, shapes, model, channel, measurement, factory, make):
+        found.update({name: getattr(module, name) for name in module.__all__})
+    return found
+
+
 #: ``ROOT.RooStats``.
 RooStats = _Namespace(
-    "RooStats", {**members(), **{name: getattr(plots, name) for name in plots.__all__}}
+    "RooStats",
+    {
+        **members(),
+        **{name: getattr(module, name) for module in (plots, sdplot) for name in module.__all__},
+        "HistFactory": _Namespace("RooStats::HistFactory", _histfactory()),
+    },
 )

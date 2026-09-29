@@ -120,6 +120,9 @@ class RooAbsRealLValue(RooAbsReal):
     def numBins(self, name: Any = None) -> int:
         return self.getBins(name)
 
+    def getBinWidth(self, i: int, name: Any = None) -> float:
+        return float(self.getBinning(name).binWidth(int(i)))
+
     def frame(self, *args: Any, **kwargs: Any) -> Any:
         """A :class:`~xrdroot.roofit.plot.RooPlot` with this variable on its axis."""
         from .plot.frame import make_frame

@@ -89,6 +89,9 @@ class RooWorkspace(RooPrintable):
             if node.GetName() in self._nodes:
                 continue
             self._nodes[node.GetName()] = node
+            held = getattr(node, "dataHist", None)
+            if callable(held) and held() is not None:  # a RooHistFunc's data: embedded here
+                self._embedded.setdefault(held().GetName(), held())
             if not silent and not node.InheritsFrom("RooConstVar"):
                 log(
                     self,

@@ -235,7 +235,15 @@ class RooPlot(RooPrintable):
     def addObject(self, obj: Any, option: str = "", invisible: bool = False) -> None:
         self.items.append((obj, option, bool(invisible)))
 
-    addTH1 = addObject
+    def addTH1(self, hist: Any, option: str = "", invisible: bool = False) -> None:
+        """A histogram drawn over the frame - ``SAME``, unless said - the y axis made room for."""
+        option = str(option or "").upper()
+        if "SAME" not in option:
+            option += "SAME"
+        if hasattr(type(hist), "GetMinimum"):  # a histogram: room made for it on the y axis
+            title = hist.GetYaxis().GetTitle() if hasattr(hist, "GetYaxis") else ""
+            self.update_y_axis(float(hist.GetMinimum()), float(hist.GetMaximum()), title)
+        self.items.append((hist, option, bool(invisible)))
 
     def update_norm_vars(self, variables: Any) -> None:
         if self.norm_vars is None:

@@ -60,6 +60,18 @@ def _table(groups: tuple[str, ...]) -> dict[str, tuple[str, str, type]]:
     return found
 
 
+def _colour_named(name: str) -> int:
+    """A colour given by name - ``"kGreen"``, or ``"#rrggbb"`` - as ``TColorNumber`` takes one."""
+    from ...roofit.names import named_constant
+
+    try:
+        return int(named_constant(name))
+    except (KeyError, ValueError, TypeError):
+        from .colors import TColor
+
+        return int(TColor.GetColor(name))
+
+
 class Drawn:
     """One of ROOT's drawing classes, kept as the members ROOT would write."""
 
@@ -98,6 +110,8 @@ class Drawn:
             return lambda: self.members[member]
 
         def setter(value: Any) -> None:
+            if isinstance(value, str) and member.endswith("Color"):
+                value = _colour_named(value)
             self.members[member] = kind(value)
 
         return setter

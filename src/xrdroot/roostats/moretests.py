@@ -41,6 +41,8 @@ class SimpleLikelihoodRatioTestStat(TestStatistic):
         self._alt = RooArgSet(as_list(altParameters)).snapshot() if nullPdf else None
         self._cond, self._glob = RooArgSet(), RooArgSet()
         self._first, self._reuse = True, False
+        self._detailed = False
+        self._output: Any = None
         self._nll_null: Any = None
         self._nll_alt: Any = None
 
@@ -72,6 +74,12 @@ class SimpleLikelihoodRatioTestStat(TestStatistic):
     def GetVarName(self) -> str:
         return "log(L(#mu_{1}) / L(#mu_{0}))"
 
+    def EnableDetailedOutput(self, flag: bool = True) -> None:
+        self._detailed, self._output = bool(flag), None
+
+    def GetDetailedOutput(self) -> Any:
+        return self._output
+
     def Evaluate(self, data: Any, nullPOI: Any) -> float:
         if self._first and self.ParamsAreEqual():
             log(None, WARNING, "InputArguments", "Same RooArgSet used for null and alternate, so "
@@ -94,6 +102,9 @@ class SimpleLikelihoodRatioTestStat(TestStatistic):
             alt = float(self._nll_alt.getVal())
         if not reuse:
             self._nll_null = self._nll_alt = None
+        if self._detailed:
+            rows = [("nullNLL", "null NLL", null), ("altNLL", "alternate NLL", alt)]
+            self._output = _values("detailedOut_SLRTS", rows)
         return null - alt
 
     def _nll(self, nll: Any, pdf: Any, data: Any, reuse: bool) -> Any:
@@ -107,6 +118,13 @@ class SimpleLikelihoodRatioTestStat(TestStatistic):
         return nll
 
 
+def _values(name: str, rows: list[tuple[str, str, float]]) -> RooArgSet:
+    """A named set of variables holding ``rows``' values: a statistic's detailed output."""
+    from ..roofit.variables import RooRealVar
+
+    return RooArgSet([RooRealVar(n, t, v) for n, t, v in rows], name)
+
+
 class RatioOfProfiledLikelihoodsTestStat(TestStatistic):
     """The null's profile likelihood ratio less the alternate's - or, without subtracting the
     maxima, the two conditional minima's difference."""
@@ -116,6 +134,15 @@ class RatioOfProfiledLikelihoodsTestStat(TestStatistic):
         self._alt = ProfileLikelihoodTestStat(altPdf)
         self._alt_poi = RooArgSet(as_list(altPOI)).snapshot() if altPOI is not None else RooArgSet()
         self._subtract = True
+        self._detailed = False
+        self._output: Any = None
+
+    def EnableDetailedOutput(self, flag: bool = True) -> None:
+        self._detailed = bool(flag)
+        self._both("EnableDetailedOutput", self._detailed)
+
+    def GetDetailedOutput(self) -> Any:
+        return self._output
 
     def _both(self, method: str, *args: Any) -> None:
         for one in (self._null, self._alt):
@@ -164,7 +191,15 @@ class RatioOfProfiledLikelihoodsTestStat(TestStatistic):
     def Evaluate(self, data: Any, nullParamsOfInterest: Any) -> float:
         kind = 0 if self._subtract else 2
         null = self._null.EvaluateProfileLikelihood(kind, data, nullParamsOfInterest)
+        null_set = self._null.GetDetailedOutput()
         alt = self._alt.EvaluateProfileLikelihood(kind, data, self._alt_poi)
+        self._output = None
+        if self._detailed:
+            rows = [(f"nullprof_{v.GetName()}", f"{v.GetTitle()} for null", v.getVal())
+                    for v in (null_set or ())]  # fmt: skip
+            rows += [(f"altprof_{v.GetName()}", f"{v.GetTitle()} for null", v.getVal())
+                     for v in (self._alt.GetDetailedOutput() or ())]  # fmt: skip
+            self._output = _values("", rows)
         return null - alt
 
 

@@ -167,6 +167,15 @@ class RooProdPdf(RooAbsPdf):
             return frozenset()
         return names
 
+    def _announce_norm(self, names: frozenset[str]) -> None:
+        """A product normalises factor by factor: each factor's integral over its part of
+        ``names``, said as the factor makes it."""
+        for pdf in self.pdfs:
+            own = self.factor_nset(pdf, frozenset(names))
+            announce = getattr(pdf, "_announce_norm", None)
+            if own and announce is not None:
+                announce(own)
+
     def announce_projection(self, names: frozenset[str], nset: frozenset[str]) -> bool:
         """Say the ``SPECINT`` a plot projection over ``names`` makes, if it makes one."""
         return bool(self._conditional) and prodcond.announce(self, names, nset)

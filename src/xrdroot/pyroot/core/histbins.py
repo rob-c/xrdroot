@@ -52,6 +52,24 @@ class Bins:
             store(target, value)
         return tuple(found)
 
+    def _flows(self, bin: int, iaxis: int, low: bool) -> bool:
+        """Whether the global bin is in an underflow (``low``) or overflow along ``iaxis`` -
+        any axis, for 0 - as ``IsBinUnderflow`` and ``IsBinOverflow`` have it."""
+        parts, rest = [], int(bin)
+        widths = self._widths()
+        for width in widths:
+            rest, part = divmod(rest, width)
+            parts.append(part)
+        chosen = range(len(widths)) if not iaxis else [int(iaxis) - 1]
+        return any((parts[i] == 0) if low else (parts[i] == widths[i] - 1) for i in chosen
+                   if i < len(widths))  # fmt: skip
+
+    def IsBinUnderflow(self, bin: int, iaxis: int = 0) -> bool:
+        return self._flows(bin, iaxis, True)
+
+    def IsBinOverflow(self, bin: int, iaxis: int = 0) -> bool:
+        return self._flows(bin, iaxis, False)
+
     def _global(self, args: tuple[Any, ...]) -> int:
         """The global bin a ``(bin)`` or ``(binx, biny[, binz])`` call names."""
         return int(args[0]) if len(args) == 1 else self.GetBin(*args)
