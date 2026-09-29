@@ -24,8 +24,10 @@ DEFAULT = "xrdroot.pyroot"
 #: Namespaces whose names a macro uses unqualified - every RooFit tutorial says
 #: ``using namespace RooFit``, TMVA's say ``using namespace TMVA`` - looked in when
 #: ROOT itself has no such name. A macro without the ``using`` would not have
-#: compiled, so looking there is never wrong.
-USED = ("RooFit", "RooStats", "TMVA", "TMVA.Experimental")
+#: compiled, so looking there is never wrong. ``RooStats::HistFactory``'s functions
+#: are called unqualified by argument-dependent lookup - ``MakeModelAndMeasurementFast(meas)``
+#: of a ``HistFactory::Measurement`` - which finds them there too.
+USED = ("RooFit", "RooStats", "RooStats.HistFactory", "TMVA", "TMVA.Experimental")
 
 
 class RootProxy:

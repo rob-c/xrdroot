@@ -69,6 +69,11 @@ def g(value: Any, digits: int | None = None) -> str:
     return format(number, f".{digits}g")
 
 
+#: How ``os << (const void*)nullptr`` reads: ``0x0`` from compiled code under PyROOT, ``0``
+#: in a macro cling runs - :mod:`xrdroot.cint.execute` says which while it runs one.
+NULL_POINTER = ["0x0"]
+
+
 def address(obj: Any) -> str:
     """What ``os << this`` prints: a pointer, in hexadecimal - which a comparison ignores."""
     return hex(id(obj))

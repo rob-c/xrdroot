@@ -30,7 +30,9 @@ __all__ = ["Data", "Sample"]
 
 def _address(hist: Any) -> str:
     """``os << pointer``: a histogram's address, ``0x0`` for none."""
-    return address(hist) if hist is not None else "0x0"
+    from ..roofit.printing import NULL_POINTER
+
+    return address(hist) if hist is not None else NULL_POINTER[0]
 
 
 def _hf(level: int, text: str) -> None:

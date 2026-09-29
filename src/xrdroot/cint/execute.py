@@ -140,16 +140,22 @@ def _executed(
     namespace: dict[str, Any] = {"__name__": "__cint__", "__file__": file}
     binding = ROOT.bind(root) if root is not None else nullcontext()
     _reset_streams()
-    with binding:
-        with _placed(made, label):
-            exec(compile(made.python, label, "exec"), namespace)
-        if not call:
-            return namespace, made
-        entry = _entry(made, namespace, file, args)
-        if entry is None:
-            return None, made
-        with _placed(made, label):
-            result = entry(*args)
+    from ..roofit.printing import NULL_POINTER
+
+    before, NULL_POINTER[0] = NULL_POINTER[0], "0"  # cling's stream prints a null pointer so
+    try:
+        with binding:
+            with _placed(made, label):
+                exec(compile(made.python, label, "exec"), namespace)
+            if not call:
+                return namespace, made
+            entry = _entry(made, namespace, file, args)
+            if entry is None:
+                return None, made
+            with _placed(made, label):
+                result = entry(*args)
+    finally:
+        NULL_POINTER[0] = before
     sys.stdout.flush()
     return result, made
 
