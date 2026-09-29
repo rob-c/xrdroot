@@ -73,7 +73,9 @@ ROOTS = {
 
 
 @pytest.mark.parametrize("option", sorted(ROOTS))
-def test_each_method_gives_rootss_efficiency_and_interval_for_every_bin_tried(counts, option, capsys):
+def test_each_method_gives_rootss_efficiency_and_interval_for_every_bin_tried(
+    counts, option, capsys
+):
     made = divided(*counts, option)
     assert [(x, exl, exh) for x, _, exl, exh, _, _ in made] == [(0.5, 0.5, 0.5), (1.5, 0.5, 0.5),
                                                                  (2.5, 0.5, 0.5)]  # fmt: skip
@@ -153,3 +155,110 @@ def test_weights_leave_only_the_normal_and_bayesian_intervals_which_root_says(we
     assert "Using now the Normal approximation for weighted histograms" in err
     divided(*weighted, "n v")
     assert "weight will be considered in the Histogram Ratio" in capsys.readouterr().err
+
+
+def test_the_intervals_of_nothing_tried_are_the_whole_of_zero_to_one():
+    from xrdroot.pyroot.core.divide import beta_mode, normal, wilson
+
+    assert (wilson(0, 0, 0.68, False), wilson(0, 0, 0.68, True)) == (0.0, 1.0)
+    assert (normal(0, 0, 0.68, False), normal(0, 0, 0.68, True)) == (0.0, 1.0)
+    assert (beta_mode(0.5, 2), beta_mode(2, 0.5), beta_mode(1, 1)) == (0.0, 1.0, 0.5)
+
+
+def test_what_divide_will_not_do_it_refuses_by_name(counts):
+    passed, total = counts
+    with pytest.raises(UnsupportedFeatureError, match="Feldman-Cousins"):
+        divided(passed, total, "fc")
+    with pytest.raises(UnsupportedFeatureError, match="shortest Bayesian"):
+        divided(passed, total, "b(1,1) sh")
+    with pytest.raises(UnsupportedFeatureError, match="shortest Bayesian"):
+        divided(passed, total, "b(1,1) mode")
+
+
+def test_a_bad_level_or_prior_is_warned_of_and_rootss_default_used(counts, capsys):
+    passed, total = counts
+    assert bars(divided(passed, total, "cl=2")) == bars(divided(passed, total, "cp"))
+    assert bars(divided(passed, total, "cl=x")) == bars(divided(passed, total, ""))
+    assert bars(divided(passed, total, "b(-1,0)")) == bars(divided(passed, total, "b(1,1)"))
+    err = capsys.readouterr().err
+    assert "given confidence level 2.000 is invalid" in err
+    assert "given confidence level -1.000 is invalid" in err
+    assert "given shape parameter for alpha -1.00 is invalid" in err
+    assert "given shape parameter for beta 0.00 is invalid" in err
+
+
+def test_histograms_that_do_not_match_are_not_divided_and_root_says_why(counts, capsys):
+    _passed, total = counts
+    graph = ROOT.TGraphAsymmErrors(2, [1.0, 2.0], [3.0, 4.0])
+    graph.Divide(ROOT.TH1D("few", "", 3, 0, 3), total, "")
+    assert graph.GetN() == 2  # left as it was
+    assert divided(ROOT.TH1D("moved", "", 4, 1, 5), total, "pois") == []
+    assert divided(ROOT.TH2D("flat", "", 2, 0, 1, 2, 0, 1), total, "") == []
+    more = ROOT.TH1D("more", "", 4, 0, 4)
+    more.SetBinContent(4, 1)
+    assert divided(more, total, "") == []
+    err = capsys.readouterr().err
+    said = ("they have different number of bins", "they have different bin edges",
+            "passed TEfficiency objects have different binning",
+            "passed histograms are not one-dimensional", "passed bin content > total bin content",
+            "do not have consistent bin contents")  # fmt: skip
+    assert [words for words in said if words not in err] == []
+    assert err.count("passed histograms are not consistent") == 3
+
+
+def test_a_poisson_ratio_of_weights_skips_bins_whose_ratio_is_not_a_number_as_root_does(capsys):
+    passed, total = ROOT.TH1D("wp2", "", 4, 0, 4), ROOT.TH1D("wt2", "", 4, 0, 4)
+    for h in (passed, total):
+        h.Sumw2()
+    passed.Fill(0.5, 2)  # passed where nothing was tried
+    passed.Fill(1.5, -1)  # a negative weight, where nothing was tried either
+    total.Fill(2.5, 0.5)  # and a last bin empty on both sides
+    kept = pytest.approx((2.5, 0, 0.5, 0.5, 0, 53.029743750670463), **BETA)
+    assert divided(passed, total, "pois") == [kept]
+    assert "3 points have been skipped" in capsys.readouterr().err
+    both = divided(passed, total, "pois e0")  # the empty bin too, its ratio unbounded above
+    assert both[0] == kept and both[1] == (3.5, 0, 0.5, 0.5, 0, math.inf)
+
+
+def test_a_weighted_bin_with_nothing_tried_is_kept_with_e0_as_root_keeps_it(weighted):
+    passed, total = weighted
+    total.SetBinContent(3, 0)
+    total.SetBinError(3, 0)
+    assert bars(divided(passed, total, "n e0"))[2] == (0, 0, 0)
+    assert bars(divided(passed, total, "b(1,1) e0")) == [
+        pytest.approx(row, **BETA) for row in WEIGHTED["b(1,1)"][:2]
+    ]
+
+
+def test_poisson_bin_errors_are_the_gamma_intervals_root_gives():
+    h = ROOT.TH1D("pe", "", 3, 0, 3)
+    for i, content in enumerate((5, 0, 2.5)):
+        h.SetBinContent(i + 1, content)
+    h.SetBinErrorOption(ROOT.TH1.kPoisson)
+    found = [(h.GetBinErrorLow(i), h.GetBinErrorUp(i)) for i in (1, 2, 3)]
+    assert found == [pytest.approx(pair, rel=1e-9) for pair in (
+        (2.1596911439740243, 3.3824726512784409), (0, 1.8410216445772389),
+        (1.7918145599845221, 2.1378596227967464))]  # fmt: skip
+    h.SetBinErrorOption(ROOT.TH1.kPoisson2)
+    assert (h.GetBinErrorLow(1), h.GetBinErrorUp(1)) == pytest.approx(
+        (3.3765136098815791, 6.6683320793226706), rel=1e-9)  # fmt: skip
+
+
+def test_a_negative_bin_forces_normal_errors_with_rootss_warning(capsys):
+    h = ROOT.TH1D("ne", "", 2, 0, 2)
+    h.SetBinContent(1, -4)
+    h.SetBinErrorOption(ROOT.TH1.kPoisson)
+    assert h.GetBinErrorUp(1) == h.GetBinError(1)
+    assert h.GetBinErrorOption() == ROOT.TH1.kNormal
+    assert (
+        "Histogram has negative bin content-force usage to normal errors" in capsys.readouterr().err
+    )
+    h.Sumw2()
+    h.Fill(1.5, 2.0)
+    h.SetBinErrorOption(ROOT.TH1.kPoisson)
+    assert h.GetBinErrorLow(2) == h.GetBinError(2)  # weighted: normal errors whatever it is told
+
+
+def test_dividing_where_nothing_was_tried_anywhere_leaves_no_points():
+    empty = ROOT.TH1D("none", "", 2, 0, 2)
+    assert divided(empty, empty, "") == []

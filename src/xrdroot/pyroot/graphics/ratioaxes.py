@@ -87,14 +87,12 @@ def _place(gaxis: Any, ends: tuple[float, float, float, float], scale: tuple[flo
     gaxis.SetWmax(scale[1])
 
 
-def _powered(rp: Any, low: float, high: float, log: bool, which: str) -> tuple[float, float]:
-    """A frame's y range, powers of ten turned back into its ends on a logarithmic pad."""
-    if not log:
-        return low, high
-    low, high = math.pow(10, low), math.pow(10, high)
-    if low <= 0 or high <= 0:
-        rp.Error("UpdateVisualAxes", f"Cannot set {which} Y axis to log scale")
-    return low, high
+def _powered(low: float, high: float, log: bool) -> tuple[float, float]:
+    """A frame's y range, powers of ten turned back into its ends on a logarithmic pad.
+
+    ROOT checks the ends are above zero, which a power of ten always is.
+    """
+    return (math.pow(10, low), math.pow(10, high)) if log else (low, high)
 
 
 def ranges(rp: Any) -> dict[str, Any]:
@@ -108,8 +106,8 @@ def ranges(rp: Any) -> dict[str, Any]:
         rp.Error("UpdateVisualAxes", "Cannot set X axis to log scale")
     return {
         "x": (first, last),
-        "up": _powered(rp, upper.GetUymin(), upper.GetUymax(), bool(upper.GetLogy()), "upper"),
-        "low": _powered(rp, lower.GetUymin(), lower.GetUymax(), bool(lower.GetLogy()), "lower"),
+        "up": _powered(upper.GetUymin(), upper.GetUymax(), bool(upper.GetLogy())),
+        "low": _powered(lower.GetUymin(), lower.GetUymax(), bool(lower.GetLogy())),
         "xopt": "G" if logx else "",
         "upopt": "G" if upper.GetLogy() else "",
         "lowopt": "G" if lower.GetLogy() else "",

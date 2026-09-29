@@ -288,7 +288,7 @@ class TRatioPlot(TObject):
         """The histogram and its fit above, the residuals and bands below."""
         functions = self._h1.GetListOfFunctions()
         found = [functions.At(i) for i in range(functions.GetSize())]
-        fits = [f for f in found if f is not None and f.InheritsFrom("TF1")]
+        fits = [f for f in found if f.InheritsFrom("TF1")]
         if not fits:
             self.Error("Draw", "h1 does not have a fit function")
             return False
