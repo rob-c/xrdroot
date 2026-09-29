@@ -156,5 +156,8 @@ def test_the_helper_ignores_what_it_cannot_use_and_refuses_clues(capsys: Any) ->
         capsys.readouterr().out)  # fmt: skip
     helper.SetPdf(w["normal"])
     assert helper.GetProposalFunction().GetPdf().GetName() == "proposalFunction"
+    fixed = ProposalHelper()  # its Gaussian's means left where they start
+    fixed.SetVariables(ROOT.RooArgList(w["mu"], w["sigma"]))
+    assert fixed.GetProposalFunction().GetPdf().GetName() == "proposalFunction"
     with pytest.raises(UnsupportedFeatureError, match="RooNDKeysPdf"):
         helper.SetClues(None)
