@@ -57,13 +57,16 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
     CLASS_TITLE = "Graph graphics class"
 
     def __init__(self, *args: Any) -> None:
-        TNamed.__init__(self, "Graph", "Graph")
+        # ROOT's default constructor leaves the name and title empty; the others name it "Graph".
+        TNamed.__init__(self, *(("Graph", "Graph") if args else ("", "")))
         self._points = np.zeros(0), np.zeros(0)
         self._bars = {key: np.zeros(0) for key in ERRORS[self._root_class()]}
         self._functions: list[Any] = []
         self._extremes = [-1111.0, -1111.0]
         self._histogram: Any = None
         self._cached: Any = None
+        # ROOT's graphs are made with TAttFill(0, 1000): no colour, but a solid fill once given one.
+        self.__dict__["_atts"] = {"TAttFill": {"fFillColor": 0, "fFillStyle": 1000}}
         self._construct(args)
 
     def _root_class(self) -> str:
@@ -137,6 +140,8 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
             remember(self._cached, self)
         for group, values in self.__dict__.get("_atts", {}).items():
             self._cached._core[group] = values
+        if self._histogram is not None:  # the frame a script reached, which draws it as it is
+            self._cached._core["fHistogram"] = self._histogram._xrd
         return self._cached
 
     def _changed(self) -> None:
@@ -461,9 +466,21 @@ class TGraphAsymmErrors(TGraph):
     CLASS_TITLE = "A graph with asymmetric error bars"
 
     def Divide(self, passed: Any, total: Any, option: str = "cp") -> None:
-        """``Divide(pass, total)``: the efficiency in each bin, with its interval."""
-        self._from_histogram(passed, (total,))
+        """``Divide(pass, total, option)``: the efficiency - or ratio - in each bin, with its
+        interval, as :mod:`.divide` works them out."""
+        from .divide import divide
+
+        points = divide(passed, total, option)
+        if points is None:
+            return
+        columns = [np.array(column, dtype=np.float64) for column in zip(*points)] or [
+            np.zeros(0) for _ in range(6)
+        ]
+        self._points = (columns[0], columns[1])
+        self._bars = dict(zip(("exl", "exh", "eyl", "eyh"), columns[2:]))
         self._changed()
+        if "v" in str(option).lower():
+            self.Print()
 
 
 TGraphBentErrors = TGraphAsymmErrors
