@@ -1263,6 +1263,71 @@ are - files or arrays - as their structural similarity, 1 for the same
 picture: scikit-image's when it is installed, else the same formula in
 NumPy.
 
+## Ratio plots
+
+`TRatioPlot` is ROOT's plot of two histograms with their ratio beneath, or of
+a fitted histogram with its fit's residuals beneath, and as in ROOT it is a
+layout of pads rather than a picture of its own: the upper pad holds the
+histograms, the lower - below `SetSplitFraction`, three tenths of the height
+by default - what is worked out from them, and a clear pad over both the
+axes, so that the two share one x axis. It is built on the live pads, so
+`GetUpperPad()` is a `TPad` to draw a legend in, and the canvas saved is
+drawn as ROOT draws it.
+
+```python
+import xrdroot.pyroot as ROOT
+
+c = ROOT.TCanvas("c", "A ratio example")
+rp = ROOT.TRatioPlot(h1, h2)                 # h1 / h2, by TGraphAsymmErrors::Divide "pois"
+rp.Draw()
+rp.GetLowYaxis().SetNdivisions(505)
+rp.GetUpperPad().cd()
+ROOT.TLegend(0.3, 0.7, 0.7, 0.85).Draw()
+
+fit = ROOT.TRatioPlot(h, "errfunc")          # h fitted: (h - f) / sqrt(f), with its bands
+fit.SetGridlines([-2, -1, 0, 1, 2])
+fit.SetConfidenceIntervalColors(ROOT.kBlue, ROOT.kRed)
+fit.Draw()
+fit.GetLowerRefGraph().SetMinimum(-2)
+```
+
+**What the lower pad shows.** By default the two histograms are divided by
+`TGraphAsymmErrors::Divide` with the constructor's option passed on
+(`"pois"` unless another is given) - a divide that is ROOT's line for line,
+every interval with it: Clopper-Pearson, `n`, `w`, `ac`, `midp`, `b(a,b)`
+with `mode` and `cen`, `cl=`, `pois`, `e0` and `v`, weighted histograms
+counted by their effective entries. `divsym` divides with `TH1::Divide`,
+into symmetric errors; `diff` subtracts, and `diffsig` divides each
+difference by its bin's error. For one fitted histogram each bin's residual
+is shown over its error - with `errasym` the error on the side the function
+lies, from `SetBinErrorOption`'s Poisson intervals, with `errfunc` the root
+of the function - and the latest fit's one- and two-sigma bands, or those
+of the `TFitResult` given, are drawn about it, divided by the same error.
+Each mode draws ROOT's dashed reference lines: at 0.7, 1 and 1.3 for a
+ratio, 0 for a difference, and -1, 0 and 1 for a significance or residual.
+
+**Its axes.** Each pad's own axes are hidden, and a `TGaxis` is drawn at
+each frame's edge, graduated over the frame's range and styled from the
+axis it stands for - the upper x axis unlabelled, the lower y axis's ticks
+lengthened by the ratio of the frames' heights - with twins on the top and
+right when the parent pad has ticks there or its frame no fill. They are
+placed afresh whenever the canvas is drawn, so a range or title set after
+`Draw` is shown. Where the pads nearly touch (`SetSeparationMargin` below
+0.025) the lower axis's top label is hidden, or the upper's bottom one with
+`hideup`; `fhideup` and `fhidelow` hide one regardless, `nohide` neither.
+Every tutorial's picture is ROOT's to a structural similarity above 0.97.
+
+| What | ROOT's names here |
+| --- | --- |
+| making one | `TRatioPlot(h1, h2[, option])`, `(stack, h2)`, `(h1, stack)`, `(h1[, option, fitresult])`; the options `divsym`, `diff`, `diffsig`, `errasym`, `errfunc` and `Divide`'s own |
+| drawing | `Draw` with `grid`/`nogrid`, `confint`/`noconfint`, `hideup`, `hidelow`, `fhideup`, `fhidelow`, `nohide`; `SetH1DrawOpt`, `SetH2DrawOpt`, `SetGraphDrawOpt`, `SetFitDrawOpt` |
+| its parts | `GetUpperPad`, `GetLowerPad`, `GetUpperRefObject`, `GetUpperRefXaxis`/`Yaxis`, `GetLowerRefGraph`, `GetLowerRefXaxis`/`Yaxis`, `GetXaxis`, `GetUpYaxis`, `GetLowYaxis`, `GetCalculationOutputGraph`, `GetConfidenceInterval1`/`2` |
+| layout | `SetSplitFraction`, `SetInsetWidth`, `SetSeparationMargin`/`GetSeparationMargin`, `SetLeftMargin`, `SetRightMargin`, `SetUpTopMargin`, `SetUpBottomMargin`, `SetLowTopMargin`, `SetLowBottomMargin` |
+| the calculation | `SetGridlines(vector)` or `(array, n)`, `SetConfidenceLevels`, `SetConfidenceIntervalColors` (numbers or `"kBlue"`), `SetC1`, `SetC2`, `SetFitResult` |
+
+`Divide`'s Feldman-Cousins interval (`fc`) and its shortest Bayesian one
+(`sh`, or `mode` without `cen`) are refused by name.
+
 ## Spectra
 
 `TSpectrum` and `TSpectrum2` are Miroslav Morhac's spectrum processing, as
