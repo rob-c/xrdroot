@@ -53,7 +53,8 @@ def test_the_accessors_give_each_points_numbers_and_refuse_a_missing_one(capsys:
     assert (r.GetXValue(5), r.GetYValue(5), r.GetResult(-1)) == (-999.0, -999.0, None)
     assert "Problem: You are asking for an impossible array index value" in (
         capsys.readouterr().out)  # fmt: skip
-    assert r.GetBackgroundTestStatDist(7) is None and r.GetSignalAndBackgroundTestStatDist(7) is None
+    assert r.GetBackgroundTestStatDist(7) is None
+    assert r.GetSignalAndBackgroundTestStatDist(7) is None
     r.SetTestSize(0.1)
     r.SetCLsCleanupThreshold(0.01)
     r.SetInterpolationOption(r.kSpline)
@@ -79,7 +80,8 @@ def test_a_point_added_again_is_merged_and_another_scan_merged_in(capsys: Any) -
 def test_the_straight_lines_are_tgraphs_eval_extrapolated_at_the_ends() -> None:
     xs, ys = [1.0, 2.0, 4.0], [0.4, 0.2, 0.1]
     assert limits.graph_eval([], [], 1.0) == 0.0 and limits.graph_eval([1.0], [3.0], 9) == 3.0
-    assert limits.graph_eval(xs, ys, 2.0) == 0.2 and limits.graph_eval(xs, ys, 3.0) == pytest.approx(0.15)
+    assert limits.graph_eval(xs, ys, 2.0) == 0.2
+    assert limits.graph_eval(xs, ys, 3.0) == pytest.approx(0.15)
     assert limits.graph_eval(xs, ys, 0.0) == pytest.approx(0.6)
     assert limits.graph_eval(xs, ys, 6.0) == pytest.approx(0.0)
     assert limits.graph_eval([1.0, 1.0], [0.3, 0.2], 2.0) == 0.2
@@ -191,3 +193,25 @@ def test_the_exclusion_cleanup_drops_points_the_curve_should_not_have(capsys: An
     r._results[1] = point(-1.0)
     assert r.ExclusionCleanup() == 1
     assert scan({}).ExclusionCleanup() == 0
+    two = scan({0.0: 1.0, 1.0: 0.25}, cls=True)
+    two._two_sided = True
+    assert two.ExclusionCleanup() == 0
+
+
+def test_a_curve_crossing_twice_is_searched_again_on_the_near_side() -> None:
+    """The whole range's root refined within the points on the limit's side - and, for a curve
+    starting above the target, from the parameter's lower end."""
+    xs, ys = [1.0, 2.0, 3.0, 4.0, 5.0], [0.5, 0.01, 0.01, 0.01, 0.5]
+    r = scan(dict(zip(xs, ys)))
+    lower = limits.graph_x(r, xs, ys, 0.05, True)[0]
+    upper = limits.graph_x(r, xs, ys, 0.05, False)[0]
+    assert lower == pytest.approx(1.0 + 0.45 / 0.49, rel=1e-5)
+    assert upper == pytest.approx(4.0 + 0.04 / 0.49, rel=1e-5)
+    high = [0.5, 0.2, 0.01]
+    assert limits.graph_x(r, [1.0, 2.0, 3.0], high, 0.05, True)[1] == 0.0
+
+
+def test_the_band_quantiles_of_toys_are_tmaths() -> None:
+    values = [float(i) for i in range(11)]
+    assert limits._band_quantiles(values, False)[2] == 5.0
+    assert limits._band_quantiles(values, True) == [3.0, 4.0, 5.0, 6.0, 7.0]

@@ -90,10 +90,9 @@ def _whole_range(xs: list[float], ys: list[float], y0: float, low: bool, varmin:
     """No range given: the points', out to the parameter's ends where the curve must be
     extrapolated."""
     xmin, xmax = xs[0], xs[-1]
-    ymax = max(ys)
-    if (ymax < y0 and not low) or (ys[0] > y0 and low):
+    if ys[0] > y0 and low:  # RooStats' test of the curve below the target too: never so here
         xmin = varmin
-    if (ymax < y0 and low) or (ys[-1] > y0 and not low):
+    if ys[-1] > y0 and not low:
         xmax = varmax
     return xmin, xmax
 
@@ -111,12 +110,11 @@ def _failed(result: Any, xs: list[float], ys: list[float], y0: float, xmin: floa
 
 def _refined(result: Any, xs: list[float], ys: list[float], y0: float, low: bool,
              limit: float) -> float:  # fmt: skip
-    """The root again, within the points on the near side of the one found: where the curve
-    crosses more than once, the crossing a limit is."""
+    """The root again, within the points beyond the one found: where the curve crosses more
+    than once, the crossing an upper limit is. RooStats also looks below a lower limit, for
+    a crossing the grid found no earlier one of - which a grid from the lower end cannot miss."""
     n = len(xs)
     index = bisect.bisect_right(xs, limit) - 1  # TMath::BinarySearch
-    if low and index >= 1 and (ys[0] - y0) * (ys[index] - y0) < 0:
-        return graph_x(result, xs, ys, y0, low, xs[0], xs[index])[0]
     if not low and index < n - 2 and (ys[-1] - y0) * (ys[index + 1] - y0) < 0:
         return graph_x(result, xs, ys, y0, low, xs[index + 1], xs[-1])[0]
     return limit

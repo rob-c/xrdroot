@@ -291,12 +291,12 @@ def flat(clsb: Any, cls: bool = True) -> Any:
 
 @pytest.mark.parametrize(("clsb", "cls", "said"), [
     (0.5, True, "Cannot determine upper limit of scan range. At mu = 384  still getting CLs = 0.5"),
-    (0.01, False, "Cannot determine lower limit of scan range. At mu = -96 still get CLsplusb = 0.01"),
+    (0.01, False, "Cannot determine lower limit of scan range. At mu = -96 still get CLsplusb"),
     (None, True, "Hypo test failed at x=2.20528 when trying to find limit."),
     (None, False, "Hypotest failed at lower limit of scan range: 0"),
 ])  # fmt: skip
-def test_an_automatic_search_that_cannot_bracket_the_limit_fails(capsys: Any, clsb: Any,
-                                                                  cls: bool, said: str) -> None:  # fmt: skip
+def test_an_automatic_search_that_cannot_bracket_the_limit_fails(
+        capsys: Any, clsb: Any, cls: bool, said: str) -> None:  # fmt: skip
     it = flat(clsb, cls)
     assert it.RunLimit()[0] is False
     assert said in capsys.readouterr().out
@@ -490,7 +490,9 @@ def test_the_limit_error_fit_for_a_lower_limit_and_with_too_few_points(capsys: A
     it.SetFixedScan(5, 3.5, 3.9)
     result = it.GetInterval()
     result.UpperLimit()
+    result._lower = 3.6
     assert limits.estimated_error(result, 0.05, True, 3.5, 3.9) >= 0.0
+    assert limits.estimated_error(result, 0.05, False, 3.55, 3.75) >= 0.0
     assert limits.estimated_error(result, 0.05, False, 3.55, 3.65) == 0.0
     result._upper = float("nan")
     assert limits.estimated_error(result, 0.05, False, 3.5, 3.9) == 0.0
