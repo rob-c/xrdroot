@@ -28,7 +28,7 @@ from ..core.graphs import TGraph
 from ..core.objects import TObject
 from ..core.stacks import THStack
 from . import ratioaxes, ratiocalc
-from .pads import TPad, current, set_current
+from .pads import TPad, current
 from .ratioaxes import f32
 from .shapes import TLine
 from .style import gStyle
@@ -68,6 +68,21 @@ def _summed(stack: Any) -> Any:
     for i in range(hists.GetSize()):
         made.Add(hists.At(i))
     return made
+
+
+def _one(obj: Any) -> Any:
+    """A histogram as itself, a stack as the sum of its histograms."""
+    return _summed(obj) if _is_stack(obj) else obj
+
+
+def _refused(first: Any, second: Any) -> str:
+    """ROOT's warning for what two constructor arguments lack, or nothing if they will do."""
+    stacked = [obj for obj in (first, second) if _is_stack(obj)]
+    if first is None or second is None:
+        return "Need a histogram and a stack" if stacked else "Need two histograms."
+    if any(stack.GetHists().GetSize() == 0 for stack in stacked):
+        return "Stack does not have histograms"
+    return ""
 
 
 def _clone_axis(axis: Any) -> Any:
@@ -155,19 +170,13 @@ class TRatioPlot(TObject):
 
     def _two(self, first: Any, second: Any, option: str) -> None:
         """``TRatioPlot(h1, h2)``, ``(stack, h2)`` or ``(h1, stack)``: a ratio or difference."""
-        stacked = [obj for obj in (first, second) if _is_stack(obj)]
-        if first is None or second is None:
-            self.Warning("TRatioPlot", "Need two histograms." if not stacked else
-                         "Need a histogram and a stack")  # fmt: skip
-            return
-        if any(stack.GetHists().GetSize() == 0 for stack in stacked):
-            self.Warning("TRatioPlot", "Stack does not have histograms")
+        refused = _refused(first, second)
+        if refused:
+            self.Warning("TRatioPlot", refused)
             return
         self._proxy = first
         self._proxy_stack = _is_stack(first)
-        h1 = _summed(first) if _is_stack(first) else first
-        h2 = _summed(second) if _is_stack(second) else second
-        self._init(h1, h2, option)
+        self._init(_one(first), _one(second), option)
 
     def _init(self, h1: Any, h2: Any, option: str) -> None:
         """``Init``: the pads, the mode the option asks for, and the lower plot."""
@@ -185,7 +194,9 @@ class TRatioPlot(TObject):
             self.Warning("TRatioPlot", "Need a histogram.")
             return
         if h1.GetListOfFunctions().GetSize() < 1:
-            self.Warning("TRatioPlot", "Histogram given needs to have a (fit) function associated with it")
+            self.Warning(
+                "TRatioPlot", "Histogram given needs to have a (fit) function associated with it"
+            )
             return
         self._proxy, self._fit_result = h1, fitres
         self._mode = ratiocalc.FIT_RESIDUAL
@@ -211,7 +222,9 @@ class TRatioPlot(TObject):
             return
         pm = self._inset_width
         f = parent.GetHNDC() / parent.GetWNDC()
-        self._upper_pad = TPad("upper_pad", "", pm * f, self._split_fraction, 1.0 - pm * f, 1.0 - pm)
+        self._upper_pad = TPad(
+            "upper_pad", "", pm * f, self._split_fraction, 1.0 - pm * f, 1.0 - pm
+        )
         self._lower_pad = TPad("lower_pad", "", pm * f, pm, 1.0 - pm * f, self._split_fraction)
         self._set_pad_margins()
         self._top_pad = TPad("top_pad", "", pm * f, pm, 1 - pm * f, 1 - pm)
@@ -351,7 +364,7 @@ class TRatioPlot(TObject):
         return found
 
     def GetUpperRefObject(self) -> Any:
-        """The first histogram or stack in the upper pad: the one whose axes are the upper frame's."""
+        """The first histogram or stack in the upper pad: whose axes are the upper frame's."""
         drawn = [obj for obj, _ in self._upper_pad.primitives]
         found = next((obj for obj in drawn if _is_stack(obj) or _is_histogram(obj)), None)
         if found is None:
@@ -483,11 +496,12 @@ class TRatioPlot(TObject):
     def SetGridlines(self, gridlines: Any, numGridlines: int | None = None) -> None:
         """``SetGridlines``: where the reference lines go - a vector, or an array and its length."""
         values = list(gridlines)
-        self._gridline_positions = [float(y) for y in
-                                    (values if numGridlines is None else values[: int(numGridlines)])]  # fmt: skip
+        if numGridlines is not None:
+            values = values[: int(numGridlines)]
+        self._gridline_positions = [float(y) for y in values]
 
     def SetConfidenceIntervalColors(self, ci1: Any = YELLOW, ci2: Any = GREEN) -> None:
-        """The bands' colours: numbers, or - as ``TColorNumber`` takes them - names like ``"kBlue"``."""
+        """The bands' colours: numbers, or names like ``"kBlue"``, as ``TColorNumber`` takes."""
         self._ci1_color, self._ci2_color = _colour(ci1), _colour(ci2)
 
     def SetC1(self, c1: float) -> None:

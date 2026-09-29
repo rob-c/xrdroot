@@ -101,6 +101,16 @@ def _has_errors(points: Scatter) -> bool:
     return bool(points.layers) or bool(np.any(points.xlow) or np.any(points.xhigh))
 
 
+def _shown(points: Scatter, request: Request) -> Scatter | None:
+    """The points as drawn: with their markers, or - bars alone - without; or not at all."""
+    chosen = request.chosen
+    if chosen.has("P", "*"):
+        return points
+    if chosen.has("X", "3", "4") or not _has_errors(points):
+        return None
+    return points._replace(look=points.look._replace(marker=None))
+
+
 def _markers(points: Scatter, request: Request) -> list[Any]:
     """The points, with a set of bars per layer unless ``X`` asks for none.
 
@@ -109,10 +119,10 @@ def _markers(points: Scatter, request: Request) -> list[Any]:
     band (``3``, ``4``) instead.
     """
     chosen = request.chosen
-    if not chosen.has("P", "*"):
-        if chosen.has("X", "3", "4") or not _has_errors(points):
-            return []
-        points = points._replace(look=points.look._replace(marker=None))
+    shown = _shown(points, request)
+    if shown is None:
+        return []
+    points = shown
     zeros = np.zeros_like(points.x)
     layers = points.layers if points.layers and not chosen.has("X") else ((zeros, zeros),)
     xlow, xhigh = (zeros, zeros) if chosen.has("X") else (points.xlow, points.xhigh)

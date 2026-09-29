@@ -22,8 +22,16 @@ import numpy as np
 
 from .text import TGaxis
 
-
-__all__ = ["f32", "HIDE_LOW", "HIDE_UP", "FORCE_HIDE_LOW", "FORCE_HIDE_UP", "NO_HIDE", "create", "update"]
+__all__ = [
+    "f32",
+    "HIDE_LOW",
+    "HIDE_UP",
+    "FORCE_HIDE_LOW",
+    "FORCE_HIDE_UP",
+    "NO_HIDE",
+    "create",
+    "update",
+]
 
 #: ``TRatioPlot::HideLabelMode``.
 HIDE_UP, HIDE_LOW, NO_HIDE, FORCE_HIDE_UP, FORCE_HIDE_LOW = 1, 2, 3, 4, 5
@@ -80,7 +88,7 @@ def _place(gaxis: Any, ends: tuple[float, float, float, float], scale: tuple[flo
 
 
 def _powered(rp: Any, low: float, high: float, log: bool, which: str) -> tuple[float, float]:
-    """A frame's y range, its ends powers of ten back on a logarithmic pad, as ``GetUymin`` has them."""
+    """A frame's y range, powers of ten turned back into its ends on a logarithmic pad."""
     if not log:
         return low, high
     low, high = math.pow(10, low), math.pow(10, high)
@@ -148,8 +156,9 @@ def update(rp: Any) -> None:
     _place(axes["lower_x"], (e["lowleft"], e["lowbottom"], e["lowright"], e["lowbottom"]), r["x"])
     _place(axes["lower_y"], (e["lowleft"], e["lowbottom"], e["lowleft"], e["lowtop"]), r["low"])
     shared_ndiv = rp._shared_x.GetNdivisions()
-    for name, ndiv in (("upper_x", shared_ndiv), ("upper_y", rp._up_y.GetNdivisions()),
-                       ("lower_x", shared_ndiv), ("lower_y", rp._low_y.GetNdivisions())):  # fmt: skip
+    up_ndiv, low_ndiv = rp._up_y.GetNdivisions(), rp._low_y.GetNdivisions()
+    for name, ndiv in (("upper_x", shared_ndiv), ("upper_y", up_ndiv),
+                       ("lower_x", shared_ndiv), ("lower_y", low_ndiv)):  # fmt: skip
         axes[name].SetNdivisions(ndiv)
     for name, opt in (("upper_x", "+U" + r["xopt"]), ("upper_y", "S" + r["upopt"]),
                       ("lower_x", "+S" + r["xopt"]), ("lower_y", "-S" + r["lowopt"])):  # fmt: skip
@@ -204,4 +213,3 @@ def _mirror(
             mirror.SetTickSize(ticksize)
         mirror.SetNdivisions(divisions[name].GetNdivisions())
         mirror.SetLabelSize(0.0)
-

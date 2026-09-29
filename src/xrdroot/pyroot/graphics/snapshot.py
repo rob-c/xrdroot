@@ -73,16 +73,21 @@ def _lays_out(obj: Any) -> bool:
     return callable(getattr(type(obj), "paint_pad", None))
 
 
+def _painted(pad: TPad) -> list[tuple[Any, str]]:
+    """Each primitive converted, a helper that lays out pads asked to place what it made."""
+    for obj, _ in pad.primitives:
+        if _lays_out(obj):
+            obj.paint_pad()
+    return [(_converted(obj), option) for obj, option in pad.primitives if not _lays_out(obj)]
+
+
 def _drawn(pad: TPad) -> list[tuple[Any, str]]:
     """The pad's primitives as :mod:`xrdroot.canvas` takes them, before what painting adds.
 
     A helper that lays out pads - a ``TRatioPlot`` - paints nothing of its own:
     it is asked to place what it made afresh (``paint_pad``), and then passed over.
     """
-    for obj, _ in pad.primitives:
-        if _lays_out(obj):
-            obj.paint_pad()
-    made = [(_converted(obj), option) for obj, option in pad.primitives if not _lays_out(obj)]
+    made = _painted(pad)
     if made and owner(_bare(pad, made)) is None:
         at = next((i for i, (obj, _) in enumerate(made) if isinstance(obj, Graph)), None)
         if at is not None and "SAME" not in made[at][1].upper():

@@ -67,8 +67,10 @@ def wilson(total: float, passed: float, level: float, upper: bool) -> float:
     average = passed / total
     kappa = normal_quantile(1 - (1.0 - level) / 2, 1)
     mode = (passed + 0.5 * kappa * kappa) / (total + kappa * kappa)
-    delta = kappa / (total + kappa * kappa) * math.sqrt(
-        total * average * (1 - average) + kappa * kappa / 4
+    delta = (
+        kappa
+        / (total + kappa * kappa)
+        * math.sqrt(total * average * (1 - average) + kappa * kappa / 4)
     )
     return _clipped(mode, delta, upper)
 
@@ -138,16 +140,22 @@ def _level(option: str, choice: Choice) -> str:
     return option.replace("cl=", "")
 
 
+def _shape(option: str, name: str, at: int) -> float:
+    """One of ``b(a,b)``'s shapes: one, with ROOT's warning, where it is not above zero."""
+    found = re.search(r"b\(([-+0-9.e]*),([-+0-9.e]*)\)", option)
+    text = found.group(at + 1) if found else ""
+    value = float(text) if text else 0.0
+    if value > 0:
+        return value
+    message("Warning", "TGraphAsymmErrors::Divide",
+            f"given shape parameter for {name} %.2lf is invalid", value)  # fmt: skip
+    return 1.0
+
+
 def _prior(option: str, choice: Choice) -> str:
     """``b(a,b)``: a Bayesian interval, with the Beta prior's shapes where they are valid."""
-    found = re.search(r"b\(([-+0-9.e]*),([-+0-9.e]*)\)", option)
-    texts = found.groups() if found else ("", "")
-    shapes = [float(text) if text else 0.0 for text in texts]
-    for name, value in zip(("alpha", "beta"), shapes):
-        if value <= 0:
-            message("Warning", "TGraphAsymmErrors::Divide",
-                    f"given shape parameter for {name} %.2lf is invalid", value)  # fmt: skip
-    choice.prior = (shapes[0] if shapes[0] > 0 else 1.0, shapes[1] if shapes[1] > 0 else 1.0)
+    alpha, beta = (_shape(option, name, at) for at, name in enumerate(("alpha", "beta")))
+    choice.prior = (alpha, beta)
     option = option.replace("b(", "")
     choice.mode = "mode" in option
     option = option.replace("mode", "")
@@ -223,26 +231,42 @@ def _square(h: Any, b: int, content: float) -> float:
     return float(h.GetSumw2()[b]) if h.GetSumw2N() > 0 else content
 
 
+def _ratio(numerator: float, denominator: float) -> float:
+    """``numerator / denominator`` as C divides doubles: by zero, an infinity or a NaN."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return float(np.float64(numerator) / np.float64(denominator))
+
+
+def _effective_count(w: float, w2: float) -> float:
+    """``w² / w2``: the entries a weighted bin counts as, none for an empty one."""
+    return 0.0 if w == 0 and w2 == 0 else _ratio(w * w, w2)
+
+
+def _weight_ratio(c: Counts, psums: tuple[float, float], tsums: tuple[float, float]) -> Any:
+    """What the ratio of effective counts is scaled by to be the ratio of weights, or ``None``."""
+    if c.pw > 0 and c.tw > 0:
+        return _ratio(c.pw * c.t, c.p * c.tw)
+    if c.pw == 0 and c.tw > 0:
+        return _ratio(psums[1] * c.t, psums[0] * c.tw)
+    if c.tw == 0 and c.pw > 0:
+        return _ratio(c.pw * tsums[0], c.p * tsums[1])
+    if c.p > 0:  # a negative weight's
+        return _ratio(c.pw, c.p)
+    return None
+
+
 def _poisson_weights(c: Counts, psums: tuple[float, float], tsums: tuple[float, float]) -> bool:
     """A weighted bin's effective counts for a Poisson ratio, and their ratio's weight.
 
-    False for a bin with nothing in either, which is skipped unless ``e0`` asks for it.
+    False for a bin with nothing in either, which is skipped unless ``e0`` asks
+    for it - and then keeps the weight the bin before it had, as ROOT's does.
     """
-    c.p = 0.0 if c.pw == 0 and c.pw2 == 0 else (c.pw * c.pw) / c.pw2
-    c.t = 0.0 if c.tw == 0 and c.tw2 == 0 else (c.tw * c.tw) / c.tw2
-    kept = True
-    if c.pw > 0 and c.tw > 0:
-        c.wratio = (c.pw * c.t) / (c.p * c.tw)
-    elif c.pw == 0 and c.tw > 0:
-        c.wratio = (psums[1] * c.t) / (psums[0] * c.tw)
-    elif c.tw == 0 and c.pw > 0:
-        c.wratio = (c.pw * tsums[0]) / (c.p * tsums[1])
-    elif c.p > 0:  # a negative weight's
-        c.wratio = c.pw / c.p
-    else:
-        kept = False
+    c.p, c.t = _effective_count(c.pw, c.pw2), _effective_count(c.tw, c.tw2)
+    wratio = _weight_ratio(c, psums, tsums)
+    if wratio is not None:
+        c.wratio = wratio
     c.t += c.p
-    return kept
+    return wratio is not None
 
 
 @dataclass
@@ -275,7 +299,7 @@ def _bayesian(c: Counts, setup: Setup) -> tuple[float, float, float]:
     alpha, beta = setup.choice.prior or (1.0, 1.0)
     binomial = setup.weighted and not setup.choice.pois
     if binomial and c.tw2 <= 0:
-        eff = c.pw / c.tw
+        eff = _ratio(c.pw, c.tw)
         return eff, eff, eff
     if binomial:
         norm = c.tw / c.tw2
@@ -315,12 +339,15 @@ def interval(c: Counts, setup: Setup) -> tuple[float, float, float]:
         eff, low, upper = _weighted_normal(c, choice.level)
     else:
         eff = c.p / c.t if c.t != 0.0 else 0.0
-        low, upper = choice.bound(c.t, c.p, choice.level, False), choice.bound(
-            c.t, c.p, choice.level, True
+        low, upper = (
+            choice.bound(c.t, c.p, choice.level, False),
+            choice.bound(c.t, c.p, choice.level, True),
         )
     if choice.pois:
         with np.errstate(divide="ignore", invalid="ignore"):
-            eff, low, upper = (float(np.float64(v) / (1.0 - np.float64(v))) for v in (eff, low, upper))
+            eff, low, upper = (
+                float(np.float64(v) / (1.0 - np.float64(v))) for v in (eff, low, upper)
+            )
         if setup.weighted:
             eff, low, upper = eff * c.wratio, low * c.wratio, upper * c.wratio
     return eff, low, upper
@@ -334,10 +361,41 @@ def _warn(setup: Setup) -> None:
     """ROOT's word that weights leave only the normal and Bayesian intervals."""
     choice = setup.choice
     if setup.weighted and not choice.pois and choice.prior is None and choice.bound is not normal:
-        message("Warning", "TGraphAsymmErrors::Divide",
-                "Histograms have weights: only Normal or Bayesian error calculation is supported")
+        message(
+            "Warning",
+            "TGraphAsymmErrors::Divide",
+            "Histograms have weights: only Normal or Bayesian error calculation is supported",
+        )
         message("Info", "TGraphAsymmErrors::Divide",
                 "Using now the Normal approximation for weighted histograms")  # fmt: skip
+
+
+def _points(passed: Any, total: Any, setup: Setup) -> list[Point]:
+    """A point for each bin ``Divide`` keeps whose efficiency is a finite number."""
+    points: list[Point] = []
+    counts = Counts()  # kept from bin to bin, as ROOT's are
+    for b in range(1, passed.GetNbinsX() + 1):
+        if not counted(passed, total, b, counts, setup):
+            continue
+        eff, low, upper = interval(counts, setup)
+        if math.isfinite(eff):
+            centre, edge = passed.GetBinCenter(b), passed.GetBinLowEdge(b)
+            width = passed.GetBinWidth(b)
+            points.append(
+                (centre, eff, centre - edge, edge - centre + width, eff - low, upper - eff)
+            )
+    return points
+
+
+def _report(points: list[Point], nbins: int, choice: Choice) -> None:
+    """ROOT's word on skipped bins, and with ``v`` on what was made and how."""
+    where = "TGraphAsymmErrors::Divide"
+    if len(points) < nbins:
+        message("Warning", where, "Number of graph points is different than histogram bins - "
+                "%d points have been skipped", nbins - len(points))  # fmt: skip
+    if choice.verbose:
+        message("Info", where, "made a graph with %d points from %d bins", len(points), nbins)
+        message("Info", where, "used confidence level: %.2lf\n", choice.level)
 
 
 def divide(passed: Any, total: Any, option: str = "cp") -> list[Point] | None:
@@ -352,25 +410,9 @@ def divide(passed: Any, total: Any, option: str = "cp") -> list[Point] | None:
     weighted, psums, tsums = effective(passed, total)
     setup = Setup(choice, weighted, psums, tsums)
     if choice.verbose and weighted:
-        message("Info", "TGraphAsymmErrors::Divide", "weight will be considered in the Histogram Ratio")
+        message("Info", "TGraphAsymmErrors::Divide",
+                "weight will be considered in the Histogram Ratio")  # fmt: skip
     _warn(setup)
-    points: list[Point] = []
-    counts = Counts()  # kept from bin to bin, as ROOT's are
-    nbins = passed.GetNbinsX()
-    for b in range(1, nbins + 1):
-        if not counted(passed, total, b, counts, setup):
-            continue
-        eff, low, upper = interval(counts, setup)
-        if math.isfinite(eff):
-            centre, edge, width = passed.GetBinCenter(b), passed.GetBinLowEdge(b), passed.GetBinWidth(b)
-            points.append((centre, eff, centre - edge, edge - centre + width, eff - low, upper - eff))
-    if len(points) < nbins:
-        message("Warning", "TGraphAsymmErrors::Divide",
-                "Number of graph points is different than histogram bins - %d points have been "
-                "skipped", nbins - len(points))  # fmt: skip
-    if choice.verbose:
-        message("Info", "TGraphAsymmErrors::Divide", "made a graph with %d points from %d bins",
-                len(points), nbins)  # fmt: skip
-        message("Info", "TGraphAsymmErrors::Divide", "used confidence level: %.2lf\n", choice.level)
+    points = _points(passed, total, setup)
+    _report(points, passed.GetNbinsX(), choice)
     return points
-

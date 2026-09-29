@@ -492,23 +492,31 @@ def _exponent_label(axis: Axis, geo: _Geometry, text: _Text, exponent: int) -> L
 def _changed(axis: Axis, label: Label, number: int, nlabels: int) -> Label:
     """``label``, the ``number``-th, as ``TGaxis::ChangeLabelAttributes`` restyles it.
 
-    A change numbered back from the end, ``-1`` the last, is the label
-    ``number + 2 + nlabels`` counts to, as ``FindModLab`` matches it; a size of
+    A change numbered back from the end, ``-1`` the last, is of the label
+    numbered ``change + 2 + nlabels``, as ``FindModLab`` matches it; a size of
     zero erases the label. The first change that matches is the one made.
     """
-    found = [change for change in axis.changed
-             if change[0] == number or (change[0] < 0 and number == change[0] + 2 + nlabels)]  # fmt: skip
-    if not found:
+    backwards = number - 2 - nlabels
+    found = next((c for c in axis.changed if c[0] in (number, min(backwards, 0))), None)
+    if found is None:
         return label
-    _, angle, size, align, color, font, text = found[0]
-    return label._replace(
-        angle=angle if angle >= 0 else label.angle,
-        size=size if size >= 0 else label.size,
-        align=align if align > 0 else label.align,
-        color=color if color >= 0 else label.color,
-        font=font if font > 0 else label.font,
-        text=text or label.text,
-    )  # fmt: skip
+    return label._replace(**_restyled(found[1:]))
+
+
+def _restyled(change: tuple[Any, ...]) -> dict[str, Any]:
+    """What a change sets: each attribute not left at ``-1``, and the text if it has one."""
+    angle, size, align, color, font, text = change
+    given = {
+        "angle": (angle, angle >= 0), "size": (size, size >= 0), "align": (align, align > 0),
+        "color": (color, color >= 0), "font": (font, font > 0), "text": (text, bool(text)),
+    }  # fmt: skip
+    return {name: value for name, (value, used) in given.items() if used}
+
+
+def _written(out: Painted, label: Label) -> None:
+    """A label written, its minus signs ROOT's ``#minus`` - unless erased, at size zero."""
+    if label.size:
+        out.labels.append(label._replace(text=label.text.replace("-", "#minus")))
 
 
 def _linear_labels(
@@ -524,15 +532,14 @@ def _linear_labels(
     shift = 0.5 * step if centred else 0.0
     drop = 0.80 * text.height if axis.y0 == axis.y1 else 0.0
     value = form.first
-    for k in range(binning.n1a + (0 if centred else 1)):
+    nlabels = binning.n1a - int(centred)
+    for k in range(nlabels + 1):
         label = _printed(value, form.format, "." in options)
         value += form.step
         u, v = _rotate(step * k + shift, text.offset, geo, origin)
         made = Label(label, u, v - drop, text.align, 0.0, axis.label_font, text.size,
                      axis.label_color)  # fmt: skip
-        made = _changed(axis, made, k + 1, binning.n1a - (1 if centred else 0))
-        if made.size:
-            out.labels.append(made._replace(text=made.text.replace("-", "#minus")))
+        _written(out, _changed(axis, made, k + 1, nlabels))
     if form.exponent:
         out.labels.append(_exponent_label(axis, geo, text, form.exponent))
 

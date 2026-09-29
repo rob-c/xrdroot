@@ -163,4 +163,3 @@ def build(rp: Any) -> bool:
         made.SetTitle("")
     rp._ratio_graph = graph
     return True
-
