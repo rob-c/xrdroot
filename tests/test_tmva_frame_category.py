@@ -7,7 +7,7 @@ import pytest
 
 import xrdroot
 import xrdroot.pyroot as ROOT
-from tmvasupport import VARIABLES, loader, session, weights
+from tmvasupport import VARIABLES, gaussian, loader, session, weights
 from xrdroot.tmva import TMVAError
 from xrdroot.tmva.dataset import DataSetInfo
 from xrdroot.tmva.methods.category import MethodCategory, category_info
@@ -140,3 +140,28 @@ def test_a_likelihood_in_a_region_too_small_for_its_bins_books_one_bin(session):
     _run(factory)
     target.Close()
     assert 0.0 <= factory.GetROCIntegral("dataset", "Category") <= 1.0
+
+
+def test_a_reader_decides_the_region_by_the_spectator_it_was_pointed_at(session):
+    made = ROOT.TMVA.DataLoader("dataset")
+    for variable in VARIABLES[:3]:
+        made.AddVariable(variable, "F")
+    made.AddSpectator("var4", "F")  # a branch, as eta is in TMVA's tutorial
+    made.AddSignalTree(gaussian("TreeS", 1.0, 1))
+    made.AddBackgroundTree(gaussian("TreeB", -1.0, 2))
+    made.PrepareTrainingAndTestTree("", "", "SplitMode=Random:NormMode=NumEvents:!V")
+    factory = ROOT.TMVA.Factory("job", "!V:Silent:AnalysisType=Classification")
+    category = factory.BookMethod(made, "Category", "Category", "")
+    category.AddMethod("var4<=0", "var1:var2", "Fisher", "low", "")
+    category.AddMethod("var4>0", "var1:var2:var3", "LD", "high", "")
+    _run(factory)
+    reader = ROOT.TMVA.Reader("!Color:Silent")
+    for variable in VARIABLES[:3]:
+        reader.AddVariable(variable, np.full(1, 0.3, dtype=np.float32))
+    spectator = np.zeros(1, dtype=np.float32)
+    reader.AddSpectator("var4", spectator)
+    reader.BookMVA("cat", weights("Category"))
+    spectator[0] = -1.0
+    low = reader.EvaluateMVA("cat")
+    spectator[0] = 1.0
+    assert reader.EvaluateMVA("cat") != low

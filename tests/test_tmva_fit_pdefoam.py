@@ -172,3 +172,18 @@ def test_a_streamed_cell_holding_more_than_two_numbers_is_not_a_foam_tmva_reads_
     foam = {"fCells": [_cell(0, 0, (0, 0), _vector(1.0, 2.0, 3.0))]}
     with pytest.raises(ValueError, match="holding 3 numbers"):
         pdefoam_columns(foam)
+
+
+@pytest.mark.parametrize("options", [SMALL, f"{SMALL}:SigBgSeparate:MaxDepth=3"])
+def test_a_reader_asked_for_errors_gets_the_foams_error_of_its_cell(session, options):
+    classify([(FOAM, "PDEFoam", options)])
+    made = ROOT.TMVA.Reader("!Color:Silent:Error")
+    for variable in ("var1", "var2", "var3", "var4"):
+        made.AddVariable(variable, np.zeros(1, dtype=np.float32))
+    made.BookMVA("PDEFoam", weights("PDEFoam"))
+    errors = []
+    for point in ([0.0] * 4, [2.0] * 4, [9.0] * 4):
+        made.EvaluateMVA(point, "PDEFoam")
+        errors.append(made.GetMVAError())
+    assert all(0.0 <= error <= 1.0 for error in errors)
+    assert max(errors) > 0.0

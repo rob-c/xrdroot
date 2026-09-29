@@ -50,7 +50,7 @@ def test_a_reader_answers_what_the_factory_tested_for_the_same_event(session):
         cell.value = value
     assert reader.EvaluateMVA("LD method") == pytest.approx(float(tested.test_values[0]), 1e-6)
     assert reader.EvaluateMVA(Text("LD method")) == reader.EvaluateMVA(list(first), "LD method")
-    assert reader.GetMVAError() == -1.0
+    assert reader.GetMVAError() == 0.0  # left alone, as a Reader without Error leaves it
     assert reader.FindMVA("LD method") is reader.FindCutsMVA("LD method")
     assert reader.FindMVA("nothing") is None
 
@@ -113,3 +113,11 @@ def test_a_cuts_method_is_asked_at_the_signal_efficiency_given(session):
     assert reader.FindCutsMVA("Cuts").test_signal_eff == 0.9
     reader.EvaluateMVA("Cuts")
     assert reader.FindCutsMVA("Cuts").test_signal_eff == -1.0
+
+
+def test_a_reader_asked_for_errors_gets_the_none_a_method_without_them_gives(session):
+    classify([(ROOT.TMVA.Types.kLD, "LD", "")], QUIET, output="")
+    reader = ROOT.TMVA.Reader(list(VARIABLES), "!Color:Silent:Error")
+    reader.BookMVA("LD method", weights("LD"))
+    reader.EvaluateMVA([0.1, 0.2, 0.3, 0.4], "LD method")
+    assert reader.GetMVAError() == -1.0

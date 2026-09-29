@@ -34,7 +34,7 @@ def _read(address: Any) -> float:
 
 
 class Reader:
-    """``TMVA::Reader(options)``: ``!Color``, ``Silent`` and ``V`` as TMVA reads them."""
+    """``TMVA::Reader(options)``: ``!Color``, ``Silent``, ``V`` and ``Error`` as TMVA reads them."""
 
     def __init__(self, *arguments: Any) -> None:
         text = next((str(a) for a in arguments if isinstance(a, str)), "")
@@ -46,7 +46,9 @@ class Reader:
         self.spectator_addresses: list[Any] = []
         self.methods: dict[str, Method] = {}
         self.log = Logger("Reader")
-        self.last_error = -1.0
+        #: ``Error``: whether ``GetMVAError`` is worked out; untouched it stays 0, as TMVA's does.
+        self.calculate_error = options.flag("Error", False)
+        self.last_error = 0.0
         self._rebuilt = False
         for argument in arguments:
             if not isinstance(argument, str):
@@ -100,10 +102,12 @@ class Reader:
             values = [_read(address) for address in self.addresses]
         row = np.asarray(values, dtype=np.float32).astype(np.float64)[None, :]
         ntargets = max(self.dsi.GetNTargets(), 1)
+        # The spectators are read where they live, as a Category's cuts read them.
+        spectators = [_read(address) for address in self.spectator_addresses]
         return Events(
             row,
             np.zeros((1, ntargets)),
-            np.zeros((1, len(self.spectator_addresses))),
+            np.asarray(spectators, dtype=np.float32).astype(np.float64).reshape(1, -1),
             np.zeros(1, dtype=np.int64),
             np.ones(1),
         )
@@ -122,7 +126,8 @@ class Reader:
             method.test_signal_eff = float(rest[0]) if rest else -1.0
         events = self._event(values)
         output = float(np.ravel(method.mva(events))[0])
-        self.last_error = float(np.ravel(method.error(events))[0])
+        if self.calculate_error:
+            self.last_error = float(np.ravel(method.error(events))[0])
         return output
 
     def EvaluateRegression(self, *arguments: Any) -> Any:

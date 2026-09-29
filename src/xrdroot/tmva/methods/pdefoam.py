@@ -174,11 +174,7 @@ class MethodPDEFoam(Method):
             norm = (np.exp(shifted).sum(axis=2) - 1.0).astype(f32)
             return (1.0 / (1.0 + norm)).astype(f32)
         if self.separate:
-            density = []
-            for foam in self.foams:
-                cells, found = self._values(foam, values)
-                volume = np.array([foam.volume(int(c)) for c in cells])
-                density.append(np.where(volume > 2.220446049250313e-16, found[:, 0] / volume, 0))
+            density = [self._densities(foam, values) for foam in self.foams]
             total = density[0] + density[1]
             output = np.where(total > 0, density[0] / np.where(total > 0, total, 1), 0.5)
         else:
@@ -186,6 +182,26 @@ class MethodPDEFoam(Method):
         if self.opt("UseYesNoCell"):
             return np.where(output < 0.5, -1.0, 1.0)
         return output
+
+    def error(self, events: Events) -> Any:
+        """``CalculateMVAError``: the foam's own error of a discriminant, or one worked out
+        from the counts of separate signal and background foams, as Carli and Koblitz give it.
+        """
+        values = self.handler.apply(events).values
+        if not self.separate:
+            return self._values(self.foams[0], values)[1][:, 1]
+        signal, background = (self._densities(foam, values) for foam in self.foams[:2])
+        error_s = np.where(signal == 0, 1.0, np.sqrt(np.abs(signal)))
+        error_b = np.where(background == 0, 1.0, np.sqrt(np.abs(background)))
+        total = np.where(signal + background == 0, 1.0, signal + background) ** 2
+        found = np.hypot(background / total * error_s, signal / total * error_b)
+        return np.where((signal > 1e-10) | (background > 1e-10), found, 1.0)
+
+    def _densities(self, foam: Cells, values: Any) -> Any:
+        """``GetCellValue(kValue)`` of a foam of events: the cell's count over its volume."""
+        cells, found = self._values(foam, values)
+        volume = np.array([foam.volume(int(c)) for c in cells])
+        return np.where(volume > 2.220446049250313e-16, found[:, 0] / volume, 0)
 
     def _regression(self, values: Any) -> Any:
         foam = self.foams[0]
