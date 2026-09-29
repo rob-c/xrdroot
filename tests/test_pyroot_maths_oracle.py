@@ -8,6 +8,7 @@ correct evaluations of the same special function.
 from __future__ import annotations
 
 import array
+import math
 
 import pytest
 
@@ -239,3 +240,11 @@ CALLS = {
 @pytest.mark.parametrize("name", sorted(ROOTS))
 def test_each_function_gives_roots_answer(name):
     assert CALLS[name]() == pytest.approx(ROOTS[name], rel=1e-12, abs=1e-300)
+
+
+def test_the_chi_square_density_at_its_origin_is_roots_own():
+    """ROOT's: infinite below two degrees of freedom, a half at two, nothing above - or below."""
+    assert M.chisquared_pdf(0.0, 1.0) == math.inf
+    assert M.chisquared_pdf(0.0, 2.0) == 0.5
+    assert M.chisquared_pdf(0.0, 3.0) == 0.0
+    assert M.chisquared_pdf(-1.0, 1.0) == 0.0

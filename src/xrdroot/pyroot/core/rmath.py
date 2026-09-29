@@ -65,6 +65,13 @@ normal_quantile, normal_quantile_c = gaussian_quantile, gaussian_quantile_c
 
 
 def chisquared_pdf(x: float, r: float, x0: float = 0.0) -> float:
+    """ROOT's own formula, not the gamma density's: at ``x0`` it is infinite for fewer than
+    two degrees of freedom, a half for two - where a plotted curve rises off the top."""
+    u = x - x0
+    if u < 0:
+        return 0.0
+    if u == 0:
+        return 0.5 if r == 2 else (math.inf if r < 2 else 0.0)
     return dist.gamma_pdf(x, r / 2.0, 2.0, x0)
 
 
