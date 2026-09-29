@@ -30,8 +30,40 @@ __all__ = ["FlexibleInterpVar", "ParamHistFunc", "PiecewiseInterpolation", "RooB
 TINY = 2.2250738585072014e-308
 
 
+def _code5_one(low: float, high: float, x0: float, nominal: float, x: float,
+               res: float) -> float:  # fmt: skip
+    """Code 5 of one parameter value: the same operations as the arrays', in plain floats."""
+    import math
+
+    high, low = high / nominal, low / nominal
+    if x >= x0:
+        return res * (math.pow(high, x) - 1.0)
+    if x <= -x0:
+        return res * (math.pow(low, -x) - 1.0)
+    log_hi = math.log(high) if high > 0 else -math.inf
+    log_lo = math.log(low) if low > 0 else -math.inf
+    up, down = math.exp(x0 * log_hi), math.exp(x0 * log_lo)
+    up_log = 0.0 if high <= 0 else up * log_hi
+    down_log = 0.0 if low <= 0 else -down * log_lo
+    up_log2 = 0.0 if high <= 0 else up_log * log_hi
+    down_log2 = 0.0 if low <= 0 else -down_log * log_lo
+    s0, a0 = 0.5 * (up + down), 0.5 * (up - down)
+    s1, a1 = 0.5 * (up_log + down_log), 0.5 * (up_log - down_log)
+    s2, a2 = 0.5 * (up_log2 + down_log2), 0.5 * (up_log2 - down_log2)
+    sq = x0 * x0
+    a = 1.0 / (8 * x0) * (15 * a0 - 7 * x0 * s1 + x0 * x0 * a2)
+    b = 1.0 / (8 * sq) * (-24 + 24 * s0 - 9 * x0 * a1 + x0 * x0 * s2)
+    c = 1.0 / (4 * sq * x0) * (-5 * a0 + 5 * x0 * s1 - x0 * x0 * a2)
+    d = 1.0 / (4 * sq * sq) * (12 - 12 * s0 + 7 * x0 * a1 - x0 * x0 * s2)
+    e = 1.0 / (8 * sq * sq * x0) * (3 * a0 - 3 * x0 * s1 + x0 * x0 * a2)
+    f = 1.0 / (8 * sq * sq * sq) * (-8 + 8 * s0 - 5 * x0 * a1 + x0 * x0 * s2)
+    return res * (1.0 + x * (a + x * (b + x * (c + x * (d + x * (e + x * f))))) - 1.0)
+
+
 def _code5(low: Any, high: Any, boundary: float, nominal: Any, x: Any, res: Any) -> Any:
     """Code 5: exponential outside the boundary, a sixth-degree polynomial inside."""
+    if all(isinstance(v, float) for v in (low, high, nominal, x, res)):
+        return _code5_one(low, high, boundary, nominal, x, res)
     x = np.asarray(x, dtype=np.float64)
     high, low = np.asarray(high / nominal, dtype=np.float64), np.asarray(low / nominal)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -73,6 +105,8 @@ def _code4(low: Any, high: Any, boundary: float, nominal: Any, x: Any, res: Any,
 def interpolate(code: int, low: Any, high: Any, boundary: float, nominal: Any, x: Any,
                 res: Any) -> Any:  # fmt: skip
     """``MathFuncs::flexibleInterpSingle``: what one parameter adds to ``res`` at ``x``."""
+    if code == 5:
+        return _code5(low, high, boundary, nominal, x, res)
     x = np.asarray(x, dtype=np.float64)
     if code == 0:
         return np.where(x > 0, x * (high - nominal), x * (nominal - low))
@@ -85,8 +119,6 @@ def interpolate(code: int, low: Any, high: Any, boundary: float, nominal: Any, x
                         np.where(x < -1, -(2 * a - b) * (x + 1) + low - nominal, a * x * x + b * x))
     if code in (4, 6):
         return _code4(low, high, boundary, nominal, x, res, code)
-    if code == 5:
-        return _code5(low, high, boundary, nominal, x, res)
     return 0.0 * x
 
 

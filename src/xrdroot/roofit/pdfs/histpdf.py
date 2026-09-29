@@ -81,18 +81,35 @@ class _Histogram:
         columns = self._columns(ctx)
         shape = np.broadcast_shapes(*(one.shape for one in columns.values()))
         columns = {k: np.broadcast_to(v, shape).reshape(-1) for k, v in columns.items()}
+        weights = self.data.weights() / (self.data.binVolumes() if self.density else 1.0)
+        if self.order > 0 and len(columns) <= 2:
+            found = self._interpolated(columns, weights)
+            inside = self._inside(columns, shape)
+        else:
+            bins, inside = self._located(columns, shape)
+            found = weights[np.clip(bins, 0, None)]
+        found = np.where(inside, found, 0.0)
+        return (np.maximum(found, 0.0) if self.density else found).reshape(shape)
+
+    def _inside(self, columns: dict[str, Any], shape: Any) -> Any:
         inside = np.ones(int(np.prod(shape)), dtype=bool)
         for var in self.data.get():
             values = columns[var.GetName()]
             inside &= (values >= var.getMin()) & (values <= var.getMax())
-        weights = self.data.weights() / (self.data.binVolumes() if self.density else 1.0)
-        if self.order > 0 and len(columns) <= 2:
-            found = self._interpolated(columns, weights)
-        else:
-            bins = self.data._bin_of(columns)
-            found = weights[np.clip(bins, 0, None)]
-        found = np.where(inside, found, 0.0)
-        return (np.maximum(found, 0.0) if self.density else found).reshape(shape)
+        return inside
+
+    def _located(self, columns: dict[str, Any], shape: Any) -> tuple[Any, Any]:
+        """The bins the values are in, and which are inside the ranges - kept for the values a
+        likelihood gives again and again, its events' (the ranges held with them)."""
+        ranges = tuple((v.getMin(), v.getMax()) for v in self.data.get())
+        key = (ranges, *(v.tobytes() for v in columns.values()))
+        cached = self.__dict__.get("_located_cache")
+        if cached is not None and cached[0] == key:
+            return cached[1], cached[2]
+        found = (self.data._bin_of(columns), self._inside(columns, shape))
+        if all(v.size <= 4096 for v in columns.values()):
+            self.__dict__["_located_cache"] = (key, *found)
+        return found
 
     def _interpolated(self, columns: dict[str, Any], weights: Any) -> Any:
         axes = [Axis.of(var.getBinning()) for var in self.data.get()]

@@ -74,6 +74,26 @@ _LN2_HIGH, _LN2_LOW = 6.93145751953125e-1, 1.42860682030941723212e-6
 _LIMIT = 708.0
 
 
+def _fast_exp_one(x0: float) -> float:
+    """``vdt::fast_exp`` of one number, the same operations as the arrays' in plain floats."""
+    import math
+
+    if x0 > _LIMIT:
+        return math.inf
+    if x0 < -_LIMIT:
+        return 0.0
+    if x0 != x0:
+        return x0
+    scaled = _LOG2E * x0 + 0.5
+    whole = math.trunc(scaled) - (1 if math.copysign(1.0, scaled) < 0 else 0)
+    x = x0 - whole * _LN2_HIGH
+    x = x - whole * _LN2_LOW
+    xx = x * x
+    p = (((_P[0] * xx) + _P[1]) * xx + _P[2]) * x
+    q = (((_Q[0] * xx + _Q[1]) * xx + _Q[2]) * xx) + _Q[3]
+    return (1.0 + 2.0 * (p / (q - p))) * math.ldexp(1.0, int(whole))
+
+
 def fast_exp(values: Any) -> Any:
     """``vdt::fast_exp``, operation for operation, on an array or a number.
 
@@ -82,6 +102,8 @@ def fast_exp(values: Any) -> Any:
     ``floor`` would, and that is kept: it only moves which power of two the
     reduced argument is paired with, and it is VDT's answer.
     """
+    if isinstance(values, float):
+        return _fast_exp_one(values)
     x0 = np.asarray(values, dtype=np.float64)
     with np.errstate(invalid="ignore", over="ignore"):
         scaled = _LOG2E * x0 + 0.5
@@ -120,9 +142,41 @@ _LOG_Q = (
 _SQRTH = 0.70710678118654752440
 
 
+def _fast_log_one(x0: float) -> float:
+    """``vdt::fast_log`` of one positive number, operation for operation, in plain floats."""
+    import math
+    import struct
+
+    if x0 > 1e307:
+        return math.inf
+    bits = struct.unpack("<Q", struct.pack("<d", x0))[0]
+    fe = float((bits >> 52) - 1023)
+    x = struct.unpack("<d", struct.pack("<Q", (bits & 0x800FFFFFFFFFFFFF) | 0x3FE0000000000000))[0]
+    if x > _SQRTH:
+        fe += 1.0
+    else:
+        x = x + x
+    x -= 1.0
+    px = _LOG_P[0]
+    for coefficient in _LOG_P[1:]:
+        px = px * x + coefficient
+    x2 = x * x
+    px = px * x * x2
+    qx = x + _LOG_Q[0]
+    for coefficient in _LOG_Q[1:]:
+        qx = qx * x + coefficient
+    res = px / qx
+    res = res - fe * 2.121944400546905827679e-4
+    res = res - 0.5 * x2
+    res = x + res
+    return res + fe * 0.693359375
+
+
 def fast_log(values: Any) -> Any:
     """``vdt::fast_log``, operation for operation: the mantissa and exponent taken apart by
     their bits, as VDT takes them, and the rational form on the mantissa less one."""
+    if isinstance(values, float) and values > 0:
+        return _fast_log_one(values)
     x0 = np.asarray(values, dtype=np.float64)
     bits = np.atleast_1d(x0).astype(np.float64).view(np.uint64)
     fe = (bits >> np.uint64(52)).astype(np.int64).astype(np.float64) - 1023.0

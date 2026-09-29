@@ -272,6 +272,18 @@ class RooRealVar(RooAbsRealLValue):
     def removeMax(self, name: Any = None) -> None:
         self._binning.setRange(self._binning.lowBound(), INFINITY)
 
+    def randomize(self, rangeName: Any = None) -> None:
+        """``randomize``: a value drawn uniformly over the range, from RooFit's generator."""
+        from .messages import ERROR
+        from .rng import generator
+
+        low, high = self.getMin(rangeName), self.getMax(rangeName)
+        if is_infinite(low) or is_infinite(high):
+            log(self, ERROR, "Eval", f"RooAbsRealLValue::randomize({self._name}) ERROR: range "
+                "is infinite, cannot randomize")  # fmt: skip
+            return
+        self.setVal(low + generator().Rndm() * (high - low))
+
     def setBin(self, ibin: int, name: Any = None) -> None:
         """``setBin``: the value set to the centre of bin ``ibin`` of the binning ``name``."""
         from .messages import ERROR

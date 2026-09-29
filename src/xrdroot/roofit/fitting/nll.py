@@ -140,7 +140,7 @@ class RooNLLVar(RooAbsReal):
             nset = self._constrained(constraint)
             with kernels.likelihood():
                 value = float(np.asarray(constraint.value(dict(self._global_values), nset)))
-            found -= math.log(value) if value > 0 else math.nan
+            found -= math.log(value) if value > 0 else (-math.inf if value == 0 else math.nan)
         return found
 
     def _evaluate(self) -> float:
@@ -212,8 +212,16 @@ class RooNLLVar(RooAbsReal):
             )
 
     def _constrained(self, constraint: Any) -> frozenset[str]:
-        found = frozenset(one.GetName() for one in constraint.getVariables())  # not its constants
-        return found if self._constrained_over is None else found & self._constrained_over
+        """What a constraint is normalised over: its variables - not its constants - among those
+        the constraints are normalised over; worked out once per constraint."""
+        cache = self.__dict__.setdefault("_constrained_cache", {})
+        found = cache.get(id(constraint))
+        if found is None:
+            found = frozenset(one.GetName() for one in constraint.getVariables())
+            if self._constrained_over is not None:
+                found = found & self._constrained_over
+            cache[id(constraint)] = found
+        return found
 
     def defaultErrorLevel(self) -> float:
         """One half - which RooFit's likelihood, a sum with a RooNLLVar in it, says it takes."""

@@ -28,6 +28,9 @@ MODULES: dict[str, list[str]] = {
     "modelconfig": ["ModelConfig"],
     "bayesian": ["BayesianCalculator"],
     "hypotest": ["HypoTestResult"],
+    "markov": ["MarkovChain", "MetropolisHastings", "ProposalFunction", "SequentialProposal",
+               "UniformProposal"],
+    "mcmc": ["MCMCCalculator", "MCMCInterval"],
     "calculators": ["FrequentistCalculator", "HybridCalculator", "HypoTestCalculatorGeneric"],
     "moretests": [
         "MaxLikelihoodEstimateTestStat",
