@@ -28,6 +28,9 @@ wrote as well. That ``TFormula`` is version 13, the last without
 ``fNumber``; ROOT 6.34 reads it. ``TF2`` and ``TF3`` have no donor here at
 all, so they are read - a file describes them - but not written.
 
+``TObjString``, a ``TObject`` and the ``TString`` it wraps, comes from
+``streamers.root``, the same at every vintage.
+
 That ``TMultiGraph`` is the donor of its own class too: version 2, which
 holds nothing but a name and pointers - to the list of its graphs, its
 functions and the histogram it draws its axes on - so the graphs in it are
@@ -835,5 +838,11 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
          3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
     )),
     "TString": (0x00017419, 2, (
+    )),
+    "TObjString": (0x9c8e4800, 1, (
+        ('TStreamerBase', 'TObject', 'Basic ROOT object',
+         66, 0, 0, 0, (0, -1877229523, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerString', 'fString', 'wrapped TString',
+         65, 24, 0, 0, (0, 0, 0, 0, 0), 'TString', ()),
     )),
 }

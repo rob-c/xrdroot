@@ -87,6 +87,24 @@ def method_directory(method: Method) -> str:
     return f"{method.dsi.name}/Method_{method.type_name}/{method.name}"
 
 
+def _set_correlations(made: Any, matrix: Any, n: int) -> None:
+    """``CreateCorrelationMatrixHist``'s bins: the matrix in percent, cut to whole numbers.
+
+    ``TH2F(TMatrixF)`` sets every bin, ``Scale(100)`` switches on ``Sumw2``
+    from the bins' sizes and scales it by 100 squared, and the rounding sets
+    every bin again, so the entries are twice the bins and the errors are
+    those of the unrounded matrix.
+    """
+    unscaled = np.asarray(matrix, dtype=np.float32).astype(np.float64)
+    scaled = (unscaled * 100.0).astype(np.float32).astype(np.float64)
+    cells = made._cells().reshape(n + 2, n + 2, order="F")
+    cells[1:-1, 1:-1] = np.trunc(scaled)
+    sumw2 = np.zeros((n + 2, n + 2))
+    sumw2[1:-1, 1:-1] = np.abs(unscaled) * 1.0e4
+    made._core["fSumw2"] = sumw2.reshape(-1, order="F")
+    made._core["fEntries"] = float(2 * n * n)
+
+
 class Training:
     """``TrainAllMethods`` and ``TestAllMethods``, for :class:`~.factory.Factory` to inherit."""
 
@@ -176,10 +194,7 @@ class Training:
             made = Histogram.book(
                 name, (n, 0.0, float(n)), (n, 0.0, float(n)), title=title, kind="F", labels=None
             )
-            contents = np.trunc(np.asarray(matrix, dtype=np.float32) * np.float32(100.0))
-            cells = made._cells().reshape(n + 2, n + 2, order="F")
-            cells[1:-1, 1:-1] = contents
-            made._core["fEntries"] = float(n * n)
+            _set_correlations(made, np.asarray(matrix), n)
             self.output.write(loader.GetName(), made)
 
     # -- training -------------------------------------------------------------------------

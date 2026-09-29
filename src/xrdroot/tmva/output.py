@@ -16,6 +16,7 @@ from typing import Any
 
 import numpy as np
 
+from ..writer import ObjString
 from .dataset import DataSetInfo, Events
 
 __all__ = ["LeafList", "Output", "event_tree"]
@@ -59,7 +60,8 @@ class Output:
         called = name or obj.name
         title = "Collectable string class" if text else obj.title
         classname = "TObjString" if text else obj.classname
-        directory._writable().write(called, obj, title=title)
+        written = ObjString(obj) if text else obj
+        directory._writable().write(called, written, title=title)
         directory._note_key(called, title, classname)
 
     def write_tree(self, path: str, name: str, columns: dict[str, Any], title: str = "") -> None:

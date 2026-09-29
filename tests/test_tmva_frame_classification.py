@@ -29,6 +29,13 @@ def test_transformations_correlations_and_a_method_transform_are_all_written(ses
         assert any("InputVariables_Id" in name for name in names)
         assert any("InputVariables_Deco" in name for name in names)
         assert any("CorrelationMatrixS" in name for name in names)
+        matrix = found["dataset/CorrelationMatrixS"]
+        # Set twice, and scaled by 100 with the errors switched on in between.
+        assert matrix.entries == 2 * 4 * 4
+        assert matrix.values()[0, 0] == 100.0
+        assert matrix.variances()[0, 0] == 1.0e4
+        # A TObjString, as ROOT writes it, rather than a std::string.
+        assert found["dataset/Method_LD/LD/WeightFileName"]["fString"].endswith("LD.weights.xml")
 
 
 def test_transformations_without_the_identity_rank_no_input_variables(session, capsys):

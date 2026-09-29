@@ -57,7 +57,7 @@ if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from .rntuple.writer import WritableRNTuple
     from .wtree import WritableTree
 
-__all__ = ["create", "WritableFile", "WritableDirectory"]
+__all__ = ["create", "ObjString", "WritableFile", "WritableDirectory"]
 
 #: The bits a freshly made object carries: on the heap, and not deleted.
 BITS = 0x03000000
@@ -797,8 +797,26 @@ def _info_element(buf: WBuffer, element: Element) -> None:
     buf.end(tag)
 
 
+class ObjString(str):
+    """A string written as ROOT's ``TObjString`` rather than as a ``std::string``.
+
+    A plain ``str`` is written as the ``std::string`` a Python user most
+    likely means; a key ROOT itself writes as a ``TObjString`` - TMVA's
+    ``TrainingPath``, say - is written as one by wrapping it in this.
+    """
+
+
+def _objstring_payload(value: ObjString) -> tuple[str, bytes, tuple[str, ...]]:
+    buf = WBuffer()
+    used: dict[str, None] = {}
+    _record(buf, "TObjString", {"fString": str(value)}, used)
+    return "TObjString", bytes(buf.data), tuple(used)
+
+
 def _payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]]:
     """What one object writes as: its class, its bytes, the layouts it needs."""
+    if isinstance(obj, ObjString):
+        return _objstring_payload(obj)
     if isinstance(obj, str):
         return _string_payload(obj)
     if isinstance(obj, (array.array, np.ndarray)):

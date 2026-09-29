@@ -38,7 +38,7 @@ from xrdroot.compression import (
 )
 from xrdroot.interp import OFFSET_L, OFFSET_P
 from xrdroot.winfo import INFOS, WRITER_VERSION
-from xrdroot.writer import WBuffer, _closure, _element, _find, _list, _record
+from xrdroot.writer import ObjString, WBuffer, _closure, _element, _find, _list, _record
 
 DATA = pathlib.Path(__file__).parent / "data"
 
@@ -636,3 +636,15 @@ def test_the_infos_table_covers_exactly_what_the_writer_promises():
     ):
         assert classname in INFOS
     assert "TGraphMultiErrors" not in INFOS  # refused by name, never guessed at
+
+
+def test_a_string_wrapped_as_an_objstring_is_written_as_the_tobjstring_the_donor_describes():
+    with read_back(written(path=ObjString("/some/where"), plain="text")) as back:
+        assert back["path"]["fString"] == "/some/where"
+        assert back["plain"] == "text"
+        ours = back._source.streamers()["TObjString"]
+    with opened("streamers") as donor:
+        theirs = donor._source.streamers()["TObjString"]
+    assert [(m.name, m.typename, m.stype) for m in ours.values()] == [
+        (m.name, m.typename, m.stype) for m in theirs.values()
+    ]
