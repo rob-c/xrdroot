@@ -172,17 +172,26 @@ class RooNonCentralChiSquare(RooAbsPdf):
             if value / total < self._tolerance:
                 break
             if i > dominant + self._iterations:
-                if not self._warned_convergence:
-                    self._warned_convergence = True
-                    log(None, WARNING, "Eval", f"RooNonCentralChiSquare {what}did not converge: "
-                        f"{where} fractional error = {g(value / total)}\n either adjust "
-                        "tolerance with SetErrorTolerance(tol) or max_iter with "
-                        "SetMaxIter(max_it)")  # fmt: skip
+                self._not_converged(what, where, value / total)
                 break
             i += 1
         for i in range(dominant - 1, -1, -1):
             total += term(i)
         return float(total)
+
+    def _not_converged(self, what: str, where: str, error: float) -> None:
+        """Say once, as ROOT says it, that the sum ran out of terms before it converged.
+
+        A method of its own, so that Python 3.9 traces the loop's two breaks as
+        the later versions do.
+        """
+        if self._warned_convergence:
+            return
+        self._warned_convergence = True
+        log(None, WARNING, "Eval", f"RooNonCentralChiSquare {what}did not converge: "
+            f"{where} fractional error = {g(error)}\n either adjust "
+            "tolerance with SetErrorTolerance(tol) or max_iter with "
+            "SetMaxIter(max_it)")  # fmt: skip
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         if self.x.GetName() not in names or not self.x.isFundamental():
