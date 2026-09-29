@@ -48,11 +48,12 @@ def _term(pdf: Any, observables: Any) -> bool:
     prefix = f"AsymptoticCalculator::SetObsExpected( {pdf.ClassName()} ) : "
     kind = pdf.ClassName()
     if kind == "RooProdPdf":
-        return all([_term(one, observables) for one in pdf.pdfList()
-                    if one.dependsOn(observables)])  # fmt: skip
+        done = [_term(one, observables) for one in pdf.pdfList() if one.dependsOn(observables)]
+        return all(done)  # every term set, as RooStats sets them, before the answer
     if kind == "RooMultiVarGaussian":
-        return all([_set_to_expected([x, mu], observables, f"{prefix} : dim {i} ")
-                    for i, (x, mu) in enumerate(zip(pdf.xVec(), pdf.muVec()))])  # fmt: skip
+        done = [_set_to_expected([x, mu], observables, f"{prefix} : dim {i} ")
+                for i, (x, mu) in enumerate(zip(pdf.xVec(), pdf.muVec()))]  # fmt: skip
+        return all(done)
     if kind not in ("RooPoisson", "RooGaussian"):
         log(None, ERROR, "InputArguments", "Illegal term in counting model: the PDF "
             f"{pdf.GetName()} depends on the observables, but is not a Poisson, Gaussian or "

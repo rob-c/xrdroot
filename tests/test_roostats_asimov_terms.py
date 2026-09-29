@@ -135,7 +135,8 @@ def test_a_model_that_is_not_a_counting_model_has_no_asimov_event(capsys: Any) -
     assert counting_asimov_data(w.pdf("free"), ROOT.RooArgSet(w.var("y"))) is None
     assert counting_asimov_data(w.pdf("fixed"), ROOT.RooArgSet(w.var("y"))) is None
     out = capsys.readouterr().out
-    assert "A counting model pdf must be either a RooProdPdf or a RooPoisson or a RooGaussian" in out
+    assert ("A counting model pdf must be either a RooProdPdf or a RooPoisson or a "
+            "RooGaussian") in out
     assert "Illegal term in counting model: the PDF l depends on the observables" in out
     assert "AsymptoticCalculator::SetObsExpected( RooGaussian ) : Has two observables ?? " in out
     assert "SetObsExpected( RooGaussian ) : Has two non-const arguments  " in out

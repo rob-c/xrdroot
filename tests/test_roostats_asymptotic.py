@@ -151,7 +151,7 @@ def _scripted(monkeypatch: Any, values: list[float]) -> Any:
 
 
 @pytest.mark.parametrize(("values", "said", "dummy"), [
-    ([9.0, 8.0, 10.5], "New minimum  found for                           NLL = 8    muHat  ", False),
+    ([9.0, 8.0, 10.5], "New minimum  found for" + " " * 27 + "NLL = 8    muHat  ", False),
     ([9.0, 11.0], "qmu is still < 0  for mu = 1 return a dummy result", True),
     ([10.5, 9.0, 8.0], "Found a better unconditional minimum for Asimov data set", False),
     ([10.5, 9.0, 11.0], "qmu_A is still < 0  for mu = 1 return a dummy result", True),
@@ -165,8 +165,8 @@ def test_a_negative_ratio_refits_unconditionally(monkeypatch: Any, capsys: Any, 
     assert (result.GetName() == "") is dummy
 
 
-def test_a_failed_fit_is_retried_and_a_nan_ratio_gives_a_dummy_result(monkeypatch: Any,
-                                                                      capsys: Any) -> None:  # fmt: skip
+def test_a_failed_fit_is_retried_and_a_nan_ratio_gives_a_dummy_result(
+        monkeypatch: Any, capsys: Any) -> None:  # fmt: skip
     calc = _scripted(monkeypatch, [math.nan, math.nan])
     calc._nll_obs = math.nan
     assert calc.GetHypoTest().GetName() == ""
