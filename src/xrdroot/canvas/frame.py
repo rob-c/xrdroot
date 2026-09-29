@@ -124,9 +124,32 @@ def _histogram_extent(h: Histogram, option: str, log: bool) -> Extent:
     words = histogram_option(option)
     if words & ERRORS or (h.weighted and "HIST" not in words):
         values = np.concatenate([values - errors, values + errors])
+    if log:
+        low, high = _log_y(values, _limit(h, "fMinimum", -1111), _limit(h, "fMaximum", -1111))
+        return xlow, low, xhigh, high
     low, high = _histogram_y(values, log)
     low, high = _crossed(_limit(h, "fMinimum", low), _limit(h, "fMaximum", high), log)
     return xlow, low, xhigh, high
+
+
+def _log_y(values: np.ndarray[Any, Any], minimum: float, maximum: float) -> tuple[float, float]:
+    """``PaintInit`` on a logarithmic scale: the lowest positive bin and the highest, the
+    histogram's own minimum and maximum over them - and room below and above, where it has none.
+
+    A minimum at or above the maximum is a thousandth of it - as a
+    ``RooPlot``'s frame has, whose one bin holds the maximum it is given.
+    """
+    finite = values[np.isfinite(values)]
+    positive = finite[finite > 0]
+    if not positive.size:
+        return _histogram_y(finite, True)
+    low = float(positive.min()) if minimum == -1111 else minimum
+    high = float(finite.max()) if maximum == -1111 else maximum
+    if low >= high and high > 0:
+        low = 0.001 * high
+    if low <= 0 or high <= 0:
+        return _histogram_y(finite, True)
+    return low * (0.5 if minimum == -1111 else 1.0), high * (2.0 if maximum == -1111 else 1.0)
 
 
 def _crossed(low: float, high: float, log: bool) -> tuple[float, float]:

@@ -26,6 +26,7 @@ MODULES: dict[str, list[str]] = {
     "intervals": ["ConfInterval", "SimpleInterval"],
     "likelihoodinterval": ["LikelihoodInterval"],
     "modelconfig": ["ModelConfig"],
+    "bayesian": ["BayesianCalculator"],
     "utils": [
         "AsimovSignificance",
         "NumberCountingUtils",

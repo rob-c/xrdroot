@@ -131,8 +131,8 @@ class RooAbsPdf(RooAbsReal):
     def norm(self, ctx: Context, nset: Any, rng: Any = None) -> Any:
         """The normalisation integral: over the observables in ``nset`` this depends on."""
         names = frozenset(nset) & self.dependents()
-        if not names:
-            return self.compute(ctx)
+        if not names:  # "Unit Normalization": none of the set is the density's
+            return 1.0
         rng = rng or self._norm_range
         with evaluating(ctx):  # a range with a column for an end is one per event
             key = self._norm_key(names, ctx, rng)

@@ -39,7 +39,6 @@ def test_a_density_is_its_formula_over_its_integral_as_roots_is(capsys: Any) -> 
     assert capsys.readouterr().out == "RooGaussian::g[ x=x mean=m sigma=s ] = 0.882497/5.01325\n"
 
 
-@pytest.mark.xfail(strict=True, reason="a norm over nothing it depends on is its own value")
 def test_a_norm_over_variables_the_density_does_not_depend_on_is_one() -> None:
     """Normalising over y, which the Gaussian does not use, divides by one: ROOT's norm is 1
     and the value the formula's own."""

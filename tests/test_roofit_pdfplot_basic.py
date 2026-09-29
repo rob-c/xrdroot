@@ -430,7 +430,7 @@ def test_an_extended_density_is_its_shape_and_expects_its_yield() -> None:
     ranged = RooExtendPdf("extr", "extr", g, nsig, "win")
     assert ranged.expectedEvents([x]) == pytest.approx(299.524435163, rel=REL)
     assert integral(ranged, [x], "win") == pytest.approx(3.34746607095, rel=REL)
-    assert ranged.expected([x], "win") == pytest.approx(200.0, rel=REL)
+    assert ranged.expected(frozenset({"x"}), "win") == pytest.approx(200.0, rel=REL)
     assert ranged.normalized_name([x]) == "extr"
 
 
