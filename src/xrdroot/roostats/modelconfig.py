@@ -259,19 +259,27 @@ class ModelConfig:
         if self.GetObservables() is None:
             self.SetObservables(pdf.getObservables(observed))
         if self.GetGlobalObservables() is None:
-            seen = {one.GetName() for one in pdf.getObservables(observed)}
-            rest = [one for one in self.GetObservables() if one.GetName() not in seen]
-            rest = [one for one in rest if not one.isConstant()]
-            if rest:
-                self.SetGlobalObservables(rest)
+            self._guess_globals(pdf, observed)
         if self.GetNuisanceParameters() is None:
-            poi = {one.GetName() for one in self.GetParametersOfInterest() or ()}
-            params = [p for p in pdf.getParameters(observed) if p.GetName() not in poi]
-            params = [p for p in params if not p.isConstant()]
-            if params:
-                self.SetNuisanceParameters(params)
+            self._guess_nuisance(pdf, observed)
         if printModelConfig:  # to the INFO stream, as RooPrintable's default stream is made to be
             log_plain(self, INFO, "InputArguments", self._text())
+
+    def _guess_globals(self, pdf: Any, observed: Any) -> None:
+        """The observables not in the data that are not constant: global observables."""
+        seen = {one.GetName() for one in pdf.getObservables(observed)}
+        rest = [one for one in self.GetObservables() if one.GetName() not in seen]
+        rest = [one for one in rest if not one.isConstant()]
+        if rest:
+            self.SetGlobalObservables(rest)
+
+    def _guess_nuisance(self, pdf: Any, observed: Any) -> None:
+        """The free parameters that are not of interest: the nuisance parameters."""
+        poi = {one.GetName() for one in self.GetParametersOfInterest() or ()}
+        params = [p for p in pdf.getParameters(observed) if p.GetName() not in poi]
+        params = [p for p in params if not p.isConstant()]
+        if params:
+            self.SetNuisanceParameters(params)
 
     def Print(self, option: str = "") -> None:
         """``ModelConfig::Print``: each set and density it names, in RooStats' order."""

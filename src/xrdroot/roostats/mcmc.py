@@ -443,11 +443,18 @@ class MCMCCalculator(Named):
         params = RooArgSet(list(nll.getParameters(self._data)))
         RemoveConstantParameters(params)
         if self._bins > 0:
-            for one in [*params, *self._sets["poi"]]:
-                one.setBins(self._bins)
-            pdf = getattr(proposal, "GetPdf", None)
-            for one in (pdf().getParameters(None) if pdf is not None else ()):
-                one.setBins(self._bins)
+            self._set_bins(params, proposal)
+        return self._interval(self._chain(nll, params, proposal))
+
+    def _set_bins(self, params: Any, proposal: Any) -> None:
+        """``SetNumBins``: the parameters' bins, and those of a proposal density's."""
+        for one in [*params, *self._sets["poi"]]:
+            one.setBins(self._bins)
+        pdf = getattr(proposal, "GetPdf", None)
+        for one in (pdf().getParameters(None) if pdf is not None else ()):
+            one.setBins(self._bins)
+
+    def _chain(self, nll: Any, params: Any, proposal: Any) -> Any:
         mh = MetropolisHastings()
         mh.SetFunction(nll)
         mh.SetType(kLog)
@@ -457,7 +464,10 @@ class MCMCCalculator(Named):
             mh.SetChainParameters(self._sets["chain"])
         mh.SetProposalFunction(proposal)
         mh.SetNumIters(self._iters)
-        chain = mh.ConstructChain()
+        return mh.ConstructChain()
+
+    def _interval(self, chain: Any) -> Any:
+        """The chain's interval, configured as the calculator was."""
         interval = MCMCInterval(f"MCMCInterval_{self._name}", self._sets["poi"], chain)
         if self._axes is not None:
             interval.SetAxes(self._axes)

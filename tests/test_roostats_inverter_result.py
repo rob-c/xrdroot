@@ -215,3 +215,9 @@ def test_the_band_quantiles_of_toys_are_tmaths() -> None:
     values = [float(i) for i in range(11)]
     assert limits._band_quantiles(values, False)[2] == 5.0
     assert limits._band_quantiles(values, True) == [3.0, 4.0, 5.0, 6.0, 7.0]
+
+
+def test_a_point_with_no_expected_band_is_left_out_of_the_limit_distribution() -> None:
+    r = scan({1.0: 1.0, 2.0: 0.1, 3.0: 0.01}, cls=True)
+    r._two_sided = True
+    assert r.GetUpperLimitDistribution().GetSize() == 10

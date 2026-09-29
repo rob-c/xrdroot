@@ -24,25 +24,26 @@ def sorted_order(xs: list[float]) -> list[int]:
     return sorted(range(len(xs)), key=lambda i: xs[i])
 
 
+def _neighbours(xs: list[float], x: float) -> tuple[int, int]:
+    """``TGraph::Eval``'s two points for ``x``: those either side - or the two nearest, beyond
+    either end."""
+    below = sorted((i for i in range(len(xs)) if xs[i] < x), key=lambda i: -xs[i])
+    above = sorted((i for i in range(len(xs)) if xs[i] > x), key=lambda i: xs[i])
+    if not above:
+        return below[1], below[0]
+    if not below:
+        return above[0], above[1]
+    return below[0], above[0]
+
+
 def graph_eval(xs: list[float], ys: list[float], x: float) -> float:
     """``TGraph::Eval``, linear: the line through the neighbours of ``x`` - or the two nearest at
     either end, extrapolated."""
-    if not xs:
-        return 0.0
-    if len(xs) == 1:
-        return ys[0]
-    below = [i for i in range(len(xs)) if xs[i] < x]
-    above = [i for i in range(len(xs)) if xs[i] > x]
-    if len(below) + len(above) < len(xs):
-        return ys[next(i for i in range(len(xs)) if xs[i] == x)]
-    below.sort(key=lambda i: -xs[i])
-    above.sort(key=lambda i: xs[i])
-    if not above:
-        low, up = below[1], below[0]
-    elif not below:
-        low, up = above[0], above[1]
-    else:
-        low, up = below[0], above[0]
+    if len(xs) < 2:
+        return ys[0] if xs else 0.0
+    if x in xs:
+        return ys[xs.index(x)]
+    low, up = _neighbours(xs, x)
     if xs[low] == xs[up]:
         return ys[low]
     return ys[up] + (x - xs[up]) * (ys[low] - ys[up]) / (xs[low] - xs[up])
@@ -59,15 +60,10 @@ def graph_x(result: Any, xs: list[float], ys: list[float], y0: float, low: bool,
     from ..numerics.rootfinder import brent_root_finder
 
     n = len(xs)
-    if n < 2:
-        log(result, ERROR, "Eval", "HypoTestInverterResult::GetGraphX - need at least 2 points for "
-            f"interpolation (n={n})")  # fmt: skip
-        return (ys[0] if n else 0.0), xmin, xmax
+    trivial = _no_crossing(result, ys, y0, low)
+    if trivial is not None:
+        return trivial, xmin, xmax
     varmin, varmax = _variable_range(result)
-    if max(ys) < y0:
-        return (varmax if low else varmin), xmin, xmax
-    if min(ys) > y0:
-        return (varmin if low else varmax), xmin, xmax
     given = xmin < xmax
     if not given:
         xmin, xmax = _whole_range(xs, ys, y0, low, varmin, varmax)
@@ -83,6 +79,20 @@ def graph_x(result: Any, xs: list[float], ys: list[float], y0: float, low: bool,
     if not given:
         limit = _refined(result, xs, ys, y0, low, limit)
     return limit, xmin, xmax
+
+
+def _no_crossing(result: Any, ys: list[float], y0: float, low: bool) -> Any:
+    """The answer without a search: too few points, or a curve all on one side of ``y0``."""
+    if len(ys) < 2:
+        log(result, ERROR, "Eval", "HypoTestInverterResult::GetGraphX - need at least 2 points for "
+            f"interpolation (n={len(ys)})")  # fmt: skip
+        return ys[0] if ys else 0.0
+    varmin, varmax = _variable_range(result)
+    if max(ys) < y0:
+        return varmax if low else varmin
+    if min(ys) > y0:
+        return varmin if low else varmax
+    return None
 
 
 def _whole_range(xs: list[float], ys: list[float], y0: float, low: bool, varmin: float,
@@ -176,30 +186,32 @@ def _search_range(result: Any, xs: list[float], ys: list[float], target: float, 
     return True, 1.0, 0.0
 
 
+def _most_precise(result: Any, target: float) -> int:
+    """Mode 0: the point of smallest error within three errors of ``target`` - or the nearest."""
+    best, closest, smallest, nearest = -1, -1, 2.0, 2.0
+    for i in range(result.ArraySize()):
+        dist, error = abs(result.GetYValue(i) - target), result.GetYError(i)
+        if dist < 3 * error and error < smallest:
+            smallest, best = error, i
+        if dist < nearest:
+            nearest, closest = dist, i
+    return best if best >= 0 else closest
+
+
 def closest_point_index(result: Any, target: float, mode: int = 0, xtarget: float = 0.0) -> int:
     """``FindClosestPointIndex``: mode 0, the most precise point within three errors of
     ``target`` - or the nearest; else the points about ``xtarget``: 2 the lower, 3 the higher,
     1 the one nearer ``target``."""
     if mode == 0:
-        best, closest, smallest, nearest = -1, -1, 2.0, 2.0
-        for i in range(result.ArraySize()):
-            dist = abs(result.GetYValue(i) - target)
-            if dist < 3 * result.GetYError(i) and result.GetYError(i) < smallest:
-                smallest, best = result.GetYError(i), i
-            if dist < nearest:
-                nearest, closest = dist, i
-        return best if best >= 0 else closest
+        return _most_precise(result, target)
     xs, _, order = points(result)
     first = bisect.bisect_right(xs, xtarget) - 1
-    if first < 0:
-        return order[0]
-    if first >= len(xs) - 1:
-        return order[-1]
+    if first < 0 or first >= len(xs) - 1:
+        return order[0] if first < 0 else order[-1]
     one, two = order[first], order[first + 1]
-    if mode == 2:
-        return one if result.GetXValue(one) < result.GetXValue(two) else two
-    if mode == 3:
-        return one if result.GetXValue(one) > result.GetXValue(two) else two
+    if mode in (2, 3):
+        lower = result.GetXValue(one) < result.GetXValue(two)
+        return one if lower == (mode == 2) else two
     near = abs(result.GetYValue(one) - target) <= abs(result.GetYValue(two) - target)
     return one if near else two
 
@@ -230,12 +242,8 @@ def estimated_error(result: Any, target: float, lower: bool, xmin: float = 1.0,
         return result.GetYError(0) if result.ArraySize() else 0.0
     if result.GetNullTestStatDist(0) is None:
         return 0.0
-    kind = "lower" if lower else "upper"
-    graph, inside = _error_graph(result, xmin, xmax)
-    if graph.GetN() < 2:
-        if inside >= 2:
-            log(result, WARNING, "Eval", "HypoTestInverterResult::CalculateEstimatedError - no "
-                f"valid points - cannot estimate  the {kind} limit error ")  # fmt: skip
+    graph = _valid_graph(result, lower, xmin, xmax)
+    if graph is None:
         return 0.0
     limit = result._lower if lower else result._upper
     if math.isnan(limit):
@@ -243,6 +251,18 @@ def estimated_error(result: Any, target: float, lower: bool, xmin: float = 1.0,
     error = _fitted_error(result, graph, target, lower, limit, (xmin, xmax))
     result._errors[0 if lower else 1] = error
     return error
+
+
+def _valid_graph(result: Any, lower: bool, xmin: float, xmax: float) -> Any:
+    """The points to fit - ``None``, said if there were points but none with errors, if fewer
+    than two."""
+    graph, inside = _error_graph(result, xmin, xmax)
+    if graph.GetN() >= 2:
+        return graph
+    if inside >= 2:
+        log(result, WARNING, "Eval", "HypoTestInverterResult::CalculateEstimatedError - no valid "
+            f"points - cannot estimate  the {'lower' if lower else 'upper'} limit error ")
+    return None
 
 
 def _fitted_error(result: Any, graph: Any, target: float, lower: bool, limit: float,
@@ -351,6 +371,26 @@ def _asymptotic_values(result: Any, found: Any) -> Any:
     return SamplingDistribution("Asymptotic expected values", "Asymptotic expected values", values)
 
 
+def _size(dist: Any) -> int:
+    return 0 if dist is None else int(dist.GetSize())
+
+
+def _quantiles_of(dist: Any, size: int) -> list[float]:
+    """``size`` quantiles of a point's expected p-values - none, if it has none."""
+    if dist is None:
+        return []
+    values = dist.GetSamplingDistribution()
+    return [quantile(values, min((b + 1) / size, 1.0), 1) for b in range(size)]
+
+
+def _limits(result: Any, quantiles: list[list[float]], size: int, lower: bool) -> list[float]:
+    """For each quantile, the limit of the curve through the points' quantiles."""
+    kept = [k for k in sorted_order(result._x) if quantiles[k]]
+    xs = [result.GetXValue(k) for k in kept]
+    return [graph_x(result, xs, [quantiles[k][j] for k in kept], 1 - result._cl, lower)[0]
+            for j in range(size)]  # fmt: skip
+
+
 def limit_distribution(result: Any, lower: bool) -> Any:
     """``GetLimitDistribution``: for each quantile of the points' expected p-values, the limit
     the curve through those quantiles gives - at least ten of them."""
@@ -362,21 +402,13 @@ def limit_distribution(result: Any, lower: bool) -> Any:
             "points -  return 0 ")  # fmt: skip
         return None
     dists = [expected_p_value_dist(result, i) for i in range(n)]
-    size = int(sum(d.GetSize() for d in dists if d is not None) / n)
+    size = int(sum(_size(d) for d in dists) / n)
     if size < 10:
         log(result, WARNING, "InputArguments", "HypoTestInverterResult - set a minimum size of 10 "
             "for limit distribution")  # fmt: skip
         size = 10
-    quantiles = [[] if d is None else [quantile(d.GetSamplingDistribution(),
-                                                min((b + 1) / size, 1.0), 1) for b in range(size)]
-                 for d in dists]  # fmt: skip
-    order = sorted_order(result._x)
-    limits = []
-    for j in range(size):
-        kept = [k for k in order if quantiles[k]]
-        xs = [result.GetXValue(k) for k in kept]
-        limits.append(graph_x(result, xs, [quantiles[k][j] for k in kept], 1 - result._cl,
-                              lower)[0])  # fmt: skip
+    quantiles = [_quantiles_of(d, size) for d in dists]
+    limits = _limits(result, quantiles, size, lower)
     title = "Expected lower limits" if lower else "Expected upper limits"
     return SamplingDistribution("Expected lower Limit" if lower else "Expected upper Limit", title,
                                 limits)  # fmt: skip
@@ -436,35 +468,50 @@ def _band_quantiles(values: list[float], asymptotic: bool) -> list[float]:
     return [quantile(values, p) for p in probs]
 
 
+def _band_at(result: Any, i: int, asymptotic: bool) -> Any:
+    """The point's expected band - ``None`` if it has none, or not the asymptotic eleven."""
+    dist = expected_p_value_dist(result, i)
+    if dist is None:
+        return None
+    values = dist.GetSamplingDistribution()
+    if len(values) != NUM_POINTS:
+        log(result, ERROR, "Eval", "HypoTestInverterResult::ExclusionCleanup - invalid size of "
+            "sampling distribution")  # fmt: skip
+        return None
+    return _band_quantiles(values, asymptotic)
+
+
+def _dropped(result: Any, i: int, q: list[float], asymptotic: bool,
+             previous: float) -> tuple[bool, float]:  # fmt: skip
+    """Whether the point goes, and the ``CLs`` the next is compared with."""
+    observed = result.CLs(i)
+    later = i >= 1
+    rises = asymptotic and later and observed > previous
+    drop = rises or observed < 0 or (later and (observed >= 0.9999 or q[4] < result._cleanup))
+    return drop, previous if drop and (rises or observed < 0) else observed
+
+
+def _asymptotic(result: Any) -> bool:
+    first = result._results[0] if result._results else None
+    return first is not None and first.GetNullDistribution() is None and (
+        first.GetAltDistribution() is None)  # fmt: skip
+
+
 def exclusion_cleanup(result: Any) -> int:
     """``ExclusionCleanup``: drop the points whose ``CLs`` rises again - asymptotically - is one,
     or is negative, or whose expected +2 sigma ``CLs`` is below the threshold; then the lower
     limit found again. Returns how many were dropped."""
-    first = result._results[0] if result._results else None
-    asymptotic = first is not None and first.GetNullDistribution() is None and (
-        first.GetAltDistribution() is None)  # fmt: skip
+    asymptotic = _asymptotic(result)
     removed, previous, position = 0, 1.0, 0
     while position < len(result._x):
         i = result.FindIndex(result._x[position])
-        dist = expected_p_value_dist(result, i)
-        if dist is None:
+        q = _band_at(result, i, asymptotic)
+        if q is None:
             break
-        values = dist.GetSamplingDistribution()
-        if len(values) != NUM_POINTS:
-            log(result, ERROR, "Eval", "HypoTestInverterResult::ExclusionCleanup - invalid size of "
-                "sampling distribution")  # fmt: skip
-            break
-        q = _band_quantiles(values, asymptotic)
-        observed = result.CLs(i)
-        drop = asymptotic and i >= 1 and observed > previous
-        if not drop and observed >= 0:
-            previous = observed
-        drop = drop or (i >= 1 and observed >= 0.9999) or (i >= 1 and q[4] < result._cleanup)
-        if drop or observed < 0:  # RooStats' erase-and-step passes over the next point too
+        drop, previous = _dropped(result, i, q, asymptotic, previous)
+        if drop:  # RooStats' erase-and-step passes over the next point too
             del result._x[i], result._results[i]
             removed += 1
-        else:
-            previous = observed
         position += 1
     result._fitted = [False, False]
     find_interpolated_limit(result, 1 - result._cl, True)
