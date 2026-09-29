@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 
+from ...random import libm
 from ..fitting.kahan import Kahan
 from ..messages import ERROR, log
 
@@ -45,7 +46,7 @@ def _about(
         keep = keep & ~data.mask(None, rng)
     values = np.asarray(data.column(var.GetName()), dtype=np.float64)[keep]
     weights = np.asarray(data.weights(), dtype=np.float64)[keep]
-    terms = weights * np.power(values - offset, order)
+    terms = weights * libm.power(values - offset, order)
     return float(Kahan().extend(terms.tolist()).total / total)
 
 

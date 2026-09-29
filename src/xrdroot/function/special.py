@@ -18,6 +18,8 @@ from typing import Any
 
 import numpy as np
 
+from ..random import libm
+
 __all__ = [
     "gaus",
     "landau",
@@ -79,22 +81,22 @@ def _ratio(region: int, v: Array) -> Array:
 
 def _landau_left(v: Array) -> list[Array]:
     """The density by the formulas of the two regions left of ``-1``."""
-    u_left = np.exp(v + 1.0)
+    u_left = libm.exp(v + 1.0)
     far_left = (
         0.3989422803
-        * (np.exp(-1 / u_left) / np.sqrt(u_left))
+        * (libm.exp(-1 / u_left) / np.sqrt(u_left))
         * (1 + (LANDAU_A1[0] + (LANDAU_A1[1] + LANDAU_A1[2] * u_left) * u_left) * u_left)
     )
     far_left = np.where(u_left < 1e-10, 0.0, far_left)
-    u_near = np.exp(-v - 1)
-    return [far_left, np.exp(-u_near) * np.sqrt(u_near) * _ratio(0, v)]
+    u_near = libm.exp(-v - 1)
+    return [far_left, libm.exp(-u_near) * np.sqrt(u_near) * _ratio(0, v)]
 
 
 def _landau_right(v: Array) -> list[Array]:
     """The density by the formulas of the regions from ``-1`` rightwards."""
     inverse = 1 / v
     tails = [inverse * inverse * _ratio(region, inverse) for region in (3, 4, 5)]
-    u_far = 1 / (v - v * np.log(v) / (v + 1))
+    u_far = 1 / (v - v * libm.log(v) / (v + 1))
     far_right = u_far * u_far * (1 + (LANDAU_A2[0] + LANDAU_A2[1] * u_far) * u_far)
     return [_ratio(1, v), _ratio(2, v), *tails, far_right]
 
@@ -127,7 +129,7 @@ def gaus(x: Array, mean: Array = 0.0, sigma: Array = 1.0, norm: Array = 0.0) -> 
     safe = np.where(sigma == 0, 1.0, sigma)
     arg = (np.asarray(x, np.float64) - mean) / safe
     with np.errstate(over="ignore", under="ignore"):
-        res = np.exp(-0.5 * arg * arg)
+        res = libm.exp(-0.5 * arg * arg)
     res = np.where((arg < -GAUS_CUT) | (arg > GAUS_CUT), 0.0, res)
     res = np.where(np.asarray(norm) != 0, res / (SQRT_TWO_PI * safe), res)
     return np.where(sigma == 0, GAUS_ZERO_WIDTH, res)
@@ -136,7 +138,7 @@ def gaus(x: Array, mean: Array = 0.0, sigma: Array = 1.0, norm: Array = 0.0) -> 
 def gaussian_pdf(x: Array, sigma: Array = 1.0, x0: Array = 0.0) -> Array:
     """``ROOT::Math::gaussian_pdf``: the normal density of width ``sigma`` about ``x0``."""
     tmp = (np.asarray(x, np.float64) - x0) / sigma
-    return (1.0 / (math.sqrt(2 * math.pi) * np.abs(sigma))) * np.exp(-tmp * tmp / 2)
+    return (1.0 / (math.sqrt(2 * math.pi) * np.abs(sigma))) * libm.exp(-tmp * tmp / 2)
 
 
 def breit_wigner(x: Array, mean: Array = 0.0, gamma: Array = 1.0) -> Array:
@@ -167,9 +169,9 @@ def crystalball_function(
     z = np.where(np.asarray(alpha) < 0, -z, z)
     abs_alpha = np.abs(alpha)
     with np.errstate(all="ignore"):
-        core = np.exp(-0.5 * z * z)
+        core = libm.exp(-0.5 * z * z)
         over = n / abs_alpha
-        tail = np.exp(-0.5 * abs_alpha * abs_alpha) * np.power(over / (over - abs_alpha - z), n)
+        tail = libm.exp(-0.5 * abs_alpha * abs_alpha) * libm.power(over / (over - abs_alpha - z), n)
     value = np.where(z > -abs_alpha, core, tail)
     return np.where(sigma < 0.0, 0.0, value)
 
@@ -178,7 +180,7 @@ def crystalball_pdf(x: Array, alpha: Array, n: Array, sigma: Array, mean: Array 
     """``ROOT::Math::crystalball_pdf``: the Crystal Ball normalised, defined only for ``n > 1``."""
     abs_alpha = np.abs(alpha)
     with np.errstate(all="ignore"):
-        c = n / abs_alpha * 1.0 / (n - 1.0) * np.exp(-(np.asarray(alpha) ** 2) / 2.0)
+        c = n / abs_alpha * 1.0 / (n - 1.0) * libm.exp(-(np.asarray(alpha) ** 2) / 2.0)
         d = math.sqrt(math.pi / 2.0) * (1.0 + _erf(abs_alpha / math.sqrt(2.0)))
         norm = 1.0 / (sigma * (c + d))
     value = norm * crystalball_function(x, alpha, n, sigma, mean)
@@ -204,7 +206,7 @@ def bigaussian_pdf(
     v = (np.asarray(y, np.float64) - y0) / sigmay
     c = 1.0 - rho * rho
     z = u * u - 2.0 * rho * u * v + v * v
-    return 1.0 / (2 * math.pi * sigmax * sigmay * np.sqrt(c)) * np.exp(-z / (2.0 * c))
+    return 1.0 / (2 * math.pi * sigmax * sigmay * np.sqrt(c)) * libm.exp(-z / (2.0 * c))
 
 
 def chebyshev(x: Array, *coefficients: Array) -> Array:

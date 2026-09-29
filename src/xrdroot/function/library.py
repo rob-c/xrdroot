@@ -24,6 +24,7 @@ from typing import Any
 import numpy as np
 
 from ..formula.functions import FUNCTIONS as TREE_FUNCTIONS
+from ..random import libm
 from . import special
 
 __all__ = ["Call", "CALLS", "CONSTANTS", "PHYSICAL"]
@@ -49,7 +50,7 @@ class Call:
 
 
 def _exp(u: Array) -> tuple[Array, ...]:
-    return (np.exp(u),)
+    return (libm.exp(u),)
 
 
 def _log(u: Array) -> tuple[Array, ...]:
@@ -61,11 +62,11 @@ def _sqrt(u: Array) -> tuple[Array, ...]:
 
 
 def _sin(u: Array) -> tuple[Array, ...]:
-    return (np.cos(u),)
+    return (libm.cos(u),)
 
 
 def _cos(u: Array) -> tuple[Array, ...]:
-    return (-np.sin(u),)
+    return (-libm.sin(u),)
 
 
 def _square(u: Array) -> tuple[Array, ...]:
@@ -79,7 +80,10 @@ def _abs(u: Array) -> tuple[Array, ...]:
 def power_partials(base: Array, exponent: Array) -> tuple[Array, ...]:
     """``d a^b / da`` and ``d a^b / db``; the second is taken only where it is needed."""
     with np.errstate(all="ignore"):
-        return (exponent * np.power(base, exponent - 1), np.power(base, exponent) * np.log(base))
+        return (
+            exponent * libm.power(base, exponent - 1),
+            libm.power(base, exponent) * libm.log(base),
+        )
 
 
 #: The derivative each differentiable function carries, by every spelling.

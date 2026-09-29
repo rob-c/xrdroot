@@ -21,6 +21,7 @@ from typing import Any
 import numpy as np
 
 from ..errors import UnsupportedFeatureError
+from ..random import libm
 
 __all__ = ["binary", "unary", "real", "truth", "integer", "is_text", "as_index", "cast"]
 
@@ -102,7 +103,7 @@ BINARY: dict[str, Callable[[Array, Array], Array]] = {
     "-": _arithmetic(np.subtract, "-"),
     "*": _arithmetic(np.multiply, "*"),
     "/": _arithmetic(np.true_divide, "/"),
-    "^": _arithmetic(np.power, "^"),
+    "^": _arithmetic(libm.power, "^"),
     "%": _integral(np.fmod, "%"),
     "&": _integral(np.bitwise_and, "&"),
     "|": _integral(np.bitwise_or, "|"),

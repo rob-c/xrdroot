@@ -4,7 +4,11 @@ Every one of them works on whole arrays at once. ROOT evaluates a formula in
 ``double``, so the arguments arrive as ``float64`` - one value per entry, or
 per element of the collections the expression loops over - and each function
 here is the NumPy ufunc that does the same arithmetic, or a few of them put
-together. The rare ones NumPy has no ufunc for, such as ``Erf`` and
+together. ROOT's ``exp``, ``log``, ``sin`` and the rest are the C library's, and
+so are NumPy's - except where AVX-512 gives NumPy vectorised ones of its own,
+which differ in the last place now and then - so those go through
+:mod:`xrdroot.random.libm`, which uses NumPy's only where it is the C
+library's. The rare ones NumPy has no ufunc for, such as ``Erf`` and
 ``Gamma``, go through :mod:`math` an element at a time: correct, and slow
 only for the few expressions that ask for them.
 
@@ -20,6 +24,8 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
+
+from ..random import libm
 
 __all__ = ["Function", "FUNCTIONS", "STRING_FUNCTIONS", "CASTS"]
 
@@ -49,6 +55,13 @@ def _elementwise(one: Callable[[float], float]) -> Function:
         return np.asarray(vectorised(values), dtype=np.float64)
 
     return Function(1, 1, apply)
+
+
+def _c(fast: Callable[[Array], Array], exact: Callable[[float], float], low: float,
+       high: float) -> Function:  # fmt: skip
+    """NumPy's ``fast`` where it is the C library's ``exact`` - tried from ``low`` to ``high`` -
+    else ``exact`` element by element: ROOT's formulas call the C library."""
+    return _ufunc(libm.choose(fast, exact, low, high))
 
 
 def _constant(value: float) -> Function:
@@ -82,7 +95,7 @@ def _gaus(x: Array, mean: Array = 0.0, sigma: Array = 1.0, norm: Array = 0.0) ->
     """
     sigma = np.asarray(sigma, dtype=np.float64)
     safe = np.where(sigma == 0, 1.0, sigma)
-    height = np.exp(-0.5 * ((x - mean) / safe) ** 2)
+    height = libm.exp(-0.5 * ((x - mean) / safe) ** 2)
     height = np.where(norm != 0, height / (math.sqrt(2 * math.pi) * safe), height)
     return np.where(sigma == 0, 1e30, height)
 
@@ -100,29 +113,38 @@ def _odd(values: Array) -> Array:
     return (values.astype(np.int64) % 2) != 0
 
 
+_LOG10 = _c(np.log10, math.log10, 1e-12, 1e6)
+_LOG2 = _c(np.log2, math.log2, 1e-12, 1e6)
+_ASIN = _c(np.arcsin, math.asin, -1.0, 1.0)
+_ACOS = _c(np.arccos, math.acos, -1.0, 1.0)
+_TANH = _c(np.tanh, math.tanh, -20.0, 20.0)
+_ASINH = _c(np.arcsinh, math.asinh, -50.0, 50.0)
+_ACOSH = _c(np.arccosh, math.acosh, 1.0, 50.0)
+_ATANH = _c(np.arctanh, math.atanh, -1.0, 1.0)
+
 #: The functions of ``TMath``, as ``TMath::`` is followed by them.
 TMATH: dict[str, Function] = {
     "Abs": _ufunc(np.abs),
     "Sqrt": _ufunc(np.sqrt),
     "Sq": Function(1, 1, lambda x: x * x),
-    "Power": _ufunc(np.power, 2),
-    "Exp": _ufunc(np.exp),
-    "Log": _ufunc(np.log),
-    "Log10": _ufunc(np.log10),
-    "Log2": _ufunc(np.log2),
-    "Sin": _ufunc(np.sin),
-    "Cos": _ufunc(np.cos),
-    "Tan": _ufunc(np.tan),
-    "ASin": _ufunc(np.arcsin),
-    "ACos": _ufunc(np.arccos),
-    "ATan": _ufunc(np.arctan),
+    "Power": _ufunc(libm.power, 2),
+    "Exp": _ufunc(libm.exp),
+    "Log": _ufunc(libm.log),
+    "Log10": _LOG10,
+    "Log2": _LOG2,
+    "Sin": _ufunc(libm.sin),
+    "Cos": _ufunc(libm.cos),
+    "Tan": _ufunc(libm.tan),
+    "ASin": _ASIN,
+    "ACos": _ACOS,
+    "ATan": _ufunc(libm.atan),
     "ATan2": _ufunc(np.arctan2, 2),
-    "SinH": _ufunc(np.sinh),
-    "CosH": _ufunc(np.cosh),
-    "TanH": _ufunc(np.tanh),
-    "ASinH": _ufunc(np.arcsinh),
-    "ACosH": _ufunc(np.arccosh),
-    "ATanH": _ufunc(np.arctanh),
+    "SinH": _ufunc(libm.sinh),
+    "CosH": _ufunc(libm.cosh),
+    "TanH": _TANH,
+    "ASinH": _ASINH,
+    "ACosH": _ACOSH,
+    "ATanH": _ATANH,
     "Min": _extreme(np.minimum),
     "Max": _extreme(np.maximum),
     "Floor": _ufunc(np.floor),
@@ -160,25 +182,25 @@ CMATH: dict[str, Function] = {
     "fabs": _ufunc(np.abs),
     "sqrt": _ufunc(np.sqrt),
     "cbrt": _ufunc(np.cbrt),
-    "pow": _ufunc(np.power, 2),
-    "exp": _ufunc(np.exp),
+    "pow": _ufunc(libm.power, 2),
+    "exp": _ufunc(libm.exp),
     "exp2": _ufunc(np.exp2),
-    "log": _ufunc(np.log),
-    "log10": _ufunc(np.log10),
-    "log2": _ufunc(np.log2),
-    "sin": _ufunc(np.sin),
-    "cos": _ufunc(np.cos),
-    "tan": _ufunc(np.tan),
-    "asin": _ufunc(np.arcsin),
-    "acos": _ufunc(np.arccos),
-    "atan": _ufunc(np.arctan),
+    "log": _ufunc(libm.log),
+    "log10": _LOG10,
+    "log2": _LOG2,
+    "sin": _ufunc(libm.sin),
+    "cos": _ufunc(libm.cos),
+    "tan": _ufunc(libm.tan),
+    "asin": _ASIN,
+    "acos": _ACOS,
+    "atan": _ufunc(libm.atan),
     "atan2": _ufunc(np.arctan2, 2),
-    "sinh": _ufunc(np.sinh),
-    "cosh": _ufunc(np.cosh),
-    "tanh": _ufunc(np.tanh),
-    "asinh": _ufunc(np.arcsinh),
-    "acosh": _ufunc(np.arccosh),
-    "atanh": _ufunc(np.arctanh),
+    "sinh": _ufunc(libm.sinh),
+    "cosh": _ufunc(libm.cosh),
+    "tanh": _TANH,
+    "asinh": _ASINH,
+    "acosh": _ACOSH,
+    "atanh": _ATANH,
     "floor": _ufunc(np.floor),
     "ceil": _ufunc(np.ceil),
     "trunc": _ufunc(np.trunc),

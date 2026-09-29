@@ -21,6 +21,7 @@ from typing import Any, Optional, Union
 
 import numpy as np
 
+from ..random import libm
 from .library import Call, power_partials
 
 __all__ = ["Env", "Node", "Const", "Var", "Param", "Unary", "Binary", "Cond", "Apply", "ZERO"]
@@ -179,7 +180,7 @@ BINARY: dict[str, Callable[[Array, Array], Array]] = {
     "*": np.multiply,
     "/": np.divide,
     "%": np.fmod,
-    "^": np.power,
+    "^": libm.power,
     "<": _flag(np.less),
     "<=": _flag(np.less_equal),
     ">": _flag(np.greater),
