@@ -130,6 +130,9 @@ def _split_arguments(text: str) -> list[str]:
 #: The classes standing for element types kept as they are given: ``TH1F*``, ``Interval*``.
 _OPAQUE: dict[str, type] = {}
 
+#: The smart pointers, whose elements are the objects they point to - ``None`` until set.
+SMART_POINTERS = frozenset({"unique_ptr", "shared_ptr"})
+
 
 def _opaque(text: str) -> type:
     """An element type that is neither a number, a string nor a container: kept as given.
@@ -147,7 +150,7 @@ def _opaque(text: str) -> type:
 def _templated(text: str) -> Any:
     """A type with template arguments: ``vector<float>``, ``map<string,int>``, ``pair<...>``."""
     outer, _, inner = text.partition("<")
-    if not inner and re.fullmatch(r"[A-Za-z_][\w:]*\s*\**", text):
+    if (not inner and re.fullmatch(r"[A-Za-z_][\w:]*\s*\**", text)) or outer in SMART_POINTERS:
         return _opaque(text)
     maker = TEMPLATES.get(outer)
     if maker is None or not inner.endswith(">"):
@@ -529,7 +532,8 @@ class _ObjectVector(_Container):
     def resize(self, size: int, value: Any = None) -> None:
         del self._items[size:]
         while len(self._items) < size:
-            self._items.append(self.element() if value is None else _converted(self.element, value))
+            self._items.append(_default(self.element) if value is None else
+                               _converted(self.element, value))  # fmt: skip
 
     def assign(self, values: Iterable[Any]) -> None:
         self._items = [_converted(self.element, value) for value in values]
@@ -622,7 +626,9 @@ def _element(kind: Any, value: Any) -> Any:
 
 def _default(kind: Any) -> Any:
     """What a new element of type ``kind`` is before anything is put in it: zero, or empty."""
-    return np.zeros((), dtype=kind).item() if isinstance(kind, np.dtype) else kind()
+    if isinstance(kind, np.dtype):
+        return np.zeros((), dtype=kind).item()
+    return None if getattr(kind, "opaque", False) else kind()
 
 
 class _Pair(_Container):
@@ -811,6 +817,29 @@ TEMPLATES: dict[str, _Template] = {
 }
 
 
+class _ArrayTemplate:
+    """``std.array['double', 3]``: a vector of that many, filled from the list it is given.
+
+    It is the vector class of its element type, so it indexes, iterates and
+    converts as one; that it never grows is left to the macro.
+    """
+
+    def __repr__(self) -> str:
+        return "<std.array template>"
+
+    def __getitem__(self, arguments: tuple[Any, Any]) -> Any:
+        kind, size = arguments
+        vector = TEMPLATES["vector"][kind]
+
+        def made(values: Iterable[Any] = ()) -> Any:
+            filled = vector(int(size))
+            for index, value in enumerate(values):
+                filled[index] = value
+            return filled
+
+        return made
+
+
 class _Stream:
     """``std::cout`` and ``std::cerr``: what ``<<`` is given, written as text."""
 
@@ -840,6 +869,7 @@ class _Namespace:
     vector = TEMPLATES["vector"]
     map = TEMPLATES["map"]
     pair = TEMPLATES["pair"]
+    array = _ArrayTemplate()
     string = string
 
     def __repr__(self) -> str:

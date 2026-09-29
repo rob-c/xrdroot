@@ -24,6 +24,7 @@ from .colors import Colors
 from .data import paint_data
 from .frame import default_title, dress, open_axes
 from .gaxis import GAXIS
+from .image import IMAGES
 from .legend import LEGEND
 from .model import Canvas, Pad, Primitive
 from .paves import PAVES
@@ -39,7 +40,7 @@ QUIET = frozenset({"TFrame", "TPaletteAxis", "TLegendEntry", "TColor"})
 BEVEL = 0.4
 
 #: Every drawing class this draws, and how.
-PAINTERS = {**SHAPES, **PAVES, **LEGEND, **GAXIS, **GEOMETRY}
+PAINTERS = {**SHAPES, **PAVES, **LEGEND, **GAXIS, **GEOMETRY, **IMAGES}
 
 
 class CanvasWarning(UserWarning):

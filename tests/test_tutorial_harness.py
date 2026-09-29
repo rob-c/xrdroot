@@ -290,6 +290,25 @@ def test_streams_are_compared_each_by_its_own_paths():
     assert compare.compare_streams("in /r/f", "in /x/f", paths, TOLERANCE) is None
 
 
+def _clip(text: str) -> str:
+    """A stream as a run keeps it: ``runner``'s clipping, with a small limit."""
+    return f"{text[:60]}\n[... {len(text) - 120} characters elided ...]\n{text[-60:]}"
+
+
+def test_clipped_streams_are_compared_on_the_whole_lines_both_kept():
+    """ROOT's stream has the driver's line, so the two are clipped at different lines."""
+    body = "".join(f"row {n}\n" for n in range(40))
+    paths = ({}, {})
+    root, mine = _clip("Processing t.C...\n" + body), _clip(body)
+    assert compare.compare_streams(root, mine, paths, TOLERANCE) is None
+    assert compare.compare_streams(root, body, paths, TOLERANCE) is None
+    wrong_head = _clip(body.replace("row 1\n", "row X\n"))
+    assert compare.compare_streams(root, wrong_head, paths, TOLERANCE).startswith("line 2")
+    wrong_tail = _clip(body.replace("row 38\n", "row X\n"))
+    found = compare.compare_streams(root, wrong_tail, paths, TOLERANCE)
+    assert found.startswith("in the last 8 lines kept, line 7")
+
+
 def _histogram_file(path: Path, counts: list[float]) -> Path:
     h = Histogram.book("h", (len(counts), 0.0, float(len(counts))))
     h.fill(np.arange(len(counts)) + 0.5, weight=np.asarray(counts, dtype=float))

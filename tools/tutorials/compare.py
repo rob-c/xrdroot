@@ -153,10 +153,49 @@ def compare_streams(
 
     ``python`` says the runs were a PyROOT script's, whose sets have no order.
     """
-    one, two = normalise(expected, paths[0]), normalise(actual, paths[1])
-    if python:
-        one, two = [_sorted_sets(line) for line in one], [_sorted_sets(line) for line in two]
-    return first_difference(one, two, tolerance)
+    if ELIDED.search(expected) or ELIDED.search(actual):
+        return _clipped_difference((expected, actual), paths, tolerance, python)
+    return first_difference(_lines(expected, paths[0], python), _lines(actual, paths[1], python),
+                            tolerance)  # fmt: skip
+
+
+#: What a run keeps of a long stream in place of its middle (``runner``'s clipping).
+ELIDED = re.compile(r"\n\[\.\.\. \d+ characters elided \.\.\.\]\n")
+
+
+def _lines(text: str, paths: Mapping[str, str], python: bool) -> list[str]:
+    lines = normalise(text, paths)
+    return [_sorted_sets(line) for line in lines] if python else lines
+
+
+def _kept(text: str, paths: Mapping[str, str], python: bool) -> tuple[list[str], list[str]]:
+    """The whole lines a stream kept at its start and at its end: a clipped one's head without
+    the line it was cut in, and its tail likewise; all of one that was not clipped, twice."""
+    parts = ELIDED.split(text, maxsplit=1)
+    if len(parts) == 1:
+        lines = _lines(text, paths, python)
+        return lines, lines
+    return _lines(parts[0], paths, python)[:-1], _lines(parts[1], paths, python)[1:]
+
+
+def _clipped_difference(texts: tuple[str, str], paths: tuple[Mapping[str, str], Mapping[str, str]],
+                        tolerance: Tolerance, python: bool) -> str | None:  # fmt: skip
+    """Streams one of which was clipped, compared on what both kept of their starts and ends.
+
+    Two runs' streams are clipped at the same length, not at the same line -
+    ROOT's has the driver's ``Processing`` line, for one - so only the lines
+    both kept whole are compared: the heads' first, the tails' last.
+    """
+    (head_one, tail_one), (head_two, tail_two) = (_kept(text, where, python)
+                                                  for text, where in zip(texts, paths))  # fmt: skip
+    size = min(len(head_one), len(head_two))
+    found = first_difference(head_one[:size], head_two[:size], tolerance)
+    if found is not None:
+        return found
+    size = min(len(tail_one), len(tail_two))
+    found = first_difference(tail_one[len(tail_one) - size:], tail_two[len(tail_two) - size:],
+                             tolerance)  # fmt: skip
+    return None if found is None else f"in the last {size} lines kept, {found}"
 
 
 # --- ROOT files ------------------------------------------------------------

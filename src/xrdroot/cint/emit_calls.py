@@ -19,7 +19,7 @@ from collections.abc import Callable
 from typing import ClassVar
 
 from .base import Out, P
-from .ctype import CType
+from .ctype import SMART, CType
 from .cursor import looks_like_type
 from .emit_expr import ExprEmitter, zero
 from .emit_names import type_text
@@ -144,6 +144,8 @@ class CallEmitter(ExprEmitter):
             given = [self.arguments(node), self._template_values(func, symbol)]
             args = ", ".join(filter(None, given))
             return f"{self.use(symbol)[0]}({args})", P.POSTFIX
+        if self._smart_alias(func):
+            return self._pointer_held(node)
         special = self._LIBRARY.get(func.last)
         if special is not None and (len(func.parts) == 1 or func.parts[0] in ("std", "TString")):
             found = special(self, func, node)
@@ -171,8 +173,16 @@ class CallEmitter(ExprEmitter):
             return None
         return f"{self.class_expr(func.targs[0])}({self.arguments(node)})", P.POSTFIX
 
+    def _smart_alias(self, func: Name) -> bool:
+        """Is ``func`` a name ``using`` or ``typedef`` gave a smart pointer - ``Upvd_t(p)``?"""
+        alias = self.program.aliases.get(func.last) if len(func.parts) == 1 else None
+        return alias is not None and (alias.name in SMART or alias.is_pointer)
+
     def _smart(self, func: Name, node: Call) -> Out | None:
         """``std::unique_ptr<T>(p)``: the pointer it holds, which is all a Python name is."""
+        return self._pointer_held(node)
+
+    def _pointer_held(self, node: Call) -> Out:
         if not node.args:
             return "None", P.ATOM
         return self.expr(node.args[0])

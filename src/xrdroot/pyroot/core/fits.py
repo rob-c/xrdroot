@@ -64,16 +64,12 @@ class TMatrixDSym:
         return self._m.ravel()
 
     def Print(self, option: str = "") -> None:
-        """``TMatrixTBase::Print``: ROOT's header, then five columns at a time."""
-        rows, cols = self._m.shape
-        print(f"\n{rows}x{cols} matrix is as follows")
-        for start in range(0, cols, 5):
-            columns = range(start, min(start + 5, cols))
-            print("\n     |" + "".join(f"    {j:>6} |" for j in columns))
-            print("-" * (7 + 12 * len(columns)))
-            for i in range(rows):
-                print(f"{i:>4} |" + "".join(f" {self._m[i, j]:>10.4g} " for j in columns))
-        print()
+        """``TMatrixTBase::Print``: sheets of five columns (ten for a narrow ``f=`` format),
+        each headed by its columns' numbers set in a bar as wide as ROOT makes it."""
+        from ...roofit.matrix import matrix_text
+
+        found = str(option).find("f=")
+        print(matrix_text(self._m, *([str(option)[found + 2:]] if found >= 0 else [])), end="")
 
 
 TMatrixD = TMatrixDSym
