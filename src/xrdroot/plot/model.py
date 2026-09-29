@@ -157,6 +157,8 @@ class Mesh(NamedTuple):
     values: Array
     palette: Any
     scale: bool = True
+    #: The values the palette's ends stand for, where ``SetMinimum``/``SetMaximum`` gave them.
+    limits: tuple[float | None, float | None] = (None, None)
 
 
 class Contour(NamedTuple):

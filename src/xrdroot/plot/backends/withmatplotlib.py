@@ -236,9 +236,11 @@ def _mesh(ax: Any, layer: Mesh, frame: Frame, native: dict[str, Any]) -> Any:
     values = np.ma.masked_invalid(layer.values.T)
     if frame.logz:
         values = np.ma.masked_less_equal(values, 0)
+    norm = _norm(frame)
+    ends = {} if norm is not None else {"vmin": layer.limits[0], "vmax": layer.limits[1]}
     artist = ax.pcolorfast(
-        layer.xedges, layer.yedges, values, cmap=_cmap(layer.palette), norm=_norm(frame),
-        **native,
+        layer.xedges, layer.yedges, values, cmap=_cmap(layer.palette), norm=norm,
+        **ends, **native,
     )  # fmt: skip
     ax.set_xlim(layer.xedges[0], layer.xedges[-1])
     ax.set_ylim(layer.yedges[0], layer.yedges[-1])

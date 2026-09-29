@@ -30,6 +30,8 @@ class Grid(NamedTuple):
     look: Look
     #: The levels ``SetContour`` gave, for ``CONT`` - none, for gStyle's even ones.
     contours: tuple[float, ...] = ()
+    #: ``SetMinimum`` and ``SetMaximum``'s bounds on the colours, where they were given.
+    limits: tuple[float | None, float | None] = (None, None)
 
 
 def _centres(edges: Any) -> Any:
@@ -42,8 +44,11 @@ def _painted(values: Any) -> Any:
 
 
 def _mesh(grid: Grid, request: Request) -> list[Any]:
+    """``COL``: the cells shaded, those below a minimum given left unpainted, as ROOT's are."""
     scale = request.chosen.has("Z")
-    return [Mesh(grid.xedges, grid.yedges, _painted(grid.values), request.palette, scale)]
+    low = grid.limits[0]
+    values = _painted(grid.values if low is None else np.where(grid.values < low, 0, grid.values))
+    return [Mesh(grid.xedges, grid.yedges, values, request.palette, scale, grid.limits)]
 
 
 def _boxes(grid: Grid, request: Request) -> list[Any]:

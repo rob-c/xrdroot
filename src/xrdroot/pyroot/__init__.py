@@ -45,6 +45,7 @@ SUBMODULES = [
     "roofit",
     "roostats",
     "tcut",
+    "th2poly",
     "tmva",
     "spectra.tspectrum",
     "spectra.tspectrum2",

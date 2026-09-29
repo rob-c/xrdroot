@@ -195,6 +195,13 @@ def _user_contours(members: Any) -> tuple[float, ...]:
     return tuple(float(one) for one in levels)
 
 
+def _limits(members: Any) -> tuple[float | None, float | None]:
+    """``fMinimum`` and ``fMaximum``, each where it was given - ROOT's ``-1111`` is not."""
+    found = [held(members, name) for name in ("fMinimum", "fMaximum")]
+    low, high = (None if v is None or float(v) == -1111 else float(v) for v in found)
+    return low, high
+
+
 def _grid(histogram: Histogram, request: Request) -> tuple[list[Any], Frame]:
     chosen = _default_grid(request.chosen)
     scale = _normalised(histogram, chosen)
@@ -204,6 +211,7 @@ def _grid(histogram: Histogram, request: Request) -> tuple[list[Any], Frame]:
         histogram.values() * scale,
         styled(histogram.members, request),
         _user_contours(histogram.members),
+        _limits(histogram.members),
     )
     layers = grid_layers(grid, request.again(chosen))
     return layers, titles(histogram, histogram.title)
