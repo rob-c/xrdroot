@@ -205,6 +205,10 @@ class TPolyLine(Drawn):
         ys = np.zeros(int(n)) if y is None else np.asarray(y, dtype=float)[: int(n)].copy()
         super().__init__(fN=int(n), fX=xs, fY=ys, fOption=str(option), fLastPoint=int(n) - 1)
 
+    def GetName(self) -> str:
+        """``TObject::GetName``: the class's name - a polyline has none of its own."""
+        return str(self.members["fName"]) or self.classname
+
     def SetPoint(self, i: int, x: float, y: float) -> None:
         """Point ``i``, the polyline grown to hold it if it is past the end."""
         index = int(i)

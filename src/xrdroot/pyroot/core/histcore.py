@@ -255,6 +255,19 @@ class Booked:
     def GetZaxis(self) -> Any:
         return self._axis("Z")
 
+    def SetAxisRange(self, xmin: float, xmax: float, axis: str = "X") -> None:
+        """``SetAxisRange``: the bins from ``xmin``'s to ``xmax``'s on ``axis`` - or, for an axis
+        past the histogram's own, the drawn minimum and maximum of its contents."""
+        choice = "XYZ".find(str(axis)[:1].upper()) + 1 if str(axis) else 0
+        if choice == 0:
+            return
+        if choice > self.GetDimension():
+            self.SetMinimum(xmin)  # type: ignore[attr-defined]
+            self.SetMaximum(xmax)  # type: ignore[attr-defined]
+            return
+        found = self._axis("XYZ"[choice - 1])
+        found.SetRange(found.FindFixBin(xmin), found.FindFixBin(xmax))
+
     def _content_axis(self) -> str:
         """The axis a histogram's contents are drawn along, whose range is its extremes."""
         return {1: "yaxis", 2: "zaxis"}.get(self.GetDimension(), "")

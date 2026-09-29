@@ -38,6 +38,8 @@ SUBMODULES = [
     "roofit",
     "tcut",
     "tmva",
+    "spectra.tspectrum",
+    "spectra.tspectrum2",
 ]
 
 __all__: list[str] = []
