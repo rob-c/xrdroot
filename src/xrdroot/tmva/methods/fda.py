@@ -11,30 +11,42 @@ MINUIT as a ``Converger``, xrdroot does not have and refuses by name.
 
 from __future__ import annotations
 
-from typing import Any
+import re
+from typing import Any, ClassVar
 
 import numpy as np
 
 from ..dataset import Events
 from ..fdaformula import FormulaError, compile_fda, tformula_text
-from ..genetic import CxxVector, GeneticFitter, Interval
+from ..genetic import GeneticFitter, Interval
 from ..mcfitter import MCFitter
 from ..method import CLASSIFICATION, MULTICLASS, REGRESSION, Method
+from ..tools import CxxVector
 from ..xmlfile import Node, children, number
 from .linear import formatted_values
 
 __all__ = ["MethodFDA"]
 
 
-def _ranges(text: str) -> list[tuple[float, float]]:
-    """``ParRanges``: ``(a,b);(c,d)...`` as single-precision pairs, as TMVA reads them."""
-    found = []
-    for piece in text.replace(" ", "").split(";"):
-        if not piece:
-            continue
-        low, _, high = piece[1:-1].partition(",")
-        found.append((float(np.float32(low or 0)), float(np.float32(high or 0))))
-    return found
+#: What ``stringstream >> float`` reads of the start of a text: the longest number there.
+NUMBER = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
+
+
+def _pieces(text: str) -> list[str]:
+    """``Tools::ParseFormatLine(text, ";")``: the pieces between separators, empty ones skipped."""
+    return [piece for piece in text.split(";") if piece]
+
+
+def _number(text: str) -> float:
+    """``stringstream >> Float_t``: the number the text starts with, in single precision, else 0."""
+    found = NUMBER.match(text)
+    return float(np.float32(found.group())) if found else 0.0
+
+
+def _range(piece: str) -> tuple[float, float]:
+    """One ``(a,b)`` of ``ParRanges``, as TMVA reads it."""
+    low, _, high = piece[1:-1].partition(",")
+    return _number(low), _number(high)
 
 
 class MethodFDA(Method):
@@ -42,26 +54,15 @@ class MethodFDA(Method):
 
     type_name = "FDA"
     analyses = frozenset({CLASSIFICATION, REGRESSION, MULTICLASS})
-    defaults = {"Formula": "(0)", "ParRanges": "()", "FitMethod": "MINUIT", "Converger": "None"}
+    defaults: ClassVar[dict[str, Any]] = {
+        "Formula": "(0)",
+        "ParRanges": "()",
+        "FitMethod": "MINUIT",
+        "Converger": "None",
+    }
 
     def process_options(self) -> None:
-        text = str(self.opt("ParRanges")).replace(" ", "")
-        self.npars = text.count(")")
-        self.intervals = _ranges(text)
-        if len(self.intervals) != self.npars:
-            raise self.log.fatal(
-                f"<ProcessOptions> Mismatch in parameter string: the number of parameters: "
-                f"{self.npars} != ranges defined: {len(self.intervals)}; the format of the "
-                '"ParRanges" string must be: "(-1.2,3.4);(-2.3,4.55);...", where the numbers in '
-                '"(a,b)" correspond to the a=min, b=max parameter ranges; each parameter defined '
-                "in the function string must have a corresponding rang."
-            )
-        for index, (low, high) in enumerate(self.intervals):
-            if low > high:
-                raise self.log.fatal(
-                    f"<ProcessOptions> max > min in interval for parameter: [{index}] : "
-                    f"[{low:g}, {high:g}] "
-                )
+        self._read_ranges()
         self.fit = str(self.opt("FitMethod"))
         for what, value, known in (
             ("FitMethod", self.fit, ("MC", "GA")),
@@ -80,6 +81,27 @@ class MethodFDA(Method):
         elif self.analysis == MULTICLASS:
             self.dims = self.dsi.GetNClasses()
         self.parameters = [0.5 * (low + high) for low, high in self.intervals] * self.dims
+
+    def _read_ranges(self) -> None:
+        """``ParRanges``: a range per closing parenthesis, each's minimum below its maximum."""
+        text = str(self.opt("ParRanges")).replace(" ", "")
+        self.npars = text.count(")")
+        pieces = _pieces(text)
+        if len(pieces) != self.npars:
+            raise self.log.fatal(
+                f"<ProcessOptions> Mismatch in parameter string: the number of parameters: "
+                f"{self.npars} != ranges defined: {len(pieces)}; the format of the "
+                '"ParRanges" string must be: "(-1.2,3.4);(-2.3,4.55);...", where the numbers in '
+                '"(a,b)" correspond to the a=min, b=max parameter ranges; each parameter defined '
+                "in the function string must have a corresponding rang."
+            )
+        self.intervals = [_range(piece) for piece in pieces]
+        for index, (low, high) in enumerate(self.intervals):
+            if low > high:
+                raise self.log.fatal(
+                    f"<ProcessOptions> max > min in interval for parameter: [{index}] : "
+                    f"[{low:g}, {high:g}] "
+                )
 
     def _compile(self) -> None:
         try:
@@ -141,6 +163,18 @@ class MethodFDA(Method):
 
     def train(self, events: Events) -> None:
         self._events = events
+        self._weigh(events)
+        ranges = [Interval(low, high) for low, high in self.intervals] * self.dims
+        kind = GeneticFitter if self.fit == "GA" else MCFitter
+        fitter = kind(self, f"{self.name}_Fitter_{self.fit}", ranges, self.options.text)
+        best = CxxVector(interval.GetMean() for interval in ranges)
+        estimator = fitter.Run(best)
+        self.parameters = [float(value) for value in best]
+        del self._events
+        self._say_fit(estimator)
+
+    def _weigh(self, events: Events) -> None:
+        """The background's, the signal's and all the events' weight; a class without is refused."""
         weights = events.weights.astype(np.float64)
         signal = events.classes == self.dsi.GetSignalClassIndex()
         self._sums = (
@@ -152,13 +186,9 @@ class MethodFDA(Method):
             raise self.log.fatal(
                 f"<Train> Troubles in sum of weights: {self._sums[1]:g} (S) : {self._sums[0]:g} (B)"
             )
-        ranges = [Interval(low, high) for low, high in self.intervals] * self.dims
-        kind = GeneticFitter if self.fit == "GA" else MCFitter
-        fitter = kind(self, f"{self.name}_Fitter_{self.fit}", ranges, self.options.text)
-        best = CxxVector(interval.GetMean() for interval in ranges)
-        estimator = fitter.Run(best)
-        self.parameters = [float(value) for value in best]
-        del self._events
+
+    def _say_fit(self, estimator: float) -> None:
+        """The fitted parameters, the formula and the least estimator, as TMVA prints them."""
         self.log.header(f'Results for parameter fit using "{self.fit}" fitter:')
         names = [f"Par({index})" for index in range(len(self.parameters))]
         for line in formatted_values(names, self.parameters, "Parameter", "Fit result", "{:g}"):
@@ -173,10 +203,9 @@ class MethodFDA(Method):
         sets = np.asarray(self.parameters).reshape(self.dims, self.npars)
         if self.analysis == CLASSIFICATION:
             return self._values(sets[:1], values)[0]
-        outputs = np.stack([self._values(sets[d : d + 1], values)[0] for d in range(self.dims)], 1)
         if self.analysis == REGRESSION:
-            flat = np.asarray(self.parameters)[None, : self.npars]
-            return self.handler.inverse_targets(self._values(flat, values)[0][:, None])
+            return self.handler.inverse_targets(self._values(sets[:1], values)[0][:, None])
+        outputs = np.stack([self._values(sets[d : d + 1], values)[0] for d in range(self.dims)], 1)
         shifted = outputs[:, None, :] - outputs[:, :, None]
         return 1.0 / np.exp(shifted).sum(axis=2)
 
@@ -193,7 +222,7 @@ class MethodFDA(Method):
         self.dims = int(node.get("NDim", 1))
         self.parameters = [0.0] * (self.npars * self.dims)
         for item in children(node, "Parameter"):
-            self.parameters[int(item.get("Index"))] = float(item.get("Value"))
+            self.parameters[int(str(item.get("Index")))] = float(str(item.get("Value")))
         self.formula = str(node.get("Formula"))
         self._compile()
         self._say_formula()

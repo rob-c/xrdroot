@@ -9,7 +9,6 @@ so many words.
 from __future__ import annotations
 
 import os
-from typing import Any
 
 import numpy as np
 
@@ -23,6 +22,7 @@ __all__ = ["read_foams", "write_foams"]
 def write_foams(path: str, foams: list[Cells], names: list[str]) -> None:
     """Every foam into ``path``, recreated, a tree per foam."""
     import xrdroot
+
     from ...wtree import spec_of
 
     folder = os.path.dirname(path)

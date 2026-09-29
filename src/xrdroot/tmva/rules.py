@@ -6,8 +6,8 @@ outside. The forest is grown as TMVA's ``RuleFit`` grows it: ``nTrees``
 trees, each's leaves holding at least a fraction of the events' weight drawn
 uniformly between ``fEventsMin`` and half ``fEventsMax``, the events
 reweighted by AdaBoost between trees; the trees themselves are
-scikit-learn's. Rules that repeat another, or are no rule at all, are
-dropped.
+scikit-learn's. Every rule is of a node below a tree's root, so has a cut;
+rules that repeat another are dropped.
 """
 
 from __future__ import annotations
@@ -32,17 +32,6 @@ class Rule:
     support: float = 0.0
     sigma: float = 0.0
 
-    def inside(self, values: Any) -> Any:
-        """``RuleCut::EvalEvent`` of every row of ``values``."""
-        found = np.ones(len(values), dtype=bool)
-        for index, (low, high) in self.cuts.items():
-            column = values[:, index]
-            if low is not None:
-                found &= column > low
-            if high is not None:
-                found &= column < high
-        return found
-
     def key(self) -> tuple[Any, ...]:
         return tuple(sorted((k, v) for k, v in self.cuts.items()))
 
@@ -61,9 +50,10 @@ def _node_rules(tree: Any) -> list[Rule]:
             continue
         variable, threshold = int(inner.feature[node]), float(inner.threshold[node])
         # scikit-learn sends x <= t left; for single-precision values that is x < ``edge`` and
-        # x > ``floor``, the rule's strict cuts.
+        # x > ``floor``, the rule's strict cuts. The rounding is judged in double precision:
+        # NumPy 2 would compare a float32 with a Python float in single, and see no rounding.
         floor = np.float32(threshold)
-        if floor > threshold:
+        if float(floor) > threshold:
             floor = np.nextafter(floor, np.float32(-np.inf))
         edge = float(np.nextafter(floor, np.float32(np.inf)))
         low, high = cuts.get(variable, (None, None))
@@ -100,8 +90,7 @@ def grow_rules(
     generated = len(rules)
     distinct: dict[tuple[Any, ...], Rule] = {}
     for rule in rules:
-        if rule.cuts:
-            distinct.setdefault(rule.key(), rule)
+        distinct.setdefault(rule.key(), rule)
     return list(distinct.values()), generated
 
 

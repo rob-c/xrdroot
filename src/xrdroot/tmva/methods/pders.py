@@ -13,7 +13,7 @@ of a batch of events are all worked out together.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -47,7 +47,7 @@ class MethodPDERS(Method):
 
     type_name = "PDERS"
     analyses = frozenset({CLASSIFICATION, REGRESSION})
-    defaults = {
+    defaults: ClassVar[dict[str, Any]] = {
         "VolumeRangeMode": "Adaptive",
         "KernelEstimator": "Box",
         "DeltaFrac": 3.0,

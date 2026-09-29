@@ -14,16 +14,17 @@ distribution. Everything here is TMVA's, the Monte Carlo's draws included.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
 from .. import hists
 from ..cutsfit import MAX_CUT, CutTable, Sample, draw_mc
 from ..dataset import Events
-from ..genetic import CxxVector, GeneticFitter, Interval
+from ..genetic import GeneticFitter, Interval
 from ..log import Logger
 from ..method import Method
+from ..tools import CxxVector
 from ..xmlfile import Node, children, number
 
 __all__ = ["MethodCuts"]
@@ -46,7 +47,7 @@ class MethodCuts(Method):
     """``TMVA::MethodCuts``."""
 
     type_name = "Cuts"
-    defaults = {
+    defaults: ClassVar[dict[str, Any]] = {
         "FitMethod": "GA",
         "EffMethod": "EffSel",
         "SampleSize": 100000,
@@ -136,7 +137,7 @@ class MethodCuts(Method):
             self.table.offer_batch(effs, effb, lower, upper)
 
     def EstimatorFunction(self, parameters: Any) -> float:
-        """``ComputeEstimator``: one box's figure of merit for the genetic algorithm - and it is kept."""
+        """``ComputeEstimator``: a box's figure of merit for the genetic algorithm, the box kept."""
         values = np.asarray(list(parameters), dtype=np.float64)
         lower = values[0::2][None, :]
         upper = lower + values[1::2][None, :]
@@ -176,7 +177,7 @@ class MethodCuts(Method):
     # -- the cuts -----------------------------------------------------------------------
 
     def GetCuts(self, effs: float, cut_min: Any = None, cut_max: Any = None) -> float:
-        """``GetCuts``: the cuts for a signal efficiency, put in the vectors given; its bin's low edge."""
+        """``GetCuts``: a signal efficiency's cuts, put in the vectors given; its bin's low edge."""
         index = int(self.table.bins(np.array([float(effs)]))[0])
         true_effs = (index - 1) / self.table.nbins
         row = min(max(index - 1, 0), self.table.nbins - 1)
@@ -201,14 +202,7 @@ class MethodCuts(Method):
         last = transforms[-1]
         if last.xml_name != "Decorrelation":
             return [f"{label}_[transformed]" for label in labels]
-        matrix = last.which(None)
-        return [
-            "".join(
-                f"{' + ' if value > 0 else ' - '}{abs(value):10.5g}*[{name}]"
-                for value, name in zip(row, labels)
-            )
-            for row in matrix
-        ]
+        return [_combination(row, labels) for row in last.which(None)]
 
     def print_cuts(self, effs: float) -> None:
         """``PrintCuts``: the cuts at a signal efficiency, as TMVA's table of them."""
@@ -281,9 +275,9 @@ class MethodCuts(Method):
         self.log.info(f"Reading {len(bins)} signal efficiency bins for {nvar} variables")
         self.table = CutTable(nbins=int(node.get("nbins", len(bins))), nvar=nvar)
         for item in bins:
-            index = int(item.get("ibin")) - 1
+            index = int(str(item.get("ibin"))) - 1
             self.table.effb[index] = float(np.float32(item.get("effB")))
-            cuts = item.find("Cuts")
+            cuts: Any = item.find("Cuts")
             for var in range(nvar):
                 self.table.lower[index, var] = float(cuts.get(f"cutMin_{var}"))
                 self.table.upper[index, var] = float(cuts.get(f"cutMax_{var}"))
@@ -308,7 +302,7 @@ class MethodCuts(Method):
     def classifier_evaluation(
         self, test: Events, train: Events
     ) -> tuple[dict[str, Any], list[Any]]:
-        """``MethodCuts::GetEfficiency`` and ``GetTrainingEfficiency``: the table read on each sample."""
+        """``GetEfficiency`` and ``GetTrainingEfficiency``: the table read on each sample."""
         from ..pdf import spline1
 
         warn = Logger("Cuts")
@@ -358,8 +352,16 @@ class MethodCuts(Method):
         return found, made
 
 
+def _combination(row: Any, labels: list[str]) -> str:
+    """One decorrelated variable, as the sum of the variables it is made of."""
+    return "".join(
+        f"{' + ' if value > 0 else ' - '}{abs(value):10.5g}*[{name}]"
+        for value, name in zip(row, labels)
+    )
+
+
 def _crossing(effs: Any, effb: Any, reference: float) -> float:
-    """The signal efficiency where the curve crosses ``reference`` - strictly, as ``MethodCuts`` scans."""
+    """The signal efficiency where the curve crosses ``reference``, strictly, as TMVA scans."""
     previous_s = previous_b = 0.0
     for eff_s, eff_b in zip(effs, effb):
         if (eff_b - reference) * (previous_b - reference) < 0:

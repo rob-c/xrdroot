@@ -1,4 +1,4 @@
-"""The formula of ``FDA``: TMVA's ``(i)`` parameters and ``xi`` variables, evaluated for many at once.
+"""The formula of ``FDA``: TMVA's ``(i)`` parameters and ``xi`` variables, for many at once.
 
 TMVA rewrites ``(0)+(1)*x0`` into ``[0]+[1]*[2]`` and hands it to
 ``TFormula``, one event and one parameter set at a time. Here the rewritten
@@ -115,28 +115,72 @@ def compile_fda(text: str) -> Any:
     return run
 
 
+#: What a node's handler answers when the node is of its type but not one it can evaluate.
+REFUSED = object()
+
+
+def _constant(node: ast.Constant, values: list[Any] | None) -> Any:
+    """A number, as a float."""
+    return float(node.value) if isinstance(node.value, (int, float)) else REFUSED
+
+
+def _subscript(node: ast.Subscript, values: list[Any] | None) -> Any:
+    """``[i]``: the ``i``-th of the parameters and variables."""
+    index = node.slice
+    if not isinstance(node.value, ast.Name):
+        return REFUSED
+    if not isinstance(index, ast.Constant) or not isinstance(index.value, int):
+        return REFUSED
+    return None if values is None else values[index.value]
+
+
+def _binary(node: ast.BinOp, values: list[Any] | None) -> Any:
+    """One of the arithmetic operators of two operands."""
+    operator = BINARY.get(type(node.op))
+    if operator is None:
+        return REFUSED
+    left, right = _evaluate(node.left, values), _evaluate(node.right, values)
+    return None if values is None else operator(left, right)
+
+
+def _unary(node: ast.UnaryOp, values: list[Any] | None) -> Any:
+    """A sign, ``-`` or ``+``."""
+    if not isinstance(node.op, (ast.USub, ast.UAdd)):
+        return REFUSED
+    operand = _evaluate(node.operand, values)
+    if values is None:
+        return None
+    return -operand if isinstance(node.op, ast.USub) else operand
+
+
+def _call(node: ast.Call, values: list[Any] | None) -> Any:
+    """One of ``TFormula``'s functions, called with positional arguments."""
+    if not isinstance(node.func, ast.Name) or node.keywords:
+        return REFUSED
+    function = FUNCTIONS.get(node.func.id)
+    if function is None:
+        return REFUSED
+    arguments = [_evaluate(argument, values) for argument in node.args]
+    return None if values is None else function(*arguments)
+
+
+#: How each kind of node is evaluated.
+HANDLERS: dict[type, Any] = {
+    ast.Constant: _constant,
+    ast.Subscript: _subscript,
+    ast.BinOp: _binary,
+    ast.UnaryOp: _unary,
+    ast.Call: _call,
+}
+
+
 def _evaluate(node: ast.AST, values: list[Any] | None) -> Any:
     """The value of one node; with no values, only a check that the node is allowed."""
-    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
-        return float(node.value)
-    if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name):
-        index = node.slice
-        if isinstance(index, ast.Constant) and isinstance(index.value, int):
-            return None if values is None else values[index.value]
-    if isinstance(node, ast.BinOp) and type(node.op) in BINARY:
-        left, right = _evaluate(node.left, values), _evaluate(node.right, values)
-        return None if values is None else BINARY[type(node.op)](left, right)
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
-        operand = _evaluate(node.operand, values)
-        if values is None:
-            return None
-        return -operand if isinstance(node.op, ast.USub) else operand
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and not node.keywords:
-        function = FUNCTIONS.get(node.func.id)
-        if function is not None:
-            arguments = [_evaluate(argument, values) for argument in node.args]
-            return None if values is None else function(*arguments)
-    raise FormulaError(
-        f'"{ast.unparse(node)}" is not arithmetic xrdroot\'s FDA formula can evaluate: it knows '
-        "numbers, the parameters and variables, + - * / ^ and TFormula's common functions"
-    )
+    handler = HANDLERS.get(type(node))
+    found = REFUSED if handler is None else handler(node, values)
+    if found is REFUSED:
+        raise FormulaError(
+            f'"{ast.unparse(node)}" is not arithmetic xrdroot\'s FDA formula can evaluate: it '
+            "knows numbers, the parameters and variables, + - * / ^ and TFormula's common functions"
+        )
+    return found

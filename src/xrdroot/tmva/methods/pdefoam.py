@@ -14,7 +14,7 @@ objects, xrdroot cannot read. The decision-tree cell splitting
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -35,7 +35,7 @@ class MethodPDEFoam(Method):
 
     type_name = "PDEFoam"
     analyses = frozenset({CLASSIFICATION, REGRESSION, MULTICLASS})
-    defaults = {
+    defaults: ClassVar[dict[str, Any]] = {
         "SigBgSeparate": False,
         "TailCut": 0.001,
         "VolFrac": 1.0 / 15.0,
@@ -241,7 +241,7 @@ class MethodPDEFoam(Method):
         for tag, bound in (("Xmin", self.xmin), ("Xmax", self.xmax)):
             for index, value in enumerate(bound):
                 weights.add(tag, Index=index, Value=number(value))
-        for foam, name in zip(self.foams, self._names()):
+        for name in self._names():
             self.log.info(f"writing foam {name} to file")
         write_foams(self.foam_file, self.foams, self._names())
         self.log.info(
@@ -262,7 +262,7 @@ class MethodPDEFoam(Method):
         bounds = {tag: np.zeros(self.dsi.GetNVariables()) for tag in ("Xmin", "Xmax")}
         for tag, bound in bounds.items():
             for item in children(node, tag):
-                bound[int(item.get("Index"))] = float(np.float32(item.get("Value")))
+                bound[int(str(item.get("Index")))] = float(np.float32(item.get("Value")))
         self.xmin, self.xmax = bounds["Xmin"], bounds["Xmax"]
         self.foams = read_foams(self.foam_file, self._names(), self.dsi.GetNVariables(), self.log)
         self.log.info(f"Read foams from file: {color('lightblue')}{self.foam_file}{color('reset')}")

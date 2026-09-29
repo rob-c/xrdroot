@@ -13,7 +13,7 @@ rules and coefficients differ from TMVA's. Friedman's own program
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -46,7 +46,7 @@ class MethodRuleFit(Method):
     """``TMVA::MethodRuleFit``."""
 
     type_name = "RuleFit"
-    defaults = {
+    defaults: ClassVar[dict[str, Any]] = {
         "GDTau": -1.0,
         "GDTauPrec": 0.01,
         "GDStep": 0.01,
@@ -131,7 +131,10 @@ class MethodRuleFit(Method):
         n_path = int(len(values) * float(self.opt("GDPathEveFrac")))
         n_valid = int(len(values) * float(self.opt("GDValidEveFrac")))
         path, valid = order[:n_path], order[len(values) - n_valid :]
-        pick = lambda rows: (features[rows], target[rows], weights[rows])
+
+        def pick(rows: Any) -> tuple[Any, Any, Any]:
+            return features[rows], target[rows], weights[rows]
+
         self.log.info(
             "GD path scan - the scan stops when the max num. of steps is reached or a min is found"
         )

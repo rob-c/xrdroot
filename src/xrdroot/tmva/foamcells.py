@@ -94,7 +94,7 @@ class Cells:
             cells[inner] = np.where(left, self.dau0[here], self.dau1[here])
 
     def to_unit(self, values: Any, xmin: Any, xmax: Any) -> Any:
-        """``VarTransform``: values mapped from ``[xmin, xmax]`` onto ``[0, 1]``, in single precision."""
+        """``VarTransform``: values mapped from ``[xmin, xmax]`` onto ``[0, 1]``, in single."""
         return ((np.asarray(values, dtype=np.float64) - xmin) / (xmax - xmin)).astype(f32)
 
     def cut_counts(self) -> Any:

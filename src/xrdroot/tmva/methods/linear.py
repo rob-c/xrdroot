@@ -10,7 +10,7 @@ event weights and all, so the coefficients are TMVA's to the last digits.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -120,31 +120,25 @@ class MethodLD(Method):
         self.coefficients = np.zeros((nout, ncoeff))
         for item in children(node, "Coefficient"):
             out, index = int(item.get("IndexOut", 0)), int(item.get("IndexCoeff", 0))
-            self.coefficients[out, index] = float(item.get("Value"))
+            self.coefficients[out, index] = float(str(item.get("Value")))
 
 
 class MethodFisher(Method):
-    """``TMVA::MethodFisher``: Fisher's discriminant, or Mahalanobis's with ``Method=Mahalanobis``."""
+    """``TMVA::MethodFisher``: Fisher's discriminant; with ``Method=Mahalanobis``, Mahalanobis'."""
 
     type_name = "Fisher"
-    defaults = {"Method": "Fisher"}
+    defaults: ClassVar[dict[str, Any]] = {"Method": "Fisher"}
 
     def train(self, events: Events) -> None:
         signal = events.classes == self.dsi.GetSignalClassIndex()
-        weights, values = events.weights, events.values
-        total_s, total_b = float(np.sum(weights[signal])), float(np.sum(weights[~signal]))
-        mean_s = weights[signal] @ values[signal] / total_s
-        mean_b = weights[~signal] @ values[~signal] / total_b
-        mean = weights[signal] @ values[signal] + weights[~signal] @ values[~signal]
-        mean = mean / (total_s + total_b)
-        within = _scatter(values[signal], weights[signal], mean_s) / total_s
-        within = within + _scatter(values[~signal], weights[~signal], mean_b) / total_b
-        between = total_s * np.outer(mean_s - mean, mean_s - mean)
-        between = (between + total_b * np.outer(mean_b - mean, mean_b - mean)) / (total_s + total_b)
+        classes = _Classes(events.values, events.weights, signal)
+        within, between = classes.within(), classes.between()
         covariance = within + between
         chosen = covariance if str(self.opt("Method")) == "Mahalanobis" else within
         inverse = _checked_inverse(chosen, self.log, "GetFisherCoeff")
+        total_s, total_b = classes.totals
         factor = np.sqrt(total_s * total_b) / (total_s + total_b)
+        mean_s, mean_b = classes.means
         self.coefficients = inverse @ (mean_s - mean_b) * factor
         self.offset = -float(np.dot(self.coefficients, mean_s + mean_b)) / 2.0
         diagonal = np.diag(covariance)
@@ -167,7 +161,9 @@ class MethodFisher(Method):
             weights.add("Coefficient", Index=index, Value=number(value))
 
     def read_weights(self, node: Any) -> None:
-        values = {int(item.get("Index")): float(item.get("Value")) for item in children(node)}
+        values = {
+            int(str(item.get("Index"))): float(str(item.get("Value"))) for item in children(node)
+        }
         self.offset = values.get(0, 0.0)
         self.coefficients = np.array([values[index] for index in range(1, len(values))])
         self.power = np.zeros(len(self.coefficients))
@@ -176,3 +172,26 @@ class MethodFisher(Method):
 def _scatter(values: Any, weights: Any, mean: Any) -> Any:
     centred = values - mean
     return (centred * weights[:, None]).T @ centred
+
+
+class _Classes:
+    """``GetMean``: the signal's and background's weights and means, and the mean of all events."""
+
+    def __init__(self, values: Any, weights: Any, signal: Any) -> None:
+        self.parts = ((values[signal], weights[signal]), (values[~signal], weights[~signal]))
+        self.totals = tuple(float(np.sum(w)) for _, w in self.parts)
+        self.means = tuple(w @ v / t for (v, w), t in zip(self.parts, self.totals))
+        (v_s, w_s), (v_b, w_b) = self.parts
+        self.mean = (w_s @ v_s + w_b @ v_b) / (self.totals[0] + self.totals[1])
+
+    def within(self) -> Any:
+        """``GetCov_WithinClass``: each class's scatter about its mean, over its weight, summed."""
+        (v_s, w_s), (v_b, w_b) = self.parts
+        within = _scatter(v_s, w_s, self.means[0]) / self.totals[0]
+        return within + _scatter(v_b, w_b, self.means[1]) / self.totals[1]
+
+    def between(self) -> Any:
+        """``GetCov_BetweenClass``: the class means' scatter about the mean of all, weighted."""
+        (total_s, total_b), (mean_s, mean_b), mean = self.totals, self.means, self.mean
+        between = total_s * np.outer(mean_s - mean, mean_s - mean)
+        return (between + total_b * np.outer(mean_b - mean, mean_b - mean)) / (total_s + total_b)

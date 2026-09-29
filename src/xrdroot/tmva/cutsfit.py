@@ -57,16 +57,16 @@ class CutTable:
     """``fEffBvsSLocal`` and ``fCutMin``/``fCutMax``: the best box in each signal-efficiency bin."""
 
     nbins: int = 100
-    effb: Any = None
-    lower: Any = None
-    upper: Any = None
     nvar: int = 0
+    effb: Any = field(init=False)
+    lower: Any = field(init=False)
+    upper: Any = field(init=False)
 
     def __post_init__(self) -> None:
-        if self.effb is None:
-            self.effb = np.full(self.nbins, -0.1)
-            self.lower = np.zeros((self.nbins, self.nvar))
-            self.upper = np.zeros((self.nbins, self.nvar))
+        """Every bin empty - a background efficiency of -0.1 - and its cuts at 0."""
+        self.effb = np.full(self.nbins, -0.1)
+        self.lower = np.zeros((self.nbins, self.nvar))
+        self.upper = np.zeros((self.nbins, self.nvar))
 
     def bins(self, effs: Any) -> Any:
         """``FindBin`` of each signal efficiency, from 1."""
@@ -98,18 +98,6 @@ class CutTable:
             if self.effb[index] < 0 or self.effb[index] > effb[row]:
                 self.effb[index] = effb[row]
                 self.lower[index], self.upper[index] = lower[row], upper[row]
-
-
-@dataclass
-class Ranges:
-    """The fit's intervals - an edge and a width per variable - and whether each is drawn."""
-
-    intervals: list[Interval] = field(default_factory=list)
-
-    def boxes(self, parameters: Any) -> tuple[Any, Any]:
-        """``MatchParsToCuts``: each row of parameters as its box's lower and upper edges."""
-        lower = parameters[:, 0::2]
-        return lower, lower + parameters[:, 1::2]
 
 
 def draw_mc(intervals: list[Interval], samples: int, seed: int) -> Any:

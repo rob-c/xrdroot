@@ -121,15 +121,9 @@ class Foam(Cells):
         """``PeekMax``: the active cell of largest driver that may yet be cut."""
         best, chosen, enough, shallow = 0.0, -1, True, True
         for cell in range(self.last + 1):
-            if self.status[cell] != 1 or self.driv[cell] < FLT_EPSILON:
+            if not self._candidate(cell):
                 continue
-            xdiv = abs(self.xdiv[cell])
-            if xdiv <= DBL_EPSILON or xdiv >= 1.0 - DBL_EPSILON:
-                continue
-            if self.max_depth > 0:
-                shallow = self.depth(cell) < self.max_depth
-            if self.nmin > 0:
-                enough = self.elements[cell, 0] > self.nmin
+            enough, shallow = self._limits(cell)
             if self.driv[cell] > best and enough and shallow:
                 best, chosen = float(self.driv[cell]), cell
         if chosen < 0 and enough and shallow:
@@ -138,6 +132,19 @@ class Foam(Cells):
                 "further splitting."
             )
         return chosen
+
+    def _candidate(self, cell: int) -> bool:
+        """An active cell with a driver, and a cut inside it rather than at an edge."""
+        if self.status[cell] != 1 or self.driv[cell] < FLT_EPSILON:
+            return False
+        xdiv = abs(self.xdiv[cell])
+        return bool(DBL_EPSILON < xdiv < 1.0 - DBL_EPSILON)
+
+    def _limits(self, cell: int) -> tuple[bool, bool]:
+        """Whether a cell holds more than ``Nmin`` events, and is above ``MaxDepth``, if asked."""
+        enough = self.nmin <= 0 or bool(self.elements[cell, 0] > self.nmin)
+        shallow = self.max_depth <= 0 or self.depth(cell) < self.max_depth
+        return enough, shallow
 
     def divide(self, cell: int) -> None:
         """``Divide``: the cell made inactive, and its two daughters made and explored."""

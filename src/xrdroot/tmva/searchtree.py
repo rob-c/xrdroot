@@ -116,11 +116,11 @@ def read_tree_xml(node: Any) -> TreeEvents:
     stack = children(node, "Node")
     while stack:
         item = stack.pop()
-        nvar = int(item.get("NVars"))
+        nvar = int(str(item.get("NVars")))
         numbers = np.asarray((item.text or "").split(), dtype=np.float32).astype(np.float64)
         rows.append(numbers[:nvar])
         targets.append(numbers[nvar:])
-        classes.append(int(item.get("type")))
+        classes.append(int(str(item.get("type"))))
         weights.append(float(np.float32(item.get("weight"))))
         stack.extend(children(item, "Node"))
     width = max((len(t) for t in targets), default=0)

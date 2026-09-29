@@ -12,7 +12,7 @@ background class's for the background ones, so a PCA is each class's own.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -30,7 +30,7 @@ EPSILON = 1.0e3 * float(np.finfo(np.float64).tiny)
 
 
 def transform_output(ps: Any, pb: Any, transform: bool) -> Any:
-    """``TransformLikelihoodOutput``: ``ps / (ps + pb)``, through ``-log(1/r - 1) / 15`` if asked."""
+    """``TransformLikelihoodOutput``: ``ps / (ps + pb)``, through ``-log(1/r - 1)/15`` if asked."""
     ps, pb = np.maximum(ps, EPSILON), np.maximum(pb, EPSILON)
     ratio = ps / (ps + pb)
     ratio = np.where(ratio >= 1.0, 1.0 - 1.0e-15, ratio)
@@ -44,7 +44,7 @@ class MethodLikelihood(Method):
     """``TMVA::MethodLikelihood``."""
 
     type_name = "Likelihood"
-    defaults = {"TransformOutput": False}
+    defaults: ClassVar[dict[str, Any]] = {"TransformOutput": False}
     help_text = "Likelihood"
 
     def process_options(self) -> None:
@@ -58,7 +58,7 @@ class MethodLikelihood(Method):
         )
 
     def _by_class(self, events: Events) -> tuple[Any, Any]:
-        """Each event's values transformed with the signal class's, and the background's, parameters."""
+        """Each event's values transformed with the signal's, and the background's, parameters."""
         signal = self.dsi.GetSignalClassIndex()
         background = 1 - signal
         return self.handler.apply(events, signal).values, self.handler.apply(
@@ -107,8 +107,9 @@ class MethodLikelihood(Method):
         info = self.dsi.variables[index]
         spec_s, spec_b = self._specs(index)
         stem = f"{self.dsi.name}_{self.name}_{info.label}"
+        ranges: list[tuple[int, float, float]]
         if info.vartype == "I":
-            start, stop = int(round(low)), int(round(high + 1))
+            start, stop = round(float(low)), round(float(high + 1))
             ranges = [(stop - start, start, stop)] * 2
         else:
             ranges = [(spec.hist_bins(fewest), low, high) for spec in (spec_s, spec_b)]

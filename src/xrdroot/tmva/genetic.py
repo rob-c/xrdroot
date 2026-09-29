@@ -86,7 +86,7 @@ class Interval:
 
 
 class GeneticRange:
-    """``TMVA::GeneticRange``: draws in one parameter's interval, from the population's generator."""
+    """``TMVA::GeneticRange``: one parameter's draws, from the population's generator."""
 
     def __init__(self, random: TRandom3, interval: Interval) -> None:
         self.random, self.interval = random, interval
@@ -96,7 +96,7 @@ class GeneticRange:
     def random_value(
         self, near: bool = False, value: float = 0.0, spread: float = 0.1, mirror: bool = False
     ) -> float:
-        """``Random``: a discrete value, the one value of an empty range, a Gaussian step, or anywhere."""
+        """``Random``: a discrete value, an empty range's value, a Gaussian step, or anywhere."""
         if self.interval.nbins > 0:
             draw = float(self.random.uniform(0.0, 1.0))
             return self.interval.GetElement(int(draw * self.interval.nbins))
@@ -145,7 +145,7 @@ class Genes:
 
 
 class GeneticPopulation:
-    """``TMVA::GeneticPopulation``: the genes, their ranges, and the one generator they draw from."""
+    """``TMVA::GeneticPopulation``: the genes, their ranges, and the generator they draw from."""
 
     def __init__(self, ranges: list[Interval], size: int, seed: int = 0) -> None:
         self.random = TRandom3(100)
@@ -177,7 +177,7 @@ class GeneticPopulation:
         spread: float = 0.1,
         mirror: bool = False,
     ) -> None:
-        """``Mutate``: each parameter of each gene from ``start`` on redrawn with ``probability`` %."""
+        """``Mutate``: each parameter of the genes from ``start`` on redrawn, ``probability`` %."""
         for genes in self.genes[start:]:
             for i, current in enumerate(genes.factors):
                 if float(self.random.uniform(100.0)) <= probability:
@@ -218,7 +218,7 @@ class GeneticPopulation:
             log.info(f"fitness: {genes.fitness:g}    {factors}")
 
     def TrimPopulation(self) -> None:
-        """``TrimPopulation``: sorted, and the worst dropped until there are as many as asked for."""
+        """``TrimPopulation``: sorted, the worst dropped until there are as many as asked for."""
         self.Sort()
         del self.genes[self.limit :]
 
@@ -263,7 +263,7 @@ class GeneticAlgorithm:
         self.Evolution()
 
     def CalculateFitness(self) -> float:
-        """``CalculateFitness``: every gene's fitness from the target; the population sorted by it."""
+        """``CalculateFitness``: each gene's fitness, from the target; the genes sorted by it."""
         self.best = DBL_MAX
         for genes in self.population.genes:
             genes.fitness = float(self.target.EstimatorFunction(FactorVector(genes.factors)))
@@ -272,7 +272,7 @@ class GeneticAlgorithm:
         return self.best
 
     def SpreadControl(self, steps: int, successes: int, factor: float) -> float:
-        """``SpreadControl``: the mutation spread narrowed after too much success, widened after too little."""
+        """``SpreadControl``: the spread narrowed after much success, widened after little."""
         improved = self.best < self.last_result or not self.successes
         if improved:
             self.last_result = self.best
@@ -287,7 +287,7 @@ class GeneticAlgorithm:
         return self.spread
 
     def HasConverged(self, steps: int, improvement: float) -> bool:
-        """``HasConverged``: has the best fitness stayed within ``improvement`` for ``steps`` generations?"""
+        """``HasConverged``: has the best fitness stayed within ``improvement`` for ``steps``?"""
         if self.converge_counter < 0:
             self.converge_value = self.best
         if abs(self.best - self.converge_value) <= improvement or steps < 0:
@@ -360,7 +360,8 @@ class GeneticFitter:
     def Run(self, parameters: Any = None) -> float:
         """``Run(pars)``: the fit, its best parameters put in ``pars``; the best fitness."""
         self.log.header(
-            "<GeneticFitter> Optimisation, please be patient ... (inaccurate progress timing for GA)"
+            "<GeneticFitter> Optimisation, please be patient ... "
+            "(inaccurate progress timing for GA)"
         )
         if parameters is None:
             parameters = FactorVector(interval.GetMean() for interval in self.ranges)
