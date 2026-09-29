@@ -87,18 +87,34 @@ def save(document: Document, path: Any) -> None:
     Path(path).write_text("\n".join(lines) + "\n")
 
 
+def _declared(element: Any) -> list[Namespace]:
+    """The namespaces an element declares, ``xmlns:prefix="reference"``."""
+    return [Namespace(name[6:], value) for name, value in element.attributes.items()
+            if name.startswith("xmlns:")]  # fmt: skip
+
+
+def _text(element: Any) -> str | None:
+    """An element's own text, the blanks between its children left out; ``None`` for none."""
+    texts = [c.data for c in element.childNodes if c.nodeType == c.TEXT_NODE and c.data.strip()]
+    return "".join(texts) if texts else None
+
+
+def _namespace(tag: str, declared: list[Namespace], scope: dict[str, Namespace]) -> Any:
+    """The namespace of an element: its prefix's, or - with none - the one it declares."""
+    prefix = tag.rpartition(":")[0]
+    if prefix:
+        return scope.get(prefix)
+    return declared[0] if declared else None
+
+
 def _node(element: Any, scope: dict[str, Namespace]) -> Node:
     """One element read, with the namespaces it and its ancestors declared."""
-    scope = dict(scope)
-    declared = [Namespace(name[6:], value) for name, value in element.attributes.items()
-                if name.startswith("xmlns:")]  # fmt: skip
-    scope.update({ns.name: ns for ns in declared})
-    prefix, _, name = element.tagName.rpartition(":")
-    node = Node(name, scope.get(prefix) if prefix else (declared[0] if declared else None))
+    declared = _declared(element)
+    scope = {**scope, **{ns.name: ns for ns in declared}}
+    node = Node(element.tagName.rpartition(":")[2], _namespace(element.tagName, declared, scope))
     node.declared = declared
     node.attrs = [(k, v) for k, v in element.attributes.items() if not k.startswith("xmlns:")]
-    texts = [c.data for c in element.childNodes if c.nodeType == c.TEXT_NODE and c.data.strip()]
-    node.content = "".join(texts) if texts else None
+    node.content = _text(element)
     for child in element.childNodes:
         if child.nodeType == child.ELEMENT_NODE:
             node.add(_node(child, scope))
