@@ -89,6 +89,9 @@ _HOLDS: dict[str, Callable[[float], float]] = {
 class PeakModel:
     """``TSpectrumFit``'s spectrum: its peaks, their tails and steps, and the background."""
 
+    #: The least weight AWMI's likelihood gives a channel.
+    likelihood_floor = 0.001
+
     def __init__(self, setup: PeakSetup, settings: FitSettings) -> None:
         count = len(setup.positions)
         self.count = count
@@ -128,6 +131,9 @@ class PeakModel:
         zero = np.zeros_like(self.i)
         rows = {"pos": lambda index: by_position[index // 2], "sigma": lambda index: by_sigma}
         return np.array([rows.get(kind, lambda index: zero)(index) for index, kind in self.free])
+
+    def stale(self) -> Array:
+        return np.zeros(len(self.free), dtype=bool)
 
     def taylored(self) -> Array:
         return np.array([kind in ("pos", "sigma") for _, kind in self.free], dtype=bool)

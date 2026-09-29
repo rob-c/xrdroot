@@ -62,6 +62,9 @@ class Model(Protocol):
     #: The fitted parameters' starting values, in ROOT's order.
     start: list[float]
 
+    #: The least weight AWMI's likelihood gives a channel: 0.001 in 1-D, 0.00001 in 2-D.
+    likelihood_floor: float
+
     def shape(self) -> Array:
         """The model at every fitted channel, from the parameters as they now are."""
 
@@ -70,6 +73,9 @@ class Model(Protocol):
 
     def second(self) -> Array:
         """A row per fitted parameter: the second derivative a Taylor step adds, or 0."""
+
+    def stale(self) -> Array:
+        """Whether each fitted parameter's correction is the one before it, not its own."""
 
     def taylored(self) -> Array:
         """Whether each fitted parameter's step takes the second-order correction."""
@@ -95,11 +101,12 @@ class _State:
 
     iteration: int = 0
     pmin: float = 0.0
+    d: float = 0.0
 
 
 def _total(terms: Array) -> float:
     """The channels' terms added one after another, as ROOT's ``+=`` adds them."""
-    return float(np.cumsum(terms)[-1])
+    return float(np.cumsum(terms)[-1]) if len(terms) else 0.0
 
 
 def _totals(rows: Array) -> Array:
@@ -144,13 +151,46 @@ def weights(y: Array, f: Array, statistic: int, likelihood_floor: float) -> Arra
     return np.where(y == 0, 1.0, y)
 
 
-def _taylor(model: Model, a: Array, y: Array, f: Array, ywm: Array) -> Array:
-    """The derivatives with the second-order correction, where ROOT makes it."""
+def _corrected(d: Array, a: Array, y: Array, f: Array, ywm: Array) -> Array:
+    """The second-order correction ``d`` to a derivative ``a``, 0 where it would flip its sign."""
     with np.errstate(divide="ignore", invalid="ignore"):
-        d = (model.second() * np.abs(y - f)) / ((2 * a) * ywm)
+        d = (d * np.abs(y - f)) / ((2 * a) * ywm)
     d = np.where(np.abs(a) > 0.00000001, d, 0.0)
     flip = ((a + d <= 0) & (a >= 0)) | ((a + d >= 0) & (a <= 0))
-    return np.where(model.taylored()[:, None], a + np.where(flip, 0.0, d), a)
+    return np.where(flip, 0.0, d)
+
+
+def _carried(carry: float, a: Array, y: Array, f: Array, ywm: Array) -> Array:
+    """A correction made from the one before it, channel after channel, from ``carry``."""
+    out = np.empty_like(a)
+    for n in range(len(a)):
+        carry = float(_corrected(np.array([carry]), a[n : n + 1], y[n : n + 1], f[n : n + 1],
+                                 ywm[n : n + 1])[0])  # fmt: skip
+        out[n] = carry
+    return out
+
+
+def _taylor(model: Model, a: Array, y: Array, f: Array, ywm: Array, state: _State) -> Array:
+    """The derivatives with the second-order correction, where ROOT makes it.
+
+    A parameter ROOT has no second derivative for (``TSpectrum2Fit``'s ``ro``)
+    is corrected by the ``d`` left over from the one before - in the same
+    channel, or, when it is the first, in the channel before, and so on from
+    the fit's start: ROOT's ``d`` is one variable for the whole fit.
+    """
+    second, stale, out = model.second(), model.stale(), a.copy()
+    last: Array | None = None
+    for k in np.flatnonzero(model.taylored()):
+        if not stale[k]:
+            last = _corrected(second[k], a[k], y, f, ywm)
+        elif last is not None:
+            last = _corrected(last, a[k], y, f, ywm)
+        else:
+            last = _carried(state.d, a[k], y, f, ywm)
+        out[k] = a[k] + last
+    if last is not None:
+        state.d = float(last[-1])
+    return out
 
 
 def _moments(a: Array, c: Array, y: Array, f: Array, ywm: Array, statistic: int) -> Array:
@@ -164,7 +204,8 @@ def _moments(a: Array, c: Array, y: Array, f: Array, ywm: Array, statistic: int)
     return _totals(der), _totals(temp)
 
 
-def awmi_gradient(model: Model, y: Array, settings: FitSettings) -> tuple[Array, Array, float]:
+def awmi_gradient(model: Model, y: Array, settings: FitSettings,
+                  state: _State) -> tuple[Array, Array, float]:  # fmt: skip
     """AWMI's step direction: each parameter's gradient over its own curvature.
 
     The power ``c = a**(power - 2)`` weights each channel by how much the
@@ -172,11 +213,11 @@ def awmi_gradient(model: Model, y: Array, settings: FitSettings) -> tuple[Array,
     """
     f = model.shape()
     chi = gradient_chi(y, f, settings.statistic)
-    ywm = weights(y, f, settings.statistic, 0.001)
+    ywm = weights(y, f, settings.statistic, model.likelihood_floor)
     a = model.derivatives()
     c = ourpowl(a, settings.power - 2)
     if settings.taylor == TAYLOR_SECOND:
-        a = _taylor(model, a, y, f, ywm)
+        a = _taylor(model, a, y, f, ywm, state)
     else:
         a = np.where(model.taylored()[:, None], a + 0.0, a)
     der, temp = _moments(a, c, y, f, ywm, settings.statistic)
@@ -203,7 +244,7 @@ def stiefel_inversion(matrix: Array, rhs: Array) -> Array:
     size = len(rhs)
     x, u = np.zeros(size), np.zeros(size)
     sk, normk_old, k = 0.0, 0.0, 0
-    while True:
+    while size:
         r = np.cumsum(np.concatenate([-rhs[:, None], matrix * x[None, :]], axis=1), axis=1)[:, -1]
         normk = _total(r * r)
         if k != 0:
@@ -215,9 +256,11 @@ def stiefel_inversion(matrix: Array, rhs: Array) -> Array:
         normk_old, k = normk, k + 1
         if not (k < size and abs(normk) > 1e-50):
             return x
+    return x
 
 
-def stiefel_gradient(model: Model, y: Array, settings: FitSettings) -> tuple[Array, Array, float]:
+def stiefel_gradient(model: Model, y: Array, settings: FitSettings,
+                     state: _State) -> tuple[Array, Array, float]:  # fmt: skip
     """Stiefel's step: the normal equations of the linearised fit, solved.
 
     Its ``temp`` - which the errors are divided by - is the matrix's diagonal.
@@ -318,7 +361,7 @@ def run(model: Model, y: Array, settings: FitSettings, stiefel: bool) -> Fitted:
     fitted = Fitted(list(model.start))
     state = _State()
     while state.iteration < settings.iterations:
-        der, temp, chi2 = gradient(model, y, settings)
+        der, temp, chi2 = gradient(model, y, settings, state)
         fitted.temp = temp.tolist()
         _stepped(model, y, fitted.xk, der, chi2, settings, state)
         _error_sums(model, y, power, fitted)
