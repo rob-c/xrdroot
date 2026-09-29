@@ -134,6 +134,21 @@ class RooAbsData(RooPrintable):
         keep = self.mask(cut, rng)
         return float(np.sum(self.weights()[keep]))
 
+    def moment(self, var: Any, order: float, *rest: Any) -> float:
+        from .moments import moment
+
+        return moment(self, var, order, *rest)
+
+    def mean(self, var: Any, cutSpec: Any = None, cutRange: Any = None) -> float:
+        from .moments import mean
+
+        return mean(self, var, cutSpec, cutRange)
+
+    def sigma(self, var: Any, cutSpec: Any = None, cutRange: Any = None) -> float:
+        from .moments import sigma
+
+        return sigma(self, var, cutSpec, cutRange)
+
     def sumEntriesW2(self) -> float:
         return float(np.sum(self.weights_squared()))
 

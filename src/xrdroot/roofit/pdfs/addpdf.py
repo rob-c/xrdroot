@@ -62,7 +62,10 @@ class RooAddPdf(RooAbsPdf):
         super().__init__(name, title)
         pdfs, coefs, recursive = _arguments(args)
         self._recursive = recursive
-        self._all_extendable = not coefs
+        #: A coefficient list given, even empty, makes fractions: one density is all of the sum.
+        rest = [a for a in args if not isinstance(a, bool)]
+        given = len(rest) > 1 and _is_list(rest[-1])
+        self._all_extendable = not coefs and not given
         self._check(pdfs, coefs, recursive)
         made = self._recursive_coefs(pdfs, coefs) if recursive else list(coefs)
         self._have_last = recursive or (bool(coefs) and len(coefs) == len(pdfs))
@@ -81,7 +84,7 @@ class RooAddPdf(RooAbsPdf):
                 f"RooAddPdf::RooAddPdf({self._name}): Recursive fractions option can "
                 "only be used if Npdf=Ncoef+1."
             )
-        for pdf in pdfs if not coefs else []:
+        for pdf in pdfs if self._all_extendable else []:
             if not pdf.canBeExtended():
                 raise ValueError(
                     f"RooAddPdf::RooAddPdf({self._name}) pdf {pdf.GetName()} is not "
