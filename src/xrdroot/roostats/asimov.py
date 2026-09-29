@@ -57,12 +57,9 @@ def _single(pdf: Any, observables: Any, weight: Any, category: Any = None) -> An
 
     own = list(pdf.getObservables(observables))  # the density's own, which it reads
     if not pdf.canBeExtended():
-        from ..errors import UnsupportedFeatureError
+        from .asimovcount import counting_asimov_data
 
-        raise UnsupportedFeatureError(
-            f"GenerateAsimovData makes the Asimov data of an extended density here; "
-            f"{pdf.GetName()} is not extended, and its counting form is not here yet"
-        )
+        return counting_asimov_data(pdf, RooArgSet(own), category)
     columns = [*own, weight] + ([category] if category is not None else [])
     if category is not None:
         index = category.getCurrentIndex()

@@ -38,11 +38,10 @@ class HypoTestInverterResult(SimpleInterval):
         self._expected: list[Any] = []
 
     def Clone(self, name: Any = None) -> HypoTestInverterResult:
-        """A copy - its limits to be found again, as the copy constructor leaves them."""
+        """A copy - ``TObject::Clone``'s, streamed: the limits found so far too."""
         made = HypoTestInverterResult.__new__(HypoTestInverterResult)
         made.__dict__.update(self.__dict__)
         made._name = self._name if name is None else str(name)
-        made._lower = made._upper = math.nan
         made._interpolate, made._fitted = list(self._interpolate), list(self._fitted)
         made._errors, made._x = list(self._errors), list(self._x)
         made._results = [one.Clone() for one in self._results]

@@ -50,6 +50,12 @@ class RooMultiVarGaussian(RooAbsPdf):
         self.inverse = np.linalg.inv(self.cov)
         self.lower = _cholesky_upper(self.cov).T
 
+    def xVec(self) -> Any:
+        return self.xs
+
+    def muVec(self) -> Any:
+        return self.mus
+
     def compute(self, ctx: Context) -> Any:
         diffs = [x.compute(ctx) - mu.compute(ctx) for x, mu in zip(self.xs, self.mus)]
         alpha: Any = 0.0
