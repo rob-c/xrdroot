@@ -145,22 +145,26 @@ class BayesianCalculator(Named):
         self._nll_min = minimizer.FValMinimum() if minimizer.Minimize(100, 1e-3, 1e-3) else 0.0
         log(self, INFO, "Eval", "BayesianCalculator::GetPosteriorFunction : minimum of NLL vs POI "
             f"for POI =  {g(poi.getVal())} min NLL = {g(self._nll_min)}")  # fmt: skip
+        self._integrated = self._integrated_posterior(poi)
+        return self._integrated
+
+    def _integrated_posterior(self, poi: Any) -> Any:
+        """The posterior with the nuisance parameters integrated out: by RooFit - or with none
+        to integrate - or by the adaptive integrator."""
         if not len(self._nuisance) or "ROOFIT" in self._integration:
-            self._integrated = self._roofit_posterior()
-        elif self._integration and self._integration not in ("ADAPTIVE", ""):
+            return self._roofit_posterior()
+        if self._integration and self._integration not in ("ADAPTIVE", ""):
             from ..errors import UnsupportedFeatureError
 
             raise UnsupportedFeatureError(
                 f"BayesianCalculator integrates the nuisance parameters numerically here; its "
                 f"{self._integration} integration is not here yet"
             )
-        else:
-            self._posterior_function = PosteriorFunction(
-                self._log_like, poi, list(self._nuisance), self._prior, 1.0, self._nll_min,
-                self._iterations)  # fmt: skip
-            name = f"posteriorfunction_from_{self._log_like.GetName()}"
-            self._integrated = Posterior(name, self._posterior_function, poi)
-        return self._integrated
+        self._posterior_function = PosteriorFunction(
+            self._log_like, poi, list(self._nuisance), self._prior, 1.0, self._nll_min,
+            self._iterations)  # fmt: skip
+        return Posterior(f"posteriorfunction_from_{self._log_like.GetName()}",
+                         self._posterior_function, poi)  # fmt: skip
 
     def _roofit_posterior(self) -> Any:
         """``exp(-nll + min)`` of the model times the prior - integrated over the nuisance
@@ -240,26 +244,30 @@ class BayesianCalculator(Named):
             log(self, ERROR, "Eval", "BayesianCalculator: Numerical error computing CDF integral - "
                 "try a different method ")  # fmt: skip
             return
-        found = []
-        for cut, low, bound in ((lower_cut, poi.getMin(), 0.0), (upper_cut, None, 1.0)):
-            if (bound == 0.0 and cut <= 0) or (bound == 1.0 and cut >= 1.0):
-                found.append(poi.getMin() if bound == 0.0 else poi.getMax())
-                continue
-            cdf.SetOffset(cut)
-            start = found[0] if low is None else low
-            precision = self._precision
-            ok, root, _ = brent_root(cdf, start, poi.getMax(), 200, precision, precision)
-            if cdf.error:
-                log(self, WARNING, "Eval", "BayesianCalculator: Numerical error integrating the "
-                    " CDF   ")  # fmt: skip
-            if not ok:
-                side = "lower limit" if low is not None else "upper limit"
-                log(self, ERROR, "NumericIntegration", "BayesianCalculator::GetInterval - Error "
-                    f"from root finder when searching {side} !")  # fmt: skip
-                return
-            found.append(root)
-        self._lower, self._upper = found
+        lower = poi.getMin() if lower_cut <= 0 else self._crossing(cdf, lower_cut, poi.getMin(),
+                                                                   "lower limit")  # fmt: skip
+        if lower is None:
+            return
+        upper = poi.getMax() if upper_cut >= 1.0 else self._crossing(cdf, upper_cut, lower,
+                                                                     "upper limit")  # fmt: skip
+        if upper is None:
+            return
+        self._lower, self._upper = lower, upper
         self._valid = True
+
+    def _crossing(self, cdf: Any, cut: float, start: float, side: str) -> Any:
+        """Where the cumulative posterior reaches ``cut``, from ``start`` up - or ``None``."""
+        cdf.SetOffset(cut)
+        precision = self._precision
+        ok, root, _ = brent_root(cdf, start, self._poi[0].getMax(), 200, precision, precision)
+        if cdf.error:
+            log(self, WARNING, "Eval", "BayesianCalculator: Numerical error integrating the  CDF  "
+                " ")  # fmt: skip
+        if not ok:
+            log(self, ERROR, "NumericIntegration", "BayesianCalculator::GetInterval - Error from "
+                f"root finder when searching {side} !")  # fmt: skip
+            return None
+        return root
 
     # -- the scanned posterior ----------------------------------------------------
 
@@ -420,15 +428,18 @@ def _quantile(cumulative: list[float], alpha: list[float], beta: list[float], ga
         # ROOT adds ``dx`` here if the bin's upper cumulative is ``r`` too - which the search,
         # finding the last point not above ``r``, never leaves it.
         return alpha[bin_]
+    return alpha[bin_] + _within_bin(beta[bin_], gamma[bin_], rr)
+
+
+def _within_bin(beta: float, gamma: float, rr: float) -> float:
+    """How far into its bin ``r`` falls: the parabola's root - or, flat, the line's."""
     import numpy as np
 
     with np.errstate(all="ignore"):  # C's division: a flat bin's zero slope gives inf or nan
-        fac = float(np.float64(-2.0 * gamma[bin_] * rr) / beta[bin_] / beta[bin_])
+        fac = float(np.float64(-2.0 * gamma * rr) / beta / beta)
     if fac != 0 and fac <= 1:
-        xx = (-beta[bin_] + math.sqrt(beta[bin_] * beta[bin_] + 2 * gamma[bin_] * rr)) / gamma[bin_]
-    else:
-        xx = rr / beta[bin_] if beta[bin_] != 0.0 else 0.0
-    return alpha[bin_] + xx
+        return (-beta + math.sqrt(beta * beta + 2 * gamma * rr)) / gamma
+    return rr / beta if beta != 0.0 else 0.0
 
 
 def _equal(a: float, b: float) -> bool:
