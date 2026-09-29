@@ -15,7 +15,7 @@ from xrdroot.tmva import TMVAError
 from xrdroot.tmva.foam import Density, Foam, ranges
 from xrdroot.tmva.foamcells import Cells
 from xrdroot.tmva.log import Logger
-from xrdroot.tmva.methods.pdefoamio import read_foams, write_foams
+from xrdroot.tmva.methods.pdefoamio import _columns, pdefoam_columns, read_foams, write_foams
 
 __all__ = ["session"]
 
@@ -93,11 +93,11 @@ def test_a_regression_of_two_targets_is_refused(session):
         factory.BookMethod(made, FOAM, "PDEFoam", SMALL)
 
 
-def test_a_foam_file_xrdroot_did_not_write_is_refused(session):
+def test_a_foam_file_of_neither_kind_is_refused(session):
     classify([(FOAM, "PDEFoam", SMALL)])
     with xrdroot.create(weights("PDEFoam").replace(".xml", "_foams.root")) as out:
         out.tree("Other", {"x": "f8"}).extend({"x": np.zeros(2)})
-    with pytest.raises(TMVAError, match="is not one xrdroot wrote"):
+    with pytest.raises(TMVAError, match="nor a tree of cells xrdroot wrote"):
         reader("PDEFoam", silent=True)
 
 
@@ -124,3 +124,51 @@ def test_foams_written_beside_the_working_directory_are_read_back(session):
     write_foams("foams.root", [cells], ["OneFoam"])
     back = read_foams("foams.root", ["OneFoam"], 2, Logger("PDEFoam"))
     assert back[0].columns()["status"].tolist() == [1]
+
+
+def _ref(uid: int) -> dict:
+    return {"TObject": {"fUniqueID": uid, "fBits": 0}, "fPID": 0}
+
+
+def _cell(serial: int, parent: int, daughters: tuple[int, int], element: object) -> dict:
+    return {
+        "TObject": {"fUniqueID": serial + 1, "fBits": 24},
+        "fSerial": serial,
+        "fStatus": int(element is not None),
+        "fParent": _ref(parent),
+        "fDaught0": _ref(daughters[0]),
+        "fDaught1": _ref(daughters[1]),
+        "fXdiv": 0.25,
+        "fBest": 1 if element is None else -1,
+        "fIntegral": 2.0,
+        "fDrive": 3.0,
+        "fElement": element,
+    }
+
+
+def _vector(*values: float) -> dict:
+    return {"fNrows": len(values), "fRowLwb": 0, "fElements": np.array(values)}
+
+
+def test_a_foam_tmva_streamed_is_read_by_the_cells_its_trefs_point_at():
+    foam = {
+        "fCells": [
+            _cell(2, 1, (0, 0), _vector(0.5)),
+            _cell(0, 0, (2, 3), None),
+            _cell(1, 1, (0, 0), _vector(0.25, 0.1)),
+        ]
+    }
+    columns = pdefoam_columns(foam)
+    assert columns["parent"] == [-1, 0, 0]
+    assert (columns["dau0"], columns["dau1"]) == ([1, -1, -1], [2, -1, -1])
+    assert columns["element0"] == [0.0, 0.25, 0.5]
+    assert columns["element1"] == [0.0, 0.1, 0.0]
+    cells = Cells.from_columns(2, {k: np.asarray(v) for k, v in columns.items()})
+    assert cells.hcub(2)[1].tolist() == [1.0, 0.75]
+    assert _columns({"TMVA::PDEFoam": foam}, 2)["status"] == [0, 1, 1]
+
+
+def test_a_streamed_cell_holding_more_than_two_numbers_is_not_a_foam_tmva_reads_back():
+    foam = {"fCells": [_cell(0, 0, (0, 0), _vector(1.0, 2.0, 3.0))]}
+    with pytest.raises(ValueError, match="holding 3 numbers"):
+        pdefoam_columns(foam)

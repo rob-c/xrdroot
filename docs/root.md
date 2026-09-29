@@ -1440,8 +1440,9 @@ read: `HMatrix`, `CFMlpANN`, `TMlpANN`, `BoostedFisher` (TMVA's generalised boos
 what is not here: `FitMethod=SA` and `MINUIT` and a MINUIT `Converger`, RuleFit's
 `RFFriedman`, the `Spline3`, `Spline5` and `KDE` PDFs, PDEFoam's decision-tree cell splitting and kernels, and the DL layers other
 than dense (`CONV`, `MAXPOOL`, `RNN`, `LSTM`, `GRU`, `BNORM`...). PDE-Foam writes its foams
-beside the weight file as trees of cells; TMVA's own `_foams.root`, which holds `PDEFoam`
-objects, is refused when read, and `RStandardScaler.Save` and `SaveXGBoost` write trees that
+beside the weight file as trees of cells. It also reads TMVA's own `_foams.root`, whose
+`PDEFoam` objects link their cells by `TRef`, so an Application given ROOT's weight files
+answers as ROOT does. `RStandardScaler.Save` and `SaveXGBoost` write trees that
 xrdroot reads but ROOT does not. TMVA's standalone `.class.C` files are not written.
 
 ## Columns

@@ -16,7 +16,10 @@ from typing import Any
 from .buffer import Buffer
 from .errors import UnsupportedFeatureError
 
-__all__ = ["KNOWN", "read_recorder"]
+__all__ = ["KNOWN", "read_recorder", "read_tref"]
+
+#: ``TRef::kHasUUID``: the reference names its process by UUID rather than by number.
+HAS_UUID = 1 << 7
 
 
 def read_recorder(_described: Any) -> Callable[[Buffer], dict[str, Any]]:
@@ -37,5 +40,25 @@ def read_recorder(_described: Any) -> Callable[[Buffer], dict[str, Any]]:
     return read
 
 
+def read_tref(_described: Any) -> Callable[[Buffer], dict[str, Any]]:
+    """How a ``TRef`` reads: a ``TObject`` whose identifier is the referenced object's.
+
+    ``TRef::Streamer`` writes its ``TObject`` with no byte count and then the
+    process the object belongs to - its number, or for ``kHasUUID`` its UUID
+    as a string. The object itself is whichever one in the same file carries
+    that identifier; resolving it is left to whoever holds both.
+    """
+
+    def read(buf: Buffer) -> dict[str, Any]:
+        unique, bits = buf.tobject()
+        process = buf.string() if bits & HAS_UUID else buf.u16()
+        return {"TObject": {"fUniqueID": unique, "fBits": bits}, "fPID": process}
+
+    return read
+
+
 #: The classes this module reads, against how each is read.
-KNOWN: dict[str, Callable[[Any], Callable[[Buffer], Any]]] = {"TRecorder": read_recorder}
+KNOWN: dict[str, Callable[[Any], Callable[[Buffer], Any]]] = {
+    "TRecorder": read_recorder,
+    "TRef": read_tref,
+}
