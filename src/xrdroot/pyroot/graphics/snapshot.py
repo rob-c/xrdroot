@@ -85,7 +85,10 @@ def _painted(pad: TPad) -> list[tuple[Any, str]]:
     for obj, _ in list(pad.primitives):
         if _lays_out(obj):
             obj.paint_pad()
-    return [(_converted(obj), option) for obj, option in pad.primitives if not _lays_out(obj)]
+    from .cutg import cut_drawn
+
+    cut = [cut_drawn(obj, option) for obj, option in pad.primitives if not _lays_out(obj)]
+    return [(_converted(obj), option) for obj, option in cut]
 
 
 def _drawn(pad: TPad) -> list[tuple[Any, str]]:

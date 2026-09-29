@@ -41,6 +41,7 @@ SUBMODULES = [
     "graphics.polar",
     "graphics.polargraph",
     "graphics.texec",
+    "graphics.cutg",
     "roofit",
     "roostats",
     "tcut",
