@@ -479,6 +479,8 @@ class TGraphAsymmErrors(TGraph):
         self._points = (columns[0], columns[1])
         self._bars = dict(zip(("exl", "exh", "eyl", "eyh"), columns[2:]))
         self._changed()
+        if "v" in str(option).lower():
+            self.Print()
 
 
 TGraphBentErrors = TGraphAsymmErrors

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import math
 import re
+import sys
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -396,6 +397,49 @@ def _report(points: list[Point], nbins: int, choice: Choice) -> None:
     if choice.verbose:
         message("Info", where, "made a graph with %d points from %d bins", len(points), nbins)
         message("Info", where, "used confidence level: %.2lf\n", choice.level)
+        if choice.prior is not None:
+            message("Info", where, "used prior probability ~ beta(%.2lf,%.2lf)", *choice.prior)
+
+
+def _binned_alike(passed: Any, total: Any) -> bool:
+    """``TEfficiency::CheckBinning``: as many bins, each edge the same to a part in 10^15."""
+    a, b = passed.GetXaxis(), total.GetXaxis()
+    if a.GetNbins() != b.GetNbins():
+        message("Info", "TROOT::TEfficiency::CheckBinning",
+                "Histograms are not consistent: they have different number of bins")  # fmt: skip
+        return False
+    for i in range(1, a.GetNbins() + 2):
+        x, y = a.GetBinLowEdge(i), b.GetBinLowEdge(i)
+        if abs(x - y) > 0.5 * 1e-15 * (abs(x) + abs(y)) and abs(x - y) >= sys.float_info.min:
+            message("Info", "TROOT::TEfficiency::CheckBinning",
+                    "Histograms are not consistent: they have different bin edges")  # fmt: skip
+            return False
+    return True
+
+
+def _entries_alike(passed: Any, total: Any) -> bool:
+    """``TEfficiency::CheckEntries``: nothing passed that was not tried, flow bins and all."""
+    for i in range(passed.GetNbinsX() + 2):
+        if passed.GetBinContent(i) > total.GetBinContent(i):
+            message("Info", "TROOT::TEfficiency::CheckEntries",
+                    "Histograms are not consistent: passed bin content > total bin content")  # fmt: skip
+            return False
+    return True
+
+
+def consistent(passed: Any, total: Any, pois: bool) -> bool:
+    """Whether ``Divide`` will divide these: alike in binning, and - unless a Poisson ratio - no
+    bin with more passed than tried, each with ROOT's word if not."""
+    if not _binned_alike(passed, total):
+        if not pois:
+            message("Error", "TROOT::TEfficiency::CheckConsistency",
+                    "passed TEfficiency objects have different binning")  # fmt: skip
+        return False
+    if not pois and not _entries_alike(passed, total):
+        message("Error", "TROOT::TEfficiency::CheckConsistency",
+                "passed TEfficiency objects do not have consistent bin contents")  # fmt: skip
+        return False
+    return True
 
 
 def divide(passed: Any, total: Any, option: str = "cp") -> list[Point] | None:
@@ -413,6 +457,9 @@ def divide(passed: Any, total: Any, option: str = "cp") -> list[Point] | None:
         message("Info", "TGraphAsymmErrors::Divide",
                 "weight will be considered in the Histogram Ratio")  # fmt: skip
     _warn(setup)
+    if not consistent(passed, total, choice.pois):
+        message("Error", "TGraphAsymmErrors::Divide", "passed histograms are not consistent")
+        return None
     points = _points(passed, total, setup)
     _report(points, passed.GetNbinsX(), choice)
     return points

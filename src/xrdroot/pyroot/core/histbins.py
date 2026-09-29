@@ -182,11 +182,59 @@ class Bins:
     def _errors(self) -> np.ndarray[Any, Any]:
         return np.asarray(self._xrd._bin_errors())
 
+    #: ``TH1::EBinErrorOpt``: errors from the squared weights, or a count's Poisson interval
+    #: at one sigma, or at 95%.
+    kNormal, kPoisson, kPoisson2 = 0, 1, 2
+
+    def SetBinErrorOption(self, type: int) -> None:
+        """``SetBinErrorOption``: how ``GetBinErrorLow`` and ``GetBinErrorUp`` work errors out."""
+        self._core()["fBinStatErrOpt"] = int(type)
+
+    def GetBinErrorOption(self) -> int:
+        return int(self._core().get("fBinStatErrOpt", 0))
+
+    def _poisson_alpha(self) -> float | None:
+        """The Poisson interval's two-sided ``alpha``, or ``None`` where errors are normal.
+
+        A histogram filled with weights other than one has normal errors whatever it is told.
+        """
+        option = self.GetBinErrorOption()
+        core = self._core()
+        weighted = self.GetSumw2N() > 0 and core.get("fTsumw") != core.get("fTsumw2")
+        if option == self.kNormal or weighted:
+            return None
+        return 0.05 if option == self.kPoisson2 else 1.0 - 0.682689492
+
+    def _count(self, args: tuple[Any, ...], method: str) -> float | None:
+        """The bin's content for a Poisson interval, or ``None`` for one below zero."""
+        content = self.GetBinContent(*args)
+        if int(content) < 0:
+            message("Warning", f"TH1::{method}",
+                    "Histogram has negative bin content-force usage to normal errors")  # fmt: skip
+            self.SetBinErrorOption(self.kNormal)
+            return None
+        return content
+
     def GetBinErrorLow(self, *args: Any) -> float:
-        return self.GetBinError(*args)
+        """``GetBinErrorLow``: how far below the content its Poisson interval reaches, if asked."""
+        from .rmath import gamma_quantile
+
+        alpha = self._poisson_alpha()
+        content = None if alpha is None else self._count(args, "GetBinErrorLow")
+        if alpha is None or content is None:
+            return self.GetBinError(*args)
+        n = int(content)
+        return 0.0 if n == 0 else content - gamma_quantile(alpha / 2, n, 1.0)
 
     def GetBinErrorUp(self, *args: Any) -> float:
-        return self.GetBinError(*args)
+        """``GetBinErrorUp``: how far above the content its Poisson interval reaches, if asked."""
+        from .rmath import gamma_quantile_c
+
+        alpha = self._poisson_alpha()
+        content = None if alpha is None else self._count(args, "GetBinErrorUp")
+        if alpha is None or content is None:
+            return self.GetBinError(*args)
+        return gamma_quantile_c(alpha / 2, int(content) + 1, 1.0) - content
 
     def SetBinError(self, *args: Any) -> None:
         """``SetBinError(bin, e)``: squared weights kept from now on, this bin's ``e²``."""
