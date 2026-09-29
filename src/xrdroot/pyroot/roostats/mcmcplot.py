@@ -22,7 +22,7 @@ BLACK, GRAY, GREEN, PINK, VIOLET = 1, 920, 416, 900, 880
 
 def posterior_hist(interval: Any) -> Any:
     """``GetPosteriorHist``: ``MCMCposterior_hist``, a ``TH1F`` - or ``TH2F`` - of the chain."""
-    from ..core import TH1F, TH2F
+    from ..core.hists import TH1F, TH2F
 
     axes = list(interval.GetAxes())
     chain = interval.GetChain()
@@ -159,13 +159,13 @@ class MCMCIntervalPlot(Named):
         first point a green star."""
         import numpy as np
 
-        from ..core import TGraph
+        from ..core.graphs import TGraph
 
         chain = self._interval.GetChain()
         burn = self._interval.GetNumBurnInSteps() if self._show_burn_in else 0
         xs = np.asarray(chain.values(xVar.GetName()), dtype=np.float64)
         ys = np.asarray(chain.values(yVar.GetName()), dtype=np.float64)
-        walk = TGraph(len(xs) - burn, xs[burn:], ys[burn:])
+        walk: Any = TGraph(len(xs) - burn, xs[burn:], ys[burn:])
         walk.SetTitle(self._title or f"2-D Scatter Plot of Markov chain for {xVar.GetName()}, "
                       f"{yVar.GetName()}")  # fmt: skip
         for axis, var in ((walk.GetXaxis(), xVar), (walk.GetYaxis(), yVar)):
@@ -177,13 +177,13 @@ class MCMCIntervalPlot(Named):
         walk.Draw("A,L,P,same")
         kept = [walk]
         if burn > 0:
-            early = TGraph(burn - 1, xs[:burn], ys[:burn])
+            early: Any = TGraph(burn - 1, xs[:burn], ys[:burn])
             early.SetLineColor(PINK)
             early.SetMarkerStyle(6)
             early.SetMarkerColor(PINK)
             early.Draw("L,P,same")
             kept.append(early)
-        first = TGraph(1, xs[:1], ys[:1])
+        first: Any = TGraph(1, xs[:1], ys[:1])
         first.SetLineColor(GREEN)
         first.SetMarkerStyle(3)
         first.SetMarkerSize(2)

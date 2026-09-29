@@ -173,7 +173,7 @@ def closed_names(func: Any, names: frozenset[str], rng: Any) -> frozenset[str]:
     numerically (``setForceNumInt``)."""
     if getattr(func, "_force_num_int", False):
         return frozenset()
-    return func.analytic_names(names, rng) & names
+    return frozenset(func.analytic_names(names, rng) & names)
 
 
 def numeric_names(func: Any, names: frozenset[str], rng: Any = None) -> list[str]:

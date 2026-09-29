@@ -102,7 +102,7 @@ class NumberCountingPdfFactory:
             rows.append((float(mainMeas[i]), side, tau, side / tau, 1.0 / math.sqrt(side)))
         self._add(ws, dsName, rows)
 
-    def _add(self, ws: Any, name: str, rows: list[tuple[float, ...]]) -> None:
+    def _add(self, ws: Any, name: str, rows: list[Any]) -> None:
         """Each bin's ``tau``, observables and background range, and the one-event dataset."""
         from ..roofit.data.dataset import RooDataSet
 

@@ -26,8 +26,8 @@ from ..roofit.real import RooAbsReal
 __all__ = ["CdfFunction", "Functor", "PosteriorFunction", "Posterior"]
 
 #: ``IntegratorOneDimOptions``' and ``IntegratorMultiDimOptions``' defaults.
-ONE_DIM = {"abs": 1e-9, "rel": 1e-9, "limit": 1000}
-MULTI_DIM = {"abs": 0.0, "rel": 1e-9, "calls": 100000, "size": 100000}
+ONE_DIM: dict[str, Any] = {"abs": 1e-9, "rel": 1e-9, "limit": 1000}
+MULTI_DIM: dict[str, Any] = {"abs": 0.0, "rel": 1e-9, "calls": 100000, "size": 100000}
 
 
 class Functor:

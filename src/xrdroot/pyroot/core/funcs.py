@@ -305,7 +305,9 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
         numbers = [float(value) for value in rest if not isinstance(value, str)]
         spans = numbers[: 2 * self.DIM] + [0.0, 1.0] * (self.DIM - len(numbers) // 2)
         span = _ranges(spans, self.DIM)
-        if callable(source) and not isinstance(source, str):
+        from .strings import TString
+
+        if callable(source) and not isinstance(source, (str, TString)):  # a TString is a formula
             extra = numbers[2 * self.DIM :]
             npar = int(extra[0]) if extra else 0
             model = adapted(source, self.DIM)

@@ -45,6 +45,9 @@ def _column_of(source: Any, name: str) -> np.ndarray[Any, Any]:
 class RooDataSet(RooAbsData):
     """Unbinned events, each with a value of every variable and, optionally, a weight."""
 
+    #: The title of the store it was read with, from a file - which names itself so.
+    _store_title: str | None = None
+
     def __init__(self, name: Any = "", title: Any = "", *args: Any, **kwargs: Any) -> None:
         variables, rest = _split(args)
         options = commands(rest, kwargs)

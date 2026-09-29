@@ -28,7 +28,7 @@ class TMatrixDSym:
             values = np.zeros((int(values), int(values if ncols is None else ncols)))
         elif isinstance(values, TMatrixDSym):
             values = values._m
-        self._m = np.array(values, dtype=np.float64)
+        self._m: np.ndarray[Any, Any] = np.array(values, dtype=np.float64)
 
     def __call__(self, i: int, j: int) -> float:
         return float(self._m[i, j])

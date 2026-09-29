@@ -169,7 +169,7 @@ def _fast_log_one(x0: float) -> float:
     res = res - fe * 2.121944400546905827679e-4
     res = res - 0.5 * x2
     res = x + res
-    return res + fe * 0.693359375
+    return float(res + fe * 0.693359375)
 
 
 def fast_log(values: Any) -> Any:

@@ -60,7 +60,7 @@ class PointSetInterval(ConfInterval):
         if not self.CheckParameters(point):
             return False
         if self._points.ClassName() == "RooDataHist":
-            return self._points.weight(RooArgSet(as_list(point))) > 0
+            return bool(self._points.weight(RooArgSet(as_list(point))) > 0)
         rows = range(self._points.numEntries())
         return any(_same_point(point, self._points.get(i)) for i in rows)
 
@@ -107,7 +107,7 @@ class ConfidenceBelt(Named):
         title = rest[0] if rest and isinstance(rest[0], str) else None
         super().__init__(name, title)
         data = next((one for one in rest if hasattr(one, "numEntries")), None)
-        self._points = _own_copy(data) if data is not None else None
+        self._points: Any = _own_copy(data) if data is not None else None
         self._regions: dict[int, AcceptanceRegion] = {}
         self._lookups: list[tuple[float, float]] = []
 
@@ -124,7 +124,7 @@ class ConfidenceBelt(Named):
         for index in range(self._points.numEntries()):
             if _same_point(point, self._points.get(index)):
                 return index
-        return self._points.numEntries()
+        return int(self._points.numEntries())
 
     def AddAcceptanceRegion(self, point: Any, index: int, lower: float, upper: float,
                             cl: float = -1.0, leftside: float = -1.0) -> None:  # fmt: skip

@@ -102,7 +102,7 @@ def _code5_one(low: float, high: float, x0: float, nominal: float, x: float,
         return res * (math.pow(high, x) - 1.0)
     if x <= -x0:
         return res * (math.pow(low, -x) - 1.0)
-    return res * (_inside(x, x0, _terms_one(high, low, x0)) - 1.0)
+    return float(res * (_inside(x, x0, _terms_one(high, low, x0)) - 1.0))
 
 
 def _terms(high: Any, low: Any, x0: float) -> tuple[Any, ...]:

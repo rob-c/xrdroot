@@ -47,7 +47,7 @@ def _central(x: float, ndof: float) -> float:
     if x <= 0:
         return 0.0
     half = ndof / 2.0
-    return x ** (half - 1.0) * math.exp(-x / 2.0) / math.gamma(half) / 2.0**half
+    return float(x ** (half - 1.0) * math.exp(-x / 2.0) / math.gamma(half) / 2.0**half)
 
 
 class RooChiSquarePdf(RooAbsPdf):
@@ -76,7 +76,10 @@ class RooChiSquarePdf(RooAbsPdf):
         from ...stats import incomplete_gamma
 
         low, high = self.x.getMin(rng), self.x.getMax(rng)
-        half = lambda n: float(n) / 2.0  # noqa: E731
+
+        def half(n: Any) -> float:
+            return float(n) / 2.0
+
         return _each(
             lambda n: incomplete_gamma(half(n), high / 2) - incomplete_gamma(half(n), low / 2),
             self.ndof.compute(ctx),
@@ -104,7 +107,7 @@ def noncentral_pdf(x: float, r: float, lam: float) -> float:
         return 0.0
     z = math.sqrt(lam * x)
     scale = (x / lam) ** (0.25 * r - 0.5)
-    return 0.5 * math.exp(-0.5 * (x + lam)) * scale * bessel_i(0.5 * r - 1.0, z)
+    return float(0.5 * math.exp(-0.5 * (x + lam)) * scale * bessel_i(0.5 * r - 1.0, z))
 
 
 def _term(x: float, k: float, lam: float, i: int, cdf: Any = None) -> float:
@@ -114,8 +117,9 @@ def _term(x: float, k: float, lam: float, i: int, cdf: Any = None) -> float:
 
     weight = math.exp(-lam / 2.0) * (lam / 2.0) ** i
     if cdf is None:
-        return weight * chisquared_pdf(x, k + 2 * i) / math.gamma(i + 1)
-    return weight * (cdf(k + 2 * i)[1] / math.gamma(i + 1) - cdf(k + 2 * i)[0] / math.gamma(i + 1))
+        return float(weight * chisquared_pdf(x, k + 2 * i) / math.gamma(i + 1))
+    ends = cdf(k + 2 * i)
+    return float(weight * (ends[1] / math.gamma(i + 1) - ends[0] / math.gamma(i + 1)))
 
 
 class RooNonCentralChiSquare(RooAbsPdf):
@@ -178,7 +182,7 @@ class RooNonCentralChiSquare(RooAbsPdf):
             i += 1
         for i in range(dominant - 1, -1, -1):
             total += term(i)
-        return total
+        return float(total)
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         if self.x.GetName() not in names or not self.x.isFundamental():

@@ -246,7 +246,7 @@ class RooNLLVar(RooAbsReal):
             if self._constrained_over is not None:
                 found = found & self._constrained_over
             cache[id(constraint)] = found
-        return found
+        return frozenset(found)
 
     def defaultErrorLevel(self) -> float:
         """One half - which RooFit's likelihood, a sum with a RooNLLVar in it, says it takes."""

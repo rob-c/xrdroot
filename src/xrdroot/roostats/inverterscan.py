@@ -217,7 +217,7 @@ class _Search:
 
     def _exponential(self, low: float, high: float) -> Any:
         """``expoFit``: through the target at the limit, of the slope between the ends."""
-        from ..pyroot.core import TF1
+        from ..pyroot.core.funcs import TF1
 
         expo = TF1("expoFit", "[0]*exp([1]*(x-[2]))", low, high)
         expo.FixParameter(0, self.target)

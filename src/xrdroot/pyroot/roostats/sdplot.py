@@ -45,7 +45,7 @@ class SamplingDistPlot(Named):
     def AddSamplingDistribution(self, samplingDist: Any,
                                 drawOptions: str = "NORMALIZE HIST") -> float:  # fmt: skip
         """A histogram of the distribution: its scale, one over its integral if normalised."""
-        from ..core import TH1F
+        from ..core.hists import TH1F
 
         values = list(samplingDist.GetSamplingDistribution())
         if not values:
@@ -292,16 +292,14 @@ class HypoTestPlot(SamplingDistPlot):
             ends = (value, math.inf) if result.GetPValueIsRightTail() else (-math.inf, value)
             for dist in (alt, null):
                 if dist is not None:
-                    self.AddSamplingDistributionShaded(dist, *ends, opt)
+                    self.AddSamplingDistributionShaded(dist, ends[0], ends[1], opt)
             top = self._extent()[2]
             self.AddLine(value, 0, value, top * 0.66, "test statistic data")
         self.ApplyDefaultStyle()
 
     def ApplyDefaultStyle(self) -> None:
         """The alternate in blue, the null in red, both two pixels wide."""
-        result = getattr(self, "_result", None)
-        if result is None:
-            return
+        result = self._result
         for dist, color in ((result.GetAltDistribution(), BLUE),
                             (result.GetNullDistribution(), RED)):  # fmt: skip
             if dist is not None:

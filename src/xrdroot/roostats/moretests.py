@@ -37,8 +37,8 @@ class SimpleLikelihoodRatioTestStat(TestStatistic):
         self._null_pdf, self._alt_pdf = nullPdf, altPdf
         if nullPdf is not None and nullParameters is None:
             nullParameters, altParameters = nullPdf.getVariables(), altPdf.getVariables()
-        self._null = RooArgSet(as_list(nullParameters)).snapshot() if nullPdf else None
-        self._alt = RooArgSet(as_list(altParameters)).snapshot() if nullPdf else None
+        self._null: Any = RooArgSet(as_list(nullParameters)).snapshot() if nullPdf else None
+        self._alt: Any = RooArgSet(as_list(altParameters)).snapshot() if nullPdf else None
         self._cond, self._glob = RooArgSet(), RooArgSet()
         self._first, self._reuse = True, False
         self._detailed = False
@@ -244,7 +244,7 @@ class MaxLikelihoodEstimateTestStat(TestStatistic):
     def GetVarName(self) -> str:
         return f"Maximum Likelihood Estimate of {self._parameter.GetName()}"
 
-    def PValueIsRightTail(self, isright: Any = None) -> Any:  # type: ignore[override]
+    def PValueIsRightTail(self, isright: Any = None) -> Any:
         if isright is None:
             return self._upper
         self._upper = bool(isright)

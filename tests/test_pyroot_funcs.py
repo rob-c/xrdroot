@@ -304,3 +304,10 @@ def test_a_formula_is_written_as_a_tformula_and_a_function_using_it_as_root_expa
         assert back["sqroot"].formula == (
             "x*[p0]*exp(-0.5*((x-[p1])/[p2])*((x-[p1])/[p2]))+[p3]*(abs(sin(x)/x))"
         )
+
+
+def test_a_tstring_formula_is_a_formula_not_a_callable() -> None:
+    """``TF1("g", TString::Format(...), 0, 9)``: the string's text, as ROOT reads it."""
+    formula = ROOT.TString.Format("0.2*ROOT::Math::chisquared_pdf(2*x,%d,0)", 1)
+    g = ROOT.TF1("g_tstring", formula, 0, 9)
+    assert g.Eval(1.0) == pytest.approx(0.2 * math.exp(-1.0) / math.sqrt(2 * math.pi * 2.0))

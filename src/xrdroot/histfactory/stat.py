@@ -24,7 +24,8 @@ __all__ = ["absolute_uncertainty", "gamma_constraints", "hist_values", "relative
 def _bins(hist: Any) -> list[int]:
     """The global numbers of the histogram's bins, under- and overflows skipped."""
     count = hist.GetNbinsX() * hist.GetNbinsY() * hist.GetNbinsZ()
-    found, number = [], 0
+    found: list[int] = []
+    number = 0
     while len(found) < count:
         number += 1
         if not (hist.IsBinUnderflow(number) or hist.IsBinOverflow(number)):
@@ -120,7 +121,8 @@ def gamma_constraints(gammas: list[Any], sigmas: list[float], threshold: float,
             nominal = RooRealVar(f"nom_{name}", f"nom_{name}", 1.0, 0, 10)
             nominal.setConstant(True)
             width = RooConstVar(f"{name}_sigma", f"{name}_sigma", sigma)
-            term = RooGaussian(f"{name}_constraint", f"{name}_constraint", nominal, gamma, width)
+            term: Any = RooGaussian(f"{name}_constraint", f"{name}_constraint", nominal, gamma,
+                                    width)  # fmt: skip
         else:
             tau = 1.0 / (sigma * sigma)
             nominal = RooRealVar(f"nom_{name}", f"nom_{name}", tau)

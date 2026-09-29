@@ -30,7 +30,7 @@ def not_written(what: str, filename: str) -> None:
 def _path(directory: Any) -> str:
     """``GetDirPath``: the directory's path in its file, and a slash."""
     path = directory.GetPath()
-    return (path.split(":", 1)[1] if ":" in path else path) + "/"
+    return str((path.split(":", 1)[1] if ":" in path else path) + "/")
 
 
 def _written(directory: Any, hist: Any, name: Any = None) -> str:

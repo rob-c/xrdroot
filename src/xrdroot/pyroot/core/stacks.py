@@ -44,7 +44,7 @@ class _Holder(TNamed):
 
     @property
     def _xrd(self) -> Any:
-        members = {"TNamed": {"fName": self.GetName(), "fTitle": self.GetTitle()},
+        members: dict[str, Any] = {"TNamed": {"fName": self.GetName(), "fTitle": self.GetTitle()},
                    self.HELD: _Listed([unwrap(item) for item in self._held], self._options),
                    "fFunctions": [],
                    "fHistogram": None, "fMinimum": self._extremes[0],

@@ -94,7 +94,7 @@ class Data:
 def _histogram(files: dict[str, Any], InputFile: str, HistoPath: str, HistoName: str) -> Any:
     """``Channel::GetHistogram``: the histogram, read from its file - opened once - and cloned
     out of it, said as ROOT says it."""
-    from ..pyroot.core import TFile
+    from ..pyroot.core.files import TFile
 
     _hf(PROGRESS, f"Getting histogram {InputFile}:{HistoPath}/{HistoName}")
     handle = files.get(InputFile)
@@ -185,7 +185,7 @@ class Sample:
 
     def SetValue(self, value: float) -> None:
         """A counting sample: a one-bin histogram ``<name>_hist`` holding ``value``."""
-        from ..pyroot.core import TH1F
+        from ..pyroot.core.hists import TH1F
 
         name = f"{self._name}_hist"
         hist = TH1F(name, name, 1, 0, 1)

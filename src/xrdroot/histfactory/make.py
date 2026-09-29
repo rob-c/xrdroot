@@ -36,7 +36,7 @@ def _written(measurement: Any, filename: str, ws: Any, channel: Any = None) -> N
     """The file of a workspace: the measurement's histograms - of one channel, if given."""
     import copy
 
-    from ..pyroot.core import TFile
+    from ..pyroot.core.files import TFile
 
     handle = TFile.Open(filename, "RECREATE")
     not_written(f"the RooWorkspace {ws.GetName()}", filename)

@@ -78,7 +78,7 @@ def _category(builder: Builder, record: Streamed) -> Any:
 
     made = RooCategory(name_of(record), title_of(record))
     states = record.get("_stateNames") or {}
-    for label in record.get("_insertionOrder") or sorted(states, key=states.get):
+    for label in record.get("_insertionOrder") or sorted(states, key=lambda label: states[label]):
         made.defineType(str(label), int(states[label]))
     if states:
         made.setIndex(int(record.get("_currentIndex")))

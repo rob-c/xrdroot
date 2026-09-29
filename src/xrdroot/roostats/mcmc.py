@@ -207,15 +207,15 @@ class MCMCInterval(ConfInterval):
                 "cutoff.  Check that num burn in steps < num steps in the Markov chain.  "
                 f"Returning param.{end}().")  # fmt: skip
         if self._cutoff < 0 or param.GetName() not in names:
-            return param.getMax() if upper else param.getMin()
+            return float(param.getMax() if upper else param.getMin())
         return self._extreme_bin(names.index(param.GetName()), param, upper)
 
     def _extreme_bin(self, at: int, param: Any, upper: bool) -> float:
         """The farthest centre, in the parameter, of the bins above the cutoff."""
         chosen = [c[at] for c, w in zip(*self._bins) if w >= self._cutoff]
         if upper:
-            return max([param.getMin(), *chosen])
-        return min([param.getMax(), *chosen])
+            return float(max([param.getMin(), *chosen]))
+        return float(min([param.getMax(), *chosen]))
 
     # -- the tail-fraction interval -----------------------------------------------
 

@@ -21,8 +21,8 @@ class ProfileInspector:
     """The nuisance parameters' profiles along the parameter of interest."""
 
     def GetListOfProfilePlots(self, data: Any, config: Any) -> Any:
-        from ..core import TGraph
         from ..core.collections import TList
+        from ..core.graphs import TGraph
 
         poi_set, nuisance, pdf = (config.GetParametersOfInterest(),
                                   config.GetNuisanceParameters(), config.GetPdf())  # fmt: skip
@@ -44,7 +44,7 @@ class ProfileInspector:
                     values.setdefault(par.GetName(), []).append(par.getVal())
         found = TList()
         for name, ys in values.items():  # added as the last point is, in the set's order
-            graph = TGraph(POINTS, xs, ys)
+            graph: Any = TGraph(POINTS, xs, ys)
             graph.SetName(f"{name}_{poi.GetName()}_profile")
             graph.GetXaxis().SetTitle(poi.GetName())
             graph.GetYaxis().SetTitle(name)

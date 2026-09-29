@@ -118,7 +118,7 @@ def _c_lgamma() -> Callable[[float], float]:
     except (OSError, AttributeError):  # pragma: no cover - every platform here has one
         return math.lgamma
     found.restype, found.argtypes = ctypes.c_double, [ctypes.c_double]
-    return found  # type: ignore[no-any-return]
+    return found
 
 
 _lgamma = _c_lgamma()

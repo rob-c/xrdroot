@@ -35,7 +35,7 @@ NAMED = {"char": "b", "short": "h", "int": "i", "long": "q", "float": "f", "doub
          "Long64_t": "q", "ULong64_t": "Q", "bool": "?", "Int_t": "i", "Double_t": "d",
          "UInt_t": "I", "Bool_t": "?", "Float_t": "f", "long long": "q"}  # fmt: skip
 #: A reader by hand, for a class whose streamer RooFit writes itself: ``(reader, class)``.
-CUSTOM: dict[str, Callable[[Reader, str], Any]] = {}
+CUSTOM: dict[str, Callable[[Reader, Any], Any]] = {}
 
 
 class Streamed:
@@ -199,9 +199,9 @@ class Reader:
         text = _clean(typename)
         if text in ("string", "TString"):
             _version, end = self.buf.header()
-            found = self.buf.string()
+            text = self.buf.string()
             self.buf.resume(end)
-            return found
+            return text
         head, args = _template(text)
         version, end = self.buf.header()
         if head in ("vector", "list", "deque", "set", "unordered_set", "multiset"):

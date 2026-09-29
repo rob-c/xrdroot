@@ -35,6 +35,8 @@ class Stats:
     GetXaxis: Any
     GetYaxis: Any
     GetZaxis: Any
+    SetBit: Any
+    ResetBit: Any
 
     def _axes(self) -> list[Any]:
         return [self.GetXaxis(), self.GetYaxis(), self.GetZaxis()][: len(self._xrd.axes)]

@@ -34,7 +34,9 @@ class BayesianCalculator(Named):
 
     def __init__(self, data: Any = None, model: Any = None, *args: Any) -> None:
         super().__init__("")
-        self._data, self._pdf, self._prior = data, None, None
+        self._data = data
+        self._pdf: Any = None
+        self._prior: Any = None
         self._poi, self._nuisance = RooArgSet(), RooArgSet()
         self._conditional, self._global = RooArgSet(), RooArgSet()
         self._size, self._left = 0.05, 0.5
@@ -388,7 +390,7 @@ def _saved(function: Any, low: float, high: float, npx: int) -> Any:
         bin_ = min(npx - 1, int((x - low) / dx))
         xlow = low + bin_ * dx
         xup, ylow, yup = xlow + dx, values[bin_], values[bin_ + 1]
-        return ((xup * ylow - xlow * yup) + x * (yup - ylow)) / dx
+        return float(((xup * ylow - xlow * yup) + x * (yup - ylow)) / dx)
 
     return interpolated
 

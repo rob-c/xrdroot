@@ -152,7 +152,7 @@ def find_interpolated_limit(result: Any, target: float, low: bool, xmin: float =
     if xmin >= xmax:
         chosen = _search_range(result, xs, ys, target, low, varmin, varmax)
         if chosen is None:
-            return result._lower if low else result._upper
+            return float(result._lower if low else result._upper)
         low, xmin, xmax = chosen
     limit, _, _ = graph_x(result, xs, ys, target, low, xmin, xmax)
     if low:
@@ -160,7 +160,7 @@ def find_interpolated_limit(result: Any, target: float, low: bool, xmin: float =
     else:
         result._upper = limit
     estimated_error(result, target, low, xmin, xmax)
-    return result._lower if low else result._upper
+    return float(result._lower if low else result._upper)
 
 
 def _search_range(result: Any, xs: list[float], ys: list[float], target: float, low: bool,
@@ -219,7 +219,7 @@ def closest_point_index(result: Any, target: float, mode: int = 0, xtarget: floa
 def _error_graph(result: Any, xmin: float, xmax: float) -> tuple[Any, int]:
     """The points inside ``[xmin, xmax]`` with errors, as a ``TGraphErrors`` - and how many
     points were inside at all."""
-    from ..pyroot.core import TGraphErrors
+    from ..pyroot.core.graphs import TGraphErrors
 
     graph, inside = TGraphErrors(), 0
     for i in sorted_order(result._x):
@@ -267,7 +267,7 @@ def _valid_graph(result: Any, lower: bool, xmin: float, xmax: float) -> Any:
 
 def _fitted_error(result: Any, graph: Any, target: float, lower: bool, limit: float,
                   given: tuple[float, float]) -> float:  # fmt: skip
-    from ..pyroot.core import TF1
+    from ..pyroot.core.funcs import TF1
 
     xs = sorted(result._x)
     low, high = given if given[0] < given[1] else (xs[0], xs[-1])
@@ -292,7 +292,7 @@ def _fitted_error(result: Any, graph: Any, target: float, lower: bool, limit: fl
     if result.GetYError(index) <= 0:
         return 0.0
     slope = fct.Derivative(result.GetXValue(index))
-    return min(abs(result.GetYError(index) / slope), high - low)
+    return float(min(abs(result.GetYError(index) / slope), high - low))
 
 
 #: ``fgAsymptoticMaxSigma``: the asymptotic expected p-values from -5 to 5 sigma, a sigma apart.
@@ -429,7 +429,7 @@ def expected_limit(result: Any, nsig: float, lower: bool, opt: str = "") -> floa
         if len(values) <= 1:
             return 0.0
         step = 2 * MAX_SIGMA / (len(values) - 1)
-        return values[math.floor((nsig + MAX_SIGMA) / step + 0.5)]
+        return float(values[math.floor((nsig + MAX_SIGMA) / step + 0.5)])
     p = gaussian_cdf(nsig)
     if "P" in str(opt).upper():
         return _limit_of_quantiles(result, p, lower)

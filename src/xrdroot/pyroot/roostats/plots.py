@@ -163,7 +163,7 @@ class LikelihoodIntervalPlot(Named):
 
     def _tf1(self, profile: Any, var: Any, param: Any, ends: Any, npoints: int, option: str) -> Any:
         """``asTF``: the profile as a function of the parameter, over twice the interval."""
-        from ..core import TF1
+        from ..core.funcs import TF1
 
         low, high = ends
         xmin, xmax = max(var.getMin(), 2 * low - high), min(var.getMax(), 2 * high - low)
@@ -174,7 +174,7 @@ class LikelihoodIntervalPlot(Named):
             var.setVal(float(x[0]))
             return float(profile.getVal())
 
-        f1 = TF1(f"{self._name}_PLL_{var.GetName()}", at, xmin, xmax, 0)
+        f1: Any = TF1(f"{self._name}_PLL_{var.GetName()}", at, xmin, xmax, 0)
         f1.SetNpx(npoints)
         f1.SetTitle(self._title)
         x1, x2 = xmin, xmax
@@ -214,9 +214,9 @@ class LikelihoodIntervalPlot(Named):
 
     def _contour(self, px: Any, py: Any, npoints: int) -> Any:
         """``GetContourPoints``' contour as a closed ``TGraph``, said if short of points."""
-        from ..core import TGraph
+        from ..core.graphs import TGraph
 
-        graph = TGraph(npoints + 1)
+        graph: Any = TGraph(npoints + 1)
         xs, ys = [0.0] * (npoints + 1), [0.0] * (npoints + 1)
         found = self._interval.GetContourPoints(px, py, xs, ys, npoints)
         if found < npoints:
@@ -231,7 +231,7 @@ class LikelihoodIntervalPlot(Named):
 
     def _frame_2d(self, px: Any, py: Any, npoints: int) -> None:
         """``_hist2D``: the axes, over the range set or the parameters'."""
-        from ..core import TH2F
+        from ..core.hists import TH2F
 
         title = self._title or f"Contour of {py.GetName()} vs {px.GetName()}"
         title = f"{title};{px.GetName()};{py.GetName()}"
@@ -260,11 +260,11 @@ class LikelihoodIntervalPlot(Named):
         self._plotted = graph
 
     def _best_marker(self, best: Any, px: Any, py: Any) -> None:
-        from ..core import TGraph
+        from ..core.graphs import TGraph
 
         if best is None:
             return
-        marker = TGraph(1)
+        marker: Any = TGraph(1)
         marker.SetPoint(0, best.getRealValue(px.GetName()), best.getRealValue(py.GetName()))
         marker.SetMarkerStyle(33)
         if self._color:

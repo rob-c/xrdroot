@@ -47,11 +47,11 @@ def _observed_points(results: Any, mode: str) -> list[tuple[float, float, float]
 def make_plot(results: Any, option: str = "") -> Any:
     """``MakePlot``: the observed ``CLs`` - or what ``option`` names - against the parameter,
     the points it could not compute skipped with a warning."""
-    from ..core import TGraphErrors
+    from ..core.graphs import TGraphErrors
 
     mode = _mode(option)
     kept = _observed_points(results, mode)
-    graph = TGraphErrors(len(kept))
+    graph: Any = TGraphErrors(len(kept))
     for i, (x, y, e) in enumerate(kept):
         graph.SetPoint(i, x, y)
         graph.SetPointError(i, 0.0, e)
@@ -106,19 +106,20 @@ def _band_point(band: Any, at: int, x: float, q: tuple[float, float, float]) -> 
 
 def make_expected_plot(plot: Any, results: Any, nsig1: float = 1.0, nsig2: float = 2.0) -> Any:
     """``MakeExpectedPlot``: the median expected curve, dashed, and its bands."""
-    from ..core import TGraph, TGraphAsymmErrors, TMultiGraph
+    from ..core.graphs import TGraph, TGraphAsymmErrors
+    from ..core.stacks import TMultiGraph
 
     first, second = nsig1 > 0, nsig2 > nsig1
     nsig1, nsig2 = abs(nsig1), abs(nsig2)
     name = "CLs" if results._use_cls else "CLs+b"
-    median = TGraph()
+    median: Any = TGraph()
     median.SetTitle(f"Expected {name} - Median")
-    bands = [TGraphAsymmErrors() if on else None for on in (first, second)]
+    bands: list[Any] = [TGraphAsymmErrors() if on else None for on in (first, second)]
     for band, nsig in zip(bands, (nsig1, nsig2)):
         if band is not None:
             band.SetTitle(_band_title(name, nsig))
     _fill_bands(results, median, bands, (nsig1, nsig2))
-    made = TMultiGraph(f"{plot.GetName()}_expected", f"Expected {plot.GetTitle()}")
+    made: Any = TMultiGraph(f"{plot.GetName()}_expected", f"Expected {plot.GetTitle()}")
     for band, colour in ((bands[1], YELLOW), (bands[0], GREEN)):
         if band is not None:
             band.SetFillColor(colour)

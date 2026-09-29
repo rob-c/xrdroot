@@ -46,7 +46,7 @@ def _about(
     values = np.asarray(data.column(var.GetName()), dtype=np.float64)[keep]
     weights = np.asarray(data.weights(), dtype=np.float64)[keep]
     terms = weights * np.power(values - offset, order)
-    return Kahan().extend(terms.tolist()).total / total
+    return float(Kahan().extend(terms.tolist()).total / total)
 
 
 def mean(data: Any, var: Any, cut: Any = None, rng: Any = None) -> float:

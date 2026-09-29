@@ -371,12 +371,12 @@ class HypoTestInverter:
         if x < low:
             log(None, ERROR, "InputArguments", "HypoTestInverter::RunOnePoint - Out of range: "
                 f"using the lower bound {g(low)} on the scanned variable rather than {g(x)}")
-            return low
+            return float(low)
         if x > high:
             if x > high * (1.0 + 1e-12):
                 log(None, ERROR, "InputArguments", "HypoTestInverter::RunOnePoint - Out of range: "
                     f"using the upper bound {g(high)} on the scanned variable rather than {g(x)}")
-            return high
+            return float(high)
         return x
 
     def RunOnePoint(self, thisX: float, adaptive: bool = False, clTarget: float = -1) -> bool:

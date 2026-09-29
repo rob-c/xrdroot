@@ -327,7 +327,7 @@ def chisquare_quantile(p: float, ndf: float) -> float:
     else:
         ch = (p * xx * math.exp(g + xx * 0.6931471806)) ** (1.0 / xx)
         if ch < 5e-7:
-            return ch
+            return float(ch)
     for _ in range(20):
         q, ch = ch, _as91_step(ch, p, xx, g)
         if abs(q / ch - 1) > 5e-7:
