@@ -62,10 +62,13 @@ def test_an_event_past_the_end_of_a_dataset_is_none() -> None:
     assert (data.get(3), data.get(-1), data.get(2) is not None) == (None, None, True)
 
 
-def test_a_sum_of_products_of_two_lists_prints_both_lists() -> None:
-    """``RooAddition(a, b)`` of two lists prints its proxies; of one, its terms joined by +."""
+def test_a_sum_of_products_of_two_lists_is_a_sum_of_products_named_as_root_names_them() -> None:
+    """``RooAddition(a, b)`` of two lists makes a ``RooProduct`` of each pair, ``ad_[x_x_s]``,
+    and prints those terms joined by + - ROOT's ``RooAddition::ad[ ad_[x_x_s] + ad_[m_x_m] ]``."""
     x, m, s, _g = gaussian()
-    assert RooAddition("ad", "ad", [x, m], [s, m]).printArgs() == "[ set=(x,m) set2=(s,m) ]"
+    ad = RooAddition("ad", "ad", [x, m], [s, m])
+    assert ad.printArgs() == "[ ad_[x_x_s] + ad_[m_x_m] ]"
+    assert [one.ClassName() for one in ad.servers()] == ["RooProduct", "RooProduct"]
 
 
 def test_a_function_is_histogrammed_by_the_names_of_its_variables_and_their_bins(

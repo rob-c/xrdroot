@@ -172,6 +172,7 @@ def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
         offset=bool(options.get("Offset", 0, False)),
         copies=fitted,
     )
+    nll.wrapper_name = "RooEvaluatorWrapper"
     elapsed = (time.perf_counter() - started) * 1000
     log(pdf, INFO, "Fitting", f"Creation of NLL object took {elapsed:g} ms")
     return nll

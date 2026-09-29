@@ -28,6 +28,8 @@ __all__ = ["Factory", "split"]
 VARIABLE = re.compile(r"^([A-Za-z_]\w*)\[([^\]]*)\]$")
 #: ``Class::name(args)`` or ``Class(args)``.
 CALL = re.compile(r"^([A-Za-z_$][\w:]*?)(?:::([A-Za-z_]\w*))?\((.*)\)$", re.S)
+#: ``globCounter``: how many top-level objects have been named ``gobj<n>`` this session.
+_GLOBAL = [0]
 #: A number, as the factory reads one.
 NUMBER = re.compile(r"^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$")
 
@@ -60,6 +62,17 @@ class Factory:
 
     def __init__(self, workspace: Any) -> None:
         self.w = workspace
+        #: ``_autoNamePrefix``: what an object made without a name inside another is called -
+        #: ``<outer>_<n>`` for the n-th argument of ``outer``, one more digit inside a list.
+        self.prefix: list[str] = []
+
+    def build_arg(self, owner: str, index: int, text: str) -> Any:
+        """The ``index``-th argument of ``owner``, built under the name RooFit gives it."""
+        self.prefix.append(f"{owner}_{index + 1}")
+        try:
+            return self.build(text)
+        finally:
+            self.prefix.pop()
 
     def keep(self, obj: Any) -> Any:
         """``obj`` imported, and the workspace's copy of it - what the factory hands back."""
@@ -101,7 +114,16 @@ class Factory:
     def _list(self, text: str) -> Any:
         if not (text.startswith("{") and text.endswith("}")):
             return None
-        return RooArgList([self.build(part) for part in split(text[1:-1])])
+        made = []
+        for index, part in enumerate(split(text[1:-1])):
+            if self.prefix:
+                self.prefix.append(f"{self.prefix[-1]}{index + 1}")
+            try:
+                made.append(self.build(part))
+            finally:
+                if self.prefix:
+                    self.prefix.pop()
+        return RooArgList(made)
 
     def _variable(self, text: str) -> Any:
         found = VARIABLE.match(text)
@@ -135,14 +157,18 @@ class Factory:
         kind = self.w._aliases.get(kind, kind)
         operator = OPERATORS.get(kind)
         if operator is not None:
-            return self.keep(operator(self, name or self._auto(kind, args), args))
-        return self.keep(self._instance(kind, name or self._auto(kind, args), args))
+            return self.keep(operator(self, name or self._auto(), args))
+        return self.keep(self._instance(kind, name or self._auto(), args))
 
-    @staticmethod
-    def _auto(kind: str, args: list[str]) -> str:
-        """The name the factory gives an object made without one: its class and arguments."""
-        clean = [re.sub(r"\W", "_", a.split("[")[0]) for a in args]
-        return "_".join([kind.split("::")[-1], *clean])
+    def _auto(self) -> str:
+        """The name of an object made without one: the argument it is of, or ``gobj<n>``."""
+        if self.prefix:
+            return self.prefix[-1]
+        while True:
+            found = f"gobj{_GLOBAL[0]}"
+            _GLOBAL[0] += 1
+            if self.w.arg(found) is None:
+                return found
 
     def _instance(self, kind: str, name: str, args: list[str]) -> Any:
         from .registry import find
@@ -153,14 +179,14 @@ class Factory:
                 f"the factory has no class {kind}: RooFit's classes here are those of "
                 "xrdroot.roofit.registry"
             )
-        values = [self._argument(cls, arg) for arg in args]
+        values = [self._argument(cls, name, index, arg) for index, arg in enumerate(args)]
         return cls(name, name, *values)
 
-    def _argument(self, cls: Any, text: str) -> Any:
+    def _argument(self, cls: Any, owner: str, index: int, text: str) -> Any:
         """An argument: an object - or an enumerator of the class, such as ``NoMirror``."""
         if re.match(r"^[A-Za-z_]\w*$", text) and self.w.obj(text) is None and hasattr(cls, text):
             return getattr(cls, text)
-        return self.build(text)
+        return self.build_arg(owner, index, text)
 
 
 def _category(name: str, text: str) -> Any:

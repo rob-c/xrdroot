@@ -23,6 +23,7 @@ __all__ = ["DEFAULTS", "FLAGS", "Commands", "RooCmdArg", "RooLinkedList", "comma
 #: The default arguments of RooFit's command functions, from ``RooGlobalFunc.h``.
 DEFAULTS: dict[str, tuple[Any, ...]] = {
     "Save": (True,),
+    "CloneData": (True,),
     "Extended": (True,),
     "Verbose": (True,),
     "Timer": (True,),
@@ -119,6 +120,11 @@ class RooCmdArg:
             self.args = (_read_string(self.name, self.args[0]), *self.args[1:])
         if self.name == "DataError" and self.args and self.args[0] is None:
             self.args = (ERROR_TYPES["None"], *self.args[1:])  # PyROOT's DataError=None
+        if self.name == "CloneData":  # RooFit says so as the command is made, not as it is read
+            from .messages import INFO, log
+
+            log(None, INFO, "InputArguments", f"The deprecated RooFit::CloneData("
+                f"{int(bool(self.args[0]))}) option passed to createNLL() is ignored.")  # fmt: skip
 
     def value(self, index: int = 0, default: Any = None) -> Any:
         """Its ``index``-th value, or ``default`` if it was made with fewer."""

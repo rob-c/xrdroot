@@ -106,19 +106,19 @@ class RooAddition(RooAbsReal):
 
     def __init__(self, name: Any, title: Any, terms: Any, second: Any = None) -> None:
         super().__init__(name, title)
-        self.terms = self._list_proxy("set", as_list(terms))
-        self.second = self._list_proxy("set2", as_list(second)) if second is not None else None
+        if second is not None:  # the products of two lists, each a RooProduct of its own
+            terms = [
+                RooProduct(f"{name}_[{a.GetName()}_x_{b.GetName()}]",
+                           f"{name}_[{a.GetName()}_x_{b.GetName()}]", [a, b])  # fmt: skip
+                for a, b in zip(as_list(terms), as_list(second))
+            ]
+        self.terms = self._list_proxy("!set", as_list(terms))
 
     def compute(self, ctx: Context) -> Any:
-        if self.second is None:
-            values = [term.compute(ctx) for term in self.terms]
-        else:
-            values = [a.compute(ctx) * b.compute(ctx) for a, b in zip(self.terms, self.second)]
+        values = [term.compute(ctx) for term in self.terms]
         return np.sum(np.broadcast_arrays(*values), axis=0) if values else 0.0
 
     def printArgs(self) -> str:
-        if self.second is not None:
-            return super().printArgs()
         return "[ " + " + ".join(term.GetName() for term in self.terms) + " ]"
 
     def defaultErrorLevel(self) -> float:

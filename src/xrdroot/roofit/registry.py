@@ -32,6 +32,7 @@ MODULES = {
     "data.store": ["RooAbsData"],
     "fitting.minimizer": ["RooMinimizer"],
     "fitting.nll": ["RooNLLVar"],
+    "fitting.profile": ["RooProfileLL"],
     "fitting.result": ["RooFitResult"],
     "functions": ["RooAddition", "RooFormulaVar", "RooPolyVar", "RooProduct"],
     "integral": ["RooRealIntegral"],

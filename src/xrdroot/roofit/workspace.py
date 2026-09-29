@@ -50,6 +50,12 @@ class RooWorkspace(RooPrintable):
     def ClassName(self) -> str:
         return "RooWorkspace"
 
+    def SetName(self, name: str) -> None:
+        self._name = str(name)
+
+    def SetTitle(self, title: str) -> None:
+        self._title = str(title)
+
     # -- importing ----------------------------------------------------------------
 
     def Import(self, obj: Any, *args: Any, **kwargs: Any) -> bool:

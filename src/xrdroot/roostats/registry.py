@@ -16,6 +16,9 @@ __all__ = ["MODULES", "members"]
 
 #: Each module, and the names of RooStats it defines.
 MODULES: dict[str, list[str]] = {
+    "combined": ["CombinedCalculator", "ProfileLikelihoodCalculator"],
+    "intervals": ["ConfInterval", "SimpleInterval"],
+    "likelihoodinterval": ["LikelihoodInterval"],
     "modelconfig": ["ModelConfig"],
     "utils": [
         "AsimovSignificance",

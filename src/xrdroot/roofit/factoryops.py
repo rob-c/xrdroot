@@ -20,11 +20,11 @@ def _sum(factory: Any, name: str, args: list[str]) -> Any:
     from .pdfs.addpdf import RooAddPdf
 
     pdfs, coefs = [], []
-    for arg in args:
+    for index, arg in enumerate(args):
         parts = split(arg, "*")
         if len(parts) == 2:
-            coefs.append(factory.build(parts[0]))
-        pdfs.append(factory.build(parts[-1]))
+            coefs.append(factory.build_arg(name, index, parts[0]))
+        pdfs.append(factory.build_arg(name, index, parts[-1]))
     return RooAddPdf(name, name, pdfs, coefs)
 
 
@@ -34,11 +34,11 @@ def _prod(factory: Any, name: str, args: list[str]) -> Any:
     from .pdfs.prodpdf import RooProdPdf
 
     plain, conditional = [], []
-    for arg in args:
+    for index, arg in enumerate(args):
         parts = split(arg, "|")
-        pdf = factory.build(parts[0])
+        pdf = factory.build_arg(name, index, parts[0])
         if len(parts) == 2:
-            given = [factory.build(p) for p in split(parts[1].strip("{}"))]
+            given = [factory.build_arg(name, index, p) for p in split(parts[1].strip("{}"))]
             conditional.append(RooCmdArg("Conditional", [pdf], given, True))
         else:
             plain.append(pdf)
@@ -50,10 +50,10 @@ def _formula(kind: str) -> Callable[[Any, str, list[str]], Any]:
         from .functions import RooFormulaVar
         from .pdfs.generic import RooGenericPdf
 
-        expression = factory.build(args[0])
+        expression = factory.build_arg(name, 0, args[0])
         variables = []
-        for arg in args[1:]:
-            found = factory.build(arg)
+        for index, arg in enumerate(args[1:], start=1):
+            found = factory.build_arg(name, index, arg)
             variables.extend(list(found) if hasattr(found, "_list") else [found])
         cls = RooGenericPdf if kind == "pdf" else RooFormulaVar
         return cls(name, name, str(expression), variables)
@@ -65,7 +65,17 @@ def _values(kind: str) -> Callable[[Any, str, list[str]], Any]:
     def make(factory: Any, name: str, args: list[str]) -> Any:
         from .functions import RooAddition, RooProduct
 
-        items = [factory.build(arg) for arg in args]
+        if kind == "sum" and any(len(split(arg, "*")) == 2 for arg in args):
+            pairs = [split(arg, "*") for arg in args]
+            if any(len(pair) != 2 for pair in pairs):
+                raise UnsupportedFeatureError(
+                    f"RooFactoryWSTool::addfunc({name}) ERROR creating RooAddition: syntax "
+                    "error: either all sum terms must be products or none"
+                )
+            first = [factory.build_arg(name, i, pair[0]) for i, pair in enumerate(pairs)]
+            second = [factory.build_arg(name, i, pair[1]) for i, pair in enumerate(pairs)]
+            return RooAddition(name, name, first, second)
+        items = [factory.build_arg(name, index, arg) for index, arg in enumerate(args)]
         return (RooProduct if kind == "prod" else RooAddition)(name, name, items)
 
     return make
@@ -75,11 +85,11 @@ def _simul(factory: Any, name: str, args: list[str]) -> Any:
     """``SIMUL::s(cat, A=pdfA, B=pdfB)``: a simultaneous density over a category's states."""
     from .pdfs.simultaneous import RooSimultaneous
 
-    index = factory.build(args[0])
+    index = factory.build_arg(name, 0, args[0])
     made = RooSimultaneous(name, name, index)
-    for arg in args[1:]:
+    for number, arg in enumerate(args[1:], start=1):
         label, _, spec = arg.partition("=")
-        made.addPdf(factory.build(spec), label.strip())
+        made.addPdf(factory.build_arg(name, number, spec), label.strip())
     return made
 
 

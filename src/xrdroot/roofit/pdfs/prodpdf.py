@@ -58,6 +58,13 @@ class RooProdPdf(RooAbsPdf):
         pdfs, self._conditional = _factors(
             tuple(a for a in args if a not in numbers or isinstance(a, bool))
         )
+        #: Each conditional factor's observables in the order they were given, for printing.
+        self._ordered = {
+            p.GetName(): tuple(one.GetName() for one in as_list(a.value(1)))
+            for a in args
+            if isinstance(a, RooCmdArg) and a.name == "Conditional"
+            for p in as_list(a.value(0))
+        }
         self._cutoff = float(numbers[0]) if numbers else 0.0
         self.pdfs = self._list_proxy("!pdfs", pdfs)
 
@@ -199,3 +206,18 @@ class RooProdPdf(RooAbsPdf):
 
     def state_word(self) -> str:
         return "Dirty"
+
+    def printMetaArgs(self) -> str:
+        """``RooProdPdf::printMetaArgs``: ``a * b(x) * c|y`` - each factor, and what a
+        conditional one is normalised over, ``(x)``, or conditional on, ``|y``."""
+        parts = []
+        for pdf in self.pdfs:
+            found = self._conditional.get(pdf.GetName())
+            names = self._ordered.get(pdf.GetName(), ())
+            if found is None or not names:
+                parts.append(pdf.GetName())
+            elif found[1]:
+                parts.append(f"{pdf.GetName()}|{','.join(names)}")
+            else:
+                parts.append(f"{pdf.GetName()}({','.join(names)})")
+        return " * ".join(parts) + " "

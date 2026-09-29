@@ -127,6 +127,13 @@ class RooAbsReal(RooAbsArg):
 
         return function_histogram(self, name, first, args, kwargs)
 
+    def createProfile(self, paramsOfInterest: Any) -> Any:
+        """``createProfile(poi)``: this function minimised over its other parameters, a function
+        of ``poi`` - a likelihood's profile."""
+        from .fitting.profile import create_profile
+
+        return create_profile(self, paramsOfInterest)
+
     def createCdf(self, iset: Any, *args: Any, **kwargs: Any) -> Any:
         """``createCdf(iset)``: the integral from each variable's lower end up to its value."""
         from .integral import make_cdf

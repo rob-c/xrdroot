@@ -20,7 +20,7 @@ import numpy as np
 
 from ...efficiency import regularized_beta
 from ...function import special
-from ...stats import incomplete_gamma, kolmogorov_prob, prob
+from ...stats import chisquare_quantile, incomplete_gamma, kolmogorov_prob, prob
 from . import distributions as dist
 from .messages import message
 from .refs import store_many
@@ -375,7 +375,7 @@ def KolmogorovProb(z: float) -> float:
 
 
 def ChisquareQuantile(p: float, ndf: float) -> float:
-    return dist.chi2_quantile(p, ndf)
+    return chisquare_quantile(p, ndf)
 
 
 def Student(T: float, ndf: float) -> float:

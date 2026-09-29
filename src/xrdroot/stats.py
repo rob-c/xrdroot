@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 
 __all__ = [
+    "chisquare_quantile",
     "incomplete_gamma",
     "incomplete_gamma_c",
     "kolmogorov_prob",
@@ -238,6 +239,72 @@ def prob(chi2: float, ndf: int) -> float:
     if chi2 == 0:
         return 1.0
     return incomplete_gamma_c(0.5 * freedom, 0.5 * chi2)
+
+
+#: ``TMath::ChisquareQuantile``'s constants, AS 91's, in its order.
+AS91 = (0, 0.01, 0.222222, 0.32, 0.4, 1.24, 2.2, 4.67, 6.66, 6.73, 13.32, 60.0, 70.0, 84.0,
+        105.0, 120.0, 127.0, 140.0, 175.0, 210.0, 252.0, 264.0, 294.0, 346.0, 420.0, 462.0,
+        606.0, 672.0, 707.0, 735.0, 889.0, 932.0, 966.0, 1141.0, 1182.0, 1278.0, 1740.0,
+        2520.0, 5040.0)  # fmt: skip
+
+
+def _as91_start(p: float, ndf: float, g: float) -> float:
+    """AS 91's first guess: Wilson and Hilferty's, or its iteration for few degrees of freedom."""
+    import statistics
+
+    c, xx = AS91, 0.5 * ndf
+    cp = xx - 1
+    if ndf > c[3]:
+        x = statistics.NormalDist().inv_cdf(p)
+        p1 = c[2] / ndf
+        ch = ndf * (x * math.sqrt(p1) + 1 - p1) ** 3
+        return -2 * (math.log(1 - p) - cp * math.log(0.5 * ch) + g) if ch > c[6] * ndf + 6 else ch
+    ch, a = c[4], math.log(1 - p)
+    while True:
+        q = ch
+        p1 = 1 + ch * (c[7] + ch)
+        p2 = ch * (c[9] + ch * (c[8] + ch))
+        t = -0.5 + (c[7] + 2 * ch) / p1 - (c[9] + ch * (c[10] + 3 * ch)) / p2
+        ch = ch - (1 - math.exp(a + g + 0.5 * ch + cp * 0.6931471806) * p2 / p1) / t
+        if abs(q / ch - 1) <= c[1]:
+            return ch
+
+
+def chisquare_quantile(p: float, ndf: float) -> float:
+    """``TMath::ChisquareQuantile``: AS 91 as ROOT has it - including its one Taylor step.
+
+    ROOT's loop breaks when a step changed the answer by *more* than its
+    tolerance, the test turned round, so after the first step it stops: the
+    quantile is a few parts in 10^7 from the exact one, and those are the
+    parts RooStats' intervals are drawn at.
+    """
+    c, aa = AS91, 0.6931471806
+    if ndf <= 0:
+        return 0.0
+    g, xx = log_gamma(0.5 * ndf), 0.5 * ndf
+    cp = xx - 1
+    if ndf >= math.log(p) * (-c[5]):
+        ch = _as91_start(p, ndf, g)
+    else:
+        ch = (p * xx * math.exp(g + xx * aa)) ** (1.0 / xx)
+        if ch < 5e-7:
+            return ch
+    for _ in range(20):
+        q, p1 = ch, 0.5 * ch
+        t = (p - incomplete_gamma(xx, p1)) * math.exp(xx * aa + g + p1 - cp * math.log(ch))
+        b = t / ch
+        a = 0.5 * t - b * cp
+        s1 = (c[19] + a * (c[17] + a * (c[14] + a * (c[13] + a * (c[12] + c[11] * a))))) / c[24]
+        s2 = (c[24] + a * (c[29] + a * (c[32] + a * (c[33] + c[35] * a)))) / c[37]
+        s3 = (c[19] + a * (c[25] + a * (c[28] + c[31] * a))) / c[37]
+        s4 = (c[20] + a * (c[27] + c[34] * a) + cp * (c[22] + a * (c[30] + c[36] * a))) / c[38]
+        s5 = (c[13] + c[21] * a + cp * (c[18] + c[26] * a)) / c[37]
+        s6 = (c[15] + cp * (c[23] + c[16] * cp)) / c[38]
+        inner = s1 - b * (s2 - b * (s3 - b * (s4 - b * (s5 - b * s6))))
+        ch = ch + t * (1 + 0.5 * t * s1 - b * cp * inner)
+        if abs(q / ch - 1) > 5e-7:
+            break
+    return ch
 
 
 def kolmogorov_prob(z: float) -> float:

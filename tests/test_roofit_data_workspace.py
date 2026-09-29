@@ -18,6 +18,7 @@ from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.roofit.categories import RooCategory
 from xrdroot.roofit.collections import RooArgList, RooArgSet
 from xrdroot.roofit.data.dataset import RooDataSet
+from xrdroot.roofit import factory
 from xrdroot.roofit.factory import Factory, split
 from xrdroot.roofit.functions import RooFormulaVar
 from xrdroot.roofit.messages import service
@@ -287,11 +288,11 @@ def test_the_factory_makes_densities_by_class_name_as_root_prints_them(capsys: A
     assert printed(capsys, w.factory("Gaussian::gy(y[-5,5], 0, 1)")) == (
         "RooGaussian::gy[ x=y mean=0 sigma=1 ] = 1\n"
     )
+    factory._GLOBAL[0] = 0  # ROOT's counter is the process's: here, as a fresh one starts it
     unnamed = w.factory("Gaussian(x, m, s)")
-    assert (unnamed.GetName(), unnamed.getVal()) == (
-        "Gaussian_x_m_s",
-        pytest.approx(0.945959, 1e-6),
-    )
+    assert (unnamed.GetName(), unnamed.getVal()) == ("gobj0", pytest.approx(0.945959, 1e-6))
+    inner = w.factory("Gaussian::g2(x, prod(m,s), sum(m,s))")
+    assert [one.GetName() for one in inner.servers()] == ["x", "g2_2", "g2_3"]
 
 
 def test_the_factory_reads_an_enumerator_of_the_class_as_its_value(capsys: Any) -> None:
@@ -312,7 +313,9 @@ def test_the_factorys_sums_make_add_pdfs_as_root_prints_them(capsys: Any) -> Non
     assert printed(capsys, w.factory("SUM::ext(nsig[10,0,100]*g, nbkg[20,0,100]*e)")) == (
         "RooAddPdf::ext[ nsig * g + nbkg * e ] = 0.981986/1\n"
     )
-    assert w.factory("SUM(fsig*g, e)").GetName() == "SUM_fsig_g_e"
+    factory._GLOBAL[0] = 1
+    w.factory("Gaussian::gobj1(x, m, s)")  # a name taken is passed over, as ROOT passes it
+    assert w.factory("SUM(fsig*g, e)").GetName() == "gobj2"
 
 
 def model() -> RooWorkspace:

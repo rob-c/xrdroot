@@ -91,6 +91,7 @@ class RooMinimizer:
         self.print_eval_errors = 10
         self._max_fcn = -math.inf
         self._last: list[float] = []
+        self._optimizing = False
         #: ``applyCovarianceMatrix``'s matrix, which a saved result then carries instead.
         self.external_covariance: Any = None
 
@@ -135,13 +136,26 @@ class RooMinimizer:
         self.print_eval_errors = int(n)
 
     def optimizeConst(self, flag: int) -> None:
-        """Constant-term optimisation changes how fast, not what: nothing to do."""
+        """Constant-term optimisation changes how fast, not what - but RooFit says when it is
+        switched, whenever ``getPrintLevel`` - Minuit's level plus one, which is RooFit's plus
+        two - is above -1."""
+        if bool(flag) == self._optimizing:
+            return
+        self._optimizing = bool(flag)
+        if self.print_level + 2 > -1:
+            word = "activating" if flag else "deactivating"
+            log(self, INFO, "Minimization", f"RooAbsMinimizerFcn::setOptimizeConst: {word} const "
+                "optimization")  # fmt: skip
 
     def setProfile(self, flag: bool = True) -> None:
         """Timing the steps prints times, which differ run to run: not done."""
 
     def getNPar(self) -> int:
         return len(self.params)
+
+    def zeroEvalCount(self) -> None:
+        """Count the function's calls from nothing again, as a profile does before each fit."""
+        self.evaluations = 0
 
     def evalCounter(self) -> int:
         return int(self.minuit.nfcn) if self.minuit is not None else 0

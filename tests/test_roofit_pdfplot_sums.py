@@ -324,7 +324,7 @@ def test_a_product_normalised_over_one_factors_observables_drops_the_other_facto
 
 
 @pytest.mark.xfail(
-    strict=True, reason="prodpdf.py: ROOT prints a product's factors, 'gx * gy', and '/1'"
+    strict=True, reason="prodpdf.py: ROOT prints '/1', the product's norm after a plot asked one"
 )
 def test_a_product_prints_its_factors_as_root_does(capsys: Any) -> None:
     """``RooProdPdf::prod[ gx * gy ] = 0.776101/1``."""

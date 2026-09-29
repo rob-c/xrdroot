@@ -259,9 +259,8 @@ class RooPoisson(_Shape):
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
         from ...stats import incomplete_gamma, incomplete_gamma_c
 
-        mean = float(np.asarray(self.v("mean", ctx)))
-        x = float(np.asarray(self.v("x", ctx)))
         if self.x.GetName() in names:
+            mean = float(np.asarray(self.v("mean", ctx)))
             low, high = max(0.0, self.x.getMin(rng)), self.x.getMax(rng)
             if high < 0 or high < low:
                 return 0.0
@@ -274,6 +273,7 @@ class RooPoisson(_Shape):
             if first <= mean:
                 return incomplete_gamma_c(last, mean) - incomplete_gamma_c(first, mean)
             return incomplete_gamma(first, mean) - incomplete_gamma(last, mean)
+        x = float(np.asarray(self.v("x", ctx)))
         ix = 1 + (x if self._no_rounding else math.floor(x))
         return incomplete_gamma(ix, self.mean.getMax(rng)) - incomplete_gamma(
             ix, self.mean.getMin(rng)

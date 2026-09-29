@@ -12,6 +12,7 @@ import math
 from typing import Any, ClassVar
 
 from ...efficiency import regularized_beta
+from ...fit.defaults import DEFAULTS
 from ...function import special
 from ...stats import incomplete_gamma, incomplete_gamma_c
 from . import distributions as dist
@@ -321,10 +322,8 @@ class MinimizerOptions:
     is set, so a script choosing ``"Minuit"`` or ``"Minuit2"`` gets the same.
     """
 
-    _defaults: ClassVar[dict[str, Any]] = {"Minimizer": "Minuit2", "Algorithm": "Migrad",
-                                 "Tolerance": 0.01, "Precision": -1.0, "PrintLevel": 0,
-                                 "MaxFunctionCalls": 0, "MaxIterations": 0,
-                                 "Strategy": 1, "ErrorDef": 1.0}  # fmt: skip
+    #: The table the engine reads too: RooStats' calculators minimise with these.
+    _defaults: ClassVar[dict[str, Any]] = DEFAULTS
 
     @classmethod
     def SetDefaultMinimizer(cls, name: Any, algorithm: Any = "") -> None:

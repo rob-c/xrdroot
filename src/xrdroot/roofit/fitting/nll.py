@@ -92,6 +92,9 @@ class RooNLLVar(RooAbsReal):
         self._announced = False
         #: ``applyWeightSquared``: each event counts with its weight squared, for SumW2Error.
         self._weight_squared = False
+        #: What ROOT 6.40 calls the likelihood ``createNLL`` hands out - a ``RooEvaluatorWrapper``
+        #: round this sum - which a profile of it is named after; ``None`` for one made directly.
+        self.wrapper_name: str | None = None
 
     def applyWeightSquared(self, flag: bool) -> None:
         """Count each event with its weight squared - the likelihood whose HESSE corrects
