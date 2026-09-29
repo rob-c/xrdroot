@@ -33,23 +33,29 @@ class SamplingDistribution(Named):
         if values is not None and hasattr(values, "numEntries"):
             self._from_data(values, rest)
             return
-        self._values = [float(v) for v in values or ()]
+        self._from_values(values or (), rest)
+
+    def _from_values(self, values: Any, rest: tuple[Any, ...]) -> None:
+        """The values given, their weights - one each, if none are - and the variable's name."""
+        self._values = [float(v) for v in values]
         weights = rest[0] if rest and not isinstance(rest[0], str) else None
         names = [one for one in rest if isinstance(one, str)]
-        self._weights = [float(w) for w in weights] if weights is not None else [1.0] * len(
-            self._values)  # fmt: skip
+        if weights is None:
+            self._weights = [1.0] * len(self._values)
+        else:
+            self._weights = [float(w) for w in weights]
         self._var_name = names[0] if names else ""
 
     def _from_data(self, data: Any, rest: tuple[Any, ...]) -> None:
         """The column ``<name>_TS0`` of a dataset of toys - or its first - and its weights."""
+        given = str(rest[1]) if len(rest) > 1 and rest[1] else ""
         if not data.numEntries() or not len(data.get()):
-            self._var_name = str(rest[1]) if len(rest) > 1 else ""
+            self._var_name = given
             return
         column = str(rest[0]) if rest and rest[0] else f"{self._name}_TS0"
         if data.get().find(column) is None:
             column = data.get()[0].GetName()
-        found = data.get().find(column)
-        self._var_name = str(rest[1]) if len(rest) > 1 and rest[1] else found.GetTitle()
+        self._var_name = given or data.get().find(column).GetTitle()
         self._values = [float(v) for v in data.column(column)]
         self._weights = [float(w) for w in data.weights()]
 
