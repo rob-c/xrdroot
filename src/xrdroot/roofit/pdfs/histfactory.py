@@ -30,6 +30,68 @@ __all__ = ["FlexibleInterpVar", "ParamHistFunc", "PiecewiseInterpolation", "RooB
 TINY = 2.2250738585072014e-308
 
 
+def _halves(up: Any, down: Any) -> tuple[Any, Any]:
+    """``0.5 * (up + down)`` and ``0.5 * (up - down)``: the symmetric and antisymmetric parts."""
+    return 0.5 * (up + down), 0.5 * (up - down)
+
+
+def _odd(x0: float, a0: Any, s1: Any, a2: Any) -> tuple[Any, Any, Any]:
+    """Code 5's polynomial, its odd coefficients."""
+    sq, tail = x0 * x0, x0 * x0 * a2
+    a = 1.0 / (8 * x0) * (15 * a0 - 7 * x0 * s1 + tail)
+    c = 1.0 / (4 * sq * x0) * (-5 * a0 + 5 * x0 * s1 - tail)
+    return a, c, _fifth(x0, a0, s1, tail)
+
+
+def _fifth(x0: float, a0: Any, s1: Any, tail: Any) -> Any:
+    sq = x0 * x0
+    return 1.0 / (8 * sq * sq * x0) * (3 * a0 - 3 * x0 * s1 + tail)
+
+
+def _even(x0: float, s0: Any, a1: Any, s2: Any) -> tuple[Any, Any, Any]:
+    """Code 5's polynomial, its even coefficients."""
+    sq, tail = x0 * x0, x0 * x0 * s2
+    b = 1.0 / (8 * sq) * (-24 + 24 * s0 - 9 * x0 * a1 + tail)
+    d = 1.0 / (4 * sq * sq) * (12 - 12 * s0 + 7 * x0 * a1 - tail)
+    return b, d, _sixth(x0, s0, a1, tail)
+
+
+def _sixth(x0: float, s0: Any, a1: Any, tail: Any) -> Any:
+    sq = x0 * x0
+    return 1.0 / (8 * sq * sq * sq) * (-8 + 8 * s0 - 5 * x0 * a1 + tail)
+
+
+def _inside(x: Any, x0: float, terms: tuple[Any, ...]) -> Any:
+    """Code 5 within the boundary: ``1 + x (a + x (b + ... x f))``, of the six terms
+    ``up, down`` and their first and second logarithmic derivatives."""
+    up, down, up_log, down_log, up_log2, down_log2 = terms
+    s0, a0 = _halves(up, down)
+    s1, a1 = _halves(up_log, down_log)
+    s2, a2 = _halves(up_log2, down_log2)
+    a, c, e = _odd(x0, a0, s1, a2)
+    b, d, f = _even(x0, s0, a1, s2)
+    return 1.0 + x * (a + x * (b + x * (c + x * (d + x * (e + x * f)))))
+
+
+def _log_or_minus_inf(value: float) -> float:
+    import math
+
+    return math.log(value) if value > 0 else -math.inf
+
+
+def _terms_one(high: float, low: float, x0: float) -> tuple[float, ...]:
+    """:func:`_inside`'s terms, of plain floats."""
+    import math
+
+    log_hi, log_lo = _log_or_minus_inf(high), _log_or_minus_inf(low)
+    up, down = math.exp(x0 * log_hi), math.exp(x0 * log_lo)
+    up_log = 0.0 if high <= 0 else up * log_hi
+    down_log = 0.0 if low <= 0 else -down * log_lo
+    up_log2 = 0.0 if high <= 0 else up_log * log_hi
+    down_log2 = 0.0 if low <= 0 else -down_log * log_lo
+    return up, down, up_log, down_log, up_log2, down_log2
+
+
 def _code5_one(low: float, high: float, x0: float, nominal: float, x: float,
                res: float) -> float:  # fmt: skip
     """Code 5 of one parameter value: the same operations as the arrays', in plain floats."""
@@ -40,24 +102,18 @@ def _code5_one(low: float, high: float, x0: float, nominal: float, x: float,
         return res * (math.pow(high, x) - 1.0)
     if x <= -x0:
         return res * (math.pow(low, -x) - 1.0)
-    log_hi = math.log(high) if high > 0 else -math.inf
-    log_lo = math.log(low) if low > 0 else -math.inf
-    up, down = math.exp(x0 * log_hi), math.exp(x0 * log_lo)
-    up_log = 0.0 if high <= 0 else up * log_hi
-    down_log = 0.0 if low <= 0 else -down * log_lo
-    up_log2 = 0.0 if high <= 0 else up_log * log_hi
-    down_log2 = 0.0 if low <= 0 else -down_log * log_lo
-    s0, a0 = 0.5 * (up + down), 0.5 * (up - down)
-    s1, a1 = 0.5 * (up_log + down_log), 0.5 * (up_log - down_log)
-    s2, a2 = 0.5 * (up_log2 + down_log2), 0.5 * (up_log2 - down_log2)
-    sq = x0 * x0
-    a = 1.0 / (8 * x0) * (15 * a0 - 7 * x0 * s1 + x0 * x0 * a2)
-    b = 1.0 / (8 * sq) * (-24 + 24 * s0 - 9 * x0 * a1 + x0 * x0 * s2)
-    c = 1.0 / (4 * sq * x0) * (-5 * a0 + 5 * x0 * s1 - x0 * x0 * a2)
-    d = 1.0 / (4 * sq * sq) * (12 - 12 * s0 + 7 * x0 * a1 - x0 * x0 * s2)
-    e = 1.0 / (8 * sq * sq * x0) * (3 * a0 - 3 * x0 * s1 + x0 * x0 * a2)
-    f = 1.0 / (8 * sq * sq * sq) * (-8 + 8 * s0 - 5 * x0 * a1 + x0 * x0 * s2)
-    return res * (1.0 + x * (a + x * (b + x * (c + x * (d + x * (e + x * f))))) - 1.0)
+    return res * (_inside(x, x0, _terms_one(high, low, x0)) - 1.0)
+
+
+def _terms(high: Any, low: Any, x0: float) -> tuple[Any, ...]:
+    """:func:`_inside`'s terms, of arrays."""
+    log_hi, log_lo = libm.log(high), libm.log(low)
+    up, down = libm.exp(x0 * log_hi), libm.exp(x0 * log_lo)
+    up_log = np.where(high <= 0, 0.0, up * log_hi)
+    down_log = np.where(low <= 0, 0.0, -down * log_lo)
+    up_log2 = np.where(high <= 0, 0.0, up_log * log_hi)
+    down_log2 = np.where(low <= 0, 0.0, -down_log * log_lo)
+    return up, down, up_log, down_log, up_log2, down_log2
 
 
 def _code5(low: Any, high: Any, boundary: float, nominal: Any, x: Any, res: Any) -> Any:
@@ -68,24 +124,8 @@ def _code5(low: Any, high: Any, boundary: float, nominal: Any, x: Any, res: Any)
     high, low = np.asarray(high / nominal, dtype=np.float64), np.asarray(low / nominal)
     with np.errstate(divide="ignore", invalid="ignore"):
         outside = np.where(x >= boundary, libm.power(high, x), libm.power(low, -x))
-        x0 = boundary
-        log_hi, log_lo = libm.log(high), libm.log(low)
-        up, down = libm.exp(x0 * log_hi), libm.exp(x0 * log_lo)
-        up_log = np.where(high <= 0, 0.0, up * log_hi)
-        down_log = np.where(low <= 0, 0.0, -down * log_lo)
-        up_log2 = np.where(high <= 0, 0.0, up_log * log_hi)
-        down_log2 = np.where(low <= 0, 0.0, -down_log * log_lo)
-    s0, a0 = 0.5 * (up + down), 0.5 * (up - down)
-    s1, a1 = 0.5 * (up_log + down_log), 0.5 * (up_log - down_log)
-    s2, a2 = 0.5 * (up_log2 + down_log2), 0.5 * (up_log2 - down_log2)
-    sq = x0 * x0
-    a = 1.0 / (8 * x0) * (15 * a0 - 7 * x0 * s1 + x0 * x0 * a2)
-    b = 1.0 / (8 * sq) * (-24 + 24 * s0 - 9 * x0 * a1 + x0 * x0 * s2)
-    c = 1.0 / (4 * sq * x0) * (-5 * a0 + 5 * x0 * s1 - x0 * x0 * a2)
-    d = 1.0 / (4 * sq * sq) * (12 - 12 * s0 + 7 * x0 * a1 - x0 * x0 * s2)
-    e = 1.0 / (8 * sq * sq * x0) * (3 * a0 - 3 * x0 * s1 + x0 * x0 * a2)
-    f = 1.0 / (8 * sq * sq * sq) * (-8 + 8 * s0 - 5 * x0 * a1 + x0 * x0 * s2)
-    inside = 1.0 + x * (a + x * (b + x * (c + x * (d + x * (e + x * f)))))
+        terms = _terms(high, low, boundary)
+    inside = _inside(x, boundary, terms)
     mod = np.where((x >= boundary) | (x <= -boundary), outside, inside)
     return res * (mod - 1.0)
 
@@ -107,19 +147,28 @@ def interpolate(code: int, low: Any, high: Any, boundary: float, nominal: Any, x
     """``MathFuncs::flexibleInterpSingle``: what one parameter adds to ``res`` at ``x``."""
     if code == 5:
         return _code5(low, high, boundary, nominal, x, res)
-    x = np.asarray(x, dtype=np.float64)
+    if code in (4, 6):
+        return _code4(low, high, boundary, nominal, np.asarray(x, dtype=np.float64), res, code)
+    return _simple(code, low, high, nominal, np.asarray(x, dtype=np.float64), res)
+
+
+def _simple(code: int, low: Any, high: Any, nominal: Any, x: Any, res: Any) -> Any:
+    """Codes 0, 1 and 2: linear, exponential, quadratic within one and linear outside."""
     if code == 0:
         return np.where(x > 0, x * (high - nominal), x * (nominal - low))
     if code == 1:
         return np.where(x >= 0, res * (libm.power(high / nominal, x) - 1),
                         res * (libm.power(low / nominal, -x) - 1))  # fmt: skip
     if code == 2:
-        a, b = 0.5 * (high + low) - nominal, 0.5 * (high - low)
-        return np.where(x > 1, (2 * a + b) * (x - 1) + high - nominal,
-                        np.where(x < -1, -(2 * a - b) * (x + 1) + low - nominal, a * x * x + b * x))
-    if code in (4, 6):
-        return _code4(low, high, boundary, nominal, x, res, code)
+        return _code2(low, high, nominal, x)
     return 0.0 * x
+
+
+def _code2(low: Any, high: Any, nominal: Any, x: Any) -> Any:
+    """Code 2: quadratic within one, linear outside."""
+    a, b = 0.5 * (high + low) - nominal, 0.5 * (high - low)
+    return np.where(x > 1, (2 * a + b) * (x - 1) + high - nominal,
+                    np.where(x < -1, -(2 * a - b) * (x + 1) + low - nominal, a * x * x + b * x))
 
 
 class FlexibleInterpVar(RooAbsReal):

@@ -199,6 +199,17 @@ SINK = (
 )
 
 
+def _variable_lines(ws: Any, detail: bool) -> list[str]:
+    """A line for each gamma - and, in ``detail``, each observable, with its bins and title."""
+    kinds = ("gamma", "nom_gamma", "obs") if detail else ("gamma", "nom_gamma")
+    lines = []
+    for v in sorted(ws.allVars(), key=lambda v: v.GetName()):
+        if v.GetName().startswith(kinds):
+            line = f"{v.GetName()} {v.getVal()!r} {v.getMin()!r} {v.getMax()!r} {v.getError()!r}"
+            lines.append(f"var {line} {v.getBins()} {v.GetTitle()}" if detail else f"gamma {line}")
+    return lines
+
+
 def summary(ws: Any, moves: Any, detail: bool = False) -> str:
     """The model's sets, datasets, likelihood - then moved - constants and gammas, a line each;
     in ``detail``, the observables too, with each one's bins and title."""
@@ -217,11 +228,7 @@ def summary(ws: Any, moves: Any, detail: bool = False) -> str:
         ws.var(name).setVal(value)
     lines.append(f"nll2 {nll.getVal()!r}")
     lines.append(f"const {names(v for v in ws.allVars() if v.isConstant())}")
-    kinds = ("gamma", "nom_gamma", "obs") if detail else ("gamma", "nom_gamma")
-    for v in sorted(ws.allVars(), key=lambda v: v.GetName()):
-        if v.GetName().startswith(kinds):
-            line = f"{v.GetName()} {v.getVal()!r} {v.getMin()!r} {v.getMax()!r} {v.getError()!r}"
-            lines.append(f"var {line} {v.getBins()} {v.GetTitle()}" if detail else f"gamma {line}")
+    lines += _variable_lines(ws, detail)
     ws.loadSnapshot("NominalParamValues")
     return "\n".join(lines) + "\n"
 

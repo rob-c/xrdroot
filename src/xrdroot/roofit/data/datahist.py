@@ -31,11 +31,18 @@ def _histogram_of(obj: Any) -> Any:
     return getattr(obj, "_xrd", obj)
 
 
+def _sorted_arguments(args: tuple[Any, ...]) -> tuple[list[Any], list[Any], list[Any]]:
+    """The arguments sorted: the others, the datasets, and the commands."""
+    found: tuple[list[Any], list[Any], list[Any]] = ([], [], [])
+    for one in args:
+        found[1 if isinstance(one, RooAbsData) else 2 if isinstance(one, RooCmdArg) else 0].append(
+            one)  # fmt: skip
+    return found
+
+
 def _arguments(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[list[Any], list[Any], Any]:
     """The variables, the datasets to fill from, and the options, of a constructor's arguments."""
-    variables = [a for a in args if not isinstance(a, (RooCmdArg, RooAbsData))]
-    sources = [a for a in args if isinstance(a, RooAbsData)]
-    given = [a for a in args if isinstance(a, RooCmdArg)]
+    variables, sources, given = _sorted_arguments(args)
     hists = [a for a in variables[1:] if hasattr(a, "_xrd")]  # (name, title, vars, TH1*)
     options = commands([*given, RooCmdArg("Import", hists[0])] if hists else given, kwargs)
     return (as_list(variables[0]) if variables else []), sources, options

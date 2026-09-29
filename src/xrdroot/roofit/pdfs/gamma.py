@@ -49,15 +49,21 @@ def _kernel(x: Any, gamma: Any, beta: Any, mu: Any) -> Any:
     return np.where(away, found, out)
 
 
+def _positive(c: float, rng: Any) -> tuple[float, float]:
+    """A normal draw ``xgen`` and ``1 + c xgen``, drawn again until that is positive."""
+    xgen, v = 0.0, 0.0
+    while v <= 0.0:
+        xgen = float(rng.gaus(0.0, 1.0))
+        v = 1.0 + c * xgen
+    return xgen, v
+
+
 def _draw(gamma: float, beta: float, mu: float, low: float, high: float, rng: Any) -> float:
     """``randomGamma``: Marsaglia and Tsang's squeeze, drawn again until inside the range."""
     while True:
         d = gamma - 1.0 / 3.0
         c = 1.0 / math.sqrt(9.0 * d)
-        xgen, v = 0.0, 0.0
-        while v <= 0.0:
-            xgen = float(rng.gaus(0.0, 1.0))
-            v = 1.0 + c * xgen
+        xgen, v = _positive(c, rng)
         v = v * v * v
         u = float(rng.rndm())
         x = d * v * beta + mu

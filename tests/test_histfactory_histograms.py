@@ -64,6 +64,12 @@ def test_a_channel_reads_every_histogram_it_names_opening_its_file_once(tmp_path
     assert out.startswith(f"[#2] PROGRESS:HistFactory -- Getting histogram {path}:/data\n"
                           f"[#2] INFO:HistFactory -- Opened input file: {path}: \n")  # fmt: skip
     assert f"Getting histogram {path}:dir/signal\n" in out
+    assert made.CheckHistograms() is True
+
+
+def test_a_channel_gives_each_sample_and_systematic_its_histograms(tmp_path: Any) -> None:
+    made = full_channel(write_inputs(tmp_path))
+    made.CollectHistograms()
     signal, background = made.GetSamples()
     assert signal.GetHisto().GetBinContent(1) == 20.0
     assert signal.GetHistoSysList()[0].GetHistoHigh().GetName() == "signal_high"
@@ -73,7 +79,6 @@ def test_a_channel_reads_every_histogram_it_names_opening_its_file_once(tmp_path
     assert signal.GetShapeFactorList()[1].GetInitialShape() is None
     assert background.GetStatError().GetErrorHist().GetName() == "background1_statUncert"
     assert made.GetAdditionalData()[0].GetHisto().GetBinContent(2) == 112.0
-    assert made.CheckHistograms() is True
 
 
 def test_a_measurement_collects_every_channels_histograms(tmp_path: Any) -> None:

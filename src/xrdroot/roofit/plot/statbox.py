@@ -47,37 +47,56 @@ def rms_var(data: Any, var: Any, cut: Any = None, rng: Any = None) -> Any:
     return made
 
 
-def stat_on(data: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
-    """The box, added to ``frame``: ``What``, ``Label``, ``Layout``, ``Format``, ``Cut`` and
-    ``CutRange`` as RooFit takes them."""
-    from ..variables import RooRealVar
-
-    options = commands([a for a in args if hasattr(a, "name")], kwargs)
-    what = str(options.get("What", 0, "MNR")).upper()
-    label = str(options.get("Label", 0, "") or "")
-    cut, rng = options.get("Cut", 0, None), options.get("CutRange", 0, None)  # CutSpec
-    shown = [letter for letter in "RMN" if letter in what]
-    xmin, xmax = float(options.get("Layout", 0, 0.65)), float(options.get("Layout", 1, 0.99))
-    ymax = int(float(options.get("Layout", 2, 0.95)) * 10000) / 10000.0
-    ymin = ymax - len(shown) * 0.06 - (0.06 if label else 0.0)
-    box = PAVE[0](xmin, ymax, xmax, ymin, "BRNDC")
+def _box(data: Any, corners: tuple[float, ...]) -> Any:
+    """The box's pave, empty, as ``statOn`` dresses it."""
+    box = PAVE[0](*corners, "BRNDC")
     box.SetName(f"{data.GetName()}_statBox")
     box.SetFillColor(0)
     box.SetBorderSize(1)
     box.SetTextAlign(12)
     box.SetTextSize(0.04)
     box.SetFillStyle(1001)
+    return box
+
+
+def _statistics(data: Any, frame: Any, cut: Any, rng: Any) -> dict[str, Any]:
+    """The variables the box may show, by their letters: the RMS, the mean, the count."""
+    from ..variables import RooRealVar
+
     count = RooRealVar("N", "Number of Events", data.sumEntries(cut, rng))
     count.setPlotLabel("Entries")
     var = frame.getPlotVar()
     mean, rms = mean_var(data, var, cut, rng), rms_var(data, var, cut, rng)
     mean.setPlotLabel("Mean")
     rms.setPlotLabel("RMS")
-    command = options.every("Format")
-    for letter in shown:
-        one = {"R": rms, "M": mean, "N": count}[letter]
+    return {"R": rms, "M": mean, "N": count}
+
+
+def _corners(options: Any, lines: int, label: bool) -> tuple[float, ...]:
+    """``Layout(xmin, xmax, ymax)``: the box's corners, 0.06 high a line and the label's."""
+    xmin, xmax = float(options.get("Layout", 0, 0.65)), float(options.get("Layout", 1, 0.99))
+    ymax = int(float(options.get("Layout", 2, 0.95)) * 10000) / 10000.0
+    return xmin, ymax, xmax, ymax - lines * 0.06 - (0.06 if label else 0.0)
+
+
+def _fill(box: Any, shown: list[Any], command: list[Any], label: str) -> None:
+    """The box's lines: each variable, as the last ``Format`` says or in full, then the label."""
+    for one in shown:
         box.AddText(format_command(one, command[-1]) if command else format_var(one, 2, "NELU"))
     if label:
         box.AddText(label)
+
+
+def stat_on(data: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    """The box, added to ``frame``: ``What``, ``Label``, ``Layout``, ``Format``, ``Cut`` and
+    ``CutRange`` as RooFit takes them."""
+    options = commands([a for a in args if hasattr(a, "name")], kwargs)
+    what = str(options.get("What", 0, "MNR")).upper()
+    label = str(options.get("Label", 0, "") or "")
+    cut, rng = options.get("Cut", 0, None), options.get("CutRange", 0, None)  # CutSpec
+    shown = [letter for letter in "RMN" if letter in what]
+    box = _box(data, _corners(options, len(shown), bool(label)))
+    values = _statistics(data, frame, cut, rng)
+    _fill(box, [values[letter] for letter in shown], options.every("Format"), label)
     frame.addObject(box)
     return frame

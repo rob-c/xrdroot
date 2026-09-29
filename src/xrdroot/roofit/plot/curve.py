@@ -59,6 +59,15 @@ def _refine(
 NO_WINGS, STRAIGHT, EXTENDED = 0, 1, 2
 
 
+def _wing(wings: int, end: float, dx: float, y: float) -> list[tuple[float, float]]:
+    """The points past one end, outwards - ``dx`` negative at the low end - as ``wings`` says."""
+    if wings == EXTENDED:
+        return [(end + dx, y), (end + dx * 1.001, 0.0)]
+    if wings == STRAIGHT:
+        return [(end + dx * 0.001, 0.0)]
+    return []
+
+
 def sample(
     func: Callable[[Any], Any],
     low: float,
@@ -82,11 +91,7 @@ def sample(
         return xs, ys
     span = float(np.max(ys) - np.min(ys))
     scalar = lambda x: float(np.asarray(func(np.array([x]))).reshape(-1)[0])  # noqa: E731
-    points: list[tuple[float, float]] = []
-    if wings == EXTENDED:
-        points += [(low - dx * 1.001, 0.0), (low - dx, float(ys[0]))]
-    elif wings == STRAIGHT:
-        points.append((low - dx * 0.001, 0.0))
+    points = _wing(wings, low, -dx, float(ys[0]))[::-1]
     points.append((low, float(ys[0])))
     limits = (precision * span, precision * (high - low), (high - low) * EPSILON)
     for i in range(1, count):
@@ -94,10 +99,7 @@ def sample(
             scalar, float(xs[i - 1]), float(xs[i]), float(ys[i - 1]), float(ys[i]), limits, points
         )
     points.append((high, float(ys[-1])))
-    if wings == EXTENDED:
-        points += [(high + dx, float(ys[-1])), (high + dx * 1.001, 0.0)]
-    elif wings == STRAIGHT:
-        points.append((high + dx * 0.001, 0.0))
+    points += _wing(wings, high, dx, float(ys[-1]))
     ordered = sorted(points, key=lambda p: p[0])
     return np.array([p[0] for p in ordered]), np.array([p[1] for p in ordered])
 

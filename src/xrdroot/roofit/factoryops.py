@@ -61,20 +61,27 @@ def _formula(kind: str) -> Callable[[Any, str, list[str]], Any]:
     return make
 
 
+def _sum_of_products(factory: Any, name: str, args: list[str]) -> Any:
+    """``sum::s(a*b, c*d)``: a ``RooAddition`` of products - every term one, or refused."""
+    from .functions import RooAddition
+
+    pairs = [split(arg, "*") for arg in args]
+    if any(len(pair) != 2 for pair in pairs):
+        raise UnsupportedFeatureError(
+            f"RooFactoryWSTool::addfunc({name}) ERROR creating RooAddition: syntax "
+            "error: either all sum terms must be products or none"
+        )
+    first = [factory.build_arg(name, i, pair[0]) for i, pair in enumerate(pairs)]
+    second = [factory.build_arg(name, i, pair[1]) for i, pair in enumerate(pairs)]
+    return RooAddition(name, name, first, second)
+
+
 def _values(kind: str) -> Callable[[Any, str, list[str]], Any]:
     def make(factory: Any, name: str, args: list[str]) -> Any:
         from .functions import RooAddition, RooProduct
 
         if kind == "sum" and any(len(split(arg, "*")) == 2 for arg in args):
-            pairs = [split(arg, "*") for arg in args]
-            if any(len(pair) != 2 for pair in pairs):
-                raise UnsupportedFeatureError(
-                    f"RooFactoryWSTool::addfunc({name}) ERROR creating RooAddition: syntax "
-                    "error: either all sum terms must be products or none"
-                )
-            first = [factory.build_arg(name, i, pair[0]) for i, pair in enumerate(pairs)]
-            second = [factory.build_arg(name, i, pair[1]) for i, pair in enumerate(pairs)]
-            return RooAddition(name, name, first, second)
+            return _sum_of_products(factory, name, args)
         items = [factory.build_arg(name, index, arg) for index, arg in enumerate(args)]
         return (RooProduct if kind == "prod" else RooAddition)(name, name, items)
 

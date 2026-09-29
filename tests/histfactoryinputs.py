@@ -39,26 +39,29 @@ VARIABLE = {
 }
 
 
-def write_inputs(directory: pathlib.Path, name: str = "input.root") -> str:
-    """The histograms of :data:`ONE_D` and :data:`VARIABLE` - and a 2D and a 3D channel's - in
-    ``directory/name``."""
-    from xrdroot.pyroot.core import TH1F, TH2F, TH3F, TFile
+def _filled(hist: Any, values: list[float]) -> Any:
+    """A 1D histogram of ``values``, each with its Poisson error."""
+    for i, value in enumerate(values, 1):
+        hist.SetBinContent(i, value)
+        hist.SetBinError(i, abs(value) ** 0.5)
+    return hist
 
-    path = str(directory / name)
-    handle = TFile.Open(path, "RECREATE")
-    for key, values in ONE_D.items():
-        hist = TH1F(key, key.replace("_", " "), 2, 1, 2)
-        for i, value in enumerate(values, 1):
-            hist.SetBinContent(i, value)
-            hist.SetBinError(i, abs(value) ** 0.5)
-        hist.Write()
-    folder = handle.mkdir("dir")
-    folder.cd()
+
+def _write_moved(handle: Any) -> None:
+    """``dir/signal``: a histogram in a directory of the file."""
+    from xrdroot.pyroot.core import TH1F
+
+    handle.mkdir("dir").cd()
     moved = TH1F("signal", "", 2, 1, 2)
     moved.SetBinContent(1, 20.0)
     moved.SetBinContent(2, 10.0)
     moved.Write()
     handle.cd()
+
+
+def _write_2d() -> None:
+    from xrdroot.pyroot.core import TH2F
+
     for key, values in (("data2d", [10.0, 12.0, 14.0, 16.0]), ("sig2d", [2.0, 3.0, 4.0, 5.0]),
                         ("bkg2d", [8.0, 9.0, 10.0, 11.0])):  # fmt: skip
         square = TH2F(key, "", 2, 0, 2, 2, 0, 2)
@@ -66,18 +69,34 @@ def write_inputs(directory: pathlib.Path, name: str = "input.root") -> str:
             square.SetBinContent(i % 2 + 1, i // 2 + 1, value)
             square.SetBinError(i % 2 + 1, i // 2 + 1, value**0.5)
         square.Write()
-    for key, values in VARIABLE.items():
-        uneven = TH1F(key, "", 2, np.array([0.0, 1.0, 3.0]))
-        uneven.GetXaxis().SetTitle("m [GeV]")
-        for i, value in enumerate(values, 1):
-            uneven.SetBinContent(i, value)
-            uneven.SetBinError(i, abs(value) ** 0.5)
-        uneven.Write()
+
+
+def _write_3d() -> None:
+    from xrdroot.pyroot.core import TH3F
+
     for key, scale in (("data3d", 3.0), ("sig3d", 1.0)):
         cube = TH3F(key, "", 2, 0, 2, 1, 0, 1, 2, 0, 2)
         for i in range(4):
             cube.SetBinContent(i % 2 + 1, 1, i // 2 + 1, scale * (i + 1))
         cube.Write()
+
+
+def write_inputs(directory: pathlib.Path, name: str = "input.root") -> str:
+    """The histograms of :data:`ONE_D` and :data:`VARIABLE` - and a 2D and a 3D channel's - in
+    ``directory/name``."""
+    from xrdroot.pyroot.core import TH1F, TFile
+
+    path = str(directory / name)
+    handle = TFile.Open(path, "RECREATE")
+    for key, values in ONE_D.items():
+        _filled(TH1F(key, key.replace("_", " "), 2, 1, 2), values).Write()
+    _write_moved(handle)
+    _write_2d()
+    for key, values in VARIABLE.items():
+        uneven = TH1F(key, "", 2, np.array([0.0, 1.0, 3.0]))
+        uneven.GetXaxis().SetTitle("m [GeV]")
+        _filled(uneven, values).Write()
+    _write_3d()
     handle.Close()
     return path
 

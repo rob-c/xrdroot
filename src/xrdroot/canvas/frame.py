@@ -149,7 +149,12 @@ def _log_y(values: np.ndarray[Any, Any], minimum: float, maximum: float) -> tupl
         low = 0.001 * high
     if low <= 0 or high <= 0:
         return _histogram_y(finite, True)
-    return low * (0.5 if minimum == -1111 else 1.0), high * (2.0 if maximum == -1111 else 1.0)
+    return _log_room(low, high, minimum == -1111, maximum == -1111)
+
+
+def _log_room(low: float, high: float, below: bool, above: bool) -> tuple[float, float]:
+    """A logarithmic range with room - a factor of two - at the ends the histogram left open."""
+    return low * (0.5 if below else 1.0), high * (2.0 if above else 1.0)
 
 
 def _crossed(low: float, high: float, log: bool) -> tuple[float, float]:
@@ -411,15 +416,20 @@ def dress(scene: Scene) -> None:
         dress_axes(scene, _axes_of(obj))
 
 
+def _painted_title(obj: Any) -> str:
+    """The title painted for ``obj``: a graph's frame histogram's, if it has one, else its own."""
+    framing = lookup(obj, "fHistogram") if isinstance(obj, (Graph, MultiGraph)) else None
+    if isinstance(framing, Histogram) and framing.title:
+        return str(framing.title)
+    return str(getattr(obj, "title", "") or "")
+
+
 def default_title(scene: Scene) -> None:
     """The title ``gStyle`` draws for a pad saved without its own ``title`` pave."""
     if scene.owner is None or scene.pad.painted:
         return
     obj = scene.owner[0]
-    title = str(getattr(obj, "title", "") or "")
-    framing = lookup(obj, "fHistogram") if isinstance(obj, (Graph, MultiGraph)) else None
-    if isinstance(framing, Histogram) and framing.title:  # the frame's title is what is painted
-        title = framing.title
+    title = _painted_title(obj)
     if not title or int(lookup(obj, "fBits", 0) or 0) & NO_TITLE:
         return
     from .latex import paint_latex

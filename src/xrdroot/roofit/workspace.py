@@ -283,13 +283,13 @@ class RooWorkspace(RooPrintable):
         _variables_section(nodes)
         _section("p.d.f.s\n-------\n", [n for n in nodes if n.InheritsFrom("RooAbsPdf")])
         _section("functions\n--------\n", [n for n in nodes if _is_function(n)])
-        _lines(
-            "datasets\n--------\n",
-            [f"{d.ClassName()}::{d.GetName()}{d.get().printValue()}" for d in self._data.values()],
-        )
-        embedded = [f"{d.ClassName()}::{d.GetName()}{d.get().printValue()}"
-                    for d in self._embedded.values()]  # fmt: skip
-        _lines(f"embedded datasets (in pdfs and functions)\n{'-' * 41}\n", embedded)
+        _lines("datasets\n--------\n", _data_lines(self._data))
+        _lines(f"embedded datasets (in pdfs and functions)\n{'-' * 41}\n",
+               _data_lines(self._embedded))  # fmt: skip
+        self._print_rest()
+
+    def _print_rest(self) -> None:
+        """``Print``'s last sections: the snapshots, the named sets, the generic objects."""
         _lines("parameter snapshots\n-------------------\n", self._snapshot_lines())
         _lines(
             "named sets\n----------\n",
@@ -299,6 +299,10 @@ class RooWorkspace(RooPrintable):
             "generic objects\n---------------\n",
             [f"{o.ClassName()}::{o.GetName()}" for o in self._generic.values()],
         )
+
+
+def _data_lines(data: dict[str, Any]) -> list[str]:
+    return [f"{d.ClassName()}::{d.GetName()}{d.get().printValue()}" for d in data.values()]
 
 
 def _is_function(node: Any) -> bool:
