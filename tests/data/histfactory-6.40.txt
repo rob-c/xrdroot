@@ -1,0 +1,990 @@
+#### meas
+[#2] INFO:HistFactory -- Making Model and Measurements (Fast) for measurement: meas
+[#2] INFO:HistFactory -- using lumi = 1 and lumiError = 0.1 including bins between 0 and 1
+[#2] INFO:HistFactory -- fixing the following parameters:
+   Lumi
+   alpha_syst1
+[#2] INFO:HistFactory -- Creating the HistoToWorkspaceFactoryFast factory
+[#2] INFO:HistFactory -- Setting preprocess functions
+[#2] PROGRESS:HistFactory -- Starting to process channel: channel1
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Starting to process 'channel1' channel with 1 observables
+-----------------------------------------
+
+[#2] INFO:HistFactory -- making normFactor: SigXsecOverSM
+[#2] INFO:HistFactory -- processing hist signal
+[#2] INFO:HistFactory -- signal_channel1 has no variation histograms 
+[#2] INFO:HistFactory -- processing hist background1
+[#2] INFO:HistFactory -- background1_channel1 has no variation histograms 
+[#2] INFO:HistFactory -- Sample: background1 to be included in Stat Error for channel channel1
+[#2] INFO:HistFactory -- Using external histogram for Stat Errors for 	Channel: channel1	Sample: background1	Error Histogram: background1_statUncert
+[#2] INFO:HistFactory -- processing hist background2
+[#2] INFO:HistFactory -- background2_channel1 has no variation histograms 
+[#2] INFO:HistFactory -- Sample: background2 to be included in Stat Error for channel channel1
+[#2] INFO:HistFactory -- Making Statistical Uncertainty Hist for  Channel: channel1 Sample: background2
+[#2] INFO:HistFactory -- Making Total Uncertainty for bin 1 Error = 5 CentralVal = 100 RelativeError = 0.05
+[#2] INFO:HistFactory -- Making Total Uncertainty for bin 2 Error = 10 CentralVal = 100 RelativeError = 0.1
+[#2] INFO:HistFactory -- About to create Constraint Terms from: mc_stat_channel1 params: (gamma_stat_channel1_bin_0,gamma_stat_channel1_bin_1)
+[#2] INFO:HistFactory -- Using Poisson StatErrors in channel: channel1
+[#2] INFO:HistFactory -- Creating constraint for: gamma_stat_channel1_bin_0. Type of constraint: 1
+[#2] INFO:HistFactory -- Creating constraint for: gamma_stat_channel1_bin_1. Type of constraint: 1
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	import model into workspace
+-----------------------------------------
+
+[#1] INFO:NumericIntegration -- RooRealIntegral::init(channel1_model_Int[obs_x_channel1]) using numeric integrator RooBinIntegrator to calculate Int(obs_x_channel1)
+RooDataSet::AsimovData[obs_x_channel1,weight:binWeightAsimov] = 2 entries (230 weighted)
+
+RooWorkspace(channel1) channel1 workspace contents
+
+variables
+---------
+(Lumi,SigXsecOverSM,alpha_syst1,alpha_syst2,alpha_syst3,gamma_stat_channel1_bin_0,gamma_stat_channel1_bin_1,nom_alpha_syst1,nom_alpha_syst2,nom_alpha_syst3,nom_gamma_stat_channel1_bin_0,nom_gamma_stat_channel1_bin_1,nominalLumi,obs_x_channel1)
+
+p.d.f.s
+-------
+RooGaussian::alpha_syst1Constraint[ x=alpha_syst1 mean=nom_alpha_syst1 sigma=1 ] = 1
+RooGaussian::alpha_syst2Constraint[ x=alpha_syst2 mean=nom_alpha_syst2 sigma=1 ] = 1
+RooGaussian::alpha_syst3Constraint[ x=alpha_syst3 mean=nom_alpha_syst3 sigma=1 ] = 1
+RooRealSumPdf::channel1_model[ signal_channel1_scaleFactors * signal_channel1_shapes + background1_channel1_scaleFactors * background1_channel1_shapes + background2_channel1_scaleFactors * background2_channel1_shapes ] = 220/230
+RooPoisson::gamma_stat_channel1_bin_0_constraint[ x=nom_gamma_stat_channel1_bin_0 mean=gamma_stat_channel1_bin_0_poisMean ] = 0.019943
+RooPoisson::gamma_stat_channel1_bin_1_constraint[ x=nom_gamma_stat_channel1_bin_1 mean=gamma_stat_channel1_bin_1_poisMean ] = 0.039861
+RooGaussian::lumiConstraint[ x=Lumi mean=nominalLumi sigma=0.1 ] = 1
+RooProdPdf::model_channel1[ lumiConstraint * alpha_syst1Constraint * alpha_syst2Constraint * alpha_syst3Constraint * gamma_stat_channel1_bin_0_constraint * gamma_stat_channel1_bin_1_constraint * channel1_model(obs_x_channel1) ] = 0.174888
+
+functions
+--------
+RooHistFunc::background1_channel1_Hist_alphanominal[ depList=(obs_x_channel1) ] = 0
+RooStats::HistFactory::FlexibleInterpVar::background1_channel1_epsilon[ paramList=(alpha_syst2) ] = 1
+RooProduct::background1_channel1_scaleFactors[ background1_channel1_epsilon * Lumi ] = 1
+RooProduct::background1_channel1_shapes[ background1_channel1_Hist_alphanominal * mc_stat_channel1 * channel1_model_binWidth ] = 0
+RooHistFunc::background2_channel1_Hist_alphanominal[ depList=(obs_x_channel1) ] = 100
+RooStats::HistFactory::FlexibleInterpVar::background2_channel1_epsilon[ paramList=(alpha_syst3) ] = 1
+RooProduct::background2_channel1_scaleFactors[ background2_channel1_epsilon * Lumi ] = 1
+RooProduct::background2_channel1_shapes[ background2_channel1_Hist_alphanominal * mc_stat_channel1 * channel1_model_binWidth ] = 200
+RooBinWidthFunction::channel1_model_binWidth[ HistFuncForBinWidth=signal_channel1_Hist_alphanominal ] = 2
+RooProduct::gamma_stat_channel1_bin_0_poisMean[ gamma_stat_channel1_bin_0 * gamma_stat_channel1_bin_0_tau ] = 400
+RooProduct::gamma_stat_channel1_bin_1_poisMean[ gamma_stat_channel1_bin_1 * gamma_stat_channel1_bin_1_tau ] = 100
+ParamHistFunc::mc_stat_channel1[ ] = 1
+RooHistFunc::signal_channel1_Hist_alphanominal[ depList=(obs_x_channel1) ] = 10
+RooStats::HistFactory::FlexibleInterpVar::signal_channel1_epsilon[ paramList=(alpha_syst1) ] = 1
+RooProduct::signal_channel1_scaleFactors[ signal_channel1_epsilon * SigXsecOverSM * Lumi ] = 1
+RooProduct::signal_channel1_shapes[ signal_channel1_Hist_alphanominal * channel1_model_binWidth ] = 20
+
+datasets
+--------
+RooDataSet::asimovData(obs_x_channel1)
+RooDataSet::obsData(obs_x_channel1)
+
+embedded datasets (in pdfs and functions)
+-----------------------------------------
+RooDataHist::signal_channel1_Hist_alphanominalDHist(obs_x_channel1)
+RooDataHist::background1_channel1_Hist_alphanominalDHist(obs_x_channel1)
+RooDataHist::background2_channel1_Hist_alphanominalDHist(obs_x_channel1)
+
+named sets
+----------
+ModelConfig_GlobalObservables:(nominalLumi,nom_alpha_syst1,nom_alpha_syst2,nom_alpha_syst3,nom_gamma_stat_channel1_bin_0,nom_gamma_stat_channel1_bin_1)
+ModelConfig_Observables:(obs_x_channel1)
+constraintTerms:(lumiConstraint,alpha_syst1Constraint,alpha_syst2Constraint,alpha_syst3Constraint,gamma_stat_channel1_bin_0_constraint,gamma_stat_channel1_bin_1_constraint)
+globalObservables:(nominalLumi,nom_alpha_syst1,nom_alpha_syst2,nom_alpha_syst3,nom_gamma_stat_channel1_bin_0,nom_gamma_stat_channel1_bin_1)
+likelihoodTerms:(channel1_model)
+observables:(obs_x_channel1)
+observablesSet:(obs_x_channel1)
+
+generic objects
+---------------
+RooStats::ModelConfig::ModelConfig
+
+[#2] INFO:HistFactory -- Setting Parameter(s) of Interest as: SigXsecOverSM 
+
+=== Using the following for ModelConfig ===
+Observables:             RooArgSet:: = (obs_x_channel1)
+Parameters of Interest:  RooArgSet:: = (SigXsecOverSM)
+Nuisance Parameters:     RooArgSet:: = (alpha_syst2,alpha_syst3,gamma_stat_channel1_bin_0,gamma_stat_channel1_bin_1)
+Global Observables:      RooArgSet:: = (nominalLumi,nom_alpha_syst1,nom_alpha_syst2,nom_alpha_syst3,nom_gamma_stat_channel1_bin_0,nom_gamma_stat_channel1_bin_1)
+PDF:                     RooProdPdf::model_channel1[ lumiConstraint * alpha_syst1Constraint * alpha_syst2Constraint * alpha_syst3Constraint * gamma_stat_channel1_bin_0_constraint * gamma_stat_channel1_bin_1_constraint * channel1_model(obs_x_channel1) ] = 0.174888
+
+[#2] INFO:HistFactory -- Opening File to hold channel: {prefix}_channel1_meas_model.root
+[#2] INFO:HistFactory -- About to write channel measurement to file
+[#2] PROGRESS:HistFactory -- Writing sample: signal
+[#2] PROGRESS:HistFactory -- Writing sample: background1
+[#2] PROGRESS:HistFactory -- Writing sample: background2
+[#2] PROGRESS:HistFactory -- Saved all histograms
+[#2] PROGRESS:HistFactory -- Saved Measurement
+[#2] PROGRESS:HistFactory -- Successfully wrote channel to file
+[#2] INFO:HistFactory -- full list of observables:
+(obs_x_channel1)
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Entering combination
+-----------------------------------------
+
+
+RooWorkspace(combined) combined contents
+
+variables
+---------
+(channelCat,nom_alpha_syst1,nom_alpha_syst2,nom_alpha_syst3,nom_gamma_stat_channel1_bin_0,nom_gamma_stat_channel1_bin_1,nominalLumi,obs_x_channel1)
+
+datasets
+--------
+RooDataSet::obsData(obs_x_channel1,channelCat)
+
+named sets
+----------
+ModelConfig_GlobalObservables:(nominalLumi,nom_alpha_syst1,nom_alpha_syst2,nom_alpha_syst3,nom_gamma_stat_channel1_bin_0,nom_gamma_stat_channel1_bin_1)
+ModelConfig_Observables:(obs_x_channel1,channelCat)
+globalObservables:(nominalLumi,nom_alpha_syst1,nom_alpha_syst2,nom_alpha_syst3,nom_gamma_stat_channel1_bin_0,nom_gamma_stat_channel1_bin_1)
+observables:(obs_x_channel1,channelCat)
+
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Importing combined model
+-----------------------------------------
+
+[#2] INFO:HistFactory -- setting Lumi constant
+[#2] INFO:HistFactory -- setting alpha_syst1 constant
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	create toy data
+-----------------------------------------
+
+[#1] INFO:NumericIntegration -- RooRealIntegral::init(channel1_model_Int[obs_x_channel1]) using numeric integrator RooBinIntegrator to calculate Int(obs_x_channel1)
+RooDataSet::AsimovData0[obs_x_channel1,channelCat,weight:binWeightAsimov] = 2 entries (230 weighted)
+[#2] INFO:HistFactory -- Setting Parameter(s) of Interest as: SigXsecOverSM 
+
+=== Using the following for ModelConfig ===
+Observables:             RooArgSet:: = (obs_x_channel1,channelCat)
+Parameters of Interest:  RooArgSet:: = (SigXsecOverSM)
+Nuisance Parameters:     RooArgSet:: = (alpha_syst2,alpha_syst3,gamma_stat_channel1_bin_0,gamma_stat_channel1_bin_1)
+Global Observables:      RooArgSet:: = (nominalLumi,nom_alpha_syst1,nom_alpha_syst2,nom_alpha_syst3,nom_gamma_stat_channel1_bin_0,nom_gamma_stat_channel1_bin_1)
+PDF:                     RooSimultaneous::simPdf[ indexCat=channelCat channel1=model_channel1 ] = 0.190787
+
+[#2] PROGRESS:HistFactory -- Writing combined workspace to file: {prefix}_combined_meas_model.root
+[#2] PROGRESS:HistFactory -- Writing combined measurement to file: {prefix}_combined_meas_model.root
+[#2] PROGRESS:HistFactory -- Writing sample: signal
+[#2] PROGRESS:HistFactory -- Writing sample: background1
+[#2] PROGRESS:HistFactory -- Writing sample: background2
+[#2] PROGRESS:HistFactory -- Saved all histograms
+[#2] PROGRESS:HistFactory -- Saved Measurement
+#### sink
+[#2] INFO:HistFactory -- Making Model and Measurements (Fast) for measurement: sink
+[#2] INFO:HistFactory -- using lumi = 1 and lumiError = 0 including bins between 0 and 1
+[#2] INFO:HistFactory -- fixing the following parameters:
+   alpha_usys
+[#2] INFO:HistFactory -- Creating the HistoToWorkspaceFactoryFast factory
+[#2] INFO:HistFactory -- Setting preprocess functions
+[#2] PROGRESS:HistFactory -- Starting to process channel: sink
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Starting to process 'sink' channel with 1 observables
+-----------------------------------------
+
+[#0] WARNING:InputArguments -- The parameter 'theta_gsys' with range [-inf, inf] of the RooGamma 'beta_gsysConstraint' exceeds the safe range of (0, inf). Advise to limit its range.
+[#2] INFO:HistFactory -- Added a gamma constraint for gsys
+[#2] INFO:HistFactory -- HistoToWorkspaceFast::AddConstraintTerm - zero uncertainty assigned - skip systematic  zsys
+[#2] INFO:HistFactory -- Added a uniform constraint for alpha_usys as a Gaussian constraint with a very large sigma 
+[#2] INFO:HistFactory -- HistoToWorkspaceFast::AddConstraintTerm - skip systematic nsys
+[#2] INFO:HistFactory -- making normFactor: mu
+[#2] INFO:HistFactory -- processing hist signal
+[#2] INFO:HistFactory -- Added a uniform constraint for alpha_shape as a Gaussian constraint with a very large sigma 
+[#2] INFO:HistFactory -- Sample: signal to be included in Stat Error for channel sink
+[#2] INFO:HistFactory -- Making Statistical Uncertainty Hist for  Channel: sink Sample: signal
+[#2] INFO:HistFactory -- processing hist background1
+[#2] INFO:HistFactory -- background1_sink has no variation histograms 
+[#2] INFO:HistFactory -- Sample: background1 to be included in Stat Error for channel sink
+[#2] INFO:HistFactory -- Making Statistical Uncertainty Hist for  Channel: sink Sample: background1
+[#2] INFO:HistFactory -- Sample: background1 in channel: sink to include a ShapeSys.
+[#2] INFO:HistFactory -- Creating constraint for: gamma_ss1_bin_0. Type of constraint: 1
+[#2] INFO:HistFactory -- Creating constraint for: gamma_ss1_bin_1. Type of constraint: 1
+[#2] INFO:HistFactory -- processing hist background2
+[#2] INFO:HistFactory -- background2_sink has no variation histograms 
+[#2] INFO:HistFactory -- Sample: background2 in channel: sink to be include a ShapeFactor.
+[#2] INFO:HistFactory -- Sample: background2 in channel: sink to include a ShapeSys.
+[#2] INFO:HistFactory -- Creating constraint for: gamma_ss2_bin_0. Type of constraint: 0
+[#2] INFO:HistFactory -- Creating constraint for: gamma_ss2_bin_1. Type of constraint: 0
+[#2] INFO:HistFactory -- Making Total Uncertainty for bin 1 Error = 10.9545 CentralVal = 120 RelativeError = 0.0912871
+[#2] INFO:HistFactory -- Making Total Uncertainty for bin 2 Error = 3.16228 CentralVal = 10 RelativeError = 0.316228
+[#2] INFO:HistFactory -- About to create Constraint Terms from: mc_stat_sink params: (gamma_stat_sink_bin_0,gamma_stat_sink_bin_1)
+[#2] INFO:HistFactory -- Using Gaussian StatErrors in channel: sink
+[#2] WARNING:HistFactory -- Warning: relative sigma 0.0912871 for "gamma_stat_sink_bin_0" falls below threshold of 0.2. Setting: gamma_stat_sink_bin_0 to constant
+[#2] INFO:HistFactory -- Creating constraint for: gamma_stat_sink_bin_0. Type of constraint: 0
+[#2] INFO:HistFactory -- Creating constraint for: gamma_stat_sink_bin_1. Type of constraint: 0
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	import model into workspace
+-----------------------------------------
+
+[#1] INFO:NumericIntegration -- RooRealIntegral::init(sink_model_Int[obs_x_sink]) using numeric integrator RooBinIntegrator to calculate Int(obs_x_sink)
+RooDataSet::AsimovData[obs_x_sink,weight:binWeightAsimov] = 2 entries (230 weighted)
+
+RooWorkspace(sink) sink workspace contents
+
+variables
+---------
+(Lumi,alpha_shape,alpha_usys,beta_gsys,gamma_free_bin_0,gamma_free_bin_1,gamma_ss1_bin_0,gamma_ss1_bin_1,gamma_ss2_bin_0,gamma_ss2_bin_1,gamma_stat_sink_bin_0,gamma_stat_sink_bin_1,mu,nom_alpha_shape,nom_alpha_usys,nom_beta_gsys,nom_gamma_ss1_bin_0,nom_gamma_ss1_bin_1,nom_gamma_ss2_bin_0,nom_gamma_ss2_bin_1,nom_gamma_stat_sink_bin_0,nom_gamma_stat_sink_bin_1,obs_x_sink,theta_gsys)
+
+p.d.f.s
+-------
+RooGaussian::alpha_shapeConstraint[ x=alpha_shape mean=nom_alpha_shape sigma=100 ] = 1
+RooGaussian::alpha_usysConstraint[ x=alpha_usys mean=nom_alpha_usys sigma=100 ] = 1
+RooGamma::beta_gsysConstraint[ x=beta_gsys gamma=k_nom_beta_gsys beta=theta_gsys mu=0 ] = 1.02515e-28
+RooPoisson::gamma_ss1_bin_0_constraint[ x=nom_gamma_ss1_bin_0 mean=gamma_ss1_bin_0_poisMean ] = 0.0498029
+RooPoisson::gamma_ss1_bin_1_constraint[ x=nom_gamma_ss1_bin_1 mean=gamma_ss1_bin_1_poisMean ] = 0.0992175
+RooGaussian::gamma_ss2_bin_0_constraint[ x=nom_gamma_ss2_bin_0 mean=gamma_ss2_bin_0 sigma=gamma_ss2_bin_0_sigma ] = 1
+RooGaussian::gamma_ss2_bin_1_constraint[ x=nom_gamma_ss2_bin_1 mean=gamma_ss2_bin_1 sigma=gamma_ss2_bin_1_sigma ] = 1
+RooGaussian::gamma_stat_sink_bin_0_constraint[ x=nom_gamma_stat_sink_bin_0 mean=gamma_stat_sink_bin_0 sigma=gamma_stat_sink_bin_0_sigma ] = 1
+RooGaussian::gamma_stat_sink_bin_1_constraint[ x=nom_gamma_stat_sink_bin_1 mean=gamma_stat_sink_bin_1 sigma=gamma_stat_sink_bin_1_sigma ] = 1
+RooProdPdf::model_sink[ beta_gsysConstraint * alpha_usysConstraint * alpha_shapeConstraint * gamma_ss1_bin_0_constraint * gamma_ss1_bin_1_constraint * gamma_ss2_bin_0_constraint * gamma_ss2_bin_1_constraint * gamma_stat_sink_bin_0_constraint * gamma_stat_sink_bin_1_constraint * sink_model(obs_x_sink) ] = 1.11443e-28
+RooRealSumPdf::sink_model[ signal_sink_scaleFactors * signal_sink_shapes + background1_sink_scaleFactors * background1_sink_shapes + background2_sink_scaleFactors * background2_sink_shapes ] = 220/230
+
+functions
+--------
+RooPolyVar::alphaOfBeta_gsys[ x=beta_gsys coefList=(-10,10) ] = 0
+RooHistFunc::background1_sink_Hist_alphanominal[ depList=(obs_x_sink) ] = 0
+RooProduct::background1_sink_scaleFactors[ background1_sink_epsilon * Lumi ] = 1
+RooProduct::background1_sink_shapes[ background1_sink_Hist_alphanominal * mc_stat_sink * sink_ss1_ShapeSys * sink_model_binWidth ] = 0
+RooHistFunc::background2_sink_Hist_alphanominal[ depList=(obs_x_sink) ] = 100
+RooProduct::background2_sink_scaleFactors[ background2_sink_epsilon * mu * Lumi ] = 1
+RooProduct::background2_sink_shapes[ background2_sink_Hist_alphanominal * sink_free_shapeFactor * sink_ss2_ShapeSys * sink_model_binWidth ] = 200
+RooProduct::gamma_ss1_bin_0_poisMean[ gamma_ss1_bin_0 * gamma_ss1_bin_0_tau ] = 64
+RooProduct::gamma_ss1_bin_1_poisMean[ gamma_ss1_bin_1 * gamma_ss1_bin_1_tau ] = 16
+RooAddition::k_nom_beta_gsys[ nom_beta_gsys + 1 ] = 11
+ParamHistFunc::mc_stat_sink[ ] = 1
+PiecewiseInterpolation::signal_sink_Hist_alpha[ ] = 10
+RooHistFunc::signal_sink_Hist_alpha_0high[ depList=(obs_x_sink) ] = 11
+RooHistFunc::signal_sink_Hist_alpha_0low[ depList=(obs_x_sink) ] = 9
+RooHistFunc::signal_sink_Hist_alphanominal[ depList=(obs_x_sink) ] = 10
+RooStats::HistFactory::FlexibleInterpVar::signal_sink_epsilon[ paramList=(alphaOfBeta_gsys,alpha_usys) ] = 1
+RooProduct::signal_sink_scaleFactors[ signal_sink_epsilon * mu * Lumi ] = 1
+RooProduct::signal_sink_shapes[ signal_sink_Hist_alpha * mc_stat_sink * sink_model_binWidth ] = 20
+ParamHistFunc::sink_free_shapeFactor[ ] = 1
+RooBinWidthFunction::sink_model_binWidth[ HistFuncForBinWidth=signal_sink_Hist_alphanominal ] = 2
+ParamHistFunc::sink_ss1_ShapeSys[ ] = 1
+ParamHistFunc::sink_ss2_ShapeSys[ ] = 1
+
+datasets
+--------
+RooDataSet::asimovData(obs_x_sink)
+RooDataSet::obsData(obs_x_sink)
+
+embedded datasets (in pdfs and functions)
+-----------------------------------------
+RooDataHist::signal_sink_Hist_alphanominalDHist(obs_x_sink)
+RooDataHist::signal_sink_Hist_alpha_0lowDHist(obs_x_sink)
+RooDataHist::signal_sink_Hist_alpha_0highDHist(obs_x_sink)
+RooDataHist::background1_sink_Hist_alphanominalDHist(obs_x_sink)
+RooDataHist::background2_sink_Hist_alphanominalDHist(obs_x_sink)
+
+named sets
+----------
+ModelConfig_GlobalObservables:(nom_beta_gsys,nom_alpha_usys,nom_alpha_shape,nom_gamma_ss1_bin_0,nom_gamma_ss1_bin_1,nom_gamma_ss2_bin_0,nom_gamma_ss2_bin_1,nom_gamma_stat_sink_bin_0,nom_gamma_stat_sink_bin_1)
+ModelConfig_Observables:(obs_x_sink)
+constraintTerms:(beta_gsysConstraint,alpha_usysConstraint,alpha_shapeConstraint,gamma_ss1_bin_0_constraint,gamma_ss1_bin_1_constraint,gamma_ss2_bin_0_constraint,gamma_ss2_bin_1_constraint,gamma_stat_sink_bin_0_constraint,gamma_stat_sink_bin_1_constraint)
+globalObservables:(nom_beta_gsys,nom_alpha_usys,nom_alpha_shape,nom_gamma_ss1_bin_0,nom_gamma_ss1_bin_1,nom_gamma_ss2_bin_0,nom_gamma_ss2_bin_1,nom_gamma_stat_sink_bin_0,nom_gamma_stat_sink_bin_1)
+likelihoodTerms:(sink_model)
+observables:(obs_x_sink)
+observablesSet:(obs_x_sink)
+
+generic objects
+---------------
+RooStats::ModelConfig::ModelConfig
+
+[#2] INFO:HistFactory -- Setting Parameter(s) of Interest as: mu 
+
+=== Using the following for ModelConfig ===
+Observables:             RooArgSet:: = (obs_x_sink)
+Parameters of Interest:  RooArgSet:: = (mu)
+Nuisance Parameters:     RooArgSet:: = (alpha_shape,beta_gsys,gamma_free_bin_0,gamma_free_bin_1,gamma_ss1_bin_0,gamma_ss1_bin_1,gamma_ss2_bin_0,gamma_ss2_bin_1,gamma_stat_sink_bin_1)
+Global Observables:      RooArgSet:: = (nom_beta_gsys,nom_alpha_usys,nom_alpha_shape,nom_gamma_ss1_bin_0,nom_gamma_ss1_bin_1,nom_gamma_ss2_bin_0,nom_gamma_ss2_bin_1,nom_gamma_stat_sink_bin_0,nom_gamma_stat_sink_bin_1)
+PDF:                     RooProdPdf::model_sink[ beta_gsysConstraint * alpha_usysConstraint * alpha_shapeConstraint * gamma_ss1_bin_0_constraint * gamma_ss1_bin_1_constraint * gamma_ss2_bin_0_constraint * gamma_ss2_bin_1_constraint * gamma_stat_sink_bin_0_constraint * gamma_stat_sink_bin_1_constraint * sink_model(obs_x_sink) ] = 1.11443e-28
+
+[#2] INFO:HistFactory -- Opening File to hold channel: {prefix}_sink_sink_model.root
+[#2] INFO:HistFactory -- About to write channel measurement to file
+[#2] PROGRESS:HistFactory -- Writing sample: signal
+[#2] PROGRESS:HistFactory -- Writing sample: background1
+[#2] PROGRESS:HistFactory -- Writing sample: background2
+[#2] PROGRESS:HistFactory -- Saved all histograms
+[#2] PROGRESS:HistFactory -- Saved Measurement
+[#2] PROGRESS:HistFactory -- Successfully wrote channel to file
+[#2] INFO:HistFactory -- full list of observables:
+(obs_x_sink)
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Entering combination
+-----------------------------------------
+
+
+RooWorkspace(combined) combined contents
+
+variables
+---------
+(channelCat,nom_alpha_shape,nom_alpha_usys,nom_beta_gsys,nom_gamma_ss1_bin_0,nom_gamma_ss1_bin_1,nom_gamma_ss2_bin_0,nom_gamma_ss2_bin_1,nom_gamma_stat_sink_bin_0,nom_gamma_stat_sink_bin_1,obs_x_sink)
+
+datasets
+--------
+RooDataSet::obsData(obs_x_sink,channelCat)
+
+named sets
+----------
+ModelConfig_GlobalObservables:(nom_beta_gsys,nom_alpha_usys,nom_alpha_shape,nom_gamma_ss1_bin_0,nom_gamma_ss1_bin_1,nom_gamma_ss2_bin_0,nom_gamma_ss2_bin_1,nom_gamma_stat_sink_bin_0,nom_gamma_stat_sink_bin_1)
+ModelConfig_Observables:(obs_x_sink,channelCat)
+globalObservables:(nom_beta_gsys,nom_alpha_usys,nom_alpha_shape,nom_gamma_ss1_bin_0,nom_gamma_ss1_bin_1,nom_gamma_ss2_bin_0,nom_gamma_ss2_bin_1,nom_gamma_stat_sink_bin_0,nom_gamma_stat_sink_bin_1)
+observables:(obs_x_sink,channelCat)
+
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Importing combined model
+-----------------------------------------
+
+[#2] INFO:HistFactory -- setting mu to the value: 1.5
+[#2] INFO:HistFactory -- setting alpha_usys constant
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	create toy data
+-----------------------------------------
+
+[#1] INFO:NumericIntegration -- RooRealIntegral::init(sink_model_Int[obs_x_sink]) using numeric integrator RooBinIntegrator to calculate Int(obs_x_sink)
+RooDataSet::AsimovData0[obs_x_sink,channelCat,weight:binWeightAsimov] = 2 entries (295 weighted)
+[#2] INFO:HistFactory -- Setting Parameter(s) of Interest as: mu 
+
+=== Using the following for ModelConfig ===
+Observables:             RooArgSet:: = (obs_x_sink,channelCat)
+Parameters of Interest:  RooArgSet:: = (mu)
+Nuisance Parameters:     RooArgSet:: = (alpha_shape,beta_gsys,gamma_free_bin_0,gamma_free_bin_1,gamma_ss1_bin_0,gamma_ss1_bin_1,gamma_ss2_bin_0,gamma_ss2_bin_1,gamma_stat_sink_bin_1)
+Global Observables:      RooArgSet:: = (nom_beta_gsys,nom_alpha_usys,nom_alpha_shape,nom_gamma_ss1_bin_0,nom_gamma_ss1_bin_1,nom_gamma_ss2_bin_0,nom_gamma_ss2_bin_1,nom_gamma_stat_sink_bin_0,nom_gamma_stat_sink_bin_1)
+PDF:                     RooSimultaneous::simPdf[ indexCat=channelCat sink=model_sink ] = 1.31706e-28
+
+[#2] PROGRESS:HistFactory -- Writing combined workspace to file: {prefix}_combined_sink_model.root
+[#2] PROGRESS:HistFactory -- Writing combined measurement to file: {prefix}_combined_sink_model.root
+[#2] PROGRESS:HistFactory -- Writing sample: signal
+[#2] PROGRESS:HistFactory -- Writing sample: background1
+[#2] PROGRESS:HistFactory -- Writing sample: background2
+[#2] PROGRESS:HistFactory -- Saved all histograms
+[#2] PROGRESS:HistFactory -- Saved Measurement
+#### variety
+[#2] INFO:HistFactory -- Making Model and Measurements (Fast) for measurement: variety
+[#2] INFO:HistFactory -- using lumi = 1 and lumiError = 0.1 including bins between 0 and 1
+[#2] INFO:HistFactory -- fixing the following parameters:
+   notthere
+[#2] INFO:HistFactory -- Creating the HistoToWorkspaceFactoryFast factory
+[#2] INFO:HistFactory -- Setting preprocess functions
+[#2] PROGRESS:HistFactory -- Starting to process channel: var
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Starting to process 'var' channel with 1 observables
+-----------------------------------------
+
+[#2] INFO:HistFactory -- will preprocess this line: expr::sq('mu*mu',{mu[1,0,5]})
+
+RooWorkspace(var) var workspace contents
+
+variables
+---------
+(mu)
+
+functions
+--------
+RooFormulaVar::sq[ actualVars=(mu) formula="mu*mu" ] = 1
+
+[#2] INFO:HistFactory -- Added a log-normal constraint for lsys
+[#2] INFO:HistFactory -- <NormFactor Name ="mu"> is duplicated for <Sample Name="sigv">, but only one factor will be included.  
+ Instead, define something like
+	<Function Name="muSquared" Expression="mu*mu" Var="mu[1,0,5]"> 
+in your top-level XML's <Measurement> entry and use <NormFactor Name="muSquared" in your channel XML file.
+[#2] INFO:HistFactory -- <NormFactor Name ="mu"> is duplicated for <Sample Name="sigv">, but only one factor will be included.  
+ Instead, define something like
+	<Function Name="muSquared" Expression="mu*mu" Var="mu[1,0,5]"> 
+in your top-level XML's <Measurement> entry and use <NormFactor Name="muSquared" in your channel XML file.
+[#2] INFO:HistFactory -- processing hist vsig
+[#2] INFO:HistFactory -- Sample: sigv in channel: var to be include a ShapeFactor.
+[#2] INFO:HistFactory -- Sample: sigv in channel: var to include a ShapeSys.
+[#2] INFO:HistFactory -- Creating constraint for: gamma_ssv_bin_0. Type of constraint: 1
+[#2] INFO:HistFactory -- Creating constraint for: gamma_ssv_bin_1. Type of constraint: 1
+[#2] INFO:HistFactory -- processing hist vbkg
+[#2] INFO:HistFactory -- Sample: bkgv in channel: var to be include a ShapeFactor.
+[#2] INFO:HistFactory -- Sample: bkgv in channel: var to include a ShapeSys.
+[#2] INFO:HistFactory -- Creating constraint for: gamma_ssv_bin_0. Type of constraint: 1
+[#2] INFO:HistFactory -- Creating constraint for: gamma_ssv_bin_1. Type of constraint: 1
+[#2] WARNING:HistFactory -- could not find variable notthere could not set it to constant
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	import model into workspace
+-----------------------------------------
+
+[#1] INFO:NumericIntegration -- RooRealIntegral::init(var_model_Int[obs_x_var]) using numeric integrator RooBinIntegrator to calculate Int(obs_x_var)
+RooDataSet::AsimovData[obs_x_var,weight:binWeightAsimov] = 2 entries (75 weighted)
+
+RooWorkspace(var) var workspace contents
+
+variables
+---------
+(Lumi,alpha_hs,alpha_lsys,gamma_sfv_bin_0,gamma_sfv_bin_1,gamma_ssv_bin_0,gamma_ssv_bin_1,kappa_lsys,mu,nom_alpha_hs,nom_alpha_lsys,nom_gamma_ssv_bin_0,nom_gamma_ssv_bin_1,nominalLumi,obs_x_var,tau_lsys)
+
+p.d.f.s
+-------
+RooGaussian::alpha_hsConstraint[ x=alpha_hs mean=nom_alpha_hs sigma=1 ] = 1
+RooGaussian::alpha_lsysConstraint[ x=alpha_lsys mean=nom_alpha_lsys sigma=1 ] = 1
+RooPoisson::gamma_ssv_bin_0_constraint[ x=nom_gamma_ssv_bin_0 mean=gamma_ssv_bin_0_poisMean ] = 0.0498029
+RooPoisson::gamma_ssv_bin_1_constraint[ x=nom_gamma_ssv_bin_1 mean=gamma_ssv_bin_1_poisMean ] = 0.0992175
+RooGaussian::lumiConstraint[ x=Lumi mean=nominalLumi sigma=0.1 ] = 1
+RooProdPdf::model_var[ lumiConstraint * alpha_lsysConstraint * alpha_hsConstraint * gamma_ssv_bin_0_constraint * gamma_ssv_bin_1_constraint * var_model(obs_x_var) ] = 0.11118
+RooRealSumPdf::var_model[ sigv_var_scaleFactors * sigv_var_shapes + bkgv_var_scaleFactors * bkgv_var_shapes ] = 22.5/75
+
+functions
+--------
+RooFormulaVar::alphaOfBeta_lsys[ actualVars=(tau_lsys,kappa_lsys,alpha_lsys) formula="x[0]*(pow(x[1],x[2])-1.)" ] = 0
+PiecewiseInterpolation::bkgv_var_Hist_alpha[ ] = 25
+RooHistFunc::bkgv_var_Hist_alpha_0high[ depList=(obs_x_var) ] = 27
+RooHistFunc::bkgv_var_Hist_alpha_0low[ depList=(obs_x_var) ] = 24
+RooHistFunc::bkgv_var_Hist_alphanominal[ depList=(obs_x_var) ] = 25
+RooProduct::bkgv_var_scaleFactors[ bkgv_var_epsilon * Lumi ] = 1
+RooProduct::bkgv_var_shapes[ bkgv_var_Hist_alpha * var_sfv_shapeFactor * var_ssv_ShapeSys * var_model_binWidth ] = 12.5
+RooProduct::gamma_ssv_bin_0_poisMean[ gamma_ssv_bin_0 * gamma_ssv_bin_0_tau ] = 64
+RooProduct::gamma_ssv_bin_1_poisMean[ gamma_ssv_bin_1 * gamma_ssv_bin_1_tau ] = 16
+PiecewiseInterpolation::sigv_var_Hist_alpha[ ] = 20
+RooHistFunc::sigv_var_Hist_alpha_0high[ depList=(obs_x_var) ] = 23
+RooHistFunc::sigv_var_Hist_alpha_0low[ depList=(obs_x_var) ] = 18
+RooHistFunc::sigv_var_Hist_alphanominal[ depList=(obs_x_var) ] = 20
+RooStats::HistFactory::FlexibleInterpVar::sigv_var_epsilon[ paramList=(alphaOfBeta_lsys) ] = 1
+RooProduct::sigv_var_scaleFactors[ sigv_var_epsilon * mu * mu * sq * Lumi ] = 1
+RooProduct::sigv_var_shapes[ sigv_var_Hist_alpha * var_sfv_shapeFactor * var_ssv_ShapeSys * var_model_binWidth ] = 10
+RooFormulaVar::sq[ actualVars=(mu) formula="mu*mu" ] = 1
+RooBinWidthFunction::var_model_binWidth[ HistFuncForBinWidth=sigv_var_Hist_alphanominal ] = 0.5
+ParamHistFunc::var_sfv_shapeFactor[ ] = 1
+ParamHistFunc::var_ssv_ShapeSys[ ] = 1
+
+datasets
+--------
+RooDataSet::asimovData(obs_x_var)
+RooDataSet::obsData(obs_x_var)
+RooDataSet::extra(obs_x_var)
+
+embedded datasets (in pdfs and functions)
+-----------------------------------------
+RooDataHist::sigv_var_Hist_alphanominalDHist(obs_x_var)
+RooDataHist::sigv_var_Hist_alpha_0lowDHist(obs_x_var)
+RooDataHist::sigv_var_Hist_alpha_0highDHist(obs_x_var)
+RooDataHist::bkgv_var_Hist_alphanominalDHist(obs_x_var)
+RooDataHist::bkgv_var_Hist_alpha_0lowDHist(obs_x_var)
+RooDataHist::bkgv_var_Hist_alpha_0highDHist(obs_x_var)
+
+named sets
+----------
+ModelConfig_GlobalObservables:(nominalLumi,nom_alpha_lsys,nom_alpha_hs,nom_gamma_ssv_bin_0,nom_gamma_ssv_bin_1)
+ModelConfig_Observables:(obs_x_var)
+constraintTerms:(lumiConstraint,alpha_lsysConstraint,alpha_hsConstraint,gamma_ssv_bin_0_constraint,gamma_ssv_bin_1_constraint)
+globalObservables:(nominalLumi,nom_alpha_lsys,nom_alpha_hs,nom_gamma_ssv_bin_0,nom_gamma_ssv_bin_1)
+likelihoodTerms:(var_model)
+observables:(obs_x_var)
+observablesSet:(obs_x_var)
+
+generic objects
+---------------
+RooStats::ModelConfig::ModelConfig
+
+[#2] INFO:HistFactory -- Setting Parameter(s) of Interest as: mu nope 
+[#2] WARNING:HistFactory -- WARNING: Can't find parameter of interest: nope in Workspace. Not setting in ModelConfig.
+
+=== Using the following for ModelConfig ===
+Observables:             RooArgSet:: = (obs_x_var)
+Parameters of Interest:  RooArgSet:: = (mu)
+Nuisance Parameters:     RooArgSet:: = (Lumi,alpha_hs,alpha_lsys,gamma_sfv_bin_0,gamma_sfv_bin_1,gamma_ssv_bin_0,gamma_ssv_bin_1)
+Global Observables:      RooArgSet:: = (nominalLumi,nom_alpha_lsys,nom_alpha_hs,nom_gamma_ssv_bin_0,nom_gamma_ssv_bin_1)
+PDF:                     RooProdPdf::model_var[ lumiConstraint * alpha_lsysConstraint * alpha_hsConstraint * gamma_ssv_bin_0_constraint * gamma_ssv_bin_1_constraint * var_model(obs_x_var) ] = 0.11118
+
+[#2] INFO:HistFactory -- Opening File to hold channel: {prefix}_var_variety_model.root
+[#2] INFO:HistFactory -- About to write channel measurement to file
+[#2] PROGRESS:HistFactory -- Writing sample: sigv
+[#2] PROGRESS:HistFactory -- Writing sample: bkgv
+[#2] PROGRESS:HistFactory -- Saved all histograms
+[#2] PROGRESS:HistFactory -- Saved Measurement
+[#2] PROGRESS:HistFactory -- Successfully wrote channel to file
+[#2] INFO:HistFactory -- full list of observables:
+(obs_x_var)
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Entering combination
+-----------------------------------------
+
+
+RooWorkspace(combined) combined contents
+
+variables
+---------
+(channelCat,nom_alpha_hs,nom_alpha_lsys,nom_gamma_ssv_bin_0,nom_gamma_ssv_bin_1,nominalLumi,obs_x_var)
+
+datasets
+--------
+RooDataSet::obsData(obs_x_var,channelCat)
+RooDataSet::extra(obs_x_var,channelCat)
+
+named sets
+----------
+ModelConfig_GlobalObservables:(nominalLumi,nom_alpha_lsys,nom_alpha_hs,nom_gamma_ssv_bin_0,nom_gamma_ssv_bin_1)
+ModelConfig_Observables:(obs_x_var,channelCat)
+globalObservables:(nominalLumi,nom_alpha_lsys,nom_alpha_hs,nom_gamma_ssv_bin_0,nom_gamma_ssv_bin_1)
+observables:(obs_x_var,channelCat)
+
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Importing combined model
+-----------------------------------------
+
+[#2] ERROR:HistFactory -- could not find variable absent could not set its value
+[#2] ERROR:HistFactory -- could not find variable notthere could not set it to constant
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	create toy data
+-----------------------------------------
+
+[#1] INFO:NumericIntegration -- RooRealIntegral::init(var_model_Int[obs_x_var]) using numeric integrator RooBinIntegrator to calculate Int(obs_x_var)
+RooDataSet::AsimovData0[obs_x_var,channelCat,weight:binWeightAsimov] = 2 entries (75 weighted)
+[#2] INFO:HistFactory -- Setting Parameter(s) of Interest as: mu nope 
+[#2] WARNING:HistFactory -- WARNING: Can't find parameter of interest: nope in Workspace. Not setting in ModelConfig.
+
+=== Using the following for ModelConfig ===
+Observables:             RooArgSet:: = (obs_x_var,channelCat)
+Parameters of Interest:  RooArgSet:: = (mu)
+Nuisance Parameters:     RooArgSet:: = (Lumi,alpha_hs,alpha_lsys,gamma_sfv_bin_0,gamma_sfv_bin_1,gamma_ssv_bin_0,gamma_ssv_bin_1)
+Global Observables:      RooArgSet:: = (nominalLumi,nom_alpha_lsys,nom_alpha_hs,nom_gamma_ssv_bin_0,nom_gamma_ssv_bin_1)
+PDF:                     RooSimultaneous::simPdf[ indexCat=channelCat var=model_var ] = 0.14824
+
+[#2] PROGRESS:HistFactory -- Writing combined workspace to file: {prefix}_combined_variety_model.root
+[#2] PROGRESS:HistFactory -- Writing combined measurement to file: {prefix}_combined_variety_model.root
+[#2] PROGRESS:HistFactory -- Writing sample: sigv
+[#2] PROGRESS:HistFactory -- Writing sample: bkgv
+[#2] PROGRESS:HistFactory -- Saved all histograms
+[#2] PROGRESS:HistFactory -- Saved Measurement
+#### square
+[#2] INFO:HistFactory -- Making Model and Measurements (Fast) for measurement: square
+[#2] INFO:HistFactory -- using lumi = 1 and lumiError = 0.1 including bins between 0 and 1
+[#2] INFO:HistFactory -- fixing the following parameters:
+[#2] INFO:HistFactory -- Creating the HistoToWorkspaceFactoryFast factory
+[#2] INFO:HistFactory -- Setting preprocess functions
+[#2] PROGRESS:HistFactory -- Starting to process channel: sq
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Starting to process 'sq' channel with 2 observables
+-----------------------------------------
+
+[#2] INFO:HistFactory -- making normFactor: mu
+[#2] INFO:HistFactory -- processing hist sig2d
+[#2] INFO:HistFactory -- sig_sq has no variation histograms 
+[#2] INFO:HistFactory -- processing hist bkg2d
+[#2] INFO:HistFactory -- bkg_sq has no variation histograms 
+[#2] INFO:HistFactory -- Sample: bkg to be included in Stat Error for channel sq
+[#2] INFO:HistFactory -- Making Statistical Uncertainty Hist for  Channel: sq Sample: bkg
+[#2] INFO:HistFactory -- Making Total Uncertainty for bin 5 Error = 2.82843 CentralVal = 8 RelativeError = 0.353553
+[#2] INFO:HistFactory -- Making Total Uncertainty for bin 6 Error = 3 CentralVal = 9 RelativeError = 0.333333
+[#2] INFO:HistFactory -- Making Total Uncertainty for bin 9 Error = 3.16228 CentralVal = 10 RelativeError = 0.316228
+[#2] INFO:HistFactory -- Making Total Uncertainty for bin 10 Error = 3.31662 CentralVal = 11 RelativeError = 0.301511
+[#2] INFO:HistFactory -- About to create Constraint Terms from: mc_stat_sq params: (gamma_stat_sq_bin_0_0,gamma_stat_sq_bin_1_0,gamma_stat_sq_bin_0_1,gamma_stat_sq_bin_1_1)
+[#2] INFO:HistFactory -- Using Poisson StatErrors in channel: sq
+[#2] INFO:HistFactory -- Creating constraint for: gamma_stat_sq_bin_0_0. Type of constraint: 1
+[#2] INFO:HistFactory -- Creating constraint for: gamma_stat_sq_bin_1_0. Type of constraint: 1
+[#2] INFO:HistFactory -- Creating constraint for: gamma_stat_sq_bin_0_1. Type of constraint: 1
+[#2] INFO:HistFactory -- Creating constraint for: gamma_stat_sq_bin_1_1. Type of constraint: 1
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	import model into workspace
+-----------------------------------------
+
+[#1] INFO:NumericIntegration -- RooRealIntegral::init(sq_model_Int[obs_x_sq,obs_y_sq]) using numeric integrator RooBinIntegrator to calculate Int(obs_x_sq,obs_y_sq)
+RooDataSet::AsimovData[obs_x_sq,obs_y_sq,weight:binWeightAsimov] = 4 entries (52 weighted)
+
+RooWorkspace(sq) sq workspace contents
+
+variables
+---------
+(Lumi,gamma_stat_sq_bin_0_0,gamma_stat_sq_bin_0_1,gamma_stat_sq_bin_1_0,gamma_stat_sq_bin_1_1,mu,nom_gamma_stat_sq_bin_0_0,nom_gamma_stat_sq_bin_0_1,nom_gamma_stat_sq_bin_1_0,nom_gamma_stat_sq_bin_1_1,nominalLumi,obs_x_sq,obs_y_sq)
+
+p.d.f.s
+-------
+RooPoisson::gamma_stat_sq_bin_0_0_constraint[ x=nom_gamma_stat_sq_bin_0_0 mean=gamma_stat_sq_bin_0_0_poisMean ] = 0.139587
+RooPoisson::gamma_stat_sq_bin_0_1_constraint[ x=nom_gamma_stat_sq_bin_0_1 mean=gamma_stat_sq_bin_0_1_poisMean ] = 0.12511
+RooPoisson::gamma_stat_sq_bin_1_0_constraint[ x=nom_gamma_stat_sq_bin_1_0 mean=gamma_stat_sq_bin_1_0_poisMean ] = 0.131756
+RooPoisson::gamma_stat_sq_bin_1_1_constraint[ x=nom_gamma_stat_sq_bin_1_1 mean=gamma_stat_sq_bin_1_1_poisMean ] = 0.119378
+RooGaussian::lumiConstraint[ x=Lumi mean=nominalLumi sigma=0.1 ] = 1
+RooProdPdf::model_sq[ lumiConstraint * gamma_stat_sq_bin_0_0_constraint * gamma_stat_sq_bin_1_0_constraint * gamma_stat_sq_bin_0_1_constraint * gamma_stat_sq_bin_1_1_constraint * sq_model(obs_x_sq,obs_y_sq) ] = 0.0043949
+RooRealSumPdf::sq_model[ sig_sq_scaleFactors * sig_sq_shapes + bkg_sq_scaleFactors * bkg_sq_shapes ] = 16/52
+
+functions
+--------
+RooHistFunc::bkg_sq_Hist_alphanominal[ depList=(obs_x_sq,obs_y_sq) ] = 11
+RooProduct::bkg_sq_scaleFactors[ bkg_sq_epsilon * Lumi ] = 1
+RooProduct::bkg_sq_shapes[ bkg_sq_Hist_alphanominal * mc_stat_sq * sq_model_binWidth ] = 11
+RooProduct::gamma_stat_sq_bin_0_0_poisMean[ gamma_stat_sq_bin_0_0 * gamma_stat_sq_bin_0_0_tau ] = 8
+RooProduct::gamma_stat_sq_bin_0_1_poisMean[ gamma_stat_sq_bin_0_1 * gamma_stat_sq_bin_0_1_tau ] = 10
+RooProduct::gamma_stat_sq_bin_1_0_poisMean[ gamma_stat_sq_bin_1_0 * gamma_stat_sq_bin_1_0_tau ] = 9
+RooProduct::gamma_stat_sq_bin_1_1_poisMean[ gamma_stat_sq_bin_1_1 * gamma_stat_sq_bin_1_1_tau ] = 11
+ParamHistFunc::mc_stat_sq[ ] = 1
+RooHistFunc::sig_sq_Hist_alphanominal[ depList=(obs_x_sq,obs_y_sq) ] = 5
+RooProduct::sig_sq_scaleFactors[ sig_sq_epsilon * mu * Lumi ] = 1
+RooProduct::sig_sq_shapes[ sig_sq_Hist_alphanominal * sq_model_binWidth ] = 5
+RooBinWidthFunction::sq_model_binWidth[ HistFuncForBinWidth=sig_sq_Hist_alphanominal ] = 1
+
+datasets
+--------
+RooDataSet::asimovData(obs_x_sq,obs_y_sq)
+RooDataSet::obsData(obs_x_sq,obs_y_sq)
+
+embedded datasets (in pdfs and functions)
+-----------------------------------------
+RooDataHist::sig_sq_Hist_alphanominalDHist(obs_x_sq,obs_y_sq)
+RooDataHist::bkg_sq_Hist_alphanominalDHist(obs_x_sq,obs_y_sq)
+
+named sets
+----------
+ModelConfig_GlobalObservables:(nominalLumi,nom_gamma_stat_sq_bin_0_0,nom_gamma_stat_sq_bin_1_0,nom_gamma_stat_sq_bin_0_1,nom_gamma_stat_sq_bin_1_1)
+ModelConfig_Observables:(obs_x_sq,obs_y_sq)
+constraintTerms:(lumiConstraint,gamma_stat_sq_bin_0_0_constraint,gamma_stat_sq_bin_1_0_constraint,gamma_stat_sq_bin_0_1_constraint,gamma_stat_sq_bin_1_1_constraint)
+globalObservables:(nominalLumi,nom_gamma_stat_sq_bin_0_0,nom_gamma_stat_sq_bin_1_0,nom_gamma_stat_sq_bin_0_1,nom_gamma_stat_sq_bin_1_1)
+likelihoodTerms:(sq_model)
+observables:(obs_x_sq,obs_y_sq)
+observablesSet:(obs_x_sq,obs_y_sq)
+
+generic objects
+---------------
+RooStats::ModelConfig::ModelConfig
+
+[#2] INFO:HistFactory -- Setting Parameter(s) of Interest as: mu 
+
+=== Using the following for ModelConfig ===
+Observables:             RooArgSet:: = (obs_x_sq,obs_y_sq)
+Parameters of Interest:  RooArgSet:: = (mu)
+Nuisance Parameters:     RooArgSet:: = (Lumi,gamma_stat_sq_bin_0_0,gamma_stat_sq_bin_0_1,gamma_stat_sq_bin_1_0,gamma_stat_sq_bin_1_1)
+Global Observables:      RooArgSet:: = (nominalLumi,nom_gamma_stat_sq_bin_0_0,nom_gamma_stat_sq_bin_1_0,nom_gamma_stat_sq_bin_0_1,nom_gamma_stat_sq_bin_1_1)
+PDF:                     RooProdPdf::model_sq[ lumiConstraint * gamma_stat_sq_bin_0_0_constraint * gamma_stat_sq_bin_1_0_constraint * gamma_stat_sq_bin_0_1_constraint * gamma_stat_sq_bin_1_1_constraint * sq_model(obs_x_sq,obs_y_sq) ] = 0.0043949
+
+[#2] INFO:HistFactory -- Opening File to hold channel: {prefix}_sq_square_model.root
+[#2] INFO:HistFactory -- About to write channel measurement to file
+[#2] PROGRESS:HistFactory -- Writing sample: sig
+[#2] PROGRESS:HistFactory -- Writing sample: bkg
+[#2] PROGRESS:HistFactory -- Saved all histograms
+[#2] PROGRESS:HistFactory -- Saved Measurement
+[#2] PROGRESS:HistFactory -- Successfully wrote channel to file
+[#2] INFO:HistFactory -- full list of observables:
+(obs_x_sq,obs_y_sq)
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Entering combination
+-----------------------------------------
+
+
+RooWorkspace(combined) combined contents
+
+variables
+---------
+(channelCat,nom_gamma_stat_sq_bin_0_0,nom_gamma_stat_sq_bin_0_1,nom_gamma_stat_sq_bin_1_0,nom_gamma_stat_sq_bin_1_1,nominalLumi,obs_x_sq,obs_y_sq)
+
+datasets
+--------
+RooDataSet::obsData(obs_x_sq,obs_y_sq,channelCat)
+
+named sets
+----------
+ModelConfig_GlobalObservables:(nominalLumi,nom_gamma_stat_sq_bin_0_0,nom_gamma_stat_sq_bin_1_0,nom_gamma_stat_sq_bin_0_1,nom_gamma_stat_sq_bin_1_1)
+ModelConfig_Observables:(obs_x_sq,obs_y_sq,channelCat)
+globalObservables:(nominalLumi,nom_gamma_stat_sq_bin_0_0,nom_gamma_stat_sq_bin_1_0,nom_gamma_stat_sq_bin_0_1,nom_gamma_stat_sq_bin_1_1)
+observables:(obs_x_sq,obs_y_sq,channelCat)
+
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Importing combined model
+-----------------------------------------
+
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	create toy data
+-----------------------------------------
+
+[#1] INFO:NumericIntegration -- RooRealIntegral::init(sq_model_Int[obs_x_sq,obs_y_sq]) using numeric integrator RooBinIntegrator to calculate Int(obs_x_sq,obs_y_sq)
+RooDataSet::AsimovData0[obs_x_sq,obs_y_sq,channelCat,weight:binWeightAsimov] = 4 entries (52 weighted)
+[#2] INFO:HistFactory -- Setting Parameter(s) of Interest as: mu 
+
+=== Using the following for ModelConfig ===
+Observables:             RooArgSet:: = (obs_x_sq,obs_y_sq,channelCat)
+Parameters of Interest:  RooArgSet:: = (mu)
+Nuisance Parameters:     RooArgSet:: = (Lumi,gamma_stat_sq_bin_0_0,gamma_stat_sq_bin_0_1,gamma_stat_sq_bin_1_0,gamma_stat_sq_bin_1_1)
+Global Observables:      RooArgSet:: = (nominalLumi,nom_gamma_stat_sq_bin_0_0,nom_gamma_stat_sq_bin_1_0,nom_gamma_stat_sq_bin_0_1,nom_gamma_stat_sq_bin_1_1)
+PDF:                     RooSimultaneous::simPdf[ indexCat=channelCat sq=model_sq ] = 0.00274681
+
+[#2] PROGRESS:HistFactory -- Writing combined workspace to file: {prefix}_combined_square_model.root
+[#2] PROGRESS:HistFactory -- Writing combined measurement to file: {prefix}_combined_square_model.root
+[#2] PROGRESS:HistFactory -- Writing sample: sig
+[#2] PROGRESS:HistFactory -- Writing sample: bkg
+[#2] PROGRESS:HistFactory -- Saved all histograms
+[#2] PROGRESS:HistFactory -- Saved Measurement
+#### cube
+[#2] INFO:HistFactory -- Making Model and Measurements (Fast) for measurement: cube
+[#2] INFO:HistFactory -- using lumi = 1 and lumiError = 0.1 including bins between 0 and 1
+[#2] INFO:HistFactory -- fixing the following parameters:
+[#2] INFO:HistFactory -- Creating the HistoToWorkspaceFactoryFast factory
+[#2] INFO:HistFactory -- Setting preprocess functions
+[#2] PROGRESS:HistFactory -- Starting to process channel: cube
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Starting to process 'cube' channel with 3 observables
+-----------------------------------------
+
+[#2] INFO:HistFactory -- making normFactor: mu
+[#2] INFO:HistFactory -- processing hist sig3d
+[#2] INFO:HistFactory -- sig_cube has no variation histograms 
+[#2] INFO:HistFactory -- Sample: sig to be included in Stat Error for channel cube
+[#2] INFO:HistFactory -- Making Statistical Uncertainty Hist for  Channel: cube Sample: sig
+[#2] INFO:HistFactory -- Making Total Uncertainty for bin 17 Error = 1 CentralVal = 1 RelativeError = 1
+[#2] INFO:HistFactory -- Making Total Uncertainty for bin 18 Error = 1.41421 CentralVal = 2 RelativeError = 0.707107
+[#2] INFO:HistFactory -- Making Total Uncertainty for bin 29 Error = 1.73205 CentralVal = 3 RelativeError = 0.57735
+[#2] INFO:HistFactory -- Making Total Uncertainty for bin 30 Error = 2 CentralVal = 4 RelativeError = 0.5
+[#2] INFO:HistFactory -- About to create Constraint Terms from: mc_stat_cube params: (gamma_stat_cube_bin_0_0_0,gamma_stat_cube_bin_1_0_0,gamma_stat_cube_bin_0_0_1,gamma_stat_cube_bin_1_0_1)
+[#2] INFO:HistFactory -- Using Poisson StatErrors in channel: cube
+[#2] INFO:HistFactory -- Creating constraint for: gamma_stat_cube_bin_0_0_0. Type of constraint: 1
+[#2] INFO:HistFactory -- Creating constraint for: gamma_stat_cube_bin_1_0_0. Type of constraint: 1
+[#2] INFO:HistFactory -- Creating constraint for: gamma_stat_cube_bin_0_0_1. Type of constraint: 1
+[#2] INFO:HistFactory -- Creating constraint for: gamma_stat_cube_bin_1_0_1. Type of constraint: 1
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	import model into workspace
+-----------------------------------------
+
+[#1] INFO:NumericIntegration -- RooRealIntegral::init(cube_model_Int[obs_x_cube,obs_y_cube,obs_z_cube]) using numeric integrator RooBinIntegrator to calculate Int(obs_x_cube,obs_y_cube,obs_z_cube)
+RooDataSet::AsimovData[obs_x_cube,obs_y_cube,obs_z_cube,weight:binWeightAsimov] = 4 entries (10 weighted)
+
+RooWorkspace(cube) cube workspace contents
+
+variables
+---------
+(Lumi,gamma_stat_cube_bin_0_0_0,gamma_stat_cube_bin_0_0_1,gamma_stat_cube_bin_1_0_0,gamma_stat_cube_bin_1_0_1,mu,nom_gamma_stat_cube_bin_0_0_0,nom_gamma_stat_cube_bin_0_0_1,nom_gamma_stat_cube_bin_1_0_0,nom_gamma_stat_cube_bin_1_0_1,nominalLumi,obs_x_cube,obs_y_cube,obs_z_cube)
+
+p.d.f.s
+-------
+RooRealSumPdf::cube_model[ sig_cube_scaleFactors * sig_cube_shapes ] = 4/10
+RooPoisson::gamma_stat_cube_bin_0_0_0_constraint[ x=nom_gamma_stat_cube_bin_0_0_0 mean=gamma_stat_cube_bin_0_0_0_poisMean ] = 0.367879
+RooPoisson::gamma_stat_cube_bin_0_0_1_constraint[ x=nom_gamma_stat_cube_bin_0_0_1 mean=gamma_stat_cube_bin_0_0_1_poisMean ] = 0.224042
+RooPoisson::gamma_stat_cube_bin_1_0_0_constraint[ x=nom_gamma_stat_cube_bin_1_0_0 mean=gamma_stat_cube_bin_1_0_0_poisMean ] = 0.270671
+RooPoisson::gamma_stat_cube_bin_1_0_1_constraint[ x=nom_gamma_stat_cube_bin_1_0_1 mean=gamma_stat_cube_bin_1_0_1_poisMean ] = 0.195367
+RooGaussian::lumiConstraint[ x=Lumi mean=nominalLumi sigma=0.1 ] = 1
+RooProdPdf::model_cube[ lumiConstraint * gamma_stat_cube_bin_0_0_0_constraint * gamma_stat_cube_bin_1_0_0_constraint * gamma_stat_cube_bin_0_0_1_constraint * gamma_stat_cube_bin_1_0_1_constraint * cube_model(obs_x_cube,obs_y_cube,obs_z_cube) ] = 0.0174336
+
+functions
+--------
+RooBinWidthFunction::cube_model_binWidth[ HistFuncForBinWidth=sig_cube_Hist_alphanominal ] = 1
+RooProduct::gamma_stat_cube_bin_0_0_0_poisMean[ gamma_stat_cube_bin_0_0_0 * gamma_stat_cube_bin_0_0_0_tau ] = 1
+RooProduct::gamma_stat_cube_bin_0_0_1_poisMean[ gamma_stat_cube_bin_0_0_1 * gamma_stat_cube_bin_0_0_1_tau ] = 3
+RooProduct::gamma_stat_cube_bin_1_0_0_poisMean[ gamma_stat_cube_bin_1_0_0 * gamma_stat_cube_bin_1_0_0_tau ] = 2
+RooProduct::gamma_stat_cube_bin_1_0_1_poisMean[ gamma_stat_cube_bin_1_0_1 * gamma_stat_cube_bin_1_0_1_tau ] = 4
+ParamHistFunc::mc_stat_cube[ ] = 1
+RooHistFunc::sig_cube_Hist_alphanominal[ depList=(obs_x_cube,obs_y_cube,obs_z_cube) ] = 4
+RooProduct::sig_cube_scaleFactors[ sig_cube_epsilon * mu * Lumi ] = 1
+RooProduct::sig_cube_shapes[ sig_cube_Hist_alphanominal * mc_stat_cube * cube_model_binWidth ] = 4
+
+datasets
+--------
+RooDataSet::asimovData(obs_x_cube,obs_y_cube,obs_z_cube)
+RooDataSet::obsData(obs_x_cube,obs_y_cube,obs_z_cube)
+
+embedded datasets (in pdfs and functions)
+-----------------------------------------
+RooDataHist::sig_cube_Hist_alphanominalDHist(obs_x_cube,obs_y_cube,obs_z_cube)
+
+named sets
+----------
+ModelConfig_GlobalObservables:(nominalLumi,nom_gamma_stat_cube_bin_0_0_0,nom_gamma_stat_cube_bin_1_0_0,nom_gamma_stat_cube_bin_0_0_1,nom_gamma_stat_cube_bin_1_0_1)
+ModelConfig_Observables:(obs_x_cube,obs_y_cube,obs_z_cube)
+constraintTerms:(lumiConstraint,gamma_stat_cube_bin_0_0_0_constraint,gamma_stat_cube_bin_1_0_0_constraint,gamma_stat_cube_bin_0_0_1_constraint,gamma_stat_cube_bin_1_0_1_constraint)
+globalObservables:(nominalLumi,nom_gamma_stat_cube_bin_0_0_0,nom_gamma_stat_cube_bin_1_0_0,nom_gamma_stat_cube_bin_0_0_1,nom_gamma_stat_cube_bin_1_0_1)
+likelihoodTerms:(cube_model)
+observables:(obs_x_cube,obs_y_cube,obs_z_cube)
+observablesSet:(obs_x_cube,obs_y_cube,obs_z_cube)
+
+generic objects
+---------------
+RooStats::ModelConfig::ModelConfig
+
+[#2] INFO:HistFactory -- Setting Parameter(s) of Interest as: mu 
+
+=== Using the following for ModelConfig ===
+Observables:             RooArgSet:: = (obs_x_cube,obs_y_cube,obs_z_cube)
+Parameters of Interest:  RooArgSet:: = (mu)
+Nuisance Parameters:     RooArgSet:: = (Lumi,gamma_stat_cube_bin_0_0_0,gamma_stat_cube_bin_0_0_1,gamma_stat_cube_bin_1_0_0,gamma_stat_cube_bin_1_0_1)
+Global Observables:      RooArgSet:: = (nominalLumi,nom_gamma_stat_cube_bin_0_0_0,nom_gamma_stat_cube_bin_1_0_0,nom_gamma_stat_cube_bin_0_0_1,nom_gamma_stat_cube_bin_1_0_1)
+PDF:                     RooProdPdf::model_cube[ lumiConstraint * gamma_stat_cube_bin_0_0_0_constraint * gamma_stat_cube_bin_1_0_0_constraint * gamma_stat_cube_bin_0_0_1_constraint * gamma_stat_cube_bin_1_0_1_constraint * cube_model(obs_x_cube,obs_y_cube,obs_z_cube) ] = 0.0174336
+
+[#2] INFO:HistFactory -- Opening File to hold channel: {prefix}_cube_cube_model.root
+[#2] INFO:HistFactory -- About to write channel measurement to file
+[#2] PROGRESS:HistFactory -- Writing sample: sig
+[#2] PROGRESS:HistFactory -- Saved all histograms
+[#2] PROGRESS:HistFactory -- Saved Measurement
+[#2] PROGRESS:HistFactory -- Successfully wrote channel to file
+[#2] INFO:HistFactory -- full list of observables:
+(obs_x_cube,obs_y_cube,obs_z_cube)
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Entering combination
+-----------------------------------------
+
+
+RooWorkspace(combined) combined contents
+
+variables
+---------
+(channelCat,nom_gamma_stat_cube_bin_0_0_0,nom_gamma_stat_cube_bin_0_0_1,nom_gamma_stat_cube_bin_1_0_0,nom_gamma_stat_cube_bin_1_0_1,nominalLumi,obs_x_cube,obs_y_cube,obs_z_cube)
+
+datasets
+--------
+RooDataSet::obsData(obs_x_cube,obs_y_cube,obs_z_cube,channelCat)
+
+named sets
+----------
+ModelConfig_GlobalObservables:(nominalLumi,nom_gamma_stat_cube_bin_0_0_0,nom_gamma_stat_cube_bin_1_0_0,nom_gamma_stat_cube_bin_0_0_1,nom_gamma_stat_cube_bin_1_0_1)
+ModelConfig_Observables:(obs_x_cube,obs_y_cube,obs_z_cube,channelCat)
+globalObservables:(nominalLumi,nom_gamma_stat_cube_bin_0_0_0,nom_gamma_stat_cube_bin_1_0_0,nom_gamma_stat_cube_bin_0_0_1,nom_gamma_stat_cube_bin_1_0_1)
+observables:(obs_x_cube,obs_y_cube,obs_z_cube,channelCat)
+
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Importing combined model
+-----------------------------------------
+
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	create toy data
+-----------------------------------------
+
+[#1] INFO:NumericIntegration -- RooRealIntegral::init(cube_model_Int[obs_x_cube,obs_y_cube,obs_z_cube]) using numeric integrator RooBinIntegrator to calculate Int(obs_x_cube,obs_y_cube,obs_z_cube)
+RooDataSet::AsimovData0[obs_x_cube,obs_y_cube,obs_z_cube,channelCat,weight:binWeightAsimov] = 4 entries (10 weighted)
+[#2] INFO:HistFactory -- Setting Parameter(s) of Interest as: mu 
+
+=== Using the following for ModelConfig ===
+Observables:             RooArgSet:: = (obs_x_cube,obs_y_cube,obs_z_cube,channelCat)
+Parameters of Interest:  RooArgSet:: = (mu)
+Nuisance Parameters:     RooArgSet:: = (Lumi,gamma_stat_cube_bin_0_0_0,gamma_stat_cube_bin_0_0_1,gamma_stat_cube_bin_1_0_0,gamma_stat_cube_bin_1_0_1)
+Global Observables:      RooArgSet:: = (nominalLumi,nom_gamma_stat_cube_bin_0_0_0,nom_gamma_stat_cube_bin_1_0_0,nom_gamma_stat_cube_bin_0_0_1,nom_gamma_stat_cube_bin_1_0_1)
+PDF:                     RooSimultaneous::simPdf[ indexCat=channelCat cube=model_cube ] = 0.00435839
+
+[#2] PROGRESS:HistFactory -- Writing combined workspace to file: {prefix}_combined_cube_model.root
+[#2] PROGRESS:HistFactory -- Writing combined measurement to file: {prefix}_combined_cube_model.root
+[#2] PROGRESS:HistFactory -- Writing sample: sig
+[#2] PROGRESS:HistFactory -- Saved all histograms
+[#2] PROGRESS:HistFactory -- Saved Measurement
+#### plain
+[#2] INFO:HistFactory -- Making Model and Measurements (Fast) for measurement: plain
+[#2] INFO:HistFactory -- using lumi = 1 and lumiError = 0.1 including bins between 0 and 1
+[#2] INFO:HistFactory -- fixing the following parameters:
+[#2] INFO:HistFactory -- Creating the HistoToWorkspaceFactoryFast factory
+[#2] INFO:HistFactory -- Setting preprocess functions
+[#2] PROGRESS:HistFactory -- Starting to process channel: plain
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Starting to process 'plain' channel with 1 observables
+-----------------------------------------
+
+[#2] INFO:HistFactory -- making normFactor: mu
+[#2] INFO:HistFactory -- processing hist signal
+[#2] INFO:HistFactory -- signal_plain has no variation histograms 
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	import model into workspace
+-----------------------------------------
+
+[#1] INFO:NumericIntegration -- RooRealIntegral::init(plain_model_Int[obs_x_plain]) using numeric integrator RooBinIntegrator to calculate Int(obs_x_plain)
+RooDataSet::AsimovData[obs_x_plain,weight:binWeightAsimov] = 2 entries (30 weighted)
+
+RooWorkspace(plain) plain workspace contents
+
+variables
+---------
+(Lumi,mu,nominalLumi,obs_x_plain)
+
+p.d.f.s
+-------
+RooGaussian::lumiConstraint[ x=Lumi mean=nominalLumi sigma=0.1 ] = 1
+RooProdPdf::model_plain[ lumiConstraint * plain_model(obs_x_plain) ] = 20
+RooRealSumPdf::plain_model[ signal_plain_scaleFactors * signal_plain_shapes ] = 20/30
+
+functions
+--------
+RooBinWidthFunction::plain_model_binWidth[ HistFuncForBinWidth=signal_plain_Hist_alphanominal ] = 2
+RooHistFunc::signal_plain_Hist_alphanominal[ depList=(obs_x_plain) ] = 10
+RooProduct::signal_plain_scaleFactors[ signal_plain_epsilon * mu * Lumi ] = 1
+RooProduct::signal_plain_shapes[ signal_plain_Hist_alphanominal * plain_model_binWidth ] = 20
+
+datasets
+--------
+RooDataSet::asimovData(obs_x_plain)
+RooDataSet::obsData(obs_x_plain)
+
+embedded datasets (in pdfs and functions)
+-----------------------------------------
+RooDataHist::signal_plain_Hist_alphanominalDHist(obs_x_plain)
+
+named sets
+----------
+ModelConfig_GlobalObservables:(nominalLumi)
+ModelConfig_Observables:(obs_x_plain)
+constraintTerms:(lumiConstraint)
+globalObservables:(nominalLumi)
+likelihoodTerms:(plain_model)
+observables:(obs_x_plain)
+observablesSet:(obs_x_plain)
+
+generic objects
+---------------
+RooStats::ModelConfig::ModelConfig
+
+[#2] WARNING:HistFactory -- No Parametetrs of interest are set
+[#2] INFO:HistFactory -- Setting Parameter(s) of Interest as: 
+[#2] INFO:HistFactory -- Opening File to hold channel: {prefix}_plain_plain_model.root
+[#2] INFO:HistFactory -- About to write channel measurement to file
+[#2] PROGRESS:HistFactory -- Writing sample: signal
+[#2] PROGRESS:HistFactory -- Saved all histograms
+[#2] PROGRESS:HistFactory -- Saved Measurement
+[#2] PROGRESS:HistFactory -- Successfully wrote channel to file
+[#2] INFO:HistFactory -- full list of observables:
+(obs_x_plain)
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Entering combination
+-----------------------------------------
+
+
+RooWorkspace(combined) combined contents
+
+variables
+---------
+(channelCat,nominalLumi,obs_x_plain)
+
+datasets
+--------
+RooDataSet::obsData(obs_x_plain,channelCat)
+
+named sets
+----------
+ModelConfig_GlobalObservables:(nominalLumi)
+ModelConfig_Observables:(obs_x_plain,channelCat)
+globalObservables:(nominalLumi)
+observables:(obs_x_plain,channelCat)
+
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	Importing combined model
+-----------------------------------------
+
+[#2] PROGRESS:HistFactory -- 
+-----------------------------------------
+	create toy data
+-----------------------------------------
+
+[#1] INFO:NumericIntegration -- RooRealIntegral::init(plain_model_Int[obs_x_plain]) using numeric integrator RooBinIntegrator to calculate Int(obs_x_plain)
+RooDataSet::AsimovData0[obs_x_plain,channelCat,weight:binWeightAsimov] = 2 entries (30 weighted)
+[#2] WARNING:HistFactory -- No Parametetrs of interest are set
+[#2] INFO:HistFactory -- Setting Parameter(s) of Interest as: 
+[#2] PROGRESS:HistFactory -- Writing combined workspace to file: {prefix}_combined_plain_model.root
+[#2] PROGRESS:HistFactory -- Writing combined measurement to file: {prefix}_combined_plain_model.root
+[#2] PROGRESS:HistFactory -- Writing sample: signal
+[#2] PROGRESS:HistFactory -- Saved all histograms
+[#2] PROGRESS:HistFactory -- Saved Measurement

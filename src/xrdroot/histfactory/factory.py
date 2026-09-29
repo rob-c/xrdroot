@@ -110,10 +110,6 @@ class HistoToWorkspaceFactoryFast:
     def _observable_names(self, hist: Any, channel: str) -> None:
         """``GuessObsNameVec``: ``obs_x_<channel>`` and so on, one per dimension."""
         self._obs = [f"obs_{axis}_{channel}" for axis in "xyz"[: hist.GetDimension()]]
-        if not self._obs:
-            self._obs = [f"obs_{channel}"]
-        if len(self._obs) > 3:
-            raise HistFactoryError("HistFactory is limited to 1- to 3-dimensional histograms.")
 
     def _sample(self, ws: Any, meas: Any, channel: str, sample: Any, state: dict[str, Any]) -> None:
         """One sample: its scale factors and its shape's factors, into ``state``."""

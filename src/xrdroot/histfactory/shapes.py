@@ -250,12 +250,20 @@ class Asimov:
                            "exist in the workspace\n")  # fmt: skip
                 raise HistFactoryError(f"HistFactory - the workspace has no variable {param}")
             if not var.inRange(value, None):
+                from ..roofit.printing import address
+
+                cout.write(f"Error: Attempting to set variable: {address(var)} to value: {g(value)}"
+                           ", however it appears that this is not withn the variable's range: "
+                           f"[{g(var.getMin())}, {g(var.getMax())}]\n")  # fmt: skip
                 raise HistFactoryError(f"HistFactory - {g(value)} is outside the range of {param}")
             cout.write(f"Configuring Asimov Dataset: Setting {param} = {g(value)}\n")
             var.setVal(value)
         for param, constant in sorted(self._fix.items()):
             var = wspace.var(param)
             if var is None:
+                cout.write("Error: Trying to set variable: 0x0 constant in creation of asimov "
+                           f"dataset: {self._name} but this variable doesn't appear to exist in "
+                           "the workspace\n")  # fmt: skip
                 raise HistFactoryError(f"HistFactory - the workspace has no variable {param}")
             cout.write(f"Configuring Asimov Dataset: Setting {param} to constant \n")
             var.setConstant(constant)

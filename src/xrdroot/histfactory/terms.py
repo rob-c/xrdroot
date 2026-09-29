@@ -44,7 +44,6 @@ def get_or_create(ws: Any, kind: Any, name: str, *args: Any) -> Any:
 def observables(names: list[str], hist: Any, ws: Any) -> RooArgList:
     """``createObservables``: a variable per axis of the histogram - its range and bins - if the
     workspace has none by that name."""
-    from ..roofit.binning import RooBinning
     from ..roofit.variables import RooRealVar
 
     found = RooArgList()
@@ -56,10 +55,20 @@ def observables(names: list[str], hist: Any, ws: Any) -> RooArgList:
                 obs.SetTitle(axis.GetTitle())
             obs.setBins(axis.GetNbins())
             if axis.IsVariableBinSize():
-                edges = [axis.GetBinLowEdge(i) for i in range(1, axis.GetNbins() + 2)]
-                obs.setBinning(RooBinning(axis.GetNbins(), edges))
+                obs.setBinning(_edges(axis))
         found.add(ws.var(name))
     return found
+
+
+def _edges(axis: Any) -> Any:
+    """``RooBinning(nbins, axis->GetXbins()->GetArray())``: the axis's uneven bins."""
+    from ..roofit.binning import RooBinning
+
+    edges = [axis.GetBinLowEdge(i) for i in range(1, axis.GetNbins() + 2)]
+    made = RooBinning(edges[0], edges[-1])
+    for edge in edges[1:-1]:
+        made.addBoundary(edge)
+    return made
 
 
 def expected_hist_func(hist: Any, ws: Any, prefix: str, obs: Any) -> Any:

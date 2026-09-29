@@ -49,10 +49,7 @@ def total_expected(ws: Any, name: str, scales: list[Any], funcs: list[list[Any]]
     coefs, shapes = RooArgSet(), RooArgSet()
     for scale, own in zip(scales, funcs):
         coefs.add(scale)
-        own.append(width)
-        if len(own) == 1:
-            shapes.add(own[0])
-            continue
+        own.append(width)  # so always a product, which ROOT tests for one function and never is
         product = _shape_name(own[0].GetName())
         ws.Import(RooProduct(product, own[0].GetTitle(), own), RooCmdArg("RecycleConflictNodes"))
         shapes.add(ws.function(product))

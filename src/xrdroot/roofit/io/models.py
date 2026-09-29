@@ -27,7 +27,7 @@ SIMPLE: dict[str, tuple[str, tuple[str, ...]]] = {
     "RooLandau": ("pdfs.shapes", ("x", "mean", "sigma")),
     "RooLognormal": ("pdfs.shapes", ("x", "m0", "k")),
     "RooBreitWigner": ("pdfs.shapes", ("x", "mean", "width")),
-    "RooExtendPdf": ("pdfs.extend", ("pdf", "n")),
+    "RooExtendPdf": ("pdfs.extend", ("_pdf", "_n")),
     "RooGamma": ("pdfs.gamma", ("x", "gamma", "beta", "mu")),
 }
 
