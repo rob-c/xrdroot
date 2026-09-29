@@ -182,7 +182,8 @@ def test_gamma_draws_by_the_logarithm_test_and_a_small_shape_redrawn_into_range(
     generator().SetSeed(4357)
     shape.setVal(1.0)
     data = pdf.generate(xs, 40)
-    assert sum(data.get(i).getRealValue("x") for i in range(40)) == 93.53373544573735
+    # fsum: from Python 3.12 on, sum() compensates its rounding, and before it does not
+    assert math.fsum(data.get(i).getRealValue("x") for i in range(40)) == 93.53373544573735
     shape.setVal(0.6)
     x.setRange(1.0, 1.5)
     data = pdf.generate(xs, 3)
