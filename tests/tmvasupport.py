@@ -17,9 +17,8 @@ import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
-from xrdroot.tmva.log import CONFIG
-
 from pyrootsupport import fresh
+from xrdroot.tmva.log import CONFIG
 
 #: How many events each class has.
 EVENTS = 200

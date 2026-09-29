@@ -7,11 +7,10 @@ import pytest
 
 import xrdroot
 import xrdroot.pyroot as ROOT
+from tmvasupport import session
 from xrdroot.cint.runtime.streams import ostream
 from xrdroot.rdf.models import is_model
 from xrdroot.tmva.tools import CxxVector
-
-from tmvasupport import session
 
 __all__ = ["session"]
 
