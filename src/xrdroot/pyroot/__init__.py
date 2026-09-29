@@ -44,6 +44,7 @@ SUBMODULES = [
     "spectra.tspectrum2",
     "spectra.transforms",
     "spectra.fits",
+    "geom",
 ]
 
 __all__: list[str] = []

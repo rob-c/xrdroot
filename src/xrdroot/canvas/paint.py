@@ -18,6 +18,7 @@ import warnings
 from typing import Any
 
 from ..errors import UnsupportedFeatureError
+from ..geom.paint import GEOMETRY
 from . import styles
 from .colors import Colors
 from .data import paint_data
@@ -38,7 +39,7 @@ QUIET = frozenset({"TFrame", "TPaletteAxis", "TLegendEntry", "TColor"})
 BEVEL = 0.4
 
 #: Every drawing class this draws, and how.
-PAINTERS = {**SHAPES, **PAVES, **LEGEND, **GAXIS}
+PAINTERS = {**SHAPES, **PAVES, **LEGEND, **GAXIS, **GEOMETRY}
 
 
 class CanvasWarning(UserWarning):
