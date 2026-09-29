@@ -124,14 +124,19 @@ class RooNLLVar(RooAbsReal):
             return self.evaluate_nll()
         values = np.broadcast_arrays(*(np.asarray(ctx[one.GetName()], float) for one in given))
         saved = [one.getVal() for one in given]
+        found = self._scanned(given, values)
+        for one, value in zip(given, saved):
+            one.setVal(value)
+        return found if found.ndim else float(found)
+
+    def _scanned(self, given: list[Any], values: list[Any]) -> Any:
+        """The likelihood at each point of the broadcast ``values`` of the parameters ``given``."""
         found = np.empty(values[0].shape)
         for index in np.ndindex(found.shape):
             for one, column in zip(given, values):
                 one.setVal(float(column[index]))
             found[index] = self.evaluate_nll()
-        for one, value in zip(given, saved):
-            one.setVal(value)
-        return found if found.ndim else float(found)
+        return found
 
     def evaluate_nll(self) -> float:
         """The likelihood at the parameters' values now, or a NaN carrying how bad it was."""
@@ -181,8 +186,13 @@ class RooNLLVar(RooAbsReal):
         binned = binned_part(pdf)
         if binned is not None:
             return self._binned_channel(binned, columns, given, simulated)
-        weights = given * given if self._weight_squared else given
         nset = self.nset & pdf.dependents() if keep is not None else self.nset
+        return self._unbinned_channel(pdf, columns, given, nset, simulated)
+
+    def _unbinned_channel(self, pdf: Any, columns: Any, given: Any, nset: frozenset[str],
+                          simulated: int) -> float:  # fmt: skip
+        """An unbinned channel: ``-sum w log p``, its Poisson term, ``N log(channels)``."""
+        weights = given * given if self._weight_squared else given
         with kernels.likelihood():
             probs = np.asarray(pdf.value(dict(columns), nset, self.rng), dtype=np.float64)
         total, badness = _log_terms(probs, weights)

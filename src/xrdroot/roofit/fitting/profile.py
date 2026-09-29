@@ -129,6 +129,10 @@ class RooProfileLL(RooAbsReal):
             for name, value in given.items():
                 self._obs.find(name).setVal(float(value))
             return self._value()
+        return self._column(given)
+
+    def _column(self, given: dict[str, Any]) -> Any:
+        """One fit per row of the columns ``given``, in order."""
         size = max(np.size(value) for value in given.values())
         found = np.empty(size)
         for index in range(size):
@@ -212,21 +216,29 @@ class RooProfileLL(RooAbsReal):
         self._minimizer.migrad()
         self._abs_min = float(self._nll.getVal())
         self._valid = True
+        self._record_minimum()
+        for one, value in start:
+            one.setVal(value)
+
+    def _record_minimum(self) -> None:
+        """The minimum just found: where the nuisance parameters are, and which are fixed."""
         mine = self._nuisances()
         self._param_abs_min = [p.clone(p.GetName()) for p in mine if not p.isConstant()]
-        known = {p.GetName() for p in self._obs_abs_min}  # a copy's: addClone will not add them
+        self._add_obs_minimum()
+        self._param_fixed = {p.GetName(): p.isConstant() for p in mine}
+        at = ", ".join(f"{p.GetName()}={g(p.getVal())}" for p in self._obs)
+        log(self, INFO, "Minimization", f"RooProfileLL::evaluate({self._name}) minimum found at "
+            f"({at})")  # fmt: skip
+
+    def _add_obs_minimum(self) -> None:
+        """``_obsAbsMin.addClone``: a copy's names are there already, and said to be."""
+        known = {p.GetName() for p in self._obs_abs_min}
         for par in self._obs:
             if par.GetName() in known:
                 log(None, ERROR, "InputArguments", "RooArgSet::checkForDup: ERROR argument with "
                     f"name {par.GetName()} is already in this set")  # fmt: skip
             else:
                 self._obs_abs_min.append(par.clone(par.GetName()))
-        self._param_fixed = {p.GetName(): p.isConstant() for p in mine}
-        at = ", ".join(f"{p.GetName()}={g(p.getVal())}" for p in self._obs)
-        log(self, INFO, "Minimization", f"RooProfileLL::evaluate({self._name}) minimum found at "
-            f"({at})")  # fmt: skip
-        for one, value in start:
-            one.setVal(value)
 
 
 def create_profile(nll: Any, poi: Any) -> RooProfileLL:
