@@ -18,7 +18,6 @@ import math
 from collections.abc import Sequence
 from typing import Any
 
-import numpy as np
 import pytest
 
 from refmachine import ROOTS_MACHINE
