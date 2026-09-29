@@ -98,20 +98,25 @@ def gtra(dz: float, theta: float, phi: float, twist: float, *faces: float) -> Me
     return arb8(dz, corners)
 
 
+def _old_face(face: Sequence[float], shift: tuple[float, float]) -> Any:
+    """One face ``(h, bl, tl, alpha)`` of the old ``TGTRA``: its lower edge centred on
+    ``shift``, its upper leaning."""
+    h, bl, tl, alpha = face
+    lean = 2 * h * math.tan(math.radians(alpha))
+    x0, y0 = shift
+    return np.array([(-bl + x0, -h + y0), (-tl + lean + x0, h + y0), (tl + lean + x0, h + y0),
+                     (bl + x0, -h + y0)])  # fmt: skip
+
+
 def old_gtra(dz: float, theta: float, phi: float, twist: float, *faces: float) -> Mesh:
     """The old package's ``TGTRA``: unlike ``TGeoGtra``, its lower face starts at the origin,
     its upper face is shifted by ``2 dz sin(theta)`` and turned by the whole ``twist``."""
-    h1, bl1, tl1, alpha1, h2, bl2, tl2, alpha2 = faces[:8]
     th, ph, turn = math.radians(theta), math.radians(phi), math.radians(twist)
-    dx, dy = 2 * dz * math.sin(th) * math.cos(ph), 2 * dz * math.sin(th) * math.sin(ph)
-    dx1, dx2 = 2 * h1 * math.tan(math.radians(alpha1)), 2 * h2 * math.tan(math.radians(alpha2))
-    lower = [(-bl1, -h1), (-tl1 + dx1, h1), (tl1 + dx1, h1), (bl1, -h1)]
-    upper = np.array([(-bl2 + dx, -h2 + dy), (-tl2 + dx + dx2, h2 + dy),
-                      (tl2 + dx + dx2, h2 + dy), (bl2 + dx, -h2 + dy)])  # fmt: skip
-    x, y = upper.T
+    shift = (2 * dz * math.sin(th) * math.cos(ph), 2 * dz * math.sin(th) * math.sin(ph))
+    lower = _old_face(faces[:4], (0.0, 0.0))
+    x, y = _old_face(faces[4:8], shift).T
     c, s = math.cos(turn), math.sin(turn)
-    turned = np.column_stack([x * c + y * s, -x * s + y * c])
-    return arb8(dz, np.concatenate([np.array(lower), turned]))
+    return arb8(dz, np.concatenate([lower, np.column_stack([x * c + y * s, -x * s + y * c])]))
 
 
 def tube(rmin: float, rmax: float, dz: float, phi1: float = 0.0, phi2: float = 360.0,

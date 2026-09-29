@@ -22,7 +22,12 @@ def test_a_name_ROOT_has_no_enumerator_for_is_refused() -> None:
     with pytest.raises(ValueError, match="not the name of one of ROOT's colours or styles"):
         named("kBlu")
     with pytest.raises(ValueError, match="not the name"):
-        named("blue")
+        named("bleu")
+
+
+def test_the_names_root_gives_its_first_colours_and_matplotlib_s_letters_are_colours() -> None:
+    """``TColorNumber`` takes ``TColor::GetColorByName``'s names and one-letter codes too."""
+    assert (named("blue"), named("grey16"), named("k"), named("w")) == (4, 16, 1, 0)
 
 
 def test_a_histogram_takes_its_line_colour_by_name() -> None:
