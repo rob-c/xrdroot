@@ -61,6 +61,11 @@ class TCanvas(TPad):
         CANVASES.append(self)
         set_current(self)
 
+    def ToggleEventStatus(self) -> None:
+        """``ToggleEventStatus``: the window's status bar, which a canvas with no window lacks."""
+
+    ToggleToolBar = ToggleEditor = ToggleToolTips = ToggleEventStatus
+
     def UseGL(self) -> bool:
         """``UseGL``: false - pads here are drawn without OpenGL, as ROOT's are in batch."""
         return False

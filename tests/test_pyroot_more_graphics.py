@@ -99,3 +99,9 @@ def test_text_painted_with_no_texec_running_is_drawn_in_the_pad() -> None:
     execute = ROOT.TExec("e", "")
     execute.SetAction("1;")
     expect((ROOT.gPad.primitives[0][0].GetTitle(), "here"), (execute.Exec(), []))
+
+
+def test_a_canvas_s_window_toggles_do_nothing_with_no_window() -> None:
+    canvas = ROOT.TCanvas("c", "c", 100, 100)
+    for toggle in ("ToggleEventStatus", "ToggleToolBar", "ToggleEditor", "ToggleToolTips"):
+        assert getattr(canvas, toggle)() is None
