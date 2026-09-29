@@ -23,7 +23,7 @@ from ..core.objects import TNamed
 from ..core.refs import store
 from .arrays import vector_in, vector_out
 
-__all__ = ["TSpectrumFit"]
+__all__ = ["TSpectrum2Fit", "TSpectrumFit"]
 
 Array = Any
 
@@ -209,3 +209,7 @@ class TSpectrumFit(_Options, TNamed):
     def GetTailParameters(self, *targets: Any) -> tuple[float, ...]:
         """``GetTailParameters(t, tErr, b, bErr, s, sErr)``, by reference."""
         return self._get(("t", "b", "s"), targets)
+
+
+# The 2-D fitter shares this module's checks, so it is made after them.
+from .fits2 import TSpectrum2Fit  # noqa: E402
