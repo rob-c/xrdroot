@@ -133,17 +133,24 @@ class MCMCInterval(ConfInterval):
                 "steps in Markov chain.")  # fmt: skip
             return None
         edges = [np.asarray(p.getBinning().array(), dtype=np.float64) for p in self._params]
+        count = int(np.prod([len(e) - 1 for e in edges]))
+        weights = np.bincount(self._bin_index(edges), np.asarray(self._chain.weights(
+            self._burn_in)), count)  # fmt: skip
+        binnings = [p.getBinning() for p in self._params]  # RooDataHist's centres, as it has them
+        centres = list(itertools.product(*[[b.binCenter(i) for i in range(b.numBins())]
+                                           for b in binnings]))  # fmt: skip
+        return centres, [float(w) for w in weights]
+
+    def _bin_index(self, edges: list[Any]) -> Any:
+        """Each step's bin, the first parameter's slowest."""
+        import numpy as np
+
         index = np.zeros(self._chain.Size() - self._burn_in, dtype=np.int64)
         for par, edge in zip(self._params, edges):
             values = np.asarray(self._chain.values(par.GetName(), self._burn_in))
             found = np.clip(np.searchsorted(edge, values, side="right") - 1, 0, len(edge) - 2)
             index = index * (len(edge) - 1) + found
-        count = int(np.prod([len(e) - 1 for e in edges]))
-        weights = np.bincount(index, np.asarray(self._chain.weights(self._burn_in)), count)
-        binnings = [p.getBinning() for p in self._params]  # RooDataHist's centres, as it has them
-        centres = list(itertools.product(*[[b.binCenter(i) for i in range(b.numBins())]
-                                           for b in binnings]))  # fmt: skip
-        return centres, [float(w) for w in weights]
+        return index
 
     def _by_hist(self) -> None:
         """``DetermineByDataHist``: the weight the highest bins must reach to hold the level."""
@@ -201,7 +208,10 @@ class MCMCInterval(ConfInterval):
                 f"Returning param.{end}().")  # fmt: skip
         if self._cutoff < 0 or param.GetName() not in names:
             return param.getMax() if upper else param.getMin()
-        at = names.index(param.GetName())
+        return self._extreme_bin(names.index(param.GetName()), param, upper)
+
+    def _extreme_bin(self, at: int, param: Any, upper: bool) -> float:
+        """The farthest centre, in the parameter, of the bins above the cutoff."""
         chosen = [c[at] for c, w in zip(*self._bins) if w >= self._cutoff]
         if upper:
             return max([param.getMin(), *chosen])
@@ -225,13 +235,7 @@ class MCMCInterval(ConfInterval):
         values = self._chain.values(param.GetName())
         weights = self._chain.weights()
         if not self._vector:
-            if self._burn_in >= self._chain.Size():
-                log(None, ERROR, "InputArguments", "MCMCInterval::CreateVector: creation of "
-                    "vector failed: Number of burn-in steps (num steps to ignore) >= number of "
-                    "steps in Markov chain.")  # fmt: skip
-            self._vector = sorted(range(self._burn_in, self._chain.Size()), key=lambda i: values[i])
-            chosen = range(self._burn_in, self._chain.Size())
-            self._vec_weight = _running_sum(weights[i] for i in chosen)
+            self._make_vector(values, weights)
         if not self._vector or self._vec_weight == 0:
             self._vector, self._tf = [], (-math.inf, math.inf)
             self._tf_cl, self._vec_weight = 0.0, 0.0
@@ -243,6 +247,16 @@ class MCMCInterval(ConfInterval):
                             missing * (1 - self._left), param.getMax())  # fmt: skip
         self._tf = (low, high)
         self._tf_cl = 1 - (left + right) / self._vec_weight
+
+    def _make_vector(self, values: Any, weights: Any) -> None:
+        """``CreateVector``: the steps after burn-in in order of the parameter, and their weight."""
+        if self._burn_in >= self._chain.Size():
+            log(None, ERROR, "InputArguments", "MCMCInterval::CreateVector: creation of vector "
+                "failed: Number of burn-in steps (num steps to ignore) >= number of steps in "
+                "Markov chain.")  # fmt: skip
+        chosen = range(self._burn_in, self._chain.Size())
+        self._vector = sorted(chosen, key=lambda i: values[i])
+        self._vec_weight = _running_sum(weights[i] for i in chosen)
 
     def _determine(self) -> None:
         if self._type == kShortest:
