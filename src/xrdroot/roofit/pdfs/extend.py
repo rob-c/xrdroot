@@ -67,10 +67,5 @@ class RooExtendPdf(RooAbsPdf):
             found *= self.pdf.expected(nset, rng, fit)
         return found
 
-    def gen_context(self, names: frozenset[str]) -> Any:
-        from ..generation.contexts import context_for
-
-        return context_for(self.pdf, names)
-
     def normalized_name(self, observables: Any, rng: Any = None) -> str:
         return self._name

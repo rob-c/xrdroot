@@ -19,6 +19,10 @@ from ..roofit.collections import RooArgSet, as_list
 
 __all__ = [
     "AsimovSignificance",
+    "FactorizePdf",
+    "MakeNuisancePdf",
+    "MakeUnconstrainedPdf",
+    "StripConstraints",
     "NumberCountingUtils",
     "PValueToSignificance",
     "RemoveConstantParameters",
@@ -127,3 +131,117 @@ class NumberCountingUtils:
 def copy_of(items: Any) -> RooArgSet:
     """A set holding the same variables as ``items`` - not copies of them."""
     return RooArgSet(as_list(items))
+
+
+# -- constraints ------------------------------------------------------------------
+
+
+def _states(sim: Any) -> list[Any]:
+    """A simultaneous density's densities, in its category's order of states."""
+    index = sim.indexCat()
+    return [sim.getPdf(label) for label in index.states() if sim.getPdf(label) is not None]
+
+
+def FactorizePdf(observables: Any, pdf: Any, obsTerms: Any, constraints: Any) -> None:
+    """The terms of ``pdf`` that depend on the observables, and those that do not - the
+    constraints - through products, extended densities and every state of a simultaneous one."""
+    if hasattr(observables, "GetObservables"):  # (ModelConfig, pdf, ...)
+        observables = observables.GetObservables()
+    if pdf.InheritsFrom("RooProdPdf"):
+        for one in pdf.pdfList():
+            FactorizePdf(observables, one, obsTerms, constraints)
+    elif pdf.InheritsFrom("RooExtendPdf"):
+        FactorizePdf(observables, pdf.servers()[0], obsTerms, constraints)
+    elif pdf.InheritsFrom("RooSimultaneous"):
+        for one in _states(pdf):
+            FactorizePdf(observables, one, obsTerms, constraints)
+    else:
+        target = obsTerms if pdf.dependsOn(observables) else constraints
+        if not any(one is pdf for one in target):
+            target.add(pdf)
+
+
+def MakeNuisancePdf(pdf: Any, observables: Any = None, name: str = "") -> Any:
+    """The product of every constraint term of ``pdf`` - or of a ModelConfig's density."""
+    from ..roofit.messages import ERROR, WARNING, log
+    from ..roofit.pdfs.prodpdf import RooProdPdf
+
+    if hasattr(pdf, "GetPdf"):  # (ModelConfig, name)
+        model, name = pdf, str(observables)
+        if model.GetPdf() is None or model.GetObservables() is None:
+            log(None, ERROR, "InputArguments", "RooStatsUtils::MakeNuisancePdf - invalid input "
+                "model: missing pdf and/or observables")  # fmt: skip
+            return None
+        pdf, observables = model.GetPdf(), model.GetObservables()
+    terms, constraints = RooArgSet(), RooArgSet()
+    FactorizePdf(observables, pdf, terms, constraints)
+    if not len(constraints):
+        log(None, WARNING, "Eval", "RooStatsUtils::MakeNuisancePdf - no constraints found on "
+            "nuisance parameters in the input model")  # fmt: skip
+        return None
+    return RooProdPdf(name, "", list(constraints))
+
+
+def StripConstraints(pdf: Any, observables: Any) -> Any:
+    """A copy of ``pdf`` without its constraint terms - ``None`` if nothing else is left."""
+    from ..roofit.pdfs.prodpdf import RooProdPdf
+
+    if pdf.InheritsFrom("RooProdPdf"):
+        kept = [k for k in (StripConstraints(one, observables) for one in pdf.pdfList()) if k]
+        if not kept:
+            return None
+        if len(kept) == 1:
+            return kept[0].clone(f"{kept[0].GetName()}_unconstrained")
+        return RooProdPdf(f"{pdf.GetName()}_unconstrained", f"{pdf.GetTitle()} without "
+                          "constraints", kept)  # fmt: skip
+    if pdf.InheritsFrom("RooExtendPdf"):
+        from ..roofit.pdfs.extend import RooExtendPdf
+
+        inner, number = pdf.servers()[0], pdf.servers()[1]
+        stripped = StripConstraints(inner, observables)
+        if stripped is None:
+            return None
+        return RooExtendPdf(f"{pdf.GetName()}_unconstrained", f"{pdf.GetTitle()} without "
+                            "constraints", stripped, number)  # fmt: skip
+    if pdf.InheritsFrom("RooSimultaneous"):
+        return _stripped_simultaneous(pdf, observables)
+    if pdf.dependsOn(observables):
+        return pdf.clone(f"{pdf.GetName()}_unconstrained")
+    return None
+
+
+def _stripped_simultaneous(sim: Any, observables: Any) -> Any:
+    from ..roofit.pdfs.simultaneous import RooSimultaneous
+
+    index = sim.indexCat()
+    made = {}
+    for label in index.states():
+        one = sim.getPdf(label)
+        stripped = StripConstraints(one, observables) if one is not None else None
+        if stripped is None:
+            return None
+        made[label] = stripped
+    return RooSimultaneous(f"{sim.GetName()}_unconstrained", f"{sim.GetTitle()} without "
+                           "constraints", made, index)  # fmt: skip
+
+
+def MakeUnconstrainedPdf(pdf: Any, observables: Any = None, name: Any = None) -> Any:
+    """``pdf`` - or a ModelConfig's density - without its constraints, named ``name`` if given."""
+    from ..roofit.messages import ERROR, log
+
+    if hasattr(pdf, "GetPdf"):  # (ModelConfig, name)
+        model, name = pdf, observables
+        if model.GetPdf() is None or model.GetObservables() is None:
+            log(None, ERROR, "InputArguments", "RooStatsUtils::MakeUnconstrainedPdf - invalid "
+                "input model: missing pdf and/or observables")  # fmt: skip
+            return None
+        pdf, observables = model.GetPdf(), model.GetObservables()
+    found = StripConstraints(pdf, observables)
+    if found is None:
+        log(None, ERROR, "InputArguments", "RooStats::MakeUnconstrainedPdf - invalid observable "
+            "list passed (observables not found in original pdf) or invalid pdf passed (without "
+            "observables)")  # fmt: skip
+        return None
+    if name:
+        found.SetName(str(name))
+    return found

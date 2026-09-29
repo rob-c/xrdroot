@@ -71,6 +71,9 @@ class RooProfileLL(RooAbsReal):
         return self._start_from_min
 
     def minimizer(self) -> Any:
+        """The profile's minimizer - made now, if it has not been yet."""
+        if self._minimizer is None:
+            self._initialize()
         return self._minimizer
 
     def bestFitParams(self) -> RooArgSet:

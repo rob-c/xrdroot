@@ -532,11 +532,6 @@ def test_an_extended_factor_of_a_product_gives_the_product_its_value() -> None:
     assert ext.selfNormalized() is True
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="extend.py:63-66: ROOT generates a RooExtendPdf by its own accept-reject, not its "
-    "density's direct generator",
-)
 def test_an_extended_density_draws_its_events_as_root_does() -> None:
     """ROOT's first five events of the extended Gaussian after ``SetSeed(4357)``."""
     x, _, _, ext = extended_gaussian()

@@ -78,8 +78,9 @@ class SimpleLikelihoodRatioTestStat(TestStatistic):
                 "you must explicitly SetNullParameters and SetAlternateParameters or the "
                 "likelihood ratio will always be 1.")  # fmt: skip
         if self._first:
-            self._null_pdf = MakeUnconstrainedPdf(self._null_pdf, self._null_pdf.getObservables(data))
-            self._alt_pdf = MakeUnconstrainedPdf(self._alt_pdf, self._alt_pdf.getObservables(data))
+            null, alt = self._null_pdf, self._alt_pdf
+            self._null_pdf = MakeUnconstrainedPdf(null, null.getObservables(data))
+            self._alt_pdf = MakeUnconstrainedPdf(alt, alt.getObservables(data))
         self._first = False
         reuse = self._reuse or _ALWAYS_REUSE[0]
         with quieted(FATAL):
@@ -156,8 +157,8 @@ class RatioOfProfiledLikelihoodsTestStat(TestStatistic):
         for one in (self._null, self._alt):
             if pdf is one.GetPdf():
                 return one.EvaluateProfileLikelihood(kind, data, poi)
-        log(None, ERROR, "InputArguments", "RatioOfProfiledLikelihoods::ProfileLikelihood - invalid "
-            "pdf used for computing the profiled likelihood - return NaN")  # fmt: skip
+        log(None, ERROR, "InputArguments", "RatioOfProfiledLikelihoods::ProfileLikelihood - "
+            "invalid pdf used for computing the profiled likelihood - return NaN")  # fmt: skip
         return float("nan")
 
     def Evaluate(self, data: Any, nullParamsOfInterest: Any) -> float:

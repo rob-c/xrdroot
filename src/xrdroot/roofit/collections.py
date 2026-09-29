@@ -200,6 +200,8 @@ class RooAbsCollection(RooPrintable):
         made._name = self._name if name is None else str(name)
         return made
 
+    clone = Clone
+
     def snapshot(self, *given: Any) -> Any:
         """Copies of the members, their values as they are now.
 

@@ -222,21 +222,23 @@ class ToyMCSampler:
         variables.assign(saved)
         return self._as_data(rows, weights)
 
-    def _all_statistics(self, data: Any, variables: Any) -> list[float]:
+    def _all_statistics(self, data: Any, variables: Any, point: Any = None) -> list[float]:
         """``EvaluateAllTestStatistics``: each statistic at the point, the model's variables put
         back after each."""
-        saved = variables.snapshot()
+        saved = variables.snapshot() if variables is not None else None
+        point = self._point if point is None else point
         found = []
         for ts in self._statistics:
-            found.append(float(ts.Evaluate(data, RooArgSet(list(self._point)).snapshot())))
-            variables.assign(saved)
+            found.append(float(ts.Evaluate(data, RooArgSet(list(as_list(point))).snapshot())))
+            if saved is not None:
+                variables.assign(saved)
         return found
 
     def EvaluateAllTestStatistics(self, data: Any, poi: Any) -> Any:
         from ..roofit.variables import RooRealVar
 
-        variables = RooArgSet(list(self._pdf.getVariables()))
-        values = self._all_statistics(data, variables)
+        variables = RooArgSet(list(self._pdf.getVariables())) if self._pdf is not None else None
+        values = self._all_statistics(data, variables, poi)
         return [RooRealVar(f"{self._name}_TS{i}", ts.GetVarName(), v)
                 for i, (ts, v) in enumerate(zip(self._statistics, values))]  # fmt: skip
 
