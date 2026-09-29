@@ -107,11 +107,10 @@ class RooAddition(RooAbsReal):
     def __init__(self, name: Any, title: Any, terms: Any, second: Any = None) -> None:
         super().__init__(name, title)
         if second is not None:  # the products of two lists, each a RooProduct of its own
-            terms = [
-                RooProduct(f"{name}_[{a.GetName()}_x_{b.GetName()}]",
-                           f"{name}_[{a.GetName()}_x_{b.GetName()}]", [a, b])  # fmt: skip
-                for a, b in zip(as_list(terms), as_list(second))
-            ]
+            labels = [f"{name}_[{a.GetName()}_x_{b.GetName()}]" for a, b in
+                      zip(as_list(terms), as_list(second))]  # fmt: skip
+            pairs = zip(labels, as_list(terms), as_list(second))
+            terms = [RooProduct(label, label, [a, b]) for label, a, b in pairs]
         self.terms = self._list_proxy("!set", as_list(terms))
 
     def compute(self, ctx: Context) -> Any:

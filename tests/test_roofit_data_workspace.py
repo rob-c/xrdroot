@@ -15,10 +15,10 @@ from typing import Any
 import pytest
 
 from xrdroot.errors import UnsupportedFeatureError
+from xrdroot.roofit import factory
 from xrdroot.roofit.categories import RooCategory
 from xrdroot.roofit.collections import RooArgList, RooArgSet
 from xrdroot.roofit.data.dataset import RooDataSet
-from xrdroot.roofit import factory
 from xrdroot.roofit.factory import Factory, split
 from xrdroot.roofit.functions import RooFormulaVar
 from xrdroot.roofit.messages import service
