@@ -279,8 +279,8 @@ class RooRealVar(RooAbsRealLValue):
 
         low, high = self.getMin(rangeName), self.getMax(rangeName)
         if is_infinite(low) or is_infinite(high):
-            log(self, ERROR, "Eval", f"RooAbsRealLValue::randomize({self._name}) ERROR: range "
-                "is infinite, cannot randomize")  # fmt: skip
+            log(self, ERROR, "Generation", f"{self._name}::{self.ClassName()}:randomize: fails "
+                "with unbounded fit range")  # fmt: skip
             return
         self.setVal(low + generator().Rndm() * (high - low))
 

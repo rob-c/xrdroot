@@ -86,7 +86,7 @@ def sample(
     if wings == EXTENDED:
         points += [(low - dx * 1.001, 0.0), (low - dx, float(ys[0]))]
     elif wings == STRAIGHT:
-        points.append((low, 0.0))
+        points.append((low - dx * 0.001, 0.0))
     points.append((low, float(ys[0])))
     limits = (precision * span, precision * (high - low), (high - low) * EPSILON)
     for i in range(1, count):
@@ -97,7 +97,7 @@ def sample(
     if wings == EXTENDED:
         points += [(high + dx, float(ys[-1])), (high + dx * 1.001, 0.0)]
     elif wings == STRAIGHT:
-        points.append((high, 0.0))
+        points.append((high + dx * 0.001, 0.0))
     ordered = sorted(points, key=lambda p: p[0])
     return np.array([p[0] for p in ordered]), np.array([p[1] for p in ordered])
 

@@ -19,7 +19,7 @@ from typing import Any
 from . import cout
 from .cmdargs import commands
 from .collections import RooArgSet, as_list
-from .messages import INFO, log
+from .messages import ERROR, INFO, log
 from .printing import RooPrintable
 
 __all__ = ["RooWorkspace"]
@@ -208,8 +208,12 @@ class RooWorkspace(RooPrintable):
         return False
 
     def removeSet(self, name: str) -> bool:
-        """Forget the named set ``name``; ``True`` if there was none."""
-        return self._sets.pop(str(name), None) is None
+        """Forget the named set ``name``; ``True``, and an error said, if there was none."""
+        if self._sets.pop(str(name), None) is not None:
+            return False
+        log(self, ERROR, "InputArguments", f"RooWorkspace::removeSet({self._name}) ERROR a set "
+            f"with name {name} does not exist")  # fmt: skip
+        return True
 
     def argSet(self, names: str) -> RooArgSet:
         """The workspace's nodes named in the comma-separated ``names``."""

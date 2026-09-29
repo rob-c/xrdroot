@@ -295,9 +295,6 @@ def test_a_curve_drawn_over_a_range_is_named_after_it_as_root_names_it() -> None
     ]
 
 
-@pytest.mark.xfail(
-    strict=False, reason="realplot.py:57, curve.py:75-85: VLines drops to zero at the range's ends"
-)
 def test_vertical_lines_close_a_ranged_curve_at_its_ends_as_root_draws_them() -> None:
     """``VLines``: a point a thousandth of a step outside each end, at zero - no wings."""
     m = Model()

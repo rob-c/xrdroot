@@ -61,8 +61,7 @@ class Bins:
             rest, part = divmod(rest, width)
             parts.append(part)
         chosen = range(len(widths)) if not iaxis else [int(iaxis) - 1]
-        return any((parts[i] == 0) if low else (parts[i] == widths[i] - 1) for i in chosen
-                   if i < len(widths))  # fmt: skip
+        return any(_flowing(parts, widths, i, low) for i in chosen)
 
     def IsBinUnderflow(self, bin: int, iaxis: int = 0) -> bool:
         return self._flows(bin, iaxis, True)
@@ -295,3 +294,11 @@ class Bins:
         from ...arithmetic import reset_statistics
 
         reset_statistics(self._xrd)
+
+
+def _flowing(parts: list[int], widths: list[int], axis: int, low: bool) -> bool:
+    """Whether the bin ``parts`` is in the under- or overflow of ``axis`` - of an axis the
+    histogram lacks, its only bin, 0, is an underflow, as ``GetBinXYZ`` leaves it for ROOT."""
+    if axis >= len(widths):
+        return low
+    return parts[axis] == 0 if low else parts[axis] == widths[axis] - 1

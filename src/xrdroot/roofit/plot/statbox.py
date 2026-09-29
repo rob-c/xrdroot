@@ -48,14 +48,14 @@ def rms_var(data: Any, var: Any, cut: Any = None, rng: Any = None) -> Any:
 
 
 def stat_on(data: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
-    """The box, added to ``frame``: ``What``, ``Label``, ``Layout``, ``Format``, ``CutSpec`` and
+    """The box, added to ``frame``: ``What``, ``Label``, ``Layout``, ``Format``, ``Cut`` and
     ``CutRange`` as RooFit takes them."""
     from ..variables import RooRealVar
 
     options = commands([a for a in args if hasattr(a, "name")], kwargs)
     what = str(options.get("What", 0, "MNR")).upper()
     label = str(options.get("Label", 0, "") or "")
-    cut, rng = options.get("CutSpec", 0, None), options.get("CutRange", 0, None)
+    cut, rng = options.get("Cut", 0, None), options.get("CutRange", 0, None)  # CutSpec
     shown = [letter for letter in "RMN" if letter in what]
     xmin, xmax = float(options.get("Layout", 0, 0.65)), float(options.get("Layout", 1, 0.99))
     ymax = int(float(options.get("Layout", 2, 0.95)) * 10000) / 10000.0

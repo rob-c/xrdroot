@@ -46,8 +46,6 @@ class TLine(Drawn):
     fields: ClassVar[dict[str, type]] = CORNERS
 
     def __init__(self, x1: float = 0.0, y1: float = 0.0, x2: float = 0.0, y2: float = 0.0) -> None:
-        """The corners put in order, the lower left first, as ``TBox``'s constructor does."""
-        (x1, x2), (y1, y2) = sorted((x1, x2)), sorted((y1, y2))
         super().__init__(fX1=float(x1), fY1=float(y1), fX2=float(x2), fY2=float(y2))
 
     def DrawLine(self, x1: float, y1: float, x2: float, y2: float) -> Any:
@@ -97,6 +95,9 @@ class TBox(Drawn):
     fields: ClassVar[dict[str, type]] = CORNERS
 
     def __init__(self, x1: float = 0.0, y1: float = 0.0, x2: float = 0.0, y2: float = 0.0) -> None:
+        """The corners put in order, the lower left first, as ``TBox``'s constructor does - a
+        line's are kept as given, its direction an arrow's."""
+        (x1, x2), (y1, y2) = sorted((x1, x2)), sorted((y1, y2))
         super().__init__(fX1=float(x1), fY1=float(y1), fX2=float(x2), fY2=float(y2))
 
     def DrawBox(self, x1: float, y1: float, x2: float, y2: float) -> Any:
