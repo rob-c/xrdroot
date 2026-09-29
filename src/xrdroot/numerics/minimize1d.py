@@ -32,59 +32,76 @@ def minim_step(f: Callable[[float], float], xmin: float, xmax: float,
     return min(xxmin, xmax), xmin, xmax
 
 
+class _Brent:
+    """``MinimBrent``'s state: the bracket ``[a, b]``, the best three points and last steps."""
+
+    def __init__(self, f: Callable[[float], float], a: float, b: float, x: float) -> None:
+        self.f, self.a, self.b = f, a, b
+        self.v = self.w = self.x = x
+        self.fv = self.fw = self.fx = f(x)
+        self.e = self.d = 0.0
+
+    def _golden(self, m: float) -> None:
+        self.e = self.a - self.x if self.x >= m else self.b - self.x
+        self.d = GOLDEN * self.e
+
+    def _through_three(self) -> tuple[float, float]:
+        """The parabola through ``x``, ``w`` and ``v``: its step's numerator and denominator."""
+        x, w, v = self.x, self.w, self.v
+        r = (x - w) * (self.fx - self.fv)
+        q = (x - v) * (self.fx - self.fw)
+        p = (x - v) * q - (x - w) * r
+        q = 2 * (q - r)
+        return (-p, q) if q > 0 else (p, -q)
+
+    def _parabola(self, m: float, tol: float, t2: float) -> None:
+        """A parabolic step through the three points - if it is safe - else a golden one."""
+        x = self.x
+        p, q = self._through_three()
+        r, self.e = self.e, self.d
+        if abs(p) >= abs(0.5 * q * r) or p <= q * (self.a - x) or p >= q * (self.b - x):
+            self._golden(m)
+            return
+        self.d = p / q
+        u = x + self.d
+        if u - self.a < t2 or self.b - u < t2:
+            self.d = abs(tol) if m - x >= 0 else -abs(tol)
+
+    def step(self, tol: float, t2: float, m: float) -> None:
+        if abs(self.e) > tol:
+            self._parabola(m, tol, t2)
+        else:
+            self._golden(m)
+        d = self.d
+        u = self.x + d if abs(d) >= tol else self.x + (abs(tol) if d >= 0 else -abs(tol))
+        self._update(u, self.f(u))
+
+    def _update(self, u: float, fu: float) -> None:
+        """The bracket narrowed to the new point, and the best three points kept."""
+        if fu <= self.fx:
+            self.a, self.b = (self.a, self.x) if u < self.x else (self.x, self.b)
+            self.v, self.fv, self.w, self.fw = self.w, self.fw, self.x, self.fx
+            self.x, self.fx = u, fu
+            return
+        self.a, self.b = (u, self.b) if u < self.x else (self.a, u)
+        if fu <= self.fw or self.w == self.x:
+            self.v, self.fv, self.w, self.fw = self.w, self.fw, u, fu
+        elif fu <= self.fv or self.v == self.x or self.v == self.w:
+            self.v, self.fv = u, fu
+
+
 def minim_brent(f: Callable[[float], float], xmin: float, xmax: float, xmiddle: float,
                 epsabs: float, epsrel: float,
                 itermax: int) -> tuple[float, bool, float, float]:  # fmt: skip
     """``MinimBrent``: the minimum, whether it converged, and the range left."""
-    v = w = x = xmiddle
-    e, d = 0.0, 0.0
-    a, b = xmin, xmax
-    fv = fw = fx = f(x)
+    state = _Brent(f, xmin, xmax, xmiddle)
     for _ in range(itermax):
-        m = 0.5 * (a + b)
-        tol = epsrel * abs(x) + epsabs
-        t2 = 2 * tol
-        if abs(x - m) <= (t2 - 0.5 * (b - a)):
-            return x, True, xmin, xmax
-        if abs(e) > tol:
-            r = (x - w) * (fx - fv)
-            q = (x - v) * (fx - fw)
-            p = (x - v) * q - (x - w) * r
-            q = 2 * (q - r)
-            if q > 0:
-                p = -p
-            else:
-                q = -q
-            r, e = e, d
-            if abs(p) >= abs(0.5 * q * r) or p <= q * (a - x) or p >= q * (b - x):
-                e = a - x if x >= m else b - x
-                d = GOLDEN * e
-            else:
-                d = p / q
-                u = x + d
-                if u - a < t2 or b - u < t2:
-                    d = abs(tol) if m - x >= 0 else -abs(tol)
-        else:
-            e = a - x if x >= m else b - x
-            d = GOLDEN * e
-        u = x + d if abs(d) >= tol else x + (abs(tol) if d >= 0 else -abs(tol))
-        fu = f(u)
-        if fu <= fx:
-            if u < x:
-                b = x
-            else:
-                a = x
-            v, fv, w, fw, x, fx = w, fw, x, fx, u, fu
-        else:
-            if u < x:
-                a = u
-            else:
-                b = u
-            if fu <= fw or w == x:
-                v, fv, w, fw = w, fw, u, fu
-            elif fu <= fv or v == x or v == w:
-                v, fv = u, fu
-    return x, False, a, b
+        m = 0.5 * (state.a + state.b)
+        tol = epsrel * abs(state.x) + epsabs
+        if abs(state.x - m) <= (2 * tol - 0.5 * (state.b - state.a)):
+            return state.x, True, xmin, xmax
+        state.step(tol, 2 * tol, m)
+    return state.x, False, state.a, state.b
 
 
 class BrentMinimizer1D:

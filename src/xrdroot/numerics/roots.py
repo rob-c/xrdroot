@@ -30,52 +30,66 @@ class _Brent:
         if (f_lower < 0.0 and f_upper < 0.0) or (f_lower > 0.0 and f_upper > 0.0):
             raise ValueError("endpoints do not straddle y=0")
 
-    def iterate(self) -> tuple[float, float, float]:
-        """One step: the root estimate and the new bracket."""
+    def _arranged(self) -> tuple[float, float, float, float, float, float, float, float, bool]:
+        """The bracket put in order: ``c`` on the far side of the root, ``b`` the better end."""
         a, b, c, d, e = self.a, self.b, self.c, self.d, self.e
         fa, fb, fc = self.fa, self.fb, self.fc
         ac_equal = False
-        if (fb < 0 and fc < 0) or (fb > 0 and fc > 0):
+        if _same_sign(fb, fc):
             ac_equal, c, fc, d, e = True, a, fa, b - a, b - a
         if abs(fc) < abs(fb):
             ac_equal = True
             a, b, c = b, c, b
             fa, fb, fc = fb, fc, fb
+        return a, b, c, d, e, fa, fb, fc, ac_equal
+
+    def iterate(self) -> tuple[float, float, float]:
+        """One step: the root estimate and the new bracket."""
+        a, b, c, d, e, fa, fb, fc, ac_equal = self._arranged()
         tol, m = 0.5 * DBL_EPSILON * abs(b), 0.5 * (c - b)
         if fb == 0:
             return b, b, b
         if abs(m) <= tol:
-            return (b, b, c) if b < c else (b, c, b)
-        d, e = self._step(a, b, c, fa, fb, fc, d, e, m, tol, ac_equal)
+            return _ordered(b, c)
+        d, e = _step(a, b, c, fa, fb, fc, d, e, m, tol, ac_equal)
         a, fa = b, fb
         b += d if abs(d) > tol else (tol if m > 0 else -tol)
         fb = _call(self.f, b)
         self.a, self.b, self.c, self.d, self.e = a, b, c, d, e
         self.fa, self.fb, self.fc = fa, fb, fc
-        if (fb < 0 and fc < 0) or (fb > 0 and fc > 0):
-            c = a
-        return (b, b, c) if b < c else (b, c, b)
+        return _ordered(b, a if _same_sign(fb, fc) else c)
 
-    @staticmethod
-    def _step(a: float, b: float, c: float, fa: float, fb: float, fc: float, d: float, e: float,
-              m: float, tol: float, ac_equal: bool) -> tuple[float, float]:  # fmt: skip
-        """The next step: interpolated when it is safe, else bisection."""
-        if abs(e) < tol or abs(fa) <= abs(fb):
-            return m, m
-        s = fb / fa
-        if ac_equal:
-            p, q = 2 * m * s, 1 - s
-        else:
-            q, r = fa / fc, fb / fc
-            p = s * (2 * m * q * (q - r) - (b - a) * (r - 1))
-            q = (q - 1) * (r - 1) * (s - 1)
-        if p > 0:
-            q = -q
-        else:
-            p = -p
-        if 2 * p < min(3 * m * q - abs(tol * q), abs(e * q)):
-            return p / q, d
+
+def _same_sign(u: float, v: float) -> bool:
+    return (u < 0 and v < 0) or (u > 0 and v > 0)
+
+
+def _ordered(b: float, c: float) -> tuple[float, float, float]:
+    """The estimate, and the bracket's ends in order."""
+    return (b, b, c) if b < c else (b, c, b)
+
+
+def _interpolated(a: float, b: float, fa: float, fb: float, fc: float, m: float,
+                  ac_equal: bool) -> tuple[float, float]:  # fmt: skip
+    """The secant - ``a`` and ``c`` the same - or inverse quadratic step: ``p / q``."""
+    s = fb / fa
+    if ac_equal:
+        return 2 * m * s, 1 - s
+    q, r = fa / fc, fb / fc
+    p = s * (2 * m * q * (q - r) - (b - a) * (r - 1))
+    return p, (q - 1) * (r - 1) * (s - 1)
+
+
+def _step(a: float, b: float, c: float, fa: float, fb: float, fc: float, d: float, e: float,
+          m: float, tol: float, ac_equal: bool) -> tuple[float, float]:  # fmt: skip
+    """The next step: interpolated when it is safe, else bisection."""
+    if abs(e) < tol or abs(fa) <= abs(fb):
         return m, m
+    p, q = _interpolated(a, b, fa, fb, fc, m, ac_equal)
+    p, q = (p, -q) if p > 0 else (-p, q)
+    if 2 * p < min(3 * m * q - abs(tol * q), abs(e * q)):
+        return p / q, d
+    return m, m
 
 
 def _call(f: Callable[[float], float], x: float) -> float:
