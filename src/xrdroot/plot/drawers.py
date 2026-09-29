@@ -235,8 +235,8 @@ def histogram(obj: Histogram, request: Request) -> tuple[list[Any], Frame]:
 def graph_titles(obj: Any) -> Frame:
     """A graph's axis titles, which ROOT keeps on the histogram it draws the frame with."""
     frame = held(obj.members, "fHistogram")
-    if isinstance(frame, Histogram):
-        return titles(frame, obj.title)
+    if isinstance(frame, Histogram):  # the frame's title where one was set on it, else the graph's
+        return titles(frame, frame.title or obj.title)
     return Frame(title=obj.title)
 
 

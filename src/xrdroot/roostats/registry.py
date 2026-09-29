@@ -41,6 +41,8 @@ MODULES: dict[str, list[str]] = {
     ],
     "numbercounting": ["NumberCountingPdfFactory"],
     "asymcalc": ["AsymptoticCalculator"],
+    "inverter": ["HypoTestInverter"],
+    "inverterresult": ["HypoTestInverterResult"],
     "config": ["GetGlobalRooStatsConfig", "NLLOffsetMode", "SetNLLOffsetMode", "UseNLLOffset"],
     "utils": [
         "AsimovSignificance",

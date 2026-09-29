@@ -174,6 +174,8 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
         """``SetTitle("title;x;y")``: the graph's title, then its axes' titles."""
         parts = str(title).split(";")
         TNamed.SetTitle(self, parts[0])
+        if self._histogram is not None:  # the frame's title is what is drawn, as ROOT keeps it
+            self._histogram.SetTitle(parts[0])
         if len(parts) > 1:
             self.GetXaxis().SetTitle(parts[1])
         if len(parts) > 2:
@@ -292,6 +294,27 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
 
     def GetErrorYhigh(self, i: int) -> float:
         return self._error(i, "ey") if "ey" in self._bars else self._error(i, "eyh")
+
+    def _set_bar(self, key: str, i: int, value: float) -> None:
+        """One side of one point's bar - ``SetPointEYlow`` and its kin - the graph grown to it."""
+        if key not in self._bars:
+            return
+        if i >= self.GetN():
+            self.Set(i + 1)
+        self._bars[key][i] = float(value)
+        self._changed()
+
+    def SetPointEXlow(self, i: int, value: float) -> None:
+        self._set_bar("exl", i, value)
+
+    def SetPointEXhigh(self, i: int, value: float) -> None:
+        self._set_bar("exh", i, value)
+
+    def SetPointEYlow(self, i: int, value: float) -> None:
+        self._set_bar("eyl", i, value)
+
+    def SetPointEYhigh(self, i: int, value: float) -> None:
+        self._set_bar("eyh", i, value)
 
     def SetPointError(self, i: Any, *errors: float) -> None:
         """``SetPointError(i, ex, ey)`` - or ``(i, exl, exh, eyl, eyh)`` for asymmetric bars."""

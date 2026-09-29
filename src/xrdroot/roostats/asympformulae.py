@@ -47,46 +47,6 @@ def p_values(qmu: float, qmu_a: float, one_sided: bool, discovery: bool, qtilde:
     return pnull, palt
 
 
-def _bracket(fn: Callable[[float], float], xmin: float, xmax: float,
-             npx: int = 100) -> tuple[float, float, float]:  # fmt: skip
-    """``MinimStep`` for a root: the first grid step the sign changes over, and its middle - or,
-    none found, said on the error stream, the empty range ``(1, 0)``."""
-    import sys
-
-    dx = (xmax - xmin) / (npx - 1)
-    last, value = xmin, fn(xmin)
-    if value == 0:
-        return xmin, xmin, xmin
-    for i in range(1, npx):
-        x = xmin + i * dx
-        y = fn(x)
-        if y == 0:
-            return x, x, x
-        if math.copysign(1.0, y) * math.copysign(1.0, value) < 0:
-            return 0.5 * (last + x), last, x
-        last, value = x, y
-    sys.stderr.write("Info in <BrentMethods::MinimStep>: Grid search failed to find a root in the "
-                     " interval \nInfo in <BrentMethods::MinimStep>: xmin = "
-                     f"{xmin:.6g} xmax = {xmax:.6g} npts = {npx}\n")  # fmt: skip
-    return 0.0, 1.0, 0.0
-
-
-def _root(fn: Callable[[float], float], low: float, high: float) -> tuple[bool, float]:
-    """``BrentRootFinder::Solve``: a bracket on a grid of a hundred, then Brent's method on
-    ``|f|`` in it - ten times over, narrowing, until it converges."""
-    from ..numerics.minimize1d import minim_brent
-
-    xmin, xmax, x = low, high, 0.0
-    for _ in range(11):
-        x, xmin, xmax = _bracket(fn, xmin, xmax)
-        if xmin > xmax:
-            return False, 0.0
-        x, ok, xmin, xmax = minim_brent(lambda t: abs(fn(t)), xmin, xmax, x, 1e-8, 1e-10, 100)
-        if ok:
-            return True, x
-    return False, x
-
-
 def expected_p_values(pnull: float, palt: float, nsigma: float, use_cls: bool,
                       one_sided: bool = True) -> float:  # fmt: skip
     """``GetExpectedPValues``: the p-value - ``CLs``, or ``CLs+b`` - expected ``nsigma`` from the
@@ -104,9 +64,11 @@ def expected_p_values(pnull: float, palt: float, nsigma: float, use_cls: bool,
     root_t = -_quantile(0.5 * pnull)
     if root_t == 0:
         return -1.0
-    found, root_ta = _root(_palt(root_t, palt, -1), 0.0, 20.0)
+    from ..numerics.rootfinder import brent_root_finder
+
+    found, root_ta = brent_root_finder(_palt(root_t, palt, -1), 0.0, 20.0)
     if found:
-        found, value = _root(_palt(root_ta, _cdf(nsigma), 1), 0.0, 20.0)
+        found, value = brent_root_finder(_palt(root_ta, _cdf(nsigma), 1), 0.0, 20.0)
         if found:
             return 2 * _cdf_c(value)
     log(None, ERROR, "Eval", "Error finding expected p-values - return -1")

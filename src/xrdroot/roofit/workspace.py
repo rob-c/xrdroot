@@ -245,8 +245,12 @@ class RooWorkspace(RooPrintable):
             theirs = given[copy.GetName()]
             copy.copy_value_from(theirs)
             copy.setConstant(theirs.isConstant())
+        if str(name) in self._snapshots:
+            log(self, INFO, "ObjectHandling", f"RooWorkspace::saveSnapshot({self.GetName()}) "
+                f"replacing previous snapshot with name {name}")  # fmt: skip
+            del self._snapshots[str(name)]
         self._snapshots[str(name)] = copies
-        return False
+        return True
 
     def loadSnapshot(self, name: str) -> bool:
         for saved in self._snapshots.get(str(name), []):
