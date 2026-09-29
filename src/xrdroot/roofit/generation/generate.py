@@ -195,9 +195,7 @@ def _special(pdf: Any, variables: list[Any], count: Any, options: Any) -> Any:
     tag = "*" if expected_data else str(options.get("GenBinned", 0, "") or "")
     extended = bool(options.get("Extended", 0, False))
     names = frozenset(one.GetName() for one in variables)
-    events = float(count) if count is not None else 0.0
-    if extended and events == 0:
-        events = pdf.expected(names)
+    events = _special_count(pdf, names, count, extended)
     if splits(pdf, names, auto, tag):
         return lambda: split_events(pdf, variables, events, extended, auto, tag)
     own = names & pdf.dependents()
@@ -205,6 +203,12 @@ def _special(pdf: Any, variables: list[Any], count: Any, options: Any) -> Any:
         observables = [one for one in variables if one.GetName() in own]
         return lambda: binned_events(pdf, observables, events, extended, expected_data)
     return None
+
+
+def _special_count(pdf: Any, names: frozenset[str], count: Any, extended: bool) -> float:
+    """The events asked for - none, unless extended, when the density expects them."""
+    events = float(count) if count is not None else 0.0
+    return pdf.expected(names) if extended and events == 0 else events
 
 
 def generate_binned(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:

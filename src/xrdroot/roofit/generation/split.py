@@ -47,36 +47,48 @@ def binned_events(pdf: Any, observables: list[Any], count: float, extended: bool
                   expected_data: bool = False) -> Any:  # fmt: skip
     """``RooBinnedGenContext::generate``: each bin's expected events, Poisson-varied - or made
     to add up to ``count`` - as a weighted dataset of the bins' centres."""
+    from ..cmdargs import RooCmdArg
     from ..data.datahist import RooDataHist
     from ..data.dataset import RooDataSet
-    from .binned import _fixed_total
 
     names = frozenset(one.GetName() for one in observables)
     _announce(pdf, observables)
-    events = float(count)
-    if events <= 0:
-        if not pdf.canBeExtended():
-            log(None, ERROR, "InputArguments", f"RooAbsPdf::generateBinned({pdf.GetName()}) "
-                "ERROR: No event count provided and p.d.f does not provide expected number of "
-                "events")  # fmt: skip
-            return None
-        expected = pdf.expected(names)
-        events = expected if (expected_data or extended) else float(int(expected + 0.5))
+    events = _binned_total(pdf, names, float(count), extended or expected_data)
+    if events is None:
+        return None
     hist = RooDataHist("genData", "genData", observables)
     ctx = {name: hist.column(name) for name in names}
     weights = np.asarray(pdf.value(ctx, names), dtype=np.float64) * hist.binVolumes()
-    if expected_data:
-        counts = weights * events
-    elif extended:
-        counts = np.array([generator().Poisson(w * events) for w in weights], dtype=np.float64)
-    else:
-        drawn = [generator().Poisson(w * events) for w in weights]
-        counts = np.array(_fixed_total(weights, drawn, events), dtype=np.float64)
-    from ..cmdargs import RooCmdArg
-
+    counts = _bin_counts(weights, events, extended, expected_data)
     data = RooDataSet("wu", "wu", observables, RooCmdArg("WeightVar", "weight"))
     data.add_columns({name: hist.column(name) for name in names}, counts)
     return data
+
+
+def _binned_total(pdf: Any, names: frozenset[str], events: float, exact: bool) -> Any:
+    """The events asked for, else the expected number - rounded, unless ``exact`` - or
+    ``None``, said, for a density that expects none."""
+    if events > 0:
+        return events
+    if not pdf.canBeExtended():
+        log(None, ERROR, "InputArguments", f"RooAbsPdf::generateBinned({pdf.GetName()}) "
+            "ERROR: No event count provided and p.d.f does not provide expected number of "
+            "events")  # fmt: skip
+        return None
+    expected = pdf.expected(names)
+    return expected if exact else float(int(expected + 0.5))
+
+
+def _bin_counts(weights: Any, events: float, extended: bool, expected_data: bool) -> Any:
+    """Each bin's events: expected, Poisson-varied, or varied and made to add up."""
+    from .binned import _fixed_total
+
+    if expected_data:
+        return weights * events
+    drawn = [generator().Poisson(w * events) for w in weights]
+    if extended:
+        return np.array(drawn, dtype=np.float64)
+    return np.array(_fixed_total(weights, drawn, events), dtype=np.float64)
 
 
 def split_events(sim: Any, variables: list[Any], count: float, extended: bool, auto: bool,
@@ -85,32 +97,43 @@ def split_events(sim: Any, variables: list[Any], count: float, extended: bool, a
     from ..cmdargs import RooCmdArg
     from ..data.dataset import RooDataSet
 
-    if not sim.canBeExtended():
+    if not sim.canBeExtended():  # said, as RooSimSplitGenContext's constructor says it
         log(sim, ERROR, "Generation", f"RooSimSplitGenContext::RooSimSplitGenContext("
             f"{sim.GetName()}): All components of the simultaneous PDF must be extended PDFs. "
             "Otherwise, it is impossible to calculate the number of events to be generated per "
             "component.")  # fmt: skip
         return None
-    names = frozenset(one.GetName() for one in variables)
     channels = list(sim.channels.items())
-    expected = [pdf.expected(names) for _, pdf in channels]
-    events = float(count) if count > 0 else sum(expected)
-    log(None, INFO, "Generation", f"RooSimSplitGenContext::{sim.GetName()}:generate: will "
-        f"generate {_g(events)} events")  # fmt: skip
-    wanted = expected if extended else _shared(expected, events)
+    wanted = _wanted(sim, channels, variables, count, extended)
     index = sim.index
     data = RooDataSet("hmaster", "hmaster", variables, RooCmdArg("WeightVar", "weight"))
     for (label, pdf), number in zip(channels, wanted):
         own = [one for one in variables if one.GetName() in pdf.dependents()]
         part = _one_state(pdf, own, number, extended, auto, tag)
-        if part is None:
-            continue
-        rows = part.numEntries()
-        columns = {one.GetName(): np.full(rows, float(one.getVal())) for one in variables}
-        columns.update({one.GetName(): part.column(one.GetName()) for one in own})
-        columns[index.GetName()] = np.full(rows, float(index.lookupIndex(label)))
-        data.add_columns(columns, part.weights() if part.isWeighted() else None)
+        if part is not None:
+            _add_state(data, part, variables, own, index.GetName(), index.lookupIndex(label))
     return data
+
+
+def _add_state(data: Any, part: Any, variables: list[Any], own: list[Any], index: str,
+               code: int) -> None:  # fmt: skip
+    """One state's events joined: its own columns, the others' values now, its index."""
+    rows = part.numEntries()
+    columns = {one.GetName(): np.full(rows, float(one.getVal())) for one in variables}
+    columns.update({one.GetName(): part.column(one.GetName()) for one in own})
+    columns[index] = np.full(rows, float(code))
+    data.add_columns(columns, part.weights() if part.isWeighted() else None)
+
+
+def _wanted(sim: Any, channels: list[Any], variables: list[Any], count: float,
+            extended: bool) -> list[float]:  # fmt: skip
+    """Each state's events: its expected number, or ``count`` shared between them."""
+    names = frozenset(one.GetName() for one in variables)
+    expected = [pdf.expected(names) for _, pdf in channels]
+    events = float(count) if count > 0 else sum(expected)
+    log(None, INFO, "Generation", f"RooSimSplitGenContext::{sim.GetName()}:generate: will "
+        f"generate {_g(events)} events")  # fmt: skip
+    return expected if extended else _shared(expected, events)
 
 
 def _shared(expected: list[float], events: float) -> list[float]:
