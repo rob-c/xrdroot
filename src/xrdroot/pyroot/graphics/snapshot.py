@@ -74,8 +74,12 @@ def _lays_out(obj: Any) -> bool:
 
 
 def _painted(pad: TPad) -> list[tuple[Any, str]]:
-    """Each primitive converted, a helper that lays out pads asked to place what it made."""
-    for obj, _ in pad.primitives:
+    """Each primitive converted, a helper that lays out pads asked to place what it made.
+
+    A helper may put what it paints into the pad beside itself, so the pad's
+    primitives are walked as they were before any of them was asked.
+    """
+    for obj, _ in list(pad.primitives):
         if _lays_out(obj):
             obj.paint_pad()
     return [(_converted(obj), option) for obj, option in pad.primitives if not _lays_out(obj)]

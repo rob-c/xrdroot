@@ -1179,7 +1179,7 @@ The namespace is put together from `xrdroot.pyroot.SUBMODULES`: this core,
 the trees (`TTree`, `TChain`, `RDataFrame`...), the STL stand-ins, RDF and
 the graphics, each a part of the kit that may or may not be installed. A
 name ROOT has and none of them does is refused by name - `ROOT has
-TGraphPolar; xrdroot.pyroot does not yet` - so a script says exactly what it
+TGraphSmooth; xrdroot.pyroot does not yet` - so a script says exactly what it
 missed.
 
 ## Canvases you draw on
@@ -1256,7 +1256,7 @@ Every drawing class takes its attributes from `gStyle` when it is made, as
 ROOT 6's do - text in font 62, fills in colour 19 - and has the
 `TAttLine`, `TAttFill`, `TAttMarker` and `TAttText` methods of its C++ class
 and a `Set`/`Get` for each coordinate. A name ROOT has that is not here is
-refused by name, `ROOT has TGraphPolar; xrdroot.pyroot does not yet`.
+refused by name, `ROOT has TGraphSmooth; xrdroot.pyroot does not yet`.
 
 `xrdroot.pyroot.graphics.compare_images(a, b)` says how alike two pictures
 are - files or arrays - as their structural similarity, 1 for the same

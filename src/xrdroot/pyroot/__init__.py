@@ -38,6 +38,8 @@ SUBMODULES = [
     "graphics.ratioplot",
     "graphics.widgets",
     "graphics.views3d",
+    "graphics.polar",
+    "graphics.polargraph",
     "roofit",
     "roostats",
     "tcut",

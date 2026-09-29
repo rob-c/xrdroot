@@ -1242,8 +1242,9 @@ def test_a_polyline_is_its_points_joined_or_filled_and_a_polymarker_marks_them()
         prim("TPolyMarker", fN=2, fX=xs, fY=ys, fMarkerStyle=20),
     ]
     ax = make([(shape, "") for shape in shapes]).plot().axes[0]
-    line, markers = ax.lines
-    assert list(line.get_xdata()) == xs and line.get_color() == (1.0, 0.0, 0.0)
+    (markers,) = ax.lines
+    (joined,) = polylines(ax, (1.0, 0.0, 0.0))  # drawn in whole pixels, as TImageDump draws it
+    assert len(joined) == 3 and joined[1][1] < joined[0][1]
     assert list(markers.get_xdata()) == xs[:2] and markers.get_linestyle() == "None"
     (area,) = [p for p in ax.patches if isinstance(p, Polygon)]
     assert tuple(area.get_facecolor()[:3]) == (0.0, 1.0, 0.0)

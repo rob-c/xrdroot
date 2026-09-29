@@ -313,7 +313,6 @@ def _or_none(values: Any) -> Any:
 
 def polyline(scene: Scene, prim: Primitive, option: str) -> None:
     """A ``TPolyLine``: its points joined, or an area when it is drawn with ``f``."""
-    from matplotlib.lines import Line2D
     from matplotlib.patches import Polygon
 
     xs, ys = _points(prim)
@@ -330,9 +329,8 @@ def polyline(scene: Scene, prim: Primitive, option: str) -> None:
             )
         )
         return
-    scene.ax.add_artist(
-        Line2D(xs, ys, transform=where, clip_on=False, zorder=scene.layer(), **scene.line(prim))
-    )
+    # Its outline is whole pixels, as ``TImageDump`` draws a polyline - and a ``TLine``.
+    _line_of(scene, prim, [canvas_point(scene, x, y, prim.ndc) for x, y in zip(xs, ys)])
 
 
 def polymarker(scene: Scene, prim: Primitive, _option: str) -> None:
