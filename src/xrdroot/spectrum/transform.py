@@ -47,7 +47,10 @@ from .transformtypes import (
     power2,
 )
 
-__all__ = ["Settings", "enhance", "filter_zonal", "transform"]
+__all__ = [
+    "Settings", "cos_forward", "cos_inverse", "enhance", "filter_zonal", "forward", "inverse",
+    "sin_forward", "sin_inverse", "transform",
+]  # fmt: skip
 
 
 @dataclass
@@ -86,7 +89,7 @@ def _begin(settings: Settings) -> Any:
     return np.zeros(workspace_length(settings.kind, settings.size))
 
 
-def _cos_forward(ws: Any, source: Any, n: int) -> None:
+def cos_forward(ws: Any, source: Any, n: int) -> None:
     """The cosine transform: the spectrum and its mirror through the FFT, the shift divided out."""
     ws[:n], ws[n : 2 * n] = source[:n], source[:n][::-1]
     fourier(ws, 2 * n, 0, FORWARD, 0)
@@ -95,7 +98,7 @@ def _cos_forward(ws: Any, source: Any, n: int) -> None:
     ws[0] = ws[0] / SQRT2
 
 
-def _sin_forward(ws: Any, source: Any, n: int) -> None:
+def sin_forward(ws: Any, source: Any, n: int) -> None:
     """The sine transform: the spectrum against its negated mirror, one place lower when done."""
     ws[:n], ws[n : 2 * n] = source[:n], -source[:n][::-1]
     fourier(ws, 2 * n, 0, FORWARD, 0)
@@ -132,9 +135,9 @@ def forward(ws: Any, source: Any, n: int, kind: int, degree: int) -> None:
         walsh(ws, n)
         bit_reverse(ws, n)
     elif kind == COS:
-        _cos_forward(ws, source, n)
+        cos_forward(ws, source, n)
     elif kind == SIN:
-        _sin_forward(ws, source, n)
+        sin_forward(ws, source, n)
     elif kind in (FOURIER, HARTLEY):
         ws[:n] = source[:n]
         fourier(ws, n, int(kind == HARTLEY), FORWARD, 0)
@@ -149,7 +152,7 @@ def _mirror_back(ws: Any, n: int) -> None:
     ws[big + n + 1 : 2 * big] = -ws[big + 1 : big + n][::-1]
 
 
-def _cos_inverse(ws: Any, n: int) -> Any:
+def cos_inverse(ws: Any, n: int) -> Any:
     """The inverse cosine transform, through an inverse FFT of twice the length."""
     big = 2 * n
     ws[0] = ws[0] * SQRT2
@@ -163,7 +166,7 @@ def _cos_inverse(ws: Any, n: int) -> Any:
     return ws[:n].copy()
 
 
-def _sin_inverse(ws: Any, n: int) -> Any:
+def sin_inverse(ws: Any, n: int) -> Any:
     """The inverse sine transform, each coefficient first moved one place up."""
     big = 2 * n
     ws[n] = ws[n - 1] * SQRT2
@@ -203,9 +206,9 @@ def inverse(ws: Any, n: int, kind: int, degree: int) -> Any:
         bit_reverse(ws, n)
         walsh(ws, n)
     elif kind == COS:
-        return _cos_inverse(ws, n)
+        return cos_inverse(ws, n)
     elif kind == SIN:
-        return _sin_inverse(ws, n)
+        return sin_inverse(ws, n)
     elif kind in (FOURIER, HARTLEY):
         fourier(ws, n, int(kind == HARTLEY), INVERSE, 0)
     else:
