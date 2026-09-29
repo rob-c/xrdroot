@@ -39,7 +39,8 @@ def _kernel(x: Any, gamma: Any, beta: Any, mu: Any) -> Any:
     """``computeGamma``, event by event."""
     columns = (np.asarray(v, dtype=np.float64) for v in (x, gamma, beta, mu))
     x, gamma, beta, mu = np.broadcast_arrays(*columns)
-    out = np.where(x == mu, (gamma == 1.0) / beta, -np.asarray(libm.lgamma(gamma), dtype=np.float64))
+    lgamma = np.asarray(libm.lgamma(gamma), dtype=np.float64)
+    out = np.where(x == mu, (gamma == 1.0) / beta, -lgamma)
     away = x != mu
     inverse = 1.0 / beta
     scaled = (x - mu) * inverse
@@ -93,8 +94,9 @@ class RooGamma(RooAbsPdf):
         from ...pyroot.core.rmath import gamma_cdf
 
         low, high = self.x.getMin(rng), self.x.getMax(rng)
+        shape, scale, mu = (one.compute(ctx) for one in (self.gamma, self.beta, self.mu))
         return _each(lambda a, b, m: gamma_cdf(high, a, b, m) - gamma_cdf(low, a, b, m),
-                     self.gamma.compute(ctx), self.beta.compute(ctx), self.mu.compute(ctx))  # fmt: skip
+                     shape, scale, mu)  # fmt: skip
 
     def generator_code(self, names: frozenset[str]) -> int:
         return 1 if self.x.isFundamental() and names == frozenset([self.x.GetName()]) else 0

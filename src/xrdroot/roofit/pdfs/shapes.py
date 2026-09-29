@@ -243,6 +243,13 @@ class RooPoisson(_Shape):
         self._protect = False
         check_range(self, [self.x, self.mean], 0.0, math.inf, closed=True)
 
+    def setNoRounding(self, flag: bool = True) -> None:
+        """Take ``x`` as it is, not rounded down to a count - an Asimov global observable."""
+        self._no_rounding = bool(flag)
+
+    def getNoRounding(self) -> bool:
+        return self._no_rounding
+
     def protectNegativeMean(self, flag: bool = True) -> None:
         self._protect = bool(flag)
 

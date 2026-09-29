@@ -40,6 +40,8 @@ MODULES: dict[str, list[str]] = {
         "SimpleLikelihoodRatioTestStat",
     ],
     "numbercounting": ["NumberCountingPdfFactory"],
+    "asymcalc": ["AsymptoticCalculator"],
+    "config": ["GetGlobalRooStatsConfig", "NLLOffsetMode", "SetNLLOffsetMode", "UseNLLOffset"],
     "utils": [
         "AsimovSignificance",
         "FactorizePdf",

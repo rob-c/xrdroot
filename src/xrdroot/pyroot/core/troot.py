@@ -92,6 +92,10 @@ def _submodule(name: str) -> Any:
         return None
 
 
+#: The names every translation starts with - its runtime's - which a declaration does not add.
+_PRELUDE: dict[str, Any] = {}
+
+
 class TROOT(TDirectory):
     """``TROOT``: the session, and the directory at the top of every other."""
 
@@ -366,10 +370,13 @@ class TInterpreter:
             _processor("gInterpreter.Declare")(str(code))
             return True
         declared = running(str(code), "<Declare>", call=False)
+        if not _PRELUDE:
+            _PRELUDE.update(running("", "<Declare>", call=False))
         namespace = sys.modules["xrdroot.pyroot"].__dict__
         for name, value in declared.items():
-            if getattr(value, "__module__", None) == "__cint__" and not name.startswith("_"):
-                namespace[name] = value
+            ours = getattr(value, "__module__", None) == "__cint__" or name not in _PRELUDE
+            if ours and not name.startswith("_"):
+                namespace[name] = value  # a function, a class - or a global it declared
         return True
 
     def ProcessLine(self, line: Any, error: Any = None) -> Any:

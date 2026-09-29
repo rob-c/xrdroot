@@ -46,7 +46,8 @@ def _central(x: float, ndof: float) -> float:
     """``RooChiSquarePdf::evaluate``."""
     if x <= 0:
         return 0.0
-    return x ** (ndof / 2.0 - 1.0) * math.exp(-x / 2.0) / math.gamma(ndof / 2.0) / 2.0 ** (ndof / 2.0)
+    half = ndof / 2.0
+    return x ** (half - 1.0) * math.exp(-x / 2.0) / math.gamma(half) / 2.0**half
 
 
 class RooChiSquarePdf(RooAbsPdf):
@@ -102,7 +103,8 @@ def noncentral_pdf(x: float, r: float, lam: float) -> float:
     if x < 0:
         return 0.0
     z = math.sqrt(lam * x)
-    return 0.5 * math.exp(-0.5 * (x + lam)) * (x / lam) ** (0.25 * r - 0.5) * bessel_i(0.5 * r - 1.0, z)
+    scale = (x / lam) ** (0.25 * r - 0.5)
+    return 0.5 * math.exp(-0.5 * (x + lam)) * scale * bessel_i(0.5 * r - 1.0, z)
 
 
 def _term(x: float, k: float, lam: float, i: int, cdf: Any = None) -> float:
@@ -158,7 +160,7 @@ class RooNonCentralChiSquare(RooAbsPdf):
     def _sum(self, term: Any, lam: float, what: str, where: str) -> float:
         """From the dominant term up until one falls below the tolerance - or the terms run out,
         said once - then down to the first."""
-        dominant = int(math.floor(lam / 2))
+        dominant = math.floor(lam / 2)
         total, i = 0.0, dominant
         while True:
             value = term(i)
@@ -169,8 +171,9 @@ class RooNonCentralChiSquare(RooAbsPdf):
                 if not self._warned_convergence:
                     self._warned_convergence = True
                     log(None, WARNING, "Eval", f"RooNonCentralChiSquare {what}did not converge: "
-                        f"{where} fractional error = {g(value / total)}\n either adjust tolerance "
-                        "with SetErrorTolerance(tol) or max_iter with SetMaxIter(max_it)")  # fmt: skip
+                        f"{where} fractional error = {g(value / total)}\n either adjust "
+                        "tolerance with SetErrorTolerance(tol) or max_iter with "
+                        "SetMaxIter(max_it)")  # fmt: skip
                 break
             i += 1
         for i in range(dominant - 1, -1, -1):

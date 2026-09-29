@@ -11,7 +11,6 @@ which is an incomplete beta function.
 from __future__ import annotations
 
 import math
-import statistics
 from typing import Any
 
 from ..efficiency import regularized_beta
@@ -34,16 +33,16 @@ __all__ = [
 
 def PValueToSignificance(pvalue: float) -> float:
     """``normal_quantile_c(p, 1)``: how many sigma out the upper tail holds ``p``."""
-    if pvalue <= 0.0:
-        return math.inf
-    if pvalue >= 1.0:
-        return -math.inf
-    return -statistics.NormalDist().inv_cdf(float(pvalue))
+    from ..function.ndtri import normal_quantile_c
+
+    return normal_quantile_c(float(pvalue))
 
 
 def SignificanceToPValue(Z: float) -> float:
     """``normal_cdf_c(Z)``: the upper tail beyond ``Z`` sigma."""
-    return 0.5 * math.erfc(float(Z) / math.sqrt(2.0))
+    from ..function.ndtri import normal_cdf_c
+
+    return normal_cdf_c(float(Z))
 
 
 def AsimovSignificance(s: float, b: float, sigma_b: float = 0.0) -> float:
