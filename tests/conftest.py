@@ -83,3 +83,25 @@ def config() -> Config:
     return Config(
         username="tester", auth_order=("host",), require_tls=False, data_streams=0
     )
+
+
+@pytest.fixture(autouse=True)
+def _fresh_statistics_defaults():
+    """Keep one test's minimizer defaults and RooStats switches out of the next.
+
+    ``MinimizerOptions``' defaults, RooStats' configuration and the
+    asymptotic calculator's print level are process-wide, as ROOT's are, and
+    a test that sets one - or asks for the algorithm before any minimizer was
+    chosen, which ROOT then forgets - would change what later tests see.
+    """
+    from xrdroot.fit.defaults import DEFAULTS
+    from xrdroot.roostats import asimov, config
+
+    saved = dict(DEFAULTS)
+    switches = dict(config.CONFIG.__dict__)
+    level = list(asimov._LEVEL)
+    yield
+    DEFAULTS.clear()
+    DEFAULTS.update(saved)
+    config.CONFIG.__dict__.update(switches)
+    asimov._LEVEL[:] = level

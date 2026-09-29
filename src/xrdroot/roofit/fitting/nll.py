@@ -198,8 +198,7 @@ class RooNLLVar(RooAbsReal):
         """A binned channel: its bins' Poisson terms, and ``N log(channels)`` if simultaneous."""
         weights = given * given if self._weight_squared else given
         total, events, bad = binned_terms(binned, columns, weights)
-        if bad:
-            self._badness += float(bad)
+        _log_binned(binned, bad, weights)
         if simulated:
             total.add(events * math.log(simulated))
         return total.total
@@ -264,6 +263,31 @@ def _any_binned(pdf: Any) -> bool:
     channels = getattr(pdf, "channels", None)
     parts = list(channels.values()) if isinstance(channels, dict) else [pdf]
     return any(binned_part(part) is not None for part in parts)
+
+
+def _log_binned(binned: Any, bad: list[tuple[int, float]], weights: Any) -> None:
+    """``doEvalBinnedL``'s evaluation error for each bin with events but no expectation: the
+    bin is left out of the sum, and a fit told the point is not to be had."""
+    from .. import evalerrors
+    from ..pdfs.histfactory import binned_likelihood
+    from ..printing import g
+
+    if not bad or not evalerrors.active():
+        return
+    name = binned.GetName()
+
+    def servers() -> str:
+        with binned_likelihood():
+            value = g(float(binned.getVal()))
+        weight = g(float(weights[-1]))
+        return f"func={name}={value}, weightVar=_weight={weight}, " \
+            f"_weight_sumW2=_weight_sumW2={weight}"  # fmt: skip
+
+    origin = (f"RooFit::Detail::RooNLLVarNew::RooNLLVarNew[ func={name} weightVar=_weight "
+              "_weight_sumW2=_weight_sumW2 ]")  # fmt: skip
+    for index, events in bad:
+        message = f"Observed {events:f} events in bin {index} with zero event yield"
+        evalerrors.record(("binned", id(binned)), lambda: origin, message, servers)
 
 
 def _top_node(pdf: Any, nset: frozenset[str], rng: Any) -> tuple[Any, Any, Any]:

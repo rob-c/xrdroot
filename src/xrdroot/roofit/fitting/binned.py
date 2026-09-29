@@ -35,18 +35,22 @@ def binned_part(pdf: Any) -> Any:
     return None
 
 
-def binned_terms(binned: Any, columns: dict[str, Any], weights: Any) -> tuple[Kahan, float, int]:
-    """The bins' Poisson terms and their events: the sum, the events, and how many bins had
-    events but no expectation - which RooFit logs as an evaluation error."""
+def binned_terms(
+    binned: Any, columns: dict[str, Any], weights: Any
+) -> tuple[Kahan, float, list[tuple[int, float]]]:
+    """The bins' Poisson terms and their events: the sum, the events, and the bins - with their
+    events - that had events but no expectation, which RooFit leaves out of the sum and logs as
+    an evaluation error."""
     from ..pdfs.histfactory import binned_likelihood
 
     with binned_likelihood():
         mu = np.broadcast_to(np.asarray(binned.compute(dict(columns)), dtype=np.float64),
                              weights.shape)  # fmt: skip
-    total, events, bad = Kahan(), Kahan(), 0
-    for m, n in zip(mu.tolist(), weights.tolist()):
+    total, events = Kahan(), Kahan()
+    bad: list[tuple[int, float]] = []
+    for index, (m, n) in enumerate(zip(mu.tolist(), weights.tolist())):
         if m <= 0 and n > 0:
-            bad += 1
+            bad.append((index, n))
             continue
         if abs(m) < 1e-10 and abs(n) < 1e-10:
             total.add(0.0)  # Poisson(0|0): nothing, added all the same, as the kernel adds it

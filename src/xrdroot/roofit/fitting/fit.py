@@ -20,6 +20,7 @@ from .. import copies
 from ..cmdargs import Commands, commands
 from ..collections import as_list
 from ..messages import ERROR, INFO, WARNING, log
+from .binned import binned_part
 from .minimizer import RooMinimizer
 from .nll import RooNLLVar
 
@@ -164,6 +165,18 @@ def _fit_range_attributes(pdf: Any, data: Any, rng: Any) -> None:
     pdf.setStringAttribute("fitrange", ",".join(names))
 
 
+def _normalized_name(pdf: Any, observables: list[Any], rng: Any) -> str:
+    """What the likelihood names the density: its normalised form's name - or, for a binned
+    channel, which is not normalised, the binned sum's own, as RooFit takes it out of a
+    product of constraints."""
+    binned = binned_part(pdf)
+    if binned is not None:
+        return str(binned.GetName())
+    if hasattr(pdf, "normalized_name"):
+        return str(pdf.normalized_name(observables, rng))
+    return str(pdf.GetName())
+
+
 def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
     """The likelihood the options describe, with the lines RooFit prints while making it."""
     started = time.perf_counter()
@@ -172,9 +185,7 @@ def nll_options(pdf: Any, data: Any, options: Commands) -> RooNLLVar:
     _fit_range_attributes(pdf, data, rng)
     conditional = {one.GetName() for one in as_list(options.get("ConditionalObservables", 0, ()))}
     observables = [one for one in pdf.getObservables(data) if one.GetName() not in conditional]
-    normalized = (
-        pdf.normalized_name(observables, rng) if hasattr(pdf, "normalized_name") else pdf.GetName()
-    )
+    normalized = _normalized_name(pdf, observables, rng)
     observed = frozenset(one.GetName() for one in pdf.getObservables(data))
     constraints, constrained, global_values = _constraints(pdf, data, options)
     fitted = copies.copies_of(pdf, "fit", observed)

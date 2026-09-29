@@ -93,6 +93,8 @@ class RooMinimizer:
         self._max_fcn = -math.inf
         self._last: list[float] = []
         self._optimizing = False
+        #: Minuit's count of calls when ``zeroEvalCount`` was last asked for, in this run.
+        self._nfcn_zero = 0
         #: ``applyCovarianceMatrix``'s matrix, which a saved result then carries instead.
         self.external_covariance: Any = None
 
@@ -139,14 +141,17 @@ class RooMinimizer:
     def optimizeConst(self, flag: int) -> None:
         """Constant-term optimisation changes how fast, not what - but RooFit says when it is
         switched, whenever ``getPrintLevel`` - Minuit's level plus one, which is RooFit's plus
-        two - is above -1."""
-        if bool(flag) == self._optimizing:
+        two - is above -1 - and when it already was, or was not."""
+        wanted, was = bool(flag), self._optimizing
+        self._optimizing = wanted
+        if self.print_level + 2 <= -1:
             return
-        self._optimizing = bool(flag)
-        if self.print_level + 2 > -1:
-            word = "activating" if flag else "deactivating"
-            log(self, INFO, "Minimization", f"RooAbsMinimizerFcn::setOptimizeConst: {word} const "
-                "optimization")  # fmt: skip
+        if wanted != was:
+            text = f"{'activating' if wanted else 'deactivating'} const optimization"
+        else:
+            text = "const optimization already active" if wanted else (
+                "const optimization wasn't active")  # fmt: skip
+        log(self, INFO, "Minimization", f"RooAbsMinimizerFcn::setOptimizeConst: {text}")
 
     def setProfile(self, flag: bool = True) -> None:
         """Timing the steps prints times, which differ run to run: not done."""
@@ -157,9 +162,11 @@ class RooMinimizer:
     def zeroEvalCount(self) -> None:
         """Count the function's calls from nothing again, as a profile does before each fit."""
         self.evaluations = 0
+        self._nfcn_zero = self.evalCounter() + self._nfcn_zero
 
     def evalCounter(self) -> int:
-        return int(self.minuit.nfcn) if self.minuit is not None else 0
+        """The likelihood's evaluations in the last run - since ``zeroEvalCount``, if later."""
+        return int(self.minuit.nfcn) - self._nfcn_zero if self.minuit is not None else 0
 
     # -- the function Minuit sees -------------------------------------------------
 
@@ -308,7 +315,7 @@ class RooMinimizer:
         if not self.params:
             log(self, 4, "Minimization", "RooMinimizer::fitFCN(): FCN function has zero parameters")
             return -1
-        self.minuit = self._settings()
+        self.minuit, self._nfcn_zero = self._settings(), 0
         log(
             self,
             INFO,

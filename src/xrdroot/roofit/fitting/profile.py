@@ -5,9 +5,10 @@ but the parameters of interest, less its absolute minimum: each value is a
 MIGRAD run with the parameters of interest held at their values, started
 from the absolute minimum's nuisance values, as ``RooProfileLL::evaluate``
 runs it - a ``.`` of progress each time, and the messages RooFit prints the
-first time, when it finds that minimum. A value is kept until a parameter
-of the likelihood changes, as RooFit's dirty flags keep it, so asking again
-costs no fit.
+first time, when it finds that minimum. RooFit's dirty flags are cleared
+before the fit, and the fit's moves of the nuisance parameters set them
+again, so asking again costs another fit - unless no nuisance parameter was
+free, when the value is kept until a parameter of the likelihood changes.
 """
 
 from __future__ import annotations
@@ -148,7 +149,10 @@ class RooProfileLL(RooAbsReal):
         if self._cache is not None and self._cache[0] == self._state():
             return float(self._cache[1])
         found = self.evaluate()
-        self._cache = (self._state(), found)
+        # MIGRAD moves every free nuisance parameter, which leaves the value dirty again - as
+        # RooFit's flags leave it, cleared before the fit - so only a fit of none is kept.
+        floating = any(not p.isConstant() for p in self._nuisances())
+        self._cache = None if floating else (self._state(), found)
         return found
 
     def _initialize(self) -> None:

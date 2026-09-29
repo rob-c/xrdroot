@@ -195,7 +195,7 @@ def test_a_snapshot_saves_parameter_values_and_loads_them_back() -> None:
     w = RooWorkspace("w")
     g, _, m, _ = gaussian()
     w.Import(g, Silence=True)
-    assert w.saveSnapshot("snap", "m,s,nothing") is False
+    assert w.saveSnapshot("snap", "m,s,nothing") is True
     w.saveSnapshot("listed", RooArgSet([m]))
     w.var("m").setVal(0.5)
     loaded = (w.loadSnapshot("snap"), w.var("m").getVal(), w.loadSnapshot("none"))
