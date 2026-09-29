@@ -79,9 +79,9 @@ class TSpectrumFit(_Options, TNamed):
         count = 0 if numberPeaks is None else int(numberPeaks)
         self._settings = FitSettings()
         self._setup = fit1.PeakSetup([], [], [], [])
-        self._calc: dict[str, float] = {name: 0.0 for name in fit1.SHARED}
+        self._calc: dict[str, float] = dict.fromkeys(fit1.SHARED, 0.0)
         self._calc["sigma"] = 1.0
-        self._err: dict[str, float] = {name: 0.0 for name in fit1.SHARED}
+        self._err: dict[str, float] = dict.fromkeys(fit1.SHARED, 0.0)
         self.fChi = 0.0
         if numberPeaks is not None and count <= 0:
             self.Error("TSpectrumFit", "Invalid number of peaks, must be > than 0")
@@ -98,8 +98,8 @@ class TSpectrumFit(_Options, TNamed):
         if xmin < 0 or xmax <= xmin:
             self.Error("SetFitParameters", "Wrong range")
             return
-        settings = FitSettings(int(xmin), int(xmax), int(numberIterations), float(alpha),
-                               int(statisticType), int(alphaOptim), int(power), int(fitTaylor))  # fmt: skip
+        chosen = (int(statisticType), int(alphaOptim), int(power), int(fitTaylor))
+        settings = FitSettings(int(xmin), int(xmax), int(numberIterations), float(alpha), *chosen)
         refused = _settings_error(settings)
         if refused:
             self.Error("SetFitParameters", refused)

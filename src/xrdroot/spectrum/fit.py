@@ -12,6 +12,7 @@ works out the errors and areas as ``TSpectrumFit`` does.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -27,6 +28,9 @@ Array = Any
 #: The parameters after the peaks', in ROOT's order.
 SHARED = ("sigma", "t", "b", "s", "a0", "a1", "a2")
 
+#: Where ROOT's constructor starts them: sigma 2, the tail's slope 1, all else 0.
+START = (2.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0)
+
 
 @dataclass
 class PeakSetup:
@@ -40,12 +44,8 @@ class PeakSetup:
     amplitudes: list[float]
     fix_positions: list[bool]
     fix_amplitudes: list[bool]
-    init: dict[str, float] = field(
-        default_factory=lambda: dict(sigma=2.0, t=0.0, b=1.0, s=0.0, a0=0.0, a1=0.0, a2=0.0)
-    )
-    fixed: dict[str, bool] = field(
-        default_factory=lambda: dict(sigma=False, t=True, b=True, s=True, a0=True, a1=True, a2=True)
-    )
+    init: dict[str, float] = field(default_factory=lambda: dict(zip(SHARED, START)))
+    fixed: dict[str, bool] = field(default_factory=lambda: {n: n != "sigma" for n in SHARED})
 
 
 def _free(setup: PeakSetup) -> list[tuple[int, str]]:
@@ -63,17 +63,27 @@ def _free(setup: PeakSetup) -> list[tuple[int, str]]:
 
 def _held(kind: str, value: float, channels: tuple[int, int]) -> float:
     """``value`` kept where ROOT keeps a parameter of this kind as the fit steps."""
-    if kind == "amp":
-        return 0.0 if value < 0 else value
     if kind == "pos":
         low, high = channels
         value = float(low) if value < low else value
         return float(high) if value > high else value
-    if kind == "sigma":
-        return 0.001 if value < 0.001 else value
-    if kind == "b" and abs(value) < 0.001:
+    hold = _HOLDS.get(kind)
+    return hold(value) if hold is not None else value
+
+
+def _slope_held(value: float) -> float:
+    """A tail's slope, kept 0.001 from 0 on the side it is on."""
+    if abs(value) < 0.001:
         return -0.001 if value < 0 else 0.001
     return value
+
+
+#: How an amplitude, sigma and a slope are kept in bounds; the rest go free.
+_HOLDS: dict[str, Callable[[float], float]] = {
+    "amp": lambda v: 0.0 if v < 0 else v,
+    "sigma": lambda v: 0.001 if v < 0.001 else v,
+    "b": _slope_held,
+}
 
 
 class PeakModel:
@@ -163,7 +173,7 @@ def _by_s(m: PeakModel) -> Array:
 
 
 #: Each kind of parameter's derivative, ``TSpectrumFit``'s ``Deramp`` to ``Dera2``.
-_DERIVATIVES = {
+_DERIVATIVES: dict[str, Callable[[PeakModel], Array]] = {
     "amp": _by_amplitude,
     "pos": _by_position,
     "sigma": _by_sigma,
@@ -208,26 +218,46 @@ def _area_error(model: PeakModel, fitted: Fitted, j: int, chi_er: float) -> floa
 
 def _results(model: PeakModel, setup: PeakSetup, fitted: Fitted, chi_er: float) -> FitResult:
     """ROOT's ``fAmpCalc``, ``fPositionErr``, ``fArea`` and the rest, from the fitted values."""
-    q = model.shared()
-    amp = model.peaks()[0]
-    areas = [peaks.area(float(a), q["sigma"], q["t"], q["b"]) for a in amp]
-    initial = {"amp": setup.amplitudes, "pos": setup.positions}
-    values: dict[str, list[float]] = {"amp": [], "pos": [], "area": areas}
-    errors: dict[str, list[float | None]] = {"amp": [], "pos": [], "area": []}
     at = {index: j for j, (index, _) in enumerate(model.free)}
-    for k in range(model.count):
-        for kind, index in (("amp", 2 * k), ("pos", 2 * k + 1)):
-            j = at.get(index)
-            values[kind].append(fitted.xk[j] if j is not None else float(initial[kind][k]))
-            errors[kind].append(_error(fitted, j) if j is not None else 0.0)
-            if kind == "amp":
-                wanted = j is not None and areas[k] > 0
-                errors["area"].append(_area_error(model, fitted, j, chi_er) if wanted else 0.0)
-    for n, name in enumerate(SHARED):
-        j = at.get(2 * model.count + n)
-        values[name] = [fitted.xk[j] if j is not None else setup.init[name]]
-        errors[name] = [_error(fitted, j) if j is not None else 0.0]
+    found = _found(setup, fitted, at)
+    values ={name: [v for v, _ in found[part]] for name, part in _parts(model.count)}
+    errors = {name: [e for _, e in found[part]] for name, part in _parts(model.count)}
+    values["area"], errors["area"] = _areas(model, fitted, at, chi_er)
     return FitResult(values, errors, chi_er, None)
+
+
+def _found(setup: PeakSetup, fitted: Fitted,
+           at: dict[int, int]) -> list[tuple[float, float | None]]:  # fmt: skip
+    """Every parameter's value and error, in ROOT's order, fitted or fixed."""
+    starts = [x for pair in zip(setup.amplitudes, setup.positions) for x in pair]
+    starts += [setup.init[name] for name in SHARED]
+    return [_value_error(fitted, at.get(n), float(start)) for n, start in enumerate(starts)]
+
+
+def _parts(count: int) -> list[tuple[str, slice]]:
+    """Where each kind of parameter is among all of them, for ``count`` peaks."""
+    shared = 2 * count
+    names = [("amp", slice(0, shared, 2)), ("pos", slice(1, shared, 2))]
+    return names + [(name, slice(shared + n, shared + n + 1)) for n, name in enumerate(SHARED)]
+
+
+def _areas(model: PeakModel, fitted: Fitted, at: dict[int, int],
+           chi_er: float) -> tuple[list[float], list[float | None]]:  # fmt: skip
+    """Each peak's area, and its error where its amplitude was fitted and the area is positive."""
+    q = model.shared()
+    areas = [peaks.area(float(a), q["sigma"], q["t"], q["b"]) for a in model.peaks()[0]]
+    errors: list[float | None] = []
+    for k, area in enumerate(areas):
+        j = at.get(2 * k)
+        errors.append(_area_error(model, fitted, j, chi_er) if j is not None and area > 0 else 0.0)
+    return areas, errors
+
+
+def _value_error(fitted: Fitted, j: int | None, start: float) -> tuple[float, float | None]:
+    """A parameter's value and error: fitted, or its start and 0 when it was fixed."""
+    if j is None:
+        return start, 0.0
+    return fitted.xk[j], _error(fitted, j)
 
 
 def fit(source: Array, setup: PeakSetup, settings: FitSettings, stiefel: bool) -> FitResult | str:
