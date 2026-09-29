@@ -250,6 +250,24 @@ class MetropolisHastings:
         log(None, INFO, "Eval", f"Number of steps in chain: {chain.Size()}")
         return chain
 
+    def _proposed(self, candidate: Any, x: Any, x_value: float) -> tuple[float, bool, float]:
+        """A proposal from ``x``: the function there, whether it failed, the acceptance ratio -
+        corrected by the proposal's densities each way if it is not symmetric."""
+        self._proposal.Propose(candidate, x)
+        self._params.assign(candidate)
+        value, failed = _evaluated(self._function)
+        failed = failed and self._type == kLog  # an evaluation error, which only kLog heeds
+        if failed:
+            return math.inf, True, self._ratio(x_value, math.inf)
+        a = self._ratio(x_value, value)
+        if self._proposal.IsSymmetric(candidate, x):
+            return value, False, a
+        there = self._proposal.GetProposalDensity(candidate, x)
+        back = self._proposal.GetProposalDensity(x, candidate)
+        if self._type == kRegular:
+            return value, False, a * _c(np.divide, back, there)
+        return value, False, a + _c(np.log, there) - _c(np.log, back)
+
     def _steps(self, chain: MarkovChain, x: Any, candidate: Any, x_value: float) -> MarkovChain:
         log_plain(None, PROGRESS, "Generation", "Metropolis-Hastings progress: ")
         weight = 0
@@ -257,18 +275,7 @@ class MetropolisHastings:
         for i in range(self._iters):
             if i % tick == 0:
                 log_plain(None, PROGRESS, "Generation", ".")
-            self._proposal.Propose(candidate, x)
-            self._params.assign(candidate)
-            value, failed = _evaluated(self._function)
-            failed = failed and self._type == kLog  # an evaluation error, which only kLog heeds
-            if failed:
-                value = math.inf
-            a = self._ratio(x_value, value)
-            if not failed and not self._proposal.IsSymmetric(candidate, x):
-                there = self._proposal.GetProposalDensity(candidate, x)
-                back = self._proposal.GetProposalDensity(x, candidate)
-                a = a * _c(np.divide, back, there) if self._type == kRegular else (
-                    a + _c(np.log, there) - _c(np.log, back))  # fmt: skip
+            value, failed, a = self._proposed(candidate, x, x_value)
             if not failed and self._take(a):
                 if weight != 0:
                     chain.Add(x, self._nll(x_value), float(weight))
