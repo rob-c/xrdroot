@@ -26,7 +26,8 @@ from typing import Any
 import numpy as np
 
 __all__ = [
-    "atan", "choose", "choose_pow", "cos", "cosh", "exp", "log", "power", "sin", "sinh", "tan",
+    "atan", "choose", "choose_pow", "cos", "cosh", "exp", "lgamma", "log", "power", "sin", "sinh",
+    "tan",
 ]  # fmt: skip
 
 #: The arguments each function is tried on, spread evenly over the range the
@@ -103,3 +104,26 @@ sinh = choose(np.sinh, math.sinh, *_PROBES["sinh"])
 cosh = choose(np.cosh, math.cosh, *_PROBES["cosh"])
 atan = choose(np.arctan, math.atan, *_PROBES["atan"])
 power = choose_pow(np.power, math.pow)
+
+
+def _c_lgamma() -> Callable[[float], float]:
+    """The C library's ``lgamma`` - which RooFit's kernels call as ``std::lgamma`` - and not
+    Python's ``math.lgamma``, which is CPython's own and differs from it in the last place on
+    about half of the integers; Python's where the C library cannot be found."""
+    import ctypes
+    import ctypes.util
+
+    try:
+        found = ctypes.CDLL(ctypes.util.find_library("m") or None).lgamma
+    except (OSError, AttributeError):  # pragma: no cover - every platform here has one
+        return math.lgamma
+    found.restype, found.argtypes = ctypes.c_double, [ctypes.c_double]
+    return found  # type: ignore[no-any-return]
+
+
+_lgamma = _c_lgamma()
+
+
+def lgamma(values: Any) -> Any:
+    """``std::lgamma`` of every element - an infinity at the poles, as C has it."""
+    return _each(_lgamma, np.vectorize(math.lgamma, otypes=[np.float64]), values)

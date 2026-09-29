@@ -218,6 +218,13 @@ class _Namespace:
 
         return ref(float(value))  # type: ignore[no-any-return]
 
+    @property
+    def ModelConfig(self) -> Any:
+        """``RooFit::ModelConfig``: RooFit's own since ROOT 6.30, and RooStats' by that name."""
+        from ...roostats.modelconfig import ModelConfig
+
+        return ModelConfig
+
     def __repr__(self) -> str:
         return "<namespace RooFit>"
 

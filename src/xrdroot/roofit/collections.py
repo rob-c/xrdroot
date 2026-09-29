@@ -69,7 +69,14 @@ class RooAbsCollection(RooPrintable):
         return True
 
     addOwned = add
-    addClone = add
+
+    def addClone(self, item: Any, silent: bool = False) -> bool:
+        """Add a copy of ``item`` - or of each of a collection's - under its own name."""
+        if isinstance(item, (RooAbsCollection, list, tuple, set, frozenset)):
+            return all([self.addClone(one, silent) for one in _flat(item)])  # noqa: C419
+        if self.unique and self.find(item.GetName()) is not None:
+            return False
+        return self.add(item.clone(item.GetName()) if hasattr(item, "clone") else item, silent)
 
     def remove(self, item: Any, silent: bool = False, matchByNameOnly: bool = False) -> bool:
         """Take out ``item``, or each member of a collection, matched by name."""

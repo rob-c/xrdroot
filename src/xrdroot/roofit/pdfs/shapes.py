@@ -15,6 +15,7 @@ import numpy as np
 from ...function.analytic import landau_cdf
 from ...function.special import landau_pdf
 from ...random import libm
+from .. import kernels
 from .. import mathfuncs as mf
 from ..pdf import RooAbsPdf, check_range
 from ..real import Context
@@ -246,11 +247,18 @@ class RooPoisson(_Shape):
         self._protect = bool(flag)
 
     def compute(self, ctx: Context) -> Any:
+        """``computePoisson`` in a likelihood - ``std::lgamma`` and VDT's ``fast_log`` and
+        ``fast_exp`` - and ``MathFuncs::poisson`` elsewhere, Cephes' ``lgam`` between."""
         x, mean = self.v("x", ctx), self.v("mean", ctx)
-        k = x if self._no_rounding else np.floor(x)
+        k = np.asarray(x if self._no_rounding else np.floor(x), dtype=np.float64)
         with np.errstate(all="ignore"):
-            found = libm.exp(k * libm.log(mean) - mean - mf.lgamma(np.asarray(k) + 1.0))
-        found = np.where(k < 0, 0.0, np.where(k == 0, 1 / libm.exp(mean), found))
+            if kernels.active():
+                log_p = k * kernels.fast_log(mean) - mean - libm.lgamma(k + 1.0)
+                found = np.where(k == 0, 1 / kernels.fast_exp(mean), kernels.fast_exp(log_p))
+            else:
+                log_p = k * libm.log(mean) - _cephes_lgamma(k + 1.0) - mean
+                found = np.where(k == 0, libm.exp(-np.asarray(mean)), libm.exp(log_p))
+        found = np.where(k < 0, 0.0, found)
         return np.where(self._protect & (np.asarray(mean) < 0), 1e-3, found)
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
@@ -288,3 +296,13 @@ class RooPoisson(_Shape):
             value = float(rng.Poisson(self.mean.getVal()))
             if low <= value <= high:
                 return {self.x.GetName(): value}
+
+
+def _cephes_lgamma(values: Any) -> Any:
+    """``TMath::LnGamma`` - Cephes' ``lgam`` - of every element; the C library's at and below
+    zero, where only the poles are asked for."""
+    from ...stats import log_gamma
+
+    flat = np.asarray(values, dtype=np.float64)
+    found = [log_gamma(v) if v > 0 else float(libm.lgamma(v)) for v in flat.ravel().tolist()]
+    return np.array(found, dtype=np.float64).reshape(flat.shape)[()]

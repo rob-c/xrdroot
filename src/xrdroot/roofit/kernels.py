@@ -27,7 +27,7 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["active", "likelihood", "scalar", "fast_exp"]
+__all__ = ["active", "likelihood", "scalar", "fast_exp", "fast_log"]
 
 #: Whether densities are being evaluated as RooBatchCompute's kernels evaluate them.
 _ACTIVE: ContextVar[bool] = ContextVar("xrdroot_roofit_kernels", default=False)
@@ -96,3 +96,54 @@ def fast_exp(values: Any) -> Any:
         found = found * np.ldexp(1.0, n)
     found = np.where(x0 > _LIMIT, np.inf, np.where(x0 < -_LIMIT, 0.0, found))
     return found if found.ndim else float(found)
+
+
+# --- VDT's fast_log -------------------------------------------------------------
+
+#: ``vdt/log.h``'s Cephes rational approximation of ``log(1 + x)`` - its numerator from the
+#: highest power down, its denominator's (monic) - and the two parts of ``ln 2``.
+_LOG_P = (
+    1.01875663804580931796e-4,
+    4.97494994976747001425e-1,
+    4.70579119878881725854e0,
+    1.44989225341610930846e1,
+    1.79368678507819816313e1,
+    7.70838733755885391666e0,
+)
+_LOG_Q = (
+    1.12873587189167450590e1,
+    4.52279145837532221105e1,
+    8.29875266912776603211e1,
+    7.11544750618563894466e1,
+    2.31251620126765340583e1,
+)
+_SQRTH = 0.70710678118654752440
+
+
+def fast_log(values: Any) -> Any:
+    """``vdt::fast_log``, operation for operation: the mantissa and exponent taken apart by
+    their bits, as VDT takes them, and the rational form on the mantissa less one."""
+    x0 = np.asarray(values, dtype=np.float64)
+    bits = np.atleast_1d(x0).astype(np.float64).view(np.uint64)
+    fe = (bits >> np.uint64(52)).astype(np.int64).astype(np.float64) - 1023.0
+    x = ((bits & np.uint64(0x800FFFFFFFFFFFFF)) | np.uint64(0x3FE0000000000000)).view(np.float64)
+    high = x > _SQRTH
+    fe = np.where(high, fe + 1.0, fe)
+    x = np.where(high, x, x + x) - 1.0
+    px = np.full_like(x, _LOG_P[0])
+    for coefficient in _LOG_P[1:]:
+        px = px * x + coefficient
+    x2 = x * x
+    px = px * x * x2
+    qx = x + _LOG_Q[0]
+    for coefficient in _LOG_Q[1:]:
+        qx = qx * x + coefficient
+    with np.errstate(all="ignore"):
+        res = px / qx
+    res = res - fe * 2.121944400546905827679e-4
+    res = res - 0.5 * x2
+    res = x + res
+    res = res + fe * 0.693359375
+    res = np.where(np.atleast_1d(x0) > 1e307, np.inf, res)
+    res = np.where(np.atleast_1d(x0) < 0, np.nan, res).reshape(x0.shape)
+    return res if res.ndim else float(res)

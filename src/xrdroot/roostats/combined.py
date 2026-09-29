@@ -148,8 +148,9 @@ class ProfileLikelihoodCalculator(CombinedCalculator):
         return found
 
     def DoGlobalFit(self) -> Any:
-        """The likelihood, and the fit of it the first time: its result said as an INFO line."""
-        self._fit = None if not self._global_fit_done else self._fit
+        """The likelihood, and the fit of it - done again each time, as ``DoReset`` clears the
+        last one first: its result said as an INFO line."""
+        self._fit = None
         nll = self._pdf.createNLL(
             self._data,
             RooCmdArg("CloneData", True),
@@ -158,8 +159,6 @@ class ProfileLikelihoodCalculator(CombinedCalculator):
             RooCmdArg("GlobalObservables", self._sets["glob"]),
             RooCmdArg("Offset", False),
         )
-        if self._fit is not None and self._global_fit_done:
-            return nll
         log(None, PROGRESS, "Minimization", "ProfileLikelihoodCalcultor::DoGLobalFit - find MLE ")
         self._fit = minimize_nll(nll)
         _said(self._fit)
@@ -190,6 +189,55 @@ class ProfileLikelihoodCalculator(CombinedCalculator):
         interval = LikelihoodInterval("LikelihoodInterval_", profile, self._sets["poi"], best)
         interval.SetConfidenceLevel(1.0 - self._size)
         return interval
+
+    def GetHypoTest(self) -> Any:
+        """The null parameters' p-value: half the chi-square tail of twice the likelihood's rise
+        from the global fit to the fit with them fixed (the whole tail beyond one of them)."""
+        from ..stats import incomplete_gamma_c
+        from .hypotest import HypoTestResult
+
+        if self._data is None or self._pdf is None or not len(self._sets["null"]):
+            return None
+        null = [(p.GetName(), float(p.getVal()), p.isConstant()) for p in self._sets["null"]]
+        nll = self.DoGlobalFit()
+        if self._fit is None:
+            return None
+        constrained = self._constrained()
+        at_mle = float(self._fit.minNll())
+        old = self._fixed_at_null(constrained, null)
+        at_null = at_mle
+        if any(not p.isConstant() for p in constrained):
+            log(None, PROGRESS, "Minimization", "ProfileLikelihoodCalcultor::GetHypoTest - do "
+                "conditional fit ")  # fmt: skip
+            fit = minimize_nll(nll)
+            at_null = float(fit.minNll())
+            _said(fit)
+            if fit.status() != 0:
+                log(None, WARNING, "Minimization", "ProfileLikelihoodCalcultor::GetHypotest -  "
+                    f"Conditional fit failed - status = {fit.status()}")  # fmt: skip
+        else:
+            at_null = float(nll.getVal())
+        ndf = sum(1 for _, _, constant in null if not constant)
+        pvalue = incomplete_gamma_c(0.5 * ndf, max(at_null - at_mle, 0.0)) if ndf else 1.0
+        if ndf == 1:
+            pvalue *= 0.5
+        for par, value in old:
+            par.setVal(value)
+            par.setConstant(False)
+        return HypoTestResult("ProfileLRHypoTestResult_", pvalue, 0.0)
+
+    @staticmethod
+    def _fixed_at_null(constrained: Any, null: list[tuple[str, float, bool]]) -> list[Any]:
+        """The null parameters the model has, set constant at their null values - and what they
+        were before."""
+        old = []
+        for name, value, _ in null:
+            par = constrained.find(name)
+            if par is not None:
+                old.append((par, float(par.getVal())))
+                par.setVal(value)
+                par.setConstant(True)
+        return old
 
 
 def _said(fit: Any) -> None:
