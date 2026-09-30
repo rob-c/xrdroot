@@ -11,6 +11,7 @@ the translation defined it, in the module ``__cint__``.
 from __future__ import annotations
 
 import functools
+import inspect
 from collections.abc import Callable
 from typing import Any
 
@@ -22,8 +23,13 @@ from .rvec import _made
 
 __all__ = ["ENTRYWISE", "entrywise", "per_entry"]
 
-#: The frame's methods ROOT calls a function of once per entry, by name.
-ENTRYWISE = frozenset({"Filter", "Define", "Redefine", "Foreach", "DefineSlot", "ForeachSlot"})
+#: The frame's methods ROOT calls a function of once per entry: where the function is among
+#: their arguments, and whether it is given the slot first.
+ENTRYWISE = {"Filter": (0, False), "Define": (1, False), "Redefine": (1, False),
+             "Foreach": (0, False), "DefineSlot": (1, True), "ForeachSlot": (0, True)}  # fmt: skip
+
+#: The column a function of no columns is given, so that it is called once for each entry.
+ENTRY = "rdfentry_"
 
 
 def _entries(column: Any) -> list[Any]:
@@ -40,12 +46,16 @@ def is_macros(function: Any) -> bool:
     return callable(function) and getattr(function, "__module__", None) == "__cint__"
 
 
-def entrywise(function: Callable[..., Any]) -> Callable[..., Any]:
-    """``function`` called once per entry of a batch, its answers the batch's column."""
+def entrywise(function: Callable[..., Any], slot: bool = False,
+              counted: bool = False) -> Callable[..., Any]:  # fmt: skip
+    """``function`` called once per entry of a batch, its answers the batch's column: after the
+    slot, when it takes one; with nothing, when it reads no column but is ``counted`` by one."""
 
     @functools.wraps(function)
-    def batch(*columns: Any) -> Any:
-        return _column([function(*values) for values in zip(*(_entries(c) for c in columns))])
+    def batch(*given: Any) -> Any:
+        first, columns = (list(given[:1]), given[1:]) if slot else ([], given)
+        rows = zip(*(_entries(c) for c in columns))
+        return _column([function(*first, *([] if counted else values)) for values in rows])
 
     return batch
 
@@ -60,8 +70,23 @@ def _column(results: list[Any]) -> Any:
     return found if found.ndim == 1 and found.dtype.kind in "biuf" else results
 
 
+def _arity(function: Callable[..., Any]) -> int:
+    """How many arguments a macro's function takes: its parameters without a default, which
+    the translation gives what a lambda captured."""
+    found = inspect.signature(function).parameters.values()
+    return sum(each.default is inspect.Parameter.empty for each in found)
+
+
 def per_entry(name: str, arguments: list[Any]) -> list[Any]:
-    """The arguments of frame method ``name``, a macro's function among them made entrywise."""
-    if name not in ENTRYWISE:
+    """The arguments of frame method ``name``, a macro's function among them made entrywise -
+    given the entry number to be counted by, when it reads no column."""
+    at, slot = ENTRYWISE.get(name, (-1, False))
+    if at < 0 or at >= len(arguments) or not is_macros(arguments[at]):
         return arguments
-    return [entrywise(each) if is_macros(each) else each for each in arguments]
+    given = list(arguments)
+    columns = list(given[at + 1]) if len(given) > at + 1 else []
+    counted = not columns and _arity(given[at]) == int(slot)
+    given[at] = entrywise(given[at], slot, counted)
+    if counted:
+        given[at + 1:at + 2] = [[ENTRY]]
+    return given

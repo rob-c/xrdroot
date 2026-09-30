@@ -149,7 +149,8 @@ class Inference(EmitterBase):
     def _type_ternary(self, node: Ternary) -> CType | None:
         yes, no = self.typeof(node.yes), self.typeof(node.no)
         if yes is not None and no is not None and yes.scalar and no.scalar:
-            return arithmetic_result(yes, no)
+            # one type both ways is that type - two chars a char, not an int
+            return yes if yes.name == no.name else arithmetic_result(yes, no)
         return yes if yes is not None and no is not None and yes.name == no.name else None
 
     def _type_cast(self, node: Cast) -> CType | None:

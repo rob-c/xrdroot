@@ -296,6 +296,13 @@ class Booked:
                 stats[at] = value
         return found
 
+    def PutStats(self, stats: Any) -> None:
+        """``PutStats(stats)``: the running sums, ``fTsumw`` first, set from ``stats``."""
+        histogram = self._xrd
+        homes = histogram._moment_homes()
+        for name, value in zip(histogram._moment_names(), stats):
+            homes[name][name] = float(value)
+
     def _xrd_statistics(self) -> list[float]:
         from ...moments import statistics
 

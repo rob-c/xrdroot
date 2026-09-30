@@ -141,6 +141,12 @@ class RDataFrame:
 
         return _Method(name, found)
 
+    def Hist(self, *arguments: Any) -> Any:
+        """``Hist``: a ROOT 7 ``RHist`` of columns, booked (see :mod:`..histv7.frames`)."""
+        from ..histv7.frames import book
+
+        return book(self, arguments)
+
     def AsNumpy(self, columns: Any = None, exclude: Any = None, lazy: bool = False) -> Any:
         """Every column asked for, read now, as a dict of NumPy arrays."""
         found = self._inner.AsNumpy(_unwrapped(columns), _unwrapped(exclude))

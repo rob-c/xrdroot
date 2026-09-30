@@ -51,6 +51,7 @@ SUBMODULES = [
     "fitshdu",
     "graphics.images",
     "tmva",
+    "histv7",
     "spectra.tspectrum",
     "spectra.tspectrum2",
     "spectra.transforms",

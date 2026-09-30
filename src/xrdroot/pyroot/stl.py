@@ -38,6 +38,8 @@ from typing import Any
 
 import numpy as np
 
+from . import stlrandom as _random
+
 __all__ = ["std"]
 
 #: What ``find`` gives back when there is nothing to find: ``std::string::npos``.
@@ -142,9 +144,20 @@ def _opaque(text: str) -> type:
     """
     made = _OPAQUE.get(text)
     if made is None:
-        made = type(text, (), {"__cpp_name__": text, "opaque": True})
+        members = {"__cpp_name__": text, "opaque": True, "emplaced": _emplaced(text)}
+        made = type(text, (), members)
         _OPAQUE[text] = made
     return made
+
+
+def _emplaced(text: str) -> Any:
+    """The class ``emplace_back`` makes an element of, for the one kind a vector must make:
+    ``std::thread``, started from the function it is given."""
+    if text != "thread":
+        return None
+    from ..cint.runtime.threads import thread
+
+    return thread
 
 
 def _templated(text: str) -> Any:
@@ -515,7 +528,14 @@ class _ObjectVector(_Container):
     def push_back(self, value: Any) -> None:
         self._items.append(_converted(self.element, value))
 
-    emplace_back = push_back
+    def emplace_back(self, *args: Any) -> None:
+        """``emplace_back(args...)``: an element made of ``args`` - a thread started from a
+        function - or, for any other kind, the one value given."""
+        made = getattr(self.element, "emplaced", None)
+        if made is not None and not (len(args) == 1 and isinstance(args[0], made)):
+            self._items.append(made(*args))
+            return
+        self.push_back(*args)
 
     def pop_back(self) -> None:
         self._items.pop()
@@ -870,6 +890,9 @@ class _Namespace:
     map = TEMPLATES["map"]
     pair = TEMPLATES["pair"]
     array = _ArrayTemplate()
+    mt19937 = _random.mt19937
+    normal_distribution = _random.normal_distribution
+    uniform_real_distribution = _random.uniform_real_distribution
     string = string
 
     def __repr__(self) -> str:
