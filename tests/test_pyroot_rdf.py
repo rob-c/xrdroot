@@ -112,8 +112,8 @@ def test_rdf_models_are_the_tuples_xrdroot_books_from_and_the_rest_is_refused():
     assert ROOT.RDF.TH2DModel("h", "", 2, 0, 1, np.array([0.0, 1.0])) == ("h", "", 2, 0, 1, [0, 1])
     assert ROOT.RDF.TProfile1DModel("p", "", 2, 0.0, 1.0) == ("p", "", 2, 0.0, 1.0)
     assert ROOT.RDF.RNode is ROOT.RDataFrame and repr(ROOT.RDF) == "<namespace ROOT::RDF>"
-    with pytest.raises(AttributeError, match=r"ROOT has RDF\.FromCSV; xrdroot\.pyroot does not"):
-        ROOT.RDF.FromCSV  # noqa: B018
+    with pytest.raises(AttributeError, match=r"ROOT has RDF\.MakeTrivialDataFrame; xrdroot"):
+        ROOT.RDF.MakeTrivialDataFrame  # noqa: B018
     ROOT.EnableImplicitMT(2)
     assert ROOT.IsImplicitMTEnabled() and ROOT.GetThreadPoolSize() == 2
     ROOT.DisableImplicitMT()

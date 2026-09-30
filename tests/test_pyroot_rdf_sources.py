@@ -77,6 +77,7 @@ def test_a_jagged_column_reaches_a_macros_lambda_as_an_rvec() -> None:
     sizes.__module__ = "__cint__"
     batch = entrywise(sizes)(Jagged(np.array([1.0, 2.0, 3.0]), np.array([0, 2, 3])))
     assert batch.tolist() == [2, 1]
+    assert entrywise(len)(["ab", "c"]).tolist() == [2, 1]
 
 
 class _Response:
@@ -99,3 +100,22 @@ def test_a_root_file_named_by_a_url_is_fetched_and_read(monkeypatch: Any) -> Non
     f = ROOT.TFile.Open("http://h/simple.root")
     assert f is not None and f.GetListOfKeys().GetSize() > 0
     f.Close()
+
+
+def test_a_macros_lambdas_of_no_columns_of_slots_and_of_collections(tmp_path: Any,
+                                                                    capsys: Any) -> None:
+    (tmp_path / "s.csv").write_text("s,n\na,1\nb,2\n")
+    macro = f"""
+    void s() {{
+       auto df = ROOT::RDF::FromCSV("{tmp_path / 's.csv'}");
+       auto d = df.Define("one", [] {{ return 1.0; }})
+                  .Define("v", [](Long64_t n) {{ return ROOT::RVecD(n, 0.5); }}, {{"n"}});
+       d.ForeachSlot([](unsigned int slot, Long64_t n) {{ printf("%lld\\n", n + slot); }}, {{"n"}});
+       d.Foreach([](const std::string &s, ROOT::RVecD v) {{
+                    printf("%s %d\\n", s.c_str(), (int)v.size()); }},
+                 {{"s", "v"}});
+       printf("%g\\n", *d.Sum("one"));
+    }}
+    """
+    run_source(macro, "s.C")
+    assert capsys.readouterr().out == "1\n2\na 1\nb 2\n2\n"

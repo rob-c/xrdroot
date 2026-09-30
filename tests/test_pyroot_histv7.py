@@ -159,3 +159,16 @@ def test_the_experimental_namespace_has_the_histograms_and_refuses_the_rest() ->
         E.RCanvas  # noqa: B018
     with pytest.raises(AttributeError):
         E.__wrapped__  # noqa: B018
+
+
+def test_a_fill_past_an_axis_without_flow_bins_changes_no_bin() -> None:
+    hist = E.RHist[E.RBinWithError](E.RRegularAxis(2, (0.0, 1.0), False))
+    hist.Fill(5.0)
+    hist.Fill(0.2)
+    engine = E.RHistEngine[E.RBinWithError](E.RRegularAxis(2, (0.0, 1.0), False))
+    engine.Fill(0.2)
+    hist.Add(engine)
+    expect((hist.GetNEntries(), 2), (hist.GetBinContent(0).fSum, 2.0),
+           (hist.ComputeNEffectiveEntries(), 2.0))
+    hist.Clear()
+    assert (hist.GetBinContent(0).fSum2, hist.GetNEntries()) == (0.0, 0)

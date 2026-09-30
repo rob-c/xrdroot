@@ -1321,6 +1321,40 @@ ROOT's own code. The widgets that exist only to be clicked - `TControlBar`
 and `TSlider` - are refused too; a `TButton` is drawn, as a picture shows
 it.
 
+## More of ROOT's classes
+
+**Polar graphs, polygons and cuts.** `TGraphPolar` is drawn on its
+`TGraphPolargram` - circles, spokes and labels in degrees, radians or grads
+- as ROOT draws it; `TH2Poly` has bins of any polygon (`AddBin`,
+`Honeycomb`, filled by point or by name, drawn `COL` with its palette's
+range); `TCutG` says which points are inside it as ROOT's crossing test
+does, and cuts what is drawn with `[cutname]`; `TExec` runs its line of C++
+each time its pad is painted - what it paints with `PaintText` put where it
+stands among the pad's primitives - and `TPavesText` is the stacked pave.
+
+**XML.** `TXMLEngine` makes, walks, changes, reads and writes documents as
+ROOT's does: nodes, attributes and namespaces by pointer, `nullptr` being
+`None`, and a document written byte for byte as `SaveDoc` lays one out.
+
+**FITS files.** `TFITSHDU` opens one unit of a FITS file - by number, by
+`EXTNAME`, with a CFITSIO row filter, `"f.fits[1][DATAMAX > 2e-15]"` - read
+with NumPy alone: its header records, an image's pixels (as a `TMatrixD`, a
+`TImage`, a histogram or rows of a `TVectorD`) and a binary or ASCII table's
+columns, fixed-length and variable-length arrays included. `Print` prints
+what ROOT's prints, character for character. A table of bit columns
+(`TFORM` `X`) and CFITSIO's column and binning filters are refused.
+
+**ROOT 7's histograms.** `ROOT.Experimental.RHist['int']` (or `'double'`,
+or `RBinWithError`) fills along `RRegularAxis` and `RVariableBinAxis` axes
+as `ROOT::Experimental` does, with its statistics of every fill;
+`Experimental.Hist.ConvertToTH1D` makes the `TH1` of it, and
+`RDataFrame.Hist` books one on a frame. The rest of ROOT 7 - its canvases,
+its RNTuple classes by that name - is refused by name.
+
+**A macro's random numbers.** `std::mt19937`, `std::uniform_real_distribution`
+and `std::normal_distribution` draw what libc++ draws, number for number, so
+a macro that fills from them fills what ROOT filled.
+
 ## Ratio plots
 
 `TRatioPlot` is ROOT's plot of two histograms with their ratio beneath, or of
@@ -2394,7 +2428,9 @@ with four workers, process start-up included.
 What differs from ROOT, and why:
 
 - A callable is called once per batch with arrays, not once per entry with
-  numbers; it gives back an array of the batch's length.
+  numbers; it gives back an array of the batch's length. A C++ macro's
+  lambda, which is written for one entry, is called once per entry, as ROOT
+  calls it - a collection reaching it as an `RVec`.
 - `v.size()` is a `Long64_t` rather than `size_t`, so `v.size() - 1` of an
   empty collection is `-1`, not a wrapped-around unsigned number.
 - What C++ leaves undefined is refused, naming the entry, rather than read out
@@ -2408,6 +2444,32 @@ What differs from ROOT, and why:
 - A loop that fails fails every result it was computing; results booked after
   it compute as usual.
 - `Vary`, `DefineSlot`, `FilterAvailable` and string lambdas are not here.
+
+### From CSV files and SQLite
+
+`ROOT.RDF.FromCSV` and `ROOT.RDF.FromSqlite` make a frame of a CSV file's
+columns or of the rows an SQL query gives, typed as ROOT's `RCsvDS` and
+`RSqliteDS` type them: a CSV column by the letter given for it (`O` bool,
+`D` double, `L` Long64_t, `T` string) or by the look of its first value,
+with ROOT's quoting, its `nan` for an empty field and its warning for an
+integer column that has one; an SQLite column by its declared type, or by
+its first value when it declares none. Either may be named by an
+`http://` or `https://` URL, which is fetched whole first - as may a
+`TFile` - and `RDF.MakeLazyDataFrame` makes a frame of results `Take` booked.
+
+```python
+import xrdroot.pyroot as ROOT
+
+df = ROOT.RDF.FromCSV("muons.csv")                       # readHeaders, delimiter, ... as ROOT's
+options = ROOT.RDF.RCsvDS.ROptions()
+options.fColumnTypes = {"Run": "D"}
+typed = ROOT.RDF.FromCSV("muons.csv", options)
+rows = ROOT.RDF.FromSqlite("stats.sqlite", "SELECT Version FROM accesslog")
+```
+
+The one type SQLite's own tools do not say is a column its table declares
+with no type: ROOT types it by its first value, and here - the declared
+types found through a temporary view of the query - it is a blob.
 
 ## Writing
 
