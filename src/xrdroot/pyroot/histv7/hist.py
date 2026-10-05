@@ -11,6 +11,7 @@ counts in the statistics, as ROOT's does.
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 import numpy as np
@@ -197,13 +198,16 @@ class _Template:
 
 
 class RHistFillContext:
-    """``RHistFillContext``: one thread's filling of the histogram a filler shares."""
+    """``RHistFillContext``: one thread's filling of the histogram a filler shares, each fill
+    made whole - its bin and its statistics - before another thread's, as ROOT's atomic
+    additions make it."""
 
-    def __init__(self, hist: RHist) -> None:
-        self._hist = hist
+    def __init__(self, hist: RHist, lock: Any) -> None:
+        self._hist, self._lock = hist, lock
 
     def Fill(self, *args: Any) -> None:
-        self._hist.Fill(*args)
+        with self._lock:
+            self._hist.Fill(*args)
 
     def Flush(self) -> None:
         """``Flush``: every fill went to the histogram as it was made."""
@@ -214,9 +218,10 @@ class RHistConcurrentFiller:
 
     def __init__(self, hist: RHist, *args: Any) -> None:
         self._hist = hist
+        self._lock = threading.Lock()
 
     def CreateFillContext(self) -> RHistFillContext:
-        return RHistFillContext(self._hist)
+        return RHistFillContext(self._hist, self._lock)
 
     def Flush(self) -> None:
         """``Flush``: nothing waits to be added."""
