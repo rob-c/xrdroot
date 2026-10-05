@@ -124,6 +124,8 @@ class _Response:
 
 
 def test_a_url_is_fetched_whole_before_it_is_read(tmp_path: Any, monkeypatch: Any) -> None:
+    import sys
+    import types
     import urllib.request
 
     from xrdroot import remote
@@ -134,6 +136,13 @@ def test_a_url_is_fetched_whole_before_it_is_read(tmp_path: Any, monkeypatch: An
     monkeypatch.setattr(urllib.request, "urlopen", lambda url, **_: _Response(served[url]))
     assert len(from_csv("https://h/t.csv", CsvOptions())) == 2
     assert len(from_sqlite("http://h/t.sqlite", "SELECT a FROM t")) == 3
-    assert remote._context() is not None
-    monkeypatch.setitem(__import__("sys").modules, "certifi", None)
-    assert remote._context() is not None
+    trusted: list[Any] = []
+    trust = lambda cafile=None: trusted.append(cafile)  # noqa: E731 - the one call it stands in for
+    monkeypatch.setattr(remote.ssl, "create_default_context", trust)
+    # A certifi of its own, so that both trusts are taken whether or not one is installed.
+    certifi = types.SimpleNamespace(where=lambda: "certifi.pem")
+    monkeypatch.setitem(sys.modules, "certifi", certifi)
+    remote._context()
+    monkeypatch.setitem(sys.modules, "certifi", None)
+    remote._context()
+    assert trusted == ["certifi.pem", None]

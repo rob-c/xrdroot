@@ -7,6 +7,7 @@ tutorials' files, a few megabytes each.
 
 from __future__ import annotations
 
+import importlib
 import ssl
 import urllib.request
 
@@ -28,7 +29,7 @@ def _context() -> ssl.SSLContext:
     """What an ``https://`` fetch trusts: certifi's authorities where it is installed, since a
     Python built without the system's often has none; else the system's own."""
     try:
-        import certifi
+        certifi = importlib.import_module("certifi")
     except ImportError:
         return ssl.create_default_context()
     return ssl.create_default_context(cafile=certifi.where())
