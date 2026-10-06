@@ -27,6 +27,13 @@ def test_a_namespace_alias_names_the_namespace_it_stands_for(
     assert capsys.readouterr().out == "3 3\n"
 
 
+def test_a_type_alias_names_the_class_whose_members_it_reaches() -> None:
+    text = translate("""void t() { using generator = std::mt19937; typedef TH1F H; typedef TH1F *P;
+      double d = generator::max(); H::Class(); P::Class(); }""", "t.C")  # fmt: skip
+    assert "d = ROOT.std.mt19937.max()" in text
+    assert "ROOT.TH1F.Class()" in text and "ROOT.P.Class()" in text
+
+
 def test_a_class_and_the_function_of_its_name_are_both_there(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

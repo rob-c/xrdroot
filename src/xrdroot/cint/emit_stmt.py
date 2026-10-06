@@ -571,10 +571,16 @@ class StmtEmitter(CallEmitter):
             return text, None
         if found is not None and (found.is_array or found.is_pointer):
             return text, found.element()
-        if found is not None and found.args and "map" not in found.name:
+        if found is not None and self._library_container(found):
             first = found.args[0]
             return text, first if isinstance(first, CType) else None
         return f"iterate({text})", None
+
+    def _library_container(self, found: CType) -> bool:
+        """A ``std::vector<T>`` and its like, which Python iterates - not a map, whose entries
+        are pairs, nor a class template of the macro's own, walked by its ``begin()``."""
+        own = found.name in self.program.classes
+        return bool(found.args) and "map" not in found.name and not own
 
     def _writes_elements(self, decl: VarDecl, node: RangeFor) -> bool:
         if not decl.ctype.reference or decl.ctype.const:

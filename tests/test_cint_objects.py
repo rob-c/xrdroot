@@ -147,6 +147,9 @@ def test_dereferencing_an_unknown_pointer_reads_what_it_points_at() -> None:
     assert rt.deref([6]) == 6
     thing = object()
     assert rt.deref(thing) is thing
+    holder = types.SimpleNamespace(value=7, _cint_cell=True)
+    assert rt.deref(holder) == 7
+    assert rt.deref(types.SimpleNamespace(value=8)).value == 8
 
 
 def test_root_is_looked_up_late_in_whatever_was_bound(monkeypatch: pytest.MonkeyPatch) -> None:

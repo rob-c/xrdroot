@@ -67,6 +67,16 @@ def test_a_field_an_rntuple_model_makes_is_a_pointer_to_its_type() -> None:
     assert "    n[0] = f32(1)\n" in text
 
 
+def test_reading_through_a_shared_pointer_to_a_number_goes_through_the_runtime() -> None:
+    text = body('std::shared_ptr<int> a = model->MakeField<int>("a"); h->Fill(*a); *a = 3;'
+                'std::shared_ptr<TH1F> g; g->Fill(*a);')  # fmt: skip
+    assert "Fill(deref(a))" in text
+    assert "store_through(a, 3)" in text
+    assert "g.Fill(deref(a))" in text
+    skip = body('auto p = model->MakeField<std::uint16_t>("skip"); (*p)++;')
+    assert "p[0] = u16(p[0] + 1)" in skip
+
+
 def test_a_reference_the_macros_own_class_returns_is_refused() -> None:
     source = """struct V { double x;
       double &X() { return x; } double &operator()(int) { return x; } };

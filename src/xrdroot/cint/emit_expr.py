@@ -274,6 +274,8 @@ class ExprEmitter(NameEmitter):
         own = self.own_operator(operand, "operator*", 0)
         if own is not None:
             return own, P.POSTFIX
+        if _holds_value(found):  # a shared_ptr<int>: a number, or something holding one
+            return f"deref({self.value(operand)})", P.POSTFIX
         if found.is_object_pointer or (found.is_class and not found.pointer):
             return self.expr(operand)
         return f"{self.at(operand, P.POSTFIX)}[0]", P.POSTFIX
@@ -612,6 +614,17 @@ def _written_as(ctype: CType | None) -> str:
     if ctype is None or ctype.pointer:
         return ""
     return ctype.enum or ctype.name
+
+
+def _holds_value(ctype: CType) -> bool:
+    """Is ``ctype`` a smart pointer to a number or a string?
+
+    ``std::make_shared<int>(5)`` is the number itself here, but an RNTuple
+    model's ``shared_ptr<int>`` is the field's value holder, so reading
+    through one is :func:`~.runtime.objects.deref`, which takes either.
+    """
+    held = ctype.args[0] if ctype.is_smart and ctype.args else None
+    return isinstance(held, CType) and (held.scalar or held.is_string)
 
 
 def _object_value(ctype: CType | None) -> bool:

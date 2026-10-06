@@ -58,3 +58,24 @@ def test_a_range_for_over_a_class_walks_its_begin_to_its_end(
 def test_an_iterator_or_a_plain_object_is_iterated_as_it_is() -> None:
     items = [1, 2]
     assert iterate(items) is items
+
+
+def test_a_range_for_over_a_class_template_of_the_macros_walks_its_begin_to_its_end(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = SOURCE + """
+    template <typename T> struct Span { int n; Span(int k) : n(k) {}
+      Counter begin() { return Counter(0); } Counter end() { return Counter(n); } };
+    void t() { Span<int> s(2); int sum = 0; for (auto v : s) sum += v; printf("%d\\n", sum); }
+    """
+    run_source(source, "t.C", root=fake())
+    assert capsys.readouterr().out == "10\n"
+
+
+def test_a_library_container_with_a_begin_is_iterated_by_python() -> None:
+    class Listed(list):  # type: ignore[type-arg]
+        def begin(self) -> None:
+            raise AssertionError("a container Python iterates is not walked")
+
+    items = Listed([1, 2])
+    assert iterate(items) is items

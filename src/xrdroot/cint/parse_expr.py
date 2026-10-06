@@ -541,7 +541,14 @@ class ExprParser(TypeParser):
             if not ((self.at_("::") and self.peek(1).kind == "id") or self._scoped_operator()):
                 break
             self.take()
-        return Name(where, self._standard(self.unaliased(parts)), targs, rooted)
+        return Name(where, self._standard(self._type_scope(self.unaliased(parts))), targs, rooted)
+
+    def _type_scope(self, parts: list[str]) -> list[str]:
+        """``generator::max`` after ``using generator = std::mt19937``: the class's member."""
+        alias = self.aliases.get(parts[0]) if len(parts) > 1 else None
+        if alias is None or alias.pointer or alias.enum is not None or alias.args:
+            return parts
+        return [*alias.name.split("::"), *parts[1:]]
 
     def _special_part(self) -> str | None:
         """``operator+`` or ``~Name`` where a name's next part stands, else ``None``."""

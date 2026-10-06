@@ -232,7 +232,8 @@ def iterate(container: Any) -> Iterable[Any]:
     items = getattr(container, "items", None)
     if callable(items) and not isinstance(container, np.ndarray):
         return [Pair(key, value) for key, value in items()]
-    if hasattr(container, "_deref") or not hasattr(type(container), "begin"):
+    python = hasattr(type(container), "__iter__")  # a library container: Python iterates it
+    if python or hasattr(container, "_deref") or not hasattr(type(container), "begin"):
         return container  # type: ignore[no-any-return]
     return _walked(container)
 
@@ -301,10 +302,15 @@ def throw(value: Any = None) -> Any:
 
 
 def deref(pointer: Any) -> Any:
-    """``*p`` when the type of ``p`` was not known: a cell's value, an array's first element."""
+    """``*p`` when the type of ``p`` was not known: a cell's value, an array's first element.
+
+    A library object that holds a value as a cell does - an RNTuple field's
+    ``shared_ptr<int>`` - says so with a true ``_cint_cell``.
+    """
     if isinstance(pointer, (np.ndarray, list)):
         return pointer[0]
-    if hasattr(pointer, "value") and type(pointer).__name__ in ("Cell", "ItemRef", "AttrRef"):
+    named = type(pointer).__name__ in ("Cell", "ItemRef", "AttrRef")
+    if hasattr(pointer, "value") and (named or getattr(pointer, "_cint_cell", False)):
         return pointer.value
     return pointer
 
