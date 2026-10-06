@@ -341,3 +341,16 @@ def test_one_side_of_a_points_bar_is_set_and_the_graph_grown_to_it() -> None:
     e = ROOT.TGraphErrors(1)
     e.SetPointEYlow(0, 0.5)
     assert (e.GetN(), e.GetErrorYlow(0)) == (1, 0.0)
+
+
+def test_a_function_is_applied_to_every_point_and_its_bars():
+    plain = ROOT.TGraph(2, np.array([1.0, 2.0]), np.array([10.0, 20.0]))
+    plain.Apply(ROOT.TF2("inv", "-1./y"))
+    assert list(plain.GetY()) == [-0.1, -0.05]
+    bars = ROOT.TGraphErrors(1, np.array([1.0]), np.array([2.0]), np.array([0.1]), np.array([1.0]))
+    bars.Apply(ROOT.TF2("sq", "y*y"))
+    assert (bars.GetPointY(0), bars.GetErrorY(0)) == (4.0, 4.0)  # (9 - 1) / 2
+    asym = ROOT.TGraphAsymmErrors(1, np.array([1.0]), np.array([2.0]), np.array([0.0]),
+                                  np.array([0.0]), np.array([1.0]), np.array([1.0]))  # fmt: skip
+    asym.Apply(ROOT.TF2("neg", "-y"))
+    assert (asym.GetErrorYlow(0), asym.GetErrorYhigh(0)) == (1.0, 1.0)

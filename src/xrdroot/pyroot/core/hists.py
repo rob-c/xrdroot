@@ -165,6 +165,29 @@ class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarke
         return iter(self.values().ravel())
 
 
+def _on_axes(name: str) -> Any:
+    """``TH1::<name>(value, axis)``: the axes named - ``"X"``, ``"Y"``, ``"XYZ"`` - each given
+    ``value`` by its own ``<name>``."""
+
+    def set_on_axes(self: TH1, value: Any, axis: Any = "X") -> None:
+        for letter in str(axis).upper():
+            if letter in "XYZ":
+                getattr(getattr(self, f"Get{letter}axis")(), name)(value)
+
+    set_on_axes.__name__ = set_on_axes.__qualname__ = name
+    set_on_axes.__doc__ = f"``{name}(value, axis)``: each axis named given it."
+    return set_on_axes
+
+
+#: ``TH1``'s setters of an axis attribute, by the axes ``axis`` names.
+AXIS_SETTERS = ("SetAxisColor", "SetLabelColor", "SetLabelFont", "SetLabelOffset",
+                "SetLabelSize", "SetNdivisions", "SetTickLength", "SetTitleFont",
+                "SetTitleOffset", "SetTitleSize")  # fmt: skip
+
+for _name in AXIS_SETTERS:
+    setattr(TH1, _name, _on_axes(_name))
+
+
 class TH2(TH1):
     """``TH2``: a histogram of two axes."""
 

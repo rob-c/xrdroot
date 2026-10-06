@@ -237,3 +237,21 @@ def test_ls_lists_what_a_pad_holds(capsys):
     out = capsys.readouterr().out
     assert "TCanvas c: the title" in out and "Wrapped 'h' 'hist'" in out
     assert repr(ROOT.TPad("p", "p")) == "<TPad 'p' of 0 primitives>"
+
+
+def test_canvases_are_saved_all_at_once_to_pictures_a_book_or_not_to_a_root_file(
+    tmp_path, monkeypatch
+):
+    from xrdroot.errors import UnsupportedFeatureError
+
+    monkeypatch.chdir(tmp_path)
+    assert not ROOT.TCanvas.SaveAll()  # no canvas yet
+    first, second = ROOT.TCanvas("first", "", 200, 150), ROOT.TCanvas("second", "", 200, 150)
+    assert ROOT.TCanvas.SaveAll([first, second], "shot%02d.png")
+    assert ROOT.TCanvas.SaveAll([first, second], "plain.svg")
+    assert ROOT.TCanvas.SaveAll([first], "one.pdf") and ROOT.TCanvas.SaveAll()
+    made = sorted(path.name for path in tmp_path.iterdir())
+    assert made == ["allcanvases.pdf", "one.pdf", "plain0.svg", "plain1.svg", "shot00.png",
+                    "shot01.png"]  # fmt: skip
+    with pytest.raises(UnsupportedFeatureError, match="SaveAll to the ROOT file"):
+        ROOT.TCanvas.SaveAll([first], "all.root")

@@ -66,6 +66,26 @@ class TCanvas(TPad):
 
     ToggleToolBar = ToggleEditor = ToggleToolTips = ToggleEventStatus
 
+    @staticmethod
+    def SaveAll(pads: Any = None, filename: Any = "allcanvases.pdf", option: Any = "") -> bool:
+        """``TCanvas::SaveAll``: the pads - every canvas, when none are given - to one file a
+        page each (PDF, PostScript), to one ROOT file, or each to its own picture, numbered
+        by the name's ``%d`` - put before the extension when the name has none."""
+        chosen = list(pads) if pads else list(CANVASES)
+        name = str(filename)
+        if not chosen:
+            return False
+        kind = name.rpartition(".")[2].lower()
+        if kind == "root":
+            _all_written(chosen, name)
+        elif kind in ("pdf", "ps"):
+            _all_pages(chosen, name, str(option))
+        else:
+            pattern = name if "%" in name else "%d.".join(name.rsplit(".", 1))
+            for at, pad in enumerate(chosen):
+                pad.SaveAs(pattern % at, str(option))
+        return True
+
     def UseGL(self) -> bool:
         """``UseGL``: false - pads here are drawn without OpenGL, as ROOT's are in batch."""
         return False
@@ -138,3 +158,23 @@ def default_canvas() -> TCanvas:
         name = f"c1_n{number}"
     return TCanvas(name, name, gStyle.GetCanvasDefX(), gStyle.GetCanvasDefY(),
                    gStyle.GetCanvasDefW(), gStyle.GetCanvasDefH())  # fmt: skip
+
+
+def _all_written(pads: list[Any], filename: str) -> None:
+    """The pads to one ROOT file: refused, as xrdroot writes no pad to a file."""
+    from ...errors import UnsupportedFeatureError
+
+    raise UnsupportedFeatureError(
+        f"TCanvas::SaveAll to the ROOT file {filename} is not supported: xrdroot does not write "
+        f"a canvas, or any pad, to a ROOT file; write what is drawn on it - its histograms, "
+        f"graphs and functions - one by one, or save the canvases as pictures.")
+
+
+def _all_pages(pads: list[Any], filename: str, option: str) -> None:
+    """The pads a page each of one document: opened with the first, closed with the last."""
+    if len(pads) == 1:
+        pads[0].Print(filename, option)
+        return
+    for at, pad in enumerate(pads):
+        bracket = "(" if at == 0 else ")" if at == len(pads) - 1 else ""
+        pad.Print(filename + bracket, option)

@@ -209,6 +209,29 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
     def AddPoint(self, x: float, y: float) -> None:
         self.SetPoint(self.GetN(), x, y)
 
+    def Apply(self, f: Any) -> None:
+        """``Apply(f)``: each point's ``y`` made ``f(x, y)`` - a ``TF1`` of ``x``, a ``TF2`` of
+        both - and its y error bars carried through ``f`` as ROOT carries them."""
+        xs, ys = self._points
+        for i in range(self.GetN()):
+            x, y = float(xs[i]), float(ys[i])
+            self._apply_bars(f, i, x, y)
+            ys[i] = float(f.Eval(x, y))
+        self._changed()
+
+    def _apply_bars(self, f: Any, i: int, x: float, y: float) -> None:
+        """``TGraphErrors::Apply``'s half the spread of ``f`` across the bar; for asymmetric
+        bars, ``TGraphAsymmErrors``'s distances to ``f`` at each end, low end the lower."""
+        bars = self._bars
+        if "ey" in bars:
+            spread = float(f.Eval(x, y + bars["ey"][i])) - float(f.Eval(x, y - bars["ey"][i]))
+            bars["ey"][i] = abs(spread) / 2.0
+        elif "eyl" in bars:
+            at = float(f.Eval(x, y))
+            low, high = y - bars["eyl"][i], y + bars["eyh"][i]
+            ends = sorted((float(f.Eval(x, low)), float(f.Eval(x, high))))
+            bars["eyl"][i], bars["eyh"][i] = at - ends[0], ends[1] - at
+
     def SetPointX(self, i: int, x: float) -> None:
         self.SetPoint(i, x, self.GetPointY(i) if i < self.GetN() else 0.0)
 

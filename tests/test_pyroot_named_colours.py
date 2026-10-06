@@ -35,3 +35,10 @@ def test_a_histogram_takes_its_line_colour_by_name() -> None:
     h = ROOT.TH2D("h_named_colour", "h", 2, 0, 1, 2, 0, 1)
     h.SetLineColor("kBlue")
     assert h.GetLineColor() == 600
+
+
+def test_a_colour_is_titled_by_its_hex_and_the_palette_is_read_by_index():
+    made = ROOT.TColor(ROOT.TColor.GetFreeColorIndex(), 1.0, 0.0, 0.0)
+    assert made.GetTitle() == "#ff0000"
+    ROOT.gStyle.SetPalette(ROOT.kBird)
+    assert ROOT.TColor.GetColorPalette(0) == ROOT.gStyle.GetColorPalette(0)

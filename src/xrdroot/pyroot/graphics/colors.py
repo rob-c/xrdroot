@@ -236,6 +236,10 @@ class TColor:
     def GetName(self) -> str:
         return self._name
 
+    def GetTitle(self) -> str:
+        """``GetTitle``: ``#rrggbb``, which ROOT titles a colour with as its RGB is set."""
+        return self.AsHexString()
+
     def GetRed(self) -> float:
         return rgb_of(self._number)[0]
 
@@ -321,6 +325,13 @@ class TColor:
         from .style import gStyle
 
         return list(gStyle.palette())
+
+    @staticmethod
+    def GetColorPalette(i: int) -> int:
+        """``GetColorPalette(i)``: the palette's colour ``i``, as ``gStyle`` has it."""
+        from .style import gStyle
+
+        return int(gStyle.GetColorPalette(i))
 
     @staticmethod
     def GetNumberOfColors() -> int:

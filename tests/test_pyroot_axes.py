@@ -298,3 +298,13 @@ def test_a_polyline_is_named_as_its_class_until_it_is_given_a_name():
     assert marker.GetName() == "TPolyMarker"
     marker.SetName("mine")
     assert (marker.GetName(), ROOT.TPolyLine().GetName()) == ("mine", "TPolyLine")
+
+
+def test_a_histogram_sets_an_attribute_on_the_axes_it_names():
+    h = ROOT.TH2F("axesset", "", 2, 0, 1, 2, 0, 1)
+    h.SetNdivisions(505, "xy")
+    h.SetLabelSize(0.07, "YQ")  # a letter that names no axis is passed over
+    h.SetTitleOffset(1.5)
+    assert (h.GetXaxis().GetNdivisions(), h.GetYaxis().GetNdivisions()) == (505, 505)
+    assert h.GetYaxis().GetLabelSize() == pytest.approx(0.07)
+    assert h.GetXaxis().GetTitleOffset() == pytest.approx(1.5)
