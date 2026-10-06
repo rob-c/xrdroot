@@ -407,7 +407,9 @@ class _Vector(_Container):
     __hash__ = None  # type: ignore[assignment]
 
     def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray[Any, Any]:
-        return np.asarray(self.data(), dtype=dtype)
+        """The values, as NumPy asks for them: a copy when it asks for one."""
+        made = np.asarray(self.data(), dtype=dtype)
+        return made.copy() if copy else made
 
     def _checked(self, index: Any) -> int:
         at = int(index)
@@ -897,6 +899,11 @@ class _Namespace:
 
     def __repr__(self) -> str:
         return "<namespace std>"
+
+    @staticmethod
+    def move(value: Any) -> Any:
+        """``std::move``: the object itself, which handing it on gives away in Python too."""
+        return value
 
     def __getattr__(self, name: str) -> Any:
         raise AttributeError(f"ROOT has std.{name}; xrdroot.pyroot does not yet")

@@ -5,6 +5,8 @@ from __future__ import annotations
 import array
 import math
 
+import numpy as np
+
 import pytest
 
 import xrdroot.pyroot as ROOT
@@ -222,3 +224,12 @@ def test_a_rotation_is_a_matrix_that_composes(capsys):
     )
     ROOT.TRotation().Rotate(1.0, ROOT.TVector3())
     assert "zero axis" in capsys.readouterr().err
+
+
+def test_an_array_numpy_copies_from_a_container_is_its_own() -> None:
+    for made in (ROOT.std.vector["int"]([1, 2]), ROOT.TVectorD(2), ROOT.TArrayD(2),
+                 ROOT.TMatrixD(1, 2)):  # fmt: skip
+        copied = np.array(made)
+        copied[...] = 7
+        assert 7 not in np.asarray(made)
+        assert np.shares_memory(np.asarray(made), np.asarray(made))

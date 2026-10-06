@@ -76,7 +76,9 @@ class TVectorD(TObject):
         return iter(self._v.tolist())
 
     def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray[Any, Any]:
-        return np.asarray(self._v, dtype=dtype)
+        """The values, as NumPy asks for them: a copy when it asks for one."""
+        made = np.asarray(self._v, dtype=dtype)
+        return made.copy() if copy else made
 
     def Sum(self) -> float:
         return float(self._v.sum())
@@ -122,4 +124,6 @@ class TArrayD(TObject):
         return self._v
 
     def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray[Any, Any]:
-        return np.asarray(self._v, dtype=dtype)
+        """The values, as NumPy asks for them: a copy when it asks for one."""
+        made = np.asarray(self._v, dtype=dtype)
+        return made.copy() if copy else made

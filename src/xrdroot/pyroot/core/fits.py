@@ -49,7 +49,9 @@ class TMatrixDSym:
         return self._m
 
     def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray[Any, Any]:
-        return np.asarray(self._m, dtype=dtype)
+        """The values, as NumPy asks for them: a copy when it asks for one."""
+        made = np.asarray(self._m, dtype=dtype)
+        return made.copy() if copy else made
 
     def __len__(self) -> int:
         return int(self._m.shape[0])
