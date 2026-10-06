@@ -23,6 +23,7 @@ from ..stl import is_vector
 from ..trees import hooks
 from .datasources import RCsvDS, csv_source, lazy_source, sqlite_source
 from .entrywise import per_entry
+from .jitted import retried
 
 __all__ = ["RDataFrame", "RResultPtr", "RDF"]
 
@@ -110,7 +111,14 @@ class _Method:
 
     def __call__(self, *arguments: Any, **options: Any) -> Any:
         given = per_entry(self.name, [_unwrapped(each) for each in arguments])
-        return _wrapped(self.found(*given, **{k: _unwrapped(v) for k, v in options.items()}))
+        keywords = {key: _unwrapped(value) for key, value in options.items()}
+        try:
+            return _wrapped(self.found(*given, **keywords))
+        except Exception as why:  # C++ the batch evaluator refuses: translated, if it can be
+            again = retried(self.name, getattr(self.found, "__self__", None), given, why)
+            if again is None:
+                raise
+        return _wrapped(self.found(*again, **keywords))
 
     def __getitem__(self, types: Any) -> _Method:
         return self

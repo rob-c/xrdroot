@@ -28,6 +28,8 @@ def body(source: str) -> str:
         ("int x = {}; double d = {2};", "x = 0"),
         ("double d = {2};", "d = 2.0"),
         ("std::vector<int> v = {1, 2};", "v = ROOT.std.vector['int']([1, 2])"),
+        ("ROOT::RVecF v{1., 2.};", "v = ROOT.RVecF([1.0, 2.0])"),
+        ("RVecD v = {1., 2.};", "v = ROOT.RVecD([1.0, 2.0])"),
         ("TLorentzVector v[2];", "v = array('TLorentzVector', 2, make=ROOT.TLorentzVector)"),
         (
             'char names[2][8] = {"a", "b"}; char more[3][4];',

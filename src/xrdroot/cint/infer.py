@@ -76,6 +76,36 @@ TMATH_INTEGERS = frozenset(
 RANKS = {name: bits + (1 if name.startswith("unsigned") else 0) for name, bits in INTEGRAL.items()}
 
 
+#: The operators whose result is true or false - of each element, for an ``RVec``.
+LOGICAL = frozenset({"==", "!=", "<", ">", "<=", ">=", "&&", "||"})
+#: ``ROOT::RVecB``: what comparing an ``RVec`` makes.
+RVEC_BOOL = CType("ROOT::RVecB")
+
+
+def is_rvec(ctype: CType | None) -> bool:
+    """Is ``ctype`` an ``RVec`` held by value - ``RVec<float>``, ``RVecD`` - whose operators work
+    element by element?"""
+    return ctype is not None and not ctype.pointer and ctype.name.split("::")[-1].startswith(
+        "RVec")
+
+
+def _vector_result(op: str, left: CType | None, right: CType | None) -> CType | None:
+    """What ``left op right`` is when either is an ``RVec``: one, of each element's result."""
+    vector = left if is_rvec(left) else right if is_rvec(right) else None
+    if vector is None or op in ("<<", ">>"):  # a stream's, not an RVec's
+        return None
+    return RVEC_BOOL if op in LOGICAL else vector
+
+
+def _operated(op: str, left: CType | None, right: CType | None) -> CType | None:
+    """What an arithmetic, shift or pointer ``left op right`` is."""
+    if op in ("<<", ">>"):
+        return arithmetic_result(left, INT) if left is not None and left.scalar else left
+    if op in ("+", "-") and left is not None and (left.is_pointer or left.is_array):
+        return left
+    return arithmetic_result(left, right)
+
+
 def arithmetic_result(left: CType | None, right: CType | None) -> CType | None:
     """The type C gives ``left op right`` for an arithmetic ``op``: the usual conversions."""
     if left is None or right is None or not (left.scalar and right.scalar):
@@ -134,14 +164,13 @@ class Inference(EmitterBase):
         return inner
 
     def _type_binary(self, node: Binary) -> CType | None:
-        if node.op in ("==", "!=", "<", ">", "<=", ">=", "&&", "||"):
-            return BOOL
         left, right = self.typeof(node.left), self.typeof(node.right)
-        if node.op in ("<<", ">>"):
-            return arithmetic_result(left, INT) if left is not None and left.scalar else left
-        if node.op in ("+", "-") and left is not None and (left.is_pointer or left.is_array):
-            return left
-        return arithmetic_result(left, right)
+        vector = _vector_result(node.op, left, right)
+        if vector is not None:
+            return vector
+        if node.op in LOGICAL:
+            return BOOL
+        return _operated(node.op, left, right)
 
     def _type_assign(self, node: Assign) -> CType | None:
         return self.typeof(node.target)

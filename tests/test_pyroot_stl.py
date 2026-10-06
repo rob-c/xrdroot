@@ -49,6 +49,7 @@ def test_a_vector_of_numbers_is_changed_compared_and_seen_as_an_array():
 def test_a_vector_is_made_sized_filled_or_from_values_and_resized_as_cplusplus_does():
     assert list(std.vector("double")(3, 0.5)) == [0.5, 0.5, 0.5]
     assert list(std.vector["int"](2)) == [0, 0]
+    assert list(std.vector["double"](2.7)) == [0.0, 0.0]  # a real size, made whole
     made = std.vector["int"]([1, 2, 3])
     made.resize(5, 7)
     assert list(made) == [1, 2, 3, 7, 7]

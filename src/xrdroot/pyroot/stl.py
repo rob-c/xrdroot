@@ -375,7 +375,9 @@ class _Vector(_Container):
             self._construct(*arguments)
 
     def _construct(self, first: Any, *rest: Any) -> None:
-        if isinstance(first, (int, np.integer)) and not isinstance(first, bool):
+        """``vector(n[, value])`` - a real ``n`` taken as C++ converts it, whole - or ``vector
+        (values)``."""
+        if isinstance(first, (int, float, np.integer, np.floating)) and not isinstance(first, bool):
             self.resize(int(first), *rest)
         else:
             self.assign(first)
@@ -394,7 +396,10 @@ class _Vector(_Container):
             return self.data()[index].copy()
         return self.data()[self._checked(index)].item()
 
-    def __setitem__(self, index: int, value: Any) -> None:
+    def __setitem__(self, index: Any, value: Any) -> None:
+        if isinstance(index, slice):  # std::sort's range, written back where it was
+            self.data()[index] = value
+            return
         self._data[self._checked(index)] = value
 
     def __eq__(self, other: object) -> bool:

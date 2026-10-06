@@ -136,6 +136,17 @@ def test_an_rvec_is_a_vector_that_does_numpy_arithmetic_and_is_indexed_by_a_mask
         ROOT.RVec["string"]
 
 
+def test_an_rvec_prints_as_roots_stream_writes_it_and_its_functions_are_named_bare():
+    assert str(ROOT.RVecF([1.0, 2.0, 2.0 / 3])) == "{ 1, 2, 0.666667 }"
+    assert str(ROOT.RVecB([1, 0])) == "{ 1, 0 }" and str(ROOT.RVecI([])) == "{  }"
+    assert ROOT.Any(ROOT.RVecB([0, 1])) and ROOT.Mean(ROOT.RVecD([1.0, 3.0])) == 2.0
+    with pytest.raises(AttributeError, match="ROOT has NoSuchName"):
+        ROOT.NoSuchName  # noqa: B018
+    v = ROOT.RVecD([3.0, 1.0, 2.0])
+    v[0:2] = [5.0, 4.0]
+    assert list(v) == [5.0, 4.0, 2.0]
+
+
 def _listed(value):
     return list(value) if hasattr(value, "__len__") else value
 

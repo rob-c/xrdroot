@@ -13,6 +13,8 @@ import math
 from collections.abc import Callable
 from typing import Any
 
+import numpy as np
+
 __all__ = [
     "sqrt",
     "cbrt",
@@ -169,7 +171,10 @@ def pow(base: Any, exponent: Any) -> float:
 
 
 def cabs(value: Any) -> Any:
-    """``std::abs``: an integer's stays an integer, anything else's is a double."""
+    """``std::abs``: an integer's stays an integer, a number's is a double, and an ``RVec``'s -
+    ``ROOT::VecOps::abs`` - is of each element."""
+    if hasattr(value, "__array_ufunc__") and not isinstance(value, np.generic):
+        return abs(value)
     if isinstance(value, int) or hasattr(value, "__index__"):
         return abs(int(value))
     return abs(float(value))

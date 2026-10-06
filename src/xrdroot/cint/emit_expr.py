@@ -26,6 +26,7 @@ from typing import Any, ClassVar
 from .base import Out, P
 from .ctype import CType
 from .emit_names import NameEmitter, type_text
+from .infer import is_rvec
 from .nodes import (
     Assign,
     Binary,
@@ -144,7 +145,7 @@ class ExprEmitter(NameEmitter):
     def _operation(self, node: Binary) -> Out:
         op = node.op
         if op in ("&&", "||"):
-            return f"bool({self.condition(node)})", P.POSTFIX
+            return self._logical(node)
         if op in COMPARISONS:
             return self._compare(node)
         if op in ("/", "%"):
@@ -156,6 +157,14 @@ class ExprEmitter(NameEmitter):
             level = PLAIN[op]
             return f"{self.at(node.left, level)} {op} {self.at(node.right, level + 1)}", level
         raise self.refuse(f"the operator {op}", node)
+
+    def _logical(self, node: Binary) -> Out:
+        """``&&`` and ``||``: of each element, ``&`` and ``|``, for an ``RVec``; else Python's."""
+        if not is_rvec(self.typeof(node)):
+            return f"bool({self.condition(node)})", P.POSTFIX
+        level = P.BITAND if node.op == "&&" else P.BITOR
+        bitwise = "&" if node.op == "&&" else "|"
+        return f"{self.at(node.left, level)} {bitwise} {self.at(node.right, level + 1)}", level
 
     def _arithmetic_special(self, node: Binary) -> Out | None:
         """``+``, ``-``, ``<<`` whose Python is not Python's own: on pointers, strings, streams."""

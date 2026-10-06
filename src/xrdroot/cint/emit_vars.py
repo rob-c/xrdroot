@@ -40,6 +40,8 @@ __all__ = ["VariableEmitter", "Context"]
 
 #: The standard containers, which are built from a Python list of what a braced list holds.
 CONTAINERS = ("vector", "list", "deque", "set", "array", "map", "unordered_map", "RVec")
+#: ``ROOT::RVecF`` and its kind: containers whose element type their name gives.
+ALIASED = tuple(f"RVec{kind}" for kind in ("B", "C", "D", "F", "I", "L", "LL", "U", "UL", "ULL"))
 
 #: The standard's lock guards, which give their mutex back as their scope ends.
 GUARDS = frozenset({"std::lock_guard", "std::unique_lock", "std::scoped_lock"})
@@ -230,7 +232,7 @@ class VariableEmitter(StmtEmitter):
 
     def _container_of(self, ctype: CType, items: str) -> str:
         """A container from a braced list; a plain list when C++ deduced its type from one."""
-        if not ctype.args:
+        if not ctype.args and ctype.name.split("::")[-1] not in ALIASED:
             return f"[{items}]"
         return f"{self.class_expr(ctype)}([{items}])"
 
@@ -383,7 +385,7 @@ def addressable(ctype: CType | None) -> bool:
 
 
 def _container(ctype: CType) -> bool:
-    return ctype.name.split("::")[-1] in CONTAINERS
+    return ctype.name.split("::")[-1] in (*CONTAINERS, *ALIASED)
 
 
 def sized(ctype: CType | None, decl: VarDecl) -> CType | None:

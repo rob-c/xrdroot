@@ -40,6 +40,13 @@ class _RVec(np.lib.mixins.NDArrayOperatorsMixin, _Vector):  # type: ignore[misc]
     def __repr__(self) -> str:
         return f"<{self.__cpp_name__} {self.data().tolist()!r}>"
 
+    def __str__(self) -> str:
+        """As ROOT's ``operator<<`` writes an ``RVec``: ``{ 1, 2, 0.666667 }``, each element as
+        a C++ stream writes it - six digits - and a ``bool`` as ``1`` or ``0``."""
+        kind = self.dtype.kind
+        items = [f"{value:g}" if kind == "f" else str(int(value)) for value in self.data()]
+        return "{ " + ", ".join(items) + " }"
+
     def __array_ufunc__(self, ufunc: Any, method: str, *inputs: Any, **kwargs: Any) -> Any:
         given = [each.data() if isinstance(each, _Vector) else each for each in inputs]
         found = getattr(ufunc, method)(*given, **kwargs)

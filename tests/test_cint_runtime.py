@@ -209,6 +209,8 @@ def test_exit_and_assert_stop_the_macro() -> None:
         (lambda: rt.cround(math.inf), math.inf),
         (lambda: rt.cabs(-3), 3),
         (lambda: rt.cabs(-2.5), 2.5),
+        (lambda: list(rt.cabs(np.array([-1.5, 2.0]))), [1.5, 2.0]),
+        (lambda: type(rt.cabs(np.float64(-2.0))), float),
         (lambda: rt.isnan(math.nan), True),
         (lambda: rt.isinf(math.inf), True),
         (lambda: rt.isfinite(1.0), True),
