@@ -13,68 +13,12 @@ from typing import Any
 
 import numpy as np
 
+from ..linalg.matrices import TMatrixD, TMatrixDSym  # noqa: F401 - what fits hand back
 from .messages import message
 from .objects import TNamed
 from .wrapping import unwrap
 
-__all__ = ["TFitResult", "TFitResultPtr", "TMatrixDSym", "TMatrixD"]
-
-
-class TMatrixDSym:
-    """A covariance or correlation matrix: indexed ``m[i][j]`` or ``m(i, j)``, printed as ROOT's."""
-
-    def __init__(self, values: Any, ncols: Any = None) -> None:
-        if isinstance(values, (int, np.integer)):  # TMatrixDSym(n), TMatrixD(rows, cols): zeros
-            values = np.zeros((int(values), int(values if ncols is None else ncols)))
-        elif isinstance(values, TMatrixDSym):
-            values = values._m
-        self._m: np.ndarray[Any, Any] = np.array(values, dtype=np.float64)
-
-    def __call__(self, i: int, j: int) -> float:
-        return float(self._m[i, j])
-
-    def __setcall__(self, i: int, j: int, value: float) -> None:
-        """``m(i, j) = value``."""
-        self._m[i, j] = float(value)
-
-    def __getitem__(self, i: Any) -> Any:
-        return float(self._m[i]) if isinstance(i, tuple) else self._m[i]
-
-    def __setitem__(self, i: Any, value: Any) -> None:
-        """``m[i, j] = value`` - PyROOT's - or a whole row."""
-        self._m[i] = value
-
-    def matrix(self) -> np.ndarray[Any, Any]:
-        """The values, as the engine takes them."""
-        return self._m
-
-    def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray[Any, Any]:
-        """The values, as NumPy asks for them: a copy when it asks for one."""
-        made = np.asarray(self._m, dtype=dtype)
-        return made.copy() if copy else made
-
-    def __len__(self) -> int:
-        return int(self._m.shape[0])
-
-    def GetNrows(self) -> int:
-        return int(self._m.shape[0])
-
-    def GetNcols(self) -> int:
-        return int(self._m.shape[1])
-
-    def GetMatrixArray(self) -> np.ndarray[Any, Any]:
-        return self._m.ravel()
-
-    def Print(self, option: str = "") -> None:
-        """``TMatrixTBase::Print``: sheets of five columns (ten for a narrow ``f=`` format),
-        each headed by its columns' numbers set in a bar as wide as ROOT makes it."""
-        from ...roofit.matrix import matrix_text
-
-        found = str(option).find("f=")
-        print(matrix_text(self._m, *([str(option)[found + 2:]] if found >= 0 else [])), end="")
-
-
-TMatrixD = TMatrixDSym
+__all__ = ["TFitResult", "TFitResultPtr"]
 
 
 class TFitResult(TNamed):

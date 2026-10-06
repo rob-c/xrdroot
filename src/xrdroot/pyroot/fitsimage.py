@@ -10,8 +10,8 @@ from typing import Any
 
 import numpy as np
 
-from .core.fits import TMatrixD
 from .core.messages import Warning
+from .linalg.matrices import TMatrixD
 from .vectors import TVectorD
 
 __all__ = ["ImageReads"]

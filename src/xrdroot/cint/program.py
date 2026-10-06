@@ -80,6 +80,9 @@ OUT_PARAMETERS: dict[tuple[str, int], tuple[int, ...]] = {
     ("ShiftToNext", 1): (0,),
     ("ShiftToNext", 2): (0,),
     ("GetAngles", 6): (0, 1, 2, 3, 4, 5),
+    ("Det", 2): (0, 1),
+    ("Determinant", 2): (0, 1),
+    ("Solve", 2): (1,),
 }
 
 

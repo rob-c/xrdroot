@@ -21,7 +21,7 @@ import pytest
 
 import xrdroot.pyroot as ROOT
 from xrdroot.fit import defaults
-from xrdroot.pyroot.core.fits import TMatrixD, TMatrixDSym
+from xrdroot.pyroot.linalg.matrices import TMatrixD, TMatrixDSym
 
 DATA = pathlib.Path(__file__).parent / "data"
 

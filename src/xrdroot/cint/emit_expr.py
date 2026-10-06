@@ -413,6 +413,8 @@ class ExprEmitter(NameEmitter):
         target = node.target
         if isinstance(target, Call):
             return self.call_assignment(node)
+        if node.op == "=" and isinstance(target, Name) and _is_view(self.typeof(target)):
+            return f"assign_into({self.value(target)}, {self.value(node.value)})"
         if not self._held_through(target):
             return None
         return self.store_expression(target, self.assigned_value(node))[0]
@@ -634,6 +636,16 @@ def _holds_value(ctype: CType) -> bool:
     """
     held = ctype.args[0] if ctype.is_smart and ctype.args else None
     return isinstance(held, CType) and (held.scalar or held.is_string)
+
+
+#: What a view of part of a matrix is called after: ``TMatrixDRow``, ``TMatrixTDiag<double>``.
+VIEWS = ("Row", "Column", "Diag", "Sub", "Flat", "Row_const", "Column_const", "Diag_const")
+
+
+def _is_view(ctype: CType | None) -> bool:
+    """Is ``ctype`` a view of part of a matrix, which ``view = value`` writes through?"""
+    name = ctype.name.split("::")[-1] if ctype is not None and not ctype.pointer else ""
+    return name.startswith("TMatrix") and name.endswith(VIEWS)
 
 
 def _object_value(ctype: CType | None) -> bool:

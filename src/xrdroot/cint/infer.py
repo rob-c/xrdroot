@@ -120,6 +120,19 @@ def arithmetic_result(left: CType | None, right: CType | None) -> CType | None:
     return INT  # pragma: no cover - every rank is some type's
 
 
+#: What ROOT's decompositions give back by value - matrices and vectors, which ``auto x =
+#: y`` then copies, as C++ copies them - by class and method.
+RETURNED = {
+    **{("TDecompQRH", name): "TMatrixD" for name in ("GetOrthogonalMatrix", "GetQ", "GetR")},
+    **{("TDecompQRH", name): "TVectorD" for name in ("GetUp", "GetW")},
+    **{("TDecompSVD", name): "TMatrixD" for name in ("GetU", "GetV", "Invert")},
+    ("TDecompSVD", "GetSig"): "TVectorD",
+    **{("TDecompLU", name): "TMatrixD" for name in ("GetLU", "Invert")},
+    ("TDecompChol", "GetU"): "TMatrixD",
+    **{(kind, "Invert"): "TMatrixDSym" for kind in ("TDecompChol", "TDecompBK")},
+}
+
+
 def _made_field(func: Member) -> CType | None:
     """RNTupleModel's ``MakeField<T>``: the ``shared_ptr<T>`` an entry is written through."""
     first = func.targs[0] if func.targs else None
@@ -255,7 +268,8 @@ class Inference(EmitterBase):
             return CType("unsigned long")
         info = self.program.classes.get(owner.name) if owner is not None else None
         if info is None:
-            return _made_field(func)
+            kept = RETURNED.get((owner.name, func.name)) if owner is not None else None
+            return CType(kept) if kept is not None else _made_field(func)
         methods = info.methods.get(func.name, [])
         return methods[0].returns if methods else None
 

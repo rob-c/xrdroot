@@ -48,6 +48,7 @@ SUBMODULES = [
     "th2poly",
     "xmlengine",
     "vectors",
+    "linalg",
     "fitshdu",
     "graphics.images",
     "tmva",
