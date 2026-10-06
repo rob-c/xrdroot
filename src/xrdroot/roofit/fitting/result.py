@@ -158,6 +158,27 @@ class RooFitResult(RooPrintable):
             corr = self._cov / np.outer(sigma, sigma)
         return TMatrixDSym(len(self._cov), np.nan_to_num(corr))
 
+    def correlationHist(self, name: Any = "correlation_matrix") -> Any:
+        """``correlationHist``: the correlation matrix as a ``TH2D`` - a parameter's column left
+        to right, its row top to bottom, each labelled by name - from -1 to +1, as ROOT
+        makes it."""
+        from ...hist import Histogram
+        from ..histograms import WRAP
+
+        corr = self.correlationMatrix().values
+        size = len(corr)
+        edges = list(range(size + 1))
+        made = Histogram.book(str(name), edges, edges, title=str(name))
+        columns, rows = np.meshgrid(np.arange(size), np.arange(size), indexing="ij")
+        made.fill(columns.ravel() + 0.5, size - rows.ravel() - 0.5, weight=corr.ravel())
+        hist = WRAP[0](made)
+        for at, par in enumerate(self._final.names()):
+            hist.GetXaxis().SetBinLabel(at + 1, par)
+            hist.GetYaxis().SetBinLabel(size - at, par)
+        hist.SetMinimum(-1)
+        hist.SetMaximum(+1)
+        return hist
+
     def correlation(self, one: Any, two: Any = None) -> Any:
         """The correlation of two parameters, by name or by variable; of one, its row as
         variables."""

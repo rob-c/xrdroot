@@ -594,3 +594,13 @@ def test_what_combinations_gives_is_a_column_of_several_collections():
     assert every.GetValue() == 6
     with pytest.raises(ValueError, match="several collections"):
         pairs.Sum("pairs").GetValue()
+
+
+def test_a_collection_of_collections_is_displayed_a_line_per_inner_one():
+    from xrdroot.pyroot.stl import std
+    from xrdroot.rdf.report import _cell
+
+    matrix = std.vector["vector<double>"]([[1.1, 2.1], [10.261, 3]])
+    assert _cell(matrix, 5) == ["{ 1.1000000, 2.1000000 }", "{ 10.261000, 3.0000000 }"]
+    assert _cell(std.vector["vector<int>"]([[1, 2]]), 5) == ["{ 1, 2 }"]
+    assert _cell("text", 5) == ['"text"']

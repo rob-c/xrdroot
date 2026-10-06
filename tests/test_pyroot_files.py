@@ -286,3 +286,14 @@ def test_get_object_fills_the_pointer_it_is_handed_as_the_translator_hands_one()
         None,
     )
     assert back.GetObject("histo", "not a pointer").GetName() == "histo"
+
+
+def test_a_file_is_copied_here_and_a_missing_one_is_said_so(tmp_path, capsys) -> None:
+    source = tmp_path / "a.root"
+    source.write_bytes(b"0123")
+    assert ROOT.TFile.Cp(str(source), str(tmp_path / "b.root"))
+    assert (tmp_path / "b.root").read_bytes() == b"0123"
+    assert "[TFile::Cp] Total 0.00 MB" in capsys.readouterr().err
+    assert ROOT.TFile.Cp(str(source), str(tmp_path / "c.root"), False)
+    assert not ROOT.TFile.Cp(str(tmp_path / "none.root"), str(tmp_path / "d.root"))
+    assert "Error in <TFile::Cp>: cannot open source file" in capsys.readouterr().err

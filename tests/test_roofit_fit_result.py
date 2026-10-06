@@ -317,3 +317,19 @@ def test_a_result_answers_to_its_name_and_class_and_an_empty_one_has_no_correlat
         "fitresult_g_gData",
         "Result of fit of p.d.f. g to dataset gData",
     )
+
+
+def test_the_correlation_matrix_is_a_labelled_histogram_from_minus_one_to_one() -> None:
+    """``correlationHist``: column ``i`` left to right, row ``j`` from the top, named."""
+    import xrdroot.pyroot  # noqa: F401 - histograms come back as ROOT's classes
+
+    result, _ = _minos_fit()
+    hist = result.correlationHist("c000")
+    names = result.floatParsFinal().names()
+    size = len(names)
+    assert (hist.GetName(), hist.GetNbinsX(), hist.GetMinimum(), hist.GetMaximum()) == (
+        "c000", size, -1.0, 1.0)  # fmt: skip
+    assert hist.GetXaxis().GetBinLabel(1) == names[0]
+    assert hist.GetYaxis().GetBinLabel(size) == names[0]
+    m, s = names.index("m"), names.index("s")
+    assert hist.GetBinContent(m + 1, size - s) == pytest.approx(result.correlation("m", "s"))

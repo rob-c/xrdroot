@@ -21,6 +21,8 @@ import atexit
 import io
 import os
 import struct
+import sys
+from pathlib import Path
 from typing import Any
 
 from ...errors import ROOTError
@@ -563,6 +565,25 @@ class TFile(TDirectoryFile):
         """``TFile::Open``: the file, or ``None`` - a null pointer - if it would not open."""
         made = TFile(name, option, ftitle, compress)
         return None if made.IsZombie() else made
+
+    @staticmethod
+    def Cp(src: Any, dst: Any, progressbar: Any = True, buffersize: Any = 1000000) -> bool:
+        """``TFile::Cp(src, dst)``: a file - here, or at an ``http`` or ``https`` URL - copied
+        to ``dst``; ``false``, with ROOT's error, when it cannot be read; the progress bar
+        ROOT draws on the standard error, at its end."""
+        from ...remote import fetch
+
+        name = str(src)
+        try:
+            data = fetch(name)
+        except OSError as why:  # a connection refused or a file missing alike
+            message("Error", "TFile::Cp", "cannot open source file %s: %s", name, str(why))
+            return False
+        Path(str(dst)).write_bytes(data)
+        if progressbar:
+            sys.stderr.write(f"[TFile::Cp] Total {len(data) / 1048576:.2f} MB\t|"
+                             f"{'=' * 20}| 100.00 % \r\n")  # fmt: skip
+        return True
 
     # -- what it is -----------------------------------------------------------------------
 

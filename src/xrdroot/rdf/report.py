@@ -131,15 +131,36 @@ def _text(value: Any) -> str:
     return str(value)
 
 
+def _collection(value: Any) -> bool:
+    """Is this a collection of values - an array, a list, a ``std::vector`` - not one value?"""
+    sized = hasattr(value, "__len__") and hasattr(value, "__iter__")
+    return sized and not isinstance(value, (str, bytes, np.generic))
+
+
+def _inner(value: Any) -> str:
+    """A collection inside a collection, as cling prints one: ``{ 1.1000000, 2.1000000 }``,
+    a floating-point number to eight significant digits, its trailing zeros kept."""
+    if _collection(value):
+        return "{ " + ", ".join(_inner(item) for item in value) + " }"
+    if isinstance(value, (float, np.floating)):
+        return f"{float(value):#.8g}"
+    return _text(value)
+
+
 def _cell(value: Any, limit: int) -> list[str]:
     """A value as the lines of its cell: one for a number, one per element of a collection."""
-    if isinstance(value, (np.ndarray, list, tuple)):
-        text = str if isinstance(value, tuple) else _text
+    if _collection(value):
+        text = str if isinstance(value, tuple) else _element
         items = [text(item) for item in list(value)[:limit]]
         if len(value) > limit:
             items.append("...")
         return items or [""]
     return [_text(value)]
+
+
+def _element(value: Any) -> str:
+    """An element of a collection's cell: a value, or a collection of its own on one line."""
+    return _inner(value) if _collection(value) else _text(value)
 
 
 class Display:
