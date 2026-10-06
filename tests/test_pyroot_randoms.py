@@ -45,7 +45,7 @@ def test_every_distribution_root_offers():
         (bool(r.PoissonD(3.0) >= 0), True),
         (bool(isinstance(r.Integer(10), int)), True),
         (bool(isinstance(r.Poisson(2.0), int)), True),
-        (len(r.Rndm(5)), 5),
+        (bool(isinstance(r.Rndm(5), float)), True),
         (len(r.Gaus(0, 1, 4)), 4),
         (len(r.Uniform(0, 1, 3)), 3),
         (len(r.Exp(1.0, 3)), 3),

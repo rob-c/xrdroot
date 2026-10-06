@@ -44,9 +44,11 @@ class TRandom(TNamed):
     def GetSeed(self) -> int:
         return int(self._xrd.get_seed())
 
-    def Rndm(self, *n: Any) -> Any:
-        """``Rndm``: uniform in (0, 1], never zero."""
-        return _number(self._xrd.rndm(*n))
+    def Rndm(self, i: Any = 0) -> float:
+        """``Rndm``: uniform in (0, 1], never zero. ``Rndm(i)``'s ``i`` is ROOT's ignored
+        old argument, which macros still pass - ``Rndm(1)`` is one draw; many are
+        ``RndmArray``'s."""
+        return float(self._xrd.rndm())
 
     def RndmArray(self, count: int, array: Any) -> None:
         """``RndmArray(n, array)``: ``n`` draws into ``array``."""
