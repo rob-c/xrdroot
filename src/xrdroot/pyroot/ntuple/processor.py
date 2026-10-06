@@ -13,7 +13,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Any
 
-from .fields import field_type, typed
+from ..core.objects import typed
+from .fields import field_type
 from .reading import RNTupleReader, _load
 
 __all__ = ["RNTupleOpenSpec", "RNTupleProcessor"]

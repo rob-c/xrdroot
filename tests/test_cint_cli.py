@@ -113,6 +113,23 @@ def test_run_runs_a_python_script_with_root_as_pyroot(
     assert sys.modules["ROOT"] is fake_pyroot
 
 
+def test_run_lets_a_python_script_import_names_from_roots_namespaces(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    fake_pyroot: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from xrdroot.cli import run
+
+    fake_pyroot.Experimental = types.SimpleNamespace(RCanvas="canvas")
+    for name in run.NAMESPACES:  # put back as they were once the test is done
+        monkeypatch.setitem(sys.modules, f"ROOT.{name}", None)
+    path = write(tmp_path, "s.py", "from ROOT.Experimental import RCanvas\nprint(RCanvas)\n")
+    assert main(["run", str(path)]) == 0
+    assert capsys.readouterr().out == "canvas\n"
+    assert sys.modules["ROOT.Experimental"] is fake_pyroot.Experimental
+
+
 def test_run_refuses_a_construct_in_one_line(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -28,6 +28,7 @@ FAMILIES = (
     "strings",
     "timing",
     "system",
+    "environ",
     "directories",
     "troot",
     "randoms",

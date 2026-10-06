@@ -50,6 +50,10 @@ def add_parser(subparsers: Any) -> None:
     )
 
 
+#: ROOT's namespaces a script imports names from, ``from ROOT.<namespace> import ...``.
+NAMESPACES = ("Experimental", "VecOps", "RDF", "Math", "RooFit", "TMVA")
+
+
 def _script(path: Path) -> int:
     """A PyROOT script, run with ``import ROOT`` meaning :mod:`xrdroot.pyroot`.
 
@@ -60,7 +64,11 @@ def _script(path: Path) -> int:
 
     from ..stdio import split
 
-    sys.modules["ROOT"] = importlib.import_module("xrdroot.pyroot")
+    root = sys.modules["ROOT"] = importlib.import_module("xrdroot.pyroot")
+    for name in NAMESPACES:  # ``from ROOT.Experimental import RCanvas`` imports the namespace
+        found = getattr(root, name, None)
+        if found is not None:
+            sys.modules[f"ROOT.{name}"] = found
     with split():
         runpy.run_path(str(path), run_name="__main__")
     return 0

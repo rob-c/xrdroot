@@ -6,7 +6,8 @@ import pytest
 
 import xrdroot.pyroot as ROOT
 from xrdroot.errors import UnsupportedFeatureError
-from xrdroot.pyroot.ntuple.fields import RFieldPtr, field_type, typed
+from xrdroot.pyroot.core.objects import typed
+from xrdroot.pyroot.ntuple.fields import RFieldPtr, field_type
 
 
 @pytest.mark.parametrize(

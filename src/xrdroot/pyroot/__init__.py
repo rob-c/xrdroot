@@ -53,6 +53,7 @@ SUBMODULES = [
     "tmva",
     "histv7",
     "ntuple",
+    "rcanvas",
     "spectra.tspectrum",
     "spectra.tspectrum2",
     "spectra.transforms",

@@ -1348,8 +1348,27 @@ what ROOT's prints, character for character. A table of bit columns
 or `RBinWithError`) fills along `RRegularAxis` and `RVariableBinAxis` axes
 as `ROOT::Experimental` does, with its statistics of every fill;
 `Experimental.Hist.ConvertToTH1D` makes the `TH1` of it, and
-`RDataFrame.Hist` books one on a frame. The rest of ROOT 7 - its canvases,
-its RNTuple classes by that name - is refused by name.
+`RDataFrame.Hist` books one on a frame.
+
+**ROOT 7's RNTuple classes.** `RNTupleModel::Create()` and `MakeField<T>`,
+`RNTupleWriter::Recreate` and `Append`, `RNTupleParallelWriter` with its
+fill contexts (staged clusters too), `RNTupleReader` with `LoadEntry`,
+views, collection views, `PrintInfo()` and `Show(i)` as ROOT prints them, and
+`RNTupleProcessor` chains and joins - all over the RNTuple reader and writer
+below. A field holds a number, a `std::string` or a `std::vector` of a
+number; records, nested collections and low-precision floats are refused,
+as are `PrintInfo`'s storage details, which are the sizes ROOT's own writer
+chose.
+
+**ROOT 7's graphics.** `RCanvas`, its pads, frames and `Divide`, the
+primitives `Draw<T>` puts on them - `RLine`, `RBox`, `RText`, `RMarker`,
+`RPave`, `RPaveText`, `RFrameTitle`, `RAxisDrawable`, `TObjectDrawable` -
+with their attribute groups (`RAttrLine`, `RAttrText`, `RAttrAxis`...),
+`RColor`, pad lengths (`0.1_normal - 5_px`) and `RStyle` sheets. ROOT shows
+these in a web browser; run in batch there is none, so `Show` and `Update`
+show nothing, as in ROOT's batch mode, and `SaveAs` - which ROOT renders
+through a headless browser - writes no file and says so. `gEnv`, ROOT's
+resources from `.rootrc` files, is there for the settings macros read and set.
 
 **A macro's random numbers.** `std::mt19937`, `std::uniform_real_distribution`
 and `std::normal_distribution` draw what libc++ draws, number for number, so

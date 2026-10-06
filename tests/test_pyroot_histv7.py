@@ -155,8 +155,8 @@ def test_a_frame_books_a_histogram_of_its_columns() -> None:
 
 def test_the_experimental_namespace_has_the_histograms_and_refuses_the_rest() -> None:
     assert E.ML.RDataLoader is not None and repr(E) == "<namespace ROOT::Experimental>"
-    with pytest.raises(UnsupportedFeatureError, match="RCanvas is not supported"):
-        E.RCanvas  # noqa: B018
+    with pytest.raises(UnsupportedFeatureError, match="RNTupleImporter is not supported"):
+        E.RNTupleImporter  # noqa: B018
     with pytest.raises(AttributeError):
         E.__wrapped__  # noqa: B018
 

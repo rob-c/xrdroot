@@ -17,7 +17,8 @@ from typing import Any
 import numpy as np
 
 from ...errors import UnsupportedFeatureError
-from .fields import RFieldPtr, field_type, typed
+from ..core.objects import typed
+from .fields import RFieldPtr, field_type
 from .model import RField, RNTupleModel
 from .printing import info_text, json_text
 

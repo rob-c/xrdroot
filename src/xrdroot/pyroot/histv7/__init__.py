@@ -4,8 +4,9 @@
 ``ROOT.Experimental.RHist['int'](axis)`` is ``ROOT::Experimental::RHist<int>``;
 ``Experimental.Hist.ConvertToTH1I(hist)`` makes the ``TH1I`` of the same
 bins, contents and statistics, as ROOT's ``ConvertToTH1`` makes it. Other
-names under ``ROOT::Experimental`` - ROOT 7's graphics, its RNTuple
-writers - are refused by name.
+names under ``ROOT::Experimental`` are ROOT 7's graphics, from
+:mod:`..rcanvas`, and the machine-learning loader; the rest are refused
+by name.
 """
 
 from __future__ import annotations
@@ -108,8 +109,13 @@ class _Experimental:
             from ..tmva import Experimental as learning
 
             return learning.ML
+        from .. import rcanvas
+
+        if name in rcanvas.__all__:  # ROOT 7's graphics
+            return getattr(rcanvas, name)
         raise UnsupportedFeatureError(f"ROOT::Experimental::{name} is not supported: of ROOT 7's "
-                                      "classes, xrdroot has the histograms, RHist and its axes.")
+                                      "classes, xrdroot has the histograms, RHist and its axes, "
+                                      "and the graphics, RCanvas and what it draws.")
 
     def __repr__(self) -> str:
         return "<namespace ROOT::Experimental>"

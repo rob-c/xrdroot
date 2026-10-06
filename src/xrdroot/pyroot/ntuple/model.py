@@ -13,7 +13,8 @@ from collections.abc import Iterator
 from typing import Any
 
 from ...errors import UnsupportedFeatureError
-from .fields import FieldType, field_type, typed
+from ..core.objects import typed
+from .fields import FieldType, field_type
 
 __all__ = ["RField", "REntry", "RNTupleModel"]
 

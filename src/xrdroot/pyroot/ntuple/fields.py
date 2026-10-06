@@ -19,7 +19,7 @@ from ...errors import UnsupportedFeatureError
 from ...rntuple.writer import CXX
 from ..stl import _spelled, element_type, std, string
 
-__all__ = ["FieldType", "RFieldPtr", "field_type", "typed"]
+__all__ = ["FieldType", "RFieldPtr", "field_type"]
 
 
 class FieldType:
@@ -85,41 +85,6 @@ def field_type(cxx: Any) -> FieldType:
         return FieldType(f"std::vector<{CXX[item.name]}>", item, True)
     found = _number(text, str(cxx))
     return FieldType("std::string" if found is None else CXX[found.name], found, False)
-
-
-class _Typed:
-    """A template method with its type given: ``model.MakeField["int"]("n")``."""
-
-    def __init__(self, fn: Any, obj: Any, kind: Any) -> None:
-        self._fn, self._obj, self._kind = fn, obj, kind
-
-    def __call__(self, *args: Any) -> Any:
-        return self._fn(self._obj, self._kind, *args)
-
-
-class _Untyped:
-    """A template method not yet given its type, which it is by ``[...]``."""
-
-    def __init__(self, fn: Any, obj: Any) -> None:
-        self._fn, self._obj = fn, obj
-
-    def __getitem__(self, kind: Any) -> _Typed:
-        return _Typed(self._fn, self._obj, kind)
-
-    def __call__(self, *args: Any) -> Any:
-        """Called without a type: the method finds it from what it is given, if it can."""
-        return self._fn(self._obj, None, *args)
-
-
-class typed:
-    """A method C++ declares as a template on a type it needs: called as ``f[T](...)``."""
-
-    def __init__(self, fn: Any) -> None:
-        self._fn = fn
-        self.__doc__ = fn.__doc__
-
-    def __get__(self, obj: Any, owner: Any = None) -> Any:
-        return self if obj is None else _Untyped(self._fn, obj)
 
 
 class RFieldPtr:

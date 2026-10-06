@@ -6,7 +6,6 @@ import array
 import math
 
 import numpy as np
-
 import pytest
 
 import xrdroot.pyroot as ROOT

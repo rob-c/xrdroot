@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .fields import typed
+from ..core.objects import typed
 
 __all__ = [
     "RNTupleReadOptions",
