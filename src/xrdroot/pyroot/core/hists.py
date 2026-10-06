@@ -191,26 +191,43 @@ class TH2(TH1):
 
     def _fill_from_function(self, source: Any, ntimes: int, generator: Any) -> None:
         """Each entry at the centre of a bin chosen by the function's integral over it."""
-        from .funcs import _gauss_legendre
         from .wrapping import unwrap
 
         function = unwrap(source)
         xaxis, yaxis = self.GetXaxis(), self.GetYaxis()
-        nx, ny = xaxis.GetNbins(), yaxis.GetNbins()
-        cells = [
-            _gauss_legendre(function, [xaxis.GetBinLowEdge(i), xaxis.GetBinUpEdge(i),
-                            yaxis.GetBinLowEdge(j), yaxis.GetBinUpEdge(j)], 8)
-            for j in range(1, ny + 1)
-            for i in range(1, nx + 1)
-        ]  # fmt: skip
+        nx = xaxis.GetNbins()
+        edges = [np.array([axis.GetBinLowEdge(i) for i in range(1, axis.GetNbins() + 2)])
+                 for axis in (xaxis, yaxis)]  # fmt: skip
+        order = 8 if getattr(function, "_formula", None) is not None else 2
+        cells = _cell_integrals(function, edges[0], edges[1], order)
         integral = np.concatenate([[0.0], np.cumsum(cells)])
         integral /= integral[-1]
         drawn = np.atleast_1d(generator.rndm(ntimes)) if ntimes else np.zeros(0)
         ibin = np.searchsorted(integral[:-1], drawn, side="right") - 1
         biny, binx = np.divmod(ibin, nx)
-        xs = [xaxis.GetBinCenter(int(b) + 1) for b in binx]
-        ys = [yaxis.GetBinCenter(int(b) + 1) for b in biny]
-        self._xrd.fill(np.array(xs, dtype=np.float64), np.array(ys, dtype=np.float64))
+        xs, ys = ((low[:-1] + low[1:]) / 2 for low in edges)
+        self._xrd.fill(xs[binx], ys[biny])
+
+
+def _cell_integrals(function: Any, xedges: Any, yedges: Any, order: int) -> Any:
+    """Each cell's integral of ``function`` - y slowest, as ROOT runs over them - by an
+    ``order``-point Gauss-Legendre rule each way, every point in one call.
+
+    A formula is evaluated over a whole array at once, so it takes eight
+    points each way; a macro's function of code is called a point at a time,
+    so it takes two, which is exact for a cubic and costs four calls a bin
+    rather than sixty-four.
+    """
+    nodes, weights = np.polynomial.legendre.leggauss(order)
+    (xlow, xhigh), (ylow, yhigh) = ((edges[:-1], edges[1:]) for edges in (xedges, yedges))
+    xs = 0.5 * (xhigh - xlow)[:, None] * nodes + 0.5 * (xhigh + xlow)[:, None]
+    ys = 0.5 * (yhigh - ylow)[:, None] * nodes + 0.5 * (yhigh + ylow)[:, None]
+    shape = (len(ys), len(xs), order, order)
+    grid_x = np.broadcast_to(xs[None, :, :, None], shape)
+    grid_y = np.broadcast_to(ys[:, None, None, :], shape)
+    values = np.asarray(function(grid_x.ravel(), grid_y.ravel()), dtype=np.float64).reshape(shape)
+    summed = (values * np.multiply.outer(weights, weights)).sum(axis=(2, 3))
+    return (summed * 0.25 * np.multiply.outer(yhigh - ylow, xhigh - xlow)).ravel()
 
 
 class TH3(TH1, TAtt3D):

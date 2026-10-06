@@ -247,3 +247,15 @@ def test_the_minimizer_options_are_set_and_read_back():
     options.SetDefaultMinimizer("Minuit2", "Migrad")
     options.SetDefaultTolerance(0.01)
     options.SetDefaultPrintLevel(0)
+
+
+WIDTHS = [(0.3, 1.7, False), (1.0, 0.01, True), (2.0, 0.0, False), (-1.0, -2.0, True)]
+
+
+@pytest.mark.parametrize(("mean", "sigma", "norm"), WIDTHS)
+def test_gaus_of_one_number_is_the_arrays_gaus_to_the_bit(mean, sigma, norm):
+    from xrdroot.function import special
+
+    xs = np.linspace(-50.0, 50.0, 2001)
+    one = np.array([T.Gaus(x, mean, sigma, norm) for x in xs.tolist()])
+    assert np.array_equal(one, special.gaus(xs, mean, sigma, norm))

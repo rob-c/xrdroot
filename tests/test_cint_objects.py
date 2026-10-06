@@ -211,3 +211,17 @@ def test_a_macro_assigning_one_of_roots_globals_assigns_it_in_root() -> None:
     with rt.ROOT.bind(bound):
         rt.ROOT.gErrorIgnoreLevel = 2000
     assert bound.gErrorIgnoreLevel == 2000
+
+
+def test_roots_names_come_from_the_module_loaded_or_from_importing_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import sys
+
+    from xrdroot.cint.runtime import root
+
+    monkeypatch.setattr(root, "DEFAULT", "colorsys")
+    monkeypatch.delitem(sys.modules, "colorsys", raising=False)
+    proxy = root.RootProxy()
+    assert proxy.namespace().__name__ == "colorsys"  # imported the first time
+    assert proxy.namespace() is sys.modules["colorsys"]

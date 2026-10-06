@@ -338,7 +338,16 @@ def NormQuantile(p: float) -> float:
 
 
 def Gaus(x: float, mean: float = 0.0, sigma: float = 1.0, norm: bool = False) -> float:
-    return float(special.gaus(x, mean, sigma, norm))
+    """``TMath::Gaus``, of numbers in plain Python - the C library's ``exp``, as
+    :func:`xrdroot.function.special.gaus` uses, without NumPy's cost for one number - which a
+    macro's function, called a point at a time, calls many times over."""
+    if sigma == 0:
+        return special.GAUS_ZERO_WIDTH
+    arg = (float(x) - mean) / sigma
+    if arg < -special.GAUS_CUT or arg > special.GAUS_CUT:
+        return 0.0
+    found = math.exp(-0.5 * arg * arg)
+    return found / (special.SQRT_TWO_PI * sigma) if norm else found
 
 
 def Landau(x: float, mpv: float = 0.0, sigma: float = 1.0, norm: bool = False) -> float:

@@ -13,6 +13,7 @@ namespace bound does not have its own.
 from __future__ import annotations
 
 import importlib
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -44,7 +45,8 @@ class RootProxy:
         """What names are looked up in now: the innermost :meth:`bind`, else pyroot."""
         if self._bound:
             return self._bound[-1]
-        return importlib.import_module(DEFAULT)
+        loaded = sys.modules.get(DEFAULT)  # every name a macro uses comes this way: no import
+        return loaded if loaded is not None else importlib.import_module(DEFAULT)
 
     @contextmanager
     def bind(self, namespace: Any) -> Iterator[Any]:
