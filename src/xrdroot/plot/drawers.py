@@ -195,6 +195,22 @@ def _user_contours(members: Any) -> tuple[float, ...]:
     return tuple(float(one) for one in levels)
 
 
+def _counted(request: Request, members: Any) -> Request:
+    """The request with as many levels as a ``TF2``'s ``SetContour`` asked for, if it did -
+    ``TF2::Paint`` hands its histogram that many, and gStyle's number only with none."""
+    levels = held(members, "fContour")
+    count = 0 if levels is None else len(levels)
+    return request._replace(levels=count) if count else request
+
+
+def _function_levels(members: Any) -> tuple[float, ...]:
+    """A ``TF2``'s levels, when ``SetContour`` was given them; none while they are ``-9999``."""
+    levels = held(members, "fContour")
+    if levels is None or not len(levels) or float(levels[0]) == -9999:
+        return ()
+    return tuple(float(one) for one in levels)
+
+
 def _limits(members: Any) -> tuple[float | None, float | None]:
     """``fMinimum`` and ``fMaximum``, each where it was given - ROOT's ``-1111`` is not."""
     found = [held(members, name) for name in ("fMinimum", "fMaximum")]
@@ -327,8 +343,8 @@ def _function_grid(obj: Function, request: Request) -> tuple[list[Any], Frame]:
     xs, ys = np.meshgrid((xedges[1:] + xedges[:-1]) / 2, (yedges[1:] + yedges[:-1]) / 2)
     values = np.asarray(obj(xs.T.ravel(), ys.T.ravel()), dtype=np.float64)
     values = values.reshape(len(xedges) - 1, len(yedges) - 1)
-    grid = Grid(xedges, yedges, values, styled(obj.members, request))
-    return grid_layers(grid, request.again(chosen)), Frame(title=obj.title)
+    grid = Grid(xedges, yedges, values, styled(obj.members, request), _function_levels(obj.members))
+    return grid_layers(grid, _counted(request, obj.members).again(chosen)), Frame(title=obj.title)
 
 
 def function(obj: Function, request: Request) -> tuple[list[Any], Frame]:

@@ -311,3 +311,24 @@ def test_a_tstring_formula_is_a_formula_not_a_callable() -> None:
     formula = ROOT.TString.Format("0.2*ROOT::Math::chisquared_pdf(2*x,%d,0)", 1)
     g = ROOT.TF1("g_tstring", formula, 0, 9)
     assert g.Eval(1.0) == pytest.approx(0.2 * math.exp(-1.0) / math.sqrt(2 * math.pi * 2.0))
+
+
+def test_a_tf2s_contour_levels_are_kept_and_drawn(monkeypatch: pytest.MonkeyPatch) -> None:
+    from xrdroot.plot import drawers
+    from xrdroot.plot.request import Request
+
+    f2 = ROOT.TF2("f2c", "x*y", -1, 1, -1, 1)
+    assert f2.GetContour() == 0 and f2.GetContourLevel(0) == 0.0
+    f2.SetContour(3)
+    assert f2.GetContour() == 3 and f2.GetContourLevel(1) == -9999.0
+    assert drawers._function_levels(f2._xrd.members) == ()
+    assert drawers._counted(Request(None, {}), f2._xrd.members).levels == 3
+    assert drawers._counted(Request(None, {}), {}).levels == 20
+    f2.SetContour(2, [0.1, 0.5])
+    f2.SetContourLevel(1, 0.7)
+    f2.SetContourLevel(5, 1.0)  # no such level: nothing changes
+    seen = [0.0, 0.0]
+    assert f2.GetContour(seen) == 2 and seen == [0.1, 0.7]
+    assert drawers._function_levels(f2._xrd.members) == (0.1, 0.7)
+    assert drawers._function_levels({}) == ()
+    ROOT.TF2("other", "x", -1, 1, -1, 1).SetContourLevel(0, 1.0)

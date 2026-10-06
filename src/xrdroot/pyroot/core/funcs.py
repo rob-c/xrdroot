@@ -622,6 +622,10 @@ def _gauss_legendre(function: Any, limits: list[float], order: int = 48) -> floa
     return float(scale * np.sum(weight * values))
 
 
+#: ``TF2``'s level not yet given: the painter spreads such levels evenly over the values.
+UNSET_LEVEL = -9999.0
+
+
 class TF2(TF1):
     """``TF2``: a function of two variables."""
 
@@ -639,6 +643,34 @@ class TF2(TF1):
 
     def GetYmax(self) -> float:
         return self.GetRange()[3]
+
+    def SetContour(self, nlevels: Any = 20, levels: Any = None) -> None:
+        """``SetContour(n[, levels])``: the levels the function is drawn with - those given,
+        or ``n`` of them, ROOT's ``-9999`` each until the painter spreads them evenly."""
+        count = max(int(nlevels), 0)
+        given = levels is not None
+        chosen = [float(levels[i]) for i in range(count)] if given else [UNSET_LEVEL] * count
+        self._xrd.members["fContour"] = np.asarray(chosen, dtype=np.float64)
+
+    def _levels(self) -> np.ndarray[Any, Any]:
+        found = self._xrd.members.get("fContour")
+        return np.zeros(0) if found is None else np.asarray(found)
+
+    def GetContour(self, levels: Any = None) -> int:
+        found = self._levels()
+        for i in range(len(found) if levels is not None else 0):
+            levels[i] = float(found[i])
+        return len(found)
+
+    def GetContourLevel(self, level: Any) -> float:
+        found = self._levels()
+        return float(found[int(level)]) if 0 <= int(level) < len(found) else 0.0
+
+    def SetContourLevel(self, level: Any, value: Any) -> None:
+        """``SetContourLevel(i, value)``: one level set, the function's levels the user's."""
+        found = self._xrd.members.get("fContour")
+        if found is not None and 0 <= int(level) < len(found):
+            found[int(level)] = float(value)
 
     def _cells(self) -> tuple[np.ndarray[Any, Any], float, float]:
         """``GetRandom2``'s table: the running integral over ``Npx`` by ``Npy`` cells, x fastest."""
