@@ -144,6 +144,14 @@ def gradient(
     return made
 
 
+def transparent_palette(number: int, alpha: float) -> list[int]:
+    """ROOT's palette ``number`` - ``kBird`` for one not among the gradients here - laid
+    afresh in colours of opacity ``alpha``, as ``SetPalette(n, nullptr, alpha)`` lays it."""
+    channels = GRADIENTS.get(number, GRADIENTS[57])
+    red, green, blue = ([c / 255 for c in channel] for channel in channels)
+    return gradient(STOPS, red, green, blue, PALETTE_SIZE, alpha)
+
+
 def palette_indices(number: int) -> list[int] | None:
     """The colour indices of ROOT's palette ``number``, laid the first time it is asked for.
 

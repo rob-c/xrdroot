@@ -140,3 +140,13 @@ def test_a_gradient_colour_table_becomes_the_palette():
 
 def test_the_style_module_knows_its_names():
     assert style.gStyle.GetName() == "Modern" and "Classic" in style.STYLES
+
+
+def test_a_palette_by_number_takes_a_null_for_its_colours_and_an_opacity():
+    from xrdroot.pyroot.graphics import colors
+
+    ROOT.gStyle.SetPalette(ROOT.kBird, 0, 0.6)
+    laid = ROOT.gStyle.palette()
+    assert len(laid) == 255 and colors.ALPHA[laid[0]] == pytest.approx(0.6)
+    ROOT.gStyle.SetPalette(ROOT.kBird, 0)
+    assert ROOT.gStyle.palette() != laid

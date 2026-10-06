@@ -99,6 +99,7 @@ def test_a_file_read_hands_back_roots_classes_and_keeps_its_histograms(capsys):
         source._private  # noqa: B018
     expect(
         (bool(key.ReadObj() is not None), True),
+        (key.ReadObject["TH1"]().GetName(), key.GetName()),
         (key.GetCycle(), 1),
         (key.GetClassName(), h.ClassName()),
         (bool(key.GetNbytes() > 0), True),

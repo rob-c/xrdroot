@@ -114,10 +114,13 @@ class TStyle:
         self.values["PadTickX"] = int(tick)
 
     def SetPalette(self, ncolors: Any = 57, colors_: Any = None, alpha: float = 1.0) -> None:
-        """``kBird`` and ROOT's other palettes by number, or colours of one's own."""
-        del alpha
-        if colors_ is not None and int(ncolors) > 0:
+        """``kBird`` and ROOT's other palettes by number - in colours of opacity ``alpha`` - or
+        colours of one's own; a ``nullptr``, ``0``, for the colours is none given."""
+        given = colors_ is not None and not (isinstance(colors_, int) and colors_ == 0)
+        if given and int(ncolors) > 0:
             self._palette = [int(c) for c in list(colors_)[: int(ncolors)]]
+        elif float(alpha) < 1.0 and int(ncolors) > 1:
+            self._palette = colors.transparent_palette(int(ncolors), float(alpha))
         else:
             self._palette = colors.palette_indices(int(ncolors))
 

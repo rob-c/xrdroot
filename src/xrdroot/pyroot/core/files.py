@@ -122,7 +122,7 @@ class TKey(TNamed):
         """``ReadObj``: the object this key labels, this cycle of it."""
         return self._directory.Get(f"{self.GetName()};{self._cycle}")
 
-    ReadObjectAny = ReadObj
+    ReadObjectAny = ReadObject = ReadObj
 
     def Print(self, option: str = "") -> None:
         print(f"TKey Name = {self.GetName()}, Title = {self.GetTitle()}, Cycle = {self._cycle}")
