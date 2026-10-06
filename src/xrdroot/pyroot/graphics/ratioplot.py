@@ -344,7 +344,9 @@ class TRatioPlot(TObject):
                 ends = (first, y, last, y)
             else:
                 ends = (first, low, first, low)
-            for setter, value in zip((line.SetX1, line.SetY1, line.SetX2, line.SetY2), ends):
+            for setter, value in zip(
+                (line.SetX1, line.SetY1, line.SetX2, line.SetY2), ends, strict=False
+            ):
                 setter(value)
 
     # -- what it is made of -------------------------------------------------------------------

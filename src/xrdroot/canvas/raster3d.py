@@ -95,7 +95,7 @@ class RasterScreen:
         """``FillPolygonBorder``: the cells a convex face covers, its border's too, now covered."""
         corners = [self.cell(x, y) for x, y in points]
         spans: dict[int, list[int]] = {}
-        for (xa, ya), (xb, yb) in zip(corners, corners[1:] + corners[:1]):
+        for (xa, ya), (xb, yb) in zip(corners, corners[1:] + corners[:1], strict=False):
             for x, y in _edge_cells(xa, ya, xb, yb):
                 low, high = spans.get(y, [x, x])
                 spans[y] = [min(low, x), max(high, x)]

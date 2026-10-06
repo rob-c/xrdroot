@@ -17,7 +17,7 @@ parameter it reaches is differentiated numerically instead.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from typing import Any, Optional, Union
+from typing import Any
 
 import numpy as np
 
@@ -28,7 +28,7 @@ __all__ = ["Env", "Node", "Const", "Var", "Param", "Unary", "Binary", "Cond", "A
 
 Array = Any
 #: A node's derivative with respect to one parameter: nothing, an array, or unknown.
-Tangent = Optional[Union[int, Array]]
+Tangent = int | Array | None
 #: The derivative of a node that does not depend on the parameter asked about.
 ZERO = 0
 
@@ -317,7 +317,7 @@ def _chain(call: Call, values: list[Array], tangents: list[Tangent]) -> Tangent:
     if call.partials is None or any(tangent is None for tangent in tangents):
         return None
     total: Tangent = ZERO
-    for tangent, partial in zip(tangents, call.partials(*values)):
+    for tangent, partial in zip(tangents, call.partials(*values), strict=False):
         if not is_zero(tangent):
             total = _add(total, tangent * partial)
     return total

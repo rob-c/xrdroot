@@ -217,6 +217,6 @@ def split_folds(
     for members in _groups(events, stratified, seed):
         mapping = [i % folds for i in range(len(members))]
         shuffle(mapping, RandomGenerator(seed))
-        for event, fold in zip(members, mapping):
+        for event, fold in zip(members, mapping, strict=False):
             made[fold].append(event)
     return [np.asarray(members, dtype=np.int64) for members in made]

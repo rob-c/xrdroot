@@ -45,7 +45,7 @@ def test_a_column_at_a_time_makes_the_baskets_an_entry_at_a_time_makes():
     hits = np.arange(100, dtype=np.int32).reshape(50, 2)
 
     def by_rows(tree):
-        for energy, hit in zip(energies, hits):
+        for energy, hit in zip(energies, hits, strict=False):
             tree.fill(energy=energy, hits=hit)
 
     def by_columns(tree):

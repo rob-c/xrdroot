@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from typing import Callable
+from collections.abc import Callable
 
 from ...efficiency import beta_quantile, regularized_beta
 from ...stats import incomplete_gamma, incomplete_gamma_c

@@ -12,7 +12,7 @@ for a subtraction, and their overlap for an intersection.
 from __future__ import annotations
 
 import re
-from typing import Any, Union
+from typing import Any
 
 __all__ = ["parse", "leaves", "Leaf", "Node"]
 
@@ -32,7 +32,7 @@ class Leaf(tuple):  # type: ignore[type-arg]
 
 #: An operation: its operator, and the trees on each side of it.
 Node = tuple[str, Any, Any]
-Tree = Union[Leaf, Node]
+Tree = Leaf | Node
 
 
 def _tokens(expression: str) -> list[str]:

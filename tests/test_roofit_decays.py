@@ -59,7 +59,7 @@ def test_the_faddeeva_function_is_roots_to_the_last_bit() -> None:
     ``|w|`` it is under one, so ``w`` is held within 1e-15 of ``|w|``, some nine ulps."""
     z = np.array([complex(*point) for point, _ in FADDEEVA])
     found = faddeeva_fast(z)
-    for w, (_, (re, im)) in zip(found, FADDEEVA):
+    for w, (_, (re, im)) in zip(found, FADDEEVA, strict=False):
         if ROOTS_MACHINE:
             assert (float(w.real), float(w.imag)) == (re, im)
         assert abs(complex(w) - complex(re, im)) <= 1e-15 * abs(complex(re, im))

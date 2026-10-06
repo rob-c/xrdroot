@@ -57,7 +57,7 @@ def positional(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[Any, ...]
     """ROOT's arguments given by name - ``nbinsx=100, xlow=0, xup=1`` - put in their places."""
     if not kwargs:
         return args
-    named = dict(zip(KEYWORDS, args))
+    named = dict(zip(KEYWORDS, args, strict=False))
     named.update(kwargs)
     order = list(KEYWORDS)
     for edges, (low, high) in EDGES.items():
@@ -134,7 +134,7 @@ class Booked:
             return _in_style(Histogram.book("", *[(1, 0.0, 1.0)] * self.DIM, kind=self.KIND))
         specs, _rest = axis_specs(args[2:], self.DIM)
         made = Histogram.book(str(args[0]), *specs, title=str(args[1]), kind=self.KIND)
-        for letter, label in zip("XYZ", str(args[1]).split(";")[1:]):
+        for letter, label in zip("XYZ", str(args[1]).split(";")[1:], strict=False):
             made._core[f"f{letter}axis"]["TNamed"]["fTitle"] = label
         return _in_style(made)
 
@@ -205,7 +205,7 @@ class Booked:
         """``SetTitle("title;x;y")``: the histogram's title, then its axes' titles."""
         parts = str(title).split(";")
         self._core()["TNamed"]["fTitle"] = parts[0]
-        for letter, label in zip("xyz", parts[1:]):
+        for letter, label in zip("xyz", parts[1:], strict=False):
             self._core()[f"f{letter.upper()}axis"]["TNamed"]["fTitle"] = label
 
     def SetXTitle(self, title: Any) -> None:
@@ -300,7 +300,7 @@ class Booked:
         """``PutStats(stats)``: the running sums, ``fTsumw`` first, set from ``stats``."""
         histogram = self._xrd
         homes = histogram._moment_homes()
-        for name, value in zip(histogram._moment_names(), stats):
+        for name, value in zip(histogram._moment_names(), stats, strict=False):
             homes[name][name] = float(value)
 
     def _xrd_statistics(self) -> list[float]:

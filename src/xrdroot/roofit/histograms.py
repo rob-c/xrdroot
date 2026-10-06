@@ -81,9 +81,9 @@ def _book(name: str, axes: list[tuple[Any, Any]]) -> Histogram:
     made = Histogram.book(full, *[list(e) for e in edges], title=f"Histogram of {full}")
     titles = [_titled(var) for var, _ in axes]
     if len(axes) < 3:
-        widths = " x ".join(_width(var, e) for (var, _), e in zip(axes, edges))
+        widths = " x ".join(_width(var, e) for (var, _), e in zip(axes, edges, strict=False))
         titles.append(f"{EVENTS} / ( {widths} )")
-    for letter, title in zip("xyz", titles):
+    for letter, title in zip("xyz", titles, strict=False):
         made._core[f"f{letter.upper()}axis"]["TNamed"]["fTitle"] = title
     return made
 
@@ -148,7 +148,7 @@ def _by_names(func: Any, names: str, counts: tuple[Any, ...]) -> tuple[str, Any,
     variables = [func.variable(one) for one in re.split("[,:]", names) if one]
     bins = [int(one) for one in counts if one is not None] + [0, 0, 0]
     made: list[Any] = [RooCmdArg("Binning", bins[0])] if bins[0] > 0 else []
-    for axis, var, count in zip(("YVar", "ZVar"), variables[1:], bins[1:]):
+    for axis, var, count in zip(("YVar", "ZVar"), variables[1:], bins[1:], strict=False):
         made.append(RooCmdArg(axis, var, *([RooCmdArg("Binning", count)] if count > 0 else [])))
     return func.GetName(), variables[0], tuple(made)
 

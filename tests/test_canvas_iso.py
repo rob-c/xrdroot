@@ -27,7 +27,7 @@ def _corner(value, place):
 
 def _tetra(*values):
     places = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
-    return [_corner(value, place) for value, place in zip(values, places)]
+    return [_corner(value, place) for value, place in zip(values, places, strict=False)]
 
 
 @pytest.mark.parametrize(

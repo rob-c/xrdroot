@@ -62,7 +62,7 @@ class AcceptReject:
         norm = value_of(pdf.integrate(names, {}))
 
         def density(states: tuple[float, ...]) -> float:
-            ctx = {one.GetName(): state for one, state in zip(categories, states)}
+            ctx = {one.GetName(): state for one, state in zip(categories, states, strict=False)}
             return (
                 value_of(pdf.integrate(over, ctx)) / norm
                 if over
@@ -101,7 +101,10 @@ class AcceptReject:
         while True:
             states = self._next()
             if states is not None:
-                return {one.GetName(): state for one, state in zip(self.categories, states)}
+                return {
+                    one.GetName(): state
+                    for one, state in zip(self.categories, states, strict=False)
+                }
             self.cache, self.used = [], 0
             extra = 1 + int(1.05 * remaining / (self.sum / (self.total * self.max)))
             for _ in range(extra):

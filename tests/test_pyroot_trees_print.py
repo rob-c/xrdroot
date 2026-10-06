@@ -58,7 +58,9 @@ def test_print_lays_the_tree_and_every_branch_out_in_roots_table(capsys):
         *_branch(2, "a", "a[n]/F"),
     ]
     assert len(lines) == len(patterns)
-    assert [bool(re.fullmatch(p, line)) for p, line in zip(patterns, lines)] == [True] * len(lines)
+    assert [bool(re.fullmatch(p, line)) for p, line in zip(patterns, lines, strict=False)] == [
+        True
+    ] * len(lines)
     assert {len(line) for line in lines} == {78}
 
 

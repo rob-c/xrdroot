@@ -222,7 +222,7 @@ def workflow():
 
 def test_the_workflow_gives_every_answer_root_gives(capsys):
     found = workflow()
-    for mine, roots in zip(found, ROOTS):
+    for mine, roots in zip(found, ROOTS, strict=False):
         assert mine == roots
     assert len(found) == len(ROOTS)
     assert "Cannot UnZoom if gPad does not exist" in capsys.readouterr().err

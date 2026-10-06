@@ -226,7 +226,7 @@ def paint_multigraph(scene: Scene, mg: MultiGraph, option: str) -> None:
     shared = strip_same(option).replace("A", "")
     listed = mg.members.get("fGraphs") or []
     options = list(getattr(listed, "options", [""] * len(mg)))
-    for graph, own in zip(mg, options):
+    for graph, own in zip(mg, options, strict=False):
         paint_graph(scene, graph, (strip_same(own).replace("A", "") or shared) + " SAME")
     for function in mg.functions:
         if isinstance(function, Function):

@@ -49,7 +49,7 @@ def _binned(lows: Any, highs: Any, values: Any) -> str:
     return "\n".join(
         f"[{low:g}, {high:g})".rjust(24) + f" {bar(value / top if top else 0.0, WIDTH):<{WIDTH}} "
         f"{value:g}"
-        for low, high, value in zip(lows.tolist(), highs.tolist(), values.tolist())
+        for low, high, value in zip(lows.tolist(), highs.tolist(), values.tolist(), strict=False)
     )
 
 
@@ -82,7 +82,7 @@ def stars(x: Any, y: Any) -> str:
     grid = [[" "] * WIDTH for _ in range(HEIGHT)]
     columns = np.round((x - xlo) / ((xhi - xlo) or 1.0) * (WIDTH - 1)).astype(int)
     rows = np.round((y - ylo) / ((yhi - ylo) or 1.0) * (HEIGHT - 1)).astype(int)
-    for column, row in zip(columns.tolist(), rows.tolist()):
+    for column, row in zip(columns.tolist(), rows.tolist(), strict=False):
         grid[HEIGHT - 1 - row][column] = "*"
     lines = [f"{_end(index, ylo, yhi):>10} |{''.join(cells)}|" for index, cells in enumerate(grid)]
     left, right = f"{xlo:g}", f"{xhi:g}"

@@ -73,7 +73,7 @@ def confidence_intervals(result: Any, obj: Any, cl: float = 0.95) -> None:
     elif obj.ClassName() == "TGraphErrors":
         xs = np.asarray(obj.GetX(), dtype=np.float64)[: obj.GetN()]
         values, halves = band(result, xs, cl)
-        for i, (x, y, half) in enumerate(zip(xs, values, halves)):
+        for i, (x, y, half) in enumerate(zip(xs, values, halves, strict=False)):
             obj.SetPoint(i, x, y)
             obj.SetPointError(i, 0.0, half)
     else:
@@ -86,10 +86,11 @@ def _into_histogram(result: Any, h: Any, cl: float) -> None:
     bins = [np.arange(1, axis.GetNbins() + 1) for axis in axes]
     cells = [grid.ravel() for grid in np.meshgrid(*bins, indexing="ij")]
     centres = [
-        np.array([axis.GetBinCenter(int(b)) for b in column]) for axis, column in zip(axes, cells)
+        np.array([axis.GetBinCenter(int(b)) for b in column])
+        for axis, column in zip(axes, cells, strict=False)
     ]
     values, halves = band(result, centres[0] if len(axes) == 1 else np.column_stack(centres), cl)
-    for at, (value, half) in enumerate(zip(values, halves)):
+    for at, (value, half) in enumerate(zip(values, halves, strict=False)):
         bin = h.GetBin(*(int(column[at]) for column in cells))
         h.SetBinContent(bin, value)
         h.SetBinError(bin, half)

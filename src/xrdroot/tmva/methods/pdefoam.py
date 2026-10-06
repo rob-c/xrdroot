@@ -220,7 +220,7 @@ class MethodPDEFoam(Method):
             share = cuts / total if total > 0 else np.zeros_like(cuts)
             importance += (share / np.float32(len(self.foams))).astype(np.float32)
         return "Variable Importance", [
-            (v.label, float(i)) for v, i in zip(self.dsi.variables, importance)
+            (v.label, float(i)) for v, i in zip(self.dsi.variables, importance, strict=False)
         ]
 
     # -- the weight file ------------------------------------------------------------------

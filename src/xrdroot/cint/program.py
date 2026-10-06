@@ -134,7 +134,7 @@ class ClassInfo:
 def _same_signature(one: Function, other: Function) -> bool:
     if len(one.params) != len(other.params):
         return False
-    return all(_same_type(a.ctype, b.ctype) for a, b in zip(one.params, other.params))
+    return all(_same_type(a.ctype, b.ctype) for a, b in zip(one.params, other.params, strict=False))
 
 
 def _same_type(one: CType, other: CType) -> bool:
@@ -143,7 +143,7 @@ def _same_type(one: CType, other: CType) -> bool:
 
 def _merged(declared: Function, defined: Function) -> Function:
     """A definition, with the defaults and qualifiers its declaration had and it may not."""
-    for mine, theirs in zip(defined.params, declared.params):
+    for mine, theirs in zip(defined.params, declared.params, strict=False):
         if mine.default is None:
             mine.default = theirs.default
         if not mine.name:

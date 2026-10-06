@@ -77,4 +77,4 @@ class SampledContext(Context):
     def event(self, remaining: int) -> dict[str, float]:
         with copies.within(self.states):
             point = self.sampler.generate()
-        return {one.GetName(): float(v) for one, v in zip(self.order, point)}
+        return {one.GetName(): float(v) for one, v in zip(self.order, point, strict=False)}

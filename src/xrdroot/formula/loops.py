@@ -262,13 +262,13 @@ class Scope:
         sizes = [cursor.sizes() for cursor in active]
         strong = [
             size if cursor.valid is None else np.where(cursor.valid, size, 0)
-            for cursor, size in zip(active, sizes)
+            for cursor, size in zip(active, sizes, strict=False)
             if not cursor.weak
         ]
         if not strong:  # only weak ones: nothing to cut short, so the longest runs
             strong = [functools.reduce(np.maximum, sizes)]
         space = self.space.expand(functools.reduce(np.minimum, strong))
-        for cursor, size in zip(active, sizes):
+        for cursor, size in zip(active, sizes, strict=False):
             cursor.follow(space, size, size is space.count or np.array_equal(size, space.count))
         return space
 

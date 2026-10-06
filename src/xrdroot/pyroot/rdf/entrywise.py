@@ -54,7 +54,7 @@ def entrywise(function: Callable[..., Any], slot: bool = False,
     @functools.wraps(function)
     def batch(*given: Any) -> Any:
         first, columns = (list(given[:1]), given[1:]) if slot else ([], given)
-        rows = zip(*(_entries(c) for c in columns))
+        rows = zip(*(_entries(c) for c in columns), strict=False)
         return _column([function(*first, *([] if counted else values)) for values in rows])
 
     return batch

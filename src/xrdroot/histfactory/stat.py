@@ -83,7 +83,7 @@ def relative_uncertainty(name: str, pairs: list[tuple[Any, Any]]) -> Any:
 def _configured(gammas: list[Any], sigmas: list[float], threshold: float) -> None:
     """``configureConstrainedGammas``: each gamma ranged to five sigma, given its error -
     constant, with none or below the threshold."""
-    for gamma, sigma in zip(gammas, sigmas):
+    for gamma, sigma in zip(gammas, sigmas, strict=False):
         if sigma <= 0:
             gamma.setConstant(True)
             continue
@@ -110,7 +110,7 @@ def gamma_constraints(gammas: list[Any], sigmas: list[float], threshold: float,
                                f"{len(gammas)} gammas")  # fmt: skip
     _configured(gammas, sigmas, threshold)
     terms, globs = [], []
-    for i, (gamma, sigma) in enumerate(zip(gammas, sigmas)):
+    for i, (gamma, sigma) in enumerate(zip(gammas, sigmas, strict=False)):
         name = gamma.GetName()
         _hf(INFO, f"Creating constraint for: {name}. Type of constraint: {kind}")
         if sigma <= 0:

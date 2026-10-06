@@ -352,7 +352,7 @@ def test_an_array_of_arrays_is_a_block_of_three_dimensions():
         {0: list(range(12))},
         2,
     )
-    for field, size in zip(found._store.schema.fields[:2], (3, 2)):
+    for field, size in zip(found._store.schema.fields[:2], (3, 2), strict=False):
         field.flags, field.array_size = REPETITIVE, size
     found = RNTuple("made", found._store)
     assert found["a"].array().shape == (2, 3, 2)

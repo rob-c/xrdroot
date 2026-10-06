@@ -89,7 +89,7 @@ def arrays(given: Sequence[Any], weight: Any) -> tuple[list[np.ndarray[Any, Any]
 def global_bins(bins: Sequence[Any], widths: Sequence[int]) -> Any:
     """ROOT's global bin number from one per axis: x runs fastest, flow counted."""
     cell = np.zeros_like(bins[0])
-    for found, stride in zip(reversed(bins), reversed(widths)):
+    for found, stride in zip(reversed(bins), reversed(widths), strict=False):
         cell = cell * stride + found
     return cell
 
@@ -97,7 +97,7 @@ def global_bins(bins: Sequence[Any], widths: Sequence[int]) -> Any:
 def _inside(bins: Sequence[Any], axes: Sequence[Axis]) -> Any:
     """Which fills landed on every axis, rather than in a flow bin of one."""
     inside = np.ones(len(bins[0]), dtype=bool)
-    for found, axis in zip(bins, axes):
+    for found, axis in zip(bins, axes, strict=False):
         inside &= (found >= 1) & (found <= axis.nbins)
     return inside
 
@@ -130,7 +130,7 @@ def _fill_cells(cells: Any, index: Any, weights: Any) -> None:
         np.add.at(totals, index, steps)
         cells[:] = np.clip(cells + totals, -top, top)
         return
-    for at, step in zip(index.tolist(), steps.tolist()):
+    for at, step in zip(index.tolist(), steps.tolist(), strict=False):
         cells[at] = min(max(int(cells[at]) + step, -top), top)
 
 
@@ -165,7 +165,7 @@ def axis_terms(weights: Any, coordinates: Sequence[Any]) -> list[tuple[str, Any]
     """
     letters = "xyz"
     terms = [("fTsumw", weights), ("fTsumw2", weights * weights)]
-    for letter, value in zip(letters, coordinates):
+    for letter, value in zip(letters, coordinates, strict=False):
         terms += [
             (f"fTsumw{letter}", weights * value),
             (f"fTsumw{letter}2", weights * value * value),
@@ -185,7 +185,7 @@ def _add_moments(homes: dict[str, dict[str, Any]], terms: list[tuple[str, Any]])
 
 def fill_histogram(histogram: Histogram, coordinates: Sequence[Any], weights: Any) -> None:
     """``TH1::Fill``, ``TH2::Fill`` or ``TH3::Fill`` for every entry, in order."""
-    bins = [axis.find_bin(value) for axis, value in zip(histogram.axes, coordinates)]
+    bins = [axis.find_bin(value) for axis, value in zip(histogram.axes, coordinates, strict=False)]
     cells = global_bins(bins, histogram._widths)
     inside = _inside(bins, histogram.axes)
     split = len(weights) if histogram._sumw2() is not None else _unit_until(weights)
@@ -225,7 +225,7 @@ def fill_profile(profile: Profile, coordinates: Sequence[Any], values: Any, weig
         kept = ~((values < low) | (values > high) | np.isnan(values))
         coordinates = [value[kept] for value in coordinates]
         values, weights = values[kept], weights[kept]
-    bins = [axis.find_bin(value) for axis, value in zip(profile.axes, coordinates)]
+    bins = [axis.find_bin(value) for axis, value in zip(profile.axes, coordinates, strict=False)]
     cells = global_bins(bins, profile._widths)
     inside = _inside(bins, profile.axes)
     split = len(weights) if profile._bin_sumw2() is not None else _unit_until(weights)

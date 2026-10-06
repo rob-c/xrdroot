@@ -67,7 +67,9 @@ class CoefVar(RooAbsReal):
         total: Any = 0.0
         for states in itertools.product(*(list(one.states().values()) for one in summed)):
             point = dict(ctx)
-            point.update({one.GetName(): float(state) for one, state in zip(summed, states)})
+            point.update(
+                {one.GetName(): float(state) for one, state in zip(summed, states, strict=False)}
+            )
             total = total + self.pdf.coef_analytic(self.index, closed, point, rng)
         return total
 

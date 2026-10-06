@@ -13,7 +13,8 @@ A wrapper made for an object already wrapped is the one made before, so
 from __future__ import annotations
 
 import weakref
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 __all__ = ["register", "register_members", "from_members", "wrap", "unwrap", "adopt"]
 

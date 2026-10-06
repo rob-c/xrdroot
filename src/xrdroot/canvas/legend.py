@@ -114,7 +114,7 @@ def legend(scene: Scene, prim: Primitive, _option_: str) -> None:
     if autosize:
         size = _autosize(rows, prim, entries)
     widths = _column_widths(rows, prim, entries, size, autosize)
-    for entry, place in zip(entries, _places(rows, prim, entries, widths)):
+    for entry, place in zip(entries, _places(rows, prim, entries, widths), strict=False):
         _entry(rows, prim, entry, place, (size, autosize))
 
 

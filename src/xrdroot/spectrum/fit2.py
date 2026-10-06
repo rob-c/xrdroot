@@ -120,7 +120,7 @@ class Peak2Model:
 
     def shared(self) -> dict[str, float]:
         """The parameters the peaks share, by name."""
-        return dict(zip(SHARED2, self.param[7 * self.count :]))
+        return dict(zip(SHARED2, self.param[7 * self.count :], strict=False))
 
     def peaks(self) -> peaks2.Peaks2:
         """Every peak's seven parameters."""

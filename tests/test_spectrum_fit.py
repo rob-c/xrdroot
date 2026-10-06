@@ -39,7 +39,7 @@ def spectrum(background: bool = True) -> np.ndarray:
     for i in range(N):
         v = 5.0 + 0.02 * i if background else 0.0
         v = v + 0.5 * ((i * 7) % 5)
-        for mean, area in zip((20.3, 45.7, 61.2, 90.0), (400.0, 900.0, 300.0, 600.0)):
+        for mean, area in zip((20.3, 45.7, 61.2, 90.0), (400.0, 900.0, 300.0, 600.0), strict=False):
             v += area * gaus(i, mean, 2.5)
         out.append(v)
     return np.array(out)

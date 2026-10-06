@@ -108,10 +108,10 @@ def _query(path: str, query: str) -> Columns:
         rows = cursor.fetchall()
         declared = _declared(db, query)
     first = rows[0] if rows else [None] * len(names)
-    kinds = [_cxx(d, value) for d, value in zip(declared, first)]
+    kinds = [_cxx(d, value) for d, value in zip(declared, first, strict=False)]
     columns = {name: _column([row[i] for row in rows], kind)
-               for i, (name, kind) in enumerate(zip(names, kinds))}  # fmt: skip
-    return Columns(columns, dict(zip(names, kinds)), "RSqliteDS")
+               for i, (name, kind) in enumerate(zip(names, kinds, strict=False))}  # fmt: skip
+    return Columns(columns, dict(zip(names, kinds, strict=False)), "RSqliteDS")
 
 
 def from_sqlite(name: str, query: str) -> Columns:

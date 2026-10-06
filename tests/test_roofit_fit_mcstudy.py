@@ -100,7 +100,7 @@ def test_a_study_generates_and_fits_each_sample_as_root_does(capsys: Any) -> Non
         3,
     )
     assert sorted(data.get().names()) == sorted(ROOT_ORDER)
-    for found, expected in zip(_rows(data, ROOT_ORDER), BASIC):
+    for found, expected in zip(_rows(data, ROOT_ORDER), BASIC, strict=False):
         assert found == pytest.approx(expected, rel=1e-7)
 
 
@@ -163,7 +163,7 @@ def test_an_extended_study_draws_a_poisson_number_of_events_for_each_sample() ->
             0.24228773227098474,
         ],
     ]
-    for found, row in zip(_rows(study.fitParDataSet(), ROOT_ORDER), expected):
+    for found, row in zip(_rows(study.fitParDataSet(), ROOT_ORDER), expected, strict=False):
         assert found == pytest.approx(row, rel=1e-7)
     assert generator().Rndm() == 0.9967236891388893
 
@@ -212,7 +212,7 @@ def test_a_binned_study_fits_histograms_of_each_sample() -> None:
             -0.7268830234576387,
         ],
     ]
-    for found, row in zip(_rows(study.fitParDataSet(), ROOT_ORDER), expected):
+    for found, row in zip(_rows(study.fitParDataSet(), ROOT_ORDER), expected, strict=False):
         assert found == pytest.approx(row, rel=1e-7)
     assert generator().Rndm() == 0.4363430186640471
 
@@ -260,7 +260,7 @@ def test_samples_generated_first_can_be_fitted_after_with_the_same_results() -> 
     study = RooMCStudy(g, [x], Silence=True, FitOptions={"PrintLevel": -1, "Save": True})
     study.generate(3, 40)
     assert study.fit(3) is False
-    for found, expected in zip(_rows(study.fitParDataSet(), ROOT_ORDER), BASIC):
+    for found, expected in zip(_rows(study.fitParDataSet(), ROOT_ORDER), BASIC, strict=False):
         assert found == pytest.approx(expected, rel=1e-7)
     assert study.fitResult(1).minNll() == pytest.approx(84.7959472146875, abs=1e-9)
 
@@ -310,7 +310,7 @@ FIT_NAMES = ["m2", "s2", "NLL", "m2err", "m2pull", "s2err", "s2pull"]
 def test_a_study_can_fit_another_model_than_it_generates_with() -> None:
     """``FitModel`` fits a second model to the first's samples: ROOT's values and errors."""
     rows = _rows(_fit_model_study().fitParDataSet(), FIT_NAMES)
-    for found, expected in zip(rows, FIT_MODEL):
+    for found, expected in zip(rows, FIT_MODEL, strict=False):
         assert found[:4] == pytest.approx(expected[:4], rel=1e-7)
         assert found[5] == pytest.approx(expected[5], rel=1e-7)
 
@@ -321,7 +321,7 @@ def test_another_models_parameters_pull_against_the_generators_in_the_same_place
     pull against, warns that it did, and names the dataset after both models."""
     data = _fit_model_study().fitParDataSet()
     assert data.GetName() == "fitParData_g2_g"
-    for found, expected in zip(_rows(data, FIT_NAMES), FIT_MODEL):
+    for found, expected in zip(_rows(data, FIT_NAMES), FIT_MODEL, strict=False):
         assert found == pytest.approx(expected, rel=1e-7)
 
 

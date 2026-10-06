@@ -46,7 +46,7 @@ class Stats:
         ranges = [np.arange(axis.GetFirst(), axis.GetLast() + 1) for axis in self._axes()]
         grids = np.meshgrid(*ranges, indexing="ij")
         found = np.zeros(grids[0].shape, dtype=np.int64)
-        for grid, width in zip(reversed(grids), reversed(self._widths())):
+        for grid, width in zip(reversed(grids), reversed(self._widths()), strict=False):
             found = found * width + grid
         return found.ravel(order="F")
 
@@ -245,7 +245,7 @@ class Stats:
 
     def FindBin(self, x: Any, y: float = 0.0, z: float = 0.0) -> int:
         """``FindBin(x[, y[, z]])``: the global bin, flow counted."""
-        found = [axis.FindBin(value) for axis, value in zip(self._axes(), (x, y, z))]
+        found = [axis.FindBin(value) for axis, value in zip(self._axes(), (x, y, z), strict=False)]
         return self.GetBin(*found)  # type: ignore[attr-defined,no-any-return]
 
     FindFixBin = FindBin

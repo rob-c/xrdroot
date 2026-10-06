@@ -64,7 +64,7 @@ def inflated(histogram: Any, at: int) -> Any:
 
 
 def _carry_labels(made: Any, axes: list[Any]) -> None:
-    for letter, axis in zip("XYZ", axes):
+    for letter, axis in zip("XYZ", axes, strict=False):
         row = made._core[f"f{letter}axis"]
         row["_labels"] = dict(axis._labels())
         row["fBits2"] = axis._row.get("fBits2", 0)
@@ -104,5 +104,5 @@ def sorted_by_label(histogram: Any, order: str) -> None:
     if errors is not None:
         errors[bins] = errors[chosen]
     axis._labels().clear()
-    for bin, old in zip(bins, chosen):
+    for bin, old in zip(bins, chosen, strict=False):
         axis.SetBinLabel(bin, labels[old])

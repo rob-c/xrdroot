@@ -181,7 +181,10 @@ class RooFitResult(RooPrintable):
         values = _global_cc(self._cov)
         if par is None:
             return RooArgList(
-                [RooRealVar(f"GC[{n}]", "", float(v)) for n, v in zip(self._final.names(), values)]
+                [
+                    RooRealVar(f"GC[{n}]", "", float(v))
+                    for n, v in zip(self._final.names(), values, strict=False)
+                ]
             )
         return float(
             values[self._final.names().index(par if isinstance(par, str) else par.GetName())]
@@ -206,7 +209,7 @@ class RooFitResult(RooPrintable):
         draws = np.array([generator().Gaus() for _ in range(len(self._cov))])
         shifted = np.array([p.getVal() for p in self._final]) + chol @ draws
         made = RooArgList([p.clone(p.GetName()) for p in self._final])
-        for par, value in zip(made, shifted):
+        for par, value in zip(made, shifted, strict=False):
             par.setVal(float(value))
         return made
 
@@ -299,7 +302,7 @@ class RooFitResult(RooPrintable):
                 "--------\n"
             )
         correlations = _global_cc(self._cov) if self._show_global else None
-        for index, (start, par) in enumerate(zip(self._init, self._final)):
+        for index, (start, par) in enumerate(zip(self._init, self._final, strict=False)):
             text += f"{indent}  {par.GetName():>20}{indent}  {start.getVal():12.4e}"
             text += f"{indent}  {par.getVal():12.4e}"
             if par.hasAsymError():

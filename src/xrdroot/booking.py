@@ -153,9 +153,9 @@ def _made_axes(
     """All three ``TAxis`` members, the unused ones the one-bin axis ROOT keeps."""
     made = [
         axis_members(f"{letter}axis", axis.nbins, axis.low, axis.high, axis.stored)
-        for letter, axis in zip("xyz", axes)
+        for letter, axis in zip("xyz", axes, strict=False)
     ]
-    for axis, label in zip(made, titles):
+    for axis, label in zip(made, titles, strict=False):
         axis["TNamed"]["fTitle"] = str(label)
     while len(made) < 3:
         made.append(axis_members("xyz"[len(made)] + "axis", 1, 0.0, 1.0, []))

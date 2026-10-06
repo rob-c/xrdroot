@@ -123,7 +123,7 @@ def test_a_cdf_is_the_normalised_integral_up_to_the_value() -> None:
     y, g = gaussian()
     cdf = g.createCdf(RooArgSet(y))
     expected = [0.15865505823732884, 0.5, 0.9772501416608274]
-    for value, want in zip((-1.0, 0.0, 2.0), expected):
+    for value, want in zip((-1.0, 0.0, 2.0), expected, strict=False):
         y.setVal(value)
         assert cdf.getVal() == pytest.approx(want, rel=1e-15)
     found = cdf.compute({"y": np.array([-1.0, 0.0, 2.0])})

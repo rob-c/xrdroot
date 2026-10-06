@@ -441,7 +441,7 @@ def _bind(macro: Macro, arguments: list[list[Token]], where: Where) -> dict[str,
             f"{macro.name}() is a macro of {len(params)} arguments, used with {len(arguments)}",
             where,
         )
-    named = dict(zip(params, arguments))
+    named = dict(zip(params, arguments, strict=False))
     if macro.variadic:
         named["__VA_ARGS__"] = _joined_arguments(arguments[len(params) :], where)
     return named

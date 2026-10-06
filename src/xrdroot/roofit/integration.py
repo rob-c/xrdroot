@@ -217,8 +217,10 @@ def _integrator(func: Any, numeric: list[str], rng: Any) -> str:
         return "RooBinIntegrator"
     if len(numeric) > 1:
         return "RooAdaptiveIntegratorND"
-    return "RooImproperIntegrator1D" if any(np.isinf(func.bounds(numeric[0], rng))) else (
-        "RooIntegrator1D"
+    return (
+        "RooImproperIntegrator1D"
+        if any(np.isinf(func.bounds(numeric[0], rng)))
+        else ("RooIntegrator1D")
     )
 
 
@@ -305,13 +307,16 @@ def _bins(
     with the last variable's bins innermost."""
     import itertools
 
-    grids = [_edges(func, name, float(low), float(high)) for name, (low, high) in zip(rest, bounds)]
+    grids = [
+        _edges(func, name, float(low), float(high))
+        for name, (low, high) in zip(rest, bounds, strict=False)
+    ]
     total: Any = 0.0
     carry: Any = 0.0
     for cell in itertools.product(*(range(len(edges) - 1) for edges in grids)):
         c = dict(ctx)
         delta, width = 1.0, 1.0
-        for number, (name, edges, index) in enumerate(zip(rest, grids, cell)):
+        for number, (name, edges, index) in enumerate(zip(rest, grids, cell, strict=False)):
             lo, hi = edges[index], edges[index + 1]
             c[name] = (hi + lo) / 2.0
             if number < len(rest) - 1:

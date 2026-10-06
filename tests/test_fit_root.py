@@ -158,5 +158,7 @@ def test_the_minuit_example_pyroots_tests_check_gives_its_numbers():
     result = minimize(fcn, [3, 1, 0.1, 0.01], errors=[0.1, 0.1, 0.01, 0.001], tolerance=1.0)
     assert result.valid
     expected = [(2.15, 0.10), (0.81, 0.25), (0.17, 0.40), (0.10, 0.16)]
-    for (value, error_), found, err in zip(expected, result.parameters, result.errors):
+    for (value, error_), found, err in zip(
+        expected, result.parameters, result.errors, strict=False
+    ):
         assert round(found - value, 2) == 0 and round(err - error_, 2) == 0

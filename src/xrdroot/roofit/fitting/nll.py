@@ -125,7 +125,7 @@ class RooNLLVar(RooAbsReal):
         values = np.broadcast_arrays(*(np.asarray(ctx[one.GetName()], float) for one in given))
         saved = [one.getVal() for one in given]
         found = self._scanned(given, values)
-        for one, value in zip(given, saved):
+        for one, value in zip(given, saved, strict=False):
             one.setVal(value)
         return found if found.ndim else float(found)
 
@@ -133,7 +133,7 @@ class RooNLLVar(RooAbsReal):
         """The likelihood at each point of the broadcast ``values`` of the parameters ``given``."""
         found = np.empty(values[0].shape)
         for index in np.ndindex(found.shape):
-            for one, column in zip(given, values):
+            for one, column in zip(given, values, strict=False):
                 one.setVal(float(column[index]))
             found[index] = self.evaluate_nll()
         return found

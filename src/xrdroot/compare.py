@@ -294,7 +294,7 @@ def _chi2_ranges(one: Histogram, other: Histogram, opt: str) -> list[tuple[int, 
             f"{one.name!r} has {len(one.axes)} axes and {other.name!r} {len(other.axes)}, and "
             f"the chi-square test compares them bin by bin"
         )
-    for letter, mine, theirs in zip("xyz", one.axes, other.axes):
+    for letter, mine, theirs in zip("xyz", one.axes, other.axes, strict=False):
         if mine.nbins != theirs.nbins:
             raise ValueError(
                 f"{one.name!r} has {mine.nbins} {letter} bins and {other.name!r} "
@@ -415,7 +415,7 @@ def _uw(bins: _Bins, ndf: int, where: Any) -> tuple[float, int, int, np.ndarray[
     """A count against a weighted histogram, bin by bin as ROOT loops - its total nudged too."""
     state = [bins.sum1, 0.0, 0.0, 0.0]
     chi2, thin1, thin2, residuals = 0.0, 0, 0, []
-    rows = zip(bins.c1.tolist(), bins.c2.tolist(), bins.e2.tolist())
+    rows = zip(bins.c1.tolist(), bins.c2.tolist(), bins.e2.tolist(), strict=False)
     for at, (cnt1, cnt2, e2sq) in enumerate(rows):
         if cnt1 * cnt1 == 0 and cnt2 * cnt2 == 0:
             ndf -= 1
@@ -555,7 +555,9 @@ def chi2_test_full(one: Histogram, other: Histogram, option: str) -> Chi2Result:
 
     def where(at: int) -> str:
         found = np.unravel_index(at, shape)
-        return "(" + ", ".join(str(int(i) + r[0]) for i, r in zip(found, ranges)) + ")"
+        return (
+            "(" + ", ".join(str(int(i) + r[0]) for i, r in zip(found, ranges, strict=False)) + ")"
+        )
 
     chi2, ndf, igood, residuals = TESTS[mode](bins, ndf, where)
     return Chi2Result(chi2, ndf, igood, prob(chi2, ndf), residuals)

@@ -60,7 +60,7 @@ def _nodes(dump: list[str]) -> dict[str, list[Any]]:
     for index, text in enumerate(dump):
         order, ids = _flattened(json.loads(text), len(rows["tree"]))
         for node in order:
-            for name, value in zip(COLUMNS, (index, *_row(node, ids))):
+            for name, value in zip(COLUMNS, (index, *_row(node, ids)), strict=False):
                 rows[name].append(value)
     return rows
 

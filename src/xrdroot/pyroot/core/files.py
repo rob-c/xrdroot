@@ -407,7 +407,7 @@ class TDirectoryFile(TDirectory):
         keys = [
             key for key in self._keys if not pattern or fnmatch.fnmatchcase(key.GetName(), pattern)
         ]
-        for key, mark in zip(keys, _listing_marks(keys)):
+        for key, mark in zip(keys, _listing_marks(keys), strict=False):
             key.ls(mark)
 
     def _write_trees(self) -> None:

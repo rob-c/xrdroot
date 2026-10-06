@@ -72,7 +72,7 @@ def _trap_corners(dz: float, theta: float, phi: float, faces: Sequence[Sequence[
     t = math.tan(math.radians(theta))
     tx, ty = t * math.cos(math.radians(phi)), t * math.sin(math.radians(phi))
     corners = []
-    for z, (h, bl, tl, alpha) in zip((-dz, dz), faces):
+    for z, (h, bl, tl, alpha) in zip((-dz, dz), faces, strict=False):
         ta = math.tan(math.radians(alpha))
         x0, y0 = z * tx, z * ty
         corners += [(x0 - h * ta - bl, y0 - h), (x0 + h * ta - tl, y0 + h),

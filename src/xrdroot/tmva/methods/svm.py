@@ -148,7 +148,9 @@ class MethodSVM(Method):
             fOrder=int(self.opt("Order")),
             NSupVec=len(self.alphas),
         )
-        for number_, (alpha, flag, vector) in enumerate(zip(self.alphas, self.flags, self.vectors)):
+        for number_, (alpha, flag, vector) in enumerate(
+            zip(self.alphas, self.flags, self.vectors, strict=False)
+        ):
             row = [number_ + 1, flag, alpha, 0.0, *vector]
             weights.add("SupportVector", Rows=1, Columns=len(row)).block(row, 15)
         infos = self.dsi.variables

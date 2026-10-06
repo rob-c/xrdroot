@@ -63,7 +63,7 @@ class SimpleLikelihoodRatioTestStat(TestStatistic):
         null, alt = list(self._null), list(self._alt)
         if sorted(p.GetName() for p in null) != sorted(p.GetName() for p in alt):
             return False
-        return all(a.getVal() == b.getVal() for a, b in zip(null, alt))
+        return all(a.getVal() == b.getVal() for a, b in zip(null, alt, strict=False))
 
     def SetConditionalObservables(self, items: Any) -> None:
         self._cond = RooArgSet(as_list(items))

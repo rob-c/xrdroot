@@ -41,7 +41,9 @@ class Roo1DTable(RooPrintable):
 
     def printValue(self) -> str:
         parts = [
-            f"{label}={g(count)}" for label, count in zip(self.labels, self.counts) if count > 0
+            f"{label}={g(count)}"
+            for label, count in zip(self.labels, self.counts, strict=False)
+            if count > 0
         ]
         return "(" + ",".join(parts) + ")"
 
@@ -50,7 +52,7 @@ class Roo1DTable(RooPrintable):
         digits = int(math.log10(max([1.0, *self.counts]))) + 1
         rule = f"{indent}  +-{'-' * width}-+-{'-' * digits}-+\n"
         text = f"{indent}\n{indent}  Table {self._name} : {self._title}\n" + rule
-        for label, count in zip(self.labels, self.counts):
+        for label, count in zip(self.labels, self.counts, strict=False):
             if count > 0 or verbose:
                 text += f"  | {label:>{width}} | {g(count):>{digits}} |\n"
         return text + rule + f"{indent}\n"
@@ -90,7 +92,7 @@ def table_of(data: Any, category: Any, cut: Any = None) -> Roo1DTable:
 def _count(columns: list[Any], weights: Any, indices: list[int]) -> float:
     """The weight of the events in the states ``indices``, one of each category."""
     mask = np.ones(len(weights), dtype=bool)
-    for column, index in zip(columns, indices):
+    for column, index in zip(columns, indices, strict=False):
         mask &= column == index
     return float(np.sum(weights[mask]))
 

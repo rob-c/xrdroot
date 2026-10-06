@@ -180,7 +180,7 @@ class String(Node):
         raw = bytes(self.column(store, cluster, 1, begin, begin + int(offsets[-1])))
         return [
             raw[start:stop].decode("utf-8", "surrogateescape")
-            for start, stop in zip(offsets[:-1].tolist(), offsets[1:].tolist())
+            for start, stop in zip(offsets[:-1].tolist(), offsets[1:].tolist(), strict=False)
         ]
 
 
@@ -225,7 +225,10 @@ class Collection(Node):
         if self.jagged:
             return Jagged(items, offsets)
         items = rows(items)
-        return [self.shape(items[a:b]) for a, b in zip(offsets[:-1].tolist(), offsets[1:].tolist())]
+        return [
+            self.shape(items[a:b])
+            for a, b in zip(offsets[:-1].tolist(), offsets[1:].tolist(), strict=False)
+        ]
 
     def shape(self, items: list[Any]) -> Any:
         return items
@@ -318,7 +321,7 @@ class Record(Node):
 
     @property
     def typename(self) -> str:
-        pairs = zip(self.names, self.members)
+        pairs = zip(self.names, self.members, strict=False)
         inside = ", ".join(f"{name}: {node.typename}" for name, node in pairs)
         return "{" + inside + "}"
 
@@ -326,7 +329,9 @@ class Record(Node):
         if not self.members:
             return [{} for _ in range(hi - lo)]
         columns = [rows(node.read(store, cluster, lo, hi)) for node in self.members]
-        return [dict(zip(self.names, values)) for values in zip(*columns)]
+        return [
+            dict(zip(self.names, values, strict=False)) for values in zip(*columns, strict=False)
+        ]
 
     @property
     def names(self) -> list[str]:
@@ -349,7 +354,7 @@ class Tuple(Record):
 
     def read(self, store: Store, cluster: Cluster | None, lo: int, hi: int) -> Any:
         columns = [rows(node.read(store, cluster, lo, hi)) for node in self.members]
-        return list(zip(*columns))
+        return list(zip(*columns, strict=False))
 
 
 class Variant(Node):
@@ -386,7 +391,7 @@ class Variant(Node):
     ) -> None:
         first = int(where.min())
         values = rows(node.read(store, cluster, first, int(where.max()) + 1))
-        for position, index in zip(at.tolist(), where.tolist()):
+        for position, index in zip(at.tolist(), where.tolist(), strict=False):
             out[position] = values[index - first]
 
 

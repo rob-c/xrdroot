@@ -48,7 +48,7 @@ def observables(names: list[str], hist: Any, ws: Any) -> RooArgList:
 
     found = RooArgList()
     axes = [hist.GetXaxis(), hist.GetYaxis(), hist.GetZaxis()]
-    for name, axis in zip(names, axes):
+    for name, axis in zip(names, axes, strict=False):
         if ws.var(name) is None:
             obs = emplace(ws, RooRealVar, name, axis.GetXmin(), axis.GetXmax())
             if axis.GetTitle():

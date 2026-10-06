@@ -134,7 +134,7 @@ def test_a_variable_the_density_does_not_depend_on_is_drawn_uniformly_after_it()
     for label, index in (("B", 3), ("A", 1), ("C", 7)):
         c.defineType(label, index)
     data = g.generate([x, y, c], 4)
-    rows = list(zip(_column(data, "x"), _column(data, "y"), _column(data, "c")))
+    rows = list(zip(_column(data, "x"), _column(data, "y"), _column(data, "c"), strict=False))
     assert rows == [
         (1.9978654352187961, 0.8145493769552559, 3.0),
         (1.5635925123910157, 1.1582827137317508, 1.0),
@@ -163,7 +163,7 @@ def test_sums_products_and_conditional_products_draw_roots_events_in_turn() -> N
     gy = RooGaussian("gy", "gy", y, RooConstVar("two", "", 2), RooConstVar("one", "", 1))
     prod = RooProdPdf("prod", "prod", [g, gy])
     data = prod.generate([x, y], 3)
-    assert list(zip(_column(data, "x"), _column(data, "y"))) == [
+    assert list(zip(_column(data, "x"), _column(data, "y"), strict=False)) == [
         (-3.846468667580453, 2.149059345813937),
         (-3.8431369418445582, 0.4737658347003162),
         (-2.5118401564207, 0.74873879365623),
@@ -171,7 +171,7 @@ def test_sums_products_and_conditional_products_draw_roots_events_in_turn() -> N
     gc = RooGaussian("gc", "gc", x, y, s)
     cprod = RooProdPdf("cprod", "cprod", [gy], RooCmdArg("Conditional", [gc], [x]))
     data = cprod.generate([x, y], 3)
-    assert list(zip(_column(data, "x"), _column(data, "y"))) == [
+    assert list(zip(_column(data, "x"), _column(data, "y"), strict=False)) == [
         (1.307724561127713, 2.9837936905312676),
         (-0.5422426671529577, 1.6089083882980049),
         (8.413123339388592, 3.951401982176443),

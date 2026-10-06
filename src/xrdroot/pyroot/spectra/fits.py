@@ -68,7 +68,9 @@ def _flags(values: Any, count: int) -> list[bool]:
 
 def _kept(old: Array, new: list[float | None]) -> Array:
     """``new``, but ``old`` where ROOT leaves an error as it was."""
-    return np.array([o if n is None else n for o, n in zip(old.tolist(), new)], dtype=np.float64)
+    return np.array(
+        [o if n is None else n for o, n in zip(old.tolist(), new, strict=False)], dtype=np.float64
+    )
 
 
 class TSpectrumFit(_Options, TNamed):
@@ -114,7 +116,7 @@ class TSpectrumFit(_Options, TNamed):
             return
         count, low, high = self.fNPeaks, self._settings.xmin, self._settings.xmax
         positions, amplitudes = vector_in(positionInit, count), vector_in(ampInit, count)
-        for position, amplitude in zip(positions.tolist(), amplitudes.tolist()):
+        for position, amplitude in zip(positions.tolist(), amplitudes.tolist(), strict=False):
             if not low <= int(position) <= high:
                 self.Error("SetPeakParameters",
                            "Invalid peak position, must be in the range fXmin, fXmax")  # fmt: skip
@@ -194,7 +196,7 @@ class TSpectrumFit(_Options, TNamed):
     def _get(self, names: tuple[str, ...], targets: tuple[Any, ...]) -> tuple[float, ...]:
         """Each named value and its error, put where ``targets`` say and handed back too."""
         found = tuple(x for name in names for x in (self._calc[name], self._err[name]))
-        for target, value in zip(targets, found):
+        for target, value in zip(targets, found, strict=False):
             store(target, value)
         return found
 

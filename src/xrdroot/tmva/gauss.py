@@ -44,7 +44,7 @@ def _edges(values: Any, weights: Any) -> list[float]:
     per_bin = max(np.float32(total / NBINSMAX), np.float32(np.min(ordered_weights) * NEVMIN))
     edges = [float(ordered[0] - EDGE_EPS), float(ordered[0])]
     running, last = np.float32(0), ordered[0]
-    for value, weight in zip(ordered, ordered_weights):
+    for value, weight in zip(ordered, ordered_weights, strict=False):
         running = np.float32(running + weight)
         if running >= per_bin and value > last:
             edges.append(float(value))

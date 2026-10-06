@@ -25,7 +25,7 @@ def counts():
     """Four bins: 1 of 4 passed, 3 of 3, 0 of 2, and nothing tried in the last."""
     passed = ROOT.TH1D("p_divide", "", 4, 0, 4)
     total = ROOT.TH1D("t_divide", "", 4, 0, 4)
-    for i, (p, t) in enumerate(zip((1, 3, 0, 0), (4, 3, 2, 0))):
+    for i, (p, t) in enumerate(zip((1, 3, 0, 0), (4, 3, 2, 0), strict=False)):
         passed.SetBinContent(i + 1, p)
         total.SetBinContent(i + 1, t)
     return passed, total

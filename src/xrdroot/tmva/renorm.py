@@ -41,7 +41,7 @@ def _factors(samples: list[list[Events]], mode: str, dsi: DataSetInfo) -> list[f
     sizes = [float(np.float32(len(train))) for train, _ in samples]
     totals = [float(np.sum(train.weights)) for train, _ in samples]
     if mode == "NUMEVENTS":
-        return [_ratio(size, total) for size, total in zip(sizes, totals)]
+        return [_ratio(size, total) for size, total in zip(sizes, totals, strict=False)]
     if mode == "EQUALNUMEVENTS":
         _explain_equal(dsi)
         return [_ratio(sizes[0], total) for total in totals]
@@ -70,7 +70,7 @@ def _table(dsi: DataSetInfo, samples: list[list[Events]], counts: list[ClassCoun
     width = dsi.GetClassNameMaxLength()
     log.info("Number of training and testing events")
     log.info("-" * 75)
-    for info, (train, test), count in zip(dsi.classes, samples, counts):
+    for info, (train, test), count in zip(dsi.classes, samples, counts, strict=False):
         name = info.name.ljust(width)
         log.info(f"{name} -- training events            : {len(train)}")
         log.info(f"{name} -- testing events             : {len(test)}")
@@ -95,7 +95,7 @@ def renormalise(
             "use original global and event weights"
         )
         return
-    for (train, _), factor in zip(samples, _factors(samples, mode, dsi)):
+    for (train, _), factor in zip(samples, _factors(samples, mode, dsi), strict=False):
         train.weights = train.weights * factor
     _table(dsi, samples, counts)
     _sums(dsi, samples)
@@ -109,7 +109,7 @@ def summary(dsi: DataSetInfo, counts: list[ClassCounts]) -> None:
         return
     width = dsi.GetClassNameMaxLength()
     prefix = f"Dataset[{dsi.name}] :     "
-    for info, count in zip(dsi.classes, counts):
+    for info, count in zip(dsi.classes, counts, strict=False):
         name = info.name.ljust(width)
         log.info(f'{prefix}{name} requirement: "{info.cut}"')
         log.info(

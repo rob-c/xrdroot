@@ -107,7 +107,7 @@ class RooMCStudy:
 
     def _fit_sample(self, sample: Any) -> None:
         """``fitSample``: the fit parameters reset to their start, the fit, and its row if good."""
-        for par, start in zip(self.fit_params, self.fit_init):
+        for par, start in zip(self.fit_params, self.fit_init, strict=False):
             par.copy_value_from(start)
         if sample.sumEntries() <= 0:
             return

@@ -46,7 +46,7 @@ def _channels(names: list[str], workspaces: list[Any]) -> tuple[Any, Any, dict[s
     _hf(INFO, f"full list of observables:\n({listed})")
     glob = RooArgSet()
     pdfs = {}
-    for i, (name, ws) in enumerate(zip(names, workspaces)):
+    for i, (name, ws) in enumerate(zip(names, workspaces, strict=False)):
         if i == 0 and name[:1].isdigit():
             raise ValueError(f"The first channel name for HistFactory cannot start with a digit. "
                              f"Got {name}")  # fmt: skip
@@ -63,7 +63,7 @@ def _combined_data(combined: Any, names: list[str], workspaces: list[Any], obser
     for data in workspaces[0].allData():
         if data.GetName() == "asimovData":
             continue
-        parts = {n: ws.data(data.GetName()) for n, ws in zip(names, workspaces)}
+        parts = {n: ws.data(data.GetName()) for n, ws in zip(names, workspaces, strict=False)}
         combined.Import(RooDataSet(data.GetName(), "", list(observables),
                                    RooCmdArg("Index", category),
                                    RooCmdArg("WeightVar", "weightVar"),

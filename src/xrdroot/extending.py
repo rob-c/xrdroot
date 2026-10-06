@@ -41,8 +41,8 @@ DOUBLINGS = 64
 def new_limits(low: float, high: float, point: float) -> tuple[float, float] | None:
     """``TH1::FindNewAxisLimits``: the axis doubled until ``point`` is on it, or ``None``.
 
-        >>> new_limits(0.0, 1.0, 2.5)
-        (0.0, 4.0)
+    >>> new_limits(0.0, 1.0, 2.5)
+    (0.0, 4.0)
     """
     if low >= high:
         return None
@@ -77,7 +77,8 @@ def _moved(histogram: Histogram, old: tuple[Axis, ...], index: int) -> tuple[Arr
     """Where each old cell's contents go on the new axes, and which of them are kept."""
     bins = _cell_bins(histogram._widths)
     found = [
-        new.find_bin(axis.root_centers()[at]) for at, axis, new in zip(bins, old, histogram.axes)
+        new.find_bin(axis.root_centers()[at])
+        for at, axis, new in zip(bins, old, histogram.axes, strict=False)
     ]
     extended = bins[index]
     kept = (extended >= 1) & (extended <= old[index].nbins)
@@ -116,7 +117,7 @@ def _first_off(histogram: Histogram, coordinates: Sequence[Array], start: int) -
     A histogram also stops at a NaN, which ends its extending altogether.
     """
     moves = np.zeros(len(coordinates[0]) - start, dtype=bool)
-    for axis, values in zip(histogram.axes, coordinates):
+    for axis, values in zip(histogram.axes, coordinates, strict=False):
         part = values[start:]
         moves |= np.isfinite(part) & ((part < axis.low) | (part >= axis.high))
         if not isinstance(histogram, Profile):
@@ -127,7 +128,7 @@ def _first_off(histogram: Histogram, coordinates: Sequence[Array], start: int) -
 
 def _meet(histogram: Histogram, point: Sequence[float]) -> bool:
     """``FindBin`` along each axis in turn for one fill: whether the axes can still extend."""
-    for index, (axis, value) in enumerate(zip(histogram.axes, point)):
+    for index, (axis, value) in enumerate(zip(histogram.axes, point, strict=False)):
         if np.isnan(value) and not isinstance(histogram, Profile):
             return False
         if np.isfinite(value) and not axis.low <= value < axis.high:

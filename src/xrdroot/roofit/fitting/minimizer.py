@@ -172,7 +172,7 @@ class RooMinimizer:
 
     def _fcn(self, x: Any) -> float:
         """``RooMinimizerFcn::operator()``: set the parameters, evaluate, say so if verbose."""
-        for par, value in zip(self.params, x):
+        for par, value in zip(self.params, x, strict=False):
             if par.getVal() != float(value):
                 if self.verbose:
                     cout.write(f"{par.GetName()}={g(float(value), PRECISION[0])}, ")

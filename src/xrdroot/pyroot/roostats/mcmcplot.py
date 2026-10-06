@@ -46,7 +46,7 @@ def posterior_hist(interval: Any) -> Any:
         )
     hist.SetDirectory(0)
     columns = [chain.values(a.GetName(), start) for a in axes]
-    for point, weight in zip(zip(*columns), chain.weights(start)):
+    for point, weight in zip(zip(*columns, strict=False), chain.weights(start), strict=False):
         hist.Fill(*point, weight)
     hist.GetXaxis().SetTitle(axes[0].GetName())
     if len(axes) > 1:

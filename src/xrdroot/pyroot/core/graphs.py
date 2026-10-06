@@ -322,7 +322,7 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
             return
         if i >= self.GetN():
             self.Set(i + 1)
-        for key, value in zip(self._bars, errors):
+        for key, value in zip(self._bars, errors, strict=False):
             self._bars[key][i] = float(value)
         self._changed()
 
@@ -496,11 +496,11 @@ class TGraphAsymmErrors(TGraph):
         points = divide(passed, total, option)
         if points is None:
             return
-        columns = [np.array(column, dtype=np.float64) for column in zip(*points)] or [
+        columns = [np.array(column, dtype=np.float64) for column in zip(*points, strict=False)] or [
             np.zeros(0) for _ in range(6)
         ]
         self._points = (columns[0], columns[1])
-        self._bars = dict(zip(("exl", "exh", "eyl", "eyh"), columns[2:]))
+        self._bars = dict(zip(("exl", "exh", "eyl", "eyh"), columns[2:], strict=False))
         self._changed()
         if "v" in str(option).lower():
             self.Print()

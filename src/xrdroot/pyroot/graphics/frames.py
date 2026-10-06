@@ -57,7 +57,7 @@ class FrameHistogram:
     def SetTitle(self, title: str) -> None:
         main, *axes = str(title).split(";")
         self._xrd._core["TNamed"]["fTitle"] = main
-        for axis, name in zip(axes, ("fXaxis", "fYaxis")):
+        for axis, name in zip(axes, ("fXaxis", "fYaxis"), strict=False):
             self._xrd._core[name]["TNamed"]["fTitle"] = axis
 
     def Draw(self, option: str = "") -> None:

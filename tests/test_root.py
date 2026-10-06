@@ -769,7 +769,7 @@ def crafted_histogram(classname: str, bins: list[float], *shape: int) -> Histogr
             "fXmax": float(count),
             "fXbins": array.array("d"),
         }
-        for letter, count in zip("XYZ", shape)
+        for letter, count in zip("XYZ", shape, strict=False)
     }
     core = {
         "TNamed": {"fName": "h", "fTitle": ""},

@@ -431,12 +431,12 @@ def _smoothed_once(xx: list[float]) -> list[float]:
     zz = list(xx)
     _running_medians(zz)
     smooth = _hanned(_flat_tops(zz))
-    rest = [x - z for x, z in zip(xx, smooth)]
+    rest = [x - z for x, z in zip(xx, smooth, strict=False)]
     _running_medians(rest)
     rest = _hanned(_flat_tops(rest))
     if min(xx) < 0:
-        return [r + z for r, z in zip(smooth, rest)]
-    return [max(r + z, 0.0) for r, z in zip(smooth, rest)]
+        return [r + z for r, z in zip(smooth, rest, strict=False)]
+    return [max(r + z, 0.0) for r, z in zip(smooth, rest, strict=False)]
 
 
 def smooth_array(values: Any, ntimes: int = 1) -> np.ndarray[Any, Any]:

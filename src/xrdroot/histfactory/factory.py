@@ -138,7 +138,7 @@ class HistoToWorkspaceFactoryFast:
             shapes.append(func)
         else:
             params = interpolation_parameters(sample.GetHistoSysList(), ws)
-            for param, sys in zip(params, sample.GetHistoSysList()):
+            for param, sys in zip(params, sample.GetHistoSysList(), strict=False):
                 make_gaussian_constraint(param, ws, sys.GetName() in meas.GetUniformSyst(),
                                          state["constraints"])  # fmt: skip
             shapes.append(lin_interp(params, func, ws, sample.GetHistoSysList(),

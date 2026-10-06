@@ -94,7 +94,7 @@ class RooAddPdf(RooAbsPdf):
     def _recursive_coefs(self, pdfs: list[Any], coefs: list[Any]) -> list[Any]:
         made: list[Any] = []
         given: list[Any] = []
-        for pdf, coef in zip(pdfs, [*coefs, RooConstVar("1", "1", 1.0)]):
+        for pdf, coef in zip(pdfs, [*coefs, RooConstVar("1", "1", 1.0)], strict=False):
             given.append(coef)
             if len(given) == 1:
                 made.append(coef)
@@ -151,7 +151,9 @@ class RooAddPdf(RooAbsPdf):
         """
         coefs = self.coefficients(ctx, nset)
         if rng and nset:
-            coefs = [c * share for c, share in zip(coefs, self._shares(ctx, nset, rng))]
+            coefs = [
+                c * share for c, share in zip(coefs, self._shares(ctx, nset, rng), strict=False)
+            ]
             projected: Any = 0.0
             for coef in coefs:
                 projected = projected + coef
@@ -159,7 +161,7 @@ class RooAddPdf(RooAbsPdf):
         else:
             rng = None if nset else rng
         total: Any = 0.0
-        for coef, pdf in zip(coefs, self.pdfs):
+        for coef, pdf in zip(coefs, self.pdfs, strict=False):
             if active(pdf):
                 total = total + coef * pdf.value(ctx, nset, rng)
         return total
@@ -192,7 +194,7 @@ class RooAddPdf(RooAbsPdf):
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
         total: Any = 0.0
-        for coef, pdf in zip(self.coefficients(ctx), self.pdfs):
+        for coef, pdf in zip(self.coefficients(ctx), self.pdfs, strict=False):
             total = total + coef * pdf.integrate(names, ctx, rng)
         return total
 
@@ -200,7 +202,7 @@ class RooAddPdf(RooAbsPdf):
         self, names: frozenset[str], ctx: Context, nset: Any, rng: Any, norm_rng: Any = None
     ) -> Any:
         total: Any = 0.0
-        for coef, pdf in zip(self.coefficients(ctx, nset), self.pdfs):
+        for coef, pdf in zip(self.coefficients(ctx, nset), self.pdfs, strict=False):
             total = total + coef * pdf.fraction(names, ctx, nset, rng, norm_rng)
         return total
 
@@ -225,7 +227,10 @@ class RooAddPdf(RooAbsPdf):
         else:
             yields = [float(c.getVal()) for c in self.coefs]
         if rng and nset:
-            yields = [float(share) * y for share, y in zip(self._shares({}, nset, rng), yields)]
+            yields = [
+                float(share) * y
+                for share, y in zip(self._shares({}, nset, rng), yields, strict=False)
+            ]
         total = 0.0
         for one in yields:
             total += one
@@ -246,7 +251,9 @@ class RooAddPdf(RooAbsPdf):
 
     def printMetaArgs(self) -> str:
         """``RooRealSumPdf::printMetaArgs``: ``f * sig + [%] * bkg``."""
-        parts = [f"{c.GetName()} * {p.GetName()}" for c, p in zip(self.coefs, self.pdfs)]
+        parts = [
+            f"{c.GetName()} * {p.GetName()}" for c, p in zip(self.coefs, self.pdfs, strict=False)
+        ]
         if len(self.pdfs) > len(self.coefs):
             parts.append(f"[%] * {self.pdfs[len(self.coefs)].GetName()}")
         if not len(self.coefs):
@@ -262,7 +269,7 @@ class RooAddPdf(RooAbsPdf):
             else p.GetName()
             for p in self.pdfs
         ]
-        parts = [f"{c.GetName()} * {label}" for c, label in zip(self.coefs, labels)]
+        parts = [f"{c.GetName()} * {label}" for c, label in zip(self.coefs, labels, strict=False)]
         if len(labels) > len(self.coefs):
             parts.append(f"[%] * {labels[len(self.coefs)]}")
         return f"RooAddPdf::{self._name}[ " + " + ".join(parts) + " ]"

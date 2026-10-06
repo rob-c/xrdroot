@@ -85,14 +85,16 @@ class RooDataHist(RooAbsData):
             )
         self._weights = np.zeros(len(grid))
         self._sumw2 = np.zeros(len(grid))
-        for one, centre in zip(self._vars, grid[-1]):  # RooFit's variables end at the last bin
+        for one, centre in zip(
+            self._vars, grid[-1], strict=False
+        ):  # RooFit's variables end at the last bin
             one.setVal(float(centre))
 
     def _bin_of(self, columns: dict[str, Any]) -> np.ndarray[Any, Any]:
         """The flat bin number of each event, or -1 for one outside every range."""
         flat = np.zeros(len(next(iter(columns.values()))), dtype=np.int64)
         valid = np.ones(len(flat), dtype=bool)
-        for one, edges in zip(self._vars, self._edges()):
+        for one, edges in zip(self._vars, self._edges(), strict=False):
             values = np.asarray(columns[one.GetName()], dtype=np.float64)
             found = np.searchsorted(edges, values, side="right") - 1
             found = np.where(values == edges[-1], len(edges) - 2, found)
@@ -116,7 +118,9 @@ class RooDataHist(RooAbsData):
         offsets = [self._adjust(var, histogram.axes[i]) for i, var in enumerate(chosen)]
         self._empty()
         values, errors = histogram.values(), histogram.errors()
-        window = tuple(slice(o, o + one.getBins()) for o, one in zip(offsets, self._vars))
+        window = tuple(
+            slice(o, o + one.getBins()) for o, one in zip(offsets, self._vars, strict=False)
+        )
         self._weights = np.asarray(values[window], dtype=np.float64).reshape(-1).copy()
         self._sumw2 = np.asarray(errors[window], dtype=np.float64).reshape(-1) ** 2
         if density:

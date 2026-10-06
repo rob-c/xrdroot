@@ -434,7 +434,7 @@ class Efficiency(Displayed):
         passed, total = self._counts(flow)
         if chosen in FREQUENTIST:
             one = FREQUENTIST[chosen]
-            pairs = [one(p, t, level) for p, t in zip(passed.ravel(), total.ravel())]
+            pairs = [one(p, t, level) for p, t in zip(passed.ravel(), total.ravel(), strict=False)]
         else:
             pairs = self._bayesian(chosen, passed, total, level, flow)
         low = np.array([pair[0] for pair in pairs], dtype=np.float64).reshape(passed.shape)
@@ -456,7 +456,7 @@ class Efficiency(Displayed):
             )
         alpha, beta = self._priors(method, passed.shape, flow)
         a, b = (passed + alpha).ravel(), (total - passed + beta).ravel()
-        return [_central(float(x), float(y), level) for x, y in zip(a, b)]
+        return [_central(float(x), float(y), level) for x, y in zip(a, b, strict=False)]
 
     def errors(
         self, level: float | None = None, method: str | None = None, flow: bool = False

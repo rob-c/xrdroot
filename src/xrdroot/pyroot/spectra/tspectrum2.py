@@ -116,8 +116,8 @@ class TSpectrum2(Peaks):
         hb = h.Clone(name)
         hb.Reset()
         hb.GetListOfFunctions().Delete()
-        for row, i in zip(source, xs):
-            for value, j in zip(row, ys):
+        for row, i in zip(source, xs, strict=False):
+            for value, j in zip(row, ys, strict=False):
                 hb.SetBinContent(i, j, value)
         hb.SetEntries(len(xs) * len(ys))
         if "same" in opt:

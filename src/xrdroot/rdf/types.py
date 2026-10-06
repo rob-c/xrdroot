@@ -107,6 +107,6 @@ def describe(frame: RDataFrame) -> str:
         f"{'Column':<{width}}{'Type':<{wide}}Origin",
         f"{'------':<{width}}{'----':<{wide}}------",
     ]
-    for name, kind in zip(names, types):
+    for name, kind in zip(names, types, strict=False):
         lines.append(f"{name:<{width}}{kind:<{wide}}{frame._columns[name].origin}")
     return "\n".join(lines)

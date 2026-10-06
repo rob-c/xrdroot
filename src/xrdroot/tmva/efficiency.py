@@ -14,8 +14,9 @@ own code does it.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 
@@ -125,7 +126,7 @@ def _scan(curve: Callable[[Any], Any], reference: float) -> float:
     effs = (np.arange(1, 1001) - 0.5) / np.float32(1000)
     effb = curve(effs)
     previous_s = previous_b = 0.0
-    for eff_s, eff_b in zip(effs, effb):
+    for eff_s, eff_b in zip(effs, effb, strict=False):
         if (eff_b - reference) * (previous_b - reference) <= 0:
             return 0.5 * (float(eff_s) + previous_s)
         previous_s, previous_b = float(eff_s), float(eff_b)

@@ -91,7 +91,7 @@ def _fill(out: Any, init: Any) -> None:
         values = _flat(init)[: out.shape[0]]
         out[: len(values)] = values
         return
-    for row, values in zip(out, init):
+    for row, values in zip(out, init, strict=False):
         _fill(row, values)
 
 
@@ -135,7 +135,7 @@ class Overloaded:
     def __call__(self, *args: Any) -> Any:
         fitting = [c for c in self.candidates if c[1] <= len(args) <= c[2]]
         for function, _, _, kinds in fitting:
-            if all(_fits(value, kind) for value, kind in zip(args, kinds)):
+            if all(_fits(value, kind) for value, kind in zip(args, kinds, strict=False)):
                 return function(*args)
         if fitting:
             return fitting[0][0](*args)

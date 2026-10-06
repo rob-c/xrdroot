@@ -166,7 +166,7 @@ class FFTCache:
         others = [(i, name) for i, name in enumerate(self.names) if i != self.axis]
         centres = [self.axes[i].centres(np.arange(self.axes[i].count)) for i, _ in others]
         grid = np.meshgrid(*centres, indexing="ij") if centres else []
-        return [(name, values.reshape(-1)) for (_, name), values in zip(others, grid)]
+        return [(name, values.reshape(-1)) for (_, name), values in zip(others, grid, strict=False)]
 
     def _sampled(
         self, pdf: Any, norm: float, shift: float, ctx: Context
@@ -223,7 +223,9 @@ class FFTCache:
         key = tuple(float(np.asarray(one.compute(ctx)).reshape(-1)[0]) for one in params)
         if key != self._key:
             self._key = key
-            self._grid = self._filled({one.GetName(): v for one, v in zip(params, key)})
+            self._grid = self._filled(
+                {one.GetName(): v for one, v in zip(params, key, strict=False)}
+            )
         return self._grid
 
     def _groups(self, ctx: Context) -> Iterator[tuple[Any, Context]]:
@@ -238,7 +240,7 @@ class FFTCache:
         for row, found in enumerate(values):
             keep = inverse.reshape(-1) == row
             one = {k: v[keep] if np.ndim(v) else v for k, v in flat.items()}
-            one.update({p.GetName(): float(v) for p, v in zip(params, found)})
+            one.update({p.GetName(): float(v) for p, v in zip(params, found, strict=False)})
             yield keep, one
 
     def per_event(self, ctx: Context, read: Any) -> Any:
@@ -269,7 +271,9 @@ class FFTCache:
         points, shape = self._points(ctx)
         widths = np.meshgrid(*(a.widths() for a in self.axes), indexing="ij")
         found = self._looked_up(weights / np.prod(widths, axis=0), points)
-        inside = np.all([(p >= a.low) & (p <= a.high) for a, p in zip(self.axes, points)], axis=0)
+        inside = np.all(
+            [(p >= a.low) & (p <= a.high) for a, p in zip(self.axes, points, strict=False)], axis=0
+        )
         found = np.maximum(np.where(inside, found, 0.0), 0.0).reshape(shape)
         return found if found.ndim else float(found)
 
@@ -279,7 +283,7 @@ class FFTCache:
         if order > 0 and len(points) <= 2:
             rows = clone_rows(self.hist_obs[-1], self.axes[-1].low, self.axes[-1].high)
             return weights_interpolated(self.axes, density, points, order, rows=rows)
-        return density[tuple(a.numbers(p) for a, p in zip(self.axes, points))]
+        return density[tuple(a.numbers(p) for a, p in zip(self.axes, points, strict=False))]
 
     def analytic_over(self, names: frozenset[str]) -> bool:
         return sums_over(self.conv.pdf_observables(self.hist_obs), names)

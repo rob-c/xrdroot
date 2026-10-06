@@ -307,10 +307,10 @@ class TreeMerge:
             done = move_baskets(
                 written, column, branch.record, tree._source, verbatim=verbatim, in_place=in_place
             )
-            moved = [a + b for a, b in zip(moved, done)]
+            moved = [a + b for a, b in zip(moved, done, strict=False)]
             self._carry_leaf(column, branch)
         written._entries += tree.num_entries
-        self.moved = Moved(*(a + b for a, b in zip(self.moved, moved)))
+        self.moved = Moved(*(a + b for a, b in zip(self.moved, moved, strict=False)))
 
     def _carry_leaf(self, column: Any, branch: Branch) -> None:
         """What a branch's record says about its values, said again for the column."""

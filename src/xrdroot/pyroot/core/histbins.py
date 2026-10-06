@@ -33,9 +33,12 @@ class Bins:
     def GetBin(self, binx: int, biny: int = 0, binz: int = 0) -> int:
         """``GetBin``: the global bin of ``(binx, biny, binz)``, each clamped to its flow bins."""
         widths = self._widths()
-        parts = [min(max(int(b), 0), width - 1) for b, width in zip((binx, biny, binz), widths)]
+        parts = [
+            min(max(int(b), 0), width - 1)
+            for b, width in zip((binx, biny, binz), widths, strict=False)
+        ]
         total = 0
-        for part, width in zip(reversed(parts), reversed(widths)):
+        for part, width in zip(reversed(parts), reversed(widths), strict=False):
             total = total * width + part
         return total
 
@@ -48,7 +51,7 @@ class Bins:
             rest, part = divmod(rest, width)
             found.append(part)
         found += [0] * (3 - len(found))
-        for target, value in zip((binx, biny, binz), found):
+        for target, value in zip((binx, biny, binz), found, strict=False):
             store(target, value)
         return tuple(found)
 
@@ -101,7 +104,7 @@ class Bins:
         axes = self._axes()  # type: ignore[attr-defined]
         letters = [
             letter
-            for letter, axis, value in zip("xyz", axes, args)
+            for letter, axis, value in zip("xyz", axes, args, strict=False)
             if isinstance(value, str) and axis.CanExtend() and axis.IsAlphanumeric()
         ]
         core = self._core()

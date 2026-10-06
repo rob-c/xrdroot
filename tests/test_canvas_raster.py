@@ -44,12 +44,14 @@ def test_a_dashed_style_is_a_quarter_of_each_of_gstyles_dash_lengths_and_a_solid
 
 
 def test_solid_lines_are_drawn_straight_by_the_column_or_by_bresenham_from_the_left_or_brushed():
-    assert sorted(zip(*segment_pixels(3, 0, 3, 2, 2))) == [(2, 0), (2, 1), (2, 2), (3, 0), (3, 1),
-                                                           (3, 2)]  # fmt: skip
+    pixels = zip(*segment_pixels(3, 0, 3, 2, 2), strict=False)
+    assert sorted(pixels) == [(2, 0), (2, 1), (2, 2), (3, 0), (3, 1), (3, 2)]
     # given right to left, Bresenham walks from the left and leaves the last pixel, (4, 2), off
-    assert set(zip(*segment_pixels(4, 2, 0, 0))) == {(0, 0), (1, 1), (2, 1), (3, 2)}
-    assert set(zip(*segment_pixels(0, 0, 1, 4))) == {(0, 0), (0, 1), (1, 2), (1, 3)}
-    brushed = set(zip(*segment_pixels(0, 0, 2, 1, 2)))  # a two-pixel brush on each of 3 pixels
+    assert set(zip(*segment_pixels(4, 2, 0, 0), strict=False)) == {(0, 0), (1, 1), (2, 1), (3, 2)}
+    assert set(zip(*segment_pixels(0, 0, 1, 4), strict=False)) == {(0, 0), (0, 1), (1, 2), (1, 3)}
+    brushed = set(
+        zip(*segment_pixels(0, 0, 2, 1, 2), strict=False)
+    )  # a two-pixel brush on each of 3 pixels
     assert brushed == {(-1, -1), (-1, 0), (0, -1), (0, 0), (0, 1), (1, 0), (1, 1), (2, 0),
                        (2, 1)}  # fmt: skip
 
@@ -62,8 +64,9 @@ def test_a_dashed_line_across_counts_its_dashes_and_gaps_a_pixel_at_a_time_from_
 
 def test_a_dashed_line_down_is_dashed_from_its_top_as_many_columns_as_it_is_thick():
     xs, ys = dashed_pixels(0, 5, 0, 0, 2, (2, 1))
-    assert sorted(zip(ys, xs)) == [(0, -1), (0, 0), (1, -1), (1, 0), (3, -1), (3, 0), (4, -1),
-                                   (4, 0)]  # fmt: skip
+    assert sorted(zip(ys, xs, strict=False)) == [
+        (0, -1), (0, 0), (1, -1), (1, 0), (3, -1), (3, 0), (4, -1), (4, 0)
+    ]  # fmt: skip
 
 
 def test_a_thick_dashed_line_across_is_as_many_rows_as_it_is_thick_from_half_above_it():
@@ -76,13 +79,21 @@ def test_a_thin_slanted_dashed_line_keeps_its_first_pixel_and_dashes_the_rest_sh
     whole = segment_pixels(0, 0, 10, 5)
     xs, ys = dashed_pixels(0, 0, 10, 5, 1, (3, 2))
     # 3 and 2 times the cosine of the slope round to 3 and 2: the second pixel is the first's
-    assert list(zip(xs, ys)) == [(0, 0), (0, 0), (1, 1), (2, 1), (5, 3), (6, 3), (7, 4)]
-    assert set(zip(xs, ys)) <= set(zip(*whole))
+    assert list(zip(xs, ys, strict=False)) == [
+        (0, 0),
+        (0, 0),
+        (1, 1),
+        (2, 1),
+        (5, 3),
+        (6, 3),
+        (7, 4),
+    ]
+    assert set(zip(xs, ys, strict=False)) <= set(zip(*whole, strict=False))
 
 
 def test_a_thick_slanted_dashed_line_is_a_square_brush_stamped_a_dash_at_a_time():
     xs, ys = dashed_pixels(0, 0, 20, 10, 3, (4, 2))
-    stamped = set(zip(xs, ys))
+    stamped = set(zip(xs, ys, strict=False))
     assert {(-1, -1), (1, 1), (19, 10)} <= stamped
     # dashes of 1.79 pixels across and gaps of 3.58: the brush leaves only column 9 bare
     assert sorted({x for x, _ in stamped}) == [*range(-1, 9), *range(10, 20)]
@@ -93,7 +104,9 @@ def test_a_thick_slanted_dashed_line_is_walked_from_its_left_end_whichever_way_i
     down = dashed_pixels(0, 0, 20, 10, 3, (4, 2))
     assert dashed_pixels(20, 10, 0, 0, 3, (4, 2)) == down
     up = dashed_pixels(0, 10, 20, 0, 3, (4, 2))
-    assert sorted(zip(up[0], (10 - y for y in up[1]))) == sorted(zip(*down))
+    assert sorted(zip(up[0], (10 - y for y in up[1]), strict=False)) == sorted(
+        zip(*down, strict=False)
+    )
 
 
 def test_dashes_of_an_odd_count_are_not_dashes_and_the_line_is_drawn_solid():

@@ -49,7 +49,7 @@ class Matrix:
     def geant(cls, *angles: float) -> Matrix:
         """GEANT3's ``theta1, phi1, theta2, phi2, theta3, phi3``: each axis's direction."""
         columns = []
-        for theta, phi in zip(angles[0::2], angles[1::2]):
+        for theta, phi in zip(angles[0::2], angles[1::2], strict=False):
             t, p = DEGRAD * theta, DEGRAD * phi
             columns.append([math.cos(p) * math.sin(t), math.sin(p) * math.sin(t), math.cos(t)])
         rotation = np.array([[_snapped(v) for v in row] for row in np.transpose(columns)])

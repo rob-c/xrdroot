@@ -48,7 +48,7 @@ def binned_terms(
                              weights.shape)  # fmt: skip
     total, events = Kahan(), Kahan()
     bad: list[tuple[int, float]] = []
-    for index, (m, n) in enumerate(zip(mu.tolist(), weights.tolist())):
+    for index, (m, n) in enumerate(zip(mu.tolist(), weights.tolist(), strict=False)):
         if m <= 0 and n > 0:
             bad.append((index, n))
             continue

@@ -48,7 +48,7 @@ def read_file(tree: Any, filename: str, descriptor: str, delimiter: str) -> int:
         descriptor, wanted = wanted[0].strip(), wanted[1:]
     addresses = _branches(tree, descriptor)
     for line in wanted:
-        for address, value in zip(addresses, _values(line, delimiter)):
+        for address, value in zip(addresses, _values(line, delimiter), strict=False):
             address.put(value if address.text else float(value))
         tree.Fill()
     return len(wanted)

@@ -149,7 +149,9 @@ class Pad:
         self.colors: list[list[Any]] = [entry for entry in held if _is_colors(entry)]
         #: What the pad draws, in order, each with the option it was drawn with.
         self.primitives: list[tuple[Any, str]] = [
-            (entry, str(option)) for entry, option in zip(held, options) if not _is_colors(entry)
+            (entry, str(option))
+            for entry, option in zip(held, options, strict=False)
+            if not _is_colors(entry)
         ]
 
     def get(self, name: str, default: Any = None) -> Any:

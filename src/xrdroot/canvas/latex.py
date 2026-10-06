@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from . import fonts, latexmarks
 from .latexform import EMPTY, Box, Form, Mark, Spec, placed

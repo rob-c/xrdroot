@@ -180,11 +180,7 @@ class RooNonCentralChiSquare(RooAbsPdf):
         return float(total)
 
     def _not_converged(self, what: str, where: str, error: float) -> None:
-        """Say once, as ROOT says it, that the sum ran out of terms before it converged.
-
-        A method of its own, so that Python 3.9 traces the loop's two breaks as
-        the later versions do.
-        """
+        """Say once, as ROOT says it, that the sum ran out of terms before it converged."""
         if self._warned_convergence:
             return
         self._warned_convergence = True

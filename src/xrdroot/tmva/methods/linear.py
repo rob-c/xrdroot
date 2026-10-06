@@ -35,7 +35,7 @@ def formatted_values(
     column = max(len(title_values) + 1, width)
     rule = "-" * (width + column + 3)
     rows = [rule, title_vars.rjust(width) + ":" + title_values.rjust(column + 1) + ":", rule]
-    for label, value in zip(labels, values):
+    for label, value in zip(labels, values, strict=False):
         rows.append(label.rjust(width) + ":" + fmt.format(value).rjust(column + 1))
     return [*rows, rule]
 
@@ -101,7 +101,7 @@ class MethodLD(Method):
 
     def ranking(self) -> tuple[str, list[tuple[str, float]]]:
         labels = [variable.label for variable in self.dsi.variables]
-        return "Discr. power", list(zip(labels, np.abs(self.coefficients[0, 1:])))
+        return "Discr. power", list(zip(labels, np.abs(self.coefficients[0, 1:]), strict=False))
 
     def add_weights(self, node: Node) -> None:
         nout, ncoeff = self.coefficients.shape
@@ -152,7 +152,7 @@ class MethodFisher(Method):
 
     def ranking(self) -> tuple[str, list[tuple[str, float]]]:
         labels = [variable.label for variable in self.dsi.variables]
-        return "Discr. power", list(zip(labels, self.power))
+        return "Discr. power", list(zip(labels, self.power, strict=False))
 
     def add_weights(self, node: Node) -> None:
         weights = node.add("Weights", NCoeff=len(self.coefficients) + 1)
@@ -180,7 +180,7 @@ class _Classes:
     def __init__(self, values: Any, weights: Any, signal: Any) -> None:
         self.parts = ((values[signal], weights[signal]), (values[~signal], weights[~signal]))
         self.totals = tuple(float(np.sum(w)) for _, w in self.parts)
-        self.means = tuple(w @ v / t for (v, w), t in zip(self.parts, self.totals))
+        self.means = tuple(w @ v / t for (v, w), t in zip(self.parts, self.totals, strict=False))
         (v_s, w_s), (v_b, w_b) = self.parts
         self.mean = (w_s @ v_s + w_b @ v_b) / (self.totals[0] + self.totals[1])
 

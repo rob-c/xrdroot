@@ -78,7 +78,9 @@ def _each(exact: Callable[[float], float], fast: Callable[[Any], Any], values: A
 def choose_pow(fast: Callable[[Any, Any], Any], exact: Callable[[float, float], float]) -> Any:
     """``fast`` if it raises as ``exact`` does on a grid of bases and powers, else ``exact``."""
     bases, powers = np.meshgrid(np.linspace(0.0, 20.0, 66)[1:], np.linspace(-12.0, 12.0, 63))
-    found = [exact(b, p) for b, p in zip(bases.ravel().tolist(), powers.ravel().tolist())]
+    found = [
+        exact(b, p) for b, p in zip(bases.ravel().tolist(), powers.ravel().tolist(), strict=False)
+    ]
     if np.array_equal(fast(bases.ravel(), powers.ravel()), found):
         return fast
     return lambda base, power: _each_pair(exact, fast, base, power)
@@ -89,7 +91,7 @@ def _each_pair(
 ) -> Any:
     """``exact`` of every pair of elements, broadcast as NumPy broadcasts them."""
     base, power = np.broadcast_arrays(np.asarray(base, np.float64), np.asarray(power, np.float64))
-    pairs = zip(base.ravel().tolist(), power.ravel().tolist())
+    pairs = zip(base.ravel().tolist(), power.ravel().tolist(), strict=False)
     found = (_ieee(exact, fast, b, p) for b, p in pairs)
     flat = np.fromiter(found, dtype=np.float64, count=base.size)
     return flat.reshape(base.shape)[()]

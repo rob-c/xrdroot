@@ -223,7 +223,7 @@ class Joined(Source):
         bounds = self.boundaries()
         pieces = [
             part.read(name, max(start, low) - low, min(stop, high) - low)
-            for part, low, high in zip(self.parts(), bounds, bounds[1:])
+            for part, low, high in zip(self.parts(), bounds, bounds[1:], strict=False)
             if max(start, low) < min(stop, high)
         ]
         return concatenate(pieces) if pieces else self.parts()[0].read(name, 0, 0)

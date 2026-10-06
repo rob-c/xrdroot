@@ -66,7 +66,7 @@ def _draw(screen: RasterScreen, segments: list[Segment], ends: tuple[Any, Any],
 
 def _box(view: View3D, screen: RasterScreen, corners: list[Any], draw: Any) -> None:
     """One bin's box: each face towards the eye outlined where in sight, then covered."""
-    for face, normal in zip(FACES, NORMALS):
+    for face, normal in zip(FACES, NORMALS, strict=False):
         if view.normal(*normal) <= 0:
             continue
         points = [corners[k] for k in face]

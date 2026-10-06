@@ -126,7 +126,7 @@ def _dashed_straight(x1: int, y1: int, x2: int, y2: int, thick: int,
     across = y1 == y2
     ends = sorted((x1, x2)) if across else sorted((y1, y2))
     half = _half(thick)
-    along = zip(range(ends[0], ends[1] + 1), _dash_states(dashes))
+    along = zip(range(ends[0], ends[1] + 1), _dash_states(dashes), strict=False)
     kept = [at for at, on in along if on]
     if across:
         top = y1 - half
@@ -140,7 +140,7 @@ def _dashed_slanted(x1: int, y1: int, x2: int, y2: int, dashes: tuple[int, ...])
     shrink = math.cos(math.atan2(abs(y2 - y1), abs(x2 - x1)))
     shortened = [max(round(length * shrink), 0) for length in dashes]
     xs, ys = _bresenham(x1, y1, x2, y2)
-    along = zip(xs[1:], ys[1:], _dash_states(shortened))
+    along = zip(xs[1:], ys[1:], _dash_states(shortened), strict=False)
     kept = [(x, y) for x, y, on in along if on]
     return [xs[0]] + [x for x, _ in kept], [ys[0]] + [y for _, y in kept]
 
@@ -200,7 +200,7 @@ def polyline_pixels(points: np.ndarray[Any, Any], thick: int = 1,
     xs: list[int] = []
     ys: list[int] = []
     whole = np.asarray(points, dtype=np.int64)
-    for (x1, y1), (x2, y2) in zip(whole[:-1].tolist(), whole[1:].tolist()):
+    for (x1, y1), (x2, y2) in zip(whole[:-1].tolist(), whole[1:].tolist(), strict=False):
         if dashes and len(dashes) % 2 == 0:
             more = dashed_pixels(x1, y1, x2, y2, thick, dashes)
         else:

@@ -87,7 +87,9 @@ class TRandom2(TRandom):
                 int.from_bytes(raw[i : i + 4], "little") for i in (0, 4, 8, 12)
             )
             words = [first, second, (third + fourth) % UINT]
-        self._registers = [_floored(word, floor) for word, floor in zip(words, FLOORS)]
+        self._registers = [
+            _floored(word, floor) for word, floor in zip(words, FLOORS, strict=False)
+        ]
         self._engine_fill(6)
 
     def _engine_fill(self, count: int) -> Any:

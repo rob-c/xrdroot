@@ -159,7 +159,7 @@ class TPad(Drawn):
     def GetRange(self, *cells: Any) -> tuple[float, float, float, float]:
         ends = (self.members[name] for name in ("fX1", "fY1", "fX2", "fY2"))
         values = tuple(float(v) for v in ends)
-        for cell, value in zip(cells, values):
+        for cell, value in zip(cells, values, strict=False):
             cell.value = value
         return values  # type: ignore[return-value]
 

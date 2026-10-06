@@ -122,14 +122,14 @@ def _histogram(histogram: Histogram, entries: int | None) -> Iterator[str]:
     total = f"  sum: {text(histogram.sum())}" if counted else ""
     yield f"  entries: {text(histogram.entries)}{total}"
     edges = [histogram.edges(axis) for axis in range(len(histogram.shape))]
-    for axis, (letter, along) in enumerate(zip("xyz", edges)):
+    for axis, (letter, along) in enumerate(zip("xyz", edges, strict=False)):
         mean = f"  mean: {histogram.mean(axis):.6g}  std: {histogram.std(axis):.6g}"
         yield f"  {letter}: {len(along) - 1} bins in [{along[0]:g}, {along[-1]:g}){mean}"
     if counted:
         yield f"  outside the axes: {text(histogram.sum(flow=True) - histogram.sum())}"
     values, errors = histogram.values(), histogram.errors()
     for cell in np.ndindex(*histogram.shape):
-        span = " x ".join(f"[{e[i]:g}, {e[i + 1]:g})" for e, i in zip(edges, cell))
+        span = " x ".join(f"[{e[i]:g}, {e[i + 1]:g})" for e, i in zip(edges, cell, strict=False))
         at = cell if len(cell) > 1 else cell[0]
         yield f"  bin {at} {span}: {_pm(values[cell], errors[cell])}"
 
@@ -161,7 +161,9 @@ def _function(function: Function, entries: int | None) -> Iterator[str]:
     yield f"  formula: {function.formula}"
     yield f"  range: {text(function.range)}"
     errors = function.parameter_errors
-    for index, (name, value) in enumerate(zip(function.parameter_names, function.parameters)):
+    for index, (name, value) in enumerate(
+        zip(function.parameter_names, function.parameters, strict=False)
+    ):
         yield f"  [{index}] {name} = {_pm(value, errors[index])}"
 
 

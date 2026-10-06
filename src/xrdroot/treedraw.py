@@ -59,6 +59,7 @@ DEFAULT_BINS = {
     ("prof", 2): (20, 20),
 }
 
+
 class DrawnHistogram(Histogram):
     """A :class:`~.hist.Histogram` a draw booked, with the count of what it selected.
 
@@ -130,9 +131,7 @@ def _dimensions(parts: list[str], varexp: str) -> int:
     return len(parts)
 
 
-def _existing(
-    found: drawspec.Target, histograms: Mapping[str, Any] | None
-) -> Histogram | None:
+def _existing(found: drawspec.Target, histograms: Mapping[str, Any] | None) -> Histogram | None:
     """The histogram ``>>name`` fills, as ``gDirectory->Get(name)`` finds it."""
     held = None if found.name is None or histograms is None else histograms.get(found.name)
     if found.add and held is None:
@@ -240,7 +239,7 @@ def _from_brackets(numbers: Sequence[float | None], defaults: Sequence[int]) -> 
         nbins.append(default if count is None else int(count))
         ends.append((0.0 if low is None else low, 0.0 if high is None else high))
     if all(low < high for low, high in ends):
-        return Axes(nbins, [(n, low, high) for n, (low, high) in zip(nbins, ends)])
+        return Axes(nbins, [(n, low, high) for n, (low, high) in zip(nbins, ends, strict=False)])
     return Axes(nbins, None)  # the ends given are ignored, as ROOT ignores them
 
 
@@ -269,7 +268,7 @@ def _per_axis(bins: Any, defaults: Sequence[int]) -> list[Any]:
 
 def _from_keyword(bins: Any, defaults: Sequence[int]) -> Axes:
     specs = _per_axis(bins, defaults)
-    found = [_one(spec, default) for spec, default in zip(specs, defaults)]
+    found = [_one(spec, default) for spec, default in zip(specs, defaults, strict=False)]
     counts = [count for count, _book in found]
     booked = [book for _count, book in found]
     if all(book is not None for book in booked):
@@ -436,7 +435,11 @@ class Filling:
 
     def _booked(self) -> None:
         """``TakeEstimate``: the axes from what was held back, which is then filled."""
-        held = [np.concatenate(column) for column in zip(*self.held)] if self.held else []
+        held = (
+            [np.concatenate(column) for column in zip(*self.held, strict=False)]
+            if self.held
+            else []
+        )
         binned = len(self.axes.nbins)
         ranges = [_extent(column) for column in held[:binned]] or [(DBL_MAX, -DBL_MAX)] * binned
         self.histogram = self.book(good_axes(self.axes.nbins, ranges, self.integers))
@@ -466,7 +469,7 @@ class Scatter:
     def finish(self, name: str, title: str) -> DrawnGraph:
         """The graph, named and titled ``Graph`` as ``TGraph(n, x, y)`` is unless told otherwise."""
         if self.points:
-            x, y = (np.concatenate(axis) for axis in zip(*self.points))
+            x, y = (np.concatenate(axis) for axis in zip(*self.points, strict=False))
         else:
             x, y = np.zeros(0), np.zeros(0)
         graph = DrawnGraph.new(name, x, y, title=title)
@@ -500,7 +503,7 @@ def _sum_of_weights(histogram: Histogram) -> float:
     """``GetSumOfWeights``: the bins on every axis added in turn, as ROOT adds them."""
     bins = _cell_bins(histogram._widths)
     inner = np.logical_and.reduce(
-        [(at >= 1) & (at <= axis.nbins) for at, axis in zip(bins, histogram.axes)]
+        [(at >= 1) & (at <= axis.nbins) for at, axis in zip(bins, histogram.axes, strict=False)]
     )
     return running(0.0, histogram._bins[inner].astype(np.float64))
 
@@ -536,7 +539,11 @@ def _compiled(
 
 
 def _filler(
-    source: Any, chosen: Plan, found: drawspec.Target, bins: Any, estimate: int,
+    source: Any,
+    chosen: Plan,
+    found: drawspec.Target,
+    bins: Any,
+    estimate: int,
     formulas: list[Formula],
 ) -> Filling | Scatter:
     if chosen.kind == "graph":
@@ -546,9 +553,7 @@ def _filler(
     binned = len(chosen.parts) - (chosen.kind == "prof")
     if chosen.existing is not None:
         if bins is not None:
-            raise ValueError(
-                f"{chosen.name!r} is already binned, and bins= would bin it again"
-            )
+            raise ValueError(f"{chosen.name!r} is already binned, and bins= would bin it again")
         if not found.add:
             chosen.existing.reset()  # '>>h' starts it again; '>>+h' adds to it
         none = Axes([], None)

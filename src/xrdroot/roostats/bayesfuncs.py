@@ -45,7 +45,7 @@ class Functor:
         self.calls = 0
 
     def __call__(self, x: Any) -> float:
-        for par, value in zip(self.params, x):
+        for par, value in zip(self.params, x, strict=False):
             par.setVal(float(value))
         self.calls += 1
         return float(self.func.getVal(self.params))

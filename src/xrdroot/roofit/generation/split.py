@@ -109,8 +109,9 @@ def split_events(sim: Any, variables: list[Any], count: float, extended: bool, a
     channels = list(sim.channels.items())
     states = [_one_state(pdf, variables, auto, tag) for _, pdf in channels]  # all set up first
     wanted = _wanted(sim, channels, variables, count, extended)
+    together = zip(channels, states, wanted, strict=False)
     parts = [(label, own, run(number, extended))
-             for (label, _), (own, run), number in zip(channels, states, wanted)]  # fmt: skip
+             for (label, _), (own, run), number in together]  # fmt: skip
     weighted = any(part.isWeighted() for _, _, part in parts)
     data = RooDataSet("hmaster", "hmaster", variables,
                       *([RooCmdArg("WeightVar", "weight")] if weighted else []))  # fmt: skip

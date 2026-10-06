@@ -12,7 +12,7 @@ to be drawn without drawing anything.
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple, Union
+from typing import Any, NamedTuple
 
 __all__ = [
     "Area",
@@ -201,7 +201,9 @@ class Cloud(NamedTuple):
     iso: bool = False
 
 
-Layer = Union[Steps, Bars, Points, Boxes, Band, Area, Curve, Labels, Mesh, Contour, Surface, Cloud]
+Layer = (
+    Steps | Bars | Points | Boxes | Band | Area | Curve | Labels | Mesh | Contour | Surface | Cloud
+)
 
 #: The layers that need axes with depth to be drawn on.
 DEEP = (Surface, Cloud)

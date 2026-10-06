@@ -57,7 +57,7 @@ class RooMultiVarGaussian(RooAbsPdf):
         return self.mus
 
     def compute(self, ctx: Context) -> Any:
-        diffs = [x.compute(ctx) - mu.compute(ctx) for x, mu in zip(self.xs, self.mus)]
+        diffs = [x.compute(ctx) - mu.compute(ctx) for x, mu in zip(self.xs, self.mus, strict=False)]
         alpha: Any = 0.0
         for i, di in enumerate(diffs):
             for j, dj in enumerate(diffs):
@@ -87,5 +87,5 @@ class RooMultiVarGaussian(RooAbsPdf):
                 for k in range(n):
                     total += self.lower[i, k] * z[k]
                 drawn.append(total + self.mus[i].getVal())
-            if all(x.getMin() <= v <= x.getMax() for x, v in zip(self.xs, drawn)):
-                return {x.GetName(): v for x, v in zip(self.xs, drawn)}
+            if all(x.getMin() <= v <= x.getMax() for x, v in zip(self.xs, drawn, strict=False)):
+                return {x.GetName(): v for x, v in zip(self.xs, drawn, strict=False)}

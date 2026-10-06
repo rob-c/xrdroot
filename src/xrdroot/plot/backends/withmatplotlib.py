@@ -222,7 +222,7 @@ def _labels(ax: Any, layer: Labels, frame: Frame, native: dict[str, Any]) -> Any
     return [
         ax.text(x, y, text, rotation=layer.angle, ha="center", va="bottom",
                 color=layer.color, **native)
-        for x, y, text in zip(layer.x.tolist(), layer.y.tolist(), layer.texts)
+        for x, y, text in zip(layer.x.tolist(), layer.y.tolist(), layer.texts, strict=False)
     ]  # fmt: skip
 
 

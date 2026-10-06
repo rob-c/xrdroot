@@ -57,7 +57,7 @@ def test_a_category_read_by_a_reader_answers_by_each_region_s_cut(session):
     _run(factory)
     reader = ROOT.TMVA.Reader("!Color:Silent")
     cells = [np.zeros(1, dtype=np.float32) for _ in VARIABLES]
-    for variable, cell in zip(VARIABLES, cells):
+    for variable, cell in zip(VARIABLES, cells, strict=False):
         reader.AddVariable(variable, cell)
     reader.AddSpectator("spec := var1*2", np.zeros(1, dtype=np.float32))
     reader.BookMVA("cat", weights("Category"))

@@ -55,7 +55,7 @@ def _new_axis(histogram: Histogram, letter: str, axis: Binning) -> None:
 def _rebuilt(histogram: Histogram, axes: Sequence[Binning], name: str | None) -> Histogram:
     """A copy of ``histogram`` on new axes, its bins and squares resized and empty."""
     made = copied(histogram, name)
-    for letter, axis in zip("XYZ", axes):
+    for letter, axis in zip("XYZ", axes, strict=False):
         _new_axis(made, letter, axis)
     cells = math.prod(axis.nbins + 2 for axis in axes)
     made._core["fNcells"] = cells
@@ -142,7 +142,7 @@ def _rebin_1d(
     parts = _parts(histogram.axes[0], made.axes[0].edges(), group)
     contents = histogram._bins.astype(np.float64)
     gathered = [_gathered(contents, errors, part) for part in parts]
-    sums, squares = (np.array(column) for column in zip(*gathered))
+    sums, squares = (np.array(column) for column in zip(*gathered, strict=False))
     _finish(made, sums, squares, errors is not None)
     _kept_statistics(made, found, entries, dropped)
     return made
@@ -207,12 +207,16 @@ def _rebin_2d(histogram: Histogram, groups: list[int], name: str | None) -> Hist
     """``TH2::Rebin2D``: blocks of bins merged, the flow and the leftovers kept in the flow."""
     uneven = not all(axis.even for axis in histogram.axes)
     made_axes, dropped = zip(
-        *(_grouped(axis, group, uneven) for axis, group in zip(histogram.axes, groups))
+        *(
+            _grouped(axis, group, uneven)
+            for axis, group in zip(histogram.axes, groups, strict=False)
+        ),
+        strict=False,
     )
     shape = tuple(axis.nbins + 2 for axis in histogram.axes)
     maps = [
         _bin_map(axis.nbins, group, new.nbins)
-        for axis, group, new in zip(histogram.axes, groups, made_axes)
+        for axis, group, new in zip(histogram.axes, groups, made_axes, strict=False)
     ]
     found, entries = statistics(histogram), histogram.entries
     made = _rebuilt(histogram, list(made_axes), name)

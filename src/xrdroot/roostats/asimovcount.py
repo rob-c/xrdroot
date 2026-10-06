@@ -51,8 +51,9 @@ def _term(pdf: Any, observables: Any) -> bool:
         done = [_term(one, observables) for one in pdf.pdfList() if one.dependsOn(observables)]
         return all(done)  # every term set, as RooStats sets them, before the answer
     if kind == "RooMultiVarGaussian":
+        pairs = zip(pdf.xVec(), pdf.muVec(), strict=False)
         done = [_set_to_expected([x, mu], observables, f"{prefix} : dim {i} ")
-                for i, (x, mu) in enumerate(zip(pdf.xVec(), pdf.muVec()))]  # fmt: skip
+                for i, (x, mu) in enumerate(pairs)]  # fmt: skip
         return all(done)
     if kind not in ("RooPoisson", "RooGaussian"):
         log(None, ERROR, "InputArguments", "Illegal term in counting model: the PDF "

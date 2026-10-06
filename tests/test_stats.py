@@ -12,6 +12,7 @@ the same ``hsmoof`` routine, which it matches to the last bit.
 
 from __future__ import annotations
 
+import itertools
 import math
 
 import numpy as np
@@ -49,7 +50,7 @@ def test_kolmogorovs_probability_is_go_heps_port_of_probkl_to_the_bit():
 def test_kolmogorovs_probability_falls_as_the_distance_grows_and_stays_a_probability():
     found = [stats.kolmogorov_prob(z) for z in np.arange(0, 8, 0.05)]
     assert all(0 <= p <= 1 for p in found)
-    assert all(later <= earlier + 1e-12 for earlier, later in zip(found, found[1:]))
+    assert all(later <= earlier + 1e-12 for earlier, later in itertools.pairwise(found))
 
 
 def test_nint_rounds_a_half_to_the_even_number_as_tmath_does():

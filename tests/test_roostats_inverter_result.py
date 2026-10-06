@@ -201,7 +201,7 @@ def test_a_curve_crossing_twice_is_searched_again_on_the_near_side() -> None:
     """The whole range's root refined within the points on the limit's side - and, for a curve
     starting above the target, from the parameter's lower end."""
     xs, ys = [1.0, 2.0, 3.0, 4.0, 5.0], [0.5, 0.01, 0.01, 0.01, 0.5]
-    r = scan(dict(zip(xs, ys)))
+    r = scan(dict(zip(xs, ys, strict=False)))
     lower = limits.graph_x(r, xs, ys, 0.05, True)[0]
     upper = limits.graph_x(r, xs, ys, 0.05, False)[0]
     assert lower == pytest.approx(1.0 + 0.45 / 0.49, rel=1e-5)

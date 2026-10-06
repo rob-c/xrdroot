@@ -10,7 +10,8 @@ printing what ROOT prints for such a fit.
 from __future__ import annotations
 
 import math
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 
@@ -329,7 +330,7 @@ class Minimizer:
         verdict = "Valid minimum" if found.valid else "Invalid minimum"
         print(f"{self._name}Minimizer : {verdict} - status = {self.Status()}")
         print(f"FVAL  = {found.fval:.18g}\nEdm   = {found.fmin.edm:.18g}\nNfcn  = {found.nfcn}")
-        for name, value, error in zip(names, found.values, found.errors):
+        for name, value, error in zip(names, found.values, found.errors, strict=False):
             print(f"{name}\t  = {value:g}\t +/-  {error:g}")
 
     def X(self) -> np.ndarray[Any, Any]:

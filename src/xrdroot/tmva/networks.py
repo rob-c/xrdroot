@@ -73,7 +73,7 @@ class Network:
     def raw(self, values: Any) -> Any:
         """The last layer's values, before the output function."""
         x = np.asarray(values, dtype=np.float64)
-        for (weights, bias), name in zip(self.layers, self.activations):
+        for (weights, bias), name in zip(self.layers, self.activations, strict=False):
             x = activate(name, x @ weights.T + bias)
         return x
 
@@ -117,7 +117,7 @@ class Network:
             OutputFunction=output,
             WeightDecay=number(0.0),
         )
-        for (matrix, bias), name in zip(self.layers, self.activations):
+        for (matrix, bias), name in zip(self.layers, self.activations, strict=False):
             layer = weights.add(
                 "DenseLayer", Width=matrix.shape[0], ActivationFunction=DL_ACTIVATIONS.index(name)
             )

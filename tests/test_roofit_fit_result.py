@@ -128,7 +128,7 @@ def test_a_fit_result_holds_roots_covariance_and_starting_values() -> None:
     """The covariance is ROOT's to Minuit's tolerance, and the starting values are kept."""
     result, _ = _minos_fit()
     found = _matrix(result.covarianceMatrix(), 4)
-    for row, expected in zip(found, MINOS_COVARIANCE):
+    for row, expected in zip(found, MINOS_COVARIANCE, strict=False):
         assert row == pytest.approx(expected, rel=1e-6)
     init = result.floatParsInit()
     assert (init.names(), [p.getVal() for p in init]) == (["c", "f", "m", "s"], [-0.1, 0.7, 0, 2])

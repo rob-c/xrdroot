@@ -42,7 +42,10 @@ def formatted_matrix(matrix: Any, labels: list[str]) -> list[str]:
     widths = [max(len(label), 7) for label in labels]
     widest = max([7, *widths])
     rule = "-" * (widest + 1 + sum(width + 1 for width in widths))
-    lines = [rule, " " * (widest + 1) + "".join(l.rjust(w + 1) for l, w in zip(labels, widths))]
+    lines = [
+        rule,
+        " " * (widest + 1) + "".join(l.rjust(w + 1) for l, w in zip(labels, widths, strict=False)),
+    ]
     for row, label in enumerate(labels):
         cells = "".join(
             format(matrix[row, col], "+1.3f").rjust(w + 1) for col, w in enumerate(widths)

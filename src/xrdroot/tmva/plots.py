@@ -107,7 +107,7 @@ def _scatters(
     """Every pair's scatter plot and profile, per class, as ``PlotVariables`` books them."""
     infos = _infos(dsi)
     made: list[Histogram] = []
-    low, high = zip(*(_span(a, b) for a, b in zip(stats[2], stats[3])))
+    low, high = zip(*(_span(a, b) for a, b in zip(stats[2], stats[3], strict=False)), strict=False)
     for i, (info, _) in enumerate(infos):
         for j in range(i + 1, len(infos)):
             other = infos[j][0]

@@ -191,7 +191,7 @@ def _widths(header: list[str], table: list[list[list[str]]]) -> list[int]:
     """How wide each column of the box is: its widest line, heading included."""
     widths = [len(text) for text in header]
     for cells in table:
-        widths = [max(width, *map(len, cell)) for width, cell in zip(widths, cells)]
+        widths = [max(width, *map(len, cell)) for width, cell in zip(widths, cells, strict=False)]
     return widths
 
 
@@ -204,4 +204,8 @@ def _block(cells: list[list[str]], widths: list[int]) -> list[str]:
 
 def _line(texts: Sequence[str], widths: Sequence[int]) -> str:
     """One line of the box; ROOT ends every line of text, not of rules, with a blank."""
-    return "|" + "|".join(f" {text:<{width}} " for text, width in zip(texts, widths)) + "| "
+    return (
+        "|"
+        + "|".join(f" {text:<{width}} " for text, width in zip(texts, widths, strict=False))
+        + "| "
+    )

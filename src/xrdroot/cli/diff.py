@@ -233,7 +233,7 @@ def _tables(one: Any, two: Any, path: str, tolerance: Tolerance) -> Found:
 def _entries(one: Any, two: Any, common: list[str], path: str, tolerance: Tolerance) -> Found:
     """The columns both tables read, a batch at a time; each column's first difference only."""
     told: set[str] = set()
-    batches = zip(one.iterate(common, step=STEP), two.iterate(common, step=STEP))
+    batches = zip(one.iterate(common, step=STEP), two.iterate(common, step=STEP), strict=False)
     for index, (first, second) in enumerate(batches):
         for name in (name for name in common if name not in told):
             found = list(
@@ -252,7 +252,7 @@ def _column(one: Any, two: Any, path: str, tolerance: Tolerance, start: int) -> 
     elif isinstance(one, np.ndarray) and isinstance(two, np.ndarray) and one.dtype != object:
         yield from _numbers(one, two, path, tolerance, "entries", start)
     else:
-        for index, (mine, theirs) in enumerate(zip(one, two)):
+        for index, (mine, theirs) in enumerate(zip(one, two, strict=False)):
             if next(_values(mine, theirs, "", tolerance), None) is not None:
                 yield f"{path}: entries differ, first at {start + index}: {mine!r} and {theirs!r}"
                 return
@@ -271,7 +271,7 @@ def _sequences(one: Sequence[Any], two: Sequence[Any], path: str, tolerance: Tol
     if len(one) != len(two):
         yield f"{path}: {len(one)} items and {len(two)} items"
         return
-    for index, (mine, theirs) in enumerate(zip(one, two)):
+    for index, (mine, theirs) in enumerate(zip(one, two, strict=False)):
         yield from _values(mine, theirs, f"{path}[{index}]", tolerance)
 
 

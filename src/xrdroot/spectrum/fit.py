@@ -44,7 +44,7 @@ class PeakSetup:
     amplitudes: list[float]
     fix_positions: list[bool]
     fix_amplitudes: list[bool]
-    init: dict[str, float] = field(default_factory=lambda: dict(zip(SHARED, START)))
+    init: dict[str, float] = field(default_factory=lambda: dict(zip(SHARED, START, strict=False)))
     fixed: dict[str, bool] = field(default_factory=lambda: {n: n != "sigma" for n in SHARED})
 
 
@@ -106,7 +106,7 @@ class PeakModel:
 
     def shared(self) -> dict[str, float]:
         """Sigma, the tail, the step and the background, by name."""
-        return dict(zip(SHARED, self.param[2 * self.count :]))
+        return dict(zip(SHARED, self.param[2 * self.count :], strict=False))
 
     def peaks(self) -> tuple[Array, Array]:
         """The peaks' amplitudes and positions."""
@@ -235,7 +235,7 @@ def _results(model: PeakModel, setup: PeakSetup, fitted: Fitted, chi_er: float) 
 def _found(setup: PeakSetup, fitted: Fitted,
            at: dict[int, int]) -> list[tuple[float, float | None]]:  # fmt: skip
     """Every parameter's value and error, in ROOT's order, fitted or fixed."""
-    starts = [x for pair in zip(setup.amplitudes, setup.positions) for x in pair]
+    starts = [x for pair in zip(setup.amplitudes, setup.positions, strict=False) for x in pair]
     starts += [setup.init[name] for name in SHARED]
     return [_value_error(fitted, at.get(n), float(start)) for n, start in enumerate(starts)]
 

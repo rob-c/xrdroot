@@ -16,6 +16,7 @@ is :func:`hexahedron`, and a prism is :func:`extrusion`.
 
 from __future__ import annotations
 
+import itertools
 import math
 from collections.abc import Sequence
 from typing import Any
@@ -40,14 +41,14 @@ class Mesh:
         """Every edge of every face once, as index pairs (M by 2), none of zero length."""
         found = set()
         for face in self.faces:
-            for a, b in zip(face, face[1:] + face[:1]):
+            for a, b in zip(face, face[1:] + face[:1], strict=False):
                 if a != b:
                     found.add((min(a, b), max(a, b)))
         return np.array(sorted(found), dtype=np.int64).reshape(-1, 2)
 
     def triangles(self) -> np.ndarray[Any, Any]:
         """Each face fanned into triangles from its first corner (K by 3)."""
-        made = [(face[0], b, c) for face in self.faces for b, c in zip(face[1:], face[2:])]
+        made = [(face[0], b, c) for face in self.faces for b, c in itertools.pairwise(face)]
         kept = [t for t in made if len(set(t)) == 3]
         return np.array(kept, dtype=np.int64).reshape(-1, 3)
 

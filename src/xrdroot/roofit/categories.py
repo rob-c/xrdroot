@@ -392,6 +392,6 @@ class RooSuperCategory(RooMultiCategory):
         if not self.hasLabel(label):
             return True
         labels = str(label).strip("{}").split(";")
-        for one, part in zip(self.inputs, labels):
+        for one, part in zip(self.inputs, labels, strict=False):
             one.setLabel(part)
         return False

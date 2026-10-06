@@ -95,7 +95,10 @@ def _model(model: Any, values: Any, ndim: int, span: list[tuple[float, float]]) 
 def _span(given: Any, points: Any) -> list[tuple[float, float]]:
     """The range: a ``(low, high)`` per variable as given, or the points' own extent."""
     if given is None:
-        return [(float(low), float(high)) for low, high in zip(points.min(0), points.max(0))]
+        return [
+            (float(low), float(high))
+            for low, high in zip(points.min(0), points.max(0), strict=False)
+        ]
     pairs = [given] if np.ndim(given) == 1 else list(given)
     return [(float(low), float(high)) for low, high in pairs]
 

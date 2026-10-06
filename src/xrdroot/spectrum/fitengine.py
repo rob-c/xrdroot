@@ -285,7 +285,7 @@ def _better(chi: float, best: float, statistic: int) -> bool:
 
 def _moved(model: Model, xk: list[float], base: list[float], scale: float, der: Array) -> None:
     """``xk = base + scale * der``, kept in bounds and made the parameters."""
-    xk[:] = [b + scale * float(d) for b, d in zip(base, der)]
+    xk[:] = [b + scale * float(d) for b, d in zip(base, der, strict=False)]
     model.apply(xk)
 
 

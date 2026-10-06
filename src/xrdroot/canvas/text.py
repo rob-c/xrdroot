@@ -30,15 +30,15 @@ LIMIT = 30000
 
 #: Symbol's own code points against Unicode's, for what is written in fonts 12x and 15x.
 SYMBOLS: dict[str, str] = {
-    **dict(zip("abcdefghijklmnopqrstuvwxyz", "αβχδεφγηιϕκλμνοπθρστυϖωξψζ")),
-    **dict(zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "ΑΒΧΔΕΦΓΗΙϑΚΛΜΝΟΠΘΡΣΤΥςΩΞΨΖ")),
+    **dict(zip("abcdefghijklmnopqrstuvwxyz", "αβχδεφγηιϕκλμνοπθρστυϖωξψζ", strict=False)),
+    **dict(zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "ΑΒΧΔΕΦΓΗΙϑΚΛΜΝΟΠΘΡΣΤΥςΩΞΨΖ", strict=False)),
     # The glyphs themselves are the point of this table, look-alikes and all.
     '"': "∀", "$": "∃", "'": "∋", "*": "∗", "-": "−", "@": "≅",  # noqa: RUF001
     "\\": "∴", "^": "⊥", "`": "‾", "~": "∼",  # noqa: RUF001
     **dict(zip(
         (chr(code) for code in range(0xA1, 0xFF)),
         "ϒ′≤⁄∞ƒ♣♦♥♠↔←↑→↓°±″≥×∝∂•÷≠≡≈…⏐⎯↵ℵℑℜ℘⊗⊕∅∩∪⊃⊇⊄⊂⊆∈∉∠∇®©™∏√⋅¬∧∨⇔⇐⇑⇒⇓◊⟨®©™∑⎛⎜⎝⎡⎢⎣⎧⎨⎩⎪ "  # noqa: RUF001
-        "⟩∫⌠⎮⌡⎞⎟⎠⎤⎥⎦⎫⎬⎭",
+        "⟩∫⌠⎮⌡⎞⎟⎠⎤⎥⎦⎫⎬⎭", strict=False,
     )),
 }  # fmt: skip
 

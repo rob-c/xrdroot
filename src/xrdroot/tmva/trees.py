@@ -254,7 +254,10 @@ def _joined(trees: list[Tree], member: str) -> Any:
 def _shifted(trees: list[Tree], offsets: Any, side: str) -> Any:
     """Every tree's children on one side, as rows of the packed forest; ``-1`` for a leaf's."""
     return np.concatenate(
-        [np.where(getattr(t, side) >= 0, getattr(t, side) + s, -1) for t, s in zip(trees, offsets)]
+        [
+            np.where(getattr(t, side) >= 0, getattr(t, side) + s, -1)
+            for t, s in zip(trees, offsets, strict=False)
+        ]
     )
 
 

@@ -9,7 +9,8 @@ circle, as the old package's ``fNdiv`` is by default.
 
 from __future__ import annotations
 
-from typing import Any, Callable, ClassVar
+from collections.abc import Callable
+from typing import Any, ClassVar
 
 from ...geom import shapes as build
 from ...geom.mesh import Mesh

@@ -63,7 +63,7 @@ class TEfficiency(TNamed, TAttLine, TAttFill, TAttMarker):
         parts = str(title).split(";")
         self._xrd.members["TNamed"]["fTitle"] = parts[0]
         for histogram in (self._xrd.passed, self._xrd.total):
-            for letter, label in zip("XYZ", parts[1:]):
+            for letter, label in zip("XYZ", parts[1:], strict=False):
                 histogram._core[f"f{letter}axis"]["TNamed"]["fTitle"] = label
 
     # -- filling ---------------------------------------------------------------------------

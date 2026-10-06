@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import inspect
 import re
+from collections.abc import Callable
 from enum import IntEnum
 from functools import partial
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 
@@ -331,7 +332,7 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
         """``GetRange(xmin, xmax[, ...])``: into what is given - and handed back."""
         pairs = [self._xrd.range] if self.GetNdim() == 1 else list(self._xrd.range)
         found = tuple(pair[0] for pair in pairs) + tuple(pair[1] for pair in pairs)
-        for target, value in zip(refs, found):
+        for target, value in zip(refs, found, strict=False):
             store(target, float(value))
         return tuple(float(value) for value in found)
 

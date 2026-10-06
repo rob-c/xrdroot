@@ -69,7 +69,9 @@ def residuals(frame: Any, histname: Any, curvename: Any, normalize: bool, useAve
     for curve in curves:
         rows += _rows(hist, curve, normalize, useAverage)
     kind = ("pull", "Pull") if normalize else ("resid", "Residual")
-    xs, ys, lows, highs = (list(one) for one in zip(*rows)) if rows else ([], [], [], [])
+    xs, ys, lows, highs = (
+        (list(one) for one in zip(*rows, strict=False)) if rows else ([], [], [], [])
+    )
     zeros = [0.0] * len(xs)
     made = RooHist(
         f"{kind[0]}_{hist.GetName()}_{curves[0].GetName()}",

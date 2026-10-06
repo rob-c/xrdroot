@@ -167,8 +167,11 @@ def _simple(code: int, low: Any, high: Any, nominal: Any, x: Any, res: Any) -> A
 def _code2(low: Any, high: Any, nominal: Any, x: Any) -> Any:
     """Code 2: quadratic within one, linear outside."""
     a, b = 0.5 * (high + low) - nominal, 0.5 * (high - low)
-    return np.where(x > 1, (2 * a + b) * (x - 1) + high - nominal,
-                    np.where(x < -1, -(2 * a - b) * (x + 1) + low - nominal, a * x * x + b * x))
+    return np.where(
+        x > 1,
+        (2 * a + b) * (x - 1) + high - nominal,
+        np.where(x < -1, -(2 * a - b) * (x + 1) + low - nominal, a * x * x + b * x),
+    )
 
 
 class FlexibleInterpVar(RooAbsReal):
@@ -210,7 +213,9 @@ class FlexibleInterpVar(RooAbsReal):
 
     def compute(self, ctx: Context) -> Any:
         total: Any = self._nominal
-        for param, low, high, code in zip(self.params, self._low, self._high, self._codes):
+        for param, low, high, code in zip(
+            self.params, self._low, self._high, self._codes, strict=False
+        ):
             code = 5 if code == 4 else code
             total = total + interpolate(code, low, high, self._boundary, self._nominal,
                                         param.compute(ctx), total)  # fmt: skip
@@ -250,7 +255,9 @@ class PiecewiseInterpolation(RooAbsReal):
     def compute(self, ctx: Context) -> Any:
         nominal = self.nominal.compute(ctx)
         total: Any = nominal
-        for low, high, param, code in zip(self.lows, self.highs, self.params, self._codes):
+        for low, high, param, code in zip(
+            self.lows, self.highs, self.params, self._codes, strict=False
+        ):
             total = total + interpolate(code, low.compute(ctx), high.compute(ctx), 1.0, nominal,
                                         param.compute(ctx), total)  # fmt: skip
         if self._positive:
@@ -299,7 +306,7 @@ class ParamHistFunc(RooAbsReal):
         it."""
         found: Any = 0
         stride = 1
-        for var, edges in zip(self.vars, self._edges):
+        for var, edges in zip(self.vars, self._edges, strict=False):
             values = np.asarray(var.compute(ctx), dtype=np.float64)
             bins = np.clip(np.searchsorted(edges, values, side="right") - 1, 0, len(edges) - 2)
             found = found + bins * stride
@@ -328,12 +335,12 @@ class ParamHistFunc(RooAbsReal):
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
         """``analyticalIntegralWN``: each bin's parameter times its volume, summed."""
         total: Any = 0.0
-        for gamma, volume in zip(self.gammas, self._volumes()):
+        for gamma, volume in zip(self.gammas, self._volumes(), strict=False):
             total = total + gamma.compute(ctx) * volume
         return total
 
     def bin_boundaries(self, name: str) -> Any:
-        for var, edges in zip(self.vars, self._edges):
+        for var, edges in zip(self.vars, self._edges, strict=False):
             if var.GetName() == name:
                 return [float(e) for e in edges]
         return None

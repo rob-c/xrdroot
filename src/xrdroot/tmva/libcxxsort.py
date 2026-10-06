@@ -257,7 +257,9 @@ class _Sorter:
 
     def _heap(self, first: int, last: int) -> None:
         """``__partial_sort`` of the whole range, which a sort this deep falls back to."""
-        pairs = sorted(zip(self.k[first:last], self.i[first:last]), key=lambda p: p[0])
+        pairs = sorted(
+            zip(self.k[first:last], self.i[first:last], strict=False), key=lambda p: p[0]
+        )
         self.k[first:last] = [p[0] for p in pairs]
         self.i[first:last] = [p[1] for p in pairs]
 

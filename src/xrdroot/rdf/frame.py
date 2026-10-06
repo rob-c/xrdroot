@@ -216,7 +216,7 @@ def _run_together(graphs: Sequence[_Graph]) -> None:
     values = _computed(graphs, pending)
     for graph in graphs:
         graph.runs += 1
-    for result, value in zip(pending, values):
+    for result, value in zip(pending, values, strict=False):
         result._set(value)
 
 

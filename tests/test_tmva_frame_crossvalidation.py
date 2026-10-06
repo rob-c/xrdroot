@@ -231,4 +231,4 @@ def test_a_spectator_named_twice_in_a_split_expression_is_read_once(session):
     once = cvresults.split_folds(
         events, data.info.spectators, 2, SPLIT.replace("[NumFolds]", "2"), False
     )
-    assert all(np.array_equal(a, b) for a, b in zip(twice, once))
+    assert all(np.array_equal(a, b) for a, b in zip(twice, once, strict=False))

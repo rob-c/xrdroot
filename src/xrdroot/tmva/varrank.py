@@ -99,23 +99,26 @@ def regression_rankings(
         yr = (float(low[index]), float(high[index]))
         scatters.append((_scatter(target, values[:, index], weights, xr, yr), xr, yr))
     return [
-        ("|Correlation with target|", list(zip(labels, correlation))),
+        ("|Correlation with target|", list(zip(labels, correlation, strict=False))),
         (
             "Mutual information",
             [
                 (label, mutual_information(c[1:-1, 1:-1]))
-                for label, (c, _, _) in zip(labels, scatters)
+                for label, (c, _, _) in zip(labels, scatters, strict=False)
             ],
         ),
         (
             "Correlation Ratio",
-            [(label, correlation_ratio(c, yr)) for label, (c, _, yr) in zip(labels, scatters)],
+            [
+                (label, correlation_ratio(c, yr))
+                for label, (c, _, yr) in zip(labels, scatters, strict=False)
+            ],
         ),
         (
             "Correlation Ratio (T)",
             [
                 (label, correlation_ratio(_transposed(c), yr))
-                for label, (c, _, yr) in zip(labels, scatters)
+                for label, (c, _, yr) in zip(labels, scatters, strict=False)
             ],
         ),
     ]

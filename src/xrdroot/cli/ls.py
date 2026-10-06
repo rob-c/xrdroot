@@ -149,7 +149,7 @@ def _aligned(rows: list[Row]) -> list[str]:
     for row in rows:
         width = widths.setdefault(row.kind, [0, 0, 0])
         sizes = (len(INDENT) * row.depth + len(row.cells[0]), len(row.cells[1]), len(row.cells[2]))
-        widths[row.kind] = [max(pair) for pair in zip(width, sizes)]
+        widths[row.kind] = [max(pair) for pair in zip(width, sizes, strict=False)]
     return [_line(row, widths[row.kind]) for row in rows]
 
 

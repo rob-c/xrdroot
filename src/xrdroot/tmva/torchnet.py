@@ -57,7 +57,7 @@ def _activation(torch: Any, name: str, x: Any) -> Any:
 def _forward(
     torch: Any, layers: list[Any], net: Network, x: Any, dropout: tuple[float, ...], training: bool
 ) -> Any:
-    for index, (layer, name) in enumerate(zip(layers, net.activations)):
+    for index, (layer, name) in enumerate(zip(layers, net.activations, strict=False)):
         rate = dropout[index] if index < len(dropout) else 0.0
         if training and rate > 0:
             x = torch.nn.functional.dropout(x, rate, True)

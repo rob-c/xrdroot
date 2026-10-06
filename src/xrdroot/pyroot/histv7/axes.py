@@ -9,6 +9,7 @@ bins, and whether it is one.
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Iterator
 from typing import Any
 
@@ -186,7 +187,7 @@ class RVariableBinAxis(_Axis):
 
     def __init__(self, binEdges: Any, enableFlowBins: bool = True) -> None:
         edges = [float(v) for v in binEdges]
-        if len(edges) < 2 or any(not a < b for a, b in zip(edges, edges[1:])):
+        if len(edges) < 2 or any(not a < b for a, b in itertools.pairwise(edges)):
             raise ValueError(f"An RVariableBinAxis needs two or more edges, each above the one "
                              f"before it, and was given {edges}.")  # fmt: skip
         super().__init__(len(edges) - 1, enableFlowBins)
@@ -211,5 +212,5 @@ class RVariableBinAxis(_Axis):
 def linearized(axes: list[_Axis], values: tuple[Any, ...]) -> tuple[tuple[int, ...], bool]:
     """Where the bin of ``values`` - one per axis - sits along every axis, and whether it is one."""
     found = [axis.bin_index(v) if isinstance(v, RBinIndex) else axis.value_index(float(v))
-             for axis, v in zip(axes, values)]  # fmt: skip
+             for axis, v in zip(axes, values, strict=False)]  # fmt: skip
     return tuple(i for i, _ in found), all(ok for _, ok in found)

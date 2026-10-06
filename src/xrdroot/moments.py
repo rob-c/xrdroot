@@ -200,13 +200,15 @@ def integral(histogram: Histogram, low: Any, high: Any, width: bool) -> tuple[fl
     """
     count = len(histogram.axes)
     lows, highs = _per_axis(low, count), _per_axis(high, count)
-    ranges = [_range(a, b, axis.nbins) for a, b, axis in zip(lows, highs, histogram.axes)]
+    ranges = [
+        _range(a, b, axis.nbins) for a, b, axis in zip(lows, highs, histogram.axes, strict=False)
+    ]
     cut = tuple(slice(first, last + 1) for first, last in ranges)
     values = histogram.values(flow=True).astype(np.float64)[cut]
     squares = histogram.variances(flow=True)[cut]
     if width:
         size = np.ones(())
-        for axis, (first, last) in zip(histogram.axes, ranges):
+        for axis, (first, last) in zip(histogram.axes, ranges, strict=False):
             size = np.multiply.outer(size, axis.root_widths()[first : last + 1])
         values, squares = values * size, squares * size * size
     return running(0.0, values.ravel()), math.sqrt(running(0.0, squares.ravel()))
@@ -221,7 +223,7 @@ def find_bin(histogram: Histogram, coordinates: Sequence[Any]) -> Any:
         )
     scalar = all(np.ndim(value) == 0 for value in coordinates)
     flat, _weights = arrays(coordinates, None)
-    bins = [axis.find_bin(value) for axis, value in zip(histogram.axes, flat)]
+    bins = [axis.find_bin(value) for axis, value in zip(histogram.axes, flat, strict=False)]
     found = global_bins(bins, histogram._widths)
     if scalar:
         return int(found[0])

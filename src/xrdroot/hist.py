@@ -11,6 +11,7 @@ under :attr:`Histogram.members`, so nothing is hidden by being tidied away.
 from __future__ import annotations
 
 import array
+import itertools
 import math
 from collections.abc import Iterable
 from typing import Any, NamedTuple
@@ -82,7 +83,7 @@ class Axis:
 
     def __iter__(self) -> Any:
         edges = self.edges().tolist()
-        return iter(zip(edges[:-1], edges[1:]))
+        return iter(itertools.pairwise(edges))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Axis):
@@ -1109,7 +1110,7 @@ def _moments(inner: np.ndarray[Any, Any], centers: list[np.ndarray[Any, Any]]) -
     """
     letters = "xyz"[: inner.ndim]
     sums: dict[str, float] = {}
-    for axis, (letter, center) in enumerate(zip(letters, centers)):
+    for axis, (letter, center) in enumerate(zip(letters, centers, strict=False)):
         others = tuple(other for other in range(inner.ndim) if other != axis)
         along = inner.sum(axis=others) if others else inner
         sums[f"fTsumw{letter}"] = _fsum(along * center)
@@ -1164,9 +1165,9 @@ def _histogram_core(
     """The ``TH1`` every histogram is built on, whatever its dimensions."""
     made = [
         _axis(f"{letter}axis", len(edge) - 1, float(edge[0]), float(edge[-1]), _stored(edge))
-        for letter, edge in zip("xyz", per_axis)
+        for letter, edge in zip("xyz", per_axis, strict=False)
     ]
-    for axis, label in zip(made, titles):
+    for axis, label in zip(made, titles, strict=False):
         axis["TNamed"]["fTitle"] = label
     while len(made) < 3:
         made.append(_axis("xyz"[len(made)] + "axis", 1, 0.0, 1.0, []))

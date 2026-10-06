@@ -41,7 +41,7 @@ def packed(bins: list[tuple[int, ...]], widths: list[int]) -> list[int]:
     out = []
     for coordinates in bins:
         number, shift = 0, 0
-        for value, width in zip(coordinates, widths):
+        for value, width in zip(coordinates, widths, strict=False):
             number |= value << shift
             shift += width
         out += [byte - 256 if byte > 127 else byte for byte in number.to_bytes(size, "little")]

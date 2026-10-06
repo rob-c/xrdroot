@@ -209,7 +209,7 @@ def _rule(scene: Scene, line: Any, corners: Corners, at_y: float) -> None:
     xs = [x1 + ends[0] * (x2 - x1) if ends[0] else x1, x1 + ends[1] * (x2 - x1) if ends[1] else x2]
     ys = [y1 + ends[2] * (y2 - y1) if ends[2] else at_y,
           y1 + ends[3] * (y2 - y1) if ends[3] else at_y]  # fmt: skip
-    _outline(scene, line, list(zip(xs, ys)))
+    _outline(scene, line, list(zip(xs, ys, strict=False)))
 
 
 def draw_lines(scene: Scene, holder: Any, lines: list[Any], corners: Corners) -> None:

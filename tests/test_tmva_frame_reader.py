@@ -35,7 +35,7 @@ class Text(str):
 def _reader(options: str = "!Color:Silent") -> tuple[object, list[Cell]]:
     reader = ROOT.TMVA.Reader(options)
     cells = [Cell() for _ in VARIABLES]
-    for variable, cell in zip(VARIABLES, cells):
+    for variable, cell in zip(VARIABLES, cells, strict=False):
         reader.AddVariable(variable, cell)
     return reader, cells
 
@@ -46,7 +46,7 @@ def test_a_reader_answers_what_the_factory_tested_for_the_same_event(session):
     reader.BookMVA("LD method", weights("LD"))
     tested = factory.booked["dataset"][0]
     first = tested.loader.dataset().test.values[0]
-    for cell, value in zip(cells, first):
+    for cell, value in zip(cells, first, strict=False):
         cell.value = value
     assert reader.EvaluateMVA("LD method") == pytest.approx(float(tested.test_values[0]), 1e-6)
     assert reader.EvaluateMVA(Text("LD method")) == reader.EvaluateMVA(list(first), "LD method")

@@ -45,7 +45,7 @@ def _write_one(parent: Node, transform: Transform, dsi: DataSetInfo) -> None:
         _selection(node, dsi, bool(dsi.targets))
         for index, (low, high) in enumerate(transform.params):
             ranges = node.add("Class", ClassIndex=index).add("Ranges")
-            for row, (a, b) in enumerate(zip(low, high)):
+            for row, (a, b) in enumerate(zip(low, high, strict=False)):
                 ranges.add("Range", Index=row, Min=number(a), Max=number(b))
     elif isinstance(transform, Decorrelate):
         node = parent.add("Transform", Name="Decorrelation")
@@ -112,7 +112,7 @@ def _read_decorrelation(node: Any) -> Decorrelate:
 def _read_pca(node: Any) -> PCA:
     made = PCA()
     means = [np.array(floats(item)) for item in children(node, "Statistics")]
-    for mean, item in zip(means, children(node, "Eigenvectors")):
+    for mean, item in zip(means, children(node, "Eigenvectors"), strict=False):
         rows, columns = int(item.get("NRows", 0)), int(item.get("NCols", 0))
         made.params.append((mean, np.array(floats(item)).reshape(rows, columns)))
     return made

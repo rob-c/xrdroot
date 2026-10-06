@@ -219,7 +219,7 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
 
         bins, made = self._xrd_bins, []
         low, high = self.GetMinimum(), self.GetMaximum()
-        for number, (polygons, z) in enumerate(zip(bins.polygons, bins.contents), 1):
+        for number, (polygons, z) in enumerate(zip(bins.polygons, bins.contents, strict=False), 1):
             if "COL" in option and z >= low:
                 made += [self._outline(x, y, self._colour(z, low, high)) for x, y in polygons]
             if "L" in option.replace("COL", ""):

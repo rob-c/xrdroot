@@ -49,7 +49,7 @@ def record_of(data: bytes, seek: int) -> dict:
     fields = struct.unpack_from(form, raw)
     names = ("version", "created", "modified", "nbytes_keys", "nbytes_name")
     names += ("seek_dir", "seek_parent", "seek_keys", "uuid_version", "uuid")
-    record = dict(zip(names, fields))
+    record = dict(zip(names, fields, strict=False))
     record["padding"] = raw[struct.calcsize(form) :]
     return record
 

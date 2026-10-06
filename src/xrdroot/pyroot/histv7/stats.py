@@ -49,7 +49,7 @@ class RHistStats:
         w = 1.0 if weight is None else weight
         self.fSumW += w
         self.fSumW2 += w * w
-        for sums, x in zip(self.sums, values):
+        for sums, x in zip(self.sums, values, strict=False):
             powers = (x, x * x, x * x * x, x * x * x * x)
             for k, power in enumerate(powers):
                 sums[k] += power if weight is None else w * power
@@ -58,7 +58,7 @@ class RHistStats:
         self.fNEntries += other.fNEntries
         self.fSumW += other.fSumW
         self.fSumW2 += other.fSumW2
-        for mine, theirs in zip(self.sums, other.sums):
+        for mine, theirs in zip(self.sums, other.sums, strict=False):
             for k in range(4):
                 mine[k] += theirs[k]
 
@@ -89,6 +89,6 @@ class RHistStats:
     def dimension(self, dim: int = 0) -> Any:
         """``GetDimensionStats(dim)``: ``fSumWX`` ... ``fSumWX4``."""
         names = ("fSumWX", "fSumWX2", "fSumWX3", "fSumWX4")
-        return type("RDimensionStats", (), dict(zip(names, self.sums[dim])))()
+        return type("RDimensionStats", (), dict(zip(names, self.sums[dim], strict=False)))()
 
     GetDimensionStats = dimension

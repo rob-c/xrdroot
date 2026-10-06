@@ -44,7 +44,7 @@ def split_spec(dsi: DataSetInfo, counts: list[ClassCounts]) -> SplitSpec:
     options = Options(dsi.split_options)
     split = options.text_of("SplitMode", "Random").upper()
     mix = options.text_of("MixMode", "SameAsSplitMode").upper()
-    for info, count in zip(dsi.classes, counts):
+    for info, count in zip(dsi.classes, counts, strict=False):
         count.train_requested = options.integer(f"nTrain_{info.name}", 0)
         count.test_requested = options.integer(f"nTest_{info.name}", 0)
         count.split_requested = options.number(f"TrainTestSplit_{info.name}", 0.0)

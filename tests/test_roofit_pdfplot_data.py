@@ -57,7 +57,7 @@ def points(hist: Any) -> list[tuple[float, ...]]:
     low, high = hist.errors()
     return [
         (float(x), float(y), float(lo), float(hi))
-        for x, y, lo, hi in zip(hist.x, hist.y, low, high)
+        for x, y, lo, hi in zip(hist.x, hist.y, low, high, strict=False)
     ]
 
 
@@ -66,7 +66,7 @@ def flat(rows: Any) -> list[float]:
 
 
 def x_errors(hist: Any) -> list[tuple[float, float]]:
-    return list(zip(hist.members["fEXlow"], hist.members["fEXhigh"]))
+    return list(zip(hist.members["fEXlow"], hist.members["fEXhigh"], strict=False))
 
 
 def generated() -> tuple[RooRealVar, Any]:

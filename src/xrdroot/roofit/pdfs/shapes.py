@@ -40,7 +40,7 @@ class _Shape(RooAbsPdf):
 
     def __init__(self, name: Any, title: Any, *args: Any) -> None:
         super().__init__(name, title)
-        for key, arg in zip(self.inputs, args):
+        for key, arg in zip(self.inputs, args, strict=False):
             setattr(self, key, self._proxy(key, ref(arg)))
 
     def __getattr__(self, key: str) -> Any:

@@ -13,7 +13,8 @@ templates do. ROOT's ``Eta`` of a vector along the beam is ``z ± 22756``.
 from __future__ import annotations
 
 import math
-from typing import Any, Callable, ClassVar
+from collections.abc import Callable
+from typing import Any, ClassVar
 
 __all__ = [
     "LorentzVector",
@@ -248,10 +249,14 @@ class _Vector:
         return made
 
     def __add__(self, other: _Vector) -> Any:
-        return self._made(a + b for a, b in zip(self._cartesian(), other._cartesian()))
+        return self._made(
+            a + b for a, b in zip(self._cartesian(), other._cartesian(), strict=False)
+        )
 
     def __sub__(self, other: _Vector) -> Any:
-        return self._made(a - b for a, b in zip(self._cartesian(), other._cartesian()))
+        return self._made(
+            a - b for a, b in zip(self._cartesian(), other._cartesian(), strict=False)
+        )
 
     def __neg__(self) -> Any:
         return self._made(-a for a in self._cartesian())
@@ -268,11 +273,15 @@ class _Vector:
         return self._made(value / float(a) for value in self._cartesian())
 
     def __iadd__(self, other: _Vector) -> Any:
-        self._set_cartesian(tuple(a + b for a, b in zip(self._cartesian(), other._cartesian())))
+        self._set_cartesian(
+            tuple(a + b for a, b in zip(self._cartesian(), other._cartesian(), strict=False))
+        )
         return self
 
     def __isub__(self, other: _Vector) -> Any:
-        self._set_cartesian(tuple(a - b for a, b in zip(self._cartesian(), other._cartesian())))
+        self._set_cartesian(
+            tuple(a - b for a, b in zip(self._cartesian(), other._cartesian(), strict=False))
+        )
         return self
 
     def __imul__(self, a: Any) -> Any:
@@ -281,7 +290,9 @@ class _Vector:
 
     def Dot(self, other: _Vector) -> float:
         """The Euclidean dot product; a four-vector's is Minkowski's."""
-        return float(sum(a * b for a, b in zip(self._cartesian(), other._cartesian())))
+        return float(
+            sum(a * b for a, b in zip(self._cartesian(), other._cartesian(), strict=False))
+        )
 
 
 def _dress(cls: Any) -> Any:
@@ -589,7 +600,9 @@ class VectorUtil:
         a, b = v1._cartesian()[:3], v2._cartesian()[:3]
         product = _r3(a) * _r3(b)
         return (
-            1.0 if product <= 0 else max(-1.0, min(1.0, sum(p * q for p, q in zip(a, b)) / product))
+            1.0
+            if product <= 0
+            else max(-1.0, min(1.0, sum(p * q for p, q in zip(a, b, strict=False)) / product))
         )
 
     @staticmethod
@@ -613,5 +626,5 @@ class VectorUtil:
     @staticmethod
     def Perp(v: Any, u: Any) -> float:
         a, b = v._cartesian()[:3], u._cartesian()[:3]
-        along = sum(p * q for p, q in zip(a, b)) / _r3(b)
+        along = sum(p * q for p, q in zip(a, b, strict=False)) / _r3(b)
         return math.sqrt(max(_r3(a) ** 2 - along * along, 0.0))

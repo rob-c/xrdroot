@@ -150,7 +150,7 @@ def _rectangles(scene: Scene, x0: Any, x1: Any, y0: Any, y1: Any, look: Look) ->
     """Each rectangle filled if ``look`` has a fill, or else outlined as a closed line."""
     columns = (np.asarray(x0, float), np.asarray(x1, float),
                np.asarray(y0, float), np.asarray(y1, float))  # fmt: skip
-    for a, b, c, d in zip(*columns):
+    for a, b, c, d in zip(*columns, strict=False):
         corners = pixels_of(scene, [a, b, b, a], [c, c, d, d])
         if look.fill is not None:
             _fill(scene, corners, _solid(look))

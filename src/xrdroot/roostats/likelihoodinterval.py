@@ -143,7 +143,7 @@ class LikelihoodInterval(ConfInterval):
         self._from_best()
 
         def fcn(x: Any) -> float:
-            for par, value in zip(self._params, x):
+            for par, value in zip(self._params, x, strict=False):
                 par.setVal(float(value))
             if self._seen is not None:
                 self._seen.append(tuple(float(v) for v in x))
@@ -190,7 +190,7 @@ class LikelihoodInterval(ConfInterval):
         index = [p.GetName() for p in self._params].index(name)
         at = float(self._minuit.values[index])
         above = [point for point in seen if point[index] > at]
-        for par, value in zip(self._params, above[-1] if above else ()):
+        for par, value in zip(self._params, above[-1] if above else (), strict=False):
             par.setVal(value)
 
     def GetContourPoints(self, paramX: Any, paramY: Any, x: Any, y: Any, npoints: int = 30) -> int:

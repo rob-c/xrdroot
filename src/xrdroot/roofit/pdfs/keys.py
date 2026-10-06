@@ -111,7 +111,7 @@ class RooKeysPdf(RooAbsPdf):
         self._points, self._point_weights = points, point_weights
         self._widths = self._adaptive_widths(_spread(values, weights))
         table = self._kernels(points, 1.0)
-        for subtract, at in zip(self._mirror[2:], (self._lo, self._hi)):
+        for subtract, at in zip(self._mirror[2:], (self._lo, self._hi), strict=False):
             if subtract:
                 table -= self._kernels(2.0 * at - points, -1.0)
         self._table = table / (math.sqrt(2.0 * math.pi) * self._sum_weights)

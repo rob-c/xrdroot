@@ -146,8 +146,8 @@ def test_rannor_is_box_muller_on_two_draws_with_roots_constant():
     a, b = TRandom3(99).rannor(1000)
     radius = [math.sqrt(-2 * math.log(v)) for v in u[0::2].tolist()]
     angle = [v * 6.28318530717958623 for v in u[1::2].tolist()]
-    assert a.tolist() == [r * math.sin(t) for r, t in zip(radius, angle)]
-    assert b.tolist() == [r * math.cos(t) for r, t in zip(radius, angle)]
+    assert a.tolist() == [r * math.sin(t) for r, t in zip(radius, angle, strict=False)]
+    assert b.tolist() == [r * math.cos(t) for r, t in zip(radius, angle, strict=False)]
 
 
 def ranlan(z, xi):

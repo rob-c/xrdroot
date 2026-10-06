@@ -67,7 +67,7 @@ class Layout(NamedTuple):
     def header(self) -> str:
         """The names of the columns, each cut to ``...`` if it is wider than its column."""
         cells = []
-        for name, size in zip(self.names, self.sizes):
+        for name, size in zip(self.names, self.sizes, strict=False):
             if len(name) > size:
                 name = name[: max(1, size - 3)] + "..."
             cells.append(f"* {name[:size]:>{size}} ")
@@ -188,7 +188,7 @@ class Table:
 
     def _row(self, results: Sequence[Result], entry: int, instance: int, number: int) -> str:
         line = f"* {number:8d} " + (f"* {instance:8d} " if self.layout.instances else "")
-        for result, size in zip(results, self.layout.sizes):
+        for result, size in zip(results, self.layout.sizes, strict=False):
             line += self.layout.cell(result.at(entry, instance), size)
         return line + "*"
 

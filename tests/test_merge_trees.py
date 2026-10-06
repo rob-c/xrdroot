@@ -160,7 +160,7 @@ def test_a_string_column_kept_inside_its_branch_keeps_its_table_of_entries(tmp_p
         for name in ("label", "jets", "x"):
             record = tree[name].record
             keyed = [xrdroot.tree.Basket.keyed(f._source, s, n, record.entry_offset_len > 0)
-                     for s, n in zip(record.basket_seek, record.basket_bytes)]
+                     for s, n in zip(record.basket_seek, record.basket_bytes, strict=False)]
             record.baskets = keyed  # as if the tree had never flushed them
         with create(str(out)) as written:
             merging = TreeMerge(written, "events", tree, "'events'")

@@ -30,7 +30,7 @@ class BookedHist:
             columns = [np.asarray(result.GetValue(), dtype=np.float64) for result in self._taken]
             weights = (None if self._weight is None else
                        np.asarray(self._weight.GetValue(), dtype=np.float64))  # fmt: skip
-            for at, values in enumerate(zip(*columns)):
+            for at, values in enumerate(zip(*columns, strict=False)):
                 extra = () if weights is None else (RWeight(float(weights[at])),)
                 self._hist.Fill(*values, *extra)
             self._filled = True

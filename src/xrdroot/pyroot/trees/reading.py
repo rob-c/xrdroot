@@ -55,7 +55,7 @@ class _Reading(_TreeCore):
             print(f"Error in <TTree::SetBranchAddress>: unknown branch -> {name}", file=sys.stderr)
             return MISSING_BRANCH
         leaves: list[Any] = branch.leaves if branch is not None else [leaf]
-        for each, one in zip(leaves, _bound(address, leaves, f"the branch {name!r}")):
+        for each, one in zip(leaves, _bound(address, leaves, f"the branch {name!r}"), strict=False):
             self._addresses[each.column] = one
             self._rebind(each.column, one)
         return MATCH

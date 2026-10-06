@@ -41,7 +41,7 @@ class CombinedCalculator:
             self._pdf = model
             self.SetParameters(args[0])
             self.SetTestSize(float(args[1]) if len(args) > 1 else 0.05)
-            for key, given in zip(("null", "alt", "nuis"), args[2:]):
+            for key, given in zip(("null", "alt", "nuis"), args[2:], strict=False):
                 if given is not None:
                     self._sets[key] = RooArgSet(as_list(given))
 

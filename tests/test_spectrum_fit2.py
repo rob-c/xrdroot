@@ -106,8 +106,8 @@ def test_each_way_of_fitting_peaks_and_ridges_finds_what_root_finds(label):
     arguments, tolerance, expected = CASES2[label]
     got = fitted(*arguments)
     # Where ROOT read memory it never wrote, what it printed is no number to hold to.
-    expected = [[h if e is None else e for h, e in zip(row, want)]
-                for row, want in zip(got, expected)]  # fmt: skip
+    expected = [[h if e is None else e for h, e in zip(row, want, strict=False)]
+                for row, want in zip(got, expected, strict=False)]  # fmt: skip
     # A correlation of 1 leaves ROOT's errors NaN, and NaN is no number to compare.
     got, expected = [marked(row) for row in got], [marked(row) for row in expected]
     assert got == [roots(row, rel=tolerance) for row in expected]

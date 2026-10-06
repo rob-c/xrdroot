@@ -72,7 +72,7 @@ class RooAddModel(RooResolutionModel):
 
     def _summed(self, parts: list[Any], ctx: Context) -> Any:
         total: Any = 0.0
-        for fraction, part in zip(self.fractions(ctx), parts):
+        for fraction, part in zip(self.fractions(ctx), parts, strict=False):
             total = total + np.where(np.asarray(fraction) != 0.0, part() * fraction, 0.0)
         return total
 
@@ -103,7 +103,7 @@ class RooAddModel(RooResolutionModel):
     def generate_event(self, code: int, rng: Any, bounds: Any = None) -> dict[str, float]:
         """``RooAddGenContext``: a uniform draw picks the component, which draws the event."""
         draw, low = rng.Rndm(), 0.0
-        for fraction, model in zip(self.fractions({}), self.pdfs):
+        for fraction, model in zip(self.fractions({}), self.pdfs, strict=False):
             share = float(np.asarray(fraction))
             if low < draw < low + share:
                 return dict(

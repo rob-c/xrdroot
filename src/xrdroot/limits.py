@@ -256,5 +256,5 @@ def good_axes(
     """Every axis of a histogram found as :func:`find_good_limits` finds one."""
     return [
         find_good_limits(count, low, high, integer)
-        for count, (low, high), integer in zip(nbins, ranges, integers)
+        for count, (low, high), integer in zip(nbins, ranges, integers, strict=False)
     ]

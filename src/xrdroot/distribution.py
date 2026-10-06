@@ -129,7 +129,7 @@ class _Walk:
     def __iter__(self) -> Any:
         for backwards in itertools.product(*reversed(self.ranges)):
             at = backwards[::-1]
-            bin = sum(index * stride for index, stride in zip(at, self.strides))
+            bin = sum(index * stride for index, stride in zip(at, self.strides, strict=False))
             yield bin, self._neighbours(at, bin)
 
 

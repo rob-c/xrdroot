@@ -100,7 +100,7 @@ class TGeoMatrix(TNamed):
                                         self.IsReflection(), self.GetName() in REGISTERED)]
         print("matrix {} - tr={}  rot={}  refl={}  scl=0 shr=0 reg={} own=0".format(
             self.GetName(), *flags))  # fmt: skip
-        for row, shift, axis in zip(rotation, translation, "xyz"):
+        for row, shift, axis in zip(rotation, translation, "xyz", strict=False):
             x, y, z = row
             print(f"{x:10.6f}{y:12.6f}{z:12.6f}    T{axis} = {shift:10.6f}")
 
@@ -166,7 +166,7 @@ class TGeoRotation(TGeoMatrix):
         from ..core.refs import store
 
         found = self._xrd.euler_angles() if len(out) == 3 else self._xrd.geant_angles()
-        for target, value in zip(out, found):
+        for target, value in zip(out, found, strict=False):
             store(target, value)
         return tuple(found)
 

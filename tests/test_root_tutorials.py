@@ -166,7 +166,7 @@ def png_bytes(
 ) -> bytes:
     """A PNG of the rows given, each already filtered by the filter named for it."""
     filters = filters or [0] * len(rows)
-    raw = b"".join(bytes([f]) + row for f, row in zip(filters, rows))
+    raw = b"".join(bytes([f]) + row for f, row in zip(filters, rows, strict=False))
     head = struct.pack(">IIBBBBB", width, len(rows), depth, colour, 0, 0, interlace)
     return (
         b"\x89PNG\r\n\x1a\n"

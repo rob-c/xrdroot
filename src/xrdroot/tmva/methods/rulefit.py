@@ -115,8 +115,8 @@ class MethodRuleFit(Method):
             inside = rule_matrix(self.rules, values)
             support = weights @ inside / weights.sum()
             keep = (support > 0) & (support < 1)
-            self.rules = [rule for rule, kept in zip(self.rules, keep) if kept]
-            for rule, s in zip(self.rules, support[keep]):
+            self.rules = [rule for rule, kept in zip(self.rules, keep, strict=False) if kept]
+            for rule, s in zip(self.rules, support[keep], strict=False):
                 rule.support, rule.sigma = float(s), float(np.sqrt(s * (1 - s)))
         sigma = float(np.mean([r.sigma for r in self.rules])) if self.rules else 0.4
         self.average_sigma = sigma
@@ -154,7 +154,7 @@ class MethodRuleFit(Method):
         self.log.info("----------------------------------------------------------------")
         self.offset = found.offset
         count = len(self.rules) if self.use_rules else 0
-        for rule, value in zip(self.rules, found.coefficients[:count]):
+        for rule, value in zip(self.rules, found.coefficients[:count], strict=False):
             rule.coefficient = float(value)
         self.lin_coef = found.coefficients[count:] if self.use_linear else np.zeros(0)
         self._importance(values, weights)
@@ -202,7 +202,7 @@ class MethodRuleFit(Method):
 
     def ranking(self) -> tuple[str, list[tuple[str, float]]]:
         labels = [v.label for v in self.dsi.variables]
-        return "Importance", list(zip(labels, self.variable_importance()))
+        return "Importance", list(zip(labels, self.variable_importance(), strict=False))
 
     # -- the weight file ------------------------------------------------------------------
 

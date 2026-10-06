@@ -469,7 +469,7 @@ class TRotation(TObject):
 
     def Inverse(self) -> TRotation:
         made = TRotation()
-        made._m = [list(row) for row in zip(*self._m)]
+        made._m = [list(row) for row in zip(*self._m, strict=False)]
         return made
 
     def __call__(self, i: int, j: int) -> float:

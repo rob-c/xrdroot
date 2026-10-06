@@ -178,8 +178,8 @@ class EvaluatingModes:
             log.info("")
             log.info(f"{dataset:<15}{row['name']:<15}")
             log.info("------------------------------")
-            for name, (test, train) in zip(row["classes"], row["summaries"]):
-                cells = [f"{a:5.3f} ({b:5.3f})" for a, b in zip(test, train)]
+            for name, (test, train) in zip(row["classes"], row["summaries"], strict=False):
+                cells = [f"{a:5.3f} ({b:5.3f})" for a, b in zip(test, train, strict=False)]
                 log.info("".join(f"{t:<15}" for t in ("", name, *cells)))
         log.info("")
         log.info(MULTI_LINE)
@@ -210,7 +210,7 @@ def _confusion_tables(log: Logger, rows: list[dict[str, Any]]) -> None:
     for row in rows:
         names = row["classes"]
         log.info(f"=== Showing confusion matrix for method : {row['name']:<15}")
-        for level, label in zip(LEVELS, ("0.01", "0.10", "0.30")):
+        for level, label in zip(LEVELS, ("0.01", "0.10", "0.30"), strict=False):
             log.info(f"(Signal Efficiency for Background Efficiency {label}%)")
             log.info("---------------------------------------------------")
             # TMVA hands its printer the testing matrix as the training one and the other way

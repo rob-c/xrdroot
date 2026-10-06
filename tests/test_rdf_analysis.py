@@ -203,7 +203,7 @@ def test_a_collection_can_be_given_back_by_a_callable_and_used_in_strings(tmp_pa
         counts = good.Define("n_good", "good.size()").Take("n_good").GetValue()
         pts, etas = muon_columns(200)["Muon_pt"], muon_columns(200)["Muon_eta"]
         assert counts.tolist() == [
-            int(((p > 30) & (np.abs(e) < 2.4)).sum()) for p, e in zip(pts, etas)
+            int(((p > 30) & (np.abs(e) < 2.4)).sum()) for p, e in zip(pts, etas, strict=False)
         ]
         assert isinstance(good.Take("good").GetValue(), Jagged)
 

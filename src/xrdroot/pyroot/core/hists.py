@@ -69,7 +69,7 @@ class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarke
     def _print_base(self) -> None:
         print(f"          Title = {self.GetTitle()}")
         parts = []
-        for letter, axis in zip("XYZ", self._axes()):
+        for letter, axis in zip("XYZ", self._axes(), strict=False):
             low = letter.lower()
             parts.append(
                 f"Nbins{letter}= {axis.GetNbins()}, {low}min= {axis.GetXmin():g}, "
@@ -85,12 +85,12 @@ class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarke
         ]
         keep_errors = self.GetSumw2N() > 0
         grids = np.meshgrid(*[np.arange(a, b + 1) for a, b in spans], indexing="ij")
-        for parts in zip(*(grid.ravel(order="F") for grid in grids)):
+        for parts in zip(*(grid.ravel(order="F") for grid in grids), strict=False):
             bin = self.GetBin(*parts)
             index = "".join(f"[{int(p)}]" for p in parts)
             where = ", ".join(
                 f"{letter}={axis.GetBinCenter(int(p)):g}"
-                for letter, axis, p in zip("xyz", axes, parts)
+                for letter, axis, p in zip("xyz", axes, parts, strict=False)
             )
             line = f" fSumw{index}={self.GetBinContent(bin):g}, {where}"
             print(f"{line}, error={self.GetBinError(bin):g}" if keep_errors else line)
@@ -183,7 +183,9 @@ class TH2(TH1):
             if source.ComputeIntegral() == 0:
                 return
             points = [source.GetRandom2(rng=generator) for _ in range(int(ntimes))]
-            self._xrd.fill(*(np.array(column, dtype=np.float64) for column in zip(*points)))
+            self._xrd.fill(
+                *(np.array(column, dtype=np.float64) for column in zip(*points, strict=False))
+            )
             return
         self._fill_from_function(source, int(ntimes), generator)
 

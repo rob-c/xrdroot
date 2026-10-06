@@ -9,8 +9,6 @@ walks this rather than the text.
 
 from __future__ import annotations
 
-from typing import Optional
-
 __all__ = [
     "Node",
     "Number",
@@ -54,7 +52,7 @@ class Text(Node):
 
 
 #: One index after a branch: an expression, or ``None`` for ``[]``, every one.
-Index = Optional[Node]
+Index = Node | None
 
 
 class Ref(Node):

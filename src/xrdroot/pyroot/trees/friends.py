@@ -76,7 +76,7 @@ class _Friends(_Reading):
     def BuildIndex(self, major: str, minor: str = "0") -> int:
         """Index the entries by ``major`` and ``minor``; how many were indexed comes back."""
         read = self._backing().arrays([major, minor], aliases=self._aliases)
-        keys = list(zip(_integers(read[major]), _integers(read[minor])))
+        keys = list(zip(_integers(read[major]), _integers(read[minor]), strict=False))
         self._index = _Index(major, minor, keys)
         return len(keys)
 

@@ -146,7 +146,7 @@ class MCMCInterval(ConfInterval):
         import numpy as np
 
         index = np.zeros(self._chain.Size() - self._burn_in, dtype=np.int64)
-        for par, edge in zip(self._params, edges):
+        for par, edge in zip(self._params, edges, strict=False):
             values = np.asarray(self._chain.values(par.GetName(), self._burn_in))
             found = np.clip(np.searchsorted(edge, values, side="right") - 1, 0, len(edge) - 2)
             index = index * (len(edge) - 1) + found
@@ -212,7 +212,7 @@ class MCMCInterval(ConfInterval):
 
     def _extreme_bin(self, at: int, param: Any, upper: bool) -> float:
         """The farthest centre, in the parameter, of the bins above the cutoff."""
-        chosen = [c[at] for c, w in zip(*self._bins) if w >= self._cutoff]
+        chosen = [c[at] for c, w in zip(*self._bins, strict=False) if w >= self._cutoff]
         if upper:
             return float(max([param.getMin(), *chosen]))
         return float(min([param.getMax(), *chosen]))
@@ -299,8 +299,11 @@ class MCMCInterval(ConfInterval):
         if self._bins is None:
             return False
         # ``RooDataHist::getIndex``: the bin the point is in - one always is, the bins clamped
-        weight = next(w for centre, w in zip(*self._bins)
-                      if all(_in_bin(p, c, given) for p, c in zip(self._params, centre)))
+        weight = next(
+            w
+            for centre, w in zip(*self._bins, strict=False)
+            if all(_in_bin(p, c, given) for p, c in zip(self._params, centre, strict=False))
+        )
         return bool(weight >= self._cutoff)
 
     def CheckParameters(self, point: Any) -> bool:
@@ -465,7 +468,7 @@ class MCMCCalculator(Named):
         for one in [*params, *self._sets["poi"]]:
             one.setBins(self._bins)
         pdf = getattr(proposal, "GetPdf", None)
-        for one in (pdf().getParameters(None) if pdf is not None else ()):
+        for one in pdf().getParameters(None) if pdf is not None else ():
             one.setBins(self._bins)
 
     def _chain(self, nll: Any, params: Any, proposal: Any) -> Any:

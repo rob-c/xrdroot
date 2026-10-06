@@ -11,7 +11,8 @@ one to size it, one to paint it - come to.
 
 from __future__ import annotations
 
-from typing import Callable, NamedTuple
+from collections.abc import Callable
+from typing import NamedTuple
 
 __all__ = ["Box", "Form", "Mark", "Spec", "EMPTY"]
 

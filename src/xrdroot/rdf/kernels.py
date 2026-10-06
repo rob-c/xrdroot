@@ -326,7 +326,7 @@ def pair_masses(first: tuple[Array, ...], second: tuple[Array, ...]) -> Array:
     kind = np.result_type(*first, *second)
     one = _momentum(*(np.asarray(each, kind) for each in first))
     two = _momentum(*(np.asarray(each, kind) for each in second))
-    x, y, z, e = (a + b for a, b in zip(one, two))
+    x, y, z, e = (a + b for a, b in zip(one, two, strict=False))
     return _mass(x, y, z, e)
 
 

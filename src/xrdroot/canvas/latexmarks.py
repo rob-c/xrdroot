@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import math
 import re
-from typing import TYPE_CHECKING, Any, Callable, NamedTuple
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from .latexform import Box, Form, Mark, Spec, placed
 from .latexscan import ABOVE, GREEK, SPECIAL, Found, LatexError

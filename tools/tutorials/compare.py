@@ -18,10 +18,10 @@ from __future__ import annotations
 import importlib
 import math
 import re
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, NamedTuple
+from typing import Any, NamedTuple
 
 __all__ = [
     "Tolerance",
@@ -107,14 +107,16 @@ def same_line(one: str, two: str, tolerance: Tolerance) -> bool:
     if NUMBER.split(one) != NUMBER.split(two):
         return False
     first, second = NUMBER.findall(one), NUMBER.findall(two)
-    return len(first) == len(second) and all(_close(a, b, tolerance) for a, b in zip(first, second))
+    return len(first) == len(second) and all(
+        _close(a, b, tolerance) for a, b in zip(first, second, strict=False)
+    )
 
 
 def first_difference(
     expected: Sequence[str], actual: Sequence[str], tolerance: Tolerance
 ) -> str | None:
     """The first line that differs, said with its number and both sides; None if none."""
-    for number, (one, two) in enumerate(zip(expected, actual), start=1):
+    for number, (one, two) in enumerate(zip(expected, actual, strict=False), start=1):
         if not same_line(one, two, tolerance):
             return f"line {number}: ROOT {one!r}, xrdroot {two!r}"
     if len(expected) != len(actual):
@@ -186,8 +188,9 @@ def _clipped_difference(texts: tuple[str, str], paths: tuple[Mapping[str, str], 
     ROOT's has the driver's ``Processing`` line, for one - so only the lines
     both kept whole are compared: the heads' first, the tails' last.
     """
+    pairs = zip(texts, paths, strict=False)
     (head_one, tail_one), (head_two, tail_two) = (_kept(text, where, python)
-                                                  for text, where in zip(texts, paths))  # fmt: skip
+                                                  for text, where in pairs)  # fmt: skip
     size = min(len(head_one), len(head_two))
     found = first_difference(head_one[:size], head_two[:size], tolerance)
     if found is not None:

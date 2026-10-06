@@ -107,7 +107,7 @@ def _product_pdf(builder: Builder, record: Streamed) -> Any:
 
     pdfs = builder.listed(record, "_pdfList")
     factors: list[Any] = []
-    for pdf, nset in zip(pdfs, record.get("_pdfNSetList") or [None] * len(pdfs)):
+    for pdf, nset in zip(pdfs, record.get("_pdfNSetList") or [None] * len(pdfs), strict=False):
         members = builder.nodes(nset.get("_list")) if nset is not None else []
         if not members:
             factors.append([pdf])

@@ -66,7 +66,10 @@ class Snapshot(Action):
         self.mode = mode
 
     def partial(self, batch: Batch) -> Any:
-        return {each.name: values for each, values in zip(self.inputs, self.columns(batch))}
+        return {
+            each.name: values
+            for each, values in zip(self.inputs, self.columns(batch), strict=False)
+        }
 
     def _open(self) -> _Writing:
         if self.mode == "UPDATE":

@@ -24,6 +24,7 @@ world. Those are refused with more than one worker, by name.
 from __future__ import annotations
 
 import importlib
+import itertools
 import multiprocessing
 import pickle
 from collections.abc import Iterator, Sequence
@@ -272,7 +273,7 @@ class Plan:
         limit = self.limit()
         stop = bounds[-1] if limit is None else min(bounds[-1], limit)
         found = []
-        for index, (low, high) in enumerate(zip(bounds, bounds[1:])):
+        for index, (low, high) in enumerate(itertools.pairwise(bounds)):
             for at in range(low, min(high, stop), self.step):
                 found.append((at, min(at + self.step, high, stop), index))
         return found or [(0, 0, 0)]
@@ -377,7 +378,7 @@ def _parallel(plan: Plan, tasks: list[tuple[int, int, int]]) -> Iterator[Any]:
 
 
 def _add_counts(totals: list[list[int]], counts: list[tuple[int, int]]) -> None:
-    for total, (seen, passed) in zip(totals, counts):
+    for total, (seen, passed) in zip(totals, counts, strict=False):
         total[0] += seen
         total[1] += passed
 
@@ -389,11 +390,13 @@ def execute(plan: Plan) -> list[Any]:
     try:
         _fold(plan, accs, totals)
     except BaseException:
-        for action, acc in zip(plan.actions, accs):
+        for action, acc in zip(plan.actions, accs, strict=False):
             action.abort(acc)
         raise
-    flow = {id(node): (total[0], total[1]) for node, total in zip(plan.filters, totals)}
-    return [action.finish(acc, flow) for action, acc in zip(plan.actions, accs)]
+    flow = {
+        id(node): (total[0], total[1]) for node, total in zip(plan.filters, totals, strict=False)
+    }
+    return [action.finish(acc, flow) for action, acc in zip(plan.actions, accs, strict=False)]
 
 
 def _fold(plan: Plan, accs: list[Any], totals: list[list[int]]) -> None:
@@ -401,6 +404,6 @@ def _fold(plan: Plan, accs: list[Any], totals: list[list[int]]) -> None:
     tasks = plan.tasks()
     parallel = plan.workers > 1 and len(tasks) > 1
     for parts, counts in _parallel(plan, tasks) if parallel else _serial(plan, tasks, accs):
-        for at, (action, part) in enumerate(zip(plan.actions, parts)):
+        for at, (action, part) in enumerate(zip(plan.actions, parts, strict=False)):
             accs[at] = action.merge(accs[at], part)
         _add_counts(totals, counts)

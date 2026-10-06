@@ -120,12 +120,12 @@ class TGraphPolar(TGraphErrors):
         low = grid.to_unit_circle(x, y - ey, ranges, c)
         high = grid.to_unit_circle(x, y + ey, ranges, c)
         made: list[tuple[Any, str]] = []
-        for x1, y1, x2, y2 in zip(*low, *high):
+        for x1, y1, x2, y2 in zip(*low, *high, strict=False):
             if (x1, y1) != (x2, y2):
                 made.append((_styled(TLine(x1, y1, x2, y2), self, ("line",)), ""))
         rmin, rmax, tmin, tmax = ranges
         per_turn = (tmax - tmin) / (2 * np.pi)
-        for theta, r, e in zip(x, y, ex):
+        for theta, r, e in zip(x, y, ex, strict=False):
             phis = [np.degrees(c * (theta + s * e - tmin) / per_turn) for s in (-1, 1)]
             if phis[0] != phis[1]:
                 xs, ys = grid.circle((r - rmin) / (rmax - rmin), *phis)

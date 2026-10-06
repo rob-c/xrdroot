@@ -104,7 +104,7 @@ def stats_rows(h: Any, option: int) -> list[tuple[str, str]]:
     """The lines ``fOptStat`` asks for, as names and values under the histogram's name."""
     name, *digits = _digits(option, 1 + len(STAT_LINES))
     rows: list[tuple[str, str]] = [(h.name, "")] if name else []
-    for digit, lines in zip(digits, STAT_LINES):
+    for digit, lines in zip(digits, STAT_LINES, strict=False):
         if digit:
             rows += lines(h, digit)
     return rows
@@ -120,7 +120,7 @@ def fit_rows(h: Any, option: int) -> list[tuple[str, str]]:
     rows = _goodness(function.fit_result or {}, chi2, probability)
     if parameters:
         for label, value, error in zip(
-            function.parameter_names, function.parameters, function.parameter_errors
+            function.parameter_names, function.parameters, function.parameter_errors, strict=False
         ):
             rows.append((label, f"{_value(value)} #pm {_value(error)}"))
     return rows

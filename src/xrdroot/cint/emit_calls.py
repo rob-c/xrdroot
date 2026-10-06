@@ -159,7 +159,7 @@ class CallEmitter(ExprEmitter):
         if chosen is None:
             return ""
         values = {str(param.name) for param in chosen.values}
-        pairs = zip(chosen.template or [], func.targs or [])
+        pairs = zip(chosen.template or [], func.targs or [], strict=False)
         return ", ".join(f"{name}={self.value(arg)}" for name, arg in pairs if name in values)
 
     def _valued(self, symbol: Symbol) -> Function | None:

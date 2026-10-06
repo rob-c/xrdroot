@@ -38,7 +38,7 @@ from __future__ import annotations
 import copy as _copy
 import math
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, NamedTuple, Union
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 
@@ -180,7 +180,7 @@ class _Summed(NamedTuple):
     picked: bool
 
 
-_Spec = Union[_Kept, _Summed]
+_Spec = _Kept | _Summed
 
 
 def _spread(histogram: Histogram, index: Any) -> list[Any]:
@@ -299,7 +299,10 @@ def _spec(axis: Axis, item: Any) -> _Spec:
 
 
 def _specs(histogram: Histogram, index: Any) -> list[_Spec]:
-    return [_spec(axis, item) for axis, item in zip(histogram.axes, _spread(histogram, index))]
+    return [
+        _spec(axis, item)
+        for axis, item in zip(histogram.axes, _spread(histogram, index), strict=False)
+    ]
 
 
 # -- reading bins -------------------------------------------------------------
@@ -389,14 +392,14 @@ def _cells_of(histogram: Histogram) -> list[tuple[dict[str, Any], str]]:
 
 def _cut(histogram: Histogram, kept: Sequence[_Kept]) -> Histogram:
     """A new histogram of every per-bin array cut and merged along each axis."""
-    binnings = [_binning(axis, spec) for axis, spec in zip(histogram.axes, kept)]
-    moved = any(_moves(axis, spec) for axis, spec in zip(histogram.axes, kept))
+    binnings = [_binning(axis, spec) for axis, spec in zip(histogram.axes, kept, strict=False)]
+    moved = any(_moves(axis, spec) for axis, spec in zip(histogram.axes, kept, strict=False))
     made = copied(histogram)
     cells = math.prod(binning.nbins + 2 for binning in binnings)
     for position, (home, key) in enumerate(_cells_of(made)):
         dtype = np.dtype(ARRAYS[key].typename) if position == 0 else np.dtype(np.float64)
         home[key] = _cut_cells(made, home[key], kept, np.zeros(cells, dtype=dtype))
-    for letter, binning in zip("XYZ", binnings):
+    for letter, binning in zip("XYZ", binnings, strict=False):
         _new_axis(made, letter, binning)
     made._core["fNcells"] = cells
     if moved:

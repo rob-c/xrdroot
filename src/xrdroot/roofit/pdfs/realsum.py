@@ -36,7 +36,7 @@ class RooRealSumPdf(RooAbsPdf):
 
     def compute(self, ctx: Context) -> Any:
         total: Any = 0.0
-        for coef, func in zip(self._coefficients(ctx), self.funcs):
+        for coef, func in zip(self._coefficients(ctx), self.funcs, strict=False):
             total = total + coef * func.compute(ctx)
         return total
 
@@ -45,7 +45,7 @@ class RooRealSumPdf(RooAbsPdf):
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
         total: Any = 0.0
-        for coef, func in zip(self._coefficients(ctx), self.funcs):
+        for coef, func in zip(self._coefficients(ctx), self.funcs, strict=False):
             part = names & func.dependents()
             total = total + coef * (func.integrate(part, ctx, rng) if part else func.compute(ctx))
         return total
@@ -75,7 +75,9 @@ class RooRealSumPdf(RooAbsPdf):
         return _binned(self.funcs, obs)
 
     def printMetaArgs(self) -> str:
-        parts = [f"{c.GetName()} * {f.GetName()}" for c, f in zip(self.coefs, self.funcs)]
+        parts = [
+            f"{c.GetName()} * {f.GetName()}" for c, f in zip(self.coefs, self.funcs, strict=False)
+        ]
         if len(self.funcs) > len(self.coefs):
             parts.append(f"[%] * {self.funcs[len(self.coefs)].GetName()}")
         return " + ".join(parts) + " "

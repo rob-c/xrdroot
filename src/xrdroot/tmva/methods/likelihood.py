@@ -173,7 +173,9 @@ class MethodLikelihood(Method):
         """The reference histograms, their smoothed copies and densities, as TMVA writes them."""
         output_name = output.GetName()
         self.log.info(f"{output_name}:/{directory}")
-        for index, ((pdf_s, pdf_b), (sig, bgd)) in enumerate(zip(self.pdfs, self.reference)):
+        for index, ((pdf_s, pdf_b), (sig, bgd)) in enumerate(
+            zip(self.pdfs, self.reference, strict=False)
+        ):
             for histogram in (sig, bgd, pdf_s.smoothed, pdf_b.smoothed, pdf_s.fine, pdf_b.fine):
                 output.write(directory, histogram)
             output.write(directory, self._check(pdf_s, index))

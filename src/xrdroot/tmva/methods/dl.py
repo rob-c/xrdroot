@@ -236,7 +236,7 @@ class MethodDL(Method):
         )
         phases = strategy_phases(str(self.opt("TrainingStrategy")))
         drops = phases[0].dropout if phases else ()
-        for index, (width, name) in enumerate(zip(self.sizes[1:], self.activations)):
+        for index, (width, name) in enumerate(zip(self.sizes[1:], self.activations, strict=False)):
             line = (
                 f"\tLayer {index}\t DENSE Layer: \t ( Input ={self.sizes[index]:6d} , Width ="
                 f"{width:6d} ) \tOutput = ( {1:2d} ,{batch:6d} ,{width:6d} ) \t "

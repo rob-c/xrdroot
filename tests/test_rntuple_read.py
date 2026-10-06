@@ -103,7 +103,7 @@ def test_a_footer_of_the_newer_format_version_reads_the_same():
 def test_an_uncompressed_rntuple_in_the_plain_encodings_reads():
     found = ntuple("rntviewer-testfile-uncomp-single-rntuple-v1-0-0-0", "Contributors")
     names = found.arrays(["firstName", "lastName"], 0, 3)
-    assert [f"{a} {b}" for a, b in zip(names["firstName"], names["lastName"])] == [
+    assert [f"{a} {b}" for a, b in zip(names["firstName"], names["lastName"], strict=False)] == [
         "Jakob Blomer",
         "Philippe Canal",
         "Axel Naumann",

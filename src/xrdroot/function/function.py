@@ -84,7 +84,7 @@ def _dimensions(tree: Node) -> int:
 
 def _renamed(text: str, old: Sequence[str], new: Sequence[str]) -> str:
     """The formula with each parameter's old name in brackets replaced by its new one."""
-    swap = dict(zip(old, new))
+    swap = dict(zip(old, new, strict=False))
     return LABEL.sub(lambda found: f"[{swap.get(found.group(1), found.group(1))}]", text)
 
 
@@ -378,7 +378,9 @@ class Function(Displayed):
         ``FixParameter`` marks a parameter - is not a range either.
         """
         low, high = self._per_parameter("fParMin"), self._per_parameter("fParMax")
-        return tuple((float(a), float(b)) if a < b else None for a, b in zip(low, high))
+        return tuple(
+            (float(a), float(b)) if a < b else None for a, b in zip(low, high, strict=False)
+        )
 
     @parameter_limits.setter
     def parameter_limits(self, limits: Sequence[tuple[float, float] | None]) -> None:
@@ -395,7 +397,7 @@ class Function(Displayed):
     def fixed(self) -> tuple[bool, ...]:
         """Whether each parameter is fixed, which ROOT says with equal, non-zero limits."""
         low, high = self._per_parameter("fParMin"), self._per_parameter("fParMax")
-        return tuple(bool(a >= b and a * b != 0) for a, b in zip(low, high))
+        return tuple(bool(a >= b and a * b != 0) for a, b in zip(low, high, strict=False))
 
     @fixed.setter
     def fixed(self, flags: Sequence[bool]) -> None:
@@ -433,7 +435,7 @@ class Function(Displayed):
     @range.setter
     def range(self, given: Any) -> None:
         limits = _limits(given, self.dimensions)
-        for layer, (low, high), names in zip(self._layers, limits, _LIMIT_NAMES):
+        for layer, (low, high), names in zip(self._layers, limits, _LIMIT_NAMES, strict=False):
             layer[names[0]], layer[names[1]] = low, high
         self._renormalise()
 

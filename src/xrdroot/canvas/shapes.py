@@ -85,7 +85,9 @@ def _line_of(scene: Scene, prim: Any, points: list[tuple[float, float]], style: 
 def line(scene: Scene, prim: Primitive, _option: str) -> None:
     """A ``TLine``, from ``(fX1, fY1)`` to ``(fX2, fY2)``."""
     xs, ys = _ends(prim)
-    _line_of(scene, prim, [canvas_point(scene, x, y, prim.ndc) for x, y in zip(xs, ys)])
+    _line_of(
+        scene, prim, [canvas_point(scene, x, y, prim.ndc) for x, y in zip(xs, ys, strict=False)]
+    )
 
 
 def _head(tip: tuple[float, float], along: tuple[float, float], length: float,
@@ -166,7 +168,7 @@ def arrow(scene: Scene, prim: Primitive, option: str) -> None:
     The option the arrow was drawn with, if it was given one, stands before its own.
     """
     xs, ys = _ends(prim)
-    start, end = (canvas_point(scene, x, y, prim.ndc) for x, y in zip(xs, ys))
+    start, end = (canvas_point(scene, x, y, prim.ndc) for x, y in zip(xs, ys, strict=False))
     length, half = _head_size(scene, prim)
     shape, bars = _bars(start, end, str(option or prim.get("fOption", "") or ""), half)
     for bar in bars:
@@ -330,7 +332,9 @@ def polyline(scene: Scene, prim: Primitive, option: str) -> None:
         )
         return
     # Its outline is whole pixels, as ``TImageDump`` draws a polyline - and a ``TLine``.
-    _line_of(scene, prim, [canvas_point(scene, x, y, prim.ndc) for x, y in zip(xs, ys)])
+    _line_of(
+        scene, prim, [canvas_point(scene, x, y, prim.ndc) for x, y in zip(xs, ys, strict=False)]
+    )
 
 
 def polymarker(scene: Scene, prim: Primitive, _option: str) -> None:

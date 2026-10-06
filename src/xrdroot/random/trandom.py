@@ -31,7 +31,7 @@ import math
 import operator
 import uuid
 from collections.abc import Callable
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 
@@ -68,7 +68,7 @@ RANNOR_TWO_PI = 6.28318530717958623
 #: draws those took.
 Decoder = Callable[[Any, int], "tuple[list[Any], int]"]
 #: What ``n`` may be: a count, or nothing for a single number.
-Count = Union[int, None]
+Count = int | None
 
 
 def uuid_bytes() -> bytes:
@@ -388,7 +388,7 @@ class TRandom:
             found, used = decode(self._peek(ask), count)
             self._held.advance(used)
             if len(found[0]):
-                for column, values in zip(parts, found):
+                for column, values in zip(parts, found, strict=False):
                     column.append(values)
                 ask = min(int((count - len(found[0])) * used / len(found[0]) * 1.05) + 32, BATCH)
                 count -= len(found[0])

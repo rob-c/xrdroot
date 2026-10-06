@@ -149,7 +149,7 @@ def test_a_column_of_rows_fills_many_baskets_the_same_way_either_way_it_is_given
     words = [f"entry {i}" * (i % 4) for i in range(300)]
 
     def by_rows(tree):
-        for row, word in zip(rows, words):
+        for row, word in zip(rows, words, strict=False):
             tree.fill(x=row, s=word)
 
     def by_columns(tree):

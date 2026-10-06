@@ -133,7 +133,7 @@ def max_evaluations(ndim: int) -> int:
 def _axis_points(ctr: list[float], width: list[float]) -> list[list[float]]:
     """The four nodes on each axis, at lambda 2 then lambda 4, below the centre then above it."""
     points = []
-    for j, (centre, half) in enumerate(zip(ctr, width)):
+    for j, (centre, half) in enumerate(zip(ctr, width, strict=False)):
         near, far = XL2 * half, XL4 * half
         for coordinate in (centre - near, centre + near, centre - far, centre + far):
             point = list(ctr)
@@ -164,7 +164,7 @@ def _corner_points(ctr: list[float], width: list[float]) -> list[list[float]]:
     positive, so even a box of zero width is walked as ROOT walks it.
     """
     offsets = [-XL5 * half for half in width]
-    z = [centre + offset for centre, offset in zip(ctr, offsets)]
+    z = [centre + offset for centre, offset in zip(ctr, offsets, strict=False)]
     points = [list(z)]
     j = 0
     while j < len(ctr):
@@ -318,7 +318,7 @@ class _Heap:
         """ROOT's label 160: write a box's record where the sifting left the gap."""
         end = self.isbrgn
         self.wk[end - 1], self.wk[end - 2], self.wk[end - 3] = rgnerr, rgnval, float(axis)
-        for j, (centre, half) in enumerate(zip(*box)):
+        for j, (centre, half) in enumerate(zip(*box, strict=False)):
             self.wk[end - 2 * j - 4], self.wk[end - 2 * j - 5] = centre, half
 
     def top(self, n: int) -> tuple[float, float, int, list[float], list[float]]:
@@ -440,8 +440,8 @@ def _box(lows: Any, highs: Any) -> tuple[list[float], list[float]]:
         raise ValueError(
             f"AdaptiveIntegratorMultiDim integrates in 2 to 15 dimensions, not {len(xmin)}."
         )
-    ctr = [(high + low) * 0.5 for low, high in zip(xmin, xmax)]
-    return ctr, [(high - low) * 0.5 for low, high in zip(xmin, xmax)]
+    ctr = [(high + low) * 0.5 for low, high in zip(xmin, xmax, strict=False)]
+    return ctr, [(high - low) * 0.5 for low, high in zip(xmin, xmax, strict=False)]
 
 
 def _start(

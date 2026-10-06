@@ -120,7 +120,7 @@ def _one(function: Callable[..., Any]) -> Callable[..., Any]:
 def _map(*arguments: Any) -> Any:
     """``Map(v, f)`` - and ``Map(v1, v2, f)`` - ``f`` of each element, in an ``RVec``."""
     *values, function = arguments
-    return _made(np.asarray([function(*each) for each in zip(*values)]))
+    return _made(np.asarray([function(*each) for each in zip(*values, strict=False)]))
 
 
 def _filter(values: Any, function: Callable[[Any], Any]) -> Any:

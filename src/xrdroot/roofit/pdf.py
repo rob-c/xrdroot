@@ -118,7 +118,7 @@ class RooAbsPdf(RooAbsReal):
             "p.d.f value is less than zero, trying to recover",
             "p.d.f value is Not-a-Number",
         )
-        for kind, (number, message) in enumerate(zip(counts, messages)):
+        for kind, (number, message) in enumerate(zip(counts, messages, strict=False)):
             if number > kind:  # the kernel reports a kind only above that many: RooFit's own quirk
                 evalerrors.record(
                     ("norm", id(self)),

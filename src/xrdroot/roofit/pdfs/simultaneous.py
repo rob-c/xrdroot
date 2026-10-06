@@ -26,7 +26,9 @@ def _channels(args: tuple[Any, ...], index: Any) -> list[tuple[str, Any]]:
     found = [pair for arg in args if isinstance(arg, dict) for pair in arg.items()]
     lists = [a for a in args if not isinstance(a, dict) and a is not index]
     if len(lists) == 1:
-        found += [(label, pdf) for pdf, label in zip(as_list(lists[0]), index.states())]
+        found += [
+            (label, pdf) for pdf, label in zip(as_list(lists[0]), index.states(), strict=False)
+        ]
     return found
 
 
@@ -159,7 +161,7 @@ class _Projection(RooAbsPdf):
         from ..selection import active
 
         total: Any = 0.0
-        for weight, pdf in zip(self.weights.values(), self.parts):
+        for weight, pdf in zip(self.weights.values(), self.parts, strict=False):
             if active(pdf):
                 own = frozenset(nset or ()) & pdf.dependents()
                 total = total + weight * pdf.value(ctx, own, rng)
@@ -181,7 +183,7 @@ class _Projection(RooAbsPdf):
         self, names: frozenset[str], ctx: Context, nset: Any, rng: Any, norm_rng: Any = None
     ) -> Any:
         total: Any = 0.0
-        for weight, pdf in zip(self.weights.values(), self.parts):
+        for weight, pdf in zip(self.weights.values(), self.parts, strict=False):
             own = frozenset(nset or ()) & pdf.dependents()
             total = total + weight * pdf.fraction(names & own, ctx, own, rng, norm_rng)
         return total

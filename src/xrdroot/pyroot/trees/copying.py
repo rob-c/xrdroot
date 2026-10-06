@@ -93,7 +93,7 @@ def clone(tree: Any, made: Any, start: int, stop: int, selection: str | None) ->
         columns = [leaf.column for leaf in leaves]
         read = backing.arrays(columns, start, stop, cut=selection or None)
         count = len(read[columns[0]]) if columns else 0
-        made._store.extend({s.name: read[c] for s, c in zip(slots, columns)}, count)
+        made._store.extend({s.name: read[c] for s, c in zip(slots, columns, strict=False)}, count)
     made._changed()
     return made
 

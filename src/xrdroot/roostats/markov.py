@@ -117,7 +117,7 @@ class MarkovChain(Named):
         """The ``i``-th point, loaded into the chain's own copies of the parameters."""
         index = self._current if i is None else int(i)
         self._current = index
-        for par, value in zip(self._params, self._rows[index]):
+        for par, value in zip(self._params, self._rows[index], strict=False):
             par.setVal(value)
         return self._params
 

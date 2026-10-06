@@ -115,10 +115,12 @@ def test_concatenate_enumerate_and_range_build_new_collections():
 
 def test_combinations_are_every_choice_in_order_or_every_pairing():
     first, second = vecops.Combinations(PT, 2)
-    pairs = [list(zip(a, b)) for a, b in zip(rows(first), rows(second))]
+    pairs = [list(zip(a, b, strict=False)) for a, b in zip(rows(first), rows(second), strict=False)]
     assert pairs == [list(itertools.combinations(range(len(row)), 2)) for row in rows(PT)]
     i, j = vecops.Combinations(PT, ETA)
-    assert list(zip(rows(i)[3], rows(j)[3])) == list(itertools.product(range(3), range(3)))
+    assert list(zip(rows(i)[3], rows(j)[3], strict=False)) == list(
+        itertools.product(range(3), range(3))
+    )
     assert vecops.Combinations(Jagged(np.zeros(0), [0, 0]), 2)[0].tolist() == [[]]
 
 
@@ -133,7 +135,9 @@ def test_delta_phi_folds_the_difference_the_way_root_folds_it():
     other = Jagged(np.array([-3.0, 3.0, 3.0, -1.0, 2.5, -2.9], np.float32), [0, 2, 2, 3, 6])
     got = vecops.DeltaPhi(PHI, other)
     assert got.content.dtype == np.float32
-    wanted = [_delta_phi(a, b) for a, b in zip(PHI.content.tolist(), other.content.tolist())]
+    wanted = [
+        _delta_phi(a, b) for a, b in zip(PHI.content.tolist(), other.content.tolist(), strict=False)
+    ]
     assert np.allclose(got.content, wanted)
     assert np.allclose(vecops.DeltaPhi(np.array([3.0]), np.array([-3.0])), [2 * math.pi - 6.0])
     assert vecops.DeltaPhi(np.array([0]), np.array([1])).dtype == np.float64
@@ -143,7 +147,7 @@ def test_delta_r_is_the_distance_in_eta_and_phi():
     squared = vecops.DeltaR2(ETA, 0.0, PHI, 0.0)
     wanted = [
         (e * e + _delta_phi(p, 0.0) ** 2)
-        for e, p in zip(ETA.content.tolist(), PHI.content.tolist())
+        for e, p in zip(ETA.content.tolist(), PHI.content.tolist(), strict=False)
     ]
     assert np.allclose(squared.content, wanted)
     assert np.allclose(vecops.DeltaR(ETA, 0.0, PHI, 0.0).content, np.sqrt(wanted))
@@ -164,7 +168,10 @@ def test_invariant_mass_adds_up_every_particle_of_an_entry():
     got = vecops.InvariantMass(PT, ETA, PHI, MASS)
     assert got.dtype == np.float32
     columns = [rows(each) for each in (PT, ETA, PHI, MASS)]
-    wanted = [_mass([_four(*p) for p in zip(*entry)]) for entry in zip(*columns)]
+    wanted = [
+        _mass([_four(*p) for p in zip(*entry, strict=False)])
+        for entry in zip(*columns, strict=False)
+    ]
     assert np.allclose(got, wanted, rtol=1e-5, atol=1e-2)  # one muon: float cancels
     with pytest.raises(TypeError, match="collection of particles"):
         vecops.InvariantMass(np.ones(2), np.ones(2), np.ones(2), np.ones(2))
@@ -172,7 +179,7 @@ def test_invariant_mass_adds_up_every_particle_of_an_entry():
 
 def test_invariant_masses_pair_each_particle_with_its_partner():
     got = vecops.InvariantMasses(PT, ETA, PHI, MASS, PT, ETA, PHI, MASS)
-    one = [_four(*p) for p in zip(PT.content, ETA.content, PHI.content, MASS.content)]
+    one = [_four(*p) for p in zip(PT.content, ETA.content, PHI.content, MASS.content, strict=False)]
     assert np.allclose(got.content, [_mass([v, v]) for v in one], atol=1e-2)
 
 

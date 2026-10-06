@@ -212,7 +212,7 @@ def _settings(function: Function) -> dict[str, Any]:
     values, errors = function.parameters, function.parameter_errors
     steps = minuit.default_steps(values)
     limits: list[Any] = [None] * function.npar
-    fixed = [bool(a >= b and a * b != 0) for a, b in zip(low, high)]
+    fixed = [bool(a >= b and a * b != 0) for a, b in zip(low, high, strict=False)]
     for i in range(function.npar):
         if not fixed[i] and low[i] < high[i]:
             limits[i] = (float(low[i]), float(high[i]))
@@ -377,7 +377,7 @@ def _drawing_range(obj: Any, kind: str, spans: list[Any]) -> list[tuple[float, f
         own = [_graph_range(obj)]
     else:
         own = [_multigraph_range(obj)]
-    return [span if span is not None else mine for span, mine in zip(spans, own)]
+    return [span if span is not None else mine for span, mine in zip(spans, own, strict=False)]
 
 
 def _multigraph_range(multigraph: Any) -> tuple[float, float]:

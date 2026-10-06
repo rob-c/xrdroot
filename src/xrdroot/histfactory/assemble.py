@@ -47,7 +47,7 @@ def total_expected(ws: Any, name: str, scales: list[Any], funcs: list[list[Any]]
         first = first.nominal
     width = emplace(ws, RooBinWidthFunction, f"{name}_binWidth", first, True)
     coefs, shapes = RooArgSet(), RooArgSet()
-    for scale, own in zip(scales, funcs):
+    for scale, own in zip(scales, funcs, strict=False):
         coefs.add(scale)
         own.append(width)  # so always a product, which ROOT tests for one function and never is
         product = _shape_name(own[0].GetName())
@@ -87,7 +87,9 @@ def _constraints(ws: Any, state: dict[str, Any]) -> list[Any]:
     """The channel's constraint terms - one missing from the workspace is fatal."""
     constraints = [ws.arg(one) for one in state["constraints"]]
     if any(one is None for one in constraints):
-        missing = next(n for n, one in zip(state["constraints"], constraints) if one is None)
+        missing = next(
+            n for n, one in zip(state["constraints"], constraints, strict=False) if one is None
+        )
         log_fatal(f"Error: Cannot find arg set: {missing} in workspace: {ws.GetName()}")
     return constraints
 
@@ -120,9 +122,11 @@ def _data(ws: Any, channel: Any, names: list[str]) -> None:
         ws.Import(obs)
     for extra in channel.GetAdditionalData():
         if not extra.GetName():
-            log_fatal(f"Error: Additional Data histogram for channel: {channel.GetName()} has no "
-                      "name! The name always needs to be set for additional datasets, either via "
-                      'the "Name" tag in the XML or via RooStats::HistFactory::Data::SetName().')
+            log_fatal(
+                f"Error: Additional Data histogram for channel: {channel.GetName()} has no "
+                "name! The name always needs to be set for additional datasets, either via "
+                'the "Name" tag in the XML or via RooStats::HistFactory::Data::SetName().'
+            )
         more = RooDataSet(extra.GetName(), "", ws.set("observables"),
                           RooCmdArg("WeightVar", "weightVar"))  # fmt: skip
         dataset(more, extra.GetHisto(), ws, names)

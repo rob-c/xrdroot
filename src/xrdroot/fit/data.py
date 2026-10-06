@@ -148,7 +148,7 @@ def _axis_bins(histogram: Histogram, index: int, span: Any) -> Any:
 def _bin_columns(histogram: Histogram, grid: list[Any], edges: bool) -> tuple[Any, Any]:
     """The points' coordinates - centres, or low edges - and their high edges, per axis."""
     columns, uppers = [], []
-    for axis, found in zip(histogram.axes, grid):
+    for axis, found in zip(histogram.axes, grid, strict=False):
         lows, ups, _ = bin_edges(axis, found)
         columns.append(lows if edges else axis.root_centers()[found])
         uppers.append(ups)
@@ -293,6 +293,6 @@ def from_graphs(graphs: list[Any], options: DataOptions, span: Any) -> FitData:
     data: dict[str, list[Any]] = {
         name: [np.empty(0)] for name in ("x", "y", "ex", "ey", "yl", "yh")
     }
-    for graph, found in zip(graphs, bars):
+    for graph, found in zip(graphs, bars, strict=False):
         _graph_points(graph, found, data, (options, kind, span))
     return _joined({name: np.concatenate(parts) for name, parts in data.items()}, kind, options)

@@ -161,7 +161,7 @@ class HypoTestInverterResult(SimpleInterval):
             return True
         log(self, INFO, "Eval", f"HypoTestInverterResult::Add - merging result from "
             f"{other.GetName()} in {self.GetName()}")  # fmt: skip
-        for x, result in zip(other._x, other._results):
+        for x, result in zip(other._x, other._results, strict=False):
             index = next((j for j in range(before) if _same(x, self._x[j])), -1)
             if index >= 0:
                 self._results[index].Append(result)

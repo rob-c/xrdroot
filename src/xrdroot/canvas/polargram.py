@@ -123,15 +123,15 @@ def inside_runs(xs: Any, ys: Any) -> list[tuple[list[float], list[float]]]:
     runs: list[tuple[list[float], list[float]]] = []
     run: list[tuple[float, float]] = []
     previous: tuple[float, float] | None = None
-    for point in zip(map(float, xs), map(float, ys)):
+    for point in zip(map(float, xs), map(float, ys), strict=False):
         if math.hypot(*point) <= 1:
             if not run and previous is not None:
                 run.append(_crossing(point, previous))
             run.append(point)
         elif run:
-            runs.append(tuple(map(list, zip(*run, _crossing(run[-1], point)))))  # type: ignore[arg-type]
+            runs.append(tuple(map(list, zip(*run, _crossing(run[-1], point), strict=False))))  # type: ignore[arg-type]
             run = []
         previous = point
     if len(run) > 1:
-        runs.append(tuple(map(list, zip(*run))))  # type: ignore[arg-type]
+        runs.append(tuple(map(list, zip(*run, strict=False))))  # type: ignore[arg-type]
     return runs

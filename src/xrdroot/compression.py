@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import lzma
 import zlib
-from typing import Callable
+from collections.abc import Callable
 
 from .errors import FormatError, UnsupportedFeatureError
 

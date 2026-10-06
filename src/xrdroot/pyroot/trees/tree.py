@@ -95,7 +95,7 @@ class TTree(_Player):
             addresses = [address_of(address, what)]
             leaves = _declared(addresses[0], name)
         title = leaflist if isinstance(leaflist, str) else name
-        for leaf, one in zip(leaves, addresses):
+        for leaf, one in zip(leaves, addresses, strict=False):
             self._check_counter(leaf, name)
             store.add(_slot(name, leaf, one, title if len(leaves) == 1 else None))
         if len(leaves) > 1:

@@ -126,7 +126,7 @@ def _from_function(histogram: Histogram, function: Function, count: int, rng: An
     first, last = first_last(histogram._core["fXaxis"])
     lows, ups, widths = bin_edges(axis, np.arange(first, last + 1))
     integral = _cumulative(
-        [function.integral(float(a), float(b), 0.0) for a, b in zip(lows, ups)],
+        [function.integral(float(a), float(b), 0.0) for a, b in zip(lows, ups, strict=False)],
         repr(function.name),
     )
     draws = np.asarray(rng.rndm(count), dtype=np.float64)

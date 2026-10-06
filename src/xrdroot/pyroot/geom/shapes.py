@@ -10,7 +10,8 @@ the current geometry's ``GetNsegments()``. Its bounding box (``GetDX``,
 
 from __future__ import annotations
 
-from typing import Any, Callable, ClassVar
+from collections.abc import Callable
+from typing import Any, ClassVar
 
 import numpy as np
 

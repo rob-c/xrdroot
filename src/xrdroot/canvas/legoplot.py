@@ -146,7 +146,7 @@ def _axis_ends(view: View3D) -> dict[str, Ends]:
     corners = box_corners(view)
     ends = view.corners()
     tips = {name: [view.to_ndc(corners[k - 1])[:2] for k in pair]
-            for name, pair in zip("xyz", (ends.x, ends.y, ends.z))}  # fmt: skip
+            for name, pair in zip("xyz", (ends.x, ends.y, ends.z), strict=False)}  # fmt: skip
     if abs(tips["y"][0][0] - tips["y"][1][0]) < SHORT_AXIS:
         tips["y"][1] = (tips["y"][0][0], tips["y"][1][1])
     return tips

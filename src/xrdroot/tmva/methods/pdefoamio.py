@@ -33,7 +33,7 @@ def write_foams(path: str, foams: list[Cells], names: list[str]) -> None:
     if folder:
         os.makedirs(folder, exist_ok=True)
     with xrdroot.create(path) as out:
-        for foam, name in zip(foams, names):
+        for foam, name in zip(foams, names, strict=False):
             columns = foam.columns()
             specs = {column: spec_of(column, values) for column, values in columns.items()}
             out.tree(name, specs, title=name).extend(columns)

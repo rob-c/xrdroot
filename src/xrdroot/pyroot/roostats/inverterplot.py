@@ -92,7 +92,7 @@ def _fill_bands(results: Any, median: Any, bands: list[Any], nsig: tuple[float, 
         q = _quantiles(dist.GetSamplingDistribution(), asymptotic, *nsig)
         x = results.GetXValue(i)
         median.SetPoint(at, x, q[2])
-        for band, (low, high) in zip(bands, ((q[1], q[3]), (q[0], q[4]))):
+        for band, (low, high) in zip(bands, ((q[1], q[3]), (q[0], q[4])), strict=False):
             _band_point(band, at, x, (low, q[2], high))
         at += 1
 
@@ -115,7 +115,7 @@ def make_expected_plot(plot: Any, results: Any, nsig1: float = 1.0, nsig2: float
     median: Any = TGraph()
     median.SetTitle(f"Expected {name} - Median")
     bands: list[Any] = [TGraphAsymmErrors() if on else None for on in (first, second)]
-    for band, nsig in zip(bands, (nsig1, nsig2)):
+    for band, nsig in zip(bands, (nsig1, nsig2), strict=False):
         if band is not None:
             band.SetTitle(_band_title(name, nsig))
     _fill_bands(results, median, bands, (nsig1, nsig2))
@@ -181,7 +181,7 @@ def draw_limit_plot(it: Any, target: float, limit: float, error: float, expo: An
     graph.SetLineWidth(2)
     xmin, xmax = it._var.getMin(), it._var.getMax()
     xs, ys = list(graph.GetX()), list(graph.GetY())
-    for x, y in zip(xs, ys):
+    for x, y in zip(xs, ys, strict=False):
         if 0.6 * target <= y <= 1.4 * target:
             xmin, xmax = min(x, xmin), max(x, xmax)
     graph.GetXaxis().SetRangeUser(xmin, xmax)

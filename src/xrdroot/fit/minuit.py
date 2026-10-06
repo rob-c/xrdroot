@@ -214,5 +214,5 @@ def _result(minuit: Any, labels: Sequence[str], minos: bool, calls: int) -> FitR
         valid=bool(minuit.valid),
         minos=found_minos,
         fixed=fixed,
-        bounded=[flag and not fix for flag, fix in zip(limits, fixed)],
+        bounded=[flag and not fix for flag, fix in zip(limits, fixed, strict=False)],
     )

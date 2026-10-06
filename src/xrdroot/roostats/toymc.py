@@ -246,8 +246,9 @@ class ToyMCSampler:
 
         variables = RooArgSet(list(self._pdf.getVariables())) if self._pdf is not None else None
         values = self._all_statistics(data, variables, poi)
+        pairs = zip(self._statistics, values, strict=False)
         return [RooRealVar(f"{self._name}_TS{i}", ts.GetVarName(), v)
-                for i, (ts, v) in enumerate(zip(self._statistics, values))]  # fmt: skip
+                for i, (ts, v) in enumerate(pairs)]  # fmt: skip
 
     def _as_data(self, rows: list[list[float]], weights: list[float]) -> Any:
         """``DetailedOutputAggregator::GetAsDataSet``: a column per statistic, weighted."""

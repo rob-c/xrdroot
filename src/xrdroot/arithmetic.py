@@ -86,7 +86,7 @@ def copied(histogram: H, name: str | None = None) -> H:
 def put_statistics(histogram: Histogram, found: list[float]) -> None:
     """``PutStats``: set the running sums, each where the class keeps it."""
     homes = histogram._moment_homes()
-    for name, value in zip(histogram._moment_names(), found):
+    for name, value in zip(histogram._moment_names(), found, strict=False):
         homes[name][name] = float(value)
 
 
@@ -142,7 +142,7 @@ def add(histogram: Histogram, other: Histogram, factor: float) -> None:
         reset_statistics(histogram)
         return
     weights = [factor * factor if at == 1 else factor for at in range(len(mine))]
-    put_statistics(histogram, [a + w * b for a, w, b in zip(mine, weights, theirs)])
+    put_statistics(histogram, [a + w * b for a, w, b in zip(mine, weights, theirs, strict=False)])
     histogram._core["fEntries"] = entries
 
 
@@ -313,7 +313,7 @@ def merge(histograms: Iterable[H]) -> H:
     made = copied(first)
     totals, entries = statistics(first), first.entries
     for other in given[1:]:
-        totals = [a + b for a, b in zip(totals, statistics(other))]
+        totals = [a + b for a, b in zip(totals, statistics(other), strict=False)]
         entries += other.entries
         made._merge_cells(other)
     put_statistics(made, totals)

@@ -208,7 +208,7 @@ class MethodBDT(Method):
         if self.forest.importance is None:
             return None
         labels = [variable.label for variable in self.dsi.variables]
-        return "Variable Importance", list(zip(labels, self.forest.importance))
+        return "Variable Importance", list(zip(labels, self.forest.importance, strict=False))
 
     def monitoring(self, output: Any, directory: str) -> None:
         """``WriteMonitoringHistosToFile``: the ``MonitorNtuple`` of each tree's boosting."""
@@ -227,7 +227,9 @@ class MethodBDT(Method):
 
     def add_weights(self, node: Node) -> None:
         weights = node.add("Weights", NTrees=len(self.forest.trees), AnalysisType=self.analysis)
-        for index, (tree, weight) in enumerate(zip(self.forest.trees, self.forest.weights)):
+        for index, (tree, weight) in enumerate(
+            zip(self.forest.trees, self.forest.weights, strict=False)
+        ):
             tree.add_xml(weights, weight, index, {})
 
     def read_weights(self, node: Any) -> None:

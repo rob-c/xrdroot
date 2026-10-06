@@ -66,7 +66,9 @@ class MCFitter:
         fitness = 0.0
         for sample in range(self.samples):
             if self.sigma > 0:
-                trial = [r.random_value(True, b, self.sigma) for r, b in zip(ranges, best)]
+                trial = [
+                    r.random_value(True, b, self.sigma) for r, b in zip(ranges, best, strict=False)
+                ]
             else:
                 trial = [r.random_value() for r in ranges]
             estimator = float(self.target.EstimatorFunction(FactorVector(trial)))

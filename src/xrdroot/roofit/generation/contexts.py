@@ -72,7 +72,7 @@ class NumericContext(Context):
 
     def event(self, remaining: int) -> dict[str, float]:
         point = self.sampler.generate()
-        return {one.GetName(): float(v) for one, v in zip(self.order, point)}
+        return {one.GetName(): float(v) for one, v in zip(self.order, point, strict=False)}
 
 
 def context_for(
@@ -141,7 +141,10 @@ class MixedContext(Context):
         self.sampler = FoamGenerator(density, ranges, generator(), vectorized=True)
 
     def event(self, remaining: int) -> dict[str, float]:
-        found = {one.GetName(): float(v) for one, v in zip(self.order, self.sampler.generate())}
+        found = {
+            one.GetName(): float(v)
+            for one, v in zip(self.order, self.sampler.generate(), strict=False)
+        }
         for one in self.order:
             one.load_value(found[one.GetName()])
         found.update(self.pdf.generate_event(self.code, generator()))
@@ -202,7 +205,7 @@ class SumContext(Context):
         ]
         draw = generator().Rndm()
         low = 0.0
-        for share, part in zip(shares, self.parts):
+        for share, part in zip(shares, self.parts, strict=False):
             if low < draw < low + share:
                 return part.event(remaining)
             low += share

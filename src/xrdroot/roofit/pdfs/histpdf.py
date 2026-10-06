@@ -75,7 +75,7 @@ class _Histogram:
     def _columns(self, ctx: Context) -> dict[str, Any]:
         """The histogram's variables' values: its observables' values at ``ctx``, as arrays."""
         return {mine.GetName(): np.asarray(obs.compute(ctx), dtype=np.float64)
-                for mine, obs in zip(self._hist_vars, self.observables)}  # fmt: skip
+                for mine, obs in zip(self._hist_vars, self.observables, strict=False)}  # fmt: skip
 
     def _weights(self, ctx: Context) -> Any:
         columns = self._columns(ctx)
@@ -137,7 +137,7 @@ class _Histogram:
         """``binBoundaries``: the histogram's bin edges in ``name`` - none when interpolated."""
         if self.order > 1:
             return None
-        for obs, var in zip(self.observables, self._hist_vars):
+        for obs, var in zip(self.observables, self._hist_vars, strict=False):
             if obs.GetName() == name:
                 return [float(e) for e in var.getBinning().array()]
         return None
@@ -151,7 +151,7 @@ class _Histogram:
         mine = frozenset(one.GetName() for one in self.observables)
         if not (mine <= names and all(one.isFundamental() for one in self.observables)):
             return frozenset()
-        pairs = zip(self.observables, self._hist_vars)
+        pairs = zip(self.observables, self._hist_vars, strict=False)
         full = all(_full_range(obs, var, rng) for obs, var in pairs)
         return mine if full else frozenset()
 

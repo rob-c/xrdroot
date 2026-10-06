@@ -16,7 +16,7 @@ def test_a_gaussian_in_x_about_a_function_of_y_draws_x_itself_and_y_by_foam() ->
     model = RooGaussian("model", "model", x, fy, RooRealVar("sigma", "sigma", 0.5))
     RooRandom.randomGenerator().SetSeed(1234)
     data = model.generate([x, y], 5)
-    assert list(zip(data.column("x").tolist(), data.column("y").tolist())) == [
+    assert list(zip(data.column("x").tolist(), data.column("y").tolist(), strict=False)) == [
         (1.4402277289514984, -3.771667250257451),
         (-2.063946812965178, 4.334382233082776),
         (2.2233136274444405, -4.2763367088628),

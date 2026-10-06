@@ -11,6 +11,7 @@ by back propagation through the layers.
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,7 +32,7 @@ def initial_network(
     """A network of the given layer sizes, its weights drawn as ``WeightInitialization`` says."""
     rng = np.random.default_rng(seed)
     made = Network(output=output)
-    for fan_in, fan_out in zip(sizes[:-1], sizes[1:]):
+    for fan_in, fan_out in itertools.pairwise(sizes):
         if scheme.lower() == "xavier":
             weights = rng.normal(0.0, np.sqrt(2.0 / (fan_in + fan_out)), (fan_out, fan_in))
         else:
@@ -63,7 +64,7 @@ def _forward(net: Network, values: Any, masks: list[Any] | None) -> tuple[list[A
     """Every layer's input and output, dropping out the inputs ``masks`` says to."""
     inputs, outputs = [], []
     x = values
-    for index, ((weights, bias), name) in enumerate(zip(net.layers, net.activations)):
+    for index, ((weights, bias), name) in enumerate(zip(net.layers, net.activations, strict=False)):
         if masks is not None and masks[index] is not None:
             x = x * masks[index]
         inputs.append(x)
@@ -179,7 +180,7 @@ def _masks(rng: Any, net: Network, size: int, dropout: tuple[float, ...]) -> lis
 def _step(net: Network, grads: list[Any], state: dict[Any, Any], settings: Descent) -> None:
     """One update of every layer, by ADAM or by momentum SGD."""
     state["t"] += 1
-    for index, ((w, b), (gw, gb)) in enumerate(zip(net.layers, grads)):
+    for index, ((w, b), (gw, gb)) in enumerate(zip(net.layers, grads, strict=False)):
         moments = state.setdefault(
             index, [np.zeros_like(w), np.zeros_like(b), np.zeros_like(w), np.zeros_like(b)]
         )

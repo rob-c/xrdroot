@@ -75,8 +75,8 @@ class View3D:
                  longitude: float, latitude: float, psi: float = 0.0) -> None:  # fmt: skip
         self.rmin, self.rmax = list(rmin), list(rmax)
         half = 0.5 * math.sqrt(3.0)
-        scale = [half * (high - low) for low, high in zip(self.rmin, self.rmax)]
-        centre = [0.5 * (high + low) for low, high in zip(self.rmin, self.rmax)]
+        scale = [half * (high - low) for low, high in zip(self.rmin, self.rmax, strict=False)]
+        centre = [0.5 * (high + low) for low, high in zip(self.rmin, self.rmax, strict=False)]
         c1, s1 = math.cos(longitude * RAD), math.sin(longitude * RAD)
         c2, s2 = math.cos(latitude * RAD), math.sin(latitude * RAD)
         c3, s3 = math.cos(psi * RAD), math.sin(psi * RAD)

@@ -14,10 +14,9 @@ for nearly every C++ tutorial). The rest are vetoed, and the name of the
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Callable
 
 from .cmake import Interpreter, TestSpec
 

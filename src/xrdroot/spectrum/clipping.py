@@ -75,12 +75,12 @@ def combination(
     """
     if each:
         total = np.zeros(means[0].shape[0])
-        for (sign, weight, _), mean in zip(signs, means):
+        for (sign, weight, _), mean in zip(signs, means, strict=False):
             term = weight * mean / divisor
             total = total + term if sign > 0 else total - term
         return total
     first_sign, first_weight, _ = signs[0]
     total = first_weight * means[0] if first_sign > 0 else -(first_weight * means[0])
-    for (sign, weight, _), mean in zip(signs[1:], means[1:]):
+    for (sign, weight, _), mean in zip(signs[1:], means[1:], strict=False):
         total = total + weight * mean if sign > 0 else total - weight * mean
     return total / divisor

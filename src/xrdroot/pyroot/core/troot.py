@@ -18,7 +18,8 @@ import importlib
 import importlib.util
 import os
 import sys
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from ...errors import UnsupportedFeatureError
 from .collections import TList

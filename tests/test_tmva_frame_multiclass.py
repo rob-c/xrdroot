@@ -60,7 +60,7 @@ def test_a_multiclass_forest_read_back_answers_every_class(session):
     multiclass([("BDT", "BDTG", BDTG)])
     reader = ROOT.TMVA.Reader("!Color:Silent")
     cells = [np.zeros(1, dtype=np.float32) for _ in VARIABLES]
-    for variable, cell in zip(VARIABLES, cells):
+    for variable, cell in zip(VARIABLES, cells, strict=False):
         reader.AddVariable(variable, cell)
     reader.BookMVA("BDTG", "dataset/weights/job_BDTG.weights.xml")
     for cell in cells:

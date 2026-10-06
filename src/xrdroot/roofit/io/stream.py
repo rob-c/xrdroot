@@ -243,7 +243,7 @@ class Reader:
             if not count:
                 return {}
             keys = self._block(key, count)
-            return dict(zip(keys, self._block(value, count)))
+            return dict(zip(keys, self._block(value, count), strict=False))
         count = self.buf.u32()
         pairs = [(self._one(key), self._one(value)) for _ in range(count)]
         return dict(pairs)

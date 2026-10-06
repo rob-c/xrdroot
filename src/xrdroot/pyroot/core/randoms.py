@@ -100,7 +100,7 @@ class TRandom(TNamed):
     def Sphere(self, x: Any, y: Any, z: Any, r: float) -> tuple[float, float, float]:
         """``Sphere(x, y, z, r)``: a point on a sphere of radius ``r``."""
         px, py, pz = (float(value) for value in self._xrd.sphere(r))
-        for target, value in zip((x, y, z), (px, py, pz)):
+        for target, value in zip((x, y, z), (px, py, pz), strict=False):
             store(target, value)
         return px, py, pz
 

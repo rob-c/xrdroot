@@ -223,7 +223,7 @@ class FitResult:
         for title, matrix in (("Covariance", self.covariance), ("Correlation", self.correlation)):
             out += ["", f"{title} Matrix:", ""]
             out.append(" " * 12 + "\t" + "".join(f"{name:>12}" for name in names))
-            for i, name in zip(free, names):
+            for i, name in zip(free, names, strict=False):
                 row = "".join(f"{format(matrix[i, j], '.5g'):>12}" for j in free)
                 out.append(f"{name:<12}\t{row}")
         return "".join("\n" + line for line in out)
@@ -261,7 +261,9 @@ class FitResult:
     def __repr__(self) -> str:
         pairs = ", ".join(
             f"{name}={value:.6g}±{error:.2g}"
-            for name, value, error in zip(self.parameter_names, self.parameters, self.errors)
+            for name, value, error in zip(
+                self.parameter_names, self.parameters, self.errors, strict=False
+            )
         )
         verdict = "valid" if self.valid else f"invalid, status {self.status}"
         return f"<FitResult chi2/ndf={self.chi2:.6g}/{self.ndf} ({verdict}): {pairs}>"

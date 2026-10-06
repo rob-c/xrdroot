@@ -78,7 +78,9 @@ def table(
     halves = points[:npx] + 0.5 * dx
     half_ends = 10.0**halves if logarithmic else halves
     starts = ends[:npx]
-    firsts = np.array([integrate(float(a), float(b), 0.0) for a, b in zip(starts, half_ends)])
+    firsts = np.array(
+        [integrate(float(a), float(b), 0.0) for a, b in zip(starts, half_ends, strict=False)]
+    )
     r2 = cumulative[1:] - cumulative[:npx]
     r3 = 2 * r2 - 4 * (firsts / total)
     gamma = np.where(np.abs(r3) > FLAT, r3 / (dx * dx), 0.0)

@@ -32,7 +32,7 @@ def _hist(name: str, variables: list[Any], rows: list[tuple[float, ...]]) -> Roo
     w = RooRealVar("w", "w", 1)
     data = RooDataSet(f"s{name}", "s", RooArgSet(*variables, w), RooCmdArg("WeightVar", "w"))
     for *values, weight in rows:
-        for var, value in zip(variables, values):
+        for var, value in zip(variables, values, strict=False):
             var.setVal(value)
         data.add(RooArgSet(*variables), weight)
     return RooDataHist(name, name, RooArgSet(*variables), data)

@@ -334,7 +334,7 @@ def analyze_source(source: str, path: str = "<memory>") -> tuple[FunctionMetrics
     collector.visit(tree)
     functions = collector.functions
     result = []
-    for key, function in zip(_function_keys(path, functions), functions):
+    for key, function in zip(_function_keys(path, functions), functions, strict=False):
         node = function.node
         ccn, cognitive, volume = _library_metrics(node)
         result.append(
@@ -473,7 +473,7 @@ def _column_widths(rows: Sequence[Sequence[str]], headers: Sequence[str]) -> lis
 
 
 def _render_row(row: Sequence[str], widths: Sequence[int]) -> str:
-    return "  ".join(value.ljust(width) for value, width in zip(row, widths))
+    return "  ".join(value.ljust(width) for value, width in zip(row, widths, strict=False))
 
 
 def _table(rows: Sequence[Sequence[Any]], headers: Sequence[str]) -> str:

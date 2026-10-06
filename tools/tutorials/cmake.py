@@ -17,10 +17,10 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, NamedTuple, Union
+from typing import NamedTuple
 
 __all__ = [
     "Token",
@@ -131,7 +131,7 @@ class _Foreach:
     body: list[Node] = field(default_factory=list)
 
 
-Node = Union[Command, _If, _Foreach]
+Node = Command | _If | _Foreach
 
 #: The commands that end the block they belong to.
 _ENDERS = {"endif", "else", "elseif", "endforeach"}

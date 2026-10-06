@@ -58,7 +58,7 @@ class RooChi2Var(RooAbsReal):
         norm = self.pdf.expected(self.nset) if self.extended else float(np.sum(weights))
         mus = preds * norm * np.asarray(self.data.binVolumes(), dtype=np.float64)
         total = Kahan()
-        for i, (n, mu) in enumerate(zip(weights.tolist(), mus.tolist())):
+        for i, (n, mu) in enumerate(zip(weights.tolist(), mus.tolist(), strict=False)):
             sigma2 = self._sigma2(i, n, mu)
             if sigma2 == 0.0 and n == 0.0 and mu == 0.0:
                 continue

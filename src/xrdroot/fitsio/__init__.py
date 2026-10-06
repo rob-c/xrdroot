@@ -60,7 +60,7 @@ def _kept_cells(cells: Any, kept: np.ndarray[Any, Any]) -> Any:
     """A column's cells in the rows kept: an array's by mask, a list's one by one."""
     if isinstance(cells, np.ndarray):
         return cells[kept]
-    return [cell for cell, k in zip(cells or [], kept) if k]
+    return [cell for cell, k in zip(cells or [], kept, strict=False) if k]
 
 
 def _counted(unit: HDU, rows: int) -> HDU:

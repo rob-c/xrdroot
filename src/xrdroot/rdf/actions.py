@@ -70,7 +70,7 @@ def elements(name: str, values: Any, what: str) -> Array:
 def joined(pieces: Sequence[Any]) -> Any:
     """Several batches of one column as one: what Combinations gives, member by member."""
     if isinstance(pieces[0], tuple):
-        return tuple(concatenate(list(member)) for member in zip(*pieces))
+        return tuple(concatenate(list(member)) for member in zip(*pieces, strict=False))
     return concatenate(pieces)
 
 
@@ -301,7 +301,8 @@ class Stats(Action):
 
     def partial(self, batch: Batch) -> Any:
         found = [
-            from_column(each.name, values) for each, values in zip(self.inputs, self.columns(batch))
+            from_column(each.name, values)
+            for each, values in zip(self.inputs, self.columns(batch), strict=False)
         ]
         arrays, _ = align(found, self.kind)
         weights = arrays[1] if len(arrays) > 1 else np.ones(len(arrays[0]))
@@ -317,7 +318,8 @@ class Stats(Action):
 def _aligned(action: Action, batch: Batch) -> list[Array]:
     """An action's columns lined up element by element, as a histogram is filled from them."""
     found = [
-        from_column(each.name, values) for each, values in zip(action.inputs, action.columns(batch))
+        from_column(each.name, values)
+        for each, values in zip(action.inputs, action.columns(batch), strict=False)
     ]
     arrays, _ = align(found, action.kind)
     return arrays

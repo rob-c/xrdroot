@@ -11,8 +11,9 @@ changes what is printed here exactly as it would in ROOT.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable
+from typing import Any
 
 from . import cout
 

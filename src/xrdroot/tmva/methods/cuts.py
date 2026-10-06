@@ -72,7 +72,7 @@ class MethodCuts(Method):
     def booked(self) -> None:
         self.log.info(f'Use optimization method: "{FIT_NAMES.get(self.fit, "Genetic Algorithm")}"')
         self.log.info('Use efficiency computation method: "Event Selection"')
-        for info, prop in zip(self.dsi.variables, self.properties):
+        for info, prop in zip(self.dsi.variables, self.properties, strict=False):
             if prop != "NotEnforced":
                 self.log.info(f"Use \"{prop}\" cuts for variable: '{info.label}'")
 
@@ -226,7 +226,7 @@ class MethodCuts(Method):
         else:
             self.log.info("Transformation applied to input variables : None")
         self.log.info(rule)
-        for i, (low, high, label) in enumerate(zip(lower, upper, labels)):
+        for i, (low, high, label) in enumerate(zip(lower, upper, labels, strict=False)):
             self.log.info(f"Cut[{i:2d}]: {low:10.6g} < {label:>{width}} <= {high:10.6g}")
         self.log.info(rule)
 
@@ -356,14 +356,14 @@ def _combination(row: Any, labels: list[str]) -> str:
     """One decorrelated variable, as the sum of the variables it is made of."""
     return "".join(
         f"{' + ' if value > 0 else ' - '}{abs(value):10.5g}*[{name}]"
-        for value, name in zip(row, labels)
+        for value, name in zip(row, labels, strict=False)
     )
 
 
 def _crossing(effs: Any, effb: Any, reference: float) -> float:
     """The signal efficiency where the curve crosses ``reference``, strictly, as TMVA scans."""
     previous_s = previous_b = 0.0
-    for eff_s, eff_b in zip(effs, effb):
+    for eff_s, eff_b in zip(effs, effb, strict=False):
         if (eff_b - reference) * (previous_b - reference) < 0:
             return 0.5 * (float(eff_s) + previous_s)
         previous_s, previous_b = float(eff_s), float(eff_b)

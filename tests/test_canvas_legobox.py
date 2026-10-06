@@ -20,7 +20,7 @@ def _cube(*contents: float) -> Histogram:
     """A histogram of 2 by 2 by 2 bins over the unit cube, its first bins holding ``contents``."""
     h = Histogram.book("h3", (2, 0.0, 1.0), (2, 0.0, 1.0), (2, 0.0, 1.0))
     corners = [(0.25, 0.25, 0.25), (0.75, 0.75, 0.75), (0.25, 0.75, 0.25)][: len(contents)]
-    for (x, y, z), content in zip(corners, contents):
+    for (x, y, z), content in zip(corners, contents, strict=False):
         h.fill(np.array([x]), np.array([y]), np.array([z]), weight=np.array([content]))
     h._core["TAttLine"]["fLineColor"] = 4
     return h

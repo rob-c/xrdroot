@@ -154,7 +154,7 @@ class TSpectrum2Fit(_Options, TNamed):
     @staticmethod
     def _fill(found: dict[str, Any], kinds: tuple[str, ...], targets: tuple[Any, ...]) -> None:
         """Each of ``kinds`` into the array the caller handed over for it, as ROOT fills them."""
-        for kind, target in zip(kinds, targets):
+        for kind, target in zip(kinds, targets, strict=False):
             vector_out(target, found[kind])
 
     def GetPositions(self, *targets: Any) -> None:
@@ -187,7 +187,7 @@ class TSpectrum2Fit(_Options, TNamed):
     def _get(self, names: tuple[str, ...], targets: tuple[Any, ...]) -> tuple[float, ...]:
         """Each named value and its error, put where ``targets`` say and handed back too."""
         found = tuple(x for name in names for x in (self._calc[name], self._err[name]))
-        for target, value in zip(targets, found):
+        for target, value in zip(targets, found, strict=False):
             store(target, value)
         return found
 
