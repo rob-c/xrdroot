@@ -10,7 +10,7 @@ import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect
-from xrdroot.pyroot.core import distributions as dist
+from xrdroot.function import distributions as dist
 
 T = ROOT.TMath
 

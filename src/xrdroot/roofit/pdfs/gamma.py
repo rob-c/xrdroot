@@ -28,7 +28,7 @@ __all__ = ["RooGamma"]
 
 def gamma_dist(x: float, gamma: float, mu: float, beta: float) -> float:
     """``TMath::GammaDist``: nothing below ``mu`` or for a shape or scale that is not positive."""
-    from ...pyroot.core.distributions import gamma_pdf
+    from ...function.distributions import gamma_pdf
 
     if x < mu or gamma <= 0 or beta <= 0:
         return 0.0

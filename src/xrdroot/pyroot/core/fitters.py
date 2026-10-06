@@ -13,7 +13,7 @@ from typing import Any
 
 import numpy as np
 
-from .distributions import normal_quantile, student_quantile
+from ...function.distributions import normal_quantile, student_quantile
 from .messages import message
 from .objects import TNamed
 

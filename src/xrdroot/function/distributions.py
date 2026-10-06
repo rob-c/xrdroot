@@ -14,8 +14,8 @@ import math
 import statistics
 from collections.abc import Callable
 
-from ...efficiency import beta_quantile, regularized_beta
-from ...stats import incomplete_gamma, incomplete_gamma_c
+from ..efficiency import beta_quantile, regularized_beta
+from ..stats import incomplete_gamma, incomplete_gamma_c
 
 __all__ = [
     "normal_cdf",

@@ -13,9 +13,9 @@ from typing import Any, ClassVar
 
 from ...efficiency import regularized_beta
 from ...fit.defaults import DEFAULTS, minimizer_algo, minimizer_type, set_minimizer
-from ...function import special
+from ...function import bessel, densities, special
+from ...function import distributions as dist
 from ...stats import incomplete_gamma, incomplete_gamma_c
-from . import distributions as dist
 from .genvector import *  # noqa: F403
 from .genvector import __all__ as _vectors
 from .legendres import (  # noqa: F401 - ROOT::Math's Legendre polynomials, by name
@@ -281,6 +281,30 @@ def crystalball_function(
 
 def crystalball_pdf(x: float, alpha: float, n: float, sigma: float, mean: float = 0.0) -> float:
     return float(special.crystalball_pdf(x, alpha, n, sigma, mean))
+
+
+def crystalball_cdf(x: float, alpha: float, n: float, sigma: float, mean: float = 0.0) -> float:
+    return float(densities.crystalball_cdf(x, alpha, n, sigma, mean))
+
+
+def crystalball_cdf_c(x: float, alpha: float, n: float, sigma: float, mean: float = 0.0) -> float:
+    return float(densities.crystalball_cdf_c(x, alpha, n, sigma, mean))
+
+
+def cyl_bessel_j(nu: float, x: float) -> float:
+    return float(bessel.cyl_bessel_j(nu, x))
+
+
+def cyl_bessel_i(nu: float, x: float) -> float:
+    return float(bessel.cyl_bessel_i(nu, x))
+
+
+def cyl_bessel_k(nu: float, x: float) -> float:
+    return float(bessel.cyl_bessel_k(nu, x))
+
+
+def sph_bessel(n: float, x: float) -> float:
+    return float(bessel.sph_bessel(n, x))
 
 
 # -- special functions ------------------------------------------------------------------------

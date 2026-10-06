@@ -19,9 +19,9 @@ from typing import Any
 import numpy as np
 
 from ...efficiency import regularized_beta
-from ...function import special
+from ...function import densities, special
+from ...function import distributions as dist
 from ...stats import chisquare_quantile, incomplete_gamma, kolmogorov_prob, prob
-from . import distributions as dist
 from .messages import message
 from .refs import store_many
 
@@ -347,6 +347,18 @@ def Landau(x: float, mpv: float = 0.0, sigma: float = 1.0, norm: bool = False) -
 
 def BreitWigner(x: float, mean: float = 0.0, gamma: float = 1.0) -> float:
     return float(special.breit_wigner(x, mean, gamma))
+
+
+def BreitWignerRelativistic(x: float, median: float = 0.0, gamma: float = 1.0) -> float:
+    return float(densities.breit_wigner_relativistic(x, median, gamma))
+
+
+def LaplaceDist(x: float, alpha: float = 0.0, beta: float = 1.0) -> float:
+    return float(densities.laplace_dist(x, alpha, beta))
+
+
+def LaplaceDistI(x: float, alpha: float = 0.0, beta: float = 1.0) -> float:
+    return float(densities.laplace_dist_i(x, alpha, beta))
 
 
 def CauchyDist(x: float, t: float = 0.0, s: float = 1.0) -> float:

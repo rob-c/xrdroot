@@ -26,7 +26,7 @@ from typing import Any
 import numpy as np
 
 from ...errors import UnsupportedFeatureError
-from .distributions import normal_quantile
+from ...function.distributions import normal_quantile
 from .messages import message
 from .rmath import beta_cdf_c, beta_pdf, beta_quantile
 

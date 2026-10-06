@@ -25,7 +25,7 @@ import numpy as np
 
 from ..formula.functions import FUNCTIONS as TREE_FUNCTIONS
 from ..random import libm
-from . import special
+from . import bessel, densities, special
 
 __all__ = ["Call", "CALLS", "CONSTANTS", "PHYSICAL"]
 
@@ -118,6 +118,15 @@ def _binomial(n: Array, k: Array) -> Array:
     return np.vectorize(one, otypes=[np.float64])(n, k)
 
 
+def _student(t: Array, ndf: Array = 1.0) -> Array:
+    """``TMath::Student(T, ndf)``: Student's density, of one degree unless told otherwise."""
+    return densities.student(t, ndf)
+
+
+def _student_i(t: Array, ndf: Array = 1.0) -> Array:
+    return densities.student_i(t, ndf)
+
+
 def _cheb(degree: int) -> Call:
     """``ROOT::Math::ChebyshevN``, which takes the variable and ``N + 1`` coefficients."""
     return Call(degree + 2, degree + 2, special.chebyshev)
@@ -140,6 +149,23 @@ _ROOT: dict[str, Call] = {
     "ROOT::Math::crystalball_pdf": Call(4, 5, special.crystalball_pdf),
     "ROOT::Math::bigaussian_pdf": Call(2, 7, special.bigaussian_pdf),
     **{f"ROOT::Math::Chebyshev{degree}": _cheb(degree) for degree in range(11)},
+    "TMath::BetaDist": Call(3, 3, densities.beta_dist),
+    "TMath::BetaDistI": Call(3, 3, densities.beta_dist_i),
+    "TMath::GammaDist": Call(2, 4, densities.gamma_dist),
+    "TMath::LogNormal": Call(2, 4, densities.log_normal),
+    "TMath::Student": Call(1, 2, _student),
+    "TMath::StudentI": Call(1, 2, _student_i),
+    "TMath::FDist": Call(3, 3, densities.f_dist),
+    "TMath::FDistI": Call(3, 3, densities.f_dist_i),
+    "TMath::LaplaceDist": Call(1, 3, densities.laplace_dist),
+    "TMath::LaplaceDistI": Call(1, 3, densities.laplace_dist_i),
+    "TMath::BreitWignerRelativistic": Call(1, 3, densities.breit_wigner_relativistic),
+    "ROOT::Math::crystalball_cdf": Call(4, 5, densities.crystalball_cdf),
+    "ROOT::Math::crystalball_cdf_c": Call(4, 5, densities.crystalball_cdf_c),
+    "ROOT::Math::cyl_bessel_j": Call(2, 2, bessel.cyl_bessel_j),
+    "ROOT::Math::cyl_bessel_i": Call(2, 2, bessel.cyl_bessel_i),
+    "ROOT::Math::cyl_bessel_k": Call(2, 2, bessel.cyl_bessel_k),
+    "ROOT::Math::sph_bessel": Call(2, 2, bessel.sph_bessel),
 }
 
 
