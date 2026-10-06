@@ -104,6 +104,15 @@ testpaths = ["tests"]
 # on the path the way ``python -m pytest`` does.
 pythonpath = ["."]
 timeout = 120
+# A test that outlasts its time is stopped from a thread of pytest-timeout's
+# own, which prints every thread's stack and ends the worker; xdist reports
+# the test failed and starts another worker for the rest. The signal method
+# would instead raise the failure inside whatever the test was running - and
+# under coverage that is often coverage's own tracer, between its taking its
+# data lock and giving it back. The lock is then never given back, the next
+# line traced waits on it for good, and no timer is left to end the wait: one
+# slow test became a run that hung until CI cancelled it.
+timeout_method = "thread"
 filterwarnings = ["error::ResourceWarning"]
 
 [tool.coverage.run]
