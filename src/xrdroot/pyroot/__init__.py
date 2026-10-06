@@ -52,6 +52,7 @@ SUBMODULES = [
     "graphics.images",
     "tmva",
     "histv7",
+    "ntuple",
     "spectra.tspectrum",
     "spectra.tspectrum2",
     "spectra.transforms",
