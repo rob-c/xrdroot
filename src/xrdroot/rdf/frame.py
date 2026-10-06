@@ -190,6 +190,8 @@ class _Graph:
             raise ValueError("workers must be at least one process")
         self.source = source
         self.workers = workers
+        #: Whether the workers are ``EnableImplicitMT``'s rather than this frame's own ask.
+        self.implicit = False
         self.step = step
         self.root = Root()
         #: The results booked since the loop last ran.
@@ -234,7 +236,9 @@ def _plan_of(graphs: Sequence[_Graph], pending: list[Result]) -> Plan:
     first = graphs[0]
     filters = [node for graph in graphs for node in graph.filters]
     work = [result._action for result in pending]
-    return Plan(first.source, work, filters, first.step, first.workers)
+    plan = Plan(first.source, work, filters, first.step, first.workers)
+    plan.implicit = all(graph.implicit for graph in graphs)
+    return plan
 
 
 def _sharing(graph: _Graph) -> tuple[int, int, int]:
@@ -324,6 +328,7 @@ class RDataFrame:
     def __init__(self, *args: Any, workers: int | None = None, step: int = DEFAULT_STEP) -> None:
         source = _source_of(args)
         graph = _Graph(source, _IMPLICIT[0] if workers is None else int(workers), step)
+        graph.implicit = workers is None  # EnableImplicitMT's, not asked for by this frame
         columns: dict[str, Definition] = {name: SourceColumn(name) for name in source.names()}
         self._set(graph, graph.root, {**columns, **SPECIAL}, [])
 

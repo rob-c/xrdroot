@@ -303,3 +303,17 @@ def test_errors_in_workers_come_back_as_themselves(xyn_path):
     with RDataFrame("tree", xyn_path, step=100, workers=2) as df:
         with pytest.raises(ValueError, match=r"gives a collection per entry"):
             df.Define("v", "Range(n)").Filter("v > 1").Count().GetValue()
+
+
+def test_implicit_mt_runs_here_what_cannot_be_sent_to_other_processes():
+    try:
+        EnableImplicitMT(2)
+        implicit = RDataFrame(10, step=2).Define("x", lambda rdfentry_: rdfentry_ * 1.0)
+        assert implicit.Sum("x").GetValue() == 45.0  # a lambda cannot be pickled
+        sent = RDataFrame(10, step=5).Define("y", "rdfentry_ * 2.0")
+        assert sent.Sum("y").GetValue() == 90.0
+    finally:
+        DisableImplicitMT()
+    asked = RDataFrame(10, workers=2, step=2).Define("x", lambda rdfentry_: rdfentry_ * 1.0)
+    with pytest.raises(UnsupportedFeatureError, match="could not be sent"):
+        asked.Sum("x").GetValue()

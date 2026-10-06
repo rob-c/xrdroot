@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from xrdroot.cint import runtime as rt
+from xrdroot.cint import translate
 
 
 def test_a_cell_is_read_and_written_as_value_and_as_element_zero() -> None:
@@ -225,3 +226,11 @@ def test_roots_names_come_from_the_module_loaded_or_from_importing_it(
     proxy = root.RootProxy()
     assert proxy.namespace().__name__ == "colorsys"  # imported the first time
     assert proxy.namespace() is sys.modules["colorsys"]
+
+
+def test_a_pointer_of_unknown_type_is_released_or_got_as_what_it_holds() -> None:
+    held = types.SimpleNamespace(get=lambda: "inner")
+    assert rt.pointee(held, "get") == "inner" and rt.pointee(5, "release") == 5
+    text = translate("void t() { auto h = Convert(x).release(); auto g = w.get(); }", "t.C")
+    assert "h = pointee(ROOT.Convert(ROOT.x), 'release')" in text
+    assert "g = pointee(ROOT.w, 'get')" in text

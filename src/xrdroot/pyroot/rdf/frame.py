@@ -61,6 +61,7 @@ class RResultPtr:
         return _wrapped(hooks.wrap(self._inner.GetValue()))
 
     GetPtr = GetValue
+    GetSharedPtr = GetValue
 
     def IsReady(self) -> bool:
         return bool(self._inner.IsReady())
@@ -192,7 +193,17 @@ def _model(*parts: Any) -> tuple[Any, ...]:
 
 
 def _run_graphs(results: Iterable[Any]) -> int:
-    return int(_rdf.RunGraphs([_unwrapped(each) for each in results]))
+    """``RunGraphs``: the results' loops run together - a booked ``RHist``'s are the columns it
+    is filled from."""
+    given = [_unwrapped(each) for each in results]
+    return int(_rdf.RunGraphs([part for each in given for part in _parts(each)]))
+
+
+def _parts(result: Any) -> list[Any]:
+    """The frame's own results a result is: itself, or the columns a booked ``RHist`` takes."""
+    if not hasattr(type(result), "booked"):
+        return [result]
+    return [_unwrapped(part) for part in result.booked()]
 
 
 class _RDF:
@@ -214,6 +225,11 @@ class _RDF:
     TProfile2DModel = staticmethod(_model)
     RNode = RDataFrame
     RResultPtr = RResultPtr
+
+    @staticmethod
+    def AsRNode(frame: Any) -> Any:
+        """``AsRNode(node)``: any node of a frame as an ``RNode`` - which every node here is."""
+        return frame
 
     def __getattr__(self, name: str) -> Any:
         raise AttributeError(f"ROOT has RDF.{name}; xrdroot.pyroot does not yet")

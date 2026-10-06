@@ -172,3 +172,10 @@ def test_a_fill_past_an_axis_without_flow_bins_changes_no_bin() -> None:
            (hist.ComputeNEffectiveEntries(), 2.0))
     hist.Clear()
     assert (hist.GetBinContent(0).fSum2, hist.GetNEntries()) == (0.0, 0)
+
+
+def test_a_booked_histogram_runs_with_the_frames_other_results() -> None:
+    frame = ROOT.RDataFrame(4).Define("x", "rdfentry_ * 0.5")
+    hist, count = frame.Hist(4, (0.0, 2.0), "x"), frame.Count()
+    assert ROOT.RDF.RunGraphs([hist, count]) == 1
+    assert hist.GetNEntries() == 4 and count.GetValue() == 4

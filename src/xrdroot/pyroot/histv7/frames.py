@@ -39,6 +39,10 @@ class BookedHist:
     def IsReady(self) -> bool:
         return self._filled
 
+    def booked(self) -> list[Any]:
+        """The frame's results this is filled from: what ``RunGraphs`` runs for it."""
+        return [*self._taken, *([] if self._weight is None else [self._weight])]
+
     def __getattr__(self, name: str) -> Any:
         if name.startswith("_"):
             raise AttributeError(name)

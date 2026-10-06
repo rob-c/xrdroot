@@ -32,6 +32,7 @@ __all__ = [
     "CppException",
     "throw",
     "deref",
+    "pointee",
     "preinc",
     "postinc",
     "INTEGRAL",
@@ -299,6 +300,13 @@ def throw(value: Any = None) -> Any:
     if isinstance(value, BaseException):
         raise value
     raise CppException(value)
+
+
+def pointee(pointer: Any, name: str) -> Any:
+    """``p.release()`` or ``p.get()`` when the type of ``p`` was not known: the object's own
+    method if it has one, else the object - which is what a smart pointer holds here."""
+    method = getattr(pointer, name, None)
+    return method() if callable(method) else pointer
 
 
 def deref(pointer: Any) -> Any:

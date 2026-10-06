@@ -107,6 +107,11 @@ def _template(given: Histogram, dimensions: int, profile: bool, what: str) -> An
     return made
 
 
+def _unbraced(rest: list[Any]) -> list[Any]:
+    """The columns, from C++'s braced ``{"x", "w"}`` as from the names given one by one."""
+    return list(rest[0]) if len(rest) == 1 and isinstance(rest[0], (list, tuple)) else rest
+
+
 def split_arguments(
     args: Sequence[Any], model: Any, count: int, what: str
 ) -> tuple[Any, list[str], str | None]:
@@ -114,6 +119,7 @@ def split_arguments(
     rest = list(args)
     if model is None and rest and is_model(rest[0]):
         model = rest.pop(0)
+    rest = _unbraced(rest)
     if len(rest) not in (count, count + 1) or not all(isinstance(each, str) for each in rest):
         raise TypeError(
             f"{what} takes a model, then {count} column name{'' if count == 1 else 's'} "

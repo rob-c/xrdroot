@@ -27,7 +27,7 @@ import numpy as np
 
 from ...rdf import vecops as _batched
 from ...tree import Jagged
-from ..stl import _Template, _Vector, cpp_name
+from ..stl import _Template, _Vector, _vector_class, cpp_name
 
 __all__ = ["RVec", "RVecF", "RVecD", "RVecI", "RVecL", "RVecB", "VecOps"]
 
@@ -67,11 +67,10 @@ class _RVec(np.lib.mixins.NDArrayOperatorsMixin, _Vector):  # type: ignore[misc]
 
 
 def _rvec_class(kind: Any) -> type:
+    """``RVec<kind>``: of numbers, a vector that does NumPy's arithmetic; of collections or
+    strings - ``RVec<RVec<size_t>>`` - a vector of them, as ``std::vector`` holds them."""
     if not isinstance(kind, np.dtype):
-        raise TypeError(
-            f"an RVec here holds numbers, and {cpp_name(kind)} is not one; a std.vector "
-            f"holds strings and other containers"
-        )
+        return _vector_class(kind)
     name = f"ROOT::VecOps::RVec<{cpp_name(kind)}>"
     members = {"dtype": kind, "value_type": cpp_name(kind), "__cpp_name__": name}
     return type(name, (_RVec,), {"__slots__": (), **members})

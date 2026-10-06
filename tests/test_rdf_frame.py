@@ -218,6 +218,8 @@ def test_models_come_as_tuples_or_booked_objects(xyn):
     assert profiled.entries == 51 and profiled.error_mode == "s"
     by_keyword = xyn.Histo1D("x", model=("k", "", 4, 0, 100), weight="n").GetValue()
     assert by_keyword.sum() == sum(range(100))
+    braced = xyn.Histo1D(["b2", "", 4, 0, 100], ["x", "n"]).GetValue()  # C++'s {"x", "n"}
+    assert braced.sum() == by_keyword.sum()
 
 
 def test_bad_models_are_refused_by_name(xyn):

@@ -132,8 +132,9 @@ def test_an_rvec_is_a_vector_that_does_numpy_arithmetic_and_is_indexed_by_a_mask
     grown.push_back(3)
     assert grown.size() == 1 and "RVec<int>" in repr(grown) and ROOT.RVecB([1]).dtype == bool
     assert ROOT.RVecL([1]).dtype == np.int64
-    with pytest.raises(TypeError, match="an RVec here holds numbers"):
-        ROOT.RVec["string"]
+    nested = ROOT.RVec["RVec<unsigned long>"](2)
+    nested[0].push_back(3)
+    assert nested[0][0] == 3 and ROOT.RVec["string"](["a"])[0] == "a"
 
 
 def test_an_rvec_prints_as_roots_stream_writes_it_and_its_functions_are_named_bare():
@@ -216,3 +217,10 @@ def test_a_result_is_an_index_and_a_frame_hands_back_what_is_not_a_method():
     assert frame.extra == "kept"
     assert rvec._made(3) == 3 and rvec._unbatched(2.5) == 2.5
     assert list(rvec._unbatched(np.zeros(0))) == []
+
+
+def test_any_node_is_an_rnode_and_a_result_is_its_own_shared_pointer():
+    frame = _frame().Filter("x > 4")
+    assert ROOT.RDF.AsRNode(frame) is frame
+    count = frame.Count()
+    assert count.GetSharedPtr() == count.GetValue() == 5

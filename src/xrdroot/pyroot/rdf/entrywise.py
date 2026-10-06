@@ -66,8 +66,18 @@ def _column(results: list[Any]) -> Any:
         rows = [np.asarray(each.data() if isinstance(each, _Vector) else each) for each in results]
         offsets = np.concatenate([[0], np.cumsum([len(row) for row in rows])])
         return Jagged(np.concatenate(rows), offsets)
-    found = np.asarray(results)
-    return found if found.ndim == 1 and found.dtype.kind in "biuf" else results
+    found = _numbers(results)
+    return found if found is not None else results
+
+
+def _numbers(results: list[Any]) -> Any:
+    """The answers as an array of numbers, or ``None`` - collections of collections, ragged,
+    or strings, which stay a column of objects."""
+    try:
+        found = np.asarray(results)
+    except ValueError:
+        return None
+    return found if found.ndim == 1 and found.dtype.kind in "biuf" else None
 
 
 def _arity(function: Callable[..., Any]) -> int:

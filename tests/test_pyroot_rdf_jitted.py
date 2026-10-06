@@ -53,3 +53,10 @@ def test_only_a_strings_refusal_by_the_evaluator_is_retried() -> None:
     assert jitted.retried("Define", frame, ["y"], refusal) is None
     assert jitted.retried("Define", frame, ["y", "x"], KeyError("x")) is None
     assert jitted._body("x") == "return x;" and jitted._body("{ return x; }") == "{ return x; }"
+
+
+def test_a_function_of_code_giving_ragged_collections_makes_a_column_of_objects() -> None:
+    from xrdroot.pyroot.rdf.entrywise import _column
+
+    ragged = [[[1], [2, 3]], [[4]]]
+    assert _column(ragged) is ragged

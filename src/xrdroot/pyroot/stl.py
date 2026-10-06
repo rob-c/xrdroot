@@ -837,10 +837,21 @@ def _map_class(key: Any, value: Any) -> type:
 
 
 #: The templates, by the name C++ gives each.
+def _rvec_of(kind: Any) -> type:
+    """``RVec<kind>``, as an element type spells it: ``RVec<RVec<size_t>>``'s inner one."""
+    from .rdf.rvec import RVec
+
+    return RVec[kind]  # type: ignore[no-any-return]
+
+
 TEMPLATES: dict[str, _Template] = {
     "vector": _Template("vector", 1, _vector_class),
     "map": _Template("map", 2, _map_class),
     "pair": _Template("pair", 2, _pair_class),
+    **{
+        name: _Template("RVec", 1, _rvec_of)
+        for name in ("RVec", "ROOT::RVec", "ROOT::VecOps::RVec", "VecOps::RVec")
+    },
 }
 
 

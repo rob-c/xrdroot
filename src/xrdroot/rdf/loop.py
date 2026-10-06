@@ -239,6 +239,9 @@ class Plan:
         self.filters = list(filters)
         self.step = step
         self.workers = workers
+        #: Whether the workers are ``EnableImplicitMT``'s: the loop runs here, not in other
+        #: processes, when what it would send them cannot be sent.
+        self.implicit = False
 
     def __getstate__(self) -> dict[str, Any]:
         return {
@@ -347,6 +350,19 @@ def _refuse_ordered(plan: Plan) -> None:
             )
 
 
+def _sendable(plan: Plan) -> bool:
+    """Can the work go to other processes? Always try, when this frame asked for workers;
+    when only ``EnableImplicitMT`` did - ROOT's threads share a macro's functions, which a
+    process cannot be sent - only if it pickles, else the loop runs here."""
+    if not plan.implicit:
+        return True
+    try:
+        pickle.dumps(plan)
+    except Exception:
+        return False
+    return True
+
+
 def _payload(plan: Plan) -> bytes:
     try:
         return pickle.dumps(plan)
@@ -402,7 +418,7 @@ def execute(plan: Plan) -> list[Any]:
 def _fold(plan: Plan, accs: list[Any], totals: list[list[int]]) -> None:
     """Every task's partials, added up in task order into ``accs``, in place."""
     tasks = plan.tasks()
-    parallel = plan.workers > 1 and len(tasks) > 1
+    parallel = plan.workers > 1 and len(tasks) > 1 and _sendable(plan)
     for parts, counts in _parallel(plan, tasks) if parallel else _serial(plan, tasks, accs):
         for at, (action, part) in enumerate(zip(plan.actions, parts, strict=False)):
             accs[at] = action.merge(accs[at], part)
