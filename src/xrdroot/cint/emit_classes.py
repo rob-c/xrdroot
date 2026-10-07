@@ -12,6 +12,8 @@ destructor ``_destruct`` (which ``delete`` calls). ``ClassDef`` and
 
 from __future__ import annotations
 
+from typing import Any
+
 from .ctype import CType
 from .emit_funcs import FunctionEmitter
 from .nodes import ClassDecl, EnumDecl, Expr, Function, Literal, Unary, VarDecl
@@ -277,10 +279,15 @@ def _layout(info: ClassInfo) -> Layout:
     """A class's data members as ROOT's dictionary would describe them, for a tree to stream."""
     bases = tuple(base.ctype.name for base in info.decl.bases)
     members = tuple(
-        (name, _spelled(var.ctype), var.comment, tuple(_constant(d) for d in var.ctype.dims))
+        (name, _spelled(var.ctype), var.comment, tuple(map(_dimension, var.ctype.dims)))
         for name, var in info.fields.items()
     )
     return info.name, bases, members
+
+
+def _dimension(size: Any) -> int | None:
+    """An array's length as declared: a number, or ``None`` for one worked out at run time."""
+    return size if isinstance(size, int) else _constant(size)
 
 
 def _spelled(ctype: CType) -> str:

@@ -4,8 +4,8 @@ The layouts come from files ROOT 6.22 and 6.24 wrote - ``tprofile.root``,
 ``tgme.root``, ``tconfidence-level.root`` and ``uproot-issue-227b.root`` -
 and a written file must describe each class exactly as those donors do. The
 classes no donor here holds are two bases and a checksum, and the checksum
-is ROOT's ``TClass::GetCheckSum``, which is worked out here from ROOT's
-source and held to every checksum the donors carry, and to the ones ROOT's
+is ROOT's ``TClass::GetCheckSum``, which :func:`xrdroot.wclasses.checksum` works
+out from ROOT's source, and held to every checksum the donors carry, and to the ones ROOT's
 own streamer dump in go-hep has for the classes this suite has no file of.
 
 A profile ROOT wrote is written back byte for byte. Everything else is
@@ -25,6 +25,7 @@ import pytest
 from support import plain
 from xrdroot import Efficiency, Histogram, Profile, create, open_root
 from xrdroot.efficiency import USE_WEIGHTS
+from xrdroot.wclasses import checksum
 from xrdroot.winfo import INFOS
 from xrdroot.writer import _payload
 
@@ -47,41 +48,6 @@ ROOT_DUMP = {
     "TH2I": 0xE87E9147,
     "TH2F": 0x689CC295,
 }
-
-#: The integer types ``TClass::GetCheckSum`` does not count as an enum.
-INTEGERS = ("int", "Int_t", "unsigned int", "UInt_t")
-
-
-def checksum(name, elements):
-    """``TClass::GetCheckSum`` over a class's streamer elements.
-
-    The class name, then for each base its name and its own checksum, and
-    for each member its name, its type, its array dimensions and the counter
-    a ``[n]`` comment names - an enum being counted once more before it.
-    """
-    found = 0
-
-    def mix(text):
-        nonlocal found
-        for byte in text.encode():
-            found = (found * 3 + byte) & 0xFFFFFFFF
-
-    mix(name)
-    for kind, member, title, stype, _size, _length, dims, maxima, typename, _extra in elements:
-        if kind == "TStreamerBase":
-            mix(member)
-            found = (found * 3 + (maxima[1] & 0xFFFFFFFF)) & 0xFFFFFFFF
-            continue
-        if stype == 3 and typename not in INTEGERS:
-            found = (found * 3 + 1) & 0xFFFFFFFF
-        mix(member)
-        mix(typename)
-        for dimension in maxima[:dims]:
-            found = (found * 3 + dimension) & 0xFFFFFFFF
-        if title.startswith("["):
-            mix(title[1 : title.index("]")])
-    return found
-
 
 def written(**objects) -> bytes:
     buf = io.BytesIO()

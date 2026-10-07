@@ -580,9 +580,13 @@ def vector_of(name: str) -> str:
 
 @dataclass(frozen=True)
 class Collection(Spec):
-    """A ``std::vector`` of objects of class ``element``, split as ROOT splits a collection."""
+    """A ``std::vector`` of objects of class ``element``, split as ROOT splits a collection.
+
+    ``own`` says the class is a macro's, described as it was declared.
+    """
 
     element: Layout
+    own: bool = False
 
     def build(self, name: str, basket_size: int) -> Branch:
         size, owner = self._size(basket_size), self.element
@@ -611,4 +615,8 @@ class Collection(Spec):
 
     def classes(self) -> tuple[str, ...]:
         inner = [m.typename for m in self.element.members if m.stype == OBJECT_ANY]
-        return (*super().classes(), self.element.name, *inner)
+        mine = () if self.own else (self.element.name,)
+        return (*super().classes(), *mine, *inner)
+
+    def declared(self) -> tuple[Any, ...]:
+        return (self.element,) if self.own else ()

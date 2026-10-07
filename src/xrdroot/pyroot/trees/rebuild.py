@@ -75,9 +75,8 @@ def _drawn(classname: str, members: dict[str, Any]) -> Any:
     import importlib
 
     obj = getattr(importlib.import_module("xrdroot.pyroot"), classname)()
-    kept = getattr(obj, "members", None)
-    if kept is not None:
-        kept.update({name: value for name, value in members.items() if name in kept})
+    kept = getattr(obj, "members", {})
+    kept.update({name: value for name, value in members.items() if name in kept})
     return obj
 
 

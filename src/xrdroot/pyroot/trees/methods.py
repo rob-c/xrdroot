@@ -51,6 +51,7 @@ def method_draw(
             _object(tree, branch, entry).Draw(*args)
         return len(entries)
     columns = [_called(tree, call, entries) for call in calls]
+    tree._drawn = columns  # what GetV1 and its kin hand back
     return _drawn(varexp, columns, option)
 
 
@@ -86,12 +87,10 @@ def _drawn(varexp: str, columns: list[Any], option: str) -> int:
     names = [f"v{at}" for at in range(len(columns))]
     held = np.zeros(len(columns))
     temporary = TTree("methods", "", dir=False)
-    temporary.Branch("v", held, ":".join(f"{name}/D" for name in names))
+    temporary.Branch(names[0], held, ":".join(f"{name}/D" for name in names))
     for row in np.column_stack(columns) if columns else ():
         held[:] = row
         temporary.Fill()
     drawn = temporary.Draw(":".join(names), "", option)
-    made = hooks.registry().get("htemp")
-    if made is not None and hasattr(made, "SetTitle"):
-        made.SetTitle(varexp)
+    hooks.wrap(hooks.registry()["htemp"]).SetTitle(varexp)  # what every such draw makes
     return int(drawn)

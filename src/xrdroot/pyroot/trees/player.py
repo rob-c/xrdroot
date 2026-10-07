@@ -85,7 +85,7 @@ class _Player(_Friends):
         )
         if "goff" not in option.lower():
             hooks.draw(hooks.wrap(made), option)
-        self._drawn = (text, selection, _count(nentries), int(firstentry))
+        self._drawn: Any = (text, selection, _count(nentries), int(firstentry))
         return int(getattr(made, "selected", made.entries - before))
 
     def _special_draw(
@@ -102,22 +102,19 @@ class _Player(_Friends):
     def _drawn_values(self, axis: int) -> Any:
         """The values the last ``Draw`` computed for its ``axis``-th expression, as ``GetV1``
         and its kin hand them back: one per entry the selection kept."""
-        drawn = getattr(self, "_drawn", None)
-        if drawn is None:
-            return None
-        text, selection, count, first = drawn
+        drawn = getattr(self, "_drawn", None) or []
+        if isinstance(drawn, tuple):  # worked out the first time they are asked for
+            drawn = self._drawn = self._evaluated(*drawn)
+        return drawn[axis] if axis < len(drawn) else None
+
+    def _evaluated(self, text: str, selection: str, count: int | None, first: int) -> list[Any]:
+        """Each expression a ``Draw`` drew, for the entries its selection kept."""
         parts = split_names(text.split(">>")[0])
-        if axis >= len(parts):
-            return None
-        stop = None if count is None else first + count
-        found = [
-            np.asarray(batch[parts[axis]], dtype=np.float64)
-            for batch in self._view().iterate(
-                [parts[axis]], entry_start=first, entry_stop=stop, cut=selection or None,
-                aliases=self._aliases or None,
-            )
-        ]  # fmt: skip
-        return np.concatenate(found) if found else np.zeros(0)
+        batches = list(self._view().iterate(
+            parts, entry_start=first, entry_stop=_stop(first, count), cut=selection or None,
+            aliases=self._aliases or None,
+        ))  # fmt: skip
+        return [_joined_values(batches, part) for part in parts]
 
     def GetV1(self) -> Any:
         return self._drawn_values(0)
@@ -235,3 +232,13 @@ class _Player(_Friends):
 
     def SetScanField(self, count: int = 50) -> None:
         """How many rows ``Scan`` pauses after in ROOT; a script never waits here."""
+
+
+def _stop(first: int, count: int | None) -> int | None:
+    return None if count is None else first + count
+
+
+def _joined_values(batches: list[Any], part: str) -> Any:
+    """One expression's values from every batch, as one array of doubles."""
+    found = [np.asarray(batch[part], dtype=np.float64) for batch in batches]
+    return np.concatenate(found) if found else np.zeros(0)

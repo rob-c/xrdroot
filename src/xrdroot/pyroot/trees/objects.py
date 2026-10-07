@@ -261,10 +261,8 @@ class ObjectSlot:
             self.pending = []
 
     def columns(self) -> dict[str, Any]:
-        """Every entry filled, a column per key."""
+        """Every entry filled, a column per key: asked only of a branch with entries."""
         self.seal()
-        if not self.chunks:
-            return self._kind.columns(self.keys, [])
         if len(self.chunks) > 1:
             self.chunks = [{key: _joined([c[key] for c in self.chunks]) for key in self.keys}]
         return self.chunks[0]

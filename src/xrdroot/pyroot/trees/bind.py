@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...errors import UnsupportedFeatureError
 from .addresses import Address
 
 __all__ = ["bind_object", "is_object"]
@@ -38,10 +39,12 @@ def _class(classname: str) -> Any:
     if classname in DECLARED:
         return DECLARED[classname]
     if classname == LORENTZ:
-        from ..core.genvector import XYZTVector
-
-        return XYZTVector
-    return getattr(importlib.import_module("xrdroot.pyroot"), classname)
+        return importlib.import_module("xrdroot.pyroot.core.genvector").XYZTVector
+    raise UnsupportedFeatureError(
+        f"the branch holds {classname} split member by member, and this session has no "
+        f"declaration of {classname} to make one of; run the macro that declares it first, "
+        f"or read each member's branch on its own"
+    )
 
 
 def _object(address: Any, classname: str) -> Any:

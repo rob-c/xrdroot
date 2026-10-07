@@ -190,10 +190,7 @@ def from_tree(tree: Any) -> list[BranchInfo]:
     for label, branch in tree.branches.items():
         record = branch.record
         grouped.setdefault(id(record), (record, []))[1].append(_read_leaf(label, branch))
-    tops = getattr(tree, "records", None)
-    if tops is None:  # a tree that keeps no records of its own: every branch, flat
-        return [_with_record(_recorded(record, leaves)) for record, leaves in grouped.values()]
-    return [_nested(record, grouped) for record in tops]
+    return [_nested(record, grouped) for record in tree.records]
 
 
 def _nested(record: Any, grouped: dict[int, tuple[Any, list[LeafInfo]]]) -> BranchInfo:

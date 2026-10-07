@@ -19,8 +19,6 @@ ROOT's, and so - its bytes being ROOT's - is what compressing it takes.
 
 from __future__ import annotations
 
-from typing import Any
-
 from .writer import BITS, WBuffer
 
 __all__ = ["IO_FEATURES", "Measuring", "version"]
@@ -68,9 +66,3 @@ class Measuring(WBuffer):
         """Where ROOT 6.40 streams an ``fIOFeatures`` this writer does not."""
         self.raw(IO_FEATURES)
 
-
-def measured(write: Any, held: bool, origin: int = 0) -> bytes:
-    """What ``write(buf)`` streams, as ROOT 6.40 would stream it."""
-    buf = Measuring(held, origin)
-    write(buf)
-    return bytes(buf.data)
