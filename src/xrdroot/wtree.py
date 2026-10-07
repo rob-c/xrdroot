@@ -19,7 +19,11 @@ as the rest of the writer: a file ROOT misreads is worse than an error
 message.
 
 Entries are buffered a basket at a time, so a tree far larger than memory
-costs one basket per column and nothing else. The tree's own record has to
+costs one basket per column and nothing else. A basket goes out when ROOT's
+``TBranch::Fill`` would send it: with the entry after which its wide key, its
+entries, twice its table of where they begin and one more entry of that size
+reach the basket size - so the same entries land in the same baskets, and
+``TTree::Print`` counts the same bytes, as in a file ROOT wrote. The tree's own record has to
 say where every basket landed, so it is written when the file closes.
 """
 
@@ -1125,38 +1129,47 @@ class WritableTree:
     def _feed_fixed(self, column: _Column, raw: bytes) -> None:
         """Pour many entries into one column, a basket's worth at a time.
 
-        A basket goes out once it holds ``basket_size`` bytes, which for a
-        column of fixed-size entries is a fixed number of them - the same
+        A basket goes out by ROOT's rule (see the module's docstring), which for
+        a column of fixed-size entries is a fixed number of them - the same
         number a row at a time would have reached - so the file is the same
         whichever way the entries were given.
         """
-        per = -(-column.basket_size // column.size)
+        room = column.basket_size - self._basket_keylen(column) - column.size
+        per = max(1, -(-room // column.size))
         at = 0
         while at < len(raw):
             take = (per - column.pending) * column.size
             chunk = raw[at : at + take]
             column.keep(chunk, None)
             at += len(chunk)
-            if len(column.buffer) >= column.basket_size:
+            if column.pending >= per:
                 self._flush(column)
 
     def _feed_rows(self, column: _Column, raw: bytes, sizes: np.ndarray[Any, Any]) -> None:
         """Pour entries of different sizes into one column, a basket at a time.
 
-        The same rule as for fixed entries - a basket goes out with the entry
-        that takes it to ``basket_size`` bytes or past - found for a whole
-        batch at once by searching the running total of the entries' sizes.
+        The same rule as for fixed entries, found for a whole
+        batch at once: for each entry still to come, what the basket would
+        weigh with it in, and the first that reaches the basket's size.
         """
         ends = np.cumsum(sizes)
+        keylen = self._basket_keylen(column)
         done = 0
         while done < len(sizes):
             base = int(ends[done - 1]) if done else 0
-            room = column.basket_size - len(column.buffer)
-            stop = min(int(np.searchsorted(ends, base + room)) + 1, len(sizes))
+            held = len(column.buffer) - base
+            counts = column.pending + np.arange(1, len(sizes) - done + 1)
+            weights = keylen + held + ends[done:] + 2 * 4 * counts + sizes[done:]
+            over = np.flatnonzero(weights >= column.basket_size)
+            stop = done + int(over[0]) + 1 if len(over) else len(sizes)
             column.keep(raw[base : int(ends[stop - 1])], sizes[done:stop])
             done = stop
-            if len(column.buffer) >= column.basket_size:
+            if len(over):
                 self._flush(column)
+
+    def _basket_keylen(self, column: _Column) -> int:
+        """How long the key of each of a column's baskets is: the wide key ROOT gives them."""
+        return self._file._key_length("TBasket", column.name, self.name, extra=19, wide=True)
 
     def _require_open(self) -> None:
         if self._file.closed:
@@ -1184,7 +1197,7 @@ class WritableTree:
         if not column.pending:
             return
         payload = bytes(column.buffer)
-        keylen = self._file._key_length("TBasket", column.name, self.name, extra=19)
+        keylen = self._basket_keylen(column)
         table = column.table(keylen)
         extra = struct.pack(
             ">hiiiiB",
@@ -1196,7 +1209,14 @@ class WritableTree:
             0,  # the entries are in the record behind this key, not in the key
         )
         seek, nbytes = self._file._put(
-            "TBasket", column.name, self.name, payload + table, 0, listed=False, extra=extra
+            "TBasket",
+            column.name,
+            self.name,
+            payload + table,
+            0,
+            listed=False,
+            extra=extra,
+            wide=True,
         )
         column.seeks.append(seek)
         column.sizes.append(nbytes)

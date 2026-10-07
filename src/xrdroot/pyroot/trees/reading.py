@@ -58,6 +58,8 @@ class _Reading(_TreeCore):
         for each, one in zip(leaves, _bound(address, leaves, f"the branch {name!r}"), strict=False):
             self._addresses[each.column] = one
             self._rebind(each.column, one)
+        if hasattr(ptr, "value"):  # SetBranchAddress(name, &x, &branch): the branch handed back
+            ptr.value = self.GetBranch(name)
         return MATCH
 
     def _rebind(self, column: str, address: Any) -> None:

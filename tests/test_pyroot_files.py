@@ -298,3 +298,27 @@ def test_a_file_is_copied_here_and_a_missing_one_is_said_so(tmp_path, capsys) ->
     assert ROOT.TFile.Cp(str(source), str(tmp_path / "c.root"), False)
     assert not ROOT.TFile.Cp(str(tmp_path / "none.root"), str(tmp_path / "d.root"))
     assert "Error in <TFile::Cp>: cannot open source file" in capsys.readouterr().err
+
+
+def test_a_file_is_written_with_roots_compression_unless_told_another() -> None:
+    plain = ROOT.TFile("plain.root", "RECREATE")
+    assert (plain.GetCompressionSettings(), plain.GetCompressionAlgorithm()) == (101, 1)
+    plain.SetCompressionLevel(6)
+    assert plain.GetCompressionSettings() == 106
+    plain.SetCompressionSettings(207)
+    assert (plain.GetCompressionSettings(), plain.GetCompressionLevel()) == (207, 7)
+    plain.Close()
+    raw = ROOT.TFile("raw.root", "RECREATE", "", 0)
+    assert raw.GetCompressionSettings() == 0
+    raw.Close()
+    assert ROOT.TFile("plain.root").GetCompressionSettings() == 207
+
+
+def test_a_file_on_a_macros_stack_is_closed_as_its_scope_ends() -> None:
+    from xrdroot.cint import translate
+    from xrdroot.cint.execute import run_source
+
+    source = 'void t() { { TFile f("stack.root", "RECREATE"); } TFile::Open("stack.root"); }'
+    assert "f._destruct()" in translate(source, "t.C")
+    run_source(source, "t.C", root=ROOT)
+    assert ROOT.TFile("stack.root").IsOpen()

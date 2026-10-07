@@ -44,6 +44,11 @@ MODES = {
     "UPDATE": "UPDATE",
     "READ_WITHOUT_GLOBALREGISTRATION": "READ",
 }
+#: ROOT's compression algorithms by the number a setting spells them with in its hundreds:
+#: 0, the global default, is zlib, as is 1.
+ALGORITHMS = {0: "zlib", 1: "zlib", 2: "lzma", 4: "lz4", 5: "zstd"}
+#: The setting ROOT writes a file with when it is not told one: zlib at level 1.
+DEFAULT_COMPRESSION = 101
 #: The classes a directory keeps in memory once read, as ``TH1`` and ``TTree`` add themselves.
 KEPT = ("TH1", "TTree")
 
@@ -430,6 +435,14 @@ class TDirectoryFile(TDirectory):
             set_current(self._mother if self._mother is not None else _top())
 
 
+def _compression(settings: int) -> tuple[str | None, int | None]:
+    """The writer's algorithm and level for one of ROOT's settings; level 0 stores raw."""
+    level = settings % 100
+    if level == 0:
+        return None, None
+    return ALGORITHMS.get(settings // 100, "zlib"), level
+
+
 def _top() -> Any:
     from .troot import gROOT
 
@@ -508,11 +521,16 @@ class TFile(TDirectoryFile):
     CLASS_TITLE = "ROOT file"
 
     def __init__(
-        self, fname: Any = "", option: Any = "READ", ftitle: Any = "", compress: int = 101
+        self,
+        fname: Any = "",
+        option: Any = "READ",
+        ftitle: Any = "",
+        compress: int = DEFAULT_COMPRESSION,
     ) -> None:
         name = str(fname)
         super().__init__(name, str(ftitle))
         self._option = MODES.get(str(option).upper().strip(), "READ")
+        self._compress = int(compress)
         self._reading: Any = None
         self._writing: Any = None
         self._zombie = False
@@ -555,7 +573,11 @@ class TFile(TDirectoryFile):
     def _write_file(self, name: str, updating: bool) -> None:
         from ... import create, update
 
-        self._writing = update(name) if updating else create(name)
+        if updating:
+            self._writing = update(name)
+        else:
+            algorithm, level = _compression(self._compress)
+            self._writing = create(name, compression=algorithm, level=level)
         self._writer = self._writing
 
     @staticmethod
@@ -612,7 +634,9 @@ class TFile(TDirectoryFile):
         return int(getattr(self._reading, "version", 64101))
 
     def GetCompressionSettings(self) -> int:
-        return int(getattr(self._reading, "compression", 101))
+        if self._writing is not None:
+            return int(self._writing._codes)
+        return int(getattr(self._reading, "compression", DEFAULT_COMPRESSION))
 
     def GetCompressionLevel(self) -> int:
         return self.GetCompressionSettings() % 100
@@ -621,9 +645,16 @@ class TFile(TDirectoryFile):
         return self.GetCompressionSettings() // 100
 
     def SetCompressionLevel(self, level: int = 1) -> None:
-        """``SetCompressionLevel``: the file is compressed as xrdroot's writer compresses it."""
+        """``SetCompressionLevel``: what is written from now on, at this level."""
+        algorithm = self.GetCompressionAlgorithm()
+        self.SetCompressionSettings(algorithm * 100 + max(0, min(int(level), 99)))
 
-    SetCompressionSettings = SetCompressionLevel
+    def SetCompressionSettings(self, settings: int = DEFAULT_COMPRESSION) -> None:
+        """``SetCompressionSettings``: what is written from now on, by algorithm and level."""
+        self._compress = int(settings)
+        if self._writing is not None:
+            file = self._writing._file
+            file._algorithm, file._level = _compression(self._compress)
 
     def Flush(self) -> None:
         """``Flush``: records go out as they are written."""
@@ -653,6 +684,10 @@ class TFile(TDirectoryFile):
         gROOT.GetListOfFiles().Remove(self)
         if self in _OPEN:
             _OPEN.remove(self)
+
+    def _destruct(self) -> None:
+        """A file on a macro's stack, as its scope ends: closed, as ROOT's destructor does."""
+        self.Close()
 
     def __enter__(self) -> TFile:
         return self

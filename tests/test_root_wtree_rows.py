@@ -24,7 +24,7 @@ import pytest
 from test_root_wtree import at_branches, branch_fields, tree_record
 from xrdroot import Jagged, create, open_root
 from xrdroot.objects import CLASSES
-from xrdroot.writer import _keylen
+from xrdroot.writer import WIDER, _keylen
 from xrdroot.wtree import (
     MIN_OFFSET_LEN,
     OFFSET_LEN,
@@ -37,6 +37,9 @@ from xrdroot.wtree import (
 )
 
 DATA = pathlib.Path(__file__).parent / "data"
+
+#: The key of a basket of ``x`` in ``events``: wide wherever it lands, as ROOT's are.
+BASKET_KEYLEN = _keylen("TBasket", "x", "events", extra=19) + WIDER
 
 #: Five entries of rows of different lengths, one of them empty.
 ROWS = [[1.5, 2.5], [], [3.5], [4.5, 5.5, 6.5], [7.5]]
@@ -173,7 +176,7 @@ def test_a_column_of_rows_fills_many_baskets_the_same_way_either_way_it_is_given
 def test_a_basket_goes_out_with_the_row_that_fills_it_and_empty_rows_wait():
     """A row of nothing takes no bytes, so one after a full basket starts the next."""
     rows = [[1.0, 2.0], [], [3.0, 4.0], []]
-    data = extended({"x": ("d", None)}, {"x": rows}, basket_size=16)
+    data = extended({"x": ("d", None)}, {"x": rows}, basket_size=100)  # the key is 70
     with read_back(data) as back:
         branch = back["events"]["x"]
         assert list(branch.record.basket_entry) == [0, 1, 3, 4]
@@ -251,7 +254,7 @@ def test_a_basket_of_rows_ends_in_the_table_root_writes_after_fLast():
     """``small-flat-tree.root`` writes one more slot than entries, the last zero."""
     data = extended({"x": ("d", None)}, {"x": ROWS}, compression=None)
     raw, keylen = basket_bytes(data, "x")
-    assert keylen == _keylen("TBasket", "x", "events", extra=19)
+    assert keylen == BASKET_KEYLEN
     _version, _size, nevsize, nevbuf, last, flag = struct.unpack_from(">hiiiiB", raw, keylen - 19)
     assert (nevsize, nevbuf, flag) == (OFFSET_LEN, 5, 0)
     assert last == keylen + 8 * 7
@@ -266,8 +269,7 @@ def test_a_branch_of_rows_counts_its_tables_into_its_bytes():
     data = extended({"x": ("d", None)}, {"x": ROWS}, compression=None)
     buf, _version, end = tree_record(data)
     _counter, rows = at_branches(buf).objarray({"TBranch": branch_fields})
-    keylen = _keylen("TBasket", "x", "events", extra=19)
-    assert rows["tot_bytes"] == keylen + 8 * 7 + 4 + 4 * 6
+    assert rows["tot_bytes"] == BASKET_KEYLEN + 8 * 7 + 4 + 4 * 6
     assert rows["entry_offset_len"] == 4 * 5  # ROOT's guess, shrunk to fit
     buf.resume(end)
 

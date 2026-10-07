@@ -268,3 +268,11 @@ def test_show_prints_where_a_vector_is_as_root_does(capsys):
     t.Show(2)
     shown = capsys.readouterr().out.splitlines()
     assert any(line.startswith(" v               = (vector<int>*)0x") for line in shown)
+
+
+def test_a_pointer_to_a_branch_handed_to_set_branch_address_is_given_the_branch() -> None:
+    t, px, branch = _filled(), np.zeros(1, "f"), Cell(None)
+    assert t.SetBranchAddress("px", px, branch) == 0
+    assert branch.value.GetName() == "px"
+    branch.value.GetEntry(4)
+    assert px[0] == 2.0

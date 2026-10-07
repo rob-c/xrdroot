@@ -43,8 +43,11 @@ CONTAINERS = ("vector", "list", "deque", "set", "array", "map", "unordered_map",
 #: ``ROOT::RVecF`` and its kind: containers whose element type their name gives.
 ALIASED = tuple(f"RVec{kind}" for kind in ("B", "C", "D", "F", "I", "L", "LL", "U", "UL", "ULL"))
 
-#: The standard's lock guards, which give their mutex back as their scope ends.
-GUARDS = frozenset({"std::lock_guard", "std::unique_lock", "std::scoped_lock"})
+#: The classes whose objects do something as their scope ends: the standard's lock guards
+#: give their mutex back, and ROOT's files are closed - finished, for one being written.
+GUARDS = frozenset(
+    {"std::lock_guard", "std::unique_lock", "std::scoped_lock", "TFile", "TMemFile"}
+)
 
 #: The ROOT string class, which a C string stored into one is converted to.
 STRING_CLASSES = frozenset({"TString"})

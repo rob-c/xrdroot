@@ -23,7 +23,7 @@ from xrdroot.buffer import Buffer
 from xrdroot.compression import decompress
 from xrdroot.objects import CLASSES
 from xrdroot.winfo import INFOS
-from xrdroot.writer import _keylen
+from xrdroot.writer import WIDER, _keylen
 from xrdroot.wtree import (
     BRANCH_VERSION,
     LEAF_VERSION,
@@ -209,7 +209,7 @@ def test_a_tree_and_a_histogram_can_share_a_file():
 
 def test_entries_go_out_in_baskets_as_they_gather():
     rows = [{"x": float(step)} for step in range(50)]
-    data = written({"x": float}, rows, basket_size=64)  # eight entries a basket
+    data = written({"x": float}, rows, basket_size=142)  # eight entries and the wide key
     with read_back(data) as back:
         branch = back["events"]["x"]
         assert branch.num_baskets == 7
@@ -221,7 +221,7 @@ def test_entries_go_out_in_baskets_as_they_gather():
 
 def test_a_basket_that_ends_exactly_full_is_not_followed_by_an_empty_one():
     rows = [{"x": step} for step in range(8)]
-    data = written({"x": "i"}, rows, basket_size=16)  # four entries a basket
+    data = written({"x": "i"}, rows, basket_size=90)  # four entries and the wide key
     with read_back(data) as back:
         branch = back["events"]["x"]
         assert branch.num_baskets == 2
@@ -231,10 +231,10 @@ def test_a_basket_that_ends_exactly_full_is_not_followed_by_an_empty_one():
 
 def test_each_column_fills_its_own_baskets_at_its_own_rate():
     rows = [{"wide": [step] * 8, "narrow": step} for step in range(20)]
-    data = written({"wide": ("q", 8), "narrow": "b"}, rows, basket_size=128)
+    data = written({"wide": ("q", 8), "narrow": "b"}, rows, basket_size=256)
     with read_back(data) as back:
         tree = back["events"]
-        assert tree["wide"].num_baskets == 10  # 64 bytes an entry
+        assert tree["wide"].num_baskets == 10  # 64 bytes an entry, two a basket
         assert tree["narrow"].num_baskets == 1  # one byte an entry
         assert list(tree["narrow"].array()) == list(range(20))
         assert tree["wide"].array(19, 20).tolist() == [[19] * 8]
@@ -368,7 +368,7 @@ def test_the_trees_leaves_are_the_very_leaves_its_branches_hold():
 
 def test_a_branch_declares_the_geometry_a_reader_needs():
     rows = [{"x": float(step)} for step in range(10)]
-    with read_back(written({"x": float}, rows, basket_size=32)) as back:
+    with read_back(written({"x": float}, rows, basket_size=110)) as back:
         record = back["events"]["x"].record
         assert record.entries == 10
         assert record.entry_offset_len == 0  # fixed-size entries need no table
@@ -379,7 +379,7 @@ def test_a_branch_declares_the_geometry_a_reader_needs():
 
 def test_a_branch_says_what_root_would_say_about_itself():
     rows = [{"x": float(step)} for step in range(10)]
-    buf, _version, end = tree_record(written({"x": float}, rows, basket_size=32))
+    buf, _version, end = tree_record(written({"x": float}, rows, basket_size=110))
     (fields,) = at_branches(buf).objarray({"TBranch": branch_fields})
     _assert_branch_geometry(fields)
     _assert_branch_sizes(fields)
@@ -388,7 +388,7 @@ def test_a_branch_says_what_root_would_say_about_itself():
 
 def _assert_branch_geometry(fields):
     assert fields["version"] == BRANCH_VERSION
-    assert fields["basket_size"] == 32
+    assert fields["basket_size"] == 110  # four entries and the wide key
     assert fields["entry_offset_len"] == 0  # every entry the same size
     assert fields["write_basket"] == 3
     assert fields["max_baskets"] == MIN_BASKETS  # room for more, as ROOT's has
@@ -409,7 +409,7 @@ def test_a_basket_key_says_how_many_entries_it_holds_and_how_big_one_is():
         record = back["events"]["x"].record
         seek, nbytes = record.basket_seek[0], record.basket_bytes[0]
     raw = data[seek : seek + nbytes]
-    keylen = _keylen("TBasket", "x", "events", extra=19)
+    keylen = _keylen("TBasket", "x", "events", extra=19) + WIDER  # wide, as ROOT's are
     version, buffer_size, nevsize, nev, last, flag = struct.unpack_from(">hiiiiB", raw, keylen - 19)
     assert (version, nevsize, nev, flag) == (3, 8, 4, 0)
     assert buffer_size == 32_000
@@ -423,7 +423,7 @@ def test_the_basket_key_is_named_for_its_branch_and_titled_for_its_tree():
         record = back["digits"]["pixels"].record
         seek, nbytes = record.basket_seek[0], record.basket_bytes[0]
     buf = Buffer(data[seek : seek + nbytes])
-    buf.i32(), buf.u16(), buf.i32(), buf.u32(), buf.i16(), buf.i16(), buf.i32(), buf.i32()
+    buf.i32(), buf.u16(), buf.i32(), buf.u32(), buf.i16(), buf.i16(), buf.i64(), buf.i64()
     assert (buf.string(), buf.string(), buf.string()) == ("TBasket", "pixels", "digits")
 
 

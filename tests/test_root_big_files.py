@@ -65,9 +65,11 @@ def test_a_file_past_the_line_reads_back_whole(low):
 
 
 def test_keys_stay_small_until_the_line_and_are_wide_after_it_as_roots_are(low):
+    """A basket's key is wide wherever it lands, as ROOT's are; every other key waits."""
     keys = walk(written())
-    small = [key.version for key in keys if key.seek_key <= LOW]
+    small = [key.version for key in keys if key.seek_key <= LOW and key.classname != "TBasket"]
     assert small and set(small) == {4}
+    assert {key.version for key in keys if key.classname == "TBasket"} == {1004}
     assert {key.version for key in keys if key.seek_key > LOW} == {1004}
 
 
