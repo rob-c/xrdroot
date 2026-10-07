@@ -19,6 +19,7 @@ __all__ = [
     "TList",
     "THashList",
     "TObjArray",
+    "TClonesArray",
     "TOrdCollection",
     "TIter",
     "TObjString",
@@ -323,6 +324,44 @@ class TObjArray(TSeqCollection):
     def Remove(self, obj: Any) -> Any:
         at = self.IndexOf(obj)
         return None if at < 0 else self.RemoveAt(at)
+
+
+class TClonesArray(TObjArray):
+    """``TClonesArray``: an array of objects of one class, as a tree's branch of them holds.
+
+    ``new (clones[i]) TLine(...)`` puts an object in slot ``i``; ``Clear``
+    empties every slot for the next entry; ``BypassStreamer`` asks for the
+    objects to be written member by member, which is how a tree writes them.
+    """
+
+    def __init__(self, classname: Any = "TObject", size: int = 1000, call_dtor: bool = False):
+        super().__init__(size)
+        self._class = getattr(classname, "GetName", lambda: str(classname))()
+        self._bypass = False
+
+    def GetClass(self) -> Any:
+        from .objects import TNamed
+
+        return TNamed(self._class, "")
+
+    def BypassStreamer(self, bypass: bool = True) -> None:
+        self._bypass = bool(bypass)
+
+    def CanBypassStreamer(self) -> bool:
+        return self._bypass
+
+    def Clear(self, option: str = "") -> None:
+        self._items = []
+
+    def ConstructedAt(self, index: int) -> Any:
+        """The object in slot ``index``, made with its class's default constructor if empty."""
+        found = self.At(index) if 0 <= index < len(self._items) else None
+        if found is None:
+            import importlib
+
+            found = getattr(importlib.import_module("xrdroot.pyroot"), self._class)()
+            self.AddAt(found, index)
+        return found
 
 
 class TObjLink:

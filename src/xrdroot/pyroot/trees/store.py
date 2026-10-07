@@ -27,6 +27,7 @@ from typing import Any
 import numpy as np
 
 from ...tree import Jagged, concatenate
+from ...wbranch import Vector
 from ..stl import cpp_name
 from .addresses import Address
 from .leaflist import LEAF_CLASSES, TYPE_NAMES
@@ -35,6 +36,8 @@ __all__ = ["Slot", "Store", "memory_tree"]
 
 #: The kinds of leaf a slot can be, which say how it is read and written.
 SCALAR, FIXED, COUNTED, VECTOR, TEXT = "scalar", "fixed", "counted", "vector", "text"
+#: A branch of objects, which :mod:`.objects` fills.
+OBJECT = "object"
 
 #: The type codes a counter can be: the integers.
 INTEGERS = "bBhHiIqQ"
@@ -68,6 +71,9 @@ class Slot:
         self.kind = _kind(code, address, size, counter)
         self.pending: list[Any] = []
         self.chunks: list[Any] = []
+        #: ``TTree::Branch``'s split level and basket size, which a vector's branch keeps.
+        self.split = 99
+        self.basket_size: int | None = None
 
     def __repr__(self) -> str:
         return f"<Slot {self.name!r} of {self.typename} ({self.kind})>"
@@ -132,7 +138,7 @@ class Slot:
         if self.kind == TEXT:
             return str
         if self.kind == VECTOR:
-            return (self.code, None)
+            return Vector(self.code, split=self.split, basket_size=self.basket_size)
         if self.kind == COUNTED:
             return (self.code, self.counter)
         return (self.code, self.size) if self.kind == FIXED else self.code
@@ -213,7 +219,13 @@ class Store:
     def columns(self) -> dict[str, Any]:
         """Every column to write: all but the counters, which are written from the rows."""
         counted = self.counters()
-        return {name: slot.column() for name, slot in self.slots.items() if name not in counted}
+        found: dict[str, Any] = {}
+        for name, slot in self.slots.items():
+            if slot.kind == OBJECT:  # a branch of objects fills a column per member
+                found.update(slot.columns())
+            elif name not in counted:
+                found[name] = slot.column()
+        return found
 
     def specs(self) -> dict[str, Any]:
         counted = self.counters()
@@ -226,6 +238,7 @@ class Store:
         )
         if self.entries:
             tree.extend(self.columns())
+            tree._flush_all()  # TTree::Write sends every basket out, the last ones with it
         return tree
 
     def reset(self) -> None:
@@ -236,21 +249,26 @@ class Store:
 
 
 def _nbytes(slot: Slot, value: Any) -> int:
+    if slot.kind == OBJECT:
+        return int(slot.nbytes(value))  # type: ignore[attr-defined]
     if slot.kind == TEXT:
         return len(str(value)) + 1
     return int(np.size(value)) * int(slot.dtype.itemsize)
 
 
-def memory_tree(name: str, write: Any) -> Any:
+def memory_tree(name: str, write: Any, compression: tuple[str | None, int | None] = ("zlib", 1)) -> Any:
     """A tree written by ``write(directory)`` into a ROOT file in memory, and read back.
 
     This is how anything here that is not in a file yet - a tree being
     filled, the entries an entry list picks - is read by the same reader as
-    everything that is.
+    everything that is. It is compressed as the file it would go to would
+    compress it - ROOT's zlib at level 1 unless that file says otherwise - so
+    what its baskets took on file is what they will take.
     """
     from ... import create, open_root
 
+    algorithm, level = compression
     buffer = io.BytesIO()
-    with create(buffer) as out:
+    with create(buffer, compression=algorithm, level=level) as out:
         write(out)
     return open_root(io.BytesIO(buffer.getvalue()))[name]

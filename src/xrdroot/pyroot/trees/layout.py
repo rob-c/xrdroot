@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any, NamedTuple
 
 from .sizes import Streamed, streamed
-from .store import TEXT, VECTOR, Store
+from .store import OBJECT, TEXT, VECTOR, Store
 
 __all__ = ["LeafInfo", "BranchInfo", "from_store", "from_tree"]
 
@@ -66,6 +66,17 @@ class BranchInfo(NamedTuple):
     basket_size: int
     #: The bytes of the branch's own record, which ROOT's total adds to its baskets'.
     streamed: int = 0
+    #: The branches under it, for a branch of objects: one per member, or per member of
+    #: every object in a collection.
+    children: tuple[BranchInfo, ...] = ()
+    #: ``TBranchElement``'s ``fID`` and ``fType``: what kind of branch of objects it is -
+    #: ``fID`` -2 the top of a split object, ``fType`` 2 or more one holding others.
+    fid: int = -1
+    btype: int = 0
+
+    def walk(self) -> list[BranchInfo]:
+        """This branch and every branch under it, in the order ROOT lists them."""
+        return [self, *(below for child in self.children for below in child.walk())]
 
 
 def from_store(store: Store, stats: Any = None, written: bool = False) -> list[BranchInfo]:
@@ -76,7 +87,14 @@ def from_store(store: Store, stats: Any = None, written: bool = False) -> list[B
     is ``written``, its baskets are ROOT's one basket in memory: none on file.
     """
     grouped: dict[str, list[LeafInfo]] = {}
+    objects: dict[str, BranchInfo] = {}
     for slot in store.slots.values():
+        if slot.kind == OBJECT:
+            from .objectinfo import object_info
+
+            objects[slot.branch] = object_info(slot, stats, store.entries, written)
+            grouped[slot.branch] = []
+            continue
         leaf = LeafInfo(
             slot.name,
             slot.name,
@@ -90,10 +108,17 @@ def from_store(store: Store, stats: Any = None, written: bool = False) -> list[B
             slot.kind == VECTOR,
         )
         grouped.setdefault(slot.branch, []).append(leaf)
-    made = [_stored(name, leaves, store, stats) for name, leaves in grouped.items()]
-    if not written:
-        made = [info._replace(zip_bytes=0, baskets=0) for info in made]
-    return [_with_record(info) for info in made]
+    made = [
+        objects.get(name) or _plain(_stored(name, leaves, store, stats), written)
+        for name, leaves in grouped.items()
+    ]
+    return made
+
+
+def _plain(info: BranchInfo, written: bool) -> BranchInfo:
+    """A branch of numbers, with its record's length; none of its baskets on file until
+    the tree is ``written``."""
+    return _with_record(info if written else info._replace(zip_bytes=0, baskets=0))
 
 
 def _with_record(info: BranchInfo) -> BranchInfo:
@@ -165,7 +190,19 @@ def from_tree(tree: Any) -> list[BranchInfo]:
     for label, branch in tree.branches.items():
         record = branch.record
         grouped.setdefault(id(record), (record, []))[1].append(_read_leaf(label, branch))
-    return [_with_record(_recorded(record, leaves)) for record, leaves in grouped.values()]
+    tops = getattr(tree, "records", None)
+    if tops is None:  # a tree that keeps no records of its own: every branch, flat
+        return [_with_record(_recorded(record, leaves)) for record, leaves in grouped.values()]
+    return [_nested(record, grouped) for record in tops]
+
+
+def _nested(record: Any, grouped: dict[int, tuple[Any, list[LeafInfo]]]) -> BranchInfo:
+    """A branch read from a file and the branches under it, as ROOT nests them."""
+    leaves = grouped.get(id(record), (record, []))[1]
+    children = tuple(_nested(child, grouped) for child in record.branches)
+    fid, btype = (record.element[4], record.element[5]) if record.element else (-1, 0)
+    made = _with_record(_recorded(record, leaves))
+    return made._replace(children=children, fid=fid, btype=btype)
 
 
 def _recorded(record: Any, leaves: list[LeafInfo]) -> BranchInfo:

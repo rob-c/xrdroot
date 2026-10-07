@@ -30,8 +30,9 @@ say where every basket landed, so it is written when the file closes.
 from __future__ import annotations
 
 import array
+import heapq
 import struct
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from typing import TYPE_CHECKING, Any, Optional
 
 import numpy as np
@@ -39,7 +40,8 @@ import numpy as np
 from .buffer import MAP_OFFSET
 from .objects import LEAF_TYPES
 from .tree import Jagged
-from .writer import BASKET_BYTES, WBuffer, _checked
+from .wmeasure import Measuring, version
+from .writer import BASKET_BYTES, BITS, WBuffer, _checked
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from .writer import WritableDirectory
@@ -58,6 +60,13 @@ SUBLEAF_VERSION = 1
 OBJARRAY_VERSION = 3
 BASKET_VERSION = 3
 ATTRIBUTE_VERSION = 2
+#: The fill style every ``TBranch`` ROOT makes carries in its ``TAttFill``.
+FILL_STYLE = 1001
+#: The bits ROOT's own trees and branches carry beyond every object's: a ``TTree``'s
+#: ``kMustCleanup``, and a ``TBranch``'s ``kDoNotUseBufferMap``.
+TREE_BITS, BRANCH_BITS = 1 << 3, 1 << 22
+#: ``TCollection::kIsOwner``, which the array of a tree's branches carries.
+OWNER_BIT = 1 << 14
 
 #: What ROOT puts in the fields a tree written in one pass never uses: the
 #: values ``TTree``'s own constructor sets, so nothing reading finds a tree
@@ -753,10 +762,10 @@ def _entries(column: _Column, packed: Packed) -> int:
     return len(raw) // column.size if sizes is None else len(sizes)
 
 
-def _objarray(buf: WBuffer, count: int) -> int:
+def _objarray(buf: WBuffer, count: int, bits: int = BITS) -> int:
     """Open a ``TObjArray`` of ``count`` things, for the caller to write and end."""
     index = buf.start(OBJARRAY_VERSION)
-    buf.tobject()
+    buf.tobject(bits)
     buf.string("")
     buf.i32(count)
     buf.i32(0)  # the lower bound: every array here counts from zero
@@ -774,7 +783,7 @@ def _attributes(buf: WBuffer) -> None:
     buf.i16(0)  # fFillColor
     buf.i16(1001)  # fFillStyle
     buf.end(index)
-    index = buf.start(ATTRIBUTE_VERSION)
+    index = buf.start(version(buf, "TAttMarker", ATTRIBUTE_VERSION))
     buf.i16(1)  # fMarkerColor
     buf.i16(1)  # fMarkerStyle
     buf.raw(struct.pack(">f", 1.0))  # fMarkerSize
@@ -817,11 +826,11 @@ def _table(buf: WBuffer, values: list[int], width: int, code: str) -> None:
 def _branch(buf: WBuffer, column: _Column, entries: int, compress: int, count: int) -> list[int]:
     """One ``TBranch``, leaves and all; where its leaves landed comes back."""
     at = buf.tag("TBranch")
-    index = buf.start(BRANCH_VERSION)
-    buf.named(column.name, column.title)
+    index = buf.start(version(buf, "TBranch", BRANCH_VERSION))
+    buf.named(column.name, column.title, BITS | BRANCH_BITS)
     fill = buf.start(ATTRIBUTE_VERSION)
     buf.i16(0)  # fFillColor
-    buf.i16(0)  # fFillStyle
+    buf.i16(FILL_STYLE)  # what every TBranch ROOT makes carries
     buf.end(fill)
     written = len(column.seeks)
     width = max(MIN_BASKETS, written + 1)
@@ -830,6 +839,8 @@ def _branch(buf: WBuffer, column: _Column, entries: int, compress: int, count: i
     buf.i32(column.entry_offset_len)
     buf.i32(written)
     buf.i64(entries)  # fEntryNumber
+    if isinstance(buf, Measuring):
+        buf.features()
     buf.i32(0)  # fOffset
     buf.i32(width)  # fMaxBaskets
     buf.i32(0)  # fSplitLevel: nothing here is split, a column is a column
@@ -845,8 +856,9 @@ def _branch(buf: WBuffer, column: _Column, entries: int, compress: int, count: i
     leaves = _objarray(buf, len(parts))
     place = [_leaf(buf, column, count, part) for part in parts]
     buf.end(leaves)
-    baskets = _objarray(buf, written + 1)  # fBaskets: all on file, none in here
-    buf.raw(bytes(4 * (written + 1)))
+    slots = 0 if isinstance(buf, Measuring) and not buf.held else written + 1
+    baskets = _objarray(buf, slots)  # fBaskets: all on file, none in here
+    buf.raw(bytes(4 * slots))
     buf.end(baskets)
     _table(buf, column.sizes, width, "i")  # fBasketBytes
     _table(buf, column.starts, width, "q")  # fBasketEntry
@@ -1128,8 +1140,8 @@ class WritableTree:
             code = np.dtype(counter.typecode)
             _require_fits(counter, lengths, code)
             packed[counter.name] = (bytes(lengths.astype(code.newbyteorder(">")).tobytes()), None)
-        for column in self._branches:
-            self._feed(column, packed[self._keys[id(column)]])
+        feeds = [self._feed(column, packed[self._keys[id(column)]]) for column in self._branches]
+        _interleaved(feeds)
         self._entries += entries
 
     def _lengths(self, counter: _Counter, packed: dict[str, Packed]) -> np.ndarray[Any, Any]:
@@ -1148,14 +1160,13 @@ class WritableTree:
                 )
         return lengths
 
-    def _feed(self, column: _Column, packed: Packed) -> None:
+    def _feed(self, column: _Column, packed: Packed) -> Iterator[int]:
         raw, sizes = packed
         if sizes is None:
-            self._feed_fixed(column, raw)
-        else:
-            self._feed_rows(column, raw, sizes)
+            return self._feed_fixed(column, raw)
+        return self._feed_rows(column, raw, sizes)
 
-    def _feed_fixed(self, column: _Column, raw: bytes) -> None:
+    def _feed_fixed(self, column: _Column, raw: bytes) -> Iterator[int]:
         """Pour many entries into one column, a basket's worth at a time.
 
         A basket goes out by ROOT's rule (see the module's docstring), which for
@@ -1172,9 +1183,12 @@ class WritableTree:
             column.keep(chunk, None)
             at += len(chunk)
             if column.pending >= per:
+                yield at // column.size  # the entry that fills the basket, before it goes
                 self._flush(column)
 
-    def _feed_rows(self, column: _Column, raw: bytes, sizes: np.ndarray[Any, Any]) -> None:
+    def _feed_rows(
+        self, column: _Column, raw: bytes, sizes: np.ndarray[Any, Any]
+    ) -> Iterator[int]:
         """Pour entries of different sizes into one column, a basket at a time.
 
         The same rule as for fixed entries, found for a whole
@@ -1194,6 +1208,7 @@ class WritableTree:
             column.keep(raw[base : int(ends[stop - 1])], sizes[done:stop])
             done = stop
             if len(over):
+                yield done
                 self._flush(column)
 
     def _basket_keylen(self, column: _Column) -> int:
@@ -1305,7 +1320,9 @@ class WritableTree:
         the start of the key rather than the start of the record. A varying
         column's leaf points at its counter's the same way.
         """
-        buf = WBuffer()
+        return self._streamed(WBuffer(), origin)
+
+    def _streamed(self, buf: WBuffer, origin: int) -> bytes:
         wrapper = TREE_KINDS[self.classname]
         outer = buf.start(wrapper) if wrapper is not None else None
         self._tree_record(buf, origin)
@@ -1314,10 +1331,22 @@ class WritableTree:
             buf.end(outer)
         return bytes(buf.data)
 
+    def root_record(self) -> tuple[int, int]:
+        """What ROOT 6.40's key and record for this tree would weigh, unpacked and on file.
+
+        ``TTree::Print`` counts both: the record as ROOT streams it - its
+        classes named once, with the ``fIOFeatures`` this writer's older
+        records do not carry - and what compressing that takes on file,
+        which this writer works out by compressing a record of that length.
+        """
+        keylen = self._file._key_length(self.classname, self.name, self.title)
+        record = self._streamed(Measuring(held=True, origin=keylen), keylen)
+        return keylen + len(record), keylen + len(self._file._file._squeeze(record))
+
     def _tree_record(self, buf: WBuffer, origin: int) -> None:
         """The ``TTree`` itself: the whole record, or the base of a ``TNtuple``'s."""
-        index = buf.start(TREE_VERSION)
-        buf.named(self.name, self.title)
+        index = buf.start(version(buf, "TTree", TREE_VERSION))
+        buf.named(self.name, self.title, BITS | TREE_BITS)
         _attributes(buf)
         columns = self._branches
         buf.i64(self._entries)
@@ -1339,7 +1368,10 @@ class WritableTree:
         buf.i64(ESTIMATE)
         buf.u8(0)  # fClusterRangeEnd, of which there are none
         buf.u8(0)  # fClusterSize, likewise
-        branches = _objarray(buf, len(self._tops) + len(self._counters))
+        if isinstance(buf, Measuring):
+            buf.features()
+        # The tree owns its branches - TCollection's kIsOwner, which ROOT's array carries.
+        branches = _objarray(buf, len(self._tops) + len(self._counters), BITS | OWNER_BIT)
         every = self._write_branches(buf, origin)
         buf.end(branches)
         leaves = _objarray(buf, len(every))
@@ -1363,13 +1395,12 @@ class WritableTree:
         """
         from .wbranch import LeafRefs
 
-        compress = self._file._codes
-        refs = LeafRefs(origin)
+        refs = LeafRefs(origin, self._entries, self._file._codes)
         places: dict[str, list[int]] = {}
         every: list[int] = []
         for top in self._tops:
             if not isinstance(top, _Column):
-                top.write(buf, self._entries, compress, refs)
+                top.write(buf, refs)
                 every += [refs.ref(leaf) for leaf in top.leaves()]
                 continue
             if isinstance(top, _Rows) and top.counter.name not in places:
@@ -1386,6 +1417,31 @@ class WritableTree:
             count = origin + places[column.counter.name][0] + MAP_OFFSET
         places[column.name] = _branch(buf, column, self._entries, self._file._codes, count)
         return [origin + place + MAP_OFFSET for place in places[column.name]]
+
+
+def _interleaved(feeds: list[Iterator[int]]) -> None:
+    """Every column's entries fed in, their baskets sent out in the order ROOT's would go.
+
+    ``TTree::Fill`` fills each branch in turn for one entry before the next,
+    so its baskets go out in the order of the entry that filled each, and
+    for one entry in the order of the branches. Each feed says the entry
+    that fills its next basket before sending it; the one with the earliest,
+    the first branch among equals, goes first - so the baskets land where
+    ROOT's would, and the tree says the same of where they are.
+    """
+    waiting: list[tuple[int, int, Iterator[int]]] = []
+    for order, feed in enumerate(feeds):
+        _advance(waiting, order, feed)
+    while waiting:
+        _entry, order, feed = heapq.heappop(waiting)
+        _advance(waiting, order, feed)
+
+
+def _advance(waiting: list[tuple[int, int, Iterator[int]]], order: int, feed: Iterator[int]) -> None:
+    """Send out the basket a feed holds ready, then let it fill up to its next one."""
+    found = next(feed, None)
+    if found is not None:
+        heapq.heappush(waiting, (found, order, feed))
 
 
 def _counts(column: _Rows, packed: dict[str, Packed]) -> np.ndarray[Any, Any]:

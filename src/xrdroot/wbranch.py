@@ -37,8 +37,9 @@ from .errors import UnsupportedFeatureError
 from .wclasses import Layout, Member, _mixed, harvested
 from .wcolumns import CountColumn, MemberColumn, MemberRows, StreamedColumn, VectorColumn
 from .winfo import INFOS
+from .wmeasure import Measuring, version
 from .wpacking import BASIC
-from .writer import WBuffer
+from .writer import BITS, WBuffer
 
 __all__ = ["Spec", "Vector", "Whole", "Split", "Collection", "LeafRefs", "column_keys"]
 
@@ -60,6 +61,10 @@ MIN_BASKETS = 10
 NODE_OFFSET_LEN = 1000
 #: The fill style every ``TBranch`` ROOT 6 makes carries.
 FILL_STYLE = 1001
+#: The bits ROOT 6.40's own branches of objects carry beyond every object's, kind by kind,
+#: as the donor's do: a member or a vector of numbers, the top of a split object or of a
+#: collection, a whole object, and a ``TBranchObject``.
+ELEMENT_BITS, SPLIT_BITS, WHOLE_BITS, OBJECT_BITS = 0x500000, 0x520000, 0x101000, 0x408000
 
 
 class ElementInfo(NamedTuple):
@@ -91,25 +96,28 @@ class ElementInfo(NamedTuple):
 
 
 class LeafRefs:
-    """Where each leaf landed in the tree's record, so a pointer to it can say so.
+    """Where each leaf and branch landed in the tree's record, so a pointer to one can say so.
 
-    ROOT streams a leaf the first time anything points at it - a counted
+    ROOT streams an object the first time anything points at it - a counted
     leaf's ``fLeafCount`` before the counter's own branch has listed it -
-    and every pointer after that is a reference back to that place.
+    and every pointer after that is a reference back to that place. It also
+    carries what every branch of the tree says alike: how many entries it
+    holds, and how the file compresses.
     """
 
-    def __init__(self, origin: int) -> None:
+    def __init__(self, origin: int, entries: int = 0, compress: int = 0) -> None:
         self.origin = origin
+        self.entries, self.compress = entries, compress
         self.places: dict[int, int] = {}
 
-    def pointer(self, buf: WBuffer, leaf: Any) -> None:
-        """A pointer to ``leaf``: none, a reference back, or the leaf itself, streamed here."""
-        if leaf is None:
+    def pointer(self, buf: WBuffer, thing: Any) -> None:
+        """A pointer to ``thing``: none, a reference back, or the thing itself, streamed here."""
+        if thing is None:
             buf.u32(0)
             return
-        place = self.places.get(id(leaf))
+        place = self.places.get(id(thing))
         if place is None:
-            leaf.write(buf, self)
+            thing.write(buf, self)
             return
         buf.u32(self.origin + place + MAP_OFFSET)
 
@@ -182,6 +190,17 @@ class NoBaskets:
         self.starts = [0]
 
 
+
+def streamed_size(branch: Branch, entries: int, held: bool) -> int:
+    """How long ROOT streams this branch on its own: what ``Print`` counts beyond its baskets."""
+    buf = Measuring(held)
+    # The branch itself is streamed by its TBranch part alone, with no place of its own in
+    # the buffer: a branch under it pointing at it, as a collection's members point at what
+    # counts them, streams it again, whole, where the pointer is - and so ROOT counts it twice.
+    tbranch(buf, branch, LeafRefs(0, entries))
+    return len(buf.data)
+
+
 def _objarray(buf: WBuffer, count: int) -> int:
     index = buf.start(OBJARRAY_VERSION)
     buf.tobject()
@@ -196,18 +215,13 @@ def _table(buf: WBuffer, values: list[int], width: int, code: str) -> None:
     buf.raw(struct.pack(f">{width}{code}", *values, *([0] * (width - len(values)))))
 
 
-def tbranch(
-    buf: WBuffer,
-    branch: Branch,
-    entries: int,
-    compress: int,
-    refs: LeafRefs,
-) -> None:
+def tbranch(buf: WBuffer, branch: Branch, refs: LeafRefs) -> None:
     """The ``TBranch`` part of a branch, its branches and leaves streamed inside it."""
+    entries, compress = refs.entries, refs.compress
     baskets = branch.baskets
     node = isinstance(baskets, NoBaskets)
-    index = buf.start(BRANCH_VERSION)
-    buf.named(branch.name, branch.title)
+    index = buf.start(version(buf, "TBranch", BRANCH_VERSION))
+    buf.named(branch.name, branch.title, BITS | branch.bits)
     fill = buf.start(ATTRIBUTE_VERSION)
     buf.i16(0)  # fFillColor
     buf.i16(FILL_STYLE)
@@ -217,6 +231,8 @@ def tbranch(
     for value in (compress, baskets.basket_size, baskets.entry_offset_len, written):
         buf.i32(value)
     buf.i64(0 if node else entries)  # fEntryNumber: a node fills nothing of its own
+    if isinstance(buf, Measuring):
+        buf.features()
     buf.i32(0)  # fOffset
     buf.i32(width)  # fMaxBaskets
     buf.i32(branch.split)
@@ -224,13 +240,15 @@ def tbranch(
         buf.i64(count)  # fEntries, fFirstEntry, fTotBytes, fZipBytes
     under = _objarray(buf, len(branch.children))
     for child in branch.children:
-        child.write(buf, entries, compress, refs)
+        refs.pointer(buf, child)  # a branch already streamed is a reference back to it
     buf.end(under)
     own = _objarray(buf, len(branch.own))
     for leaf in branch.own:
         refs.pointer(buf, leaf)
     buf.end(own)
     slots = 0 if node else written + 1
+    if isinstance(buf, Measuring) and not buf.held:
+        slots = 0  # a tree read from a file holds none of its baskets' places at all
     held = _objarray(buf, slots)  # fBaskets: all on file, none in here
     buf.raw(bytes(4 * slots))
     buf.end(held)
@@ -264,11 +282,21 @@ class Branch:
         self.baskets, self.own, self.info = baskets, own, info
         self.children = children or []
 
-    def write(self, buf: WBuffer, entries: int, compress: int, refs: LeafRefs) -> None:
+    @property
+    def bits(self) -> int:
+        """The bits ROOT's own branch of this kind carries beyond every object's."""
+        info = self.info
+        if info.fid == TOP or info.btype == COLLECTION:
+            return SPLIT_BITS
+        if info.fid == WHOLE and not info.classname.startswith("vector<"):
+            return WHOLE_BITS
+        return ELEMENT_BITS
+
+    def write(self, buf: WBuffer, refs: LeafRefs) -> None:
         at = buf.tag(self.kind)
         refs.places[id(self)] = at  # where the branches under it find what counts them
         index = buf.start(ELEMENT_VERSION)
-        tbranch(buf, self, entries, compress, refs)
+        tbranch(buf, self, refs)
         self.info.write(buf, refs)
         buf.end(index)
         buf.end(at)
@@ -288,10 +316,14 @@ class ObjectBranch(Branch):
 
     kind = "TBranchObject"
 
-    def write(self, buf: WBuffer, entries: int, compress: int, refs: LeafRefs) -> None:
+    @property
+    def bits(self) -> int:
+        return OBJECT_BITS
+
+    def write(self, buf: WBuffer, refs: LeafRefs) -> None:
         at = buf.tag(self.kind)
         index = buf.start(OBJECT_VERSION)
-        tbranch(buf, self, entries, compress, refs)
+        tbranch(buf, self, refs)
         buf.string(self.info.classname)
         buf.end(index)
         buf.end(at)
@@ -300,9 +332,9 @@ class ObjectBranch(Branch):
 class CollectionBranch(Branch):
     """The top of a split collection, whose ``fMaximum`` is the most objects an entry held."""
 
-    def write(self, buf: WBuffer, entries: int, compress: int, refs: LeafRefs) -> None:
+    def write(self, buf: WBuffer, refs: LeafRefs) -> None:
         self.info = self.info._replace(maximum=self.baskets.maximum)
-        super().write(buf, entries, compress, refs)
+        super().write(buf, refs)
 
 
 # -- what a tree is told a branch of objects is ----------------------------------------

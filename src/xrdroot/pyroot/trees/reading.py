@@ -19,6 +19,7 @@ import numpy as np
 
 from ._base import ListOf
 from .addresses import address_of, members_of
+from .bind import bind_object, is_object
 from .branches import TBranch, TLeaf
 from .core import _TreeCore, python_value
 
@@ -40,7 +41,7 @@ class _Reading(_TreeCore):
     """Addresses bound to branches, and entries read into them."""
 
     def _branch_info(self, name: str) -> Any:
-        return next((branch for branch in self._layout() if branch.name == name), None)
+        return next((branch for branch in self._every_branch() if branch.name == name), None)
 
     def _leaf_info(self, name: str) -> Any:
         leaves = self._leaves()
@@ -54,10 +55,15 @@ class _Reading(_TreeCore):
         if branch is None and leaf is None:
             print(f"Error in <TTree::SetBranchAddress>: unknown branch -> {name}", file=sys.stderr)
             return MISSING_BRANCH
-        leaves: list[Any] = branch.leaves if branch is not None else [leaf]
-        for each, one in zip(leaves, _bound(address, leaves, f"the branch {name!r}"), strict=False):
-            self._addresses[each.column] = one
-            self._rebind(each.column, one)
+        if branch is not None and is_object(branch):
+            bound = bind_object(branch, address)
+        else:
+            leaves: list[Any] = branch.leaves if branch is not None else [leaf]
+            found = _bound(address, leaves, f"the branch {name!r}")
+            bound = {each.column: one for each, one in zip(leaves, found, strict=False)}
+        for column, one in bound.items():
+            self._addresses[column] = one
+            self._rebind(column, one)
         if hasattr(ptr, "value"):  # SetBranchAddress(name, &x, &branch): the branch handed back
             ptr.value = self.GetBranch(name)
         return MATCH
@@ -160,8 +166,9 @@ class _Reading(_TreeCore):
         return python_value(self._current(leaf.column), leaf.vector)
 
     def GetBranch(self, name: str) -> TBranch | None:
-        found = self.GetListOfBranches().FindObject(name)
-        return found  # type: ignore[no-any-return]
+        """The branch ``name``, at the top of the tree or under a branch of objects."""
+        found = self._branch_info(name)
+        return None if found is None else TBranch(self, found)
 
     def GetListOfBranches(self) -> ListOf:
         return ListOf(TBranch(self, branch) for branch in self._layout())

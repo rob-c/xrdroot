@@ -47,6 +47,8 @@ class _TreeCore(_TObjectLike):
         self._snapshot_entries = -1
         #: Has ``Write`` put the entries in a file, so that they are baskets on file?
         self._written = False
+        #: The tree ``Write`` wrote last, whose record ``Print`` counts.
+        self._wrote: Any = None
         #: The key the tree was read from, if whoever read it said: what ``Print`` counts.
         self._tree_key: Any = None
         self._layout_cache: list[BranchInfo] | None = None
@@ -96,10 +98,21 @@ class _TreeCore(_TObjectLike):
             return self._source
         if self._snapshot is None or self._snapshot_entries != self._store.entries:
             store, name, title = self._store, self._name or "tree", self._title
-            self._snapshot = memory_tree(name, lambda out: store.write(out, name, title))
+            self._snapshot = memory_tree(
+                name, lambda out: store.write(out, name, title), self._compression()
+            )
             self._snapshot_entries = store.entries
             self._befriend(self._snapshot)
         return self._snapshot
+
+    def _compression(self) -> tuple[str | None, int | None]:
+        """How the file the tree is in compresses: ROOT's zlib at level 1 if it is in none."""
+        settings = getattr(self._directory, "GetCompressionSettings", None)
+        if not callable(settings):
+            return "zlib", 1
+        from ..core.files import _compression
+
+        return _compression(int(settings()))
 
     def _changed(self) -> None:
         """Forget what was worked out from the entries, because there are more of them."""
@@ -130,12 +143,20 @@ class _TreeCore(_TObjectLike):
         """Whether this is a circular tree not written: its one basket, in memory, ROOT counts."""
         return self._store is not None and bool(self._store.circular) and not self._written
 
-    def _record(self, layout: list[BranchInfo]) -> int | None:
-        """The length of the tree's record ``Print`` adds to the baskets, when it is known."""
-        return tree_record(self._name, self._title, layout) if self._in_memory() else None
+    def _record(self, layout: list[BranchInfo]) -> tuple[int | None, int]:
+        """What ``Print`` adds to the baskets for the tree's own record, when it is known:
+        its length, and what it takes on file - nothing, for one never written."""
+        if self._wrote is not None:
+            return self._wrote.root_record()
+        return (tree_record(self._name, self._title, layout) if self._in_memory() else None), 0
 
     def _leaves(self) -> list[Any]:
-        return [leaf for branch in self._layout() for leaf in branch.leaves]
+        """Every leaf of every branch, those under a branch of objects among them."""
+        return [leaf for top in self._layout() for branch in top.walk() for leaf in branch.leaves]
+
+    def _every_branch(self) -> list[BranchInfo]:
+        """Every branch, at the top of the tree or under one of objects."""
+        return [branch for top in self._layout() for branch in top.walk()]
 
     def _columns(self) -> list[str]:
         return [leaf.column for leaf in self._leaves()]

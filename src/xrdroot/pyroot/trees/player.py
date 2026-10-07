@@ -18,7 +18,7 @@ from typing import Any
 
 from ._base import hooks
 from .friends import _Friends
-from .printing import branch_lines, show_lines, tree_lines
+from .printing import element_lines, show_lines, tree_lines
 
 __all__ = ["_Player", "MAX_ENTRIES"]
 
@@ -133,15 +133,19 @@ class _Player(_Friends):
     def Print(self, option: str = "") -> None:
         """``TTree::Print``: the tree, then every branch, in ROOT's table."""
         layout = self._layout()
-        record = self._record(layout)
+        record, packed = self._record(layout)
         lines = tree_lines(
-            self._name, self._title, self.GetEntries(), layout, self._tree_key, record
+            self._name, self._title, self.GetEntries(), layout, self._tree_key, record, packed
         )
         wanted = str(option or "")
         pattern = wanted if wanted and wanted not in ("all", "toponly") else "*"
-        for count, branch in enumerate(layout):
+        count = 0
+        for branch in layout:
             if fnmatch.fnmatchcase(branch.name, pattern):
-                lines.extend(branch_lines(branch, count))
+                more, count = element_lines(branch, count)
+                lines.extend(more)
+            else:
+                count += len(branch.walk())
         print("\n".join(lines))
 
     def Show(self, entry: int = -1, lenmax: int = 20) -> None:

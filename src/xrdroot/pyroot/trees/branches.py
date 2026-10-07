@@ -109,7 +109,14 @@ class TBranch(_TObjectLike):
         return self._leaves
 
     def GetListOfBranches(self) -> ListOf:
-        return ListOf()
+        """The branches under this one: one per member, for a branch of objects split."""
+        return ListOf(TBranch(self._tree, child) for child in self._info.children)
+
+    def GetSplitLevel(self) -> int:
+        return 99 if self._info.children else 0
+
+    def SetAutoDelete(self, autodel: bool = True) -> None:
+        """Whether ROOT deletes the object read into at each entry; here it is replaced."""
 
     def GetLeaf(self, name: str) -> TLeaf | None:
         return self._leaves.FindObject(name)  # type: ignore[no-any-return]
@@ -122,7 +129,8 @@ class TBranch(_TObjectLike):
 
     def GetEntry(self, entry: int = 0, getall: int = 0) -> int:
         """Read this branch alone of entry ``entry`` into its address; the bytes come back."""
-        return self._tree._load(entry, [leaf.column for leaf in self._info.leaves])
+        leaves = [leaf for branch in self._info.walk() for leaf in branch.leaves]
+        return self._tree._load(entry, [leaf.column for leaf in leaves])
 
     def SetAddress(self, address: Any) -> None:
         self._tree.SetBranchAddress(self._name, address)

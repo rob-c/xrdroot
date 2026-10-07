@@ -617,6 +617,7 @@ class TTree(Drawable):
         "_source",
         "_friends",
         "_recorded",
+        "records",
     )
 
     def __init__(
@@ -638,6 +639,8 @@ class TTree(Drawable):
         #: The friends the file recorded, found and opened the first time a
         #: friend is asked for rather than every time a tree is opened.
         self._recorded = list(friends)
+        #: The branches at the top of the tree, each with the branches under it.
+        self.records = list(records)
         for top in records:
             self._add(top, source)
 

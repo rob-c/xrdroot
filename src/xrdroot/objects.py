@@ -136,10 +136,18 @@ class BranchRecord:
         "zip_bytes",
         "collection",
         "file_name",
+        "split",
+        "element",
     )
 
     def __init__(self) -> None:
         self.name = self.title = ""
+        #: ``fSplitLevel``: how far ``TTree::Branch`` was asked to split what it holds.
+        self.split = 0
+        #: What a ``TBranchElement`` says beyond its ``TBranch``, as ``(fParentName,
+        #: fClonesName, fCheckSum, fClassVersion, fID, fType, fStreamerType, fMaximum)``;
+        #: ``None`` for any other branch.
+        self.element: tuple[str, str, int, int, int, int, int, int] | None = None
         #: The size ROOT aimed each basket at, and the bytes of the branch's
         #: baskets before and after compression - what ``TTree::Print`` says.
         self.basket_size = 0
@@ -274,7 +282,7 @@ def _branch_header(
     buf.i32()
     max_baskets = buf.i32()
     if version > 6:
-        buf.i32()
+        branch.split = buf.i32()
     _branch_counts(buf, branch, version, modern)
     return write_basket, max_baskets
 
@@ -344,14 +352,18 @@ def read_branch_element(buf: Buffer) -> BranchRecord:
     version, end = buf.header()
     branch = read_branch(buf)
     branch.classname = buf.string()
+    parent, clones, checksum = "", "", 0
     if version > 1:
-        buf.string(), buf.string()  # the parent class, and the TClonesArray class
-        buf.u32()  # the checksum of the class this was written from
-    buf.u16() if version >= 10 else buf.u32()  # that class's version
-    branch.whole = buf.i32() < 0  # which member this is, and -1 for none of them
+        parent, clones = buf.string(), buf.string()  # the parent class, the clones' class
+        checksum = buf.u32()  # the checksum of the class this was written from
+    cversion = buf.u16() if version >= 10 else buf.u32()  # that class's version
+    fid = buf.i32()  # which member this is, and -1 for none of them
+    branch.whole = fid < 0
     kind = buf.i32()  # ROOT calls this fType, and -1 is the whole object
     branch.streamed = kind < 0
     branch.collection = kind in SPLIT_COLLECTIONS
+    stype, maximum = (buf.i32(), buf.i32()) if version > 6 else (-1, 0)
+    branch.element = (parent, clones, checksum, cversion, fid, kind, stype, maximum)
     buf.resume(end)
     return branch
 

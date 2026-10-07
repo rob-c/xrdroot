@@ -48,18 +48,21 @@ def tree_lines(
     branches: Sequence[BranchInfo],
     key: Any = None,
     record: int | None = None,
+    packed: int = 0,
 ) -> list[str]:
     """The header ``TTree::Print`` puts above the branches.
 
     ROOT counts the tree's own key and record in its totals; ``key`` is the
     :class:`xrdroot.Key` the tree was read from, when whoever read it says,
-    ``record`` the length of a tree in memory's record, when it is known, and
-    without either the totals are the baskets' alone.
+    ``record`` the length of the tree's key and record when it is known
+    otherwise - in memory, or written in this session - and ``packed`` that
+    record's bytes on file; without any of them the totals are the baskets' alone.
     """
-    tot = sum(branch.tot_bytes for branch in branches)
-    zipped = sum(branch.zip_bytes for branch in branches)
+    every = [below for branch in branches for below in branch.walk()]
+    tot = sum(branch.tot_bytes for branch in every)
+    zipped = sum(branch.zip_bytes for branch in every)
     total = tot + (record or 0) if key is None else tot + key.keylen + key.objlen
-    on_file = zipped if key is None else zipped + key.nbytes
+    on_file = zipped + packed if key is None else zipped + key.nbytes
     return [
         STARS,
         f"*Tree    :{name:<10}: {title:<54} *",
@@ -120,6 +123,36 @@ def branch_lines(branch: BranchInfo, count: int) -> list[str]:
         f"Compression= {ratio:6.2f}     *",
         DOTS,
     ]
+
+
+def element_lines(branch: BranchInfo, count: int) -> tuple[list[str], int]:
+    """``TBranchElement::Print``: a split object's heading, then each branch under it.
+
+    The top of a split object (``fID`` -2) prints a heading of its own; a
+    branch holding others and a count (``fType`` 2 or more) prints as a
+    branch too; then come the branches under it, numbered on from ``count``.
+    What comes back is the lines and the number the next branch takes.
+    """
+    if not branch.children:
+        return branch_lines(branch, count), count + 1
+    lines: list[str] = []
+    if branch.fid == -2:
+        heading = f"{branch.name:<66}"
+        if branch.title != branch.name:
+            heading = f"{branch.name:<9} : {branch.title:<54}"
+        lines += [
+            f"*Branch  :{heading} *",
+            f"*Entries : {branch.entries:8d} : BranchElement (see below)"
+            "                              *",
+            DOTS,
+        ]
+    if branch.btype >= 2:
+        lines += branch_lines(branch, count)
+        count += 1
+    for child in branch.children:
+        more, count = element_lines(child, count)
+        lines += more
+    return lines, count
 
 
 def _printed(leaf: LeafInfo, value: Any) -> str:

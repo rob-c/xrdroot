@@ -23,6 +23,7 @@ from .addresses import address_of, members_of
 from .branches import TBranch
 from .copying import clone
 from .leaflist import Leaf, parse
+from .objects import object_slot
 from .player import MAX_ENTRIES, _Player
 from .store import INTEGERS, Slot
 
@@ -88,6 +89,13 @@ class TTree(_Player):
         if isinstance(address, str) and leaflist is not None and not isinstance(leaflist, str):
             # Branch(name, "std::vector<float>", &object): the class named, the object after it.
             address, leaflist = leaflist, None
+        elif isinstance(leaflist, int) and not isinstance(leaflist, bool):
+            # Branch(name, &object, bufsize, splitlevel): an object, not a leaf list.
+            leaflist, bufsize, splitlevel = None, leaflist, bufsize
+        made = object_slot(name, address, int(splitlevel), bufsize) if leaflist is None else None
+        if made is not None:
+            store.add(made)
+            return self._added(name)
         if isinstance(leaflist, str):
             leaves = parse(leaflist)
             addresses = self._addressed(address, leaves, what)
@@ -97,9 +105,15 @@ class TTree(_Player):
         title = leaflist if isinstance(leaflist, str) else name
         for leaf, one in zip(leaves, addresses, strict=False):
             self._check_counter(leaf, name)
-            store.add(_slot(name, leaf, one, title if len(leaves) == 1 else None))
+            slot = _slot(name, leaf, one, title if len(leaves) == 1 else None)
+            slot.split, slot.basket_size = int(splitlevel), bufsize
+            store.add(slot)
         if len(leaves) > 1:
             store.titles[name] = title
+        return self._added(name)
+
+    def _added(self, name: str) -> TBranch:
+        """The branch just added, now that the tree knows of it."""
         self._changed()
         branch = self.GetBranch(name)
         assert branch is not None
@@ -160,7 +174,7 @@ class TTree(_Player):
                 f"{self._name!r} is in memory, in no file; open one for writing before "
                 f"making the tree, or give it one with SetDirectory, then Write"
             )
-        store.write(directory, name or self._name, self._title, self._classname)
+        self._wrote = store.write(directory, name or self._name, self._title, self._classname)
         self._written = True
         self._layout_cache = None
         return max(sum(branch.tot_bytes for branch in self._layout()), 1)
