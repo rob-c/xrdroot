@@ -257,6 +257,8 @@ class VarDecl(Stmt):
     static: bool = False
     #: The names of a structured binding, ``auto [a, b] = ...``.
     binding: list[str] | None = None
+    #: A data member's trailing ``//`` comment, which ROOT keeps as the member's title.
+    comment: str = ""
 
 
 @dataclass(eq=False)

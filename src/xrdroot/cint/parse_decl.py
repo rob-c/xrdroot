@@ -505,7 +505,11 @@ class Parser(StmtParser):
         handler = self._MEMBER.get(self.peek().text)
         if handler is not None:
             return handler(self)
-        return self.function_or_variable()
+        found = self.function_or_variable()
+        if isinstance(found, DeclStmt):  # the comment after its ';' is each member's title
+            for decl in found.decls:
+                decl.comment = self.tokens[self.at - 1].note
+        return found
 
     def _skip_friend(self) -> None:
         while not self.accept(";"):

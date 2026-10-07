@@ -199,6 +199,9 @@ class CType:
     callable: bool = False
     #: The enum an ``int`` is of, when it is one: what a free ``operator<<`` is chosen by.
     enum: str | None = None
+    #: The typedef the name was written as, ``Double32_t``, when that is not the name: what
+    #: a class's streamer says its member is, and how a packed float is told from a double.
+    written: str = ""
 
     # -- what kind of thing it is ------------------------------------------
 

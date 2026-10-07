@@ -72,7 +72,7 @@ class Token:
     produced this token, so that a macro is never expanded inside itself.
     """
 
-    __slots__ = ("kind", "text", "where", "bol", "hide", "space")
+    __slots__ = ("kind", "text", "where", "bol", "hide", "space", "note")
 
     def __init__(
         self,
@@ -90,6 +90,9 @@ class Token:
         self.hide = hide
         #: Whether whitespace came before it - which ``#x`` stringising keeps.
         self.space = space
+        #: The ``//`` comment that ends its line, when it is the line's last word: what
+        #: ROOT makes a data member's title of, ranges for packed floats and all.
+        self.note = ""
 
     def __repr__(self) -> str:
         return f"<{self.kind} {self.text!r} {self.where}>"
@@ -136,6 +139,7 @@ def tokenize(text: str, file: str = "<macro>") -> list[Token]:
 
 def _words(text: str, file: str) -> Iterator[Token]:
     at, line, bol, space = 0, 1, True, False
+    last: Token | None = None
     while at < len(text):
         found = PATTERN.match(text, at)
         if found is None:
@@ -145,11 +149,14 @@ def _words(text: str, file: str) -> Iterator[Token]:
         kind = found.lastgroup
         word = found.group()
         if kind == "newline":
-            bol = True
+            bol, last = True, None
         elif kind in ("space", "comment"):
             space = True
+            if last is not None and word.startswith("//"):
+                last.note = word[2:].strip()
         else:
-            yield Token(_kind(kind), word, Where(file, line), bol, space=space)
+            last = Token(_kind(kind), word, Where(file, line), bol, space=space)
+            yield last
             bol = space = False
         line += word.count("\n")
         at = found.end()

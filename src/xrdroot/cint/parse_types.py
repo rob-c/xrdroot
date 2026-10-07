@@ -110,10 +110,12 @@ class TypeParser(Cursor):
         alias = self.aliases.get("::".join(parts)) or self.aliases.get(parts[-1])
         if alias is not None and not args:
             return replace(alias)
-        name = canonical(self._standard_type(parts))
+        spelled = self._standard_type(parts)
+        name = canonical(spelled)
         if name in POINTER_TYPEDEFS:
             return CType("void", pointer=1)
-        return CType(name, args, callable=name == "std::function")
+        written = spelled if spelled != name else ""
+        return CType(name, args, callable=name == "std::function", written=written)
 
     def _standard_type(self, parts: list[str]) -> str:
         """``vector`` means ``std::vector`` when it is the standard's, not the macro's own."""

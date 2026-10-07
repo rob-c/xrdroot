@@ -7,8 +7,10 @@ where it stands. ``#define`` makes object-like and function-like macros
 (``#`` stringising, ``##`` pasting and ``__VA_ARGS__`` included), and the
 conditional sections are decided as Cling decides them: ``__CLING__`` is
 defined, ``__CINT__`` and ``__ROOTCLING__`` are not, and ROOT's own
-housekeeping macros - ``ClassDef``, ``ClassImp``, ``R__LOAD_LIBRARY``,
-``R__ADD_INCLUDE_PATH`` - expand to nothing.
+housekeeping macros - ``ClassImp``, ``R__LOAD_LIBRARY``,
+``R__ADD_INCLUDE_PATH`` - expand to nothing. ``ClassDef`` keeps the one part
+of itself a tree needs: the static ``Class_Version`` it declares, which is
+the version a class is written with.
 """
 
 from __future__ import annotations
@@ -45,12 +47,13 @@ PREDEFINED = f"""
 #define R__LOAD_LIBRARY(x)
 #define R__ADD_INCLUDE_PATH(x)
 #define R__ADD_LIBRARY_PATH(x)
-#define ClassDef(name, version)
-#define ClassDefOverride(name, version)
-#define ClassDefNV(name, version)
-#define ClassDefInline(name, version)
-#define ClassDefInlineOverride(name, version)
-#define ClassDefInlineNV(name, version)
+#define R__CLASS_VERSION(version) public: static Version_t Class_Version() {{ return version; }}
+#define ClassDef(name, version) R__CLASS_VERSION(version)
+#define ClassDefOverride(name, version) R__CLASS_VERSION(version)
+#define ClassDefNV(name, version) R__CLASS_VERSION(version)
+#define ClassDefInline(name, version) R__CLASS_VERSION(version)
+#define ClassDefInlineOverride(name, version) R__CLASS_VERSION(version)
+#define ClassDefInlineNV(name, version) R__CLASS_VERSION(version)
 #define ClassImp(name)
 #define ClassImpUnique(name, key)
 #define templateClassImp(name)

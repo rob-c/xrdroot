@@ -745,28 +745,45 @@ def _info_entries(names: list[str]) -> bytes:
     full rather than referring back, so the bytes mean the same wherever in
     a list they land - which is what lets an update add them to a list that
     is already there."""
+    return b"".join(info_entry(name, *INFOS[name]) for name in names)
+
+
+def info_entry(name: str, checksum: int, version: int, elements: tuple[Element, ...]) -> bytes:
+    """One class's ``TStreamerInfo`` list entry, its elements in full, its option after it."""
     buf = WBuffer()
-    for name in names:
-        checksum, version, elements = INFOS[name]
-        tag = buf.tag("TStreamerInfo")
-        info = buf.start(9)
-        buf.named(name, "")
-        buf.u32(checksum)
-        buf.i32(version)
-        held = buf.tag("TObjArray")
-        arr = buf.start(3)
-        buf.tobject()
-        buf.string("")
-        buf.i32(len(elements))
-        buf.i32(0)
-        for element in elements:
-            _info_element(buf, element)
-        buf.end(arr)
-        buf.end(held)
-        buf.end(info)
-        buf.end(tag)
-        buf.u8(0)  # the option string every list entry carries, empty
+    tag = buf.tag("TStreamerInfo")
+    info = buf.start(9)
+    buf.named(name, "")
+    buf.u32(checksum)
+    buf.i32(version)
+    held = buf.tag("TObjArray")
+    arr = buf.start(3)
+    buf.tobject()
+    buf.string("")
+    buf.i32(len(elements))
+    buf.i32(0)
+    for element in elements:
+        _info_element(buf, element)
+    buf.end(arr)
+    buf.end(held)
+    buf.end(info)
+    buf.end(tag)
+    buf.u8(0)  # the option string every list entry carries, empty
     return bytes(buf.data)
+
+
+#: ``TStreamerElement::kHasRange``: the element's title holds a packing range, which ROOT
+#: reads the title for only when this bit says to - without it the range is not there.
+HAS_RANGE = 1 << 6
+#: The streamer types a range packs: ``Double32_t`` and ``Float16_t``.
+PACKED_TYPES = (9, 19)
+
+
+def _ranged(stype: int, title: str) -> bool:
+    """Is this a packed float whose title spells out a range or a bit count?"""
+    from .interp import _range_parts
+
+    return stype in PACKED_TYPES and len(_range_parts(title)) > 1
 
 
 def _info_element(buf: WBuffer, element: Element) -> None:
@@ -775,7 +792,7 @@ def _info_element(buf: WBuffer, element: Element) -> None:
     tag = buf.tag(kind)
     sub = buf.start(SUBVERSIONS[kind])
     base = buf.start(4)  # the TStreamerElement the subclass builds on
-    buf.named(name, title)
+    buf.named(name, title, BITS | (HAS_RANGE if _ranged(stype, title) else 0))
     buf.i32(stype)
     buf.i32(size)
     buf.i32(alen)
@@ -1133,6 +1150,9 @@ class WritableDirectory:
         )
         self._file._trees.append(tree)
         self._file._used.update(dict.fromkeys(tree.classes))
+        for layout in tree.declared:  # a macro's classes, described as they were declared
+            entry = info_entry(layout.name, layout.checksum, layout.version, layout.elements())
+            self._file._carried.setdefault((layout.name, layout.version), entry)
         return tree
 
     def mkdir(self, path: str) -> WritableDirectory:

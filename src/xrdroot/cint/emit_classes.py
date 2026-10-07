@@ -119,6 +119,7 @@ class ClassEmitter(FunctionEmitter):
         return found
 
     def _class_body(self, info: ClassInfo) -> None:
+        self.out.line(f"_cxx_layout_ = {_layout(info)!r}", info.decl.where)
         for name, var in info.statics.items():
             ctype = self.declared_type(var)
             self.out.line(f"{member_name(name)} = {self.initial(var, ctype)}", var.where)
@@ -265,3 +266,25 @@ def _constant(value: Expr) -> int | None:
         inner = _constant(value.operand)
         return -inner if inner is not None else None
     return None
+
+
+#: What a class tells a tree about itself: its C++ name, its bases', and each data member's
+#: name, type as written, trailing comment and array dimensions, in declaration order.
+Layout = tuple[str, tuple[str, ...], tuple[tuple[str, str, str, tuple[int | None, ...]], ...]]
+
+
+def _layout(info: ClassInfo) -> Layout:
+    """A class's data members as ROOT's dictionary would describe them, for a tree to stream."""
+    bases = tuple(base.ctype.name for base in info.decl.bases)
+    members = tuple(
+        (name, _spelled(var.ctype), var.comment, tuple(_constant(d) for d in var.ctype.dims))
+        for name, var in info.fields.items()
+    )
+    return info.name, bases, members
+
+
+def _spelled(ctype: CType) -> str:
+    """A member's type as C++ spells it: the typedef it was written as, its arguments, stars."""
+    args = ", ".join(_spelled(arg) if isinstance(arg, CType) else "?" for arg in ctype.args)
+    name = ctype.written or ctype.name
+    return (f"{name}<{args}>" if ctype.args else name) + "*" * ctype.pointer

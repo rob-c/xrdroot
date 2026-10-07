@@ -94,6 +94,9 @@ LEAVES: dict[str, tuple[str, str, int, bool]] = {
 #: The leaf a column of text is: ``TLeafC``, spelled ``C``, a byte a character.
 TEXT_LEAF = ("TLeafC", "C", 1, False)
 
+#: Every leaf class a plain column is written as.
+LEAF_CLASSES = frozenset({leaf for leaf, *_ in LEAVES.values()} | {TEXT_LEAF[0]})
+
 #: The type a counter is: a signed 32-bit int, which is what ``x[n]`` wants.
 COUNTER_CODE = "i"
 
@@ -985,11 +988,29 @@ class WritableTree:
         self._entries = 0
         self._columns: dict[str, _Column] = {}
         self._counters: dict[str, _Counter] = {}
+        #: Each branch at the top of the tree: a column, or a branch of objects (see
+        #: :mod:`.wbranch`) and the columns under it.
+        self._tops: list[Any] = []
+        self._specs: list[Any] = []
         types = counters or {}
         for column, spec in columns.items():
             _require_name(column, "column")
-            self._columns[column] = _declared(column, spec, basket_size, self._counters, types)
+            if hasattr(spec, "build"):
+                self._objects(column, spec, basket_size)
+                continue
+            made = _declared(column, spec, basket_size, self._counters, types)
+            self._columns[column] = made
+            self._tops.append(made)
         self._branches = self._in_order()
+
+    def _objects(self, name: str, spec: Any, basket_size: int) -> None:
+        """A branch of objects, and each column under it by the name :mod:`.wbranch` gives it."""
+        from .wbranch import column_keys
+
+        top = spec.build(name, basket_size)
+        self._specs.append(spec)
+        self._tops.append(top)
+        self._columns.update(zip(column_keys(name, top), top.columns(), strict=True))
 
     def _in_order(self) -> list[_Column]:
         """Every branch as it goes into the tree: each counter before what it counts.
@@ -1006,10 +1027,12 @@ class WritableTree:
                 f"out of the columns, or give the rows a counter of another name"
             )
         order: dict[str, _Column] = {}
-        for column in self._columns.values():
+        for key, column in self._columns.items():
             if isinstance(column, _Rows):
                 order.setdefault(column.counter.name, column.counter)
-            order[column.name] = column
+            order[key] = column
+        #: What each column is called among the columns an entry is given.
+        self._keys = {id(column): key for key, column in order.items()}
         return list(order.values())
 
     def __repr__(self) -> str:
@@ -1039,8 +1062,14 @@ class WritableTree:
     @property
     def classes(self) -> tuple[str, ...]:
         """The classes this tree will be made of, for the file to describe."""
-        leaves = [column.classname for column in self._branches]
-        return tuple(dict.fromkeys((self.classname, "TTree", "TBranch", *leaves)))
+        leaves = [c.classname for c in self._branches if c.classname in LEAF_CLASSES]
+        objects = [name for spec in self._specs for name in spec.classes()]
+        return tuple(dict.fromkeys((self.classname, "TTree", "TBranch", *leaves, *objects)))
+
+    @property
+    def declared(self) -> tuple[Any, ...]:
+        """The classes of a macro's that this tree's objects are, described as declared."""
+        return tuple(layout for spec in self._specs for layout in spec.declared())
 
     def fill(self, **values: Any) -> None:
         """Add one entry, with a value for every column.
@@ -1100,7 +1129,7 @@ class WritableTree:
             _require_fits(counter, lengths, code)
             packed[counter.name] = (bytes(lengths.astype(code.newbyteorder(">")).tobytes()), None)
         for column in self._branches:
-            self._feed(column, packed[column.name])
+            self._feed(column, packed[self._keys[id(column)]])
         self._entries += entries
 
     def _lengths(self, counter: _Counter, packed: dict[str, Packed]) -> np.ndarray[Any, Any]:
@@ -1310,13 +1339,12 @@ class WritableTree:
         buf.i64(ESTIMATE)
         buf.u8(0)  # fClusterRangeEnd, of which there are none
         buf.u8(0)  # fClusterSize, likewise
-        branches = _objarray(buf, len(columns))
-        places = self._write_branches(buf, origin)
+        branches = _objarray(buf, len(self._tops) + len(self._counters))
+        every = self._write_branches(buf, origin)
         buf.end(branches)
-        every = [place for found in places.values() for place in found]
         leaves = _objarray(buf, len(every))
         for place in every:
-            buf.u32(origin + place + MAP_OFFSET)  # the leaf itself is in its branch
+            buf.u32(place)  # the leaf itself is in its branch
         buf.end(leaves)
         buf.u32(0)  # fAliases: none
         buf.i32(0)  # fIndexValues: an empty TArrayD
@@ -1327,16 +1355,37 @@ class WritableTree:
         buf.u32(0)  # fBranchRef: none
         buf.end(index)
 
-    def _write_branches(self, buf: WBuffer, origin: int) -> dict[str, list[int]]:
-        """Every branch in order; where each one's leaves landed comes back."""
+    def _write_branches(self, buf: WBuffer, origin: int) -> list[int]:
+        """Every branch in order; what the tree's list of leaves holds for each leaf comes back.
+
+        A plain column's counter goes in just before the first column it counts;
+        a branch of objects writes itself and every branch under it.
+        """
+        from .wbranch import LeafRefs
+
         compress = self._file._codes
+        refs = LeafRefs(origin)
         places: dict[str, list[int]] = {}
-        for column in self._branches:
-            count = 0
-            if isinstance(column, _Rows):
-                count = origin + places[column.counter.name][0] + MAP_OFFSET
-            places[column.name] = _branch(buf, column, self._entries, compress, count)
-        return places
+        every: list[int] = []
+        for top in self._tops:
+            if not isinstance(top, _Column):
+                top.write(buf, self._entries, compress, refs)
+                every += [refs.ref(leaf) for leaf in top.leaves()]
+                continue
+            if isinstance(top, _Rows) and top.counter.name not in places:
+                every += self._plain(buf, top.counter, places, origin)
+            every += self._plain(buf, top, places, origin)
+        return every
+
+    def _plain(
+        self, buf: WBuffer, column: _Column, places: dict[str, list[int]], origin: int
+    ) -> list[int]:
+        """One plain column, pointing at its counter's leaf if it has one."""
+        count = 0
+        if isinstance(column, _Rows):
+            count = origin + places[column.counter.name][0] + MAP_OFFSET
+        places[column.name] = _branch(buf, column, self._entries, self._file._codes, count)
+        return [origin + place + MAP_OFFSET for place in places[column.name]]
 
 
 def _counts(column: _Rows, packed: dict[str, Packed]) -> np.ndarray[Any, Any]:

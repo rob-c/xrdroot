@@ -55,6 +55,18 @@ name and checksum. That calculation reproduces every harvested checksum in
 this table, which the tests hold it to, and the seven of the eleven that
 ROOT's own streamer dump in go-hep contains come out as ROOT has them.
 
+The branches of objects come from three donors. ``TBranchElement`` and
+``TLeafElement`` are the 6.08 vintage's, from ``small-evnt-tree-fullsplit.root``,
+built on the same ``TBranch`` and ``TLeaf`` as everything else here.
+``TBranchObject`` and ``TLeafObject`` have no 6.08 donor; they come from
+``tlv-split00.root``, which ROOT 6.24 wrote, along with ``TLorentzVector``
+and ``TVector3``. Its ``TBranchObject`` names its ``TBranch`` base at version
+13, and a ``TBranch`` streams itself by the version in front of its own bytes,
+so the version 12 this writer gives it is read as one. ``TClonesArray``,
+``TLine`` and the ``TAttBBox2D`` it derives from, and GenVector's
+``LorentzVector<PxPyPzE4D<double> >`` and its coordinates, come from
+``object-branches-6.40.root``, which ROOT 6.40 wrote from ``object_branches.C``.
+
 Writing carries these descriptions back out verbatim, checksums and all, so a
 file written here says exactly what a ROOT of that vintage would say about the
 same classes, and anything reading it - ROOT, this library, or another - walks
@@ -844,5 +856,106 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
          66, 0, 0, 0, (0, -1877229523, 0, 0, 0), 'BASE', (1,)),
         ('TStreamerString', 'fString', 'wrapped TString',
          65, 24, 0, 0, (0, 0, 0, 0, 0), 'TString', ()),
+    )),
+    "TBranchElement": (0xe6037caf, 10, (
+        ('TStreamerBase', 'TBranch', 'Branch descriptor',
+         0, 0, 0, 0, (0, 1494256824, 0, 0, 0), 'BASE', (12,)),
+        ('TStreamerString', 'fClassName', 'Class name of referenced object',
+         65, 24, 0, 0, (0, 0, 0, 0, 0), 'TString', ()),
+        ('TStreamerString', 'fParentName', 'Name of parent class',
+         65, 24, 0, 0, (0, 0, 0, 0, 0), 'TString', ()),
+        ('TStreamerString', 'fClonesName', 'Name of class in TClonesArray (if any)',
+         65, 24, 0, 0, (0, 0, 0, 0, 0), 'TString', ()),
+        ('TStreamerBasicType', 'fCheckSum', 'CheckSum of class',
+         13, 4, 0, 0, (0, 0, 0, 0, 0), 'unsigned int', ()),
+        ('TStreamerBasicType', 'fClassVersion', 'Version number of class',
+         2, 2, 0, 0, (0, 0, 0, 0, 0), 'short', ()),
+        ('TStreamerBasicType', 'fID', 'element serial number in fInfo',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fType', 'branch type',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fStreamerType', 'branch streamer type',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fMaximum', 'Maximum entries for a TClonesArray or variable array',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerObjectPointer', 'fBranchCount', 'pointer to primary branchcount branch',
+         64, 8, 0, 0, (0, 0, 0, 0, 0), 'TBranchElement*', ()),
+        ('TStreamerObjectPointer', 'fBranchCount2', 'pointer to secondary branchcount branch',
+         64, 8, 0, 0, (0, 0, 0, 0, 0), 'TBranchElement*', ()),
+    )),
+    "TLeafElement": (0xa04f8893, 1, (
+        ('TStreamerBase', 'TLeaf', 'Leaf: description of a Branch data type',
+         0, 0, 0, 0, (0, 1830715730, 0, 0, 0), 'BASE', (2,)),
+        ('TStreamerBasicType', 'fID', 'element serial number in fInfo',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fType', 'leaf type',
+         3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+    )),
+    "TLorentzVector": (0xe3dec1a1, 4, (
+        ('TStreamerBase', 'TObject', 'Basic ROOT object',
+         66, 0, 0, 0, (0, -1877229523, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerObject', 'fP', '3 vector component',
+         61, 40, 0, 0, (0, 0, 0, 0, 0), 'TVector3', ()),
+        ('TStreamerBasicType', 'fE', 'time or energy of (x,y,z,t) or (px,py,pz,e)',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+    )),
+    "TVector3": (0xabb6be1e, 3, (
+        ('TStreamerBase', 'TObject', 'Basic ROOT object',
+         66, 0, 0, 0, (0, -1877229523, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerBasicType', 'fX', '',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fY', '',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fZ', '',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+    )),
+    "TBranchObject": (0xa4720f49, 1, (
+        ('TStreamerBase', 'TBranch', 'Branch descriptor',
+         0, 0, 0, 0, (0, 278366892, 0, 0, 0), 'BASE', (13,)),
+        ('TStreamerString', 'fClassName', 'Class name of referenced object',
+         65, 24, 0, 0, (0, 0, 0, 0, 0), 'TString', ()),
+    )),
+    "TLeafObject": (0x26ba7c4c, 4, (
+        ('TStreamerBase', 'TLeaf', 'Leaf: description of a Branch data type',
+         0, 0, 0, 0, (0, 1830715730, 0, 0, 0), 'BASE', (2,)),
+        ('TStreamerBasicType', 'fVirtual',
+         'Support for polymorphism, when set classname is written with object.',
+         18, 1, 0, 0, (0, 0, 0, 0, 0), 'bool', ()),
+    )),
+    "ROOT::Math::LorentzVector<ROOT::Math::PxPyPzE4D<double> >": (0x5251e516, 1, (
+        ('TStreamerObjectAny', 'fCoordinates', 'internal coordinate system',
+         62, 32, 0, 0, (0, 0, 0, 0, 0), 'ROOT::Math::PxPyPzE4D<double>', ()),
+    )),
+    "ROOT::Math::PxPyPzE4D<double>": (0x568bb968, 1, (
+        ('TStreamerBasicType', 'fX', '',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fY', '',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fZ', '',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fT', '',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+    )),
+    "TClonesArray": (0xb6c0ca63, 4, (
+        ('TStreamerBase', 'TObjArray', 'An array of objects',
+         0, 0, 0, 0, (0, -1449237166, 0, 0, 0), 'BASE', (3,)),
+    )),
+    "TLine": (0x2a08f634, 3, (
+        ('TStreamerBase', 'TObject', 'Basic ROOT object',
+         66, 0, 0, 0, (0, -1877229523, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerBase', 'TAttLine', 'Line attributes',
+         0, 0, 0, 0, (0, -1811462839, 0, 0, 0), 'BASE', (2,)),
+        ('TStreamerBase', 'TAttBBox2D', '2D bounding box attributes',
+         0, 0, 0, 0, (0, 2443772, 0, 0, 0), 'BASE', (0,)),
+        ('TStreamerBasicType', 'fX1', 'X of 1st point',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fY1', 'Y of 1st point',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fX2', 'X of 2nd point',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fY2', 'Y of 2nd point',
+         8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+    )),
+    "TAttBBox2D": (0x002549fc, 0, (
     )),
 }
