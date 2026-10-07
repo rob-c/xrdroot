@@ -79,7 +79,7 @@ def test_a_chain_reads_entries_across_its_files_in_order(files):
         total += x[0]
     assert (total, chain.GetTreeNumber()) == (sum(range(30)), 2)
     assert chain.Draw("x", "x > 14", "goff") == 15
-    assert [branch.GetName() for branch in chain.GetListOfBranches()] == ["x", "nv", "v"]
+    assert [branch.GetName() for branch in chain.GetListOfBranches()] == ["x", "v"]
     wrapped = wrap(chain._xrd)
     assert (wrapped.GetEntries(), wrapped.GetNtrees()) == (30, 3)
     chain._xrd.close()

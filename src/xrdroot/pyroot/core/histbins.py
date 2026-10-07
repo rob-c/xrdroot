@@ -93,7 +93,14 @@ class Bins:
         coordinates = [self._coordinate(at, value) for at, value in enumerate(args[: self.DIM])]
         if any(coordinate is None for coordinate in coordinates):
             return -1
+        return self._fill_one(args, coordinates)
+
+    def _fill_one(self, args: tuple[Any, ...], coordinates: list[Any]) -> int:
+        """One entry at its coordinates; by label, the sums along an axis that may grow stay
+        as they were, as ROOT's do."""
         weight = float(args[self.DIM]) if len(args) > self.DIM else 1.0
+        if not any(isinstance(value, str) for value in args):  # no label, no sum frozen
+            return int(self._xrd.fill_one(coordinates, weight))
         frozen = self._frozen_moments(args)
         self._xrd.fill(*coordinates, weight=None if weight == 1.0 else weight)
         self._core().update(frozen)

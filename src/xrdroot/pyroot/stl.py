@@ -553,6 +553,12 @@ class _ObjectVector(_Container):
     def empty(self) -> bool:
         return not self._items
 
+    def reserve(self, size: int) -> None:
+        """``reserve``: room made ahead, which a Python list makes as it grows."""
+
+    def capacity(self) -> int:
+        return len(self._items)
+
     def clear(self) -> None:
         self._items.clear()
 

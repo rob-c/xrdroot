@@ -38,6 +38,8 @@ __all__ = ["Slot", "Store", "memory_tree"]
 SCALAR, FIXED, COUNTED, VECTOR, TEXT = "scalar", "fixed", "counted", "vector", "text"
 #: A branch of objects, which :mod:`.objects` fills.
 OBJECT = "object"
+#: ROOT's compression when nothing says another: zlib at level 1.
+ZLIB: tuple[str | None, int | None] = ("zlib", 1)
 
 #: The type codes a counter can be: the integers.
 INTEGERS = "bBhHiIqQ"
@@ -125,6 +127,10 @@ class Slot:
             return _jagged(values, self.dtype)
         array = np.asarray(values, dtype=self.dtype)
         return array.reshape(len(values), self.size) if self.kind == FIXED else array
+
+    def columns(self) -> dict[str, Any]:
+        """Every entry filled, as the one column a leaf is."""
+        return {self.name: self.column()}
 
     def column(self) -> Any:
         """Every entry filled, as one column."""
@@ -221,10 +227,8 @@ class Store:
         counted = self.counters()
         found: dict[str, Any] = {}
         for name, slot in self.slots.items():
-            if slot.kind == OBJECT:  # a branch of objects fills a column per member
+            if name not in counted:  # a branch of objects fills a column per member
                 found.update(slot.columns())
-            elif name not in counted:
-                found[name] = slot.column()
         return found
 
     def specs(self) -> dict[str, Any]:
@@ -256,7 +260,7 @@ def _nbytes(slot: Slot, value: Any) -> int:
     return int(np.size(value)) * int(slot.dtype.itemsize)
 
 
-def memory_tree(name: str, write: Any, compression: tuple[str | None, int | None] = ("zlib", 1)) -> Any:
+def memory_tree(name: str, write: Any, compression: tuple[str | None, int | None] = ZLIB) -> Any:
     """A tree written by ``write(directory)`` into a ROOT file in memory, and read back.
 
     This is how anything here that is not in a file yet - a tree being

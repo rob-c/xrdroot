@@ -122,6 +122,18 @@ PLATFORM = {"l": "q" if _WIDE else "i", "L": "Q" if _WIDE else "I"}
 #: entries differ in size, how many of those bytes each entry took.
 Packed = tuple[bytes, Optional["np.ndarray[Any, Any]"]]
 
+#: A column's feed waiting to send its next basket: the entry that fills it, the column's
+#: place among the branches, and the feed.
+Waiting = tuple[int, int, Iterator[int]]
+
+
+def _require_branch_name(name: Any) -> None:
+    """A name a branch of objects can carry: ROOT's own, a space in it as ``"LV branch"``
+    has, but never the NUL that keeps the names of the columns under it apart."""
+    _checked(name, "branch name")
+    if not name or "\0" in name:
+        raise ValueError(f"{name!r} is not a name a branch can have: it is empty, or holds a NUL")
+
 
 def _require_name(name: Any, what: str) -> None:
     """A name a branch can carry, and that a reader will not take for syntax."""
@@ -1006,14 +1018,19 @@ class WritableTree:
         self._specs: list[Any] = []
         types = counters or {}
         for column, spec in columns.items():
-            _require_name(column, "column")
-            if hasattr(spec, "build"):
-                self._objects(column, spec, basket_size)
-                continue
-            made = _declared(column, spec, basket_size, self._counters, types)
-            self._columns[column] = made
-            self._tops.append(made)
+            self._declare(column, spec, basket_size, types)
         self._branches = self._in_order()
+
+    def _declare(self, column: str, spec: Any, basket_size: int, types: Mapping[str, Any]) -> None:
+        """One declared column: a branch of objects, or one of numbers or text."""
+        if hasattr(spec, "build"):  # named as ROOT names it, spaces and dots and all
+            _require_branch_name(column)
+            self._objects(column, spec, basket_size)
+            return
+        _require_name(column, "column")
+        made = _declared(column, spec, basket_size, self._counters, types)
+        self._columns[column] = made
+        self._tops.append(made)
 
     def _objects(self, name: str, spec: Any, basket_size: int) -> None:
         """A branch of objects, and each column under it by the name :mod:`.wbranch` gives it."""
@@ -1429,7 +1446,7 @@ def _interleaved(feeds: list[Iterator[int]]) -> None:
     the first branch among equals, goes first - so the baskets land where
     ROOT's would, and the tree says the same of where they are.
     """
-    waiting: list[tuple[int, int, Iterator[int]]] = []
+    waiting: list[Waiting] = []
     for order, feed in enumerate(feeds):
         _advance(waiting, order, feed)
     while waiting:
@@ -1437,7 +1454,7 @@ def _interleaved(feeds: list[Iterator[int]]) -> None:
         _advance(waiting, order, feed)
 
 
-def _advance(waiting: list[tuple[int, int, Iterator[int]]], order: int, feed: Iterator[int]) -> None:
+def _advance(waiting: list[Waiting], order: int, feed: Iterator[int]) -> None:
     """Send out the basket a feed holds ready, then let it fill up to its next one."""
     found = next(feed, None)
     if found is not None:

@@ -89,7 +89,7 @@ def from_store(store: Store, stats: Any = None, written: bool = False) -> list[B
     grouped: dict[str, list[LeafInfo]] = {}
     objects: dict[str, BranchInfo] = {}
     for slot in store.slots.values():
-        if slot.kind == OBJECT:
+        if slot.kind in (OBJECT, VECTOR):  # a branch of objects: a vector is one too
             from .objectinfo import object_info
 
             objects[slot.branch] = object_info(slot, stats, store.entries, written)

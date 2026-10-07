@@ -37,6 +37,33 @@ def _bound(address: Any, leaves: list[Any], what: str) -> list[Any]:
     return members_of(address, [each.name for each in leaves], sizes, what)
 
 
+def _vector_for(address: Any, leaves: list[Any]) -> Any:
+    """``std::vector<float> *v = nullptr`` bound to a vector's branch: a vector made for it.
+
+    ROOT makes the vector a null pointer is pointed at; here it is made and
+    put in the pointer's cell, and the vector is what each entry is read into.
+    """
+    held = getattr(address, "value", address)
+    empty = held is None or (isinstance(held, int) and not isinstance(held, bool) and held == 0)
+    if len(leaves) != 1 or not leaves[0].vector or not empty or held is address:
+        return address
+    from ..stl import std
+
+    inner = leaves[0].typename.removeprefix("vector<").removesuffix(">").strip()
+    address.value = std.vector[inner]()
+    return address.value
+
+
+def _columns_bound(name: str, branch: Any, leaf: Any, address: Any) -> dict[str, Any]:
+    """What each column of a branch - or the one leaf asked for - is read into."""
+    if branch is not None and is_object(branch):
+        return bind_object(branch, address)
+    leaves: list[Any] = branch.leaves if branch is not None else [leaf]
+    address = _vector_for(address, leaves)
+    found = _bound(address, leaves, f"the branch {name!r}")
+    return {each.column: one for each, one in zip(leaves, found, strict=False)}
+
+
 class _Reading(_TreeCore):
     """Addresses bound to branches, and entries read into them."""
 
@@ -55,13 +82,7 @@ class _Reading(_TreeCore):
         if branch is None and leaf is None:
             print(f"Error in <TTree::SetBranchAddress>: unknown branch -> {name}", file=sys.stderr)
             return MISSING_BRANCH
-        if branch is not None and is_object(branch):
-            bound = bind_object(branch, address)
-        else:
-            leaves: list[Any] = branch.leaves if branch is not None else [leaf]
-            found = _bound(address, leaves, f"the branch {name!r}")
-            bound = {each.column: one for each, one in zip(leaves, found, strict=False)}
-        for column, one in bound.items():
+        for column, one in _columns_bound(name, branch, leaf, address).items():
             self._addresses[column] = one
             self._rebind(column, one)
         if hasattr(ptr, "value"):  # SetBranchAddress(name, &x, &branch): the branch handed back

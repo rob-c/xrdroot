@@ -56,13 +56,37 @@ def _lorentz(value: dict[str, Any], current: Any) -> Any:
     return made
 
 
-def _clones(value: dict[str, Any], current: Any) -> Any:
+def _clones(value: Any, current: Any) -> Any:
     """A ``TClonesArray``: each object the entry held, made again from its members."""
     from ..core.collections import TClonesArray
     from ..core.wrapping import from_members
 
-    made = current if isinstance(current, TClonesArray) else TClonesArray(value["fClass"])
+    made = current if isinstance(current, TClonesArray) else TClonesArray(value.classname)
     made.Clear()
-    for at, members in enumerate(value["objects"]):
-        made.AddAt(from_members(value["fClass"], members), at)
+    for at, members in enumerate(value):
+        flat = _flat(members)
+        obj = from_members(value.classname, flat)
+        made.AddAt(_drawn(value.classname, flat) if obj is None else obj, at)
     return made
+
+
+def _drawn(classname: str, members: dict[str, Any]) -> Any:
+    """A drawing object - a ``TLine``, a ``TMarker`` - made and given the members it keeps."""
+    import importlib
+
+    obj = getattr(importlib.import_module("xrdroot.pyroot"), classname)()
+    kept = getattr(obj, "members", None)
+    if kept is not None:
+        kept.update({name: value for name, value in members.items() if name in kept})
+    return obj
+
+
+def _flat(members: dict[str, Any]) -> dict[str, Any]:
+    """An object's members with its bases' members beside its own, as ROOT names them."""
+    flat: dict[str, Any] = {}
+    for name, value in members.items():
+        if isinstance(value, dict):
+            flat.update(_flat(value))
+        else:
+            flat[name] = value
+    return flat

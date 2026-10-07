@@ -216,9 +216,17 @@ def address_of(given: Any, what: str = "the branch") -> Address:
         return Vector(given)
     if isinstance(given, (string, bytearray)):
         return Text(given)
-    if hasattr(given, "value"):
-        return Value(given)
-    raise _refused(given, what)
+    held = _held(given)
+    if held is None:
+        raise _refused(given, what)
+    return held
+
+
+def _held(given: Any) -> Address | None:
+    """What a cell holds: a vector it points at, or the value it is - if it is a cell."""
+    if _is_vector(getattr(given, "value", None)):
+        return Vector(given.value)  # &pointer to a vector: the vector it points at
+    return Value(given) if hasattr(given, "value") else None
 
 
 def members_of(given: Any, names: list[str], sizes: list[int], what: str) -> list[Address]:

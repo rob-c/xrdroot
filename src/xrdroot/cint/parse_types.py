@@ -39,6 +39,11 @@ class Specifiers:
         return "static" in self.words
 
 
+def _typedef(spelled: str, name: str) -> str:
+    """The typedef a type was written as - ``Double32_t`` for ``double`` - or nothing."""
+    return spelled if spelled != name else ""
+
+
 class TypeParser(Cursor):
     """The part of the parser that reads types."""
 
@@ -114,8 +119,7 @@ class TypeParser(Cursor):
         name = canonical(spelled)
         if name in POINTER_TYPEDEFS:
             return CType("void", pointer=1)
-        written = spelled if spelled != name else ""
-        return CType(name, args, callable=name == "std::function", written=written)
+        return CType(name, args, callable=name == "std::function", written=_typedef(spelled, name))
 
     def _standard_type(self, parts: list[str]) -> str:
         """``vector`` means ``std::vector`` when it is the standard's, not the macro's own."""

@@ -16,6 +16,9 @@ import re
 import sys
 from typing import Any
 
+import numpy as np
+
+from ...drawspec import split_names
 from ._base import hooks
 from .friends import _Friends
 from .printing import element_lines, show_lines, tree_lines
@@ -63,14 +66,16 @@ class _Player(_Friends):
     ) -> int:
         """``TTree::Draw``: fill a histogram, profile or graph; how many were selected."""
         text = str(varexp).strip()
-        if text.startswith(">>"):
-            return self._draw_list(text[2:].strip(), str(selection or ""), nentries, firstentry)
+        selection, option = str(selection or ""), str(option or "")
+        special = self._special_draw(text, selection, option, nentries, int(firstentry))
+        if special is not None:
+            return special
         registry = hooks.registry()
         before = _entries_before(text, registry)
         made = self._view().draw(
             text,
-            str(selection or ""),
-            str(option or ""),
+            selection,
+            option,
             entries=_count(nentries),
             first_entry=int(firstentry),
             histograms=registry,
@@ -78,9 +83,57 @@ class _Player(_Friends):
             weight=None if self._weight == 1 else self._weight,
             estimate=self._estimate,
         )
-        if "goff" not in str(option).lower():
-            hooks.draw(hooks.wrap(made), str(option or ""))
+        if "goff" not in option.lower():
+            hooks.draw(hooks.wrap(made), option)
+        self._drawn = (text, selection, _count(nentries), int(firstentry))
         return int(getattr(made, "selected", made.entries - before))
+
+    def _special_draw(
+        self, text: str, selection: str, option: str, nentries: int, firstentry: int
+    ) -> int | None:
+        """``Draw(">>list")``, and ``Draw("hpx.GetRMS()")`` of methods of whole objects;
+        ``None`` for any other expression."""
+        if text.startswith(">>"):
+            return self._draw_list(text[2:].strip(), selection, nentries, firstentry)
+        from .methods import method_draw
+
+        return method_draw(self, text, selection, option, _count(nentries), firstentry)
+
+    def _drawn_values(self, axis: int) -> Any:
+        """The values the last ``Draw`` computed for its ``axis``-th expression, as ``GetV1``
+        and its kin hand them back: one per entry the selection kept."""
+        drawn = getattr(self, "_drawn", None)
+        if drawn is None:
+            return None
+        text, selection, count, first = drawn
+        parts = split_names(text.split(">>")[0])
+        if axis >= len(parts):
+            return None
+        stop = None if count is None else first + count
+        found = [
+            np.asarray(batch[parts[axis]], dtype=np.float64)
+            for batch in self._view().iterate(
+                [parts[axis]], entry_start=first, entry_stop=stop, cut=selection or None,
+                aliases=self._aliases or None,
+            )
+        ]  # fmt: skip
+        return np.concatenate(found) if found else np.zeros(0)
+
+    def GetV1(self) -> Any:
+        return self._drawn_values(0)
+
+    def GetV2(self) -> Any:
+        return self._drawn_values(1)
+
+    def GetV3(self) -> Any:
+        return self._drawn_values(2)
+
+    def GetV4(self) -> Any:
+        return self._drawn_values(3)
+
+    def GetSelectedRows(self) -> int:
+        values = self._drawn_values(0)
+        return 0 if values is None else len(values)
 
     def _draw_list(self, name: str, selection: str, nentries: int, firstentry: int) -> int:
         """``Draw(">>elist", cut)``: the entries the cut keeps, as a ``TEntryList``."""

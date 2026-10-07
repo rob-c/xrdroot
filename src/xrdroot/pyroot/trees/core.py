@@ -147,7 +147,8 @@ class _TreeCore(_TObjectLike):
         """What ``Print`` adds to the baskets for the tree's own record, when it is known:
         its length, and what it takes on file - nothing, for one never written."""
         if self._wrote is not None:
-            return self._wrote.root_record()
+            known: tuple[int | None, int] = self._wrote.root_record()
+            return known
         return (tree_record(self._name, self._title, layout) if self._in_memory() else None), 0
 
     def _leaves(self) -> list[Any]:

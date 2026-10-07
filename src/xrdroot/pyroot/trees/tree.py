@@ -63,6 +63,20 @@ def _slot(branch: str, leaf: Leaf, address: Any, title: str | None) -> Slot:
     )
 
 
+def _arranged(address: Any, leaflist: Any, bufsize: int, splitlevel: int) -> tuple[Any, ...]:
+    """``Branch``'s arguments in their places, whichever of ROOT's forms they came in.
+
+    ``Branch(name, "std::vector<float>", &object)`` names the class before
+    the object; ``Branch(name, &object, bufsize, splitlevel)`` gives an
+    object, not a leaf list, and the sizes one place early.
+    """
+    if isinstance(address, str) and leaflist is not None and not isinstance(leaflist, str):
+        return leaflist, None, bufsize, splitlevel
+    if isinstance(leaflist, int) and not isinstance(leaflist, bool):
+        return address, None, leaflist, bufsize
+    return address, leaflist, bufsize, splitlevel
+
+
 class TTree(_Player):
     """``TTree``: see the module's docstring."""
 
@@ -86,12 +100,7 @@ class TTree(_Player):
         store = self._writable("Branch")
         self._require_new(name)
         what = f"the branch {name!r}"
-        if isinstance(address, str) and leaflist is not None and not isinstance(leaflist, str):
-            # Branch(name, "std::vector<float>", &object): the class named, the object after it.
-            address, leaflist = leaflist, None
-        elif isinstance(leaflist, int) and not isinstance(leaflist, bool):
-            # Branch(name, &object, bufsize, splitlevel): an object, not a leaf list.
-            leaflist, bufsize, splitlevel = None, leaflist, bufsize
+        address, leaflist, bufsize, splitlevel = _arranged(address, leaflist, bufsize, splitlevel)
         made = object_slot(name, address, int(splitlevel), bufsize) if leaflist is None else None
         if made is not None:
             store.add(made)
@@ -165,8 +174,15 @@ class TTree(_Player):
         return nbytes
 
     def Write(self, name: str | None = None, option: int = 0, bufsize: int = 0) -> int:
-        """Write every entry so far into the tree's directory, as a new cycle of it."""
+        """Write every entry so far into the tree's directory, as a new cycle of it.
+
+        A tree given no branches has nothing a reader could make anything of,
+        and is left out of the file - a macro stopped before its ``Branch`` call
+        leaves its file closing over such a tree.
+        """
         store = self._writable("Write")
+        if not store.slots:
+            return 0
         directory = self._directory
         directory = getattr(directory, "_xrd", directory)
         if directory is None or not hasattr(directory, "tree"):

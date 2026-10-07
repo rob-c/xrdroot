@@ -36,6 +36,13 @@ def as_float(values: Any) -> Any:
     return np.asarray(values, dtype=np.float64).astype(np.float32).astype(np.float64)
 
 
+class Labels(list[str]):
+    """Names in a list a macro asks the ``size()`` of, as of the vector C++ hands it."""
+
+    def size(self) -> int:
+        return len(self)
+
+
 @dataclass
 class Events:
     """A sample of events: their values, targets, spectators, classes and weights, a row each."""
@@ -157,7 +164,8 @@ class DataSetInfo:
         return self.variables[index]
 
     def GetListOfVariables(self) -> list[str]:
-        return [variable.label for variable in self.variables]
+        """The variables' labels, as the ``std::vector<TString>`` ROOT hands back."""
+        return Labels(variable.label for variable in self.variables)
 
     def GetSignalClassIndex(self) -> int:
         signal = self.GetClassInfo("Signal")

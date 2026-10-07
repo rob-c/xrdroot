@@ -17,7 +17,7 @@ from typing import Any
 from .base import Out, P
 from .ctype import CType
 from .emit_vars import Context, VariableEmitter, addressable
-from .nodes import Function, Lambda, Name, Param
+from .nodes import Function, InitList, Lambda, Name, Param, VarDecl
 from .program import by_reference
 
 __all__ = ["FunctionEmitter", "kind_of"]
@@ -48,11 +48,21 @@ class FunctionEmitter(VariableEmitter):
             name = param.name or f"arg{index}"
             default = ""
             if param.default is not None:
-                default = "=" + self.store(param.ctype.value(), param.default)
+                default = "=" + self._default(name, param)
             cell = by_reference(param.ctype) or (name in cells and addressable(param.ctype))
             symbol = self.declare(name, "param", param.ctype.value(), cell=cell)
             items.append(symbol.py + default)
         return items
+
+    def _default(self, name: str, param: Param) -> str:
+        """A parameter's default: ``std::vector<bool> opt = {1, 1}`` is a vector, as a
+        variable braced so is, and anything else what storing it into the type makes."""
+        ctype = param.ctype.value()
+        assert param.default is not None
+        if isinstance(param.default, InitList) and ctype.is_class and not ctype.pointer:
+            braced = VarDecl(param.where, name, ctype, init=param.default, style="=")
+            return self.initial(braced, ctype)
+        return self.store(ctype, param.default)
 
     def function(
         self,

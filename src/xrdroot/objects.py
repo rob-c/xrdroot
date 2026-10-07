@@ -362,7 +362,8 @@ def read_branch_element(buf: Buffer) -> BranchRecord:
     kind = buf.i32()  # ROOT calls this fType, and -1 is the whole object
     branch.streamed = kind < 0
     branch.collection = kind in SPLIT_COLLECTIONS
-    stype, maximum = (buf.i32(), buf.i32()) if version > 6 else (-1, 0)
+    room = end is not None and end - buf.pos >= 8  # a record cut short says neither
+    stype, maximum = (buf.i32(), buf.i32()) if room else (-1, 0)
     branch.element = (parent, clones, checksum, cversion, fid, kind, stype, maximum)
     buf.resume(end)
     return branch

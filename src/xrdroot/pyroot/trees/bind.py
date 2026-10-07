@@ -38,7 +38,9 @@ def _class(classname: str) -> Any:
     if classname in DECLARED:
         return DECLARED[classname]
     if classname == LORENTZ:
-        return importlib.import_module("xrdroot.pyroot").XYZTVector
+        from ..core.genvector import XYZTVector
+
+        return XYZTVector
     return getattr(importlib.import_module("xrdroot.pyroot"), classname)
 
 

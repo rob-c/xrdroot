@@ -24,6 +24,7 @@ in it, and a weight going into one is cut to a whole number first.
 
 from __future__ import annotations
 
+import bisect
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -212,6 +213,61 @@ def _histogram_part(
     kept = inside[part]
     placed = [value[part][kept] for value in coordinates]
     _add_moments(histogram._moment_homes(), axis_terms(weights[kept], placed))
+
+
+def one_bin(axis: Axis, x: float) -> int:
+    """:meth:`~.hist.Axis.find_bin` of one number, worked out the same way without NumPy."""
+    if not x < axis.high:  # the overflow, the upper edge and a NaN with it
+        return axis.nbins + 1
+    if x < axis.low:
+        return 0
+    if axis.even:
+        return 1 + int(axis.nbins * (x - axis.low) / (axis.high - axis.low))
+    return bisect.bisect_right(axis._edges, x)
+
+
+def fill_one(histogram: Histogram, coordinates: Sequence[float], weight: float) -> int | None:
+    """``TH1::Fill`` of one entry, in plain floats - the same doubles :func:`fill_histogram`
+    adds, without the cost of arrays of one; the global bin it went to comes back.
+
+    ``None`` says it was left to :func:`fill_histogram`: integer bins saturate,
+    which that walks with care.
+    """
+    cells = histogram._cells()
+    if cells.dtype.kind != "f":
+        return None
+    if weight != 1.0 and histogram._sumw2() is None:
+        histogram._ensure_sumw2()  # before the first weight that is not one
+    bins = [one_bin(axis, x) for axis, x in zip(histogram.axes, coordinates, strict=False)]
+    cell = int(global_bins(bins, histogram._widths))
+    core = histogram._core
+    core["fEntries"] = float(core["fEntries"]) + 1
+    cells[cell] += cells.dtype.type(weight)
+    squares = histogram._sumw2()
+    if squares is not None:
+        squares[cell] += weight * weight
+    if all(1 <= found <= axis.nbins for found, axis in zip(bins, histogram.axes, strict=False)):
+        _add_one(histogram._moment_homes(), one_terms(weight, coordinates))
+    return cell
+
+
+def _add_one(homes: dict[str, dict[str, Any]], terms: list[tuple[str, float]]) -> None:
+    """One entry's terms, each added to its moment where the class keeps it."""
+    for name, value in terms:
+        homes[name][name] = float(homes[name][name]) + value
+
+
+def one_terms(weight: float, coordinates: Sequence[float]) -> list[tuple[str, float]]:
+    """:func:`axis_terms` for one entry: what it adds to each moment, in ROOT's order."""
+    letters = "xyz"
+    terms = [("fTsumw", weight), ("fTsumw2", weight * weight)]
+    for letter, value in zip(letters, coordinates, strict=False):
+        terms += [(f"fTsumw{letter}", weight * value), (f"fTsumw{letter}2", weight * value * value)]
+    for first in range(len(coordinates)):
+        for second in range(first + 1, len(coordinates)):
+            product = weight * coordinates[first] * coordinates[second]
+            terms.append((f"fTsumw{letters[first]}{letters[second]}", product))
+    return terms
 
 
 def fill_profile(profile: Profile, coordinates: Sequence[Any], values: Any, weights: Any) -> None:

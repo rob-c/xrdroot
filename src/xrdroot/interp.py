@@ -764,9 +764,40 @@ def _fields(name: str, source: Source, seen: tuple[str, ...]) -> list[tuple[str,
     if name in SELF_STREAMING:
         return None
     try:
-        return _steps(name, source, seen)
+        steps = _steps(name, source, seen)
     except _Unreadable:
         return None
+    return _flattened(steps, list(source.streamers()[name].values()), source, seen)
+
+
+def _flattened(
+    steps: list[tuple[str, Step]], members: list[Member], source: Source, seen: tuple[str, ...]
+) -> list[tuple[str, Step]] | None:
+    """A class's fields with each base class's own fields in its place, as field-by-field
+    data lays them out: ``TStreamerInfo::WriteBufferClones`` writes a base's members each
+    for every object, not a base for each object."""
+    found: list[tuple[str, Step]] = []
+    for (label, step), member in zip(steps, members, strict=True):
+        if member.stype != 0 or member.typename != "BASE":
+            found.append((label, step))
+            continue
+        inner = _fields(member.name, source, seen)
+        if inner is None:
+            return None
+        found += [(label, _into(label, sub, one)) for sub, one in inner]
+    return found
+
+
+def _into(label: str, sub: str, step: Step) -> Step:
+    """A base class's field, read into the base's own dictionary in the object's."""
+
+    def read(buf: Buffer, row: dict[str, Any]) -> dict[str, Any]:
+        held = row.get(label)
+        held = held if isinstance(held, dict) else {}
+        held[sub] = step(buf, held)
+        return held
+
+    return read
 
 
 def _class_held(typename: str) -> tuple[str, bool] | None:
@@ -982,6 +1013,19 @@ def _numeric_step(member: Member, before: dict[str, tuple[str, ...]]) -> Step | 
     return None
 
 
+def _kit_step(member: Member) -> Step | None:
+    """A member the kit reads by hand: a ``TDatime``, or a ``TObject`` or ``TNamed`` base."""
+    if member.typename == "TDatime":
+        return _plainly(_datime)  # a class of its own that writes no record
+    if member.typename == "BASE" and member.name == "TObject" and member.stype < 0:
+        # IgnoreTObjectStreamer: the class was written without its TObject, which the
+        # file says by giving that base no type at all.
+        return _plainly(lambda buf: {})
+    if member.stype in _KIT_BASES:
+        return _plainly(_KIT_BASES[member.stype])
+    return None
+
+
 def _object_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step | None:
     """How a member that is a whole object reads, or ``None`` if it is not one.
 
@@ -989,10 +1033,9 @@ def _object_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step 
     null, a fixed-size array of objects, and a pointer that may point at any
     class at all - each of which the streamer type alone says.
     """
-    if member.typename == "TDatime":
-        return _plainly(_datime)  # a class of its own that writes no record
-    if member.stype in _KIT_BASES:
-        return _plainly(_KIT_BASES[member.stype])
+    kit = _kit_step(member)
+    if kit is not None:
+        return kit
     if member.stype - OFFSET_L in (61, 62):
         # A fixed-size array of a class, written one object after another.
         one = _embedded(member.typename, source, seen)
@@ -1127,6 +1170,20 @@ def _members(
     return read
 
 
+def _special_whole(name: str, source: Source, named: bool) -> Column | None:
+    """A whole object of a class that is not its members: a ``TDatime``, whose word is the
+    whole entry, and a ``TClonesArray``, which names its class once and then each object -
+    or each field of every object."""
+    if name == "TDatime":
+        read: Callable[[Buffer], Any] = _datime
+        kind = "datetime"
+    elif name in CLONES:
+        read, kind = _embedded(name, source, ()), "object"
+    else:
+        return None
+    return Values(kind, _named(name, read) if named else read)
+
+
 def _whole(name: str, source: Source, streamed: bool = False, named: bool = False) -> Column:
     """A whole C++ object written into the entry, rather than split into branches.
 
@@ -1140,8 +1197,9 @@ def _whole(name: str, source: Source, streamed: bool = False, named: bool = Fals
     members; ``named`` is for the older branch that writes the class name in
     front of every entry as well.
     """
-    if name == "TDatime":  # its word is the whole entry, with no record round it
-        return Values("datetime", _named(name, _datime) if named else _datime)
+    special = _special_whole(name, source, named)
+    if special is not None:
+        return special
     if source.streamers().get(name) is None:
         return Refused(
             f"{name or 'an unnamed type'}, which is a C++ type this reader does not "

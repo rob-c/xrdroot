@@ -165,6 +165,20 @@ class TClass:
         """``TClass::GetClass(name)``: the class called ``name``."""
         return TClass(str(name))
 
+    def IgnoreTObjectStreamer(self, ignore: bool = True) -> None:
+        """``IgnoreTObjectStreamer``: objects of the class written without their ``TObject``."""
+        from ...wobjects import IGNORED
+
+        if ignore:
+            IGNORED.add(self._name)
+        else:
+            IGNORED.discard(self._name)
+
+    def CanIgnoreTObjectStreamer(self) -> bool:
+        from ...wobjects import IGNORED
+
+        return self._name in IGNORED
+
     def __eq__(self, other: object) -> bool:
         return isinstance(other, TClass) and other._name == self._name
 
@@ -200,10 +214,10 @@ class TObject:
         """Is this object's class ``other``, or derived from it?"""
         return self.IsA().InheritsFrom(other)
 
-    @staticmethod
-    def Class() -> TClass:
-        """``TObject::Class()``: the class of the base, which every class here is."""
-        return TClass("TObject", TObject)
+    @classmethod
+    def Class(cls) -> TClass:
+        """``TH1F::Class()``: the class it is called on - ``TObject``'s for ``TObject::Class()``."""
+        return TClass(cls.__name__, cls)
 
     def GetName(self) -> str:
         """A ``TObject``'s name is its class's."""

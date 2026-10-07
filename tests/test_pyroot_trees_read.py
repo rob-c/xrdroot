@@ -167,7 +167,7 @@ def test_a_tree_finds_its_leaves_by_name_or_by_branch_and_name(tree):
     names = [branch.GetName() for branch in tree.GetListOfBranches()]
     assert names in (
         ["px", "n", "arr", "v", "s", "rec"],
-        ["px", "n", "arr", "nv", "v", "s", "a", "b"],
+        ["px", "n", "arr", "v", "s", "a", "b"],
     )
     assert tree.GetLeaf("nothing") is None
     assert tree.GetLeaf("px", "px").GetName() == "px"

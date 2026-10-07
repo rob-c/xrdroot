@@ -91,10 +91,17 @@ class TBranch(_TObjectLike):
     def __init__(self, tree: TTree, info: BranchInfo) -> None:
         super().__init__(info.name, info.title)
         self._tree = tree
-        self._info = info
+        self._made = info
         if info.classname:
             self._classname = "TBranchElement"
         self._leaves = ListOf(TLeaf(tree, leaf) for leaf in info.leaves)
+
+    @property
+    def _info(self) -> BranchInfo:
+        """What the branch is now - its baskets once the tree is written, say - which the
+        tree knows; as it was made, if the tree no longer has a branch of its name."""
+        found = self._tree._branch_info(self._name)
+        return found if found is not None else self._made
 
     def __repr__(self) -> str:
         return f"<{self._classname} {self._name!r} with {len(self._leaves)} leaves>"

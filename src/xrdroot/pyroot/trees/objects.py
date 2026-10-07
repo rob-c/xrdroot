@@ -30,7 +30,7 @@ from ...errors import UnsupportedFeatureError
 from ...tree import Jagged
 from ...wbranch import Collection, Spec, Split, Whole, column_keys
 from ...wclasses import declared, harvested
-from ...wobjects import IGNORED, named, stream, stream_clones
+from ...wobjects import named, stream, stream_clones
 from ...writer import WBuffer
 from .store import OBJECT
 
@@ -40,6 +40,8 @@ __all__ = ["ObjectSlot", "object_slot"]
 LORENTZ = "ROOT::Math::LorentzVector<ROOT::Math::PxPyPzE4D<double> >"
 #: Histogram classes ROOT streams by their description, and so writes as a TBranchElement.
 DESCRIBED = ("TH1C", "TH1S", "TH1I", "TH1F", "TH1D")
+#: A record's byte count and version: what an object streamed by its class has in front.
+RECORD_HEAD = 6
 
 
 def _held(address: Any) -> Any:
@@ -161,7 +163,11 @@ class Histogram(_Whole):
         from ..core.wrapping import unwrap
 
         classname, payload, _used = _payload(unwrap(obj))
-        return payload if classname in DESCRIBED else named(classname, payload)
+        if classname in DESCRIBED:
+            # A TBranchElement streams its object's members by the class's description,
+            # without the byte count and version the class's own streamer puts round them.
+            return payload[RECORD_HEAD:]
+        return named(classname, payload)
 
 
 class Clones(_Whole):
@@ -173,7 +179,9 @@ class Clones(_Whole):
                 "a TClonesArray split into a branch per member is not written here; give "
                 "the branch split level 0 and it is written whole, as ROOT also writes it"
             )
-        return Whole("TClonesArray", object=True, split=0, basket_size=bufsize)
+        return Whole(
+            "TClonesArray", object=True, holds=(obj._class,), split=0, basket_size=bufsize
+        )
 
     def entry(self, obj: Any) -> bytes:
         getters = [_members_of(item) for item in obj]

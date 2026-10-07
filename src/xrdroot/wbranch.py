@@ -38,6 +38,7 @@ from .wclasses import Layout, Member, _mixed, harvested
 from .wcolumns import CountColumn, MemberColumn, MemberRows, StreamedColumn, VectorColumn
 from .winfo import INFOS
 from .wmeasure import Measuring, version
+from .wobjects import IGNORED
 from .wpacking import BASIC
 from .writer import BITS, WBuffer
 
@@ -217,46 +218,53 @@ def _table(buf: WBuffer, values: list[int], width: int, code: str) -> None:
 
 def tbranch(buf: WBuffer, branch: Branch, refs: LeafRefs) -> None:
     """The ``TBranch`` part of a branch, its branches and leaves streamed inside it."""
-    entries, compress = refs.entries, refs.compress
-    baskets = branch.baskets
-    node = isinstance(baskets, NoBaskets)
     index = buf.start(version(buf, "TBranch", BRANCH_VERSION))
     buf.named(branch.name, branch.title, BITS | branch.bits)
     fill = buf.start(ATTRIBUTE_VERSION)
     buf.i16(0)  # fFillColor
     buf.i16(FILL_STYLE)
     buf.end(fill)
+    _counts(buf, branch, refs)
+    for kids in (branch.children, branch.own):  # fBranches, then fLeaves
+        listed = _objarray(buf, len(kids))
+        for kid in kids:
+            refs.pointer(buf, kid)  # one already streamed is a reference back to it
+        buf.end(listed)
+    _baskets(buf, branch.baskets)
+    buf.string("")  # fFileName
+    buf.end(index)
+
+
+def _counts(buf: WBuffer, branch: Branch, refs: LeafRefs) -> None:
+    """A branch's sizes and counts, from its compression to how many bytes it zipped to."""
+    baskets = branch.baskets
+    node = isinstance(baskets, NoBaskets)
     written = len(baskets.seeks)
-    width = max(MIN_BASKETS, written + 1)
-    for value in (compress, baskets.basket_size, baskets.entry_offset_len, written):
+    for value in (refs.compress, baskets.basket_size, baskets.entry_offset_len, written):
         buf.i32(value)
-    buf.i64(0 if node else entries)  # fEntryNumber: a node fills nothing of its own
+    buf.i64(0 if node else refs.entries)  # fEntryNumber: a node fills nothing of its own
     if isinstance(buf, Measuring):
         buf.features()
     buf.i32(0)  # fOffset
-    buf.i32(width)  # fMaxBaskets
+    buf.i32(max(MIN_BASKETS, written + 1))  # fMaxBaskets
     buf.i32(branch.split)
-    for count in (entries, 0, baskets.tot_bytes, baskets.zip_bytes):
+    for count in (refs.entries, 0, baskets.tot_bytes, baskets.zip_bytes):
         buf.i64(count)  # fEntries, fFirstEntry, fTotBytes, fZipBytes
-    under = _objarray(buf, len(branch.children))
-    for child in branch.children:
-        refs.pointer(buf, child)  # a branch already streamed is a reference back to it
-    buf.end(under)
-    own = _objarray(buf, len(branch.own))
-    for leaf in branch.own:
-        refs.pointer(buf, leaf)
-    buf.end(own)
-    slots = 0 if node else written + 1
+
+
+def _baskets(buf: WBuffer, baskets: Any) -> None:
+    """The branch's baskets - all on file, none in here - and its tables of them."""
+    written = len(baskets.seeks)
+    width = max(MIN_BASKETS, written + 1)
+    slots = 0 if isinstance(baskets, NoBaskets) else written + 1
     if isinstance(buf, Measuring) and not buf.held:
         slots = 0  # a tree read from a file holds none of its baskets' places at all
-    held = _objarray(buf, slots)  # fBaskets: all on file, none in here
+    held = _objarray(buf, slots)
     buf.raw(bytes(4 * slots))
     buf.end(held)
     _table(buf, baskets.sizes, width, "i")  # fBasketBytes
     _table(buf, baskets.starts, width, "q")  # fBasketEntry
     _table(buf, baskets.seeks, width, "q")  # fBasketSeek
-    buf.string("")  # fFileName
-    buf.end(index)
 
 
 class Branch:
@@ -366,8 +374,9 @@ CXX = {
 
 def column_keys(name: str, branch: Branch) -> list[str]:
     """What a tree calls each column a branch fills: the branch's own by its name, those
-    under it by both names, ``top/member``, so two objects of one class cannot clash."""
-    return [c.name if c is branch.baskets else f"{name}/{c.name}" for c in branch.columns()]
+    under it by both names with a NUL between - which no branch's name holds - so two
+    objects of one class cannot clash."""
+    return [c.name if c is branch.baskets else f"{name}\0{c.name}" for c in branch.columns()]
 
 
 def _collection_info(classname: str, clones: str, btype: int) -> ElementInfo:
@@ -386,11 +395,15 @@ class Spec:
     split: int = 99
     basket_size: int | None = None
 
+    def build(self, name: str, basket_size: int) -> Branch:  # pragma: no cover - each has one
+        """The branch, and the columns under it, a tree of baskets this size writes."""
+        raise NotImplementedError
+
     def classes(self) -> tuple[str, ...]:
         """The classes the file has to describe for this branch to be read."""
         return ("TBranchElement", "TLeafElement")
 
-    def declared(self) -> tuple[Layout, ...]:
+    def declared(self) -> tuple[Any, ...]:
         """The macro's classes among them, described from their declarations."""
         return ()
 
@@ -424,6 +437,8 @@ class Whole(Spec):
     classname: str
     custom: bool = False
     object: bool = False
+    #: The classes it holds that its own description does not name: a clones array's.
+    holds: tuple[str, ...] = ()
 
     def build(self, name: str, basket_size: int) -> Branch:
         column = StreamedColumn(name, self._size(basket_size))
@@ -438,7 +453,48 @@ class Whole(Spec):
 
     def classes(self) -> tuple[str, ...]:
         kinds = ("TBranchObject", "TLeafObject") if self.object else super().classes()
-        return (*kinds, self.classname)
+        return (*kinds, *(name for name in self._every() if name not in IGNORED))
+
+    def declared(self) -> tuple[Any, ...]:
+        """The classes written without their ``TObject``, described as written."""
+        return tuple(_ignoring(name) for name in self._every() if name in IGNORED)
+
+    def _every(self) -> list[str]:
+        found = _held(self.classname)
+        for held in self.holds:
+            found += [name for name in _held(held) if name not in found]
+        return found
+
+
+class Described(NamedTuple):
+    """A class described otherwise than the donors describe it, as a file has to say it."""
+
+    name: str
+    version: int
+    checksum: int
+    described: tuple[Any, ...]
+
+    def elements(self) -> tuple[Any, ...]:
+        return self.described
+
+
+def _held(classname: str) -> list[str]:
+    """A class, and every class its members are objects of, as the donors describe them."""
+    found = [classname]
+    for kind, _name, _t, _s, _z, _a, _d, _m, typename, _x in INFOS[classname][2]:
+        if kind in ("TStreamerObject", "TStreamerObjectAny") and typename in INFOS:
+            found += [name for name in _held(typename) if name not in found]
+    return found
+
+
+def _ignoring(classname: str) -> Described:
+    """``IgnoreTObjectStreamer``: the class's ``TObject`` base given no type, as ROOT says so."""
+    checksum, version, elements = INFOS[classname]
+    changed = tuple(
+        (*e[:3], NOT_A_MEMBER, *e[4:]) if e[0] == "TStreamerBase" and e[1] == "TObject" else e
+        for e in elements
+    )
+    return Described(classname, version, checksum, changed)
 
 
 def _member_info(owner: Layout, parent: str, fid: int, btype: int, stype: int) -> ElementInfo:
@@ -513,7 +569,7 @@ class Split(Spec):
         inner = [m.typename for m in self.layout.members if m.stype == OBJECT_ANY]
         return (*super().classes(), *mine, *inner)
 
-    def declared(self) -> tuple[Layout, ...]:
+    def declared(self) -> tuple[Any, ...]:
         return (self.layout,) if self.own else ()
 
 

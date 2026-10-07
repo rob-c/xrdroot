@@ -21,7 +21,7 @@ import numpy as np
 
 from .errors import FormatError, UnsupportedFeatureError
 
-__all__ = ["Buffer", "Listed", "as_datetime", "gather", "numbers", "on_disk"]
+__all__ = ["Buffer", "Clones", "Listed", "as_datetime", "gather", "numbers", "on_disk"]
 
 
 @cache
@@ -129,6 +129,18 @@ class Listed(list[Any]):
     def __init__(self, items: Any = (), options: Any = ()) -> None:
         super().__init__(items)
         self.options = list(options)
+
+
+class Clones(list[Any]):
+    """What a ``TClonesArray`` held - each object's members - and the one class they are of,
+    which the array names once at its front."""
+
+    #: The class every object in the array is.
+    classname: str
+
+    def __init__(self, items: Any = (), classname: str = "TObject") -> None:
+        super().__init__(items)
+        self.classname = classname
 
 
 class Buffer:
@@ -390,8 +402,8 @@ class Buffer:
         held = self.string().partition(";")[0]  # the class, and the version of it
         count, _low = abs(self.i32()), self.i32()
         if bits & BYPASS_STREAMER and not bits & NO_MEMBER_WISE:
-            return self._memberwise_clones(held, count, end, fields)
-        return self._streamed_clones(held, count, end, classes)
+            return Clones(self._memberwise_clones(held, count, end, fields), held)
+        return Clones(self._streamed_clones(held, count, end, classes), held)
 
     def _memberwise_clones(self, held: str, count: int, end: int | None, fields: Any) -> list[Any]:
         steps = fields(held) if fields is not None else None

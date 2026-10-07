@@ -66,7 +66,7 @@ def _recipe(title: str) -> tuple[float, float, float]:
 def packed_size(stype: int, title: str) -> int:
     """How many bytes one value of a member of streamer type ``stype`` takes on file."""
     if stype not in (DOUBLE32, FLOAT16):
-        return np.dtype(BASIC[stype][0]).itemsize
+        return int(np.dtype(BASIC[stype][0]).itemsize)
     xmin, _xmax, factor = _recipe(title)
     if factor or (stype == DOUBLE32 and not int(xmin)):
         return 4

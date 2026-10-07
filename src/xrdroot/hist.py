@@ -248,7 +248,7 @@ class Histogram(Displayed):
     and the projections make a new one and leave this as it was.
     """
 
-    __slots__ = ("classname", "members", "axes", "_core", "_home", "_key", "_widths")
+    __slots__ = ("classname", "members", "axes", "_core", "_home", "_key", "_widths", "_homes")
 
     def __init__(self, classname: str, members: dict[str, Any]) -> None:
         core, contents = _core(members), _contents(members)
@@ -321,8 +321,12 @@ class Histogram(Displayed):
 
     def _moment_homes(self) -> dict[str, dict[str, Any]]:
         """The dictionary holding each moment, by the moment's member name."""
+        kept: tuple[Any, Any, dict[str, dict[str, Any]]] | None = getattr(self, "_homes", None)
+        if kept is not None and kept[0] is self.members and kept[1] is self._core:
+            return kept[2]  # the same members as last time: the same dictionaries hold them
         found: dict[str, dict[str, Any]] = {}
         _moment_homes(self.members, found)
+        self._homes = (self.members, self._core, found)
         return found
 
     def _moment_names(self) -> tuple[str, ...]:
@@ -663,6 +667,21 @@ class Histogram(Displayed):
             )
         coordinates, weights = filling.arrays(given, weight)
         filling.fill_histogram(self, coordinates, weights)
+
+    def fill_one(self, coordinates: Any, weight: float = 1.0) -> int:
+        """``Fill`` of one entry, a number per axis; the global bin it went to comes back.
+
+        The same bookkeeping as :meth:`fill`, to the last bit, for the loop
+        that fills a histogram an entry at a time - ROOT's own way, and
+        every tutorial's - without the cost of arrays of one.
+        """
+        if len(coordinates) != len(self.axes):
+            self.fill(*coordinates, weight=weight)  # the refusal, as fill words it
+        found = filling.fill_one(self, coordinates, weight)
+        if found is None:
+            self.fill(*coordinates, weight=None if weight == 1.0 else weight)
+            return int(self.find_bin(*coordinates))
+        return found
 
     def fill_random(self, source: Any, n: int, *, rng: Any = None) -> None:
         """``FillRandom``: ``n`` entries drawn from a function, or from another histogram.

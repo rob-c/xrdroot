@@ -93,7 +93,7 @@ def test_the_bytes_of_a_circular_tree_are_roots_for_any_names_and_entries(
     t = _four(fills, 5, name)
     layout = t._layout()
     assert _totals(t) == branches
-    assert sum(branch.tot_bytes for branch in layout) + t._record(layout) == tree
+    assert sum(branch.tot_bytes for branch in layout) + t._record(layout)[0] == tree
 
 
 def test_a_circular_tree_of_arrays_and_integers_counts_every_value():
@@ -117,8 +117,8 @@ def test_a_circular_tree_of_other_branches_keeps_the_writers_counts(capsys):
     for entry in range(5):
         n[0] = entry % 4
         t.Fill()
-    assert t.GetEntries() == 3 and t._record(t._layout()) is None
+    assert t.GetEntries() == 3 and t._record(t._layout())[0] is None
     t.SetCircular(0)
     for _ in range(5):
         t.Fill()
-    assert t.GetEntries() == 8 and t._record(t._layout()) is None
+    assert t.GetEntries() == 8 and t._record(t._layout())[0] is None

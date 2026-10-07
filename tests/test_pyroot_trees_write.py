@@ -73,7 +73,6 @@ def test_every_kind_of_address_is_read_at_the_moment_fill_is_called(tmp_path):
         "ev": [0, 1, 2, 3, 4, 5],
         "n": [0, 1, 2, 0, 1, 2],
         "arr": [[], [1], [2, 3], [], [4], [5, 6]],
-        "nvec": [1, 2, 1, 2, 1, 2],
         "vec": [[0], [0, 1]] * 3,
         "label": ["l0", "l1", "l2", "l3", "l4", "l5"],
         "w": [0, 0.25, 0.5, 0.75, 1.0, 1.25],

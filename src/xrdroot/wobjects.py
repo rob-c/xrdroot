@@ -69,7 +69,7 @@ def named(classname: str, payload: bytes) -> bytes:
 
 
 def stream_clones(classname: str, objects: Sequence[Getter], bypass: bool) -> bytes:
-    """A ``TClonesArray`` of ``objects`` of ``classname``, as ``TClonesArray::Streamer`` writes it."""
+    """A ``TClonesArray`` of ``objects`` of ``classname``, as its ``Streamer`` writes it."""
     _checksum, version, _elements = INFOS[classname]
     buf = WBuffer()
     at = buf.start(INFOS["TClonesArray"][1])
