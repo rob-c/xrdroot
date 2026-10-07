@@ -93,13 +93,9 @@ _gather()
 
 def __getattr__(name: str) -> _typing.Any:
     """An object ``gROOT`` finds by that name, as PyROOT falls back to - ``ROOT.h1``, a
-    geometry's ``ROOT.YK01`` - then one of ``ROOT::VecOps``'s functions, which a macro's
-    ``using namespace ROOT::VecOps`` names bare, or else a name ROOT has and this namespace
-    does not yet."""
+    geometry's ``ROOT.YK01`` - or else a name ROOT has and this namespace does not yet."""
     if not name.startswith("_"):
         found = globals()["gROOT"].FindObject(name)
-        if found is None:
-            found = getattr(globals()["VecOps"], name, None)
         if found is not None:
             return found
     raise AttributeError(f"ROOT has {name}; xrdroot.pyroot does not yet")

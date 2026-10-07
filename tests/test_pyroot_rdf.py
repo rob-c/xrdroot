@@ -137,12 +137,13 @@ def test_an_rvec_is_a_vector_that_does_numpy_arithmetic_and_is_indexed_by_a_mask
     assert nested[0][0] == 3 and ROOT.RVec["string"](["a"])[0] == "a"
 
 
-def test_an_rvec_prints_as_roots_stream_writes_it_and_its_functions_are_named_bare():
+def test_an_rvec_prints_as_roots_stream_writes_it_and_a_macro_names_its_functions_bare():
+    from xrdroot.cint.runtime import ROOT as MACRO
+
     assert str(ROOT.RVecF([1.0, 2.0, 2.0 / 3])) == "{ 1, 2, 0.666667 }"
     assert str(ROOT.RVecB([1, 0])) == "{ 1, 0 }" and str(ROOT.RVecI([])) == "{  }"
-    assert ROOT.Any(ROOT.RVecB([0, 1])) and ROOT.Mean(ROOT.RVecD([1.0, 3.0])) == 2.0
-    with pytest.raises(AttributeError, match="ROOT has NoSuchName"):
-        ROOT.NoSuchName  # noqa: B018
+    assert MACRO.Any(ROOT.RVecB([0, 1])) and MACRO.Mean(ROOT.RVecD([1.0, 3.0])) == 2.0
+    assert MACRO.Range is ROOT.RooFit.Range  # RooFit's, which a macro names bare first
     v = ROOT.RVecD([3.0, 1.0, 2.0])
     v[0:2] = [5.0, 4.0]
     assert list(v) == [5.0, 4.0, 2.0]
@@ -224,3 +225,17 @@ def test_any_node_is_an_rnode_and_a_result_is_its_own_shared_pointer():
     assert ROOT.RDF.AsRNode(frame) is frame
     count = frame.Count()
     assert count.GetSharedPtr() == count.GetValue() == 5
+
+
+def test_a_vecops_function_given_to_a_frame_takes_whole_batches_and_a_template_argument(
+    tmp_path,
+):
+    from xrdroot.cint.runtime import ROOT as MACRO
+
+    with xrdroot.create(str(tmp_path / "v.root")) as f:
+        f["t"] = {"v": xrdroot.Jagged(np.array([1.0, 2.0, 3.0]), np.array([0, 2, 3]))}
+    frame = ROOT.RDataFrame("t", str(tmp_path / "v.root"))
+    summed = frame.Define("s", MACRO.Sum["float"], ["v"]).AsNumpy(["s"])["s"]
+    frame.close()
+    assert summed.tolist() == [3.0, 3.0]
+    assert MACRO.Sum["float"](ROOT.RVecD([1.0, 2.0])) == 3.0

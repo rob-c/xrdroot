@@ -29,7 +29,8 @@ DEFAULT = "xrdroot.pyroot"
 #: compiled, so looking there is never wrong. ``RooStats::HistFactory``'s functions
 #: are called unqualified by argument-dependent lookup - ``MakeModelAndMeasurementFast(meas)``
 #: of a ``HistFactory::Measurement`` - which finds them there too.
-USED = ("RooFit", "RooStats", "RooStats.HistFactory", "TMVA", "TMVA.Experimental", "RDF")
+USED = ("RooFit", "RooStats", "RooStats.HistFactory", "TMVA", "TMVA.Experimental", "RDF",
+        "VecOps")  # last: RooFit's Range is not VecOps' Range
 #: What the macros run so far declared at their top - functions and classes - by name, as
 #: cling keeps them: a line run later (``ProcessLine("Pal1();")``, a ``TExec``) finds them.
 DECLARED: dict[str, Any] = {}

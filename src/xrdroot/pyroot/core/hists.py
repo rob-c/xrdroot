@@ -221,8 +221,7 @@ class TH2(TH1):
         nx = xaxis.GetNbins()
         edges = [np.array([axis.GetBinLowEdge(i) for i in range(1, axis.GetNbins() + 2)])
                  for axis in (xaxis, yaxis)]  # fmt: skip
-        order = 8 if getattr(function, "_formula", None) is not None else 2
-        cells = _cell_integrals(function, edges[0], edges[1], order)
+        cells = _cell_integrals(function, edges[0], edges[1], 8)
         integral = np.concatenate([[0.0], np.cumsum(cells)])
         integral /= integral[-1]
         drawn = np.atleast_1d(generator.rndm(ntimes)) if ntimes else np.zeros(0)
@@ -234,13 +233,8 @@ class TH2(TH1):
 
 def _cell_integrals(function: Any, xedges: Any, yedges: Any, order: int) -> Any:
     """Each cell's integral of ``function`` - y slowest, as ROOT runs over them - by an
-    ``order``-point Gauss-Legendre rule each way, every point in one call.
-
-    A formula is evaluated over a whole array at once, so it takes eight
-    points each way; a macro's function of code is called a point at a time,
-    so it takes two, which is exact for a cubic and costs four calls a bin
-    rather than sixty-four.
-    """
+    ``order``-point Gauss-Legendre rule each way, every point in one call: a formula is
+    evaluated over the whole array at once."""
     nodes, weights = np.polynomial.legendre.leggauss(order)
     (xlow, xhigh), (ylow, yhigh) = ((edges[:-1], edges[1:]) for edges in (xedges, yedges))
     xs = 0.5 * (xhigh - xlow)[:, None] * nodes + 0.5 * (xhigh + xlow)[:, None]

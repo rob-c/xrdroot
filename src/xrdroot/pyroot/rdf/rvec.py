@@ -112,15 +112,27 @@ def _unbatched(value: Any) -> Any:
     return _made(value)
 
 
-def _one(function: Callable[..., Any]) -> Callable[..., Any]:
-    """A batched function of :mod:`xrdroot.rdf.vecops` as a function of one entry's values."""
+class _OneEntry:
+    """A batched function of :mod:`xrdroot.rdf.vecops` as a function of one entry's values -
+    and, by ``[...]``, the same function, as C++'s ``InvariantMass<float>`` names it."""
 
-    def single(*values: Any) -> Any:
-        return _unbatched(function(*(_batch(value) for value in values)))
+    def __init__(self, function: Callable[..., Any]) -> None:
+        self._function = function
+        #: The function of whole batches, which a frame is given in place of this one.
+        self.batched = function
+        self.__name__ = function.__name__
+        self.__doc__ = function.__doc__
 
-    single.__name__ = single.__qualname__ = function.__name__
-    single.__doc__ = function.__doc__
-    return single
+    def __call__(self, *values: Any) -> Any:
+        return _unbatched(self._function(*(_batch(value) for value in values)))
+
+    def __getitem__(self, kinds: Any) -> _OneEntry:
+        return self
+
+
+def _one(function: Callable[..., Any]) -> _OneEntry:
+    """A batched function as a function of one entry's values."""
+    return _OneEntry(function)
 
 
 def _map(*arguments: Any) -> Any:

@@ -91,9 +91,15 @@ def per_entry(name: str, arguments: list[Any]) -> list[Any]:
     """The arguments of frame method ``name``, a macro's function among them made entrywise -
     given the entry number to be counted by, when it reads no column."""
     at, slot = ENTRYWISE.get(name, (-1, False))
-    if at < 0 or at >= len(arguments) or not is_macros(arguments[at]):
+    if at < 0 or at >= len(arguments):
         return arguments
     given = list(arguments)
+    batched = getattr(given[at], "batched", None)  # a VecOps function: the batches' own
+    if batched is not None:
+        given[at] = batched
+        return given
+    if not is_macros(given[at]):
+        return arguments
     columns = list(given[at + 1]) if len(given) > at + 1 else []
     counted = not columns and _arity(given[at]) == int(slot)
     given[at] = entrywise(given[at], slot, counted)
