@@ -214,3 +214,34 @@ def test_a_file_hands_out_objects_by_subscript(tmp_path):
         assert back["h"].GetNbinsX() == 1
         with pytest.raises(KeyError, match="has no object 'nope'"):
             back["nope"]
+
+
+def test_a_fitter_set_up_first_minimises_from_its_parameters_settings():
+    pytest.importorskip("iminuit")
+
+    def bowl(xx):
+        return (xx[0] - 3) ** 2 + 4 * (xx[1] + 1) ** 2 + 1
+
+    fitter = ROOT.Fit.Fitter()
+    with pytest.raises(ValueError, match="none was given"):
+        fitter.FitFCN()
+    fitter.SetFCN(ROOT.Math.Functor(bowl, 2), np.array([1.0, 1.0]))
+    config = fitter.Config()
+    settings = config.ParSettings(0)
+    settings.SetStepSize(0.01)
+    settings.SetName("a")
+    settings.SetValue(2.0)
+    config.ParSettings(1).SetLimits(-5, 5)
+    assert (settings.StepSize(), settings.Name(), settings.Value(), config.NPar()) == (
+        0.01, "a", 2.0, 2)
+    assert fitter.FitFCN()
+    assert fitter.Result().Parameter(0) == pytest.approx(3.0, abs=1e-2)  # MIGRAD's edm 0.01
+    assert fitter.Result().ParName(0) == "a"
+    config.ParSettings(0).Fix()
+    assert config.ParamsSettings()[0].IsFixed()
+    fitter.FitFCN()
+    assert fitter.Result().Parameter(0) == pytest.approx(2.0)
+    config.ParSettings(0).Release()
+    assert not config.ParSettings(0).IsFixed()
+    config.SetParamsSettings(2)
+    assert config.ParSettings(1).Value() == 0.0

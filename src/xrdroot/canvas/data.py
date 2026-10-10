@@ -31,6 +31,7 @@ from ..efficiency import Efficiency
 from ..errors import ROOTError
 from ..function import Function
 from ..graph import Graph
+from ..graph2d import Graph2D
 from ..hist import Histogram
 from ..plot import picture
 from ..plot.backends.withmatplotlib import DRAWN
@@ -248,11 +249,19 @@ def paint_efficiency(scene: Scene, e: Efficiency, option: str) -> None:
     _paint(scene, e, option)
 
 
+def _paint_graph2d(scene: Scene, g: Graph2D, option: str) -> None:
+    """A ``TGraph2D``: see :mod:`.graph2d`."""
+    from .graph2d import paint_graph2d
+
+    paint_graph2d(scene, g, option)
+
+
 #: How each kind of data draws, by the Python class it comes back as.
 DATA: tuple[tuple[type, Any], ...] = (
     (Histogram, paint_histogram),
     (Efficiency, paint_efficiency),
     (Graph, paint_graph),
+    (Graph2D, _paint_graph2d),
     (MultiGraph, paint_multigraph),
     (Stack, paint_stack),
     (Function, paint_function),

@@ -131,22 +131,39 @@ def chi2(data: FitData, predict: Predictor) -> Cost:
     return cost
 
 
-def _slope(function: Any, x: Array, ex: Array, params: Array) -> Array:
-    """``RichardsonDerivator::Derivative1`` at each point, stepped as ROOT steps it."""
-    h = np.maximum(STEP_FRACTION * np.abs(ex), 8.0 * PRECISION * (np.abs(x) + PRECISION))
+def _slope(function: Any, x: Array, ex: Array, params: Array, axis: int | None = None) -> Array:
+    """``RichardsonDerivator::Derivative1`` at each point, stepped as ROOT steps it - along
+    ``axis`` of points of several coordinates."""
+    along = x if axis is None else x[:, axis]
+    h = np.maximum(STEP_FRACTION * np.abs(ex), 8.0 * PRECISION * (np.abs(along) + PRECISION))
 
     def at(step: Array) -> Array:
-        return np.asarray(function.evaluate(x + step, params), dtype=np.float64)
+        if axis is None:
+            return np.asarray(function.evaluate(x + step, params), dtype=np.float64)
+        moved = x.copy()
+        moved[:, axis] += step
+        return np.asarray(function.evaluate(moved, params), dtype=np.float64)
 
     d0 = at(h) - at(-h)
     d2 = at(h / 2) - at(-h / 2)
     return (1 / (2.0 * h)) * (8 * d2 - d0) / 3.0
 
 
+def _spread(function: Any, x: Array, ex: Array, params: Array) -> Array:
+    """Each point's coordinate errors carried through the function: ``sum (ex df/dx)^2``."""
+    columns = [(ex, None)] if ex.ndim == 1 else [(ex[:, k], k) for k in range(ex.shape[1])]
+    total = np.zeros(len(x))
+    for errors, axis in columns:
+        sloped = errors != 0
+        if sloped.any():
+            slope = _slope(function, x[sloped], errors[sloped], params, axis)
+            total[sloped] += (errors[sloped] * slope) ** 2
+    return total
+
+
 def effective_chi2(data: FitData, function: Any) -> Cost:
     """``EvaluateChi2Effective``: the y error widened by the x error times the slope."""
     x, ex = data.coordinates(), data.xerr
-    sloped = ex != 0
 
     def cost(params: Array) -> float:
         f = np.asarray(function.evaluate(x, params), dtype=np.float64)
@@ -154,11 +171,7 @@ def effective_chi2(data: FitData, function: Any) -> Cost:
         ey = data.error
         if data.kind == ASYM_ERROR:
             ey = np.where(residual < 0, data.yhigh, data.ylow)
-        e2 = ey * ey
-        if sloped.any():
-            spread = ex[sloped] * _slope(function, x[sloped], ex[sloped], params)
-            e2 = e2.copy()
-            e2[sloped] += spread * spread
+        e2 = ey * ey + _spread(function, x, ex, params)
         with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
             terms = np.where(e2 > 0, 1.0 / np.where(e2 > 0, e2, 1.0), 0.0) * residual * residual
         return _capped(terms, data.size)

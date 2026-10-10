@@ -21,6 +21,7 @@ import numpy as np
 
 from ...function import Function
 from ...function.members import UNSET
+from .messages import message
 from .objects import TAttFill, TAttLine, TAttMarker, TNamed
 from .refs import store
 from .wrapping import adopt, register, remember, unwrap, wrap
@@ -622,6 +623,9 @@ def _gauss_legendre(function: Any, limits: list[float], order: int = 48) -> floa
     return float(scale * np.sum(weight * values))
 
 
+#: The Gauss-Legendre nodes each way a cell of ``GetRandom2``'s table is integrated with:
+#: enough that each cell's integral is ROOT's adaptive one to the last digit it keeps.
+CELL_NODES = 8
 #: ``TF2``'s level not yet given: the painter spreads such levels evenly over the values.
 UNSET_LEVEL = -9999.0
 
@@ -673,15 +677,28 @@ class TF2(TF1):
             found[int(level)] = float(value)
 
     def _cells(self) -> tuple[np.ndarray[Any, Any], float, float]:
-        """``GetRandom2``'s table: the running integral over ``Npx`` by ``Npy`` cells, x fastest."""
+        """``GetRandom2``'s table, made once for the function as it is - as ``fIntegral`` is,
+        until a parameter or the range changes."""
+        key = (tuple(self._xrd.parameters), self.GetRange(), self.GetNpx(), self.GetNpy())
+        held = self.__dict__.get("_table")
+        if held is None or held[0] != key:
+            held = self.__dict__["_table"] = (key, self._table())
+        return held[1]  # type: ignore[no-any-return]
+
+    def _table(self) -> tuple[np.ndarray[Any, Any], float, float]:
+        """The running integral over ``Npx`` by ``Npy`` cells, x fastest."""
         xmin, ymin, xmax, ymax = self.GetRange()
         dx, dy = (xmax - xmin) / self.GetNpx(), (ymax - ymin) / self.GetNpy()
         cells = []
         for j in range(self.GetNpy()):
             for i in range(self.GetNpx()):
                 corner = [xmin + dx * i, xmin + dx * (i + 1), ymin + dy * j, ymin + dy * (j + 1)]
-                cells.append(_gauss_legendre(self._xrd, corner, 2))
-        integral = np.concatenate([[0.0], np.cumsum(np.maximum(cells, 0.0))])
+                cells.append(_gauss_legendre(self._xrd, corner, CELL_NODES))
+        negative = sum(1 for cell in cells if cell < 0)
+        if negative:
+            message("Warning", "TF2::GetRandom2",
+                    "function:%s has %d negative values: abs assumed", self.GetName(), negative)
+        integral = np.concatenate([[0.0], np.cumsum(np.abs(cells))])
         return integral / integral[-1], dx, dy
 
     def GetRandom2(self, x: Any = None, y: Any = None, rng: Any = None) -> tuple[float, float]:

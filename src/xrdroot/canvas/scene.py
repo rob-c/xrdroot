@@ -45,6 +45,7 @@ class Scene:
         "whole",
         "display",
         "solid",
+        "view3d",
     )
 
     def __init__(
@@ -86,6 +87,9 @@ class Scene:
         self.depth = 0
         #: Whether the pad drew its data in three dimensions, with a box and no frame.
         self.solid = False
+        #: The view the pad's box was drawn through, and the pad's range it set: what is
+        #: drawn in three dimensions on top of it is projected the same way.
+        self.view3d: Any = None
 
     def layer(self) -> float:
         """The next height to draw at, over everything drawn in the pad before.

@@ -228,17 +228,94 @@ class _FCNResult:
         print("\n".join(line for line in lines if not line.startswith("Chi2 ")))
 
 
+class ParameterSettings:
+    """``ROOT::Fit::ParameterSettings``: one parameter's start, step, limits and whether fixed."""
+
+    def __init__(self, name: str, value: float, step: float) -> None:
+        self._name, self._value, self._step = name, float(value), float(step)
+        self._limits: tuple[float, float] | None = None
+        self._fixed = False
+
+    def SetValue(self, value: float) -> None:
+        self._value = float(value)
+
+    def Value(self) -> float:
+        return self._value
+
+    def SetStepSize(self, step: float) -> None:
+        self._step = float(step)
+
+    def StepSize(self) -> float:
+        return self._step
+
+    def SetName(self, name: Any) -> None:
+        self._name = str(name)
+
+    def Name(self) -> str:
+        return self._name
+
+    def SetLimits(self, low: float, high: float) -> None:
+        self._limits = (float(low), float(high))
+
+    def Fix(self) -> None:
+        self._fixed = True
+
+    def Release(self) -> None:
+        self._fixed = False
+
+    def IsFixed(self) -> bool:
+        return self._fixed
+
+
+class FitConfig:
+    """``ROOT::Fit::FitConfig``: the settings of every parameter ``FitFCN`` starts from."""
+
+    def __init__(self) -> None:
+        self._settings: list[ParameterSettings] = []
+
+    def SetParamsSettings(self, npar: int, params: Any = None, errors: Any = None) -> None:
+        """``SetParamsSettings``: ``Par_i`` from each value, stepped 30% of it - or by ``errors``."""
+        values = np.zeros(int(npar)) if params is None else np.asarray(params, np.float64)
+        from ...fit.minuit import default_steps
+
+        steps = default_steps(values[: int(npar)]) if errors is None else np.asarray(errors)
+        self._settings = [ParameterSettings(f"Par_{i}", values[i], steps[i])
+                          for i in range(int(npar))]  # fmt: skip
+
+    def ParSettings(self, i: int) -> ParameterSettings:
+        return self._settings[int(i)]
+
+    def ParamsSettings(self) -> list[ParameterSettings]:
+        return self._settings
+
+    def NPar(self) -> int:
+        return len(self._settings)
+
+
 class Fitter:
     """``ROOT::Fit::Fitter``: a function minimised - ``FitFCN`` - with Minuit's MIGRAD."""
 
     def __init__(self) -> None:
         self._result: Any = None
+        self._fcn: Any = None
+        self._config = FitConfig()
 
-    def FitFCN(self, fcn: Any, params: Any = None, *rest: Any) -> bool:
+    def Config(self) -> FitConfig:
+        return self._config
+
+    def SetFCN(self, fcn: Any, params: Any = None, *rest: Any) -> bool:
+        """``SetFCN(fcn, start)``: what ``FitFCN()`` minimises, and from where."""
+        self._fcn = fcn
+        self._config.SetParamsSettings(fcn.NDim(), params)
+        return True
+
+    def FitFCN(self, fcn: Any = None, params: Any = None, *rest: Any) -> bool:
         """``FitFCN(fcn, start)``: ``fcn`` minimised from ``start``; the result in ``Result()``."""
-        start = np.asarray(params if params is not None else np.zeros(fcn.NDim()), dtype=np.float64)
-        names = [f"Par_{index}" for index in range(len(start))]
-        found = _minimised(fcn, start, names)
+        if fcn is not None:
+            self.SetFCN(fcn, params)
+        if self._fcn is None:
+            raise ValueError("FitFCN() minimises the function SetFCN gave it, and none was given")
+        found = _minimised(self._fcn, self._config.ParamsSettings())
         found.chi2 = -1.0
         self._result = _FCNResult(found)
         return bool(found.valid)
@@ -247,15 +324,21 @@ class Fitter:
         return self._result
 
 
-def _minimised(fcn: Any, start: Any, names: list[str]) -> Any:
-    """MIGRAD on ``fcn`` from ``start`` - with its gradient, when it is a ``GradFunctor``."""
+def _minimised(fcn: Any, settings: list[ParameterSettings]) -> Any:
+    """MIGRAD on ``fcn`` from the settings - with its gradient, when it is a ``GradFunctor``."""
     from ...fit import minuit as core
 
+    start = np.array([one.Value() for one in settings])
+    names = [one.Name() for one in settings]
+    steps = np.array([one.StepSize() for one in settings])
+    limits = [one._limits for one in settings]
+    fixed = [one.IsFixed() for one in settings]
     if not isinstance(fcn, GradFunctor):
-        return core.minimize(lambda p: float(fcn(p)), start, names=names)
+        return core.minimize(lambda p: float(fcn(p)), start, names=names, errors=steps,
+                             limits=limits, fixed=fixed)  # fmt: skip
     made = _minuit(fcn, start, names)
     made.tol, made.strategy = core.TOLERANCE, core.STRATEGY
-    made.errors = core.default_steps(start)
+    made.errors = steps
     made.migrad(iterate=1, use_simplex=False)
     return core._result(made, names, False, int(made.nfcn))
 
@@ -264,6 +347,8 @@ class _FitNamespace:
     """``ROOT.Fit``: the ``ROOT::Fit`` namespace."""
 
     Fitter = Fitter
+    FitConfig = FitConfig
+    ParameterSettings = ParameterSettings
 
 
 #: ``ROOT.Fit``.

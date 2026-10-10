@@ -33,7 +33,8 @@ from ..fillrandom import bin_edges, first_last
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from ..hist import Axis, Histogram
 
-__all__ = ["DataOptions", "FitData", "from_histogram", "from_graphs", "NO_ERROR", "VALUE_ERROR"]
+__all__ = ["DataOptions", "FitData", "from_histogram", "from_graphs", "from_graph2d", "NO_ERROR",
+           "VALUE_ERROR"]  # fmt: skip
 
 #: ``BinData::ErrorType``, in ROOT's order, which a multigraph takes the largest of.
 NO_ERROR, VALUE_ERROR, COORD_ERROR, ASYM_ERROR = 0, 1, 2, 3
@@ -296,3 +297,56 @@ def from_graphs(graphs: list[Any], options: DataOptions, span: Any) -> FitData:
     for graph, found in zip(graphs, bars, strict=False):
         _graph_points(graph, found, data, (options, kind, span))
     return _joined({name: np.concatenate(parts) for name, parts in data.items()}, kind, options)
+
+
+# -- points in space ------------------------------------------------------------------------
+
+
+def _graph2d_kind(errors: Any, options: DataOptions) -> int:
+    """A ``TGraph2D``'s kind of data: no errors, errors in z, or errors in x and y too."""
+    if errors is None or options.errors1:
+        return NO_ERROR
+    ex, ey, _ez = errors
+    if options.coord_errors and (np.any(ex > 0) or np.any(ey > 0)):
+        return COORD_ERROR
+    return VALUE_ERROR
+
+
+def _inside_spans(points: Any, spans: list[Any]) -> Any:
+    """Which points are inside every range given."""
+    inside = np.ones(len(points), dtype=bool)
+    for axis, span in enumerate(spans[:2]):
+        if span is not None:
+            inside &= (points[:, axis] >= span[0]) & (points[:, axis] <= span[1])
+    return inside
+
+
+def from_graph2d(graph: Any, options: DataOptions, spans: list[Any]) -> FitData:
+    """``FillData`` for a ``TGraph2D``: each point in order, its height and the errors kept.
+
+    A graph without errors is fitted with errors of one; with errors in z
+    only, a point of none is dropped as a histogram's empty bin is; with
+    errors in x or y too, the chi-square is the effective variance's and a
+    point is dropped only when it has no error at all.
+    """
+    errors = graph.errors
+    kind = _graph2d_kind(errors, options)
+    options.errors1 = kind == NO_ERROR
+    points = np.column_stack([graph.x, graph.y])
+    keep = _inside_spans(points, spans)
+    made = FitData(x=points, y=np.asarray(graph.z, dtype=np.float64), error=None, kind=kind,
+                   options=options)  # fmt: skip
+    if kind == VALUE_ERROR:
+        kept, made.error = _adjusted(options, errors[2], made.y)
+        keep &= kept
+    elif kind == COORD_ERROR:
+        made.xerr = np.maximum(np.column_stack(errors[:2]), 0.0)
+        made.error = np.maximum(errors[2], 0.0)
+        keep &= ~(np.all(made.xerr <= 0, axis=1) & (made.error <= 0))
+    made.x, made.y = made.x[keep], made.y[keep]
+    if made.error is not None:
+        made.error = made.error[keep]
+    if made.xerr is not None:
+        made.xerr = made.xerr[keep]
+    _sums(made)
+    return made

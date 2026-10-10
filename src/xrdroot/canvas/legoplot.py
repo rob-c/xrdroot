@@ -203,10 +203,15 @@ def _one_axis(pad: _Pad, h: Any, index: int, ends: Any, chopt: str,
     draw_painted(pad.scene, paint_axis(axis, pixel), axis)
 
 
-def paint_three_d(scene: Scene, h: Any, option: str) -> None:
-    """A two-dimensional histogram as ``LEGO`` or ``SURF``, with its box and axes."""
+def paint_three_d(scene: Scene, h: Any, option: str, cells: bool = True) -> None:
+    """A two-dimensional histogram as ``LEGO`` or ``SURF``, with its box and axes - or,
+    without ``cells``, just the box and axes, which a ``TGraph2D`` draws its points in:
+    ``PaintTriangles``'s box, from the histogram's minimum to its maximum, no margin."""
     scene.ax.set_axis_off()  # no frame: the box is drawn instead
     table = _Table(h)
+    if not cells:
+        table.zmin, table.ztop = float(lookup(h, "fMinimum")), float(lookup(h, "fMaximum"))
+        table.zmax = table.ztop
     theta = float(scene.pad.get("fTheta", THETA))
     phi = float(scene.pad.get("fPhi", PHI))
     view = View3D(*table.box(), -90 - phi, 90 - theta)
@@ -217,9 +222,10 @@ def paint_three_d(scene: Scene, h: Any, option: str) -> None:
     look = (int(lookup(h, "fLineColor", 1)), int(lookup(h, "fLineWidth", 1)),
             int(lookup(h, "fLineStyle", 1)))  # fmt: skip
     nx, ny = table.values.shape
-    if three_d_kind(option) == "LEGO":
+    scene.view3d = (view, pad)
+    if cells and three_d_kind(option) == "LEGO":
         lego_cells(screen, nx, ny, table.block, look)
-    else:
+    elif cells:
         surface_cells(screen, nx - 1, ny - 1, table.square, look)
     back_box(screen)
     _draw_segments(pad, screen.segments)

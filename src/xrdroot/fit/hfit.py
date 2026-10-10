@@ -38,6 +38,7 @@ from .data import (
     NO_ERROR,
     DataOptions,
     FitData,
+    from_graph2d,
     from_graphs,
     from_histogram,
 )
@@ -60,11 +61,14 @@ POLYNOMIAL = 300
 def _target(obj: Any) -> tuple[str, int]:
     """What is fitted - ``"histogram"``, ``"graph"`` or ``"multigraph"`` - and its dimension."""
     from ..graph import Graph
+    from ..graph2d import Graph2D
     from ..hist import Histogram
     from ..stacks import MultiGraph
 
     if isinstance(obj, Histogram):
         return "histogram", len(obj.axes)
+    if isinstance(obj, Graph2D):
+        return "graph2d", 2
     if isinstance(obj, (Graph, MultiGraph)):
         return ("graph" if isinstance(obj, Graph) else "multigraph"), 1
     raise TypeError(f"a fit is made to a histogram, a profile or a graph, not {type(obj).__name__}")
@@ -74,6 +78,8 @@ def _extent(obj: Any, kind: str) -> list[tuple[float, float]]:
     """The object's own span along each axis, which a formula given as text is defined over."""
     if kind == "histogram":
         return [(axis.low, axis.high) for axis in obj.axes]
+    if kind == "graph2d":
+        return [obj.extent(0), obj.extent(1)]
     graphs = [obj] if kind == "graph" else list(obj)
     xs = np.concatenate([graph.x for graph in graphs] + [np.zeros(0)])
     return [(float(xs.min()), float(xs.max())) if len(xs) else (0.0, 1.0)]
@@ -181,6 +187,8 @@ def _with_function_range(spans: list[Any], function: Function) -> list[Any]:
 def _points(obj: Any, kind: str, options: DataOptions, spans: list[Any]) -> FitData:
     if kind == "histogram":
         return from_histogram(obj, options, spans)
+    if kind == "graph2d":
+        return from_graph2d(obj, options, spans)
     graphs = [obj] if kind == "graph" else list(obj)
     return from_graphs(graphs, options, spans[0])
 
@@ -375,6 +383,8 @@ def _drawing_range(obj: Any, kind: str, spans: list[Any]) -> list[tuple[float, f
         ]
     elif kind == "graph":
         own = [_graph_range(obj)]
+    elif kind == "graph2d":
+        own = [obj.extent(0), obj.extent(1)]
     else:
         own = [_multigraph_range(obj)]
     return [span if span is not None else mine for span, mine in zip(spans, own, strict=False)]

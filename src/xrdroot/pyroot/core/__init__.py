@@ -41,6 +41,7 @@ FAMILIES = (
     "fits",
     "fitters",
     "graphs",
+    "graphs2d",
     "efficiencies",
     "files",
     "rootns",

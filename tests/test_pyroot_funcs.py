@@ -332,3 +332,16 @@ def test_a_tf2s_contour_levels_are_kept_and_drawn(monkeypatch: pytest.MonkeyPatc
     assert drawers._function_levels(f2._xrd.members) == (0.1, 0.7)
     assert drawers._function_levels({}) == ()
     ROOT.TF2("other", "x", -1, 1, -1, 1).SetContourLevel(0, 1.0)
+
+
+def test_a_function_negative_somewhere_is_sampled_by_its_absolute_value(capsys):
+    f2 = ROOT.TF2("dip", "x*y", -1, 1, 0, 1)
+    f2.SetNpx(2)
+    f2.SetNpy(1)
+    first = f2.GetRandom2(None, None, ROOT.TRandom3(5))
+    again = f2.GetRandom2(None, None, ROOT.TRandom3(5))
+    assert first == again  # the table made once, for the function as it is
+    warned = capsys.readouterr().err
+    assert warned.count("function:dip has 1 negative values: abs assumed") == 1
+    f2.SetParameters()  # nothing changes: the same table
+    assert f2.GetRandom2(None, None, ROOT.TRandom3(5)) == first

@@ -76,8 +76,21 @@ def confidence_intervals(result: Any, obj: Any, cl: float = 0.95) -> None:
         for i, (x, y, half) in enumerate(zip(xs, values, halves, strict=False)):
             obj.SetPoint(i, x, y)
             obj.SetPointError(i, 0.0, half)
+    elif obj.ClassName() == "TGraph2DErrors":
+        _into_graph2d(result, obj, cl)
     else:
         message("Error", "GetConfidenceIntervals", "This object type is not supported")
+
+
+def _into_graph2d(result: Any, graph: Any, cl: float) -> None:
+    """Each point keeps its ``x`` and ``y``, and takes the function's value and the band's
+    half-width as its ``z`` and its z error."""
+    count = graph.GetN()
+    xs, ys = (np.asarray(values, dtype=np.float64)[:count] for values in (graph.GetX(), graph.GetY()))
+    values, halves = band(result, np.column_stack([xs, ys]), cl)
+    for i in range(count):
+        graph.SetPoint(i, xs[i], ys[i], values[i])
+        graph.SetPointError(i, 0.0, 0.0, halves[i])
 
 
 def _into_histogram(result: Any, h: Any, cl: float) -> None:

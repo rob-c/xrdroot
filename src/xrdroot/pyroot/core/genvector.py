@@ -12,6 +12,7 @@ templates do. ROOT's ``Eta`` of a vector along the beam is ``z ± 22756``.
 
 from __future__ import annotations
 
+import functools
 import math
 from collections.abc import Callable
 from typing import Any, ClassVar
@@ -152,6 +153,13 @@ for _name, _others in ALIASES.items():
         DERIVED_4D[_other] = DERIVED_4D[_name]
 
 
+@functools.lru_cache(maxsize=None)
+def _own_index(names: tuple[str, ...], name: str) -> int | None:
+    """Where ``name`` - or a name it is another word for - is among a system's coordinates."""
+    own = [coord for coord in names if coord == name or name in ALIASES.get(coord, ())]
+    return names.index(own[0]) if own else None
+
+
 def _getter(name: str) -> Any:
     def get(self: Any) -> float:
         return float(self._get(name))
@@ -168,6 +176,10 @@ def _setter(name: str) -> Any:
     return set_
 
 
+#: The coordinate systems a vector's own coordinates are the Cartesian ones in.
+CARTESIAN = frozenset({"PxPyPzE4D", "Cartesian3D", "Cartesian2D"})
+
+
 class _Vector:
     """What every GenVector class shares: its own coordinates, and questions answered from them."""
 
@@ -181,21 +193,23 @@ class _Vector:
         if len(args) == 1 and isinstance(args[0], _Vector):
             self._set_cartesian(args[0]._cartesian())
         else:
-            given = [float(value) for value in args] or [0.0] * len(self.NAMES)
-            self._c: Any = tuple(given)
+            self._c: Any = tuple(map(float, args)) if args else (0.0,) * len(self.NAMES)
 
     def _cartesian(self) -> Any:
         """The vector's Cartesian components, worked out from its own."""
+        if self.SYSTEM in CARTESIAN:
+            return self._c
         return self.SYSTEMS[self.SYSTEM][1](self._c)
 
     def _set_cartesian(self, x: Any) -> None:
         """Make the vector the one with Cartesian components ``x``, in its own coordinates."""
-        self._c = self.SYSTEMS[self.SYSTEM][2](tuple(float(v) for v in x))
+        given = tuple(map(float, x))
+        self._c = given if self.SYSTEM in CARTESIAN else self.SYSTEMS[self.SYSTEM][2](given)
 
     def _get(self, name: str) -> float:
-        own = [coord for coord in self.NAMES if coord == name or name in ALIASES.get(coord, ())]
-        if own:
-            return float(self._c[self.NAMES.index(own[0])])
+        at = _own_index(self.NAMES, name)
+        if at is not None:
+            return float(self._c[at])
         return float(self.DERIVED[name](self._cartesian()))
 
     def _set(self, name: str, value: float) -> None:
@@ -245,18 +259,19 @@ class _Vector:
 
     def _made(self, x: Any) -> Any:
         made = type(self).__new__(type(self))
-        made._set_cartesian(tuple(x))
+        if self.SYSTEM in CARTESIAN:  # the components are the coordinates: kept as they are
+            made._c = tuple(x)
+            return made
+        made._set_cartesian(x)
         return made
 
     def __add__(self, other: _Vector) -> Any:
-        return self._made(
-            a + b for a, b in zip(self._cartesian(), other._cartesian(), strict=False)
-        )
+        return self._made([a + b for a, b in zip(self._cartesian(), other._cartesian(),
+                                                 strict=False)])  # fmt: skip
 
     def __sub__(self, other: _Vector) -> Any:
-        return self._made(
-            a - b for a, b in zip(self._cartesian(), other._cartesian(), strict=False)
-        )
+        return self._made([a - b for a, b in zip(self._cartesian(), other._cartesian(),
+                                                 strict=False)])  # fmt: skip
 
     def __neg__(self) -> Any:
         return self._made(-a for a in self._cartesian())
@@ -438,7 +453,7 @@ DERIVED_3D: dict[str, Callable[[Any], float]] = {
     "Y": lambda x: x[1],
     "Z": lambda x: x[2],
     "R": _r3,
-    "Mag2": lambda x: _r3(x) ** 2,
+    "Mag2": lambda x: x[0] * x[0] + x[1] * x[1] + x[2] * x[2],  # as ROOT sums it: no root
     "Rho": lambda x: math.hypot(x[0], x[1]),
     "Perp2": lambda x: x[0] ** 2 + x[1] ** 2,
     "Eta": lambda x: eta_from(math.hypot(x[0], x[1]), x[2]),
