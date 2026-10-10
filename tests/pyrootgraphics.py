@@ -47,7 +47,7 @@ def graph(name: str = "g", title: str = "A graph") -> Wrapped:
 @pytest.fixture(autouse=True)
 def fresh_session():
     """No canvas, the Modern style, no colours made, no book open; warnings are errors."""
-    from xrdroot.pyroot.graphics import colors, output, pads, style
+    from xrdroot.pyroot.graphics import colors, gradients, output, pads, style
 
     pads.CANVASES.clear()
     pads.set_current(None)
@@ -55,6 +55,7 @@ def fresh_session():
     style._CURRENT[0] = style.TStyle("Modern")
     colors.MADE.clear()
     colors.ALPHA.clear()
+    gradients.GRADIENTS.clear()
     colors.OBJECTS.clear()
     colors.LAID.clear()
     with warnings.catch_warnings():

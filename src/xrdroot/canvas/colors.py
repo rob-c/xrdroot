@@ -31,18 +31,25 @@ class Colors:
     (1.0, 0.0, 0.0)
     """
 
-    __slots__ = ("saved", "palette")
+    __slots__ = ("saved", "palette", "gradients")
 
     def __init__(self) -> None:
         #: The colours the canvas saved, by index, over ROOT's own.
         self.saved: dict[int, RGB] = {}
         #: The indices of the palette the canvas was drawn with, if it saved one.
         self.palette: list[int] = []
+        #: The gradients the canvas saved, by index: shades laid over what is filled with them.
+        self.gradients: dict[int, Any] = {}
 
     def adopt(self, colors: list[Any]) -> None:
-        """Take the ``TColor`` objects a canvas saved, each by its number."""
+        """Take the ``TColor`` objects a canvas saved, each by its number - a gradient among
+        them both by its first stop's colour and as the shade it is."""
+        from .gradient import CLASSES, gradient_of
+
         for color in colors:
             number = int(color.get("fNumber", -1))
+            if number >= 0 and getattr(color, "classname", "") in CLASSES:
+                self.gradients[number] = gradient_of(color)
             if number >= 0:
                 self.saved[number] = (
                     float(color.get("fRed", 0.0)),

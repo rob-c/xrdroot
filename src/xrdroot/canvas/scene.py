@@ -46,6 +46,7 @@ class Scene:
         "display",
         "solid",
         "view3d",
+        "shading",
     )
 
     def __init__(
@@ -90,6 +91,9 @@ class Scene:
         #: The view the pad's box was drawn through, and the pad's range it set: what is
         #: drawn in three dimensions on top of it is projected the same way.
         self.view3d: Any = None
+        #: The fill colour of the data being painted, for its areas to be shaded by when it
+        #: is a gradient; a picture's layers carry the colour resolved, not its index.
+        self.shading: Any = None
 
     def layer(self) -> float:
         """The next height to draw at, over everything drawn in the pad before.

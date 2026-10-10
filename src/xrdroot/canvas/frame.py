@@ -374,20 +374,16 @@ def _frame(scene: Scene) -> None:
     """The frame's fill behind the data, and its outline in the frame's line style."""
     from matplotlib.patches import Rectangle
 
+    from .gradient import shade
+
     style = _frame_style(scene.pad)
     fills, _hatch, alpha = styles.fill(style["fFillStyle"])
     if fills:
-        scene.ax.add_artist(
-            Rectangle(
-                (0, 0),
-                1,
-                1,
-                transform=scene.ax.transAxes,
-                zorder=-50,
-                facecolor=scene.colors.rgba(style["fFillColor"], alpha),
-                edgecolor="none",
-            )
-        )
+        backdrop = Rectangle((0, 0), 1, 1, transform=scene.ax.transAxes, zorder=-50,
+                             facecolor=scene.colors.rgba(style["fFillColor"], alpha),
+                             edgecolor="none")  # fmt: skip
+        scene.ax.add_artist(backdrop)
+        shade(scene, backdrop, style["fFillColor"])
     from .raster import add_line, frame_clip
 
     for spine in scene.ax.spines.values():

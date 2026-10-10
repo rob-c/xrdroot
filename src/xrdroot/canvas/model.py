@@ -118,12 +118,16 @@ class Primitive:
         return f"<{self.classname} {self.name!r}>" if self.name else f"<{self.classname}>"
 
 
+#: What a colour table holds: colours, and the gradients made among them.
+COLOR_CLASSES = frozenset({"TColor", "TLinearGradient", "TRadialGradient"})
+
+
 def _is_colors(entry: Any) -> bool:
     """Whether a list in a pad is one of the colour tables ROOT saves there."""
     return (
         isinstance(entry, list)
         and bool(entry)
-        and all(getattr(one, "classname", "") == "TColor" for one in entry)
+        and all(getattr(one, "classname", "") in COLOR_CLASSES for one in entry)
     )
 
 

@@ -215,6 +215,14 @@ def patch_style(scene: Scene, prim: Any, outline: bool = True) -> dict[str, Any]
     return made
 
 
+def _filled(scene: Scene, prim: Any, patch: Any) -> None:
+    """``patch`` onto the axes, and shaded over if its fill colour is a gradient."""
+    from .gradient import shade
+
+    scene.ax.add_artist(patch)
+    shade(scene, patch, lookup(prim, "fFillColor", 0))
+
+
 def _hatch_colour() -> str:
     """The keyword a hatch takes its colour from in this matplotlib.
 
@@ -237,17 +245,11 @@ def box(scene: Scene, prim: Primitive, _option: str) -> None:
     from matplotlib.patches import Rectangle
 
     xs, ys = _ends(prim)
-    scene.ax.add_artist(
-        Rectangle(
-            (min(xs), min(ys)),
-            abs(xs[1] - xs[0]),
-            abs(ys[1] - ys[0]),
-            transform=scene.ax.transData,
-            clip_on=False,
-            zorder=scene.layer(),
-            **patch_style(scene, prim, outline=scene.fill(prim) is None),
-        )
-    )
+    _filled(scene, prim, Rectangle(
+        (min(xs), min(ys)), abs(xs[1] - xs[0]), abs(ys[1] - ys[0]), transform=scene.ax.transData,
+        clip_on=False, zorder=scene.layer(),
+        **patch_style(scene, prim, outline=scene.fill(prim) is None),
+    ))  # fmt: skip
 
 
 def _outline(prim: Primitive) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
@@ -271,16 +273,10 @@ def ellipse(scene: Scene, prim: Primitive, _option: str) -> None:
     from matplotlib.patches import Polygon
 
     xs, ys = _outline(prim)
-    scene.ax.add_artist(
-        Polygon(
-            np.column_stack([xs, ys]),
-            closed=True,
-            transform=scene.ax.transData,
-            clip_on=False,
-            zorder=scene.layer(),
-            **patch_style(scene, prim),
-        )
-    )
+    _filled(scene, prim, Polygon(
+        np.column_stack([xs, ys]), closed=True, transform=scene.ax.transData, clip_on=False,
+        zorder=scene.layer(), **patch_style(scene, prim),
+    ))  # fmt: skip
 
 
 def marker(scene: Scene, prim: Primitive, _option: str) -> None:
@@ -320,16 +316,10 @@ def polyline(scene: Scene, prim: Primitive, option: str) -> None:
     xs, ys = _points(prim)
     where = scene.where(prim.ndc)
     if "F" in (str(prim.get("fOption", "")) + option).upper():
-        scene.ax.add_artist(
-            Polygon(
-                np.column_stack([xs, ys]),
-                closed=True,
-                transform=where,
-                clip_on=False,
-                zorder=scene.layer(),
-                **patch_style(scene, prim, outline=False),
-            )
-        )
+        _filled(scene, prim, Polygon(
+            np.column_stack([xs, ys]), closed=True, transform=where, clip_on=False,
+            zorder=scene.layer(), **patch_style(scene, prim, outline=False),
+        ))  # fmt: skip
         return
     # Its outline is whole pixels, as ``TImageDump`` draws a polyline - and a ``TLine``.
     _line_of(
@@ -365,16 +355,11 @@ def crown(scene: Scene, prim: Primitive, _option: str) -> None:
     inner, outer = float(prim.get("fR1", 0.0)), float(prim.get("fR2", 0.0))
     xs = np.concatenate([outer * np.cos(turn), inner * np.cos(turn[::-1])])
     ys = np.concatenate([outer * np.sin(turn), inner * np.sin(turn[::-1])])
-    scene.ax.add_artist(
-        Polygon(
-            np.column_stack([xs + float(prim.get("fX1", 0.0)), ys + float(prim.get("fY1", 0.0))]),
-            closed=True,
-            transform=scene.ax.transData,
-            clip_on=False,
-            zorder=scene.layer(),
-            **patch_style(scene, prim),
-        )
-    )
+    _filled(scene, prim, Polygon(
+        np.column_stack([xs + float(prim.get("fX1", 0.0)), ys + float(prim.get("fY1", 0.0))]),
+        closed=True, transform=scene.ax.transData, clip_on=False, zorder=scene.layer(),
+        **patch_style(scene, prim),
+    ))  # fmt: skip
 
 
 #: How each of these classes draws.

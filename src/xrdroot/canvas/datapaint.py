@@ -82,6 +82,10 @@ def _fill(scene: Scene, pixels: np.ndarray[Any, Any], look: Look) -> None:
         polygon.set_edgecolor(look.fill)
     scene.ax.add_artist(polygon)
     polygon.set_clip_path(scene.ax.patch)
+    if scene.shading is not None:
+        from .gradient import shade
+
+        shade(scene, polygon, scene.shading)
 
 
 # -- a histogram's outline ---------------------------------------------------------------------

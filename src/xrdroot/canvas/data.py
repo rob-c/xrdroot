@@ -136,7 +136,18 @@ def _paint(scene: Scene, obj: Any, option: str) -> None:
             f"dimensions, and a pad's axes have two)"
         )
         drawn = picture(obj, _plain(option), _saved_colours(scene, obj))
-    _draw(scene, obj, drawn)
+    scene.shading = _gradient_fill(scene, obj)
+    try:
+        _draw(scene, obj, drawn)
+    finally:
+        scene.shading = None
+
+
+def _gradient_fill(scene: Scene, obj: Any) -> int | None:
+    """The object's fill colour when it is a gradient the canvas saved, for its areas to be
+    shaded by; the picture's layers carry only the colour it resolves to."""
+    index = lookup(obj, "fFillColor")
+    return int(index) if index is not None and int(index) in scene.colors.gradients else None
 
 
 def _palette(scene: Scene, mesh: Any, h: Any) -> None:

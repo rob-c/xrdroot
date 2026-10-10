@@ -35,7 +35,7 @@ __all__ = ["DATA", "data_of", "frame_box", "frame_of", "model", "prepare"]
 #: The classes a pad draws as data, as :mod:`xrdroot.canvas` does.
 DATA = (Histogram, Graph, MultiGraph, Stack, Function, Efficiency)
 #: Members that hold drawing classes of their own, which become primitives too.
-HELD = ("fLines", "fPrimitives")
+HELD = ("fLines", "fPrimitives", "fPieSlices")
 
 
 def data_of(obj: Any) -> Any:
@@ -165,10 +165,13 @@ def model(pad: TPad) -> Pad:
 
 def _colour_tables() -> list[list[Primitive]]:
     """The colours made in the session and the palette, as a saved canvas carries them."""
+    from .gradients import GRADIENTS
+
     made = [
         Primitive("TColor", {"fNumber": n, "fRed": r, "fGreen": g, "fBlue": b})
-        for n, (r, g, b) in sorted(colors.MADE.items())
-    ]
+        for n, (r, g, b) in sorted(colors.MADE.items()) if n not in GRADIENTS
+    ] + [Primitive(type(g).__name__, g.members()) for n, g in sorted(GRADIENTS.items())
+         if n in colors.MADE]  # fmt: skip
     palette = gStyle.custom_palette()
     if palette is None:
         return [made] if made else []

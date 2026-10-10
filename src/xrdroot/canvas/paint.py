@@ -28,6 +28,7 @@ from .image import IMAGES
 from .legend import LEGEND
 from .model import Canvas, Pad, Primitive
 from .paves import PAVES
+from .pie import PIE
 from .scene import Scene
 from .shapes import SHAPES
 
@@ -40,7 +41,7 @@ QUIET = frozenset({"TFrame", "TPaletteAxis", "TLegendEntry", "TColor"})
 BEVEL = 0.4
 
 #: Every drawing class this draws, and how.
-PAINTERS = {**SHAPES, **PAVES, **LEGEND, **GAXIS, **GEOMETRY, **IMAGES}
+PAINTERS = {**SHAPES, **PAVES, **LEGEND, **GAXIS, **GEOMETRY, **IMAGES, **PIE}
 
 
 class CanvasWarning(UserWarning):
@@ -86,22 +87,16 @@ def _background(scene: Scene) -> None:
     """The pad's fill, under everything drawn in it, and its border."""
     from matplotlib.patches import Rectangle
 
+    from .gradient import shade
+
     pad = scene.pad
     fills, _hatch, alpha = styles.fill(pad.get("fFillStyle", 1001))
     face = scene.colors.rgb(pad.get("fFillColor", 0))
     if fills:
-        scene.ax.add_artist(
-            Rectangle(
-                (0, 0),
-                1,
-                1,
-                transform=scene.ndc,
-                clip_on=False,
-                zorder=-100,
-                facecolor=(*face, alpha),
-                edgecolor="none",
-            )
-        )
+        backdrop = Rectangle((0, 0), 1, 1, transform=scene.ndc, clip_on=False, zorder=-100,
+                             facecolor=(*face, alpha), edgecolor="none")  # fmt: skip
+        scene.ax.add_artist(backdrop)
+        shade(scene, backdrop, pad.get("fFillColor", 0))
     mode, size = int(pad.get("fBorderMode", 0)), int(pad.get("fBorderSize", 0))
     if mode and size > 0:
         _bevel(scene, mode, size, face)

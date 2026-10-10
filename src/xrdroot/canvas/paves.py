@@ -53,13 +53,14 @@ def text_width(scene: Scene, text: str, size: float, font: int) -> float:
     return formula_form(text, size, font, scene.whole, scene.height).width / scene.pixels[0]
 
 
-def _polygon(scene: Scene, points: list[tuple[float, float]], **style: Any) -> None:
+def _polygon(scene: Scene, points: list[tuple[float, float]], **style: Any) -> Any:
     """A filled polygon through points of the pad in NDC, over what the pad drew before."""
     from matplotlib.patches import Polygon
 
     shape = Polygon(points, closed=True, transform=scene.ndc, clip_on=False, **style)
     shape.set_zorder(scene.layer())
     scene.ax.add_artist(shape)
+    return shape
 
 
 def _outline(scene: Scene, prim: Any, points: list[tuple[float, float]]) -> None:
@@ -80,8 +81,10 @@ def _box(scene: Scene, prim: Any, corners: Corners, outlined: bool) -> None:
     fills, _hatch, _alpha = styles.fill(fill_style)
     square = [(x1, y1), (x1, y2), (x2, y2), (x2, y1)]
     if fills:
+        from .gradient import shade
+
         made = patch_style(scene, prim, outline=False)
-        _polygon(scene, square, **made)
+        shade(scene, _polygon(scene, square, **made), lookup(prim, "fFillColor", 0))
     if outlined or 0 <= fill_style < 1000:
         _outline(scene, prim, [*square, square[0]])
 

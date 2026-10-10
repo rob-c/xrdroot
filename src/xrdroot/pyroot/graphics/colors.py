@@ -285,6 +285,22 @@ class TColor:
         return free_index()
 
     @staticmethod
+    def GetLinearGradient(angle: float, colors: Any, positions: Any = ()) -> int:
+        """``GetLinearGradient(angle, colors[, positions])``: a new colour shading along
+        ``angle`` degrees across whatever it fills; see :mod:`.gradients`."""
+        from .gradients import linear_gradient
+
+        return linear_gradient(angle, colors, positions)
+
+    @staticmethod
+    def GetRadialGradient(radius: float, colors: Any, positions: Any = ()) -> int:
+        """``GetRadialGradient(r, colors[, positions])``: a new colour shading out from the
+        middle of whatever it fills; see :mod:`.gradients`."""
+        from .gradients import radial_gradient
+
+        return radial_gradient(radius, colors, positions)
+
+    @staticmethod
     def CreateGradientColorTable(
         number: int,
         stops: Sequence[float],

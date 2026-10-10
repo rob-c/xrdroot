@@ -22,10 +22,12 @@ from .canvas import TCanvas
 from .colors import PALETTE_NUMBERS, TColor
 from .compare import compare_images
 from .decorations import TFrame
+from .gradients import TColorGradient, TLinearGradient, TRadialGradient
 from .legend import TLegend, TLegendEntry
 from .output import close_books
 from .pads import TPad, gPad
 from .paves import TPave, TPaveLabel, TPaveStats, TPavesText, TPaveText
+from .pie import TPie, TPieSlice
 from .shapes import (
     TArc,
     TArrow,
@@ -45,13 +47,13 @@ __all__ = [
     # pads
     "TCanvas", "TPad", "gPad", "TFrame",
     # styles and colours
-    "TStyle", "gStyle", "TColor",
+    "TStyle", "gStyle", "TColor", "TColorGradient", "TLinearGradient", "TRadialGradient",
     # text and paves
     "TText", "TLatex", "TMathText", "TPave", "TPaveText", "TPavesText", "TPaveLabel", "TPaveStats",
     "TLegend", "TLegendEntry", "TGaxis",
     # shapes
     "TLine", "TArrow", "TBox", "TWbox", "TEllipse", "TArc", "TCrown", "TMarker",
-    "TPolyLine", "TPolyMarker",
+    "TPolyLine", "TPolyMarker", "TPie", "TPieSlice",
     # the palettes by name
     *PALETTE_NUMBERS,
     # for the harness and gROOT
