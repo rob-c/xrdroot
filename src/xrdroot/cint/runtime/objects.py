@@ -71,7 +71,7 @@ def _flat(items: Any) -> list[Any]:
     return [items]
 
 
-def array(ctype: str, shape: Any, init: Any = None, make: Callable[[], Any] | None = None) -> Any:
+def array(ctype: str, shape: Any, init: Any = None, make: Callable[..., Any] | None = None) -> Any:
     """A C array of ``ctype`` - zeros, or ``init`` padded with zeros as C pads it.
 
     ``shape`` is a length or a tuple of them; ``make`` builds each element of
@@ -96,11 +96,12 @@ def _fill(out: Any, init: Any) -> None:
         _fill(row, values)
 
 
-def _object_array(dims: tuple[int, ...], init: Any, make: Callable[[], Any] | None) -> list[Any]:
+def _object_array(dims: tuple[int, ...], init: Any, make: Callable[..., Any] | None) -> list[Any]:
     out = _filled(dims, make or (lambda: None))
-    if init is not None:
-        for index, value in enumerate(list(init)[: dims[0]]):
-            out[index] = value
+    for index, value in enumerate(list(init or ())[: dims[0]]):
+        # ``TString names[2] = {"a", "b"}``: each literal made into the element's class.
+        literal = isinstance(value, (str, int, float))
+        out[index] = make(value) if make is not None and literal else value
     return out
 
 

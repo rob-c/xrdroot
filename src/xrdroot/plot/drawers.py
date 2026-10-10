@@ -26,7 +26,7 @@ from ..hist import Histogram
 from .attributes import found
 from .binned import Binned, binned_layers
 from .grid import Grid, grid_layers
-from .model import Cloud, Curve, Frame, Points
+from .model import Cloud, Curve, Dots, Frame, Points
 from .options import Chosen, choose
 from .request import Request, styled
 from .scatter import Scatter, scatter_layers
@@ -219,6 +219,10 @@ def _limits(members: Any) -> tuple[float | None, float | None]:
 
 
 def _grid(histogram: Histogram, request: Request) -> tuple[list[Any], Frame]:
+    if request.chosen.candle:
+        from .candleplot import candle_layers
+
+        return candle_layers(histogram, request), titles(histogram, histogram.title)
     chosen = _default_grid(request.chosen)
     scale = _normalised(histogram, chosen)
     grid = Grid(
@@ -370,3 +374,38 @@ def kind_of(obj: Any) -> str:
     if isinstance(obj, Efficiency):
         return {1: "graph", 2: HISTOGRAM_KINDS[2]}.get(len(obj.axes), HISTOGRAM_KINDS[3])
     return HISTOGRAM_KINDS[2] if obj.dimensions == 2 else "function"
+
+
+# -- scatter plots -----------------------------------------------------------------------------
+
+
+def _shaded(fractions: Any, palette: Any) -> tuple[str, ...]:
+    """Each point's colour from the palette, by its fraction along it."""
+    from .colors import PALETTES
+    from .colors import palette as named
+
+    if callable(palette):  # a colour map, as a canvas hands its saved palette over
+        return tuple(_hex(palette(float(t))) for t in fractions)
+    shades = named(palette) or PALETTES["bird"]
+    return tuple(shades[round(float(t) * (len(shades) - 1))] for t in fractions)
+
+
+def _hex(rgba: Any) -> str:
+    """A colour map's ``(r, g, b, a)`` as ``#rrggbb``."""
+    return "#" + "".join(f"{round(float(channel) * 255):02x}" for channel in rgba[:3])
+
+
+def scatterplot(obj: Any, request: Request) -> tuple[list[Any], Frame]:
+    """A ``TScatter``: each point's marker in its colour and size; in space, a cloud."""
+    look = styled(obj.members, request, markers=True)
+    fractions = obj.colour_fractions()
+    frame = titles(obj.frame(), obj.frame().title or obj.title)
+    if obj.z is not None:
+        values = fractions if fractions is not None else np.zeros(len(obj))
+        return [Cloud(obj.x, obj.y, obj.z, values, request.palette)], frame
+    if fractions is None:  # no colour values: every marker the marker's own colour
+        colours, scale = (look.marker_color or "#000000",) * len(obj), None
+    else:
+        colours, scale = _shaded(fractions, request.palette), obj.colour_scale()
+    layer = Dots(obj.x, obj.y, colours, obj.marker_sizes(), look, scale, request.palette)
+    return [layer], frame

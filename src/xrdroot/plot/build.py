@@ -15,6 +15,7 @@ from ..efficiency import Efficiency
 from ..function import Function
 from ..graph import Graph
 from ..hist import Histogram
+from ..scatterplot import ScatterPlot
 from ..stacks import MultiGraph, Stack
 from . import containers, drawers
 from .attributes import frame as reframed
@@ -35,6 +36,7 @@ BUILDERS: tuple[tuple[type, Builder, str | None], ...] = (
     (Histogram, drawers.histogram, None),
     (Efficiency, drawers.efficiency, None),
     (Graph, drawers.graph, "graph"),
+    (ScatterPlot, drawers.scatterplot, "graph"),
     (Function, drawers.function, None),
 )
 

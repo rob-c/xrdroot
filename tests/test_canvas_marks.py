@@ -53,8 +53,12 @@ def test_a_shaped_marker_is_its_polygon_filled_or_outlined_and_an_unknown_one_a_
     style, corners, solid
 ):
     path, filled_in, _ = marker_path(style, 1.0)
-    assert len(path.vertices) == corners and filled_in == solid
+    # A filled polygon's path ends where it began: its last vertex only closes it.
+    assert len(path.vertices) == corners + int(solid) and filled_in == solid
     assert path.vertices.min() == -4.0 and path.vertices.max() in (3.0, 4.0)
+    if solid:
+        assert path.vertices[0].tolist() == path.vertices[-1].tolist()
+        assert len({tuple(v) for v in path.vertices.tolist()}) == corners  # none lost
 
 
 def _big_discs():

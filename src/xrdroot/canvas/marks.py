@@ -110,6 +110,8 @@ def marker_path(style: int, size: float) -> tuple[Any, bool, int]:
         return Path.make_compound_path(*lines), False, line_width(style)
     points, filled = SHAPES.get(base, SHAPES[21])
     corners = [(math.floor(x * m), math.floor(y * m)) for x, y in points]
+    if filled:  # a closed path's last vertex is its closing code, so the first comes again
+        corners.append(corners[0])
     return Path(corners, closed=filled), filled, line_width(style)
 
 

@@ -48,8 +48,6 @@ REFUSED = {
     "SPH": "spherical coordinates are not drawn here",
     "PSR": "pseudo-rapidity coordinates are not drawn here",
     "HBAR": "horizontal bars are not drawn here; B draws them upright",
-    "CANDLE": "candle plots are not drawn here",
-    "VIOLIN": "violin plots are not drawn here",
     "TRI": "Delaunay triangles are not drawn here",
     "SPEC": "the TSpectrum2Painter is not drawn here",
     "E5": "E5 and E6 ignore ROOT's own error bars; E3 is the band they draw",
@@ -66,10 +64,13 @@ REFUSED = {
 
 #: ``TEXT`` with the angle ROOT writes the numbers at, ``TEXT45`` for 45 degrees.
 _TEXT = r"TEXT(?P<angle>\d{1,2})?"
+#: ``CANDLE`` or ``VIOLIN``, along ``X`` or ``Y``, with a preset's number or the digits of
+#: ``TCandle``'s option in brackets: ``CANDLEX2``, ``VIOLINY``, ``CANDLE(112111)``.
+_CANDLE = r"(?P<candle>(?:CANDLE|VIOLIN)[XY]?(?:\d|\(\d*\))?)"
 
 _WORDS = re.compile(
     "|".join(
-        [_TEXT]
+        [_TEXT, _CANDLE]
         + [re.escape(word) for word in sorted({*SPELLINGS, *REFUSED}, key=len, reverse=True)]
     )
 )
@@ -77,7 +78,7 @@ _WORDS = re.compile(
 _HIST1 = {"SAME", "A", "HIST", "FUNC", "NORM", "AXIS", "E", "E0", "E1", "E2", "E3", "E4", "P", "L",
           "C", "B", "X0", "*", "][", "TEXT", "PLC", "PMC", "PFC"}  # fmt: skip
 _HIST2 = {"SAME", "FUNC", "NORM", "AXIS", "COL", "Z", "BOX", "CONT", "CONTL", "LEGO", "SURF",
-          "TEXT"}  # fmt: skip
+          "TEXT", "CANDLE", "VIOLIN"}  # fmt: skip
 _GRAPH = {"SAME", "A", "I", "P", "L", "C", "*", "B", "F", "2", "3", "4", "X", "Z", "PLC", "PMC",
           "PFC"}  # fmt: skip
 
@@ -100,6 +101,8 @@ class Chosen(NamedTuple):
     #: ``THistPainter``'s ``Hoption.Contour`` for the lines of ``CONT1`` (each level in its
     #: colour), ``CONT2`` (in its line style) and ``CONT3`` (all in the histogram's): 11 to 13.
     contour: int = 0
+    #: A candle or violin option as it was spelled, for ``TCandle`` to read its parts from.
+    candle: str = ""
 
     def has(self, *words: str) -> bool:
         """Does the option ask for any of ``words``?"""
@@ -131,7 +134,11 @@ def _split(option: str) -> tuple[list[tuple[str, str]], float]:
         spelling = found.group(0)
         if found.group("angle"):
             angle = float(found.group("angle"))
-        word = "TEXT" if spelling.startswith("TEXT") else SPELLINGS.get(spelling, spelling)
+        word = SPELLINGS.get(spelling, spelling)
+        if spelling.startswith("TEXT"):
+            word = "TEXT"
+        elif found.group("candle"):
+            word = spelling[:6]  # CANDLE or VIOLIN; the rest is the candle's to read
         pairs.append((spelling, word))
         at = found.end()
     return pairs, angle
@@ -156,6 +163,9 @@ def choose(option: str, kind: str) -> Chosen:
     ['COL', 'SAME', 'Z']
     """
     pairs, angle = _split(option)
+    candle = next((spelling for spelling, word in pairs if word in ("CANDLE", "VIOLIN")), "")
+    if candle:  # ROOT reads SCAT beside a candle and then pays it no mind
+        pairs = [(spelling, word) for spelling, word in pairs if spelling != "SCAT"]
     _refuse(pairs, kind)
     contour = max((CONTOURS.get(spelling, 0) for spelling, _ in pairs), default=0)
-    return Chosen(frozenset(word for _, word in pairs), angle, contour)
+    return Chosen(frozenset(word for _, word in pairs), angle, contour, candle)

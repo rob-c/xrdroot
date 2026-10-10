@@ -16,6 +16,7 @@ titles at the far end of each axis, sized as their ``TAttAxis`` says.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -25,6 +26,7 @@ from ..errors import ROOTError
 from ..function import Function
 from ..graph import Graph
 from ..hist import Histogram
+from ..scatterplot import ScatterPlot
 from ..stacks import MultiGraph, Stack
 from . import styles
 from .model import Pad, lookup
@@ -54,7 +56,7 @@ def owner(pad: Pad) -> tuple[Any, str] | None:
     """What draws a pad's frame: the first histogram not drawn ``SAME``, or graph drawn ``A``."""
     for obj, option in pad.primitives:
         upper = option.upper()
-        if isinstance(obj, (Graph, MultiGraph)):
+        if isinstance(obj, (Graph, MultiGraph, ScatterPlot)):
             if "A" in upper.replace("SAME", ""):
                 return obj, option
         elif isinstance(obj, (Histogram, Stack, Function, Efficiency)) and "SAME" not in upper:
@@ -277,22 +279,27 @@ def _function_extent(f: Function, log: bool) -> Extent:
 
 def extent(obj: Any, option: str, pad: Pad) -> Extent:
     """The extent ROOT would draw ``obj``'s frame with: ``xmin, ymin, xmax, ymax``."""
-    if isinstance(obj, Histogram):
-        return _histogram_extent(obj, option, pad.logy)
-    if isinstance(obj, Graph):
-        return _graph_extent(obj, pad)
-    if isinstance(obj, MultiGraph):
-        return _graphs_extent(list(obj), pad)
-    if isinstance(obj, Stack) and len(obj):
-        first = obj[0].axes[0]
-        total = np.sum([h.values() for h in obj], axis=0)
-        low, high = _histogram_y(np.asarray(total), pad.logy)
-        return first.low, low, first.high, high
-    if isinstance(obj, Function):
-        return _function_extent(obj, pad.logy)
-    if isinstance(obj, Efficiency):
-        return _efficiency_extent(obj, pad)
-    return 0.0, 0.0, 1.0, 1.0
+    if isinstance(obj, ScatterPlot):  # its frame is the TH2 GetHistogram makes
+        obj = obj.frame()
+    kinds: tuple[tuple[type, Callable[[], Extent]], ...] = (
+        (Histogram, lambda: _histogram_extent(obj, option, pad.logy)),
+        (Graph, lambda: _graph_extent(obj, pad)),
+        (MultiGraph, lambda: _graphs_extent(list(obj), pad)),
+        (Stack, lambda: _stack_extent(obj, pad)),
+        (Function, lambda: _function_extent(obj, pad.logy)),
+        (Efficiency, lambda: _efficiency_extent(obj, pad)),
+    )
+    return next((made() for kind, made in kinds if isinstance(obj, kind)), (0.0, 0.0, 1.0, 1.0))
+
+
+def _stack_extent(stack: Stack, pad: Pad) -> Extent:
+    """A stack's frame: the first histogram's axis, and the summed contents' height."""
+    if not len(stack):
+        return 0.0, 0.0, 1.0, 1.0
+    first = stack[0].axes[0]
+    total = np.sum([h.values() for h in stack], axis=0)
+    low, high = _histogram_y(np.asarray(total), pad.logy)
+    return first.low, low, first.high, high
 
 
 def open_axes(scene: Scene) -> None:
@@ -406,13 +413,15 @@ def dress(scene: Scene) -> None:
 
     _frame(scene)
     obj, option = scene.owner
-    if not axisless(option, isinstance(obj, (Graph, MultiGraph))):
+    if not axisless(option, isinstance(obj, (Graph, MultiGraph, ScatterPlot))):
         dress_axes(scene, _axes_of(obj))
 
 
 def _painted_title(obj: Any) -> str:
     """The title painted for ``obj``: a graph's frame histogram's, if it has one, else its own."""
     framing = lookup(obj, "fHistogram") if isinstance(obj, (Graph, MultiGraph)) else None
+    if isinstance(obj, ScatterPlot):
+        framing = obj.frame()
     if isinstance(framing, Histogram) and framing.title:
         return str(framing.title)
     return str(getattr(obj, "title", "") or "")

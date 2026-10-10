@@ -26,6 +26,7 @@ from ..model import (
     Cloud,
     Contour,
     Curve,
+    Dots,
     Frame,
     Labels,
     Look,
@@ -295,11 +296,30 @@ def _cloud(ax: Any, layer: Cloud, frame: Frame, native: dict[str, Any]) -> Any:
     )
 
 
+def _dots(ax: Any, layer: Dots, frame: Frame, native: dict[str, Any]) -> Any:
+    """A ``TScatter``'s points: each marker in its colour, its area by its ROOT size squared."""
+    look = layer.look
+    base = _marker(look._replace(marker_size=1.0))["markersize"]
+    made = ax.scatter(
+        layer.x, layer.y, c=list(layer.colors), s=(base * np.asarray(layer.sizes, float)) ** 2,
+        marker=_marker(look)["marker"], label=look.label, **native,
+    )  # fmt: skip
+    if layer.scale is not None:
+        from matplotlib.cm import ScalarMappable
+        from matplotlib.colors import Normalize
+
+        from ...canvas.scatterplot import colormap
+
+        mappable = ScalarMappable(norm=Normalize(*layer.scale), cmap=colormap(layer.palette))
+        ax.figure.colorbar(mappable, ax=ax, label=frame.zlabel)
+    return made
+
+
 #: Each kind of layer, against what draws it.
 DRAWN: dict[type, Callable[[Any, Any, Frame, dict[str, Any]], Any]] = {
     Steps: _steps, Bars: _bars, Points: _points, Boxes: _boxes, Band: _band, Area: _area,
     Curve: _curve, Labels: _labels, Mesh: _mesh, Contour: _contour, Surface: _surface,
-    Cloud: _cloud,
+    Cloud: _cloud, Dots: _dots,
 }  # fmt: skip
 
 

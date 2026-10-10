@@ -201,8 +201,26 @@ class Cloud(NamedTuple):
     iso: bool = False
 
 
+class Dots(NamedTuple):
+    """Markers at ``(x, y)``, each its own colour and size: a ``TScatter``'s points.
+
+    ``colors`` is a colour a point, ``sizes`` ROOT's marker size a point, and
+    ``scale`` the ends of the colour scale when the points are coloured by
+    one, for the bar that says what the colours mean.
+    """
+
+    x: Array
+    y: Array
+    colors: tuple[str, ...]
+    sizes: Array
+    look: Look
+    scale: tuple[float, float] | None = None
+    palette: Any = "bird"
+
+
 Layer = (
     Steps | Bars | Points | Boxes | Band | Area | Curve | Labels | Mesh | Contour | Surface | Cloud
+    | Dots
 )
 
 #: The layers that need axes with depth to be drawn on.

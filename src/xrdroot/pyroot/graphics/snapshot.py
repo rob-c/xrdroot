@@ -24,6 +24,7 @@ from ...efficiency import Efficiency
 from ...function import Function
 from ...graph import Graph
 from ...hist import Histogram
+from ...scatterplot import ScatterPlot
 from ...stacks import MultiGraph, Stack
 from . import colors
 from .drawn import Drawn
@@ -99,7 +100,8 @@ def _drawn(pad: TPad) -> list[tuple[Any, str]]:
     """
     made = _painted(pad)
     if made and owner(_bare(pad, made)) is None:
-        at = next((i for i, (obj, _) in enumerate(made) if isinstance(obj, Graph)), None)
+        at = next((i for i, (obj, _) in enumerate(made) if isinstance(obj, (Graph, ScatterPlot))),
+                  None)  # fmt: skip
         if at is not None and "SAME" not in made[at][1].upper():
             made[at] = (made[at][0], "A" + made[at][1])  # a graph alone draws its axes
     return made

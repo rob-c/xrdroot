@@ -35,7 +35,8 @@ from ..graph2d import Graph2D
 from ..hist import Histogram
 from ..plot import picture
 from ..plot.backends.withmatplotlib import DRAWN
-from ..plot.model import Contour, Frame, Mesh, Picture
+from ..plot.model import Contour, Dots, Frame, Mesh, Picture
+from ..scatterplot import ScatterPlot
 from ..stacks import MultiGraph, Stack
 from .contour import paint_contour_lines
 from .datapaint import PAINTED
@@ -108,12 +109,7 @@ def _draw(scene: Scene, obj: Any, drawn: Picture) -> None:
     limits = ax.get_xlim(), ax.get_ylim()
     frame = Frame(logz=scene.pad.logz)
     for index, layer in enumerate(drawn.layers):
-        if isinstance(layer, Contour) and layer.mode:
-            paint_contour_lines(scene, layer)
-            continue
-        if type(layer) in PAINTED:
-            painter = cast("Callable[[Scene, Any], None]", PAINTED[type(layer)])
-            painter(scene, layer)
+        if _painted(scene, layer, obj):
             continue
         scale = isinstance(layer, Mesh) and layer.scale
         if isinstance(layer, Mesh):
@@ -148,6 +144,31 @@ def _gradient_fill(scene: Scene, obj: Any) -> int | None:
     shaded by; the picture's layers carry only the colour it resolves to."""
     index = lookup(obj, "fFillColor")
     return int(index) if index is not None and int(index) in scene.colors.gradients else None
+
+
+def _painted(scene: Scene, layer: Any, obj: Any) -> bool:
+    """A layer the pad paints in pixels itself, as ROOT's painters do; whether it was one."""
+    if isinstance(layer, Contour) and layer.mode:
+        paint_contour_lines(scene, layer)
+        return True
+    if type(layer) not in PAINTED:
+        return False
+    painter = cast("Callable[[Scene, Any], None]", PAINTED[type(layer)])
+    painter(scene, layer)
+    if isinstance(layer, Dots) and layer.scale is not None:
+        _palette(scene, _mappable(layer), obj)
+    return True
+
+
+def _mappable(layer: Dots) -> Any:
+    """What a colour bar is made of for points coloured by a scale: the scale on its palette."""
+    from matplotlib.cm import ScalarMappable
+    from matplotlib.colors import Normalize
+
+    from .scatterplot import colormap
+
+    low, high = layer.scale or (0.0, 1.0)
+    return ScalarMappable(norm=Normalize(low, high), cmap=colormap(layer.palette))
 
 
 def _palette(scene: Scene, mesh: Any, h: Any) -> None:
@@ -267,12 +288,20 @@ def _paint_graph2d(scene: Scene, g: Graph2D, option: str) -> None:
     paint_graph2d(scene, g, option)
 
 
+def _paint_scatterplot(scene: Scene, s: ScatterPlot, option: str) -> None:
+    """A ``TScatter`` or ``TScatter2D``: see :mod:`.scatterplot`."""
+    from .scatterplot import paint_scatterplot
+
+    paint_scatterplot(scene, s, option)
+
+
 #: How each kind of data draws, by the Python class it comes back as.
 DATA: tuple[tuple[type, Any], ...] = (
     (Histogram, paint_histogram),
     (Efficiency, paint_efficiency),
     (Graph, paint_graph),
     (Graph2D, _paint_graph2d),
+    (ScatterPlot, _paint_scatterplot),
     (MultiGraph, paint_multigraph),
     (Stack, paint_stack),
     (Function, paint_function),

@@ -18,7 +18,7 @@ from typing import Any
 
 import numpy as np
 
-from ..plot.model import Area, Band, Bars, Boxes, Curve, Look, Points, Steps
+from ..plot.model import Area, Band, Bars, Boxes, Curve, Dots, Look, Points, Steps
 from . import styles
 from .marks import draw_markers
 from .raster import add_line, frame_clip
@@ -252,7 +252,20 @@ def paint_points(scene: Scene, layer: Points) -> None:
 
 
 #: The layers painted here, by their kind; the rest are drawn by :mod:`xrdroot.plot`.
+def paint_dots(scene: Scene, layer: Dots) -> None:
+    """A ``TScatter``'s points inside the frame, each marker in its own colour and size."""
+    (xmin, xmax), (ymin, ymax) = scene.ax.get_xlim(), scene.ax.get_ylim()
+    x, y = np.asarray(layer.x, float), np.asarray(layer.y, float)
+    inside = ((x >= min(xmin, xmax)) & (x <= max(xmin, xmax))
+              & (y >= min(ymin, ymax)) & (y <= max(ymin, ymax)))  # fmt: skip
+    pixels = pixels_of(scene, x, y)
+    sizes = np.asarray(layer.sizes, float)
+    for at in np.flatnonzero(inside):
+        draw_markers(scene, pixels[at : at + 1], layer.look.marker_style, float(sizes[at]),
+                     layer.colors[at])  # fmt: skip
+
+
 PAINTED = {
     Steps: paint_steps, Curve: paint_curve, Band: paint_band, Boxes: paint_boxes,
-    Bars: paint_bars, Area: paint_area, Points: paint_points,
+    Bars: paint_bars, Area: paint_area, Points: paint_points, Dots: paint_dots,
 }  # fmt: skip
