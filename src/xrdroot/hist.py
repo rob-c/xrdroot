@@ -147,12 +147,13 @@ class Axis:
         """``TAxis::GetBinCenter`` of every bin, the two flow bins included.
 
         The statistics ROOT works out from bins are worked out from these, so
-        they are ROOT's doubles: ``low + (bin - 1) * width + width / 2`` on an
-        even axis, and the low edge plus half the width on an uneven one - but
-        for the flow bins, which take the even formula whatever the axis.
+        they are ROOT's doubles: ``low + (bin - 0.5) * width`` on an even
+        axis, as ROOT 6.40's ``TAxis::GetBinCenter`` multiplies it out, and
+        the low edge plus half the width on an uneven one - but for the flow
+        bins, which take the even formula whatever the axis.
         """
         width = (self.high - self.low) / self.nbins
-        found = self.low + (np.arange(self.nbins + 2) - 1) * width + 0.5 * width
+        found = self.low + (np.arange(self.nbins + 2) - 0.5) * width
         if not self.even:
             edges = self.edges()
             found[1:-1] = edges[:-1] + 0.5 * (edges[1:] - edges[:-1])

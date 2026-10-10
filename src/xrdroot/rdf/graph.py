@@ -76,7 +76,7 @@ class Defined(Definition):
     the columns it reads, by the names it reads them by.
     """
 
-    __slots__ = ("compute", "inputs", "selector")
+    __slots__ = ("compute", "inputs", "selector", "group")
 
     def __init__(
         self,
@@ -89,6 +89,21 @@ class Defined(Definition):
         self.compute = compute
         self.inputs = inputs
         self.selector = selector
+        #: The callables of no columns defined one after another at this node, this one
+        #: among them: ROOT calls each once an entry, in their order, and so does the loop.
+        self.group: list[Defined] = [self] if self.nullary else []
+
+    @property
+    def nullary(self) -> bool:
+        """Whether this is a callable of no columns: one whose values come from what it holds."""
+        return not isinstance(self.compute, Expression) and not self.inputs
+
+    def joins(self, previous: Definition | None) -> None:
+        """Take the place after ``previous`` among the callables of no columns at this node."""
+        same = isinstance(previous, Defined) and previous.selector is self.selector
+        if same and previous.nullary:  # type: ignore[union-attr]
+            self.group = previous.group  # type: ignore[union-attr]
+            self.group.append(self)
 
     @property
     def origin(self) -> str:

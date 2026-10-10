@@ -185,7 +185,7 @@ class TAxis(TNamed, TAttAxis):
         """``GetBinCenter``: the middle of the bin, computed as ROOT computes it."""
         if not self.IsVariableBinSize() or not 1 <= bin <= self.GetNbins():
             width = (self.GetXmax() - self.GetXmin()) / self.GetNbins()
-            return self.GetXmin() + (bin - 1) * width + 0.5 * width
+            return self.GetXmin() + (bin - 0.5) * width  # as ROOT 6.40 multiplies it out
         edges = self._edges()
         return float(edges[bin - 1] + 0.5 * (edges[bin] - edges[bin - 1]))
 

@@ -454,6 +454,8 @@ class RDataFrame:
     ) -> RDataFrame:
         compute, inputs = self._compute(expression, columns, f"{what}({name!r})")
         made = Defined(name, compute, inputs, self._node)
+        if made.nullary and self._defined:
+            made.joins(self._columns.get(self._defined[-1]))
         defined = self._defined if name in self._defined else [*self._defined, name]
         return self._derived(columns={**self._columns, name: made}, defined=defined)
 

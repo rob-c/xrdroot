@@ -100,8 +100,18 @@ def per_entry(name: str, arguments: list[Any]) -> list[Any]:
         return given
     if not is_macros(given[at]):
         return arguments
+    return _made_entrywise(name, given, at, slot)
+
+
+def _made_entrywise(name: str, given: list[Any], at: int, slot: bool) -> list[Any]:
+    """The macro's function at ``at`` made entrywise, counted by the entry number when it
+    reads no column - but a ``Define`` of one reading no column goes as it is: the frame
+    calls it once an entry itself, each in turn with those defined beside it, as ROOT calls
+    a lambda capturing a counter, say."""
     columns = list(given[at + 1]) if len(given) > at + 1 else []
     counted = not columns and _arity(given[at]) == int(slot)
+    if counted and name in ("Define", "Redefine"):
+        return given
     given[at] = entrywise(given[at], slot, counted)
     if counted:
         given[at + 1:at + 2] = [[ENTRY]]

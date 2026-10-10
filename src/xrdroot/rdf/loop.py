@@ -27,8 +27,8 @@ import importlib
 import itertools
 import multiprocessing
 import pickle
-from collections.abc import Iterator, Sequence
-from typing import Any
+from collections.abc import Callable, Iterator, Sequence
+from typing import Any, cast
 
 import numpy as np
 
@@ -64,6 +64,13 @@ def _positions(inner: Array | None, outer: Array | None) -> Array | None:
         return inner
     assert inner is not None  # a node below never lets through more than one above it
     return np.searchsorted(outer, inner)
+
+
+def _column_of(values: list[Any], count: int) -> Any:
+    """One value an entry, as a column: an array of numbers, or a list of anything else."""
+    if count and all(isinstance(v, (int, float, np.number, np.bool_)) for v in values):
+        return np.asarray(values)
+    return list(values)
 
 
 def _checked(name: str, out: Any, count: int) -> Any:
@@ -217,9 +224,31 @@ class Batch:
         if isinstance(definition.compute, Expression):
             value = definition.compute.evaluate(self._scope(definition.inputs, home))
             return to_column(value, count)
+        if definition.nullary:
+            return self._each_entry(definition, home, count)
         columns = [self.column(each, home) for each in definition.inputs.values()]
         name = f"the callable defining {definition.name!r}"
         return _checked(name, definition.compute(*columns), count)
+
+    def _each_entry(self, definition: Defined, home: Selector, count: int) -> Any:
+        """A callable of no columns, called once an entry as ROOT calls it - and the others
+        defined with it at this node each in turn for every entry, since what one of them
+        changes the next may read; each is kept for when it is asked for."""
+        waiting = [d for d in definition.group if (id(d), id(home)) not in self._values]
+        made = _called_in_turn(waiting, count)
+        for d in waiting:
+            self._values[(id(d), id(home))] = _column_of(made[id(d)], count)
+        return self._values[(id(definition), id(home))]
+
+
+def _called_in_turn(waiting: list[Defined], count: int) -> dict[int, list[Any]]:
+    """Each callable's answers for ``count`` entries, the callables called in turn each entry."""
+    calls = [(id(d), cast("Callable[[], Any]", d.compute)) for d in waiting]
+    made: dict[int, list[Any]] = {key: [] for key, _ in calls}
+    for _ in range(count):
+        for key, call in calls:
+            made[key].append(call())
+    return made
 
 
 class Plan:

@@ -95,7 +95,9 @@ def _gaus(x: Array, mean: Array = 0.0, sigma: Array = 1.0, norm: Array = 0.0) ->
     """
     sigma = np.asarray(sigma, dtype=np.float64)
     safe = np.where(sigma == 0, 1.0, sigma)
-    height = libm.exp(-0.5 * ((x - mean) / safe) ** 2)
+    scaled = (x - mean) / safe
+    height = libm.exp(-0.5 * scaled * scaled)  # ROOT's gaus multiplies left to right, as this
+
     height = np.where(norm != 0, height / (math.sqrt(2 * math.pi) * safe), height)
     return np.where(sigma == 0, 1e30, height)
 
