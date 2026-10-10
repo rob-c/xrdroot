@@ -80,8 +80,11 @@ def to_int(value: Any) -> int:
     return int(number)
 
 
-def f32(value: Any) -> float:
-    """A value stored into a ``float``: rounded to single precision, handed back as a float."""
+def f32(value: Any) -> Any:
+    """A value stored into a ``float``: rounded to single precision, handed back as a float -
+    or an array of values, each rounded, as a fill loop written as arrays stores them."""
+    if np.ndim(value):
+        return np.asarray(value, dtype=np.float32).astype(np.float64)
     return float(np.float32(value))
 
 

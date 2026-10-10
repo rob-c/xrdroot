@@ -65,6 +65,11 @@ class EmitterBase:
         self.class_symbols: dict[str, Symbol] = {}
         #: The macro's free ``operator<<(ostream&, const T&)``: ``T``, and its Python name.
         self.stream_writers: dict[str, str] = {}
+        #: The random draw of a fill loop being written as arrays, and the name of how many.
+        self.vector_draw: Any = None
+        self.vector_count: str | None = None
+        #: The arrays standing for the variables ``Rannor`` drew into, while the fills are written.
+        self.vector_names: dict[str, str] = {}
 
     # -- refusing ---------------------------------------------------------------
 

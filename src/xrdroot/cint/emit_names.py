@@ -150,6 +150,8 @@ class NameEmitter(Inference):
         return symbol.py, P.ATOM if "." not in symbol.py else P.POSTFIX
 
     def name(self, node: Name) -> Out:
+        if len(node.parts) == 1 and node.last in self.vector_names:
+            return self.vector_names[node.last], P.ATOM  # the array a fill loop draws into
         symbol = self.symbol(node)
         if symbol is not None:
             return self.use(symbol)

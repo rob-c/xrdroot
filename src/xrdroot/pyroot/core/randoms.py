@@ -44,11 +44,11 @@ class TRandom(TNamed):
     def GetSeed(self) -> int:
         return int(self._xrd.get_seed())
 
-    def Rndm(self, i: Any = 0) -> float:
+    def Rndm(self, i: Any = 0, n: Any = None) -> Any:
         """``Rndm``: uniform in (0, 1], never zero. ``Rndm(i)``'s ``i`` is ROOT's ignored
         old argument, which macros still pass - ``Rndm(1)`` is one draw; many are
-        ``RndmArray``'s."""
-        return float(self._xrd.rndm())
+        ``RndmArray``'s, or ``n`` of them here as the other draws take it."""
+        return _number(self._xrd.rndm(n))
 
     def RndmArray(self, count: int, array: Any) -> None:
         """``RndmArray(n, array)``: ``n`` draws into ``array``."""
@@ -85,8 +85,12 @@ class TRandom(TNamed):
     def PoissonD(self, mean: float, n: Any = None) -> Any:
         return _number(self._xrd.poisson_d(float(mean), n))
 
-    def Rannor(self, a: Any = None, b: Any = None) -> tuple[float, float]:
-        """``Rannor(a, b)``: two independent Gaussians, into ``a`` and ``b`` - and handed back."""
+    def Rannor(self, a: Any = None, b: Any = None, n: Any = None) -> tuple[Any, Any]:
+        """``Rannor(a, b)``: two independent Gaussians, into ``a`` and ``b`` - and handed back;
+        ``n`` pairs at once, as arrays, in the stream's order."""
+        if n is not None:
+            first, second = self._xrd.rannor(n)
+            return first, second
         x, y = (float(value) for value in self._xrd.rannor())
         store(a, x)
         store(b, y)

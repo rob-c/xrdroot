@@ -43,17 +43,44 @@ def _arguments(fn: Callable[..., Any]) -> int:
 
 
 def adapted(fn: Callable[..., Any], dimensions: int) -> Callable[[Any, Any], Any]:
-    """``fn(x, p)`` as PyROOT calls it, made into xrdroot's ``model(points, params)``."""
+    """``fn(x, p)`` as PyROOT calls it, made into xrdroot's ``model(points, params)``.
+
+    Many points are first tried on ``fn`` all at once, ``x[0]`` an array of
+    every point's first coordinate: a translated macro's arithmetic, and
+    ``TMath``'s functions, take arrays as they take numbers, each value the
+    same operations in the same order, so the same to the last bit - and an
+    integral's thousands of points cost one call rather than thousands. Code
+    that takes one point at a time - a test on ``x[0]``, ``math.exp`` -
+    raises or answers wrongly shaped, and is then called a point at a time.
+    """
     takes = _arguments(fn)
+
+    def call(x: Any, values: Any) -> Any:
+        return fn(x) if takes == 1 else fn(x, values)
 
     def model(points: Any, params: Any) -> Any:
         rows = np.asarray(points, dtype=np.float64).reshape(-1, dimensions)
         values = np.asarray(params, dtype=np.float64)
-        if takes == 1:
-            return np.array([float(fn(row)) for row in rows])
-        return np.array([float(fn(row, values)) for row in rows])
+        found = _at_once(call, rows, values) if len(rows) > 1 else None
+        if found is not None:
+            return found
+        return np.array([float(call(row, values)) for row in rows])
 
     return model
+
+
+def _at_once(call: Callable[[Any, Any], Any], rows: Any, values: Any) -> Any:
+    """Every point's value from one call with the coordinates as arrays, or ``None`` when
+    the code is not written for arrays: it raised, gave not one finite number per point,
+    or divided by zero where a point at a time would have raised."""
+    try:
+        with np.errstate(divide="raise", invalid="raise", over="ignore", under="ignore"):
+            found = np.asarray(call(rows.T, values), dtype=np.float64)
+    except Exception:
+        return None
+    if found.shape != (len(rows),) or not np.all(np.isfinite(found)):
+        return None
+    return found
 
 
 def _ranges(numbers: list[float], dimensions: int) -> Any:

@@ -345,3 +345,48 @@ def test_a_function_negative_somewhere_is_sampled_by_its_absolute_value(capsys):
     assert warned.count("function:dip has 1 negative values: abs assumed") == 1
     f2.SetParameters()  # nothing changes: the same table
     assert f2.GetRandom2(None, None, ROOT.TRandom3(5)) == first
+
+
+def test_a_python_function_is_called_with_every_point_at_once_when_it_can_be() -> None:
+    """A function of plain arithmetic sees one array of points - the same values to the bit
+    as a point at a time; one that tests a point, gives one number for them all, or
+    overflows, is called a point at a time, as is a single point."""
+    calls: list[int] = []
+
+    def peaks(x, p):
+        calls.append(np.ndim(x[0]))
+        return p[0] * ROOT.TMath.Gaus(x[0], p[1], p[2]) * ROOT.TMath.Gaus(x[1], p[3], p[4]) + 0.1
+
+    f2 = ROOT.TF2("f2", peaks, 0, 10, 0, 10, 5)
+    f2.SetParameters(2.0, 4.0, 1.5, 6.0, 2.5)
+    xs, ys = np.linspace(0, 10, 7), np.linspace(0, 10, 7)
+    at_once = f2._xrd(xs, ys)
+    assert calls == [1]
+    assert at_once.tolist() == [f2.Eval(x, y) for x, y in zip(xs, ys, strict=True)]
+    assert calls[1:] == [0] * 7
+
+    def tested(x, p):
+        return p[0] if x[0] > 5 else 0.0
+
+    def flat(x, p):
+        return p[0]
+
+    def huge(x, p):
+        return 1e308 * (x[0] + 1) * 1e10
+
+    for code, expected in ((tested, [0.0, 0.0, 2.0]), (flat, [2.0] * 3)):
+        f1 = ROOT.TF1("f1", code, 0, 10, 1)
+        f1.SetParameter(0, 2.0)
+        assert f1._xrd(np.array([1.0, 2.0, 7.0])).tolist() == expected
+    f1 = ROOT.TF1("f1", huge, 0, 10, 1)
+    with pytest.warns(RuntimeWarning, match="overflow"):  # a point at a time, as NumPy warns
+        assert f1._xrd(np.array([1.0, 2.0, 7.0])).tolist() == [math.inf] * 3
+
+
+def test_a_python_function_dividing_by_zero_at_a_point_says_so_as_it_did() -> None:
+    """NumPy's warning and an infinity, from the point at a time the division sends it to."""
+    f1 = ROOT.TF1("f1", lambda x, p: p[0] / x[0], 0, 10, 1)
+    f1.SetParameter(0, 2.0)
+    assert f1._xrd(np.array([1.0, 4.0])).tolist() == [2.0, 0.5]
+    with pytest.warns(RuntimeWarning, match="divide by zero"):
+        assert f1._xrd(np.array([1.0, 0.0])).tolist() == [2.0, math.inf]

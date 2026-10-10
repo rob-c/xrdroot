@@ -337,10 +337,13 @@ def NormQuantile(p: float) -> float:
     return 0.0 if p <= 0 or p >= 1 else dist.normal_quantile(p)
 
 
-def Gaus(x: float, mean: float = 0.0, sigma: float = 1.0, norm: bool = False) -> float:
+def Gaus(x: Any, mean: float = 0.0, sigma: float = 1.0, norm: bool = False) -> Any:
     """``TMath::Gaus``, of numbers in plain Python - the C library's ``exp``, as
     :func:`xrdroot.function.special.gaus` uses, without NumPy's cost for one number - which a
-    macro's function, called a point at a time, calls many times over."""
+    macro's function, called a point at a time, calls many times over; of an array, that
+    function's, which a macro's function called with every point at once hands it."""
+    if np.ndim(x):
+        return special.gaus(x, mean, sigma, norm)
     if sigma == 0:
         return special.GAUS_ZERO_WIDTH
     arg = (float(x) - mean) / sigma

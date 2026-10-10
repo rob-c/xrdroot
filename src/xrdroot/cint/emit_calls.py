@@ -327,6 +327,9 @@ class CallEmitter(ExprEmitter):
     # -- methods -----------------------------------------------------------------
 
     def method_call(self, func: Member, node: Call) -> Out:
+        if node is self.vector_draw:  # the draw a fill loop takes all at once (see counted)
+            given = ", ".join(filter(None, (self.arguments(node), f"n={self.vector_count}")))
+            return f"{self.value(func)}({given})", P.POSTFIX
         owner = self.typeof(func.obj)
         if owner is not None:
             special = self._typed_method(owner, func, node)

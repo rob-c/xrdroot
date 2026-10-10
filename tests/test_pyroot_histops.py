@@ -232,16 +232,18 @@ def test_random_numbers_from_a_histogram(tmp_path):
 
 
 def test_a_2d_fill_from_a_function_of_code_integrates_each_bin_eight_points_each_way():
-    calls = []
+    """Every bin's eight points each way - handed to the code all at once, as its arithmetic
+    takes arrays."""
+    points = []
 
     def flat(x, par):
-        calls.append(1)
+        points.append(np.size(x[0]))
         return 1.0 + x[0]
 
     f2 = ROOT.TF2("code2", flat, 0, 2, 0, 1, 0)
     h = ROOT.TH2D("hcode2", "", 2, 0, 2, 1, 0, 1)
     h.FillRandom(f2, 300, ROOT.TRandom3(1))
-    assert len(calls) == 2 * 8 * 8 and h.GetEntries() == 300
+    assert points == [2 * 8 * 8] and h.GetEntries() == 300
     assert h.GetBinContent(2, 1) > h.GetBinContent(1, 1)  # 2.5 against 1.5 of the integral
     formula = ROOT.TH2D("hform2", "", 2, 0, 2, 1, 0, 1)
     formula.FillRandom(ROOT.TF2("form2", "1 + x", 0, 2, 0, 1), 300, ROOT.TRandom3(1))

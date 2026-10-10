@@ -20,6 +20,7 @@ from .ctype import CType
 from .emit_calls import CallEmitter
 from .errors import Where
 from .loops import (
+    VectorDraw,
     assigned_names,
     bound_of,
     cases,
@@ -27,6 +28,7 @@ from .loops import (
     is_literal_step,
     jumps,
     stable,
+    vector_fill,
     without_break,
 )
 from .nodes import (
@@ -404,11 +406,57 @@ class StmtEmitter(CallEmitter):
         stop = self._stop(op, bound, step)
         if stop is None:
             return False
-        symbol = self.declare(decl.name, "local", decl.ctype)
         stride = "" if step == 1 else f", {step}"
+        draw = vector_fill(node.body, decl.name, self.typeof)
+        if draw is not None:
+            self._all_at_once(node, draw, f"range({start}, {stop}{stride})")
+            return True
+        symbol = self.declare(decl.name, "local", decl.ctype)
         self.out.line(f"for {symbol.py} in range({start}, {stop}{stride}):", node.where)
         self.loop_body(node.body, Loop("loop"))
         return True
+
+    def _all_at_once(self, node: For, draw: VectorDraw, turns: str) -> None:
+        """A loop filling histograms from a random draw, as the draws of every turn at once
+        and one ``Fill`` of them per histogram (see :func:`.loops.vector_fill`): the same
+        bins and moments to the last bit, without a turn of Python for each."""
+        count = self.fresh("count")
+        self.out.line(f"{count} = len({turns})", node.where)
+        stmts = node.body.body if isinstance(node.body, Block) else [node.body]
+        self.vector_draw, self.vector_count = draw.call, count
+        try:
+            with self.scoped():
+                arrays = self._pair_drawn(draw, count) if draw.cells else []
+                for stmt in stmts[1:] if draw.cells else stmts:
+                    self.statement(stmt)
+                self._pair_kept(draw.cells, arrays, count, node)
+        finally:
+            self.vector_draw = self.vector_count = None
+            self.vector_names = {}
+
+    def _pair_drawn(self, draw: VectorDraw, count: str) -> list[str]:
+        """``Rannor(a, b)`` of every turn at once: arrays standing for ``a`` and ``b`` in
+        the fills, rounded as a ``Float_t`` would have been."""
+        arrays = [self.fresh(name) for name in draw.cells]
+        self.vector_names = dict(zip(draw.cells, arrays, strict=True))
+        where = draw.call.where
+        self.out.line(f"{', '.join(arrays)} = {self.value(draw.call.func)}(n={count})", where)
+        for name, array in self.vector_names.items():
+            symbol = self.lookup(name)
+            if symbol is not None and symbol.ctype is not None and symbol.ctype.name == "float":
+                self.out.line(f"{array} = f32({array})", where)
+        return arrays
+
+    def _pair_kept(self, cells: tuple[str, ...], arrays: list[str], count: str, node: For) -> None:
+        """After the loop, ``a`` and ``b`` hold the last turn's draw - unless there was none."""
+        if not cells:
+            return
+        self.out.line(f"if {count}:", node.where)
+        with self.out.indented():
+            for name, array in zip(cells, arrays, strict=True):
+                symbol = self.lookup(name)
+                assert symbol is not None  # the analysis found its type, so it is declared
+                self.out.line(f"{self.use(symbol)[0]} = {array}[-1]", node.where)
 
     def _countable(self, decl: VarDecl, bound: Expr, node: For) -> bool:
         if not decl.ctype.integral or decl.name in self.cell_names():

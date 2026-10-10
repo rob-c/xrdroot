@@ -259,3 +259,9 @@ def test_gaus_of_one_number_is_the_arrays_gaus_to_the_bit(mean, sigma, norm):
     xs = np.linspace(-50.0, 50.0, 2001)
     one = np.array([T.Gaus(x, mean, sigma, norm) for x in xs.tolist()])
     assert np.array_equal(one, special.gaus(xs, mean, sigma, norm))
+
+
+def test_gaus_of_an_array_is_the_arrays_gaussian() -> None:
+    xs = np.array([-1.0, 0.0, 2.0, 50.0])
+    assert ROOT.TMath.Gaus(xs, 1.0, 2.0).tolist() == [ROOT.TMath.Gaus(x, 1.0, 2.0) for x in xs]
+    assert ROOT.TMath.Gaus(xs, 0.0, 0.0).tolist() == [ROOT.TMath.Gaus(x, 0.0, 0.0) for x in xs]

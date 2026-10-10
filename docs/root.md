@@ -631,7 +631,7 @@ decay = Function.from_callable("decay", lambda x, p: p[0] * np.exp(-x / p[1]), 2
 | --- | --- |
 | `TF1 f("f", "[0]*exp(-x/[tau])", 0, 10)` | `Function("f", "[0]*exp(-x/[tau])", range=(0, 10))` |
 | `TF2 f("f", "x*y", 0, 1, 0, 2)` | `Function("f", "x*y", range=((0, 1), (0, 2)))` |
-| `TF1 f("f", cppfunction, 0, 10, 2)` | `Function.from_callable("f", fn, 2, range=(0, 10))` — `fn(x, params)` |
+| `TF1 f("f", cppfunction, 0, 10, 2)` | `Function.from_callable("f", fn, 2, range=(0, 10))` — `fn(x, params)`; through `ROOT.TF1`, a `fn` of plain arithmetic is handed every point at once, `x[0]` an array, and one that tests a point is called a point at a time |
 | `f->Eval(x)`, `f->EvalPar(x, p)` | `f(x)`, `f.evaluate(x, p)` — arrays, `(n,)` or `(n, dimensions)` |
 | `f->SetParameters(...)`, `SetParameter("mean", v)` | `f.set_parameters(...)`, `f.set_parameters(mean=v)`, `f.parameters = [...]` |
 | `GetParName(i)`, `SetParNames(...)` | `f.parameter_names`, `f.parameter_names = (...)` |
@@ -3201,6 +3201,7 @@ runtime supplies what C++ has and Python lacks:
 | overloaded functions and constructors | `f__1`, `f__2` and an `Overloaded` choosing by count, then type |
 | classes, inheritance (from ROOT's too), operators | Python classes; `operator+` is `__add__`, `~T()` is `_destruct`, called by `delete` |
 | `switch`, `do`/`while`, `for`, `continue` | `if`/`elif` chains (a one-pass loop when a case falls through), `range` when the bound cannot change |
+| `for (...) { float x = r.Gaus(m, s); h->Fill(x, w); }` | the `n` draws at once, `r.Gaus(m, s, n=count)`, and one `Fill` of the array: the same bins and moments to the last bit, in NumPy's time rather than Python's - for a body of nothing but one draw, floating arithmetic on it and a histogram's `Fill` |
 | lambdas, `[x]` and `[&]` | a `def` before the statement; by-value captures bound as defaults, by-reference ones `nonlocal` |
 
 An error as the macro runs is reported at its C++ line — `hsimple.C:42:
