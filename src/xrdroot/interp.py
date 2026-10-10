@@ -617,6 +617,8 @@ class _Unreadable(Exception):
 #: How one member of a whole object reads: from the buffer, and from the
 #: members read before it, which is where a counted one finds its count.
 Step = Callable[[Buffer, "dict[str, Any]"], Any]
+#: One member of every object in a member-wise container, read into each object's row.
+Fill = Callable[[Buffer, "list[dict[str, Any]]"], None]
 
 
 def _numbers(prim: Prim, unpack: Unpack | None, buf: Buffer, count: int) -> Any:
@@ -756,6 +758,18 @@ def _by_hand(name: str, source: Source, seen: tuple[str, ...]) -> Callable[[Buff
     return make(lambda held: _streamed(_members(held, source, (*seen, name))))
 
 
+def _description(source: Source, name: str) -> dict[str, Member] | None:
+    """How a class is laid out: as the file describes it, or - for a HistFactory class, which
+    ROOT leaves undescribed when it streams it member-wise inside a vector - as ROOT 6.40's
+    dictionary does, which is the only account of it there is."""
+    found = source.streamers().get(name)
+    if found is None:
+        from .histfactory.layouts import described
+
+        found = described().get(name)
+    return found
+
+
 def _fields(name: str, source: Source, seen: tuple[str, ...]) -> list[tuple[str, Step]] | None:
     """The members of one class in order, or ``None`` for a class that has no
     such list - because it streams itself, or because the file does not
@@ -767,7 +781,7 @@ def _fields(name: str, source: Source, seen: tuple[str, ...]) -> list[tuple[str,
         steps = _steps(name, source, seen)
     except _Unreadable:
         return None
-    return _flattened(steps, list(source.streamers()[name].values()), source, seen)
+    return _flattened(steps, list((_description(source, name) or {}).values()), source, seen)
 
 
 def _flattened(
@@ -800,6 +814,122 @@ def _into(label: str, sub: str, step: Step) -> Step:
     return read
 
 
+def _columns(
+    name: str, source: Source, seen: tuple[str, ...]
+) -> list[tuple[str, Fill]] | None:
+    """The members of one class as columns - one member of every object in a container
+    written member-wise - or ``None`` for a class that has no such list, because it streams
+    itself or the file does not describe it.
+
+    ROOT streams such a container a member at a time: a base class's members among the
+    rest, every object's ``std::string`` member inside one record, a member that is a
+    container of a class under one header and then each object's count and items, a
+    map likewise, and every other kind of member for each object in turn.
+    """
+    if name in SELF_STREAMING:
+        return None
+    try:
+        steps = _steps(name, source, seen)
+    except _Unreadable:
+        return None
+    found: list[tuple[str, Fill]] = []
+    members = (_description(source, name) or {}).values()
+    for (label, step), member in zip(steps, members, strict=True):
+        if member.stype != 0 or member.typename != "BASE":
+            found.append((label, _column(label, member, step, source, seen)))
+            continue
+        inner = _columns(member.name, source, seen)
+        if inner is None:
+            return None
+        found += [(label, _into_column(label, column)) for _sub, column in inner]
+    return found
+
+
+def _column(
+    label: str, member: Member, step: Step, source: Source, seen: tuple[str, ...]
+) -> Fill:
+    """One member's column, by what the member is."""
+    node = parse(member.typename)
+    if isinstance(node, Str) and node.record:
+        return _string_column(label)
+    if isinstance(node, Mapping):
+        return _map_column(label, node)
+    held = _class_held(member.typename) if node is None else None
+    if held is not None and not held[1]:
+        return _container_column(label, held[0], source, seen)
+    return _each_row(label, step)
+
+
+def _each_row(label: str, step: Step) -> Fill:
+    """A member every object has in turn, each read the way one object's is."""
+
+    def column(buf: Buffer, rows: list[dict[str, Any]]) -> None:
+        for row in rows:
+            row[label] = step(buf, row)
+
+    return column
+
+
+def _into_column(label: str, inner: Fill) -> Fill:
+    """A base class's column, read into the base's own dictionary in each object's."""
+
+    def column(buf: Buffer, rows: list[dict[str, Any]]) -> None:
+        inner(buf, [row.setdefault(label, {}) for row in rows])
+
+    return column
+
+
+def _string_column(label: str) -> Fill:
+    """Every object's ``std::string`` member, inside one record - none for no objects."""
+
+    def column(buf: Buffer, rows: list[dict[str, Any]]) -> None:
+        if rows:
+            buf.header()
+            for row in rows:
+                row[label] = buf.string()
+
+    return column
+
+
+def _map_column(label: str, node: Mapping) -> Fill:
+    """Every object's map, under one header: each one's count, its keys and its values."""
+
+    def column(buf: Buffer, rows: list[dict[str, Any]]) -> None:
+        if not rows:
+            return
+        _version, end = buf.header()
+        _versioned(buf)
+        for row in rows:
+            count = buf.u32()
+            keys = _block(node.key, buf, count)
+            row[label] = dict(zip_strict(keys, _block(node.value, buf, count)))
+        _ended(buf, end, f"the maps of {len(rows)} objects")
+
+    return column
+
+
+def _container_column(label: str, held: str, source: Source, seen: tuple[str, ...]) -> Fill:
+    """Every object's container of ``held``, under one header: each one's count and items,
+    themselves a member at a time."""
+    columns = _columns(held, source, seen)
+
+    def column(buf: Buffer, rows: list[dict[str, Any]]) -> None:
+        if not rows:
+            return
+        if columns is None:
+            raise UnsupportedFeatureError(
+                f"a container of {held} inside a container written field by field, which "
+                f"this file's streamer information does not describe well enough to read"
+            )
+        _version, end = buf.header()
+        _versioned(buf)
+        for row in rows:
+            row[label] = _group(buf, columns)
+        _ended(buf, end, f"the containers of {held} of {len(rows)} objects")
+
+    return column
+
+
 def _class_held(typename: str) -> tuple[str, bool] | None:
     """The class a container holds one of, and whether it holds it by pointer.
 
@@ -816,8 +946,23 @@ def _class_held(typename: str) -> tuple[str, bool] | None:
     return inside.rstrip("*").strip(), inside.endswith("*")
 
 
+def _versioned(buf: Buffer) -> None:
+    """The version of the class a member-wise container holds, written once for the lot of
+    them - or a checksum of it, for a class that carries no version."""
+    if buf.i16() <= 0:
+        buf.u32()
+
+
+def _group(buf: Buffer, columns: list[tuple[str, Fill]]) -> list[dict[str, Any]]:
+    """One holder's objects, member-wise: how many, then each column over them all."""
+    rows: list[dict[str, Any]] = [{} for _ in range(buf.i32())]
+    for _label, column in columns:
+        column(buf, rows)
+    return rows
+
+
 def _field_by_field(
-    buf: Buffer, end: int | None, fields: list[tuple[str, Step]]
+    buf: Buffer, end: int | None, columns: list[tuple[str, Fill]]
 ) -> list[dict[str, Any]]:
     """A container written a member at a time rather than an object at a time.
 
@@ -830,24 +975,24 @@ def _field_by_field(
     other than the end of it; that is checked here rather than trusted, since
     a plausible misreading of somebody's data is worse than a refusal.
     """
-    version = buf.i16()  # of the class held, once for the lot of them
-    if version <= 0:
-        buf.u32()  # ... or a checksum of it, for a class that carries no version
-    rows: list[dict[str, Any]] = [{} for _ in range(buf.i32())]
-    for label, step in fields:
-        for row in rows:
-            row[label] = step(buf, row)
-    if end is not None and buf.pos != end:
-        raise FormatError(
-            f"a container of {len(rows)} written field by field ended "
-            f"{abs(end - buf.pos)} bytes from where it said it would, so what was "
-            f"read out of it cannot be trusted"
-        )
+    _versioned(buf)
+    rows = _group(buf, columns)
+    _ended(buf, end, f"a container of {len(rows)}")
     return rows
 
 
+def _ended(buf: Buffer, end: int | None, what: str) -> None:
+    """That a member-wise record of ``what`` ended where it said it would: a shape read
+    wrongly lands somewhere else, which is refused rather than trusted."""
+    if end is not None and buf.pos != end:
+        raise FormatError(
+            f"{what} written field by field ended {abs(end - buf.pos)} bytes from where it "
+            f"said it would, so what was read out of it cannot be trusted"
+        )
+
+
 def _objects(
-    one: Callable[[Buffer], Any], fields: list[tuple[str, Step]] | None = None
+    one: Callable[[Buffer], Any], columns: list[tuple[str, Fill]] | None = None
 ) -> Callable[[Buffer], list[Any]]:
     """A container of whole objects, each written the way its own class is."""
 
@@ -855,12 +1000,12 @@ def _objects(
         version, end = buf.header()
         if not version & MEMBER_WISE:
             return [one(buf) for _ in range(buf.u32())]
-        if fields is None:
+        if columns is None:
             raise UnsupportedFeatureError(
                 "this container was written field by field, which happens for a "
                 "container of pointers and is not a shape this reader decodes"
             )
-        return list(_field_by_field(buf, end, fields))
+        return list(_field_by_field(buf, end, columns))
 
     return read
 
@@ -1076,7 +1221,7 @@ def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> St
         return _plainly(_objects(lambda buf: buf.any(classes)))
     # A class the file describes can also be written field by field; one
     # that streams itself, such as a TArrayD, only ever comes whole.
-    return _plainly(_objects(_embedded(name, source, seen), _fields(name, source, seen)))
+    return _plainly(_objects(_embedded(name, source, seen), _columns(name, source, seen)))
 
 
 #: The streamer type of a ``TStreamerLoop``: ``x[n]`` of a class.
@@ -1138,7 +1283,7 @@ def _steps(name: str, source: Source, seen: tuple[str, ...] = ()) -> list[tuple[
     """Every member of one class, in the order the class declares them."""
     if name in seen:
         raise _Unreadable(f"{name}, which is written inside itself")
-    described = source.streamers().get(name)
+    described = _description(source, name)
     if described is None:
         raise _Unreadable(
             f"a member of type {name or 'with no name'}, which this file's streamer "
@@ -1149,7 +1294,7 @@ def _steps(name: str, source: Source, seen: tuple[str, ...] = ()) -> list[tuple[
     for member in described.values():
         steps.append((member.name, _step(member, source, (*seen, name), before)))
         if member.stype == 0:  # a base, whose own members are inside its own name
-            for inner in source.streamers().get(member.name) or ():
+            for inner in _description(source, member.name) or ():
                 before[inner] = (member.name, inner)
         before[member.name] = (member.name,)
     return steps
@@ -1200,7 +1345,7 @@ def _whole(name: str, source: Source, streamed: bool = False, named: bool = Fals
     special = _special_whole(name, source, named)
     if special is not None:
         return special
-    if source.streamers().get(name) is None:
+    if _description(source, name) is None:
         return Refused(
             f"{name or 'an unnamed type'}, which is a C++ type this reader does not "
             f"decode: this file's streamer information does not describe its layout, "

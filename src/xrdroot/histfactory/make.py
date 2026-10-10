@@ -43,7 +43,7 @@ def _written(measurement: Any, filename: str, ws: Any, channel: Any = None) -> N
     if channel is not None:
         measurement = copy.deepcopy(measurement)
         measurement.GetChannels().clear()
-        measurement.GetChannels().append(channel)
+        measurement.GetChannels().append(copy.deepcopy(channel))  # as C++ pushes a copy
         _hf(INFO, "About to write channel measurement to file")
     else:
         _hf(PROGRESS, f"Writing combined measurement to file: {filename}")

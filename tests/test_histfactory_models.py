@@ -288,14 +288,12 @@ def test_making_the_model_says_everything_root_says(which: str, built_hf001: Bui
 
 
 def test_what_is_not_written_to_the_files_is_said_on_the_standard_error(built_hf001: Built) -> None:
-    """The workspaces and the measurement object: xrdroot does not write those classes yet."""
+    """The workspaces: xrdroot does not write that class yet."""
     prefix = built_hf001.prefix
     tail = "xrdroot does not write that class yet; the file holds the measurement's histograms\n"
     assert built_hf001.errors.getvalue() == "".join(
-        f"xrdroot: the {what} is not written to {prefix}_{kind}_meas_model.root: {tail}"
-        for kind, whats in (("channel1", ("RooWorkspace channel1", "Measurement")),
-                            ("combined", ("RooWorkspace combined", "Measurement")))
-        for what in whats)  # fmt: skip
+        f"xrdroot: the RooWorkspace {kind} is not written to {prefix}_{kind}_meas_model.root: "
+        f"{tail}" for kind in ("channel1", "combined"))  # fmt: skip
 
 
 def test_the_files_hold_the_measurements_histograms_where_its_configuration_says(

@@ -224,3 +224,19 @@ class Measurement:
             "Measurement::PrintXML writes HistFactory's XML configuration; xrdroot does not yet - "
             "build the measurement in Python, as it was built here"
         )
+
+    # -- in a ROOT file -----------------------------------------------------------------------
+
+    #: The class ROOT writes a measurement as, and what the key of one is titled.
+    classname = "RooStats::HistFactory::Measurement"
+
+    @property
+    def title(self) -> str:
+        return self._title
+
+    def root_payload(self, keylen: int) -> tuple[bytes, tuple[str, ...], dict[Any, bytes]]:
+        """The measurement as ROOT streams one, for a key whose header is ``keylen`` long:
+        see :mod:`.streamed`."""
+        from .streamed import streamed
+
+        return streamed(self, keylen)

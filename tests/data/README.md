@@ -61,6 +61,9 @@ The layouts it writes trees with were harvested the same way — from
 | `uproot-issue-227b.root` | a `TProfile3D`, and so a `TH3D`: the donor of the three-dimensional layouts |
 | `object-branches-6.40.root` | five entries of every kind of object branch the writer writes - a `std::vector<float>`, a macro's class split with packed floats, a GenVector four-vector split and a vector of them split as a collection, a `TLorentzVector` with its `TObject` ignored, a `TH1F` and a `TH2F` whole, a `TClonesArray` of lines written member by member - made by ROOT 6.40.04 from `object_branches.C`, and the donor of the `TClonesArray`, `TLine` and GenVector layouts |
 | `object_branches.C` | not a ROOT file: the macro ROOT ran to write `object-branches-6.40.root` |
+| `hf-example-6.40.root` | HistFactory's example input, made by ROOT 6.40.04's `makeExample.C`: `data`, `signal`, two backgrounds and a relative statistical error histogram, two bins each |
+| `hf-measurement-6.40.root` | the `channel1` output file ROOT 6.40.04's `hf001_example.C` writes from it: the `meas` key - a `RooStats::HistFactory::Measurement` streamed with its nested classes, the donor of the measurement writer's bytes and checksums - beside the channel's histograms and the workspace |
+| `hf-allkinds-6.40.root` | a measurement of every kind of piece - two channels, extra data, overall, histogram, shape and normalisation systematics and factors, statistical errors with and without a histogram, preprocess functions, Asimov datasets, parameter values and the four systematic maps - written whole by ROOT 6.40.04 with `WriteTObject`: how ROOT streams a base class, a string and a map inside a vector written member-wise |
 
 No file here holds a `TEntryList`, `TEventList`, `THnSparse` or `THStack`,
 or a tree that records its friends, and none can be made without ROOT. The tests for those make their files as they run: `tests/crafted.py`

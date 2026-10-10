@@ -1,16 +1,19 @@
-"""Writing a measurement's histograms to its output file, as ``Measurement::writeToFile`` does.
+"""Writing a measurement to its output file, as ``Measurement::writeToFile`` does.
 
 Each channel gets a ``<channel>_hists`` directory, with the data in
 ``data`` and each sample's histograms - nominal, statistical errors as
 ``statisticalErrors``, systematics - in a directory of its own; each
 histogram's configuration then names where it was written. The
-``Measurement`` object itself and the workspace are ROOT classes xrdroot
-does not write yet: that is said on the standard error, and the rest of
-the file is written.
+``Measurement`` object itself goes in under its name, as it was before
+the renaming: ROOT copies it first, renames the one it was given and
+writes the copy (see :mod:`.streamed` for the bytes). The workspace is a
+ROOT class xrdroot does not write yet: that is said on the standard error,
+and the rest of the file is written.
 """
 
 from __future__ import annotations
 
+import copy
 import sys
 from typing import Any
 
@@ -64,8 +67,11 @@ def _sample(sample: Any, directory: Any, filename: str) -> None:
 
 
 def write_measurement(measurement: Any, handle: Any) -> None:
-    """Every channel's histograms into ``handle``, said as ROOT says it."""
+    """``Measurement::writeToFile``: every channel's histograms into ``handle``, said as ROOT
+    says it, then the measurement as it was before - ROOT renames the histograms in the
+    one it was given and writes the copy it took first."""
     filename = handle.GetName()
+    pristine = copy.deepcopy(measurement)
     for channel in measurement.GetChannels():
         if not channel.CheckHistograms():
             _hf(ERROR, f"Measurement.writeToFile(): Channel: {channel.GetName()} has "
@@ -82,5 +88,5 @@ def write_measurement(measurement: Any, handle: Any) -> None:
             _hf(PROGRESS, f"Writing sample: {sample.GetName()}")
             _sample(sample, folder.mkdir(sample.GetName()), filename)
     _hf(PROGRESS, "Saved all histograms")
-    not_written("the Measurement", filename)
+    handle.WriteTObject(pristine, pristine.GetName())
     _hf(PROGRESS, "Saved Measurement")

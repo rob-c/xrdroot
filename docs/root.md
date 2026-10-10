@@ -1705,11 +1705,12 @@ w = ROOT.RooStats.HistFactory.MakeModelAndMeasurementFast(meas)
 normalisation systematics (`OverallSys`, `HistoSys`, `NormFactor`, `ShapeSys`,
 `ShapeFactor`, `StatError`) with Gaussian, Poisson, Gamma and log-normal constraints;
 `FlexibleInterpVar`, `PiecewiseInterpolation` and `ParamHistFunc`; Asimov datasets;
-`PrintTree`. HistFactory workspaces written by ROOT are read.
+`PrintTree`. HistFactory workspaces written by ROOT are read, and the output files hold the
+measurement itself (`meas`) as ROOT 6.40 streams it, byte for byte, beside the histograms.
 
 **What it refuses**: the XML configuration (`PrintXML`, `hist2workspace` itself), a shape
-factor's initial shape, and writing the workspace into the output file - the histograms are
-written, and the workspace is said not to be.
+factor's initial shape, and writing the workspace into the output file - the histograms and
+the measurement are written, and the workspace is said not to be.
 
 ## TMVA
 

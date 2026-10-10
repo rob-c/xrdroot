@@ -44,7 +44,11 @@ from xrdroot.interp import (
     MEMBER_WISE,
     Refused,
     _class_held,
+    _columns,
+    _container_column,
     _Described,
+    _each_row,
+    _map_column,
     _objects,
     _sequence,
     build,
@@ -1021,8 +1025,9 @@ def test_a_key_of_a_class_holding_what_cannot_be_walked_is_refused_by_member():
 
 def test_a_container_of_a_described_class_reads_field_by_field_too():
     """The class version leads, and one written without a version leaves a checksum."""
-    steps = [("a", lambda buf, row: buf.u8()), ("b", lambda buf, row: buf.u8())]
-    read = _objects(lambda buf: {}, steps)
+    columns = [("a", _each_row("a", lambda buf, row: buf.u8())),
+               ("b", _each_row("b", lambda buf, row: buf.u8()))]  # fmt: skip
+    read = _objects(lambda buf: {}, columns)
     versioned = struct.pack(">hi", 2, 2) + bytes([1, 2, 3, 4])
     summed = struct.pack(">hIi", 0, 0xD00DAD, 2) + bytes([1, 2, 3, 4])
     for body in (versioned, summed):
@@ -1031,10 +1036,46 @@ def test_a_container_of_a_described_class_reads_field_by_field_too():
 
 
 def test_a_container_read_field_by_field_that_ends_elsewhere_is_not_trusted():
-    steps = [("a", lambda buf, row: buf.u8())]
+    columns = [("a", _each_row("a", lambda buf, row: buf.u8()))]
     body = struct.pack(">hi", 2, 2) + bytes([1, 2, 3])
     with pytest.raises(FormatError, match="cannot be trusted"):
-        _objects(lambda buf: {}, steps)(Buffer(record(MEMBER_WISE | 1, body)))
+        _objects(lambda buf: {}, columns)(Buffer(record(MEMBER_WISE | 1, body)))
+
+
+class Describing:
+    """A source that describes only the classes it is given."""
+
+    def __init__(self, classes: dict[str, dict[str, Member]]) -> None:
+        self.classes = classes
+
+    def streamers(self) -> dict[str, dict[str, Member]]:
+        return self.classes
+
+
+def test_the_columns_of_a_class_this_reader_cannot_walk_are_none():
+    """A class that streams itself, one whose base does, and one the file does not describe."""
+    source = Describing({"Listed": {"TList": Member("TList", "", 0, "BASE", 0)}})
+    assert _columns("TList", source, ()) is None
+    assert _columns("Listed", source, ()) is None
+    assert _columns("Mystery", source, ()) is None
+
+
+def test_a_column_of_containers_of_an_unwalkable_class_is_refused():
+    column = _container_column("items", "TList", Describing({}), ())
+    with pytest.raises(UnsupportedFeatureError, match="inside a container written field by field"):
+        column(Buffer(b""), [{}])
+
+
+def test_a_column_of_maps_or_containers_that_ends_elsewhere_is_not_trusted():
+    """One object's empty map or container, and four bytes the record says are there too."""
+    body = struct.pack(">hIi", 0, 0xD00DAD, 0) + bytes(4)
+    column = _map_column("m", parse("map<string,double>"))
+    with pytest.raises(FormatError, match="the maps of 1 objects written field by field"):
+        column(Buffer(record(MEMBER_WISE | 10, body)), [{}])
+    source = Describing({"Thing": {"x": Member("x", "", 3, "int", 0)}})
+    column = _container_column("c", "Thing", source, ())
+    with pytest.raises(FormatError, match="the containers of Thing of 1 objects"):
+        column(Buffer(record(MEMBER_WISE | 10, body)), [{}])
 
 
 def test_a_container_of_pointers_written_field_by_field_is_refused():

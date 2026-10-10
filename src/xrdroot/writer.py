@@ -908,6 +908,10 @@ def _object_payload(
     return classname, bytes(buf.data), tuple(used)
 
 
+#: An object's bytes for whatever streams one inside its own record, as a measurement does.
+object_payload = _object_payload
+
+
 def _keylen(classname: str, name: str, title: str, extra: int = 0) -> int:
     """How long the small form of the key in front of a record is: 26 fixed
     bytes, then three strings - and whatever else the class writes into its
@@ -1099,10 +1103,16 @@ class WritableDirectory:
             columns = {column: spec_of(column, values) for column, values in table.items()}
             self.tree(name, columns, title=title).extend(table)
             return
-        classname, payload, used = _payload(obj)
         if title is None:
-            title = obj.title if isinstance(obj, WRITABLE) else ""
+            title = obj.title if isinstance(obj, WRITABLE) or hasattr(obj, "root_payload") else ""
         _checked(title, "title")
+        if hasattr(obj, "root_payload"):  # streams itself, knowing where its key's bytes end
+            classname = str(obj.classname)
+            payload, used, carried = obj.root_payload(_keylen(classname, name, title))
+            for key, entry in carried.items():
+                self._file._carried.setdefault(key, entry)
+        else:
+            classname, payload, used = _payload(obj)
         self._file._used.update(dict.fromkeys(used))
         self._put(classname, name, title, payload, self._next_cycle(name), listed=True)
 
