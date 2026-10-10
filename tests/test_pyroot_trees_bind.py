@@ -23,8 +23,8 @@ def _fresh(tmp_path):
     yield from fresh(tmp_path)
 
 
-class Point:
-    _cxx_layout_ = ("Point", (), (("fX", "double", "", ()), ("lambda", "int", "", ())))
+class Point:  # declared as "BoundPoint": a macro elsewhere in the suite may declare a Point
+    _cxx_layout_ = ("BoundPoint", (), (("fX", "double", "", ()), ("lambda", "int", "", ())))
 
     def __init__(self):
         self.fX, self.lambda_ = 0.0, 0
@@ -60,7 +60,7 @@ def test_an_object_handed_over_whole_is_filled_in_place():
     back.SetBranchAddress("p", pointed)
     back.GetEntry(1)
     assert pointed.value.fX == 1.5
-    with pytest.raises(UnsupportedFeatureError, match="no declaration of Point"):
+    with pytest.raises(UnsupportedFeatureError, match="no declaration of BoundPoint"):
         back.SetBranchAddress("p", Cell(None))
 
 

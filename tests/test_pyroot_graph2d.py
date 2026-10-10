@@ -23,7 +23,15 @@ pytest.importorskip("iminuit")
 
 @pytest.fixture(autouse=True)
 def _fresh(tmp_path):
-    yield from fresh(tmp_path)
+    from xrdroot.pyroot.graphics import hook, pads
+
+    pads.CANVASES.clear()
+    pads.set_current(None)
+    session = fresh(tmp_path)
+    next(session)
+    hook.install()  # drawing puts things in pads, as the graphics make it
+    yield
+    next(session, None)
 
 
 def _sombrero(cls, count=60):
@@ -83,7 +91,8 @@ def test_the_surface_and_the_histogram_follow_the_settings(capsys):
     g.SetMargin(0.1)
     g.SetMaxIter(10)
     h = g.GetHistogram()
-    assert (h.GetNbinsX(), h.GetNbinsY(), g.GetNpx(), g.GetMargin()) == (4, 50, 4, 0.1)
+    assert (h.GetNbinsX(), h.GetNbinsY(), g.GetNpx(), g.GetNpy()) == (4, 50, 4, 50)
+    assert g.GetMargin() == 0.1
     assert g.GetXaxis().GetNbins() == 4 and g.GetYaxis().GetNbins() == 50
     assert g.GetZaxis() is not None and g.GetHistogram("empty").GetEntries() == 0
     g.SetMinimum(-5)
@@ -116,7 +125,9 @@ def test_the_confidence_band_is_put_in_a_graph_of_errors():
     assert band.GetZ()[1] == pytest.approx(f2.Eval(1, 0.5)) and band.GetErrorZ(1) > 0
 
 
-@pytest.mark.parametrize("option", ["tri1", "tri2", "p0", "pcol", "line", "err", "surf1", "colz"])
+@pytest.mark.parametrize(
+    "option", ["tri", "tri1", "tri2", "p0", "pcol", "line", "err", "surf1", "colz"]
+)
 def test_every_option_draws_without_anything_left_out(option, tmp_path):
     pytest.importorskip("matplotlib")
     import warnings
@@ -124,6 +135,9 @@ def test_every_option_draws_without_anything_left_out(option, tmp_path):
     g = _sombrero(ROOT.TGraph2DErrors)
     for i in range(g.GetN()):
         g.SetPointError(i, 0.1, 0.02, 0.2)
+    g.SetMarkerStyle(20)
+    g.SetLineColor(4)
+    assert g._xrd.members["TAttMarker"]["fMarkerStyle"] == 20 and g.GetLineColor() == 4
     canvas = ROOT.TCanvas("c", "c", 300, 300)
     g.Draw(option)
     _sombrero(ROOT.TGraph2D, 10).Draw("same p")
@@ -131,6 +145,17 @@ def test_every_option_draws_without_anything_left_out(option, tmp_path):
         warnings.simplefilter("error")
         canvas.SaveAs(str(tmp_path / "g.png"))
     assert (tmp_path / "g.png").stat().st_size > 1000
+
+
+def test_points_with_no_triangles_or_outside_the_box_draw_nothing_of_their_own(tmp_path):
+    pytest.importorskip("matplotlib")
+    line = ROOT.TGraph2D(3, [0.0, 1, 2], [0.0, 1, 2], [0.0, 1, 2])  # along a line: no area
+    far = ROOT.TGraph2DErrors(2, [50.0, 60], [50.0, 60], [0.0, 1], [1.0, 1], [1.0, 1], [1.0, 1])
+    canvas = ROOT.TCanvas("c", "c", 200, 200)
+    line.Draw("tri")
+    far.Draw("err same")
+    canvas.SaveAs(str(tmp_path / "none.png"))
+    assert (tmp_path / "none.png").exists()
 
 
 def test_the_options_say_what_the_graph_draws_of_its_own():

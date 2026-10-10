@@ -149,16 +149,17 @@ def _slope(function: Any, x: Array, ex: Array, params: Array, axis: int | None =
     return (1 / (2.0 * h)) * (8 * d2 - d0) / 3.0
 
 
-def _spread(function: Any, x: Array, ex: Array, params: Array) -> Array:
-    """Each point's coordinate errors carried through the function: ``sum (ex df/dx)^2``."""
+def _widened(function: Any, x: Array, ex: Array, e2: Array, params: Array) -> Array:
+    """``e2`` with each coordinate's error carried through the function, axis by axis, each
+    term squared and added in turn - the rounding ROOT's stored chi-squares agree with."""
     columns = [(ex, None)] if ex.ndim == 1 else [(ex[:, k], k) for k in range(ex.shape[1])]
-    total = np.zeros(len(x))
+    e2 = e2.copy()
     for errors, axis in columns:
         sloped = errors != 0
         if sloped.any():
             slope = _slope(function, x[sloped], errors[sloped], params, axis)
-            total[sloped] += (errors[sloped] * slope) ** 2
-    return total
+            e2[sloped] += (errors[sloped] * slope) ** 2
+    return e2
 
 
 def effective_chi2(data: FitData, function: Any) -> Cost:
@@ -171,7 +172,7 @@ def effective_chi2(data: FitData, function: Any) -> Cost:
         ey = data.error
         if data.kind == ASYM_ERROR:
             ey = np.where(residual < 0, data.yhigh, data.ylow)
-        e2 = ey * ey + _spread(function, x, ex, params)
+        e2 = _widened(function, x, ex, ey * ey, params)
         with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
             terms = np.where(e2 > 0, 1.0 / np.where(e2 > 0, e2, 1.0), 0.0) * residual * residual
         return _capped(terms, data.size)

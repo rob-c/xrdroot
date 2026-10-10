@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import functools
 import math
+import operator
 from collections.abc import Callable
 from typing import Any, ClassVar
 
@@ -153,7 +154,7 @@ for _name, _others in ALIASES.items():
         DERIVED_4D[_other] = DERIVED_4D[_name]
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _own_index(names: tuple[str, ...], name: str) -> int | None:
     """Where ``name`` - or a name it is another word for - is among a system's coordinates."""
     own = [coord for coord in names if coord == name or name in ALIASES.get(coord, ())]
@@ -258,34 +259,35 @@ class _Vector:
         return float(self._cartesian()[index])
 
     def _made(self, x: Any) -> Any:
+        """A vector of this class with Cartesian components ``x``, a tuple of floats."""
         made = type(self).__new__(type(self))
         if self.SYSTEM in CARTESIAN:  # the components are the coordinates: kept as they are
-            made._c = tuple(x)
+            made._c = x
             return made
         made._set_cartesian(x)
         return made
 
     def __add__(self, other: _Vector) -> Any:
-        return self._made([a + b for a, b in zip(self._cartesian(), other._cartesian(),
-                                                 strict=False)])  # fmt: skip
+        return self._made(tuple(map(operator.add, self._cartesian(), other._cartesian())))
 
     def __sub__(self, other: _Vector) -> Any:
-        return self._made([a - b for a, b in zip(self._cartesian(), other._cartesian(),
-                                                 strict=False)])  # fmt: skip
+        return self._made(tuple(map(operator.sub, self._cartesian(), other._cartesian())))
 
     def __neg__(self) -> Any:
-        return self._made(-a for a in self._cartesian())
+        return self._made(tuple(map(operator.neg, self._cartesian())))
 
     def __mul__(self, a: Any) -> Any:
         if isinstance(a, _Vector):
             return self.Dot(a)
-        return self._made(value * float(a) for value in self._cartesian())
+        factor = float(a)
+        return self._made(tuple(value * factor for value in self._cartesian()))
 
     def __rmul__(self, a: Any) -> Any:
         return self * a
 
     def __truediv__(self, a: float) -> Any:
-        return self._made(value / float(a) for value in self._cartesian())
+        divisor = float(a)
+        return self._made(tuple(value / divisor for value in self._cartesian()))
 
     def __iadd__(self, other: _Vector) -> Any:
         self._set_cartesian(
@@ -485,8 +487,9 @@ class DisplacementVector3D(_Vector):
         raise TypeError(f"ROOT::Math has no three-vector coordinates {wanted!r}")
 
     def Unit(self) -> Any:
-        length = _r3(self._cartesian())
-        return self / length if length > 0 else self._made(self._cartesian())
+        c = self._cartesian()
+        length = math.sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2])
+        return self._made((c[0] / length, c[1] / length, c[2] / length) if length > 0 else c)
 
     def Cross(self, other: _Vector) -> Any:
         a, b = self._cartesian(), other._cartesian()

@@ -17,7 +17,7 @@ triangle round them all whose corners are taken away at the end.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeAlias
 
 import numpy as np
 
@@ -36,7 +36,7 @@ EDGE = 1e-12
 #: How many points are looked for among the triangles at once.
 CHUNK = 256
 
-Array = np.ndarray[Any, Any]
+Array: TypeAlias = np.ndarray[Any, Any]
 
 
 def _orient(points: Array, tri: Array) -> Array:
@@ -165,21 +165,27 @@ class Delaunay:
         heights = np.full(len(query), self.zout)
         if not len(tri) or not len(query):
             return heights
-        unit = self._unit(self.x, self.y)
-        a, b, c = unit[tri[:, 0]], unit[tri[:, 1]], unit[tri[:, 2]]
-        det = (b[:, 1] - c[:, 1]) * (a[:, 0] - c[:, 0]) + (c[:, 0] - b[:, 0]) * (a[:, 1] - c[:, 1])
-        dx = query[:, None, 0] - c[None, :, 0]
-        dy = query[:, None, 1] - c[None, :, 1]
-        l1 = ((b[:, 1] - c[:, 1]) * dx + (c[:, 0] - b[:, 0]) * dy) / det
-        l2 = ((c[:, 1] - a[:, 1]) * dx + (a[:, 0] - c[:, 0]) * dy) / det
-        l3 = 1.0 - l1 - l2
+        l1, l2, l3 = _barycentric(self._unit(self.x, self.y), tri, query)
         inside = (l1 >= -EDGE) & (l2 >= -EDGE) & (l3 >= -EDGE)
         hit = inside.any(axis=1)
         which = np.argmax(inside, axis=1)[hit]
         rows = np.flatnonzero(hit)
         z = self.z[tri[which]]
-        heights[hit] = l1[rows, which] * z[:, 0] + l2[rows, which] * z[:, 1] + l3[rows, which] * z[:, 2]
+        weights = (l1[rows, which], l2[rows, which], l3[rows, which])
+        heights[hit] = weights[0] * z[:, 0] + weights[1] * z[:, 1] + weights[2] * z[:, 2]
         return heights
+
+
+def _barycentric(unit: Array, tri: Array, query: Array) -> tuple[Array, Array, Array]:
+    """Each query point's three barycentric coordinates in each triangle, ``(points, triangles)``
+    each."""
+    a, b, c = unit[tri[:, 0]], unit[tri[:, 1]], unit[tri[:, 2]]
+    det = (b[:, 1] - c[:, 1]) * (a[:, 0] - c[:, 0]) + (c[:, 0] - b[:, 0]) * (a[:, 1] - c[:, 1])
+    dx = query[:, None, 0] - c[None, :, 0]
+    dy = query[:, None, 1] - c[None, :, 1]
+    l1 = ((b[:, 1] - c[:, 1]) * dx + (c[:, 0] - b[:, 0]) * dy) / det
+    l2 = ((c[:, 1] - a[:, 1]) * dx + (a[:, 0] - c[:, 0]) * dy) / det
+    return l1, l2, 1.0 - l1 - l2
 
 
 def _scale(values: Array) -> float:

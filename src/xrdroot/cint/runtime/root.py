@@ -13,6 +13,7 @@ namespace bound does not have its own.
 from __future__ import annotations
 
 import importlib
+import inspect
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -42,6 +43,8 @@ class RootProxy:
 
     def __init__(self) -> None:
         self._bound: list[Any] = []
+        #: The classes and modules found through a used namespace, by namespace and name.
+        self._resolved: dict[tuple[int, str], Any] = {}
 
     def namespace(self) -> Any:
         """What names are looked up in now: the innermost :meth:`bind`, else pyroot."""
@@ -63,6 +66,9 @@ class RootProxy:
         if name.startswith("__"):
             raise AttributeError(name)
         namespace = self.namespace()
+        found = self._resolved.get((id(namespace), name))
+        if found is not None:
+            return found
         try:
             return getattr(namespace, name)
         except AttributeError:
@@ -70,12 +76,19 @@ class RootProxy:
                 return self._used(namespace, name)
         return importlib.import_module(f"{DEFAULT}.stl").std
 
-    @staticmethod
-    def _used(namespace: Any, name: str) -> Any:
-        """``name`` from a namespace of :data:`USED`, or the refusal ROOT's own lookup gave."""
+    def _used(self, namespace: Any, name: str) -> Any:
+        """``name`` from a namespace of :data:`USED`, or the refusal ROOT's own lookup gave.
+
+        A class or a module found this way is remembered, since the search
+        before it - every namespace, and ROOT's objects by name - is what a
+        macro's inner loop would otherwise do at every ``XYZVector(x, y, z)``.
+        What a macro declares is not, since the next macro may declare it again.
+        """
         for used in USED:
             found = getattr(_member(namespace, used), name, None)
             if found is not None:
+                if isinstance(found, type) or inspect.ismodule(found):
+                    self._resolved[(id(namespace), name)] = found
                 return found
         if name in DECLARED:
             return DECLARED[name]

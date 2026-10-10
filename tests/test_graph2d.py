@@ -64,6 +64,9 @@ def test_a_graph_without_errors_is_fitted_with_errors_of_one(capsys):
     assert found.parameters == pytest.approx([2, -1, 0.5], abs=0.01)
     assert found.ndf == len(x) - 3 and capsys.readouterr().out == ""
     assert g.functions[0].range == ((-1.0, 1.0), (0.0, 2.0))
+    written = g.fit("[0]*x + [1]*y + [2]", "Q")  # a formula, defined over the points' span
+    assert written.parameters == pytest.approx(found.parameters, rel=1e-6)
+    assert written.function.range == ((-1.0, 1.0), (0.0, 2.0))
 
 
 def test_the_kind_of_points_comes_from_the_errors_the_graph_has():
@@ -91,3 +94,5 @@ def test_errors_in_x_and_y_widen_each_heights_error_by_the_slope(capsys):
     found = g.fit(model, "Q")
     assert found.parameters == pytest.approx([2, -1, 0.5], abs=1e-4)
     assert found.chi2 == pytest.approx(0.0, abs=1e-6)
+    only_x = Graph2D.new("x", x, y, z, errors=(np.full(n, 0.1), np.zeros(n), np.full(n, 0.3)))
+    assert only_x.fit(model, "Q").chi2 == pytest.approx(0.0, abs=1e-6)  # y's slope not needed

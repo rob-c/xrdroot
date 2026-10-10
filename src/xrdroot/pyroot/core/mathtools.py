@@ -274,7 +274,7 @@ class FitConfig:
         self._settings: list[ParameterSettings] = []
 
     def SetParamsSettings(self, npar: int, params: Any = None, errors: Any = None) -> None:
-        """``SetParamsSettings``: ``Par_i`` from each value, stepped 30% of it - or by ``errors``."""
+        """``SetParamsSettings``: ``Par_i`` from each value, stepped 30% of it or by ``errors``."""
         values = np.zeros(int(npar)) if params is None else np.asarray(params, np.float64)
         from ...fit.minuit import default_steps
 

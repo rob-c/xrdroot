@@ -66,6 +66,11 @@ def paint_graph2d(scene: Scene, g: Any, option: str) -> None:
 
         scene.solid = True
         paint_three_d(scene, g.histogram(empty=True), "SURF", cells=False)
+    _own(scene, g, flags)
+
+
+def _own(scene: Scene, g: Any, flags: dict[str, Any]) -> None:
+    """The graph's own things, in the box the pad has: triangles, line, bars, markers."""
     view, pad = scene.view3d
     if flags["tri"] is not None:
         _triangles(scene, g, view, pad, flags["tri"])

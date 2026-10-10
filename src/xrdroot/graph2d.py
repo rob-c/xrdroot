@@ -63,8 +63,10 @@ class Graph2D:
         self._delaunay: Delaunay | None = None
 
     @classmethod
-    def new(cls, name: str, x: Any, y: Any, z: Any, *, title: str = "", errors: Any = None) -> Graph2D:
-        """A graph of the points given, with ``errors`` - ``(ex, ey, ez)`` - a ``TGraph2DErrors``."""
+    def new(
+        cls, name: str, x: Any, y: Any, z: Any, *, title: str = "", errors: Any = None
+    ) -> Graph2D:
+        """A graph of the points given; with ``errors``, ``(ex, ey, ez)``, a ``TGraph2DErrors``."""
         classname = "TGraph2D" if errors is None else "TGraph2DErrors"
         made = cls(classname, members(name, title, classname, len(np.reshape(x, -1))))
         made.set_points(x, y, z, errors)

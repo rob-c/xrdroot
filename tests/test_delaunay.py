@@ -64,4 +64,4 @@ def test_a_great_triangle_that_keeps_cutting_into_the_hull_is_refused(monkeypatc
     monkeypatch.setattr(delaunay, "WIDER", 1.0)
     x, y = _scattered(30)
     with pytest.raises(UnsupportedFeatureError, match="could not be triangulated"):
-        Delaunay(x, y, x).triangles
+        len(Delaunay(x, y, x).triangles)

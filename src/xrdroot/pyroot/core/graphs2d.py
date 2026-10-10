@@ -52,16 +52,17 @@ class TGraph2D(TNamed, TAttLine, TAttFill, TAttMarker):
         if args and isinstance(args[0], str):
             self.SetNameTitle(args[0], args[1] if len(args) > 1 else "")
             args = args[2:]
-        if not args:
-            return
-        if np.ndim(args[0]) > 0:
-            args = (len(args[0]), *args)
+        if args:
+            self._from_arrays((len(args[0]), *args) if np.ndim(args[0]) > 0 else args)
+
+    def _from_arrays(self, args: tuple[Any, ...]) -> None:
+        """``(n, x, y, z, bars...)``: the first ``n`` of each array, zeros for any not given."""
         count = int(args[0])
         given = [np.asarray(a, dtype=np.float64)[:count] if a is not None else np.zeros(count)
                  for a in args[1:]]  # fmt: skip
         while len(given) < 3 + len(GRAPHS2D[self._xrd.classname]):
             given.append(np.zeros(count))
-        self._xrd.set_points(*given[:3], tuple(given[3:]) or None)
+        self._xrd.set_points(given[0], given[1], given[2], tuple(given[3:]) or None)
 
     def _attribute_holder(self) -> Any:
         return self._xrd.members

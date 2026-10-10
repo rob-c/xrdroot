@@ -86,7 +86,7 @@ def _into_graph2d(result: Any, graph: Any, cl: float) -> None:
     """Each point keeps its ``x`` and ``y``, and takes the function's value and the band's
     half-width as its ``z`` and its z error."""
     count = graph.GetN()
-    xs, ys = (np.asarray(values, dtype=np.float64)[:count] for values in (graph.GetX(), graph.GetY()))
+    xs, ys = (np.asarray(v, dtype=np.float64)[:count] for v in (graph.GetX(), graph.GetY()))
     values, halves = band(result, np.column_stack([xs, ys]), cl)
     for i in range(count):
         graph.SetPoint(i, xs[i], ys[i], values[i])

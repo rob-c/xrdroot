@@ -22,3 +22,22 @@ def test_a_name_no_used_namespace_has_either_is_refused_as_root_refuses_it() -> 
     proxy = RootProxy()
     with proxy.bind(SimpleNamespace(RooFit=SimpleNamespace())), pytest.raises(AttributeError):
         proxy.Nowhere  # noqa: B018
+
+
+def test_a_class_found_in_a_used_namespace_is_remembered_but_an_object_or_a_declaration_is_not(
+    monkeypatch,
+) -> None:
+    """``XYZVector(x, y, z)`` in a loop looks the class up once; what may change is looked up
+    each time: an object (``RooFit.Save`` here stands for one), or a class a macro declared."""
+    from xrdroot.cint.runtime import root
+
+    math, roofit = SimpleNamespace(XYZVector=int), SimpleNamespace(Save=object())
+    proxy = RootProxy()
+    monkeypatch.setitem(root.DECLARED, "Declared", int)
+    with proxy.bind(SimpleNamespace(Math=math, RooFit=roofit)):
+        assert proxy.XYZVector is int and proxy.Declared is int
+        first = proxy.Save
+        math.XYZVector, roofit.Save = float, object()
+        monkeypatch.setitem(root.DECLARED, "Declared", float)
+        assert proxy.XYZVector is int  # remembered
+        assert proxy.Save is not first and proxy.Declared is float  # looked up again

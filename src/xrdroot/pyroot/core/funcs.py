@@ -683,7 +683,7 @@ class TF2(TF1):
         held = self.__dict__.get("_table")
         if held is None or held[0] != key:
             held = self.__dict__["_table"] = (key, self._table())
-        return held[1]  # type: ignore[no-any-return]
+        return held[1]
 
     def _table(self) -> tuple[np.ndarray[Any, Any], float, float]:
         """The running integral over ``Npx`` by ``Npy`` cells, x fastest."""
