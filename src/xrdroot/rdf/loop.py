@@ -36,12 +36,14 @@ from ..errors import UnsupportedFeatureError
 from ..tree import Jagged, take
 from .expression import Expression, Scope
 from .graph import (
+    Availability,
     Defined,
     Definition,
     EntryColumn,
     Filter,
     PerSample,
     Range,
+    RawColumn,
     Selector,
     SlotColumn,
     SourceColumn,
@@ -197,7 +199,12 @@ class Batch:
             return self._defined(definition, node)
         count = self.size(node)
         if isinstance(definition, SourceColumn):
-            return self._source(definition.name, node, count)
+            values = self._source(definition.name, node, count)
+            if count and not isinstance(definition, RawColumn):
+                self._check_available(definition.name, node)
+            return values
+        if isinstance(definition, Availability):
+            return self._available(definition.name, node, count)
         if isinstance(definition, EntryColumn):
             return self.entries(node).astype(np.uint64)
         if isinstance(definition, SlotColumn):
@@ -213,6 +220,36 @@ class Batch:
             self._read[name] = self.source.read(name, self.start, self.stop)
         rows = self.rows(node)
         return self._read[name] if rows is None else take(self._read[name], rows)
+
+    def _have(self, name: str) -> Array | None:
+        """Which entries of the batch have a value of the data's column ``name``; ``None``
+        for all of them."""
+        key = f"\0{name}"  # no column's name: where what it reads is kept, beside the values
+        if key not in self._read:
+            self._read[key] = self.source.available(name, self.start, self.stop)
+        return cast("Array | None", self._read[key])
+
+    def _available(self, name: str, node: Selector, count: int) -> Array:
+        have = self._have(name)
+        if have is None:
+            return np.ones(count, np.bool_)
+        rows = self.rows(node)
+        return have if rows is None else have[rows]
+
+    def _check_available(self, name: str, node: Selector) -> None:
+        """Refuse a value an entry does not have, as ROOT does, rather than read a zero."""
+        have = self._have(name)
+        if have is None:
+            return
+        rows = self.rows(node)
+        missing = np.flatnonzero(~(have if rows is None else have[rows]))
+        if len(missing):
+            at = int(missing[0] if rows is None else rows[missing[0]])
+            raise LookupError(
+                f"entry {self.start + at} has no value of the column {name!r} - its file's "
+                f"tree has no such branch, or a friend has no entry to match it; give it one "
+                f"with DefaultValueFor, or keep only the entries that have it with FilterAvailable"
+            )
 
     def _defined(self, definition: Defined, node: Selector) -> Any:
         home = definition.selector

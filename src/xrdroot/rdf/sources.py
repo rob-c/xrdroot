@@ -79,6 +79,11 @@ class Source:
         """One column's values for the entries from ``start`` up to ``stop``."""
         raise NotImplementedError
 
+    def available(self, name: str, start: int, stop: int) -> Any:
+        """Which of entries ``start`` to ``stop`` have a value of ``name``, as truths - or
+        ``None``, as for every source but a patchwork of trees, when every entry has one."""
+        return None
+
     def boundaries(self) -> list[int]:
         """Where each file's entries start, and where the last one's stop."""
         return [0, len(self)]

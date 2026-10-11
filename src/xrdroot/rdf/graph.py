@@ -24,6 +24,8 @@ from .expression import Expression
 __all__ = [
     "Definition",
     "SourceColumn",
+    "RawColumn",
+    "Availability",
     "EntryColumn",
     "SlotColumn",
     "Defined",
@@ -52,6 +54,21 @@ class Definition:
 
 class SourceColumn(Definition):
     """A column the data has: a branch of a tree, a field of an RNTuple."""
+
+    __slots__ = ()
+
+
+class RawColumn(SourceColumn):
+    """A column of the data as it is read, an entry that has no value of it read as zero:
+    what ``DefaultValueFor`` puts its value in place of."""
+
+    __slots__ = ()
+
+
+class Availability(Definition):
+    """Whether each entry has a value of the data's column ``name`` - one a file's tree has no
+    branch for, or a friend no matching entry for, has none: what ``FilterAvailable``,
+    ``FilterMissing`` and ``DefaultValueFor`` read."""
 
     __slots__ = ()
 

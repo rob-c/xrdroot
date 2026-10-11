@@ -27,7 +27,7 @@ import keyword
 import os
 import re
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -550,6 +550,25 @@ class RDataFrame:
                 f"zero, end after begin, and the stride at least one"
             )
         return self._derived(node=Range(self._node, begin, end or None, stride))
+
+    def DefaultValueFor(self, column: str, value: Any) -> RDataFrame:
+        """The data's ``column``, and ``value`` in each entry that has none of it - a file whose
+        tree has no such branch, a friend with no entry to match (see :mod:`.missing`)."""
+        from .missing import default_value_for
+
+        return cast(RDataFrame, default_value_for(self, column, value))
+
+    def FilterAvailable(self, column: str) -> RDataFrame:
+        """Only the entries that have a value of the data's ``column`` go on."""
+        from .missing import filter_available
+
+        return cast(RDataFrame, filter_available(self, column))
+
+    def FilterMissing(self, column: str) -> RDataFrame:
+        """Only the entries that have no value of the data's ``column`` go on."""
+        from .missing import filter_available
+
+        return cast(RDataFrame, filter_available(self, column, missing=True))
 
     # -- what there is ---------------------------------------------------------------
 

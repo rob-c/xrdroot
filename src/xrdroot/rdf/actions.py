@@ -614,11 +614,6 @@ class FillObject(Action):
         return self.target
 
 
-def _entries(values: Any) -> int:
-    """How many entries a column's batch holds; of what Combinations gives, its first member's."""
-    return len(values[0]) if isinstance(values, tuple) else len(values)
-
-
 def _first(values: Any, wanted: Array) -> Any:
     if isinstance(values, tuple):
         return tuple(take(member, wanted) for member in values)
@@ -639,10 +634,11 @@ class DisplayAction(Action):
 
     def partial(self, batch: Batch) -> Any:
         wanted = np.arange(min(batch.size(self.node), self.rows + 1))
-        return [_first(values, wanted) for values in self.columns(batch)]
+        numbers = batch.entries(self.node)[wanted]  # what ROOT's box numbers its rows by
+        return [numbers, *(_first(values, wanted) for values in self.columns(batch))]
 
     def _length(self, acc: Any) -> int:
-        return sum(_entries(part[0]) for part in acc) if acc and self.inputs else 0
+        return sum(len(part[0]) for part in acc) if acc and self.inputs else 0
 
     def merge(self, acc: Any, part: Any) -> Any:
         acc = [] if acc is None else acc
@@ -653,10 +649,11 @@ class DisplayAction(Action):
 
     def finish(self, acc: Any, flow: dict[int, tuple[int, int]]) -> Any:
         columns = {
-            each.name: joined([part[at] for part in acc]) for at, each in enumerate(self.inputs)
+            each.name: joined([part[at + 1] for part in acc]) for at, each in enumerate(self.inputs)
         }
         shown = min(self._length(acc), self.rows)
-        return Display(columns, shown, self.elements)
+        numbers = np.concatenate([part[0] for part in acc]) if acc else np.zeros(0, np.int64)
+        return Display(columns, shown, self.elements, [int(one) for one in numbers[:shown]])
 
 
 class Report(Action):

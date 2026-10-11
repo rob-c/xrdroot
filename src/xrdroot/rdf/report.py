@@ -169,14 +169,19 @@ class Display:
     >>> print(df.Display(["x", "pt"], 3).GetValue())    # doctest: +SKIP
     """
 
-    def __init__(self, columns: dict[str, Any], rows: int, elements: int) -> None:
+    def __init__(
+        self, columns: dict[str, Any], rows: int, elements: int, entries: Any = None
+    ) -> None:
         self.columns = columns
         self.rows = rows
         self.elements = elements
+        #: Each row's entry number, which ROOT's box shows as its ``Row`` - the rows' own
+        #: numbers, from zero, for a box made of columns alone.
+        self.entries = list(range(rows)) if entries is None else list(entries)
 
     def _cells(self) -> list[list[list[str]]]:
         return [
-            [[str(row)]]
+            [[str(self.entries[row])]]
             + [_cell(_at(values, row), self.elements) for values in self.columns.values()]
             for row in range(self.rows)
         ]

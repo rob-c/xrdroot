@@ -135,6 +135,13 @@ def _column(values: Any) -> Any:
     return np.asarray(values)
 
 
+#: The names C++ gives a method's parameters, which PyROOT takes as keywords, as xrdroot's
+#: own: ``Display(columnList=..., nRows=15)``.
+KEYWORDS = {
+    "Display": {"columnList": "columns", "nRows": "rows", "nMaxCollectionElements": "elements"},
+}
+
+
 class _Method:
     """A frame's method, called with PyROOT's objects; ``m['double']`` - a macro's C++ template
     arguments - is the same method, since a column's type is read from the data."""
@@ -144,7 +151,8 @@ class _Method:
 
     def __call__(self, *arguments: Any, **options: Any) -> Any:
         given = per_entry(self.name, [_unwrapped(each) for each in arguments])
-        keywords = {key: _unwrapped(value) for key, value in options.items()}
+        renamed = KEYWORDS.get(self.name, {})
+        keywords = {renamed.get(key, key): _unwrapped(value) for key, value in options.items()}
         try:
             return _wrapped(self.found(*given, **keywords))
         except Exception as why:  # C++ the batch evaluator refuses: translated, if it can be
@@ -167,7 +175,10 @@ class RDataFrame:
         if len(arguments) == 1 and isinstance(arguments[0], RDataFrame):  # RNode(node): itself
             self._inner = arguments[0]._inner
             return
-        given = [_unwrapped(each) for each in arguments[:3]]
+        from .treesource import source_of
+
+        special = source_of(arguments[0]) if len(arguments) == 1 else None
+        given = [special] if special is not None else [_unwrapped(each) for each in arguments[:3]]
         self._inner = _rdf.RDataFrame(*given, **options)
 
     @classmethod

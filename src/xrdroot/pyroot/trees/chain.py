@@ -1,7 +1,7 @@
 """``TChain``: one tree's name across many files, read as one tree.
 
 ``Add`` takes a file, a wildcard of them, a file with the tree's name after
-it (``run1.root/events``), or another chain; everything a ``TTree`` reads
+it (``run1.root/events``, or ``run1.root?#events``), or another chain; everything a ``TTree`` reads
 with, a chain reads with, entry numbers counting across the files in the
 order they were added. The reading is :class:`xrdroot.Chain`'s.
 """
@@ -23,7 +23,10 @@ class _Element(_TObjectLike):
 
 
 def _split(name: str, tree: str) -> tuple[str, str]:
-    """A file and the tree in it, from ``file.root/tree`` or a file alone."""
+    """A file and the tree in it, from ``file.root?#tree``, ``file.root/tree`` or a file alone."""
+    path, query, named = str(name).partition("?#")
+    if query and named:
+        return path, named
     head, dot_root, rest = str(name).partition(".root/")
     if dot_root and rest:
         return head + ".root", rest
