@@ -139,6 +139,39 @@ class TPad(Drawn):
     def GetNumber(self) -> int:
         return self.number
 
+    def _absolute(self) -> tuple[float, float, float, float]:
+        """``fAbsXlowNDC``, ``fAbsYlowNDC``, ``fAbsWNDC``, ``fAbsHNDC``: where the pad sits in
+        its canvas, each mother's place and size taken in turn - the canvas all of itself."""
+        if self.mother is None:
+            return 0.0, 0.0, 1.0, 1.0
+        x, y, w, h = self.mother._absolute()
+        get = self.members.get
+        return (x + float(get("fXlowNDC", 0.0)) * w, y + float(get("fYlowNDC", 0.0)) * h,
+                float(get("fWNDC", 1.0)) * w, float(get("fHNDC", 1.0)) * h)  # fmt: skip
+
+    def GetPadPar(self, xlow: Any, ylow: Any, xup: Any, yup: Any) -> None:
+        """``GetPadPar(xlow, ylow, xup, yup)``: the pad's corners in its mother's NDC."""
+        from ..core.refs import store
+
+        get = self.members.get
+        x, y = float(get("fXlowNDC", 0.0)), float(get("fYlowNDC", 0.0))
+        store(xlow, x)
+        store(ylow, y)
+        store(xup, x + float(get("fWNDC", 1.0)))
+        store(yup, y + float(get("fHNDC", 1.0)))
+
+    def GetAbsXlowNDC(self) -> float:
+        return self._absolute()[0]
+
+    def GetAbsYlowNDC(self) -> float:
+        return self._absolute()[1]
+
+    def GetAbsWNDC(self) -> float:
+        return self._absolute()[2]
+
+    def GetAbsHNDC(self) -> float:
+        return self._absolute()[3]
+
     def SetPad(self, xlow: float, ylow: float, xup: float, yup: float) -> None:
         self.members.update(fXlowNDC=xlow, fYlowNDC=ylow, fWNDC=xup - xlow, fHNDC=yup - ylow)
 
@@ -191,6 +224,27 @@ class TPad(Drawn):
                 name = f"{self.GetName()}_{number}"
                 pad = TPad(name, name, x1, y1, x2, y2, color or self.members["fFillColor"])
                 self._adopt(pad, number)
+
+    def DivideRatios(self, nrows: int, ncolumns: int, widthRatios: Any = (),
+                     heightRatios: Any = (), canvasTopMargin: float = 0.0,
+                     canvasLeftMargin: float = 0.0) -> None:  # fmt: skip
+        """``DivideRatios``: ``nrows`` pads across and ``ncolumns`` down, each column as wide and
+        each row as high as its ratio of the pad says - evenly, given none - numbered from the
+        top left, row by row, after the margins left at the top and the left."""
+        before = current()
+        self.Clear()
+        set_current(before)
+        widths = [float(v) for v in widthRatios][: int(nrows)] or [1.0 / int(nrows)] * int(nrows)
+        heights = ([float(v) for v in heightRatios][: int(ncolumns)]
+                   or [1.0 / int(ncolumns)] * int(ncolumns))  # fmt: skip
+        number, y = 1, 1.0 - float(canvasTopMargin)
+        for high in heights:
+            x = float(canvasLeftMargin)
+            for wide in widths:
+                name = f"{self.GetName()}_{number}"
+                self._adopt(TPad(name, name, x, y - high, x + wide, y), number)
+                number, x = number + 1, x + wide
+            y -= high
 
     def _adopt(self, pad: TPad, number: int = 0) -> None:
         pad.mother, pad.number = self, number

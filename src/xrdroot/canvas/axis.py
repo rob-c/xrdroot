@@ -489,18 +489,28 @@ def _exponent_label(axis: Axis, geo: _Geometry, text: _Text, exponent: int) -> L
     return Label(shown, u, v, 11, 0.0, font, text.size, axis.label_color)
 
 
-def _changed(axis: Axis, label: Label, number: int, nlabels: int) -> Label:
-    """``label``, the ``number``-th, as ``TGaxis::ChangeLabelAttributes`` restyles it.
+def _changed(axis: Axis, label: Label, number: int, nlabels: int, value: float = 0.0) -> Label:
+    """``label``, the ``number``-th, of ``value``, as ``TGaxis::ChangeLabelAttributes`` restyles
+    it.
 
     A change numbered back from the end, ``-1`` the last, is of the label
-    numbered ``change + 2 + nlabels``, as ``FindModLab`` matches it; a size of
-    zero erases the label. The first change that matches is the one made.
+    numbered ``change + 2 + nlabels``, as ``FindModLab`` matches it; one
+    numbered ``0`` is of the label of its value; a size of zero erases the
+    label. The first change that matches is the one made.
     """
     backwards = number - 2 - nlabels
-    found = next((c for c in axis.changed if c[0] in (number, min(backwards, 0))), None)
+    found = next((c for c in axis.changed if _matches(c, (number, min(backwards, 0)), value)),
+                 None)  # fmt: skip
     if found is None:
         return label
-    return label._replace(**_restyled(found[1:]))
+    return label._replace(**_restyled(found[1:7]))
+
+
+def _matches(change: tuple[Any, ...], numbers: tuple[int, int], value: float) -> bool:
+    """A change by number of one of ``numbers`` - or, by value, of ``value``."""
+    if change[0] == 0 and len(change) > 7:
+        return bool(abs(change[7] - value) <= 1e-9 * max(abs(value), 1.0))
+    return change[0] in numbers
 
 
 def _restyled(change: tuple[Any, ...]) -> dict[str, Any]:
@@ -534,12 +544,12 @@ def _linear_labels(
     value = form.first
     nlabels = binning.n1a - int(centred)
     for k in range(nlabels + 1):
-        label = _printed(value, form.format, "." in options)
+        label, at = _printed(value, form.format, "." in options), value
         value += form.step
         u, v = _rotate(step * k + shift, text.offset, geo, origin)
         made = Label(label, u, v - drop, text.align, 0.0, axis.label_font, text.size,
                      axis.label_color)  # fmt: skip
-        _written(out, _changed(axis, made, k + 1, nlabels))
+        _written(out, _changed(axis, made, k + 1, nlabels, at))
     if form.exponent:
         out.labels.append(_exponent_label(axis, geo, text, form.exponent))
 

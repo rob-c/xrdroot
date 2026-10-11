@@ -162,6 +162,30 @@ class TGaxis(Drawn):
                          int(labColor), int(labFont), str(labText)))  # fmt: skip
         self.members["_changed_labels"] = kept if int(labNum) else []
 
+    def ChangeLabelByValue(
+        self, labValue: float, labAngle: float = -1.0, labSize: float = -1.0, labAlign: int = -1,
+        labColor: int = -1, labFont: int = -1, labText: str = "",
+    ) -> None:  # fmt: skip
+        """``ChangeLabelByValue``: the label of that value restyled, among the changes by
+        number in the order made - numbered ``0``, the value after."""
+        self.members.setdefault("_changed_labels", []).append(
+            (0, float(labAngle), float(labSize), int(labAlign), int(labColor), int(labFont),
+             str(labText), float(labValue)))  # fmt: skip
+
+    def SetTitleFont(self, font: int) -> None:
+        """``SetTitleFont``: the axis's text font - which ROOT's title is drawn in."""
+        self.SetTextFont(font)
+
+    def SetTitleColor(self, color: int) -> None:
+        """``SetTitleColor``: the axis's text colour - which ROOT's title is drawn in."""
+        self.SetTextColor(color)
+
+    def SetTimeOffset(self, toffset: float, option: str = "local") -> None:
+        """``SetTimeOffset``: the time a label of zero stands for, kept after ``%F`` in the
+        format, as ``TAxis::SetTimeOffset`` keeps it."""
+        held = str(self.members.get("fTimeFormat", "") or "")
+        self.members["fTimeFormat"] = f"{held.split('%F')[0]}%F{toffset}"
+
     def CenterTitle(self, center: bool = True) -> None:
         chopt = str(self.members["fChopt"]).replace("C", "")
         self.members["fChopt"] = chopt + ("C" if center else "")

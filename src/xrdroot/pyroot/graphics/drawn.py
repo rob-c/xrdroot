@@ -131,6 +131,16 @@ class Drawn:
 
         self.members["fLineColor"] = TColor.GetColorTransparent(color, alpha)
 
+    def SetTextColorAlpha(self, color: int, alpha: float) -> None:
+        from .colors import TColor
+
+        self.members["fTextColor"] = TColor.GetColorTransparent(color, alpha)
+
+    def SetMarkerColorAlpha(self, color: int, alpha: float) -> None:
+        from .colors import TColor
+
+        self.members["fMarkerColor"] = TColor.GetColorTransparent(color, alpha)
+
     # -- TObject --------------------------------------------------------------
 
     def GetName(self) -> str:

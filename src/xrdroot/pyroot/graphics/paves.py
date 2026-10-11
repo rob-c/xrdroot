@@ -51,6 +51,14 @@ class TPave(Drawn):
     def SetOption(self, option: str = "br") -> None:
         self.members["fOption"] = str(option)
 
+    def DrawPave(self, x1: float, y1: float, x2: float, y2: float, bordersize: int = 4,
+                 option: str = "br") -> Any:  # fmt: skip
+        """``DrawPave``: a new pave drawn at those corners, with that border and option - in
+        the default line and fill, as ROOT 6.40 draws it."""
+        made = TPave(x1, y1, x2, y2, bordersize, option)
+        made.Draw()
+        return made
+
     def GetOption(self) -> str:
         return str(self.members["fOption"])
 
