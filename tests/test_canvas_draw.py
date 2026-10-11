@@ -1344,3 +1344,21 @@ def test_tick_labels_are_plain_numbers_and_divisions_follow_fndivisions():
     _fig, ax = _drawn(h, "hist")
     below = [t for t in ax.texts if t.get_position()[1] > 460]
     assert [t.get_text() for t in below] == ["0", "2", "4", "6", "8", "10"]
+
+
+def test_a_function_of_two_variables_drawn_surf_is_its_histogram_in_a_box():
+    """palettes, surfaces: ``TF2::Paint`` fills a histogram of ``Npx`` by ``Npy`` bins of the
+    function and draws that, in the function's own lines."""
+    from xrdroot.canvas.data import function_surface
+
+    f = Function("f2", "x*y", range=((0.0, 2.0), (0.0, 1.0)))
+    f._f1["fNpx"], f.members["fNpy"] = 4, 2
+    f.members["fContour"] = np.array([0.5, 1.0])
+    f._f1["TAttLine"]["fLineColor"] = 2
+    made = function_surface(f)
+    assert made.values().shape == (4, 2) and made.values()[0, 0] == np.float32(0.25 * 0.25)
+    assert made._core["TAttLine"]["fLineColor"] == 2 and list(made._core["fContour"]) == [0.5, 1]
+    _fig, ax = _drawn(f, "surf1")
+    assert not ax.axison
+    f.members["fContour"] = np.array([-9999.0] * 3)  # levels the painter has yet to spread
+    assert not len(function_surface(f)._core["fContour"])

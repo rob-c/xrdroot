@@ -5,8 +5,9 @@ written by matplotlib at the canvas's size in pixels. A PDF can be a book
 of pages, as ROOT makes one: ``Print("book.pdf[")`` opens it and prints
 nothing, ``Print("book.pdf")`` adds this pad as a page while it is open,
 ``"book.pdf("`` opens it with this pad as its first page, ``"book.pdf)"``
-adds the last page and closes it, and ``"book.pdf]"`` closes it. Each
-picture is announced on the standard error, as ROOT announces it.
+adds the last page and closes it, and ``"book.pdf]"`` closes it - an
+option of ``Title:`` a page's title, its format the name's. Each picture is
+announced on the standard error, as ROOT announces it.
 
 The pictures come out the same whichever matplotlib draws them: a GIF is
 drawn as a PNG and handed to Pillow, which matplotlib requires, because
@@ -45,7 +46,8 @@ def _split(filename: str, option: str) -> tuple[str, str, str]:
     bracket = filename[-1:] if filename[-1:] in ("[", "]", "(", ")") else ""
     name = filename[:-1] if bracket else filename
     suffix = Path(name).suffix.lstrip(".").lower()
-    wanted = (option or suffix).lower()
+    given = option.split("Title:")[0].strip() if "Title:" in option else option  # a page title
+    wanted = (given or suffix).lower()
     if wanted not in FORMATS:
         raise ValueError(
             f"a pad is saved as {', '.join(sorted(FORMATS))}; {filename!r} asks for "

@@ -27,14 +27,23 @@ __all__ = ["RooFit", "dynamic_range_cast", "static_range_cast"]
 UNPREFIXED = frozenset({"ParamHistFunc", "PiecewiseInterpolation"})
 
 
-def static_range_cast(*given: Any) -> Any:
-    """``static_range_cast<T>(collection)``: the collection, whose members are what they are."""
-    return given[-1]
+class _RangeCast:
+    """``static_range_cast<T>(collection)``: the collection, whose members are what they are -
+    called, or given its type first as a translated macro gives it, ``cast['T*'](c)``."""
+
+    def __init__(self, name: str) -> None:
+        self.__name__ = name
+
+    def __call__(self, *given: Any) -> Any:
+        return given[-1]
+
+    def __getitem__(self, kind: Any) -> _RangeCast:
+        return self
 
 
-def dynamic_range_cast(*given: Any) -> Any:
-    """``dynamic_range_cast<T>(collection)``: the collection, iterated as it is."""
-    return given[-1]
+#: ``static_range_cast`` and ``dynamic_range_cast``: the collection, iterated as it is.
+static_range_cast = _RangeCast("static_range_cast")
+dynamic_range_cast = _RangeCast("dynamic_range_cast")
 
 
 def _gather() -> None:

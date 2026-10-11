@@ -272,8 +272,39 @@ def paint_stack(scene: Scene, stack: Stack, option: str) -> None:
 
 
 def paint_function(scene: Scene, f: Function, option: str) -> None:
-    """A ``TF1`` as a line over its range, or a ``TF2`` as its contours."""
+    """A ``TF1`` as a line over its range, a ``TF2`` as its contours - or, ``LEGO`` or
+    ``SURF``, as ``TF2::Paint`` draws it: the histogram of it it fills, in its attributes."""
+    from .legoplot import paint_three_d, three_d_kind
+
+    if f.dimensions == 2 and three_d_kind(option) and "SAME" not in option.upper():
+        scene.solid = True
+        paint_three_d(scene, function_surface(f), option)
+        return
     _paint(scene, f, option)
+
+
+def function_surface(f: Function) -> Histogram:
+    """``TF2::CreateHistogram``: a ``TH2F`` of the function at the centres of its ``Npx`` by
+    ``Npy`` bins, its minimum, maximum and contours, and the function's lines and fills."""
+    import copy
+
+    import numpy as np
+
+    (xmin, xmax), (ymin, ymax) = f.range
+    nx, ny = int(f._f1.get("fNpx") or 30), int(f.members.get("fNpy") or 30)
+    xs = xmin + (np.arange(1, nx + 1) - 0.5) * ((xmax - xmin) / nx)
+    ys = ymin + (np.arange(1, ny + 1) - 0.5) * ((ymax - ymin) / ny)
+    grid = np.stack([np.repeat(xs, ny), np.tile(ys, nx)], axis=1)
+    values = np.asarray(f.evaluate(grid), dtype=np.float32).astype(np.float64)
+    edges = (np.linspace(xmin, xmax, nx + 1), np.linspace(ymin, ymax, ny + 1))
+    made = Histogram.new("Func", edges, values.reshape(nx, ny), title=f.title, entries=1.0)
+    core = made._core
+    for name in ("TAttLine", "TAttFill", "TAttMarker", "fMinimum", "fMaximum"):
+        core[name] = copy.deepcopy(f._f1[name])
+    contour = f.members.get("fContour")
+    if contour is not None and len(contour) and contour[0] != -9999:
+        core["fContour"] = np.asarray(contour, dtype=np.float64)
+    return made
 
 
 def paint_efficiency(scene: Scene, e: Efficiency, option: str) -> None:

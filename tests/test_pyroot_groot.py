@@ -301,3 +301,12 @@ def test_a_context_goes_back_to_the_directory_it_was_made_in():
         assert context is not None
     assert ROOT.gDirectory == ROOT.gROOT
     directories.forget(ROOT.TNamed("n", ""))
+
+
+def test_an_object_written_without_a_name_goes_under_its_own(tmp_path):
+    """hsimple.py: PyROOT's ``WriteObject(obj)``; and ``gObjectTable``, which keeps nothing."""
+    path = str(tmp_path / "named.root")
+    with ROOT.TFile(path, "RECREATE") as out:
+        out.WriteObject(ROOT.TH1D("kept", "its title", 2, 0, 1))
+    assert ROOT.TFile(path).Get("kept").GetTitle() == "its title"
+    assert ROOT.gObjectTable is None

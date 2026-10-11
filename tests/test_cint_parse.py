@@ -57,6 +57,11 @@ def python(source: str) -> str:
         ("double t(double a, int b) { return TMath::Floor(a) / b; }", "fdiv(ROOT.TMath.Floor(a)"),
         ("int t(int a) { return TMath::Nint(a) / 2; }", "return idiv(ROOT.TMath.Nint(a), 2)"),
         ("double t(double a) { return TMath::Hypot(a, a, a) / 2; }", "return div(ROOT.TMath"),
+        # a TString parameter handed a string literal is a TString, as C++ converts it
+        (
+            "void t(TString n) { n.ReplaceAll(\" \", \"\"); }",
+            "if isinstance(n, str): n = ROOT.TString(n)",
+        ),
         ("typedef int A, *PA;\nint t() { return 0; }", "def t():"),
         ("[[nodiscard]] int t() { return 1; }", "def t():"),
         (";\nint t() { return 1; }", "def t():"),

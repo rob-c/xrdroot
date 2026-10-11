@@ -138,6 +138,7 @@ def test_range_casts_hand_back_the_collection_they_are_given() -> None:
     held = ROOT.RooArgList()
     assert static_range_cast(held) is held
     assert dynamic_range_cast("RooRealVar", held) is held
+    assert static_range_cast["RooRealVar*"](held) is held  # as a translated macro spells it
 
 
 def test_roofit_has_the_model_config_since_root_630() -> None:

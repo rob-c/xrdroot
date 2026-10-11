@@ -135,11 +135,15 @@ class FunctionEmitter(VariableEmitter):
                 self.out.line(f"{own.py} = len({array.py})", value.where)
 
     def _wrap_parameters(self, func: Function) -> None:
-        """A parameter passed by value whose address is taken goes into a cell on entry."""
+        """A parameter passed by value whose address is taken goes into a cell on entry; a
+        ``TString`` one handed a string is built from it, as C++ converts the argument."""
         for param in func.params:
             symbol = self.lookup(param.name or "")
             if symbol is not None and symbol.cell and not by_reference(param.ctype):
                 self.out.line(f"{symbol.py} = Cell({symbol.py})", param.where)
+            elif symbol is not None and param.ctype.name == "TString" and not param.ctype.pointer:
+                line = f"if isinstance({symbol.py}, str): {symbol.py} = ROOT.TString({symbol.py})"
+                self.out.line(line, param.where)
 
     def _declare_scopes(self, context: Context, head: int, node: Any) -> None:
         if context.nonlocals:

@@ -223,8 +223,10 @@ class TDirectory(TNamed):
         )
         return 0
 
-    def WriteObject(self, obj: Any, name: Any, option: Any = "", bufsize: int = 0) -> int:
-        return self.WriteTObject(obj, name, option)
+    def WriteObject(self, obj: Any, name: Any = None, option: Any = "", bufsize: int = 0) -> int:
+        """``WriteObject(obj, name)`` - or, as PyROOT has it, ``WriteObject(obj)`` under the
+        object's own name."""
+        return self.WriteTObject(obj, obj.GetName() if name is None else name, option)
 
     def Write(self, name: Any = None, option: int = 0, bufsize: int = 0) -> int:
         """``Write``: every object in memory here writes itself, each directory its own."""

@@ -76,3 +76,15 @@ def test_a_simultaneous_density_takes_a_cpp_map_initializer_of_label_and_density
     assert sim.getPdf("physics") is model and sim.getPdf("control") is other
     listed = RooSimultaneous("listed", "listed", [model, other], sample)
     assert listed.getPdf("physics") is model and listed.getPdf("control") is other
+
+
+def test_a_datasets_store_is_its_columns_whatever_type_is_asked_for() -> None:
+    """StandardHypoTestInvDemo: ``setDefaultStorageType(RooAbsData::Vector)`` and the
+    conversions change nothing - the events are columns, always."""
+    x = RooRealVar("x", "x", 0, 1)
+    data = RooDataHist("h", "h", RooArgSet(x))
+    RooAbsData.setDefaultStorageType(RooAbsData.Vector)
+    data.convertToVectorStore()
+    data.convertToTreeStore()
+    assert (RooAbsData.Tree, RooAbsData.Vector, RooAbsData.Composite) == (0, 1, 2)
+    assert data.numEntries() == 100

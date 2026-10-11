@@ -27,7 +27,11 @@ from .directories import TDirectory, current_directory, set_current
 from .messages import message
 from .strings import TString
 
-__all__ = ["TROOT", "gROOT", "gInterpreter", "TInterpreter", "set_line_processor"]
+__all__ = ["TROOT", "gROOT", "gInterpreter", "gObjectTable", "TInterpreter", "set_line_processor"]
+
+#: ``gObjectTable``: ROOT's count of objects by class - which is not kept here, so it is null,
+#: and a macro testing it skips it.
+gObjectTable = None
 
 #: ROOT's release the namespace follows - the oracle it is checked against - two ways more.
 RELEASE = "6.40.04"

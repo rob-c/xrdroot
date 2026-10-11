@@ -34,6 +34,18 @@ class RooAbsData(RooPrintable):
 
     #: ``RooAbsData::ErrorType``: how data points' error bars are drawn.
     Poisson, SumW2, NONE, Auto, Expected = 0, 1, 2, 3, 4
+    #: ``RooAbsData::StorageType``: where a dataset keeps its events.
+    Tree, Vector, Composite = 0, 1, 2
+
+    @staticmethod
+    def setDefaultStorageType(kind: int) -> None:
+        """``setDefaultStorageType``: how datasets keep their events - here, as columns, always."""
+
+    def convertToVectorStore(self) -> None:
+        """``convertToVectorStore``: the events kept as columns of numbers - as they are."""
+
+    def convertToTreeStore(self) -> None:
+        """``convertToTreeStore``: the events kept in a tree - as columns here, still."""
 
     def __init__(self, name: Any = "", title: Any = "", variables: Any = ()) -> None:
         self._name = str(name)

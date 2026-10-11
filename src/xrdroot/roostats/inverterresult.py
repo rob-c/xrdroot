@@ -37,6 +37,15 @@ class HypoTestInverterResult(SimpleInterval):
         self._results: list[Any] = []
         self._expected: list[Any] = []
 
+    def Write(self, name: Any = None, option: int = 0, bufsize: int = 0) -> int:
+        """``Write``: refused - a ROOT file of RooStats' results needs their streamers."""
+        from ..errors import UnsupportedFeatureError
+
+        raise UnsupportedFeatureError(
+            "writing a HypoTestInverterResult into a ROOT file needs RooStats' class layouts, "
+            "which xrdroot does not write; read its limits and points off it instead"
+        )
+
     def Clone(self, name: Any = None) -> HypoTestInverterResult:
         """A copy - ``TObject::Clone``'s, streamed: the limits found so far too."""
         made = HypoTestInverterResult.__new__(HypoTestInverterResult)

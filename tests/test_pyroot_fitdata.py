@@ -88,6 +88,7 @@ def test_fitfcn_of_a_function_and_its_dimension_minimises_it_and_says_no_chi_squ
     fitter = ROOT.Fit.Fitter()
     assert fitter.FitFCN(square, np.array([3.0]))
     assert fitter.Result().Parameter(0) == pytest.approx(1.0, abs=1e-6)
+    assert fitter.Result().Ndf() == 0  # no data size given: none, not one less
     fitter.Result().Print()
     shown = capsys.readouterr().out
     assert "MinFCN" in shown and "Chi2" not in shown

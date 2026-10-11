@@ -220,3 +220,11 @@ def test_a_point_with_no_expected_band_is_left_out_of_the_limit_distribution() -
     r = scan({1.0: 1.0, 2.0: 0.1, 3.0: 0.01}, cls=True)
     r._two_sided = True
     assert r.GetUpperLimitDistribution().GetSize() == 10
+
+
+def test_an_inverter_result_written_to_a_file_is_refused_by_name() -> None:
+    from xrdroot.errors import UnsupportedFeatureError
+    from xrdroot.roostats.inverterresult import HypoTestInverterResult
+
+    with pytest.raises(UnsupportedFeatureError, match="RooStats' class layouts"):
+        HypoTestInverterResult("r").Write()

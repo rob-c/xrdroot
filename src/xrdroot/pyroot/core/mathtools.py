@@ -347,9 +347,7 @@ class Fitter:
         if self._fcn is None:
             raise ValueError("FitFCN() minimises the function SetFCN gave it, and none was given")
         found = _minimised(self._fcn, self._config.ParamsSettings())
-        size, is_chi2 = (int(rest[0]) if rest else 0), bool(rest[1:2] and rest[1])
-        found.chi2 = found.fcn if is_chi2 else -1.0
-        found.ndf = size - sum(1 for one in self._config.ParamsSettings() if not one.IsFixed())
+        _counted(found, self._config.ParamsSettings(), rest)
         self._result = _FCNResult(found)
         return bool(found.valid)
 
@@ -379,6 +377,15 @@ class Fitter:
 
     def Result(self) -> Any:
         return self._result
+
+
+def _counted(found: Any, settings: list[ParameterSettings], rest: tuple[Any, ...]) -> None:
+    """The chi-square - the minimum, if the function was said to be one - and the degrees of
+    freedom of ``dataSize`` less the free parameters, none for no data, as ``FitResult`` has."""
+    size, is_chi2 = (int(rest[0]) if rest else 0), bool(rest[1:2] and rest[1])
+    found.chi2 = found.fcn if is_chi2 else -1.0
+    free = sum(1 for one in settings if not one.IsFixed())
+    found.ndf = size - free if size > free else 0
 
 
 def _fcn_arguments(fcn: Any, params: Any, rest: tuple[Any, ...]) -> tuple[Any, ...]:
