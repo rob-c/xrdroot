@@ -116,3 +116,26 @@ def test_data_plotted_as_an_efficiency_are_each_bins_fraction_accepted() -> None
     shown = frame.items[-1][0]
     assert shown.y.tolist() == [0.5] * 5 and shown.GetName() == "h_d_Eff[cut]"
     assert shown.y_label == "Efficiency of cut=accept"
+
+
+def test_a_density_times_an_efficiency_is_normalised_and_drawn_from_the_densitys_events(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """rf703: ``RooEffProd`` of an exponential and a turn-on - its events the exponential's
+    kept with the efficiency's chance, and no integral of the product made to draw them."""
+    from xrdroot.roofit.pdfs.basic import RooExponential
+    from xrdroot.roofit.pdfs.effprod import RooEffProd
+
+    t = RooRealVar("t", "t", 0, 5)
+    tau = RooRealVar("tau", "tau", -1.54, -4, -0.1)
+    eff = RooFormulaVar("eff", "0.5*(TMath::Erf((t-1)/0.5)+1)", [t])
+    model = RooEffProd("modelEff", "model with efficiency", RooExponential("m", "m", t, tau), eff)
+    t.setVal(0.2)
+    low = model.getVal(RooArgSet(t))
+    t.setVal(2.0)
+    assert low < model.getVal(RooArgSet(t))  # the turn-on outweighs the fall below one
+    capsys.readouterr()
+    generator().SetSeed(4357)
+    drawn = model.generate([t], 500).column("t")
+    assert len(drawn) == 500 and float(np.mean(drawn < 0.5)) < 0.1  # the bare density: 0.54
+    assert "RooRealIntegral" not in capsys.readouterr().out

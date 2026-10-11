@@ -50,6 +50,7 @@ MODULES = {
     "pdfs.bdecays": ["RooBCPEffDecay", "RooBCPGenDecay", "RooBDecay"],
     "pdfs.decays": ["RooBMixDecay", "RooDecay"],
     "pdfs.efficiency": ["RooEfficiency"],
+    "pdfs.effprod": ["RooEffProd"],
     "pdfs.extend": ["RooExtendPdf"],
     "pdfs.fftconv": ["RooFFTConvPdf"],
     "pdfs.gaussmodel": ["RooGaussModel"],
