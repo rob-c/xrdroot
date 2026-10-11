@@ -23,6 +23,7 @@ from .legendres import (  # noqa: F401 - ROOT::Math's Legendre polynomials, by n
     legendre,
     sph_legendre,
 )
+from .lfsr import LFSR  # noqa: F401 - ROOT::Math::LFSR, by name
 from .mathtools import (  # noqa: F401 - ROOT::Math's function objects and tools, by name
     Factory,
     Functor,
@@ -369,6 +370,15 @@ class MinimizerOptions:
         return minimizer_algo()
 
 
+class MathMoreLibrary:
+    """``ROOT::Math::MathMoreLibrary``: what loads MathMore, whose functions - the quantiles,
+    the special functions - are here already."""
+
+    @staticmethod
+    def Load() -> None:
+        """``Load()``: nothing to load."""
+
+
 def _default_accessors(key: str) -> None:
     setattr(MinimizerOptions, f"SetDefault{key}",
             classmethod(lambda cls, value: cls._defaults.__setitem__(key, value)))  # fmt: skip
@@ -400,6 +410,7 @@ __all__ = sorted(
         "GradFunctor1D",
         "Integrator",
         "IntegratorOneDim",
+        "LFSR",
         "RootFinder",
         "assoc_legendre",
         "legendre",

@@ -320,6 +320,10 @@ class TAxis(TNamed, TAttAxis):
         """``ChangeLabel``: a drawn label restyled, which the drawing reads."""
         self._row.setdefault("_changed_labels", []).append(args)  # a list: not walked into
 
+    def ChangeLabelByValue(self, *args: Any) -> None:
+        """``ChangeLabelByValue``: the label at a value restyled, kept beside those by number."""
+        self._row.setdefault("_changed_labels_by_value", []).append(args)
+
     def SetTimeDisplay(self, value: bool) -> None:
         self._row["fTimeDisplay"] = bool(value)
 

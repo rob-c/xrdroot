@@ -66,11 +66,12 @@ SMART_MAKERS = {
     "make_shared": "std::shared_ptr",
 }
 
-#: TMath's functions that return an integer; the rest of TMath returns a double.
+#: TMath's functions that return an integer; the rest of TMath returns a double - but for
+#: those overloaded on their arguments, which return what they are given.
 TMATH_INTEGERS = frozenset(
-    "Nint Abs Sign Min Max Floor Ceil FloorNint CeilNint BinarySearch LocMin LocMax "
-    "Hypot Even Odd Permute".split()
+    "Nint FloorNint CeilNint BinarySearch LocMin LocMax Even Odd Permute".split()
 )
+TMATH_OVERLOADED = frozenset("Abs Sign Min Max Hypot".split())
 
 #: The rank of each integer type in C's usual arithmetic conversions.
 RANKS = {name: bits + (1 if name.startswith("unsigned") else 0) for name, bits in INTEGRAL.items()}
@@ -245,6 +246,8 @@ class Inference(EmitterBase):
     def _library_call(self, func: Name, node: Call) -> CType | None:
         parts = func.parts[1:] if func.parts[0] == "std" else func.parts
         if len(parts) == 2 and parts[0] == "TMath":
+            if parts[1] in TMATH_OVERLOADED:
+                return self._overloaded(node)
             return INT if parts[1] in TMATH_INTEGERS else DOUBLE
         if len(parts) != 1:
             return None
@@ -253,6 +256,15 @@ class Inference(EmitterBase):
         if smart is not None:
             return CType(smart, list(func.targs or []))
         return self._numeric_call(name, node)
+
+    def _overloaded(self, node: Call) -> CType | None:
+        """``TMath::Abs(x)``, ``Min(a, b)``: the type of the argument, or the arguments' common
+        type, which the overload chosen returns."""
+        if len(node.args) == 1:
+            return self.typeof(node.args[0])
+        if len(node.args) == 2:
+            return arithmetic_result(self.typeof(node.args[0]), self.typeof(node.args[1]))
+        return None
 
     def _numeric_call(self, name: str, node: Call) -> CType | None:
         """The type of ``min``, ``max`` and ``abs`` - their arguments' - and the fixed ones."""

@@ -87,6 +87,24 @@ STYLED = {
 }
 
 
+#: Who warns of an axis of no bins - ``TH1``'s constructor for the x axis, the class's own for
+#: the others - and what the count is called there.
+_UNCOUNTED = (("TH1::TH1", "nbins"), ("TH2::TH2", "nbinsy"), ("TH3::TH3", "nbinsz"))
+
+
+def _counted(specs: list[Any], dim: int) -> list[Any]:
+    """Each evenly binned axis asked for no bins - or fewer - given one, with ROOT's warning."""
+    from .messages import message
+
+    found = list(specs)
+    for at, spec in enumerate(specs[:dim]):
+        if isinstance(spec, tuple) and isinstance(spec[0], (int, np.integer)) and spec[0] <= 0:
+            where, count = _UNCOUNTED[at]
+            message("Warning", where, f"{count} is <=0 - set to {count} = 1")
+            found[at] = (1, *spec[1:])
+    return found
+
+
 def _in_style(made: Any) -> Any:
     """A histogram as ``TH1::Build`` leaves it: drawn in ``gStyle``'s histogram attributes, its
     axes in ``gStyle``'s - ``TAxis::ResetAttAxis`` of each."""
@@ -137,7 +155,7 @@ class Booked:
         if not args:
             return _in_style(Histogram.book("", *[(1, 0.0, 1.0)] * self.DIM, kind=self.KIND))
         specs, _rest = axis_specs(args[2:], self.DIM)
-        specs = self._unranged(specs)
+        specs = self._unranged(_counted(specs, self.DIM))
         made = Histogram.book(str(args[0]), *specs, title=str(args[1]), kind=self.KIND)
         for letter, label in zip("XYZ", str(args[1]).split(";")[1:], strict=False):
             made._core[f"f{letter}axis"]["TNamed"]["fTitle"] = label

@@ -132,3 +132,15 @@ def test_an_axis_of_no_range_is_filled_by_label_and_refuses_a_number():
     loose = ROOT.TAxis(3, 0.0, 1.0)
     loose.LabelsOption("v")
     assert loose._row["_labels_option"] == "v"
+
+
+def test_an_axis_of_no_bins_is_given_one_with_roots_warning(capsys):
+    """pdf012: a count at or below zero is one bin, said as each constructor says it."""
+    flat = ROOT.TH1D("nobins", "", -3, 0, 1)
+    plane = ROOT.TH2D("noplane", "", 0, 0, 1, -1, 0, 1)
+    assert flat.GetNbinsX() == 1 and (plane.GetNbinsX(), plane.GetNbinsY()) == (1, 1)
+    assert capsys.readouterr().err.splitlines() == [
+        "Warning in <TH1::TH1>: nbins is <=0 - set to nbins = 1",
+        "Warning in <TH1::TH1>: nbins is <=0 - set to nbins = 1",
+        "Warning in <TH2::TH2>: nbinsy is <=0 - set to nbinsy = 1",
+    ]

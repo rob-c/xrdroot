@@ -45,6 +45,18 @@ def python(source: str) -> str:
         ),
         ("using Real = double;\nReal t(Real x) { return x / 2; }", "return x / 2"),
         ("typedef unsigned int UI;\nUI t(UI a) { return a / 2; }", "return idiv(a, 2)"),
+        # TMath's overloads return what they are given; Floor a double, Nint an int
+        (
+            "double t(double a, double b) { return TMath::Abs(a) / TMath::Abs(b); }",
+            "return fdiv(ROOT.TMath.Abs(a), ROOT.TMath.Abs(b))",
+        ),
+        (
+            "int t(int a, int b) { return TMath::Abs(a) / TMath::Max(b, 1); }",
+            "return idiv(ROOT.TMath.Abs(a), ROOT.TMath.Max(b, 1))",
+        ),
+        ("double t(double a, int b) { return TMath::Floor(a) / b; }", "fdiv(ROOT.TMath.Floor(a)"),
+        ("int t(int a) { return TMath::Nint(a) / 2; }", "return idiv(ROOT.TMath.Nint(a), 2)"),
+        ("double t(double a) { return TMath::Hypot(a, a, a) / 2; }", "return div(ROOT.TMath"),
         ("typedef int A, *PA;\nint t() { return 0; }", "def t():"),
         ("[[nodiscard]] int t() { return 1; }", "def t():"),
         (";\nint t() { return 1; }", "def t():"),

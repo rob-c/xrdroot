@@ -10,6 +10,7 @@ functions, replacing one of its name, so ``FillRandom("f")`` and
 
 from __future__ import annotations
 
+import functools
 import inspect
 import re
 from collections.abc import Callable
@@ -310,6 +311,13 @@ class EAddToList(IntEnum):
     kNo = 2
 
 
+def _member(source: Any, rest: tuple[Any, ...]) -> tuple[Any, tuple[Any, ...]]:
+    """``TF1(name, object, &Class::Member, ...)``: the member called on the object."""
+    if rest and callable(rest[0]) and source is not None:
+        return functools.partial(rest[0], source), rest[1:]
+    return source, rest
+
+
 class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
     """``TF1``: a function of one variable, from a formula or from Python code."""
 
@@ -331,6 +339,7 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
 
     def _made(self, name: str, source: Any, rest: tuple[Any, ...]) -> Function:
         """The xrdroot function ROOT's constructor arguments describe."""
+        source, rest = _member(source, rest)
         numbers = [float(value) for value in rest if not isinstance(value, str)]
         spans = numbers[: 2 * self.DIM] + [0.0, 1.0] * (self.DIM - len(numbers) // 2)
         span = _ranges(spans, self.DIM)
@@ -372,6 +381,13 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
 
     def SetNpx(self, npx: int = NPX) -> None:
         self._xrd._f1["fNpx"] = int(npx)
+
+    def SetVectorized(self, vectorized: bool) -> None:
+        """``SetVectorized``: evaluated at many points at once - as every function here is."""
+        self.__dict__["_vectorized"] = bool(vectorized)
+
+    def IsVectorized(self) -> bool:
+        return bool(self.__dict__.get("_vectorized", False))
 
     def GetNpx(self) -> int:
         return int(self._xrd._f1.get("fNpx") or NPX)
@@ -674,6 +690,31 @@ class TF2(TF1):
 
     def GetYmax(self) -> float:
         return self.GetRange()[3]
+
+    def GetHistogram(self) -> Any:
+        """``TF2::GetHistogram``: a ``TH2F`` "Func" of ``Npx`` by ``Npy`` bins over the ranges,
+        each the function at the bin's centre, kept - its axes' titles too - and filled
+        afresh each time, as ``CreateHistogram`` fills ROOT's."""
+        from .hists import TH2F
+
+        xmin, ymin, xmax, ymax = self.GetRange()
+        nx, ny = self.GetNpx(), self.GetNpy()
+        grid = (xmin, xmax, ymin, ymax, nx, ny)
+        kept = self.__dict__.get("_histogram")
+        if kept is None or self.__dict__.get("_grid") != grid:
+            kept = TH2F("Func", self.GetTitle(), nx, xmin, xmax, ny, ymin, ymax)
+            kept.SetDirectory(0)
+            self.__dict__["_grid"], self.__dict__["_histogram"] = grid, kept
+        xs = xmin + (np.arange(1, nx + 1) - 0.5) * ((xmax - xmin) / nx)
+        ys = ymin + (np.arange(1, ny + 1) - 0.5) * ((ymax - ymin) / ny)
+        columns = [np.repeat(xs, ny), np.tile(ys, nx)]
+        values = np.asarray(self._xrd._raw(columns, self._xrd.parameters), dtype=np.float64)
+        for at, value in enumerate(values):
+            kept.SetBinContent(at // ny + 1, at % ny + 1, float(value))
+        kept.SetEntries(1)  # ROOT fills one entry of no weight outside, that it count as filled
+        kept.SetMinimum(self.GetMinimumStored())
+        kept.SetMaximum(self.GetMaximumStored())
+        return kept
 
     def SetContour(self, nlevels: Any = 20, levels: Any = None) -> None:
         """``SetContour(n[, levels])``: the levels the function is drawn with - those given,

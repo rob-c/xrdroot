@@ -38,6 +38,7 @@ from typing import Any
 
 import numpy as np
 
+from . import bitset as _bitset
 from . import stdlib as _stdlib
 from . import stlrandom as _random
 
@@ -933,6 +934,7 @@ class _Namespace:
     map = TEMPLATES["map"]
     pair = TEMPLATES["pair"]
     array = _ArrayTemplate()
+    bitset = _bitset.bitset
     mt19937 = _random.mt19937
     normal_distribution = _random.normal_distribution
     uniform_real_distribution = _random.uniform_real_distribution

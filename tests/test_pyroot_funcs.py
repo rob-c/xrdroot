@@ -405,3 +405,46 @@ def test_get_random_tabulates_the_function_once_until_its_parameters_change():
     f.SetParameter(0, 3.0)
     f.GetRandom()
     expect((same, True), (bool(f._xrd._cdf[1] is table), False))
+
+
+def test_a_tf2s_histogram_is_its_values_at_the_bin_centres_kept_with_its_axes():
+    """GammaFun, surfaces: ``TF2::GetHistogram`` is a ``TH2F`` "Func" of Npx by Npy bins."""
+    f2 = ROOT.TF2("plane", "x + 10*y", 0, 2, 0, 1)
+    f2.SetNpx(4)
+    f2.SetNpy(2)
+    f2.SetMaximum(30)
+    shown = f2.GetHistogram()
+    shown.GetXaxis().SetTitle("x")
+    assert shown.ClassName() == "TH2F" and shown.GetName() == "Func"
+    assert (shown.GetNbinsX(), shown.GetNbinsY(), shown.GetEntries()) == (4, 2, 1)
+    assert shown.GetBinContent(1, 1) == pytest.approx(0.25 + 2.5)
+    assert shown.GetBinContent(4, 2) == pytest.approx(1.75 + 7.5)
+    assert shown.GetMaximum() == 30
+    f2.SetParameters()  # nothing to set: the same histogram, filled again
+    assert f2.GetXaxis().GetTitle() == "x" and f2.GetHistogram() is shown
+    f2.SetNpx(5)
+    assert f2.GetHistogram().GetNbinsX() == 5 and f2.GetXaxis().GetTitle() == ""
+
+
+def test_a_function_said_to_be_vectorised_says_so_and_an_axis_keeps_labels_changed_by_value():
+    f = ROOT.TF1("vec", "[0]*x", 0, 1)
+    assert not f.IsVectorized()
+    f.SetVectorized(True)
+    assert f.IsVectorized()
+    axis = ROOT.TAxis(4, 0.0, 1.0)
+    axis.ChangeLabelByValue(0.5, -1, -1, -1, ROOT.kRed, -1, "half")
+    assert axis._row["_changed_labels_by_value"] == [(0.5, -1, -1, -1, ROOT.kRed, -1, "half")]
+
+
+def test_a_tf1_of_an_object_and_a_member_calls_the_member_on_the_object():
+    """exampleFunctor: ``TF1("f3", intg, &MyIntegFunc::Integral, xmin, xmax, 0)``."""
+
+    class Scaled:
+        def __init__(self, factor):
+            self.factor = factor
+
+        def Value(self, x, p):
+            return self.factor * x[0]
+
+    f = ROOT.TF1("member", Scaled(3.0), Scaled.Value, 0, 2, 0)
+    assert f.Eval(1.5) == 4.5 and (f.GetXmin(), f.GetXmax(), f.GetNpar()) == (0, 2, 0)
