@@ -72,9 +72,6 @@ _NODES = np.concatenate([-np.asarray(KRONROD_NODES[:-1]), [0.0], np.asarray(KRON
 _KRONROD = np.concatenate(
     [np.asarray(KRONROD_WEIGHTS[:-1]), [KRONROD_WEIGHTS[-1]], np.asarray(KRONROD_WEIGHTS[-2::-1])]
 )
-_GAUSS = np.zeros(21)
-_GAUSS[[1, 3, 5, 7, 9]] = GAUSS_WEIGHTS
-_GAUSS[[19, 17, 15, 13, 11]] = GAUSS_WEIGHTS
 
 #: The most panels an integral is cut into before it is taken as it stands.
 PANELS = 1000
@@ -89,15 +86,38 @@ SEARCHES = 10
 GOLDEN = 0.381966011250105097
 
 
+def _rule(values: list[float]) -> tuple[float, float, float, float]:
+    """``gsl_integration_qk21``'s sums, in its order - the Kronrod and Gauss estimates, of the
+    absolute values, and of the distances from the mean - so each comes out as GSL's does, and
+    the same however the array lies in memory (a BLAS dot product need not)."""
+    weights, gauss_weights = KRONROD_WEIGHTS, GAUSS_WEIGHTS
+    centre = values[10]
+    kronrod, gauss = centre * weights[10], 0.0
+    absolute = abs(kronrod)
+    for j in range(5):  # the Gauss nodes, x[1], x[3]...
+        at = 2 * j + 1
+        low, high = values[at], values[20 - at]
+        gauss += gauss_weights[j] * (low + high)
+        kronrod += weights[at] * (low + high)
+        absolute += weights[at] * (abs(low) + abs(high))
+    for j in range(5):  # and the Kronrod nodes between them
+        at = 2 * j
+        low, high = values[at], values[20 - at]
+        kronrod += weights[at] * (low + high)
+        absolute += weights[at] * (abs(low) + abs(high))
+    mean = kronrod * 0.5
+    spread = weights[10] * abs(centre - mean)
+    for j in range(10):
+        spread += weights[j] * (abs(values[j] - mean) + abs(values[20 - j] - mean))
+    return kronrod, gauss, absolute, spread
+
+
 def _panel(f: Vectorised, low: float, high: float) -> tuple[float, float]:
     """One panel's 21-point estimate and QUADPACK's estimate of its error."""
     centre, half = 0.5 * (low + high), 0.5 * (high - low)
     values = np.asarray(f(centre + half * _NODES), dtype=np.float64)
-    kronrod = float(np.dot(_KRONROD, values))
-    gauss = float(np.dot(_GAUSS, values))
-    mean = 0.5 * kronrod
-    absolute = abs(half) * float(np.dot(_KRONROD, np.abs(values)))
-    spread = abs(half) * float(np.dot(_KRONROD, np.abs(values - mean)))
+    kronrod, gauss, absolute, spread = _rule(values.tolist())
+    absolute, spread = absolute * abs(half), spread * abs(half)
     error = abs((kronrod - gauss) * half)
     if spread != 0 and error != 0:
         error = spread * min(1.0, (200 * error / spread) ** 1.5)

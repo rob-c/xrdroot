@@ -44,6 +44,7 @@ FAMILIES = (
     "graphs",
     "graphs2d",
     "graphsmooth",
+    "normsum",
     "scatters",
     "efficiencies",
     "files",
