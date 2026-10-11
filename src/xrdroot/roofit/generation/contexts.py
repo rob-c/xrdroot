@@ -151,13 +151,20 @@ class MixedContext(Context):
         return found
 
 
-def _factor_context(factor: Any, own: frozenset[str]) -> Context:
+def _factor_context(factor: Any, own: frozenset[str], given: frozenset[str]) -> Context:
     """A factor's own ``RooGenContext``, which normalises its copy of the factor as the top
-    context does its density: twice."""
+    context does its density: twice. A factor of categories alone, conditional on what other
+    factors draw, is sampled by accept/reject over its own and those - at each event's."""
     from ..integration import announce
 
     for _ in range(2):
         announce(factor, own, normalising=True)
+    variables = [one for one in factor.leaves() if one.GetName() in own]
+    if given and all(hasattr(one, "lookupIndex") for one in variables):
+        from .acceptreject import AcceptRejectContext
+
+        label = f"{factor.GetName()}_Int[]_Norm[{','.join(sorted(own))}]"
+        return AcceptRejectContext(factor, own, given, label)
     return context_for(factor, own)
 
 
@@ -175,7 +182,8 @@ class ProductContext(Context):
             for factor in ready:
                 own = pdf.factor_nset(factor, names)
                 if own:
-                    self.parts.append(_factor_context(factor, own))
+                    given = frozenset(self._imports(factor)) & frozenset(done)
+                    self.parts.append(_factor_context(factor, own, given))
                 done |= own
                 waiting.remove(factor)
 

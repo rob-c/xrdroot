@@ -80,6 +80,8 @@ def plot_data(data: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, An
     var = frame.getPlotVar()
     edges, chosen = _edges(frame, options, data)
     cut, rng = options.get("Cut"), options.get("CutRange")
+    if "Efficiency" in options:
+        return _plot_efficiency(data, frame, options, edges)
     keep = data.mask(cut, rng)
     values = data.column(var.GetName())[keep]
     weights = data.weights()[keep]
@@ -123,6 +125,28 @@ def plot_data(data: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str, An
         bool(options.get("Invisible", 0, False)),
         bool(options.get("RefreshNorm", 0, True)),
     )
+    return frame
+
+
+def _plot_efficiency(data: Any, frame: Any, options: Commands, edges: Any) -> Any:
+    """``plotEffOn``: each bin's events in the category's state of index 1, of those in it
+    and in the state of index 0."""
+    from .efficiency import from_efficiency
+
+    cat, var = options.get("Efficiency"), frame.getPlotVar()
+    keep = data.mask(options.get("Cut"), options.get("CutRange"))
+    values, states = data.column(var.GetName())[keep], data.column(cat.GetName())[keep]
+    weights = data.weights()[keep]
+    counted = [np.histogram(values[states == at], bins=edges, weights=weights[states == at])[0]
+               for at in (1, 0)]  # fmt: skip
+    name = str(options.get("Name", 0, "")) or f"h_{data.GetName()}_Eff[{cat.GetName()}]"
+    hist = from_efficiency(name, edges, counted[0], counted[1],
+                           float(options.get("XErrorSize", 0, 1.0)))  # fmt: skip
+    hist.y_label = f"Efficiency of {cat.GetName()}={cat.lookupName(1)}"
+    style(hist, options)
+    frame.update_norm_vars(list(data.get()))
+    frame.add_plotable(hist, str(options.get("DrawOption", 0, "P")),
+                       bool(options.get("Invisible", 0, False)), False)  # fmt: skip
     return frame
 
 

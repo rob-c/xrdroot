@@ -49,6 +49,7 @@ MODULES = {
     "pdfs.gamma": ["RooGamma"],
     "pdfs.bdecays": ["RooBCPEffDecay", "RooBCPGenDecay", "RooBDecay"],
     "pdfs.decays": ["RooBMixDecay", "RooDecay"],
+    "pdfs.efficiency": ["RooEfficiency"],
     "pdfs.extend": ["RooExtendPdf"],
     "pdfs.fftconv": ["RooFFTConvPdf"],
     "pdfs.gaussmodel": ["RooGaussModel"],
