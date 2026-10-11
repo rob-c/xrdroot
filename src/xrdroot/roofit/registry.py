@@ -27,6 +27,7 @@ MODULES = {
     ],
     "cmdargs": ["RooCmdArg", "RooLinkedList"],
     "collections": ["RooAbsCollection", "RooArgList", "RooArgSet"],
+    "customizer": ["RooCustomizer"],
     "data.datahist": ["RooDataHist"],
     "data.dataset": ["RooDataSet"],
     "data.store": ["RooAbsData"],

@@ -53,6 +53,8 @@ def one(text: str, columns=SCALARS) -> float:
         ("x < y ? x : y", 3),
         ("x^2 + y^2", 25),
         ("-x^2", -9),
+        ("x**2 + 2**3", 17),  # ROOT's formulas read Fortran's power too: ROOT 6.40's 17
+        ("-x**2", -9),
         ("2^-1", 0.5),
         ("3/2", 1.5),
         ("7 % 4", 3),

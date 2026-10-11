@@ -29,6 +29,8 @@ def method(source: str) -> str:
         ("double r = x / y; int m = x % y;", "r = div(ROOT.x, ROOT.y)"),
         ("double f = 7.5; double g = f % 2;", "fmod(f, 2)"),
         ("auto v = *it;", "v = deref(ROOT.it)"),
+        ("TTreeReaderValue<float> px(r, \"px\"); double s = *px + *px;",
+         "s = px.__deref__() + px.__deref__()"),
         ("ROOT::RVecD p{1., 2.}; auto g = p[p > 1 && abs(p) < 2];",
          "g = p[(p > 1) & (cabs(p) < 2)]"),
         ("RVecF p; auto g = p > 1 || p < 0;", "g = (p > 1) | (p < 0)"),

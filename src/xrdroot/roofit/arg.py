@@ -189,8 +189,11 @@ class RooAbsArg(RooPrintable):
         return [node for node in self._walked() if node.isFundamental()]
 
     def getVariables(self, stripDisconnected: bool = True) -> RooArgSet:
+        """The variables under this node, sorted by name, in a set RooFit calls "parameters" -
+        the name that ``Print`` shows, as it does the "dependents" of :meth:`getObservables`
+        and the "<name>_components" of :meth:`getComponents`."""
         return RooArgSet(
-            [one for one in self.leaves() if not one.InheritsFrom("RooConstVar")]
+            [one for one in self.leaves() if not one.InheritsFrom("RooConstVar")], "parameters"
         ).sorted_copy()
 
     def getParameters(self, observables: Any = None, *rest: Any) -> Any:
@@ -213,7 +216,7 @@ class RooAbsArg(RooPrintable):
         """``getParameters``' set: what a node that is not a plain function overrides."""
         exclude = set(_observable_names(observables))
         return RooArgSet(
-            [one for one in self.getVariables() if one.GetName() not in exclude]
+            [one for one in self.getVariables() if one.GetName() not in exclude], "parameters"
         ).sorted_copy()
 
     def getObservables(self, observables: Any = None, valueOnly: bool = True) -> RooArgSet:
@@ -224,11 +227,15 @@ class RooAbsArg(RooPrintable):
                 one
                 for one in self.leaves()
                 if one.GetName() in wanted and not one.InheritsFrom("RooConstVar")
-            ]
+            ],
+            "dependents",
         )
 
     def getComponents(self) -> RooArgSet:
-        return RooArgSet([node for node in self._walk() if not node.isFundamental()])
+        return RooArgSet(
+            [node for node in self._walk() if not node.isFundamental()],
+            f"{self.GetName()}_components",
+        )
 
     def dependsOn(self, other: Any, ignoreArg: Any = None, valueOnly: bool = False) -> bool:
         names = {one.GetName() for one in as_list(other)}

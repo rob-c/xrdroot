@@ -21,6 +21,7 @@ from .shapes import param_order
 __all__ = [
     "BITS",
     "NOT_GLOBAL",
+    "LINEAR",
     "CLASSES",
     "function_members",
     "formula_members",
@@ -33,6 +34,8 @@ __all__ = [
 BITS = 0x03000000
 #: ``TFormula::kNotGlobal``, which a ``TF1`` sets on the formula it owns.
 NOT_GLOBAL = 1 << 10
+#: ``TFormula::kLinear``: a formula written ``a ++ b``, which a fit solves by least squares.
+LINEAR = 1 << 16
 #: The function classes by dimension.
 CLASSES = {1: "TF1", 2: "TF2", 3: "TF3"}
 #: ``TF1::EFType``: a formula, or a function of code.
@@ -52,12 +55,19 @@ def _named(name: str, title: str, bits: int) -> dict[str, Any]:
 
 
 def formula_members(
-    name: str, title: str, text: str, names: tuple[str, ...], values: Any, ndim: int
+    name: str,
+    title: str,
+    text: str,
+    names: tuple[str, ...],
+    values: Any,
+    ndim: int,
+    linear: bool = False,
 ) -> dict[str, Any]:
-    """A ``TFormula``: the expanded text, its parameters' names and values."""
+    """A ``TFormula``: the expanded text, its parameters' names and values - and ``kLinear``,
+    for a formula written ``a ++ b``."""
     ordered = sorted(range(len(names)), key=lambda index: param_order(names[index]))
     return {
-        "TNamed": _named(name, title, BITS | NOT_GLOBAL),
+        "TNamed": _named(name, title, BITS | NOT_GLOBAL | (LINEAR if linear else 0)),
         "fClingParameters": np.array(values, dtype=np.float64),
         "fAllParametersSetted": True,
         "fParams": {names[index]: index for index in ordered},

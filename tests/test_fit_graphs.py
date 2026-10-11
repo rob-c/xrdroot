@@ -151,3 +151,10 @@ def test_the_effective_chi_square_uses_roots_derivative_and_caps_a_nan():
     expected = np.sum((Y - X * X) ** 2 / (0.16 + (0.3 * 2 * X) ** 2))
     assert fcn([1.0]) == pytest.approx(expected, rel=1e-9)
     assert math.isfinite(cost.effective_chi2(data, Function("f", "sqrt([0]-x)"))([1.0]))
+
+
+def test_a_formula_written_with_plus_plus_is_fitted_linearly_as_a_polynomial_is():
+    graph = Graph.new("l", X, Y, yerr=np.full(5, 0.4))
+    linear = graph.fit(Function("lin", "1 ++ x", range=(0, 10)), "Q")
+    assert linear.minimizer == "Linear / Migrad"
+    np.testing.assert_allclose(linear.parameters, graph.fit("pol1", "Q").parameters, rtol=1e-12)

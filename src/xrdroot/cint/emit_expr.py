@@ -285,11 +285,21 @@ class ExprEmitter(NameEmitter):
         own = self.own_operator(operand, "operator*", 0)
         if own is not None:
             return own, P.POSTFIX
-        if _holds_value(found):  # a shared_ptr<int>: a number, or something holding one
-            return f"deref({self.value(operand)})", P.POSTFIX
+        held = self._read_through(operand, found)
+        if held is not None:
+            return held, P.POSTFIX
         if found.is_object_pointer or (found.is_class and not found.pointer):
             return self.expr(operand)
         return f"{self.at(operand, P.POSTFIX)}[0]", P.POSTFIX
+
+    def _read_through(self, operand: Expr, found: CType) -> str | None:
+        """``*p`` of what holds a value rather than being it: a ``shared_ptr<int>`` - a number,
+        or something holding one - or a library class that ``__deref__`` reads through."""
+        if _holds_value(found):
+            return f"deref({self.value(operand)})"
+        if found.name in DEREFERENCED and not found.pointer:
+            return f"{self.at(operand, P.POSTFIX)}.__deref__()"
+        return None
 
     def address(self, operand: Expr) -> Out:
         """``&x``: the cell ``x`` lives in, a view of an array from an element, or the object."""
@@ -627,6 +637,11 @@ def _written_as(ctype: CType | None) -> str:
     if ctype is None or ctype.pointer:
         return ""
     return ctype.enum or ctype.name
+
+
+#: The library's classes whose ``operator*`` gives what they hold, as ``__deref__`` does:
+#: ``*myPx`` of a ``TTreeReaderValue<float>`` is the number at the reader's entry.
+DEREFERENCED = frozenset({"TTreeReaderValue"})
 
 
 def _holds_value(ctype: CType) -> bool:

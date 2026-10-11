@@ -248,3 +248,38 @@ def test_a_2d_fill_from_a_function_of_code_integrates_each_bin_eight_points_each
     formula = ROOT.TH2D("hform2", "", 2, 0, 2, 1, 0, 1)
     formula.FillRandom(ROOT.TF2("form2", "1 + x", 0, 2, 0, 1), 300, ROOT.TRandom3(1))
     assert formula.GetEntries() == 300
+
+
+def test_a_function_set_or_added_bin_by_bin_is_what_root_6_40_makes_it():
+    """ROOT 6.40's contents for a Gaussian of height 10 at 5, width 1.5, over [2, 8]: no entries
+    counted, the range ignored unless ``"r"``, Poisson counts with ``"s"``, 2D bins too."""
+    f = ROOT.TF1("f", "gaus", 2, 8)
+    f.SetParameters(10, 5, 1.5)
+    h = ROOT.TH1F("h", "h", 10, 0, 10)
+    h.Fill(1.0)
+    h.Eval(f)
+    first = [round(h.GetBinContent(i), 6) for i in range(12)]
+    assert first[:6] == [0.0, 0.11109, 0.657285, 2.493522, 6.065307, 9.459595]
+    assert (h.GetEntries(), h.GetMean()) == (0.0, 0.0)
+    h.Eval(f, "ra")
+    assert [round(h.GetBinContent(i), 6) for i in (2, 3, 5)] == [0.657285, 4.987044, 18.919189]
+    ROOT.gRandom.SetSeed(7)
+    g = ROOT.TH1D("g", "g", 10, 0, 10)
+    g.Sumw2()
+    g.Eval(f, "s")
+    assert [g.GetBinContent(i) for i in range(3, 9)] == [4.0, 6.0, 4.0, 12.0, 6.0, 5.0]
+    assert g.GetBinError(5) == 2.0
+    h.Eval(None)
+    assert h.GetBinContent(5) == pytest.approx(18.919189)
+
+
+def test_a_function_of_two_or_three_variables_is_set_at_each_bin_s_centre_too():
+    f2 = ROOT.TF2("f2", "x*y", 0, 4, 0, 4)
+    h2 = ROOT.TH2F("h2", "h2", 4, 0, 4, 2, 0, 4)
+    h2.Eval(f2, "r")
+    assert [h2.GetBinContent(i, j) for i in (1, 4) for j in (1, 2)] == [0.5, 1.5, 3.5, 10.5]
+    f3 = ROOT.TF3("f3", "x+y+z", 0, 1, 0, 1, 0, 1)
+    h3 = ROOT.TH3D("h3", "h3", 2, 0, 2, 1, 0, 1, 1, 0, 1)
+    h3.Eval(f3, "r")
+    assert (h3.GetBinContent(1, 1, 1), h3.GetBinContent(2, 1, 1)) == (1.5, 0.0)
+    assert [getattr(f3, f"Get{v}{e}")() for v in "YZ" for e in ("min", "max")] == [0, 1, 0, 1]

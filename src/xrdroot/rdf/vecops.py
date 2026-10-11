@@ -59,6 +59,7 @@ __all__ = [
     "Reverse",
     "Concatenate",
     "Drop",
+    "Intersect",
     "Enumerate",
     "Range",
     "Combinations",
@@ -293,6 +294,22 @@ def Reverse(values: Given) -> Jagged:
 def Concatenate(first: Given, second: Given) -> Jagged:
     """``Concatenate``: each entry's first collection, then its second."""
     return _jagged(*kernels.concatenated(_rows(first, "Concatenate"), _rows(second, "Concatenate")))
+
+
+def Intersect(first: Given, second: Given, second_sorted: bool = False) -> Jagged:
+    """``Intersect``: each entry's first collection's elements that its second holds too, in
+    the first's order - as ROOT keeps those its binary search finds in the second, sorted;
+    ``second_sorted`` says it is sorted already, which changes nothing here."""
+    content, offsets = _rows(first, "Intersect")
+    other, other_offsets = _rows(second, "Intersect")
+    keep = np.zeros(len(content), dtype=bool)
+    for row in range(len(offsets) - 1):
+        low, high = offsets[row], offsets[row + 1]
+        keep[low:high] = np.isin(
+            content[low:high], other[other_offsets[row] : other_offsets[row + 1]]
+        )
+    counts = np.bincount(kernels.rows_of(offsets)[keep], minlength=len(offsets) - 1)
+    return Jagged(content[keep], np.concatenate([[0], np.cumsum(counts)]).astype(np.int64))
 
 
 def Drop(values: Given, index: Given) -> Jagged:

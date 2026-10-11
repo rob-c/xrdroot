@@ -10,6 +10,7 @@ of ``FillRandom`` and ``GetRandom`` are ``gRandom``'s.
 
 from __future__ import annotations
 
+import itertools
 from typing import Any
 
 import numpy as np
@@ -32,6 +33,25 @@ def _kept(made: Any) -> Any:
     if wrapped._add_directory[0]:
         here.Append(wrapped)
     return wrapped
+
+
+def _inside(f1: Any, x: list[float]) -> bool:
+    """``TF1::IsInside``: ``x`` within the function's range, in each of its dimensions."""
+    ranges = [(f1.GetXmin(), f1.GetXmax())]
+    if f1.GetNdim() > 1:
+        ranges.append((f1.GetYmin(), f1.GetYmax()))
+    if f1.GetNdim() > 2:
+        ranges.append((f1.GetZmin(), f1.GetZmax()))
+    return all(low <= value <= high for value, (low, high) in zip(x, ranges, strict=False))
+
+
+def _evaluated(f1: Any, x: list[float], opt: str) -> float | None:
+    """``f1`` at ``x`` for ``TH1::Eval`` - or a Poisson count of that mean, for ``"s"``; or
+    ``None`` where ``"r"`` leaves out a point outside the function's range."""
+    if "r" in opt and not _inside(f1, x):
+        return None
+    fu = float(f1.Eval(*x))
+    return float(current_generator().poisson_d(fu)) if "s" in opt else fu
 
 
 def _within(r1: float, low: float, high: float) -> float:
@@ -134,6 +154,30 @@ class Operations:
         cells[:] = cells + c1 * np.asarray(f1.Eval(centres) if hasattr(f1, "Eval") else f1(centres))
         self._core()["fTsumw"] = 0.0
         return True
+
+    def Eval(self, f1: Any, option: str = "") -> None:
+        """``TH1::Eval``: each bin ``f1`` at its centre - added to what it holds with ``"a"``,
+        else in place of it; a Poisson count of that mean with ``"s"``, as ``gRandom``'s
+        ``PoissonD`` draws one bin by bin; bins ``f1`` does not reach left alone with ``"r"``.
+        The squared weights, if kept, gain each one's magnitude; the entries are not counted."""
+        if f1 is None:
+            return
+        opt = str(option).lower()
+        owner: Any = self  # a histogram, whose bins these are
+        if "a" not in opt:
+            owner.Reset()
+        squares = self._xrd._ensure_sumw2() if owner.GetSumw2N() else None
+        axes = [owner.GetXaxis(), owner.GetYaxis(), owner.GetZaxis()]
+        counts = [range(1, axis.GetNbins() + 1) for axis in reversed(axes)]
+        for binz, biny, binx in itertools.product(*counts):  # x fastest, as ROOT's loops go
+            x = [axis.GetBinCenter(n) for axis, n in zip(axes, (binx, biny, binz), strict=True)]
+            fu = _evaluated(f1, x, opt)
+            if fu is None:
+                continue
+            bin = owner.GetBin(binx, biny, binz)
+            owner.AddBinContent(bin, fu)
+            if squares is not None:
+                squares[bin] += abs(fu)
 
     def Scale(self, c1: float = 1.0, option: str = "") -> None:
         """``Scale(c1[, "width"])``: in place; ``"width"`` divides by each bin's width too."""

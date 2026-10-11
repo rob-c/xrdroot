@@ -4,7 +4,8 @@ A ``TTree::Draw`` expression is C++ arithmetic, and it is cut into words the
 way a C++ compiler would cut it, with two differences that come from ROOT.
 A name may carry dots - ``evt.P3.Px`` is one branch, not three members - and
 ``::`` - ``TMath::Abs`` is one function - and may end in ``$``, which is how
-ROOT spells the special names, ``Entry$`` and ``Sum$`` among them.
+ROOT spells the special names, ``Entry$`` and ``Sum$`` among them. And
+``**`` is a word: the power ``^`` is, spelt as Fortran and Python spell it.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ PATTERN = re.compile(
     |(?P<string>"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')
     |(?P<name>[A-Za-z_][\w$]*(?:(?:\.|::)[A-Za-z_][\w$]*)*)
     |(?P<member>\.[A-Za-z_]\w*)
-    |(?P<op>&&|\|\||==|!=|<=|>=|<<|>>|[-+*/%&|^~!<>?:()\[\],@])
+    |(?P<op>\*\*|&&|\|\||==|!=|<=|>=|<<|>>|[-+*/%&|^~!<>?:()\[\],@])
     """,
     re.VERBOSE,
 )
@@ -67,6 +68,6 @@ def _words(text: str) -> Iterator[Token]:
             )
         kind = found.lastgroup
         assert kind is not None
-        if kind != "space":
-            yield Token(kind, found.group(), at)
+        if kind != "space":  # ``**`` is ROOT's other spelling of its power, ``^``
+            yield Token(kind, "^" if found.group() == "**" else found.group(), at)
         at = found.end()

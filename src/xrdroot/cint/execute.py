@@ -228,4 +228,18 @@ def process_line(line: str, *, root: Any = None) -> Any:
     if text.startswith("."):
         raise ValueError(f"{text.split()[0]} is not a command gROOT->ProcessLine runs here")
     body = text if text.endswith((";", "}")) else text + ";"
-    return run_source("{\n" + body + "\n}\n", "<ProcessLine>", root=root)
+    source = _valued(body) or "{\n" + body + "\n}\n"
+    return run_source(source, "<ProcessLine>", root=root)
+
+
+def _valued(body: str) -> str | None:
+    """A block handing back the value of ``body``, if it is one expression - as ROOT's
+    ``ProcessLine("hsimple(1)")`` hands back the file the call returns - or ``None``."""
+    if body.count(";") != 1 or not body.endswith(";") or "{" in body:
+        return None
+    source = "{\nreturn (" + body[:-1] + ");\n}\n"
+    try:
+        translation(source, "<ProcessLine>", [Path(".")])
+    except Refusal:  # a declaration, a statement: no value
+        return None
+    return source

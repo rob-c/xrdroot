@@ -163,6 +163,17 @@ def test_process_line_runs_statements_and_dot_commands(
         process_line(".q")
 
 
+def test_a_line_that_is_one_expression_hands_back_its_value(tmp_path: Path) -> None:
+    """As ``(TFile*)gROOT->ProcessLine("hsimple(1)")`` is the file the call returns; a line
+    of a declaration or of statements has no value."""
+    path = write(tmp_path, "twice.C", "int twice(int n) { return 2 * n; }")
+    process_line(f".L {path}", root=fake())
+    assert process_line("twice(21)", root=fake()) == 42
+    assert process_line("7 / 2;", root=fake()) == 3
+    assert process_line("int b = 3", root=fake()) is None
+    assert process_line("int c = 1; c++;", root=fake()) is None
+
+
 def test_a_kept_translation_reads_like_the_macro_and_runs_as_a_script() -> None:
     python = translate_file(Path(__file__).parent / "data" / "cint" / "math" / "Legendre.C")
     assert python.startswith("# Translated from Legendre.C by xrdroot.cint.")

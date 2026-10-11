@@ -101,15 +101,19 @@ VARIABLE_NAMES = ("x", "y", "z")
 class Expanded:
     """A formula with its shapes written out, and its parameters named in order."""
 
-    __slots__ = ("text", "names", "predefined")
+    __slots__ = ("text", "names", "predefined", "linear")
 
-    def __init__(self, text: str, names: tuple[str, ...], predefined: bool) -> None:
+    def __init__(
+        self, text: str, names: tuple[str, ...], predefined: bool, linear: bool = False
+    ) -> None:
         #: The formula as ROOT keeps it: shapes expanded, parameters by name.
         self.text = text
         #: Each parameter's name, in the order of its index.
         self.names = names
         #: Whether this is one predefined shape alone, named as ROOT names those.
         self.predefined = predefined
+        #: Whether it was written ``a ++ b``, which ROOT fits by linear least squares.
+        self.linear = linear
 
 
 def _shape(word: str) -> tuple[str, tuple[str, ...]] | None:
@@ -324,7 +328,8 @@ def expand(formula: str, known: tuple[str, ...] | None = None) -> Expanded:
     keeps: ROOT wrote the text with those names already in it.
     """
     text = re.sub(r"\s+", "", formula)
-    written = _scan(text)
+    linear = "++" in text
+    written = _scan(_linear(text) if linear else text)
     names = _named(_indices(written))
     special = _predefined(text, len(names)) if known is None else None
     if special is not None:
@@ -336,7 +341,13 @@ def expand(formula: str, known: tuple[str, ...] | None = None) -> Expanded:
         label = found.group(1).strip()
         return f"[{names[int(label)] if label.isdigit() else label}]"
 
-    return Expanded(LABEL.sub(spelled, written), tuple(names), special is not None)
+    return Expanded(LABEL.sub(spelled, written), tuple(names), special is not None, linear)
+
+
+def _linear(text: str) -> str:
+    """``a++b++c``, ROOT's linear formula, as ``TFormula::HandleLinear`` writes it out: each
+    term times a parameter of its own, ``([0]*(a))+([1]*(b))+([2]*(c))``."""
+    return "+".join(f"([{index}]*({part}))" for index, part in enumerate(text.split("++")))
 
 
 #: ``TFormula::fNumber`` for a formula that is one predefined shape alone:

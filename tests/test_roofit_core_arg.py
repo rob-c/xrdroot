@@ -155,6 +155,14 @@ def test_the_walks_hand_back_the_variables_parameters_and_observables_root_does(
     assert [one.GetName() for one in g.getParameters()] == ["mean", "sigma", "x"]
     assert [one.GetName() for one in g.getObservables()] == []
     assert [one.GetName() for one in g.getComponents()] == ["g"]
+    named = (
+        g.getVariables(),
+        g.getParameters(RooArgSet(x)),
+        g.getObservables(x),
+        g.getComponents(),
+    )
+    assert [one.GetName() for one in named] == ["parameters", "parameters", "dependents",
+                                                "g_components"]  # ROOT 6.40's names  # fmt: skip
 
 
 def test_the_parameters_asked_for_into_a_set_are_added_to_it_sorted_as_root_sorts_them() -> None:

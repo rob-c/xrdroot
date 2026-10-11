@@ -217,3 +217,12 @@ def test_rows_that_start_part_way_into_their_values_and_rows_of_nothing():
     shifted = Jagged(np.arange(6.0), [2, 3, 6])
     assert vecops.Sum(shifted).tolist() == [2.0, 12.0]
     assert vecops.Sum(Jagged(np.zeros(0), [0, 0, 0])).tolist() == [0.0, 0.0]
+
+
+def test_intersect_keeps_the_first_collections_order_and_its_repeats():
+    """ROOT's ``Intersect``: each element of the first found in the second, entry by entry."""
+    first = Jagged(np.array([3, 1, 2, 2, 5, 7]), [0, 4, 4, 6])
+    second = Jagged(np.array([2, 3, 9, 7]), [0, 2, 3, 4])
+    found = vecops.Intersect(first, second)
+    assert rows(found) == [[3, 2, 2], [], [7]] and found.content.dtype == first.content.dtype
+    assert rows(vecops.Intersect(first, second, True)) == rows(found)

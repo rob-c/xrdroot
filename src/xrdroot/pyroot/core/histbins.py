@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 
 from .messages import message
+from .strings import TString
 
 __all__: list[str] = []
 
@@ -85,9 +86,11 @@ class Bins:
     def Fill(self, *args: Any) -> int:
         """``Fill(x[, y[, z]][, w])``: one entry, and the global bin it went to.
 
-        A string coordinate fills the bin of that label, made on the axis if
-        it has none yet, as ROOT fills a histogram of categories.
+        A string coordinate - a ``TString`` too - fills the bin of that label,
+        made on the axis if it has none yet, as ROOT fills a histogram of
+        categories.
         """
+        args = tuple(str(one) if isinstance(one, TString) else one for one in args)
         if args and np.ndim(args[0]) > 0:
             return self._fill_arrays(args)
         self._check_ranged(args)

@@ -313,7 +313,7 @@ def _minimised(
 ) -> FitResult:
     number = function.number
     # ROOT fits linearly only what TF1::IsLinear says is: a polN, or a formula of "++" terms.
-    roots_linear = POLYNOMIAL <= number < POLYNOMIAL + 100 or "++" in (function.formula or "")
+    roots_linear = POLYNOMIAL <= number < POLYNOMIAL + 100 or function.linear
     basis = (
         linear.design(function, data.coordinates(), function.parameters)
         if linear_allowed and roots_linear

@@ -106,6 +106,10 @@ class TBenchmark(TNamed):
     def Reset(self) -> None:
         self._watches.clear()
 
+    def GetBench(self, name: Any) -> int:
+        """``GetBench``: where the stopwatch ``name`` is among those started, or -1."""
+        return next((i for i, one in enumerate(self._watches) if one == str(name)), -1)
+
     def GetRealTime(self, name: Any) -> float:
         watch = self._watches.get(str(name))
         return 0.0 if watch is None else watch.RealTime()

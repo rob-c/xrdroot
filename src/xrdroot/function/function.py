@@ -35,6 +35,7 @@ from . import analytic, numeric, sampling, saved
 from .language import parse
 from .members import (
     CLASSES,
+    LINEAR,
     first_of,
     formula_members,
     function_members,
@@ -145,7 +146,7 @@ class Function(Displayed):
         limits = _limits(range, _dimensions(tree))
         values = _values(parameters, len(names), formula)
         heading = title or formula
-        held = formula_members(name, heading, text, names, values, len(limits))
+        held = formula_members(name, heading, text, names, values, len(limits), expanded.linear)
         members = function_members(name, heading, limits, len(names), formula=held)
         self._adopt(CLASSES[len(limits)], members, None)
 
@@ -272,6 +273,11 @@ class Function(Displayed):
     def formula(self) -> str | None:
         """The formula as ROOT keeps it, shapes expanded; ``None`` for a function of code."""
         return None if self._formula is None else str(self._formula["fFormula"])
+
+    @property
+    def linear(self) -> bool:
+        """``TFormula::IsLinear``: whether it was written ``a ++ b``, its ``kLinear`` bit set."""
+        return self._formula is not None and bool(self._formula["TNamed"]["fBits"] & LINEAR)
 
     @property
     def dimensions(self) -> int:

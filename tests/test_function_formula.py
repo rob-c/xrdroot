@@ -348,3 +348,13 @@ def test_the_breit_wigners_are_roots_cauchy_densities():
 def test_the_correlated_gaussian_peaks_at_its_normalisation():
     f = Function("f", "bigaus", parameters=[1, 1, 2, -1, 3, 0.5])
     assert f(1.0, -1.0) == pytest.approx(1 / (2 * math.pi * 2 * 3 * math.sqrt(0.75)))
+
+
+def test_a_formula_of_terms_joined_by_plus_plus_is_roots_linear_one():
+    """``sin(x) ++ sin(2*x)`` is ROOT 6.40's ``([p0]*(sin(x)))+([p1]*(sin(2*x)))``, marked
+    ``kLinear``: what a fit solves by least squares, as it does a ``polN``."""
+    f = Function("f", "sin(x) ++ sin(2*x)", range=(-2, 2))
+    assert (f.formula, f.parameter_names, f.linear) == (
+        "([p0]*(sin(x)))+([p1]*(sin(2*x)))", ("p0", "p1"), True)  # fmt: skip
+    assert not Function("g", "[0]*sin(x)", range=(-2, 2)).linear
+    assert expand("x++x*x++1").text == "([p0]*(x))+([p1]*(x*x))+([p2]*(1))"

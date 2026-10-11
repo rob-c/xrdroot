@@ -65,6 +65,9 @@ def test_a_benchmark_shows_each_stopwatch_by_name(capsys):
         (ROOT.gBenchmark.GetRealTime("none"), 0.0),
         (ROOT.gBenchmark.GetCpuTime("none"), 0),
     )
+    ROOT.gBenchmark.Start("other")
+    ROOT.gBenchmark.Start("fill")  # started again, it keeps its place
+    assert [ROOT.gBenchmark.GetBench(n) for n in ("fill", "other", "none")] == [0, 1, -1]
 
 
 def test_a_datime_is_a_date_and_time_to_the_second(capsys):

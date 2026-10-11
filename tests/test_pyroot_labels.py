@@ -52,6 +52,7 @@ def test_a_first_label_makes_the_axis_one_of_categories_that_may_grow():
         (h.GetMean(), 0.0),
     )
     assert h.Fill("x") == 1
+    assert h.Fill(ROOT.TString("y-and-more")(0, 1), 1.0) == 2  # a TString's text is its label
 
 
 def test_an_axis_that_cannot_be_of_categories_ignores_a_new_label(capsys):

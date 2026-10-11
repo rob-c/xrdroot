@@ -728,7 +728,7 @@ class TF2(TF1):
         return self.GetRange()[1]
 
     def GetYmax(self) -> float:
-        return self.GetRange()[3]
+        return self.GetRange()[1 + self.GetNdim()]
 
     def GetHistogram(self) -> Any:
         """``TF2::GetHistogram``: a ``TH2F`` "Func" of ``Npx`` by ``Npy`` bins over the ranges,
@@ -837,6 +837,12 @@ class TF3(TF2):
 
     def GetNpz(self) -> int:
         return int(self._xrd.members.get("fNpz") or 30)
+
+    def GetZmin(self) -> float:
+        return self.GetRange()[2]
+
+    def GetZmax(self) -> float:
+        return self.GetRange()[5]
 
 
 for _cls in (TF1, TF2, TF3, TFormula):
