@@ -17,6 +17,7 @@ anything else changing.
 from __future__ import annotations
 
 import copy
+import functools
 import itertools
 from collections.abc import Iterator
 from typing import Any
@@ -66,8 +67,29 @@ class Proxy:
         return f"{self.name}={self.target.GetName()}"
 
 
+def _copy_constructing(init: Any) -> Any:
+    """``init``, or - given only a node of the class, and perhaps a new name - C++'s copy
+    constructor: ``RooAddPdf model1(model)`` a clone of ``model``, made anew."""
+
+    @functools.wraps(init)
+    def made(self: Any, *args: Any, **kwargs: Any) -> None:
+        named = len(args) == 1 or (len(args) == 2 and isinstance(args[1], str))
+        if kwargs or not named or not isinstance(args[0], type(self)):
+            init(self, *args, **kwargs)
+            return
+        self.__dict__.update(args[0].clone(args[1] if len(args) == 2 else None).__dict__)
+        self._serial = next(_SERIALS)
+
+    return made
+
+
 class RooAbsArg(RooPrintable):
     """A node of a model: named, titled, made of other nodes, with attributes."""
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if "__init__" in cls.__dict__:
+            cls.__init__ = _copy_constructing(cls.__dict__["__init__"])  # type: ignore[method-assign]
 
     def __init__(self, name: Any = "", title: Any = "") -> None:
         self._serial = next(_SERIALS)  # the order objects are made in: a Python set's order

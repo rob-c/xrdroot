@@ -185,6 +185,19 @@ class RooDataHist(RooAbsData):
         found = self._bin_at(index)
         return super().get(found) if found >= 0 else None
 
+    def set(self, target: Any, weight: float, error: float = -1.0) -> None:
+        """``set(bin, weight, error)`` or ``set(point, weight[, error])``: a bin's weight. ROOT
+        keeps squared weights only once one comes with an error: until then a bin's is its
+        weight, and after it an error's square."""
+        found = int(target) if isinstance(target, (int, np.integer)) else self._bin_at(target)
+        squares = np.array(self.weights_squared(), dtype=np.float64)
+        tracking = bool(error > 0.0 or not np.array_equal(squares, self._grid_weights()))
+        self._weights = self._grid_weights().copy()
+        self._weights[found] = float(weight)
+        self._sumw2 = squares if tracking else self._weights.copy()
+        if tracking:
+            self._sumw2[found] = float(error) * float(error)
+
     def numEntries(self) -> int:
         return len(self._weights) if self._weights is not None else 0
 

@@ -114,3 +114,21 @@ def test_labelled_bins_sort_by_label_or_by_content_errors_and_all():
     plain.Fill("q")
     plain.LabelsOption("a")
     assert _labels(plain) == [("q", 1.0), ("", 0.0)]
+
+
+def test_an_axis_of_no_range_is_filled_by_label_and_refuses_a_number():
+    """df029: ``TH1F("h", "", 7, 0, -1)`` filled by label is ROOT's ``0`` to ``7`` of them."""
+    from xrdroot.errors import UnsupportedFeatureError
+
+    h = ROOT.TH1F("unranged", "", 7, 0, -1)
+    for label in ("Linux", "win32", "Linux", "macosx64"):
+        h.Fill(label, 1)
+    h.GetXaxis().LabelsOption("a")  # the axis hands the sorting to its histogram, as ROOT's does
+    h.LabelsDeflate("X")
+    labels = [h.GetXaxis().GetBinLabel(i) for i in range(1, h.GetNbinsX() + 1)]
+    assert labels == ["Linux", "macosx64", "win32"] and h.GetBinContent(1) == 2
+    with pytest.raises(UnsupportedFeatureError, match="no range"):
+        h.Fill(1.0)
+    loose = ROOT.TAxis(3, 0.0, 1.0)
+    loose.LabelsOption("v")
+    assert loose._row["_labels_option"] == "v"

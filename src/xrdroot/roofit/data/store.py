@@ -248,6 +248,11 @@ class RooAbsData(RooPrintable):
         return f"<{self.ClassName()}::{self._name} {self.numEntries()} entries>"
 
 
+#: ``RooAbsData::None`` by its C++ name, which Python's syntax keeps out of a class body: a
+#: translated macro asks for it with ``getattr``.
+setattr(RooAbsData, "None", RooAbsData.NONE)
+
+
 def _real_copy(func: Any, values: np.ndarray[Any, Any]) -> Any:
     """A variable standing for a function's column, its range the values' own."""
     from ..variables import RooRealVar

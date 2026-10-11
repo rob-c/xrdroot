@@ -304,7 +304,16 @@ class TAxis(TNamed, TAttAxis):
         return made if self._labels() else None
 
     def LabelsOption(self, option: str = "h") -> None:
-        """``LabelsOption``: how labels are drawn, which the drawing reads."""
+        """``LabelsOption``: how labels are drawn, which the drawing reads - handed to the
+        histogram the axis is of, as ROOT's is, which sorts its bins by ``a``, ``>`` or ``<``."""
+        owner = self._owner
+        if owner is not None and hasattr(owner, "LabelsOption"):
+            owner.LabelsOption(option, self.GetName()[:1].upper() or "X")
+            return
+        self.store_labels_option(option)
+
+    def store_labels_option(self, option: str) -> None:
+        """How labels are drawn, kept for the drawing."""
         self._row["_labels_option"] = str(option)
 
     def ChangeLabel(self, *args: Any) -> None:

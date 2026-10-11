@@ -43,6 +43,7 @@ FAMILIES = (
     "fitters",
     "graphs",
     "graphs2d",
+    "graphsmooth",
     "scatters",
     "efficiencies",
     "files",

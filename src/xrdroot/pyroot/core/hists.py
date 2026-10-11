@@ -124,7 +124,7 @@ class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarke
         """
         text = str(option)
         axis = self._axes()["XYZ".index(str(ax).upper()[:1] or "X")]
-        axis.LabelsOption(text)
+        axis.store_labels_option(text)
         order = next((key for key in "a><" if key in text), None)
         if order is not None and self.GetDimension() == 1:
             from .deflate import sorted_by_label

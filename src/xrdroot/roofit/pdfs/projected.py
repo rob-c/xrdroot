@@ -2,11 +2,9 @@
 
 ``pdf.createProjection(y)`` is ``RooProjectedPdf("pdf_Proj[y]", ..., pdf,
 y)``: at each point, the integral of ``pdf`` over ``y`` - normalised, as
-RooFit normalises it, over ``y`` and the observables it is asked of, so the
-projection of ``f(x, y)`` onto ``x`` is ``Int f dy / Int f dx dy``. Its
-integral over the rest is the density's over them and ``y`` together, so it
-is normalised again exactly as any density is, and generated, fitted and
-plotted as one.
+RooFit normalises it, over ``y`` and the observables it is asked of, each
+factor of a product its own way - so the projection of ``f(x, y)`` onto
+``x`` is ``Int f dy / Int f dx dy``, a density of ``x`` already.
 """
 
 from __future__ import annotations
@@ -34,6 +32,23 @@ class RooProjectedPdf(RooAbsPdf):
 
     def compute(self, ctx: Context) -> Any:
         return self.intpdf.integrate(self._integrated, ctx)
+
+    def selfNormalized(self) -> bool:
+        return True
+
+    def value(self, ctx: Context, nset: Any = None, rng: Any = None) -> Any:
+        """The density integrated over the variables projected out, normalised over them and
+        ``nset`` - each factor of a product its own way, a conditional one over its own."""
+        whole = (frozenset(nset or ()) & self.intpdf.dependents()) | self._integrated
+        return self.intpdf.fraction(self._integrated, ctx, whole, None)
+
+    def fraction(
+        self, names: frozenset[str], ctx: Context, nset: Any, rng: Any, norm_rng: Any = None
+    ) -> Any:
+        """The projection's integral over ``names`` in ``rng``: the density's over them and
+        the variables projected out together."""
+        whole = frozenset(nset or ()) | self._integrated
+        return self.intpdf.fraction(frozenset(names) | self._integrated, ctx, whole, rng, norm_rng)
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         return frozenset(names) & self.dependents()

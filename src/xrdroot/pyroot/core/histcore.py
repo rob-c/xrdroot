@@ -74,11 +74,15 @@ def positional(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[Any, ...]
 #: from ``gStyle``, by the base that keeps each, against the style's field.
 STYLED = {
     "TAttLine": {
-        "fLineColor": "HistLineColor", "fLineStyle": "HistLineStyle", "fLineWidth": "HistLineWidth",
+        "fLineColor": "HistLineColor",
+        "fLineStyle": "HistLineStyle",
+        "fLineWidth": "HistLineWidth",
     },
     "TAttFill": {"fFillColor": "HistFillColor", "fFillStyle": "HistFillStyle"},
     "TAttMarker": {
-        "fMarkerColor": "MarkerColor", "fMarkerStyle": "MarkerStyle", "fMarkerSize": "MarkerSize",
+        "fMarkerColor": "MarkerColor",
+        "fMarkerStyle": "MarkerStyle",
+        "fMarkerSize": "MarkerSize",
     },
 }
 
@@ -133,10 +137,25 @@ class Booked:
         if not args:
             return _in_style(Histogram.book("", *[(1, 0.0, 1.0)] * self.DIM, kind=self.KIND))
         specs, _rest = axis_specs(args[2:], self.DIM)
+        specs = self._unranged(specs)
         made = Histogram.book(str(args[0]), *specs, title=str(args[1]), kind=self.KIND)
         for letter, label in zip("XYZ", str(args[1]).split(";")[1:], strict=False):
             made._core[f"f{letter}axis"]["TNamed"]["fTitle"] = label
         return _in_style(made)
+
+    def _unranged(self, specs: list[Any]) -> list[Any]:
+        """The axes booked with no range - an upper edge at or below the lower one - as the
+        ``0`` to ``nbins`` ROOT gives such an axis once a label is filled into it; noted, so
+        that a number filled into one, whose range ROOT would work out from its buffer of
+        the first entries, is refused."""
+        auto = {
+            at for at, spec in enumerate(specs) if isinstance(spec, tuple) and spec[1] >= spec[2]
+        }
+        if auto:
+            self.__dict__["_auto_axes"] = auto
+        return [
+            (spec[0], 0.0, float(spec[0])) if at in auto else spec for at, spec in enumerate(specs)
+        ]
 
     def _adopted(self, xrd: Any) -> None:
         """Stand for ``xrd``, one read from a file or made by xrdroot, in no directory."""

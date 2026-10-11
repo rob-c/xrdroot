@@ -16,7 +16,7 @@ import sys
 from typing import Any
 
 from ..fit.defaults import default
-from ..fit.minuit import iminuit
+from ..fit.minuit import contour, iminuit
 from ..roofit.collections import RooArgList, RooArgSet, as_list
 from ..roofit.messages import ERROR, FATAL, INFO, WARNING, log, log_plain
 from ..roofit.printing import g
@@ -210,7 +210,7 @@ class LikelihoodInterval(ConfInterval):
         ix, iy = names.index(paramX.GetName()), names.index(paramY.GetName())
         log(self, INFO, "Minimization", f"LikelihoodInterval - Finding the contour of "
             f"{paramX.GetName()} ( {ix} ) and {paramY.GetName()} ( {iy} ) ")  # fmt: skip
-        points = _contour(self._minuit, ix, iy, int(npoints))
+        points = contour(self._minuit, ix, iy, int(npoints))
         if points is None:
             log(self, ERROR, "Minimization", "LikelihoodInterval - Error finding contour for "
                 f"parameters {paramX.GetName()} and {paramY.GetName()}")  # fmt: skip
@@ -223,24 +223,3 @@ class LikelihoodInterval(ConfInterval):
 def floating(ratio: Any) -> list[Any]:
     """The likelihood's free parameters, by name, as RooStats lists them for Minuit."""
     return [p for p in RooArgList(list(ratio.getVariables())) if not p.isConstant()]
-
-
-def _contour(minuit: Any, ix: int, iy: int, npoints: int) -> list[Any] | None:
-    """``Minuit2Minimizer::Contour``: MnContours at the minimum's own error level - ``None``,
-    with Minuit2's error, for an invalid minimum or any number of points but ``npoints``.
-
-    iminuit's ``mncontour`` scales the level by a confidence it is given,
-    which ``Contour`` does not, so MnContours is run here as ROOT runs it.
-    """
-    from iminuit._core import MnContours
-
-    if not minuit.fmin.is_valid:
-        sys.stderr.write("Error in <Minuit2>: Minuit2Minimizer::Contour Invalid function "
-                         "minimum\n")  # fmt: skip
-        return None
-    found = MnContours(minuit._fcn, minuit._fmin._src, minuit.strategy)(ix, iy, npoints)
-    if len(found[2]) != npoints:
-        sys.stderr.write("Error in <Minuit2>: Minuit2Minimizer::Contour Invalid result from "
-                         "MnContours\n")  # fmt: skip
-        return None
-    return list(found[2])

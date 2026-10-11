@@ -474,6 +474,15 @@ class RooMinimizer:
         found.fill(self)
         return found
 
+    def contour(self, var1: Any, var2: Any, n1: float = 1.0, n2: float = 2.0, n3: float = 0.0,
+                n4: float = 0.0, n5: float = 0.0, n6: float = 0.0,
+                npoints: int = 50) -> Any:  # fmt: skip
+        """``contour``: a frame of ``var1`` and ``var2`` with Minuit's ``n1``- to ``n6``-sigma
+        contours, those of a positive ``n`` (:mod:`.contour`)."""
+        from .contour import contour
+
+        return contour(self, var1, var2, [n1, n2, n3, n4, n5, n6], npoints)
+
     def fitter(self) -> Any:
         return self
 

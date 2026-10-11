@@ -21,14 +21,32 @@ from ..real import Context
 __all__ = ["RooSimultaneous"]
 
 
+def _pairs(arg: Any) -> list[tuple[str, Any]] | None:
+    """A map's label-density pairs: a ``dict``, or the ``[[label, pdf], ...]`` a translated
+    macro's map initializer ``{{"label", &pdf}, ...}`` is."""
+    if isinstance(arg, dict):
+        return list(arg.items())
+    if isinstance(arg, (list, tuple)) and arg and all(_is_pair(p) for p in arg):
+        return [(str(p[0]), p[1]) for p in arg]
+    return None
+
+
+def _is_pair(item: Any) -> bool:
+    return isinstance(item, (list, tuple)) and len(item) == 2 and isinstance(item[0], str)
+
+
 def _channels(args: tuple[Any, ...], index: Any) -> list[tuple[str, Any]]:
     """The densities by state: from ``{label: pdf}`` maps, or a list in the category's order."""
-    found = [pair for arg in args if isinstance(arg, dict) for pair in arg.items()]
-    lists = [a for a in args if not isinstance(a, dict) and a is not index]
+    found: list[tuple[str, Any]] = []
+    lists = []
+    for arg in args:
+        pairs = _pairs(arg)
+        if pairs is not None:
+            found += pairs
+        elif arg is not index:
+            lists.append(arg)
     if len(lists) == 1:
-        found += [
-            (label, pdf) for pdf, label in zip(as_list(lists[0]), index.states(), strict=False)
-        ]
+        found += list(zip(index.states(), as_list(lists[0]), strict=False))
     return found
 
 

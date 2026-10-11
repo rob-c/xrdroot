@@ -1,4 +1,5 @@
-"""The factory's operators: ``SUM``, ``PROD``, ``EXPR``, ``expr``, ``sum``, ``prod``, ``SIMUL``.
+"""The factory's operators: ``SUM``, ``PROD``, ``EXPR``, ``expr``, ``sum``, ``prod``, ``SIMUL``,
+``PROJ``.
 
 Each takes the factory, the name of what it makes, and its arguments as
 text, and builds them as ``RooFactoryWSTool``'s operator of that name does.
@@ -100,6 +101,23 @@ def _simul(factory: Any, name: str, args: list[str]) -> Any:
     return made
 
 
+def _proj(factory: Any, name: str, args: list[str]) -> Any:
+    """``PROJ::name(pdf, {y, z})``: ``pdf.createProjection`` over the variables, renamed - its
+    title the projection's own name, as ``SetName`` leaves it."""
+    from .pdfs.projected import projection
+
+    if len(args) != 2:
+        raise UnsupportedFeatureError(
+            f"PROJ::{name} takes a density and the variables to project out, and was given "
+            f"{len(args)} arguments"
+        )
+    pdf = factory.build_arg(name, 0, args[0])
+    found = factory.build_arg(name, 1, args[1])
+    made = projection(pdf, list(found) if hasattr(found, "_list") else [found])
+    made.SetName(name)
+    return made
+
+
 def _refused(kind: str) -> Callable[[Any, str, list[str]], Any]:
     def make(factory: Any, name: str, args: list[str]) -> Any:
         raise UnsupportedFeatureError(
@@ -120,6 +138,7 @@ OPERATORS: dict[str, Callable[[Any, str, list[str]], Any]] = {
     "sum": _values("sum"),
     "prod": _values("prod"),
     "SIMUL": _simul,
+    "PROJ": _proj,
     **{
         kind: _refused(kind)
         for kind in (
@@ -133,7 +152,6 @@ OPERATORS: dict[str, Callable[[Any, str, list[str]], Any]] = {
             "int",
             "deriv",
             "cdf",
-            "PROJ",
             "nconv",
             "lagrangianmorph",
             "dataobs",

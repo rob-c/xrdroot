@@ -43,3 +43,29 @@ def test_the_projection_of_a_correlated_density_integrates_it_out() -> None:
     f = RooGenericPdf("f", "f", "1 + x*y", [x, y])
     projected = f.createProjection(RooArgSet(y))
     assert projected.value({"x": 0.25}, {"x"}) == pytest.approx((1 + 0.125) / 1.25, rel=1e-6)
+    # Unnormalised it is the integral over y, and its integral over x all of f's; it
+    # normalises itself, as RooProjectedPdf does.
+    assert projected.compute({"x": 0.25}) == pytest.approx(1 + 0.125, rel=1e-6)
+    assert projected.analytic(frozenset({"x"}), {}, None) == pytest.approx(1.25, rel=1e-6)
+    assert projected.selfNormalized()
+
+
+def test_the_factorys_proj_projects_a_conditional_product_factor_by_factor() -> None:
+    """Zbi_Zgamma's ``PROJ::avg(PROD::foo(px|b, prior), b)``: ``px`` normalised over ``x`` for
+    each ``b``, the prior over ``b`` - and the projection a density of ``x``, its integral 1."""
+    from xrdroot.errors import UnsupportedFeatureError
+    from xrdroot.roofit.workspace import RooWorkspace
+
+    w = RooWorkspace("w")
+    w.factory("Gaussian::px(x[0,-5,5], b[0,-1,1], 1)")
+    w.factory("Uniform::prior(b)")
+    w.factory("PROJ::avg(PROD::foo(px|b, prior), b)")
+    avg = w.pdf("avg")
+    assert avg.GetName() == "avg" and avg.GetTitle() == "foo_Proj[b]"
+    x = w.var("x")
+    whole = avg.fraction(frozenset({"x"}), {}, {"x"}, None)
+    assert float(whole) == pytest.approx(1.0, rel=1e-6)
+    x.setVal(0.0)
+    assert float(avg.value({}, {"x"})) == pytest.approx(float(avg.getVal(RooArgSet(x))))
+    with pytest.raises(UnsupportedFeatureError, match="takes a density and the variables"):
+        w.factory("PROJ::bad(foo)")

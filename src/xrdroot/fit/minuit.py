@@ -15,6 +15,7 @@ else asks for it by name.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -23,7 +24,7 @@ import numpy as np
 from ..errors import UnsupportedFeatureError
 from .result import FitResult
 
-__all__ = ["minimize", "iminuit"]
+__all__ = ["contour", "iminuit", "minimize"]
 
 #: ``MinimizerOptions::DefaultTolerance``.
 TOLERANCE = 0.01
@@ -216,3 +217,24 @@ def _result(minuit: Any, labels: Sequence[str], minos: bool, calls: int) -> FitR
         fixed=fixed,
         bounded=[flag and not fix for flag, fix in zip(limits, fixed, strict=False)],
     )
+
+
+def contour(minuit: Any, ix: int, iy: int, npoints: int) -> list[Any] | None:
+    """``Minuit2Minimizer::Contour``: MnContours at the minimum's own error level - ``None``,
+    with Minuit2's error, for an invalid minimum or any number of points but ``npoints``.
+
+    iminuit's ``mncontour`` scales the level by a confidence it is given,
+    which ``Contour`` does not, so MnContours is run here as ROOT runs it.
+    """
+    from iminuit._core import MnContours
+
+    if not minuit.fmin.is_valid:
+        sys.stderr.write("Error in <Minuit2>: Minuit2Minimizer::Contour Invalid function "
+                         "minimum\n")  # fmt: skip
+        return None
+    found = MnContours(minuit._fcn, minuit._fmin._src, minuit.strategy)(ix, iy, npoints)
+    if len(found[2]) != npoints:
+        sys.stderr.write("Error in <Minuit2>: Minuit2Minimizer::Contour Invalid result from "
+                         "MnContours\n")  # fmt: skip
+        return None
+    return list(found[2])

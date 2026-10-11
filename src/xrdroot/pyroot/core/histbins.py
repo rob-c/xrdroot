@@ -90,10 +90,29 @@ class Bins:
         """
         if args and np.ndim(args[0]) > 0:
             return self._fill_arrays(args)
+        self._check_ranged(args)
         coordinates = [self._coordinate(at, value) for at, value in enumerate(args[: self.DIM])]
         if any(coordinate is None for coordinate in coordinates):
             return -1
         return self._fill_one(args, coordinates)
+
+    def _check_ranged(self, args: tuple[Any, ...]) -> None:
+        """Refuse a number filled into an axis booked with no range, which ROOT bins by the
+        range of its first entries - the buffer of them it keeps - and this does not."""
+        auto = self.__dict__.get("_auto_axes")
+        if not auto:
+            return
+        numbers = [at for at in auto if at < len(args) and not isinstance(args[at], str)]
+        if numbers:
+            from ...errors import UnsupportedFeatureError
+
+            owner: Any = self  # a histogram, whose bins these are
+            raise UnsupportedFeatureError(
+                f"{owner.GetName()!r} was booked with an axis of no range (its upper edge at or "
+                f"below its lower one), which ROOT fills from a buffer of the first entries "
+                f"and then gives the range they span; that buffer is not here - give the axis "
+                f"its range, or fill it by label"
+            )
 
     def _fill_one(self, args: tuple[Any, ...], coordinates: list[Any]) -> int:
         """One entry at its coordinates; by label, the sums along an axis that may grow stay
