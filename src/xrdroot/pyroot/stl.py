@@ -239,6 +239,8 @@ def _converted(kind: Any, value: Any) -> Any:
         return value
     if isinstance(value, kind):
         return value
+    if issubclass(kind, _Pair):  # a pair made elsewhere - make_pair's, a tuple - as two
+        return kind(*value)
     return kind(value)
 
 

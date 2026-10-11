@@ -16,6 +16,7 @@ from ...fit.defaults import DEFAULTS, minimizer_algo, minimizer_type, set_minimi
 from ...function import bessel, densities, special
 from ...function import distributions as dist
 from ...stats import incomplete_gamma, incomplete_gamma_c
+from .fitdata import WrappedMultiTF1  # noqa: F401 - ROOT::Math's, by name
 from .genvector import *  # noqa: F403
 from .genvector import __all__ as _vectors
 from .legendres import (  # noqa: F401 - ROOT::Math's Legendre polynomials, by name
@@ -411,6 +412,7 @@ __all__ = sorted(
         "Integrator",
         "IntegratorOneDim",
         "LFSR",
+        "WrappedMultiTF1",
         "RootFinder",
         "assoc_legendre",
         "legendre",

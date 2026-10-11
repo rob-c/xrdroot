@@ -458,6 +458,24 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
     def SetNDF(self, ndf: int) -> None:
         self._xrd._f1["fNDF"] = int(ndf)
 
+    def SetNumberFitPoints(self, npfits: int) -> None:
+        self._xrd._f1["fNpfits"] = int(npfits)
+
+    def SetFitResult(self, result: Any, indpar: Any = None) -> None:
+        """``SetFitResult(result, indices)``: the parameters - each the result's of its index,
+        a negative one left as it is - their errors, and the fit's chi-square (its minimum,
+        if it had none) and degrees of freedom, as ``TF1::SetFitResult`` takes them."""
+        chi2 = float(result.Chi2())
+        self.SetChisquare(chi2 if chi2 > 0 else float(result.MinFcnValue()))
+        self.SetNDF(int(result.Ndf()))
+        self.SetNumberFitPoints(int(result.Ndf()) + int(result.NFreeParameters()))
+        for i in range(self.GetNpar()):
+            at = int(indpar[i]) if indpar is not None else i
+            if at >= 0:
+                self.SetParameter(i, float(result.Parameter(at)))
+                self.SetParError(i, float(result.Error(at)))
+        self.Update()
+
     def SetNormalized(self, flag: bool) -> None:
         self._xrd.normalized = bool(flag)
 

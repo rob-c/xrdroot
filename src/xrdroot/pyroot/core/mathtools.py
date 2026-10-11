@@ -15,6 +15,8 @@ from typing import Any
 
 import numpy as np
 
+from . import fitdata
+
 __all__ = [
     "Functor1D",
     "Functor",
@@ -223,9 +225,11 @@ class _FCNResult:
         return getattr(self._result, name)
 
     def Print(self, stream: Any = None, covariance: bool = False) -> None:
-        """``Print(std::cout)``: ROOT's summary of a minimisation, ``MinFCN``, no chi-square."""
+        """``Print(std::cout)``: ROOT's summary of a minimisation - ``MinFCN``, and no
+        chi-square, unless the function was said to be one."""
         lines = self._result._xrd.summary(covariance=covariance).splitlines()
-        print("\n".join(line for line in lines if not line.startswith("Chi2 ")))
+        chi2 = self._result._xrd.chi2 >= 0
+        print("\n".join(line for line in lines if chi2 or not line.startswith("Chi2 ")))
 
 
 class ParameterSettings:
@@ -291,6 +295,29 @@ class FitConfig:
     def NPar(self) -> int:
         return len(self._settings)
 
+    def MinimizerOptions(self) -> Any:
+        """``MinimizerOptions()``: the minimiser's settings - MIGRAD's, at ROOT's defaults."""
+        found = self.__dict__.setdefault("_options", _MinimizerSettings())
+        return found
+
+    def SetMinimizer(self, name: Any, algorithm: Any = None) -> None:
+        """``SetMinimizer("Minuit2", "Migrad")``: what is minimised with - always that, here."""
+        self.__dict__["_minimizer"] = (str(name), str(algorithm or "Migrad"))
+
+
+class _MinimizerSettings:
+    """``ROOT::Math::MinimizerOptions`` of one fit: what is set, kept and read back."""
+
+    def __init__(self) -> None:
+        self._values: dict[str, Any] = {"PrintLevel": 0}
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("Set"):
+            return lambda value: self._values.__setitem__(name[3:], value)
+        if name in self._values:
+            return lambda: self._values[name]
+        raise AttributeError(f"ROOT's MinimizerOptions has {name}; this one does not yet")
+
 
 class Fitter:
     """``ROOT::Fit::Fitter``: a function minimised - ``FitFCN`` - with Minuit's MIGRAD."""
@@ -310,18 +337,58 @@ class Fitter:
         return True
 
     def FitFCN(self, fcn: Any = None, params: Any = None, *rest: Any) -> bool:
-        """``FitFCN(fcn, start)``: ``fcn`` minimised from ``start``; the result in ``Result()``."""
+        """``FitFCN(fcn, start, dataSize, chi2)``: ``fcn`` minimised from ``start``; the result
+        in ``Result()``. ``FitFCN(npar, fcn, ...)`` names how many parameters it takes, set up
+        in ``Config()`` unless ``start`` is given. Said to be a chi-square, its minimum is the
+        fit's, of ``dataSize`` less the free parameters' degrees of freedom."""
+        npar, fcn, start, rest = _fcn_arguments(fcn, params, rest)
         if fcn is not None:
-            self.SetFCN(fcn, params)
+            self._take(fcn, npar, start)
         if self._fcn is None:
             raise ValueError("FitFCN() minimises the function SetFCN gave it, and none was given")
         found = _minimised(self._fcn, self._config.ParamsSettings())
-        found.chi2 = -1.0
+        size, is_chi2 = (int(rest[0]) if rest else 0), bool(rest[1:2] and rest[1])
+        found.chi2 = found.fcn if is_chi2 else -1.0
+        found.ndf = size - sum(1 for one in self._config.ParamsSettings() if not one.IsFixed())
         self._result = _FCNResult(found)
         return bool(found.valid)
 
+    def SetFunction(self, function: Any, useGradient: bool = False) -> bool:
+        """``SetFunction(wrapped)``: the model ``Fit`` fits, its parameters set up from the
+        function's - named, valued and stepped as they stand."""
+        self.__dict__["_model"] = function
+        tf = function._function
+        values = [tf.GetParameter(i) for i in range(tf.GetNpar())]
+        self._config.SetParamsSettings(len(values), np.array(values, dtype=np.float64))
+        for i, one in enumerate(self._config.ParamsSettings()):
+            one.SetName(tf.GetParName(i))
+        return True
+
+    def Fit(self, data: Any, *rest: Any) -> bool:
+        """``Fit(data)``: the model's chi-square over the data minimised."""
+        chi2 = fitdata.Chi2Function(data, self.__dict__["_model"])
+        return self.FitFCN(chi2.NDim(), chi2, None, data.Size(), True)
+
+    def _take(self, fcn: Any, npar: int | None, start: Any) -> None:
+        """The function to minimise, its parameters set up from ``start`` - or kept as
+        ``Config()`` has them, if they are as many."""
+        self._fcn = fcn
+        count = npar if npar is not None else int(fcn.NDim())
+        if start is not None or self._config.NPar() != count:
+            self._config.SetParamsSettings(count, start)
+
     def Result(self) -> Any:
         return self._result
+
+
+def _fcn_arguments(fcn: Any, params: Any, rest: tuple[Any, ...]) -> tuple[Any, ...]:
+    """``FitFCN``'s overloads: how many parameters if said, the function, where it starts
+    - ``nullptr``, ``0``, none - and what follows."""
+    npar = None
+    if isinstance(fcn, (int, np.integer)):
+        npar, fcn, params, rest = int(fcn), params, (rest[0] if rest else None), rest[1:]
+    start = None if params is None or np.ndim(params) == 0 else params
+    return npar, fcn, start, rest
 
 
 def _minimised(fcn: Any, settings: list[ParameterSettings]) -> Any:
@@ -349,6 +416,11 @@ class _FitNamespace:
     Fitter = Fitter
     FitConfig = FitConfig
     ParameterSettings = ParameterSettings
+    BinData = fitdata.BinData
+    Chi2Function = fitdata.Chi2Function
+    DataOptions = fitdata.DataOptions
+    DataRange = fitdata.DataRange
+    FillData = staticmethod(fitdata.FillData)
 
 
 #: ``ROOT.Fit``.
