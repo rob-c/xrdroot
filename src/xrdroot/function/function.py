@@ -553,6 +553,11 @@ class Function(Displayed):
             return np.broadcast_to(found, columns[0].shape)
         return self._from_save(columns)
 
+    def rejected_points(self) -> Any:
+        """Which points of the last evaluation the function's code rejected, as
+        ``TF1::RejectPoint`` rejects them - ``None`` for none."""
+        return getattr(self._model, "rejected", None)
+
     def _from_save(self, columns: list[np.ndarray[Any, Any]]) -> Array:
         """What ROOT saved, for a function whose code is not here - or whose formula
         calls what this cannot evaluate, which is refused when nothing was saved."""

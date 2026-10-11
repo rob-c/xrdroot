@@ -124,6 +124,9 @@ def chi2(data: FitData, predict: Predictor) -> Cost:
     def cost(params: Array) -> float:
         f = predict(params)
         weight = _pearson_inverse(data, f) if data.options.exp_errors else inverse
+        rejected = predict.function.rejected_points()
+        if rejected is not None and len(rejected) == data.size:  # TF1::RejectPoint's
+            weight = np.where(rejected, 0.0, weight)
         with np.errstate(over="ignore", invalid="ignore"):
             terms = ((data.y - f) * weight) ** 2
         return _capped(np.where(weight > 0, terms, 0.0), data.size)

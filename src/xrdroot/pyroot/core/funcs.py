@@ -63,11 +63,23 @@ def adapted(fn: Callable[..., Any], dimensions: int) -> Callable[[Any, Any], Any
         rows = np.asarray(points, dtype=np.float64).reshape(-1, dimensions)
         values = np.asarray(params, dtype=np.float64)
         found = _at_once(call, rows, values) if len(rows) > 1 else None
+        model.rejected = None  # type: ignore[attr-defined]
         if found is not None:
             return found
-        return np.array([float(call(row, values)) for row in rows])
+        out, flags = np.empty(len(rows)), np.zeros(len(rows), dtype=bool)
+        for at, row in enumerate(rows):
+            REJECTING[0] = False
+            out[at] = float(call(row, values))
+            flags[at] = REJECTING[0]
+        model.rejected = flags if flags.any() else None  # type: ignore[attr-defined]
+        return out
 
     return model
+
+
+#: ``TF1::RejectPoint``'s flag: set by the code of a function evaluated at one point, that the
+#: point be left out of the fit.
+REJECTING = [False]
 
 
 def _at_once(call: Callable[[Any, Any], Any], rows: Any, values: Any) -> Any:
@@ -457,6 +469,15 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
 
     def SetNDF(self, ndf: int) -> None:
         self._xrd._f1["fNDF"] = int(ndf)
+
+    @staticmethod
+    def RejectPoint(reject: bool = True) -> None:
+        """``TF1::RejectPoint()``: the point the function's code is at left out of the fit."""
+        REJECTING[0] = bool(reject)
+
+    @staticmethod
+    def RejectedPoint() -> bool:
+        return REJECTING[0]
 
     def SetNumberFitPoints(self, npfits: int) -> None:
         self._xrd._f1["fNpfits"] = int(npfits)

@@ -464,11 +464,13 @@ def _weighted_likelihood(obj: Any, kind: str, opts: FitOptions) -> None:
         opts.like = 1
 
 
-def _finished(found: FitResult, data: FitData, opts: FitOptions) -> None:
-    """The degrees of freedom, and the errors scaled where the data had none of their own."""
+def _finished(found: FitResult, data: FitData, opts: FitOptions, rejected: Any) -> None:
+    """The degrees of freedom, of the points the function's code did not reject, and the
+    errors scaled where the data had none of their own."""
     nfree = sum(1 for flag in found.fixed if not flag)
-    found.ndf = data.size - nfree if data.size > nfree else 0
-    found.npoints = data.size
+    size = data.size - (int(np.count_nonzero(rejected)) if rejected is not None else 0)
+    found.ndf = size - nfree if size > nfree else 0
+    found.npoints = size
     least_squares = found.minimizer == LINEAR or not opts.like
     if least_squares and (data.kind == NO_ERROR or data.options.errors1):
         _normalised(found)
@@ -509,7 +511,7 @@ def fit_object(
     by_minuit = found.minimizer != LINEAR
     if opts.verbose and by_minuit:
         print(found.minuit2_report(max_calls(function.npar), minuit.TOLERANCE, minuit.STRATEGY))
-    _finished(found, data, opts)
+    _finished(found, data, opts, function.rejected_points())
     _record(function, found, data)
     found.function = function if opts.nostore else _store(obj, kind, function, opts, spans)
     if not opts.quiet:

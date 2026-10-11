@@ -448,3 +448,24 @@ def test_a_tf1_of_an_object_and_a_member_calls_the_member_on_the_object():
 
     f = ROOT.TF1("member", Scaled(3.0), Scaled.Value, 0, 2, 0)
     assert f.Eval(1.5) == 4.5 and (f.GetXmin(), f.GetXmax(), f.GetNpar()) == (0, 2, 0)
+
+
+def test_points_the_functions_code_rejects_are_left_out_of_the_fit_and_its_ndf():
+    """fitExclude: ``TF1::RejectPoint()`` in the code, point by point, drops the point."""
+    h = ROOT.TH1F("excl", "", 10, 0, 10)
+    for i in range(1, 11):
+        h.SetBinContent(i, 5.0 if 4 <= i <= 6 else 2.0)
+        h.SetBinError(i, 1.0)
+
+    def flat(x, p):
+        if 3.0 < x[0] < 6.0:
+            ROOT.TF1.RejectPoint()
+            return 0.0
+        return p[0]
+
+    f = ROOT.TF1("flat", flat, 0, 10, 1)
+    f.SetParameter(0, 1.0)
+    result = h.Fit(f, "QS0")
+    assert result.Parameter(0) == pytest.approx(2.0) and result.Ndf() == 6
+    assert ROOT.TF1.RejectedPoint() is False and f.Eval(4.5) == 0.0 and ROOT.TF1.RejectedPoint()
+    ROOT.TF1.RejectPoint(False)
