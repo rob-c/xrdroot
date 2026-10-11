@@ -365,6 +365,17 @@ def test_outputs_are_compared_by_kind_and_missing_ones_said(tmp_path):
     assert compare.extra_files(theirs, ours) == ["d.txt"]
 
 
+def test_a_dot_graph_is_the_same_lines_in_any_order(tmp_path):
+    """RooFit orders a graph's edges by the objects' addresses: the lines matter, not the order."""
+    left, ours = _files(tmp_path, "l", {"g.dot": b'"a" -> "b";\n"a" -> "c";\n'})
+    right, theirs = _files(tmp_path, "r", {"g.dot": b'"a" -> "c";\n"a" -> "b";\n'})
+    found = next(compare.compare_files(ours, theirs, (left, right), TOLERANCE))
+    assert (found.kind, found.differences) == ("unordered", [])
+    (right / "g.dot").write_bytes(b'"a" -> "d";\n"a" -> "b";\n')
+    again = next(compare.compare_files(ours, {"g.dot": "x"}, (left, right), TOLERANCE))
+    assert again.differences[0].startswith("g.dot: line 2")
+
+
 def test_image_outputs_carry_their_score(tmp_path):
     (tmp_path / "l").mkdir()
     (tmp_path / "r").mkdir()

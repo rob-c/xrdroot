@@ -50,6 +50,20 @@ class RooRealSumPdf(RooAbsPdf):
             total = total + coef * (func.integrate(part, ctx, rng) if part else func.compute(ctx))
         return total
 
+    def announce_inner(self, names: frozenset[str], rng: Any) -> None:
+        """Each term's integral, made - and, where numerical, said - as the sum's is made: of
+        the terms a plot of some components draws, when it is that plot's projection. A binned
+        sum's integral is RooBinIntegrator's, of the sum as a whole, and makes none."""
+        from ..integration import announce
+        from ..selection import active
+
+        if self.isBinnedDistribution(frozenset(names)):  # summed bin by bin, as a whole
+            return
+        for func in self.funcs:
+            part = frozenset(names) & func.dependents()
+            if part and active(func):
+                announce(func, part, rng)
+
     def extendMode(self) -> int:
         return CAN_BE_EXTENDED if self._extended else CAN_NOT_BE_EXTENDED
 

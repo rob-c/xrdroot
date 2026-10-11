@@ -188,31 +188,44 @@ def _norm_and_range(args: tuple[Any, ...], options: Any) -> tuple[Any, Any]:
 
 
 class RooCdf(RooAbsReal):
-    """``createCdf``: the normalised integral from the lower end up to the variable's value."""
+    """``createCdf``: the normalised integral from each variable's lower end up to its value."""
 
     def __init__(self, func: Any, names: frozenset[str]) -> None:
         order = [one.GetName() for one in func.leaves() if one.GetName() in names]
+        primed = ",".join(f"{one}_prime" for one in order)
         super().__init__(
-            f"{func.GetName()}_Int[{','.join(order)}_prime]_Norm[{','.join(order)}]",
+            f"{func.GetName()}_Int[{primed}]_Norm[{','.join(order)}]",
             f"Integral of {func.GetTitle()}",
         )
         self.func = self._proxy("!func", func)
         self.names = names
+        self._order = order
 
     def compute(self, ctx: Context) -> Any:
-        name = next(iter(self.names))
-        var = self.func.variable(name)
-        values = np.atleast_1d(np.asarray(ctx.get(name, var.getVal()), dtype=np.float64))
-        found = np.empty_like(values)
-        for i, upper in enumerate(values):
+        """At each point, the fraction of the density below it in every variable at once."""
+        variables = [self.func.variable(name) for name in self._order]
+        shape, uppers = _uppers(variables, ctx)
+        rest = {k: v for k, v in ctx.items() if k not in self.names}
+        found = np.array([self._below(variables, row, rest) for row in zip(*uppers, strict=True)])
+        for var in variables:
+            var._shared.pop("_cdf_", None)
+        return found.reshape(shape) if shape else float(found[0])
+
+    def _below(self, variables: list[Any], row: tuple[Any, ...], rest: Context) -> float:
+        """The fraction of the density below ``row``, each variable's range cut there."""
+        for var, upper in zip(variables, row, strict=True):
             var._shared["_cdf_"] = RooRangeBinning(var.getMin(), float(upper), "_cdf_")
-            rest = {k: v for k, v in ctx.items() if k != name}
-            found[i] = float(np.asarray(self.func.fraction(self.names, rest, self.names, "_cdf_")))
-        var._shared.pop("_cdf_", None)
-        return found if np.ndim(ctx.get(name, 0.0)) else float(found[0])
+        return float(np.asarray(self.func.fraction(self.names, rest, self.names, "_cdf_")))
 
     def printValue(self) -> str:
         return g(self.getVal())
+
+
+def _uppers(variables: list[Any], ctx: Context) -> tuple[Any, list[Any]]:
+    """Where each cumulative integral ends: every variable's values, broadcast together."""
+    given = [np.asarray(ctx.get(v.GetName(), v.getVal()), dtype=np.float64) for v in variables]
+    shape = np.broadcast_shapes(*(one.shape for one in given))
+    return shape, [np.broadcast_to(one, shape).ravel() for one in given]
 
 
 def make_cdf(func: Any, iset: Any) -> RooCdf:

@@ -156,8 +156,8 @@ def _by_names(func: Any, names: str, counts: tuple[Any, ...]) -> tuple[str, Any,
 def function_histogram(
     func: Any, name: str, first: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
 ) -> Any:
-    """``RooAbsReal::createHistogram``: the function at each bin's centre, a density times the
-    volume."""
+    """``RooAbsReal::createHistogram``: the function at each bin's centre - a density normalised -
+    times the bin's volume, unless ``Scaling(false)`` asks for the values alone."""
     if not hasattr(first, "GetName"):  # createHistogram("x,y", 50, 50): names and bin counts
         name, first, args = _by_names(func, str(name), (first, *args))
     axes = _axes(first, args, kwargs, func.variable)
@@ -166,7 +166,7 @@ def function_histogram(
     grid, volumes = _grid(edges)
     ctx = {var.GetName(): grid[:, i] for i, (var, _) in enumerate(axes)}
     nset = frozenset(ctx)
-    values = _values(func, ctx, nset, volumes)
+    values = _values(func, ctx, nset, volumes if _scaling(args, kwargs) else 1.0)
     made.fill(*[grid[:, i] for i in range(len(axes))], weight=values)
     return WRAP[0](made)
 
@@ -178,16 +178,25 @@ def _normalised_parts(func: Any, nset: frozenset[str]) -> list[tuple[Any, frozen
     return [(func, nset)]
 
 
+def _scaling(args: tuple[Any, ...], kwargs: dict[str, Any]) -> bool:
+    """``Scaling(bool)``: whether each bin's value is times its volume - by default, it is."""
+    options = commands([a for a in args if isinstance(a, RooCmdArg)], kwargs)
+    return bool(options.get("Scaling", 0, True))
+
+
 def _values(func: Any, ctx: dict[str, Any], nset: frozenset[str], volumes: Any) -> Any:
-    """Each bin's content: a density's normalised value times the bin's volume, or the value."""
+    """Each bin's content: the function's value - a density's normalised over the histogram's
+    variables - times ``volumes``, each bin's (``fillHistogram``'s scaling) or one."""
+    bins = len(next(iter(ctx.values())))
     if not hasattr(func, "canBeExtended"):
-        return np.broadcast_to(np.asarray(func.compute(ctx), dtype=np.float64), (len(volumes),))
+        values = np.asarray(func.compute(ctx), dtype=np.float64)
+        return np.broadcast_to(values, (bins,)) * volumes
     from .integration import announce
 
     for part, own in _normalised_parts(func, nset):  # the projection's normalisation
         announce(part, own)
     values = np.asarray(func.value(ctx, nset), dtype=np.float64)
-    return np.broadcast_to(values, (len(volumes),)) * volumes
+    return np.broadcast_to(values, (bins,)) * volumes
 
 
 def names_of(items: Any) -> list[str]:

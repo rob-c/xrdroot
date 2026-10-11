@@ -55,7 +55,7 @@ def _drawn(func: Any, frame: Any, options: Any, chosen: Any, nset: frozenset[str
 
         seen = view(func, frame, options)
         nset -= frozenset(seen.averaged)
-        _announce_plot(func, frame, nset, seen)
+        _announce_plot(func, frame, nset, seen, chosen)
     scale = float(options.get("Normalization", 0, 1.0))
     low, high, post, norm_range = _extent(frame, options)
     ranged = "Range" in options or "RangeWithName" in options

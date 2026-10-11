@@ -329,8 +329,27 @@ class RooAbsArg(RooPrintable):
     def printCompactTree(
         self, indent: str = "", filename: Any = None, namePat: Any = None, client: Any = None
     ) -> None:
+        """The tree, to the screen - or to the file ``filename`` names, made afresh."""
+        text = self.compact_tree(str(indent), None)
+        if filename:
+            with open(str(filename), "w", encoding="utf-8") as out:
+                out.write(text)
+            return
+        cout.write(text)
 
-        cout.write(self.compact_tree(str(indent), None))
+    def graphVizTree(
+        self, target: Any, delimiter: str = "\n", useTitle: bool = False, useLatex: bool = False
+    ) -> None:
+        """The graph of this node and what it is made of, as GraphViz DOT (:mod:`.graphviz`):
+        into the file ``target`` names, or written to ``target``, a stream."""
+        from .graphviz import graphviz
+
+        text = graphviz(self, str(delimiter), bool(useTitle))
+        if isinstance(target, str) or hasattr(target, "__fspath__"):
+            with open(target, "w", encoding="utf-8") as out:
+                out.write(text)
+            return
+        target << text
 
     def printComponentTree(self, indent: str = "", namePat: Any = None, nLevel: int = 999) -> None:
         if nLevel == 0 or self.isFundamental() or self.InheritsFrom("RooConstVar"):

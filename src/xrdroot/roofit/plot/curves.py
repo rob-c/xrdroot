@@ -137,10 +137,11 @@ def _range_fraction(
     return float(np.asarray(pdf.fraction(name | (nset - name), {}, nset, rng)))
 
 
-def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], seen: Any) -> None:
+def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], seen: Any, chosen: Any) -> None:
     """What RooFit says when it plots: the projection - in the frame's order - and the
-    integral it makes for it."""
+    integral it makes for it, of only the components ``chosen`` to be drawn."""
     from ..integration import announce
+    from ..selection import selecting
     from .projections import announce_average
 
     plot_var = frame.getPlotVar().GetName()
@@ -158,7 +159,8 @@ def _announce_plot(pdf: Any, frame: Any, nset: frozenset[str], seen: Any) -> Non
     announce_average(pdf, frame, seen)
     announce(pdf, nset, normalising=True)
     if projected:
-        _announce_projection(pdf, projected, nset)
+        with selecting(chosen):
+            _announce_projection(pdf, projected, nset)
 
 
 def _announce_projection(pdf: Any, projected: frozenset[str], nset: frozenset[str]) -> None:

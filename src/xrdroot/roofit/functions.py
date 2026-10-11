@@ -100,6 +100,24 @@ class RooProduct(RooAbsReal):
     def printArgs(self) -> str:
         return "[ " + " * ".join(term.GetName() for term in self.terms) + " ]"
 
+    def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
+        """Every one, if the factors split it: RooFit takes the whole integral on then, and
+        hands each group of factors its part (:mod:`.partint`)."""
+        from .partint import factorises
+
+        names = frozenset(names) & self.dependents()
+        return names if factorises(self, names) else frozenset()
+
+    def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
+        from .partint import product_integral
+
+        return product_integral(self, names, ctx, rng)
+
+    def announce_inner(self, names: frozenset[str], rng: Any) -> None:
+        from .partint import announce_parts
+
+        announce_parts(self, names, rng)
+
     def bin_boundaries(self, name: str) -> Any:
         """``binBoundaries``: the first factor's that has any."""
         from .pdfs.histfactory import _boundaries_of

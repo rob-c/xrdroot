@@ -320,6 +320,9 @@ TEXT = {".txt", ".csv", ".dat", ".json", ".xml", ".tex", ".C", ".cxx", ".py", ".
         ".html", ".svg", ".eps", ".ps", ".md", ".h"}  # fmt: skip
 #: Vector pictures, whose text holds creation dates and object addresses: only there, or not.
 PRESENCE_ONLY = {".pdf", ".svg", ".eps", ".ps"}
+#: Text whose lines come in an order the objects' addresses set - RooFit's ``graphVizTree``
+#: keeps a graph's edges in a set of pointer pairs - compared as the same lines in any order.
+UNORDERED = {".dot"}
 
 
 class FileComparison(NamedTuple):
@@ -345,6 +348,8 @@ def _kind(name: str) -> str:
         return "image"
     if suffix in PRESENCE_ONLY:
         return "presence"
+    if suffix in UNORDERED:
+        return "unordered"
     return "text" if suffix in TEXT else "bytes"
 
 
@@ -378,6 +383,12 @@ def _text(name: str, expected: Path, actual: Path, tolerance: Tolerance) -> File
     return FileComparison(name, "text", [f"{name}: {line}" for line in found])
 
 
+def _unordered(name: str, expected: Path, actual: Path, tolerance: Tolerance) -> FileComparison:
+    read = [path.read_text(encoding="utf-8", errors="replace") for path in (expected, actual)]
+    found = first_difference(sorted(normalise(read[0])), sorted(normalise(read[1])), tolerance)
+    return FileComparison(name, "unordered", [] if found is None else [f"{name}: {found}"])
+
+
 def _bytes(name: str, expected: Path, actual: Path, tolerance: Tolerance) -> FileComparison:
     return FileComparison(name, "bytes", [f"{name}: contents differ"])
 
@@ -387,6 +398,7 @@ _BY_KIND: dict[str, Callable[[str, Path, Path, Tolerance], FileComparison]] = {
     "root": _root_file,
     "image": _image,
     "text": _text,
+    "unordered": _unordered,
     "bytes": _bytes,
 }
 

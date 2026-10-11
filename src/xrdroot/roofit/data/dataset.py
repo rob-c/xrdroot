@@ -165,6 +165,19 @@ class RooDataSet(RooAbsData):
                 "adding a weight but no weight variable exists. The weight will be ignored.",
             )
 
+    def write(self, stream: Any) -> bool:
+        """``write(ofs)``: the events as lines of text (:mod:`.ascii`)."""
+        from .ascii import write
+
+        return write(self, stream)
+
+    @staticmethod
+    def read(files: Any, variables: Any, options: Any = "", common_path: Any = "") -> Any:
+        """``RooDataSet::read``: a dataset of the events in text files (:mod:`.ascii`)."""
+        from .ascii import read
+
+        return read(files, variables, options, common_path)
+
     def add_columns(self, columns: dict[str, Any], weights: Any = None) -> None:
         """Many events at once, a column for each variable, and their weights if weights are
         kept."""

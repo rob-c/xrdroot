@@ -162,8 +162,9 @@ def _expanded(ctx: dict[str, Any]) -> dict[str, Any]:
 
 
 def integral_name(func: Any, names: frozenset[str], rng: Any) -> str:
-    """``g_Int[x]``, or ``g_Int[x|signal]`` over a named range: what ROOT calls an integral."""
-    order = [one.GetName() for one in func.leaves() if one.GetName() in names]
+    """``g_Int[x]``, or ``g_Int[x|signal]`` over a named range: what ROOT calls an integral,
+    the variables sorted by name as ``integralNameSuffix`` sorts them."""
+    order = sorted(one.GetName() for one in func.leaves() if one.GetName() in names)
     suffix = f"|{rng}" if rng else ""
     return f"{func.GetName()}_Int[{','.join(order)}{suffix}]"
 
@@ -361,7 +362,7 @@ def _cubature(
     """``RooAdaptiveIntegratorND``, once for each event if the context has events."""
     from .cubature import integrate_nd
 
-    shape, events = _events(ctx)
+    shape, events = _events({k: v for k, v in ctx.items() if k not in rest})
     lows, highs = [b[0] for b in bounds], [b[1] for b in bounds]
     found = np.empty(shape)
     for index, c in events:
