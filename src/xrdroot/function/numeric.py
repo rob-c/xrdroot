@@ -26,7 +26,7 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["integrate", "minimise", "derivative", "richardson"]
+__all__ = ["derivative", "integrate", "minimise", "richardson", "richardson2", "richardson3"]
 
 Array = Any
 Vectorised = Callable[[Array], Array]
@@ -261,6 +261,26 @@ def richardson(values: Callable[[float], Array], h: float) -> Array:
     d0 = values(h) - values(-h)
     d2 = values(h / 2) - values(-h / 2)
     return (1 / (2.0 * h)) * (8 * d2 - d0) / 3.0
+
+
+def richardson2(values: Callable[[float], Array], h: float) -> Array:
+    """``RichardsonDerivator::Derivative2``: the second differences of steps ``h`` and ``h/2``,
+    combined as the first derivative's are."""
+    f1, f2, f3 = values(h), values(0.0), values(-h)
+    g1, g3 = values(h / 2), values(-h / 2)
+    d0 = f3 - 2 * f2 + f1
+    d2 = 4 * g3 - 8 * f2 + 4 * g1
+    return (1 / (h * h)) * (4 * d2 - d0) / 3.0
+
+
+def richardson3(values: Callable[[float], Array], h: float) -> Array:
+    """``RichardsonDerivator::Derivative3``: the third differences of steps ``h`` and ``h/2``,
+    combined as the first derivative's are."""
+    f1, f2, f3, f4 = values(2 * h), values(h), values(-h), values(-2 * h)
+    g2, g3 = values(h / 2), values(-h / 2)
+    d0 = 0.5 * f1 - f2 + f3 - 0.5 * f4
+    d2 = 4 * f2 - 8 * g2 + 8 * g3 - 4 * f3
+    return (1 / (h * h * h)) * (4 * d2 - d0) / 3.0
 
 
 def derivative(f: Vectorised, x: Array, h: float) -> Array:

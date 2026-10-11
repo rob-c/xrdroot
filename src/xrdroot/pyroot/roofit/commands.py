@@ -218,6 +218,20 @@ class _Namespace:
 
         return ref(float(value))  # type: ignore[no-any-return]
 
+    @staticmethod
+    def bindFunction(*args: Any) -> Any:
+        """``RooFit::bindFunction``: a function of numbers, or a ``TF1``, as a RooFit function."""
+        from ...roofit.bindings import bind_function
+
+        return bind_function(*args)
+
+    @staticmethod
+    def bindPdf(*args: Any) -> Any:
+        """``RooFit::bindPdf``: a function of numbers, or a ``TF1``, as a RooFit density."""
+        from ...roofit.bindings import bind_pdf
+
+        return bind_pdf(*args)
+
     @property
     def ModelConfig(self) -> Any:
         """``RooFit::ModelConfig``: RooFit's own since ROOT 6.30, and RooStats' by that name."""

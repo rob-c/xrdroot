@@ -30,6 +30,7 @@ MODULES = {
     "data.datahist": ["RooDataHist"],
     "data.dataset": ["RooDataSet"],
     "data.store": ["RooAbsData"],
+    "derivative": ["RooDerivative"],
     "fitting.minimizer": ["RooMinimizer"],
     "fitting.nll": ["RooNLLVar"],
     "fitting.profile": ["RooProfileLL"],

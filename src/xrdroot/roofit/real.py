@@ -124,6 +124,13 @@ class RooAbsReal(RooAbsArg):
 
         return integral(self, frozenset(names), ctx, rng)
 
+    def derivative(self, obs: Any, *args: Any) -> Any:
+        """``derivative(obs, [normSet], order=1, eps=0.001)``: a :class:`~.derivative.RooDerivative`
+        of this function by ``obs``."""
+        from .derivative import make_derivative
+
+        return make_derivative(self, obs, args)
+
     def createIntegral(self, iset: Any, *args: Any, **kwargs: Any) -> Any:
         """``createIntegral(iset, [nset], [range])``: the integral as a function of the rest."""
         from .integral import make_integral
