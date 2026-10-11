@@ -32,6 +32,7 @@ import typing as _typing  # not ``Any``: ``ROOT.Any`` is ``ROOT::VecOps::Any``
 SUBMODULES = [
     "core",
     "stl",
+    "classes",
     "trees",
     "rdf",
     "graphics",

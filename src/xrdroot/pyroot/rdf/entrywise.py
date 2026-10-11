@@ -90,6 +90,8 @@ def _arity(function: Callable[..., Any]) -> int:
 def per_entry(name: str, arguments: list[Any]) -> list[Any]:
     """The arguments of frame method ``name``, a macro's function among them made entrywise -
     given the entry number to be counted by, when it reads no column."""
+    if name == "Aggregate" and len(arguments) >= 2:
+        return _aggregating(list(arguments))
     at, slot = ENTRYWISE.get(name, (-1, False))
     if at < 0 or at >= len(arguments):
         return arguments
@@ -116,3 +118,36 @@ def _made_entrywise(name: str, given: list[Any], at: int, slot: bool) -> list[An
     if counted:
         given[at + 1:at + 2] = [[ENTRY]]
     return given
+
+
+def _aggregating(given: list[Any]) -> list[Any]:
+    """``Aggregate(aggregator, merger, column, init)`` with a macro's functions: the
+    aggregator ``U(U, T)`` folded over a batch an entry at a time, and a merger of the
+    accumulators' ``std::vector`` - ``void(std::vector<U>&)``, its first left the answer -
+    given them two at a time, in order, which for ROOT's merging in turn is the same."""
+    if is_macros(given[0]):
+        given[0] = _folding(given[0])
+    if is_macros(given[1]) and _arity(given[1]) == 1:
+        given[1] = _vector_merger(given[1])
+    return given
+
+
+def _folding(function: Callable[[Any, Any], Any]) -> Callable[[Any, Any], Any]:
+    def batch(accumulated: Any, column: Any) -> Any:
+        for value in _entries(column):
+            accumulated = function(accumulated, value)
+        return accumulated
+
+    return batch
+
+
+def _vector_merger(function: Callable[[Any], Any]) -> Callable[[Any, Any], Any]:
+    def merge(first: Any, second: Any) -> Any:
+        from ..stl import std
+
+        kind = "double" if isinstance(first, float) else type(first)
+        accumulators = std.vector[kind]([first, second])
+        function(accumulators)
+        return accumulators[0]
+
+    return merge

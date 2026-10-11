@@ -32,6 +32,7 @@ from typing import Any
 import numpy as np
 
 from ..errors import UnsupportedFeatureError
+from ..hist import Histogram
 from ..library import convert
 from . import actions
 from .expression import Expression
@@ -50,7 +51,7 @@ from .graph import (
     named_filters,
 )
 from .loop import DEFAULT_STEP, Batch, Plan, execute
-from .models import model_of, split_arguments
+from .models import is_model, model_of, split_arguments
 from .snapshot import MODES, Snapshot
 from .sources import Empty, Source, open_named, wrap
 
@@ -199,6 +200,9 @@ class _Graph:
         #: Every named filter, in the order they were made.
         self.filters: list[Filter] = []
         self.runs = 0
+        #: The columns an action or a callable reads when given none: ``RDataFrame``'s last
+        #: argument, ``defaultColumns``.
+        self.defaults: list[str] = []
 
     def book(self, action: actions.Action) -> Result:
         result = Result(self, action)
@@ -280,6 +284,16 @@ def _source_of(args: tuple[Any, ...]) -> Source:
     )
 
 
+def _defaults_of(args: tuple[Any, ...]) -> tuple[tuple[Any, ...], list[str]]:
+    """The arguments that say where the data is, and the default columns after them:
+    ``(tree name, files, columns)`` or ``(tree, columns)``."""
+    named = len(args) == 3 and isinstance(args[0], str)
+    handed = len(args) == 2 and not isinstance(args[0], str)
+    if (named or handed) and isinstance(args[-1], (list, tuple)):
+        return args[:-1], [str(each) for each in args[-1]]
+    return args, []
+
+
 def _parameters(function: Callable[..., Any], what: str) -> list[str]:
     """The columns a callable reads, when not told: the names of its parameters."""
     try:
@@ -326,9 +340,11 @@ class RDataFrame:
     _defined: list[str]
 
     def __init__(self, *args: Any, workers: int | None = None, step: int = DEFAULT_STEP) -> None:
+        args, defaults = _defaults_of(args)
         source = _source_of(args)
         graph = _Graph(source, _IMPLICIT[0] if workers is None else int(workers), step)
         graph.implicit = workers is None  # EnableImplicitMT's, not asked for by this frame
+        graph.defaults = defaults
         columns: dict[str, Definition] = {name: SourceColumn(name) for name in source.names()}
         self._set(graph, graph.root, {**columns, **SPECIAL}, [])
 
@@ -406,7 +422,7 @@ class RDataFrame:
 
         They are keyed by position, since a callable may be given one column twice.
         """
-        names = _parameters(compute, what) if columns is None else _as_names(columns)
+        names = self._read_by(compute, what) if columns is None else _as_names(columns)
         missing = [name for name in names if name not in self._columns]
         if missing:
             raise KeyError(
@@ -414,6 +430,13 @@ class RDataFrame:
                 f"called; there is {', '.join(self.GetColumnNames()) or 'none'}"
             )
         return {str(at): self._columns[name] for at, name in enumerate(names)}
+
+    def _read_by(self, compute: Callable[..., Any], what: str, skip: int = 0) -> list[str]:
+        """The columns a callable given none reads: as many default columns as it takes
+        arguments, if the frame has that many, else those its parameters are named."""
+        names = _parameters(compute, what)[skip:]
+        defaults = self._graph.defaults
+        return defaults[: len(names)] if len(defaults) >= len(names) else names
 
     def _check_new(self, name: str, what: str) -> None:
         if not isinstance(name, str) or not IDENTIFIER.fullmatch(name) or keyword.iskeyword(name):
@@ -592,32 +615,49 @@ class RDataFrame:
     def _book(self, action: actions.Action) -> Result:
         return self._graph.book(action)
 
-    def _single(self, column: str, what: str) -> list[Definition]:
+    def _single(self, column: str | None, what: str) -> list[Definition]:
+        if column is None:
+            column = self._default_columns(1, what)[0]
         if not isinstance(column, str):
             raise TypeError(f"{what} takes the name of one column, not {type(column).__name__}")
         return [self._column(column, what)]
+
+    def _default_columns(self, count: int, what: str) -> list[str]:
+        """The first ``count`` default columns, for an action given no column."""
+        if len(self._graph.defaults) < count:
+            raise TypeError(
+                f"{what} was given no column, and the frame has no default column for it: "
+                f"name one, or make the frame with RDataFrame(tree, files, ['column'])"
+            )
+        return self._graph.defaults[:count]
+
+    def _or_defaults(self, args: tuple[Any, ...], model: Any, count: int, what: str) -> Any:
+        """A histogram's arguments, the default columns after the model if it names none."""
+        if not args or (len(args) == 1 and model is None and is_model(args[0])):
+            return (*args, *self._default_columns(count, what))
+        return args
 
     def Count(self) -> Result:
         """How many entries reach here."""
         return self._book(actions.Count(self._node, []))
 
-    def Sum(self, column: str) -> Result:
+    def Sum(self, column: str | None = None) -> Result:
         """Every value of a column added up; every element, of a collection."""
         return self._book(actions.Sum(self._node, self._single(column, "Sum")))
 
-    def Mean(self, column: str) -> Result:
+    def Mean(self, column: str | None = None) -> Result:
         return self._book(actions.Mean(self._node, self._single(column, "Mean")))
 
-    def Min(self, column: str) -> Result:
+    def Min(self, column: str | None = None) -> Result:
         return self._book(actions.Extreme(self._node, self._single(column, "Min"), largest=False))
 
-    def Max(self, column: str) -> Result:
+    def Max(self, column: str | None = None) -> Result:
         return self._book(actions.Extreme(self._node, self._single(column, "Max"), largest=True))
 
-    def StdDev(self, column: str) -> Result:
+    def StdDev(self, column: str | None = None) -> Result:
         return self._book(actions.StdDev(self._node, self._single(column, "StdDev")))
 
-    def Stats(self, column: str, weight: str | None = None) -> Result:
+    def Stats(self, column: str | None = None, weight: str | None = None) -> Result:
         """A ``TStatistic`` of a column: count, mean, spread, least and greatest."""
         inputs = self._single(column, "Stats") + (
             [] if weight is None else self._single(weight, "Stats")
@@ -634,7 +674,8 @@ class RDataFrame:
     ) -> Result:
         dimensions, profile = shape
         count = dimensions + (1 if profile else 0)
-        model, names, weighted = split_arguments(args, model, count, what)
+        model, names, weighted = split_arguments(self._or_defaults(args, model, count, what),
+                                                 model, count, what)  # fmt: skip
         weight = weighted if weight is None else weight
         inputs = [self._column(name, what) for name in names]
         if weight is not None:
@@ -678,9 +719,23 @@ class RDataFrame:
         inputs = self._single(x, "Graph") + self._single(y, "Graph")
         return self._book(actions.GraphAction(self._node, inputs))
 
-    def Take(self, column: str) -> Result:
+    def Take(self, column: str | None = None) -> Result:
         """A column's values, as one array, ``Jagged`` or list, in the order of the entries."""
         return self._book(actions.Take(self._node, self._single(column, "Take")))
+
+    def Fill(self, target: Any, columns: Sequence[str]) -> Result:
+        """``Fill(object, columns)``: an object with a ``Fill`` filled with the columns.
+
+        A histogram is filled as ``Histo1D`` fills its model - a column more
+        than it has axes is the weight - and handed back; anything else has
+        its ``Fill`` called with each entry's values, in order.
+        """
+        names = _as_names(columns)
+        inputs = [self._column(name, "Fill") for name in names]
+        if isinstance(target, Histogram):
+            weighted = len(names) > len(target.shape)
+            return self._book(actions.Histo(self._node, inputs, target, weighted, "Fill"))
+        return self._book(actions.FillObject(self._node, inputs, target))
 
     def _names(self, columns: Any, exclude: Any, what: str) -> list[str]:
         """The columns an action takes: every one readable, those a pattern finds, or a list."""
@@ -755,7 +810,7 @@ class RDataFrame:
     def _foreach(self, function: Callable[..., Any], columns: Any, slot: bool) -> None:
         what = "ForeachSlot" if slot else "Foreach"
         if columns is None:
-            names = _parameters(function, what)[1 if slot else 0 :]
+            names = self._read_by(function, what, 1 if slot else 0)
         else:
             names = _as_names(columns)
         inputs = [self._column(name, what) for name in names]
@@ -810,7 +865,7 @@ class RDataFrame:
             raise ValueError("Snapshot has no columns to write: name at least one")
         inputs = [self._column(name, "Snapshot") for name in names]
         action = Snapshot(self._node, inputs, (tree_name, filename), rntuple, compression, mode)
-        result = _Reopened(self._graph.book(action), self._graph)
+        result = _Reopened(self._graph.book(action), self._graph, names)
         return result if lazy else result.GetValue()
 
     # -- the snake_case spellings ----------------------------------------------------
@@ -859,11 +914,13 @@ RNode = RDataFrame
 
 
 class _Reopened:
-    """``Snapshot``'s result: a frame over the file written, opened when first asked for."""
+    """``Snapshot``'s result: a frame over the file written, opened when first asked for, its
+    default columns the ones written, as ROOT's is."""
 
-    def __init__(self, written: Result, graph: _Graph) -> None:
+    def __init__(self, written: Result, graph: _Graph, columns: list[str]) -> None:
         self._written = written
         self._graph = graph
+        self._columns = columns
         self._frame: RDataFrame | None = None
 
     def IsReady(self) -> bool:
@@ -873,7 +930,11 @@ class _Reopened:
         if self._frame is None:
             tree_name, filename = self._written.GetValue()
             self._frame = RDataFrame(
-                tree_name, filename, workers=self._graph.workers, step=self._graph.step
+                tree_name,
+                filename,
+                self._columns,
+                workers=self._graph.workers,
+                step=self._graph.step,
             )
         return self._frame
 

@@ -23,6 +23,7 @@ from ..stl import is_vector
 from ..trees import hooks
 from .datasources import RCsvDS, csv_source, lazy_source, sqlite_source
 from .entrywise import per_entry
+from .helpers import Not, PassAsVec
 from .jitted import retried
 
 __all__ = ["RDataFrame", "RResultPtr", "RDF"]
@@ -92,6 +93,27 @@ class RResultPtr:
     def __str__(self) -> str:
         return str(self.GetValue())
 
+    # ``*count == n`` in a macro: the value compared, as C++ compares what it points at
+    def __eq__(self, other: object) -> bool:
+        return bool(self.GetValue() == other)
+
+    def __ne__(self, other: object) -> bool:
+        return bool(self.GetValue() != other)
+
+    def __lt__(self, other: Any) -> bool:
+        return bool(self.GetValue() < other)
+
+    def __le__(self, other: Any) -> bool:
+        return bool(self.GetValue() <= other)
+
+    def __gt__(self, other: Any) -> bool:
+        return bool(self.GetValue() > other)
+
+    def __ge__(self, other: Any) -> bool:
+        return bool(self.GetValue() >= other)
+
+    __hash__ = None  # type: ignore[assignment]
+
 
 def _column(values: Any) -> Any:
     """A column as ``AsNumpy`` gives it: an array, with an array per entry of a collection."""
@@ -128,8 +150,14 @@ class _Method:
 class RDataFrame:
     """``ROOT.RDataFrame``, and every node a transformation of it makes."""
 
+    #: The frame of xrdroot's this one is.
+    _inner: Any
+
     def __init__(self, *arguments: Any, **options: Any) -> None:
-        given = [_unwrapped(each) for each in arguments[:2]]
+        if len(arguments) == 1 and isinstance(arguments[0], RDataFrame):  # RNode(node): itself
+            self._inner = arguments[0]._inner
+            return
+        given = [_unwrapped(each) for each in arguments[:3]]
         self._inner = _rdf.RDataFrame(*given, **options)
 
     @classmethod
@@ -156,10 +184,24 @@ class RDataFrame:
 
         return book(self, arguments)
 
+    def Describe(self) -> RDFDescription:
+        """``Describe``: the frame described, as an ``RDFDescription`` to print."""
+        return RDFDescription(self._inner.Describe())
+
     def AsNumpy(self, columns: Any = None, exclude: Any = None, lazy: bool = False) -> Any:
         """Every column asked for, read now, as a dict of NumPy arrays."""
         found = self._inner.AsNumpy(_unwrapped(columns), _unwrapped(exclude))
         return {name: _column(values) for name, values in found.GetValue().items()}
+
+
+class RDFDescription(str):
+    """``RDFDescription``: the description's text, which ``Print`` writes out."""
+
+    def Print(self, shortFormat: bool = False) -> None:
+        print(self)
+
+    def AsString(self, shortFormat: bool = False) -> str:
+        return str(self)
 
 
 def _from_numpy(columns: dict[str, Any]) -> RDataFrame:
@@ -170,6 +212,13 @@ def _from_numpy(columns: dict[str, Any]) -> RDataFrame:
     with create(buffer) as out:
         out["numpy"] = {str(name): np.asarray(values) for name, values in columns.items()}
     return RDataFrame(open_root(io.BytesIO(buffer.getvalue()))["numpy"])
+
+
+def _trivial(size: int, skipEvenEntries: bool = False) -> RDataFrame:
+    """``RDF.MakeTrivialDataFrame``: ROOT's demonstration source, one column ``col0`` of each
+    entry's number - the odd entries only, when the even ones are skipped."""
+    numbers = np.arange(int(size), dtype=np.uint64)
+    return _from_numpy({"col0": numbers[1::2] if skipEvenEntries else numbers})
 
 
 def _from_csv(*arguments: Any, **options: Any) -> RDataFrame:
@@ -216,6 +265,7 @@ class _RDF:
     MakeCsvDataFrame = staticmethod(_from_csv)
     FromSqlite = staticmethod(_from_sqlite)
     MakeLazyDataFrame = staticmethod(_from_results)
+    MakeTrivialDataFrame = staticmethod(_trivial)
     MakeSqliteDataFrame = staticmethod(_from_sqlite)
     RCsvDS = RCsvDS
     TH1DModel = staticmethod(_model)
@@ -225,6 +275,8 @@ class _RDF:
     TProfile2DModel = staticmethod(_model)
     RNode = RDataFrame
     RResultPtr = RResultPtr
+    Not = staticmethod(Not)
+    PassAsVec = PassAsVec
 
     @staticmethod
     def AsRNode(frame: Any) -> Any:

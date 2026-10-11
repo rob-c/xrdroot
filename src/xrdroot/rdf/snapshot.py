@@ -17,7 +17,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 from ..rntuple.writer import spec_of as field_of
+from ..wbranch import Vector
 from ..writer import create
 from ..wtree import spec_of as column_of
 from ..wupdate import update
@@ -28,6 +31,21 @@ if TYPE_CHECKING:
     from .loop import Batch
 
 __all__ = ["Snapshot", "MODES"]
+
+#: The :mod:`array` code of each number a ``std::vector`` branch holds, by NumPy's name.
+VECTOR_CODES = {
+    "int8": "b",
+    "uint8": "B",
+    "int16": "h",
+    "uint16": "H",
+    "int32": "i",
+    "uint32": "I",
+    "int64": "q",
+    "uint64": "Q",
+    "float32": "f",
+    "float64": "d",
+    "bool": "?",
+}
 
 #: What ``mode`` may be, as ROOT's ``RSnapshotOptions::fMode`` spells it.
 MODES = ("RECREATE", "UPDATE")
@@ -81,7 +99,7 @@ class Snapshot(Action):
             fields = {name: field_of(name, values) for name, values in part.items()}
             writing.table = writing.file.rntuple(self.tree_name, fields)
         else:
-            columns = {name: column_of(name, values) for name, values in part.items()}
+            columns = {name: _tree_spec(name, values) for name, values in part.items()}
             writing.table = writing.file.tree(self.tree_name, columns)
 
     def merge(self, acc: Any, part: Any) -> Any:
@@ -104,3 +122,12 @@ class Snapshot(Action):
     def abort(self, acc: Any) -> None:
         if acc is not None:
             acc.file.__exit__(RuntimeError, None, None)
+
+
+def _tree_spec(name: str, values: Any) -> Any:
+    """A column's branch: a collection of numbers per entry - an ``RVec`` - is the
+    ``std::vector`` branch ROOT's ``Snapshot`` writes it as, not a counted array."""
+    spec = column_of(name, values)
+    if isinstance(spec, tuple) and spec[1] is None:
+        return Vector(VECTOR_CODES[np.dtype(spec[0]).name])
+    return spec

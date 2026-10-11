@@ -50,6 +50,7 @@ __all__ = [
     "Reduce",
     "Aggregate",
     "Foreach",
+    "FillObject",
     "DisplayAction",
     "Report",
 ]
@@ -283,15 +284,32 @@ class Statistic:
     def GetRMS(self) -> float:
         return math.sqrt(self.GetVar())
 
+    def GetNeff(self) -> int:
+        """The effective number of entries, ``W^2 / W2``, cut to a whole number as
+        ``TStatistic::GetNeff`` gives it (ROOT: 2 for weights 1, 0.5 and 0.25)."""
+        return int(self.sum_w * self.sum_w / self.sum_w2) if self.sum_w2 else 0
+
     def GetMeanErr(self) -> float:
-        effective = self.sum_w * self.sum_w / self.sum_w2 if self.sum_w2 else 0.0
-        return self.GetRMS() / math.sqrt(effective) if effective else 0.0
+        effective = self.GetNeff()
+        return math.sqrt(self.GetVar() / effective) if effective else 0.0
 
     def GetMin(self) -> float:
         return self.min
 
     def GetMax(self) -> float:
         return self.max
+
+    def GetName(self) -> str:
+        """The statistic's name: ``Stats`` makes one with none, as ROOT's does."""
+        return ""
+
+    def Print(self, option: str = "") -> None:
+        """``TStatistic::Print``: the mean and its error, the spread, the count and range."""
+        print(
+            f" OBJ: TStatistic\t {self.GetName()} \t Mean = {self.GetMean():.5g} +- "
+            f"{self.GetMeanErr():.4g} \t RMS = {self.GetRMS():.5g} \t Count = {self.GetN()} "
+            f"\t Min = {self.GetMin():.5g} \t Max = {self.GetMax():.5g}"
+        )
 
 
 class Stats(Action):
@@ -526,6 +544,29 @@ class Foreach(Action):
 
     def merge(self, acc: Any, part: Any) -> Any:
         return None
+
+
+class FillObject(Action):
+    """``Fill(object, columns)`` of an object that is no histogram: its ``Fill`` called with
+    each entry's values, in the order of the entries, once the loop has read them all."""
+
+    kind = "Fill"
+
+    def __init__(self, node: Selector, inputs: Sequence[Definition], target: Any) -> None:
+        super().__init__(node, inputs)
+        self.target = target
+
+    def partial(self, batch: Batch) -> Any:
+        return self.columns(batch)
+
+    def merge(self, acc: Any, part: Any) -> Any:
+        return [part] if acc is None else [*acc, part]
+
+    def finish(self, acc: Any, flow: dict[int, tuple[int, int]]) -> Any:
+        columns = [joined([part[at] for part in acc]) for at in range(len(self.inputs))]
+        for row in zip(*columns, strict=True):
+            self.target.Fill(*row)
+        return self.target
 
 
 def _entries(values: Any) -> int:
