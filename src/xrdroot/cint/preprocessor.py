@@ -30,8 +30,9 @@ __all__ = ["Macro", "Preprocessor", "preprocess", "PREDEFINED"]
 ROOT_VERSION = (6 << 16) | (40 << 8) | 4
 
 #: The macros defined before a macro's first line: Cling's, the platform's and ROOT's own.
-#: ``R__HAS_MATHMORE`` is RConfigure.h's for a ROOT built with MathMore, as the ROOT
-#: releases (and the one tutorials are compared against) are: its macros take that branch.
+#: ``R__HAS_MATHMORE`` and ``R__HAS_VDT`` are RConfigure.h's for a ROOT built with MathMore
+#: and VDT, as the ROOT releases (and the one tutorials are compared against) are: its macros
+#: take those branches.
 PREDEFINED = f"""
 #define __CLING__ 1
 #define __cplusplus 201703L
@@ -42,6 +43,7 @@ PREDEFINED = f"""
 #define R__USE_IMT 1
 #define R__HAS_TMVACPU 1
 #define R__HAS_MATHMORE 1
+#define R__HAS_VDT 1
 #define ROOT_VERSION_CODE {ROOT_VERSION}
 #define ROOT_VERSION(a, b, c) (((a) << 16) + ((b) << 8) + (c))
 #define R__LOAD_LIBRARY(x)

@@ -86,6 +86,12 @@ class TCanvas(TPad):
                 pad.SaveAs(pattern % at, str(option))
         return True
 
+    def HighlightConnect(self, slot: Any) -> None:
+        """``HighlightConnect(slot)``: the function ROOT calls as the mouse moves over a
+        highlighted histogram or graph. A batch canvas has no mouse, so - as in ROOT's batch -
+        it is kept and never called."""
+        self.__dict__["_highlight_slot"] = str(slot)
+
     def UseGL(self) -> bool:
         """``UseGL``: false - pads here are drawn without OpenGL, as ROOT's are in batch."""
         return False

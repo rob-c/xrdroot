@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
-from xrdroot.pyroot.rdf.frame import RDFDescription
+from xrdroot.rdf.types import Description
 
 
 def _macros(function: Any) -> Any:
@@ -94,14 +94,18 @@ def test_stats_print_as_tstatistic_with_its_whole_effective_entries(capsys: Any)
 
 def test_a_description_prints_itself() -> None:
     described = ROOT.RDataFrame(2).Describe()
-    assert isinstance(described, RDFDescription)
+    assert isinstance(described, Description)
     assert described.AsString() == str(described)
+    assert described.AsString(True) == "Empty dataframe filling 2 rows"
+    assert ROOT.RDataFrame(1).Describe().brief == "Empty dataframe filling 1 row"
 
 
 def test_a_description_print_writes_the_text(capsys: Any) -> None:
     described = ROOT.RDataFrame(2).Describe()
     described.Print()
     assert capsys.readouterr().out == f"{described}\n"
+    described.Print(shortFormat=True)
+    assert capsys.readouterr().out == "Empty dataframe filling 2 rows\n"
 
 
 def test_get_class_names_an_objects_class() -> None:

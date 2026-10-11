@@ -147,11 +147,21 @@ def _options(pave: Any) -> tuple[int, int]:
 
 
 def _stats(pad: Any, obj: Any, option: str) -> list[TPaveStats]:
-    """The stats box of ``obj``, if it has one drawn with ``option``."""
+    """The stats box of ``obj``, if it has one drawn with ``option``.
+
+    The box is put in the histogram's list of functions, where ROOT's painter
+    puts it and a macro finds it (``FindObject("stats")``). Once the stats
+    are turned off it goes - unless renamed: ``SetStats(0)`` takes away the
+    function called ``stats``, and one renamed, edited by hand, stays drawn
+    as it is (hist060).
+    """
     key = f"stats{id(obj)}"
     stat, fit = _options(pad.made.get(key))
     rows = _rows(obj, option, stat, fit)
     if not rows:
+        kept = pad.made.get(key)
+        if kept is not None and kept.GetName() != "stats":
+            return [kept]
         pad.made.pop(key, None)
         return []
     fitted = bool(fit_rows(obj, fit))
@@ -161,7 +171,17 @@ def _stats(pad: Any, obj: Any, option: str) -> list[TPaveStats]:
     for name, value in rows:
         box.AddText(f"{name} = {value}" if value else name)
     pad.made[key] = box
+    _listed(obj, box)
     return [box]
+
+
+def _listed(obj: Any, box: Any) -> None:
+    """``box`` in the list of functions of the histogram or graph that ``obj`` stands for."""
+    from ..core.wrapping import wrap
+
+    extras = getattr(wrap(obj), "__dict__", {}).setdefault("_extras", [])
+    if not any(one is box for one in extras):
+        extras.append(box)
 
 
 def _rows(obj: Any, option: str, stat: int, fit: int) -> list[tuple[str, str]]:

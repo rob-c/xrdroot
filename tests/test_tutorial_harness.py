@@ -766,3 +766,23 @@ def test_xrdroot_is_told_where_the_tutorials_are_as_root_knows_its_own(tmp_path,
     assert made._xrdroot_env()["ROOT_TUTORIAL_DIR"] == str(tmp_path)
     monkeypatch.setenv("ROOT_TUTORIAL_DIR", "/elsewhere")
     assert made._xrdroot_env()["ROOT_TUTORIAL_DIR"] == "/elsewhere"
+
+
+def test_what_root_builds_into_its_tutorials_is_put_beside_the_ones_run(tmp_path, monkeypatch):
+    """ROOT installs ``hsimple.root`` among its tutorials: xrdroot is shown the same file, in a
+    directory of links to the tutorials being run and to it."""
+    monkeypatch.delenv("ROOT_TUTORIAL_DIR", raising=False)
+    tutorials, rootsys = tmp_path / "tutorials", tmp_path / "root"
+    (tutorials / "hist").mkdir(parents=True)
+    (rootsys / "tutorials").mkdir(parents=True)
+    (rootsys / "tutorials" / "hsimple.root").write_bytes(b"root")
+    made = harnessing.Harness.__new__(harnessing.Harness)
+    made.settings = harnessing.Settings(tutorials=tutorials, cache=tmp_path / "cache")
+    made.oracle = Oracle(root="root", version="6.40.04", rootsys=str(rootsys))
+    shown = Path(made._xrdroot_env()["ROOT_TUTORIAL_DIR"])
+    assert (shown / "hsimple.root").read_bytes() == b"root" and (shown / "hist").is_dir()
+    assert Path(made._tutorial_dir()) == shown  # made once, found again
+    (tutorials / "hsimple.root").write_bytes(b"own")
+    assert made._tutorial_dir() == str(tutorials)
+    made.oracle = None
+    assert made._tutorial_dir() == str(tutorials)

@@ -19,6 +19,7 @@ from .histbins import Bins
 from .histcore import Booked
 from .histops import Operations
 from .histstats import Stats
+from .messages import message
 from .objects import TAtt3D, TAttFill, TAttLine, TAttMarker, TNamed
 from .wrapping import adopt, register
 
@@ -41,8 +42,20 @@ class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarke
     kNoTitle = 1 << 17
     kIsAverage = 1 << 18
     kIsNotW = 1 << 19
+    kIsHighlight = 1 << 21
     #: ``EStatusBits`` for ``SetCanExtend``: the axes that may grow.
     kNoAxis, kXaxis, kYaxis, kZaxis, kAllAxes = 0, 1, 2, 4, 7
+
+    def SetHighlight(self, set: bool = True) -> None:
+        """``SetHighlight``: mark the histogram for highlighting its bin under the mouse - which,
+        on a batch canvas with no mouse, never moves over it, so nothing is ever highlighted."""
+        if self.GetDimension() > 2:
+            message("Info", "SetHighlight", "Supported only 1-D or 2-D histograms")
+            return
+        self.SetBit(self.kIsHighlight, bool(set))
+
+    def IsHighlight(self) -> bool:
+        return self.TestBit(self.kIsHighlight)
 
     def Print(self, option: str = "") -> None:
         """``Print``: ROOT's one-line summary; ``"all"``, ``"range"`` or ``"base"`` more.

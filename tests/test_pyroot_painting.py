@@ -262,3 +262,30 @@ def test_a_title_box_is_gstyles_size_when_it_sets_one_and_a_pixel_font_is_sized_
     ROOT.gStyle.SetTitleFontSize(20)
     height, _width = decorations._title_size(c, "A Gaussian")
     assert height == pytest.approx(1.1 * 20 / max(decorations._pad_pixels(c)))
+
+
+def test_the_stats_box_is_in_the_histograms_functions_and_a_renamed_one_stays_drawn():
+    """hist016 finds the box by ``GetListOfFunctions()->FindObject("stats")``; hist060 renames
+    it, edits its lines and turns the stats off - and ROOT still draws the box it edited."""
+    c = ROOT.TCanvas("cs", "cs")
+    h = ROOT.TH1F("hs", "hs", 10, 0, 10)
+    for x in (1.5, 2.5, 2.5, 7.5):
+        h.Fill(x)
+    h.Draw()
+    c.Update()
+    c.Update()  # the one box, made once
+    box = h.GetListOfFunctions().FindObject("stats")
+    assert box is c.GetPrimitive("stats")
+    lines = box.GetListOfLines()
+    lines.Remove(box.GetLineWith("Mean"))
+    lines.Add(ROOT.TLatex(0, 0, "Test = 10"))
+    assert box.GetSize() == 4 and box.GetLine(3).GetTitle() == "Test = 10"
+    box.SetName("mystats")
+    h.SetStats(0)
+    names = [getattr(obj, "members", {}).get("fName") for obj, _ in snapshot.prepare(c)]
+    assert "mystats" in names
+    c.Update()
+    assert len(h.GetListOfFunctions()) == 1
+    box.SetName("stats")
+    names = [getattr(obj, "members", {}).get("fName") for obj, _ in snapshot.prepare(c)]
+    assert "stats" not in names and "mystats" not in names

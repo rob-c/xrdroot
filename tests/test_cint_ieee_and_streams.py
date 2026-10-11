@@ -83,3 +83,12 @@ def test_dereferencing_a_root_list_gives_the_list_and_a_c_array_its_first() -> N
     listed = ListOf([1, 2])
     assert rt.deref(listed) is listed
     assert rt.deref([7, 8]) == 7
+
+
+def test_vdts_fast_functions_are_there_as_a_root_built_with_vdt_has_them(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """vo002 takes its ``#ifdef R__HAS_VDT`` branch, as ROOT's releases do."""
+    text = block(capsys, "#ifdef R__HAS_VDT\nprintf(\"%g\\n\", fast_exp(1.0));\n#endif")
+    assert text == "2.71828\n"
+    assert rt.fast_log(1.0) == 0.0 and rt.fast_atan(0.0) == 0.0

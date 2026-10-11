@@ -255,3 +255,39 @@ def test_canvases_are_saved_all_at_once_to_pictures_a_book_or_not_to_a_root_file
                     "shot01.png"]  # fmt: skip
     with pytest.raises(UnsupportedFeatureError, match="SaveAll to the ROOT file"):
         ROOT.TCanvas.SaveAll([first], "all.root")
+
+
+def test_add_puts_an_object_in_that_pad_without_clearing_it_or_making_it_current(capsys):
+    """``TPad::Add``: as ``Draw`` would put it in the current pad, but in this one."""
+    canvas = ROOT.TCanvas("cadd", "cadd", 300, 200)
+    canvas.Divide(2, 1)
+    first, second = canvas.GetPad(1), canvas.GetPad(2)
+    second.cd()
+    line = ROOT.TLine(0, 0, 1, 1)
+    first.Add(line, "same")
+    first.Add(None)
+    assert first.primitives[-1] == (line, "same") and pads.current() is second
+    assert first.IsModified()
+    sub = ROOT.TPad("sub", "sub", 0.1, 0.1, 0.5, 0.5)
+    canvas.Add(sub, "", False)
+    assert sub.GetMother() is canvas
+    canvas.Add(sub)
+    assert sum(1 for obj, _ in canvas.primitives if obj is sub) == 1
+
+
+def test_highlighting_is_kept_and_never_fires_on_a_batch_canvas(capsys):
+    canvas = ROOT.TCanvas("chl", "chl", 300, 200)
+    canvas.HighlightConnect("Slot(TVirtualPad*,TObject*,Int_t,Int_t)")
+    h = ROOT.TH1F("hhl", "", 4, 0, 4)
+    g = ROOT.TGraph(2)
+    assert not h.IsHighlight() and not g.IsHighlight()
+    h.SetHighlight()
+    g.SetHighlight()
+    assert h.IsHighlight() and g.IsHighlight()
+    h.SetHighlight(False)
+    assert not h.IsHighlight() and canvas._highlight_slot.startswith("Slot(")
+    cube = ROOT.TH3F("h3hl", "", 2, 0, 1, 2, 0, 1, 2, 0, 1)
+    capsys.readouterr()
+    cube.SetHighlight()
+    assert not cube.IsHighlight()
+    assert "Supported only 1-D or 2-D histograms" in capsys.readouterr().err

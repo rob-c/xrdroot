@@ -235,6 +235,19 @@ class TPad(Drawn):
         """Put ``obj`` in this pad, drawn with ``option``."""
         self.primitives.append((obj, str(option)))
 
+    def Add(self, obj: Any, option: str = "", modified: bool = True) -> None:
+        """``TPad::Add``: ``obj`` put in this pad, drawn with ``option`` - as ``Draw`` puts it
+        in the current pad, but in this one, which is neither cleared nor made current."""
+        if obj is None:
+            return
+        if isinstance(obj, TPad):
+            if obj.mother is None:
+                self._adopt(obj)
+        else:
+            self.add(obj, option)
+        if modified:
+            self.Modified()
+
     def GetListOfPrimitives(self) -> Any:
         """The pad's primitives as a ``TList``: what it draws, then what painting it made."""
         from ..core.collections import TList

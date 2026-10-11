@@ -96,6 +96,10 @@ class Source:
         """What the data is, in words, for ``Describe`` and a frame's ``repr``."""
         raise NotImplementedError
 
+    def root_description(self) -> str:
+        """``Describe``'s first line, ROOT's ``GetDataSourceDescription``."""
+        return f"Dataframe from {self.describe()}"
+
     def close(self) -> None:
         """Close what this opened; asked only of a source that is :attr:`owned`."""
         raise NotImplementedError
@@ -154,6 +158,19 @@ class Table(Source):
             return f"{kind} {self.table.name!r} of " + ", ".join(self.table.files)
         return f"{kind} {self.table.name!r} in {self._file()}"
 
+    def root_description(self) -> str:
+        """``Dataframe from TChain Events in file f.root`` - or ``in files``, each on a line
+        of its own - as ROOT says it of a tree, which a frame of a name and files reads as
+        a ``TChain``."""
+        if isinstance(self.table, RNTuple):
+            return super().root_description()
+        chain = isinstance(self.table, Chain)
+        files = list(self.table.files) if chain else [self._file()]
+        where = f" in file {files[0]}" if len(files) == 1 else " in files\n" + "\n".join(
+            f"  {name}" for name in files
+        )
+        return f"Dataframe from {'TChain' if chain else 'TTree'} {self.table.name}{where}"
+
     def close(self) -> None:
         if isinstance(self.table, Chain):
             self.table.close()
@@ -177,6 +194,9 @@ class Empty(Source):
 
     def describe(self) -> str:
         return f"{self.entries} empty entries"
+
+    def root_description(self) -> str:
+        return f"Empty dataframe filling {self.entries} row{'' if self.entries == 1 else 's'}"
 
 
 class Joined(Source):

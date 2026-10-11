@@ -604,7 +604,7 @@ class RDataFrame:
         probe = Batch(self._graph.source, (0, 0), 0, None, {})
         return cxx_type(definition, probe.column(definition, self._node))
 
-    def Describe(self) -> str:
+    def Describe(self) -> Any:
         """A description of the frame: its data, its columns and where each comes from."""
         from .types import describe
 

@@ -106,3 +106,28 @@ def test_a_vector_of_objects_makes_room_as_it_grows():
     many.reserve(10)
     many.push_back(ROOT.Math.XYZTVector())
     assert (many.capacity(), many.size()) == (1, 1)
+
+
+def test_a_draw_of_many_expressions_with_goff_keeps_each_for_get_val():
+    """tree113: seven expressions, drawn with ``goff``, each one's values ``GetVal(i)``."""
+    x = np.zeros(1)
+    tree = ROOT.TTree("many", "many")
+    tree.Branch("x", x, "x/D")
+    for i in range(4):
+        x[0] = i
+        tree.Fill()
+    assert tree.Draw("x:2*x:3*x:4*x:x*x", "x > 0", "goff") == 3
+    assert list(tree.GetVal(4)) == [1.0, 4.0, 9.0] and tree.GetVal(5) is None
+    assert tree.Draw("x:x:x:x", "x > 9", "goff") == 0
+
+
+def test_a_picture_of_more_than_three_variables_is_refused_by_what_it_would_be():
+    from xrdroot.errors import UnsupportedFeatureError
+
+    x = np.zeros(1)
+    tree = ROOT.TTree("para", "para")
+    tree.Branch("x", x, "x/D")
+    tree.Fill()
+    for option, said in (("para", "TParallelCoord"), ("candle", "candles"), ("", "a picture")):
+        with pytest.raises(UnsupportedFeatureError, match=said):
+            tree.Draw("x:x:x:x", "", option)

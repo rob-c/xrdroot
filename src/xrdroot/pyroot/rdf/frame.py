@@ -184,24 +184,10 @@ class RDataFrame:
 
         return book(self, arguments)
 
-    def Describe(self) -> RDFDescription:
-        """``Describe``: the frame described, as an ``RDFDescription`` to print."""
-        return RDFDescription(self._inner.Describe())
-
     def AsNumpy(self, columns: Any = None, exclude: Any = None, lazy: bool = False) -> Any:
         """Every column asked for, read now, as a dict of NumPy arrays."""
         found = self._inner.AsNumpy(_unwrapped(columns), _unwrapped(exclude))
         return {name: _column(values) for name, values in found.GetValue().items()}
-
-
-class RDFDescription(str):
-    """``RDFDescription``: the description's text, which ``Print`` writes out."""
-
-    def Print(self, shortFormat: bool = False) -> None:
-        print(self)
-
-    def AsString(self, shortFormat: bool = False) -> str:
-        return str(self)
 
 
 def _from_numpy(columns: dict[str, Any]) -> RDataFrame:

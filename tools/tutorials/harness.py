@@ -37,6 +37,10 @@ __all__ = ["Settings", "Outcome", "Harness", "DEFAULT_CACHE", "oracle_key", "sel
 #: Where ROOT's cached runs and the latest results live, unless told otherwise.
 DEFAULT_CACHE = Path(os.environ.get("XRDROOT_TUTORIALS_CACHE", "~/.cache/xrdroot-tutorials"))
 
+#: What ROOT's installation adds to its tutorials as it is built, which some tutorials read
+#: from ``gROOT->GetTutorialDir()``: ``hsimple.root``, made by ``hsimple.C``.
+BUILT_TUTORIAL_FILES = ("hsimple.root",)
+
 #: Bumped whenever how an oracle run is made changes, so old cache entries stop matching.
 ORACLE_SCHEMA = "oracle/1"
 
@@ -199,8 +203,33 @@ class Harness:
         # installed with, which a hundred-odd tutorials read their data from;
         # xrdroot has none of its own, so it is told where the ones being run
         # are, and both sides read the same files.
-        env.setdefault("ROOT_TUTORIAL_DIR", str(self.settings.tutorials))
+        env.setdefault("ROOT_TUTORIAL_DIR", self._tutorial_dir())
         return env
+
+    def _tutorial_dir(self) -> str:
+        """The tutorials xrdroot is told ROOT has: those being run, and beside them what ROOT
+        builds into its own tutorials as it is installed - ``hsimple.root``, which a few
+        tutorials read from there - as links in a directory of the cache."""
+        tutorials = self.settings.tutorials
+        built = self._built_tutorial_files()
+        if not built or all((tutorials / path.name).exists() for path in built):
+            return str(tutorials)
+        digest = hashlib.sha256(str(tutorials.resolve()).encode()).hexdigest()[:16]
+        overlay = self.settings.cache.expanduser() / "tutorial-dirs" / digest
+        overlay.mkdir(parents=True, exist_ok=True)
+        for entry in [*tutorials.iterdir(), *built]:
+            link = overlay / entry.name
+            if not link.exists() and not link.is_symlink():
+                link.symlink_to(entry.resolve())
+        return str(overlay)
+
+    def _built_tutorial_files(self) -> list[Path]:
+        """The files of :data:`BUILT_TUTORIAL_FILES` the oracle's installation has."""
+        rootsys = getattr(getattr(self, "oracle", None), "rootsys", "")
+        if not rootsys:
+            return []
+        found = [Path(rootsys) / "tutorials" / name for name in BUILT_TUTORIAL_FILES]
+        return [path for path in found if path.is_file()]
 
     def _probe(self, code: str) -> bool:
         try:

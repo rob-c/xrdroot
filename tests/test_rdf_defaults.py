@@ -123,3 +123,16 @@ def test_a_snapshot_writes_a_collection_as_a_vector_branch_and_defaults_to_its_c
         tree = read["t"]
         assert list(tree.keys()) == ["b1", "b2_vector"]
         assert [len(row) for row in tree.arrays()["b2_vector"]] == [1, 2, 1, 2, 1, 2]
+
+
+def test_describe_says_where_the_data_is_as_root_does(tmp_path: Path) -> None:
+    """``Dataframe from TTree t in file f.root``; a chain of files names each on a line."""
+    first = _file(tmp_path)
+    second = tmp_path / "two.root"
+    second.write_bytes(first.read_bytes())
+    with xrdroot.open_root(first) as read:
+        assert RDataFrame(read["t"]).Describe().brief == f"Dataframe from TTree t in file {first}"
+    with RDataFrame("t", [str(first), str(second)]) as frame:
+        assert frame.Describe().brief == (
+            f"Dataframe from TChain t in files\n  {first}\n  {second}"
+        )

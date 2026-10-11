@@ -57,6 +57,14 @@ __all__ = [
     "copysign",
     "fmin",
     "fmax",
+    "fast_exp",
+    "fast_log",
+    "fast_sin",
+    "fast_cos",
+    "fast_tan",
+    "fast_asin",
+    "fast_acos",
+    "fast_atan",
     "M_PI",
     "M_E",
     "M_SQRT2",
@@ -183,6 +191,13 @@ lgamma = _c(math.lgamma, "lgamma")
 copysign = _c(math.copysign, "copysign")
 fmin = _c(min, "fmin")
 fmax = _c(max, "fmax")
+
+
+#: VDT's fast approximations, which ``ROOT::VecOps`` has as ``fast_exp`` and the rest: here
+#: the C library's functions themselves, of which VDT's are within a few ulps - the same to
+#: the six digits a stream writes.
+fast_exp, fast_log, fast_sin, fast_cos = exp, log, sin, cos
+fast_tan, fast_asin, fast_acos, fast_atan = tan, asin, acos, atan
 
 
 def cbrt(value: Any) -> float:

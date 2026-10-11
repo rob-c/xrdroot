@@ -375,6 +375,28 @@ class LorentzVector(_Vector):
         return 0.5 * math.log((x[3] + p) / (x[3] - p))
 
 
+#: ``LorentzVector``'s lower-case accessors, kept for the old ``TLorentzVector`` spellings:
+#: each is the capitalised one of its name here.
+LOWER_4D = {
+    "x": "Px", "y": "Py", "z": "Pz", "t": "E", "px": "Px", "py": "Py", "pz": "Pz", "e": "E",
+    "r": "R", "theta": "Theta", "phi": "Phi", "rho": "Rho", "eta": "Eta", "pt": "Pt",
+    "perp2": "Perp2", "mag2": "M2", "mag": "M", "mt": "Mt", "mt2": "Mt2", "energy": "E",
+    "mass": "M", "mass2": "M2",
+}  # fmt: skip
+
+
+def _lower(upper: str) -> Any:
+    def accessor(self: Any) -> float:
+        return float(getattr(self, upper)())
+
+    accessor.__doc__ = f"``{upper}()``, by its lower-case name."
+    return accessor
+
+
+for _name, _upper in LOWER_4D.items():
+    setattr(LorentzVector, _name, _lower(_upper))
+
+
 class PxPyPzEVector(LorentzVector):
     """``PxPyPzEVector``, also ``XYZTVector``: Cartesian momentum and energy."""
 

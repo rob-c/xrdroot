@@ -333,3 +333,9 @@ def test_vector_util_asks_of_two_vectors_at_once():
         (rest.Px(), pytest.approx(0, abs=1e-12)),
         (rest.E(), pytest.approx(math.sqrt(86))),
     )
+
+
+def test_a_four_vector_answers_to_its_lower_case_names_too():
+    """df104/df105: ``(p1 + p2).mass()``, ``.theta()`` - LorentzVector's old spellings."""
+    v = ROOT.Math.PtEtaPhiEVector(10, 0.5, 0.3, 20)
+    assert (v.mass(), v.theta(), v.pt(), v.e(), v.mag2()) == (v.M(), v.Theta(), 10.0, 20.0, v.M2())

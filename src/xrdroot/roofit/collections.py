@@ -300,6 +300,13 @@ class RooAbsCollection(RooPrintable):
     def printClassName(self) -> str:
         return type(self).__name__
 
+    def printLatex(self, *args: Any, **kwargs: Any) -> None:
+        """``printLatex(Columns(n), Sibling(set), Format(...), OutputFile(name))``: the
+        variables as a LaTeX table (:mod:`.latex`)."""
+        from .latex import print_latex
+
+        print_latex(self, args, kwargs)
+
     def printValue(self) -> str:
         return "(" + ",".join(one.GetName() for one in self._list) + ")"
 

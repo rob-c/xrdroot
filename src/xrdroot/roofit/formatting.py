@@ -43,12 +43,19 @@ def _by_error(var: Any, opts: str) -> bool:
 def _head(var: Any, opts: str, latex: bool) -> str:
     """The opening: ``$`` in LaTeX, the name or title and ``=``, and a space for a sign."""
     text = "$" if latex else ""
-    label = var.GetTitle() if "t" in opts else (var.getPlotLabel() if "n" in opts else "")
-    if label and "v" in opts:
-        label += "+"  # RooFit's mark of a name taken verbatim
+    label = _label(var, opts, latex)
     if label:
         text += label + (" $ & $ " if "y" in opts else " = ")
     return text + (" " if var.getVal() >= 0 else "")
+
+
+def _label(var: Any, opts: str, latex: bool) -> str:
+    """The title (``T``) or the name (``N``) - taken as it is (``V``): in LaTeX's
+    ``\\verb+...+``, and outside LaTeX marked by the ``+`` alone."""
+    label = var.GetTitle() if "t" in opts else (var.getPlotLabel() if "n" in opts else "")
+    if not label or "v" not in opts:
+        return str(label)
+    return f"\\verb+{label}+" if latex else f"{label}+"
 
 
 def _errors(var: Any, opts: str, latex: bool, digits: int) -> str:

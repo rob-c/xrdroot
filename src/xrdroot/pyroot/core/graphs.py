@@ -55,6 +55,7 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
     """``TGraph``: points, joined or marked."""
 
     CLASS_TITLE = "Graph graphics class"
+    kIsHighlight = 1 << 20
 
     def __init__(self, *args: Any) -> None:
         # ROOT's default constructor leaves the name and title empty; the others name it "Graph".
@@ -68,6 +69,14 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
         # ROOT's graphs are made with TAttFill(0, 1000): no colour, but a solid fill once given one.
         self.__dict__["_atts"] = {"TAttFill": {"fFillColor": 0, "fFillStyle": 1000}}
         self._construct(args)
+
+    def SetHighlight(self, set: bool = True) -> None:
+        """``SetHighlight``: mark the graph for highlighting its point under the mouse, which on
+        a batch canvas never comes."""
+        self.SetBit(self.kIsHighlight, bool(set))
+
+    def IsHighlight(self) -> bool:
+        return self.TestBit(self.kIsHighlight)
 
     def _root_class(self) -> str:
         return next(base.__name__ for base in type(self).__mro__ if base.__name__ in ERRORS)

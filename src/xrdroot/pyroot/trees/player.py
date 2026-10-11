@@ -95,6 +95,8 @@ class _Player(_Friends):
         ``None`` for any other expression."""
         if text.startswith(">>"):
             return self._draw_list(text[2:].strip(), selection, nentries, firstentry)
+        if len(split_names(text.split(">>")[0])) > 3:
+            return self._draw_values(text, selection, option, _count(nentries), firstentry)
         from .methods import method_draw
 
         return method_draw(self, text, selection, option, _count(nentries), firstentry)
@@ -115,6 +117,33 @@ class _Player(_Friends):
             aliases=self._aliases or None,
         ))  # fmt: skip
         return [_joined_values(batches, part) for part in parts]
+
+    def _draw_values(
+        self, text: str, selection: str, option: str, count: int | None, first: int
+    ) -> int:
+        """A draw of more than three expressions: with ``goff``, each one's values for
+        ``GetVal(i)``, and how many entries the selection kept - as ROOT keeps them; the
+        pictures of so many variables at once, parallel coordinates and candles, are refused."""
+        lowered = option.lower()
+        if "goff" not in lowered:
+            from ...errors import UnsupportedFeatureError
+
+            drawn = (
+                "parallel coordinates (TParallelCoord)"
+                if "para" in lowered
+                else ("candles of each variable" if "candle" in lowered else "a picture of them")
+            )
+            raise UnsupportedFeatureError(
+                f"{text!r} draws more than three variables at once, and {drawn} is not drawn "
+                f"here; draw with option goff and use GetVal(i), or draw them three at a time"
+            )  # fmt: skip
+        values = self._evaluated(text, selection, count, first)
+        self._drawn = values
+        return 0 if not values else len(values[0])
+
+    def GetVal(self, index: int) -> Any:
+        """``GetVal(i)``: the values the last ``Draw`` computed for its ``i``-th expression."""
+        return self._drawn_values(int(index))
 
     def GetV1(self) -> Any:
         return self._drawn_values(0)

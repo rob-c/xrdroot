@@ -20,7 +20,7 @@ from .graph import Definition, EntryColumn, SlotColumn, SourceColumn
 if TYPE_CHECKING:
     from .frame import RDataFrame
 
-__all__ = ["cxx_type", "describe"]
+__all__ = ["Description", "cxx_type", "describe"]
 
 #: The C++ name of each NumPy type, as a defined column would be declared.
 CXX = {
@@ -85,28 +85,49 @@ def cxx_type(definition: Definition, empty: Any) -> str:
     return _shaped(empty, TYPEDEFS if isinstance(definition, SourceColumn) else CXX)
 
 
-def describe(frame: RDataFrame) -> str:
+class Description(str):
+    """``Describe``'s ``RDFDescription``: the data said in a line, then the frame's numbers and
+    columns - the whole as the text, the line alone as :attr:`brief`."""
+
+    brief: str
+
+    def __new__(cls, brief: str, extended: str) -> Description:
+        made = super().__new__(cls, f"{brief}\n\n{extended}")
+        made.brief = brief
+        return made
+
+    def AsString(self, shortFormat: bool = False) -> str:
+        return self.brief if shortFormat else str(self)
+
+    def Print(self, shortFormat: bool = False) -> None:
+        print(self.AsString(shortFormat))
+
+
+#: ``Describe``'s table of the frame's numbers: each value ends this many characters in.
+PROPERTY_WIDTH = 30
+#: How far each column of the table of columns is past its longest entry.
+COLUMN_GAP = 5
+
+
+def describe(frame: RDataFrame) -> Description:
     """ROOT's ``Describe``: the data, a few numbers about the frame, and every column."""
     names = frame.GetColumnNames()
-    defined = frame.GetDefinedColumnNames()
-    lines = [
-        f"Dataframe from {frame._graph.source.describe()}",
-        "",
-        f"{'Property':<24}Value",
-        f"{'--------':<24}-----",
-        f"{'Columns in total':<24}{len(names)}",
-        f"{'Columns from defines':<24}{len(defined)}",
-        f"{'Event loops run':<24}{frame.GetNRuns()}",
-        f"{'Processing slots':<24}{frame.GetNSlots()}",
-        "",
+    numbers = [
+        ("Columns in total", len(names)),
+        ("Columns from defines", len(frame.GetDefinedColumnNames())),
+        ("Event loops run", frame.GetNRuns()),
+        ("Processing slots", frame.GetNSlots()),
     ]
+    lines = [f"{'Property':<24}Value", f"{'--------':<24}-----"]
+    lines += [f"{label}{value:>{PROPERTY_WIDTH - len(label)}}" for label, value in numbers]
     types = [frame.GetColumnType(name) for name in names]
-    width = max([len("Column"), *map(len, names)]) + 2
-    wide = max([len("Type"), *map(len, types)]) + 2
+    width = max([len("Column"), *map(len, names)]) + COLUMN_GAP
+    wide = max([len("Type"), *map(len, types)]) + COLUMN_GAP
     lines += [
+        "",
         f"{'Column':<{width}}{'Type':<{wide}}Origin",
         f"{'------':<{width}}{'----':<{wide}}------",
     ]
     for name, kind in zip(names, types, strict=False):
         lines.append(f"{name:<{width}}{kind:<{wide}}{frame._columns[name].origin}")
-    return "\n".join(lines)
+    return Description(frame._graph.source.root_description(), "\n".join(lines))

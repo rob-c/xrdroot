@@ -105,8 +105,14 @@ class TPaveText(TPave):
         self.members["fLines"].append(line)
         return line
 
-    def GetListOfLines(self) -> list[Any]:
-        return list(self.members["fLines"])
+    def GetListOfLines(self) -> Any:
+        """``GetListOfLines``: the pave's own lines, as a ``TList`` - a line taken out of it,
+        or added to it, is out of or in the pave (hist060)."""
+        from ..core.collections import TList
+
+        listed = TList()
+        listed._items = self.members["fLines"]
+        return listed
 
     def GetSize(self) -> int:
         return len(self.members["fLines"])
