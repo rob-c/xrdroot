@@ -151,6 +151,11 @@ def test_a_frame_books_a_histogram_of_its_columns() -> None:
         frame.Hist([E.RRegularAxis(2, (0.0, 2.0))], ["x", "w"])
     with pytest.raises(AttributeError):
         one._missing  # noqa: B018
+    from xrdroot.cint.runtime.objects import deref
+
+    total = one.GetPtr()  # C++'s h = booked.GetPtr(); h->Add(*other)
+    total.Add(deref(weighted))
+    assert total is one.GetValue() and (total.GetNEntries(), total.GetBinContent(1)) == (8, 3)
 
 
 def test_the_experimental_namespace_has_the_histograms_and_refuses_the_rest() -> None:

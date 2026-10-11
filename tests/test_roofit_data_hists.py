@@ -281,6 +281,14 @@ def test_a_table_of_several_categories_counts_every_combination(capsys: Any) -> 
     )
 
 
+def test_a_table_takes_the_categories_in_their_sets_order_and_a_python_sets_by_name() -> None:
+    """``table(RooArgSet(k, c))`` is ROOT's ``(k x c)``; a Python set has no order, and is
+    taken by name, as ROOT's hashes happened to order it."""
+    d, _, c, k = categorised()
+    assert d.table(RooArgSet([k, c])).GetName() == "(k x c)"
+    assert d.table({k, c}).GetName() == "(c x k)"
+
+
 def test_a_table_of_a_derived_category_computes_its_state_per_event() -> None:
     """A category the dataset has no column of is worked out event by event: four of each."""
     d, x, *_ = categorised()

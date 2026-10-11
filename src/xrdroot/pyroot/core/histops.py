@@ -179,6 +179,15 @@ class Operations:
             if squares is not None:
                 squares[bin] += abs(fu)
 
+    def Merge(self, li: Any, option: str = "") -> int:
+        """``TH1::Merge``: every histogram of ``li`` added into this one - bins, squared
+        weights, running sums and entries, as ``TH1Merger`` adds those binned alike - and the
+        entries this then holds. Histograms binned otherwise are refused, by the merge."""
+        others = [unwrap(one) for one in li]
+        replaced: Any = self  # a histogram, whose xrdroot one the merged one stands in for
+        replaced._replace(type(self._xrd).merge([self._xrd, *others]))
+        return int(self._xrd.entries)
+
     def Scale(self, c1: float = 1.0, option: str = "") -> None:
         """``Scale(c1[, "width"])``: in place; ``"width"`` divides by each bin's width too."""
         self._xrd.scale(float(c1), "width" in str(option).lower())
@@ -285,6 +294,35 @@ class Operations:
     ) -> Any:
         called = f"{self.GetName()}{name}" if name == "_py" else str(name)
         return _kept(self._xrd.projection_y(called, _range(firstxbin, lastxbin)))
+
+    def FitSlicesX(
+        self,
+        f1: Any = None,
+        firstybin: int = 0,
+        lastybin: int = -1,
+        cut: int = 0,
+        option: str = "QNR",
+        arr: Any = None,
+    ) -> None:
+        """``TH2::FitSlicesX``: ``f1`` fitted to the x projection of each y bin, the fitted
+        parameters booked as ``<name>_<i>`` (see :mod:`.fitslices`)."""
+        from .fitslices import fit_slices
+
+        fit_slices(self, True, f1, firstybin, lastybin, cut, option, arr)
+
+    def FitSlicesY(
+        self,
+        f1: Any = None,
+        firstxbin: int = 0,
+        lastxbin: int = -1,
+        cut: int = 0,
+        option: str = "QNR",
+        arr: Any = None,
+    ) -> None:
+        """``TH2::FitSlicesY``: ``f1`` fitted to the y projection of each x bin."""
+        from .fitslices import fit_slices
+
+        fit_slices(self, False, f1, firstxbin, lastxbin, cut, option, arr)
 
     def Project3D(self, option: str = "x") -> Any:
         """``Project3D("xy")``: the axes named kept - in ROOT's order, the first letter along y."""

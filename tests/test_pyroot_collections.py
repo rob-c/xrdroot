@@ -310,3 +310,44 @@ def test_a_tstring_stands_in_for_a_python_string():
     )
     with pytest.raises(AttributeError):
         s._missing  # noqa: B018
+
+
+def _histograms(name, weight):
+    """A list of a histogram filled twice with ``weight``, and a list holding a profile."""
+    h = ROOT.TH1D(name, name, 4, 0, 4)
+    h.Fill(1.5, weight)
+    h.Fill(2.5, weight)
+    p = ROOT.TProfile(f"p{name}", "p", 4, 0, 4)
+    p.Fill(0.5, weight)
+    inner = ROOT.TList()
+    inner.Add(p)
+    outer = ROOT.TList()
+    outer.Add(h)
+    outer.Add(inner)
+    return outer
+
+
+def test_a_list_merges_each_object_with_those_at_its_place_in_the_others(capsys):
+    """ROOT's ``TSeqCollection::Merge``: a histogram, and a list's profile in turn, merged with
+    those at the same place; what has no ``Merge`` gains copies of the others' at the end."""
+    target = _histograms("a", 1.0)
+    target.Add(ROOT.TObjString("kept"))
+    inputs = ROOT.TList()
+    inputs.Add(_histograms("b", 2.0))
+    inputs.Add(_histograms("c", 3.0))
+    inputs.At(0).Add(ROOT.TObjString("copied"))
+    assert target.Merge(inputs) == 4
+    h = target.At(0)
+    assert (h.GetEntries(), h.GetBinContent(2), h.GetName()) == (6.0, 6.0, "a")
+    assert target.At(1).At(0).GetEntries() == 3.0
+    assert [str(one) for one in list(target)[2:]] == ["kept", "copied"]
+    assert ROOT.TList().Merge(inputs) == 0 and target.Merge(ROOT.TList()) == 0
+    wrong = ROOT.TList()
+    wrong.Add(ROOT.TNamed("n", "n"))
+    assert target.Merge(wrong) == 0
+    assert capsys.readouterr().err == (
+        "Warning in <TList::Merge>: list is empty - nothing to merge\n"
+        "Warning in <TList::Merge>: input list is empty - nothing to merge with\n"
+        "Error in <TList::Merge>: some objects in the input list are not collections - "
+        "merging aborted\n"
+    )

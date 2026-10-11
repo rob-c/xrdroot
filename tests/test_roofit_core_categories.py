@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.roofit.categories import (
     RooBinningCategory,
     RooCategory,
@@ -314,3 +315,35 @@ def test_variables_the_density_ignores_are_drawn_uniformly_in_the_order_asked_fo
         tags = data.table(tag)
         counts.append((tags.get("Lepton") + tags.get("Kaon"), data.table(flavour).get("B0")))
     assert counts == [(5040, 5058), (5058, 5040)]
+
+
+def test_a_categorys_verbose_print_is_roots_its_clients_and_states_by_label(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """ROOT 6.40's ``Print("v")``: RooAbsArg's part, clean, attributes sorted in brackets, each
+    node made of it; then the value, its quote closed by a bracket, and the states by label."""
+    from xrdroot.roofit.printing import address
+
+    c = RooCategory("c", "c title")
+    c.defineTypes({"B": 1, "A": 3})
+    c.setAttribute("Foo")
+    m = RooMappedCategory("m", "m title", c, "none")
+    c.Print("v")
+    assert capsys.readouterr().out == (
+        "--- RooAbsArg ---\n  Value State: clean\n  Shape State: clean\n"
+        f"  Attributes:  [Foo] \n  Address: {address(c)}\n  Clients: \n"
+        f'    ({address(m)},V-) RooMappedCategory::m "m title"\n  Servers: \n  Proxies: \n'
+        '--- RooAbsCategory ---\n  Value = 1 "B)\n  Possible states:\n    A\t3\n    B\t1\n'
+    )
+    RooCategory("e", "e").Print("v")
+    assert capsys.readouterr().out.endswith("--- RooAbsCategory ---\n  ** No values defined **\n")
+    with pytest.raises(UnsupportedFeatureError, match="a node made of others"):
+        m.Print("v")
+
+
+def test_states_are_given_with_their_indices_and_gone_through_by_label() -> None:
+    """``defineTypes({{"A", 0}, {"b", 2}})``: each label its index; a loop over the states goes
+    in the order of ROOT's map of them, its labels sorted - capitals first."""
+    large = RooCategory("large", "large")
+    large.defineTypes([["A", 0], ["b", 2], ["c", 8], ("F", 133)])
+    assert [(one.first, one.second) for one in large] == [("A", 0), ("F", 133), ("b", 2), ("c", 8)]

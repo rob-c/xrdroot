@@ -36,6 +36,15 @@ class BookedHist:
             self._filled = True
         return self._hist
 
+    #: What C++'s ``GetPtr()`` points at, and ``*booked`` is: the histogram, filled.
+    GetPtr = GetValue
+    #: ``*booked`` reads ``value``, as the translator reads through a cell.
+    _cint_cell = True
+
+    @property
+    def value(self) -> RHistEngine:
+        return self.GetValue()
+
     def IsReady(self) -> bool:
         return self._filled
 

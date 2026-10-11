@@ -78,8 +78,13 @@ class RooAbsCategory(RooAbsReal):
         return 1 + max(self._states.values()) if self._states else 0
 
     def defineTypes(self, labels: Any) -> None:
-        for label in labels:
-            self.defineType(label)
+        """``defineTypes``: labels, given an index each in turn - or labels and their indices,
+        as C++'s ``{{"A", 0}, {"b", 2}}`` or a dict gives them."""
+        for label in labels.items() if isinstance(labels, dict) else labels:
+            if isinstance(label, (list, tuple)) and len(label) == 2:
+                self.defineType(str(label[0]), int(label[1]))
+            else:
+                self.defineType(label)
 
     def states(self) -> dict[str, int]:
         return dict(self._states)
@@ -102,7 +107,8 @@ class RooAbsCategory(RooAbsReal):
     numTypes = size
 
     def __iter__(self) -> Any:
-        return iter([State(label, number) for label, number in self._states.items()])
+        """Each state, by label - in the order of ROOT's map of them, its labels sorted."""
+        return iter([State(label, number) for label, number in sorted(self._states.items())])
 
     def begin(self) -> Any:
         """``begin()``: an iterator's first state - whose ``first`` is its label."""
@@ -131,6 +137,17 @@ class RooAbsCategory(RooAbsReal):
 
     def printValue(self) -> str:
         return f"{self.getLabel()}(idx = {self._index})\n"
+
+    def printMultiline(self, contents: int, verbose: bool, indent: str) -> str:
+        """``RooAbsCategory::printMultiline``: RooAbsArg's part, then the value - its closing
+        quote a bracket, as ROOT 6.40 prints it - and each state, by label."""
+        text = self.arg_part(indent) + f"{indent}--- RooAbsCategory ---\n"
+        if not self._states:
+            return text + f"{indent}  ** No values defined **\n"
+        text += f'{indent}  Value = {self._index} "{self.getLabel()})\n{indent}  Possible states:\n'
+        return text + "".join(
+            f"{indent}    {one}\t{n}\n" for one, n in sorted(self._states.items())
+        )
 
     def defaultPrintContents(self, option: Any) -> int:
         return kName | kClassName | kValue

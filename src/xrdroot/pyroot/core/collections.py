@@ -204,6 +204,42 @@ class TSeqCollection(TCollection):
         names = [item.GetName() for item in self._items]
         return names == sorted(names)
 
+    def Merge(self, li: Any) -> int:
+        """``TSeqCollection::Merge``: each object here merged, by its own ``Merge``, with the
+        object at its place in each collection of ``li``, as ROOT pairs them - one that has no
+        ``Merge`` joined, at the end, by copies of them; how many objects were merged in."""
+        if not self._mergeable(li):
+            return 0
+        merged, unmerged = 0, []
+        for at, obj in enumerate(list(self._items)):
+            others = [one.At(at) for one in li if one.At(at) is not None]
+            if hasattr(obj, "Merge"):
+                gathered = TList()
+                gathered._items = others
+                obj.Merge(gathered)
+                merged += len(others)
+            else:
+                unmerged += others
+        for one in unmerged:
+            self.Add(one.Clone())
+        return merged
+
+    def _mergeable(self, li: Any) -> bool:
+        """Whether there is anything to merge, and with collections - or ROOT's refusal."""
+        from .messages import message
+
+        where = f"{self.ClassName()}::Merge"
+        if not self._items or li is None:
+            message("Warning", where, "list is empty - nothing to merge")
+        elif not len(li):
+            message("Warning", where, "input list is empty - nothing to merge with")
+        elif not all(isinstance(one, TSeqCollection) for one in li):
+            message("Error", where, "some objects in the input list are not collections - "
+                    "merging aborted")  # fmt: skip
+        else:
+            return True
+        return False
+
 
 class TList(TSeqCollection):
     """``TList``: a doubly linked list, which is a Python list here."""

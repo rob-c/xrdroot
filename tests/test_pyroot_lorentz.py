@@ -244,6 +244,8 @@ def test_genvectors_set_their_own_and_others_coordinates():
     w = M.PxPyPzEVector()
     w.SetPxPyPzE(1, 2, 3, 10)
     w.SetXYZT(1, 2, 3, 11)
+    w.SetCoordinates(array.array("d", [4, 5, 6, 13]))  # C++'s SetCoordinates(const double *)
+    assert w.GetCoordinates() == (4, 5, 6, 13)
     w.SetCoordinates(1, 2, 3, 12)
     got = array.array("d", [0] * 4)
     expect(

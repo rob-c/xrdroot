@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import functools
 import math
+import numbers
 import operator
 from collections.abc import Callable
 from typing import Any, ClassVar
@@ -230,7 +231,11 @@ class _Vector:
     def Coordinates(self) -> Any:
         return self
 
-    def SetCoordinates(self, *values: float) -> Any:
+    def SetCoordinates(self, *values: Any) -> Any:
+        """``SetCoordinates(x, y, z)`` - or ``(p)``, from as many numbers at ``p``: an array,
+        or a pointer into one, ``&v[0]``."""
+        if len(values) == 1 and not isinstance(values[0], numbers.Number):
+            values = tuple(values[0][index] for index in range(len(self._c)))
         self._c = tuple(float(value) for value in values)
         return self
 

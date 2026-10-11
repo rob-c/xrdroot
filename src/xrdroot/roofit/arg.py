@@ -19,6 +19,7 @@ from __future__ import annotations
 import copy
 import functools
 import itertools
+import weakref
 from collections.abc import Iterator
 from typing import Any
 
@@ -39,6 +40,8 @@ __all__ = ["Proxy", "RooAbsArg", "graph_changed"]
 _GRAPH = [0]
 #: A number for each node made, in turn.
 _SERIALS = itertools.count()
+#: Every node alive, by its number: where the nodes a node is an input of are found.
+_LIVE: weakref.WeakValueDictionary[int, RooAbsArg] = weakref.WeakValueDictionary()
 
 
 def graph_changed() -> None:
@@ -79,6 +82,7 @@ def _copy_constructing(init: Any) -> Any:
             return
         self.__dict__.update(args[0].clone(args[1] if len(args) == 2 else None).__dict__)
         self._serial = next(_SERIALS)
+        _LIVE[self._serial] = self
 
     return made
 
@@ -93,6 +97,7 @@ class RooAbsArg(RooPrintable):
 
     def __init__(self, name: Any = "", title: Any = "") -> None:
         self._serial = next(_SERIALS)  # the order objects are made in: a Python set's order
+        _LIVE[self._serial] = self
         self._name = str(name)
         self._title = str(title) if title is not None else ""
         self._proxies: list[Proxy] = []
@@ -154,6 +159,42 @@ class RooAbsArg(RooPrintable):
                 if not any(one is seen for seen in found):
                     found.append(one)
         return found
+
+    def clients(self) -> list[RooAbsArg]:
+        """The nodes alive that have this one among their inputs, in the order they were made -
+        the order RooFit's client list has them in, each having added itself when made."""
+        return [
+            node
+            for _, node in sorted(_LIVE.items())
+            if any(one is self for proxy in node._proxies for one in proxy.args())
+        ]
+
+    def arg_part(self, indent: str) -> str:
+        """``RooAbsArg::printMultiline`` of a node of no inputs, whose state is clean: its
+        attributes, where it is, and each node it is an input of."""
+        if self._proxies:
+            from ..errors import UnsupportedFeatureError
+
+            raise UnsupportedFeatureError(
+                f"the verbose print of {self._name!r}, a node made of others, is not here: "
+                "RooFit prints its servers, proxies and cache states, which this does not keep"
+            )
+        attributes = f" [{','.join(sorted(self._attributes))}] " if self._attributes else ""
+        lines = [
+            "--- RooAbsArg ---",
+            "  Value State: clean",
+            "  Shape State: clean",
+            f"  Attributes: {attributes}",
+            f"  Address: {address(self)}",
+            "  Clients: ",
+            *(
+                f'    ({address(one)},V-) {one.ClassName()}::{one.GetName()} "{one.GetTitle()}"'
+                for one in self.clients()
+            ),
+            "  Servers: ",
+            "  Proxies: ",
+        ]
+        return "".join(f"{indent}{line}\n" for line in lines)
 
     def numProxies(self) -> int:
         return len(self._proxies)

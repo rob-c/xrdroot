@@ -70,11 +70,13 @@ class Roo1DTable(RooPrintable):
 
 def table_of(data: Any, category: Any, cut: Any = None) -> Roo1DTable:
     """``RooAbsData::table``: the weights of the events in each state, after ``cut``."""
-    from ..collections import as_list
+    from ..collections import RooAbsCollection, as_list
     from .selection import context_of
 
     if not hasattr(category, "states"):
-        return multi_table(data, as_list(category), cut)
+        given = as_list(category)
+        ordered = isinstance(category, RooAbsCollection)  # a Python set has no order to keep
+        return multi_table(data, given if ordered else sorted(given, key=_name), cut)
     keep = data.mask(cut or None)
     found = data.variable(category.GetName())
     column = (
@@ -97,16 +99,20 @@ def _count(columns: list[Any], weights: Any, indices: list[int]) -> float:
     return float(np.sum(weights[mask]))
 
 
+def _name(category: Any) -> str:
+    return str(category.GetName())
+
+
 def multi_table(data: Any, categories: list[Any], cut: Any = None) -> Roo1DTable:
     """A table over several categories at once: ``RooMultiCategory``'s states, the first fastest.
 
-    A Python set of categories has no order ROOT can see either; they are
-    taken sorted by name, as the set's hashes happened to give them in
-    ROOT's own run.
+    The categories come in the order of the ``RooArgSet`` they were given in;
+    a Python set of them has no order ROOT can see either, and is taken
+    sorted by name, as the set's hashes happened to give them in ROOT's run.
     """
     import itertools
 
-    ordered = sorted(categories, key=lambda one: one.GetName())
+    ordered = list(categories)
     keep = data.mask(cut or None)
     weights = data.weights()[keep]
     columns = [data.column(one.GetName())[keep] for one in ordered]
