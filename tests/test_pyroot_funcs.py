@@ -390,3 +390,18 @@ def test_a_python_function_dividing_by_zero_at_a_point_says_so_as_it_did() -> No
     assert f1._xrd(np.array([1.0, 4.0])).tolist() == [2.0, 0.5]
     with pytest.warns(RuntimeWarning, match="divide by zero"):
         assert f1._xrd(np.array([1.0, 0.0])).tolist() == [2.0, math.inf]
+
+
+def test_get_random_tabulates_the_function_once_until_its_parameters_change():
+    """ROOT keeps ``fIntegral`` until ``TF1::Update``: thousands of ``GetRandom`` calls
+    (fitFraction) integrate the function once, and a new parameter makes a new table."""
+    f = ROOT.TF1("tab", "[0]*x+1", 0, 1)
+    f.SetParameter(0, 1.0)
+    ROOT.gRandom.SetSeed(5)
+    f.GetRandom()
+    table = f._xrd._cdf[1]
+    f.GetRandom()
+    same = f._xrd._cdf[1] is table
+    f.SetParameter(0, 3.0)
+    f.GetRandom()
+    expect((same, True), (bool(f._xrd._cdf[1] is table), False))

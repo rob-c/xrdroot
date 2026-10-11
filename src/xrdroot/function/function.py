@@ -112,7 +112,16 @@ class Function(Displayed):
     ``TF3``.
     """
 
-    __slots__ = ("classname", "members", "_layers", "_formula", "_tree", "_model", "_problem")
+    __slots__ = (
+        "classname",
+        "members",
+        "_layers",
+        "_formula",
+        "_tree",
+        "_model",
+        "_problem",
+        "_cdf",
+    )
 
     def __init__(
         self,
@@ -213,6 +222,7 @@ class Function(Displayed):
         #: Every member, as it is written, for whatever is not here by name.
         self.members = members
         self._model = model
+        self._cdf: tuple[tuple[Any, ...], sampling.Table] | None = None
         formula: dict[str, Any] | None = members
         if classname == "TFormula":
             limits = [DEFAULT_RANGE] * int(members.get("fNdim", 1) or 1)
@@ -687,8 +697,22 @@ class Function(Displayed):
         draws inside the table's span until a number lands in it.
         """
         low, high = self._one_variable("get_random")
-        table = sampling.table(self._integrated, low, high, self._npx())
-        return sampling.draw(table, n, rng, range)
+        return sampling.draw(self._cdf_table(low, high), n, rng, range)
+
+    def _cdf_table(self, low: float, high: float) -> sampling.Table:
+        """``fIntegral`` and its parabolas, made again only when what they come from changed.
+
+        ROOT keeps them until ``TF1::Update`` - a new parameter, range or
+        ``fNpx`` - clears them, so a macro drawing thousands of numbers one
+        ``GetRandom`` at a time tabulates the function once, not each time.
+        """
+        npx = self._npx()
+        formula = self._formula.get("fFormula") if self._formula is not None else None
+        params = tuple(float(value) for value in self.parameters)
+        key = (low, high, npx, params, formula, id(self._model))
+        if self._cdf is None or self._cdf[0] != key:
+            self._cdf = (key, sampling.table(self._integrated, low, high, npx))
+        return self._cdf[1]
 
     def derivative(self, x: Any, eps: float = DERIVATIVE_STEP) -> Any:
         """``Derivative``: ``df/dx``, Richardson's, with a step of ``eps`` times the range."""

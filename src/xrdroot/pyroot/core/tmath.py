@@ -353,24 +353,30 @@ def Gaus(x: Any, mean: float = 0.0, sigma: float = 1.0, norm: bool = False) -> A
     return found / (special.SQRT_TWO_PI * sigma) if norm else found
 
 
-def Landau(x: float, mpv: float = 0.0, sigma: float = 1.0, norm: bool = False) -> float:
-    return float(special.landau(x, mpv, sigma, norm))
+def _number_or_array(found: Any, x: Any) -> Any:
+    """A density's value as a number for a number, and as an array for an array of points,
+    which a macro's function called with every point at once hands it."""
+    return found if np.ndim(x) else float(found)
 
 
-def BreitWigner(x: float, mean: float = 0.0, gamma: float = 1.0) -> float:
-    return float(special.breit_wigner(x, mean, gamma))
+def Landau(x: Any, mpv: float = 0.0, sigma: float = 1.0, norm: bool = False) -> Any:
+    return _number_or_array(special.landau(x, mpv, sigma, norm), x)
 
 
-def BreitWignerRelativistic(x: float, median: float = 0.0, gamma: float = 1.0) -> float:
-    return float(densities.breit_wigner_relativistic(x, median, gamma))
+def BreitWigner(x: Any, mean: float = 0.0, gamma: float = 1.0) -> Any:
+    return _number_or_array(special.breit_wigner(x, mean, gamma), x)
 
 
-def LaplaceDist(x: float, alpha: float = 0.0, beta: float = 1.0) -> float:
-    return float(densities.laplace_dist(x, alpha, beta))
+def BreitWignerRelativistic(x: Any, median: float = 0.0, gamma: float = 1.0) -> Any:
+    return _number_or_array(densities.breit_wigner_relativistic(x, median, gamma), x)
 
 
-def LaplaceDistI(x: float, alpha: float = 0.0, beta: float = 1.0) -> float:
-    return float(densities.laplace_dist_i(x, alpha, beta))
+def LaplaceDist(x: Any, alpha: float = 0.0, beta: float = 1.0) -> Any:
+    return _number_or_array(densities.laplace_dist(x, alpha, beta), x)
+
+
+def LaplaceDistI(x: Any, alpha: float = 0.0, beta: float = 1.0) -> Any:
+    return _number_or_array(densities.laplace_dist_i(x, alpha, beta), x)
 
 
 def CauchyDist(x: float, t: float = 0.0, s: float = 1.0) -> float:

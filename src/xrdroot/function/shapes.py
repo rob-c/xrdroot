@@ -28,6 +28,7 @@ whole Gaussian the formula seems to say.
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
 from ..errors import UnsupportedFeatureError
 from ..formula.errors import FormulaError
@@ -360,8 +361,12 @@ NUMBERS: dict[str, int] = {
 NORMALIZED = ("gausn", "landaun", "crystalballn", "xylandaun")
 
 
+@lru_cache(maxsize=1024)
 def recognised(text: str, names: tuple[str, ...]) -> str | None:
     """The predefined shape a formula is, written out as ROOT keeps it, or ``None``.
+
+    Kept for each formula and its names once found: ``GetRandom`` and the
+    integrals ask it again for every bin it integrates.
 
     ``TFormula`` sets ``fNumber`` only when the whole formula was one shape;
     a formula read back from a file has lost the word, so the text is

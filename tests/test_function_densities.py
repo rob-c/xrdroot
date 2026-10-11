@@ -81,3 +81,19 @@ def test_tmath_and_root_math_name_them_as_root_does() -> None:
     total = ROOT.Math.crystalball_cdf(0.3, 1.2, 2.0, 1.0) + ROOT.Math.crystalball_cdf_c(
         0.3, 1.2, 2.0, 1.0)  # fmt: skip
     assert total == pytest.approx(1.0)
+
+
+def test_tmaths_densities_take_an_array_of_points_as_they_take_one() -> None:
+    """A macro's function called with every point at once hands them arrays (langaus): each
+    value is the one a point alone gives, and a point alone is still a number."""
+    xs = np.array([-1.0, 0.5, 3.0])
+    for name, args in [
+        ("Landau", (0.2, 1.3, True)),
+        ("BreitWigner", (0.1, 2.0)),
+        ("BreitWignerRelativistic", (0.4, 1.5)),
+        ("LaplaceDist", (0.3, 2.0)),
+        ("LaplaceDistI", (0.3, 2.0)),
+    ]:
+        fn = getattr(ROOT.TMath, name)
+        assert fn(xs, *args).tolist() == [fn(float(x), *args) for x in xs]
+        assert isinstance(fn(0.5, *args), float)
