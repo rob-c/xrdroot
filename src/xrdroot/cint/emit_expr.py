@@ -198,8 +198,10 @@ class ExprEmitter(NameEmitter):
     def _divide(self, node: Binary) -> Out:
         """``/`` and ``%``: C's integer ones where both sides are integers, Python's otherwise."""
         kind = self._division_kind(node)
-        if node.op == "/" and kind == "floating":
+        if node.op == "/" and kind == "floating" and isinstance(node.right, Literal):
             return f"{self.at(node.left, P.MUL)} / {self.at(node.right, P.MUL + 1)}", P.MUL
+        if node.op == "/" and kind == "floating":  # by a value that may be zero: C's infinity
+            return f"fdiv({self.value(node.left)}, {self.value(node.right)})", P.POSTFIX
         helper = DIVISIONS[node.op, kind]
         return f"{helper}({self.value(node.left)}, {self.value(node.right)})", P.POSTFIX
 

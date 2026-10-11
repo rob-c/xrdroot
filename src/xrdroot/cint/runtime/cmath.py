@@ -91,21 +91,53 @@ INF = float("inf")
 
 
 def _c(function: Callable[..., float], name: str) -> Callable[..., float]:
-    def c_function(*args: Any) -> float:
+    def c_function(*args: Any) -> Any:
         try:
             return function(*map(float, args))
         except ValueError:
             return NAN
         except OverflowError:
             return INF
+        except TypeError:
+            if not any(np.ndim(_numbers(arg)) for arg in args):
+                raise
+            return _elementwise(c_function, args)
 
     c_function.__name__ = name
     c_function.__doc__ = f"C's {name}: nan and inf where Python's would raise."
     return c_function
 
 
+def _numbers(value: Any) -> Any:
+    """An ``RVec``'s or a vector's elements as an array; anything else as it is."""
+    data = getattr(value, "data", None)
+    return np.asarray(data()) if callable(data) and hasattr(value, "__cpp_name__") else value
+
+
+def _elementwise(function: Callable[..., Any], args: tuple[Any, ...]) -> Any:
+    """``F(v)`` of an ``RVec``: ``std::F`` of each element, as ``ROOT::VecOps`` defines it, in
+    an ``RVec`` of the promoted type - ``float`` stays ``float``, integers become ``double``."""
+    given = [np.asarray(_numbers(arg)) for arg in args]
+    arrays = np.broadcast_arrays(*given)
+    rows = zip(*(each.ravel().tolist() for each in arrays), strict=True)
+    found = np.array([function(*row) for row in rows], dtype=_promoted(given))
+    if not any(hasattr(arg, "__cpp_name__") for arg in args):
+        return found.reshape(arrays[0].shape)
+    from ...pyroot.rdf.rvec import RVec
+
+    return RVec[found.dtype](found)
+
+
+def _promoted(given: list[Any]) -> Any:
+    """``PromoteType``: ``float`` if every collection is of floats, else ``double``."""
+    collections = [each for each in given if each.ndim]
+    return np.float32 if all(each.dtype == np.float32 for each in collections) else np.float64
+
+
 def _logarithm(function: Callable[[float], float], name: str) -> Callable[[Any], float]:
-    def c_log(value: Any) -> float:
+    def c_log(value: Any) -> Any:
+        if np.ndim(_numbers(value)):
+            return _elementwise(c_log, (value,))
         number = float(value)
         if number == 0:
             return -INF
@@ -158,8 +190,11 @@ def cbrt(value: Any) -> float:
     return math.copysign(abs(number) ** (1 / 3), number)
 
 
-def pow(base: Any, exponent: Any) -> float:
-    """C's ``pow``: always a double, ``inf`` for a zero to a negative power."""
+def pow(base: Any, exponent: Any) -> Any:
+    """C's ``pow``: always a double, ``inf`` for a zero to a negative power - of each element,
+    for an ``RVec``."""
+    if np.ndim(_numbers(base)) or np.ndim(_numbers(exponent)):
+        return _elementwise(pow, (base, exponent))
     if float(base) == 0 and float(exponent) < 0:
         return INF
     try:

@@ -59,6 +59,8 @@ def _script(path: Path) -> int:
 
     Its standard output is :func:`xrdroot.stdio.split`, so that what it
     prints and what ROOT prints arrive in the order they would from PyROOT.
+    ``sys.argv`` is the script alone, as ``python script.py`` makes it, so a
+    script parsing its own options does not find ``run`` among them.
     """
     import importlib
 
@@ -69,8 +71,13 @@ def _script(path: Path) -> int:
         found = getattr(root, name, None)
         if found is not None:
             sys.modules[f"ROOT.{name}"] = found
-    with split():
-        runpy.run_path(str(path), run_name="__main__")
+    before = sys.argv
+    sys.argv = [str(path)]
+    try:
+        with split():
+            runpy.run_path(str(path), run_name="__main__")
+    finally:
+        sys.argv = before
     return 0
 
 

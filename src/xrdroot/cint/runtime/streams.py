@@ -18,6 +18,7 @@ from typing import Any, TextIO
 __all__ = [
     "ostream",
     "ostringstream",
+    "ofstream",
     "cout",
     "cerr",
     "clog",
@@ -241,6 +242,39 @@ class ostringstream(ostream):
             self._parts = [f"{text}"]
             return ""
         return "".join(self._parts)
+
+
+class ofstream(ostream):
+    """``std::ofstream``: a stream into a file, made afresh - or added to, ``std::ios::app``."""
+
+    def __init__(self, filename: Any = None, mode: Any = None) -> None:
+        super().__init__(None, str(filename or ""))
+        self._file: TextIO | None = None
+        if filename is not None:
+            self.open(filename, mode)
+
+    def open(self, filename: Any, mode: Any = None) -> None:
+        append = "app" in str(mode or "")
+        self._name = str(filename)
+        self._file = open(self._name, "a" if append else "w", encoding="utf-8")
+
+    @property
+    def target(self) -> Any:
+        if self._file is None:
+            raise ValueError("std::ofstream written to before a file was opened for it")
+        return self._file
+
+    def is_open(self) -> bool:
+        return self._file is not None and not self._file.closed
+
+    def close(self) -> None:
+        if self._file is not None:
+            self._file.close()
+
+    def flush(self) -> ostream:
+        if self.is_open():
+            self.target.flush()
+        return self
 
 
 cout = ostream(None, "stdout")

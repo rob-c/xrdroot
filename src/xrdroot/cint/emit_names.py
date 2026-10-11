@@ -30,8 +30,8 @@ STD = {
         name: name
         for name in """cout cerr clog endl flush fixed scientific left right
         boolalpha noboolalpha hex dec oct showpos noshowpos setw setprecision setfill
-        defaultfloat ostringstream ifstream istringstream sqrt cbrt exp exp2 expm1 log log10 log2
-        log1p pow sin cos tan asin acos atan atan2 sinh cosh tanh asinh acosh atanh fabs
+        defaultfloat ostringstream ofstream ifstream istringstream sqrt cbrt exp exp2 expm1 log
+        log10 log2 log1p pow sin cos tan asin acos atan atan2 sinh cosh tanh asinh acosh atanh fabs
         floor ceil trunc fmod hypot erf erfc tgamma lgamma isnan isinf isfinite copysign
         fmin fmax to_string stoi stod min max strlen strcmp atoi atof tolower toupper thread mutex
         recursive_mutex lock_guard unique_lock scoped_lock atomic condition_variable ref
@@ -62,6 +62,7 @@ C_NAMES = {
     "abs": "cabs",
     "round": "cround",
     "assert": "cassert",
+    "R__ASSERT": "cassert",
     "stdout": "'stdout'",
     "stderr": "'stderr'",
 }

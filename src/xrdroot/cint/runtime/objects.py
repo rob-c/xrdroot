@@ -316,8 +316,8 @@ def deref(pointer: Any) -> Any:
     A library object that holds a value as a cell does - an RNTuple field's
     ``shared_ptr<int>`` - says so with a true ``_cint_cell``.
     """
-    if isinstance(pointer, (np.ndarray, list)):
-        return pointer[0]
+    if isinstance(pointer, (np.ndarray, list)) and not hasattr(pointer, "ClassName"):
+        return pointer[0]  # a C array; a ROOT collection that is a list, *list, is the list
     named = type(pointer).__name__ in ("Cell", "ItemRef", "AttrRef")
     if hasattr(pointer, "value") and (named or getattr(pointer, "_cint_cell", False)):
         return pointer.value

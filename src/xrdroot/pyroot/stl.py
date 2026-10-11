@@ -38,6 +38,7 @@ from typing import Any
 
 import numpy as np
 
+from . import stdlib as _stdlib
 from . import stlrandom as _random
 
 __all__ = ["std"]
@@ -158,6 +159,21 @@ def _emplaced(text: str) -> Any:
     from ..cint.runtime.threads import thread
 
     return thread
+
+
+def _root_class(element: Any) -> Any:
+    """The class of ROOT's an opaque element type names, made into an element in place:
+    ``ROOT::Math::XYZTVector``, ``TLorentzVector`` - found once, and kept on the type."""
+    if not getattr(element, "opaque", False):
+        return None
+    import xrdroot.pyroot as ROOT
+
+    found: Any = ROOT
+    for part in str(element.__cpp_name__).removeprefix("ROOT::").split("::"):
+        found = getattr(found, part, None) if part.isidentifier() else None
+    made = found if isinstance(found, type) else None
+    element.emplaced = made
+    return made
 
 
 def _templated(text: str) -> Any:
@@ -537,10 +553,13 @@ class _ObjectVector(_Container):
 
     def emplace_back(self, *args: Any) -> None:
         """``emplace_back(args...)``: an element made of ``args`` - a thread started from a
-        function - or, for any other kind, the one value given."""
-        made = getattr(self.element, "emplaced", None)
+        function, a four-vector of its components - or the one value given."""
+        made = getattr(self.element, "emplaced", None) or _root_class(self.element)
         if made is not None and not (len(args) == 1 and isinstance(args[0], made)):
             self._items.append(made(*args))
+            return
+        if len(args) != 1:
+            self._items.append(self.element(*args))
             return
         self.push_back(*args)
 
@@ -918,9 +937,20 @@ class _Namespace:
     normal_distribution = _random.normal_distribution
     uniform_real_distribution = _random.uniform_real_distribution
     string = string
+    numeric_limits = _stdlib.numeric_limits
+    unique_ptr = _stdlib.smart_pointer("unique_ptr")
+    shared_ptr = _stdlib.smart_pointer("shared_ptr")
+    remove = staticmethod(_stdlib.remove)
 
     def __repr__(self) -> str:
         return "<namespace std>"
+
+    @property
+    def ofstream(self) -> Any:
+        """``std::ofstream``: the translator's, which writes as C++'s streams write."""
+        from ..cint.runtime.streams import ofstream
+
+        return ofstream
 
     @staticmethod
     def move(value: Any) -> Any:

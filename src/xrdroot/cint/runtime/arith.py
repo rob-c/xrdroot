@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 
 __all__ = [
+    "fdiv",
     "idiv",
     "imod",
     "div",
@@ -56,11 +57,23 @@ def imod(a: Any, b: Any) -> int:
     return int(a - b * idiv(a, b))
 
 
+def fdiv(a: Any, b: Any) -> Any:
+    """``a / b`` in floating point, as C's IEEE arithmetic does it: by zero, an infinity of
+    the quotient's sign, or NaN for ``0 / 0``, where Python raises."""
+    try:
+        return a / b
+    except ZeroDivisionError:
+        numerator = float(a)
+        if numerator == 0 or math.isnan(numerator):
+            return math.nan
+        return math.copysign(math.inf, numerator) * math.copysign(1.0, float(b))
+
+
 def div(a: Any, b: Any) -> Any:
     """``a / b`` when the types were not known: integral if both are, as C would."""
     if _integer(a) and _integer(b):
         return idiv(a, b)
-    return a / b
+    return fdiv(a, b)
 
 
 def mod(a: Any, b: Any) -> Any:

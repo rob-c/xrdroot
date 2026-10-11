@@ -113,6 +113,17 @@ def test_run_runs_a_python_script_with_root_as_pyroot(
     assert sys.modules["ROOT"] is fake_pyroot
 
 
+def test_run_gives_a_python_script_its_own_name_alone_as_its_arguments(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], fake_pyroot: types.ModuleType
+) -> None:
+    """As ``python script.py``: an argparse in the script (df105) sees no options."""
+    path = write(tmp_path, "args.py", "import sys\nprint(sys.argv)\n")
+    before = list(sys.argv)
+    assert main(["run", str(path)]) == 0
+    assert capsys.readouterr().out == f"[{str(path)!r}]\n"
+    assert sys.argv == before
+
+
 def test_run_lets_a_python_script_import_names_from_roots_namespaces(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
