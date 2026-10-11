@@ -54,12 +54,22 @@ class RResultPtr:
 
     def __init__(self, inner: Any) -> None:
         self._inner = inner
+        self._styled = False
 
     def __repr__(self) -> str:
         return repr(self._inner)
 
     def GetValue(self) -> Any:
-        return _wrapped(hooks.wrap(self._inner.GetValue()))
+        """The value; a histogram the first time in ``gStyle``'s attributes, as ``TH1``'s
+        constructor gives the one ROOT fills."""
+        from ...hist import Histogram
+        from ..core.histcore import _in_style
+
+        found = self._inner.GetValue()
+        if isinstance(found, Histogram) and not self._styled:
+            _in_style(found)
+            self._styled = True
+        return _wrapped(hooks.wrap(found))
 
     GetPtr = GetValue
     GetSharedPtr = GetValue

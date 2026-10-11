@@ -239,3 +239,13 @@ def test_a_vecops_function_given_to_a_frame_takes_whole_batches_and_a_template_a
     frame.close()
     assert summed.tolist() == [3.0, 3.0]
     assert MACRO.Sum["float"](ROOT.RVecD([1.0, 2.0])) == 3.0
+
+
+def test_a_booked_histogram_is_drawn_in_the_styles_colours_and_keeps_what_is_set_after():
+    """``TH1``'s constructor gives ROOT's histograms ``gStyle``'s line colour, 602 by default:
+    the first ``GetValue`` gives xrdroot's it, and a colour set after it stays."""
+    booked = ROOT.RDataFrame(10).Define("x", "1.0 * rdfentry_").Histo1D(("h", "", 5, 0, 10), "x")
+    h = booked.GetValue()
+    assert h.GetLineColor() == 602
+    h.SetLineColor(2)
+    assert booked.GetValue().GetLineColor() == 2

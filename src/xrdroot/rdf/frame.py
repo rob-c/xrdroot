@@ -770,6 +770,18 @@ class RDataFrame:
         inputs = [self._column(name, "AsNumpy") for name in names]
         return self._book(actions.AsNumpy(self._node, inputs))
 
+    def Cache(
+        self, columns: Sequence[str] | str | None = None, exclude: Sequence[str] | None = None
+    ) -> RDataFrame:
+        """``Cache``: the columns - every one, or those named - of the entries that pass, read
+        now and held in memory, a new frame over them, each column the type it was."""
+        from .tabular import Columns
+
+        names = self._names(columns, exclude, "Cache")
+        found = self.AsNumpy(names).GetValue()
+        types = {name: self.GetColumnType(name) for name in names}
+        return RDataFrame(Columns(found, types, "a cache of columns in memory"))
+
     def _library(self, library: str, columns: Any) -> Any:
         return convert(self.AsNumpy(columns).GetValue(), library)
 

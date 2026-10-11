@@ -26,6 +26,7 @@ import numpy as np
 
 from ..graph import Graph as TGraph
 from ..hist import Histogram
+from ..limits import find_good_limits
 from ..tree import concatenate, take
 from .graph import Definition, Selector, chain_of, named_filters
 from .report import CutFlowReport, CutInfo, Display
@@ -376,10 +377,49 @@ class Histo(Action):
 
 #: How many bins ``Histo1D`` books when it is given no model, as ROOT books 128.
 AUTO_BINS = 128
+#: ``TH1::fgBufferSize``: the values a histogram of no range holds before it finds its range
+#: from them - and fills the rest into that range, under or over it as they fall.
+BUFFER_SIZE = 1000
+
+
+def _new_limits(low: float, high: float, point: float) -> tuple[float, float] | None:
+    """``TH1::FindNewAxisLimits``: the range doubled, towards ``point``, until it holds it -
+    ``None`` after 64 doublings, as for an infinity."""
+    span, times = high - low, 0
+    while point < low:
+        times += 1
+        if times > 64:
+            return None
+        low, span = low - span, span * 2
+    while point >= high:
+        times += 1
+        if times > 64:
+            return None
+        high, span = high + span, span * 2
+    return low, high
+
+
+def _extended(low: float, high: float, values: Any) -> tuple[float, float]:
+    """The range a histogram that can extend ends with, filled with ``values`` in order: each
+    value outside it doubles it towards that value, as ``ExtendAxis`` does - the contents
+    moved bin by bin, which leaves each where its value would fall in the range it ends with."""
+    start = 0
+    while True:
+        outside = np.flatnonzero((values[start:] < low) | (values[start:] >= high))
+        if not len(outside):
+            return low, high
+        at = start + int(outside[0])
+        found = _new_limits(low, high, float(values[at]))
+        if found is not None:
+            low, high = found
+        start = at + 1
 
 
 class AutoHisto(Action):
-    """``Histo1D`` of a column alone: 128 bins, spanning every value it was filled with.
+    """``Histo1D`` of a column alone: 128 bins over the range ROOT gives a histogram when its
+    buffer of the first thousand values is full - ``THLimitsFinder::FindGoodLimits`` of their
+    least and greatest - extended as the values after them need it, its axes titled the
+    column and ``count`` (``count * w``, weighted by ``w``).
 
     The values are kept until the end, when the range is known, and then
     filled in the order they came, as ROOT fills its buffer.
@@ -400,12 +440,17 @@ class AutoHisto(Action):
     def finish(self, acc: Any, flow: dict[int, tuple[int, int]]) -> Any:
         values = np.concatenate([part[0] for part in acc]).astype(np.float64)
         weights = np.concatenate([part[1] for part in acc]) if self.weighted else None
-        finite = values[np.isfinite(values)]
+        head = values[:BUFFER_SIZE]
+        finite = head[np.isfinite(head)]
         low, high = (float(finite.min()), float(finite.max())) if len(finite) else (0.0, 0.0)
-        if low == high:
-            low, high = low - 1.0, high + 1.0
+        limits = find_good_limits(AUTO_BINS, low, high)
+        low, high = _extended(limits.low, limits.high, values[BUFFER_SIZE:])
         name = self.inputs[0].name
-        made = Histogram.book(name, (AUTO_BINS, low, float(np.nextafter(high, np.inf))), title=name)
+        made = Histogram.book(name, (limits.nbins, low, high), title=name)
+        core = made._core
+        core["fXaxis"]["TNamed"]["fTitle"] = name
+        weight = f" * {self.inputs[1].name}" if self.weighted else ""
+        core["fYaxis"]["TNamed"]["fTitle"] = f"count{weight}"
         made.fill(values, weight=weights)
         return made
 

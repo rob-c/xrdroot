@@ -237,16 +237,30 @@ def test_bad_models_are_refused_by_name(xyn):
         xyn.Histo2D(("h", "", 1, 0, 1, 1, 0, 1), "x")
 
 
-def test_a_histogram_without_a_model_spans_what_it_was_filled_with(xyn):
+def test_a_histogram_without_a_model_spans_the_good_limits_of_what_filled_it(xyn):
+    """ROOT's buffer, emptied: ``FindGoodLimits`` of the least and greatest value filled, 128
+    bins over it - ROOT 6.40's -0.99 to 108 for 0 to 99, and 1.8 to 4.2 for a single 3."""
     h = xyn.Histo1D("x").GetValue()
-    assert (len(h.values()), h.entries, h.axes[0].edges()[0]) == (128, 100, 0.0)
+    assert (len(h.values()), h.entries) == (128, 100)
+    assert (h.axes[0].edges()[0], h.axes[0].edges()[-1]) == (-0.99, 108.0)
     assert h.values(flow=True)[-1] == 0  # the largest value is inside, not in the overflow
+    core = h._core
+    assert (core["fXaxis"]["TNamed"]["fTitle"], core["fYaxis"]["TNamed"]["fTitle"]) == (
+        "x", "count")  # fmt: skip
     weighted = xyn.Histo1D("x", "n").GetValue()
     assert weighted.sum() == sum(range(100))
+    assert weighted._core["fYaxis"]["TNamed"]["fTitle"] == "count * n"
     single = xyn.Filter("x == 3").Histo1D("x").GetValue()
-    assert (single.axes[0].edges()[0], single.axes[0].edges()[-1]) == (2.0, pytest.approx(4.0))
+    assert (single.axes[0].edges()[0], single.axes[0].edges()[-1]) == (1.8, pytest.approx(4.2))
     nothing = xyn.Filter("x < 0").Histo1D("x").GetValue()
     assert nothing.entries == 0
+
+
+def test_a_cache_is_a_frame_of_the_passing_entries_columns_held_in_memory(xyn):
+    cached = xyn.Filter("x > 50").Define("twice", "2 * x").Cache(["x", "twice"])
+    assert cached.Count().GetValue() == 49 and sorted(cached.GetColumnNames()) == ["twice", "x"]
+    assert cached.Sum("twice").GetValue() == 2 * sum(range(51, 100))
+    assert cached.GetColumnType("x") == xyn.GetColumnType("x")
 
 
 def test_expressions_are_columns_to_every_action(xyn):
@@ -604,3 +618,18 @@ def test_a_collection_of_collections_is_displayed_a_line_per_inner_one():
     assert _cell(matrix, 5) == ["{ 1.1000000, 2.1000000 }", "{ 10.261000, 3.0000000 }"]
     assert _cell(std.vector["vector<int>"]([[1, 2]]), 5) == ["{ 1, 2 }"]
     assert _cell("text", 5) == ['"text"']
+
+
+def test_a_histogram_without_a_model_finds_its_range_from_its_first_thousand_and_extends_it():
+    """ROOT 6.40's: the first thousand of 0 to 1999 give -9.99 to 1090, and 1090 itself
+    doubles that to 2189.99; a value far below, and one of no bin, double it again and again."""
+    from xrdroot.rdf.frame import RDataFrame
+
+    many = RDataFrame(2000).Define("x", "double(rdfentry_)").Histo1D("x").GetValue()
+    assert (many.axes[0].edges()[0], many.axes[0].edges()[-1]) == (-9.99, pytest.approx(2189.99))
+    assert many.values(flow=True)[-1] == 0
+    odd = RDataFrame(1004).Define(
+        "x", "rdfentry_ < 1000 ? double(rdfentry_) : (rdfentry_ == 1000 ? -5000.0 : "
+        "(rdfentry_ == 1001 ? 1.0/0.0 : (rdfentry_ == 1002 ? -1.0/0.0 : 1500.0)))"
+    ).Histo1D("x").GetValue()  # fmt: skip
+    assert (odd.axes[0].edges()[0], odd.axes[0].edges()[-1]) == pytest.approx((-7709.92, 9889.92))
