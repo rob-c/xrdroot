@@ -501,7 +501,7 @@ def test_describe_lists_every_column_and_where_it_comes_from(flat):
     )
     lines = text.splitlines()
     assert lines[0] == f"Dataframe from TChain tree in file {FLAT}"
-    assert "Columns from defines         2" in lines
+    assert "Columns from defines        2" in lines
     assert any(
         line.split() == ["pair", "ROOT::VecOps::RVec<ROOT::VecOps::RVec<ULong64_t>>", "Define"]
         for line in lines

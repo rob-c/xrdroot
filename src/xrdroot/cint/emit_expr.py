@@ -415,7 +415,7 @@ class ExprEmitter(NameEmitter):
         target = node.target
         if isinstance(target, Call):
             return self.call_assignment(node)
-        if node.op == "=" and isinstance(target, Name) and _is_view(self.typeof(target)):
+        if node.op == "=" and isinstance(target, Name) and _assigned_into(self.typeof(target)):
             return f"assign_into({self.value(target)}, {self.value(node.value)})"
         if not self._held_through(target):
             return None
@@ -648,6 +648,19 @@ def _is_view(ctype: CType | None) -> bool:
     """Is ``ctype`` a view of part of a matrix, which ``view = value`` writes through?"""
     name = ctype.name.split("::")[-1] if ctype is not None and not ctype.pointer else ""
     return name.startswith("TMatrix") and name.endswith(VIEWS)
+
+
+#: ROOT's classes a variable of is set by ``=`` - its ``operator=`` of a number or a label - and
+#: not made anew: ``RooRealVar x(...); x = 3;`` (rf402).
+SET_BY_ASSIGNMENT = frozenset({"RooRealVar", "RooCategory"})
+
+
+def _assigned_into(ctype: CType | None) -> bool:
+    """Is ``ctype`` a matrix's view, or a class set by ``=``, which ``target = value`` writes
+    into in place rather than rebinding the name?"""
+    if ctype is None or ctype.pointer:
+        return False
+    return _is_view(ctype) or ctype.name.split("::")[-1] in SET_BY_ASSIGNMENT
 
 
 def _object_value(ctype: CType | None) -> bool:

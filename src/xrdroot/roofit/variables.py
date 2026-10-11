@@ -48,6 +48,10 @@ class RooAbsRealLValue(RooAbsReal):
     def getVal(self, nset: Any = None) -> float:
         return self._val
 
+    def _assign(self, value: Any) -> None:
+        """``x = 3.0``, ``x = y``: C++'s ``operator=`` of a variable, which sets its value."""
+        self.setVal(float(value.getVal()) if hasattr(value, "getVal") else float(value))
+
     def setVal(self, value: float) -> None:
         low, high = self.getMin(), self.getMax()
         self._val = min(max(float(value), low), high)

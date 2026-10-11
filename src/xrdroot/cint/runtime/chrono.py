@@ -15,7 +15,7 @@ import re
 import time
 from typing import Any
 
-__all__ = ["chrono", "Duration", "TimePoint"]
+__all__ = ["chrono", "c_time", "Duration", "TimePoint"]
 
 #: ``std::ratio``'s names, and the seconds one tick of each is.
 RATIOS = {"nano": 1e-9, "micro": 1e-6, "milli": 1e-3, "centi": 1e-2, "deci": 1e-1}
@@ -149,3 +149,12 @@ class _Chrono:
 
 
 chrono = _Chrono()
+
+
+def c_time(where: Any = None) -> int:
+    """C's ``time(&t)``: the seconds since 1970 began, stored where ``where`` points as well,
+    when it points anywhere."""
+    now = int(time.time())
+    if where is not None and hasattr(where, "value"):
+        where.value = now
+    return now

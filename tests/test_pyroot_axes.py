@@ -308,3 +308,9 @@ def test_a_histogram_sets_an_attribute_on_the_axes_it_names():
     assert (h.GetXaxis().GetNdivisions(), h.GetYaxis().GetNdivisions()) == (505, 505)
     assert h.GetYaxis().GetLabelSize() == pytest.approx(0.07)
     assert h.GetXaxis().GetTitleOffset() == pytest.approx(1.5)
+
+
+def test_set_tick_size_is_set_tick_length():
+    axis = ROOT.TH1F("hts", "", 2, 0, 1).GetXaxis()
+    axis.SetTickSize(0.07)
+    assert axis.GetTickLength() == pytest.approx(0.07)

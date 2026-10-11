@@ -44,6 +44,8 @@ class TNtuple(TTree):
         self._writable("Fill")
         if not values:  # TTree::Fill: the values already at the variables' addresses
             return super().Fill()
+        if len(values) == len(self._values) and all(isinstance(v, np.ndarray) for v in values):
+            return self._fill_columns(values)
         given = values[0] if len(values) == 1 and np.ndim(values[0]) == 1 else values
         if len(given) != len(self._values):
             raise ValueError(
@@ -52,6 +54,20 @@ class TNtuple(TTree):
             )
         self._values[:] = given
         return super().Fill()
+
+    def _fill_columns(self, columns: tuple[Any, ...]) -> int:
+        """Many entries at once, an array for each variable - what a macro's fill loop of
+        every turn at once hands over: the entries ``Fill`` of each in turn would make."""
+        assert self._store is not None
+        arrays = [np.asarray(column, dtype=self._code).reshape(-1) for column in columns]
+        count = len(arrays[0])
+        if any(len(array) != count for array in arrays):
+            raise ValueError(f"{self._name!r} was given columns of different lengths to fill")
+        names = list(self._store.slots)
+        self._store.extend(dict(zip(names, arrays, strict=True)), count)
+        self._changed()
+        self._values[:] = [array[-1] for array in arrays] if count else self._values
+        return int(count * len(arrays) * self._values.itemsize)
 
     def GetArgs(self) -> np.ndarray[Any, Any]:
         """The values of the entry last read, one per variable, in order."""

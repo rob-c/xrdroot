@@ -104,7 +104,7 @@ class Description(str):
 
 
 #: ``Describe``'s table of the frame's numbers: each value ends this many characters in.
-PROPERTY_WIDTH = 30
+PROPERTY_WIDTH = 29
 #: How far each column of the table of columns is past its longest entry.
 COLUMN_GAP = 5
 

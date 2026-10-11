@@ -92,3 +92,15 @@ def test_vdts_fast_functions_are_there_as_a_root_built_with_vdt_has_them(
     text = block(capsys, "#ifdef R__HAS_VDT\nprintf(\"%g\\n\", fast_exp(1.0));\n#endif")
     assert text == "2.71828\n"
     assert rt.fast_log(1.0) == 0.0 and rt.fast_atan(0.0) == 0.0
+
+
+def test_time_is_cs_seconds_since_1970_stored_where_it_is_asked_to_be(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import time
+
+    before = int(time.time())
+    text = block(capsys, 'long t = 0; long u = time(0); time(&t); printf("%d\\n", t >= u);')
+    assert text == "1\n" and rt.c_time() >= before
+    cell = rt.Cell(0)
+    assert rt.c_time(cell) == cell.value >= before

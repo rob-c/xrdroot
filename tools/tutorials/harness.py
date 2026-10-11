@@ -477,6 +477,7 @@ class Harness:
         xrdroot answers - so both are masked the same: as the tutorials.
         """
         paths = {result.workdir: "<workdir>", str(self.settings.tutorials): "<tutorials>"}
+        paths[self._tutorial_dir()] = "<tutorials>"  # the links beside them, when there are
         if self.oracle is not None and self.oracle.rootsys:
             paths[self.oracle.rootsys] = "<rootsys>"
             paths[str(Path(self.oracle.rootsys) / "tutorials")] = "<tutorials>"

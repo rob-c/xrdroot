@@ -56,15 +56,15 @@ def frame_of_pad(pad: Any) -> TFrame:
 
 
 def decorate(pad: Any, drawn: list[tuple[Any, str]], found: Any) -> list[tuple[Any, str]]:
-    """``drawn`` with the frame, title and stats boxes painting the pad adds, in their places."""
+    """``drawn`` with the frame, title and stats boxes painting the pad adds, in their places
+    - in a pad with nothing to frame (every histogram drawn ``same``), the stats boxes alone,
+    as ``sames`` asks for them all the same."""
     from .snapshot import primitive
 
-    if found is None:
-        return drawn
-    made: list[tuple[Any, str]] = [(primitive(frame_of_pad(pad)), "")]
+    made: list[tuple[Any, str]] = [] if found is None else [(primitive(frame_of_pad(pad)), "")]
     for obj, option in drawn:
         made.append((obj, option))
-        if obj is found[0]:
+        if found is not None and obj is found[0]:
             made += [(primitive(one), "") for one in _title(pad, obj)]
         made += [(primitive(one), "") for one in _stats(pad, obj, option)]
     return made

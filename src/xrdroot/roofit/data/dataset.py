@@ -17,7 +17,7 @@ import numpy as np
 
 from ..cmdargs import Commands, commands
 from ..collections import RooArgSet, as_list
-from ..messages import INFO, WARNING, log
+from ..messages import ERROR, INFO, WARNING, log
 from ..printing import g
 from .store import RooAbsData, copies_of
 
@@ -164,6 +164,21 @@ class RooDataSet(RooAbsData):
                 f"RooDataSet::add(dataset={self._name}) WARNING: You are "
                 "adding a weight but no weight variable exists. The weight will be ignored.",
             )
+
+    def merge(self, *others: Any) -> bool:
+        """``merge(d2, ...)``: the columns of other datasets of as many events added beside
+        this one's, a variable it has already kept as it is - ``True`` when they are not of
+        one length, as ROOT's says it failed."""
+        if any(other.numEntries() != self.numEntries() for other in others):
+            log(self, ERROR, "InputArguments",
+                f"RooDataSet::merge({self._name}) ERROR: datasets have different size")  # fmt: skip
+            return True
+        for other in others:
+            for one in other.get():
+                if self._vars.find(one.GetName()) is None:
+                    self._vars.add(one.clone(one.GetName()) if one.isFundamental() else one)
+                    self._columns[one.GetName()] = other.column(one.GetName()).copy()
+        return False
 
     def write(self, stream: Any) -> bool:
         """``write(ofs)``: the events as lines of text (:mod:`.ascii`)."""

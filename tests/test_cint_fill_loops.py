@@ -175,3 +175,40 @@ def test_rndm_draws_n_at_once_in_the_streams_order() -> None:
     one, many = ROOT.TRandom3(7), ROOT.TRandom3(7)
     assert [one.Rndm() for _ in range(5)] == many.Rndm(n=5).tolist()
     assert isinstance(one.Rndm(1), float)
+
+
+def test_a_fill_loop_over_a_tseq_into_an_ntuple_is_written_as_arrays(tmp_path) -> None:
+    """mt_fillNtuples: ``for (auto i : ROOT::TSeqI(n)) ntuple.Fill(rndm.Gaus());`` is the
+    stream's next ``n`` Gaussians, one column of the ntuple - the entries the loop would make."""
+    source = (
+        "void fill(TNtuple &nt, TRandom3 &r, UInt_t n) {\n"
+        "  for (auto i : ROOT::TSeqI(n)) nt.Fill(r.Gaus());\n"
+        "  for (auto i : ROOT::TSeqI(2, 4)) nt.Fill(r.Gaus());\n"
+        "  for (auto i : ROOT::TSeqI(n)) nt.Fill(i);\n"
+        "  for (auto [a, b] : pairs) nt.Fill(r.Gaus());\n"
+        "}\n"
+    )
+    text = translate(source, "t.C")
+    assert "count_1 = len(range(n))" in text and "nt.Fill(r.Gaus(n=count_1))" in text
+    assert "count_2 = len(range(2, 4))" in text
+    assert "for i in ROOT.TSeqI(n):" in text or "for i in iterate(ROOT.TSeqI(n)):" in text
+    nt = ROOT.TNtuple("nt", "nt", "r")
+    run_source(source.replace("pairs", "ROOT::TSeqI(0)").replace("[a, b]", "a") +
+               "void t() {}\n", "t.C", ())
+    loop = ROOT.TNtuple("loop", "loop", "r")
+    r, s = ROOT.TRandom3(1), ROOT.TRandom3(1)
+    for _ in range(5):
+        loop.Fill(r.Gaus())
+    nt.Fill(s.Gaus(n=5))
+    assert nt.Draw("r", "", "goff") == loop.Draw("r", "", "goff") == 5
+    assert list(nt.GetV1()) == list(loop.GetV1())
+
+
+def test_an_ntuple_takes_a_column_for_each_variable_at_once() -> None:
+    nt = ROOT.TNtuple("cols", "cols", "x:y")
+    assert nt.Fill(np.array([1.0, 2.0]), np.array([3.0, 4.0])) == 16
+    nt.Fill(5.0, 6.0)
+    assert nt.Draw("x:y", "", "goff") == 3
+    assert (list(nt.GetV1()), list(nt.GetV2())) == ([1.0, 2.0, 5.0], [3.0, 4.0, 6.0])
+    with pytest.raises(ValueError, match="different lengths"):
+        nt.Fill(np.array([1.0]), np.array([1.0, 2.0]))

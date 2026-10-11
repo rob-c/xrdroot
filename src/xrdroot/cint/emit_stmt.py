@@ -597,6 +597,12 @@ class StmtEmitter(CallEmitter):
             self.body(handler.body)
 
     def _range_for(self, node: RangeFor) -> None:
+        turns = _sequence(node.iterable, self.value)
+        draw = None if turns is None else vector_fill(node.body, node.decl.name, self.typeof)
+        if draw is not None and node.decl.binding is None:
+            assert turns is not None
+            self._all_at_once(node, draw, turns)  # type: ignore[arg-type]
+            return
         with self.scoped():
             iterable, element = self._iterable(node.iterable)
             decl = node.decl
@@ -861,3 +867,17 @@ def _counter(node: For) -> tuple[VarDecl, str, Expr, int] | None:
     if bound is None or step is None or decl.style not in ("=", None):
         return None
     return decl, bound[0], bound[1], step
+
+
+#: ``ROOT::TSeq``'s names, whose ``for`` walks integers as ``range`` does.
+SEQUENCES = frozenset({"TSeq", "TSeqI", "TSeqU", "TSeqL", "TSeqUL"})
+
+
+def _sequence(node: Expr, value: Any) -> str | None:
+    """``range(...)`` for a ``for`` over ``ROOT::TSeqI(n)`` - or ``(begin, end[, step])`` -
+    which a fill loop's every turn at once is written over; ``None`` for any other range."""
+    if not isinstance(node, Call) or not isinstance(node.func, Name):
+        return None
+    if node.func.last not in SEQUENCES or not 1 <= len(node.args) <= 3:
+        return None
+    return f"range({', '.join(value(arg) for arg in node.args)})"

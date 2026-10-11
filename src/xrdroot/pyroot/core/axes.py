@@ -74,6 +74,8 @@ for _member in AXIS_ATTRIBUTES:
     if _member != "fNdivisions":
         setattr(TAttAxis, f"Set{_member[1:]}", _axis_setter(_member))
     setattr(TAttAxis, f"Get{_member[1:]}", _axis_getter(_member))
+#: ``SetTickSize``: ROOT's other name for ``SetTickLength``, as ``TAttAxis`` has it.
+TAttAxis.SetTickSize = TAttAxis.SetTickLength  # type: ignore[attr-defined]
 
 
 class TAxis(TNamed, TAttAxis):

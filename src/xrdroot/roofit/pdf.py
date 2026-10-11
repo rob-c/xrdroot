@@ -128,6 +128,13 @@ class RooAbsPdf(RooAbsReal):
                     number,
                 )
 
+    def createProjection(self, iset: Any) -> Any:
+        """``createProjection(iset)``: this density integrated over ``iset``, a density of the
+        rest (:mod:`.pdfs.projected`)."""
+        from .pdfs.projected import projection
+
+        return projection(self, iset)
+
     def norm(self, ctx: Context, nset: Any, rng: Any = None) -> Any:
         """The normalisation integral: over the observables in ``nset`` this depends on."""
         names = frozenset(nset) & self.dependents()

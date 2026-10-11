@@ -38,6 +38,16 @@ def _flat(items: Iterable[Any]) -> Iterator[Any]:
             yield item
 
 
+def _constant(item: Any) -> Any:
+    """A member as a collection holds it: a number as the ``RooConstVar`` ROOT makes of it
+    (``RooArgSet(-0.1, 0.004)``, rf311), anything else as it is."""
+    if isinstance(item, (int, float)) and not isinstance(item, bool):
+        from .pdfs.basic import ref
+
+        return ref(item)
+    return item
+
+
 #: A collection of the same kind as the one a method is called on.
 _C = TypeVar("_C", bound="RooAbsCollection")
 
@@ -55,7 +65,7 @@ class RooAbsCollection(RooPrintable):
         if items and isinstance(items[-1], str):
             self._name = items.pop()
         for item in _flat(items):
-            self.add(item)
+            self.add(_constant(item))
 
     # -- membership ---------------------------------------------------------------
 

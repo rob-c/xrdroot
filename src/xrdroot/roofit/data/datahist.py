@@ -165,13 +165,25 @@ class RooDataHist(RooAbsData):
         grid = list(itertools.product(*widths)) or [()]
         return np.array([float(np.prod(point)) for point in grid])
 
+    def _bin_at(self, coords: Any) -> int:
+        """The bin holding the point ``coords`` - a set of the variables - or -1 if none does."""
+        given = {one.GetName(): one for one in as_list(coords)}
+        point = {one.GetName(): [given[one.GetName()].getVal()] for one in self._vars}
+        return int(self._bin_of(point)[0])
+
     def weight(self, *args: Any) -> float:
         if args:
-            bins = self._bin_of(
-                {one.GetName(): [args[0].find(one.GetName()).getVal()] for one in self._vars}
-            )
-            return float(self._grid_weights()[bins[0]]) if bins[0] >= 0 else 0.0
+            found = self._bin_at(args[0])
+            return float(self._grid_weights()[found]) if found >= 0 else 0.0
         return super().weight()
+
+    def get(self, index: Any = None) -> Any:
+        """``get(i)``: the bin ``i``'s centre loaded into the variables - or, of a set of them,
+        the bin holding that point (``get(RooArgSet(x, y))``), as ``weight()`` then reads it."""
+        if index is None or isinstance(index, (int, np.integer)):
+            return super().get(index)
+        found = self._bin_at(index)
+        return super().get(found) if found >= 0 else None
 
     def numEntries(self) -> int:
         return len(self._weights) if self._weights is not None else 0

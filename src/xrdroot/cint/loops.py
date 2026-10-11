@@ -207,8 +207,9 @@ RANDOMS = frozenset(
 )
 #: The draws that are whole numbers.
 INTEGRAL_DRAWS = frozenset(("Integer", "Poisson", "Binomial"))
-#: The histograms whose ``Fill`` of arrays is ``Fill`` of each in turn, to the last bit.
-HISTOGRAMS = ("TH1", "TH2", "TH3")
+#: The histograms - and ntuples - whose ``Fill`` of arrays is ``Fill`` of each in turn, to the
+#: last bit.
+HISTOGRAMS = ("TH1", "TH2", "TH3", "TNtuple")
 #: What arithmetic on an array of draws stays plain Python arithmetic on.
 ARITHMETIC = frozenset("+-*/")
 

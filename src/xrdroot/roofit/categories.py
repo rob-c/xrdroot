@@ -158,7 +158,8 @@ class RooCategory(RooAbsCategory):
         super().__init__(name, title)
         #: The named ranges - sets of labels - shared with every copy, as RooFit shares them.
         self._ranges: dict[str, list[str]] = {}
-        for label, index in (states or {}).items():
+        pairs = states.items() if isinstance(states, dict) else (states or [])
+        for label, index in pairs:  # a map of labels to indices, or C++'s {{label, index}, ...}
             self.defineType(label, index)
 
     def isFundamental(self) -> bool:
@@ -166,6 +167,13 @@ class RooCategory(RooAbsCategory):
 
     def isDerived(self) -> bool:
         return False
+
+    def _assign(self, value: Any) -> None:
+        """``c = "Plus"``, ``c = 1``: C++'s ``operator=``, which sets the state."""
+        if isinstance(value, str):
+            self.setLabel(value)
+        else:
+            self.setIndex(int(value))
 
     def setIndex(self, index: Any, printError: bool = True) -> bool:
         if not self.hasIndex(int(index)):

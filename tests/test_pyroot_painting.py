@@ -289,3 +289,18 @@ def test_the_stats_box_is_in_the_histograms_functions_and_a_renamed_one_stays_dr
     box.SetName("stats")
     names = [getattr(obj, "members", {}).get("fName") for obj, _ in snapshot.prepare(c)]
     assert "stats" not in names and "mystats" not in names
+
+
+def test_a_histogram_drawn_sames_in_a_pad_with_no_frame_still_has_its_stats_box():
+    """hist016: ``h2->Draw("][sames")`` in a pad of its own - no axes, and the box."""
+    c = ROOT.TCanvas("cu", "cu")
+    pad = ROOT.TPad("pu", "", 0, 0, 1, 1)
+    pad.Draw()
+    pad.cd()
+    h = ROOT.TH1F("hu", "hu", 4, 0, 4)
+    h.Fill(1)
+    h.Draw("][sames")
+    pad.Update()
+    assert h.GetListOfFunctions().FindObject("stats") is not None
+    assert [getattr(obj, "classname", "") for obj, _ in snapshot.prepare(pad)][-1] == "TPaveStats"
+    del c

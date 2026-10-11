@@ -55,6 +55,7 @@ MODULES = {
     "pdfs.histpdf": ["RooHistFunc", "RooHistPdf"],
     "pdfs.keys": ["RooKeysPdf"],
     "pdfs.realsum": ["RooRealSumPdf"],
+    "pdfs.projected": ["RooProjectedPdf"],
     "pdfs.multivar": ["RooMultiVarGaussian"],
     "pdfs.histfactory": [
         "FlexibleInterpVar",

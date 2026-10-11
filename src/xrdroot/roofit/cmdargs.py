@@ -116,8 +116,7 @@ class RooCmdArg:
     def __init__(self, name: str = "", *args: Any) -> None:
         self.name = str(name)
         self.args = tuple(args) if args else DEFAULTS.get(self.name, ())
-        if self.name in STRING_FORMS and self.args and isinstance(self.args[0], str):
-            self.args = (_read_string(self.name, self.args[0]), *self.args[1:])
+        self.args = _read_first(self.name, self.args)
         if self.name == "DataError" and self.args and self.args[0] is None:
             self.args = (ERROR_TYPES["None"], *self.args[1:])  # PyROOT's DataError=None
         if self.name == "CloneData":  # RooFit says so as the command is made, not as it is read
@@ -154,6 +153,27 @@ class RooLinkedList(list):  # type: ignore[type-arg]
 
 #: The commands that take a map - of labels to datasets or densities, of categories to states.
 MAPS = frozenset(["Import", "Link", "Slice"])
+
+
+def _read_first(name: str, args: tuple[Any, ...]) -> tuple[Any, ...]:
+    """A command's first value as RooFit reads it: a string form spelled out, and a C++ map's
+    initializer, ``{{key, value}, ...}``, a map."""
+    if not args:
+        return args
+    if name in STRING_FORMS and isinstance(args[0], str):
+        return (_read_string(name, args[0]), *args[1:])
+    if name in MAPS and _pairs(args[0]):
+        return (dict(tuple(pair) for pair in args[0]), *args[1:])
+    return args
+
+
+def _pairs(given: Any) -> bool:
+    """Is ``given`` a C++ map's initializer, ``{{key, value}, ...}`` - a list of pairs?"""
+    return (
+        isinstance(given, (list, tuple))
+        and bool(given)
+        and all(isinstance(pair, (list, tuple)) and len(pair) == 2 for pair in given)
+    )
 
 
 def make(name: str, value: Any) -> RooCmdArg:

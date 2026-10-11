@@ -63,6 +63,7 @@ C_NAMES = {
     "round": "cround",
     "assert": "cassert",
     "R__ASSERT": "cassert",
+    "time": "c_time",
     "stdout": "'stdout'",
     "stderr": "'stderr'",
 }
