@@ -30,6 +30,7 @@ PRIMITIVES = (
     "TPavesText",
     "TPaveLabel",
     "TPaveStats",
+    "TDiamond",
     "TPaletteAxis",
     "TLegend",
     "TLegendEntry",
@@ -44,6 +45,8 @@ PRIMITIVES = (
     "TCrown",
     "TMarker",
     "TPolyLine",
+    "TCurlyLine",
+    "TCurlyArc",
     "TPolyMarker",
     "TGaxis",
     "TColor",
@@ -51,6 +54,8 @@ PRIMITIVES = (
 #: A bit of ``TObject::fBits`` ROOT's own classes lend to more than one
 #: meaning; for text, lines and markers, it says their place is in NDC.
 NDC_BIT = 1 << 14
+#: ``TCanvas::kIsGrayscale``: the canvas draws every colour as its grey.
+GRAYSCALE = 1 << 22
 
 
 def _flatten(members: dict[str, Any]) -> dict[str, Any]:
@@ -311,6 +316,7 @@ class Canvas(Pad):
     def palette(self) -> Colors:
         """The colours this canvas draws with: ROOT's, and any it saved."""
         colors = Colors()
+        colors.gray = bool(int(lookup(self.canvas.get("TPad", {}), "fBits", 0) or 0) & GRAYSCALE)
         saved = [table for pad in self.walk() for table in pad.colors]
         if saved:
             colors.adopt(saved[0])

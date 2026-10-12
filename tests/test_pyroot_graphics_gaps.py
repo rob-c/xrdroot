@@ -79,3 +79,44 @@ def test_text_and_markers_take_a_colour_at_an_opacity() -> None:
     # each a colour of its own, made transparent, as GetColorTransparent makes one per call
     assert ROOT.gROOT.GetColor(latex.GetTextColor()).GetAlpha() == pytest.approx(0.476)
     assert ROOT.gROOT.GetColor(marker.GetMarkerColor()).GetAlpha() == pytest.approx(0.3)
+
+
+def test_a_grayscale_canvas_draws_each_colour_as_its_grey():
+    """``TCanvas::SetGrayscale``: ``kIsGrayscale`` set, and every colour drawn as ROOT's
+    ``TColor::GetGrayscale`` weighs it - red as 0.299 of white."""
+    from xrdroot.pyroot.graphics.snapshot import model
+
+    c = ROOT.TCanvas("gray", "gray", 200, 100)
+    assert not c.IsGrayscale() and model(c).palette().rgb(2) == (1.0, 0.0, 0.0)
+    c.SetGrayscale()
+    assert c.IsGrayscale() and model(c).palette().rgb(2) == pytest.approx((0.299,) * 3)
+    c.SetGrayscale(False)
+    assert not c.IsGrayscale()
+
+
+def test_shapes_say_whether_a_point_is_inside_them_as_root_6_40_does(tmp_path):
+    """ROOT's answers for inside.C's shapes: a slice of a turned ellipse measured by its own
+    parameter, its centre in; a crown's seam at its first angle out; a diamond, not its box."""
+    el = ROOT.TEllipse(0.75, 0.25, 0.2, 0.15, 45, 315, 62)
+    points = [(0.75, 0.25), (0.9, 0.3), (0.85, 0.35), (0.7, 0.3), (0.75, 0.4), (0.6, 0.2),
+              (0.8, 0.2), (0.76, 0.26), (0.74, 0.24), (0.9, 0.2)]  # fmt: skip
+    assert [int(el.IsInside(x, y)) for x, y in points] == [1, 1, 0, 1, 0, 1, 1, 0, 1, 0]
+    assert ROOT.TEllipse(0.5, 0.5, 0.1).IsInside(0.55, 0.5)
+    ring, part = ROOT.TCrown(0.5, 0.5, 0.1, 0.15), ROOT.TCrown(0.5, 0.5, 0.1, 0.15, 30, 120)
+    near = [(0.62, 0.5), (0.5, 0.62), (0.55, 0.6), (0.5, 0.5), (0.4, 0.45), (0.6, 0.56)]
+    assert [int(ring.IsInside(x, y)) for x, y in near] == [0, 1, 1, 0, 1, 1]
+    assert [int(part.IsInside(x, y)) for x, y in near] == [0, 1, 1, 0, 0, 1]
+    box, pave = ROOT.TBox(0.7, 0.8, 0.9, 0.95), ROOT.TPave(0.05, 0.1, 0.3, 0.2)
+    assert (box.IsInside(0.7, 0.8), box.IsInside(0.95, 0.9), pave.IsInside(0.1, 0.15)) == (
+        True, False, True)  # fmt: skip
+    diamond = ROOT.TDiamond(0.05, 0.25, 0.3, 0.4)
+    assert (diamond.IsInside(0.06, 0.26), diamond.IsInside(0.175, 0.325)) == (False, True)
+    assert ROOT.TDiamond().IsInside(0.0, 0.0)
+    graph = ROOT.TGraph(4, array_of([0.0, 1.0, 1.0, 0.0]), array_of([0.0, 0.0, 1.0, 1.0]))
+    assert (graph.IsInside(0.5, 0.5), graph.IsInside(1.5, 0.5)) == (1, 0)
+
+
+def array_of(values):
+    import array
+
+    return array.array("d", values)

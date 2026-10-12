@@ -226,6 +226,14 @@ def one_bin(axis: Axis, x: float) -> int:
     return bisect.bisect_right(axis._edges, x)
 
 
+def _global_one(bins: Sequence[int], widths: Sequence[int]) -> int:
+    """:func:`global_bins` of one entry's bins, in plain integers."""
+    cell = 0
+    for found, stride in zip(reversed(bins), reversed(widths), strict=False):
+        cell = cell * stride + found
+    return cell
+
+
 def fill_one(histogram: Histogram, coordinates: Sequence[float], weight: float) -> int | None:
     """``TH1::Fill`` of one entry, in plain floats - the same doubles :func:`fill_histogram`
     adds, without the cost of arrays of one; the global bin it went to comes back.
@@ -236,14 +244,14 @@ def fill_one(histogram: Histogram, coordinates: Sequence[float], weight: float) 
     cells = histogram._cells()
     if cells.dtype.kind != "f":
         return None
-    if weight != 1.0 and histogram._sumw2() is None:
-        histogram._ensure_sumw2()  # before the first weight that is not one
+    squares = histogram._sumw2()
+    if weight != 1.0 and squares is None:
+        squares = histogram._ensure_sumw2()  # before the first weight that is not one
     bins = [one_bin(axis, x) for axis, x in zip(histogram.axes, coordinates, strict=False)]
-    cell = int(global_bins(bins, histogram._widths))
+    cell = _global_one(bins, histogram._widths)
     core = histogram._core
     core["fEntries"] = float(core["fEntries"]) + 1
     cells[cell] += cells.dtype.type(weight)
-    squares = histogram._sumw2()
     if squares is not None:
         squares[cell] += weight * weight
     if all(1 <= found <= axis.nbins for found, axis in zip(bins, histogram.axes, strict=False)):
@@ -257,17 +265,31 @@ def _add_one(homes: dict[str, dict[str, Any]], terms: list[tuple[str, float]]) -
         homes[name][name] = float(homes[name][name]) + value
 
 
+def _one_names(count: int) -> list[str]:
+    """The moments an entry of ``count`` coordinates adds to, in :func:`one_terms`' order."""
+    letters = "xyz"[:count]
+    names = ["fTsumw", "fTsumw2"]
+    for letter in letters:
+        names += [f"fTsumw{letter}", f"fTsumw{letter}2"]
+    for first in range(count):
+        names += [f"fTsumw{letters[first]}{letters[second]}" for second in range(first + 1, count)]
+    return names
+
+
+#: :func:`_one_names` for one, two and three coordinates, worked out once.
+ONE_NAMES = {count: _one_names(count) for count in (1, 2, 3)}
+
+
 def one_terms(weight: float, coordinates: Sequence[float]) -> list[tuple[str, float]]:
     """:func:`axis_terms` for one entry: what it adds to each moment, in ROOT's order."""
-    letters = "xyz"
-    terms = [("fTsumw", weight), ("fTsumw2", weight * weight)]
-    for letter, value in zip(letters, coordinates, strict=False):
-        terms += [(f"fTsumw{letter}", weight * value), (f"fTsumw{letter}2", weight * value * value)]
+    values = [weight, weight * weight]
+    for value in coordinates:
+        values += [weight * value, weight * value * value]
     for first in range(len(coordinates)):
         for second in range(first + 1, len(coordinates)):
-            product = weight * coordinates[first] * coordinates[second]
-            terms.append((f"fTsumw{letters[first]}{letters[second]}", product))
-    return terms
+            values.append(weight * coordinates[first] * coordinates[second])
+    names = ONE_NAMES.get(len(coordinates)) or _one_names(len(coordinates))
+    return list(zip(names, values, strict=True))
 
 
 def fill_profile(profile: Profile, coordinates: Sequence[Any], values: Any, weights: Any) -> None:

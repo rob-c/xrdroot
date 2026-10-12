@@ -31,7 +31,7 @@ class Colors:
     (1.0, 0.0, 0.0)
     """
 
-    __slots__ = ("saved", "palette", "gradients")
+    __slots__ = ("saved", "palette", "gradients", "gray")
 
     def __init__(self) -> None:
         #: The colours the canvas saved, by index, over ROOT's own.
@@ -40,6 +40,8 @@ class Colors:
         self.palette: list[int] = []
         #: The gradients the canvas saved, by index: shades laid over what is filled with them.
         self.gradients: dict[int, Any] = {}
+        #: Whether every colour is drawn as its grey, as a canvas ``SetGrayscale`` draws.
+        self.gray = False
 
     def adopt(self, colors: list[Any]) -> None:
         """Take the ``TColor`` objects a canvas saved, each by its number - a gradient among
@@ -60,9 +62,11 @@ class Colors:
     def rgb(self, index: Any) -> RGB:
         """The colour of ``index``: saved, ROOT's, or black for one nobody defined."""
         number = int(index)
-        if number in self.saved:
-            return self.saved[number]
-        return _rgb(COLORS.get(number, UNKNOWN))
+        found = self.saved[number] if number in self.saved else _rgb(COLORS.get(number, UNKNOWN))
+        if not self.gray:
+            return found
+        level = 0.299 * found[0] + 0.587 * found[1] + 0.114 * found[2]  # TColor::GetGrayscale
+        return (level, level, level)
 
     def rgba(self, index: Any, alpha: float = 1.0) -> tuple[float, float, float, float]:
         """The colour of ``index`` with an opacity, as matplotlib takes one."""

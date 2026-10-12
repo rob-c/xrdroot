@@ -21,6 +21,7 @@ from ..errors import UnsupportedFeatureError
 from ..geom.paint import GEOMETRY
 from . import styles
 from .colors import Colors
+from .curly import CURLY
 from .data import paint_data
 from .frame import default_title, dress, open_axes
 from .gaxis import GAXIS
@@ -41,7 +42,7 @@ QUIET = frozenset({"TFrame", "TPaletteAxis", "TLegendEntry", "TColor"})
 BEVEL = 0.4
 
 #: Every drawing class this draws, and how.
-PAINTERS = {**SHAPES, **PAVES, **LEGEND, **GAXIS, **GEOMETRY, **IMAGES, **PIE}
+PAINTERS = {**SHAPES, **CURLY, **PAVES, **LEGEND, **GAXIS, **GEOMETRY, **IMAGES, **PIE}
 
 
 class CanvasWarning(UserWarning):

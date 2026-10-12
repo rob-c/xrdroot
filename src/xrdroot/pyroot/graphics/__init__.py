@@ -21,12 +21,13 @@ from . import hook
 from .canvas import TCanvas
 from .colors import PALETTE_NUMBERS, TColor
 from .compare import compare_images
+from .curly import TCurlyArc, TCurlyLine
 from .decorations import TFrame
 from .gradients import TColorGradient, TLinearGradient, TRadialGradient
 from .legend import TLegend, TLegendEntry
 from .output import close_books
 from .pads import TPad, gPad
-from .paves import TPave, TPaveLabel, TPaveStats, TPavesText, TPaveText
+from .paves import TDiamond, TPave, TPaveLabel, TPaveStats, TPavesText, TPaveText
 from .pie import TPie, TPieSlice
 from .shapes import (
     TArc,
@@ -50,6 +51,7 @@ __all__ = [
     "TStyle", "gStyle", "TColor", "TColorGradient", "TLinearGradient", "TRadialGradient",
     # text and paves
     "TText", "TLatex", "TMathText", "TPave", "TPaveText", "TPavesText", "TPaveLabel", "TPaveStats",
+    "TDiamond", "TCurlyLine", "TCurlyArc",
     "TLegend", "TLegendEntry", "TGaxis",
     # shapes
     "TLine", "TArrow", "TBox", "TWbox", "TEllipse", "TArc", "TCrown", "TMarker",

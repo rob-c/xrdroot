@@ -205,10 +205,15 @@ def cbrt(value: Any) -> float:
     return math.copysign(abs(number) ** (1 / 3), number)
 
 
+#: The types of a number C's functions take as it is: what needs no look for an ``RVec``.
+NUMBERS = frozenset({int, float, bool, np.float64, np.float32, np.int64, np.int32})
+
+
 def pow(base: Any, exponent: Any) -> Any:
     """C's ``pow``: always a double, ``inf`` for a zero to a negative power - of each element,
     for an ``RVec``."""
-    if np.ndim(_numbers(base)) or np.ndim(_numbers(exponent)):
+    plain = type(base) in NUMBERS and type(exponent) in NUMBERS
+    if not plain and (np.ndim(_numbers(base)) or np.ndim(_numbers(exponent))):
         return _elementwise(pow, (base, exponent))
     if float(base) == 0 and float(exponent) < 0:
         return INF

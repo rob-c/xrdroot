@@ -278,6 +278,13 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
         self._changed()
         return self._points[1]
 
+    def IsInside(self, x: float, y: float) -> int:
+        """``TGraph::IsInside``: whether ``(x, y)`` is inside the polygon the points make,
+        ``TMath::IsInside``'s crossings counted."""
+        from ..graphics.cutg import is_inside
+
+        return int(is_inside(self._points[0], self._points[1], x, y))
+
     def _bar(self, key: str) -> np.ndarray[Any, Any] | None:
         found = self._bars.get(key)
         if found is not None:

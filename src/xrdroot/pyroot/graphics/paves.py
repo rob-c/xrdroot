@@ -16,7 +16,7 @@ from .drawn import Drawn
 from .shapes import TLine
 from .text import TLatex
 
-__all__ = ["TPave", "TPaveLabel", "TPaveStats", "TPaveText", "TPavesText"]
+__all__ = ["TDiamond", "TPave", "TPaveLabel", "TPaveStats", "TPaveText", "TPavesText"]
 
 #: A pave's corners, in the axes' units and in the pad's fractions.
 PAVE_FIELDS = {
@@ -50,6 +50,12 @@ class TPave(Drawn):
 
     def SetOption(self, option: str = "br") -> None:
         self.members["fOption"] = str(option)
+
+    def IsInside(self, x: float, y: float) -> bool:
+        """``TBox::IsInside``, which a pave is: within its corners."""
+        from .shapes import in_box
+
+        return in_box(self.members, x, y)
 
     def DrawPave(self, x1: float, y1: float, x2: float, y2: float, bordersize: int = 4,
                  option: str = "br") -> Any:  # fmt: skip
@@ -231,3 +237,20 @@ class TPavesText(TPaveText):
 
     def SetNpaves(self, npaves: int = 5) -> None:
         self.members["fNpaves"] = int(npaves)
+
+
+class TDiamond(TPaveText):
+    """``TDiamond(x1, y1, x2, y2)``: a pave of text drawn as a diamond in its box."""
+
+    classname = "TDiamond"
+
+    def __init__(self, x1: float = 0.0, y1: float = 0.0, x2: float = 0.0, y2: float = 0.0) -> None:
+        super().__init__(x1, y1, x2, y2)
+
+    def IsInside(self, x: float, y: float) -> bool:
+        """``TDiamond::IsInside``: within the diamond, not merely its box."""
+        m = self.members
+        half_x, half_y = 0.5 * (m["fX2"] - m["fX1"]), 0.5 * (m["fY2"] - m["fY1"])
+        across = abs(x - m["fX1"] - half_x) / half_x if half_x else 0.0
+        up = abs(y - m["fY1"] - half_y) / half_y if half_y else 0.0
+        return bool(across + up <= 1.0)

@@ -199,6 +199,7 @@ def test_exit_and_assert_stop_the_macro() -> None:
         (lambda: rt.pow(-8, 1 / 3), math.nan),
         (lambda: rt.pow(10, 400), math.inf),
         (lambda: rt.pow(2, 3), 8.0),
+        (lambda: rt.pow(np.float32(2), np.int32(3)), 8.0),  # numbers as a macro's floats are
         (lambda: round(rt.cbrt(-8), 12), -2.0),
         (lambda: rt.floor(2.5), 2.0),
         (lambda: rt.ceil(2.5), 3.0),

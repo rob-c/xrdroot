@@ -367,3 +367,18 @@ def test_python_sees_a_histogram_as_uhi_does():
         (rebinned.GetNbinsX(), 1),
         (bool(isinstance(rebinned, ROOT.TH1)), True),
     )
+
+
+def test_a_macros_float_fills_the_bin_and_sums_a_double_does():
+    """A C++ ``float`` loop variable is NumPy's ``float32``: the same bin and the same sums as
+    the double it is, on the quick way a fill of plain numbers takes."""
+    import numpy as np
+
+    one, other = ROOT.TH2F("f32", "", 4, 0, 4, 4, 0, 4), ROOT.TH2F("f64", "", 4, 0, 4, 4, 0, 4)
+    for x in (0.5, 1.25, 3.75):
+        one.Fill(np.float32(x), np.float32(x), np.float32(0.5))
+        other.Fill(x, x, 0.5)
+    assert [one.GetBinContent(i, i) for i in range(1, 5)] == [0.5, 0.5, 0.0, 0.5]
+    assert (one.GetMean(1), one.GetSumOfWeights()) == (other.GetMean(1), other.GetSumOfWeights())
+    one.Fill(np.uint8(2), np.float16(2.5))  # other kinds of number take the general way
+    assert one.GetBinContent(3, 3) == 1.0

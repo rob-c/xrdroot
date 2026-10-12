@@ -254,6 +254,29 @@ def paves_text(scene: Scene, prim: Primitive, option: str) -> None:
     pave_text(scene, prim, option)
 
 
+def diamond(scene: Scene, prim: Primitive, _option: str) -> None:
+    """A ``TDiamond``: a diamond in its box, its corners the middles of the box's sides - for a
+    border over a pixel, its shadow under its lower right side - and its lines of text in the
+    middle half of the box, as ``TPaveText::PaintPrimitives`` puts a diamond's."""
+    from .gradient import shade
+
+    x1, y1, x2, y2 = pave_box(scene, prim)
+    mx, my = 0.5 * (x1 + x2), 0.5 * (y1 + y2)
+    points = [(x1, my), (mx, y2), (x2, my), (mx, y1)]
+    border = int(lookup(prim, "fBorderSize", 0) or 0)
+    if border > 1:
+        wx, wy = border / scene.pixels[0], border / scene.pixels[1]
+        color = scene.colors.rgb(lookup(prim, "fShadowColor", 1))
+        under = [(mx, y1), (x2, my), (x2 + wx, my), (mx, y1 - wy)]
+        _polygon(scene, under, facecolor=color, edgecolor="none", linewidth=0.0)
+    if styles.fill(int(lookup(prim, "fFillStyle", 1001) or 0))[0]:
+        made = patch_style(scene, prim, outline=False)
+        shade(scene, _polygon(scene, points, **made), lookup(prim, "fFillColor", 0))
+    _outline(scene, prim, [*points, points[0]])
+    dx, dy = 0.25 * (x2 - x1), 0.25 * (y2 - y1)
+    draw_lines(scene, prim, list(prim.get("fLines") or []), (x1 + dx, y1 + dy, x2 - dx, y2 - dy))
+
+
 # -- a label -----------------------------------------------------------------------------------
 
 #: How much of a character ``TPaveLabel`` does not count each of these as.
@@ -417,4 +440,5 @@ PAVES = {
     "TPavesText": paves_text,
     "TPaveLabel": pave_label,
     "TPaveStats": stats_box,
+    "TDiamond": diamond,
 }

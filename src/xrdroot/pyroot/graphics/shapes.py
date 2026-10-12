@@ -103,6 +103,10 @@ class TBox(Drawn):
     def DrawBox(self, x1: float, y1: float, x2: float, y2: float) -> Any:
         return _copy(self, "", fX1=x1, fY1=y1, fX2=x2, fY2=y2)
 
+    def IsInside(self, x: float, y: float) -> bool:
+        """``TBox::IsInside``: within the box, its edges included."""
+        return in_box(self.members, x, y)
+
 
 class TWbox(TBox):
     """A box with a raised or sunken border."""
@@ -130,6 +134,8 @@ class TEllipse(Drawn):
     classname = "TEllipse"
     groups: ClassVar[tuple[str, ...]] = ("line", "fill")
     fields: ClassVar[dict[str, type]] = ROUND
+    #: ``TAttFill(0, 1001)``: an ellipse is white, whatever the style's fill colour.
+    defaults: ClassVar[dict[str, Any]] = {"fFillColor": 0, "fFillStyle": 1001}
 
     def __init__(
         self, x1: float = 0.0, y1: float = 0.0, r1: float = 0.0, r2: float = 0.0,
@@ -148,6 +154,33 @@ class TEllipse(Drawn):
             self, option, fX1=x1, fY1=y1, fR1=r1, fR2=r2 or r1,
             fPhimin=phimin, fPhimax=phimax, fTheta=theta,
         )  # fmt: skip
+
+
+    def IsInside(self, x: float, y: float) -> bool:
+        """``TEllipse::IsInside``: within the ellipse, turned by ``theta`` - and, for a slice,
+        at an angle between its two, measured as the ellipse's own parameter is, its centre
+        counted in as the corner the slice has there, as ROOT 6.40 counts it."""
+        m = self.members
+        turn = np.radians(m["fTheta"])
+        dx, dy = float(x) - m["fX1"], float(y) - m["fY1"]
+        u = (dx * np.cos(turn) + dy * np.sin(turn)) / m["fR1"]
+        v = (-dx * np.sin(turn) + dy * np.cos(turn)) / m["fR2"]
+        if u * u + v * v > 1.0:
+            return False
+        if (m["fPhimin"], m["fPhimax"]) == (0.0, 360.0) or (dx, dy) == (0.0, 0.0):
+            return True
+        return _between(np.degrees(np.arctan2(v, u)), m["fPhimin"], m["fPhimax"])
+
+
+def _between(angle: float, low: float, high: float) -> bool:
+    """Whether ``angle`` lies between ``low`` and ``high`` going round, after ``low``."""
+    return bool(0.0 < (angle - low) % 360.0 <= (high - low) % 360.0 or high - low >= 360.0)
+
+
+def in_box(members: dict[str, Any], x: float, y: float) -> bool:
+    """Whether ``(x, y)`` is within a box's corners, its edges included."""
+    m = members
+    return bool(m["fX1"] <= x <= m["fX2"] and m["fY1"] <= y <= m["fY2"])
 
 
 class TArc(TEllipse):
@@ -180,6 +213,16 @@ class TCrown(TEllipse):
     ) -> None:  # fmt: skip
         super().__init__(x1, y1, radin, radout, phimin, phimax)
         self.members["fR2"] = float(radout)
+
+    def IsInside(self, x: float, y: float) -> bool:
+        """``TCrown::IsInside``: between the two circles, and after the first angle up to the
+        second - the crown's seam at its first angle left out, as ROOT 6.40 leaves it."""
+        m = self.members
+        dx, dy = float(x) - m["fX1"], float(y) - m["fY1"]
+        if not m["fR1"] <= np.hypot(dx, dy) <= m["fR2"]:
+            return False
+        angle = float(np.degrees(np.arctan2(dy, dx)))
+        return bool(0.0 < (angle - m["fPhimin"]) % 360.0 <= m["fPhimax"] - m["fPhimin"])
 
 
 class TMarker(Drawn):

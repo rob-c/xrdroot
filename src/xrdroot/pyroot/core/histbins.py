@@ -17,6 +17,10 @@ import numpy as np
 from .messages import message
 from .strings import TString
 
+#: The types of a coordinate or weight a fill of one entry takes as it is: a macro's ``float``
+#: loop variable is NumPy's ``float32``.
+SCALARS = frozenset({int, float, np.float64, np.float32, np.int64, np.int32})
+
 __all__: list[str] = []
 
 
@@ -90,14 +94,27 @@ class Bins:
         made on the axis if it has none yet, as ROOT fills a histogram of
         categories.
         """
+        if set(map(type, args)) <= SCALARS:  # plain numbers: the common case, at its quickest
+            self._check_ranged(args)
+            coordinates: list[Any] = [float(value) for value in args[: self.DIM]]
+            return self._fill_one(args, coordinates, False)
+        return self._fill_any(args)
+
+    def _fill_any(self, args: tuple[Any, ...]) -> int:
+        """``Fill`` of what is not plain numbers: labels, ``TString``s, or arrays at once."""
         args = tuple(str(one) if isinstance(one, TString) else one for one in args)
         if args and np.ndim(args[0]) > 0:
             return self._fill_arrays(args)
         self._check_ranged(args)
-        coordinates = [self._coordinate(at, value) for at, value in enumerate(args[: self.DIM])]
-        if any(coordinate is None for coordinate in coordinates):
+        coordinates = self._coordinates(args)
+        if coordinates is None:
             return -1
-        return self._fill_one(args, coordinates)
+        return self._fill_one(args, coordinates, any(isinstance(one, str) for one in args))
+
+    def _coordinates(self, args: tuple[Any, ...]) -> list[Any] | None:
+        """Where each value of an entry falls, or ``None`` for a label an axis ignores."""
+        found = [self._coordinate(at, value) for at, value in enumerate(args[: self.DIM])]
+        return None if any(coordinate is None for coordinate in found) else found
 
     def _check_ranged(self, args: tuple[Any, ...]) -> None:
         """Refuse a number filled into an axis booked with no range, which ROOT bins by the
@@ -117,11 +134,11 @@ class Bins:
                 f"its range, or fill it by label"
             )
 
-    def _fill_one(self, args: tuple[Any, ...], coordinates: list[Any]) -> int:
+    def _fill_one(self, args: tuple[Any, ...], coordinates: list[Any], labelled: bool) -> int:
         """One entry at its coordinates; by label, the sums along an axis that may grow stay
         as they were, as ROOT's do."""
         weight = float(args[self.DIM]) if len(args) > self.DIM else 1.0
-        if not any(isinstance(value, str) for value in args):  # no label, no sum frozen
+        if not labelled:  # no label, no sum frozen
             return int(self._xrd.fill_one(coordinates, weight))
         frozen = self._frozen_moments(args)
         self._xrd.fill(*coordinates, weight=None if weight == 1.0 else weight)

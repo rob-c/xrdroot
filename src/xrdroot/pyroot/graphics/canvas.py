@@ -151,6 +151,18 @@ class TCanvas(TPad):
     def SetRealAspectRatio(self, axis: int = 1) -> bool:
         return True
 
+    def SetGrayscale(self, set: bool = True) -> None:
+        """``SetGrayscale``: draw every colour as its grey - ``TColor::GetGrayscale``'s
+        weighting of red, green and blue - from now on, or no longer."""
+        from ...canvas.model import GRAYSCALE
+
+        self.SetBit(GRAYSCALE, bool(set))
+
+    def IsGrayscale(self) -> bool:
+        from ...canvas.model import GRAYSCALE
+
+        return self.TestBit(GRAYSCALE)
+
     def __repr__(self) -> str:
         return f"<TCanvas {self.GetName()!r} {self.GetWw()}x{self.GetWh()}>"
 
