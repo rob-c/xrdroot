@@ -169,11 +169,12 @@ class RooNLLVar(RooAbsReal):
         return found
 
     def _evaluate(self) -> float:
+        from .scalar import one_entry
+
         self._badness = 0.0
-        channels = getattr(self.pdf, "channel_terms", None)
-        total = channels(self) if channels is not None else self.channel(self.pdf, None)
-        if self.constraints:
-            total = total + self._constraint_sum()
+        total = one_entry(self)
+        if total is None:
+            total = self._general_sum()
         if self._badness:
             from ..nanpack import pack
 
@@ -181,6 +182,11 @@ class RooNLLVar(RooAbsReal):
         if self.offset and self._offset_value == 0.0:
             self._offset_value = total
         return total - self._offset_value
+
+    def _general_sum(self) -> float:
+        channels = getattr(self.pdf, "channel_terms", None)
+        total = channels(self) if channels is not None else self.channel(self.pdf, None)
+        return total + self._constraint_sum() if self.constraints else total
 
     def channel(self, pdf: Any, keep: Any, simulated: int = 0) -> float:
         """``-sum w log p`` of the events ``keep`` selects - all, for ``None`` - and their Poisson
