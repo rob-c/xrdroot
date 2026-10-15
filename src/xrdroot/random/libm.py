@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from types import BuiltinFunctionType
 from typing import Any
 
 import numpy as np
@@ -70,9 +71,28 @@ def _ieee(exact: Callable[..., float], fast: Callable[..., Any], *args: float) -
 def _each(exact: Callable[[float], float], fast: Callable[[Any], Any], values: Any) -> Any:
     """``exact`` of every element, as an array of the same shape - or a number, for a number."""
     values = np.asarray(values, dtype=np.float64)
+    mapped = _mapped(exact, values) if values.size > 1 else None
+    if mapped is not None:
+        return mapped[()]
     found = (_ieee(exact, fast, x) for x in values.ravel().tolist())
     flat = np.fromiter(found, dtype=np.float64, count=values.size)
     return flat.reshape(values.shape)[()]
+
+
+def _mapped(exact: Callable[..., float], *arrays: Any) -> np.ndarray[Any, Any] | None:
+    """NumPy can call pure C math functions without a traced Python frame per element.
+
+    A domain error retries through the IEEE fallback. Only the stateless
+    functions in ``math`` qualify: retrying a user's callable could repeat
+    side effects from the elements it already evaluated.
+    """
+    if not isinstance(exact, BuiltinFunctionType) or exact.__module__ != "math":
+        return None
+    try:
+        with np.errstate(all="ignore"):
+            return np.asarray(np.frompyfunc(exact, len(arrays), 1)(*arrays), dtype=np.float64)
+    except (OverflowError, ValueError):
+        return None
 
 
 def choose_pow(fast: Callable[[Any, Any], Any], exact: Callable[[float, float], float]) -> Any:
@@ -91,6 +111,9 @@ def _each_pair(
 ) -> Any:
     """``exact`` of every pair of elements, broadcast as NumPy broadcasts them."""
     base, power = np.broadcast_arrays(np.asarray(base, np.float64), np.asarray(power, np.float64))
+    mapped = _mapped(exact, base, power) if base.size > 1 else None
+    if mapped is not None:
+        return mapped[()]
     pairs = zip(base.ravel().tolist(), power.ravel().tolist(), strict=False)
     found = (_ieee(exact, fast, b, p) for b, p in pairs)
     flat = np.fromiter(found, dtype=np.float64, count=base.size)

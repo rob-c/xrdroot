@@ -2519,69 +2519,69 @@
    "xrdroot_seconds": 3.252
   },
   "math/fit/ConfidenceIntervals.C": {
-   "ratio": 0.08761684696985612,
+   "ratio": 0.08774288415082449,
    "root_seconds": 47.605,
-   "xrdroot_seconds": 4.171
+   "xrdroot_seconds": 4.177
   },
   "math/fit/ErrorIntegral.C": {
-   "ratio": 0.06519048539934248,
+   "ratio": 0.06459098820344226,
    "root_seconds": 51.71,
-   "xrdroot_seconds": 3.371
+   "xrdroot_seconds": 3.34
   },
   "math/fit/FitHistoInFile.C": {
-   "ratio": 0.10602132599923353,
+   "ratio": 1.335489979485561,
    "root_seconds": 44.359,
-   "xrdroot_seconds": 4.703
+   "xrdroot_seconds": 59.241
   },
   "math/fit/FittingDemo.C": {
-   "ratio": 0.08973658891749227,
+   "ratio": 0.10765270301895623,
    "root_seconds": 38.457,
-   "xrdroot_seconds": 3.451
+   "xrdroot_seconds": 4.14
   },
   "math/fit/Ifit.C": {
-   "ratio": 0.27420182732778975,
+   "ratio": 0.38322554152551075,
    "root_seconds": 9.741,
-   "xrdroot_seconds": 2.671
+   "xrdroot_seconds": 3.733
   },
   "math/fit/NumericalMinimization.py": {
-   "ratio": 0.24913215467829172,
+   "ratio": 0.37216436586744167,
    "root_seconds": 12.387,
-   "xrdroot_seconds": 3.086
+   "xrdroot_seconds": 4.61
   },
   "math/fit/TestBinomial.C": {
-   "ratio": 0.08036199095022625,
+   "ratio": 0.1166214177978884,
    "root_seconds": 33.15,
-   "xrdroot_seconds": 2.664
+   "xrdroot_seconds": 3.866
   },
   "math/fit/TwoHistoFit2D.C": {
-   "ratio": 0.3391363782566742,
+   "ratio": 0.6145062721132197,
    "root_seconds": 24.872,
-   "xrdroot_seconds": 8.435
+   "xrdroot_seconds": 15.284
   },
   "math/fit/combinedFit.C": {
-   "ratio": 0.07876640341130897,
+   "ratio": 0.12540163959040268,
    "root_seconds": 33.301,
-   "xrdroot_seconds": 2.623
+   "xrdroot_seconds": 4.176
   },
   "math/fit/combinedFit.py": {
-   "ratio": 0.09581581305576618,
+   "ratio": 1.0885779278968775,
    "root_seconds": 58.028,
-   "xrdroot_seconds": 5.56
+   "xrdroot_seconds": 63.168
   },
   "math/fit/exampleFit3D.C": {
-   "ratio": 0.09801385987599058,
+   "ratio": 0.15693491163500115,
    "root_seconds": 30.159,
-   "xrdroot_seconds": 2.956
+   "xrdroot_seconds": 4.733
   },
   "math/fit/fit1.C": {
-   "ratio": 0.1167794459716642,
+   "ratio": 0.19253541975047578,
    "root_seconds": 18.916,
-   "xrdroot_seconds": 2.209
+   "xrdroot_seconds": 3.642
   },
   "math/fit/fit1.py": {
-   "ratio": 0.0982049001374626,
+   "ratio": 0.14130346890919382,
    "root_seconds": 24.734,
-   "xrdroot_seconds": 2.429
+   "xrdroot_seconds": 3.495
   },
   "math/fit/fit1_py.py": {
    "ratio": null,
@@ -2589,39 +2589,39 @@
    "xrdroot_seconds": null
   },
   "math/fit/fit2.C": {
-   "ratio": 0.4234685430463576,
+   "ratio": 0.748137417218543,
    "root_seconds": 24.16,
-   "xrdroot_seconds": 10.231
+   "xrdroot_seconds": 18.075
   },
   "math/fit/fit2a.C": {
-   "ratio": 0.5236108965446212,
+   "ratio": 0.9370719398527215,
    "root_seconds": 19.419,
-   "xrdroot_seconds": 10.168
+   "xrdroot_seconds": 18.197
   },
   "math/fit/fit2d.C": {
-   "ratio": 0.7658122810252627,
+   "ratio": 1.4279918864097363,
    "root_seconds": 21.692,
-   "xrdroot_seconds": 16.612
+   "xrdroot_seconds": 30.976
   },
   "math/fit/fit2dHist.C": {
-   "ratio": 6.967924907137837,
+   "ratio": 11.731302078104608,
    "root_seconds": 19.922,
-   "xrdroot_seconds": 138.815
+   "xrdroot_seconds": 233.711
   },
   "math/fit/fitCircle.C": {
-   "ratio": 0.22508822585819696,
+   "ratio": 0.3914019890920757,
    "root_seconds": 15.585,
-   "xrdroot_seconds": 3.508
+   "xrdroot_seconds": 6.1
   },
   "math/fit/fitConvolution.C": {
-   "ratio": 3.057010256116427,
+   "ratio": 4.533547241161978,
    "root_seconds": 17.453,
-   "xrdroot_seconds": 53.354
+   "xrdroot_seconds": 79.124
   },
   "math/fit/fitConvolution.py": {
-   "ratio": 0.8265765765765766,
+   "ratio": 1.0336082836082836,
    "root_seconds": 34.188,
-   "xrdroot_seconds": 28.259
+   "xrdroot_seconds": 35.337
   },
   "math/fit/fitEllipseTGraphDLSF.cxx": {
    "ratio": null,
@@ -2634,54 +2634,54 @@
    "xrdroot_seconds": null
   },
   "math/fit/fitExclude.C": {
-   "ratio": 0.19231694602614485,
+   "ratio": 0.4268185099045633,
    "root_seconds": 12.469,
-   "xrdroot_seconds": 2.398
+   "xrdroot_seconds": 5.322
   },
   "math/fit/fitFraction.C": {
-   "ratio": 0.17369268379941563,
+   "ratio": 0.36879136604853613,
    "root_seconds": 16.771,
-   "xrdroot_seconds": 2.913
+   "xrdroot_seconds": 6.185
   },
   "math/fit/fitLinear.C": {
-   "ratio": 0.17838589302699936,
+   "ratio": 0.3419916587400308,
    "root_seconds": 13.667,
-   "xrdroot_seconds": 2.438
+   "xrdroot_seconds": 4.674
   },
   "math/fit/fitLinear2.C": {
-   "ratio": 0.1968931668731535,
+   "ratio": 0.43390831983226913,
    "root_seconds": 10.493,
-   "xrdroot_seconds": 2.066
+   "xrdroot_seconds": 4.553
   },
   "math/fit/fitLinearRobust.C": {
-   "ratio": 0.18652765333550544,
+   "ratio": 0.41280443104993075,
    "root_seconds": 12.277,
-   "xrdroot_seconds": 2.29
+   "xrdroot_seconds": 5.068
   },
   "math/fit/fitMultiGraph.C": {
-   "ratio": 0.15709642470205848,
+   "ratio": 0.3730362946912243,
    "root_seconds": 14.768,
-   "xrdroot_seconds": 2.32
+   "xrdroot_seconds": 5.509
   },
   "math/fit/fitNormSum.C": {
-   "ratio": 1.3778176229508197,
+   "ratio": 1.6866034836065575,
    "root_seconds": 15.616,
-   "xrdroot_seconds": 21.516
+   "xrdroot_seconds": 26.338
   },
   "math/fit/fitNormSum.py": {
-   "ratio": 1.7161474146387035,
+   "ratio": 3.9610444205707886,
    "root_seconds": 21.409,
-   "xrdroot_seconds": 36.741
+   "xrdroot_seconds": 84.802
   },
   "math/fit/fitcont.C": {
-   "ratio": 0.2018397311162215,
+   "ratio": 0.23642313815673097,
    "root_seconds": 11.306,
-   "xrdroot_seconds": 2.282
+   "xrdroot_seconds": 2.673
   },
   "math/fit/fithist.C": {
-   "ratio": 0.2280354530591171,
+   "ratio": 0.2701144479821013,
    "root_seconds": 11.621,
-   "xrdroot_seconds": 2.65
+   "xrdroot_seconds": 3.139
   },
   "math/fit/fitpanel_playback.C": {
    "ratio": null,
@@ -2689,64 +2689,64 @@
    "xrdroot_seconds": null
   },
   "math/fit/fitslicesy.C": {
-   "ratio": 0.23766233766233769,
+   "ratio": 0.23282828282828283,
    "root_seconds": 13.86,
-   "xrdroot_seconds": 3.294
+   "xrdroot_seconds": 3.227
   },
   "math/fit/graph2dfit.C": {
-   "ratio": 0.992656153370439,
+   "ratio": 1.1508194186765617,
    "root_seconds": 12.936,
-   "xrdroot_seconds": 12.841
+   "xrdroot_seconds": 14.887
   },
   "math/fit/langaus.C": {
-   "ratio": 2.749628593900201,
+   "ratio": 3.6543738530105743,
    "root_seconds": 11.443,
-   "xrdroot_seconds": 31.464
+   "xrdroot_seconds": 41.817
   },
   "math/fit/line3Dfit.C": {
-   "ratio": 2.619268344862012,
+   "ratio": 3.8155173643300295,
    "root_seconds": 14.023,
-   "xrdroot_seconds": 36.73
+   "xrdroot_seconds": 53.505
   },
   "math/fit/minuit2FitBench.C": {
-   "ratio": 7.508341353865897,
+   "ratio": 13.271815848572347,
    "root_seconds": 12.468,
-   "xrdroot_seconds": 93.614
+   "xrdroot_seconds": 165.473
   },
   "math/fit/minuit2FitBench2D.C": {
-   "ratio": 0.8691227184792666,
+   "ratio": 6.974009588695433,
    "root_seconds": 11.889,
-   "xrdroot_seconds": 10.333
+   "xrdroot_seconds": 82.914
   },
   "math/fit/minuit2GausFit.C": {
-   "ratio": 0.19399985111293083,
+   "ratio": 0.46921759845157446,
    "root_seconds": 13.433,
-   "xrdroot_seconds": 2.606
+   "xrdroot_seconds": 6.303
   },
   "math/fit/multidimfit.C": {
-   "ratio": 0.15383089839360084,
+   "ratio": 0.31499966946519464,
    "root_seconds": 15.127,
-   "xrdroot_seconds": 2.327
+   "xrdroot_seconds": 4.765
   },
   "math/fit/multifit.C": {
-   "ratio": 0.2748379493223335,
+   "ratio": 0.6317030053034768,
    "root_seconds": 8.485,
-   "xrdroot_seconds": 2.332
+   "xrdroot_seconds": 5.36
   },
   "math/fit/multifit.py": {
-   "ratio": 0.39086368977673325,
+   "ratio": 4.248457696827262,
    "root_seconds": 13.616,
-   "xrdroot_seconds": 5.322
+   "xrdroot_seconds": 57.847
   },
   "math/fit/myfit.C": {
-   "ratio": 0.14831063757050883,
+   "ratio": 0.20853512620363515,
    "root_seconds": 17.551,
-   "xrdroot_seconds": 2.603
+   "xrdroot_seconds": 3.66
   },
   "math/fit/vectorizedFit.C": {
-   "ratio": 0.585140618441304,
+   "ratio": 1.060584860780747,
    "root_seconds": 14.294,
-   "xrdroot_seconds": 8.364
+   "xrdroot_seconds": 15.16
   },
   "math/foam/foam_demo.C": {
    "ratio": 0.17884586409522377,
@@ -2844,94 +2844,94 @@
    "xrdroot_seconds": null
   },
   "math/pdf/pdf000_Laplace.C": {
-   "ratio": 0.36743951612903225,
+   "ratio": 0.8654233870967741,
    "root_seconds": 5.952,
-   "xrdroot_seconds": 2.187
+   "xrdroot_seconds": 5.151
   },
   "math/pdf/pdf001_Normal.C": {
-   "ratio": 0.3066666666666667,
+   "ratio": 0.6990877192982456,
    "root_seconds": 7.125,
-   "xrdroot_seconds": 2.185
+   "xrdroot_seconds": 4.981
   },
   "math/pdf/pdf001_Normal.py": {
-   "ratio": 0.3853890095743825,
+   "ratio": 0.2652667149408641,
    "root_seconds": 12.429,
-   "xrdroot_seconds": 4.79
+   "xrdroot_seconds": 3.297
   },
   "math/pdf/pdf002_2d_pdf.C": {
-   "ratio": 0.304147465437788,
+   "ratio": 0.7606659729448491,
    "root_seconds": 6.727,
-   "xrdroot_seconds": 2.046
+   "xrdroot_seconds": 5.117
   },
   "math/pdf/pdf002_2d_pdf.py": {
-   "ratio": 0.32327517208259965,
+   "ratio": 0.2549223627341124,
    "root_seconds": 12.494,
-   "xrdroot_seconds": 4.039
+   "xrdroot_seconds": 3.185
   },
   "math/pdf/pdf003_2d_cdf.C": {
-   "ratio": 0.3891772848828064,
+   "ratio": 0.6260814849771905,
    "root_seconds": 6.357,
-   "xrdroot_seconds": 2.474
+   "xrdroot_seconds": 3.98
   },
   "math/pdf/pdf004_Binomial.C": {
-   "ratio": 0.5807893728445523,
+   "ratio": 1.3656916592157364,
    "root_seconds": 7.829,
-   "xrdroot_seconds": 4.547
+   "xrdroot_seconds": 10.692
   },
   "math/pdf/pdf005_Beta.C": {
-   "ratio": 0.21471080528175565,
+   "ratio": 0.33857169425330114,
    "root_seconds": 10.754,
-   "xrdroot_seconds": 2.309
+   "xrdroot_seconds": 3.641
   },
   "math/pdf/pdf006_Gamma_LogNormal.C": {
-   "ratio": 0.29204892966360857,
+   "ratio": 0.48276341395607447,
    "root_seconds": 7.194,
-   "xrdroot_seconds": 2.101
+   "xrdroot_seconds": 3.473
   },
   "math/pdf/pdf007_multivarGaus.C": {
-   "ratio": 0.23826761473820296,
+   "ratio": 0.40232708468002587,
    "root_seconds": 7.735,
-   "xrdroot_seconds": 1.843
+   "xrdroot_seconds": 3.112
   },
   "math/pdf/pdf008_BreitWigner.C": {
-   "ratio": 0.34004522450737584,
+   "ratio": 5.947238074728114,
    "root_seconds": 9.287,
-   "xrdroot_seconds": 3.158
+   "xrdroot_seconds": 55.232
   },
   "math/pdf/pdf009_Bessel.C": {
-   "ratio": 0.22283910298279994,
+   "ratio": 0.3484650555192685,
    "root_seconds": 9.186,
-   "xrdroot_seconds": 2.047
+   "xrdroot_seconds": 3.201
   },
   "math/pdf/pdf009_Bessel.py": {
-   "ratio": 0.2784326218540937,
+   "ratio": 0.375278751194648,
    "root_seconds": 12.556,
-   "xrdroot_seconds": 3.496
+   "xrdroot_seconds": 4.712
   },
   "math/pdf/pdf010_CrystalBall.C": {
-   "ratio": 0.29748822605965464,
+   "ratio": 0.5400313971742543,
    "root_seconds": 7.644,
-   "xrdroot_seconds": 2.274
+   "xrdroot_seconds": 4.128
   },
   "math/pdf/pdf011_Student.C": {
-   "ratio": 0.36560278324005446,
+   "ratio": 0.6782635002268946,
    "root_seconds": 6.611,
-   "xrdroot_seconds": 2.417
+   "xrdroot_seconds": 4.484
   },
   "math/pdf/pdf012_tStudent.C": {
-   "ratio": 0.307900502642093,
+   "ratio": 0.6280448511406109,
    "root_seconds": 7.759,
-   "xrdroot_seconds": 2.389
+   "xrdroot_seconds": 4.873
   },
   "math/pdf/pdf012_tStudent.py": {
-   "ratio": 0.3240497581202488,
+   "ratio": 0.25680718728403595,
    "root_seconds": 14.47,
-   "xrdroot_seconds": 4.689
+   "xrdroot_seconds": 3.716
   },
   "math/pdf/pdf013_Vavilov.C": {
-   "ratio": 0.3027721261444557,
+   "ratio": 0.5995676500508647,
    "root_seconds": 7.864,
-   "xrdroot_seconds": 2.381
+   "xrdroot_seconds": 4.715
   },
   "math/permute.C": {
    "ratio": 8.630905356296413,
@@ -6347,6 +6347,147 @@
     "roofit/roostats/rs_numbercountingutils.py"
    ],
    "source_patch_sha256": "9f7b706bc671b41c39d3e2598ddd5d264418a1a43b241c7e100bf209134ff0c1"
+  },
+  {
+   "generated": "2026-10-15T21:50:32+00:00",
+   "meta": {
+    "cache": "/Users/rcurrie/.cache/xrdroot-tutorials",
+    "jobs": 4,
+    "network": false,
+    "no_oracle": false,
+    "only": [
+     "math/fit",
+     "math/pdf"
+    ],
+    "oracle_only": false,
+    "oracle_prefix": "/Users/rcurrie/.local/root-oracle",
+    "root_features": [
+     "asimage",
+     "asimage_tiff",
+     "builtin_civetweb",
+     "builtin_cling",
+     "builtin_openui5",
+     "check_connection",
+     "clad",
+     "cocoa",
+     "curl",
+     "cxx20",
+     "dataframe",
+     "davix",
+     "fftw3",
+     "fitsio",
+     "gdml",
+     "geom",
+     "gviz",
+     "http",
+     "imt",
+     "libcxx",
+     "mathmore",
+     "opengl",
+     "pyroot",
+     "pythia8",
+     "roofit",
+     "roofit_multiprocess",
+     "root7",
+     "runtime_cxxmodules",
+     "shared",
+     "soversion",
+     "spectrum",
+     "sqlite",
+     "ssl",
+     "thisroot_scripts",
+     "tmva",
+     "tmva-cpu",
+     "tmva-cudnn",
+     "tmva-pymva",
+     "tpython",
+     "vdt",
+     "webgui",
+     "xml",
+     "xrootd"
+    ],
+    "root_python": "/Users/rcurrie/.local/root-oracle/bin/python",
+    "root_version": "6.40.04",
+    "timeout": 300.0,
+    "tolerance": {
+     "atol": 1e-12,
+     "image_threshold": 0.95,
+     "rtol": 1e-06
+    },
+    "tutorials_dir": "/Users/rcurrie/src/xrdroot/rootsrc-6.40/tutorials",
+    "xrdroot_commit": "cd89671",
+    "xrdroot_has_pyroot": true,
+    "xrdroot_has_run": true,
+    "xrdroot_python": "/Users/rcurrie/src/xrdroot/.venv/bin/python",
+    "xrdroot_src": "/tmp/harness/libm-fix/src"
+   },
+   "paths": [
+    "math/fit/ConfidenceIntervals.C",
+    "math/fit/ErrorIntegral.C",
+    "math/fit/FitHistoInFile.C",
+    "math/fit/FittingDemo.C",
+    "math/fit/Ifit.C",
+    "math/fit/NumericalMinimization.py",
+    "math/fit/TestBinomial.C",
+    "math/fit/TwoHistoFit2D.C",
+    "math/fit/combinedFit.C",
+    "math/fit/combinedFit.py",
+    "math/fit/exampleFit3D.C",
+    "math/fit/fit1.C",
+    "math/fit/fit1.py",
+    "math/fit/fit1_py.py",
+    "math/fit/fit2.C",
+    "math/fit/fit2a.C",
+    "math/fit/fit2d.C",
+    "math/fit/fit2dHist.C",
+    "math/fit/fitCircle.C",
+    "math/fit/fitConvolution.C",
+    "math/fit/fitConvolution.py",
+    "math/fit/fitEllipseTGraphDLSF.cxx",
+    "math/fit/fitEllipseTGraphRMM.cxx",
+    "math/fit/fitExclude.C",
+    "math/fit/fitFraction.C",
+    "math/fit/fitLinear.C",
+    "math/fit/fitLinear2.C",
+    "math/fit/fitLinearRobust.C",
+    "math/fit/fitMultiGraph.C",
+    "math/fit/fitNormSum.C",
+    "math/fit/fitNormSum.py",
+    "math/fit/fitcont.C",
+    "math/fit/fithist.C",
+    "math/fit/fitpanel_playback.C",
+    "math/fit/fitslicesy.C",
+    "math/fit/graph2dfit.C",
+    "math/fit/langaus.C",
+    "math/fit/line3Dfit.C",
+    "math/fit/minuit2FitBench.C",
+    "math/fit/minuit2FitBench2D.C",
+    "math/fit/minuit2GausFit.C",
+    "math/fit/multidimfit.C",
+    "math/fit/multifit.C",
+    "math/fit/multifit.py",
+    "math/fit/myfit.C",
+    "math/fit/vectorizedFit.C",
+    "math/pdf/pdf000_Laplace.C",
+    "math/pdf/pdf001_Normal.C",
+    "math/pdf/pdf001_Normal.py",
+    "math/pdf/pdf002_2d_pdf.C",
+    "math/pdf/pdf002_2d_pdf.py",
+    "math/pdf/pdf003_2d_cdf.C",
+    "math/pdf/pdf004_Binomial.C",
+    "math/pdf/pdf005_Beta.C",
+    "math/pdf/pdf006_Gamma_LogNormal.C",
+    "math/pdf/pdf007_multivarGaus.C",
+    "math/pdf/pdf008_BreitWigner.C",
+    "math/pdf/pdf009_Bessel.C",
+    "math/pdf/pdf009_Bessel.py",
+    "math/pdf/pdf010_CrystalBall.C",
+    "math/pdf/pdf011_Student.C",
+    "math/pdf/pdf012_tStudent.C",
+    "math/pdf/pdf012_tStudent.py",
+    "math/pdf/pdf013_Vavilov.C"
+   ],
+   "source_patch_sha256": "48673e455c105abc679d93385f5f769c54f083e7de0536a9fd1e3369ff65214c"
   }
  ]
 }
