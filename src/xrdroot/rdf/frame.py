@@ -615,9 +615,11 @@ class RDataFrame:
         definition = self._columns.get(name)
         if definition is None:
             raise KeyError(f"this frame has no column called {name!r}")
-        declared = (
-            self._graph.source.cxx_type(name) if isinstance(definition, SourceColumn) else None
+        result_type: str | None = getattr(
+            getattr(definition, "compute", None), "_rdf_return_type", None
         )
+        declared = (self._graph.source.cxx_type(name)
+                    if isinstance(definition, SourceColumn) else result_type)
         if declared:
             return declared
         probe = Batch(self._graph.source, (0, 0), 0, None, {})

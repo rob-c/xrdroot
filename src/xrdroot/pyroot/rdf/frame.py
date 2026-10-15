@@ -56,6 +56,13 @@ class RResultPtr:
         self._inner = inner
         self._styled = False
 
+    #: C++'s ``*booked`` reads its value through the macro runtime's cell protocol.
+    _cint_cell = True
+
+    @property
+    def value(self) -> Any:
+        return self.GetValue()
+
     def __repr__(self) -> str:
         return repr(self._inner)
 

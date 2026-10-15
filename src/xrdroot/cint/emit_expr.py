@@ -645,12 +645,15 @@ DEREFERENCED = frozenset({"TTreeReaderValue"})
 
 
 def _holds_value(ctype: CType) -> bool:
-    """Is ``ctype`` a smart pointer to a number or a string?
+    """Whether ``operator*`` reads a booked result or a smart pointer's number or string.
 
     ``std::make_shared<int>(5)`` is the number itself here, but an RNTuple
     model's ``shared_ptr<int>`` is the field's value holder, so reading
     through one is :func:`~.runtime.objects.deref`, which takes either.
     """
+    results = ("RResultPtr", "RDF::RResultPtr", "ROOT::RDF::RResultPtr")
+    if ctype.name in results and not ctype.pointer and not ctype.dims:
+        return True
     held = ctype.args[0] if ctype.is_smart and ctype.args else None
     return isinstance(held, CType) and (held.scalar or held.is_string)
 

@@ -34,7 +34,8 @@ def test_callables_of_no_columns_are_called_an_entry_at_a_time_each_in_turn():
     found = frame.AsNumpy(["b1", "b2"])
     assert found["b1"].tolist() == list(range(100))
     assert found["b2"].tolist() == [float(i * i) for i in range(100)]
-    assert frame.Range(50).Filter("1 == b1 % 2").Count().GetValue() == 25
+    # ROOT 6.40 leaves the counter at 100: the completed AsNumpy no longer requests b2.
+    assert frame.Range(50).Filter("1 == b1 % 2").Count().GetValue() == 0
 
 
 def test_a_callable_of_no_columns_alone_is_still_called_once_an_entry():

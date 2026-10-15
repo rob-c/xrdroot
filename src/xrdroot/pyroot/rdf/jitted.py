@@ -6,8 +6,9 @@ columns it names, so a string may also call ``gRandom->Gaus()``, a
 function a script declared, or be statements ending in a ``return``. What
 the batch evaluator refuses is made that function here: the columns the
 text names become its parameters, of their C++ types, the text its body,
-and :mod:`xrdroot.cint` translates it, to be called once per entry, as
-ROOT calls it.
+and :mod:`xrdroot.cint` translates it. Pure array construction and simple
+reductions reuse the batch evaluator; other bodies are called once per
+entry. Nullary random defines retain their shared generator's entry order.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ __all__ = ["JIT_METHODS", "jitted", "retried", "translatable"]
 JIT_METHODS = {"Filter": 0, "Define": 1, "Redefine": 1}
 
 #: A name a C++ expression uses: a word not after a ``.``, ``->`` or ``::``.
-NAME = re.compile(r"(?<![\w.:>])([A-Za-z_]\w*)")
+NAME = re.compile(r"(?<![\w.>])(?<!::)([A-Za-z_]\w*)")
 
 
 def translatable(why: Exception) -> bool:
@@ -45,6 +46,7 @@ def _body(text: str) -> str:
 def jitted(frame: Any, text: str) -> tuple[Any, list[str]]:
     """The C++ ``text`` as a function of the frame's columns it names, and those columns."""
     from ...cint.execute import run_source
+    from .batched import compiled
 
     used = list(dict.fromkeys(n for n in NAME.findall(text) if frame.HasColumn(n)))
     parameters = ", ".join(f"{frame.GetColumnType(name)} {name}" for name in used)
@@ -56,19 +58,28 @@ def jitted(frame: Any, text: str) -> tuple[Any, list[str]]:
             f"the RDataFrame expression {text!r} is not supported: xrdroot's frame could not "
             f"evaluate it a batch at a time, and as a C++ function of its columns it failed "
             f"too - {why}") from why
-    return made["rdf_jitted"], used
+    function = made["rdf_jitted"]
+    batched = compiled(source, used, function)
+    return (batched, batched.columns) if batched is not None else (function, used)
 
 
 def retried(name: str, frame: Any, given: list[Any], why: Exception) -> list[Any] | None:
     """The method's arguments with its string made a translated function of its columns -
     or ``None`` when the method, the string or the refusal is not one a translation helps."""
-    from .entrywise import ENTRY, entrywise
-
     at = JIT_METHODS.get(name)
     if at is None or at >= len(given) or not isinstance(given[at], str) or not translatable(why):
         return None
     function, used = jitted(frame, given[at])
-    made = entrywise(function, counted=not used)
+    return _applied(name, given, at, function, used)
+
+
+def _applied(name: str, given: list[Any], at: int, function: Any, used: list[str]) -> list[Any]:
+    """Retain nullary random defines; other functions receive their columns in batches."""
+    from .entrywise import ENTRY, entrywise
+
+    if name in ("Define", "Redefine") and getattr(function, "_rdf_nullary", False):
+        return [*given[:at], function, []]
+    made = getattr(function, "batched", None) or entrywise(function, counted=not used)
     if name == "Filter":  # Filter(expression, name): a function's columns come before its name
         return [made, used or [ENTRY], *given[at + 1:at + 2]]
     return [*given[:at], made, used or [ENTRY]]

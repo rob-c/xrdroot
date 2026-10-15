@@ -68,8 +68,10 @@ def _positions(inner: Array | None, outer: Array | None) -> Array | None:
     return np.searchsorted(outer, inner)
 
 
-def _column_of(values: list[Any], count: int) -> Any:
+def _column_of(values: Any, count: int) -> Any:
     """One value an entry, as a column: an array of numbers, or a list of anything else."""
+    if isinstance(values, np.ndarray):
+        return values
     if count and all(isinstance(v, (int, float, np.number, np.bool_)) for v in values):
         return np.asarray(values)
     return list(values)
@@ -99,6 +101,7 @@ class Batch:
         slot: int,
         sample: SampleInfo | None,
         ranges: dict[int, int],
+        required: set[int] | None = None,
     ) -> None:
         self.source = source
         self.start, self.stop = span
@@ -107,6 +110,7 @@ class Batch:
         self.sample = sample
         #: How many entries each ``Range`` has seen, carried from one batch to the next.
         self.ranges = ranges
+        self.required = required
         #: Each named filter's entries seen and passed in this batch.
         self.counts: dict[int, tuple[int, int]] = {}
         self._read: dict[str, Any] = {}
@@ -270,22 +274,40 @@ class Batch:
     def _each_entry(self, definition: Defined, home: Selector, count: int) -> Any:
         """A callable of no columns, called once an entry as ROOT calls it - and the others
         defined with it at this node each in turn for every entry, since what one of them
-        changes the next may read; each is kept for when it is asked for."""
-        waiting = [d for d in definition.group if (id(d), id(home)) not in self._values]
+        changes the next may read. Only definitions requested by the booked results run;
+        each is kept for when it is asked for."""
+        waiting = [d for d in definition.group if (id(d), id(home)) not in self._values
+                   and (self.required is None or id(d) in self.required)]
         made = _called_in_turn(waiting, count)
         for d in waiting:
             self._values[(id(d), id(home))] = _column_of(made[id(d)], count)
         return self._values[(id(definition), id(home))]
 
 
-def _called_in_turn(waiting: list[Defined], count: int) -> dict[int, list[Any]]:
+def _called_in_turn(waiting: list[Defined], count: int) -> dict[int, Any]:
     """Each callable's answers for ``count`` entries, the callables called in turn each entry."""
     calls = [(id(d), cast("Callable[[], Any]", d.compute)) for d in waiting]
+    batched = _batched_calls(calls, count)
+    if batched is not None:
+        return batched
     made: dict[int, list[Any]] = {key: [] for key, _ in calls}
     for _ in range(count):
         for key, call in calls:
             made[key].append(call())
     return made
+
+
+def _batched_calls(
+    calls: list[tuple[int, Callable[[], Any]]], count: int
+) -> dict[int, Any] | None:
+    """A compatible group can draw a batch without changing its per-entry call order."""
+    batcher = getattr(calls[0][1], "_rdf_draw_group", None) if calls else None
+    if batcher is None:
+        return None
+    values = batcher([call for _, call in calls], count)
+    if values is None:
+        return None
+    return {key: value for (key, _), value in zip(calls, values, strict=True)}
 
 
 class Plan:
@@ -308,6 +330,7 @@ class Plan:
         #: Whether the workers are ``EnableImplicitMT``'s: the loop runs here, not in other
         #: processes, when what it would send them cannot be sent.
         self.implicit = False
+        self.required = _required(self.actions, self.leaves())
 
     def __getstate__(self) -> dict[str, Any]:
         return {
@@ -353,13 +376,33 @@ class Plan:
         ]
 
 
+def _required(actions: Sequence[Any], leaves: list[Selector]) -> set[int]:
+    """Only booked results and their filters may trigger a definition's side effects."""
+    pending = [definition for action in actions for definition in action.inputs]
+    for leaf in leaves:
+        for node in chain_of(leaf):
+            if isinstance(node, Filter):
+                pending.extend(node.inputs.values())
+    found: set[int] = set()
+    while pending:
+        definition = pending.pop()
+        key = id(definition)
+        if key in found:
+            continue
+        found.add(key)
+        if isinstance(definition, Defined):
+            pending.extend(definition.inputs.values())
+    return found
+
+
 def run_task(
     plan: Plan, task: tuple[int, int, int], slot: int = 0, ranges: dict[int, int] | None = None
 ) -> tuple[list[Any], list[tuple[int, int]]]:
     """One batch: each result's partial, and each named filter's counts."""
     start, stop, index = task
     sample = plan.source.sample(index) if stop > start else None
-    batch = Batch(plan.source, (start, stop), slot, sample, {} if ranges is None else ranges)
+    batch = Batch(plan.source, (start, stop), slot, sample, {} if ranges is None else ranges,
+                  plan.required)
     for node in plan.filters:
         batch.rows(node)
     parts = [action.partial(batch) for action in plan.actions]
