@@ -125,10 +125,11 @@ def _density(node: Any, ctx: dict[str, float], names: frozenset[str]) -> float:
 
 
 def _global_context(given: dict[str, Any]) -> dict[str, float]:
-    values = {name: float(value) for name, value in given.items() if np.ndim(value) == 0}
-    if len(values) != len(given):
+    # Other scalar types can have their own arithmetic or reject conversion entirely.
+    # In particular, NumPy's float32 operations must not silently become doubles.
+    if not all(type(value) in (float, int, np.float64) for value in given.values()):
         raise _NotScalar
-    return values
+    return {name: float(value) for name, value in given.items()}
 
 
 def _evaluated(nll: Any) -> float:

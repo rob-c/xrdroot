@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from fractions import Fraction
 
 import numpy as np
 import pytest
@@ -169,6 +170,38 @@ def test_array_global_observables_keep_the_general_evaluation_error():
     assert one_entry(nll) is None
     with pytest.raises(TypeError, match="arrays"):
         nll.getVal()
+
+
+@pytest.mark.parametrize("value", [np.float16(1.01), np.float32(1.01),
+                                  np.asarray(1.01, dtype=np.float32), np.asarray(1.01),
+                                  Fraction(101, 100)])
+def test_global_values_keep_their_original_scalar_arithmetic(value):
+    nll, _, _, _ = _counting()
+    nll._global_values["nominal"] = value
+    assert one_entry(nll) is None
+    nll._badness = 0.
+    expected = nll._general_sum()
+    actual = nll.getVal()
+    assert np.asarray(actual).view(np.uint64) == np.asarray(expected).view(np.uint64)
+
+
+@pytest.mark.parametrize("value", ["1.01", np.asarray("1.01"), None])
+def test_global_values_rejected_by_the_model_are_not_silently_converted(value):
+    nll, _, _, _ = _counting()
+    nll._global_values["nominal"] = value
+    assert one_entry(nll) is None
+    nll._badness = 0.
+    with pytest.raises(TypeError):
+        nll._general_sum()
+    with pytest.raises(TypeError):
+        nll.getVal()
+
+
+@pytest.mark.parametrize("value", [1, np.float64(1.01)])
+def test_native_integer_and_double_global_values_keep_the_fast_likelihood(value):
+    nll, _, _, _ = _counting()
+    nll._global_values["nominal"] = value
+    _same(nll)
 
 
 def test_unsupported_real_nodes_use_the_complete_model_evaluator():
