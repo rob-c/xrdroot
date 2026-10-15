@@ -39,6 +39,10 @@ def _log_terms(probs: np.ndarray[Any, Any], weights: np.ndarray[Any, Any]) -> tu
     """
     from ..nanpack import unpack
 
+    if np.all(probs > 0) and np.all(weights != 0):
+        with np.errstate(divide="ignore", invalid="ignore"):
+            terms = -weights * libm.log(probs)
+        return Kahan().extend(terms.ravel().tolist()), 0.0
     probs = np.broadcast_to(probs, weights.shape)
     keep = weights != 0
     probs, weights = probs[keep], weights[keep]
@@ -224,7 +228,7 @@ class RooNLLVar(RooAbsReal):
         """The likelihood's own messages: each event whose density is not positive, or NaN."""
         from .. import evalerrors
 
-        if not evalerrors.active():
+        if not evalerrors.active() or np.all(probs > 0):
             return
         probs = np.broadcast_to(probs, weights.shape)[weights != 0]
         key, origin, servers = _top_node(pdf, nset, self.rng)

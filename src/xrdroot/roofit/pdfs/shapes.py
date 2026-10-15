@@ -8,6 +8,7 @@ fit evaluates in ROOT, and each integral in closed form is RooFit's own.
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -258,6 +259,10 @@ class RooPoisson(_Shape):
         ``fast_exp`` - and ``MathFuncs::poisson`` elsewhere, Cephes' ``lgam`` between."""
         x, mean = self.v("x", ctx), self.v("mean", ctx)
         k = np.asarray(x if self._no_rounding else np.floor(x), dtype=np.float64)
+        if kernels.active() and k.size == 1 and np.size(mean) == 1:
+            single = _poisson_single(float(k.item()), float(np.asarray(mean).item()))
+            if single is not None:
+                return np.asarray(single).reshape(np.broadcast_shapes(k.shape, np.shape(mean)))
         with np.errstate(all="ignore"):
             if kernels.active():
                 log_p = k * kernels.fast_log(mean) - mean - libm.lgamma(k + 1.0)
@@ -316,6 +321,23 @@ class RooPoisson(_Shape):
             value = float(rng.Poisson(self.mean.getVal()))
             if low <= value <= high:
                 return {self.x.GetName(): value}
+
+
+@lru_cache(maxsize=1024)
+def _poisson_log_factorial(count: float) -> float:
+    """An observed count's contribution is constant while Minuit varies its expectation."""
+    return float(libm.lgamma(count + 1.0))
+
+
+def _poisson_single(count: float, mean: float) -> float | None:
+    """Counting studies evaluate one event repeatedly; keep the batch kernel's arithmetic
+    in plain floats, with array evaluation handling invalid points as before."""
+    if not (count >= 0 and mean > 0 and math.isfinite(count) and math.isfinite(mean)):
+        return None
+    exponent = count * kernels.fast_log(mean) - mean - _poisson_log_factorial(count)
+    if not math.isfinite(exponent):
+        return None
+    return float(1.0 / kernels.fast_exp(mean) if count == 0 else kernels.fast_exp(exponent))
 
 
 def _cephes_lgamma(values: Any) -> Any:
