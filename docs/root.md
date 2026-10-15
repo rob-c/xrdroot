@@ -3248,6 +3248,65 @@ programs; the other three are a class template with a value parameter
 ROOT-R defines (`math/r/Functor.C`), and a string written one character at a
 time (`view3ds.C`).
 
+## Measuring tutorial and API parity
+
+The tutorial harness runs ROOT and xrdroot in separate processes and compares
+their stdout, files and images. ROOT is an oracle for these developer tools;
+it is never imported by the xrdroot runtime. Use the matching ROOT 6.40.04
+tutorials and oracle installation:
+
+```console
+python -m tools.tutorials run --tutorials rootsrc-6.40/tutorials --jobs 4 \
+    --oracle-prefix ~/.local/root-oracle --xrdroot-src "$PWD/src" \
+    --python "$PWD/.venv/bin/python" --out /tmp/harness/full \
+    --previous tools/tutorials/baseline-timings.json
+python -m tools.tutorials ratchet /tmp/harness/full/results.json
+```
+
+Every previously passing tutorial must still pass, including tutorials missing
+from the new results. A timeout fails the ratchet too. With `--rerun-timeouts`,
+the ratchet reruns those tutorials one at a time with the original comparison
+settings and records the evidence in `timeout-rechecks/`; only a passing rerun
+excuses the concurrent timeout. The per-tutorial timeout is capped at 300 seconds,
+including ROOT's `longtest` tutorials.
+
+`results.json` retains both subprocess wall times, even for cached oracle runs.
+The Markdown and HTML reports show the slowest 30 tutorials, xrdroot/ROOT ratios,
+and changes relative to the supplied timing snapshot. Timings include process
+startup and should be compared on the same machine under similar load. Preserve
+each run's results to retain performance history. After reviewing a full run:
+
+```console
+python -m tools.tutorials baseline /tmp/harness/full/results.json
+```
+
+This writes `tools/tutorials/baseline.json` (tutorial path to status) and
+`baseline-timings.json` (times, ratios, commit and settings). Update both with the
+fix that changes them. Partial or uncompared runs cannot replace the baseline.
+
+The public API inventory measures classes and method names independently of
+tutorial execution, grouped by their dictionary's ROOT library:
+
+```console
+python -m tools.tutorials api-coverage --oracle-prefix ~/.local/root-oracle \
+    --out /tmp/harness/api
+python -m tools.tutorials api-coverage --inventory /tmp/harness/api/api-oracle.json \
+    --out /tmp/harness/api
+```
+
+The oracle exports its registered classes and inherited public methods after
+loading the libraries listed by `--libraries` (by default the tutorial engines).
+It also enumerates classes declared in ROOT's module headers, including
+header-only RNTuple interfaces. Operators are compared with their Python
+spellings where available, and inherited constructors and destructors are excluded.
+`api-oracle.json` can be reused without ROOT. `api-coverage.json` lists every
+class and method as present, refused, or missing; `api-coverage.md` gives counts
+by library. Unavailable libraries and dictionary errors remain explicit and
+make the command fail. A Python implementation's unconditional refusal is
+recognised without constructing an object or calling its methods. Conditional
+refusals remain present: structural presence requires separate behavioural
+validation against ROOT.
+
 ## Compression
 
 Every algorithm ROOT writes with is read here — and written: zlib, lzma, LZ4,

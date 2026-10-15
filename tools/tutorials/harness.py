@@ -327,7 +327,7 @@ class Harness:
         self._progress("ROOT", path, result, False)
 
     def _timeout(self, tutorial: Tutorial) -> float:
-        return self.settings.timeout * (3 if "longtest" in tutorial.labels else 1)
+        return min(self.settings.timeout, 300.0)
 
     def _xrdroot_one(self, path: str) -> None:
         tutorial = self.tutorials[path]

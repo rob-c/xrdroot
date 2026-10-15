@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import timing
 from .classify import STATUSES
 
 __all__ = ["SCHEMA", "document", "ranked", "markdown", "page", "write"]
@@ -62,7 +63,10 @@ def ranked(records: Iterable[Mapping[str, Any]], statuses: Sequence[str]) -> lis
     return sorted(rows, key=lambda row: (-row["count"], row["reason"]))
 
 
-def document(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]) -> dict[str, Any]:
+def document(
+    records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any],
+    previous: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """The whole run, in the stable schema."""
     return {
         "schema": SCHEMA,
@@ -71,6 +75,8 @@ def document(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]) -> d
         "counts": counts(records),
         "areas": areas(records),
         "reasons": ranked(records, BLOCKING),
+        "blockers": ranked(records, (*BLOCKING, "DIFF")),
+        "timings": timing.rows(records, previous),
         "diffs": ranked(records, ("DIFF",)),
         "skips": ranked(records, ("SKIP",)),
         "oracle_failures": ranked(records, ("ORACLE-FAIL",)),
@@ -114,9 +120,12 @@ def markdown(doc: Mapping[str, Any], top: int = 30) -> str:
         "",
     ]
     lines += _table(STATUSES, [[doc["counts"][status] for status in STATUSES]])
+    lines += ["", "## Slowest 30 tutorials (wall time)", ""]
+    lines += _table(timing.HEADER, map(timing.cells, doc.get("timings", [])[:30]))
     lines += ["", "## By area", ""]
     lines += _table(["area", *STATUSES], [[a, *c.values()] for a, c in doc["areas"].items()])
     sections = (
+        ("All blockers (FAIL, UNSUPPORTED and DIFF)", "blockers"),
         ("Top failure reasons (tutorials each would unblock)", "reasons"),
         ("Output differences", "diffs"),
         ("Why ROOT itself failed", "oracle_failures"),
@@ -124,7 +133,7 @@ def markdown(doc: Mapping[str, Any], top: int = 30) -> str:
     )
     for title, key in sections:
         lines += ["", f"## {title}", ""]
-        lines += _table(["#", "reason", "tutorials", "e.g."], _reason_rows(doc[key], top))
+        lines += _table(["#", "reason", "tutorials", "e.g."], _reason_rows(doc.get(key, []), top))
     return "\n".join(lines) + "\n"
 
 
@@ -202,6 +211,11 @@ def _runtime(side: Any) -> str:
     return f"{side['runtime']:.1f}" if side else ""
 
 
+def _timings_html(doc: Mapping[str, Any]) -> str:
+    rows = ([_e(cell) for cell in timing.cells(row)] for row in doc.get("timings", [])[:30])
+    return _html_table(timing.HEADER, rows)
+
+
 def page(doc: Mapping[str, Any], top: int = 40) -> str:
     """A self-contained page: tiles, the ranked reasons, and every tutorial, filterable."""
     meta = doc["meta"]
@@ -212,7 +226,7 @@ def page(doc: Mapping[str, Any], top: int = 40) -> str:
     area_rows = ([_e(a), *(str(n) for n in c.values())] for a, c in doc["areas"].items())
     tutorial_rows = (
         [_e(r["path"]), _status(r["status"]), _detail(r), _runtime(r.get("oracle")),
-         _runtime(r.get("xrdroot"))]
+         _runtime(r.get("xrdroot")), timing.display(timing.measured(r)["ratio"])]
         for r in doc["tutorials"]
     )  # fmt: skip
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -222,13 +236,16 @@ def page(doc: Mapping[str, Any], top: int = 40) -> str:
 <div class="muted">{_e(doc["generated"])} · ROOT {_e(meta.get("root_version") or "none")} ·
 xrdroot {_e(meta.get("xrdroot_commit") or "?")} · {_e(meta.get("tutorials_dir", ""))}</div>
 <div class="tiles">{tiles}</div>
+<h2>Slowest 30 tutorials (wall time)</h2>{_timings_html(doc)}
+<h2>All blockers</h2>{_reasons_html(doc.get("blockers", doc["reasons"]), top)}
 <h2>Top failure reasons</h2>{_reasons_html(doc["reasons"], top)}
 <h2>Output differences</h2>{_reasons_html(doc["diffs"], top)}
 <h2>By area</h2>{_html_table(["area", *STATUSES], area_rows)}
 <h2>ROOT itself failed</h2>{_reasons_html(doc["oracle_failures"], top)}
 <h2>Skipped</h2>{_reasons_html(doc["skips"], top)}
 <h2>Every tutorial</h2><input id="filter" placeholder="filter: path, status, reason">
-{_html_table(["tutorial", "status", "reason", "ROOT s", "xrdroot s"], tutorial_rows, "tutorials")}
+{_html_table(["tutorial", "status", "reason", "ROOT s", "xrdroot s", "xrdroot/ROOT"],
+             tutorial_rows, "tutorials")}
 <script>{_SCRIPT}</script></body></html>
 """
 

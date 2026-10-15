@@ -4,6 +4,9 @@ python -m tools.tutorials run --tutorials DIR [--only hist/ --jobs N --timeout S
                               [--refresh-oracle] [--oracle-only | --no-oracle]
 python -m tools.tutorials report [--results DIR/results.json]
 python -m tools.tutorials list --tutorials DIR [--only ...]
+python -m tools.tutorials ratchet RESULTS.json [--rerun-timeouts]
+python -m tools.tutorials baseline RESULTS.json
+python -m tools.tutorials api-coverage [--oracle-prefix PREFIX | --inventory JSON]
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from . import report
+from . import api_coverage, ratchet, report
 from .catalog import catalog
 from .compare import Tolerance
 from .environment import cmake_variables, find_oracle, root_config, targets
@@ -43,6 +46,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--oracle-only", action="store_true", help="run ROOT only: fill the cache")
     run.add_argument("--no-oracle", action="store_true", help="run xrdroot only, uncompared")
     run.add_argument("--out", type=Path, help="where results go (CACHE/results)")
+    run.add_argument("--previous", type=Path, help="baseline-timings.json to compare ratios with")
     run.add_argument("--python", default=sys.executable, help="the Python that runs xrdroot")
     run.add_argument(
         "--xrdroot-src", type=Path, default=REPOSITORY / "src", help="put on PYTHONPATH"
@@ -56,6 +60,19 @@ def parser() -> argparse.ArgumentParser:
     again.add_argument(
         "--results", type=Path, default=DEFAULT_CACHE.expanduser() / "results" / "results.json"
     )
+    check = commands.add_parser("ratchet", help="fail if a formerly passing tutorial regresses")
+    check.add_argument("results", type=Path)
+    check.add_argument("--baseline", type=Path, default=ratchet.BASELINE)
+    check.add_argument("--rerun-timeouts", action="store_true", help="recheck timeouts alone")
+    baseline = commands.add_parser("baseline", help="record statuses and timings from a full run")
+    baseline.add_argument("results", type=Path)
+    baseline.add_argument("--output", type=Path, default=ratchet.BASELINE)
+    api = commands.add_parser("api-coverage", help="compare ROOT's public API by library")
+    api.add_argument("--oracle-prefix", type=Path)
+    api.add_argument("--root-python")
+    api.add_argument("--inventory", type=Path, help="reuse a previously exported api-oracle.json")
+    api.add_argument("--libraries", nargs="+", default=list(api_coverage.LIBRARIES))
+    api.add_argument("--out", type=Path, default=Path("/tmp/harness/api"))
     return top
 
 
@@ -116,6 +133,9 @@ def _run(args: argparse.Namespace) -> int:
         "root_version": oracle.version if oracle else None,
         "root_features": sorted(oracle.features) if oracle else [],
         "root_python": oracle.python if oracle else None,
+        "oracle_prefix": oracle.rootsys if oracle else None,
+        "cache": str(settings.cache),
+        "network": settings.network,
         "tutorials_dir": str(settings.tutorials),
         "xrdroot_python": settings.xrdroot_python,
         "xrdroot_src": str(settings.xrdroot_src),
@@ -127,8 +147,10 @@ def _run(args: argparse.Namespace) -> int:
         "timeout": settings.timeout,
         "tolerance": asdict(settings.tolerance),
         "oracle_only": args.oracle_only,
+        "no_oracle": args.no_oracle,
     }
-    doc = report.document(records, meta)
+    previous = json.loads(args.previous.read_text()) if args.previous else None
+    doc = report.document(records, meta, previous)
     for path in report.write(doc, settings.results):
         print(path)
     print(json.dumps(doc["counts"]))
@@ -151,12 +173,42 @@ def _report(args: argparse.Namespace) -> int:
             f"{args.results}: schema {doc.get('schema')!r}, not {report.SCHEMA!r}", file=sys.stderr
         )
         return 2
+    doc = {**report.document(doc["tutorials"], doc["meta"]), **doc}
     for path in report.write(doc, args.results.parent):
         print(path)
     return 0
 
 
+def _ratchet(args: argparse.Namespace) -> int:
+    doc = json.loads(args.results.read_text())
+    baseline = json.loads(args.baseline.read_text())
+    failed = ratchet.regressions(baseline, doc)
+    retries = ratchet.recheck(doc, failed, args.results.parent / "timeout-rechecks") \
+        if args.rerun_timeouts else {}
+    failures = 0
+    for record in failed:
+        path = record["path"]
+        if retries.get(path, {}).get("status") == "PASS":
+            print(f"{path}: timeout passed when rerun alone")
+        else:
+            failures += 1
+            print(f"{path}: PASS -> {record['status']}: {record.get('reason', '')}")
+    print(f"{failures} tutorial regressions")
+    return int(bool(failures))
+
+
+def _baseline(args: argparse.Namespace) -> int:
+    ratchet.write_baseline(json.loads(args.results.read_text()), args.output)
+    print(args.output)
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
-    commands = {"run": _run, "list": _list, "report": _report}
-    return commands[args.command](args)
+    commands = {"run": _run, "list": _list, "report": _report,
+                "ratchet": _ratchet, "baseline": _baseline, "api-coverage": api_coverage.run}
+    try:
+        return commands[args.command](args)
+    except (OSError, ValueError) as why:
+        print(str(why), file=sys.stderr)
+        return 2
