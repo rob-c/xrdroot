@@ -25,6 +25,7 @@ from typing import Any
 
 import numpy as np
 
+from ...rdf import kernels
 from ...rdf import vecops as _batched
 from ...tree import Jagged
 from ..stl import _Template, _Vector, _vector_class, cpp_name
@@ -130,8 +131,39 @@ class _OneEntry:
         return self
 
 
+#: These scalars convert without a user-defined integer coercion.
+_CHOICE_INTS = (int, bool, np.int8, np.int16, np.int32, np.int64, np.longlong,
+                np.uint8, np.uint16, np.uint32, np.uint64, np.ulonglong)
+
+#: Replacing the batched callback must keep using the general evaluator.
+_COMBINATIONS_FUNCTION = _batched.Combinations
+
+
+def _collection(value: Any) -> bool:
+    kind = type(value)
+    if type(kind) is not type:
+        return False
+    return kind in (list, tuple, np.ndarray) or _Vector in kind.__mro__
+
+
+class _CombinationsEntry(_OneEntry):
+    """A single collection can use the same integer table without a batch of one."""
+
+    def __call__(self, *values: Any) -> Any:
+        if len(values) == 2 and self._function is _COMBINATIONS_FUNCTION:
+            first, second = values
+            if type(type(second)) is type and type(second) in _CHOICE_INTS and _collection(first):
+                content = np.asarray(first.data() if isinstance(first, _Vector) else first)
+                count, width = len(content), int(second)
+                table = kernels._table(count, width)
+                return tuple(_made(table[:, i]) for i in range(width))
+        return super().__call__(*values)
+
+
 def _one(function: Callable[..., Any]) -> _OneEntry:
     """A batched function as a function of one entry's values."""
+    if function is _COMBINATIONS_FUNCTION:
+        return _CombinationsEntry(function)
     return _OneEntry(function)
 
 

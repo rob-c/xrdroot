@@ -389,14 +389,14 @@
    "xrdroot_seconds": null
   },
   "analysis/dataframe/df103_NanoAODHiggsAnalysis.C": {
-   "ratio": 2.115820205068897,
+   "ratio": 1.9877367671325612,
    "root_seconds": 141.806,
-   "xrdroot_seconds": 300.036
+   "xrdroot_seconds": 281.873
   },
   "analysis/dataframe/df103_NanoAODHiggsAnalysis.py": {
-   "ratio": 2.3747764005635497,
+   "ratio": 2.218858336895094,
    "root_seconds": 126.342,
-   "xrdroot_seconds": 300.034
+   "xrdroot_seconds": 280.335
   },
   "analysis/dataframe/df104_HiggsToTwoPhotons.py": {
    "ratio": 0.3467885223667824,
@@ -1074,9 +1074,9 @@
    "xrdroot_seconds": null
   },
   "hist/histv7/hist103_NanoAODHiggsAnalysis.C": {
-   "ratio": 3.8202596335340715,
+   "ratio": 3.555117554154522,
    "root_seconds": 77.879,
-   "xrdroot_seconds": 297.518
+   "xrdroot_seconds": 276.869
   },
   "hsimple.C": {
    "ratio": 1.1191218809980807,
@@ -3034,59 +3034,59 @@
    "xrdroot_seconds": null
   },
   "math/vecops/vo001_AdoptOrOwnMemory.C": {
-   "ratio": 0.29589826258284074,
+   "ratio": 0.33440802435966327,
    "root_seconds": 5.583,
-   "xrdroot_seconds": 1.652
+   "xrdroot_seconds": 1.867
   },
   "math/vecops/vo001_AdoptOrOwnMemory.py": {
-   "ratio": 0.1826837730977164,
+   "ratio": 0.1858307108851771,
    "root_seconds": 12.393,
-   "xrdroot_seconds": 2.264
+   "xrdroot_seconds": 2.303
   },
   "math/vecops/vo002_VectorCalculations.C": {
-   "ratio": 0.28917329643721895,
+   "ratio": 0.3237634036665514,
    "root_seconds": 5.782,
-   "xrdroot_seconds": 1.672
+   "xrdroot_seconds": 1.872
   },
   "math/vecops/vo003_LogicalOperations.C": {
-   "ratio": 0.29095270733379025,
+   "ratio": 0.3207676490747087,
    "root_seconds": 5.836,
-   "xrdroot_seconds": 1.698
+   "xrdroot_seconds": 1.872
   },
   "math/vecops/vo004_SortAndSelect.C": {
-   "ratio": 0.2925272879932829,
+   "ratio": 0.31435768261964736,
    "root_seconds": 5.955,
-   "xrdroot_seconds": 1.742
+   "xrdroot_seconds": 1.872
   },
   "math/vecops/vo004_SortAndSelect.py": {
-   "ratio": 0.17318888643230892,
+   "ratio": 0.1694303191097354,
    "root_seconds": 13.569,
-   "xrdroot_seconds": 2.35
+   "xrdroot_seconds": 2.299
   },
   "math/vecops/vo005_Combinations.C": {
-   "ratio": 0.3088781575037147,
+   "ratio": 0.35364041604754826,
    "root_seconds": 5.384,
-   "xrdroot_seconds": 1.663
+   "xrdroot_seconds": 1.904
   },
   "math/vecops/vo005_Combinations.py": {
-   "ratio": 0.16434262948207173,
+   "ratio": 0.16384462151394422,
    "root_seconds": 14.056,
-   "xrdroot_seconds": 2.31
+   "xrdroot_seconds": 2.303
   },
   "math/vecops/vo006_IndexManipulation.C": {
-   "ratio": 0.30870152421377584,
+   "ratio": 0.3658113061933243,
    "root_seconds": 5.183,
-   "xrdroot_seconds": 1.6
+   "xrdroot_seconds": 1.896
   },
   "math/vecops/vo007_PhysicsHelpers.C": {
-   "ratio": 0.6161793372319688,
+   "ratio": 0.37056530214424954,
    "root_seconds": 5.13,
-   "xrdroot_seconds": 3.161
+   "xrdroot_seconds": 1.901
   },
   "math/vecops/vo008_numpyInterface.py": {
-   "ratio": 0.16430817610062892,
+   "ratio": 0.16409376786735275,
    "root_seconds": 13.992,
-   "xrdroot_seconds": 2.299
+   "xrdroot_seconds": 2.296
   },
   "roofit/histfactory/ModifyInterpolation.C": {
    "ratio": null,
@@ -9178,6 +9178,103 @@
     "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
    },
    "source_tree_sha256": "c17f5824563d8ad7a92901d4a135fc8e634ddd5d256ecb5ef6db6b53c046a767"
+  },
+  {
+   "generated": "2026-10-16T16:13:05+00:00",
+   "meta": {
+    "cache": "/Users/rcurrie/.cache/xrdroot-tutorials",
+    "composite": true,
+    "jobs": 4,
+    "network": false,
+    "no_oracle": false,
+    "only": [
+     "math/vecops/vo001_AdoptOrOwnMemory.C",
+     "math/vecops/vo001_AdoptOrOwnMemory.py",
+     "math/vecops/vo002_VectorCalculations.C",
+     "math/vecops/vo003_LogicalOperations.C",
+     "math/vecops/vo004_SortAndSelect.C",
+     "math/vecops/vo004_SortAndSelect.py",
+     "math/vecops/vo005_Combinations.C",
+     "math/vecops/vo005_Combinations.py",
+     "math/vecops/vo006_IndexManipulation.C",
+     "math/vecops/vo007_PhysicsHelpers.C",
+     "math/vecops/vo008_numpyInterface.py",
+     "analysis/dataframe/df103_NanoAODHiggsAnalysis.C",
+     "analysis/dataframe/df103_NanoAODHiggsAnalysis.py",
+     "hist/histv7/hist103_NanoAODHiggsAnalysis.C"
+    ],
+    "oracle_only": false,
+    "oracle_prefix": "/Users/rcurrie/.local/root-oracle",
+    "output_comparison": "/tmp/harness/combinations-output-comparison.json",
+    "root_features": [
+     "asimage",
+     "asimage_tiff",
+     "builtin_civetweb",
+     "builtin_cling",
+     "builtin_openui5",
+     "check_connection",
+     "clad",
+     "cocoa",
+     "curl",
+     "cxx20",
+     "dataframe",
+     "davix",
+     "fftw3",
+     "fitsio",
+     "gdml",
+     "geom",
+     "gviz",
+     "http",
+     "imt",
+     "libcxx",
+     "mathmore",
+     "opengl",
+     "pyroot",
+     "pythia8",
+     "roofit",
+     "roofit_multiprocess",
+     "root7",
+     "runtime_cxxmodules",
+     "shared",
+     "soversion",
+     "spectrum",
+     "sqlite",
+     "ssl",
+     "thisroot_scripts",
+     "tmva",
+     "tmva-cpu",
+     "tmva-cudnn",
+     "tmva-pymva",
+     "tpython",
+     "vdt",
+     "webgui",
+     "xml",
+     "xrootd"
+    ],
+    "root_python": "/Users/rcurrie/.local/root-oracle/bin/python",
+    "root_version": "6.40.04",
+    "source_results": [
+     "/tmp/harness/combinations-final-fast/results.json",
+     "/tmp/harness/combinations-final-slow-0/results.json",
+     "/tmp/harness/combinations-final-slow-1/results.json",
+     "/tmp/harness/combinations-final-slow-2/results.json"
+    ],
+    "source_tree_sha256": "489acbf79f67a07fceb344df804d3b604b58e3a26d5fa529b3d4156075fddd5b",
+    "timeout": 300.0,
+    "tolerance": {
+     "atol": 1e-12,
+     "image_threshold": 0.95,
+     "rtol": 1e-06
+    },
+    "tutorials_dir": "/Users/rcurrie/src/xrdroot/rootsrc-6.40/tutorials",
+    "validation_base_commit": "cf3c92ecc8d4c45d5b7351a956c1991cf7955b6f",
+    "xrdroot_commit": "cf3c92e",
+    "xrdroot_has_pyroot": true,
+    "xrdroot_has_run": true,
+    "xrdroot_python": "/Users/rcurrie/src/xrdroot/.venv/bin/python",
+    "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
+   },
+   "source_tree_sha256": "489acbf79f67a07fceb344df804d3b604b58e3a26d5fa529b3d4156075fddd5b"
   }
  ]
 }
