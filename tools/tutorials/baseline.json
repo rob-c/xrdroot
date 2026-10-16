@@ -200,7 +200,7 @@
  "hist/histv7/hist005_RHist_convert_TH1.C": "PASS",
  "hist/histv7/hist101_RDataFrame_Hist.C": "PASS",
  "hist/histv7/hist102_NanoAODDimuonAnalysis.C": "ORACLE-FAIL",
- "hist/histv7/hist103_NanoAODHiggsAnalysis.C": "FAIL",
+ "hist/histv7/hist103_NanoAODHiggsAnalysis.C": "PASS",
  "hsimple.C": "PASS",
  "hsimple.py": "DIFF",
  "http/custom.C": "SKIP",

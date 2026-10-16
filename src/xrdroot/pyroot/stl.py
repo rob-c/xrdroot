@@ -106,6 +106,9 @@ CPP_NAMES: dict[str, str] = {
     "bool": "bool",
 }
 
+#: Canonical numeric names avoid rebuilding NumPy dtype descriptions per event.
+_DTYPE_NAMES = {np.dtype(name).num: name for name in CPP_NAMES}
+
 #: What a Python type given as an element type stands for, as cppyy takes it.
 PYTHON_TYPES: dict[type, str] = {float: "float64", int: "int32", bool: "bool"}
 
@@ -227,7 +230,8 @@ def _class_type(given: type) -> Any:
 def cpp_name(kind: Any) -> str:
     """How C++ spells an element type: ``float``, ``string``, ``vector<int>``."""
     if isinstance(kind, np.dtype):
-        return CPP_NAMES[kind.name]
+        name = _DTYPE_NAMES.get(kind.num)
+        return CPP_NAMES[name if name is not None else kind.name]
     return str(kind.__cpp_name__)
 
 
