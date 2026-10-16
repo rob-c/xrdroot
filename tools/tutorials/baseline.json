@@ -43,7 +43,7 @@
  "analysis/dataframe/df026_AsNumpyArrays.py": "SKIP",
  "analysis/dataframe/df027_SQliteDependencyOverVersion.C": "SKIP",
  "analysis/dataframe/df028_SQliteIPLocation.C": "FAIL",
- "analysis/dataframe/df029_SQlitePlatformDistribution.C": "FAIL",
+ "analysis/dataframe/df029_SQlitePlatformDistribution.C": "PASS",
  "analysis/dataframe/df030_SQliteVersionsOfROOT.C": "PASS",
  "analysis/dataframe/df031_Stats.C": "PASS",
  "analysis/dataframe/df031_Stats.py": "PASS",

@@ -42,6 +42,9 @@ class Plan:
         self.factorials = [log_gamma(count + 1.) for count in self.counts]
         with binned_likelihood():
             self.predict, self.source = Program(nll.columns, len(weights)).build(root)
+        from .hfconstraints import prepare
+
+        self.constraints = prepare(nll)
 
     def total(self) -> float | None:
         mus = self.predict()
@@ -131,3 +134,10 @@ def within(minimizer: Any, run: Any) -> Iterator[None]:
 def total(nll: Any) -> float | None:
     plan = _ACTIVE.get()
     return plan.total() if plan is not None and plan.nll is nll else None
+
+
+def constraints(nll: Any) -> float | None:
+    plan = _ACTIVE.get()
+    if plan is None or plan.nll is not nll or plan.constraints is None:
+        return None
+    return plan.constraints.total()

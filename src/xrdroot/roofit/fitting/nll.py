@@ -160,8 +160,12 @@ class RooNLLVar(RooAbsReal):
     def _constraint_sum(self) -> float:
         """``RooConstraintSum``: ``-log`` of each constraint, summed on its own - the kernels'
         values, as the likelihood's evaluator computes them - before it joins the rest."""
+        from .hffit import constraints
         from .scalar import constraint_sum
 
+        bound = constraints(self)
+        if bound is not None:
+            return bound
         fast = constraint_sum(self, self._constraint_value)
         return self._general_constraints() if fast is None else fast
 
