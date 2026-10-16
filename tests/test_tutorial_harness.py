@@ -269,6 +269,43 @@ def test_a_stopwatchs_times_are_masked_and_the_rest_of_its_line_kept():
     assert lines == ["Fumili, npass=0 : RT=<time>, Cpu=<time>", "RT= 1 s"]
 
 
+@pytest.mark.parametrize("duration", ["0", "82.593169", "5e+2"])
+def test_split_execution_timings_keep_the_benchmark_results(duration):
+    """The Python Bayesian tutorial prints its execution time on the following line."""
+    text = (
+        f"Algorithm 2 was performed in :\n{duration} seconds. \ninterval = [1.2, 2.3]"
+    )
+    assert compare.normalise(text) == [
+        "Algorithm 2 was performed in :", "<time> seconds.", "interval = [1.2, 2.3]"
+    ]
+
+
+@pytest.mark.parametrize("text", [
+    "82.593169 seconds.",
+    "Decay lifetime:\n82.593169 seconds.",
+    "Algorithm was performed in :\ninterval = 12\n82.593169 seconds.",
+    "Algorithm was performed in :\n-82.593169 seconds.",
+    "Algorithm was performed in :\n82.593169 counts.",
+])
+def test_physical_values_and_other_lines_are_not_masked(text):
+    assert "<time>" not in "\n".join(compare.normalise(text))
+
+
+def test_different_intervals_still_fail_after_execution_times_are_normalized():
+    expected = "Algorithm was performed in :\n82.593169 seconds.\ninterval = [1.2, 2.3]"
+    actual = "Algorithm was performed in :\n103.591667 seconds.\ninterval = [1.2, 2.4]"
+    assert compare.compare_streams(expected, actual, ({}, {}), TOLERANCE) is not None
+    assert compare.compare_streams(
+        expected, actual.replace("2.4", "2.3"), ({}, {}), TOLERANCE
+    ) is None
+
+
+def test_a_changed_benchmark_title_is_still_a_difference():
+    expected = "Algorithm 2 was performed in :\n82.593169 seconds."
+    actual = "Algorithm 3 was performed in :\n103.591667 seconds."
+    assert compare.compare_streams(expected, actual, ({}, {}), TOLERANCE) is not None
+
+
 def test_numbers_are_equal_within_the_relative_tolerance():
     assert compare.same_line("mean = 1.0000001", "mean = 1.0", TOLERANCE)
     assert not compare.same_line("mean = 1.1", "mean = 1.0", TOLERANCE)

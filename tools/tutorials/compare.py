@@ -67,6 +67,12 @@ DROPPED = re.compile(
     r"|.*\belapsed\b|.*\btook \d|.*\bruntime\b.*\d)"
 )
 
+#: A tutorial's execution duration on the line after its benchmark announcement.
+SPLIT_TIMING = re.compile(
+    r"(?im)(\bwas performed in[ \t]*:[ \t]*\r?\n[ \t]*)"
+    r"\d+(?:\.\d+)?(?:[eE][-+]?\d+)?(?=[ \t]+seconds\.[ \t]*$)"
+)
+
 #: A number: integer, decimal or scientific, NaN or infinity.
 NUMBER = re.compile(r"[-+]?(?:\d+\.?\d*(?:[eE][-+]?\d+)?|\.\d+(?:[eE][-+]?\d+)?|nan|inf)")
 
@@ -78,7 +84,7 @@ def normalise(text: str, paths: Mapping[str, str] = ()) -> list[str]:  # type: i
     the tutorials) to the placeholder each becomes.
     """
     lines = []
-    for line in text.splitlines():
+    for line in SPLIT_TIMING.sub(r"\1<time>", text).splitlines():
         for path, placeholder in sorted(dict(paths).items(), key=lambda item: -len(item[0])):
             if path:
                 line = line.replace(path, placeholder)
