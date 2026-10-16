@@ -1494,9 +1494,9 @@
    "xrdroot_seconds": 34.786
   },
   "io/tree/mt_readNtuplesFillHistosAndFit.C": {
-   "ratio": 8.569910594418578,
+   "ratio": 0.2409666085863635,
    "root_seconds": 35.009,
-   "xrdroot_seconds": 300.024
+   "xrdroot_seconds": 8.436
   },
   "io/tree/mtbb_fillNtuples.C": {
    "ratio": 1.3883234714003945,
@@ -8812,6 +8812,82 @@
     "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
    },
    "source_tree_sha256": "a4eb136a5a881f22d2204f8d757ffe6f875c4b2b252ab837cabb19f9e6a61305"
+  },
+  {
+   "generated": "2026-10-16T13:02:08+00:00",
+   "meta": {
+    "cache": "/Users/rcurrie/.cache/xrdroot-tutorials",
+    "jobs": 1,
+    "network": false,
+    "no_oracle": false,
+    "only": [
+     "io/tree/mt_readNtuplesFillHistosAndFit.C"
+    ],
+    "oracle_only": false,
+    "oracle_prefix": "/Users/rcurrie/.local/root-oracle",
+    "root_features": [
+     "asimage",
+     "asimage_tiff",
+     "builtin_civetweb",
+     "builtin_cling",
+     "builtin_openui5",
+     "check_connection",
+     "clad",
+     "cocoa",
+     "curl",
+     "cxx20",
+     "dataframe",
+     "davix",
+     "fftw3",
+     "fitsio",
+     "gdml",
+     "geom",
+     "gviz",
+     "http",
+     "imt",
+     "libcxx",
+     "mathmore",
+     "opengl",
+     "pyroot",
+     "pythia8",
+     "roofit",
+     "roofit_multiprocess",
+     "root7",
+     "runtime_cxxmodules",
+     "shared",
+     "soversion",
+     "spectrum",
+     "sqlite",
+     "ssl",
+     "thisroot_scripts",
+     "tmva",
+     "tmva-cpu",
+     "tmva-cudnn",
+     "tmva-pymva",
+     "tpython",
+     "vdt",
+     "webgui",
+     "xml",
+     "xrootd"
+    ],
+    "root_python": "/Users/rcurrie/.local/root-oracle/bin/python",
+    "root_version": "6.40.04",
+    "source_tree_sha256": "9221db64b3542c4fda8ab5d8fa1cebe7b3f87bd61cd51b87b19e4ab258d683a4",
+    "timeout": 300.0,
+    "tolerance": {
+     "atol": 1e-12,
+     "image_threshold": 0.95,
+     "rtol": 1e-06
+    },
+    "tutorials_dir": "/Users/rcurrie/src/xrdroot/rootsrc-6.40/tutorials",
+    "validation_base_commit": "9624c1289e02c823010b387c5c35bfca3ef0b3df",
+    "xrdroot_commit": "9624c12",
+    "xrdroot_has_pyroot": true,
+    "xrdroot_has_run": true,
+    "xrdroot_python": "/Users/rcurrie/src/xrdroot/.venv/bin/python",
+    "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
+   },
+   "source_tree_sha256": "9221db64b3542c4fda8ab5d8fa1cebe7b3f87bd61cd51b87b19e4ab258d683a4"
   }
  ]
 }

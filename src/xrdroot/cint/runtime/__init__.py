@@ -22,6 +22,7 @@ from .cmath import *  # noqa: F403
 from .cmath import __all__ as _cmath
 from .istreams import *  # noqa: F403
 from .istreams import __all__ as _istreams
+from .ntuplefill import fill_ntuple_histogram
 from .objects import *  # noqa: F403
 from .objects import __all__ as _objects
 from .printf import *  # noqa: F403
@@ -40,6 +41,7 @@ from .units import __all__ as _units
 
 __all__ = [
     "ROOT",
+    "fill_ntuple_histogram",
     "RootProxy",
     *_arith,
     *_cells,

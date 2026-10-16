@@ -284,7 +284,7 @@
  "io/tree/mp_readNtuplesFillHistosAndFit.C": "UNSUPPORTED",
  "io/tree/mt_fillNtupleFromMultipleThreads.C": "UNSUPPORTED",
  "io/tree/mt_fillNtuples.C": "DIFF",
- "io/tree/mt_readNtuplesFillHistosAndFit.C": "FAIL",
+ "io/tree/mt_readNtuplesFillHistosAndFit.C": "UNSUPPORTED",
  "io/tree/mtbb_fillNtuples.C": "UNSUPPORTED",
  "io/tree/ntuple1.py": "PASS",
  "io/tree/printSizes.C": "PASS",

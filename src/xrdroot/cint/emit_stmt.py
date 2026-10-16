@@ -66,6 +66,7 @@ from .nodes import (
     VarDecl,
     While,
 )
+from .tree_loops import NtupleFill, ntuple_fill
 
 __all__ = ["StmtEmitter", "Loop", "STOPS"]
 
@@ -603,8 +604,24 @@ class StmtEmitter(CallEmitter):
             assert turns is not None
             self._all_at_once(node, draw, turns)  # type: ignore[arg-type]
             return
+        fill = None if turns is None else ntuple_fill(node.body, node.decl.name)
+        if fill is not None and node.decl.binding is None:
+            self._ntuple_fill(node, fill)
+            return
+        self._range_loop(node)
+
+    def _ntuple_fill(self, node: RangeFor, fill: NtupleFill) -> None:
+        sequence = self.fresh("entries")
+        self.out.line(f"{sequence} = {self.value(node.iterable)}", node.where)
+        arguments = (self.value(fill.tree), self.value(fill.histogram), sequence, str(fill.column))
+        self.out.line(f"if not fill_ntuple_histogram({', '.join(arguments)}):", node.where)
+        with self.out.indented():
+            self._range_loop(node, sequence)
+
+    def _range_loop(self, node: RangeFor, sequence: str | None = None) -> None:
         with self.scoped():
-            iterable, element = self._iterable(node.iterable)
+            iterable, element = (self._iterable(node.iterable) if sequence is None
+                                 else (f"iterate({sequence})", None))
             decl = node.decl
             if decl.binding is not None:
                 names = [self.declare(name, "local").py for name in decl.binding]
