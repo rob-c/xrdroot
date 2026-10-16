@@ -10,6 +10,7 @@ is integrated whole, by the adaptive cubature.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -17,6 +18,7 @@ import pytest
 from refmachine import roots
 from xrdroot.roofit.collections import RooArgSet
 from xrdroot.roofit.functions import RooFormulaVar, RooPolyVar, RooProduct
+from xrdroot.roofit.messages import service
 from xrdroot.roofit.partint import groups
 from xrdroot.roofit.pdfs.basic import ref
 from xrdroot.roofit.pdfs.realsum import RooRealSumPdf
@@ -24,6 +26,14 @@ from xrdroot.roofit.selection import selecting
 from xrdroot.roofit.variables import RooRealVar
 
 LINE = "[#1] INFO:NumericIntegration -- RooRealIntegral::init({}) using numeric integrator {}"
+
+
+@pytest.fixture(autouse=True)
+def _messages() -> Iterator[None]:
+    """A preceding test's progress dots must not change an integral's announcement."""
+    service().reset()
+    yield
+    service().reset()
 
 
 def model() -> tuple[RooRealVar, RooRealVar, RooRealVar, RooPolyVar, RooFormulaVar]:
