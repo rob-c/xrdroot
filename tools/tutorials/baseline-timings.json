@@ -3649,14 +3649,14 @@
    "xrdroot_seconds": 4.83
   },
   "roofit/roofit/rf506_msgservice.C": {
-   "ratio": 0.33386923901393356,
+   "ratio": 0.14415862808145766,
    "root_seconds": 13.062,
-   "xrdroot_seconds": 4.361
+   "xrdroot_seconds": 1.883
   },
   "roofit/roofit/rf506_msgservice.py": {
-   "ratio": 0.11194094659140251,
+   "ratio": 0.05971920683166884,
    "root_seconds": 34.545,
-   "xrdroot_seconds": 3.867
+   "xrdroot_seconds": 2.063
   },
   "roofit/roofit/rf508_listsetmanip.C": {
    "ratio": 0.289626432504837,
@@ -3744,54 +3744,54 @@
    "xrdroot_seconds": 12.071
   },
   "roofit/roofit/rf604_constraints.C": {
-   "ratio": 0.32484781405644714,
+   "ratio": 0.11258685359404783,
    "root_seconds": 16.263,
-   "xrdroot_seconds": 5.283
+   "xrdroot_seconds": 1.831
   },
   "roofit/roofit/rf604_constraints.py": {
-   "ratio": 0.13864318129374664,
+   "ratio": 0.07784016614106608,
    "root_seconds": 26.002,
-   "xrdroot_seconds": 3.605
+   "xrdroot_seconds": 2.024
   },
   "roofit/roofit/rf605_profilell.C": {
-   "ratio": 1.0275738940686372,
+   "ratio": 0.32810950208292006,
    "root_seconds": 15.123,
-   "xrdroot_seconds": 15.54
+   "xrdroot_seconds": 4.962
   },
   "roofit/roofit/rf605_profilell.py": {
-   "ratio": 0.7891937885556265,
+   "ratio": 0.18731576868143557,
    "root_seconds": 32.907,
-   "xrdroot_seconds": 25.97
+   "xrdroot_seconds": 6.164
   },
   "roofit/roofit/rf606_nllerrorhandling.C": {
-   "ratio": 0.4572414299346693,
+   "ratio": 0.15906922117008002,
    "root_seconds": 13.623,
-   "xrdroot_seconds": 6.229
+   "xrdroot_seconds": 2.167
   },
   "roofit/roofit/rf606_nllerrorhandling.py": {
-   "ratio": 0.589265357821406,
+   "ratio": 0.11177960734642178,
    "root_seconds": 31.58,
-   "xrdroot_seconds": 18.609
+   "xrdroot_seconds": 3.53
   },
   "roofit/roofit/rf607_fitresult.C": {
-   "ratio": 0.28224906119963467,
+   "ratio": 0.10022328224906121,
    "root_seconds": 19.706,
-   "xrdroot_seconds": 5.562
+   "xrdroot_seconds": 1.975
   },
   "roofit/roofit/rf607_fitresult.py": {
-   "ratio": 0.4320720720720721,
+   "ratio": 0.060990990990991,
    "root_seconds": 33.3,
-   "xrdroot_seconds": 14.388
+   "xrdroot_seconds": 2.031
   },
   "roofit/roofit/rf608_fitresultaspdf.C": {
-   "ratio": 0.7470058172693055,
+   "ratio": 0.2238508041519334,
    "root_seconds": 17.534,
-   "xrdroot_seconds": 13.098
+   "xrdroot_seconds": 3.925
   },
   "roofit/roofit/rf608_fitresultaspdf.py": {
-   "ratio": 0.9086321738545382,
+   "ratio": 0.23149207203570385,
    "root_seconds": 44.589,
-   "xrdroot_seconds": 40.515
+   "xrdroot_seconds": 10.322
   },
   "roofit/roofit/rf610_visualerror.C": {
    "ratio": 1.7574848572252668,
@@ -3829,14 +3829,14 @@
    "xrdroot_seconds": 6.492
   },
   "roofit/roofit/rf614_binned_fit_problems.C": {
-   "ratio": 0.29649877864371293,
+   "ratio": 0.09520763056880308,
    "root_seconds": 17.194,
-   "xrdroot_seconds": 5.098
+   "xrdroot_seconds": 1.637
   },
   "roofit/roofit/rf614_binned_fit_problems.py": {
-   "ratio": 0.5388145612943372,
+   "ratio": 0.1459240821406347,
    "root_seconds": 12.856,
-   "xrdroot_seconds": 6.927
+   "xrdroot_seconds": 1.876
   },
   "roofit/roofit/rf615_simulation_based_inference.py": {
    "ratio": null,
@@ -4144,14 +4144,14 @@
    "xrdroot_seconds": 94.734
   },
   "roofit/roostats/StandardBayesianNumericalDemo.C": {
-   "ratio": 3.2447494214089505,
+   "ratio": 3.244673717907123,
    "root_seconds": 92.466,
-   "xrdroot_seconds": 300.029
+   "xrdroot_seconds": 300.022
   },
   "roofit/roostats/StandardBayesianNumericalDemo.py": {
-   "ratio": 1.8787258290752429,
+   "ratio": 1.8787133052800322,
    "root_seconds": 159.696,
-   "xrdroot_seconds": 300.025
+   "xrdroot_seconds": 300.023
   },
   "roofit/roostats/StandardFeldmanCousinsDemo.C": {
    "ratio": 4.756411313597757,
@@ -7030,6 +7030,99 @@
     "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
    },
    "source_tree_sha256": "606b5f64d1fcccfe7dc6cc7fda5ef79912692175c0f9fc4eeb0bf96f2044490c"
+  },
+  {
+   "generated": "2026-10-16T01:32:45+00:00",
+   "meta": {
+    "cache": "/Users/rcurrie/.cache/xrdroot-tutorials",
+    "gates": "/tmp/harness/logging-gates/gates.json",
+    "jobs": 4,
+    "network": false,
+    "no_oracle": false,
+    "only": [
+     "roofit/roofit/rf506_msgservice.C",
+     "roofit/roofit/rf506_msgservice.py",
+     "roofit/roofit/rf604_constraints.py",
+     "roofit/roofit/rf604_constraints.C",
+     "roofit/roofit/rf605_profilell.py",
+     "roofit/roofit/rf605_profilell.C",
+     "roofit/roofit/rf606_nllerrorhandling.C",
+     "roofit/roofit/rf606_nllerrorhandling.py",
+     "roofit/roofit/rf607_fitresult.py",
+     "roofit/roofit/rf607_fitresult.C",
+     "roofit/roofit/rf608_fitresultaspdf.py",
+     "roofit/roofit/rf608_fitresultaspdf.C",
+     "roofit/roofit/rf614_binned_fit_problems.py",
+     "roofit/roofit/rf614_binned_fit_problems.C",
+     "roofit/roofit/rf615_simulation_based_inference.py",
+     "roofit/roofit/rf617_simulation_based_inference_multidimensional.py",
+     "roofit/roostats/StandardBayesianNumericalDemo.C",
+     "roofit/roostats/StandardBayesianNumericalDemo.py"
+    ],
+    "oracle_only": false,
+    "oracle_prefix": "/Users/rcurrie/.local/root-oracle",
+    "root_features": [
+     "asimage",
+     "asimage_tiff",
+     "builtin_civetweb",
+     "builtin_cling",
+     "builtin_openui5",
+     "check_connection",
+     "clad",
+     "cocoa",
+     "curl",
+     "cxx20",
+     "dataframe",
+     "davix",
+     "fftw3",
+     "fitsio",
+     "gdml",
+     "geom",
+     "gviz",
+     "http",
+     "imt",
+     "libcxx",
+     "mathmore",
+     "opengl",
+     "pyroot",
+     "pythia8",
+     "roofit",
+     "roofit_multiprocess",
+     "root7",
+     "runtime_cxxmodules",
+     "shared",
+     "soversion",
+     "spectrum",
+     "sqlite",
+     "ssl",
+     "thisroot_scripts",
+     "tmva",
+     "tmva-cpu",
+     "tmva-cudnn",
+     "tmva-pymva",
+     "tpython",
+     "vdt",
+     "webgui",
+     "xml",
+     "xrootd"
+    ],
+    "root_python": "/Users/rcurrie/.local/root-oracle/bin/python",
+    "root_version": "6.40.04",
+    "source_tree_sha256": "be51aceaed7aa62569f6df57d06bbd1bb26b5772344c5a65d1fd8285a7885e8f",
+    "timeout": 300.0,
+    "tolerance": {
+     "atol": 1e-12,
+     "image_threshold": 0.95,
+     "rtol": 1e-06
+    },
+    "tutorials_dir": "/Users/rcurrie/src/xrdroot/rootsrc-6.40/tutorials",
+    "xrdroot_commit": "cacd805",
+    "xrdroot_has_pyroot": true,
+    "xrdroot_has_run": true,
+    "xrdroot_python": "/Users/rcurrie/src/xrdroot/.venv/bin/python",
+    "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
+   },
+   "source_tree_sha256": "be51aceaed7aa62569f6df57d06bbd1bb26b5772344c5a65d1fd8285a7885e8f"
   }
  ]
 }

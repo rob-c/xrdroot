@@ -42,6 +42,52 @@ class RooAbsReal(RooAbsArg):
 
     #: ``ScaleType``: what a plot's ``Normalization(n, type)`` means by ``n``.
     Raw, Relative, NumEvent, RelativeExpected = 0, 1, 2, 3
+    #: ROOT's evaluation-error logging policies.
+    PrintErrors, CollectErrors, CountErrors, Ignore = 0, 1, 2, 3
+
+    @staticmethod
+    def setEvalErrorLoggingMode(mode: Any) -> None:
+        from . import evalerrors
+
+        evalerrors.set_mode(mode)
+
+    @staticmethod
+    def evalErrorLoggingMode() -> int:
+        from . import evalerrors
+
+        return evalerrors.mode()
+
+    @staticmethod
+    def numEvalErrors() -> int:
+        from . import evalerrors
+
+        return evalerrors.number()
+
+    @staticmethod
+    def numEvalErrorItems() -> int:
+        from . import evalerrors
+
+        return evalerrors.items()
+
+    @staticmethod
+    def clearEvalErrorLog() -> None:
+        from . import evalerrors
+
+        evalerrors.clear_mode()
+
+    @staticmethod
+    def printEvalErrors(os: Any = None, maxPerNode: int = 10000000) -> None:
+        import sys
+
+        from . import evalerrors
+
+        (sys.stdout if os is None else os).write(evalerrors.formatted(int(maxPerNode)))
+
+    def logEvalError(self, message: str, serverValueString: str | None = None) -> None:
+        from . import evalerrors
+
+        evalerrors.report(self, message, serverValueString)
+
 
     def __init__(self, name: Any = "", title: Any = "", unit: str = "") -> None:
         super().__init__(name, title)

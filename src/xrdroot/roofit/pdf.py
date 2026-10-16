@@ -22,9 +22,9 @@ import numpy as np
 from . import evalerrors
 from .binning import evaluating
 from .collections import as_list
-from .messages import ERROR, WARNING, log
+from .messages import WARNING, log
 from .nanpack import pack
-from .printing import g, kArgs, kClassName, kInline, kName, kValue
+from .printing import g, kInline, kName, kValue
 from .real import Context, RooAbsReal, names_in, value_of
 
 __all__ = ["RooAbsPdf", "check_range"]
@@ -67,15 +67,6 @@ class RooAbsPdf(RooAbsReal):
         elif not evalerrors.quiet() and _unnormalisable(raw, norm):
             self.logEvalError(f"p.d.f normalization integral is zero or negative: {float(norm):f}")
         return normalized(raw, norm)
-
-    def logEvalError(self, message: str) -> None:
-        """``RooAbsReal::logEvalError`` outside a fit: the error printed at once - the object,
-        the message, and each input's value as its proxy prints it."""
-        servers = ", ".join(_proxy_values(p) for p in self._proxies)
-        origin = self.printStream(kClassName | kName | kArgs, kInline)
-        text = f"RooAbsReal::logEvalError({self._name}) evaluation error, \n origin       : "
-        text += f"{origin}\n message      : {message}\n server values: {servers}"
-        log(self, ERROR, "Eval", text)
 
     def normalized_label(self, nset: frozenset[str], rng: Any = None) -> str:
         """``g_over_g_Int[x]``: what RooFit calls this density normalised over ``nset``."""

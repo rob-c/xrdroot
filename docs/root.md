@@ -1606,7 +1606,13 @@ frame.Draw()
   and `paramOn`.
 - **The workspace**: `RooWorkspace` with its factory language (`SUM`, `PROD`, `EXPR`,
   `SIMUL`...).
-- **Messages**: `RooMsgService`.
+- **Messages**: `RooMsgService` and `RooAbsReal` evaluation-error logging controls.
+  `setEvalErrorLoggingMode` accepts the constants or names `PrintErrors`, `CollectErrors`,
+  `CountErrors` and `Ignore`. `logEvalError` follows that policy; `numEvalErrors` counts
+  errors, `numEvalErrorItems` counts objects with collected messages, and `printEvalErrors`
+  writes the log to a Python stream or `std::cout`. `clearEvalErrorLog` clears the collected
+  messages in collect mode, or the counter in count mode. Switching modes preserves both
+  stores, as ROOT does.
 
 **What it refuses.** A class or method RooFit has that this engine does not is refused by
 name, like the rest of the namespace: `ROOT has RooCustomizer; xrdroot.pyroot does not yet`.
