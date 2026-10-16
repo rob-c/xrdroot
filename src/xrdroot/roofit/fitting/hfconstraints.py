@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from functools import lru_cache
 from typing import Any, cast
 
 from .. import kernels
@@ -57,16 +58,23 @@ def _product(inputs: tuple[Callable[[], float], ...]) -> float:
 class Gaussian:
     def __init__(self, node: Any, inputs: Inputs) -> None:
         self.x, self.mean, self.sigma = (inputs.bind(one) for one in (node.x,node.mean,node.sigma))
+        self.cached = lru_cache(maxsize=1)(_gaussian)
 
     def value(self) -> float:
         x, mean, sigma = self.x(), self.mean(), self.sigma()
-        if not (sigma > 0. and math.isfinite(sigma)):
-            return math.nan
-        squared = sigma * sigma
-        if not squared > 0.:
-            return math.nan
-        arg = x - mean
-        return float(kernels.fast_exp(arg * arg * (-.5 / squared)))
+        if type(x) is float and type(mean) is float and type(sigma) is float:
+            return self.cached(x, mean, sigma)
+        return _gaussian(x, mean, sigma)
+
+
+def _gaussian(x: float, mean: float, sigma: float) -> float:
+    if not (sigma > 0. and math.isfinite(sigma)):
+        return math.nan
+    squared = sigma * sigma
+    if not squared > 0.:
+        return math.nan
+    arg = x - mean
+    return float(kernels.fast_exp(arg * arg * (-.5 / squared)))
 
 
 class Poisson:
@@ -75,14 +83,21 @@ class Poisson:
             raise NotPrepared
         self.x, self.mean = inputs.bind(node.x), inputs.bind(node.mean)
         self.no_rounding = node._no_rounding
+        self.cached = lru_cache(maxsize=1)(_poisson)
 
     def value(self) -> float:
         x, mean = self.x(), self.mean()
-        if not math.isfinite(x):
-            return math.nan
-        count = x if self.no_rounding else float(math.floor(x))
-        value = _poisson_single(count, mean)
-        return math.nan if value is None else value
+        if type(x) is float and type(mean) is float and type(self.no_rounding) is bool:
+            return self.cached(x, mean, self.no_rounding)
+        return _poisson(x, mean, self.no_rounding)
+
+
+def _poisson(x: float, mean: float, no_rounding: bool) -> float:
+    if not math.isfinite(x):
+        return math.nan
+    count = x if no_rounding else float(math.floor(x))
+    value = _poisson_single(count, mean)
+    return math.nan if value is None else value
 
 
 class Constraints:
