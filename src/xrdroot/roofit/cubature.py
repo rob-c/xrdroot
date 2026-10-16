@@ -372,10 +372,14 @@ class _Run:
 
     def measure(self, ctr: list[float], width: list[float]) -> tuple[float, float]:
         """Apply the rule to one box and add it to the totals, as label 20 does."""
-        self.last = _sums(self.evaluate(rule_points(ctr, width)), len(ctr))
+        return self.accumulate(self.evaluate(rule_points(ctr, width)), width)
+
+    def accumulate(self, values: list[float], width: list[float]) -> tuple[float, float]:
+        """Account for an already evaluated box in the same order as a scalar run."""
+        self.last = _sums(values, len(width))
         if self.last.axis is not None:
             self.axis = self.last.axis
-        rgnval, rgnerr = _estimates(self.last, len(ctr), width)
+        rgnval, rgnerr = _estimates(self.last, len(width), width)
         self.result += rgnval
         self.abserr += rgnerr
         self.ifncls += self.limits.irlcls

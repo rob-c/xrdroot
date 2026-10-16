@@ -1675,6 +1675,11 @@ retries included. The one-dimensional minimisation, integration and root finding
 MathCore's and GSL's, ported: Brent's minimiser and root finder, QAGS, and Cephes' normal
 quantiles. The asymptotic formulae are RooStats' own, step for step.
 
+Numerical Bayesian calculations batch parameter evaluations for analytic HistFactory
+models. Independent posterior integrals keep separate adaptive subdivisions, ROOT's
+point order and stopping rules. Custom models and unsupported normalization choices
+use the ordinary evaluator.
+
 **What it refuses**, by name: `BernsteinCorrection`, `SPlot`, `HypoTestInverter`'s rebuilt
 limit distributions, the spline interpolation of a scan, keys-based MCMC intervals, and
 PROOF.

@@ -287,7 +287,10 @@ class BayesianCalculator(Named):
         poi = self._poi[0]
         exact = self._integrated
         low, high = float(poi.getMin()), float(poi.getMax())
-        saved = _saved(lambda x: _at(exact, poi, x), low, high, bins)
+        from .bayesscan import sample
+
+        values = sample(exact, poi, low, high, bins)
+        saved = _saved(lambda x: _at(exact, poi, x), low, high, bins, values)
         self._integrated = Posterior(f"{exact.GetName()}_approx", saved, poi)
         return bins
 
@@ -378,11 +381,11 @@ def _at(function: Any, poi: Any, x: float) -> float:
     return float(function.getVal())
 
 
-def _saved(function: Any, low: float, high: float, npx: int) -> Any:
+def _saved(function: Any, low: float, high: float, npx: int, values: Any = None) -> Any:
     """``TF1::Save`` and ``TF1::GetSave``: ``function`` at ``npx + 1`` equidistant points,
     and a straight line between the two about each ``x`` - nothing outside the range."""
     dx = (high - low) / npx
-    values = [function(low + dx * i) for i in range(npx + 1)]
+    values = [function(low + dx * i) for i in range(npx + 1)] if values is None else values
 
     def interpolated(x: float) -> float:
         if x < low or x > high:

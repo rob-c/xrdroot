@@ -83,10 +83,15 @@ def integrate(like: Likelihood, lows: list[float], highs: list[float],
                                      ONE_DIM["rel"], ONE_DIM["limit"])  # fmt: skip
         return found, error
     from ..roofit.cubature import adaptive_integral
+    from .bayesbatch import integrand
+
+    batch = integrand(like, len(lows))
 
     most = calls or MULTI_DIM["calls"]
-    result = adaptive_integral(like, lows, highs, MULTI_DIM["abs"], MULTI_DIM["rel"],
-                               max_pts=most, size=MULTI_DIM["size"])  # fmt: skip
+    result = adaptive_integral(
+        batch if batch is not None else like, lows, highs, MULTI_DIM["abs"], MULTI_DIM["rel"],
+        max_pts=most, size=MULTI_DIM["size"], vectorized=batch is not None,
+    )
     return result.value, result.relerr * abs(result.value)
 
 
@@ -109,6 +114,10 @@ class PosteriorFunction:
             found, error = self.like([x]), 0.0
         else:
             found, error = integrate(self.like, self.lows, self.highs, self.calls)
+        return self.finish(x, found, error)
+
+    def finish(self, x: float, found: float, error: float) -> float:
+        """Report one completed integral before advancing to the next scan point."""
         if found != 0 and error / found > 0.2:
             log_plain(None, WARNING, "NumericIntegration", "PosteriorFunction::DoEval - Error "
                       f"from integration in {len(self.lows)} Dim is larger than 20 % x = {g(x)} "
