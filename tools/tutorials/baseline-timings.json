@@ -3094,14 +3094,14 @@
    "xrdroot_seconds": null
   },
   "roofit/histfactory/hf001_example.C": {
-   "ratio": 0.25623357406303143,
+   "ratio": 0.24426334503853883,
    "root_seconds": 45.279,
-   "xrdroot_seconds": 11.602
+   "xrdroot_seconds": 11.06
   },
   "roofit/histfactory/hf001_example.py": {
-   "ratio": 0.3137354963472282,
+   "ratio": 0.29565964761495483,
    "root_seconds": 37.232,
-   "xrdroot_seconds": 11.681
+   "xrdroot_seconds": 11.008
   },
   "roofit/histfactory/makeExample.C": {
    "ratio": null,
@@ -4059,9 +4059,9 @@
    "xrdroot_seconds": 2.935
   },
   "roofit/roostats/CreateExampleFile.py": {
-   "ratio": 2.8553191489361702,
+   "ratio": 2.6241134751773054,
    "root_seconds": 0.705,
-   "xrdroot_seconds": 2.013
+   "xrdroot_seconds": 1.85
   },
   "roofit/roostats/FourBinInstructional.C": {
    "ratio": 0.18785224417736132,
@@ -4124,44 +4124,44 @@
    "xrdroot_seconds": 46.387
   },
   "roofit/roostats/OneSidedFrequentistUpperLimitWithBands.C": {
-   "ratio": 1.3650648638772154,
+   "ratio": 1.3422608347135203,
    "root_seconds": 169.663,
-   "xrdroot_seconds": 231.601
+   "xrdroot_seconds": 227.732
   },
   "roofit/roostats/OneSidedFrequentistUpperLimitWithBands.py": {
-   "ratio": 1.4876055553445504,
+   "ratio": 1.421873219643739,
    "root_seconds": 157.974,
-   "xrdroot_seconds": 235.003
+   "xrdroot_seconds": 224.619
   },
   "roofit/roostats/StandardBayesianMCMCDemo.C": {
-   "ratio": 2.0024767621434187,
+   "ratio": 1.979544858533174,
    "root_seconds": 34.319,
-   "xrdroot_seconds": 68.723
+   "xrdroot_seconds": 67.936
   },
   "roofit/roostats/StandardBayesianMCMCDemo.py": {
-   "ratio": 2.1607029491544982,
+   "ratio": 2.197697235528366,
    "root_seconds": 34.654,
-   "xrdroot_seconds": 74.877
+   "xrdroot_seconds": 76.159
   },
   "roofit/roostats/StandardBayesianNumericalDemo.C": {
-   "ratio": 0.8856660826682241,
+   "ratio": 0.7884844158934096,
    "root_seconds": 92.466,
-   "xrdroot_seconds": 81.894
+   "xrdroot_seconds": 72.908
   },
   "roofit/roostats/StandardBayesianNumericalDemo.py": {
-   "ratio": 0.8107216210800521,
+   "ratio": 0.9048817753732091,
    "root_seconds": 159.696,
-   "xrdroot_seconds": 129.469
+   "xrdroot_seconds": 144.506
   },
   "roofit/roostats/StandardFeldmanCousinsDemo.C": {
-   "ratio": 2.3046507792529067,
+   "ratio": 1.9020367774387728,
    "root_seconds": 24.254,
-   "xrdroot_seconds": 55.897
+   "xrdroot_seconds": 46.132
   },
   "roofit/roostats/StandardFeldmanCousinsDemo.py": {
-   "ratio": 1.6343614874603634,
+   "ratio": 1.368204093398674,
    "root_seconds": 34.69,
-   "xrdroot_seconds": 56.696
+   "xrdroot_seconds": 47.463
   },
   "roofit/roostats/StandardFrequentistDiscovery.C": {
    "ratio": null,
@@ -4169,29 +4169,29 @@
    "xrdroot_seconds": null
   },
   "roofit/roostats/StandardFrequentistDiscovery.py": {
-   "ratio": 2.2170198016817864,
+   "ratio": 2.1238207902588986,
    "root_seconds": 132.716,
-   "xrdroot_seconds": 294.234
+   "xrdroot_seconds": 281.865
   },
   "roofit/roostats/StandardHistFactoryPlotsWithCategories.C": {
-   "ratio": 0.14967120215764113,
+   "ratio": 0.15130761538228432,
    "root_seconds": 32.999,
-   "xrdroot_seconds": 4.939
+   "xrdroot_seconds": 4.993
   },
   "roofit/roostats/StandardHistFactoryPlotsWithCategories.py": {
-   "ratio": 0.10698234522503924,
+   "ratio": 0.10797152871857729,
    "root_seconds": 46.503,
-   "xrdroot_seconds": 4.975
+   "xrdroot_seconds": 5.021
   },
   "roofit/roostats/StandardHypoTestDemo.C": {
-   "ratio": 1.234551492176916,
+   "ratio": 1.0447033382196447,
    "root_seconds": 233.987,
-   "xrdroot_seconds": 288.869
+   "xrdroot_seconds": 244.447
   },
   "roofit/roostats/StandardHypoTestDemo.py": {
-   "ratio": 1.1454907213885845,
+   "ratio": 1.0751844595803353,
    "root_seconds": 229.183,
-   "xrdroot_seconds": 262.527
+   "xrdroot_seconds": 246.414
   },
   "roofit/roostats/StandardHypoTestInvDemo.C": {
    "ratio": 1.1164003327587988,
@@ -4204,34 +4204,34 @@
    "xrdroot_seconds": 2.242
   },
   "roofit/roostats/StandardProfileInspectorDemo.C": {
-   "ratio": 0.3383222958057395,
+   "ratio": 0.4155408388520972,
    "root_seconds": 22.65,
-   "xrdroot_seconds": 7.663
+   "xrdroot_seconds": 9.412
   },
   "roofit/roostats/StandardProfileInspectorDemo.py": {
-   "ratio": 0.30094888515756174,
+   "ratio": 0.36409074934593305,
    "root_seconds": 25.609,
-   "xrdroot_seconds": 7.707
+   "xrdroot_seconds": 9.324
   },
   "roofit/roostats/StandardProfileLikelihoodDemo.C": {
-   "ratio": 0.20016119423905807,
+   "ratio": 0.23005221291656447,
    "root_seconds": 28.537,
-   "xrdroot_seconds": 5.712
+   "xrdroot_seconds": 6.565
   },
   "roofit/roostats/StandardProfileLikelihoodDemo.py": {
-   "ratio": 0.20974165966309788,
+   "ratio": 0.23246976285307122,
    "root_seconds": 27.367,
-   "xrdroot_seconds": 5.74
+   "xrdroot_seconds": 6.362
   },
   "roofit/roostats/StandardTestStatDistributionDemo.C": {
-   "ratio": 0.8614083809456423,
+   "ratio": 0.8446571029310314,
    "root_seconds": 56.533,
-   "xrdroot_seconds": 48.698
+   "xrdroot_seconds": 47.751
   },
   "roofit/roostats/StandardTestStatDistributionDemo.py": {
-   "ratio": 0.8770986997529351,
+   "ratio": 0.8487132783899298,
    "root_seconds": 55.451,
-   "xrdroot_seconds": 48.636
+   "xrdroot_seconds": 47.062
   },
   "roofit/roostats/TestNonCentral.C": {
    "ratio": 0.15555038398882942,
@@ -4244,14 +4244,14 @@
    "xrdroot_seconds": 3.215
   },
   "roofit/roostats/TwoSidedFrequentistUpperLimitWithBands.C": {
-   "ratio": 2.1670446502087333,
+   "ratio": 2.167095208516908,
    "root_seconds": 138.454,
-   "xrdroot_seconds": 300.036
+   "xrdroot_seconds": 300.043
   },
   "roofit/roostats/TwoSidedFrequentistUpperLimitWithBands.py": {
-   "ratio": 2.2309682792260905,
+   "ratio": 2.2310426364082505,
    "root_seconds": 134.486,
-   "xrdroot_seconds": 300.034
+   "xrdroot_seconds": 300.044
   },
   "roofit/roostats/Zbi_Zgamma.C": {
    "ratio": 0.3946468223009062,
@@ -8699,6 +8699,119 @@
     "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
    },
    "source_tree_sha256": "afd6b7d8798d32f78471fa1bce765625f06c0af426407ee3cca2f9081dfd2888"
+  },
+  {
+   "generated": "2026-10-16T12:27:25+00:00",
+   "meta": {
+    "cache": "/Users/rcurrie/.cache/xrdroot-tutorials",
+    "composite": true,
+    "failed_output_comparison": "/tmp/harness/hf-interpolation-failed-toys-comparison.json",
+    "gates": "/tmp/harness/hf-interpolation-gates/gates.json",
+    "jobs": 4,
+    "network": false,
+    "no_oracle": false,
+    "only": [
+     "roofit/histfactory/hf001_example.C",
+     "roofit/histfactory/hf001_example.py",
+     "roofit/roostats/CreateExampleFile.py",
+     "roofit/roostats/StandardBayesianMCMCDemo.C",
+     "roofit/roostats/StandardBayesianMCMCDemo.py",
+     "roofit/roostats/StandardFeldmanCousinsDemo.C",
+     "roofit/roostats/StandardFeldmanCousinsDemo.py",
+     "roofit/roostats/StandardHistFactoryPlotsWithCategories.C",
+     "roofit/roostats/StandardHistFactoryPlotsWithCategories.py",
+     "roofit/roostats/StandardProfileInspectorDemo.C",
+     "roofit/roostats/StandardProfileInspectorDemo.py",
+     "roofit/roostats/StandardProfileLikelihoodDemo.C",
+     "roofit/roostats/StandardProfileLikelihoodDemo.py",
+     "roofit/roostats/StandardTestStatDistributionDemo.C",
+     "roofit/roostats/StandardTestStatDistributionDemo.py",
+     "roofit/roostats/StandardBayesianNumericalDemo.C",
+     "roofit/roostats/StandardBayesianNumericalDemo.py",
+     "roofit/roostats/StandardFrequentistDiscovery.py",
+     "roofit/roostats/StandardHypoTestDemo.C",
+     "roofit/roostats/StandardHypoTestDemo.py",
+     "roofit/roostats/OneSidedFrequentistUpperLimitWithBands.C",
+     "roofit/roostats/OneSidedFrequentistUpperLimitWithBands.py",
+     "roofit/roostats/TwoSidedFrequentistUpperLimitWithBands.C",
+     "roofit/roostats/TwoSidedFrequentistUpperLimitWithBands.py"
+    ],
+    "oracle_only": false,
+    "oracle_prefix": "/Users/rcurrie/.local/root-oracle",
+    "output_comparison": "/tmp/harness/hf-interpolation-output-comparison.json",
+    "root_features": [
+     "asimage",
+     "asimage_tiff",
+     "builtin_civetweb",
+     "builtin_cling",
+     "builtin_openui5",
+     "check_connection",
+     "clad",
+     "cocoa",
+     "curl",
+     "cxx20",
+     "dataframe",
+     "davix",
+     "fftw3",
+     "fitsio",
+     "gdml",
+     "geom",
+     "gviz",
+     "http",
+     "imt",
+     "libcxx",
+     "mathmore",
+     "opengl",
+     "pyroot",
+     "pythia8",
+     "roofit",
+     "roofit_multiprocess",
+     "root7",
+     "runtime_cxxmodules",
+     "shared",
+     "soversion",
+     "spectrum",
+     "sqlite",
+     "ssl",
+     "thisroot_scripts",
+     "tmva",
+     "tmva-cpu",
+     "tmva-cudnn",
+     "tmva-pymva",
+     "tpython",
+     "vdt",
+     "webgui",
+     "xml",
+     "xrootd"
+    ],
+    "root_python": "/Users/rcurrie/.local/root-oracle/bin/python",
+    "root_version": "6.40.04",
+    "source_results": [
+     "/tmp/harness/hf-interpolation-final-affected/results.json",
+     "/tmp/harness/hf-interpolation-final-counting/results.json",
+     "/tmp/harness/hf-interpolation-final-toys-0/results.json",
+     "/tmp/harness/hf-interpolation-final-toys-1/results.json",
+     "/tmp/harness/hf-interpolation-final-toys-2/results.json",
+     "/tmp/harness/hf-interpolation-final-toys-3/results.json",
+     "/tmp/harness/hf-interpolation-final-toys-4/results.json",
+     "/tmp/harness/hf-interpolation-final-toys-5/results.json"
+    ],
+    "source_tree_sha256": "a4eb136a5a881f22d2204f8d757ffe6f875c4b2b252ab837cabb19f9e6a61305",
+    "timeout": 300.0,
+    "tolerance": {
+     "atol": 1e-12,
+     "image_threshold": 0.95,
+     "rtol": 1e-06
+    },
+    "tutorials_dir": "/Users/rcurrie/src/xrdroot/rootsrc-6.40/tutorials",
+    "validation_base_commit": "9703e323f345a4c755fee11358758c64329cf111",
+    "xrdroot_commit": "9703e32",
+    "xrdroot_has_pyroot": true,
+    "xrdroot_has_run": true,
+    "xrdroot_python": "/Users/rcurrie/src/xrdroot/.venv/bin/python",
+    "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
+   },
+   "source_tree_sha256": "a4eb136a5a881f22d2204f8d757ffe6f875c4b2b252ab837cabb19f9e6a61305"
   }
  ]
 }

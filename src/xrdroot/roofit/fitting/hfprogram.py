@@ -14,7 +14,7 @@ from ..pdfs.histfactory import FlexibleInterpVar, ParamHistFunc, RooBinWidthFunc
 from ..pdfs.histpdf import RooHistFunc
 from ..pdfs.realsum import RooRealSumPdf
 from ..variables import RooConstVar, RooRealVar
-from . import hfdata
+from . import hfdata, hfinterpolation
 
 #: Leave ample headroom below binary64 overflow, including intermediate products.
 MAX_BOUND = 1e200
@@ -157,6 +157,9 @@ class Program:
             slot = self.emit(parameter, index)
             if self.bounds[slot] > 8.:
                 raise NotCompiled
+        prepared = hfinterpolation.prepare(node)
+        if prepared is not None:
+            return f"{self.reference(prepared)}()", 1e140
         return f"float({self.reference(node)}.compute({{}}))", 1e140
 
     def width(self, node: Any, index: int) -> tuple[str, float]:
