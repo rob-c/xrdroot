@@ -3094,14 +3094,14 @@
    "xrdroot_seconds": null
   },
   "roofit/histfactory/hf001_example.C": {
-   "ratio": 0.24488173325382623,
+   "ratio": 0.25541641820711586,
    "root_seconds": 45.279,
-   "xrdroot_seconds": 11.088
+   "xrdroot_seconds": 11.565
   },
   "roofit/histfactory/hf001_example.py": {
-   "ratio": 0.30033304684142675,
+   "ratio": 0.31000214868929954,
    "root_seconds": 37.232,
-   "xrdroot_seconds": 11.182
+   "xrdroot_seconds": 11.542
   },
   "roofit/histfactory/makeExample.C": {
    "ratio": null,
@@ -3114,34 +3114,34 @@
    "xrdroot_seconds": null
   },
   "roofit/roofit/rf101_basics.C": {
-   "ratio": 0.25546470882696476,
+   "ratio": 1.0644084765559818,
    "root_seconds": 11.986,
-   "xrdroot_seconds": 3.062
+   "xrdroot_seconds": 12.758
   },
   "roofit/roofit/rf101_basics.py": {
-   "ratio": 0.2264589107798337,
+   "ratio": 0.127163083377032,
    "root_seconds": 26.698,
-   "xrdroot_seconds": 6.046
+   "xrdroot_seconds": 3.395
   },
   "roofit/roofit/rf102_dataimport.C": {
-   "ratio": 0.1803113676016642,
+   "ratio": 0.8400214736277011,
    "root_seconds": 14.902,
-   "xrdroot_seconds": 2.687
+   "xrdroot_seconds": 12.518
   },
   "roofit/roofit/rf102_dataimport.py": {
-   "ratio": 0.25664889100234367,
+   "ratio": 0.14357528616555146,
    "root_seconds": 29.441,
-   "xrdroot_seconds": 7.556
+   "xrdroot_seconds": 4.227
   },
   "roofit/roofit/rf103_interprfuncs.C": {
-   "ratio": 0.3672996757758221,
+   "ratio": 1.1498378879110698,
    "root_seconds": 12.954,
-   "xrdroot_seconds": 4.758
+   "xrdroot_seconds": 14.895
   },
   "roofit/roofit/rf103_interprfuncs.py": {
-   "ratio": 0.39109697933227344,
+   "ratio": 0.2155716925192283,
    "root_seconds": 23.273,
-   "xrdroot_seconds": 9.102
+   "xrdroot_seconds": 5.017
   },
   "roofit/roofit/rf104_classfactory.C": {
    "ratio": null,
@@ -3154,14 +3154,14 @@
    "xrdroot_seconds": null
   },
   "roofit/roofit/rf105_funcbinding.C": {
-   "ratio": 0.5323923271806008,
+   "ratio": 1.2670285921100255,
    "root_seconds": 13.815,
-   "xrdroot_seconds": 7.355
+   "xrdroot_seconds": 17.504
   },
   "roofit/roofit/rf105_funcbinding.py": {
-   "ratio": 0.2644597858170907,
+   "ratio": 0.14797648378991535,
    "root_seconds": 40.993,
-   "xrdroot_seconds": 10.841
+   "xrdroot_seconds": 6.066
   },
   "roofit/roofit/rf106_plotdecoration.C": {
    "ratio": 0.16844833171363785,
@@ -3174,324 +3174,324 @@
    "xrdroot_seconds": 3.183
   },
   "roofit/roofit/rf107_plotstyles.C": {
-   "ratio": 0.15673917462898965,
+   "ratio": 0.25262587246730367,
    "root_seconds": 14.757,
-   "xrdroot_seconds": 2.313
+   "xrdroot_seconds": 3.728
   },
   "roofit/roofit/rf107_plotstyles.py": {
-   "ratio": 0.42380503372742434,
+   "ratio": 0.2645970842097628,
    "root_seconds": 13.787,
-   "xrdroot_seconds": 5.843
+   "xrdroot_seconds": 3.648
   },
   "roofit/roofit/rf108_plotbinning.C": {
-   "ratio": 0.19833601717659688,
+   "ratio": 0.255877616747182,
    "root_seconds": 18.63,
-   "xrdroot_seconds": 3.695
+   "xrdroot_seconds": 4.767
   },
   "roofit/roofit/rf108_plotbinning.py": {
-   "ratio": 0.5516754296476497,
+   "ratio": 0.32150984854429887,
    "root_seconds": 12.743,
-   "xrdroot_seconds": 7.03
+   "xrdroot_seconds": 4.097
   },
   "roofit/roofit/rf109_chi2residpull.C": {
-   "ratio": 0.18542912830163316,
+   "ratio": 0.25929161906042075,
    "root_seconds": 14.879,
-   "xrdroot_seconds": 2.759
+   "xrdroot_seconds": 3.858
   },
   "roofit/roofit/rf109_chi2residpull.py": {
-   "ratio": 0.45089727285572984,
+   "ratio": 0.2659318920446517,
    "root_seconds": 14.154,
-   "xrdroot_seconds": 6.382
+   "xrdroot_seconds": 3.764
   },
   "roofit/roofit/rf110_normintegration.C": {
-   "ratio": 0.17286425661255903,
+   "ratio": 0.24574791437625298,
    "root_seconds": 15.463,
-   "xrdroot_seconds": 2.673
+   "xrdroot_seconds": 3.8
   },
   "roofit/roofit/rf110_normintegration.py": {
-   "ratio": 0.340971780182474,
+   "ratio": 0.2048235377325129,
    "root_seconds": 14.139,
-   "xrdroot_seconds": 4.821
+   "xrdroot_seconds": 2.896
   },
   "roofit/roofit/rf111_derivatives.C": {
-   "ratio": 0.14510890746113542,
+   "ratio": 0.1703113497596674,
    "root_seconds": 23.093,
-   "xrdroot_seconds": 3.351
+   "xrdroot_seconds": 3.933
   },
   "roofit/roofit/rf111_derivatives.py": {
-   "ratio": 0.44841537424140254,
+   "ratio": 0.2644976399190829,
    "root_seconds": 11.864,
-   "xrdroot_seconds": 5.32
+   "xrdroot_seconds": 3.138
   },
   "roofit/roofit/rf201_composite.C": {
-   "ratio": 0.12976606797270226,
+   "ratio": 0.15173326995552236,
    "root_seconds": 29.453,
-   "xrdroot_seconds": 3.822
+   "xrdroot_seconds": 4.469
   },
   "roofit/roofit/rf201_composite.py": {
-   "ratio": 0.5005212987786714,
+   "ratio": 0.29229967232648196,
    "root_seconds": 13.428,
-   "xrdroot_seconds": 6.721
+   "xrdroot_seconds": 3.925
   },
   "roofit/roofit/rf202_extendedmlfit.C": {
-   "ratio": 0.1140038959834266,
+   "ratio": 0.13972975480040814,
    "root_seconds": 32.341,
-   "xrdroot_seconds": 3.687
+   "xrdroot_seconds": 4.519
   },
   "roofit/roofit/rf202_extendedmlfit.py": {
-   "ratio": 0.47664267115944253,
+   "ratio": 0.30732118241690914,
    "root_seconds": 13.058,
-   "xrdroot_seconds": 6.224
+   "xrdroot_seconds": 4.013
   },
   "roofit/roofit/rf203_ranges.C": {
-   "ratio": 0.14421737771082624,
+   "ratio": 0.17207173919222352,
    "root_seconds": 35.183,
-   "xrdroot_seconds": 5.074
+   "xrdroot_seconds": 6.054
   },
   "roofit/roofit/rf203_ranges.py": {
-   "ratio": 0.6062466426214412,
+   "ratio": 0.37909600184176195,
    "root_seconds": 13.031,
-   "xrdroot_seconds": 7.9
+   "xrdroot_seconds": 4.94
   },
   "roofit/roofit/rf204a_extendedLikelihood.C": {
-   "ratio": 0.3133720930232558,
+   "ratio": 0.2678090575275398,
    "root_seconds": 32.68,
-   "xrdroot_seconds": 10.241
+   "xrdroot_seconds": 8.752
   },
   "roofit/roofit/rf204a_extendedLikelihood.py": {
-   "ratio": 1.0320673958828726,
+   "ratio": 0.5668183979889938,
    "root_seconds": 14.719,
-   "xrdroot_seconds": 15.191
+   "xrdroot_seconds": 8.343
   },
   "roofit/roofit/rf204b_extendedLikelihood_rangedFit.C": {
-   "ratio": 0.20759038115491577,
+   "ratio": 0.19622116800261738,
    "root_seconds": 36.678,
-   "xrdroot_seconds": 7.614
+   "xrdroot_seconds": 7.197
   },
   "roofit/roofit/rf204b_extendedLikelihood_rangedFit.py": {
-   "ratio": 0.8358309376720288,
+   "ratio": 0.44498134442473547,
    "root_seconds": 16.349,
-   "xrdroot_seconds": 13.665
+   "xrdroot_seconds": 7.275
   },
   "roofit/roofit/rf205_compplot.C": {
-   "ratio": 0.0619909663193086,
+   "ratio": 0.07491908809616958,
    "root_seconds": 56.234,
-   "xrdroot_seconds": 3.486
+   "xrdroot_seconds": 4.213
   },
   "roofit/roofit/rf205_compplot.py": {
-   "ratio": 0.50563009103977,
+   "ratio": 0.2762937230474365,
    "root_seconds": 16.696,
-   "xrdroot_seconds": 8.442
+   "xrdroot_seconds": 4.613
   },
   "roofit/roofit/rf206_treevistools.C": {
-   "ratio": 0.08643021689051157,
+   "ratio": 0.0663711044464728,
    "root_seconds": 46.014,
-   "xrdroot_seconds": 3.977
+   "xrdroot_seconds": 3.054
   },
   "roofit/roofit/rf206_treevistools.py": {
-   "ratio": 0.30348694585596636,
+   "ratio": 0.17101804801121429,
    "root_seconds": 11.414,
-   "xrdroot_seconds": 3.464
+   "xrdroot_seconds": 1.952
   },
   "roofit/roofit/rf207_comptools.C": {
-   "ratio": 0.1069945625308947,
+   "ratio": 0.06868512110726643,
    "root_seconds": 40.46,
-   "xrdroot_seconds": 4.329
+   "xrdroot_seconds": 2.779
   },
   "roofit/roofit/rf207_comptools.py": {
-   "ratio": 0.2732801216267579,
+   "ratio": 0.16267578867350818,
    "root_seconds": 13.155,
-   "xrdroot_seconds": 3.595
+   "xrdroot_seconds": 2.14
   },
   "roofit/roofit/rf208_convolution.C": {
-   "ratio": 0.27855250516754493,
+   "ratio": 0.20265509912952345,
    "root_seconds": 34.349,
-   "xrdroot_seconds": 9.568
+   "xrdroot_seconds": 6.961
   },
   "roofit/roofit/rf208_convolution.py": {
-   "ratio": 0.5335714940001832,
+   "ratio": 0.26930475405331133,
    "root_seconds": 21.834,
-   "xrdroot_seconds": 11.65
+   "xrdroot_seconds": 5.88
   },
   "roofit/roofit/rf209_anaconv.C": {
-   "ratio": 0.09691701815300725,
+   "ratio": 0.062079090252371086,
    "root_seconds": 42.913,
-   "xrdroot_seconds": 4.159
+   "xrdroot_seconds": 2.664
   },
   "roofit/roofit/rf209_anaconv.py": {
-   "ratio": 0.2825081104079136,
+   "ratio": 0.14971015263521778,
    "root_seconds": 18.803,
-   "xrdroot_seconds": 5.312
+   "xrdroot_seconds": 2.815
   },
   "roofit/roofit/rf210_angularconv.C": {
-   "ratio": 3.2108941132913733,
+   "ratio": 2.2181368011847464,
    "root_seconds": 43.216,
-   "xrdroot_seconds": 138.762
+   "xrdroot_seconds": 95.859
   },
   "roofit/roofit/rf210_angularconv.py": {
-   "ratio": 5.37363184079602,
+   "ratio": 2.8516508367254634,
    "root_seconds": 22.11,
-   "xrdroot_seconds": 118.811
+   "xrdroot_seconds": 63.05
   },
   "roofit/roofit/rf211_paramconv.C": {
-   "ratio": 0.08849040354330708,
+   "ratio": 0.07881705216535433,
    "root_seconds": 65.024,
-   "xrdroot_seconds": 5.754
+   "xrdroot_seconds": 5.125
   },
   "roofit/roofit/rf211_paramconv.py": {
-   "ratio": 0.28893252315121926,
+   "ratio": 0.1603470692811845,
    "root_seconds": 37.687,
-   "xrdroot_seconds": 10.889
+   "xrdroot_seconds": 6.043
   },
   "roofit/roofit/rf212_plottingInRanges_blinding.C": {
-   "ratio": 0.12556265047629017,
+   "ratio": 0.09860776719355174,
    "root_seconds": 38.212,
-   "xrdroot_seconds": 4.798
+   "xrdroot_seconds": 3.768
   },
   "roofit/roofit/rf212_plottingInRanges_blinding.py": {
-   "ratio": 0.3709502985846617,
+   "ratio": 0.20910330559082146,
    "root_seconds": 21.267,
-   "xrdroot_seconds": 7.889
+   "xrdroot_seconds": 4.447
   },
   "roofit/roofit/rf301_composition.C": {
-   "ratio": 0.11573389339170563,
+   "ratio": 0.0957522333313613,
    "root_seconds": 67.612,
-   "xrdroot_seconds": 7.825
+   "xrdroot_seconds": 6.474
   },
   "roofit/roofit/rf301_composition.py": {
-   "ratio": 0.8918421301104711,
+   "ratio": 0.3826362005476348,
    "root_seconds": 21.182,
-   "xrdroot_seconds": 18.891
+   "xrdroot_seconds": 8.105
   },
   "roofit/roofit/rf302_utilfuncs.C": {
-   "ratio": 0.04910674207738576,
+   "ratio": 0.038498369093575124,
    "root_seconds": 66.834,
-   "xrdroot_seconds": 3.282
+   "xrdroot_seconds": 2.573
   },
   "roofit/roofit/rf302_utilfuncs.py": {
-   "ratio": 0.9582649355817539,
+   "ratio": 0.38665870765557375,
    "root_seconds": 20.103,
-   "xrdroot_seconds": 19.264
+   "xrdroot_seconds": 7.773
   },
   "roofit/roofit/rf303_conditional.C": {
-   "ratio": 0.08100442025542454,
+   "ratio": 0.0624739032151239,
    "root_seconds": 69.453,
-   "xrdroot_seconds": 5.626
+   "xrdroot_seconds": 4.339
   },
   "roofit/roofit/rf303_conditional.py": {
-   "ratio": 0.38493334711170824,
+   "ratio": 0.16013916158589095,
    "root_seconds": 29.031,
-   "xrdroot_seconds": 11.175
+   "xrdroot_seconds": 4.649
   },
   "roofit/roofit/rf304_uncorrprod.C": {
-   "ratio": 0.07989386792452831,
+   "ratio": 0.072562893081761,
    "root_seconds": 50.88,
-   "xrdroot_seconds": 4.065
+   "xrdroot_seconds": 3.692
   },
   "roofit/roofit/rf304_uncorrprod.py": {
-   "ratio": 0.43160522116289535,
+   "ratio": 0.20675968738491754,
    "root_seconds": 24.439,
-   "xrdroot_seconds": 10.548
+   "xrdroot_seconds": 5.053
   },
   "roofit/roofit/rf305_condcorrprod.C": {
-   "ratio": 0.12539231486979388,
+   "ratio": 0.09737891254559335,
    "root_seconds": 47.156,
-   "xrdroot_seconds": 5.913
+   "xrdroot_seconds": 4.592
   },
   "roofit/roofit/rf305_condcorrprod.py": {
-   "ratio": 0.47464872500185856,
+   "ratio": 0.24481451193219836,
    "root_seconds": 26.902,
-   "xrdroot_seconds": 12.769
+   "xrdroot_seconds": 6.586
   },
   "roofit/roofit/rf306_condpereventerrors.C": {
-   "ratio": 0.21708277530133727,
+   "ratio": 0.1549363343794351,
    "root_seconds": 50.027,
-   "xrdroot_seconds": 10.86
+   "xrdroot_seconds": 7.751
   },
   "roofit/roofit/rf306_condpereventerrors.py": {
-   "ratio": 0.6074841681059298,
+   "ratio": 0.31391287660717715,
    "root_seconds": 26.055,
-   "xrdroot_seconds": 15.828
+   "xrdroot_seconds": 8.179
   },
   "roofit/roofit/rf307_fullpereventerrors.C": {
-   "ratio": 1.1298226795830122,
+   "ratio": 0.862048737974726,
    "root_seconds": 59.666,
-   "xrdroot_seconds": 67.412
+   "xrdroot_seconds": 51.435
   },
   "roofit/roofit/rf307_fullpereventerrors.py": {
-   "ratio": 1.0029080690748091,
+   "ratio": 0.5111339835645085,
    "root_seconds": 61.209,
-   "xrdroot_seconds": 61.387
+   "xrdroot_seconds": 31.286
   },
   "roofit/roofit/rf308_normintegration2d.C": {
-   "ratio": 0.10885204081632653,
+   "ratio": 0.07783163265306123,
    "root_seconds": 39.2,
-   "xrdroot_seconds": 4.267
+   "xrdroot_seconds": 3.051
   },
   "roofit/roofit/rf308_normintegration2d.py": {
-   "ratio": 0.24366685536371355,
+   "ratio": 0.12779507500707615,
    "root_seconds": 28.264,
-   "xrdroot_seconds": 6.887
+   "xrdroot_seconds": 3.612
   },
   "roofit/roofit/rf309_ndimplot.C": {
-   "ratio": 0.5906712172923777,
+   "ratio": 0.4486916951080774,
    "root_seconds": 30.765,
-   "xrdroot_seconds": 18.172
+   "xrdroot_seconds": 13.804
   },
   "roofit/roofit/rf309_ndimplot.py": {
-   "ratio": 1.139726518182361,
+   "ratio": 0.5704902370573834,
    "root_seconds": 33.494,
-   "xrdroot_seconds": 38.174
+   "xrdroot_seconds": 19.108
   },
   "roofit/roofit/rf310_sliceplot.C": {
-   "ratio": 0.3035081832755471,
+   "ratio": 0.22898258956865378,
    "root_seconds": 26.823,
-   "xrdroot_seconds": 8.141
+   "xrdroot_seconds": 6.142
   },
   "roofit/roofit/rf310_sliceplot.py": {
-   "ratio": 0.3309440417039993,
+   "ratio": 0.14916782058591946,
    "root_seconds": 36.831,
-   "xrdroot_seconds": 12.189
+   "xrdroot_seconds": 5.494
   },
   "roofit/roofit/rf311_rangeplot.C": {
-   "ratio": 0.5898050974512743,
+   "ratio": 0.5056471764117941,
    "root_seconds": 30.015,
-   "xrdroot_seconds": 17.703
+   "xrdroot_seconds": 15.177
   },
   "roofit/roofit/rf311_rangeplot.py": {
-   "ratio": 0.2927330120154775,
+   "ratio": 0.1541477157015817,
    "root_seconds": 58.924,
-   "xrdroot_seconds": 17.249
+   "xrdroot_seconds": 9.083
   },
   "roofit/roofit/rf312_multirangefit.C": {
-   "ratio": 0.3898915279596035,
+   "ratio": 0.37128296240882736,
    "root_seconds": 21.388,
-   "xrdroot_seconds": 8.339
+   "xrdroot_seconds": 7.941
   },
   "roofit/roofit/rf312_multirangefit.py": {
-   "ratio": 0.15363098206735043,
+   "ratio": 0.07986208990177159,
    "root_seconds": 46.117,
-   "xrdroot_seconds": 7.085
+   "xrdroot_seconds": 3.683
   },
   "roofit/roofit/rf313_paramranges.C": {
-   "ratio": 0.5304298076235429,
+   "ratio": 0.3690910391189301,
    "root_seconds": 13.983,
-   "xrdroot_seconds": 7.417
+   "xrdroot_seconds": 5.161
   },
   "roofit/roofit/rf313_paramranges.py": {
-   "ratio": 0.1430624139885048,
+   "ratio": 0.07917105156642111,
    "root_seconds": 49.412,
-   "xrdroot_seconds": 7.069
+   "xrdroot_seconds": 3.912
   },
   "roofit/roofit/rf314_paramfitrange.C": {
-   "ratio": 0.9996293550778353,
+   "ratio": 0.7891771682727947,
    "root_seconds": 13.49,
-   "xrdroot_seconds": 13.485
+   "xrdroot_seconds": 10.646
   },
   "roofit/roofit/rf314_paramfitrange.py": {
-   "ratio": 0.23835573066910576,
+   "ratio": 0.12365440090058398,
    "root_seconds": 56.852,
-   "xrdroot_seconds": 13.551
+   "xrdroot_seconds": 7.03
   },
   "roofit/roofit/rf315_projectpdf.C": {
    "ratio": 0.31320850847025855,
@@ -3504,14 +3504,14 @@
    "xrdroot_seconds": 3.365
   },
   "roofit/roofit/rf316_llratioplot.C": {
-   "ratio": 1.2891186071817193,
+   "ratio": 1.0060935799782373,
    "root_seconds": 18.38,
-   "xrdroot_seconds": 23.694
+   "xrdroot_seconds": 18.492
   },
   "roofit/roofit/rf316_llratioplot.py": {
-   "ratio": 0.36036316047767053,
+   "ratio": 0.21632586291509898,
    "root_seconds": 61.13,
-   "xrdroot_seconds": 22.029
+   "xrdroot_seconds": 13.224
   },
   "roofit/roofit/rf401_importttreethx.C": {
    "ratio": 0.2456767650500585,
@@ -3534,54 +3534,54 @@
    "xrdroot_seconds": 3.128
   },
   "roofit/roofit/rf403_weightedevts.C": {
-   "ratio": 0.8809176984705026,
+   "ratio": 0.6399611556202962,
    "root_seconds": 16.476,
-   "xrdroot_seconds": 14.514
+   "xrdroot_seconds": 10.544
   },
   "roofit/roofit/rf403_weightedevts.py": {
-   "ratio": 0.4622974657249688,
+   "ratio": 0.29898905968702394,
    "root_seconds": 28.884,
-   "xrdroot_seconds": 13.353
+   "xrdroot_seconds": 8.636
   },
   "roofit/roofit/rf404_categories.C": {
-   "ratio": 0.4868230081735544,
+   "ratio": 0.2884424413719349,
    "root_seconds": 13.091,
-   "xrdroot_seconds": 6.373
+   "xrdroot_seconds": 3.776
   },
   "roofit/roofit/rf404_categories.py": {
-   "ratio": 0.23493059078540793,
+   "ratio": 0.17797352764838814,
    "root_seconds": 21.683,
-   "xrdroot_seconds": 5.094
+   "xrdroot_seconds": 3.859
   },
   "roofit/roofit/rf405_realtocatfuncs.C": {
-   "ratio": 0.6969003864658097,
+   "ratio": 0.33472671346320687,
    "root_seconds": 12.679,
-   "xrdroot_seconds": 8.836
+   "xrdroot_seconds": 4.244
   },
   "roofit/roofit/rf405_realtocatfuncs.py": {
-   "ratio": 0.40166411554613607,
+   "ratio": 0.23172024019780996,
    "root_seconds": 25.479,
-   "xrdroot_seconds": 10.234
+   "xrdroot_seconds": 5.904
   },
   "roofit/roofit/rf406_cattocatfuncs.C": {
-   "ratio": 0.6558752997601919,
+   "ratio": 0.3700753682768071,
    "root_seconds": 11.676,
-   "xrdroot_seconds": 7.658
+   "xrdroot_seconds": 4.321
   },
   "roofit/roofit/rf406_cattocatfuncs.py": {
-   "ratio": 0.308372673503717,
+   "ratio": 0.20093331162841174,
    "root_seconds": 18.429,
-   "xrdroot_seconds": 5.683
+   "xrdroot_seconds": 3.703
   },
   "roofit/roofit/rf407_ComputationalGraphVisualization.C": {
-   "ratio": 0.34768495835374813,
+   "ratio": 0.20737383635472809,
    "root_seconds": 16.328,
-   "xrdroot_seconds": 5.677
+   "xrdroot_seconds": 3.386
   },
   "roofit/roofit/rf407_ComputationalGraphVisualization.py": {
-   "ratio": 0.24863068496522864,
+   "ratio": 0.1733645147393686,
    "root_seconds": 16.249,
-   "xrdroot_seconds": 4.04
+   "xrdroot_seconds": 2.817
   },
   "roofit/roofit/rf408_RDataFrameToRooFit.C": {
    "ratio": 0.12840625,
@@ -3599,14 +3599,14 @@
    "xrdroot_seconds": null
   },
   "roofit/roofit/rf501_simultaneouspdf.C": {
-   "ratio": 0.3288551662575318,
+   "ratio": 0.19879491185003345,
    "root_seconds": 22.405,
-   "xrdroot_seconds": 7.368
+   "xrdroot_seconds": 4.454
   },
   "roofit/roofit/rf501_simultaneouspdf.py": {
-   "ratio": 0.44918219855458347,
+   "ratio": 0.2576264739444656,
    "root_seconds": 26.29,
-   "xrdroot_seconds": 11.809
+   "xrdroot_seconds": 6.773
   },
   "roofit/roofit/rf502_wspacewrite.C": {
    "ratio": 0.2799502712477396,
@@ -3649,44 +3649,44 @@
    "xrdroot_seconds": 3.959
   },
   "roofit/roofit/rf506_msgservice.C": {
-   "ratio": 0.3588271321390293,
+   "ratio": 0.2133670188332568,
    "root_seconds": 13.062,
-   "xrdroot_seconds": 4.687
+   "xrdroot_seconds": 2.787
   },
   "roofit/roofit/rf506_msgservice.py": {
-   "ratio": 0.10730930670140396,
+   "ratio": 0.07598784194528875,
    "root_seconds": 34.545,
-   "xrdroot_seconds": 3.707
+   "xrdroot_seconds": 2.625
   },
   "roofit/roofit/rf508_listsetmanip.C": {
-   "ratio": 0.36694448578657535,
+   "ratio": 0.17167733293644885,
    "root_seconds": 13.438,
-   "xrdroot_seconds": 4.931
+   "xrdroot_seconds": 2.307
   },
   "roofit/roofit/rf508_listsetmanip.py": {
-   "ratio": 0.10171885226137577,
+   "ratio": 0.07350762977506803,
    "root_seconds": 29.031,
-   "xrdroot_seconds": 2.953
+   "xrdroot_seconds": 2.134
   },
   "roofit/roofit/rf510_wsnamedsets.C": {
-   "ratio": 0.7352255587549705,
+   "ratio": 0.3701494583847525,
    "root_seconds": 14.586,
-   "xrdroot_seconds": 10.724
+   "xrdroot_seconds": 5.399
   },
   "roofit/roofit/rf510_wsnamedsets.py": {
-   "ratio": 0.45680352269908214,
+   "ratio": 0.19635326221781196,
    "root_seconds": 32.248,
-   "xrdroot_seconds": 14.731
+   "xrdroot_seconds": 6.332
   },
   "roofit/roofit/rf511_wsfactory_basic.C": {
-   "ratio": 0.5537895988755541,
+   "ratio": 0.2875986593145205,
    "root_seconds": 9.249,
-   "xrdroot_seconds": 5.122
+   "xrdroot_seconds": 2.66
   },
   "roofit/roofit/rf511_wsfactory_basic.py": {
-   "ratio": 0.29618925283665165,
+   "ratio": 0.12277884821237423,
    "root_seconds": 18.684,
-   "xrdroot_seconds": 5.534
+   "xrdroot_seconds": 2.294
   },
   "roofit/roofit/rf512_wsfactory_oper.C": {
    "ratio": null,
@@ -3709,14 +3709,14 @@
    "xrdroot_seconds": 4.397
   },
   "roofit/roofit/rf514_RooCustomizer.C": {
-   "ratio": 0.25513438133874244,
+   "ratio": 0.14553752535496955,
    "root_seconds": 15.776,
-   "xrdroot_seconds": 4.025
+   "xrdroot_seconds": 2.296
   },
   "roofit/roofit/rf514_RooCustomizer.py": {
-   "ratio": 0.2960457856399584,
+   "ratio": 0.10062434963579604,
    "root_seconds": 19.22,
-   "xrdroot_seconds": 5.69
+   "xrdroot_seconds": 1.934
   },
   "roofit/roofit/rf515_hfJSON.py": {
    "ratio": 0.12262740995366911,
@@ -3724,54 +3724,54 @@
    "xrdroot_seconds": 4.923
   },
   "roofit/roofit/rf601_intminuit.C": {
-   "ratio": 0.3680188124632569,
+   "ratio": 0.21374681559866748,
    "root_seconds": 20.412,
-   "xrdroot_seconds": 7.512
+   "xrdroot_seconds": 4.363
   },
   "roofit/roofit/rf601_intminuit.py": {
-   "ratio": 0.3154237619886475,
+   "ratio": 0.1388725778038755,
    "root_seconds": 30.654,
-   "xrdroot_seconds": 9.669
+   "xrdroot_seconds": 4.257
   },
   "roofit/roofit/rf602_chi2fit.C": {
-   "ratio": 0.364607662873329,
+   "ratio": 0.19023008497738905,
    "root_seconds": 20.123,
-   "xrdroot_seconds": 7.337
+   "xrdroot_seconds": 3.828
   },
   "roofit/roofit/rf602_chi2fit.py": {
-   "ratio": 0.27551665963728383,
+   "ratio": 0.1146492337972726,
    "root_seconds": 28.452,
-   "xrdroot_seconds": 7.839
+   "xrdroot_seconds": 3.262
   },
   "roofit/roofit/rf604_constraints.C": {
-   "ratio": 0.27983766832687695,
+   "ratio": 0.2100473467379942,
    "root_seconds": 16.263,
-   "xrdroot_seconds": 4.551
+   "xrdroot_seconds": 3.416
   },
   "roofit/roofit/rf604_constraints.py": {
-   "ratio": 0.19644642719790784,
+   "ratio": 0.08880086147219446,
    "root_seconds": 26.002,
-   "xrdroot_seconds": 5.108
+   "xrdroot_seconds": 2.309
   },
   "roofit/roofit/rf605_profilell.C": {
-   "ratio": 0.7561330423857701,
+   "ratio": 0.5820934999669378,
    "root_seconds": 15.123,
-   "xrdroot_seconds": 11.435
+   "xrdroot_seconds": 8.803
   },
   "roofit/roofit/rf605_profilell.py": {
-   "ratio": 0.5351141094599934,
+   "ratio": 0.2651411553772754,
    "root_seconds": 32.907,
-   "xrdroot_seconds": 17.609
+   "xrdroot_seconds": 8.725
   },
   "roofit/roofit/rf606_nllerrorhandling.C": {
-   "ratio": 0.34838141378550985,
+   "ratio": 0.2388607502018645,
    "root_seconds": 13.623,
-   "xrdroot_seconds": 4.746
+   "xrdroot_seconds": 3.254
   },
   "roofit/roofit/rf606_nllerrorhandling.py": {
-   "ratio": 0.2963901203293223,
+   "ratio": 0.14566181127295758,
    "root_seconds": 31.58,
-   "xrdroot_seconds": 9.36
+   "xrdroot_seconds": 4.6
   },
   "roofit/roofit/rf607_fitresult.C": {
    "ratio": 0.23003146249873138,
@@ -3784,49 +3784,49 @@
    "xrdroot_seconds": 5.539
   },
   "roofit/roofit/rf608_fitresultaspdf.C": {
-   "ratio": 0.5457967377666249,
+   "ratio": 0.4636705828675716,
    "root_seconds": 17.534,
-   "xrdroot_seconds": 9.57
+   "xrdroot_seconds": 8.13
   },
   "roofit/roofit/rf608_fitresultaspdf.py": {
-   "ratio": 0.7007333647312117,
+   "ratio": 0.358563771333737,
    "root_seconds": 44.589,
-   "xrdroot_seconds": 31.245
+   "xrdroot_seconds": 15.988
   },
   "roofit/roofit/rf610_visualerror.C": {
-   "ratio": 1.6459186616671473,
+   "ratio": 1.0019036631093163,
    "root_seconds": 17.335,
-   "xrdroot_seconds": 28.532
+   "xrdroot_seconds": 17.368
   },
   "roofit/roofit/rf610_visualerror.py": {
-   "ratio": 1.0620947140892119,
+   "ratio": 0.5653370013755158,
    "root_seconds": 25.445,
-   "xrdroot_seconds": 27.025
+   "xrdroot_seconds": 14.385
   },
   "roofit/roofit/rf611_weightedfits.C": {
-   "ratio": 6.629465882123468,
+   "ratio": 4.010857904489451,
    "root_seconds": 30.761,
-   "xrdroot_seconds": 203.929
+   "xrdroot_seconds": 123.378
   },
   "roofit/roofit/rf612_recoverFromInvalidParameters.C": {
-   "ratio": 0.4491498839324926,
+   "ratio": 0.27310370788631655,
    "root_seconds": 15.939,
-   "xrdroot_seconds": 7.159
+   "xrdroot_seconds": 4.353
   },
   "roofit/roofit/rf612_recoverFromInvalidParameters.py": {
-   "ratio": 0.47051730375015066,
+   "ratio": 0.23867518790948186,
    "root_seconds": 24.879,
-   "xrdroot_seconds": 11.706
+   "xrdroot_seconds": 5.938
   },
   "roofit/roofit/rf613_global_observables.C": {
-   "ratio": 0.2447588424437299,
+   "ratio": 0.13916398713826367,
    "root_seconds": 15.55,
-   "xrdroot_seconds": 3.806
+   "xrdroot_seconds": 2.164
   },
   "roofit/roofit/rf613_global_observables.py": {
-   "ratio": 0.18899563318777296,
+   "ratio": 0.095764192139738,
    "root_seconds": 22.9,
-   "xrdroot_seconds": 4.328
+   "xrdroot_seconds": 2.193
   },
   "roofit/roofit/rf614_binned_fit_problems.C": {
    "ratio": 0.32144934279399795,
@@ -3874,44 +3874,44 @@
    "xrdroot_seconds": 3.307
   },
   "roofit/roofit/rf701_efficiencyfit.C": {
-   "ratio": 1.0873179799648869,
+   "ratio": 0.5789528038830941,
    "root_seconds": 19.366,
-   "xrdroot_seconds": 21.057
+   "xrdroot_seconds": 11.212
   },
   "roofit/roofit/rf701_efficiencyfit.py": {
-   "ratio": 1.070259708540259,
+   "ratio": 0.7287307660994872,
    "root_seconds": 12.283,
-   "xrdroot_seconds": 13.146
+   "xrdroot_seconds": 8.951
   },
   "roofit/roofit/rf702_efficiencyfit_2D.C": {
-   "ratio": 6.15098289507276,
+   "ratio": 3.436507531273934,
    "root_seconds": 19.585,
-   "xrdroot_seconds": 120.467
+   "xrdroot_seconds": 67.304
   },
   "roofit/roofit/rf702_efficiencyfit_2D.py": {
-   "ratio": 9.371272278101289,
+   "ratio": 5.914063878595377,
    "root_seconds": 11.334,
-   "xrdroot_seconds": 106.214
+   "xrdroot_seconds": 67.03
   },
   "roofit/roofit/rf703_effpdfprod.C": {
-   "ratio": 1.1464627151051625,
+   "ratio": 0.5895474824729127,
    "root_seconds": 15.69,
-   "xrdroot_seconds": 17.988
+   "xrdroot_seconds": 9.25
   },
   "roofit/roofit/rf703_effpdfprod.py": {
-   "ratio": 1.2760263558033451,
+   "ratio": 1.0198682209832741,
    "root_seconds": 9.865,
-   "xrdroot_seconds": 12.588
+   "xrdroot_seconds": 10.061
   },
   "roofit/roofit/rf704_amplitudefit.C": {
-   "ratio": 0.7090036014405762,
+   "ratio": 0.42965186074429773,
    "root_seconds": 16.66,
-   "xrdroot_seconds": 11.812
+   "xrdroot_seconds": 7.158
   },
   "roofit/roofit/rf704_amplitudefit.py": {
-   "ratio": 1.2635366689513363,
+   "ratio": 1.0062542837559971,
    "root_seconds": 11.672,
-   "xrdroot_seconds": 14.748
+   "xrdroot_seconds": 11.745
   },
   "roofit/roofit/rf705_linearmorph.C": {
    "ratio": 0.1839810384150977,
@@ -3924,14 +3924,14 @@
    "xrdroot_seconds": 2.604
   },
   "roofit/roofit/rf706_histpdf.C": {
-   "ratio": 1.2434301521438451,
+   "ratio": 0.6761272475795298,
    "root_seconds": 18.075,
-   "xrdroot_seconds": 22.475
+   "xrdroot_seconds": 12.221
   },
   "roofit/roofit/rf706_histpdf.py": {
-   "ratio": 2.124217868499333,
+   "ratio": 1.607959790747769,
    "root_seconds": 9.749,
-   "xrdroot_seconds": 20.709
+   "xrdroot_seconds": 15.676
   },
   "roofit/roofit/rf707_kernelestimation.C": {
    "ratio": 0.229453116923395,
@@ -3944,14 +3944,14 @@
    "xrdroot_seconds": 3.401
   },
   "roofit/roofit/rf708_bphysics.C": {
-   "ratio": 1.3246892194823723,
+   "ratio": 0.6019971469329529,
    "root_seconds": 19.628,
-   "xrdroot_seconds": 26.001
+   "xrdroot_seconds": 11.816
   },
   "roofit/roofit/rf708_bphysics.py": {
-   "ratio": 1.670570230886952,
+   "ratio": 1.218045112781955,
    "root_seconds": 15.029,
-   "xrdroot_seconds": 25.107
+   "xrdroot_seconds": 18.306
   },
   "roofit/roofit/rf709_BarlowBeeston.C": {
    "ratio": 0.24636026263202968,
@@ -3994,14 +3994,14 @@
    "xrdroot_seconds": 3.055
   },
   "roofit/roofit/rf801_mcstudy.C": {
-   "ratio": 6.2215249083963515,
+   "ratio": 4.8722226553364,
    "root_seconds": 25.654,
-   "xrdroot_seconds": 159.607
+   "xrdroot_seconds": 124.992
   },
   "roofit/roofit/rf801_mcstudy.py": {
-   "ratio": 14.364564855130892,
+   "ratio": 7.147395581357845,
    "root_seconds": 18.603,
-   "xrdroot_seconds": 267.224
+   "xrdroot_seconds": 132.963
   },
   "roofit/roofit/rf802_mcstudy_addons.C": {
    "ratio": 0.19889928453494773,
@@ -4059,49 +4059,49 @@
    "xrdroot_seconds": 2.935
   },
   "roofit/roostats/CreateExampleFile.py": {
-   "ratio": 2.4609929078014185,
+   "ratio": 2.50354609929078,
    "root_seconds": 0.705,
-   "xrdroot_seconds": 1.735
+   "xrdroot_seconds": 1.765
   },
   "roofit/roostats/FourBinInstructional.C": {
-   "ratio": 0.2654308413118761,
+   "ratio": 0.23185305900726555,
    "root_seconds": 29.454,
-   "xrdroot_seconds": 7.818
+   "xrdroot_seconds": 6.829
   },
   "roofit/roostats/FourBinInstructional.py": {
-   "ratio": 0.3356186533859388,
+   "ratio": 0.23142099476101155,
    "root_seconds": 30.922,
-   "xrdroot_seconds": 10.378
+   "xrdroot_seconds": 7.156
   },
   "roofit/roostats/HybridInstructional.C": {
-   "ratio": 1.1132818673636862,
+   "ratio": 1.4855267157011731,
    "root_seconds": 82.255,
-   "xrdroot_seconds": 91.573
+   "xrdroot_seconds": 122.192
   },
   "roofit/roostats/HybridInstructional.py": {
-   "ratio": 0.7654476459130903,
+   "ratio": 1.0427412855127947,
    "root_seconds": 119.112,
-   "xrdroot_seconds": 91.174
+   "xrdroot_seconds": 124.203
   },
   "roofit/roostats/HybridStandardForm.C": {
-   "ratio": 0.9529771771005993,
+   "ratio": 1.274168047940839,
    "root_seconds": 78.43,
-   "xrdroot_seconds": 74.742
+   "xrdroot_seconds": 99.933
   },
   "roofit/roostats/HybridStandardForm.py": {
-   "ratio": 0.6067236037846436,
+   "ratio": 0.8557313907728377,
    "root_seconds": 119.43,
-   "xrdroot_seconds": 72.461
+   "xrdroot_seconds": 102.2
   },
   "roofit/roostats/IntervalExamples.C": {
-   "ratio": 2.6019914709543146,
+   "ratio": 2.3817666142953335,
    "root_seconds": 49.009,
-   "xrdroot_seconds": 127.521
+   "xrdroot_seconds": 116.728
   },
   "roofit/roostats/IntervalExamples.py": {
-   "ratio": 3.3510372284696515,
+   "ratio": 1.8067751623943564,
    "root_seconds": 71.585,
-   "xrdroot_seconds": 239.884
+   "xrdroot_seconds": 129.338
   },
   "roofit/roostats/ModelInspector.C": {
    "ratio": null,
@@ -4114,14 +4114,14 @@
    "xrdroot_seconds": null
   },
   "roofit/roostats/MultivariateGaussianTest.C": {
-   "ratio": 0.9549672436648672,
+   "ratio": 0.8665731686230812,
    "root_seconds": 52.051,
-   "xrdroot_seconds": 49.707
+   "xrdroot_seconds": 45.106
   },
   "roofit/roostats/MultivariateGaussianTest.py": {
-   "ratio": 1.6572529799433753,
+   "ratio": 1.2665889462539555,
    "root_seconds": 42.031,
-   "xrdroot_seconds": 69.656
+   "xrdroot_seconds": 53.236
   },
   "roofit/roostats/OneSidedFrequentistUpperLimitWithBands.C": {
    "ratio": 1.7684056040503822,
@@ -4134,34 +4134,34 @@
    "xrdroot_seconds": 300.031
   },
   "roofit/roostats/StandardBayesianMCMCDemo.C": {
-   "ratio": 1.9349340015734724,
+   "ratio": 1.9944345697718464,
    "root_seconds": 34.319,
-   "xrdroot_seconds": 66.405
+   "xrdroot_seconds": 68.447
   },
   "roofit/roostats/StandardBayesianMCMCDemo.py": {
-   "ratio": 2.128556587984071,
+   "ratio": 2.168407687424251,
    "root_seconds": 34.654,
-   "xrdroot_seconds": 73.763
+   "xrdroot_seconds": 75.144
   },
   "roofit/roostats/StandardBayesianNumericalDemo.C": {
-   "ratio": 1.1054009041161077,
+   "ratio": 0.7966171349468995,
    "root_seconds": 92.466,
-   "xrdroot_seconds": 102.212
+   "xrdroot_seconds": 73.66
   },
   "roofit/roostats/StandardBayesianNumericalDemo.py": {
-   "ratio": 0.8156622582907525,
+   "ratio": 0.8212854423404469,
    "root_seconds": 159.696,
-   "xrdroot_seconds": 130.258
+   "xrdroot_seconds": 131.156
   },
   "roofit/roostats/StandardFeldmanCousinsDemo.C": {
-   "ratio": 4.977075946235672,
+   "ratio": 4.476127649047579,
    "root_seconds": 24.254,
-   "xrdroot_seconds": 120.714
+   "xrdroot_seconds": 108.564
   },
   "roofit/roostats/StandardFeldmanCousinsDemo.py": {
-   "ratio": 3.18204093398674,
+   "ratio": 3.191409628134909,
    "root_seconds": 34.69,
-   "xrdroot_seconds": 110.385
+   "xrdroot_seconds": 110.71
   },
   "roofit/roostats/StandardFrequentistDiscovery.C": {
    "ratio": null,
@@ -4169,19 +4169,19 @@
    "xrdroot_seconds": null
   },
   "roofit/roostats/StandardFrequentistDiscovery.py": {
-   "ratio": 2.099573525422707,
+   "ratio": 1.9268061122999485,
    "root_seconds": 132.716,
-   "xrdroot_seconds": 278.647
+   "xrdroot_seconds": 255.718
   },
   "roofit/roostats/StandardHistFactoryPlotsWithCategories.C": {
-   "ratio": 0.11182157035061667,
+   "ratio": 0.13657989636049575,
    "root_seconds": 32.999,
-   "xrdroot_seconds": 3.69
+   "xrdroot_seconds": 4.507
   },
   "roofit/roostats/StandardHistFactoryPlotsWithCategories.py": {
-   "ratio": 0.10139130808765026,
+   "ratio": 0.11177773476979981,
    "root_seconds": 46.503,
-   "xrdroot_seconds": 4.715
+   "xrdroot_seconds": 5.198
   },
   "roofit/roostats/StandardHypoTestDemo.C": {
    "ratio": 1.2822720920393014,
@@ -4204,44 +4204,44 @@
    "xrdroot_seconds": 2.242
   },
   "roofit/roostats/StandardProfileInspectorDemo.C": {
-   "ratio": 0.46309050772626936,
+   "ratio": 0.3821633554083886,
    "root_seconds": 22.65,
-   "xrdroot_seconds": 10.489
+   "xrdroot_seconds": 8.656
   },
   "roofit/roostats/StandardProfileInspectorDemo.py": {
-   "ratio": 0.3867390370572845,
+   "ratio": 0.3270725135694482,
    "root_seconds": 25.609,
-   "xrdroot_seconds": 9.904
+   "xrdroot_seconds": 8.376
   },
   "roofit/roostats/StandardProfileLikelihoodDemo.C": {
-   "ratio": 0.19907488523671024,
+   "ratio": 0.18498791043207063,
    "root_seconds": 28.537,
-   "xrdroot_seconds": 5.681
+   "xrdroot_seconds": 5.279
   },
   "roofit/roostats/StandardProfileLikelihoodDemo.py": {
-   "ratio": 0.20656264844520772,
+   "ratio": 0.18887711477326705,
    "root_seconds": 27.367,
-   "xrdroot_seconds": 5.653
+   "xrdroot_seconds": 5.169
   },
   "roofit/roostats/StandardTestStatDistributionDemo.C": {
-   "ratio": 1.9802062512161038,
+   "ratio": 1.636866962658978,
    "root_seconds": 56.533,
-   "xrdroot_seconds": 111.947
+   "xrdroot_seconds": 92.537
   },
   "roofit/roostats/StandardTestStatDistributionDemo.py": {
-   "ratio": 1.9946258859172963,
+   "ratio": 1.6648392274260155,
    "root_seconds": 55.451,
-   "xrdroot_seconds": 110.604
+   "xrdroot_seconds": 92.317
   },
   "roofit/roostats/TestNonCentral.C": {
-   "ratio": 0.13288340702815918,
+   "ratio": 0.11198510588782873,
    "root_seconds": 21.485,
-   "xrdroot_seconds": 2.855
+   "xrdroot_seconds": 2.406
   },
   "roofit/roostats/TestNonCentral.py": {
-   "ratio": 0.08436671966083731,
+   "ratio": 0.04824236000706589,
    "root_seconds": 56.61,
-   "xrdroot_seconds": 4.776
+   "xrdroot_seconds": 2.731
   },
   "roofit/roostats/TwoSidedFrequentistUpperLimitWithBands.C": {
    "ratio": 2.167051872824187,
@@ -4254,14 +4254,14 @@
    "xrdroot_seconds": 300.029
   },
   "roofit/roostats/Zbi_Zgamma.C": {
-   "ratio": 0.3678209206025325,
+   "ratio": 0.305407189581708,
    "root_seconds": 33.326,
-   "xrdroot_seconds": 12.258
+   "xrdroot_seconds": 10.178
   },
   "roofit/roostats/Zbi_Zgamma.py": {
-   "ratio": 0.46991695687114926,
+   "ratio": 0.3929815162068042,
    "root_seconds": 37.33,
-   "xrdroot_seconds": 17.542
+   "xrdroot_seconds": 14.67
   },
   "roofit/roostats/rs101_limitexample.C": {
    "ratio": 1.8129507415974964,
@@ -4274,14 +4274,14 @@
    "xrdroot_seconds": 300.055
   },
   "roofit/roostats/rs102_hypotestwithshapes.C": {
-   "ratio": 0.05282593086470408,
+   "ratio": 0.05614934865114371,
    "root_seconds": 48.745,
-   "xrdroot_seconds": 2.575
+   "xrdroot_seconds": 2.737
   },
   "roofit/roostats/rs102_hypotestwithshapes.py": {
-   "ratio": 0.28366303796480546,
+   "ratio": 0.2566233563541301,
    "root_seconds": 25.629,
-   "xrdroot_seconds": 7.27
+   "xrdroot_seconds": 6.577
   },
   "roofit/roostats/rs301_splot.C": {
    "ratio": 0.05485890068573626,
@@ -4304,14 +4304,14 @@
    "xrdroot_seconds": 3.148
   },
   "roofit/roostats/rs401c_FeldmanCousins.C": {
-   "ratio": 0.9080232113694013,
+   "ratio": 0.8934118628166372,
    "root_seconds": 57.558,
-   "xrdroot_seconds": 52.264
+   "xrdroot_seconds": 51.423
   },
   "roofit/roostats/rs401c_FeldmanCousins.py": {
-   "ratio": 1.1884398072097766,
+   "ratio": 0.9896925826308284,
    "root_seconds": 55.397,
-   "xrdroot_seconds": 65.836
+   "xrdroot_seconds": 54.826
   },
   "roofit/roostats/rs401d_FeldmanCousins.C": {
    "ratio": null,
@@ -4324,14 +4324,14 @@
    "xrdroot_seconds": null
   },
   "roofit/roostats/rs701_BayesianCalculator.C": {
-   "ratio": 4.873814842392654,
+   "ratio": 4.6217920079424175,
    "root_seconds": 20.145,
-   "xrdroot_seconds": 98.183
+   "xrdroot_seconds": 93.106
   },
   "roofit/roostats/rs701_BayesianCalculator.py": {
-   "ratio": 5.844464399296592,
+   "ratio": 3.6203838814681784,
    "root_seconds": 26.727,
-   "xrdroot_seconds": 156.205
+   "xrdroot_seconds": 96.762
   },
   "roofit/roostats/rs_bernsteinCorrection.C": {
    "ratio": 0.09244621903520209,
@@ -4344,24 +4344,24 @@
    "xrdroot_seconds": 2.866
   },
   "roofit/roostats/rs_numberCountingCombination.C": {
-   "ratio": 0.20465826651393662,
+   "ratio": 0.2343315333006055,
    "root_seconds": 18.333,
-   "xrdroot_seconds": 3.752
+   "xrdroot_seconds": 4.296
   },
   "roofit/roostats/rs_numberCountingCombination.py": {
-   "ratio": 0.30431491294473884,
+   "ratio": 0.22411251444280647,
    "root_seconds": 25.099,
-   "xrdroot_seconds": 7.638
+   "xrdroot_seconds": 5.625
   },
   "roofit/roostats/rs_numbercountingutils.C": {
-   "ratio": 0.18859425463199048,
+   "ratio": 0.2012578616352201,
    "root_seconds": 11.766,
-   "xrdroot_seconds": 2.219
+   "xrdroot_seconds": 2.368
   },
   "roofit/roostats/rs_numbercountingutils.py": {
-   "ratio": 0.23779896574014223,
+   "ratio": 0.20087265675500973,
    "root_seconds": 12.376,
-   "xrdroot_seconds": 2.943
+   "xrdroot_seconds": 2.486
   },
   "rootlogoff.C": {
    "ratio": null,
@@ -7523,6 +7523,649 @@
     "xrdroot_src": "/tmp/harness/gamma-next-src"
    },
    "source_tree_sha256": "84ad08500f98ca372d1470b616d3c5240f1d5488f1079f94bdb198ce83ce2fa7"
+  },
+  {
+   "generated": "2026-10-16T05:16:06+00:00",
+   "meta": {
+    "cache": "/Users/rcurrie/.cache/xrdroot-tutorials",
+    "composite": true,
+    "gates": "/tmp/harness/mixed-context-gates/gates.json",
+    "jobs": 1,
+    "network": false,
+    "no_oracle": false,
+    "only": [
+     "roofit/roostats/StandardFrequentistDiscovery.py",
+     "roofit/histfactory/hf001_example.C",
+     "roofit/histfactory/hf001_example.py",
+     "roofit/roofit/rf101_basics.C",
+     "roofit/roofit/rf101_basics.py",
+     "roofit/roofit/rf102_dataimport.C",
+     "roofit/roofit/rf102_dataimport.py",
+     "roofit/roofit/rf103_interprfuncs.C",
+     "roofit/roofit/rf103_interprfuncs.py",
+     "roofit/roofit/rf105_funcbinding.C",
+     "roofit/roofit/rf105_funcbinding.py",
+     "roofit/roofit/rf107_plotstyles.C",
+     "roofit/roofit/rf107_plotstyles.py",
+     "roofit/roofit/rf108_plotbinning.C",
+     "roofit/roofit/rf108_plotbinning.py",
+     "roofit/roofit/rf109_chi2residpull.C",
+     "roofit/roofit/rf109_chi2residpull.py",
+     "roofit/roofit/rf110_normintegration.C",
+     "roofit/roofit/rf110_normintegration.py",
+     "roofit/roofit/rf111_derivatives.C",
+     "roofit/roofit/rf111_derivatives.py",
+     "roofit/roofit/rf201_composite.C",
+     "roofit/roofit/rf201_composite.py",
+     "roofit/roofit/rf202_extendedmlfit.C",
+     "roofit/roofit/rf202_extendedmlfit.py",
+     "roofit/roofit/rf203_ranges.C",
+     "roofit/roofit/rf203_ranges.py",
+     "roofit/roofit/rf204a_extendedLikelihood.C",
+     "roofit/roofit/rf204a_extendedLikelihood.py",
+     "roofit/roofit/rf204b_extendedLikelihood_rangedFit.C",
+     "roofit/roofit/rf204b_extendedLikelihood_rangedFit.py",
+     "roofit/roofit/rf205_compplot.C",
+     "roofit/roofit/rf205_compplot.py",
+     "roofit/roofit/rf206_treevistools.C",
+     "roofit/roofit/rf206_treevistools.py",
+     "roofit/roofit/rf207_comptools.C",
+     "roofit/roofit/rf207_comptools.py",
+     "roofit/roofit/rf208_convolution.C",
+     "roofit/roofit/rf208_convolution.py",
+     "roofit/roofit/rf209_anaconv.C",
+     "roofit/roofit/rf209_anaconv.py",
+     "roofit/roofit/rf210_angularconv.C",
+     "roofit/roofit/rf210_angularconv.py",
+     "roofit/roofit/rf211_paramconv.C",
+     "roofit/roofit/rf211_paramconv.py",
+     "roofit/roofit/rf212_plottingInRanges_blinding.C",
+     "roofit/roofit/rf212_plottingInRanges_blinding.py",
+     "roofit/roofit/rf301_composition.C",
+     "roofit/roofit/rf301_composition.py",
+     "roofit/roofit/rf302_utilfuncs.C",
+     "roofit/roofit/rf302_utilfuncs.py",
+     "roofit/roofit/rf303_conditional.C",
+     "roofit/roofit/rf303_conditional.py",
+     "roofit/roofit/rf304_uncorrprod.C",
+     "roofit/roofit/rf304_uncorrprod.py",
+     "roofit/roofit/rf305_condcorrprod.C",
+     "roofit/roofit/rf305_condcorrprod.py",
+     "roofit/roofit/rf306_condpereventerrors.C",
+     "roofit/roofit/rf306_condpereventerrors.py",
+     "roofit/roofit/rf307_fullpereventerrors.C",
+     "roofit/roofit/rf307_fullpereventerrors.py",
+     "roofit/roofit/rf308_normintegration2d.C",
+     "roofit/roofit/rf308_normintegration2d.py",
+     "roofit/roofit/rf309_ndimplot.C",
+     "roofit/roofit/rf309_ndimplot.py",
+     "roofit/roofit/rf310_sliceplot.C",
+     "roofit/roofit/rf310_sliceplot.py",
+     "roofit/roofit/rf311_rangeplot.C",
+     "roofit/roofit/rf311_rangeplot.py",
+     "roofit/roofit/rf312_multirangefit.C",
+     "roofit/roofit/rf312_multirangefit.py",
+     "roofit/roofit/rf313_paramranges.C",
+     "roofit/roofit/rf313_paramranges.py",
+     "roofit/roofit/rf314_paramfitrange.C",
+     "roofit/roofit/rf314_paramfitrange.py",
+     "roofit/roofit/rf316_llratioplot.C",
+     "roofit/roofit/rf316_llratioplot.py",
+     "roofit/roofit/rf403_weightedevts.C",
+     "roofit/roofit/rf403_weightedevts.py",
+     "roofit/roofit/rf404_categories.C",
+     "roofit/roofit/rf404_categories.py",
+     "roofit/roofit/rf405_realtocatfuncs.C",
+     "roofit/roofit/rf405_realtocatfuncs.py",
+     "roofit/roofit/rf406_cattocatfuncs.C",
+     "roofit/roofit/rf406_cattocatfuncs.py",
+     "roofit/roofit/rf407_ComputationalGraphVisualization.C",
+     "roofit/roofit/rf407_ComputationalGraphVisualization.py",
+     "roofit/roofit/rf501_simultaneouspdf.C",
+     "roofit/roofit/rf501_simultaneouspdf.py",
+     "roofit/roofit/rf506_msgservice.C",
+     "roofit/roofit/rf506_msgservice.py",
+     "roofit/roofit/rf508_listsetmanip.C",
+     "roofit/roofit/rf508_listsetmanip.py",
+     "roofit/roofit/rf510_wsnamedsets.C",
+     "roofit/roofit/rf510_wsnamedsets.py",
+     "roofit/roofit/rf511_wsfactory_basic.C",
+     "roofit/roofit/rf511_wsfactory_basic.py",
+     "roofit/roofit/rf514_RooCustomizer.C",
+     "roofit/roofit/rf514_RooCustomizer.py",
+     "roofit/roofit/rf601_intminuit.C",
+     "roofit/roofit/rf601_intminuit.py",
+     "roofit/roofit/rf602_chi2fit.C",
+     "roofit/roofit/rf602_chi2fit.py",
+     "roofit/roofit/rf604_constraints.C",
+     "roofit/roofit/rf604_constraints.py",
+     "roofit/roofit/rf605_profilell.C",
+     "roofit/roofit/rf605_profilell.py",
+     "roofit/roofit/rf606_nllerrorhandling.C",
+     "roofit/roofit/rf606_nllerrorhandling.py",
+     "roofit/roofit/rf608_fitresultaspdf.C",
+     "roofit/roofit/rf608_fitresultaspdf.py",
+     "roofit/roofit/rf610_visualerror.C",
+     "roofit/roofit/rf610_visualerror.py",
+     "roofit/roofit/rf611_weightedfits.C",
+     "roofit/roofit/rf612_recoverFromInvalidParameters.C",
+     "roofit/roofit/rf612_recoverFromInvalidParameters.py",
+     "roofit/roofit/rf613_global_observables.C",
+     "roofit/roofit/rf613_global_observables.py",
+     "roofit/roofit/rf701_efficiencyfit.C",
+     "roofit/roofit/rf701_efficiencyfit.py",
+     "roofit/roofit/rf702_efficiencyfit_2D.C",
+     "roofit/roofit/rf702_efficiencyfit_2D.py",
+     "roofit/roofit/rf703_effpdfprod.C",
+     "roofit/roofit/rf703_effpdfprod.py",
+     "roofit/roofit/rf704_amplitudefit.C",
+     "roofit/roofit/rf704_amplitudefit.py",
+     "roofit/roofit/rf706_histpdf.C",
+     "roofit/roofit/rf706_histpdf.py",
+     "roofit/roofit/rf708_bphysics.C",
+     "roofit/roofit/rf708_bphysics.py",
+     "roofit/roofit/rf801_mcstudy.C",
+     "roofit/roofit/rf801_mcstudy.py",
+     "roofit/roostats/CreateExampleFile.py",
+     "roofit/roostats/FourBinInstructional.C",
+     "roofit/roostats/FourBinInstructional.py",
+     "roofit/roostats/HybridInstructional.C",
+     "roofit/roostats/HybridInstructional.py",
+     "roofit/roostats/HybridStandardForm.C",
+     "roofit/roostats/HybridStandardForm.py",
+     "roofit/roostats/IntervalExamples.C",
+     "roofit/roostats/IntervalExamples.py",
+     "roofit/roostats/MultivariateGaussianTest.C",
+     "roofit/roostats/MultivariateGaussianTest.py",
+     "roofit/roostats/StandardBayesianMCMCDemo.C",
+     "roofit/roostats/StandardBayesianMCMCDemo.py",
+     "roofit/roostats/StandardFeldmanCousinsDemo.C",
+     "roofit/roostats/StandardFeldmanCousinsDemo.py",
+     "roofit/roostats/StandardHistFactoryPlotsWithCategories.C",
+     "roofit/roostats/StandardHistFactoryPlotsWithCategories.py",
+     "roofit/roostats/StandardProfileInspectorDemo.C",
+     "roofit/roostats/StandardProfileInspectorDemo.py",
+     "roofit/roostats/StandardProfileLikelihoodDemo.C",
+     "roofit/roostats/StandardProfileLikelihoodDemo.py",
+     "roofit/roostats/StandardTestStatDistributionDemo.C",
+     "roofit/roostats/StandardTestStatDistributionDemo.py",
+     "roofit/roostats/TestNonCentral.C",
+     "roofit/roostats/TestNonCentral.py",
+     "roofit/roostats/Zbi_Zgamma.C",
+     "roofit/roostats/Zbi_Zgamma.py",
+     "roofit/roostats/rs102_hypotestwithshapes.C",
+     "roofit/roostats/rs102_hypotestwithshapes.py",
+     "roofit/roostats/rs401c_FeldmanCousins.C",
+     "roofit/roostats/rs401c_FeldmanCousins.py",
+     "roofit/roostats/rs701_BayesianCalculator.C",
+     "roofit/roostats/rs701_BayesianCalculator.py",
+     "roofit/roostats/rs_numberCountingCombination.C",
+     "roofit/roostats/rs_numberCountingCombination.py",
+     "roofit/roostats/rs_numbercountingutils.C",
+     "roofit/roostats/rs_numbercountingutils.py",
+     "roofit/roostats/StandardBayesianNumericalDemo.C",
+     "roofit/roostats/StandardBayesianNumericalDemo.py"
+    ],
+    "oracle_only": false,
+    "oracle_prefix": "/Users/rcurrie/.local/root-oracle",
+    "root_features": [
+     "asimage",
+     "asimage_tiff",
+     "builtin_civetweb",
+     "builtin_cling",
+     "builtin_openui5",
+     "check_connection",
+     "clad",
+     "cocoa",
+     "curl",
+     "cxx20",
+     "dataframe",
+     "davix",
+     "fftw3",
+     "fitsio",
+     "gdml",
+     "geom",
+     "gviz",
+     "http",
+     "imt",
+     "libcxx",
+     "mathmore",
+     "opengl",
+     "pyroot",
+     "pythia8",
+     "roofit",
+     "roofit_multiprocess",
+     "root7",
+     "runtime_cxxmodules",
+     "shared",
+     "soversion",
+     "spectrum",
+     "sqlite",
+     "ssl",
+     "thisroot_scripts",
+     "tmva",
+     "tmva-cpu",
+     "tmva-cudnn",
+     "tmva-pymva",
+     "tpython",
+     "vdt",
+     "webgui",
+     "xml",
+     "xrootd"
+    ],
+    "root_python": "/Users/rcurrie/.local/root-oracle/bin/python",
+    "root_version": "6.40.04",
+    "source_runs": [
+     {
+      "meta": {
+       "cache": "/Users/rcurrie/.cache/xrdroot-tutorials",
+       "jobs": 1,
+       "network": false,
+       "no_oracle": false,
+       "only": [
+        "roofit/roostats/StandardFrequentistDiscovery.py"
+       ],
+       "oracle_only": false,
+       "oracle_prefix": "/Users/rcurrie/.local/root-oracle",
+       "root_features": [
+        "asimage",
+        "asimage_tiff",
+        "builtin_civetweb",
+        "builtin_cling",
+        "builtin_openui5",
+        "check_connection",
+        "clad",
+        "cocoa",
+        "curl",
+        "cxx20",
+        "dataframe",
+        "davix",
+        "fftw3",
+        "fitsio",
+        "gdml",
+        "geom",
+        "gviz",
+        "http",
+        "imt",
+        "libcxx",
+        "mathmore",
+        "opengl",
+        "pyroot",
+        "pythia8",
+        "roofit",
+        "roofit_multiprocess",
+        "root7",
+        "runtime_cxxmodules",
+        "shared",
+        "soversion",
+        "spectrum",
+        "sqlite",
+        "ssl",
+        "thisroot_scripts",
+        "tmva",
+        "tmva-cpu",
+        "tmva-cudnn",
+        "tmva-pymva",
+        "tpython",
+        "vdt",
+        "webgui",
+        "xml",
+        "xrootd"
+       ],
+       "root_python": "/Users/rcurrie/.local/root-oracle/bin/python",
+       "root_version": "6.40.04",
+       "source_tree_sha256": "1b2c3643d3d334bf77955a033abd7a5faf809e5a892fe3f2ef6a11b9be581b53",
+       "timeout": 300.0,
+       "tolerance": {
+        "atol": 1e-12,
+        "image_threshold": 0.95,
+        "rtol": 1e-06
+       },
+       "tutorials_dir": "/Users/rcurrie/src/xrdroot/rootsrc-6.40/tutorials",
+       "validation_base_commit": "428399753e1337e5b1b9a0896ee1a1d3d62fb25c",
+       "xrdroot_commit": "4283997",
+       "xrdroot_has_pyroot": true,
+       "xrdroot_has_run": true,
+       "xrdroot_python": "/Users/rcurrie/src/xrdroot/.venv/bin/python",
+       "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
+      },
+      "results": "/tmp/harness/mixed-context-final-default/results.json"
+     },
+     {
+      "meta": {
+       "cache": "/Users/rcurrie/.cache/xrdroot-tutorials",
+       "jobs": 4,
+       "network": false,
+       "no_oracle": false,
+       "only": [
+        "roofit/histfactory/hf001_example.C",
+        "roofit/histfactory/hf001_example.py",
+        "roofit/roofit/rf101_basics.C",
+        "roofit/roofit/rf101_basics.py",
+        "roofit/roofit/rf102_dataimport.C",
+        "roofit/roofit/rf102_dataimport.py",
+        "roofit/roofit/rf103_interprfuncs.C",
+        "roofit/roofit/rf103_interprfuncs.py",
+        "roofit/roofit/rf105_funcbinding.C",
+        "roofit/roofit/rf105_funcbinding.py",
+        "roofit/roofit/rf107_plotstyles.C",
+        "roofit/roofit/rf107_plotstyles.py",
+        "roofit/roofit/rf108_plotbinning.C",
+        "roofit/roofit/rf108_plotbinning.py",
+        "roofit/roofit/rf109_chi2residpull.C",
+        "roofit/roofit/rf109_chi2residpull.py",
+        "roofit/roofit/rf110_normintegration.C",
+        "roofit/roofit/rf110_normintegration.py",
+        "roofit/roofit/rf111_derivatives.C",
+        "roofit/roofit/rf111_derivatives.py",
+        "roofit/roofit/rf201_composite.C",
+        "roofit/roofit/rf201_composite.py",
+        "roofit/roofit/rf202_extendedmlfit.C",
+        "roofit/roofit/rf202_extendedmlfit.py",
+        "roofit/roofit/rf203_ranges.C",
+        "roofit/roofit/rf203_ranges.py",
+        "roofit/roofit/rf204a_extendedLikelihood.C",
+        "roofit/roofit/rf204a_extendedLikelihood.py",
+        "roofit/roofit/rf204b_extendedLikelihood_rangedFit.C",
+        "roofit/roofit/rf204b_extendedLikelihood_rangedFit.py",
+        "roofit/roofit/rf205_compplot.C",
+        "roofit/roofit/rf205_compplot.py",
+        "roofit/roofit/rf206_treevistools.C",
+        "roofit/roofit/rf206_treevistools.py",
+        "roofit/roofit/rf207_comptools.C",
+        "roofit/roofit/rf207_comptools.py",
+        "roofit/roofit/rf208_convolution.C",
+        "roofit/roofit/rf208_convolution.py",
+        "roofit/roofit/rf209_anaconv.C",
+        "roofit/roofit/rf209_anaconv.py",
+        "roofit/roofit/rf210_angularconv.C",
+        "roofit/roofit/rf210_angularconv.py",
+        "roofit/roofit/rf211_paramconv.C",
+        "roofit/roofit/rf211_paramconv.py",
+        "roofit/roofit/rf212_plottingInRanges_blinding.C",
+        "roofit/roofit/rf212_plottingInRanges_blinding.py",
+        "roofit/roofit/rf301_composition.C",
+        "roofit/roofit/rf301_composition.py",
+        "roofit/roofit/rf302_utilfuncs.C",
+        "roofit/roofit/rf302_utilfuncs.py",
+        "roofit/roofit/rf303_conditional.C",
+        "roofit/roofit/rf303_conditional.py",
+        "roofit/roofit/rf304_uncorrprod.C",
+        "roofit/roofit/rf304_uncorrprod.py",
+        "roofit/roofit/rf305_condcorrprod.C",
+        "roofit/roofit/rf305_condcorrprod.py",
+        "roofit/roofit/rf306_condpereventerrors.C",
+        "roofit/roofit/rf306_condpereventerrors.py",
+        "roofit/roofit/rf307_fullpereventerrors.C",
+        "roofit/roofit/rf307_fullpereventerrors.py",
+        "roofit/roofit/rf308_normintegration2d.C",
+        "roofit/roofit/rf308_normintegration2d.py",
+        "roofit/roofit/rf309_ndimplot.C",
+        "roofit/roofit/rf309_ndimplot.py",
+        "roofit/roofit/rf310_sliceplot.C",
+        "roofit/roofit/rf310_sliceplot.py",
+        "roofit/roofit/rf311_rangeplot.C",
+        "roofit/roofit/rf311_rangeplot.py",
+        "roofit/roofit/rf312_multirangefit.C",
+        "roofit/roofit/rf312_multirangefit.py",
+        "roofit/roofit/rf313_paramranges.C",
+        "roofit/roofit/rf313_paramranges.py",
+        "roofit/roofit/rf314_paramfitrange.C",
+        "roofit/roofit/rf314_paramfitrange.py",
+        "roofit/roofit/rf316_llratioplot.C",
+        "roofit/roofit/rf316_llratioplot.py",
+        "roofit/roofit/rf403_weightedevts.C",
+        "roofit/roofit/rf403_weightedevts.py",
+        "roofit/roofit/rf404_categories.C",
+        "roofit/roofit/rf404_categories.py",
+        "roofit/roofit/rf405_realtocatfuncs.C",
+        "roofit/roofit/rf405_realtocatfuncs.py",
+        "roofit/roofit/rf406_cattocatfuncs.C",
+        "roofit/roofit/rf406_cattocatfuncs.py",
+        "roofit/roofit/rf407_ComputationalGraphVisualization.C",
+        "roofit/roofit/rf407_ComputationalGraphVisualization.py",
+        "roofit/roofit/rf501_simultaneouspdf.C",
+        "roofit/roofit/rf501_simultaneouspdf.py",
+        "roofit/roofit/rf506_msgservice.C",
+        "roofit/roofit/rf506_msgservice.py",
+        "roofit/roofit/rf508_listsetmanip.C",
+        "roofit/roofit/rf508_listsetmanip.py",
+        "roofit/roofit/rf510_wsnamedsets.C",
+        "roofit/roofit/rf510_wsnamedsets.py",
+        "roofit/roofit/rf511_wsfactory_basic.C",
+        "roofit/roofit/rf511_wsfactory_basic.py",
+        "roofit/roofit/rf514_RooCustomizer.C",
+        "roofit/roofit/rf514_RooCustomizer.py",
+        "roofit/roofit/rf601_intminuit.C",
+        "roofit/roofit/rf601_intminuit.py",
+        "roofit/roofit/rf602_chi2fit.C",
+        "roofit/roofit/rf602_chi2fit.py",
+        "roofit/roofit/rf604_constraints.C",
+        "roofit/roofit/rf604_constraints.py",
+        "roofit/roofit/rf605_profilell.C",
+        "roofit/roofit/rf605_profilell.py",
+        "roofit/roofit/rf606_nllerrorhandling.C",
+        "roofit/roofit/rf606_nllerrorhandling.py",
+        "roofit/roofit/rf608_fitresultaspdf.C",
+        "roofit/roofit/rf608_fitresultaspdf.py",
+        "roofit/roofit/rf610_visualerror.C",
+        "roofit/roofit/rf610_visualerror.py",
+        "roofit/roofit/rf611_weightedfits.C",
+        "roofit/roofit/rf612_recoverFromInvalidParameters.C",
+        "roofit/roofit/rf612_recoverFromInvalidParameters.py",
+        "roofit/roofit/rf613_global_observables.C",
+        "roofit/roofit/rf613_global_observables.py",
+        "roofit/roofit/rf701_efficiencyfit.C",
+        "roofit/roofit/rf701_efficiencyfit.py",
+        "roofit/roofit/rf702_efficiencyfit_2D.C",
+        "roofit/roofit/rf702_efficiencyfit_2D.py",
+        "roofit/roofit/rf703_effpdfprod.C",
+        "roofit/roofit/rf703_effpdfprod.py",
+        "roofit/roofit/rf704_amplitudefit.C",
+        "roofit/roofit/rf704_amplitudefit.py",
+        "roofit/roofit/rf706_histpdf.C",
+        "roofit/roofit/rf706_histpdf.py",
+        "roofit/roofit/rf708_bphysics.C",
+        "roofit/roofit/rf708_bphysics.py",
+        "roofit/roofit/rf801_mcstudy.C",
+        "roofit/roofit/rf801_mcstudy.py",
+        "roofit/roostats/CreateExampleFile.py",
+        "roofit/roostats/FourBinInstructional.C",
+        "roofit/roostats/FourBinInstructional.py",
+        "roofit/roostats/HybridInstructional.C",
+        "roofit/roostats/HybridInstructional.py",
+        "roofit/roostats/HybridStandardForm.C",
+        "roofit/roostats/HybridStandardForm.py",
+        "roofit/roostats/IntervalExamples.C",
+        "roofit/roostats/IntervalExamples.py",
+        "roofit/roostats/MultivariateGaussianTest.C",
+        "roofit/roostats/MultivariateGaussianTest.py",
+        "roofit/roostats/StandardBayesianMCMCDemo.C",
+        "roofit/roostats/StandardBayesianMCMCDemo.py",
+        "roofit/roostats/StandardFeldmanCousinsDemo.C",
+        "roofit/roostats/StandardFeldmanCousinsDemo.py",
+        "roofit/roostats/StandardHistFactoryPlotsWithCategories.C",
+        "roofit/roostats/StandardHistFactoryPlotsWithCategories.py",
+        "roofit/roostats/StandardProfileInspectorDemo.C",
+        "roofit/roostats/StandardProfileInspectorDemo.py",
+        "roofit/roostats/StandardProfileLikelihoodDemo.C",
+        "roofit/roostats/StandardProfileLikelihoodDemo.py",
+        "roofit/roostats/StandardTestStatDistributionDemo.C",
+        "roofit/roostats/StandardTestStatDistributionDemo.py",
+        "roofit/roostats/TestNonCentral.C",
+        "roofit/roostats/TestNonCentral.py",
+        "roofit/roostats/Zbi_Zgamma.C",
+        "roofit/roostats/Zbi_Zgamma.py",
+        "roofit/roostats/rs102_hypotestwithshapes.C",
+        "roofit/roostats/rs102_hypotestwithshapes.py",
+        "roofit/roostats/rs401c_FeldmanCousins.C",
+        "roofit/roostats/rs401c_FeldmanCousins.py",
+        "roofit/roostats/rs701_BayesianCalculator.C",
+        "roofit/roostats/rs701_BayesianCalculator.py",
+        "roofit/roostats/rs_numberCountingCombination.C",
+        "roofit/roostats/rs_numberCountingCombination.py",
+        "roofit/roostats/rs_numbercountingutils.C",
+        "roofit/roostats/rs_numbercountingutils.py"
+       ],
+       "oracle_only": false,
+       "oracle_prefix": "/Users/rcurrie/.local/root-oracle",
+       "root_features": [
+        "asimage",
+        "asimage_tiff",
+        "builtin_civetweb",
+        "builtin_cling",
+        "builtin_openui5",
+        "check_connection",
+        "clad",
+        "cocoa",
+        "curl",
+        "cxx20",
+        "dataframe",
+        "davix",
+        "fftw3",
+        "fitsio",
+        "gdml",
+        "geom",
+        "gviz",
+        "http",
+        "imt",
+        "libcxx",
+        "mathmore",
+        "opengl",
+        "pyroot",
+        "pythia8",
+        "roofit",
+        "roofit_multiprocess",
+        "root7",
+        "runtime_cxxmodules",
+        "shared",
+        "soversion",
+        "spectrum",
+        "sqlite",
+        "ssl",
+        "thisroot_scripts",
+        "tmva",
+        "tmva-cpu",
+        "tmva-cudnn",
+        "tmva-pymva",
+        "tpython",
+        "vdt",
+        "webgui",
+        "xml",
+        "xrootd"
+       ],
+       "root_python": "/Users/rcurrie/.local/root-oracle/bin/python",
+       "root_version": "6.40.04",
+       "source_tree_sha256": "1b2c3643d3d334bf77955a033abd7a5faf809e5a892fe3f2ef6a11b9be581b53",
+       "timeout": 300.0,
+       "tolerance": {
+        "atol": 1e-12,
+        "image_threshold": 0.95,
+        "rtol": 1e-06
+       },
+       "tutorials_dir": "/Users/rcurrie/src/xrdroot/rootsrc-6.40/tutorials",
+       "validation_base_commit": "428399753e1337e5b1b9a0896ee1a1d3d62fb25c",
+       "xrdroot_commit": "4283997",
+       "xrdroot_has_pyroot": true,
+       "xrdroot_has_run": true,
+       "xrdroot_python": "/Users/rcurrie/src/xrdroot/.venv/bin/python",
+       "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
+      },
+      "results": "/tmp/harness/mixed-context-final-affected/results.json"
+     },
+     {
+      "meta": {
+       "cache": "/Users/rcurrie/.cache/xrdroot-tutorials",
+       "jobs": 1,
+       "network": false,
+       "no_oracle": false,
+       "only": [
+        "roofit/roostats/StandardBayesianNumericalDemo.C",
+        "roofit/roostats/StandardBayesianNumericalDemo.py"
+       ],
+       "oracle_only": false,
+       "oracle_prefix": "/Users/rcurrie/.local/root-oracle",
+       "root_features": [
+        "asimage",
+        "asimage_tiff",
+        "builtin_civetweb",
+        "builtin_cling",
+        "builtin_openui5",
+        "check_connection",
+        "clad",
+        "cocoa",
+        "curl",
+        "cxx20",
+        "dataframe",
+        "davix",
+        "fftw3",
+        "fitsio",
+        "gdml",
+        "geom",
+        "gviz",
+        "http",
+        "imt",
+        "libcxx",
+        "mathmore",
+        "opengl",
+        "pyroot",
+        "pythia8",
+        "roofit",
+        "roofit_multiprocess",
+        "root7",
+        "runtime_cxxmodules",
+        "shared",
+        "soversion",
+        "spectrum",
+        "sqlite",
+        "ssl",
+        "thisroot_scripts",
+        "tmva",
+        "tmva-cpu",
+        "tmva-cudnn",
+        "tmva-pymva",
+        "tpython",
+        "vdt",
+        "webgui",
+        "xml",
+        "xrootd"
+       ],
+       "root_python": "/Users/rcurrie/.local/root-oracle/bin/python",
+       "root_version": "6.40.04",
+       "source_tree_sha256": "1b2c3643d3d334bf77955a033abd7a5faf809e5a892fe3f2ef6a11b9be581b53",
+       "timeout": 300.0,
+       "tolerance": {
+        "atol": 1e-12,
+        "image_threshold": 0.95,
+        "rtol": 1e-06
+       },
+       "tutorials_dir": "/Users/rcurrie/src/xrdroot/rootsrc-6.40/tutorials",
+       "validation_base_commit": "428399753e1337e5b1b9a0896ee1a1d3d62fb25c",
+       "xrdroot_commit": "4283997",
+       "xrdroot_has_pyroot": true,
+       "xrdroot_has_run": true,
+       "xrdroot_python": "/Users/rcurrie/src/xrdroot/.venv/bin/python",
+       "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
+      },
+      "results": "/tmp/harness/mixed-context-final-bayesian/results.json"
+     }
+    ],
+    "source_tree_sha256": "1b2c3643d3d334bf77955a033abd7a5faf809e5a892fe3f2ef6a11b9be581b53",
+    "timeout": 300.0,
+    "tolerance": {
+     "atol": 1e-12,
+     "image_threshold": 0.95,
+     "rtol": 1e-06
+    },
+    "tutorials_dir": "/Users/rcurrie/src/xrdroot/rootsrc-6.40/tutorials",
+    "validation_base_commit": "428399753e1337e5b1b9a0896ee1a1d3d62fb25c",
+    "xrdroot_commit": "4283997",
+    "xrdroot_has_pyroot": true,
+    "xrdroot_has_run": true,
+    "xrdroot_python": "/Users/rcurrie/src/xrdroot/.venv/bin/python",
+    "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
+   },
+   "source_tree_sha256": "1b2c3643d3d334bf77955a033abd7a5faf809e5a892fe3f2ef6a11b9be581b53"
   }
  ]
 }

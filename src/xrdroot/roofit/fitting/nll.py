@@ -162,15 +162,18 @@ class RooNLLVar(RooAbsReal):
         values, as the likelihood's evaluator computes them - before it joins the rest."""
         from .scalar import constraint_sum
 
-        fast = constraint_sum(self)
+        fast = constraint_sum(self, self._constraint_value)
         return self._general_constraints() if fast is None else fast
+
+    def _constraint_value(self, constraint: Any) -> float:
+        nset = self._constrained(constraint)
+        with kernels.likelihood():
+            return float(np.asarray(constraint.value(dict(self._global_values), nset)))
 
     def _general_constraints(self) -> float:
         found = 0.0
         for constraint in self.constraints:
-            nset = self._constrained(constraint)
-            with kernels.likelihood():
-                value = float(np.asarray(constraint.value(dict(self._global_values), nset)))
+            value = self._constraint_value(constraint)
             found -= math.log(value) if value > 0 else (-math.inf if value == 0 else math.nan)
         return found
 

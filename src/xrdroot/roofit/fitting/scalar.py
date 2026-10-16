@@ -7,6 +7,7 @@ that evaluator, including its diagnostic messages and NaN payloads.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -143,18 +144,54 @@ def _evaluated(nll: Any) -> float:
     return total + _constraints(nll, global_values) if nll.constraints else total
 
 
-def _constraints(nll: Any, global_values: dict[str, float]) -> float:
+class _ConstraintContext:
+    """Native terms share a snapshot; callbacks can replace it for subsequent terms."""
+
+    def __init__(self, values: dict[str, float]) -> None:
+        self.values: dict[str, float] | None = values
+
+    def refresh(self, nll: Any) -> None:
+        try:
+            self.values = _global_context(nll._global_values)
+        except (_NotScalar, ValueError, TypeError, OverflowError, ZeroDivisionError):
+            self.values = None
+
+
+def _constraint_log(
+    nll: Any, constraint: Any, context: _ConstraintContext, general: Callable[[Any], float] | None
+) -> float:
+    try:
+        if context.values is None:
+            raise _NotScalar
+        value = _positive(_density(constraint, context.values, nll._constrained(constraint)))
+    except (_NotScalar, ValueError, TypeError, OverflowError, ZeroDivisionError):
+        if general is None:
+            raise
+        value = general(constraint)
+        context.refresh(nll)
+    return math.log(value) if value > 0 else (-math.inf if value == 0 else math.nan)
+
+
+def _constraints(
+    nll: Any, global_values: dict[str, float], general: Callable[[Any], float] | None = None
+) -> float:
     constraints = 0.0
+    context = _ConstraintContext(global_values)
     for constraint in nll.constraints:
-        value = _positive(_density(constraint, global_values, nll._constrained(constraint)))
-        constraints -= math.log(value)
+        constraints -= _constraint_log(nll, constraint, context, general)
     return constraints
 
 
-def constraint_sum(nll: Any) -> float | None:
-    """Scalar constraints stay scalar even when the likelihood has many data bins."""
+def constraint_sum(nll: Any, general: Callable[[Any], float] | None = None) -> float | None:
+    """Each supported constraint stays scalar, including beside a custom density."""
     try:
-        return _constraints(nll, _global_context(nll._global_values))
+        values = _global_context(nll._global_values)
+    except (_NotScalar, ValueError, TypeError, OverflowError, ZeroDivisionError):
+        return None
+    if general is not None:
+        return _constraints(nll, values, general)
+    try:
+        return _constraints(nll, values)
     except (_NotScalar, ValueError, TypeError, OverflowError, ZeroDivisionError):
         return None
 
