@@ -136,11 +136,30 @@ def test_the_lcg_passing_through_zero_skips_it_as_root_does():
 # -- seeds ------------------------------------------------------------------------------
 
 
+def test_zero_seed_entropy_is_a_version_four_uuid_in_binary_form():
+    raw = trandom.uuid_bytes()
+    assert isinstance(raw, bytes)
+    assert len(raw) == 16
+    assert raw[6] >> 4 == 4
+    assert raw[8] >> 6 == 2
+
+
 @pytest.mark.parametrize("made", [TRandom, TRandom1, TRandom2, TRandom3])
-def test_a_zero_seed_is_unrepeatable_but_an_ordinary_stream(made):
+def test_a_zero_seed_is_unrepeatable_but_an_ordinary_stream(made, monkeypatch):
+    # TRandom1 has 24-bit draws, so valid independent draws can coincide.
+    # Known UUIDs keep the uniqueness assertion independent of random collisions.
+    raw = iter([bytes(range(1, 17)), bytes(range(17, 33))])
+
+    def draw_uuid():
+        return next(raw)
+
+    monkeypatch.setattr(trandom, "uuid_bytes", draw_uuid)
+    monkeypatch.setattr(tausworthe, "uuid_bytes", draw_uuid)
     a, b = made(0).rndm(100), made(0).rndm(100)
     assert not np.array_equal(a, b)
     assert np.all((a > 0) & (a < 1)) and len(np.unique(a)) == 100
+    with pytest.raises(StopIteration):
+        next(raw)
 
 
 def test_a_zero_seed_is_made_from_a_uuid_the_way_root_makes_it(monkeypatch):
