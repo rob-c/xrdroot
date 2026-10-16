@@ -109,6 +109,15 @@ CPP_NAMES: dict[str, str] = {
 #: Canonical numeric names avoid rebuilding NumPy dtype descriptions per event.
 _DTYPE_NAMES = {np.dtype(name).num: name for name in CPP_NAMES}
 
+#: These numeric dtype classes have no user-defined template conversion.
+_DTYPE_CLASSES = tuple(type(np.dtype(name)) for name in CPP_NAMES)
+_DTYPE_META = type(_DTYPE_CLASSES[0])
+
+
+def _numeric_dtype(value: Any) -> bool:
+    kind = type(value)
+    return type(kind) is _DTYPE_META and kind in _DTYPE_CLASSES
+
 #: What a Python type given as an element type stands for, as cppyy takes it.
 PYTHON_TYPES: dict[type, str] = {float: "float64", int: "int32", bool: "bool"}
 
@@ -367,6 +376,14 @@ class _Template:
         return f"<std.{self._name} template>"
 
     def __getitem__(self, arguments: Any) -> Any:
+        if self._arity == 1 and _numeric_dtype(arguments):
+            key = (cpp_name(arguments),)
+            if key not in self._made:
+                self._made[key] = self._build(arguments)
+            return self._made[key]
+        return self._general(arguments)
+
+    def _general(self, arguments: Any) -> Any:
         given = arguments if isinstance(arguments, tuple) else (arguments,)
         if len(given) != self._arity:
             raise TypeError(

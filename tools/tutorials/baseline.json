@@ -65,7 +65,7 @@
  "analysis/dataframe/df102_NanoAODDimuonAnalysis.py": "ORACLE-FAIL",
  "analysis/dataframe/df103_NanoAODHiggsAnalysis.C": "PASS",
  "analysis/dataframe/df103_NanoAODHiggsAnalysis.py": "PASS",
- "analysis/dataframe/df104_HiggsToTwoPhotons.py": "FAIL",
+ "analysis/dataframe/df104_HiggsToTwoPhotons.py": "DIFF",
  "analysis/dataframe/df105_WBosonAnalysis.py": "DIFF",
  "analysis/dataframe/df106_HiggsToFourLeptons.C": "UNSUPPORTED",
  "analysis/dataframe/df106_HiggsToFourLeptons.py": "UNSUPPORTED",
