@@ -140,11 +140,23 @@ def _evaluated(nll: Any) -> float:
     weight = weight * weight if nll._weight_squared else weight
     # The first Kahan addition starts at zero; constraints have their own ordered sum.
     total = 0.0 + (-weight * float(libm.log(probability)))
+    return total + _constraints(nll, global_values) if nll.constraints else total
+
+
+def _constraints(nll: Any, global_values: dict[str, float]) -> float:
     constraints = 0.0
     for constraint in nll.constraints:
         value = _positive(_density(constraint, global_values, nll._constrained(constraint)))
         constraints -= math.log(value)
-    return total + constraints if nll.constraints else total
+    return constraints
+
+
+def constraint_sum(nll: Any) -> float | None:
+    """Scalar constraints stay scalar even when the likelihood has many data bins."""
+    try:
+        return _constraints(nll, _global_context(nll._global_values))
+    except (_NotScalar, ValueError, TypeError, OverflowError, ZeroDivisionError):
+        return None
 
 
 def one_entry(nll: Any) -> float | None:
