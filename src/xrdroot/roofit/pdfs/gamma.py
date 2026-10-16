@@ -35,8 +35,47 @@ def gamma_dist(x: float, gamma: float, mu: float, beta: float) -> float:
     return float(gamma_pdf(x, gamma, beta, mu))
 
 
+def _scalar_values(values: tuple[Any, ...]) -> tuple[float, ...] | None:
+    """Other scalar types retain the array evaluator's conversion and diagnostics."""
+    if not all(type(value) in (float, int, np.float64) for value in values):
+        return None
+    converted = tuple(float(value) for value in values)
+    return converted if all(math.isfinite(value) for value in converted) else None
+
+
+def _away(x: float, gamma: float, inverse: float, mu: float, lgamma: float) -> float | None:
+    scaled = (x - mu) * inverse
+    if not 0.0 < scaled < math.inf:
+        return None
+    logged = kernels.fast_log(scaled)
+    exponent = -lgamma - scaled + logged * (gamma - 1)
+    if not math.isfinite(exponent):
+        return None
+    return float(kernels.fast_exp(exponent)) * inverse
+
+
+def _single(x: Any, gamma: Any, beta: Any, mu: Any) -> float | None:
+    """The same likelihood kernel without arrays when all four arguments are scalars."""
+    values = _scalar_values((x, gamma, beta, mu))
+    if values is None:
+        return None
+    current, shape, scale, origin = values
+    if shape <= 0.0 or scale <= 0.0 or current < origin:
+        return None
+    lgamma = float(libm.lgamma(shape))
+    inverse = 1.0 / scale
+    if not math.isfinite(inverse):
+        return None
+    if current == origin:
+        return float(shape == 1.0) / scale
+    return _away(current, shape, inverse, origin, lgamma)
+
+
 def _kernel(x: Any, gamma: Any, beta: Any, mu: Any) -> Any:
     """``computeGamma``, event by event."""
+    single = _single(x, gamma, beta, mu)
+    if single is not None:
+        return single
     columns = (np.asarray(v, dtype=np.float64) for v in (x, gamma, beta, mu))
     x, gamma, beta, mu = np.broadcast_arrays(*columns)
     lgamma = np.asarray(libm.lgamma(gamma), dtype=np.float64)

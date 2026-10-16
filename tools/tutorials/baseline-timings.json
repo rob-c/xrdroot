@@ -3094,14 +3094,14 @@
    "xrdroot_seconds": null
   },
   "roofit/histfactory/hf001_example.C": {
-   "ratio": 0.313324057510104,
+   "ratio": 0.24488173325382623,
    "root_seconds": 45.279,
-   "xrdroot_seconds": 14.187
+   "xrdroot_seconds": 11.088
   },
   "roofit/histfactory/hf001_example.py": {
-   "ratio": 0.37663837559088953,
+   "ratio": 0.30033304684142675,
    "root_seconds": 37.232,
-   "xrdroot_seconds": 14.023
+   "xrdroot_seconds": 11.182
   },
   "roofit/histfactory/makeExample.C": {
    "ratio": null,
@@ -4074,24 +4074,24 @@
    "xrdroot_seconds": 10.378
   },
   "roofit/roostats/HybridInstructional.C": {
-   "ratio": 1.693149352622941,
+   "ratio": 1.1132818673636862,
    "root_seconds": 82.255,
-   "xrdroot_seconds": 139.27
+   "xrdroot_seconds": 91.573
   },
   "roofit/roostats/HybridInstructional.py": {
-   "ratio": 2.11917355094365,
+   "ratio": 0.7654476459130903,
    "root_seconds": 119.112,
-   "xrdroot_seconds": 252.419
+   "xrdroot_seconds": 91.174
   },
   "roofit/roostats/HybridStandardForm.C": {
-   "ratio": 1.4630881040418207,
+   "ratio": 0.9529771771005993,
    "root_seconds": 78.43,
-   "xrdroot_seconds": 114.75
+   "xrdroot_seconds": 74.742
   },
   "roofit/roostats/HybridStandardForm.py": {
-   "ratio": 1.7942560495687851,
+   "ratio": 0.6067236037846436,
    "root_seconds": 119.43,
-   "xrdroot_seconds": 214.288
+   "xrdroot_seconds": 72.461
   },
   "roofit/roostats/IntervalExamples.C": {
    "ratio": 2.6019914709543146,
@@ -4169,9 +4169,9 @@
    "xrdroot_seconds": null
   },
   "roofit/roostats/StandardFrequentistDiscovery.py": {
-   "ratio": 2.260714608637994,
+   "ratio": 2.099573525422707,
    "root_seconds": 132.716,
-   "xrdroot_seconds": 300.033
+   "xrdroot_seconds": 278.647
   },
   "roofit/roostats/StandardHistFactoryPlotsWithCategories.C": {
    "ratio": 0.11182157035061667,
@@ -7277,6 +7277,252 @@
     "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
    },
    "source_tree_sha256": "db2952b24370d6d26ab58ebad31553b533a9b53193fe3adba5c2927ccebff3f7"
+  },
+  {
+   "generated": "2026-10-16T03:59:02+00:00",
+   "meta": {
+    "applied_base_commit": "ee5b00148ad173e64859c721fe7da18dc9810a3f",
+    "applied_working_tree": "/Users/rcurrie/src/xrdroot",
+    "cache": "/Users/rcurrie/.cache/xrdroot-tutorials",
+    "composite": true,
+    "gates": "/tmp/harness/gamma-gates/gates.json",
+    "jobs": 4,
+    "network": false,
+    "no_oracle": false,
+    "only": [
+     "roofit/histfactory/hf001_example.C",
+     "roofit/histfactory/hf001_example.py",
+     "roofit/roostats/HybridInstructional.C",
+     "roofit/roostats/HybridInstructional.py",
+     "roofit/roostats/HybridStandardForm.C",
+     "roofit/roostats/HybridStandardForm.py",
+     "roofit/roostats/StandardFrequentistDiscovery.py"
+    ],
+    "oracle_only": false,
+    "oracle_prefix": "/Users/rcurrie/.local/root-oracle",
+    "prototype_baseline": "ee5b00148ad173e64859c721fe7da18dc9810a3f",
+    "root_features": [
+     "asimage",
+     "asimage_tiff",
+     "builtin_civetweb",
+     "builtin_cling",
+     "builtin_openui5",
+     "check_connection",
+     "clad",
+     "cocoa",
+     "curl",
+     "cxx20",
+     "dataframe",
+     "davix",
+     "fftw3",
+     "fitsio",
+     "gdml",
+     "geom",
+     "gviz",
+     "http",
+     "imt",
+     "libcxx",
+     "mathmore",
+     "opengl",
+     "pyroot",
+     "pythia8",
+     "roofit",
+     "roofit_multiprocess",
+     "root7",
+     "runtime_cxxmodules",
+     "shared",
+     "soversion",
+     "spectrum",
+     "sqlite",
+     "ssl",
+     "thisroot_scripts",
+     "tmva",
+     "tmva-cpu",
+     "tmva-cudnn",
+     "tmva-pymva",
+     "tpython",
+     "vdt",
+     "webgui",
+     "xml",
+     "xrootd"
+    ],
+    "root_python": "/Users/rcurrie/.local/root-oracle/bin/python",
+    "root_version": "6.40.04",
+    "source_runs": [
+     {
+      "meta": {
+       "cache": "/Users/rcurrie/.cache/xrdroot-tutorials",
+       "jobs": 4,
+       "network": false,
+       "no_oracle": false,
+       "only": [
+        "roofit/roostats/HybridInstructional.C",
+        "roofit/roostats/HybridInstructional.py",
+        "roofit/roostats/HybridStandardForm.C",
+        "roofit/roostats/HybridStandardForm.py",
+        "roofit/histfactory/hf001_example.C",
+        "roofit/histfactory/hf001_example.py"
+       ],
+       "oracle_only": false,
+       "oracle_prefix": "/Users/rcurrie/.local/root-oracle",
+       "prototype_baseline": "ee5b00148ad173e64859c721fe7da18dc9810a3f",
+       "root_features": [
+        "asimage",
+        "asimage_tiff",
+        "builtin_civetweb",
+        "builtin_cling",
+        "builtin_openui5",
+        "check_connection",
+        "clad",
+        "cocoa",
+        "curl",
+        "cxx20",
+        "dataframe",
+        "davix",
+        "fftw3",
+        "fitsio",
+        "gdml",
+        "geom",
+        "gviz",
+        "http",
+        "imt",
+        "libcxx",
+        "mathmore",
+        "opengl",
+        "pyroot",
+        "pythia8",
+        "roofit",
+        "roofit_multiprocess",
+        "root7",
+        "runtime_cxxmodules",
+        "shared",
+        "soversion",
+        "spectrum",
+        "sqlite",
+        "ssl",
+        "thisroot_scripts",
+        "tmva",
+        "tmva-cpu",
+        "tmva-cudnn",
+        "tmva-pymva",
+        "tpython",
+        "vdt",
+        "webgui",
+        "xml",
+        "xrootd"
+       ],
+       "root_python": "/Users/rcurrie/.local/root-oracle/bin/python",
+       "root_version": "6.40.04",
+       "source_tree_sha256": "84ad08500f98ca372d1470b616d3c5240f1d5488f1079f94bdb198ce83ce2fa7",
+       "timeout": 300.0,
+       "tolerance": {
+        "atol": 1e-12,
+        "image_threshold": 0.95,
+        "rtol": 1e-06
+       },
+       "tutorials_dir": "/Users/rcurrie/src/xrdroot/rootsrc-6.40/tutorials",
+       "xrdroot_commit": "",
+       "xrdroot_has_pyroot": true,
+       "xrdroot_has_run": true,
+       "xrdroot_python": "/Users/rcurrie/src/xrdroot/.venv/bin/python",
+       "xrdroot_src": "/tmp/harness/gamma-next-src"
+      },
+      "results": "/tmp/harness/gamma-affected-prototype/results.json"
+     },
+     {
+      "meta": {
+       "cache": "/Users/rcurrie/.cache/xrdroot-tutorials",
+       "jobs": 1,
+       "network": false,
+       "no_oracle": false,
+       "only": [
+        "roofit/roostats/StandardFrequentistDiscovery.py"
+       ],
+       "oracle_only": false,
+       "oracle_prefix": "/Users/rcurrie/.local/root-oracle",
+       "prototype_baseline": "434df848cb74d0a6c98d1055d0cc8cdcae2a41d8",
+       "prototype_changed_files": [
+        "roofit/pdfs/gamma.py"
+       ],
+       "root_features": [
+        "asimage",
+        "asimage_tiff",
+        "builtin_civetweb",
+        "builtin_cling",
+        "builtin_openui5",
+        "check_connection",
+        "clad",
+        "cocoa",
+        "curl",
+        "cxx20",
+        "dataframe",
+        "davix",
+        "fftw3",
+        "fitsio",
+        "gdml",
+        "geom",
+        "gviz",
+        "http",
+        "imt",
+        "libcxx",
+        "mathmore",
+        "opengl",
+        "pyroot",
+        "pythia8",
+        "roofit",
+        "roofit_multiprocess",
+        "root7",
+        "runtime_cxxmodules",
+        "shared",
+        "soversion",
+        "spectrum",
+        "sqlite",
+        "ssl",
+        "thisroot_scripts",
+        "tmva",
+        "tmva-cpu",
+        "tmva-cudnn",
+        "tmva-pymva",
+        "tpython",
+        "vdt",
+        "webgui",
+        "xml",
+        "xrootd"
+       ],
+       "root_python": "/Users/rcurrie/.local/root-oracle/bin/python",
+       "root_version": "6.40.04",
+       "source_tree_sha256": "84ad08500f98ca372d1470b616d3c5240f1d5488f1079f94bdb198ce83ce2fa7",
+       "timeout": 300.0,
+       "tolerance": {
+        "atol": 1e-12,
+        "image_threshold": 0.95,
+        "rtol": 1e-06
+       },
+       "tutorials_dir": "/Users/rcurrie/src/xrdroot/rootsrc-6.40/tutorials",
+       "xrdroot_commit": "",
+       "xrdroot_has_pyroot": true,
+       "xrdroot_has_run": true,
+       "xrdroot_python": "/Users/rcurrie/src/xrdroot/.venv/bin/python",
+       "xrdroot_src": "/tmp/harness/gamma-next-src"
+      },
+      "results": "/tmp/harness/gamma-default-trial/results.json"
+     }
+    ],
+    "source_tree_sha256": "84ad08500f98ca372d1470b616d3c5240f1d5488f1079f94bdb198ce83ce2fa7",
+    "timeout": 300.0,
+    "tolerance": {
+     "atol": 1e-12,
+     "image_threshold": 0.95,
+     "rtol": 1e-06
+    },
+    "tutorials_dir": "/Users/rcurrie/src/xrdroot/rootsrc-6.40/tutorials",
+    "xrdroot_commit": "",
+    "xrdroot_has_pyroot": true,
+    "xrdroot_has_run": true,
+    "xrdroot_python": "/Users/rcurrie/src/xrdroot/.venv/bin/python",
+    "xrdroot_src": "/tmp/harness/gamma-next-src"
+   },
+   "source_tree_sha256": "84ad08500f98ca372d1470b616d3c5240f1d5488f1079f94bdb198ce83ce2fa7"
   }
  ]
 }

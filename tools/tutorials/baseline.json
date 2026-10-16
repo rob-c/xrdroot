@@ -819,7 +819,7 @@
  "roofit/roostats/StandardFeldmanCousinsDemo.C": "PASS",
  "roofit/roostats/StandardFeldmanCousinsDemo.py": "PASS",
  "roofit/roostats/StandardFrequentistDiscovery.C": "SKIP",
- "roofit/roostats/StandardFrequentistDiscovery.py": "FAIL",
+ "roofit/roostats/StandardFrequentistDiscovery.py": "DIFF",
  "roofit/roostats/StandardHistFactoryPlotsWithCategories.C": "PASS",
  "roofit/roostats/StandardHistFactoryPlotsWithCategories.py": "PASS",
  "roofit/roostats/StandardHypoTestDemo.C": "FAIL",
