@@ -315,7 +315,12 @@ class ParamHistFunc(RooAbsReal):
 
     def compute(self, ctx: Context) -> Any:
         index = self._index(ctx)
-        values = np.array([np.broadcast_to(g.compute(ctx), np.shape(index)) for g in self.gammas])
+        given = [g.compute(ctx) for g in self.gammas]
+        if given and all(isinstance(value, (int, float, np.integer, np.floating))
+                         for value in given):
+            values = np.asarray(given)
+            return float(values[int(index)]) if not np.ndim(index) else values[index]
+        values = np.array([np.broadcast_to(value, np.shape(index)) for value in given])
         if not np.ndim(index):
             return float(values[int(index)])
         return np.take_along_axis(values, np.asarray(index)[None, ...], axis=0)[0]

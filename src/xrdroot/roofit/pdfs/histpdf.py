@@ -24,6 +24,7 @@ from ..data.interpolate import Axis, clone_rows, weights_interpolated
 from ..messages import ERROR, log
 from ..pdf import RooAbsPdf
 from ..real import Context, RooAbsReal
+from .histcache import located_key, weights_key
 
 __all__ = ["RooHistFunc", "RooHistPdf"]
 
@@ -79,6 +80,16 @@ class _Histogram:
 
     def _weights(self, ctx: Context) -> Any:
         columns = self._columns(ctx)
+        key = weights_key(self, columns)
+        cached = self.__dict__.get("_weights_cache")
+        if key is not None and cached is not None and cached[0] == key:
+            return cached[1].copy()
+        found = self._uncached_weights(columns)
+        if key is not None:
+            self.__dict__["_weights_cache"] = (key, found.copy())
+        return found
+
+    def _uncached_weights(self, columns: dict[str, Any]) -> Any:
         shape = np.broadcast_shapes(*(one.shape for one in columns.values()))
         columns = {k: np.broadcast_to(v, shape).reshape(-1) for k, v in columns.items()}
         weights = self.data.weights() / (self.data.binVolumes() if self.density else 1.0)
@@ -101,13 +112,12 @@ class _Histogram:
     def _located(self, columns: dict[str, Any], shape: Any) -> tuple[Any, Any]:
         """The bins the values are in, and which are inside the ranges - kept for the values a
         likelihood gives again and again, its events' (the ranges held with them)."""
-        ranges = tuple((v.getMin(), v.getMax()) for v in self.data.get())
-        key = (ranges, *(v.tobytes() for v in columns.values()))
+        key = located_key(self.data, columns)
         cached = self.__dict__.get("_located_cache")
-        if cached is not None and cached[0] == key:
+        if key is not None and cached is not None and cached[0] == key:
             return cached[1], cached[2]
         found = (self.data._bin_of(columns), self._inside(columns, shape))
-        if all(v.size <= 4096 for v in columns.values()):
+        if key is not None:
             self.__dict__["_located_cache"] = (key, *found)
         return found
 
