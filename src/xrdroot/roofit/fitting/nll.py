@@ -193,6 +193,11 @@ class RooNLLVar(RooAbsReal):
         return total - self._offset_value
 
     def _general_sum(self) -> float:
+        from .hffit import total as native_total
+
+        fast = native_total(self)
+        if fast is not None:
+            return fast + self._constraint_sum() if self.constraints else fast
         channels = getattr(self.pdf, "channel_terms", None)
         total = channels(self) if channels is not None else self.channel(self.pdf, None)
         return total + self._constraint_sum() if self.constraints else total

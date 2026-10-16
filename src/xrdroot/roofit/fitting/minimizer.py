@@ -322,7 +322,10 @@ class RooMinimizer:
             "Minimization",
             "[fitFCN] No discrete parameters, performing continuous minimization only",
         )
-        run(self.minuit)
+        from .hffit import within
+
+        with within(self, run):
+            run(self.minuit)
         self.minuit_status = _status(self.minuit.fmin)
         self.status = self.minuit_status if self.minuit.fmin.is_valid else -1
         if self.print_level >= 0:  # Minuit's level is RooFit's plus one
