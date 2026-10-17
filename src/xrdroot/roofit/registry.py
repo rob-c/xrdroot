@@ -40,6 +40,7 @@ MODULES = {
     "integral": ["RooRealIntegral"],
     "matrix": ["TMatrixDSym", "TVectorD"],
     "mcstudy": ["RooMCStudy"],
+    "numintconfig": ["RooNumIntConfig"],
     "messages": ["RooMsgService"],
     "pdf": ["RooAbsPdf"],
     "pdfs.addmodel": ["RooAddModel"],

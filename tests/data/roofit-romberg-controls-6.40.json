@@ -1,0 +1,514 @@
+[
+  {
+    "formula": "x*x*x*x",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 999,
+    "value": 0.4026031494140625
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 0.4026031494140625
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 999,
+    "value": 0.5625
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 0.5625
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 999,
+    "value": 0.4
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 0.4
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 999,
+    "value": 0.5625
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 0.5625
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 999,
+    "value": 0.39997742015059945
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 0.39997742015059945
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 999,
+    "value": 0.38368134938779647
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 0.38368134938779647
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 999,
+    "value": 0.4
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 0.4
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 999,
+    "value": 0.38368134938779647
+  },
+  {
+    "formula": "x*x*x*x",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 0.38368134938779647
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 999,
+    "value": 0.1772453850943242
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 0.1772453850943242
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 999,
+    "value": 0.5000000000138879
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 0.5000000000138879
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 999,
+    "value": 0.1772453850943242
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 0.1772453850943242
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 999,
+    "value": 0.5000000000138879
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 0.5000000000138879
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 999,
+    "value": 0.17724538509055163
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 0.17724538509055163
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 999,
+    "value": 0.2254075456337912
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 0.2254075456337912
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 999,
+    "value": 0.17724526896913642
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 0.17724526896913642
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 999,
+    "value": 0.2254075456337912
+  },
+  {
+    "formula": "exp(-100*x*x)",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 0.2254075456337912
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 999,
+    "value": 1.01525
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 1.01525
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 999,
+    "value": 1.0615
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 1.0615
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 999,
+    "value": 1.01525
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 1.01525
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 999,
+    "value": 1.0615
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 1.0615
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 999,
+    "value": 1.0149876543209877
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 1.0149876543209877
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 999,
+    "value": 1.0149876543209875
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 1.0149876543209875
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 999,
+    "value": 1.0149877605492832
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 1.0149877605492832
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 999,
+    "value": 1.0149876543209875
+  },
+  {
+    "formula": "abs(x-0.123)",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 1.0149876543209875
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 999,
+    "value": -2.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 0.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 999,
+    "value": -2.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Trapezoid",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 0.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 999,
+    "value": -2.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 0.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 999,
+    "value": -2.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Trapezoid",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 0.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 999,
+    "value": -2.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 0.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 999,
+    "value": -2.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Midpoint",
+    "extrap": "None",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 0.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 999,
+    "value": -2.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 0,
+    "minimum": 2,
+    "value": 0.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 999,
+    "value": -2.0
+  },
+  {
+    "formula": "-1.0+x*0",
+    "rule": "Midpoint",
+    "extrap": "Wynn-Epsilon",
+    "fixed": 3,
+    "minimum": 2,
+    "value": 0.0
+  }
+]

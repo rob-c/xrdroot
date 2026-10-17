@@ -1570,6 +1570,7 @@ frame.Draw()
   RooFit's own closed forms. Where there is no closed form, the integral is numerical, by
   RooFit's integrators ported step for step: Romberg in one dimension, adaptive cubature in
   more. Each is announced where RooFit announces one.
+
 - **Likelihoods** are summed with RooFit's Kahan sum.
   - A value that cannot be had - a negative density, say - is packed as RooFit packs it, and
     scored as it scores it.
@@ -1583,6 +1584,16 @@ frame.Draw()
 - **Plots** follow `plotOn`'s option list as RooFit reads it, warnings about repeated options
   included. A curve is sampled adaptively, as `RooCurve` samples one, and data carry
   Poisson intervals.
+
+`ROOT.RooNumIntConfig` controls numerical integration precision and method
+parameters. `RooAbsReal.defaultIntegratorConfig()` returns the shared global
+default; `setIntegratorConfig(config)` gives a function an independent copy,
+and `createIntegral(observables, NumIntConfig=config)` overrides that function's
+settings for one integral. `specialIntegratorConfig(True)` creates a private
+copy for editing. Romberg supports midpoint or trapezoid summation, fixed or
+adaptive refinement and extrapolation controls. Adaptive Gauss–Kronrod supports
+the 15, 21, 31, 41, 51 and 61 point rules on finite intervals, with configurable
+precision and segment limits.
 
 **What it has.**
 - **Variables and functions**: `RooRealVar` (named ranges, and ranges with functions for

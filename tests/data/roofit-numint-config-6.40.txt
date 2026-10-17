@@ -1,0 +1,78 @@
+Requested precision: 1e-07 absolute, 1e-07 relative
+
+1-D integration method: RooIntegrator1D (RooImproperIntegrator1D if open-ended)
+2-D integration method: RooAdaptiveIntegratorND (N/A if open-ended)
+N-D integration method: RooAdaptiveIntegratorND (N/A if open-ended)
+
+Available integration methods:
+
+*** RooBinIntegrator ***
+Capabilities: [1-D] [2-D] [N-D] 
+Configuration: 
+  1)  numBins = 100
+
+*** RooIntegrator1D ***
+Capabilities: [1-D] 
+Configuration: 
+  1)        sumRule = Trapezoid(idx = 0)
+
+  2)  extrapolation = Wynn-Epsilon(idx = 1)
+
+  3)       maxSteps = 20
+  4)       minSteps = 999
+  5)       fixSteps = 0
+
+*** RooIntegrator2D ***
+Capabilities: [2-D] 
+Configuration: 
+(Depends on 'RooIntegrator1D')
+
+*** RooSegmentedIntegrator1D ***
+Capabilities: [1-D] 
+Configuration: 
+  1)  numSeg = 3
+(Depends on 'RooIntegrator1D')
+
+*** RooSegmentedIntegrator2D ***
+Capabilities: [2-D] 
+Configuration: 
+(Depends on 'RooSegmentedIntegrator1D')
+
+*** RooImproperIntegrator1D ***
+Capabilities: [1-D] [OpenEnded] 
+Configuration: 
+(Depends on 'RooIntegrator1D')
+
+*** RooMCIntegrator ***
+Capabilities: [1-D] [2-D] [N-D] 
+Configuration: 
+  1)   samplingMode = Importance(idx = 0)
+
+  2)        genType = QuasiRandom(idx = 0)
+
+  3)        verbose = false(idx = 0)
+
+  4)          alpha = 1.5
+  5)    nRefineIter = 5
+  6)  nRefinePerDim = 1000
+  7)     nIntPerDim = 5000
+
+*** RooAdaptiveIntegratorND ***
+Capabilities: [2-D] [N-D] 
+Configuration: 
+  1)  maxEval2D = 100000
+  2)  maxEval3D = 1e+06
+  3)  maxEvalND = 1e+07
+  4)    maxWarn = 5
+
+*** RooAdaptiveGaussKronrodIntegrator1D ***
+Capabilities: [1-D] [OpenEnded] 
+Configuration: 
+  1)  maxSeg = 100
+  2)  method = 21Points(idx = 2)
+
+
+*** RooGaussKronrodIntegrator1D ***
+Capabilities: [1-D] [OpenEnded] 
+Configuration: 
+

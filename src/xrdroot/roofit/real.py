@@ -18,13 +18,16 @@ left is integrated numerically by :mod:`.integration`, as
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from .arg import RooAbsArg
 from .collections import as_list
 from .printing import g
+
+if TYPE_CHECKING:
+    from .numintconfig import RooNumIntConfig
 
 __all__ = ["Context", "RooAbsReal", "value_of"]
 
@@ -93,6 +96,7 @@ class RooAbsReal(RooAbsArg):
         super().__init__(name, title)
         self._unit = str(unit)
         self._plot_label = ""
+        self._num_int_config: RooNumIntConfig | None = None
 
     # -- values -------------------------------------------------------------------
 
@@ -138,8 +142,31 @@ class RooAbsReal(RooAbsArg):
         """Integrate numerically even over what the class has a closed form for."""
         self._force_num_int = bool(flag)
 
+    forceNumInt = setForceNumInt
+
     def getForceNumInt(self) -> bool:
         return bool(getattr(self, "_force_num_int", False))
+
+    @staticmethod
+    def defaultIntegratorConfig() -> RooNumIntConfig:
+        from .numintconfig import RooNumIntConfig
+
+        return RooNumIntConfig.defaultConfig()
+
+    def getIntegratorConfig(self) -> RooNumIntConfig:
+        """The private configuration when present, otherwise the shared global default."""
+        return self._num_int_config or self.defaultIntegratorConfig()
+
+    def specialIntegratorConfig(self, createOnTheFly: bool = False) -> RooNumIntConfig | None:
+        """Lazily clone the defaults so changing one function does not change another."""
+        if self._num_int_config is None and createOnTheFly:
+            self.setIntegratorConfig(self.defaultIntegratorConfig())
+        return self._num_int_config
+
+    def setIntegratorConfig(self, config: RooNumIntConfig | None = None) -> None:
+        from .numintconfig import RooNumIntConfig
+
+        self._num_int_config = None if config is None else RooNumIntConfig(config)
 
     # -- integrals ----------------------------------------------------------------
 

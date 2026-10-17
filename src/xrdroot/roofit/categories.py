@@ -13,8 +13,9 @@ from typing import Any
 
 import numpy as np
 
+from . import cout
 from .messages import ERROR, log
-from .printing import kClassName, kName, kValue
+from .printing import kClassName, kName, kStandard, kValue, kVerbose
 from .real import Context, RooAbsReal
 
 __all__ = ["RooAbsCategory", "RooBinningCategory", "RooCategory", "RooThresholdCategory"]
@@ -151,6 +152,18 @@ class RooAbsCategory(RooAbsReal):
 
     def defaultPrintContents(self, option: Any) -> int:
         return kName | kClassName | kValue
+
+    def Print(self, option: str = "") -> None:
+        style = self.defaultPrintStyle(option)
+        if style not in (kStandard, kVerbose) or not self._states:
+            super().Print(option)
+            return
+        text = self.printStream(self.defaultPrintContents(option), style)
+        header, states = text.split("  Possible states:\n", 1)
+        cout.write(header + "  Possible states:\n")
+        # ROOT ends the state rows with newlines rather than std::endl. In
+        # a PyROOT pipe they follow Python's buffered prints at process exit.
+        cout.write_unflushed(states)
 
 
 class State(tuple):  # type: ignore[type-arg]

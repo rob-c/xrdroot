@@ -16,8 +16,10 @@ import numpy as np
 from .binning import RooRangeBinning
 from .cmdargs import RooCmdArg, commands
 from .collections import as_list
-from .integration import integral_name
-from .messages import INFO, log
+from .integration import closed_names, integral_name
+from .integratorconfig import configured
+from .messages import DEBUG, INFO, log
+from .numintconfig import RooNumIntConfig
 from .printing import g
 from .real import Context, RooAbsReal
 
@@ -34,6 +36,7 @@ class RooRealIntegral(RooAbsReal):
         nset: frozenset[str] | None,
         rng: Any,
         others: Any = (),
+        config: RooNumIntConfig | None = None,
     ) -> None:
         name = integral_name(func, names, rng)
         if nset:
@@ -43,13 +46,15 @@ class RooRealIntegral(RooAbsReal):
         self.func = self._proxy("!func", func)
         self.names, self.nset, self.rng = names, nset, rng
         self._others = list(others)
+        self._integration_config = config if config is not None else func.getIntegratorConfig()
         self._announce()  # the numerical part is said by who made it: see _recursive
 
     def announce_numeric(self) -> None:
         """``RooRealIntegral::init``'s line, if part of the integral is numerical."""
         from .integration import announce
 
-        announce(self.func, self.names, self.rng, self._name)
+        with configured(self.func, self._integration_config):
+            announce(self.func, self.names, self.rng, self._name)
 
     def _announce(self) -> None:
         func, over = self.func, ",".join(sorted(self.names))
@@ -62,7 +67,8 @@ class RooRealIntegral(RooAbsReal):
             f"function {func.GetName()} over observables({over}) with normalization ({norm}) with "
             f"range identifier {self.rng or '<none>'}",
         )
-        closed = func.analytic_names(self.names, self.rng) & self.names
+        self._announce_servers()
+        closed = closed_names(func, self.names, self.rng)
         for name in sorted(self.names):
             log(
                 self,
@@ -88,12 +94,38 @@ class RooRealIntegral(RooAbsReal):
                 f"{func.GetName()}: Observables ({text}) are analytically "
                 f"integrated with code {code}",
             )
+        numeric = self.names & func.dependents() - closed
+        if numeric:
+            text = ",".join(sorted(numeric))
+            log(
+                self,
+                INFO,
+                "Integration",
+                f"{func.GetName()}: Observables ({text}) are numerically integrated",
+            )
+
+    def _announce_servers(self) -> None:
+        for leaf in self.func.leaves():
+            name = leaf.GetName()
+            kind, dependence = (
+                ("observable", "shape") if name in self.names else ("parameter", "value")
+            )
+            log(
+                self,
+                DEBUG,
+                "Integration",
+                f"{self.func.GetName()}: Adding {kind} {name} as {dependence} dependent",
+            )
 
     def _factorised(self) -> list[Any]:
         """The variables integrated over that the function does not depend on: each is a width."""
         return [one for one in self._others if one.GetName() not in self.func.dependents()]
 
     def compute(self, ctx: Context) -> Any:
+        with configured(self.func, self._integration_config):
+            return self._compute_integral(ctx)
+
+    def _compute_integral(self, ctx: Context) -> Any:
         if self.nset:
             return self.func.fraction(self.names, ctx, self.nset, self.rng)
         found = self.func.integrate(self.names, ctx, self.rng)
@@ -126,14 +158,30 @@ def make_integral(
     """``func.createIntegral(iset, [nset], [range], options...)``."""
     names = frozenset(one.GetName() for one in as_list(iset))
     options = commands([a for a in args if isinstance(a, RooCmdArg)], kwargs)
+    config = _explicit_config(args, options.get("NumIntConfig"))
     nset, rng = _norm_and_range(args, options)
     norm = frozenset(one.GetName() for one in as_list(nset)) if nset is not None else None
     others = [one for one in as_list(iset) if one.GetName() not in func.dependents()]
-    return _recursive(func, names, norm, rng, others)
+    return _recursive(func, names, norm, rng, others, config)
+
+
+def _explicit_config(
+    args: tuple[Any, ...],
+    config: RooNumIntConfig | None,
+) -> RooNumIntConfig | None:
+    for arg in args:
+        if isinstance(arg, RooNumIntConfig):
+            config = arg
+    return config
 
 
 def _recursive(
-    func: Any, names: frozenset[str], nset: Any, rng: Any, others: list[Any]
+    func: Any,
+    names: frozenset[str],
+    nset: Any,
+    rng: Any,
+    others: list[Any],
+    config: RooNumIntConfig | None = None,
 ) -> RooRealIntegral:
     """``createIntObj``: integrals of integrals, when ranges are functions of other variables.
 
@@ -151,7 +199,7 @@ def _recursive(
         if not inner or inner == left:
             inner = left
         mine = [one for one in others if one.GetName() in inner]
-        steps.append(RooRealIntegral(func, inner, nset, rng, mine))
+        steps.append(RooRealIntegral(func, inner, nset, rng, mine, config))
         func, nset, left = steps[-1], None, left - inner
         if not left:
             break
@@ -182,7 +230,7 @@ def _norm_and_range(args: tuple[Any, ...], options: Any) -> tuple[Any, Any]:
     for arg in args:
         if isinstance(arg, str):
             rng = arg
-        elif not isinstance(arg, RooCmdArg):
+        elif not isinstance(arg, (RooCmdArg, RooNumIntConfig)):
             nset = arg
     return nset, rng
 

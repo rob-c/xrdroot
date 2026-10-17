@@ -2,9 +2,8 @@
 
 Every name, value and message below is what ROOT 6.40.04 printed for the
 same Gaussian ``g(y; m=0, s)`` with ``y`` in [-5, 5], through PyROOT, with
-a stream added at ``DEBUG`` for the ``Integration`` topic (ROOT's ``DEBUG``
-lines about shape and value dependence are not made here, so only the
-``INFO`` lines are compared).
+a stream added at ``DEBUG`` for the ``Integration`` topic, including shape
+and value dependence messages.
 """
 
 from __future__ import annotations
@@ -43,13 +42,16 @@ def gaussian() -> tuple[RooRealVar, RooGaussian]:
 def test_an_integral_in_closed_form_says_how_it_was_made(
     integration_stream: None, capsys: Any
 ) -> None:
-    """The four ``INFO`` lines of ``RooRealIntegral``'s constructor, word for word."""
+    """The constructor's INFO and DEBUG messages, word for word."""
     y, g = gaussian()
     capsys.readouterr()
     integral = g.createIntegral(RooArgSet(y))
     assert capsys.readouterr().out == (
         "[#3] INFO:Integration -- RooRealIntegral::ctor(g_Int[y]) Constructing integral of "
         "function g over observables(y) with normalization () with range identifier <none>\n"
+        "[#3] DEBUG:Integration -- g: Adding observable y as shape dependent\n"
+        "[#3] DEBUG:Integration -- g: Adding parameter m as value dependent\n"
+        "[#3] DEBUG:Integration -- g: Adding parameter s as value dependent\n"
         "[#3] INFO:Integration -- g: Observable y is suitable for analytical integration "
         "(if supported by p.d.f)\n"
         "[#3] INFO:Integration -- g: Function integrated observables (y) internally with code 1\n"

@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from xrdroot.roofit import cout
+from xrdroot.roofit.categories import RooCategory
 
 
 class Stream:
@@ -64,3 +65,14 @@ def test_without_pyroot_an_unflushed_line_is_printed_at_once(capsys: Any) -> Non
     """In a test, or a translated macro, there is no C++ buffer to wait in."""
     cout.write_unflushed("now\n")
     assert capsys.readouterr().out == "now\n"
+
+
+def test_verbose_category_state_rows_wait_after_the_flushed_header(monkeypatch, capfd):
+    under_pyroot(monkeypatch)
+    category = RooCategory("method", "method", {"15Points": 1, "21Points": 2})
+    category.Print("v")
+    header = capfd.readouterr().out
+    assert header.endswith("  Possible states:\n")
+    assert cout.PENDING == ["    15Points\t1\n    21Points\t2\n"]
+    cout._at_exit()
+    assert capfd.readouterr().out == "    15Points\t1\n    21Points\t2\n"

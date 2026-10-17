@@ -18,11 +18,13 @@ events integrates for every event at the same time.
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 import numpy as np
 
 from .binning import evaluating
+from .integratorconfig import DEFAULT_ROMBERG, RombergSettings
 from .messages import INFO, WARNING, log
 
 __all__ = ["EPS", "announce", "integral", "improper", "integrate_1d", "numeric_names", "romberg"]
@@ -94,6 +96,8 @@ def romberg(
     eps_abs: float = EPS,
     eps_rel: float = EPS,
     name: str = "",
+    *,
+    settings: RombergSettings = DEFAULT_ROMBERG,
 ) -> Any:
     """``RooFit::Detail::integrate1d``: the integral of ``func`` from ``low`` to ``high``."""
     if np.ndim(low) == np.ndim(high) == 0 and high - low == 0.0:
@@ -101,23 +105,43 @@ def romberg(
     h = [1.0]
     s: list[Any] = []
     saved: Any = 0.0
-    for j in range(1, MAX_STEPS + 1):
+    for j in range(1, settings.max_steps + 1):
         saved = (_trapezoids if trapezoid else _midpoints)(func, saved, j, low, high)
         s.append(saved)
-        if j >= N_POINTS:
-            value, error = _extrapolate(h, s)
-            bound = np.maximum(eps_rel * np.abs(value), eps_abs)
-            if np.all(np.abs(error) <= bound):
-                return value
+        found = _romberg_stop(j, h, s, settings, eps_abs, eps_rel, high - low)
+        if found is not None:
+            return found
         h.append(h[-1] / 4.0 if trapezoid else h[-1] / 9.0)
     log(
         None,
         WARNING,
         "Integration",
         f"RooRombergIntegrator::integral: integral of {name} over "
-        f"range ({low:g},{high:g}) did not converge after {MAX_STEPS} steps",
+        f"range ({low:g},{high:g}) did not converge after {settings.max_steps} steps",
     )
     return s[-1]
+
+
+def _romberg_stop(
+    step: int,
+    h: list[float],
+    s: list[Any],
+    settings: RombergSettings,
+    eps_abs: float,
+    eps_rel: float,
+    width: Any,
+) -> Any:
+    # ROOT checks the current estimate against this signed threshold, even
+    # though its source loops over all earlier refinements.
+    if step >= settings.min_steps and np.all(s[-1] < eps_abs / width):
+        return np.zeros_like(s[-1])
+    if settings.fix_steps > 0:
+        return s[-1] if step == settings.fix_steps else None
+    if step < N_POINTS:
+        return None
+    value, error = _extrapolate(h, s) if settings.extrapolate else (s[-1], s[-1] - s[-2])
+    bound = np.maximum(eps_rel * np.abs(value), eps_abs)
+    return value if np.all(np.abs(error) <= bound) else None
 
 
 def _inverted(func: Integrand) -> Integrand:
@@ -125,30 +149,44 @@ def _inverted(func: Integrand) -> Integrand:
     return lambda x: func(1.0 / x) / (x * x)
 
 
-def improper(func: Integrand, low: float, high: float, name: str = "") -> Any:
+def improper(
+    func: Integrand, low: float, high: float, name: str = "", *, runner: Any = None
+) -> Any:
     """``RooImproperIntegrator1D``: an integral with one end or both at infinity."""
     inv = _inverted(func)
+    run = runner if runner is not None else romberg
     open_low, open_high = np.isinf(low), np.isinf(high)
     if open_low and open_high:
         return (
-            romberg(func, -1.0, 1.0, name=name)
-            + romberg(inv, -1.0, 0.0, False, name=name)
-            + romberg(inv, 0.0, 1.0, False, name=name)
+            run(func, -1.0, 1.0, name=name)
+            + run(inv, -1.0, 0.0, False, name=name)
+            + run(inv, 0.0, 1.0, False, name=name)
         )
     if open_low:
         if high >= 0:
-            return romberg(inv, -1.0, 0.0, False, name=name) + romberg(func, -1.0, high, name=name)
-        return romberg(inv, 1.0 / high, 0.0, False, name=name)
+            return run(inv, -1.0, 0.0, False, name=name) + run(func, -1.0, high, name=name)
+        return run(inv, 1.0 / high, 0.0, False, name=name)
     if low <= 0:
-        return romberg(inv, 0.0, 1.0, False, name=name) + romberg(func, low, 1.0, name=name)
-    return romberg(inv, 0.0, 1.0 / low, False, name=name)
+        return run(inv, 0.0, 1.0, False, name=name) + run(func, low, 1.0, name=name)
+    return run(inv, 0.0, 1.0 / low, False, name=name)
 
 
-def integrate_1d(func: Integrand, low: float, high: float, name: str = "") -> Any:
+def integrate_1d(
+    func: Integrand,
+    low: float,
+    high: float,
+    name: str = "",
+    *,
+    trapezoid: bool = True,
+    eps_abs: float = EPS,
+    eps_rel: float = EPS,
+    settings: RombergSettings = DEFAULT_ROMBERG,
+) -> Any:
     """``RooIntegrator1D`` over a closed range, ``RooImproperIntegrator1D`` over an open one."""
+    run = partial(romberg, eps_abs=eps_abs, eps_rel=eps_rel, settings=settings)
     if np.any(np.isinf(low)) or np.any(np.isinf(high)):
-        return improper(func, low, high, name)
-    return romberg(func, low, high, name=name)
+        return improper(func, low, high, name, runner=run)
+    return run(func, low, high, trapezoid, name=name)
 
 
 # -- integrals of a model's functions ----------------------------------------------
@@ -216,13 +254,11 @@ def _integrator(func: Any, numeric: list[str], rng: Any) -> str:
     """The integrator RooFit picks: by the number of variables, and for one, by open ends."""
     if _binned(func, numeric, rng):
         return "RooBinIntegrator"
-    if len(numeric) > 1:
-        return "RooAdaptiveIntegratorND"
-    return (
-        "RooImproperIntegrator1D"
-        if any(np.isinf(func.bounds(numeric[0], rng)))
-        else ("RooIntegrator1D")
-    )
+    from .integratorconfig import method
+
+    continuous = [name for name in numeric if hasattr(func.variable(name), "getMin")]
+    opened = any(np.any(np.isinf(func.bounds(name, rng))) for name in continuous)
+    return method(func, len(numeric), opened)
 
 
 def integral(func: Any, names: frozenset[str], ctx: dict[str, Any], rng: Any = None) -> Any:
@@ -263,12 +299,31 @@ def numeric(
     from .kernels import scalar
 
     bounds = [func.bounds(name, rng) for name in rest]
-    if _binned(func, rest, rng):
+    selected = _integrator(func, rest, rng)
+    if selected == "RooBinIntegrator":
         return _bins(func, rest, inner, ctx, bounds)
     with scalar():
-        if len(rest) > 1 and not any(np.isinf(b).any() for b in (np.array(bounds),)):
+        if selected == "RooAdaptiveIntegratorND":
             return _cubature(func, rest, inner, ctx, bounds)
-        return _nested(func, rest, inner, ctx, rng)
+        if selected == "RooAdaptiveGaussKronrodIntegrator1D":
+            return _adaptive_events(func, rest, inner, ctx, rng)
+        selection = {
+            "RooIntegrator2D": "RooIntegrator1D",
+            "RooSegmentedIntegrator2D": "RooSegmentedIntegrator1D",
+            "N/A": None,
+        }.get(selected, selected)
+        if selected in ("RooIntegrator2D", "RooSegmentedIntegrator2D"):
+            rest = list(reversed(rest))
+        return _nested(func, rest, inner, ctx, rng, selection)
+
+
+def _adaptive_events(func: Any, rest: Any, inner: Any, ctx: Any, rng: Any) -> Any:
+    """Each event needs its own error estimate and independent subdivision history."""
+    shape, events = _events({k: v for k, v in ctx.items() if k not in rest})
+    found = np.empty(shape)
+    for index, event in events:
+        found[index] = _nested(func, rest, inner, event, rng)
+    return found if shape else float(found)
 
 
 def _binned(func: Any, names: Any, rng: Any) -> bool:
@@ -285,10 +340,15 @@ def _edges(func: Any, name: str, low: float, high: float) -> list[float]:
     range's ends added where they are not one - or 100 even bins, if it has none."""
     found = getattr(func, "bin_boundaries", lambda _n: None)(name)
     if found is None:
+        from .integratorconfig import configuration
+
+        count = int(
+            configuration(func).getConfigSection("RooBinIntegrator").getRealValue("numBins")
+        )
         log(None, WARNING, "Integration", "RooBinIntegrator::RooBinIntegrator WARNING: integrand "
-            "provide no binning definition observable #0 substituting default binning of 100 "
+            f"provide no binning definition observable #0 substituting default binning of {count} "
             "bins")  # fmt: skip
-        found = [low + j * (high - low) / 100 for j in range(101)]
+        found = [low + j * (high - low) / count for j in range(count + 1)]
     edges = [e for e in found if low <= e <= high]
     if not edges or edges[0] > low:
         edges.insert(0, low)
@@ -337,6 +397,7 @@ def _nested(
     inner: Callable[[dict[str, Any]], Any],
     ctx: dict[str, Any],
     rng: Any,
+    selected: str | None = None,
 ) -> Any:
     name, *others = rest
     with evaluating(ctx):  # a range whose ends are functions of the variables outside
@@ -346,10 +407,12 @@ def _nested(
         c = _expanded(ctx)
         c[name] = points
         with evaluating(c):
-            values = _nested(func, others, inner, c, rng) if others else inner(c)
+            values = _nested(func, others, inner, c, rng, selected) if others else inner(c)
         return np.broadcast_to(values, np.broadcast(values, points).shape)
 
-    return integrate_1d(along, low, high, func.GetName())
+    from .configuredintegral import integrate
+
+    return integrate(func, along, low, high, selected)
 
 
 def _cubature(
@@ -360,13 +423,26 @@ def _cubature(
     bounds: list[tuple[float, float]],
 ) -> Any:
     """``RooAdaptiveIntegratorND``, once for each event if the context has events."""
-    from .cubature import integrate_nd
+    from .cubature import adaptive_integral
+    from .integratorconfig import configuration
 
+    config = configuration(func)
+    dimension = len(rest)
+    key = f"maxEval{dimension}D" if dimension < 4 else "maxEvalND"
+    maximum = int(config.getConfigSection("RooAdaptiveIntegratorND").getRealValue(key))
     shape, events = _events({k: v for k, v in ctx.items() if k not in rest})
     lows, highs = [b[0] for b in bounds], [b[1] for b in bounds]
     found = np.empty(shape)
     for index, c in events:
-        found[index] = integrate_nd(_integrand(inner, c, rest), lows, highs, vectorized=True).value
+        found[index] = adaptive_integral(
+            _integrand(inner, c, rest),
+            lows,
+            highs,
+            0.0,
+            config.epsRel(),
+            max_pts=maximum,
+            vectorized=True,
+        ).value
     return found if shape else float(found)
 
 
