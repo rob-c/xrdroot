@@ -73,6 +73,46 @@ def test_a_tree_drawn_before_anything_has_no_values_to_give():
     assert tree.GetV1() is None and tree.GetSelectedRows() == 0
 
 
+def test_methods_of_objects_leave_a_graph_and_the_original_expression_on_the_frame():
+    from xrdroot.pyroot.graphics import hook
+
+    hook.install()
+    back = _histograms()
+    back.SetMarkerColor(2)
+    back.SetMarkerStyle(5)
+    back.SetLineWidth(3)
+    canvas = ROOT.TCanvas("methods", "methods")
+    expression = "hpx.GetRMS():hprof.GetMean()"
+    assert back.Draw(expression) == 6
+    graph = canvas.FindObject("Graph")
+    np.testing.assert_array_equal(graph.GetX(), back.GetV2())
+    np.testing.assert_array_equal(graph.GetY(), back.GetV1())
+    assert (graph.GetMarkerColor(), graph.GetMarkerStyle(), graph.GetLineWidth()) == (2, 5, 3)
+    histogram = back.GetHistogram()
+    assert histogram is canvas.FindObject("htemp")
+    assert (histogram.GetTitle(), histogram.GetEntries()) == (expression, 0)
+    assert histogram.GetXaxis().GetTitle() == "hprof.GetMean()"
+    assert histogram.GetYaxis().GetTitle() == "hpx.GetRMS()"
+
+
+def test_methods_drawn_as_a_profile_keep_roots_unlabelled_profile_axes():
+    back = _histograms()
+    assert back.Draw("hpx.GetRMS():hprof.GetMean()", "", "goffprof") == 6
+    histogram = back.GetHistogram()
+    assert histogram.ClassName() == "TProfile"
+    assert histogram.GetXaxis().GetTitle() == histogram.GetYaxis().GetTitle() == ""
+
+
+def test_a_zero_tree_weight_keeps_the_selected_object_method_coordinates():
+    back = _histograms()
+    back.SetWeight(0)
+    # ROOT selects all six coordinates even when the tree's global weight is zero.
+    assert back.Draw("hpx.GetRMS():hprof.GetMean()", "", "goffp") == 6
+    assert back.GetSelectedRows() == 6
+    np.testing.assert_array_equal(back.GetV2(), [0., .25, .5, .75, 1., 1.25])
+    assert len(back.GetV1()) == 6
+
+
 def test_a_clones_array_of_lines_is_written_member_by_member_and_read_back():
     out = ROOT.TFile("clones.root", "RECREATE")
     tree = ROOT.TTree("T", "lines")

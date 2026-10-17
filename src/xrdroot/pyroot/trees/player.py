@@ -70,6 +70,14 @@ class _Player(_Friends):
         special = self._special_draw(text, selection, option, nentries, int(firstentry))
         if special is not None:
             return special
+        from . import scatter
+
+        if scatter.wanted(text, option):
+            selected = scatter.draw(
+                self, text, selection, option, _count(nentries), int(firstentry)
+            )
+            if selected is not None:
+                return selected
         registry = hooks.registry()
         before = _entries_before(text, registry)
         made = self._view().draw(
@@ -85,6 +93,7 @@ class _Player(_Friends):
         )
         if "goff" not in option.lower():
             hooks.draw(hooks.wrap(made), option)
+        self._draw_histogram = hooks.wrap(made)
         self._drawn: Any = (text, selection, _count(nentries), int(firstentry))
         return int(getattr(made, "selected", made.entries - before))
 
@@ -144,6 +153,10 @@ class _Player(_Friends):
     def GetVal(self, index: int) -> Any:
         """``GetVal(i)``: the values the last ``Draw`` computed for its ``i``-th expression."""
         return self._drawn_values(int(index))
+
+    def GetHistogram(self) -> Any:
+        """The histogram booked by the last Draw, including a scatter's empty frame."""
+        return getattr(self, "_draw_histogram", None)
 
     def GetV1(self) -> Any:
         return self._drawn_values(0)

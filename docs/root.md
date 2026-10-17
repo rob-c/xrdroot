@@ -2711,6 +2711,14 @@ text all work the same on a tree being filled and on one read from a file.
 `Print`'s byte counts are this writer's baskets', and a tree not yet written
 prints its branches as ROOT's "One basket in memory".
 
+`TTree.Draw("y:x")` leaves a `TGraph` named `Graph` in the current pad,
+with the selected coordinates and the tree's line, fill and marker attributes.
+An empty `TH2F` supplies its axes. With `>>name`, the named histogram also
+keeps the weighted fills, while its separate pad copy hides statistics.
+`SAME` adds the points over the existing pad, and `goff` fills without drawing.
+`GetHistogram()` returns the last draw's histogram; `GetV1()` and `GetV2()`
+return the selected y and x coordinates.
+
 `xrdroot.pyroot.std` has the containers a script hands a tree:
 `std.vector["float"]()` - the spelling the translator writes for
 `std::vector<float> v;`, the same class as `std.vector("float")` and

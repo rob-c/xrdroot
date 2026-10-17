@@ -94,9 +94,9 @@
    "xrdroot_seconds": 1.796
   },
   "analysis/dataframe/df002_dataModel.py": {
-   "ratio": 0.020776626569496883,
+   "ratio": 0.019580296777592415,
    "root_seconds": 91.112,
-   "xrdroot_seconds": 1.893
+   "xrdroot_seconds": 1.784
   },
   "analysis/dataframe/df003_profiles.C": {
    "ratio": 0.05403484760751698,
@@ -229,9 +229,9 @@
    "xrdroot_seconds": 1.602
   },
   "analysis/dataframe/df019_Cache.py": {
-   "ratio": 0.031554709408526074,
+   "ratio": 0.03173480151277368,
    "root_seconds": 77.738,
-   "xrdroot_seconds": 2.453
+   "xrdroot_seconds": 2.467
   },
   "analysis/dataframe/df020_helpers.C": {
    "ratio": 0.06899641577060932,
@@ -399,9 +399,9 @@
    "xrdroot_seconds": 249.283
   },
   "analysis/dataframe/df104_HiggsToTwoPhotons.py": {
-   "ratio": 0.3273283472771928,
+   "ratio": 0.23725702218309777,
    "root_seconds": 865.614,
-   "xrdroot_seconds": 283.34
+   "xrdroot_seconds": 205.373
   },
   "analysis/dataframe/df105_WBosonAnalysis.py": {
    "ratio": 0.22709566562910452,
@@ -684,9 +684,9 @@
    "xrdroot_seconds": 5.112
   },
   "hist/hist006_TH1_bar_charts.C": {
-   "ratio": 0.13532600941646453,
+   "ratio": 0.12633756598658866,
    "root_seconds": 14.018,
-   "xrdroot_seconds": 1.897
+   "xrdroot_seconds": 1.771
   },
   "hist/hist007_TH1_liveupdate.C": {
    "ratio": 0.2531163434903047,
@@ -694,9 +694,9 @@
    "xrdroot_seconds": 2.193
   },
   "hist/hist007_TH1_liveupdate.py": {
-   "ratio": 0.0452020394186135,
+   "ratio": 0.035842021155163224,
    "root_seconds": 52.564,
-   "xrdroot_seconds": 2.376
+   "xrdroot_seconds": 1.884
   },
   "hist/hist007_TH1_liveupdate_uhi.py": {
    "ratio": null,
@@ -744,9 +744,9 @@
    "xrdroot_seconds": 2.183
   },
   "hist/hist015_TH1_read_and_draw.C": {
-   "ratio": 0.24766146993318486,
+   "ratio": 0.18452115812917594,
    "root_seconds": 8.98,
-   "xrdroot_seconds": 2.224
+   "xrdroot_seconds": 1.657
   },
   "hist/hist015_TH1_read_and_draw.py": {
    "ratio": 0.19119291304721767,
@@ -929,9 +929,9 @@
    "xrdroot_seconds": 2.323
   },
   "hist/hist045_Graphics_highlight_ntuple.C": {
-   "ratio": 0.3038258575197889,
+   "ratio": 0.25725593667546176,
    "root_seconds": 7.58,
-   "xrdroot_seconds": 2.303
+   "xrdroot_seconds": 1.95
   },
   "hist/hist046_Graphics_highlight1D.C": {
    "ratio": 0.39316370324954014,
@@ -974,9 +974,9 @@
    "xrdroot_seconds": 164.652
   },
   "hist/hist056_TPolyMarker_contour.C": {
-   "ratio": 0.3393874643874644,
+   "ratio": 0.19883665716999052,
    "root_seconds": 8.424,
-   "xrdroot_seconds": 2.859
+   "xrdroot_seconds": 1.675
   },
   "hist/hist057_TExec_th1.C": {
    "ratio": null,
@@ -1019,9 +1019,9 @@
    "xrdroot_seconds": 3.072
   },
   "hist/hist103_THnSparse_hist.C": {
-   "ratio": 0.35458956332310126,
+   "ratio": 0.15605505495593625,
    "root_seconds": 10.099,
-   "xrdroot_seconds": 3.581
+   "xrdroot_seconds": 1.576
   },
   "hist/hist104_TH2Poly_fibonacci.C": {
    "ratio": 0.4528671785655938,
@@ -1079,14 +1079,14 @@
    "xrdroot_seconds": 276.252
   },
   "hsimple.C": {
-   "ratio": 0.762116122840691,
+   "ratio": 0.5987883877159309,
    "root_seconds": 16.672,
-   "xrdroot_seconds": 12.706
+   "xrdroot_seconds": 9.983
   },
   "hsimple.py": {
-   "ratio": 0.545474359990489,
+   "ratio": 0.17294126971546325,
    "root_seconds": 50.468,
-   "xrdroot_seconds": 27.529
+   "xrdroot_seconds": 8.728
   },
   "http/custom.C": {
    "ratio": null,
@@ -1144,9 +1144,9 @@
    "xrdroot_seconds": 9.724
   },
   "io/double32.C": {
-   "ratio": 0.6059120509255872,
+   "ratio": 0.42101412160679,
    "root_seconds": 13.667,
-   "xrdroot_seconds": 8.281
+   "xrdroot_seconds": 5.754
   },
   "io/experimental/rfile001_basics.C": {
    "ratio": 0.27300229501356144,
@@ -1209,9 +1209,9 @@
    "xrdroot_seconds": 2.877
   },
   "io/float16.C": {
-   "ratio": 0.8693286872422131,
+   "ratio": 0.6876688948940407,
    "root_seconds": 28.124,
-   "xrdroot_seconds": 24.449
+   "xrdroot_seconds": 19.34
   },
   "io/hadd.C": {
    "ratio": 0.21763766959297687,
@@ -1249,9 +1249,9 @@
    "xrdroot_seconds": 4.176
   },
   "io/ntuple/ntpl002_vector.C": {
-   "ratio": 1.4686974518173588,
+   "ratio": 0.9905574957961455,
    "root_seconds": 15.462,
-   "xrdroot_seconds": 22.709
+   "xrdroot_seconds": 15.316
   },
   "io/ntuple/ntpl004_dimuon.C": {
    "ratio": 0.3632597388055903,
@@ -1309,9 +1309,9 @@
    "xrdroot_seconds": 230.273
   },
   "io/ntuple/ntpl017_shared_reader.C": {
-   "ratio": 0.10695332698326303,
+   "ratio": 0.08810722547285345,
    "root_seconds": 14.698,
-   "xrdroot_seconds": 1.572
+   "xrdroot_seconds": 1.295
   },
   "io/ntuple/ntpl018_low_precision_floats.C": {
    "ratio": 0.0846029003717083,
@@ -1459,14 +1459,14 @@
    "xrdroot_seconds": null
   },
   "io/tree/hsimpleProxyDriver.C": {
-   "ratio": 0.015392368355907628,
+   "ratio": 0.013111362591505464,
    "root_seconds": 113.108,
-   "xrdroot_seconds": 1.741
+   "xrdroot_seconds": 1.483
   },
   "io/tree/hsimpleReader.C": {
-   "ratio": 0.14870246659815006,
+   "ratio": 0.13842497430626927,
    "root_seconds": 15.568,
-   "xrdroot_seconds": 2.315
+   "xrdroot_seconds": 2.155
   },
   "io/tree/imt_parTreeProcessing.C": {
    "ratio": null,
@@ -1479,9 +1479,9 @@
    "xrdroot_seconds": 26.134
   },
   "io/tree/mp_readNtuplesFillHistosAndFit.C": {
-   "ratio": 0.10096773488869956,
+   "ratio": 0.08379754024947025,
    "root_seconds": 45.777,
-   "xrdroot_seconds": 4.622
+   "xrdroot_seconds": 3.836
   },
   "io/tree/mt_fillNtupleFromMultipleThreads.C": {
    "ratio": 0.17011365753679897,
@@ -1494,9 +1494,9 @@
    "xrdroot_seconds": 34.786
   },
   "io/tree/mt_readNtuplesFillHistosAndFit.C": {
-   "ratio": 0.2409666085863635,
+   "ratio": 0.21117426947356394,
    "root_seconds": 35.009,
-   "xrdroot_seconds": 8.436
+   "xrdroot_seconds": 7.393
   },
   "io/tree/mtbb_fillNtuples.C": {
    "ratio": 1.3883234714003945,
@@ -1504,9 +1504,9 @@
    "xrdroot_seconds": 35.194
   },
   "io/tree/ntuple1.py": {
-   "ratio": 0.0906860558479793,
+   "ratio": 0.07293246498349541,
    "root_seconds": 22.418,
-   "xrdroot_seconds": 2.033
+   "xrdroot_seconds": 1.635
   },
   "io/tree/printSizes.C": {
    "ratio": 0.08943691786621506,
@@ -1524,9 +1524,9 @@
    "xrdroot_seconds": 1.79
   },
   "io/tree/tree102_basic.C": {
-   "ratio": 0.19435704861463515,
+   "ratio": 0.13924692986907541,
    "root_seconds": 9.853,
-   "xrdroot_seconds": 1.915
+   "xrdroot_seconds": 1.372
   },
   "io/tree/tree103_tree.C": {
    "ratio": null,
@@ -1539,9 +1539,9 @@
    "xrdroot_seconds": 3.859
   },
   "io/tree/tree105_tree.C": {
-   "ratio": 0.4487934322912348,
+   "ratio": 0.27365453188489924,
    "root_seconds": 12.059,
-   "xrdroot_seconds": 5.412
+   "xrdroot_seconds": 3.3
   },
   "io/tree/tree106_tree.C": {
    "ratio": null,
@@ -1549,9 +1549,9 @@
    "xrdroot_seconds": null
   },
   "io/tree/tree107_tree.C": {
-   "ratio": 3.027173913043478,
+   "ratio": 1.2904473244147157,
    "root_seconds": 9.568,
-   "xrdroot_seconds": 28.964
+   "xrdroot_seconds": 12.347
   },
   "io/tree/tree108_tree.C": {
    "ratio": null,
@@ -1559,9 +1559,9 @@
    "xrdroot_seconds": null
   },
   "io/tree/tree109_friend.C": {
-   "ratio": 0.8619635508524397,
+   "ratio": 0.41258083480305696,
    "root_seconds": 8.505,
-   "xrdroot_seconds": 7.331
+   "xrdroot_seconds": 3.509
   },
   "io/tree/tree110_copy.C": {
    "ratio": null,
@@ -1579,9 +1579,9 @@
    "xrdroot_seconds": null
   },
   "io/tree/tree113_getval.C": {
-   "ratio": 0.8095813204508857,
+   "ratio": 0.39318303811057437,
    "root_seconds": 7.452,
-   "xrdroot_seconds": 6.033
+   "xrdroot_seconds": 2.93
   },
   "io/tree/tree114_circular.C": {
    "ratio": 1.4320172806912277,
@@ -1589,24 +1589,24 @@
    "xrdroot_seconds": 11.933
   },
   "io/tree/tree120_ntuple.C": {
-   "ratio": 0.37420020639834883,
+   "ratio": 0.1712074303405573,
    "root_seconds": 9.69,
-   "xrdroot_seconds": 3.626
+   "xrdroot_seconds": 1.659
   },
   "io/tree/tree121_hvector.C": {
-   "ratio": 3.372202782976646,
+   "ratio": 1.1512734966229963,
    "root_seconds": 12.289,
-   "xrdroot_seconds": 41.441
+   "xrdroot_seconds": 14.148
   },
   "io/tree/tree122_vector3.C": {
-   "ratio": 0.6862285475094181,
+   "ratio": 0.29970699037254084,
    "root_seconds": 11.945,
-   "xrdroot_seconds": 8.197
+   "xrdroot_seconds": 3.58
   },
   "io/tree/tree123_clonesarray.C": {
-   "ratio": 9.804561373537199,
+   "ratio": 3.6820705560775604,
    "root_seconds": 11.707,
-   "xrdroot_seconds": 114.782
+   "xrdroot_seconds": 43.106
   },
   "io/tree/tree130_jets.C": {
    "ratio": 0.023931880084973597,
@@ -1619,34 +1619,34 @@
    "xrdroot_seconds": null
   },
   "io/tree/tree140_spider.C": {
-   "ratio": 0.10241371531694113,
+   "ratio": 0.062185126701255734,
    "root_seconds": 26.598,
-   "xrdroot_seconds": 2.724
+   "xrdroot_seconds": 1.654
   },
   "io/tree/tree141_parallelcoord.C": {
-   "ratio": 1.2232551872810564,
+   "ratio": 0.710455402856373,
    "root_seconds": 14.844,
-   "xrdroot_seconds": 18.158
+   "xrdroot_seconds": 10.546
   },
   "io/tree/tree142_parallelcoordtrans.C": {
-   "ratio": 0.34453648915187374,
+   "ratio": 0.20757396449704138,
    "root_seconds": 12.675,
-   "xrdroot_seconds": 4.367
+   "xrdroot_seconds": 2.631
   },
   "io/tree/tree143_drawsparse.C": {
-   "ratio": 0.0824599670160132,
+   "ratio": 0.0731499707400117,
    "root_seconds": 18.797,
-   "xrdroot_seconds": 1.55
+   "xrdroot_seconds": 1.375
   },
   "io/tree/tree200_temperature.C": {
-   "ratio": 0.3392251468972436,
+   "ratio": 0.19170687431328523,
    "root_seconds": 20.933,
-   "xrdroot_seconds": 7.101
+   "xrdroot_seconds": 4.013
   },
   "io/tree/tree201_histograms.C": {
-   "ratio": 2.2882522671063477,
+   "ratio": 1.0096248969497115,
    "root_seconds": 48.52,
-   "xrdroot_seconds": 111.026
+   "xrdroot_seconds": 48.987
   },
   "io/tree/tree202_benchmarks.C": {
    "ratio": 0.1711716849148419,
@@ -1659,14 +1659,14 @@
    "xrdroot_seconds": 1.727
   },
   "io/tree/tree501_cernstaff.C": {
-   "ratio": 0.0732057270201789,
+   "ratio": 0.05553011570046097,
    "root_seconds": 32.757,
-   "xrdroot_seconds": 2.398
+   "xrdroot_seconds": 1.819
   },
   "io/tree/tree502_staff.C": {
-   "ratio": 0.10317785984589431,
+   "ratio": 0.08608033556740984,
    "root_seconds": 21.933,
-   "xrdroot_seconds": 2.263
+   "xrdroot_seconds": 1.888
   },
   "io/xml/DOMParsePerson.C": {
    "ratio": 0.13260622810047867,
@@ -1819,14 +1819,14 @@
    "xrdroot_seconds": 2.775
   },
   "legacy/mlp/mlpHiggs.C": {
-   "ratio": 0.17973912543814288,
+   "ratio": 0.09308739872435788,
    "root_seconds": 17.403,
-   "xrdroot_seconds": 3.128
+   "xrdroot_seconds": 1.62
   },
   "legacy/mlp/mlpRegression.C": {
-   "ratio": 0.1981528706320215,
+   "ratio": 0.11013853470259839,
    "root_seconds": 14.509,
-   "xrdroot_seconds": 2.875
+   "xrdroot_seconds": 1.598
   },
   "legacy/multicore/mp104_processH1.C": {
    "ratio": 0.009613382590021358,
@@ -2104,9 +2104,9 @@
    "xrdroot_seconds": 14.199
   },
   "legacy/splot/TestSPlot.C": {
-   "ratio": 0.34526885689676384,
+   "ratio": 0.19896640826873382,
    "root_seconds": 8.127,
-   "xrdroot_seconds": 2.806
+   "xrdroot_seconds": 1.617
   },
   "legacy/tasks.C": {
    "ratio": 0.03903189504123991,
@@ -2134,14 +2134,14 @@
    "xrdroot_seconds": 2.54
   },
   "legacy/thread/threadsh2.C": {
-   "ratio": 0.34192509061619014,
+   "ratio": 0.23546784803329307,
    "root_seconds": 7.449,
-   "xrdroot_seconds": 2.547
+   "xrdroot_seconds": 1.754
   },
   "legacy/tree/tree.C": {
-   "ratio": 0.44623415361670393,
+   "ratio": 0.26621923937360176,
    "root_seconds": 6.705,
-   "xrdroot_seconds": 2.992
+   "xrdroot_seconds": 1.785
   },
   "legacy/tree/tvdemo.C": {
    "ratio": null,
@@ -2154,9 +2154,9 @@
    "xrdroot_seconds": null
   },
   "machine_learning/TMVAClassification.C": {
-   "ratio": 0.8244494072196412,
+   "ratio": 0.3305064663684215,
    "root_seconds": 139.259,
-   "xrdroot_seconds": 114.812
+   "xrdroot_seconds": 46.026
   },
   "machine_learning/TMVAClassificationApplication.C": {
    "ratio": 0.7548344495802283,
@@ -2214,14 +2214,14 @@
    "xrdroot_seconds": 8.772
   },
   "machine_learning/TMVAMultipleBackgroundExample.C": {
-   "ratio": 0.47569906462836475,
+   "ratio": 0.3498723597188957,
    "root_seconds": 101.457,
-   "xrdroot_seconds": 48.263
+   "xrdroot_seconds": 35.497
   },
   "machine_learning/TMVARegression.C": {
-   "ratio": 0.7326732673267327,
+   "ratio": 0.24617064647641232,
    "root_seconds": 137.36,
-   "xrdroot_seconds": 100.64
+   "xrdroot_seconds": 33.814
   },
   "machine_learning/TMVARegressionApplication.C": {
    "ratio": 0.44975982425365185,
@@ -2229,9 +2229,9 @@
    "xrdroot_seconds": 27.434
   },
   "machine_learning/TMVA_CNN_Classification.C": {
-   "ratio": 0.14508147808124858,
+   "ratio": 0.1300527886160202,
    "root_seconds": 108.925,
-   "xrdroot_seconds": 15.803
+   "xrdroot_seconds": 14.166
   },
   "machine_learning/TMVA_CNN_Classification.py": {
    "ratio": null,
@@ -2239,9 +2239,9 @@
    "xrdroot_seconds": null
   },
   "machine_learning/TMVA_Higgs_Classification.C": {
-   "ratio": 0.9512390392680137,
+   "ratio": 0.3141314017028848,
    "root_seconds": 78.69,
-   "xrdroot_seconds": 74.853
+   "xrdroot_seconds": 24.719
   },
   "machine_learning/TMVA_Higgs_Classification.py": {
    "ratio": null,
@@ -2249,9 +2249,9 @@
    "xrdroot_seconds": null
   },
   "machine_learning/TMVA_RNN_Classification.C": {
-   "ratio": 0.5117111713045842,
+   "ratio": 0.3576429568950166,
    "root_seconds": 106.693,
-   "xrdroot_seconds": 54.596
+   "xrdroot_seconds": 38.158
   },
   "machine_learning/TMVA_RNN_Classification.py": {
    "ratio": null,
@@ -2334,9 +2334,9 @@
    "xrdroot_seconds": null
   },
   "machine_learning/envelope/classification.C": {
-   "ratio": 0.7500426616877968,
+   "ratio": 0.2896176508968993,
    "root_seconds": 99.621,
-   "xrdroot_seconds": 74.72
+   "xrdroot_seconds": 28.852
   },
   "machine_learning/keras/ApplicationClassificationKeras.py": {
    "ratio": null,
@@ -2424,9 +2424,9 @@
    "xrdroot_seconds": 1.581
   },
   "machine_learning/tmva003_RReader.C": {
-   "ratio": 0.15873477487340906,
+   "ratio": 0.15904269878198987,
    "root_seconds": 58.456,
-   "xrdroot_seconds": 9.279
+   "xrdroot_seconds": 9.297
   },
   "machine_learning/tmva004_RStandardScaler.C": {
    "ratio": 0.03845055677167603,
@@ -2519,9 +2519,9 @@
    "xrdroot_seconds": 3.252
   },
   "math/fit/ConfidenceIntervals.C": {
-   "ratio": 0.08774288415082449,
+   "ratio": 0.04087805902741309,
    "root_seconds": 47.605,
-   "xrdroot_seconds": 4.177
+   "xrdroot_seconds": 1.946
   },
   "math/fit/ErrorIntegral.C": {
    "ratio": 0.06459098820344226,
@@ -2799,9 +2799,9 @@
    "xrdroot_seconds": 2.436
   },
   "math/mathcoreVectorCollection.C": {
-   "ratio": 1.3289345063538611,
+   "ratio": 0.7995275333985011,
    "root_seconds": 12.276,
-   "xrdroot_seconds": 16.314
+   "xrdroot_seconds": 9.815
   },
   "math/mathcoreVectorFloatIO.C": {
    "ratio": 0.25861503117820805,
@@ -2914,14 +2914,14 @@
    "xrdroot_seconds": 4.128
   },
   "math/pdf/pdf011_Student.C": {
-   "ratio": 0.6782635002268946,
+   "ratio": 0.3032824081076993,
    "root_seconds": 6.611,
-   "xrdroot_seconds": 4.484
+   "xrdroot_seconds": 2.005
   },
   "math/pdf/pdf012_tStudent.C": {
-   "ratio": 0.25480087640159815,
+   "ratio": 0.2017012501611032,
    "root_seconds": 7.759,
-   "xrdroot_seconds": 1.977
+   "xrdroot_seconds": 1.565
   },
   "math/pdf/pdf012_tStudent.py": {
    "ratio": 0.25680718728403595,
@@ -2959,9 +2959,9 @@
    "xrdroot_seconds": null
   },
   "math/quadp/portfolio.C": {
-   "ratio": 0.2004489337822671,
+   "ratio": 0.14425738870183313,
    "root_seconds": 13.365,
-   "xrdroot_seconds": 2.679
+   "xrdroot_seconds": 1.928
   },
   "math/quantiles.C": {
    "ratio": 0.33797759264579147,
@@ -3124,14 +3124,14 @@
    "xrdroot_seconds": 4.196
   },
   "roofit/roofit/rf102_dataimport.C": {
-   "ratio": 0.13931015971010605,
+   "ratio": 0.12494967118507584,
    "root_seconds": 14.902,
-   "xrdroot_seconds": 2.076
+   "xrdroot_seconds": 1.862
   },
   "roofit/roofit/rf102_dataimport.py": {
-   "ratio": 0.17438266363234947,
+   "ratio": 0.10892972385448864,
    "root_seconds": 29.441,
-   "xrdroot_seconds": 5.134
+   "xrdroot_seconds": 3.207
   },
   "roofit/roofit/rf103_interprfuncs.C": {
    "ratio": 0.27134475837579125,
@@ -4094,9 +4094,9 @@
    "xrdroot_seconds": 79.437
   },
   "roofit/roostats/IntervalExamples.C": {
-   "ratio": 2.0632128792670734,
+   "ratio": 1.3547919769838195,
    "root_seconds": 49.009,
-   "xrdroot_seconds": 101.116
+   "xrdroot_seconds": 66.397
   },
   "roofit/roostats/IntervalExamples.py": {
    "ratio": 1.4138297129286863,
@@ -4264,14 +4264,14 @@
    "xrdroot_seconds": 11.024
   },
   "roofit/roostats/rs101_limitexample.C": {
-   "ratio": 1.7553663763777383,
+   "ratio": 1.224903048033746,
    "root_seconds": 117.584,
-   "xrdroot_seconds": 206.403
+   "xrdroot_seconds": 144.029
   },
   "roofit/roostats/rs101_limitexample.py": {
-   "ratio": 1.735759478433374,
+   "ratio": 1.3846939070309416,
    "root_seconds": 103.841,
-   "xrdroot_seconds": 180.243
+   "xrdroot_seconds": 143.788
   },
   "roofit/roostats/rs102_hypotestwithshapes.C": {
    "ratio": 0.05399528156734024,
@@ -4304,9 +4304,9 @@
    "xrdroot_seconds": 2.052
   },
   "roofit/roostats/rs401c_FeldmanCousins.C": {
-   "ratio": 0.5636054067201779,
+   "ratio": 0.4940581674137392,
    "root_seconds": 57.558,
-   "xrdroot_seconds": 32.44
+   "xrdroot_seconds": 28.437
   },
   "roofit/roostats/rs401c_FeldmanCousins.py": {
    "ratio": 0.5994728956441685,
@@ -4994,9 +4994,9 @@
    "xrdroot_seconds": null
   },
   "visualisation/gl/parallelcoordtrans.C": {
-   "ratio": 0.6656333038086802,
+   "ratio": 0.4374077354591084,
    "root_seconds": 6.774,
-   "xrdroot_seconds": 4.509
+   "xrdroot_seconds": 2.963
   },
   "visualisation/gl/radialgradients.C": {
    "ratio": 0.449661330049261,
@@ -5049,9 +5049,9 @@
    "xrdroot_seconds": 2.533
   },
   "visualisation/graphics/archi.C": {
-   "ratio": 0.34267575100650355,
+   "ratio": 0.26788479405388665,
    "root_seconds": 6.458,
-   "xrdroot_seconds": 2.213
+   "xrdroot_seconds": 1.73
   },
   "visualisation/graphics/arrows.C": {
    "ratio": 0.359562673236834,
@@ -5109,9 +5109,9 @@
    "xrdroot_seconds": 2.901
   },
   "visualisation/graphics/event.C": {
-   "ratio": 0.14549420151079903,
+   "ratio": 0.09048834982444942,
    "root_seconds": 18.798,
-   "xrdroot_seconds": 2.735
+   "xrdroot_seconds": 1.701
   },
   "visualisation/graphics/feynman.C": {
    "ratio": 0.059287376025468345,
@@ -5504,9 +5504,9 @@
    "xrdroot_seconds": 3.023
   },
   "visualisation/graphs/gr102_reverse_graph.C": {
-   "ratio": 0.16340238543628377,
+   "ratio": 0.11556811048336472,
    "root_seconds": 15.93,
-   "xrdroot_seconds": 2.603
+   "xrdroot_seconds": 1.841
   },
   "visualisation/graphs/gr103_zones.C": {
    "ratio": 0.15895900788075018,
@@ -5564,9 +5564,9 @@
    "xrdroot_seconds": 2.107
   },
   "visualisation/graphs/gr112_reverse_graph_and_errors.C": {
-   "ratio": 0.14196434445102296,
+   "ratio": 0.1198605354910861,
    "root_seconds": 15.201,
-   "xrdroot_seconds": 2.158
+   "xrdroot_seconds": 1.822
   },
   "visualisation/graphs/gr201_waves.C": {
    "ratio": 0.15860627177700348,
@@ -5584,9 +5584,9 @@
    "xrdroot_seconds": 8.689
   },
   "visualisation/graphs/gr302_highlight2.C": {
-   "ratio": 0.10953439046560953,
+   "ratio": 0.09302090697909303,
    "root_seconds": 19.802,
-   "xrdroot_seconds": 2.169
+   "xrdroot_seconds": 1.842
   },
   "visualisation/graphs/gr303_zdemo.C": {
    "ratio": 0.1311797931078251,
@@ -10283,6 +10283,183 @@
     "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
    },
    "source_tree_sha256": "d00e069a184f2496b00b3999fdcbed7b73a3bd21fb2a941226bcccad5000f6fa"
+  },
+  {
+   "generated": "2026-10-17T18:08:05+00:00",
+   "meta": {
+    "cache": "/Users/rcurrie/.cache/xrdroot-tutorials",
+    "composite": true,
+    "existing_renderer_issues": "/tmp/harness/root-graphics-deviations.json",
+    "extra_image_comparison": "/tmp/harness/tree-scatter-target-image-comparison.json",
+    "gates": "/tmp/harness/tree-scatter-f281346-final7-gates/gates.json",
+    "intentional_scatter_changes": [
+     {
+      "file": "htr3.png",
+      "kind": "image",
+      "path": "io/tree/tree201_histograms.C",
+      "reason": "ROOT-compatible scatter points, original method-expression axes, and an axes-only frame replace the binned heatmap. Other images remain byte-identical; the direct graph dot renderer is unchanged.",
+      "root_similarity_after": 0.9427,
+      "root_similarity_before": 0.8577
+     }
+    ],
+    "jobs": 1,
+    "method_oracle_proof": "/tmp/harness/tree-scatter-method-oracle-proof.json",
+    "network": false,
+    "no_oracle": false,
+    "only": [
+     "io/tree/tree201_histograms.C",
+     "analysis/dataframe/df002_dataModel.py",
+     "analysis/dataframe/df019_Cache.py",
+     "hist/hist006_TH1_bar_charts.C",
+     "hist/hist007_TH1_liveupdate.py",
+     "hist/hist015_TH1_read_and_draw.C",
+     "hist/hist045_Graphics_highlight_ntuple.C",
+     "hist/hist056_TPolyMarker_contour.C",
+     "hist/hist103_THnSparse_hist.C",
+     "hsimple.C",
+     "hsimple.py",
+     "io/double32.C",
+     "io/float16.C",
+     "io/ntuple/ntpl002_vector.C",
+     "io/ntuple/ntpl017_shared_reader.C",
+     "io/tree/hsimpleProxyDriver.C",
+     "io/tree/hsimpleReader.C",
+     "io/tree/mp_readNtuplesFillHistosAndFit.C",
+     "io/tree/mt_readNtuplesFillHistosAndFit.C",
+     "io/tree/ntuple1.py",
+     "io/tree/tree102_basic.C",
+     "io/tree/tree105_tree.C",
+     "io/tree/tree107_tree.C",
+     "io/tree/tree109_friend.C",
+     "io/tree/tree113_getval.C",
+     "io/tree/tree120_ntuple.C",
+     "io/tree/tree122_vector3.C",
+     "io/tree/tree140_spider.C",
+     "io/tree/tree141_parallelcoord.C",
+     "io/tree/tree142_parallelcoordtrans.C",
+     "io/tree/tree143_drawsparse.C",
+     "io/tree/tree200_temperature.C",
+     "io/tree/tree501_cernstaff.C",
+     "io/tree/tree502_staff.C",
+     "legacy/mlp/mlpHiggs.C",
+     "legacy/mlp/mlpRegression.C",
+     "legacy/splot/TestSPlot.C",
+     "legacy/thread/threadsh2.C",
+     "legacy/tree/tree.C",
+     "machine_learning/TMVA_CNN_Classification.C",
+     "machine_learning/tmva003_RReader.C",
+     "math/fit/ConfidenceIntervals.C",
+     "math/mathcoreVectorCollection.C",
+     "math/pdf/pdf011_Student.C",
+     "math/pdf/pdf012_tStudent.C",
+     "math/quadp/portfolio.C",
+     "roofit/roofit/rf102_dataimport.C",
+     "roofit/roofit/rf102_dataimport.py",
+     "visualisation/gl/parallelcoordtrans.C",
+     "visualisation/graphics/archi.C",
+     "visualisation/graphics/event.C",
+     "visualisation/graphs/gr102_reverse_graph.C",
+     "visualisation/graphs/gr112_reverse_graph_and_errors.C",
+     "visualisation/graphs/gr302_highlight2.C",
+     "io/tree/tree121_hvector.C",
+     "io/tree/tree123_clonesarray.C",
+     "machine_learning/TMVAClassification.C",
+     "machine_learning/TMVAMultipleBackgroundExample.C",
+     "machine_learning/TMVARegression.C",
+     "machine_learning/TMVA_Higgs_Classification.C",
+     "machine_learning/TMVA_RNN_Classification.C",
+     "machine_learning/envelope/classification.C",
+     "roofit/roostats/IntervalExamples.C",
+     "roofit/roostats/rs101_limitexample.C",
+     "roofit/roostats/rs101_limitexample.py",
+     "roofit/roostats/rs401c_FeldmanCousins.C",
+     "analysis/dataframe/df104_HiggsToTwoPhotons.py"
+    ],
+    "oracle_only": false,
+    "oracle_prefix": "/Users/rcurrie/.local/root-oracle",
+    "output_comparison": "/tmp/harness/tree-scatter-output-comparison.json",
+    "passing_image_proof": "/tmp/harness/tree-scatter-passing-image-proof.json",
+    "root_features": [
+     "asimage",
+     "asimage_tiff",
+     "builtin_civetweb",
+     "builtin_cling",
+     "builtin_openui5",
+     "check_connection",
+     "clad",
+     "cocoa",
+     "curl",
+     "cxx20",
+     "dataframe",
+     "davix",
+     "fftw3",
+     "fitsio",
+     "gdml",
+     "geom",
+     "gviz",
+     "http",
+     "imt",
+     "libcxx",
+     "mathmore",
+     "opengl",
+     "pyroot",
+     "pythia8",
+     "roofit",
+     "roofit_multiprocess",
+     "root7",
+     "runtime_cxxmodules",
+     "shared",
+     "soversion",
+     "spectrum",
+     "sqlite",
+     "ssl",
+     "thisroot_scripts",
+     "tmva",
+     "tmva-cpu",
+     "tmva-cudnn",
+     "tmva-pymva",
+     "tpython",
+     "vdt",
+     "webgui",
+     "xml",
+     "xrootd"
+    ],
+    "root_python": "/Users/rcurrie/.local/root-oracle/bin/python",
+    "root_version": "6.40.04",
+    "scatter_oracle_proof": "/tmp/harness/tree-scatter-oracle-proof.json",
+    "source_results": [
+     "/tmp/harness/tree-scatter-method-target/results.json",
+     "/tmp/harness/tree-scatter-final7-fast/results.json",
+     "/tmp/harness/tree-scatter-final7-slow-0/results.json",
+     "/tmp/harness/tree-scatter-final7-slow-1/results.json",
+     "/tmp/harness/tree-scatter-final7-slow-2/results.json",
+     "/tmp/harness/tree-scatter-final7-slow-3/results.json",
+     "/tmp/harness/tree-scatter-final7-slow-4/results.json",
+     "/tmp/harness/tree-scatter-final7-slow-5/results.json",
+     "/tmp/harness/tree-scatter-final7-slow-6/results.json",
+     "/tmp/harness/tree-scatter-final7-slow-7/results.json",
+     "/tmp/harness/tree-scatter-final7-slow-8/results.json",
+     "/tmp/harness/tree-scatter-final7-slow-9/results.json",
+     "/tmp/harness/tree-scatter-final7-slow-10/results.json",
+     "/tmp/harness/tree-scatter-final7-slow-11/results.json",
+     "/tmp/harness/tree-scatter-final7-slow-12/results.json"
+    ],
+    "source_tree_sha256": "e6a6edd2f97eda10ad5774a9ccff03f022a1a82259990bb32a9b7c5fd3f5cb79",
+    "timeout": 300.0,
+    "tolerance": {
+     "atol": 1e-12,
+     "image_threshold": 0.95,
+     "rtol": 1e-06
+    },
+    "tutorials_dir": "/Users/rcurrie/src/xrdroot/rootsrc-6.40/tutorials",
+    "validation_base_commit": "f281346116c6954a53816a2ec1f17692b6d1fa20",
+    "xrdroot_commit": "f281346",
+    "xrdroot_has_pyroot": true,
+    "xrdroot_has_run": true,
+    "xrdroot_python": "/Users/rcurrie/src/xrdroot/.venv/bin/python",
+    "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
+   },
+   "source_tree_sha256": "e6a6edd2f97eda10ad5774a9ccff03f022a1a82259990bb32a9b7c5fd3f5cb79"
   }
  ]
 }

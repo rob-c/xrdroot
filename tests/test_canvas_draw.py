@@ -506,6 +506,19 @@ def test_a_colour_plot_on_a_pad_drawn_logz_is_scaled_logarithmically():
     assert isinstance(_mapped(ax).norm, LogNorm)
 
 
+@pytest.mark.parametrize("dimensions", (1, 2))
+def test_axis_draws_only_the_frame_without_bins_statistics_or_a_colour_scale(dimensions):
+    histogram = Histogram.book("frame", *([(5, 0., 5.)] * dimensions))
+    histogram.fill(*([np.array([1., 2., 3.])] * dimensions))
+    figure = make([(histogram, "AXIS")]).plot()
+    assert len(figure.axes) == 1
+    axes = only(figure, "c")
+    assert len(axes.collections) == 0
+    assert not lines(axes, clipped=True)
+    assert ("Entries" in " ".join(words(axes))) is False
+    assert axes.get_xlim() == (0., 5.)
+
+
 def test_a_two_dimensional_histogram_with_no_option_is_shaded():
     h = Histogram.book("h2", (2, 0.0, 2.0), (1, 0.0, 1.0))
     h.fill(np.array([0.5, 1.5]), np.array([0.5, 0.5]), weight=np.array([-2.0, 3.0]))

@@ -142,7 +142,7 @@ def shows_stats(h: Any, option: str) -> bool:
     if int(lookup(h, "fBits", 0)) & NO_STATS:
         return False
     upper = option.upper()
-    return "SAMES" in upper or "SAME" not in upper
+    return "AXIS" not in upper and ("SAMES" in upper or "SAME" not in upper)
 
 
 def default_stats(scene: Scene, h: Any) -> None:

@@ -51,8 +51,7 @@ def method_draw(
             _object(tree, branch, entry).Draw(*args)
         return len(entries)
     columns = [_called(tree, call, entries) for call in calls]
-    tree._drawn = columns  # what GetV1 and its kin hand back
-    return _drawn(varexp, columns, option)
+    return _drawn(tree, varexp, columns, option)
 
 
 def _calls(tree: Any, varexp: str) -> list[tuple[Any, str, tuple[Any, ...]]] | None:
@@ -79,18 +78,34 @@ def _object(tree: Any, branch: Any, entry: int) -> Any:
     return rebuilt(branch.classname, tree._batch.value(branch.leaves[0].column, entry), None)
 
 
-def _drawn(varexp: str, columns: list[Any], option: str) -> int:
+def _drawn(tree: Any, varexp: str, columns: list[Any], option: str) -> int:
     """The numbers drawn as a tree of them draws them, titled with the expression."""
-    from ._base import hooks
     from .tree import TTree
 
     names = [f"v{at}" for at in range(len(columns))]
     held = np.zeros(len(columns))
     temporary = TTree("methods", "", dir=False)
+    tree.CopyTAttLine(temporary)
+    tree.CopyTAttFill(temporary)
+    tree.CopyTAttMarker(temporary)
+    temporary.SetEstimate(tree.GetEstimate())
     temporary.Branch(names[0], held, ":".join(f"{name}/D" for name in names))
     for row in np.column_stack(columns) if columns else ():
         held[:] = row
         temporary.Fill()
     drawn = temporary.Draw(":".join(names), "", option)
-    hooks.wrap(hooks.registry()["htemp"]).SetTitle(varexp)  # what every such draw makes
+    histogram = temporary.GetHistogram()
+    histogram.SetTitle(varexp)
+    tree._draw_histogram = histogram
+    tree._drawn = [temporary.GetVal(at) for at in range(len(columns))]
+    _axes(histogram, varexp, len(columns))
     return int(drawn)
+
+
+def _axes(histogram: Any, varexp: str, dimensions: int) -> None:
+    """The temporary column names must not appear on the original expression's axes."""
+    if histogram.GetDimension() != dimensions:
+        return
+    parts = split_names(varexp.split(">>")[0])
+    for letter, part in zip("XYZ", reversed(parts), strict=False):
+        getattr(histogram, f"Get{letter}axis")().SetTitle(part.strip())

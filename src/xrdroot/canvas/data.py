@@ -224,6 +224,8 @@ def paint_histogram(scene: Scene, h: Histogram, option: str) -> None:
     from .legoplot import paint_three_d, three_d_kind
 
     upper = option.upper()
+    if "AXIS" in upper:
+        return  # The frame painter supplies axes; neither bins nor statistics are drawn.
     if len(h.axes) > 2:
         if not _boxed(upper):
             scene.skipped.append(f"{_named(h)} (only LEGO, BOX and ISO draw three dimensions here)")
