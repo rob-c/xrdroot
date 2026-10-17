@@ -39,7 +39,8 @@ class Stats:
     ResetBit: Any
 
     def _axes(self) -> list[Any]:
-        return [self.GetXaxis(), self.GetYaxis(), self.GetZaxis()][: len(self._xrd.axes)]
+        getters = (self.GetXaxis, self.GetYaxis, self.GetZaxis)[: len(self._xrd.axes)]
+        return [get() for get in getters]
 
     def _displayed(self) -> np.ndarray[Any, Any]:
         """The global bins in every axis's displayed range, x fastest."""

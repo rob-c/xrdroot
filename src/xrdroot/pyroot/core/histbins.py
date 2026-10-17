@@ -141,9 +141,9 @@ class Bins:
         if not labelled:  # no label, no sum frozen
             return int(self._xrd.fill_one(coordinates, weight))
         frozen = self._frozen_moments(args)
-        self._xrd.fill(*coordinates, weight=None if weight == 1.0 else weight)
+        found = self._xrd.fill_one(coordinates, weight)
         self._core().update(frozen)
-        return int(self._xrd.find_bin(*coordinates))
+        return int(found)
 
     def _frozen_moments(self, args: tuple[Any, ...]) -> dict[str, Any]:
         """The sums along each axis filled by label that may grow: ROOT leaves those alone."""
@@ -153,7 +153,13 @@ class Bins:
             for letter, axis, value in zip("xyz", axes, args, strict=False)
             if isinstance(value, str) and axis.CanExtend() and axis.IsAlphanumeric()
         ]
+        return self._frozen_along(letters)
+
+    def _frozen_along(self, letters: list[str]) -> dict[str, Any]:
+        """The one-dimensional case needs two fields regardless of the histogram's metadata."""
         core = self._core()
+        if self.DIM == 1:
+            return {key: core[key] for key in ("fTsumwx", "fTsumwx2")} if letters else {}
         return {key: core[key] for key in core if key.startswith("fTsumw")
                 and any(letter in key[6:] for letter in letters)}  # fmt: skip
 

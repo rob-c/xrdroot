@@ -55,6 +55,25 @@ def test_a_first_label_makes_the_axis_one_of_categories_that_may_grow():
     assert h.Fill(ROOT.TString("y-and-more")(0, 1), 1.0) == 2  # a TString's text is its label
 
 
+@pytest.mark.parametrize("kind,contents", [
+    ("C", [-127., 0., 0., 0.]),
+    ("F", [2., 0.10000000149011612, -0.30000001192092896, 0.20000000298023224]),
+    ("D", [2., .1, -.3, .2]),
+])
+def test_weighted_labels_keep_roots_storage_precision_and_running_squares(kind, contents):
+    h = getattr(ROOT, "TH1" + kind)("weighted_labels", "", 2, 0., 2.)
+    weights = [("a", 1.), ("b", .1), ("a", 8388609.),
+               ("c", -.3), ("d", .2), ("a", -8388608.)]
+    assert [h.Fill(ROOT.TString(label), weight) for label, weight in weights] == [1, 2, 1, 3, 4, 1]
+    # ROOT 6.40.04: sequential IEEE arithmetic, with no platform-dependent libm calls.
+    assert h.GetEntries() == 6.
+    assert h.GetNbinsX() == 4
+    assert [h.GetBinContent(i) for i in range(6)] == [0., *contents, 0.]
+    assert h.GetSumw2().tolist() == [0., 140737505132546., 0.010000000000000002,
+                                   .09, 0.04000000000000001, 0.]
+    assert h.GetStats() == [1.9999999981373549, 140737505132546.16, *([0.] * 11)]
+
+
 def test_an_axis_that_cannot_be_of_categories_ignores_a_new_label(capsys):
     h = ROOT.TH1D("h", "", 2, [0.0, 1.0, 3.0])
     plain = ROOT.TH1D("p", "", 2, 0, 2)
