@@ -2302,7 +2302,9 @@ RDataFrame(tree, workers=4, step=200_000)         # four processes, batches of 2
 ```
 
 A frame made from a name opens its files and closes them with `close()` or a
-`with` block; one handed a tree leaves it open.
+`with` block; one handed a tree leaves it open. The first tree file stays open
+after discovery so reading its columns reuses that connection. If construction
+fails, the frame closes the files it opened.
 
 ### Expressions
 

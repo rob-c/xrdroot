@@ -279,13 +279,22 @@ def open_named(name: str, files: Any) -> Source:
     """The tree or RNTuple called ``name`` in ``files``: a path, a URL, a glob, or several."""
     targets = _targets(files)
     first = open_root(targets[0])
+    source: Table | None = None
     try:
         kind = first.classnames().get(name.rpartition(";")[0] or name)
+        if kind != "ROOT::RNTuple":
+            source = _tree_source(name, targets, first)
     finally:
-        first.close()
-    if kind == "ROOT::RNTuple":
-        return Joined(name, targets)
-    return Table(Chain(name, targets), owned=True)
+        if source is None:
+            first.close()
+    return Joined(name, targets) if source is None else source
+
+
+def _tree_source(name: str, targets: list[str], first: ROOTFile) -> Table:
+    chain = Chain(name, targets)
+    # Preserve the original target and ownership so closing and worker reopening agree.
+    chain._links[0].file = first
+    return Table(chain, owned=True)
 
 
 def wrap(data: Any) -> Source:

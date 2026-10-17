@@ -342,6 +342,15 @@ class RDataFrame:
     def __init__(self, *args: Any, workers: int | None = None, step: int = DEFAULT_STEP) -> None:
         args, defaults = _defaults_of(args)
         source = _source_of(args)
+        try:
+            self._initialize(source, defaults, workers, step)
+        except BaseException:
+            if source.owned:
+                source.close()
+            raise
+
+    def _initialize(self, source: Source, defaults: list[str],
+                    workers: int | None, step: int) -> None:
         graph = _Graph(source, _IMPLICIT[0] if workers is None else int(workers), step)
         graph.implicit = workers is None  # EnableImplicitMT's, not asked for by this frame
         graph.defaults = defaults
