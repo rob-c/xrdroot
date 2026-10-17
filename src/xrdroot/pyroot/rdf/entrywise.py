@@ -35,7 +35,10 @@ ENTRY = "rdfentry_"
 def _entries(column: Any) -> list[Any]:
     """A batch's values, one for each entry, as a C++ function takes them."""
     if isinstance(column, Jagged):
-        return [_made(np.asarray(row)) for row in column]
+        from .vectorrows import rows
+
+        prepared = rows(column, _made)
+        return prepared if prepared is not None else [_made(np.asarray(row)) for row in column]
     if isinstance(column, np.ndarray):
         return list(column.tolist()) if column.dtype != object else list(column)
     return list(column)

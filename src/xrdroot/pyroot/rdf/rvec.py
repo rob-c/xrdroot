@@ -55,7 +55,15 @@ class _RVec(np.lib.mixins.NDArrayOperatorsMixin, _Vector):  # type: ignore[misc]
 
     def __getitem__(self, index: Any) -> Any:
         if isinstance(index, (list, np.ndarray, _Vector)):
-            return _made(self.data()[np.asarray(index)])
+            if isinstance(index, _RVec):
+                if len(index) != len(self):
+                    raise TypeError(
+                        f"Cannot index RVecN of size {len(self)} with condition vector of "
+                        f"different size ({len(index)}).")
+                index = np.asarray(index, dtype=bool)
+            else:
+                index = np.asarray(index)
+            return _made(self.data()[index])
         return _Vector.__getitem__(self, index)
 
     def __eq__(self, other: object) -> Any:

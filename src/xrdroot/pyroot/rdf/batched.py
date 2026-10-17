@@ -252,4 +252,5 @@ def compiled(source: str, used: list[str], original: Any) -> _Batched | _RandomD
             return make(function, used)
         except _NotBatched:
             pass
-    return None
+    from .maskedcall import compiled as masked_call
+    return masked_call(function, used, original)

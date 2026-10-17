@@ -2324,6 +2324,11 @@ df.Define("dr", "DeltaR(Muon_eta[0], Muon_eta[1], Muon_phi[0], Muon_phi[1])")
 df.Define("pairs", "Combinations(Muon_pt, 2)")       # Take(Muon_pt, pairs[0]) and pairs[1]
 ```
 
+An `RVec` condition vector must have the same length as the values it
+selects. Every nonzero condition keeps its corresponding value, including
+integer and floating-point conditions. Python lists and NumPy index arrays
+keep their positional indexing.
+
 What C++ evaluates conditionally is evaluated conditionally: the right side of
 `&&` and `||`, and each branch of `? :`, is evaluated only for the entries that
 reach it, so `nMuon > 0 && Muon_pt[0] > 30` never looks at the first muon of an
@@ -2465,7 +2470,9 @@ What differs from ROOT, and why:
 - A callable is called once per batch with arrays, not once per entry with
   numbers; it gives back an array of the batch's length. A C++ macro's
   lambda, which is written for one entry, is called once per entry, as ROOT
-  calls it - a collection reaching it as an `RVec`.
+  calls it - a collection reaching it as an `RVec`. Each collection owns
+  its copied values: changing one does not change the source column or
+  another entry.
 - `v.size()` is a `Long64_t` rather than `size_t`, so `v.size() - 1` of an
   empty collection is `-1`, not a wrapped-around unsigned number.
 - What C++ leaves undefined is refused, naming the entry, rather than read out

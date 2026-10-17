@@ -69,7 +69,7 @@
  "analysis/dataframe/df105_WBosonAnalysis.py": "DIFF",
  "analysis/dataframe/df106_HiggsToFourLeptons.C": "UNSUPPORTED",
  "analysis/dataframe/df106_HiggsToFourLeptons.py": "UNSUPPORTED",
- "analysis/dataframe/df107_SingleTopAnalysis.py": "FAIL",
+ "analysis/dataframe/df107_SingleTopAnalysis.py": "DIFF",
  "analysis/dataframe/distrdf001_spark_connection.py": "SKIP",
  "analysis/dataframe/distrdf002_dask_connection.py": "SKIP",
  "analysis/dataframe/distrdf003_live_visualization.py": "SKIP",
