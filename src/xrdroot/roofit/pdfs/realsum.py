@@ -73,7 +73,7 @@ class RooRealSumPdf(RooAbsPdf):
         names = frozenset(nset or ())
         if names and not fit and not rng:
             self._announce_norm(names & self.dependents())
-        return float(self.integrate(names, {}, rng))
+        return float(self.norm({}, names, rng))
 
     def bin_boundaries(self, name: str) -> Any:
         """``binBoundaries``: every term's boundaries, merged."""

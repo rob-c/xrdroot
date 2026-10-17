@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 
 from . import evalerrors
+from .arg import configuration_key
 from .binning import evaluating
 from .collections import as_list
 from .messages import WARNING, log
@@ -167,7 +168,7 @@ class RooAbsPdf(RooAbsReal):
             if value is not None and np.ndim(value):
                 return None
             values.append((name, float(leaf.getVal() if value is None else value)))
-        return (names, rng, tuple(values))
+        return (names, rng, tuple(values), configuration_key(self, names, rng))
 
     def getVal(self, nset: Any = None) -> float:
         names = names_in(nset)

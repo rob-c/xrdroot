@@ -20,11 +20,13 @@ from typing import Any
 import numpy as np
 
 from ...random import libm
+from ..arg import configuration_changed
 from ..collections import as_list
 from ..real import Context, RooAbsReal
 
 __all__ = ["FlexibleInterpVar", "ParamHistFunc", "PiecewiseInterpolation", "RooBinWidthFunction",
            "interpolate"]  # fmt: skip
+
 
 #: ``TMath::Limits<double>::Min()``: what a total that is not positive is raised to.
 TINY = 2.2250738585072014e-308
@@ -192,12 +194,16 @@ class FlexibleInterpVar(RooAbsReal):
 
     def setInterpCode(self, param: Any, code: int) -> None:
         self._codes[self.params.index(param)] = int(code)
+        configuration_changed(self)
 
     def setAllInterpCodes(self, code: int) -> None:
         self._codes = [int(code)] * len(self._codes)
+        if self._codes:
+            configuration_changed(self)
 
     def setNominal(self, nominal: float) -> None:
         self._nominal = float(nominal)
+        configuration_changed(self)
 
     def interpolationCodes(self) -> list[int]:
         return list(self._codes)
@@ -245,9 +251,12 @@ class PiecewiseInterpolation(RooAbsReal):
 
     def setInterpCode(self, param: Any, code: int, silent: bool = False) -> None:
         self._codes[self.params.index(param)] = int(code)
+        configuration_changed(self)
 
     def setAllInterpCodes(self, code: int) -> None:
         self._codes = [int(code)] * len(self._codes)
+        if self._codes:
+            configuration_changed(self)
 
     def interpolationCodes(self) -> list[int]:
         return list(self._codes)

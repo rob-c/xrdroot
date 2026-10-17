@@ -49,6 +49,40 @@ def graph_changed() -> None:
     _GRAPH[0] += 1
 
 
+def configuration_changed(node: RooAbsArg) -> None:
+    """A configuration setter can change an integral without moving any of its variables."""
+    state = node.__dict__
+    state["_configuration_version"] = state.get("_configuration_version", 0) + 1
+
+
+def configuration_key(node: RooAbsArg, names: frozenset[str], rng: Any) -> tuple[Any, ...]:
+    """ROOT's numerical integrals retain their shape configuration; analytic factors stay live."""
+    walked = node._walked()
+    identities = tuple(id(arg) for arg in walked)
+    configured = [arg for arg in walked if "_configuration_version" in arg.__dict__]
+    if not configured:
+        return identities, ()
+    live = {id(arg) for arg in _integral_inputs(node, names, rng, set())}
+    return identities, tuple((id(arg), arg.__dict__["_configuration_version"])
+                             for arg in configured if id(arg) in live)
+
+
+def _integral_inputs(node: RooAbsArg, names: frozenset[str], rng: Any,
+                     seen: set[int]) -> list[RooAbsArg]:
+    from .integration import closed_names
+
+    if id(node) in seen:
+        return []
+    seen.add(id(node))
+    part = names & node.dependents()
+    if part and not node.isFundamental() and closed_names(node, part, rng) != part:
+        return []
+    found = [node]
+    for server in node.servers():
+        found.extend(_integral_inputs(server, names, rng, seen))
+    return found
+
+
 class Proxy:
     """One named input of a node: a single argument, or a list of them."""
 

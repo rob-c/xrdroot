@@ -1593,7 +1593,9 @@ frame.Draw()
 - **Compositions**: sums (`RooAddPdf`, recursive fractions too), products with conditional
   factors, `RooExtendPdf`, `RooSimultaneous`, `RooRealSumPdf`, `RooHistPdf`,
   `RooMultiVarGaussian`, `RooFFTConvPdf`, `RooKeysPdf`, and the resolution models and B
-  decays.
+  decays. `RooRealSumPdf.expectedEvents` uses its normalization integral, including a
+  range selected with `setNormRange`. Updates to HistFactory `FlexibleInterpVar`
+  coefficients are reflected in expected counts.
 - **Data**: `RooDataSet` and `RooDataHist` (imported from trees, histograms or slices;
   reduced, appended, binned, tabulated; with global observables) and `createHistogram`.
 - **Generation**: `generate` and `generateBinned`, prototype data (`ProtoData`) included.
