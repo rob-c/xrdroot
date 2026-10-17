@@ -102,6 +102,24 @@ def test_a_named_scatter_adds_weighted_fills_without_adding_old_points():
     assert canvas.FindObject("h").GetEntries() == 3
 
 
+def test_a_named_draw_does_not_reuse_a_histogram_owned_only_by_a_pad():
+    ROOT.TCanvas("detached_canvas", "detached_canvas", 400, 300)
+    name = "detached_draw_target"
+    detached = ROOT.TH2F(name, "detached", 5, 0, 5, 5, 0, 25)
+    detached.SetDirectory(0)
+    detached.Fill(1, 3, 10)
+    detached.Draw("axis")
+    assert ROOT.gROOT.FindObject(name) is detached
+    assert ROOT.gDirectory.GetList().FindObject(name) is None
+    tree = _tree()
+    assert tree.Draw("y:x>>" + name, "w", "goff") == 3
+    made = tree.GetHistogram()
+    assert made is not detached
+    assert (detached.GetEntries(), made.GetEntries()) == (1, 3)
+    assert made.GetSumOfWeights() == -.5
+    assert ROOT.gDirectory.GetList().FindObject(name) is made
+
+
 def test_same_preserves_the_pad_and_a_range_alias_and_tree_weight_select_the_points():
     canvas = ROOT.TCanvas("canvas", "canvas", 400, 300)
     background = ROOT.TH2F("background", "background", 10, 0, 10, 10, 0, 30)

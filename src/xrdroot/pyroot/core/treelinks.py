@@ -46,7 +46,7 @@ class Registry(MutableMapping[str, Any]):
     """``gDirectory`` as ``Draw`` sees it: xrdroot histograms by name, anything else as it is."""
 
     def __getitem__(self, name: str) -> Any:
-        found = current_directory().FindObject(str(name))
+        found = current_directory().GetList().FindObject(str(name))
         if found is None:
             raise KeyError(name)
         return unwrap(found) if _wrapper(found) else found
@@ -54,14 +54,14 @@ class Registry(MutableMapping[str, Any]):
     def __setitem__(self, name: str, value: Any) -> None:
         made = wrap(value)
         here = current_directory()
-        if here.FindObject(str(name)) is made:
+        if here.GetList().FindObject(str(name)) is made:
             return
         if made is not value and hasattr(made, "SetName"):
             made.SetName(name)
         here.Append(made, True)
 
     def __delitem__(self, name: str) -> None:
-        found = current_directory().FindObject(str(name))
+        found = current_directory().GetList().FindObject(str(name))
         if found is None:
             raise KeyError(name)
         current_directory().Remove(found)
