@@ -84,13 +84,18 @@ def test_a_category_conditional_on_two_reals_says_how_many_trials_and_raises_its
     """rf702's warnings: two real dimensions, and trials past RooAcceptReject's threshold - here
     with fewer trials than ROOT's hundred thousand, that the test be quick."""
     from xrdroot.roofit.generation import acceptreject
+    from xrdroot.roofit.generation.samplerconfig import configuration
 
-    monkeypatch.setattr(acceptreject, "TRIALS", (10, 10, 20, 10))
     monkeypatch.setattr(acceptreject, "MANY_TRIALS", 30)
     _, x, cut, _ = _efficiency()
     y = RooRealVar("y", "y", 0, 1)
     shape = RooFormulaVar("e2", "0.5+0.4*y*cos(x)", [x, y])
     both = RooEfficiency("both", "both", shape, cut, "accept")
+    # Initialize the factory, then change a private copy through the public API.
+    both.setGeneratorConfig(configuration(both))
+    section = both.specialGeneratorConfig().getConfigSection("RooAcceptReject")
+    for dimension, count in enumerate((10, 10, 20, 10)):
+        section.setRealValue(f"nTrial{dimension}D", count)
     capsys.readouterr()
     generator().SetSeed(4357)
     label = "both_Int[]_Norm[cut]"

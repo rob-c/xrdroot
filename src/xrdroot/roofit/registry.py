@@ -41,6 +41,7 @@ MODULES = {
     "matrix": ["TMatrixDSym", "TVectorD"],
     "mcstudy": ["RooMCStudy"],
     "numintconfig": ["RooNumIntConfig"],
+    "numgenconfig": ["RooNumGenConfig"],
     "messages": ["RooMsgService"],
     "pdf": ["RooAbsPdf"],
     "pdfs.addmodel": ["RooAddModel"],

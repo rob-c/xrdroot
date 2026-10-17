@@ -89,6 +89,7 @@ class Foam:
         opt_drive: int = 2,
         opt_rej: int = 1,
         max_wt_rej: float = 1.1,
+        chat_level: int = 0,
     ) -> None:
         _check_options(dim, n_sampl, n_bin, opt_drive)
         self.density = density
@@ -101,6 +102,7 @@ class Foam:
         self.opt_drive = opt_drive
         self.opt_rej = opt_rej
         self.max_wt_rej = max_wt_rej
+        self.chat_level = chat_level
         self.cells: list[Cell] = []
         self._drivers: list[tuple[float, int]] = []
         self.active: list[Cell] = []
@@ -124,6 +126,10 @@ class Foam:
 
     def initialize(self) -> None:
         """``Initialize``: explore the root cell, grow the foam, and list the active cells."""
+        from . import foamverbosity
+
+        if self.chat_level > 0:
+            foamverbosity.header(self)
         root = Cell(None, 0)
         self.cells = [root]
         self._drivers = []
@@ -131,6 +137,10 @@ class Foam:
         self._grow()
         self._make_active_list()
         self._reset_sums()
+        if self.chat_level > 0:
+            foamverbosity.summary(self)
+        if self.chat_level == 2:
+            foamverbosity.cells(self)
 
     def _grow(self) -> None:
         """``Grow``: cut the cell with the largest driver integral until the cells run out.
@@ -147,7 +157,15 @@ class Foam:
                     "No cell of the foam has a driver integral to choose it by; "
                     "the density must be finite."
                 )
+            if self.chat_level > 0:
+                from .foamverbosity import progress
+
+                progress(self)
             self._divide(self.cells[heapq.heappop(self._drivers)[1]])
+        if self.chat_level > 0:
+            from ..cout import line
+
+            line()
 
     def _offer(self, cell: Cell) -> None:
         """Put an explored active cell among those ``PeekMax`` may choose."""
@@ -479,6 +497,7 @@ class FoamGenerator:
         vectorized: bool = False,
         n_cells: int | None = None,
         n_sample: int = ROOFIT_SAMPLES,
+        chat_level: int = 0,
     ) -> None:
         bounds = np.asarray(ranges, dtype=np.float64).reshape(-1, 2)
         self.low = bounds[:, 0].copy()
@@ -495,6 +514,7 @@ class FoamGenerator:
             TRandom3() if rng is None else rng,
             n_cells=n_cells,
             n_sampl=n_sample,
+            chat_level=chat_level,
         )
         self.foam.initialize()
 
@@ -507,7 +527,7 @@ class FoamGenerator:
             values = np.array([float(self.function(point)) for point in points])
         return np.where(values < 0, 0.0, values)
 
-    def generate(self) -> Any:
+    def generate(self, remaining: int = 1) -> Any:
         """``generateEvent``: the next event, one value per observable."""
         return self.low + self.range * self.foam.make_event()
 

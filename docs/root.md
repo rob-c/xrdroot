@@ -1595,6 +1595,17 @@ adaptive refinement and extrapolation controls. Adaptive Gauss–Kronrod support
 the 15, 21, 31, 41, 51 and 61 point rules on finite intervals, with configurable
 precision and segment limits.
 
+`ROOT.RooNumGenConfig` selects numeric samplers and their parameters.
+`RooAbsPdf.defaultGeneratorConfig()` returns the shared configuration;
+`setGeneratorConfig(config)` installs a private copy on a density, and
+`specialGeneratorConfig(True)` creates one for editing. Methods are selected
+separately for the dimension, conditional observables and category variables.
+FOAM honors `nSample`, the dimension's `nCell` setting and `chatLevel`.
+Accept/reject sampling honors the dimension's `nTrial` setting, retains its
+trial cache and trims earlier production if a larger maximum is discovered.
+As in ROOT, the default starts with `N/A` choices until a numeric generator
+initializes the available samplers.
+
 **What it has.**
 - **Variables and functions**: `RooRealVar` (named ranges, and ranges with functions for
   ends), `RooConstVar`, `RooCategory` and its derived kinds, `RooFormulaVar`,

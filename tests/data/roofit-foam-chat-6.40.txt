@@ -1,0 +1,57 @@
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+F                                                                              F
+F                   ****************************************                   F
+F                    ******      TFoam::Initialize    ******                   F
+F                   ****************************************                   F
+F                                                      TFOAM                   F
+F    Version =           1.02M   =                   Release date:  2005.04.10 F
+F       kDim =          1 =  Dimension of the hyper-cubical space              F
+F     nCells =          5 =  Requested number of Cells (half of them active)   F
+F     nSampl =         20 =  No of MC events in exploration of a cell          F
+F       nBin =          8 =  No of bins in histograms, MC exploration of cell  F
+F   EvPerBin =         25 =  Maximum No effective_events/bin, MC exploration   F
+F   OptDrive =          2 =  Type of Driver   =1,2 for Sigma,WtMax             F
+F     OptRej =          1 =  MC rejection on/off for OptRej=0,1                F
+F   MaxWtRej =             1.1   =       Maximum wt in rejection for wt=1 evts F
+F                                                                              F
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+F                                                                              F
+F                    ***  TFoam::Initialize FINISHED!!!  ***                   F
+F     nCalls =        100 =            Total number of function calls          F
+F     XPrime =       1.5439465   =     Primary total integral                  F
+F     XDiver =       0.2058404   =     Driver  total integral                  F
+F   mcResult =       1.3381061   =     Estimate of the true MC Integral        F
+F                                                                              F
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+Cell[0]={ 
+ Status= 0, Volume= 1, TrueInteg= 1.3381061, DriveInteg= 0.2058404, PrimInteg= 1.95692,
+ Xdiv= 0.625, Best= 0, Parent=  {-1}  Daught0= {1}  Daught1= {2} 
+   Posi= (           0),
+   Size= (           1),
+}
+Cell[1]={ 
+ Status= 0, Volume= 0.625, TrueInteg= 0.70834058, DriveInteg= 0.099500871, PrimInteg= 0.83670524,
+ Xdiv= 0.25, Best= 0, Parent=  {0}  Daught0= {3}  Daught1= {4} 
+   Posi= (           0),
+   Size= (       0.625),
+}
+Cell[2]={ 
+ Status= 1, Volume= 0.375, TrueInteg= 0.62976554, DriveInteg= 0.10633953, PrimInteg= 0.73610507,
+ Xdiv= 0.125, Best= 0, Parent=  {0}  Daught0= {-1}  Daught1= {-1} 
+   Posi= (       0.625),
+   Size= (       0.375),
+}
+Cell[3]={ 
+ Status= 1, Volume= 0.15625, TrueInteg= 0.15729293, DriveInteg= 0.002457434, PrimInteg= 0.15975036,
+ Xdiv= 0.5, Best= 0, Parent=  {1}  Daught0= {-1}  Daught1= {-1} 
+   Posi= (           0),
+   Size= (     0.15625),
+}
+Cell[4]={ 
+ Status= 1, Volume= 0.46875, TrueInteg= 0.55104765, DriveInteg= 0.097043437, PrimInteg= 0.64809109,
+ Xdiv= 0.25, Best= 0, Parent=  {1}  Daught0= {-1}  Daught1= {-1} 
+   Posi= (     0.15625),
+   Size= (     0.46875),
+}

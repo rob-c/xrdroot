@@ -7,6 +7,7 @@ observables whenever it is normalised, announcing so once per integral.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ..formula import RooFormula
@@ -31,7 +32,8 @@ class RooGenericPdf(RooAbsPdf):
         return self.formula.evaluate(ctx)
 
     def printMetaArgs(self) -> str:
-        return f'formula="{self._expression}" '
+        expression = re.sub(r"_rf(\d+)_", r"x[\1]", self.formula.text)
+        return f'formula="{expression}" '
 
     def expression(self) -> str:
         return self._expression

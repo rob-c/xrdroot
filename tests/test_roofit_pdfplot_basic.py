@@ -405,10 +405,6 @@ def test_a_generic_density_is_its_formula_normalised_numerically() -> None:
     assert titled.expression() == "x*x"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="generic.py:34: ROOT prints the formula with its variables as x[0], x[1], ...",
-)
 def test_a_generic_density_prints_its_formula_as_root_does(capsys: Any) -> None:
     """``Print`` shows the formula as ROOT's ``RooFormula`` holds it, its variables numbered."""
     x = observable()

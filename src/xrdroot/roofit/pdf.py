@@ -15,7 +15,7 @@ module of its own; the methods here are ROOT's names for them.
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -27,6 +27,9 @@ from .messages import WARNING, log
 from .nanpack import pack
 from .printing import g, kInline, kName, kValue
 from .real import Context, RooAbsReal, names_in, value_of
+
+if TYPE_CHECKING:
+    from .numgenconfig import RooNumGenConfig
 
 __all__ = ["RooAbsPdf", "check_range"]
 
@@ -47,10 +50,30 @@ class RooAbsPdf(RooAbsReal):
     def __init__(self, name: Any = "", title: Any = "") -> None:
         super().__init__(name, title)
         self._norm_range: str | None = None
+        self._num_gen_config: RooNumGenConfig | None = None
         #: The normalisation set of the last ``getVal`` asked with one, which ``Print`` shows.
         self._last_norm: frozenset[str] | None = None
 
     # -- values -------------------------------------------------------------------
+
+    @staticmethod
+    def defaultGeneratorConfig() -> RooNumGenConfig:
+        from .numgenconfig import RooNumGenConfig
+
+        return RooNumGenConfig.defaultConfig()
+
+    def getGeneratorConfig(self) -> RooNumGenConfig:
+        return self._num_gen_config or self.defaultGeneratorConfig()
+
+    def specialGeneratorConfig(self, createOnTheFly: bool = False) -> RooNumGenConfig | None:
+        if self._num_gen_config is None and createOnTheFly:
+            self.setGeneratorConfig(self.defaultGeneratorConfig())
+        return self._num_gen_config
+
+    def setGeneratorConfig(self, config: RooNumGenConfig | None = None) -> None:
+        from .numgenconfig import RooNumGenConfig
+
+        self._num_gen_config = RooNumGenConfig(config) if config is not None else None
 
     def selfNormalized(self) -> bool:
         return False

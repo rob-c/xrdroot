@@ -22,8 +22,6 @@ from .contexts import Context
 
 __all__ = ["AcceptRejectContext"]
 
-#: ``nTrial0D`` ... ``nTrial3D``: how many trial points find a density's largest value.
-TRIALS = (100, 1000, 100000, 10000000)
 #: More trials than this - RooAcceptReject's threshold - and it says they may take a while.
 MANY_TRIALS = 10000
 
@@ -39,6 +37,25 @@ def randomize(var: Any) -> None:
     var.load_value(low + generator().Rndm() * (high - low))
 
 
+def minimum_trials(sampled: list[Any], limits: tuple[int, ...], label: str) -> int:
+    """ROOT scales the real-dimensional trial count by every category multiplicity."""
+    reals = len([one for one in sampled if not hasattr(one, "lookupIndex")])
+    trials = limits[min(reals, 3)] * math.prod(
+        len(one.states()) for one in sampled if hasattr(one, "lookupIndex"))  # fmt: skip
+    if reals > 1:
+        log(None, WARNING, "Generation", f"RooAcceptReject::ctor({label}) WARNING: "
+            f"performing accept/reject sampling on a p.d.f in {reals} dimensions without "
+            "prior knowledge on maximum value of p.d.f. Determining maximum value by "
+            f"taking {trials} trial samples. If p.d.f contains sharp peaks smaller than "
+            "average distance between trial sampling points these may be missed and p.d.f. "
+            "may be sampled incorrectly.")  # fmt: skip
+    if trials > MANY_TRIALS:
+        log(None, WARNING, "Generation", f"RooAcceptReject::ctor({label}): WARNING: "
+            f"{trials} trial samples requested by p.d.f for {reals}-dimensional "
+            "accept/reject sampling, this may take some time")  # fmt: skip
+    return trials
+
+
 class AcceptRejectContext(Context):
     """``RooGenContext`` for a density with prototype observables: accept-reject sampling."""
 
@@ -48,6 +65,9 @@ class AcceptRejectContext(Context):
         self.order = [one for one in pdf.leaves() if one.GetName() in names]
         found = [one for one in pdf.leaves() if one.GetName() in conditional]
         self.label = label or f"{pdf.GetName()}_AccRej"
+        from .samplerconfig import trial_counts
+
+        self.trials = trial_counts(pdf)
         self.maximum = self._largest(self.order + found)
 
     def value(self) -> float:
@@ -69,23 +89,7 @@ class AcceptRejectContext(Context):
         return largest
 
     def _trials(self, sampled: list[Any]) -> int:
-        """How many trial points: ``nTrialND`` for the ``N`` real dimensions, times the states of
-        each category - and RooAcceptReject's warnings of many dimensions, and of many trials."""
-        reals = len([one for one in sampled if not hasattr(one, "lookupIndex")])
-        trials = TRIALS[min(reals, 3)] * math.prod(
-            len(one.states()) for one in sampled if hasattr(one, "lookupIndex"))  # fmt: skip
-        if reals > 1:
-            log(None, WARNING, "Generation", f"RooAcceptReject::ctor({self.label}) WARNING: "
-                f"performing accept/reject sampling on a p.d.f in {reals} dimensions without "
-                "prior knowledge on maximum value of p.d.f. Determining maximum value by "
-                f"taking {trials} trial samples. If p.d.f contains sharp peaks smaller than "
-                "average distance between trial sampling points these may be missed and p.d.f. "
-                "may be sampled incorrectly.")  # fmt: skip
-        if trials > MANY_TRIALS:
-            log(None, WARNING, "Generation", f"RooAcceptReject::ctor({self.label}): WARNING: "
-                f"{trials} trial samples requested by p.d.f for {reals}-dimensional "
-                "accept/reject sampling, this may take some time")  # fmt: skip
-        return trials
+        return minimum_trials(sampled, self.trials, self.label)
 
     def event(self, remaining: int) -> dict[str, float]:
         """``generateEvent`` with the maximum known: trial points until one is kept."""

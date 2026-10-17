@@ -55,11 +55,10 @@ class NumericContext(Context):
     """``RooGenContext`` with the default sampler: TFoam over the observables' ranges."""
 
     def __init__(self, pdf: Any, names: frozenset[str]) -> None:
-        from .foam import FoamGenerator
+        from .samplerconfig import sampler
 
         super().__init__(pdf, names)
         self.order = [one for one in pdf.leaves() if one.GetName() in names]
-        ranges = [(one.getMin(), one.getMax()) for one in self.order]
         keys = [one.GetName() for one in self.order]
 
         norm = pdf.norm({}, names)  # constant while the parameters are: RooFit caches it too
@@ -68,11 +67,15 @@ class NumericContext(Context):
             ctx = {key: points[:, i] for i, key in enumerate(keys)}
             return np.broadcast_to(pdf.compute(ctx) / norm, (len(points),))
 
-        self.sampler = FoamGenerator(density, ranges, generator(), vectorized=True)
+        self.sampler = sampler(pdf, names, density, self.order, generator())
 
     def event(self, remaining: int) -> dict[str, float]:
-        point = self.sampler.generate()
+        point = self.sampler.generate(remaining)
         return {one.GetName(): float(v) for one, v in zip(self.order, point, strict=False)}
+
+    @property
+    def resample_ratio(self) -> float:
+        return float(getattr(self.sampler, "resample_ratio", 1.0))
 
 
 def context_for(
@@ -125,7 +128,7 @@ class MixedContext(Context):
 
     def __init__(self, pdf: Any, names: frozenset[str], direct: frozenset[str], code: int) -> None:
         from ..integration import announce
-        from .foam import FoamGenerator
+        from .samplerconfig import sampler
 
         super().__init__(pdf, names)
         self.code, self.direct = code, direct
@@ -137,18 +140,21 @@ class MixedContext(Context):
             ctx = {key: points[:, i] for i, key in enumerate(keys)}
             return np.broadcast_to(pdf.fraction(direct, ctx, names, None), (len(points),))
 
-        ranges = [(one.getMin(), one.getMax()) for one in self.order]
-        self.sampler = FoamGenerator(density, ranges, generator(), vectorized=True)
+        self.sampler = sampler(pdf, names - direct, density, self.order, generator())
 
     def event(self, remaining: int) -> dict[str, float]:
         found = {
             one.GetName(): float(v)
-            for one, v in zip(self.order, self.sampler.generate(), strict=False)
+            for one, v in zip(self.order, self.sampler.generate(remaining), strict=False)
         }
         for one in self.order:
             one.load_value(found[one.GetName()])
         found.update(self.pdf.generate_event(self.code, generator()))
         return found
+
+    @property
+    def resample_ratio(self) -> float:
+        return float(getattr(self.sampler, "resample_ratio", 1.0))
 
 
 def _factor_context(factor: Any, own: frozenset[str], given: frozenset[str]) -> Context:

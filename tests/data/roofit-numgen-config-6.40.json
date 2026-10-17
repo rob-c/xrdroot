@@ -1,0 +1,1145 @@
+{
+  "empty": {
+    "1D/False/False": {
+      "name": "method1D",
+      "title": "1D sampling method",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "1D/False/True": {
+      "name": "method1DCat",
+      "title": "1D sampling method for pdfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "1D/True/False": {
+      "name": "method1DCond",
+      "title": "1D sampling method for conditional pfs",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "1D/True/True": {
+      "name": "method1DCond",
+      "title": "1D sampling method for conditional pfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "2D/False/False": {
+      "name": "method2D",
+      "title": "2D sampling method",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "2D/False/True": {
+      "name": "method2DCat",
+      "title": "2D sampling method for pdfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "2D/True/False": {
+      "name": "method2DCond",
+      "title": "2D sampling method for conditional pfs",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "2D/True/True": {
+      "name": "method2DCond",
+      "title": "2D sampling method for conditional pfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "ND/False/False": {
+      "name": "methodND",
+      "title": "ND sampling method",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "ND/False/True": {
+      "name": "methodNDCat",
+      "title": "ND sampling method for pdfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "ND/True/False": {
+      "name": "methodNDCond",
+      "title": "ND sampling method for conditional pfs",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "ND/True/True": {
+      "name": "methodNDCond",
+      "title": "ND sampling method for conditional pfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    }
+  },
+  "direct_default_before_pdf": {
+    "1D/False/False": {
+      "name": "method1D",
+      "title": "1D sampling method",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "1D/False/True": {
+      "name": "method1DCat",
+      "title": "1D sampling method for pdfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "1D/True/False": {
+      "name": "method1DCond",
+      "title": "1D sampling method for conditional pfs",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "1D/True/True": {
+      "name": "method1DCond",
+      "title": "1D sampling method for conditional pfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "2D/False/False": {
+      "name": "method2D",
+      "title": "2D sampling method",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "2D/False/True": {
+      "name": "method2DCat",
+      "title": "2D sampling method for pdfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "2D/True/False": {
+      "name": "method2DCond",
+      "title": "2D sampling method for conditional pfs",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "2D/True/True": {
+      "name": "method2DCond",
+      "title": "2D sampling method for conditional pfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "ND/False/False": {
+      "name": "methodND",
+      "title": "ND sampling method",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "ND/False/True": {
+      "name": "methodNDCat",
+      "title": "ND sampling method for pdfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "ND/True/False": {
+      "name": "methodNDCond",
+      "title": "ND sampling method for conditional pfs",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "ND/True/True": {
+      "name": "methodNDCond",
+      "title": "ND sampling method for conditional pfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    }
+  },
+  "before_factory": {
+    "1D/False/False": {
+      "name": "method1D",
+      "title": "1D sampling method",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "1D/False/True": {
+      "name": "method1DCat",
+      "title": "1D sampling method for pdfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "1D/True/False": {
+      "name": "method1DCond",
+      "title": "1D sampling method for conditional pfs",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "1D/True/True": {
+      "name": "method1DCond",
+      "title": "1D sampling method for conditional pfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "2D/False/False": {
+      "name": "method2D",
+      "title": "2D sampling method",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "2D/False/True": {
+      "name": "method2DCat",
+      "title": "2D sampling method for pdfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "2D/True/False": {
+      "name": "method2DCond",
+      "title": "2D sampling method for conditional pfs",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "2D/True/True": {
+      "name": "method2DCond",
+      "title": "2D sampling method for conditional pfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "ND/False/False": {
+      "name": "methodND",
+      "title": "ND sampling method",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "ND/False/True": {
+      "name": "methodNDCat",
+      "title": "ND sampling method for pdfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "ND/True/False": {
+      "name": "methodNDCond",
+      "title": "ND sampling method for conditional pfs",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    },
+    "ND/True/True": {
+      "name": "methodNDCond",
+      "title": "ND sampling method for conditional pfs with categories",
+      "label": "N/A",
+      "index": 0,
+      "states": [
+        [
+          "N/A",
+          0
+        ]
+      ]
+    }
+  },
+  "default": {
+    "1D/False/False": {
+      "name": "method1D",
+      "title": "1D sampling method",
+      "label": "RooFoamGenerator",
+      "index": 2,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ],
+        [
+          "RooFoamGenerator",
+          2
+        ]
+      ]
+    },
+    "1D/False/True": {
+      "name": "method1DCat",
+      "title": "1D sampling method for pdfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "1D/True/False": {
+      "name": "method1DCond",
+      "title": "1D sampling method for conditional pfs",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "1D/True/True": {
+      "name": "method1DCond",
+      "title": "1D sampling method for conditional pfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "2D/False/False": {
+      "name": "method2D",
+      "title": "2D sampling method",
+      "label": "RooFoamGenerator",
+      "index": 2,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ],
+        [
+          "RooFoamGenerator",
+          2
+        ]
+      ]
+    },
+    "2D/False/True": {
+      "name": "method2DCat",
+      "title": "2D sampling method for pdfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "2D/True/False": {
+      "name": "method2DCond",
+      "title": "2D sampling method for conditional pfs",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "2D/True/True": {
+      "name": "method2DCond",
+      "title": "2D sampling method for conditional pfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "ND/False/False": {
+      "name": "methodND",
+      "title": "ND sampling method",
+      "label": "RooFoamGenerator",
+      "index": 2,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ],
+        [
+          "RooFoamGenerator",
+          2
+        ]
+      ]
+    },
+    "ND/False/True": {
+      "name": "methodNDCat",
+      "title": "ND sampling method for pdfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "ND/True/False": {
+      "name": "methodNDCond",
+      "title": "ND sampling method for conditional pfs",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "ND/True/True": {
+      "name": "methodNDCond",
+      "title": "ND sampling method for conditional pfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    }
+  },
+  "sections": {
+    "RooAcceptReject": [
+      {
+        "name": "nTrial0D",
+        "title": "Number of trial samples for cat-only generation",
+        "value": 100.0,
+        "min": 0.0,
+        "max": 1000000000.0,
+        "constant": false
+      },
+      {
+        "name": "nTrial1D",
+        "title": "Number of trial samples for 1-dim generation",
+        "value": 1000.0,
+        "min": 0.0,
+        "max": 1000000000.0,
+        "constant": false
+      },
+      {
+        "name": "nTrial2D",
+        "title": "Number of trial samples for 2-dim generation",
+        "value": 100000.0,
+        "min": 0.0,
+        "max": 1000000000.0,
+        "constant": false
+      },
+      {
+        "name": "nTrial3D",
+        "title": "Number of trial samples for N-dim generation",
+        "value": 10000000.0,
+        "min": 0.0,
+        "max": 1000000000.0,
+        "constant": false
+      }
+    ],
+    "RooFoamGenerator": [
+      {
+        "name": "nSample",
+        "title": "Number of samples per cell",
+        "value": 200.0,
+        "min": 0.0,
+        "max": 1000000.0,
+        "constant": false
+      },
+      {
+        "name": "nCell1D",
+        "title": "Number of cells for 1-dim generation",
+        "value": 30.0,
+        "min": 0.0,
+        "max": 1000000.0,
+        "constant": false
+      },
+      {
+        "name": "nCell2D",
+        "title": "Number of cells for 2-dim generation",
+        "value": 500.0,
+        "min": 0.0,
+        "max": 1000000.0,
+        "constant": false
+      },
+      {
+        "name": "nCell3D",
+        "title": "Number of cells for 3-dim generation",
+        "value": 5000.0,
+        "min": 0.0,
+        "max": 1000000.0,
+        "constant": false
+      },
+      {
+        "name": "nCellND",
+        "title": "Number of cells for N-dim generation",
+        "value": 10000.0,
+        "min": 0.0,
+        "max": 1000000.0,
+        "constant": false
+      },
+      {
+        "name": "chatLevel",
+        "title": "TFOAM 'chat level' (verbosity)",
+        "value": 0.0,
+        "min": 0.0,
+        "max": 2.0,
+        "constant": false
+      }
+    ]
+  },
+  "private_before": false,
+  "private_changed": {
+    "1D/False/False": {
+      "name": "method1D",
+      "title": "1D sampling method",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ],
+        [
+          "RooFoamGenerator",
+          2
+        ]
+      ]
+    },
+    "1D/False/True": {
+      "name": "method1DCat",
+      "title": "1D sampling method for pdfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "1D/True/False": {
+      "name": "method1DCond",
+      "title": "1D sampling method for conditional pfs",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "1D/True/True": {
+      "name": "method1DCond",
+      "title": "1D sampling method for conditional pfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "2D/False/False": {
+      "name": "method2D",
+      "title": "2D sampling method",
+      "label": "RooFoamGenerator",
+      "index": 2,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ],
+        [
+          "RooFoamGenerator",
+          2
+        ]
+      ]
+    },
+    "2D/False/True": {
+      "name": "method2DCat",
+      "title": "2D sampling method for pdfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "2D/True/False": {
+      "name": "method2DCond",
+      "title": "2D sampling method for conditional pfs",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "2D/True/True": {
+      "name": "method2DCond",
+      "title": "2D sampling method for conditional pfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "ND/False/False": {
+      "name": "methodND",
+      "title": "ND sampling method",
+      "label": "RooFoamGenerator",
+      "index": 2,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ],
+        [
+          "RooFoamGenerator",
+          2
+        ]
+      ]
+    },
+    "ND/False/True": {
+      "name": "methodNDCat",
+      "title": "ND sampling method for pdfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "ND/True/False": {
+      "name": "methodNDCond",
+      "title": "ND sampling method for conditional pfs",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "ND/True/True": {
+      "name": "methodNDCond",
+      "title": "ND sampling method for conditional pfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    }
+  },
+  "global_after_private": {
+    "1D/False/False": {
+      "name": "method1D",
+      "title": "1D sampling method",
+      "label": "RooFoamGenerator",
+      "index": 2,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ],
+        [
+          "RooFoamGenerator",
+          2
+        ]
+      ]
+    },
+    "1D/False/True": {
+      "name": "method1DCat",
+      "title": "1D sampling method for pdfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "1D/True/False": {
+      "name": "method1DCond",
+      "title": "1D sampling method for conditional pfs",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "1D/True/True": {
+      "name": "method1DCond",
+      "title": "1D sampling method for conditional pfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "2D/False/False": {
+      "name": "method2D",
+      "title": "2D sampling method",
+      "label": "RooFoamGenerator",
+      "index": 2,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ],
+        [
+          "RooFoamGenerator",
+          2
+        ]
+      ]
+    },
+    "2D/False/True": {
+      "name": "method2DCat",
+      "title": "2D sampling method for pdfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "2D/True/False": {
+      "name": "method2DCond",
+      "title": "2D sampling method for conditional pfs",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "2D/True/True": {
+      "name": "method2DCond",
+      "title": "2D sampling method for conditional pfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "ND/False/False": {
+      "name": "methodND",
+      "title": "ND sampling method",
+      "label": "RooFoamGenerator",
+      "index": 2,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ],
+        [
+          "RooFoamGenerator",
+          2
+        ]
+      ]
+    },
+    "ND/False/True": {
+      "name": "methodNDCat",
+      "title": "ND sampling method for pdfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "ND/True/False": {
+      "name": "methodNDCond",
+      "title": "ND sampling method for conditional pfs",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    },
+    "ND/True/True": {
+      "name": "methodNDCond",
+      "title": "ND sampling method for conditional pfs with categories",
+      "label": "RooAcceptReject",
+      "index": 1,
+      "states": [
+        [
+          "N/A",
+          0
+        ],
+        [
+          "RooAcceptReject",
+          1
+        ]
+      ]
+    }
+  }
+}

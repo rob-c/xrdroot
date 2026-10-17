@@ -81,7 +81,7 @@ class Generator:
 
         data = RooDataSet(name, f"Generated From {self.pdf.GetTitle()}", self.variables)
         saved = self._saved()
-        rows = [self._event(i, total) for i in range(total)]
+        rows = self._rows(total)
         for one, value in saved:
             one.load_value(value)
         data.add_columns(
@@ -91,6 +91,27 @@ class Generator:
             }
         )
         return data
+
+    def _rows(self, total: int) -> list[dict[str, float]]:
+        rows: list[dict[str, float]] = []
+        while len(rows) < total:
+            row = self._event(len(rows), total)
+            ratio = float(getattr(self.context, "resample_ratio", 1.0))
+            if ratio < 1.0:
+                from ..messages import INFO, log
+                from ..printing import g
+
+                log(
+                    None,
+                    INFO,
+                    "Generation",
+                    "RooGenContext::generateEvent INFO: "
+                    "accept/reject generator requests resampling of previously produced "
+                    f"events by factor {g(ratio)} due to increased maximum weight",
+                )
+                del rows[int(len(rows) * ratio + 0.5) :]
+            rows.append(row)
+        return rows
 
     def _saved(self) -> list[tuple[Any, float]]:
         """The values generating moves - the observables', the prototype's - to be put back."""
@@ -168,6 +189,10 @@ def generate(pdf: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
             return _named(found[0], options) if found else None
     proto = options.get("ProtoData")
     made = Generator(pdf, variables, proto)
+    if options.get("Verbose", 0, False):
+        from .verbosity import describe
+
+        describe(made.context)
     if not count and proto is not None and proto.numEntries() == 0:
         return _named(_empty(variables, options), options)
     total = _how_many(pdf, made.names, count, options)
