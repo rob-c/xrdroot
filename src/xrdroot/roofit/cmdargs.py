@@ -105,6 +105,10 @@ def _read_string(name: str, value: str) -> int:
     table = STRING_FORMS[name]
     if value in table:
         return table[value]
+    if name in {"LineStyle", "FillStyle", "MarkerStyle"}:
+        from .styleexpr import style_expression
+
+        return style_expression(value)
     from .names import named_constant
 
     return named_constant(value)

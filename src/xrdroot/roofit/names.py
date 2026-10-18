@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import re
 
-__all__ = ["CONSTANTS", "named_constant"]
+__all__ = ["CONSTANTS", "ENUM_TYPES", "named_constant"]
 
-#: The names a string may hold: ``EColor``, ``ELineStyle``, the marker styles.
-CONSTANTS = {
+#: ROOT colour constants retain their enum type in interpreter output.
+COLOURS = {
     "kWhite": 0,
     "kBlack": 1,
     "kGray": 920,
@@ -28,10 +28,16 @@ CONSTANTS = {
     "kAzure": 860,
     "kViolet": 880,
     "kPink": 900,
+}
+#: ``ELineStyle`` from ROOT's TAttLine.h.
+LINES = {
     "kSolid": 1,
     "kDashed": 2,
     "kDotted": 3,
     "kDashDotted": 4,
+}
+#: ``EMarkerStyle`` from ROOT's TAttMarker.h.
+MARKERS = {
     "kDot": 1,
     "kPlus": 2,
     "kStar": 3,
@@ -52,6 +58,11 @@ CONSTANTS = {
     "kFullStar": 29,
     "kOpenStar": 30,
 }
+#: The names a string may hold.
+CONSTANTS = {**COLOURS, **LINES, **MARKERS}
+#: An enum constant is displayed with its C++ type before arithmetic promotes it to int.
+ENUM_TYPES = {**dict.fromkeys(COLOURS, "EColor"), **dict.fromkeys(LINES, "ELineStyle"),
+              **dict.fromkeys(MARKERS, "EMarkerStyle")}
 #: ``kRed+1``, ``kAzure - 9``, ``42``.
 EXPRESSION = re.compile(r"^\s*(?:(k\w+)|(-?\d+))\s*(?:([+-])\s*(\d+))?\s*$")
 
