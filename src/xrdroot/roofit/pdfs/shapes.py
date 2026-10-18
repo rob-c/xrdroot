@@ -108,7 +108,10 @@ def _argus_part(m0: float, c: float, f: float) -> Any:
 def _dawson(x: float) -> float:
     """Dawson's function, ``exp(-x^2) * integral_0^x exp(t^2) dt``: ``sqrt(pi)/2 Im w(x)``."""
     ts = np.linspace(0.0, x, 2001)
-    return float(np.trapezoid(libm.exp(ts * ts - x * x), ts)) if x else 0.0
+    if not x:
+        return 0.0
+    values = libm.exp(ts * ts - x * x)
+    return float((np.diff(ts) * (values[1:] + values[:-1]) / 2.0).sum(axis=-1))
 
 
 class RooCBShape(_Shape):
