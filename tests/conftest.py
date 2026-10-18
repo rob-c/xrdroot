@@ -105,3 +105,22 @@ def _fresh_statistics_defaults():
     DEFAULTS.update(saved)
     config.CONFIG.__dict__.update(switches)
     asimov._LEVEL[:] = level
+
+
+@pytest.fixture(autouse=True)
+def _fresh_roofit_message_service():
+    """Each test starts with fresh reporting streams and no preceding progress dots.
+
+    Modules keep direct references to SERVICE, so retain the singleton itself.
+    Reset builds new stream lists, leaving the saved state untouched until it
+    is restored after the test.
+    """
+    from xrdroot.roofit.messages import SERVICE
+
+    saved = dict(SERVICE.__dict__)
+    SERVICE.reset()
+    try:
+        yield
+    finally:
+        SERVICE.__dict__.clear()
+        SERVICE.__dict__.update(saved)
