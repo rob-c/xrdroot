@@ -1,0 +1,47 @@
+[
+  {
+    "name": "invalid_after_valid",
+    "lines": [
+      {
+        "text": "one",
+        "color": 4,
+        "font": 4
+      },
+      {
+        "text": "two",
+        "color": 0,
+        "font": 0
+      }
+    ]
+  },
+  {
+    "name": "crlf",
+    "lines": [
+      {
+        "text": "one\r",
+        "color": 0,
+        "font": 0
+      },
+      {
+        "text": "two\r",
+        "color": 0,
+        "font": 0
+      }
+    ]
+  },
+  {
+    "name": "range_command",
+    "lines": [
+      {
+        "text": "one",
+        "color": 4,
+        "font": 0
+      },
+      {
+        "text": "two",
+        "color": 0,
+        "font": 0
+      }
+    ]
+  }
+]

@@ -500,7 +500,7 @@
  "math/fit/combinedFit.C": "PASS",
  "math/fit/combinedFit.py": "DIFF",
  "math/fit/exampleFit3D.C": "DIFF",
- "math/fit/fit1.C": "UNSUPPORTED",
+ "math/fit/fit1.C": "PASS",
  "math/fit/fit1.py": "PASS",
  "math/fit/fit1_py.py": "SKIP",
  "math/fit/fit2.C": "PASS",

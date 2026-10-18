@@ -1,0 +1,179 @@
+[
+  {
+    "name": "all",
+    "align": 12,
+    "lines": [
+      {
+        "text": "one",
+        "align": 0,
+        "color": 0,
+        "font": 0,
+        "size": 0.0,
+        "angle": 0.0
+      },
+      {
+        "text": "",
+        "align": 0,
+        "color": 0,
+        "font": 0,
+        "size": 0.0,
+        "angle": 0.0
+      },
+      {
+        "text": "three",
+        "align": 0,
+        "color": 0,
+        "font": 0,
+        "size": 0.0,
+        "angle": 0.0
+      }
+    ]
+  },
+  {
+    "name": "append",
+    "align": 12,
+    "lines": [
+      {
+        "text": "old",
+        "align": 0,
+        "color": 0,
+        "font": 0,
+        "size": 0.0,
+        "angle": 0.0
+      },
+      {
+        "text": "one",
+        "align": 0,
+        "color": 0,
+        "font": 0,
+        "size": 0.0,
+        "angle": 0.0
+      },
+      {
+        "text": "two",
+        "align": 0,
+        "color": 0,
+        "font": 0,
+        "size": 0.0,
+        "angle": 0.0
+      }
+    ]
+  },
+  {
+    "name": "range",
+    "align": 12,
+    "lines": [
+      {
+        "text": "one",
+        "align": 0,
+        "color": 0,
+        "font": 0,
+        "size": 0.0,
+        "angle": 0.0
+      },
+      {
+        "text": "two",
+        "align": 0,
+        "color": 0,
+        "font": 0,
+        "size": 0.0,
+        "angle": 0.0
+      }
+    ]
+  },
+  {
+    "name": "unterminated",
+    "align": 12,
+    "lines": [
+      {
+        "text": "one",
+        "align": 0,
+        "color": 0,
+        "font": 0,
+        "size": 0.0,
+        "angle": 0.0
+      }
+    ]
+  },
+  {
+    "name": "commands",
+    "align": 12,
+    "lines": [
+      {
+        "text": "one",
+        "align": 13,
+        "color": 4,
+        "font": 42,
+        "size": 0.17000000178813934,
+        "angle": 12.5
+      },
+      {
+        "text": "two",
+        "align": 0,
+        "color": 0,
+        "font": 0,
+        "size": 0.0,
+        "angle": 0.0
+      }
+    ]
+  },
+  {
+    "name": "unknown",
+    "align": 12,
+    "lines": [
+      {
+        "text": "one",
+        "align": 0,
+        "color": 0,
+        "font": 0,
+        "size": 0.0,
+        "angle": 0.0
+      },
+      {
+        "text": "+SetTextUnknown(2",
+        "align": 0,
+        "color": 0,
+        "font": 0,
+        "size": 0.0,
+        "angle": 0.0
+      },
+      {
+        "text": "last",
+        "align": 0,
+        "color": 0,
+        "font": 0,
+        "size": 0.0,
+        "angle": 0.0
+      }
+    ]
+  },
+  {
+    "name": "semicolon",
+    "align": 12,
+    "lines": [
+      {
+        "text": "one",
+        "align": 0,
+        "color": 0,
+        "font": 0,
+        "size": 0.0,
+        "angle": 0.0
+      }
+    ]
+  },
+  {
+    "name": "empty",
+    "align": 12,
+    "lines": []
+  },
+  {
+    "name": "empty-name",
+    "align": 12,
+    "lines": []
+  },
+  {
+    "name": "missing",
+    "align": 12,
+    "lines": []
+  }
+]

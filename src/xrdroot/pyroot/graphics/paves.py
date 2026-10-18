@@ -114,6 +114,13 @@ class TPaveText(TPave):
         self.members["fLines"].append(line)
         return line
 
+    def ReadFile(self, filename: str, option: str = "", nlines: int = 50,
+                 fromline: int = 0) -> None:
+        """Read ROOT's annotated text files, retaining existing lines with ``+``."""
+        from .pavefile import read_file
+
+        read_file(self, filename, option, nlines, fromline)
+
     def AddLine(self, x1: float = 0.0, y1: float = 0.0, x2: float = 0.0, y2: float = 0.0) -> TLine:
         line = TLine(x1, y1, x2, y2)
         self.members["fLines"].append(line)

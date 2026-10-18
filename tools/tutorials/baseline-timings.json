@@ -134,9 +134,9 @@
    "xrdroot_seconds": 1.8
   },
   "analysis/dataframe/df007_snapshot.C": {
-   "ratio": 0.07236648413119001,
+   "ratio": 0.14467408585055644,
    "root_seconds": 33.966,
-   "xrdroot_seconds": 2.458
+   "xrdroot_seconds": 4.914
   },
   "analysis/dataframe/df007_snapshot.py": {
    "ratio": 0.04862329847950802,
@@ -364,9 +364,9 @@
    "xrdroot_seconds": 1.522
   },
   "analysis/dataframe/df040_RResultPtr_lifetimeManagement.C": {
-   "ratio": 0.03349702225472782,
+   "ratio": 0.08584264967088079,
    "root_seconds": 47.855,
-   "xrdroot_seconds": 1.603
+   "xrdroot_seconds": 4.108
   },
   "analysis/dataframe/df101_h1Analysis.C": {
    "ratio": 2.309299553849237,
@@ -579,14 +579,14 @@
    "xrdroot_seconds": null
   },
   "demoshelp.C": {
-   "ratio": 0.4866790582403965,
+   "ratio": 0.4535315985130111,
    "root_seconds": 6.456,
-   "xrdroot_seconds": 3.142
+   "xrdroot_seconds": 2.928
   },
   "demoshelp.py": {
-   "ratio": 0.11665812403895437,
-   "root_seconds": 19.51,
-   "xrdroot_seconds": 2.276
+   "ratio": 0.23588084647526622,
+   "root_seconds": 14.838,
+   "xrdroot_seconds": 3.5
   },
   "evegen/evegen_000_pythia8.C": {
    "ratio": 0.19661038793658978,
@@ -674,9 +674,9 @@
    "xrdroot_seconds": null
   },
   "hist/hist004_TH1_labels.C": {
-   "ratio": 0.25245011217381036,
+   "ratio": 0.519778013933168,
    "root_seconds": 8.469,
-   "xrdroot_seconds": 2.138
+   "xrdroot_seconds": 4.402
   },
   "hist/hist005_TH1_palettecolor.C": {
    "ratio": 0.6715712033631109,
@@ -709,9 +709,9 @@
    "xrdroot_seconds": 1.518
   },
   "hist/hist009_TH1_normalize.C": {
-   "ratio": 0.23665223665223667,
+   "ratio": 0.5194805194805194,
    "root_seconds": 9.009,
-   "xrdroot_seconds": 2.132
+   "xrdroot_seconds": 4.68
   },
   "hist/hist010_TH1_two_scales.C": {
    "ratio": 0.25689223057644106,
@@ -744,14 +744,14 @@
    "xrdroot_seconds": 2.183
   },
   "hist/hist015_TH1_read_and_draw.C": {
-   "ratio": 0.1987750556792873,
+   "ratio": 0.5538975501113585,
    "root_seconds": 8.98,
-   "xrdroot_seconds": 1.785
+   "xrdroot_seconds": 4.974
   },
   "hist/hist015_TH1_read_and_draw.py": {
-   "ratio": 0.19119291304721767,
-   "root_seconds": 11.627,
-   "xrdroot_seconds": 2.223
+   "ratio": 0.6190059758052762,
+   "root_seconds": 6.861,
+   "xrdroot_seconds": 4.247
   },
   "hist/hist015_TH1_read_and_draw_uhi.py": {
    "ratio": null,
@@ -759,9 +759,9 @@
    "xrdroot_seconds": null
   },
   "hist/hist016_TH1_different_scales_canvas.C": {
-   "ratio": 0.4713504936530325,
+   "ratio": 1.0263575458392102,
    "root_seconds": 11.344,
-   "xrdroot_seconds": 5.347
+   "xrdroot_seconds": 11.643
   },
   "hist/hist017_TH1_smooth.C": {
    "ratio": 0.18649637762342222,
@@ -799,9 +799,9 @@
    "xrdroot_seconds": 1.996
   },
   "hist/hist024_THStack_pads.C": {
-   "ratio": 0.20024219358187006,
+   "ratio": 0.38474180434218497,
    "root_seconds": 11.561,
-   "xrdroot_seconds": 2.315
+   "xrdroot_seconds": 4.448
   },
   "hist/hist025_THStack_2d_palette_color.C": {
    "ratio": 0.23986131540239544,
@@ -809,9 +809,9 @@
    "xrdroot_seconds": 2.283
   },
   "hist/hist026_THStack_color_scheme.C": {
-   "ratio": 0.16002959773980896,
+   "ratio": 0.26664872864254,
    "root_seconds": 14.866,
-   "xrdroot_seconds": 2.379
+   "xrdroot_seconds": 3.964
   },
   "hist/hist027_THStack_palette_color.C": {
    "ratio": 0.18390721275824573,
@@ -829,9 +829,9 @@
    "xrdroot_seconds": 2.468
   },
   "hist/hist029_TRatioPlot_simple.py": {
-   "ratio": 0.06744289957158252,
-   "root_seconds": 38.047,
-   "xrdroot_seconds": 2.566
+   "ratio": 0.2365576400027896,
+   "root_seconds": 14.339,
+   "xrdroot_seconds": 3.392
   },
   "hist/hist030_TRatioPlot_residual.C": {
    "ratio": 0.16548463356973997,
@@ -859,9 +859,9 @@
    "xrdroot_seconds": 2.32
   },
   "hist/hist032_TRatioPlot_fit_lines.py": {
-   "ratio": 0.09154812510389702,
-   "root_seconds": 42.109,
-   "xrdroot_seconds": 3.855
+   "ratio": 0.24679553800318713,
+   "root_seconds": 14.433,
+   "xrdroot_seconds": 3.562
   },
   "hist/hist033_TRatioPlot_fit_confidence.C": {
    "ratio": 0.10628194111528198,
@@ -869,9 +869,9 @@
    "xrdroot_seconds": 2.35
   },
   "hist/hist033_TRatioPlot_fit_confidence.py": {
-   "ratio": 0.1330537806176784,
-   "root_seconds": 30.048,
-   "xrdroot_seconds": 3.998
+   "ratio": 0.16497941390167112,
+   "root_seconds": 20.645,
+   "xrdroot_seconds": 3.406
   },
   "hist/hist034_TRatioPlot_fit_margin.C": {
    "ratio": 0.11437228654124458,
@@ -884,9 +884,9 @@
    "xrdroot_seconds": 3.118
   },
   "hist/hist036_TH2_labels.C": {
-   "ratio": 0.08589030301583132,
+   "ratio": 0.18746865971011725,
    "root_seconds": 41.879,
-   "xrdroot_seconds": 3.597
+   "xrdroot_seconds": 7.851
   },
   "hist/hist037_TH2Poly_boxes.C": {
    "ratio": 0.44511595221363315,
@@ -894,9 +894,9 @@
    "xrdroot_seconds": 19.002
   },
   "hist/hist038_TH2Poly_honeycomb.C": {
-   "ratio": 0.05631100558793198,
+   "ratio": 0.09605007554500324,
    "root_seconds": 41.697,
-   "xrdroot_seconds": 2.348
+   "xrdroot_seconds": 4.005
   },
   "hist/hist039_TH2Poly_usa.C": {
    "ratio": 0.2555034283652111,
@@ -939,9 +939,9 @@
    "xrdroot_seconds": 2.565
   },
   "hist/hist047_Graphics_candle_decay.C": {
-   "ratio": 2.1564729271430245,
+   "ratio": 4.011343702490937,
    "root_seconds": 8.551,
-   "xrdroot_seconds": 18.44
+   "xrdroot_seconds": 34.301
   },
   "hist/hist048_Graphics_candle_hist.C": {
    "ratio": 0.7316839584996009,
@@ -959,9 +959,9 @@
    "xrdroot_seconds": 4.735
   },
   "hist/hist051_Graphics_candle_plot_stack.C": {
-   "ratio": 6.635102435876754,
+   "ratio": 13.30053234392644,
    "root_seconds": 6.199,
-   "xrdroot_seconds": 41.131
+   "xrdroot_seconds": 82.45
   },
   "hist/hist052_Graphics_candle_plot_whiskers.C": {
    "ratio": 19.74056733682181,
@@ -1029,9 +1029,9 @@
    "xrdroot_seconds": 2.772
   },
   "hist/hist105_TExec_dynamic_slice.C": {
-   "ratio": 0.35392034847542003,
+   "ratio": 0.5418481642812695,
    "root_seconds": 6.428,
-   "xrdroot_seconds": 2.275
+   "xrdroot_seconds": 3.483
   },
   "hist/hist105_TExec_dynamic_slice.py": {
    "ratio": 0.12774811013246412,
@@ -1159,9 +1159,9 @@
    "xrdroot_seconds": 3.855
   },
   "io/fildir.C": {
-   "ratio": 0.4568726937269373,
+   "ratio": 0.6404520295202952,
    "root_seconds": 8.672,
-   "xrdroot_seconds": 3.962
+   "xrdroot_seconds": 5.554
   },
   "io/file.C": {
    "ratio": 0.2848471710383698,
@@ -1299,9 +1299,9 @@
    "xrdroot_seconds": 1.7
   },
   "io/ntuple/ntpl015_processor_join.C": {
-   "ratio": 0.1401487722993878,
+   "ratio": 0.2539661641761569,
    "root_seconds": 15.191,
-   "xrdroot_seconds": 2.129
+   "xrdroot_seconds": 3.858
   },
   "io/ntuple/ntpl016_streaming_vector.C": {
    "ratio": 12.612860820507201,
@@ -1504,9 +1504,9 @@
    "xrdroot_seconds": 35.194
   },
   "io/tree/ntuple1.py": {
-   "ratio": 0.07623338388794719,
-   "root_seconds": 22.418,
-   "xrdroot_seconds": 1.709
+   "ratio": 0.6466731423020883,
+   "root_seconds": 8.236,
+   "xrdroot_seconds": 5.326
   },
   "io/tree/printSizes.C": {
    "ratio": 0.08943691786621506,
@@ -1589,9 +1589,9 @@
    "xrdroot_seconds": 11.933
   },
   "io/tree/tree120_ntuple.C": {
-   "ratio": 0.17905056759545926,
+   "ratio": 0.4821465428276574,
    "root_seconds": 9.69,
-   "xrdroot_seconds": 1.735
+   "xrdroot_seconds": 4.672
   },
   "io/tree/tree121_hvector.C": {
    "ratio": 1.4802669053625193,
@@ -1774,14 +1774,14 @@
    "xrdroot_seconds": 2.84
   },
   "legacy/g3d/xtruDraw.C": {
-   "ratio": 0.2033222109386334,
+   "ratio": 0.2744088205425794,
    "root_seconds": 13.786,
-   "xrdroot_seconds": 2.803
+   "xrdroot_seconds": 3.783
   },
   "legacy/g3d/xtruSamples.C": {
-   "ratio": 0.19699910421021197,
+   "ratio": 0.19326664676022692,
    "root_seconds": 13.396,
-   "xrdroot_seconds": 2.639
+   "xrdroot_seconds": 2.589
   },
   "legacy/geant3tasks.C": {
    "ratio": 0.591674047829938,
@@ -1939,9 +1939,9 @@
    "xrdroot_seconds": null
   },
   "legacy/rootenv.C": {
-   "ratio": 0.2743872462953859,
+   "ratio": 0.3510077954912564,
    "root_seconds": 14.239,
-   "xrdroot_seconds": 3.907
+   "xrdroot_seconds": 4.998
   },
   "legacy/rootmarks.C": {
    "ratio": null,
@@ -2139,9 +2139,9 @@
    "xrdroot_seconds": 1.556
   },
   "legacy/tree/tree.C": {
-   "ratio": 0.2354958985831469,
+   "ratio": 0.8927665920954511,
    "root_seconds": 6.705,
-   "xrdroot_seconds": 1.579
+   "xrdroot_seconds": 5.986
   },
   "legacy/tree/tvdemo.C": {
    "ratio": null,
@@ -2529,9 +2529,9 @@
    "xrdroot_seconds": 3.34
   },
   "math/fit/FitHistoInFile.C": {
-   "ratio": 1.335489979485561,
+   "ratio": 0.1458328636804256,
    "root_seconds": 44.359,
-   "xrdroot_seconds": 59.241
+   "xrdroot_seconds": 6.469
   },
   "math/fit/FittingDemo.C": {
    "ratio": 0.10765270301895623,
@@ -2559,9 +2559,9 @@
    "xrdroot_seconds": 15.284
   },
   "math/fit/combinedFit.C": {
-   "ratio": 0.12540163959040268,
+   "ratio": 0.1263926008227981,
    "root_seconds": 33.301,
-   "xrdroot_seconds": 4.176
+   "xrdroot_seconds": 4.209
   },
   "math/fit/combinedFit.py": {
    "ratio": 1.0885779278968775,
@@ -2574,14 +2574,14 @@
    "xrdroot_seconds": 4.733
   },
   "math/fit/fit1.C": {
-   "ratio": 0.19253541975047578,
+   "ratio": 1.7279551702262634,
    "root_seconds": 18.916,
-   "xrdroot_seconds": 3.642
+   "xrdroot_seconds": 32.686
   },
   "math/fit/fit1.py": {
-   "ratio": 0.14130346890919382,
-   "root_seconds": 24.734,
-   "xrdroot_seconds": 3.495
+   "ratio": 0.35423023578363383,
+   "root_seconds": 10.815,
+   "xrdroot_seconds": 3.831
   },
   "math/fit/fit1_py.py": {
    "ratio": null,
@@ -2659,9 +2659,9 @@
    "xrdroot_seconds": 5.068
   },
   "math/fit/fitMultiGraph.C": {
-   "ratio": 0.3730362946912243,
+   "ratio": 0.34229414951245934,
    "root_seconds": 14.768,
-   "xrdroot_seconds": 5.509
+   "xrdroot_seconds": 5.055
   },
   "math/fit/fitNormSum.C": {
    "ratio": 1.6866034836065575,
@@ -2704,9 +2704,9 @@
    "xrdroot_seconds": 41.817
   },
   "math/fit/line3Dfit.C": {
-   "ratio": 3.8155173643300295,
+   "ratio": 7.129144976110675,
    "root_seconds": 14.023,
-   "xrdroot_seconds": 53.505
+   "xrdroot_seconds": 99.972
   },
   "math/fit/minuit2FitBench.C": {
    "ratio": 5.541706769329483,
@@ -2739,9 +2739,9 @@
    "xrdroot_seconds": 57.847
   },
   "math/fit/myfit.C": {
-   "ratio": 0.20853512620363515,
+   "ratio": 1.861318443393539,
    "root_seconds": 17.551,
-   "xrdroot_seconds": 3.66
+   "xrdroot_seconds": 32.668
   },
   "math/fit/vectorizedFit.C": {
    "ratio": 1.060584860780747,
@@ -2844,9 +2844,9 @@
    "xrdroot_seconds": null
   },
   "math/pdf/pdf000_Laplace.C": {
-   "ratio": 0.8654233870967741,
+   "ratio": 0.9096102150537634,
    "root_seconds": 5.952,
-   "xrdroot_seconds": 5.151
+   "xrdroot_seconds": 5.414
   },
   "math/pdf/pdf001_Normal.C": {
    "ratio": 0.6990877192982456,
@@ -2894,9 +2894,9 @@
    "xrdroot_seconds": 3.112
   },
   "math/pdf/pdf008_BreitWigner.C": {
-   "ratio": 5.947238074728114,
+   "ratio": 0.8045655216969958,
    "root_seconds": 9.287,
-   "xrdroot_seconds": 55.232
+   "xrdroot_seconds": 7.472
   },
   "math/pdf/pdf009_Bessel.C": {
    "ratio": 0.3484650555192685,
@@ -2949,9 +2949,9 @@
    "xrdroot_seconds": 4.549
   },
   "math/qa2.C": {
-   "ratio": 0.33967789165446555,
+   "ratio": 0.6427525622254758,
    "root_seconds": 6.83,
-   "xrdroot_seconds": 2.32
+   "xrdroot_seconds": 4.39
   },
   "math/quadp/Quad.cxx": {
    "ratio": null,
@@ -2964,9 +2964,9 @@
    "xrdroot_seconds": 2.203
   },
   "math/quantiles.C": {
-   "ratio": 0.33797759264579147,
+   "ratio": 0.43493249066360246,
    "root_seconds": 6.962,
-   "xrdroot_seconds": 2.353
+   "xrdroot_seconds": 3.028
   },
   "math/quasirandom.C": {
    "ratio": 0.36029070666460494,
@@ -3159,9 +3159,9 @@
    "xrdroot_seconds": 5.124
   },
   "roofit/roofit/rf105_funcbinding.py": {
-   "ratio": 0.17139511623935794,
-   "root_seconds": 40.993,
-   "xrdroot_seconds": 7.026
+   "ratio": 0.40035162259175155,
+   "root_seconds": 68.255,
+   "xrdroot_seconds": 27.326
   },
   "roofit/roofit/rf106_plotdecoration.C": {
    "ratio": 0.14531908001295754,
@@ -3284,9 +3284,9 @@
    "xrdroot_seconds": 3.811
   },
   "roofit/roofit/rf206_treevistools.C": {
-   "ratio": 0.03535880384230886,
+   "ratio": 0.0817577259095058,
    "root_seconds": 46.014,
-   "xrdroot_seconds": 1.627
+   "xrdroot_seconds": 3.762
   },
   "roofit/roofit/rf206_treevistools.py": {
    "ratio": 0.13404590853338005,
@@ -3324,9 +3324,9 @@
    "xrdroot_seconds": 2.721
   },
   "roofit/roofit/rf210_angularconv.C": {
-   "ratio": 0.9011014439096631,
+   "ratio": 3.7135783043317288,
    "root_seconds": 43.216,
-   "xrdroot_seconds": 38.942
+   "xrdroot_seconds": 160.486
   },
   "roofit/roofit/rf210_angularconv.py": {
    "ratio": 1.7401628222523746,
@@ -3344,9 +3344,9 @@
    "xrdroot_seconds": 5.621
   },
   "roofit/roofit/rf212_plottingInRanges_blinding.C": {
-   "ratio": 0.05124044802679786,
+   "ratio": 0.13074426881607873,
    "root_seconds": 38.212,
-   "xrdroot_seconds": 1.958
+   "xrdroot_seconds": 4.996
   },
   "roofit/roofit/rf212_plottingInRanges_blinding.py": {
    "ratio": 0.19805332204824375,
@@ -3384,9 +3384,9 @@
    "xrdroot_seconds": 4.115
   },
   "roofit/roofit/rf304_uncorrprod.C": {
-   "ratio": 0.051395440251572326,
+   "ratio": 0.13026729559748426,
    "root_seconds": 50.88,
-   "xrdroot_seconds": 2.615
+   "xrdroot_seconds": 6.628
   },
   "roofit/roofit/rf304_uncorrprod.py": {
    "ratio": 0.16174966242481278,
@@ -3409,9 +3409,9 @@
    "xrdroot_seconds": 6.101
   },
   "roofit/roofit/rf306_condpereventerrors.py": {
-   "ratio": 0.2558434081750144,
-   "root_seconds": 26.055,
-   "xrdroot_seconds": 6.666
+   "ratio": 0.8450472244383251,
+   "root_seconds": 38.857,
+   "xrdroot_seconds": 32.836
   },
   "roofit/roofit/rf307_fullpereventerrors.C": {
    "ratio": 0.4969329266248785,
@@ -3484,9 +3484,9 @@
    "xrdroot_seconds": 3.385
   },
   "roofit/roofit/rf314_paramfitrange.C": {
-   "ratio": 0.4229058561897702,
+   "ratio": 1.1677538917716828,
    "root_seconds": 13.49,
-   "xrdroot_seconds": 5.705
+   "xrdroot_seconds": 15.753
   },
   "roofit/roofit/rf314_paramfitrange.py": {
    "ratio": 0.11408569619362556,
@@ -3574,9 +3574,9 @@
    "xrdroot_seconds": 2.786
   },
   "roofit/roofit/rf407_ComputationalGraphVisualization.C": {
-   "ratio": 0.12898089171974522,
+   "ratio": 0.41033806957373836,
    "root_seconds": 16.328,
-   "xrdroot_seconds": 2.106
+   "xrdroot_seconds": 6.7
   },
   "roofit/roofit/rf407_ComputationalGraphVisualization.py": {
    "ratio": 0.12437688473136808,
@@ -3659,9 +3659,9 @@
    "xrdroot_seconds": 1.921
   },
   "roofit/roofit/rf508_listsetmanip.C": {
-   "ratio": 0.13521357344842982,
+   "ratio": 0.2500372079178449,
    "root_seconds": 13.438,
-   "xrdroot_seconds": 1.817
+   "xrdroot_seconds": 3.36
   },
   "roofit/roofit/rf508_listsetmanip.py": {
    "ratio": 0.0595570252488719,
@@ -3669,9 +3669,9 @@
    "xrdroot_seconds": 1.729
   },
   "roofit/roofit/rf510_wsnamedsets.C": {
-   "ratio": 0.2450980392156863,
+   "ratio": 0.6625531331413684,
    "root_seconds": 14.586,
-   "xrdroot_seconds": 3.575
+   "xrdroot_seconds": 9.664
   },
   "roofit/roofit/rf510_wsnamedsets.py": {
    "ratio": 0.15349789134209876,
@@ -3744,9 +3744,9 @@
    "xrdroot_seconds": 3.068
   },
   "roofit/roofit/rf604_constraints.C": {
-   "ratio": 0.10533111971960893,
+   "ratio": 0.30615507593924857,
    "root_seconds": 16.263,
-   "xrdroot_seconds": 1.713
+   "xrdroot_seconds": 4.979
   },
   "roofit/roofit/rf604_constraints.py": {
    "ratio": 0.07918621644488887,
@@ -3754,9 +3754,9 @@
    "xrdroot_seconds": 2.059
   },
   "roofit/roofit/rf605_profilell.C": {
-   "ratio": 0.3068174304040204,
+   "ratio": 0.8232493552866494,
    "root_seconds": 15.123,
-   "xrdroot_seconds": 4.64
+   "xrdroot_seconds": 12.45
   },
   "roofit/roofit/rf605_profilell.py": {
    "ratio": 0.19308961619108397,
@@ -3889,9 +3889,9 @@
    "xrdroot_seconds": 37.118
   },
   "roofit/roofit/rf702_efficiencyfit_2D.py": {
-   "ratio": 3.4550908770072346,
-   "root_seconds": 11.334,
-   "xrdroot_seconds": 39.16
+   "ratio": 3.0333909141096647,
+   "root_seconds": 56.153,
+   "xrdroot_seconds": 170.334
   },
   "roofit/roofit/rf703_effpdfprod.C": {
    "ratio": 0.41440407903123005,
@@ -3904,9 +3904,9 @@
    "xrdroot_seconds": 7.7
   },
   "roofit/roofit/rf704_amplitudefit.C": {
-   "ratio": 0.3123649459783913,
+   "ratio": 0.7566026410564226,
    "root_seconds": 16.66,
-   "xrdroot_seconds": 5.204
+   "xrdroot_seconds": 12.605
   },
   "roofit/roofit/rf704_amplitudefit.py": {
    "ratio": 0.8652330363262508,
@@ -3949,9 +3949,9 @@
    "xrdroot_seconds": 9.426
   },
   "roofit/roofit/rf708_bphysics.py": {
-   "ratio": 0.9805708962672167,
-   "root_seconds": 15.029,
-   "xrdroot_seconds": 14.737
+   "ratio": 4.019896193771626,
+   "root_seconds": 10.404,
+   "xrdroot_seconds": 41.823
   },
   "roofit/roofit/rf709_BarlowBeeston.C": {
    "ratio": 0.07807593491293177,
@@ -4089,9 +4089,9 @@
    "xrdroot_seconds": 59.91
   },
   "roofit/roostats/HybridStandardForm.py": {
-   "ratio": 0.4739345223143263,
-   "root_seconds": 119.43,
-   "xrdroot_seconds": 56.602
+   "ratio": 10.822967632668423,
+   "root_seconds": 21.256,
+   "xrdroot_seconds": 230.053
   },
   "roofit/roostats/IntervalExamples.C": {
    "ratio": 1.337040135485319,
@@ -4274,9 +4274,9 @@
    "xrdroot_seconds": 147.437
   },
   "roofit/roostats/rs102_hypotestwithshapes.C": {
-   "ratio": 0.04388142373576777,
+   "ratio": 0.1428249051184737,
    "root_seconds": 48.745,
-   "xrdroot_seconds": 2.139
+   "xrdroot_seconds": 6.962
   },
   "roofit/roostats/rs102_hypotestwithshapes.py": {
    "ratio": 0.16450115103983767,
@@ -4849,9 +4849,9 @@
    "xrdroot_seconds": null
   },
   "visualisation/geom/mp3player.C": {
-   "ratio": 0.20803535556448371,
+   "ratio": 0.4891120932101245,
    "root_seconds": 12.445,
-   "xrdroot_seconds": 2.589
+   "xrdroot_seconds": 6.087
   },
   "visualisation/geom/parallel_world.C": {
    "ratio": 0.20038183119879088,
@@ -4949,9 +4949,9 @@
    "xrdroot_seconds": 2.696
   },
   "visualisation/gl/glsurfaces.C": {
-   "ratio": 0.34856722997795736,
+   "ratio": 0.8364437913299045,
    "root_seconds": 6.805,
-   "xrdroot_seconds": 2.372
+   "xrdroot_seconds": 5.692
   },
   "visualisation/gl/gltf3.C": {
    "ratio": 0.33524904214559387,
@@ -4969,9 +4969,9 @@
    "xrdroot_seconds": 2.721
   },
   "visualisation/gl/grad.C": {
-   "ratio": 0.3194883587237712,
+   "ratio": 0.6277665995975855,
    "root_seconds": 6.958,
-   "xrdroot_seconds": 2.223
+   "xrdroot_seconds": 4.368
   },
   "visualisation/gl/grad2.C": {
    "ratio": 0.3664302600472813,
@@ -5009,9 +5009,9 @@
    "xrdroot_seconds": 2.947
   },
   "visualisation/gl/transp_text.C": {
-   "ratio": 0.42722312343312197,
+   "ratio": 0.6044831145848696,
    "root_seconds": 6.781,
-   "xrdroot_seconds": 2.897
+   "xrdroot_seconds": 4.099
   },
   "visualisation/gl/transparentpad.C": {
    "ratio": 0.3418399103697249,
@@ -5034,9 +5034,9 @@
    "xrdroot_seconds": 2.546
   },
   "visualisation/graphics/analyze.C": {
-   "ratio": 0.3709624258404746,
+   "ratio": 0.7050098879367172,
    "root_seconds": 6.068,
-   "xrdroot_seconds": 2.251
+   "xrdroot_seconds": 4.278
   },
   "visualisation/graphics/anim.C": {
    "ratio": 0.31392148341300885,
@@ -5049,9 +5049,9 @@
    "xrdroot_seconds": 2.533
   },
   "visualisation/graphics/archi.C": {
-   "ratio": 0.2818209972127594,
+   "ratio": 0.6763703933106225,
    "root_seconds": 6.458,
-   "xrdroot_seconds": 1.82
+   "xrdroot_seconds": 4.368
   },
   "visualisation/graphics/arrows.C": {
    "ratio": 0.359562673236834,
@@ -5059,9 +5059,9 @@
    "xrdroot_seconds": 2.335
   },
   "visualisation/graphics/basic3d.C": {
-   "ratio": 0.3470991890205864,
+   "ratio": 0.5711790393013101,
    "root_seconds": 8.015,
-   "xrdroot_seconds": 2.782
+   "xrdroot_seconds": 4.578
   },
   "visualisation/graphics/canvas.C": {
    "ratio": 0.39302491103202847,
@@ -5069,9 +5069,9 @@
    "xrdroot_seconds": 2.761
   },
   "visualisation/graphics/canvas2.C": {
-   "ratio": 0.1781074885379521,
+   "ratio": 0.3071828833418237,
    "root_seconds": 15.704,
-   "xrdroot_seconds": 2.797
+   "xrdroot_seconds": 4.824
   },
   "visualisation/graphics/canvas3.C": {
    "ratio": 0.2139797685227376,
@@ -5079,9 +5079,9 @@
    "xrdroot_seconds": 2.348
   },
   "visualisation/graphics/compile.C": {
-   "ratio": 0.19896117615987322,
+   "ratio": 0.36367637996302493,
    "root_seconds": 11.359,
-   "xrdroot_seconds": 2.26
+   "xrdroot_seconds": 4.131
   },
   "visualisation/graphics/crown.C": {
    "ratio": 0.1796953465015065,
@@ -5094,9 +5094,9 @@
    "xrdroot_seconds": 2.439
   },
   "visualisation/graphics/earth.C": {
-   "ratio": 0.24176420900205137,
+   "ratio": 0.3881380475443465,
    "root_seconds": 16.574,
-   "xrdroot_seconds": 4.007
+   "xrdroot_seconds": 6.433
   },
   "visualisation/graphics/ellipse.C": {
    "ratio": 0.33895384615384616,
@@ -5104,14 +5104,14 @@
    "xrdroot_seconds": 2.754
   },
   "visualisation/graphics/eval.C": {
-   "ratio": 0.3486359812522533,
+   "ratio": 0.31005888715298646,
    "root_seconds": 8.321,
-   "xrdroot_seconds": 2.901
+   "xrdroot_seconds": 2.58
   },
   "visualisation/graphics/event.C": {
-   "ratio": 0.09511650175550591,
+   "ratio": 0.12538567932758807,
    "root_seconds": 18.798,
-   "xrdroot_seconds": 1.788
+   "xrdroot_seconds": 2.357
   },
   "visualisation/graphics/feynman.C": {
    "ratio": 0.059287376025468345,
@@ -5134,9 +5134,9 @@
    "xrdroot_seconds": 5.159
   },
   "visualisation/graphics/framework.C": {
-   "ratio": 0.13600304626515197,
+   "ratio": 0.160753950625119,
    "root_seconds": 15.757,
-   "xrdroot_seconds": 2.143
+   "xrdroot_seconds": 2.533
   },
   "visualisation/graphics/gaxis.C": {
    "ratio": 0.15787910292588742,
@@ -5159,9 +5159,9 @@
    "xrdroot_seconds": null
   },
   "visualisation/graphics/greyscale.C": {
-   "ratio": 7.177234620380211,
+   "ratio": 18.336757586491913,
    "root_seconds": 8.469,
-   "xrdroot_seconds": 60.784
+   "xrdroot_seconds": 155.294
   },
   "visualisation/graphics/gtime.C": {
    "ratio": null,
@@ -5179,14 +5179,14 @@
    "xrdroot_seconds": 3.538
   },
   "visualisation/graphics/latex2.C": {
-   "ratio": 0.6237521514629949,
+   "ratio": 0.7497418244406197,
    "root_seconds": 5.81,
-   "xrdroot_seconds": 3.624
+   "xrdroot_seconds": 4.356
   },
   "visualisation/graphics/latex3.C": {
-   "ratio": 0.40888812628689086,
+   "ratio": 0.5411805078929306,
    "root_seconds": 5.828,
-   "xrdroot_seconds": 2.383
+   "xrdroot_seconds": 3.154
   },
   "visualisation/graphics/latex4.C": {
    "ratio": 0.7426241660489251,
@@ -5199,9 +5199,9 @@
    "xrdroot_seconds": 5.438
   },
   "visualisation/graphics/logscales.C": {
-   "ratio": 0.3909784682474789,
+   "ratio": 0.5626873807576995,
    "root_seconds": 7.338,
-   "xrdroot_seconds": 2.869
+   "xrdroot_seconds": 4.129
   },
   "visualisation/graphics/mandelbrot.C": {
    "ratio": 0.36614353192137744,
@@ -5209,9 +5209,9 @@
    "xrdroot_seconds": 2.403
   },
   "visualisation/graphics/markerwarning.C": {
-   "ratio": 0.3838045040728318,
+   "ratio": 0.6051748921897461,
    "root_seconds": 6.261,
-   "xrdroot_seconds": 2.403
+   "xrdroot_seconds": 3.789
   },
   "visualisation/graphics/mass_spectrum.C": {
    "ratio": 0.34665116954816216,
@@ -5229,9 +5229,9 @@
    "xrdroot_seconds": 92.931
   },
   "visualisation/graphics/pavetext.C": {
-   "ratio": 0.36761937360944724,
+   "ratio": 0.8353585486907411,
    "root_seconds": 5.843,
-   "xrdroot_seconds": 2.148
+   "xrdroot_seconds": 4.881
   },
   "visualisation/graphics/perceptualcolormap.C": {
    "ratio": 23.93044300378174,
@@ -5289,14 +5289,14 @@
    "xrdroot_seconds": 2.419
   },
   "visualisation/graphics/surfaces.C": {
-   "ratio": 0.27024025842923477,
+   "ratio": 0.45507773066828183,
    "root_seconds": 9.906,
-   "xrdroot_seconds": 2.677
+   "xrdroot_seconds": 4.508
   },
   "visualisation/graphics/surfaces.py": {
-   "ratio": 0.42817318581757996,
-   "root_seconds": 11.479,
-   "xrdroot_seconds": 4.915
+   "ratio": 0.6457907452146441,
+   "root_seconds": 5.381,
+   "xrdroot_seconds": 3.475
   },
   "visualisation/graphics/timeonaxis3.C": {
    "ratio": 0.30428555690206016,
@@ -5309,19 +5309,19 @@
    "xrdroot_seconds": 4.649
   },
   "visualisation/graphics/tmathtext2.C": {
-   "ratio": 0.29561300010726155,
+   "ratio": 0.7525474632628982,
    "root_seconds": 9.323,
-   "xrdroot_seconds": 2.756
+   "xrdroot_seconds": 7.016
   },
   "visualisation/graphics/tornado.C": {
-   "ratio": 0.20132885046429713,
+   "ratio": 0.5619596541786743,
    "root_seconds": 12.492,
-   "xrdroot_seconds": 2.515
+   "xrdroot_seconds": 7.02
   },
   "visualisation/graphics/tornado.py": {
-   "ratio": 0.43053922392071226,
-   "root_seconds": 11.906,
-   "xrdroot_seconds": 5.126
+   "ratio": 0.5806145675265554,
+   "root_seconds": 5.272,
+   "xrdroot_seconds": 3.061
   },
   "visualisation/graphics/transparency.C": {
    "ratio": 0.20538548172417323,
@@ -5334,9 +5334,9 @@
    "xrdroot_seconds": 2.091
   },
   "visualisation/graphics/xyplot.C": {
-   "ratio": 0.14816765746105803,
+   "ratio": 0.5161411693882159,
    "root_seconds": 13.289,
-   "xrdroot_seconds": 1.969
+   "xrdroot_seconds": 6.859
   },
   "visualisation/graphs/gr001_simple.C": {
    "ratio": 0.19148558758314854,
@@ -5349,9 +5349,9 @@
    "xrdroot_seconds": 5.008
   },
   "visualisation/graphs/gr002_errors.C": {
-   "ratio": 0.19915024407882842,
+   "ratio": 0.7357620683420719,
    "root_seconds": 11.062,
-   "xrdroot_seconds": 2.203
+   "xrdroot_seconds": 8.139
   },
   "visualisation/graphs/gr002_errors.py": {
    "ratio": 0.36050312677657764,
@@ -5384,9 +5384,9 @@
    "xrdroot_seconds": 2.021
   },
   "visualisation/graphs/gr005_apply.py": {
-   "ratio": 0.2651666410689602,
-   "root_seconds": 13.022,
-   "xrdroot_seconds": 3.453
+   "ratio": 0.8492630638677982,
+   "root_seconds": 4.478,
+   "xrdroot_seconds": 3.803
   },
   "visualisation/graphs/gr006_scatter.C": {
    "ratio": 0.1563221931310642,
@@ -5464,9 +5464,9 @@
    "xrdroot_seconds": 2.993
   },
   "visualisation/graphs/gr014_polar3.C": {
-   "ratio": 0.19309196837286724,
+   "ratio": 0.4724094881398252,
    "root_seconds": 12.015,
-   "xrdroot_seconds": 2.32
+   "xrdroot_seconds": 5.676
   },
   "visualisation/graphs/gr014_polar3.py": {
    "ratio": 0.1634285037317853,
@@ -5474,14 +5474,14 @@
    "xrdroot_seconds": 2.759
   },
   "visualisation/graphs/gr015_smooth.C": {
-   "ratio": 0.21746953463646027,
+   "ratio": 0.3923284534227529,
    "root_seconds": 12.227,
-   "xrdroot_seconds": 2.659
+   "xrdroot_seconds": 4.797
   },
   "visualisation/graphs/gr016_struct.C": {
-   "ratio": 0.06898791737040405,
+   "ratio": 0.10630115629466026,
    "root_seconds": 38.485,
-   "xrdroot_seconds": 2.655
+   "xrdroot_seconds": 4.091
   },
   "visualisation/graphs/gr017_time.C": {
    "ratio": 0.12453300124533,
@@ -5499,9 +5499,9 @@
    "xrdroot_seconds": 3.028
   },
   "visualisation/graphs/gr101_shade_area.C": {
-   "ratio": 0.20753810243031717,
+   "ratio": 0.24440477825072085,
    "root_seconds": 14.566,
-   "xrdroot_seconds": 3.023
+   "xrdroot_seconds": 3.56
   },
   "visualisation/graphs/gr102_reverse_graph.C": {
    "ratio": 0.09177652228499686,
@@ -5559,9 +5559,9 @@
    "xrdroot_seconds": 2.12
   },
   "visualisation/graphs/gr111_legend.C": {
-   "ratio": 0.12723429951690823,
+   "ratio": 0.23991545893719807,
    "root_seconds": 16.56,
-   "xrdroot_seconds": 2.107
+   "xrdroot_seconds": 3.973
   },
   "visualisation/graphs/gr112_reverse_graph_and_errors.C": {
    "ratio": 0.12334714821393329,
@@ -5584,9 +5584,9 @@
    "xrdroot_seconds": 8.689
   },
   "visualisation/graphs/gr302_highlight2.C": {
-   "ratio": 0.09741440258559741,
+   "ratio": 0.2071002928997071,
    "root_seconds": 19.802,
-   "xrdroot_seconds": 1.929
+   "xrdroot_seconds": 4.101
   },
   "visualisation/graphs/gr303_zdemo.C": {
    "ratio": 0.1311797931078251,
@@ -5919,9 +5919,9 @@
    "xrdroot_seconds": 2.067
   },
   "visualisation/webcanv/haxis.cxx": {
-   "ratio": 0.15543633762517883,
+   "ratio": 0.31609442060085835,
    "root_seconds": 13.98,
-   "xrdroot_seconds": 2.173
+   "xrdroot_seconds": 4.419
   },
   "visualisation/webcanv/inframe.cxx": {
    "ratio": 0.20067363942563374,
@@ -11330,6 +11330,626 @@
     "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
    },
    "source_tree_sha256": "b21a7d97681a9e2781572e7089cd279a9b011cfc2d0a8b1daa5b5a3e4dd132f4"
+  },
+  {
+   "generated": "2026-10-18T16:31:07+00:00",
+   "meta": {
+    "cache": "/Users/rcurrie/.cache/xrdroot-tutorials",
+    "incremental_validation": {
+     "baseline_change": {
+      "math/fit/fit1.C": [
+       "UNSUPPORTED",
+       "PASS"
+      ]
+     },
+     "gates": "/tmp/harness/coordinator-G1-readfile-gates/gates.json",
+     "is_fresh_full_run": false,
+     "note": "Existing baseline command intentionally refuses composite/partial reports. Applied only the independently proven path improvement, preserving every other baseline status and full-run metadata.",
+     "scope": "29affected+60currentPASS"
+    },
+    "jobs": 2,
+    "network": false,
+    "no_oracle": false,
+    "only": [
+     "analysis/dataframe/df007_snapshot.C",
+     "analysis/dataframe/df040_RResultPtr_lifetimeManagement.C",
+     "demoshelp.C",
+     "demoshelp.py",
+     "hist/hist004_TH1_labels.C",
+     "hist/hist009_TH1_normalize.C",
+     "hist/hist015_TH1_read_and_draw.C",
+     "hist/hist015_TH1_read_and_draw.py",
+     "hist/hist016_TH1_different_scales_canvas.C",
+     "hist/hist024_THStack_pads.C",
+     "hist/hist026_THStack_color_scheme.C",
+     "hist/hist029_TRatioPlot_simple.py",
+     "hist/hist032_TRatioPlot_fit_lines.py",
+     "hist/hist033_TRatioPlot_fit_confidence.py",
+     "hist/hist036_TH2_labels.C",
+     "hist/hist038_TH2Poly_honeycomb.C",
+     "hist/hist047_Graphics_candle_decay.C",
+     "hist/hist051_Graphics_candle_plot_stack.C",
+     "hist/hist105_TExec_dynamic_slice.C",
+     "io/fildir.C",
+     "io/ntuple/ntpl015_processor_join.C",
+     "io/tree/ntuple1.py",
+     "io/tree/tree120_ntuple.C",
+     "legacy/g3d/xtruDraw.C",
+     "legacy/g3d/xtruSamples.C",
+     "legacy/rootenv.C",
+     "legacy/tree/tree.C",
+     "math/fit/FitHistoInFile.C",
+     "math/fit/combinedFit.C",
+     "math/fit/fit1.C",
+     "math/fit/fit1.py",
+     "math/fit/fitMultiGraph.C",
+     "math/fit/line3Dfit.C",
+     "math/fit/myfit.C",
+     "math/pdf/pdf000_Laplace.C",
+     "math/pdf/pdf008_BreitWigner.C",
+     "math/qa2.C",
+     "math/quantiles.C",
+     "roofit/roofit/rf105_funcbinding.py",
+     "roofit/roofit/rf206_treevistools.C",
+     "roofit/roofit/rf210_angularconv.C",
+     "roofit/roofit/rf212_plottingInRanges_blinding.C",
+     "roofit/roofit/rf304_uncorrprod.C",
+     "roofit/roofit/rf306_condpereventerrors.py",
+     "roofit/roofit/rf314_paramfitrange.C",
+     "roofit/roofit/rf407_ComputationalGraphVisualization.C",
+     "roofit/roofit/rf508_listsetmanip.C",
+     "roofit/roofit/rf510_wsnamedsets.C",
+     "roofit/roofit/rf604_constraints.C",
+     "roofit/roofit/rf605_profilell.C",
+     "roofit/roofit/rf702_efficiencyfit_2D.py",
+     "roofit/roofit/rf704_amplitudefit.C",
+     "roofit/roofit/rf708_bphysics.py",
+     "roofit/roostats/HybridStandardForm.py",
+     "roofit/roostats/rs102_hypotestwithshapes.C",
+     "visualisation/geom/mp3player.C",
+     "visualisation/gl/glsurfaces.C",
+     "visualisation/gl/grad.C",
+     "visualisation/gl/transp_text.C",
+     "visualisation/graphics/analyze.C",
+     "visualisation/graphics/archi.C",
+     "visualisation/graphics/basic3d.C",
+     "visualisation/graphics/canvas2.C",
+     "visualisation/graphics/compile.C",
+     "visualisation/graphics/earth.C",
+     "visualisation/graphics/eval.C",
+     "visualisation/graphics/event.C",
+     "visualisation/graphics/framework.C",
+     "visualisation/graphics/greyscale.C",
+     "visualisation/graphics/latex2.C",
+     "visualisation/graphics/latex3.C",
+     "visualisation/graphics/logscales.C",
+     "visualisation/graphics/markerwarning.C",
+     "visualisation/graphics/pavetext.C",
+     "visualisation/graphics/surfaces.C",
+     "visualisation/graphics/surfaces.py",
+     "visualisation/graphics/tmathtext2.C",
+     "visualisation/graphics/tornado.C",
+     "visualisation/graphics/tornado.py",
+     "visualisation/graphics/xyplot.C",
+     "visualisation/graphs/gr002_errors.C",
+     "visualisation/graphs/gr005_apply.py",
+     "visualisation/graphs/gr014_polar3.C",
+     "visualisation/graphs/gr015_smooth.C",
+     "visualisation/graphs/gr016_struct.C",
+     "visualisation/graphs/gr101_shade_area.C",
+     "visualisation/graphs/gr111_legend.C",
+     "visualisation/graphs/gr302_highlight2.C",
+     "visualisation/webcanv/haxis.cxx"
+    ],
+    "oracle_only": false,
+    "oracle_prefix": "/Users/rcurrie/.local/root-oracle",
+    "root_features": [
+     "asimage",
+     "asimage_tiff",
+     "builtin_civetweb",
+     "builtin_cling",
+     "builtin_openui5",
+     "check_connection",
+     "clad",
+     "cocoa",
+     "curl",
+     "cxx20",
+     "dataframe",
+     "davix",
+     "fftw3",
+     "fitsio",
+     "gdml",
+     "geom",
+     "gviz",
+     "http",
+     "imt",
+     "libcxx",
+     "mathmore",
+     "opengl",
+     "pyroot",
+     "pythia8",
+     "roofit",
+     "roofit_multiprocess",
+     "root7",
+     "runtime_cxxmodules",
+     "shared",
+     "soversion",
+     "spectrum",
+     "sqlite",
+     "ssl",
+     "thisroot_scripts",
+     "tmva",
+     "tmva-cpu",
+     "tmva-cudnn",
+     "tmva-pymva",
+     "tpython",
+     "vdt",
+     "webgui",
+     "xml",
+     "xrootd"
+    ],
+    "root_python": "/Users/rcurrie/.local/root-oracle/bin/python",
+    "root_version": "6.40.04",
+    "timeout": 300.0,
+    "tolerance": {
+     "atol": 1e-12,
+     "image_threshold": 0.95,
+     "rtol": 1e-06
+    },
+    "tutorials_dir": "/Users/rcurrie/src/xrdroot/rootsrc-6.40/tutorials",
+    "xrdroot_commit": "9bcd4fb",
+    "xrdroot_has_pyroot": true,
+    "xrdroot_has_run": true,
+    "xrdroot_python": "/Users/rcurrie/xrdroot-parity/venv312/bin/python",
+    "xrdroot_src": "/Users/rcurrie/src/xrdroot/src"
+   },
+   "tutorials": {
+    "analysis/dataframe/df007_snapshot.C": {
+     "ratio": 0.14467408585055644,
+     "root_seconds": 33.966,
+     "xrdroot_seconds": 4.914
+    },
+    "analysis/dataframe/df040_RResultPtr_lifetimeManagement.C": {
+     "ratio": 0.08584264967088079,
+     "root_seconds": 47.855,
+     "xrdroot_seconds": 4.108
+    },
+    "demoshelp.C": {
+     "ratio": 0.4535315985130111,
+     "root_seconds": 6.456,
+     "xrdroot_seconds": 2.928
+    },
+    "demoshelp.py": {
+     "ratio": 0.23588084647526622,
+     "root_seconds": 14.838,
+     "xrdroot_seconds": 3.5
+    },
+    "hist/hist004_TH1_labels.C": {
+     "ratio": 0.519778013933168,
+     "root_seconds": 8.469,
+     "xrdroot_seconds": 4.402
+    },
+    "hist/hist009_TH1_normalize.C": {
+     "ratio": 0.5194805194805194,
+     "root_seconds": 9.009,
+     "xrdroot_seconds": 4.68
+    },
+    "hist/hist015_TH1_read_and_draw.C": {
+     "ratio": 0.5538975501113585,
+     "root_seconds": 8.98,
+     "xrdroot_seconds": 4.974
+    },
+    "hist/hist015_TH1_read_and_draw.py": {
+     "ratio": 0.6190059758052762,
+     "root_seconds": 6.861,
+     "xrdroot_seconds": 4.247
+    },
+    "hist/hist016_TH1_different_scales_canvas.C": {
+     "ratio": 1.0263575458392102,
+     "root_seconds": 11.344,
+     "xrdroot_seconds": 11.643
+    },
+    "hist/hist024_THStack_pads.C": {
+     "ratio": 0.38474180434218497,
+     "root_seconds": 11.561,
+     "xrdroot_seconds": 4.448
+    },
+    "hist/hist026_THStack_color_scheme.C": {
+     "ratio": 0.26664872864254,
+     "root_seconds": 14.866,
+     "xrdroot_seconds": 3.964
+    },
+    "hist/hist029_TRatioPlot_simple.py": {
+     "ratio": 0.2365576400027896,
+     "root_seconds": 14.339,
+     "xrdroot_seconds": 3.392
+    },
+    "hist/hist032_TRatioPlot_fit_lines.py": {
+     "ratio": 0.24679553800318713,
+     "root_seconds": 14.433,
+     "xrdroot_seconds": 3.562
+    },
+    "hist/hist033_TRatioPlot_fit_confidence.py": {
+     "ratio": 0.16497941390167112,
+     "root_seconds": 20.645,
+     "xrdroot_seconds": 3.406
+    },
+    "hist/hist036_TH2_labels.C": {
+     "ratio": 0.18746865971011725,
+     "root_seconds": 41.879,
+     "xrdroot_seconds": 7.851
+    },
+    "hist/hist038_TH2Poly_honeycomb.C": {
+     "ratio": 0.09605007554500324,
+     "root_seconds": 41.697,
+     "xrdroot_seconds": 4.005
+    },
+    "hist/hist047_Graphics_candle_decay.C": {
+     "ratio": 4.011343702490937,
+     "root_seconds": 8.551,
+     "xrdroot_seconds": 34.301
+    },
+    "hist/hist051_Graphics_candle_plot_stack.C": {
+     "ratio": 13.30053234392644,
+     "root_seconds": 6.199,
+     "xrdroot_seconds": 82.45
+    },
+    "hist/hist105_TExec_dynamic_slice.C": {
+     "ratio": 0.5418481642812695,
+     "root_seconds": 6.428,
+     "xrdroot_seconds": 3.483
+    },
+    "io/fildir.C": {
+     "ratio": 0.6404520295202952,
+     "root_seconds": 8.672,
+     "xrdroot_seconds": 5.554
+    },
+    "io/ntuple/ntpl015_processor_join.C": {
+     "ratio": 0.2539661641761569,
+     "root_seconds": 15.191,
+     "xrdroot_seconds": 3.858
+    },
+    "io/tree/ntuple1.py": {
+     "ratio": 0.6466731423020883,
+     "root_seconds": 8.236,
+     "xrdroot_seconds": 5.326
+    },
+    "io/tree/tree120_ntuple.C": {
+     "ratio": 0.4821465428276574,
+     "root_seconds": 9.69,
+     "xrdroot_seconds": 4.672
+    },
+    "legacy/g3d/xtruDraw.C": {
+     "ratio": 0.2744088205425794,
+     "root_seconds": 13.786,
+     "xrdroot_seconds": 3.783
+    },
+    "legacy/g3d/xtruSamples.C": {
+     "ratio": 0.19326664676022692,
+     "root_seconds": 13.396,
+     "xrdroot_seconds": 2.589
+    },
+    "legacy/rootenv.C": {
+     "ratio": 0.3510077954912564,
+     "root_seconds": 14.239,
+     "xrdroot_seconds": 4.998
+    },
+    "legacy/tree/tree.C": {
+     "ratio": 0.8927665920954511,
+     "root_seconds": 6.705,
+     "xrdroot_seconds": 5.986
+    },
+    "math/fit/FitHistoInFile.C": {
+     "ratio": 0.1458328636804256,
+     "root_seconds": 44.359,
+     "xrdroot_seconds": 6.469
+    },
+    "math/fit/combinedFit.C": {
+     "ratio": 0.1263926008227981,
+     "root_seconds": 33.301,
+     "xrdroot_seconds": 4.209
+    },
+    "math/fit/fit1.C": {
+     "ratio": 1.7279551702262634,
+     "root_seconds": 18.916,
+     "xrdroot_seconds": 32.686
+    },
+    "math/fit/fit1.py": {
+     "ratio": 0.35423023578363383,
+     "root_seconds": 10.815,
+     "xrdroot_seconds": 3.831
+    },
+    "math/fit/fitMultiGraph.C": {
+     "ratio": 0.34229414951245934,
+     "root_seconds": 14.768,
+     "xrdroot_seconds": 5.055
+    },
+    "math/fit/line3Dfit.C": {
+     "ratio": 7.129144976110675,
+     "root_seconds": 14.023,
+     "xrdroot_seconds": 99.972
+    },
+    "math/fit/myfit.C": {
+     "ratio": 1.861318443393539,
+     "root_seconds": 17.551,
+     "xrdroot_seconds": 32.668
+    },
+    "math/pdf/pdf000_Laplace.C": {
+     "ratio": 0.9096102150537634,
+     "root_seconds": 5.952,
+     "xrdroot_seconds": 5.414
+    },
+    "math/pdf/pdf008_BreitWigner.C": {
+     "ratio": 0.8045655216969958,
+     "root_seconds": 9.287,
+     "xrdroot_seconds": 7.472
+    },
+    "math/qa2.C": {
+     "ratio": 0.6427525622254758,
+     "root_seconds": 6.83,
+     "xrdroot_seconds": 4.39
+    },
+    "math/quantiles.C": {
+     "ratio": 0.43493249066360246,
+     "root_seconds": 6.962,
+     "xrdroot_seconds": 3.028
+    },
+    "roofit/roofit/rf105_funcbinding.py": {
+     "ratio": 0.40035162259175155,
+     "root_seconds": 68.255,
+     "xrdroot_seconds": 27.326
+    },
+    "roofit/roofit/rf206_treevistools.C": {
+     "ratio": 0.0817577259095058,
+     "root_seconds": 46.014,
+     "xrdroot_seconds": 3.762
+    },
+    "roofit/roofit/rf210_angularconv.C": {
+     "ratio": 3.7135783043317288,
+     "root_seconds": 43.216,
+     "xrdroot_seconds": 160.486
+    },
+    "roofit/roofit/rf212_plottingInRanges_blinding.C": {
+     "ratio": 0.13074426881607873,
+     "root_seconds": 38.212,
+     "xrdroot_seconds": 4.996
+    },
+    "roofit/roofit/rf304_uncorrprod.C": {
+     "ratio": 0.13026729559748426,
+     "root_seconds": 50.88,
+     "xrdroot_seconds": 6.628
+    },
+    "roofit/roofit/rf306_condpereventerrors.py": {
+     "ratio": 0.8450472244383251,
+     "root_seconds": 38.857,
+     "xrdroot_seconds": 32.836
+    },
+    "roofit/roofit/rf314_paramfitrange.C": {
+     "ratio": 1.1677538917716828,
+     "root_seconds": 13.49,
+     "xrdroot_seconds": 15.753
+    },
+    "roofit/roofit/rf407_ComputationalGraphVisualization.C": {
+     "ratio": 0.41033806957373836,
+     "root_seconds": 16.328,
+     "xrdroot_seconds": 6.7
+    },
+    "roofit/roofit/rf508_listsetmanip.C": {
+     "ratio": 0.2500372079178449,
+     "root_seconds": 13.438,
+     "xrdroot_seconds": 3.36
+    },
+    "roofit/roofit/rf510_wsnamedsets.C": {
+     "ratio": 0.6625531331413684,
+     "root_seconds": 14.586,
+     "xrdroot_seconds": 9.664
+    },
+    "roofit/roofit/rf604_constraints.C": {
+     "ratio": 0.30615507593924857,
+     "root_seconds": 16.263,
+     "xrdroot_seconds": 4.979
+    },
+    "roofit/roofit/rf605_profilell.C": {
+     "ratio": 0.8232493552866494,
+     "root_seconds": 15.123,
+     "xrdroot_seconds": 12.45
+    },
+    "roofit/roofit/rf702_efficiencyfit_2D.py": {
+     "ratio": 3.0333909141096647,
+     "root_seconds": 56.153,
+     "xrdroot_seconds": 170.334
+    },
+    "roofit/roofit/rf704_amplitudefit.C": {
+     "ratio": 0.7566026410564226,
+     "root_seconds": 16.66,
+     "xrdroot_seconds": 12.605
+    },
+    "roofit/roofit/rf708_bphysics.py": {
+     "ratio": 4.019896193771626,
+     "root_seconds": 10.404,
+     "xrdroot_seconds": 41.823
+    },
+    "roofit/roostats/HybridStandardForm.py": {
+     "ratio": 10.822967632668423,
+     "root_seconds": 21.256,
+     "xrdroot_seconds": 230.053
+    },
+    "roofit/roostats/rs102_hypotestwithshapes.C": {
+     "ratio": 0.1428249051184737,
+     "root_seconds": 48.745,
+     "xrdroot_seconds": 6.962
+    },
+    "visualisation/geom/mp3player.C": {
+     "ratio": 0.4891120932101245,
+     "root_seconds": 12.445,
+     "xrdroot_seconds": 6.087
+    },
+    "visualisation/gl/glsurfaces.C": {
+     "ratio": 0.8364437913299045,
+     "root_seconds": 6.805,
+     "xrdroot_seconds": 5.692
+    },
+    "visualisation/gl/grad.C": {
+     "ratio": 0.6277665995975855,
+     "root_seconds": 6.958,
+     "xrdroot_seconds": 4.368
+    },
+    "visualisation/gl/transp_text.C": {
+     "ratio": 0.6044831145848696,
+     "root_seconds": 6.781,
+     "xrdroot_seconds": 4.099
+    },
+    "visualisation/graphics/analyze.C": {
+     "ratio": 0.7050098879367172,
+     "root_seconds": 6.068,
+     "xrdroot_seconds": 4.278
+    },
+    "visualisation/graphics/archi.C": {
+     "ratio": 0.6763703933106225,
+     "root_seconds": 6.458,
+     "xrdroot_seconds": 4.368
+    },
+    "visualisation/graphics/basic3d.C": {
+     "ratio": 0.5711790393013101,
+     "root_seconds": 8.015,
+     "xrdroot_seconds": 4.578
+    },
+    "visualisation/graphics/canvas2.C": {
+     "ratio": 0.3071828833418237,
+     "root_seconds": 15.704,
+     "xrdroot_seconds": 4.824
+    },
+    "visualisation/graphics/compile.C": {
+     "ratio": 0.36367637996302493,
+     "root_seconds": 11.359,
+     "xrdroot_seconds": 4.131
+    },
+    "visualisation/graphics/earth.C": {
+     "ratio": 0.3881380475443465,
+     "root_seconds": 16.574,
+     "xrdroot_seconds": 6.433
+    },
+    "visualisation/graphics/eval.C": {
+     "ratio": 0.31005888715298646,
+     "root_seconds": 8.321,
+     "xrdroot_seconds": 2.58
+    },
+    "visualisation/graphics/event.C": {
+     "ratio": 0.12538567932758807,
+     "root_seconds": 18.798,
+     "xrdroot_seconds": 2.357
+    },
+    "visualisation/graphics/framework.C": {
+     "ratio": 0.160753950625119,
+     "root_seconds": 15.757,
+     "xrdroot_seconds": 2.533
+    },
+    "visualisation/graphics/greyscale.C": {
+     "ratio": 18.336757586491913,
+     "root_seconds": 8.469,
+     "xrdroot_seconds": 155.294
+    },
+    "visualisation/graphics/latex2.C": {
+     "ratio": 0.7497418244406197,
+     "root_seconds": 5.81,
+     "xrdroot_seconds": 4.356
+    },
+    "visualisation/graphics/latex3.C": {
+     "ratio": 0.5411805078929306,
+     "root_seconds": 5.828,
+     "xrdroot_seconds": 3.154
+    },
+    "visualisation/graphics/logscales.C": {
+     "ratio": 0.5626873807576995,
+     "root_seconds": 7.338,
+     "xrdroot_seconds": 4.129
+    },
+    "visualisation/graphics/markerwarning.C": {
+     "ratio": 0.6051748921897461,
+     "root_seconds": 6.261,
+     "xrdroot_seconds": 3.789
+    },
+    "visualisation/graphics/pavetext.C": {
+     "ratio": 0.8353585486907411,
+     "root_seconds": 5.843,
+     "xrdroot_seconds": 4.881
+    },
+    "visualisation/graphics/surfaces.C": {
+     "ratio": 0.45507773066828183,
+     "root_seconds": 9.906,
+     "xrdroot_seconds": 4.508
+    },
+    "visualisation/graphics/surfaces.py": {
+     "ratio": 0.6457907452146441,
+     "root_seconds": 5.381,
+     "xrdroot_seconds": 3.475
+    },
+    "visualisation/graphics/tmathtext2.C": {
+     "ratio": 0.7525474632628982,
+     "root_seconds": 9.323,
+     "xrdroot_seconds": 7.016
+    },
+    "visualisation/graphics/tornado.C": {
+     "ratio": 0.5619596541786743,
+     "root_seconds": 12.492,
+     "xrdroot_seconds": 7.02
+    },
+    "visualisation/graphics/tornado.py": {
+     "ratio": 0.5806145675265554,
+     "root_seconds": 5.272,
+     "xrdroot_seconds": 3.061
+    },
+    "visualisation/graphics/xyplot.C": {
+     "ratio": 0.5161411693882159,
+     "root_seconds": 13.289,
+     "xrdroot_seconds": 6.859
+    },
+    "visualisation/graphs/gr002_errors.C": {
+     "ratio": 0.7357620683420719,
+     "root_seconds": 11.062,
+     "xrdroot_seconds": 8.139
+    },
+    "visualisation/graphs/gr005_apply.py": {
+     "ratio": 0.8492630638677982,
+     "root_seconds": 4.478,
+     "xrdroot_seconds": 3.803
+    },
+    "visualisation/graphs/gr014_polar3.C": {
+     "ratio": 0.4724094881398252,
+     "root_seconds": 12.015,
+     "xrdroot_seconds": 5.676
+    },
+    "visualisation/graphs/gr015_smooth.C": {
+     "ratio": 0.3923284534227529,
+     "root_seconds": 12.227,
+     "xrdroot_seconds": 4.797
+    },
+    "visualisation/graphs/gr016_struct.C": {
+     "ratio": 0.10630115629466026,
+     "root_seconds": 38.485,
+     "xrdroot_seconds": 4.091
+    },
+    "visualisation/graphs/gr101_shade_area.C": {
+     "ratio": 0.24440477825072085,
+     "root_seconds": 14.566,
+     "xrdroot_seconds": 3.56
+    },
+    "visualisation/graphs/gr111_legend.C": {
+     "ratio": 0.23991545893719807,
+     "root_seconds": 16.56,
+     "xrdroot_seconds": 3.973
+    },
+    "visualisation/graphs/gr302_highlight2.C": {
+     "ratio": 0.2071002928997071,
+     "root_seconds": 19.802,
+     "xrdroot_seconds": 4.101
+    },
+    "visualisation/webcanv/haxis.cxx": {
+     "ratio": 0.31609442060085835,
+     "root_seconds": 13.98,
+     "xrdroot_seconds": 4.419
+    }
+   }
   }
  ]
 }
