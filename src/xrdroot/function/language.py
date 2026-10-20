@@ -161,7 +161,12 @@ class Parser:
         if not self.peek.is_op("^", "**"):
             return base
         self.take()
-        return Binary("^", base, self.unary())
+        exponent_at = self.at
+        exponent = self.unary()
+        # TFormula::HandleExponentiation replaces the literal 2 with TMath::Sq.
+        if self.at == exponent_at + 1 and self.tokens[exponent_at].text == "2":
+            return Apply("TMath::Sq", CALLS["TMath::Sq"], (base,))
+        return Binary("^", base, exponent)
 
     def primary(self) -> Node:
         token = self.take()
