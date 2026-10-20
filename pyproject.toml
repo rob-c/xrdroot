@@ -25,7 +25,7 @@ classifiers = [
 # through it. Until these layers are on PyPI the requirement names the
 # repository it comes from; swap it for a version specifier at first release.
 dependencies = [
-  "xrdclient @ git+https://github.com/rob-c/xrdclient@main",
+  "xrdclient @ git+https://github.com/rob-c/xrdclient@80677788959a18e392576e938b6a943d0fbeb95a",
   # Every column, histogram and graph comes back as an array, decoded in C.
   "numpy>=1.22",
 ]
