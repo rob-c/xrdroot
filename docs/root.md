@@ -2440,6 +2440,14 @@ over. Every method has a snake_case spelling too: `define`, `filter`,
 
 ### In parallel
 
+`xrdroot.EnableImplicitMT(n)` chooses the implicit pool on its first call,
+with the request bounded by the available CPUs and `ROOT_MAX_THREADS` when
+set to a positive count. Omitting `n` requests the available CPUs. Further
+calls keep the pool until `xrdroot.DisableImplicitMT()` is called. A pool of
+one is still enabled; `GetThreadPoolSize()` returns zero while disabled,
+and frames then use one process. An explicit `workers=n` on a frame chooses
+that frame's own process count.
+
 `workers=n`, or `xrdroot.EnableImplicitMT(n)` for every frame made after it,
 shares the loop across `n` worker processes — processes rather than ROOT's
 threads, which is what lets Python in a `Define` run side by side. The entries

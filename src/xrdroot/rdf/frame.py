@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import inspect
 import keyword
-import os
 import re
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Any, cast
@@ -52,6 +51,7 @@ from .graph import (
 )
 from .loop import DEFAULT_STEP, Batch, Plan, execute
 from .models import is_model, model_of, split_arguments
+from .parallel import configured_workers
 from .snapshot import MODES, Snapshot
 from .sources import Empty, Source, open_named, wrap
 
@@ -67,7 +67,7 @@ __all__ = [
 ]
 
 #: The number of worker processes a frame uses when it is not told: ``EnableImplicitMT`` sets it.
-_IMPLICIT = [1]
+_IMPLICIT = [0]
 
 #: The columns every frame has, that ROOT's ``GetColumnNames`` leaves out.
 SPECIAL = {"rdfentry_": EntryColumn("rdfentry_"), "rdfslot_": SlotColumn("rdfslot_")}
@@ -79,24 +79,25 @@ IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 def EnableImplicitMT(workers: int = 0) -> None:
     """``ROOT::EnableImplicitMT``: frames made from now on use this many worker processes.
 
-    ``0`` means one per CPU, as ROOT's default is a thread per core. Here they
-    are processes rather than threads, which is what lets Python code in a
-    ``Define`` run side by side, and what makes callables have to be picklable.
+    A first call chooses the requested count, bounded by hardware and
+    ``ROOT_MAX_THREADS``; later calls keep that pool until it is disabled.
+    Here workers are processes, so callables still have to be picklable.
     """
-    _IMPLICIT[0] = int(workers) or (os.cpu_count() or 1)
+    if not IsImplicitMTEnabled():
+        _IMPLICIT[0] = configured_workers(workers)
 
 
 def DisableImplicitMT() -> None:
     """``ROOT::DisableImplicitMT``: back to one process, the deterministic default."""
-    _IMPLICIT[0] = 1
+    _IMPLICIT[0] = 0
 
 
 def IsImplicitMTEnabled() -> bool:
-    return _IMPLICIT[0] > 1
+    return _IMPLICIT[0] > 0
 
 
 def GetThreadPoolSize() -> int:
-    """How many worker processes a frame made now would use."""
+    """The active implicit pool size, or zero while disabled; frames then use one."""
     return _IMPLICIT[0]
 
 
@@ -351,7 +352,7 @@ class RDataFrame:
 
     def _initialize(self, source: Source, defaults: list[str],
                     workers: int | None, step: int) -> None:
-        graph = _Graph(source, _IMPLICIT[0] if workers is None else int(workers), step)
+        graph = _Graph(source, (_IMPLICIT[0] or 1) if workers is None else int(workers), step)
         graph.implicit = workers is None  # EnableImplicitMT's, not asked for by this frame
         graph.defaults = defaults
         columns: dict[str, Definition] = {name: SourceColumn(name) for name in source.names()}

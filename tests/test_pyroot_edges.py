@@ -57,10 +57,12 @@ def test_prepend_path_name_hands_back_a_plain_join():
 
 
 def test_the_root_namespace_hands_other_names_to_the_top():
+    ROOT.DisableImplicitMT()
     expect(
         (bool(ROOT.ROOT.TH1F is ROOT.TH1F), True),
         (repr(ROOT.ROOT), "<namespace ROOT>"),
-        (bool(ROOT.ROOT.GetThreadPoolSize() >= 1), True),
+        (ROOT.ROOT.GetThreadPoolSize(), 0),
+        (ROOT.ROOT.GetThreadPoolSize is ROOT.GetThreadPoolSize, True),
     )
     with pytest.raises(AttributeError):
         ROOT.ROOT.__wrapped__  # noqa: B018
