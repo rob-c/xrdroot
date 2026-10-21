@@ -282,7 +282,7 @@ class RNTuple:
 
     def _repr_html_(self) -> str:
         """A notebook's table of the fields, from the header and footer alone."""
-        from ..plot.notebook import rntuple_table
+        from ..notebook import rntuple_table
 
         return rntuple_table(self)
 

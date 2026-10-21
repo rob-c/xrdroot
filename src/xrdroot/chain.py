@@ -121,7 +121,7 @@ class Chain(Drawable):
 
     def _repr_html_(self) -> str:
         """A notebook's table of the files, opening none that is not open already."""
-        from .plot.notebook import chain_table
+        from .notebook import chain_table
 
         return chain_table(self.tree_name, self.files, self._counts)
 

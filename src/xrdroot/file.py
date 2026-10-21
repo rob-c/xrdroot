@@ -260,7 +260,7 @@ class Directory:
 
     def _repr_html_(self) -> str:
         """A notebook's table of every key: name, cycle, class and title, none read."""
-        from .plot.notebook import directory_table
+        from .notebook import directory_table
 
         return directory_table(repr(self).strip("<>"), self._keys)
 

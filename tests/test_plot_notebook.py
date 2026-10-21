@@ -75,3 +75,11 @@ def test_a_chain_shows_its_files_and_their_entries_once_counted():
         assert "chain.1.root" in uncounted and uncounted.count('"></td>') == 2
         assert joined.counts
         assert joined._repr_html_().count('"></td>') == 0
+
+
+def test_table_compatibility_imports_are_the_same_core_helpers():
+    from xrdroot import notebook
+    from xrdroot.plot import notebook as compatibility
+
+    for name in (*notebook.__all__, "STYLE", "_preformatted"):
+        assert getattr(compatibility, name) is getattr(notebook, name)

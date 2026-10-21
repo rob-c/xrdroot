@@ -534,7 +534,7 @@ class TTree(Drawable):
 
     def _repr_html_(self) -> str:
         """A notebook's table of the branches, read from the tree's header alone."""
-        from .plot.notebook import tree_table
+        from .notebook import tree_table
 
         return tree_table(self)
 

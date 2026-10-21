@@ -7,7 +7,10 @@ time something is drawn or shown rather than when the library is.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
+
+from .notebook import _preformatted
+from .plugins import lookup, require
 
 __all__ = ["Displayed"]
 
@@ -31,14 +34,11 @@ class Displayed:
         :func:`~xrdroot.plot.set_backend` or ``backend=`` says - gives back
         its own object to keep styling. See :func:`xrdroot.plot.plot`.
         """
-        from .plot import plot
-
-        return plot(self, ax, backend, option, **style)
+        return require("display.plot")(self, ax, backend, option, **style)
 
     def _repr_html_(self) -> str:
-        from .plot.notebook import figure
-
-        return figure(self)
+        figure = lookup("display.html")
+        return _preformatted(repr(self)) if figure is None else cast(str, figure(self))
 
     def _repr_mimebundle_(self, include: Any = None, exclude: Any = None) -> dict[str, str]:
         return {"text/plain": repr(self), "text/html": self._repr_html_()}
