@@ -21,7 +21,7 @@ from typing import ClassVar
 from .base import Out, P
 from .ctype import SMART, CType
 from .cursor import looks_like_type
-from .emit_expr import ExprEmitter, zero
+from .emit_expr import ExprEmitter, _copy_store, _lvalue, zero
 from .emit_names import type_text
 from .literals import SUFFIXES
 from .nodes import (
@@ -30,12 +30,10 @@ from .nodes import (
     Call,
     Expr,
     Function,
-    Index,
     InitList,
     Literal,
     Member,
     Name,
-    Unary,
 )
 from .symbols import Symbol
 
@@ -91,10 +89,6 @@ def _plain(node: Expr) -> bool:
     if isinstance(node, Binary):
         return _plain(node.left) and _plain(node.right)
     return isinstance(node, (Name, Literal))
-
-
-def _lvalue(node: Expr) -> bool:
-    return isinstance(node, (Name, Member, Index)) or (isinstance(node, Unary) and node.op == "*")
 
 
 class CallEmitter(ExprEmitter):
@@ -422,10 +416,7 @@ class CallEmitter(ExprEmitter):
 
     def _copied(self, ctype: CType, node: Expr) -> bool:
         """Is ``T b = a`` a copy of an object - which Python would otherwise share, not copy?"""
-        if not ctype.is_class or ctype.pointer or ctype.reference or not _lvalue(node):
-            return False
-        found = self.typeof(node)
-        return found is not None and found.is_class and not found.pointer
+        return _copy_store(ctype, node, self.typeof(node))
 
     def _arithmetic_store(self, ctype: CType, node: Expr) -> str:
         source = self.typeof(node)

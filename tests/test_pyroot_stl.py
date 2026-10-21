@@ -176,11 +176,21 @@ def test_template_arguments_split_at_the_top_level_commas_only():
     assert std.map["std::string", "std::vector<float>"].__cpp_name__ == "map<string,vector<float>>"
 
 
-def test_a_vector_of_vectors_keeps_a_vector_it_is_given_as_it_is():
+def test_a_vector_of_vectors_stores_independent_values():
     inner = std.vector["int"]([1])
     outer = std.vector["vector<int>"]()
     outer.push_back(inner)
-    assert outer[0] is inner and std.vector["int"]([1]) != 5
+    outer.push_back(inner)
+    # ROOT 6.40.04 stores each inserted vector by value.
+    assert outer[0] is not inner and std.vector["int"]([1]) != 5
+    assert outer[1] is not inner and outer[1] is not outer[0]
+    assert [list(item) for item in outer] == [[1], [1]]
+    inner[0] = 2
+    assert [list(item) for item in outer] == [[1], [1]]
+    outer[0][0] = 3
+    assert list(inner) == [2] and list(outer[1]) == [1]
+    outer[1][0] = 4
+    assert list(inner) == [2] and list(outer[0]) == [3]
     assert stl.is_vector(outer) and stl.is_vector(inner) and not stl.is_vector([1])
 
 

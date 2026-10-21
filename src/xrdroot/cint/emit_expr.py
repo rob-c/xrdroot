@@ -423,6 +423,9 @@ class ExprEmitter(NameEmitter):
         ROOT made, say), or into the object it points at.
         """
         target = node.target
+        numeric = self._numeric_vector_assignment(node)
+        if numeric is not None:
+            return numeric
         if isinstance(target, Call):
             return self.call_assignment(node)
         if node.op == "=" and isinstance(target, Name) and _assigned_into(self.typeof(target)):
@@ -430,6 +433,28 @@ class ExprEmitter(NameEmitter):
         if not self._held_through(target):
             return None
         return self.store_expression(target, self.assigned_value(node))[0]
+
+    def _numeric_vector_assignment(self, node: Assign) -> str | None:
+        if node.op != "=":
+            return None
+        right = self.typeof(node.value)
+        if not _vector_lvalue(node.value, right):
+            return None
+        destination, pointer = self._vector_destination(node.target)
+        if destination is None:
+            return None
+        left = self.typeof(node.target)
+        if left is None or not _numeric_vector_pair(left, right, self.program.classes):
+            return None
+        flag = _vector_copy_arguments(pointer, _copy_store(left, node.value, right))
+        return f"assign_vector({self.value(destination)}, {self.value(node.value)}{flag})"
+
+    def _vector_destination(self, target: Expr) -> tuple[Expr | None, bool]:
+        if isinstance(target, Name):
+            return target, False
+        if isinstance(target, Unary) and self._held_through(target):
+            return target.operand, True
+        return None, False
 
     def _held_through(self, target: Expr) -> bool:
         """Is ``target`` ``*p`` of a pointer to an object, or to what this translator cannot say?"""
@@ -689,3 +714,73 @@ def _object_value(ctype: CType | None) -> bool:
 def _spelled(ctype: CType) -> str:
     stars = "*" * ctype.pointer or "[]"
     return f"{ctype.name}{stars}"
+
+
+#: Whole-copy assignment is limited to the ordinary native integer and floating families.
+_VECTOR_NUMBERS = frozenset({
+    "char", "signed char", "unsigned char", "short", "unsigned short", "int", "unsigned int",
+    "long", "unsigned long", "long long", "unsigned long long", "float", "double", "long double",
+})
+#: ROOT's numeric aliases identify the same RVec specializations as their template spellings.
+_VECTOR_ALIASES = {"RVecC": "char", "RVecD": "double", "RVecF": "float", "RVecI": "int",
+                   "RVecL": "long", "RVecLL": "long long", "RVecU": "unsigned int",
+                   "RVecUL": "unsigned long", "RVecULL": "unsigned long long"}
+
+
+def _numeric_vector_type(ctype: CType | None) -> tuple[str, str] | None:
+    if ctype is None or ctype.pointer or ctype.dims or ctype.callable:
+        return None
+    return _numeric_vector_name(ctype)
+
+
+def _numeric_vector_name(ctype: CType) -> tuple[str, str] | None:
+    family, _, name = ctype.name.rpartition("::")
+    if family not in ("", "std", "ROOT", "ROOT::VecOps", "VecOps"):
+        return None
+    if name in _VECTOR_ALIASES and family != "std":
+        return "rvec", _VECTOR_ALIASES[name]
+    if name not in ("vector", "RVec") or len(ctype.args) != 1:
+        return None
+    return _numeric_vector_element(name, ctype.args[0])
+
+
+def _numeric_vector_element(name: str, element: Any) -> tuple[str, str] | None:
+    if not isinstance(element, CType) or not element.scalar or element.name not in _VECTOR_NUMBERS:
+        return None
+    return ("std" if name == "vector" else "rvec"), element.name
+
+
+def _vector_lvalue(node: Expr, found: CType | None) -> bool:
+    if isinstance(node, (Name, Member, Index)):
+        return True
+    if isinstance(node, Assign):
+        return node.op == "="
+    return (isinstance(node, Unary) and node.op == "*") or (
+        isinstance(node, Call) and found is not None and found.reference)
+
+
+
+def _numeric_vector_pair(left: CType | None, right: CType | None, classes: Any) -> bool:
+    if left is None or right is None or left.const:
+        return False
+    if left.name in classes or right.name in classes:
+        return False
+    signature = _numeric_vector_type(left)
+    return signature is not None and signature == _numeric_vector_type(right)
+
+
+
+def _lvalue(node: Expr) -> bool:
+    return isinstance(node, (Name, Member, Index)) or (isinstance(node, Unary) and node.op == "*")
+
+
+def _copy_store(ctype: CType, node: Expr, found: CType | None) -> bool:
+    if not ctype.is_class or ctype.pointer or ctype.reference or not _lvalue(node):
+        return False
+    return found is not None and found.is_class and not found.pointer
+
+
+def _vector_copy_arguments(pointer: bool, copy: bool) -> str:
+    if not copy:
+        return f", {pointer}, False"
+    return ", True" if pointer else ""

@@ -16,17 +16,21 @@ translation says what is assigned to instead, and these write it:
   holds: its own ``operator=`` (``_assign``), a container's contents
   replaced, or an object's state taken from a copy of the value.
 
-Each gives back the value, as C++'s assignment does, for ``a(i) = b(j) = v``.
+Native vector copy-assignment returns its destination lvalue. Older generic
+assignment paths retain their assigned-value return contract.
 """
 
 from __future__ import annotations
 
 import copy
+import sys
 from typing import Any
 
 import numpy as np
 
-__all__ = ["assign_call", "assign_method", "assign_into", "store_through"]
+from .objects import value_copy
+
+__all__ = ["assign_call", "assign_method", "assign_into", "store_through", "assign_vector"]
 
 
 def assign_call(obj: Any, args: tuple[Any, ...], value: Any) -> Any:
@@ -71,6 +75,8 @@ def assign_into(target: Any, value: Any) -> Any:
     own = getattr(target, "_assign", None)
     if callable(own):
         own(value)
+    elif _vector_assigned(target, value):
+        return target
     elif isinstance(target, np.ndarray):
         target[...] = value
     elif isinstance(target, list):
@@ -85,3 +91,19 @@ def assign_into(target: Any, value: Any) -> Any:
             f"a {type(target).__name__} returned by value cannot be assigned to in place"
         )
     return value
+
+
+def _vector_assigned(target: Any, value: Any) -> bool:
+    # A foreign assignment must not load PyROOT; native factories load this helper themselves.
+    module = sys.modules.get("xrdroot.pyroot.vectorassign")
+    return module is not None and bool(module.assigned(target, value))
+
+
+def assign_vector(
+    target: Any, value: Any, through_pointer: bool = False, copy_on_decline: bool = True,
+) -> Any:
+    """Keep raw self-assignment native; declined pointer stores retain RHS-copy/hook order."""
+    if _vector_assigned(target, value):
+        return target
+    copied = value_copy(value) if copy_on_decline else value
+    return store_through(target, copied) if through_pointer else assign_into(target, copied)

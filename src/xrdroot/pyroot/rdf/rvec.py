@@ -28,7 +28,9 @@ import numpy as np
 from ...rdf import kernels
 from ...rdf import vecops as _batched
 from ...tree import Jagged
-from ..stl import _Template, _Vector, _vector_class, cpp_name
+from ..stl import _NUMERIC_ASSIGN_READERS, _Template, _Vector, _vector_class, cpp_name
+from ..vectorassign import register as _register_vector_assignment
+from ..vectorvalue import register as _register_vector_value
 
 __all__ = ["RVec", "RVecF", "RVecD", "RVecI", "RVecL", "RVecB", "VecOps"]
 
@@ -82,7 +84,9 @@ def _rvec_class(kind: Any) -> type:
         return _vector_class(kind)
     name = f"ROOT::VecOps::RVec<{cpp_name(kind)}>"
     members = {"dtype": kind, "value_type": cpp_name(kind), "__cpp_name__": name}
-    return type(name, (_RVec,), {"__slots__": (), **members})
+    made = _register_vector_value(type(name, (_RVec,), {"__slots__": (), **members}),
+                                  kind, True)
+    return _register_vector_assignment(made, "rvec", _NUMERIC_ASSIGN_READERS)
 
 
 #: ``ROOT.RVec``, and ``ROOT.VecOps.RVec``: ``RVec['float']`` is ``RVec<float>``.

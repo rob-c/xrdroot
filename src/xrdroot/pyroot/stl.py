@@ -41,6 +41,12 @@ import numpy as np
 from . import bitset as _bitset
 from . import stdlib as _stdlib
 from . import stlrandom as _random
+from .vectorassign import register as _register_vector_assignment
+from .vectorvalue import assigned as _assign_vector_value
+from .vectorvalue import converted as _vector_value
+from .vectorvalue import native as _native_vector_value
+from .vectorvalue import numeric_input as _numeric_vector_input
+from .vectorvalue import register as _register_vector_value
 
 __all__ = ["std"]
 
@@ -517,6 +523,7 @@ class _Vector(_Container):
 
     def assign(self, values: Iterable[Any]) -> None:
         """Replace everything held with ``values``: any sequence, array or vector."""
+        values = _numeric_vector_input(type(self), values, _NUMERIC_READERS, _ARRAY_TYPE)
         given = np.asarray(values if isinstance(values, np.ndarray) else list(values))
         self._data = given.astype(self.dtype, copy=True).reshape(-1)
         self._size = len(self._data)
@@ -540,6 +547,17 @@ class _Vector(_Container):
 
     def end(self) -> _VectorIterator:
         return _VectorIterator(self, self._size)
+
+
+#: Original numeric reading protocols; later user overrides keep the iterable conversion.
+_NUMERIC_READERS = {
+    name: getattr(_Vector, name)
+    for name in ("__iter__", "__len__", "data", "__getattribute__", "_data", "_size")
+}
+#: Copy-assignment may bypass only the unchanged native access and custom-operator protocols.
+_NUMERIC_ASSIGN_READERS = {
+    **_NUMERIC_READERS, "__setattr__": object.__setattr__, "_assign": None,
+}
 
 
 class _ObjectVector(_Container):
@@ -575,7 +593,18 @@ class _ObjectVector(_Container):
         return self._items[index]
 
     def __setitem__(self, index: int, value: Any) -> None:
-        self._items[index] = _converted(self.element, value)
+        if self._assign_element(index, value):
+            return
+        self._items[index] = _vector_value(self.element, value, _converted)
+
+    def _assign_element(self, index: int, value: Any) -> bool:
+        if (type(index) is not int or type(value) is not self.element
+                or not _native_vector_value(self.element)):
+            return False
+        if not -len(self._items) <= index < len(self._items):
+            return False
+        target = self._items[index]
+        return _assign_vector_value(self.element, target, value, _converted)
 
     def __eq__(self, other: object) -> bool:
         try:
@@ -586,7 +615,7 @@ class _ObjectVector(_Container):
     __hash__ = None  # type: ignore[assignment]
 
     def push_back(self, value: Any) -> None:
-        self._items.append(_converted(self.element, value))
+        self._items.append(_vector_value(self.element, value, _converted))
 
     def emplace_back(self, *args: Any) -> None:
         """``emplace_back(args...)``: an element made of ``args`` - a thread started from a
@@ -622,10 +651,10 @@ class _ObjectVector(_Container):
         del self._items[size:]
         while len(self._items) < size:
             self._items.append(_default(self.element) if value is None else
-                               _converted(self.element, value))  # fmt: skip
+                               _vector_value(self.element, value, _converted))  # fmt: skip
 
     def assign(self, values: Iterable[Any]) -> None:
-        self._items = [_converted(self.element, value) for value in values]
+        self._items = [_vector_value(self.element, value, _converted) for value in values]
 
     def data(self) -> list[Any]:
         return self._items
@@ -701,9 +730,12 @@ def _vector_class(kind: Any) -> type:
     name = f"vector<{cpp_name(kind)}>"
     if isinstance(kind, np.dtype):
         members = {"dtype": kind, "value_type": cpp_name(kind), "__cpp_name__": name}
-        return type(name, (_Vector,), {"__slots__": (), **members})
+        made = _register_vector_value(type(name, (_Vector,), {"__slots__": (), **members}),
+                                      kind, True)
+        return _register_vector_assignment(made, "std", _NUMERIC_ASSIGN_READERS)
     members = {"element": kind, "value_type": cpp_name(kind), "__cpp_name__": name}
-    return type(name, (_ObjectVector,), {"__slots__": (), **members})
+    return _register_vector_value(type(name, (_ObjectVector,), {"__slots__": (), **members}),
+                                  kind, False)
 
 
 def _element(kind: Any, value: Any) -> Any:
