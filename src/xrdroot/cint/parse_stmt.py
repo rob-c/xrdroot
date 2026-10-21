@@ -131,7 +131,8 @@ class StmtParser(ExprParser):
         while True:
             where = self.where
             name, ctype = self.declarator(spec.ctype)
-            decl = VarDecl(where, name, ctype, static=spec.static)
+            decl = VarDecl(where, name, ctype, static=spec.static,
+                           storage=frozenset(spec.words & {"static", "thread_local", "extern"}))
             self.initializer(decl)
             self.declare(name)
             decls.append(decl)

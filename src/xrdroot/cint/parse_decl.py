@@ -274,7 +274,8 @@ class Parser(StmtParser):
         return self._variables(where, spec, qualified, self.dimensions(ctype))
 
     def _variables(self, where: Where, spec: Specifiers, name: str, ctype: CType) -> Stmt:
-        first = VarDecl(where, name, ctype, static=spec.static)
+        first = VarDecl(where, name, ctype, static=spec.static,
+                        storage=frozenset(spec.words & {"static", "thread_local", "extern"}))
         self.initializer(first)
         if self.at_(":"):
             raise self.refuse(f"the bit-field {name}, a member narrower than its type")
@@ -387,6 +388,7 @@ class Parser(StmtParser):
             func = Function(where, name, returns, params, None, scope, kind)
             func.static, func.variadic = spec.static, variadic
             func.virtual = "virtual" in spec.words
+            func.constant_evaluation = bool(spec.words & {"constexpr", "consteval"})
             self._qualifiers(func)
             if self.accept("="):
                 func.special = self.take().text

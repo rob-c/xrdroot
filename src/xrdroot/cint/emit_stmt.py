@@ -123,6 +123,9 @@ class StmtEmitter(CallEmitter):
         """The C++ type the function being written returns, or ``None``."""
         raise NotImplementedError
 
+    def return_local(self, node: Return) -> bool:
+        raise NotImplementedError
+
     def statement(self, node: Stmt) -> None:
         self._STATEMENTS[type(node)](self, node)
 
@@ -493,6 +496,8 @@ class StmtEmitter(CallEmitter):
         self.out.line("continue", node.where)
 
     def _return(self, node: Return) -> None:
+        if self.return_local(node):
+            return
         if node.value is None:
             self.out.line("return", node.where)
             return

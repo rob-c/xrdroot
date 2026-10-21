@@ -29,10 +29,12 @@ from .nodes import (
     Member,
     Name,
     New,
+    Return,
     This,
     Unary,
     VarDecl,
 )
+from .nrvo import Candidate
 from .program import walk
 from .symbols import Symbol
 
@@ -64,6 +66,8 @@ class Context:
     nonlocals: set[str] = field(default_factory=set)
     declared: set[int] = field(default_factory=set)
     cells: set[str] = field(default_factory=set)
+    nrvo_candidate: Candidate | None = None
+    nrvo_symbol: Symbol | None = None
 
 
 class VariableEmitter(StmtEmitter):
@@ -96,6 +100,28 @@ class VariableEmitter(StmtEmitter):
     def cell_names(self) -> set[str]:
         return self.contexts[-1].cells if self.contexts else set()
 
+    def return_local(self, node: Return) -> bool:
+        """An eligible tail keeps the exact local symbol, not a same-spelled name."""
+        if not self.contexts or not self._selected_return(self.contexts[-1], node):
+            return False
+        self.out.line(f"return {self.value(node.value)}", node.where)
+        return True
+
+    def _selected_return(self, context: Context, node: Return) -> bool:
+        selected = context.nrvo_candidate
+        if selected is None or node is not selected.tail:
+            return False
+        assert isinstance(node.value, Name)
+        symbol = self.symbol(node.value)
+        return symbol is not None and symbol is context.nrvo_symbol and symbol.alias is None
+
+    def _remember_return(self, decl: VarDecl, symbol: Symbol, destructs: bool) -> None:
+        context = self.contexts[-1]
+        if context.nrvo_candidate is not None and decl is context.nrvo_candidate.declaration:
+            context.nrvo_symbol = symbol
+        if destructs:
+            context.nrvo_candidate = None
+
     # -- declarations ------------------------------------------------------------
 
     def local_variable(self, decl: VarDecl) -> None:
@@ -115,6 +141,7 @@ class VariableEmitter(StmtEmitter):
         cell = decl.name in self.cell_names() and addressable(ctype)
         symbol = self.declare(decl.name, "local", ctype, cell=cell)
         self.write_variable(symbol, value, decl)
+        self._remember_return(decl, symbol, destructs)
         if destructs:
             assert self.destructed is not None
             self.destructed.append(symbol.py)

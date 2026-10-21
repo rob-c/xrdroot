@@ -18,6 +18,7 @@ from .base import Out, P
 from .ctype import CType
 from .emit_vars import Context, VariableEmitter, addressable
 from .nodes import Function, InitList, Lambda, Name, Param, VarDecl
+from .nrvo import candidate
 from .program import by_reference
 
 __all__ = ["FunctionEmitter", "kind_of"]
@@ -74,6 +75,7 @@ class FunctionEmitter(VariableEmitter):
     ) -> None:
         """``def py(...):`` and the body of ``func``, in a scope of its own."""
         context = Context(func, func.returns if func.kind != "constructor" else None)
+        context.nrvo_candidate = candidate(func, self.program, method)
         context.cells = self.program.cell_names(func)
         self.contexts.append(context)
         try:

@@ -259,6 +259,8 @@ class VarDecl(Stmt):
     binding: list[str] | None = None
     #: A data member's trailing ``//`` comment, which ROOT keeps as the member's title.
     comment: str = ""
+    #: Storage words matter even when no runtime storage model is needed.
+    storage: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(eq=False)
@@ -381,6 +383,8 @@ class Function(Stmt):
     special: str | None = None
     #: The template's value parameters, ``N`` of ``template <unsigned N>``, as parameters.
     values: list[Param] = field(default_factory=list)
+    #: Constant evaluation cannot use optional named return-value elision.
+    constant_evaluation: bool = False
 
 
 @dataclass(eq=False)

@@ -153,6 +153,7 @@ def _merged(declared: Function, defined: Function) -> Function:
             mine.name = theirs.name
     defined.static = defined.static or declared.static
     defined.virtual = defined.virtual or declared.virtual
+    defined.constant_evaluation |= declared.constant_evaluation
     return defined
 
 

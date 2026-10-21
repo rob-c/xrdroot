@@ -24,7 +24,8 @@ QUALIFIERS = frozenset(
 )
 
 #: The words among those that say something the translation keeps.
-KEPT = frozenset({"const", "constexpr", "static", "virtual", "friend", "explicit", "extern"})
+KEPT = frozenset({"const", "constexpr", "consteval", "static", "thread_local",
+                  "virtual", "friend", "explicit", "extern"})
 
 
 @dataclass
@@ -96,6 +97,8 @@ class TypeParser(Cursor):
             base = CType(builtin_name(builtin))
         if "const" in words or "constexpr" in words:
             base = replace(base, const=True)
+        if "volatile" in words:
+            base = replace(base, volatile=True)
         return base
 
     def _decltype(self) -> CType:

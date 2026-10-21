@@ -202,6 +202,8 @@ class CType:
     #: The typedef the name was written as, ``Double32_t``, when that is not the name: what
     #: a class's streamer says its member is, and how a packed float is told from a double.
     written: str = ""
+    #: Retained conservatively so copy elision never loses a volatile declaration.
+    volatile: bool = False
 
     # -- what kind of thing it is ------------------------------------------
 
