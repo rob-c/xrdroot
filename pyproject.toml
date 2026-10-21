@@ -200,3 +200,222 @@ module = ["matplotlib", "matplotlib.*", "numpy", "numpy.*"]
 follow_imports = "skip"
 follow_imports_for_stubs = true
 ignore_missing_imports = true
+
+
+# Internal ownership only: this remains one project and one distribution.
+[tool.xrdroot.components]
+schema = 1
+package = "xrdroot"
+source = "src/xrdroot"
+baseline = "tools/components-baseline.json"
+# Names added after Python 3.10; policy results must not vary with the tooling interpreter.
+stdlib = ["compression", "tomllib"]
+provider_registry = "xrdroot.plugins"
+provider_functions = ["xrdroot.plugins.lookup", "xrdroot.plugins.require"]
+# Upward dispatch is separately reviewed; it never grants a direct import edge.
+extensions = []
+
+[tool.xrdroot.components.groups]
+engines = ["cppstd", "core", "hist", "spectrum", "fits", "io", "rdf", "geom", "graphics", "roofit", "roostats", "histfactory", "tmva"]
+facade = ["cppstd", "core", "hist", "spectrum", "fits", "io", "rdf", "geom", "graphics", "roofit", "roostats", "histfactory", "tmva", "pyroot"]
+
+[tool.xrdroot.components.ownership.cppstd]
+modules = ["xrdroot.cppstd"]
+hard = ["numpy"]
+
+[tool.xrdroot.components.ownership.core]
+modules = ["xrdroot.errors", "xrdroot.buffer", "xrdroot.compression", "xrdroot.stdio", "xrdroot.limits", "xrdroot.random", "xrdroot.stats", "xrdroot.numerics", "xrdroot.cxx", "xrdroot.booking", "xrdroot.drawspec", "xrdroot.polybins", "xrdroot.xmldoc", "xrdroot.palette", "xrdroot.delaunay", "xrdroot.graphsmooth", "xrdroot.supsmu", "xrdroot.entries", "xrdroot.draw", "xrdroot.display", "xrdroot.library", "xrdroot.plugins", "xrdroot.jagged", "xrdroot.rootarrays", "xrdroot.notebook"]
+depends = ["cppstd"]
+hard = ["numpy", "xrdclient"]
+optional = ["lz4", "zstandard", "xxhash", "pandas", "awkward", "pyarrow", "polars", "hist", "boost_histogram"]
+
+[tool.xrdroot.components.ownership.hist]
+modules = ["xrdroot.hist", "xrdroot.arithmetic", "xrdroot.compare", "xrdroot.distribution", "xrdroot.efficiency", "xrdroot.filling", "xrdroot.fillrandom", "xrdroot.function", "xrdroot.moments", "xrdroot.profile", "xrdroot.reshaping", "xrdroot.slicing", "xrdroot.graph", "xrdroot.graphmath", "xrdroot.graph2d", "xrdroot.stacks", "xrdroot.sparse", "xrdroot.scatterplot", "xrdroot.formula", "xrdroot.fit", "xrdroot.mathformula"]
+depends = ["core"]
+hard = ["numpy"]
+optional = ["iminuit", "scipy", "hist"]
+
+[tool.xrdroot.components.ownership.spectrum]
+modules = ["xrdroot.spectrum"]
+depends = ["core"]
+hard = ["numpy"]
+
+[tool.xrdroot.components.ownership.fits]
+modules = ["xrdroot.fitsio"]
+depends = ["core"]
+hard = ["numpy"]
+
+[tool.xrdroot.components.ownership.io]
+modules = ["xrdroot.file", "xrdroot.streamers", "xrdroot.objects", "xrdroot.interp", "xrdroot.tree", "xrdroot.leaflist", "xrdroot.kinds", "xrdroot.known", "xrdroot.chain", "xrdroot.friends", "xrdroot.winfo", "xrdroot.writer", "xrdroot.wbranch", "xrdroot.wclasses", "xrdroot.wcolumns", "xrdroot.wmeasure", "xrdroot.wobjects", "xrdroot.wpacking", "xrdroot.wtree", "xrdroot.wupdate", "xrdroot.rntuple", "xrdroot.merging", "xrdroot.image", "xrdroot.remote", "xrdroot.drawable", "xrdroot.treedraw", "xrdroot.scan", "xrdroot.extending"]
+depends = ["core", "hist"]
+hard = ["numpy", "xrdclient"]
+optional = ["certifi", "PIL", "zstandard", "lz4", "xxhash", "matplotlib"]
+
+[tool.xrdroot.components.ownership.rdf]
+modules = ["xrdroot.rdf"]
+depends = ["core", "hist", "io"]
+hard = ["numpy"]
+
+[tool.xrdroot.components.ownership.geom]
+modules = ["xrdroot.geom"]
+depends = ["core"]
+hard = ["numpy"]
+optional = ["pyvista", "plotly"]
+
+[tool.xrdroot.components.ownership.graphics]
+modules = ["xrdroot.canvas", "xrdroot.plot"]
+depends = ["core", "hist", "geom"]
+hard = ["numpy"]
+optional = ["matplotlib", "plotly", "bokeh", "mplhep", "PIL"]
+
+[tool.xrdroot.components.ownership.roofit]
+modules = ["xrdroot.roofit"]
+depends = ["core", "hist", "cppstd"]
+hard = ["numpy"]
+optional = ["scipy", "iminuit"]
+
+[tool.xrdroot.components.ownership.roostats]
+modules = ["xrdroot.roostats"]
+depends = ["core", "hist", "roofit"]
+hard = ["numpy"]
+optional = ["scipy", "iminuit"]
+
+[tool.xrdroot.components.ownership.histfactory]
+modules = ["xrdroot.histfactory"]
+depends = ["core", "hist", "io", "roofit", "roostats"]
+hard = ["numpy"]
+
+[tool.xrdroot.components.ownership.tmva]
+modules = ["xrdroot.tmva"]
+depends = ["core", "hist", "io"]
+hard = ["numpy"]
+optional = ["sklearn", "scipy", "xgboost", "torch", "tensorflow", "pandas"]
+
+[tool.xrdroot.components.ownership.pyroot]
+modules = ["xrdroot.pyroot", "xrdroot.cint", "xrdroot.session"]
+depends = ["@engines"]
+hard = ["numpy"]
+optional = ["matplotlib", "scipy", "iminuit", "PIL", "skimage"]
+
+[tool.xrdroot.components.ownership.app]
+modules = ["xrdroot.cli", "xrdroot.__main__"]
+exact = ["xrdroot"]
+depends = ["@facade"]
+hard = ["numpy"]
+optional = ["IPython", "matplotlib"]
+
+# Exact source-reviewed dynamic sites. Each target is still checked against the
+# ordinary graph and external import policy; prefixes expand only installed
+# source modules in this same project. No new dependency is introduced here.
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.cli"
+scope = "_module"
+statement = "importlib.import_module(f'{__name__}.{name}')"
+prefixes = ["xrdroot.cli"]
+reason = "Subcommand dispatch uses COMMANDS and remains within the CLI package."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.geom.backends"
+scope = "library"
+statement = "importlib.import_module('plotly.graph_objects' if name == 'plotly' else name)"
+targets = ["plotly.graph_objects", "pyvista"]
+reason = "Existing geometry backend callers request plotly or pyvista from PACKAGES."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.library"
+scope = "_module"
+statement = "importlib.import_module(package)"
+targets = ["pandas", "awkward", "pyarrow", "polars"]
+reason = "PACKAGES[name] selects the four existing optional column libraries."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.plot.backends"
+scope = "backend"
+statement = "importlib.import_module(needs)"
+targets = ["matplotlib", "plotly", "bokeh"]
+reason = "BACKENDS supplies the guarded optional backend requirement."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.plot.backends"
+scope = "backend"
+statement = "importlib.import_module(f'{__name__}.{module}')"
+prefixes = ["xrdroot.plot.backends"]
+reason = "The fixed BACKENDS table names only modules beneath this backend package."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.pyroot"
+scope = "_gather"
+statement = "importlib.util.find_spec(f'{__name__}.{module}')"
+prefixes = ["xrdroot.pyroot"]
+reason = "SUBMODULES enumerates ROOT namespace families within pyroot."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.pyroot"
+scope = "_gather"
+statement = "importlib.import_module(f'{__name__}.{module}')"
+prefixes = ["xrdroot.pyroot"]
+reason = "The same fixed SUBMODULES table drives namespace loading after its probe."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.pyroot.core"
+scope = "_gather"
+statement = "importlib.import_module(f'{__name__}.{family}')"
+prefixes = ["xrdroot.pyroot.core"]
+reason = "FAMILIES enumerates core wrapper families in this same package."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.pyroot.core.troot"
+scope = "_graphics"
+statement = "importlib.util.find_spec(name)"
+prefixes = ["xrdroot.pyroot.graphics"]
+reason = "The graphics resolver starts at xrdroot.pyroot.graphics and descends attributes."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.pyroot.core.troot"
+scope = "_graphics"
+statement = "importlib.import_module(name)"
+prefixes = ["xrdroot.pyroot.graphics"]
+reason = "The graphics resolver imports the same wrapper namespace it probes."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.pyroot.core.troot"
+scope = "_submodule"
+statement = "importlib.import_module(name)"
+prefixes = ["xrdroot.pyroot.graphics"]
+reason = "_graphics alone delegates namespace descent to this private helper."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.roofit.io.models"
+scope = "_simple.make"
+statement = "importlib.import_module(f'xrdroot.roofit.{module}')"
+prefixes = ["xrdroot.roofit"]
+reason = "The fixed simple-model maker table selects RooFit implementation modules."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.roofit.registry"
+scope = "classes"
+statement = "importlib.import_module(f'xrdroot.roofit.{module}')"
+prefixes = ["xrdroot.roofit"]
+reason = "MODULES enumerates classes owned by the RooFit engine."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.roostats.registry"
+scope = "members"
+statement = "importlib.import_module(f'xrdroot.roostats.{module}')"
+prefixes = ["xrdroot.roostats"]
+reason = "MODULES enumerates members owned by the RooStats engine."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.tmva.methods.pymva"
+scope = "_PyMethod._made"
+statement = "importlib.import_module(module)"
+targets = ["sklearn.ensemble"]
+reason = "The three supported concrete estimators all select sklearn.ensemble."
+
+# This exact established low-level call preserves ROOT Contour's error-level behavior.
+[[tool.xrdroot.components.private_imports]]
+caller = "xrdroot.fit.minuit"
+scope = "contour"
+statement = "from iminuit._core import MnContours"
+target = "iminuit._core"
+reason = "ROOT Contour uses the minimum's exact error level; the public mncontour rescales confidence and can recompute HESSE. Preserve the existing algorithm."
