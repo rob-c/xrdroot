@@ -44,6 +44,9 @@ from . import stlrandom as _random
 
 __all__ = ["std"]
 
+#: Exact native NumPy storage; subclasses keep their indexing and item hooks.
+_ARRAY_TYPE = np.ndarray
+
 #: What ``find`` gives back when there is nothing to find: ``std::string::npos``.
 NPOS = 2**64 - 1
 
@@ -434,7 +437,17 @@ class _Vector(_Container):
     def __getitem__(self, index: Any) -> Any:
         if isinstance(index, slice):
             return self.data()[index].copy()
-        return self.data()[self._checked(index)].item()
+        values = self.data()
+        at = self._checked(index)
+        if (
+            type(values) is _ARRAY_TYPE
+            and values.ndim == 1
+            and values.dtype.kind in "biuf"
+            and type(at) is int
+            and -values.size <= at < values.size
+        ):
+            return values.item(at)
+        return values[at].item()
 
     def __setitem__(self, index: Any, value: Any) -> None:
         if isinstance(index, slice):  # std::sort's range, written back where it was

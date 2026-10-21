@@ -20,6 +20,8 @@ _PACKAGE = str(Path(__file__).parents[2]) + '/'
 _ITERATOR = inspect.getattr_static(Sequence, '__iter__')
 #: Generated numeric vectors contain metadata and inherit their behavior.
 _VECTOR_FIELDS = {'__slots__', 'dtype', 'value_type', '__cpp_name__', '__module__', '__doc__'}
+#: deepcopy caches inherited slot names on an otherwise unchanged concrete specialization.
+_VECTOR_COPY_FIELDS = _VECTOR_FIELDS | {'__slotnames__'}
 
 
 def _function(value: Any, module: str, name: str) -> bool:
@@ -129,11 +131,24 @@ def _template_base() -> bool:
             is inspect.getattr_static(object, '__init_subclass__'))
 
 
+def _vector_fields(kind: type[Any]) -> bool:
+    fields = vars(kind)
+    names = set(fields)
+    if names == _VECTOR_FIELDS:
+        return True
+    if names != _VECTOR_COPY_FIELDS:
+        return False
+    cached = fields['__slotnames__']
+    if type(cached) is not list or len(cached) != 2:
+        return False
+    return all(type(name) is str for name in cached) and cached == ['_data', '_size']
+
+
 def _vector(kind: Any) -> bool:
     if type(kind) is not type:
         return False
     bases = (rvec._RVec, np.lib.mixins.NDArrayOperatorsMixin, stl._Vector, stl._Container, object)
-    if kind.__mro__[1:] != bases or set(kind.__dict__) != _VECTOR_FIELDS:
+    if kind.__mro__[1:] != bases or not _vector_fields(kind):
         return False
     methods = all(_method(kind, name, 'xrdroot.pyroot.stl', '_Vector')
                   for name in ('__init__', '_construct', 'assign'))
