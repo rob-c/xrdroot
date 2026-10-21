@@ -52,7 +52,7 @@ def _ntuple(name: Any, place: Any) -> tuple[Any, Any]:
     reading = getattr(place, "_reading", None)
     if reading is not None:  # an open TFile
         return reading[str(name)], None
-    from ... import open_root
+    from ...file import open_root
 
     opened = open_root(str(place))
     return opened[str(name)], opened

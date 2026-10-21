@@ -556,7 +556,7 @@ class TFile(TDirectoryFile):
             self._write_file(name, exists and mode == "UPDATE")
 
     def _read_file(self, name: str) -> None:
-        from ... import open_root
+        from ...file import open_root
 
         try:
             self._reading = open_root(_fetched(name))
@@ -571,7 +571,8 @@ class TFile(TDirectoryFile):
         self._keys_from(self._reading)
 
     def _write_file(self, name: str, updating: bool) -> None:
-        from ... import create, update
+        from ...writer import create
+        from ...wupdate import update
 
         if updating:
             self._writing = update(name)

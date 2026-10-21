@@ -40,7 +40,7 @@ def _tree_of(tree: Any, where: Any) -> Any:
             f"a TTreeReader of {tree!r} needs the file it is in, as in TTreeReader({tree!r}, f)"
         )
     if isinstance(where, str):
-        from ... import open_root
+        from ...file import open_root
 
         where = open_root(where)
     found = where.Get(tree) if hasattr(where, "Get") else where[tree]

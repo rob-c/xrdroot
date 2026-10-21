@@ -220,7 +220,8 @@ class RDataFrame:
 
 def _from_numpy(columns: dict[str, Any]) -> RDataFrame:
     """``RDF.FromNumpy``: a frame of a dict of arrays, a column per key."""
-    from ... import create, open_root
+    from ...file import open_root
+    from ...writer import create
 
     buffer = io.BytesIO()
     with create(buffer) as out:

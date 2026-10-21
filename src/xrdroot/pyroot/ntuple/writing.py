@@ -137,7 +137,7 @@ class _Sink:
 def _directory(place: Any, options: RNTupleWriteOptions) -> tuple[Any, Any]:
     """Where the RNTuple goes, and the file to close after it if the writer made one."""
     if isinstance(place, str) or hasattr(place, "__fspath__"):
-        from ... import create
+        from ...writer import create
 
         made = create(str(place), **options.file_options())
         return made, made

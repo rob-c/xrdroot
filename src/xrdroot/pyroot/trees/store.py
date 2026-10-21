@@ -266,7 +266,8 @@ def memory_tree(name: str, write: Any, compression: tuple[str | None, int | None
     compress it - ROOT's zlib at level 1 unless that file says otherwise - so
     what its baskets took on file is what they will take.
     """
-    from ... import create, open_root
+    from ...file import open_root
+    from ...writer import create
 
     algorithm, level = compression
     buffer = io.BytesIO()

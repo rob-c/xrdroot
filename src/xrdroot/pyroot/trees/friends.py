@@ -113,7 +113,7 @@ def _is_number(text: str) -> bool:
 
 def _opened(name: str, filename: Any) -> tuple[Any, str]:
     """The tree ``AddFriend("alias=name", "file.root")`` names, and the alias it is under."""
-    from ... import open_root
+    from ...file import open_root
     from . import wrap
 
     alias, _, tree_name = name.rpartition("=")
