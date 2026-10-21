@@ -4,7 +4,7 @@
       "key": "",
       "kind": "forwarder",
       "lazy": true,
-      "line": 40,
+      "line": 189,
       "module": "xrdroot.plugins",
       "path": "src/xrdroot/plugins.py",
       "point": "<dynamic>",
@@ -14,14 +14,14 @@
       "target": "*"
     }
   ],
-  "policy_sha256": "571c9ed6270f0935464b0b0a960372c8d3de8f1ccbf3679e3a65798834bc7535",
+  "policy_sha256": "a1d8559fd370b83dee6f986218a4183a6f2a7eb8bd33cbe5fc98b6cc681e81d7",
   "registrations": [],
   "review": {
     "decision": "Current component debt independently reviewed; permit no new violations and shrink every resolved allowance. This approves the measured debt inventory only, not runtime behavior, tutorial parity or publication.",
     "independent_review_sha256": "fdfb988bfd681b50f195cbabd371541326ade5597fc5a27cf116f3cfc497e2e9",
-    "initial_inventory_sha256": "efd6572f85559ff227681f3846b07b61a691f844cbb08438b43c6e06ba2ef729",
-    "preserved_violation_count": 41,
-    "source_map_before_baseline_sha256": "3b43c61cab2d18d482acd4ad3067cb2ef992d5f7d97515f6599d5112b1ba4e2a",
+    "initial_inventory_sha256": "c7b0fff172e371f3c0ed7ac09cc9d41650410c84a6eb5192980ef66ebf83b9fc",
+    "preserved_violation_count": 36,
+    "source_map_before_baseline_sha256": "2870df85aaaf47222e2e38c9527c08c3b3a4ab2c70fe09d1a3616343bff8d7df",
     "visible_reviewed_private_import_count": 1
   },
   "reviewed": true,
@@ -43,7 +43,7 @@
     "src/xrdroot/arithmetic.py": "18be391779458000d0782daf2655e2b85c424fe689e7661fffc2d4487c32db64",
     "src/xrdroot/booking.py": "3386e607d5995da05ac64b2f221265e6cb63ad57a0abe1d89bf416fc73778a19",
     "src/xrdroot/buffer.py": "1a06f7e1c8efa771283ed822b873d33f151ae2870491bc188a8b9550a4dad789",
-    "src/xrdroot/canvas/__init__.py": "2c458a37cd6db0a42c4d1ca17c7602ff278fb495c8cf5dd7832ffa57de90f50f",
+    "src/xrdroot/canvas/__init__.py": "0790ea4e5970fc5c147c9f528ba4911d113bb1ab5485575b9b808b9fce2dae0d",
     "src/xrdroot/canvas/axis.py": "b045fa7b0c495fd61abf27ac38662f1d180c8c76fe9d5cf78a4a28868ca16528",
     "src/xrdroot/canvas/colors.py": "426335da9bcfeaea46ad4b872a6b4714eadf810a76ba5532b4428cbc6bb321e9",
     "src/xrdroot/canvas/contour.py": "52b8a3412dd754112a0e993206ded0b79756589acbcab43c36f54f80fee31369",
@@ -80,7 +80,7 @@
     "src/xrdroot/canvas/scene.py": "580bb2c98c00455309e230e028b88864bcd2ccca0197e1c3dd2fe722c67eb778",
     "src/xrdroot/canvas/shapes.py": "6598f6c656d04d7ea0643b43d5fd71eba56f75b0898b276885f195e9b34aeacc",
     "src/xrdroot/canvas/statbox.py": "36afaa105ae42a60ae7fd92c2a167c86c5974e5b1265835c9945df57eaf8a212",
-    "src/xrdroot/canvas/streamer.py": "09fd9f2b8886a998b23a4f623198d0666fa20ff024580fca8e3b7800895e252a",
+    "src/xrdroot/canvas/streamer.py": "baaa4383ea3996c3122ee2dd6b0471b024078aa5f9b697ce157df1fd9b2dfdcc",
     "src/xrdroot/canvas/styles.py": "60b9037db7a77b129724d99a8cd39bc75243829973c22caab26b88a7171ea2d3",
     "src/xrdroot/canvas/text.py": "f8eaa18c2cc6371e649552183ebb53fc23006b51ae944f6732069bf9888552cb",
     "src/xrdroot/canvas/view3d.py": "3c34478dfec013efde55fd2aefd3dfa700609fef44b2d499ee079daa3f10f5d3",
@@ -163,7 +163,7 @@
     "src/xrdroot/entries.py": "45f1b270ec4c5cfa7d84387b14fc0a12ccd719ee0691c08120223019a41dedb4",
     "src/xrdroot/errors.py": "70aba0c6d08edbc0b5e9f75cda78ef7972cd53ab1d66a091a5baa7306efcd9eb",
     "src/xrdroot/extending.py": "7e4754d8fdf4ed21ec8e3ba05aefef1861ef2f237d45ae93f3d1554141770c44",
-    "src/xrdroot/file.py": "88b22452a875d22e5b6f4eacf9613b34ef967142767df23d044d98dbfa54f574",
+    "src/xrdroot/file.py": "123900fec0135a9849e3a07d27bc0841d210d357019053d40685486aa391a6ab",
     "src/xrdroot/filling.py": "5a3992930fc28bc9f4e77a9593c7968cc1f63c119945e98d4af370c9a7d49120",
     "src/xrdroot/fillrandom.py": "2ccdfbe81862c86278d29a20c3daa9f3cdf9777d5f066e99086709c2c9f9e87b",
     "src/xrdroot/fit/__init__.py": "b66007dc9c3729476ff36241b514d1bc325554f953e0e5e26ddb28c29d95a421",
@@ -246,9 +246,9 @@
     "src/xrdroot/histfactory/systematics.py": "29155fc4b93722d8e4ec6705b4222006c5ea11d3bfcfe28d71950e1357551296",
     "src/xrdroot/histfactory/terms.py": "1fc135ebd5ecdb7098dfa70a5dcc40b17210e8773d2a2e75e3796f231c844dab",
     "src/xrdroot/image.py": "fd700587abb868c83fb7fbec2fa69e1593e44d88076b017e4a1dcc153e5727ef",
-    "src/xrdroot/interp.py": "a2c50378a1207f4d15d316f6239af6a765a270cbb136126b00f9dc34076f9235",
+    "src/xrdroot/interp.py": "45d7b26f3f06aba7d6d22714ba310b08c0c959099e53f9e565208216da70848c",
     "src/xrdroot/jagged.py": "bc0df30363378845e9b629615cc86141d7ef92240e2196a2d654ff507cc44f61",
-    "src/xrdroot/kinds.py": "a45b47bf55ac50fd5bc015b45219c9f8068da96884f9701c21787d6496e5d90b",
+    "src/xrdroot/kinds.py": "442f853b7435878b0ed598f59e66919a79cc3ec70694b62bc1d244d32432f9b1",
     "src/xrdroot/known.py": "549d77fadac35b8888b159d1874df7476218ddd69bceea5091341081f0b45be9",
     "src/xrdroot/leaflist.py": "4e1314a11e1479359798aaf556f81b9b64795793f0916ea5449c6e6a9f304a4c",
     "src/xrdroot/library.py": "50915c2d31721941477b4dfdf394e914899e5e2143bb2026d36b07bfdcdfd108",
@@ -298,7 +298,7 @@
     "src/xrdroot/plot/scatter.py": "2f610c50af17d2030aeafad797afbccebc877b829d1b5b04af1b23ed3aa041a6",
     "src/xrdroot/plot/smooth.py": "cd5252210e495633b763675c2d2c5a1db7c395b478070e02da76ce839f5b3a83",
     "src/xrdroot/plot/styles.py": "cb1daa57f7618896b9baca757a050eaad1d2e1d21f0588c981f697df840cde15",
-    "src/xrdroot/plugins.py": "318b387368902a6e4b5ad9e9d7e27f04225a555e0a448ae7980bf5f5837d25d0",
+    "src/xrdroot/plugins.py": "c8aca5e615c9eacabe7161f7880855f744b983f00d330a823f899da318c7be84",
     "src/xrdroot/polybins.py": "1bc46c06667260d15846d77aba90339d2f887763a097cfca57f8ff1303e2d8b6",
     "src/xrdroot/profile.py": "f0190fe203c000a8436188b578b3de2cd4fe89788dfdbecb8c19b07d4134737c",
     "src/xrdroot/pyroot/__init__.py": "28e6a6b8075b11ca9870d1253c6893cbe313e0a1e835e45b2cee0569f87b8369",
@@ -618,7 +618,7 @@
     "src/xrdroot/roofit/io/models.py": "6b5e733e39ad1849806c392aaca0288fc1491ee4bfcc5b8a00117b1dbd43836f",
     "src/xrdroot/roofit/io/stream.py": "e32a145cd80287bf8cdb037abb7357927cb772b0341a1c3cc99f4c090ccac40c",
     "src/xrdroot/roofit/io/variables.py": "98463ec9440834ff6b2ab2040c51c0942187520ccd6d5709c845141b83d4211b",
-    "src/xrdroot/roofit/io/workspace.py": "b37d00ea4780f248bb2cb24d51ba43c3f817ba1f4ee638ad2d786e7dda54ea1f",
+    "src/xrdroot/roofit/io/workspace.py": "bbe5b2700a03229c305d681e3fea588ccbc8b68903dcfdf7fe823ff0e31c8c0c",
     "src/xrdroot/roofit/kernels.py": "05db34529298c7f46b8364e92776df849d52aae4c37f2da5d955b8e0cd93d1d2",
     "src/xrdroot/roofit/kronrod.py": "b5a23d5c2e528069f4fa1f1cf5a13a2b3cc72e8794abff18e81b17f0c77a5eb4",
     "src/xrdroot/roofit/kronrodrules.py": "a6a9b1fa543c81fbfc63f7aa0c92f1dc441eebe8ad07fdf287f719644214247d",
@@ -726,6 +726,7 @@
     "src/xrdroot/roostats/teststats.py": "68d896b13eb18d45ff717a8bb4ad72ee086832b1106acf918e6a4e309f3f43f5",
     "src/xrdroot/roostats/toymc.py": "d8b887800eb2c5a2ec1ade1e7513d3946081ad86b0d79ee0c0e64f90b2750081",
     "src/xrdroot/roostats/utils.py": "92e9c7893e1be78c2dbd5d3d93e4d554792f6fcd9b4f9c448d9e60bdec413f6e",
+    "src/xrdroot/roostats/workspaceio.py": "93a8dd644070da497090dd95255dae93c338b91dba632047e6c7684e8c9eb613",
     "src/xrdroot/rootarrays.py": "b6dbf59eb78dc7f9e01e536442c5ac3572c3d1d46021d42168a7cf59a347d770",
     "src/xrdroot/scan.py": "10f3f5c807b3a5ca037f8dcbac8d87402e9f615875a0a304b618b4cdb8cb02db",
     "src/xrdroot/scatterplot.py": "ff3b3b750d6595e2bc206b9cc29e134bd9286fbaa44da94dd8501e4d2f7a4a1d",
@@ -864,15 +865,6 @@
   },
   "violations": [
     {
-      "component": "io",
-      "line": 342,
-      "path": "src/xrdroot/file.py",
-      "rule": "edge",
-      "scope": "Directory._read",
-      "statement": "from .roofit.io.workspace import read_workspace",
-      "target": "xrdroot.roofit.io.workspace"
-    },
-    {
       "component": "geom",
       "line": 45,
       "path": "src/xrdroot/geom/backends.py",
@@ -972,33 +964,6 @@
       "target": "xrdroot.pyroot.core.hists"
     },
     {
-      "component": "io",
-      "line": 736,
-      "path": "src/xrdroot/interp.py",
-      "rule": "edge",
-      "scope": "_by_hand",
-      "statement": "from .canvas.streamer import STREAMED",
-      "target": "xrdroot.canvas.streamer"
-    },
-    {
-      "component": "io",
-      "line": 754,
-      "path": "src/xrdroot/interp.py",
-      "rule": "edge",
-      "scope": "_description",
-      "statement": "from .histfactory.layouts import described",
-      "target": "xrdroot.histfactory.layouts"
-    },
-    {
-      "component": "io",
-      "line": 19,
-      "path": "src/xrdroot/kinds.py",
-      "rule": "edge",
-      "scope": "",
-      "statement": "from .canvas import CANVASES",
-      "target": "xrdroot.canvas"
-    },
-    {
       "component": "roofit",
       "line": 53,
       "path": "src/xrdroot/roofit/bindings.py",
@@ -1033,15 +998,6 @@
       "scope": "contour",
       "statement": "from ...pyroot.graphics.shapes import TMarker",
       "target": "xrdroot.pyroot.graphics.shapes"
-    },
-    {
-      "component": "roofit",
-      "line": 77,
-      "path": "src/xrdroot/roofit/io/workspace.py",
-      "rule": "edge",
-      "scope": "_model_config",
-      "statement": "from ...roostats.modelconfig import ModelConfig",
-      "target": "xrdroot.roostats.modelconfig"
     },
     {
       "component": "roofit",

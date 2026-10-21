@@ -281,3 +281,35 @@ def test_a_workspace_carrying_code_for_classes_the_engine_lacks_is_refused() -> 
 def test_the_readers_by_hand_are_installed_where_the_reader_looks() -> None:
     custom.install()
     assert data.__all__ == [] and variables.__all__ == [] and "RooGaussian" in models.SIMPLE
+
+
+def test_the_registered_model_config_maker_uses_its_provider_without_changing_the_registry(
+        monkeypatch: Any) -> None:
+    from xrdroot.roofit.io.build import MAKERS
+
+    before = dict(MAKERS)
+    value, record, builder, calls = object(), made_of("RooStats::ModelConfig", "mc"), Builder(), []
+
+    def required(point: str, key: str) -> Any:
+        calls.append((point, key))
+        return lambda source, streamed: value if source is builder and streamed is record else None
+
+    monkeypatch.setattr(workspace, "require", required)
+    assert MAKERS["RooStats::ModelConfig"] is workspace._model_config
+    assert builder.node(record) is value
+    assert builder.node(record) is value
+    assert calls == [("workspace.maker", "RooStats::ModelConfig")]
+    assert MAKERS == before
+
+
+def test_the_roostats_maker_keeps_names_and_does_not_register_itself() -> None:
+    from xrdroot.roofit.io.build import MAKERS
+    from xrdroot.roostats.workspaceio import make_model_config
+
+    before = dict(MAKERS)
+    record = made_of("RooStats::ModelConfig", "mc", fPdfName="pdf", fPOIName="poi")
+    made = make_model_config(Builder(), record)
+    assert (made.GetName(), made.GetTitle()) == ("mc", "mc title")
+    assert made._names["Pdf"] == "pdf" and made._names["POI"] == "poi"
+    assert made._names["PriorPdf"] == ""
+    assert MAKERS == before

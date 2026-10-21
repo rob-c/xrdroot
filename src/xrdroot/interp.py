@@ -21,6 +21,7 @@ import numpy as np
 from .buffer import Buffer, as_datetime, gather, numbers
 from .cxx import SEQUENCES, Mapping, Pair, Prim, Seq, Str, parse, py_name
 from .errors import FormatError, UnsupportedFeatureError
+from .plugins import lookup, lookup_loaded
 from .rootarrays import ARRAYS as ARRAYS
 
 if TYPE_CHECKING:
@@ -687,9 +688,9 @@ def _shown(name: str, read: Callable[[Buffer], Any]) -> Callable[[Buffer], Any]:
     like this: a base written into a derived object stays a plain ``dict``,
     because the members of the derived class count on reaching into it.
     """
-    from .kinds import CLASSES, dress
+    from .kinds import _known, dress
 
-    if name in CLASSES:
+    if _known(name):
         return lambda buf: dress(name, read(buf))
     return read
 
@@ -733,11 +734,15 @@ def _by_hand(name: str, source: Source, seen: tuple[str, ...]) -> Callable[[Buff
     or :mod:`.image`, and handed a way to read the described classes it is
     made of.
     """
-    from .canvas.streamer import STREAMED
     from .image import IMAGES
     from .known import KNOWN
 
-    make = STREAMED.get(name) or IMAGES.get(name)
+    streamed = lookup("canvas.streamer", name)
+    if streamed is None:
+        streamed = lookup_loaded("canvas.streamer.custom")
+    make: Callable[[Any], Callable[[Buffer], Any]] | None = (
+        None if streamed is None else streamed(name)
+    ) or IMAGES.get(name)
     if make is None and source.streamers().get(name) is None:
         make = KNOWN.get(name)  # the file's own description comes first
     if make is None:
@@ -751,9 +756,8 @@ def _description(source: Source, name: str) -> dict[str, Member] | None:
     dictionary does, which is the only account of it there is."""
     found = source.streamers().get(name)
     if found is None:
-        from .histfactory.layouts import described
-
-        found = described().get(name)
+        described = lookup("io.layouts", name)
+        found = None if described is None else described().get(name)
     return found
 
 

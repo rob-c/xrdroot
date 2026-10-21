@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...errors import UnsupportedFeatureError
+from ...plugins import require
 from .build import MAKERS, Builder, maker, name_of, title_of
 from .stream import Streamed
 
@@ -73,20 +74,8 @@ def _read_sets(builder: Builder, record: Streamed, made: Any) -> None:
 
 @maker("RooStats::ModelConfig")
 def _model_config(builder: Builder, record: Streamed) -> Any:
-    """The names of the density and the sets, in the workspace being read."""
-    from ...roostats.modelconfig import ModelConfig
-
-    made = ModelConfig(name_of(record), title_of(record))
-    for key, member in (("Pdf", "fPdfName"), ("PriorPdf", "fPriorPdfName"),
-                        ("ProtoData", "fProtoDataName"), ("Snapshot", "fSnapshotName"),
-                        ("POI", "fPOIName"), ("NuisParams", "fNuisParamsName"),
-                        ("ConstrainedParams", "fConstrParamsName"),
-                        ("Observables", "fObservablesName"),
-                        ("ConditionalObservables", "fConditionalObsName"),
-                        ("GlobalObservables", "fGlobalObsName"),
-                        ("ExternalConstraints", "fExtConstraintsName")):  # fmt: skip
-        made._names[key] = str(record.get(member) or "")
-    return made
+    """Keep the registered maker while resolving the RooStats implementation lazily."""
+    return require("workspace.maker", "RooStats::ModelConfig")(builder, record)
 
 
 def read_workspace(buf: Any, infos: Any) -> Any:

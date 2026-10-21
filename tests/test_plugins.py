@@ -53,3 +53,21 @@ def test_a_broken_declared_provider_keeps_its_import_error(monkeypatch):
     monkeypatch.setattr(plugins, "importlib", SimpleNamespace(import_module=missing))
     with pytest.raises(ImportError, match=r"Cannot import xrdroot.plot"):
         plugins.require("display.plot")
+
+
+def test_loaded_lookup_never_imports_an_absent_provider_module(monkeypatch):
+    def unexpected(name):
+        raise AssertionError(f"Unexpected provider import: {name}")
+
+    monkeypatch.setattr(plugins, "importlib", SimpleNamespace(import_module=unexpected))
+    monkeypatch.setitem(
+        plugins.PROVIDERS, ("loaded", "test"), ("graphics", "test.provider", "draw")
+    )
+    monkeypatch.delitem(plugins.sys.modules, "test.provider", raising=False)
+    assert plugins.lookup_loaded("unknown") is None
+    assert plugins.lookup_loaded("loaded", "test") is None
+    marker = object()
+    monkeypatch.setitem(plugins.sys.modules, "test.provider", SimpleNamespace(draw=lambda: marker))
+    assert plugins.lookup_loaded("loaded", "test")() is marker
+    monkeypatch.setitem(plugins.sys.modules, "test.provider", None)
+    assert plugins.lookup_loaded("loaded", "test") is None

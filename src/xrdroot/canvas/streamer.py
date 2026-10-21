@@ -83,3 +83,8 @@ STREAMED: dict[str, Callable[[Described], Callable[[Buffer], Any]]] = {
     "TCanvas": read_canvas,
     "TQObject": read_nothing,
 }
+
+
+def streamer_for(name: str) -> Callable[[Described], Callable[[Buffer], Any]] | None:
+    """Use the current streamer table, including explicit replacements or removals."""
+    return STREAMED.get(name)

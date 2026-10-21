@@ -51,3 +51,8 @@ def render(obj: Any, path: Any, **options: Any) -> Any:
             f"{type(obj).__name__}; draw it with its own .plot() instead"
         )
     return obj.save(path, **options)
+
+
+def class_registry() -> dict[str, type]:
+    """Expose the current dressing table without discarding explicit caller changes."""
+    return CANVASES

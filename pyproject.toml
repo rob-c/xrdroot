@@ -211,11 +211,20 @@ baseline = "tools/components-baseline.json"
 # Names added after Python 3.10; policy results must not vary with the tooling interpreter.
 stdlib = ["compression", "tomllib"]
 provider_registry = "xrdroot.plugins"
-provider_functions = ["xrdroot.plugins.lookup", "xrdroot.plugins.require"]
+provider_functions = ["xrdroot.plugins.lookup", "xrdroot.plugins.require", "xrdroot.plugins.lookup_loaded"]
 # Upward dispatch is separately reviewed; it never grants a direct import edge.
 extensions = [
     { caller = "xrdroot.display", point = "display.plot", provider = "graphics", target = "xrdroot.plot:plot" },
     { caller = "xrdroot.display", point = "display.html", provider = "graphics", target = "xrdroot.plot.notebook:figure" },
+    { caller = "xrdroot.file", point = "io.workspace", provider = "roofit", target = "xrdroot.roofit.io.workspace:read_workspace" },
+    { caller = "xrdroot.interp", point = "canvas.streamer", provider = "graphics", target = "xrdroot.canvas.streamer:streamer_for" },
+    { caller = "xrdroot.kinds", point = "canvas.dress", provider = "graphics", target = "xrdroot.canvas:Canvas" },
+    { caller = "xrdroot.kinds", point = "canvas.dress", provider = "graphics", target = "xrdroot.canvas:Pad" },
+    { caller = "xrdroot.kinds", point = "canvas.dress", provider = "graphics", target = "xrdroot.canvas:Primitive" },
+    { caller = "xrdroot.interp", point = "io.layouts", provider = "histfactory", target = "xrdroot.histfactory.layouts:described" },
+    { caller = "xrdroot.roofit.io.workspace", point = "workspace.maker", provider = "roostats", target = "xrdroot.roostats.workspaceio:make_model_config" },
+    { caller = "xrdroot.interp", point = "canvas.streamer.custom", provider = "graphics", target = "xrdroot.canvas.streamer:streamer_for" },
+    { caller = "xrdroot.kinds", point = "canvas.classes", provider = "graphics", target = "xrdroot.canvas:class_registry" },
 ]
 
 [tool.xrdroot.components.groups]

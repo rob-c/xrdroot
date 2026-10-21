@@ -7,17 +7,166 @@ target does not discover packages or retain objects whose module may be replaced
 from __future__ import annotations
 
 import importlib
+import sys
 from collections.abc import Callable
 from typing import Any, cast
 
 from .errors import UnsupportedFeatureError
 
-__all__ = ["PROVIDERS", "keys", "lookup", "require"]
+__all__ = ["PROVIDERS", "keys", "lookup", "lookup_loaded", "require"]
 
 #: Extension point and key against the owning component, module and attribute.
 PROVIDERS: dict[tuple[str, str], tuple[str, str, str]] = {
     ("display.plot", "default"): ("graphics", "xrdroot.plot", "plot"),
     ("display.html", "default"): ("graphics", "xrdroot.plot.notebook", "figure"),
+    ('io.workspace', 'RooWorkspace'): (
+        'roofit', 'xrdroot.roofit.io.workspace', 'read_workspace',
+    ),
+    ('canvas.streamer', 'TCanvas'): (
+        'graphics', 'xrdroot.canvas.streamer', 'streamer_for',
+    ),
+    ('canvas.streamer', 'TQObject'): (
+        'graphics', 'xrdroot.canvas.streamer', 'streamer_for',
+    ),
+    ('canvas.dress', 'TCanvas'): (
+        'graphics', 'xrdroot.canvas', 'Canvas',
+    ),
+    ('canvas.dress', 'TPad'): (
+        'graphics', 'xrdroot.canvas', 'Pad',
+    ),
+    ('canvas.dress', 'TFrame'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TPave'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TPaveText'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TPavesText'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TPaveLabel'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TPaveStats'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TDiamond'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TPaletteAxis'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TLegend'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TLegendEntry'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TText'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TLatex'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TLine'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TArrow'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TBox'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TWbox'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TEllipse'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TArc'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TCrown'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TMarker'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TPolyLine'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TCurlyLine'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TCurlyArc'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TPolyMarker'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TGaxis'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('canvas.dress', 'TColor'): (
+        'graphics', 'xrdroot.canvas', 'Primitive',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::Measurement'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::Channel'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::Data'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::HistRef'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::StatErrorConfig'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::Sample'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::OverallSys'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::NormFactor'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::HistogramUncertaintyBase'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::HistoSys'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::HistoFactor'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::ShapeSys'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::ShapeFactor'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::StatError'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::PreprocessFunction'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('io.layouts', 'RooStats::HistFactory::Asimov'): (
+        'histfactory', 'xrdroot.histfactory.layouts', 'described',
+    ),
+    ('workspace.maker', 'RooStats::ModelConfig'): (
+        'roostats', 'xrdroot.roostats.workspaceio', 'make_model_config',
+    ),
+    ("canvas.streamer.custom", "default"): (
+        "graphics", "xrdroot.canvas.streamer", "streamer_for",
+    ),
+    ("canvas.classes", "default"): ("graphics", "xrdroot.canvas", "class_registry"),
 }
 
 
@@ -41,3 +190,13 @@ def require(point: str, key: str = "default") -> Callable[..., Any]:
     if found is None:
         raise UnsupportedFeatureError(f"No provider is registered for {point!r} with key {key!r}.")
     return found
+
+
+def lookup_loaded(point: str, key: str = "default") -> Callable[..., Any] | None:
+    """Resolve an already-loaded provider without importing a component for fallback."""
+    target = PROVIDERS.get((point, key))
+    if target is None:
+        return None
+    _, module, attribute = target
+    loaded = sys.modules.get(module)
+    return None if loaded is None else cast(Callable[..., Any], getattr(loaded, attribute))
