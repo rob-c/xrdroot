@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -30,8 +30,10 @@ from .booking import FILL, LINE, MARKER, split_title
 from .display import Displayed
 from .errors import FormatError, UnsupportedFeatureError
 from .filling import arrays, fill_histogram
-from .hist import Histogram
 from .moments import statistics as get_stats
+
+if TYPE_CHECKING:
+    from .hist import Histogram
 
 __all__ = ["EFFICIENCIES", "METHODS", "Efficiency", "beta_quantile", "regularized_beta"]
 
@@ -313,6 +315,8 @@ class Efficiency(Displayed):
     __slots__ = ("classname", "members", "passed", "total")
 
     def __init__(self, classname: str, members: dict[str, Any]) -> None:
+        from .hist import Histogram
+
         passed, total = members.get("fPassedHistogram"), members.get("fTotalHistogram")
         if not isinstance(passed, Histogram) or not isinstance(total, Histogram):
             raise FormatError(f"a {classname} was written without its two histograms")
@@ -480,6 +484,8 @@ class Efficiency(Displayed):
         after it - and the settings are ROOT's defaults: Clopper-Pearson at
         one sigma, and a flat prior.
         """
+        from .hist import Histogram
+
         main, _titles = split_title(title)
         total = Histogram.book(f"{name}_total", *axes, title=_suffixed(title, " (total)"))
         passed = Histogram.book(f"{name}_passed", *axes, title=_suffixed(title, " (passed)"))
@@ -497,6 +503,8 @@ class Efficiency(Displayed):
         ``name`` or, as ROOT calls it, ``total``'s name with ``_clone`` after.
         Histograms filled with weights make an efficiency that says so.
         """
+        from .hist import Histogram
+
         for histogram in (passed, total):
             if not isinstance(histogram, Histogram) or histogram.kind != "COUNT":
                 raise TypeError(

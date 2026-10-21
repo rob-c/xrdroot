@@ -71,34 +71,159 @@ is there; it is a separate package that builds on this one.
 
 from __future__ import annotations
 
-from typing import Any
+import sys as _sys
+from importlib import import_module as _import_module
+from types import ModuleType as _ModuleType
+from typing import TYPE_CHECKING, Any
 
-from . import fit, plot, stats
-from .canvas import Canvas
-from .chain import Chain, ChainedBranch, chain
-from .efficiency import Efficiency
-from .entries import EntryList
-from .errors import FormatError, ROOTError, UnsupportedFeatureError
-from .file import Directory, Key, ROOTFile, open_root
-from .fit import FitResult
-from .formula import Formula, FormulaError, compile_formula
-from .function import Function
-from .graph import Graph
-from .hist import Axis, Histogram
-from .image import Image
-from .merging import Merged, MergeWarning, copy, merge
-from .profile import Profile
-from .random import TRandom3, gRandom
-from .rdf import EnableImplicitMT, RDataFrame, RunGraphs
-from .rntuple import RField, RNTuple, WritableRNTuple
-from .session import gDirectory, gROOT
-from .slicing import loc, overflow, rebin, underflow
-from .sparse import SparseHistogram
-from .stacks import MultiGraph, Stack
-from .tree import Branch, Group, Jagged, TTree
-from .writer import WritableDirectory, WritableFile, create
-from .wtree import WritableTree
-from .wupdate import update
+if TYPE_CHECKING:
+    from . import fit, plot, stats
+    from .canvas import Canvas
+    from .chain import Chain, ChainedBranch, chain
+    from .efficiency import Efficiency
+    from .entries import EntryList
+    from .errors import FormatError, ROOTError, UnsupportedFeatureError
+    from .file import Directory, Key, ROOTFile, open_root
+    from .fit import FitResult
+    from .formula import Formula, FormulaError, compile_formula
+    from .function import Function
+    from .graph import Graph
+    from .hist import Axis, Histogram
+    from .image import Image
+    from .merging import Merged, MergeWarning, copy, merge
+    from .profile import Profile
+    from .random import TRandom3, gRandom
+    from .rdf import EnableImplicitMT, RDataFrame, RunGraphs
+    from .rntuple import RField, RNTuple, WritableRNTuple
+    from .session import gDirectory, gROOT
+    from .slicing import loc, overflow, rebin, underflow
+    from .sparse import SparseHistogram
+    from .stacks import MultiGraph, Stack
+    from .tree import Branch, Group, Jagged, TTree
+    from .writer import WritableDirectory, WritableFile, create
+    from .wtree import WritableTree
+    from .wupdate import update
+
+#: Export origins keep importing the package independent of engines and transport.
+_EXPORTS: dict[str, tuple[str, str]] = {
+    name: (module, name)
+    for module, names in {
+        "canvas": ("Canvas",),
+        "chain": ("Chain", "ChainedBranch", "chain"),
+        "efficiency": ("Efficiency",),
+        "entries": ("EntryList",),
+        "errors": ("FormatError", "ROOTError", "UnsupportedFeatureError"),
+        "file": ("Directory", "Key", "ROOTFile", "open_root"),
+        "fit": ("FitResult",),
+        "formula": ("Formula", "FormulaError", "compile_formula"),
+        "function": ("Function",),
+        "graph": ("Graph",),
+        "hist": ("Axis", "Histogram"),
+        "image": ("Image",),
+        "merging": ("Merged", "MergeWarning", "copy", "merge"),
+        "profile": ("Profile",),
+        "random": ("TRandom3", "gRandom"),
+        "rdf": ("EnableImplicitMT", "RDataFrame", "RunGraphs"),
+        "rntuple": ("RField", "RNTuple", "WritableRNTuple"),
+        "session": ("gDirectory", "gROOT"),
+        "slicing": ("loc", "overflow", "rebin", "underflow"),
+        "sparse": ("SparseHistogram",),
+        "stacks": ("MultiGraph", "Stack"),
+        "tree": ("Branch", "Group", "Jagged", "TTree"),
+        "writer": ("WritableDirectory", "WritableFile", "create"),
+        "wtree": ("WritableTree",),
+        "wupdate": ("update",),
+    }.items()
+    for name in names
+}
+_EXPORTS.update({name: (name, "") for name in ("fit", "plot", "stats")})
+
+#: Existing source modules stay discoverable without eagerly importing their engines.
+_SUBMODULES = frozenset({
+    "arithmetic",
+    "booking",
+    "buffer",
+    "canvas",
+    "chain",
+    "cint",
+    "cli",
+    "compare",
+    "compression",
+    "cxx",
+    "delaunay",
+    "display",
+    "distribution",
+    "draw",
+    "drawable",
+    "drawspec",
+    "efficiency",
+    "entries",
+    "errors",
+    "extending",
+    "file",
+    "filling",
+    "fillrandom",
+    "fit",
+    "fitsio",
+    "formula",
+    "friends",
+    "function",
+    "geom",
+    "graph",
+    "graph2d",
+    "graphmath",
+    "graphsmooth",
+    "hist",
+    "histfactory",
+    "image",
+    "interp",
+    "kinds",
+    "known",
+    "leaflist",
+    "library",
+    "limits",
+    "merging",
+    "moments",
+    "numerics",
+    "objects",
+    "palette",
+    "plot",
+    "polybins",
+    "profile",
+    "pyroot",
+    "random",
+    "rdf",
+    "remote",
+    "reshaping",
+    "rntuple",
+    "roofit",
+    "roostats",
+    "scan",
+    "scatterplot",
+    "session",
+    "slicing",
+    "sparse",
+    "spectrum",
+    "stacks",
+    "stats",
+    "stdio",
+    "streamers",
+    "supsmu",
+    "tmva",
+    "tree",
+    "treedraw",
+    "wbranch",
+    "wclasses",
+    "wcolumns",
+    "winfo",
+    "wmeasure",
+    "wobjects",
+    "wpacking",
+    "writer",
+    "wtree",
+    "wupdate",
+    "xmldoc",
+})
 
 __all__ = [
     # opening
@@ -178,3 +303,37 @@ def load_ipython_extension(ipython: Any) -> None:
     from .cli.magics import load
 
     load(ipython)
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve public objects only when used, keeping their defining module's identity."""
+    if name in _EXPORTS:
+        module, attribute = _EXPORTS[name]
+        loaded = _import_module(f".{module}", __name__)
+        found = getattr(loaded, attribute) if attribute else loaded
+    elif name in _SUBMODULES:
+        found = _import_module(f".{name}", __name__)
+    else:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    globals()[name] = found
+    return found
+
+
+def __dir__() -> list[str]:
+    """Keep public exports and explicit submodules visible without importing their engines."""
+    return sorted(globals().keys() | _EXPORTS.keys() | _SUBMODULES)
+
+
+class _Facade(_ModuleType):
+    """The public chain function keeps its name when Python attaches the chain submodule."""
+
+    def __getattribute__(self, name: str) -> Any:
+        found = super().__getattribute__(name)
+        if name == "chain" and isinstance(found, _ModuleType):
+            if found is _sys.modules.get(f"{__name__}.chain"):
+                found = found.chain
+                self.chain = found
+        return found
+
+
+_sys.modules[__name__].__class__ = _Facade
