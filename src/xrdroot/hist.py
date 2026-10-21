@@ -25,7 +25,7 @@ from .display import Displayed
 from .draw import bar, missing_picture, shade
 from .errors import FormatError, UnsupportedFeatureError
 from .function.attached import listed
-from .interp import ARRAYS
+from .rootarrays import ARRAYS
 
 __all__ = ["AXIS_STYLE", "FILL", "HISTOGRAMS", "LINE", "MARKER", "Axis", "Histogram", "Traits"]
 

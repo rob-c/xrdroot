@@ -46,8 +46,8 @@ from .arithmetic import copied, reset_statistics
 from .booking import Binning
 from .errors import UnsupportedFeatureError
 from .filling import running, store_cells
-from .interp import ARRAYS
 from .reshaping import _low_edge, _new_axis, projection
+from .rootarrays import ARRAYS
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from .hist import Axis, Histogram

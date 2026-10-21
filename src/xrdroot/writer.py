@@ -48,8 +48,9 @@ from .errors import UnsupportedFeatureError
 from .function import FUNCTIONS, Function
 from .graph import GRAPHS, Graph
 from .hist import HISTOGRAMS, Histogram
-from .interp import ARRAYS, MEMBER_WISE, OFFSET_L, OFFSET_P
+from .interp import MEMBER_WISE, OFFSET_L, OFFSET_P
 from .profile import PROFILES
+from .rootarrays import ARRAYS
 from .stacks import MultiGraph
 from .winfo import INFOS, SUBVERSIONS, WRITER_VERSION, Element
 

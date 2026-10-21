@@ -24,7 +24,7 @@ from typing import Any
 import numpy as np
 
 from ..errors import UnsupportedFeatureError
-from ..tree import Jagged
+from ..jagged import Jagged
 
 __all__ = ["Layout", "layout"]
 

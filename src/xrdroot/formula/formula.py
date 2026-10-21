@@ -20,7 +20,7 @@ from typing import Any
 
 import numpy as np
 
-from ..tree import Jagged
+from ..jagged import Jagged
 from .binding import Specs, bind, loops
 from .columns import Layout, layout
 from .evaluate import Evaluator, Numbers, Value

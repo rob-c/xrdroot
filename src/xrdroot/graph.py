@@ -11,7 +11,6 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-from xrdclient._compat import zip_strict
 
 from . import graphmath
 from .display import Displayed
@@ -126,7 +125,7 @@ class Graph(Displayed):
         return (float(self.x[index]), float(self.y[index]))
 
     def __iter__(self) -> Any:
-        return iter(zip_strict(self.x.tolist(), self.y.tolist()))
+        return iter(zip(self.x.tolist(), self.y.tolist(), strict=True))
 
     def points(self) -> list[tuple[float, float]]:
         """Every point as a pair, which is what a graph is a picture of."""
@@ -170,7 +169,7 @@ class Graph(Displayed):
         if low is None or high is None:
             bars = self._bars("Y", ("fEYlow", "fEYhigh"))
             return () if bars is None else (bars,)
-        return tuple(self._pair(a, b) for a, b in zip_strict(low, high))
+        return tuple(self._pair(a, b) for a, b in zip(low, high, strict=True))
 
     @property
     def yerr(self) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]] | None:

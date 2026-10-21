@@ -25,7 +25,7 @@ def accepts(columns: tuple[Any, ...], maker: Any) -> bool:
                (rvec._RVec, '__array__', 'xrdroot.pyroot.stl', '_Vector'),
                (rvec._RVec, 'data', 'xrdroot.pyroot.stl', '_Vector'),
                (rvec._RVec, '__len__', 'xrdroot.pyroot.stl', '_Vector'),
-               (Jagged, '__init__', 'xrdroot.tree', 'Jagged'))
+               (Jagged, '__init__', 'xrdroot.jagged', 'Jagged'))
     return (vars(stl).get('np') is np and vars(rvec).get('np') is np and _mask_kernel()
             and inspect.getattr_static(Jagged, '__new__') is object.__new__
             and all(_method(*method) for method in methods)

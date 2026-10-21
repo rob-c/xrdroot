@@ -22,8 +22,8 @@ from typing import Any
 
 import numpy as np
 
+from ..jagged import Jagged, _bounds, take
 from ..library import convert
-from ..tree import Jagged, _bounds, take
 from .formula import Formula, compile_formula
 from .ops import truth
 

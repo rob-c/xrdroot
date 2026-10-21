@@ -51,7 +51,7 @@ def _slot(kind: type[Any], name: str) -> bool:
 def _jagged(column: Any) -> bool:
     if type(column) is not Jagged or not _access(Jagged):
         return False
-    methods = all(_method(Jagged, name, 'xrdroot.tree', 'Jagged')
+    methods = all(_method(Jagged, name, 'xrdroot.jagged', 'Jagged')
                   for name in ('__getitem__', '__len__'))
     return (methods and _slot(Jagged, 'content') and _slot(Jagged, 'offsets')
             and inspect.getattr_static(Jagged, '__iter__') is _ITERATOR)

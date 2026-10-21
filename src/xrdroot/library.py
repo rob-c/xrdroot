@@ -15,14 +15,12 @@ that is not installed is refused with the ``pip install`` that fixes it.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 
 from .errors import UnsupportedFeatureError
-
-if TYPE_CHECKING:
-    from .tree import Jagged
+from .jagged import Jagged
 
 __all__ = ["LIBRARIES", "convert", "awkward_list", "arrow_list"]
 
@@ -60,8 +58,6 @@ def _module(name: str) -> Any:
 
 
 def _jagged(value: Any) -> bool:
-    from .tree import Jagged
-
     return isinstance(value, Jagged)
 
 

@@ -5,9 +5,9 @@
   "review": {
     "decision": "Current component debt independently reviewed; permit no new violations and shrink every resolved allowance. This approves the measured debt inventory only, not runtime behavior, tutorial parity or publication.",
     "independent_review_sha256": "fdfb988bfd681b50f195cbabd371541326ade5597fc5a27cf116f3cfc497e2e9",
-    "initial_inventory_sha256": "c52548f37793d5055f3526dd354d10030d60e9706890273e7805c5f029b46431",
-    "preserved_violation_count": 70,
-    "source_map_before_baseline_sha256": "0d14b3a000b739f0e027c4ee28e05b88a99618a0349875586b0101761ffa8d25",
+    "initial_inventory_sha256": "d75e5fed731b07f97002db25f8810de1117aafcad783e91486a482d5b7b964fc",
+    "preserved_violation_count": 58,
+    "source_map_before_baseline_sha256": "b9a2199a35567110942665c0b17993029f85baaac095a8fc6cb21747dc5688d8",
     "visible_reviewed_private_import_count": 1
   },
   "reviewed": true,
@@ -170,10 +170,10 @@
     "src/xrdroot/fitsio/tables.py": "683d2067a60f4842be62e7ccd29cb3fe9476cfb67114e4b882730c11a6b1391d",
     "src/xrdroot/formula/__init__.py": "8b097ef40857ed42f2493833ac3b78678c6632bcb0c9c5c2beada58e93397189",
     "src/xrdroot/formula/binding.py": "1fbdb8aa65f56b7f6f94718af49a364858424b6d4537021ba7526c865532d3fc",
-    "src/xrdroot/formula/columns.py": "c830dff792650a66da95749f95bde8f466024516d71a88e0e79b310997917e24",
+    "src/xrdroot/formula/columns.py": "7862e4e07c7e8f75b93526df82c6be3ef94e526da9d55c6f1637423f9b9d3615",
     "src/xrdroot/formula/errors.py": "49c106ac435dc8694dc0b910c605b089717b31341e97fd4c61aa70c6d2fe44b2",
     "src/xrdroot/formula/evaluate.py": "37019ae4d6b84a04bf94b37bc829c92e915aaad84d2cc3ca8e67a00a135b048d",
-    "src/xrdroot/formula/formula.py": "076820eea084192495ad591b2ee1d009e90611ac39a7c256a4c9196f61eff9e0",
+    "src/xrdroot/formula/formula.py": "1867edd33a185aafe62c7cee09d34427e9542d6638ead803cdee52a94727e73d",
     "src/xrdroot/formula/functions.py": "89c3131a28966552b859ce2a1062e2f49daf2dffa329f97b8bcd998e931dac9c",
     "src/xrdroot/formula/lexer.py": "9068f5a91d45a58d6b162e89e1d01bece9deca9a027a16ab52dcda42be2c6bdc",
     "src/xrdroot/formula/loops.py": "cd9797b5a983b6cd92da32f3e6e484a9e31330447c85dd03403dc4864d662ca2",
@@ -181,7 +181,7 @@
     "src/xrdroot/formula/nodes.py": "efa174e735b3c0004e815da5a95007106557d22a3d2497a4f08ba6808a47cb49",
     "src/xrdroot/formula/ops.py": "35d900c26939c5454bae2478b220dd75b14170bed822f00ff95eafc975baa91d",
     "src/xrdroot/formula/parser.py": "b76bc83acf0e49635a354ae72f3c8e17669cf09e4095e18d37f3018091b32e5f",
-    "src/xrdroot/formula/select.py": "497efaad68aac60c3cccca0d6a7fea5dd11f2c28aac63b7809f32fa189805a76",
+    "src/xrdroot/formula/select.py": "3826e2691002fe093d7f13d87371d7643aeeb073eb8e3de3cb2ff0ff6e61738d",
     "src/xrdroot/formula/together.py": "9f2ba82fc54f33556a81745ea02782d5cf65bc0277009234f7940bacc86b1b7c",
     "src/xrdroot/friends.py": "f629b6f167ca8dfc44197b474386c28ba7c8eed6dcdca791edb61a1366138890",
     "src/xrdroot/function/__init__.py": "f67cbe409aa68bbb961778e86b7d6a3bf55f764b2baf92614379651824119419",
@@ -211,11 +211,11 @@
     "src/xrdroot/geom/shapes.py": "abcf6511b4cf97e9167091c14f183bf45072abfeaec9ba6d694b285f9cb1693c",
     "src/xrdroot/geom/view.py": "0355229a4f584580f5919f66206dad51eb96f5dd72928205367a6fc29e0d2f70",
     "src/xrdroot/geom/wavefront.py": "f83729b8ca938bdd62c513993a259348d073b9c2c1ad6bbdc22b204c32a20cb4",
-    "src/xrdroot/graph.py": "497daca3fa3460b04daae4278654753fbb9fe8e6187da1a6e8deb45ba6c0b90a",
+    "src/xrdroot/graph.py": "d7b747e67341e2de2c8b8ee49eea50b42bca8a7ab1718939099dafb0a1d713b2",
     "src/xrdroot/graph2d.py": "dc905a387fb2964dbd4a85f389c820416d5060ef3b46aefcf046d8f9e598b51e",
     "src/xrdroot/graphmath.py": "0a74c51c14e0df15f5466724c4e080142d7fce7d4a9871a112eeecf2350c5d98",
     "src/xrdroot/graphsmooth.py": "2f5fa15183f949674714bbad9b602e3cf59714780ac43ca34891856947d52a8c",
-    "src/xrdroot/hist.py": "862caae2950a650c593e054cd9d6b25c55a04b1df2bc700b3e509149321c2b0c",
+    "src/xrdroot/hist.py": "b3155b30010706acfff6e931aba55d202d2a4246d50043a893e9ec391d306696",
     "src/xrdroot/histfactory/__init__.py": "3dc470fae9f688e2fcd25f9459ba500971830b97e76e4c93340e87d4b34a310d",
     "src/xrdroot/histfactory/assemble.py": "eed2d9a49a014399a4bc3493fd533a2be02e1929ee0941d1281d2e8ef1a6201b",
     "src/xrdroot/histfactory/channel.py": "191c170885beb06a4364cd4380f372a72ea6dada4071a7877b57efffe39c26a0",
@@ -232,11 +232,12 @@
     "src/xrdroot/histfactory/systematics.py": "29155fc4b93722d8e4ec6705b4222006c5ea11d3bfcfe28d71950e1357551296",
     "src/xrdroot/histfactory/terms.py": "1fc135ebd5ecdb7098dfa70a5dcc40b17210e8773d2a2e75e3796f231c844dab",
     "src/xrdroot/image.py": "fd700587abb868c83fb7fbec2fa69e1593e44d88076b017e4a1dcc153e5727ef",
-    "src/xrdroot/interp.py": "706a0bfbda6e5f47252c25a8b0f275a47144efe1423a49d55a4a10cb82ce27e3",
+    "src/xrdroot/interp.py": "a2c50378a1207f4d15d316f6239af6a765a270cbb136126b00f9dc34076f9235",
+    "src/xrdroot/jagged.py": "bc0df30363378845e9b629615cc86141d7ef92240e2196a2d654ff507cc44f61",
     "src/xrdroot/kinds.py": "a45b47bf55ac50fd5bc015b45219c9f8068da96884f9701c21787d6496e5d90b",
     "src/xrdroot/known.py": "549d77fadac35b8888b159d1874df7476218ddd69bceea5091341081f0b45be9",
     "src/xrdroot/leaflist.py": "4e1314a11e1479359798aaf556f81b9b64795793f0916ea5449c6e6a9f304a4c",
-    "src/xrdroot/library.py": "86dcce4a8e4cadf2af3566580f51c79fc6e77ab42c388df2f8b396f1f2a15131",
+    "src/xrdroot/library.py": "50915c2d31721941477b4dfdf394e914899e5e2143bb2026d36b07bfdcdfd108",
     "src/xrdroot/limits.py": "b0a857d314b215cf1967b3591ccf74e3fa93a0b404a8e101ebd31be8ba5b28ee",
     "src/xrdroot/merging/__init__.py": "ebae9b917ab033ecb4a595835b1b2201d36571ebcf6d9de3e92ae3995ee3c5ae",
     "src/xrdroot/merging/baskets.py": "e2a7f6f74f6983111d7c6599f789828fafaee654a157f33ac65fd8d3317c21be",
@@ -419,11 +420,11 @@
     "src/xrdroot/pyroot/rdf/helpers.py": "56901bcb5c784b0eb53e649ed30c57aafc36572809f7d38ac551179cebe754a8",
     "src/xrdroot/pyroot/rdf/jitted.py": "f4f55bf32277240310207ee1cc324cbb8200eacdb0d53bd796ec48ea2495d986",
     "src/xrdroot/pyroot/rdf/maskedcall.py": "e4944a204b5f978ba71dc4c518ebf3c0a44d1e5dfc83e4fb49ee70e24dca766e",
-    "src/xrdroot/pyroot/rdf/masknative.py": "0deab9467e47d18ed120274c99ffaeba957312a92dab73827485e3906e910ca2",
+    "src/xrdroot/pyroot/rdf/masknative.py": "f466d86b15b8a0c2893b544e5d57314f8b9bd01f25801c80114072bcdfb519f6",
     "src/xrdroot/pyroot/rdf/randomexpr.py": "510adff80d8f858add904745bdbf737c4af87cb6acedb316b121e5fe1e312dfe",
     "src/xrdroot/pyroot/rdf/rvec.py": "9d3bc9a5b067a70f8a27d27f0332e516e8e793c1d80c50b25f5bfeeeff340224",
     "src/xrdroot/pyroot/rdf/treesource.py": "795f12db4a74fae4ccbc3ce04d55ed03148bd33e6946390020bf12a8f0b065f1",
-    "src/xrdroot/pyroot/rdf/vectorrows.py": "fba80d9c1c0c431bdbcb0f972e15864312b9faea45a3d98137daaadfdf289f5f",
+    "src/xrdroot/pyroot/rdf/vectorrows.py": "3a338c8d9f7a2eb09c72c2fd4bc59093e9b1adb9711da698f4047031c11f70a9",
     "src/xrdroot/pyroot/roofit/__init__.py": "48fc4e8904b02a40ed6b74cad7b8516bbce9f470484dc1456dfd0b9ce1e346cd",
     "src/xrdroot/pyroot/roofit/commands.py": "313998d974519fdb8c81ac495d17b7eb79927fba21246ee2a904803a8435ef43",
     "src/xrdroot/pyroot/roostats/__init__.py": "a4d3900ba47e62118d24414777915cfb99cd77b9e1d6cd7e04607734e2eda565",
@@ -709,10 +710,11 @@
     "src/xrdroot/roostats/teststats.py": "68d896b13eb18d45ff717a8bb4ad72ee086832b1106acf918e6a4e309f3f43f5",
     "src/xrdroot/roostats/toymc.py": "d8b887800eb2c5a2ec1ade1e7513d3946081ad86b0d79ee0c0e64f90b2750081",
     "src/xrdroot/roostats/utils.py": "92e9c7893e1be78c2dbd5d3d93e4d554792f6fcd9b4f9c448d9e60bdec413f6e",
+    "src/xrdroot/rootarrays.py": "b6dbf59eb78dc7f9e01e536442c5ac3572c3d1d46021d42168a7cf59a347d770",
     "src/xrdroot/scan.py": "10f3f5c807b3a5ca037f8dcbac8d87402e9f615875a0a304b618b4cdb8cb02db",
     "src/xrdroot/scatterplot.py": "ff3b3b750d6595e2bc206b9cc29e134bd9286fbaa44da94dd8501e4d2f7a4a1d",
     "src/xrdroot/session.py": "60dac1981b3123bd7bfbac07766d045f5d9682def0268ab9edd1fd97e6d54cba",
-    "src/xrdroot/slicing.py": "e5055c74ed82cf82ee432dadbdd06a18bdc9f643b386b0bce48a06d50f69dc67",
+    "src/xrdroot/slicing.py": "d18b83abb76f6c0df943ebd69967fbdabcf999d1f688eb8a7974d4f215c0e1c7",
     "src/xrdroot/sparse.py": "52e8d1c5a0a3bc37e40e4644cff7fa47dd5e21e8fd0ead78eab967f51fbb1eba",
     "src/xrdroot/spectrum/__init__.py": "022bfe6c843adaabba307cfd30d90900e77097e97e20d62a3bf4be074122afca",
     "src/xrdroot/spectrum/background.py": "b3a7899d3b130800b7cd25b73c694397c619d67387dea37e70d06f992c7cf168",
@@ -830,7 +832,7 @@
     "src/xrdroot/tmva/varrank.py": "107f461e09c4ac1e3b97e9d246a616376b2b9d69ba0237154466c6f414707506",
     "src/xrdroot/tmva/weightfile.py": "36643fe544c2a9871efe8997032f42529596c524e5493015eb6734a1d126308f",
     "src/xrdroot/tmva/xmlfile.py": "9b584c3516f4a9a74a5f5f5d4537c110b28ab3a436c500e91f8a932118652531",
-    "src/xrdroot/tree.py": "6284cabdc7f4bb57c724197ecae076265e33a3669d2187408715acb2abf37b11",
+    "src/xrdroot/tree.py": "ab5b69c4df4c71a1fe6f211edebf1ec8c54a1938dd5865a915eff4fe42e2feeb",
     "src/xrdroot/treedraw.py": "ba6e9bf646784270dc05ff5c4926ff94cfe5a3b19aa06a2855dcdc73c3f69e11",
     "src/xrdroot/wbranch.py": "d4b4593439d97ab46f5c0e1617392c52fb623653144ff1723abad9ef86cd58ad",
     "src/xrdroot/wclasses.py": "d5f9580b096bb8de8618832799c0511962b0037b59b4cf6b28a545c98ddba416",
@@ -839,7 +841,7 @@
     "src/xrdroot/wmeasure.py": "1c4a5005cc50b0e85201572af5380532837749cd80d848456caa81d98986fb34",
     "src/xrdroot/wobjects.py": "09c7f6666a1db20d6f8272d755df2591e64c1517f1b9894a1ce3d8d3430d4067",
     "src/xrdroot/wpacking.py": "17b0676562c57715560344f59423916e26f86c880cf0bff2ec13d7e7ddc371b3",
-    "src/xrdroot/writer.py": "858b9aa00bea001905c97f617c277de6e22e3827053705bd89e4504022d967b3",
+    "src/xrdroot/writer.py": "a7f192a848db626029af251ec544f9670d6ffdd65992313448def9bc818a00aa",
     "src/xrdroot/wtree.py": "462138a000e14e5dc18ea65e06608ac5361d298969936844c22a19405f8dd4e3",
     "src/xrdroot/wupdate.py": "8a963d7db98b141afe4d4c1b86fa0cab5e09801acda87d8363d33011a6a76925",
     "src/xrdroot/xmldoc.py": "ec4b05b91a58135285a9d73cd35ea734b85fed8cbd6f302c392ebb6f82377ce9"
@@ -889,51 +891,6 @@
       "scope": "Directory._read",
       "statement": "from .roofit.io.workspace import read_workspace",
       "target": "xrdroot.roofit.io.workspace"
-    },
-    {
-      "component": "hist",
-      "line": 27,
-      "path": "src/xrdroot/formula/columns.py",
-      "rule": "edge",
-      "scope": "",
-      "statement": "from ..tree import Jagged",
-      "target": "xrdroot.tree"
-    },
-    {
-      "component": "hist",
-      "line": 23,
-      "path": "src/xrdroot/formula/formula.py",
-      "rule": "edge",
-      "scope": "",
-      "statement": "from ..tree import Jagged",
-      "target": "xrdroot.tree"
-    },
-    {
-      "component": "hist",
-      "line": 26,
-      "path": "src/xrdroot/formula/select.py",
-      "rule": "edge",
-      "scope": "",
-      "statement": "from ..tree import Jagged, _bounds, take",
-      "target": "xrdroot.tree"
-    },
-    {
-      "component": "hist",
-      "line": 26,
-      "path": "src/xrdroot/formula/select.py",
-      "rule": "edge",
-      "scope": "",
-      "statement": "from ..tree import Jagged, _bounds, take",
-      "target": "xrdroot.tree"
-    },
-    {
-      "component": "hist",
-      "line": 26,
-      "path": "src/xrdroot/formula/select.py",
-      "rule": "edge",
-      "scope": "",
-      "statement": "from ..tree import Jagged, _bounds, take",
-      "target": "xrdroot.tree"
     },
     {
       "component": "geom",
@@ -999,33 +956,6 @@
       "target": "xrdroot.canvas.view3d"
     },
     {
-      "component": "hist",
-      "line": 14,
-      "path": "src/xrdroot/graph.py",
-      "rule": "external-private",
-      "scope": "",
-      "statement": "from xrdclient._compat import zip_strict",
-      "target": "xrdclient._compat"
-    },
-    {
-      "component": "hist",
-      "line": 14,
-      "path": "src/xrdroot/graph.py",
-      "rule": "external-undeclared",
-      "scope": "",
-      "statement": "from xrdclient._compat import zip_strict",
-      "target": "xrdclient._compat"
-    },
-    {
-      "component": "hist",
-      "line": 28,
-      "path": "src/xrdroot/hist.py",
-      "rule": "edge",
-      "scope": "",
-      "statement": "from .interp import ARRAYS",
-      "target": "xrdroot.interp"
-    },
-    {
       "component": "histfactory",
       "line": 69,
       "path": "src/xrdroot/histfactory/channel.py",
@@ -1063,16 +993,7 @@
     },
     {
       "component": "io",
-      "line": 20,
-      "path": "src/xrdroot/interp.py",
-      "rule": "external-private",
-      "scope": "",
-      "statement": "from xrdclient._compat import zip_strict",
-      "target": "xrdclient._compat"
-    },
-    {
-      "component": "io",
-      "line": 749,
+      "line": 736,
       "path": "src/xrdroot/interp.py",
       "rule": "edge",
       "scope": "_by_hand",
@@ -1081,7 +1002,7 @@
     },
     {
       "component": "io",
-      "line": 767,
+      "line": 754,
       "path": "src/xrdroot/interp.py",
       "rule": "edge",
       "scope": "_description",
@@ -1096,24 +1017,6 @@
       "scope": "",
       "statement": "from .canvas import CANVASES",
       "target": "xrdroot.canvas"
-    },
-    {
-      "component": "core",
-      "line": 25,
-      "path": "src/xrdroot/library.py",
-      "rule": "edge",
-      "scope": "",
-      "statement": "from .tree import Jagged",
-      "target": "xrdroot.tree"
-    },
-    {
-      "component": "core",
-      "line": 63,
-      "path": "src/xrdroot/library.py",
-      "rule": "edge",
-      "scope": "_jagged",
-      "statement": "from .tree import Jagged",
-      "target": "xrdroot.tree"
     },
     {
       "component": "pyroot",
@@ -1368,15 +1271,6 @@
       "target": "xrdroot"
     },
     {
-      "component": "hist",
-      "line": 49,
-      "path": "src/xrdroot/slicing.py",
-      "rule": "edge",
-      "scope": "",
-      "statement": "from .interp import ARRAYS",
-      "target": "xrdroot.interp"
-    },
-    {
       "component": "tmva",
       "line": 60,
       "path": "src/xrdroot/tmva/envelope.py",
@@ -1468,7 +1362,7 @@
     },
     {
       "component": "io",
-      "line": 702,
+      "line": 537,
       "path": "src/xrdroot/tree.py",
       "rule": "edge",
       "scope": "TTree._repr_html_",

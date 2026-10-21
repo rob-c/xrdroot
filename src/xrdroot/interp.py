@@ -17,11 +17,11 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from xrdclient._compat import zip_strict
 
 from .buffer import Buffer, as_datetime, gather, numbers
 from .cxx import SEQUENCES, Mapping, Pair, Prim, Seq, Str, parse, py_name
 from .errors import FormatError, UnsupportedFeatureError
+from .rootarrays import ARRAYS as ARRAYS
 
 if TYPE_CHECKING:
     from .file import Source
@@ -64,19 +64,6 @@ OBJECT_ARRAYS = ("TObjArray",)
 #: The array of one class, which names that class once at the front rather
 #: than in front of every object it holds.
 CLONES = ("TClonesArray",)
-
-#: The arrays ROOT's own kit keeps numbers in - the contents of a histogram is
-#: one - each of which streams itself as a count and then that many values,
-#: with no record round it and nothing of the base class it inherits.
-ARRAYS = {
-    "TArrayC": Prim("int8", "b", 1),
-    "TArrayS": Prim("int16", "h", 2),
-    "TArrayI": Prim("int32", "i", 4),
-    "TArrayL": Prim("int64", "q", 8),
-    "TArrayL64": Prim("int64", "q", 8),
-    "TArrayF": Prim("float32", "f", 4),
-    "TArrayD": Prim("float64", "d", 8),
-}
 
 #: Everything above, which writes itself its own way: what the file says its
 #: members are would not read one of these, and neither would reading it a
@@ -366,7 +353,7 @@ def _sequence(item: Any) -> Callable[[Buffer], Any]:
                     f"from where it said it would, so what was read out of it "
                     f"cannot be trusted"
                 )
-            return list(zip_strict(firsts, seconds))
+            return list(zip(firsts, seconds, strict=True))
         if version & MEMBER_WISE:
             raise UnsupportedFeatureError(
                 "this container was written field by field, which happens for a "
@@ -402,7 +389,7 @@ def _mapping(node: Mapping) -> Callable[[Buffer], Any]:
         count = buf.u32()
         keys = _block(node.key, buf, count)
         values = _block(node.value, buf, count)
-        return dict(zip_strict(keys, values))
+        return dict(zip(keys, values, strict=True))
 
     return read
 
@@ -902,7 +889,7 @@ def _map_column(label: str, node: Mapping) -> Fill:
         for row in rows:
             count = buf.u32()
             keys = _block(node.key, buf, count)
-            row[label] = dict(zip_strict(keys, _block(node.value, buf, count)))
+            row[label] = dict(zip(keys, _block(node.value, buf, count), strict=True))
         _ended(buf, end, f"the maps of {len(rows)} objects")
 
     return column
