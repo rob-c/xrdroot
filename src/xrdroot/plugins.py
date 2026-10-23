@@ -202,6 +202,9 @@ PROVIDERS: dict[tuple[str, str], tuple[str, str, str]] = {
     ('histfactory.write_model', 'default'): (
         'pyroot', 'xrdroot.pyroot.roostats.histfactoryio', 'write_model',
     ),
+    ('tmva.result_roc_graph', 'default'): ('pyroot', 'xrdroot.pyroot.tmvaplot', 'result_graph'),
+    ('tmva.factory_roc_graph', 'default'): ('pyroot', 'xrdroot.pyroot.tmvaplot', 'factory_graph'),
+    ('tmva.roc_canvas', 'default'): ('pyroot', 'xrdroot.pyroot.tmvaplot', 'roc_canvas'),
 }
 
 

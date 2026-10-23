@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from ..plugins import require
 from .efficiency import Efficiencies
 from .evalmodes import EvaluatingModes
 from .evaluation import roc_curve, roc_integral, test_classification
@@ -266,8 +267,6 @@ class Evaluating(EvaluatingModes):
 
     def GetROCCurve(self, dataset: Any, title: Any = None, *args: Any) -> Any:
         """``Factory::GetROCCurve``: the curve as a ``TGraph`` - or, for a loader, every one."""
-        from ..pyroot.core.graphs import TGraph
-
         if title is None or isinstance(title, bool):
             return self._roc_canvas(dataset)
         iclass = int(args[1]) if len(args) > 1 else 0
@@ -275,32 +274,10 @@ class Evaluating(EvaluatingModes):
         sensitivity, specificity = roc_curve(
             *self._sample(self._item(dataset, title), iclass, kind)
         )
-        graph = TGraph(len(sensitivity), np.asarray(sensitivity), np.asarray(specificity))
-        if not args or args[0]:
-            graph.SetTitle("Signal efficiency vs. Background rejection")
-            graph.GetXaxis().SetTitle("Signal efficiency")
-            graph.GetYaxis().SetTitle("Background rejection")
-        graph.SetName(str(title))
-        return graph
+        return require("tmva.factory_roc_graph")(
+            title, sensitivity, specificity, not args or args[0]
+        )
 
     def _roc_canvas(self, dataset: Any) -> Any:
         """``GetROCCurve(dataloader)``: a canvas of every method's ROC curve, with a legend."""
-        from ..pyroot.graphics.canvas import TCanvas
-        from ..pyroot.graphics.legend import TLegend
-
-        name = dataset.GetName() if hasattr(dataset, "GetName") else str(dataset)
-        canvas = TCanvas(name, "ROC Curve", 800, 600)
-        legend = TLegend(0.15, 0.15, 0.35, 0.3, "MVA Method")
-        colour = 1
-        for position, item in enumerate(self.booked.get(name, [])):
-            graph = self.GetROCCurve(name, item.method.name)
-            graph.SetLineWidth(2)
-            graph.SetLineColor(colour)
-            colour += 1
-            if colour == 5 or colour == 10 or colour == 11:
-                colour += 1
-            graph.Draw("AL" if position == 0 else "L")
-            legend.AddEntry(graph, item.method.name, "l")
-        legend.Draw()
-        canvas._tmva_legend = legend  # type: ignore[attr-defined]
-        return canvas
+        return require("tmva.roc_canvas")(self, dataset)

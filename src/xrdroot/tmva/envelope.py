@@ -15,6 +15,7 @@ from typing import Any
 
 import numpy as np
 
+from ..plugins import require
 from .evaluation import roc_curve, roc_integral
 from .log import CONFIG, Logger
 from .method import CLASSIFICATION, Method
@@ -57,13 +58,8 @@ class ClassificationResult:
         return roc_integral(self.values, self.signal, self.weights)
 
     def GetROCGraph(self, fLegend: bool = True, iClass: int = 0, type: int = 1) -> Any:
-        from ..pyroot.core.graphs import TGraph
-
         sensitivity, specificity = roc_curve(self.values, self.signal, self.weights)
-        graph = TGraph(len(sensitivity), np.asarray(sensitivity), np.asarray(specificity))
-        graph.SetName(self.title)
-        graph.SetTitle(self.title)
-        return graph
+        return require("tmva.result_roc_graph")(self.title, sensitivity, specificity)
 
 
 class Classification:

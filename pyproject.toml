@@ -238,6 +238,9 @@ extensions = [
     { caller = "xrdroot.histfactory.model", point = "histfactory.read_histogram", provider = "pyroot", target = "xrdroot.pyroot.roostats.histfactoryio:read_histogram" },
     { caller = "xrdroot.histfactory.model", point = "histfactory.count_sample", provider = "pyroot", target = "xrdroot.pyroot.roostats.histfactoryio:counting_sample" },
     { caller = "xrdroot.histfactory.make", point = "histfactory.write_model", provider = "pyroot", target = "xrdroot.pyroot.roostats.histfactoryio:write_model" },
+    { caller = "xrdroot.tmva.envelope", point = "tmva.result_roc_graph", provider = "pyroot", target = "xrdroot.pyroot.tmvaplot:result_graph" },
+    { caller = "xrdroot.tmva.evaluating", point = "tmva.factory_roc_graph", provider = "pyroot", target = "xrdroot.pyroot.tmvaplot:factory_graph" },
+    { caller = "xrdroot.tmva.evaluating", point = "tmva.roc_canvas", provider = "pyroot", target = "xrdroot.pyroot.tmvaplot:roc_canvas" },
 ]
 
 [tool.xrdroot.components.groups]
