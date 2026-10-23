@@ -2,7 +2,7 @@
 
 A ROOT object never writes a colour, only a number: ``fLineColor = 2`` is
 whatever colour 2 was in the session that drew it. The numbers every session
-starts with are :mod:`xrdroot.plot.colors`' table, ROOT's own to the bit. A
+starts with are :mod:`xrdroot.colors`' table, ROOT's own to the bit. A
 canvas ROOT saved after drawing also carries the colours it used, as a
 ``ListOfColors`` of ``TColor`` - a colour a macro made for itself among them,
 which no table has - and its palette; those, when there, come first.
@@ -12,16 +12,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..plot.colors import COLORS, PALETTES, UNKNOWN
+from ..colors import COLORS, PALETTES, RGB, UNKNOWN, _rgb
 
 __all__ = ["Colors"]
-
-RGB = tuple[float, float, float]
-
-
-def _rgb(hexed: str) -> RGB:
-    """``"#rrggbb"`` as three fractions."""
-    return (int(hexed[1:3], 16) / 255, int(hexed[3:5], 16) / 255, int(hexed[5:7], 16) / 255)
 
 
 class Colors:

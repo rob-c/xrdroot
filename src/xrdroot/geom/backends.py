@@ -9,7 +9,7 @@ off-screen, whose :meth:`screenshot` is a PNG with hidden surfaces hidden.
 Neither library is a dependency - each is the ``geom`` extra - and asking
 for one that is not installed is refused with the ``pip install`` that
 fixes it. A picture of a pad, ``SaveAs("x.png")``, needs neither: it is the
-wireframe :mod:`.paint` draws with matplotlib.
+wireframe :mod:`xrdroot.canvas.geompaint` draws with matplotlib.
 """
 
 from __future__ import annotations
@@ -42,9 +42,9 @@ def library(name: str) -> Any:
 
 
 def _rgb(index: int) -> tuple[float, float, float]:
-    from ..canvas.colors import Colors
+    from ..colors import rgb
 
-    return Colors().rgb(index)
+    return rgb(index)
 
 
 def _hex(index: int) -> str:

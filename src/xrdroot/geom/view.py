@@ -93,7 +93,7 @@ class ParallelView:
 
     def __init__(self, rmin: Sequence[float], rmax: Sequence[float], longitude: float = -120.0,
                  latitude: float = 60.0, psi: float = 0.0) -> None:  # fmt: skip
-        from ..canvas.view3d import View3D
+        from .projection import View3D
 
         low = tuple(float(v) for v in rmin)
         high = tuple(float(v) for v in rmax)

@@ -18,13 +18,13 @@ import warnings
 from typing import Any
 
 from ..errors import UnsupportedFeatureError
-from ..geom.paint import GEOMETRY
 from . import styles
 from .colors import Colors
 from .curly import CURLY
 from .data import paint_data
 from .frame import default_title, dress, open_axes
 from .gaxis import GAXIS
+from .geompaint import GEOMETRY
 from .image import IMAGES
 from .legend import LEGEND
 from .model import Canvas, Pad, Primitive
