@@ -448,3 +448,15 @@ scope = "contour"
 statement = "from iminuit._core import MnContours"
 target = "iminuit._core"
 reason = "ROOT Contour uses the minimum's exact error level; the public mncontour rescales confidence and can recompute HESSE. Preserve the existing algorithm."
+
+[tool.xrdroot.components.registration_functions."xrdroot.cppstd.vectorassign.register_capacity"]
+position = 1
+keyword = "growth"
+
+[[tool.xrdroot.components.registrations]]
+caller = "xrdroot.pyroot.vectorassign"
+scope = ""
+statement = "_register_capacity('rvec', _rvec_capacity)"
+callee = "xrdroot.cppstd.vectorassign.register_capacity"
+callback = "xrdroot.pyroot.vectorassign:_rvec_capacity"
+reason = "The adapter supplies ROOT SmallVector growth and signed capacity bounds to generic assignment."

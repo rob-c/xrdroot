@@ -14,8 +14,22 @@
       "target": "*"
     }
   ],
-  "policy_sha256": "216dffaa52e2947322a4e1d0a5a4b81d48998fa42ed03c36fbc7fe3ed5a245aa",
-  "registrations": [],
+  "policy_sha256": "ada62a94ca2635178ceecf41afdb1258c4c10aa31cfe139dd8f9504a486735ac",
+  "registrations": [
+    {
+      "key": "",
+      "kind": "registration",
+      "lazy": false,
+      "line": 21,
+      "module": "xrdroot.pyroot.vectorassign",
+      "path": "src/xrdroot/pyroot/vectorassign.py",
+      "point": "xrdroot.cppstd.vectorassign.register_capacity",
+      "provider": "",
+      "scope": "",
+      "statement": "_register_capacity('rvec', _rvec_capacity)",
+      "target": "xrdroot.pyroot.vectorassign:_rvec_capacity"
+    }
+  ],
   "review": {
     "decision": "Retain the exact independently audited dependency-debt inventory for this frozen ordered prefix; preserve every measured violation identity and duplicate multiplicity, declaration, source file and policy fingerprint. This review grants no runtime, ordered-prefix, tutorial, commit or publication acceptance.",
     "independent_inventory_audit": {
@@ -23,15 +37,15 @@
       "sha256": "aeabe3b7431fb0a9dcdf4013690df575d62c3743f33fc2d364767855a1c661e4"
     },
     "inventory_source": {
-      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-12-vectorvalue/inventory.UNREVIEWED.json",
-      "sha256": "3deb2bf882accc5116835e5c9252866c98b9181575d576d8b725ca5458fa10ea"
+      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-13-vectorassign/inventory.UNREVIEWED.json",
+      "sha256": "9637204e8116c6fee9a3d7a73002020e232eab1b8daf3255464add7aaada91a9"
     },
-    "policy_sha256": "216dffaa52e2947322a4e1d0a5a4b81d48998fa42ed03c36fbc7fe3ed5a245aa",
+    "policy_sha256": "ada62a94ca2635178ceecf41afdb1258c4c10aa31cfe139dd8f9504a486735ac",
     "preserved_violation_count": 7,
     "runtime_acceptance": false,
     "source_map_before_baseline": {
-      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/12-vectorvalue/source-files.json",
-      "sha256": "e82aa282e2d29d1d6399fb5d08e3c309594d7858d14efc2930804aac86763572"
+      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/13-vectorassign/source-files.json",
+      "sha256": "1aa106aa3d5df159c07bf2b09cb7063e416f68318418c91ef4cf888957d75163"
     }
   },
   "reviewed": true,
@@ -174,6 +188,7 @@
     "src/xrdroot/cppstd/strings.py": "13109457a12eb3fa1aab794f92ce8e9fc1cfbe129770e65a212830ed63836062",
     "src/xrdroot/cppstd/threads.py": "5d426380c3689ad6219c4e76cbf05565609ef64dc91ed250b66d24ea6f06bb85",
     "src/xrdroot/cppstd/valuecopy.py": "a3ab0c9a262374829e79a7c471a2750c4b07a6a3283a375052609cebee7c011a",
+    "src/xrdroot/cppstd/vectorassign.py": "c9fe0dc69cb6dd6235b2b1a4f0d767bc5587ae75a92184b1b0bfc7e5a251660c",
     "src/xrdroot/cppstd/vectorvalue.py": "e17e0d283be46f25529f79fbace5fb9a526ad6de2cebcfbc4520d32e71f088bd",
     "src/xrdroot/cxx.py": "978c96328a84ba685ead01e01a5becb43b51f8f94a60e1e922b54727891798e8",
     "src/xrdroot/delaunay.py": "47b9e9f07380322c0a705f7b88001a0d9999462301a5a427756e16ecbf92c4b5",
@@ -524,7 +539,7 @@
     "src/xrdroot/pyroot/trees/store.py": "6e26a55cd800401bb4eddfeb03a499772502c438b8324e4457eb2ffa0b4a5416",
     "src/xrdroot/pyroot/trees/text.py": "61b7dc74203c30617244efb00ed3147e897f0d3f11fcc02960f99051a13f6396",
     "src/xrdroot/pyroot/trees/tree.py": "bb25b9892373e77158987ed8f936b4f5817f5cb8101e761fa578c02fd5799812",
-    "src/xrdroot/pyroot/vectorassign.py": "5e174e8ae773a5c06f4f803b68860373cf7e1e8dbcc04eef5f706eed41747740",
+    "src/xrdroot/pyroot/vectorassign.py": "50f117cebcdacfb4969404d1b7c9990e6c00efbb85a2fa942e739f0cea1dcc69",
     "src/xrdroot/pyroot/vectors.py": "b68d5654fa0f6e2564e171512d6b2c874ecb8b257bdc475ae960f1fbc60987f2",
     "src/xrdroot/pyroot/vectorvalue.py": "37df1592eb451a96c0d10ef71d612c4c087aabf46a1b4495646afcf93ef9e35d",
     "src/xrdroot/pyroot/xmlengine.py": "99bb7cb8c815e94505115b81c34351751d9c4513315b27996c0d334078d17100",
