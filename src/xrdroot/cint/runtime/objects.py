@@ -10,11 +10,12 @@ arguments, which of several translated functions to call.
 
 from __future__ import annotations
 
-import copy
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any
 
 import numpy as np
+
+from ...cppstd.valuecopy import value_copy as value_copy
 
 __all__ = [
     "array",
@@ -172,18 +173,6 @@ def construct_at(container: Any, index: Any, obj: Any) -> Any:
     else:
         container[index] = obj
     return obj
-
-
-def value_copy(value: Any) -> Any:
-    """``T b = a;`` for an object: a copy of it, not the same object under a second name."""
-    if value is None or isinstance(value, (int, float, str, bool)):
-        return value
-    if isinstance(value, np.ndarray):
-        return value.copy()
-    try:
-        return copy.deepcopy(value)
-    except Exception:
-        return copy.copy(value)
 
 
 def dynamic_cast(kind: Any, obj: Any) -> Any:
