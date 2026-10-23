@@ -476,3 +476,15 @@ statement = "_generic.set_type_resolver(_resolve_root_type)"
 callee = "xrdroot.cppstd.containers.set_type_resolver"
 callback = "xrdroot.pyroot.stl:_resolve_root_type"
 reason = "The ROOT adapter supplies explicit opaque-type resolution; generic containers never discover ROOT."
+
+[tool.xrdroot.components.registration_functions."xrdroot.cppstd.cmath.set_vector_result"]
+position = 0
+keyword = "constructor"
+
+[[tool.xrdroot.components.registrations]]
+caller = "xrdroot.cint.runtime.cmath"
+scope = ""
+statement = "_cmath.set_vector_result(_rvec)"
+callee = "xrdroot.cppstd.cmath.set_vector_result"
+callback = "xrdroot.cint.runtime.cmath:_rvec"
+reason = "The interpreter supplies its lazy RVec constructor while generic math returns ordinary arrays."

@@ -14,8 +14,21 @@
       "target": "*"
     }
   ],
-  "policy_sha256": "0a0f39f8773a6689afba6fa6df45489e47c662ec6eba9e1ad1861e6679b042c2",
+  "policy_sha256": "b660a2a4502465deb7a7ea0d2de2431a45413ea0db50143b32267c987d2539b0",
   "registrations": [
+    {
+      "key": "",
+      "kind": "registration",
+      "lazy": false,
+      "line": 27,
+      "module": "xrdroot.cint.runtime.cmath",
+      "path": "src/xrdroot/cint/runtime/cmath.py",
+      "point": "xrdroot.cppstd.cmath.set_vector_result",
+      "provider": "",
+      "scope": "",
+      "statement": "_cmath.set_vector_result(_rvec)",
+      "target": "xrdroot.cint.runtime.cmath:_rvec"
+    },
     {
       "key": "",
       "kind": "registration",
@@ -50,15 +63,15 @@
       "sha256": "aeabe3b7431fb0a9dcdf4013690df575d62c3743f33fc2d364767855a1c661e4"
     },
     "inventory_source": {
-      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-18-objects/inventory.UNREVIEWED.json",
-      "sha256": "26466f987363c679bf7e61ce4bda05c869431e3801f03575fdd0d2c2d014c572"
+      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-19-cmath/inventory.UNREVIEWED.json",
+      "sha256": "027f84339ed2fbca1fe3af36c0479d02115e21c173258400b9a64dd09403f524"
     },
-    "policy_sha256": "0a0f39f8773a6689afba6fa6df45489e47c662ec6eba9e1ad1861e6679b042c2",
+    "policy_sha256": "b660a2a4502465deb7a7ea0d2de2431a45413ea0db50143b32267c987d2539b0",
     "preserved_violation_count": 7,
     "runtime_acceptance": false,
     "source_map_before_baseline": {
-      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/18-objects/source-files.json",
-      "sha256": "84a02589dbd8c0f18121d3e22bf01d593e2a546f59b98619f0e97809181c9b5d"
+      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/19-cmath/source-files.json",
+      "sha256": "d85ca3027ddb52cb133bfb0a98ce9bc3ca05a9431178880b6be1fb55907b8c89"
     }
   },
   "reviewed": true,
@@ -156,7 +169,7 @@
     "src/xrdroot/cint/runtime/arith.py": "c832ac79918ae7610cb6527526b0c505b26d7c3658992ccf15f1bb39bc6b85e7",
     "src/xrdroot/cint/runtime/cells.py": "5c5a7e6db0c7e9fe54bbdd98900b42b5d55a27486e8e843813fbeb705d3d817c",
     "src/xrdroot/cint/runtime/chrono.py": "ca10e16dcb9be513f9ddecadadaa9149f6708e5cf39317eebf0dcba7a715b164",
-    "src/xrdroot/cint/runtime/cmath.py": "e668f853db06fc13e440d6b895488c49690466a3175dad53f79d1dc0a475c871",
+    "src/xrdroot/cint/runtime/cmath.py": "bfb311eae828c4b72c8322321a147003dfcc0d82ad4915078135c4fb050adb9c",
     "src/xrdroot/cint/runtime/istreams.py": "6d96f5823accd5e84eca2963be317d3fdd60c49ad60db3e01f598e52e394e0ec",
     "src/xrdroot/cint/runtime/ntuplefill.py": "1f440c733b7c8f63c0931afd7fd16d6ba0a96a758702c4629b00d17de53f417e",
     "src/xrdroot/cint/runtime/objects.py": "e7054d8bd39c3037099f9e9ad4627d7cc159fc3186aecf5fe231e84ebc38efdd",
@@ -196,6 +209,7 @@
     "src/xrdroot/cppstd/bitset.py": "2da27f8a2b9650e8dc738b1e71cf69307c340fd5af8ed11ec851e7da4474bce7",
     "src/xrdroot/cppstd/cells.py": "130a3bd99650e88197550e6ceafec038de095b21419d69d6574cf722b14278e3",
     "src/xrdroot/cppstd/chrono.py": "f03e39755bbc53cdfc457a2fa7341b7dbc31e13457c59a291aee344fc41fedf9",
+    "src/xrdroot/cppstd/cmath.py": "2775beee2e156e5bfb0da9602fe7ebe4dee7c8316fdc336609b7e156a7fb0b8a",
     "src/xrdroot/cppstd/containers.py": "fbfb9563ce184595d319f251000905cbdfd7403ef9085aa9aaccb4842e7b5ede",
     "src/xrdroot/cppstd/istreams.py": "fa17d38afdf7ae81da6549c4919fd04e7f2dff4ef692bc69a2af622b44ff76d4",
     "src/xrdroot/cppstd/objects.py": "e5dd3ca9641768b2b1459826a033b021f72df3ef8178bad4c052891ba415ed10",
