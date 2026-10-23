@@ -13,11 +13,11 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from ..plugins import require
 from ..roofit.messages import INFO, PROGRESS, TOPICS, service
 from .assemble import log_fatal
 from .factory import HistoToWorkspaceFactoryFast
 from .model import _hf
-from .output import not_written, write_measurement
 
 __all__ = ["MakeModelAndMeasurementFast"]
 
@@ -33,22 +33,7 @@ def _output_directory(prefix: str) -> None:
 
 
 def _written(measurement: Any, filename: str, ws: Any, channel: Any = None) -> None:
-    """The file of a workspace: the measurement's histograms - of one channel, if given."""
-    import copy
-
-    from ..pyroot.core.files import TFile
-
-    handle = TFile.Open(filename, "RECREATE")
-    not_written(f"the RooWorkspace {ws.GetName()}", filename)
-    if channel is not None:
-        measurement = copy.deepcopy(measurement)
-        measurement.GetChannels().clear()
-        measurement.GetChannels().append(copy.deepcopy(channel))  # as C++ pushes a copy
-        _hf(INFO, "About to write channel measurement to file")
-    else:
-        _hf(PROGRESS, f"Writing combined measurement to file: {filename}")
-    write_measurement(measurement, handle)
-    handle.Close()
+    require("histfactory.write_model")(measurement, filename, ws, channel)
 
 
 def MakeModelAndMeasurementFast(measurement: Any, cfg: Any = None) -> Any:

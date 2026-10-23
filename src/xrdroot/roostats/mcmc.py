@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from ..plugins import require
 from ..roofit.cmdargs import RooCmdArg
 from ..roofit.collections import RooArgSet, as_list
 from ..roofit.messages import ERROR, log
@@ -311,9 +312,7 @@ class MCMCInterval(ConfInterval):
 
     def GetPosteriorHist(self) -> Any:
         """The chain's weights histogrammed in the parameters, burn-in dropped: a ``TH1F``."""
-        from ..pyroot.roostats.mcmcplot import posterior_hist
-
-        return posterior_hist(self)
+        return require("roostats.posterior_hist")(self)
 
 
 def _running_sum(values: Any) -> float:

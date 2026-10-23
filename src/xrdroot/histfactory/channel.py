@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from ..plugins import require
 from ..roofit import cout
 from ..roofit.messages import ERROR, WARNING
 from ..roofit.printing import g
@@ -66,12 +67,8 @@ class Channel:
             self._data.SetInputFile(InputFile)
             self._data.SetHistoPath(HistoPath)
         elif isinstance(data, (int, float)):
-            from ..pyroot.core.hists import TH1F
-
             name = f"{self._name}_data"
-            hist = TH1F(name, name, 1, 0, 1)
-            hist.SetBinContent(1, float(data))
-            self._data.SetHisto(hist)
+            self._data.SetHisto(require("histfactory.count_data")(name, data))
         else:
             self._data.SetHisto(data)
 

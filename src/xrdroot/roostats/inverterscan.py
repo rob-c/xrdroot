@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from ..plugins import require
 from ..roofit.messages import ERROR, INFO, WARNING, log
 from ..roofit.printing import g
 from . import inverter as inv
@@ -195,7 +196,7 @@ class _Search:
         """No accuracy from the scan: ``target e^(b (x - limit))`` fitted to the points in the
         fit range - a point more at random in it each time - until the fitted limit is accurate
         enough; ``None`` if a test failed. The fitted function, for the picture."""
-        from ..pyroot.roostats.inverterplot import make_plot
+        make_plot = require("roostats.inverter_plot")
 
         it = self.it
         low, high = self.fit_range
@@ -216,15 +217,7 @@ class _Search:
         return expo
 
     def _exponential(self, low: float, high: float) -> Any:
-        """``expoFit``: through the target at the limit, of the slope between the ends."""
-        from ..pyroot.core.funcs import TF1
-
-        expo = TF1("expoFit", "[0]*exp([1]*(x-[2]))", low, high)
-        expo.FixParameter(0, self.target)
-        slope = _log(self.cls_max[0] / self.cls_min[0]) / (self.r_max - self.r_min)
-        expo.SetParameter(1, slope)
-        expo.SetParameter(2, self.limit)
-        return expo
+        return require("roostats.inverter_exponential")(self, low, high)
 
     def _fitted(self, expo: Any, npoints: int, width: float) -> bool:
         """One fit: its limit kept if inside and precise - ``True`` once accurate enough."""
@@ -305,7 +298,7 @@ def run_limit(it: Any, abs_tol: float, rel_tol: float, hint: Any) -> tuple[bool,
 
 
 def _finish(it: Any, search: Any, expo: Any) -> tuple[bool, float, float]:
-    from ..pyroot.roostats.inverterplot import draw_limit_plot
+    draw_limit_plot = require("roostats.inverter_draw")
 
     if it._limit_plot is not None and it._limit_plot.GetN() > 0:
         draw_limit_plot(it, search.target, search.limit, search.error, expo)

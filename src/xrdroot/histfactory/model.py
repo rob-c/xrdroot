@@ -11,18 +11,21 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from ..roofit.messages import ERROR, INFO, PROGRESS, log
+from ..plugins import require
+from ..roofit.messages import log
 from ..roofit.printing import address
 from .shapes import ShapeFactor, ShapeSys, StatError
 from .systematics import (
     Constraint,
-    HistFactoryError,
     HistoFactor,
     HistoSys,
     NormFactor,
     OverallSys,
     _copied,
     _write,
+)
+from .systematics import (
+    HistFactoryError as HistFactoryError,
 )
 
 __all__ = ["Data", "Sample"]
@@ -92,28 +95,7 @@ class Data:
 
 
 def _histogram(files: dict[str, Any], InputFile: str, HistoPath: str, HistoName: str) -> Any:
-    """``Channel::GetHistogram``: the histogram, read from its file - opened once - and cloned
-    out of it, said as ROOT says it."""
-    from ..pyroot.core.files import TFile
-
-    _hf(PROGRESS, f"Getting histogram {InputFile}:{HistoPath}/{HistoName}")
-    handle = files.get(InputFile)
-    if handle is None:
-        handle = TFile.Open(InputFile)
-        if handle is None or not handle.IsOpen():
-            _hf(ERROR, f"Error: Unable to open input file: {InputFile}")
-            raise HistFactoryError(f"HistFactory - {InputFile} cannot be opened")
-        files[InputFile] = handle
-        _hf(INFO, f"Opened input file: {InputFile}: ")
-    where = f"{HistoPath}/{HistoName}" if HistoPath else HistoName
-    found = handle.Get(where)
-    if found is None:
-        _hf(ERROR, f"Histogram '{HistoName}' wasn't found in file '{InputFile}' in directory "
-            f"'{HistoPath}'.")  # fmt: skip
-        raise HistFactoryError(f"HistFactory - {InputFile} has no histogram {where}")
-    made = found.Clone()
-    made.SetDirectory(0)
-    return made
+    return require("histfactory.read_histogram")(files, InputFile, HistoPath, HistoName)
 
 
 class Sample:
@@ -185,13 +167,8 @@ class Sample:
 
     def SetValue(self, value: float) -> None:
         """A counting sample: a one-bin histogram ``<name>_hist`` holding ``value``."""
-        from ..pyroot.core.hists import TH1F
-
         name = f"{self._name}_hist"
-        hist = TH1F(name, name, 1, 0, 1)
-        hist.SetDirectory(0)
-        hist.SetBinContent(1, value)
-        self.SetHisto(hist)
+        self.SetHisto(require("histfactory.count_sample")(name, value))
 
     # -- systematics --------------------------------------------------------------
 

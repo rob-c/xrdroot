@@ -11,10 +11,11 @@ integrates and generates them as any node with no closed forms, numerically.
 from __future__ import annotations
 
 import sys
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
+from ..plugins import require
 from .collections import as_list
 from .pdf import RooAbsPdf
 from .real import Context, RooAbsReal
@@ -50,12 +51,7 @@ def _registered(func: Any) -> tuple[str, tuple[str, ...]] | None:
     """The C++ name and argument names RooFit has for ``func``, if a macro bound it."""
     if not _from_macro():
         return None
-    import xrdroot.pyroot as ROOT
-
-    for (space, name), arguments in REGISTERED.items():
-        if getattr(getattr(ROOT, space), name, None) is func:
-            return f"{'ROOT::Math' if space == 'Math' else space}::{name}", arguments
-    return None
+    return cast(tuple[str, tuple[str, ...]] | None, require("roofit.binding_name")(func))
 
 
 class _CFunction:

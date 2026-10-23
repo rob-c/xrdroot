@@ -4,7 +4,7 @@
       "key": "",
       "kind": "forwarder",
       "lazy": true,
-      "line": 189,
+      "line": 224,
       "module": "xrdroot.plugins",
       "path": "src/xrdroot/plugins.py",
       "point": "<dynamic>",
@@ -14,15 +14,25 @@
       "target": "*"
     }
   ],
-  "policy_sha256": "f500d54de217334fb929b11c0940c2b4005be2ee9505d9b8c7f6f619f0e8d33a",
+  "policy_sha256": "2c3563bc2cd5316eaa2db17082bcab1910a89028770ba845f59413b910c98f36",
   "registrations": [],
   "review": {
-    "decision": "Current component debt independently reviewed; permit no new violations and shrink every resolved allowance. This approves the measured debt inventory only, not runtime behavior, tutorial parity or publication.",
-    "independent_review_sha256": "fdfb988bfd681b50f195cbabd371541326ade5597fc5a27cf116f3cfc497e2e9",
-    "initial_inventory_sha256": "74b97fc337f8eaa3bc331be63ffc7d844285a59645b4319f85a05543d979d035",
-    "preserved_violation_count": 25,
-    "source_map_before_baseline_sha256": "42099d9ffb93ec429721d9443cc2f5318a8d2f18df9285eb8346a805e2a49b80",
-    "visible_reviewed_private_import_count": 1
+    "decision": "Retain the exact independently audited dependency-debt inventory for this frozen ordered prefix; preserve every measured violation identity and duplicate multiplicity, declaration, source file and policy fingerprint. This review grants no runtime, ordered-prefix, tutorial, commit or publication acceptance.",
+    "independent_inventory_audit": {
+      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected25-quiet-SECOND-saved-audit-v2-ACTUAL-20261021/receipt.json",
+      "sha256": "aeabe3b7431fb0a9dcdf4013690df575d62c3743f33fc2d364767855a1c661e4"
+    },
+    "inventory_source": {
+      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-06-L5/inventory.UNREVIEWED.json",
+      "sha256": "7ee4e58918bd7c6846225ce89f75f5568e3c7ee4bf22f55953473b14fcb4eaee"
+    },
+    "policy_sha256": "2c3563bc2cd5316eaa2db17082bcab1910a89028770ba845f59413b910c98f36",
+    "preserved_violation_count": 12,
+    "runtime_acceptance": false,
+    "source_map_before_baseline": {
+      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/06-L5/source-files.json",
+      "sha256": "6788c448239152ab88f801c1cb0692a4a99f5692eecff8fa1db35dcf48655c97"
+    }
   },
   "reviewed": true,
   "reviewed_private_imports": [
@@ -238,13 +248,13 @@
     "src/xrdroot/hist.py": "b3155b30010706acfff6e931aba55d202d2a4246d50043a893e9ec391d306696",
     "src/xrdroot/histfactory/__init__.py": "3dc470fae9f688e2fcd25f9459ba500971830b97e76e4c93340e87d4b34a310d",
     "src/xrdroot/histfactory/assemble.py": "eed2d9a49a014399a4bc3493fd533a2be02e1929ee0941d1281d2e8ef1a6201b",
-    "src/xrdroot/histfactory/channel.py": "191c170885beb06a4364cd4380f372a72ea6dada4071a7877b57efffe39c26a0",
+    "src/xrdroot/histfactory/channel.py": "38b3b82d2d320a530802218fe9635957704bbac7770a75f7e911a93f2461a75f",
     "src/xrdroot/histfactory/combine.py": "04ec86acc91c1b5829c44afe25e503e20b24e10bfe2451a4b7eb2f0b3588ee3b",
     "src/xrdroot/histfactory/factory.py": "f908e388441c270489e97b2b6528dffa4105e22e28d779a46de25f52965c9ad9",
     "src/xrdroot/histfactory/layouts.py": "160e48d5537eaec39dadf401ffb2621dce557b667fbb8726b4f623fea76e8ed0",
-    "src/xrdroot/histfactory/make.py": "3bfd4ab1a9028930ac35dc31594b5febd5b0dc56df72266a9a52fb87261219d4",
+    "src/xrdroot/histfactory/make.py": "1f236a91c2cf5e6f60d7e93dd7cdafc6f27b29eee4d563589a253c404d91ca46",
     "src/xrdroot/histfactory/measurement.py": "1bcc42725e896c90a28215613f7ac68ac519c3fb36bb0006110e5cb309c22eeb",
-    "src/xrdroot/histfactory/model.py": "0dc9d57b6f7161133e389a359f6c1f77454b5557ff7fc4adbaa8d8eef9ba0fb9",
+    "src/xrdroot/histfactory/model.py": "595d63e87e4d38d8117250a503793ecc53abda465adfdad4fe4419d4208c7243",
     "src/xrdroot/histfactory/output.py": "309533296396c56ca1d7527d502f75f8bfc7ca8abaa2504929c26eec89b79dd3",
     "src/xrdroot/histfactory/shapes.py": "a0d0d96ba8cdb02a91a04840eff353aa3621cc08c42feeb593cf1be720587c89",
     "src/xrdroot/histfactory/stat.py": "ee731ccd84fccbbf47d0f11841a870f0a40b9a9bcf992daa909b2d33b805e323",
@@ -304,7 +314,7 @@
     "src/xrdroot/plot/scatter.py": "2f610c50af17d2030aeafad797afbccebc877b829d1b5b04af1b23ed3aa041a6",
     "src/xrdroot/plot/smooth.py": "cd5252210e495633b763675c2d2c5a1db7c395b478070e02da76ce839f5b3a83",
     "src/xrdroot/plot/styles.py": "cb1daa57f7618896b9baca757a050eaad1d2e1d21f0588c981f697df840cde15",
-    "src/xrdroot/plugins.py": "c8aca5e615c9eacabe7161f7880855f744b983f00d330a823f899da318c7be84",
+    "src/xrdroot/plugins.py": "6793fc21db339d4c674bfd1c0808dd89628a3b391ea95be4d5c1701c3fa6434d",
     "src/xrdroot/polybins.py": "1bc46c06667260d15846d77aba90339d2f887763a097cfca57f8ff1303e2d8b6",
     "src/xrdroot/profile.py": "f0190fe203c000a8436188b578b3de2cd4fe89788dfdbecb8c19b07d4134737c",
     "src/xrdroot/pyroot/__init__.py": "28e6a6b8075b11ca9870d1253c6893cbe313e0a1e835e45b2cee0569f87b8369",
@@ -448,10 +458,14 @@
     "src/xrdroot/pyroot/rdf/treesource.py": "795f12db4a74fae4ccbc3ce04d55ed03148bd33e6946390020bf12a8f0b065f1",
     "src/xrdroot/pyroot/rdf/vectorrows.py": "3a338c8d9f7a2eb09c72c2fd4bc59093e9b1adb9711da698f4047031c11f70a9",
     "src/xrdroot/pyroot/roofit/__init__.py": "48fc4e8904b02a40ed6b74cad7b8516bbce9f470484dc1456dfd0b9ce1e346cd",
+    "src/xrdroot/pyroot/roofit/bindings.py": "8eca53d39461c048fe510941edb2f19cef468eefc53f4908cb6e764935b22d04",
     "src/xrdroot/pyroot/roofit/commands.py": "313998d974519fdb8c81ac495d17b7eb79927fba21246ee2a904803a8435ef43",
+    "src/xrdroot/pyroot/roofit/contour.py": "08e179488e696c32dd735dfbd177554eb2f72b9ede6d999c22a461f42433f66a",
     "src/xrdroot/pyroot/roostats/__init__.py": "a4d3900ba47e62118d24414777915cfb99cd77b9e1d6cd7e04607734e2eda565",
+    "src/xrdroot/pyroot/roostats/histfactoryio.py": "eae834e99121bb997f389db4f4bef04389ccdeade6b6df6d44b98b35b7595e9a",
     "src/xrdroot/pyroot/roostats/inspector.py": "270c6df0fb00ef4701e6e80a928b619cff1bcd4126774d7b70f37724e9f6fb4a",
     "src/xrdroot/pyroot/roostats/inverterdraw.py": "598402558b965cf2325502e661ba706cb3cb6bef2d1bc0d0e04fa2416e9f6440",
+    "src/xrdroot/pyroot/roostats/inverterfits.py": "df1f62ac73694b16ee48aa3289aac88070ef30b1e4dc3439266ce14c44bd6b45",
     "src/xrdroot/pyroot/roostats/inverterplot.py": "fbd020060f51acc604a2f603a00342b46c88c4b8448a51c93179af9fddb185da",
     "src/xrdroot/pyroot/roostats/mcmcplot.py": "b570a9cf24a2b7e0664a124f1e7e094d34ebf321059cccce0ee36812bd19d535",
     "src/xrdroot/pyroot/roostats/plots.py": "f758707a75b29ac16b2b204b732e367f179611b17314c57514bcf00eccafacb9",
@@ -547,7 +561,7 @@
     "src/xrdroot/rntuple/writer.py": "5baafea6c6ff9ee6fe3da7d6c1b2f740dac95303d8e781441d42d2207c4daba7",
     "src/xrdroot/roofit/__init__.py": "8ba4d6b7cf74e0f98ab9dcf408374698035fd4a559e14f9840a29ea36336e3ea",
     "src/xrdroot/roofit/arg.py": "c86146ff4670844d592a2717c1c1662ce7f7a027c26e670c507e983f225f8ca7",
-    "src/xrdroot/roofit/bindings.py": "f321da58791b9c5e91f1955d5f8d710a0cc586fa4416fb880076f2da05a92497",
+    "src/xrdroot/roofit/bindings.py": "04c5ed93fcd78d9d0483a507145f9846e2bb5c5d0d3c097c64869276af58e424",
     "src/xrdroot/roofit/binning.py": "39aac02612adec548175b4db794b48e2b530ce680abd9b7d93824a128f640c2f",
     "src/xrdroot/roofit/categories.py": "75bf7c5638e51edea568c4e549ec3de869ffc15db1ea97427f8799f74ebc914d",
     "src/xrdroot/roofit/cerf.py": "d6f8f82133bbeeb2c4b8dda2ebeb638db387fb3d211316efecc797d761486e17",
@@ -580,7 +594,7 @@
     "src/xrdroot/roofit/fitting/batchmodel.py": "3248ef378eacbfefb9f3f5181e7993d77e4c83779f379a1cb1b16e8069ea59cf",
     "src/xrdroot/roofit/fitting/binned.py": "306e7e43eb8d2243659ee5deb35a47de92575a34f65787edab23fad6cbb5be2d",
     "src/xrdroot/roofit/fitting/chi2.py": "d1715bfdeb3de4b68f1449409ca9e67f1e4f59c7f76d86366323b09d2f78d6b2",
-    "src/xrdroot/roofit/fitting/contour.py": "310f3587bf9bb2fda65a30b0931752977c524c1a4a848d6c12e5b7b51f2c1d4a",
+    "src/xrdroot/roofit/fitting/contour.py": "0a818714d270d24a6cde9763c97b3c025135a82a5c73cdb10c341ae6fd3831f0",
     "src/xrdroot/roofit/fitting/fit.py": "74944b918923e509931f5ec4c8c78c34ccb7a24a08d870e63136c836eb5c8cd9",
     "src/xrdroot/roofit/fitting/hfconstraints.py": "8cbd3678ade4f50b17414083987c69f2ad005226c533fba41b4fa1e198f800ac",
     "src/xrdroot/roofit/fitting/hfdata.py": "70badc6fb6dca0a9427f18acdb1e84c2d21a08daf0170c43f221035d28f332b0",
@@ -715,12 +729,12 @@
     "src/xrdroot/roostats/hypotest.py": "97237279ce5a7469580690f51a63f08d762d972280f353549b51004d5b042a2b",
     "src/xrdroot/roostats/intervals.py": "a99087b3869ac4f8470b9457733ac6c880e1df6328f5bda8ac9c53769b2405be",
     "src/xrdroot/roostats/inverter.py": "bbe80e218789096599ea7eb5c29cd5ee6c1af363ccb76752d8d8ff3f5220c610",
-    "src/xrdroot/roostats/inverterlimits.py": "3ed68280eb14e65572eafbafea0fb2cfbf7ba464d1e3328954440b7eff5a5b27",
+    "src/xrdroot/roostats/inverterlimits.py": "6b56269e6e6c72a80c9c344cdae45dc5c633dac1c364880e23ad7e483d00a74b",
     "src/xrdroot/roostats/inverterresult.py": "c26e01606916e0bf875db221ea69c0a23791527b538372cd47c9fb0ca3a9a3b6",
-    "src/xrdroot/roostats/inverterscan.py": "9f764b7ca9ba2e893a7eff9c38d8003b01bfc32ea60b9d2d36d5cc519770f5c2",
+    "src/xrdroot/roostats/inverterscan.py": "8ded3c702bfdcd5d82d5f0290ef8ce411f7e84e019310207feeab85b9188ef85",
     "src/xrdroot/roostats/likelihoodinterval.py": "6ff30baf1fe9a65870e7212ebbbaccd84082c68718f6abd075213974b128cc08",
     "src/xrdroot/roostats/markov.py": "7a6a40b071e7245f366dbac0a3d107a1851f6e258512fbb706c30bb454e85f80",
-    "src/xrdroot/roostats/mcmc.py": "08f5fe107de8a7b9f227f0a672f0f0b42bb52623e2a31ed07b59f28ac20bef34",
+    "src/xrdroot/roostats/mcmc.py": "e5addf725ee819ca6ca678535a1b688c1f4a8957ff57f152f8f27a67f0705c7a",
     "src/xrdroot/roostats/modelconfig.py": "699c2ef08d10bbc5fde5e59c7dfd735d1f51e73bca01337b1e5b07422534a763",
     "src/xrdroot/roostats/moretests.py": "f6c4d3293780ed929c9c9d59b0034e92f4d69c5174c8b77541760c9b68d810bf",
     "src/xrdroot/roostats/neyman.py": "5a8d71ea55fe4d2e21571257c750af289c0d716b82c853b6e8bb21a73fcf88e4",
@@ -871,51 +885,6 @@
   },
   "violations": [
     {
-      "component": "histfactory",
-      "line": 69,
-      "path": "src/xrdroot/histfactory/channel.py",
-      "rule": "edge",
-      "scope": "Channel.SetData",
-      "statement": "from ..pyroot.core.hists import TH1F",
-      "target": "xrdroot.pyroot.core.hists"
-    },
-    {
-      "component": "histfactory",
-      "line": 39,
-      "path": "src/xrdroot/histfactory/make.py",
-      "rule": "edge",
-      "scope": "_written",
-      "statement": "from ..pyroot.core.files import TFile",
-      "target": "xrdroot.pyroot.core.files"
-    },
-    {
-      "component": "histfactory",
-      "line": 97,
-      "path": "src/xrdroot/histfactory/model.py",
-      "rule": "edge",
-      "scope": "_histogram",
-      "statement": "from ..pyroot.core.files import TFile",
-      "target": "xrdroot.pyroot.core.files"
-    },
-    {
-      "component": "histfactory",
-      "line": 188,
-      "path": "src/xrdroot/histfactory/model.py",
-      "rule": "edge",
-      "scope": "Sample.SetValue",
-      "statement": "from ..pyroot.core.hists import TH1F",
-      "target": "xrdroot.pyroot.core.hists"
-    },
-    {
-      "component": "roofit",
-      "line": 53,
-      "path": "src/xrdroot/roofit/bindings.py",
-      "rule": "edge",
-      "scope": "_registered",
-      "statement": "import xrdroot.pyroot as ROOT",
-      "target": "xrdroot.pyroot"
-    },
-    {
       "component": "roofit",
       "line": 27,
       "path": "src/xrdroot/roofit/data/ascii.py",
@@ -923,78 +892,6 @@
       "scope": "write",
       "statement": "from ...cint.runtime.streams import endl",
       "target": "xrdroot.cint.runtime.streams"
-    },
-    {
-      "component": "roofit",
-      "line": 46,
-      "path": "src/xrdroot/roofit/fitting/contour.py",
-      "rule": "edge",
-      "scope": "_graph",
-      "statement": "from ...pyroot.core.graphs import TGraph",
-      "target": "xrdroot.pyroot.core.graphs"
-    },
-    {
-      "component": "roofit",
-      "line": 73,
-      "path": "src/xrdroot/roofit/fitting/contour.py",
-      "rule": "edge",
-      "scope": "contour",
-      "statement": "from ...pyroot.graphics.shapes import TMarker",
-      "target": "xrdroot.pyroot.graphics.shapes"
-    },
-    {
-      "component": "roostats",
-      "line": 222,
-      "path": "src/xrdroot/roostats/inverterlimits.py",
-      "rule": "edge",
-      "scope": "_error_graph",
-      "statement": "from ..pyroot.core.graphs import TGraphErrors",
-      "target": "xrdroot.pyroot.core.graphs"
-    },
-    {
-      "component": "roostats",
-      "line": 270,
-      "path": "src/xrdroot/roostats/inverterlimits.py",
-      "rule": "edge",
-      "scope": "_fitted_error",
-      "statement": "from ..pyroot.core.funcs import TF1",
-      "target": "xrdroot.pyroot.core.funcs"
-    },
-    {
-      "component": "roostats",
-      "line": 198,
-      "path": "src/xrdroot/roostats/inverterscan.py",
-      "rule": "edge",
-      "scope": "_Search.fit",
-      "statement": "from ..pyroot.roostats.inverterplot import make_plot",
-      "target": "xrdroot.pyroot.roostats.inverterplot"
-    },
-    {
-      "component": "roostats",
-      "line": 220,
-      "path": "src/xrdroot/roostats/inverterscan.py",
-      "rule": "edge",
-      "scope": "_Search._exponential",
-      "statement": "from ..pyroot.core.funcs import TF1",
-      "target": "xrdroot.pyroot.core.funcs"
-    },
-    {
-      "component": "roostats",
-      "line": 308,
-      "path": "src/xrdroot/roostats/inverterscan.py",
-      "rule": "edge",
-      "scope": "_finish",
-      "statement": "from ..pyroot.roostats.inverterplot import draw_limit_plot",
-      "target": "xrdroot.pyroot.roostats.inverterplot"
-    },
-    {
-      "component": "roostats",
-      "line": 314,
-      "path": "src/xrdroot/roostats/mcmc.py",
-      "rule": "edge",
-      "scope": "MCMCInterval.GetPosteriorHist",
-      "statement": "from ..pyroot.roostats.mcmcplot import posterior_hist",
-      "target": "xrdroot.pyroot.roostats.mcmcplot"
     },
     {
       "component": "pyroot",

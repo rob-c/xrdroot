@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import bisect
 import math
-from typing import Any
+from typing import Any, cast
 
+from ..plugins import require
 from ..roofit.messages import ERROR, WARNING, log
 
 __all__ = ["closest_point_index", "find_interpolated_limit", "graph_eval", "graph_x"]
@@ -217,19 +218,7 @@ def closest_point_index(result: Any, target: float, mode: int = 0, xtarget: floa
 
 
 def _error_graph(result: Any, xmin: float, xmax: float) -> tuple[Any, int]:
-    """The points inside ``[xmin, xmax]`` with errors, as a ``TGraphErrors`` - and how many
-    points were inside at all."""
-    from ..pyroot.core.graphs import TGraphErrors
-
-    graph, inside = TGraphErrors(), 0
-    for i in sorted_order(result._x):
-        if xmin < xmax and xmin <= result.GetXValue(i) <= xmax:
-            inside += 1
-            if result.GetYError(i) > 1e-6:
-                at = graph.GetN()
-                graph.SetPoint(at, result.GetXValue(i), result.GetYValue(i))
-                graph.SetPointError(at, 0.0, result.GetYError(i))
-    return graph, inside
+    return cast(tuple[Any, int], require("roostats.inverter_error_graph")(result, xmin, xmax))
 
 
 def estimated_error(result: Any, target: float, lower: bool, xmin: float = 1.0,
@@ -267,32 +256,7 @@ def _valid_graph(result: Any, lower: bool, xmin: float, xmax: float) -> Any:
 
 def _fitted_error(result: Any, graph: Any, target: float, lower: bool, limit: float,
                   given: tuple[float, float]) -> float:  # fmt: skip
-    from ..pyroot.core.funcs import TF1
-
-    xs = sorted(result._x)
-    low, high = given if given[0] < given[1] else (xs[0], xs[-1])
-    fct = TF1("fct", "exp([0] * (x - [2] ) + [1] * (x-[2])**2)", low, high)
-    scale = high - low
-    if lower:
-        fct.SetParameters(2.0 / scale, 0.1 / scale, graph.GetX()[0])
-        fct.SetParLimits(0, 0, 100.0 / scale)
-        fct.SetParLimits(1, 0, 10.0 / scale)
-    else:
-        fct.SetParameters(-2.0 / scale, -0.1 / scale)
-        fct.SetParLimits(0, -100.0 / scale, 0)
-        fct.SetParLimits(1, -100.0 / scale, 0)
-    if graph.GetN() < 3:
-        fct.FixParameter(1, 0.0)
-    status = int(graph.Fit(fct, "Q EX0"))
-    index = closest_point_index(result, target, 1, limit)
-    if status != 0:
-        log(result, WARNING, "Eval", "HypoTestInverterResult::CalculateEstimatedError - cannot "
-            f"estimate  the {'lower' if lower else 'upper'} limit error ")  # fmt: skip
-        return 0.0
-    if result.GetYError(index) <= 0:
-        return 0.0
-    slope = fct.Derivative(result.GetXValue(index))
-    return float(min(abs(result.GetYError(index) / slope), high - low))
+    return float(require("roostats.inverter_error_fit")(result, graph, target, lower, limit, given))
 
 
 #: ``fgAsymptoticMaxSigma``: the asymptotic expected p-values from -5 to 5 sigma, a sigma apart.

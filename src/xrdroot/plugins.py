@@ -167,6 +167,41 @@ PROVIDERS: dict[tuple[str, str], tuple[str, str, str]] = {
         "graphics", "xrdroot.canvas.streamer", "streamer_for",
     ),
     ("canvas.classes", "default"): ("graphics", "xrdroot.canvas", "class_registry"),
+    ('roofit.binding_name', 'default'): (
+        'pyroot', 'xrdroot.pyroot.roofit.bindings', 'registered_name',
+    ),
+    ('root.class', 'TMarker'): ('pyroot', 'xrdroot.pyroot.graphics.shapes', 'TMarker'),
+    ('roofit.contour_graph', 'default'): ('pyroot', 'xrdroot.pyroot.roofit.contour', 'make_graph'),
+    ('roostats.posterior_hist', 'default'): (
+        'pyroot', 'xrdroot.pyroot.roostats.mcmcplot', 'posterior_hist',
+    ),
+    ('roostats.inverter_draw', 'default'): (
+        'pyroot', 'xrdroot.pyroot.roostats.inverterplot', 'draw_limit_plot',
+    ),
+    ('roostats.inverter_plot', 'default'): (
+        'pyroot', 'xrdroot.pyroot.roostats.inverterplot', 'make_plot',
+    ),
+    ('roostats.inverter_exponential', 'default'): (
+        'pyroot', 'xrdroot.pyroot.roostats.inverterfits', 'exponential',
+    ),
+    ('roostats.inverter_error_graph', 'default'): (
+        'pyroot', 'xrdroot.pyroot.roostats.inverterfits', 'error_graph',
+    ),
+    ('roostats.inverter_error_fit', 'default'): (
+        'pyroot', 'xrdroot.pyroot.roostats.inverterfits', 'fitted_error',
+    ),
+    ('histfactory.count_data', 'default'): (
+        'pyroot', 'xrdroot.pyroot.roostats.histfactoryio', 'counting_data',
+    ),
+    ('histfactory.read_histogram', 'default'): (
+        'pyroot', 'xrdroot.pyroot.roostats.histfactoryio', 'read_histogram',
+    ),
+    ('histfactory.count_sample', 'default'): (
+        'pyroot', 'xrdroot.pyroot.roostats.histfactoryio', 'counting_sample',
+    ),
+    ('histfactory.write_model', 'default'): (
+        'pyroot', 'xrdroot.pyroot.roostats.histfactoryio', 'write_model',
+    ),
 }
 
 

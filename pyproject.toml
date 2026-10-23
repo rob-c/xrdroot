@@ -225,6 +225,19 @@ extensions = [
     { caller = "xrdroot.roofit.io.workspace", point = "workspace.maker", provider = "roostats", target = "xrdroot.roostats.workspaceio:make_model_config" },
     { caller = "xrdroot.interp", point = "canvas.streamer.custom", provider = "graphics", target = "xrdroot.canvas.streamer:streamer_for" },
     { caller = "xrdroot.kinds", point = "canvas.classes", provider = "graphics", target = "xrdroot.canvas:class_registry" },
+    { caller = "xrdroot.roofit.bindings", point = "roofit.binding_name", provider = "pyroot", target = "xrdroot.pyroot.roofit.bindings:registered_name" },
+    { caller = "xrdroot.roofit.fitting.contour", point = "root.class", provider = "pyroot", target = "xrdroot.pyroot.graphics.shapes:TMarker" },
+    { caller = "xrdroot.roofit.fitting.contour", point = "roofit.contour_graph", provider = "pyroot", target = "xrdroot.pyroot.roofit.contour:make_graph" },
+    { caller = "xrdroot.roostats.mcmc", point = "roostats.posterior_hist", provider = "pyroot", target = "xrdroot.pyroot.roostats.mcmcplot:posterior_hist" },
+    { caller = "xrdroot.roostats.inverterscan", point = "roostats.inverter_draw", provider = "pyroot", target = "xrdroot.pyroot.roostats.inverterplot:draw_limit_plot" },
+    { caller = "xrdroot.roostats.inverterscan", point = "roostats.inverter_plot", provider = "pyroot", target = "xrdroot.pyroot.roostats.inverterplot:make_plot" },
+    { caller = "xrdroot.roostats.inverterscan", point = "roostats.inverter_exponential", provider = "pyroot", target = "xrdroot.pyroot.roostats.inverterfits:exponential" },
+    { caller = "xrdroot.roostats.inverterlimits", point = "roostats.inverter_error_graph", provider = "pyroot", target = "xrdroot.pyroot.roostats.inverterfits:error_graph" },
+    { caller = "xrdroot.roostats.inverterlimits", point = "roostats.inverter_error_fit", provider = "pyroot", target = "xrdroot.pyroot.roostats.inverterfits:fitted_error" },
+    { caller = "xrdroot.histfactory.channel", point = "histfactory.count_data", provider = "pyroot", target = "xrdroot.pyroot.roostats.histfactoryio:counting_data" },
+    { caller = "xrdroot.histfactory.model", point = "histfactory.read_histogram", provider = "pyroot", target = "xrdroot.pyroot.roostats.histfactoryio:read_histogram" },
+    { caller = "xrdroot.histfactory.model", point = "histfactory.count_sample", provider = "pyroot", target = "xrdroot.pyroot.roostats.histfactoryio:counting_sample" },
+    { caller = "xrdroot.histfactory.make", point = "histfactory.write_model", provider = "pyroot", target = "xrdroot.pyroot.roostats.histfactoryio:write_model" },
 ]
 
 [tool.xrdroot.components.groups]
