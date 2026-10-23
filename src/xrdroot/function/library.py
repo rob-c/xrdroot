@@ -199,3 +199,7 @@ CONSTANTS: dict[str, float] = {
 #: moved between CODATA releases; a formula naming one is refused rather
 #: than evaluated with a value the ROOT that wrote it may not have used.
 PHYSICAL = ("g", "h", "k", "sigma", "r")
+
+
+# Register after CALLS exists: the engine is complete before any PyROOT wrapper is imported.
+from . import mathformula as _mathformula  # noqa: E402, F401 - ROOT::Math formula names

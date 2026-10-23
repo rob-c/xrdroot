@@ -113,7 +113,7 @@ def noncentral_pdf(x: float, r: float, lam: float) -> float:
 def _term(x: float, k: float, lam: float, i: int, cdf: Any = None) -> float:
     """The sum's ``i``-th term: the Poisson weight of ``i`` times the central density of ``k +
     2 i`` - or, given ``cdf``, the difference of its distribution function over a range."""
-    from ...pyroot.core.rmath import chisquared_pdf
+    from ...function.rootmath import chisquared_pdf
 
     weight = math.exp(-lam / 2.0) * (lam / 2.0) ** i
     if cdf is None:
@@ -148,7 +148,7 @@ class RooNonCentralChiSquare(RooAbsPdf):
 
     def _one(self, x: float, k: float, lam: float) -> float:
         """``evaluate``: a value at the range's lower end nudged a thousandth of it in."""
-        from ...pyroot.core.rmath import chisquared_pdf
+        from ...function.rootmath import chisquared_pdf
 
         at = x if x > 0 else self.x.getMin() + 1e-3 * (self.x.getMax() - self.x.getMin())
         if lam == 0:
@@ -199,7 +199,7 @@ class RooNonCentralChiSquare(RooAbsPdf):
                      self.lam.compute(ctx))  # fmt: skip
 
     def _integral(self, k: float, lam: float, rng: Any) -> float:
-        from ...pyroot.core.rmath import chisquared_cdf
+        from ...function.rootmath import chisquared_cdf
 
         low, high = self.x.getMin(rng), self.x.getMax(rng)
         if lam == 0:

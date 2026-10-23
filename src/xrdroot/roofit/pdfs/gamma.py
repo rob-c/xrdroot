@@ -136,7 +136,7 @@ class RooGamma(RooAbsPdf):
         return frozenset([self.x.GetName()])
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
-        from ...pyroot.core.rmath import gamma_cdf
+        from ...function.rootmath import gamma_cdf
 
         low, high = self.x.getMin(rng), self.x.getMax(rng)
         shape, scale, mu = (one.compute(ctx) for one in (self.gamma, self.beta, self.mu))
