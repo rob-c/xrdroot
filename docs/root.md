@@ -3496,3 +3496,11 @@ everything else this library raises.
 | --- | --- |
 | `FormatError` | the bytes are not the ROOT format they claim — a truncated download and an HTML error page both look like this |
 | `UnsupportedFeatureError` | a valid file using something this reader does not do, named rather than guessed at |
+
+
+## C++ standard-library runtime
+
+The generic `ostream`, `ostringstream` and `ofstream` facilities and string
+helpers are available from `xrdroot.cppstd`. Their interpreter compatibility
+paths preserve the same types and shared state. See the
+[C++ standard-library component](components/cppstd.md) for its scope and examples.

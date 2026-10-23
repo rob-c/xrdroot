@@ -24,7 +24,7 @@ __all__ = ["read", "write"]
 
 def write(dataset: Any, stream: Any) -> bool:
     """``write(ofs)``: the events, a line each; ``False``, as ROOT's ``ofs.fail()`` is then."""
-    from ...cint.runtime.streams import endl
+    from ...cppstd.streams import endl
 
     for index in range(dataset.numEntries()):
         for one in dataset.get(index):

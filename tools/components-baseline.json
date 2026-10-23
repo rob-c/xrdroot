@@ -23,15 +23,15 @@
       "sha256": "aeabe3b7431fb0a9dcdf4013690df575d62c3743f33fc2d364767855a1c661e4"
     },
     "inventory_source": {
-      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-07-L6/inventory.UNREVIEWED.json",
-      "sha256": "2f8f44896657fe25cfa883afc6aff6811b9af147dfcd3278c4f6a1c92f76e231"
+      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-08-streams-strings/inventory.UNREVIEWED.json",
+      "sha256": "399f349f368cab3d4e1ef7b868c0d52c81e67b84451bd19620011d7fdbd0b101"
     },
     "policy_sha256": "216dffaa52e2947322a4e1d0a5a4b81d48998fa42ed03c36fbc7fe3ed5a245aa",
-    "preserved_violation_count": 8,
+    "preserved_violation_count": 7,
     "runtime_acceptance": false,
     "source_map_before_baseline": {
-      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/07-L6/source-files.json",
-      "sha256": "1bf8dc57f3b350ac5ec757f6214f8c89b28028689c3fac385dc149e294306164"
+      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/08-streams-strings/source-files.json",
+      "sha256": "49f05834e14db615cd9abfb467b0ca584a029fdd362aa444a83c5bb8608f8ed8"
     }
   },
   "reviewed": true,
@@ -136,8 +136,8 @@
     "src/xrdroot/cint/runtime/printf.py": "45f45d7e74207985c16df2fd556e79c7fc7710e311ad1ee9d7df1b59dc958e6c",
     "src/xrdroot/cint/runtime/references.py": "1566f90e7691c7b1e98598c57e4d9d737dd799ac263dbd0146bcb7729d1025f2",
     "src/xrdroot/cint/runtime/root.py": "be8c1997ca142fdba71efa8f6701889079ace729f3b2fffd243a169ff8f42a97",
-    "src/xrdroot/cint/runtime/streams.py": "c34769d16733da632138d7f23199cf96bb705074a30865be8cc29cc4039f712e",
-    "src/xrdroot/cint/runtime/strings.py": "13109457a12eb3fa1aab794f92ce8e9fc1cfbe129770e65a212830ed63836062",
+    "src/xrdroot/cint/runtime/streams.py": "e2c0fe285bd07306f8ba8e7d5d800ede48cbdf8a0d931b8754065099b62ae46e",
+    "src/xrdroot/cint/runtime/strings.py": "dd382c84737d6852cf0d0ade561f21d49cc20f57d449afc2c236a52f47566c8e",
     "src/xrdroot/cint/runtime/threads.py": "5d426380c3689ad6219c4e76cbf05565609ef64dc91ed250b66d24ea6f06bb85",
     "src/xrdroot/cint/runtime/units.py": "3fbf5418b789c4e99880389c70ff8440b9c945ac57639897baa1a3cf69d86c1e",
     "src/xrdroot/cint/symbols.py": "d7ee92faa5c2ff0bdac356dbece6ce7f7aa31e76cc70754f423c7d4c29d62f09",
@@ -164,6 +164,9 @@
     "src/xrdroot/colors.py": "617b1c5976c78594d69fc9c402c1ed3246f98bfad7b254a08858c9870b8695f4",
     "src/xrdroot/compare.py": "5f922e125bfbc8551d69eb527c34b4a95ec23a0acb0c392ac28a46286888102a",
     "src/xrdroot/compression.py": "568ea3fbd55665fe57bdf26909a05ea4d3763b5c4edbe1ab963fffd75fb7d7c7",
+    "src/xrdroot/cppstd/__init__.py": "3167e93d8fb379705a52112774dd0665a705fe633e2e82c02b56435cdb839903",
+    "src/xrdroot/cppstd/streams.py": "c34769d16733da632138d7f23199cf96bb705074a30865be8cc29cc4039f712e",
+    "src/xrdroot/cppstd/strings.py": "13109457a12eb3fa1aab794f92ce8e9fc1cfbe129770e65a212830ed63836062",
     "src/xrdroot/cxx.py": "978c96328a84ba685ead01e01a5becb43b51f8f94a60e1e922b54727891798e8",
     "src/xrdroot/delaunay.py": "47b9e9f07380322c0a705f7b88001a0d9999462301a5a427756e16ecbf92c4b5",
     "src/xrdroot/display.py": "d770e7f3d06366c582769efd292f3ac32e65a0a20b4f54e067f6b49d45b82016",
@@ -576,7 +579,7 @@
     "src/xrdroot/roofit/cubature_batch.py": "25da10d735201111363cef801cfdac4da40d2c06607f3c2e2036e5cbc6d72d10",
     "src/xrdroot/roofit/customizer.py": "5adc852a2d1ef235e32b7745f720746e8c9f3250928e8029a7fd132d11643937",
     "src/xrdroot/roofit/data/__init__.py": "bed264ea1e79e1ab44465fb2f38fec864212b17bdfb8cdb4aea5c059a685be77",
-    "src/xrdroot/roofit/data/ascii.py": "5ab3e621e0dc1476d61374c18a9e245032a1e2da4118a4ba995da97e83f78021",
+    "src/xrdroot/roofit/data/ascii.py": "1f3da5fe60d9403cf6e46a77b80d41f4369d74b2565d637db7622ff60d0bfc6b",
     "src/xrdroot/roofit/data/datahist.py": "ad8426cd7317668107534b1f22505033ff3b0e9ba5ed26145f9051325800887e",
     "src/xrdroot/roofit/data/dataset.py": "9e53549f97cbc1df1706173bdf9b7b9e9a3e04751c4246a40b98d87dbbd0f758",
     "src/xrdroot/roofit/data/interpolate.py": "53a3b8c447d7c0b82cdc5ac23b45d30b56fc626e98de452b88ea76af237a310a",
@@ -885,15 +888,6 @@
     "src/xrdroot/xmldoc.py": "ec4b05b91a58135285a9d73cd35ea734b85fed8cbd6f302c392ebb6f82377ce9"
   },
   "violations": [
-    {
-      "component": "roofit",
-      "line": 27,
-      "path": "src/xrdroot/roofit/data/ascii.py",
-      "rule": "edge",
-      "scope": "write",
-      "statement": "from ...cint.runtime.streams import endl",
-      "target": "xrdroot.cint.runtime.streams"
-    },
     {
       "component": "pyroot",
       "line": 89,

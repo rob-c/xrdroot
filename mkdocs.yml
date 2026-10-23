@@ -30,6 +30,8 @@ theme:
 nav:
   - Home: index.md
   - ROOT files: root.md
+  - Components:
+      - C++ standard library: components/cppstd.md
   - Maintainability metrics: maintainability.md
 
 markdown_extensions:
