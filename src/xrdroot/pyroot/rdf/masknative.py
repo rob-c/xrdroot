@@ -22,9 +22,9 @@ def _compact(column: Any) -> bool:
 
 def accepts(columns: tuple[Any, ...], maker: Any) -> bool:
     methods = ((rvec._RVec, '__getitem__', 'xrdroot.pyroot.rdf.rvec', '_RVec'),
-               (rvec._RVec, '__array__', 'xrdroot.pyroot.stl', '_Vector'),
-               (rvec._RVec, 'data', 'xrdroot.pyroot.stl', '_Vector'),
-               (rvec._RVec, '__len__', 'xrdroot.pyroot.stl', '_Vector'),
+               (rvec._RVec, '__array__', 'xrdroot.cppstd.containers', '_Vector'),
+               (rvec._RVec, 'data', 'xrdroot.cppstd.containers', '_Vector'),
+               (rvec._RVec, '__len__', 'xrdroot.cppstd.containers', '_Vector'),
                (Jagged, '__init__', 'xrdroot.jagged', 'Jagged'))
     return (vars(stl).get('np') is np and vars(rvec).get('np') is np and _mask_kernel()
             and inspect.getattr_static(Jagged, '__new__') is object.__new__

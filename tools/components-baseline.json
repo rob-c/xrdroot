@@ -14,8 +14,21 @@
       "target": "*"
     }
   ],
-  "policy_sha256": "ada62a94ca2635178ceecf41afdb1258c4c10aa31cfe139dd8f9504a486735ac",
+  "policy_sha256": "0a0f39f8773a6689afba6fa6df45489e47c662ec6eba9e1ad1861e6679b042c2",
   "registrations": [
+    {
+      "key": "",
+      "kind": "registration",
+      "lazy": false,
+      "line": 114,
+      "module": "xrdroot.pyroot.stl",
+      "path": "src/xrdroot/pyroot/stl.py",
+      "point": "xrdroot.cppstd.containers.set_type_resolver",
+      "provider": "",
+      "scope": "",
+      "statement": "_generic.set_type_resolver(_resolve_root_type)",
+      "target": "xrdroot.pyroot.stl:_resolve_root_type"
+    },
     {
       "key": "",
       "kind": "registration",
@@ -37,15 +50,15 @@
       "sha256": "aeabe3b7431fb0a9dcdf4013690df575d62c3743f33fc2d364767855a1c661e4"
     },
     "inventory_source": {
-      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-14-references/inventory.UNREVIEWED.json",
-      "sha256": "0b9b16449e40a85a6044fda163b5ea771bb611e87e324256858031065e30e5d9"
+      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-15-containers-provenance/inventory.UNREVIEWED.json",
+      "sha256": "baf5e38ad85511d763882b37e992a0966a3e40442ba1049bf55eff3f4c9ed234"
     },
-    "policy_sha256": "ada62a94ca2635178ceecf41afdb1258c4c10aa31cfe139dd8f9504a486735ac",
+    "policy_sha256": "0a0f39f8773a6689afba6fa6df45489e47c662ec6eba9e1ad1861e6679b042c2",
     "preserved_violation_count": 7,
     "runtime_acceptance": false,
     "source_map_before_baseline": {
-      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/14-references/source-files.json",
-      "sha256": "ff2cc76af895d478cd0c0295f2393e49c8c78d6e86aa9feafe531ee5a986efdc"
+      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/15-containers-provenance/source-files.json",
+      "sha256": "0bf8267714ce703c176c0843feeb4a79a3548d5f6ccde0d4b29fe005b302d187"
     }
   },
   "reviewed": true,
@@ -183,8 +196,10 @@
     "src/xrdroot/cppstd/bitset.py": "2da27f8a2b9650e8dc738b1e71cf69307c340fd5af8ed11ec851e7da4474bce7",
     "src/xrdroot/cppstd/cells.py": "130a3bd99650e88197550e6ceafec038de095b21419d69d6574cf722b14278e3",
     "src/xrdroot/cppstd/chrono.py": "f03e39755bbc53cdfc457a2fa7341b7dbc31e13457c59a291aee344fc41fedf9",
+    "src/xrdroot/cppstd/containers.py": "fbfb9563ce184595d319f251000905cbdfd7403ef9085aa9aaccb4842e7b5ede",
     "src/xrdroot/cppstd/random.py": "9be7542dc260e2e996d714ef10d8ca5a441f681232f332aaffa17fc2929c152b",
     "src/xrdroot/cppstd/references.py": "5088c7d878997f07acb3f6836acd0924f06d73d39be2048a52c817e2290a2842",
+    "src/xrdroot/cppstd/stdlib.py": "7c9ea6ddd8321c43d9477a9896826015918df4749e7b171190f7f8b98e6ad4fc",
     "src/xrdroot/cppstd/streams.py": "c34769d16733da632138d7f23199cf96bb705074a30865be8cc29cc4039f712e",
     "src/xrdroot/cppstd/strings.py": "13109457a12eb3fa1aab794f92ce8e9fc1cfbe129770e65a212830ed63836062",
     "src/xrdroot/cppstd/threads.py": "5d426380c3689ad6219c4e76cbf05565609ef64dc91ed250b66d24ea6f06bb85",
@@ -479,11 +494,11 @@
     "src/xrdroot/pyroot/rdf/helpers.py": "56901bcb5c784b0eb53e649ed30c57aafc36572809f7d38ac551179cebe754a8",
     "src/xrdroot/pyroot/rdf/jitted.py": "f4f55bf32277240310207ee1cc324cbb8200eacdb0d53bd796ec48ea2495d986",
     "src/xrdroot/pyroot/rdf/maskedcall.py": "e4944a204b5f978ba71dc4c518ebf3c0a44d1e5dfc83e4fb49ee70e24dca766e",
-    "src/xrdroot/pyroot/rdf/masknative.py": "f466d86b15b8a0c2893b544e5d57314f8b9bd01f25801c80114072bcdfb519f6",
+    "src/xrdroot/pyroot/rdf/masknative.py": "9d80f56acb7c6d87cc43340a91837c3d16b666801e40bfe63a2090b5e8e21b6f",
     "src/xrdroot/pyroot/rdf/randomexpr.py": "510adff80d8f858add904745bdbf737c4af87cb6acedb316b121e5fe1e312dfe",
     "src/xrdroot/pyroot/rdf/rvec.py": "9d3bc9a5b067a70f8a27d27f0332e516e8e793c1d80c50b25f5bfeeeff340224",
     "src/xrdroot/pyroot/rdf/treesource.py": "795f12db4a74fae4ccbc3ce04d55ed03148bd33e6946390020bf12a8f0b065f1",
-    "src/xrdroot/pyroot/rdf/vectorrows.py": "3a338c8d9f7a2eb09c72c2fd4bc59093e9b1adb9711da698f4047031c11f70a9",
+    "src/xrdroot/pyroot/rdf/vectorrows.py": "885ac68c66156ade9eef1768541b088247ae00c946bae8362bf91764204665dd",
     "src/xrdroot/pyroot/roofit/__init__.py": "48fc4e8904b02a40ed6b74cad7b8516bbce9f470484dc1456dfd0b9ce1e346cd",
     "src/xrdroot/pyroot/roofit/bindings.py": "8eca53d39461c048fe510941edb2f19cef468eefc53f4908cb6e764935b22d04",
     "src/xrdroot/pyroot/roofit/commands.py": "313998d974519fdb8c81ac495d17b7eb79927fba21246ee2a904803a8435ef43",
@@ -505,8 +520,8 @@
     "src/xrdroot/pyroot/spectra/transforms.py": "6f440df23aa0c8c7c9f846258897483b5280c4df52817bad77d73256549e2a65",
     "src/xrdroot/pyroot/spectra/tspectrum.py": "984e6a66e6f1cee181437a323cce5d97393f94e85b89d0d7664d7f4f46086acb",
     "src/xrdroot/pyroot/spectra/tspectrum2.py": "a20297e79bc201c0037edc7767c703a7e24f4e8775300221afcd96608017f0ba",
-    "src/xrdroot/pyroot/stdlib.py": "2cd1479ac30f9ca4305274b759b75bddbfe7ad03713a7689758ab6ec2fdd60a5",
-    "src/xrdroot/pyroot/stl.py": "bb524182f526b33294124401d58972fa5261cb6ec50380d8aeb6d47a88656e35",
+    "src/xrdroot/pyroot/stdlib.py": "1003d1d2fcc58ff3256ec555c6ec6a7fc1dd74d21d64a61efc04fa7713c17eca",
+    "src/xrdroot/pyroot/stl.py": "9f42e8e71fd1e904ad64a6964f6ef579691cd4e7677f4dea95275758f7109c48",
     "src/xrdroot/pyroot/stlrandom.py": "18a266118e27b37174b63fde00308a15aab0fc0916ec3d290e4b6610510ee00e",
     "src/xrdroot/pyroot/tcut.py": "77cfb88afb81dc79ad9d9fc09494fd7c68ec0150fadabb7dae312ca527fa784c",
     "src/xrdroot/pyroot/th2poly.py": "9a29060244bd843773c37ed09821dff8590fb957f4e9e31d0cd3c42ea6c84889",

@@ -77,9 +77,9 @@ def _keys(cache: Any) -> bool:
 
 
 def _namespace() -> bool:
-    functions = ((vars(stl).get('cpp_name'), 'xrdroot.pyroot.stl', 'cpp_name'),
-                 (vars(stl).get('element_type'), 'xrdroot.pyroot.stl', 'element_type'),
-                 (vars(stl).get('_numeric_dtype'), 'xrdroot.pyroot.stl', '_numeric_dtype'))
+    functions = ((vars(stl).get('cpp_name'), 'xrdroot.cppstd.containers', 'cpp_name'),
+                 (vars(stl).get('element_type'), 'xrdroot.cppstd.containers', 'element_type'),
+                 (vars(stl).get('_numeric_dtype'), 'xrdroot.cppstd.containers', '_numeric_dtype'))
     return (all(_function(value, module, name) for value, module, name in functions)
             and _mapping(vars(stl).get('CPP_NAMES'), str)
             and _mapping(vars(stl).get('_DTYPE_NAMES'), int))
@@ -119,7 +119,7 @@ def _template_state(state: dict[str, Any]) -> bool:
 
 
 def _template_methods(state: dict[str, Any]) -> bool:
-    methods = all(_method(stl._Template, name, 'xrdroot.pyroot.stl', '_Template')
+    methods = all(_method(stl._Template, name, 'xrdroot.cppstd.containers', '_Template')
                   for name in ('__getitem__', '_general'))
     return (methods and _template_base()
             and _function(state.get('_build'), 'xrdroot.pyroot.rdf.rvec', '_rvec_class'))
@@ -150,7 +150,7 @@ def _vector(kind: Any) -> bool:
     bases = (rvec._RVec, np.lib.mixins.NDArrayOperatorsMixin, stl._Vector, stl._Container, object)
     if kind.__mro__[1:] != bases or not _vector_fields(kind):
         return False
-    methods = all(_method(kind, name, 'xrdroot.pyroot.stl', '_Vector')
+    methods = all(_method(kind, name, 'xrdroot.cppstd.containers', '_Vector')
                   for name in ('__init__', '_construct', 'assign'))
     return (methods and _access(kind) and _slot(stl._Vector, '_data')
             and _slot(stl._Vector, '_size')

@@ -460,3 +460,19 @@ statement = "_register_capacity('rvec', _rvec_capacity)"
 callee = "xrdroot.cppstd.vectorassign.register_capacity"
 callback = "xrdroot.pyroot.vectorassign:_rvec_capacity"
 reason = "The adapter supplies ROOT SmallVector growth and signed capacity bounds to generic assignment."
+
+[tool.xrdroot.components.module_aliases."xrdroot.pyroot.stl"]
+target = "xrdroot.cppstd.containers"
+reason = "Legacy setattr and vars(stl) writes must reach the generic container implementation dictionary."
+
+[tool.xrdroot.components.registration_functions."xrdroot.cppstd.containers.set_type_resolver"]
+position = 0
+keyword = "resolver"
+
+[[tool.xrdroot.components.registrations]]
+caller = "xrdroot.pyroot.stl"
+scope = ""
+statement = "_generic.set_type_resolver(_resolve_root_type)"
+callee = "xrdroot.cppstd.containers.set_type_resolver"
+callback = "xrdroot.pyroot.stl:_resolve_root_type"
+reason = "The ROOT adapter supplies explicit opaque-type resolution; generic containers never discover ROOT."
