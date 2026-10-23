@@ -50,15 +50,15 @@
       "sha256": "aeabe3b7431fb0a9dcdf4013690df575d62c3743f33fc2d364767855a1c661e4"
     },
     "inventory_source": {
-      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-15-containers-provenance/inventory.UNREVIEWED.json",
-      "sha256": "baf5e38ad85511d763882b37e992a0966a3e40442ba1049bf55eff3f4c9ed234"
+      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-16-istreams/inventory.UNREVIEWED.json",
+      "sha256": "d07c735b023ce54b427b479b6c42cb3a30ae8e4760d5494f5c907a650600a1e2"
     },
     "policy_sha256": "0a0f39f8773a6689afba6fa6df45489e47c662ec6eba9e1ad1861e6679b042c2",
     "preserved_violation_count": 7,
     "runtime_acceptance": false,
     "source_map_before_baseline": {
-      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/15-containers-provenance/source-files.json",
-      "sha256": "0bf8267714ce703c176c0843feeb4a79a3548d5f6ccde0d4b29fe005b302d187"
+      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/16-istreams/source-files.json",
+      "sha256": "ec3d1eed0bc1417ce9f0a8b5abb98cb03de875f225f6d3c6773d0b082ce15878"
     }
   },
   "reviewed": true,
@@ -157,7 +157,7 @@
     "src/xrdroot/cint/runtime/cells.py": "5c5a7e6db0c7e9fe54bbdd98900b42b5d55a27486e8e843813fbeb705d3d817c",
     "src/xrdroot/cint/runtime/chrono.py": "ca10e16dcb9be513f9ddecadadaa9149f6708e5cf39317eebf0dcba7a715b164",
     "src/xrdroot/cint/runtime/cmath.py": "e668f853db06fc13e440d6b895488c49690466a3175dad53f79d1dc0a475c871",
-    "src/xrdroot/cint/runtime/istreams.py": "3b9f4620e2e7d8fb3a7492785a2eee9238d5fc864000aed4a58058c49cb2cc28",
+    "src/xrdroot/cint/runtime/istreams.py": "6d96f5823accd5e84eca2963be317d3fdd60c49ad60db3e01f598e52e394e0ec",
     "src/xrdroot/cint/runtime/ntuplefill.py": "1f440c733b7c8f63c0931afd7fd16d6ba0a96a758702c4629b00d17de53f417e",
     "src/xrdroot/cint/runtime/objects.py": "d30bb35f785cc67e712a53982d59ba956549a5b0d3965fb2bd5d043da754e627",
     "src/xrdroot/cint/runtime/printf.py": "45f45d7e74207985c16df2fd556e79c7fc7710e311ad1ee9d7df1b59dc958e6c",
@@ -197,6 +197,7 @@
     "src/xrdroot/cppstd/cells.py": "130a3bd99650e88197550e6ceafec038de095b21419d69d6574cf722b14278e3",
     "src/xrdroot/cppstd/chrono.py": "f03e39755bbc53cdfc457a2fa7341b7dbc31e13457c59a291aee344fc41fedf9",
     "src/xrdroot/cppstd/containers.py": "fbfb9563ce184595d319f251000905cbdfd7403ef9085aa9aaccb4842e7b5ede",
+    "src/xrdroot/cppstd/istreams.py": "fa17d38afdf7ae81da6549c4919fd04e7f2dff4ef692bc69a2af622b44ff76d4",
     "src/xrdroot/cppstd/random.py": "9be7542dc260e2e996d714ef10d8ca5a441f681232f332aaffa17fc2929c152b",
     "src/xrdroot/cppstd/references.py": "5088c7d878997f07acb3f6836acd0924f06d73d39be2048a52c817e2290a2842",
     "src/xrdroot/cppstd/stdlib.py": "7c9ea6ddd8321c43d9477a9896826015918df4749e7b171190f7f8b98e6ad4fc",
