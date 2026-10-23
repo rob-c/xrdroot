@@ -23,15 +23,15 @@
       "sha256": "aeabe3b7431fb0a9dcdf4013690df575d62c3743f33fc2d364767855a1c661e4"
     },
     "inventory_source": {
-      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-08-streams-strings/inventory.UNREVIEWED.json",
-      "sha256": "399f349f368cab3d4e1ef7b868c0d52c81e67b84451bd19620011d7fdbd0b101"
+      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-09-arith-cells/inventory.UNREVIEWED.json",
+      "sha256": "410c23dfab5ef201c3bda957e31066ed0d36cc233d9319f10b88c846512f1008"
     },
     "policy_sha256": "216dffaa52e2947322a4e1d0a5a4b81d48998fa42ed03c36fbc7fe3ed5a245aa",
     "preserved_violation_count": 7,
     "runtime_acceptance": false,
     "source_map_before_baseline": {
-      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/08-streams-strings/source-files.json",
-      "sha256": "49f05834e14db615cd9abfb467b0ca584a029fdd362aa444a83c5bb8608f8ed8"
+      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/09-arith-cells/source-files.json",
+      "sha256": "3a7215910113a6f47d8ede429b9ecc771072953d447781f1f7549380ebf02d85"
     }
   },
   "reviewed": true,
@@ -126,8 +126,8 @@
     "src/xrdroot/cint/program.py": "2aecb8a022250133c9ba4307ea0b69624c6a113950ff5d737d28b4046b1e1aa2",
     "src/xrdroot/cint/returned.py": "d9d7b1ea8aec2f34f06ceaa022202c4edf3768b49ffd469831f95813b7f8a2bc",
     "src/xrdroot/cint/runtime/__init__.py": "991b91ef3684b00266ce846bdb9ef66f1e621e893fc26bb12ca71a0d0abb6937",
-    "src/xrdroot/cint/runtime/arith.py": "95e661affd2a8dff3c930add62989ad25881c0e96ee3a98c29a82d85a1fe5ee3",
-    "src/xrdroot/cint/runtime/cells.py": "130a3bd99650e88197550e6ceafec038de095b21419d69d6574cf722b14278e3",
+    "src/xrdroot/cint/runtime/arith.py": "c832ac79918ae7610cb6527526b0c505b26d7c3658992ccf15f1bb39bc6b85e7",
+    "src/xrdroot/cint/runtime/cells.py": "5c5a7e6db0c7e9fe54bbdd98900b42b5d55a27486e8e843813fbeb705d3d817c",
     "src/xrdroot/cint/runtime/chrono.py": "f03e39755bbc53cdfc457a2fa7341b7dbc31e13457c59a291aee344fc41fedf9",
     "src/xrdroot/cint/runtime/cmath.py": "e668f853db06fc13e440d6b895488c49690466a3175dad53f79d1dc0a475c871",
     "src/xrdroot/cint/runtime/istreams.py": "3b9f4620e2e7d8fb3a7492785a2eee9238d5fc864000aed4a58058c49cb2cc28",
@@ -165,6 +165,8 @@
     "src/xrdroot/compare.py": "5f922e125bfbc8551d69eb527c34b4a95ec23a0acb0c392ac28a46286888102a",
     "src/xrdroot/compression.py": "568ea3fbd55665fe57bdf26909a05ea4d3763b5c4edbe1ab963fffd75fb7d7c7",
     "src/xrdroot/cppstd/__init__.py": "3167e93d8fb379705a52112774dd0665a705fe633e2e82c02b56435cdb839903",
+    "src/xrdroot/cppstd/arith.py": "95e661affd2a8dff3c930add62989ad25881c0e96ee3a98c29a82d85a1fe5ee3",
+    "src/xrdroot/cppstd/cells.py": "130a3bd99650e88197550e6ceafec038de095b21419d69d6574cf722b14278e3",
     "src/xrdroot/cppstd/streams.py": "c34769d16733da632138d7f23199cf96bb705074a30865be8cc29cc4039f712e",
     "src/xrdroot/cppstd/strings.py": "13109457a12eb3fa1aab794f92ce8e9fc1cfbe129770e65a212830ed63836062",
     "src/xrdroot/cxx.py": "978c96328a84ba685ead01e01a5becb43b51f8f94a60e1e922b54727891798e8",
