@@ -138,11 +138,15 @@ class _Reading(_TreeCore):
         return max(nbytes, 1)
 
     def _put(self, column: str, entry: int) -> int:
+        held = self._reader_buffers.get(column)
+        if held is not None:
+            held.reload(entry)
         address = self._addresses.get(column)
         if address is None:
             return 4
         value = self._batch.value(column, entry)
-        address.put(value.item() if isinstance(value, np.generic) else value)
+        if held is None or held.address is not address:
+            address.put(value.item() if isinstance(value, np.generic) else value)
         return max(int(np.asarray(value).nbytes) if not isinstance(value, str) else len(value), 1)
 
     def _load_friends(self, entry: int) -> None:

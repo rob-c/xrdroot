@@ -26,7 +26,8 @@ def test_interpreter_reference_exports_keep_the_generic_implementations() -> Non
 
     assert objects.value_copy is valuecopy.value_copy
     assert legacy.__all__ == [
-        "assign_call", "assign_method", "assign_into", "store_through", "assign_vector"
+        "assign_call", "assign_method", "assign_into", "store_through", "assign_vector",
+        "store_reference", "increment_reference",
     ]
     for name in references.__all__:
         assert getattr(legacy, name) is getattr(references, name)

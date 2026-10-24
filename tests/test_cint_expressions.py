@@ -30,7 +30,7 @@ def method(source: str) -> str:
         ("double f = 7.5; double g = f % 2;", "fmod(f, 2)"),
         ("auto v = *it;", "v = deref(ROOT.it)"),
         ("TTreeReaderValue<float> px(r, \"px\"); double s = *px + *px;",
-         "s = px.__deref__() + px.__deref__()"),
+         "s = f32(px.__deref__() + px.__deref__())"),
         ("ROOT::RVecD p{1., 2.}; auto g = p[p > 1 && abs(p) < 2];",
          "g = p[(p > 1) & (cabs(p) < 2)]"),
         ("RVecF p; auto g = p > 1 || p < 0;", "g = (p > 1) | (p < 0)"),
@@ -106,3 +106,67 @@ def test_a_methods_members_are_its_objects(source: str, fragment: str) -> None:
 def test_what_has_no_python_that_does_the_same_is_refused(source: str, why: str) -> None:
     with pytest.raises(Refusal, match=why):
         body(source)
+
+
+def test_address_of_compound_assignment_borrows_the_cell() -> None:
+    import xrdroot.pyroot as ROOT
+    from xrdroot.cint.execute import run_source
+
+    cpp = """
+    int f() {
+        int a = 1;
+        int* r = &a;
+        int* p = &(a += 2);
+        return *r + *p + a;
+    }
+    """
+    assert run_source(cpp, "f.C", (), root=ROOT) == 9
+
+
+def test_address_of_prefix_increment_borrows_the_cell() -> None:
+    import xrdroot.pyroot as ROOT
+    from xrdroot.cint.execute import run_source
+
+    cpp = """
+    int f() {
+        int a = 1;
+        int* r = &a;
+        int* q = &(++a);
+        return *r + *q + a;
+    }
+    """
+    assert run_source(cpp, "f.C", (), root=ROOT) == 6
+
+
+def test_address_of_an_unaddressable_update_is_refused() -> None:
+    with pytest.raises(Refusal, match="destination is addressable"):
+        body("int a = 1; int* p = &(a += 2); return *p;")
+
+
+def test_address_of_dereference_compound_assignment_borrows_the_pointer() -> None:
+    import xrdroot.pyroot as ROOT
+    from xrdroot.cint.execute import run_source
+
+    cpp = """
+    int f() {
+        int b = 1;
+        int* p = &b;
+        int* q = &(*p += 2);
+        return *q + *p;
+    }
+    """
+    assert run_source(cpp, "f.C", (), root=ROOT) == 6
+
+
+def test_address_of_an_unaddressable_prefix_increment_is_refused() -> None:
+    with pytest.raises(Refusal, match="destination is addressable"):
+        body("int a = 1; int* q = &(++a); return *q;")
+
+
+def test_address_of_class_pointer_compound_assignment_is_refused() -> None:
+    cpp = (
+        "struct S { int v; S& operator+=(int o) { v += o; return *this; } };\n"
+        "void f() { S s; s.v = 1; S* p = &s; S* q = &(*p += 5); }\n"
+    )
+    with pytest.raises(Refusal, match="destination is addressable"):
+        translate(cpp, "t.C")

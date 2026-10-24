@@ -55,6 +55,7 @@ class _TreeCore(_TObjectLike):
         self._addresses: dict[str, Address] = {}
         self._disabled: set[str] = set()
         self._read_entry = -1
+        self._reader_buffers: dict[str, Any] = {}
         self._batch = Batch(self._backing)
         self._friends: list[tuple[str, Any]] = []
         self._entry_list: Any = None
@@ -184,6 +185,9 @@ class _TreeCore(_TObjectLike):
         """The value of ``column`` in the entry last read, or ``None`` before any was."""
         if self._read_entry < 0:
             return None
+        held = self._reader_buffers.get(column)
+        if held is not None and held.entry == self._read_entry:
+            return held.peek()
         return self._batch.value(column, self._read_entry)
 
     def GetDirectory(self) -> Any:

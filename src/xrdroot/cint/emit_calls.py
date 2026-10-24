@@ -383,7 +383,9 @@ class CallEmitter(ExprEmitter):
         """``obj.m(args) = v``: an element for ``at``, else through the runtime's ``Set``/copy."""
         self._own_reference(func.obj, f"its method {func.name}", target)
         obj = self.value(func.obj)
-        if func.name == "at" and len(target.args) == 1:
+        reader = self.reader_method(func, "TTreeReaderArray")
+        at_reader = func.name == "At" and reader is not None and reader.scalar
+        if (func.name == "at" or at_reader) and len(target.args) == 1:
             return f"set_item({obj}, {self.value(target.args[0])}, {value})"
         return f"assign_method({obj}, {func.name!r}, {args}, {value})"
 
