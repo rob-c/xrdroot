@@ -214,6 +214,7 @@ provider_registry = "xrdroot.plugins"
 provider_functions = ["xrdroot.plugins.lookup", "xrdroot.plugins.require", "xrdroot.plugins.lookup_loaded"]
 # Upward dispatch is separately reviewed; it never grants a direct import edge.
 extensions = [
+    { caller = "xrdroot.session", point = "session.preloaded", provider = "app", target = "xrdroot.apinamespace:preloaded" },
     { caller = "xrdroot.display", point = "display.plot", provider = "graphics", target = "xrdroot.plot:plot" },
     { caller = "xrdroot.display", point = "display.html", provider = "graphics", target = "xrdroot.plot.notebook:figure" },
     { caller = "xrdroot.file", point = "io.workspace", provider = "roofit", target = "xrdroot.roofit.io.workspace:read_workspace" },
@@ -327,7 +328,7 @@ hard = ["numpy"]
 optional = ["matplotlib", "scipy", "iminuit", "PIL", "skimage"]
 
 [tool.xrdroot.components.ownership.app]
-modules = ["xrdroot.cli", "xrdroot.__main__"]
+modules = ["xrdroot.cli", "xrdroot.__main__", "xrdroot.apinamespace"]
 exact = ["xrdroot"]
 depends = ["@facade"]
 hard = ["numpy"]
@@ -441,7 +442,11 @@ statement = "importlib.import_module(module)"
 targets = ["sklearn.ensemble"]
 reason = "The three supported concrete estimators all select sklearn.ensemble."
 
-# This exact established low-level call preserves ROOT Contour's error-level behavior.
+# Focused pure tests deliberately exclude the integration fixture tree.
+[tool.xrdroot.components.module_aliases."xrdroot.pyroot.stl"]
+target = "xrdroot.cppstd.containers"
+reason = "Legacy setattr and vars(stl) writes must reach the generic container implementation dictionary."
+
 [[tool.xrdroot.components.private_imports]]
 caller = "xrdroot.fit.minuit"
 scope = "contour"
@@ -449,25 +454,16 @@ statement = "from iminuit._core import MnContours"
 target = "iminuit._core"
 reason = "ROOT Contour uses the minimum's exact error level; the public mncontour rescales confidence and can recompute HESSE. Preserve the existing algorithm."
 
-[tool.xrdroot.components.registration_functions."xrdroot.cppstd.vectorassign.register_capacity"]
-position = 1
-keyword = "growth"
-
-[[tool.xrdroot.components.registrations]]
-caller = "xrdroot.pyroot.vectorassign"
-scope = ""
-statement = "_register_capacity('rvec', _rvec_capacity)"
-callee = "xrdroot.cppstd.vectorassign.register_capacity"
-callback = "xrdroot.pyroot.vectorassign:_rvec_capacity"
-reason = "The adapter supplies ROOT SmallVector growth and signed capacity bounds to generic assignment."
-
-[tool.xrdroot.components.module_aliases."xrdroot.pyroot.stl"]
-target = "xrdroot.cppstd.containers"
-reason = "Legacy setattr and vars(stl) writes must reach the generic container implementation dictionary."
-
+# Callback injection is an explicit adapter edge, never a generic upward import.
 [tool.xrdroot.components.registration_functions."xrdroot.cppstd.containers.set_type_resolver"]
 position = 0
 keyword = "resolver"
+[tool.xrdroot.components.registration_functions."xrdroot.cppstd.vectorassign.register_capacity"]
+position = 1
+keyword = "growth"
+[tool.xrdroot.components.registration_functions."xrdroot.cppstd.cmath.set_vector_result"]
+position = 0
+keyword = "constructor"
 
 [[tool.xrdroot.components.registrations]]
 caller = "xrdroot.pyroot.stl"
@@ -477,9 +473,13 @@ callee = "xrdroot.cppstd.containers.set_type_resolver"
 callback = "xrdroot.pyroot.stl:_resolve_root_type"
 reason = "The ROOT adapter supplies explicit opaque-type resolution; generic containers never discover ROOT."
 
-[tool.xrdroot.components.registration_functions."xrdroot.cppstd.cmath.set_vector_result"]
-position = 0
-keyword = "constructor"
+[[tool.xrdroot.components.registrations]]
+caller = "xrdroot.pyroot.vectorassign"
+scope = ""
+statement = "_register_capacity('rvec', _rvec_capacity)"
+callee = "xrdroot.cppstd.vectorassign.register_capacity"
+callback = "xrdroot.pyroot.vectorassign:_rvec_capacity"
+reason = "The adapter supplies ROOT SmallVector growth and signed capacity bounds to generic assignment."
 
 [[tool.xrdroot.components.registrations]]
 caller = "xrdroot.cint.runtime.cmath"

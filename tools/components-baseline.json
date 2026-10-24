@@ -4,7 +4,7 @@
       "key": "",
       "kind": "forwarder",
       "lazy": true,
-      "line": 227,
+      "line": 228,
       "module": "xrdroot.plugins",
       "path": "src/xrdroot/plugins.py",
       "point": "<dynamic>",
@@ -14,7 +14,7 @@
       "target": "*"
     }
   ],
-  "policy_sha256": "b660a2a4502465deb7a7ea0d2de2431a45413ea0db50143b32267c987d2539b0",
+  "policy_sha256": "a7bcf61915fe9583dbf60b25c821a63eca84a7749a03fe9dfc3f0d6a9d4d37c0",
   "registrations": [
     {
       "key": "",
@@ -63,15 +63,15 @@
       "sha256": "aeabe3b7431fb0a9dcdf4013690df575d62c3743f33fc2d364767855a1c661e4"
     },
     "inventory_source": {
-      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-21-source-corrections/inventory.UNREVIEWED.json",
-      "sha256": "46a53aaa77cd88c2e6899544894c294fee2b202d11e4aad3c377869ae01b4fe8"
+      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-22-session/inventory.UNREVIEWED.json",
+      "sha256": "c814d3ee7667cbbb018acc061cf89f77e3651d21af46c2ab8a7883b476e6a359"
     },
-    "policy_sha256": "b660a2a4502465deb7a7ea0d2de2431a45413ea0db50143b32267c987d2539b0",
-    "preserved_violation_count": 1,
+    "policy_sha256": "a7bcf61915fe9583dbf60b25c821a63eca84a7749a03fe9dfc3f0d6a9d4d37c0",
+    "preserved_violation_count": 0,
     "runtime_acceptance": false,
     "source_map_before_baseline": {
-      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/21-source-corrections/source-files.json",
-      "sha256": "ecd566b869e915d3737fad398158097589ccae24acc03112b6da03c086de54a9"
+      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/22-session/source-files.json",
+      "sha256": "c13bff2841eecdd69a7eaf9835fb454c064113ca75654a74c54cc3b09c52f898"
     }
   },
   "reviewed": true,
@@ -90,6 +90,7 @@
   "source_files": {
     "src/xrdroot/__init__.py": "ee13fe412ab4cd02d51f5be64694cade33554479eb1b1cf956eed0240a11a3fe",
     "src/xrdroot/__main__.py": "9e6df42a54e3cf7007cc4164ffde21f554d8ded0b8137987084044c1cc64f053",
+    "src/xrdroot/apinamespace.py": "e9fa566009b066b277c5f5a21bd5816b9be58be117e8fd4873f28ddaa8d9a489",
     "src/xrdroot/arithmetic.py": "18be391779458000d0782daf2655e2b85c424fe689e7661fffc2d4487c32db64",
     "src/xrdroot/booking.py": "3386e607d5995da05ac64b2f221265e6cb63ad57a0abe1d89bf416fc73778a19",
     "src/xrdroot/buffer.py": "1a06f7e1c8efa771283ed822b873d33f151ae2870491bc188a8b9550a4dad789",
@@ -374,7 +375,7 @@
     "src/xrdroot/plot/scatter.py": "2f610c50af17d2030aeafad797afbccebc877b829d1b5b04af1b23ed3aa041a6",
     "src/xrdroot/plot/smooth.py": "cd5252210e495633b763675c2d2c5a1db7c395b478070e02da76ce839f5b3a83",
     "src/xrdroot/plot/styles.py": "cb1daa57f7618896b9baca757a050eaad1d2e1d21f0588c981f697df840cde15",
-    "src/xrdroot/plugins.py": "c11f5b62ba5f081d9372016e63d0c534a77d71f7aaa46f615878704835184ac9",
+    "src/xrdroot/plugins.py": "f844cc40857afaeb376aaa02b8307c13ffb206971b4e5b0c2479d24f1010841e",
     "src/xrdroot/polybins.py": "1bc46c06667260d15846d77aba90339d2f887763a097cfca57f8ff1303e2d8b6",
     "src/xrdroot/profile.py": "f0190fe203c000a8436188b578b3de2cd4fe89788dfdbecb8c19b07d4134737c",
     "src/xrdroot/pyroot/__init__.py": "28e6a6b8075b11ca9870d1253c6893cbe313e0a1e835e45b2cee0569f87b8369",
@@ -811,7 +812,7 @@
     "src/xrdroot/rootarrays.py": "b6dbf59eb78dc7f9e01e536442c5ac3572c3d1d46021d42168a7cf59a347d770",
     "src/xrdroot/scan.py": "10f3f5c807b3a5ca037f8dcbac8d87402e9f615875a0a304b618b4cdb8cb02db",
     "src/xrdroot/scatterplot.py": "ff3b3b750d6595e2bc206b9cc29e134bd9286fbaa44da94dd8501e4d2f7a4a1d",
-    "src/xrdroot/session.py": "60dac1981b3123bd7bfbac07766d045f5d9682def0268ab9edd1fd97e6d54cba",
+    "src/xrdroot/session.py": "0021ae86d325cc9c83155b96a5a267d9d3f48a0204b57cf8f38c5aba85def607",
     "src/xrdroot/slicing.py": "d18b83abb76f6c0df943ebd69967fbdabcf999d1f688eb8a7974d4f215c0e1c7",
     "src/xrdroot/sparse.py": "52e8d1c5a0a3bc37e40e4644cff7fa47dd5e21e8fd0ead78eab967f51fbb1eba",
     "src/xrdroot/spectrum/__init__.py": "022bfe6c843adaabba307cfd30d90900e77097e97e20d62a3bf4be074122afca",
@@ -944,15 +945,5 @@
     "src/xrdroot/wupdate.py": "8a963d7db98b141afe4d4c1b86fa0cab5e09801acda87d8363d33011a6a76925",
     "src/xrdroot/xmldoc.py": "ec4b05b91a58135285a9d73cd35ea734b85fed8cbd6f302c392ebb6f82377ce9"
   },
-  "violations": [
-    {
-      "component": "pyroot",
-      "line": 89,
-      "path": "src/xrdroot/session.py",
-      "rule": "edge",
-      "scope": "preloaded",
-      "statement": "import xrdroot",
-      "target": "xrdroot"
-    }
-  ]
+  "violations": []
 }

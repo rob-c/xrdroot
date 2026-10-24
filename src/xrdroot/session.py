@@ -28,7 +28,7 @@ import os
 import re
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .file import OPENED, open_root
 
@@ -83,15 +83,10 @@ def split_location(text: str) -> tuple[str | None, str]:
 
 
 def preloaded() -> dict[str, Any]:
-    """The names a macro and the shell start with: all of :mod:`xrdroot`, and NumPy as ``np``."""
-    import numpy
+    """The interactive application supplies the public names used by macros and shells."""
+    from .plugins import require
 
-    import xrdroot
-
-    names: dict[str, Any] = {name: getattr(xrdroot, name) for name in xrdroot.__all__}
-    names["np"] = numpy
-    names["xrdroot"] = xrdroot
-    return names
+    return cast(dict[str, Any], require("session.preloaded")())
 
 
 def _joined(base: str, path: str) -> str:

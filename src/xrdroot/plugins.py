@@ -17,6 +17,7 @@ __all__ = ["PROVIDERS", "keys", "lookup", "lookup_loaded", "require"]
 
 #: Extension point and key against the owning component, module and attribute.
 PROVIDERS: dict[tuple[str, str], tuple[str, str, str]] = {
+    ("session.preloaded", "default"): ("app", "xrdroot.apinamespace", "preloaded"),
     ("display.plot", "default"): ("graphics", "xrdroot.plot", "plot"),
     ("display.html", "default"): ("graphics", "xrdroot.plot.notebook", "figure"),
     ('io.workspace', 'RooWorkspace'): (
