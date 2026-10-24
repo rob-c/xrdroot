@@ -443,6 +443,14 @@ targets = ["sklearn.ensemble"]
 reason = "The three supported concrete estimators all select sklearn.ensemble."
 
 # Focused pure tests deliberately exclude the integration fixture tree.
+[tool.xrdroot.components.tests.cppstd]
+components = ["cppstd"]
+paths = ["tests/cppstd"]
+support = ["tests/cppstd/conftest.py"]
+confcutdir = "tests/cppstd"
+blocked = ["xrdclient"]
+
+# This compatibility name is the very same module, including its globals.
 [tool.xrdroot.components.module_aliases."xrdroot.pyroot.stl"]
 target = "xrdroot.cppstd.containers"
 reason = "Legacy setattr and vars(stl) writes must reach the generic container implementation dictionary."

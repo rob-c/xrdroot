@@ -7,8 +7,12 @@ a tree over a URL stand up a :class:`~xrdclient.testing.FakeServer` of their own
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
-from xrdclient.config import Config
+
+if TYPE_CHECKING:
+    from xrdclient.config import Config
 
 
 @pytest.fixture(autouse=True)
@@ -80,6 +84,8 @@ def _root_globals_restored():
 @pytest.fixture
 def config() -> Config:
     """A config that never reaches the network or the local filesystem."""
+    from xrdclient.config import Config
+
     return Config(
         username="tester", auth_order=("host",), require_tls=False, data_streams=0
     )

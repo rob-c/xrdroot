@@ -14,7 +14,7 @@
       "target": "*"
     }
   ],
-  "policy_sha256": "a7bcf61915fe9583dbf60b25c821a63eca84a7749a03fe9dfc3f0d6a9d4d37c0",
+  "policy_sha256": "6a970a5104b8df23cc6f852a1c2a1fd350c9df7bfcfae753d653d5a30310ccda",
   "registrations": [
     {
       "key": "",
@@ -63,15 +63,15 @@
       "sha256": "aeabe3b7431fb0a9dcdf4013690df575d62c3743f33fc2d364767855a1c661e4"
     },
     "inventory_source": {
-      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-22-session/inventory.UNREVIEWED.json",
-      "sha256": "c814d3ee7667cbbb018acc061cf89f77e3651d21af46c2ab8a7883b476e6a359"
+      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-23-pure-tests/inventory.UNREVIEWED.json",
+      "sha256": "4ae1a9a6e1778b65b7ae8991efe5effa54266dc0a2dbe8ec8e79ba68ad903227"
     },
-    "policy_sha256": "a7bcf61915fe9583dbf60b25c821a63eca84a7749a03fe9dfc3f0d6a9d4d37c0",
+    "policy_sha256": "6a970a5104b8df23cc6f852a1c2a1fd350c9df7bfcfae753d653d5a30310ccda",
     "preserved_violation_count": 0,
     "runtime_acceptance": false,
     "source_map_before_baseline": {
-      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/22-session/source-files.json",
-      "sha256": "c13bff2841eecdd69a7eaf9835fb454c064113ca75654a74c54cc3b09c52f898"
+      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-corrections-late3-SOURCE-20261021/23-pure-tests/source-files.json",
+      "sha256": "3ce4c18a42b99791b1723081e631d2991589413b8c3a7acd1de0262100562199"
     }
   },
   "reviewed": true,
