@@ -25,14 +25,13 @@ UID_MASK = 0xFFFFFF
 
 def write_foams(path: str, foams: list[Cells], names: list[str]) -> None:
     """Every foam into ``path``, recreated, a tree per foam."""
-    import xrdroot
-
+    from ...writer import create
     from ...wtree import spec_of
 
     folder = os.path.dirname(path)
     if folder:
         os.makedirs(folder, exist_ok=True)
-    with xrdroot.create(path) as out:
+    with create(path) as out:
         for foam, name in zip(foams, names, strict=False):
             columns = foam.columns()
             specs = {column: spec_of(column, values) for column, values in columns.items()}
@@ -41,10 +40,10 @@ def write_foams(path: str, foams: list[Cells], names: list[str]) -> None:
 
 def read_foams(path: str, names: list[str], dim: int, log: Logger) -> list[Cells]:
     """The foams ``names`` of ``path``, as :func:`write_foams` wrote them."""
-    import xrdroot
+    from ...file import open_root
 
     found = []
-    with xrdroot.open_root(path) as source:
+    with open_root(path) as source:
         for name in names:
             try:
                 columns = _columns(source[name], dim)

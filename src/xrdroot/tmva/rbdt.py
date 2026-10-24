@@ -67,7 +67,8 @@ def _nodes(dump: list[str]) -> dict[str, list[Any]]:
 
 def SaveXGBoost(model: Any, key: Any, filename: Any, num_inputs: int = 0, **_: Any) -> None:
     """The XGBoost model's trees into ``filename`` (updated if it exists), called ``key``."""
-    import xrdroot
+    from ..writer import create
+    from ..wupdate import update
 
     booster = model.get_booster()
     config = json.loads(booster.save_config())
@@ -85,7 +86,7 @@ def SaveXGBoost(model: Any, key: Any, filename: Any, num_inputs: int = 0, **_: A
     columns["link"] = np.full(count, LINKS.get(objective, 0), dtype=np.int32)
     columns["classes"] = np.full(count, classes, dtype=np.int32)
     columns["inputs"] = np.full(count, int(num_inputs), dtype=np.int32)
-    opener = xrdroot.update if os.path.exists(str(filename)) else xrdroot.create
+    opener = update if os.path.exists(str(filename)) else create
     with opener(str(filename)) as out:
         out.tree(str(key), {k: v.dtype for k, v in columns.items()}).extend(columns)
 
@@ -94,9 +95,9 @@ class RBDT:
     """``RBDT(key, filename)``: the saved trees, and ``Compute`` over rows of inputs."""
 
     def __init__(self, key: Any, filename: Any) -> None:
-        import xrdroot
+        from ..file import open_root
 
-        with xrdroot.open_root(str(filename)) as source:
+        with open_root(str(filename)) as source:
             tree = source[str(key)]
             found = tree.arrays(list(tree.keys()))
         self.nodes = {name: np.asarray(values) for name, values in found.items()}

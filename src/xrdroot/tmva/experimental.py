@@ -97,9 +97,9 @@ class RStandardScaler:
         self.means = np.zeros(0, dtype=self.dtype)
         self.stds = np.zeros(0, dtype=self.dtype)
         if title is not None and filename is not None:
-            import xrdroot
+            from ..file import open_root
 
-            with xrdroot.open_root(str(filename)) as source:
+            with open_root(str(filename)) as source:
                 found = source[str(title)].arrays(["means", "stds"])
             self.means = np.asarray(found["means"], dtype=self.dtype)
             self.stds = np.asarray(found["stds"], dtype=self.dtype)
@@ -140,9 +140,10 @@ class RStandardScaler:
         reads back; TMVA writes the scaler object itself, which only TMVA can read."""
         import os
 
-        import xrdroot
+        from ..writer import create
+        from ..wupdate import update
 
-        opener = xrdroot.update if os.path.exists(str(filename)) else xrdroot.create
+        opener = update if os.path.exists(str(filename)) else create
         with opener(str(filename)) as out:
             out.tree(str(title), {"means": self.means.dtype, "stds": self.stds.dtype}).extend(
                 {"means": self.means, "stds": self.stds}

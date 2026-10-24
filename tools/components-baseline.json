@@ -63,15 +63,15 @@
       "sha256": "aeabe3b7431fb0a9dcdf4013690df575d62c3743f33fc2d364767855a1c661e4"
     },
     "inventory_source": {
-      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-20-units/inventory.UNREVIEWED.json",
-      "sha256": "0e1d340f9c819328602b96d75f43386f47e5bd7f1e04b93b063c3a2e1e36df1a"
+      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-21-source-corrections/inventory.UNREVIEWED.json",
+      "sha256": "46a53aaa77cd88c2e6899544894c294fee2b202d11e4aad3c377869ae01b4fe8"
     },
     "policy_sha256": "b660a2a4502465deb7a7ea0d2de2431a45413ea0db50143b32267c987d2539b0",
-    "preserved_violation_count": 7,
+    "preserved_violation_count": 1,
     "runtime_acceptance": false,
     "source_map_before_baseline": {
-      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/20-units/source-files.json",
-      "sha256": "22d311ae8fd43c83903bfb4874523e91a5ea5ed8d02b5797c1dc62bd6d176802"
+      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-tool-corrections-early22-SOURCE-20261021/21-source-corrections/source-files.json",
+      "sha256": "ecd566b869e915d3737fad398158097589ccae24acc03112b6da03c086de54a9"
     }
   },
   "reviewed": true,
@@ -865,7 +865,7 @@
     "src/xrdroot/tmva/evalmodes.py": "d0543432ea8159489ea9e684a1ef8f4f62358c1284983862c185f0ba47a1eb51",
     "src/xrdroot/tmva/evaluating.py": "5d03fd3a6704aa95611791c926d4231d9974783bcfab9196058d20da4c9c1981",
     "src/xrdroot/tmva/evaluation.py": "a5e0051d5d31bd053af3f8b4fc12a7026c495ea2b4c45de592c75d906db6935f",
-    "src/xrdroot/tmva/experimental.py": "c376eed1eb7b46235e50fe9c79bbc44f52587abcc87b7f5fbc6b8ceee6b27eba",
+    "src/xrdroot/tmva/experimental.py": "89d4608d1420b91b4d3932c06b6c1a4069e388b7920250889209a5eb4b478ccb",
     "src/xrdroot/tmva/factory.py": "c2f04e02f0a701666ef381f033d4bf645d1ff351c8699248f4a8675da6b34680",
     "src/xrdroot/tmva/fdaformula.py": "71304a6a14664059478fe2bd90fc5a2a1d893f4ece04f38c5dd878d5a39554ae",
     "src/xrdroot/tmva/foam.py": "9616b1a1b65120aa9a6d1c66c678d25a363b9b2e08de2bfbd54a4808d90249e6",
@@ -892,7 +892,7 @@
     "src/xrdroot/tmva/methods/linear.py": "a89bd532390e276f3538e6e800a94f4db21a86a94fc693618a7c9e524d973299",
     "src/xrdroot/tmva/methods/mlp.py": "106eed96259066bc46662867a5a9069766b281cc93a85b2f7cd8a6128cd380e8",
     "src/xrdroot/tmva/methods/pdefoam.py": "986c2afacadb5000007bbf29196ad9b02975aa8944c230a22311d5119ea9c296",
-    "src/xrdroot/tmva/methods/pdefoamio.py": "a08114f6b27dc8b481b9e4dd112c42d080ac5adc8e231570e12524577d7ff0d7",
+    "src/xrdroot/tmva/methods/pdefoamio.py": "cb82a496a370dad8690da25f94ed2521c07f628b219e3fdd9f5e2f14929c5f71",
     "src/xrdroot/tmva/methods/pders.py": "197d123c45bba70140209ad7c5494ed45ad3bf670f7cdff2bc0dbb044d2160b1",
     "src/xrdroot/tmva/methods/pderskernels.py": "3b65643d21f1078321962360cb88d2522a72f9e4ad92a9c6792e2f59e25bfec0",
     "src/xrdroot/tmva/methods/pymva.py": "8dc6bb83378dea945e5318ac0a9deee769b54142b54615ee69e07b036e0f16f9",
@@ -908,7 +908,7 @@
     "src/xrdroot/tmva/pdf.py": "52ebd1b622f7eda652604622065f7924df34d55bac1bf74078436033de44da95",
     "src/xrdroot/tmva/plots.py": "5283b0eef112b4aee01d96ba770d198ccf626d3788c798760080f4944d4087f9",
     "src/xrdroot/tmva/ranking.py": "119e965cef52dd0696d717ff49bf2ec4a9782e7429c29c686e415b7e582fd51f",
-    "src/xrdroot/tmva/rbdt.py": "22ce55a4b2afdedfa0ce41602532f7577dac5f8d4625e71d3432b7b0c1a95cf4",
+    "src/xrdroot/tmva/rbdt.py": "4b74db864be9723cefe46dd14a16a44e7c75ec0ff89003ff3563ae4467efcebb",
     "src/xrdroot/tmva/reader.py": "e356d3ae879dc99fc69d0b1b7dba6f7dd4ead05ff9300638d1ef315af71800da",
     "src/xrdroot/tmva/reading.py": "52c9ddd9c011d5c5cf6aef6a1c2b1717479cdd45d078610b80bf50a34b835fe7",
     "src/xrdroot/tmva/regeval.py": "50689e49a9199664d6c659c1b73b9a0f82912d88521d4e3032f340db008410aa",
@@ -951,60 +951,6 @@
       "path": "src/xrdroot/session.py",
       "rule": "edge",
       "scope": "preloaded",
-      "statement": "import xrdroot",
-      "target": "xrdroot"
-    },
-    {
-      "component": "tmva",
-      "line": 100,
-      "path": "src/xrdroot/tmva/experimental.py",
-      "rule": "edge",
-      "scope": "RStandardScaler.__init__",
-      "statement": "import xrdroot",
-      "target": "xrdroot"
-    },
-    {
-      "component": "tmva",
-      "line": 143,
-      "path": "src/xrdroot/tmva/experimental.py",
-      "rule": "edge",
-      "scope": "RStandardScaler.Save",
-      "statement": "import xrdroot",
-      "target": "xrdroot"
-    },
-    {
-      "component": "tmva",
-      "line": 28,
-      "path": "src/xrdroot/tmva/methods/pdefoamio.py",
-      "rule": "edge",
-      "scope": "write_foams",
-      "statement": "import xrdroot",
-      "target": "xrdroot"
-    },
-    {
-      "component": "tmva",
-      "line": 44,
-      "path": "src/xrdroot/tmva/methods/pdefoamio.py",
-      "rule": "edge",
-      "scope": "read_foams",
-      "statement": "import xrdroot",
-      "target": "xrdroot"
-    },
-    {
-      "component": "tmva",
-      "line": 70,
-      "path": "src/xrdroot/tmva/rbdt.py",
-      "rule": "edge",
-      "scope": "SaveXGBoost",
-      "statement": "import xrdroot",
-      "target": "xrdroot"
-    },
-    {
-      "component": "tmva",
-      "line": 97,
-      "path": "src/xrdroot/tmva/rbdt.py",
-      "rule": "edge",
-      "scope": "RBDT.__init__",
       "statement": "import xrdroot",
       "target": "xrdroot"
     }
