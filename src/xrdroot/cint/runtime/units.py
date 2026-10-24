@@ -11,22 +11,13 @@ duration, which is a :class:`datetime.timedelta` here - what
 
 from __future__ import annotations
 
-import datetime
 from typing import Any
 
+from ...cppstd.units import DURATIONS as DURATIONS
+from ...cppstd.units import duration_literal
 from .root import ROOT
 
 __all__ = ["user_literal", "DURATIONS"]
-
-#: ``std::chrono``'s suffixes, as the :class:`datetime.timedelta` keyword each counts in.
-DURATIONS = {
-    "ns": ("microseconds", 1e-3),
-    "us": ("microseconds", 1.0),
-    "ms": ("milliseconds", 1.0),
-    "s": ("seconds", 1.0),
-    "min": ("minutes", 1.0),
-    "h": ("hours", 1.0),
-}
 
 #: ROOT 7's suffixes, as the ``RPadLength`` member class each makes.
 PAD_LENGTHS = {"_normal": "Normal", "_px": "Pixel", "_user": "User"}
@@ -34,8 +25,7 @@ PAD_LENGTHS = {"_normal": "Normal", "_px": "Pixel", "_user": "User"}
 
 def user_literal(suffix: str, value: Any) -> Any:
     """What the library's ``operator""`` for ``suffix`` makes of the number ``value``."""
-    duration = DURATIONS.get(suffix)
+    duration = duration_literal(suffix, value)
     if duration is not None:
-        unit, scale = duration
-        return datetime.timedelta(**{unit: value * scale})
+        return duration
     return getattr(ROOT.RPadLength, PAD_LENGTHS[suffix])(value)
