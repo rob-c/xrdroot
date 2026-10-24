@@ -54,6 +54,20 @@ jobs:
       - if: runner.os == 'macOS'
         run: brew install libomp
       - run: pip install -e ".[dev,zstd]"
+      # The installed single project is checked statically, then each component
+      # is imported in its own -I child with higher imports blocked. This uses
+      # the same NumPy/client/dev installation on Linux and macOS.
+      - name: component contract
+        run: python tools/components.py check --strict
+      - name: fresh component imports
+        run: >-
+          python tools/components.py isolate
+          cppstd core hist spectrum fits io rdf geom graphics roofit roostats
+          histfactory tmva pyroot app
+      # The declared cutoff keeps transport/statistical integration fixtures out
+      # of this scope. Ordinary pytest below still runs the complete fixture tree.
+      - name: pure C++ component tests
+        run: python tools/components.py isolate cppstd --tests cppstd
       # pytest-cov rather than `coverage run`, because the workers xdist
       # spawns are separate processes and only pytest-cov collects them all.
       # `fail_under = 100` comes from pyproject.toml, so the gate lives with

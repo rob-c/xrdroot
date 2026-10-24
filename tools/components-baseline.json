@@ -63,15 +63,15 @@
       "sha256": "aeabe3b7431fb0a9dcdf4013690df575d62c3743f33fc2d364767855a1c661e4"
     },
     "inventory_source": {
-      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-23-pure-tests/inventory.UNREVIEWED.json",
+      "path": "/Users/rcurrie/xrdroot-parity/runs/modularisation-selected25-actual-component-inventories-quiet-SECOND-20261021/inventory-24-CI/inventory.UNREVIEWED.json",
       "sha256": "4ae1a9a6e1778b65b7ae8991efe5effa54266dc0a2dbe8ec8e79ba68ad903227"
     },
     "policy_sha256": "6a970a5104b8df23cc6f852a1c2a1fd350c9df7bfcfae753d653d5a30310ccda",
     "preserved_violation_count": 0,
     "runtime_acceptance": false,
     "source_map_before_baseline": {
-      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-corrections-late3-SOURCE-20261021/23-pure-tests/source-files.json",
-      "sha256": "3ce4c18a42b99791b1723081e631d2991589413b8c3a7acd1de0262100562199"
+      "path": "/Users/rcurrie/xrdroot-parity/recovery/modularisation-selected-ordered-reviewed-corrections-late3-SOURCE-20261021/24-CI/source-files.json",
+      "sha256": "221db77571933859e3a1e85cbc8efe60a0652c40d6955f7e16df7ffdb01b1fd2"
     }
   },
   "reviewed": true,

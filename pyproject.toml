@@ -80,6 +80,7 @@ dev = [
   "scipy>=1.10",
   "xgboost>=2",
   "mypy>=1.10",
+  "tomli; python_version < '3.11'",
   "pytest>=8",
   "pytest-cov",
   "pytest-timeout",
