@@ -31,7 +31,15 @@ nav:
   - Home: index.md
   - ROOT files: root.md
   - Components:
+      - Overview: components/index.md
       - C++ standard library: components/cppstd.md
+      - Shared primitives: components/primitives.md
+      - Analysis engines: components/analysis.md
+      - Files and data frames: components/io.md
+      - Geometry and rendering: components/presentation.md
+      - ROOT adapters and application: components/applications.md
+      - Providers and adapters: components/providers.md
+      - Boundary checks: components/boundaries.md
   - Maintainability metrics: maintainability.md
 
 markdown_extensions:
