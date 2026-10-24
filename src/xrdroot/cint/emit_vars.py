@@ -132,6 +132,8 @@ class VariableEmitter(StmtEmitter):
             self.static_local(decl)
             return
         ctype = sized(self.declared_type(decl), decl)
+        if self._borrowed_variable(decl, ctype):
+            return
         alias = self.alias_of(decl, ctype)
         if alias is not None:
             self.declare(decl.name, "local", ctype, alias=alias)
@@ -145,6 +147,16 @@ class VariableEmitter(StmtEmitter):
         if destructs:
             assert self.destructed is not None
             self.destructed.append(symbol.py)
+
+    def _borrowed_variable(self, decl: VarDecl, ctype: CType | None) -> bool:
+        if not decl.ctype.reference or ctype is None or not ctype.scalar or decl.init is None:
+            return False
+        reference = self.borrowed_reference(decl.init)
+        if reference is None:
+            return False
+        symbol = self.declare(decl.name, "local", ctype, cell=True)
+        self.out.line(f"{symbol.py} = {reference}", decl.where)
+        return True
 
     def _destructible(self, decl: VarDecl, ctype: CType | None) -> bool:
         """Does ``decl`` hold an object whose destructor does something as its scope ends?

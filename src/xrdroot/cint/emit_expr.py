@@ -26,6 +26,7 @@ from typing import Any, ClassVar
 from .base import Out, P
 from .ctype import CType
 from .emit_names import NameEmitter, type_text
+from .errors import Refusal
 from .infer import is_rvec
 from .nodes import (
     Assign,
@@ -297,7 +298,7 @@ class ExprEmitter(NameEmitter):
         or something holding one - or a library class that ``__deref__`` reads through."""
         if _holds_value(found):
             return f"deref({self.value(operand)})"
-        if found.name in DEREFERENCED and not found.pointer:
+        if self.reader_element(found, "TTreeReaderValue") is not None:
             return f"{self.at(operand, P.POSTFIX)}.__deref__()"
         return None
 
@@ -309,9 +310,26 @@ class ExprEmitter(NameEmitter):
             return self._element_address(operand)
         if isinstance(operand, Member):
             return self._member_address(operand)
+        borrowed = self._borrowed_address(operand)
+        if borrowed is not None:
+            return borrowed, P.POSTFIX
         if isinstance(operand, Unary) and operand.op == "*":
             return self.expr(operand.operand)
         return self.expr(operand)
+
+    def _borrowed_address(self, operand: Expr) -> str | None:
+        borrowed = self.borrowed_reference(operand) if isinstance(operand, Assign) else None
+        if isinstance(operand, Unary) and operand.op in ("++", "--") and not operand.postfix:
+            borrowed = self.borrowed_reference(operand)
+        borrowed = borrowed if borrowed is not None else self.reader_reference(operand)
+        if borrowed is None and _is_unaddressable_update(operand):
+            # An update whose destination has no reference at all has no address to take.
+            raise Refusal(
+                f"{operand.where}: taking the address of an assignment or increment only "
+                "works when its destination is addressable; assign to a variable whose "
+                "address is taken first"
+            )
+        return borrowed
 
     def _name_address(self, operand: Name) -> Out:
         symbol = self.symbol(operand)
@@ -332,6 +350,9 @@ class ExprEmitter(NameEmitter):
         return self.expr(operand)
 
     def _element_address(self, operand: Index) -> Out:
+        borrowed = self.reader_reference(operand)
+        if borrowed is not None:
+            return borrowed, P.POSTFIX
         found = self.typeof(operand.obj)
         array = self.at(operand.obj, P.POSTFIX)
         index = self.value(operand.index)
@@ -341,6 +362,9 @@ class ExprEmitter(NameEmitter):
 
     def reference(self, target: Expr) -> str:
         """What reads and writes ``target`` as ``.value``: a cell, an ItemRef or an AttrRef."""
+        borrowed = self.reader_reference(target)
+        if borrowed is not None:
+            return borrowed
         if isinstance(target, Index):
             return f"ItemRef({self.value(target.obj)}, {self.value(target.index)})"
         if isinstance(target, Member):
@@ -351,6 +375,75 @@ class ExprEmitter(NameEmitter):
         if isinstance(target, Unary) and target.op == "*":
             return f"ItemRef({self.value(target.operand)}, 0)"
         raise self.refuse("changing this in the middle of an expression", target)
+
+    def reader_reference(self, target: Expr) -> str | None:
+        if isinstance(target, Unary) and target.op == "*":
+            inner = self.reader_element(self.typeof(target.operand), "TTreeReaderValue")
+            if inner is not None and inner.scalar:
+                return f"{self.at(target.operand, P.POSTFIX)}.Get()"
+        if isinstance(target, Index):
+            inner = self.reader_element(self.typeof(target.obj), "TTreeReaderArray")
+            if inner is not None and inner.scalar:
+                return f"{self.at(target.obj, P.POSTFIX)}._cint_ref({self.value(target.index)})"
+        return self._reader_call_reference(target)
+
+    def _reader_call_reference(self, target: Expr) -> str | None:
+        if not isinstance(target, Call) or not isinstance(target.func, Member):
+            return None
+        func = target.func
+        inner = self.reader_method(func, "TTreeReaderArray")
+        if func.name != "At" or len(target.args) != 1 or inner is None or not inner.scalar:
+            return None
+        return f"{self.at(func.obj, P.POSTFIX)}._cint_ref({self.value(target.args[0])})"
+
+    def borrowed_reference(self, source: Expr) -> str | None:
+        # Bind once, including assignment/prefix lvalues; postfix remains a value.
+        updated = self._borrowed_update(source)
+        if updated is not None:
+            return updated
+        borrowed = self.reader_reference(source)
+        if borrowed is not None:
+            return borrowed
+        if isinstance(source, Unary) and source.op == "*":
+            found = self.typeof(source.operand)
+            if found is not None and found.is_pointer and found.element().scalar:
+                return self.reference(source)
+        return None
+
+    def _borrowed_update(self, source: Expr) -> str | None:
+        if isinstance(source, Assign):
+            reference = self._update_reference(source.target)
+            if reference is not None:
+                return self.assigned_reference(source, reference)
+        if isinstance(source, Unary) and source.op in ("++", "--") and not source.postfix:
+            reference = self._update_reference(source.operand)
+            if reference is not None:
+                delta = 1 if source.op == "++" else -1
+                return f"increment_reference({reference}, {delta})"
+        return None
+
+    def _update_reference(self, target: Expr) -> str | None:
+        reference = self.borrowed_reference(target)
+        if reference is None and isinstance(target, Name):
+            reference = self._name_reference(target)
+        return reference
+
+    def assigned_reference(self, node: Assign, reference: str) -> str:
+        # Python arguments evaluate RHS first, then capture the destination only once.
+        right = self.value(node.value)
+        conversion = self._reference_conversion(node)
+        compound = ", True" if node.op != "=" else ""
+        return f"store_reference({right}, {reference}, {conversion}{compound})"
+
+    def _reference_conversion(self, node: Assign) -> str:
+        with self.scoped():
+            left = self.declare("__reader_left", "local", self.typeof(node.target))
+            right = self.declare("__reader_right", "local", self.typeof(node.value))
+            lhs = Name(node.where, [left.name])
+            rhs = Name(node.where, [right.name])
+            value = rhs if node.op == "=" else Binary(node.where, node.op[:-1], lhs, rhs)
+            converted = self.store(self.typeof(node.target), value)
+        return f"lambda {left.py}, {right.py}: {converted}"
 
     def _name_reference(self, target: Name) -> str | None:
         symbol = self.symbol(target)
@@ -415,7 +508,7 @@ class ExprEmitter(NameEmitter):
     def extraction(self, node: Binary) -> Out:
         raise NotImplementedError
 
-    def stored_through(self, node: Assign) -> str | None:
+    def stored_through(self, node: Assign, result: bool = True) -> str | None:
         """``f(i) = v`` and ``*p = v`` of a pointer to an object or of unknown type, if it is one.
 
         What ``*p`` is cannot be rebound in Python, so the store goes through
@@ -423,6 +516,9 @@ class ExprEmitter(NameEmitter):
         ROOT made, say), or into the object it points at.
         """
         target = node.target
+        borrowed = self.reader_reference(target)
+        if borrowed is not None:
+            return self.assigned_reference(node, borrowed) + (".value" if result else "")
         numeric = self._numeric_vector_assignment(node)
         if numeric is not None:
             return numeric
@@ -461,7 +557,8 @@ class ExprEmitter(NameEmitter):
         if not (isinstance(target, Unary) and target.op == "*"):
             return False
         found = self.typeof(target.operand)
-        return found is None or found.is_object_pointer
+        inner = self.reader_element(found, "TTreeReaderValue")
+        return found is None or found.is_object_pointer or (inner is not None and inner.scalar)
 
     def _assign(self, node: Assign) -> Out:
         stored = self.stored_through(node)
@@ -664,11 +761,6 @@ def _written_as(ctype: CType | None) -> str:
     return ctype.enum or ctype.name
 
 
-#: The library's classes whose ``operator*`` gives what they hold, as ``__deref__`` does:
-#: ``*myPx`` of a ``TTreeReaderValue<float>`` is the number at the reader's entry.
-DEREFERENCED = frozenset({"TTreeReaderValue"})
-
-
 def _holds_value(ctype: CType) -> bool:
     """Whether ``operator*`` reads a booked result or a smart pointer's number or string.
 
@@ -704,6 +796,13 @@ def _assigned_into(ctype: CType | None) -> bool:
     if ctype is None or ctype.pointer:
         return False
     return _is_view(ctype) or ctype.name.split("::")[-1] in SET_BY_ASSIGNMENT
+
+
+def _is_unaddressable_update(operand: Expr) -> bool:
+    """An assignment or prefix increment, in an address context, with no reference."""
+    if isinstance(operand, Assign):
+        return True
+    return isinstance(operand, Unary) and operand.op in ("++", "--") and not operand.postfix
 
 
 def _object_value(ctype: CType | None) -> bool:

@@ -143,7 +143,8 @@ class TBranch(_TObjectLike):
         self._tree.SetBranchAddress(self._name, address)
 
     def GetAddress(self) -> Any:
-        return self._tree._addresses.get(self._name)
+        held = self._tree._reader_buffers.get(self._name)
+        return held.reference() if held is not None else self._tree._addresses.get(self._name)
 
     def GetReadEntry(self) -> int:
         return self._tree.GetReadEntry()

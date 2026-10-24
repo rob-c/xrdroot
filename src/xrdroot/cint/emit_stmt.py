@@ -193,7 +193,7 @@ class StmtEmitter(CallEmitter):
 
     def _assign_statement(self, expr: Assign) -> bool:
         target = expr.target
-        stored = self.stored_through(expr)
+        stored = self.stored_through(expr, result=False)
         if stored is not None:
             self.out.line(stored, expr.where)
             return True

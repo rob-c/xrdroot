@@ -170,12 +170,17 @@ class Inference(EmitterBase):
         if node.op == "!":
             return BOOL
         if node.op == "*":
-            return inner.element() if inner is not None else None
+            return self._dereferenced_type(inner)
         if node.op == "&":
             return inner.pointed() if inner is not None else None
         if node.op in ("-", "+", "~"):
             return arithmetic_result(inner, INT) if inner is not None and inner.scalar else inner
         return inner
+
+    def _dereferenced_type(self, inner: CType | None) -> CType | None:
+        if inner is not None and (inner.pointer or inner.dims):
+            return inner.element()
+        return self.reader_element(inner, "TTreeReaderValue") or inner
 
     def _type_binary(self, node: Binary) -> CType | None:
         left, right = self.typeof(node.left), self.typeof(node.right)
@@ -213,7 +218,7 @@ class Inference(EmitterBase):
             return CType("char")
         if inner.is_array or inner.is_pointer:
             return inner.element()
-        return None
+        return self.reader_element(inner, "TTreeReaderArray")
 
     def _type_comma(self, node: Comma) -> CType | None:
         return self.typeof(node.items[-1])
@@ -274,10 +279,40 @@ class Inference(EmitterBase):
             return self.typeof(node.args[0])
         return RETURNS.get(name)
 
+    def reader_element(self, ctype: CType | None, name: str) -> CType | None:
+        # Raw pointers/arrays dereference to the reader itself before its operator* applies.
+        if ctype is None or ctype.pointer or ctype.dims or ctype.name != name:
+            return None
+        if ctype.name in self.program.classes or len(ctype.args) != 1:
+            return None
+        argument = ctype.args[0]
+        return argument if isinstance(argument, CType) else None
+
+    def reader_method(self, func: Member, name: str) -> CType | None:
+        owner = self.typeof(func.obj)
+        if owner is not None and func.arrow and owner.pointer == 1:
+            owner = owner.element()
+        return self.reader_element(owner, name)
+
+    def _reader_method_type(self, func: Member) -> CType | None:
+        read = self.reader_method(func, "TTreeReaderValue") if func.name == "Get" else None
+        if read is not None:
+            return read.pointed()
+        read = self.reader_method(func, "TTreeReaderArray") if func.name == "At" else None
+        if read is not None:
+            return read
+        return None
+
     def _method_call(self, func: Member) -> CType | None:
         owner = self.typeof(func.obj)
+        read = self._reader_method_type(func)
+        if read is not None:
+            return read
         if owner is not None and owner.is_string and func.name in ("size", "length"):
             return CType("unsigned long")
+        return self._class_method_type(owner, func)
+
+    def _class_method_type(self, owner: CType | None, func: Member) -> CType | None:
         info = self.program.classes.get(owner.name) if owner is not None else None
         if info is None:
             kept = RETURNED.get((owner.name, func.name)) if owner is not None else None

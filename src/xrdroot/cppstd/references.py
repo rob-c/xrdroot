@@ -8,6 +8,7 @@ User assignment hooks keep their original priority and return contracts.
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -15,7 +16,22 @@ import numpy as np
 from .valuecopy import value_copy
 from .vectorassign import assigned as _assigned_vector
 
-__all__ = ["assign_call", "assign_into", "store_through", "assign_vector"]
+__all__ = ["assign_call", "assign_into", "store_through", "assign_vector",
+           "store_reference", "increment_reference"]
+
+
+def store_reference(
+    value: Any, reference: Any, conversion: Callable[[Any, Any], Any], compound: bool = False,
+) -> Any:
+    # RHS is evaluated before the destination; compound stores read that destination once.
+    reference.value = conversion(reference.value if compound else None, value)
+    return reference
+
+
+def increment_reference(reference: Any, delta: int) -> Any:
+    # Prefix increment is an lvalue; the typed branch address narrows the stored result.
+    reference.value = reference.value + delta
+    return reference
 
 
 def assign_call(obj: Any, args: tuple[Any, ...], value: Any) -> Any:

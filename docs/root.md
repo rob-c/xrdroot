@@ -2738,6 +2738,14 @@ time so that the entry-by-entry loop costs a read per branch per thousand;
 `SetEntryList`, `CloneTree`, `CopyTree`, `TChain.Add` with wildcards, and
 `Draw`, `Scan`, `Show` and `Print` with ROOT's arguments, return values and
 text all work the same on a tree being filled and on one read from a file.
+Fixed numeric reader leaves share writable branch storage: `value.Get()[0]`,
+translated `*value`, and numeric reader-array elements write the same buffer
+observed by `TLeaf` and an existing branch fill address. Moving to a different
+entry reloads the saved row; selecting the same entry or restarting onto it
+keeps its mutations. Object and variable-length collection readers keep their
+existing read paths. Pointer stability across branch-address rebinding is not
+part of this reader contract.
+
 `Print`'s byte counts are this writer's baskets', and a tree not yet written
 prints its branches as ROOT's "One basket in memory".
 

@@ -5,9 +5,9 @@
     >>> while reader.Next():                                       # doctest: +SKIP
     ...     h.Fill(px.__deref__())          # *px in C++; px.Get()[0] as PyROOT has it
 
-A value's ``Get()`` is what C++'s ``Get()`` points at: a one-element array
-for a number, so that ``px.Get()[0]`` is the number, and the vector or
-string itself for one of those; ``__deref__()`` - C++'s ``*px`` - is the
+A numeric value's ``Get()`` is a bound pointer into its branch buffer, so
+``px.Get()[0]`` reads or writes that value. Object and collection readers
+keep their existing value representation; ``__deref__()`` - C++'s ``*px`` - is the
 number itself. An array reads as a sequence: ``len``, ``[i]``, iteration,
 ``GetSize()``. Each is read from the tree's own block of entries, so a loop
 over a reader costs what a loop of ``GetEntry`` does.
@@ -22,6 +22,7 @@ import numpy as np
 
 from ._base import _TObjectLike
 from .core import python_value
+from .readerbuffer import ReaderBuffer, buffer_for
 
 __all__ = ["TTreeReader", "TTreeReaderValue", "TTreeReaderArray"]
 
@@ -135,7 +136,12 @@ class _Read:
             raise ValueError(
                 f"{self._name!r} has no value until the reader is at an entry; call Next first"
             )
-        return tree._current(self._leaf.column)
+        held = self._buffer()
+        return held.read(tree._read_entry) if held is not None else tree._current(self._leaf.column)
+
+    def _buffer(self) -> ReaderBuffer | None:
+        tree = self._reader._tree
+        return buffer_for(tree, self._leaf) if tree is not None and self._leaf is not None else None
 
     def IsValid(self) -> bool:
         return self._leaf is not None
@@ -148,15 +154,32 @@ class TTreeReaderValue(_Read):
     """``TTreeReaderValue<T>``: one branch's value at the reader's entry."""
 
     def Get(self) -> Any:
-        """What C++'s ``Get()`` points at: a one-element array of a number, or the object."""
+        """A numeric branch's writable pointer, or the existing object/collection value."""
+        # The read runs before the buffer check: it is what moves the current entry into
+        # the borrowed storage the pointer then exposes.
         value = python_value(self._value(), self._leaf.vector)
-        if isinstance(value, (int, float, bool, np.number)):
-            return np.array([value])
+        held = self._buffer()
+        if held is not None:
+            return held.reference()
         return value
 
     def __deref__(self) -> Any:
         """C++'s ``*value``: the number itself, or the object."""
         return python_value(self._value(), self._leaf.vector)
+
+    _cint_cell = True
+
+    @property
+    def value(self) -> Any:
+        return self.__deref__()
+
+    @value.setter
+    def value(self, value: Any) -> None:
+        self._value()
+        held = self._buffer()
+        if held is None:
+            raise TypeError("a mutable reader value needs a fixed numeric leaf")
+        held.write(0, value)
 
     def __float__(self) -> float:
         return float(self.__deref__())
@@ -177,6 +200,16 @@ class TTreeReaderArray(_Read):
     def __getitem__(self, index: Any) -> Any:
         found = self._items()[index]
         return found.item() if isinstance(found, np.generic) else found
+
+    def __setitem__(self, index: Any, value: Any) -> None:
+        self._cint_ref(index).value = value
+
+    def _cint_ref(self, index: Any) -> Any:
+        self._value()
+        held = self._buffer()
+        if held is None:
+            raise TypeError("a mutable reader array needs a fixed numeric leaf")
+        return held.reference(index)
 
     def __iter__(self) -> Iterator[Any]:
         return iter(self._items().tolist())
