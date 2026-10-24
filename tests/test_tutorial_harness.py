@@ -823,3 +823,64 @@ def test_what_root_builds_into_its_tutorials_is_put_beside_the_ones_run(tmp_path
     assert made._tutorial_dir() == str(tutorials)
     made.oracle = None
     assert made._tutorial_dir() == str(tutorials)
+
+
+def test_the_recorded_root_orders_load_with_their_files(tmp_path):
+    orders = harnessing.known_orders("roofit/roofit/rf404_categories.py")
+    draws = [entry[0].note.split("draw: ", 1)[1] for entry in orders]
+    assert draws == [
+        "the generate set iterates b0flav before tagCat, the table set tagCat first",
+        "the generate set iterates tagCat before b0flav, the table set tagCat first",
+        "the generate set iterates tagCat before b0flav, the table set b0flav first",
+        "the generate set iterates b0flav before tagCat, the table set b0flav first "
+        "(drawn from a ROOT run in a working directory of a different length, as "
+        "the harness's own sandbox names differ in length too)",
+    ]
+    assert all(entry[1].is_dir() for entry in orders)
+    rf102 = harnessing.known_orders("roofit/roofit/rf102_dataimport.py")
+    assert [sorted(entry[0].files) for entry in rf102] == [
+        ["rf102_dataimport.png", "rf102_testData.txt"],
+        ["rf102_dataimport.png", "rf102_testData.txt"],
+    ]
+    assert harnessing.known_orders("hist/nothing.C") == []
+
+
+def test_a_tutorial_whose_sets_iterate_the_other_way_passes_against_its_recorded_order(
+    harness, tmp_path
+):
+    tutorial = cat.Tutorial("roofit/roofit/rf404_categories.py", test="t", labels=("tutorial",))
+    assert tutorial.language == "py"
+    orders = harnessing.known_orders(tutorial.path)
+    cached = runner.RunResult([], 0, False, 1.0, orders[0][0].stdout, "", workdir="/oracle")
+    oracle = harnessing.Outcome(cached, tmp_path / "oracle")
+    mine = harnessing.Outcome(
+        runner.RunResult(
+            [], 0, False, 1.0, "RooCategory::tagCat = Kaon(idx = 3)\n", "", workdir="/mine"
+        ),
+        tmp_path / "mine",
+    )
+    record = {"details": [], "images": [], "extra_files": []}
+    status, reason = harness._compared(tutorial, oracle, mine, record)
+    assert (status, reason) == ("DIFF", "stdout")
+
+    # xrdroot's draw, and ROOT's recorded draw of the same order: identical output.
+    mine.result.stdout = orders[1][0].stdout
+    status, reason = harness._compared(tutorial, oracle, mine, record)
+    assert status == "PASS"
+    assert "matches ROOT's other recorded order exactly" in record["details"][-1]
+
+
+def test_output_matching_no_recorded_order_is_still_a_diff(harness, tmp_path):
+    tutorial = cat.Tutorial("roofit/roofit/rf404_categories.py", test="t", labels=("tutorial",))
+    orders = harnessing.known_orders(tutorial.path)
+    cached = runner.RunResult([], 0, False, 1.0, orders[0][0].stdout, "", workdir="/oracle")
+    oracle = harnessing.Outcome(cached, tmp_path / "oracle")
+    refused = runner.RunResult(
+        [], 0, False, 1.0, "RooCategory::tagCat = Kaon(idx = 3)\n", "", workdir="/mine"
+    )
+    mine = harnessing.Outcome(refused, tmp_path / "mine")
+    record = {"details": [], "images": [], "extra_files": []}
+    status, reason = harness._compared(tutorial, oracle, mine, record)
+    assert (status, reason) == ("DIFF", "stdout")
+    assert record["details"] == ["stdout line 1: ROOT 'RooCategory::tagCat = Lepton(idx = 0)', "
+                                "xrdroot 'RooCategory::tagCat = Kaon(idx = 3)'"]

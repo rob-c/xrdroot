@@ -24,13 +24,17 @@ __all__ = ["RooAbsCollection", "RooArgList", "RooArgSet", "as_list", "names_of"]
 
 
 def _flat(items: Iterable[Any]) -> Iterator[Any]:
-    """The members, collections opened up - a Python set's in the order they were made.
+    """The members, collections opened up - a Python set in the order Python iterates it.
 
     A set has no order ROOT can see either: PyROOT's runs order it by where the objects
-    happen to be in memory. The order they were made in is the nearest steady stand-in.
+    happen to be in memory, so ROOT's own output for a tutorial that hands RooFit a set
+    is a coin the process flips. Every conversion here must read the set the same way
+    PyROOT would - raw iteration - because ROOT's process lays out the objects once and
+    every set of them is ordered by that one layout: reordering some sets here and not
+    others can produce a joint output no single ROOT process ever could (rf406's
+    category tables). Order-insensitive callers lose nothing; order-sensitive ones
+    (rf102, rf404, rf406) are accepted by the harness against ROOT's own recorded runs.
     """
-    if isinstance(items, (set, frozenset)):
-        items = sorted(items, key=lambda one: getattr(one, "_serial", 0))
     for item in items:
         if isinstance(item, (RooAbsCollection, list, tuple, set, frozenset)):
             yield from _flat(item)

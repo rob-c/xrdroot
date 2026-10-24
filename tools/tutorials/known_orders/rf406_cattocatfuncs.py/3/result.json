@@ -1,0 +1,14 @@
+{
+ "command": [
+  "/Users/rcurrie/.local/root-oracle/bin/python",
+  "rf406_cattocatfuncs.py"
+ ],
+ "exit_code": 0,
+ "files": {},
+ "note": "genuine ROOT 6.40.04 run of the unchanged tutorial, 2026-10-24; observed set-order draw: the generate set, the super-category and the multi-category all iterate b0flav first (drawn from a ROOT run in a working directory of a different length, as the harness's own sandbox names differ in length too)",
+ "runtime": 0.0,
+ "stderr": "",
+ "stdout": "RooCategory::tagCat = Lepton(idx = 0)\n\nRooCategory::b0flav = B0(idx = -1)\n\n\n  Table tcatType : pData\n  +----------------+------+\n  |      Cut based | 5058 |\n  | Neural Network | 4942 |\n  +----------------+------+\n\n\n  Table b0Xtcat : pData\n  +---------------------+------+\n  |         {B0;Lepton} | 1281 |\n  |      {B0bar;Lepton} | 1269 |\n  |           {B0;Kaon} | 1253 |\n  |        {B0bar;Kaon} | 1255 |\n  |    {B0;NetTagger-1} | 1234 |\n  | {B0bar;NetTagger-1} | 1219 |\n  |    {B0;NetTagger-2} | 1272 |\n  | {B0bar;NetTagger-2} | 1217 |\n  +---------------------+------+\n\n\n  Table b0Xttype : pData\n  +------------------------+------+\n  |         {B0;Cut based} | 2534 |\n  |      {B0bar;Cut based} | 2524 |\n  |    {B0;Neural Network} | 2506 |\n  | {B0bar;Neural Network} | 2436 |\n  +------------------------+------+\n\n",
+ "timed_out": false,
+ "workdir": "/tmp/lf3/ddddddddddddddddddddddddddddddddddddddddddddd"
+}

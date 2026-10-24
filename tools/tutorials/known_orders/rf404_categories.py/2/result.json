@@ -1,0 +1,14 @@
+{
+ "command": [
+  "/Users/rcurrie/.local/root-oracle/bin/python",
+  "rf404_categories.py"
+ ],
+ "exit_code": 0,
+ "files": {},
+ "note": "genuine ROOT 6.40.04 run of the unchanged tutorial, 2026-10-24; observed set-order draw: the generate set iterates tagCat before b0flav, the table set tagCat first",
+ "runtime": 0.0,
+ "stderr": "",
+ "stdout": "RooCategory::tagCat = Lepton(idx = 0)\n\nRooCategory::b0flav = B0(idx = -1)\n\nRoo1DTable::b0flav = (B0=5040,B0bar=4960)\n\n  Table b0flav : pData\n  +-------+------+\n  |    B0 | 5040 |\n  | B0bar | 4960 |\n  +-------+------+\n\nRoo1DTable::tagCat = (Lepton=487,Kaon=433,NetTagger-1=439,NetTagger-2=406)\n\n  Table tagCat : pData(x>8.23)\n  +-------------+-----+\n  |      Lepton | 487 |\n  |        Kaon | 433 |\n  | NetTagger-1 | 439 |\n  | NetTagger-2 | 406 |\n  +-------------+-----+\n\n\n  Table (tagCat x b0flav) : pData\n  +---------------------+------+\n  |         {Lepton;B0} | 1281 |\n  |           {Kaon;B0} | 1253 |\n  |    {NetTagger-1;B0} | 1234 |\n  |    {NetTagger-2;B0} | 1272 |\n  |      {Lepton;B0bar} | 1269 |\n  |        {Kaon;B0bar} | 1255 |\n  | {NetTagger-1;B0bar} | 1219 |\n  | {NetTagger-2;B0bar} | 1217 |\n  +---------------------+------+\n\n\n  Table tagCat : pData\n  +-------------+------+\n  |      Lepton | 2550 |\n  |        Kaon | 2508 |\n  | NetTagger-1 |    0 |\n  | NetTagger-2 |    0 |\n  +-------------+------+\n\nNumber of events with B0 flavor is  5040.0\nFraction of events tagged with Lepton tag is  0.27592067988668556\n",
+ "timed_out": false,
+ "workdir": "/tmp/lf2"
+}

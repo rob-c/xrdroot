@@ -1,0 +1,17 @@
+{
+ "command": [
+  "/Users/rcurrie/.local/root-oracle/bin/python",
+  "rf102_dataimport.py"
+ ],
+ "exit_code": 0,
+ "files": {
+  "rf102_dataimport.png": "9a48c294a6da10375e0390781e17f2dc9153fda3c6e4bba0e376944a80a9f41c",
+  "rf102_testData.txt": "87a1b10b5726f2e748603e57bcfcd9e3efe632b637fe84dbf4cea7135c50bd06"
+ },
+ "note": "genuine ROOT 6.40.04 run of the unchanged tutorial, 2026-10-24; observed set-order draw: the dataset iterates y before x: the ASCII file is written with its columns swapped and the read-back values follow that order",
+ "runtime": 0.0,
+ "stderr": "",
+ "stdout": "[#1] INFO:Fitting -- RooAbsPdf::fitTo(gauss_over_gauss_Int[x]) fixing normalization set for coefficient determination to observables in data\n[#1] INFO:Fitting -- using generic CPU library compiled with no vectorizations\n[#1] INFO:Fitting -- Creation of NLL object took 23.3701 ms\n[#1] INFO:Fitting -- RooAddition::defaultErrorLevel(nll_gauss_over_gauss_Int[x]_dh) Summation contains a RooNLLVar, using its error level\n[#1] INFO:Minimization -- [fitFCN] No discrete parameters, performing continuous minimization only\n[#1] INFO:DataHandling -- RooTreeDataStore::loadValues(ds) Skipping event #0 because y cannot accommodate the value 14.424\n[#1] INFO:DataHandling -- RooTreeDataStore::loadValues(ds) Skipping event #3 because y cannot accommodate the value -12.0022\n[#1] INFO:DataHandling -- RooTreeDataStore::loadValues(ds) Skipping event #5 because y cannot accommodate the value 13.8261\n[#1] INFO:DataHandling -- RooTreeDataStore::loadValues(ds) Skipping event #6 because y cannot accommodate the value -14.9925\n[#1] INFO:DataHandling -- RooTreeDataStore::loadValues(ds) Skipping ...\n[#0] WARNING:DataHandling -- RooTreeDataStore::loadValues(ds) Ignored 36 out-of-range events\n[#1] INFO:DataHandling -- RooDataSet::read: reading file rf102_testData.txt\n[#1] INFO:DataHandling -- RooDataSet::read: read 64 events (ignored 0 out of range events)\nDataStore dataset (rf102_testData.txt)\n  Contains 64 entries\n  Observables: \n    1)           x = 0.0174204  L(-10 - 10)  \"x\"\n    2)           y = 9.46654  L(-10 - 10)  \"y\"\n    3)  blindState = Normal(idx = 0)\n  \"Blinding State\"\n  1) RooRealVar:: x = -0.79919\n  2) RooRealVar:: y = 0.0106407\n  1) RooRealVar::          x = -0.79919\n  2) RooRealVar::          y = 0.0106407\n  3) RooCategory:: blindState = Normal(idx = 0)\n\nRooDataSet::ds[x,y] = 64 entries\n\n-----------------------\nReading data from ASCII\n\nOriginal data, line 20:\n\nRead-back data, line 20:\n",
+ "timed_out": false,
+ "workdir": "/Users/rcurrie/xrdroot-parity/runs/setorder-repro-20261024/tmp/tutorial-uk8rxn15"
+}

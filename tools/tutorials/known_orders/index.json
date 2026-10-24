@@ -1,0 +1,52 @@
+{
+ "orders": {
+  "roofit/roofit/rf102_dataimport.py": [
+   {
+    "draw": "the dataset iterates y before x: the ASCII file is written with its columns swapped and the read-back values follow that order",
+    "entry": "rf102_dataimport.py/1"
+   },
+   {
+    "draw": "the dataset iterates x before y: the file keeps its columns and the read-back values follow",
+    "entry": "rf102_dataimport.py/2"
+   }
+  ],
+  "roofit/roofit/rf404_categories.py": [
+   {
+    "draw": "the generate set iterates b0flav before tagCat, the table set tagCat first",
+    "entry": "rf404_categories.py/1"
+   },
+   {
+    "draw": "the generate set iterates tagCat before b0flav, the table set tagCat first",
+    "entry": "rf404_categories.py/2"
+   },
+   {
+    "draw": "the generate set iterates tagCat before b0flav, the table set b0flav first",
+    "entry": "rf404_categories.py/3"
+   },
+   {
+    "draw": "the generate set iterates b0flav before tagCat, the table set b0flav first (drawn from a ROOT run in a working directory of a different length, as the harness's own sandbox names differ in length too)",
+    "entry": "rf404_categories.py/4"
+   }
+  ],
+  "roofit/roofit/rf406_cattocatfuncs.py": [
+   {
+    "draw": "the generate set iterates tagCat before b0flav, the super-category b0flav first",
+    "entry": "rf406_cattocatfuncs.py/1"
+   },
+   {
+    "draw": "the generate set iterates tagCat before b0flav, the super-category tagCat first",
+    "entry": "rf406_cattocatfuncs.py/2"
+   },
+   {
+    "draw": "the generate set, the super-category and the multi-category all iterate b0flav first",
+    "entry": "rf406_cattocatfuncs.py/3"
+   },
+   {
+    "draw": "the generate set and the super-category iterate b0flav first, the multi-category tagCat first",
+    "entry": "rf406_cattocatfuncs.py/4"
+   }
+  ]
+ },
+ "schema": "known-orders/1",
+ "why": "PyROOT turns a Python set literal into a RooArgSet in the set's iteration order, which follows the wrapped objects' addresses and so differs run to run - the harness's own sandbox names differ in length from run to run, and so does the layout. For the tutorials listed here ROOT itself therefore has more than one output, and the cached oracle holds only one draw of the coin. Each entry is a whole unchanged tutorial run by the same ROOT the oracle is; the harness accepts xrdroot only when it matches a ROOT output exactly: the cached draw or one of these, never anything else."
+}

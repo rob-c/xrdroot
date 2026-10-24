@@ -1,0 +1,14 @@
+{
+ "command": [
+  "/Users/rcurrie/.local/root-oracle/bin/python",
+  "rf406_cattocatfuncs.py"
+ ],
+ "exit_code": 0,
+ "files": {},
+ "note": "genuine ROOT 6.40.04 run of the unchanged tutorial, 2026-10-24; observed set-order draw: the generate set iterates tagCat before b0flav, the super-category tagCat first",
+ "runtime": 0.0,
+ "stderr": "",
+ "stdout": "RooCategory::tagCat = Lepton(idx = 0)\n\nRooCategory::b0flav = B0(idx = -1)\n\n\n  Table tcatType : pData\n  +----------------+------+\n  |      Cut based | 5040 |\n  | Neural Network | 4960 |\n  +----------------+------+\n\n\n  Table b0Xtcat : pData\n  +---------------------+------+\n  |         {Lepton;B0} | 1302 |\n  |           {Kaon;B0} | 1232 |\n  |    {NetTagger-1;B0} | 1242 |\n  |    {NetTagger-2;B0} | 1282 |\n  |      {Lepton;B0bar} | 1192 |\n  |        {Kaon;B0bar} | 1314 |\n  | {NetTagger-1;B0bar} | 1208 |\n  | {NetTagger-2;B0bar} | 1228 |\n  +---------------------+------+\n\n[#0] ERROR:InputArguments -- RooSuperCategory can only have positive index states. Got -2147483648\n\n  Table b0Xttype : pData\n  +------------------------+------+\n  |         {Cut based;B0} | 2534 |\n  |    {Neural Network;B0} | 2524 |\n  |      {Cut based;B0bar} | 2506 |\n  | {Neural Network;B0bar} | 2436 |\n  +------------------------+------+\n\n",
+ "timed_out": false,
+ "workdir": "/tmp/lf"
+}

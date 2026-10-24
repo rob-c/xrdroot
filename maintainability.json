@@ -5,7 +5,9 @@
     "tools",
     "tests"
   ],
-  "exclude": [],
+  "exclude": [
+    "tools/tutorials/known_orders/*"
+  ],
   "limits": {
     "ccn": 10,
     "cognitive": 15,

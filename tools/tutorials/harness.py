@@ -16,6 +16,7 @@ tutorial is judged on its own, not on whether ``hsimple.C`` ran first.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -43,6 +44,11 @@ BUILT_TUTORIAL_FILES = ("hsimple.root",)
 
 #: Bumped whenever how an oracle run is made changes, so old cache entries stop matching.
 ORACLE_SCHEMA = "oracle/1"
+
+#: ROOT's own runs of tutorials whose output depends on which way a Python set's
+#: iteration order fell in that process: the cached oracle holds one draw, and this
+#: directory holds the others ROOT itself was observed to produce.
+KNOWN_ORDERS = Path(__file__).resolve().parent / "known_orders" / "index.json"
 
 #: The reason given for every tutorial ROOT ran when xrdroot was not asked to.
 ORACLE_ONLY = "xrdroot not run (--oracle-only)"
@@ -121,6 +127,32 @@ def directory_sum(directory: Path) -> str:
     with _sums_lock:
         _directory_sums[directory] = found
     return found
+
+
+def known_orders(path: str) -> list[tuple[RunResult, Path]]:
+    """ROOT's alternative outputs for a tutorial, each with its files, or none.
+
+    A ``.py`` tutorial hands ROOT a Python set, whose iteration order follows the
+    wrapped objects' addresses and so differs run to run; for a few tutorials that
+    order reaches the output, and ROOT itself has been observed to produce more than
+    one. Each recorded order is a whole unchanged tutorial run by the same ROOT the
+    oracle is, so xrdroot is accepted only for an output ROOT itself produced.
+    """
+    if not hasattr(known_orders, "orders"):
+        orders: dict[str, list[tuple[RunResult, Path]]] = {}
+        try:
+            index = json.loads(KNOWN_ORDERS.read_text())
+        except (OSError, ValueError):
+            index = {}
+        for tutorial, entries in index.get("orders", {}).items():
+            loaded = []
+            for entry in entries:
+                where = KNOWN_ORDERS.parent / entry["entry"]
+                result = RunResult.load(where / "result.json")
+                loaded.append((result, where / "files"))
+            orders[tutorial] = loaded
+        known_orders.orders = orders  # type: ignore[attr-defined]
+    return getattr(known_orders, "orders", {}).get(path, [])
 
 
 def oracle_key(
@@ -448,8 +480,29 @@ class Harness:
     def _compared(
         self, tutorial: Tutorial, oracle: Outcome, mine: Outcome, record: dict[str, Any]
     ) -> tuple[str, str]:
+        found, images, extra = self._one_comparison(tutorial, oracle.result, oracle.files, mine)
+        if found:
+            for result, files in known_orders(tutorial.path):
+                if not self._one_comparison(tutorial, result, files, mine)[0]:
+                    record["details"].append(
+                        "differs from the cached ROOT run only by which way its sets iterate; "
+                        "matches ROOT's other recorded order exactly"
+                    )
+                    return "PASS", ""
+        record["images"].extend(images)
+        record["extra_files"] = extra
+        record["details"].extend(line for _, line in found)
+        if not found:
+            return "PASS", ""
+        return "DIFF", found[0][0]
+
+    def _one_comparison(
+        self, tutorial: Tutorial, theirs: RunResult, theirs_files: Path, mine: Outcome
+    ) -> tuple[list[tuple[str, str]], list[dict[str, Any]], list[str]]:
+        """One ROOT output against xrdroot's run: what differs, image scores, extras."""
         found: list[tuple[str, str]] = []
-        theirs, ours = oracle.result, mine.result
+        images: list[dict[str, Any]] = []
+        ours = mine.result
         if theirs.exit_code != ours.exit_code:
             found.append(("exit code", f"exit code {ours.exit_code}, ROOT {theirs.exit_code}"))
         paths = (self._paths(theirs), self._paths(ours))
@@ -458,16 +511,12 @@ class Harness:
         if stdout is not None:
             found.append(("stdout", f"stdout {stdout}"))
         for compared in compare_files(
-            theirs.files, ours.files, (oracle.files, mine.files), self.settings.tolerance
+            theirs.files, ours.files, (theirs_files, mine.files), self.settings.tolerance
         ):
             if compared.score is not None:
-                record["images"].append({"file": compared.name, "score": compared.score})
+                images.append({"file": compared.name, "score": compared.score})
             found.extend((_diff_kind(compared.kind, line), line) for line in compared.differences)
-        record["extra_files"] = extra_files(theirs.files, ours.files)
-        record["details"].extend(line for _, line in found)
-        if not found:
-            return "PASS", ""
-        return "DIFF", found[0][0]
+        return found, images, extra_files(theirs.files, ours.files)
 
     def _paths(self, result: RunResult) -> dict[str, str]:
         """The directories a run's output names, each masked as what it is.
