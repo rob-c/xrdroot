@@ -56,7 +56,7 @@ class _RVec(np.lib.mixins.NDArrayOperatorsMixin, _Vector):  # type: ignore[misc]
         return _made(found)
 
     def __getitem__(self, index: Any) -> Any:
-        if isinstance(index, (list, np.ndarray, _Vector)):
+        if type(index) is not int and isinstance(index, (list, np.ndarray, _Vector)):
             if isinstance(index, _RVec):
                 if len(index) != len(self):
                     raise TypeError(

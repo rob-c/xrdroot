@@ -74,20 +74,27 @@ class RootProxy:
         except AttributeError:
             if name != "std":
                 return self._used(namespace, name)
-        return importlib.import_module(f"{DEFAULT}.stl").std
+            # ``std`` is what a translated per-event loop asks for most - ``std::abs``
+            # per candidate pair - so it is remembered like :meth:`_used` remembers
+            # its finds: not re-looking it up avoids a gROOT ``FindObject`` sweep of
+            # every list ROOT keeps, per event, inside the loop.
+            module = importlib.import_module(f"{DEFAULT}.stl").std
+            self._resolved[(id(namespace), name)] = module
+            return module
 
     def _used(self, namespace: Any, name: str) -> Any:
         """``name`` from a namespace of :data:`USED`, or the refusal ROOT's own lookup gave.
 
-        A class or a module found this way is remembered, since the search
-        before it - every namespace, and ROOT's objects by name - is what a
-        macro's inner loop would otherwise do at every ``XYZVector(x, y, z)``.
-        What a macro declares is not, since the next macro may declare it again.
+        Anything callable found this way is remembered, since the search before it -
+        every namespace, and ROOT's objects by name - is what a macro's inner loop
+        would otherwise do at every ``Combinations(pt, 2)``; the finds are stable
+        members of pyroot's own modules. What a macro declares is not remembered,
+        since the next macro may declare it again.
         """
         for used in USED:
             found = getattr(_member(namespace, used), name, None)
             if found is not None:
-                if isinstance(found, type) or inspect.ismodule(found):
+                if inspect.ismodule(found) or callable(found):
                     self._resolved[(id(namespace), name)] = found
                 return found
         if name in DECLARED:

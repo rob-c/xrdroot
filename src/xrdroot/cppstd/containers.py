@@ -431,7 +431,33 @@ class _Vector(_Container):
     def __iter__(self) -> Iterator[Any]:
         return iter(self.data().tolist())
 
+    def _fast_int(self, index: Any) -> Any:
+        """The plain-int index read by the shortest road, or ``NotImplemented``.
+
+        A translated per-event loop indexes every element of every event
+        (``pt[i1]`` in df103's reconstruction helpers, millions of times over),
+        so when neither the storage nor the bounds check has been replaced it
+        takes no view and calls no helper: the same IndexError if the index is
+        outside, and the same Python scalar out. A subclass that has replaced
+        either - the stl vectors with foreign or byte-swapped storage, and the
+        ones a test watches - keeps the whole original protocol instead, since
+        its replacements are the contract.
+        """
+        if type(index) is not int:
+            return NotImplemented
+        if _Vector.data is not type(self).data or _Vector._checked is not type(self)._checked:
+            return NotImplemented
+        size = self._size
+        if 0 <= index < size:
+            return self._data[index].item()
+        if -size <= index < 0:
+            return self._data[index + size].item()
+        raise IndexError(f"{index} is outside this {self.__cpp_name__} of {size}")
+
     def __getitem__(self, index: Any) -> Any:
+        found = self._fast_int(index)
+        if found is not NotImplemented:
+            return found
         if isinstance(index, slice):
             return self.data()[index].copy()
         values = self.data()
