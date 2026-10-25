@@ -836,7 +836,8 @@ def test_the_recorded_root_orders_load_with_their_files(tmp_path):
         "(drawn from a ROOT run in a working directory of a different length, as "
         "the harness's own sandbox names differ in length too)",
     ]
-    assert all(entry[1].is_dir() for entry in orders)
+    # stdout-only captures write nothing, and git keeps no empty directories
+    assert all(entry[0].files == {} or entry[1].is_dir() for entry in orders)
     rf102 = harnessing.known_orders("roofit/roofit/rf102_dataimport.py")
     assert [sorted(entry[0].files) for entry in rf102] == [
         ["rf102_dataimport.png", "rf102_testData.txt"],
