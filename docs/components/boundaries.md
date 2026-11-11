@@ -50,8 +50,11 @@ Normal `check` requires an explicitly reviewed baseline with a review record and
 matching policy. It rejects new violations and stale allowances for resolved
 ones; resolved debt must shrink in the reviewed inventory. Moving a line alone
 does not forgive a violation. `--strict` requires zero violations independently
-of baseline allowances. The inherited prepared inventory is unreviewed, and the
-latest tooling-source revision has no accepted actual inventory yet.
+of baseline allowances. The committed policy now carries a materialized
+inventory with zero debt: `check --strict` reports 857 modules and 9,788 import
+references with no undeclared violation, and the single declared private Minuit
+import remains visible. Every allowance burned down in the reviewed groups is
+gone from the policy rather than kept as a zero.
 
 Use the global root option before the command to inspect another worktree:
 
@@ -84,13 +87,24 @@ than an arbitrary pytest path. Its policy declares `components = ["cppstd"]`,
 `paths = ["tests/cppstd"]`, `support = ["tests/cppstd/conftest.py"]`,
 `confcutdir = "tests/cppstd"` and `blocked = ["xrdclient"]`. The explicit
 fixture cutoff keeps broad root fixtures from silently loading higher engines.
-This interface requires the prepared P2 scope successor in the integrated tool.
+The integrated tool implements this interface: `isolate COMPONENT --tests SCOPE`
+runs the declared focused selection in one child process with the blocked
+imports installed. Three scopes are declared. `cppstd` cuts the root fixtures
+off entirely (`confcutdir = "tests/cppstd"`, `blocked = ["xrdclient"]`), while
+`core` (five numerics and random tests) and `hist` (graph drawing and pave
+layout) keep them in play: a scope that loads the shared fixtures is the proof
+that those fixtures do not reach above the component they are for. The files
+were selected by reading every `xrdroot` import each one makes, including
+imports inside functions.
 
 Choose scopes whose fixtures and helpers stay within the closure. A mixed
 engine/ROOT-adapter test belongs in integration coverage and will legitimately
 fail a lower-only boundary. Do not remove assertions or relabel such a test as
-isolated coverage. The facade's inert bootstrap is a prerequisite; unintegrated
-source packets cannot claim isolation by themselves.
+isolated coverage. The shared fixtures hold this too: the process-wide resets
+act only on state the process has already loaded, so a scope that never touches
+RooFit, RooStats or the transport does not import them to reset them. The
+facade's inert bootstrap is a prerequisite, and an unintegrated source packet
+cannot claim isolation by itself.
 
 ## Acceptance beyond the boundary tool
 

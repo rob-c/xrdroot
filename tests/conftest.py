@@ -48,13 +48,18 @@ def _no_pooled_connections():
     Every :class:`~xrdclient.testing.FakeServer` gets an ephemeral port, and the
     kernel hands those out again: a connection left in the pool by a test
     whose server has since stopped would match a later test's server by
-    address and be reused, dead.
+    address and be reused, dead. A process that never loaded the transport has
+    no pool to clear, and is left without importing it.
     """
-    from xrdclient.session import SESSIONS
+    import sys
 
-    SESSIONS.clear()
+    session = sys.modules.get("xrdclient.session")
+    if session is None:
+        yield
+        return
+    session.SESSIONS.clear()
     yield
-    SESSIONS.clear()
+    session.SESSIONS.clear()
 
 
 #: ROOT's globals a macro or a script may assign to, which live on the shared
@@ -98,19 +103,27 @@ def _fresh_statistics_defaults():
     ``MinimizerOptions``' defaults, RooStats' configuration and the
     asymptotic calculator's print level are process-wide, as ROOT's are, and
     a test that sets one - or asks for the algorithm before any minimizer was
-    chosen, which ROOT then forgets - would change what later tests see.
+    chosen, which ROOT then forgets - would change what later tests see. Only
+    what the process has already loaded is saved and put back: a test that
+    never touched the statistical engines has no state here to restore, and is
+    left without importing them.
     """
-    from xrdroot.fit.defaults import DEFAULTS
-    from xrdroot.roostats import asimov, config
+    import sys
 
-    saved = dict(DEFAULTS)
-    switches = dict(config.CONFIG.__dict__)
-    level = list(asimov._LEVEL)
+    defaults = sys.modules.get("xrdroot.fit.defaults")
+    settings = sys.modules.get("xrdroot.roostats.config")
+    asimov = sys.modules.get("xrdroot.roostats.asimov")
+    saved = dict(defaults.DEFAULTS) if defaults is not None else {}
+    switches = dict(settings.CONFIG.__dict__) if settings is not None else {}
+    level = list(asimov._LEVEL) if asimov is not None else []
     yield
-    DEFAULTS.clear()
-    DEFAULTS.update(saved)
-    config.CONFIG.__dict__.update(switches)
-    asimov._LEVEL[:] = level
+    if defaults is not None:
+        defaults.DEFAULTS.clear()
+        defaults.DEFAULTS.update(saved)
+    if settings is not None:
+        settings.CONFIG.__dict__.update(switches)
+    if asimov is not None:
+        asimov._LEVEL[:] = level
 
 
 @pytest.fixture(autouse=True)
@@ -119,14 +132,20 @@ def _fresh_roofit_message_service():
 
     Modules keep direct references to SERVICE, so retain the singleton itself.
     Reset builds new stream lists, leaving the saved state untouched until it
-    is restored after the test.
+    is restored after the test. A process that never loaded RooFit's messages
+    has no service to reset, and is left without importing them.
     """
-    from xrdroot.roofit.messages import SERVICE
+    import sys
 
-    saved = dict(SERVICE.__dict__)
-    SERVICE.reset()
+    messages = sys.modules.get("xrdroot.roofit.messages")
+    if messages is None:
+        yield
+        return
+    service = messages.SERVICE
+    saved = dict(service.__dict__)
+    service.reset()
     try:
         yield
     finally:
-        SERVICE.__dict__.clear()
-        SERVICE.__dict__.update(saved)
+        service.__dict__.clear()
+        service.__dict__.update(saved)

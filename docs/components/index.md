@@ -4,11 +4,13 @@ xrdroot has fifteen internal components in one Python project. They separate
 ownership and dependencies while keeping the `xrdroot` distribution, source
 root, command-line tools and public imports together.
 
-Implementation is authorized and source preparation is in progress on accepted
-parent `8a008d88`. These pages describe the prepared component contract and
-refactors. They do not certify an integrated tree: the new inventory, isolation,
-focused tests and six gates still require source-specific execution and review.
-No zero-violation or tutorial-parity result is claimed.
+The refactor has landed as thirty-three gated commits on the branch
+`refactor/modularisation-commits-20261021` (head `2418664`, from accepted parent
+`8a008d88`). On that tree the component contract reports 857 source modules and
+9,788 import references with zero undeclared violations, every one of the
+fifteen components imports in a fresh process with higher imports blocked, and
+all six gates pass. The measured results and their exact scope are in
+[validation status](#validation-status) below. Main is not yet published.
 
 ## Install and work in one source tree
 
@@ -33,6 +35,11 @@ All examples install the same project. Component names are ownership labels;
 they are not separate install targets. NumPy and the pinned xrdclient remain
 project dependencies. Other libraries retain their existing extras and lazy
 imports. ROOT remains a validation oracle and is never a runtime dependency.
+
+The distribution itself is smoke-tested as a built artifact: CI builds the
+sdist and the wheel, installs the wheel into a clean environment and writes and
+reads back a ROOT file with it, so what `pip install xrdroot` puts on a machine
+is the whole project and not only what the editable install provided.
 
 ## Responsibilities and direct dependencies
 
@@ -64,21 +71,26 @@ Read [boundary checks](boundaries.md) for the enforcement commands and
 
 ## Validation status
 
-The unchanged-parent ordinary full tutorial baseline was launched separately
-from source preparation. This documentation packet accepts no final baseline
-report or audit; recorded failures remain retained for review. The committed
-`tools/tutorials/baseline.json` is unchanged, and the global no-PASS-lost ratchet
-remains open, including the three Python set-order obligations whose original
-captures were lost.
+Measured on the integrated branch `refactor/modularisation-commits-20261021` at
+`2418664` on 2026-10-25. Each figure is bound to that source; nothing transfers
+to another tree.
 
-The earlier current073 translator survey translated 897 of 910 macros, meeting
-the 98% floor, but retained three writable-reader crashes. Its no-crashes gate
-failed. The separate reader candidate's FIRST full-gate launcher stopped before
-the driver; it supplies no reader gate acceptance. Refactoring does not waive
-those failures, change the 300-second tutorial limit or replace old evidence.
+| Check | Result on `2418664` |
+|---|---|
+| Component ownership and imports | 857 modules, 9,788 import references, zero undeclared violations; the one declared private `iminuit._core` import is reported and reviewed |
+| Fresh-process isolation | all fifteen components import with every higher import blocked (CI `fresh component imports`); `isolate cppstd --tests cppstd` runs its 61 focused tests |
+| Six gates | both test modes record 9,814 passed, 1 skipped, 46 expected failures and strict 100% line and branch coverage; Ruff, maintainability, strict mypy and strict docs pass |
+| CI | green on the branch, run `40158357628`: five test jobs (Ubuntu 3.10–3.13, macOS 3.12), lint, docs and the built-distribution smoke check |
+| Translator survey | 900 of 910 macros translated (98.9%), 10 refused, 0 crashed — the unchanged 98% floor and the no-crashes requirement both pass |
+| Global no-PASS-lost | full harness on this tree recorded 553 PASS; the nine tutorials its ratchet flagged were loaded-machine timeouts and all nine pass when rerun alone; the three set-order tutorials pass against ROOT's own recorded orders |
 
-Acceptance requires the exact integrated source's component inventory and
-isolation, strict coverage and all six gates, affected tutorials, translator
-survey and global tutorial ratchet. See repository `MODULARISATION.md`,
-`AGENTS.md` and the latest durable coordinator checkpoint for source-specific
-status. Historical inventories and failed attempts retain their original scope.
+Component debt was burned down to zero in eight reviewed groups (58 → 47 → 41
+→ 36 → 32 → 25 → 12 → 8 → … → 0) with no limit raised, no coverage lowered and
+no assertion loosened. The committed `tools/tutorials/baseline.json` is
+unchanged. Publishing main remains a separate decision and has not happened:
+the published `main` is still `fa34ea9`.
+
+Historical inventories, lane candidates and failed attempts keep their original
+scope and are not pooled into the figures above. See repository
+`MODULARISATION.md`, `AGENTS.md` and the latest durable coordinator checkpoint
+for the per-group acceptance records.

@@ -451,6 +451,30 @@ support = ["tests/cppstd/conftest.py"]
 confcutdir = "tests/cppstd"
 blocked = ["xrdclient"]
 
+# The core scope keeps the shared root fixtures in the run on purpose: they are
+# what a lower component's tests would otherwise be pulled up by, so they must
+# hold within core alone. Its files were selected by reading their xrdroot
+# imports: each imports core (and cppstd) and nothing above it.
+[tool.xrdroot.components.tests.core]
+components = ["core"]
+paths = [
+  "tests/test_numerics.py",
+  "tests/test_numerics_branch_corners.py",
+  "tests/test_numerics_qags_paths.py",
+  "tests/test_numerics_rootfinder.py",
+  "tests/test_random_libm_batches.py",
+]
+support = ["tests/conftest.py", "tests/refmachine.py", "tests/rootrandom.py"]
+confcutdir = "tests"
+
+# The histogram scope adds the engine's own tests to the same root fixtures: a
+# graph's drawing and a canvas full of paves must work with nothing above hist.
+[tool.xrdroot.components.tests.hist]
+components = ["hist"]
+paths = ["tests/test_graph2d.py", "tests/test_roofit_branch_defaults.py"]
+support = ["tests/conftest.py", "tests/refmachine.py", "tests/rootrandom.py"]
+confcutdir = "tests"
+
 # This compatibility name is the very same module, including its globals.
 [tool.xrdroot.components.module_aliases."xrdroot.pyroot.stl"]
 target = "xrdroot.cppstd.containers"

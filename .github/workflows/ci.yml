@@ -64,10 +64,16 @@ jobs:
           python tools/components.py isolate
           cppstd core hist spectrum fits io rdf geom graphics roofit roostats
           histfactory tmva pyroot app
-      # The declared cutoff keeps transport/statistical integration fixtures out
-      # of this scope. Ordinary pytest below still runs the complete fixture tree.
+      # Each declared scope runs in its own child with every import above its
+      # component blocked, and the root fixtures in play: a lower component's
+      # tests must not be pulled up by what the suite shares. Ordinary pytest
+      # below still runs the complete fixture tree.
       - name: pure C++ component tests
         run: python tools/components.py isolate cppstd --tests cppstd
+      - name: core component tests
+        run: python tools/components.py isolate core --tests core
+      - name: histogram component tests
+        run: python tools/components.py isolate hist --tests hist
       # pytest-cov rather than `coverage run`, because the workers xdist
       # spawns are separate processes and only pytest-cov collects them all.
       # `fail_under = 100` comes from pyproject.toml, so the gate lives with
@@ -88,3 +94,41 @@ jobs:
       # --strict turns a broken link or a page missing from the nav into a
       # failure, which is the only way documentation stays true.
       - run: mkdocs build --strict
+
+  # The root build and installation smoke check the refactor must keep: the
+  # project is one installable distribution, so what the built artifact puts on
+  # a machine has to be all of it - nothing that only the editable install
+  # supplied, no path back into the source tree. The wheel is built, installed
+  # into a clean environment and exercised the way a user would.
+  distribution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - name: build the sdist and the wheel
+        run: python -m build
+      - name: install the wheel into a clean environment and use it
+        run: |
+          python -m venv /tmp/wheel-check
+          /tmp/wheel-check/bin/pip install --quiet dist/*.whl
+          cd /tmp
+          /tmp/wheel-check/bin/python - <<'PY'
+          import numpy as np
+
+          import xrdroot
+
+          edges = np.linspace(0.0, 1.0, 51)
+          values = np.linspace(0.5, 4.5, 50)
+          with xrdroot.create("wheel-check.root") as made:
+              made["counts"] = xrdroot.Histogram.new("counts", edges, values)
+              made["note"] = "written by the installed wheel"
+          back = xrdroot.open_root("wheel-check.root")
+          assert back.keys() == ["counts", "note"]
+          assert back["counts"].values().sum() == values.sum()
+          assert back["note"] == "written by the installed wheel"
+          print("wheel check:", len(back), "object(s),", back["counts"].values().sum(), "counts")
+          PY
+          /tmp/wheel-check/bin/python -m xrdroot --help > /dev/null
