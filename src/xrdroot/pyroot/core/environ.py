@@ -16,8 +16,8 @@ from typing import Any
 
 from .objects import TObject
 
-__all__ = ["TEnv", "TEnvRec", "gEnv", "kEnvGlobal", "kEnvUser", "kEnvLocal", "kEnvChange",
-           "kEnvAll"]  # fmt: skip
+__all__ = ["TEnv", "TEnvRec", "gEnv", "PyConfig", "kEnvGlobal", "kEnvUser", "kEnvLocal",
+           "kEnvChange", "kEnvAll"]  # fmt: skip
 
 #: Where a resource was set: ROOT's ``EEnvLevel``.
 kEnvGlobal, kEnvUser, kEnvLocal, kEnvChange, kEnvAll = 0, 1, 2, 3, 4
@@ -136,3 +136,32 @@ def _global() -> TEnv:
 
 #: ``gEnv``.
 gEnv = _global()
+
+
+class _PyConfig:
+    """``ROOT.PyConfig``: the switches a PyROOT script sets before ROOT looks at them.
+
+    They are plain flags ROOT reads at start-up - whether to take the command
+    line for itself, whether to run the logon macros, whether to install its
+    own ``sys.excepthook``. A library that never starts a ROOT application has
+    nothing to do with them, so they are kept and reported back, which is what
+    a script that sets them needs.
+    """
+
+    #: Take ``sys.argv``'s ROOT options at start-up - off, as ROOT's own is by default.
+    IgnoreCommandLineOptions = False
+    #: Run ``~/.rootlogon.C`` - off for the same reason.
+    DisableRootLogon = False
+    #: Install ROOT's exception hook - off; this library raises Python exceptions.
+    DisablePythonExceptionHandler = False
+    #: Whether ROOT's own ``TPython`` is in charge - it is not here.
+    EnableTPython = False
+    #: Root's banner and start-up message - there is none to print.
+    StartGuiThread = False
+
+    def __repr__(self) -> str:
+        return "<ROOT.PyConfig>"
+
+
+#: ``ROOT.PyConfig``: the switches, as ROOT exposes them.
+PyConfig = _PyConfig()

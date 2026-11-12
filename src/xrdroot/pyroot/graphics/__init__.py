@@ -43,8 +43,11 @@ from .shapes import (
 )
 from .style import TStyle, get_style, gStyle, set_style
 from .text import TGaxis, TLatex, TMathText, TText
+from .virtualx import TVirtualX, gVirtualX
 
 __all__ = [
+    "TVirtualX",
+    "gVirtualX",
     # pads
     "TCanvas", "TPad", "gPad", "TFrame",
     # styles and colours

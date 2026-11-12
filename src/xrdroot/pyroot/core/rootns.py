@@ -34,8 +34,12 @@ def EnableThreadSafety() -> None:
 class TSeqI:
     """``ROOT::TSeqI(begin, end, step)``: the integers a ``for`` over it walks, as ``range``."""
 
-    def __init__(self, *bounds: int) -> None:
-        self._range = range(*(int(bound) for bound in bounds))
+    def __init__(self, *bounds: Any) -> None:
+        if len(bounds) == 1 and not isinstance(bounds[0], int) and hasattr(bounds[0], "__iter__"):
+            # TSeqI(seeds): another sequence, walked as it is (the copy C++ makes)
+            self._range = range(len(list(bounds[0])))
+        else:
+            self._range = range(*(int(bound) for bound in bounds))
 
     def __iter__(self) -> Any:
         return iter(self._range)
