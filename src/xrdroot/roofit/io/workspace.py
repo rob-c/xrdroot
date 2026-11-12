@@ -91,7 +91,7 @@ def _model_config(builder: Builder, record: Streamed) -> Any:
 
 def read_workspace(buf: Any, infos: Any) -> Any:
     """The workspace in ``buf``, the key's bytes, by the file's streamer information."""
-    from . import custom, data, models, variables  # noqa: F401 - the makers, by importing them
+    from . import configs, custom, data, models, variables  # noqa: F401 - importing the makers
     from .stream import Reader
 
     record = Reader(buf, infos).object("RooWorkspace")

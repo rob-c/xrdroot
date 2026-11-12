@@ -1629,7 +1629,14 @@ initializes the available samplers.
   ranges, slices, projections over data, error bands, `chiSquare`, `residHist`, `pullHist`
   and `paramOn`.
 - **The workspace**: `RooWorkspace` with its factory language (`SUM`, `PROD`, `EXPR`,
-  `SIMUL`...).
+  `SIMUL`...). `writeToFile(filename)` writes native ROOT records for Gaussian,
+  Chebychev and polynomial models, sums and recursive fractions, real variables and
+  categories, and unweighted datasets of real observables. Snapshots, named sets,
+  errors, attributes, fixed binnings, named ranges and private integration settings
+  are preserved. `writeToFile(filename, False)` appends file cycles, and `Write()`
+  writes into the current `TFile` or subdirectory and returns the written workspace
+  key's byte count. Unsupported model or dataset forms are refused before an existing
+  file is truncated.
 - **Messages**: `RooMsgService` and `RooAbsReal` evaluation-error logging controls.
   `setEvalErrorLoggingMode` accepts the constants or names `PrintErrors`, `CollectErrors`,
   `CountErrors` and `Ignore`. `logEvalError` follows that policy; `numEvalErrors` counts
@@ -1643,11 +1650,16 @@ name, like the rest of the namespace: `ROOT has RooCustomizer; xrdroot.pyroot do
 The same goes for, among others:
 - `RooNDKeysPdf`, `RooEffProd`, `RooLagrangianMorphFunc`, `RooMultiPdf`, `RooParamHistFunc`,
   and the `RooMCStudy` add-on modules;
-- `RooAbsPdf.defaultIntegratorConfig` and the graph printers.
+- the graph printers.
 
 Refusing is better than a curve or a fit that is almost ROOT's. A workspace read from a ROOT
 file is read into the same engine, class by class; a class it has no maker for - or one whose
 C++ code the file holds for ROOT to compile - is refused by name.
+`xrdroot diff` compares workspace definitions, shared model references, parameters,
+datasets, snapshots and named sets. It normalizes `TProcessID` UUID spellings while
+checking reference sharing; ordinary UUID-looking `TNamed` titles remain literal.
+An unreadable workspace is reported as not compared and makes the command exit with
+status 1, including when neither file's workspace can be read.
 
 ## RooStats
 

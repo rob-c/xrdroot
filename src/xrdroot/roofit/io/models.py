@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...errors import UnsupportedFeatureError
 from ..arg import Proxy
 from ..cmdargs import RooCmdArg
 from .build import MAKERS, Builder, maker, name_of, title_of
@@ -73,6 +74,61 @@ def _polyvar(builder: Builder, record: Streamed) -> Any:
     lowest = int(record.get("_lowestOrder") or 0)
     return RooPolyVar(name_of(record), title_of(record), builder.proxy(record, "_x"),
                       builder.listed(record, "_coefList"), lowest)  # fmt: skip
+
+
+@maker("RooChebychev")
+def _chebychev(builder: Builder, record: Streamed) -> Any:
+    from ..pdfs.basic import RooChebychev
+
+    made = RooChebychev(name_of(record), title_of(record), builder.proxy(record, "_x"),
+                        builder.listed(record, "_coefList"))  # fmt: skip
+    reference = record.get("_refRangeName")
+    if reference is not None:
+        made.selectNormalizationRange(reference.get("fName"))
+    return made
+
+
+@maker("RooPolynomial")
+def _polynomial(builder: Builder, record: Streamed) -> Any:
+    from ..pdfs.basic import RooPolynomial
+
+    return RooPolynomial(name_of(record), title_of(record), builder.proxy(record, "_x"),
+                         builder.listed(record, "_coefList"),
+                         int(record.get("_lowestOrder") or 0))  # fmt: skip
+
+
+@maker("RooRecursiveFraction")
+def _recursive_fraction(builder: Builder, record: Streamed) -> Any:
+    from ..pdfs.addpdf import RooRecursiveFraction
+
+    fractions = list(reversed(builder.listed(record, "_list")))
+    return RooRecursiveFraction(name_of(record), title_of(record), fractions)
+
+
+@maker("RooAddPdf")
+def _add_pdf(builder: Builder, record: Streamed) -> Any:
+    from ..pdfs.addpdf import RooAddPdf
+
+    normalization = record.get("_refCoefNorm")
+    attributes = record.get("_stringAttrib") or {}
+    if (normalization is not None and normalization.get("_list")) or attributes.get(
+        "ref_coef_norm"
+    ):
+        raise UnsupportedFeatureError(
+            "Reading RooAddPdf fixed coefficient normalization is not implemented. "
+            "Use a model without a fixed coefficient reference set instead of losing its meaning."
+        )
+    if record.get("_refCoefRangeName") is not None:
+        raise UnsupportedFeatureError(
+            "Reading RooAddPdf fixed coefficient ranges is not implemented. "
+            "Use a model without a fixed coefficient reference range instead of losing its meaning."
+        )
+    pdfs, coefs = builder.listed(record, "_pdfList"), builder.listed(record, "_coefList")
+    arguments = (pdfs,) if record.get("_allExtendable") else (pdfs, coefs)
+    made = RooAddPdf(name_of(record), title_of(record), *arguments)
+    made._recursive = bool(record.get("_recursive"))
+    made._have_last = bool(record.get("_haveLastCoef"))
+    return made
 
 
 @maker("RooProduct")

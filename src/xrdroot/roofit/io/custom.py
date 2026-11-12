@@ -23,6 +23,7 @@ def _code_repo(reader: Reader, made: Streamed) -> None:
     """``RooWorkspace::CodeRepo``: the classes' files, their relations and extra headers."""
     buf = reader.buf
     version, end = buf.header()
+    made.version = version
     files = [(buf.string(), buf.string(), buf.string(), buf.string()) for _ in range(buf.i32())]
     relations = [(buf.string(), buf.string(), buf.string()) for _ in range(buf.i32())]
     extras = [(buf.string(), buf.string(), buf.string()) for _ in range(buf.i32())] if (
@@ -35,6 +36,7 @@ def _ref_array(reader: Reader, made: Streamed) -> None:
     """``RooRefArray``: a ``TRefArray`` in a record - the proxies, by unique identifier."""
     buf = reader.buf
     _version, end = buf.header()
+    made.version = _version
     _inner, inner_end = buf.header()
     made.m["TObject"] = reader.tobject()
     made.m["fName"] = buf.string()
@@ -49,6 +51,7 @@ def _linked_list(reader: Reader, made: Streamed) -> None:
     """``RooLinkedList``: a bare version, a ``TObject``, then its members as pointers."""
     buf = reader.buf
     version, end = buf.header()
+    made.version = version
     made.m["TObject"] = reader.tobject()
     made.m["items"] = [reader.pointer() for _ in range(buf.i32())]
     if 1 < version < 4:
@@ -61,16 +64,35 @@ def _abs_binning(reader: Reader, made: Streamed) -> None:
     ``RooPrintable``."""
     buf = reader.buf
     version, end = buf.header()
+    made.version = version
     made.m["TNamed"] = reader.tobject() if version == 1 else reader.tnamed()
-    _printable, printable_end = buf.header()
-    buf.resume(printable_end)
+    made.m["RooPrintable"] = _empty_printable(reader, end)
     buf.resume(end)
+
+
+def _empty_printable(reader: Reader, outer_end: int | None) -> Streamed:
+    """ROOT's version-one printing base has no persisted instance fields to discard."""
+    made = base("RooPrintable")
+    made.version, end = reader.buf.header()
+    if made.version != 1:
+        raise UnsupportedFeatureError(
+            f"Reading RooPrintable version {made.version} is not implemented. "
+            "Use a supported workspace layout instead of discarding its fields."
+        )
+    limits = [limit for limit in (end, outer_end) if limit is not None]
+    if any(reader.buf.pos != limit for limit in limits):
+        raise UnsupportedFeatureError(
+            "Reading nonempty RooPrintable or trailing RooAbsBinning payload is not "
+            "implemented. Use a supported workspace layout instead of discarding its fields."
+        )
+    return made
 
 
 def _real_var(reader: Reader, made: Streamed) -> None:
     """``RooRealVar::Streamer``: its base, its errors, its binning, its shared properties."""
     buf = reader.buf
     version, end = buf.header()
+    made.version = version
     made.m["RooAbsRealLValue"] = reader.fill(base("RooAbsRealLValue"), "RooAbsRealLValue")
     if version == 1:
         made.m["fit"] = (reader.number("d"), reader.number("d"), buf.i32())
@@ -91,6 +113,7 @@ def _collection(reader: Reader, made: Streamed) -> None:
     option."""
     buf = reader.buf
     version, end = buf.header()
+    made.version = version
     if version > 3:
         made.m["TObject"] = reader.tobject()
         made.m["fName"] = buf.string()

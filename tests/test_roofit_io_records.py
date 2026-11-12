@@ -281,3 +281,40 @@ def test_a_workspace_carrying_code_for_classes_the_engine_lacks_is_refused() -> 
 def test_the_readers_by_hand_are_installed_where_the_reader_looks() -> None:
     custom.install()
     assert data.__all__ == [] and variables.__all__ == [] and "RooGaussian" in models.SIMPLE
+
+
+@pytest.mark.parametrize("outer", [record, bare])
+def test_the_known_empty_printing_base_is_retained_without_consuming_the_next_object(outer):
+    payload = outer(1, tobject() + record(1))
+    walker = reader(payload + u32(1234))
+    made = walker.object("RooAbsBinning")
+    printable = made.m["RooPrintable"]
+    assert printable.cls == "" and printable.version == 1
+    assert printable.m == {"__class__": "RooPrintable"}
+    assert walker.buf.pos == len(payload)
+    assert walker.buf.u32() == 1234
+
+
+def test_an_empty_bare_printing_base_uses_the_parent_boundary_without_skipping_next_state():
+    payload = record(1, tobject() + bare(1))
+    walker = reader(payload + u32(1234))
+    made = walker.object("RooAbsBinning")
+    assert made.m["RooPrintable"].version == 1
+    assert walker.buf.pos == len(payload)
+    assert walker.buf.u32() == 1234
+
+
+@pytest.mark.parametrize("version", [0, 2, 7])
+def test_unknown_printing_base_versions_are_refused_even_when_their_payload_is_empty(version):
+    walker = reader(record(1, tobject() + record(version)))
+    with pytest.raises(UnsupportedFeatureError, match=f"RooPrintable version {version}"):
+        walker.object("RooAbsBinning")
+
+
+@pytest.mark.parametrize("printing", [record(1, b"new"), record(1) + b"new", bare(1, b"new")])
+def test_nonempty_printing_or_trailing_binning_payload_cannot_be_silently_skipped(printing):
+    walker = reader(record(1, tobject() + printing))
+    with pytest.raises(
+        UnsupportedFeatureError, match="nonempty RooPrintable or trailing RooAbsBinning"
+    ):
+        walker.object("RooAbsBinning")

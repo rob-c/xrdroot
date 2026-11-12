@@ -10,6 +10,7 @@ from ..binning import RooAbsBinning, RooBinning, RooRangeBinning, RooUniformBinn
 from ..collections import RooArgList, RooArgSet
 from ..data.datahist import RooDataHist
 from ..data.dataset import RooDataSet
+from ..shared import SharedBinnings
 from . import hfnative as native
 
 #: Fixed binnings read numeric fields, without evaluating parameterized range functions.
@@ -48,10 +49,15 @@ def binning(value: Any) -> bool:
             and sequence(value._edges, list, endpoint))
 
 
+def shared_binnings(value: Any) -> bool:
+    return ((type(value) is dict or native.instance(value, (SharedBinnings,)))
+            and all(type(key) is str and binning(one) for key, one in value.items()))
+
+
 def variable(value: Any) -> bool:
     return (native.number(value._val) and native.number(value._error)
             and sequence(value._asym, tuple, native.number) and len(value._asym) == 2
-            and binning(value._binning) and mapping(value._shared, binning))
+            and binning(value._binning) and shared_binnings(value._shared))
 
 
 def store(value: Any) -> bool:

@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...errors import UnsupportedFeatureError
+from ..shared import NULL_IDENTITY, PROPERTIES, UUID_FIELDS, SharedBinnings
 from .build import Builder, maker, name_of, title_of
 from .stream import Streamed
 
@@ -37,6 +38,8 @@ def binning(record: Any) -> Any:
         made = RooBinning(_end(record.get("_xlo")), _end(record.get("_xhi")), name_of(record))
         for edge in edges:
             made.addBoundary(edge)
+        made._streamed_bounds = (bool(record.get("_ownBoundLo")),
+                                 bool(record.get("_ownBoundHi")))
         return made
     if record.cls == "RooRangeBinning":
         low, high = record.get("_range")
@@ -60,9 +63,27 @@ def _real_var(builder: Builder, record: Streamed) -> Any:
     made.setError(float(record.get("_error")))  # -1 for none, as RooRealVar keeps it
     made.setAsymError(float(record.get("_asymErrLo")), float(record.get("_asymErrHi")))
     shared = record.get("_sharedProp")
-    for name, other in ((shared.get("_altBinning") if shared is not None else None) or {}).items():
-        made.setBinning(binning(other), str(name))
+    if shared is not None:
+        made._shared = _shared_binnings(builder, shared)
     return made
+
+
+def _shared_binnings(builder: Builder, record: Streamed) -> SharedBinnings:
+    identity = record.get("_uuid")
+    key = tuple(tuple(identity.m[name]) if name == "fNode" else identity.m[name]
+                for name in UUID_FIELDS) if identity is not None else NULL_IDENTITY
+    if key == NULL_IDENTITY:
+        return SharedBinnings(_named_binnings(record))
+    if key not in builder.shared_binnings:
+        existing = PROPERTIES.get(key)
+        builder.shared_binnings[key] = (existing if existing is not None else
+                                        SharedBinnings(_named_binnings(record), key))
+    return builder.shared_binnings[key]
+
+
+def _named_binnings(record: Streamed) -> dict[str, Any]:
+    return {str(name): binning(other)
+            for name, other in (record.get("_altBinning") or {}).items()}
 
 
 @maker("RooConstVar")
@@ -76,6 +97,11 @@ def _const_var(builder: Builder, record: Streamed) -> Any:
 def _category(builder: Builder, record: Streamed) -> Any:
     from ..categories import RooCategory
 
+    if record.get("_rangesPointerForIO"):
+        raise UnsupportedFeatureError(
+            "Reading workspace category named ranges is not implemented. "
+            "Use a category without named ranges instead of losing its range definitions."
+        )
     made = RooCategory(name_of(record), title_of(record))
     states = record.get("_stateNames") or {}
     for label in record.get("_insertionOrder") or sorted(states, key=lambda label: states[label]):

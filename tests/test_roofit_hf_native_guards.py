@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 
 from test_roofit_hf_fit import model
-from xrdroot.roofit.fitting import hffit
+from xrdroot.roofit.fitting import hfdata, hffit
+from xrdroot.roofit.shared import SharedBinnings
 from xrdroot.roofit.variables import RooRealVar
 
 
@@ -117,3 +118,42 @@ def test_planning_large_native_graphs_leaves_the_array_evaluator_available():
     channel,_,minimizer=model()
     channel.model.coefs._list=[RooRealVar(f'p{i}','',1.) for i in range(150)]
     assert hffit._prepare(minimizer,minimizer._migrad) is None
+
+
+@pytest.mark.parametrize('storage', [dict, SharedBinnings])
+def test_named_binnings_use_native_numeric_storage_without_losing_the_fit_plan(storage):
+    channel, _, minimizer = model()
+    channel.mu.setRange('fit', .2, .8)
+    channel.mu._shared = storage(channel.mu._shared)
+    assert hfdata.shared_binnings(channel.mu._shared)
+    assert hffit._prepare(minimizer, minimizer._migrad) is not None
+
+
+@pytest.mark.parametrize('value', [Foreign(), {1: Foreign()}, {'fit': Foreign()},
+                                  SharedBinnings({1: Foreign()}),
+                                  SharedBinnings({'fit': Foreign()})])
+def test_shared_binning_keys_and_values_are_checked_without_callbacks(value):
+    assert hfdata.shared_binnings(value) is False
+
+
+def test_a_shared_binning_subclass_cannot_run_its_own_items_callback():
+    class Callback(SharedBinnings):
+        def items(self):
+            raise AssertionError('A planning guard ran a shared-binning callback.')
+
+    assert hfdata.shared_binnings(Callback()) is False
+
+
+def test_shared_binning_class_callbacks_are_rechecked_after_a_successful_fit(monkeypatch):
+    channel, _, minimizer = model()
+    channel.mu.setRange('fit', .2, .8)
+    assert hffit._prepare(minimizer, minimizer._migrad) is not None
+
+    def foreign_items(self):
+        raise AssertionError('A planning guard ran a shared-binning callback.')
+
+    with monkeypatch.context() as patch:
+        patch.setattr(SharedBinnings, 'items', foreign_items)
+        assert hfdata.shared_binnings(channel.mu._shared) is False
+        assert hffit._prepare(minimizer, minimizer._migrad) is None
+    assert hffit._prepare(minimizer, minimizer._migrad) is not None

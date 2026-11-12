@@ -15,6 +15,7 @@ from .binning import RooAbsBinning, RooParamBinning, RooRangeBinning, RooUniform
 from .messages import INFO, WARNING, log
 from .printing import g, kClassName, kExtras, kName, kValue
 from .real import Context, RooAbsReal
+from .shared import SharedBinnings
 
 __all__ = ["RooAbsRealLValue", "RooConstVar", "RooRealVar", "is_infinite"]
 
@@ -34,7 +35,7 @@ class RooAbsRealLValue(RooAbsReal):
         self._val = 0.0
         self._binning: RooAbsBinning = RooUniformBinning(-INFINITY, INFINITY, 100)
         #: The named binnings and ranges, shared with every copy.
-        self._shared: dict[str, RooAbsBinning] = {}
+        self._shared: dict[str, RooAbsBinning] = SharedBinnings()
 
     def isFundamental(self) -> bool:
         return True
@@ -167,6 +168,8 @@ class RooRealVar(RooAbsRealLValue):
 
     def _copy_state(self, other: Any) -> None:
         self._binning = other._binning.clone()
+        if isinstance(other._shared, SharedBinnings):
+            other._shared.key(create=True)
 
     # -- ranges -------------------------------------------------------------------
 
