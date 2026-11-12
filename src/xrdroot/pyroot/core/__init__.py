@@ -48,6 +48,7 @@ FAMILIES = (
     "scatters",
     "efficiencies",
     "files",
+    "merging",
     "parallel",
     "rootns",
     "typedefs",
