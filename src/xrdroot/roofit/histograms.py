@@ -56,7 +56,7 @@ def _axes(
     """Each variable and its binning command: ``x, Binning, YVar(y, Binning)``, or ``"x,y"`` and
     bins."""
     options = commands([a for a in args if isinstance(a, RooCmdArg)], kwargs)
-    binnings = options.every("Binning")
+    binnings = options.every("Binning") or options.every("AutoBinning")
     if isinstance(first, str):
         names = [one for one in first.split(",") if one]
         padded = binnings + [None] * len(names)

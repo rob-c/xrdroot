@@ -47,6 +47,8 @@ MODULES = {
     "pdfs.addmodel": ["RooAddModel"],
     "pdfs.addpdf": ["RooAddPdf", "RooRecursiveFraction"],
     "pdfs.anaconv": ["RooAbsAnaConvPdf"],
+    "mcmodules": ["RooChi2MCSModule", "RooDLLSignificanceMCSModule",
+                   "RooRandomizeParamMCSModule"],
     "pdfs.multipdf": ["RooMultiPdf"],
     "pdfs.basic": ["RooChebychev", "RooExponential", "RooGaussian", "RooPolynomial",
                    "RooPowerSum", "RooUniform"],

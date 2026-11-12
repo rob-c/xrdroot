@@ -34,11 +34,20 @@ def _variables(study: Any, pulled: list[Any]) -> list[Any]:
             variables.append(
                 RooRealVar(f"{par.GetName()}pull", f"{par.GetTitle()} Pull", -1e30, 1e30)
             )
-    return [
+    found = [
         *variables,
         RooRealVar("NLL", "-log(Likelihood)", -1e30, 1e30),
         RooRealVar("ngen", "number of generated events", -1e30, 1e30),
     ]
+    # what the study's modules measured is a column of its own, as ROOT keeps it:
+    # the chi-square module's chi2/chi2red/prob, the randomisation module's truths
+    known = {one.GetName() for one in found}
+    for row in study.rows:
+        for name in row:
+            if name not in known:
+                found.append(RooRealVar(name, name, -1e30, 1e30))
+                known.add(name)
+    return found
 
 
 def _columns(study: Any, variables: list[Any], pulled: list[Any]) -> dict[str, list[float]]:

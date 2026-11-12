@@ -38,10 +38,34 @@ class RooMCStudy:
         self.fit_params = list(self.fit_model.getParameters(self.observables))
         self.fit_init = [p.clone(p.GetName()) for p in self.fit_params]
         self._generator = None if self.binned else _generator(model, self.observables)
+        self.modules: list[Any] = []
+        self.module_columns: dict[str, float] = {}
+        self.last_sample: Any = None
         self.results: list[Any] = []
         self.samples: list[Any] = []
         self.rows: list[dict[str, float]] = []
         self._data: Any = None
+
+    # -- modules ------------------------------------------------------------------
+
+    def addModule(self, module: Any) -> Any:
+        """``addModule``: a module that watches (or steers) every sample of the study.
+
+        ROOT's MC-study modules are told when the study starts, before every
+        generation, after every fit and when it ends - which is how ``chi2`` and the
+        parameter randomisation get their hooks. The module is handed the study so
+        it can read the sample that was just generated.
+        """
+        module.study = self
+        module.initializeInstance()
+        self.modules.append(module)
+        return module
+
+    def _tell_modules(self, hook: str, *arguments: Any) -> None:
+        for module in self.modules:
+            told = getattr(module, hook, None)
+            if told is not None:
+                told(*arguments)
 
     # -- running ------------------------------------------------------------------
 
@@ -73,6 +97,7 @@ class RooMCStudy:
         if self.silence:
             SERVICE.setGlobalKillBelow(PROGRESS)
         prescale = int(samples / 100) if samples > 100 else 1
+        self._tell_modules("initializeRun", samples)
         try:
             while samples:
                 samples -= 1
@@ -80,6 +105,7 @@ class RooMCStudy:
                     log(
                         self.fit_model, PROGRESS, "Generation", f"RooMCStudy::run: sample {samples}"
                     )
+                self._tell_modules("processBeforeGen", samples)
                 sample = self._sample(events)
                 if keep:
                     self.samples.append(sample)
@@ -89,8 +115,26 @@ class RooMCStudy:
                 self._check_pulls()
         finally:
             SERVICE.setGlobalKillBelow(before)
+        self._collect_modules()
         self._data = None
         return False
+
+    def _collect_modules(self) -> None:
+        """What the modules found, one set of columns per sample, as ROOT keeps it."""
+        collected: dict[str, list[float]] = {}
+        for module in self.modules:
+            found = getattr(module, "finalizeRun", None)
+            if found is None:
+                continue
+            for name, values in (found() or {}).items():
+                collected.setdefault(name, []).extend(values)
+        for name, values in collected.items():
+            # a sample whose fit failed has no row: what a module measured for it is
+            # dropped with it, and a short column is padded so every row keeps one
+            for row, value in zip(self.rows, values, strict=False):
+                row[name] = value
+            for row in self.rows[len(values):]:
+                row[name] = 0.0
 
     def _sample(self, events: int) -> Any:
         """One sample: the generator's parameters reset, a Poisson number of events if extended."""
@@ -109,7 +153,9 @@ class RooMCStudy:
         """``fitSample``: the fit parameters reset to their start, the fit, and its row if good."""
         for par, start in zip(self.fit_params, self.fit_init, strict=False):
             par.copy_value_from(start)
+        self.last_sample = sample
         if sample.sumEntries() <= 0:
+            self._tell_modules("processAfterFit", False)
             return
         options = [
             *self.fit_options,
@@ -123,6 +169,9 @@ class RooMCStudy:
             row.update({f"{p.GetName()}err": p.getError() for p in self.fit_params})
             row.update({"NLL": result.minNll(), "ngen": sample.sumEntries()})
             self.rows.append(row)
+            self._tell_modules("processAfterFit", result.status() == 0)
+        else:
+            self._tell_modules("processAfterFit", False)
 
     def _check_pulls(self) -> None:
         """``calcPulls``' warning for each parameter without an error, which has no pull."""
