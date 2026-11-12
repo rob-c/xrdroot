@@ -36,21 +36,36 @@ def test_it_is_the_selected_density_which_is_what_its_value_says(indexed):
     assert multi.getVal() == gauss.getVal()
 
 
-def test_anything_else_asked_of_it_is_asked_of_the_selected_density(indexed):
-    _, _, gauss, _, multi = indexed
+def test_its_leaves_are_the_selected_densitys_plus_the_index(indexed):
+    _, index, _, _, multi = indexed
+    names = [one.GetName() for one in multi.leaves()]
+    assert "x" in names and index.GetName() in names
     assert multi.GetTitle() == "multi"
-    assert multi.mean.getVal() == gauss.mean.getVal()
     assert "multi" in repr(multi)
 
 
-def test_an_attribute_it_has_not_got_is_not_looked_for_on_the_selected_density(indexed):
-    _, _, _, _, multi = indexed
-    missing = "_no_such_private_name"
-    with pytest.raises(AttributeError):
-        assert getattr(multi, missing)
+def test_the_index_is_not_listed_twice_when_the_density_already_carries_it(indexed):
+    x, index, _, _, _ = indexed
+    carrying = ROOT.RooPolynomial("p", "p", x, ROOT.RooArgList(index))
+    multi = ROOT.RooMultiPdf("carrying", "carrying", index, ROOT.RooArgList(carrying))
+    listed = [one.GetName() for one in multi.leaves()]
+    assert listed.count(index.GetName()) == 1
 
 
 def test_a_multi_pdf_with_nothing_to_choose_between_says_so():
     index = ROOT.RooCategory("empty", "empty")
     with pytest.raises(ValueError, match="at least one density"):
         ROOT.RooMultiPdf("bad", "bad", index, ROOT.RooArgList())
+
+
+def test_a_component_with_no_observables_draws_the_empty_event():
+    from xrdroot.roofit.generation.samplerconfig import NoObservables, sampler
+
+    drawn = NoObservables().generate(4)
+    assert drawn.shape == (4, 0)
+    assert NoObservables().resample_ratio == 1.0
+    assert "no observables" in repr(NoObservables())
+    # the sampler the generation context asks for is that one, never a Foam of no dimension
+    x = ROOT.RooRealVar("x", "x", -1.0, 1.0)
+    gauss = ROOT.RooGaussian("g", "g", x, ROOT.RooFit.RooConst(0.0), ROOT.RooFit.RooConst(1.0))
+    assert isinstance(sampler(gauss, frozenset(), lambda points: points, [], None), NoObservables)

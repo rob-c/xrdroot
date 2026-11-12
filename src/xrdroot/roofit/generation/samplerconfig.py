@@ -38,10 +38,32 @@ def trial_counts(pdf: Any) -> tuple[int, ...]:
     return tuple(int(section.getRealValue(f"nTrial{dimension}D")) for dimension in range(4))
 
 
+class NoObservables:
+    """A component with nothing to draw for: it contributes no values, only a count.
+
+    ROOT's Foam needs a dimension to explore, and a component whose observables are
+    all conditional on the rest of the model has none - so it is drawn as the empty
+    event it is, rather than sent to a generator that could only refuse it.
+    """
+
+    #: Nothing is rejected when there is nothing to draw.
+    resample_ratio = 1.0
+
+    def generate(self, count: int) -> Any:
+        import numpy as np
+
+        return np.zeros((int(count), 0), dtype=np.float64)
+
+    def __repr__(self) -> str:
+        return "<no observables to draw>"
+
+
 def sampler(pdf: Any, names: frozenset[str], density: Any, variables: list[Any], rng: Any) -> Any:
     from .empirical import EmpiricalSampler
     from .foam import FoamGenerator
 
+    if not variables:
+        return NoObservables()
     selected = method(pdf, names, False)
     if selected == "RooFoamGenerator":
         ranges = [(one.getMin(), one.getMax()) for one in variables]

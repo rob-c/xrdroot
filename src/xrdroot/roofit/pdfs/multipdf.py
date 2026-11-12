@@ -59,11 +59,17 @@ class RooMultiPdf(RooAbsPdf):
         """``pdfList``: every density it may be, in the order given."""
         return list(self._pdfs)
 
-    def __getattr__(self, name: str) -> Any:
-        """Anything else asked of it is asked of the selected density, as ROOT delegates."""
-        if name.startswith("_"):
-            raise AttributeError(name)
-        return getattr(self.getCurrentPdf(), name)
+    def leaves(self) -> list[Any]:
+        """The selected density's leaves, and the index that says which one it is.
+
+        Generation and normalisation walk a density's leaves to find what it depends
+        on, so a density that *is* another has to answer with that one's - and with
+        the index, which is a discrete parameter the model fits.
+        """
+        found = list(self.getCurrentPdf().leaves())
+        if all(one is not self._index for one in found):
+            found.append(self._index)
+        return found
 
     # --- being a density -----------------------------------------------------
 
