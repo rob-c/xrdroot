@@ -20,7 +20,8 @@ from ..pdf import RooAbsPdf, check_range
 from ..real import Context
 from ..variables import RooConstVar
 
-__all__ = ["RooChebychev", "RooExponential", "RooGaussian", "RooPolynomial", "RooUniform", "ref"]
+__all__ = ["RooChebychev", "RooExponential", "RooGaussian", "RooPolynomial", "RooPowerSum",
+           "RooUniform", "ref"]
 
 
 def ref(arg: Any) -> Any:
@@ -213,3 +214,34 @@ def _items(items: Any) -> list[Any]:
     from ..collections import as_list
 
     return as_list(items)
+
+
+class RooPowerSum(RooAbsPdf):
+    """``RooPowerSum``: ``sum_i coef_i x^exp_i`` - a power law when given one term.
+
+    ROOT's arguments are lists of coefficients and exponents; a single number or
+    variable stands for a list of one, as ``RooAbsCollection``'s conversion lets
+    it, so ``RooPowerSum(n, t, x, 1.0, a)`` is ``x^a``. The integral is the
+    general numeric one ROOT falls back to when it has no closed form for a term.
+    """
+
+    def __init__(self, name: Any, title: Any, x: Any, coefList: Any, expList: Any) -> None:
+        super().__init__(name, title)
+        from ..collections import as_list
+
+        self.x = self._proxy("x", ref(x))
+        self._coefs = [self._proxy(f"coef{i}", ref(one)) for i, one in enumerate(as_list(coefList))]
+        self._exps = [self._proxy(f"exp{i}", ref(one)) for i, one in enumerate(as_list(expList))]
+        if len(self._coefs) != len(self._exps):
+            raise ValueError(
+                "RooPowerSum needs one exponent for every coefficient; "
+                f"{len(self._coefs)} coefficients and {len(self._exps)} exponents were given."
+            )
+
+    def compute(self, ctx: Context) -> Any:
+        """``sum_i coef_i x^exp_i``."""
+        value = self.x.compute(ctx)
+        total = 0.0
+        for coef, exp in zip(self._coefs, self._exps, strict=True):
+            total = total + coef.compute(ctx) * np.power(value, exp.compute(ctx))
+        return total
