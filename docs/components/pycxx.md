@@ -57,8 +57,11 @@ type the translator does not see. Where its body cannot be written without
 its arguments (a `T` variable, `sizeof(T)`), it is written as a stand-in that
 raises `Refusal` when it is used (`runtime.uninstantiated`), with the reason.
 
+A GoogleTest typed test is a class template too, instantiated for each type of
+its suite's `::testing::Types` list where the test is registered.
+
 Not instantiated, and so written generically as before: variadic templates,
-template template parameters, variable templates and GoogleTest's typed tests.
+template template parameters and variable templates.
 
 ## The dialect interface
 

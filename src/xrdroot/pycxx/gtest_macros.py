@@ -14,8 +14,12 @@ and an ``ASSERT_`` returns from the function it is in, as GoogleTest's
 does. A dialect whose library has test macros of its own adds them to these,
 as a prelude of its headers (:class:`~xrdroot.pycxx.dialect.Prelude`).
 
-The typed tests, which instantiate one body for every type of a list, are
-refused by name: the Python a body becomes has no type to vary.
+A typed test, ``TYPED_TEST`` or ``TYPED_TEST_P``, is a class template deriving
+from its fixture's instance, as in GoogleTest; ``RegisterTyped`` names it with
+its suite's ``::testing::Types`` list, and ``RegisterTypedSuite`` - what
+``INSTANTIATE_TYPED_TEST_SUITE_P`` is - names every test of a suite with one,
+and the translator makes one instance of each test for each type of the list
+(:mod:`.instantiate`).
 """
 
 from __future__ import annotations
@@ -99,6 +103,39 @@ FIXED = r"""
                                     ::testing::internal::Listener *result_listener)
 #define GTEST_EXPAND_(...) __VA_ARGS__
 #define GTEST_STRIP_(first, ...) __VA_ARGS__
+#define TYPED_TEST_SUITE(fixture, types, ...) typedef types gtest_type_params_##fixture##_
+#define TYPED_TEST_CASE(fixture, types, ...) TYPED_TEST_SUITE(fixture, types)
+#define GTEST_TYPED_TEST_CLASS_(fixture, name) \
+   template <typename gtest_TypeParam_> \
+   class fixture##_##name##_Test : public fixture<gtest_TypeParam_> { \
+   public: \
+      typedef fixture<gtest_TypeParam_> TestFixture; \
+      typedef gtest_TypeParam_ TypeParam; \
+      void TestBody() override; \
+   }
+#define GTEST_TYPED_TEST_BODY_(fixture, name) \
+   template <typename gtest_TypeParam_> \
+   void fixture##_##name##_Test<gtest_TypeParam_>::TestBody()
+#define TYPED_TEST(fixture, name) \
+   GTEST_TYPED_TEST_CLASS_(fixture, name); \
+   static int fixture##_##name##_registered = \
+      ::testing::internal::RegisterTyped<fixture##_##name##_Test, \
+                                         gtest_type_params_##fixture##_>( \
+         #fixture, #name, __FILE__, __LINE__); \
+   GTEST_TYPED_TEST_BODY_(fixture, name)
+#define TYPED_TEST_SUITE_P(fixture) static int gtest_typed_suite_##fixture##_ = 0
+#define TYPED_TEST_CASE_P(fixture) TYPED_TEST_SUITE_P(fixture)
+#define TYPED_TEST_P(fixture, name) \
+   GTEST_TYPED_TEST_CLASS_(fixture, name); \
+   GTEST_TYPED_TEST_BODY_(fixture, name)
+#define REGISTER_TYPED_TEST_SUITE_P(fixture, ...) \
+   static int gtest_typed_registered_##fixture##_ = 0
+#define REGISTER_TYPED_TEST_CASE_P(fixture, ...) REGISTER_TYPED_TEST_SUITE_P(fixture)
+#define INSTANTIATE_TYPED_TEST_SUITE_P(prefix, fixture, types, ...) \
+   static int gtest_##prefix##_##fixture##_instantiated = \
+      ::testing::internal::RegisterTypedSuite<types>(#prefix, #fixture, __FILE__, __LINE__)
+#define INSTANTIATE_TYPED_TEST_CASE_P(prefix, fixture, types, ...) \
+   INSTANTIATE_TYPED_TEST_SUITE_P(prefix, fixture, types)
 #define MATCHER(name, description) GTEST_MATCHER_(name, description, (), (), ())
 #define MATCHER_P(name, p0, description) \
    GTEST_MATCHER_(name, description, (, const auto &p0), (, p0), (, p0))
@@ -121,26 +158,5 @@ def _assertions() -> list[str]:
 #: Everything ``gtest/gtest.h`` defines, as ``#define`` lines.
 PRELUDE = FIXED + "\n".join(_assertions()) + "\n"
 
-#: The typed tests: one body, run once for each type of a ``::testing::Types`` list.
-_TYPED = (
-    "{name}, a GoogleTest typed test, instantiates its body once for each type of a "
-    "::testing::Types list, and its Python translation has no types to vary: it is "
-    "not translated"
-)
-
 #: The macros refused wherever they are used, each with the sentence that says why.
-REFUSED = {
-    name: _TYPED.format(name=name)
-    for name in (
-        "TYPED_TEST",
-        "TYPED_TEST_SUITE",
-        "TYPED_TEST_CASE",
-        "TYPED_TEST_P",
-        "TYPED_TEST_SUITE_P",
-        "TYPED_TEST_CASE_P",
-        "REGISTER_TYPED_TEST_SUITE_P",
-        "REGISTER_TYPED_TEST_CASE_P",
-        "INSTANTIATE_TYPED_TEST_SUITE_P",
-        "INSTANTIATE_TYPED_TEST_CASE_P",
-    )
-}
+REFUSED: dict[str, str] = {}

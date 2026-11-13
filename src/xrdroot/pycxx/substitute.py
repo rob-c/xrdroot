@@ -144,7 +144,10 @@ def _typed_name(node: Name, bound: CType, targs: Any) -> Name:
     ``T(...)`` of a class template's instance not made yet."""
     parts = [*bound.name.split("::"), *node.parts[1:]]
     given = bound.args if len(node.parts) == 1 and bound.args else targs
-    return Name(node.where, parts, list(given) if given else None, node.rooted)
+    found = Name(node.where, parts, list(given) if given else None, node.rooted)
+    if len(node.parts) == 2 and bound.args:
+        found.scope_targs = list(bound.args)  # ``T::count`` of ``Box<int>``: its instance's
+    return found
 
 
 def bound(names: list[str], defaults: list[Any], args: list[Any]) -> Bindings | None:

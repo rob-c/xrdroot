@@ -93,3 +93,63 @@ def test_a_host_adds_its_own_checks_and_what_ends_with_each_test(tmp_path, capsy
               "TEST(Host, Checks) { ::testing::internal::Remember(1); }\n")  # fmt: skip
     assert run_program([_written(tmp_path, "host.cxx", source)], use_cache=False) == 0
     assert ended == [1, "ended"]
+
+
+#: A typed test: one body, run for each type of its suite's list, its fixture a template.
+TYPED = r"""
+#include <gtest/gtest.h>
+#include <cstddef>
+
+#ifndef TYPED_TEST_SUITE
+#define TYPED_TEST_SUITE TYPED_TEST_CASE
+#endif
+
+template <typename T>
+class Sized : public testing::Test {
+protected:
+   T fZero = T();
+   static constexpr std::size_t kBytes = sizeof(T);
+};
+
+using SizedTypes = testing::Types<char, short, double>;
+TYPED_TEST_SUITE(Sized, SizedTypes);
+
+TYPED_TEST(Sized, HalvesLikeItsType)
+{
+   TypeParam a = 7;
+   EXPECT_EQ(a / 2, TypeParam(7) / TypeParam(2));
+   EXPECT_EQ(this->fZero, 0);
+}
+
+TYPED_TEST(Sized, KnowsItsSize)
+{
+   static constexpr std::size_t kSeen = sizeof(TypeParam);
+   EXPECT_EQ(kSeen, TestFixture::kBytes);
+   EXPECT_LE(sizeof(TypeParam), 2u);
+}
+"""
+
+
+def test_a_typed_test_runs_once_for_each_type_of_its_list(tmp_path, capsys) -> None:
+    assert run_program([_written(tmp_path, "typed_test.cxx", TYPED)], use_cache=False) == 1
+    out = capsys.readouterr().out
+    assert "[==========] 6 tests from 3 test suites ran." in out
+    assert "[       OK ] Sized/1.KnowsItsSize" in out
+    assert "[  FAILED  ] Sized/2.KnowsItsSize" in out and "[  PASSED  ] 5 tests." in out
+
+
+def test_a_typed_test_suite_runs_for_the_types_it_is_instantiated_with(tmp_path, capsys) -> None:
+    source = r"""
+    #include <gtest/gtest.h>
+    template <typename T> class Pair_Of : public testing::Test {};
+    TYPED_TEST_SUITE_P(Pair_Of);
+    TYPED_TEST_P(Pair_Of, Adds_Up) { TypeParam a = 3; EXPECT_EQ(a + a, TypeParam(6)); }
+    TYPED_TEST_P(Pair_Of, Halves) { EXPECT_EQ(TypeParam(3) / 2, TypeParam(1.5)); }
+    REGISTER_TYPED_TEST_SUITE_P(Pair_Of, Adds_Up, Halves);
+    typedef testing::Types<int, double> Numbers;
+    INSTANTIATE_TYPED_TEST_SUITE_P(My, Pair_Of, Numbers);
+    """
+    assert run_program([_written(tmp_path, "suite_test.cxx", source)], use_cache=False) == 0
+    out = capsys.readouterr().out
+    assert "[       OK ] My/Pair_Of/0.Adds_Up" in out and "[       OK ] My/Pair_Of/1.Halves" in out
+    assert "[  PASSED  ] 4 tests." in out

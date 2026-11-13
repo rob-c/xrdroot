@@ -32,9 +32,9 @@ from typing import Any
 
 from .ctype import CType
 from .errors import Refusal, Where
-from .nodes import ClassDecl, Function, Literal, Name, Node, Typedef, VarDecl
+from .nodes import Call, ClassDecl, Expr, Function, Literal, Name, Node, Typedef, VarDecl
 from .sizes import constant
-from .substitute import Bindings, as_literal, bound, copied
+from .substitute import Bindings, as_literal, bound, copied, substituted
 
 __all__ = ["ClassTemplate", "Templates", "argument_text", "mangled", "deduce_call"]
 
@@ -286,12 +286,58 @@ class Templates:
             for item in node:
                 self.resolve(item, params)
         elif isinstance(node, Node) and not _partial(node):
-            own = params | frozenset(getattr(node, "template", None) or ())
-            if isinstance(node, Name):
-                self._name(node, own)
-            for item in dataclasses.fields(node):
-                if item.name != "where":
-                    self.resolve(getattr(node, item.name), own)
+            self._node(node, params | frozenset(getattr(node, "template", None) or ()))
+
+    def _node(self, node: Node, params: frozenset[str]) -> None:
+        if isinstance(node, Call):
+            self._typed_test(node, params)
+        if isinstance(node, Name):
+            self._name(node, params)
+        for item in dataclasses.fields(node):
+            if item.name != "where":
+                self.resolve(getattr(node, item.name), params)
+
+    def _typed_test(self, call: Call, params: frozenset[str]) -> None:
+        """GoogleTest's ``RegisterTyped<Test, ::testing::Types<int, double>>(...)``: the test
+        class template instantiated for each type, the instances handed to the call - or,
+        for ``RegisterTypedSuite<Types>(prefix, "Suite", ...)``, each test of the suite's,
+        with its name and the type's place in the list."""
+        func = call.func
+        if not isinstance(func, Name) or func.last not in TYPED or not func.targs:
+            return
+        types = func.targs[-1]
+        tests = func.targs[:-1] or self._suite(call)
+        func.targs = None
+        for test in tests:
+            call.args.extend(self._typed(test, types, call, params))
+
+    def _typed(self, test: Any, types: Any, call: Call, params: frozenset[str]) -> list[Expr]:
+        """One typed test's instances, each named by its key - and, for a suite's, after
+        the type's place in the list and the test's name."""
+        named = isinstance(call.func, Name) and call.func.last == "RegisterTypedSuite"
+        name = _test_name(test.name, call) if named else ""
+        found: list[Expr] = []
+        for index, kind in enumerate(types.args if isinstance(types, CType) else []):
+            key = self.instance(test.name, [kind], params)
+            if named:
+                found += [
+                    Literal(call.where, "int", index, "int"),
+                    Literal(call.where, "str", name, "char*"),
+                ]
+            found.append(Name(call.where, [str(key)]))
+        return found
+
+    def _suite(self, call: Call) -> list[Any]:
+        """The typed tests of the suite a ``RegisterTypedSuite`` call names, as written."""
+        fixture = _fixture(call)
+        return [
+            CType(name)
+            for name, template in self.classes.items()
+            if template.decl.bases
+            and template.decl.bases[0].ctype.name == fixture
+            and name.startswith(f"{fixture}_")
+            and name.endswith("_Test")
+        ]
 
     def _type(self, ctype: CType, params: frozenset[str]) -> None:
         for arg in [*ctype.args, *ctype.scope_args]:
@@ -353,6 +399,8 @@ class Templates:
         chosen, bindings = self._chosen(template, args)
         bindings = self.typed(bindings)
         bindings[template.name] = CType(key)
+        own = _own_types(chosen, bindings)
+        bindings.update(own)
         nested = self._nested(chosen, key, bindings)
         decl = _renamed(copied(chosen, bindings), key)
         decl.members = [
@@ -362,7 +410,7 @@ class Templates:
             for member in decl.members
         ]
         decl.template, decl.specialises, decl.values, decl.defaults = None, None, [], []
-        decl.members = [*decl.members, *self._members(template, args, key, chosen)]
+        decl.members = [*decl.members, *self._members(template, args, key, chosen, own)]
         info = self.program.register(decl)
         info.origin = template.name
         self.arguments[key] = (template.name, args)
@@ -387,19 +435,24 @@ class Templates:
         return nested
 
     def _members(
-        self, template: ClassTemplate, args: list[Any], key: str, chosen: ClassDecl
+        self,
+        template: ClassTemplate,
+        args: list[Any],
+        key: str,
+        chosen: ClassDecl,
+        own: Bindings,
     ) -> Iterator[Function]:
         """The template's members defined outside it, for this instance: its own parameters
-        named as the definition names them."""
+        named as the definition names them, and the class's own types - ``own`` - in."""
         if chosen is not template.decl:
             return
         for func in [*template.members, *self.members.get(self.spellings[key], [])]:
             names = func.template or []
-            bindings: Bindings = dict(zip(names, args, strict=False))
+            bindings: Bindings = {**own, **dict(zip(names, args, strict=False))}
             bindings[template.name] = CType(key)
-            own = copied(func, bindings)
-            own.template, own.scope = None, [*func.scope[:-1], key]
-            yield _renamed_function(own, template.name, key)
+            made = copied(func, bindings)
+            made.template, made.scope = None, [*func.scope[:-1], key]
+            yield _renamed_function(made, template.name, key)
 
     def _chosen(self, template: ClassTemplate, args: list[Any]) -> tuple[ClassDecl, Bindings]:
         """The declaration an instance is made from: the most specialised partial
@@ -440,6 +493,31 @@ def valued(decl: ClassDecl, args: list[Any]) -> list[Any]:
 def _named_value(arg: Any, index: int, names: list[str], values: set[str | None]) -> bool:
     plain = isinstance(arg, CType) and not (arg.args or arg.pointer or arg.const or arg.dims)
     return plain and index < len(names) and names[index] in values
+
+
+#: GoogleTest's registrations of typed tests, which name class templates to instantiate.
+TYPED = frozenset({"RegisterTyped", "RegisterTypedSuite"})
+
+
+def _fixture(call: Call) -> str:
+    """The suite a ``RegisterTypedSuite(prefix, "Suite", ...)`` call names."""
+    suite = call.args[1] if len(call.args) > 1 else None
+    return str(suite.value) if isinstance(suite, Literal) else ""
+
+
+def _test_name(test: str, call: Call) -> str:
+    """``Name`` of the class template ``Suite_Name_Test`` a typed test is."""
+    return test[len(_fixture(call)) + 1 : -len("_Test")]
+
+
+def _own_types(decl: ClassDecl, bindings: Bindings) -> Bindings:
+    """The typedefs a class template declares, each the type it is in this instance: what
+    its members' bodies mean by ``TypeParam``."""
+    return {
+        member.name: substituted(member.ctype, bindings)
+        for member in decl.members
+        if isinstance(member, Typedef)
+    }
 
 
 def _renamed(decl: ClassDecl, key: str) -> ClassDecl:
@@ -601,7 +679,7 @@ def deduce_call(
     from the arguments as C++ deduces them, then the defaults - or ``None`` if one is left
     unknown, or the arguments contradict each other."""
     names = list(func.template or [])
-    params = set(names[len(explicit):])
+    params = set(names[len(explicit) :])
     found: Bindings = dict(zip(names, explicit, strict=False))
     for param, kind in zip(func.params, given, strict=False):
         pattern = _parameter_pattern(param.ctype)
