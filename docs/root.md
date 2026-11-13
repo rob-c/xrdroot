@@ -3111,12 +3111,55 @@ status 2.
 | `TFile::Open(url)` | `gROOT.open(url)`, which goes into the file as ROOT's does |
 | `gROOT->Get("f.root:/dir/h")`, `FindObject("h")` | `gROOT.get("f.root:/dir/h")`, `gROOT["h"]` |
 | `TBrowser` | not provided: `xrdroot ls -t` for what a file holds, `dump` for what is in it, `print` or `.plot()` to see it |
-| `rootls -t -l` | `xrdroot ls -t -l` |
+| `rootls`, `rootrm`, `rootmkdir`, `rootmv`, `rootcp` | `xrdroot ls`, `rm`, `mkdir`, `mv`, `cp` - [the same tools](#command-line-file-tools) |
 | `rootprint`, `root-print` | `xrdroot print` |
 | `rootdiff`, `root-diff` | `xrdroot diff`, with `--atol`, `--rtol` and `-k` |
 | `root-dump` | `xrdroot dump`, with `-n` entries of each tree |
 | `TTree::Scan`, `TTree::Draw` | `xrdroot scan`, `xrdroot draw` |
-| `hadd`, `rootcp` | the `merge` and `cp` subcommands, where `xrdroot.merge` is installed |
+| `hadd` | `xrdroot hadd`; `xrdroot merge` is the same merge with xrdroot's defaults |
+
+### Command-line file tools
+
+`xrdroot ls`, `rm`, `mkdir`, `mv`, `cp` and `hadd` are ROOT's `rootls`,
+`rootrm`, `rootmkdir`, `rootmv`, `rootcp` and `hadd`: the same flags, read
+the way ROOT's own option parser reads them (`-1c` is `-1 -c`, `--name=value`,
+`--` ending the flags), the same output to the space, the same messages on
+standard error and the same exit statuses, so a command line written for ROOT
+runs as it is and its output compares with a reference file ROOT wrote.
+
+```console
+$ xrdroot ls -1 test.root:tof              # rootls -1: a name a line
+$ xrdroot ls -l 'test.root:h*'             # class, date, name;cycle, title
+$ xrdroot ls -t events.root                # each tree's branches and clusters
+$ xrdroot ls -R ntuple.root                # each RNTuple's fields
+$ xrdroot rm -r out.root:dir               # rootrm: a directory, and the file with -r
+$ xrdroot mkdir -p out.root:a/b/c          # rootmkdir: parents, and the file, as needed
+$ xrdroot mv in.root:hpx in.root:histo     # rootmv: copied, then deleted where it was
+$ xrdroot cp --replace -r in.root:tof out.root
+$ xrdroot hadd -f505 all.root run1.root run2.root @more.txt
+```
+
+A source is `file.root:pattern`: the file, then after the first colon a path
+whose every `/`-separated part is a shell pattern matched against the keys at
+that depth - against `name;cycle` when the part has a `;` - as ROOT's
+`RootObjTree` matches them. A URL splits after its last `.root`, so
+`root://host:1094//f.root:dir` keeps its port.
+
+| tool | what is the same | where xrdroot differs |
+| --- | --- | --- |
+| `ls` | `-1 -c -l -t -R -r`; columns as wide as the terminal allows (80 when nothing says), long lines with `[current cycle]`/`[backup cycle]`, tree branches with their bytes and `TTree::TClusterIterator`'s cluster ranges, RNTuple fields dotted out by level | no colours on a terminal |
+| `rm` | `-f -i -n -r -v -vv`; every cycle a pattern matches, directories and files only with `-r`, stopping at the first pattern that matches nothing | the records go to the file's free list; a directory's contents go with its key |
+| `mkdir` | `-p -v`; every path checked first, then each made, an empty file for a path-less name | |
+| `mv` | `rootmv`'s `cmdLineUtils` program, its argparse help, logging warnings and summed status | a renamed object keeps its own `fName` inside the record |
+| `cp` | `-c -r --replace --recreate -v -vv`; DEST a directory or a new name, rootcp's errors, DEST deleted after a failed run | plus `--cut`, `--columns` and `--slow`, `TTree::CopyTree` on the way |
+| `hadd` | every flag and spelling, `@` lists, `Info in <hadd>`, `hadd Source file N`, `hadd Target path`, ROOT's 101 by default | `-j` is said and run in one process; the `Cmdline:` line names `hadd` |
+
+A record copied under a name of another length - `cp in.root:hpx
+out.root:histo` - would point at the wrong places inside itself, since ROOT
+counts them from the start of the key. Its references are found by reading the
+record as its file describes the class and moved by the difference; a record
+holding anything that reading cannot account for is written afresh if
+xrdroot writes its class, and refused if not.
 
 ### The prompt
 
