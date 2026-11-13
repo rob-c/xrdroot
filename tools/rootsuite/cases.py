@@ -17,7 +17,7 @@ from .judge import Verdict, refusal
 from .model import Test
 from .process import Result
 
-__all__ = ["junit", "gtest_counts", "judge_pyunittest"]
+__all__ = ["junit", "gtest_counts", "gtest_failures", "judge_pyunittest"]
 
 #: pytest's exit status when it collected nothing to run.
 NO_TESTS = 5
@@ -60,6 +60,34 @@ def gtest_counts(output: str) -> dict[str, int]:
         if found:
             counts[key] = int(found.group(1))
     return counts
+
+
+#: One case's block of gtest output: its ``[ RUN      ]`` line to the next one.
+_CASE = re.compile(r"^\[ RUN      \] (\S+)\n(.*?)(?=^\[ RUN      \] |\Z)", re.M | re.S)
+#: The line a failed assertion or an exception starts with: ``file.cxx:12: Failure``.
+_FAILURE = re.compile(r"^(?:.*: )?Failure$")
+
+
+def gtest_failures(output: str) -> list[str]:
+    """Each failed gtest case and the first line saying why: ``Suite.Case: message``.
+
+    The program's verdict names only its first failed case; these say how
+    each case failed, so the causes inside programs can be counted.
+    """
+    failures = []
+    for name, body in _CASE.findall(output):
+        if re.search(rf"^\[  FAILED  \] {re.escape(name)}\b", body, re.M):
+            failures.append(f"{name}: {_why(body.splitlines())[:300]}")
+    return failures
+
+
+def _why(lines: list[str]) -> str:
+    """The line after a case's first ``Failure``, else its first line that is not gtest's."""
+    said = [line for line in lines if line.strip() and not line.startswith("[")]
+    for line, after in zip(lines, [*lines[1:], ""], strict=True):
+        if _FAILURE.match(line) and after.strip():
+            return after.strip()
+    return said[0].strip() if said else "?"
 
 
 def judge_pyunittest(test: Test, result: Result, junit_path: Path) -> Verdict:

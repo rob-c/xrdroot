@@ -44,6 +44,19 @@ def test_the_summary_lists_failure_causes_with_paths_and_numbers_made_generic():
     assert report.cause("exit 2, expected 0") == "exit N, expected N"
 
 
+def test_the_summary_counts_cases_and_ranks_causes_by_the_programs_each_alone_blocks():
+    doc = results(record("a", "FAIL", kind="gtest", cases={"passed": 2, "failed": 2},
+                         failures=["A.x: no 'TUUID' yet", "A.y: no 'TUUID' yet"]),
+                  record("b", "FAIL", kind="gtest", cases={"passed": 0, "failed": 2},
+                         failures=["B.x: no 'TUUID' yet", "B.y: exit 3"]),
+                  record("c", "UNSUPPORTED", kind="gtest", reason="no 'TEnv' yet"),
+                  record("d", "PASS", kind="gtest", cases={"passed": 1}))
+    text = report.summary(doc)
+    assert "| gtest | 4 | 1 | 2 | 0 | 1 | 0 | 0 | 0 | 25.0% | 25.0% | 3/7 |" in text
+    assert "    1     2  no 'TUUID' yet" in text and "    1     1  no 'TEnv' yet" in text
+    assert "    0     1  exit N" in text
+
+
 def test_report_redraws_the_summary_from_results_json(tmp_path):
     report.write(results(record("a", "PASS")), tmp_path)
     (tmp_path / "summary.md").unlink()

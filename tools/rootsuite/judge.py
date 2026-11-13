@@ -62,12 +62,17 @@ _SAYS_UNSUPPORTED = re.compile(
 
 @dataclass
 class Verdict:
-    """A test's status, the sentence saying why, and any diff that shows it."""
+    """A test's status, the sentence saying why, and any diff that shows it.
+
+    ``cases`` counts the cases inside a gtest program or unittest file, and
+    ``failures`` says how each failed case of a gtest program failed.
+    """
 
     status: str
     reason: str = ""
     diff: str = ""
     cases: dict[str, int] = field(default_factory=dict)
+    failures: list[str] = field(default_factory=list)
 
     def to_json(self) -> dict[str, Any]:
         return {key: value for key, value in self.__dict__.items() if value}
