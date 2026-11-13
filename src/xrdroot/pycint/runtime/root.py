@@ -19,6 +19,7 @@ import sys
 from typing import Any
 
 from ...pycxx.runtime.namespace import DECLARED, HostNamespace
+from ..typedefs import TYPEDEFS
 
 __all__ = ["RootProxy", "ROOT", "DECLARED", "DEFAULT", "USED"]
 
@@ -76,33 +77,20 @@ class RootProxy(HostNamespace):
     """
 
     def __init__(self) -> None:
-        provided = {"TestSupport": _test_support, "gApplication": _application,
+        # ROOT's typedefs called like functions, ``Long64_t(x)``, are casts.
+        casts = {name: _cast(target) for name, target in TYPEDEFS.items()}
+        provided = {**casts, "TestSupport": _test_support, "gApplication": _application,
                     "TApplication": _application_class, "TRint": _application_class}  # fmt: skip
         super().__init__(_pyroot, USED, provided, _std)
-
-    def _used(self, namespace: Any, name: str) -> Any:
-        """``name`` as the host finds it - or, for one of ROOT's typedefs nothing else names,
-        its conversion: ``Long64_t(x)`` is a cast to the type it stands for."""
-        try:
-            return super()._used(namespace, name)
-        except AttributeError:
-            cast = _typedef_cast(name)
-            if cast is None:
-                raise
-            return cast
 
 
 #: The Python a value of each kind of C++ arithmetic type is, by the type's name.
 CASTS: dict[str, Any] = {"float": float, "double": float, "long double": float, "bool": bool}
 
 
-def _typedef_cast(name: str) -> Any:
-    """The conversion ``Int_t(x)`` makes: to ``int``, ``float`` or ``bool`` - or ``None``
-    for a name that is no typedef of ROOT's."""
-    from ..dialect import TYPEDEFS
-
-    target = TYPEDEFS.get(name)
-    return None if target is None else CASTS.get(target, int)
+def _cast(target: str) -> Any:
+    """The conversion ``Int_t(x)`` makes: to ``int``, ``float`` or ``bool``."""
+    return lambda: CASTS.get(target, int)
 
 
 ROOT = RootProxy()

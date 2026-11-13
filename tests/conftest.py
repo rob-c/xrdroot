@@ -158,6 +158,6 @@ def _no_session_defines():
     import sys
 
     yield
-    execute = sys.modules.get("xrdroot.pycint.execute")
-    if execute is not None:
-        execute.DEFINES.clear()
+    defines = getattr(sys.modules.get("xrdroot.pycint.execute"), "DEFINES", None)
+    if isinstance(defines, list):  # not a stand-in a test put in the translator's place
+        defines.clear()
