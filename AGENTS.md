@@ -143,10 +143,31 @@ python -m tools.rootsuite ratchet RUN_DIR/results.json      # fails if a baselin
 ```
 
 Statuses are PASS, FAIL, DIFF (ran, output differs from the `.ref`),
-UNSUPPORTED (xrdroot refused), OUT-OF-SCOPE (a committed scope label), SKIP
-(the harness cannot express the test) and TIMEOUT. Scope labels live in
-`tools/rootsuite/scope.toml`, each with a full-sentence reason. The baseline is
-`tools/rootsuite/baseline.json`.
+UNSUPPORTED (xrdroot refused, or lacks the subcommand the test needs),
+OUT-OF-SCOPE (a committed scope label), SKIP (the harness cannot express the
+test) and TIMEOUT. The suite is configured as on macOS ARM64: the oracle's
+`root-config --features` (else the committed macOS ARM64 set; `--features`
+overrides), `APPLE`, `CMAKE_SYSTEM_PROCESSOR=arm64`. Scope labels live in
+`tools/rootsuite/scope.toml`, each with a full-sentence reason, and only
+cover what ROOT cannot run on such a Mac (CUDA, SYCL, X11, io_uring): tests
+needing dictionaries, ACLiC, compiled executables, cling or cppyy stay in
+scope. The baseline is `tools/rootsuite/baseline.json`.
+
+ROOT's build model maps onto xrdroot's (run in the test's working directory):
+
+| ROOT | xrdroot |
+|---|---|
+| a dictionary (rootcling, genreflex) | `xrdroot build dictionary --name NAME [--linkdef F] [--selection F] [-I D]... HEADER...` → `libNAME.xrdlib` |
+| a test library | `xrdroot build library --name NAME [-I D]... SOURCE...` → `libNAME.xrdlib` |
+| a test executable | `xrdroot build executable --name EXE [--library NAME]... [-I D]... SOURCE...` → `./EXE` |
+| ACLiC (`.L m.C+`, `ROOTTEST_COMPILE_MACRO`) | `xrdroot build aclic m.C+kc` → `m_C.xrdlib` |
+| `root.exe [opts] [-e line]... [files]...` | `xrdroot root` with the same words |
+| `hadd`, `rootls`, `rootrm`, `rootmkdir`, `rootmv`, `rootcp`, `rootprint` | `xrdroot hadd`, `ls`, `rm`, `mkdir`, `mv`, `cp`, `print` |
+
+`NAME` is the file ROOT writes less `lib` and its suffix. Fixtures and
+`DEPENDS` order tests as ctest does, a test whose fixture setup did not pass
+is not run, and the working copy has the build tree's `bin/`, `tutorials/`
+and `hsimple.root`.
 
 **Tutorials against the ROOT oracle** (`tools/tutorials`):
 
