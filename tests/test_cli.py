@@ -1,4 +1,4 @@
-"""The ``xrdroot`` command: its registry of subcommands, ``ls``, ``info``, ``scan`` and ``draw``.
+"""The ``xrdroot`` command: its registry of subcommands, ``info``, ``scan`` and ``draw``.
 
 Every subcommand is run in this process, through :func:`xrdroot.cli.main`
 exactly as the console script runs it, over the go-hep files in
@@ -19,8 +19,6 @@ from clisupport import FakeMatplotlib
 from xrdroot.cli import COMMANDS, main
 from xrdroot.cli.info import compression
 from xrdroot.cli.target import location
-from xrdroot.errors import UnsupportedFeatureError
-from xrdroot.file import Directory
 from xrdroot.hist import Histogram
 
 DATA = pathlib.Path(__file__).parent / "data"
@@ -64,10 +62,10 @@ def test_a_subcommand_that_says_nothing_about_its_status_succeeded(monkeypatch, 
 
 
 def test_a_refusal_is_one_line_on_standard_error_and_status_two(capsys):
-    status, out, err = run(capsys, "ls", f"{data('simple.root')}:nothing")
+    status, out, err = run(capsys, "scan", f"{data('simple.root')}:nothing")
     assert status == 2
     assert out == []
-    assert err.startswith("xrdroot ls: 'nothing' is not in /; there is tree")
+    assert err.startswith("xrdroot scan: 'nothing' is not in /; there is tree")
 
 
 def test_no_arguments_at_all_start_the_shell(monkeypatch):
@@ -104,77 +102,6 @@ def test_a_location_without_a_path_is_the_file_and_dash_k_names_the_path():
     assert location("root://host:1094//f.root:dir/h") == ("root://host:1094//f.root", "dir/h")
     assert location("https://host/data?id=7") == ("https://host/data?id=7", "")
     assert location("https://host/data?id=7", "/dir/h") == ("https://host/data?id=7", "dir/h")
-
-
-# -- ls ------------------------------------------------------------------------------
-
-
-def test_ls_lists_every_key_with_its_class_title_and_cycle(capsys):
-    status, out, _ = run(capsys, "ls", data("graphs.root"))
-    assert status == 0
-    assert out[:2] == [f"=== [{data('graphs.root')}] ===", "version: 60806"]
-    assert out[2].split() == ["TGraph", "tg", "graph", "without", "errors", "(cycle=1)"]
-    assert len(out) == 5
-
-
-def test_ls_walks_directories_down_indenting_each_level(capsys):
-    _, out, _ = run(capsys, "ls", data("dirs-6.14.00.root"))
-    assert out[2].startswith("TDirectory ")
-    assert out[3].startswith("  TDirectory dir11")
-    assert out[4].startswith("    TH1F")
-    assert out[4].split()[1:3] == ["h1", "h1"]
-
-
-def test_ls_of_a_path_lists_that_directory_or_that_key(capsys):
-    _, out, _ = run(capsys, "ls", f"{data('dirs-6.14.00.root')}:dir1/dir11")
-    assert [line.split()[0] for line in out[2:]] == ["TH1F"]
-    _, out, _ = run(capsys, "ls", data("graphs.root"), "-k", "tge")
-    assert [line.split()[1] for line in out[2:]] == ["tge"]
-
-
-def test_ls_long_adds_what_each_record_costs(capsys):
-    _, out, _ = run(capsys, "ls", "-l", data("dirs-6.14.00.root"))
-    assert "(cycle=1, 345 bytes on disk, 936 uncompressed, x3.04, 2018-07-03 11:08:55)" in out[4]
-
-
-def test_ls_trees_lists_each_column_with_its_type(capsys):
-    _, out, _ = run(capsys, "ls", "-t", data("small-flat-tree.root"))
-    assert out[2].endswith("(cycle=1, entries=100)")
-    columns = {line.split()[0]: line.split()[1:] for line in out[3:]}
-    assert columns["ArrayInt32"] == ['"ArrayInt32[10]"', "int32"]
-    assert columns["Str"] == ['"Str"', "str"]
-    assert len(columns) == 20
-
-
-def test_ls_trees_long_adds_each_columns_baskets(capsys):
-    _, out, _ = run(capsys, "ls", "-tl", data("small-flat-tree.root"))
-    assert out[3].split()[-4:] == ["(1", "baskets,", "244", "bytes)"]
-
-
-def test_ls_trees_lists_an_rntuples_fields_with_their_cxx_types(capsys):
-    _, out, _ = run(capsys, "ls", "-t", data("rntuple/ntpl001_staff_rntuple_v1-0-0-0.root"))
-    assert out[2].split()[:2] == ["ROOT::RNTuple", "Staff"]
-    assert out[2].endswith("entries=3354)")
-    assert out[-1].split() == ["Nation", "std::string", "str"]
-
-
-def test_ls_trees_says_why_a_tree_would_not_open(monkeypatch, capsys):
-    real = Directory.__getitem__
-
-    def refusing(self, name):
-        if name.startswith("tree"):
-            raise UnsupportedFeatureError("this tree is made of something else")
-        return real(self, name)
-
-    monkeypatch.setattr(Directory, "__getitem__", refusing)
-    _, out, _ = run(capsys, "ls", "-t", data("simple.root"))
-    assert out[2].endswith("(cycle=1, unreadable: this tree is made of something else)")
-
-
-def test_ls_of_several_files_puts_a_blank_line_between_them(capsys):
-    _, out, _ = run(capsys, "ls", data("simple.root"), data("graphs.root"))
-    assert out[3] == ""
-    assert out[4] == f"=== [{data('graphs.root')}] ==="
 
 
 # -- info ------------------------------------------------------------------------------

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import itertools
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from .buffer import Buffer
 from .errors import FormatError, UnsupportedFeatureError
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from .streamers import Member
     from .tree import Basket
 
-__all__ = ["TREE_CLASSES", "FriendRecord", "read_tree"]
+__all__ = ["TREE_CLASSES", "Clustering", "FriendRecord", "read_tree"]
 
 #: Key classes this reader will open as a tree.
 TREE_CLASSES = ("TTree", "TNtuple", "TNtupleD")
@@ -452,16 +452,68 @@ def read_tree(buf: Buffer, source: Source, name: str, classname: str = "TTree") 
     version, end = buf.header()
     title = buf.named()[1]
     if version < 5:
-        entries = _ancient_tree_fields(buf)
+        clustering = _ancient_tree_fields(buf)
     elif DESCRIBED_TREES[0] <= version <= DESCRIBED_TREES[1]:
-        entries = _described_tree_fields(buf, source, version)
+        clustering = _described_tree_fields(buf, source, version)
     else:
-        entries = _tree_fields(buf, version, version > 5)
+        clustering = _tree_fields(buf, version, version > 5)
 
     branches = [b for b in buf.objarray(CLASSES) if isinstance(b, BranchRecord)]
     friends = _tree_friends(buf, version)
     buf.resume(end)
-    return TTree(name, title, entries, branches, source, friends)
+    tree = TTree(name, title, clustering.entries, branches, source, friends)
+    tree.clustering = clustering
+    return tree
+
+
+class Clustering(NamedTuple):
+    """What a tree says of how its entries are grouped into clusters.
+
+    ``fAutoFlush`` - entries per cluster when positive - and the ranges
+    ``fClusterRangeEnd`` closes, each with its own ``fClusterSize``; with
+    neither, ROOT estimates a size from ``fZipBytes``.
+    """
+
+    entries: int
+    zip_bytes: int = 0
+    auto_flush: int = 0
+    range_ends: tuple[int, ...] = ()
+    sizes: tuple[int, ...] = ()
+
+    def ranges(self) -> list[tuple[int, int]]:
+        """Each cluster's first entry and the entry after its last, as
+        ``TTree::TClusterIterator`` walks them from the start."""
+        found = []
+        start, which, estimate = 0, 0, self._estimate()
+        while start < self.entries:
+            stop, which = self._next(start, which, estimate)
+            stop = min(stop, self.entries)
+            found.append((start, stop))
+            start = stop
+        return found
+
+    def _next(self, start: int, which: int, estimate: int) -> tuple[int, int]:
+        """Where the cluster from ``start`` ends, in which range it is."""
+        if which < len(self.range_ends) and start > self.range_ends[which]:
+            which += 1
+        if which >= len(self.range_ends):
+            return start + estimate, which
+        stop = start + (self.sizes[which] or estimate)
+        return min(stop, self.range_ends[which] + 1), which
+
+    def _estimate(self) -> int:
+        """A cluster's size where the tree records none: ``fAutoFlush``, or ROOT's guess
+        from the bytes a read cache would hold - a negative ``fAutoFlush``'s, or 30 MB."""
+        if self.auto_flush > 0:
+            return self.auto_flush
+        if self.zip_bytes == 0:
+            return max(self.entries - 1, 1)
+        cache = -self.auto_flush if self.auto_flush < 0 else DEFAULT_CACHE
+        return max(self.entries * cache // self.zip_bytes, 1)
+
+
+#: The bytes ROOT's read cache holds when nothing sets its size.
+DEFAULT_CACHE = 30_000_000
 
 
 #: How long ROOT 2's ``TAttLine``, ``TAttFill`` and ``TAttMarker`` are after
@@ -470,7 +522,7 @@ def read_tree(buf: Buffer, source: Source, name: str, classname: str = "TTree") 
 ANCIENT_ATTRIBUTES = (6, 4, 8)
 
 
-def _ancient_tree_fields(buf: Buffer) -> int:
+def _ancient_tree_fields(buf: Buffer) -> Clustering:
     """The fields of a tree ROOT 2 or 3 wrote, before streamer information existed.
 
     ``TTree::Streamer`` still reads these versions by hand, in this order:
@@ -483,9 +535,10 @@ def _ancient_tree_fields(buf: Buffer) -> int:
         buf.take(size) if end is None else buf.resume(end)
     buf.i32(), buf.i32(), buf.i32()  # the scan field, the loop and memory limits
     entries = int(buf.f64())
-    buf.f64(), buf.f64()  # bytes before and after compression
+    buf.f64()  # bytes before compression
+    zipped = int(buf.f64())
     buf.i32(), buf.i32()  # the autosave size and the estimate
-    return entries
+    return Clustering(entries, zipped)
 
 
 #: The ``TTree`` versions, from ROOT 3.02 to 5.08, whose fixed fields changed
@@ -498,7 +551,7 @@ DESCRIBED_TREES = (6, 15)
 TREE_MEMBER_READS = {3: "i32", 6: "i32", 8: "f64", 13: "u32", 16: "i64", 17: "i64"}
 
 
-def _described_tree_fields(buf: Buffer, source: Source | None, version: int) -> int:
+def _described_tree_fields(buf: Buffer, source: Source | None, version: int) -> Clustering:
     """The fields in front of a middle-aged tree's branches, as its file lists them.
 
     ROOT reads a ``TTree`` of these versions member by member from the
@@ -513,12 +566,12 @@ def _described_tree_fields(buf: Buffer, source: Source | None, version: int) -> 
             f"release to the next, and its file does not describe the TTree class to say "
             f"which of them it has; hadd it forward and it will open"
         )
-    entries = 0
+    values = {"fEntries": 0, "fZipBytes": 0, "fAutoFlush": 0}
     for member in itertools.takewhile(lambda m: m.name != "fBranches", members.values()):
         value = _tree_member(buf, member, version)
-        if member.name == "fEntries":
-            entries = int(value)
-    return entries
+        if member.name in values:
+            values[member.name] = int(value)
+    return Clustering(values["fEntries"], values["fZipBytes"], values["fAutoFlush"])
 
 
 def _tree_member(buf: Buffer, member: Member, version: int) -> float:
@@ -542,20 +595,20 @@ def _tuple_header(buf: Buffer, classname: str) -> None:
         buf.header()
 
 
-def _tree_fields(buf: Buffer, version: int, modern: bool) -> int:
+def _tree_fields(buf: Buffer, version: int, modern: bool) -> Clustering:
     for _ in range(3):
         buf.skip_record()
     entries = buf.i64() if modern else int(buf.f64())
-    _tree_counters(buf, version, modern)
+    zipped = _tree_counters(buf, version, modern)
     clusters = buf.i32() if version >= 19 else 0
-    _tree_limits(buf, version, modern)
-    _tree_clusters(buf, version, clusters)
-    return entries
+    auto_flush = _tree_limits(buf, version, modern)
+    ends, sizes = _tree_clusters(buf, version, clusters)
+    return Clustering(entries, zipped, auto_flush, ends, sizes)
 
 
-def _tree_counters(buf: Buffer, version: int, modern: bool) -> None:
-    for _ in range(3):
-        buf.i64() if modern else buf.f64()
+def _tree_counters(buf: Buffer, version: int, modern: bool) -> int:
+    """The counters after the entries; what the tree's baskets take compressed."""
+    counters = [int(buf.i64() if modern else buf.f64()) for _ in range(3)]
     if version >= 18:
         buf.i64()
     if version >= 16:
@@ -563,26 +616,31 @@ def _tree_counters(buf: Buffer, version: int, modern: bool) -> None:
     buf.i32(), buf.i32(), buf.i32()
     if version >= 17:
         buf.i32()
+    return counters[1]
 
 
-def _tree_limits(buf: Buffer, version: int, modern: bool) -> None:
+def _tree_limits(buf: Buffer, version: int, modern: bool) -> int:
+    """The limits after the counters; ``fAutoFlush``, which only version 18 on has."""
     if modern:
         buf.i64()
     for _ in range(3):
         buf.i64() if modern else buf.i32()
-    if version >= 18:
-        buf.i64()
+    auto_flush = buf.i64() if version >= 18 else 0
     buf.i64() if modern else buf.i32()
+    return auto_flush
 
 
-def _tree_clusters(buf: Buffer, version: int, clusters: int) -> None:
+def _tree_clusters(buf: Buffer, version: int, clusters: int) -> tuple[tuple[int, ...], ...]:
+    """``fClusterRangeEnd`` and ``fClusterSize``, each a number per range."""
+    found: tuple[tuple[int, ...], ...] = ((), ())
     if version >= 19:
         buf.u8()
-        buf.i64s(clusters)
+        ends = tuple(buf.i64s(clusters))
         buf.u8()
-        buf.i64s(clusters)
+        found = ends, tuple(buf.i64s(clusters))
     if version >= 20:
         buf.skip_record()
+    return found
 
 
 class FriendRecord:
