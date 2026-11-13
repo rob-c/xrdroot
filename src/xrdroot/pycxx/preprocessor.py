@@ -20,7 +20,7 @@ from pathlib import Path
 from .dialect import Prelude, active
 from .errors import Refusal, Where
 from .ppexpr import evaluate
-from .tokens import Token, tokenize
+from .tokens import Token, stray, tokenize
 
 __all__ = ["Macro", "Preprocessor", "preprocess", "PREDEFINED"]
 
@@ -154,6 +154,7 @@ class Preprocessor:
                 at = end
                 continue
             if self.active:
+                stray(token)
                 pending.append(token)
             at += 1
         out.extend(self.expand(pending))

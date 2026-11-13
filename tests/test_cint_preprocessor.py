@@ -54,8 +54,14 @@ def test_a_backslash_newline_joins_lines_and_keeps_the_later_line_numbers() -> N
 
 
 def test_a_character_no_cpp_is_written_with_is_refused() -> None:
+    assert [token.kind for token in tokenize("int a;\n`")] == ["id", "id", "op", "other", "eof"]
     with pytest.raises(Refusal, match=r"<macro>:2: '`' is not a character"):
-        tokenize("int a;\n`")
+        preprocess("int a;\n`", "<macro>")
+
+
+def test_text_an_if_0_skips_may_hold_any_character() -> None:
+    text = "int a;\n#if 0\nWhen `x` is declared, it's\" fine @ \\ é\n#endif\nint b;\n"
+    assert words(text) == "int a ; int b ;"
 
 
 @pytest.mark.parametrize(

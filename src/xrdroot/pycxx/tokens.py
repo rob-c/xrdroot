@@ -4,6 +4,9 @@ The lexer cuts source text the way a C++ compiler's first phases do: a
 backslash at the end of a line joins it to the next, comments are space,
 and what is left is identifiers, numbers (the C "pp-number", decoded later),
 string and character literals (raw ones too) and punctuators, longest first.
+Any other character is a word of its own (the standard's "each non-white-space
+character that cannot be one of the above"), which is only an error if it is
+still there once the preprocessor has dropped the sections ``#if 0`` skips.
 A ``#`` that starts a line begins a directive; the preprocessor reads the rest
 of that line as its arguments, so every token knows whether it began a line.
 """
@@ -15,7 +18,7 @@ from collections.abc import Iterator
 
 from .errors import Refusal, Where
 
-__all__ = ["Token", "tokenize", "unescape"]
+__all__ = ["Token", "stray", "tokenize", "unescape"]
 
 #: Every punctuator C++ has that a macro can use, longest first so ``>>=`` wins over ``>``.
 PUNCTUATORS = sorted(
@@ -39,6 +42,7 @@ PATTERN = re.compile(
     |(?P<op>"""
     + "|".join(re.escape(p) for p in PUNCTUATORS)
     + r""")
+    |(?P<other>.)
     """,
     re.VERBOSE | re.DOTALL,
 )
@@ -66,7 +70,8 @@ ESCAPE = re.compile(r"\\(?:([0-7]{1,3})|x([0-9a-fA-F]+)|u([0-9a-fA-F]{4})|U([0-9
 class Token:
     """One word: its kind, its text, where it is, and whether a line started with it.
 
-    ``kind`` is ``id``, ``num``, ``str``, ``chr``, ``op`` or ``eof``. A string
+    ``kind`` is ``id``, ``num``, ``str``, ``chr``, ``op``, ``other`` (a character
+    no other word is made of, a stray quote or a backtick) or ``eof``. A string
     or character literal keeps its quotes in ``text``; :func:`unescape` gives
     what they stand for. ``hide`` is the set of macro names whose expansion
     produced this token, so that a macro is never expanded inside itself.
@@ -142,10 +147,7 @@ def _words(text: str, file: str) -> Iterator[Token]:
     last: Token | None = None
     while at < len(text):
         found = PATTERN.match(text, at)
-        if found is None:
-            raise Refusal(
-                f"{text[at]!r} is not a character C++ source is written with", Where(file, line)
-            )
+        assert found is not None  # every character is at least an ``other`` word
         kind = found.lastgroup
         word = found.group()
         if kind == "newline":
@@ -160,6 +162,12 @@ def _words(text: str, file: str) -> Iterator[Token]:
             bol = space = False
         line += word.count("\n")
         at = found.end()
+
+
+def stray(token: Token) -> None:
+    """Refuse a character C++ is not written with, once it is known to be in kept text."""
+    if token.kind == "other":
+        raise Refusal(f"{token.text!r} is not a character C++ source is written with", token.where)
 
 
 def _kind(group: str | None) -> str:
