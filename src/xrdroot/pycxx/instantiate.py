@@ -32,7 +32,7 @@ from typing import Any
 
 from .ctype import CType
 from .errors import Refusal, Where
-from .nodes import ClassDecl, Function, Literal, Name, Node, VarDecl
+from .nodes import ClassDecl, Function, Literal, Name, Node, Typedef, VarDecl
 from .sizes import constant
 from .substitute import Bindings, as_literal, bound, copied
 
@@ -112,6 +112,8 @@ class Templates:
         self.origins: dict[str, str] = {}
         #: The key of each spelling.
         self.keys: dict[str, str] = {}
+        #: The members explicitly specialised for one instance, by the instance's spelling.
+        self.members: dict[str, list[Function]] = {}
         #: The function instances, by key; the explicit specialisations, by their spelling.
         self.functions: dict[str, Function] = {}
         self.specialisations: dict[str, Function] = {}
@@ -159,6 +161,28 @@ class Templates:
         texts = [argument_text(arg, self.spellings, self.program) for arg in func.specialises]
         self.specialisations[f"{func.name}<{', '.join(map(str, texts))}>"] = func
 
+    def instance_member(self, func: Function) -> bool:
+        """``Box<int>::f()`` defined outside the class: a member of an explicit specialisation
+        - given to it now - or the explicit specialisation of one member, kept for the
+        instance ``Box<int>`` to have in place of the template's. Is ``func`` one?"""
+        if not func.scope or not func.scope_args or func.template:
+            return False
+        spelling = self._owner_spelling(func)
+        info = self.program.classes.get(self.keys.get(spelling or ""))
+        if info is not None:
+            info.add_method(_renamed_function(func, func.scope[-1], info.name))
+            return True
+        if spelling is None or func.scope[-1] not in self.classes:
+            return False
+        self.members.setdefault(spelling, []).append(func)
+        return True
+
+    def _owner_spelling(self, func: Function) -> str | None:
+        """How the class ``func`` is a member of is spelled: ``Box<int>`` of ``Box<int>::f``."""
+        template = self.classes.get(func.scope[-1])
+        args = self._arguments(template, func.scope_args) if template else func.scope_args
+        return self._spelling(func.scope[-1], args) if args is not None else None
+
     def member(self, func: Function) -> bool:
         """An out-of-class member of a class template: kept, to be part of each instance."""
         template = self.classes.get(func.scope[-1]) if func.scope else None
@@ -179,12 +203,17 @@ class Templates:
 
     # -- keys ------------------------------------------------------------------
 
-    def key(self, name: str, args: list[Any]) -> str | None:
-        """The key of the instantiation of ``name`` for ``args``: made up the first time."""
+    def _spelling(self, name: str, args: list[Any]) -> str | None:
         texts = [argument_text(arg, self.spellings, self.program) for arg in args]
         if any(text is None for text in texts):
             return None
-        spelling = f"{name}<{', '.join(str(text) for text in texts)}>"
+        return f"{name}<{', '.join(str(text) for text in texts)}>"
+
+    def key(self, name: str, args: list[Any]) -> str | None:
+        """The key of the instantiation of ``name`` for ``args``: made up the first time."""
+        spelling = self._spelling(name, args)
+        if spelling is None:
+            return None
         found = self.keys.get(spelling)
         if found is not None:
             return found
@@ -198,37 +227,48 @@ class Templates:
 
     def instance(self, name: str, args: list[Any], params: frozenset[str]) -> str | None:
         """The key of ``name<args>`` - instantiated now if it has not been - or ``None`` if
-        ``name`` is no class template's, or ``args`` are not all known."""
-        template = self.classes.get(name)
+        ``name`` is no class template's, or ``args`` are not all known. A namespace the
+        program declares is no part of a name, as the program's namespaces are flattened."""
         if not args or not all(_concrete(arg, params) for arg in args):
             return None
+        own = name if name.startswith("std::") else name.split("::")[-1]
+        template = self.classes.get(own)
         if template is None:
-            return self._specialised(name, args)
+            return self._specialised(own, args)
+        return self._made_for(template, args)
+
+    def _made_for(self, template: ClassTemplate, args: list[Any]) -> str | None:
+        """The key of the instance of ``template`` for ``args``, made now if it was not."""
         full = self._arguments(template, args)
-        key = self.key(name, full) if full is not None else None
+        key = self.key(template.name, full) if full is not None else None
         if full is not None and key is not None and key not in self.program.classes:
             self._instantiate(template, full, key)
         return key
 
     def _specialised(self, name: str, args: list[Any]) -> str | None:
-        """``std::hash<Mine>``: a template of the standard's the program specialised."""
-        known = self.key(name, args) if name.startswith("std::") else None
+        """``std::hash<Mine>``, or a template declared and never defined: an explicit
+        specialisation the program wrote, if there is one for ``args``."""
+        spelling = self._spelling(name, args)
+        known = self.keys.get(spelling) if spelling is not None else None
         return known if known in self.program.classes else None
 
     # -- function templates ------------------------------------------------------
 
-    def function(self, func: Function, bindings: Bindings) -> tuple[str, Function | None] | None:
-        """The key of the instance of the function template ``func`` for ``bindings`` - and
-        the instance itself, the first time it is asked for - or ``None`` when an argument is
-        a value this translator cannot work out."""
+    def function(
+        self, func: Function, bindings: Bindings, owner: str | None = None
+    ) -> tuple[str, Function | None] | None:
+        """The key of the instance of the function template ``func`` - a member template of
+        the class ``owner``, if given - for ``bindings``, and the instance itself the first
+        time it is asked for; or ``None`` when an argument is a value not worked out here."""
         names = list(func.template or [])
-        key = self.key(func.name, [bindings[name] for name in names])
+        spelled = f"{owner}::{func.name}" if owner is not None else func.name
+        key = self.key(spelled, [bindings[name] for name in names])
         if key is None:
             return None
         if key in self.functions:
             return key, None
         written = self.specialisations.get(self.spellings[key])
-        made = copied(written, {}) if written is not None else copied(func, bindings)
+        made = copied(written, {}) if written is not None else copied(func, self.typed(bindings))
         made.name, made.template, made.values, made.defaults = key, None, [], []
         made.specialises = None
         self.functions[key] = made
@@ -298,8 +338,20 @@ class Templates:
             return None
         return [bindings[name] for name in template.parameters]
 
+    def typed(self, bindings: Bindings) -> Bindings:
+        """``bindings`` with the types each class of the program's given for a parameter
+        declares: ``T::value_type`` of a ``T`` that is ``Traits`` is ``Traits``'s typedef."""
+        found = dict(bindings)
+        for name, value in bindings.items():
+            info = self.program.classes.get(value.name) if isinstance(value, CType) else None
+            for member in info.decl.members if info is not None else []:
+                if isinstance(member, Typedef):
+                    found[f"{name}::{member.name}"] = member.ctype
+        return found
+
     def _instantiate(self, template: ClassTemplate, args: list[Any], key: str) -> None:
         chosen, bindings = self._chosen(template, args)
+        bindings = self.typed(bindings)
         bindings[template.name] = CType(key)
         nested = self._nested(chosen, key, bindings)
         decl = _renamed(copied(chosen, bindings), key)
@@ -341,7 +393,7 @@ class Templates:
         named as the definition names them."""
         if chosen is not template.decl:
             return
-        for func in template.members:
+        for func in [*template.members, *self.members.get(self.spellings[key], [])]:
             names = func.template or []
             bindings: Bindings = dict(zip(names, args, strict=False))
             bindings[template.name] = CType(key)

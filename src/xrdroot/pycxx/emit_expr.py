@@ -54,7 +54,7 @@ from .nodes import (
 )
 from .operators import DUNDERS, python_operator
 from .program import by_reference
-from .sizes import size_of
+from .sizes import layout
 from .typeids import polymorphic, qualified_names, spelled
 
 __all__ = ["ExprEmitter", "COMPARISONS", "CONTAINERS", "is_container", "zero"]
@@ -693,10 +693,11 @@ class ExprEmitter(NameEmitter):
 
     def _sizeof(self, node: SizeOf) -> Out:
         ctype = node.ctype if node.ctype is not None else self.typeof(node.operand)
-        size = size_of(ctype.value(), self.program) if ctype is not None else None
-        if size is None:
-            raise self.refuse("sizeof of a type whose size this translator does not know", node)
-        return str(size), P.ATOM
+        found = layout(ctype.value(), self.program) if ctype is not None else None
+        if found is None:
+            what = "alignof" if node.alignment else "sizeof"
+            raise self.refuse(f"{what} of a type whose size this translator does not know", node)
+        return str(found[1] if node.alignment else found[0]), P.ATOM
 
     def _typeid(self, node: TypeId) -> Out:
         """``typeid(T)``, or ``typeid(e)``: of ``e``'s dynamic type where its class is

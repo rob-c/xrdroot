@@ -14,6 +14,7 @@ import re
 from typing import Any
 
 __all__ = [
+    "with_char",
     "strlen",
     "strcmp",
     "strncmp",
@@ -141,6 +142,31 @@ def char_at(text: Any, index: Any) -> int:
     string = cstr(text)
     at = int(index)
     return ord(string[at]) if at < len(string) else 0
+
+
+def with_char(text: Any, index: Any, char: Any, terminated: bool) -> str:
+    """``s[i] = c``: the string with its character ``i`` made ``c``, which the variable is
+    given in place of the string Python cannot change.
+
+    A C string - ``terminated`` - is its characters up to the first NUL, the
+    rest of its buffer taken to be zeros: a NUL written inside it ends it
+    there, one written past its end changes nothing, and a character written at
+    its end, where its NUL was, makes it one longer. A ``std::string`` keeps a
+    NUL written inside it. Any other character written past the end of either
+    is refused: what C++ would find between is not kept.
+    """
+    string = cstr(text)
+    at, code = int(index), int(char) % 256
+    if terminated and not code:
+        return string[:at]
+    if at < len(string):
+        return string[:at] + chr(code) + string[at + 1 :]
+    if at == len(string) and terminated:
+        return string + chr(code)
+    raise IndexError(
+        f"writing character {at} of a string {len(string)} long, past its end, whose bytes a "
+        "Python string does not keep"
+    )
 
 
 def find(text: Any, what: Any, start: int = 0) -> int:

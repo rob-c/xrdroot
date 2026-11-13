@@ -269,6 +269,8 @@ class Program:
         for decl in self.order:
             if not isinstance(decl, Function):
                 continue
+            if self.templates.instance_member(decl):
+                continue
             owner = self.classes.get(decl.scope[-1]) if decl.scope else None
             self.templates.member(decl)
             if decl.specialises is not None and not decl.scope:

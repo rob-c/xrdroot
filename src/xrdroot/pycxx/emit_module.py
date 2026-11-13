@@ -193,7 +193,7 @@ class Translator(TemplateEmitter):
         )
 
     def _free_function(self, decl: Function) -> None:
-        if decl.scope and decl.scope[-1] in self.program.classes:
+        if decl.scope and (decl.scope[-1] in self.program.classes or decl.scope_args):
             return
         if decl.name in self._emitted or decl.body is None:
             return

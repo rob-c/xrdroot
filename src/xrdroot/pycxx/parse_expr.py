@@ -238,17 +238,35 @@ class ExprParser(TypeParser):
             return self._delete()
         return self.postfix(self.primary())
 
+    def _alignof(self) -> Expr:
+        """``alignof(T)``: the alignment of a type, as ``sizeof`` its size."""
+        found = self._sizeof()
+        assert isinstance(found, SizeOf)
+        found.alignment = True
+        return found
+
     def _unsupported(self) -> Expr:
         word = self.peek().text
         raise self.refuse(f"{word} is not something this translator turns into Python")
 
+    def _typename(self) -> Expr:
+        """``typename T::type(x)`` or ``{x}``: a value of a type named through a template's
+        parameter, built as any named type is."""
+        where = self.take().where
+        parts, args = self.qualified_type()
+        name = Name(where, parts, args or None)
+        if self.at_("{"):
+            return self.postfix(name)
+        return self.postfix(Call(where, name, self.arguments()))
+
     _PREFIXED: ClassVar[dict[str, Callable[[ExprParser], Expr]]] = {
         "sizeof": _sizeof,
-        "alignof": _unsupported,
+        "alignof": _alignof,
         "new": _new,
         "delete": _delete,
         "::": _rooted,
         "typeid": _typeid,
+        "typename": _typename,
         "co_await": _unsupported,
         "noexcept": _unsupported,
     }
@@ -264,8 +282,13 @@ class ExprParser(TypeParser):
             expr = handler(self, expr)
 
     def _constructs(self, expr: Expr) -> bool:
-        """Is ``expr {`` a type built from a braced list - ``T{a, b}`` - rather than a block?"""
-        return isinstance(expr, Name) and self._type_name(expr)
+        """Is ``expr {`` a type built from a braced list - ``T{a, b}`` - rather than a block?
+
+        No expression ends where a block begins, and a variable is never followed by a
+        brace: a name before one is a type, the library's if not the program's."""
+        return isinstance(expr, Name) and not (
+            len(expr.parts) == 1 and self.is_variable(expr.last)
+        )
 
     def _call(self, expr: Expr) -> Expr:
         where = self.peek().where
@@ -314,7 +337,15 @@ class ExprParser(TypeParser):
         return Member(token.where, expr, name, token.text == "->", targs)
 
     def _member_targs(self) -> list[Any] | None:
-        return self.trial(self._call_targs)
+        """``a.get<T>(...)``: a member template's arguments - whatever they are, when a call
+        follows them."""
+        return self.trial(self._called_targs)
+
+    def _called_targs(self) -> list[Any]:
+        args = self.template_args()
+        if not self.at_("("):
+            raise NoParse
+        return args
 
     def _increment(self, expr: Expr) -> Expr:
         token = self.take()
@@ -335,9 +366,6 @@ class ExprParser(TypeParser):
         "--": _increment,
         "{": _braces,
     }
-
-    def _type_name(self, name: Name) -> bool:
-        return bool(name.targs) or self.is_type(name.parts)
 
     # -- primaries ------------------------------------------------------------
 

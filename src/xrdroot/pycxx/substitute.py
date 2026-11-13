@@ -103,18 +103,19 @@ def _node(node: Node, bindings: Bindings) -> Node:
 
 
 def _converted(node: Call, bindings: Bindings) -> bool:
-    """Is ``node`` ``T(x)`` or ``T()`` of a type parameter that stands for a number or pointer?"""
+    """Is ``node`` ``T(x)`` or ``T()`` of a type parameter - or a type a parameter's class
+    names, ``T::value_type(x)`` - that stands for a number or pointer?"""
     func = node.func
-    if not isinstance(func, Name) or len(func.parts) != 1 or len(node.args) > 1:
+    if not isinstance(func, Name) or len(node.args) > 1:
         return False
-    bound = bindings.get(func.last)
+    bound = bindings.get(func.text)
     return isinstance(bound, CType) and (bound.scalar or bound.is_pointer)
 
 
 def _conversion(node: Call, bindings: Bindings) -> Cast:
     """``T(x)`` of a number type is the conversion ``double(x)``; ``T()`` is zero."""
     assert isinstance(node.func, Name)
-    bound = bindings[node.func.last]
+    bound = bindings[node.func.text]
     zero = Literal(node.where, "int", 0, "int")
     operand = copied(node.args[0], bindings) if node.args else zero
     return Cast(node.where, bound.value(), operand, "functional")

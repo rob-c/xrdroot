@@ -452,3 +452,89 @@ def test_a_generic_template_constructs_its_own_template_generically() -> None:
     void t(Gadget g) { boxed(g); }
     """
     assert "return Box(x)" in translate(source, "t.C")
+
+
+def test_an_explicit_specialisation_in_a_namespace_has_its_members_defined_outside_it(
+    capsys,
+) -> None:
+    source = r"""
+    namespace lab {
+    template <typename T> class Rel;
+    template <> class Rel<int>;
+    template <> class Rel<int> {
+    public:
+      Rel();
+      Rel(const Rel &other);
+      ~Rel();
+      int k;
+    };
+    }
+    lab::Rel<int>::Rel() : k(5) {}
+    lab::Rel<int>::Rel(const Rel &other) : k(other.k + 1) {}
+    lab::Rel<int>::~Rel() {}
+    struct Hit : public lab::Rel<int> {
+      Hit() {}
+      Hit(const Hit &rhs) : lab::Rel<int>(rhs) {}
+    };
+    void related() { Hit a; Hit b(a); printf("%d %d\n", a.k, b.k); }
+    """
+    run_source(source, "related.C")
+    assert capsys.readouterr().out == "5 6\n"
+
+
+def test_a_member_template_is_instantiated_for_each_call(capsys) -> None:
+    source = r"""
+    struct Maker {
+      int base = 10;
+      template <class T> T make(int v) const { return T(v + base); }
+      template <class T> static T zero() { return T(); }
+      double twice(int v) const { return make<double>(v) * 2; }
+    };
+    template <class T> struct Holder {
+      T held;
+      template <class U> U as() const { return U(held) / 2; }
+    };
+    void members() {
+      Maker m; Maker *p = &m; Holder<int> h{7};
+      printf("%g %d %g %d %g %g\n", m.make<double>(1), p->make<int>(2), Maker::zero<double>(),
+             h.as<int>(), h.as<double>(), m.twice(1));
+    }
+    """
+    run_source(source, "members.C")
+    assert capsys.readouterr().out == "11 12 0 3 3.5 22\n"
+
+
+def test_a_member_specialised_for_one_instance_is_that_instances_alone(capsys) -> None:
+    source = r"""
+    template <class T> struct Box {
+      T v;
+      int kind() const { return 0; }
+      template <int N> int get() const { return N; }
+    };
+    template <> int Box<int>::kind() const { return 1; }
+    void special(int n) {
+      Box<int> a{1}; Box<double> b{2};
+      printf("%d %d %d\n", a.kind(), b.kind(), a.get<3>());
+      int k = a.get<n>();
+      bool r = a.v < b.v > n;
+    }
+    """
+    python = translate(source, "special.C")
+    assert "Box__int_get__3(a, )" in python and "r = (a.v < b.v) > n" in python
+    run_source(source.replace("int k = a.get<n>();", ""), "special.C", (2,))
+    assert capsys.readouterr().out == "1 0 3\n"
+
+
+def test_a_member_of_a_template_the_program_does_not_define_is_not_written() -> None:
+    source = "template <class T> class Ext; template <> int Ext<int>::f() { return 1; }"
+    assert "def f" not in translate(source, "t.C")
+
+
+def test_what_a_smart_pointer_holds_is_what_a_template_is_deduced_from(capsys) -> None:
+    source = r"""
+    #include <memory>
+    template <class T> unsigned long bytes(T &x) { return sizeof(T); }
+    void held() { std::unique_ptr<short> p(new short(3)); printf("%lu\n", bytes(*p)); }
+    """
+    run_source(source, "held.C")
+    assert capsys.readouterr().out == "2\n"

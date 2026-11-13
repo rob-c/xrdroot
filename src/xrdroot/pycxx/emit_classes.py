@@ -220,11 +220,12 @@ class ClassEmitter(FunctionEmitter):
 
     def _base_inits(self, info: ClassInfo, inits: dict[str, list[Expr]]) -> None:
         origins = self.program.templates.origins
+        # ``: ns::Box<int>(9)`` initialises the base ``Box<int>``, whose key is ``Box__int``.
+        unqualified = {written.split("::")[-1]: args for written, args in inits.items()}
         for base in info.decl.bases:
             name = base.ctype.name
-            # ``: Box<int>(9)`` initialises the base ``Box<int>``, whose key is ``Box__int``.
-            written = inits.get(origins.get(name, name), inits.get(name.split("::")[-1], []))
-            args = inits.get(name, written)
+            short = origins.get(name, name).split("::")[-1]
+            args = inits.get(name, unqualified.get(short, []))
             call = ", ".join(["self", *(self.value(arg) for arg in args)])
             self.out.line(f"{self._base(base.ctype)}.__init__({call})", base.where)
 

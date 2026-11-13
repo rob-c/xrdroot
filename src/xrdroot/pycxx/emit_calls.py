@@ -111,9 +111,9 @@ class CallEmitter(ExprEmitter):
 
     def named_call(self, func: Name, node: Call) -> Out:
         symbol = self.symbol(func)
-        instance = self.function_instance(func, node, symbol)
+        instance = self._instance_call(func, node, symbol)
         if instance is not None:
-            return f"{instance}({self.arguments(node)})", P.POSTFIX
+            return instance, P.POSTFIX
         if symbol is not None:
             given = [self.arguments(node), self._template_values(func, symbol)]
             args = ", ".join(filter(None, given))
@@ -129,8 +129,20 @@ class CallEmitter(ExprEmitter):
                 return found
         return f"{self.library(func)[0]}({self.arguments(node)})", P.POSTFIX
 
+    def _instance_call(self, func: Name, node: Call, symbol: Symbol | None) -> str | None:
+        """A call of a function template's instance, a member template's handed ``self``."""
+        instance = self.function_instance(func, node, symbol)
+        if instance is None:
+            return None
+        own = "self" if symbol is not None and symbol.kind == "method" else ""
+        return f"{instance}({', '.join(filter(None, (own, self.arguments(node))))})"
+
     def function_instance(self, func: Name, node: Call, symbol: Symbol | None) -> str | None:
         """The instance of a function template a call calls, if it is one."""
+        raise NotImplementedError
+
+    def method_instance(self, owner: CType | None, func: Member, node: Call) -> str | None:
+        """The instance of a member template a call of a method calls, if it is one."""
         raise NotImplementedError
 
     def _special(self, func: Name) -> Callable[[CallEmitter, Name, Call], Out | None] | None:
@@ -307,17 +319,29 @@ class CallEmitter(ExprEmitter):
             given = ", ".join(filter(None, (self.arguments(node), f"n={self.vector_count}")))
             return f"{self.value(func)}({given})", P.POSTFIX
         owner = self.typeof(func.obj)
-        if owner is not None:
-            special = self._typed_method(owner, func, node)
-            if special is not None:
-                return special
-        elif func.name == "c_str" and not node.args and not func.arrow:
+        instance = self.method_instance(owner, func, node)
+        if instance is not None:
+            return f"{instance}({self.value(func.obj)}, {self.arguments(node)})", P.POSTFIX
+        special = (
+            self._typed_method(owner, func, node)
+            if owner is not None
+            else self._untyped_method(func, node)
+        )
+        if special is not None:
+            return special
+        return f"{self.value(func)}({self.arguments(node)})", P.POSTFIX
+
+    def _untyped_method(self, func: Member, node: Call) -> Out | None:
+        """A method of an object whose type is not known, that only one kind of object has."""
+        if node.args or func.arrow:
+            return None
+        if func.name == "c_str":
             # Only a std::string has c_str(), and a std::string is a str here, whoever made it.
             return f"cstr({self.value(func.obj)})", P.POSTFIX
-        elif func.name in ("release", "get") and not node.args and not func.arrow:
+        if func.name in ("release", "get"):
             # A unique_ptr's: what it holds, unless the object has a method of its own by name.
             return f"pointee({self.value(func.obj)}, {func.name!r})", P.POSTFIX
-        return f"{self.value(func)}({self.arguments(node)})", P.POSTFIX
+        return None
 
     def _typed_method(self, owner: CType, func: Member, node: Call) -> Out | None:
         """A member of a string, a smart pointer or an exception, rewritten as Python's."""

@@ -13,7 +13,7 @@ from collections.abc import Callable
 from typing import Any, ClassVar
 
 from .ctype import CType
-from .cursor import KEYWORDS, NoParse
+from .cursor import NoParse
 from .errors import Where
 from .nodes import (
     Base,
@@ -179,10 +179,18 @@ class Parser(StmtParser):
             decl = self.class_declaration()
             decl.template, decl.values, decl.defaults = names, values, defaults
             return decl
-        if self.at_("class", "struct") and self.peek(2).is_(";"):
+        if self._declared_only() or self.at_("friend"):
             self.skip_to(";")
             return Empty(where)
         return self._template_rest(where, (names, values, defaults), self.function_or_variable())
+
+    def _declared_only(self) -> bool:
+        """``template <class T> class Box;`` or ``template <> class Box<int>;``: a class
+        template, or a specialisation, declared and not defined here."""
+        if not self.at_("class", "struct", "union"):
+            return False
+        ahead = self._past_angles(2) if self.peek(2).is_("<") else 2
+        return self.peek(ahead).is_(";")
 
     def _template_rest(
         self, where: Where, template: tuple[list[str], list[Param], list[Any]], stmt: Stmt
@@ -363,33 +371,51 @@ class Parser(StmtParser):
             last = self.peek(ahead)
         if last.text != parts[-1] or not self.peek(ahead + 1).is_("("):
             return None
+        self.owner_args = self._args_at(self._scoped_at)
         self.at += ahead + 1
         kind = "destructor" if destructor else "constructor"
         return parts, ("~" if destructor else "") + last.text, kind
+
+    def _args_at(self, at: int | None) -> list[Any]:
+        """The template arguments written from the ``<`` at token ``at``, if one is there."""
+        if at is None:
+            return []
+        start, self.at = self.at, at
+        try:
+            return self.trial(self.template_args) or []
+        finally:
+            self.at = start
 
     def _scope_ahead(self) -> tuple[list[str], int]:
         """``A::B::`` at the cursor: its parts, and how many tokens they take."""
         ahead = 0
         parts: list[str] = []
+        self._scoped_at = None
         while self.peek(ahead).kind == "id":
             after = ahead + 1
-            if self.peek(after).is_("<") and self.peek(ahead).text in self.templates:
+            angle = self.peek(after).is_("<") and self.peek(ahead).text in self.templates
+            if angle:
                 after = self._past_angles(after)  # ``Box<T>::Box()``
             if not self.peek(after).is_("::"):
                 break
+            self._scoped_at = self.at + ahead + 1 if angle else None
             parts.append(self.peek(ahead).text)
             ahead = after + 1
         return parts, ahead
 
+    #: Where the template arguments of the last scope :meth:`_scope_ahead` read begin.
+    _scoped_at: int | None = None
+
     def declared_name(self) -> tuple[list[str], str]:
         """The name a declaration declares - ``f``, ``Foo::bar``, ``operator+`` - and its scope."""
         self.accept("::")
+        self.declared_args = None
         parts: list[str] = []
         while True:
             if self.at_("operator"):
                 return parts, self.operator_name()
             parts.append(self.identifier())
-            self.declared_args = None
+            self.owner_args, self.declared_args = self.declared_args or [], None
             if self.at_("<") and parts[-1] in self.templates:
                 self.declared_args = self.trial(self.template_args)
                 if self.declared_args is None:
@@ -419,7 +445,8 @@ class Parser(StmtParser):
 
     def _named_or_typed(self, param: Param) -> bool:
         """A prototype's parameter: named, or of a type known to be one (``UInt_t``, ``FILE *``)."""
-        return bool(param.name) or param.ctype.arithmetic or self.is_type([param.ctype.name])
+        named = param.ctype.name.split("::")
+        return bool(param.name) or param.ctype.arithmetic or self.is_type(named)
 
     def function_rest(
         self,
@@ -436,6 +463,7 @@ class Parser(StmtParser):
         try:
             params, variadic = self.parameters()
             func = Function(where, name, returns, params, None, scope, kind)
+            func.scope_args, self.owner_args = (self.owner_args if scope else []), []
             func.static, func.variadic = spec.static, variadic
             func.virtual = "virtual" in spec.words
             func.constant_evaluation = bool(spec.words & {"constexpr", "consteval"})
@@ -487,10 +515,8 @@ class Parser(StmtParser):
         kind = self.take().text
         self.attributes()
         aligned = self._alignas()
-        if name is None:
-            if self.peek().kind != "id" or self.peek().text in KEYWORDS:
-                raise self.refuse(f"an unnamed {kind}, which has no name to make a Python class of")
-            name = self._class_name()
+        unnamed = name is None and self.at_("{")
+        name = self._unnamed_name() if unnamed else name or self._class_name()
         self.types.add(name)
         specialises = self.template_args() if self.at_("<") else None
         self.accept("final")
@@ -500,9 +526,23 @@ class Parser(StmtParser):
         if typedef:
             self._class_aliases(name)
         elif not self.at_(";"):
+            while self.accept("const", "volatile"):
+                pass
             decl.declarators = self.declarators(Specifiers(CType(name), set()))
+        elif unnamed:
+            # Its members are the scope's around it, which a Python class cannot give.
+            raise self.refuse(f"an unnamed {kind}, which has no name to make a Python class of")
         self.expect(";")
         return decl
+
+    def _unnamed_name(self) -> str:
+        """A name for an unnamed class that declares variables, ``struct { int a; } s;``."""
+        self.unnamed += 1
+        return f"anonymous__{self.unnamed}"
+
+
+    #: How many unnamed classes with variables have been given names.
+    unnamed = 0
 
     def _alignas(self) -> object:
         """``alignas(16)`` or ``alignas(T)`` after ``struct``: the alignment the class is given."""

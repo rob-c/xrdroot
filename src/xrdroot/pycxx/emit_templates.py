@@ -18,7 +18,7 @@ from typing import Any
 from .ctype import CType
 from .emit_classes import ClassEmitter
 from .instantiate import deduce_call
-from .nodes import Call, Function, Name
+from .nodes import Call, Function, Member, Name
 from .substitute import substituted
 from .symbols import Scope, Symbol, python_name
 from .writer import Writer
@@ -31,21 +31,24 @@ class TemplateEmitter(ClassEmitter):
 
     #: How deep the declaration being written is: a class's nested types are written too.
     _depth: int
-    #: The instances asked for while the declaration at the top is written, to go before it.
-    _pending: list[Function]
+    #: The instances asked for while the declaration at the top is written, to go before it,
+    #: each with the class it is a member template of, if it is one.
+    _pending: list[tuple[Function, str | None]]
     #: Whether instances are being written: what they ask for is written with them.
     splicing = False
 
     def _template_of(self, symbol: Symbol | None, node: Call) -> Function | None:
         """The function template a call of ``symbol`` calls: the one function of its name,
         a template with a body - not a set of overloads, which only the run chooses between."""
-        if symbol is None or symbol.kind != "function" or symbol.owner is not None:
+        if symbol is None or symbol.kind not in ("function", "static", "method"):
             return None
         funcs = self.function_named(symbol)
         found: Function | None = funcs[0] if len(funcs) == 1 else None
         return found if found is not None and found.template is not None and found.body else None
 
-    def _bindings(self, func: Name, node: Call, template: Function) -> dict[str, Any] | None:
+    def _bindings(
+        self, func: Name | Member, node: Call, template: Function
+    ) -> dict[str, Any] | None:
         """The template's arguments for this call, if they can all be worked out here."""
         given = [self.typeof(arg) for arg in node.args]
         known = self.program.templates.arguments
@@ -70,19 +73,48 @@ class TemplateEmitter(ClassEmitter):
         bindings = self._bindings(func, node, template) if template is not None else None
         if template is None or bindings is None:
             return None
-        found = self.program.templates.function(template, bindings)
+        owner = symbol.owner if symbol is not None else None
+        found = self.program.templates.function(template, bindings, owner)
         if found is None:
             return None
         key, made = found
         if made is not None:
-            self.program.analyse(made)
-            root = self._root()
-            root.add(Symbol(key, "function", key))
-            for name in self.program.classes:
-                if name not in self.class_symbols:
-                    self.class_symbols[name] = root.add(Symbol(name, "class", python_name(name)))
-            self._pending.append(made)
+            self._made(key, made, owner)
         return key
+
+    def _made(self, key: str, made: Function, owner: str | None) -> None:
+        """A new instance, to be written before the declaration being written: its name, and
+        those of the class instances it made, known from now on."""
+        self.program.analyse(made)
+        root = self._root()
+        root.add(Symbol(key, "function", key))
+        for name in self.program.classes:
+            if name not in self.class_symbols:
+                self.class_symbols[name] = root.add(Symbol(name, "class", python_name(name)))
+        self._pending.append((made, owner))
+
+    def method_instance(self, owner: CType | None, func: Member, node: Call) -> str | None:
+        """The Python function a call of a member template calls - its instance for the call's
+        arguments, written at module level and handed the object - or ``None``."""
+        info = self.program.classes.get(owner.name) if owner is not None else None
+        template = self._member_template(info, func.name)
+        bindings = self._bindings(func, node, template) if template is not None else None
+        if info is None or template is None or bindings is None:
+            return None
+        found = self.program.templates.function(template, bindings, info.name)
+        if found is None:
+            return None
+        key, made = found
+        if made is not None:
+            self._made(key, made, info.name)
+        return key
+
+    @staticmethod
+    def _member_template(info: Any, name: str) -> Function | None:
+        """The member template ``name`` of the class ``info``, if it is one, with a body."""
+        funcs = info.methods.get(name, []) if info is not None else []
+        found: Function | None = funcs[0] if len(funcs) == 1 else None
+        return found if found is not None and found.template is not None and found.body else None
 
     def instance_returns(self, func: Name, node: Call, symbol: Symbol | None) -> CType | None:
         """What a call of a function template returns: its return type, the arguments in."""
@@ -122,11 +154,18 @@ class TemplateEmitter(ClassEmitter):
         for key in classes:
             self.top(self.program.classes[key].decl)
         if not classes:
-            self._instance_function(self._pending.pop(0))
+            self._instance_function(*self._pending.pop(0))
 
-    def _instance_function(self, func: Function) -> None:
+    def _instance_function(self, func: Function, owner: str | None) -> None:
+        """A function instance at module level - a member template's taking the object as
+        ``self``, its class's members in scope."""
         self.out.blank(2)
-        self.function(func, func.name)
+        if owner is None:
+            self.function(func, func.name)
+        else:
+            with self.scoped("class", klass=owner) as scope:
+                self._members(self.program.classes[owner], scope.symbols)
+                self.function(func, func.name, method=not func.static)
         self.out.blank()
 
     def _unwritten_classes(self) -> list[str]:

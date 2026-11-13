@@ -40,7 +40,8 @@ sense for these types).
 |---|---|---|
 | Reading | `parse_decl`, `parse_types` | Class and function templates keep their parameters, value parameters and defaults; partial (`template <class T> struct Box<T*>`) and explicit (`template <> struct Box<int>`) specialisations keep the arguments they are for; alias templates (`template <class T> using Vec = std::vector<T>`) are put in where they are named; `template <class T> int Box<T>::count = 0;` is a static member of each instance |
 | Classes | `instantiate.Templates`, from `Program` | Before any Python is written, every type and name in the program that is a class template with arguments all known (none a parameter of an enclosing template) becomes an instance: the most specialised matching partial specialisation, the explicit one, or the primary template, its arguments' defaults filled in. The type then names the instance's *key* |
-| Functions | `emit_templates` | A call of a function template is a call of the instance for its arguments - given in `f<int>(...)`, deduced from the inferred types of the call's arguments (`const T&`, `T*`, `std::vector<T>&`, `T (&)[N]`, `Box<T>`), or defaulted. An explicit specialisation `template <> f<int>(int)` is that instance |
+| Functions | `emit_templates` | A call of a function template is a call of the instance for its arguments - given in `f<int>(...)`, deduced from the inferred types of the call's arguments (`const T&`, `T*`, `std::vector<T>&`, `T (&)[N]`, `Box<T>`), or defaulted. An explicit specialisation `template <> f<int>(int)` is that instance. A member template's instance is a function at module level handed the object, `Maker_make__int(m, 2)` for `m.make<int>(2)` |
+| Members | `instantiate.Templates.instance_member` | A member of an explicit specialisation defined outside it, `Box<int>::Box()`, is that class's; a member specialised for one instance, `template <> int Box<int>::kind()`, replaces the template's in that instance alone |
 | Writing | `emit_module`, `emit_templates` | A class instance is written before the first declaration at namespace scope that needs it, after its template, with the instances it needs before it; a function instance is made as its first call is written and put before that declaration, with any class instance it is the first to need |
 
 An instance's key is a Python identifier made of its C++ spelling and no C++
@@ -56,9 +57,8 @@ type the translator does not see. Where its body cannot be written without
 its arguments (a `T` variable, `sizeof(T)`), it is written as a stand-in that
 raises `Refusal` when it is used (`runtime.uninstantiated`), with the reason.
 
-Not instantiated, and so written generically as before: member templates of
-classes, variadic templates, template template parameters, variable
-templates and GoogleTest's typed tests.
+Not instantiated, and so written generically as before: variadic templates,
+template template parameters, variable templates and GoogleTest's typed tests.
 
 ## The dialect interface
 

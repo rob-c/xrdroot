@@ -78,6 +78,7 @@ STD_TYPEDEFS = {
     "std::int16_t": "short",
     "std::uint16_t": "unsigned short",
     "std::ptrdiff_t": "long",
+    "std::byte": "unsigned char",
 }
 
 #: The keywords a built-in type is spelled with, in any order C++ allows.

@@ -99,7 +99,7 @@ def test_a_methods_members_are_its_objects(source: str, fragment: str) -> None:
         ("h->~TH1F();", "calling the destructor ~TH1F by hand"),
         ("int n = sizeof(TH1F);", "sizeof of a type whose size"),
         ("int a = (delete p, 0);", "delete inside an expression"),
-        ("std::string s; s[0] = 'x';", "changing one character of a string in place"),
+        ("char *p = text(); p[0] = 'x';", "changing one character of a string in place"),
     ],
 )
 def test_what_has_no_python_that_does_the_same_is_refused(source: str, why: str) -> None:

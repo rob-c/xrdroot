@@ -170,6 +170,8 @@ class Cast(Expr):
 class SizeOf(Expr):
     ctype: CType | None
     operand: Expr | None
+    #: ``alignof``, which asks for the alignment rather than the size.
+    alignment: bool = False
 
 
 @dataclass(eq=False)
@@ -407,6 +409,9 @@ class Function(Stmt):
     defaults: list[Any] = field(default_factory=list)
     #: The template arguments of an explicit specialisation, ``f<int>`` of ``template <>``.
     specialises: list[Any] | None = None
+    #: The template arguments of the class a member is defined outside of: ``<int>`` of
+    #: ``Box<int>::Box()``.
+    scope_args: list[Any] = field(default_factory=list)
 
 
 @dataclass(eq=False)

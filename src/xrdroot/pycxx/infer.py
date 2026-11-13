@@ -190,6 +190,9 @@ class Inference(EmitterBase):
     def _dereferenced_type(self, inner: CType | None) -> CType | None:
         if inner is not None and (inner.pointer or inner.dims):
             return inner.element()
+        held = inner.args[0] if inner is not None and inner.is_smart and inner.args else None
+        if isinstance(held, CType):
+            return held  # ``*p`` of a ``std::unique_ptr<T>`` is the ``T`` it holds
         return self.reader_element(inner, "value") or inner
 
     def _type_binary(self, node: Binary) -> CType | None:
