@@ -2,8 +2,11 @@
 
 ``gSystem->AccessPathName(path)`` is *true when the path cannot be reached*,
 and every ROOT script that asks it is written for that, so it is so here.
-Loading a library or adding an include path succeeds and does nothing, since
-everything a macro could load is already Python; the rest - the environment,
+Loading a library is the translator's: ``Load`` finds the library a C++
+build made - a dictionary, ACLiC's ``macro_C`` - and loads its translation,
+and ``CompileMacro`` is ACLiC's build, both through :mod:`xrdroot.pycint`
+when it is there; ROOT's own libraries are xrdroot's packages, loaded from
+the start. Adding an include path is noted and nothing more; the rest - the environment,
 the working directory, running a command, sleeping, finding a file - is what
 Python's own modules do, under ROOT's names.
 """
@@ -21,6 +24,13 @@ from typing import Any
 from .objects import TNamed
 from .strings import TString
 
+
+def _translator(name: str) -> Any:
+    """The translator's function ``name`` - ``None`` without the translator."""
+    from .troot import _translator as found
+
+    return found(name)
+
 __all__ = [
     "TSystem",
     "gSystem",
@@ -29,6 +39,12 @@ __all__ = [
     "kWritePermission",
     "kReadPermission",
 ]
+
+#: What ``GetMakeSharedLib`` says first: ROOT's template, which ``build.C``-style macros edit.
+MAKE_SHARED_LIB = (
+    "cd $BuildDir ; c++ -c $Opt -fPIC $IncludePath $SourceFiles ; "
+    "c++ $ObjectFiles -shared $LinkedLibs $DepLibs -o $SharedLib"
+)
 
 #: ``EAccessMode``.
 kFileExists = 0
@@ -58,21 +74,37 @@ class TSystem(TNamed):
         self._include_path = ""
         self._dynamic_path = os.environ.get("LD_LIBRARY_PATH", "")
         self._libraries: list[str] = []
+        self._build_dir = ""
+        self._build_flat = False
+        self._make_shared_lib = MAKE_SHARED_LIB
 
     # -- libraries and the compiler, which Python does not need -------------------------------
 
     def Load(self, module: Any, entry: Any = "", system: bool = False) -> int:
-        """``Load``: 0, loaded - there is no C++ library a Python script needs to load."""
-        self._libraries.append(str(module))
-        return 0
+        """``Load``: ``0`` loaded, ``1`` loaded already, ``-1`` not found - as ROOT answers.
+
+        Without the translator there is nothing to load a translated library
+        with, and every library a Python script loads is already Python: ``0``.
+        """
+        loading = _translator("load_library")
+        if loading is None:
+            self._libraries.append(str(module))
+            return 0
+        return int(loading(str(module)))
 
     def Unload(self, module: Any) -> None:
-        """``Unload``: forget a library ``Load`` noted."""
+        """``Unload``: forget a library ``Load`` loaded, so loading it again loads it anew."""
         if str(module) in self._libraries:
             self._libraries.remove(str(module))
+        unloading = _translator("unload_library")
+        if unloading is not None:
+            unloading(str(module))
 
     def GetLibraries(self, regexp: Any = "", option: Any = "", isRegexp: bool = True) -> str:
-        return " ".join(self._libraries)
+        """``GetLibraries``: the libraries loaded - those whose name has ``regexp`` in it."""
+        listed = _translator("loaded_libraries")
+        names = [*self._libraries, *(listed() if listed is not None else [])]
+        return " ".join(name for name in names if str(regexp or "") in name)
 
     def AddIncludePath(self, path: Any) -> None:
         self._include_path = f"{self._include_path} {path}".strip()
@@ -96,11 +128,29 @@ class TSystem(TNamed):
         self._dynamic_path = str(path)
 
     def CompileMacro(self, filename: Any, option: Any = "", *rest: Any) -> int:
-        """``CompileMacro``: 1, done - a macro is translated when it is run, not compiled."""
-        return 1
+        """``CompileMacro``: ACLiC's build of the macro, ``1`` when it is built and loaded."""
+        compiling = _translator("compile_macro")
+        return 1 if compiling is None else int(compiling(filename, option, *rest))
+
+    def GetMakeSharedLib(self) -> str:
+        """``GetMakeSharedLib``: the command ACLiC would build with, kept for macros that edit it;
+        a translation is built with none."""
+        return self._make_shared_lib
+
+    def SetMakeSharedLib(self, command: Any) -> None:
+        self._make_shared_lib = str(command)
 
     def SetBuildDir(self, path: Any, isflat: bool = False) -> None:
-        """``SetBuildDir``: nothing is built."""
+        """``SetBuildDir``: where ACLiC puts the libraries it builds - flat, or under each
+        macro's own path."""
+        self._build_dir = str(path)
+        self._build_flat = bool(isflat)
+
+    def GetBuildDir(self) -> str:
+        return self._build_dir
+
+    def IsBuildDirFlat(self) -> bool:
+        return self._build_flat
 
     # -- the environment --------------------------------------------------------------------
 

@@ -28,7 +28,7 @@ from __future__ import annotations
 import ast
 import re
 import types
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +75,8 @@ class Diagnostic(Exception):
     def __init__(self, where: str, why: str) -> None:
         self.where = where
         self.why = why
+        #: Whether the translator refused the input, before any of it ran.
+        self.translating = False
         super().__init__(f"{where}: error: {why}")
 
 
@@ -91,6 +93,9 @@ class Chunk:
     expression: str | None = None
     capture: str = ""
     lvalue: bool = False
+    #: Whether the value is caught only to be handed back - a declaration ending in ``;`` -
+    #: and not printed.
+    quiet: bool = False
 
     def add(self, text: str, origin: Origin) -> None:
         """Lines of C++ typed at ``origin``: the first at its column, the rest where their
@@ -111,6 +116,8 @@ class Outcome:
     spelled: str | None = None
     lvalue: bool = False
     printed: bool = False
+    #: Whether the input had a value at all, printed or not: what ``root -q`` exits with.
+    valued: bool = False
 
 
 class Unit:
@@ -138,11 +145,16 @@ class Unit:
 
     # -- building an input's chunk -------------------------------------------------------
 
-    def chunk(self, prompt: int, pieces: list[Piece], typed: str) -> Chunk:
-        """The lines ``pieces`` add to the unit: declarations as they are, statements wrapped."""
+    def chunk(self, prompt: int, pieces: list[Piece], typed: str, quiet: bool = True) -> Chunk:
+        """The lines ``pieces`` add to the unit: declarations as they are, statements wrapped.
+
+        With ``quiet``, the value of a last expression or declaration ending in ``;`` is
+        caught too, unprinted: it is what ``ProcessLine`` hands back.
+        """
         chunk = Chunk(prompt)
         lines = typed.split("\n")
         group: list[Piece] = []
+        pieces = _caught(chunk, pieces) if quiet else pieces
         for piece in pieces:
             what = kind(piece)
             origin = Origin(prompt, piece.line, piece.column, lines[piece.line - 1])
@@ -155,7 +167,19 @@ class Unit:
             else:
                 chunk.add(piece.text, origin)
         self._wrap(chunk, group, lines)
+        if quiet and pieces:
+            self._declared_value(chunk, pieces, origin)
         return chunk
+
+    def _declared_value(self, chunk: Chunk, pieces: list[Piece], origin: Origin) -> None:
+        """A last declaration ending in ``;`` - ``int x = 4;`` - caught, not printed: its value
+        is what ``ProcessLine`` hands back, and what ``root -q`` exits with."""
+        name = _declared_name(pieces[-1]) if chunk.expression is None else None
+        if name is None:
+            return
+        chunk.expression, chunk.quiet = name, True
+        chunk.capture = self.name("value")
+        chunk.add(f"auto {chunk.capture} = ({name});", origin)
 
     def _wrap(self, chunk: Chunk, group: list[Piece], lines: list[str]) -> None:
         """Statements, in a function of their own that is then called: ``void f() {...} f();``.
@@ -199,18 +223,20 @@ class Unit:
         try:
             return translate_declaring(source, FILE, [self.directory])
         except Refusal as why:
-            raise self._diagnostic(chunk, why.where, why.why) from None
+            refused = self._diagnostic(chunk, why.where, why.why)
+            refused.translating = True
+            raise refused from None
 
     def run(self, chunk: Chunk) -> Outcome:
         """Run what ``chunk`` adds, keep it if it ran, and hand back its value, if any."""
         made, declared = self._translated(chunk)
         outcome = self._outcome(chunk, declared)
-        if outcome.printed and _by_address(outcome.spelled):
+        if outcome.valued and _by_address(outcome.spelled):
             made, declared = self._by_address(chunk, made, declared)
         selected, keys = self._new(made)
         self._check_names(chunk, made, selected)
         self._execute(chunk, made, selected)
-        if outcome.printed:
+        if outcome.valued:
             outcome.value = self.namespace.pop(declared[chunk.capture][0], None)
         self._keep(chunk, keys, declared)
         return outcome
@@ -220,7 +246,8 @@ class Unit:
             return Outcome()
         named = chunk.expression if chunk.expression in declared else chunk.capture
         spelled = declared.get(named, ("", None))[1]
-        return Outcome(spelled=spelled, lvalue=chunk.lvalue or named != chunk.capture, printed=True)
+        return Outcome(spelled=spelled, lvalue=chunk.lvalue or named != chunk.capture,
+                       printed=not chunk.quiet, valued=True)  # fmt: skip
 
     def _by_address(self, chunk: Chunk, made: Any, declared: Any) -> tuple[Any, Any]:
         """An object held by value, caught by its address rather than copied - as cling
@@ -317,6 +344,45 @@ class Unit:
             found = re.search(rf"\b{re.escape(named)}\b", origin.text)
             column = found.start() + 1 if found else column
         return Diagnostic(f"ROOT_prompt_{origin.prompt}:{origin.line}:{column}", why)
+
+
+#: The words a statement that is no expression starts with: its value is nothing.
+CONTROL = frozenset(
+    "if for while do switch try return break continue goto throw delete case default else "
+    "co_return co_yield".split()
+)
+
+
+def _expression(piece: Piece) -> bool:
+    """Whether ``piece`` is an expression statement ending in ``;``, such as ``h.Fill(1);``."""
+    first = piece.parts[0] if piece.parts else ""
+    return (piece.end == "semicolon" and kind(piece).what == "statement"
+            and first not in CONTROL and first not in ("{", ";"))  # fmt: skip
+
+
+def _declared_name(piece: Piece) -> str | None:
+    """The variable a declaration ending in ``;`` declares - but not an array, whose value
+    is its address: nothing ``root -q`` exits with but 255."""
+    found = kind(piece)
+    if piece.end != "semicolon" or found.what != "declaration" or found.name is None:
+        return None
+    after = piece.parts.index(found.name) + 1
+    return None if piece.parts[after : after + 1] == ["["] else found.name
+
+
+def _caught(chunk: Chunk, pieces: list[Piece]) -> list[Piece]:
+    """``pieces``, a last expression statement among them without its ``;``, so its value
+    is caught: unprinted, for the chunk is then ``quiet``."""
+    if not pieces or not _expression(pieces[-1]):
+        return pieces
+    chunk.quiet = True
+    return [*pieces[:-1], _opened(pieces[-1])]
+
+
+def _opened(piece: Piece) -> Piece:
+    """``piece`` without its ``;``: an expression whose value is caught."""
+    text = piece.text.rstrip()
+    return replace(piece, text=text[:-1].rstrip(), end="open", parts=piece.parts[:-1])
 
 
 def _first_mapped(source_map: dict[int, tuple[str, int]], statement: ast.stmt) -> Any:

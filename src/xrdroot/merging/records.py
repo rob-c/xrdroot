@@ -26,7 +26,7 @@ if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from ..file import Key, Source
     from ..writer import WritableDirectory
 
-__all__ = ["copy_record", "fits"]
+__all__ = ["copy_record", "fits", "renamed_record"]
 
 
 def fits(directory: WritableDirectory, name: str, key: Key) -> bool:
@@ -63,3 +63,27 @@ def copy_record(
     directory._put(
         key.classname, name, key.title, body, cycle, listed=True, objlen=key.objlen, wide=wide
     )
+
+
+def renamed_record(
+    directory: WritableDirectory,
+    name: str,
+    key: Key,
+    source: Source,
+    cache: dict[str, dict[tuple[str, int], bytes]],
+) -> None:
+    """Write ``key``'s record into ``directory`` under a ``name`` of another length.
+
+    Its references are moved to count from the new key (see :mod:`.relocate`),
+    and its payload compressed as the file compresses what is new; a record
+    whose references cannot all be found is refused.
+    """
+    from .relocate import relocated
+
+    directory._check_leaf(name)
+    wide = key.version > WIDE
+    keylen = directory._key_length(key.classname, name, key.title, 0, wide)
+    payload = relocated(key, source, keylen)
+    carry(directory._file, source, cache)
+    cycle = directory._next_cycle(name)
+    directory._put(key.classname, name, key.title, payload, cycle, listed=True, wide=wide)

@@ -249,6 +249,12 @@ extensions = [
     { caller = "xrdroot.session", point = "interpreter.process_line", provider = "pycint", target = "xrdroot.pycint.execute:process_line" },
     { caller = "xrdroot.pyroot.rdf.jitted", point = "interpreter.run_source", provider = "pycint", target = "xrdroot.pycint.execute:run_source" },
     { caller = "xrdroot.pyroot.rdf.batched", point = "interpreter.dialect", provider = "pycint", target = "xrdroot.pycint.dialect:dialect" },
+    # Libraries built from C++ (dictionaries, ACLiC's) are loaded and found by the translator.
+    { caller = "xrdroot.pyroot.core.troot", point = "interpreter.load_library", provider = "pycint", target = "xrdroot.pycint.library.loading:load" },
+    { caller = "xrdroot.pyroot.core.troot", point = "interpreter.unload_library", provider = "pycint", target = "xrdroot.pycint.library.loading:unload" },
+    { caller = "xrdroot.pyroot.core.troot", point = "interpreter.loaded_libraries", provider = "pycint", target = "xrdroot.pycint.library.loading:loaded_names" },
+    { caller = "xrdroot.pyroot.core.troot", point = "interpreter.compile_macro", provider = "pycint", target = "xrdroot.pycint.library.aclic:compile_macro" },
+    { caller = "xrdroot.pyroot.core.troot", point = "interpreter.autoload", provider = "pycint", target = "xrdroot.pycint.library.loading:autoload" },
 ]
 
 [tool.xrdroot.components.groups]

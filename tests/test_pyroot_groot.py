@@ -153,7 +153,6 @@ def test_cpp_goes_to_the_translator_when_it_is_installed(monkeypatch):
         troot.set_line_processor(None)
     expect(
         (seen, ["1+1", "a", "b", ".x m.C", ".L m.C", "int y;", "c", "d"]),
-        (ROOT.gInterpreter.Load("lib"), 0),
         (ROOT.gInterpreter.GenerateDictionary("x"), 0),
     )
     ROOT.gInterpreter.AddIncludePath("-I.")

@@ -381,12 +381,9 @@ class Directory:
         return self._subdirectory(key)
 
     def _subdirectory(self, key: Key) -> Directory:
-        record = _directory_record(self._source, key.seek_key + key.keylen)
-        return Directory(
-            self._source,
-            read_keys(self._source, record["seek_keys"], record["nbytes_keys"]),
-            f"{self.path}/{key.name}".lstrip("/"),
-        )
+        record = _directory_record(self._source, key.seek_key + key.keylen, empty=True)
+        keys = read_keys(self._source, record["seek_keys"], record["nbytes_keys"]) if record else []
+        return Directory(self._source, keys, f"{self.path}/{key.name}".lstrip("/"))
 
     def trees(self) -> list[str]:
         """The names here that are trees, which is usually the one you want."""
@@ -410,8 +407,12 @@ class Directory:
         return self[found[0]]
 
 
-def _directory_record(source: Source, seek: int) -> dict[str, int]:
-    """The fixed part of a ``TDirectory``, which says where its keys live."""
+def _directory_record(source: Source, seek: int, empty: bool = False) -> dict[str, int]:
+    """The fixed part of a ``TDirectory``, which says where its keys live.
+
+    A directory that was made and never written to has no key list at all:
+    with ``empty``, that is no keys - an empty record - as ROOT reads it.
+    """
     buf = Buffer(source.read(seek, 42))
     version = buf.u16()
     buf.u32(), buf.u32()  # written and modified, both in ROOT's packed form
@@ -420,6 +421,8 @@ def _directory_record(source: Source, seek: int) -> dict[str, int]:
     buf.i64() if big else buf.i32()  # this directory
     buf.i64() if big else buf.i32()  # its parent
     seek_keys = buf.i64() if big else buf.i32()
+    if empty and seek_keys == 0 and nbytes_keys == 0:
+        return {}
     if seek_keys <= 0 or nbytes_keys <= 0:
         raise FormatError("a directory in this file has no key list to read")
     return {"seek_keys": seek_keys, "nbytes_keys": nbytes_keys}

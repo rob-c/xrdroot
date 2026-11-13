@@ -12,6 +12,7 @@ from xrdroot.pycint.dialect import ROOT as DIALECT
 from xrdroot.pycint.execute import arguments, load, process_line, run, run_source, split_call
 from xrdroot.pycint.runtime import ROOT
 from xrdroot.pycxx import cache
+from xrdroot.pycxx.runtime.namespace import DECLARED
 
 
 @pytest.fixture(autouse=True)
@@ -159,7 +160,8 @@ def test_process_line_runs_statements_and_dot_commands(
     path = write(tmp_path, "hello.C", 'void hello(int n) { printf("hello %d\\n", n); }')
     process_line('int a = 7; printf("%d %g\\n", a / 2, a / 2.)', root=fake())
     process_line(f".x {path}(3)", root=fake())
-    assert process_line(f".L {path}", root=fake())["hello"] is not None
+    assert process_line(f".L {path}", root=fake()) == 0  # ROOT's ProcessLine(".L") is 0
+    assert DECLARED["hello"] is not None
     process_line('{ printf("block\\n"); }', root=fake())
     assert capsys.readouterr().out == "3 3.5\nhello 3\nblock\n"
     with pytest.raises(ValueError, match=r"\.q is not a command"):

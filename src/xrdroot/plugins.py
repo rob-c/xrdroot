@@ -210,6 +210,19 @@ PROVIDERS: dict[tuple[str, str], tuple[str, str, str]] = {
     ('interpreter.run_source', 'default'): ('pycint', 'xrdroot.pycint.execute', 'run_source'),
     ('interpreter.run', 'default'): ('pycint', 'xrdroot.pycint.execute', 'run'),
     ('interpreter.dialect', 'default'): ('pycint', 'xrdroot.pycint.dialect', 'dialect'),
+    ('interpreter.load_library', 'default'): (
+        'pycint', 'xrdroot.pycint.library.loading', 'load',
+    ),
+    ('interpreter.unload_library', 'default'): (
+        'pycint', 'xrdroot.pycint.library.loading', 'unload',
+    ),
+    ('interpreter.loaded_libraries', 'default'): (
+        'pycint', 'xrdroot.pycint.library.loading', 'loaded_names',
+    ),
+    ('interpreter.compile_macro', 'default'): (
+        'pycint', 'xrdroot.pycint.library.aclic', 'compile_macro',
+    ),
+    ('interpreter.autoload', 'default'): ('pycint', 'xrdroot.pycint.library.loading', 'autoload'),
 }
 
 

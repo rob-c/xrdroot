@@ -25,6 +25,7 @@ from .jagged import concatenate as concatenate
 from .jagged import scattered as scattered
 from .jagged import take as take
 from .leaflist import walkable, walked
+from .objects import Clustering
 
 if TYPE_CHECKING:
     from .file import Source
@@ -453,6 +454,7 @@ class TTree(Drawable):
         "_friends",
         "_recorded",
         "records",
+        "clustering",
     )
 
     def __init__(
@@ -476,6 +478,8 @@ class TTree(Drawable):
         self._recorded = list(friends)
         #: The branches at the top of the tree, each with the branches under it.
         self.records = list(records)
+        #: How the file says the entries are grouped into clusters.
+        self.clustering = Clustering(num_entries)
         for top in records:
             self._add(top, source)
 

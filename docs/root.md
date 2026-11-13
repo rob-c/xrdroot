@@ -3111,12 +3111,55 @@ status 2.
 | `TFile::Open(url)` | `gROOT.open(url)`, which goes into the file as ROOT's does |
 | `gROOT->Get("f.root:/dir/h")`, `FindObject("h")` | `gROOT.get("f.root:/dir/h")`, `gROOT["h"]` |
 | `TBrowser` | not provided: `xrdroot ls -t` for what a file holds, `dump` for what is in it, `print` or `.plot()` to see it |
-| `rootls -t -l` | `xrdroot ls -t -l` |
+| `rootls`, `rootrm`, `rootmkdir`, `rootmv`, `rootcp` | `xrdroot ls`, `rm`, `mkdir`, `mv`, `cp` - [the same tools](#command-line-file-tools) |
 | `rootprint`, `root-print` | `xrdroot print` |
 | `rootdiff`, `root-diff` | `xrdroot diff`, with `--atol`, `--rtol` and `-k` |
 | `root-dump` | `xrdroot dump`, with `-n` entries of each tree |
 | `TTree::Scan`, `TTree::Draw` | `xrdroot scan`, `xrdroot draw` |
-| `hadd`, `rootcp` | the `merge` and `cp` subcommands, where `xrdroot.merge` is installed |
+| `hadd` | `xrdroot hadd`; `xrdroot merge` is the same merge with xrdroot's defaults |
+
+### Command-line file tools
+
+`xrdroot ls`, `rm`, `mkdir`, `mv`, `cp` and `hadd` are ROOT's `rootls`,
+`rootrm`, `rootmkdir`, `rootmv`, `rootcp` and `hadd`: the same flags, read
+the way ROOT's own option parser reads them (`-1c` is `-1 -c`, `--name=value`,
+`--` ending the flags), the same output to the space, the same messages on
+standard error and the same exit statuses, so a command line written for ROOT
+runs as it is and its output compares with a reference file ROOT wrote.
+
+```console
+$ xrdroot ls -1 test.root:tof              # rootls -1: a name a line
+$ xrdroot ls -l 'test.root:h*'             # class, date, name;cycle, title
+$ xrdroot ls -t events.root                # each tree's branches and clusters
+$ xrdroot ls -R ntuple.root                # each RNTuple's fields
+$ xrdroot rm -r out.root:dir               # rootrm: a directory, and the file with -r
+$ xrdroot mkdir -p out.root:a/b/c          # rootmkdir: parents, and the file, as needed
+$ xrdroot mv in.root:hpx in.root:histo     # rootmv: copied, then deleted where it was
+$ xrdroot cp --replace -r in.root:tof out.root
+$ xrdroot hadd -f505 all.root run1.root run2.root @more.txt
+```
+
+A source is `file.root:pattern`: the file, then after the first colon a path
+whose every `/`-separated part is a shell pattern matched against the keys at
+that depth - against `name;cycle` when the part has a `;` - as ROOT's
+`RootObjTree` matches them. A URL splits after its last `.root`, so
+`root://host:1094//f.root:dir` keeps its port.
+
+| tool | what is the same | where xrdroot differs |
+| --- | --- | --- |
+| `ls` | `-1 -c -l -t -R -r`; columns as wide as the terminal allows (80 when nothing says), long lines with `[current cycle]`/`[backup cycle]`, tree branches with their bytes and `TTree::TClusterIterator`'s cluster ranges, RNTuple fields dotted out by level | no colours on a terminal |
+| `rm` | `-f -i -n -r -v -vv`; every cycle a pattern matches, directories and files only with `-r`, stopping at the first pattern that matches nothing | the records go to the file's free list; a directory's contents go with its key |
+| `mkdir` | `-p -v`; every path checked first, then each made, an empty file for a path-less name | |
+| `mv` | `rootmv`'s `cmdLineUtils` program, its argparse help, logging warnings and summed status | a renamed object keeps its own `fName` inside the record |
+| `cp` | `-c -r --replace --recreate -v -vv`; DEST a directory or a new name, rootcp's errors, DEST deleted after a failed run | plus `--cut`, `--columns` and `--slow`, `TTree::CopyTree` on the way |
+| `hadd` | every flag and spelling, `@` lists, `Info in <hadd>`, `hadd Source file N`, `hadd Target path`, ROOT's 101 by default | `-j` is said and run in one process; the `Cmdline:` line names `hadd` |
+
+A record copied under a name of another length - `cp in.root:hpx
+out.root:histo` - would point at the wrong places inside itself, since ROOT
+counts them from the start of the key. Its references are found by reading the
+record as its file describes the class and moved by the difference; a record
+holding anything that reading cannot account for is written afresh if
+xrdroot writes its class, and refused if not.
 
 ### The prompt
 
@@ -3200,7 +3243,7 @@ takes a `.C` as readily as a `.py`.
 ```console
 $ xrdroot run hsimple.C
 $ xrdroot run 'fit.C(1000, "gaus")'       # .x fit.C(1000, "gaus"): the function fit, called
-$ xrdroot run hsimple.C+                  # ACLiC's + runs the same way: nothing to compile
+$ xrdroot run hsimple.C+                  # ACLiC: hsimple_C.xrdlib built, loaded, called
 $ xrdroot run hsimple.C --python          # the translation, printed; nothing run
 $ xrdroot run script.py                   # a PyROOT script, `import ROOT` being xrdroot.pyroot
 ```
@@ -3233,9 +3276,32 @@ it reads, and of the translator itself, so nothing stale is ever run.
 
 `xrdroot root` (or `xrdroot cint`) is `root -l` and C++ typed at `root [0]`,
 in the style of ROOT 6's cling. It takes `root`'s options — `-l` (no banner),
-`-b`, `-q`, `-x` (leave at the first error), `-n` (no `rootlogon.C`), `-e LINE`
-— and its files in order: `f.root` is attached as `_file0`, a macro `x.C`,
-`'x.C(1, 2)'` or `x.C+` runs as `.x` runs it.
+`-b`, `-q`, `-x` (leave when C++ fails as it runs), `-n` (no `rootlogon.C`),
+`-e LINE` — anywhere, and its `-e` lines and files in the order given:
+`f.root` is attached as `_file0` (`Attaching file f.root as _file0...`, then
+the `TFile *`), a macro `x.C`, `'x.C(1, 2)'` or `x.C+` runs as `.x` runs it,
+after `Processing x.C(1, 2)...`. Each was checked against ROOT 6.40.04's
+`root.exe`:
+
+- Every file is looked for before anything runs; a missing macro is `Error in
+  <TApplication::GetOptions>: macro x.C not found` and exit status 2.
+- A macro that fails ends the processing of the command line; a `-e` line that
+  fails does not. A directory is gone into, as `root dir` does, and a library,
+  `x_C.so(args)`, runs its function as `.x` runs one.
+- `-q` exits with the value of the last line or macro run, as ROOT's
+  `ProcessLine` hands it back: a macro's value, `int x = 4;` is 4,
+  `printf("ab");` 2, a pointer or an object 255, a `void` 0, code that did not
+  compile 1 (but 0 for a name nothing declares), `.ls`, `.pwd`, `.cd` and
+  `.help` 1, every other dot command 0. `-e return` is 0 and `-e 'return x'`
+  is `x`. `exit(n)` and `gApplication->Terminate(n)` end it with `n`.
+- Without `-q`, standard input is read after the command line, and the session
+  ends with 0 at `.q` or at the end of the input; a newline is printed before
+  the command line's output, as `root` prints one.
+- The banner shows when there is no `-l` and no file or `-e` line. It says
+  what this is — xrdroot, not ROOT — rather than ROOT's welcome box.
+- `gROOT` is called `Rint` in the session, so `.pwd` says `Current directory:
+  Rint:/` and `Current style:     Modern`, and `gApplication` is a `TRint`
+  with `GetName`, `Argc`, `Argv` and `Terminate`.
 
 ```console
 $ xrdroot root -l tests/data/simple.root
@@ -3269,11 +3335,78 @@ with every one before it, so the translator knows every type declared so
 far; only the statements that have not run yet are run.
 
 The dot commands are cling's and ROOT's: `.x`/`.X`, `.L` and `.U`, `.ls`,
-`.cd`, `.pwd`, `.files`, `.! command`, `.> file` and `.>`, `.g`, `.class Name`,
+`.cd`, `.pwd`, `.files`, `.libraries`, `.! command`, `.> file` and `.>`, `.g`, `.class Name`,
 `.rawInput`, `.O`, `.@`, `.help` and `.q`. At a terminal, lines are read with
 readline, with Tab completion and a history in `~/.xrdroot_history`; piped
 input is run without prompts. The prompt in Python is
 `xrdroot.pycint.interactive.Interpreter`: `feed(line)` hands back what it says.
+
+### Libraries: dictionaries, ACLiC and `gSystem->Load`
+
+ROOT builds C++ into shared libraries and loads them by name. xrdroot has no
+compiler: a library is the translation of what it was built from, written as
+a `.xrdlib` file where the `.so` would be, and loaded the way ROOT loads the
+real one. `xrdroot build` makes them, as ROOT's build steps do:
+
+```console
+$ xrdroot build dictionary --name Event --linkdef EventLinkDef.h Event.h Event.cxx
+$ xrdroot build dictionary --name Sel --selection selection.xml -I include Sel.h
+$ xrdroot build library --name Shapes Circle.cxx Square.cxx
+$ xrdroot build executable --name stress --library Event stress.cxx
+$ xrdroot build aclic macro.C+           # macro_C.xrdlib, beside the macro or in --out
+```
+
+`dictionary` is rootcling's (genreflex's with `--selection`): the headers and
+sources given, translated as one unit, into `lib<NAME>.xrdlib` in `--out` or
+the working directory, with a rootmap of the classes and namespaces it
+declares (none with `--no-rootmap`). Built where a library of that name is,
+either step adds its files to it: a dictionary and then `library` with its
+sources is one library. Each class the LinkDef's `#pragma link
+C++ class` lines or the selection file's `<class name>` ask for and the
+headers do not declare is `Warning: Unused class rule: Name`, as both tools
+say it, and the build goes on. A missing file is rootcling's `fatal error:
+'x.h' file not found`, then `Error: rootcling: compilation failure (...)`, and
+exits 1; C++ the translator refuses is one line, `xrdroot build: file:line:
+why`, and exit status 2: a build that cannot be done here.
+`library` is the same without a rootmap. `executable` translates its sources
+(so a refusal is the build's) and writes the program `NAME`: a shell script
+running `xrdroot run --library ... SOURCE... -- "$@"` in the Python and the
+xrdroot that built it, from any directory, its exit status the program's.
+`--library NAME` names a library to load first, on any step; ROOT's own
+(`Tree`, `ROOT::Hist`) and GoogleTest's need no loading.
+
+Loading is ROOT's:
+
+- `gSystem->Load("libEvent")`, `"libEvent.so"`, `"./libEvent.dylib"` and,
+  from Python, `ROOT.gSystem.Load` find `libEvent.xrdlib` in the working
+  directory, `gSystem->GetDynamicPath()`, `ROOT_LIBRARY_PATH`,
+  `LD_LIBRARY_PATH` and `DYLD_LIBRARY_PATH` (or only where a name with a
+  directory says; `Event` also finds `libEvent`). They answer 0 loaded, 1
+  loaded already, and -1 with `Error in <TUnixSystem::FindDynamicLibrary>:
+  ... does not exist in ...` when there is no such library. ROOT's own
+  libraries are xrdroot's packages: `libTree` is 0 and then 1, `libCore` 1.
+- `R__LOAD_LIBRARY(Event)` and `#pragma cling load("libEvent")` load before
+  the macro is translated; `R__ADD_LIBRARY_PATH(dir)` and `#pragma cling
+  add_library_path("dir")` add where to look. `.L libEvent.so` loads too.
+- What a library defines is found by every later macro, line and Python
+  script by its C++ name, a namespace's members included (`ROOT.geo.Shape`),
+  and a name a library on the search path provides is loaded the first time
+  it is used, as a rootmap lets ROOT autoload it.
+- A macro that `#include`s a header a library was built from translates it
+  again - the translator needs its types - and then uses the library's own
+  classes and functions, loaded before or after: there is one `Shape`, with
+  one set of static members, and what the header only declares the library
+  defines.
+
+ACLiC works wherever ROOT takes it: `.L macro.C+`, `.x macro.C+(args)`,
+`gROOT->ProcessLine(".x macro.C++")`, `gROOT->LoadMacro("macro.C+")`,
+`gSystem->CompileMacro("macro.C", "kc", "libname")` (1 when built), and
+`xrdroot root` or `xrdroot run macro.C+`. The library is `macro_C.xrdlib`
+beside the macro, or in `gSystem->SetBuildDir(dir, flat)`; it is built - `Info
+in <TUnixSystem::ACLiC>: creating shared library ...` - when it is missing,
+when the macro, a header it includes or the translator has changed, or with
+`++` or option `f`, and loaded unless the option has `c`. A macro the
+translator refuses is `Error in <ACLiC>: Compilation failed!`.
 
 ### Programs: `main` and GoogleTest
 

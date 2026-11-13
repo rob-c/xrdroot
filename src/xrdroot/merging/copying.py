@@ -31,7 +31,7 @@ from ..writer import WritableDirectory, WritableFile, create
 from ..wupdate import update
 from .files import DIRECTORIES, NTUPLE, _is_local_file, _local_path, _opened, resolve_compression
 from .ntuples import NtupleMerge
-from .records import copy_record, fits
+from .records import copy_record, fits, renamed_record
 from .trees import TreeMerge, normal_codes
 
 __all__ = ["copy"]
@@ -158,6 +158,11 @@ class _Copier:
         if fits(here, leaf, key):
             copy_record(here, leaf, key, directory._source, self.infos)
             return
+        try:
+            renamed_record(here, leaf, key, directory._source, self.infos)
+            return
+        except UnsupportedFeatureError:
+            pass  # its references could not all be found: written afresh, if it can be
         value = directory._read(key)
         if isinstance(value, Mapping):  # members only: a class the writer has no layout for
             raise UnsupportedFeatureError(

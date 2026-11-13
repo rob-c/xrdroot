@@ -39,7 +39,7 @@ parses C++ itself reads it in a library's dialect.
 | Calls and values | `calls` and `call_classes` (calls written as other Python), `member_statement`, `out_parameters`, `returns`, `numeric_namespaces`, `method_returns`, `field_makers`, `read_only`, `string_classes`, `string_methods`, `guards`, `value_readers`, `array_readers`, `held_results`, `assigned_pattern` |
 | Containers | `containers`, `typed_containers`, `vector`, `vector_aliases`, `vector_bool`, `vector_namespaces`, `vector_spellings` |
 | Statements | `counted_loop`, `range_loop`: hooks that may write a loop the library's way |
-| Running | `spelling`, `shown`, `status` (an entry function's value printed and exited with), `session` (what every run happens inside), `sources` (code hashed into a cached translation's key) |
+| Running | `spelling`, `shown`, `status` (an entry function's value printed and exited with), `session` (what every run happens inside), `loaded` (called with a program's module and translation once its Python has run, before anything in it is called: where a host binds names a library it loaded defines), `sources` (code hashed into a cached translation's key) |
 
 A hook is called with the emitter itself and returns `None` or `False` to let
 the translator write the construct as plain C++ would. A dialect's runtime

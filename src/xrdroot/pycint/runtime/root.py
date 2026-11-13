@@ -19,6 +19,7 @@ import sys
 from typing import Any
 
 from ...pycxx.runtime.namespace import DECLARED, HostNamespace
+from ..typedefs import TYPEDEFS
 
 __all__ = ["RootProxy", "ROOT", "DECLARED", "DEFAULT", "USED"]
 
@@ -47,6 +48,19 @@ def _std() -> Any:
     return importlib.import_module(f"{DEFAULT}.stl").std
 
 
+def _application() -> Any:
+    """``gApplication``, the ``root`` program a macro runs in."""
+    from .application import gApplication
+
+    return gApplication
+
+
+def _application_class() -> Any:
+    from .application import TApplication
+
+    return TApplication
+
+
 def _test_support() -> Any:
     """``ROOT::TestSupport``, which ROOT's unit tests are written against."""
     from .diags import TestSupport
@@ -63,7 +77,20 @@ class RootProxy(HostNamespace):
     """
 
     def __init__(self) -> None:
-        super().__init__(_pyroot, USED, {"TestSupport": _test_support}, _std)
+        # ROOT's typedefs called like functions, ``Long64_t(x)``, are casts.
+        casts = {name: _cast(target) for name, target in TYPEDEFS.items()}
+        provided = {**casts, "TestSupport": _test_support, "gApplication": _application,
+                    "TApplication": _application_class, "TRint": _application_class}  # fmt: skip
+        super().__init__(_pyroot, USED, provided, _std)
+
+
+#: The Python a value of each kind of C++ arithmetic type is, by the type's name.
+CASTS: dict[str, Any] = {"float": float, "double": float, "long double": float, "bool": bool}
+
+
+def _cast(target: str) -> Any:
+    """The conversion ``Int_t(x)`` makes: to ``int``, ``float`` or ``bool``."""
+    return lambda: CASTS.get(target, int)
 
 
 ROOT = RootProxy()

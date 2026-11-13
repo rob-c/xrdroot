@@ -74,7 +74,19 @@ def test_an_object_renamed_to_a_name_of_another_length_is_written_again(tmp_path
         assert f["a_longer_name"].values().tolist() == g["h1d"].values().tolist()
 
 
-def test_an_object_that_cannot_be_written_again_is_not_renamed_to_another_length(tmp_path):
+@pytest.fixture
+def unmovable(monkeypatch):
+    """Records whose references could not all be found, so cannot move under a new key."""
+
+    def refusing(*args):
+        raise UnsupportedFeatureError("its references could not all be found")
+
+    monkeypatch.setattr("xrdroot.merging.relocate.relocated", refusing)
+
+
+def test_an_object_that_cannot_be_written_again_is_not_renamed_to_another_length(
+    tmp_path, unmovable
+):
     refusal = "not a class this writer carries a layout for to write it again"
     with pytest.raises(UnsupportedFeatureError, match=refusal):
         copy(DATA / "tformula.root", tmp_path / "out.root", {"fconv": "longer"})
@@ -121,7 +133,7 @@ def test_a_new_file_is_compressed_as_the_source_unless_told(tmp_path):
         assert a.compression == 101 and b.compression == 404
 
 
-def test_a_copy_that_goes_wrong_leaves_no_file_behind(tmp_path):
+def test_a_copy_that_goes_wrong_leaves_no_file_behind(tmp_path, unmovable):
     out = tmp_path / "out.root"
     with pytest.raises(UnsupportedFeatureError):
         copy(DATA / "tformula.root", out, {"func1": "f", "fconv": "longer"})

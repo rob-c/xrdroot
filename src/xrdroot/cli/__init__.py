@@ -10,6 +10,7 @@
     $ xrdroot info f.root                 # the header, the compression, the classes
     $ xrdroot run 'hsimple.C(1)'          # root -b -q: a C++ macro, translated and run
     $ xrdroot root -l f.root              # root -l f.root: the C++ prompt, with _file0
+    $ xrdroot build aclic macro.C+        # ACLiC: macro_C.xrdlib, loaded by gSystem->Load
 
 The subcommand registry
 -----------------------
@@ -66,9 +67,14 @@ COMMANDS = [
     "draw",
     "info",
     "merge",
+    "hadd",
     "cp",
+    "mv",
+    "rm",
+    "mkdir",
     "run",
     "root",
+    "build",
 ]
 
 #: Other names a subcommand answers to, and the subcommand each names: ``xrdroot cint``.

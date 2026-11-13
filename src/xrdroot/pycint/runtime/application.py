@@ -1,0 +1,86 @@
+"""``gApplication``: the ``root`` program a macro runs in - ROOT's ``TRint``.
+
+A macro run by ``root`` (``xrdroot root``, ``xrdroot run``) finds ROOT's
+application in ``gApplication``: its name, ``TRint``, the command line it was
+started with, and ``Terminate(status)``, which ends the program there and then
+with that exit status - what roottest's macros call to fail. ``gROOT`` is
+called ``Rint`` there, after the application, so ``gDirectory->pwd()`` says
+``Rint:/`` as ``root`` does, where PyROOT's says ``PyROOT:/``.
+"""
+
+from __future__ import annotations
+
+import sys
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from typing import Any
+
+__all__ = ["TApplication", "gApplication", "started"]
+
+
+class TApplication:
+    """``TApplication``: the running program, its arguments, and how it ends."""
+
+    def __init__(self, name: str = "TRint", argv: Sequence[str] = ()) -> None:
+        self._name = name
+        self._argv = list(argv) or ["root.exe"]
+
+    def restart(self, name: str, argv: Sequence[str]) -> None:
+        """The application started anew, as ``name`` with the command line ``argv``."""
+        self._name = name
+        self._argv = list(argv) or ["root.exe"]
+
+    def GetName(self) -> str:
+        return self._name
+
+    def ClassName(self) -> str:
+        return self._name
+
+    def Argc(self) -> int:
+        return len(self._argv)
+
+    def Argv(self, index: int | None = None) -> Any:
+        """``Argv(i)``: the ``i``-th word of the command line; all of them without ``i``."""
+        return list(self._argv) if index is None else self._argv[index]
+
+    def Terminate(self, status: int = 0) -> None:
+        """``Terminate(status)``: end the program now, with ``status``, as ROOT exits."""
+        sys.stdout.flush()
+        raise SystemExit(int(status))
+
+    def IsRunning(self) -> bool:
+        return True
+
+    def SetReturnFromRun(self, ret: bool) -> None:
+        """``SetReturnFromRun``: whether ``Run`` returns; there is no event loop to leave."""
+
+    def Run(self, retrn: bool = False) -> None:
+        """``Run``: the event loop, which a batch program has nothing to wait in."""
+
+    def ProcessLine(self, line: Any, sync: bool = False, error: Any = None) -> Any:
+        from .root import ROOT
+
+        return ROOT.gROOT.ProcessLine(line)
+
+    def InitializeGraphics(self, force: bool = False) -> None:
+        """``InitializeGraphics``: there are never windows to open."""
+
+
+#: ``gApplication``: ``root``'s ``TRint``.
+gApplication = TApplication()
+
+
+@contextmanager
+def started(argv: Sequence[str] = ()) -> Iterator[TApplication]:
+    """A ``root`` session: ``gApplication`` the ``TRint`` started by ``argv``, and ``gROOT``
+    named ``Rint`` after it - each as it was again once the session is over."""
+    from ...pyroot import gROOT
+
+    before = gApplication.GetName(), gApplication.Argv(), gROOT.GetName()
+    gApplication.restart("TRint", argv)  # the one object every macro has been handed
+    gROOT.SetName("Rint")
+    try:
+        yield gApplication
+    finally:
+        gApplication.restart(before[0], before[1])
+        gROOT.SetName(before[2])

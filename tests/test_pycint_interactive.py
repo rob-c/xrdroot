@@ -316,9 +316,12 @@ def test_exit_ends_the_session_with_its_status() -> None:
     assert (prompt.finished, prompt.status) == (True, 3)
 
 
-def test_errors_end_the_session_when_asked_to_as_root_x_does() -> None:
+def test_a_failure_as_it_runs_ends_the_session_when_asked_to_as_root_x_does() -> None:
+    """ROOT's ``-x`` exits on an exception: code that did not compile goes on."""
     prompt = Interpreter(exit_on_error=True)
     typed(prompt, "nope")
+    assert (prompt.finished, prompt.status) == (False, 0)
+    typed(prompt, "throw 3;")
     assert (prompt.finished, prompt.status) == (True, 1)
 
 

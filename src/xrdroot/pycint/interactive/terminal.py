@@ -91,7 +91,8 @@ def _piped_reader(stdin: TextIO) -> Callable[[str], str]:
 
 
 def interact(interpreter: Interpreter, stdin: TextIO | None = None) -> int:
-    """Read and run lines until the session ends; the exit status ``root`` would give."""
+    """Read and run lines until the session ends; the exit status ``root`` would give: ``0``
+    at ``.q`` or at the end of the input, whatever ran, else what ``exit(n)`` was given."""
     stdin = stdin or sys.stdin
     if stdin.isatty():
         read, save = _terminal_reader(interpreter)
@@ -111,4 +112,4 @@ def interact(interpreter: Interpreter, stdin: TextIO | None = None) -> int:
     finally:
         save()
         interpreter.close()
-    return interpreter.status
+    return interpreter.status if interpreter.exited else 0

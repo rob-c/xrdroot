@@ -1157,6 +1157,16 @@ def test_a_directory_with_no_key_list_is_refused():
         _directory_record(source_over(wide_file(seek_keys_broken=True)[132:]), 0)
 
 
+def test_a_directory_never_written_to_is_one_with_no_keys(monkeypatch):
+    never = struct.pack(">HIIiiiii", 5, 0, 0, 0, 32, 100, 0, 0).ljust(42, b"\0")
+    assert _directory_record(source_over(never), 0, empty=True) == {}
+    with pytest.raises(FormatError, match="no key list"):
+        _directory_record(source_over(never), 0)
+    with open_root(str(DATA / "dirs-6.14.00.root")) as f:
+        monkeypatch.setattr("xrdroot.file._directory_record", lambda *args, **kwargs: {})
+        assert f._subdirectory(f.key("dir1")).keys() == []
+
+
 # -- trees, branches and leaves -------------------------------------------
 
 

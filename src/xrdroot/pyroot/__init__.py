@@ -103,4 +103,20 @@ def __getattr__(name: str) -> _typing.Any:
         found = globals()["gROOT"].FindObject(name)
         if found is not None:
             return found
+        declared = _declared(name)
+        if declared is not None:
+            return declared
     raise AttributeError(f"ROOT has {name}; xrdroot.pyroot does not yet")
+
+
+def _declared(name: str) -> _typing.Any:
+    """What C++ run so far declared by that name - a macro, ``Declare``, a library loaded -
+    or else what the library on the search path providing it declares, autoloaded."""
+    from ..pycxx.runtime.namespace import DECLARED
+    from .core.troot import _translator, gInterpreter
+
+    for each in (name, name + "_"):  # ``compile_``: a C++ name a Python builtin also has
+        if each in DECLARED:
+            return DECLARED[each]
+    autoload = _translator("autoload") if gInterpreter.autoloading else None
+    return DECLARED.get(name) if autoload is not None and autoload(name) else None

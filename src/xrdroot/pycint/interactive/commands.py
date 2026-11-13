@@ -10,6 +10,7 @@ lists every file the session (:mod:`xrdroot.session`) has open.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -20,7 +21,10 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 from ...pycxx.errors import CxxError as CintError
 from ..declaring import forget
-from ..execute import arguments, load, run_program, split_call
+from ..execute import arguments, called, exists, load, run_program, split_call
+from ..library.aclic import split as split_aclic
+from ..library.build import BuildError
+from ..library.manifest import stem_of
 
 if TYPE_CHECKING:
     from .interpreter import Interpreter
@@ -49,6 +53,7 @@ This is xrdroot's C++ prompt: what is typed is translated into Python and run.
   .cd [dir]          go into a directory of the current file; .cd alone, to the top
   .pwd               where the session is, gDirectory->pwd()
   .files             the files open in the session, and the macros loaded
+  .libraries         the libraries loaded
   .! command         run a shell command
   .> file            send standard output to the file; .> alone sends it back
   .g [name]          the variables declared at the prompt, and their types
@@ -61,7 +66,10 @@ This is xrdroot's C++ prompt: what is typed is translated into Python and run.
 
 
 def failure(why: CintError) -> Said:
-    """A macro's failure as cling reports one, at the C++ line it happened on."""
+    """A macro's failure as cling reports one, at the C++ line it happened on - or ACLiC's,
+    whose compiler's errors were said already."""
+    if isinstance(why, BuildError):
+        return Said(f"Error in <ACLiC>: {why.why}", True)
     where = why.where
     spot = f"{where.file}:{where.line}:1: " if where is not None else ""
     return Said(f"{spot}error: {why.why}", True)
@@ -76,27 +84,32 @@ def _run(interp: Interpreter, rest: str) -> list[Said]:
     if not rest:
         return [Said("error: .x needs a macro to run: .x file.C, or .x file.C(arguments)", True)]
     path, given = split_call(rest)
-    if not Path(path.rstrip("+")).is_file():
+    interp.last_status, interp.failed = 1, True  # until it has run: it ends the command line
+    if not exists(called(rest)):
         return [_missing(path, "TApplication::ExecuteFile")]
     try:
-        interp.last_status = run_program([Path(path)], arguments(given))
+        interp.last_status = run_program([called(rest)], arguments(given))
     except CintError as why:
         return [failure(why)]
     except TypeError as why:
         return [Said(f"error: {why}", True)]
+    interp.failed = False
     return []
 
 
 def _load(interp: Interpreter, rest: str) -> list[Said]:
-    """``.L file.C``: what the macro declares, declared, and nothing called."""
-    path = split_call(rest)[0] if rest else ""
-    if not Path(path.rstrip("+")).is_file():
-        return [_missing(path or "(none)", "TInterpreter::LoadMacro")]
+    """``.L file.C``: what the macro declares, declared, and nothing called; ``.L file.C+``,
+    ACLiC's library of it built and loaded; ``.L libFoo.so``, the library loaded."""
+    spec = called(rest) if rest else ""
+    path = split_aclic(spec)[0]
+    library = stem_of(path) != os.path.basename(path)
+    if not library and not Path(path).is_file():
+        return [_missing(path or "(none)", "TRint::ProcessLine")]
     try:
-        names = load(path)
+        names = load(spec)
     except CintError as why:
         return [failure(why)]
-    interp.loaded[str(Path(path.rstrip("+")))] = [
+    interp.loaded[str(Path(path))] = [
         name for name, value in names.items() if getattr(value, "__module__", "") == "__cint__"
     ]
     return []
@@ -133,8 +146,10 @@ def _cd(interp: Interpreter, rest: str) -> list[Said]:
 
 
 def _pwd(interp: Interpreter, rest: str) -> list[Said]:
-    _root().gDirectory.pwd()
-    return []
+    """``.pwd``: the current directory and the current style, as ROOT says them."""
+    root = _root()
+    return [Said(f"Current directory: {root.gDirectory.GetPath()}"),
+            Said(f"Current style:     {root.gStyle.GetName()}")]  # fmt: skip
 
 
 def _files(interp: Interpreter, rest: str) -> list[Said]:
@@ -160,6 +175,13 @@ def _redirect(interp: Interpreter, rest: str) -> list[Said]:
         interp.redirected = open(rest, "w", encoding="utf-8")
         interp.saved, sys.stdout = sys.stdout, interp.redirected
     return []
+
+
+def _libraries(interp: Interpreter, rest: str) -> list[Said]:
+    """``.libraries``: every library loaded, ROOT's own that it starts with first."""
+    from ..library.loading import loaded_names
+
+    return [Said(name) for name in loaded_names()]
 
 
 def _help(interp: Interpreter, rest: str) -> list[Said]:
@@ -248,10 +270,16 @@ COMMANDS: dict[str, Callable[[Interpreter, str], list[Said]]] = {
     "quit": _quit,
     "@": _cancel,
     "rawInput": _raw,
+    "libraries": _libraries,
     "O": _optimize,
     "g": _globals,
     "class": _class,
 }
+
+
+#: The commands after which ROOT's ``ProcessLine`` hands back ``1`` (ROOT's own, which
+#: TRint runs); ``.x`` hands back the macro's value, and every other command ``0``.
+ONE = frozenset({"ls", "pwd", "cd", "help", "?"})
 
 
 def dispatch(interp: Interpreter, line: str) -> list[Said] | None:
@@ -259,8 +287,11 @@ def dispatch(interp: Interpreter, line: str) -> list[Said] | None:
     found = COMMAND.match(line.strip())
     if found is None:
         return None
-    command = COMMANDS.get(found["name"])
+    name = found["name"]
+    command = COMMANDS.get(name)
     if command is None:
-        return [Said(f"error: .{found['name']} is not a command this prompt knows; "
+        return [Said(f"error: .{name} is not a command this prompt knows; "
                      ".help lists the ones it does", True)]  # fmt: skip
+    if name not in ("x", "X"):
+        interp.last_status = int(name in ONE)
     return command(interp, found["rest"])

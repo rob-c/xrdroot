@@ -6,7 +6,26 @@ of [pyroot](applications.md#pyroot). It depends on pycxx and on pyroot and
 everything below it; nothing below it imports it. pyroot's
 `gROOT.ProcessLine`, `Macro`, `LoadMacro`, `gInterpreter.Declare`, the
 session's `.x` and RDataFrame's C++ expressions reach it through the
-`interpreter.*` providers of `xrdroot.plugins` (see [providers](providers.md)).
+`interpreter.*` providers of `xrdroot.plugins` (see [providers](providers.md)),
+and so do `gSystem->Load`, `GetLibraries` and `CompileMacro`
+(`interpreter.load_library`, `interpreter.loaded_libraries`,
+`interpreter.compile_macro`) and the autoloading of a name `ROOT.<name>` does
+not otherwise find (`interpreter.autoload`).
+
+## Libraries
+
+`xrdroot build` (`dictionary`, `library`, `executable`, `aclic`) writes a
+library as a `.xrdlib` file: JSON holding the Python its sources translate
+into, the source map, what it declares (top-level names, namespaces and their
+members, qualified classes - its rootmap), the files it was built from
+(relative to the library's directory when under it, so a build directory can
+move) and a digest of their text and of the translator, which is what ACLiC's
+"up to date" checks. Loading runs the Python once in a module of its own and
+keeps its functions, classes and namespace objects in pycxx's `DECLARED`,
+where every later translation's host looks. The ROOT dialect's `loaded` hook
+(`Dialect.loaded`, called by pycxx's `run_source` and `run_program` once a
+program's Python has run) binds a program's copy of a library's header back to
+the library's objects, now and when a library is loaded later.
 
 ## What it owns
 
@@ -16,8 +35,9 @@ session's `.x` and RDataFrame's C++ expressions reach it through the
 | `emit` | the hooks: `TString::Format` and `s.Form()`, loops over `gRandom` draws filled all at once, and ntuple loops filled in a batch |
 | `fill_loops`, `tree_loops` | the analyses those loops are recognised by |
 | `returned` | what `root -q` prints for an entry function's value, and the exit status it gives |
-| `execute` | `run`, `run_source`, `run_program`, `run_and_quit`, `load`, `process_line`, `split_call`, `arguments`: `.x`, `.L` and `ProcessLine` |
-| `runtime` | what a ROOT translation imports: pycxx's runtime, `ROOT` (`runtime.root`), ROOT's meanings of `delete`, placement `new`, setters, `typeid`, `Printf` and kin (`runtime.adapters`), `TestSupport` and `ROOT_EXPECT_ERROR` (`runtime.diags`) and the ntuple batch fill (`runtime.ntuplefill`) |
+| `execute` | `run`, `run_source`, `run_program`, `run_and_quit`, `load`, `process_line`, `split_call`, `called`, `arguments`, `preload`: `.x`, `.L` and `ProcessLine`, ACLiC's `+`, `.L libFoo.so`, and the libraries `R__LOAD_LIBRARY` and `#pragma cling load` name |
+| `library` | ROOT's build model as translations: a `.xrdlib` file (`manifest`), rootcling's and genreflex's dictionaries and libraries from sources (`build`, `selection`, `translate`), ACLiC (`aclic`), and `gSystem->Load`, rootmap autoloading and binding a macro's copy of a library's header back to the library (`loading`) |
+| `runtime` | what a ROOT translation imports: pycxx's runtime, `ROOT` (`runtime.root`), ROOT's meanings of `delete`, placement `new`, setters, `typeid`, `Printf` and kin (`runtime.adapters`), `TestSupport` and `ROOT_EXPECT_ERROR` (`runtime.diags`), the ntuple batch fill (`runtime.ntuplefill`) and `gApplication`, the `TRint` a `root` session is (`runtime.application`) |
 | `interactive` | the home of the CINT/cling-compatible prompt (`xrdroot root`), built on `execute` |
 
 ```python

@@ -1,4 +1,4 @@
-"""``xrdroot merge`` and ``xrdroot cp``: ``hadd`` and ``rootcp`` on the command line.
+"""``xrdroot merge``: ``hadd`` on the command line, with xrdroot's own defaults.
 
 The flags are ``hadd``'s, spelled as ``hadd`` spells them - ``-f505`` and
 ``-fk`` run together - and each is checked to reach :func:`xrdroot.merge`
@@ -16,7 +16,6 @@ import pytest
 
 from xrdroot import Histogram, create, open_root
 from xrdroot.cli import COMMANDS, main
-from xrdroot.cli import cp as cp_command
 from xrdroot.cli import merge as merge_command
 
 DATA = pathlib.Path(__file__).parent / "data"
@@ -27,7 +26,6 @@ def parsed(*argv: str) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="xrdroot")
     subparsers = parser.add_subparsers(dest="command")
     merge_command.add_parser(subparsers)
-    cp_command.add_parser(subparsers)
     return parser.parse_args(list(argv))
 
 
@@ -133,50 +131,3 @@ def test_a_merge_that_fails_says_why_and_returns_one(tmp_path, capsys):
     out.write_bytes(b"there")
     assert main(["merge", str(out), source]) == 1
     assert "xrdroot merge: " in capsys.readouterr().err and out.read_bytes() == b"there"
-
-
-# -- cp ---------------------------------------------------------------------------
-
-
-def test_a_source_is_a_file_and_after_its_name_what_to_take_from_it():
-    assert cp_command.split("in.root") == ("in.root", None)
-    assert cp_command.split("in.root:hists/*") == ("in.root", "hists/*")
-    assert cp_command.split("root://host//store/in.root:h") == ("root://host//store/in.root", "h")
-    assert cp_command.split("in.root:") == ("in.root", None)
-
-
-def test_cp_copies_what_each_source_names_into_the_destination(tmp_path):
-    source = histogram_file(tmp_path / "a.root")
-    out = str(tmp_path / "out.root")
-    assert main(["cp", f"{source}:h", f"{HALVES[0]}:tree", out]) == 0
-    with open_root(out) as f:
-        assert f.keys() == ["h", "tree"] and f.compression == 106  # as the first source is
-    assert main(["cp", source, f"{out}:more"]) == 0  # added to, into a directory
-    with open_root(out) as f:
-        assert f["more"].keys() == ["h", "note"]
-
-
-def test_cp_cuts_and_picks_columns_as_copytree_does(tmp_path):
-    out = str(tmp_path / "out.root")
-    argv = ["cp", "--cut", "N > 2", "--columns", "N,F32", "--slow", f"{HALVES[0]}:tree", out]
-    assert main(argv) == 0
-    with open_root(out) as f:
-        assert f["tree"].keys() == ["N", "F32"] and f["tree"].num_entries == 2
-
-
-def test_cp_can_write_the_destination_anew_and_compressed_as_told(tmp_path):
-    source = histogram_file(tmp_path / "a.root")
-    out = str(tmp_path / "out.root")
-    assert main(["cp", source, out]) == 0
-    assert main(["cp", "--recreate", "-c", "505", f"{source}:h", out]) == 0
-    with open_root(out) as f:
-        assert f.keys() == ["h"] and f.compression == 505
-    assert main(["cp", "-c", "404", "-r", f"{source}:note", out]) == 0
-    with open_root(out) as f:
-        assert f.keys() == ["h", "note"]
-
-
-def test_a_copy_that_fails_says_why_and_returns_one(tmp_path, capsys):
-    source = histogram_file(tmp_path / "a.root")
-    assert main(["cp", f"{source}:nothing", str(tmp_path / "out.root")]) == 1
-    assert "xrdroot cp: " in capsys.readouterr().err

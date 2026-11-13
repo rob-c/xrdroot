@@ -24,6 +24,7 @@ from ..pycxx.dialect import Dialect, Prelude
 from . import emit, returned
 from .runtime import ROOT as HOST
 from .runtime import __all__ as RUNTIME_NAMES
+from .typedefs import TYPEDEFS
 
 __all__ = ["ROOT", "dialect", "TYPEDEFS", "PREDEFINED", "ROOT_VERSION"]
 
@@ -32,57 +33,6 @@ __all__ = ["ROOT", "dialect", "TYPEDEFS", "PREDEFINED", "ROOT_VERSION"]
 POINTER_TYPEDEFS = frozenset({"XMLNodePointer_t", "XMLAttrPointer_t", "XMLNsPointer_t",
                               "XMLDocPointer_t"})  # fmt: skip
 
-#: ROOT's typedefs (RtypesCore.h, GuiTypes.h), as the types they stand for.
-TYPEDEFS = {
-    "Char_t": "char",
-    "UChar_t": "unsigned char",
-    "Short_t": "short",
-    "UShort_t": "unsigned short",
-    "Int_t": "int",
-    "UInt_t": "unsigned int",
-    "Seek_t": "int",
-    "Long_t": "long",
-    "ULong_t": "unsigned long",
-    "Float_t": "float",
-    "Float16_t": "float",
-    "Double_t": "double",
-    "Double32_t": "double",
-    "LongDouble_t": "long double",
-    "Text_t": "char",
-    "Bool_t": "bool",
-    "Byte_t": "unsigned char",
-    "Version_t": "short",
-    "Option_t": "char",
-    "Ssiz_t": "int",
-    "Real_t": "float",
-    "Long64_t": "long long",
-    "ULong64_t": "unsigned long long",
-    "Axis_t": "double",
-    "Stat_t": "double",
-    "Font_t": "short",
-    "Style_t": "short",
-    "Marker_t": "short",
-    "Width_t": "short",
-    "Color_t": "short",
-    "SCoord_t": "short",
-    "Coord_t": "double",
-    "Angle_t": "float",
-    "Size_t": "float",
-    "Int8_t": "signed char",
-    "UInt8_t": "unsigned char",
-    "Int16_t": "short",
-    "UInt16_t": "unsigned short",
-    "Int32_t": "int",
-    "UInt32_t": "unsigned int",
-    "Int64_t": "long",
-    "UInt64_t": "unsigned long",
-    "Handle_t": "unsigned long",
-    "Window_t": "unsigned long",
-    "Pixel_t": "unsigned long",
-    "Atom_t": "unsigned long",
-    "Longptr_t": "long",
-    "ULongptr_t": "unsigned long",
-}
 
 #: What a ROOT class name looks like, when nothing declared it: TH1F, RooRealVar, RVec...
 CLASS = re.compile(r"^(?:T[A-Z]|Roo[A-Z]|R[A-Z][a-z]|TMVA|Math[A-Z])\w*$")
@@ -290,6 +240,13 @@ def _session() -> Iterator[None]:
         NULL_POINTER[0] = before
 
 
+def _loaded(module: dict[str, Any], made: Any) -> None:
+    """A macro's names from a header a loaded library was built from are the library's."""
+    from .library.loading import rebind
+
+    rebind(module, made)
+
+
 def _data(obj: str, args: list[str]) -> str:
     """``s.Data()`` of a string: the string, which is what a ``TString``'s holds."""
     return obj
@@ -346,6 +303,7 @@ ROOT = Dialect(
     shown=returned.shown,
     status=returned.status,
     session=_session,
+    loaded=_loaded,
     sources=(Path(__file__).parent,),
 )
 
