@@ -17,8 +17,10 @@ library linked from sources, ``lib<NAME>.xrdlib``. ``executable`` writes a
 program, ``NAME``, that runs as ``xrdroot run SOURCE... -- args`` with the
 libraries loaded first, in the Python that built it, from any directory.
 ``aclic`` is ACLiC's ``macro_C.so``: ``macro_C.xrdlib`` beside the macro, or
-in ``--out``. Each exits ``0`` when built, ``1`` with the reason on standard
-error when not.
+in ``--out``. Each exits ``0`` when built, ``1`` with rootcling's reason on
+standard error when a file is missing, and ``2`` with one line, ``xrdroot
+build: file:line: why``, for C++ the translator refuses: a build that cannot be
+done here.
 """
 
 from __future__ import annotations
@@ -29,8 +31,6 @@ import stat
 import sys
 from pathlib import Path
 from typing import Any
-
-from ..pycxx.errors import CxxError
 
 __all__ = ["add_parser", "run", "launcher"]
 
@@ -70,9 +70,11 @@ def add_parser(subparsers: Any) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
+    from ..pycint.library import BuildError
+
     try:
         STEPS[args.step](args)
-    except CxxError as why:
+    except BuildError as why:  # what the translator refuses goes on, said on one line, as 2
         sys.stderr.write(f"Error: {why}\n")
         return 1
     return 0
@@ -100,7 +102,7 @@ def _aclic(args: argparse.Namespace) -> Path | None:
 
     path, options = split(args.macro)
     library = compiled(Path(path), force="++" in options or "f" in options, name=args.name,
-                       out=args.out)  # fmt: skip
+                       out=args.out, explain=False)  # fmt: skip
     return library.path
 
 

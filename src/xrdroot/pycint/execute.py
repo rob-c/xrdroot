@@ -28,7 +28,6 @@ from ..pycxx.translation import translation
 from .dialect import ROOT as DIALECT
 from .library import aclic
 from .library import loading as libraries
-from .library.manifest import stem_of
 from .runtime import ROOT
 
 __all__ = [
@@ -40,6 +39,7 @@ __all__ = [
     "process_line",
     "split_call",
     "called",
+    "exists",
     "arguments",
     "EXTENSIONS",
     "MacroError",
@@ -126,6 +126,19 @@ def _add_dynamic_path(directory: str) -> None:
     gSystem.AddDynamicPath(directory)
 
 
+def exists(spec: str) -> bool:
+    """Whether what ``.x spec`` runs is there: the macro's file, or a library on the path."""
+    path = aclic.split(spec)[0]
+    return libraries.find(path) is not None if aclic.is_library(path) else Path(path).is_file()
+
+
+def _preread(where: Path) -> None:
+    """A macro's libraries loaded before its library is built or called - when it is a
+    macro, not a library."""
+    if where.is_file():
+        _read(where)
+
+
 def _read(where: Path) -> str:
     """A macro's text, the libraries it loads loaded."""
     source = where.read_text(encoding="utf-8", errors="replace")
@@ -159,8 +172,8 @@ def run(
 ) -> Any:
     """``.x path(args)``: translate the macro at ``path`` and run it, as ROOT would - or, for
     ``path+``, build its library, load it and call its function from there."""
-    if aclic.split(str(path))[1]:
-        _read(_path(path))
+    if aclic.is_compiled(str(path)):
+        _preread(_path(path))
         return aclic.call(str(path), tuple(args))[0]
     where = _path(path)
     source = where.read_text(encoding="utf-8", errors="replace")
@@ -195,8 +208,8 @@ def run_program(
     """
     wheres = [_path(path) for path in paths]
     for where in wheres:
-        _read(where)
-    if aclic.split(str(paths[0]))[1]:
+        _preread(where)
+    if aclic.is_compiled(str(paths[0])):
         return _compiled(str(paths[0]), tuple(args))
     return _cxx.run_program(wheres, args, argv, dialect=DIALECT, use_cache=use_cache)
 
@@ -221,7 +234,7 @@ def load(path: str | Path, *, root: Any = None) -> dict[str, Any]:
     if aclic.split(text)[1]:
         _read(_path(text))
         return aclic.load(text).module
-    if stem_of(text) != os.path.basename(text):
+    if aclic.is_library(text):
         return _library(text)
     where = _path(path)
     source = where.read_text(encoding="utf-8", errors="replace")
@@ -267,7 +280,8 @@ def _executed(text: str, root: Any) -> Any:
     ``.x`` prints it - then handed back, as ``ProcessLine`` returns it."""
     given = split_call(text)[1]
     spec = called(text)
-    if aclic.split(spec)[1]:
+    if aclic.is_compiled(spec):
+        _preread(_path(spec))
         value, made = aclic.call(spec, arguments(given))
         spelled = made.returns
     else:

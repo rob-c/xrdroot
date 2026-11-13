@@ -548,3 +548,10 @@ def test_a_macro_compiled_with_aclic_on_the_command_line(
     assert run("root", "-l", "-b", "-q", "-e", ".L sq.C+", "-e", "sq(4)") == 16
     assert run("root", "-l", "-b", "-q", "bad.C+") == 1
     assert capsys.readouterr().err.endswith("Error in <ACLiC>: Compilation failed!\n")
+
+
+def test_return_on_the_command_line_hands_back_its_value() -> None:
+    write("five.C", "int five() { return 5; }")
+    assert run("root", "-l", "-b", "-q", "five.C", "-e", "return") == 0
+    assert run("root", "-l", "-b", "-q", "-e", "return 3") == 3
+    assert run("root", "-l", "-b", "-q", "-e", "int k = 2;", "-e", "return k + 1;") == 3

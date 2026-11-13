@@ -76,8 +76,8 @@ ROOT_LIBRARIES = frozenset(
     """.split()
 )
 
-#: Those ROOT itself loads as it starts: loading one is ``1``, loaded already.
-STARTED = frozenset({"libCore", "libRIO", "libThread", "libCling", "libRint"})
+#: Those ROOT itself loads as it starts, in its order: loading one is ``1``, loaded already.
+STARTED = ("libRint", "libCore", "libRIO", "libThread", "libCling")
 
 #: The environment variables whose directories are searched after the dynamic path.
 ENVIRONMENT = ("ROOT_LIBRARY_PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH")
@@ -240,8 +240,9 @@ def unload(name: str) -> None:
 
 
 def loaded_names() -> list[str]:
-    """The libraries loaded, by name, in the order they were: ``gSystem->GetLibraries()``."""
-    return [each.library.name for each in LOADED.values()] + sorted(ROOT_LOADED)
+    """The libraries loaded, in the order they were - ROOT's own it starts with first, a
+    translated one by its file: ``gSystem->GetLibraries()``, ``.libraries``."""
+    return [*STARTED, *LOADED, *sorted(ROOT_LOADED)]
 
 
 def forget_all() -> None:

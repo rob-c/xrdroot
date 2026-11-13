@@ -16,6 +16,7 @@ is; ``f`` forces a build; ``c`` builds without loading.
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -25,8 +26,8 @@ from ...pycxx.errors import CxxError
 from ...pycxx.execute import entry, placed
 from ...pycxx.translation import Translation
 from ..dialect import ROOT as DIALECT
-from .build import build_aclic, translator_version
-from .loading import HEADERS, LOADED, Loaded, load_library
+from .build import BuildError, build_aclic, explained, translator_version
+from .loading import HEADERS, LOADED, Loaded, find, load_library
 from .manifest import SUFFIX, Library, read, stem_of
 from .translate import digest
 
@@ -39,6 +40,8 @@ __all__ = [
     "load",
     "call",
     "compile_macro",
+    "is_compiled",
+    "is_library",
 ]
 
 #: ``macro.C+``, ``macro.C++g``: the file, ACLiC's one or two pluses, and its options.
@@ -91,9 +94,18 @@ def _system() -> str:
 
 
 def compiled(
-    macro: Path, *, force: bool = False, name: str | None = None, out: Path | None = None
+    macro: Path,
+    *,
+    force: bool = False,
+    name: str | None = None,
+    out: Path | None = None,
+    explain: bool = True,
 ) -> Library:
-    """``macro``'s library, built unless an up-to-date one is there and nothing forces it."""
+    """``macro``'s library, built unless an up-to-date one is there and nothing forces it.
+
+    With ``explain``, what the translator refuses is said as a compiler's error and
+    ``Compilation failed!`` raised, as a session's ACLiC says it; else it is raised as is.
+    """
     from ...pyroot.core.messages import message
 
     place = library_place(macro, out)
@@ -102,7 +114,14 @@ def compiled(
     if not force and existing is not None and _current(existing):
         return existing
     message("Info", f"{_system()}::ACLiC", f"creating shared library {place / named}{SUFFIX}")
-    return build_aclic(macro, named, place)
+    try:
+        return build_aclic(macro, named, place)
+    except BuildError:
+        raise
+    except CxxError as why:
+        if not explain:
+            raise
+        raise explained(why) from None
 
 
 def _loaded(library: Library) -> Loaded:
@@ -122,10 +141,31 @@ def load(spec: str) -> Loaded:
     return _loaded(compiled(Path(path), force="++" in options or "f" in options))
 
 
+def is_library(path: str) -> bool:
+    """Whether ``path`` names a library - ``x_C.so``, ``libFoo.dylib`` - rather than a macro."""
+    return stem_of(path) != os.path.basename(path)
+
+
+def is_compiled(spec: str) -> bool:
+    """Whether ``spec`` runs from a library: ACLiC's ``x.C+``, or a library, ``x_C.so``."""
+    path, options = split(spec)
+    return bool(options) or is_library(path)
+
+
+def _library(name: str) -> Loaded:
+    """The library ``name`` names, loaded - as ``.x x_C.so`` loads it before calling it."""
+    found = find(name)
+    library = read(found) if found is not None else None
+    if library is None:
+        raise FileNotFoundError(f"{name} is no library xrdroot built, on the library path")
+    return load_library(library)
+
+
 def call(spec: str, args: tuple[Any, ...] = ()) -> tuple[Any, Translation]:
-    """``.x macro.C+(args)``: the library loaded, its function called; what it returned, and
-    the translation that says how to print it."""
-    loaded = load(spec)
+    """``.x macro.C+(args)`` - or ``.x macro_C.so(args)``: the library built if it has to be,
+    loaded, its function called; what it returned, and the translation that says how to
+    print it."""
+    loaded = load(spec) if split(spec)[1] else _library(spec)
     made = loaded.library.translation()
     function = entry(made, loaded.module, made.file, args)
     if function is None:

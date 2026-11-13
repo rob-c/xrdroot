@@ -34,7 +34,7 @@ from xrdroot.pycint.library import (
 )
 from xrdroot.pycint.library.build import translator_version
 from xrdroot.pycxx import cache
-from xrdroot.pycxx.errors import CxxError
+from xrdroot.pycxx.errors import CxxError, Refusal
 from xrdroot.pycxx.runtime.namespace import DECLARED
 
 #: A header with a class in a namespace, a static member and a function only declared.
@@ -102,6 +102,11 @@ def _isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]
                 delattr(ROOT, name)
 
 
+def ours() -> list[str]:
+    """The libraries loaded past those ROOT starts with, by name."""
+    return [stem_of(name) for name in loaded_names()[len(loading.STARTED) :]]
+
+
 def write(name: str, text: str) -> Path:
     path = Path(name)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -157,35 +162,46 @@ def test_a_selection_file_is_genreflex_and_a_library_has_no_rootmap(
 
 
 def test_a_build_refuses_missing_files_and_cpp_it_cannot_translate_as_rootcling_does(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(BuildError, match=r"rootcling: compilation failure \(gone.h\)"):
         build_dictionary("X", [Path("gone.h")])
     assert capsys.readouterr().err == "fatal error: 'gone.h' file not found\n"
+    with pytest.raises(BuildError, match=r"genreflex: compilation failure \(gone.xml\)"):
+        build_dictionary("X", [write("ok.h", "")], selection=Path("gone.xml"))
+    capsys.readouterr()
     write("bad.h", "class C { int x = ; };")
-    with pytest.raises(BuildError, match=r"genreflex: compilation failure \(libX\)"):
+    with pytest.raises(Refusal) as refused:  # a build that cannot be done, as refused
         build_dictionary("X", [Path("bad.h")], selection=write("s.xml", "<lcgdict/>"))
-    assert capsys.readouterr().err.startswith(f"{Path('bad.h').resolve()}:1:1: error: ")
-
-    def unplaced(*args: object) -> None:
-        raise CxxError("no place")
-
-    monkeypatch.setattr("xrdroot.pycint.library.build.translated_unit", unplaced)
-    with pytest.raises(BuildError, match="build library"):
-        build_library("X", [Path("bad.h")])
-    assert capsys.readouterr().err == "error: no place\n"
+    assert refused.value.where is not None and refused.value.where.line == 1
+    assert capsys.readouterr().err == ""
 
 
 def test_aclic_s_library_is_the_macro_s_translation_with_its_entry(
-    capsys: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     write("twice.C", "int twice(int n = 2) { return 2 * n; }")
     library = build_aclic(Path("twice.C"), "twice_C", Path("."))
     assert (library.kind, library.entry, library.returns) == ("aclic", "twice", "int")
     write("broken.C", "int broken() { return ; ; }}")
-    with pytest.raises(BuildError, match="Compilation failed!"):
+    with pytest.raises(Refusal):
         build_aclic(Path("broken.C"), "broken_C", Path("."))
-    assert capsys.readouterr().err.startswith("broken.C:1:1: error: ")
+    with pytest.raises(Refusal):
+        compiled(Path("broken.C"), explain=False)
+    with pytest.raises(BuildError, match="ACLiC: compilation failure"):
+        compiled(Path("gone.C"))
+    capsys.readouterr()
+    with pytest.raises(BuildError, match="Compilation failed!"):
+        compiled(Path("broken.C"))
+    assert "broken.C:1:1: error: " in capsys.readouterr().err
+
+    def unplaced(*args: object) -> None:
+        raise CxxError("no place")
+
+    monkeypatch.setattr("xrdroot.pycint.library.build.translated_unit", unplaced)
+    with pytest.raises(BuildError):
+        compiled(Path("twice.C"), force=True)
+    assert capsys.readouterr().err.endswith("error: no place\n")
 
 
 # -- what a library file is ---------------------------------------------------------------
@@ -266,11 +282,12 @@ def test_a_library_is_loaded_by_name_once_and_what_it_defines_is_found_everywher
     shapes()
     assert load("libShapes") == 0
     assert load("./libShapes.so") == 1
-    assert loaded_names() == ["libShapes"]
+    assert ours() == ["libShapes"]
     shape = ROOT.geo.Shape(3)
     assert (shape.Area(), ROOT.CountShapes(), ROOT.geo.inner.Depth()) == (9.0, 1, 2)
     assert repr(DECLARED["geo"]) == "<namespace geo>"
-    assert ROOT.gSystem.GetLibraries() == "libShapes"
+    assert ROOT.gSystem.GetLibraries("libShapes") == str(Path("libShapes.xrdlib").resolve())
+    assert ROOT.gSystem.GetLibraries().startswith("libRint libCore ")
 
 
 def test_a_library_is_looked_for_where_root_looks_and_as_lib_name(
@@ -308,7 +325,7 @@ def test_a_library_loads_the_libraries_it_needs_first() -> None:
     write("B.h", "int fromB() { return 2; }")
     build_library("B", [Path("B.h")], libraries=["libA"])
     assert load("libB") == 0
-    assert loaded_names() == ["libA", "libB"]
+    assert ours() == ["libA", "libB"]
     write("t.C", "#include <gtest/gtest.h>\nTEST(T, t) { EXPECT_EQ(fromA(), 1); }")
     assert run_program(["t.C"]) == 0  # its tests, not the library's main()
     library = read(Path("libB.xrdlib"))
@@ -362,7 +379,7 @@ def test_a_name_a_library_provides_is_autoloaded_as_its_rootmap_allows() -> None
     build_library("A", [Path("A.h")])  # no rootmap: never autoloaded
     write("auto.C", "int auto_() { return geo::Shape(2).Area() + CountShapes(); }")
     assert process_line("CountShapes()") == 0  # loading libShapes, whose count is 0 so far
-    assert loaded_names() == ["libShapes"]
+    assert ours() == ["libShapes"]
     assert not loading.autoload("_private") and not loading.autoload("fromA")
     assert not loading.autoload("geo")  # its library is loaded already
     with pytest.raises(AttributeError):
@@ -494,7 +511,7 @@ def test_a_macro_s_library_pragmas_load_before_it_is_translated(
     monkeypatch.setenv("LIBS", "libs")
     preload('R__ADD_LIBRARY_PATH($LIBS)\nR__LOAD_LIBRARY(libShapes)\n'
             '#pragma cling add_library_path("libs")\n  # pragma cling load("libA")\n')  # fmt: skip
-    assert loaded_names() == ["libShapes", "libA"]
+    assert ours() == ["libShapes", "libA"]
     write("loads.C", 'R__LOAD_LIBRARY("libs/libA.so")\nint loads() { return fromA(); }')
     assert run("loads.C") == 7
 
@@ -505,3 +522,37 @@ def test_dot_l_of_a_library_loads_it(capsys: pytest.CaptureFixture[str]) -> None
     assert dot_l("libTree.so") == {}
     assert dot_l("libNope.so") == {}
     assert process_line(".L libShapes.so") == 0
+
+
+def test_a_library_is_run_as_its_macro_and_listed_by_dot_libraries(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from xrdroot.cli import main
+    from xrdroot.pycint.execute import exists
+
+    write("hello.C", 'int hello(int n = 1) { printf("hello %d\\n", n); return n; }')
+    assert compile_macro("hello.C", "kc") == 1
+    capsys.readouterr()
+    assert (exists("hello_C.so"), exists("gone_C.so"), exists("hello.C+"), exists("x.C")) == (
+        True, False, True, False)  # fmt: skip
+    assert main(["root", "-l", "-b", "-q", "hello_C.so(3)", "-e", ".libraries"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("Processing hello_C.so(3)...\nhello 3\n(int) 3\nlibRint\nlibCore\n")
+    assert out.endswith(f"{Path('hello_C.xrdlib').resolve()}\n")
+    assert process_line(".x hello_C.so(2)") == 2
+    assert run("hello_C.dylib", (4,)) == 4
+
+
+def test_root_refuses_a_library_that_is_not_there_and_goes_into_a_directory(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from xrdroot.cli import main
+
+    assert main(["root", "-l", "-b", "-q", "gone_C.so"]) == 2
+    Path("sub").mkdir()
+    capsys.readouterr()
+    assert main(["root", "-l", "-b", "-q", "sub", "-e", "gSystem->pwd()"]) == 255
+    assert capsys.readouterr().out == f'(const char *) "{Path.cwd()}"\n'  # root went into it
+    assert Path.cwd().name == "sub"
+    with pytest.raises(FileNotFoundError, match="no library xrdroot built"):
+        aclic.call("gone_C.so")

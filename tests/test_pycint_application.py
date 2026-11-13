@@ -16,6 +16,7 @@ from xrdroot.pycint.runtime import ROOT as HOST
 from xrdroot.pycint.runtime.application import TApplication, gApplication, started
 from xrdroot.pycxx import cache
 from xrdroot.pycxx.runtime.namespace import DECLARED
+from xrdroot.pyroot.core import troot
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +31,7 @@ def _isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]
         loading.forget_all()
         DECLARED.clear()
         DECLARED.update(saved)
+        troot.set_line_processor(None)  # as a fresh namespace has it: found when first needed
         for name in set(vars(ROOT)) - names:  # what gInterpreter.Declare made ROOT's
             if getattr(getattr(ROOT, name), "__module__", None) == "__cint__":
                 delattr(ROOT, name)
@@ -76,7 +78,7 @@ def test_without_the_translator_a_library_loads_as_nothing_and_a_macro_compiles_
 def test_what_cpp_declared_is_a_name_of_the_root_namespace() -> None:
     process_line(".L " + str(_write("decl.C", "int declared_here() { return 11; }")))
     assert ROOT.declared_here() == 11
-    assert ROOT.gInterpreter.Load("libNope") == -1
+    assert (ROOT.gInterpreter.Load("libNope"), ROOT.gInterpreter.Load("libTree")) == (-1, 0)
 
 
 def _write(name: str, text: str) -> Path:
@@ -118,3 +120,10 @@ def test_the_command_aclic_would_build_with_is_kept_for_a_macro_to_edit() -> Non
     ROOT.gSystem.SetMakeSharedLib(before + " -lm")
     assert ROOT.gSystem.GetMakeSharedLib().endswith(" -lm")
     ROOT.gSystem.SetMakeSharedLib(before)
+
+
+def test_a_function_named_like_a_python_builtin_is_found_by_its_cpp_name() -> None:
+    process_line(".L " + str(_write("comp.C", "int compile(int n) { return n + 1; }")))
+    assert ROOT.compile(1) == 2
+    _write("use.C", "int use() { return compile(2); }")
+    assert process_line(".x use.C") == 3

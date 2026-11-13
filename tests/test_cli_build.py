@@ -81,8 +81,12 @@ def test_a_build_that_fails_exits_1_with_the_reason(capsys: pytest.CaptureFixtur
     assert main(["build", "executable", "--name", "p", "gone.cxx"]) == 1
     assert capsys.readouterr().err == "Error: gone.cxx: no such file\n"
     write("bad.cxx", "int main() { return ; ; }}")
-    assert main(["build", "executable", "--name", "p", "bad.cxx"]) == 1
-    assert capsys.readouterr().err.startswith("Error: ")
+    assert main(["build", "executable", "--name", "p", "bad.cxx"]) == 2  # cannot be done
+    (said,) = capsys.readouterr().err.splitlines()  # one line, as every refusal is
+    assert said.startswith("xrdroot build: ") and "bad.cxx:1: " in said
+    write("bad.C", "int bad() { return ; ; }}")
+    assert main(["build", "aclic", "bad.C+kc"]) == 2
+    assert capsys.readouterr().err.splitlines()[-1].startswith("xrdroot build: ")
 
 
 def test_build_executable_writes_a_program_that_runs_as_xrdroot_run_from_anywhere(
@@ -138,3 +142,20 @@ def test_xrdroot_run_loads_libraries_first_and_names_the_program(
     assert main(["run", "m.C+(5)"]) == 5
     assert main(["run", "--python", "m.C+"]) == 0
     assert "def m(n):" in capsys.readouterr().out
+
+
+def test_a_library_built_where_its_dictionary_is_adds_its_sources_to_it() -> None:
+    write("S.h", "namespace geo { class S { public: int Area() const; }; }")
+    write("S.cxx", '#include "S.h"\nint geo::S::Area() const { return 4; }')
+    write("LinkDef.h", "#pragma link C++ class geo::S+;\n")
+    assert main(["build", "dictionary", "--name", "S", "--linkdef", "LinkDef.h",
+                 "--library", "libX", "S.h"]) == 0  # fmt: skip
+    assert main(["build", "library", "--name", "S", "--library", "libY", "S.cxx"]) == 0
+    library = read(Path("libS.xrdlib"))
+    assert library is not None
+    assert (library.kind, library.rootmap, library.libraries) == (
+        "dictionary", True, ["libX", "libY"])  # fmt: skip
+    assert [Path(each).name for each in library.resolved(library.sources)] == ["S.h", "S.cxx"]
+    assert main(["build", "library", "--name", "S", "S.cxx"]) == 0  # again: nothing twice
+    library = read(Path("libS.xrdlib"))
+    assert library is not None and len(library.sources) == 2

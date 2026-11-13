@@ -4,11 +4,13 @@ Each is a translation written to ``<name>.xrdlib`` (:mod:`.manifest`). A
 dictionary or a library is its files translated as one unit, as a unity
 build compiles them; ACLiC's is the macro's own translation, with the
 function named like the file as its entry. What a build cannot do it says as
-rootcling says it, on standard error - ``file:line:1: error: ...`` and then
+rootcling says a missing file - ``fatal error: 'x.h' file not found`` and then
 ``Error: rootcling: compilation failure`` - and fails with a
-:class:`BuildError`; what a LinkDef or selection file asks for and the
-headers do not declare is ``Warning: Unused class rule: Foo``, as both
-rootcling and genreflex warn and carry on.
+:class:`BuildError`; C++ the translator refuses is raised as the refusal it is
+(``xrdroot build`` says it on one line and exits 2, a session asking ACLiC
+says it as a compiler would, then ``Compilation failed!``); what a LinkDef or
+selection file asks for and the headers do not declare is ``Warning: Unused
+class rule: Foo``, as both rootcling and genreflex warn and carry on.
 """
 
 from __future__ import annotations
@@ -20,11 +22,18 @@ from pathlib import Path
 from ...pycxx import cache
 from ...pycxx.errors import CxxError
 from ..dialect import ROOT as DIALECT
-from .manifest import Library, write
+from .manifest import SUFFIX, Library, read, write
 from .selection import requested
 from .translate import Declared, digest, translated_unit
 
-__all__ = ["BuildError", "build_dictionary", "build_library", "build_aclic", "translator_version"]
+__all__ = [
+    "BuildError",
+    "build_dictionary",
+    "build_library",
+    "build_aclic",
+    "explained",
+    "translator_version",
+]
 
 
 class BuildError(CxxError):
@@ -46,24 +55,22 @@ def _missing(paths: Sequence[Path], tool: str) -> None:
             raise BuildError(f"{tool}: compilation failure ({path})")
 
 
-def _failed(why: CxxError, tool: str, what: str) -> BuildError:
-    """A refusal as a compiler's error at the C++ line, then the tool's own last word."""
+def explained(why: CxxError) -> BuildError:
+    """A translator's refusal said as a compiler's error at the C++ line, then ACLiC's last
+    word: what a session that asked ACLiC for a library says."""
     where = why.where
     spot = f"{where.file}:{where.line}:1: " if where is not None else ""
     sys.stderr.write(f"{spot}error: {why.why}\n")
-    return BuildError(f"{tool}: compilation failure ({what})")
+    return BuildError("Compilation failed!")
 
 
-def _unit(name: str, files: Sequence[Path], includes: Sequence[Path], tool: str) -> Library:
-    """``files`` translated as one unit into the library ``name``."""
-    _missing(files, tool)
+def _unit(name: str, files: Sequence[Path], includes: Sequence[Path]) -> Library:
+    """``files`` translated as one unit into the library ``name``. What the translator
+    refuses is raised as it refuses it: a build that cannot be done, not one that failed."""
     source = "".join(f'#include "{path.resolve()}"\n' for path in files)
     unity = str(Path.cwd() / name)
     directories = [*includes, *(path.parent for path in files), Path.cwd()]
-    try:
-        made, found = translated_unit(source, unity, list(dict.fromkeys(directories)))
-    except CxxError as why:
-        raise _failed(why, tool, name) from None
+    made, found = translated_unit(source, unity, list(dict.fromkeys(directories)))
     inputs = [str(path.resolve()) for path in files]
     headers = _absolute(made.included)
     return Library(
@@ -111,11 +118,14 @@ def build_dictionary(
 ) -> Path:
     """rootcling's (or genreflex's) dictionary of ``files`` as ``lib<name>.xrdlib``; its path."""
     tool = "genreflex" if selection is not None and linkdef is None else "rootcling"
-    _missing([each for each in (linkdef, selection) if each is not None], tool)
-    library = _unit(_library_name(name), files, includes, tool)
+    _missing([*files, *(each for each in (linkdef, selection) if each is not None)], tool)
+    place, named = out or Path.cwd(), _library_name(name)
+    inputs, existing = _added(place, named, files)
+    library = _unit(named, inputs, includes)
     _unused(requested(linkdef, selection), _found(library))
-    library.kind, library.rootmap, library.libraries = "dictionary", rootmap, list(libraries)
-    return write(library, out or Path.cwd())
+    library.kind, library.rootmap = "dictionary", rootmap
+    library.libraries = _joined(existing, libraries)
+    return write(library, place)
 
 
 def _found(library: Library) -> Declared:
@@ -133,11 +143,33 @@ def build_library(
     """A library compiled from ``files``, as ``lib<name>.xrdlib``; its path.
 
     It carries no rootmap: as a library ROOT links without a dictionary, it is
-    there once loaded, and found by no name before.
+    there once loaded, and found by no name before. Built where a library of
+    that name is already - the dictionary CMake compiles with its sources - it
+    adds the sources to it, keeping what it was.
     """
-    library = _unit(_library_name(name), files, includes, "xrdroot build library")
-    library.rootmap, library.libraries = False, list(libraries)
-    return write(library, out or Path.cwd())
+    _missing(files, "xrdroot build library")
+    place, named = out or Path.cwd(), _library_name(name)
+    inputs, existing = _added(place, named, files)
+    library = _unit(named, inputs, includes)
+    if existing is not None:
+        library.kind, library.rootmap = existing.kind, existing.rootmap
+    else:
+        library.rootmap = False
+    library.libraries = _joined(existing, libraries)
+    return write(library, place)
+
+
+def _added(place: Path, name: str, files: Sequence[Path]) -> tuple[list[Path], Library | None]:
+    """The files a library is built from: those of the library of that name already there,
+    if one is, and ``files`` added to them."""
+    existing = read(place / f"{name}{SUFFIX}")
+    before = [Path(each) for each in existing.resolved(existing.sources)] if existing else []
+    return list(dict.fromkeys([*before, *(each.resolve() for each in files)])), existing
+
+
+def _joined(existing: Library | None, libraries: Sequence[str]) -> list[str]:
+    """The libraries to load first: the existing library's, and those given."""
+    return list(dict.fromkeys([*(existing.libraries if existing else []), *libraries]))
 
 
 def _library_name(name: str) -> str:
@@ -146,16 +178,11 @@ def _library_name(name: str) -> str:
 
 
 def build_aclic(macro: Path, name: str, out: Path) -> Library:
-    """ACLiC's library of ``macro``: its translation, as ``<out>/<name>.xrdlib``."""
+    """ACLiC's library of ``macro``: its translation, as ``<out>/<name>.xrdlib``; what the
+    translator refuses is raised as it refuses it."""
     _missing([macro], "ACLiC")
     text = macro.read_text(encoding="utf-8", errors="replace")
-    try:
-        made, found = translated_unit(text, str(macro), [macro.parent])
-    except CxxError as why:
-        where = why.where
-        spot = f"{where.file}:{where.line}:1: " if where is not None else ""
-        sys.stderr.write(f"{spot}error: {why.why}\n")
-        raise BuildError("Compilation failed!") from None
+    made, found = translated_unit(text, str(macro), [macro.parent])
     inputs = [str(macro.resolve())]
     headers = _absolute(made.included)
     library = Library(

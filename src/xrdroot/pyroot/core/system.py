@@ -101,9 +101,10 @@ class TSystem(TNamed):
             unloading(str(module))
 
     def GetLibraries(self, regexp: Any = "", option: Any = "", isRegexp: bool = True) -> str:
-        """``GetLibraries``: the libraries loaded, by name."""
+        """``GetLibraries``: the libraries loaded - those whose name has ``regexp`` in it."""
         listed = _translator("loaded_libraries")
-        return " ".join([*self._libraries, *(listed() if listed is not None else [])])
+        names = [*self._libraries, *(listed() if listed is not None else [])]
+        return " ".join(name for name in names if str(regexp or "") in name)
 
     def AddIncludePath(self, path: Any) -> None:
         self._include_path = f"{self._include_path} {path}".strip()

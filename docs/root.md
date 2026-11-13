@@ -3247,8 +3247,8 @@ after `Processing x.C(1, 2)...`. Each was checked against ROOT 6.40.04's
 - `-q` exits with the value of the last line or macro run, as ROOT's
   `ProcessLine` hands it back: a macro's value, `int x = 4;` is 4,
   `printf("ab");` 2, a pointer or an object 255, a `void` 0, code that did not
-  compile 1 (but 0 for a name nothing declares), `.L` and `.q` 0, `.ls` and
-  `.pwd` 1. `exit(n)` and `gApplication->Terminate(n)` end it with `n`.
+  compile 1 (but 0 for a name nothing declares), `.ls`, `.pwd`, `.cd` and
+  `.help` 1, every other dot command 0. `exit(n)` and `gApplication->Terminate(n)` end it with `n`.
 - Without `-q`, standard input is read after the command line, and the session
   ends with 0 at `.q` or at the end of the input; a newline is printed before
   the command line's output, as `root` prints one.

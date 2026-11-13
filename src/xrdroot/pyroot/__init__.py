@@ -115,7 +115,8 @@ def _declared(name: str) -> _typing.Any:
     from ..pycxx.runtime.namespace import DECLARED
     from .core.troot import _translator, gInterpreter
 
-    if name in DECLARED:
-        return DECLARED[name]
+    for each in (name, name + "_"):  # ``compile_``: a C++ name a Python builtin also has
+        if each in DECLARED:
+            return DECLARED[each]
     autoload = _translator("autoload") if gInterpreter.autoloading else None
     return DECLARED.get(name) if autoload is not None and autoload(name) else None

@@ -159,11 +159,12 @@ def _logon(prompt: Interpreter, name: str) -> None:
 
 def _missing(given: str) -> str | None:
     """What ``root`` says of a file on its command line that is not there - or ``None``."""
-    from ..pycint.execute import called
+    from ..pycint.execute import called, exists
     from ..pycint.library.aclic import split
 
-    path = split(called(given))[0]
-    if os.path.exists(path) or "://" in path:
+    spec = called(given)
+    path = split(spec)[0]
+    if os.path.isdir(path) or exists(spec) or "://" in path:
         return None
     if path.endswith(ROOT_FILES):
         return (f"Warning in <TApplication::GetOptions>: file {path} not found\n"

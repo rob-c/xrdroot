@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 from ...pycxx.errors import CxxError as CintError
 from ..declaring import forget
-from ..execute import arguments, called, load, run_program, split_call
+from ..execute import arguments, called, exists, load, run_program, split_call
 from ..library.aclic import split as split_aclic
 from ..library.build import BuildError
 from ..library.manifest import stem_of
@@ -53,6 +53,7 @@ This is xrdroot's C++ prompt: what is typed is translated into Python and run.
   .cd [dir]          go into a directory of the current file; .cd alone, to the top
   .pwd               where the session is, gDirectory->pwd()
   .files             the files open in the session, and the macros loaded
+  .libraries         the libraries loaded
   .! command         run a shell command
   .> file            send standard output to the file; .> alone sends it back
   .g [name]          the variables declared at the prompt, and their types
@@ -84,7 +85,7 @@ def _run(interp: Interpreter, rest: str) -> list[Said]:
         return [Said("error: .x needs a macro to run: .x file.C, or .x file.C(arguments)", True)]
     path, given = split_call(rest)
     interp.last_status, interp.failed = 1, True  # until it has run: it ends the command line
-    if not Path(path).is_file():
+    if not exists(called(rest)):
         return [_missing(path, "TApplication::ExecuteFile")]
     try:
         interp.last_status = run_program([called(rest)], arguments(given))
@@ -176,6 +177,13 @@ def _redirect(interp: Interpreter, rest: str) -> list[Said]:
     return []
 
 
+def _libraries(interp: Interpreter, rest: str) -> list[Said]:
+    """``.libraries``: every library loaded, ROOT's own that it starts with first."""
+    from ..library.loading import loaded_names
+
+    return [Said(name) for name in loaded_names()]
+
+
 def _help(interp: Interpreter, rest: str) -> list[Said]:
     return [Said(line) for line in HELP.splitlines()]
 
@@ -262,15 +270,16 @@ COMMANDS: dict[str, Callable[[Interpreter, str], list[Said]]] = {
     "quit": _quit,
     "@": _cancel,
     "rawInput": _raw,
+    "libraries": _libraries,
     "O": _optimize,
     "g": _globals,
     "class": _class,
 }
 
 
-#: The commands after which ROOT's ``ProcessLine`` hands back ``0``; ``.x`` hands back the
-#: macro's value, and every other command ``1``.
-SUCCEEDING = frozenset({"L", "U", "!", "@", ">", "q", "qqq", "qqqqq", "qqqqqqq", "exit", "quit"})
+#: The commands after which ROOT's ``ProcessLine`` hands back ``1`` (ROOT's own, which
+#: TRint runs); ``.x`` hands back the macro's value, and every other command ``0``.
+ONE = frozenset({"ls", "pwd", "cd", "help", "?"})
 
 
 def dispatch(interp: Interpreter, line: str) -> list[Said] | None:
@@ -284,5 +293,5 @@ def dispatch(interp: Interpreter, line: str) -> list[Said] | None:
         return [Said(f"error: .{name} is not a command this prompt knows; "
                      ".help lists the ones it does", True)]  # fmt: skip
     if name not in ("x", "X"):
-        interp.last_status = 0 if name in SUCCEEDING else 1
+        interp.last_status = int(name in ONE)
     return command(interp, found["rest"])

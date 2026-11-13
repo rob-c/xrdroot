@@ -11,14 +11,15 @@ loop around it is :mod:`.terminal`; tests feed it directly.
 
 from __future__ import annotations
 
+import os
+import re
 import sys
 from pathlib import Path
 from typing import TextIO
 
 from ...pycxx.errors import CxxError as CintError
 from ...pycxx.errors import MacroError
-from ..execute import arguments, called, run_program, split_call
-from ..library.aclic import split as aclic_split
+from ..execute import arguments, called, exists, run_program, split_call
 from ..returned import status as exit_status
 from .commands import Said, dispatch, failure
 from .lexer import Piece, pending, pieces
@@ -26,6 +27,9 @@ from .unit import Diagnostic, Outcome, Unit
 from .values import shown
 
 __all__ = ["Interpreter", "Said", "MACROS", "CONTINUED"]
+
+#: ``return`` and ``return x;`` typed by themselves, as ``root -e return`` gives them.
+RETURN = re.compile(r"^\s*return\b\s*(?P<value>.*?)\s*;?\s*$", re.S)
 
 #: The extensions of the files given on the command line that are ROOT files, not macros.
 ROOT_FILES = (".root",)
@@ -94,26 +98,42 @@ class Interpreter:
         self.buffer = []
 
     def run(self, text: str, number: int) -> list[Said]:
-        """A whole input of C++, run as prompt ``number``: its value said, or what went wrong."""
+        """A whole input of C++, run as prompt ``number``: its value said, or what went wrong.
+
+        ``return x`` - as ``root -e 'return 3'`` - hands back ``x``'s value, unprinted;
+        ``return`` alone hands back nothing.
+        """
+        text = self._returned(text)
         parts = pieces(text)
         if not parts:
             return []
         try:
             outcome = self._outcome(number, parts, text)
         except Diagnostic as why:
-            # ROOT's ProcessLine hands back 1 for code it could not compile, but 0 when it
-            # stopped at a name nothing declares.
-            undeclared = "undeclared identifier" in why.why
-            self.last_status = 0 if undeclared else 1
-            if not (why.translating or undeclared):
-                self._failed_running()
-            return [Said(str(why), True)]
+            return [self._diagnosed(why)]
         except SystemExit as leaving:
             self.leave(leaving)
             return []
         self.last_status = exit_status(outcome.value, outcome.spelled) if outcome.valued else 0
         line = shown(outcome.value, outcome.spelled, outcome.lvalue) if outcome.printed else None
         return [Said(line)] if line else []
+
+    def _returned(self, text: str) -> str:
+        """``return x``'s ``x;``, the status ``0`` until it has run; any other input as it is."""
+        returned = RETURN.match(text)
+        if returned is None:
+            return text
+        self.last_status = 0
+        return returned["value"] + ";" if returned["value"] else ""
+
+    def _diagnosed(self, why: Diagnostic) -> Said:
+        """An input that did not run, said - with the status ROOT's ``ProcessLine`` gives: 1
+        for code it could not compile, but 0 when it stopped at a name nothing declares."""
+        undeclared = "undeclared identifier" in why.why
+        self.last_status = 0 if undeclared else 1
+        if not (why.translating or undeclared):
+            self._failed_running()
+        return Said(str(why), True)
 
     def _outcome(self, number: int, parts: list[Piece], text: str) -> Outcome:
         """Run the input, its value caught even unprinted - or, if the translator will not
@@ -154,7 +174,7 @@ class Interpreter:
         sys.stdout.flush()
         spec = called(given)
         self.last_status, self.failed = 1, True  # until it has run
-        if not Path(aclic_split(spec)[0]).is_file():
+        if not exists(spec):
             path = split_call(given)[0]
             return [Said(f"Error in <TApplication::ExecuteFile>: macro {path} not found in "
                          "path .", True)]  # fmt: skip
@@ -172,7 +192,11 @@ class Interpreter:
         return []
 
     def given(self, argument: str) -> list[Said]:
-        """A file from the command line: a ROOT file attached, anything else run as a macro."""
+        """A file from the command line: a ROOT file attached, a directory gone into, as
+        ``root dir`` does, anything else run as a macro."""
+        if os.path.isdir(argument):
+            os.chdir(argument)
+            return []
         if split_call(argument)[0].endswith(ROOT_FILES):
             return self.attach(argument)
         return self.macro(argument)
