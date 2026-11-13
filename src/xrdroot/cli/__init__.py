@@ -67,6 +67,7 @@ COMMANDS = [
     "draw",
     "info",
     "merge",
+    "hadd",
     "cp",
     "mv",
     "rm",
