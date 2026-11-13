@@ -41,6 +41,7 @@ class Tolerance:
 
     rtol: float = 1e-6
     atol: float = 1e-12
+    last_digit_rtol: float = 1e-5
     image_threshold: float = 0.95
 
 
@@ -58,6 +59,10 @@ REWRITES = [
     # TStopwatch's times as the fitting tutorials print them: "RT=  0.902 s, Cpu=  0.460 s".
     (re.compile(r"\bRT= *\d+\.\d+ s, Cpu= *\d+\.\d+ s\b"), "RT=<time>, Cpu=<time>"),
     (re.compile(r"(/private)?/(var/folders|tmp)/\S*?tutorial-[^/\s]+"), "<workdir>"),
+    # TTree::Print's compressed sizes: zlib builds (ROOT's ARM-tuned one among them) pack the
+    # same bytes differently. The uncompressed "Total" beside them stays exact.
+    (re.compile(r"\bFile +Size *= *\d+"), "File Size = <compressed>"),
+    (re.compile(r"\b(Tree compression factor|Compression) *= *\d+\.\d+"), r"\1 = <ratio>"),
     (re.compile(r"[ \t]+"), " "),
 ]  # fmt: skip
 
@@ -103,7 +108,33 @@ def _close(one: str, two: str, tolerance: Tolerance) -> bool:
         return one == two
     if math.isnan(a) or math.isnan(b):
         return math.isnan(a) and math.isnan(b)
-    return math.isclose(a, b, rel_tol=tolerance.rtol, abs_tol=tolerance.atol)
+    if math.isclose(a, b, rel_tol=tolerance.rtol, abs_tol=tolerance.atol):
+        return True
+    return _last_digit(one, two, a, b, tolerance.last_digit_rtol)
+
+
+def _last_digit(one: str, two: str, a: float, b: float, rtol: float) -> bool:
+    """One unit apart in the last digit both print, and no further apart than ``rtol``.
+
+    Decimals only: an integer is a count and stays exact. This is the rounding a
+    different libm or fused multiply-add leaves in a printed fit result, as between
+    ROOT on Linux x86-64 and on macOS ARM64.
+    """
+    if not (_decimal(one) and _decimal(two)):
+        return False
+    unit = max(_last_unit(one), _last_unit(two))
+    return abs(a - b) <= unit * (1 + 1e-9) and math.isclose(a, b, rel_tol=rtol)
+
+
+def _decimal(text: str) -> bool:
+    return "." in text or "e" in text.lower()
+
+
+def _last_unit(text: str) -> float:
+    """The value of one unit in the last digit ``text`` prints: 0.001 for ``1.234``."""
+    mantissa, _, exponent = text.lower().partition("e")
+    places = len(mantissa.partition(".")[2])
+    return 10.0 ** (int(exponent or 0) - places)
 
 
 def same_line(one: str, two: str, tolerance: Tolerance) -> bool:

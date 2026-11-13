@@ -314,6 +314,27 @@ def test_numbers_are_equal_within_the_relative_tolerance():
     assert not compare.same_line("x nan", "x 1", TOLERANCE)
 
 
+def test_printed_decimals_one_unit_apart_in_their_last_digit_are_equal():
+    assert compare.same_line("Edm = 8.44652e-07", "Edm = 8.44653e-07", TOLERANCE)
+    assert compare.same_line("nbkg = 504.206 +/- 39.3066", "nbkg = 504.206 +/- 39.3065", TOLERANCE)
+    assert not compare.same_line("Edm = 8.44652e-07", "Edm = 8.44654e-07", TOLERANCE)
+    assert not compare.same_line("p = 0.1", "p = 0.2", TOLERANCE)  # one unit, but 100%
+    assert not compare.same_line("entries = 100001", "entries = 100002", TOLERANCE)  # a count
+
+
+def test_compressed_sizes_are_masked_and_uncompressed_totals_kept():
+    one = "*Entries : 10000 : Total = 243106 bytes  File  Size =     224028 *"
+    two = "*Entries : 10000 : Total = 243106 bytes  File  Size =     223671 *"
+    assert compare.normalise(one) == compare.normalise(two)
+    assert compare.normalise("*Baskets : 3 : Basket Size= 32000 bytes  Compression=   1.08 *") == [
+        "*Baskets : 3 : Basket Size= 32000 bytes Compression = <ratio> *"
+    ]
+    assert compare.normalise("* : : Tree compression factor =   1.08 *") == [
+        "* : : Tree compression factor = <ratio> *"
+    ]
+    assert compare.normalise(one.replace("243106", "243107")) != compare.normalise(two)
+
+
 def test_the_first_differing_line_is_reported_with_both_sides():
     found = compare.first_difference(["a 1", "b 2"], ["a 1", "b 3"], TOLERANCE)
     assert found == "line 2: ROOT 'b 2', xrdroot 'b 3'"
