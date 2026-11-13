@@ -87,10 +87,8 @@ def _write(name: str, text: str) -> Path:
     return path
 
 
-def test_a_library_unloaded_loads_anew_and_autoloading_can_be_turned_off(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from xrdroot.pycint.library import build_dictionary, build_library
+def test_a_library_unloaded_loads_anew() -> None:
+    from xrdroot.pycint.library import build_library
 
     assert ROOT.gSystem.Load("libPhysics") == 0
     ROOT.gSystem.Unload("libPhysics.so")
@@ -98,8 +96,16 @@ def test_a_library_unloaded_loads_anew_and_autoloading_can_be_turned_off(
     _write("A.h", "int fromA() { return 5; }")
     build_library("A", [Path("A.h")])
     assert ROOT.gSystem.Load("libA") == 0
+    ROOT.gSystem.Unload("libOther")  # not loaded: nothing to forget
+    assert "libA" in ROOT.gSystem.GetLibraries()
     ROOT.gSystem.Unload("libA")
     assert "libA" not in ROOT.gSystem.GetLibraries()
+
+
+
+def test_autoloading_can_be_turned_off_and_asked_for(monkeypatch: pytest.MonkeyPatch) -> None:
+    from xrdroot.pycint.library import build_dictionary
+
     _write("B.h", "int fromB() { return 6; }")
     build_dictionary("B", [Path("B.h")])
     interpreter = ROOT.gInterpreter
@@ -127,3 +133,10 @@ def test_a_function_named_like_a_python_builtin_is_found_by_its_cpp_name() -> No
     assert ROOT.compile(1) == 2
     _write("use.C", "int use() { return compile(2); }")
     assert process_line(".x use.C") == 3
+
+
+def test_a_root_typedef_called_like_a_function_is_a_cast() -> None:
+    assert process_line("1000L * Long64_t(2000000000)") == 2_000_000_000_000
+    assert (HOST.Double_t(3) / 2, HOST.Bool_t(5)) == (1.5, True)
+    with pytest.raises(AttributeError):
+        _ = HOST.Nothing_at_all_t

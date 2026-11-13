@@ -12,7 +12,6 @@ standard library's classes, or ROOT's own.
 from __future__ import annotations
 
 import re
-import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 
 __all__ = ["requested", "linkdef_rules", "xml_rules"]
@@ -24,9 +23,6 @@ LINK = re.compile(
     re.M,
 )
 
-#: The XML elements of a selection file that name a type to select.
-SELECTING = frozenset({"class", "struct", "union", "namespace", "enum", "typedef"})
-
 #: What a LinkDef rule may end with after the name: streamer and I/O options.
 OPTIONS = "+-!"
 
@@ -36,18 +32,27 @@ def linkdef_rules(text: str) -> list[str]:
     return [found["name"].rstrip(OPTIONS).strip() for found in LINK.finditer(text)]
 
 
+#: What genreflex leaves out of a selection file: comments, and ``<exclusion>`` sections.
+IGNORED = re.compile(r"<!--.*?-->|<exclusion\b.*?</exclusion\s*>", re.S)
+
+#: An element naming a type: ``<class name="std::vector<TH1F>" />``. genreflex reads the
+#: file leniently - a name keeps its ``<`` and ``>`` unescaped - and so does this.
+ELEMENT = re.compile(
+    r"<(?P<tag>class|struct|union|namespace|enum|typedef)\b(?P<attributes>(?:\s+[\w:-]+\s*=\s*"
+    r'(?:"[^"]*"|\'[^\']*\'))*)\s*/?>'
+)
+
+#: An element's ``name`` attribute.
+NAME = re.compile(r"""\bname\s*=\s*(?:"(?P<double>[^"]*)"|'(?P<single>[^']*)')""")
+
+
 def xml_rules(text: str) -> list[str]:
     """The types a genreflex selection file selects by ``name``, outside ``<exclusion>``."""
-    try:
-        root = ElementTree.fromstring(text)
-    except ElementTree.ParseError as why:
-        raise ValueError(f"the selection file is not XML genreflex can read: {why}") from None
     names: list[str] = []
-    for section in root.iter():
-        if section.tag == "exclusion":
-            continue
-        names.extend(child.get("name", "") for child in section
-                     if child.tag in SELECTING and child.get("name"))  # fmt: skip
+    for element in ELEMENT.finditer(IGNORED.sub("", text)):
+        found = NAME.search(element["attributes"])
+        if found is not None:
+            names.append(found["double"] if found["double"] is not None else found["single"])
     return names
 
 

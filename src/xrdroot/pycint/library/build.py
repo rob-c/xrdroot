@@ -177,12 +177,21 @@ def _library_name(name: str) -> str:
     return name if name.startswith("lib") else f"lib{name}"
 
 
-def build_aclic(macro: Path, name: str, out: Path) -> Library:
+def build_aclic(
+    macro: Path,
+    name: str,
+    out: Path,
+    defines: Path | None = None,
+    includes: Sequence[Path] = (),
+) -> Library:
     """ACLiC's library of ``macro``: its translation, as ``<out>/<name>.xrdlib``; what the
-    translator refuses is raised as it refuses it."""
+    translator refuses is raised as it refuses it. ``defines`` is a header of the
+    ``#define`` s the compiler would have been given, read before the macro."""
     _missing([macro], "ACLiC")
     text = macro.read_text(encoding="utf-8", errors="replace")
-    made, found = translated_unit(text, str(macro), [macro.parent])
+    if defines is not None:
+        text = f'#include "{defines.resolve()}"\n#include "{macro.resolve()}"\n'
+    made, found = translated_unit(text, str(macro), [macro.parent, *includes])
     inputs = [str(macro.resolve())]
     headers = _absolute(made.included)
     library = Library(

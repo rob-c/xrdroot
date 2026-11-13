@@ -19,7 +19,7 @@ from typing import TextIO
 
 from ...pycxx.errors import CxxError as CintError
 from ...pycxx.errors import MacroError
-from ..execute import arguments, called, exists, run_program, split_call
+from ..execute import arguments, called, define, exists, run_program, split_call
 from ..returned import status as exit_status
 from .commands import Said, dispatch, failure
 from .lexer import Piece, pending, pieces
@@ -104,6 +104,7 @@ class Interpreter:
         ``return`` alone hands back nothing.
         """
         text = self._returned(text)
+        define(text)
         parts = pieces(text)
         if not parts:
             return []

@@ -15,10 +15,13 @@ running itself is :mod:`xrdroot.pycxx.execute`'s; this is ROOT's face on it.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import sys
 from collections.abc import Sequence
+from dataclasses import replace
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +43,8 @@ __all__ = [
     "split_call",
     "called",
     "exists",
+    "define",
+    "session_dialect",
     "arguments",
     "EXTENSIONS",
     "MacroError",
@@ -126,6 +131,34 @@ def _add_dynamic_path(directory: str) -> None:
     gSystem.AddDynamicPath(directory)
 
 
+#: The ``#define`` and ``#undef`` lines run at the prompt or by ``ProcessLine``, in order:
+#: cling keeps them for every macro read after - ``root -e '#define STAGE "first"' run.C``.
+DEFINES: list[str] = []
+
+#: A directive that defines or undefines a macro.
+DEFINITION = re.compile(r"^[ \t]*#[ \t]*(?:define|undef)\b.*$", re.M)
+
+
+def define(text: str) -> None:
+    """Keep the ``#define`` and ``#undef`` lines of ``text`` for the macros run after it."""
+    DEFINES.extend(found.group(0).strip() for found in DEFINITION.finditer(text))
+
+
+def session_dialect() -> Any:
+    """ROOT's dialect, with the macros defined so far in the session predefined - a dialect
+    of its own name, so a translation made with them is cached apart."""
+    if not DEFINES:
+        return DIALECT
+    text = "\n".join(DEFINES) + "\n"
+    return _defined(text)
+
+
+@lru_cache(maxsize=16)
+def _defined(text: str) -> Any:
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    return replace(DIALECT, name=f"{DIALECT.name}+{digest}", predefined=DIALECT.predefined + text)
+
+
 def exists(spec: str) -> bool:
     """Whether what ``.x spec`` runs is there: the macro's file, or a library on the path."""
     path = aclic.split(spec)[0]
@@ -163,7 +196,8 @@ def run_source(
     """
     preload(source)
     return _cxx.run_source(
-        source, file, args, dialect=DIALECT, namespace=root, use_cache=use_cache, call=call
+        source, file, args, dialect=session_dialect(), namespace=root, use_cache=use_cache,
+        call=call,
     )
 
 
@@ -211,7 +245,7 @@ def run_program(
         _preread(where)
     if aclic.is_compiled(str(paths[0])):
         return _compiled(str(paths[0]), tuple(args))
-    return _cxx.run_program(wheres, args, argv, dialect=DIALECT, use_cache=use_cache)
+    return _cxx.run_program(wheres, args, argv, dialect=session_dialect(), use_cache=use_cache)
 
 
 def _compiled(spec: str, args: tuple[Any, ...]) -> int:
@@ -261,10 +295,11 @@ def process_line(line: str, *, root: Any = None) -> Any:
     if text.startswith("."):
         raise ValueError(f"{text.split()[0]} is not a command gROOT->ProcessLine runs here")
     preload(text)
+    define(text)
     if text.startswith("#"):  # ``#include "Foo.h"``: declarations, at the top as cling has them
         run_source(text + "\n", "<ProcessLine>", root=root, call=False)
         return 0
-    return _cxx.run_line(text, file="<ProcessLine>", dialect=DIALECT, namespace=root)
+    return _cxx.run_line(text, file="<ProcessLine>", dialect=session_dialect(), namespace=root)
 
 
 def called(text: str) -> str:
@@ -287,7 +322,7 @@ def _executed(text: str, root: Any) -> Any:
     else:
         where = _path(spec)
         source = _read(where)
-        spelled = _cxx.translated(source, str(where), DIALECT, True).returns
+        spelled = _cxx.translated(source, str(where), session_dialect(), True).returns
         value = run_source(source, str(where), arguments(given), root=root, use_cache=True)
     line = DIALECT.shown(value, spelled)
     if line is not None:

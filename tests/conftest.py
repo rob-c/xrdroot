@@ -149,3 +149,15 @@ def _fresh_roofit_message_service():
     finally:
         service.__dict__.clear()
         service.__dict__.update(saved)
+
+
+@pytest.fixture(autouse=True)
+def _no_session_defines():
+    """Forget the ``#define`` s a test typed at a C++ prompt: cling keeps them for the macros
+    of its session, and each test is a session of its own."""
+    import sys
+
+    yield
+    execute = sys.modules.get("xrdroot.pycint.execute")
+    if execute is not None:
+        execute.DEFINES.clear()

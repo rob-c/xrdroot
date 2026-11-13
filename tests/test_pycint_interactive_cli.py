@@ -555,3 +555,17 @@ def test_return_on_the_command_line_hands_back_its_value() -> None:
     assert run("root", "-l", "-b", "-q", "five.C", "-e", "return") == 0
     assert run("root", "-l", "-b", "-q", "-e", "return 3") == 3
     assert run("root", "-l", "-b", "-q", "-e", "int k = 2;", "-e", "return k + 1;") == 3
+
+
+def test_a_macro_defined_on_the_command_line_is_defined_in_the_macros_run_after(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from xrdroot.pycint import execute
+
+    monkeypatch.setattr(execute, "DEFINES", [])
+    write("stage.C", 'int stage() { std::string s = STAGE; return s == "first" ? 7 : 1; }')
+    assert run("root", "-l", "-b", "-q", "-e", '#define STAGE "first"', "stage.C") == 7
+    execute.process_line("#undef STAGE")
+    execute.process_line('#define STAGE "second"')
+    assert run("root", "-l", "-b", "-q", "stage.C") == 1
+    assert execute.session_dialect() is execute.session_dialect()

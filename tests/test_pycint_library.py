@@ -267,9 +267,11 @@ def test_a_selection_is_read_from_a_linkdef_and_a_genreflex_file() -> None:
     ]  # fmt: skip
     xml = """<lcgdict><selection><class name="A"/><class pattern="B*"/><enum name="E"/>
              </selection><exclusion><class name="X"/></exclusion><struct name="S"/></lcgdict>"""
-    assert selection.xml_rules(xml) == ["S", "A", "E"]
-    with pytest.raises(ValueError, match="not XML genreflex can read"):
-        selection.xml_rules("<lcgdict>")
+    assert selection.xml_rules(xml) == ["A", "E", "S"]
+    lenient = """<rootdict> <!-- <class name="Commented"/> -->
+       <class name="std::vector<vector<TH1F>>" /> <class name='single' id="7">
+       <field name="f" transient="true"/></class> <enum pattern="E*"/>"""  # no closing tag
+    assert selection.xml_rules(lenient) == ["std::vector<vector<TH1F>>", "single"]
     assert selection.requested(None, None) == []
 
 
@@ -440,6 +442,23 @@ def test_aclic_builds_once_and_again_only_when_the_macro_changes_or_it_is_forced
     capsys.readouterr()
     compiled(macro)
     assert "creating shared library" in capsys.readouterr().err
+
+
+def test_aclic_compiles_with_what_add_include_path_defines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write("inc/k.h", "const int K = 10;")
+    write("d.C", '#include "k.h"\nint d() { return VERSION + K; }\n#ifdef CASE_2\n'
+          "int twice() { return 2; }\n#endif")  # fmt: skip
+    monkeypatch.setattr(ROOT.gSystem, "_include_path", "")
+    ROOT.gSystem.AddIncludePath(' -DCASE_2 "-DVERSION=3" -Iinc -I ')
+    assert run("d.C+") == 13 and DECLARED["twice"]() == 2
+    assert compiled(Path("d.C")).digest == read(Path("d_C.xrdlib")).digest  # up to date
+    ROOT.gSystem.SetIncludePath("-DVERSION=5 -Iinc")
+    assert run("d.C+") == 15
+    ROOT.gSystem.SetIncludePath("")
+    compiled(Path("d.C"))  # built again: without the definitions it was built with
+    assert not Path("d_C_ACLiC_defines.h").exists()
 
 
 def test_aclic_puts_its_library_in_the_build_directory_flat_or_under_the_macro_s_path() -> None:

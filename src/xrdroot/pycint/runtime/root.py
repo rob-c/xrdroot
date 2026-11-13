@@ -80,5 +80,29 @@ class RootProxy(HostNamespace):
                     "TApplication": _application_class, "TRint": _application_class}  # fmt: skip
         super().__init__(_pyroot, USED, provided, _std)
 
+    def _used(self, namespace: Any, name: str) -> Any:
+        """``name`` as the host finds it - or, for one of ROOT's typedefs nothing else names,
+        its conversion: ``Long64_t(x)`` is a cast to the type it stands for."""
+        try:
+            return super()._used(namespace, name)
+        except AttributeError:
+            cast = _typedef_cast(name)
+            if cast is None:
+                raise
+            return cast
+
+
+#: The Python a value of each kind of C++ arithmetic type is, by the type's name.
+CASTS: dict[str, Any] = {"float": float, "double": float, "long double": float, "bool": bool}
+
+
+def _typedef_cast(name: str) -> Any:
+    """The conversion ``Int_t(x)`` makes: to ``int``, ``float`` or ``bool`` - or ``None``
+    for a name that is no typedef of ROOT's."""
+    from ..dialect import TYPEDEFS
+
+    target = TYPEDEFS.get(name)
+    return None if target is None else CASTS.get(target, int)
+
 
 ROOT = RootProxy()

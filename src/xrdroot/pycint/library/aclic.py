@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import sys
 from pathlib import Path
 from typing import Any
@@ -69,6 +70,37 @@ def _build_dir() -> tuple[str, bool]:
     return str(system.gSystem.GetBuildDir()), bool(system.gSystem.IsBuildDirFlat())
 
 
+def _flags() -> tuple[list[str], list[Path]]:
+    """The ``-D`` definitions and ``-I`` directories of ``gSystem->GetIncludePath()``: what
+    ACLiC hands its compiler, which a macro sets with ``AddIncludePath``."""
+    system = sys.modules.get("xrdroot.pyroot.core.system")
+    words = shlex.split(str(system.gSystem.GetIncludePath())) if system is not None else []
+    defines = [_definition(word[2:]) for word in words if word.startswith("-D")]
+    includes = [Path(word[2:]) for word in words if word.startswith("-I") and len(word) > 2]
+    return defines, includes
+
+
+def _definition(flag: str) -> str:
+    """``-DNAME=value`` as ``#define NAME value``; ``-DNAME`` defines it as ``1``."""
+    name, _, value = flag.partition("=")
+    return f"#define {name} {value or '1'}\n"
+
+
+def _defines(place: Path, name: str, defines: list[str]) -> Path | None:
+    """The header holding ``defines`` for the library ``name`` - rewritten only when they
+    change, so that a library built with them stays up to date - or, without any, none:
+    a header left from a build with others is removed, so that build is out of date."""
+    header = place / f"{name}_ACLiC_defines.h"
+    if not defines:
+        header.unlink(missing_ok=True)
+        return None
+    text = "".join(defines)
+    if not header.is_file() or header.read_text(encoding="utf-8") != text:
+        place.mkdir(parents=True, exist_ok=True)
+        header.write_text(text, encoding="utf-8")
+    return header
+
+
 def library_place(macro: Path, out: Path | None = None) -> Path:
     """Where ACLiC puts ``macro``'s library: ``out``, else the build directory - itself if it
     was set flat, else the macro's own path under it - else beside the macro."""
@@ -110,12 +142,14 @@ def compiled(
 
     place = library_place(macro, out)
     named = name or library_name(macro)
+    flags, includes = _flags()
+    defines = _defines(place, named, flags)
     existing = read(place / f"{named}{SUFFIX}")
     if not force and existing is not None and _current(existing):
         return existing
     message("Info", f"{_system()}::ACLiC", f"creating shared library {place / named}{SUFFIX}")
     try:
-        return build_aclic(macro, named, place)
+        return build_aclic(macro, named, place, defines, includes)
     except BuildError:
         raise
     except CxxError as why:

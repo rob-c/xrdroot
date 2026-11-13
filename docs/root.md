@@ -3243,12 +3243,14 @@ after `Processing x.C(1, 2)...`. Each was checked against ROOT 6.40.04's
 - Every file is looked for before anything runs; a missing macro is `Error in
   <TApplication::GetOptions>: macro x.C not found` and exit status 2.
 - A macro that fails ends the processing of the command line; a `-e` line that
-  fails does not.
+  fails does not. A directory is gone into, as `root dir` does, and a library,
+  `x_C.so(args)`, runs its function as `.x` runs one.
 - `-q` exits with the value of the last line or macro run, as ROOT's
   `ProcessLine` hands it back: a macro's value, `int x = 4;` is 4,
   `printf("ab");` 2, a pointer or an object 255, a `void` 0, code that did not
   compile 1 (but 0 for a name nothing declares), `.ls`, `.pwd`, `.cd` and
-  `.help` 1, every other dot command 0. `exit(n)` and `gApplication->Terminate(n)` end it with `n`.
+  `.help` 1, every other dot command 0. `-e return` is 0 and `-e 'return x'`
+  is `x`. `exit(n)` and `gApplication->Terminate(n)` end it with `n`.
 - Without `-q`, standard input is read after the command line, and the session
   ends with 0 at `.q` or at the end of the input; a newline is printed before
   the command line's output, as `root` prints one.
@@ -3290,7 +3292,7 @@ with every one before it, so the translator knows every type declared so
 far; only the statements that have not run yet are run.
 
 The dot commands are cling's and ROOT's: `.x`/`.X`, `.L` and `.U`, `.ls`,
-`.cd`, `.pwd`, `.files`, `.! command`, `.> file` and `.>`, `.g`, `.class Name`,
+`.cd`, `.pwd`, `.files`, `.libraries`, `.! command`, `.> file` and `.>`, `.g`, `.class Name`,
 `.rawInput`, `.O`, `.@`, `.help` and `.q`. At a terminal, lines are read with
 readline, with Tab completion and a history in `~/.xrdroot_history`; piped
 input is run without prompts. The prompt in Python is
@@ -3314,11 +3316,15 @@ $ xrdroot build aclic macro.C+           # macro_C.xrdlib, beside the macro or i
 `dictionary` is rootcling's (genreflex's with `--selection`): the headers and
 sources given, translated as one unit, into `lib<NAME>.xrdlib` in `--out` or
 the working directory, with a rootmap of the classes and namespaces it
-declares (none with `--no-rootmap`). Each class the LinkDef's `#pragma link
+declares (none with `--no-rootmap`). Built where a library of that name is,
+either step adds its files to it: a dictionary and then `library` with its
+sources is one library. Each class the LinkDef's `#pragma link
 C++ class` lines or the selection file's `<class name>` ask for and the
 headers do not declare is `Warning: Unused class rule: Name`, as both tools
-say it, and the build goes on. C++ the translator refuses is reported at its
-line, then `Error: rootcling: compilation failure (...)`, and exits 1.
+say it, and the build goes on. A missing file is rootcling's `fatal error:
+'x.h' file not found`, then `Error: rootcling: compilation failure (...)`, and
+exits 1; C++ the translator refuses is one line, `xrdroot build: file:line:
+why`, and exit status 2: a build that cannot be done here.
 `library` is the same without a rootmap. `executable` translates its sources
 (so a refusal is the build's) and writes the program `NAME`: a shell script
 running `xrdroot run --library ... SOURCE... -- "$@"` in the Python and the
