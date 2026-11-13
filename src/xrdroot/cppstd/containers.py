@@ -112,6 +112,18 @@ def _numeric_dtype(value: Any) -> bool:
     kind = type(value)
     return type(kind) is _DTYPE_META and kind in _DTYPE_CLASSES
 
+
+def _canonical(kind: Any) -> Any:
+    """The one dtype a C++ number type's class is built with: native byte order, no metadata.
+
+    A specialization is cached by its C++ name, which a big-endian or annotated dtype shares
+    with the plain one, so building from whichever dtype came first would hand that one's
+    byte order to every later ``vector<unsigned long>``."""
+    if not isinstance(kind, np.dtype):
+        return kind
+    name = _DTYPE_NAMES.get(kind.num, kind.name)
+    return np.dtype(name) if name in CPP_NAMES else kind
+
 #: What a Python type given as an element type stands for, as cppyy takes it.
 PYTHON_TYPES: dict[type, str] = {float: "float64", int: "int32", bool: "bool"}
 
@@ -379,7 +391,7 @@ class _Template:
         if self._arity == 1 and _numeric_dtype(arguments):
             key = (cpp_name(arguments),)
             if key not in self._made:
-                self._made[key] = self._build(arguments)
+                self._made[key] = self._build(_canonical(arguments))
             return self._made[key]
         return self._general(arguments)
 
@@ -393,7 +405,7 @@ class _Template:
         kinds = tuple(element_type(each) for each in given)
         key = tuple(cpp_name(kind) for kind in kinds)
         if key not in self._made:
-            self._made[key] = self._build(*kinds)
+            self._made[key] = self._build(*(_canonical(kind) for kind in kinds))
         return self._made[key]
 
     def __call__(self, *arguments: Any) -> Any:
