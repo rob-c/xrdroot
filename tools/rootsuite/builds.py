@@ -55,7 +55,8 @@ def dictionary(entry: Dictionary, name: str) -> Build:
     if entry.selection:
         words += ["--selection", _path(entry.selection)]
     words += _includes([entry.directory, *entry.includes])
-    return (entry.directory, *words, *(_path(header) for header in entry.headers))
+    headers = entry.headers or [entry.linkdef]  # a LinkDef alone #includes its headers
+    return (entry.directory, *words, *(_path(header) for header in headers if header))
 
 
 def split(registry: Registry, target: Target) -> tuple[list[Dictionary], list[str]]:

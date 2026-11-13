@@ -76,10 +76,20 @@ def _test_subdirectories(top: Directory) -> None:
             top.subdirectory(subdir)
 
 
+#: roottest's own CMake modules that set what its tests are run with: ``PYROOT_EXTRAFLAGS``
+#: and the ``ClingWorkAround`` definitions every macro is run with.
+_ROOTTEST_MODULES = ("RoottestCTest",)
+
+
 def _include(self: Directory, args: list[str]) -> None:
-    """``include(RootCTest)`` adds the module test directories there - before roottest."""
+    """``include(RootCTest)`` adds the module test directories there - before roottest;
+    ``include(RoottestCTest)`` is read where it is included."""
     if args[:1] == ["RootCTest"]:
         _test_subdirectories(self)
+    elif args[:1] and args[0] in _ROOTTEST_MODULES:
+        modules = Path(self.registry.root) / "roottest/cmake/modules"
+        for module in modules.glob(f"{args[0]}.cmake"):
+            self.run_file(module)
 
 
 HANDLERS["include"] = _include

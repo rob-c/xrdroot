@@ -160,6 +160,14 @@ def test_an_assert_macros_reference_is_compared_with_nothing_as_the_driver_write
     assert status(test, result("printed but not checked\n"), root) == "PASS"
 
 
+def test_a_test_importing_roots_cmdlineutils_is_unsupported_with_the_reason(root):
+    run = result("", "ModuleNotFoundError: No module named 'cmdLineUtils'\n", 1)
+    verdict = judge(roottest(), run, root, root)
+    assert verdict.status == "UNSUPPORTED" and "cmdLineUtils" in verdict.reason
+    other = result("", "ModuleNotFoundError: No module named 'numpyx'\n", 1)
+    assert status(roottest(), other, root) == "FAIL"
+
+
 def test_a_failed_post_command_fails_the_test_before_the_diff(root):
     post = result("", "", 3)
     verdict = judge(roottest(outref="a/t.ref"), result("other\n"), root, root, post)

@@ -6,7 +6,7 @@ import stat
 from pathlib import Path
 
 import pytest
-from tools.rootsuite import builds, cli, machine
+from tools.rootsuite import builds, cli, dictgen, machine
 from tools.rootsuite.discover import discover, variables
 from tools.rootsuite.model import Dictionary, Registry, Target, Test
 
@@ -301,3 +301,61 @@ def test_roottest_macros_name_their_files_and_pass_commands_through(roottest):
                                                     ("sh", "q.sh"))
     assert found["roottest/io/inline"].args[-1] == f"{roottest}/roottest/io/run.C(3)"
     assert found["roottest/io/py"].args == ("-x",)
+
+
+# --- dictionary generators run by tests --------------------------------------------
+
+
+def test_genreflex_names_its_dictionary_after_its_library_output_or_header():
+    words = dictgen.dictionary_words
+    assert words("genreflex", ["a.h", "-l", "/d/libMy.dylib", "--rootmap", "m"])[:3] == [
+        "dictionary", "--name", "My"]
+    assert words("genreflex", ["a.h", "--rootmap-lib=libR.so", "-s", "s.xml"])[2] == "R"
+    assert words("genreflex", ["dir/a.h"]) == ["dictionary", "--name", "a_rflx", "--no-rootmap",
+                                              "dir/a.h"]
+    assert words("genreflex", ["--verbose"])[2] == "dict_rflx"
+
+
+def test_rootcling_takes_its_output_first_and_its_linkdef_last():
+    words = dictgen.dictionary_words
+    assert words("rootcling", ["out.cxx", "x.h", "LinkDef.h"]) == [
+        "dictionary", "--name", "out", "--linkdef", "LinkDef.h", "--no-rootmap", "x.h"]
+    assert words("rootcint", ["-f", "o.cxx", "-rml", "libL.so", "-rmf", "L.rootmap", "x.h"]) == [
+        "dictionary", "--name", "L", "x.h"]
+    assert words("rootcling", [])[2] == "dict"
+
+
+def test_a_linkdef_alone_is_the_header_its_dictionary_reads():
+    entry = Dictionary("D", "d", [], linkdef="d/LinkDef.h")
+    assert builds.dictionary(entry, "D")[-1] == "<build>/d/LinkDef.h"
+    assert dictgen.dictionary_words("rootcling", ["-f", "D.cxx", "LinkDef.h"])[-1] == "LinkDef.h"
+
+
+def test_roottests_ctest_module_defines_its_workarounds_and_python_flags(tmp_path):
+    write(tmp_path, {
+        "roottest/cmake/modules/RoottestCTest.cmake": (
+            "include(CTest)\nadd_definitions(-DWorkAround -DONE=1 -D_WIN32 bad)\n"
+            "set(WorkAround TRUE)\nset(PYROOT_EXTRAFLAGS --fixcling)\n"),
+        "roottest/CMakeLists.txt": "include(RoottestCTest)\ninclude(NotRoottests)\n"
+                                   "ROOTTEST_ADD_TESTDIRS()\n",
+        "roottest/a/CMakeLists.txt": "ROOTTEST_ADD_TEST(m MACRO m.C)\n"
+                                     "ROOTTEST_ADD_TEST(p MACRO p.py OPTS 1)\n"
+                                     "if(NOT WorkAround)\n"
+                                     "  ROOTTEST_ADD_TEST(gone MACRO g.C)\nendif()\n"})
+    found = by_id(tmp_path)
+    args = found["roottest/a/m"].args
+    assert args[:4] == ("-e", "#define WorkAround", "-e", "#define ONE=1")
+    assert args[4:6] == ("-e", 'gSystem->SetBuildDir("<build>/roottest/a",true)')
+    assert found["roottest/a/p"].args == ("--fixcling", "1")
+    assert "roottest/a/gone" not in found
+
+
+def test_foreach_range_counts_as_cmake_counts(tmp_path):
+    body = "  ROOTTEST_ADD_TEST({0}-${{i}} MACRO {0}.C)\nendforeach()\n"
+    loops = [("RANGE 2", "z"), ("RANGE 3 7 2", "o"), ("RANGE 1 2 0", "s"), ("RANGE x", "n"),
+             ("IN ITEMS p q", "i")]
+    write(tmp_path, {"roottest/CMakeLists.txt": "ROOTTEST_ADD_TESTDIRS()\n",
+                     "roottest/a/CMakeLists.txt": "".join(
+                         f"foreach(i {how})\n" + body.format(name) for how, name in loops)})
+    assert [test.id.split("/")[-1] for test in discover(tmp_path)] == [
+        "z-0", "z-1", "z-2", "o-3", "o-5", "o-7", "s-1", "s-2", "i-p", "i-q"]

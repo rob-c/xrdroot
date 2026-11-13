@@ -157,6 +157,8 @@ _UNARY: dict[str, Callable[[Directory, str], bool]] = {
 #: The variable ``include_directories`` appends to: a directory property, which a variable
 #: models, since each subdirectory starts from a copy of its parent's.
 INCLUDES = "<include_directories>"
+#: The variable ``add_definitions`` appends to: the directory's ``COMPILE_DEFINITIONS``.
+DEFINITIONS = "<compile_definitions>"
 
 #: ``$<TARGET_FILE:x>``: the executable a generator expression names, by its target name.
 _TARGET_FILE = re.compile(r"\$<TARGET_FILE:([^>]+)>")
@@ -226,6 +228,14 @@ class Directory(Interpreter):
     def arguments(self, args: Iterable[Token]) -> list[str]:
         """Arguments as a command sees them, an unquoted ``with\\ space`` as ``with space``."""
         return super().arguments(_identity(token) for token in args)
+
+    def loop(self, block: Foreach) -> None:  # type: ignore[override]
+        """``foreach``, ``RANGE stop`` and ``RANGE start stop [step]`` counted as CMake counts."""
+        args = self.arguments(block.args)
+        if len(args) >= 3 and args[1] == "RANGE":
+            items = [str(value) for value in _range(args[2:])]
+            block = Foreach(tuple(Token(word) for word in (args[0], *items)), block.body)
+        super().loop(block)  # type: ignore[arg-type]
 
     def run_file(self, path: Path) -> Directory:
         try:
@@ -328,6 +338,17 @@ class Directory(Interpreter):
 _IDENTITY_ESCAPE = re.compile(r"\\([^A-Za-z0-9;$@])")
 
 
+def _range(words: list[str]) -> range:
+    """``RANGE stop`` is 0 to stop; ``RANGE start stop [step]`` start to stop, both included."""
+    numbers = [int(word) for word in words[:3] if word.lstrip("-").isdigit()]
+    if len(numbers) == 1:
+        return range(numbers[0] + 1)
+    if len(numbers) < 2:
+        return range(0)
+    step = numbers[2] if len(numbers) > 2 and numbers[2] else 1
+    return range(numbers[0], numbers[1] + 1, step)
+
+
 def _identity(token: Token) -> Token:
     if token.quoted or "\\" not in token.text:
         return token
@@ -356,6 +377,12 @@ def _include_directories(self: Directory, args: list[str]) -> None:
     """``include_directories``: where this directory's (and its children's) headers are."""
     given = [arg for arg in args if arg not in ("AFTER", "BEFORE", "SYSTEM")]
     self.variables[INCLUDES] = ";".join([*self.values(INCLUDES), *given])
+
+
+def _add_definitions(self: Directory, args: list[str]) -> None:
+    """``add_definitions(-DX ...)``: ``X`` defined for this directory and those below it."""
+    given = [arg[2:] for arg in args if arg.startswith("-D") and len(arg) > 2]
+    self.variables[DEFINITIONS] = ";".join([*self.values(DEFINITIONS), *given])
 
 
 def _option(self: Directory, args: list[str]) -> None:
@@ -500,6 +527,7 @@ HANDLERS.update(
     {
         "set": _set,
         "include_directories": _include_directories,
+        "add_definitions": _add_definitions,
         "option": _option,
         "add_subdirectory": _add_subdirectory,
         "cmake_parse_arguments": _cmake_parse_arguments,

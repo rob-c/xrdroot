@@ -33,6 +33,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .dictgen import GENERATORS, dictionary_words
 from .model import Test
 
 __all__ = ["Invocation", "Step", "Context", "Unrunnable", "plan", "command_line", "SHIM",
@@ -46,12 +47,7 @@ TOOLS = {"root": "root", "root.exe": "root", "hadd": "hadd", "rootls": "ls", "ro
          "rootmkdir": "mkdir", "rootmv": "mv", "rootcp": "cp", "rootprint": "print"}
 
 #: ROOT's programs xrdroot has no stand-in for, and what each does.
-NO_STAND_IN = {
-    "rootcling": "generates a dictionary from rootcling's own command line",
-    "rootcint": "generates a dictionary from rootcint's own command line",
-    "genreflex": "generates a dictionary from genreflex's own command line",
-    "root-config": "reports how ROOT was configured",
-}  # fmt: skip
+NO_STAND_IN = {"root-config": "reports how ROOT was configured"}
 
 #: Programs the harness does not run though the machine has them, and why.
 _NOT_RUN = {"make": "runs roottest's old Makefile, which compiles C++ with the system compiler "
@@ -131,6 +127,8 @@ def command_line(words: Sequence[str], context: Context) -> Line | Unrunnable:
     rest = tuple(_rewrite(word, context) for word in words[1:])
     if name in TOOLS:
         return _xrdroot(context, TOOLS[name], *rest), frozenset({TOOLS[name]})
+    if name in GENERATORS:
+        return _xrdroot(context, "build", *dictionary_words(name, rest)), frozenset({"build"})
     refused = _refused(name)
     if refused is not None:
         return refused
@@ -140,10 +138,17 @@ def command_line(words: Sequence[str], context: Context) -> Line | Unrunnable:
 
 
 def _unwrapped(words: Sequence[str]) -> Sequence[str]:
-    """``python <build>/bin/rootmv ...``: ROOT's Python tools, run by Python, are the tools."""
-    python = Path(words[0]).name.startswith("python")
-    return words[1:] if python and len(words) > 1 and _tool(Path(words[1]).name) in TOOLS \
-        else words
+    """ROOT's own program inside a wrapper is that program: ``python <build>/bin/rootmv ...``
+    (ROOT's Python tools, run by Python), or ``cmake -E env VAR=... <build>/bin/rootcling ...``
+    (whose variables name CI's build tree)."""
+    rest = list(words[1:])
+    if Path(words[0]).name == "cmake" and rest[:2] == ["-E", "env"]:
+        rest = rest[2:]
+        while rest and "=" in rest[0] and not rest[0].startswith("-"):
+            rest.pop(0)
+    elif not Path(words[0]).name.startswith("python"):
+        return words
+    return rest if rest and _tool(Path(rest[0]).name) in (*TOOLS, *GENERATORS) else words
 
 
 def _tool(name: str) -> str:

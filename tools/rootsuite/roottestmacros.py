@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 
 from . import builds
-from .cmake import HANDLERS, Directory, parse_arguments
+from .cmake import DEFINITIONS, HANDLERS, Directory, parse_arguments
 from .model import Dictionary, Target, Test, kind_of, make_id
 from .rootmacros import generate_dictionary, library, register_command, sources, working_dir
 
@@ -252,7 +252,7 @@ def _macro_or_exec(self: Directory, parsed: dict[str, list[str]]) -> dict[str, o
     asserting = macro.startswith("assert")
     if path.endswith(".py"):
         how: dict[str, object] = {"runner": "script", "files": (self.relative_path(path),),
-                                  "args": opts}
+                                  "args": (*self.values("PYROOT_EXTRAFLAGS"), *opts)}
     else:
         args = (*_root_options(self, parsed), _called(self, macro, parsed), *opts)
         found = self.inside(path) if path.endswith(_CXX) else None
@@ -263,12 +263,14 @@ def _macro_or_exec(self: Directory, parsed: dict[str, list[str]]) -> dict[str, o
 
 
 def _root_options(self: Directory, parsed: dict[str, list[str]]) -> list[str]:
-    """``ROOTTEST_SETUP_MACROTEST``'s ``root.exe`` options: the build and macro paths set, then
-    ``ROOTEXE_OPTS``, then ``-q -b``."""
+    """``ROOTTEST_SETUP_MACROTEST``'s ``root.exe`` options: the directory's compile definitions
+    as ``#define`` lines, the build and macro paths set, ``ROOTEXE_OPTS``, then ``-q -b``."""
     build, source = f"<build>/{self.relative}", str(self.source)
-    lines = [f'gSystem->SetBuildDir("{build}",true)', f'gSystem->AddDynamicPath("{build}")',
-             f'gROOT->SetMacroPath("{source}")', f'gInterpreter->AddIncludePath("-I{build}")',
-             f'gSystem->AddIncludePath("-I{build}")']
+    defines = [f"#define {name}" for name in self.values(DEFINITIONS)
+               if not any(word in name for word in ("_WIN32", "_XKEYCHECK_H", "NOMINMAX"))]
+    lines = [*defines, f'gSystem->SetBuildDir("{build}",true)',
+             f'gSystem->AddDynamicPath("{build}")', f'gROOT->SetMacroPath("{source}")',
+             f'gInterpreter->AddIncludePath("-I{build}")', f'gSystem->AddIncludePath("-I{build}")']
     return [*(word for line in lines for word in ("-e", line)),
             *parsed.get("ROOTEXE_OPTS", []), "-q", "-b"]
 

@@ -42,6 +42,15 @@ _UNSUPPORTED = re.compile(r"^(?:[\w.]+\.)?(?:UnsupportedFeatureError|Refusal): (
 _USAGE = re.compile(r"^xrdroot: error: (.+)$", re.M)
 #: ``[Errno 2] No such file or directory: ...``: an ``OSError`` the CLI printed as its refusal.
 _OS_ERROR = re.compile(r"\[Errno \d+\]")
+#: ROOT's own Python modules that tests import beside ``ROOT``, which xrdroot does not provide,
+#: and what each is.
+ROOT_PYTHON_MODULES = {
+    "cmdLineUtils": "the module ROOT's rootls, rootcp, rootmv and rootrm are written over, "
+                    "whose functions the test calls itself; xrdroot implements those tools as "
+                    "subcommands, not that module",
+}  # fmt: skip
+#: Python failing to import a module.
+_NO_MODULE = re.compile(r"ModuleNotFoundError: No module named '([\w.]+)'")
 #: ``file.C:7:1: error: ...``: an error ``xrdroot root`` reports as cling would.
 _DIAGNOSTIC = re.compile(r"^(\S+): error: (.+)$", re.M)
 #: What xrdroot says of what it does not do: its refusal, a ROOT name it does not have
@@ -64,6 +73,14 @@ class Verdict:
         return {key: value for key, value in self.__dict__.items() if value}
 
 
+def _said(text: str) -> list[str]:
+    """Errors in which xrdroot says it lacks something, or a test imports ROOT's own Python."""
+    said = [f"{where}: {what}" for where, what in _DIAGNOSTIC.findall(text)
+            if _SAYS_UNSUPPORTED.search(what)]
+    return said + [f"It imports ROOT's Python module {name}, {ROOT_PYTHON_MODULES[name]}."
+                   for name in _NO_MODULE.findall(text) if name in ROOT_PYTHON_MODULES]
+
+
 def refusal(result: Result) -> str:
     """xrdroot's refusal in a run's output, or ``""``: exit 2 with its line, the error raised,
     or a cling-style error saying xrdroot does not do something."""
@@ -71,8 +88,7 @@ def refusal(result: Result) -> str:
     found = _UNSUPPORTED.search(text)
     if found:
         return found.group(1).strip()
-    said = [f"{where}: {what}" for where, what in _DIAGNOSTIC.findall(text)
-            if _SAYS_UNSUPPORTED.search(what)]
+    said = _said(text)
     if said:
         return said[0]
     found = _REFUSAL.search(text)

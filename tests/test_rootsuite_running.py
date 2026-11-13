@@ -139,13 +139,30 @@ def test_roots_tools_map_onto_xrdroot_subcommands_with_the_same_words(tmp_path):
                         frozenset({sub}))
 
 
-def test_rootcling_and_its_kin_are_unsupported_and_make_is_a_skip(tmp_path):
+def test_root_config_is_unsupported_and_make_is_a_skip(tmp_path):
     ctx = context(tmp_path)
-    refused = plan.command_line(("genreflex", "x.h"), ctx)
+    refused = plan.command_line(("root-config", "--features"), ctx)
     assert isinstance(refused, plan.Unrunnable) and refused.status == "UNSUPPORTED"
-    assert "genreflex" in refused.reason and refused.reason.endswith(".")
+    assert "root-config" in refused.reason and refused.reason.endswith(".")
     assert plan.command_line(("make", "cleantest"), ctx).status == "SKIP"
     assert plan.command_line((), ctx).status == "SKIP"
+
+
+def test_dictionary_generators_run_as_xrdroot_build_dictionary(tmp_path):
+    ctx = context(tmp_path)
+    argv, commands = plan.command_line(
+        ("cmake", "-E", "env", "LD_LIBRARY_PATH=<build>/lib", "<build>/bin/rootcling", "-v2",
+         "-f", "D.cxx", "-s", "libD.so", "-rmf", "D.rootmap", "-I<build>/inc", "D.h",
+         "DLinkDef.h"), ctx)
+    assert commands == {"build"}
+    assert argv[3:] == ("build", "dictionary", "--name", "D", "--linkdef", "DLinkDef.h", "-I",
+                        f"{ctx.work}/inc", "D.h")
+    argv, _ = plan.command_line(("genreflex", "a.h", "--select=s.xml", "-o", "<build>/d/a_rflx.cpp",
+                                 "-I", "x", "--verbose"), ctx)
+    assert argv[3:] == ("build", "dictionary", "--name", "a_rflx", "--selection", "s.xml", "-I",
+                        "x", "--out", f"{ctx.work}/d", "--no-rootmap", "a.h")
+    kept = ("cmake", "-E", "env", "A=1", "sh", "x")
+    assert plan.command_line(kept, ctx)[0] == kept
 
 
 def test_python_runs_a_script_through_xrdroot_and_anything_else_as_itself(tmp_path):
@@ -165,7 +182,7 @@ def test_other_commands_run_as_written_when_this_machine_has_them(tmp_path):
 
 
 def test_a_command_test_that_cannot_be_run_says_why(tmp_path):
-    assert unrunnable(tmp_path, runner="command", command=("rootcling", "-f")).status == \
+    assert unrunnable(tmp_path, runner="command", command=("root-config",)).status == \
         "UNSUPPORTED"
 
 
@@ -193,7 +210,7 @@ def test_pre_and_post_commands_run_around_the_test_and_count_their_tools(tmp_pat
                    copy=("e/f.root",))
     assert made.before[0].argv[3] == "ls" and made.after[0].argv[0] == "sh"
     assert made.commands == {"root", "ls"} and made.copy == (tmp_path / "work/e/f.root",)
-    assert unrunnable(tmp_path, postcmd=("genreflex",)).status == "UNSUPPORTED"
+    assert unrunnable(tmp_path, postcmd=("root-config",)).status == "UNSUPPORTED"
 
 
 def test_a_skip_from_discovery_is_kept(tmp_path):
