@@ -88,3 +88,11 @@ def test_the_runtime_string_searches_give_npos_when_nothing_is_found() -> None:
 def test_c_str_of_a_string_whose_type_is_not_known_is_the_string() -> None:
     text = translate("void t() { printf(\"%s\", ss.str().c_str()); p->c_str(); }", "t.C")
     assert "printf('%s', cstr(ROOT.ss.str()))" in text and "ROOT.p.c_str()" in text
+
+
+def test_a_character_of_a_tstring_is_the_number_cpp_gives(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = """TString s = "ulong"; if (s[0] == 'u') printf("%d %c\\n", s[1], s[2]);"""
+    run_source("{\n" + source + "\n}\n", "t.C")
+    assert capsys.readouterr().out == "108 o\n"

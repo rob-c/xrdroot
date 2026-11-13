@@ -97,6 +97,13 @@ def is_container(ctype: CType) -> bool:
     return last in CONTAINERS or last in active().containers
 
 
+def _textual(ctype: CType) -> bool:
+    """Whether ``s[i]`` of this type is a character of text: of a C string, a
+    ``std::string`` or a library's string class, which C++ gives as a number."""
+    plain = ctype.is_string and not ctype.dims
+    return plain or (ctype.name in active().string_classes and not ctype.pointer)
+
+
 def _is_null(node: Expr) -> bool:
     return isinstance(node, Literal) and (
         node.kind == "null" or (node.kind == "int" and node.value == 0)
@@ -678,7 +685,7 @@ class ExprEmitter(NameEmitter):
 
     def _index(self, node: Index) -> Out:
         found = self.typeof(node.obj)
-        if found is not None and found.is_string and not found.dims:
+        if found is not None and _textual(found):
             return f"char_at({self.value(node.obj)}, {self.value(node.index)})", P.POSTFIX
         return f"{self.at(node.obj, P.POSTFIX)}[{self.value(node.index)}]", P.POSTFIX
 
