@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from xrdroot.cint.runtime import assign_into, assign_vector, store_through, value_copy
+from xrdroot.pycint.runtime import assign_into, assign_vector, store_through, value_copy
 from xrdroot.pyroot import stl, vectorassign
 from xrdroot.pyroot.rdf.rvec import RVec
 

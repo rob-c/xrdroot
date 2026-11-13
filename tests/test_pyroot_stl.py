@@ -248,7 +248,7 @@ def test_a_map_iterator_reads_and_assigns_its_entries_and_finds_keys():
 def test_a_vector_of_pairs_takes_a_pair_made_elsewhere_as_its_two_halves():
     """TwoHistoFit2D: ``coords.push_back(std::make_pair(x, y))`` - the translator's pair, or
     a tuple - is an element of the vector's own pair type."""
-    from xrdroot.cint.runtime.objects import Pair
+    from xrdroot.pycxx.runtime.objects import Pair
 
     coords = std.vector["std::pair<double,double>"]()
     coords.push_back(Pair(1.5, 2.5))

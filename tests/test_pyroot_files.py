@@ -315,8 +315,8 @@ def test_a_file_is_written_with_roots_compression_unless_told_another() -> None:
 
 
 def test_a_file_on_a_macros_stack_is_closed_as_its_scope_ends() -> None:
-    from xrdroot.cint import translate
-    from xrdroot.cint.execute import run_source
+    from xrdroot.pycint import translate
+    from xrdroot.pycint.execute import run_source
 
     source = 'void t() { { TFile f("stack.root", "RECREATE"); } TFile::Open("stack.root"); }'
     assert "f._destruct()" in translate(source, "t.C")

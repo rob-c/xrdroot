@@ -6,7 +6,7 @@ columns it names, so a string may also call ``gRandom->Gaus()``, a
 function a script declared, or be statements ending in a ``return``. What
 the batch evaluator refuses is made that function here: the columns the
 text names become its parameters, of their C++ types, the text its body,
-and :mod:`xrdroot.cint` translates it. Pure array construction and simple
+and :mod:`xrdroot.pycint` translates it. Pure array construction and simple
 reductions reuse the batch evaluator; other bodies are called once per
 entry. Nullary random defines retain their shared generator's entry order.
 """
@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ... import plugins
 from ...errors import UnsupportedFeatureError
 
 __all__ = ["JIT_METHODS", "jitted", "retried", "translatable"]
@@ -45,8 +46,9 @@ def _body(text: str) -> str:
 
 def jitted(frame: Any, text: str) -> tuple[Any, list[str]]:
     """The C++ ``text`` as a function of the frame's columns it names, and those columns."""
-    from ...cint.execute import run_source
     from .batched import compiled
+
+    run_source = plugins.require("interpreter.run_source")
 
     used = list(dict.fromkeys(n for n in NAME.findall(text) if frame.HasColumn(n)))
     parameters = ", ".join(f"{frame.GetColumnType(name)} {name}" for name in used)

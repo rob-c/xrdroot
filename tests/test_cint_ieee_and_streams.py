@@ -16,9 +16,9 @@ import numpy as np
 import pytest
 
 from cintfake import fake
-from xrdroot.cint import runtime as rt
-from xrdroot.cint.errors import MacroError
-from xrdroot.cint.execute import run_source
+from xrdroot.pycint import runtime as rt
+from xrdroot.pycint.execute import run_source
+from xrdroot.pycxx.errors import MacroError
 
 
 def block(capsys: pytest.CaptureFixture[str], body: str) -> str:

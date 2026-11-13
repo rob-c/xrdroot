@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from xrdroot.cint import Refusal, translate
+from xrdroot.pycint import Refusal, translate
 
 
 def body(source: str) -> str:
@@ -100,7 +100,6 @@ def test_a_methods_members_are_its_objects(source: str, fragment: str) -> None:
         ("int n = sizeof(TH1F);", "sizeof of a type whose size"),
         ("int a = (delete p, 0);", "delete inside an expression"),
         ("std::string s; s[0] = 'x';", "changing one character of a string in place"),
-        ("m(i++, 1) += 2;", "a compound assignment to a call whose arguments change things"),
     ],
 )
 def test_what_has_no_python_that_does_the_same_is_refused(source: str, why: str) -> None:
@@ -110,7 +109,7 @@ def test_what_has_no_python_that_does_the_same_is_refused(source: str, why: str)
 
 def test_address_of_compound_assignment_borrows_the_cell() -> None:
     import xrdroot.pyroot as ROOT
-    from xrdroot.cint.execute import run_source
+    from xrdroot.pycint.execute import run_source
 
     cpp = """
     int f() {
@@ -125,7 +124,7 @@ def test_address_of_compound_assignment_borrows_the_cell() -> None:
 
 def test_address_of_prefix_increment_borrows_the_cell() -> None:
     import xrdroot.pyroot as ROOT
-    from xrdroot.cint.execute import run_source
+    from xrdroot.pycint.execute import run_source
 
     cpp = """
     int f() {
@@ -145,7 +144,7 @@ def test_address_of_an_unaddressable_update_is_refused() -> None:
 
 def test_address_of_dereference_compound_assignment_borrows_the_pointer() -> None:
     import xrdroot.pyroot as ROOT
-    from xrdroot.cint.execute import run_source
+    from xrdroot.pycint.execute import run_source
 
     cpp = """
     int f() {

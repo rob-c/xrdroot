@@ -17,14 +17,14 @@ def test_compatibility_imports_share_every_public_object(name: str) -> None:
     import importlib
 
     generic = importlib.import_module(f"xrdroot.cppstd.{name}")
-    legacy = importlib.import_module(f"xrdroot.cint.runtime.{name}")
+    legacy = importlib.import_module(f"xrdroot.pycxx.runtime.{name}")
     assert legacy.__all__ is generic.__all__
     for exported in generic.__all__:
         assert getattr(legacy, exported) is getattr(generic, exported), exported
 
 
 def test_both_stream_paths_share_registered_formatters(monkeypatch: pytest.MonkeyPatch) -> None:
-    from xrdroot.cint.runtime import streams as legacy
+    from xrdroot.pycxx.runtime import streams as legacy
 
     class Token:
         pass
@@ -70,7 +70,7 @@ assert not any(name.startswith("xrdroot.") and not name.startswith("xrdroot.cpps
 
 
 def test_legacy_private_string_helpers_keep_their_original_identity() -> None:
-    from xrdroot.cint.runtime import strings as legacy
+    from xrdroot.pycxx.runtime import strings as legacy
 
     assert legacy._first is strings._first
     assert legacy._last is strings._last

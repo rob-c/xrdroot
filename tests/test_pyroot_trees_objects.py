@@ -13,8 +13,8 @@ import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import fresh
-from xrdroot.cint.runtime import Cell
-from xrdroot.cint.runtime.root import DECLARED
+from xrdroot.pycint.runtime import Cell
+from xrdroot.pycint.runtime.root import DECLARED
 from xrdroot.wobjects import IGNORED
 
 

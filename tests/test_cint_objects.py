@@ -9,8 +9,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from xrdroot.cint import runtime as rt
-from xrdroot.cint import translate
+from xrdroot.pycint import runtime as rt
+from xrdroot.pycint import translate
 
 
 def test_a_cell_is_read_and_written_as_value_and_as_element_zero() -> None:
@@ -219,7 +219,7 @@ def test_roots_names_come_from_the_module_loaded_or_from_importing_it(
 ) -> None:
     import sys
 
-    from xrdroot.cint.runtime import root
+    from xrdroot.pycint.runtime import root
 
     monkeypatch.setattr(root, "DEFAULT", "colorsys")
     monkeypatch.delitem(sys.modules, "colorsys", raising=False)

@@ -122,7 +122,7 @@ def test_grandom_is_xrdroots_and_a_replacement_is_followed():
 
 
 def test_a_translated_float_filled_by_reference_is_rounded_as_cpp_rounds_it():
-    from xrdroot.cint.runtime import Cell
+    from xrdroot.pycint.runtime import Cell
 
     r = ROOT.TRandom3(1)
     px, py, wide = Cell(0.0, "float"), Cell(0.0, "float"), Cell(0.0, "double")

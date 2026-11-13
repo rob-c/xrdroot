@@ -1,9 +1,20 @@
 """Other tree-loop bodies retain their ordinary C++ statement semantics."""
+from collections.abc import Iterator
+
 import pytest
 
-from xrdroot.cint.parse_decl import parse
-from xrdroot.cint.tokens import tokenize
-from xrdroot.cint.tree_loops import ntuple_fill
+from xrdroot.pycint.dialect import ROOT as ROOT_DIALECT
+from xrdroot.pycint.tree_loops import ntuple_fill
+from xrdroot.pycxx.dialect import using
+from xrdroot.pycxx.parse_decl import parse
+from xrdroot.pycxx.tokens import tokenize
+
+
+@pytest.fixture(autouse=True)
+def _in_roots_dialect() -> Iterator[None]:
+    """These tests read C++ as a ROOT macro is read: in ROOT's dialect."""
+    with using(ROOT_DIALECT):
+        yield
 
 
 def body(text):

@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from cintfake import fake
-from xrdroot.cint import cache
 from xrdroot.cli import main
+from xrdroot.pycxx import cache
 from xrdroot.session import Session
 
 

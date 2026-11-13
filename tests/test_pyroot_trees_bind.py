@@ -11,8 +11,8 @@ import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import fresh
-from xrdroot.cint.runtime import Cell
 from xrdroot.errors import UnsupportedFeatureError
+from xrdroot.pycint.runtime import Cell
 from xrdroot.pyroot.trees.bind import _class, _member
 from xrdroot.pyroot.trees.methods import _arguments
 from xrdroot.tmva.dataset import Labels

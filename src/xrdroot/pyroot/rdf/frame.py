@@ -21,6 +21,7 @@ from ... import rdf as _rdf
 from ...tree import Jagged
 from ..stl import is_vector
 from ..trees import hooks
+from .asnumpy import AsNumpyResult, column
 from .datasources import RCsvDS, csv_source, lazy_source, sqlite_source
 from .entrywise import per_entry
 from .helpers import Not, PassAsVec
@@ -213,9 +214,28 @@ class RDataFrame:
         return book(self, arguments)
 
     def AsNumpy(self, columns: Any = None, exclude: Any = None, lazy: bool = False) -> Any:
-        """Every column asked for, read now, as a dict of NumPy arrays."""
-        found = self._inner.AsNumpy(_unwrapped(columns), _unwrapped(exclude))
-        return {name: _column(values) for name, values in found.GetValue().items()}
+        """Every column asked for, as a dict of NumPy arrays: read now, or - ``lazy`` - an
+        ``AsNumpyResult`` that reads them when its value is asked for."""
+        inner, names, left_out = self._inner, _unwrapped(columns), _unwrapped(exclude)
+
+        def book() -> Callable[[], dict[str, Any]]:
+            found = inner.AsNumpy(names, left_out)
+            return lambda: {name: column(_column(each)) for name, each in found.GetValue().items()}
+
+        made = AsNumpyResult(book)
+        return made if lazy else made.GetValue()
+
+
+def _numpy_column(name: str, values: Any) -> Any:
+    """A column ``FromNumpy`` takes: numbers, or objects that are all strings - anything else in
+    an ``object`` array refused with ROOT's error, an empty one too, which says nothing."""
+    found = np.asarray(values)
+    if found.dtype == object and not (found.size and all(isinstance(v, str) for v in found)):
+        raise RuntimeError(
+            f"Failure in creating column '{name}' for RDataFrame: the input column type is "
+            "'object', which is not supported. Make sure your column type is supported"
+        )
+    return found
 
 
 def _from_numpy(columns: dict[str, Any]) -> RDataFrame:
@@ -225,7 +245,8 @@ def _from_numpy(columns: dict[str, Any]) -> RDataFrame:
 
     buffer = io.BytesIO()
     with create(buffer) as out:
-        out["numpy"] = {str(name): np.asarray(values) for name, values in columns.items()}
+        out["numpy"] = {str(name): _numpy_column(str(name), values) for name, values in
+                        columns.items()}
     return RDataFrame(open_root(io.BytesIO(buffer.getvalue()))["numpy"])
 
 

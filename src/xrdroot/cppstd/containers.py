@@ -115,8 +115,8 @@ def _numeric_dtype(value: Any) -> bool:
 #: What a Python type given as an element type stands for, as cppyy takes it.
 PYTHON_TYPES: dict[type, str] = {float: "float64", int: "int32", bool: "bool"}
 
-#: The names a string is spelled with.
-STRINGS: tuple[str, ...] = ("string", "std::string")
+#: The names a string is spelled with - a C string's too, which cppyy hands back as a ``str``.
+STRINGS: tuple[str, ...] = ("string", "std::string", "const char*", "const char *", "char*")
 
 #: Additional names are supplied by callers, never discovered through ROOT imports.
 TYPE_ALIASES: dict[str, str] = {}
@@ -510,6 +510,13 @@ class _Vector(_Container):
         self._data[self._size] = value
         self._size += 1
 
+    def __iadd__(self, values: Any) -> Any:
+        """``v += values``: PyROOT's ``insert`` of each of them at the end - an ``RVec`` adds
+        element by element instead, as its arithmetic does."""
+        for value in list(values):
+            self.push_back(value)
+        return self
+
     emplace_back = push_back
 
     def pop_back(self) -> None:
@@ -633,6 +640,12 @@ class _ObjectVector(_Container):
 
     def push_back(self, value: Any) -> None:
         self._items.append(_vector_value(self.element, value, _converted))
+
+    def __iadd__(self, values: Any) -> Any:
+        """``v += values``: PyROOT's ``insert`` of each of them at the end."""
+        for value in list(values):
+            self.push_back(value)
+        return self
 
     def emplace_back(self, *args: Any) -> None:
         """``emplace_back(args...)``: an element made of ``args`` - a thread started from a
@@ -947,6 +960,66 @@ def _map_class(key: Any, value: Any) -> type:
     return type(name, (_Map,), {"__slots__": (), **members})
 
 
+class _Set(_Container):
+    """``std::set``: each distinct element once, iterated in order - and, as cppyy's is, true
+    when it holds anything. A ``char`` given as a one-letter string, as cppyy gives one back,
+    is kept as that string."""
+
+    __slots__ = ("_items",)
+    kind: Any = np.dtype("float64")
+
+    def __init__(self, items: Any = None) -> None:
+        self._items: set[Any] = set()
+        for item in items if items is not None else ():
+            self.insert(item)
+
+    def _value(self, value: Any) -> Any:
+        if isinstance(value, str) and isinstance(self.kind, np.dtype) and self.kind.itemsize == 1:
+            return value
+        return _element(self.kind, value)
+
+    def __repr__(self) -> str:
+        return f"<{self.__cpp_name__} {sorted(self._items)!r}>"
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(sorted(self._items))
+
+    def __contains__(self, value: Any) -> bool:
+        return self._value(value) in self._items
+
+    def __bool__(self) -> bool:
+        return bool(self._items)
+
+    def size(self) -> int:
+        return len(self._items)
+
+    def empty(self) -> bool:
+        return not self._items
+
+    def clear(self) -> None:
+        self._items.clear()
+
+    def count(self, value: Any) -> int:
+        return int(value in self)
+
+    def insert(self, value: Any) -> None:
+        self._items.add(self._value(value))
+
+    def erase(self, value: Any) -> int:
+        """``erase(value)``: how many were taken out - one, or none if it was not there."""
+        found = int(value in self)
+        self._items.discard(self._value(value))
+        return found
+
+
+def _set_class(kind: Any) -> type:
+    name = f"set<{cpp_name(kind)}>"
+    return type(name, (_Set,), {"__slots__": (), "kind": kind, "__cpp_name__": name})
+
+
 #: The templates, by the name C++ gives each.
 
 
@@ -954,6 +1027,7 @@ TEMPLATES: dict[str, _Template] = {
     "vector": _Template("vector", 1, _vector_class),
     "map": _Template("map", 2, _map_class),
     "pair": _Template("pair", 2, _pair_class),
+    "set": _Template("set", 1, _set_class),
 }
 
 
@@ -1009,6 +1083,7 @@ class _Namespace:
     vector = TEMPLATES["vector"]
     map = TEMPLATES["map"]
     pair = TEMPLATES["pair"]
+    set = TEMPLATES["set"]
     array = _ArrayTemplate()
     bitset = _bitset.bitset
     mt19937 = _random.mt19937

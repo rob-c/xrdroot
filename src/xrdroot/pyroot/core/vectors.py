@@ -408,6 +408,9 @@ class TVector3(TObject):
     def __hash__(self) -> int:
         return hash((self._x, self._y, self._z))
 
+    def __len__(self) -> int:
+        return 3
+
     def __getitem__(self, i: int) -> float:
         if not 0 <= i < 3:
             self.Error("operator()(i)", "bad index (%d) returning 0", i)

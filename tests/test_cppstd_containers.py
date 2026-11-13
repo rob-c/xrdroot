@@ -76,7 +76,7 @@ std = containers.std
 assert containers.TYPE_RESOLVER is None
 assert 'Float_t' not in containers.NUMBERS
 assert 'Int_t' not in stdlib._KINDS
-assert set(containers.TEMPLATES) == {'vector', 'map', 'pair'}
+assert set(containers.TEMPLATES) == {'vector', 'map', 'pair', 'set'}
 values = std.vector['int']([1, 2, 3])
 copy = std.vector['vector<int>']([values])
 values[0] = 9

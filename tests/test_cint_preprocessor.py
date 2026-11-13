@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-from xrdroot.cint import Refusal, Where
-from xrdroot.cint.literals import number
-from xrdroot.cint.preprocessor import preprocess
-from xrdroot.cint.tokens import tokenize, unescape
+from xrdroot.pycint import Refusal, Where
+from xrdroot.pycint.dialect import ROOT as ROOT_DIALECT
+from xrdroot.pycxx.dialect import using
+from xrdroot.pycxx.literals import number
+from xrdroot.pycxx.preprocessor import preprocess
+from xrdroot.pycxx.tokens import tokenize, unescape
+
+
+@pytest.fixture(autouse=True)
+def _in_roots_dialect() -> Iterator[None]:
+    """These tests read C++ as a ROOT macro is read: in ROOT's dialect."""
+    with using(ROOT_DIALECT):
+        yield
 
 
 def words(text: str, file: str = "<macro>") -> str:

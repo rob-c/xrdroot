@@ -7,9 +7,9 @@ import io
 import pytest
 
 from cintfake import fake
-from xrdroot.cint import Refusal, translate
-from xrdroot.cint import runtime as rt
-from xrdroot.cint.execute import run_source
+from xrdroot.pycint import Refusal, translate
+from xrdroot.pycint import runtime as rt
+from xrdroot.pycint.execute import run_source
 
 
 def printed(capsys: pytest.CaptureFixture[str], source: str) -> str:

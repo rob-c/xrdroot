@@ -330,6 +330,19 @@ def _member(source: Any, rest: tuple[Any, ...]) -> tuple[Any, tuple[Any, ...]]:
     return source, rest
 
 
+def _ignoring(fn: Callable[[Any], Any]) -> Callable[[Any, Any], Any]:
+    """``fn(x)`` as a function of the coordinates and the parameters it does not take."""
+    return lambda x, params: fn(x)
+
+
+def _keyworded(rest: tuple[Any, ...], npar: Any, ndim: Any) -> tuple[Any, ...]:
+    """PyROOT's ``TF1(name, f, xmin, xmax, npar=2, ndim=1)``: C++'s trailing arguments, which
+    the keywords name, after those given in order."""
+    if npar is None and ndim is None:
+        return rest
+    return (*rest, int(npar or 0), *(() if ndim is None else (int(ndim),)))
+
+
 class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
     """``TF1``: a function of one variable, from a formula or from Python code."""
 
@@ -337,10 +350,13 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
     DIM = 1
     EAddToList = EAddToList
 
-    def __init__(self, name: Any = "", source: Any = None, *rest: Any) -> None:
+    def __init__(
+        self, name: Any = "", source: Any = None, *rest: Any, npar: Any = None, ndim: Any = None
+    ) -> None:
         TNamed.__init__(self)
         listed = EAddToList.kNo not in [v for v in rest if isinstance(v, EAddToList)]
         rest = tuple(v for v in rest if not isinstance(v, EAddToList))
+        rest = _keyworded(rest, npar, ndim)
         if isinstance(name, TF1):
             self._xrd = name._xrd.copy()
         else:
@@ -361,6 +377,7 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
             extra = numbers[2 * self.DIM :]
             npar = int(extra[0]) if extra else 0
             model = adapted(source, self.DIM)
+            self.__dict__["_code"] = source if _arguments(source) == 2 else _ignoring(source)
             return Function.from_callable(name, model, npar, dimensions=self.DIM, range=span)
         formula = str(source) if source is not None else "0"
         return Function(name, composed(formula), range=span, title=formula)
@@ -368,6 +385,33 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
     def _attribute_holder(self) -> dict[str, Any]:
         f1: dict[str, Any] = self._xrd._f1
         return f1
+
+    # -- a Python function's own coordinates --------------------------------------------------
+
+    def _coded(self) -> Any:
+        """The Python function this was made of, when it is called as C++ calls it: unscaled."""
+        code = self.__dict__.get("_code")
+        return None if code is None or self._xrd.normalized else code
+
+    def Eval(self, x: Any, y: Any = 0.0, z: Any = 0.0, t: Any = 0.0) -> Any:
+        """``Eval(x, y, z, t)``: a Python function is handed all four coordinates, as ROOT
+        hands its ``double*`` - a ``TF1``'s code may read ``x[1]``."""
+        code = self._coded()
+        if code is None or np.ndim(x) > 0:
+            return super().Eval(x, y, z, t)
+        return float(code(np.array([x, y, z, t], dtype=np.float64), self.GetParameters()))
+
+    def EvalPar(self, x: Any, params: Any = None) -> Any:
+        """``EvalPar(x, params)``: a Python function at the point ``x`` - every coordinate of
+        it - or, as PyROOT has it, at each row of a two-dimensional array of points."""
+        code = self._coded()
+        if code is None:
+            return super().EvalPar(x, params)
+        given = self.GetParameters() if params is None else np.asarray(params, dtype=np.float64)
+        points = np.asarray(x, dtype=np.float64)
+        if points.ndim == 2:
+            return np.array([float(code(row, given)) for row in points])
+        return float(code(points.reshape(-1), given))
 
     # -- the range and the drawing grid ---------------------------------------------------
 

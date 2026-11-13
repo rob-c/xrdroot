@@ -2,10 +2,12 @@
 
 ## pyroot
 
-PyROOT owns `xrdroot.pyroot`, the `cint` parser/emitter and ROOT-specific runtime,
-and `session`. It may import all thirteen engine components. It supplies ROOT's
-class names, namespaces, globals, public return objects and translated-program
-behavior over the engine implementation.
+PyROOT owns `xrdroot.pyroot` and `session`. It may import all thirteen engine
+components and the C++ translator, [pycxx](pycxx.md). It supplies ROOT's class
+names, namespaces, globals and public return objects over the engine
+implementation. Running C++ - `ProcessLine`, `.x`, `gInterpreter.Declare`,
+RDataFrame's C++ expressions - is [pycint](pycint.md)'s, which is built on this
+namespace and reached through the `interpreter.*` providers.
 
 ```python
 from xrdroot import pyroot as ROOT
@@ -21,10 +23,10 @@ factory; it never imports the ROOT namespace to discover its environment.
 Compatibility imports must retain one implementation and shared registries,
 stream objects, manipulators and random state.
 
-The translator remains ROOT-facing in this phase. It is not a separately
-packaged C++ compiler, and its native fixtures establish only their recorded
-semantics rather than a C++ ABI guarantee. New PyROOT areas must remain present
-in `pyroot.SUBMODULES` so the public namespace includes them.
+The translator is ROOT-agnostic: ROOT's dialect of it is pycint's. It is not a
+C++ compiler, and its native fixtures establish only their recorded semantics
+rather than a C++ ABI guarantee. New PyROOT areas must remain present in
+`pyroot.SUBMODULES` so the public namespace includes them.
 
 Wrappers import `file`, `writer` and `wupdate` directly for I/O. Returning an
 engine object or plain arrays to a wrapper is preferred to making a lower

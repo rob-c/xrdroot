@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from cintfake import fake
-from xrdroot.cint import translate
-from xrdroot.cint.execute import run_source
+from xrdroot.pycint import translate
+from xrdroot.pycint.execute import run_source
 
 
 def output(capsys: pytest.CaptureFixture[str], source: str) -> str:

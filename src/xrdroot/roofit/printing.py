@@ -70,7 +70,7 @@ def g(value: Any, digits: int | None = None) -> str:
 
 
 #: How ``os << (const void*)nullptr`` reads: ``0x0`` from compiled code under PyROOT, ``0``
-#: in a macro cling runs - :mod:`xrdroot.cint.execute` says which while it runs one.
+#: in a macro cling runs - :mod:`xrdroot.pycint.dialect` says which while it runs one.
 NULL_POINTER = ["0x0"]
 
 

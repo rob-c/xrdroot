@@ -83,11 +83,9 @@ def test_axes_that_may_grow_and_bars_are_noted():
 
 def test_macros_are_loaded_once_by_the_interpreter(monkeypatch):
     seen = []
-    execute = types.ModuleType("xrdroot.cint.execute")
+    execute = types.ModuleType("xrdroot.pycint.execute")
     execute.process_line = seen.append
-    monkeypatch.setitem(sys.modules, "xrdroot.cint", types.ModuleType("xrdroot.cint"))
-    monkeypatch.setitem(sys.modules, "xrdroot.cint.execute", execute)
-    monkeypatch.setattr(troot.importlib.util, "find_spec", lambda name: True)
+    monkeypatch.setitem(sys.modules, "xrdroot.pycint.execute", execute)
     try:
         assert not ROOT.gInterpreter.IsLoaded("m.C")
         ROOT.gInterpreter.LoadMacro("m.C")

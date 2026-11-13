@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from xrdroot.cint import Refusal, translate
+from xrdroot.pycint import Refusal, translate
 
 
 def test_mathmore_is_there_as_it_is_in_a_released_root() -> None:

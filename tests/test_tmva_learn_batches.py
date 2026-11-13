@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import pytest
 
 import xrdroot.pyroot as ROOT
 
@@ -64,3 +65,80 @@ def test_a_frame_of_nothing_but_targets_has_no_inputs_to_batch():
     loader = RDataLoader(Frame(t=np.ones(3)), 2, target="t")
     assert loader.inputs.shape == (0, 0)
     assert list(loader.train_test_split(0.5)[0].as_numpy()) == []
+
+
+def _flat(batches: Any) -> list[float]:
+    return [float(v) for batch in batches for v in np.ravel(batch[0])]
+
+
+def test_a_list_of_frames_read_lazily_is_split_as_one_long_frame():
+    loader = RDataLoader(
+        [Frame(x=np.arange(5.0)), Frame(x=np.arange(5.0, 10.0))], 3, shuffle=False,
+        drop_remainder=False)
+    training, testing = loader.train_test_split(0.4)
+    assert _flat((b,) for b in training.as_numpy()) == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+    assert _flat((b,) for b in testing.as_numpy()) == [6.0, 7.0, 8.0, 9.0]
+    assert (training.num_batches, training.last_batch_no_of_rows) == (2, 0)
+    assert (testing.num_batches, testing.last_batch_no_of_rows) == (2, 1)
+
+
+def test_a_list_of_frames_loaded_eagerly_keeps_each_frames_share_for_validation():
+    loader = RDataLoader(
+        [Frame(x=np.arange(5.0)), Frame(x=np.arange(5.0, 10.0))], 3, shuffle=False,
+        drop_remainder=False, load_eager=True)
+    training, testing = loader.train_test_split(0.4)
+    assert _flat((b,) for b in training.as_numpy()) == [0.0, 1.0, 2.0, 5.0, 6.0, 7.0]
+    assert _flat((b,) for b in testing.as_numpy()) == [3.0, 4.0, 8.0, 9.0]
+
+
+def test_the_loader_unsplit_batches_every_entry_and_counts_its_whole_batches():
+    loader = RDataLoader(Frame(x=np.arange(7.0)), 3, shuffle=False)
+    assert _flat((b,) for b in loader.as_numpy()) == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+    assert (loader.num_batches, loader.last_batch_no_of_rows) == (2, 0)
+
+
+def test_a_shuffled_split_holds_back_different_entries_for_different_seeds():
+    def held(seed: int) -> list[float]:
+        loader = RDataLoader(Frame(x=np.arange(20.0)), 4, shuffle=True, set_seed=seed)
+        return sorted(_flat((b,) for b in loader.train_test_split(0.5)[1].as_numpy()))
+
+    assert held(42) == held(42) and held(42) != held(43)
+
+
+def _balanced(sampling: str, ratio: float, **options: Any) -> tuple[list[float], list[float]]:
+    major, minor = Frame(x=np.arange(0.0, 40.0, 2.0)), Frame(x=np.arange(1.0, 10.0, 2.0))
+    loader = RDataLoader(
+        [minor, major], 2, shuffle=False, drop_remainder=False, load_eager=True,
+        sampling_type=sampling, sampling_ratio=ratio, **options)
+    training, testing = loader.train_test_split(0.4)
+    return _flat((b,) for b in training.as_numpy()), _flat((b,) for b in testing.as_numpy())
+
+
+def test_undersampling_cuts_the_larger_frame_to_the_ratio_and_puts_it_first():
+    training, testing = _balanced("undersampling", 0.5)
+    assert training == [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 1.0, 3.0, 5.0]
+    assert testing == [24.0, 26.0, 28.0, 30.0, 7.0, 9.0]
+
+
+def test_undersampling_with_replacement_repeats_the_majority_when_it_runs_short():
+    training, _ = _balanced("undersampling", 0.2, replacement=True)
+    assert training[:15] == [*np.arange(0.0, 24.0, 2.0), 0.0, 2.0, 4.0]
+
+
+def test_undersampling_too_far_without_replacement_is_refused():
+    with pytest.raises(ValueError, match="The sampling_ratio is too low"):
+        _balanced("undersampling", 0.2)
+
+
+def test_oversampling_repeats_the_smaller_frame_up_to_the_ratio_and_puts_it_first():
+    training, testing = _balanced("oversampling", 0.5)
+    assert training == [1.0, 3.0, 5.0, 1.0, 3.0, 5.0, *np.arange(0.0, 24.0, 2.0)]
+    assert testing[:4] == [7.0, 9.0, 7.0, 9.0]
+
+
+def test_sampling_needs_two_frames_and_one_of_its_two_ways():
+    with pytest.raises(ValueError, match="neither 'undersampling' nor 'oversampling'"):
+        RDataLoader([Frame(x=np.ones(2)), Frame(x=np.ones(3))], 2, sampling_type="smote")
+    with pytest.raises(ValueError, match="was given 1"):
+        RDataLoader(Frame(x=np.ones(2)), 2, sampling_type="oversampling")
+

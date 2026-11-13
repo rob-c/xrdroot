@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 
 from cintfake import fake
-from xrdroot.cint import Refusal, translate
-from xrdroot.cint.execute import run_source
-from xrdroot.cint.runtime import find_if
+from xrdroot.pycint import Refusal, translate
+from xrdroot.pycint.execute import run_source
+from xrdroot.pycint.runtime import find_if
 
 
 def block(capsys: pytest.CaptureFixture[str], body: str) -> str:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from xrdroot.cint import Refusal, translate
+from xrdroot.pycint import Refusal, translate
 
 
 def body(source: str) -> str:
@@ -26,6 +26,7 @@ def body(source: str) -> str:
         ("auto z = (MyType) w;", "z = ROOT.w"),
         ("if (x = f(); x > 0) {}", "ROOT.x = ROOT.f()"),
         ("struct Foo *p = nullptr;", "p = None"),
+        ("if (pass) pass = 0;", "if getattr(ROOT, 'pass'):\n        setattr(ROOT, 'pass', 0)"),
     ],
 )
 def test_the_corners_of_the_grammar_are_read(source: str, fragment: str) -> None:
@@ -39,7 +40,6 @@ def test_the_corners_of_the_grammar_are_read(source: str, fragment: str) -> None
         ("goto end; end: ;", "goto, which jumps to a label"),
         ("char buf[8]; TH1F *h = new (buf) TH1F();", "placement new"),
         ("auto a = alignof(int);", "alignof is not something"),
-        ("auto a = typeid(x);", "typeid is not something"),
         ("bool b = noexcept(f());", "noexcept is not something"),
         ("auto f = [n = 1]() { return n; };", "the lambda capture n = ..."),
         ("Point p = {.x = 1};", r"a designated initialiser, \.name = value"),
@@ -74,8 +74,12 @@ def test_constructs_with_no_python_are_refused_by_name_at_their_line(source: str
             "the operator , defined for a class",
         ),
         (
-            "struct V { int x; };\nV operator+(V a, V b) { return a; }",
-            "the operator \\+ defined outside a class",
+            "struct V { int x; };\nV operator&&(V a, V b) { return a; }",
+            "the operator && defined outside a class",
+        ),
+        (
+            "template <typename T> const char *f() { return typeid(T).name(); }",
+            "typeid of the template parameter T",
         ),
         ("int main() { return 0; } }", "C\\+\\+ this translator cannot read"),
     ],

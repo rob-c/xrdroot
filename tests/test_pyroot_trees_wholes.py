@@ -14,8 +14,8 @@ import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import fresh
-from xrdroot.cint.runtime import Cell, construct_at
 from xrdroot.errors import UnsupportedFeatureError
+from xrdroot.pycint.runtime import Cell, construct_at
 
 
 @pytest.fixture(autouse=True)

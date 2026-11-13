@@ -121,9 +121,15 @@ def SetOwnership(obj: Any, owned: bool) -> None:
     """``ROOT.SetOwnership``: who deletes an object, which Python's collector decides here."""
 
 
-def addressof(obj: Any) -> int:
-    """``ROOT.addressof``: a number standing for the object, unique while it lives."""
-    return id(obj)
+def addressof(obj: Any, field: Any = None) -> Any:
+    """``ROOT.addressof``: a number standing for the object, unique while it lives - or, with
+    a member's name, that member's place: a cell reading and writing it, which is what a tree
+    handed ``addressof(s, "x")`` reads at ``Fill`` and writes at ``GetEntry``."""
+    if field is None:
+        return id(obj)
+    from ...cppstd.cells import AttrRef
+
+    return AttrRef(obj, str(field))
 
 
 def _class_named(name: str) -> type | None:

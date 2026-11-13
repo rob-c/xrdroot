@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 
 from cintfake import fake
-from xrdroot.cint import translate_file
-from xrdroot.cint.execute import load, run
-from xrdroot.cint.runtime import ROOT
+from xrdroot.pycint import translate_file
+from xrdroot.pycint.execute import load, run
+from xrdroot.pycint.runtime import ROOT
 
 #: Where the copied tutorials are.
 TUTORIALS = Path(__file__).parent / "data" / "cint"

@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from cintfake import fake
-from xrdroot.cint import translate
-from xrdroot.cint.execute import run_source
+from xrdroot.pycint import translate
+from xrdroot.pycint.execute import run_source
 
 
 def output(capsys: pytest.CaptureFixture[str], source: str) -> str:
@@ -62,7 +62,7 @@ def test_std_copy_into_an_array_roots_method_gives_writes_it_from_its_start() ->
 
 
 def test_std_copy_without_a_destination_is_refused() -> None:
-    from xrdroot.cint import Refusal
+    from xrdroot.pycint import Refusal
 
     with pytest.raises(Refusal, match="std::copy without a range and a place to copy it to"):
         translate("void t() { int a[2]; std::copy(a, a + 2); }", "t.C")

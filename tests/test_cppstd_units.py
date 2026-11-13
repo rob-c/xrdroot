@@ -18,19 +18,21 @@ from cppstdsupport import isolated
     ("h", 0.5, datetime.timedelta(minutes=30)),
 ])
 def test_duration_literals_keep_all_units_and_timedelta_rounding(suffix, value, expected) -> None:
-    from xrdroot.cint.runtime import units as legacy
     from xrdroot.cppstd import units
+    from xrdroot.pycint.runtime import adapters
+    from xrdroot.pycxx.runtime import units as legacy
 
     assert legacy.DURATIONS is units.DURATIONS
     assert legacy.duration_literal is units.duration_literal
     assert units.duration_literal(suffix, value) == expected
     assert legacy.user_literal(suffix, value) == expected
+    assert adapters.user_literal(suffix, value) == expected
 
 
 def test_root_pad_literal_dispatch_remains_in_the_interpreter_adapter(monkeypatch) -> None:
     from types import SimpleNamespace
 
-    from xrdroot.cint.runtime import units
+    from xrdroot.pycint.runtime import adapters as units
 
     seen = []
     token = object()

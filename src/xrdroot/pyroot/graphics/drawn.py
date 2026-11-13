@@ -64,12 +64,14 @@ def _colour_named(name: str) -> int:
     """A colour given by name - ``"kGreen"``, ``"red"``, ``"r"`` or ``"#rrggbb"`` - as
     ``TColorNumber`` takes one."""
     from ...roofit.names import named_constant
-    from ..core.colors import COLOR_NAMES
+    from ..core.colors import named
 
-    if name in COLOR_NAMES:
-        return COLOR_NAMES[name]
     try:
-        return int(named_constant(name))
+        return named(name)  # every ``EColor`` - ``kP10Ash`` too - and the short names
+    except ValueError:
+        pass
+    try:
+        return int(named_constant(name))  # a number, ``"42"``, or one plus or minus another
     except (KeyError, ValueError, TypeError):
         from .colors import TColor
 

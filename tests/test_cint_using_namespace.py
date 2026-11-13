@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from xrdroot.cint.runtime.root import RootProxy
+from xrdroot.pycint.runtime.root import RootProxy
 
 
 def test_a_name_root_lacks_is_looked_for_in_the_namespaces_a_macro_uses() -> None:
@@ -29,7 +29,7 @@ def test_a_class_found_in_a_used_namespace_is_remembered_but_an_object_or_a_decl
 ) -> None:
     """``XYZVector(x, y, z)`` in a loop looks the class up once; what may change is looked up
     each time: an object (``RooFit.Save`` here stands for one), or a class a macro declared."""
-    from xrdroot.cint.runtime import root
+    from xrdroot.pycint.runtime import root
 
     math, roofit = SimpleNamespace(XYZVector=int), SimpleNamespace(Save=object())
     proxy = RootProxy()

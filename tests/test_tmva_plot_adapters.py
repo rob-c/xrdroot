@@ -169,7 +169,8 @@ def test_raw_roc_and_public_queries_work_with_downward_providers_and_root_import
 
         class BlockAdapters:
             def find_spec(self, fullname, path=None, target=None):
-                if fullname.startswith(("xrdroot.pyroot", "xrdroot.cint", "xrdroot.canvas",
+                if fullname.startswith(("xrdroot.pyroot", "xrdroot.cint", "xrdroot.pycint",
+                                        "xrdroot.canvas",
                                         "xrdroot.plot")):
                     raise AssertionError("TMVA imported " + fullname)
 
@@ -210,7 +211,8 @@ def test_raw_roc_and_public_queries_work_with_downward_providers_and_root_import
         factory.booked[loader.GetName()] = [item]
         assert factory.GetROCCurve(loader) is factory
         assert factory.GetROCCurve(loader, "classifier")[0] == "classifier"
-        assert not any(name.startswith(("xrdroot.pyroot", "xrdroot.cint", "xrdroot.canvas",
+        assert not any(name.startswith(("xrdroot.pyroot", "xrdroot.cint", "xrdroot.pycint",
+                                        "xrdroot.canvas",
                                         "xrdroot.plot")) for name in sys.modules)
         """
     source = str(Path(xrdroot.__file__).parent.parent)

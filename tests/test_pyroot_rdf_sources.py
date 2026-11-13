@@ -12,7 +12,7 @@ import numpy as np
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect
-from xrdroot.cint.execute import run_source
+from xrdroot.pycint.execute import run_source
 
 #: A small ROOT file of the tests' own.
 DATA = Path(__file__).parent / "data"

@@ -1,17 +1,31 @@
-"""``xrdroot run``: ``root -b -q file.C`` - a ROOT macro run, C++ or Python.
+"""``xrdroot run``: ``root -b -q file.C`` - a ROOT macro run, C++ or Python - or a C++ program.
 
     $ xrdroot run hsimple.C
     $ xrdroot run 'fit.C(1000, "gaus")'
     $ xrdroot run hsimple.C --python      # the translation, printed, nothing run
     $ xrdroot run script.py               # a PyROOT script, with ROOT as xrdroot.pyroot
+    $ xrdroot run stressVector.cxx -- 500 # a program's main(argc, argv)
+    $ xrdroot run testTH1.cxx -- --gtest_filter='TH1.*'   # a GoogleTest program
+    $ xrdroot run a.cxx b.cxx             # several files, one program
 
-A C++ macro is translated into Python by :mod:`xrdroot.cint` and run, and the
+A C++ macro is translated into Python by :mod:`xrdroot.pycint` and run, and the
 function named like its file called with the arguments given in brackets, as
 ``root`` does; ``file.C+`` runs the same way. What the function returns is
 printed as cling prints it, ``(TCanvas *) 0x...``, and is the exit status, as
 ``root -q`` makes it: ``hsimple.C``, returning its ``TFile *``, exits 255.
+
+A file without that function is started as the program it is: its
+``main(argc, argv)`` is called - ``argv`` the program's name, then whatever
+follows ``--`` - and its value is the exit status; else the GoogleTest
+tests it defines are run, as ``gtest_main`` runs them, exiting 0 if and only
+if none failed; else an unnamed macro ``{ ... }`` runs its block. A file with
+none of these is refused, rather than run as nothing: ROOT's ``.x`` would
+call the missing function and fail too. Several files are one program: each
+is translated and run in order, in one namespace, and the first says how
+the program starts.
+
 A Python script is run as a PyROOT script, with ``import ROOT`` giving
-:mod:`xrdroot.pyroot`.
+:mod:`xrdroot.pyroot` and ``sys.argv`` the script and what follows ``--``.
 """
 
 from __future__ import annotations
@@ -19,19 +33,46 @@ from __future__ import annotations
 import argparse
 import runpy
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 __all__ = ["add_parser", "run"]
 
 
+class _ProgramParser(argparse.ArgumentParser):
+    """``run``'s parser: what follows ``--`` is the program's own arguments, kept apart.
+
+    argparse would otherwise drop the ``--`` and add what follows it to the
+    files, so a program's ``--gtest_filter=...`` could not be told from a
+    file to run.
+    """
+
+    def parse_known_args(  # type: ignore[override]
+        self, args: Sequence[str] | None = None, namespace: Any = None
+    ) -> tuple[argparse.Namespace, list[str]]:
+        given = list(sys.argv[1:] if args is None else args)
+        cut = given.index("--") if "--" in given else len(given)
+        parsed, extra = super().parse_known_args(given[:cut], namespace)
+        parsed.argv = given[cut + 1 :]
+        return parsed, extra
+
+
 def add_parser(subparsers: Any) -> None:
     parser = subparsers.add_parser(
         "run",
-        help="run a ROOT macro: file.C[(args)], translated from C++, or a PyROOT script",
-        description="Run a ROOT macro as root -b -q would: file.C, file.C(args) or file.py.",
+        help="run a ROOT macro (file.C[(args)]) or C++ program, translated, or a PyROOT script",
+        description=(
+            "Run a ROOT macro as root -b -q would (file.C, file.C(args) or file.py), or a C++ "
+            "program: its main(), or its GoogleTest tests, with the arguments after --."
+        ),
     )
-    parser.add_argument("macro", help='the macro, with any arguments: file.C or "file.C(1, 2)"')
+    parser.__class__ = _ProgramParser
+    parser.add_argument(
+        "macro",
+        nargs="+",
+        help='the macro, with any arguments: file.C or "file.C(1, 2)"; more files join it',
+    )
     parser.add_argument(
         "--python",
         action="store_true",
@@ -54,13 +95,14 @@ def add_parser(subparsers: Any) -> None:
 NAMESPACES = ("Experimental", "VecOps", "RDF", "Math", "RooFit", "TMVA")
 
 
-def _script(path: Path) -> int:
+def _script(path: Path, argv: list[str]) -> int:
     """A PyROOT script, run with ``import ROOT`` meaning :mod:`xrdroot.pyroot`.
 
     Its standard output is :func:`xrdroot.stdio.split`, so that what it
     prints and what ROOT prints arrive in the order they would from PyROOT.
-    ``sys.argv`` is the script alone, as ``python script.py`` makes it, so a
-    script parsing its own options does not find ``run`` among them.
+    ``sys.argv`` is the script and the arguments after ``--``, as ``python
+    script.py`` makes it, so a script parsing its own options does not find
+    ``run`` among them.
     """
     import importlib
 
@@ -72,7 +114,7 @@ def _script(path: Path) -> int:
         if found is not None:
             sys.modules[f"ROOT.{name}"] = found
     before = sys.argv
-    sys.argv = [str(path)]
+    sys.argv = [str(path), *argv]
     try:
         with split():
             runpy.run_path(str(path), run_name="__main__")
@@ -93,27 +135,32 @@ def _session_macro(name: str, use_cache: bool) -> None:
     macro run beside them prints what they print before and after its own.
     A Python script does not: PyROOT looks only for ``.rootlogon.C``.
     """
-    from ..cint.execute import run as run_macro
+    from ..pycint.execute import run as run_macro
 
     if Path(name).is_file():
         run_macro(Path(name), use_cache=use_cache)
 
 
 def run(args: argparse.Namespace) -> int:
-    from ..cint import translate_file
-    from ..cint.execute import arguments, run_and_quit, split_call
+    from ..pycint import translate_file
+    from ..pycint.execute import arguments, run_program, split_call
 
-    path_text, given = split_call(args.macro)
+    first, *more = args.macro
+    argv = list(getattr(args, "argv", []))
+    path_text, given = split_call(first)
     path = Path(path_text)
     if path.suffix == ".py":
-        return _script(path)
+        return _script(path, argv)
+    paths = [path, *map(Path, more)]
     if args.python:
-        sys.stdout.write(translate_file(path))
+        for each in paths:
+            sys.stdout.write(translate_file(Path(str(each).rstrip("+"))))
         return 0
     logons = () if args.no_logon else (LOGON, LOGOFF)
     for name in logons[:1]:
         _session_macro(name, not args.no_cache)
-    status = run_and_quit(path, arguments(given), use_cache=not args.no_cache)
+    program = [Path(str(path).rstrip("+")).stem, *argv]
+    status = run_program(paths, arguments(given), program, use_cache=not args.no_cache)
     for name in logons[1:]:  # after the returned value's line, before root exits with it
         _session_macro(name, not args.no_cache)
     return status

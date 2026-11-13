@@ -1,30 +1,26 @@
-"""ROOT macros - C++ as Cling reads it - translated into Python, and run.
+"""The C++ translator's former home, kept so that existing imports keep working.
 
-    >>> print(translate("void hello() { printf(\\"%d\\\\n\\", 7 / 2); }"))  # doctest: +SKIP
-    >>> run("hsimple.C")                          # doctest: +SKIP
-    >>> run("fit.C", args=(1000,))                # .x fit.C(1000)
-
-A macro is translated, not interpreted: :func:`translate` gives Python that
-reads like the C++ it came from, uses ROOT's names from
-:mod:`xrdroot.pyroot` as ``ROOT.TH1F``, ``ROOT.gRandom``..., and gets the
-C++ semantics Python lacks - integer division, ``printf``, ``cout``, cells
-for variables whose address is taken - from :mod:`xrdroot.cint.runtime`.
-The Python is meant to be read and kept.
-
-What the translator cannot turn into Python that does the same thing it
-refuses by name, at the C++ line, with a :class:`Refusal`; it never writes
-a plausible guess. A translated macro that fails as it runs fails with a
-:class:`MacroError` placed at the C++ line, through the translation's
-source map.
+The translator is now two packages: :mod:`xrdroot.pycxx`, which translates
+and runs C++ on its own, and :mod:`xrdroot.pycint`, which runs ROOT's macros
+in ROOT's dialect of it. Every name here is :mod:`xrdroot.pycint`'s own
+object, re-exported; new code imports from there.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from .errors import CintError, MacroError, Refusal, Where
-from .execute import load, process_line, run
-from .translation import Translation, translation
+from ..pycint import (
+    CintError,
+    MacroError,
+    Refusal,
+    Translation,
+    Where,
+    load,
+    process_line,
+    run,
+    translate,
+    translate_file,
+    translation,
+)
 
 __all__ = [
     "run",
@@ -39,15 +35,3 @@ __all__ = [
     "MacroError",
     "Where",
 ]
-
-
-def translate(source: str, file: str = "<macro>") -> str:
-    """The Python that the C++ macro ``source`` becomes; ``file`` names it in errors."""
-    directories = [Path(file).parent] if file != "<macro>" else []
-    return translation(source, file, directories).python
-
-
-def translate_file(path: str | Path) -> str:
-    """The Python the macro at ``path`` becomes, its local headers read in."""
-    where = Path(path)
-    return translate(where.read_text(encoding="utf-8", errors="replace"), str(where))

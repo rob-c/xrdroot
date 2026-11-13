@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
-from xrdroot.cint.runtime import Cell
+from xrdroot.pycint.runtime import Cell
 
 A = [[4.0, 2.0, 0.6], [2.0, 5.0, 1.0], [0.6, 1.0, 3.0]]
 

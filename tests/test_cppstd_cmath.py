@@ -12,15 +12,16 @@ from cppstdsupport import isolated
 
 
 def test_cmath_exports_and_generated_wrappers_keep_legacy_identity() -> None:
-    from xrdroot.cint.runtime import cmath as legacy
     from xrdroot.cppstd import cmath
+    from xrdroot.pycint.runtime import adapters
+    from xrdroot.pycxx.runtime import cmath as legacy
 
     assert legacy.__all__ is cmath.__all__
     for name in cmath.__all__:
         assert getattr(legacy, name) is getattr(cmath, name), name
     assert cmath.fast_exp is cmath.exp
     assert cmath.fast_log is cmath.log
-    assert cmath.VECTOR_RESULT is legacy._rvec
+    assert cmath.VECTOR_RESULT is adapters._rvec
 
 
 @pytest.mark.parametrize(("name", "args", "expected"), [
@@ -64,7 +65,8 @@ def test_cmath_result_constructor_receives_the_original_promoted_arrays(monkeypa
 
 
 def test_the_runtime_adapter_keeps_actual_rvec_results_and_promoted_types() -> None:
-    from xrdroot.cint.runtime import cmath
+    from xrdroot.pycint.runtime import adapters  # noqa: F401 - ROOT's RVec results, installed
+    from xrdroot.pycxx.runtime import cmath
     from xrdroot.pyroot.rdf.rvec import RVec
 
     values = RVec["float"]([1, 4, 9])

@@ -7,7 +7,7 @@ import math
 import numpy as np
 import pytest
 
-from xrdroot.cint import runtime as rt
+from xrdroot.pycint import runtime as rt
 
 
 @pytest.mark.parametrize(

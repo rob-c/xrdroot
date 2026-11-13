@@ -12,19 +12,20 @@ from cppstdsupport import isolated
 def test_c_stdio_exports_are_shared_with_the_runtime_adapter() -> None:
     from xrdroot.cppstd import printf
 
-    legacy = importlib.import_module("xrdroot.cint.runtime.printf")
+    legacy = importlib.import_module("xrdroot.pycxx.runtime.printf")
     for name in printf.__all__:
         assert getattr(legacy, name) is getattr(printf, name), name
     assert legacy.SPEC is printf.SPEC
     assert legacy.BITS is printf.BITS
     assert legacy.CONVERTERS is printf.CONVERTERS
-    assert legacy.Printf_ is legacy.Printf
+    adapters = importlib.import_module("xrdroot.pycint.runtime.adapters")
+    assert adapters.Printf_ is adapters.Printf
     for name in ("Printf", "Form", "Info", "Warning", "Error", "Fatal"):
-        assert getattr(legacy, name).__module__ == legacy.__name__
+        assert getattr(adapters, name).__module__ == adapters.__name__
 
 
 def test_root_diagnostics_keep_their_channels_and_newline_conventions(capsys) -> None:
-    legacy = importlib.import_module("xrdroot.cint.runtime.printf")
+    legacy = importlib.import_module("xrdroot.pycint.runtime.adapters")
     legacy.Printf("x=%d", 7)
     assert legacy.Form("%03d", 7) == "007"
     legacy.Info("test", "%s", "message")

@@ -99,6 +99,10 @@ class Description(str):
     def AsString(self, shortFormat: bool = False) -> str:
         return self.brief if shortFormat else str(self)
 
+    def __repr__(self) -> str:
+        """As PyROOT shows an ``RDFDescription``: its text, not the text quoted."""
+        return self.AsString()
+
     def Print(self, shortFormat: bool = False) -> None:
         print(self.AsString(shortFormat))
 

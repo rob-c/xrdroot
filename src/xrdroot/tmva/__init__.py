@@ -32,7 +32,7 @@ from .methods.category import MethodCategory
 from .methods.cuts import MethodCuts
 from .rbdt import RBDT, SaveXGBoost
 from .reader import Reader
-from .tensor import AsTensor, MemoryLayout, RTensor
+from .tensor import AsRTensor, AsTensor, MemoryLayout, RTensor
 from .tools import Tools, gConfig, gTools
 from .types import Types
 
@@ -59,6 +59,7 @@ __all__ = [
 EXPERIMENTAL: dict[str, Any] = {
     "RTensor": RTensor,
     "AsTensor": AsTensor,
+    "AsRTensor": AsRTensor,
     "MemoryLayout": MemoryLayout,
     "RReader": RReader,
     "RStandardScaler": RStandardScaler,

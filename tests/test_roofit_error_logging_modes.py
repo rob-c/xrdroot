@@ -180,7 +180,7 @@ def test_a_failed_description_restores_the_collecting_policy():
 
 
 def test_the_cpp_output_stream_receives_the_error_summary(capsys):
-    from xrdroot.cint.runtime.streams import cout
+    from xrdroot.pycxx.runtime.streams import cout
 
     Real.setEvalErrorLoggingMode("CollectErrors")
     g = gaussian()

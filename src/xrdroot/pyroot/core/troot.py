@@ -7,8 +7,10 @@ script made. Beneath it is :data:`xrdroot.session.gROOT`, the session the
 rest of this library shares, reached as ``gROOT._xrd``.
 
 Running C++ - ``ProcessLine``, ``Macro``, ``LoadMacro`` - is the translator's
-business, :mod:`xrdroot.cint`, and it is handed there when it is installed;
-without it each is refused by name. Everything runs as ROOT's ``-b`` does:
+business, :mod:`xrdroot.pycint`, reached through the ``interpreter.*``
+providers of :mod:`xrdroot.plugins` when it is installed - it is built on
+this namespace, not under it; without it each is refused by name. Everything runs as
+ROOT's ``-b`` does:
 batch mode, no windows, whatever ``SetBatch`` was told.
 """
 
@@ -21,6 +23,7 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
+from ... import plugins
 from ...errors import UnsupportedFeatureError
 from .collections import TList
 from .directories import TDirectory, current_directory, set_current
@@ -48,14 +51,26 @@ def set_line_processor(fn: Callable[..., Any] | None) -> None:
     _PROCESSOR[:] = [] if fn is None else [fn]
 
 
+#: The package the translator is, whose absence refuses C++ by name.
+_TRANSLATOR = "xrdroot.pycint"
+
+#: The translator's functions this namespace calls, each found through its provider.
+_PROVIDED: dict[str, Callable[[], Any]] = {
+    "process_line": lambda: plugins.lookup("interpreter.process_line"),
+    "run_source": lambda: plugins.lookup("interpreter.run_source"),
+}
+
+
 def _translator(name: str) -> Any:
-    """The translator's function ``name`` - at its top or in ``execute`` - or ``None``."""
-    if importlib.util.find_spec("xrdroot.cint") is None:
+    """The translator's function ``name``, through its provider - or ``None`` without it."""
+    try:
+        return _PROVIDED[name]()
+    except AttributeError:  # a translator that has no such function
         return None
-    found = getattr(importlib.import_module("xrdroot.cint"), name, None)
-    if found is None and importlib.util.find_spec("xrdroot.cint.execute") is not None:
-        found = getattr(importlib.import_module("xrdroot.cint.execute"), name, None)
-    return found
+    except ModuleNotFoundError as why:  # no translator - but not one failing to load
+        if not str(why.name).startswith(_TRANSLATOR):
+            raise
+        return None
 
 
 def _processor(what: str) -> Callable[..., Any]:
@@ -66,7 +81,7 @@ def _processor(what: str) -> Callable[..., Any]:
             set_line_processor(found)
     if not _PROCESSOR:
         raise UnsupportedFeatureError(
-            f"{what} runs C++, and xrdroot.cint - the C++ translator that would run it - is "
+            f"{what} runs C++, and xrdroot.pycint - the C++ translator that would run it - is "
             f"not installed"
         )
     return _PROCESSOR[0]
@@ -352,7 +367,7 @@ class TROOT(TDirectory):
     # -- C++ -------------------------------------------------------------------------------
 
     def ProcessLine(self, line: Any, error: Any = None) -> Any:
-        """``ProcessLine``: a line of C++, run by :mod:`xrdroot.cint`."""
+        """``ProcessLine``: a line of C++, run by :mod:`xrdroot.pycint`."""
         return _processor(f"gROOT.ProcessLine({str(line)!r})")(str(line))
 
     def ProcessLineSync(self, line: Any, error: Any = None) -> Any:
@@ -362,11 +377,11 @@ class TROOT(TDirectory):
         return self.ProcessLine(line, error)
 
     def Macro(self, filename: Any, error: Any = None, padUpdate: bool = True) -> Any:
-        """``Macro``: ``.x filename``, run by :mod:`xrdroot.cint`."""
+        """``Macro``: ``.x filename``, run by :mod:`xrdroot.pycint`."""
         return self.ProcessLine(f".x {filename}")
 
     def LoadMacro(self, filename: Any, error: Any = None, check: bool = False) -> int:
-        """``LoadMacro``: ``.L filename``, loaded by :mod:`xrdroot.cint`."""
+        """``LoadMacro``: ``.L filename``, loaded by :mod:`xrdroot.pycint`."""
         self.ProcessLine(f".L {filename}")
         return 0
 
@@ -376,7 +391,7 @@ gROOT = TROOT()
 
 
 class TInterpreter:
-    """``gInterpreter``: C++ declared and run - by :mod:`xrdroot.cint`, when it is there."""
+    """``gInterpreter``: C++ declared and run - by :mod:`xrdroot.pycint`, when it is there."""
 
     def Declare(self, code: Any) -> bool:
         """``Declare``: C++ declarations, translated, and what they declare put in the namespace.

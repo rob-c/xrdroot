@@ -7,9 +7,11 @@ from pathlib import Path
 import pytest
 
 from cintfake import fake
-from xrdroot.cint import MacroError, Refusal, cache, translate_file
-from xrdroot.cint.execute import arguments, load, process_line, run, run_source, split_call
-from xrdroot.cint.runtime import ROOT
+from xrdroot.pycint import MacroError, Refusal, translate_file
+from xrdroot.pycint.dialect import ROOT as DIALECT
+from xrdroot.pycint.execute import arguments, load, process_line, run, run_source, split_call
+from xrdroot.pycint.runtime import ROOT
+from xrdroot.pycxx import cache
 
 
 @pytest.fixture(autouse=True)
@@ -78,7 +80,8 @@ def test_a_cache_that_cannot_be_written_or_read_is_simply_not_used(
     corrupt = tmp_path / "corrupt"
     corrupt.mkdir()
     monkeypatch.setenv(cache.ENVIRONMENT, str(corrupt))
-    (corrupt / f"{cache.key(path.read_text(), str(path))}.json").write_text("{not json")
+    filed = cache.key(path.read_text(), str(path), DIALECT)  # as a macro is filed: ROOT's
+    (corrupt / f"{filed}.json").write_text("{not json")
     run(path, root=fake())
     assert capsys.readouterr().out == "ok\nok\n"
 
@@ -176,8 +179,8 @@ def test_a_line_that_is_one_expression_hands_back_its_value(tmp_path: Path) -> N
 
 def test_a_kept_translation_reads_like_the_macro_and_runs_as_a_script() -> None:
     python = translate_file(Path(__file__).parent / "data" / "cint" / "math" / "Legendre.C")
-    assert python.startswith("# Translated from Legendre.C by xrdroot.cint.")
-    assert "from xrdroot.cint.runtime import *" in python
+    assert python.startswith("# Translated from Legendre.C by xrdroot.pycint.")
+    assert "from xrdroot.pycint.runtime import *" in python
     assert "    L = array('TF1*', 5)\n" in python
     assert python.endswith('if __name__ == "__main__":\n    Legendre()\n')
 

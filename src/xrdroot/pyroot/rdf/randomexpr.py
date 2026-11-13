@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 
-from ...cint import nodes as cxx
+from ...pycxx import nodes as cxx
 
 #: These methods return doubles and only advance their generator's state.
 _RANDOM_METHODS = frozenset({"Rndm", "Uniform", "Gaus", "Exp", "Landau", "PoissonD", "BreitWigner"})

@@ -187,7 +187,7 @@ def test_a_body_requiring_preprocessing_keeps_the_translators_result():
 
 @pytest.mark.parametrize('declaration', ['auto', 'ROOT::RDF::RResultPtr<ULong64_t>'])
 def test_dereferencing_a_booked_count_materializes_its_numeric_value(declaration):
-    from xrdroot.cint.execute import run_source
+    from xrdroot.pycint.execute import run_source
 
     source = f'''int counted() {{
         ROOT::RDataFrame frame(8);

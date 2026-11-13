@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 import xrdroot.pyroot as ROOT
-from xrdroot.cint.runtime import user_literal
+from xrdroot.pycint.runtime import user_literal
 from xrdroot.pyroot.rcanvas.attrs import Attrs
 from xrdroot.pyroot.rcanvas.lengths import RPadLength, position
 

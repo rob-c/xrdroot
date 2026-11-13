@@ -75,18 +75,21 @@ def callee(original: Any, name: str, rooted: bool) -> Any:
 
 
 def _root_ready(root: Any) -> bool:
-    from ...cint.runtime.root import RootProxy
-    if type(root) is not RootProxy or not _dictionary(RootProxy):
+    """Is ``root`` the translator's host with its own lookup - none of it replaced - so that
+    what it would find can be read from its state?"""
+    from ...pycxx.runtime.namespace import HostNamespace
+    kind = type(root)
+    if not isinstance(root, HostNamespace) or not _dictionary(HostNamespace):
         return False
-    access = inspect.getattr_static(RootProxy, '__getattribute__') is object.__getattribute__
-    descriptor = inspect.getattr_static(RootProxy, '__dict__')
+    access = inspect.getattr_static(kind, '__getattribute__') is object.__getattribute__
+    descriptor = inspect.getattr_static(kind, '__dict__')
     methods = ('__getattr__', 'namespace', '_used')
     return (access and type(descriptor) is types.GetSetDescriptorType
-            and descriptor.__objclass__ is RootProxy
-            and all(_method(RootProxy, name, 'xrdroot.cint.runtime.root', 'RootProxy')
+            and descriptor.__objclass__ is HostNamespace
+            and all(_method(kind, name, 'xrdroot.pycxx.runtime.namespace', 'HostNamespace')
                     for name in methods)
-            and inspect.getattr_static(RootProxy, '_bound', None) is None
-            and inspect.getattr_static(RootProxy, '_resolved', None) is None)
+            and inspect.getattr_static(kind, '_bound', None) is None
+            and inspect.getattr_static(kind, '_resolved', None) is None)
 
 
 def _root_state(root: Any) -> Any:
@@ -113,10 +116,12 @@ def _root_callee(root: Any, name: str) -> Any:
     return cached if cached is not None else vars(namespace).get(name)
 
 
+#: The module a translated macro's ``ROOT`` looks names up in when nothing else is bound: this
+#: namespace's own.
+DEFAULT = 'xrdroot.pyroot'
+
+
 def _root_namespace(state: dict[str, Any]) -> Any:
-    from ...cint.runtime.root import DEFAULT
-    if type(DEFAULT) is not str:
-        return None
     bound, resolved = state.get('_bound'), state.get('_resolved')
     if type(bound) is not list or type(resolved) is not dict or type(sys.modules) is not dict:
         return None

@@ -275,7 +275,7 @@ def test_a_set_streamed_to_cout_prints_its_names_as_roofits_operator_does(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """rf508's ``cout << "sclone = " << (*sclone)``: ``(a,b)``, not PyROOT's pointers."""
-    from xrdroot.cint.runtime import cout, endl
+    from xrdroot.pycint.runtime import cout, endl
 
     a, b = RooRealVar("a", "a", 1, 0, 2), RooRealVar("b", "b", 1, 0, 2)
     clone = RooArgSet(a, b).Clone("sclone")

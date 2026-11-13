@@ -190,12 +190,56 @@ def _filter(values: Any, function: Callable[[Any], Any]) -> Any:
     return _made(np.asarray([each for each in values if function(each)], dtype=values.dtype))
 
 
+#: The class of each ``RVec`` that adopted an array, by the class it adopts as.
+_ADOPTING: dict[type, type] = {}
+
+
+def _adopting(cls: type) -> type:
+    """``cls`` that remembers what it adopted - ``__adopted__``, which keeps it alive - and is
+    Python's to free, as ROOT marks an ``RVec`` made by ``AsRVec``."""
+    if cls not in _ADOPTING:
+        members = {
+            "__slots__": ("_adopted",),
+            "__python_owns__": True,
+            "__adopted__": property(lambda self: self._data if self._adopted is None
+                                    else self._adopted),
+        }
+        _ADOPTING[cls] = type(cls.__name__, (cls,), members)
+    return _ADOPTING[cls]
+
+
+def _as_strings(values: Any) -> Any:
+    """An array of strings - or of objects, all of one type - as an ``RVec`` of copies."""
+    items = values.reshape(-1).tolist()
+    if len({type(item) for item in items}) > 1:
+        raise TypeError(
+            "All elements in the numpy array must be of the same type for AsRVec to make "
+            f"one RVec of them, and these are {sorted({type(i).__name__ for i in items})}"
+        )
+    kind = "std::string" if not items or isinstance(items[0], str) else type(items[0])
+    return RVec[kind](items)
+
+
+def _as_rvec(given: Any) -> Any:
+    """``VecOps.AsRVec(array)``: an ``RVec`` over the array's own memory, flattened - writing
+    an element writes the array - or over another ``RVec``'s; strings are copied."""
+    values = given.data() if isinstance(given, _RVec) else np.asarray(given)
+    if values.dtype.kind in "OUS":
+        return _as_strings(values)
+    flat = values if values.ndim == 1 else values.reshape(-1)
+    made = _adopting(RVec[values.dtype])()
+    made._data, made._size = flat, flat.size
+    made._adopted = None if flat is given else given
+    return made
+
+
 class _VecOps:
     """``ROOT.VecOps``: ROOT's functions of one collection, and ``RVec`` itself."""
 
     RVec = RVec
     Map = staticmethod(_map)
     Filter = staticmethod(_filter)
+    AsRVec = staticmethod(_as_rvec)
 
     def __getattr__(self, name: str) -> Any:
         found = getattr(_batched, name, None)

@@ -43,7 +43,7 @@ TOP = "Rint"
 #: ``root://host:1094//f.root:dir/h`` - stay in the file.
 LOCATION = re.compile(r"^(?P<file>.*\.root)(?::(?P<path>.*))?$", re.DOTALL)
 
-#: The extensions of a C++ macro, which ``.x`` hands to :mod:`xrdroot.cint` to translate.
+#: The extensions of a C++ macro, which ``.x`` hands to :mod:`xrdroot.pycint` to translate.
 CXX_MACROS = (".C", ".c", ".cxx", ".cpp", ".cc")
 
 #: What ``.help`` at the prompt prints.
@@ -372,9 +372,9 @@ class Session:
         """
         where = Path(str(path).rstrip("+"))
         if where.suffix in CXX_MACROS:
-            from .cint.execute import run as run_cxx
+            from .plugins import require
 
-            return run_cxx(where, args)
+            return require("interpreter.run")(where, args)
         namespace = self.run(where.read_text(), str(where))
         entry = namespace.get(where.stem)
         if callable(entry):
@@ -389,9 +389,9 @@ class Session:
     @staticmethod
     def ProcessLine(line: str) -> Any:
         """``gROOT->ProcessLine(line)``: C++ statements, or ``.x``/``.L`` of a C++ macro."""
-        from .cint.execute import process_line
+        from .plugins import require
 
-        return process_line(line)
+        return require("interpreter.process_line")(line)
 
     @staticmethod
     def help() -> str:

@@ -84,3 +84,43 @@ def test_a_frame_as_a_tensor_has_an_event_per_row_in_either_layout():
     assert chosen.GetShape() == [4, 1] and chosen.dtype == np.float64
     assert chosen.GetMemoryLayout() == MemoryLayout.ColumnMajor
     assert type(Experimental.AsTensor(frame)).__name__ == "RTensor<float>"
+
+
+def test_a_template_called_with_a_type_name_is_the_tensor_class_of_that_type():
+    made = RTensor("unsigned long")(ROOT.std.vector("size_t")((2, 3)))
+    assert made.array.dtype == np.uint64 and tuple(made.GetShape()) == (2, 3)
+
+
+def test_an_adopted_array_shares_its_memory_in_its_own_layout():
+    values = np.array([[1, 2], [3, 4], [5, 6]], dtype="float32")
+    tensor = Experimental.AsRTensor(values)
+    values[0, 0] = 42
+    assert tensor[0, 0] == 42 and tensor.GetMemoryLayout() == 1
+    assert list(tensor.GetStrides()) == [2, 1]
+    flipped = Experimental.AsRTensor(values.T)
+    assert flipped.GetMemoryLayout() == 2 and list(flipped.GetStrides()) == [1, 2]
+    direct = RTensor("double")(values)
+    assert direct.array.dtype == np.float64 and tuple(direct.GetShape()) == (3, 2)
+    assert Experimental.AsRTensor(np.zeros((2, 2), dtype=np.int16)).array.dtype == np.int16
+    assert RTensor(values).array is values
+
+
+def test_numpy_sees_a_view_of_the_tensor_and_a_copy_only_when_it_asks():
+    tensor = RTensor("float")(ROOT.std.vector("size_t")((2, 2)))
+    view = np.asarray(tensor)
+    view[1, 1] = 7
+    assert tensor(1, 1) == 7 and not view.flags.owndata
+    assert np.array(tensor, copy=True).flags.owndata
+    assert np.asarray(tensor, dtype=np.float64).dtype == np.float64
+    transposed = tensor.Transpose()
+    assert transposed.GetMemoryLayout() == 2 and np.asarray(transposed).flags.f_contiguous
+    assert transposed.Transpose().GetMemoryLayout() == 1
+
+
+def test_a_tensor_indexed_by_slices_drops_the_dimensions_left_one_long():
+    tensor = Experimental.AsRTensor(np.array([[1.0, 2.0], [3.0, 4.0]]))
+    assert tensor[1, 0] == 3.0
+    column = tensor[:, -2]
+    assert list(column.GetShape()) == [2] and (column[0], column[1]) == (1.0, 3.0)
+    assert list(tensor[1:2, :].GetShape()) == [2]
+    assert list(tensor.ExpandDims(-1).GetShape()) == [2, 2, 1]

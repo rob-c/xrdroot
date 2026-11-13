@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from cintfake import fake
-from xrdroot.cint import translate
-from xrdroot.cint.execute import run_source
+from xrdroot.pycint import translate
+from xrdroot.pycint.execute import run_source
 
 
 def test_a_namespace_alias_names_the_namespace_it_stands_for(

@@ -190,6 +190,8 @@ _SUBMODULES = frozenset({
     "plot",
     "polybins",
     "profile",
+    "pycint",
+    "pycxx",
     "pyroot",
     "random",
     "rdf",

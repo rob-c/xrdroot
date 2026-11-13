@@ -138,7 +138,7 @@ def test_an_rvec_is_a_vector_that_does_numpy_arithmetic_and_is_indexed_by_a_mask
 
 
 def test_an_rvec_prints_as_roots_stream_writes_it_and_a_macro_names_its_functions_bare():
-    from xrdroot.cint.runtime import ROOT as MACRO
+    from xrdroot.pycint.runtime import ROOT as MACRO
 
     assert str(ROOT.RVecF([1.0, 2.0, 2.0 / 3])) == "{ 1, 2, 0.666667 }"
     assert str(ROOT.RVecB([1, 0])) == "{ 1, 0 }" and str(ROOT.RVecI([])) == "{  }"
@@ -230,7 +230,7 @@ def test_any_node_is_an_rnode_and_a_result_is_its_own_shared_pointer():
 def test_a_vecops_function_given_to_a_frame_takes_whole_batches_and_a_template_argument(
     tmp_path,
 ):
-    from xrdroot.cint.runtime import ROOT as MACRO
+    from xrdroot.pycint.runtime import ROOT as MACRO
 
     with xrdroot.create(str(tmp_path / "v.root")) as f:
         f["t"] = {"v": xrdroot.Jagged(np.array([1.0, 2.0, 3.0]), np.array([0, 2, 3]))}

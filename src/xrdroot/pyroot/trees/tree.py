@@ -200,7 +200,18 @@ class TTree(_Player):
         return self.Write()
 
     def SetDirectory(self, directory: Any) -> None:
-        self._directory = directory
+        """``SetDirectory``: kept in - and written into - ``directory`` from now on, out of
+        the one it was in; given ``nullptr``, in none, so closing that file leaves it be."""
+        held = self._directory
+        if held is not None and hasattr(held, "Remove"):
+            held.Remove(self)
+        self._directory = None
+        if directory is None or directory == 0:
+            return
+        real = directory.__real__() if hasattr(directory, "__real__") else directory
+        if hasattr(real, "Append"):
+            real.Append(self, True)
+        self._directory = real
 
     def Reset(self, option: str = "") -> None:
         """Forget every entry, keeping the branches and their addresses."""

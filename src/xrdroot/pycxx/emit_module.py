@@ -1,0 +1,257 @@
+"""A whole macro as a Python module: the top layer of the emitter.
+
+The module starts with the one import every translation has, declares
+every name the macro declares at namespace scope - so a function may call
+one defined below it, as C++ allows - and then writes the declarations in
+the order the macro has them. An unnamed macro's block becomes a function
+named after the file, so that every macro is run the same way: by calling
+the function of its file's name. At the bottom, ``if __name__ ==
+"__main__"`` calls it, so a kept translation runs as a script.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Callable
+from typing import Any
+
+from .ctype import CType
+from .dialect import active
+from .emit_classes import ClassEmitter
+from .emit_vars import addressable, sized
+from .freeops import written_type
+from .nodes import ClassDecl, DeclStmt, EnumDecl, ExprStmt, Function, Namespace, Stmt, VarDecl
+from .program import Program
+from .symbols import Symbol, python_name
+from .writer import Writer
+
+__all__ = ["Translator", "HEADER", "entry_name"]
+
+#: The first lines of every translation, for its file's name and its dialect.
+HEADER = [
+    "# Translated from {name} by {translator}. Undeclared names are {host}.<name>; the C++",
+    "# semantics Python lacks (integer division, printf, cells for &x) are the runtime's.",
+    "from {runtime} import *  # noqa: F403",
+]
+
+
+def entry_name(stem: str) -> str:
+    """The Python name of the function a macro file runs: its file's name, made an identifier."""
+    clean = re.sub(r"\W", "_", stem) or "macro"
+    return clean if not clean[0].isdigit() else "_" + clean
+
+
+class Translator(ClassEmitter):
+    """Everything the emitter does, from the top: :meth:`translate` a whole program."""
+
+    def __init__(self, program: Program, file: str, stem: str) -> None:
+        super().__init__(program, file)
+        self.stem = stem
+        self.contexts = []
+        self.loops = []
+        self.template_names = set()
+        self.namespaces = _namespaces(program.unit.decls)
+        self.scope_where = program.unit.where
+        self._emitted: set[str] = set()
+        self.module_statics = []
+        #: How deep :meth:`top` is: a class's nested types are written by it too.
+        self._depth = 0
+        #: The Python name of the function running the macro runs, once known.
+        self.entry: str | None = None
+        #: The type the entry returns as the dialect spells it, to print its value and exit with.
+        self.entry_returns: str | None = None
+
+    def function_named(self, symbol: Symbol) -> list[Any]:
+        if symbol.owner is not None:
+            info = self.program.classes.get(symbol.owner)
+            return info.methods.get(symbol.name, []) if info is not None else []
+        return self.program.overloads(symbol.name)
+
+    # -- the module ----------------------------------------------------------------
+
+    def translate(self) -> Writer:
+        dialect = active()
+        name = self.file.rsplit("/", 1)[-1]
+        for line in HEADER:
+            filled = {"translator": dialect.translator, "host": dialect.host}
+            self.out.line(line.format(name=name, runtime=dialect.runtime, **filled))
+        self.predeclare()
+        for decl in self.program.order:
+            self.top(decl)
+        self._unnamed()
+        self._footer()
+        return self.out
+
+    def predeclare(self) -> None:
+        """Every name the macro declares at namespace scope, before any is used."""
+        add = self.scope.add
+        scoped = [name for name, enum in self.program.enums.items() if enum.scoped]
+        for name in [*self.program.classes, *scoped]:
+            self.class_symbols[name] = add(Symbol(name, "class", python_name(name)))
+        for name, home in self.program.constants.items():
+            py = f"{home}.{name}" if home else python_name(name)
+            add(Symbol(name, "constant", py, CType("int")))
+        for name in self.program.functions:
+            # ``class WorldMap`` and ``void WorldMap()``: the class keeps the Python name.
+            clash = "_function" if name in self.class_symbols else ""
+            add(Symbol(name, "function", python_name(name) + clash))
+        self._predeclare_globals()
+        self._predeclare_writers()
+
+    def _predeclare_writers(self) -> None:
+        """Each ``operator<<`` the macro writes a type with, named before ``cout << t`` calls it."""
+        for func in self.program.functions.get("operator<<", []):
+            kind = written_type(func)
+            if kind is not None:
+                self.stream_writers[kind] = "ostream_" + python_name(kind.replace("::", "_"))
+
+    def _predeclare_globals(self) -> None:
+        add = self.scope.add
+        cells = self.program.global_cells
+        for name, var in self.program.globals.items():
+            cell = name in cells and addressable(var.ctype)
+            add(Symbol(name, "global", python_name(name), var.ctype, cell=cell))
+
+    def top(self, decl: object) -> None:
+        """One declaration at namespace scope, the static locals in it made just before it."""
+        self._outermost(lambda: self._top(decl))
+
+    def _outermost(self, write: Callable[[], None]) -> None:
+        """What ``write`` writes, preceded - if it is at the top - by its static locals' holders."""
+        mark = self.out.mark()
+        self._depth += 1
+        try:
+            write()
+        finally:
+            self._depth -= 1
+        if not self._depth:
+            self._statics_at(mark)
+
+    def _statics_at(self, mark: int) -> None:
+        """The holders of the static locals just written, put at module level at ``mark``."""
+        for offset, (line, where) in enumerate(self.module_statics):
+            self.out.insert(mark + offset, line, where)
+        self.module_statics = []
+
+    def _top(self, decl: object) -> None:
+        if isinstance(decl, ClassDecl):
+            self.class_def(decl)
+        elif isinstance(decl, EnumDecl):
+            self.enum_def(decl)
+        elif isinstance(decl, DeclStmt):
+            self._globals(decl)
+        elif isinstance(decl, Function):
+            self._free_function(decl)
+        elif isinstance(decl, ExprStmt):
+            # Run as the module is loaded, as an interpreter runs it as the file is read.
+            self.out.blank(2)
+            self.expression_statement(decl.expr)
+
+    def declarators(self, decls: list[VarDecl]) -> None:
+        if self.scope.kind == "module":
+            self._globals(DeclStmt(self.scope_where, decls))
+        else:
+            for var in decls:
+                self.local_variable(var)
+
+    def _globals(self, decl: DeclStmt) -> None:
+        if self.out.lines and self.out.lines[-1].startswith(" "):
+            self.out.blank(2)
+        for var in decl.decls:
+            if id(var) in self.program.class_statics or self._defined_elsewhere(var):
+                continue
+            symbol = self.lookup(var.name)
+            assert symbol is not None
+            ctype = sized(self.declared_type(var), var)
+            symbol.ctype = ctype
+            self.write_variable(symbol, self.initial(var, ctype), var)
+
+    def _defined_elsewhere(self, var: VarDecl) -> bool:
+        """``extern T x;`` gives no storage: the definition does, here or in another file.
+
+        One of an unknown size could not be made even if it did, so C++'s
+        declaration of an array defined elsewhere writes nothing at all.
+        """
+        if "extern" not in var.storage or var.init is not None or var.args:
+            return False
+        return self.program.globals.get(var.name) is not var or bool(
+            var.ctype.dims and var.ctype.dims[0] is None
+        )
+
+    def _free_function(self, decl: Function) -> None:
+        if decl.scope and decl.scope[-1] in self.program.classes:
+            return
+        if decl.name in self._emitted or decl.body is None:
+            return
+        if decl.kind == "operator":
+            self._free_operator(decl)
+            return
+        self._emitted.add(decl.name)
+        symbol = self.lookup(decl.name)
+        py = symbol.py if symbol is not None else python_name(decl.name)
+        self.out.blank(2)
+        self.overloaded(decl.name, py, self.program.overloads(decl.name), self.function)
+        self.out.blank()
+
+    def _free_operator(self, decl: Function) -> None:
+        """An operator defined outside a class: a function of its own, which ``a == b`` calls
+        where the types say it is the one C++ chooses - or a stream's writer."""
+        own = next((op.py for op in self.free_ops.get(decl.name, []) if op.func is decl), None)
+        if own is None:
+            self._stream_operator(decl)
+            return
+        self.out.blank(2)
+        self.function(decl, own)
+        self.out.blank()
+
+    def _stream_operator(self, decl: Function) -> None:
+        """``ostream &operator<<(ostream &os, const T &t)``: a function ``cout << t`` calls.
+
+        It is called where the type of what is written says it is a ``T``, and
+        for one of the macro's classes the runtime is told of it too, for the
+        values whose type the translation cannot see.
+        """
+        kind = written_type(decl)
+        if kind is None:
+            raise self.refuse(f"the operator {decl.name[8:]} defined outside a class", decl)
+        py = self.stream_writers[kind]
+        self.out.blank(2)
+        self.function(decl, py)
+        if kind in self.program.classes:
+            self.out.line(f"stream_formatter({self.class_expr(CType(kind))}, {py})", decl.where)
+        self.out.blank()
+
+    def _unnamed(self) -> None:
+        block = self.program.unit.unnamed
+        if block is None:
+            return
+        name = entry_name(self.stem)
+        func = Function(block.where, name, CType("void"), [], block)
+        self.program.cells[id(func)] = self.program.cell_names(self.program.unit)
+        self.out.blank(2)
+        self._outermost(lambda: self.function(func, name))
+        self.entry = name
+
+    def _footer(self) -> None:
+        if self.entry is None:
+            symbol = self.lookup(self.stem)
+            if symbol is not None and symbol.kind == "function":
+                self.entry = symbol.py
+                returns = self.program.overloads(self.stem)[0].returns
+                self.entry_returns = active().spelling(returns)
+        if self.entry is None:
+            return
+        self.out.blank(2)
+        self.out.line('if __name__ == "__main__":')
+        with self.out.indented():
+            self.out.line(f"{self.entry}()")
+
+
+def _namespaces(decls: list[Stmt]) -> set[str]:
+    found: set[str] = set()
+    for decl in decls:
+        if isinstance(decl, Namespace):
+            if decl.name:
+                found.update(decl.name.split("::"))
+            found |= _namespaces(decl.body)
+    return found

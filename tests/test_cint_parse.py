@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from xrdroot.cint import translate
+from xrdroot.pycint import translate
 
 
 def python(source: str) -> str:
@@ -161,7 +161,7 @@ def test_declarations_are_read_as_cpp_declares_them(source: str, fragment: str) 
         ('auto t = df.template Take<float>("x");', "ROOT.df.Take['float']('x')"),
         ("auto x = std::get<0>(tup);", "ROOT.std.get[0](ROOT.tup)"),
         ("bool c = a < b && c > (d);", "ROOT.a < ROOT.b and"),
-        ("auto v = std::vector<int>{1, 2};", "ROOT.std.vector['int'](1, 2)"),
+        ("auto v = std::vector<int>{1, 2};", "ROOT.std.vector['int']([1, 2])"),
         ("TLorentzVector v = TLorentzVector(1, 2, 3, 4);", "v = ROOT.TLorentzVector(1, 2, 3, 4)"),
         ("int a, b; a = b = 3; a += 2, b -= 1;", "a = (b := 3)"),
         ("x ? y : z;", "ROOT.y if ROOT.x else ROOT.z"),

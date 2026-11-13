@@ -7,8 +7,8 @@ import types
 
 import pytest
 
-from xrdroot.cint import translate
-from xrdroot.cint.runtime import ROOT, user_literal
+from xrdroot.pycint import translate
+from xrdroot.pycint.runtime import ROOT, user_literal
 
 
 def test_a_pad_length_literal_is_the_library_operator_called_on_its_number() -> None:

@@ -5,7 +5,7 @@
     $ python tools/cint_survey.py ROOT/tutorials --min-percent 97   # a ratchet: exits 1 below
 
 Every ``.C``, ``.cxx`` and ``.cpp`` under the directory is translated with
-:func:`xrdroot.cint.translate` and the Python it gives is compiled. Each file
+:func:`xrdroot.pycint.translate` and the Python it gives is compiled. Each file
 is one of: *translated* (the Python compiles), *refused* (the translator
 named a construct it will not translate - the refusals are grouped by what
 they name, with the construct's wording kept and the specifics dropped), or
@@ -25,7 +25,7 @@ import traceback
 from collections import Counter
 from pathlib import Path
 
-from xrdroot.cint import Refusal, translate
+from xrdroot.pycint import Refusal, translate
 
 #: The file extensions ROOT's tutorials write macros with.
 EXTENSIONS = (".C", ".cxx", ".cpp")

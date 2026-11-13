@@ -7,9 +7,9 @@ from typing import Any
 import pytest
 
 from cintfake import fake
-from xrdroot.cint import Refusal, translate
-from xrdroot.cint.execute import run_source
-from xrdroot.cint.runtime import construct_at
+from xrdroot.pycint import Refusal, translate
+from xrdroot.pycint.execute import run_source
+from xrdroot.pycint.runtime import construct_at
 
 
 class Clones:

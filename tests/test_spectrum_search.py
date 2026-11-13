@@ -212,8 +212,8 @@ def test_the_fitter_root_makes_room_in_is_the_latest_fits(monkeypatch):
 def test_a_translated_macro_searches_its_c_arrays_and_its_array_of_rows(
     tmp_path, monkeypatch, capsys
 ):
-    from xrdroot.cint import cache
-    from xrdroot.cint.execute import run
+    from xrdroot.pycint.execute import run
+    from xrdroot.pycxx import cache
 
     monkeypatch.setenv(cache.ENVIRONMENT, str(tmp_path / "cache"))
     path = tmp_path / "hr.C"

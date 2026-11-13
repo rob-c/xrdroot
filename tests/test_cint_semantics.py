@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from cintfake import fake
-from xrdroot.cint.execute import run_source
+from xrdroot.pycint.execute import run_source
 
 
 def output(capsys: pytest.CaptureFixture[str], source: str, *args: object) -> str:

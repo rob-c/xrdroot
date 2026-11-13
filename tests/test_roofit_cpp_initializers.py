@@ -14,8 +14,8 @@ from typing import Any
 
 import numpy as np
 
-from xrdroot.cint import translate
-from xrdroot.cint.runtime import assign_into
+from xrdroot.pycint import translate
+from xrdroot.pycint.runtime import assign_into
 from xrdroot.roofit.categories import RooCategory
 from xrdroot.roofit.cmdargs import RooCmdArg
 from xrdroot.roofit.collections import RooArgList, RooArgSet

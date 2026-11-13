@@ -9,6 +9,7 @@
     $ xrdroot draw f.root:events pt -o pt.png
     $ xrdroot info f.root                 # the header, the compression, the classes
     $ xrdroot run 'hsimple.C(1)'          # root -b -q: a C++ macro, translated and run
+    $ xrdroot root -l f.root              # root -l f.root: the C++ prompt, with _file0
 
 The subcommand registry
 -----------------------
@@ -27,7 +28,8 @@ name to that list - one line, nothing else. The contract each module keeps:
   returns the exit status as an ``int`` (``None`` is taken as ``0``). It
   writes its results to ``sys.stdout`` and refusals to ``sys.stderr``.
 
-A :class:`~xrdroot.ROOTError`, ``KeyError``, ``OSError``, ``ValueError`` or
+A :class:`~xrdroot.ROOTError`, the C++ translator's :class:`~xrdroot.pycxx.CxxError`,
+``KeyError``, ``OSError``, ``ValueError`` or
 ``TypeError`` escaping ``run`` is printed as one line, ``xrdroot <name>:
 <why>``, and exits with status 2 - the status ``diff`` uses for trouble -
 so a subcommand refuses by raising a full sentence rather than by printing
@@ -47,8 +49,9 @@ from collections.abc import Sequence
 from typing import Any
 
 from ..errors import ROOTError
+from ..pycxx.errors import CxxError
 
-__all__ = ["COMMANDS", "build_parser", "main"]
+__all__ = ["COMMANDS", "ALIASES", "build_parser", "main"]
 
 #: The subcommands, in the order ``xrdroot --help`` lists them: each is the
 #: module ``xrdroot.cli.<name>``, exposing ``add_parser(subparsers)`` and
@@ -65,10 +68,14 @@ COMMANDS = [
     "merge",
     "cp",
     "run",
+    "root",
 ]
 
+#: Other names a subcommand answers to, and the subcommand each names: ``xrdroot cint``.
+ALIASES = {"cint": "root"}
+
 #: What a subcommand raises to refuse, printed as a line rather than a traceback.
-REFUSALS = (ROOTError, KeyError, OSError, ValueError, TypeError)
+REFUSALS = (ROOTError, CxxError, KeyError, OSError, ValueError, TypeError)
 
 #: The exit status of a subcommand that refused - ``diff``'s status for trouble.
 TROUBLE = 2
@@ -92,10 +99,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _as_shell(argv: list[str]) -> list[str]:
-    """``xrdroot f.root`` and plain ``xrdroot`` mean the shell, as ``root -l f.root`` does."""
+    """``xrdroot f.root`` and plain ``xrdroot`` mean the shell, as ``root -l f.root`` does;
+    a subcommand's other name, ``xrdroot cint``, means the subcommand."""
     if not argv:
         return ["shell"]
     first = argv[0]
+    if first in ALIASES:
+        return [ALIASES[first], *argv[1:]]
     if first in COMMANDS or first.startswith("-"):
         return argv
     return ["shell", *argv]

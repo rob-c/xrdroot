@@ -42,6 +42,9 @@ existing extras and helpful refusals.
 | `io.layouts` | I/O `interp` | HistFactory `histfactory.layouts.described` for declared layout keys |
 | `workspace.maker` | RooFit workspace reader | RooStats `workspaceio.make_model_config` |
 | `session.preloaded` | ROOT-facing `session` | app `apinamespace.preloaded`, preserving live public facade overrides |
+| `interpreter.process_line`, `interpreter.run_source` | pyroot `core.troot` (`ProcessLine`, `Macro`, `LoadMacro`, `gInterpreter.Declare`) | pycint `execute`; without pycint each is refused by name |
+| `interpreter.run`, `interpreter.process_line` | ROOT-facing `session` (`.x` of a C++ macro, `ProcessLine`) | pycint `execute` |
+| `interpreter.run_source`, `interpreter.dialect` | pyroot `rdf.jitted`, `rdf.batched` (C++ expressions of a frame) | pycint `execute.run_source` and `dialect.dialect`, ROOT's dialect to parse in |
 
 The registry's literal keys are authoritative; this table groups class families
 rather than granting wildcard registration. File layouts precede built-in

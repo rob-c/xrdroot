@@ -8,8 +8,8 @@ all, the trailing comment that is the member's title, and the version its
 
 from __future__ import annotations
 
-from xrdroot.cint import translate
-from xrdroot.cint.execute import run_source
+from xrdroot.pycint import translate
+from xrdroot.pycint.execute import run_source
 
 SOURCE = r"""
 class Event : public TObject {

@@ -5,9 +5,9 @@ import numpy as np
 import pytest
 
 from xrdroot import pyroot as ROOT
-from xrdroot.cint.execute import run_source
-from xrdroot.cint.runtime.ntuplefill import fill_ntuple_histogram
 from xrdroot.hist import Axis
+from xrdroot.pycint.execute import run_source
+from xrdroot.pycint.runtime.ntuplefill import fill_ntuple_histogram
 
 
 @pytest.fixture

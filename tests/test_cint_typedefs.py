@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from cintfake import fake
-from xrdroot.cint import translate
-from xrdroot.cint.execute import run_source
+from xrdroot.pycint import translate
+from xrdroot.pycint.execute import run_source
 
 
 def test_an_unnamed_struct_takes_the_typedefs_name(capsys: pytest.CaptureFixture[str]) -> None:

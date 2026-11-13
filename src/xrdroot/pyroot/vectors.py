@@ -14,9 +14,12 @@ from typing import Any
 
 import numpy as np
 
+from ..errors import UnsupportedFeatureError
 from .core.objects import TObject
 
-__all__ = ["TArrayD", "TArrayF", "TArrayI", "TArrayL", "TArrayS", "TArrayC", "TVectorD"]
+__all__ = [
+    "TArrayD", "TArrayF", "TArrayI", "TArrayL", "TArrayS", "TArrayC", "TVectorD", "TVectorT"
+]
 
 
 def _values(args: tuple[Any, ...]) -> tuple[int, np.ndarray[Any, Any]]:
@@ -61,11 +64,19 @@ class TVectorD(TObject):
     def __len__(self) -> int:
         return len(self._v)
 
+    def _at(self, i: int) -> int:
+        """Where element ``i`` is kept: an ``IndexError`` outside ``GetLwb()..GetUpb()``, as
+        PyROOT checks - NumPy would read a negative index from the end."""
+        at = int(i) - self._lwb
+        if not 0 <= at < len(self._v):
+            raise IndexError(f"{i} is outside this TVectorD of {self._lwb}..{self.GetUpb()}")
+        return at
+
     def __getitem__(self, i: int) -> float:
-        return float(self._v[int(i) - self._lwb])
+        return float(self._v[self._at(i)])
 
     def __setitem__(self, i: int, value: float) -> None:
-        self._v[int(i) - self._lwb] = float(value)
+        self._v[self._at(i)] = float(value)
 
     __call__ = __getitem__
 
@@ -179,10 +190,19 @@ class _TArray(TObject):
         return self._v[int(i)].item()
 
     GetAt = At
-    __getitem__ = At
+
+    def _at(self, i: Any) -> int:
+        """Where element ``i`` is: an ``IndexError`` past either end, as PyROOT checks -
+        NumPy would read a negative index from the end."""
+        if not 0 <= int(i) < len(self._v):
+            raise IndexError(f"{i} is outside this {type(self).__name__} of {len(self._v)}")
+        return int(i)
+
+    def __getitem__(self, i: Any) -> Any:
+        return self._v[self._at(i)].item()
 
     def __setitem__(self, i: Any, value: Any) -> None:
-        self._v[int(i)] = value
+        self._v[self._at(i)] = value
 
     def SetAt(self, value: Any, i: Any) -> None:
         self._v[int(i)] = value
@@ -255,3 +275,25 @@ class TArrayC(_TArray):
     """``TArrayC``: an array of chars, as small numbers."""
 
     DTYPE = np.dtype(np.int8)
+
+
+class _TVectorT:
+    """``TVectorT``: the template, whose ``double`` - Python's ``float`` to cppyy - is
+    ``TVectorD``, by ``[...]`` or by ``(...)``."""
+
+    def __getitem__(self, kind: Any) -> type[TVectorD]:
+        if kind is float or str(kind) in ("double", "Double_t"):
+            return TVectorD
+        raise UnsupportedFeatureError(
+            f"TVectorT<{kind}> is not here; TVectorT of double, TVectorD, is - Python's "
+            f"float is a double to PyROOT, so TVectorT[float] is TVectorD too"
+        )
+
+    __call__ = __getitem__
+
+    def __repr__(self) -> str:
+        return "<template TVectorT>"
+
+
+#: ``TVectorT``.
+TVectorT = _TVectorT()

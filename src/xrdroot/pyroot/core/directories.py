@@ -126,6 +126,17 @@ class TDirectory(TNamed):
             return None if below is None else below.Get(rest)
         return self._list.FindObject(name)
 
+    def __getitem__(self, name: str) -> Any:
+        """``d["hpx"]``: an object by name, as PyROOT's directories give them - kept in
+        ``_cached_items`` once found, as PyROOT keeps it; ``KeyError`` if there is none."""
+        cached = self.__dict__.setdefault("_cached_items", {})
+        if name not in cached:
+            found = self.Get(name)
+            if found is None:
+                raise KeyError(f"{self.ClassName()} {self.GetName()!r} has no object {name!r}")
+            cached[name] = found
+        return cached[name]
+
     def GetObject(self, namecycle: Any, holder: Any = None) -> Any:
         """``GetObject(name, ptr)``: what ``Get`` finds, into ``ptr`` - and handed back.
 
@@ -272,14 +283,16 @@ class TDirectory(TNamed):
         """``ReadAll``: bring every object on file into memory, which a memory one has done."""
 
     class TContext:
-        """``TDirectory::TContext``: go back to the directory it was made in, when left.
+        """``TDirectory::TContext``: go back to the directory it was made in - or the one
+        given first of two - when left.
 
         >>> with ROOT.TDirectory.TContext():            # doctest: +SKIP
         ...     f = ROOT.TFile("out.root", "RECREATE")
         """
 
         def __init__(self, *directories: Any) -> None:
-            self._previous = current_directory()
+            # ``TContext(previous, new)``: it is ``previous`` that is gone back to.
+            self._previous = directories[0] if len(directories) == 2 else current_directory()
             if directories and directories[-1] is not None:
                 directories[-1].cd()
 

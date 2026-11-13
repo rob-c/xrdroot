@@ -126,8 +126,8 @@ def test_the_small_session_questions_have_roots_answers():
 
 
 def test_cpp_is_refused_by_name_without_the_translator(monkeypatch):
-    monkeypatch.setattr(troot.importlib.util, "find_spec", lambda name: None)
-    with pytest.raises(UnsupportedFeatureError, match=r"xrdroot\.cint"):
+    monkeypatch.setitem(sys.modules, "xrdroot.pycint.execute", None)  # not installed
+    with pytest.raises(UnsupportedFeatureError, match=r"xrdroot\.pycint"):
         ROOT.gROOT.ProcessLine("int x = 1;")
     with pytest.raises(UnsupportedFeatureError, match=r"gInterpreter\.Declare"):
         ROOT.gInterpreter.Declare("int f();")
@@ -135,11 +135,9 @@ def test_cpp_is_refused_by_name_without_the_translator(monkeypatch):
 
 def test_cpp_goes_to_the_translator_when_it_is_installed(monkeypatch):
     seen = []
-    fake = types.ModuleType("xrdroot.cint")
+    fake = types.ModuleType("xrdroot.pycint.execute")
     fake.process_line = lambda text: seen.append(text) or 7
-    monkeypatch.setitem(sys.modules, "xrdroot.cint", fake)
-    monkeypatch.setitem(sys.modules, "xrdroot.cint.execute", types.ModuleType("execute"))
-    monkeypatch.setattr(troot.importlib.util, "find_spec", lambda name: True)
+    monkeypatch.setitem(sys.modules, "xrdroot.pycint.execute", fake)
     try:
         expect(
             (ROOT.gROOT.ProcessLine("1+1"), 7),
@@ -166,12 +164,10 @@ def test_a_declaration_puts_what_it_declares_in_the_namespace(monkeypatch):
         return 42
 
     declared.__module__ = "__cint__"
-    execute = types.ModuleType("xrdroot.cint.execute")
+    execute = types.ModuleType("xrdroot.pycint.execute")
     execute.run_source = lambda code, file, call: {"answer": declared, "_hidden": declared, "np": 1}
     execute.process_line = lambda text: 7
-    monkeypatch.setitem(sys.modules, "xrdroot.cint", types.ModuleType("xrdroot.cint"))
-    monkeypatch.setitem(sys.modules, "xrdroot.cint.execute", execute)
-    monkeypatch.setattr(troot.importlib.util, "find_spec", lambda name: True)
+    monkeypatch.setitem(sys.modules, "xrdroot.pycint.execute", execute)
     monkeypatch.setattr(troot, "_PRELUDE", {})  # the translator's own names, learnt once
     try:
         expect(
@@ -187,14 +183,21 @@ def test_a_declaration_puts_what_it_declares_in_the_namespace(monkeypatch):
 
 
 def test_the_translator_is_not_looked_for_without_it(monkeypatch):
-    monkeypatch.setattr(troot.importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setitem(sys.modules, "xrdroot.pycint.execute", None)  # not installed
     assert troot._translator("run_source") is None
 
 
+def test_a_translator_that_fails_to_load_is_not_taken_for_a_missing_one(monkeypatch):
+    def broken():
+        raise ModuleNotFoundError("No module named 'needed'", name="needed")
+
+    monkeypatch.setitem(troot._PROVIDED, "run_source", broken)
+    with pytest.raises(ModuleNotFoundError, match="needed"):
+        troot._translator("run_source")
+
+
 def test_a_translator_module_without_process_line_is_still_refused(monkeypatch):
-    monkeypatch.setitem(sys.modules, "xrdroot.cint", types.ModuleType("xrdroot.cint"))
-    monkeypatch.setitem(sys.modules, "xrdroot.cint.execute", types.ModuleType("execute"))
-    monkeypatch.setattr(troot.importlib.util, "find_spec", lambda name: True)
+    monkeypatch.setitem(sys.modules, "xrdroot.pycint.execute", types.ModuleType("execute"))
     with pytest.raises(UnsupportedFeatureError):
         ROOT.gROOT.ProcessLine("1")
 

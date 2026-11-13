@@ -173,10 +173,13 @@ ROOT's colours: `f["c1"].save("c1.png")`.
 `xrdroot f.root` is `root -l f.root`: a Python prompt with `_file0`, `gROOT`,
 `gDirectory` and ROOT's `.ls`, `.cd` and `.x` — IPython's if it is there — and
 `xrdroot ls`, `dump`, `diff`, `print`, `scan`, `draw` and `info` are ROOT's and
-go-hep's command-line kit, over any URL.
+go-hep's command-line kit, over any URL. `xrdroot root -l f.root` is the C++
+prompt, as cling's: C++ typed at `root [0]` is translated and run, values print
+as `(double) 1.0000000`, and `.x`, `.L` and `.ls` work.
 
     xrdroot ls -t root://eos.example.org//store/events.root
     xrdroot diff before.root after.root && echo same
+    echo 'TH1F h("h","h",10,0,1); h.Fill(.5); h.GetEntries()' | xrdroot root -l -b
 
 ## Where this sits
 

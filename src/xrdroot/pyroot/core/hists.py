@@ -57,6 +57,10 @@ class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarke
     def IsHighlight(self) -> bool:
         return self.TestBit(self.kIsHighlight)
 
+    def __str__(self) -> str:
+        """As PyROOT prints a histogram - cling's ``printValue`` of a ``TH1``."""
+        return f"Name: {self.GetName()} Title: {self.GetTitle()} NbinsX: {self.GetNbinsX()}"
+
     def Print(self, option: str = "") -> None:
         """``Print``: ROOT's one-line summary; ``"all"``, ``"range"`` or ``"base"`` more.
 

@@ -1166,14 +1166,14 @@ ROOT: a new label takes the next free bin, a full axis doubles, and
 | What | ROOT's names here |
 | --- | --- |
 | objects | `TObject` (`GetName`, `ClassName`, `IsA().GetName()`, `InheritsFrom`, `Clone`, `Copy`, `Draw`, `DrawClone`, `Print`, `ls`, `Write`, `SaveAs`, bits), `TNamed`, `TClass`, the `TAttLine`/`TAttFill`/`TAttMarker`/`TAttText` setters and getters - kept in the xrdroot object's own members - and every `EColor`, style, palette and `kTRUE`/`kFALSE` as ints, so `kRed + 2` is 634 |
-| the session | `gROOT` (`SetBatch`, `IsBatch`, `GetListOfFiles`/`Canvases`/`Functions`/`Styles`, `FindObject`, `GetFunction`, `SetStyle`, `ProcessLine` and `gInterpreter.Declare` through `xrdroot.cint`, `Reset`, `GetVersion` as `6.40.04`, `GetTutorialDir` from `$ROOT_TUTORIAL_DIR`), `gDirectory`, `TDirectory.TContext`, `gSystem` (`Load` and `AddIncludePath` succeed and do nothing; `Getenv`, `Setenv`, `Exec`, `AccessPathName` - true when the path is **not** there, as ROOT's is - `mkdir`, `Which`, `BaseName`, `DirName`, `ProcessEvents`, `Sleep`...), `ROOT.ROOT.EnableImplicitMT`, `TSeqI`, `Float_t`/`Int_t` and the other number types as casts, `Info`/`Warning`/`Error`, `SetOwnership`, `nullptr` |
+| the session | `gROOT` (`SetBatch`, `IsBatch`, `GetListOfFiles`/`Canvases`/`Functions`/`Styles`, `FindObject`, `GetFunction`, `SetStyle`, `ProcessLine` and `gInterpreter.Declare` through `xrdroot.pycint`, `Reset`, `GetVersion` as `6.40.04`, `GetTutorialDir` from `$ROOT_TUTORIAL_DIR`), `gDirectory`, `TDirectory.TContext`, `gSystem` (`Load` and `AddIncludePath` succeed and do nothing; `Getenv`, `Setenv`, `Exec`, `AccessPathName` - true when the path is **not** there, as ROOT's is - `mkdir`, `Which`, `BaseName`, `DirName`, `ProcessEvents`, `Sleep`...), `ROOT.ROOT.EnableImplicitMT`, `TSeqI`, `Float_t`/`Int_t` and the other number types as casts, `Info`/`Warning`/`Error`, `SetOwnership`, `nullptr` |
 | text and time | `TString` (a string that changes in place: `ReplaceAll`, `Append`, `ToLower`, `Contains`, `Tokenize`, `Form`, `TString.Format`...), `Form` and `Printf` with `printf`'s formats, `TStopwatch`, `TBenchmark`/`gBenchmark`, `TDatime` |
-| files | `TFile`, `TDirectoryFile` (`Get`, `GetListOfKeys`, `GetKey`, `mkdir`, `cd`, `GetDirectory`, `Write`, `WriteObject`, `ls`, `Close`, a context manager), `TKey` (`GetName`, `GetClassName`, `GetCycle`, `ReadObj`) |
+| files | `TFile`, `TMemFile` (a file written in memory, `GetSize`, `CopyTo`, and read back from its bytes), `TDirectoryFile` (`Get`, `d["name"]` - kept in `_cached_items` once found - `GetListOfKeys`, `GetKey`, `mkdir`, `cd`, `GetDirectory`, `Write`, `WriteObject`, `ls`, `Close`, a context manager), `TKey` (`GetName`, `GetClassName`, `GetCycle`, `ReadObj`) |
 | histograms | `TH1`/`TH2`/`TH3` in `C`, `S`, `I`, `F` and `D` (arguments by position or by name, `nbinsx=`...), `TProfile`, `TProfile2D`, `TProfile3D`: `Fill`, `FillN`, `Get`/`SetBinContent` and `Error` by global or per-axis bin, `GetBin`, `FindBin`, `GetMean`, `GetStdDev`, `GetRMS`, `GetEntries`, `Integral`, `IntegralAndError`, `GetMaximum`/`MaximumBin`, `SetMaximum`/`Minimum`, `Scale`, `Add`, `Multiply`, `Divide`, `Rebin`, `ProjectionX`/`Y`, `ProfileX`/`Y`, `Project3D`, `GetCumulative`, `Fit`, `GetFunction`, `FillRandom`, `GetRandom`, `KolmogorovTest`, `Chi2Test`, `Smooth`, `Sumw2`, `Reset`, `SetStats`, `Print`; `TAxis` (`SetTitle`, `SetRange`, `SetRangeUser`, `SetBinLabel`, `GetBinCenter`...); `THStack`; UHI's `values()`, `variances()`, `h[...]` |
 | graphs | `TGraph`, `TGraphErrors`, `TGraphAsymmErrors` (`SetPoint` past the end grows it, `GetPoint`, `GetX`, `SetPointError`, `Eval`, `Fit`, `GetHistogram` - ROOT's frame, a tenth wider than the points), `TMultiGraph` |
 | functions and fits | `TF1`, `TF2`, `TF3`, `TFormula` - from a formula, or from a Python `fn(x, p)` as PyROOT calls it - with `SetParameters`, `SetParNames`, `SetParLimits`, `FixParameter`, `Eval`, `Integral`, `Derivative`, `GetMaximumX`, `GetX`, `GetRandom`, `Moment`; `TFitResultPtr` and `TFitResult` (`Parameter`, `ParError`, `Chi2`, `Ndf`, `Prob`, `GetCovarianceMatrix`, `Print`); `TVirtualFitter.GetFitter().GetConfidenceIntervals`, the latest fit's band; `IntegralError`; `TEfficiency` |
 | mathematics | `TMath`, `ROOT.Math` (its distributions, `MinimizerOptions`, and GenVector's `PtEtaPhiMVector`, `PxPyPzEVector`, `XYZVector`... kept in their own coordinates and printed as `operator<<` prints them, with `VectorUtil`), `TVector2`, `TVector3`, `TRotation`, `TLorentzVector`, `TRandom`, `TRandom1`, `TRandom2`, `TRandom3` |
-| containers | `TList`, `TObjArray`, `THashList`, `TIter`, `TObjString` |
+| containers | `TList`, `TObjArray`, `THashList`, `THashTable`, `TIter` - each with a Python list's `append`, `extend`, `remove`, `count`, `+` and `*`, and the ordered ones `insert`, `pop`, `reverse`, `sort`, `index` and `[i]`/`[i:j:k]` to read, assign and delete - `TObjString` (compared, measured and shown as its string); `TVectorT[float]`, which is `TVectorD`; `TArray`s and `TVectorD` raise `IndexError` past their ends |
 
 The namespace is put together from `xrdroot.pyroot.SUBMODULES`: this core,
 the trees (`TTree`, `TChain`, `RDataFrame`...), the STL stand-ins, RDF and
@@ -1793,8 +1793,12 @@ reader = ROOT.TMVA.Reader("!Color:!Silent")      # and back, one event at a time
 - **CrossValidation** splits folds by `SplitExpr` or TMVA's own shuffled draw, trains a
   method per fold and a `CrossValidation` method over them; the Envelope
   `TMVA::Experimental::Classification` is here too.
-- **`TMVA::Experimental`**: `RTensor`, `AsTensor`, `RReader`, `Compute`,
-  `RStandardScaler`, `RBDT` and `SaveXGBoost`; and `ROOT.Experimental.ML.RDataLoader`.
+- **`TMVA::Experimental`**: `RTensor` (`RTensor("float")` is `RTensor<float>`, and
+  `numpy.asarray` views it), `AsTensor`, `AsRTensor` (a NumPy array's memory, in its
+  layout), `RReader`, `Compute`, `RStandardScaler`, `RBDT` and `SaveXGBoost`; and
+  `ROOT.Experimental.ML.RDataLoader` - over one frame or a list of them, split frame by
+  frame with `load_eager=True`, and two frames balanced by `sampling_type`
+  (`"undersampling"`, `"oversampling"`), `sampling_ratio` and `replacement`.
 - **The genetic algorithm** (`GeneticFitter`, `IFitterTarget`, `Interval`) is TMVA's, draw
   for draw.
 
@@ -2761,10 +2765,12 @@ return the selected y and x coordinates.
 `std.vector["float"]()` - the spelling the translator writes for
 `std::vector<float> v;`, the same class as `std.vector("float")` and
 `std.vector[np.float32]` - with `push_back`, `size`, `[]` and `data()`, a
-view of its NumPy storage; `std.map["std::string", "int"]`, `std.pair` and
-`std.string`. `ROOT.RDataFrame` is xrdroot's frame taking these trees, with
-`AsNumpy` giving an array per entry of a collection, `ROOT.RDF.FromNumpy`,
-`ROOT.RDF.RunGraphs`, and `ROOT.RVec` and `ROOT.VecOps` over NumPy.
+view of its NumPy storage, and `v += values`; `std.map["std::string", "int"]`,
+`std.set["int"]`, `std.pair` and `std.string`. `ROOT.RDataFrame` is xrdroot's frame taking
+these trees, with `AsNumpy` giving an array per entry of a collection - ROOT's `ndarray`,
+knowing its `result_ptr`, or with `lazy=True` an `AsNumpyResult` - `ROOT.RDF.FromNumpy`,
+`ROOT.RDF.RunGraphs`, and `ROOT.RVec` and `ROOT.VecOps` over NumPy, `VecOps.AsRVec`
+adopting an array's memory.
 
 ### Directories
 
@@ -3100,6 +3106,7 @@ status 2.
 | `.ls`, `.pwd`, `.cd dir`, `.q` | the same, at the prompt: `print(gROOT.ls())`, `gROOT.cd("dir")`… |
 | `.x macro.C(1, 2)` | `.x macro.py(1, 2)` — or `gROOT.macro("macro.py", 1, 2)` — runs the file, then its function of the same name; a `.C` is [translated from C++](#running-root-macros) first |
 | `root -b -q macro.C` | `xrdroot run macro.C` |
+| `root -l` and C++ at `root [0]` | `xrdroot root -l` — [the C++ prompt](#the-c-prompt-xrdroot-root) |
 | `gROOT`, `gDirectory`, `gFile` | `xrdroot.gROOT`, `xrdroot.gDirectory`; the file is `gROOT.cd()`'s answer, or `_file0` |
 | `TFile::Open(url)` | `gROOT.open(url)`, which goes into the file as ROOT's does |
 | `gROOT->Get("f.root:/dir/h")`, `FindObject("h")` | `gROOT.get("f.root:/dir/h")`, `gROOT["h"]` |
@@ -3185,8 +3192,9 @@ writing the module and adding its name to that list.
 
 ## Running ROOT macros
 
-A ROOT macro is C++ as Cling reads it. `xrdroot.cint` translates it into
-Python and runs that: `xrdroot run` is `root -b -q`, and `.x` at the prompt
+A ROOT macro is C++ as Cling reads it. `xrdroot.pycint` translates it into
+Python - with `xrdroot.pycxx`, the C++ translator, in ROOT's dialect - and runs
+that (`xrdroot.cint` is the same package under its former name): `xrdroot run` is `root -b -q`, and `.x` at the prompt
 takes a `.C` as readily as a `.py`.
 
 ```console
@@ -3204,13 +3212,13 @@ anything else, a pointer included, as 255. So `hsimple.C`, which returns
 its `TFile *`, exits 255, as ROOT's CI expects of it.
 
 ```python
-from xrdroot import cint
+from xrdroot import pycint
 
-cint.run("hsimple.C")                      # the function named like the file, called
-cint.run("fit.C", args=(1000,))
-python = cint.translate(open("fit.C").read(), "fit.C")   # readable Python, to keep
-cint.process_line('printf("%d\\n", 7 / 2)')              # gROOT->ProcessLine
-cint.load("helpers.C")                     # .L: what it defines, nothing called
+pycint.run("hsimple.C")                    # the function named like the file, called
+pycint.run("fit.C", args=(1000,))
+python = pycint.translate(open("fit.C").read(), "fit.C")   # readable Python, to keep
+pycint.process_line('printf("%d\\n", 7 / 2)')            # gROOT->ProcessLine
+pycint.load("helpers.C")                   # .L: what it defines, nothing called
 gROOT.macro("hsimple.C")                   # .x at the prompt
 ```
 
@@ -3220,6 +3228,113 @@ with the arguments `.x` gave, an unnamed macro — a file that is a single
 it declares. Translations are kept under `$XRDROOT_CINT_CACHE` (by default
 `~/.cache/xrdroot/cint`), filed by a hash of the macro, of every local header
 it reads, and of the translator itself, so nothing stale is ever run.
+
+### The C++ prompt: `xrdroot root`
+
+`xrdroot root` (or `xrdroot cint`) is `root -l` and C++ typed at `root [0]`,
+in the style of ROOT 6's cling. It takes `root`'s options — `-l` (no banner),
+`-b`, `-q`, `-x` (leave at the first error), `-n` (no `rootlogon.C`), `-e LINE`
+— and its files in order: `f.root` is attached as `_file0`, a macro `x.C`,
+`'x.C(1, 2)'` or `x.C+` runs as `.x` runs it.
+
+```console
+$ xrdroot root -l tests/data/simple.root
+Attaching file tests/data/simple.root as _file0...
+(TFile *) 0x10e474440
+root [1] TH1F h("h", "h", 10, 0, 1); h.Fill(.5);
+root [2] h.GetEntries()
+(double) 1.0000000
+root [3] h
+(TH1F &) Name: h Title: h NbinsX: 10
+root [4] for (int i = 0; i < 2; i++) {
+root (cont'ed, cancel with .@) [5] printf("%d\n", i); }
+0
+1
+root [6] nope + 1
+ROOT_prompt_6:1:1: error: use of undeclared identifier 'nope'
+root [7] .q
+$ echo 'TH1F h("h","h",10,0,1); h.Fill(.5); h.GetEntries()' | xrdroot root -l -b
+(double) 1.0000000
+```
+
+What is declared at the prompt — variables, functions, classes, `#include`s,
+`using namespace` — stays for every line after it. An expression without its
+`;` prints its value as cling does: `(int) 4`, `(double) 3.1400000`,
+`(const char *) "abc"`, `(bool) true`, `(std::string &) "x"`, `(TH1F *) 0x...`
+for a pointer and, for an object, its type as a reference and what cling's
+printer says of it. An input that does not translate, names something
+undeclared or fails as it runs is reported at its `ROOT_prompt_N:line:column`
+and not kept, and the session goes on. Each input is translated together
+with every one before it, so the translator knows every type declared so
+far; only the statements that have not run yet are run.
+
+The dot commands are cling's and ROOT's: `.x`/`.X`, `.L` and `.U`, `.ls`,
+`.cd`, `.pwd`, `.files`, `.! command`, `.> file` and `.>`, `.g`, `.class Name`,
+`.rawInput`, `.O`, `.@`, `.help` and `.q`. At a terminal, lines are read with
+readline, with Tab completion and a history in `~/.xrdroot_history`; piped
+input is run without prompts. The prompt in Python is
+`xrdroot.pycint.interactive.Interpreter`: `feed(line)` hands back what it says.
+
+### Programs: `main` and GoogleTest
+
+ROOT's stress programs (`test/stressVector.cxx`) and unit tests (each
+module's `test/`) are programs, not macros: they have a `main`, or are
+GoogleTest files whose `main` is GoogleTest's own. `xrdroot run` starts a
+file as the first of these it defines:
+
+1. the function named like the file, called with the arguments in brackets,
+   its value printed and exited with, as above;
+2. `main(argc, argv)` (or `main()`), with `argv[0]` the file's name without
+   its extension and `argv[1:]` whatever follows `--` on the command line; its
+   value, modulo 256, is the exit status;
+3. the GoogleTest tests it defines, run as `gtest_main` runs them, with the
+   arguments after `--` (`--gtest_filter=`, `--gtest_list_tests`,
+   `--gtest_also_run_disabled_tests`); the exit status is 0 if and only if no
+   test failed;
+4. an unnamed macro's block.
+
+A file with none of these is refused, on standard error and with exit status
+2, naming what was looked for. ROOT does not run such a file silently either:
+`root -b -q library.C` calls `library()`, which Cling reports as an
+undeclared identifier. Several files make one program: each is translated
+and run in order, in one namespace, and the first file says how the program
+starts.
+
+```console
+$ xrdroot run stressVector.cxx -- 500           # main(2, {"stressVector", "500"})
+$ xrdroot run testTH1.cxx -- --gtest_filter='TH1.*-*Slow*'
+$ xrdroot run test_main.cxx helpers.cxx         # one program of two files
+$ xrdroot run script.py -- -v                   # sys.argv is the script and -v
+```
+
+`#include <gtest/gtest.h>` defines GoogleTest's macros as the translator's
+own C++: `TEST`, `TEST_F` with fixtures deriving `::testing::Test`
+(`SetUp`, `TearDown`, `SetUpTestSuite` and the older `SetUpTestCase`),
+`TEST_P` with `INSTANTIATE_TEST_SUITE_P` over `Values`, `ValuesIn`,
+`Range`, `Bool` and `Combine`, and the `EXPECT_` and `ASSERT_` assertions
+(`EQ`, `NE`, `LT`, `LE`, `GT`, `GE`, `TRUE`, `FALSE`, the `STR` comparisons,
+`FLOAT_EQ` and `DOUBLE_EQ` within four units in the last place, `NEAR`,
+`THROW`, `NO_THROW`, `ANY_THROW`, `THAT` with gmock's string and comparison
+matchers), with `FAIL()`, `ADD_FAILURE()`, `SUCCEED()`, `GTEST_SKIP()`,
+`SCOPED_TRACE` and a `<< message` after any of them. An `EXPECT_` failure is
+recorded and the test goes on; an `ASSERT_` one returns from the function,
+as GoogleTest's does. The output is GoogleTest's: `[ RUN      ]`,
+`[       OK ]`, `[  FAILED  ]`, each failure as `file:line: Failure` with the
+values compared. A test that raises — a C++ exception, or xrdroot refusing
+something it needs — fails alone, with the exception's message, and the
+run goes on. `EXPECT_DEATH`, whose statement is meant to end its process,
+skips its test, saying so; the typed tests (`TYPED_TEST`) are refused.
+
+ROOT's `ROOT/TestSupport.hxx` is there too: `ROOT_EXPECT_ERROR`,
+`ROOT_EXPECT_WARNING`, `ROOT_EXPECT_INFO`, `ROOT_EXPECT_SYSERROR`, their
+`_PARTIAL` forms, `ROOT_EXPECT_NODIAG` and
+`ROOT::TestSupport::CheckDiagsRAII`. While one is checking, standard error
+is read line by line, and a diagnostic it expects (`Error in <TFile::TFile>:
+...`) is taken rather than printed; one missing, or an unexpected warning or
+error, fails the test. An exception counts as the one an `EXPECT_THROW`
+names only if a C++ `throw` could have made it: a `NameError`, an
+`AttributeError` or xrdroot's `UnsupportedFeatureError` never passes for
+`std::runtime_error`.
 
 ### What the Python looks like
 
@@ -3236,7 +3351,7 @@ void count(int n = 10) {
 ```
 
 ```python
-from xrdroot.cint.runtime import *  # noqa: F403
+from xrdroot.pycint.runtime import *  # noqa: F403
 
 
 def count(n=10):

@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
-from xrdroot.cint.runtime import Cell
+from xrdroot.pycint.runtime import Cell
 
 
 def test_a_matrix_is_made_by_size_bounds_elements_copy_or_rows() -> None:

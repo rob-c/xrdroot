@@ -206,6 +206,10 @@ PROVIDERS: dict[tuple[str, str], tuple[str, str, str]] = {
     ('tmva.result_roc_graph', 'default'): ('pyroot', 'xrdroot.pyroot.tmvaplot', 'result_graph'),
     ('tmva.factory_roc_graph', 'default'): ('pyroot', 'xrdroot.pyroot.tmvaplot', 'factory_graph'),
     ('tmva.roc_canvas', 'default'): ('pyroot', 'xrdroot.pyroot.tmvaplot', 'roc_canvas'),
+    ('interpreter.process_line', 'default'): ('pycint', 'xrdroot.pycint.execute', 'process_line'),
+    ('interpreter.run_source', 'default'): ('pycint', 'xrdroot.pycint.execute', 'run_source'),
+    ('interpreter.run', 'default'): ('pycint', 'xrdroot.pycint.execute', 'run'),
+    ('interpreter.dialect', 'default'): ('pycint', 'xrdroot.pycint.dialect', 'dialect'),
 }
 
 

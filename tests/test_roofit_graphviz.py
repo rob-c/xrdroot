@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import xrdroot.pyroot as ROOT
-from xrdroot.cint.runtime.streams import ostringstream
+from xrdroot.pycxx.runtime.streams import ostringstream
 
 DATA = Path(__file__).parent / "data"
 

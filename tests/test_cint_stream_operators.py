@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 
 from cintfake import fake
-from xrdroot.cint import translate
-from xrdroot.cint.execute import run_source
-from xrdroot.cint.runtime import cout, stream_formatter
+from xrdroot.pycint import translate
+from xrdroot.pycint.execute import run_source
+from xrdroot.pycint.runtime import cout, stream_formatter
 
 
 def output(capsys: pytest.CaptureFixture[str], source: str) -> str:
@@ -46,13 +46,26 @@ def test_a_classs_writer_is_called_even_where_the_type_is_not_known(
     assert capsys.readouterr().out == "task 7\n"
 
 
-def test_a_writer_of_a_pointer_or_another_operator_is_still_refused() -> None:
-    from xrdroot.cint import Refusal
+def test_a_writer_of_a_pointer_or_another_operator_is_a_function_of_its_own(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = """
+    struct T { int n = 4; };
+    ostream &operator<<(ostream &o, T *t) { o << "T at " << t->n; return o; }
+    int operator<<(int a, const T &t) { return a + t.n; }
+    void t() { T one; cout << &one << " " << (3 << one) << " " << (3 << 1) << endl; }
+    """
+    text = translate(source, "t.C")
+    assert "def operator_lshift__1(o, t):" in text
+    assert "def operator_lshift__2(a, t):" in text
+    assert output(capsys, source) == "T at 4 7 6\n"
 
-    with pytest.raises(Refusal, match="the operator << defined outside a class"):
-        translate("struct T {}; ostream &operator<<(ostream &o, T *t) { return o; }", "t.C")
-    with pytest.raises(Refusal, match="the operator << defined outside a class"):
-        translate("struct T {}; int operator<<(int a, const T &t) { return a; }", "t.C")
+
+def test_an_operator_with_no_python_function_is_still_refused() -> None:
+    from xrdroot.pycint import Refusal
+
+    with pytest.raises(Refusal, match="the operator \\+\\+ defined outside a class"):
+        translate("struct T {}; T &operator++(T &t) { return t; }", "t.C")
 
 
 def test_the_runtime_writer_is_found_through_the_class_a_value_derives_from(

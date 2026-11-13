@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from xrdroot.cint.runtime.streams import ofstream
+from xrdroot.pycxx.runtime.streams import ofstream
 from xrdroot.roofit.categories import RooCategory
 from xrdroot.roofit.data.dataset import RooDataSet
 from xrdroot.roofit.variables import RooRealVar

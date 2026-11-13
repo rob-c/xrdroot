@@ -8,8 +8,8 @@ from cppstdsupport import isolated
 
 
 def test_input_stream_compatibility_paths_share_the_classes_and_type_registry() -> None:
-    from xrdroot.cint.runtime import istreams as legacy
     from xrdroot.cppstd import istreams
+    from xrdroot.pycxx.runtime import istreams as legacy
 
     assert legacy.__all__ is istreams.__all__
     assert legacy.KINDS is istreams.KINDS
@@ -23,7 +23,7 @@ def test_input_stream_compatibility_paths_share_the_classes_and_type_registry() 
     ("Double_t", -7.25), ("Float_t", -7.25),
 ])
 def test_runtime_streams_keep_root_numeric_typedef_extraction(kind, expected) -> None:
-    from xrdroot.cint.runtime.istreams import istringstream
+    from xrdroot.pycint.runtime import istringstream  # ROOT's typedefs, supplied
 
     stream = istringstream(" -7.25 word")
     actual = stream.extract(kind)

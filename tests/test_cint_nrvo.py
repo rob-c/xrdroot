@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import types
+from collections.abc import Iterator
 from dataclasses import replace
 from typing import Any
 
@@ -10,10 +11,12 @@ import numpy as np
 import pytest
 
 from xrdroot import pyroot as ROOT
-from xrdroot.cint import translate
-from xrdroot.cint.ctype import CType
-from xrdroot.cint.execute import run_source
-from xrdroot.cint.nodes import (
+from xrdroot.pycint import translate
+from xrdroot.pycint.dialect import ROOT as ROOT_DIALECT
+from xrdroot.pycint.execute import run_source
+from xrdroot.pycxx.ctype import CType
+from xrdroot.pycxx.dialect import using
+from xrdroot.pycxx.nodes import (
     Block,
     DeclStmt,
     ExprStmt,
@@ -24,10 +27,17 @@ from xrdroot.cint.nodes import (
     Unary,
     VarDecl,
 )
-from xrdroot.cint.nrvo import candidate
-from xrdroot.cint.parse_decl import parse
-from xrdroot.cint.program import Program, walk
-from xrdroot.cint.tokens import tokenize
+from xrdroot.pycxx.nrvo import candidate
+from xrdroot.pycxx.parse_decl import parse
+from xrdroot.pycxx.program import Program, walk
+from xrdroot.pycxx.tokens import tokenize
+
+
+@pytest.fixture(autouse=True)
+def _in_roots_dialect() -> Iterator[None]:
+    """These tests read C++ as a ROOT macro is read: in ROOT's dialect."""
+    with using(ROOT_DIALECT):
+        yield
 
 
 def parsed(source: str) -> tuple[Program, Function]:

@@ -4,6 +4,12 @@ ROOT's containers are lists of objects with ROOT's names for what a Python
 list already does, and they are Python lists too: iterable, indexable and
 sized, so ``for h in f.GetListOfKeys()`` and ``len(lst)`` work as PyROOT's do.
 ``Print`` and ``ls`` print ROOT's header and each thing held, one level in.
+
+PyROOT gives every collection a Python list's methods - ``append``, ``remove``,
+``extend``, ``count``, ``+`` and ``*`` - and an ordered one the rest:
+``insert``, ``pop``, ``reverse``, ``sort``, ``index``, and ``[i]``, ``[i:j:k]``
+to read, assign and delete, each raising what a list raises; a slice read is
+a collection of the same class.
 """
 
 from __future__ import annotations
@@ -12,6 +18,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from .objects import Indent, TNamed, TObject
+from .strings import TString
 
 __all__ = [
     "TCollection",
@@ -24,6 +31,7 @@ __all__ = [
     "TIter",
     "TObjString",
     "TObjLink",
+    "THashTable",
 ]
 
 #: Not ROOT's name, so not in the namespace; what ``GetListOfFunctions`` hands back.
@@ -60,6 +68,41 @@ class TCollection(TObject):
 
     def __bool__(self) -> bool:
         return True
+
+    def append(self, obj: Any) -> None:
+        self.Add(obj)
+
+    def extend(self, other: Any) -> None:
+        for obj in list(other):
+            self.Add(obj)
+
+    def remove(self, obj: Any) -> None:
+        """``remove``: the first time ``obj`` is held taken out - a ``ValueError`` if never."""
+        if self.Remove(obj) is None:
+            raise ValueError("list.remove(x): x not in list")
+
+    def count(self, obj: Any) -> int:
+        return sum(1 for item in self._items if item == obj)
+
+    def __add__(self, other: Any) -> Any:
+        made = type(self)()
+        made.extend(self)
+        made.extend(other)
+        return made
+
+    def __mul__(self, times: int) -> Any:
+        made = type(self)()
+        for _ in range(int(times)):
+            made.extend(self)
+        return made
+
+    __rmul__ = __mul__
+
+    def __imul__(self, times: int) -> Any:
+        held = list(self._items)
+        for _ in range(int(times) - 1):
+            self.extend(held)
+        return self
 
     # -- ROOT's --------------------------------------------------------------------
 
@@ -149,8 +192,60 @@ class TCollection(TObject):
             Indent.deeper(-1)
 
 
+def _position(index: Any, size: int) -> int:
+    """An index of a list ``size`` long - negative from the end - or what a list raises."""
+    if isinstance(index, bool) or not isinstance(index, int):
+        raise TypeError(f"list indices must be integers or slices, not {type(index).__name__}")
+    at = index + size if index < 0 else index
+    if not 0 <= at < size:
+        raise IndexError("list index out of range")
+    return at
+
+
 class TSeqCollection(TCollection):
     """``TSeqCollection``: a collection in an order that can be indexed."""
+
+    def __getitem__(self, index: Any) -> Any:
+        """``c[i]`` the object there; ``c[i:j:k]`` a collection of the same class of them."""
+        if isinstance(index, slice):
+            made = type(self)()
+            made.extend(self._items[index])
+            return made
+        return self._items[_position(index, len(self._items))]
+
+    def __setitem__(self, index: Any, value: Any) -> None:
+        if isinstance(index, slice):
+            self._items[index] = list(value)
+            return
+        self._items[_position(index, len(self._items))] = value
+
+    def __delitem__(self, index: Any) -> None:
+        if isinstance(index, slice):
+            del self._items[index]
+            return
+        del self._items[_position(index, len(self._items))]
+
+    def insert(self, index: int, obj: Any) -> None:
+        self._items.insert(int(index), obj)
+
+    def pop(self, index: Any = -1) -> Any:
+        return self._items.pop(_position(index, len(self._items)))
+
+    def reverse(self) -> None:
+        self._items.reverse()
+
+    def sort(self, key: Any = None, reverse: bool = False) -> None:
+        """``sort()``: ROOT's ``Sort``; with a ``key`` or ``reverse``, Python's sort of them."""
+        if key is None and not reverse:
+            self.Sort()
+            return
+        self._items.sort(key=key, reverse=reverse)
+
+    def index(self, obj: Any) -> int:
+        at = self.IndexOf(obj)
+        if at < 0:
+            raise ValueError(f"{obj!r} is not in list")
+        return at
 
     def At(self, index: int) -> Any:
         """``At(i)``: the ``i``th object, or ``None`` past the end."""
@@ -454,8 +549,19 @@ class TIter:
         return self._collection
 
 
+class THashTable(TCollection):
+    """``THashTable``: a collection found by hash - held in order here, which finds the same."""
+
+
+def _text(other: Any) -> str | None:
+    """What a ``TObjString`` is compared with as a string - a string, a ``TString`` or
+    another ``TObjString`` - or ``None`` for anything else, which it is never equal to."""
+    return str(other) if isinstance(other, (str, TObjString, TString)) else None
+
+
 class TObjString(TNamed):
-    """``TObjString``: a string that can be kept in a collection."""
+    """``TObjString``: a string that can be kept in a collection, compared and measured as
+    its string is, and shown as Python shows a string."""
 
     def __init__(self, text: Any = "") -> None:
         super().__init__(str(text), "")
@@ -472,8 +578,29 @@ class TObjString(TNamed):
     def __str__(self) -> str:
         return self.GetName()
 
+    def __repr__(self) -> str:
+        return repr(self.GetName())
+
+    def __len__(self) -> int:
+        return len(self.GetName())
+
     def __eq__(self, other: object) -> bool:
-        return str(self) == str(other)
+        return str(self) == _text(other)
+
+    def __ne__(self, other: object) -> bool:
+        return not self == other
+
+    def __lt__(self, other: Any) -> bool:
+        return str(self) < str(other)
+
+    def __le__(self, other: Any) -> bool:
+        return str(self) <= str(other)
+
+    def __gt__(self, other: Any) -> bool:
+        return str(self) > str(other)
+
+    def __ge__(self, other: Any) -> bool:
+        return str(self) >= str(other)
 
     def __hash__(self) -> int:
         return hash(self.GetName())

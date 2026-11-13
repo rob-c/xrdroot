@@ -13,9 +13,9 @@ from __future__ import annotations
 import pytest
 
 import xrdroot.pyroot as ROOT
-from xrdroot.cint import execute
-from xrdroot.cint.execute import MacroError, run_source
-from xrdroot.cint.runtime.root import USED, RootProxy
+from xrdroot.pycint.execute import MacroError, run_source
+from xrdroot.pycint.runtime.root import USED, RootProxy
+from xrdroot.pycxx import execute  # where a program's entry is found, for every dialect
 from xrdroot.roofit.printing import NULL_POINTER
 
 
@@ -23,13 +23,13 @@ def test_a_null_pointer_is_zero_while_a_macro_runs_and_0x0_after(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Inside the macro's function the setting is ``0``; outside, PyROOT's ``0x0`` again."""
-    real = execute._entry
+    real = execute.entry
 
     def entry(*given: object) -> object:
         found = real(*given)  # type: ignore[arg-type]
         return lambda: (NULL_POINTER[0], found())
 
-    monkeypatch.setattr(execute, "_entry", entry)
+    monkeypatch.setattr(execute, "entry", entry)
     assert run_source("int t() { return 7; }\n", "t.C") == ("0", 7)
     assert NULL_POINTER[0] == "0x0"
 

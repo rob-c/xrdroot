@@ -1,7 +1,7 @@
 """``TMVA::Reader``: trained methods read back from their weight files and asked about one event.
 
 A macro declares its variables to the reader by address - ``&var1``, which
-the translator makes a :class:`~xrdroot.cint.runtime.cells.Cell`, or a
+the translator makes a :class:`~xrdroot.pycxx.runtime.cells.Cell`, or a
 one-element ``array('f')`` from Python - and each ``EvaluateMVA`` reads
 them, in single precision as TMVA's ``Float_t`` addresses hold them, and
 hands the event to the method as the Factory's testing did. Every method's

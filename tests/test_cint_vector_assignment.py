@@ -9,8 +9,8 @@ import numpy as np
 import pytest
 
 from xrdroot import pyroot as ROOT
-from xrdroot.cint import translate
-from xrdroot.cint.execute import run_source
+from xrdroot.pycint import translate
+from xrdroot.pycint.execute import run_source
 
 
 def _calls(source: str) -> list[ast.Call]:

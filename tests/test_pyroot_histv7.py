@@ -151,7 +151,7 @@ def test_a_frame_books_a_histogram_of_its_columns() -> None:
         frame.Hist([E.RRegularAxis(2, (0.0, 2.0))], ["x", "w"])
     with pytest.raises(AttributeError):
         one._missing  # noqa: B018
-    from xrdroot.cint.runtime.objects import deref
+    from xrdroot.pycxx.runtime.objects import deref
 
     total = one.GetPtr()  # C++'s h = booked.GetPtr(); h->Add(*other)
     total.Add(deref(weighted))

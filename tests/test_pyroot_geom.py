@@ -16,7 +16,7 @@ import pytest
 import xrdroot.pyroot as ROOT
 from geomsupport import differing, geometry_session  # noqa: F401
 from pyrootsupport import expect
-from xrdroot.cint.execute import run
+from xrdroot.pycint.execute import run
 
 #: ROOT's ``rootgeom.C``, copied unchanged.
 ROOTGEOM = Path(__file__).parent / "data" / "cint" / "visualisation" / "geom" / "rootgeom.C"

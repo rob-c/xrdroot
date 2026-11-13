@@ -32,7 +32,7 @@ from .messages import message
 from .objects import Indent, TNamed, TObject, templated
 from .wrapping import from_members, unwrap, wrap
 
-__all__ = ["TFile", "TDirectoryFile", "TKey"]
+__all__ = ["TFile", "TMemFile", "TDirectoryFile", "TKey"]
 
 #: ``TFile``'s modes, as ROOT reads the option: upper-cased, with its synonyms.
 MODES = {
@@ -198,7 +198,8 @@ class TDirectoryFile(TDirectory):
         Another part of the kit - a tree being written - asks for this to put
         its records where this directory is.
         """
-        top = self.GetFile()._writing
+        held = self.GetFile()
+        top = held._writing if held is not None else None
         if top is None:
             return None
         if self._writer is None:
@@ -310,13 +311,6 @@ class TDirectoryFile(TDirectory):
             self._subdirectory(name, key.GetTitle()) if key is not None and key.IsFolder() else None
         )
 
-    def __getitem__(self, name: str) -> Any:
-        """``f["hpx"]``: an object by name, as PyROOT's files give them; ``KeyError`` if none."""
-        found = self.Get(name)
-        if found is None:
-            raise KeyError(f"{self.ClassName()} {self.GetName()!r} has no object {name!r}")
-        return found
-
     def __getattr__(self, name: str) -> Any:
         """``f.hpx``: an object by name as an attribute, as PyROOT's files give them."""
         if name.startswith("_"):
@@ -367,6 +361,8 @@ class TDirectoryFile(TDirectory):
 
     def mkdir(self, name: Any, title: Any = "", returnExistingDirectory: bool = False) -> Any:
         """``mkdir``: a directory below this one - on file too - and ``a/b`` makes both."""
+        if self.GetFile() is None:  # a directory in no file: its directories are in memory too
+            return super().mkdir(name, title, returnExistingDirectory)
         head, _, rest = str(name).strip("/").partition("/")
         found = self._named_directory(head)
         if found is None:
@@ -714,3 +710,55 @@ def _engine_own(obj: Any) -> bool:
     """Whether ``obj`` is one of the RooFit or RooStats engine's objects - a workspace read from
     the file - which speak ROOT's API themselves."""
     return type(obj).__module__.startswith(("xrdroot.roofit", "xrdroot.roostats"))
+
+
+class TMemFile(TFile):
+    """``TMemFile(name, option)``: a ROOT file kept in memory, never on disk.
+
+    It is written as a file on disk is - a script that gives one its
+    histograms and trees, as a scratch directory, or hands its bytes on, does
+    not leave files behind - and ``TMemFile(name, buffer, size)`` reads one
+    from bytes already in memory. ``GetSize`` and ``CopyTo`` give its bytes.
+    """
+
+    CLASS_TITLE = "A ROOT file in memory"
+
+    def __init__(self, fname: Any, *args: Any) -> None:
+        self._memory = io.BytesIO()
+        if args and isinstance(args[0], (bytes, bytearray, memoryview)):
+            size = int(args[1]) if len(args) > 1 else len(args[0])
+            self._memory = io.BytesIO(bytes(args[0])[:size])
+            args = ("READ", *args[2:])
+        super().__init__(fname, *args)
+
+    def _open(self, name: str) -> None:
+        """Read the bytes given, or write into memory; there is nothing to read without them."""
+        if self._option == "READ" and not self._memory.getbuffer().nbytes:
+            message("Error", "TMemFile::TMemFile", "no buffer to read %s from", name)
+            self._zombie = True
+            return
+        if self._option == "READ":
+            self._read_file(name)
+            return
+        from ...writer import create
+
+        algorithm, level = _compression(self._compress)
+        self._writing = self._writer = create(self._memory, compression=algorithm, level=level)
+
+    def _read_file(self, name: str) -> None:
+        from ...file import open_root
+
+        self._reading = open_root(self._memory)
+        self._keys_from(self._reading)
+
+    def GetSize(self) -> int:
+        """``GetSize``: the bytes written into memory so far."""
+        return self._memory.getbuffer().nbytes
+
+    def CopyTo(self, target: Any) -> int:
+        """``CopyTo(buffer)``: the file's bytes, as many as fit, into a ``bytearray`` or array."""
+        data = self._memory.getvalue()
+        view = memoryview(target).cast("B")
+        count = min(len(view), len(data))
+        view[:count] = data[:count]
+        return count

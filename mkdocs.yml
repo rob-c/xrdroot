@@ -27,12 +27,18 @@ theme:
         icon: material/weather-sunny
         name: Light mode
 
+# Superseded instructions and plans, kept in the repository as a record only.
+exclude_docs: |
+  history/
+
 nav:
   - Home: index.md
   - ROOT files: root.md
   - Components:
       - Overview: components/index.md
       - C++ standard library: components/cppstd.md
+      - C++ translator (pycxx): components/pycxx.md
+      - ROOT's interpreter (pycint): components/pycint.md
       - Shared primitives: components/primitives.md
       - Analysis engines: components/analysis.md
       - Files and data frames: components/io.md

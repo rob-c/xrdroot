@@ -21,8 +21,8 @@ def test_the_legacy_vector_paths_share_the_generic_factories_and_registries() ->
 
 
 def test_interpreter_reference_exports_keep_the_generic_implementations() -> None:
-    from xrdroot.cint.runtime import objects
-    from xrdroot.cint.runtime import references as legacy
+    from xrdroot.pycxx.runtime import objects
+    from xrdroot.pycxx.runtime import references as legacy
 
     assert objects.value_copy is valuecopy.value_copy
     assert legacy.__all__ == [

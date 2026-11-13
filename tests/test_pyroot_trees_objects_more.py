@@ -9,7 +9,7 @@ import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import fresh
-from xrdroot.cint.runtime import Cell
+from xrdroot.pycint.runtime import Cell
 from xrdroot.pyroot.trees.addresses import Vector, address_of
 from xrdroot.pyroot.trees.layout import BranchInfo
 from xrdroot.pyroot.trees.printing import element_lines

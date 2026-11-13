@@ -243,6 +243,13 @@ extensions = [
     { caller = "xrdroot.tmva.envelope", point = "tmva.result_roc_graph", provider = "pyroot", target = "xrdroot.pyroot.tmvaplot:result_graph" },
     { caller = "xrdroot.tmva.evaluating", point = "tmva.factory_roc_graph", provider = "pyroot", target = "xrdroot.pyroot.tmvaplot:factory_graph" },
     { caller = "xrdroot.tmva.evaluating", point = "tmva.roc_canvas", provider = "pyroot", target = "xrdroot.pyroot.tmvaplot:roc_canvas" },
+    # The ROOT namespace runs C++ through the interpreter built on it, never by importing it.
+    { caller = "xrdroot.pyroot.core.troot", point = "interpreter.process_line", provider = "pycint", target = "xrdroot.pycint.execute:process_line" },
+    { caller = "xrdroot.pyroot.core.troot", point = "interpreter.run_source", provider = "pycint", target = "xrdroot.pycint.execute:run_source" },
+    { caller = "xrdroot.session", point = "interpreter.run", provider = "pycint", target = "xrdroot.pycint.execute:run" },
+    { caller = "xrdroot.session", point = "interpreter.process_line", provider = "pycint", target = "xrdroot.pycint.execute:process_line" },
+    { caller = "xrdroot.pyroot.rdf.jitted", point = "interpreter.run_source", provider = "pycint", target = "xrdroot.pycint.execute:run_source" },
+    { caller = "xrdroot.pyroot.rdf.batched", point = "interpreter.dialect", provider = "pycint", target = "xrdroot.pycint.dialect:dialect" },
 ]
 
 [tool.xrdroot.components.groups]
@@ -322,16 +329,28 @@ depends = ["core", "hist", "io"]
 hard = ["numpy"]
 optional = ["sklearn", "scipy", "xgboost", "torch", "tensorflow", "pandas"]
 
+# The C++ translator, which knows the language and its standard library and no library past it.
+[tool.xrdroot.components.ownership.pycxx]
+modules = ["xrdroot.pycxx"]
+depends = ["cppstd"]
+hard = ["numpy"]
+
 [tool.xrdroot.components.ownership.pyroot]
-modules = ["xrdroot.pyroot", "xrdroot.cint", "xrdroot.session"]
-depends = ["@engines"]
+modules = ["xrdroot.pyroot", "xrdroot.session"]
+depends = ["@engines", "pycxx"]
 hard = ["numpy"]
 optional = ["matplotlib", "scipy", "iminuit", "PIL", "skimage"]
+
+# ROOT's dialect of the translator, its macro runner, and the former translator's names.
+[tool.xrdroot.components.ownership.pycint]
+modules = ["xrdroot.pycint", "xrdroot.cint"]
+depends = ["pycxx", "@facade"]
+hard = ["numpy"]
 
 [tool.xrdroot.components.ownership.app]
 modules = ["xrdroot.cli", "xrdroot.__main__", "xrdroot.apinamespace"]
 exact = ["xrdroot"]
-depends = ["@facade"]
+depends = ["@facade", "pycxx", "pycint"]
 hard = ["numpy"]
 optional = ["IPython", "matplotlib"]
 
@@ -451,6 +470,14 @@ support = ["tests/cppstd/conftest.py"]
 confcutdir = "tests/cppstd"
 blocked = ["xrdclient"]
 
+# The C++ translator's own tests run with nothing above it: plain C++, no ROOT.
+[tool.xrdroot.components.tests.pycxx]
+components = ["pycxx"]
+paths = ["tests/pycxx"]
+support = ["tests/pycxx/conftest.py"]
+confcutdir = "tests/pycxx"
+blocked = ["xrdclient"]
+
 # The core scope keeps the shared root fixtures in the run on purpose: they are
 # what a lower component's tests would otherwise be pulled up by, so they must
 # hold within core alone. Its files were selected by reading their xrdroot
@@ -515,9 +542,9 @@ callback = "xrdroot.pyroot.vectorassign:_rvec_capacity"
 reason = "The adapter supplies ROOT SmallVector growth and signed capacity bounds to generic assignment."
 
 [[tool.xrdroot.components.registrations]]
-caller = "xrdroot.cint.runtime.cmath"
+caller = "xrdroot.pycint.runtime.adapters"
 scope = ""
 statement = "_cmath.set_vector_result(_rvec)"
 callee = "xrdroot.cppstd.cmath.set_vector_result"
-callback = "xrdroot.cint.runtime.cmath:_rvec"
+callback = "xrdroot.pycint.runtime.adapters:_rvec"
 reason = "The interpreter supplies its lazy RVec constructor while generic math returns ordinary arrays."

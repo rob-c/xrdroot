@@ -10,11 +10,13 @@ from typing import Any
 
 import numpy as np
 
-from ...cint import nodes as cxx
-from ...cint.ctype import CType
-from ...cint.errors import CintError
-from ...cint.parse_decl import parse
-from ...cint.tokens import tokenize
+from ... import plugins
+from ...pycxx import nodes as cxx
+from ...pycxx.ctype import CType
+from ...pycxx.dialect import using
+from ...pycxx.errors import CxxError
+from ...pycxx.parse_decl import parse
+from ...pycxx.tokens import tokenize
 from ...rdf import language
 from ...rdf.expression import Evaluator, Scope
 from ...rdf.values import Value, to_column
@@ -239,8 +241,9 @@ def _summed(mapped: Any, offsets: Any, initial: float) -> Any:
 
 def compiled(source: str, used: list[str], original: Any) -> _Batched | _RandomDraw | None:
     try:
-        function = parse(tokenize(source)).decls[0]
-    except CintError:
+        with using(plugins.require("interpreter.dialect")()):  # ROOT's, as it was run in
+            function = parse(tokenize(source)).decls[0]
+    except CxxError:
         return None  # the complete translator may have needed preprocessing
     assert isinstance(function, cxx.Function) and function.body is not None
     if not used:

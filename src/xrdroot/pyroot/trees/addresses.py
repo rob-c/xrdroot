@@ -246,8 +246,21 @@ def members_of(given: Any, names: list[str], sizes: list[int], what: str) -> lis
         assert isinstance(whole, View)
         starts = np.cumsum([0, *sizes[:-1]])
         return [View(whole.view, int(start)) for start in starts]
+    names = _laid_out(given, names)
     _require_members(given, names, what)
     return [_member(given, name, what) for name in names]
+
+
+def _laid_out(given: Any, names: list[str]) -> list[str]:
+    """The members a macro's struct gives its leaves: one after another, whatever the leaves
+    are called - C++ reads a leaf list over the struct's memory, which has no names."""
+    layout = getattr(type(given), "_cxx_layout_", None)
+    if layout is None or all(hasattr(given, name) for name in names):
+        return names
+    from ...pycxx.symbols import member_name
+
+    members = [member_name(member) for member, *_ in layout[2]]
+    return members[: len(names)] if len(members) >= len(names) else names
 
 
 def _require_members(given: Any, names: list[str], what: str) -> None:

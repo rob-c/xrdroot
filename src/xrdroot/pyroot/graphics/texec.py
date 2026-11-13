@@ -4,7 +4,7 @@ ROOT paints a pad's primitives in order, and a ``TExec`` among them runs
 its command when its turn comes - ``Pal1()`` setting the palette the
 surface drawn after it is coloured with, ``drawtext()`` writing a label at
 each point of a graph with ``TLatex::PaintText``. Here the command runs,
-through :mod:`xrdroot.cint`, each time the pad is painted, and what it
+through :mod:`xrdroot.pycint`, each time the pad is painted, and what it
 paints - text painted with ``PaintText`` or ``PaintLatex`` - is put in the
 pad where the ``TExec`` is, as ROOT's painting leaves it on the picture.
 """

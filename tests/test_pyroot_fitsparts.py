@@ -82,7 +82,7 @@ def test_std_array_is_a_vector_of_its_size_filled_from_its_list() -> None:
 
 def test_a_name_given_a_smart_pointer_is_a_cast_to_the_pointer(tmp_path: Any,
                                                               capsys: Any) -> None:
-    from xrdroot.cint.execute import run
+    from xrdroot.pycint.execute import run
 
     macro = tmp_path / "alias.C"
     macro.write_text("using Up = std::unique_ptr<TVectorD>;\ntypedef TVectorD *Vp;\n"

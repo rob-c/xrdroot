@@ -6,8 +6,8 @@ from typing import Any
 
 import numpy as np
 
-from ...cint import nodes as cxx
-from ...cint.ctype import CType
+from ...pycxx import nodes as cxx
+from ...pycxx.ctype import CType
 from ...rdf.kernels import masked
 from ...tree import Jagged
 from .batched import _Batched

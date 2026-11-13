@@ -7,7 +7,7 @@ import pytest
 
 from xrdroot import Jagged
 from xrdroot import pyroot as ROOT
-from xrdroot.cint.execute import run_source
+from xrdroot.pycint.execute import run_source
 from xrdroot.pyroot import stl
 from xrdroot.pyroot.rdf import masknative, rvec
 from xrdroot.pyroot.rdf.batched import _Batched, compiled
@@ -150,7 +150,7 @@ def test_changed_cpp_type_mappings_keep_their_existing_conversion(prepared, monk
 
 @pytest.mark.parametrize('name', ['__getattr__', 'namespace', '_used'])
 def test_custom_root_lookup_keeps_its_original_callbacks(prepared, monkeypatch, name):
-    from xrdroot.cint.runtime.root import RootProxy
+    from xrdroot.pycint.runtime.root import RootProxy
     original, optimized, columns = prepared
     method = getattr(RootProxy, name)
     calls = []
@@ -359,8 +359,8 @@ def test_custom_vector_storage_keeps_its_original_accesses(prepared, monkeypatch
 
 @pytest.mark.parametrize('name', ['_bound', '_resolved'])
 def test_custom_root_storage_keeps_its_original_accesses(prepared, monkeypatch, name):
-    from xrdroot.cint.runtime.root import ROOT as proxy
-    from xrdroot.cint.runtime.root import RootProxy
+    from xrdroot.pycint.runtime.root import ROOT as proxy
+    from xrdroot.pycint.runtime.root import RootProxy
     original, optimized, columns = prepared
     value = vars(proxy)[name]
     calls = []
@@ -376,25 +376,25 @@ def test_custom_root_storage_keeps_its_original_accesses(prepared, monkeypatch, 
 
 
 def test_extra_root_dictionary_entries_do_not_change_a_call(prepared, monkeypatch):
-    from xrdroot.cint.runtime.root import ROOT as proxy
+    from xrdroot.pycint.runtime.root import ROOT as proxy
     monkeypatch.setitem(vars(proxy), 42, 'ignored metadata')
     assert _same(prepared).tolist() == [58., 3., 19.]
 
 
 def test_unknown_root_cache_keys_keep_the_original_lookup(prepared, monkeypatch):
-    from xrdroot.cint.runtime.root import ROOT as proxy
+    from xrdroot.pycint.runtime.root import ROOT as proxy
     monkeypatch.setitem(proxy._resolved, (42,), 'ignored cache entry')
     assert _same(prepared).tolist() == [58., 3., 19.]
 
 
 def test_readonly_namespace_stacks_keep_the_original_lookup(prepared, monkeypatch):
-    from xrdroot.cint.runtime.root import ROOT as proxy
+    from xrdroot.pycint.runtime.root import ROOT as proxy
     monkeypatch.setattr(proxy, '_bound', (ROOT,))
     assert _same(prepared).tolist() == [58., 3., 19.]
 
 
 def test_a_bound_namespace_does_not_need_the_default_module_name(prepared, monkeypatch):
-    runtime = importlib.import_module('xrdroot.cint.runtime.root')
+    runtime = importlib.import_module('xrdroot.pycint.runtime.root')
     monkeypatch.setattr(runtime.ROOT, '_bound', [ROOT])
     monkeypatch.setattr(runtime, 'DEFAULT', object())
     assert _same(prepared).tolist() == [58., 3., 19.]
@@ -403,7 +403,7 @@ def test_a_bound_namespace_does_not_need_the_default_module_name(prepared, monke
 def test_foreign_namespace_objects_keep_the_original_lookup(prepared, monkeypatch):
     import types
 
-    from xrdroot.cint.runtime.root import ROOT as proxy
+    from xrdroot.pycint.runtime.root import ROOT as proxy
     namespace = types.SimpleNamespace(
         maskedcall_test_sum=ROOT.maskedcall_test_sum, VecOps=ROOT.VecOps)
     monkeypatch.setattr(proxy, '_bound', [namespace])

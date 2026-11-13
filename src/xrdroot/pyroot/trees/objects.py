@@ -83,7 +83,7 @@ class Macro(Kind):
 
 def _attribute(name: str) -> str:
     """A C++ member's name as the translation made it a Python attribute."""
-    from ...cint.symbols import member_name
+    from ...pycxx.symbols import member_name
 
     return member_name(name)
 

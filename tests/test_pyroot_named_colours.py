@@ -42,3 +42,12 @@ def test_a_colour_is_titled_by_its_hex_and_the_palette_is_read_by_index():
     assert made.GetTitle() == "#ff0000"
     ROOT.gStyle.SetPalette(ROOT.kBird)
     assert ROOT.TColor.GetColorPalette(0) == ROOT.gStyle.GetColorPalette(0)
+
+
+def test_every_ecolor_and_a_number_are_colours_a_legend_takes_by_name():
+    legend = ROOT.TLegend(0.5, 0.7, 0.8, 0.8)
+    for name in ("kAsh", "kP10Ash", "kP6Grape", "kBrown"):
+        legend.SetFillColor(name)
+        assert legend.GetFillColor() == getattr(ROOT, name)
+    legend.SetFillColor("42")
+    assert legend.GetFillColor() == 42

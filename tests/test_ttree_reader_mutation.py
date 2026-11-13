@@ -11,9 +11,9 @@ import pytest
 
 import xrdroot
 from xrdroot import pyroot as ROOT
-from xrdroot.cint import Refusal, translate
-from xrdroot.cint.execute import run_source
-from xrdroot.cint.runtime import deref, store_through
+from xrdroot.pycint import Refusal, translate
+from xrdroot.pycint.execute import run_source
+from xrdroot.pycint.runtime import deref, store_through
 from xrdroot.pyroot.trees import wrap
 
 
@@ -455,7 +455,7 @@ def test_cpp_pointer_to_reader_get_and_array_at_keep_the_template_pointee() -> N
 def test_loading_a_bool_reader_keeps_the_original_branch_variable_boolean_for_streams(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from xrdroot.cint.runtime import cout
+    from xrdroot.pycint.runtime import cout
 
     monkeypatch.setattr(cout, "alpha", False)
     cpp = r"""

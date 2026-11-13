@@ -19,7 +19,8 @@ def test_engine_operations_use_downward_providers_without_loading_root_adapters(
 
         class BlockAdapters:
             def find_spec(self, fullname, path=None, target=None):
-                if fullname.startswith(("xrdroot.pyroot", "xrdroot.cint", "xrdroot.canvas",
+                if fullname.startswith(("xrdroot.pyroot", "xrdroot.cint", "xrdroot.pycint",
+                                        "xrdroot.canvas",
                                         "xrdroot.plot")):
                     raise AssertionError("An engine imported " + fullname)
 
@@ -95,7 +96,8 @@ def test_engine_operations_use_downward_providers_without_loading_root_adapters(
         install("histfactory.write_model", lambda *values: written.append(values))
         make._written(sentinel, "output.root", sentinel)
         assert written == [(sentinel, "output.root", sentinel, None)]
-        assert not any(name.startswith(("xrdroot.pyroot", "xrdroot.cint", "xrdroot.canvas",
+        assert not any(name.startswith(("xrdroot.pyroot", "xrdroot.cint", "xrdroot.pycint",
+                                        "xrdroot.canvas",
                                         "xrdroot.plot")) for name in sys.modules)
         """
     source = str(Path(xrdroot.__file__).parent.parent)

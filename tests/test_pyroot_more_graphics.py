@@ -78,7 +78,7 @@ void texec_macro() {
 
 
 def test_a_texec_runs_the_macro_s_own_functions_each_time_its_pad_is_painted(tmp_path: Any) -> None:
-    from xrdroot.cint.execute import run
+    from xrdroot.pycint.execute import run
 
     (tmp_path / "texec_macro.C").write_text(EXEC_MACRO)
     run(tmp_path / "texec_macro.C", use_cache=False)

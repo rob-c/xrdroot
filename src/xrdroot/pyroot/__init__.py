@@ -63,6 +63,7 @@ SUBMODULES = [
     "geom",
     "geom.legacy",
     "geom.legacyshapes",
+    "_pythonization",
 ]
 
 __all__: list[str] = []
@@ -90,6 +91,9 @@ def _gather(namespace: dict[str, _typing.Any] | None = None) -> list[str]:
 
 
 _gather()
+
+#: ``ROOT.__version__``: the release this namespace follows, as ``gROOT.GetVersion()`` has it.
+__version__: str = globals()["gROOT"].GetVersion()
 
 
 def __getattr__(name: str) -> _typing.Any:

@@ -8,7 +8,7 @@ from typing import Any
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect
 from refmachine import roots
-from xrdroot.cint.execute import run_source
+from xrdroot.pycint.execute import run_source
 
 
 def test_the_twister_gives_the_standards_ten_thousandth_word() -> None:

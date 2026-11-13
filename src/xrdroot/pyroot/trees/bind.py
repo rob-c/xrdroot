@@ -34,7 +34,7 @@ def _class(classname: str) -> Any:
     """What makes an object of ``classname``: a macro's class, or ROOT's."""
     import importlib
 
-    from ...cint.runtime.root import DECLARED
+    from ...pycxx.runtime.namespace import DECLARED
 
     if classname in DECLARED:
         return DECLARED[classname]
@@ -61,7 +61,7 @@ class _Member(Address):
     """One member of the object a split branch is read into."""
 
     def __init__(self, obj: Any, name: str) -> None:
-        from ...cint.symbols import member_name
+        from ...pycxx.symbols import member_name
 
         self.obj, self.name = obj, member_name(name)
 

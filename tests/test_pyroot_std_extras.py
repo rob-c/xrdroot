@@ -65,6 +65,6 @@ def test_emplace_back_makes_a_class_of_roots_in_place() -> None:
 
 
 def test_ofstream_is_the_translators_stream(tmp_path: Path) -> None:
-    from xrdroot.cint.runtime.streams import ofstream
+    from xrdroot.pycxx.runtime.streams import ofstream
 
     assert ROOT.std.ofstream is ofstream

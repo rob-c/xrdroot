@@ -6,6 +6,11 @@ with TMVA's methods: ``(i, j)`` to read and write an element,
 ``GetShape``, ``Reshape``, ``Squeeze``, ``Slice``, and the ``{ { 1, 2 } { 3, 4 } }``
 printing of ``operator<<``. ``AsTensor<T>(df, columns)`` fills one from an
 ``RDataFrame``, an event per row.
+
+From Python, as PyROOT has it, ``RTensor("float")`` is the class ``RTensor<float>``,
+``AsRTensor(array)`` - or ``RTensor<T>(array)`` - adopts a NumPy array's memory in
+its layout, and ``numpy.asarray(tensor)`` is a view of the tensor's, which
+``[i, j]`` reads and ``[:, j]`` slices.
 """
 
 from __future__ import annotations
@@ -17,15 +22,17 @@ import numpy as np
 
 from .tools import CxxVector
 
-__all__ = ["AsTensor", "MemoryLayout", "RTensor", "tensor_type"]
+__all__ = ["AsRTensor", "AsTensor", "MemoryLayout", "RTensor", "tensor_type"]
 
 #: The element types a tensor can be, by their C++ names.
 DTYPES = {
     "float": np.float32,
     "double": np.float64,
-    "int": np.int32,
-    "long": np.int64,
-    "unsigned int": np.uint32,
+    **dict.fromkeys(("int", "int32_t"), np.int32),
+    **dict.fromkeys(("long", "long long", "Long64_t", "int64_t"), np.int64),
+    **dict.fromkeys(("unsigned int", "uint32_t"), np.uint32),
+    **dict.fromkeys(
+        ("unsigned long", "unsigned long long", "ULong64_t", "uint64_t"), np.uint64),
     "bool": np.bool_,
 }
 
@@ -48,23 +55,36 @@ def _array(data: Any, dtype: Any) -> Any:
     return np.asarray(list(data), dtype=dtype)
 
 
-class RTensor:
-    """``RTensor<T>(shape)``, ``(data, shape)`` or ``(vector, shape)``, and ``RTensor[T]``."""
+class _Template(type):
+    """``RTensor("float")``: PyROOT's call of a template with a type - ``RTensor<float>``."""
+
+    def __call__(cls, *args: Any) -> Any:
+        if cls is RTensor and len(args) == 1 and isinstance(args[0], str):
+            return tensor_type(args[0])
+        return super().__call__(*args)
+
+
+class RTensor(metaclass=_Template):
+    """``RTensor<T>(shape)``, ``(data, shape)`` or ``(vector, shape)``, and ``RTensor[T]``.
+
+    A NumPy array of two dimensions or more alone, ``RTensor<T>(array)``, is
+    adopted, as ``AsRTensor`` adopts it.
+    """
 
     dtype: Any = np.float32
 
     def __class_getitem__(cls, kind: Any) -> type[RTensor]:
         return tensor_type(kind)
 
+    def __new__(cls, *args: Any) -> Any:
+        if len(args) == 1 and isinstance(args[0], np.ndarray) and args[0].ndim > 1:
+            return AsRTensor(args[0].astype(cls.dtype, copy=False))
+        return super().__new__(cls)
+
     def __init__(self, *args: Any) -> None:
-        layout = MemoryLayout.RowMajor
-        if (
-            args
-            and isinstance(args[-1], (MemoryLayout, int))
-            and not isinstance(args[-1], bool)
-            and len(args) > 1
-        ):
-            layout, args = MemoryLayout(int(args[-1])), args[:-1]
+        if len(args) == 1 and isinstance(args[0], np.ndarray) and args[0].ndim > 1:
+            return  # adopted by ``__new__``
+        layout, args = _layout(args)
         order = "C" if layout == MemoryLayout.RowMajor else "F"
         if len(args) == 1:
             shape = tuple(int(n) for n in args[0])
@@ -77,7 +97,7 @@ class RTensor:
 
     @classmethod
     def wrap(cls, array: Any, layout: MemoryLayout = MemoryLayout.RowMajor) -> RTensor:
-        made = cls.__new__(cls)
+        made: RTensor = object.__new__(cls)
         made.array, made.layout = array, layout
         return made
 
@@ -89,7 +109,32 @@ class RTensor:
         self.array[tuple(int(i) for i in index)] = value
 
     def __getitem__(self, index: Any) -> Any:
-        return self.array.reshape(-1)[int(index)].item()
+        """``t[i]`` of the elements in memory order, ``t[i, j]`` one element, and a slice -
+        ``t[:, 0]`` - a tensor, which drops the dimensions left one long, as ``Slice`` does."""
+        if not isinstance(index, tuple):
+            return self.array.reshape(-1)[int(index)].item()
+        if not any(isinstance(i, slice) for i in index):
+            return self.array[tuple(int(i) for i in index)].item()
+        kept = tuple(i if isinstance(i, slice) else _one(int(i), n)
+                     for i, n in zip(index, self.array.shape, strict=False))
+        return self.wrap(self.array[kept], self.layout).Squeeze()
+
+    def __array__(self, dtype: Any = None, copy: Any = None) -> Any:
+        """NumPy's view of the tensor's memory - a copy only when asked for one."""
+        view = self.array.view() if dtype is None else self.array.astype(dtype)
+        return view.copy() if copy else view
+
+    def GetStrides(self) -> CxxVector:
+        """How many elements apart each index's neighbours are, as TMVA counts strides."""
+        return CxxVector(int(n) // self.array.itemsize for n in self.array.strides)
+
+    def Transpose(self) -> RTensor:
+        flipped = MemoryLayout.ColumnMajor if self.layout == MemoryLayout.RowMajor else (
+            MemoryLayout.RowMajor)
+        return self.wrap(self.array.T, flipped)
+
+    def ExpandDims(self, axis: int) -> RTensor:
+        return self.wrap(np.expand_dims(self.array, int(axis)), self.layout)
 
     def GetShape(self) -> CxxVector:
         return CxxVector(int(n) for n in self.array.shape)
@@ -123,10 +168,33 @@ class RTensor:
         return f"<RTensor {self.array.shape} {_printed(self.array)}>"
 
 
+def _layout(args: tuple[Any, ...]) -> tuple[MemoryLayout, tuple[Any, ...]]:
+    """The layout a constructor's last argument names - row major if none does - and the
+    arguments before it."""
+    last = args[-1] if len(args) > 1 else None
+    if isinstance(last, (MemoryLayout, int)) and not isinstance(last, bool):
+        return MemoryLayout(int(last)), args[:-1]
+    return MemoryLayout.RowMajor, args
+
+
+def _one(index: int, size: int) -> slice:
+    """Index ``index`` of ``size`` - negative from the end - as a slice one long."""
+    start = index + size if index < 0 else index
+    return slice(start, start + 1)
+
+
 def tensor_type(kind: Any) -> type[RTensor]:
     """``RTensor<T>``: the tensor class of elements of C++ type ``kind`` - ``float`` if unknown."""
     name = str(kind).replace("Float_t", "float").replace("Double_t", "double")
     return type(f"RTensor<{name}>", (RTensor,), {"dtype": DTYPES.get(name, np.float32)})
+
+
+def AsRTensor(array: Any) -> RTensor:
+    """``TMVA::Experimental::AsRTensor``: a tensor over a NumPy array's own memory, in its
+    layout - column major when it is in Fortran's order."""
+    found = np.asarray(array)
+    layout = MemoryLayout.RowMajor if found.flags.c_contiguous else MemoryLayout.ColumnMajor
+    return tensor_type(_DTYPE_NAMES.get(found.dtype.type, "float")).wrap(found, layout)
 
 
 def _number(value: Any) -> str:
@@ -162,6 +230,6 @@ class _AsTensor:
 
 
 #: Each element type's C++ name.
-_DTYPE_NAMES = {dtype: name for name, dtype in DTYPES.items()}
+_DTYPE_NAMES = {dtype: name for name, dtype in reversed(DTYPES.items())}
 #: ``TMVA::Experimental::AsTensor``, templated on the element type.
 AsTensor = _AsTensor()

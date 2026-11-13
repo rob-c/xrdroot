@@ -1,6 +1,6 @@
 # Internal components
 
-xrdroot has fifteen internal components in one Python project. They separate
+xrdroot has seventeen internal components in one Python project. They separate
 ownership and dependencies while keeping the `xrdroot` distribution, source
 root, command-line tools and public imports together.
 
@@ -62,8 +62,10 @@ edge. The authoritative map is `[tool.xrdroot.components]` in `pyproject.toml`.
 | [roostats](analysis.md#roostats) | Inference, intervals and hypothesis tests | core, hist, roofit |
 | [histfactory](analysis.md#histfactory) | Channel/sample models and persistence layouts | core, hist, io, roofit, roostats |
 | [tmva](analysis.md#tmva) | Learning, evaluation and model persistence | core, hist, io |
-| [pyroot](applications.md#pyroot) | ROOT names, translator and session adapters | All thirteen engine components above |
-| [app](applications.md#app) | Public package facade and command-line application | All fourteen components above |
+| [pycxx](pycxx.md) | The C++ translator: parser, emitters, runtime, GoogleTest, dialects | cppstd |
+| [pyroot](applications.md#pyroot) | ROOT names and session adapters | All thirteen engine components above, pycxx |
+| [pycint](pycint.md) | ROOT's dialect of the translator, macro execution, the `cint` shim | pycxx and pyroot with everything below it |
+| [app](applications.md#app) | Public package facade and command-line application | All sixteen components above |
 
 Read [boundary checks](boundaries.md) for the enforcement commands and
 [providers](providers.md) for separately declared upward dispatch.
@@ -71,26 +73,10 @@ Read [boundary checks](boundaries.md) for the enforcement commands and
 
 ## Validation status
 
-Measured on the integrated branch `refactor/modularisation-commits-20261021` at
-`2418664` on 2026-10-25. Each figure is bound to that source; nothing transfers
-to another tree.
-
-| Check | Result on `2418664` |
-|---|---|
-| Component ownership and imports | 857 modules, 9,788 import references, zero undeclared violations; the one declared private `iminuit._core` import is reported and reviewed |
-| Fresh-process isolation | all fifteen components import with every higher import blocked (CI `fresh component imports`); `isolate cppstd --tests cppstd` runs its 61 focused tests |
-| Six gates | both test modes record 9,814 passed, 1 skipped, 46 expected failures and strict 100% line and branch coverage; Ruff, maintainability, strict mypy and strict docs pass |
-| CI | green on the branch, run `40158357628`: five test jobs (Ubuntu 3.10–3.13, macOS 3.12), lint, docs and the built-distribution smoke check |
-| Translator survey | 900 of 910 macros translated (98.9%), 10 refused, 0 crashed — the unchanged 98% floor and the no-crashes requirement both pass |
-| Global no-PASS-lost | full harness on this tree recorded 553 PASS; the nine tutorials its ratchet flagged were loaded-machine timeouts and all nine pass when rerun alone; the three set-order tutorials pass against ROOT's own recorded orders |
-
-Component debt was burned down to zero in eight reviewed groups (58 → 47 → 41
-→ 36 → 32 → 25 → 12 → 8 → … → 0) with no limit raised, no coverage lowered and
-no assertion loosened. The committed `tools/tutorials/baseline.json` is
-unchanged. Publishing main remains a separate decision and has not happened:
-the published `main` is still `fa34ea9`.
-
-Historical inventories, lane candidates and failed attempts keep their original
-scope and are not pooled into the figures above. See repository
-`MODULARISATION.md`, `AGENTS.md` and the latest durable coordinator checkpoint
-for the per-group acceptance records.
+The component graph is enforced on every commit: `tools/components.py check
+--strict` must report zero undeclared imports, and CI imports each component
+in a fresh process with everything above it blocked. The one declared private
+import, `iminuit._core`, is reported and reviewed. The refactor reached zero
+debt in small gated groups, with no limit raised, no coverage lowered and no
+assertion loosened. Its plan and audit trail are kept in the repository under
+`docs/history/`.

@@ -8,9 +8,9 @@ import numpy as np
 import pytest
 
 from cintfake import fake
-from xrdroot.cint import Refusal, translate
-from xrdroot.cint.execute import run_source
-from xrdroot.cint.runtime import Cell, assign_call, assign_into, assign_method, store_through
+from xrdroot.pycint import Refusal, translate
+from xrdroot.pycint.execute import run_source
+from xrdroot.pycint.runtime import Cell, assign_call, assign_into, assign_method, store_through
 
 
 def body(source: str) -> str:

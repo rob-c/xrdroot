@@ -15,10 +15,10 @@ from typing import Any
 import pytest
 
 from cintfake import fake
-from xrdroot.cint import cache
-from xrdroot.cint.ctype import CType
-from xrdroot.cint.returned import shown, spelling, status
 from xrdroot.cli import main
+from xrdroot.pycint.returned import shown, spelling, status
+from xrdroot.pycxx import cache
+from xrdroot.pycxx.ctype import CType
 
 
 @pytest.fixture(autouse=True)

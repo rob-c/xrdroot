@@ -15,9 +15,9 @@ import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
-from xrdroot.cint import translate
-from xrdroot.cint.execute import run_source
-from xrdroot.cint.runtime import arith
+from xrdroot.pycint import translate
+from xrdroot.pycint.execute import run_source
+from xrdroot.pycxx.runtime import arith
 
 OBJECTS = (
     'TH1F *h = new TH1F("h", "h", 10, 0, 10); TProfile *p = new TProfile("p", "p", 10, 0, 10);'

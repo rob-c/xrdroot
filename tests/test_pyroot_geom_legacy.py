@@ -17,9 +17,9 @@ import pytest
 import xrdroot.pyroot as ROOT
 from geomsupport import DATA, differing, geometry_session  # noqa: F401
 from pyrootsupport import expect
-from xrdroot.cint.errors import MacroError
-from xrdroot.cint.execute import run
 from xrdroot.errors import UnsupportedFeatureError
+from xrdroot.pycint.execute import run
+from xrdroot.pycxx.errors import MacroError
 from xrdroot.pyroot.geom import legacyread
 from xrdroot.pyroot.geom.legacyvis import solids
 

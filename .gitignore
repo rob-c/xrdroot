@@ -21,3 +21,6 @@ venv/
 # Generated datasets
 /datasets/
 /rootsrc-6.40/
+
+# Agent worktrees made by Claude Code
+.claude/worktrees/

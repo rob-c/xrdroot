@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.mark.parametrize(("new", "old"), [
-    ("chrono", "cint.runtime.chrono"), ("threads", "cint.runtime.threads"),
+    ("chrono", "pycxx.runtime.chrono"), ("threads", "pycxx.runtime.threads"),
     ("random", "pyroot.stlrandom"), ("bitset", "pyroot.bitset"),
 ])
 def test_standard_utility_compatibility_paths_share_public_objects(new: str, old: str) -> None:
@@ -30,9 +30,9 @@ def test_standard_random_engines_continue_the_same_stream_across_import_paths() 
 
 
 def test_standard_durations_are_shared_with_interpreter_thread_calls(monkeypatch) -> None:
-    from xrdroot.cint.runtime.threads import this_thread
     from xrdroot.cppstd import threads
     from xrdroot.cppstd.chrono import chrono
+    from xrdroot.pycxx.runtime.threads import this_thread
 
     observed = []
     monkeypatch.setattr(threads.time, "sleep", observed.append)
