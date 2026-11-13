@@ -40,6 +40,7 @@ __all__ = [
     "placed",
     "located",
     "entry",
+    "label",
     "MODULE",
 ]
 
@@ -79,13 +80,14 @@ def placed(made: list[Translation]) -> Iterator[None]:
         raise MacroError(f"{type(why).__name__}: {why}", Where(*where) if where else None) from why
 
 
-def _label(made: Translation) -> str:
+def label(made: Translation) -> str:
+    """The file name a translation's Python is compiled under: how :func:`located` finds it."""
     return f"<translation of {made.file}>"
 
 
 def located(why: BaseException, made: list[Translation]) -> tuple[str, int] | None:
     """The C++ line ``why`` was raised at: of the innermost translated line it passed through."""
-    labels = {_label(each): each for each in made}
+    labels = {label(each): each for each in made}
     deepest: tuple[Translation, int] | None = None
     trace: types.TracebackType | None = why.__traceback__
     while trace is not None:
@@ -119,7 +121,8 @@ def run_source(
     _reset_streams()
     with chosen.session(), binding:
         with placed([made]):
-            exec(compile(made.python, _label(made), "exec"), module)
+            exec(compile(made.python, label(made), "exec"), module)
+        chosen.loaded(module, made)
         _declare(module)
         if not call:
             return module
@@ -191,7 +194,8 @@ def _loaded(where: Path, module: dict[str, Any], dialect: Dialect, use_cache: bo
     source = where.read_text(encoding="utf-8", errors="replace")
     made = translated(source, str(where), dialect, use_cache)
     with placed([made]):
-        exec(compile(made.python, _label(made), "exec"), module)
+        exec(compile(made.python, label(made), "exec"), module)
+    dialect.loaded(module, made)
     return made
 
 

@@ -87,6 +87,10 @@ def _no_session() -> AbstractContextManager[Any]:
     return nullcontext()
 
 
+def _nothing_loaded(module: dict[str, Any], made: Any) -> None:
+    """A host with no libraries of its own leaves a program's names as it defined them."""
+
+
 @dataclass(frozen=True, eq=False)
 class Dialect:
     """A library's additions to C++, by name - empty for plain C++ (:data:`CXX`)."""
@@ -211,6 +215,9 @@ class Dialect:
     status: Callable[[Any, str | None], int] = _status
     #: What every run happens inside: the host's own settings for running a program.
     session: Callable[[], AbstractContextManager[Any]] = _no_session
+    #: ``(module, translation)``: called once a program's Python has run and before anything
+    #: in it is called - where a host binds the names a library it loaded already defines.
+    loaded: Callable[[dict[str, Any], Any], None] = _nothing_loaded
     #: Directories whose code shapes translations, hashed into a cached translation's key.
     sources: tuple[Path, ...] = ()
 
