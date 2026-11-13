@@ -22,7 +22,8 @@ def test_a_value_parameter_is_a_keyword_the_explicit_template_argument_gives(
     void t() { printf("%d %g\\n", times<int, 3>(2), times<double, 2>(1.25)); }
     """
     assert "def times(x, *, N=None):" in translate(source, "t.C")
-    assert "times(2, N=3)" in translate(source, "t.C")
+    assert "times__int_3(2)" in translate(source, "t.C")
+    assert "def times__int_3(x):\n    return 3 * x" in translate(source, "t.C")
     assert output(capsys, source) == "6 2.5\n"
 
 
@@ -45,9 +46,9 @@ def test_a_value_parameter_keeps_its_default_after_a_variadic_function() -> None
     text = translate("template <int N = 4> int f(int a, ...) { return N; }", "t.C")
     assert "def f(a, *varargs, N=4):" in text
     typed = translate("template <typename T> T same(T x) { return x; } int n = same<int>(2);", "")
-    assert "n = int(same(2))" in typed
+    assert "n = same__int(2)" in typed
     built = translate("template <typename T> struct Box { T v; }; auto b = Box<int>();", "")
-    assert "b = Box()" in built
+    assert "b = Box__int()" in built
 
 
 def test_std_copy_into_an_array_roots_method_gives_writes_it_from_its_start() -> None:

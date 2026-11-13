@@ -91,11 +91,19 @@ class StmtParser(ExprParser):
         return ExprStmt(expr.where, expr)
 
     def attributes(self) -> None:
-        """Pass over ``[[likely]]`` and its kind, which change nothing a translation does."""
+        """Pass over ``[[likely]]`` and its kind, which change nothing a translation does - and
+        the words before a class or enum defined in place, ``static enum E {...} e;``, which
+        say nothing about the type defined."""
         while self.at_("[") and self.peek(1).is_("["):
             self.take()
             self.skip_brackets()
             self.expect("]")
+        ahead = 0
+        while self.peek(ahead).is_("static", "const", "constexpr", "inline", "volatile"):
+            ahead += 1
+        kind = self.peek(ahead).is_("struct", "class", "union", "enum")
+        if ahead and kind and self._defines_type(ahead):
+            self.at += ahead
 
     # -- declarations -----------------------------------------------------------
 
@@ -192,7 +200,7 @@ class StmtParser(ExprParser):
 
     def _if(self) -> Stmt:
         where = self.take().where
-        self.accept("constexpr")
+        constexpr = self.accept("constexpr")
         self.expect("(")
         self.push()
         try:
@@ -203,7 +211,7 @@ class StmtParser(ExprParser):
             orelse = self.statement() if self.accept("else") else None
         finally:
             self.pop()
-        return If(where, cond, then, orelse, init)
+        return If(where, cond, then, orelse, init, constexpr)
 
     def _if_init(self) -> Stmt | None:
         """``if (auto x = f(); x > 0)``: the statement before the condition, if there is one."""
@@ -259,6 +267,7 @@ class StmtParser(ExprParser):
             self.pop()
 
     def _range_head(self) -> VarDecl:
+        self.attributes()
         spec = self.specifiers()
         if self._binding_ahead():
             decl = self.binding(spec)
@@ -400,19 +409,31 @@ class StmtParser(ExprParser):
         self.at = start
         return name
 
-    def _defines_type(self) -> bool:
+    def _defines_type(self, start: int = 0) -> bool:
         """Does ``struct X`` here go on to define ``X`` - ``{`` or a base list after its name?"""
-        ahead = 1
+        ahead = start + 1
+        if self.peek(ahead).is_("alignas"):
+            ahead = self._past_brackets(ahead + 1)
         while self.peek(ahead).kind == "id" or self.peek(ahead).is_("::", "<"):
             ahead = self._past_angles(ahead) if self.peek(ahead).is_("<") else ahead + 1
         return self.peek(ahead).is_("{", ":")
+
+    def _past_brackets(self, ahead: int) -> int:
+        """Where the ``(...)`` starting ``ahead`` tokens on ends."""
+        depth = 0
+        while True:
+            token = self.peek(ahead)
+            depth += token.is_("(") - token.is_(")")
+            ahead += 1
+            if depth <= 0 or token.kind == "eof":
+                return ahead
 
     def _past_angles(self, ahead: int) -> int:
         """Where the ``<...>`` starting ``ahead`` tokens on ends, nested ones included."""
         depth = 0
         while True:
             token = self.peek(ahead)
-            depth += token.is_("<") - token.is_(">")
+            depth += token.is_("<") - token.is_(">") - 2 * token.is_(">>")
             ahead += 1
             if depth <= 0 or token.kind == "eof":
                 return ahead
@@ -455,6 +476,11 @@ class StmtParser(ExprParser):
         return Empty(where)
 
     def _local_type(self) -> Stmt:
+        if self.peek(1).kind == "id" and self.peek(2).is_(";") and not self.at_("enum"):
+            where = self.take().where  # ``class Event;``: declared, to be defined elsewhere
+            self.take()
+            self.take()
+            return Empty(where)
         if not self._defines_type():
             return self.declaration_statement()
         if self.at_("enum"):

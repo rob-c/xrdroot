@@ -195,6 +195,13 @@ class StmtEmitter(CallEmitter):
         if stored is not None:
             self.out.line(stored, expr.where)
             return True
+        if self._character(target):
+            self._character_store(expr)
+            return True
+        return self._plain_assignment(expr)
+
+    def _plain_assignment(self, expr: Assign) -> bool:
+        target = expr.target
         refusal = self._unassignable(target)
         if refusal is not None:
             raise self.refuse(refusal, expr)
@@ -210,6 +217,29 @@ class StmtEmitter(CallEmitter):
             return True
         self.out.line(f"{lhs} = {self.assigned_value(expr)}", expr.where)
         return True
+
+    def _character(self, target: Expr) -> bool:
+        """Is ``target`` a character of a string that is a variable of its own - a char array
+        or a ``std::string`` - which a new string can be stored in?"""
+        if not isinstance(target, Index) or not isinstance(target.obj, (Name, Member, Index)):
+            return False
+        owner = self.typeof(target.obj)
+        if owner is None or not owner.is_string or (owner.pointer and not owner.dims):
+            return False
+        symbol = self.symbol(target.obj) if isinstance(target.obj, Name) else None
+        return symbol is None or symbol.kind != "param" or symbol.cell
+
+    def _character_store(self, expr: Assign) -> None:
+        """``s[i] = c``: ``s`` given the string with that character changed."""
+        assert isinstance(expr.target, Index)
+        obj = expr.target.obj
+        owner = self.typeof(obj)
+        terminated = owner is not None and bool(owner.dims)
+        if isinstance(obj, Name):
+            self.assigned(self.symbol(obj))
+        text, index = self.value(obj), self.value(expr.target.index)
+        char = self.assigned_value(expr)
+        self.out.line(f"{text} = with_char({text}, {index}, {char}, {terminated})", expr.where)
 
     def _unassignable(self, target: Expr) -> str | None:
         """Why assigning to ``target`` has no Python that does the same, if it has none."""
@@ -254,7 +284,10 @@ class StmtEmitter(CallEmitter):
     def _delete_statement(self, expr: Delete) -> bool:
         found = self.typeof(expr.operand)
         if expr.array or (found is not None and found.element().scalar):
-            self.out.line(f"{self.value(expr.operand)} = None", expr.where)
+            # The memory is Python's to free; a pointer that is not a variable is let go of.
+            held = isinstance(expr.operand, (Name, Member, Index))
+            line = f"{self.value(expr.operand)} = None" if held else self.value(expr.operand)
+            self.out.line(line, expr.where)
             return True
         self.out.line(f"delete({self.value(expr.operand)})", expr.where)
         return True
@@ -309,6 +342,16 @@ class StmtEmitter(CallEmitter):
     # -- branches ----------------------------------------------------------------
 
     def _if(self, node: If) -> None:
+        chosen = self.constant_value(node.cond) if node.constexpr else None
+        if chosen is not None:
+            # ``if constexpr``: the other branch is not compiled, and need not make sense here.
+            branch = node.then if chosen else node.orelse
+            with self.scoped():
+                if node.init is not None:
+                    self.statement(node.init)
+                if branch is not None:
+                    self.statement(branch)
+            return
         with self.scoped():
             if node.init is not None:
                 self.statement(node.init)

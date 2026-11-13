@@ -87,6 +87,9 @@ class Name(Expr):
     parts: list[str]
     targs: list[Any] | None = None
     rooted: bool = False
+    #: The template arguments written after the part before the last, ``<int>`` of
+    #: ``Box<int>::count``: the class template's, where ``targs`` may be a member's.
+    scope_targs: list[Any] | None = None
 
     @property
     def text(self) -> str:
@@ -167,6 +170,8 @@ class Cast(Expr):
 class SizeOf(Expr):
     ctype: CType | None
     operand: Expr | None
+    #: ``alignof``, which asks for the alignment rather than the size.
+    alignment: bool = False
 
 
 @dataclass(eq=False)
@@ -270,11 +275,15 @@ class VarDecl(Stmt):
     comment: str = ""
     #: Storage words matter even when no runtime storage model is needed.
     storage: frozenset[str] = field(default_factory=frozenset)
+    #: A data member declared private or protected, which makes its class no plain old data.
+    hidden: bool = False
 
 
 @dataclass(eq=False)
 class DeclStmt(Stmt):
     decls: list[VarDecl]
+    #: The parameters of the class template whose static members these define outside it.
+    template: list[str] | None = None
 
 
 @dataclass(eq=False)
@@ -283,6 +292,8 @@ class If(Stmt):
     then: Stmt
     orelse: Stmt | None = None
     init: Stmt | None = None
+    #: ``if constexpr``: the branch its constant condition does not choose is never compiled.
+    constexpr: bool = False
 
 
 @dataclass(eq=False)
@@ -394,6 +405,13 @@ class Function(Stmt):
     values: list[Param] = field(default_factory=list)
     #: Constant evaluation cannot use optional named return-value elision.
     constant_evaluation: bool = False
+    #: The default of each template parameter, ``None`` where it has none.
+    defaults: list[Any] = field(default_factory=list)
+    #: The template arguments of an explicit specialisation, ``f<int>`` of ``template <>``.
+    specialises: list[Any] | None = None
+    #: The template arguments of the class a member is defined outside of: ``<int>`` of
+    #: ``Box<int>::Box()``.
+    scope_args: list[Any] = field(default_factory=list)
 
 
 @dataclass(eq=False)
@@ -411,6 +429,15 @@ class ClassDecl(Stmt):
     template: list[str] | None = None
     #: Variables declared after the closing brace, ``struct P {...} p;``.
     declarators: list[VarDecl] = field(default_factory=list)
+    #: The default of each template parameter, ``None`` where it has none.
+    defaults: list[Any] = field(default_factory=list)
+    #: The template's value parameters, ``N`` of ``template <int N>``, as parameters.
+    values: list[Param] = field(default_factory=list)
+    #: The arguments a specialisation is for: ``<T*>`` of ``template <class T> struct
+    #: Box<T*>``, ``<int>`` of ``template <> struct Box<int>``.
+    specialises: list[Any] | None = None
+    #: What ``alignas(...)`` gives the class: a type, or a number of bytes.
+    aligned: Any = None
 
 
 @dataclass(eq=False)
@@ -419,6 +446,8 @@ class EnumDecl(Stmt):
     items: list[tuple[str, Expr | None]]
     scoped: bool = False
     declarators: list[VarDecl] = field(default_factory=list)
+    #: The integer type written after ``:``, ``enum class E : char``, whose size the enum has.
+    underlying: CType | None = None
 
 
 @dataclass(eq=False)

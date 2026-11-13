@@ -60,8 +60,9 @@ def test_declarations_with_no_python_that_does_the_same_are_refused(source: str,
 
 
 def test_a_template_parameter_type_cannot_be_built_from_nothing() -> None:
-    with pytest.raises(Refusal, match="a variable of the template parameter type T"):
-        translate("template <typename T> T zero() { T x; return x; }", "t.C")
+    text = translate("template <typename T> T zero() { T x; return x; }", "t.C")
+    assert "uninstantiated('the function template zero', " in text
+    assert "a variable of the template parameter type T" in text
 
 
 def test_a_static_local_keeps_its_value_between_calls(capsys: pytest.CaptureFixture[str]) -> None:

@@ -68,6 +68,8 @@ internal = Namespace(
         **_members(checks),
         "Register": runner.Register,
         "RegisterPattern": runner.RegisterPattern,
+        "RegisterTyped": runner.RegisterTyped,
+        "RegisterTypedSuite": runner.RegisterTypedSuite,
         "Instantiate": runner.Instantiate,
         "RunAllTests": runner.RunAllTests,
         "Pending": state.pending,

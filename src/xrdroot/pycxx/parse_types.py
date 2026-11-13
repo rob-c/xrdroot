@@ -14,6 +14,7 @@ from typing import Any
 from .ctype import BUILTIN_WORDS, CType, builtin_name, canonical
 from .cursor import KEYWORDS, STD_NAMES, Cursor, NoParse
 from .dialect import active
+from .substitute import aliased
 
 __all__ = ["TypeParser", "Specifiers"]
 
@@ -51,6 +52,9 @@ class TypeParser(Cursor):
 
     #: The declared aliases, ``typedef`` and ``using``: name to the type it stands for.
     aliases: dict[str, CType]
+    #: The alias templates, ``template <class T> using V = std::vector<T>``: each one's
+    #: parameters, their defaults, and the type it names.
+    alias_templates: dict[str, tuple[list[str], list[Any], CType]]
 
     # -- specifiers -----------------------------------------------------------
 
@@ -116,14 +120,24 @@ class TypeParser(Cursor):
         parts, args = self.qualified_type()
         if (strict and not self.is_type(parts)) or (len(parts) == 1 and self.is_variable(parts[0])):
             raise NoParse
-        alias = self.aliases.get("::".join(parts)) or self.aliases.get(parts[-1])
-        if alias is not None and not args:
-            return replace(alias)
+        alias = self._alias(parts, args)
+        if alias is not None:
+            return alias
         spelled = self._standard_type(parts)
         name = canonical(spelled)
         if name in active().pointer_typedefs:
             return CType("void", pointer=1)
-        return CType(name, args, callable=name == "std::function", written=_typedef(spelled, name))
+        found = CType(name, args, callable=name == "std::function", written=_typedef(spelled, name))
+        found.scope_args = self.scope_args if len(parts) > 1 else []
+        return found
+
+    def _alias(self, parts: list[str], args: list[Any]) -> CType | None:
+        """The type a ``typedef``, ``using`` or alias template ``parts<args>`` names, if any."""
+        template = self.alias_templates.get(parts[-1])
+        if template is not None:
+            return aliased(template, args)
+        alias = self.aliases.get("::".join(parts)) or self.aliases.get(parts[-1])
+        return replace(alias) if alias is not None and not args else None
 
     def _standard_type(self, parts: list[str]) -> str:
         """``vector`` means ``std::vector`` when it is the standard's, not the macro's own."""
@@ -137,16 +151,20 @@ class TypeParser(Cursor):
         parts: list[str] = []
         args: list[Any] = []
         self.accept("::")
+        self.scope_args = []
         while True:
             token = self.peek()
             if token.kind != "id" or token.text in KEYWORDS - {"template"}:
                 raise NoParse
             self.accept("template")
             parts.append(self.take().text)
-            args = self.template_args() if self.at_("<") else []
+            self.scope_args, args = args, self.template_args() if self.at_("<") else []
             if not (self.at_("::") and self.peek(1).kind == "id"):
                 return self.unaliased(parts), args
             self.take()
+
+    #: The template arguments of the part before the last of the type just read.
+    scope_args: list[Any]
 
     # -- template arguments ---------------------------------------------------
 

@@ -18,9 +18,12 @@ from .base import Out, P, taken
 from .ctype import CType
 from .dialect import active
 from .infer import Inference
-from .nodes import Literal, Name
+from .limits import is_limit, limit_text
+from .nodes import Binary, Literal, Name, Node, SizeOf, Unary
 from .operators import python_operator
+from .sizes import size_of
 from .symbols import Symbol
+from .traits import is_trait, trait
 
 __all__ = ["NameEmitter", "STD", "type_text"]
 
@@ -73,13 +76,14 @@ INHERITED = frozenset({"GetParam", "HasFailure", "HasFatalFailure", "HasNonfatal
                        "IsSkipped", "RecordProperty"})  # fmt: skip
 
 
-def type_text(ctype: Any) -> str:
-    """A type as C++ spells it, for a template argument: ``double``, ``std::pair<int,float>``."""
+def type_text(ctype: Any, spellings: dict[str, str] | None = None) -> str:
+    """A type as C++ spells it, for a template argument: ``double``, ``std::pair<int,float>``,
+    an instance of a template as the template-id it is, ``Box<int>``."""
     if not isinstance(ctype, CType):
         return str(getattr(ctype, "value", ctype))
-    text = ctype.name
+    text = (spellings or {}).get(ctype.name, ctype.name)
     if ctype.args:
-        text += "<" + ",".join(type_text(arg) for arg in ctype.args) + ">"
+        text += "<" + ",".join(type_text(arg, spellings) for arg in ctype.args) + ">"
     return text + "*" * ctype.pointer
 
 
@@ -160,12 +164,75 @@ class NameEmitter(Inference):
     def library(self, node: Name) -> Out:
         """A name the program did not declare: the standard library's, C's, or the host's."""
         parts = node.parts
+        if is_limit(parts, node.targs):
+            return self.limit(node, node, ""), P.ATOM
+        known = self.trait_value(node) if is_trait(node) else None
+        if known is not None:
+            return str(known), P.ATOM
         found = self._standard(node) if parts[0] == "std" else None
         if found is not None:
             return found
         if len(parts) == 1:
             return self._plain(node)
         return self.host_name(parts) + self.targs(node.targs), P.POSTFIX
+
+    def trait_value(self, node: Name) -> bool | None:
+        """A type trait of types all known here - not a parameter of a template being written
+        for every use - as the constant it is."""
+        args = [*(node.targs or []), *(node.scope_targs or [])]
+        if any(self.generic_type(arg) for arg in args if isinstance(arg, CType)):
+            return None
+        return trait(node, self.program)
+
+    def generic_type(self, arg: CType) -> bool:
+        """Does a type name a parameter of a template being written generically?"""
+        if {arg.name, arg.name.split("::")[0]} & self.template_names:
+            return True
+        return any(self.generic_type(inner) for inner in arg.args if isinstance(inner, CType))
+
+    #: Template parameter names in scope, in a template written for every use.
+    template_names: set[str]
+
+    def constant_value(self, node: Any) -> Any:
+        """``node``'s value, if it is a constant known here - a number, a trait, ``sizeof`` -
+        or ``None``: what ``if constexpr`` chooses its branch by."""
+        rule = _CONSTANTS.get(type(node))
+        return rule(self, node) if rule is not None else None
+
+    def _constant_literal(self, node: Literal) -> Any:
+        return node.value if node.kind in ("int", "bool", "char") else None
+
+    def _constant_name(self, node: Name) -> Any:
+        return self.trait_value(node) if is_trait(node) else None
+
+    def _constant_size(self, node: SizeOf) -> Any:
+        if node.ctype is None or self.generic_type(node.ctype):
+            return None
+        return size_of(node.ctype, self.program)
+
+    def _constant_unary(self, node: Unary) -> Any:
+        inner = self.constant_value(node.operand) if node.op in ("!", "-") else None
+        if inner is None:
+            return None
+        return not inner if node.op == "!" else -inner
+
+    def _constant_binary(self, node: Binary) -> Any:
+        operation = CONSTANT_OPERATIONS.get(node.op)
+        left, right = self.constant_value(node.left), self.constant_value(node.right)
+        if operation is None or left is None or right is None:
+            return None
+        return operation(left, right)
+
+    def limit(self, name: Name, node: Node, called: str) -> str:
+        """``std::numeric_limits<T>::member``, the constant it is - or refused, when ``T`` is
+        no arithmetic type or not one known yet."""
+        assert name.targs
+        kind = name.targs[0]
+        found = limit_text(kind, name.last)
+        if found is None:
+            why = f"std::numeric_limits<{type_text(kind)}>::{name.last}{called}"
+            raise self.refuse(why, node)
+        return found
 
     def _standard(self, node: Name) -> Out | None:
         """A ``std::`` name the runtime has - ``cout``, ``npos``, ``chrono::seconds`` - if it is."""
@@ -214,12 +281,17 @@ class NameEmitter(Inference):
             klass = next((b for b in bases if b not in self.program.classes), bases[0])
         return False
 
+    def spelled(self, ctype: CType) -> str:
+        """``ctype`` as a library's template is given it: instances of the program's templates
+        by their C++ names."""
+        return type_text(ctype, self.program.templates.spellings)
+
     def targs(self, targs: list[Any] | None) -> str:
         """``<double, 3>`` as the subscript ``['double', 3]`` a library's template takes."""
         if not targs:
             return ""
         items = [
-            repr(type_text(arg)) if isinstance(arg, CType) else self.value(arg) for arg in targs
+            repr(self.spelled(arg)) if isinstance(arg, CType) else self.value(arg) for arg in targs
         ]
         return "[" + ", ".join(items) + "]"
 
@@ -227,6 +299,19 @@ class NameEmitter(Inference):
 
     def literal(self, node: Literal) -> Out:
         return _LITERALS[node.kind](node), P.ATOM
+
+
+#: The operators a constant condition is written with, as Python computes them.
+CONSTANT_OPERATIONS: dict[str, Callable[[Any, Any], Any]] = {
+    "&&": lambda a, b: bool(a and b),
+    "||": lambda a, b: bool(a or b),
+    "==": lambda a, b: a == b,
+    "!=": lambda a, b: a != b,
+    "<": lambda a, b: a < b,
+    ">": lambda a, b: a > b,
+    "<=": lambda a, b: a <= b,
+    ">=": lambda a, b: a >= b,
+}
 
 
 def _character(node: Literal) -> str:
@@ -243,4 +328,14 @@ _LITERALS: dict[str, Callable[[Literal], str]] = {
     "char": _character,
     "bool": lambda node: "True" if node.value else "False",
     "null": lambda node: "None",
+}
+
+
+#: How each kind of expression gives its constant value, if it has one.
+_CONSTANTS: dict[type, Callable[[NameEmitter, Any], Any]] = {
+    Literal: NameEmitter._constant_literal,
+    Name: NameEmitter._constant_name,
+    SizeOf: NameEmitter._constant_size,
+    Unary: NameEmitter._constant_unary,
+    Binary: NameEmitter._constant_binary,
 }
