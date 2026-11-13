@@ -3200,7 +3200,7 @@ takes a `.C` as readily as a `.py`.
 ```console
 $ xrdroot run hsimple.C
 $ xrdroot run 'fit.C(1000, "gaus")'       # .x fit.C(1000, "gaus"): the function fit, called
-$ xrdroot run hsimple.C+                  # ACLiC's + runs the same way: nothing to compile
+$ xrdroot run hsimple.C+                  # ACLiC: hsimple_C.xrdlib built, loaded, called
 $ xrdroot run hsimple.C --python          # the translation, printed; nothing run
 $ xrdroot run script.py                   # a PyROOT script, `import ROOT` being xrdroot.pyroot
 ```
@@ -3233,9 +3233,30 @@ it reads, and of the translator itself, so nothing stale is ever run.
 
 `xrdroot root` (or `xrdroot cint`) is `root -l` and C++ typed at `root [0]`,
 in the style of ROOT 6's cling. It takes `root`'s options — `-l` (no banner),
-`-b`, `-q`, `-x` (leave at the first error), `-n` (no `rootlogon.C`), `-e LINE`
-— and its files in order: `f.root` is attached as `_file0`, a macro `x.C`,
-`'x.C(1, 2)'` or `x.C+` runs as `.x` runs it.
+`-b`, `-q`, `-x` (leave when C++ fails as it runs), `-n` (no `rootlogon.C`),
+`-e LINE` — anywhere, and its `-e` lines and files in the order given:
+`f.root` is attached as `_file0` (`Attaching file f.root as _file0...`, then
+the `TFile *`), a macro `x.C`, `'x.C(1, 2)'` or `x.C+` runs as `.x` runs it,
+after `Processing x.C(1, 2)...`. Each was checked against ROOT 6.40.04's
+`root.exe`:
+
+- Every file is looked for before anything runs; a missing macro is `Error in
+  <TApplication::GetOptions>: macro x.C not found` and exit status 2.
+- A macro that fails ends the processing of the command line; a `-e` line that
+  fails does not.
+- `-q` exits with the value of the last line or macro run, as ROOT's
+  `ProcessLine` hands it back: a macro's value, `int x = 4;` is 4,
+  `printf("ab");` 2, a pointer or an object 255, a `void` 0, code that did not
+  compile 1 (but 0 for a name nothing declares), `.L` and `.q` 0, `.ls` and
+  `.pwd` 1. `exit(n)` and `gApplication->Terminate(n)` end it with `n`.
+- Without `-q`, standard input is read after the command line, and the session
+  ends with 0 at `.q` or at the end of the input; a newline is printed before
+  the command line's output, as `root` prints one.
+- The banner shows when there is no `-l` and no file or `-e` line. It says
+  what this is — xrdroot, not ROOT — rather than ROOT's welcome box.
+- `gROOT` is called `Rint` in the session, so `.pwd` says `Current directory:
+  Rint:/` and `Current style:     Modern`, and `gApplication` is a `TRint`
+  with `GetName`, `Argc`, `Argv` and `Terminate`.
 
 ```console
 $ xrdroot root -l tests/data/simple.root
@@ -3274,6 +3295,69 @@ The dot commands are cling's and ROOT's: `.x`/`.X`, `.L` and `.U`, `.ls`,
 readline, with Tab completion and a history in `~/.xrdroot_history`; piped
 input is run without prompts. The prompt in Python is
 `xrdroot.pycint.interactive.Interpreter`: `feed(line)` hands back what it says.
+
+### Libraries: dictionaries, ACLiC and `gSystem->Load`
+
+ROOT builds C++ into shared libraries and loads them by name. xrdroot has no
+compiler: a library is the translation of what it was built from, written as
+a `.xrdlib` file where the `.so` would be, and loaded the way ROOT loads the
+real one. `xrdroot build` makes them, as ROOT's build steps do:
+
+```console
+$ xrdroot build dictionary --name Event --linkdef EventLinkDef.h Event.h Event.cxx
+$ xrdroot build dictionary --name Sel --selection selection.xml -I include Sel.h
+$ xrdroot build library --name Shapes Circle.cxx Square.cxx
+$ xrdroot build executable --name stress --library Event stress.cxx
+$ xrdroot build aclic macro.C+           # macro_C.xrdlib, beside the macro or in --out
+```
+
+`dictionary` is rootcling's (genreflex's with `--selection`): the headers and
+sources given, translated as one unit, into `lib<NAME>.xrdlib` in `--out` or
+the working directory, with a rootmap of the classes and namespaces it
+declares (none with `--no-rootmap`). Each class the LinkDef's `#pragma link
+C++ class` lines or the selection file's `<class name>` ask for and the
+headers do not declare is `Warning: Unused class rule: Name`, as both tools
+say it, and the build goes on. C++ the translator refuses is reported at its
+line, then `Error: rootcling: compilation failure (...)`, and exits 1.
+`library` is the same without a rootmap. `executable` translates its sources
+(so a refusal is the build's) and writes the program `NAME`: a shell script
+running `xrdroot run --library ... SOURCE... -- "$@"` in the Python and the
+xrdroot that built it, from any directory, its exit status the program's.
+`--library NAME` names a library to load first, on any step; ROOT's own
+(`Tree`, `ROOT::Hist`) and GoogleTest's need no loading.
+
+Loading is ROOT's:
+
+- `gSystem->Load("libEvent")`, `"libEvent.so"`, `"./libEvent.dylib"` and,
+  from Python, `ROOT.gSystem.Load` find `libEvent.xrdlib` in the working
+  directory, `gSystem->GetDynamicPath()`, `ROOT_LIBRARY_PATH`,
+  `LD_LIBRARY_PATH` and `DYLD_LIBRARY_PATH` (or only where a name with a
+  directory says; `Event` also finds `libEvent`). They answer 0 loaded, 1
+  loaded already, and -1 with `Error in <TUnixSystem::FindDynamicLibrary>:
+  ... does not exist in ...` when there is no such library. ROOT's own
+  libraries are xrdroot's packages: `libTree` is 0 and then 1, `libCore` 1.
+- `R__LOAD_LIBRARY(Event)` and `#pragma cling load("libEvent")` load before
+  the macro is translated; `R__ADD_LIBRARY_PATH(dir)` and `#pragma cling
+  add_library_path("dir")` add where to look. `.L libEvent.so` loads too.
+- What a library defines is found by every later macro, line and Python
+  script by its C++ name, a namespace's members included (`ROOT.geo.Shape`),
+  and a name a library on the search path provides is loaded the first time
+  it is used, as a rootmap lets ROOT autoload it.
+- A macro that `#include`s a header a library was built from translates it
+  again - the translator needs its types - and then uses the library's own
+  classes and functions, loaded before or after: there is one `Shape`, with
+  one set of static members, and what the header only declares the library
+  defines.
+
+ACLiC works wherever ROOT takes it: `.L macro.C+`, `.x macro.C+(args)`,
+`gROOT->ProcessLine(".x macro.C++")`, `gROOT->LoadMacro("macro.C+")`,
+`gSystem->CompileMacro("macro.C", "kc", "libname")` (1 when built), and
+`xrdroot root` or `xrdroot run macro.C+`. The library is `macro_C.xrdlib`
+beside the macro, or in `gSystem->SetBuildDir(dir, flat)`; it is built - `Info
+in <TUnixSystem::ACLiC>: creating shared library ...` - when it is missing,
+when the macro, a header it includes or the translator has changed, or with
+`++` or option `f`, and loaded unless the option has `c`. A macro the
+translator refuses is `Error in <ACLiC>: Compilation failed!`.
 
 ### Programs: `main` and GoogleTest
 

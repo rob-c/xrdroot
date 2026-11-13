@@ -93,8 +93,8 @@ def test_dot_l_reports_a_missing_or_refused_macro() -> None:
     write("broken.C", "int broken() { return ; ; }}")
     prompt = Interpreter()
     assert typed(prompt, ".L", ".L gone.C") == [
-        "Error in <TInterpreter::LoadMacro>: macro (none) not found in path .",
-        "Error in <TInterpreter::LoadMacro>: macro gone.C not found in path .",
+        "Error in <TRint::ProcessLine>: macro (none) not found in path .",
+        "Error in <TRint::ProcessLine>: macro gone.C not found in path .",
     ]
     (refused,) = typed(prompt, ".L broken.C")
     assert refused.startswith("broken.C:1:1: error: ")
@@ -107,10 +107,10 @@ def test_a_root_file_is_attached_as_file0_and_listed_by_dot_ls(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     prompt = Interpreter()
-    attached = [said.text for said in prompt.given(str(SIMPLE))]
-    assert attached[0] == f"\nAttaching file {SIMPLE} as _file0..."
-    assert re.fullmatch(rf"\(TFile \*\) {ADDRESS}", attached[1])
-    capsys.readouterr()
+    (attached,) = [said.text for said in prompt.given(str(SIMPLE))]
+    assert capsys.readouterr().out == f"Attaching file {SIMPLE} as _file0...\n"
+    assert re.fullmatch(rf"\(TFile \*\) {ADDRESS}", attached)
+    assert prompt.status == 255  # a pointer's value, as root -q exits with it
     assert typed(prompt, ".ls", "_file0->GetListOfKeys()->GetSize()") == ["(int) 1"]
     assert "KEY: TTree\ttree;1\tfake data" in capsys.readouterr().out
     assert typed(prompt, ".files") == ["Files open:", f"  {SIMPLE}", "Macros loaded:"]
@@ -123,8 +123,11 @@ def test_dot_cd_and_dot_pwd_move_through_the_current_file(
     prompt = Interpreter()
     prompt.attach(str(dirs))
     capsys.readouterr()
-    assert typed(prompt, ".cd dir1", ".pwd", ".cd", ".pwd") == []
-    assert capsys.readouterr().out == f"{dirs}:/dir1\nPyROOT:/\n"
+    assert typed(prompt, ".cd dir1", ".pwd", ".cd", ".pwd") == [
+        f"Current directory: {dirs}:/dir1", "Current style:     Modern",
+        "Current directory: PyROOT:/", "Current style:     Modern",
+    ]  # fmt: skip
+    assert prompt.status == 1  # what ROOT's ProcessLine hands back for .pwd
 
 
 def test_dot_files_lists_the_macros_loaded() -> None:
@@ -221,8 +224,8 @@ def test_a_macro_given_is_processed_and_its_status_kept(capsys: pytest.CaptureFi
     write("seven.C", "int seven() { return 7; }")
     prompt = Interpreter()
     assert prompt.given("seven.C") == []
-    assert capsys.readouterr().out == "\nProcessing seven.C...\n(int) 7\n"
-    assert prompt.status == 7
+    assert capsys.readouterr().out == "Processing seven.C...\n(int) 7\n"
+    assert prompt.status == 7 and not prompt.failed
 
 
 def test_a_macro_given_that_is_missing_or_fails_is_reported() -> None:
@@ -394,13 +397,16 @@ def test_q_runs_the_files_and_lines_then_leaves_with_the_last_macros_value(
                  "seven.C", stdin="never\n")  # fmt: skip
     out = capsys.readouterr().out
     assert status == 7
-    assert out.startswith("(int) 6\n(int) 42\n\nAttaching file ")
+    assert out.startswith("(int) 6\n(int) 42\nAttaching file ")
     assert out.endswith("\nProcessing seven.C...\n(int) 7\n")
 
 
-def test_x_leaves_at_the_first_error(capsys: pytest.CaptureFixture[str]) -> None:
-    assert run("root", "-l", "-x", "-e", "nope", "-e", "1 + 1", stdin="2 + 2\n") == 1
-    assert capsys.readouterr().out == ""
+def test_x_leaves_at_the_first_failure_as_it_runs(capsys: pytest.CaptureFixture[str]) -> None:
+    """``-x`` is ROOT's exit on an exception: C++ failing as it runs, not code that did not
+    compile."""
+    assert run("root", "-l", "-x", "-e", "nope", "-e", "throw 3;", "-e", "1 + 1",
+               stdin="2 + 2\n") == 1  # fmt: skip
+    assert capsys.readouterr().out == "\n"
 
 
 def test_the_logon_and_logoff_macros_run_around_the_session_unless_n(
@@ -419,7 +425,7 @@ def test_exit_in_a_line_given_ends_the_session_before_the_prompt(
 ) -> None:
     write("seven.C", "int seven() { return 7; }")
     assert run("root", "-l", "-e", "exit(4);", "-e", "1", "seven.C", stdin="2\n") == 4
-    assert capsys.readouterr().out == ""
+    assert capsys.readouterr().out == "\n"  # as root does before what the command line runs
 
 
 def test_cint_names_the_root_subcommand_and_a_file_name_still_starts_the_shell() -> None:
@@ -427,3 +433,118 @@ def test_cint_names_the_root_subcommand_and_a_file_name_still_starts_the_shell()
 
     assert _as_shell(["cint", "-l"]) == ["root", "-l"]
     assert _as_shell(["f.root"]) == ["shell", "f.root"]
+
+
+# -- root's command line, as root.exe takes it (each checked against ROOT 6.40.04) ----------
+
+
+def test_root_takes_its_flags_anywhere_and_its_lines_and_files_in_their_order() -> None:
+    from xrdroot.cli.root import options
+
+    given = options(["-l", "a.C", "-e", "x", "-b", "-q", "-x", "-n", "-t", "-a", "-memstat",
+                     "-config", "c", "--web=off", "b.root", "-e"])  # fmt: skip
+    assert given.items == [("file", "a.C"), ("e", "x"), ("file", "b.root"), ("e", "")]
+    assert (given.no_banner, given.batch, given.quit, given.exit_on_error) == (True,) * 4
+    assert (given.no_logon, given.threads, given.splash, given.memstat) == (True,) * 4
+    assert options(["-?"]).help and options(["--version"]).version
+
+
+def test_lines_and_macros_run_in_command_line_order_with_the_last_value_the_status(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write("five.C", "int five() { return 5; }")
+    write("v.C", 'void v() { printf("in v\\n"); }')
+    status = run("root", "-l", "-b", "-q", "five.C()", "-e", 'printf("e1\\n")', "v.C",
+                 "-e", 'printf("e2\\n")')  # fmt: skip
+    assert status == 3  # printf's value, as root -q exits with it
+    assert capsys.readouterr().out == (
+        "Processing five.C()...\n(int) 5\ne1\n(int) 3\nProcessing v.C...\nin v\ne2\n(int) 3\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("lines", "status"),
+    [(["int x = 4;"], 4), (["3;"], 3), (["double q = 2.5;"], 2), (["int a[2] = {1, 2};"], 0),
+     (['printf("ab");'], 2), (["{ int a = 1; }"], 0), (["nonsense_x"], 0),
+     (["syntax error here"], 1), ([".ls"], 1), ([".L nothing.C"], 0), ([".q"], 0),
+     (["int y = 1;", "[]{}();"], 0), (['TH1F *h = new TH1F("h", "h", 1, 0, 1);'], 255)],
+)  # fmt: skip
+def test_q_exits_with_the_value_root_s_process_line_gives_the_last_line(
+    lines: list[str], status: int
+) -> None:
+    argv = [word for line in lines for word in ("-e", line)]
+    assert run("root", "-l", "-b", "-q", *argv) == status
+
+
+def test_a_missing_file_ends_root_before_anything_runs(capsys: pytest.CaptureFixture[str]) -> None:
+    write("five.C", "int five() { return 5; }")
+    assert run("root", "-l", "-b", "-q", "five.C", "gone.C") == 2
+    assert capsys.readouterr() == ("", "Error in <TApplication::GetOptions>: macro gone.C not "
+                                   "found\n")  # fmt: skip
+    assert run("root", "-l", "-b", "-q", "gone.root") == 2
+    assert capsys.readouterr().err == (
+        "Warning in <TApplication::GetOptions>: file gone.root not found\n"
+        "root: unrecognized option 'gone.root'\nTry 'root --help' for more information.\n"
+    )
+
+
+def test_a_macro_that_fails_ends_the_command_line_and_a_line_that_fails_does_not(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write("bad.C", "int bad() { return 1 / 0; }")
+    write("five.C", "int five() { return 5; }")
+    assert run("root", "-l", "-b", "-q", "bad.C", "five.C") == 1
+    assert "Processing five.C" not in capsys.readouterr().out
+    assert run("root", "-l", "-b", "-q", "-e", "nope", "five.C") == 5
+    assert run("root", "-l", "-b", "-q", "-e", ".x gone.C", "five.C") == 1
+
+
+def test_gapplication_terminate_and_exit_in_a_macro_end_root_with_their_status() -> None:
+    write("term.C", "void term() { gApplication->Terminate(7); }")
+    write("ex.C", "void ex() { exit(9); }")
+    assert run("root", "-l", "-b", "-q", "term.C") == 7
+    assert run("root", "-l", "-b", "-q", "ex.C", "term.C") == 9
+    assert run("root", "-l", "-b", "-q", "-e", "gApplication->Terminate()") == 0
+
+
+def test_the_banner_shows_only_without_l_and_with_nothing_to_run(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert run("root", "-b", "-q") == 0
+    assert capsys.readouterr().out.startswith("xrdroot ")
+    assert run("root", "-b", "-q", "-e", "1") == 1
+    assert capsys.readouterr().out == "(int) 1\n"
+
+
+def test_root_s_help_and_version(capsys: pytest.CaptureFixture[str]) -> None:
+    assert run("root", "-h") == 0
+    assert capsys.readouterr().out.startswith("usage: root ")
+    assert run("root", "--version") == 0
+    assert capsys.readouterr().out.startswith("ROOT Version: 6.40.04")
+
+
+def test_g_root_is_rint_in_a_root_session_and_py_root_again_after(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import xrdroot.pyroot as ROOT
+
+    write("pw.C", 'void pw() { printf("%s %s %d\\n", gROOT->GetName(), gApplication->GetName(), '
+          "gApplication->Argc()); }")  # fmt: skip
+    assert run("root", "-l", "-b", "-q", "pw.C", "-e", ".pwd") == 1
+    assert capsys.readouterr().out == (
+        "Processing pw.C...\nRint TRint 7\nCurrent directory: Rint:/\nCurrent style:     Modern\n"
+    )
+    assert ROOT.gROOT.GetName() == "PyROOT"
+
+
+def test_a_macro_compiled_with_aclic_on_the_command_line(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write("sq.C", "int sq(int n) { return n * n; }")
+    write("bad.C", "int bad() { return ; ; }}")
+    assert run("root", "-l", "-b", "-q", "sq.C+(3)") == 9
+    out = capsys.readouterr()
+    assert out.out == "Processing sq.C+(3)...\n(int) 9\n" and "creating shared library" in out.err
+    assert run("root", "-l", "-b", "-q", "-e", ".L sq.C+", "-e", "sq(4)") == 16
+    assert run("root", "-l", "-b", "-q", "bad.C+") == 1
+    assert capsys.readouterr().err.endswith("Error in <ACLiC>: Compilation failed!\n")

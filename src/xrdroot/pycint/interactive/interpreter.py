@@ -16,10 +16,13 @@ from pathlib import Path
 from typing import TextIO
 
 from ...pycxx.errors import CxxError as CintError
-from ..execute import arguments, run_program, split_call
+from ...pycxx.errors import MacroError
+from ..execute import arguments, called, run_program, split_call
+from ..library.aclic import split as aclic_split
+from ..returned import status as exit_status
 from .commands import Said, dispatch, failure
-from .lexer import pending, pieces
-from .unit import Diagnostic, Unit
+from .lexer import Piece, pending, pieces
+from .unit import Diagnostic, Outcome, Unit
 from .values import shown
 
 __all__ = ["Interpreter", "Said", "MACROS", "CONTINUED"]
@@ -44,9 +47,14 @@ class Interpreter:
         self.buffer: list[str] = []
         self.finished = False
         self.exit_on_error = exit_on_error
-        #: The exit status: the last macro run's value, as ``root -q`` exits with it, or 1
-        #: once an error stopped an ``exit_on_error`` session.
+        #: The exit status: the value of the last input or macro run, as ``root -q`` exits
+        #: with it, or 1 once an error stopped an ``exit_on_error`` session.
         self.last_status = 0
+        #: Whether a macro given on the command line failed, which ends their processing.
+        self.failed = False
+        #: Whether the session was ended with a status - ``exit(n)``, ``Terminate(n)``, an
+        #: error under ``-x`` - rather than at ``.q`` or the end of the input.
+        self.exited = False
         self.loaded: dict[str, list[str]] = {}
         self.raw = False
         self.level = 2
@@ -73,13 +81,13 @@ class Interpreter:
         if not self.buffer:
             said = dispatch(self, line)
             if said is not None:
-                return self._checked(said)
+                return said
         self.buffer.append(line)
         text = "\n".join(self.buffer)
         if pending(text):
             return []
         self.buffer = []
-        return self._checked(self.run(text, number))
+        return self.run(text, number)
 
     def cancel(self) -> None:
         """Drop the lines of an unfinished input, as Ctrl-C at cling's prompt does."""
@@ -91,22 +99,43 @@ class Interpreter:
         if not parts:
             return []
         try:
-            outcome = self.unit.run(self.unit.chunk(number, parts, text))
+            outcome = self._outcome(number, parts, text)
         except Diagnostic as why:
+            # ROOT's ProcessLine hands back 1 for code it could not compile, but 0 when it
+            # stopped at a name nothing declares.
+            undeclared = "undeclared identifier" in why.why
+            self.last_status = 0 if undeclared else 1
+            if not (why.translating or undeclared):
+                self._failed_running()
             return [Said(str(why), True)]
         except SystemExit as leaving:
-            self.finished = True
-            self.last_status = leaving.code if isinstance(leaving.code, int) else 0
+            self.leave(leaving)
             return []
+        self.last_status = exit_status(outcome.value, outcome.spelled) if outcome.valued else 0
         line = shown(outcome.value, outcome.spelled, outcome.lvalue) if outcome.printed else None
         return [Said(line)] if line else []
 
-    def _checked(self, said: list[Said]) -> list[Said]:
-        """What was said, ending the session if it was an error and errors end it (``-x``)."""
-        if self.exit_on_error and any(each.error for each in said):
-            self.finished = True
+    def _outcome(self, number: int, parts: list[Piece], text: str) -> Outcome:
+        """Run the input, its value caught even unprinted - or, if the translator will not
+        take it so, as it was typed."""
+        chunk = self.unit.chunk(number, parts, text)
+        try:
+            return self.unit.run(chunk)
+        except Diagnostic as why:
+            if not (chunk.quiet and why.translating):
+                raise
+        return self.unit.run(self.unit.chunk(number, parts, text, quiet=False))
+
+    def leave(self, leaving: SystemExit) -> None:
+        """The session over, as ``exit(n)`` or ``gApplication->Terminate(n)`` ends it."""
+        self.finished = self.exited = True
+        self.last_status = leaving.code if isinstance(leaving.code, int) else 0
+
+    def _failed_running(self) -> None:
+        """C++ that failed as it ran - cling's exception - ends the session under ``-x``."""
+        if self.exit_on_error:
+            self.finished = self.exited = True
             self.last_status = 1
-        return said
 
     # -- what the command line hands the prompt ------------------------------------------
 
@@ -115,25 +144,31 @@ class Interpreter:
         name = f"_file{self.attached}"
         self.attached += 1
         quoted = path.replace("\\", "\\\\").replace('"', '\\"')
-        said = [Said(f"\nAttaching file {path} as {name}...")]
-        return said + self._checked(self.run(f'TFile *{name} = TFile::Open("{quoted}")',
-                                             self._next()))  # fmt: skip
+        sys.stdout.write(f"Attaching file {path} as {name}...\n")
+        return self.run(f'TFile *{name} = TFile::Open("{quoted}")', self._next())
 
     def macro(self, given: str) -> list[Said]:
-        """A macro given on the command line, ``x.C(args)``, run as ``root x.C`` runs it."""
-        path = split_call(given)[0]
-        sys.stdout.write(f"\nProcessing {path}...\n")
+        """A macro given on the command line, ``x.C(args)`` or ``x.C+``, run as ``root x.C``
+        runs it; one that fails ends the processing of the command line's files, as in ROOT."""
+        sys.stdout.write(f"Processing {given}...\n")
         sys.stdout.flush()
-        if not Path(path.rstrip("+")).is_file():
-            self.last_status = 1
-            return self._checked([Said(f"Error in <TApplication::ExecuteFile>: macro {path} "
-                                       "not found in path .", True)])  # fmt: skip
+        spec = called(given)
+        self.last_status, self.failed = 1, True  # until it has run
+        if not Path(aclic_split(spec)[0]).is_file():
+            path = split_call(given)[0]
+            return [Said(f"Error in <TApplication::ExecuteFile>: macro {path} not found in "
+                         "path .", True)]  # fmt: skip
         try:
-            self.last_status = run_program([Path(path)], arguments(split_call(given)[1]))
+            self.last_status = run_program([spec], arguments(split_call(given)[1]))
+        except SystemExit as leaving:
+            self.leave(leaving)
+            return []
         except Exception as why:  # a refusal, a failure, a bad argument: said, and on
-            self.last_status = 1
+            if isinstance(why, MacroError):
+                self._failed_running()
             said = failure(why) if isinstance(why, CintError) else Said(f"error: {why}", True)
-            return self._checked([said])
+            return [said]
+        self.failed = False
         return []
 
     def given(self, argument: str) -> list[Said]:
