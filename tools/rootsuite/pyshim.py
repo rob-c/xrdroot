@@ -22,19 +22,13 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-#: ROOT's namespaces a test imports names from, ``from ROOT.RDF import ...``.
-NAMESPACES = ("Experimental", "VecOps", "RDF", "Math", "RooFit", "TMVA")
-
 
 def alias_root() -> ModuleType:
-    """``import ROOT`` gives xrdroot.pyroot, and ``import ROOT.RDF`` its namespace."""
-    root = importlib.import_module("xrdroot.pyroot")
-    sys.modules["ROOT"] = root
-    for name in NAMESPACES:
-        found = getattr(root, name, None)
-        if found is not None:
-            sys.modules[f"ROOT.{name}"] = found
-    return root
+    """``import ROOT`` gives xrdroot.pyroot, ``import ROOT.RDF`` its namespace and
+    ``import cppyy`` xrdroot.cppyy - as ``xrdroot run`` gives a script them."""
+    shims = importlib.import_module("xrdroot.cli.shims")
+    shims.install_cppyy()
+    return shims.install_root()
 
 
 def conftests(files: list[str]) -> list[ModuleType]:

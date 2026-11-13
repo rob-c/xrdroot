@@ -37,6 +37,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from .shims import install_cppyy, install_root
+
 __all__ = ["add_parser", "run"]
 
 
@@ -100,10 +102,6 @@ def add_parser(subparsers: Any) -> None:
     parser.add_argument("--argv0", help="the program's own name, argv[0]: its source's stem")
 
 
-#: ROOT's namespaces a script imports names from, ``from ROOT.<namespace> import ...``.
-NAMESPACES = ("Experimental", "VecOps", "RDF", "Math", "RooFit", "TMVA")
-
-
 def _script(path: Path, argv: list[str]) -> int:
     """A PyROOT script, run with ``import ROOT`` meaning :mod:`xrdroot.pyroot`.
 
@@ -113,15 +111,10 @@ def _script(path: Path, argv: list[str]) -> int:
     script.py`` makes it, so a script parsing its own options does not find
     ``run`` among them.
     """
-    import importlib
-
     from ..stdio import split
 
-    root = sys.modules["ROOT"] = importlib.import_module("xrdroot.pyroot")
-    for name in NAMESPACES:  # ``from ROOT.Experimental import RCanvas`` imports the namespace
-        found = getattr(root, name, None)
-        if found is not None:
-            sys.modules[f"ROOT.{name}"] = found
+    install_root()
+    install_cppyy()
     before = sys.argv
     sys.argv = [str(path), *argv]
     try:
