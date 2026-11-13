@@ -41,10 +41,11 @@ from typing import IO, TYPE_CHECKING, Any
 import numpy as np
 from xrdclient.url import parse
 
-from .buffer import BYTE_COUNT_MASK, IS_REFERENCED, NEW_CLASS_TAG
+from .buffer import BYTE_COUNT_MASK, IS_REFERENCED, NEW_CLASS_TAG, Buffer
 from .compression import CODES, LEVELS, compress
 from .efficiency import EFFICIENCIES, Efficiency
 from .errors import UnsupportedFeatureError
+from .file import Key
 from .function import FUNCTIONS, Function
 from .graph import GRAPHS, Graph
 from .hist import HISTOGRAMS, Histogram
@@ -1274,6 +1275,45 @@ class WritableDirectory:
                 f"would hide everything in it; write into it as {name}/..., or pick "
                 f"another name"
             )
+
+    def delete(self, name: str, cycle: int | None = None) -> int:
+        """Take ``name`` out of this directory - every cycle, or only ``cycle`` - as
+        ``TDirectory::Delete("name;*")`` does; how many keys went.
+
+        The records go to the free list; a directory's key goes, and what it
+        held with it, unread. The next cycle written under the name is one
+        past the newest left, or the first.
+        """
+        kept, gone = [], 0
+        for header in self._keys:
+            key = Key(Buffer(header))
+            if key.name == name and cycle in (None, key.cycle):
+                self._file._release((key.seek_key, key.nbytes))
+                gone += 1
+            else:
+                kept.append(header)
+        if gone:
+            self._keys = kept
+            self._dirty = True
+            self._forget(name)
+        return gone
+
+    def classname_of(self, name: str) -> str | None:
+        """The class of what ``name`` holds here - its newest cycle's - or ``None``."""
+        found = [Key(Buffer(header)) for header in self._keys]
+        named = [key for key in found if key.name == name]
+        return max(named, key=lambda key: key.cycle).classname if named else None
+
+    def _forget(self, name: str) -> None:
+        """What is known of ``name`` here, brought in line with the keys left."""
+        self._subdirs.pop(name, None)
+        self._found.pop(name, None)
+        cycles = [Key(Buffer(header)).cycle for header in self._keys
+                  if Key(Buffer(header)).name == name]  # fmt: skip
+        if cycles:
+            self._cycles[name] = max(cycles)
+        else:
+            self._cycles.pop(name, None)
 
     def _next_cycle(self, name: str) -> int:
         cycle = self._cycles.get(name, 0) + 1
