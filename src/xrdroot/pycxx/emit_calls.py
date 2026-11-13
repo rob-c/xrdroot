@@ -16,14 +16,15 @@ standard library's calls that have no Python counterpart are rewritten:
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from .base import Out, P
 from .ctype import SMART, CType
 from .cursor import looks_like_type
 from .dialect import active
 from .emit_expr import ExprEmitter, _copy_store, _lvalue, zero
-from .emit_names import type_text
+from .limits import FUNCTIONS as LIMIT_FUNCTIONS
+from .limits import is_limit
 from .literals import suffixes
 from .nodes import (
     Assign,
@@ -52,33 +53,11 @@ WRAPS = {
     "signed char": "i8",
 }
 
+#: ``std::max_element`` and ``std::min_element``, and the Python of what the one found holds.
+EXTREMES = {"max_element": "max", "min_element": "min"}
+
 #: A container's iterator functions, and the index each stands for in a slice.
 ITERATOR_ENDS = {"begin": "0", "cbegin": "0", "end": "None", "cend": "None"}
-
-#: ``std::numeric_limits<T>``'s members, for the floating types and the integer ones.
-LIMITS = {
-    ("double", "max"): "1.7976931348623157e+308",
-    ("double", "min"): "2.2250738585072014e-308",
-    ("double", "lowest"): "-1.7976931348623157e+308",
-    ("double", "epsilon"): "2.220446049250313e-16",
-    ("double", "infinity"): "float('inf')",
-    ("double", "quiet_NaN"): "float('nan')",
-    ("float", "max"): "3.4028234663852886e+38",
-    ("float", "min"): "1.1754943508222875e-38",
-    ("float", "lowest"): "-3.4028234663852886e+38",
-    ("float", "epsilon"): "1.1920928955078125e-07",
-    ("float", "infinity"): "float('inf')",
-    ("float", "quiet_NaN"): "float('nan')",
-    ("int", "max"): "2147483647",
-    ("int", "min"): "-2147483648",
-    ("int", "lowest"): "-2147483648",
-    ("unsigned int", "max"): "4294967295",
-    ("long", "max"): "9223372036854775807",
-    ("long", "min"): "-9223372036854775808",
-    ("long long", "max"): "9223372036854775807",
-    ("unsigned long", "max"): "18446744073709551615",
-}
-
 
 def _tuple(items: list[str]) -> str:
     """Python's spelling of a tuple of ``items``: ``()``, ``(a,)``, ``(a, b)``."""
@@ -135,10 +114,15 @@ class CallEmitter(ExprEmitter):
 
     def named_call(self, func: Name, node: Call) -> Out:
         symbol = self.symbol(func)
+        instance = self._instance_call(func, node, symbol)
+        if instance is not None:
+            return instance, P.POSTFIX
         if symbol is not None:
             given = [self.arguments(node), self._template_values(func, symbol)]
             args = ", ".join(filter(None, given))
             return f"{self.use(symbol)[0]}({args})", P.POSTFIX
+        if is_limit(func.parts, func.targs) and func.last in LIMIT_FUNCTIONS:
+            return self.limit(func, node, "()"), P.ATOM
         if self._smart_alias(func):
             return self._pointer_held(node)
         special = self._special(func)
@@ -147,6 +131,22 @@ class CallEmitter(ExprEmitter):
             if found is not None:
                 return found
         return f"{self.library(func)[0]}({self.arguments(node)})", P.POSTFIX
+
+    def _instance_call(self, func: Name, node: Call, symbol: Symbol | None) -> str | None:
+        """A call of a function template's instance, a member template's handed ``self``."""
+        instance = self.function_instance(func, node, symbol)
+        if instance is None:
+            return None
+        own = "self" if symbol is not None and symbol.kind == "method" else ""
+        return f"{instance}({', '.join(filter(None, (own, self.arguments(node))))})"
+
+    def function_instance(self, func: Name, node: Call, symbol: Symbol | None) -> str | None:
+        """The instance of a function template a call calls, if it is one."""
+        raise NotImplementedError
+
+    def method_instance(self, owner: CType | None, func: Member, node: Call) -> str | None:
+        """The instance of a member template a call of a method calls, if it is one."""
+        raise NotImplementedError
 
     def _special(self, func: Name) -> Callable[[CallEmitter, Name, Call], Out | None] | None:
         """How a library function is written when it is not a plain call: the standard's,
@@ -169,7 +169,11 @@ class CallEmitter(ExprEmitter):
             return ""
         values = {str(param.name) for param in chosen.values}
         pairs = zip(chosen.template or [], func.targs or [], strict=False)
-        return ", ".join(f"{name}={self.value(arg)}" for name, arg in pairs if name in values)
+        return ", ".join(self._keyword(name, arg) for name, arg in pairs if name in values)
+
+    def _keyword(self, name: str, arg: Any) -> str:
+        """``N=3`` for a value argument; a type, written where a value is, passes nothing."""
+        return "" if isinstance(arg, CType) else f"{name}={self.value(arg)}"
 
     def _valued(self, symbol: Symbol) -> Function | None:
         """The function template with value parameters that ``symbol`` names, if it is one."""
@@ -178,9 +182,15 @@ class CallEmitter(ExprEmitter):
         return next((f for f in self.function_named(symbol) if f.values), None)
 
     def _make(self, func: Name, node: Call) -> Out | None:
-        if not func.targs or not isinstance(func.targs[0], CType):
+        """``std::make_shared<T>(args)``: a ``T`` built - a number in a cell, which ``*p``
+        reads and writes through, as it does the number a smart pointer holds."""
+        kind = func.targs[0] if func.targs else None
+        if not isinstance(kind, CType):
             return None
-        return f"{self.class_expr(func.targs[0])}({self.arguments(node)})", P.POSTFIX
+        if kind.scalar:
+            first = self.store(kind, node.args[0]) if node.args else zero(kind)
+            return f"Cell({first}, {kind.name!r})", P.POSTFIX
+        return f"{self.class_expr(kind)}({self.arguments(node)})", P.POSTFIX
 
     def _smart_alias(self, func: Name) -> bool:
         """Is ``func`` a name ``using`` or ``typedef`` gave a smart pointer - ``Upvd_t(p)``?"""
@@ -195,15 +205,6 @@ class CallEmitter(ExprEmitter):
         if not node.args:
             return "None", P.ATOM
         return self.expr(node.args[0])
-
-    def _limits(self, func: Name, node: Call) -> Out | None:
-        if len(func.parts) < 2 or func.parts[-2] != "numeric_limits" or not func.targs:
-            return None
-        kind = type_text(func.targs[0])
-        value = LIMITS.get((kind, func.last))
-        if value is None:
-            raise self.refuse(f"std::numeric_limits<{kind}>::{func.last}()", node)
-        return value, P.ATOM
 
     def _exit(self, func: Name, node: Call) -> Out | None:
         return f"c_exit({self.arguments(node)})", P.POSTFIX
@@ -255,6 +256,16 @@ class CallEmitter(ExprEmitter):
     def _unsupported(self, func: Name, node: Call) -> Out | None:
         raise self.refuse(f"{func.text}() where its result is used", node)
 
+    def extreme_element(self, operand: Expr) -> str | None:
+        func = operand.func if isinstance(operand, Call) else None
+        if not isinstance(func, Name) or func.last not in EXTREMES or self.symbol(func):
+            return None
+        assert isinstance(operand, Call)
+        if len(operand.args) != 2:
+            raise self.refuse(f"std::{func.last} with a comparison of its own", operand)
+        container, start, stop = self.iterator_range(operand.args[0], operand.args[1], operand)
+        return f"{EXTREMES[func.last]}({container}[{start}:{'' if stop == 'None' else stop}])"
+
     def _sort(self, func: Name, node: Call) -> Out | None:
         helper = "sort_range" if func.last in ("sort", "stable_sort") else "reverse_range"
         if len(node.args) < 2:
@@ -303,12 +314,6 @@ class CallEmitter(ExprEmitter):
         "shared_ptr": _smart,
         "make_unique": _make,
         "make_shared": _make,
-        "max": _limits,
-        "min": _limits,
-        "lowest": _limits,
-        "epsilon": _limits,
-        "infinity": _limits,
-        "quiet_NaN": _limits,
         "exit": _exit,
         "abort": _exit,
         "sort": _sort,
@@ -333,17 +338,29 @@ class CallEmitter(ExprEmitter):
             given = ", ".join(filter(None, (self.arguments(node), f"n={self.vector_count}")))
             return f"{self.value(func)}({given})", P.POSTFIX
         owner = self.typeof(func.obj)
-        if owner is not None:
-            special = self._typed_method(owner, func, node)
-            if special is not None:
-                return special
-        elif func.name == "c_str" and not node.args and not func.arrow:
+        instance = self.method_instance(owner, func, node)
+        if instance is not None:
+            return f"{instance}({self.value(func.obj)}, {self.arguments(node)})", P.POSTFIX
+        special = (
+            self._typed_method(owner, func, node)
+            if owner is not None
+            else self._untyped_method(func, node)
+        )
+        if special is not None:
+            return special
+        return f"{self.value(func)}({self.arguments(node)})", P.POSTFIX
+
+    def _untyped_method(self, func: Member, node: Call) -> Out | None:
+        """A method of an object whose type is not known, that only one kind of object has."""
+        if node.args or func.arrow:
+            return None
+        if func.name == "c_str":
             # Only a std::string has c_str(), and a std::string is a str here, whoever made it.
             return f"cstr({self.value(func.obj)})", P.POSTFIX
-        elif func.name in ("release", "get") and not node.args and not func.arrow:
+        if func.name in ("release", "get"):
             # A unique_ptr's: what it holds, unless the object has a method of its own by name.
             return f"pointee({self.value(func.obj)}, {func.name!r})", P.POSTFIX
-        return f"{self.value(func)}({self.arguments(node)})", P.POSTFIX
+        return None
 
     def _typed_method(self, owner: CType, func: Member, node: Call) -> Out | None:
         """A member of a string, a smart pointer or an exception, rewritten as Python's."""

@@ -19,7 +19,16 @@ from typing import Any
 
 import pytest
 
-from xrdroot.pycxx import Dialect, Prelude, active, run_program, run_source, translate, using
+from xrdroot.pycxx import (
+    Dialect,
+    Prelude,
+    Refusal,
+    active,
+    run_program,
+    run_source,
+    translate,
+    using,
+)
 from xrdroot.pycxx import runtime as plain
 from xrdroot.pycxx.base import P
 from xrdroot.pycxx.ctype import canonical
@@ -76,6 +85,9 @@ def _session() -> Iterator[None]:
 
 HOST = HostNamespace(lambda: LIBRARY)
 
+#: A macro of the library's header a translation refuses wherever it is used.
+REFUSED = {"FURLONGS": "FURLONGS, a unit no lab measures in, is not translated"}
+
 LAB = Dialect(
     name="lab",
     translator="lab-translator",
@@ -83,7 +95,7 @@ LAB = Dialect(
     class_pattern=re.compile(r"^Lab[A-Z]\w*$"),
     type_namespaces=frozenset({"Lab"}),
     predefined="#define LAB_VERSION 3\n",
-    preludes={"lab/units.h": Prelude("#define METRES(x) (x)\n", "METRES")},
+    preludes={"lab/units.h": Prelude("#define METRES(x) (x)\n", "METRES", REFUSED)},
     host="LAB",
     host_namespace="Lab",
     runtime="lab_runtime",
@@ -177,3 +189,9 @@ def test_cached_translations_are_kept_apart_by_dialect(tmp_path) -> None:
 
     assert cache.key("int f();", "f.cxx", LAB) != cache.key("int f();", "f.cxx")
     assert Path(cache.directory()).parent == tmp_path
+
+
+def test_a_macro_the_dialect_refuses_is_defined_and_refused_where_it_is_used() -> None:
+    source = '#include "lab/units.h"\n#ifdef FURLONGS\nint f() { return FURLONGS(2); }\n#endif\n'
+    with pytest.raises(Refusal, match="FURLONGS, a unit no lab measures in"):
+        translate(source, "t.cxx", dialect=LAB)

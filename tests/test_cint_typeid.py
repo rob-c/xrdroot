@@ -193,8 +193,9 @@ def test_typeid_in_a_template_of_an_object_of_its_parameter_is_its_dynamic_type(
 
 
 def test_typeid_of_a_type_that_is_not_known_is_refused() -> None:
-    with pytest.raises(Refusal, match="typeid of the template parameter T"):
-        translate("template <class T> void f() { auto &t = typeid(T*); }", "t.C")
+    generic = translate("template <class T> void f() { auto &t = typeid(T*); }", "t.C")
+    assert "uninstantiated('the function template f', " in generic
+    assert "typeid of the template parameter T" in generic
     with pytest.raises(Refusal, match="typeid of an array whose size is not a number"):
         translate("void f(int n) { double a[n]; auto &t = typeid(a); }", "t.C")
 

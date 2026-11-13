@@ -129,6 +129,26 @@ def Register(suite: str, name: str, file: str, line: int) -> int:
     return 0
 
 
+def RegisterTyped(suite: str, name: str, file: str, line: int, *tests: type) -> int:
+    """A ``TYPED_TEST``: one test for each type of its suite's list, ``Suite/0.Name`` and on,
+    each an instance of the test's class template the translation made."""
+    frame = sys._getframe(1)
+    for index, test in enumerate(tests):
+        REGISTRY.cases.append(Case(f"{suite}/{index}", str(name), test.__name__, frame.f_globals))
+    return 0
+
+
+def RegisterTypedSuite(prefix: str, suite: str, file: str, line: int, *tests: Any) -> int:
+    """``INSTANTIATE_TYPED_TEST_SUITE_P(prefix, suite, types)``: each test of the suite for
+    each type, ``prefix/suite/0.Name`` and on - given as its place, its name and its class."""
+    frame = sys._getframe(1)
+    for index in range(0, len(tests) - 2, 3):
+        place, name, test = tests[index : index + 3]
+        title = f"{prefix}/{suite}/{place}"
+        REGISTRY.cases.append(Case(title, str(name), test.__name__, frame.f_globals))
+    return 0
+
+
 def RegisterPattern(suite: str, name: str, file: str, line: int) -> int:
     """A ``TEST_P``: run once for each value its suite is instantiated with."""
     REGISTRY.patterns.append(_case(suite, name, sys._getframe(1)))

@@ -37,6 +37,7 @@ from ...cppstd.objects import set_item as set_item
 from ...cppstd.objects import sort_range as sort_range
 from ...cppstd.objects import throw as throw
 from ...cppstd.objects import value_copy as value_copy
+from ..errors import Refusal
 
 __all__ = [
     "array",
@@ -59,6 +60,7 @@ __all__ = [
     "postinc",
     "INTEGRAL",
     "REAL",
+    "uninstantiated",
 ]
 
 
@@ -99,3 +101,15 @@ def held(pointer: Any) -> Any:
     if hasattr(pointer, "value") and (named or getattr(pointer, "_cint_cell", False)):
         return pointer.value
     return pointer
+
+
+def uninstantiated(template: str, why: str) -> None:
+    """A template used where its arguments were not worked out, whose body needs them.
+
+    Each instance of a template is translated with its arguments in; the
+    template itself, for a use whose arguments the translator could not
+    tell, only where its body does not depend on them. Where it does, using
+    it is refused here, when it is used, with the reason the body could not
+    be written.
+    """
+    raise Refusal(f"{template}, used where its template arguments are not known: {why}")

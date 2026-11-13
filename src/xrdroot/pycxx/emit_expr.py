@@ -26,7 +26,7 @@ from typing import Any, ClassVar
 from .base import Out, P
 from .ctype import CType
 from .dialect import active
-from .emit_names import NameEmitter, type_text
+from .emit_names import NameEmitter
 from .errors import Refusal
 from .freeops import UNARY as FREE_UNARY
 from .infer import is_elementwise
@@ -54,6 +54,7 @@ from .nodes import (
 )
 from .operators import DUNDERS, python_operator
 from .program import by_reference
+from .sizes import layout
 from .typeids import polymorphic, qualified_names, spelled
 
 __all__ = ["ExprEmitter", "COMPARISONS", "CONTAINERS", "is_container", "zero"]
@@ -334,6 +335,9 @@ class ExprEmitter(NameEmitter):
         """``*p``: the object itself for a pointer to one, element 0 for a pointer to numbers."""
         if isinstance(operand, This):
             return "self", P.ATOM
+        extreme = self.extreme_element(operand)
+        if extreme is not None:
+            return extreme, P.POSTFIX
         found = self.typeof(operand)
         if found is None:
             return f"deref({self.value(operand)})", P.POSTFIX
@@ -346,6 +350,11 @@ class ExprEmitter(NameEmitter):
         if found.is_object_pointer or (found.is_class and not found.pointer):
             return self.expr(operand)
         return f"{self.at(operand, P.POSTFIX)}[0]", P.POSTFIX
+
+    def extreme_element(self, operand: Expr) -> str | None:
+        """``*std::max_element(first, last)``: the largest element - the first of the largest,
+        as Python's ``max`` gives it - or the least, of ``min_element``."""
+        raise NotImplementedError
 
     def _read_through(self, operand: Expr, found: CType) -> str | None:
         """``*p`` of what holds a value rather than being it: a ``shared_ptr<int>`` - a number,
@@ -692,10 +701,11 @@ class ExprEmitter(NameEmitter):
 
     def _sizeof(self, node: SizeOf) -> Out:
         ctype = node.ctype if node.ctype is not None else self.typeof(node.operand)
-        size = ctype.size if ctype is not None else None
-        if size is None:
-            raise self.refuse("sizeof of a type whose size this translator does not know", node)
-        return str(size), P.ATOM
+        found = layout(ctype.value(), self.program) if ctype is not None else None
+        if found is None:
+            what = "alignof" if node.alignment else "sizeof"
+            raise self.refuse(f"{what} of a type whose size this translator does not know", node)
+        return str(found[1] if node.alignment else found[0]), P.ATOM
 
     def _typeid(self, node: TypeId) -> Out:
         """``typeid(T)``, or ``typeid(e)``: of ``e``'s dynamic type where its class is
@@ -716,6 +726,7 @@ class ExprEmitter(NameEmitter):
             return None
         if self._qualified is None:
             self._qualified = qualified_names(self.program.unit.decls)
+            self._qualified.update(self.program.templates.spellings)
         text = spelled(ctype, self._qualified)
         if text is None:
             raise self.refuse("typeid of an array whose size is not a number written out", node)
@@ -755,7 +766,7 @@ class ExprEmitter(NameEmitter):
             return f"array({ctype.name!r}, {self.value(count)})"
         if ctype.pointer:
             return f"[None] * {self.at(count, P.MUL)}"
-        return f"array({type_text(ctype)!r}, {self.value(count)}, make={self.class_expr(ctype)})"
+        return f"array({self.spelled(ctype)!r}, {self.value(count)}, make={self.class_expr(ctype)})"
 
     def _delete(self, node: Delete) -> Out:
         raise self.refuse("delete inside an expression", node)

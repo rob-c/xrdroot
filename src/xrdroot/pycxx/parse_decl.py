@@ -10,10 +10,10 @@ noting what names are declared as types and templates, since whether
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from .ctype import CType
-from .cursor import KEYWORDS, NoParse
+from .cursor import NoParse
 from .errors import Where
 from .nodes import (
     Base,
@@ -58,6 +58,7 @@ class Parser(StmtParser):
     def __init__(self, tokens: list[Token]) -> None:
         super().__init__(tokens)
         self.aliases = {}
+        self.alias_templates = {}
         self.functions = set()
         #: The classes being read, innermost last: their names are their constructors'.
         self.classes: list[str] = []
@@ -143,6 +144,9 @@ class Parser(StmtParser):
 
     def _extern(self) -> Stmt:
         where = self.where
+        if self.peek(1).is_("template"):  # an instantiation made elsewhere: nothing to do here
+            self.skip_to(";")
+            return Empty(where)
         if self.peek(1).kind != "str":
             return self.function_or_variable()
         self.take()
@@ -168,28 +172,59 @@ class Parser(StmtParser):
             return Empty(where)
         self.template_values = []
         names = self.template_parameters()
-        values = self.template_values
+        values, defaults = self.template_values, self.template_defaults
+        if self.at_("using"):
+            return self._alias_template(where, names)
         if self.at_("class", "struct", "union") and self._defines_type():
-            if values:
-                why = f"the template parameter {values[0].name}, a value a class template is given"
-                raise self.refuse(why)
             decl = self.class_declaration()
-            decl.template = names
+            decl.template, decl.values, decl.defaults = names, values, defaults
             return decl
-        if self.at_("class", "struct") and self.peek(2).is_(";"):
+        if self._declared_only() or self.at_("friend"):
             self.skip_to(";")
             return Empty(where)
-        stmt = self.function_or_variable()
+        return self._template_rest(where, (names, values, defaults), self.function_or_variable())
+
+    def _declared_only(self) -> bool:
+        """``template <class T> class Box;`` or ``template <> class Box<int>;``: a class
+        template, or a specialisation, declared and not defined here."""
+        if not self.at_("class", "struct", "union"):
+            return False
+        ahead = self._past_angles(2) if self.peek(2).is_("<") else 2
+        return self.peek(ahead).is_(";")
+
+    def _template_rest(
+        self, where: Where, template: tuple[list[str], list[Param], list[Any]], stmt: Stmt
+    ) -> Stmt:
+        """A function template, or a class template's static member defined outside it."""
+        names = template[0]
+        if isinstance(stmt, DeclStmt) and all("::" in var.name for var in stmt.decls):
+            stmt.template = names
+            return stmt
         if not isinstance(stmt, Function):
             raise self.refuse("a variable template", where)
-        stmt.template = names
-        stmt.values = values
+        stmt.template, stmt.values, stmt.defaults = template
+        if not names:
+            stmt.specialises = self.declared_args
         return stmt
+
+    def _alias_template(self, where: Where, names: list[str]) -> Stmt:
+        """``template <typename T> using Vec = std::vector<T>;``: ``Vec<int>`` is read, from
+        here on, as the type it names with the arguments put in."""
+        self.take()
+        name = self.identifier()
+        self.expect("=")
+        ctype = self.type_id()
+        self.expect(";")
+        self.alias_templates[name] = (names, list(self.template_defaults), ctype)
+        self.types.add(name)
+        self.templates.add(name)
+        return Empty(where)
 
     def template_parameters(self) -> list[str]:
         """``<typename T, int N = 3>``: the names a template declares, each now a type or value."""
         self.expect("<")
         self.angle += 1
+        self.template_defaults = []
         try:
             names = self.listed(self._template_parameter, ">")
             self.split_shift()
@@ -207,23 +242,24 @@ class Parser(StmtParser):
         if typename:
             name = self.identifier() if self.peek().kind == "id" else "_"
             self.types.add(name)
-            if self.accept("="):
-                self.type_id()
+            self.template_defaults.append(self.type_id() if self.accept("=") else None)
             return name
         where = self.where
         ctype = self.pointers(self.specifiers().ctype)
         if self.at_("=", ",", ">"):
             # ``std::enable_if_t<...> = 0``: unnamed, choosing overloads, and nothing to pass.
-            if self.accept("="):
-                self.constant()
+            self.template_defaults.append(self.constant() if self.accept("=") else None)
             return "_"
         name, ctype = self.declarator(ctype)
         default = self.constant() if self.accept("=") else None
         self.template_values.append(Param(where, name, ctype, default))
+        self.template_defaults.append(default)
         return name
 
     #: The value parameters of the template being read, ``N`` of ``template <int N>``.
     template_values: list[Param]
+    #: The default of each parameter of the template being read, or ``None`` where it has none.
+    template_defaults: list[Any]
 
     _TOP: ClassVar[dict[str, Callable[[Parser], Stmt]]] = {
         ";": StmtParser._empty,
@@ -335,32 +371,62 @@ class Parser(StmtParser):
             last = self.peek(ahead)
         if last.text != parts[-1] or not self.peek(ahead + 1).is_("("):
             return None
+        self.owner_args = self._args_at(self._scoped_at)
         self.at += ahead + 1
         kind = "destructor" if destructor else "constructor"
         return parts, ("~" if destructor else "") + last.text, kind
+
+    def _args_at(self, at: int | None) -> list[Any]:
+        """The template arguments written from the ``<`` at token ``at``, if one is there."""
+        if at is None:
+            return []
+        start, self.at = self.at, at
+        try:
+            return self.trial(self.template_args) or []
+        finally:
+            self.at = start
 
     def _scope_ahead(self) -> tuple[list[str], int]:
         """``A::B::`` at the cursor: its parts, and how many tokens they take."""
         ahead = 0
         parts: list[str] = []
-        while self.peek(ahead).kind == "id" and self.peek(ahead + 1).is_("::"):
+        self._scoped_at = None
+        while self.peek(ahead).kind == "id":
+            after = ahead + 1
+            angle = self.peek(after).is_("<") and self.peek(ahead).text in self.templates
+            if angle:
+                after = self._past_angles(after)  # ``Box<T>::Box()``
+            if not self.peek(after).is_("::"):
+                break
+            self._scoped_at = self.at + ahead + 1 if angle else None
             parts.append(self.peek(ahead).text)
-            ahead += 2
+            ahead = after + 1
         return parts, ahead
+
+    #: Where the template arguments of the last scope :meth:`_scope_ahead` read begin.
+    _scoped_at: int | None = None
 
     def declared_name(self) -> tuple[list[str], str]:
         """The name a declaration declares - ``f``, ``Foo::bar``, ``operator+`` - and its scope."""
         self.accept("::")
+        self.declared_args = None
         parts: list[str] = []
         while True:
             if self.at_("operator"):
                 return parts, self.operator_name()
             parts.append(self.identifier())
+            self.owner_args, self.declared_args = self.declared_args or [], None
             if self.at_("<") and parts[-1] in self.templates:
-                self.skip_brackets()
+                self.declared_args = self.trial(self.template_args)
+                if self.declared_args is None:
+                    self.skip_brackets()
             if not (self.at_("::") and self.peek(1).kind == "id"):
                 return parts[:-1], parts[-1]
             self.take()
+
+    #: The template arguments written after the last name :meth:`declared_name` read with any:
+    #: ``<int>`` of ``template <> void f<int>(int)``.
+    declared_args: list[Any] | None = None
 
     def _is_function(self) -> bool:
         return self.lookahead(self._parameters_then)
@@ -379,7 +445,8 @@ class Parser(StmtParser):
 
     def _named_or_typed(self, param: Param) -> bool:
         """A prototype's parameter: named, or of a type known to be one (``UInt_t``, ``FILE *``)."""
-        return bool(param.name) or param.ctype.arithmetic or self.is_type([param.ctype.name])
+        named = param.ctype.name.split("::")
+        return bool(param.name) or param.ctype.arithmetic or self.is_type(named)
 
     def function_rest(
         self,
@@ -396,6 +463,7 @@ class Parser(StmtParser):
         try:
             params, variadic = self.parameters()
             func = Function(where, name, returns, params, None, scope, kind)
+            func.scope_args, self.owner_args = (self.owner_args if scope else []), []
             func.static, func.variadic = spec.static, variadic
             func.virtual = "virtual" in spec.words
             func.constant_evaluation = bool(spec.words & {"constexpr", "consteval"})
@@ -446,22 +514,55 @@ class Parser(StmtParser):
         where = self.where
         kind = self.take().text
         self.attributes()
-        if name is None:
-            if self.peek().kind != "id" or self.peek().text in KEYWORDS:
-                raise self.refuse(f"an unnamed {kind}, which has no name to make a Python class of")
-            name = self.take().text
+        aligned = self._alignas()
+        unnamed = name is None and self.at_("{")
+        name = self._unnamed_name() if unnamed else name or self._class_name()
         self.types.add(name)
-        if self.at_("<"):
-            raise self.refuse(f"a specialisation of the class template {name}")
+        specialises = self.template_args() if self.at_("<") else None
         self.accept("final")
         bases = self._bases() if self.accept(":") else []
-        decl = ClassDecl(where, name, kind, bases, self._members(name))
+        decl = ClassDecl(where, name, kind, bases, self._members(name, kind == "class"))
+        decl.specialises, decl.aligned = specialises, aligned
         if typedef:
             self._class_aliases(name)
         elif not self.at_(";"):
+            while self.accept("const", "volatile"):
+                pass
             decl.declarators = self.declarators(Specifiers(CType(name), set()))
+        elif unnamed:
+            # Its members are the scope's around it, which a Python class cannot give.
+            raise self.refuse(f"an unnamed {kind}, which has no name to make a Python class of")
         self.expect(";")
         return decl
+
+    def _unnamed_name(self) -> str:
+        """A name for an unnamed class that declares variables, ``struct { int a; } s;``."""
+        self.unnamed += 1
+        return f"anonymous__{self.unnamed}"
+
+
+    #: How many unnamed classes with variables have been given names.
+    unnamed = 0
+
+    def _alignas(self) -> object:
+        """``alignas(16)`` or ``alignas(T)`` after ``struct``: the alignment the class is given."""
+        if not self.accept("alignas"):
+            return None
+        self.expect("(")
+        found = self.trial(lambda: self.type_id(strict=True)) or self.constant()
+        self.expect(")")
+        return found
+
+    def _class_name(self) -> str:
+        """The name a class declaration gives: ``Box``, and ``std::hash`` for a specialisation
+        of the standard's - the outer scopes of any other dropped, as namespaces are."""
+        parts = [self.take().text]
+        while self.at_("::") and self.peek(1).kind == "id":
+            self.take()
+            parts.append(self.take().text)
+        if parts[0] == "std" and len(parts) == 2:
+            return "::".join(parts)
+        return parts[-1]
 
     def _class_aliases(self, name: str) -> None:
         """``} T, *PT;`` of a ``typedef struct``: each a name for the class, or a pointer to it."""
@@ -484,11 +585,13 @@ class Parser(StmtParser):
             if not self.accept(","):
                 return bases
 
-    def _members(self, name: str) -> list[Stmt]:
+    def _members(self, name: str, hidden: bool) -> list[Stmt]:
+        """A class body's members; ``hidden`` says they start private, as a ``class``'s do."""
         self.expect("{")
         self.classes.append(name)
         self.push()
         members: list[Stmt] = []
+        outer, self.hidden = self.hidden, hidden
         try:
             while not self.accept("}"):
                 member = self.member()
@@ -497,13 +600,17 @@ class Parser(StmtParser):
         finally:
             self.pop()
             self.classes.pop()
+            self.hidden = outer
         return members
+
+    #: Whether the class body being read is in a private or protected part.
+    hidden = False
 
     def member(self) -> Stmt | None:
         """One member of a class body, or ``None`` for an access label or a stray ``;``."""
         self.attributes()
         if self.at_(*ACCESS):
-            self.take()
+            self.hidden = self.take().text != "public"
             self.accept("slots")
             self.expect(":")
             return None
@@ -521,6 +628,7 @@ class Parser(StmtParser):
         if isinstance(found, DeclStmt):  # the comment after its ';' is each member's title
             for decl in found.decls:
                 decl.comment = self.tokens[self.at - 1].note
+                decl.hidden = self.hidden
         return found
 
     def _skip_friend(self) -> None:
@@ -559,14 +667,13 @@ class Parser(StmtParser):
         where = self.take().where
         scoped = self.accept("class", "struct")
         name = self.take().text if self.peek().kind == "id" else None
-        if self.accept(":"):
-            self.type_id()
+        underlying = self.type_id() if self.accept(":") else None
         if name is not None:
             self.types.add(name)
             self.aliases[name] = CType("int", enum=name)
         if self.accept(";"):
-            return EnumDecl(where, name, [], scoped)
-        decl = EnumDecl(where, name, self._enumerators(), scoped)
+            return EnumDecl(where, name, [], scoped, underlying=underlying)
+        decl = EnumDecl(where, name, self._enumerators(), scoped, underlying=underlying)
         if not self.at_(";"):
             decl.declarators = self.declarators(Specifiers(CType("int"), set()))
         self.expect(";")
@@ -576,11 +683,20 @@ class Parser(StmtParser):
 def _declared_type(tokens: list[Token], index: int) -> str | None:
     """The type ``class X``, ``enum class X``, ``typename X`` or ``using X =`` declares here."""
     token, after = tokens[index], tokens[index + 1]
+    if after.is_("alignas"):
+        return _aligned_name(tokens, index) if token.is_("class", "struct", "union") else None
     if token.is_("class", "struct", "union", "enum", "typename") and after.kind == "id":
         return (tokens[index + 2] if after.is_("class", "struct") else after).text
     if token.is_("using") and after.kind == "id" and tokens[index + 2].is_("="):
         return after.text
     return None
+
+
+def _aligned_name(tokens: list[Token], index: int) -> str | None:
+    """The class ``struct alignas(8) X`` declares: the name after the bracket."""
+    close = next((i for i in range(index + 2, len(tokens) - 1) if tokens[i].is_(")")), None)
+    after = tokens[close + 1] if close is not None else tokens[-1]
+    return after.text if after.kind == "id" else None
 
 
 def _templated(tokens: list[Token], ahead: int) -> str | None:

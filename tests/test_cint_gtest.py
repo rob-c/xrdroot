@@ -11,7 +11,7 @@ import pytest
 
 from cintfake import fake
 from xrdroot.cli import main
-from xrdroot.pycint import Refusal, translate
+from xrdroot.pycint import translate
 from xrdroot.pycxx import cache
 
 #: ROOT's diagnostic levels, which ``ROOT_EXPECT_ERROR`` and ``CheckDiagsRAII`` name.
@@ -365,9 +365,9 @@ def test_googletests_header_is_read_once_however_often_it_is_included() -> None:
     assert "A_B_registered" in translate(source)
 
 
-def test_a_typed_test_is_refused_by_name() -> None:
-    with pytest.raises(Refusal, match=r"^<macro>:2: TYPED_TEST, a GoogleTest typed test, "):
-        translate("#include <gtest/gtest.h>\nTYPED_TEST(Suite, Name) {}\n")
+def test_a_typed_test_is_a_class_template_of_its_fixtures() -> None:
+    python = translate("#include <gtest/gtest.h>\nTYPED_TEST_P(Suite, Name) {}\n")
+    assert "class Suite_Name_Test(" in python and "def TestBody(self):" in python
 
 
 def test_a_fixture_calls_getparam_as_its_own_method() -> None:

@@ -18,6 +18,7 @@ from .ctype import FLOATING, INTEGRAL, CType
 from .dialect import active
 from .freeops import UNARY as FREE_UNARY
 from .freeops import FreeOperator, choose
+from .limits import is_limit, limit_type
 from .nodes import (
     Assign,
     Binary,
@@ -38,6 +39,7 @@ from .nodes import (
     Unary,
 )
 from .symbols import Symbol
+from .traits import is_trait
 
 __all__ = ["Inference", "DOUBLE", "INT", "BOOL", "arithmetic_result"]
 
@@ -147,6 +149,10 @@ class Inference(EmitterBase):
 
     def _type_name(self, node: Name) -> CType | None:
         symbol = self.symbol(node)
+        if symbol is None and is_limit(node.parts, node.targs):
+            return limit_type(node.targs[0] if node.targs else None, node.last)
+        if symbol is None and is_trait(node):
+            return BOOL
         if symbol is None or symbol.ctype is None:
             return None
         return symbol.ctype.value() if not symbol.ctype.dims else symbol.ctype
@@ -184,6 +190,9 @@ class Inference(EmitterBase):
     def _dereferenced_type(self, inner: CType | None) -> CType | None:
         if inner is not None and (inner.pointer or inner.dims):
             return inner.element()
+        held = inner.args[0] if inner is not None and inner.is_smart and inner.args else None
+        if isinstance(held, CType):
+            return held  # ``*p`` of a ``std::unique_ptr<T>`` is the ``T`` it holds
         return self.reader_element(inner, "value") or inner
 
     def _type_binary(self, node: Binary) -> CType | None:
@@ -251,14 +260,22 @@ class Inference(EmitterBase):
 
     def _named_call(self, func: Name, node: Call) -> CType | None:
         symbol = self.symbol(func)
-        if symbol is not None and symbol.kind == "class":
+        if symbol is None and is_limit(func.parts, func.targs):
+            return limit_type(func.targs[0] if func.targs else None, func.last)
+        if symbol is None:
+            return self._library_call(func, node)
+        if symbol.kind == "class":
             return CType(symbol.name)
-        if symbol is not None and symbol.kind in ("function", "method", "static"):
-            funcs = self.function_named(symbol)
-            return funcs[0].returns if funcs else None
-        if symbol is not None:
-            return None
-        return self._library_call(func, node)
+        if symbol.kind in ("function", "method", "static"):
+            return self._function_result(func, node, symbol)
+        return None
+
+    def _function_result(self, func: Name, node: Call, symbol: Symbol) -> CType | None:
+        """What a function of the program's returns - an instance's, for a template."""
+        funcs = self.function_named(symbol)
+        if funcs and funcs[0].template is not None:
+            return self.instance_returns(func, node, symbol)
+        return funcs[0].returns if funcs else None
 
     def _library_call(self, func: Name, node: Call) -> CType | None:
         parts = func.parts[1:] if func.parts[0] == "std" else func.parts
@@ -353,6 +370,10 @@ class Inference(EmitterBase):
 
     def function_named(self, symbol: Symbol) -> list[Any]:
         """The functions a function or method symbol stands for."""
+        raise NotImplementedError
+
+    def instance_returns(self, func: Name, node: Call, symbol: Symbol | None) -> CType | None:
+        """What a call of a function template returns, when its arguments are known."""
         raise NotImplementedError
 
     _RULES: ClassVar[dict[type, Callable[[Inference, Any], CType | None]]] = {

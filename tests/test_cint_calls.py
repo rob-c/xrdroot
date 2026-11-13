@@ -97,7 +97,7 @@ def test_calls_are_written_as_their_python(source: str, fragment: str) -> None:
 @pytest.mark.parametrize(
     ("source", "why"),
     [
-        ("auto x = std::numeric_limits<long double>::max();", r"numeric_limits<long double>::max"),
+        ("auto x = std::numeric_limits<std::string>::max();", r"numeric_limits<std::string>::max"),
         ("std::sort(v.begin());", "std::sort without a range"),
         ("auto s = std::accumulate(v.begin(), v.end());", "std::accumulate with an operation"),
         ("std::sort(v.begin(), w.end());", "a range whose two ends are in different containers"),

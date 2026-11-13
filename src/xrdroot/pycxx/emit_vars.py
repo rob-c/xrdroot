@@ -18,7 +18,6 @@ from typing import Any
 from .ctype import CType
 from .dialect import active
 from .emit_expr import is_container, zero
-from .emit_names import type_text
 from .emit_stmt import StmtEmitter
 from .nodes import (
     Call,
@@ -326,8 +325,9 @@ class VariableEmitter(StmtEmitter):
         if element.scalar:
             return f"array({element.name!r}, {dims}{values})"
         if element.pointer or element.is_string:
-            return f"array({type_text(element)!r}, {dims}{values})"
-        return f"array({type_text(element)!r}, {dims}{values}, make={self.class_expr(element)})"
+            return f"array({self.spelled(element)!r}, {dims}{values})"
+        made = self.class_expr(element)
+        return f"array({self.spelled(element)!r}, {dims}{values}, make={made})"
 
     def _dimensions(self, decl: VarDecl, ctype: CType, init: Expr | None) -> str:
         dims = []
