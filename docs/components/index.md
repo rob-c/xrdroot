@@ -73,8 +73,8 @@ Read [boundary checks](boundaries.md) for the enforcement commands and
 
 ## Validation status
 
-The component graph is enforced on every commit: `tools/components.py check
---strict` must report zero undeclared imports, and CI imports each component
+The component graph is enforced on every commit: `tools/components.py check`
+must report zero undeclared imports, and CI imports each component
 in a fresh process with everything above it blocked. The one declared private
 import, `iminuit._core`, is reported and reviewed. The refactor reached zero
 debt in small gated groups, with no limit raised, no coverage lowered and no

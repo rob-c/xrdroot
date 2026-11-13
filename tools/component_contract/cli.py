@@ -1,13 +1,11 @@
-"""Expose inventories and enforcement without automatically approving existing debt."""
+"""Enforce the component graph: every import must follow a declared edge."""
 
 from __future__ import annotations
 
 import argparse
-import json
-from collections import Counter
 from pathlib import Path
 
-from .analysis import Report, graph, inspect, inventory, ratchet
+from .analysis import Report, graph, inspect
 from .isolation import isolate
 from .model import ContractError, Policy, load_policy
 
@@ -16,9 +14,7 @@ def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     commands = result.add_subparsers(dest="command", required=True)
-    check = commands.add_parser("check", help="Reject new debt and stale baseline allowances.")
-    check.add_argument("--strict", action="store_true", help="Require zero dependency debt.")
-    check.add_argument("--inventory", type=Path, help="Write a NEW, unreviewed source inventory.")
+    commands.add_parser("check", help="Require zero undeclared imports.")
     drawing = commands.add_parser("graph", help="Show ownership counts and the declared DAG.")
     drawing.add_argument("--dot", action="store_true")
     isolation = commands.add_parser("isolate", help="Import behind fresh component boundaries.")
@@ -33,17 +29,10 @@ def parser() -> argparse.ArgumentParser:
     return result
 
 
-def check(policy: Policy, args: argparse.Namespace) -> int:
+def check(policy: Policy) -> int:
     report = inspect(policy)
     _show_report(report)
-    if args.inventory is not None:
-        _write_inventory(policy, report, args.inventory)
-        return 0
-    if args.strict:
-        return int(bool(report.violations))
-    added, removed = ratchet(policy, report, policy.root / policy.baseline)
-    _show_changes(added, removed)
-    return int(bool(added or removed))
+    return int(bool(report.violations))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -51,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         policy = load_policy(args.root.resolve())
         if args.command == "check":
-            return check(policy, args)
+            return check(policy)
         if args.command == "graph":
             print(graph(policy, inspect(policy), args.dot))
             return 0
@@ -68,17 +57,5 @@ def _show_report(report: Report) -> None:
         print(f"{item.path}:{item.line}: {item.component} -> {item.target} "
               "[external-private-reviewed]")
     print(f"{len(report.modules)} source modules; {report.import_count} imports; "
-          f"{len(report.violations)} existing violations.")
+          f"{len(report.violations)} undeclared imports.")
 
-
-def _write_inventory(policy: Policy, report: Report, path: Path) -> None:
-    with path.open("x") as stream:
-        json.dump(inventory(policy, report), stream, indent=2)
-        stream.write("\n")
-    print("Inventory written for review; no debt allowance was approved.")
-
-
-def _show_changes(added: Counter[str], removed: Counter[str]) -> None:
-    for label, records in (("NEW", added), ("RESOLVED: shrink the reviewed inventory", removed)):
-        for record, count in sorted(records.items()):
-            print(f"{label} ({count}): {record}")

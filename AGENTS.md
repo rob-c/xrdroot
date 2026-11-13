@@ -87,7 +87,7 @@ and `pycint/emit.py`, read through the `Dialect` interface of
 reaches pycint only through the `interpreter.*` providers.
 
 ```bash
-python tools/components.py check --strict      # every import, including lazy ones
+python tools/components.py check               # every import, including lazy ones
 python tools/components.py isolate cppstd core pycxx pycint  # fresh-process import isolation
 python tools/components.py isolate pycxx --tests pycxx  # the translator's tests, no ROOT
 python tools/components.py graph
@@ -118,11 +118,16 @@ git -C rootsrc-6.40 sparse-checkout set tutorials test roottest cmake/modules $(
 ```
 
 The **ROOT 6.40.04 oracle** is needed only for tutorial comparison. Install it
-with micromamba from conda-forge (Homebrew's ROOT does not install):
+with micromamba from conda-forge (Homebrew's ROOT does not install). If
+micromamba is missing, the standalone binary needs no installer
+(`curl -fsSL https://micro.mamba.pm/api/micromamba/osx-arm64/latest | tar -xj bin/micromamba`):
 
 ```bash
-micromamba create -p ~/.local/root-oracle -c conda-forge root=6.40.04 python=3.12
+micromamba create -p ~/.local/root-oracle -c conda-forge --override-channels \
+    root=6.40.04 python=3.13 pytest numpy pandas
 ```
+
+About 2.3 GB. `root-config --features` on it is the macOS ARM64 feature set.
 
 ROOT's tutorial outputs are cached in `~/.cache/xrdroot-tutorials/oracle`, so
 ROOT only reruns when a tutorial changes (`--refresh-oracle` forces a rerun).
@@ -178,7 +183,7 @@ XRDROOT_TEST_OTHER_MACHINE=1 pytest -q -p no:cacheprovider -n 4 --cov=xrdroot
 ruff check src tests tools
 mypy                                                 # strict
 python tools/maintainability.py check
-python tools/components.py check --strict
+python tools/components.py check
 mkdocs build --strict
 ```
 

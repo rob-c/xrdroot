@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
-from tools.component_contract.analysis import graph, inspect, inventory, ratchet
+from tools.component_contract.analysis import graph, inspect
 from tools.component_contract.cli import main
 from tools.component_contract.imports import imports, modules
 from tools.component_contract.isolation import Boundary, isolate
@@ -19,7 +18,6 @@ def _raw() -> dict:
         "schema": 1,
         "package": "demo",
         "source": "src/demo",
-        "baseline": "debt.json",
         "provider_registry": "demo.plugins",
         "provider_functions": ["demo.plugins.lookup", "demo.plugins.require"],
         "groups": {"engines": ["cppstd", "core", "high"]},
@@ -46,14 +44,6 @@ def _project(root: Path, sources: dict[str, str]):
     return policy_from(root, _raw())
 
 
-def _review(root: Path, policy, report) -> Path:
-    value = inventory(policy, report)
-    value.update(reviewed=True, review="Test review of this exact synthetic source inventory.")
-    path = root / "debt.json"
-    path.write_text(json.dumps(value))
-    return path
-
-
 def _toml(root: Path) -> None:
     # Synthetic policy used by fresh interpreters; no installation or external dependency is needed.
     root.joinpath("pyproject.toml").write_text("""
@@ -61,7 +51,6 @@ def _toml(root: Path) -> None:
 schema = 1
 package = "demo"
 source = "src/demo"
-baseline = "debt.json"
 [tool.xrdroot.components.ownership.cppstd]
 modules = ["demo.cppstd"]
 [tool.xrdroot.components.ownership.core]
@@ -388,34 +377,6 @@ def test_syntax_errors_are_reported_as_contract_failures(tmp_path: Path) -> None
         inspect(policy)
 
 
-def test_the_debt_ratchet_ignores_line_moves_but_counts_duplicate_imports(tmp_path: Path) -> None:
-    policy = _project(tmp_path, {"core": "from .high import VALUE\n"})
-    path = _review(tmp_path, policy, inspect(policy))
-    source = tmp_path / "src/demo/core.py"
-    source.write_text("\n\nfrom .high import VALUE\n")
-    assert ratchet(policy, inspect(policy), path) == ({}, {})
-    source.write_text("from .high import VALUE\nfrom .high import VALUE\n")
-    added, removed = ratchet(policy, inspect(policy), path)
-    assert sum(added.values()) == 1 and not removed
-    source.write_text("")
-    added, removed = ratchet(policy, inspect(policy), path)
-    assert not added and sum(removed.values()) == 1
-
-
-def test_unreviewed_or_policy_mismatched_debt_never_becomes_an_allowance(tmp_path: Path) -> None:
-    policy = _project(tmp_path, {})
-    path = tmp_path / "debt.json"
-    path.write_text(json.dumps(inventory(policy, inspect(policy))))
-    with pytest.raises(ContractError, match="explicit source review"):
-        ratchet(policy, inspect(policy), path)
-    path = _review(tmp_path, policy, inspect(policy))
-    raw = _raw()
-    raw["ownership"]["core"]["hard"] = ["numpy"]
-    changed = policy_from(tmp_path, raw)
-    with pytest.raises(ContractError, match="different component policy"):
-        ratchet(changed, inspect(changed), path)
-
-
 def _providers(tmp_path: Path, declaration: str):
     _project(
         tmp_path,
@@ -543,18 +504,17 @@ def test_fresh_process_isolation_catches_parent_and_function_local_leaks(tmp_pat
     assert isolate(policy, ["cppstd"], []) == 1
 
 
-def test_cli_inventory_requires_review_and_cannot_overwrite_evidence(
+def test_cli_check_fails_on_any_undeclared_import_and_passes_without_one(
     tmp_path: Path, capsys
 ) -> None:
     _project(tmp_path, {"core": "from . import high\n"})
     _toml(tmp_path)
     argv = ["--root", str(tmp_path), "check"]
-    assert main([*argv, "--inventory", str(tmp_path / "debt.json")]) == 0
-    assert json.loads((tmp_path / "debt.json").read_text())["reviewed"] is False
-    assert main(argv) == 2
-    assert "needs explicit source review" in capsys.readouterr().out
-    assert main([*argv, "--inventory", str(tmp_path / "debt.json")]) == 2
-    assert main([*argv, "--strict"]) == 1
+    assert main(argv) == 1
+    assert "1 undeclared imports." in capsys.readouterr().out
+    (tmp_path / "src/demo/core.py").write_text("")
+    assert main(argv) == 0
+    assert "0 undeclared imports." in capsys.readouterr().out
     assert main(["--root", str(tmp_path), "graph", "--dot"]) == 0
 
 
@@ -726,16 +686,13 @@ def calculation():
     return policy_from(root, raw)
 
 
-def test_exact_reviewed_private_imports_remain_visible_in_the_report_and_inventory(tmp_path):
+def test_exact_reviewed_private_imports_remain_visible_in_the_report(tmp_path):
     policy = _private(tmp_path)
     report = inspect(policy)
     assert report.violations == ()
     assert [(v.target, v.rule, v.scope) for v in report.reviewed_private] == [
         ("optional_lib._core", "external-private", "calculation")
     ]
-    saved = inventory(policy, report)
-    assert saved["reviewed_private_imports"][0]["target"] == "optional_lib._core"
-    assert saved["violations"] == []
 
 
 def test_reviewing_one_private_module_does_not_allow_another_in_the_same_package(tmp_path):
@@ -865,7 +822,7 @@ def test_registration_aliases_and_callbacks_are_recorded_without_an_upward_impor
     assert [(r.module, r.point, r.target) for r in report.registrations] == [
         ("demo.core", "demo.cppstd.install", "demo.core:callback")
     ]
-    assert inventory(policy, report)["registrations"][0]["statement"] == "register(callback)"
+    assert report.registrations[0].statement == "register(callback)"
     assert policy.closure("cppstd") == {"cppstd"}
 
 
@@ -1052,7 +1009,7 @@ def test_registry_require_forwards_only_its_own_point_and_key_to_declared_lookup
     assert [(r.module, r.scope, r.statement, r.provider) for r in report.forwarders] == [
         ("demo.plugins", "require", "lookup(point, key)", "demo.plugins.lookup")
     ]
-    assert inventory(policy, report)["forwarders"][0]["statement"] == "lookup(point, key)"
+    assert report.forwarders[0].statement == "lookup(point, key)"
     assert "high" not in policy.closure("core")
 
 

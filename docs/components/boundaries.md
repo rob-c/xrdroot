@@ -23,38 +23,22 @@ lazy, and private third-party imports are reported. Dynamic import sites need
 narrow source-reviewed declarations. [Provider targets](providers.md) are checked
 against a separate extension-edge allowlist.
 
-## Inventory, ratchet and graph
+## Check and graph
 
 From the worktree root, with its environment active:
 
 ```bash
 export PYTHONPATH="$PWD/src"
+python tools/components.py check
 python tools/components.py graph
 python tools/components.py graph --dot
-python tools/components.py check --inventory /absolute/durable/path/component-inventory.json
 ```
 
-`--inventory` creates a new unreviewed report and refuses to overwrite a file.
-Its successful exit means the inventory was written, even if it reports debt.
-It does not approve that debt or pass a boundary gate. The report records actual
-source hashes and the policy fingerprint.
-
-After source review of the exact inventory and policy:
-
-```bash
-python tools/components.py check
-python tools/components.py check --strict
-```
-
-Normal `check` requires an explicitly reviewed baseline with a review record and
-matching policy. It rejects new violations and stale allowances for resolved
-ones; resolved debt must shrink in the reviewed inventory. Moving a line alone
-does not forgive a violation. `--strict` requires zero violations independently
-of baseline allowances. The committed policy now carries a materialized
-inventory with zero debt: `check --strict` reports 857 modules and 9,788 import
-references with no undeclared violation, and the single declared private Minuit
-import remains visible. Every allowance burned down in the reviewed groups is
-gone from the policy rather than kept as a zero.
+`check` fails on any import that leaves its component by an undeclared edge,
+including lazy imports inside functions. There is no debt allowance: the
+graph reached zero violations in October 2026, and the reviewed inventory
+that tracked the burn-down was retired with it. The single declared private
+import, `iminuit._core`, stays visible in the report.
 
 Use the global root option before the command to inspect another worktree:
 
@@ -62,9 +46,8 @@ Use the global root option before the command to inspect another worktree:
 python tools/components.py --root /absolute/path/to/worktree graph
 ```
 
-Do not replace a failed inventory or simply mark a report reviewed to make a
-command pass. Ownership and provider-policy changes require a fresh attributed
-inventory and review.
+A failing check is fixed by changing the import or, when the dependency is
+wanted, by declaring the edge in `pyproject.toml`'s ownership table.
 
 ## Fresh-process isolation
 

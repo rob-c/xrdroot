@@ -58,7 +58,7 @@ jobs:
       # is imported in its own -I child with higher imports blocked. This uses
       # the same NumPy/client/dev installation on Linux and macOS.
       - name: component contract
-        run: python tools/components.py check --strict
+        run: python tools/components.py check
       - name: fresh component imports
         run: >-
           python tools/components.py isolate

@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import hashlib
 import importlib
-import json
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -57,7 +55,6 @@ class Policy:
     root: Path
     package: str
     source: str
-    baseline: str
     components: dict[str, Component]
     extensions: tuple[Extension, ...]
     provider_functions: tuple[str, ...]
@@ -97,23 +94,6 @@ class Policy:
                     pending.append(target)
         return frozenset(result)
 
-    def fingerprint(self) -> str:
-        value = {
-            "package": self.package,
-            "source": self.source,
-            "components": _record_map(self.components),
-            "extensions": _record_list(self.extensions),
-            "provider_functions": self.provider_functions,
-            "provider_registry": self.provider_registry,
-            "stdlib": self.stdlib_extra,
-            "dynamics": _record_list(self.dynamics),
-            "tests": _record_map(self.test_scopes),
-            "module_aliases": _record_map(self.module_aliases),
-            "private_imports": _record_list(self.private_imports),
-            "registration_functions": _record_map(self.registration_functions),
-            "registrations": _record_list(self.registrations),
-        }
-        return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
 def _strings(value: Any, label: str) -> tuple[str, ...]:
@@ -192,7 +172,6 @@ def policy_from(root: Path, raw: dict[str, Any]) -> Policy:
         root,
         raw["package"],
         raw["source"],
-        raw["baseline"],
         components,
         extensions,
         tuple(raw.get("provider_functions", [])),
@@ -238,11 +217,3 @@ def load_policy(root: Path) -> Policy:
         raise ContractError("Component tooling on Python 3.10 needs pip install tomli.") from error
     raw = module.loads((root / "pyproject.toml").read_text())
     return policy_from(root, raw["tool"]["xrdroot"]["components"])
-
-
-def _record_map(values: dict[str, Any]) -> dict[str, Any]:
-    return {name: asdict(value) for name, value in values.items()}
-
-
-def _record_list(values: tuple[Any, ...]) -> list[Any]:
-    return [asdict(value) for value in values]

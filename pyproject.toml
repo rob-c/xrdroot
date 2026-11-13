@@ -208,7 +208,6 @@ ignore_missing_imports = true
 schema = 1
 package = "xrdroot"
 source = "src/xrdroot"
-baseline = "tools/components-baseline.json"
 # Names added after Python 3.10; policy results must not vary with the tooling interpreter.
 stdlib = ["compression", "tomllib"]
 provider_registry = "xrdroot.plugins"

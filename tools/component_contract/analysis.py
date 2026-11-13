@@ -1,13 +1,9 @@
-"""Compare semantic import debts, so moving a line does not forgive a regression."""
+"""Find every import that leaves its component by an undeclared edge."""
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections import Counter
-from dataclasses import asdict, dataclass
-from pathlib import Path
-from typing import Any
+from dataclasses import dataclass
 
 from .dynamic import expand
 from .imports import Import, Module, imports, modules
@@ -27,10 +23,6 @@ class Violation:
     scope: str
     statement: str
 
-    def identity(self) -> str:
-        value = asdict(self)
-        del value["line"]
-        return json.dumps(value, sort_keys=True)
 
 
 @dataclass(frozen=True)
@@ -42,10 +34,6 @@ class Report:
     registrations: tuple[Import, ...] = ()
     forwarders: tuple[Import, ...] = ()
 
-    def source_map(self) -> dict[str, str]:
-        return {
-            m.path: hashlib.sha256(m.source.encode()).hexdigest() for m in self.modules.values()
-        }
 
 
 def _external(policy: Policy, ref: Import, component: str) -> list[str]:
@@ -122,35 +110,6 @@ def inspect(policy: Policy) -> Report:
         known, tuple(sorted(violations)), len(refs), approved,
         tuple(_of_kind(expanded, "registration")), tuple(_of_kind(expanded, "forwarder")),
     )
-
-
-def inventory(policy: Policy, report: Report) -> dict[str, Any]:
-    return {
-        "schema": 1,
-        "reviewed": False,
-        "review": "",
-        "policy_sha256": policy.fingerprint(),
-        "source_files": report.source_map(),
-        "violations": [asdict(v) for v in report.violations],
-        "reviewed_private_imports": [asdict(v) for v in report.reviewed_private],
-        "registrations": [asdict(r) for r in report.registrations],
-        "forwarders": [asdict(r) for r in report.forwarders],
-    }
-
-
-def baseline_counts(policy: Policy, path: Path) -> Counter[str]:
-    value = json.loads(path.read_text())
-    if value.get("schema") != 1 or value.get("reviewed") is not True or not value.get("review"):
-        raise ContractError("The violation inventory needs explicit source review before use.")
-    if value.get("policy_sha256") != policy.fingerprint():
-        raise ContractError("The reviewed inventory belongs to a different component policy.")
-    return Counter(Violation(**v).identity() for v in value["violations"])
-
-
-def ratchet(policy: Policy, report: Report, path: Path) -> tuple[Counter[str], Counter[str]]:
-    baseline = baseline_counts(policy, path)
-    actual = Counter(v.identity() for v in report.violations)
-    return actual - baseline, baseline - actual
 
 
 def graph(policy: Policy, report: Report, dot: bool = False) -> str:
