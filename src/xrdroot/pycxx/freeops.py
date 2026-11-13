@@ -154,11 +154,22 @@ def _class_fit(
     levels = given.pointer + len(given.dims)
     if not (param.is_class and given.is_class) or param.pointer != levels:
         return None
-    if _same(param.name, given.name):
-        templated = any(isinstance(arg, CType) and arg.name in template for arg in param.args)
-        return TEMPLATED if templated else EXACT
+    if _same(param.name, given.name) or _instance_of(given.name, param, classes):
+        return TEMPLATED if _templated(param, template) else EXACT
     steps = _steps(given.name, param.name, classes)
     return BASE + steps if steps is not None else None
+
+
+def _templated(param: CType, template: set[str]) -> bool:
+    """Is ``param`` a class template given the template's own parameters, ``Array<T>``?"""
+    return any(isinstance(arg, CType) and arg.name in template for arg in param.args)
+
+
+def _instance_of(name: str, param: CType, classes: dict[str, ClassInfo]) -> bool:
+    """Is the class ``name`` an instance of the class template ``param`` names with arguments,
+    ``Array<int>`` of ``Array<T>``?"""
+    info = classes.get(name)
+    return bool(param.args) and info is not None and _same(info.origin or "", param.name)
 
 
 def _same(one: str, other: str) -> bool:

@@ -254,7 +254,10 @@ class StmtEmitter(CallEmitter):
     def _delete_statement(self, expr: Delete) -> bool:
         found = self.typeof(expr.operand)
         if expr.array or (found is not None and found.element().scalar):
-            self.out.line(f"{self.value(expr.operand)} = None", expr.where)
+            # The memory is Python's to free; a pointer that is not a variable is let go of.
+            held = isinstance(expr.operand, (Name, Member, Index))
+            line = f"{self.value(expr.operand)} = None" if held else self.value(expr.operand)
+            self.out.line(line, expr.where)
             return True
         self.out.line(f"delete({self.value(expr.operand)})", expr.where)
         return True
@@ -309,6 +312,16 @@ class StmtEmitter(CallEmitter):
     # -- branches ----------------------------------------------------------------
 
     def _if(self, node: If) -> None:
+        chosen = self.constant_value(node.cond) if node.constexpr else None
+        if chosen is not None:
+            # ``if constexpr``: the other branch is not compiled, and need not make sense here.
+            branch = node.then if chosen else node.orelse
+            with self.scoped():
+                if node.init is not None:
+                    self.statement(node.init)
+                if branch is not None:
+                    self.statement(branch)
+            return
         with self.scoped():
             if node.init is not None:
                 self.statement(node.init)

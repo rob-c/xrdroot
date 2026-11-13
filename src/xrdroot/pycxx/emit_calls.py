@@ -16,14 +16,15 @@ standard library's calls that have no Python counterpart are rewritten:
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from .base import Out, P
 from .ctype import SMART, CType
 from .cursor import looks_like_type
 from .dialect import active
 from .emit_expr import ExprEmitter, _copy_store, _lvalue, zero
-from .emit_names import type_text
+from .limits import FUNCTIONS as LIMIT_FUNCTIONS
+from .limits import is_limit
 from .literals import suffixes
 from .nodes import (
     Assign,
@@ -54,31 +55,6 @@ WRAPS = {
 
 #: A container's iterator functions, and the index each stands for in a slice.
 ITERATOR_ENDS = {"begin": "0", "cbegin": "0", "end": "None", "cend": "None"}
-
-#: ``std::numeric_limits<T>``'s members, for the floating types and the integer ones.
-LIMITS = {
-    ("double", "max"): "1.7976931348623157e+308",
-    ("double", "min"): "2.2250738585072014e-308",
-    ("double", "lowest"): "-1.7976931348623157e+308",
-    ("double", "epsilon"): "2.220446049250313e-16",
-    ("double", "infinity"): "float('inf')",
-    ("double", "quiet_NaN"): "float('nan')",
-    ("float", "max"): "3.4028234663852886e+38",
-    ("float", "min"): "1.1754943508222875e-38",
-    ("float", "lowest"): "-3.4028234663852886e+38",
-    ("float", "epsilon"): "1.1920928955078125e-07",
-    ("float", "infinity"): "float('inf')",
-    ("float", "quiet_NaN"): "float('nan')",
-    ("int", "max"): "2147483647",
-    ("int", "min"): "-2147483648",
-    ("int", "lowest"): "-2147483648",
-    ("unsigned int", "max"): "4294967295",
-    ("long", "max"): "9223372036854775807",
-    ("long", "min"): "-9223372036854775808",
-    ("long long", "max"): "9223372036854775807",
-    ("unsigned long", "max"): "18446744073709551615",
-}
-
 
 def _tuple(items: list[str]) -> str:
     """Python's spelling of a tuple of ``items``: ``()``, ``(a,)``, ``(a, b)``."""
@@ -135,10 +111,15 @@ class CallEmitter(ExprEmitter):
 
     def named_call(self, func: Name, node: Call) -> Out:
         symbol = self.symbol(func)
+        instance = self.function_instance(func, node, symbol)
+        if instance is not None:
+            return f"{instance}({self.arguments(node)})", P.POSTFIX
         if symbol is not None:
             given = [self.arguments(node), self._template_values(func, symbol)]
             args = ", ".join(filter(None, given))
             return f"{self.use(symbol)[0]}({args})", P.POSTFIX
+        if is_limit(func.parts, func.targs) and func.last in LIMIT_FUNCTIONS:
+            return self.limit(func, node, "()"), P.ATOM
         if self._smart_alias(func):
             return self._pointer_held(node)
         special = self._special(func)
@@ -147,6 +128,10 @@ class CallEmitter(ExprEmitter):
             if found is not None:
                 return found
         return f"{self.library(func)[0]}({self.arguments(node)})", P.POSTFIX
+
+    def function_instance(self, func: Name, node: Call, symbol: Symbol | None) -> str | None:
+        """The instance of a function template a call calls, if it is one."""
+        raise NotImplementedError
 
     def _special(self, func: Name) -> Callable[[CallEmitter, Name, Call], Out | None] | None:
         """How a library function is written when it is not a plain call: the standard's,
@@ -169,7 +154,11 @@ class CallEmitter(ExprEmitter):
             return ""
         values = {str(param.name) for param in chosen.values}
         pairs = zip(chosen.template or [], func.targs or [], strict=False)
-        return ", ".join(f"{name}={self.value(arg)}" for name, arg in pairs if name in values)
+        return ", ".join(self._keyword(name, arg) for name, arg in pairs if name in values)
+
+    def _keyword(self, name: str, arg: Any) -> str:
+        """``N=3`` for a value argument; a type, written where a value is, passes nothing."""
+        return "" if isinstance(arg, CType) else f"{name}={self.value(arg)}"
 
     def _valued(self, symbol: Symbol) -> Function | None:
         """The function template with value parameters that ``symbol`` names, if it is one."""
@@ -195,15 +184,6 @@ class CallEmitter(ExprEmitter):
         if not node.args:
             return "None", P.ATOM
         return self.expr(node.args[0])
-
-    def _limits(self, func: Name, node: Call) -> Out | None:
-        if len(func.parts) < 2 or func.parts[-2] != "numeric_limits" or not func.targs:
-            return None
-        kind = type_text(func.targs[0])
-        value = LIMITS.get((kind, func.last))
-        if value is None:
-            raise self.refuse(f"std::numeric_limits<{kind}>::{func.last}()", node)
-        return value, P.ATOM
 
     def _exit(self, func: Name, node: Call) -> Out | None:
         return f"c_exit({self.arguments(node)})", P.POSTFIX
@@ -303,12 +283,6 @@ class CallEmitter(ExprEmitter):
         "shared_ptr": _smart,
         "make_unique": _make,
         "make_shared": _make,
-        "max": _limits,
-        "min": _limits,
-        "lowest": _limits,
-        "epsilon": _limits,
-        "infinity": _limits,
-        "quiet_NaN": _limits,
         "exit": _exit,
         "abort": _exit,
         "sort": _sort,

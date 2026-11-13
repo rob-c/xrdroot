@@ -65,6 +65,11 @@ class Writer:
         self.lines.insert(at, indent + text)
         self.places.insert(at, where)
 
+    def splice(self, at: int, other: Writer) -> None:
+        """The lines another writer wrote, put in at ``at``, at the top level."""
+        self.lines[at:at] = other.lines
+        self.places[at:at] = other.places
+
     def text(self) -> str:
         return "\n".join(self.lines).rstrip() + "\n"
 

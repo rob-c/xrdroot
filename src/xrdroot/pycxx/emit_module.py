@@ -17,7 +17,7 @@ from typing import Any
 
 from .ctype import CType
 from .dialect import active
-from .emit_classes import ClassEmitter
+from .emit_templates import TemplateEmitter
 from .emit_vars import addressable, sized
 from .freeops import written_type
 from .nodes import ClassDecl, DeclStmt, EnumDecl, ExprStmt, Function, Namespace, Stmt, VarDecl
@@ -41,7 +41,7 @@ def entry_name(stem: str) -> str:
     return clean if not clean[0].isdigit() else "_" + clean
 
 
-class Translator(ClassEmitter):
+class Translator(TemplateEmitter):
     """Everything the emitter does, from the top: :meth:`translate` a whole program."""
 
     def __init__(self, program: Program, file: str, stem: str) -> None:
@@ -53,6 +53,7 @@ class Translator(ClassEmitter):
         self.namespaces = _namespaces(program.unit.decls)
         self.scope_where = program.unit.where
         self._emitted: set[str] = set()
+        self._pending = []
         self.module_statics = []
         #: How deep :meth:`top` is: a class's nested types are written by it too.
         self._depth = 0
@@ -76,11 +77,22 @@ class Translator(ClassEmitter):
             filled = {"translator": dialect.translator, "host": dialect.host}
             self.out.line(line.format(name=name, runtime=dialect.runtime, **filled))
         self.predeclare()
-        for decl in self.program.order:
+        for index, decl in enumerate(self.program.order):
+            self._instances(index)
             self.top(decl)
+        self._instances(len(self.program.order))
         self._unnamed()
         self._footer()
         return self.out
+
+    def _instances(self, index: int) -> None:
+        """The class templates' instances the declaration at ``index`` is the first to need,
+        written before it - each after those it needs - as C++ instantiates them there."""
+        templates = self.program.templates
+        for key in templates.made:
+            if templates.points[key] <= index and key not in self._emitted:
+                self._emitted.add(key)
+                self.top(self.program.classes[key].decl)
 
     def predeclare(self) -> None:
         """Every name the macro declares at namespace scope, before any is used."""
@@ -126,6 +138,8 @@ class Translator(ClassEmitter):
             self._depth -= 1
         if not self._depth:
             self._statics_at(mark)
+            if not self.splicing:
+                self.splice_instances(mark)
 
     def _statics_at(self, mark: int) -> None:
         """The holders of the static locals just written, put at module level at ``mark``."""
@@ -190,8 +204,24 @@ class Translator(ClassEmitter):
         symbol = self.lookup(decl.name)
         py = symbol.py if symbol is not None else python_name(decl.name)
         self.out.blank(2)
-        self.overloaded(decl.name, py, self.program.overloads(decl.name), self.function)
+        self._overload_set(decl, py, self.program.overloads(decl.name))
         self.out.blank()
+
+    def _overload_set(self, decl: Function, py: str, funcs: list[Function]) -> None:
+        """A free function's overloads - written for every use, if a template's among them."""
+        if any(func.template is not None for func in funcs):
+            self.generic(
+                lambda: self.overloaded(decl.name, py, funcs, self.function),
+                lambda why: self._uninstantiated_function(decl, py, why),
+            )
+        else:
+            self.overloaded(decl.name, py, funcs, self.function)
+
+    def _uninstantiated_function(self, decl: Function, py: str, why: str) -> None:
+        self.out.line(f"def {py}(*args, **kwargs):", decl.where)
+        with self.out.indented():
+            what = f"the function template {decl.name}"
+            self.out.line(f"uninstantiated({what!r}, {why!r})", decl.where)
 
     def _free_operator(self, decl: Function) -> None:
         """An operator defined outside a class: a function of its own, which ``a == b`` calls

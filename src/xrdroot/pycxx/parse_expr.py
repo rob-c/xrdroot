@@ -538,19 +538,25 @@ class ExprParser(TypeParser):
         rooted = self.accept("::")
         parts: list[str] = []
         targs: list[Any] | None = None
+        each: list[list[Any] | None] = []
         while True:
             self.accept("template")
             special = self._special_part()
             if special is not None:
                 parts.append(special)
+                each.append(None)
                 break
             parts.append(self.identifier())
-            if self.at_("<"):
-                targs = self._name_targs(parts) or targs
+            own = self._name_targs(parts) if self.at_("<") else None
+            each.append(own)
+            targs = own or targs
             if not ((self.at_("::") and self.peek(1).kind == "id") or self._scoped_operator()):
                 break
             self.take()
-        return Name(where, self._standard(self._type_scope(self.unaliased(parts))), targs, rooted)
+        found = Name(where, self._standard(self._type_scope(self.unaliased(parts))), targs, rooted)
+        if len(each) > 1 and len(found.parts) == len(each):
+            found.scope_targs = each[-2]
+        return found
 
     def _type_scope(self, parts: list[str]) -> list[str]:
         """``generator::max`` after ``using generator = std::mt19937``: the class's member."""

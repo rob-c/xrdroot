@@ -12,10 +12,12 @@ destructor ``_destruct`` (which ``delete`` calls). ``ClassDef`` and
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from .ctype import CType
 from .emit_funcs import FunctionEmitter
+from .errors import Refusal
 from .nodes import ClassDecl, EnumDecl, Expr, Function, Literal, Unary, VarDecl
 from .operators import DUNDERS
 from .program import ClassInfo
@@ -29,6 +31,9 @@ class ClassEmitter(FunctionEmitter):
 
     def top(self, decl: object) -> None:
         raise NotImplementedError
+
+    #: The lines of module-level holders the static locals being written need.
+    module_statics: list[tuple[str, Any]]
 
     # -- enums -------------------------------------------------------------------
 
@@ -76,6 +81,37 @@ class ClassEmitter(FunctionEmitter):
     # -- classes -------------------------------------------------------------------
 
     def class_def(self, decl: ClassDecl) -> None:
+        if decl.template is None:
+            self._class_def(decl)
+            return
+        self.generic(
+            lambda: self._class_def(decl),
+            lambda why: self._uninstantiated_class(decl, why),
+        )
+
+    def generic(self, write: Callable[[], None], instead: Callable[[str], None]) -> None:
+        """A template written once for every use whose arguments are not known - or, where
+        its body cannot be written without them, ``instead``: a stand-in refusing its use."""
+        mark, statics, names = self.out.mark(), len(self.module_statics), set(self.template_names)
+        try:
+            write()
+        except Refusal as why:
+            self.out.truncate(mark)
+            del self.module_statics[statics:]
+            self.template_names = names
+            instead(str(why))
+
+    def _uninstantiated_class(self, decl: ClassDecl, why: str) -> None:
+        py = self._class_symbol(decl.name).py
+        self.out.blank(2 if self.scope.kind == "module" else 1)
+        self.out.line(f"class {py}:", decl.where)
+        with self.out.indented():
+            self.out.line("def __init__(self, *args, **kwargs):", decl.where)
+            with self.out.indented():
+                what = f"the class template {decl.name}"
+                self.out.line(f"uninstantiated({what!r}, {why!r})", decl.where)
+
+    def _class_def(self, decl: ClassDecl) -> None:
         info = self.program.classes[decl.name]
         for nested in info.types:
             self.top(nested)
@@ -121,7 +157,8 @@ class ClassEmitter(FunctionEmitter):
         return found
 
     def _class_body(self, info: ClassInfo) -> None:
-        self.out.line(f"_cxx_layout_ = {_layout(info)!r}", info.decl.where)
+        spellings = self.program.templates.spellings
+        self.out.line(f"_cxx_layout_ = {_layout(info, spellings)!r}", info.decl.where)
         for name, var in info.statics.items():
             ctype = self.declared_type(var)
             self.out.line(f"{member_name(name)} = {self.initial(var, ctype)}", var.where)
@@ -182,8 +219,12 @@ class ClassEmitter(FunctionEmitter):
             )
 
     def _base_inits(self, info: ClassInfo, inits: dict[str, list[Expr]]) -> None:
+        origins = self.program.templates.origins
         for base in info.decl.bases:
-            args = inits.get(base.ctype.name, inits.get(base.ctype.name.split("::")[-1], []))
+            name = base.ctype.name
+            # ``: Box<int>(9)`` initialises the base ``Box<int>``, whose key is ``Box__int``.
+            written = inits.get(origins.get(name, name), inits.get(name.split("::")[-1], []))
+            args = inits.get(name, written)
             call = ", ".join(["self", *(self.value(arg) for arg in args)])
             self.out.line(f"{self._base(base.ctype)}.__init__({call})", base.where)
 
@@ -275,15 +316,15 @@ def _constant(value: Expr) -> int | None:
 Layout = tuple[str, tuple[str, ...], tuple[tuple[str, str, str, tuple[int | None, ...]], ...]]
 
 
-def _layout(info: ClassInfo) -> Layout:
+def _layout(info: ClassInfo, spellings: dict[str, str]) -> Layout:
     """A class's data members as a reflection dictionary would describe them, for a library
-    that writes objects member by member."""
-    bases = tuple(base.ctype.name for base in info.decl.bases)
+    that writes objects member by member - an instance of a template by its C++ name."""
+    bases = tuple(spellings.get(base.ctype.name, base.ctype.name) for base in info.decl.bases)
     members = tuple(
-        (name, _spelled(var.ctype), var.comment, tuple(map(_dimension, var.ctype.dims)))
+        (name, _spelled(var.ctype, spellings), var.comment, tuple(map(_dimension, var.ctype.dims)))
         for name, var in info.fields.items()
     )
-    return info.name, bases, members
+    return spellings.get(info.name, info.name), bases, members
 
 
 def _dimension(size: Any) -> int | None:
@@ -291,8 +332,10 @@ def _dimension(size: Any) -> int | None:
     return size if isinstance(size, int) else _constant(size)
 
 
-def _spelled(ctype: CType) -> str:
+def _spelled(ctype: CType, spellings: dict[str, str]) -> str:
     """A member's type as C++ spells it: the typedef it was written as, its arguments, stars."""
-    args = ", ".join(_spelled(arg) if isinstance(arg, CType) else "?" for arg in ctype.args)
-    name = ctype.written or ctype.name
+    args = ", ".join(
+        _spelled(arg, spellings) if isinstance(arg, CType) else "?" for arg in ctype.args
+    )
+    name = ctype.written or spellings.get(ctype.name, ctype.name)
     return (f"{name}<{args}>" if ctype.args else name) + "*" * ctype.pointer

@@ -192,7 +192,7 @@ class StmtParser(ExprParser):
 
     def _if(self) -> Stmt:
         where = self.take().where
-        self.accept("constexpr")
+        constexpr = self.accept("constexpr")
         self.expect("(")
         self.push()
         try:
@@ -203,7 +203,7 @@ class StmtParser(ExprParser):
             orelse = self.statement() if self.accept("else") else None
         finally:
             self.pop()
-        return If(where, cond, then, orelse, init)
+        return If(where, cond, then, orelse, init, constexpr)
 
     def _if_init(self) -> Stmt | None:
         """``if (auto x = f(); x > 0)``: the statement before the condition, if there is one."""
@@ -403,16 +403,28 @@ class StmtParser(ExprParser):
     def _defines_type(self) -> bool:
         """Does ``struct X`` here go on to define ``X`` - ``{`` or a base list after its name?"""
         ahead = 1
+        if self.peek(ahead).is_("alignas"):
+            ahead = self._past_brackets(ahead + 1)
         while self.peek(ahead).kind == "id" or self.peek(ahead).is_("::", "<"):
             ahead = self._past_angles(ahead) if self.peek(ahead).is_("<") else ahead + 1
         return self.peek(ahead).is_("{", ":")
+
+    def _past_brackets(self, ahead: int) -> int:
+        """Where the ``(...)`` starting ``ahead`` tokens on ends."""
+        depth = 0
+        while True:
+            token = self.peek(ahead)
+            depth += token.is_("(") - token.is_(")")
+            ahead += 1
+            if depth <= 0 or token.kind == "eof":
+                return ahead
 
     def _past_angles(self, ahead: int) -> int:
         """Where the ``<...>`` starting ``ahead`` tokens on ends, nested ones included."""
         depth = 0
         while True:
             token = self.peek(ahead)
-            depth += token.is_("<") - token.is_(">")
+            depth += token.is_("<") - token.is_(">") - 2 * token.is_(">>")
             ahead += 1
             if depth <= 0 or token.kind == "eof":
                 return ahead

@@ -152,6 +152,9 @@ class CType:
     written: str = ""
     #: Retained conservatively so copy elision never loses a volatile declaration.
     volatile: bool = False
+    #: The template arguments of the class a nested type is named in: ``<int>`` of
+    #: ``List<int>::Node``.
+    scope_args: list[Any] = field(default_factory=list)
 
     # -- what kind of thing it is ------------------------------------------
 
@@ -233,18 +236,3 @@ class CType:
     def pointed(self) -> CType:
         """The type ``&x`` has when ``x`` has this one."""
         return replace(self, pointer=self.pointer + 1, reference=False)
-
-    @property
-    def size(self) -> int | None:
-        """``sizeof`` this type, when it is one this translator knows the size of."""
-        if self.pointer and not self.dims:
-            return 8
-        base = 8 if self.pointer else SIZES.get(self.name)
-        if base is None:
-            return None
-        count = 1
-        for dim in self.dims:
-            if not isinstance(dim, int):
-                return None
-            count *= dim
-        return base * count

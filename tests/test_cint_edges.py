@@ -140,9 +140,9 @@ def test_out_of_class_members_of_a_class_template_are_its_methods() -> None:
     assert "def set(self, x):" in translate(source, "t.C")
 
 
-def test_a_specialisation_of_a_class_template_is_refused() -> None:
-    with pytest.raises(Refusal, match="a specialisation of the class template Box"):
-        translate("template <typename T> struct Box {};\ntemplate <> struct Box<int> {};", "t.C")
+def test_a_partial_specialisation_of_a_template_the_macro_does_not_define_is_refused() -> None:
+    with pytest.raises(Refusal, match="a partial specialisation of Box, a template the program"):
+        translate("template <typename T> struct Box<T *> {};", "t.C")
 
 
 @pytest.mark.parametrize(
@@ -261,7 +261,8 @@ def test_members_declared_after_their_definitions_and_types_named_through_classe
     [
         ("static_assert(1", "the macro ends in the middle"),
         ("void t() { int (*p) = nullptr; }", "assigning to something that is not a variable"),
-        ("template <int N> struct Fixed { int a[N]; };", "N, a value a class template is given"),
+        ("template <class T, class U> struct P {}; template <class T> struct P<T, int> {};"
+         "template <class U> struct P<int, U> {}; P<int, int> p;", "more than one partial"),
         ("template <typename T> T half = T(1) / 2;", "a variable template"),
     ],
 )

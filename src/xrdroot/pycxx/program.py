@@ -18,6 +18,7 @@ from typing import Any
 
 from .ctype import CType
 from .dialect import active
+from .instantiate import Templates
 from .nodes import (
     Binary,
     Call,
@@ -79,6 +80,8 @@ class ClassInfo:
     methods: dict[str, list[Function]] = field(default_factory=dict)
     constants: dict[str, str] = field(default_factory=dict)
     types: list[Stmt] = field(default_factory=list)
+    #: The class template this class is an instance of, if it is one.
+    origin: str | None = None
 
     @property
     def name(self) -> str:
@@ -137,10 +140,23 @@ class Program:
         self.global_cells: set[str] = set()
         #: The out-of-class definitions of static members, written in their class instead.
         self.class_statics: set[int] = set()
+        #: The class templates, and the classes made of them for the arguments they are given.
+        self.templates = Templates(self)
         self._flatten(unit.decls)
         self._attach()
         self._locals()
+        self._instantiate()
         self._escapes()
+
+    def _instantiate(self) -> None:
+        """Every class template the program names with known arguments, instantiated."""
+        for index, decl in enumerate(self.order):
+            self.templates.current = index
+            self.templates.resolve(decl, frozenset())
+        self.templates.current = len(self.order)
+        self.templates.resolve(self.unit.unnamed, frozenset())
+        # From here on an instance is made as the translation is written, to go where it is.
+        self.templates.current = len(self.order) + 1
 
     def _locals(self) -> None:
         """Classes and enums declared inside functions: known by name, as they are in C++."""
@@ -158,6 +174,12 @@ class Program:
             if isinstance(decl, Namespace):
                 self._flatten(decl.body)
                 continue
+            if isinstance(decl, ClassDecl) and decl.specialises is not None and not decl.template:
+                decl = self.templates.explicit(decl)
+            if isinstance(decl, ClassDecl) and _partial(decl):
+                self.templates.partial(decl)
+                continue
+            self.templates.current = len(self.order)
             self.order.append(decl)
             self._collect(decl)
 
@@ -168,6 +190,8 @@ class Program:
             self._enum(decl, None)
         elif isinstance(decl, DeclStmt):
             for var in decl.decls:
+                if decl.template is not None:
+                    self.templates.static(decl.template, var, decl.where)
                 self._global(var)
         elif isinstance(decl, Typedef):
             self.aliases[decl.name] = decl.ctype
@@ -193,13 +217,20 @@ class Program:
         owner.statics[var.name] = var
         self.class_statics.add(id(var))
 
-    def _class(self, decl: ClassDecl) -> None:
+    def register(self, decl: ClassDecl) -> ClassInfo:
+        """A class, made of a template here, known from now on as the program's own."""
+        return self._class(decl)
+
+    def _class(self, decl: ClassDecl) -> ClassInfo:
+        if decl.template is not None:
+            self.templates.add_class(decl)
         info = self.classes.setdefault(decl.name, ClassInfo(decl))
         info.decl = decl
         for member in decl.members:
             self._member(info, member)
         for var in decl.declarators:
             self.globals[var.name] = var
+        return info
 
     def _member(self, info: ClassInfo, member: Stmt) -> None:
         if isinstance(member, Function):
@@ -209,7 +240,11 @@ class Program:
                 (info.statics if var.static else info.fields)[var.name] = var
         elif isinstance(member, EnumDecl):
             self._enum(member, info)
+        elif isinstance(member, ClassDecl) and _partial(member):
+            self.templates.partial(member)
         elif isinstance(member, ClassDecl):
+            if member.specialises is not None:
+                member = self.templates.explicit(member)
             info.types.append(member)
             self._class(member)
 
@@ -235,7 +270,10 @@ class Program:
             if not isinstance(decl, Function):
                 continue
             owner = self.classes.get(decl.scope[-1]) if decl.scope else None
-            if owner is not None:
+            self.templates.member(decl)
+            if decl.specialises is not None and not decl.scope:
+                self.templates.specialised(decl)
+            elif owner is not None:
                 owner.add_method(decl)
             elif decl.body is not None or decl.name not in self.functions:
                 self._function(decl)
@@ -274,6 +312,13 @@ class Program:
             local = {param.name for param in params} | _declared(body)
             self.cells[id(owner)] = names & local
             self.global_cells |= names - local
+
+    def analyse(self, func: Function) -> None:
+        """A function made after the rest were looked over - an instance of a template - looked
+        over the same way: which of its names are held in cells."""
+        names = set(self._escaping(func.body)) if func.body is not None else set()
+        local = {param.name for param in func.params} | _declared(func.body or func)
+        self.cells[id(func)] = names & local
 
     def cell_names(self, owner: Node) -> set[str]:
         return self.cells.get(id(owner), set())
@@ -377,3 +422,8 @@ def _declared(body: Node) -> set[str]:
         elif isinstance(node, Lambda):
             names.update(param.name for param in node.params if param.name)
     return names
+
+
+def _partial(decl: ClassDecl) -> bool:
+    """A partial specialisation, ``template <class T> struct Box<T*>``: kept with its primary."""
+    return bool(decl.template) and decl.specialises is not None

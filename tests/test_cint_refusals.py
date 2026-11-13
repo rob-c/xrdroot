@@ -77,10 +77,6 @@ def test_constructs_with_no_python_are_refused_by_name_at_their_line(source: str
             "struct V { int x; };\nV operator&&(V a, V b) { return a; }",
             "the operator && defined outside a class",
         ),
-        (
-            "template <typename T> const char *f() { return typeid(T).name(); }",
-            "typeid of the template parameter T",
-        ),
         ("int main() { return 0; } }", "C\\+\\+ this translator cannot read"),
     ],
 )

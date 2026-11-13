@@ -26,7 +26,7 @@ from typing import Any, ClassVar
 from .base import Out, P
 from .ctype import CType
 from .dialect import active
-from .emit_names import NameEmitter, type_text
+from .emit_names import NameEmitter
 from .errors import Refusal
 from .freeops import UNARY as FREE_UNARY
 from .infer import is_elementwise
@@ -54,6 +54,7 @@ from .nodes import (
 )
 from .operators import DUNDERS, python_operator
 from .program import by_reference
+from .sizes import size_of
 from .typeids import polymorphic, qualified_names, spelled
 
 __all__ = ["ExprEmitter", "COMPARISONS", "CONTAINERS", "is_container", "zero"]
@@ -692,7 +693,7 @@ class ExprEmitter(NameEmitter):
 
     def _sizeof(self, node: SizeOf) -> Out:
         ctype = node.ctype if node.ctype is not None else self.typeof(node.operand)
-        size = ctype.size if ctype is not None else None
+        size = size_of(ctype.value(), self.program) if ctype is not None else None
         if size is None:
             raise self.refuse("sizeof of a type whose size this translator does not know", node)
         return str(size), P.ATOM
@@ -716,6 +717,7 @@ class ExprEmitter(NameEmitter):
             return None
         if self._qualified is None:
             self._qualified = qualified_names(self.program.unit.decls)
+            self._qualified.update(self.program.templates.spellings)
         text = spelled(ctype, self._qualified)
         if text is None:
             raise self.refuse("typeid of an array whose size is not a number written out", node)
@@ -755,7 +757,7 @@ class ExprEmitter(NameEmitter):
             return f"array({ctype.name!r}, {self.value(count)})"
         if ctype.pointer:
             return f"[None] * {self.at(count, P.MUL)}"
-        return f"array({type_text(ctype)!r}, {self.value(count)}, make={self.class_expr(ctype)})"
+        return f"array({self.spelled(ctype)!r}, {self.value(count)}, make={self.class_expr(ctype)})"
 
     def _delete(self, node: Delete) -> Out:
         raise self.refuse("delete inside an expression", node)

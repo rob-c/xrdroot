@@ -54,7 +54,11 @@ KNOWN_TEMPLATES = frozenset(
     numeric_limits complex get basic_string static_cast dynamic_cast reinterpret_cast
     const_cast atomic optional variant valarray bitset initializer_list less greater hash
     reference_wrapper weak_ptr remove_reference decay is_same enable_if span duration
-    time_point""".split()
+    time_point is_same_v is_integral is_integral_v is_floating_point is_floating_point_v
+    is_arithmetic is_arithmetic_v is_signed is_signed_v is_unsigned is_unsigned_v is_pointer
+    is_pointer_v is_reference is_reference_v is_array is_array_v is_const is_const_v is_void
+    is_void_v is_enum is_enum_v is_class is_class_v is_fundamental is_fundamental_v is_scalar
+    is_scalar_v is_base_of is_base_of_v""".split()
 )
 
 #: The standard names of types, as opposed to the functions std also declares.
