@@ -335,6 +335,9 @@ class ExprEmitter(NameEmitter):
         """``*p``: the object itself for a pointer to one, element 0 for a pointer to numbers."""
         if isinstance(operand, This):
             return "self", P.ATOM
+        extreme = self.extreme_element(operand)
+        if extreme is not None:
+            return extreme, P.POSTFIX
         found = self.typeof(operand)
         if found is None:
             return f"deref({self.value(operand)})", P.POSTFIX
@@ -347,6 +350,11 @@ class ExprEmitter(NameEmitter):
         if found.is_object_pointer or (found.is_class and not found.pointer):
             return self.expr(operand)
         return f"{self.at(operand, P.POSTFIX)}[0]", P.POSTFIX
+
+    def extreme_element(self, operand: Expr) -> str | None:
+        """``*std::max_element(first, last)``: the largest element - the first of the largest,
+        as Python's ``max`` gives it - or the least, of ``min_element``."""
+        raise NotImplementedError
 
     def _read_through(self, operand: Expr, found: CType) -> str | None:
         """``*p`` of what holds a value rather than being it: a ``shared_ptr<int>`` - a number,

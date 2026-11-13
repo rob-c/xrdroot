@@ -139,6 +139,7 @@ def test_sizeof_is_the_size_clang_gives_on_arm64(capsys) -> None:
         "unsigned long n = sizeof(std::bitset<k>);",
         "unsigned long n = sizeof(std::complex<Library>);",
         "unsigned long n = sizeof(std::pair<Library, int>);",
+        "unsigned long n = sizeof(std::variant<Library, int>);",
         "struct alignas(Library) M { int m; }; unsigned long n = sizeof(M);",
         "struct alignas(k) M { int m; }; unsigned long n = sizeof(M);",
         "void f(int k) { int a[k]; unsigned long n = sizeof(a); }",

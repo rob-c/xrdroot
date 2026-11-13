@@ -48,6 +48,10 @@ STANDARD: dict[str, Layout] = {
     "std::byte": (1, 1),
 }
 
+#: The standard's class templates that hold one of their arguments and what says which - an
+#: ``unsigned int`` for libc++'s ``std::variant``, a ``bool`` for ``std::optional``.
+TAGGED: dict[str, Layout] = {"std::variant": (4, 4), "std::optional": (1, 1)}
+
 #: The standard's class templates that hold their argument a number of times, and how many.
 REPEATS = {"std::complex": 2, "std::atomic": 1}
 
@@ -104,13 +108,21 @@ def _standard(ctype: CType, program: Any) -> Layout | None:
     if fixed is not None:
         return fixed
     kinds = [arg for arg in ctype.args if isinstance(arg, CType)]
-    if ctype.name in AGGREGATES and len(kinds) == len(ctype.args):
-        return _struct(kinds, program)
-    count = REPEATS.get(ctype.name)
-    if count is not None and kinds:
-        part = layout(kinds[0], program)
-        return (count * part[0], part[1]) if part is not None else None
+    if kinds and len(kinds) == len(ctype.args):
+        return _composed(ctype.name, kinds, program)
     return _sized_template(ctype, program)
+
+
+def _composed(name: str, kinds: list[CType], program: Any) -> Layout | None:
+    """A standard class template of types, laid out from theirs."""
+    if name in AGGREGATES:
+        return _struct(kinds, program)
+    tag = TAGGED.get(name)
+    if tag is not None:
+        return _tagged(kinds, tag, program)
+    count = REPEATS.get(name)
+    part = layout(kinds[0], program) if count is not None else None
+    return (count * part[0], part[1]) if count is not None and part is not None else None
 
 
 def _sized_template(ctype: CType, program: Any) -> Layout | None:
@@ -234,6 +246,16 @@ def _struct(fields: list[CType], program: Any) -> Layout | None:
     if found is None:
         return None
     return _aligned(max(found[0], 1), found[1]), found[1]
+
+
+def _tagged(kinds: list[CType], tag: Layout, program: Any) -> Layout | None:
+    """``std::variant<A, B>`` and ``std::optional<T>`` as libc++ lays them out: room for the
+    largest alternative, then the ``tag`` that tells which is held."""
+    found = _union(kinds, program)
+    if found is None:
+        return None
+    align = max(found[1], tag[1])
+    return _aligned(_aligned(found[0], tag[1]) + tag[0], align), align
 
 
 def _union(fields: list[CType], program: Any) -> Layout | None:

@@ -53,6 +53,9 @@ WRAPS = {
     "signed char": "i8",
 }
 
+#: ``std::max_element`` and ``std::min_element``, and the Python of what the one found holds.
+EXTREMES = {"max_element": "max", "min_element": "min"}
+
 #: A container's iterator functions, and the index each stands for in a slice.
 ITERATOR_ENDS = {"begin": "0", "cbegin": "0", "end": "None", "cend": "None"}
 
@@ -179,9 +182,15 @@ class CallEmitter(ExprEmitter):
         return next((f for f in self.function_named(symbol) if f.values), None)
 
     def _make(self, func: Name, node: Call) -> Out | None:
-        if not func.targs or not isinstance(func.targs[0], CType):
+        """``std::make_shared<T>(args)``: a ``T`` built - a number in a cell, which ``*p``
+        reads and writes through, as it does the number a smart pointer holds."""
+        kind = func.targs[0] if func.targs else None
+        if not isinstance(kind, CType):
             return None
-        return f"{self.class_expr(func.targs[0])}({self.arguments(node)})", P.POSTFIX
+        if kind.scalar:
+            first = self.store(kind, node.args[0]) if node.args else zero(kind)
+            return f"Cell({first}, {kind.name!r})", P.POSTFIX
+        return f"{self.class_expr(kind)}({self.arguments(node)})", P.POSTFIX
 
     def _smart_alias(self, func: Name) -> bool:
         """Is ``func`` a name ``using`` or ``typedef`` gave a smart pointer - ``Upvd_t(p)``?"""
@@ -246,6 +255,16 @@ class CallEmitter(ExprEmitter):
 
     def _unsupported(self, func: Name, node: Call) -> Out | None:
         raise self.refuse(f"{func.text}() where its result is used", node)
+
+    def extreme_element(self, operand: Expr) -> str | None:
+        func = operand.func if isinstance(operand, Call) else None
+        if not isinstance(func, Name) or func.last not in EXTREMES or self.symbol(func):
+            return None
+        assert isinstance(operand, Call)
+        if len(operand.args) != 2:
+            raise self.refuse(f"std::{func.last} with a comparison of its own", operand)
+        container, start, stop = self.iterator_range(operand.args[0], operand.args[1], operand)
+        return f"{EXTREMES[func.last]}({container}[{start}:{'' if stop == 'None' else stop}])"
 
     def _sort(self, func: Name, node: Call) -> Out | None:
         helper = "sort_range" if func.last in ("sort", "stable_sort") else "reverse_range"

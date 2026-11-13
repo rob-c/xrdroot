@@ -476,6 +476,11 @@ class StmtParser(ExprParser):
         return Empty(where)
 
     def _local_type(self) -> Stmt:
+        if self.peek(1).kind == "id" and self.peek(2).is_(";") and not self.at_("enum"):
+            where = self.take().where  # ``class Event;``: declared, to be defined elsewhere
+            self.take()
+            self.take()
+            return Empty(where)
         if not self._defines_type():
             return self.declaration_statement()
         if self.at_("enum"):

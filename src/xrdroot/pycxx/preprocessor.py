@@ -30,6 +30,7 @@ PREDEFINED = """
 #define __cplusplus 201703L
 #define __linux__ 1
 #define __unix__ 1
+#define __attribute__(x)
 #define PRId32 "d"
 #define PRIi32 "i"
 #define PRIu32 "u"

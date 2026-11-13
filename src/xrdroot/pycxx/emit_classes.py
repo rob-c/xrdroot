@@ -259,13 +259,29 @@ class ClassEmitter(FunctionEmitter):
         static = funcs[0].static
         self.out.blank()
         decorator = "@staticmethod" if static and len(funcs) == 1 else None
-        self.overloaded(
-            name,
-            py,
-            funcs,
-            lambda func, each: self.function(func, each, method=not static, decorator=decorator),
-            method=not static,
-        )
+
+        def write() -> None:
+            self.overloaded(
+                name,
+                py,
+                funcs,
+                lambda func, each: self.function(
+                    func, each, method=not static, decorator=decorator
+                ),
+                method=not static,
+            )
+
+        if any(func.template is not None for func in funcs):
+            self.generic(write, lambda why: self._uninstantiated_method(funcs[0], py, why))
+        else:
+            write()
+
+    def _uninstantiated_method(self, func: Function, py: str, why: str) -> None:
+        """A member template whose body needs its arguments, used where they are not known."""
+        self.out.line(f"def {py}(*args, **kwargs):", func.where)
+        with self.out.indented():
+            what = f"the member template {func.name}"
+            self.out.line(f"uninstantiated({what!r}, {why!r})", func.where)
 
     def _method_name(self, func: Function) -> str:
         if func.kind == "destructor":

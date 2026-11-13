@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from xrdroot.cppstd.strings import with_char
-from xrdroot.pycxx import run_source, translate
+from xrdroot.pycxx import Refusal, run_source, translate
 
 #: A string's characters written one at a time, as C and C++ write them.
 CHARACTERS = r"""
@@ -115,3 +115,62 @@ def test_the_grammar_reads_as_cpp_does(capsys) -> None:
 )
 def test_declarations_and_expressions_once_refused_are_read(source: str, fragment: str) -> None:
     assert fragment in translate(source, "t.C")
+
+
+#: The largest and least of a range, a local class declared ahead, and an attribute.
+EXTREMES = r"""
+#include <cstdio>
+#include <algorithm>
+#include <vector>
+#include <variant>
+#include <optional>
+struct Tool {
+   template <class T> long width(T x) const;
+   template <class T> long kind() const { return sizeof(T) * 2; }
+};
+template <class T> long Tool::width(T x) const { return sizeof(T) + long(x); }
+static int __attribute__((used)) kSeven = 7;
+int extremes() {
+   class Later;
+   std::vector<double> v{2.5, 7.25, -1, 7.25};
+   int a[5] = {4, 9, 1, 9, 3};
+   Tool t;
+   printf("%g %g %d %d %d\n", *std::max_element(v.begin(), v.end()),
+          *std::min_element(v.begin() + 1, v.end()), *std::max_element(a, a + 5),
+          *std::min_element(a, a + 3), kSeven);
+   printf("%zu %zu %zu %ld %ld\n", sizeof(std::variant<char, short>), sizeof(std::optional<char>),
+          sizeof(std::variant<int, double>), t.width(2.0), t.kind<short>());
+   return 0;
+}
+"""
+
+
+def test_extremes_member_templates_and_the_standards_variants(capsys) -> None:
+    run_source(EXTREMES, "extremes.C")
+    assert capsys.readouterr().out == "7.25 -1 9 1 7\n8 2 16 10 4\n"
+
+
+def test_a_number_made_shared_is_read_and_written_through_its_pointer(capsys) -> None:
+    source = r"""
+    #include <memory>
+    void shared() {
+       auto p = std::make_shared<int>(5);
+       auto q = std::make_shared<unsigned int>();
+       auto r = std::make_unique<double>(2.5);
+       *q = 9;
+       printf("%d %u %g\n", *p, *q, *r);
+    }
+    """
+    run_source(source, "shared.C")
+    assert capsys.readouterr().out == "5 9 2.5\n"
+
+
+def test_an_extreme_by_a_comparison_of_its_own_is_refused() -> None:
+    source = "bool less(int a, int b); void f(int *a) { int m = *std::max_element(a, a, less); }"
+    with pytest.raises(Refusal, match="std::max_element with a comparison of its own"):
+        translate(source, "t.C")
+
+
+def test_a_member_template_whose_body_needs_its_arguments_refuses_its_use_where_unknown() -> None:
+    source = "struct S { template <class T> T make() { T x; return x; } }; void f(S s) {}"
+    assert "uninstantiated('the member template make', " in translate(source, "t.C")
