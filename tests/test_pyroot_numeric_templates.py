@@ -6,7 +6,7 @@ from xrdroot.pyroot import stl
 
 
 @pytest.mark.parametrize('name', list(stl.CPP_NAMES))
-def test_numeric_templates_build_once_from_the_original_dtype(name):
+def test_numeric_templates_build_once_from_the_native_plain_dtype(name):
     given = np.dtype(name, metadata={'description': 'native column'}).newbyteorder('>')
     calls = []
 
@@ -19,7 +19,9 @@ def test_numeric_templates_build_once_from_the_original_dtype(name):
     assert template[given] is first
     assert template[np.dtype(name)] is first
     assert len(calls) == 1
-    assert calls[0] is given
+    # The class is shared by every spelling of the type, so it must not keep the first
+    # caller's byte order or metadata.
+    assert calls[0] == np.dtype(name) and calls[0].isnative and calls[0].metadata is None
 
 
 def test_numeric_template_keys_follow_changes_to_the_cpp_spelling_table(monkeypatch):
