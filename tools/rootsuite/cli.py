@@ -24,6 +24,7 @@ from typing import Any
 
 from . import ratchet, report, scope
 from .discover import DEFAULT_FEATURES, discover
+from .machine import default_features
 from .model import CI_COUNTS, Test
 from .runner import Runner, Settings, select
 
@@ -74,12 +75,19 @@ def _selection(command: argparse.ArgumentParser) -> None:
     command.add_argument("--kind", action="append", choices=KINDS, default=[],
                          help="only tests of this kind (repeatable)")
     command.add_argument("--only", action="append", default=[], help="only ids matching a glob")
-    command.add_argument("--features", help="build options to assume, space-separated")
+    command.add_argument("--features", help="build options to assume, space-separated "
+                         "(the oracle's root-config --features, else macOS ARM64's)")
     command.add_argument("--scope", type=Path, default=scope.SCOPE, help="the scope labels")
 
 
 def _features(args: argparse.Namespace) -> frozenset[str]:
-    return frozenset(args.features.replace(",", " ").split()) if args.features else DEFAULT_FEATURES
+    """``--features`` as given, else the machine's, asked of the oracle once per command."""
+    if args.features:
+        return frozenset(args.features.replace(",", " ").split())
+    if getattr(args, "machine_features", None) is None:
+        args.machine_features = default_features()
+    found: frozenset[str] = args.machine_features
+    return found
 
 
 def _tests(args: argparse.Namespace) -> list[Test]:

@@ -42,6 +42,13 @@ _UNSUPPORTED = re.compile(r"^(?:[\w.]+\.)?(?:UnsupportedFeatureError|Refusal): (
 _USAGE = re.compile(r"^xrdroot: error: (.+)$", re.M)
 #: ``[Errno 2] No such file or directory: ...``: an ``OSError`` the CLI printed as its refusal.
 _OS_ERROR = re.compile(r"\[Errno \d+\]")
+#: ``file.C:7:1: error: ...``: an error ``xrdroot root`` reports as cling would.
+_DIAGNOSTIC = re.compile(r"^(\S+): error: (.+)$", re.M)
+#: What xrdroot says of what it does not do: its refusal, a ROOT name it does not have
+#: yet, or C++ its translator does not turn into Python.
+_SAYS_UNSUPPORTED = re.compile(
+    r"^(?:[\w.]+\.)?(?:UnsupportedFeatureError|Refusal): |xrdroot\.pyroot does not yet|"
+    r"this translator")
 
 
 @dataclass
@@ -58,11 +65,16 @@ class Verdict:
 
 
 def refusal(result: Result) -> str:
-    """xrdroot's refusal in a run's output, or ``""``: exit 2 with its line, or the error raised."""
+    """xrdroot's refusal in a run's output, or ``""``: exit 2 with its line, the error raised,
+    or a cling-style error saying xrdroot does not do something."""
     text = result.stdout + "\n" + result.stderr
     found = _UNSUPPORTED.search(text)
     if found:
         return found.group(1).strip()
+    said = [f"{where}: {what}" for where, what in _DIAGNOSTIC.findall(text)
+            if _SAYS_UNSUPPORTED.search(what)]
+    if said:
+        return said[0]
     found = _REFUSAL.search(text)
     if result.exit_code != 2 or found is None or _USAGE.search(text):
         return ""
@@ -84,14 +96,19 @@ def first_failure(result: Result) -> str:
     return lines[-1][:300] if lines else ""
 
 
-def judge(test: Test, result: Result, root: Path, cwd: Path) -> Verdict:
-    """The status ctest would give ``test`` for ``result``, xrdroot's refusals told apart."""
+def judge(test: Test, result: Result, root: Path, cwd: Path,
+          post: Result | None = None) -> Verdict:
+    """The status ctest would give ``test`` for ``result``, xrdroot's refusals told apart.
+
+    ``post`` is how the ``POSTCMD`` ran, which the driver checks after the
+    output is converted and before it is compared.
+    """
     if result.timed_out:
         return Verdict("TIMEOUT", f"still running after {result.runtime:.0f} s")
     refused = refusal(result)
     if refused:
         return Verdict("UNSUPPORTED", refused)
-    verdict = _driver(test, result, root, cwd)
+    verdict = _driver(test, result, root, cwd, post)
     verdict = _regexes(test, result, verdict)
     return _inverted(verdict) if test.will_fail else verdict
 
@@ -105,7 +122,7 @@ def _exit(result: Result, expected: int) -> str:
     return f"exit {code}, expected {expected}: {first_failure(result)}"
 
 
-def _driver(test: Test, result: Result, root: Path, cwd: Path) -> Verdict:
+def _driver(test: Test, result: Result, root: Path, cwd: Path, post: Result | None) -> Verdict:
     unexpected = refdiff.unexpected_errors(result.stderr) if test.check_err and not test.check_out \
         else []
     if unexpected:
@@ -113,17 +130,20 @@ def _driver(test: Test, result: Result, root: Path, cwd: Path) -> Verdict:
     wrong = _exit(result, test.passrc if test.passrc is not None else 0)
     if wrong:
         return Verdict("FAIL", wrong)
-    return _references(test, result, root, cwd)
+    return _references(test, result, root, cwd, post)
 
 
-def _references(test: Test, result: Result, root: Path, cwd: Path) -> Verdict:
-    """The output, converted by any ``OUTCNV``, diffed against ``OUTREF`` and ``ERRREF``."""
-    output, errors = result.stdout, result.stderr
-    if test.outcnvcmd:
-        output = _converted_by(test.outcnvcmd, output, cwd)
-    if test.outcnv:
-        output = _converted(root / test.outcnv, output, cwd)
-        errors = _converted(root / test.outcnv, errors, cwd) if test.errref else errors
+def _references(test: Test, result: Result, root: Path, cwd: Path,
+                post: Result | None) -> Verdict:
+    """The output, converted by any ``OUTCNV``, diffed against ``OUTREF`` and ``ERRREF``.
+
+    A ``POSTCMD`` that failed fails the test first, as in the driver. A test
+    that does not check its standard output - an ``assert*`` macro - has the
+    driver write nothing to the file its ``OUTREF`` is compared with.
+    """
+    output, errors = _streams(test, result, root, cwd)
+    if post is not None and post.exit_code != 0:
+        return Verdict("FAIL", f"the post-command {_exit(post, 0)}")
     for reference, text, stream in ((test.outref, output, "output"),
                                     (test.errref, errors, "error output")):
         diff = _compare(test, (root / reference).read_text(errors="replace"), text) \
@@ -131,6 +151,17 @@ def _references(test: Test, result: Result, root: Path, cwd: Path) -> Verdict:
         if diff:
             return Verdict("DIFF", f"standard {stream} differs from {reference}", diff)
     return Verdict("PASS")
+
+
+def _streams(test: Test, result: Result, root: Path, cwd: Path) -> tuple[str, str]:
+    """The output and error streams as compared: converted by ``OUTCNVCMD`` and ``OUTCNV``."""
+    output, errors = (result.stdout if test.check_out else ""), result.stderr
+    if test.outcnvcmd:
+        output = _converted_by(test.outcnvcmd, output, cwd)
+    if test.outcnv:
+        output = _converted(root / test.outcnv, output, cwd)
+        errors = _converted(root / test.outcnv, errors, cwd) if test.errref else errors
+    return output, errors
 
 
 def _compare(test: Test, reference: str, output: str) -> str:
@@ -187,6 +218,4 @@ def _inverted(verdict: Verdict) -> Verdict:
     """``WILLFAIL``: a failure (or difference) passes, and a pass fails."""
     if verdict.status == "PASS":
         return Verdict("FAIL", "passed, where CMake declares it WILLFAIL")
-    if verdict.status in ("FAIL", "DIFF"):
-        return Verdict("PASS", f"failed as WILLFAIL expects: {verdict.reason}")
-    return verdict
+    return Verdict("PASS", f"failed as WILLFAIL expects: {verdict.reason}")

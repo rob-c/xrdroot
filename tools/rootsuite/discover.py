@@ -4,9 +4,11 @@ The walk is the build's own. ROOT's top-level ``CMakeLists.txt`` adds each
 module, and each module names its test directory with
 ``ROOT_ADD_TEST_SUBDIRECTORY``; ``RootCTest.cmake`` then adds those, sorted,
 from the top-level scope, and finally ``roottest`` (whose own
-``ROOTTEST_ADD_TESTDIRS`` recurse). Build options come from
-:data:`DEFAULT_FEATURES` - a CI build's - or ``--features``; directories a
-sparse checkout lacks (``interpreter/``, module sources) are skipped.
+``ROOTTEST_ADD_TESTDIRS`` recurse). The machine is a Mac on ARM64
+(:mod:`~tools.rootsuite.machine`): the build options are the oracle's, else
+:data:`~tools.rootsuite.machine.DEFAULT_FEATURES`, or ``--features``;
+directories a sparse checkout lacks (``interpreter/``, module sources) are
+skipped.
 
 Afterwards each test is completed from what was registered anywhere: the
 sources of the program it runs and of the test-local libraries that links,
@@ -20,31 +22,27 @@ from collections.abc import Iterable
 from dataclasses import replace
 from pathlib import Path
 
-from . import roottestmacros  # noqa: F401  (registers roottest's macros)
-from .cmake import Directory
+from . import builds, roottestmacros  # noqa: F401  (roottestmacros registers roottest's macros)
+from .cmake import HANDLERS, Directory
+from .machine import DEFAULT_FEATURES, PLATFORM
 from .model import Registry, Target, Test
 
 __all__ = ["DEFAULT_FEATURES", "variables", "discover", "complete", "fixture_providers"]
 
-#: The build options of a ROOT 6.40 CI build on Linux: what ``if(<option>)`` finds ON.
-DEFAULT_FEATURES = frozenset(
-    """asimage builtin_clang builtin_cling builtin_llvm builtin_nlohmannjson builtin_openui5
-    builtin_vdt clad curl dataframe davix fftw3 fitsio gdml geom geombuilder gviz http imt mathmore
-    minuit2 opengl pyroot roofit root7 roottest rpath runtime_cxxmodules shared spectrum sqlite
-    ssl testing tmva tmva-cpu tmva-pymva tpython unuran uring vdt webgui x11 xml xrootd""".split()
-)
-
 
 def variables(root: Path, features: Iterable[str]) -> dict[str, str]:
-    """What ROOT's configure step has set by the time tests are added, on a 64-bit Linux."""
+    """What ROOT's configure step has set by the time tests are added, on a Mac with ARM64."""
     enabled = sorted(features)
     found = dict.fromkeys(enabled, "ON")
+    found.update(PLATFORM)
     found.update(
         CMAKE_SOURCE_DIR=str(root), ROOT_SOURCE_DIR=str(root), CMAKE_BINARY_DIR="<build>",
         ROOT_BINARY_DIR="<build>", ROOTSYS="<build>", ROOT_BINDIR="<build>/bin",
-        CMAKE_SYSTEM_NAME="Linux", UNIX="1", CMAKE_SIZEOF_VOID_P="8", **{"64BIT": "1"},
+        ROOT_TUTORIALS_DIR="<build>/tutorials", ROOT_INCLUDE_DIRS="<build>/include",
+        ROOT_LIBRARY_DIR="<build>/lib",
+        CMAKE_SIZEOF_VOID_P="8", **{"64BIT": "1"},
         CMAKE_PROJECT_NAME="ROOT", PROJECT_NAME="ROOT", CMAKE_COMMAND="cmake",
-        CMAKE_CXX_COMPILER_ID="GNU", CMAKE_BUILD_TYPE="Release", CMAKE_CXX_STANDARD="20",
+        CMAKE_BUILD_TYPE="Release", CMAKE_CXX_STANDARD="20",
         Python3_EXECUTABLE="python3", Python3_VERSION="3.12", Python3_VERSION_MAJOR="3",
         Python3_VERSION_MINOR="12", ROOT_root_CMD="root.exe", ROOT_hadd_CMD="hadd",
         ROOT_genreflex_CMD="genreflex", ROOT_rootcling_CMD="rootcling",
@@ -66,11 +64,25 @@ def discover(root: Path, features: Iterable[str] = DEFAULT_FEATURES) -> list[Tes
         top.run_file(root / "CMakeLists.txt")
     if not registry.test_subdirs:  # no module CMakeLists to name them: take every */test
         registry.test_subdirs = _test_directories(root)
-    for subdir in sorted(set(registry.test_subdirs)):
-        if subdir != "tutorials":
-            top.subdirectory(subdir)
+    _test_subdirectories(top)
     top.subdirectory("roottest")
     return complete(registry)
+
+
+def _test_subdirectories(top: Directory) -> None:
+    """``RootCTest.cmake``'s walk: each module's test directory, sorted, from the top scope."""
+    for subdir in sorted(set(top.registry.test_subdirs)):
+        if subdir != "tutorials":
+            top.subdirectory(subdir)
+
+
+def _include(self: Directory, args: list[str]) -> None:
+    """``include(RootCTest)`` adds the module test directories there - before roottest."""
+    if args[:1] == ["RootCTest"]:
+        _test_subdirectories(self)
+
+
+HANDLERS["include"] = _include
 
 
 def _built_targets(features: frozenset[str]) -> set[str]:
@@ -96,19 +108,31 @@ def _test_directories(root: Path) -> list[str]:
 
 
 def complete(registry: Registry) -> list[Test]:
-    """Each test with its program's sources filled in and what it needs said."""
+    """Each test with its program's sources filled in and what it needs said.
+
+    A dictionary generated after the target listing its source is only known
+    now, so each target's need of one is settled first.
+    """
+    for target in (*registry.programs.values(), *registry.libraries.values()):
+        target.dictionary = target.dictionary or bool(builds.split(registry, target)[0])
     by_name = {test.ctest: test for test in registry.tests}
     providers = fixture_providers(registry.tests)
-    done: list[Test] = []
     seen: set[str] = set()
+    done = []
     for test in registry.tests:
-        test = _with_program(registry, test)
-        upstream = [by_name[d] for d in test.depends if d in by_name]
-        upstream += [p for f in test.fixtures_required for p in providers.get(f, [])]
-        needs = {p.setup_of for p in upstream if p.setup_of in ("dictionary", "executable")}
-        test = replace(test, needs=tuple(sorted({*test.needs, *needs})), id=_unique(test.id, seen))
-        done.append(test)
+        test = _with_builds(registry, _with_program(registry, test))
+        needs = _upstream_needs(test, by_name, providers)
+        done.append(replace(test, needs=tuple(sorted({*test.needs, *needs})),
+                            id=_unique(test.id, seen)))
     return done
+
+
+def _upstream_needs(test: Test, by_name: dict[str, Test],
+                    providers: dict[str, list[Test]]) -> set[str]:
+    """A dictionary or an executable a setup step it depends on builds."""
+    upstream = [by_name[d] for d in test.depends if d in by_name]
+    upstream += [p for f in test.fixtures_required for p in providers.get(f, [])]
+    return {p.setup_of for p in upstream if p.setup_of in ("dictionary", "executable")}
 
 
 def fixture_providers(tests: Iterable[Test]) -> dict[str, list[Test]]:
@@ -131,13 +155,32 @@ def _unique(test_id: str, seen: set[str]) -> str:
 
 
 def _with_program(registry: Registry, test: Test) -> Test:
-    """The sources of the program a test runs, and of the test-local libraries it links."""
-    if not test.program:
+    """The program a test runs: how it is built, or its sources for ``xrdroot run``.
+
+    A program that needs a dictionary or links a library of the tests' own is
+    built - its libraries, its dictionaries, then it - and run as the
+    executable that writes; roottest's compiled executables are built by
+    setup tests of their own, so they are only run. A command naming no
+    program built here runs as written.
+    """
+    if not test.program or test.runner == "setup":
         return test
     target = registry.programs.get(test.program)
     if target is None:
-        return replace(test, skip=test.skip or f"runs {test.program}, which no CMake here builds")
-    libraries = [registry.libraries[name] for name in _closure(registry, target)]
+        return replace(test, runner="command", program="")
+    test = _with_sources(registry, test, target)
+    launch = f"<build>/{target.directory}/{target.output}"
+    if target.compiled:
+        return replace(test, launch=launch)
+    if builds.closure(registry, target) or target.dictionary:
+        steps = builds.executable(registry, target, target.output)
+        return replace(test, builds=tuple(steps), launch=launch)
+    return test
+
+
+def _with_sources(registry: Registry, test: Test, target: Target) -> Test:
+    """A test's program's sources, with its test libraries', and what building them needs."""
+    libraries = [registry.libraries[name] for name in builds.closure(registry, target)]
     files = [*target.files, *(f for library in libraries for f in library.files)]
     return replace(test, files=tuple(dict.fromkeys(files)),
                    needs=tuple(sorted({*test.needs, *_needs(target, libraries)})))
@@ -149,13 +192,30 @@ def _needs(target: Target, libraries: list[Target]) -> list[str]:
     return [*needs, "executable"] if target.compiled else needs
 
 
-def _closure(registry: Registry, target: Target) -> list[str]:
-    """The test-local libraries a target links, and those they link, each once."""
-    found: list[str] = []
-    pending = list(target.libraries)
-    while pending:
-        name = pending.pop(0)
-        if name in registry.libraries and name not in found:
-            found.append(name)
-            pending.extend(registry.libraries[name].libraries)
-    return found
+def _with_builds(registry: Registry, test: Test) -> Test:
+    """A setup test's builds, once every target it may build is known.
+
+    A roottest executable links libraries their own setup tests build; a
+    ``cmake --build --target`` test builds its targets with what they link.
+    """
+    if test.runner != "setup" or test.builds:
+        return test
+    if test.program in registry.programs:
+        target = registry.programs[test.program]
+        steps = builds.executable(registry, target, target.output, libraries=False)
+        return replace(test, builds=tuple(steps))
+    steps = [step for name in test.args for step in _target_builds(registry, name)]
+    if not steps:
+        return replace(test, skip=f"builds {' '.join(test.args) or 'nothing'}, which no CMake "
+                                  "here defines as a target the harness can build")
+    return replace(test, builds=tuple(dict.fromkeys(steps)))
+
+
+def _target_builds(registry: Registry, name: str) -> list[builds.Build]:
+    if name in registry.libraries:
+        return builds.library(registry, registry.libraries[name])
+    if name in registry.programs:
+        target = registry.programs[name]
+        return builds.executable(registry, target, target.output)
+    found = [entry for entry in registry.dictionaries.values() if entry.name == name]
+    return [builds.dictionary(entry, builds.library_name(name)) for entry in found[:1]]

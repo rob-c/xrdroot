@@ -85,6 +85,18 @@ def test_the_committed_scope_file_loads_with_a_sentence_for_every_label():
     assert labels and all(label.reason.endswith(".") for label in labels)
 
 
+def test_the_committed_scope_holds_only_what_no_mac_with_apple_silicon_runs():
+    labels = scope.load()
+    assert all("macOS" in label.reason and not label.needs and not label.setup
+               for label in labels)
+    base = {"ctest": "c", "kind": "other", "directory": "d", "runner": "program"}
+    assert scope.label_for(Test(id="other/tmva/DNN/TMVA-DNN-ArithmeticCuda", **base), labels)
+    assert scope.label_for(Test(id="gtest/io/io/RIoUring", **base), labels)
+    for kept in ("roottest/root/aclic/misc/x", "roottest/cling/dict/y", "gtest/core/meta/z",
+                 "pyunittest/bindings/pyroot/cppyy/w", "roottest/python/distrdf/v"):
+        assert scope.label_for(Test(id=kept, **base), labels) is None
+
+
 def test_the_committed_baseline_holds_known_statuses_for_every_test_it_lists():
     baseline = json.loads(ratchet.BASELINE.read_text())
     assert baseline and set(baseline.values()) <= set(STATUSES)
@@ -159,3 +171,57 @@ def test_list_of_another_kind_is_empty_and_tutorials_alone_skip_discovery(tmp_pa
     assert cli.main(["list", "--root", str(tmp_path), "--kind", "gtest"]) == 0
     assert "gtest            0" in capsys.readouterr().out
     assert cli.main(["list", "--root", str(tmp_path), "--kind", "tutorial"]) == 0
+
+
+def test_the_tutorial_count_is_the_tutorial_harness_catalogs(tmp_path, monkeypatch, capsys):
+    import tools.tutorials.catalog as catalog
+
+    (tmp_path / "tutorials").mkdir()
+    seen = {"a": type("T", (), {"test": True, "vetoed": False})(),
+            "b": type("T", (), {"test": True, "vetoed": True})()}
+    monkeypatch.setattr(catalog, "catalog", lambda *args: seen)
+    assert cli.main(["list", "--root", str(tmp_path), "--kind", "tutorial",
+                     "--features", "x"]) == 0
+    assert "tutorial         1" in capsys.readouterr().out
+
+
+# --- running ---------------------------------------------------------------------------
+
+
+def test_run_writes_the_results_and_summary_with_the_runs_settings(tmp_path, monkeypatch, capsys):
+    (tmp_path / "test").mkdir()
+    (tmp_path / "test/CMakeLists.txt").write_text("ROOT_ADD_TEST(test-true COMMAND true)\n")
+    out = tmp_path / "out"
+    assert cli.main(["run", "--root", str(tmp_path), "--out", str(out), "--features", "x",
+                     "--xrdroot-src", str(tmp_path), "--jobs", "1"]) == 0
+    doc = json.loads((out / "results.json").read_text())
+    assert doc["tests"][0]["status"] == "PASS" and doc["meta"]["features"] == ["x"]
+    assert doc["meta"]["xrdroot_commit"] == "" and (out / "summary.md").is_file()
+    assert '"PASS": 1' in capsys.readouterr().out
+    assert cli._commit(None) == ""
+    monkeypatch.setattr(cli.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(OSError()))
+    assert cli._commit(tmp_path) == ""
+
+
+def test_timeouts_rerun_alone_are_excused_when_they_pass(tmp_path, monkeypatch, capsys):
+    doc = results(record("a", "TIMEOUT"), record("b", "TIMEOUT"),
+                  root=str(tmp_path), python="py", xrdroot_src=str(tmp_path), features=["x"])
+    report.write(doc, tmp_path)
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text(json.dumps({"a": "PASS", "b": "PASS"}))
+    monkeypatch.setattr(cli, "discover", lambda root, features: [])
+
+    class Rerun:
+        def __init__(self, settings):
+            assert settings.only == ("a", "b") and settings.jobs == 1
+
+        def run(self, tests):
+            return [record("a", "PASS"), record("b", "TIMEOUT")]
+
+    monkeypatch.setattr(cli, "Runner", Rerun)
+    args = ["ratchet", str(tmp_path / "results.json"), "--baseline", str(baseline),
+            "--rerun-timeouts"]
+    assert cli.main(args) == 1
+    out = capsys.readouterr().out
+    assert "a: timed out, but passed when rerun alone" in out and "1 regressions" in out
+    assert cli._recheck(doc, [], tmp_path) == set()

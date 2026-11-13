@@ -112,18 +112,26 @@ class Return(Exception):
     """``return()``: ends the function, or the file, it is in."""
 
 
+def _listed(arg: str) -> list[str]:
+    """One argument as a CMake list expands: split at each unescaped ``;``, empties dropped."""
+    if ";" not in arg:
+        return [arg]
+    return [part for part in re.split(r"(?<!\\);", arg) if part]
+
+
 def parse_arguments(
     args: Iterable[str], options: Iterable[str], singles: Iterable[str], multis: Iterable[str]
 ) -> dict[str, list[str]]:
     """``cmake_parse_arguments``: each keyword's values, the rest under ``UNPARSED``.
 
     An option present maps to ``["TRUE"]``; a one-value keyword keeps its
-    first value only, the others falling to ``UNPARSED`` as CMake's do.
+    first value only, the others falling to ``UNPARSED`` as CMake's do. ROOT's
+    macros parse ``${ARGN}``, which splits a quoted ``"a;b"`` into two values.
     """
     flags, one, many = set(options), set(singles), set(multis)
     parsed: dict[str, list[str]] = {"UNPARSED": []}
     current = "UNPARSED"
-    for arg in args:
+    for arg in (part for given in args for part in _listed(given)):
         if arg in flags:
             parsed[arg], current = ["TRUE"], "UNPARSED"
         elif arg in one or arg in many:
@@ -145,6 +153,10 @@ _UNARY: dict[str, Callable[[Directory, str], bool]] = {
     "TEST": lambda self, text: any(test.ctest == text for test in self.registry.tests),
     "POLICY": lambda self, text: True,
 }
+
+#: The variable ``include_directories`` appends to: a directory property, which a variable
+#: models, since each subdirectory starts from a copy of its parent's.
+INCLUDES = "<include_directories>"
 
 #: ``$<TARGET_FILE:x>``: the executable a generator expression names, by its target name.
 _TARGET_FILE = re.compile(r"\$<TARGET_FILE:([^>]+)>")
@@ -191,10 +203,29 @@ class Directory(Interpreter):
         except ValueError:
             return text
 
+    def inside(self, text: str) -> str | None:
+        """A source or build directory as a path below ROOT's tree, or ``None`` if it is not one.
+
+        The build tree mirrors the source tree, so ``<build>/x`` is ``x``.
+        """
+        if text.startswith("<build>/"):
+            return text[len("<build>/"):]
+        found = self.relative_path(text) if "<" not in text else "/"
+        return None if found.startswith("/") else found
+
+    def includes(self) -> list[str]:
+        """``include_directories`` in effect here, below ROOT's tree, this directory first."""
+        found = (self.inside(entry) for entry in self.values(INCLUDES))
+        return list(dict.fromkeys(entry for entry in (self.relative, *found) if entry))
+
     def expand(self, text: str) -> str:
         text = super().expand(text)
         return _TARGET_DIR.sub(self.variables["CMAKE_CURRENT_BINARY_DIR"],
                                _TARGET_FILE.sub(r"\1", text))
+
+    def arguments(self, args: Iterable[Token]) -> list[str]:
+        """Arguments as a command sees them, an unquoted ``with\\ space`` as ``with space``."""
+        return super().arguments(_identity(token) for token in args)
 
     def run_file(self, path: Path) -> Directory:
         try:
@@ -293,6 +324,16 @@ class Directory(Interpreter):
         return child.run_file(listing) if listing.is_file() else None
 
 
+#: CMake's identity escapes in an unquoted argument: ``\ ``, ``\(``... stand for the character.
+_IDENTITY_ESCAPE = re.compile(r"\\([^A-Za-z0-9;$@])")
+
+
+def _identity(token: Token) -> Token:
+    if token.quoted or "\\" not in token.text:
+        return token
+    return Token(_IDENTITY_ESCAPE.sub(r"\1", token.text), False)
+
+
 def _bindings(params: tuple[str, ...], args: list[str]) -> dict[str, str]:
     bound = {f"ARGV{index}": value for index, value in enumerate(args)}
     bound.update(zip(params, args, strict=False))
@@ -309,6 +350,12 @@ def _set(self: Directory, args: list[str]) -> None:
         return
     values = [value for value in args[1:] if value != "PARENT_SCOPE"]
     self.set_parent(args[0], values)
+
+
+def _include_directories(self: Directory, args: list[str]) -> None:
+    """``include_directories``: where this directory's (and its children's) headers are."""
+    given = [arg for arg in args if arg not in ("AFTER", "BEFORE", "SYSTEM")]
+    self.variables[INCLUDES] = ";".join([*self.values(INCLUDES), *given])
 
 
 def _option(self: Directory, args: list[str]) -> None:
@@ -452,6 +499,7 @@ def _list(self: Directory, args: list[str]) -> None:
 HANDLERS.update(
     {
         "set": _set,
+        "include_directories": _include_directories,
         "option": _option,
         "add_subdirectory": _add_subdirectory,
         "cmake_parse_arguments": _cmake_parse_arguments,

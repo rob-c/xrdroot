@@ -13,6 +13,14 @@ measured against the whole suite. ctest programs of no family (the
 ``mathcore-*`` and ``tmva-*`` programs) are listed as ``other`` and run the
 same way.
 
+The suite is configured as on a Mac with Apple silicon, with the oracle's
+build options (:mod:`~tools.rootsuite.machine`), and ROOT's build model is
+xrdroot's: every dictionary, test library, test executable and ACLiC step
+is an ``xrdroot build`` command (:mod:`~tools.rootsuite.builds`), every
+``root.exe`` command line ``xrdroot root``, and ``hadd``, ``rootls`` and
+the other tools xrdroot subcommands of the same names
+(:mod:`~tools.rootsuite.plan`).
+
 It never imports xrdroot: xrdroot is run as a subprocess, in the Python
 given by ``--python`` with ``--xrdroot-src`` on its path, so this can become
 a project of its own.
@@ -54,11 +62,14 @@ in the system's temporary directory - never the repository. It receives
 ``results.json``, ``summary.md``, ``logs/<id>/`` (each run's command and
 output, its diff, its junit XML) and ``work/`` (the copies tests run in).
 
-Statuses: PASS; FAIL (ran, wrong exit, crash, a FAILREGEX); DIFF (ran, output
-differs from its ``.ref``); UNSUPPORTED (xrdroot refused: ``xrdroot run``
-exiting 2 with its one-line refusal, or ``UnsupportedFeatureError``);
-OUT-OF-SCOPE (a label in ``scope.toml``); SKIP (the harness cannot express
-the test: a compiled executable, ``root -e``, a PRECMD...); TIMEOUT.
+Statuses: PASS; FAIL (ran, wrong exit, crash, a FAILREGEX, or a fixture it
+requires was not set up); DIFF (ran, output differs from its ``.ref``);
+UNSUPPORTED (xrdroot refused: a subcommand exiting 2 with its one-line
+refusal, ``UnsupportedFeatureError``, an error saying xrdroot does not have
+something yet, or a subcommand this xrdroot lacks - ``xrdroot build``...);
+OUT-OF-SCOPE (a label in ``scope.toml``: only what no Mac runs); SKIP (the
+harness cannot express the test: roottest's old Makefiles, a program this
+machine lacks, a missing Python package); TIMEOUT.
 
 The modules
 -----------
@@ -66,9 +77,12 @@ The modules
 :mod:`~tools.rootsuite.cmake` extends the tutorial harness's CMake
 interpreter with functions, scopes and directories;
 :mod:`~tools.rootsuite.rootmacros` and :mod:`~tools.rootsuite.roottestmacros`
-are ROOT's test macros as what they register; :mod:`~tools.rootsuite.discover`
+are ROOT's test macros as what they register; :mod:`~tools.rootsuite.machine`
+is the Mac they are configured for; :mod:`~tools.rootsuite.discover`
 walks the tree; :mod:`~tools.rootsuite.scope` reads ``scope.toml``;
-:mod:`~tools.rootsuite.plan` turns a test into an ``xrdroot`` command line,
+:mod:`~tools.rootsuite.builds` makes ROOT's builds ``xrdroot build``
+commands; :mod:`~tools.rootsuite.plan` turns a test into command lines,
+:mod:`~tools.rootsuite.buildtree` gives them the build tree they expect,
 :mod:`~tools.rootsuite.runner` runs them, :mod:`~tools.rootsuite.judge`,
 :mod:`~tools.rootsuite.refdiff` and :mod:`~tools.rootsuite.cases` judge them;
 :mod:`~tools.rootsuite.report` and :mod:`~tools.rootsuite.ratchet` keep score.

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from tools.rootsuite import cmake
 from tools.rootsuite.discover import DEFAULT_FEATURES, discover
-from tools.rootsuite.model import Registry, area_of, kind_of, make_id
+from tools.rootsuite.model import Registry, Test, area_of, kind_of, make_id
 
 
 def write(root: Path, files: dict[str, str]) -> Path:
@@ -138,17 +138,22 @@ def test_a_source_dependency_becomes_a_compile_step_and_names_are_prefixed(tree)
     found = by_id(tree)
     read = found["roottest/root/io/read"]
     assert read.depends == ("roottest-root-io-write", "roottest-root-io-helper-build")
-    assert found["roottest/root/io/helper-build"].setup_of == "compiled-macro"
-    assert (read.files, read.args, read.passrc, read.will_fail) == (
-        ("roottest/root/io/read.C",), ("1, 2",), 3, True)
+    helper = found["roottest/root/io/helper-build"]
+    assert helper.setup_of == "compiled-macro" and helper.failregex == ("Warning in",)
+    assert helper.builds == (("roottest/root/io", "aclic", "<build>/roottest/root/io/helper.C+kc"),)
+    assert "compile-macro-helper.C-fixture" in read.fixtures_required
+    assert (read.files, read.args[-1], read.passrc, read.will_fail) == (
+        ("roottest/root/io/read.C",), f"{tree}/roottest/root/io/read.C+(1, 2)", 3, True)
 
 
 def test_enable_if_drops_a_roottest_the_features_do_not_enable(tree):
     assert "roottest/root/io/gpu" not in by_id(tree)
 
 
-def test_rootexe_options_are_a_skip_with_their_reason(tree):
-    assert "passes root.exe options" in by_id(tree)["roottest/root/io/staged"].skip
+def test_a_roottest_macro_is_root_exe_with_the_macrotest_lines_then_its_own_options(tree):
+    args = by_id(tree)["roottest/root/io/staged"].args
+    assert args[:2] == ("-e", 'gSystem->SetBuildDir("<build>/roottest/root/io",true)')
+    assert args[-5:] == ("-e", "#define STAGE 1", "-q", "-b", f"{tree}/roottest/root/io/run.C")
 
 
 def test_a_command_test_checks_its_output_only_when_it_has_a_reference(tree):
@@ -169,8 +174,26 @@ def test_a_python_roottest_macro_is_a_script(tree):
 
 
 def test_without_module_cmakelists_every_test_directory_is_taken(tmp_path):
-    write(tmp_path, {"math/foo/test/CMakeLists.txt": "ROOT_ADD_GTEST(testFoo foo.cxx)\n"})
-    assert "gtest/math/foo/testFoo" in by_id(tmp_path)
+    write(tmp_path, {"math/foo/test/CMakeLists.txt": "ROOT_ADD_GTEST(testFoo foo.cxx)\n",
+                     "roottest/x/test/CMakeLists.txt": "ROOT_ADD_GTEST(testRt rt.cxx)\n"})
+    found = by_id(tmp_path, frozenset())
+    assert "gtest/math/foo/testFoo" in found and "gtest/roottest/x/testRt" not in found
+
+
+def test_the_tutorials_test_directory_is_the_tutorial_harnesss_and_names_repeat_uniquely(tmp_path):
+    write(tmp_path, {"CMakeLists.txt": "ROOT_ADD_TEST_SUBDIRECTORY(tutorials)\n"
+                                       "ROOT_ADD_TEST_SUBDIRECTORY(test)\n",
+                     "tutorials/CMakeLists.txt": "ROOT_ADD_GTEST(never t.cxx)\n",
+                     "test/CMakeLists.txt": "ROOT_ADD_TEST(test-a COMMAND true)\n"
+                                            "ROOT_ADD_TEST(test-a COMMAND true)\n"})
+    assert list(by_id(tmp_path)) == ["test/a", "test/a#2"]
+
+
+def test_a_test_round_trips_through_json_with_its_builds():
+    test = Test(id="t", ctest="c", kind="gtest", directory="d", runner="gtest",
+                builds=(("d", "library", "--name", "x"),), args=("a",))
+    assert Test.from_json({**test.to_json(), "unknown": 1}) == test
+    assert "skip" not in test.to_json()
 
 
 def test_kinds_ids_and_areas_follow_the_ctest_names():
@@ -228,3 +251,140 @@ def test_if_exists_looks_in_the_current_source_directory(tmp_path):
     it = interpreter(tmp_path, "if(EXISTS here.txt)\nset(a 1)\nendif()\n"
                                "if(EXISTS gone.txt)\nset(b 1)\nendif()\n")
     assert "a" in it.variables and "b" not in it.variables
+
+
+def test_blocks_branch_loop_and_skip_what_decides_no_test(tmp_path):
+    it = interpreter(tmp_path, (
+        "endforeach()\nwhile(x)\n  set(never 1)\nendwhile()\nfunction()\nendfunction()\n"
+        "if(NO)\n  set(a 1)\nelseif(YES)\n  set(a 2)\nelse()\n  set(a 3)\nendif()\n"
+        "if(NO)\nelse()\n  set(b 1)\nendif()\n"
+        "foreach(x 1 2)\n  set(last ${x})\nendforeach()\n"
+        "message(STATUS hello)\n"))
+    assert (it.variables["a"], it.variables["b"], it.variables["last"]) == ("2", "1", "2")
+    assert "never" not in it.variables
+
+
+def test_scopes_options_and_subdirectories_at_their_edges(tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub/CMakeLists.txt").write_text("set(seen 1 PARENT_SCOPE)\nreturn()\nset(x 1)\n")
+    it = interpreter(tmp_path, (
+        "set(top 1 PARENT_SCOPE)\noption(OPT \"doc\" ON)\noption(OPT \"doc\" OFF)\n"
+        "function(f)\n  set(gone PARENT_SCOPE)\nendfunction()\nset(gone 1)\nf()\n"
+        "add_subdirectory()\nadd_subdirectory(/elsewhere)\nadd_subdirectory(sub)\n"
+        "add_subdirectory(sub)\nadd_subdirectory(missing)\n"))
+    assert it.variables["OPT"] == "ON" and "gone" not in it.variables
+    assert it.variables["seen"] == "1" and "top" not in it.variables
+    assert it.subdirectory("") is None
+
+
+def test_parse_arguments_from_argv_and_too_few_words_are_handled(tmp_path):
+    it = interpreter(tmp_path, (
+        "function(f first)\n"
+        '  cmake_parse_arguments(PARSE_ARGV 1 ARG "" "N" "")\n'
+        "  set(got ${ARG_N} PARENT_SCOPE)\nendfunction()\nf(skipped N value)\n"
+        "function(g)\n  cmake_parse_arguments(PARSE_ARGV x ARG \"\" \"N\" \"\")\n"
+        "  set(other ${ARG_N} PARENT_SCOPE)\nendfunction()\ng(N v)\n"
+        "cmake_parse_arguments(A B)\n"))
+    assert it.variables["got"] == "value" and it.variables["other"] == "v"
+
+
+def test_string_and_filename_commands_at_their_edges(tmp_path):
+    it = interpreter(tmp_path, (
+        'string(REGEX REPLACE "[" "-" bad a[b)\nstring(REGEX MATCH a m abc)\n'
+        "string(TOUPPER only)\nstring(APPEND s x y)\nstring(APPEND)\n"
+        "string(MAKE_C_IDENTIFIER a.b-c id)\nstring(MAKE_C_IDENTIFIER x)\n"
+        "string(LENGTH abc n)\nset(l a)\nlist(APPEND l b)\n"
+        "get_filename_component(e dir/n.x.C EXT)\nget_filename_component(q n.C UNKNOWN)\n"
+        "include_directories(BEFORE inc)\n"))
+    assert (it.variables["bad"], it.variables["s"], it.variables["id"]) == ("a[b", "xy", "a_b_c")
+    assert it.variables["e"] == ".x.C" and "q" not in it.variables and "m" not in it.variables
+    assert it.variables["l"] == "a;b" and it.includes() == ["inc"]
+
+
+def test_paths_inside_the_tree_and_the_build_tree_are_kept_others_dropped(tmp_path):
+    it = interpreter(tmp_path, "")
+    assert it.inside("<build>/a/b") == "a/b" and it.inside("x/y") == "x/y"
+    assert it.inside("/elsewhere") is None and it.inside("$<X:y>") is None
+
+
+def test_a_quoted_list_is_split_as_roots_macros_split_argn_and_escapes_are_undone(tmp_path):
+    assert cmake.parse_arguments(["F", "a;b", "c\\;d", "x;;"], [], [], ["F"]) == {
+        "UNPARSED": [], "F": ["a", "b", "c\\;d", "x"]}
+    it = interpreter(tmp_path, 'set(dir with\\ space/x.C)\nset(quoted "q\\ r")\n')
+    assert it.variables["dir"] == "with space/x.C" and it.variables["quoted"] == "q r"
+
+
+def test_root_ctest_adds_the_module_test_directories_before_roottest(tmp_path):
+    write(tmp_path, {
+        "CMakeLists.txt": "ROOT_ADD_TEST_SUBDIRECTORY(test)\ninclude(RootCTest)\ninclude(Other)\n"
+                          "add_subdirectory(roottest)\n",
+        "test/CMakeLists.txt": "ROOT_EXECUTABLE(prog prog.cxx)\n",
+        "roottest/CMakeLists.txt": "ROOTTEST_ADD_TEST(uses COMMAND <build>/test/prog)\n"})
+    test = by_id(tmp_path)["roottest/uses"]
+    assert (test.runner, test.files) == ("program", ("test/prog.cxx",))
+
+
+@pytest.fixture
+def edges(tmp_path: Path) -> Path:
+    return write(tmp_path, {
+        "CMakeLists.txt": "ROOT_ADD_TEST_SUBDIRECTORY(test)\nadd_subdirectory(core)\n"
+                          "ROOT_ADD_TEST_SUBDIRECTORY()\n",
+        "core/CMakeLists.txt": "ROOT_LINKER_LIBRARY(Core core.cxx)\n"
+                               "ROOT_EXECUTABLE(root.exe main.cxx)\n",
+        "test/CMakeLists.txt": (
+            "ROOT_EXECUTABLE()\nROOT_LINKER_LIBRARY()\nROOT_STANDARD_LIBRARY_PACKAGE()\n"
+            "ROOT_ADD_GTEST()\nROOT_ADD_PYUNITTEST(only)\nROOT_ADD_PYUNITTESTS()\n"
+            "ROOT_ADD_TEST()\nadd_executable()\nadd_library()\ntarget_link_libraries()\n"
+            "target_include_directories()\ntarget_sources()\n"
+            "add_executable(tool tool.cxx WIN32)\nROOT_ADD_TEST(test-tool COMMAND tool)\n"
+            "ROOT_ADD_UNITTEST_DIR(Core)\nROOT_ADD_PYUNITTESTS(all_py)\n"
+            "ROOT_ADD_TEST(test-empty COMMAND)\n"
+            "ROOT_ADD_TEST(test-py COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/s.py -v)\n"
+            "set_property(TEST test-tool PROPERTY)\n"),
+        "test/u1.cxx": "", "test/a.py": "",
+        "roottest/CMakeLists.txt": "ROOTTEST_ADD_TESTDIRS(EXCLUDED_DIRS skipped)\n",
+        "roottest/skipped/CMakeLists.txt": "ROOTTEST_ADD_TEST(never MACRO x.C)\n",
+        "roottest/r/CMakeLists.txt": (
+            "ROOTTEST_ADD_TEST()\nROOTTEST_ADD_TEST(nothing COMMAND)\n"
+            "ROOTTEST_ADD_TEST(off MACRO x.C DISABLE_IF cocoa)\n"
+            "ROOTTEST_ADD_AUTOMACROS(EXCLUDE runSkip WILLFAIL execBad DEPENDS dep.C "
+            "FIXTURES_REQUIRED fx)\n"
+            "ROOTTEST_ADD_UNITTEST_DIR(Core WILLFAIL)\nROOTTEST_ADD_OLDTEST()\n"
+            "ROOTTEST_TARGETNAME_FROM_FILE(named sub/f.C)\nROOTTEST_TARGETNAME_FROM_FILE(x)\n"
+            "find_python_module(numpy)\nfind_python_module()\n"
+            "ROOTTEST_ADD_TEST(${named} MACRO x.C)\n"),
+        "roottest/r/runSkip.C": "", "roottest/r/execBad.C": "", "roottest/r/u.cxx": "",
+        "roottest/r/assertOkay.C": "",
+    })
+
+
+def test_macros_called_without_arguments_register_nothing(edges):
+    found = by_id(edges)
+    assert "gtest/only" not in found and "test/empty" in found
+    assert found["test/empty"].skip == "the test has no command"
+
+
+def test_roots_own_programs_are_not_test_programs(edges):
+    tool = by_id(edges)["test/tool"]
+    assert tool.runner == "program" and tool.files == ("test/tool.cxx",)
+
+
+def test_unittest_dirs_and_pyunittests_collect_their_directorys_files(edges):
+    found = by_id(edges)
+    assert found["gtest/testUnit"].files == ("test/u1.cxx",)
+    assert found["pyunittest/all_py"].files == ("test/a.py",)
+    assert found["test/py"].runner == "script" and found["test/py"].args == ("-v",)
+    unit = found["roottest/r/unittests"]
+    assert unit.runner == "gtest" and unit.will_fail and "roottest/r/u.cxx" in unit.files
+
+
+def test_roottests_edges_automacros_oldtests_and_target_names(edges):
+    found = by_id(edges)
+    assert "roottest/r/off" not in found and "roottest/skipped/never" not in found
+    assert "roottest/r/runSkip-auto" not in found
+    bad = found["roottest/r/execBad-auto"]
+    assert bad.will_fail and "fx" in bad.fixtures_required
+    assert bad.depends == ("roottest-r-dep-build",)
+    assert found["roottest/r/make"].skip.startswith("runs roottest's old Makefile")
+    assert "roottest/r/f" in found
+    assert found["roottest/r/assertOkay-auto"].depends == bad.depends

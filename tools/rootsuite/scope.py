@@ -1,13 +1,14 @@
-"""The committed scope: tests a pure-Python ROOT does not set out to pass, and why.
+"""The committed scope: tests no Mac with Apple silicon runs, and why.
 
 ``scope.toml`` is a list of ``[[label]]`` tables, each a full-sentence
 ``reason`` and what it covers: ``ids``, globs over test ids (``*`` crosses
 ``/``); ``needs``, what discovery found a test needs (``dictionary``,
 ``executable``); or ``setup``, the kind of build step (``compiled-macro``).
 A test under a label is OUT-OF-SCOPE and is not run; the first label that
-covers it is the one it is counted under. Labels are for what is outside
-xrdroot by design - cling's internals, compiling C++, GUIs, GPUs, clusters -
-never for what xrdroot merely fails today: that is what the ratchet is for.
+covers it is the one it is counted under. Labels are only for what ROOT
+itself cannot run on macOS ARM64 - CUDA, SYCL, X11, io_uring - never for
+what xrdroot cannot do yet, dictionaries and compiled code included: that
+is what the ratchet is for.
 """
 
 from __future__ import annotations

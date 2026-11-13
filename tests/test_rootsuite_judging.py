@@ -143,6 +143,48 @@ def test_an_unsupported_feature_traceback_is_unsupported_whatever_the_exit(root)
     assert refusal(run) == "no TRef yet"
 
 
+def test_a_cling_style_error_saying_xrdroot_lacks_something_is_unsupported(root):
+    lacking = result("", "/w/x.C:7:1: error: AttributeError: ROOT has TRef; xrdroot.pyroot "
+                         "does not yet\n", 1)
+    assert refusal(lacking) == "/w/x.C:7:1: AttributeError: ROOT has TRef; xrdroot.pyroot " \
+                               "does not yet"
+    refused = result("", "/w/x.C:2:1: error: UnsupportedFeatureError: no geometry\n", 1)
+    assert judge(roottest(), refused, root, root).status == "UNSUPPORTED"
+    wrong = result("", "/w/x.C:3:1: error: AttributeError: 'TClass' has no attribute 'X'\n", 1)
+    assert status(roottest(), wrong, root) == "FAIL"
+
+
+def test_an_assert_macros_reference_is_compared_with_nothing_as_the_driver_writes_it(root):
+    (root / "a/empty.ref").write_text("")
+    test = roottest(outref="a/empty.ref", check_out=False)
+    assert status(test, result("printed but not checked\n"), root) == "PASS"
+
+
+def test_a_failed_post_command_fails_the_test_before_the_diff(root):
+    post = result("", "", 3)
+    verdict = judge(roottest(outref="a/t.ref"), result("other\n"), root, root, post)
+    assert verdict.status == "FAIL" and verdict.reason.startswith("the post-command exit 3")
+    assert judge(roottest(), result(), root, root, result()).status == "PASS"
+
+
+def test_converters_that_cannot_run_leave_the_output_as_it_was(root):
+    run = result("Processing t.C...\nvalue = 1\n\nptr @0x1234 ok\n")
+    test = roottest(outref="a/t.ref", outcnvcmd=("/no/such/converter",))
+    assert judge(test, run, root, root).status == "PASS"
+    test = roottest(outref="a/t.ref", outcnv="a/cnv.sh")
+    assert judge(test, run, root, root / "missing").status == "PASS"
+
+
+def test_a_regex_cmake_takes_but_python_does_not_is_matched_literally(root):
+    assert status(roottest(passregex=("a[",)), result("x a[ y"), root) == "PASS"
+
+
+def test_willfail_leaves_a_refusal_as_it_is_and_passes_a_difference(root):
+    refused = result("", "UnsupportedFeatureError: no\n", 1)
+    assert status(roottest(will_fail=True), refused, root) == "UNSUPPORTED"
+    assert status(roottest(will_fail=True, outref="a/t.ref"), result("x\n"), root) == "PASS"
+
+
 def test_a_usage_error_or_a_missing_file_is_a_failure_not_a_refusal(root):
     usage = result("", "usage: xrdroot\nxrdroot: error: unrecognized arguments: b.C\n", 2)
     missing = result("", "xrdroot ls: [Errno 2] No such file or directory: '-1'\n", 2)
