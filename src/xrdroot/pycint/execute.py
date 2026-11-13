@@ -4,15 +4,20 @@ A macro is translated in the ROOT dialect (or its translation found in the
 cache), the Python run, and then the function named like the file called
 with the arguments ``.x`` gave it - ``hsimple.C`` runs ``hsimple()``; an
 unnamed ``{ ... }`` macro's block is that function. ``file.C+`` (ACLiC,
-compile first) runs the same way: there is nothing to compile. What the
-macro raises as it runs is raised again as a :class:`MacroError` at the C++
-line it happened on. The running itself is :mod:`xrdroot.pycxx.execute`'s;
-this is ROOT's face on it.
+compile first) builds the macro's library, ``file_C.xrdlib``, loads it and
+calls the same function from it (:mod:`.library.aclic`); ``.L libFoo.so``
+loads a library. Libraries a macro names with ``R__LOAD_LIBRARY(Foo)`` or
+``#pragma cling load("libFoo")`` are loaded before it is translated, as
+cling loads them when it reads the line. What the macro raises as it runs is
+raised again as a :class:`MacroError` at the C++ line it happened on. The
+running itself is :mod:`xrdroot.pycxx.execute`'s; this is ROOT's face on it.
 """
 
 from __future__ import annotations
 
+import os
 import re
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -21,6 +26,9 @@ from ..pycxx import execute as _cxx
 from ..pycxx.errors import MacroError, Refusal
 from ..pycxx.translation import translation
 from .dialect import ROOT as DIALECT
+from .library import aclic
+from .library import loading as libraries
+from .library.manifest import stem_of
 from .runtime import ROOT
 
 __all__ = [
@@ -31,6 +39,7 @@ __all__ = [
     "load",
     "process_line",
     "split_call",
+    "called",
     "arguments",
     "EXTENSIONS",
     "MacroError",
@@ -41,7 +50,9 @@ __all__ = [
 EXTENSIONS = (".C", ".c", ".cxx", ".cpp", ".cc", ".h", ".hxx")
 
 #: ``file.C+(1, "a")``: a macro, ACLiC's ``+`` or ``++``, and its arguments.
-CALL = re.compile(r"^\s*(?P<path>[^(]+?)(?P<plus>\+{0,2}[gO]?)\s*(?:\((?P<args>.*)\))?\s*$", re.S)
+CALL = re.compile(
+    r"^\s*(?P<path>[^(]+?)(?P<plus>(?:\+{1,2}[gOkfcs]*)?)\s*(?:\((?P<args>.*)\))?\s*$", re.S
+)
 
 
 def split_call(text: str) -> tuple[str, str]:
@@ -79,8 +90,47 @@ class _Taker:
 
 
 def _path(path: str | Path) -> Path:
-    """A macro's file, ACLiC's ``+`` taken off: there is nothing to compile."""
-    return Path(str(path).rstrip("+"))
+    """A macro's file, ACLiC's ``+`` and its options taken off."""
+    return Path(aclic.split(str(path))[0])
+
+
+#: ``R__LOAD_LIBRARY(Foo)`` and ``#pragma cling load("Foo")``: a library a macro loads as
+#: it is read; ``R__ADD_LIBRARY_PATH(dir)`` and ``#pragma cling add_library_path("dir")``:
+#: where libraries are looked for.
+PRAGMAS = re.compile(
+    r"""R__(?P<macro>LOAD_LIBRARY|ADD_LIBRARY_PATH)\s*\(\s*"?(?P<name>[^")]+?)"?\s*\)
+    |^[ \t]*\#[ \t]*pragma[ \t]+cling[ \t]+(?P<pragma>load|add_library_path)
+     [ \t]*\([ \t]*"(?P<argument>[^"]*)"[ \t]*\)""",
+    re.M | re.X,
+)
+
+#: What each says to do, by its name: load a library, or look in a directory for them.
+_LOADS = frozenset({"LOAD_LIBRARY", "load"})
+
+
+def preload(source: str) -> None:
+    """Load the libraries ``source`` names to cling as it is read, and add the directories
+    it says to look in - before a word of it is translated, as cling does."""
+    for found in PRAGMAS.finditer(source):
+        what = found["macro"] or found["pragma"]
+        value = os.path.expandvars((found["name"] or found["argument"]).strip())
+        if what in _LOADS:
+            libraries.load(value)
+        else:
+            _add_dynamic_path(value)
+
+
+def _add_dynamic_path(directory: str) -> None:
+    from ..pyroot.core.system import gSystem
+
+    gSystem.AddDynamicPath(directory)
+
+
+def _read(where: Path) -> str:
+    """A macro's text, the libraries it loads loaded."""
+    source = where.read_text(encoding="utf-8", errors="replace")
+    preload(source)
+    return source
 
 
 def run_source(
@@ -98,6 +148,7 @@ def run_source(
     :mod:`xrdroot.pyroot`; with ``call`` false, the macro's names are what is
     handed back.
     """
+    preload(source)
     return _cxx.run_source(
         source, file, args, dialect=DIALECT, namespace=root, use_cache=use_cache, call=call
     )
@@ -106,7 +157,11 @@ def run_source(
 def run(
     path: str | Path, args: tuple[Any, ...] = (), *, root: Any = None, use_cache: bool = True
 ) -> Any:
-    """``.x path(args)``: translate the macro at ``path`` and run it, as ROOT would."""
+    """``.x path(args)``: translate the macro at ``path`` and run it, as ROOT would - or, for
+    ``path+``, build its library, load it and call its function from there."""
+    if aclic.split(str(path))[1]:
+        _read(_path(path))
+        return aclic.call(str(path), tuple(args))[0]
     where = _path(path)
     source = where.read_text(encoding="utf-8", errors="replace")
     return run_source(source, str(where), tuple(args), root=root, use_cache=use_cache)
@@ -139,25 +194,88 @@ def run_program(
     ``argv`` is the program's whole command line, its name first.
     """
     wheres = [_path(path) for path in paths]
+    for where in wheres:
+        _read(where)
+    if aclic.split(str(paths[0]))[1]:
+        return _compiled(str(paths[0]), tuple(args))
     return _cxx.run_program(wheres, args, argv, dialect=DIALECT, use_cache=use_cache)
 
 
+def _compiled(spec: str, args: tuple[Any, ...]) -> int:
+    """``root -b -q file.C+(args)``: ACLiC's library's function called, its value printed as
+    cling prints it, and the exit status it makes."""
+    try:
+        value, made = aclic.call(spec, args)
+    finally:
+        sys.stdout.flush()
+    line = DIALECT.shown(value, made.returns)
+    if line is not None:
+        sys.stdout.write(line + "\n")
+    return DIALECT.status(value, made.returns)
+
+
 def load(path: str | Path, *, root: Any = None) -> dict[str, Any]:
-    """``.L path``: translate the macro and define what it declares, calling nothing."""
+    """``.L path``: translate the macro and define what it declares, calling nothing - or, for
+    ``path+``, build and load its library; for ``libFoo.so``, load that library."""
+    text = str(path).strip()
+    if aclic.split(text)[1]:
+        _read(_path(text))
+        return aclic.load(text).module
+    if stem_of(text) != os.path.basename(text):
+        return _library(text)
     where = _path(path)
     source = where.read_text(encoding="utf-8", errors="replace")
     namespace: dict[str, Any] = run_source(source, str(where), root=root, call=False)
     return namespace
 
 
+def _library(name: str) -> dict[str, Any]:
+    """``.L libFoo.so``: the library loaded; what it defined, or nothing if it was not found."""
+    if libraries.load(name) < 0:
+        return {}
+    found = libraries.find(name)  # none for ROOT's own libraries, which are xrdroot's
+    return libraries.LOADED[str(found.resolve())].module if found is not None else {}
+
+
 def process_line(line: str, *, root: Any = None) -> Any:
     """``gROOT->ProcessLine(line)``: a ``.x``/``.L`` command, or C++ statements run at once."""
     text = line.strip()
     if text.startswith((".x", ".X")):
-        path, given = split_call(text[2:])
-        return run(path, arguments(given), root=root)
+        return _executed(text[2:], root)
     if text.startswith(".L"):
-        return load(split_call(text[2:])[0], root=root)
+        load(called(text[2:]), root=root)
+        return 0
     if text.startswith("."):
         raise ValueError(f"{text.split()[0]} is not a command gROOT->ProcessLine runs here")
+    preload(text)
+    if text.startswith("#"):  # ``#include "Foo.h"``: declarations, at the top as cling has them
+        run_source(text + "\n", "<ProcessLine>", root=root, call=False)
+        return 0
     return _cxx.run_line(text, file="<ProcessLine>", dialect=DIALECT, namespace=root)
+
+
+def called(text: str) -> str:
+    """``file.C+g(1, 2)`` without its arguments: the file and ACLiC's options."""
+    found = CALL.match(text)
+    if found is None:
+        raise ValueError(f"{text!r} does not name a macro, as file.C or file.C(arguments)")
+    return found["path"].strip() + found["plus"]
+
+
+def _executed(text: str, root: Any) -> Any:
+    """``ProcessLine(".x file.C(args)")``: the macro run, and its value printed as cling's
+    ``.x`` prints it - then handed back, as ``ProcessLine`` returns it."""
+    given = split_call(text)[1]
+    spec = called(text)
+    if aclic.split(spec)[1]:
+        value, made = aclic.call(spec, arguments(given))
+        spelled = made.returns
+    else:
+        where = _path(spec)
+        source = _read(where)
+        spelled = _cxx.translated(source, str(where), DIALECT, True).returns
+        value = run_source(source, str(where), arguments(given), root=root, use_cache=True)
+    line = DIALECT.shown(value, spelled)
+    if line is not None:
+        sys.stdout.write(line + "\n")
+    return value

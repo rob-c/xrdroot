@@ -47,6 +47,19 @@ def _std() -> Any:
     return importlib.import_module(f"{DEFAULT}.stl").std
 
 
+def _application() -> Any:
+    """``gApplication``, the ``root`` program a macro runs in."""
+    from .application import gApplication
+
+    return gApplication
+
+
+def _application_class() -> Any:
+    from .application import TApplication
+
+    return TApplication
+
+
 def _test_support() -> Any:
     """``ROOT::TestSupport``, which ROOT's unit tests are written against."""
     from .diags import TestSupport
@@ -63,7 +76,9 @@ class RootProxy(HostNamespace):
     """
 
     def __init__(self) -> None:
-        super().__init__(_pyroot, USED, {"TestSupport": _test_support}, _std)
+        provided = {"TestSupport": _test_support, "gApplication": _application,
+                    "TApplication": _application_class, "TRint": _application_class}  # fmt: skip
+        super().__init__(_pyroot, USED, provided, _std)
 
 
 ROOT = RootProxy()

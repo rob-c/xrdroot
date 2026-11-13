@@ -290,6 +290,13 @@ def _session() -> Iterator[None]:
         NULL_POINTER[0] = before
 
 
+def _loaded(module: dict[str, Any], made: Any) -> None:
+    """A macro's names from a header a loaded library was built from are the library's."""
+    from .library.loading import rebind
+
+    rebind(module, made)
+
+
 def _data(obj: str, args: list[str]) -> str:
     """``s.Data()`` of a string: the string, which is what a ``TString``'s holds."""
     return obj
@@ -346,6 +353,7 @@ ROOT = Dialect(
     shown=returned.shown,
     status=returned.status,
     session=_session,
+    loaded=_loaded,
     sources=(Path(__file__).parent,),
 )
 

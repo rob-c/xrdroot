@@ -89,6 +89,15 @@ def add_parser(subparsers: Any) -> None:
         action="store_true",
         help="as root -n: run no rootlogon.C or rootlogoff.C from the working directory",
     )
+    parser.add_argument(
+        "--library",
+        dest="libraries",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="a library to load first, as gSystem->Load does (libFoo, or its .xrdlib file)",
+    )
+    parser.add_argument("--argv0", help="the program's own name, argv[0]: its source's stem")
 
 
 #: ROOT's namespaces a script imports names from, ``from ROOT.<namespace> import ...``.
@@ -141,25 +150,45 @@ def _session_macro(name: str, use_cache: bool) -> None:
         run_macro(Path(name), use_cache=use_cache)
 
 
+def _preloaded(libraries: list[str]) -> None:
+    """The libraries a program built with ``--library`` loads before it starts."""
+    from ..pycint.library import load
+
+    for library in libraries:
+        load(library)
+
+
 def run(args: argparse.Namespace) -> int:
     from ..pycint import translate_file
-    from ..pycint.execute import arguments, run_program, split_call
+    from ..pycint.execute import called, split_call
+    from ..pycint.library.aclic import split as split_aclic
+    from ..pycint.runtime.application import started
 
     first, *more = args.macro
     argv = list(getattr(args, "argv", []))
-    path_text, given = split_call(first)
-    path = Path(path_text)
+    given = split_call(first)[1]
+    path = Path(called(first))  # with ACLiC's ``+``, if it was given one
     if path.suffix == ".py":
         return _script(path, argv)
     paths = [path, *map(Path, more)]
     if args.python:
         for each in paths:
-            sys.stdout.write(translate_file(Path(str(each).rstrip("+"))))
+            sys.stdout.write(translate_file(Path(split_aclic(str(each))[0])))
         return 0
+    with started(["root.exe", "-b", "-q", *args.macro]):
+        return _program(args, paths, given, argv)
+
+
+def _program(args: argparse.Namespace, paths: list[Path], given: str, argv: list[str]) -> int:
+    """The macro or program run, as ``root -b -q`` runs it: logon, it, logoff."""
+    from ..pycint.execute import arguments, run_program
+    from ..pycint.library.aclic import split as split_aclic
+
+    _preloaded(list(getattr(args, "libraries", [])))
     logons = () if args.no_logon else (LOGON, LOGOFF)
     for name in logons[:1]:
         _session_macro(name, not args.no_cache)
-    program = [Path(str(path).rstrip("+")).stem, *argv]
+    program = [getattr(args, "argv0", None) or Path(split_aclic(str(paths[0]))[0]).stem, *argv]
     status = run_program(paths, arguments(given), program, use_cache=not args.no_cache)
     for name in logons[1:]:  # after the returned value's line, before root exits with it
         _session_macro(name, not args.no_cache)

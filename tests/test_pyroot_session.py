@@ -106,6 +106,7 @@ def test_gsystem_says_a_path_is_missing_the_way_root_does(tmp_path):
 
 
 def test_gsystem_loads_and_includes_without_complaint():
+    ROOT.gSystem.Unload("libPhysics")  # as no earlier test in this process loaded it
     expect(
         (ROOT.gSystem.Load("libPhysics"), 0),
         (bool("libPhysics" in ROOT.gSystem.GetLibraries()), True),
@@ -122,9 +123,12 @@ def test_gsystem_loads_and_includes_without_complaint():
     ROOT.gSystem.AddDynamicPath("/y")
     expect(
         (ROOT.gSystem.GetDynamicPath(), "/x:/y"),
-        (ROOT.gSystem.CompileMacro("m.C"), 1),
+        (ROOT.gSystem.CompileMacro("no-such-macro.C"), 0),  # ACLiC has nothing to build
     )
+    ROOT.gSystem.SetDynamicPath("")
     ROOT.gSystem.SetBuildDir("/tmp")
+    assert (ROOT.gSystem.GetBuildDir(), ROOT.gSystem.IsBuildDirFlat()) == ("/tmp", False)
+    ROOT.gSystem.SetBuildDir("")
 
 
 def test_gsystem_reads_and_sets_the_environment(monkeypatch):

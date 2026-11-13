@@ -58,6 +58,11 @@ _TRANSLATOR = "xrdroot.pycint"
 _PROVIDED: dict[str, Callable[[], Any]] = {
     "process_line": lambda: plugins.lookup("interpreter.process_line"),
     "run_source": lambda: plugins.lookup("interpreter.run_source"),
+    "load_library": lambda: plugins.lookup("interpreter.load_library"),
+    "loaded_libraries": lambda: plugins.lookup("interpreter.loaded_libraries"),
+    "unload_library": lambda: plugins.lookup("interpreter.unload_library"),
+    "compile_macro": lambda: plugins.lookup("interpreter.compile_macro"),
+    "autoload": lambda: plugins.lookup("interpreter.autoload"),
 }
 
 
@@ -420,7 +425,10 @@ class TInterpreter:
         return gROOT.ProcessLine(line, error)
 
     def Load(self, filename: Any, system: bool = False) -> int:
-        return 0
+        """``Load``: ``gSystem->Load`` of the library."""
+        from .system import gSystem
+
+        return gSystem.Load(filename)
 
     def IsLoaded(self, filename: Any) -> bool:
         """``IsLoaded``: whether ``LoadMacro`` has loaded this macro already."""
@@ -438,6 +446,36 @@ class TInterpreter:
         """``AddIncludePath``: nothing is compiled, so there is nothing to include."""
 
     def GenerateDictionary(self, classes: Any, headers: Any = "", *rest: Any) -> int:
+        return 0
+
+    #: Whether a name nothing declared is looked for in the libraries a rootmap lists.
+    autoloading = True
+
+    def SetClassAutoloading(self, autoload: Any = 1) -> int:
+        """``SetClassAutoloading``: turn autoloading on or off; whether it was on."""
+        before, self.autoloading = self.autoloading, bool(autoload)
+        return int(before)
+
+    SetClassAutoLoading = SetClassAutoloading
+
+    def SetClassAutoparsing(self, autoparse: Any = 1) -> int:
+        """``SetClassAutoparsing``: headers are read when a library is built, not parsed late."""
+        return 1
+
+    def AutoParse(self, name: Any) -> int:
+        return 0
+
+    def AutoLoad(self, classname: Any, knowDictNotLoaded: bool = False) -> int:
+        """``AutoLoad``: ``1`` if the library providing ``classname`` is loaded now."""
+        autoload = _translator("autoload")
+        return int(bool(autoload is not None and autoload(str(classname).split("::")[0])))
+
+    def LoadLibraryMap(self, rootmapfile: Any = None) -> int:
+        """``LoadLibraryMap``: a translated library carries its own map, read when needed."""
+        return 0
+
+    def UnloadLibraryMap(self, library: Any) -> int:
+        """``UnloadLibraryMap``: nothing is autoloaded that a macro has not asked for by name."""
         return 0
 
 
