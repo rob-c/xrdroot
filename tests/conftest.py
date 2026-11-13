@@ -161,3 +161,21 @@ def _no_session_defines():
     defines = getattr(sys.modules.get("xrdroot.pycint.execute"), "DEFINES", None)
     if isinstance(defines, list):  # not a stand-in a test put in the translator's place
         defines.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_session_declarations():
+    """Forget what C++ a test ran declared: an interpreter keeps it for the lines of its
+    session, so a ``struct Range`` one test declares would shadow RooFit's in the next."""
+    import sys
+
+    def declared() -> dict | None:
+        found = getattr(sys.modules.get("xrdroot.pycxx.runtime.namespace"), "DECLARED", None)
+        return found if isinstance(found, dict) else None
+
+    before = dict(declared() or {})
+    yield
+    after = declared()
+    if after is not None:
+        after.clear()
+        after.update(before)
