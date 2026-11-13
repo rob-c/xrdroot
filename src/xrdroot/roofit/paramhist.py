@@ -140,6 +140,9 @@ class RooHistConstraint(RooAbsPdf):
 
         total = 1.0
         for gamma, nominal in self._terms:
+            if nominal <= 0.0:
+                # an empty bin says nothing about its gamma, so it constrains nothing
+                continue
             mean = max(float(gamma.compute(ctx)), 1e-12) * nominal
             if nominal >= self._threshold:
                 sigma = np.sqrt(mean)

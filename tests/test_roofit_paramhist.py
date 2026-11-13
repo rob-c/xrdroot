@@ -95,3 +95,13 @@ def test_a_very_large_bin_is_constrained_the_gaussian_way(histogram):
 def test_a_constraint_with_nothing_to_constrain_says_so():
     with pytest.raises(ValueError, match="at least one RooParamHistFunc"):
         ROOT.RooHistConstraint("hc", "hc", [])
+
+
+def test_an_empty_bin_constrains_nothing(histogram):
+    x, data = histogram
+    function = ROOT.RooParamHistFunc("p", "p", data, x)
+    function._weights[1] = 0.0  # one empty bin, as a sparse histogram has
+    constraint = ROOT.RooHistConstraint("hc", "hc", function)
+    x.setVal(0.5)
+    finite = constraint.getVal()
+    assert 0.0 < finite < 1.0
