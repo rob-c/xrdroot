@@ -38,3 +38,5 @@ def test_between_the_ends_it_is_the_mixture_of_the_two(morph):
     expected = 0.75 * first.compute({"x": 0.5}) + 0.25 * second.compute({"x": 0.5})
     assert morphed.compute({"x": 0.5}) == pytest.approx(expected)
     assert "g1/g2" in repr(morphed)
+    morphed.setCacheAlpha(True)   # ROOT's tabulation flag: recorded, nothing to tabulate here
+    assert morphed._cache_alpha is True

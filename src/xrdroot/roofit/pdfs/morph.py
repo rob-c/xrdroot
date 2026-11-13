@@ -41,6 +41,15 @@ class RooIntegralMorph(RooAbsPdf):
         self.x = self._proxy("x", x)
         self.alpha = self._proxy("alpha", alpha)
 
+    def setCacheAlpha(self, on: bool = True) -> None:
+        """``setCacheAlpha``: cache the morphed shape for every alpha - kept, not needed here.
+
+        ROOT tabulates a separate shape for each value of ``alpha`` when this is on,
+        which is a speed-up for a fit that moves ``alpha``; this library computes the
+        mixture directly, so the flag is recorded and nothing else happens.
+        """
+        self._cache_alpha = bool(on)
+
     def compute(self, ctx: Context) -> Any:
         """The mixture of the two densities at this ``alpha``."""
         weight = np.asarray(self.alpha.compute(ctx), dtype=np.float64)
