@@ -61,3 +61,37 @@ def test_a_histogram_of_another_size_is_refused(histogram):
     smaller = ROOT.RooDataHist("dh2", "dh2", ROOT.RooArgList(other), other)
     with pytest.raises(ValueError, match="they have to match"):
         ROOT.RooParamHistFunc("p3", "p3", smaller, other, first, True)
+
+
+def test_the_constraint_ties_each_gamma_to_its_own_bin(histogram):
+    x, data = histogram
+    function = ROOT.RooParamHistFunc("p", "p", data, x)
+    constraint = ROOT.RooHistConstraint("hc", "hc", function)
+    assert len(constraint.binParameters()) == 4
+    x.setVal(0.5)
+    at_nominal = constraint.getVal()
+    assert 0.0 < at_nominal < 1.0
+    function.binParameters()[0].setVal(1.2)
+    assert constraint.getVal() != at_nominal
+    assert "4 bins" in repr(constraint)
+
+
+def test_a_shared_set_of_gammas_is_constrained_once(histogram):
+    x, data = histogram
+    first = ROOT.RooParamHistFunc("p", "p", data, x)
+    second = ROOT.RooParamHistFunc("p2", "p2", data, x, first, True)
+    constraint = ROOT.RooHistConstraint("hc", "hc", {first, second})
+    assert len(constraint.binParameters()) == 4
+
+
+def test_a_very_large_bin_is_constrained_the_gaussian_way(histogram):
+    x, data = histogram
+    function = ROOT.RooParamHistFunc("p", "p", data, x)
+    gaussian = ROOT.RooHistConstraint("hc", "hc", function, 5)
+    x.setVal(0.5)
+    assert 0.0 < gaussian.getVal() <= 1.0
+
+
+def test_a_constraint_with_nothing_to_constrain_says_so():
+    with pytest.raises(ValueError, match="at least one RooParamHistFunc"):
+        ROOT.RooHistConstraint("hc", "hc", [])

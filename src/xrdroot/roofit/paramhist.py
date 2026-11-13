@@ -15,10 +15,11 @@ from typing import Any
 import numpy as np
 
 from .collections import RooArgList
+from .pdf import RooAbsPdf
 from .real import Context, RooAbsReal
 from .variables import RooRealVar
 
-__all__ = ["RooParamHistFunc"]
+__all__ = ["RooHistConstraint", "RooParamHistFunc"]
 
 
 class RooParamHistFunc(RooAbsReal):
@@ -89,3 +90,64 @@ class RooParamHistFunc(RooAbsReal):
 
     def __repr__(self) -> str:
         return f"<RooParamHistFunc {self.GetName()!r} of {len(self._gammas)} bins>"
+
+
+class RooHistConstraint(RooAbsPdf):
+    """``RooHistConstraint``: the constraint that ties a histogram's gammas to its contents.
+
+    Every bin of a :class:`RooParamHistFunc` has a gamma scaling it, and the
+    histogram says how well each is known: a bin with ``n`` entries lets its gamma
+    fluctuate by ``1/sqrt(n)``, which is a Poisson of mean ``gamma n`` observed at
+    ``n``. The constraint is the product of those terms over every bin of every
+    function given - once per gamma, since two functions may share them - and a bin
+    with more than ``threshold`` entries is constrained the Gaussian way, as ROOT
+    does for a large count.
+    """
+
+    def __init__(self, name: Any, title: Any, phfSet: Any, threshold: int = 1000000) -> None:
+        super().__init__(name, title)
+        from .collections import as_list
+
+        self._threshold = int(threshold)
+        self._terms: list[tuple[Any, float]] = []
+        seen: set[int] = set()
+        for function in as_list(phfSet):
+            for gamma, nominal in zip(
+                function.binParameters(), function.binContents(), strict=True
+            ):
+                if id(gamma) in seen:  # shared scale factors are constrained once
+                    continue
+                seen.add(id(gamma))
+                self._terms.append((gamma, float(nominal)))
+        if not self._terms:
+            raise ValueError(
+                "RooHistConstraint needs at least one RooParamHistFunc with bins to constrain; "
+                "it was given nothing that has any."
+            )
+        self._gamma_proxies = [
+            self._proxy(f"gamma{index}", gamma) for index, (gamma, _) in enumerate(self._terms)
+        ]
+
+    def binParameters(self) -> Any:
+        """The gamma parameters it constrains, in the order taken from the functions."""
+        from .collections import RooArgList
+
+        return RooArgList([gamma for gamma, _ in self._terms])
+
+    def compute(self, ctx: Context) -> Any:
+        """The product of the per-bin terms: Poisson, or Gaussian above the threshold."""
+        from ..random import libm
+
+        total = 1.0
+        for gamma, nominal in self._terms:
+            mean = max(float(gamma.compute(ctx)), 1e-12) * nominal
+            if nominal >= self._threshold:
+                sigma = np.sqrt(mean)
+                total = total * float(np.exp(-0.5 * ((nominal - mean) / sigma) ** 2))
+            else:
+                log_term = -mean + nominal * libm.log(mean) - libm.lgamma(nominal + 1.0)
+                total = total * float(libm.exp(log_term))
+        return total
+
+    def __repr__(self) -> str:
+        return f"<RooHistConstraint {self.GetName()!r} of {len(self._terms)} bins>"

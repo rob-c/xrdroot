@@ -47,7 +47,7 @@ MODULES = {
     "pdfs.addmodel": ["RooAddModel"],
     "pdfs.addpdf": ["RooAddPdf", "RooRecursiveFraction"],
     "pdfs.anaconv": ["RooAbsAnaConvPdf"],
-    "paramhist": ["RooParamHistFunc"],
+    "paramhist": ["RooHistConstraint", "RooParamHistFunc"],
     "mcmodules": ["RooChi2MCSModule", "RooDLLSignificanceMCSModule",
                    "RooRandomizeParamMCSModule"],
     "pdfs.multipdf": ["RooMultiPdf"],
