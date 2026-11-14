@@ -137,6 +137,21 @@ def test_process_line_runs_undo_and_include_on_the_sessions_unit(
         process_line("q;")
 
 
+def test_process_line_runs_the_prompts_commands_but_not_leaving(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``.O 0`` is kept for the next ``.O``; ``.pwd`` hands back ``1``, as ROOT's
+    ``ProcessLine`` does for its own commands; ``.q`` and an unknown command are refused."""
+    assert process_line(".O 0") == 0
+    assert process_line(".O") == 0
+    assert process_line(".pwd") == 1
+    out = capsys.readouterr().out
+    assert out.startswith("Current cling optimization level: 0\nCurrent directory: ")
+    for refused in (".q", ".typedef X", ". odd"):
+        with pytest.raises(ValueError, match="is not a command gROOT->ProcessLine runs here"):
+            process_line(refused)
+
+
 def test_a_statement_whose_python_did_not_change_is_not_revised() -> None:
     import ast
 

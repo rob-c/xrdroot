@@ -78,21 +78,45 @@ def _line(where: str) -> int:
     return int(parts[1]) if len(parts) == 3 and parts[1].isdigit() else 1
 
 
-def command(text: str) -> int:
-    """``ProcessLine(".undo 1")``, ``ProcessLine(".I dir")``: the prompt's command, on the
-    session's unit; what it says is printed."""
-    from .commands import COMMAND, COMMANDS
+#: The prompt's commands ``ProcessLine`` does not run: leaving, and those of the terminal.
+NOT_RUN = frozenset({"q", "qqq", "qqqqq", "qqqqqqq", "exit", "quit", "@", ">"})
+
+
+def command(text: str) -> int | None:
+    """``ProcessLine(".undo 1")``, ``(".O 2")``, ``(".ls")``: the prompt's command, on the
+    session's unit, what it says printed and what ``ProcessLine`` hands back for it
+    handed back - or ``None`` if it is no command ``ProcessLine`` runs."""
+    from .commands import COMMAND, COMMANDS, ONE
 
     found = COMMAND.match(text.strip())
-    assert found is not None  # a dot, then the name this was chosen by
-    holder: Any = _Holder(session_unit())
-    for said in COMMANDS[found["name"]](holder, found["rest"]):
+    name = found["name"] if found is not None else ""
+    if name not in COMMANDS or name in NOT_RUN or found is None:
+        return None
+    for said in COMMANDS[name](_holder(), found["rest"]):
         (sys.stderr if said.error else sys.stdout).write(said.text + "\n")
-    return 0
+    return int(name in ONE)
+
+
+#: The settings ``ProcessLine``'s commands keep, with the unit they are of.
+_HOLDERS: list[Any] = []
+
+
+def _holder() -> Any:
+    """What the commands ``ProcessLine`` runs reach: kept for the session's unit."""
+    unit = session_unit()
+    if not _HOLDERS or _HOLDERS[0].unit is not unit:
+        _HOLDERS[:] = [_Holder(unit)]
+    return _HOLDERS[0]
 
 
 class _Holder:
-    """What a prompt command reaches of its interpreter: the unit, here the session's."""
+    """What a prompt command reaches of its interpreter: the unit, here the session's, and
+    the settings a prompt keeps, here new."""
 
     def __init__(self, unit: Unit) -> None:
         self.unit = unit
+        self.level = 2
+        self.raw = False
+        self.loaded: dict[str, list[str]] = {}
+        self.last_status = 0
+        self.failed = False
