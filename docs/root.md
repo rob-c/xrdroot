@@ -2901,6 +2901,12 @@ declared now and converts each member the file holds to its type then: schema
 evolution of plain members, a member added or dropped, a `map` read into a
 `vector<pair>`.
 
+A tree branch of such a class is split member by member when every member is a
+number and the class stands on no base; any other - `test/Event` with its
+`TClonesArray` of tracks, `TRef`s, `TBits` and histogram among them - is
+written whole, as ROOT writes an object it does not split, and ROOT reads it
+back event for event.
+
 ```cpp
 class Hit { public: int n = 3; Double32_t e = 1.5; //[0,10,12]
             std::vector<float> v; ClassDef(Hit, 2) };
