@@ -1066,6 +1066,29 @@ TEMPLATES: dict[str, _Template] = {
 }
 
 
+class _GetTemplate:
+    """``std::get<i>(t)``: the ``i``-th of a tuple, pair or array.
+
+    A value that is none of those is a tuple of one, as C++ makes a lone
+    value given where a ``std::tuple<T>`` is wanted, so ``get<0>`` is it.
+    """
+
+    def __repr__(self) -> str:
+        return "<std.get template>"
+
+    def __getitem__(self, index: Any) -> Any:
+        def got(held: Any) -> Any:
+            if hasattr(held, "first") and hasattr(held, "second"):  # a pair, either kind
+                return (held.first, held.second)[int(index)]
+            if isinstance(held, (tuple, list)) or is_vector(held):
+                return held[int(index)]
+            if int(index) == 0:
+                return held
+            raise IndexError(f"std::get<{index}> of a lone {type(held).__name__}, which has one")
+
+        return got
+
+
 class _ArrayTemplate:
     """``std.array['double', 3]``: a vector of that many, filled from the list it is given.
 
@@ -1120,6 +1143,7 @@ class _Namespace:
     pair = TEMPLATES["pair"]
     set = TEMPLATES["set"]
     array = _ArrayTemplate()
+    get = _GetTemplate()
     bitset = _bitset.bitset
     mt19937 = _random.mt19937
     normal_distribution = _random.normal_distribution
