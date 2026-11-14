@@ -122,8 +122,9 @@ def test_booking_refuses_what_is_not_an_axis():
     ):
         with pytest.raises(ValueError, match=why):
             Histogram.book("h", *axes)
-    with pytest.raises(ValueError, match="kind='L' is not a storage"):
-        Histogram.book("h", (1, 0, 1), kind="L")
+    with pytest.raises(ValueError, match="kind='Q' is not a storage"):
+        Histogram.book("h", (1, 0, 1), kind="Q")
+    assert Histogram.book("l", (1, 0, 1), kind="L").classname == "TH1L"
     with pytest.raises(ValueError, match="error_option='x' is not one of ROOT's"):
         Profile.book("p", (1, 0, 1), error_option="x")
 

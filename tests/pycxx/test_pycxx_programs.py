@@ -115,6 +115,7 @@ def test_a_program_whose_function_named_like_its_file_takes_arguments_starts_at_
 def test_a_using_declaration_brings_a_qualified_name_in_and_a_class_keeps_its_own() -> None:
     python = translate(
         "using ::lib::Thing;\nusing typename lib::inner::Box;\nnamespace fs = lib::files;\n"
+        "using lib::~Gone;\n"
         "struct B { void f(); };\nstruct D : B { using B::f; void g() { f(); } };\n"
         "int use() { int Box = 1; Thing t(Box); fs::open(); return Thing::count; }\n",
         "use.cxx")
