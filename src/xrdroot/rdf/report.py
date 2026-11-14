@@ -97,11 +97,20 @@ class CutFlowReport:
             )
         return "\n".join(lines)
 
+    def AsString(self) -> str:
+        """``AsString``: every line as ROOT 6.40 gives them - each name in twenty columns,
+        each line ended."""
+        return "".join(
+            line.replace(f"{cut.name:<10}:", f"{cut.name:<20}:", 1) + "\n"
+            for cut, line in zip(self.cuts, str(self).splitlines(), strict=True)
+        )
+
     def Print(self) -> None:
         """Every line, with ``printf`` as ROOT prints them: unflushed, after a script's own."""
         printf("".join(line + "\n" for line in str(self).splitlines()))
 
     at = At
+    as_string = AsString
     print = Print
 
 

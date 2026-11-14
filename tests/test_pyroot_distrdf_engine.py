@@ -114,6 +114,18 @@ def _same(found, expected):
     assert _summary(found) == _summary(expected)
 
 
+def test_a_merged_cut_flow_reads_as_roots_does():
+    frame = RDataFrame(Window(Empty(100), 0, 100)).Define("x", "rdfentry_")
+    report = frame.Filter("x > 25.", "Cut1").Filter("x > 50.", "Cut2").Report()
+    trigger(frame)
+    assert partial_of(report).GetValue().AsString() == (
+        "Cut1                : pass=74         all=100        -- eff=74.00 % "
+        "cumulative eff=74.00 %\n"
+        "Cut2                : pass=49         all=74         -- eff=66.22 % "
+        "cumulative eff=49.00 %\n"
+    )
+
+
 def test_a_partial_adds_nothing_from_a_task_that_had_nothing():
     frame = RDataFrame(Window(Empty(4), 0, 4))
     taken = frame.Define("x", "1").Take("x")
