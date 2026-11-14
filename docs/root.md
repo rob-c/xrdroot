@@ -1370,6 +1370,25 @@ show nothing, as in ROOT's batch mode, and `SaveAs` - which ROOT renders
 through a headless browser - writes no file and says so. `gEnv`, ROOT's
 resources from `.rootrc` files, is there for the settings macros read and set.
 
+**Complex numbers and URLs.** `TComplex` keeps ROOT's names (`Re`, `Im`,
+`Rho`, `Theta`, static `Sqrt`, `Exp`, `Power`) and print, `(4,0i)`, and does
+its arithmetic with a real number on either side. `TUrl` takes a URL apart
+as ROOT does - a bare word is a host over `http`, a path a local file - and
+`Compare`s by its text. `TObject`'s comparison operators are ROOT's, through
+`IsEqual` and `Compare`, so a list of `TUrl` or `TNamed` sorts.
+
+**Python compiled for C++.** `@ROOT.Numba.Declare(["float"], "float")`
+compiles a function with numba (the `numba` extra) for the C++ types given -
+numbers, and `RVec`, `std::vector` and `std::array` of them - and puts it
+in the `Numba` namespace, so a macro, `ProcessLine` or an RDataFrame
+expression calls `Numba::f(x)`.
+
+**cppyy.** `xrdroot.cppyy` is cppyy's interface over the translator:
+`cppdef`, `include`, `load_library` (a `.xrdlib`), `gbl` - C++'s global
+namespace, ROOT's classes in it - `addressof`, `bind_object`, `nullptr`,
+`ll.cast` and `py.add_pythonization`. `xrdroot run script.py` makes
+`import cppyy` this module when no real cppyy is installed.
+
 **A macro's random numbers.** `std::mt19937`, `std::uniform_real_distribution`
 and `std::normal_distribution` draw what libc++ draws, number for number, so
 a macro that fills from them fills what ROOT filled.
@@ -2399,6 +2418,16 @@ string expressions use, so the numbers are the same either way. Where C++
 would be undefined these do not make something up either: `Max` and `Min` put
 `default` (NaN unless told) in an empty entry, and `Take` past the end is
 refused unless given a default to pad with.
+
+Through `xrdroot.pyroot` - `ROOT` in a script `xrdroot run` runs - a plain
+Python function is called once per entry instead, as ROOT calls the function
+numba compiled for it, a collection given as a NumPy array; `extra_args`
+gives it values of its own by name:
+
+```python
+df.Define("s", lambda v: v.sum(), ["v"])
+df.Define("xy", lambda x, y: x * y, extra_args={"y": 0.5})
+```
 
 ### Results
 

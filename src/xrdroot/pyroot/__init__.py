@@ -63,6 +63,7 @@ SUBMODULES = [
     "geom",
     "geom.legacy",
     "geom.legacyshapes",
+    "numbadeclare",
     "_pythonization",
 ]
 

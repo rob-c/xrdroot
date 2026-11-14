@@ -397,7 +397,22 @@ class _Template:
         return self._made[key]
 
     def __call__(self, *arguments: Any) -> Any:
+        """``std.vector(int)``: the class; ``std::vector{1, 2, 3}``, a list: one made from it,
+        its element type deduced as C++17 deduces it."""
+        if self._arity == 1 and len(arguments) == 1 and isinstance(arguments[0], list):
+            return self[deduced(arguments[0])](arguments[0])
         return self[arguments]
+
+
+def deduced(values: list[Any]) -> str:
+    """The element type C++17 deduces from a braced list of values: ``{1, 2}`` is ``int``."""
+    if values and all(isinstance(value, bool) for value in values):
+        return "bool"
+    if all(isinstance(value, (int, np.integer)) for value in values):
+        return "int"
+    if all(isinstance(value, str) for value in values):
+        return "std::string"
+    return "double"
 
 
 class _Vector(_Container):
@@ -1053,6 +1068,10 @@ class _ArrayTemplate:
 
         return made
 
+    def __call__(self, values: list[Any]) -> Any:
+        """``std::array{1, 2, 3}``: its element type and size deduced from the list."""
+        return self[deduced(values), len(values)](values)
+
 
 class _Stream:
     """``std::cout`` and ``std::cerr``: what ``<<`` is given, written as text."""
@@ -1111,8 +1130,19 @@ class _Namespace:
         return value
 
     def __getattr__(self, name: str) -> Any:
+        """The streams' other names - ``std.ostream``, ``std.ostringstream``, ``std.setw`` -
+        or a refusal by name."""
+        from . import streams
+
+        if name in STREAM_NAMES:
+            return getattr(streams, name)
         raise AttributeError(f"ROOT has std.{name}; xrdroot.pyroot does not yet")
 
+
+#: The names of :mod:`.streams` ``std`` has, besides the two its class holds itself.
+STREAM_NAMES = frozenset({"ostream", "ostringstream", "clog", "flush", "fixed", "scientific",
+                          "setw", "setprecision", "setfill", "left", "right", "boolalpha",
+                          "hex", "dec", "oct"})  # fmt: skip
 
 #: ``ROOT.std``.
 std = _Namespace()

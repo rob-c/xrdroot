@@ -11,6 +11,8 @@ once as PyROOT's does - a NumPy array for each entry of a collection - and
 
 from __future__ import annotations
 
+import functools
+import inspect
 import io
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any
@@ -158,6 +160,7 @@ class _Method:
         self.name, self.found = name, found
 
     def __call__(self, *arguments: Any, **options: Any) -> Any:
+        arguments = _bound_extra(arguments, options.pop("extra_args", None))
         given = per_entry(self.name, [_unwrapped(each) for each in arguments])
         renamed = KEYWORDS.get(self.name, {})
         keywords = {renamed.get(key, key): _unwrapped(value) for key, value in options.items()}
@@ -171,6 +174,23 @@ class _Method:
 
     def __getitem__(self, types: Any) -> _Method:
         return self
+
+
+def _bound_extra(arguments: tuple[Any, ...], extra: Any) -> tuple[Any, ...]:
+    """``Define("xy", f, extra_args={"y": 0.5})``: ``f`` given ``y`` itself, reading only
+    the columns its other parameters name."""
+    if not extra:
+        return arguments
+    at = next(i for i, each in enumerate(arguments) if callable(each))
+    function, given = arguments[at], dict(extra)
+
+    @functools.wraps(function)
+    def bound(*values: Any) -> Any:
+        return function(*values, **given)
+
+    names = [name for name in inspect.signature(function).parameters if name not in given]
+    rest = arguments[at + 1 :] or (names,)
+    return (*arguments[:at], bound, *rest)
 
 
 class RDataFrame:
