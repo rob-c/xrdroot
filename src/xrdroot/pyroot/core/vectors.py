@@ -412,10 +412,11 @@ class TVector3(TObject):
         return 3
 
     def __getitem__(self, i: int) -> float:
+        """``v[i]``: out of range, ROOT's error and then Python's ``IndexError``, as PyROOT's."""
+        found = self(i)
         if not 0 <= i < 3:
-            self.Error("operator()(i)", "bad index (%d) returning 0", i)
-            return 0.0
-        return (self._x, self._y, self._z)[i]
+            raise IndexError("index out of range")
+        return found
 
     def __setitem__(self, i: int, value: float) -> None:
         parts = [self._x, self._y, self._z]
@@ -423,7 +424,11 @@ class TVector3(TObject):
         self.SetXYZ(*parts)
 
     def __call__(self, i: int) -> float:
-        return self[i]
+        """``v(i)``: out of range, ROOT's error, and 0."""
+        if not 0 <= i < 3:
+            self.Error("operator()(i)", "bad index (%d) returning 0", i)
+            return 0.0
+        return (self._x, self._y, self._z)[i]
 
     def __iter__(self) -> Any:
         return iter((self._x, self._y, self._z))
