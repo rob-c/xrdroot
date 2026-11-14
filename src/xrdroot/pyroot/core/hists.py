@@ -1,4 +1,5 @@
-"""``TH1``, ``TH2``, ``TH3`` and each of their storage kinds, ``C``, ``S``, ``I``, ``F`` and ``D``.
+"""``TH1``, ``TH2``, ``TH3`` and each of their storage kinds: ``C``, ``S``, ``I``, ``L``, ``F``
+and ``D``.
 
 Each is a :class:`xrdroot.Histogram` underneath, in ``._xrd``, with ROOT's
 methods over it (see :mod:`.histcore`, :mod:`.histbins`, :mod:`.histstats`
@@ -13,8 +14,8 @@ from typing import Any
 
 import numpy as np
 
-from ...hist import Histogram
 from ...stdio import unflushed
+from .._pythonization._uhi import UnifiedHistogram
 from .histbins import Bins
 from .histcore import Booked
 from .histops import Operations
@@ -25,13 +26,15 @@ from .wrapping import adopt, register
 
 __all__ = [
     "TH1", "TH2", "TH3",
-    "TH1C", "TH1S", "TH1I", "TH1F", "TH1D", "TH1K",
-    "TH2C", "TH2S", "TH2I", "TH2F", "TH2D",
-    "TH3C", "TH3S", "TH3I", "TH3F", "TH3D",
+    "TH1C", "TH1S", "TH1I", "TH1L", "TH1F", "TH1D", "TH1K",
+    "TH2C", "TH2S", "TH2I", "TH2L", "TH2F", "TH2D",
+    "TH3C", "TH3S", "TH3I", "TH3L", "TH3F", "TH3D",
 ]  # fmt: skip
 
 
-class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarker):
+class TH1(
+    UnifiedHistogram, Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarker
+):
     """``TH1``: a histogram of one axis - and the base of every other."""
 
     CLASS_TITLE = "1-Dim histogram base class"
@@ -141,45 +144,13 @@ class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarke
 
         self._replace(inflated(self, "XYZ".index(str(ax).upper()[:1] or "X")))
 
-    # -- UHI, as PyROOT's histograms speak it -----------------------------------------------
-
-    def values(self, flow: bool = False) -> np.ndarray[Any, Any]:
-        return np.asarray(self._xrd.values(flow))
-
-    def variances(self, flow: bool = False) -> np.ndarray[Any, Any]:
-        return np.asarray(self._xrd.variances(flow))
-
-    def counts(self, flow: bool = False) -> np.ndarray[Any, Any]:
-        return np.asarray(self._xrd.counts(flow))
-
-    @property
-    def axes(self) -> Any:
-        return self._xrd.axes
-
-    @property
-    def kind(self) -> str:
-        return str(self._xrd.kind)
-
-    def __getitem__(self, index: Any) -> Any:
-        found = self._xrd[index]
-        return self._wrapped(found)
-
-    def _wrapped(self, found: Any) -> Any:
-        from .wrapping import wrap
-
-        return wrap(found) if isinstance(found, Histogram) else found
-
-    def __setitem__(self, index: Any, value: Any) -> None:
-        self._xrd[index] = value
+    # -- Python's view of it; UHI's is :class:`UnifiedHistogram`'s -------------------------
 
     def __len__(self) -> int:
         return self.GetNcells()
 
     def __bool__(self) -> bool:
         return True
-
-    def __iter__(self) -> Any:
-        return iter(self.values().ravel())
 
 
 def _on_axes(name: str) -> Any:
@@ -278,25 +249,29 @@ def _kind(base: type, letter: str, title: str) -> type:
 
 
 _TITLES = {"C": "one byte per channel", "S": "one short per channel", "I": "one int per channel",
-           "F": "one float per channel", "D": "one double per channel"}  # fmt: skip
+           "L": "one 64 bit integer per channel", "F": "one float per channel",
+           "D": "one double per channel"}  # fmt: skip
 
 TH1C: Any = _kind(TH1, "C", f"1-Dim histograms ({_TITLES['C']})")
 TH1S: Any = _kind(TH1, "S", f"1-Dim histograms ({_TITLES['S']})")
 TH1I: Any = _kind(TH1, "I", f"1-Dim histograms ({_TITLES['I']})")
+TH1L: Any = _kind(TH1, "L", f"1-Dim histograms ({_TITLES['L']})")
 TH1F: Any = _kind(TH1, "F", f"1-Dim histograms ({_TITLES['F']})")
 TH1D: Any = _kind(TH1, "D", f"1-Dim histograms ({_TITLES['D']})")
 TH1K: Any = TH1D
 TH2C: Any = _kind(TH2, "C", f"2-Dim histograms ({_TITLES['C']})")
 TH2S: Any = _kind(TH2, "S", f"2-Dim histograms ({_TITLES['S']})")
 TH2I: Any = _kind(TH2, "I", f"2-Dim histograms ({_TITLES['I']})")
+TH2L: Any = _kind(TH2, "L", f"2-Dim histograms ({_TITLES['L']})")
 TH2F: Any = _kind(TH2, "F", f"2-Dim histograms ({_TITLES['F']})")
 TH2D: Any = _kind(TH2, "D", f"2-Dim histograms ({_TITLES['D']})")
 TH3C: Any = _kind(TH3, "C", f"3-Dim histograms ({_TITLES['C']})")
 TH3S: Any = _kind(TH3, "S", f"3-Dim histograms ({_TITLES['S']})")
 TH3I: Any = _kind(TH3, "I", f"3-Dim histograms ({_TITLES['I']})")
+TH3L: Any = _kind(TH3, "L", f"3-Dim histograms ({_TITLES['L']})")
 TH3F: Any = _kind(TH3, "F", f"3-Dim histograms ({_TITLES['F']})")
 TH3D: Any = _kind(TH3, "D", f"3-Dim histograms ({_TITLES['D']})")
 
-for _cls in (TH1C, TH1S, TH1I, TH1F, TH1D, TH2C, TH2S, TH2I, TH2F, TH2D,
-             TH3C, TH3S, TH3I, TH3F, TH3D):  # fmt: skip
+for _cls in (TH1C, TH1S, TH1I, TH1L, TH1F, TH1D, TH2C, TH2S, TH2I, TH2L, TH2F, TH2D,
+             TH3C, TH3S, TH3I, TH3L, TH3F, TH3D):  # fmt: skip
     register(_cls.__name__, factory=partial(adopt, _cls))

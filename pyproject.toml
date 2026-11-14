@@ -62,6 +62,8 @@ dev = [
   "awkward>=2",
   "boost-histogram>=1.4",
   "hist>=2.7",
+  # UHI's own conformance suite and JSON writer, which ROOT's histograms are run through.
+  "uhi>=1",
   # The C codecs the lz4 extra brings, so the fast paths are the ones tested;
   # the pure-Python ones are tested directly beside them.
   "lz4>=4",

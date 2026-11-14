@@ -66,6 +66,7 @@ SUBMODULES = [
     "numbadeclare",
     "pythonizing",
     "_pythonization",
+    "uhi",
 ]
 
 __all__: list[str] = []
