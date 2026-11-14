@@ -82,11 +82,15 @@ def gtest_failures(output: str) -> list[str]:
 
 
 def _why(lines: list[str]) -> str:
-    """The line after a case's first ``Failure``, else its first line that is not gtest's."""
+    """The line after a case's first ``Failure`` (and the next, if that one ends in a colon),
+    else its first line that is not gtest's."""
     said = [line for line in lines if line.strip() and not line.startswith("[")]
-    for line, after in zip(lines, [*lines[1:], ""], strict=True):
-        if _FAILURE.match(line) and after.strip():
-            return after.strip()
+    for at, line in enumerate(lines[:-1]):
+        if _FAILURE.match(line) and lines[at + 1].strip():
+            first = lines[at + 1].strip()
+            # ``Expected equality of these values:`` says little without what was compared
+            more = lines[at + 2].strip() if first.endswith(":") and at + 2 < len(lines) else ""
+            return f"{first} {more}".strip()
     return said[0].strip() if said else "?"
 
 
