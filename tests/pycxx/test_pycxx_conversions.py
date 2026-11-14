@@ -116,3 +116,27 @@ def test_a_default_cpp_works_out_at_each_call_is_worked_out_at_each_call(capsys)
     """
     run_source(source, "calls.C")
     assert capsys.readouterr().out == "1 1 -10\n2 2 -10\n7 3 -10\n1 1 3 3 4\n"
+
+
+def test_decltype_of_a_variable_declares_another_of_its_type(capsys) -> None:
+    source = r"""
+    #include <cstdio>
+    #include <map>
+    #include <vector>
+    int dt() {
+       std::vector<int> m0{1, 2};
+       decltype(m0) m4;
+       m4.push_back(3);
+       m4.push_back(4);
+       std::map<int, double> mm;
+       decltype(mm) m5;
+       m5[1] = 2.5;
+       int i = 3;
+       decltype(i) j = 7;
+       decltype(i + 1) k = 8;
+       printf("%d %d %g %d %d\n", (int)m4.size(), m4[1], m5[1], j, k);
+       return 0;
+    }
+    """
+    run_source(source, "dt.C")
+    assert capsys.readouterr().out == "2 4 2.5 7 8\n"

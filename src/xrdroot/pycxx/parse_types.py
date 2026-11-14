@@ -107,13 +107,16 @@ class TypeParser(Cursor):
         return base
 
     def _decltype(self) -> CType:
+        """``decltype(...)``: a type to be worked out - of the variable named, ``decltype(m)``,
+        which is kept, or of an initialiser, as ``auto``'s is."""
         self.take()
         self.expect("(")
-        depth = 1
+        depth, words = 1, []
         while depth:
             depth += self.at_("(") - self.at_(")")
-            self.take()
-        return CType("auto")
+            words.append(self.take())
+        named = len(words) == 2 and words[0].kind == "id"
+        return CType("decltype", [words[0].text]) if named else CType("auto")
 
     def named_type(self, strict: bool) -> CType:
         """A type by name, ``Point`` or ``std::map<int, std::string>``, typedefs looked through."""

@@ -193,7 +193,7 @@ class VariableEmitter(StmtEmitter):
         ctype = decl.ctype
         if not ctype.is_auto:
             return ctype
-        init = decl.init if decl.init is not None else (decl.args[0] if decl.args else None)
+        init = _initialiser(decl)
         found = self.typeof(init) if init is not None else None
         if found is None:
             return None
@@ -424,3 +424,12 @@ def addressable(ctype: CType | None) -> bool:
 def sized(ctype: CType | None, decl: VarDecl) -> CType | None:
     """``int a[] = {1, 2, 3}`` has the size its initialiser gives it, which ``sizeof`` needs."""
     return None if ctype is None else sized_type(ctype, decl)
+
+
+def _initialiser(decl: VarDecl) -> Expr | None:
+    """What an ``auto`` declaration's type is that of: its initialiser - or, for
+    ``decltype(m) n;``, the variable ``m``."""
+    ctype = decl.ctype
+    if ctype.name == "decltype" and ctype.args:
+        return Name(decl.where, [str(ctype.args[0])])
+    return decl.init if decl.init is not None else (decl.args[0] if decl.args else None)
