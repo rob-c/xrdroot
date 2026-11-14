@@ -1,0 +1,127 @@
+"""C's ``<cstdio>`` files: ``fopen`` and ``fclose``, ``fwrite``, ``fread``, ``fputs``, ``fgetc``.
+
+A ``FILE *`` is a :class:`FILE` here, wrapping a Python binary file, and a
+null one is ``None``, which is what ``fopen`` returns for a file it cannot
+open - as C's does, rather than raising. What is written may be text, bytes
+or an array of numbers; ``fwrite(data, size, count, f)`` writes ``size *
+count`` bytes of it and returns ``count`` when they were all written. A
+:class:`FILE` has ``write`` too, so ``fprintf`` prints to one.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import IO, Any
+
+__all__ = ["FILE", "fopen", "fclose", "fwrite", "fread", "fputs", "fgetc", "fflush", "feof",
+           "ftell", "fseek", "rewind", "EOF", "SEEK_SET", "SEEK_CUR", "SEEK_END"]  # fmt: skip
+
+#: ``EOF``: what ``fgetc`` and ``fclose`` return at the end or on failure.
+EOF = -1
+#: ``fseek``'s origins: the start, the current position, the end.
+SEEK_SET, SEEK_CUR, SEEK_END = 0, 1, 2
+
+
+class FILE:
+    """``FILE``: an open file, read and written in bytes."""
+
+    def __init__(self, stream: IO[bytes], name: str = "") -> None:
+        self.stream, self.name, self.eof = stream, name, False
+
+    def write(self, text: Any) -> int:
+        """Text or bytes written: what ``fprintf`` and ``fputs`` hand it."""
+        data = _bytes(text)
+        return self.stream.write(data)
+
+    def __repr__(self) -> str:
+        return f"<FILE {self.name!r}>"
+
+
+def _mode(mode: str) -> str:
+    """C's mode as Python's, always binary: ``"r"``, ``"w+"``, ``"ab"``..."""
+    return mode.replace("b", "").replace("t", "") + "b"
+
+
+def fopen(name: Any, mode: Any = "r") -> FILE | None:
+    """``fopen``: the file opened, or ``None`` - a null ``FILE *`` - if it cannot be."""
+    try:
+        stream = open(os.fspath(str(name)), _mode(str(mode)))
+    except OSError:
+        return None
+    return FILE(stream, str(name))
+
+
+def fclose(file: FILE | None) -> int:
+    """``fclose``: 0 once closed, ``EOF`` for a null file."""
+    if file is None:
+        return EOF
+    file.stream.close()
+    return 0
+
+
+def _bytes(data: Any) -> bytes:
+    """What a ``const void *`` points at, as bytes: text, bytes, or an array of numbers."""
+    if isinstance(data, (bytes, bytearray)):
+        return bytes(data)
+    if isinstance(data, str):
+        return data.encode("latin-1", "replace")
+    tobytes = getattr(data, "tobytes", None)
+    if tobytes is not None:
+        return bytes(tobytes())
+    return bytes(int(item) & 0xFF for item in data)
+
+
+def fwrite(data: Any, size: Any, count: Any, file: FILE) -> int:
+    """``fwrite``: ``size * count`` bytes of ``data`` written; how many items were."""
+    wanted = int(size) * int(count)
+    written = file.stream.write(_bytes(data)[:wanted])
+    return written // int(size) if int(size) else 0
+
+
+def fread(buffer: Any, size: Any, count: Any, file: FILE) -> int:
+    """``fread``: up to ``size * count`` bytes into a ``bytearray`` or array; items read."""
+    data = file.stream.read(int(size) * int(count))
+    file.eof = len(data) < int(size) * int(count)
+    buffer[: len(data)] = data if isinstance(buffer, bytearray) else list(data)
+    return len(data) // int(size) if int(size) else 0
+
+
+def fputs(text: Any, file: Any) -> int:
+    """``fputs``: the text written, with no newline added."""
+    file.write(str(text))
+    return 1
+
+
+def fgetc(file: FILE) -> int:
+    """``fgetc``: the next byte, or ``EOF`` at the end."""
+    byte = file.stream.read(1)
+    if not byte:
+        file.eof = True
+        return EOF
+    return byte[0]
+
+
+def fflush(file: Any = None) -> int:
+    """``fflush``: what was written handed to the system."""
+    if file is not None:
+        (file.stream if isinstance(file, FILE) else file).flush()
+    return 0
+
+
+def feof(file: FILE) -> bool:
+    """``feof``: whether a read has run past the end."""
+    return file.eof
+
+
+def ftell(file: FILE) -> int:
+    return file.stream.tell()
+
+
+def fseek(file: FILE, offset: Any, origin: Any = SEEK_SET) -> int:
+    file.stream.seek(int(offset), int(origin))
+    file.eof = False
+    return 0
+
+
+def rewind(file: FILE) -> None:
+    fseek(file, 0)
