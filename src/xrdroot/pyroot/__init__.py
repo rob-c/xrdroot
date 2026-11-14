@@ -64,6 +64,7 @@ SUBMODULES = [
     "geom.legacy",
     "geom.legacyshapes",
     "_pythonization",
+    "uhi",
 ]
 
 __all__: list[str] = []
