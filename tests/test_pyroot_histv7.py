@@ -21,14 +21,16 @@ def test_a_regular_axis_finds_bins_and_its_flow_bins_as_roots_does() -> None:
            ((axis.GetTotalNBins(), bare.GetTotalNBins()), (6, 4)),
            ((axis.GetLow(), axis.GetHigh(), axis.ComputeHighEdge(1)), (0.0, 2.0, 1.0)),
            ([b.GetIndex() for b in axis.GetNormalRange(1, 3)], [1, 2]),
-           (len(axis.GetFullRange()), 6), (len(bare.GetFullRange()), 4),
+           (len(list(axis.GetFullRange())), 6), (len(list(bare.GetFullRange())), 4),
            (axis.bin_index(E.RBinIndex()), (0, False)), (axis.bin_index(E.RBinIndex(9)),
-           (0, False)),
+           (9, False)),
            (bare.bin_index(E.RBinIndex.Overflow()), (5, False)))  # fmt: skip
-    for bad in ((0, (0, 1)), (3, (1, 1)), (3, (0, math.inf))):
-        with pytest.raises(ValueError, match="needs at least one bin"):
+    for bad, why in (((0, (0, 1)), "nNormalBins must be > 0"),
+                     ((3, (1, 1)), "high must be > low, but 1.000000 >= 1.000000"),
+                     ((3, (0, math.inf)), "high must be a finite value, but is inf")):
+        with pytest.raises(ValueError, match=why):
             E.RRegularAxis(*bad)
-    with pytest.raises(ValueError, match="not a range"):
+    with pytest.raises(ValueError, match="end must be >= begin"):
         axis.GetNormalRange(3, 1)
 
 
@@ -37,7 +39,7 @@ def test_a_variable_axis_finds_bins_between_its_edges() -> None:
     expect((axis.value_index(5.0), (1, True)), (axis.value_index(500.0), (3, True)),
            (axis.value_index(0.5), (0, True)), (axis.GetBinEdges(), [1.0, 10.0, 100.0, 1000.0]),
            (axis.GetNNormalBins(), 3), (axis.HasFlowBins(), True))  # fmt: skip
-    with pytest.raises(ValueError, match="two or more edges"):
+    with pytest.raises(ValueError, match=r"binEdges must be sorted, but for bin 0: 1\.000000 >= "):
         E.RVariableBinAxis([1, 1])
 
 
@@ -59,16 +61,17 @@ def test_a_histogram_fills_its_bins_and_its_statistics() -> None:
     expect((hist.GetBinContent(1), 2), (hist.GetBinContent(E.RBinIndex.Overflow()), 1),
            (hist.GetBinContent([E.RBinIndex.Underflow()]), 1), (hist.GetBinContent(2), 2),
            (hist.GetNEntries(), 6), (hist.GetNDimensions(), 1), (hist.GetTotalNBins(), 6),
-           (type(hist).__name__, "RHist<int>"), (hist.GetEngine() is hist, True))  # fmt: skip
+           (type(hist).__name__, "RHist<int>"),
+           (isinstance(hist.GetEngine(), E.RHistEngine["int"]), True))  # fmt: skip
     stats = hist.GetStats()
     mean = (0.1 + 0.6 + 0.6 + 5.0 - 1.0 + 2.7 * 1.1) / 7.7
     assert hist.ComputeMean() == pytest.approx(mean, rel=1e-15)
     assert stats.GetDimensionStats(0).fSumWX2 == pytest.approx(0.01 + 0.72 + 25 + 1 + 2.7 * 1.21)
     assert hist.ComputeStdDev() == pytest.approx(math.sqrt(stats.ComputeVariance()), rel=1e-15)
     assert stats.ComputeNEffectiveEntries() == pytest.approx(7.7 ** 2 / (5 + 2.7 ** 2))
-    with pytest.raises(ValueError, match="filled with 2 values"):
+    with pytest.raises(ValueError, match="invalid number of arguments to Fill"):
         hist.Fill(1.0, 2.0)
-    with pytest.raises(ValueError, match="There is no bin"):
+    with pytest.raises(ValueError, match="bin not found in GetBinContent"):
         hist.GetBinContent(9)
 
 
@@ -78,9 +81,13 @@ def test_histograms_add_scale_clear_and_set_their_bins() -> None:
     two.Fill(0.1, E.RWeight(3.0))
     one.Add(two)
     one.Scale(2.0)
-    one.SetBinContent(E.RBinIndex(3), 7.5)
-    expect((one.GetBinContent(0), 8.0), (one.GetBinContent(3), 7.5), (one.GetNEntries(), 2),
-           (one.GetStats().GetSumW(), 8.0), (one.GetStats().GetSumW2(), 40.0))  # fmt: skip
+    expect((one.GetNEntries(), 2), (one.GetStats().GetSumW(), 8.0),
+           (one.GetStats().GetSumW2(), 40.0))
+    one.SetBinContent(E.RBinIndex(3), 7.5)  # which taints the statistics, as in ROOT
+    expect((one.GetBinContent(0), 8.0), (one.GetBinContent(3), 7.5),
+           (one.GetStats().IsTainted(), True))  # fmt: skip
+    with pytest.raises(RuntimeError, match="statistics are tainted"):
+        one.GetNEntries()
     one.Clear()
     empty = one.GetStats()
     expect((one.GetBinContent(0), 0.0), (one.GetNEntries(), 0),
@@ -94,7 +101,7 @@ def test_a_bin_with_error_keeps_its_sum_of_squares() -> None:
     hist.Fill(0.5, 0.5)
     engine = E.RHistEngine["double"]([E.RRegularAxis(2, (0, 1), False)])
     engine.Fill(0.25)
-    bin = hist.GetBinContent(0, 0)
+    bin, mean = hist.GetBinContent(0, 0), hist.ComputeMean(1)
     hist.SetBinContent(1, 1, E.RBinWithError(4.0, 5.0))
     other = E.RHist[E.RBinWithError](E.RVariableBinAxis([0, 1, 3]), E.RRegularAxis(2, (0, 2)))
     other.Add(hist)
@@ -103,7 +110,7 @@ def test_a_bin_with_error_keeps_its_sum_of_squares() -> None:
     expect(((bin.fSum, bin.fSum2, float(bin)), (3.0, 5.0, 3.0)), (repr(bin),
            "RBinWithError(3.0, 5.0)"),
            (other.GetBinContent(1, 1).fSum2, 20.0), (engine.GetTotalNBins(), 2),
-           (engine.GetBinContent(0), 0.0), (hist.ComputeMean(1), 0.5))  # fmt: skip
+           (engine.GetBinContent(0), 0.0), (mean, 0.5))  # fmt: skip
 
 
 def test_a_histogram_converts_to_the_th1_of_its_bins_and_statistics() -> None:
@@ -123,7 +130,7 @@ def test_a_histogram_converts_to_the_th1_of_its_bins_and_statistics() -> None:
            (h3.GetXaxis().GetBinUpEdge(2), 4.0), (h3.GetBinContent(2), 1.0),
            (E.Hist.ConvertToTH1S(hist).ClassName(), "TH1S"),
            (E.Hist.ConvertToTH1C(hist).ClassName(), "TH1C"))  # fmt: skip
-    with pytest.raises(ValueError, match="one dimension"):
+    with pytest.raises(ValueError, match="TH1 requires one dimension"):
         E.Hist.ConvertToTH1D(E.RHist["double"](E.RRegularAxis(1, (0, 1)),
                E.RRegularAxis(1, (0, 1))))
 
@@ -134,7 +141,6 @@ def test_fill_contexts_fill_the_histogram_their_filler_shares() -> None:
     context = filler.CreateFillContext()
     context.Fill(0.5)
     context.Flush()
-    filler.Flush()
     assert (hist.GetNEntries(), hist.GetBinContent(1)) == (1, 1)
 
 
@@ -172,7 +178,7 @@ def test_a_fill_past_an_axis_without_flow_bins_changes_no_bin() -> None:
     hist.Fill(0.2)
     engine = E.RHistEngine[E.RBinWithError](E.RRegularAxis(2, (0.0, 1.0), False))
     engine.Fill(0.2)
-    hist.Add(engine)
+    hist.GetEngine().Add(engine)  # the bins only: an engine has no statistics to add
     expect((hist.GetNEntries(), 2), (hist.GetBinContent(0).fSum, 2.0),
            (hist.ComputeNEffectiveEntries(), 2.0))
     hist.Clear()

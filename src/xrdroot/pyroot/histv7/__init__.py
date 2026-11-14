@@ -1,106 +1,114 @@
-"""``ROOT.Experimental``: ROOT 7's histograms - ``RHist`` and its axes - and their conversion to
-``TH1``.
+"""``ROOT.Experimental``: ROOT 7's histograms - ``RHist``, its axes, its statistics and its
+slices - and their conversion to ``TH1``.
 
 ``ROOT.Experimental.RHist['int'](axis)`` is ``ROOT::Experimental::RHist<int>``;
 ``Experimental.Hist.ConvertToTH1I(hist)`` makes the ``TH1I`` of the same
-bins, contents and statistics, as ROOT's ``ConvertToTH1`` makes it. Other
-names under ``ROOT::Experimental`` are ROOT 7's graphics, from
-:mod:`..rcanvas`, and the machine-learning loader; the rest are refused
-by name.
+bins, contents and statistics, as ROOT's ``ConvertToTH1`` makes it.
+``Experimental.Internal`` has what ROOT's own tests reach for there: the
+axes of a histogram, the slice mapper, ``CreateBinIndexRange`` and the
+atomic additions. Other names under ``ROOT::Experimental`` are ROOT 7's
+graphics, from :mod:`..rcanvas`, and the machine-learning loader; the
+rest are refused by name.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
-
 from ...errors import UnsupportedFeatureError
-from .axes import RBinIndex, RBinIndexRange, RRegularAxis, RVariableBinAxis
-from .hist import (
-    RBinWithError,
-    RHist,
-    RHistConcurrentFiller,
-    RHistEngine,
-    RHistFillContext,
-    _Template,
+from .axes import RCategoricalAxis, RRegularAxis, RVariableBinAxis
+from .contents import RBinWithError
+from .convert import ConvertAxis, converted
+from .fillers import RHistAutoAxisFiller, RHistConcurrentFiller, RHistFillContext
+from .hist import ENGINE, HIST, Template
+from .index import (
+    CreateBinIndexRange,
+    RBinIndex,
+    RBinIndexMultiDimRange,
+    RBinIndexRange,
+    RLinearizedIndex,
 )
-from .stats import RHistStats, RWeight
+from .slices import RSliceBinIndexMapper, RSliceSpec
+from .stats import ATOMIC, RHistStats, RWeight
+from .variant import RAxes, RAxisVariant
 
 __all__ = ["Experimental"]
 
 
-def _converted(kind: str, hist: RHistEngine) -> Any:
-    """``ConvertToTH1<kind>``: a one-axis histogram as the ``TH1`` of the same bins."""
-    from ..core import hists
-
-    if not isinstance(hist, RHistEngine):  # a histogram a frame booked: its value
-        hist = hist.GetValue()
-    if hist.GetNDimensions() != 1:
-        raise ValueError("TH1 requires one dimension")
-    axis = hist.GetAxes()[0]
-    edges = np.asarray(axis.edges(), dtype=np.float64)
-    made = getattr(hists, f"TH1{kind}")("", "", len(edges) - 1, edges)
-    made.SetDirectory(None)
-    sums, squares = hist.contents()
-    shift = 0 if axis.HasFlowBins() else 1
-    if squares is not None:
-        made.Sumw2()
-    for at, value in enumerate(sums.tolist()):
-        made.SetBinContent(at + shift, value)
-        if squares is not None:
-            made.SetBinError(at + shift, float(np.sqrt(squares[at])))
-    if isinstance(hist, RHist):
-        _statistics(made, hist.GetStats())
-    return made
+def AtomicAdd(target: Any, value: Any) -> None:
+    """``Internal::AtomicAdd(&target, value)``: ``target += value`` made whole against other
+    threads - a bin content's own ``AtomicAdd``, or the value a cell holds."""
+    with ATOMIC:
+        if hasattr(target, "AtomicAdd"):
+            target.AtomicAdd(value)
+        else:
+            target.value = target.value + value
 
 
-def _statistics(made: Any, stats: RHistStats) -> None:
-    """``ConvertGlobalStatistics``: the entries and the running sums, the RHist's own."""
-    made.SetEntries(stats.GetNEntries())
-    first = stats.sums[0]
-    made.PutStats([stats.GetSumW(), stats.GetSumW2(), first[0], first[1]])
+def AtomicInc(target: Any) -> None:
+    """``Internal::AtomicInc(&target)``: ``target += 1``, made whole against other threads."""
+    with ATOMIC:
+        if hasattr(target, "AtomicInc"):
+            target.AtomicInc()
+        else:
+            target.value = target.value + 1
 
 
-class _Hist:
-    """``ROOT::Experimental::Hist``: the conversions to ``TH1``."""
+class _Namespace:
+    """A C++ namespace whose names are this object's attributes."""
 
-    @staticmethod
-    def ConvertToTH1I(hist: Any) -> Any:
-        return _converted("I", hist)
+    def __init__(self, name: str, **names: Any) -> None:
+        self._name = name
+        self.__dict__.update(names)
 
-    @staticmethod
-    def ConvertToTH1F(hist: Any) -> Any:
-        return _converted("F", hist)
+    def __repr__(self) -> str:
+        return f"<namespace {self._name}>"
 
-    @staticmethod
-    def ConvertToTH1D(hist: Any) -> Any:
-        return _converted("D", hist)
 
-    @staticmethod
-    def ConvertToTH1S(hist: Any) -> Any:
-        return _converted("S", hist)
+def _converter(kind: str) -> Any:
+    def convert(hist: Any) -> Any:
+        return converted(kind, hist)
 
-    @staticmethod
-    def ConvertToTH1C(hist: Any) -> Any:
-        return _converted("C", hist)
+    convert.__name__ = convert.__qualname__ = f"ConvertToTH1{kind}"
+    convert.__doc__ = f"``ConvertToTH1{kind}(hist)``: the ``TH1{kind}`` of a 1-D histogram."
+    return convert
+
+
+#: ``ROOT::Experimental::Hist``: the conversions to ``TH1``.
+Hist = _Namespace("ROOT::Experimental::Hist",
+                  Internal=_Namespace("ROOT::Experimental::Hist::Internal",
+                                      ConvertAxis=ConvertAxis),
+                  **{f"ConvertToTH1{kind}": _converter(kind) for kind in "CSILFD"})  # fmt: skip
+
+#: ``ROOT::Experimental::Internal``: what ROOT's tests reach into.
+Internal = _Namespace("ROOT::Experimental::Internal", RAxes=RAxes,
+                      RSliceBinIndexMapper=RSliceBinIndexMapper,
+                      CreateBinIndexRange=CreateBinIndexRange, AtomicAdd=AtomicAdd,
+                      AtomicInc=AtomicInc)  # fmt: skip
 
 
 class _Experimental:
     """``ROOT::Experimental``, as far as ROOT 7's histograms go."""
 
-    RHist = _Template(RHist)
-    RHistEngine = _Template(RHistEngine)
+    RHist = HIST
+    RHistEngine = ENGINE
+    RHistAutoAxisFiller = Template(RHistAutoAxisFiller)
+    RHistConcurrentFiller = RHistConcurrentFiller
+    RHistFillContext = RHistFillContext
     RRegularAxis = RRegularAxis
     RVariableBinAxis = RVariableBinAxis
+    RCategoricalAxis = RCategoricalAxis
+    RAxisVariant = RAxisVariant
     RBinIndex = RBinIndex
     RBinIndexRange = RBinIndexRange
+    RBinIndexMultiDimRange = RBinIndexMultiDimRange
+    RLinearizedIndex = RLinearizedIndex
     RBinWithError = RBinWithError
     RWeight = RWeight
     RHistStats = RHistStats
-    RHistConcurrentFiller = RHistConcurrentFiller
-    RHistFillContext = RHistFillContext
-    Hist = _Hist()
+    RSliceSpec = RSliceSpec
+    Hist = Hist
+    Internal = Internal
 
     def __getattr__(self, name: str) -> Any:
         if name.startswith("__"):
