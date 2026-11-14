@@ -1010,6 +1010,8 @@ class WritableTree:
         #: The class the tree is written as: a ``TTree``, or a ``TNtuple`` or ``TNtupleD``.
         self.classname = classname
         self._entries = 0
+        #: Where each cluster :meth:`flush` closed ends: one past its last entry.
+        self._clusters: list[int] = []
         self._columns: dict[str, _Column] = {}
         self._counters: dict[str, _Counter] = {}
         #: Each branch at the top of the tree: a column, or a branch of objects (see
@@ -1298,6 +1300,17 @@ class WritableTree:
         for column in self._branches:
             self._flush(column)
 
+    def flush(self) -> None:
+        """``FlushBaskets``: send out every basket part filled and end a cluster here.
+
+        ROOT marks the entries filled since the last cluster as one cluster of
+        their own, which a reader - ``TTree::GetClusterIterator``, distributed
+        ``RDataFrame`` splitting the tree into tasks - sees as a boundary.
+        """
+        self._flush_all()
+        if self._entries > (self._clusters[-1] if self._clusters else 0):
+            self._clusters.append(self._entries)
+
     def _adopt(self, column: _Column, place: tuple[int, int], entries: int, size: int) -> None:
         """Take in a basket that is already on file, as a basket of ``column``.
 
@@ -1376,15 +1389,15 @@ class WritableTree:
         buf.i32(SCAN_FIELD)
         buf.i32(0)  # fUpdate
         buf.i32(OFFSET_LEN)  # fDefaultEntryOffsetLen
-        buf.i32(0)  # fNClusterRange: no cluster boundaries were declared
+        ranges = self._cluster_ranges()
+        buf.i32(len(ranges))  # fNClusterRange: a range for each cluster flush closed
         buf.i64(MAX_ENTRIES)
         buf.i64(MAX_ENTRIES)  # fMaxEntryLoop
         buf.i64(0)  # fMaxVirtualSize
         buf.i64(AUTO_SAVE)
         buf.i64(AUTO_FLUSH)
         buf.i64(ESTIMATE)
-        buf.u8(0)  # fClusterRangeEnd, of which there are none
-        buf.u8(0)  # fClusterSize, likewise
+        _cluster_arrays(buf, ranges, [end - start for start, end in _pairs(self._clusters)])
         if isinstance(buf, Measuring):
             buf.features()
         # The tree owns its branches - TCollection's kIsOwner, which ROOT's array carries.
@@ -1403,6 +1416,11 @@ class WritableTree:
         buf.u32(0)  # fUserInfo: none
         buf.u32(0)  # fBranchRef: none
         buf.end(index)
+
+    def _cluster_ranges(self) -> list[int]:
+        """``fClusterRangeEnd``: the last entry of each cluster :meth:`flush` closed - none when
+        it was never called, which leaves the clusters to ``fAutoFlush``."""
+        return [end - 1 for end in self._clusters]
 
     def _write_branches(self, buf: WBuffer, origin: int) -> list[int]:
         """Every branch in order; what the tree's list of leaves holds for each leaf comes back.
@@ -1466,3 +1484,16 @@ def _counts(column: _Rows, packed: dict[str, Packed]) -> np.ndarray[Any, Any]:
     sizes = packed[column.name][1]
     assert sizes is not None
     return sizes // column.itemsize
+
+
+def _cluster_arrays(buf: WBuffer, ends: list[int], sizes: list[int]) -> None:
+    """``fClusterRangeEnd`` and ``fClusterSize``: each array behind a byte saying it is there."""
+    for values in (ends, sizes):
+        buf.u8(1 if values else 0)
+        for value in values:
+            buf.i64(value)
+
+
+def _pairs(ends: list[int]) -> list[tuple[int, int]]:
+    """Each cluster's first entry and one past its last, from where each ends."""
+    return list(zip([0, *ends], ends, strict=False))
