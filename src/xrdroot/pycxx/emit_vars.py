@@ -277,6 +277,11 @@ class VariableEmitter(StmtEmitter):
         return f"cstr({self.value(args[0])})" if len(args) == 1 else self._string_of(args)
 
     def _string_of(self, args: list[Expr]) -> str:
+        """``std::string(n, c)``, ``n`` of ``c``; ``std::string(istreambuf_iterator<char>(f),
+        {})``, the rest of the stream ``f``."""
+        stream = _streambuf(args[0])
+        if stream is not None:
+            return f"stream_rest({self.value(stream)})"
         count, char = (self.value(arg) for arg in args[:2])
         return f"chr({char}) * {count}"
 
@@ -437,3 +442,10 @@ def _initialiser(decl: VarDecl) -> Expr | None:
     if ctype.name == "decltype" and ctype.args:
         return Name(decl.where, [str(ctype.args[0])])
     return decl.init if decl.init is not None else (decl.args[0] if decl.args else None)
+
+
+def _streambuf(node: Expr) -> Expr | None:
+    """The stream ``std::istreambuf_iterator<char>(f)`` iterates over, if ``node`` is one."""
+    if not (isinstance(node, Call) and isinstance(node.func, Name) and len(node.args) == 1):
+        return None
+    return node.args[0] if node.func.last == "istreambuf_iterator" else None

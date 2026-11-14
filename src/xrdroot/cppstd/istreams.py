@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-__all__ = ["istream", "ifstream", "istringstream", "stream_after", "find_if"]
+__all__ = ["istream", "ifstream", "istringstream", "stream_after", "find_if", "stream_rest"]
 
 #: What ``>>`` reads for each kind of target: the text it takes, from the front of the rest.
 PATTERNS = {
@@ -75,6 +75,12 @@ class istream:
         line = self._text[self._at : end]
         self._at = end + 1
         return line
+
+    def rest(self) -> str:
+        """What ``std::istreambuf_iterator`` s over the stream read: all that is left of it."""
+        text = self._text[self._at :]
+        self._at = len(self._text)
+        return text
 
     def good(self) -> bool:
         return not self._failed
@@ -147,3 +153,8 @@ def find_if(first: Any, last: Any, predicate: Any) -> Any:
         if predicate(item):
             return item
     return None
+
+
+def stream_rest(stream: Any) -> str:
+    """``std::string(std::istreambuf_iterator<char>(f), {})``: the rest of the stream."""
+    return str(stream.rest())

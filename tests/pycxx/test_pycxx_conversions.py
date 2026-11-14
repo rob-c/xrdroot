@@ -261,3 +261,25 @@ def test_a_name_in_a_method_of_a_class_derived_from_a_library_is_its_bases_first
     with HOST.bind(lib):
         run_source(source, "model.C")
     assert capsys.readouterr().out == "25 6\n"
+
+
+def test_a_string_built_from_a_streams_iterators_is_the_rest_of_it(tmp_path, capsys) -> None:
+    (tmp_path / "text.txt").write_text("one\ntwo\n")
+    source = r"""
+    #include <cstdio>
+    #include <fstream>
+    #include <iterator>
+    #include <string>
+    int whole(const char *name) {
+       std::ifstream f(name);
+       std::string s((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+       std::ifstream g(name);
+       std::string first;
+       std::getline(g, first);
+       std::string rest(std::istreambuf_iterator<char>(g), {});
+       printf("%d [%s] [%s]\n", (int)s.size(), first.c_str(), rest.c_str());
+       return 0;
+    }
+    """
+    run_source(source, "whole.C", (str(tmp_path / "text.txt"),))
+    assert capsys.readouterr().out == "8 [one] [two\n]\n"
