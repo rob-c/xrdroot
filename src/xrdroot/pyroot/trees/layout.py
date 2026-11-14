@@ -73,6 +73,9 @@ class BranchInfo(NamedTuple):
     #: ``fID`` -2 the top of a split object, ``fType`` 2 or more one holding others.
     fid: int = -1
     btype: int = 0
+    #: ``fCompress``: how its baskets are compressed, as ROOT spells it; -1 for a branch
+    #: whose record has not been written, which takes its file's.
+    compress: int = -1
 
     def walk(self) -> list[BranchInfo]:
         """This branch and every branch under it, in the order ROOT lists them."""
@@ -144,7 +147,10 @@ def _stored(name: str, leaves: list[LeafInfo], store: Store, stats: Any) -> Bran
     title = store.titles.get(name, leaves[0].title)
     classname = leaves[0].typename if leaves[0].vector else ""
     records = [stats.branches[leaf.name].record for leaf in leaves] if stats is not None else []
-    return BranchInfo(name, title, classname, leaves, store.entries, *_sizes(records))
+    compress = records[0].compress if records else -1
+    return BranchInfo(
+        name, title, classname, leaves, store.entries, *_sizes(records), compress=compress
+    )
 
 
 def _sizes(records: list[Any]) -> tuple[int, int, int, int]:
@@ -213,4 +219,5 @@ def _recorded(record: Any, leaves: list[LeafInfo]) -> BranchInfo:
         record.zip_bytes,
         len(record.basket_seek),
         record.basket_size,
+        compress=record.compress,
     )

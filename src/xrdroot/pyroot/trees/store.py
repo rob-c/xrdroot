@@ -176,6 +176,8 @@ class Store:
         self.entries = 0
         #: ``SetCircular``'s most entries kept; 0 for a tree that keeps every one.
         self.circular = 0
+        #: ``TBranch::SetCompressionSettings``: a branch's own compression, by branch.
+        self.compressions: dict[str, int] = {}
 
     def add(self, slot: Slot) -> None:
         self.slots[slot.name] = slot
@@ -237,6 +239,10 @@ class Store:
         tree = directory.tree(
             name, self.specs(), title=title, counters=self.counters(), classname=classname
         )
+        for slot in self.slots.values():
+            codes = self.compressions.get(slot.branch)
+            if codes is not None and slot.kind != OBJECT:
+                tree.compress(slot.name, codes)
         if self.entries:
             tree.extend(self.columns())
             tree._flush_all()  # TTree::Write sends every basket out, the last ones with it

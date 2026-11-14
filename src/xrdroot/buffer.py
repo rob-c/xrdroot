@@ -125,10 +125,13 @@ class Listed(list[Any]):
 
     #: The option each entry was added under, ``""`` for none.
     options: list[str]
+    #: The class each entry named itself as, ``""`` for a null or one pointed back at.
+    classes: list[str]
 
-    def __init__(self, items: Any = (), options: Any = ()) -> None:
+    def __init__(self, items: Any = (), options: Any = (), classes: Any = ()) -> None:
         super().__init__(items)
         self.options = list(options)
+        self.classes = list(classes)
 
 
 class Clones(list[Any]):
@@ -359,10 +362,25 @@ class Buffer:
         self.string()
         items = Listed()
         for _ in range(self.i32()):
+            items.classes.append(self._next_class())
             items.append(self.any(classes))
             items.options.append(self.string())
         self.resume(end)
         return items
+
+    def _next_class(self) -> str:
+        """The class the object that comes next names, read ahead without moving on - so
+        an entry read as its members still says what it was."""
+        at = self.pos
+        word = self.u32()
+        tag = word if not word & BYTE_COUNT_MASK or word == NEW_CLASS_TAG else self.u32()
+        name = ""
+        if tag == NEW_CLASS_TAG:
+            name = self.cstring()
+        elif tag & CLASS_MASK:
+            name = str(self.refs.get(tag & ~CLASS_MASK, ""))
+        self.pos = at
+        return name
 
     def objarray(self, classes: dict[str, Any]) -> list[Any]:
         """A ``TObjArray``: the container ROOT keeps branches and leaves in.

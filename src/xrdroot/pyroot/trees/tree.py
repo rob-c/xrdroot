@@ -180,17 +180,21 @@ class TTree(_Player):
         and is left out of the file - a macro stopped before its ``Branch`` call
         leaves its file closing over such a tree.
         """
+        return self._write_into(self._directory, name or self._name)
+
+    def _write_into(self, directory: Any, name: str) -> int:
+        """The tree written into ``directory`` under ``name``: ``Write``, or a directory's
+        ``WriteObject`` handed the tree."""
         store = self._writable("Write")
         if not store.slots:
             return 0
-        directory = self._directory
         directory = getattr(directory, "_xrd", directory)
         if directory is None or not hasattr(directory, "tree"):
             raise ValueError(
                 f"{self._name!r} is in memory, in no file; open one for writing before "
                 f"making the tree, or give it one with SetDirectory, then Write"
             )
-        self._wrote = store.write(directory, name or self._name, self._title, self._classname)
+        self._wrote = store.write(directory, name, self._title, self._classname)
         self._written = True
         self._layout_cache = None
         return max(sum(branch.tot_bytes for branch in self._layout()), 1)

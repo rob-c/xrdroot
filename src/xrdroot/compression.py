@@ -31,13 +31,16 @@ from collections.abc import Callable
 
 from .errors import FormatError, UnsupportedFeatureError
 
-__all__ = ["decompress", "compress", "algorithm", "CODES"]
+__all__ = ["decompress", "compress", "algorithm", "spelled", "CODES"]
 
 HEADER = 9
 #: The most a single block may hold: its lengths are three-byte fields.
 BLOCK = 0xFFFFFF
 #: The number ROOT files carry for each algorithm, in the header's fCompress.
 CODES = {"zlib": 1, "lzma": 2, "lz4": 4, "zstd": 5}
+#: The algorithm a setting such as ``101`` names in its hundreds: 0, ROOT's
+#: global default, is zlib, as is 1.
+NUMBERED = {0: "zlib", 1: "zlib", 2: "lzma", 4: "lz4", 5: "zstd"}
 #: What each algorithm is asked for when the caller does not say.
 LEVELS = {"zlib": 6, "lzma": 6, "lz4": 1, "zstd": 3}
 TAGS = {"zlib": b"ZL", "lzma": b"XZ", "lz4": b"L4", "zstd": b"ZS"}
@@ -52,6 +55,18 @@ NAMES = {
     b"ZS": "zstd",
     b"CS": "the pre-2005 ROOT algorithm",
 }
+
+
+def spelled(codes: int) -> tuple[str | None, int | None]:
+    """The algorithm and level of one of ROOT's settings, ``algorithm * 100 + level``.
+
+    Level zero stores raw whatever the algorithm, so it comes back as no
+    algorithm at all.
+    """
+    level = codes % 100
+    if level == 0:
+        return None, None
+    return NUMBERED.get(codes // 100, "zlib"), level
 
 
 def algorithm(data: bytes) -> str:
@@ -365,12 +380,38 @@ def _unpack_lz4(block: bytes, size: int) -> bytes:
     return out
 
 
+#: The smallest dictionary liblzma takes, which ROOT's quarter of a small block is raised to.
+LZMA_DICT_MIN = 4096
+#: ``ZSTD_maxCLevel``: zstd's highest level, which it holds a higher one to.
+ZSTD_MAX_LEVEL = 22
+
+
+def _packed(chunk: bytes, algorithm: str, level: int) -> bytes:
+    """One block's bytes, before ROOT's header, as ``R__zip`` would have packed them."""
+    if algorithm == "zlib":
+        return zlib.compress(chunk, level)
+    if algorithm == "lzma":
+        dictionary = max(len(chunk) // 4, LZMA_DICT_MIN)
+        filters = [{"id": lzma.FILTER_LZMA2, "preset": level, "dict_size": dictionary}]
+        return lzma.compress(chunk, format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC32, filters=filters)
+    if algorithm == "lz4":
+        return _pack_lz4(chunk, level)
+    return _zstd_pack(chunk, min(2 * level, ZSTD_MAX_LEVEL))
+
+
 def compress(data: bytes, algorithm: str = "zlib", level: int | None = None) -> bytes:
     """``data`` as ROOT-framed blocks, ready to sit behind a key.
 
     Whether the result is worth using is the caller's call: ROOT stores an
     object raw when compressing it did not make it smaller, and the writer
     here does the same by comparing lengths.
+
+    Each algorithm is asked what ROOT's ``R__zip`` asks it, so the bytes are
+    ROOT's own given the same library: zlib at the level; LZ4's fast mode
+    below level four and its high-compression mode from there; zstd at twice
+    the level; and xz with a CRC32 check and a dictionary a quarter of the
+    block. LZ4 1.10 compresses differently from earlier versions in its fast
+    mode, so there the bytes are ROOT's only with the library ROOT has.
     """
     if algorithm not in TAGS:
         raise ValueError(f"algorithm must be one of {', '.join(TAGS)}, not {algorithm!r}")
@@ -379,14 +420,7 @@ def compress(data: bytes, algorithm: str = "zlib", level: int | None = None) -> 
     out = bytearray()
     for start in range(0, len(data), BLOCK) or (0,):
         chunk = data[start : start + BLOCK]
-        if algorithm == "zlib":
-            packed = zlib.compress(chunk, level)
-        elif algorithm == "lzma":
-            packed = lzma.compress(chunk, format=lzma.FORMAT_XZ, preset=level)
-        elif algorithm == "lz4":
-            packed = _pack_lz4(chunk, level)
-        else:
-            packed = _zstd_pack(chunk, level)
+        packed = _packed(chunk, algorithm, level)
         out += TAGS[algorithm]
         out.append(METHODS[algorithm])
         out += len(packed).to_bytes(3, "little")

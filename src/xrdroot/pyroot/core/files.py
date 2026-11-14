@@ -25,12 +25,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from ...compression import spelled
 from ...errors import ROOTError
 from .collections import TList
-from .directories import TDirectory, current_directory, set_current
+from .directories import TDirectory, current_directory, forget_file, set_current
 from .messages import message
 from .objects import Indent, TNamed, TObject, templated
-from .wrapping import from_members, unwrap, wrap
+from .records import recorded
+from .wrapping import from_members, wrap
 
 __all__ = ["TFile", "TMemFile", "TDirectoryFile", "TKey"]
 
@@ -44,9 +46,6 @@ MODES = {
     "UPDATE": "UPDATE",
     "READ_WITHOUT_GLOBALREGISTRATION": "READ",
 }
-#: ROOT's compression algorithms by the number a setting spells them with in its hundreds:
-#: 0, the global default, is zlib, as is 1.
-ALGORITHMS = {0: "zlib", 1: "zlib", 2: "lzma", 4: "lz4", 5: "zstd"}
 #: The setting ROOT writes a file with when it is not told one: zlib at level 1.
 DEFAULT_COMPRESSION = 101
 #: The classes a directory keeps in memory once read, as ``TH1`` and ``TTree`` add themselves.
@@ -337,7 +336,7 @@ class TDirectoryFile(TDirectory):
         own = getattr(obj, "_write_into", None)
         if own is not None:
             return int(own(self, called))
-        writer.write(called, unwrap(obj), title=obj.GetTitle())
+        writer.write(called, recorded(obj), title=obj.GetTitle())
         self._note_key(called, obj.GetTitle(), obj.ClassName())
         return 1
 
@@ -433,10 +432,7 @@ class TDirectoryFile(TDirectory):
 
 def _compression(settings: int) -> tuple[str | None, int | None]:
     """The writer's algorithm and level for one of ROOT's settings; level 0 stores raw."""
-    level = settings % 100
-    if level == 0:
-        return None, None
-    return ALGORITHMS.get(settings // 100, "zlib"), level
+    return spelled(settings)
 
 
 def _top() -> Any:
@@ -681,6 +677,7 @@ class TFile(TDirectoryFile):
         gROOT.GetListOfFiles().Remove(self)
         if self in _OPEN:
             _OPEN.remove(self)
+        forget_file(self)
 
     def _destruct(self) -> None:
         """A file on a macro's stack, as its scope ends: closed, as ROOT's destructor does."""
