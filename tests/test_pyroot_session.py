@@ -241,3 +241,31 @@ def test_gsystem_lists_a_directory_an_entry_at_a_time(tmp_path):
         (bool(ROOT.gSystem.OpenDirectory("nowhere") is None), True),
         (bool(ROOT.gSystem.GetDirEntry(None) is None), True),
     )
+
+
+def test_gsystem_makes_a_temporary_file_named_into_the_string_it_was_given(tmp_path):
+    name = ROOT.TString(str(tmp_path / "root_test_"))
+    made = ROOT.gSystem.TempFileName(name, None, ".txt")
+    made.write("text")
+    made.stream.close()
+    assert str(name).startswith(str(tmp_path / "root_test_")) and str(name).endswith(".txt")
+    assert open(str(name)).read() == "text"
+    other = ROOT.gSystem.TempFileName("plain_", str(tmp_path))
+    assert other.name.startswith(str(tmp_path / "plain_"))
+    other.stream.close()
+    elsewhere = ROOT.gSystem.TempFileName("xrd_")
+    assert elsewhere.name.startswith(ROOT.gSystem.TempDirectory())
+    elsewhere.stream.close()
+    os.remove(elsewhere.name)
+    assert ROOT.gSystem.CleanCompiledMacros() is None
+
+
+def test_a_uuid_is_version_1_made_now_or_version_4_at_random_and_orders_by_its_bits():
+    now, random = ROOT.TUUID(), ROOT.TUUID.UUIDv4()
+    assert now.AsString()[14] == "1" and random.AsString()[14] == "4"
+    assert random.AsString()[19] in "89ab" and now.GetUUIDNumber() == 0
+    again = ROOT.TUUID(random.AsString())
+    assert again == random and hash(again) == hash(random) and again.Hash() == random.Hash()
+    assert again.Compare(random) == 0 and (now < random) == (now.Compare(random) == -1)
+    assert len({ROOT.TUUID.UUIDv4() for _ in range(100)}) == 100 and now != "x"
+    assert repr(again) == f"<TUUID {random.AsString()}>"

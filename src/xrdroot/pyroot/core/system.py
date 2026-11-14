@@ -132,6 +132,10 @@ class TSystem(TNamed):
         compiling = _translator("compile_macro")
         return 1 if compiling is None else int(compiling(filename, option, *rest))
 
+    def CleanCompiledMacros(self) -> None:
+        """``CleanCompiledMacros``: ACLiC's libraries removed; a translation leaves none behind
+        but the ``.xrdlib`` it wrote, which stays as a build's cache."""
+
     def GetMakeSharedLib(self) -> str:
         """``GetMakeSharedLib``: the command ACLiC would build with, kept for macros that edit it;
         a translation is built with none."""
@@ -226,6 +230,25 @@ class TSystem(TNamed):
         import tempfile
 
         return tempfile.gettempdir()
+
+    def TempFileName(self, base: Any, directory: Any = None, suffix: Any = None) -> Any:
+        """``TempFileName``: a new file, open to write, whose name is ``base`` and a unique tail.
+
+        The name is written back into a ``TString`` ``base``, in the temporary
+        directory unless ``base`` already has a directory or one is given.
+        """
+        import tempfile
+
+        from ...cppstd.cstdio import FILE
+
+        prefix = str(base)
+        where = str(directory) if directory else (os.path.dirname(prefix) or
+                                                    self.TempDirectory())
+        handle, name = tempfile.mkstemp(suffix=str(suffix or ""), dir=where,
+                                        prefix=os.path.basename(prefix))
+        if isinstance(base, TString):
+            base._s = name
+        return FILE(os.fdopen(handle, "w+b"), name)
 
     def ChangeDirectory(self, path: Any) -> bool:
         """``ChangeDirectory``: go there, true if it could be gone into."""
