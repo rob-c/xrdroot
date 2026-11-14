@@ -141,3 +141,31 @@ def test_the_runtime_reads_through_a_pointer_and_makes_the_standard_literals() -
     assert user_literal("ms", 250).total_seconds() == 0.25
     with pytest.raises(Unsupported, match=r'operator""_furlong'):
         user_literal("_furlong", 1)
+
+
+#: A class with a converting constructor and assignment from a pointer, as a persistent
+#: reference has: ``Ref r = p`` and ``r = p`` build one, they never make ``r`` the pointer.
+POINTED = r"""
+struct Thing { int value; };
+
+class Ref {
+public:
+   Ref(Thing *p = nullptr) : fValue(p ? p->value : -1) {}
+   int get() const { return fValue; }
+private:
+   int fValue;
+};
+
+int pointed() {
+   Thing *t = new Thing{7};
+   Thing *u = new Thing{5};
+   Ref a = t;
+   Ref b;
+   b = u;
+   return a.get() * 10 + b.get();
+}
+"""
+
+
+def test_an_object_initialised_or_assigned_from_a_pointer_is_built_from_it() -> None:
+    assert run_source(POINTED, "pointed.cxx") == 75
