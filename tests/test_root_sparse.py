@@ -195,5 +195,6 @@ def test_a_multigraph_is_the_graphs_it_holds():
 
 
 def test_a_sparse_histogram_of_64_bit_integers_is_read_as_roots_class_by_its_old_name(sparse):
-    assert SparseHistogram("THnSparseT<TArrayL>", sparse.members).classname == "THnSparseT<TArrayL64>"
+    renamed = SparseHistogram("THnSparseT<TArrayL>", sparse.members)
+    assert renamed.classname == "THnSparseT<TArrayL64>"
     assert "THnSparseT<TArrayL>" in SPARSE and "THnSparseT<TArrayL64>" in SPARSE

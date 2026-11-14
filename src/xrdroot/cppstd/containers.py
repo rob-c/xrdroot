@@ -398,7 +398,28 @@ class _Template:
         return self._made[key]
 
     def __call__(self, *arguments: Any) -> Any:
+        if self._name == "vector" and len(arguments) == 2 and not any(map(_is_type, arguments)):
+            return _deduced(self, arguments[0], arguments[1])
         return self[arguments]
+
+
+def _is_type(given: Any) -> bool:
+    """Whether a template argument names a type - by name, class or NumPy type."""
+    return isinstance(given, (str, type, np.dtype))
+
+
+def _deduced(template: _Template, first: Any, last: Any) -> Any:
+    """``std::vector(first, last)``: a vector of the range, its element type deduced from
+    what the iterators give, as C++17's class template argument deduction does."""
+    values: list[Any] = []
+    at = copy.copy(first)
+    while at != last:
+        deref = getattr(at, "__deref__", None)
+        values.append(deref() if deref is not None else at.value)
+        at += 1  # ++it on the copy
+    kind = type(values[0]) if values else float
+    named = {float: "double", int: "long", bool: "bool", str: "std::string"}.get(kind)
+    return template[named or kind.__name__](values)
 
 
 class _Vector(_Container):

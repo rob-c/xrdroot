@@ -326,10 +326,12 @@ class Booked:
         self.SetBit(NO_STATS, not stats)  # type: ignore[attr-defined]
 
     def GetStats(self, stats: Any = None) -> Any:
-        """``GetStats(stats)``: the running sums, into ``stats``; with nothing given, a list."""
+        """``GetStats(stats)``: the running sums, into ``stats`` - as many as it holds, where its
+        length is known; with nothing given, a list."""
         found = [float(value) for value in self._xrd_statistics()]
         if stats is not None:
-            for at, value in enumerate(found):
+            room = len(stats) if hasattr(stats, "__len__") else len(found)
+            for at, value in enumerate(found[:room]):
                 stats[at] = value
         return found
 

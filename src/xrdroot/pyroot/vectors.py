@@ -228,6 +228,10 @@ class _TArray(TObject):
     def GetSize(self) -> int:
         return len(self._v)
 
+    def size(self) -> int:
+        """``size()``: how many it holds, as ``GetSize`` says."""
+        return self.GetSize()
+
     def __len__(self) -> int:
         return len(self._v)
 

@@ -94,3 +94,24 @@ def test_a_vector_of_a_library_class_is_filled_with_default_made_objects():
     assert [type(item).__name__ for item in filled] == ["TNamed", "TNamed"]
     assert list(ROOT.std.vector["TNamed*"](2)) == [None, None]
     assert list(ROOT.std.vector["MinosError"](1)) == [None]  # one is made from what MINOS found
+
+
+def test_a_vector_made_from_two_iterators_deduces_its_element_type():
+    values = ROOT.std.vector["double"]([1.0, 2.0, 3.0])
+    made = ROOT.std.vector(values.begin() + 1, values.end())
+    assert list(made) == [2.0, 3.0] and type(made).__name__ == "vector<double>"
+    assert list(ROOT.std.vector(values.end(), values.end())) == []
+
+    class Held:
+        def __init__(self, at):
+            self.at, self.value = at, at * 10
+
+        def __iadd__(self, step):
+            self.at += step
+            self.value = self.at * 10
+            return self
+
+        def __eq__(self, other):
+            return self.at == other.at
+
+    assert list(ROOT.std.vector(Held(1), Held(3))) == [10, 20]
