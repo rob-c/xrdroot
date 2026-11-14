@@ -6,6 +6,7 @@ from __future__ import annotations
 import math
 import threading
 
+import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
@@ -42,18 +43,28 @@ def test_statistics_disable_a_dimension_and_refuse_to_be_read_once_tainted() -> 
         stats.Streamer()
 
 
-def test_skewness_and_kurtosis_are_roots_standardized_moments_or_nan() -> None:
-    stats, flat, empty = E.RHistStats(1), E.RHistStats(1), E.RHistStats(1)
+def _moments_of_one_two_two_seven() -> tuple[float, float]:
+    """The skewness and excess kurtosis of 1, 2, 2 and 7, from the central moments."""
+    spread = np.array([1.0, 2.0, 2.0, 7.0]) - 3.0
+    variance = float(np.mean(spread ** 2))
+    skew = float(np.mean(spread ** 3)) / variance ** 1.5
+    return skew, float(np.mean(spread ** 4)) / variance ** 2 - 3
+
+
+def test_skewness_and_kurtosis_are_roots_standardized_moments() -> None:
+    stats = E.RHistStats(1)
     for x in (1.0, 2.0, 2.0, 7.0):
         stats.Fill(x)
+    skew, kurt = _moments_of_one_two_two_seven()
+    assert stats.ComputeSkewness() == pytest.approx(skew)
+    assert stats.ComputeKurtosis() == pytest.approx(kurt)
+
+
+def test_moments_with_no_spread_or_no_entries_are_nan() -> None:
+    flat, empty = E.RHistStats(1), E.RHistStats(1)
     flat.Fill(3.0)
     flat.Fill(3.0)
-    mean, var = 3.0, (1 + 4 + 4 + 49) / 4 - 9.0
-    skew = ((1 + 8 + 8 + 343) / 4 - 3 * 14.5 * mean + 2 * mean ** 3) / var ** 1.5
-    kurt = ((1 + 16 + 16 + 2401) / 4 - 4 * 90.0 * mean + 6 * 14.5 * mean ** 2
-            - 3 * mean ** 4) / (var * var) - 3  # fmt: skip
-    expect((stats.ComputeSkewness(), pytest.approx(skew)), (stats.ComputeKurtosis(),
-           pytest.approx(kurt)), (math.isnan(flat.ComputeSkewness()), True),
+    expect((math.isnan(flat.ComputeSkewness()), True),
            (math.isnan(empty.ComputeKurtosis()), True), (math.isnan(empty.ComputeVariance()), True),
            (math.isnan(empty.ComputeStdDev()), True))
 
