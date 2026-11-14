@@ -51,9 +51,11 @@ class _RVec(np.lib.mixins.NDArrayOperatorsMixin, _Vector):  # type: ignore[misc]
         return "{ " + ", ".join(items) + " }"
 
     def __array_ufunc__(self, ufunc: Any, method: str, *inputs: Any, **kwargs: Any) -> Any:
+        """NumPy's arithmetic, an ``RVec`` again when one is its left side; an array, as
+        PyROOT gives back ``array == rvec``, when an array is."""
         given = [each.data() if isinstance(each, _Vector) else each for each in inputs]
         found = getattr(ufunc, method)(*given, **kwargs)
-        return _made(found)
+        return found if isinstance(inputs[0], np.ndarray) else _made(found)
 
     def __getitem__(self, index: Any) -> Any:
         if type(index) is not int and isinstance(index, (list, np.ndarray, _Vector)):

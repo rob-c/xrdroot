@@ -130,10 +130,10 @@ def test_run_lets_a_python_script_import_names_from_roots_namespaces(
     fake_pyroot: types.ModuleType,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from xrdroot.cli import run
+    from xrdroot.cli import shims
 
     fake_pyroot.Experimental = types.SimpleNamespace(RCanvas="canvas")
-    for name in run.NAMESPACES:  # put back as they were once the test is done
+    for name in shims.NAMESPACES:  # put back as they were once the test is done
         monkeypatch.setitem(sys.modules, f"ROOT.{name}", None)
     path = write(tmp_path, "s.py", "from ROOT.Experimental import RCanvas\nprint(RCanvas)\n")
     assert main(["run", str(path)]) == 0

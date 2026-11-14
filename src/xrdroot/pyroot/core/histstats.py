@@ -31,6 +31,7 @@ class Stats:
     _xrd: Any
     _core: Any
     _contents: Any
+    _errors: Any
     _widths: Any
     GetXaxis: Any
     GetYaxis: Any
@@ -84,7 +85,14 @@ class Stats:
         self._core()["fEntries"] = float(n)
 
     def GetEffectiveEntries(self) -> float:
-        return float(self._xrd.effective_entries)
+        """``GetEffectiveEntries``: the total weight squared over the sum of squared errors - of
+        the bins in range, once an axis has one, as ROOT's ``GetStats`` then counts them."""
+        if not self._ranged():
+            return float(self._xrd.effective_entries)
+        bins = self._displayed()
+        total = float(np.sum(self._contents()[bins].astype(np.float64)))
+        squares = float(np.sum(self._errors()[bins] ** 2))
+        return total * total / squares if squares else abs(total)
 
     def GetSumOfWeights(self) -> float:
         """``GetSumOfWeights``: every bin on the axes, flow left out, range or no range."""

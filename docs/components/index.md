@@ -1,6 +1,6 @@
 # Internal components
 
-xrdroot has seventeen internal components in one Python project. They separate
+xrdroot has eighteen internal components in one Python project. They separate
 ownership and dependencies while keeping the `xrdroot` distribution, source
 root, command-line tools and public imports together.
 
@@ -65,7 +65,8 @@ edge. The authoritative map is `[tool.xrdroot.components]` in `pyproject.toml`.
 | [pycxx](pycxx.md) | The C++ translator: parser, emitters, runtime, GoogleTest, dialects | cppstd |
 | [pyroot](applications.md#pyroot) | ROOT names and session adapters | All thirteen engine components above, pycxx |
 | [pycint](pycint.md) | ROOT's dialect of the translator, macro execution, the `cint` shim | pycxx and pyroot with everything below it |
-| [app](applications.md#app) | Public package facade and command-line application | All sixteen components above |
+| [cppyy](applications.md#cppyy) | cppyy's interface over ROOT's dialect of the translator | cppstd, pyroot, pycint |
+| [app](applications.md#app) | Public package facade and command-line application | All seventeen components above |
 
 Read [boundary checks](boundaries.md) for the enforcement commands and
 [providers](providers.md) for separately declared upward dispatch.

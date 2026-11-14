@@ -79,7 +79,7 @@ class _TObjectLike(TNamed, TAttLine, TAttFill, TAttMarker):
         )
 
 
-class ListOf(list, TObject):  # type: ignore[type-arg]
+class ListOf(list, TObject):  # type: ignore[type-arg, misc]  # a list: unhashable
     """``TObjArray``, as a tree's lists are: a Python list, and a ``TObject`` of ROOT's."""
 
     def ClassName(self) -> str:
