@@ -949,6 +949,28 @@ def _counter_code(name: str, types: Mapping[str, Any]) -> str:
     return code
 
 
+def _check_declared(classname: str, columns: Any, basket_size: Any, empty: bool) -> None:
+    """Refuse a tree declared as no class a tree is written as, without a mapping of columns
+    or - unless ``empty`` says it is meant - with none, or with no size for its baskets."""
+    if classname not in TREE_KINDS:
+        raise ValueError(
+            f"a tree is written as one of {', '.join(TREE_KINDS)}, and {classname!r} "
+            f"is none of them"
+        )
+    if not isinstance(columns, Mapping):
+        raise TypeError(
+            f"the columns are a {type(columns).__name__}; a tree is declared with a "
+            f"mapping of column name to type, as in {{'energy': float}}"
+        )
+    if not columns and not empty:
+        raise ValueError(
+            "a tree with no columns holds nothing that could be read back; "
+            "declare what each entry is made of"
+        )
+    if not isinstance(basket_size, int) or basket_size < 1:
+        raise ValueError(f"the basket size is {basket_size!r}, which is not a size in bytes")
+
+
 class WritableTree:
     """A tree being written: named columns, then one entry at a time.
 
@@ -984,24 +1006,9 @@ class WritableTree:
         counters: Mapping[str, Any] | None = None,
         *,
         classname: str = "TTree",
+        empty: bool = False,
     ) -> None:
-        if classname not in TREE_KINDS:
-            raise ValueError(
-                f"a tree is written as one of {', '.join(TREE_KINDS)}, and {classname!r} "
-                f"is none of them"
-            )
-        if not isinstance(columns, Mapping):
-            raise TypeError(
-                f"the columns are a {type(columns).__name__}; a tree is declared with a "
-                f"mapping of column name to type, as in {{'energy': float}}"
-            )
-        if not columns:
-            raise ValueError(
-                "a tree with no columns holds nothing that could be read back; "
-                "declare what each entry is made of"
-            )
-        if not isinstance(basket_size, int) or basket_size < 1:
-            raise ValueError(f"the basket size is {basket_size!r}, which is not a size in bytes")
+        _check_declared(classname, columns, basket_size, empty)
         self._file = file
         self._cycle = cycle
         #: What the tree is called, and what it says it is.

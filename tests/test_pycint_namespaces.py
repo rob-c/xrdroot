@@ -82,3 +82,27 @@ def test_a_macro_run_declares_its_namespaces_too(tmp_path, monkeypatch, capsys):
     )
     ROOT.gROOT.ProcessLine(".x spaced.C")
     assert capsys.readouterr().out == "7\n" and ROOT.MacroNS.seven() == 7
+
+
+def test_a_line_declaring_one_variable_makes_it_a_global_of_the_session(capsys):
+    ROOT.gInterpreter.ProcessLine("int session_count = 3;")
+    assert ROOT.session_count == 3
+    ROOT.gInterpreter.ProcessLine('printf("%d\\n", session_count + 1);')
+    assert capsys.readouterr().out == "4\n"
+
+
+def test_a_variable_declared_into_a_namespace_given_is_set_there():
+    from types import SimpleNamespace
+
+    from xrdroot.pycint.execute import process_line
+
+    space = SimpleNamespace()
+    process_line("double given_here = 2.5;", root=ROOT)
+    process_line("int other_here = 1;", root=space)
+    assert ROOT.given_here == 2.5 and space.other_here == 1
+
+
+def test_a_line_shaped_like_a_declaration_that_is_none_runs_as_a_statement(capsys):
+    ROOT.gInterpreter.ProcessLine("int shown_here = 5;")
+    ROOT.gInterpreter.ProcessLine("std::cout << shown_here;")
+    assert capsys.readouterr().out == "5"

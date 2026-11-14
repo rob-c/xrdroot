@@ -137,6 +137,13 @@ def _add_dynamic_path(directory: str) -> None:
 DEFINES: list[str] = []
 
 #: A directive that defines or undefines a macro.
+#: A line that is one variable declared - ``int n = 0;``, ``auto h = f(1);`` - which cling
+#: keeps as a global of the session: a type, a name, perhaps its initial value, one ``;``.
+VARIABLE = re.compile(
+    r"^(?:const\s+)?[A-Za-z_][\w:<>, ]*[\s*&]+[A-Za-z_]\w*\s*"
+    r"(?:=[^;]*|\{[^;]*\}|\([^;]*\))?;$"
+)
+
 #: A line that declares - a namespace, a class, a template - which cling keeps at the top,
 #: rather than statements run in a block of their own.
 DECLARATION = re.compile(r"^(?:namespace|class|struct|union|template\s*<)\b")
@@ -308,12 +315,35 @@ def process_line(line: str, *, root: Any = None) -> Any:
         raise ValueError(f"{text.split()[0]} is not a command gROOT->ProcessLine runs here")
     preload(text)
     define(text)
-    if text.startswith("#"):  # ``#include "Foo.h"``: declarations, at the top as cling has them
-        run_source(text + "\n", "<ProcessLine>", root=root, call=False)
-        return 0
-    if DECLARATION.match(text) and _declared_at_top(text, root):
+    if _at_top(text, root):
         return 0
     return _cxx.run_line(text, file="<ProcessLine>", dialect=session_dialect(), namespace=root)
+
+
+def _at_top(text: str, root: Any) -> bool:
+    """Was the line declarations, which cling runs at the top - ``#include "Foo.h"``, a class,
+    a namespace, a global variable - rather than statements in a block of their own?"""
+    if text.startswith("#"):
+        run_source(text + "\n", "<ProcessLine>", root=root, call=False)
+        return True
+    if DECLARATION.match(text) and _declared_at_top(text, root):
+        return True
+    return bool(VARIABLE.match(text)) and _global(text, root)
+
+
+def _global(text: str, root: Any) -> bool:
+    """``int n = 0;`` alone on a line: a global of the session, as cling keeps it - found by
+    later lines, and as ``ROOT.n`` - unless it will not translate at the top."""
+    try:
+        made = run_source(text + "\n", "<ProcessLine>", root=root, call=False)
+    except Refusal:
+        return False
+    before = run_source("", "<ProcessLine>", root=root, call=False)
+    namespace = root if root is not None else sys.modules["xrdroot.pyroot"]
+    for name, value in made.items():
+        if name not in before and not name.startswith("_"):
+            setattr(namespace, name, value)
+    return True
 
 
 def _declared_at_top(text: str, root: Any) -> bool:

@@ -98,7 +98,7 @@ def test_a_dataset_spec_is_read_as_a_chain_of_its_samples(tmp_path):
     assert ROOT.RDataFrame(spec).Sum("x").GetValue() == 45
     spec.WithGlobalRange((2, 7))
     assert (spec.GetEntryRangeBegin(), spec.GetEntryRangeEnd()) == (2, 7)
-    assert ROOT.RDataFrame(spec).Take["int"]("x").GetValue().tolist() == [2, 3, 4, 5, 6]
+    assert list(ROOT.RDataFrame(spec).Take["int"]("x").GetValue()) == [2, 3, 4, 5, 6]
     spec.WithGlobalRange((8, None))
     assert ROOT.RDataFrame(spec).Count().GetValue() == 2
 
