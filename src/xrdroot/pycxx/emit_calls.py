@@ -475,6 +475,10 @@ class CallEmitter(ExprEmitter):
             return f"{self.class_expr(ctype)}({self.value(node)})"
         if self._copied(ctype, node):
             return f"value_copy({self.value(node)})"
+        if ctype.is_object_pointer and isinstance(node, Name) and self.symbol(node) is None:
+            # ``TDirectory *d = gDirectory;``: the pointer as it is now, not a library global
+            # that follows what is current.
+            return f"pointer_now({self.value(node)})"
         return self.value(node)
 
     def _converted_from_pointer(self, ctype: CType, node: Expr) -> bool:

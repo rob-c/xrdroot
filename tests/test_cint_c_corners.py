@@ -75,3 +75,26 @@ def test_sizeof_of_roots_classes_is_what_root_lays_them_out_in(
     """
     run_source(source, "sz.C")
     assert capsys.readouterr().out == "16 1000 24 16 96 1024 264 40\n"
+
+
+def test_a_global_pointer_stored_into_a_variable_is_what_it_points_at_then(
+    tmp_path, monkeypatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``TDirectory *d = gDirectory;`` keeps the directory current then, as ROOT 6.40.04
+    prints it: ``gDirectory`` itself follows what is current."""
+    from xrdroot.cppstd.cells import pointer_now
+
+    monkeypatch.chdir(tmp_path)
+    source = r"""
+    void gd() {
+       TFile f("gd.root", "RECREATE");
+       TDirectory *d = gDirectory;
+       gROOT->cd();
+       TDirectory *e;
+       e = gDirectory;
+       printf("%s %d %d\n", d->GetName(), e == gROOT, d == gROOT);
+    }
+    """
+    run_source(source, "gd.C")
+    assert capsys.readouterr().out == "gd.root 1 0\n"
+    assert pointer_now(3) == 3

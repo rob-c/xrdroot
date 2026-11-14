@@ -23,7 +23,7 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = ["Cell", "Static", "ItemRef", "AttrRef", "address_of", "pointer_at", "integer_cast",
-           "byte_offset"]
+           "byte_offset", "pointer_now"]
 
 
 class Cell:
@@ -175,3 +175,11 @@ def byte_offset(obj: Any, offset: Any) -> Any:
         f"an object's address moved by {int(offset)} bytes, into the middle of it, which "
         "names nothing here: only an offset of 0 - a base at the object's start - is followed"
     )
+
+
+def pointer_now(value: Any) -> Any:
+    """A library's global pointer stored into a variable: what it points at now. A global
+    that follows what is current - ROOT's ``gDirectory`` - says what that is by
+    ``__real__``; anything else is itself."""
+    real = getattr(type(value), "__real__", None)
+    return real(value) if callable(real) else value
