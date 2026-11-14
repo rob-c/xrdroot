@@ -786,13 +786,13 @@ class ExprEmitter(NameEmitter):
     def _address_cast(self, target: CType, operand: Expr) -> str | None:
         """``(long)p`` of a pointer to an object, its address; ``(T*)n`` of an integer, the
         object at that address - or ``None`` if the cast is neither."""
+        if _is_null(operand):
+            return None
         source = self.typeof(operand)
         if source is None:
             # ``(Long_t)p`` of what the translator cannot type: a number, or a pointer's address
             wide = target.name in POINTER_WIDE and not target.pointer
             return f"integer_cast({self.value(operand)})" if wide else None
-        if _is_null(operand):
-            return None
         if target.integral and not target.is_bool and source.is_object_pointer:
             return f"address_of({self.value(operand)})"
         return self._pointer_from_integer(target, source, operand)

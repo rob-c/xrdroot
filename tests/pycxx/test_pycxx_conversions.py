@@ -290,3 +290,37 @@ def test_a_function_template_written_generically_takes_its_arguments_as_a_subscr
     same = module["same"]
     assert same["unsigned long"](5) == 5 and same(7) == 7
     assert same.__module__ == "__cint__" and same.__name__ == "same"
+
+
+def test_empty_and_size_of_what_a_library_returns_are_the_standards(capsys) -> None:
+    from types import SimpleNamespace
+
+    from xrdroot.pycxx.runtime import CXX as HOST
+
+    class Sized:
+        def size(self) -> int:
+            return 9
+
+    lib = SimpleNamespace(text=lambda: "", items=lambda: [1, 2], sized=Sized)
+    source = r"""
+    #include <cstdio>
+    int sizes() {
+       auto s = text();
+       auto v = items();
+       auto o = sized();
+       printf("%d %d %d %d\n", (int)s.empty(), (int)v.size(), (int)v.empty(), (int)o.size());
+       return 0;
+    }
+    """
+    with HOST.bind(lib):
+        run_source(source, "sizes.C")
+    assert capsys.readouterr().out == "1 2 0 9\n"
+
+
+def test_casts_of_a_null_and_of_a_number_moved_by_bytes() -> None:
+    source = "struct S {};\nvoid use(S *);\nvoid f() { use((S *)0); use((S *)nullptr); }"
+    assert "use(None)" in translate(source, "t.C")
+    addressed = translate("struct S {};\nvoid f(S *p) { long a = (long)p; }", "t.C")
+    assert "a = address_of(p)" in addressed
+    with pytest.raises(Refusal, match=r"pointer arithmetic on a char\*"):
+        translate("void f(long n) { const char *p = (char *)n - 1; }", "t.C")

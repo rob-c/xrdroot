@@ -409,12 +409,8 @@ class StmtParser(ExprParser):
             word = self.take()
             if word.kind == "id":
                 parts.append(word.text)
-            elif not word.is_("::"):
-                self.skip_to(";")
-                return
         self.take()
-        if parts:
-            self.usings.append((tuple(parts), namespace))
+        self.usings.append((tuple(parts), namespace))
 
     #: The using-directives read so far, for :class:`~.nodes.Unit`.
     usings: list[tuple[tuple[str, ...], bool]]
