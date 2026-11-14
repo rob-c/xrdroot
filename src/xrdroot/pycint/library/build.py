@@ -17,17 +17,20 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from ...pycxx import cache
 from ...pycxx.errors import CxxError
 from ..dialect import ROOT as DIALECT
+from . import checks
 from .manifest import SUFFIX, Library, read, write
 from .selection import requested
 from .translate import Declared, digest, translated_unit
 
 __all__ = [
     "BuildError",
+    "Strictness",
     "build_dictionary",
     "build_library",
     "build_aclic",
@@ -64,9 +67,12 @@ def explained(why: CxxError) -> BuildError:
     return BuildError("Compilation failed!")
 
 
-def _unit(name: str, files: Sequence[Path], includes: Sequence[Path]) -> Library:
-    """``files`` translated as one unit into the library ``name``. What the translator
-    refuses is raised as it refuses it: a build that cannot be done, not one that failed."""
+def _unit(
+    name: str, files: Sequence[Path], includes: Sequence[Path]
+) -> tuple[Library, Declared]:
+    """``files`` translated as one unit into the library ``name``, and what they declare.
+    What the translator refuses is raised as it refuses it: a build that cannot be done,
+    not one that failed."""
     source = "".join(f'#include "{path.resolve()}"\n' for path in files)
     unity = str(Path.cwd() / name)
     directories = [*includes, *(path.parent for path in files), Path.cwd()]
@@ -78,7 +84,7 @@ def _unit(name: str, files: Sequence[Path], includes: Sequence[Path]) -> Library
         headers=headers, digest=digest(inputs + headers),
         translator=translator_version(), names=found.top, namespaces=found.namespaces,
         classes=found.classes,
-    )  # fmt: skip
+    ), found  # fmt: skip
 
 
 def _absolute(paths: list[str]) -> list[str]:
@@ -86,18 +92,25 @@ def _absolute(paths: list[str]) -> list[str]:
     return list(dict.fromkeys(str(Path(path).resolve()) for path in paths))
 
 
-def _unused(rules: list[str], found: Declared) -> None:
+def _unused(rules: list[str], found: Declared) -> list[str]:
     """``Warning: Unused class rule: Foo`` for each rule naming nothing declared - unless it
     is the standard library's or ROOT's own class."""
-    for rule in rules:
-        if not found.knows(rule) and not _elsewhere(rule):
-            sys.stderr.write(f"Warning: Unused class rule: {rule}\n")
+    return [f"Warning: Unused class rule: {rule}" for rule in rules
+            if not found.knows(rule) and not _elsewhere(rule)]  # fmt: skip
+
+
+#: The standard library's class templates, which a rule may name without ``std::``.
+STANDARD = frozenset(
+    "vector list deque map multimap set multiset unordered_map unordered_multimap "
+    "unordered_set unordered_multiset pair tuple array bitset string complex valarray "
+    "shared_ptr unique_ptr weak_ptr atomic function optional variant".split()
+)
 
 
 def _elsewhere(rule: str) -> bool:
     """Whether ``rule`` names a class of the standard library or of ROOT itself."""
     bare = rule.split("<", 1)[0].strip().removeprefix("::")
-    if bare.startswith("std::"):
+    if bare.startswith("std::") or bare in STANDARD:
         return True
     from ... import pyroot
 
@@ -115,21 +128,44 @@ def build_dictionary(
     out: Path | None = None,
     rootmap: bool = True,
     libraries: Sequence[str] = (),
+    strict: Strictness | None = None,
 ) -> Path:
-    """rootcling's (or genreflex's) dictionary of ``files`` as ``lib<name>.xrdlib``; its path."""
-    tool = "genreflex" if selection is not None and linkdef is None else "rootcling"
+    """rootcling's (or genreflex's) dictionary of ``files`` as ``lib<name>.xrdlib``; its path.
+
+    What the generator would refuse is refused first, as it refuses it (:mod:`.checks`);
+    ``strict`` asks for what only a generator run by hand does."""
+    strict = strict or Strictness()
+    genreflex = selection is not None and linkdef is None
+    tool = "genreflex" if genreflex else "rootcling"
     _missing([*files, *(each for each in (linkdef, selection) if each is not None)], tool)
+    if strict.selection_required:
+        checks.unselected(files, linkdef, selection)
+    parsed = checks.before(files, linkdef, selection, genreflex)
     place, named = out or Path.cwd(), _library_name(name)
     inputs, existing = _added(place, named, files)
-    library = _unit(named, inputs, includes)
-    _unused(requested(linkdef, selection), _found(library))
+    library, found = _unit(named, inputs, includes)
+    warnings = _unused(requested(linkdef, selection), found)
+    _warned(warnings + checks.io_targets(parsed, found.members), strict.fail_on_warnings)
     library.kind, library.rootmap = "dictionary", rootmap
     library.libraries = _joined(existing, libraries)
     return write(library, place)
 
 
-def _found(library: Library) -> Declared:
-    return Declared(library.classes, [], library.namespaces, library.names)
+@dataclass(frozen=True)
+class Strictness:
+    """What a generator run by hand checks that a build's dictionary step does not ask for."""
+
+    #: rootcling's refusal of a dictionary with no LinkDef, selection or ``#pragma link``.
+    selection_required: bool = False
+    #: genreflex's ``--fail_on_warnings``.
+    fail_on_warnings: bool = False
+
+
+def _warned(warnings: list[str], fatal: bool) -> None:
+    """The warnings said; under ``--fail_on_warnings``, the build stopped by them."""
+    checks.said(warnings)
+    if warnings and fatal:
+        raise checks.GeneratorError(1)
 
 
 def build_library(
@@ -150,7 +186,7 @@ def build_library(
     _missing(files, "xrdroot build library")
     place, named = out or Path.cwd(), _library_name(name)
     inputs, existing = _added(place, named, files)
-    library = _unit(named, inputs, includes)
+    library, _ = _unit(named, inputs, includes)
     if existing is not None:
         library.kind, library.rootmap = existing.kind, existing.rootmap
     else:

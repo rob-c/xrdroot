@@ -12,7 +12,11 @@ translations, and loads them the way ROOT loads the real ones
 ``dictionary`` is rootcling's (or genreflex's, with ``--selection``): the
 headers translated into ``lib<NAME>.xrdlib``, with a rootmap so that a class
 it provides is found by name, and a warning for each class the LinkDef or the
-selection file asks for and the headers do not declare. ``library`` is a
+selection file asks for and the headers do not declare; what rootcling and
+genreflex refuse in a selection (duplicate rules, unsupported standard
+classes, a union) is refused with their words and exit status, and
+``--fail-on-warnings`` and ``--selection-required`` are the checks they make
+only when run by hand. ``library`` is a
 library linked from sources, ``lib<NAME>.xrdlib``. ``executable`` writes a
 program, ``NAME``, that runs as ``xrdroot run SOURCE... -- args`` with the
 libraries loaded first, in the Python that built it, from any directory.
@@ -60,6 +64,11 @@ def add_parser(subparsers: Any) -> None:
     dictionary.add_argument("--selection", type=Path, help="the selection XML genreflex reads")
     dictionary.add_argument("--no-rootmap", dest="rootmap", action="store_false",
                             help="no rootmap: found only once loaded by name")  # fmt: skip
+    dictionary.add_argument("--fail-on-warnings", action="store_true",
+                            help="fail on a warning, as genreflex --fail_on_warnings")  # fmt: skip
+    dictionary.add_argument("--selection-required", action="store_true",
+                            help="fail, as rootcling run by hand does, when nothing selects "
+                            "what the dictionary is of")  # fmt: skip
     _common(steps.add_parser("library", help="a library from sources"), "SOURCE")
     _common(steps.add_parser("executable", help="a program from sources"), "SOURCE")
     aclic = steps.add_parser("aclic", help="ACLiC's library of a macro: macro.C+")
@@ -71,9 +80,12 @@ def add_parser(subparsers: Any) -> None:
 
 def run(args: argparse.Namespace) -> int:
     from ..pycint.library import BuildError
+    from ..pycint.library.checks import GeneratorError
 
     try:
         STEPS[args.step](args)
+    except GeneratorError as why:  # said already, as the generator says it
+        return why.status
     except BuildError as why:  # what the translator refuses goes on, said on one line, as 2
         sys.stderr.write(f"Error: {why}\n")
         return 1
@@ -82,10 +94,13 @@ def run(args: argparse.Namespace) -> int:
 
 def _dictionary(args: argparse.Namespace) -> Path:
     from ..pycint.library import build_dictionary
+    from ..pycint.library.build import Strictness
 
+    strict = Strictness(args.selection_required, args.fail_on_warnings)
     return build_dictionary(args.name, args.files, linkdef=args.linkdef,
                             selection=args.selection, includes=args.includes, out=args.out,
-                            rootmap=args.rootmap, libraries=args.libraries)  # fmt: skip
+                            rootmap=args.rootmap, libraries=args.libraries,
+                            strict=strict)  # fmt: skip
 
 
 def _library(args: argparse.Namespace) -> Path:

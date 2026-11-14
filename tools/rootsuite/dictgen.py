@@ -13,7 +13,10 @@ what ``xrdroot build dictionary`` needs, spelled each tool's way:
   its name says ``linkdef``.
 
 A rootmap is written only when one is asked for (``--rootmap``, ``-rmf``);
-otherwise ``--no-rootmap``. The output's directory is ``--out``. Options
+otherwise ``--no-rootmap``. genreflex's ``--fail_on_warnings`` is
+``--fail-on-warnings``; rootcling run with no LinkDef and no C++ module asked
+for (``-cxxmodule``) is ``--selection-required``, as it then refuses a
+dictionary nothing selects for. The output's directory is ``--out``. Options
 that change nothing a translated dictionary holds (``-v``, ``--verbose``,
 ``--interpreteronly``, ``-D``...) are dropped.
 """
@@ -85,7 +88,9 @@ def _genreflex(words: Sequence[str]) -> list[str]:
     output = found.get("out", [""])[0]
     name = _stem(library or output) or f"{_stem(headers[0]) if headers else 'dict'}_rflx"
     selection = found.get("selection", [])
-    return _build(name, found, headers, ["--selection", selection[0]] if selection else [])
+    extra = ["--selection", selection[0]] if selection else []
+    extra += ["--fail-on-warnings"] if "--fail_on_warnings" in words else []
+    return _build(name, found, headers, extra)
 
 
 def _linkdef(files: list[str]) -> tuple[str, list[str]]:
@@ -103,7 +108,9 @@ def _rootcling(words: Sequence[str]) -> list[str]:
     linkdef, headers = _linkdef(files)
     library = (found.get("library") or found.get("rootmap-lib") or [""])[0]
     name = _stem(library or found.get("out", ["dict"])[0])
-    return _build(name, found, headers, ["--linkdef", linkdef] if linkdef else [])
+    module = any(word.startswith("-cxxmodule") for word in words)
+    extra = ["--linkdef", linkdef] if linkdef else [] if module else ["--selection-required"]
+    return _build(name, found, headers, extra)
 
 
 def dictionary_words(tool: str, words: Sequence[str]) -> list[str]:

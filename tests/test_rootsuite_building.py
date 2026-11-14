@@ -321,8 +321,10 @@ def test_rootcling_takes_its_output_first_and_its_linkdef_last():
     assert words("rootcling", ["out.cxx", "x.h", "LinkDef.h"]) == [
         "dictionary", "--name", "out", "--linkdef", "LinkDef.h", "--no-rootmap", "x.h"]
     assert words("rootcint", ["-f", "o.cxx", "-rml", "libL.so", "-rmf", "L.rootmap", "x.h"]) == [
-        "dictionary", "--name", "L", "x.h"]
+        "dictionary", "--name", "L", "--selection-required", "x.h"]
+    assert "--selection-required" not in words("rootcling", ["-f", "o.cxx", "-cxxmodule", "x.h"])
     assert words("rootcling", [])[2] == "dict"
+    assert "--fail-on-warnings" in words("genreflex", ["a.h", "--fail_on_warnings"])
 
 
 def test_a_linkdef_alone_is_the_header_its_dictionary_reads():

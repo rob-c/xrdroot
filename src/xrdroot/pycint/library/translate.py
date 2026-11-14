@@ -48,6 +48,8 @@ class Declared:
     namespaces: dict[str, Any] = field(default_factory=dict)
     #: The names at the top, outside any namespace.
     top: list[str] = field(default_factory=list)
+    #: Each class's data members, by the class's qualified name.
+    members: dict[str, list[str]] = field(default_factory=dict)
 
     def knows(self, name: str) -> bool:
         """Whether ``name`` - ``ns::A``, ``A<int>`` - is a class or namespace declared here."""
@@ -97,8 +99,7 @@ def _walk(decls: list[Stmt], scope: list[str], found: Declared, members: dict[st
         for name, is_class in _names(decl):
             _record(found, members, scope, name, is_class)
         if isinstance(decl, ClassDecl):
-            nested = [member for member in decl.members if isinstance(member, ClassDecl)]
-            _nested(nested, [*scope, decl.name], found)
+            _nested(decl, [*scope, decl.name], found)
 
 
 def _namespace(decl: Namespace, scope: list[str], found: Declared, members: Any) -> None:
@@ -111,12 +112,18 @@ def _namespace(decl: Namespace, scope: list[str], found: Declared, members: Any)
     _walk(decl.body, [*scope, decl.name], found, inner)
 
 
-def _nested(classes: list[ClassDecl], scope: list[str], found: Declared) -> None:
-    """Classes declared inside a class: ``Outer::Inner``, known to a rootmap by that name."""
-    for decl in classes:
-        _add(found.classes, "::".join([*scope, decl.name]))
-        _nested([member for member in decl.members if isinstance(member, ClassDecl)],
-                [*scope, decl.name], found)  # fmt: skip
+def _nested(owner: ClassDecl, scope: list[str], found: Declared) -> None:
+    """A class's data members, and the classes, typedefs and enums declared inside it:
+    ``Outer::Inner``, known to a rootmap and a LinkDef by that name."""
+    found.members["::".join(scope)] = [
+        each.name for member in owner.members if isinstance(member, DeclStmt)
+        for each in member.decls
+    ]  # fmt: skip
+    for decl in owner.members:
+        if isinstance(decl, (ClassDecl, Typedef, EnumDecl)) and decl.name:
+            _add(found.classes, "::".join([*scope, decl.name]))
+        if isinstance(decl, ClassDecl):
+            _nested(decl, [*scope, decl.name], found)
 
 
 def _names(decl: Stmt) -> list[tuple[str, bool]]:
