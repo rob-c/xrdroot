@@ -82,3 +82,22 @@ def test_assigning_gdirectory_and_gfile_moves_them(tmp_path):
     HOST.gFile = first
     assert ROOT.gFile == first
     first.Close()
+
+
+def test_keys_are_found_by_cycle_here_or_below_and_listed_by_name(tmp_path):
+    path = str(tmp_path / "keys.root")
+    out = ROOT.TFile(path, "RECREATE")
+    named = ROOT.TNamed("bla", "blub")
+    for _ in range(3):
+        named.Write()
+    below = out.mkdir("below")
+    below.cd()
+    ROOT.TNamed("deep", "").Write()
+    out.Close()
+    back = ROOT.TFile(path)
+    assert back.FindKey("bla").GetCycle() == 3 and back.FindKey("bla;2").GetCycle() == 2
+    assert back.FindKeyAny("deep").GetName() == "deep" and back.FindKeyAny("none") is None
+    listed = back.GetListOfKeys().GetListForObject("bla")
+    assert [key.GetCycle() for key in listed] == [3, 2, 1]
+    assert len(back.GetListOfKeys().GetListForObject(named)) == 3
+    back.Close()

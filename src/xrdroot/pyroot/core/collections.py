@@ -423,6 +423,16 @@ class THashList(TList):
 
     CLASS_TITLE = "Doubly linked list with hashtable for lookup"
 
+    def GetListForObject(self, obj: Any) -> TList:
+        """``GetListForObject``: what shares the name of ``obj`` - or the name itself - in the
+        order the list holds them, as its hash table's slot for that name does."""
+        name = obj if isinstance(obj, str) else obj.GetName()
+        made = TList()
+        for item in self._items:
+            if _named(item, str(name)):
+                made.Add(item)
+        return made
+
 
 class TOrdCollection(TSeqCollection):
     """``TOrdCollection``: an ordered collection."""

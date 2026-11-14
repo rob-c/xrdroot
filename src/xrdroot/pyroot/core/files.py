@@ -27,7 +27,7 @@ from typing import Any
 
 from ...compression import spelled
 from ...errors import ROOTError
-from .collections import TList
+from .collections import THashList
 from .directories import TDirectory, current_directory, forget_file, set_current
 from .messages import message
 from .objects import Indent, TNamed, TObject, templated
@@ -227,17 +227,31 @@ class TDirectoryFile(TDirectory):
 
     # -- keys and reading -----------------------------------------------------------------
 
-    def GetListOfKeys(self) -> TList:
-        made = TList()
+    def GetListOfKeys(self) -> THashList:
+        made = THashList()
         for key in self._keys:
             made.Add(key)
         return made
 
+    def FindKey(self, keyname: Any) -> Any:
+        """``FindKey("name;cycle")``: the key of that cycle, or the newest without one."""
+        name, _, cycle = str(keyname).partition(";")
+        return self.GetKey(name, int(cycle) if cycle else 9999)
+
+    def FindKeyAny(self, keyname: Any) -> Any:
+        """``FindKeyAny``: the key here, or in the first directory below that has it."""
+        found = self.FindKey(keyname)
+        if found is not None:
+            return found
+        for key in self._keys:
+            below = self._named_directory(key.GetName()) if key.IsFolder() else None
+            found = below.FindKeyAny(keyname) if below is not None else None
+            if found is not None:
+                return found
+        return None
+
     def GetNkeys(self) -> int:
         return len(self._keys)
-
-    def FindKey(self, name: Any) -> Any:
-        return self.GetKey(name)
 
     def GetKey(self, name: Any, cycle: int = 9999) -> Any:
         """``GetKey``: the key of ``name`` - its newest cycle, or ``cycle`` if given."""
