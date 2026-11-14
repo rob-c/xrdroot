@@ -199,6 +199,26 @@ class TTree(_Player):
         self._layout_cache = None
         return max(sum(branch.tot_bytes for branch in self._layout()), 1)
 
+    def _write_into(self, directory: Any, name: str) -> int:
+        """``WriteObject``/``WriteTObject``: the tree written into ``directory`` under ``name`` -
+        with no branches at all, when it has none, as ROOT writes it asked to."""
+        store = self._writable("WriteObject")
+        held, self._directory = self._directory, directory
+        try:
+            if store.slots:
+                return self.Write(name)
+            target = getattr(directory, "_xrd", directory)
+            self._wrote = store.write(target, name, self._title, self._classname, empty=True)
+            self._written = True
+            return 1
+        finally:
+            self._directory = held
+
+    def FlushBaskets(self, create_cluster: bool = True) -> int:
+        """``FlushBaskets``: the entries filled since the last end a cluster of their own."""
+        self._writable("FlushBaskets").flush()
+        return 0
+
     def AutoSave(self, option: str = "") -> int:
         """Write the tree as it is so far, as ROOT's ``AutoSave`` does."""
         return self.Write()

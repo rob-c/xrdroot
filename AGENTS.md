@@ -71,7 +71,7 @@ package (plain Python API) from its `pyroot/` wrapper (ROOT's names and behaviou
 
 ## Components
 
-The source is seventeen internal components with an enforced import graph:
+The source is eighteen internal components with an enforced import graph:
 `cppstd → core → hist → io → rdf/graphics/roofit/… → pyroot → pycint → app`,
 with `pycxx` (the C++ translator) depending on `cppstd` alone, beneath pyroot.
 Their ownership and allowed dependencies are in `[tool.xrdroot.components]` in

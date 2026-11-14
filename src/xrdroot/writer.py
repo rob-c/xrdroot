@@ -1293,6 +1293,7 @@ class WritableDirectory:
         basket_size: int = BASKET_BYTES,
         counters: Mapping[str, Any] | None = None,
         classname: str = "TTree",
+        empty: bool = False,
     ) -> WritableTree:
         """A tree in this directory, to be filled entry by entry.
 
@@ -1313,6 +1314,8 @@ class WritableDirectory:
         gives its name another integer type, as ROOT's ``n/b`` would be.
         ``classname`` writes the tree as a ``TNtuple`` or ``TNtupleD`` instead,
         as ROOT writes one: the same tree, and how many variables it has.
+        No columns at all is refused as a mistake, unless ``empty`` says it is
+        meant: a tree of no branches, as ROOT writes one asked to.
         """
         from .wtree import WritableTree
 
@@ -1321,8 +1324,9 @@ class WritableDirectory:
         _checked(title or "", "title")
         cycle = here._next_cycle(leaf)
         tree = WritableTree(
-            here, leaf, title or "", columns, basket_size, cycle, counters, classname=classname
-        )
+            here, leaf, title or "", columns, basket_size, cycle, counters, classname=classname,
+            empty=empty,
+        )  # fmt: skip
         self._file._trees.append(tree)
         self._file._used.update(dict.fromkeys(tree.classes))
         for layout in tree.declared:  # a macro's classes, described as they were declared

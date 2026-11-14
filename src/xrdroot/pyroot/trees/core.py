@@ -135,6 +135,8 @@ class _TreeCore(_TObjectLike):
     def _befriend(self, backing: Any) -> None:
         """Give what is read the friends that can be read beside it, entry for entry."""
         for alias, friend in self._friends:
+            if len({tree for _, tree in getattr(friend, "_files", [])}) > 1:
+                continue  # a chain of trees of names of their own is read as a patchwork
             other = friend._backing()
             known = getattr(backing, "friends", None)
             if known is not None and alias not in known and len(other) == len(backing):

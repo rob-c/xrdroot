@@ -116,15 +116,15 @@ def rebinned(histogram: Histogram, groups: Sequence[Any], name: str | None) -> H
     if count == 1 and len(groups) == 1 and np.ndim(groups[0]) == 1:
         made = _subset(histogram.axes[0], groups[0])
         return _rebin_1d(histogram, made, histogram.axes[0].nbins, False, name)
-    if len(groups) != count or count == 3:
+    if len(groups) != count:
         raise ValueError(
-            f"{histogram.name!r} has {count} axes, and rebinning takes one group per axis for "
-            f"one or two - or, for one axis, the new edges"
+            f"{histogram.name!r} has {count} axes, and rebinning takes one group per axis - "
+            f"or, for one axis, the new edges"
         )
     if count == 1:
         axis, dropped = _grouped(histogram.axes[0], groups[0])
         return _rebin_1d(histogram, axis, int(groups[0]), dropped, name)
-    return _rebin_2d(histogram, [int(group) for group in groups], name)
+    return _rebin_blocks(histogram, [int(group) for group in groups], name)
 
 
 def _rebin_1d(
@@ -203,8 +203,9 @@ def _finish(made: Histogram, sums: Any, squares: Any, weighted: bool) -> None:
         made._ensure_sumw2()[:] = np.sqrt(squares) ** 2
 
 
-def _rebin_2d(histogram: Histogram, groups: list[int], name: str | None) -> Histogram:
-    """``TH2::Rebin2D``: blocks of bins merged, the flow and the leftovers kept in the flow."""
+def _rebin_blocks(histogram: Histogram, groups: list[int], name: str | None) -> Histogram:
+    """``TH2::Rebin2D`` and ``TH3::Rebin3D``: blocks of bins merged, the flow and the
+    leftovers kept in the flow."""
     uneven = not all(axis.even for axis in histogram.axes)
     made_axes, dropped = zip(
         *(
@@ -220,8 +221,7 @@ def _rebin_2d(histogram: Histogram, groups: list[int], name: str | None) -> Hist
     ]
     found, entries = statistics(histogram), histogram.entries
     made = _rebuilt(histogram, list(made_axes), name)
-    target = maps[0][:, None] + (made_axes[0].nbins + 2) * maps[1][None, :]
-    order = target.ravel(order="F")
+    order = _new_bins(maps, made_axes)
     sums = np.zeros(math.prod(axis.nbins + 2 for axis in made_axes))
     np.add.at(sums, order, histogram._bins.astype(np.float64)[: math.prod(shape)])
     squares = np.zeros_like(sums)
@@ -233,6 +233,19 @@ def _rebin_2d(histogram: Histogram, groups: list[int], name: str | None) -> Hist
         made._ensure_sumw2()[:] = squares
     _kept_statistics(made, found, entries, any(dropped))
     return made
+
+
+def _new_bins(maps: list[Any], axes: Sequence[Binning]) -> Any:
+    """The new global bin of every old bin, in the old bins' order: each axis' map of old
+    bins to new ones, x running fastest."""
+    target = np.zeros([len(each) for each in maps], dtype=np.int64)
+    stride = 1
+    for at, (each, axis) in enumerate(zip(maps, axes, strict=True)):
+        shape = [1] * len(maps)
+        shape[at] = len(each)
+        target = target + stride * np.reshape(each, shape)
+        stride *= axis.nbins + 2
+    return target.ravel(order="F")
 
 
 def _bin_map(nbins: int, group: int, count: int) -> Any:

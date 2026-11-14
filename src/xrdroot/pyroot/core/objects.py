@@ -166,6 +166,21 @@ class TClass:
             raise TypeError(f"xrdroot.pyroot has no class {self._name} to make one of")
         return self._python()
 
+    def DynamicCast(self, base: TClass, obj: Any, up: bool = True) -> Any:
+        """``DynamicCast``: ``obj``, of this class, seen as of ``base`` - or, with ``up``
+        false, ``obj`` of ``base`` seen as of this class again - as PyROOT gives it back:
+        an object of the other type over the same state, and the original on the way back."""
+        wanted = base._python if up else self._python
+        if wanted is None or type(obj) is wanted:
+            return obj
+        original = obj.__dict__.get("_cast_of")
+        if type(original) is wanted:
+            return original
+        view: Any = object.__new__(wanted)
+        view.__dict__ = obj.__dict__.copy()
+        view.__dict__["_cast_of"] = obj
+        return view
+
     @staticmethod
     def GetClass(name: Any) -> TClass:
         """``TClass::GetClass(name)``: the class called ``name``."""
@@ -248,6 +263,35 @@ class TObject:
 
     def Hash(self) -> int:
         return hash(self.GetName())
+
+    # -- comparing, as PyROOT's operators do through IsEqual and Compare ----------
+
+    def IsEqual(self, obj: Any) -> bool:
+        """``IsEqual``: the same object, which is what ``TObject``'s compares."""
+        return obj is self
+
+    def Compare(self, obj: Any) -> int:
+        """``Compare``: ``TObject``'s is to be overridden; it warns so, and says equal."""
+        self.Warning("Compare", "this method must be overridden!")
+        return 0
+
+    def __eq__(self, other: object) -> bool:
+        """``IsEqual``'s yes; else the other side's answer, if it has one, and then Python's."""
+        return True if isinstance(other, TObject) and self.IsEqual(other) else NotImplemented
+
+    __hash__ = object.__hash__
+
+    def __lt__(self, other: Any) -> bool:
+        return self.Compare(other) < 0 if isinstance(other, TObject) else NotImplemented
+
+    def __le__(self, other: Any) -> bool:
+        return self.Compare(other) <= 0 if isinstance(other, TObject) else NotImplemented
+
+    def __gt__(self, other: Any) -> bool:
+        return self.Compare(other) > 0 if isinstance(other, TObject) else NotImplemented
+
+    def __ge__(self, other: Any) -> bool:
+        return self.Compare(other) >= 0 if isinstance(other, TObject) else NotImplemented
 
     # -- bits --------------------------------------------------------------------
 

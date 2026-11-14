@@ -11,6 +11,8 @@ once as PyROOT's does - a NumPy array for each entry of a collection - and
 
 from __future__ import annotations
 
+import functools
+import inspect
 import io
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any
@@ -24,8 +26,10 @@ from ..trees import hooks
 from .asnumpy import AsNumpyResult, column
 from .datasources import RCsvDS, csv_source, lazy_source, sqlite_source
 from .entrywise import per_entry
+from .experimental import Experimental
 from .helpers import Not, PassAsVec
 from .jitted import retried
+from .snapshot import ESnapshotOutputFormat, RSnapshotOptions
 
 __all__ = ["RDataFrame", "RResultPtr", "RDF"]
 
@@ -50,12 +54,22 @@ def _wrapped(value: Any) -> Any:
     return value
 
 
+def _vector_of(values: Any) -> Any:
+    """What ``Take`` gives back: the ``std::vector`` of a column of numbers, as ROOT's does."""
+    if isinstance(values, np.ndarray) and values.ndim == 1 and values.dtype.kind in "biuf":
+        from ..stl import std
+
+        return std.vector[values.dtype](values)
+    return values
+
+
 class RResultPtr:
     """``RResultPtr``: a booked result; its value, when asked for, as a PyROOT object."""
 
-    def __init__(self, inner: Any) -> None:
+    def __init__(self, inner: Any, taken: bool = False) -> None:
         self._inner = inner
         self._styled = False
+        self._taken = taken
 
     #: C++'s ``*booked`` reads its value through the macro runtime's cell protocol.
     _cint_cell = True
@@ -70,14 +84,10 @@ class RResultPtr:
     def GetValue(self) -> Any:
         """The value; a histogram the first time in ``gStyle``'s attributes, as ``TH1``'s
         constructor gives the one ROOT fills."""
-        from ...hist import Histogram
-        from ..core.histcore import _in_style
-
         found = self._inner.GetValue()
-        if isinstance(found, Histogram) and not self._styled:
-            _in_style(found)
-            self._styled = True
-        return _wrapped(hooks.wrap(found))
+        found = presented(_vector_of(found) if self._taken else found, style=not self._styled)
+        self._styled = True
+        return found
 
     GetPtr = GetValue
     GetSharedPtr = GetValue
@@ -133,6 +143,18 @@ class RResultPtr:
     __hash__ = None  # type: ignore[assignment]
 
 
+def presented(found: Any, style: bool = True) -> Any:
+    """A result's value as a PyROOT script is given it: the PyROOT object for xrdroot's, and
+    a histogram - when ``style`` - in ``gStyle``'s attributes, as ``TH1``'s constructor gives
+    the one ROOT fills."""
+    from ...hist import Histogram
+    from ..core.histcore import _in_style
+
+    if style and isinstance(found, Histogram):
+        _in_style(found)
+    return _wrapped(hooks.wrap(found))
+
+
 def _column(values: Any) -> Any:
     """A column as ``AsNumpy`` gives it: an array, with an array per entry of a collection."""
     if isinstance(values, Jagged):
@@ -158,19 +180,43 @@ class _Method:
         self.name, self.found = name, found
 
     def __call__(self, *arguments: Any, **options: Any) -> Any:
+        arguments = _bound_extra(arguments, options.pop("extra_args", None))
         given = per_entry(self.name, [_unwrapped(each) for each in arguments])
         renamed = KEYWORDS.get(self.name, {})
         keywords = {renamed.get(key, key): _unwrapped(value) for key, value in options.items()}
         try:
-            return _wrapped(self.found(*given, **keywords))
+            return self._result(self.found(*given, **keywords))
         except Exception as why:  # C++ the batch evaluator refuses: translated, if it can be
             again = retried(self.name, getattr(self.found, "__self__", None), given, why)
             if again is None:
                 raise
-        return _wrapped(self.found(*again, **keywords))
+        return self._result(self.found(*again, **keywords))
+
+    def _result(self, found: Any) -> Any:
+        """What the method gave, as PyROOT gives it: ``Take``'s value a ``std::vector``."""
+        if self.name == "Take" and isinstance(found, _rdf.Result):
+            return RResultPtr(found, taken=True)
+        return _wrapped(found)
 
     def __getitem__(self, types: Any) -> _Method:
         return self
+
+
+def _bound_extra(arguments: tuple[Any, ...], extra: Any) -> tuple[Any, ...]:
+    """``Define("xy", f, extra_args={"y": 0.5})``: ``f`` given ``y`` itself, reading only
+    the columns its other parameters name."""
+    if not extra:
+        return arguments
+    at = next(i for i, each in enumerate(arguments) if callable(each))
+    function, given = arguments[at], dict(extra)
+
+    @functools.wraps(function)
+    def bound(*values: Any) -> Any:
+        return function(*values, **given)
+
+    names = [name for name in inspect.signature(function).parameters if name not in given]
+    rest = arguments[at + 1 :] or (names,)
+    return (*arguments[:at], bound, *rest)
 
 
 class RDataFrame:
@@ -179,19 +225,32 @@ class RDataFrame:
     #: The frame of xrdroot's this one is.
     _inner: Any
 
+    def __new__(cls, *arguments: Any, **options: Any) -> Any:
+        """A distributed ``RDataFrame`` when given an ``executor`` - a Dask client - as
+        ROOT 6.36 on makes one; else a frame of this process's."""
+        if options.get("executor") is not None:
+            from .._distrdf import RDataFrame as distributed
+
+            return distributed(*arguments, **options)
+        return super().__new__(cls)
+
     def __init__(self, *arguments: Any, **options: Any) -> None:
         if len(arguments) == 1 and isinstance(arguments[0], RDataFrame):  # RNode(node): itself
             self._inner = arguments[0]._inner
             return
+        from .experimental import RDatasetSpec
         from .treesource import source_of
 
+        if arguments and isinstance(arguments[0], RDatasetSpec):
+            self._inner = arguments[0].frame(**options)
+            return
         special = source_of(arguments[0]) if len(arguments) == 1 else None
         given = [special] if special is not None else [_unwrapped(each) for each in arguments[:3]]
         self._inner = _rdf.RDataFrame(*given, **options)
 
     @classmethod
     def _of(cls, inner: Any) -> RDataFrame:
-        made = cls.__new__(cls)
+        made: RDataFrame = cls.__new__(cls)
         made._inner = inner
         return made
 
@@ -207,6 +266,22 @@ class RDataFrame:
 
         return _Method(name, found)
 
+    def Snapshot(
+        self, treename: Any, filename: Any, columnNameRegexp: Any = "", options: Any = None,
+        **keywords: Any,
+    ) -> Any:
+        """``Snapshot``: as xrdroot's, with ROOT's ``RSnapshotOptions`` as the fourth argument
+        and its column list as a list, a tuple, a vector or a regular expression."""
+        from .snapshot import keywords_of
+
+        columns = _unwrapped(columnNameRegexp)
+        if isinstance(columns, tuple):
+            columns = list(columns)
+        columns = None if columns == "" else columns
+        given = {**keywords_of(options), **keywords}
+        return _Method("Snapshot", self._inner.Snapshot)(str(treename), str(filename), columns,
+                                                         **given)  # fmt: skip
+
     def Hist(self, *arguments: Any) -> Any:
         """``Hist``: a ROOT 7 ``RHist`` of columns, booked (see :mod:`..histv7.frames`)."""
         from ..histv7.frames import book
@@ -217,13 +292,13 @@ class RDataFrame:
         """Every column asked for, as a dict of NumPy arrays: read now, or - ``lazy`` - an
         ``AsNumpyResult`` that reads them when its value is asked for."""
         inner, names, left_out = self._inner, _unwrapped(columns), _unwrapped(exclude)
-
-        def book() -> Callable[[], dict[str, Any]]:
-            found = inner.AsNumpy(names, left_out)
-            return lambda: {name: column(_column(each)) for name, each in found.GetValue().items()}
-
-        made = AsNumpyResult(book)
+        made = AsNumpyResult(lambda: inner.AsNumpy(names, left_out), columns_of)
         return made if lazy else made.GetValue()
+
+
+def columns_of(found: dict[str, Any]) -> dict[str, Any]:
+    """The columns ``AsNumpy`` read, as PyROOT hands them back: arrays knowing what they view."""
+    return {name: column(_column(each)) for name, each in found.items()}
 
 
 def _numpy_column(name: str, values: Any) -> Any:
@@ -279,7 +354,12 @@ def _model(*parts: Any) -> tuple[Any, ...]:
 
 def _run_graphs(results: Iterable[Any]) -> int:
     """``RunGraphs``: the results' loops run together - a booked ``RHist``'s are the columns it
-    is filled from."""
+    is filled from; distributed results' graphs each run on their cluster."""
+    results = list(results)
+    if results and "_distrdf" in type(results[0]).__module__:
+        from .._distrdf import RunGraphs
+
+        return RunGraphs(results)
     given = [_unwrapped(each) for each in results]
     return int(_rdf.RunGraphs([part for each in given for part in _parts(each)]))
 
@@ -309,6 +389,11 @@ class _RDF:
     TH3DModel = staticmethod(_model)
     TProfile1DModel = staticmethod(_model)
     TProfile2DModel = staticmethod(_model)
+    THnDModel = staticmethod(_model)
+    THnSparseDModel = staticmethod(_model)
+    RSnapshotOptions = RSnapshotOptions
+    ESnapshotOutputFormat = ESnapshotOutputFormat
+    Experimental = Experimental
     RNode = RDataFrame
     RResultPtr = RResultPtr
     Not = staticmethod(Not)
@@ -320,6 +405,10 @@ class _RDF:
         return frame
 
     def __getattr__(self, name: str) -> Any:
+        if name == "Distributed":
+            from .. import _distrdf
+
+            return _distrdf.distributed_module()
         raise AttributeError(f"ROOT has RDF.{name}; xrdroot.pyroot does not yet")
 
     def __repr__(self) -> str:

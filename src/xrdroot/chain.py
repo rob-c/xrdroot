@@ -47,7 +47,9 @@ def _expanded(source: Any) -> list[Any]:
     url = parse(text)
     if not url.is_local or not any(mark in url.path for mark in "*?["):
         return [text]
-    found = sorted(glob.glob(url.path))
+    # A path given plainly is globbed as given: a relative one matches relative names, as
+    # ROOT's ``TChain::Add`` keeps them; a ``file:`` URL is globbed by its path.
+    found = sorted(glob.glob(url.path if ":" in text.split("/")[0] else text))
     if not found:
         raise FileNotFoundError(f"{text!r} matches no file, and a chain of it would be empty")
     return found
