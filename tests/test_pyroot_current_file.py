@@ -43,3 +43,42 @@ def test_above_the_top_of_a_file_is_nowhere_and_no_error_says_so(tmp_path, capsy
     assert first.cd("nowhere") is False
     assert "Unknown directory nowhere" in capsys.readouterr().err
     first.Close()
+
+
+def test_cd_static_goes_by_a_files_path_or_from_where_one_is(tmp_path, capsys):
+    first = ROOT.TFile(str(tmp_path / "cd.root"), "RECREATE")
+    first.mkdir("top").mkdir("sub")
+    name = first.GetName()
+    assert ROOT.TDirectory.Cd(f"{name}:/top")
+    assert ROOT.gDirectory.GetName() == "top"
+    assert ROOT.TDirectory.Cd("sub") and ROOT.gDirectory.GetName() == "sub"
+    assert ROOT.TDirectory.Cd("..") and ROOT.gDirectory.GetName() == "top"
+    assert not first.cd("top/sub/deeper")
+    assert capsys.readouterr().err == "Error in <TDirectoryFile::cd>: Unknown directory deeper\n"
+    assert not ROOT.TDirectory("memory", "").cd("nowhere.root:/top")
+    assert "Unknown directory nowhere.root:/top" in capsys.readouterr().err
+    first.Close()
+
+
+def test_what_was_printed_before_a_message_comes_out_before_it(capsys, monkeypatch):
+    flushed: list[bool] = []
+    monkeypatch.setattr("sys.stdout.flush", lambda: flushed.append(True))
+    ROOT.Error("where", "what")
+    assert flushed == [True]
+
+
+def test_assigning_gdirectory_and_gfile_moves_them(tmp_path):
+    from xrdroot.pycint.runtime.root import ROOT as HOST
+
+    first = ROOT.TFile(str(tmp_path / "assign.root"), "RECREATE")
+    below = first.mkdir("below")
+    ROOT.gROOT.cd()
+    HOST.gDirectory = below
+    assert ROOT.gDirectory == below and ROOT.gDirectory.GetName() == "below"
+    HOST.gDirectory = ROOT.gDirectory
+    assert ROOT.gDirectory == below
+    HOST.gFile = 0
+    assert not ROOT.gFile
+    HOST.gFile = first
+    assert ROOT.gFile == first
+    first.Close()

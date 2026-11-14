@@ -208,18 +208,36 @@ class TDirectory(TNamed):
         """``pwd``: print where this directory is."""
         print(self.GetPath())
 
+    @staticmethod
+    def Cd(path: Any) -> bool:
+        """``TDirectory::Cd``: go to ``path`` - ``file.root:/dir``, or a path from the
+        directory current now."""
+        return bool(current_directory().cd(path))
+
     def cd(self, path: Any = None) -> bool:
         """``cd``: make this directory - or the one ``path`` names below it - the current one."""
         target = self if not path else self.GetDirectory(path)
         if target is None and path and ":" in str(path):
             target = _in_open_file(str(path))
         if target is None:
-            # Above the top of a file there is nothing, which ROOT says by failing quietly.
-            if ".." not in str(path).split("/"):
-                message("Error", f"{self.ClassName()}::cd", "Unknown directory %s", str(path))
+            self._unknown(str(path))
             return False
         set_current(target)
         return True
+
+    def _unknown(self, path: str) -> None:
+        """ROOT's error for a path that leads nowhere: from the directory the walk reached, of
+        the part of the path missing there - and none above the top of a file, which ROOT
+        reaches quietly."""
+        here: Any = self
+        parts = [path] if ":" in path else [p for p in path.strip("/").split("/") if p != "."]
+        for part in parts:
+            below = here._mother if part == ".." else here._child(part)
+            if below is None:
+                if part != "..":
+                    message("Error", f"{here.ClassName()}::cd", "Unknown directory %s", part)
+                return
+            here = below
 
     def mkdir(self, name: Any, title: Any = "", returnExistingDirectory: bool = False) -> Any:
         """``mkdir``: a directory below this one, in memory; ``a/b`` makes both."""
@@ -356,6 +374,10 @@ class _CurrentDirectory:
         """The directory this stands for right now."""
         return current_directory()
 
+    def __assign__(self, directory: Any) -> None:
+        """``gDirectory = dir``: the current directory is ``dir`` from now on."""
+        set_current(directory.__real__() if hasattr(directory, "__real__") else directory)
+
     def __repr__(self) -> str:
         return repr(current_directory())
 
@@ -386,6 +408,10 @@ class _CurrentFile:
     def __real__(self) -> Any:
         """The file this stands for right now, or ``None``."""
         return current_file()
+
+    def __assign__(self, file: Any) -> None:
+        """``gFile = f``: the current file is ``f`` - or none - from now on."""
+        _FILE[:] = [] if file is None or file == 0 else [file]
 
     def __repr__(self) -> str:
         return repr(current_file())

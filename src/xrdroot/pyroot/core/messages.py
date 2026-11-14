@@ -70,6 +70,7 @@ def message(kind: str, location: Any, fmt: Any, *args: Any) -> None:
         return
     text = c_format(str(fmt), *args) if args else str(fmt)
     where = f" in <{location}>" if location else ""
+    sys.stdout.flush()  # what was printed before comes before, as ROOT's own does
     print(f"{kind}{where}: {text}", file=sys.stderr)
     if level >= kFatal:
         raise SystemExit(1)
