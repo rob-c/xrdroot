@@ -18,6 +18,14 @@ library describes as data; [pycint](pycint.md) is ROOT's.
 | Running it | `execute`: a program from `main`, its GoogleTest tests or an entry function; a source's declarations; a line |
 | What translated code calls | `runtime`: cells, call references, `type_info`, C's arithmetic, `printf`, streams, `<cmath>`, the host namespace, and GoogleTest (`runtime.gtest`, with the macros of `gtest_macros`) |
 
+Memory from `new char[n]` is a `CharBuffer` (`cppstd.buffers`): a NumPy byte
+array that reads as the C string it holds, whose views are the pointers into
+it, so `p[i] = c` through any `char*`, `strcpy`, `sprintf` and `strcat` into
+it, and a buffer handed to a function are written in place; a `char*` holding
+text Python cannot change is refused where it is written through. An
+object's address as a number (`%p`, a cast to an integer) is remembered, so a
+pointer cast back from it is that object (`cppstd.cells.pointer_at`).
+
 Every translation starts `from xrdroot.pycxx.runtime import *` and finds every
 name it did not declare in the dialect's *host*: `CXX.std.vector['double']` in
 plain C++. GoogleTest is C++ rather than any library's, so its macros and
@@ -73,7 +81,7 @@ parses C++ itself reads it in a library's dialect.
 
 | Concern | Fields |
 |---|---|
-| Types | `typedefs`, `pointer_typedefs`, `class_pattern` and `typedef_pattern` (what an undeclared class or typedef looks like), `type_namespaces`, `templates`, `literal_suffixes` |
+| Types | `typedefs`, `pointer_typedefs`, `class_pattern` and `typedef_pattern` (what an undeclared class or typedef looks like), `type_namespaces`, `templates`, `literal_suffixes`, `layouts` (each library class's size, alignment, data size and whether it is polymorphic: `sizeof` of it, and of a class derived from it) |
 | Headers and macros | `predefined` (`#define` text), `preludes` (header → `Prelude` of macros), `out_of_scope` (headers refused by name) |
 | Names at run time | `host` (the Python name), `host_namespace` (the C++ namespace that is the host), `host_object` (a `HostNamespace`), `runtime` and `runtime_names` (the module translations import), `constants`, `functions`, `member_pattern` |
 | Calls and values | `calls` and `call_classes` (calls written as other Python), `member_statement`, `out_parameters`, `returns`, `numeric_namespaces`, `method_returns`, `field_makers`, `read_only`, `string_classes`, `string_methods`, `guards`, `value_readers`, `array_readers`, `held_results`, `assigned_pattern` |
