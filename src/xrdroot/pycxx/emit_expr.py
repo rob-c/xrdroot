@@ -97,6 +97,11 @@ def is_container(ctype: CType) -> bool:
     return last in CONTAINERS or last in active().containers
 
 
+def _addressing(ctype: CType | None) -> bool:
+    """Is a value of this type a pointer, or an array that decays to one?"""
+    return ctype is not None and (ctype.is_pointer or ctype.is_array)
+
+
 def _textual(ctype: CType) -> bool:
     """Whether ``s[i]`` of this type is a character of text: of a C string, a
     ``std::string`` or a library's string class, which C++ gives as a number."""
@@ -218,8 +223,10 @@ class ExprEmitter(NameEmitter):
 
     def _arithmetic_special(self, node: Binary) -> Out | None:
         """``+``, ``-``, ``<<`` whose Python is not Python's own: on pointers, strings, streams."""
-        if node.op in ("+", "-") and self._pointer_arithmetic(node):
-            return self._offset(node)
+        if node.op in ("+", "-"):
+            moved = self._pointer_operation(node)
+            if moved is not None:
+                return moved
         if self._concatenation(node):
             right = f"cstr({self.value(node.right)})"
             return f"{self.at(node.left, P.ADD)} + {right}", P.ADD
@@ -265,6 +272,25 @@ class ExprEmitter(NameEmitter):
         if any(side is not None and side.floating for side in (left, right)):
             return "floating"
         return "unknown"
+
+    def _pointer_operation(self, node: Binary) -> Out | None:
+        """``q - p`` of two pointers, ``p + n`` and ``p - n`` of one: or ``None``."""
+        if node.op == "-" and self._pointer_difference(node):
+            return f"pointer_diff({self.value(node.left)}, {self.value(node.right)})", P.POSTFIX
+        if self._pointer_arithmetic(node):
+            return self._offset(node)
+        return None
+
+    def _pointer_difference(self, node: Binary) -> bool:
+        """``q - p`` of two pointers into an array: how many elements apart they are. Of two
+        pointers to objects it is refused; Python's ``-`` would do something else."""
+        left, right = self.typeof(node.left), self.typeof(node.right)
+        if not (_addressing(left) and _addressing(right)):
+            return False
+        assert left is not None
+        if left.is_object_pointer and not left.is_string:
+            raise self.refuse(f"the distance between two {_spelled(left)} pointers", node)
+        return True
 
     def _pointer_arithmetic(self, node: Binary) -> bool:
         left = self.typeof(node.left)

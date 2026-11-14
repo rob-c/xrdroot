@@ -7,8 +7,9 @@ table first when it is polymorphic and inherits none, then its bases, then
 its data members in order, each at the next offset its alignment allows,
 and the whole rounded up to the largest alignment; an empty class is one
 byte, and an empty base none. The standard library's classes take what
-libc++'s do. Anything else - a library's class, a member whose size is not
-known, a base whose tail padding a derived class might reuse - has no size
+libc++'s do, and a library's classes what its dialect says they take
+(:attr:`~.dialect.Dialect.layouts`) - as a base too. Anything else - a class
+nothing gives the layout of, a member whose size is not known - has no size
 here, and ``sizeof`` of it is refused.
 """
 
@@ -18,6 +19,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .ctype import SIZES, CType
+from .dialect import active
 from .nodes import Binary, EnumDecl, Literal, Name, Unary, VarDecl
 
 __all__ = ["layout", "size_of"]
@@ -92,7 +94,19 @@ def _element(ctype: CType, program: Any) -> Layout | None:
         return size, size
     if ctype.name in program.classes:
         return _class(program.classes[ctype.name], program)
-    return _standard(ctype, program)
+    library = _library(ctype)
+    return library[:2] if library is not None else _standard(ctype, program)
+
+
+def _library(ctype: CType) -> tuple[int, int, int | None, bool] | None:
+    """A library's class, as its dialect lays it out: by its name, or its name with its
+    template arguments as the library spells them."""
+    layouts = active().layouts
+    found = layouts.get(ctype.name)
+    if found is None and ctype.args:
+        spelled = ",".join(str(getattr(arg, "name", arg)) for arg in ctype.args)
+        found = layouts.get(f"{ctype.name}<{spelled}>")
+    return found
 
 
 def _enum(decl: EnumDecl | None, program: Any) -> Layout | None:
@@ -191,7 +205,10 @@ def _base(ctype: CType, program: Any) -> Layout | None:
     derived class's members use the padding after it."""
     info = program.classes.get(ctype.name)
     if info is None:
-        return None
+        library = _library(ctype)
+        if library is None or library[2] is None:
+            return None
+        return library[2], library[1]
     extent = _extent(info, program)
     if extent is None or not extent[0] or not _plain(info, program):
         return extent
@@ -276,7 +293,10 @@ def _polymorphic(info: Any, program: Any) -> bool:
 
 def _polymorphic_base(ctype: CType, program: Any) -> bool:
     info = program.classes.get(ctype.name)
-    return info is not None and _polymorphic(info, program)
+    if info is None:
+        library = _library(ctype)
+        return library is not None and library[3]
+    return _polymorphic(info, program)
 
 
 def _aligned(offset: int, align: int) -> int:

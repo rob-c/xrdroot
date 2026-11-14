@@ -22,7 +22,7 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["CharBuffer", "put_char", "text_into"]
+__all__ = ["CharBuffer", "put_char", "text_into", "pointer_diff"]
 
 
 class CharBuffer(np.ndarray):  # type: ignore[misc]
@@ -77,3 +77,19 @@ def text_into(buffer: Any, text: Any, passed: bool = False) -> Any:
     buffer[: len(data)] = np.frombuffer(data, dtype=np.uint8).astype(buffer.dtype)
     buffer[len(data)] = 0
     return buffer
+
+
+def pointer_diff(later: Any, earlier: Any) -> int:
+    """``q - p`` of two pointers into one array - views of it here: how many elements apart
+    they are. Anything else (text, a cell, an object) is no array to measure in, and is
+    refused."""
+    if not (isinstance(later, np.ndarray) and isinstance(earlier, np.ndarray)):
+        raise TypeError(
+            "the distance between two pointers is measured here only within one array of "
+            "numbers or characters"
+        )
+    if np.shares_memory(later, earlier) is False and later.size and earlier.size:
+        raise ValueError("the distance between two pointers into different arrays, which C "
+                         "leaves undefined")  # fmt: skip
+    start: int = later.__array_interface__["data"][0] - earlier.__array_interface__["data"][0]
+    return int(start // later.itemsize)

@@ -116,6 +116,10 @@ class Dialect:
     templates: frozenset[str] = frozenset()
     #: The library's user-defined literal suffixes, which the runtime's ``user_literal`` makes.
     literal_suffixes: frozenset[str] = frozenset()
+    #: How the library's classes are laid out, for ``sizeof`` and for a class derived from
+    #: one: each class's size, alignment, data size (where a derived class's members may
+    #: start; ``None`` if none may derive from it) and whether it has a virtual table.
+    layouts: Mapping[str, tuple[int, int, int | None, bool]] = field(default_factory=dict)
 
     # -- the preprocessor --------------------------------------------------------------
 

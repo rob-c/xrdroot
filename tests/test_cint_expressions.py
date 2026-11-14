@@ -97,7 +97,7 @@ def test_a_methods_members_are_its_objects(source: str, fragment: str) -> None:
         ("int x = f()++;", "changing this in the middle of an expression"),
         ("int x = gCount++;", "changing this in the middle of an expression"),
         ("h->~TH1F();", "calling the destructor ~TH1F by hand"),
-        ("int n = sizeof(TH1F);", "sizeof of a type whose size"),
+        ("int n = sizeof(TUnlaidOut);", "sizeof of a type whose size"),
         ("int a = (delete p, 0);", "delete inside an expression"),
         ("char *p = text(); p[0] *= 2;", r"changing a character through a char\* with \*="),
         ("char *p = text(); char c = *p--;", r"moving a char\* back with --"),

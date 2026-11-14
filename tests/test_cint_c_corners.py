@@ -55,3 +55,23 @@ def test_cs_named_types_and_unnamed_parameters_of_every_type_declare_prototypes(
 def test_an_array_roots_method_writes_into_is_handed_over_as_it_is() -> None:
     text = translate("void t() { double lo[3], hi[3]; view->GetRange(lo, hi); }", "t.C")
     assert "ROOT.view.GetRange(lo, hi)" in text
+
+
+def test_sizeof_of_roots_classes_is_what_root_lays_them_out_in(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """As ROOT 6.40.04 on macOS ARM64 prints it: its classes by themselves, as bases whose
+    tail padding a derived class uses (``TAttLine``), and as members."""
+    source = r"""
+    class EventData : public TObject { public: int n; };
+    class L : public TAttLine { public: short s; };
+    class M : public TNamed { public: double d[3]; char c; };
+    class P { public: TH1F h; TArrayD a; };
+    void sz() {
+       printf("%zu %zu %zu %zu %zu %zu %zu %zu\n", sizeof(TObject), sizeof(TH1F),
+              sizeof(EventData), sizeof(L), sizeof(M), sizeof(P), sizeof(TMatrixD),
+              sizeof(TVector3));
+    }
+    """
+    run_source(source, "sz.C")
+    assert capsys.readouterr().out == "16 1000 24 16 96 1024 264 40\n"

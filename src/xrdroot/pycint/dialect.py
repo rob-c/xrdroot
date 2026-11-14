@@ -22,6 +22,7 @@ from ..pycxx import gtest_macros
 from ..pycxx.ctype import CType
 from ..pycxx.dialect import Dialect, Prelude
 from . import emit, returned
+from .layouts import LAYOUTS
 from .runtime import ROOT as HOST
 from .runtime import __all__ as RUNTIME_NAMES
 from .typedefs import TYPEDEFS
@@ -283,6 +284,7 @@ ROOT = Dialect(
     method_returns=RETURNED,
     field_makers=frozenset({"MakeField"}),
     read_only=READ_ONLY,
+    layouts=LAYOUTS,
     string_classes=frozenset({"TString"}),
     string_methods={"Data": _data},
     guards=frozenset({"TFile", "TMemFile"}),

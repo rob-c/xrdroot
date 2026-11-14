@@ -5,9 +5,15 @@ The expected values are what ROOT 6.40.04's ``root.exe`` printed for the same C+
 
 from __future__ import annotations
 
+import re
+from dataclasses import replace
+
+import numpy as np
 import pytest
 
+from xrdroot.cppstd.buffers import pointer_diff
 from xrdroot.pycxx import Refusal, run_source, translate
+from xrdroot.pycxx.dialect import CXX, using
 
 #: Every member of ``numeric_limits`` asked of an integer, a character and a floating type.
 LIMITS = r"""
@@ -163,3 +169,52 @@ def test_constant_array_sizes_are_worked_out(capsys) -> None:
     """
     run_source(source, "sized.C")
     assert capsys.readouterr().out == "40 8\n"
+
+
+def test_a_librarys_classes_take_the_room_its_dialect_says() -> None:
+    """A library's class laid out as its dialect has it - as ROOT's ``TAttLine`` is, a
+    virtual table and three ``short`` s - by itself and as a base, whose tail a derived
+    class's members use; a ``final`` class is no base anything is laid out from."""
+    layouts = {"Line": (16, 8, 14, True), "Box<int>": (12, 4, 12, False),
+               "Last": (8, 8, None, True)}  # fmt: skip
+    lab = replace(CXX, name="lab", layouts=layouts, class_pattern=re.compile(r"^(Line|Box|Last)$"),
+                  templates=frozenset({"Box"}))  # fmt: skip
+    source = r"""
+    #include <cstdio>
+    struct L : Line { short s; };
+    struct V : Line { virtual void f() {} };
+    int sizes() {
+       printf("%zu %zu %zu %zu\n", sizeof(Line), sizeof(L), sizeof(V), sizeof(Box<int>));
+       return 0;
+    }
+    """
+    with using(lab):
+        python = translate(source, "sizes.C")
+        with pytest.raises(Refusal, match="sizeof of a type whose size"):
+            translate("struct D : Last { int x; }; unsigned long n = sizeof(D);", "t.C")
+    assert "printf('%zu %zu %zu %zu\\n', 16, 16, 16, 12)" in python
+
+
+def test_two_pointers_into_one_array_are_as_far_apart_as_their_elements(capsys) -> None:
+    source = r"""
+    #include <cstdio>
+    int apart() {
+       double *a = new double[8];
+       double *p = a + 3;
+       char *c = new char[10];
+       char *q = c + 4;
+       printf("%d %d\n", (int)(p - a), (int)(q - c));
+       return 0;
+    }
+    """
+    run_source(source, "apart.C")
+    assert capsys.readouterr().out == "3 4\n"
+
+
+def test_the_distance_between_what_is_no_array_is_refused() -> None:
+    with pytest.raises(TypeError, match="within one array"):
+        pointer_diff("abc", "a")
+    with pytest.raises(ValueError, match="different arrays"):
+        pointer_diff(np.zeros(3), np.zeros(3))
+    with pytest.raises(Refusal, match=r"the distance between two S\* pointers"):
+        translate("struct S {}; void f(S *a, S *b) { long n = a - b; }", "t.C")

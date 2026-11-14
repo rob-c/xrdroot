@@ -13,12 +13,13 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .buffers import CharBuffer, put_char, text_into
+from .buffers import CharBuffer, pointer_diff, put_char, text_into
 
 __all__ = [
     "with_char",
     "put_char",
     "text_into",
+    "pointer_diff",
     "strlen",
     "strcmp",
     "strncmp",

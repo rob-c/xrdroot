@@ -39,7 +39,7 @@ def test_the_corners_of_the_grammar_are_read(source: str, fragment: str) -> None
     [
         ("goto end; end: ;", "goto, which jumps to a label"),
         ("char buf[8]; TH1F *h = new (buf) TH1F();", "placement new"),
-        ("auto a = alignof(TH1F);", "alignof of a type whose size this translator does not know"),
+        ("auto a = alignof(TNone);", "alignof of a type whose size this translator does not know"),
         ("bool b = noexcept(f());", "noexcept is not something"),
         ("auto f = [n = 1]() { return n; };", "the lambda capture n = ..."),
         ("Point p = {.x = 1};", r"a designated initialiser, \.name = value"),

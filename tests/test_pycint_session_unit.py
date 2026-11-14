@@ -121,8 +121,11 @@ def test_undo_takes_back_inputs_and_destroys_what_they_made() -> None:
 
 
 def test_process_line_runs_undo_and_include_on_the_sessions_unit(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from xrdroot.pyroot.core.system import gSystem
+
+    monkeypatch.setattr(gSystem, "_include_path", "")  # what .I adds to, for ACLiC
     (tmp_path / "seven.h").write_text("int seven() { return 7; }\n")
     assert process_line(f".I {tmp_path}") == 0
     process_line('#include "seven.h"')
