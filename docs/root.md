@@ -2607,6 +2607,44 @@ The one type SQLite's own tools do not say is a column its table declares
 with no type: ROOT types it by its first value, and here - the declared
 types found through a temporary view of the query - it is a blob.
 
+### Distributed RDataFrame
+
+Given a Dask client as its `executor`, `ROOT.RDataFrame` records the graph
+built on it and, when a result is asked for, cuts the data into
+`npartitions` ranges - empty entries evenly, trees at their cluster
+boundaries - runs the whole graph over each range as a Dask task, on
+xrdroot's own frame, and adds the tasks' results up: histograms bin by bin,
+counts and sums, means and standard deviations from their sums and counts,
+`AsNumpy`'s columns end to end, and a `Snapshot` as a file per task, read
+back as a distributed frame of them all. Dask is the `distrdf` extra
+(`pip install "xrdroot[distrdf]"`).
+
+```python
+import xrdroot.pyroot as ROOT
+from dask.distributed import Client
+
+client = Client()                                   # or a cluster's address
+df = ROOT.RDataFrame("Events", files, executor=client, npartitions=8)
+h = df.Filter("nMuon == 2").Histo1D(("m", "m", 100, 0, 200), "m")
+ROOT.RDF.RunGraphs([h, df.Count()])                 # several graphs at once
+
+ROOT.RDF.Distributed.initialize(setup, 42)          # run first in every task, and here
+ROOT.RDF.Distributed.DistributeCppCode("int twice(int x) { return 2 * x; }")
+ROOT.RDF.Distributed.DistributeHeaders(["helpers.h"])   # declared on every worker
+ROOT.RDF.Distributed.DistributeFiles(["weights.txt"])   # into each worker's directory
+```
+
+`ROOT.RDF.Distributed.Dask.RDataFrame(..., daskclient=client)` and
+`ROOT.RDF.Experimental.Distributed` are the older spellings, warned about
+as in ROOT. The operations are ROOT's distributed ones: a `Histo*D` needs
+its model, so that every task books the same bins. `DistributeSharedLibs`
+loads the `.xrdlib` libraries `xrdroot build library` makes, not compiled
+ones; `VariationsFor`, `LiveVisualize`, `FromSpec` and Spark are refused.
+`RDF.Experimental.RDatasetSpec` describes a dataset sample by sample, with
+friends and a range of entries, for a local or a distributed frame, and
+`RDF.RSnapshotOptions` is `Snapshot`'s fourth argument - `fAutoFlush`
+ending a cluster every so many entries.
+
 ## Writing
 
 `create` makes a new ROOT file anywhere this library can put bytes — a local

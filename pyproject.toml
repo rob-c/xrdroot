@@ -56,6 +56,8 @@ geom = ["pyvista>=0.43", "plotly>=5.11"]
 # SaveXGBoost and RBDT read, and PyTorch - where it has a wheel - trains the
 # deep networks (NumPy's own descent does when it does not).
 tmva = ["scikit-learn>=1.3", "scipy>=1.10", "xgboost>=2", "torch>=2; platform_machine != 'x86_64' or sys_platform != 'darwin'"]
+# Distributed RDataFrame's backend: ROOT.RDataFrame(..., executor=dask_client).
+distrdf = ["dask[distributed]>=2024"]
 dev = [
   # The libraries a tree or a histogram can be handed to, so that every one of
   # those hand-overs is exercised by the suite rather than trusted.
@@ -85,6 +87,8 @@ dev = [
   "xgboost>=2",
   # ROOT.Numba.Declare compiles with it, so what it compiles is tested for real.
   "numba>=0.59",
+  # Distributed RDataFrame's backend, so its tasks run on a real Dask cluster.
+  "dask[distributed]>=2024",
   "mypy>=1.10",
   "tomli; python_version < '3.11'",
   "pytest>=8",
@@ -355,7 +359,7 @@ hard = ["numpy"]
 modules = ["xrdroot.pyroot", "xrdroot.session"]
 depends = ["@engines", "pycxx"]
 hard = ["numpy"]
-optional = ["matplotlib", "scipy", "iminuit", "PIL", "skimage", "numba"]
+optional = ["matplotlib", "scipy", "iminuit", "PIL", "skimage", "numba", "dask", "distributed"]
 
 # ROOT's dialect of the translator, its macro runner, and the former translator's names.
 [tool.xrdroot.components.ownership.pycint]

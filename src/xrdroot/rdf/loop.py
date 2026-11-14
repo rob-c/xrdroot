@@ -52,7 +52,7 @@ from .graph import (
 from .sources import SampleInfo, Source
 from .values import from_column, to_column, truth
 
-__all__ = ["Batch", "Plan", "execute", "run_task"]
+__all__ = ["Batch", "Plan", "execute", "accumulate", "run_task"]
 
 Array = Any
 
@@ -510,6 +510,18 @@ def _add_counts(totals: list[list[int]], counts: list[tuple[int, int]]) -> None:
 
 def execute(plan: Plan) -> list[Any]:
     """Run the loop, and give every action's result, in the order of ``plan.actions``."""
+    accs, flow = accumulate(plan)
+    return [action.finish(acc, flow) for action, acc in zip(plan.actions, accs, strict=False)]
+
+
+def accumulate(plan: Plan) -> tuple[list[Any], dict[int, tuple[int, int]]]:
+    """Run the loop, and give every action's partials added up - not yet finished into its
+    result - and each named filter's entries seen and passed, by the filter's ``id``.
+
+    Distributed ``RDataFrame`` runs a loop per range of entries and adds
+    what each range's loop accumulated before finishing it, as ROOT's
+    mergeable values are added before their result is read.
+    """
     accs = [action.start() for action in plan.actions]
     totals = [[0, 0] for _ in plan.filters]
     try:
@@ -521,7 +533,7 @@ def execute(plan: Plan) -> list[Any]:
     flow = {
         id(node): (total[0], total[1]) for node, total in zip(plan.filters, totals, strict=False)
     }
-    return [action.finish(acc, flow) for action, acc in zip(plan.actions, accs, strict=False)]
+    return accs, flow
 
 
 def _fold(plan: Plan, accs: list[Any], totals: list[list[int]]) -> None:
