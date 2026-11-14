@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from xrdroot.cppstd.objects import convertible
+from xrdroot.cppstd.objects import UNGIVEN, convertible
 from xrdroot.pycxx import Refusal, run_source, translate
 from xrdroot.pycxx.operators import conversion
 
@@ -116,6 +116,7 @@ def test_a_default_cpp_works_out_at_each_call_is_worked_out_at_each_call(capsys)
     """
     run_source(source, "calls.C")
     assert capsys.readouterr().out == "1 1 -10\n2 2 -10\n7 3 -10\n1 1 3 3 4\n"
+    assert repr(UNGIVEN) == "UNGIVEN"  # what a deferred default reads as in a traceback
 
 
 def test_decltype_of_a_variable_declares_another_of_its_type(capsys) -> None:
