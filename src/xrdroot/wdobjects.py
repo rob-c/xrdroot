@@ -41,7 +41,7 @@ from .winfo import Element
 from .wpacking import pack_member
 from .writer import WBuffer, _record, info_entry
 
-__all__ = ["Instance", "DeclaredObject", "write_instance", "write_value"]
+__all__ = ["Instance", "DeclaredObject", "write_instance", "write_members", "write_value"]
 
 #: ``TObject``'s ``kIsOnHeap`` and ``kNotDeleted``, which ROOT keeps out of what it writes.
 MEMORY_BITS = 0x03000000
@@ -84,6 +84,12 @@ class DeclaredObject:
 def write_instance(buf: WBuffer, instance: Instance, catalogue: Catalogue) -> None:
     """``instance`` written in place, as a member held by value is."""
     _Writer(buf, catalogue).record(instance.classname, instance)
+
+
+def write_members(buf: WBuffer, instance: Instance, catalogue: Catalogue) -> None:
+    """``instance``'s members alone, with no record round them: what one entry of an unsplit
+    branch of its class holds, streamed by the class's description."""
+    _Writer(buf, catalogue).members(instance.classname, instance.members)
 
 
 def write_value(buf: WBuffer, classname: str, value: Any, catalogue: Catalogue) -> None:

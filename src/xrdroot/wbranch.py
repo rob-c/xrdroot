@@ -466,6 +466,32 @@ class Whole(Spec):
         return found
 
 
+@dataclass(frozen=True)
+class DeclaredWhole(Spec):
+    """Whole objects of a class a program declared, each entry its members streamed by the
+    class's description - as ROOT writes an object it does not split - with the descriptions
+    of the program's classes it reaches, and ROOT's classes among them, ``used``."""
+
+    classname: str
+    checksum: int
+    version: int
+    described: tuple[Described, ...] = ()
+    used: tuple[str, ...] = ()
+
+    def build(self, name: str, basket_size: int) -> Branch:
+        column = StreamedColumn(name, self._size(basket_size))
+        info = ElementInfo(self.classname, "", "", self.checksum, self.version, WHOLE, MEMBER,
+                           NOT_A_MEMBER)  # fmt: skip
+        return Branch(name, name, self.split, column, [ElementLeaf(name, name, 0, WHOLE,
+                      NOT_A_MEMBER)], info)  # fmt: skip
+
+    def classes(self) -> tuple[str, ...]:
+        return (*super().classes(), *self.used)
+
+    def declared(self) -> tuple[Any, ...]:
+        return self.described
+
+
 class Described(NamedTuple):
     """A class described otherwise than the donors describe it, as a file has to say it."""
 

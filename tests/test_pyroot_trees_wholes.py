@@ -150,10 +150,4 @@ def test_what_root_will_not_make_of_an_object_is_refused():
     clones = Cell(ROOT.TClonesArray("TLine"))
     with pytest.raises(UnsupportedFeatureError, match="split into a branch per member"):
         tree.Branch("tcl", clones, 32000, 99)
-
-    class Macro:
-        _cxx_layout_ = ("Macro", (), (("fX", "double", "", ()),))
-
-    with pytest.raises(UnsupportedFeatureError, match="at split level 0"):
-        tree.Branch("m", Macro(), 32000, 0)
     assert tree.Write() == 0  # no branches: nothing to write

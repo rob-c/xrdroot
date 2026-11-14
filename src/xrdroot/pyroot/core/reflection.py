@@ -194,8 +194,10 @@ class TClass(TNamed):
 
     def IsForeign(self) -> bool:
         """``IsForeign``: declared without ``ClassDef``, so its objects carry a checksum."""
+        from .declared import foreign
+
         cls = self._declared()
-        return cls is not None and "Class_Version" not in cls.__dict__
+        return cls is not None and foreign(cls)
 
     def IsVersioned(self) -> bool:
         return not self.IsForeign()

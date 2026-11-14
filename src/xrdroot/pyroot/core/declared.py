@@ -92,8 +92,14 @@ def declaration_of(cls: type, name: str | None = None) -> Declaration:
     versioned = "Class_Version" in cls.__dict__
     version = int(cls.Class_Version()) if versioned else 1  # type: ignore[attr-defined]
     made = tuple(Field(str(n), str(s), str(c), tuple(d)) for n, s, c, d in fields)
-    return Declaration(name or str(own), version, not versioned, tuple(map(str, bases)), made,
+    return Declaration(name or str(own), version, foreign(cls), tuple(map(str, bases)), made,
                        issubclass(cls, TObject), _class_title(cls))  # fmt: skip
+
+
+def foreign(cls: type) -> bool:
+    """Was ``cls`` declared without ``ClassDef`` - which gives it ``Class_Name`` as well as
+    ``Class_Version`` - so that its objects carry its checksum where a version would go?"""
+    return "Class_Name" not in cls.__dict__
 
 
 def _class_title(cls: type) -> str:

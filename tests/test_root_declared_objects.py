@@ -334,3 +334,60 @@ def test_a_class_that_points_at_its_own_kind_is_written_and_read_link_by_link():
     run_source(LINKED, "linked.C", ("linked.root",))
     first = ROOT.TFile("linked.root").Get("n")
     assert (first.v, first.next.v, first.next.next) == (1, 2, None)
+
+
+TREE = r"""
+#include <vector>
+#include <string>
+class Track { public: float pt = 1; Track() {} Track(float p) : pt(p) {} };
+class Event : public TObject {
+public:
+   int n = 0;
+   std::string tag;
+   std::vector<Track> tracks;
+   ClassDefOverride(Event, 3);
+};
+class Flat { public: double x = 0; };
+void tree(const char *name) {
+   {
+      TFile f(name, "RECREATE");
+      TTree t("T", "events");
+      Event *e = new Event;
+      Flat flat;
+      t.Branch("event", &e);
+      t.Branch("flat", &flat, 32000, 0);
+      for (int i = 0; i < 3; ++i) {
+         e->n = i;
+         e->tag = Form("evt%d", i);
+         e->tracks.clear();
+         for (int j = 0; j < i; ++j) e->tracks.push_back(Track(j + 0.5));
+         flat.x = i / 2.0;
+         t.Fill();
+      }
+      t.Write();
+   }
+   TFile f(name);
+   TTree *t = (TTree *)f.Get("T");
+   Event *e = nullptr;
+   Flat *flat = nullptr;
+   t->SetBranchAddress("event", &e);
+   t->SetBranchAddress("flat", &flat);
+   for (int i = 0; i < t->GetEntries(); ++i) {
+      t->GetEntry(i);
+      printf("%d %s %d %g %g\n", e->n, e->tag.c_str(), (int)e->tracks.size(),
+             e->tracks.size() ? e->tracks.back().pt : -1.0, flat->x);
+   }
+}
+"""
+
+
+def test_a_branch_of_a_class_this_writer_does_not_split_is_written_whole(capfd):
+    run_source(TREE, "tree.C", ("tree.root",))
+    assert capfd.readouterr().out.splitlines() == [
+        "0 evt0 0 -1 0",
+        "1 evt1 1 0.5 0.5",
+        "2 evt2 2 1.5 1",
+    ]
+    with open_root("tree.root") as f:
+        infos = f._source.streamers()
+    assert {"Event", "Track", "Flat"} <= set(infos)
