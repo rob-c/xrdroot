@@ -12,7 +12,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...wbranch import WHOLE, Branch, NoBaskets, ObjectBranch, streamed_size
+from ...wbranch import (
+    CLONES,
+    COLLECTION,
+    TSTRING,
+    WHOLE,
+    Branch,
+    NoBaskets,
+    ObjectBranch,
+    streamed_size,
+)
 from ...wpacking import BASIC
 from ...writer import BASKET_BYTES
 from .layout import BranchInfo, LeafInfo
@@ -21,6 +30,8 @@ __all__ = ["object_info"]
 
 #: What ``TLeafElement::GetTypeName`` says of a collection's count.
 COUNT_TYPE = "Int_t"
+#: The ``fType`` of the top of a split collection or ``TClonesArray``, which counts objects.
+COUNTING = (COLLECTION, CLONES)
 
 
 def object_info(slot: Any, stats: Any, entries: int, written: bool) -> BranchInfo:
@@ -91,8 +102,8 @@ def _leaf(branch: Branch, leaf: Any) -> LeafInfo:
 def _typename(branch: Branch) -> str:
     """What ``TLeafElement::GetTypeName`` says: a member's type, or the object's class."""
     info = branch.info
-    if info.btype == 4:
+    if info.btype in COUNTING:
         return COUNT_TYPE
     if info.fid == WHOLE or info.stype < 0:
         return info.classname
-    return BASIC[info.stype][2]
+    return "TString" if info.stype == TSTRING else BASIC[info.stype][2]

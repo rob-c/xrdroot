@@ -427,6 +427,11 @@ class TObject:
         return f"<cppyy.gbl.{self.ClassName()} object at {hex(id(self))}>"
 
 
+# ``TObject::kSingleKey``, ``TObject::kCanDelete``...: the bits and write options, as members.
+for _bit, _value in BITS.items():
+    setattr(TObject, _bit, _value)
+
+
 class TNamed(TObject):
     """``TNamed``: an object with a name and a title."""
 

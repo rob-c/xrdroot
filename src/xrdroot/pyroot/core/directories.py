@@ -10,7 +10,9 @@ and ``cd`` changes it.
 
 ``gDirectory`` is a stand-in that is always the current directory, so a
 script that took it with ``from ROOT import gDirectory`` before opening a
-file still sees the file after.
+file still sees the file after. ``gFile`` is the same for the current file:
+the file of the directory last gone into that was in one, until that file
+closes - going back to memory leaves it be, as in ROOT.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from .collections import TList
 from .messages import message
 from .objects import Indent, TNamed, templated
 
-__all__ = ["TDirectory", "gDirectory", "current_directory"]
+__all__ = ["TDirectory", "gDirectory", "gFile", "current_directory"]
 
 #: The current directory, once one has been gone into; memory until then.
 _CURRENT: list[Any] = []
@@ -36,9 +38,28 @@ def current_directory() -> Any:
     return gROOT
 
 
+#: The current file: the file of the last directory gone into that was in one.
+_FILE: list[Any] = []
+
+
 def set_current(directory: Any) -> None:
     """Go into ``directory``: what ``cd`` does, without the checks."""
     _CURRENT[:] = [directory]
+    found = getattr(directory, "GetFile", None)
+    held = found() if callable(found) else None
+    if held is not None:
+        _FILE[:] = [held]
+
+
+def current_file() -> Any:
+    """What ``gFile`` is now: the current file, or ``None`` when there is none."""
+    return _FILE[0] if _FILE else None
+
+
+def forget_file(file: Any) -> None:
+    """A file closed is no longer ``gFile``, which ROOT leaves null."""
+    if _FILE and _FILE[0] is file:
+        _FILE.clear()
 
 
 def forget(obj: Any) -> None:
@@ -187,16 +208,36 @@ class TDirectory(TNamed):
         """``pwd``: print where this directory is."""
         print(self.GetPath())
 
+    @staticmethod
+    def Cd(path: Any) -> bool:
+        """``TDirectory::Cd``: go to ``path`` - ``file.root:/dir``, or a path from the
+        directory current now."""
+        return bool(current_directory().cd(path))
+
     def cd(self, path: Any = None) -> bool:
         """``cd``: make this directory - or the one ``path`` names below it - the current one."""
         target = self if not path else self.GetDirectory(path)
         if target is None and path and ":" in str(path):
             target = _in_open_file(str(path))
         if target is None:
-            message("Error", f"{self.ClassName()}::cd", "Unknown directory %s", str(path))
+            self._unknown(str(path))
             return False
         set_current(target)
         return True
+
+    def _unknown(self, path: str) -> None:
+        """ROOT's error for a path that leads nowhere: from the directory the walk reached, of
+        the part of the path missing there - and none above the top of a file, which ROOT
+        reaches quietly."""
+        here: Any = self
+        parts = [path] if ":" in path else [p for p in path.strip("/").split("/") if p != "."]
+        for part in parts:
+            below = here._mother if part == ".." else here._child(part)
+            if below is None:
+                if part != "..":
+                    message("Error", f"{here.ClassName()}::cd", "Unknown directory %s", part)
+                return
+            here = below
 
     def mkdir(self, name: Any, title: Any = "", returnExistingDirectory: bool = False) -> Any:
         """``mkdir``: a directory below this one, in memory; ``a/b`` makes both."""
@@ -333,12 +374,51 @@ class _CurrentDirectory:
         """The directory this stands for right now."""
         return current_directory()
 
+    def __assign__(self, directory: Any) -> None:
+        """``gDirectory = dir``: the current directory is ``dir`` from now on."""
+        set_current(directory.__real__() if hasattr(directory, "__real__") else directory)
+
     def __repr__(self) -> str:
         return repr(current_directory())
 
 
 #: ``gDirectory``, always the current directory.
 gDirectory: Any = _CurrentDirectory()
+
+
+class _CurrentFile:
+    """``gFile``: whichever file is current now, answering as that one - and false, as a
+    null pointer is, when there is none."""
+
+    def __getattr__(self, name: str) -> Any:
+        held = current_file()
+        if held is None:
+            raise AttributeError(f"gFile is null, so it has no {name}: no file is open")
+        return getattr(held, name)
+
+    def __bool__(self) -> bool:
+        return current_file() is not None
+
+    def __eq__(self, other: object) -> bool:
+        return current_file() is (other.__real__() if isinstance(other, _CurrentFile) else other)
+
+    def __hash__(self) -> int:
+        return id(self)
+
+    def __real__(self) -> Any:
+        """The file this stands for right now, or ``None``."""
+        return current_file()
+
+    def __assign__(self, file: Any) -> None:
+        """``gFile = f``: the current file is ``f`` - or none - from now on."""
+        _FILE[:] = [] if file is None or file == 0 else [file]
+
+    def __repr__(self) -> str:
+        return repr(current_file())
+
+
+#: ``gFile``, always the current file.
+gFile: Any = _CurrentFile()
 
 
 def _in_open_file(path: str) -> Any:

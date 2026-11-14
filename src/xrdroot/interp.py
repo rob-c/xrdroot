@@ -735,7 +735,7 @@ def _by_hand(name: str, source: Source, seen: tuple[str, ...]) -> Callable[[Buff
     made of.
     """
     from .image import IMAGES
-    from .known import KNOWN
+    from .known import KNOWN, STREAMS_ITSELF
 
     streamed = lookup("canvas.streamer", name)
     if streamed is None:
@@ -743,8 +743,8 @@ def _by_hand(name: str, source: Source, seen: tuple[str, ...]) -> Callable[[Buff
     make: Callable[[Any], Callable[[Buffer], Any]] | None = (
         None if streamed is None else streamed(name)
     ) or IMAGES.get(name)
-    if make is None and source.streamers().get(name) is None:
-        make = KNOWN.get(name)  # the file's own description comes first
+    if make is None and (source.streamers().get(name) is None or name in STREAMS_ITSELF):
+        make = KNOWN.get(name)  # the file's own description comes first, but for TObject
     if make is None:
         return None
     return make(lambda held: _streamed(_members(held, source, (*seen, name))))
@@ -1053,9 +1053,13 @@ def _datime(buf: Buffer) -> datetime.datetime:
 
 
 def _bookkeeping(buf: Buffer) -> dict[str, Any]:
-    """A ``TObject`` base: the identifier and bits every ROOT object carries."""
-    unique, bits = buf.tobject()
-    return {"fUniqueID": unique, "fBits": bits}
+    """A ``TObject`` base: the identifier and bits every ROOT object carries - and, for one a
+    ``TRef`` may point at, ``pidf``: which of the file's ``ProcessID`` records numbered it."""
+    unique, bits, process = buf.referenced()
+    found: dict[str, Any] = {"fUniqueID": unique, "fBits": bits}
+    if process is not None:
+        found["pidf"] = process
+    return found
 
 
 def _titled(buf: Buffer) -> dict[str, Any]:
@@ -1065,10 +1069,10 @@ def _titled(buf: Buffer) -> dict[str, Any]:
     own settings in them, and a ``TEfficiency`` keeps how it was filled there.
     """
     _version, end = buf.header()
-    unique, bits = buf.tobject()
+    found = _bookkeeping(buf)
     name, title = buf.string(), buf.string()
     buf.resume(end)
-    return {"fName": name, "fTitle": title, "fUniqueID": unique, "fBits": bits}
+    return {"fName": name, "fTitle": title, **found}
 
 
 def _reader(node: Any) -> Callable[[Buffer], Any]:

@@ -26,9 +26,11 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..compression import spelled
 from ..errors import ROOTError
 from ..file import open_root
 from ..merging import merge
+from ..writer import create
 from .tooling import Log, raw_parser
 
 __all__ = ["add_parser", "run", "USAGE", "Request", "parse"]
@@ -444,9 +446,12 @@ class _Hadd:
         self.info(2, f"compression setting for {what}: {request.compression or setting}")
         self._writable(target)
         self._split(len(inputs), processes)
-        readable = self._opened(inputs)
-        if readable is None:
-            return self._failed(target, len(inputs), len(inputs) - 1)
+        readable, failed = self._opened(inputs)
+        if failed:
+            # TFileMerger opened the target before it took any input in, so ROOT leaves
+            # it behind, holding nothing, when an input stops the merge.
+            _empty(target, setting, "a" in request.switches)
+            return self._failed(target, len(inputs), len(readable))
         skip, only = self._filter()
         if not request.keep and "O" not in request.switches:
             self._compare(readable, setting)
@@ -491,8 +496,12 @@ class _Hadd:
             self.info(2, "each process should handle at least 3 files for efficiency. Setting "
                       f"the number of processes to: {math.ceil(files / 3)}")  # fmt: skip
 
-    def _opened(self, inputs: list[str]) -> list[tuple[str, int]] | None:
-        """``TFileMerger::AddFile`` for each input: said, opened, and its compression read."""
+    def _opened(self, inputs: list[str]) -> tuple[list[tuple[str, int]], bool]:
+        """``TFileMerger::AddFile`` for each input: said, opened, and its compression read.
+
+        What was taken in comes back, and whether an input that would not open
+        stopped the merge, as it does unless ``-k`` says to skip it.
+        """
         readable = []
         for number, name in enumerate(inputs, 1):
             if self.verbosity >= 2:
@@ -504,9 +513,9 @@ class _Hadd:
                 _say(sys.stderr, _unreadable(name))
                 if not self.skip:
                     self.log.error(f"exiting due to error in {name}")
-                    return None
+                    return readable, True
                 _say(sys.stderr, f"Warning in <hadd>: skipping file with error: {name}\n")
-        return readable
+        return readable, False
 
     def _filter(self) -> tuple[list[str] | None, list[str] | None]:
         listed = self.request.values.get("L")
@@ -561,6 +570,14 @@ class _Hadd:
                        f"into {target}")  # fmt: skip
         sys.stderr.flush()
         return 1
+
+
+def _empty(target: str, setting: int, appending: bool) -> None:
+    """The target as ``hadd`` leaves it when an input stops the merge: made, and empty."""
+    if appending and os.path.exists(target):
+        return
+    algorithm, level = spelled(setting)
+    create(target, compression=algorithm, level=level).close()
 
 
 def _unreadable(name: str) -> str:

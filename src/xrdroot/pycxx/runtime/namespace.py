@@ -135,11 +135,19 @@ class HostNamespace:
         return getattr(namespace, name)
 
     def __setattr__(self, name: str, value: Any) -> None:
-        """``g = v``: a program assigning one of the library's globals."""
+        """``g = v``: a program assigning one of the library's globals - or, for a global
+        that stands for something else, such as the current directory, telling it what to
+        stand for now through its ``__assign__``."""
         if name.startswith("_"):
             object.__setattr__(self, name, value)
             return
-        setattr(self.namespace(), name, value)
+        namespace = self.namespace()
+        held = getattr(namespace, name, None)
+        assign = getattr(type(held), "__assign__", None)
+        if assign is not None:
+            assign(held, value)
+            return
+        setattr(namespace, name, value)
 
     def __repr__(self) -> str:
         return "<the host: the names a translated program did not declare>"

@@ -97,8 +97,8 @@ def _member(obj: Any, column: str) -> Address:
 class _Whole(Address):
     """A whole object, made again from each entry's members and put where the pointer is."""
 
-    def __init__(self, address: Any, classname: str) -> None:
-        self.address, self.classname = address, classname
+    def __init__(self, address: Any, classname: str, clones: str = "") -> None:
+        self.address, self.classname, self.clones = address, classname, clones
 
     def get(self, count: int | None = None) -> Any:
         return getattr(self.address, "value", self.address)
@@ -106,7 +106,7 @@ class _Whole(Address):
     def put(self, value: Any) -> None:
         from .rebuild import rebuilt
 
-        made = rebuilt(self.classname, value, self.get())
+        made = rebuilt(self.classname, value, self.get(), self.clones)
         if hasattr(self.address, "value"):
             self.address.value = made
 
@@ -117,4 +117,4 @@ def bind_object(branch: Any, address: Any) -> dict[str, Address]:
         obj = _object(address, branch.classname)
         leaves = [leaf for child in branch.children for b in child.walk() for leaf in b.leaves]
         return {leaf.column: _member(obj, leaf.column) for leaf in leaves}
-    return {branch.leaves[0].column: _Whole(address, branch.classname)}
+    return {branch.leaves[0].column: _Whole(address, branch.classname, branch.clones)}

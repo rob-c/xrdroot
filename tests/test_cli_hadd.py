@@ -329,3 +329,28 @@ def test_hadd_takes_a_lone_dash_as_a_name_and_skips_empty_words(capsys, made):
 def test_a_url_input_is_taken_as_readable(made):
     hadd = hadd_command._Hadd(hadd_command.parse(["o.root", "in.root"]), None)
     assert hadd._valid("root://host//f.root", "o.root", "never") == ["root://host//f.root"]
+
+
+def test_an_input_that_stops_the_merge_leaves_the_target_made_and_empty_as_root_does(
+    capsys, made
+):
+    made.joinpath("junk.txt").write_text("")
+    status, _, err = run(capsys, "-f", "o.root", "junk.txt", "in.root")
+    assert status == 1
+    assert err.endswith("failure during the merge of 2 (0) input (partial) files into o.root\n")
+    with open_root("o.root") as f:
+        assert f.keys() == [] and f.compression == 101
+    run(capsys, "-f", "kept.root", "in.root")
+    status, _, _ = run(capsys, "-a", "kept.root", "in.root", "junk.txt")
+    with open_root("kept.root") as f:
+        assert status == 1 and f.keys() == ["h", "t"]
+
+
+def test_a_tntuple_merged_stays_a_tntuple(capsys, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with create("n.root") as out:
+        tree = out.tree("nt", {"a": "f", "b": "f"}, classname="TNtuple")
+        tree.extend({"a": np.arange(3, dtype=np.float32), "b": np.ones(3, dtype=np.float32)})
+    assert run(capsys, "-f", "m.root", "n.root", "n.root")[0] == 0
+    with open_root("m.root") as f:
+        assert f.classnames()["nt"] == "TNtuple" and f["nt"].num_entries == 6
