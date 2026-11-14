@@ -233,7 +233,10 @@ def _root_member(obj: Any, member: str) -> Any:
 
 
 def _plain(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
-    """A member's value as plain data: objects as instances, containers as lists or dicts."""
+    """A member's value as plain data: objects as instances, containers as lists or dicts - an
+    object held by value that is not there yet, a slot ``resize`` made, as a default-made one."""
+    if value is None and not found.stars and found.name in catalogue.declarations:
+        value = new_value(found.name)
     if value is None:
         return None
     if not found.stars and (found.name in STL_KINDS or found.name == "pair"):

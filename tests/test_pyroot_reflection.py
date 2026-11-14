@@ -450,6 +450,7 @@ def test_a_map_of_pointers_to_objects_goes_out_and_comes_back(capfd):
 
 def test_cling_s_optimisation_level_is_no_command_to_refuse():
     assert ROOT.gROOT.ProcessLine(".O0") == 0
+    assert (ROOT.TObject.kSingleKey, ROOT.TObject.kOverwrite, ROOT.TNamed.kCanDelete) == (1, 2, 1)
 
 
 def test_a_map_of_pointers_written_object_wise_reads_pair_by_pair():

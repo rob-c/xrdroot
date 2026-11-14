@@ -275,7 +275,9 @@ class TDirectoryFile(TDirectory):
 
     def _fetched(self, label: str, key: TKey) -> Any:
         """Read one record; a histogram or tree of the newest cycle stays in memory here."""
-        read = self._reader()[label]
+        reader = self._reader()
+        again = getattr(key._key, "read", None) if reader is None else None
+        read = again() if again is not None else reader[label]
         found = _tree(read, key) or wrap(read)
         if not isinstance(found, TObject) and not _engine_own(found):
             found = _dressed(key.GetClassName(), found)
@@ -341,11 +343,19 @@ class TDirectoryFile(TDirectory):
         declared = payload_of(obj)
         if declared is not None:  # an object of a class C++ declared, by its declaration
             writer.write(called, declared, title=declared.title)
-            self._note_key(called, declared.title, declared.classname)
+            key = self._note_key(called, declared.title, declared.classname)
+            key._key = _Written(declared)
             return 1
         writer.write(called, unwrap(obj), title=obj.GetTitle())
         self._note_key(called, obj.GetTitle(), obj.ClassName())
         return 1
+
+    def WriteObjectAny(
+        self, obj: Any, classname: Any, name: Any, option: Any = "", bufsize: int = 0
+    ) -> int:
+        """``WriteObjectAny(obj, "MyClass", name)``: ``obj`` written here - the class is the
+        object's own, which a Python object knows without being told."""
+        return self.WriteTObject(obj, name, option)
 
     def _note_key(self, name: str, title: str, classname: str) -> TKey:
         """A key for a record just written: the next cycle, listed before the older ones."""
@@ -464,6 +474,22 @@ def _tree(read: Any, key: TKey) -> Any:
         return None
     trees = importlib.import_module("xrdroot.pyroot.trees")
     return trees.wrap(read, key.GetClassName(), key._key)
+
+
+class _Written:
+    """A record of an object of a declared class this session wrote, kept so that the file,
+    still open for writing, can read it back - and say how long it is."""
+
+    def __init__(self, declared: Any) -> None:
+        self.classname, self.catalogue = declared.classname, declared.catalogue
+        self.payload = declared.root_payload(0)[0]
+        self.objlen = self.nbytes = len(self.payload)
+
+    def read(self) -> Any:
+        from ...buffer import Buffer
+        from ...rdobjects import reader_for
+
+        return reader_for(self.classname, self.catalogue)(Buffer(self.payload))
 
 
 def _note_layouts(reading: Any) -> None:

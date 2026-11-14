@@ -257,7 +257,7 @@ void mixed(const char *name) {
    TFile f(name, "RECREATE");
    Lined l;
    l.named.SetName("inside");
-   f.WriteObject(&l, "l");
+   f.WriteObjectAny(&l, "Lined", "l");
 }
 """
 
@@ -391,3 +391,23 @@ def test_a_branch_of_a_class_this_writer_does_not_split_is_written_whole(capfd):
     with open_root("tree.root") as f:
         infos = f._source.streamers()
     assert {"Event", "Track", "Flat"} <= set(infos)
+
+
+ZERO = r"""
+struct MyS0 { static constexpr short Class_Version() { return 0; } int x = 4; };
+struct MyS1 { static constexpr short Class_Version() { return 1; } };
+void zero() {
+   MyS0 s0;
+   MyS1 s1;
+   TMemFile f("mem19371.root", "RECREATE");
+   f.WriteObject(&s0, "s0");
+   f.WriteObject(&s1, "s1");
+   printf("%d %d %d %d\n", f.Get<MyS0>("s0")->x, f.Get<MyS1>("s1") != nullptr,
+          f.GetKey("s0")->GetObjlen(), f.GetKey("s1")->GetObjlen());
+}
+"""
+
+
+def test_a_class_with_a_version_and_no_classdef_is_foreign_and_reads_back_while_written(capfd):
+    run_source(ZERO, "zero.C")
+    assert capfd.readouterr().out == "4 1 14 10\n"
