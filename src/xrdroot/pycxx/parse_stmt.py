@@ -53,6 +53,9 @@ DECLARATOR_ENDS = frozenset({"=", ";", "(", "[", ",", "{", ":"})
 class StmtParser(ExprParser):
     """The part of the parser that reads statements."""
 
+    #: The classes whose bodies are being read, innermost last.
+    classes: list[str]
+
     def class_declaration(self, name: str | None = None, typedef: bool = False) -> ClassDecl:
         raise NotImplementedError
 

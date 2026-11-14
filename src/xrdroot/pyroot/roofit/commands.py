@@ -216,16 +216,17 @@ class EvalBackend(RooCmdArg):
     likelihood is evaluated. Every backend evaluates the same numbers here."""
 
     def __init__(self, backend: Any = "cpu") -> None:
-        text = backend.name() if isinstance(backend, EvalBackend) else str(backend).lower()
+        text = backend._backend if isinstance(backend, EvalBackend) else str(backend).lower()
         if text not in BACKENDS:
             raise ValueError(f"'{backend}' is not one of RooFit's backends: {', '.join(BACKENDS)}")
         super().__init__("EvalBackend", text)
         self.name = _Name("EvalBackend")
         self.name.backend = text
+        self._backend: str = text
 
     def value(self, index: int = -1, default: Any = None) -> Any:
         """``value()``: the backend's number; ``value(i)`` the command's ``i``-th value."""
-        return BACKENDS[self.name()] if index < 0 else super().value(index, default)
+        return BACKENDS[self._backend] if index < 0 else super().value(index, default)
 
     @staticmethod
     def Legacy() -> EvalBackend:

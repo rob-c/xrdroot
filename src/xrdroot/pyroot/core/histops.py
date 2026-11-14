@@ -107,6 +107,7 @@ class Operations:
     _axes: Any
     _widths: Any
     GetName: Any
+    GetTitle: Any
     SetName: Any
 
     # -- copies ---------------------------------------------------------------------------

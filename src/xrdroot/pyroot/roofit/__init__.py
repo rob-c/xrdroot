@@ -14,9 +14,9 @@ from __future__ import annotations
 from typing import Any
 
 from ...roofit import histograms as _histograms
+from ...roofit.helpers import RooHelpers
 from ...roofit.plot import frame as _frame
 from ...roofit.plot import params as _params
-from ...roofit.helpers import RooHelpers
 from ...roofit.registry import classes
 from ..core import draw_hook
 from .commands import RooFit
