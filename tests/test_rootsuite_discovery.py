@@ -40,6 +40,10 @@ def tree(tmp_path: Path) -> Path:
             "if(cuda)\n  ROOT_ADD_GTEST(testCuda cuda.cxx)\nendif()\n"
             "ROOT_ADD_PYUNITTEST(pyroot_th1 th1.py PYTHON_DEPS numpy)\n"
             "ROOT_ADD_PYUNITTEST(uhi_plot uhi_plot.py GENERIC)\n"
+            "configure_file(data/kept.txt kept.txt COPYONLY)\n"
+            "configure_file(here.csv . COPYONLY)\n"
+            "configure_file(data/kept.txt renamed.txt COPYONLY)\n"
+            "configure_file(made.h.in made.h)\n"
             "ROOT_EXECUTABLE(stressHist stressHist.cxx LIBRARIES Hist)\n"
             "ROOT_ADD_TEST(test-stresshist COMMAND stressHist -b FAILREGEX \"FAILED|Error in\")\n"),
         "hist/hist/test/test_TH1.cxx": "", "hist/hist/test/test_axis.cxx": "",
@@ -107,6 +111,11 @@ def test_a_root_add_test_of_a_built_program_runs_its_sources_with_its_arguments(
     assert (test.runner, test.files, test.args) == ("program", ("hist/hist/test/stressHist.cxx",),
                                                     ("-b",))
     assert test.failregex == ("FAILED|Error in",)
+
+
+def test_a_file_configure_file_copies_under_its_own_name_is_copied_for_the_tests(tree):
+    test = by_id(tree)["test/hist/hist/stresshist"]
+    assert test.copy == ("hist/hist/test/data/kept.txt", "hist/hist/test/here.csv")
 
 
 def test_a_program_linking_a_test_library_with_a_linkdef_needs_a_dictionary(tree):
