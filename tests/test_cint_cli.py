@@ -157,6 +157,6 @@ def test_the_session_runs_a_cpp_macro_with_x(
     path = write(tmp_path, "hello.C", 'void hello(int n) { printf("hello %d\\n", n); }')
     session = Session()
     session.macro(f"{path}+", 4)
-    session.ProcessLine('printf("%d\\n", 9 / 2)')
-    assert capsys.readouterr().out == "hello 4\n4\n"
+    session.ProcessLine('printf("%d\\n", 9 / 2)')  # no ``;``: its value is printed, as by ROOT
+    assert capsys.readouterr().out == "hello 4\n4\n(int) 2\n"
     assert ".x macro.C(a)" in session.help()

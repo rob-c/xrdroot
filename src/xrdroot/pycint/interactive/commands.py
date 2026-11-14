@@ -49,6 +49,8 @@ This is xrdroot's C++ prompt: what is typed is translated into Python and run.
   .X file.C[(args)]  the same
   .L file.C[+]       load a macro: declare its functions and classes, run nothing
   .U file.C          unload what .L loaded
+  .undo [n]          take back the last n inputs, one by default
+  .I [dir]           look for #include files in dir too; .I alone lists the ones added
   .ls [option]       list the current directory, gDirectory->ls()
   .cd [dir]          go into a directory of the current file; .cd alone, to the top
   .pwd               where the session is, gDirectory->pwd()
@@ -122,6 +124,24 @@ def _unload(interp: Interpreter, rest: str) -> list[Said]:
         return [Said(f"error: {rest or 'nothing'} was not loaded with .L, so there is "
                      "nothing to unload", True)]  # fmt: skip
     forget(names)
+    return []
+
+
+def _undo(interp: Interpreter, rest: str) -> list[Said]:
+    """``.undo [n]``: the last ``n`` inputs - one, by default - taken back."""
+    if rest and not rest.isdigit():
+        return [Said(f"error: .undo takes a number of inputs to take back, not {rest!r}", True)]
+    interp.unit.undo(int(rest or 1))
+    return []
+
+
+def _include(interp: Interpreter, rest: str) -> list[Said]:
+    """``.I dir``: a directory ``#include`` looks in, for the prompt and for ACLiC; ``.I``
+    alone, the directories added so far, as cling lists its ``-I`` flags."""
+    if not rest:
+        return [Said(line) for path in interp.unit.includes for line in ("-I", str(path))]
+    interp.unit.includes.append(Path(rest))
+    _root().gSystem.AddIncludePath(f"-I{rest}")
     return []
 
 
@@ -254,6 +274,8 @@ COMMANDS: dict[str, Callable[[Interpreter, str], list[Said]]] = {
     "X": _run,
     "L": _load,
     "U": _unload,
+    "undo": _undo,
+    "I": _include,
     "ls": _ls,
     "cd": _cd,
     "pwd": _pwd,

@@ -112,12 +112,13 @@ def kind(piece: Piece) -> Kind:
     """What ``piece`` is: a preprocessor line, a declaration, or a statement to run."""
     if piece.end == "directive":
         return Kind("directive")
-    first = piece.parts[0] if piece.parts else ""
+    parts = piece.parts[1:] if piece.parts[:1] == ["::"] else piece.parts  # ``::data *a``
+    first = parts[0] if parts else ""
     if first in DECLARING:
         return Kind("declaration")
     if not _is_name(first):
         return Kind("statement")
-    return _declared(_Reader(piece.parts))
+    return _declared(_Reader(parts))
 
 
 def _declared(reader: _Reader) -> Kind:

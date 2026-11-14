@@ -23,6 +23,7 @@ from ..execute import arguments, called, define, exists, run_program, split_call
 from ..returned import status as exit_status
 from .commands import Said, dispatch, failure
 from .lexer import Piece, pending, pieces
+from .lines import adopt
 from .unit import Diagnostic, Outcome, Unit
 from .values import shown
 
@@ -46,6 +47,7 @@ class Interpreter:
 
     def __init__(self, *, exit_on_error: bool = False, directory: Path | None = None) -> None:
         self.unit = Unit(directory)
+        adopt(self.unit)  # gROOT->ProcessLine runs in it from now on
         #: The number the next line typed is given: ``root [N]``, and ``ROOT_prompt_N``.
         self.number = 0
         self.buffer: list[str] = []
@@ -139,13 +141,7 @@ class Interpreter:
     def _outcome(self, number: int, parts: list[Piece], text: str) -> Outcome:
         """Run the input, its value caught even unprinted - or, if the translator will not
         take it so, as it was typed."""
-        chunk = self.unit.chunk(number, parts, text)
-        try:
-            return self.unit.run(chunk)
-        except Diagnostic as why:
-            if not (chunk.quiet and why.translating):
-                raise
-        return self.unit.run(self.unit.chunk(number, parts, text, quiet=False))
+        return self.unit.outcome(number, parts, text)
 
     def leave(self, leaving: SystemExit) -> None:
         """The session over, as ``exit(n)`` or ``gApplication->Terminate(n)`` ends it."""

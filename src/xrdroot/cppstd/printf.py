@@ -16,6 +16,8 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
+from .cells import address_of
+
 __all__ = ['cformat', 'printf', 'sprintf', 'fprintf', 'puts', 'putchar']
 
 #: One conversion specification.
@@ -83,7 +85,11 @@ def _character(value: Any, length: str | None) -> str:
 
 
 def _pointer(value: Any, length: str | None) -> int:
-    return id(value) if value else 0
+    """``%p``: an object's address - remembered, so a line of C++ printed with it can name
+    the object again - or a number that already is one."""
+    if isinstance(value, int):
+        return value
+    return address_of(value)
 
 
 def _text(value: Any, length: str | None) -> str:

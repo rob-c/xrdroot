@@ -292,6 +292,10 @@ def process_line(line: str, *, root: Any = None) -> Any:
     if text.startswith(".L"):
         load(called(text[2:]), root=root)
         return 0
+    if text.startswith((".undo", ".I")):
+        from .interactive.lines import command  # the prompt's, which runs on this module
+
+        return command(text)
     if text.startswith("."):
         raise ValueError(f"{text.split()[0]} is not a command gROOT->ProcessLine runs here")
     preload(text)
@@ -299,7 +303,9 @@ def process_line(line: str, *, root: Any = None) -> Any:
     if text.startswith("#"):  # ``#include "Foo.h"``: declarations, at the top as cling has them
         run_source(text + "\n", "<ProcessLine>", root=root, call=False)
         return 0
-    return _cxx.run_line(text, file="<ProcessLine>", dialect=session_dialect(), namespace=root)
+    from .interactive.lines import run_line  # the prompt's, which runs on this module
+
+    return run_line(text, root)
 
 
 def called(text: str) -> str:

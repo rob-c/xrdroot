@@ -126,6 +126,7 @@ def test_the_small_session_questions_have_roots_answers():
 
 
 def test_cpp_is_refused_by_name_without_the_translator(monkeypatch):
+    troot.set_line_processor(None)  # one an earlier test's ProcessLine found and kept
     monkeypatch.setitem(sys.modules, "xrdroot.pycint.execute", None)  # not installed
     with pytest.raises(UnsupportedFeatureError, match=r"xrdroot\.pycint"):
         ROOT.gROOT.ProcessLine("int x = 1;")
@@ -138,6 +139,7 @@ def test_cpp_goes_to_the_translator_when_it_is_installed(monkeypatch):
     fake = types.ModuleType("xrdroot.pycint.execute")
     fake.process_line = lambda text: seen.append(text) or 7
     monkeypatch.setitem(sys.modules, "xrdroot.pycint.execute", fake)
+    troot.set_line_processor(None)  # one an earlier test's ProcessLine found and kept
     try:
         expect(
             (ROOT.gROOT.ProcessLine("1+1"), 7),

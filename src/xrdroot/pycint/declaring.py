@@ -27,15 +27,19 @@ __all__ = ["translate_declaring", "forget"]
 
 
 def translate_declaring(
-    source: str, file: str = "<macro>", directories: list[Path] | None = None
+    source: str,
+    file: str = "<macro>",
+    directories: list[Path] | None = None,
+    dialect: Any = None,
 ) -> tuple[Translation, dict[str, tuple[str, str | None]]]:
     """``source`` translated, with each variable it declares at its top: Python name and C++ type.
 
     Each type is spelled as cling prints it, ``const char *`` or
     ``std::vector<int>``, or is ``None`` where the translator does not know it
-    (``auto`` of a call into ROOT).
+    (``auto`` of a call into ROOT). ``dialect`` is ROOT's unless given: the session's,
+    with the macros defined so far.
     """
-    with using(DIALECT):
+    with using(dialect or DIALECT):
         tokens, included = preprocess(source, file, directories)
         unit = parse(tokens)
         program = Program(unit)

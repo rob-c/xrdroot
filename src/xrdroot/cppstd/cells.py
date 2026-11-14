@@ -11,13 +11,18 @@ it is handed a cell or an array.
 
 :class:`ItemRef` and :class:`AttrRef` are the same promise made about an
 element of a container, ``&a[i]``, or a member of an object, ``&obj.x``.
+
+An object's address as a number - printed with ``%p``, or cast to an integer
+- is its ``id``, and the object is remembered under it, so that a pointer cast
+back from that number, ``(TFile*)0x...`` in a line of C++ a program wrote out
+for an interpreter to run, is the very object (:func:`pointer_at`).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["Cell", "Static", "ItemRef", "AttrRef"]
+__all__ = ["Cell", "Static", "ItemRef", "AttrRef", "address_of", "pointer_at"]
 
 
 class Cell:
@@ -115,3 +120,29 @@ class AttrRef:
     def __setitem__(self, index: int, value: Any) -> None:
         _only_zero(index)
         self.value = value
+
+
+#: The objects whose addresses a program has seen as numbers, by address: kept alive, so
+#: that no other object is given the same address while the number may be cast back.
+SEEN: dict[int, Any] = {}
+
+
+def address_of(obj: Any) -> int:
+    """A pointer as the number C++ casts it to: ``0`` for null, else the object's address."""
+    if obj is None:
+        return 0
+    SEEN[id(obj)] = obj
+    return id(obj)
+
+
+def pointer_at(address: Any) -> Any:
+    """``(T*)n``: the object at the address ``n`` - one :func:`address_of` gave - or null."""
+    number = int(address)
+    if number == 0:
+        return None
+    if number not in SEEN:
+        raise ValueError(
+            f"0x{number:x} is no address of an object this program turned into a number, "
+            "and only such an address can be made a pointer again here"
+        )
+    return SEEN[number]

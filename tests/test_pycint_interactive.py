@@ -405,6 +405,8 @@ def test_preprocessor_lines_are_pieces_of_their_own() -> None:
         ("*p", "statement", None),
         ("#include <x>", "directive", None),
         ("TH1F *h", "declaration", "h"),
+        ("::data *a = new ::data", "declaration", "a"),
+        ("::f(3)", "statement", None),
         ("const TH1F &r = h", "declaration", "r"),
         ("x", "statement", None),
     ],

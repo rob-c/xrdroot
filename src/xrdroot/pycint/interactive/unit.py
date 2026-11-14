@@ -32,11 +32,15 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from ...cppstd.cells import Cell
 from ...pycxx.errors import CxxError as CintError
 from ...pycxx.errors import Refusal
+from ...pycxx.runtime.namespace import DECLARED
 from ..declaring import translate_declaring
+from ..execute import session_dialect
 from .classify import Kind, kind
 from .lexer import Piece
+from .rerun import merged, revised
 
 __all__ = ["Unit", "Chunk", "Diagnostic", "Origin", "FILE"]
 
@@ -129,12 +133,24 @@ class Unit:
         #: The statements that have run, by the C++ line they came from and their order on it.
         self.done: set[tuple[str, int, int]] = set()
         self.directory = directory or Path.cwd()
+        #: More directories a ``#include`` typed is looked for in: ``.I dir``'s.
+        self.includes: list[Path] = []
+        #: Each input kept, in order: how many lines the unit had before it, and the names it
+        #: bound - what ``.undo`` takes away.
+        self.history: list[tuple[int, list[str]]] = []
         self.namespace: dict[str, Any] = {"__name__": "__cint__", "__file__": FILE}
         #: Each run's source map, by the file name its Python was compiled under.
         self.maps: dict[str, dict[int, tuple[str, int]]] = {}
         self.serial = 0
         #: The type of each variable declared so far, as cling spells it, by C++ name.
         self.types: dict[str, str | None] = {}
+        #: Whether an input is running: a ``ProcessLine`` it calls cannot add to the unit then.
+        self.busy = False
+        #: The names the input running now bound, once it has run.
+        self.bound: list[str] = []
+        #: The Python each statement that ran was, by key: what tells a changed one.
+        self.code: dict[tuple[str, int, int], str] = {}
+        self.dumps: dict[tuple[str, int, int], str] = {}
         made, _ = translate_declaring("", FILE)
         exec(compile(made.python, "<ROOT_prompt header>", "exec"), self.namespace)
 
@@ -221,24 +237,46 @@ class Unit:
     def _translated(self, chunk: Chunk) -> tuple[Any, dict[str, tuple[str, str | None]]]:
         source = "\n".join(self.lines + chunk.lines) + "\n"
         try:
-            return translate_declaring(source, FILE, [self.directory])
+            directories = [self.directory, *self.includes]
+            return translate_declaring(source, FILE, directories, session_dialect())
         except Refusal as why:
             refused = self._diagnostic(chunk, why.where, why.why)
             refused.translating = True
             raise refused from None
 
-    def run(self, chunk: Chunk) -> Outcome:
-        """Run what ``chunk`` adds, keep it if it ran, and hand back its value, if any."""
+    def outcome(self, number: int, parts: list[Piece], text: str, check: bool = True) -> Outcome:
+        """Run an input, its value caught even unprinted - or, if the translator will not
+        take it so, as it was typed. ``check`` is :meth:`run`'s."""
+        chunk = self.chunk(number, parts, text)
+        try:
+            return self.run(chunk, check)
+        except Diagnostic as why:
+            if not (chunk.quiet and why.translating):
+                raise
+        return self.run(self.chunk(number, parts, text, quiet=False), check)
+
+    def run(self, chunk: Chunk, check: bool = True) -> Outcome:
+        """Run what ``chunk`` adds, keep it if it ran, and hand back its value, if any.
+
+        With ``check``, a name nothing declares is refused before anything runs, as
+        cling refuses it; without, it fails where it is used, saying what it is.
+        """
         made, declared = self._translated(chunk)
         outcome = self._outcome(chunk, declared)
         if outcome.valued and _by_address(outcome.spelled):
             made, declared = self._by_address(chunk, made, declared)
         selected, keys = self._new(made)
-        self._check_names(chunk, made, selected)
-        self._execute(chunk, made, selected)
+        if check:
+            self._check_names(chunk, made, selected)
+        self.busy = True
+        try:
+            self._execute(chunk, made, selected)
+        finally:
+            self.busy = False
         if outcome.valued:
             outcome.value = self.namespace.pop(declared[chunk.capture][0], None)
         self._keep(chunk, keys, declared)
+        _export(self.namespace, declared)
         return outcome
 
     def _outcome(self, chunk: Chunk, declared: dict[str, tuple[str, str | None]]) -> Outcome:
@@ -262,20 +300,19 @@ class Unit:
             return made, declared
 
     def _new(self, made: Any) -> tuple[list[ast.stmt], list[tuple[str, int, int]]]:
-        """The top-level Python statements of ``made`` that have not run, and their keys."""
+        """The top-level Python statements of ``made`` that have not run - or that ran, and
+        that a later input changed (:func:`.rerun.revised`) - and their keys."""
         selected: list[ast.stmt] = []
         keys: list[tuple[str, int, int]] = []
         seen: dict[tuple[str, int], int] = {}
+        self.dumps = {}
         for statement in ast.parse(made.python).body:
-            where = _first_mapped(made.source_map, statement)
-            if where is None:
-                key = ("", hash(ast.dump(statement)), 0)
-            else:
-                count = seen[where] = seen.get(where, -1) + 1
-                key = (where[0], where[1], count)
-            if key not in self.done:
-                selected.append(statement)
+            key = _key(made.source_map, statement, seen)
+            chosen = statement if key not in self.done else revised(statement, self.code.get(key))
+            if chosen is not None:
+                selected.append(chosen)
                 keys.append(key)
+                self.dumps[key] = ast.dump(statement)
         return selected, keys
 
     def _check_names(self, chunk: Chunk, made: Any, selected: list[ast.stmt]) -> None:
@@ -298,8 +335,14 @@ class Unit:
         self.serial += 1
         self.maps[label] = made.source_map
         code = compile(ast.Module(body=selected, type_ignores=[]), label, "exec")
+        classes = {statement.name: self.namespace[statement.name] for statement in selected
+                   if isinstance(statement, ast.ClassDef)
+                   and isinstance(self.namespace.get(statement.name), type)}  # fmt: skip
+        before = set(self.namespace)
         try:
             exec(code, self.namespace)
+            merged(self.namespace, classes)
+            self.bound = [name for name in self.namespace if name not in before]
         except (SystemExit, KeyboardInterrupt):
             raise
         except CintError as why:  # a line of C++ this one ran, gROOT->ProcessLine("...")
@@ -320,12 +363,29 @@ class Unit:
         return deepest
 
     def _keep(self, chunk: Chunk, keys: list[tuple[str, int, int]], declared: Any) -> None:
+        self.history.append((len(self.lines), self.bound))
         self.lines.extend(chunk.lines[: chunk.kept])
         self.origins.extend(chunk.origins[: chunk.kept])
         limit = len(self.lines)
-        self.done.update(key for key in keys if key[0] != FILE or key[1] <= limit)
+        kept = [key for key in keys if key[0] != FILE or key[1] <= limit]
+        self.done.update(kept)
+        self.code.update({key: self.dumps[key] for key in kept})
         self.types = {name: spelled for name, (_, spelled) in declared.items()
                       if not name.startswith("xrdroot_")}  # fmt: skip
+
+    def undo(self, count: int) -> None:
+        """``.undo n``: the last ``n`` inputs taken out of the unit, as cling unloads their
+        transactions - what they declared gone, an object they made destroyed."""
+        for _ in range(min(count, len(self.history))):
+            start, names = self.history.pop()
+            del self.lines[start:], self.origins[start:]
+            gone = {key for key in self.done if key[0] == FILE and key[1] > start}
+            self.done -= gone
+            for key in gone:
+                self.code.pop(key, None)
+            for name in reversed(names):
+                _destroyed(self.namespace.pop(name, None))
+                DECLARED.pop(name, None)
 
     # -- reporting -----------------------------------------------------------------------
 
@@ -383,6 +443,40 @@ def _opened(piece: Piece) -> Piece:
     """``piece`` without its ``;``: an expression whose value is caught."""
     text = piece.text.rstrip()
     return replace(piece, text=text[:-1].rstrip(), end="open", parts=piece.parts[:-1])
+
+
+def _export(namespace: dict[str, Any], declared: dict[str, tuple[str, str | None]]) -> None:
+    """What the unit has declared, where a macro run later looks for the names it does not
+    declare itself: cling's macros see the prompt's variables, functions and classes.
+
+    A variable is handed over as it is now - an object is that object, a number its value.
+    """
+    names = {name: namespace[python] for name, (python, _) in declared.items()
+             if not name.startswith("xrdroot_") and python in namespace}  # fmt: skip
+    names.update({name: value for name, value in namespace.items()
+                  if getattr(value, "__module__", None) == "__cint__"
+                  and not name.startswith("xrdroot_")})  # fmt: skip
+    DECLARED.update({name: value.value if isinstance(value, Cell) else value
+                     for name, value in names.items()})  # fmt: skip
+
+
+def _destroyed(value: Any) -> None:
+    """An object a program made, its destructor run - when its class has one."""
+    destruct = getattr(value, "_destruct", None)
+    if callable(destruct) and not isinstance(value, type):
+        destruct()
+
+
+def _key(
+    source_map: dict[int, tuple[str, int]], statement: ast.stmt, seen: dict[tuple[str, int], int]
+) -> tuple[str, int, int]:
+    """A statement's key: the C++ line it came from, and how many came from that line before
+    it - or, from no line, its Python."""
+    where = _first_mapped(source_map, statement)
+    if where is None:
+        return ("", hash(ast.dump(statement)), 0)
+    count = seen[where] = seen.get(where, -1) + 1
+    return (where[0], where[1], count)
 
 
 def _first_mapped(source_map: dict[int, tuple[str, int]], statement: ast.stmt) -> Any:

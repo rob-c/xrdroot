@@ -694,9 +694,26 @@ class ExprEmitter(NameEmitter):
         if node.kind == "dynamic" and target.is_class:
             kind = self.class_expr(target.element() if target.pointer else target)
             return f"dynamic_cast({kind}, {self.value(node.operand)})", P.POSTFIX
+        addressed = self._address_cast(target, node.operand)
+        if addressed is not None:
+            return addressed, P.POSTFIX
         if target.scalar:
             return self.store(target, node.operand), P.POSTFIX
         return self._held_cast(target, node.operand)
+
+    def _address_cast(self, target: CType, operand: Expr) -> str | None:
+        """``(long)p`` of a pointer to an object, its address; ``(T*)n`` of an integer, the
+        object at that address - or ``None`` if the cast is neither."""
+        source = self.typeof(operand)
+        if source is None or _is_null(operand):
+            return None
+        if target.integral and not target.is_bool and source.is_object_pointer:
+            return f"address_of({self.value(operand)})"
+        if not (target.is_pointer and source.integral):
+            return None
+        if target.is_object_pointer:
+            return f"pointer_at({self.value(operand)})"
+        raise self.refuse(f"a pointer to {target.name} made from an integer", operand)
 
     def _held_cast(self, target: CType, operand: Expr) -> Out:
         """A cast to a pointer or a string: ``None`` from ``0``, text from what is not text."""

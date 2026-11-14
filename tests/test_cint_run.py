@@ -163,20 +163,26 @@ def test_process_line_runs_statements_and_dot_commands(
     assert process_line(f".L {path}", root=fake()) == 0  # ROOT's ProcessLine(".L") is 0
     assert DECLARED["hello"] is not None
     process_line('{ printf("block\\n"); }', root=fake())
-    assert capsys.readouterr().out == "3 3.5\nhello 3\nblock\n"
+    # printf's value, typed without its ``;``, is printed as ROOT 6.40 prints it
+    assert capsys.readouterr().out == "3 3.5\n(int) 6\nhello 3\nblock\n"
     with pytest.raises(ValueError, match=r"\.q is not a command"):
         process_line(".q")
 
 
-def test_a_line_that_is_one_expression_hands_back_its_value(tmp_path: Path) -> None:
+def test_a_line_that_is_one_expression_hands_back_its_value(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """As ``(TFile*)gROOT->ProcessLine("hsimple(1)")`` is the file the call returns; a line
-    of a declaration or of statements has no value."""
+    ending in a declaration or an expression statement hands back its value too, as ROOT's
+    does, and a value typed without its ``;`` is printed, as cling prints it."""
     path = write(tmp_path, "twice.C", "int twice(int n) { return 2 * n; }")
     process_line(f".L {path}", root=fake())
     assert process_line("twice(21)", root=fake()) == 42
     assert process_line("7 / 2;", root=fake()) == 3
-    assert process_line("int b = 3", root=fake()) is None
-    assert process_line("int c = 1; c++;", root=fake()) is None
+    assert process_line("int b = 3", root=fake()) == 3
+    assert process_line("int c = 1; c++;", root=fake()) == 1
+    assert process_line("b + c", root=fake()) == 5
+    assert capsys.readouterr().out == "(int) 42\n(int) 3\n(int) 5\n"
 
 
 def test_a_kept_translation_reads_like_the_macro_and_runs_as_a_script() -> None:

@@ -314,6 +314,8 @@ class Program:
             local = {param.name for param in params} | _declared(body)
             self.cells[id(owner)] = names & local
             self.global_cells |= names - local
+        for var in self.globals.values():  # ``int *p = &i;`` at namespace scope
+            self.global_cells |= set(self._escaping(var))
 
     def analyse(self, func: Function) -> None:
         """A function made after the rest were looked over - an instance of a template - looked
