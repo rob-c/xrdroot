@@ -15,7 +15,8 @@ from xrdroot.cli import shims
 @pytest.fixture
 def isolated(monkeypatch: pytest.MonkeyPatch) -> None:
     """The finders and modules a test installs are taken away again after it."""
-    monkeypatch.setattr(sys, "meta_path", list(sys.meta_path))
+    others = [finder for finder in sys.meta_path if not isinstance(finder, shims.Aliases)]
+    monkeypatch.setattr(sys, "meta_path", others)
     monkeypatch.setattr(sys, "modules", dict(sys.modules))
 
 
@@ -50,3 +51,8 @@ def test_cppyy_is_found_last_so_an_installed_cppyy_wins(isolated: None) -> None:
     aliases = [finder for finder in sys.meta_path if isinstance(finder, shims.Aliases)]
     assert [finder.alias for finder in aliases] == ["cppyy"]
     assert sys.meta_path[-1] is aliases[0]
+
+
+def test_script_mode_has_nothing_to_tell_before_the_namespace_is_imported(isolated: None) -> None:
+    sys.modules.pop("xrdroot.pyroot.core.messages", None)
+    assert shims.python_warnings(True) is False

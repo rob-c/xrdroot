@@ -28,7 +28,9 @@ def alias_root() -> ModuleType:
     ``import cppyy`` xrdroot.cppyy - as ``xrdroot run`` gives a script them."""
     shims = importlib.import_module("xrdroot.cli.shims")
     shims.install_cppyy()
-    return shims.install_root()
+    root = shims.install_root()
+    shims.python_warnings(True)  # ROOT's warnings are Python's, as PyROOT raises them
+    return root
 
 
 def conftests(files: list[str]) -> list[ModuleType]:

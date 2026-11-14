@@ -25,7 +25,7 @@ import sys
 from collections.abc import Sequence
 from types import ModuleType
 
-__all__ = ["NAMESPACES", "Aliases", "install_root", "install_cppyy"]
+__all__ = ["NAMESPACES", "Aliases", "install_root", "install_cppyy", "python_warnings"]
 
 #: ROOT's namespaces a script imports names from, ``from ROOT.<namespace> import ...``.
 NAMESPACES = ("Experimental", "VecOps", "RDF", "Math", "RooFit", "TMVA")
@@ -89,3 +89,16 @@ def install_cppyy() -> None:
     """``import cppyy`` gives :mod:`xrdroot.cppyy`, unless a real cppyy is installed."""
     if _installed("cppyy") is None:  # last: whatever else finds a cppyy wins
         sys.meta_path.append(Aliases("cppyy", "xrdroot.cppyy"))
+
+
+def python_warnings(on: bool) -> bool:
+    """ROOT's warnings as Python's ``RuntimeWarning`` and its classes answering Python as
+    PyROOT's pythonizations do - or not; was it so before?
+
+    Only a namespace already imported is told: the warnings are its messages.
+    """
+    messages = sys.modules.get("xrdroot.pyroot.core.messages")
+    before = bool(getattr(messages, "PYROOT_SCRIPT", False))
+    if messages is not None:
+        setattr(messages, "PYROOT_SCRIPT", on)  # noqa: B010 - a module looked up by name
+    return before

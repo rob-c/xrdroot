@@ -37,7 +37,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from .shims import install_cppyy, install_root
+from .shims import install_cppyy, install_root, python_warnings
 
 __all__ = ["add_parser", "run"]
 
@@ -115,13 +115,14 @@ def _script(path: Path, argv: list[str]) -> int:
 
     install_root()
     install_cppyy()
-    before = sys.argv
+    before, warned = sys.argv, python_warnings(True)
     sys.argv = [str(path), *argv]
     try:
         with split():
             runpy.run_path(str(path), run_name="__main__")
     finally:
         sys.argv = before
+        python_warnings(warned)
     return 0
 
 
