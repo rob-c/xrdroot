@@ -97,6 +97,10 @@ def is_container(ctype: CType) -> bool:
     return last in CONTAINERS or last in active().containers
 
 
+#: The integers a pointer fits in, which a program casts one to: ``Long_t``, ``size_t``.
+POINTER_WIDE = frozenset({"long", "unsigned long", "long long", "unsigned long long"})
+
+
 def _addressing(ctype: CType | None) -> bool:
     """Is a value of this type a pointer, or an array that decays to one?"""
     return ctype is not None and (ctype.is_pointer or ctype.is_array)
@@ -767,10 +771,18 @@ class ExprEmitter(NameEmitter):
         """``(long)p`` of a pointer to an object, its address; ``(T*)n`` of an integer, the
         object at that address - or ``None`` if the cast is neither."""
         source = self.typeof(operand)
-        if source is None or _is_null(operand):
+        if source is None:
+            # ``(Long_t)p`` of what the translator cannot type: a number, or a pointer's address
+            wide = target.name in POINTER_WIDE and not target.pointer
+            return f"integer_cast({self.value(operand)})" if wide else None
+        if _is_null(operand):
             return None
         if target.integral and not target.is_bool and source.is_object_pointer:
             return f"address_of({self.value(operand)})"
+        return self._pointer_from_integer(target, source, operand)
+
+    def _pointer_from_integer(self, target: CType, source: CType, operand: Expr) -> str | None:
+        """``(T*)n``: the object at the address ``n`` - refused for a pointer to a number."""
         if not (target.is_pointer and source.integral):
             return None
         if target.is_object_pointer:

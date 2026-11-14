@@ -170,6 +170,7 @@ def test_a_declaration_puts_what_it_declares_in_the_namespace(monkeypatch):
     execute.process_line = lambda text: 7
     monkeypatch.setitem(sys.modules, "xrdroot.pycint.execute", execute)
     monkeypatch.setattr(troot, "_PRELUDE", {})  # the translator's own names, learnt once
+    troot.set_line_processor(None)  # one an earlier test's ProcessLine found and kept
     try:
         expect(
             (bool(ROOT.gInterpreter.Declare("int answer() { return 42; }")), True),

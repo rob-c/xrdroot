@@ -79,10 +79,10 @@ def test_a_line_that_fails_stops_the_macro_with_its_own_words() -> None:
 def test_a_macro_run_with_x_sees_the_prompts_variables(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    (tmp_path / "usek.C").write_text('void usek() { printf("%d\\n", k); }\n')
+    (tmp_path / "usek.C").write_text('void usek() { printf("%d\\n", kPrompt); }\n')
     prompt = Interpreter()
-    assert typed(prompt, "int k = 4;", "int *p = &k;") == []
-    assert DECLARED["k"] == 4  # a cell's value, not the cell
+    assert typed(prompt, "int kPrompt = 4;", "int *p = &kPrompt;") == []
+    assert DECLARED["kPrompt"] == 4  # a cell's value, not the cell
     assert typed(prompt, f".x {tmp_path / 'usek.C'}") == []
     assert capsys.readouterr().out == "4\n"
 
@@ -129,7 +129,7 @@ def test_process_line_runs_undo_and_include_on_the_sessions_unit(
     (tmp_path / "seven.h").write_text("int seven() { return 7; }\n")
     assert process_line(f".I {tmp_path}") == 0
     process_line('#include "seven.h"')
-    process_line("int q = 1;")
+    process_line("int q = 1; q++;")  # statements too: a line of the unit, not a global
     process_line(".undo")
     assert process_line(".I") == 0
     assert capsys.readouterr().out == f"-I\n{tmp_path}\n"
@@ -181,3 +181,12 @@ def test_a_class_defined_again_is_merged_into_the_class_it_replaces() -> None:
     assert namespace["A"] is Old and Old().g() == 7  # type: ignore[attr-defined]
     merged(namespace, {"A": Old})
     assert namespace["A"] is Old
+
+
+def test_a_cast_of_what_has_no_known_type_to_a_long_is_its_number_or_its_address() -> None:
+    from xrdroot.cppstd.cells import integer_cast
+
+    marker = object()
+    assert pointer_at(integer_cast(marker)) is marker
+    assert (integer_cast(None), integer_cast(2.9), integer_cast("a"), integer_cast(-3)) == (
+        0, 2, 97, -3)  # fmt: skip

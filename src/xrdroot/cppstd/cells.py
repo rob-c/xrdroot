@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["Cell", "Static", "ItemRef", "AttrRef", "address_of", "pointer_at"]
+__all__ = ["Cell", "Static", "ItemRef", "AttrRef", "address_of", "pointer_at", "integer_cast"]
 
 
 class Cell:
@@ -146,3 +146,19 @@ def pointer_at(address: Any) -> Any:
             "and only such an address can be made a pointer again here"
         )
     return SEEN[number]
+
+
+#: What makes a value a number to C's cast: a library's numbers, a class converting to one.
+NUMBERS = ("__index__", "__float__")
+
+
+def integer_cast(value: Any) -> int:
+    """``(Long_t)x`` of a value whose type is not known: a number truncated as C casts it, a
+    character its code, null ``0`` - and an object, a pointer to it, its address."""
+    if value is None:
+        return 0
+    if isinstance(value, str) and len(value) == 1:
+        return ord(value)
+    if isinstance(value, (int, float)) or any(hasattr(value, name) for name in NUMBERS):
+        return int(value)
+    return address_of(value)
