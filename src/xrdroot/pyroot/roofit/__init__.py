@@ -14,13 +14,14 @@ from __future__ import annotations
 from typing import Any
 
 from ...roofit import histograms as _histograms
+from ...roofit.helpers import RooHelpers
 from ...roofit.plot import frame as _frame
 from ...roofit.plot import params as _params
 from ...roofit.registry import classes
 from ..core import draw_hook
 from .commands import RooFit
 
-__all__ = ["RooFit", "dynamic_range_cast", "static_range_cast"]
+__all__ = ["RooFit", "RooHelpers", "dynamic_range_cast", "static_range_cast"]
 
 #: The classes of RooFit's that ROOT has at its top level without the ``Roo`` of their name -
 #: HistFactory's, which ``FlexibleInterpVar`` is not: that is ``RooStats::HistFactory``'s.

@@ -41,10 +41,10 @@ class LFSR:
         return bool(bit)
 
     @staticmethod
-    def GenerateSequence(start: Any, taps: Any, left: bool = True, wrapping: bool = False,
-                         oppositeBit: bool = False) -> Any:  # fmt: skip
+    def generate(start: Any, taps: Any, left: bool = True, wrapping: bool = False,
+                 oppositeBit: bool = False, kind: str = "unsigned char") -> Any:  # fmt: skip
         """The bits fed in from the seed ``start`` until the register repeats a value."""
-        result = _sequence()
+        result = _sequence(kind)
         if _refused(start, [int(tap) for tap in taps]):
             return result
         k, lfsr = start.size(), type(start)(start.size(), start.to_ulong())
@@ -59,6 +59,24 @@ class LFSR:
         if oppositeBit:
             result.pop_back()
         return result
+
+
+class _Sequences:
+    """``GenerateSequence``, called as it is or given its template arguments - ``<k, nTaps,
+    Output>`` - whose last says what the sequence holds."""
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return LFSR.generate(*args, **kwargs)
+
+    def __getitem__(self, arguments: Any) -> Any:
+        given = arguments if isinstance(arguments, tuple) else (arguments,)
+        kind = str(given[2]) if len(given) > 2 else "unsigned char"
+
+        def generated(start: Any, taps: Any, left: bool = True, wrapping: bool = False,
+                      oppositeBit: bool = False) -> Any:  # fmt: skip
+            return LFSR.generate(start, taps, left, wrapping, oppositeBit, kind=kind)
+
+        return generated
 
 
 def _refused(start: Any, taps: list[int]) -> bool:
@@ -85,3 +103,7 @@ def _repeated(lfsr: Any, seen: set[int], wrapping: bool) -> bool:
     found = value in seen
     seen.add(value)
     return found
+
+
+#: ``LFSR::GenerateSequence``, which a translated call gives template arguments.
+LFSR.GenerateSequence = _Sequences()  # type: ignore[attr-defined]

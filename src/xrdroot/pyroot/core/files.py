@@ -291,8 +291,9 @@ class TDirectoryFile(TDirectory):
         read = self._reader()[label]
         found = _tree(read, key) or wrap(read)
         if not isinstance(found, TObject) and not _engine_own(found):
+            named = str(getattr(found, "classname", "") or key.GetClassName())  # as it was read
             made = from_members(key.GetClassName(), found)  # a null TRef is false, and made
-            found = TOther(key.GetClassName(), found) if made is None else made
+            found = TOther(named, found) if made is None else made
         settle(found, read, self.GetFile())
         newest = key is self.GetKey(key.GetName())
         if newest and any(_inherits(found, kind) for kind in KEPT):

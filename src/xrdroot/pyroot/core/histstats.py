@@ -260,4 +260,23 @@ class Stats:
     FindFixBin = FindBin
 
     def Interpolate(self, x: float, *rest: float) -> float:
-        return float(self._xrd.interpolate(x))
+        """``Interpolate``: linear between the nearest bin centres, along each axis.
+
+        A ``TH2`` refuses a point off its axes, as ROOT's does with an error
+        and 0; a ``TH3`` holds the edge bins' contents flat out to anywhere.
+        """
+        ndim = len(self._xrd.axes)
+        if ndim == 1:
+            return float(self._xrd.interpolate(x))
+        from ...moments import interpolate_grid
+
+        point = (float(x), *(float(value) for value in rest[: ndim - 1]))
+        if ndim == 2 and not all(
+                1 <= axis.FindFixBin(value) <= axis.GetNbins()
+                for axis, value in zip(self._axes(), point, strict=False)):
+            from .messages import message
+
+            message("Error", f"{self._xrd.classname}::Interpolate",
+                    "Cannot interpolate outside histogram domain.")
+            return 0.0
+        return interpolate_grid(self._xrd, point)

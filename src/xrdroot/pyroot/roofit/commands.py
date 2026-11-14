@@ -198,12 +198,68 @@ def _command(name: str) -> Any:
     return made
 
 
+#: ``RooFit::EvalBackend``'s backends, by name, and the number ``value()`` gives each.
+BACKENDS = {"legacy": 0, "cpu": 1, "cuda": 2, "codegen": 3, "codegen_no_grad": 4}
+
+
+class _Name(str):
+    """A command's name, which an ``EvalBackend``'s ``name()`` calls for its backend's."""
+
+    backend = ""
+
+    def __call__(self) -> str:
+        return self.backend
+
+
+class EvalBackend(RooCmdArg):
+    """``RooFit::EvalBackend("cpu")``, or ``EvalBackend::Cpu()``: the command saying how a
+    likelihood is evaluated. Every backend evaluates the same numbers here."""
+
+    def __init__(self, backend: Any = "cpu") -> None:
+        text = backend._backend if isinstance(backend, EvalBackend) else str(backend).lower()
+        if text not in BACKENDS:
+            raise ValueError(f"'{backend}' is not one of RooFit's backends: {', '.join(BACKENDS)}")
+        super().__init__("EvalBackend", text)
+        self.name = _Name("EvalBackend")
+        self.name.backend = text
+        self._backend: str = text
+
+    def value(self, index: int = -1, default: Any = None) -> Any:
+        """``value()``: the backend's number; ``value(i)`` the command's ``i``-th value."""
+        return BACKENDS[self._backend] if index < 0 else super().value(index, default)
+
+    @staticmethod
+    def Legacy() -> EvalBackend:
+        return EvalBackend("legacy")
+
+    @staticmethod
+    def Cpu() -> EvalBackend:
+        return EvalBackend("cpu")
+
+    @staticmethod
+    def Cuda() -> EvalBackend:
+        return EvalBackend("cuda")
+
+    @staticmethod
+    def Codegen() -> EvalBackend:
+        return EvalBackend("codegen")
+
+    @staticmethod
+    def CodegenNoGrad() -> EvalBackend:
+        return EvalBackend("codegen_no_grad")
+
+    @staticmethod
+    def defaultValue() -> int:
+        return BACKENDS["cpu"]
+
+
 class _Namespace:
     """``RooFit``: a namespace, as C++ has one."""
 
     def __init__(self) -> None:
         for name in COMMANDS:
             setattr(self, name, _command(name))
+        self.EvalBackend = EvalBackend
         for number, name in messages.LEVELS.items():
             setattr(self, name, number)
         for name, bit in messages.TOPICS.items():

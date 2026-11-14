@@ -109,6 +109,11 @@ def test_tcolor_finds_a_colour_by_value_or_makes_it():
         ROOT.TColor.GetColor(1, 2)
 
 
+def test_tcolor_reads_an_opacity_from_the_last_two_of_eight_hex_places():
+    color = ROOT.gROOT.GetColor(ROOT.TColor.GetColor("#b0b0b077"))
+    assert round(color.GetRed(), 6) == 0.690196 and round(color.GetAlpha(), 6) == 0.466667
+
+
 def test_a_tcolor_is_a_colour_of_the_table():
     c = ROOT.TColor(1500, 0.5, 0.25, 1.0, "mine", 0.5)
     assert (c.GetNumber(), c.GetName(), c.GetAlpha()) == (1500, "mine", 0.5)

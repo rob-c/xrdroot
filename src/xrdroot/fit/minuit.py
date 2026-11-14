@@ -24,7 +24,7 @@ import numpy as np
 from ..errors import UnsupportedFeatureError
 from .result import FitResult
 
-__all__ = ["contour", "iminuit", "minimize"]
+__all__ = ["contour", "core", "iminuit", "minimize"]
 
 #: ``MinimizerOptions::DefaultTolerance``.
 TOLERANCE = 0.01
@@ -44,6 +44,15 @@ def iminuit() -> Any:
             "installed: pip install xrdroot[fit]. A fit linear in its parameters - a polN, "
             "say - is solved without it."
         ) from None
+    return module
+
+
+def core() -> Any:
+    """Minuit2's own classes - ``MnMigrad``, ``MnMinos``, ``MnUserParameterState`` - as iminuit
+    binds them, for code that drives Minuit2 the way ROOT's ``ROOT::Minuit2`` API does."""
+    iminuit()
+    import iminuit._core as module
+
     return module
 
 

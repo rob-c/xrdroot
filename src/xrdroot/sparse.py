@@ -22,13 +22,16 @@ __all__ = ["SPARSE", "SparseHistogram"]
 
 #: The array types a sparse histogram keeps its contents in, by the letter
 #: ROOT's typedef for each ends with: ``THnSparseD`` is ``THnSparseT<TArrayD>``.
-_CONTENTS = {"D": "TArrayD", "F": "TArrayF", "L": "TArrayL", "I": "TArrayI", "S": "TArrayS"}
+_CONTENTS = {"D": "TArrayD", "F": "TArrayF", "L": "TArrayL64", "I": "TArrayI", "S": "TArrayS"}
 _CONTENTS["C"] = "TArrayC"
+#: What files written before ``THnSparseL`` held ``TArrayL64`` call that class, and what
+#: ROOT reads it as now (GitHub issue 15874).
+_RENAMED = {"THnSparseT<TArrayL>": "THnSparseT<TArrayL64>"}
 
 #: The sparse histogram classes, as a key names them and as the typedef does.
 SPARSE = tuple(f"THnSparseT<{held}>" for held in _CONTENTS.values()) + tuple(
     f"THnSparse{letter}" for letter in _CONTENTS
-)
+) + tuple(_RENAMED)
 
 #: The most cells :meth:`SparseHistogram.to_dense` will lay out, which is
 #: eighty megabytes of doubles: past that the grid is the thing the sparse
@@ -94,7 +97,7 @@ class SparseHistogram:
         if axes is None or chunks is None:
             raise FormatError(f"a {classname} was written without its axes or its bins")
         #: The class the file says this is, such as ``THnSparseT<TArrayD>``.
-        self.classname = classname
+        self.classname = _RENAMED.get(classname, classname)
         #: Every member, as it was written.
         self.members = members
         #: One :class:`~.hist.Axis` per dimension, in the order they were declared.

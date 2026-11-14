@@ -633,3 +633,10 @@ def test_a_histogram_without_a_model_finds_its_range_from_its_first_thousand_and
         "(rdfentry_ == 1001 ? 1.0/0.0 : (rdfentry_ == 1002 ? -1.0/0.0 : 1500.0)))"
     ).Histo1D("x").GetValue()  # fmt: skip
     assert (odd.axes[0].edges()[0], odd.axes[0].edges()[-1]) == pytest.approx((-7709.92, 9889.92))
+
+
+def test_a_column_may_be_called_a_python_word_but_not_a_cpp_one():
+    frame = RDataFrame(2).Define("def", lambda: 1)
+    assert frame.HasColumn("def") and frame.Sum("def").GetValue() == 2
+    with pytest.raises(ValueError, match="'class', which is not a C\\+\\+ name"):
+        frame.Define("class", lambda: 1)

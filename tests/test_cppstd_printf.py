@@ -9,6 +9,13 @@ import pytest
 from cppstdsupport import isolated
 
 
+def test_c_files_are_what_a_translation_finds_by_name() -> None:
+    import xrdroot.pycxx.runtime as runtime
+    from xrdroot.cppstd import cstdio
+
+    assert runtime.fopen is cstdio.fopen and "fwrite" in runtime.LIBRARY
+
+
 def test_c_stdio_exports_are_shared_with_the_runtime_adapter() -> None:
     from xrdroot.cppstd import printf
 
