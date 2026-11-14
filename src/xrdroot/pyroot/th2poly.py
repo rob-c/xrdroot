@@ -110,6 +110,29 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
         self._xrd_bins.contents[found - 1] += w
         return int(found)
 
+    def Add(self, other: Any, c: float = 1.0) -> bool:
+        """``Add(h, c)``: ``c`` times a ``TH2Poly`` of the same bins added, bin by bin.
+
+        The moments add as ROOT's do - the sum of squared weights by ``c``
+        squared, the others by ``|c|`` - and the entries by ``c``.
+        """
+        theirs = other._xrd_bins
+        if len(theirs.contents) != len(self._xrd_bins.contents):
+            self.Error("Add", "Attempt to add histograms with different number of bins")
+            return False
+        mine, c = self._xrd_bins, float(c)
+        mine.contents += c * theirs.contents
+        mine.overflow += c * theirs.overflow
+        factors = np.array([abs(c), c * c, abs(c), abs(c), abs(c), abs(c), 0.0])
+        entries = abs(mine.sums[6] + c * theirs.sums[6])
+        mine.sums += factors * theirs.sums
+        mine.sums[6] = entries
+        return True
+
+    def SetDirectory(self, directory: Any) -> None:
+        """``SetDirectory``: a ``TH2Poly`` here belongs to no directory, so there is none to
+        leave or join."""
+
     def SetBinName(self, number: int, name: str) -> None:
         self.__dict__.setdefault("_names", {})[str(name)] = int(number)
 

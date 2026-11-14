@@ -8,6 +8,8 @@ for, made when asked, so the graphics draw the objects as they are now.
 
 from __future__ import annotations
 
+import functools
+import operator
 from functools import partial
 from typing import Any
 
@@ -118,20 +120,34 @@ class THStack(_Holder):
         return made
 
     def GetMaximum(self, option: str = "") -> float:
-        """``GetMaximum``: the top of the stack - or with ``"nostack"`` the largest single bin."""
+        """``GetMaximum``: the top of the stack - or with ``"nostack"`` the largest single bin;
+        with ``"e"`` each bin's error above it too."""
         if self._extremes[1] != UNSET:
             return self._extremes[1]
-        if not self._held:
-            return 0.0
-        if "nostack" in str(option).lower():
-            return max(float(item.GetMaximum()) for item in self._held)
-        total = sum(np.asarray(unwrap(item).values(), dtype=np.float64) for item in self._held)
-        return float(np.max(total))
+        return self._extreme(option, True)
 
     def GetMinimum(self, option: str = "") -> float:
+        """``GetMinimum``: the lowest bin of the stack's top - or with ``"nostack"`` of any
+        histogram; with ``"e"`` each bin's error below it too."""
         if self._extremes[0] != UNSET:
             return self._extremes[0]
-        return min((float(item.GetMinimum()) for item in self._held), default=0.0)
+        return self._extreme(option, False)
+
+    def _extreme(self, option: str, highest: bool) -> float:
+        """The highest or lowest bin, of the summed stack or of each histogram, as ROOT's
+        ``THStack::GetMaximum`` and ``GetMinimum`` find them; errors are the sum's."""
+        if not self._held:
+            return 0.0
+        opt = str(option).lower()
+        hists = [unwrap(item) for item in self._held]
+        if "nostack" not in opt:
+            hists = [functools.reduce(operator.add, hists[1:], hists[0].copy())]
+        found = [_reach(hist, highest, "e" in opt) for hist in hists]
+        return max(found) if highest else min(found)
+
+    def Modified(self) -> None:
+        """``Modified``: the stack is summed afresh each time it is asked of, so nothing is
+        kept to throw away."""
 
     def GetHistogram(self) -> Any:
         """``GetHistogram``: the frame - an empty copy of the first histogram's axes."""
@@ -142,6 +158,15 @@ class THStack(_Holder):
             made.SetTitle(self.GetTitle())
             self._histogram = made
         return self._histogram
+
+
+def _reach(hist: Any, highest: bool, errors: bool) -> float:
+    """A histogram's highest or lowest bin, reached up or down by its error if asked."""
+    values = np.asarray(hist.values(), dtype=np.float64)
+    if errors:
+        spread = np.sqrt(np.asarray(hist.variances(), dtype=np.float64))
+        values = values + spread if highest else values - spread
+    return float(values.max() if highest else values.min())
 
 
 class TMultiGraph(_Holder):

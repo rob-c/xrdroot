@@ -186,3 +186,48 @@ def _vectors():
         v.assign([1.0] * i)
         t.Fill()
     return t
+
+
+def test_a_chain_syncs_an_entry_list_of_one_sub_list_per_file_or_says_why_not(files):
+    from xrdroot.pyroot.trees import TEntryList
+
+    chain = TChain("events")
+    chain.Add(files[0])
+    chain.Add(files[1])
+    flat = TEntryList()
+    flat.Enter(1)
+    with pytest.raises(RuntimeError, match="doesn't have sub entry lists") as refused:
+        chain.SetEntryList(flat, "sync")
+    assert refused.value.what().startswith("In 'TChain::SetEntryList': ")
+    synced = TEntryList()
+    for path in files[:2]:
+        sub = TEntryList("", "", "events", path)
+        sub.EnterRange(0, PER_FILE)
+        synced.AddSubList(sub)
+    chain.SetEntryList(synced, "sync")
+    import ctypes
+
+    number = ctypes.c_int(-1)
+    assert synced.GetEntryAndTree(PER_FILE + 4, number) == 4 and number.value == 1
+    found = synced.GetEntryAndTree(PER_FILE + 3)
+    assert found == (3, 1) and synced.GetLists().At(1).GetTreeNumber() == 1
+    synced.AddSubList(TEntryList("", "", "events", files[2]))
+    with pytest.raises(RuntimeError, match=r"sub entry lists in the input TEntryList \(3\)"):
+        chain.SetEntryList(synced, "sync")
+    wrong = TEntryList()
+    wrong.AddSubList(TEntryList("", "", "events", files[0]))
+    wrong.AddSubList(TEntryList("", "", "other", files[1]))
+    with pytest.raises(RuntimeError, match="at index 1 doesn't correspond to treename 'events'"):
+        chain.SetEntryList(wrong, "sync")
+    chain.SetEntryList(None, "sync")
+    from xrdroot.pyroot.core.files import TFile
+
+    tree = TFile(files[0]).Get("events")
+    named = TEntryList("", "", tree)
+    assert named.GetTreeName() == "events" and named.GetFileName().endswith("run0.root")
+    empty = TEntryList()
+    assert empty.EnterRange(3, 3) == 0 and empty.GetEntry(0) == -1
+    from xrdroot.cppstd.objects import CppInvalidArgument, CppRuntimeError
+
+    assert CppRuntimeError().what() == "" and CppInvalidArgument("bad").what() == "bad"
+    assert CppInvalidArgument().what() == ""

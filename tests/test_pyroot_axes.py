@@ -314,3 +314,12 @@ def test_set_tick_size_is_set_tick_length():
     axis = ROOT.TH1F("hts", "", 2, 0, 1).GetXaxis()
     axis.SetTickSize(0.07)
     assert axis.GetTickLength() == pytest.approx(0.07)
+
+
+def test_an_axiss_uneven_edges_are_a_tarrayd():
+    edges = ROOT.TH1D("ux", "", 3, array.array("d", [0, 1, 3, 6])).GetXaxis().GetXbins()
+    assert (edges.size(), edges.GetSize(), edges.At(2)) == (4, 4, 3.0)
+    assert ROOT.TH1D("ex", "", 3, 0, 3).GetXaxis().GetXbins().size() == 0
+    stats = [0.0] * 2
+    ROOT.TH1D("st", "", 3, 0, 3).GetStats(stats)
+    assert stats == [0.0, 0.0]  # only as many sums as there is room for

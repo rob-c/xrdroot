@@ -53,6 +53,9 @@ DECLARATOR_ENDS = frozenset({"=", ";", "(", "[", ",", "{", ":"})
 class StmtParser(ExprParser):
     """The part of the parser that reads statements."""
 
+    #: The classes whose bodies are being read, innermost last.
+    classes: list[str]
+
     def class_declaration(self, name: str | None = None, typedef: bool = False) -> ClassDecl:
         raise NotImplementedError
 
@@ -379,26 +382,41 @@ class StmtParser(ExprParser):
             ctype = self.type_id()
             self.expect(";")
             return self.alias(Typedef(where, name, ctype))
-        self._used(False)
+        parts = self._using_declared()
+        if len(parts) > 1 and self.at_(";") and not self.classes:
+            self.using_names[parts[-1]] = self.unaliased(parts)
+        self.skip_to(";")
         return Empty(where)
 
+    def _using_declared(self) -> list[str]:
+        """``ns::Name`` of ``using ns::Name;``, read up to where it ends: a name a
+        using-declaration outside any class brings into scope. (One in a class, ``using
+        Base::f;``, is the class's own and is not followed.)"""
+        self.accept("::")
+        self.accept("typename")
+        parts: list[str] = []
+        while self.peek().kind == "id":
+            parts.append(self.take().text)
+            if not self.accept("::"):
+                break
+        return parts
+
     def _used(self, namespace: bool) -> None:
-        """A using-directive or using-declaration: its qualified name kept, for the names the
-        program does not declare to be looked for there too, as C++ looks."""
+        """A using-directive: the namespace's qualified name kept, for the names the program
+        does not declare to be looked for there too, as C++ looks."""
         parts: list[str] = []
         while not self.at_(";") and self.peek().kind != "eof":
             word = self.take()
-            if word.kind == "id" and word.text != "typename":
+            if word.kind == "id":
                 parts.append(word.text)
             elif not word.is_("::"):
-                parts = []  # not a plain qualified name: kept as nothing
                 self.skip_to(";")
                 return
         self.take()
         if parts:
             self.usings.append((tuple(parts), namespace))
 
-    #: The using-directives and -declarations read so far, for :class:`~.nodes.Unit`.
+    #: The using-directives read so far, for :class:`~.nodes.Unit`.
     usings: list[tuple[tuple[str, ...], bool]]
 
     def _typedef(self) -> Stmt:

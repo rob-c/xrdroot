@@ -194,11 +194,8 @@ def _get_color(*args: Any) -> int:
     to be the one found, as ROOT's search asks.
     """
     if len(args) == 1:
-        text = str(args[0])
-        if not text.startswith("#") or len(text) != 7:
-            raise ValueError(f"a colour by name is '#rrggbb', which {text!r} is not")
-        rgb = _hex_rgb(text)
-    elif len(args) in (3, 4):
+        return _get_hex_color(str(args[0]))
+    if len(args) in (3, 4):
         rgb = (_channel(args[0]), _channel(args[1]), _channel(args[2]))
     else:
         raise TypeError(
@@ -210,6 +207,15 @@ def _get_color(*args: Any) -> int:
     if found is not None:
         return found
     return TColor(free_index(), *rgb, a=alpha).GetNumber()
+
+
+def _get_hex_color(text: str) -> int:
+    """``#rrggbb``, or ``#rrggbbaa`` with an opacity in its last two digits."""
+    if not text.startswith("#") or len(text) not in (7, 9):
+        raise ValueError(f"a colour by name is '#rrggbb' or '#rrggbbaa', which {text!r} is not")
+    if len(text) == 9:
+        return _get_color(*_hex_rgb(text), int(text[7:], 16) / 255)
+    return _get_color(*_hex_rgb(text))
 
 
 def _closest_alpha(rgb: RGB, alpha: float) -> int | None:

@@ -23,7 +23,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from typing import Any
 
-__all__ = ["HostNamespace", "CXX", "DECLARED", "use_namespace", "use_name", "inherited"]
+__all__ = ["HostNamespace", "CXX", "DECLARED", "use_namespace", "inherited"]
 
 #: What the programs run so far declared at their top - functions and classes - by name, as
 #: an interpreter keeps them: a line run later finds them.
@@ -171,14 +171,6 @@ def use_namespace(host: Any, dotted: str) -> None:
     """What a translation's ``using namespace A::B;`` runs: the host looks in ``A.B`` too."""
     if isinstance(host, HostNamespace):
         host.use(dotted)
-
-
-def use_name(host: Any, name: str, dotted: str) -> None:
-    """What a translation's ``using A::B::C;`` runs: ``C`` is ``A.B.C`` of the host, where
-    the host has it - looked up now, as the declaration names it."""
-    found = _member(host, dotted)
-    if found is not None:
-        DECLARED.setdefault(name, found)
 
 
 def _member(namespace: Any, dotted: str) -> Any:

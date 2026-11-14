@@ -207,7 +207,7 @@ def test_a_using_directive_or_declaration_finds_the_hosts_names_there(capsys) ->
     from types import SimpleNamespace
 
     from xrdroot.pycxx.runtime import CXX as HOST
-    from xrdroot.pycxx.runtime.namespace import DECLARED, use_name, use_namespace
+    from xrdroot.pycxx.runtime.namespace import use_namespace
 
     lib = SimpleNamespace(Lib=SimpleNamespace(Hist=SimpleNamespace(convert=lambda x: x * 2),
                                               Axis=lambda: 5))  # fmt: skip
@@ -228,9 +228,6 @@ def test_a_using_directive_or_declaration_finds_the_hosts_names_there(capsys) ->
         run_source(source, "uses.C")
     assert capsys.readouterr().out == "42 5 1\n"
     use_namespace(object(), "Ignored")
-    use_name(HOST, "Nowhere", "No.Such")
-    assert "Nowhere" not in DECLARED
-    DECLARED.pop("Axis", None)
 
 
 def test_a_name_in_a_method_of_a_class_derived_from_a_library_is_its_bases_first(capsys):

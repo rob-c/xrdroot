@@ -208,6 +208,27 @@ def test_a_gtest_failure_names_the_failing_case(root):
     assert cases.gtest_counts(run.stdout) == {"passed": 3, "failed": 1}
 
 
+GTEST_RUN = """[ RUN      ] TH1.Fill
+t.cxx:3: Failure
+Expected equality of these values:
+  h.GetEntries()
+[  FAILED  ] TH1.Fill (0 ms)
+[ RUN      ] TH1.Add
+[       OK ] TH1.Add (0 ms)
+[ RUN      ] TH1.Draw
+AttributeError thrown in the test body.
+[  FAILED  ] TH1.Draw (0 ms)
+[ RUN      ] TH1.Silent
+[  FAILED  ] TH1.Silent (0 ms)
+"""
+
+
+def test_each_failed_gtest_case_is_given_with_the_first_line_saying_why():
+    assert cases.gtest_failures(GTEST_RUN) == [
+        "TH1.Fill: Expected equality of these values: h.GetEntries()",
+        "TH1.Draw: AttributeError thrown in the test body.", "TH1.Silent: ?"]
+
+
 # --- pyunittests ----------------------------------------------------------------
 
 JUNIT = """<testsuites><testsuite>

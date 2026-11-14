@@ -186,6 +186,9 @@ class Directory(Interpreter):
         self.relative = relative
         self.targets = registry.targets
         self.parent: dict[str, str] | None = None
+        #: Files ``configure_file(... COPYONLY)`` copies into the build directory under their
+        #: own names, which the directory's tests find there.
+        self.configured: list[str] = []
         build = f"<build>/{relative}" if relative else "<build>"
         self.variables.update(
             CMAKE_CURRENT_SOURCE_DIR=str(source),
@@ -373,6 +376,20 @@ def _set(self: Directory, args: list[str]) -> None:
     self.set_parent(args[0], values)
 
 
+def _configure_file(self: Directory, args: list[str]) -> None:
+    """``configure_file(in out COPYONLY)``: a file the build directory has a copy of.
+
+    Only a copy keeping its name is followed - into the directory itself, or
+    to the same name in it; one rewritten (``@VAR@``) or renamed is not.
+    """
+    if len(args) < 2 or "COPYONLY" not in args:
+        return
+    source, target = Path(args[0]).name, args[1]
+    named = Path(target).name if target not in (".", "") and not target.endswith("/") else source
+    if named == source:
+        self.configured.append(self.relative_path(args[0]))
+
+
 def _include_directories(self: Directory, args: list[str]) -> None:
     """``include_directories``: where this directory's (and its children's) headers are."""
     given = [arg for arg in args if arg not in ("AFTER", "BEFORE", "SYSTEM")]
@@ -527,6 +544,7 @@ HANDLERS.update(
     {
         "set": _set,
         "include_directories": _include_directories,
+        "configure_file": _configure_file,
         "add_definitions": _add_definitions,
         "option": _option,
         "add_subdirectory": _add_subdirectory,

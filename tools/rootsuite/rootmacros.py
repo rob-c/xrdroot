@@ -261,8 +261,9 @@ def _common(self: Directory, parsed: dict[str, list[str]]) -> dict[str, object]:
         "fixtures_setup": tuple(parsed.get("FIXTURES_SETUP", [])),
         "fixtures_required": tuple(parsed.get("FIXTURES_REQUIRED", [])),
         "timeout": float(timeout[0]) if timeout[0].replace(".", "", 1).isdigit() else None,
-        "copy": tuple(self.relative_path(name) for name in parsed.get("COPY_TO_BUILDDIR", [])
-                      if name),
+        "copy": tuple(dict.fromkeys([*(self.relative_path(name) for name in
+                                       parsed.get("COPY_TO_BUILDDIR", []) if name),
+                                     *self.configured])),
         "precmd": tuple(parsed.get("PRECMD", [])),
         "postcmd": tuple(parsed.get("POSTCMD", [])),
     }

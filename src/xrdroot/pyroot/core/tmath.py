@@ -618,6 +618,34 @@ def Permute(n: int, a: Any) -> bool:
     return True
 
 
+def Gradient(n: Any, f: Any, h: Any = 1.0) -> Any:
+    """``Gradient(n, f, h)``: the derivative of samples ``h`` apart - central differences,
+    and forward and backward ones at the two ends; ``None`` for fewer than two or no spacing."""
+    count, step = int(n), float(h)
+    if count < 2 or step == 0:
+        return None
+    values = np.asarray(list(f)[:count], dtype=np.float64)
+    made = np.empty(count)
+    made[0], made[-1] = (values[1] - values[0]) / step, (values[-1] - values[-2]) / step
+    made[1:-1] = (values[2:] - values[:-2]) * (1.0 / (2 * step))
+    return made
+
+
+def Laplacian(n: Any, f: Any, h: Any = 1.0) -> Any:
+    """``Laplacian(n, f, h)``: the second derivative of samples ``h`` apart - central
+    differences, the ends taken from their three nearest; ``None`` for fewer than three."""
+    count, step = int(n), float(h)
+    if count < 3 or step == 0:
+        return None
+    values = np.asarray(list(f)[:count], dtype=np.float64)
+    square = step * step
+    made = np.empty(count)
+    made[0] = (values[0] - 2 * values[1] + values[2]) / square
+    made[1:-1] = (values[2:] - 2 * values[1:-1] + values[:-2]) / square
+    made[-1] = (values[-1] - 2 * values[-2] + values[-3]) / square
+    return made
+
+
 __all__ = sorted(
     name
     for name, value in list(globals().items())

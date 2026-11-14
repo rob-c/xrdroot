@@ -292,6 +292,7 @@ class Runner:
             verdict = judge.judge(test, result, self.settings.root, invocation.cwd, post)
         if test.runner == "gtest":
             verdict.cases = cases.gtest_counts(result.stdout + result.stderr)
+            verdict.failures = cases.gtest_failures(result.stdout + result.stderr)
         return verdict
 
     def _step(self, step: plan.Step, env: dict[str, str], timeout: float) -> Result:

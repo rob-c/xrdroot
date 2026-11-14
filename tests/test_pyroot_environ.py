@@ -54,3 +54,34 @@ def test_a_resource_file_is_read_written_and_listed(tmp_path: Path, capsys) -> N
     assert (tmp_path / "all.rc").read_text().endswith("E.f: 2.5\n")
     env.Print()
     assert "A.b:" in capsys.readouterr().out
+
+
+def test_a_named_env_reads_the_users_file_then_the_working_directorys_and_saves_a_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user, work = tmp_path / "user", tmp_path / "work"
+    user.mkdir()
+    work.mkdir()
+    (user / "my.rc").write_text("Kept: here\nShared: user\nOld: 1\n")
+    (work / "my.rc").write_text("Shared: local\n")
+    monkeypatch.setenv("ROOTENV_USER_PATH", str(user))
+    monkeypatch.chdir(work)
+    env = ROOT.TEnv("my.rc")
+    assert env.GetValue("Shared", "") == "local" and env.Lookup("Kept").GetLevel() == ROOT.kEnvUser
+    env.SetValue("Fresh")
+    env.SetValue("Old=2")
+    env.SetValue("Mine", "x", ROOT.kEnvLocal)
+    env.SaveLevel(ROOT.kEnvUser)
+    saved = (user / "my.rc").read_text().splitlines()
+    assert saved[:2] == ["Kept: here", "Shared: user"] and saved[2].split() == ["Old:", "2"]
+    assert saved[3].split() == ["Fresh:", "1"] and (user / "my.rc.bak").exists()
+    env.SaveLevel(ROOT.kEnvGlobal)  # ROOT's own etc directory is not written
+    ROOT.TEnv().SaveLevel(ROOT.kEnvLocal)  # nor is a file for an env with no name
+    env.SaveLevel(ROOT.kEnvLocal)
+    assert (work / "my.rc").read_text().split() == ["Shared:", "local", "Mine:", "x"]
+    fresh = ROOT.TEnv("other.rc")
+    fresh.SetValue("New", 1, ROOT.kEnvLocal)
+    fresh.SaveLevel(ROOT.kEnvLocal)
+    assert (work / "other.rc").read_text().split() == ["New:", "1"]
+    monkeypatch.setenv("HOME", str(work))
+    assert ROOT.TEnv("my.rc").Lookup("Shared").GetLevel() == ROOT.kEnvUser

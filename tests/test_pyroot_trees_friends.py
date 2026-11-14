@@ -219,3 +219,48 @@ def test_a_clone_filled_entry_by_entry_reads_arrays_from_what_the_source_read(ca
     empty.Print("all")
     empty.Print()
     assert capsys.readouterr().out == "  0\n  0\n"
+
+
+def test_an_entry_list_of_several_trees_keeps_a_sub_list_for_each():
+    first, second = TTree("t1", ""), TTree("t2", "")
+    entries = TEntryList()
+    assert entries.GetLists() is None
+    for entry, tree in ((0, first), (2, first), (6, second), (8, second)):
+        entries.Enter(entry, tree)
+    assert entries.GetLists().GetEntries() == 2 and entries.GetN() == 4
+    assert [entries.GetEntry(i) for i in range(5)] == [0, 2, 6, 8, -1]
+    assert entries.GetTreeName() == "PyROOT/t1" and entries.GetEntryList("PyROOT/t2").GetN() == 2
+    assert list(entries) == [0, 2, 6, 8] and entries.GetEntryAndTree(9) == (-1, -1)
+
+
+def test_entries_entered_by_tree_name_go_in_a_sub_list_of_that_name():
+    named = TEntryList()
+    named.Enter(5, "x", "")
+    named.Enter(1, "y", "f.root")
+    assert [sub.GetFileName() for sub in named.GetLists()] == ["", "f.root"]
+    assert named.GetEntryList("y", "f.root").GetEntry(0) == 1
+    assert named.GetEntryList("z") is None and TEntryList().GetEntryList("") is not None
+    merged = TEntryList()
+    merged.Add(named)
+    assert merged.GetN() == 2 and merged.GetLists().GetEntries() == 2
+
+
+def test_an_entry_list_keeps_ranges_without_counting_them_out():
+    entries = TEntryList("r", "", "t", "f.root")
+    assert (entries.GetTreeName(), entries.GetFileName()) == ("t", "f.root")
+    assert entries.EnterRange(0, 2**33) == 2**33 and entries.GetN() == 2**33
+    assert entries.GetEntry(2**32 + 7) == 2**32 + 7 and entries.Remove(5)
+    assert entries.GetEntry(5) == 6 and entries.Contains(5) == 0 and entries.Contains(4) == 1
+    assert entries.Remove(0) and entries.GetEntry(0) == 1 and entries.GetEntryAndTree(0) == (1, -1)
+
+
+def test_an_entry_list_enters_a_stepped_range_and_is_renamed_and_reset():
+    stepped = TEntryList()
+    assert stepped.EnterRange(0, 10, None, 3) == 4 and list(stepped) == [0, 3, 6, 9]
+    assert stepped.EnterRange(5, 5) == 0 and stepped.GetN() == 4
+    stepped.SetTreeName("s")
+    stepped.SetFileName("g.root")
+    stepped.SetTree("u", "h.root")
+    assert (stepped.GetTreeName(), stepped.GetFileName()) == ("u", "h.root")
+    stepped.Reset()
+    assert stepped.GetN() == 0 and list(stepped) == []

@@ -118,3 +118,23 @@ def test_a_polygon_histogram_with_bins_below_its_minimum_paints_only_its_frame()
     h.Draw("col")
     canvas.Update()
     assert [getattr(obj, "classname", "") for obj, _ in canvas.primitives].count("TPolyLine") == 0
+
+
+def test_a_th2poly_adds_another_of_the_same_bins_and_has_no_directory():
+    def made(weight: float) -> Any:
+        poly = ROOT.TH2Poly()
+        poly.AddBin(0.0, 0.0, 1.0, 1.0)
+        poly.AddBin(1.0, 0.0, 2.0, 1.0)
+        poly.Fill(0.5, 0.5, 2 * weight)
+        poly.Fill(1.5, 0.5, 3 * weight)
+        poly.Fill(5.0, 5.0, weight)
+        return poly
+
+    total, other = made(1.0), made(0.5)
+    total.SetDirectory(None)
+    assert total.Add(other, 2.0)
+    assert (total.GetBinContent(1), total.GetBinContent(2), total.GetBinContent(-3)) == (4, 6, 2)
+    assert total.GetEntries() == 6  # as ROOT 6.40 counts them
+    lonely = ROOT.TH2Poly()
+    lonely.AddBin(0.0, 0.0, 1.0, 1.0)
+    assert not total.Add(lonely)

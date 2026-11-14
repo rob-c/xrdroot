@@ -4,7 +4,9 @@
 (df036); ``std::unique_ptr<RooArgSet>{p}`` holds an object the macro goes on
 to use, which here is the object itself, Python keeping it while it is
 used; ``std::remove(name)`` deletes a file, as C's ``remove`` does, zero
-when it did.
+when it did. ``rand`` and ``srand`` are the C library's of macOS, which
+ROOT's suite is set up for: the Park-Miller "minimal standard" generator,
+seeded with 1, so a program drawing from it draws the numbers it does there.
 """
 
 from __future__ import annotations
@@ -15,7 +17,32 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["numeric_limits", "remove", "smart_pointer"]
+__all__ = ["numeric_limits", "remove", "smart_pointer", "rand", "srand", "RAND_MAX"]
+
+#: ``RAND_MAX``: the largest number ``rand`` gives.
+RAND_MAX = 0x7FFFFFFF
+#: ``rand``'s state: the last number it gave, or the seed.
+_RAND_STATE = [1]
+
+
+def srand(seed: Any) -> None:
+    """``srand``: ``rand`` started again from ``seed``."""
+    _RAND_STATE[0] = int(seed) & 0xFFFFFFFF
+
+
+def rand() -> int:
+    """``rand``: the next of the macOS C library's numbers, from 0 to ``RAND_MAX``.
+
+    ``x = 16807 x mod (2^31 - 1)`` by Schrage's method, as its ``do_rand``
+    computes it, with a zero state taken as 123459876.
+    """
+    state = _RAND_STATE[0] or 123459876
+    high, low = divmod(state, 127773)
+    made = 16807 * low - 2836 * high
+    if made < 0:
+        made += 0x7FFFFFFF
+    _RAND_STATE[0] = made
+    return made % (RAND_MAX + 1)
 
 #: The NumPy type of each C++ arithmetic type ``numeric_limits`` is asked of, as LP64 macOS
 #: on ARM64 has them: ``char`` signed, ``wchar_t`` a signed 32-bit integer, ``long double``
