@@ -45,7 +45,10 @@ def _entries(column: Any) -> list[Any]:
 
 
 def is_macros(function: Any) -> bool:
-    """Is ``function`` one a macro's translation defined?"""
+    """Is ``function`` one a macro's translation defined - or a set of overloads of one?"""
+    candidates = getattr(function, "candidates", None)
+    if isinstance(candidates, tuple) and candidates:
+        return all(is_macros(each[0]) for each in candidates)
     return callable(function) and getattr(function, "__module__", None) == "__cint__"
 
 
@@ -103,9 +106,45 @@ def per_entry(name: str, arguments: list[Any]) -> list[Any]:
     if batched is not None:
         given[at] = batched
         return given
-    if not is_macros(given[at]):
-        return arguments
-    return _made_entrywise(name, given, at, slot)
+    if is_macros(given[at]):
+        return _made_entrywise(name, given, at, slot)
+    if is_scripts(given[at]):
+        named = _named_columns(given, at, slot)
+        named[at] = _arrays_given(named[at])
+        return _made_entrywise(name, named, at, slot)
+    return arguments
+
+
+def _arrays_given(function: Callable[..., Any]) -> Callable[..., Any]:
+    """``function`` given an entry's collections as NumPy arrays, as numba hands them over."""
+
+    @functools.wraps(function)
+    def given(*values: Any) -> Any:
+        return function(*(each.data() if isinstance(each, _Vector) else each for each in values))
+
+    return given
+
+
+def is_scripts(function: Any) -> bool:
+    """Is ``function`` a PyROOT script's own Python function or lambda?
+
+    ROOT compiles one with numba and calls it once per entry, so a script
+    writes it for one entry - ``lambda v: v.sum()`` of an ``RVec`` - and it
+    is called so here too. Elsewhere a Python function is given whole batches.
+    """
+    from ..core.messages import from_script
+
+    plain = inspect.isfunction(function) and function.__module__ != "__cint__"
+    return plain and from_script()
+
+
+def _named_columns(given: list[Any], at: int, slot: bool) -> list[Any]:
+    """The columns a Python function reads: those given, else its parameters' names - after
+    the slot - as ROOT reads them off it."""
+    if len(given) > at + 1 and given[at + 1]:
+        return given
+    names = list(inspect.signature(given[at]).parameters)[int(slot):]
+    return [*given[: at + 1], names, *given[at + 2 :]]
 
 
 def _made_entrywise(name: str, given: list[Any], at: int, slot: bool) -> list[Any]:

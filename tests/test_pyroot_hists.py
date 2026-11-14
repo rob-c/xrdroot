@@ -357,12 +357,12 @@ def test_python_sees_a_histogram_as_uhi_does():
         (h.kind, "COUNT"),
         (len(h), 5),
         (bool(bool(h)), True),
-        (list(h), [2, 0, 0]),
+        (list(h), [0, 2, 0, 0, 0]),  # every bin, the flow too, as ROOT iterates
         (bool(h[0] == pytest.approx(2) or h[0].value == pytest.approx(2)), True),
     )
     h[1] = 5.0
     assert h.GetBinContent(2) == 5
-    rebinned = h[:: ROOT.__dict__.get("rebin", __import__("xrdroot").rebin)(3)]
+    rebinned = h[:: ROOT.uhi.rebin(3)]
     expect(
         (rebinned.GetNbinsX(), 1),
         (bool(isinstance(rebinned, ROOT.TH1)), True),

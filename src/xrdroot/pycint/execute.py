@@ -27,6 +27,7 @@ from typing import Any
 
 from ..pycxx import execute as _cxx
 from ..pycxx.errors import MacroError, Refusal
+from ..pycxx.runtime.namespace import DECLARED
 from ..pycxx.translation import translation
 from .dialect import ROOT as DIALECT
 from .library import aclic
@@ -136,6 +137,17 @@ def _add_dynamic_path(directory: str) -> None:
 DEFINES: list[str] = []
 
 #: A directive that defines or undefines a macro.
+#: A line that is one variable declared - ``int n = 0;``, ``auto h = f(1);`` - which cling
+#: keeps as a global of the session: a type, a name, perhaps its initial value, one ``;``.
+VARIABLE = re.compile(
+    r"^(?:const\s+)?[A-Za-z_][\w:<>, ]*[\s*&]+[A-Za-z_]\w*\s*"
+    r"(?:=[^;]*|\{[^;]*\}|\([^;]*\))?;$"
+)
+
+#: A line that declares - a namespace, a class, a template - which cling keeps at the top,
+#: rather than statements run in a block of their own.
+DECLARATION = re.compile(r"^(?:namespace|class|struct|union|template\s*<)\b")
+
 DEFINITION = re.compile(r"^[ \t]*#[ \t]*(?:define|undef)\b.*$", re.M)
 
 
@@ -195,10 +207,17 @@ def run_source(
     handed back.
     """
     preload(source)
-    return _cxx.run_source(
+    before = dict(DECLARED) if "namespace" in source else None
+    done = _cxx.run_source(
         source, file, args, dialect=session_dialect(), namespace=root, use_cache=use_cache,
         call=call,
     )
+    if before is None:
+        return done
+    spaces, hidden = libraries.declare_namespaces(source, before)
+    if call:
+        return done
+    return {**{name: value for name, value in done.items() if name not in hidden}, **spaces}
 
 
 def run(
@@ -301,12 +320,47 @@ def process_line(line: str, *, root: Any = None) -> Any:
         return done
     preload(text)
     define(text)
-    if text.startswith("#"):  # ``#include "Foo.h"``: declarations, at the top as cling has them
-        run_source(text + "\n", "<ProcessLine>", root=root, call=False)
+    if _at_top(text, root):
         return 0
     from .interactive.lines import run_line  # the prompt's, which runs on this module
 
     return run_line(text, root)
+
+
+def _at_top(text: str, root: Any) -> bool:
+    """Was the line declarations, which cling runs at the top - ``#include "Foo.h"``, a class,
+    a namespace, a global variable - rather than statements in a block of their own?"""
+    if text.startswith("#"):
+        run_source(text + "\n", "<ProcessLine>", root=root, call=False)
+        return True
+    if DECLARATION.match(text) and _declared_at_top(text, root):
+        return True
+    return bool(VARIABLE.match(text)) and _global(text, root)
+
+
+def _global(text: str, root: Any) -> bool:
+    """``int n = 0;`` alone on a line: a global of the session, as cling keeps it - found by
+    later lines, and as ``ROOT.n`` - unless it will not translate at the top."""
+    try:
+        made = run_source(text + "\n", "<ProcessLine>", root=root, call=False)
+    except Refusal:
+        return False
+    before = run_source("", "<ProcessLine>", root=root, call=False)
+    namespace = root if root is not None else sys.modules["xrdroot.pyroot"]
+    for name, value in made.items():
+        if name not in before and not name.startswith("_"):
+            setattr(namespace, name, value)
+    return True
+
+
+def _declared_at_top(text: str, root: Any) -> bool:
+    """``class A {};``, ``namespace N {...}``: declarations, run at the top as cling has them
+    - unless statements follow them, which a block of their own runs instead."""
+    try:
+        run_source(text + "\n", "<ProcessLine>", root=root, call=False)
+    except Refusal:
+        return False
+    return True
 
 
 def called(text: str) -> str:

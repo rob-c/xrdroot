@@ -63,7 +63,10 @@ SUBMODULES = [
     "geom",
     "geom.legacy",
     "geom.legacyshapes",
+    "numbadeclare",
+    "pythonizing",
     "_pythonization",
+    "uhi",
 ]
 
 __all__: list[str] = []
@@ -105,7 +108,9 @@ def __getattr__(name: str) -> _typing.Any:
             return found
         declared = _declared(name)
         if declared is not None:
-            return declared
+            from .pythonizing import looked_up
+
+            return looked_up(declared, name)
     raise AttributeError(f"ROOT has {name}; xrdroot.pyroot does not yet")
 
 
