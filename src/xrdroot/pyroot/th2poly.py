@@ -1,4 +1,5 @@
-"""``TH2Poly``: a 2-D histogram whose bins are polygons, drawn as ``THistPainter`` draws one.
+"""``TH2Poly``: a 2-D histogram whose bins are polygons, drawn as ``THistPainter`` draws one;
+``TProfile2Poly``, its profile.
 
 Bins are added one by one - a rectangle, a polygon, a ``TGraph`` or the
 graphs of a ``TMultiGraph`` - or a honeycomb of hexagons at once, and a fill
@@ -18,11 +19,15 @@ from typing import Any
 
 import numpy as np
 
+from ..errors import UnsupportedFeatureError
 from ..hist import Histogram
 from ..polybins import PolyBins
+from ._pythonization._uhi import UnifiedHistogram
+from ._pythonization._uhi.indexing import _compute_common_index
+from ._pythonization._uhi.plotting import _grid_by_copy
 from .core.objects import TAttFill, TAttLine, TAttMarker, TNamed
 
-__all__ = ["TH2Poly"]
+__all__ = ["TH2Poly", "TProfile2Poly"]
 
 #: The contents ``GetMinimum`` and ``GetMaximum`` answer when none were set.
 UNSET = -1111.0
@@ -262,3 +267,119 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
 
         option = next((opt for obj, opt in self._pad.primitives if obj is self), "").upper()
         replace_made(self._pad, self, [self._frame(option), *self._pieces(option)])
+
+
+class TProfile2Poly(UnifiedHistogram, TH2Poly):
+    """``TProfile2Poly``: a ``TH2Poly`` whose bins are the means of a value filled into them.
+
+    ``Fill(x, y, value[, w])`` averages ``value`` in the bin holding the
+    point; a fill missing every bin is not kept. Like every ``TH2`` it also
+    lays a grid of 100 by 100 bins over its range, and UHI's protocols see it
+    through that grid, as ROOT's do: a cell's ROOT number names a polygon
+    only by chance, so through the grid its bins are empty, and it cannot be
+    sliced, set or serialized.
+    """
+
+    #: The bins ``TH2Poly`` lays along each axis of its range.
+    GRID = 100
+
+    def __init__(self, name: Any = "NoName", title: Any = "NoTitle", *ranges: float) -> None:
+        super().__init__(name, title, *ranges)
+        #: Each bin's sum of weights, of weighted values and of weighted squared values.
+        self._sums: dict[int, np.ndarray[Any, Any]] = {}
+
+    def ClassName(self) -> str:
+        return "TProfile2Poly"
+
+    def Fill(  # type: ignore[override]  # a profile's fill takes the value averaged too
+        self, x: Any, y: float = 1.0, value: float = 1.0, w: float = 1.0
+    ) -> int:
+        """``Fill(x, y, value[, w])``: ``value`` averaged into the bin holding ``(x, y)``."""
+        x, y, value, w = float(x), float(y), float(value), float(w)
+        bins = self._xrd_bins
+        found = bins.find(x, y)
+        if found > 0:
+            sums = self._sums.setdefault(found, np.zeros(3))
+            sums += (w, w * value, w * value * value)
+            bins.contents[found - 1] = sums[1] / sums[0]
+            bins.sums += (w, w * w, w * x, w * x * x, w * y, w * y * y, 1)
+        return found
+
+    # -- the grid every TH2 has ---------------------------------------------------------
+
+    def GetDimension(self) -> int:
+        return 2
+
+    def GetXaxis(self) -> Any:
+        from .core.axes import TAxis
+
+        return TAxis(self.GRID, *self._xrd_bins.xrange)
+
+    def GetYaxis(self) -> Any:
+        from .core.axes import TAxis
+
+        return TAxis(self.GRID, *self._xrd_bins.yrange)
+
+    def GetNbinsX(self) -> int:
+        return self.GRID
+
+    GetNbinsY = GetNbinsX
+
+    def GetNcells(self) -> int:
+        return (self.GRID + 2) ** 2
+
+    def GetSumw2N(self) -> int:
+        return 0
+
+    def GetBin(self, binx: int, biny: int = 0, binz: int = 0) -> int:
+        """``TH2::GetBin``: the grid cell's ROOT number, x running fastest."""
+        return int(binx) + (self.GRID + 2) * int(biny)
+
+    def FindBin(self, x: float, y: float = 0.0, z: float = 0.0) -> int:
+        """The bin holding ``(x, y)``, or the region round the range it fell in."""
+        return self._xrd_bins.find(float(x), float(y))
+
+    def GetBinContent(self, *args: Any) -> float:
+        """``GetBinContent(bin)``, or of the grid cell ``(binx, biny)``: a bin's mean."""
+        number = self.GetBin(*args) if len(args) > 1 else int(args[0])
+        return TH2Poly.GetBinContent(self, number)
+
+    def GetBinEntries(self, bin: int) -> float:
+        return float(self._sums.get(int(bin), np.zeros(3))[0])
+
+    def GetBinError(self, *args: Any) -> float:
+        """The error of a bin's mean: the spread of its values over the root of its weights."""
+        number = self.GetBin(*args) if len(args) > 1 else int(args[0])
+        weight, total, squares = self._sums.get(number, np.zeros(3))
+        if weight <= 0:
+            return 0.0
+        return math.sqrt(max(squares / weight - (total / weight) ** 2, 0.0) / weight)
+
+    # -- UHI, through the grid -----------------------------------------------------------
+
+    def variances(self, flow: bool = False) -> Any:
+        return _grid_by_copy(self, lambda *cell: self.GetBinError(*cell) ** 2, flow)
+
+    def counts(self, flow: bool = False) -> Any:
+        return _grid_by_copy(self, lambda *cell: self.GetBinEntries(self.GetBin(*cell)), flow)
+
+    def __getitem__(self, index: Any) -> Any:
+        cells = _compute_common_index(self, index)
+        if not all(isinstance(cell, int) for cell in cells):
+            raise UnsupportedFeatureError(
+                "A TProfile2Poly cannot be sliced: its bins are polygons, not the grid a "
+                "slice would cut. Index one bin at a time, or ask GetBinContent."
+            )
+        return self.GetBinContent(*cells)
+
+    def __setitem__(self, index: Any, value: Any) -> None:
+        raise UnsupportedFeatureError(
+            "A TProfile2Poly's bins cannot be set: each is the mean of what was filled into "
+            "it, which a mean alone does not say. Fill it instead."
+        )
+
+    def _to_uhi_(self) -> dict[str, Any]:
+        raise UnsupportedFeatureError(
+            "A TProfile2Poly cannot be written as UHI's histogram: its bins are polygons, "
+            "which UHI's serialization has no axis for."
+        )

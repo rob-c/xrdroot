@@ -116,3 +116,22 @@ def test_a_vector_is_made_from_a_range_and_inserted_into() -> None:
     more = std.vector["std::pair<double,double>"](pairs.begin(), pairs.end())
     more.insert(more.end(), pairs.begin(), pairs.end())
     assert [p.first for p in more] == [1.0, 1.0]
+
+
+def test_a_braced_list_deduces_its_container_element_type_as_cpp17_does() -> None:
+    std = containers.std
+    assert type(std.vector([1, 2, 3])) is std.vector["int"]
+    assert type(std.vector([1.5, 2])) is std.vector["double"]
+    assert type(std.vector([True, False])) is std.vector["bool"]
+    assert list(std.vector(["a", "b"])) == ["a", "b"]
+    made = std.array([1, 2, 3])
+    assert type(made) is std.vector["int"] and list(made) == [1, 2, 3]
+
+
+def test_the_stream_names_std_has_are_the_streams_own() -> None:
+    from xrdroot.cppstd import streams
+
+    assert containers.std.ostringstream is streams.ostringstream
+    assert containers.std.setw is streams.setw
+    with pytest.raises(AttributeError, match=r"ROOT has std\.nothing"):
+        containers.std.nothing  # noqa: B018

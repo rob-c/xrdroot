@@ -1,4 +1,5 @@
-"""``TH1``, ``TH2``, ``TH3`` and each of their storage kinds, ``C``, ``S``, ``I``, ``F`` and ``D``.
+"""``TH1``, ``TH2``, ``TH3`` and each of their storage kinds: ``C``, ``S``, ``I``, ``L``, ``F``
+and ``D``.
 
 Each is a :class:`xrdroot.Histogram` underneath, in ``._xrd``, with ROOT's
 methods over it (see :mod:`.histcore`, :mod:`.histbins`, :mod:`.histstats`
@@ -13,8 +14,8 @@ from typing import Any
 
 import numpy as np
 
-from ...hist import Histogram
 from ...stdio import unflushed
+from .._pythonization._uhi import UnifiedHistogram
 from .histbins import Bins
 from .histcore import Booked
 from .histops import Operations
@@ -31,7 +32,9 @@ __all__ = [
 ]  # fmt: skip
 
 
-class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarker):
+class TH1(
+    UnifiedHistogram, Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarker
+):
     """``TH1``: a histogram of one axis - and the base of every other."""
 
     CLASS_TITLE = "1-Dim histogram base class"
@@ -141,45 +144,13 @@ class TH1(Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarke
 
         self._replace(inflated(self, "XYZ".index(str(ax).upper()[:1] or "X")))
 
-    # -- UHI, as PyROOT's histograms speak it -----------------------------------------------
-
-    def values(self, flow: bool = False) -> np.ndarray[Any, Any]:
-        return np.asarray(self._xrd.values(flow))
-
-    def variances(self, flow: bool = False) -> np.ndarray[Any, Any]:
-        return np.asarray(self._xrd.variances(flow))
-
-    def counts(self, flow: bool = False) -> np.ndarray[Any, Any]:
-        return np.asarray(self._xrd.counts(flow))
-
-    @property
-    def axes(self) -> Any:
-        return self._xrd.axes
-
-    @property
-    def kind(self) -> str:
-        return str(self._xrd.kind)
-
-    def __getitem__(self, index: Any) -> Any:
-        found = self._xrd[index]
-        return self._wrapped(found)
-
-    def _wrapped(self, found: Any) -> Any:
-        from .wrapping import wrap
-
-        return wrap(found) if isinstance(found, Histogram) else found
-
-    def __setitem__(self, index: Any, value: Any) -> None:
-        self._xrd[index] = value
+    # -- Python's view of it; UHI's is :class:`UnifiedHistogram`'s -------------------------
 
     def __len__(self) -> int:
         return self.GetNcells()
 
     def __bool__(self) -> bool:
         return True
-
-    def __iter__(self) -> Any:
-        return iter(self.values().ravel())
 
 
 def _on_axes(name: str) -> Any:
@@ -278,8 +249,8 @@ def _kind(base: type, letter: str, title: str) -> type:
 
 
 _TITLES = {"C": "one byte per channel", "S": "one short per channel", "I": "one int per channel",
-           "L": "one 64 bit integer per channel",
-           "F": "one float per channel", "D": "one double per channel"}  # fmt: skip
+           "L": "one 64 bit integer per channel", "F": "one float per channel",
+           "D": "one double per channel"}  # fmt: skip
 
 TH1C: Any = _kind(TH1, "C", f"1-Dim histograms ({_TITLES['C']})")
 TH1S: Any = _kind(TH1, "S", f"1-Dim histograms ({_TITLES['S']})")

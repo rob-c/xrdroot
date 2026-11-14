@@ -1169,11 +1169,42 @@ ROOT: a new label takes the next free bin, a full axis doubles, and
 | the session | `gROOT` (`SetBatch`, `IsBatch`, `GetListOfFiles`/`Canvases`/`Functions`/`Styles`, `FindObject`, `GetFunction`, `SetStyle`, `ProcessLine` and `gInterpreter.Declare` through `xrdroot.pycint`, `Reset`, `GetVersion` as `6.40.04`, `GetTutorialDir` from `$ROOT_TUTORIAL_DIR`), `gDirectory`, `TDirectory.TContext`, `gSystem` (`Load` and `AddIncludePath` succeed and do nothing; `Getenv`, `Setenv`, `Exec`, `AccessPathName` - true when the path is **not** there, as ROOT's is - `mkdir`, `Which`, `BaseName`, `DirName`, `ProcessEvents`, `Sleep`...), `ROOT.ROOT.EnableImplicitMT`, `TSeqI`, `Float_t`/`Int_t` and the other number types as casts, `Info`/`Warning`/`Error`, `SetOwnership`, `nullptr` |
 | text and time | `TString` (a string that changes in place: `ReplaceAll`, `Append`, `ToLower`, `Contains`, `Tokenize`, `Form`, `TString.Format`...), `Form` and `Printf` with `printf`'s formats, `TStopwatch`, `TBenchmark`/`gBenchmark`, `TDatime`, `TUUID` (made from the time, or at random by `UUIDv4`), `TEnv` (`gEnv`, and a named one reading `$ROOTENV_USER_PATH`'s or the home directory's file, then the working directory's, with `SaveLevel`) |
 | files | `TFile`, `TMemFile` (a file written in memory, `GetSize`, `CopyTo`, and read back from its bytes), `TDirectoryFile` (`Get`, `d["name"]` - kept in `_cached_items` once found - `GetListOfKeys`, `GetKey`, `mkdir`, `cd`, `GetDirectory`, `Write`, `WriteObject`, `ls`, `Close`, a context manager), `TKey` (`GetName`, `GetClassName`, `GetCycle`, `ReadObj`) |
-| histograms | `TH1`/`TH2`/`TH3` in `C`, `S`, `I`, `L`, `F` and `D` (arguments by position or by name, `nbinsx=`...), `TProfile`, `TProfile2D`, `TProfile3D`: `Fill`, `FillN`, `Get`/`SetBinContent` and `Error` by global or per-axis bin, `GetBin`, `FindBin`, `GetMean`, `GetStdDev`, `GetRMS`, `GetEntries`, `Integral`, `IntegralAndError`, `GetMaximum`/`MaximumBin`, `SetMaximum`/`Minimum`, `Scale`, `Add`, `Multiply`, `Divide`, `Rebin`, `ProjectionX`/`Y`, `ProfileX`/`Y`, `Project3D`, `GetCumulative`, `Fit`, `GetFunction`, `FillRandom`, `GetRandom`, `KolmogorovTest`, `Chi2Test`, `Smooth`, `Sumw2`, `Reset`, `SetStats`, `Print`, `Interpolate` (between bin centres along each axis); `TAxis` (`SetTitle`, `SetRange`, `SetRangeUser`, `SetBinLabel`, `GetBinCenter`...); `THStack` (`GetMinimum`/`GetMaximum` of the stacked sum or, with `"nostack"`, of each, `"e"` reaching out by the errors); UHI's `values()`, `variances()`, `h[...]` |
+| histograms | `TH1`/`TH2`/`TH3` in `C`, `S`, `I`, `L`, `F` and `D` (arguments by position or by name, `nbinsx=`...), `TProfile`, `TProfile2D`, `TProfile3D`: `Fill`, `FillN`, `Get`/`SetBinContent` and `Error` by global or per-axis bin, `GetBin`, `FindBin`, `GetMean`, `GetStdDev`, `GetRMS`, `GetEntries`, `Integral`, `IntegralAndError`, `GetMaximum`/`MaximumBin`, `SetMaximum`/`Minimum`, `Scale`, `Add`, `Multiply`, `Divide`, `Rebin`, `ProjectionX`/`Y`, `ProfileX`/`Y`, `Project3D`, `GetCumulative`, `Fit`, `GetFunction`, `FillRandom`, `GetRandom`, `KolmogorovTest`, `Chi2Test`, `Smooth`, `Sumw2`, `Reset`, `SetStats`, `Print`, `Interpolate` (between bin centres along each axis); `TAxis` (`SetTitle`, `SetRange`, `SetRangeUser`, `SetBinLabel`, `GetBinCenter`...); `THStack` (`GetMinimum`/`GetMaximum` of the stacked sum or, with `"nostack"`, of each, `"e"` reaching out by the errors); `SetBins`, `Rebin2D`, `Rebin3D`; `TProfile2Poly`; UHI's `values()`, `variances()`, `h[...]` (below) |
 | graphs | `TGraph`, `TGraphErrors`, `TGraphAsymmErrors` (`SetPoint` past the end grows it, `GetPoint`, `GetX`, `SetPointError`, `Eval`, `Fit`, `GetHistogram` - ROOT's frame, a tenth wider than the points), `TMultiGraph` |
 | functions and fits | `TF1`, `TF2`, `TF3`, `TFormula` - from a formula, or from a Python `fn(x, p)` as PyROOT calls it - with `SetParameters`, `SetParNames`, `SetParLimits`, `FixParameter`, `Eval`, `Integral`, `Derivative`, `GetMaximumX`, `GetX`, `GetRandom`, `Moment`; `TFitResultPtr` and `TFitResult` (`Parameter`, `ParError`, `Chi2`, `Ndf`, `Prob`, `GetCovarianceMatrix`, `Print`); `TVirtualFitter.GetFitter().GetConfidenceIntervals`, the latest fit's band; `IntegralError`; `TEfficiency`; `TF2`/`TF3`'s `Save` and `GetSave` (the function sampled on a grid and interpolated linearly) |
 | mathematics | `TMath`, `ROOT.Math` (its distributions, `MinimizerOptions`, and GenVector's `PtEtaPhiMVector`, `PxPyPzEVector`, `XYZVector`... kept in their own coordinates and printed as `operator<<` prints them, with `VectorUtil`), `TVector2`, `TVector3`, `TRotation`, `TLorentzVector`, `TRandom`, `TRandom1`, `TRandom2`, `TRandom3`; `ROOT::Minuit2`'s own interface - `FCNBase`, `FCNGradientBase`, `MnUserParameters`, `MnMigrad`, `MnSimplex`, `MnMinimize`, `MnScan`, `MnHesse`, `MnMinos`, `MnContours`, `FunctionMinimum`, `VariableMetricMinimizer`... - driving Minuit2's C++ as iminuit binds it, so the calls and values are ROOT's |
 | containers | `TList`, `TObjArray`, `THashList`, `THashTable`, `TIter` - each with a Python list's `append`, `extend`, `remove`, `count`, `+` and `*`, and the ordered ones `insert`, `pop`, `reverse`, `sort`, `index` and `[i]`/`[i:j:k]` to read, assign and delete - `TObjString` (compared, measured and shown as its string); `TVectorT[float]`, which is `TVectorD`; `TArray`s and `TVectorD` raise `IndexError` past their ends |
+
+**UHI, as PyROOT has it.** ROOT's histograms speak the
+[Unified Histogram Interface](https://uhi.readthedocs.io) the way ROOT 6.40's
+own pythonizations do, with ROOT's tags from `ROOT.uhi`, so `mplhep`, `hist`
+and UHI's writers take them as they are:
+
+```python
+from ROOT.uhi import loc, overflow, rebin, underflow
+
+h[3], h[loc(1.5)], h[underflow], h[len]  # one bin's GetBinContent; len is the overflow
+h[2:8], h[::rebin(2)]                     # a new TH1D of the same name
+h[::sum], h[0:len:sum]                    # Integral(0, nbins + 1), Integral(1, nbins)
+h2[:, ROOT.uhi.sum], h3[::sum, :, :]     # ProjectionX(), Project3D("zy")
+h[...] = counts                           # inside the flow; with two more, the flow too
+h.values(), h.values(writable=True)       # the bins themselves: read-only, or not
+h.kind, h.axes, h.variances(), h.counts()
+json.dumps(h, default=uhi.io.json.default); ROOT.TH1D(ir); ROOT.TH1D._from_uhi_(ir)
+```
+
+A slice is ROOT's `ROOT::Internal::Slice`: what it leaves out is gathered
+into the new histogram's first and last bins, not each axis's own flow, and
+its statistics are made again from the bins (`ResetStats`). Two things are
+better than ROOT's: a slice cuts the squares of the weights, and a profile's
+weights, with its bins, where ROOT keeps stale ones; and a profile's
+`variances()` and `counts()` are the variance of each bin's mean and its
+effective entries, where ROOT's are not. Iterating gives every bin, the flow
+too. A histogram of bytes, or a profile, gives its values as a copy and
+refuses `writable=True`. A profile is written to UHI as a weighted mean but
+not read back from one, and a `TProfile2Poly`, seen through the 100 by 100
+grid every `TH2Poly` lays over its range, is neither sliced, set nor written.
+`xrdroot.Histogram`'s own indexing, above, is UHI's standard one.
 
 The namespace is put together from `xrdroot.pyroot.SUBMODULES`: this core,
 the trees (`TTree`, `TChain`, `RDataFrame`...), the STL stand-ins, RDF and
@@ -1377,6 +1408,25 @@ these in a web browser; run in batch there is none, so `Show` and `Update`
 show nothing, as in ROOT's batch mode, and `SaveAs` - which ROOT renders
 through a headless browser - writes no file and says so. `gEnv`, ROOT's
 resources from `.rootrc` files, is there for the settings macros read and set.
+
+**Complex numbers and URLs.** `TComplex` keeps ROOT's names (`Re`, `Im`,
+`Rho`, `Theta`, static `Sqrt`, `Exp`, `Power`) and print, `(4,0i)`, and does
+its arithmetic with a real number on either side. `TUrl` takes a URL apart
+as ROOT does - a bare word is a host over `http`, a path a local file - and
+`Compare`s by its text. `TObject`'s comparison operators are ROOT's, through
+`IsEqual` and `Compare`, so a list of `TUrl` or `TNamed` sorts.
+
+**Python compiled for C++.** `@ROOT.Numba.Declare(["float"], "float")`
+compiles a function with numba (the `numba` extra) for the C++ types given -
+numbers, and `RVec`, `std::vector` and `std::array` of them - and puts it
+in the `Numba` namespace, so a macro, `ProcessLine` or an RDataFrame
+expression calls `Numba::f(x)`.
+
+**cppyy.** `xrdroot.cppyy` is cppyy's interface over the translator:
+`cppdef`, `include`, `load_library` (a `.xrdlib`), `gbl` - C++'s global
+namespace, ROOT's classes in it - `addressof`, `bind_object`, `nullptr`,
+`ll.cast` and `py.add_pythonization`. `xrdroot run script.py` makes
+`import cppyy` this module when no real cppyy is installed.
 
 **A macro's random numbers.** `std::mt19937`, `std::uniform_real_distribution`
 and `std::normal_distribution` draw what libc++ draws, number for number, so
@@ -2408,6 +2458,16 @@ would be undefined these do not make something up either: `Max` and `Min` put
 `default` (NaN unless told) in an empty entry, and `Take` past the end is
 refused unless given a default to pad with.
 
+Through `xrdroot.pyroot` - `ROOT` in a script `xrdroot run` runs - a plain
+Python function is called once per entry instead, as ROOT calls the function
+numba compiled for it, a collection given as a NumPy array; `extra_args`
+gives it values of its own by name:
+
+```python
+df.Define("s", lambda v: v.sum(), ["v"])
+df.Define("xy", lambda x, y: x * y, extra_args={"y": 0.5})
+```
+
 ### Results
 
 | Action | Gives |
@@ -2554,6 +2614,44 @@ rows = ROOT.RDF.FromSqlite("stats.sqlite", "SELECT Version FROM accesslog")
 The one type SQLite's own tools do not say is a column its table declares
 with no type: ROOT types it by its first value, and here - the declared
 types found through a temporary view of the query - it is a blob.
+
+### Distributed RDataFrame
+
+Given a Dask client as its `executor`, `ROOT.RDataFrame` records the graph
+built on it and, when a result is asked for, cuts the data into
+`npartitions` ranges - empty entries evenly, trees at their cluster
+boundaries - runs the whole graph over each range as a Dask task, on
+xrdroot's own frame, and adds the tasks' results up: histograms bin by bin,
+counts and sums, means and standard deviations from their sums and counts,
+`AsNumpy`'s columns end to end, and a `Snapshot` as a file per task, read
+back as a distributed frame of them all. Dask is the `distrdf` extra
+(`pip install "xrdroot[distrdf]"`).
+
+```python
+import xrdroot.pyroot as ROOT
+from dask.distributed import Client
+
+client = Client()                                   # or a cluster's address
+df = ROOT.RDataFrame("Events", files, executor=client, npartitions=8)
+h = df.Filter("nMuon == 2").Histo1D(("m", "m", 100, 0, 200), "m")
+ROOT.RDF.RunGraphs([h, df.Count()])                 # several graphs at once
+
+ROOT.RDF.Distributed.initialize(setup, 42)          # run first in every task, and here
+ROOT.RDF.Distributed.DistributeCppCode("int twice(int x) { return 2 * x; }")
+ROOT.RDF.Distributed.DistributeHeaders(["helpers.h"])   # declared on every worker
+ROOT.RDF.Distributed.DistributeFiles(["weights.txt"])   # into each worker's directory
+```
+
+`ROOT.RDF.Distributed.Dask.RDataFrame(..., daskclient=client)` and
+`ROOT.RDF.Experimental.Distributed` are the older spellings, warned about
+as in ROOT. The operations are ROOT's distributed ones: a `Histo*D` needs
+its model, so that every task books the same bins. `DistributeSharedLibs`
+loads the `.xrdlib` libraries `xrdroot build library` makes, not compiled
+ones; `VariationsFor`, `LiveVisualize`, `FromSpec` and Spark are refused.
+`RDF.Experimental.RDatasetSpec` describes a dataset sample by sample, with
+friends and a range of entries, for a local or a distributed frame, and
+`RDF.RSnapshotOptions` is `Snapshot`'s fourth argument - `fAutoFlush`
+ending a cluster every so many entries.
 
 ## Writing
 

@@ -122,7 +122,7 @@ class Result:
     booked, and that one loop computes every result booked so far.
     """
 
-    __slots__ = ("_graph", "_action", "_value", "_ready", "_error")
+    __slots__ = ("_graph", "_action", "_value", "_ready", "_error", "_partial")
 
     def __init__(self, graph: _Graph, action: actions.Action) -> None:
         self._graph = graph
@@ -131,6 +131,9 @@ class Result:
         self._ready = False
         #: Why the loop computing this failed, raised again whenever it is asked for.
         self._error: BaseException | None = None
+        #: What a distributed task's loop left of this: its partial, not yet finished (see
+        #: :mod:`.distributed`).
+        self._partial: Any = None
 
     def __repr__(self) -> str:
         if not self._ready:
@@ -900,6 +903,7 @@ class RDataFrame:
         compression: str | None = "zlib",
         mode: str = "RECREATE",
         lazy: bool = False,
+        auto_flush: int = 0,
     ) -> Any:
         """Write the entries reaching here, and the columns asked for, to a new file.
 
@@ -908,6 +912,8 @@ class RDataFrame:
         an RNTuple with ``rntuple=True``. As in ROOT this runs the event loop
         now, with every other result booked, and gives back a frame over what
         it wrote; ``lazy=True`` gives a :class:`Result` of that frame instead.
+        ``auto_flush`` - ROOT's ``fAutoFlush`` - ends a cluster of the tree
+        every so many entries.
         """
         if mode not in MODES:
             raise ValueError(f"Snapshot's mode is one of {', '.join(MODES)}, not {mode!r}")
@@ -915,7 +921,9 @@ class RDataFrame:
         if not names:
             raise ValueError("Snapshot has no columns to write: name at least one")
         inputs = [self._column(name, "Snapshot") for name in names]
-        action = Snapshot(self._node, inputs, (tree_name, filename), rntuple, compression, mode)
+        action = Snapshot(
+            self._node, inputs, (tree_name, filename), rntuple, compression, mode, auto_flush
+        )
         result = _Reopened(self._graph.book(action), self._graph, names)
         return result if lazy else result.GetValue()
 

@@ -63,7 +63,7 @@ jobs:
         run: >-
           python tools/components.py isolate
           cppstd core hist spectrum fits io rdf geom graphics roofit roostats
-          histfactory tmva pycxx pyroot pycint app
+          histfactory tmva pycxx pyroot pycint cppyy app
       # Each declared scope runs in its own child with every import above its
       # component blocked, and the root fixtures in play: a lower component's
       # tests must not be pulled up by what the suite shares. Ordinary pytest

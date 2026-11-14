@@ -113,6 +113,18 @@ def _numeric_dtype(value: Any) -> bool:
     kind = type(value)
     return type(kind) is _DTYPE_META and kind in _DTYPE_CLASSES
 
+
+def _canonical(kind: Any) -> Any:
+    """The one dtype a C++ number type's class is built with: native byte order, no metadata.
+
+    A specialization is cached by its C++ name, which a big-endian or annotated dtype shares
+    with the plain one, so building from whichever dtype came first would hand that one's
+    byte order to every later ``vector<unsigned long>``."""
+    if not isinstance(kind, np.dtype):
+        return kind
+    name = _DTYPE_NAMES.get(kind.num, kind.name)
+    return np.dtype(name) if name in CPP_NAMES else kind
+
 #: What a Python type given as an element type stands for, as cppyy takes it.
 PYTHON_TYPES: dict[type, str] = {float: "float64", int: "int32", bool: "bool"}
 
@@ -380,7 +392,7 @@ class _Template:
         if self._arity == 1 and _numeric_dtype(arguments):
             key = (cpp_name(arguments),)
             if key not in self._made:
-                self._made[key] = self._build(arguments)
+                self._made[key] = self._build(_canonical(arguments))
             return self._made[key]
         return self._general(arguments)
 
@@ -394,13 +406,29 @@ class _Template:
         kinds = tuple(element_type(each) for each in given)
         key = tuple(cpp_name(kind) for kind in kinds)
         if key not in self._made:
-            self._made[key] = self._build(*kinds)
+            self._made[key] = self._build(*(_canonical(kind) for kind in kinds))
         return self._made[key]
 
     def __call__(self, *arguments: Any) -> Any:
+        """``std.vector(int)``: the class; ``std::vector{1, 2, 3}``, a list: one made from it,
+        its element type deduced as C++17 deduces it - from a list, or from the range two
+        iterators span."""
+        if self._arity == 1 and len(arguments) == 1 and isinstance(arguments[0], list):
+            return self[deduced(arguments[0])](arguments[0])
         if self._name == "vector" and len(arguments) == 2 and not any(map(_is_type, arguments)):
-            return _deduced(self, arguments[0], arguments[1])
+            return _ranged_vector(self, arguments[0], arguments[1])
         return self[arguments]
+
+
+def deduced(values: list[Any]) -> str:
+    """The element type C++17 deduces from a braced list of values: ``{1, 2}`` is ``int``."""
+    if values and all(isinstance(value, bool) for value in values):
+        return "bool"
+    if all(isinstance(value, (int, np.integer)) for value in values):
+        return "int"
+    if all(isinstance(value, str) for value in values):
+        return "std::string"
+    return "double"
 
 
 def _is_type(given: Any) -> bool:
@@ -408,18 +436,18 @@ def _is_type(given: Any) -> bool:
     return isinstance(given, (str, type, np.dtype))
 
 
-def _deduced(template: _Template, first: Any, last: Any) -> Any:
+def _ranged_vector(template: _Template, first: Any, last: Any) -> Any:
     """``std::vector(first, last)``: a vector of the range, its element type deduced from
-    what the iterators give, as C++17's class template argument deduction does."""
+    what the iterators give - a number's or a string's as a braced list's is, else the
+    class of the first element."""
     values: list[Any] = []
     at = copy.copy(first)
     while at != last:
         deref = getattr(at, "__deref__", None)
         values.append(deref() if deref is not None else at.value)
         at += 1  # ++it on the copy
-    kind = type(values[0]) if values else float
-    named = {float: "double", int: "long", bool: "bool", str: "std::string"}.get(kind)
-    return template[named or kind.__name__](values)
+    plain = all(isinstance(value, (int, float, np.number, str)) for value in values)
+    return template[deduced(values) if plain else type(values[0]).__name__](values)
 
 
 class _Vector(_Container):
@@ -1166,6 +1194,10 @@ class _ArrayTemplate:
 
         return made
 
+    def __call__(self, values: list[Any]) -> Any:
+        """``std::array{1, 2, 3}``: its element type and size deduced from the list."""
+        return self[deduced(values), len(values)](values)
+
 
 class _Stream:
     """``std::cout`` and ``std::cerr``: what ``<<`` is given, written as text."""
@@ -1229,8 +1261,19 @@ class _Namespace:
         return value
 
     def __getattr__(self, name: str) -> Any:
+        """The streams' other names - ``std.ostream``, ``std.ostringstream``, ``std.setw`` -
+        or a refusal by name."""
+        from . import streams
+
+        if name in STREAM_NAMES:
+            return getattr(streams, name)
         raise AttributeError(f"ROOT has std.{name}; xrdroot.pyroot does not yet")
 
+
+#: The names of :mod:`.streams` ``std`` has, besides the two its class holds itself.
+STREAM_NAMES = frozenset({"ostream", "ostringstream", "clog", "flush", "fixed", "scientific",
+                          "setw", "setprecision", "setfill", "left", "right", "boolalpha",
+                          "hex", "dec", "oct"})  # fmt: skip
 
 #: ``ROOT.std``.
 std = _Namespace()

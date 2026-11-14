@@ -28,11 +28,11 @@ from typing import Any
 from ...errors import ROOTError
 from .collections import TList
 from .directories import TDirectory, current_directory, set_current
-from .messages import message
+from .messages import from_script, message
 from .objects import Indent, TNamed, TObject, templated
 from .wrapping import from_members, unwrap, wrap
 
-__all__ = ["TFile", "TMemFile", "TDirectoryFile", "TKey"]
+__all__ = ["TFile", "TFileOpenHandle", "TMemFile", "TDirectoryFile", "TKey"]
 
 #: ``TFile``'s modes, as ROOT reads the option: upper-cased, with its synonyms.
 MODES = {
@@ -512,6 +512,16 @@ def _fetched(name: str) -> Any:
     return io.BytesIO(fetch(name)) if is_remote(name) else name
 
 
+class TFileOpenHandle(TNamed):
+    """``TFileOpenHandle``: a file ``AsyncOpen`` was asked to open, opened by ``Open``."""
+
+    def __init__(
+        self, name: Any = "", option: Any = "READ", ftitle: Any = "", compress: int = 101
+    ) -> None:
+        super().__init__(str(name), str(ftitle))
+        self._args = (str(name), option, ftitle, compress)
+
+
 class TFile(TDirectoryFile):
     """``TFile``: a ROOT file - read, made anew, or added to - and the directory at its top."""
 
@@ -532,6 +542,8 @@ class TFile(TDirectoryFile):
         self._writing: Any = None
         self._zombie = False
         self._open(name)
+        if self._zombie and from_script():  # PyROOT's pythonization of the constructor
+            raise OSError(f"Failed to open file {name}")
         if not self._zombie:
             from .troot import gROOT
 
@@ -582,9 +594,20 @@ class TFile(TDirectoryFile):
     def Open(
         name: Any, option: Any = "READ", ftitle: Any = "", compress: int = 101, netopt: int = 0
     ) -> Any:
-        """``TFile::Open``: the file, or ``None`` - a null pointer - if it would not open."""
+        """``TFile::Open``: the file, or ``None`` - a null pointer - if it would not open.
+
+        ``name`` may be what ``AsyncOpen`` gave, which opens now as it was asked to then."""
+        if isinstance(name, TFileOpenHandle):
+            name, option, ftitle, compress = name._args
         made = TFile(name, option, ftitle, compress)
         return None if made.IsZombie() else made
+
+    @staticmethod
+    def AsyncOpen(
+        name: Any, option: Any = "READ", ftitle: Any = "", compress: int = 101, netopt: int = 0
+    ) -> TFileOpenHandle:
+        """``TFile::AsyncOpen``: a handle to open the file with later, by ``TFile::Open``."""
+        return TFileOpenHandle(name, option, ftitle, compress)
 
     @staticmethod
     def Cp(src: Any, dst: Any, progressbar: Any = True, buffersize: Any = 1000000) -> bool:

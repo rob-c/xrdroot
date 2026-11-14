@@ -132,6 +132,11 @@ class Booked:
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         from .objects import TObject
 
+        if len(args) == 1 and isinstance(args[0], dict) and "uhi_schema" in args[0]:
+            from .._pythonization._uhi.serialization import _TH1_Constructor
+
+            _TH1_Constructor(self, args[0])  # UHI's dictionary of a histogram
+            return
         TObject.__init__(self)  # type: ignore[arg-type]
         args = positional(args, kwargs)
         self._directory: Any = None

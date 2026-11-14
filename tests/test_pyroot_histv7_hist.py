@@ -56,6 +56,12 @@ def test_skewness_and_kurtosis_are_roots_standardized_moments_or_nan() -> None:
            pytest.approx(kurt)), (math.isnan(flat.ComputeSkewness()), True),
            (math.isnan(empty.ComputeKurtosis()), True), (math.isnan(empty.ComputeVariance()), True),
            (math.isnan(empty.ComputeStdDev()), True))
+
+
+def test_statistics_scale_skip_a_disabled_dimension_and_round_to_nan() -> None:
+    stats = E.RHistStats(1)
+    for x in (1.0, 2.0, 2.0, 7.0):
+        stats.Fill(x)
     stats.Scale(2.0)
     disabled = E.RHistStats(2)
     disabled.DisableDimension(0)

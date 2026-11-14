@@ -25,6 +25,7 @@ in it, and a weight going into one is cut to a whole number first.
 from __future__ import annotations
 
 import bisect
+import math
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -234,16 +235,21 @@ def _global_one(bins: Sequence[int], widths: Sequence[int]) -> int:
     return cell
 
 
-def fill_one(histogram: Histogram, coordinates: Sequence[float], weight: float) -> int | None:
-    """``TH1::Fill`` of one entry, in plain floats - the same doubles :func:`fill_histogram`
-    adds, without the cost of arrays of one; the global bin it went to comes back.
+def _add_one_cell(cells: Any, cell: int, weight: float) -> None:
+    """One weight added to one bin as :func:`_fill_cells` adds it: in a float bin's own
+    precision, or as ``Int_t(w)`` into an integer bin, which saturates."""
+    if cells.dtype.kind == "f":
+        cells[cell] += cells.dtype.type(weight)
+        return
+    step = math.trunc(min(max(0.0 if weight != weight else weight, -_STEP), _STEP))
+    top = LIMITS[cells.dtype]
+    cells[cell] = min(max(int(cells[cell]) + step, -top), top)
 
-    ``None`` says it was left to :func:`fill_histogram`: integer bins saturate,
-    which that walks with care.
-    """
+
+def fill_one(histogram: Histogram, coordinates: Sequence[float], weight: float) -> int:
+    """``TH1::Fill`` of one entry, in plain floats - the same doubles :func:`fill_histogram`
+    adds, without the cost of arrays of one; the global bin it went to comes back."""
     cells = histogram._cells()
-    if cells.dtype.kind != "f":
-        return None
     squares = histogram._sumw2()
     if weight != 1.0 and squares is None:
         squares = histogram._ensure_sumw2()  # before the first weight that is not one
@@ -251,7 +257,7 @@ def fill_one(histogram: Histogram, coordinates: Sequence[float], weight: float) 
     cell = _global_one(bins, histogram._widths)
     core = histogram._core
     core["fEntries"] = float(core["fEntries"]) + 1
-    cells[cell] += cells.dtype.type(weight)
+    _add_one_cell(cells, cell, weight)
     if squares is not None:
         squares[cell] += weight * weight
     if all(1 <= found <= axis.nbins for found, axis in zip(bins, histogram.axes, strict=False)):

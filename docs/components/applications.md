@@ -33,6 +33,23 @@ engine object or plain arrays to a wrapper is preferred to making a lower
 engine import the ROOT namespace. Existing public ROOT classes are documented
 in the [ROOT API guide](../root.md).
 
+## cppyy
+
+cppyy owns `xrdroot.cppyy`: cppyy's interface - `cppdef`, `include`,
+`load_library`, `gbl`, `addressof`, `bind_object`, `nullptr`, `ll`, `py` -
+over [pycint](pycint.md), ROOT's dialect of the translator, so that
+`cppyy.gbl.X` is the object `ROOT.X` is. It depends on cppstd, pyroot and
+pycint; only app depends on it. `xrdroot run` and the suite's shim make
+`import cppyy` this module through `xrdroot.cli.shims` when no real cppyy is
+installed, and only when a script imports it: `import ROOT` never does.
+
+```python
+import xrdroot.cppyy as cppyy
+
+cppyy.cppdef("struct Point { int x = 2; };")
+assert cppyy.gbl.Point().x == 2
+```
+
 ## app
 
 App owns `xrdroot/__init__.py`, `cli`, `__main__` and the public application

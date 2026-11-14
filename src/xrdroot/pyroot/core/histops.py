@@ -11,6 +11,7 @@ of ``FillRandom`` and ``GetRandom`` are ``gRandom``'s.
 from __future__ import annotations
 
 import itertools
+import math
 from typing import Any
 
 import numpy as np
@@ -21,6 +22,14 @@ from .refs import store
 from .wrapping import unwrap, wrap
 
 __all__: list[str] = []
+
+
+def _emptied_profile(histogram: Any, cells: int) -> None:
+    """A profile's own arrays of one number per bin, its weights and their squares, emptied
+    to ``cells`` bins; nothing for any other histogram."""
+    for name in ("fBinEntries", "fBinSumw2"):
+        if len(histogram.members.get(name, ())):
+            histogram.members[name] = np.zeros(cells)
 
 
 def _kept(made: Any) -> Any:
@@ -109,6 +118,7 @@ class Operations:
     GetName: Any
     GetTitle: Any
     SetName: Any
+    GetDimension: Any
 
     # -- copies ---------------------------------------------------------------------------
 
@@ -290,6 +300,31 @@ class Operations:
             return _kept(made)
         self._replace(made)
         return self
+
+    def Rebin3D(
+        self, nxgroup: int = 2, nygroup: int = 2, nzgroup: int = 2, newname: str = ""
+    ) -> Any:
+        groups = (int(nxgroup), int(nygroup), int(nzgroup))
+        made = self._xrd.rebin(*groups, name=str(newname) if newname else None)
+        if newname:
+            return _kept(made)
+        self._replace(made)
+        return self
+
+    def SetBins(self, *args: Any) -> None:
+        """``SetBins(nx, xlow, xup[, ny, ylow, yup[, nz, zlow, zup]])``, any axis a count and
+        an array of its edges instead: the axes made anew and every bin emptied, as ROOT's."""
+        from ...booking import binning
+        from ...reshaping import _rebuilt
+        from .histcore import axis_specs
+
+        specs, _rest = axis_specs(args, self.GetDimension())
+        binnings = [binning(spec) for spec in specs]
+        cells = math.prod(b.nbins + 2 for b in binnings)
+        _emptied_profile(self._xrd, max(cells, len(self._xrd._bins)))  # emptied all the same
+        made = _rebuilt(self._xrd, binnings, None)
+        _emptied_profile(made, cells)
+        self._replace(made)
 
     def RebinY(self, ngroup: int = 2, newname: str = "") -> Any:
         return self.Rebin2D(1, ngroup, newname)

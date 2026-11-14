@@ -373,12 +373,15 @@ def _copy_to_build(files: Iterable[Path], directory: Path) -> None:
 
 
 def _directories(tests: Iterable[Test]) -> list[str]:
-    """The source directories the tests use, below ROOT's tree."""
+    """The source directories the tests use, below ROOT's tree - and each one's parent, whose
+    files a test reaches as ``../`` (``roottest/python``'s ``common.py``, which every test
+    there imports from its parent)."""
     found: set[str] = set()
     for test in tests:
         found.update((test.directory, test.working_dir))
         found.update(str(Path(name).parent) for name in (*test.files, *test.copy))
         found.update(build[0] for build in test.builds)
+    found.update([str(Path(name).parent) for name in found])
     return sorted(name for name in found if name and name != "." and not name.startswith("/"))
 
 
