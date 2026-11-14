@@ -33,6 +33,28 @@ def _split(name: str, tree: str) -> tuple[str, str]:
     return str(name), tree
 
 
+def _synced(entries: Any, files: list[tuple[str, str]]) -> None:
+    """Each sub-list of ``entries`` numbered by the file of the chain it is of, refusing as
+    ``TChain::SetEntryList(..., "sync")`` refuses lists that are not the chain's files."""
+    from ...cppstd.objects import CppRuntimeError as RuntimeError  # noqa: A001 - C++'s
+
+    where = "In 'TChain::SetEntryList': "
+    lists = entries._lists
+    if lists is None:
+        raise RuntimeError(f"{where}the input TEntryList doesn't have sub entry lists. Please "
+                           "make sure too add them through TEntryList::AddSubList")
+    if len(lists) != len(files):
+        raise RuntimeError(f"{where}the number of sub entry lists in the input TEntryList "
+                           f"({len(lists)}) is not equal to the number of files in the chain "
+                           f"({len(files)})")
+    for index, (sub, (path, tree)) in enumerate(zip(lists, files, strict=True)):
+        if (sub.GetTreeName(), sub.GetFileName()) != (tree, path):
+            raise RuntimeError(f"{where}the sub entry list at index {index} doesn't correspond to "
+                               f"treename '{tree}' and filename '{path}': it has treename "
+                               f"'{sub.GetTreeName()}' and filename '{sub.GetFileName()}'")
+        sub.SetTreeNumber(index)
+
+
 class TChain(TTree):
     """``TChain``: see the module's docstring."""
 
@@ -88,6 +110,13 @@ class TChain(TTree):
 
     def AddFile(self, name: str, nentries: int = -1, tname: str = "") -> int:
         return self.Add(f"{name}/{tname}" if tname else name)
+
+    def SetEntryList(self, entries: Any, option: str = "") -> None:
+        """``SetEntryList(list[, "sync"])``: go through those entries; with ``"sync"`` the
+        list's sub-lists are the chain's files in order, each numbered as its file is."""
+        if entries is not None and "sync" in str(option).lower():
+            _synced(entries, self._files)
+        super().SetEntryList(entries, option)
 
     def GetNtrees(self) -> int:
         return len(self._files)
