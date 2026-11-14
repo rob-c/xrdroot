@@ -171,3 +171,20 @@ def test_a_char_array_a_library_writes_into_is_a_buffer() -> None:
     assert "u = ''" in python
     buffer = text_into(array("char", 10), "onetwo")
     assert with_char(buffer, 3, 0, True) is buffer and str(buffer) == "one"
+
+
+def test_an_object_moved_by_its_base_offset_is_itself_at_offset_zero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    body = """
+struct B { int v = 7; };
+struct D : B { int w = 1; };
+template <typename T> int peek(T *obj, unsigned off) {
+   obj = (T *)(((char *)obj) - off);
+   return obj->v;
+}
+int main() { D d; printf("%d\\n", peek<D>(&d, 0)); return peek<D>(&d, 8); }
+"""
+    with pytest.raises(MacroError, match="moved by -8 bytes, into the middle of it"):
+        run(tmp_path, capsys, body)
+    assert capsys.readouterr().out == "7\n"

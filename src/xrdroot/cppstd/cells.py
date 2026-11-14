@@ -22,7 +22,8 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["Cell", "Static", "ItemRef", "AttrRef", "address_of", "pointer_at", "integer_cast"]
+__all__ = ["Cell", "Static", "ItemRef", "AttrRef", "address_of", "pointer_at", "integer_cast",
+           "byte_offset"]
 
 
 class Cell:
@@ -162,3 +163,15 @@ def integer_cast(value: Any) -> int:
     if isinstance(value, (int, float)) or any(hasattr(value, name) for name in NUMBERS):
         return int(value)
     return address_of(value)
+
+
+def byte_offset(obj: Any, offset: Any) -> Any:
+    """``(char*)obj + offset``: the object itself when the offset is none - a base class at
+    the start of the object, as single inheritance puts it; any other offset is the middle
+    of an object, which here has no address of its own."""
+    if int(offset) == 0:
+        return obj
+    raise ValueError(
+        f"an object's address moved by {int(offset)} bytes, into the middle of it, which "
+        "names nothing here: only an offset of 0 - a base at the object's start - is followed"
+    )

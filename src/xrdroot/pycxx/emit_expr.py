@@ -323,12 +323,28 @@ class ExprEmitter(NameEmitter):
     def _offset(self, node: Binary) -> Out:
         left = self.typeof(node.left)
         assert left is not None
+        moved = self._object_bytes(node)
+        if moved is not None:
+            return moved, P.POSTFIX
         if left.is_string and node.op == "+" and not left.dims:
             # ``slash + 1``: the C string from there on, which is what reading it gives.
             return f"{self.at(node.left, P.POSTFIX)}[{self.value(node.right)}:]", P.POSTFIX
         if node.op == "-" or left.is_string or not left.element().scalar:
             raise self.refuse(f"pointer arithmetic on a {_spelled(left)}", node)
         return f"{self.at(node.left, P.POSTFIX)}[{self.value(node.right)}:]", P.POSTFIX
+
+    def _object_bytes(self, node: Binary) -> str | None:
+        """``(char*)obj - offset``: an object's address moved by bytes - to a base class's
+        part, as ``GetBaseClassOffset`` gives it. Moved by none it is the object; by more,
+        refused as it runs, as no other object is there (``byte_offset``)."""
+        cast = node.left
+        if not (isinstance(cast, Cast) and cast.ctype.is_string and cast.ctype.pointer):
+            return None
+        source = self.typeof(cast.operand)
+        if source is None or not source.is_object_pointer or source.is_string:
+            return None
+        sign = "-" if node.op == "-" else ""
+        return f"byte_offset({self.value(cast.operand)}, {sign}({self.value(node.right)}))"
 
     def _streams(self, node: Binary) -> bool:
         root = node.left
