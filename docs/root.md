@@ -1169,11 +1169,42 @@ ROOT: a new label takes the next free bin, a full axis doubles, and
 | the session | `gROOT` (`SetBatch`, `IsBatch`, `GetListOfFiles`/`Canvases`/`Functions`/`Styles`, `FindObject`, `GetFunction`, `SetStyle`, `ProcessLine` and `gInterpreter.Declare` through `xrdroot.pycint`, `Reset`, `GetVersion` as `6.40.04`, `GetTutorialDir` from `$ROOT_TUTORIAL_DIR`), `gDirectory`, `TDirectory.TContext`, `gSystem` (`Load` and `AddIncludePath` succeed and do nothing; `Getenv`, `Setenv`, `Exec`, `AccessPathName` - true when the path is **not** there, as ROOT's is - `mkdir`, `Which`, `BaseName`, `DirName`, `ProcessEvents`, `Sleep`...), `ROOT.ROOT.EnableImplicitMT`, `TSeqI`, `Float_t`/`Int_t` and the other number types as casts, `Info`/`Warning`/`Error`, `SetOwnership`, `nullptr` |
 | text and time | `TString` (a string that changes in place: `ReplaceAll`, `Append`, `ToLower`, `Contains`, `Tokenize`, `Form`, `TString.Format`...), `Form` and `Printf` with `printf`'s formats, `TStopwatch`, `TBenchmark`/`gBenchmark`, `TDatime` |
 | files | `TFile`, `TMemFile` (a file written in memory, `GetSize`, `CopyTo`, and read back from its bytes), `TDirectoryFile` (`Get`, `d["name"]` - kept in `_cached_items` once found - `GetListOfKeys`, `GetKey`, `mkdir`, `cd`, `GetDirectory`, `Write`, `WriteObject`, `ls`, `Close`, a context manager), `TKey` (`GetName`, `GetClassName`, `GetCycle`, `ReadObj`) |
-| histograms | `TH1`/`TH2`/`TH3` in `C`, `S`, `I`, `F` and `D` (arguments by position or by name, `nbinsx=`...), `TProfile`, `TProfile2D`, `TProfile3D`: `Fill`, `FillN`, `Get`/`SetBinContent` and `Error` by global or per-axis bin, `GetBin`, `FindBin`, `GetMean`, `GetStdDev`, `GetRMS`, `GetEntries`, `Integral`, `IntegralAndError`, `GetMaximum`/`MaximumBin`, `SetMaximum`/`Minimum`, `Scale`, `Add`, `Multiply`, `Divide`, `Rebin`, `ProjectionX`/`Y`, `ProfileX`/`Y`, `Project3D`, `GetCumulative`, `Fit`, `GetFunction`, `FillRandom`, `GetRandom`, `KolmogorovTest`, `Chi2Test`, `Smooth`, `Sumw2`, `Reset`, `SetStats`, `Print`; `TAxis` (`SetTitle`, `SetRange`, `SetRangeUser`, `SetBinLabel`, `GetBinCenter`...); `THStack`; UHI's `values()`, `variances()`, `h[...]` |
+| histograms | `TH1`/`TH2`/`TH3` in `C`, `S`, `I`, `L`, `F` and `D` (arguments by position or by name, `nbinsx=`...), `TProfile`, `TProfile2D`, `TProfile3D`: `Fill`, `FillN`, `Get`/`SetBinContent` and `Error` by global or per-axis bin, `GetBin`, `FindBin`, `GetMean`, `GetStdDev`, `GetRMS`, `GetEntries`, `Integral`, `IntegralAndError`, `GetMaximum`/`MaximumBin`, `SetMaximum`/`Minimum`, `Scale`, `Add`, `Multiply`, `Divide`, `Rebin`, `ProjectionX`/`Y`, `ProfileX`/`Y`, `Project3D`, `GetCumulative`, `Fit`, `GetFunction`, `FillRandom`, `GetRandom`, `KolmogorovTest`, `Chi2Test`, `Smooth`, `Sumw2`, `Reset`, `SetStats`, `Print`; `TAxis` (`SetTitle`, `SetRange`, `SetRangeUser`, `SetBinLabel`, `GetBinCenter`...); `THStack`; `SetBins`, `Rebin2D`, `Rebin3D`; `TProfile2Poly`; UHI's `values()`, `variances()`, `h[...]` (below) |
 | graphs | `TGraph`, `TGraphErrors`, `TGraphAsymmErrors` (`SetPoint` past the end grows it, `GetPoint`, `GetX`, `SetPointError`, `Eval`, `Fit`, `GetHistogram` - ROOT's frame, a tenth wider than the points), `TMultiGraph` |
 | functions and fits | `TF1`, `TF2`, `TF3`, `TFormula` - from a formula, or from a Python `fn(x, p)` as PyROOT calls it - with `SetParameters`, `SetParNames`, `SetParLimits`, `FixParameter`, `Eval`, `Integral`, `Derivative`, `GetMaximumX`, `GetX`, `GetRandom`, `Moment`; `TFitResultPtr` and `TFitResult` (`Parameter`, `ParError`, `Chi2`, `Ndf`, `Prob`, `GetCovarianceMatrix`, `Print`); `TVirtualFitter.GetFitter().GetConfidenceIntervals`, the latest fit's band; `IntegralError`; `TEfficiency` |
 | mathematics | `TMath`, `ROOT.Math` (its distributions, `MinimizerOptions`, and GenVector's `PtEtaPhiMVector`, `PxPyPzEVector`, `XYZVector`... kept in their own coordinates and printed as `operator<<` prints them, with `VectorUtil`), `TVector2`, `TVector3`, `TRotation`, `TLorentzVector`, `TRandom`, `TRandom1`, `TRandom2`, `TRandom3` |
 | containers | `TList`, `TObjArray`, `THashList`, `THashTable`, `TIter` - each with a Python list's `append`, `extend`, `remove`, `count`, `+` and `*`, and the ordered ones `insert`, `pop`, `reverse`, `sort`, `index` and `[i]`/`[i:j:k]` to read, assign and delete - `TObjString` (compared, measured and shown as its string); `TVectorT[float]`, which is `TVectorD`; `TArray`s and `TVectorD` raise `IndexError` past their ends |
+
+**UHI, as PyROOT has it.** ROOT's histograms speak the
+[Unified Histogram Interface](https://uhi.readthedocs.io) the way ROOT 6.40's
+own pythonizations do, with ROOT's tags from `ROOT.uhi`, so `mplhep`, `hist`
+and UHI's writers take them as they are:
+
+```python
+from ROOT.uhi import loc, overflow, rebin, underflow
+
+h[3], h[loc(1.5)], h[underflow], h[len]  # one bin's GetBinContent; len is the overflow
+h[2:8], h[::rebin(2)]                     # a new TH1D of the same name
+h[::sum], h[0:len:sum]                    # Integral(0, nbins + 1), Integral(1, nbins)
+h2[:, ROOT.uhi.sum], h3[::sum, :, :]     # ProjectionX(), Project3D("zy")
+h[...] = counts                           # inside the flow; with two more, the flow too
+h.values(), h.values(writable=True)       # the bins themselves: read-only, or not
+h.kind, h.axes, h.variances(), h.counts()
+json.dumps(h, default=uhi.io.json.default); ROOT.TH1D(ir); ROOT.TH1D._from_uhi_(ir)
+```
+
+A slice is ROOT's `ROOT::Internal::Slice`: what it leaves out is gathered
+into the new histogram's first and last bins, not each axis's own flow, and
+its statistics are made again from the bins (`ResetStats`). Two things are
+better than ROOT's: a slice cuts the squares of the weights, and a profile's
+weights, with its bins, where ROOT keeps stale ones; and a profile's
+`variances()` and `counts()` are the variance of each bin's mean and its
+effective entries, where ROOT's are not. Iterating gives every bin, the flow
+too. A histogram of bytes, or a profile, gives its values as a copy and
+refuses `writable=True`. A profile is written to UHI as a weighted mean but
+not read back from one, and a `TProfile2Poly`, seen through the 100 by 100
+grid every `TH2Poly` lays over its range, is neither sliced, set nor written.
+`xrdroot.Histogram`'s own indexing, above, is UHI's standard one.
 
 The namespace is put together from `xrdroot.pyroot.SUBMODULES`: this core,
 the trees (`TTree`, `TChain`, `RDataFrame`...), the STL stand-ins, RDF and
