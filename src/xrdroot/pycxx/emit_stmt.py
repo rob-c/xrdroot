@@ -902,9 +902,8 @@ class StmtEmitter(CallEmitter):
 def _texts(ctype: CType) -> bool:
     """Is ``ctype`` a string a character is appended to: a ``std::string``, a character array,
     or one of the dialect's string classes?"""
-    if ctype.pointer and not ctype.dims:
-        return False
-    return ctype.is_string or ctype.name in active().string_classes
+    held = not ctype.pointer or bool(ctype.dims)  # a pointer's ``+=`` moves it instead
+    return held and (ctype.is_string or ctype.name in active().string_classes)
 
 
 def _is_default(labels: list[Case]) -> bool:
