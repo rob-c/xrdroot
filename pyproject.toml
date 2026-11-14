@@ -519,6 +519,13 @@ statement = "from iminuit._core import MnContours"
 target = "iminuit._core"
 reason = "ROOT Contour uses the minimum's exact error level; the public mncontour rescales confidence and can recompute HESSE. Preserve the existing algorithm."
 
+[[tool.xrdroot.components.private_imports]]
+caller = "xrdroot.fit.minuit"
+scope = "core"
+statement = "import iminuit._core as module"
+target = "iminuit._core"
+reason = "ROOT::Minuit2's API (MnMigrad, MnMinos, MnUserParameterState, FunctionMinimum) is Minuit2's C++, which iminuit binds there; its public Minuit class hides those classes."
+
 # Callback injection is an explicit adapter edge, never a generic upward import.
 [tool.xrdroot.components.registration_functions."xrdroot.cppstd.containers.set_type_resolver"]
 position = 0

@@ -50,6 +50,7 @@ SUBMODULES = [
     "xmlengine",
     "vectors",
     "linalg",
+    "minuit2",
     "fitshdu",
     "graphics.images",
     "tmva",
