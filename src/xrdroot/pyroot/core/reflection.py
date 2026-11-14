@@ -263,6 +263,11 @@ class TClass(TNamed):
         """``GetActualClass``: the class the object really is, one derived from this or this."""
         return obj.IsA() if isinstance(obj, TObject) else self
 
+    def GetBaseClassOffset(self, base: Any) -> int:
+        """``GetBaseClassOffset``: where ``base``'s part of this class starts - 0 here, where
+        an object is all its classes at once - or -1 when ``base`` is not one of them."""
+        return 0 if self.InheritsFrom(base) else -1
+
     # -- layout -----------------------------------------------------------------------------
 
     def _layout(self) -> tuple[int, int, tuple[Element, ...]] | None:

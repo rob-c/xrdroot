@@ -313,9 +313,23 @@ class ExprEmitter(NameEmitter):
         if left.is_string and node.op == "+" and not left.dims:
             # ``slash + 1``: the C string from there on, which is what reading it gives.
             return f"{self.at(node.left, P.POSTFIX)}[{self.value(node.right)}:]", P.POSTFIX
+        whole = self._object_bytes(node.left)
+        if whole is not None:
+            # ``(char*)obj - offset``: moving between an object and a base class's part of
+            # it, which are the one Python object - the offset ``TClass`` gives is 0.
+            return self.expr(whole)
         if node.op == "-" or left.is_string or not left.element().scalar:
             raise self.refuse(f"pointer arithmetic on a {_spelled(left)}", node)
         return f"{self.at(node.left, P.POSTFIX)}[{self.value(node.right)}:]", P.POSTFIX
+
+    def _object_bytes(self, node: Expr) -> Expr | None:
+        """``(char*)obj`` of a pointer to an object: the object, whose bytes it walks."""
+        if not isinstance(node, Cast) or not _c_string(node.ctype):
+            return None
+        found = self.typeof(node.operand)
+        if found is None or found.pointer != 1 or found.arithmetic or found.is_string:
+            return None
+        return node.operand
 
     def _streams(self, node: Binary) -> bool:
         root = node.left

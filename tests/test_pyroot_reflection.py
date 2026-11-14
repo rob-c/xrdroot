@@ -190,6 +190,7 @@ def test_a_class_is_made_and_unmade_and_its_methods_listed():
     expect(
         ((made.ClassName(), named.GetActualClass(made)), ("Named", named)),
         (ROOT.TClass.GetClass("Plain").GetActualClass(3).GetName(), "Plain"),
+        ((named.GetBaseClassOffset("TNamed"), named.GetBaseClassOffset("TH1")), (0, -1)),
         (named.GetMethodAny("Class_Name").GetName(), "Class_Name"),
         (named.GetMethodAllAny("Nope"), None),
         ((named.Size() > 0, named.GetClassSize() == named.Size(), named.CanSplit()), (True,) * 3),

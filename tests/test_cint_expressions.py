@@ -64,6 +64,7 @@ def method(source: str) -> str:
         ("unsigned u = 3; unsigned v = u << 2; unsigned w = u >> 1;", "v = u << 2"),
         ("bool ok = !h; bool bad = !x;", "bad = not ROOT.x"),
         ("TH1F *h = nullptr; bool ok = !h; if (h && !h->IsZombie()) {}", "if h is not None and"),
+        ("TH1F *h = nullptr; h = (TH1F *)(((char *)h) - 8);", "h = h"),
     ],
 )
 def test_expressions_become_the_python_that_does_the_same(source: str, fragment: str) -> None:
