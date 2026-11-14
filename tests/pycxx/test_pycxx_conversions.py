@@ -1,4 +1,5 @@
-"""A class's conversion to a number - ``operator unsigned int()``, ``operator double()``.
+"""Values made as C++ makes them: a class converted to a number - ``operator unsigned
+int()``, ``operator double()`` - and a lambda's capture of a value, ``[n = expr]``.
 
 The expected output is what ROOT 6.40.04's cling prints for the same program.
 """
@@ -68,3 +69,22 @@ def test_an_operator_of_the_class_itself_is_kept() -> None:
     assert (one + 1, 1 + one, -one, one * 2, 7 - one, float(one), +one) == (
         "own", "right", "minus", 6, 4, 3.0, 3)  # fmt: skip
     assert one.__index__() == 3 and [0, 1, 2, 3][one] == 3
+
+
+def test_a_lambda_capture_that_names_a_value_holds_it_from_when_it_was_made(capsys) -> None:
+    source = r"""
+    #include <cstdio>
+    #include <vector>
+    int lam() {
+       int base = 10;
+       auto f = [n = base * 2, m = 3](int x) { return n + m + x; };
+       base = 0;
+       std::vector<int> v{1, 2, 3};
+       auto g = [s = v.size()]() { return (int)s; };
+       v.push_back(4);
+       printf("%d %d %d\n", f(1), g(), (int)v.size());
+       return 0;
+    }
+    """
+    run_source(source, "lam.C")
+    assert capsys.readouterr().out == "24 3 4\n"

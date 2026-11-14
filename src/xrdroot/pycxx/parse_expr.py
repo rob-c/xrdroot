@@ -482,12 +482,13 @@ class ExprParser(TypeParser):
         params: list[Param] = []
         if self.at_("("):
             params, _ = self.parameters()
-        while self.accept("mutable", "constexpr", "noexcept"):
-            pass
+        mutable = False
+        while self.at_("mutable", "constexpr", "noexcept"):
+            mutable = self.take().text == "mutable" or mutable
         returns = None
         if self.accept("->"):
             returns = self.type_id()
-        return Lambda(where, captures, params, self.block(), returns)
+        return Lambda(where, captures, params, self.block(), returns, mutable)
 
     def _capture(self) -> Capture:
         where = self.where
@@ -504,7 +505,9 @@ class ExprParser(TypeParser):
             return Capture(where, "&", True)
         name = self.identifier()
         if self.accept("="):
-            raise self.refuse(f"the lambda capture {name} = ..., which initialises a new name")
+            if byref:
+                raise self.refuse(f"the lambda capture &{name} = ..., a new reference")
+            return Capture(where, name, False, self.initializer_value())
         return Capture(where, name, byref)
 
     def braced(self) -> InitList:

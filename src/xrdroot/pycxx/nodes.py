@@ -200,10 +200,12 @@ class Delete(Expr):
 
 @dataclass(eq=False)
 class Capture(Node):
-    """One capture of a lambda: a name, or ``&``/``=`` for everything, by reference or not."""
+    """One capture of a lambda: a name, or ``&``/``=`` for everything, by reference or not;
+    ``[n = 0]`` a new name, given its value as the lambda is made."""
 
     name: str
     byref: bool
+    init: Expr | None = None
 
 
 @dataclass(eq=False)
@@ -212,6 +214,8 @@ class Lambda(Expr):
     params: list[Param]
     body: Block
     returns: CType | None = None
+    #: Whether it is ``mutable``: a by-value capture it changes stays changed for its next call.
+    mutable: bool = False
 
 
 @dataclass(eq=False)

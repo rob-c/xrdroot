@@ -18,7 +18,7 @@ from .base import Out, P
 from .ctype import CType
 from .dialect import active
 from .emit_vars import Context, VariableEmitter, addressable
-from .nodes import Function, InitList, Lambda, Name, Param, VarDecl
+from .nodes import Capture, Function, InitList, Lambda, Name, Param, VarDecl
 from .nrvo import candidate
 from .program import by_reference
 
@@ -199,12 +199,17 @@ class FunctionEmitter(VariableEmitter):
         """A lambda as a ``def`` written just before the statement that uses it."""
         py = self.fresh("lambda")
         outer_cells = self.cell_names()
+        inits = self._initialised(node)
         context = Context(node, node.returns, kind="lambda", cells=set(outer_cells))
         self.contexts.append(context)
         try:
             with self.scoped("function", function=node):
                 params = self.parameters(node.params, False)
                 params.extend(self._captured(node))
+                for capture, value in inits:
+                    ctype = self.typeof(capture.init) if capture.init is not None else None
+                    symbol = self.declare(capture.name, "param", ctype)
+                    params.append(f"{symbol.py}={value}")
                 self.out.line(f"def {py}({', '.join(params)}):", node.where)
                 with self.out.indented():
                     self._lambda_body(node, context)
@@ -222,11 +227,21 @@ class FunctionEmitter(VariableEmitter):
             self.loops = saved
         self._declare_scopes(context, head, node)
 
+    def _initialised(self, node: Lambda) -> list[tuple[Capture, str]]:
+        """``[n = expr]``: each new name and its value, worked out where the lambda is made -
+        bound as a default, as ``[x]`` is. A ``mutable`` lambda would keep a change to one
+        for its next call, which a default does not, and is refused."""
+        inits = [capture for capture in node.captures if capture.init is not None]
+        if inits and node.mutable:
+            raise self.refuse(f"the mutable lambda's capture {inits[0].name} = ...", node)
+        return [(capture, self.value(capture.init)) for capture in inits
+                if capture.init is not None]  # fmt: skip
+
     def _captured(self, node: Lambda) -> list[str]:
         """``[x]`` captures ``x`` by value: bound now, as a default, not looked up later."""
         found = []
         for capture in node.captures:
-            if capture.byref or capture.name in ("=", "&", "this"):
+            if capture.byref or capture.init is not None or capture.name in ("=", "&", "this"):
                 continue
             symbol = self.lookup(capture.name)
             if symbol is not None and symbol.kind in ("local", "param") and not symbol.cell:
