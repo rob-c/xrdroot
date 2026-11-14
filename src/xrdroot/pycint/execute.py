@@ -136,6 +136,10 @@ def _add_dynamic_path(directory: str) -> None:
 DEFINES: list[str] = []
 
 #: A directive that defines or undefines a macro.
+#: A line that declares - a namespace, a class, a template - which cling keeps at the top,
+#: rather than statements run in a block of their own.
+DECLARATION = re.compile(r"^(?:namespace|class|struct|union|template\s*<)\b")
+
 DEFINITION = re.compile(r"^[ \t]*#[ \t]*(?:define|undef)\b.*$", re.M)
 
 
@@ -195,10 +199,12 @@ def run_source(
     handed back.
     """
     preload(source)
-    return _cxx.run_source(
+    done = _cxx.run_source(
         source, file, args, dialect=session_dialect(), namespace=root, use_cache=use_cache,
         call=call,
     )
+    spaces = libraries.declare_namespaces(source)
+    return {**done, **spaces} if not call else done
 
 
 def run(
@@ -299,7 +305,19 @@ def process_line(line: str, *, root: Any = None) -> Any:
     if text.startswith("#"):  # ``#include "Foo.h"``: declarations, at the top as cling has them
         run_source(text + "\n", "<ProcessLine>", root=root, call=False)
         return 0
+    if DECLARATION.match(text) and _declared_at_top(text, root):
+        return 0
     return _cxx.run_line(text, file="<ProcessLine>", dialect=session_dialect(), namespace=root)
+
+
+def _declared_at_top(text: str, root: Any) -> bool:
+    """``class A {};``, ``namespace N {...}``: declarations, run at the top as cling has them
+    - unless statements follow them, which a block of their own runs instead."""
+    try:
+        run_source(text + "\n", "<ProcessLine>", root=root, call=False)
+    except Refusal:
+        return False
+    return True
 
 
 def called(text: str) -> str:

@@ -33,7 +33,7 @@ from ...pycxx.program import Program
 from ...pycxx.translation import Translation
 from ..dialect import ROOT as DIALECT
 
-__all__ = ["Declared", "translated_unit", "declared", "digest"]
+__all__ = ["Declared", "translated_unit", "declared", "namespaces_in", "digest"]
 
 
 @dataclass
@@ -80,6 +80,13 @@ def translated_unit(
                        [str(path) for path in included], unit.unnamed is not None,
                        translator.entry_returns)  # fmt: skip
     return made, found
+
+
+def namespaces_in(source: str) -> dict[str, Any]:
+    """The namespaces ``source`` declares, each with its members' names, nested."""
+    with using(DIALECT):
+        tokens, _ = preprocess(source, "<namespaces>", [])
+        return declared(parse(tokens)).namespaces
 
 
 def declared(unit: Unit) -> Declared:

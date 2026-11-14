@@ -52,6 +52,7 @@ __all__ = [
     "loaded_names",
     "unload",
     "rebind",
+    "declare_namespaces",
     "autoload",
     "forget_all",
     "ROOT_LIBRARIES",
@@ -227,6 +228,28 @@ def _namespace(existing: Any, name: str, members: dict[str, Any], module: dict[s
         elif member in module:
             setattr(space, member, module[member])
     return space
+
+
+#: Names a program's ``namespace`` block may add to but never makes an object of its own.
+OPEN_NAMESPACES = frozenset({"std", "ROOT"})
+
+
+def declare_namespaces(source: str) -> dict[str, CxxNamespace]:
+    """The namespaces ``source`` - a ``Declare``, a line - declares, as objects of what they
+    hold, kept where later code finds them as a library's are: ``ROOT.NS.A``, ``NS::A``.
+
+    Its members are what the run of it just declared, so ``source`` has run first."""
+    if "namespace" not in source:
+        return {}
+    from .translate import namespaces_in
+
+    made: dict[str, CxxNamespace] = {}
+    for name, members in namespaces_in(source).items():
+        existing = DECLARED.get(name)
+        if name in OPEN_NAMESPACES or not isinstance(existing, (CxxNamespace, type(None))):
+            continue
+        DECLARED[name] = made[name] = _namespace(existing, name, members, DECLARED)
+    return made
 
 
 def unload(name: str) -> None:
