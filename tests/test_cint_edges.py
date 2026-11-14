@@ -296,7 +296,8 @@ def test_a_member_of_one_of_roots_classes_has_no_type_the_macro_knows() -> None:
 
 
 def test_a_string_written_into_a_buffer_of_roots_is_assigned_there() -> None:
-    assert "ROOT.extBuf = cformat('%d', 1)" in body('sprintf(extBuf, "%d", 1);')
+    expected = "ROOT.extBuf = text_into(ROOT.extBuf, cformat('%d', 1))"
+    assert expected in body('sprintf(extBuf, "%d", 1);')
 
 
 def test_a_variable_initialised_from_a_name_is_not_a_function_declaration() -> None:

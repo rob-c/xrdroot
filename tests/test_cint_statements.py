@@ -128,9 +128,9 @@ def test_statements_without_python_that_does_the_same_are_refused(body: str, why
         translate(source, "t.C")
 
 
-def test_sprintf_into_a_buffer_the_caller_passed_is_refused() -> None:
-    with pytest.raises(Refusal, match="writing a string into a buffer the caller passed"):
-        translate('void t(char *out) { sprintf(out, "%d", 1); }', "t.C")
+def test_sprintf_into_a_buffer_the_caller_passed_writes_into_it_in_place() -> None:
+    python = translate('void t(char *out) { sprintf(out, "%d", 1); }', "t.C")
+    assert "text_into(out, cformat('%d', 1), True)" in python
 
 
 @pytest.mark.parametrize(

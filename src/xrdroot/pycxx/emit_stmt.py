@@ -84,6 +84,9 @@ NARROW = frozenset(
     }
 )
 
+#: The compound assignments a character written through a ``char*`` may be changed with.
+CHAR_OPERATORS = frozenset({"+=", "-=", "&=", "|=", "^="})
+
 #: For ``i op bound`` stepping up (``True``) or down: what ``range``'s stop adds to the bound.
 STOPS = {
     ("<", True): "",
@@ -101,6 +104,12 @@ class Loop:
 
     kind: str
     step: list[Expr] = field(default_factory=list)
+
+
+def _moved_pointer(target: CType | None) -> bool:
+    """Is ``p += n`` of this type a pointer moved along an array - which Python's ``+=`` on
+    the array would instead add to each element of?"""
+    return target is not None and target.is_pointer and not target.is_object_pointer
 
 
 class StmtEmitter(CallEmitter):
@@ -198,6 +207,9 @@ class StmtEmitter(CallEmitter):
         if self._character(target):
             self._character_store(expr)
             return True
+        if self._through_char_pointer(target):
+            self._put_char(expr)
+            return True
         return self._plain_assignment(expr)
 
     def _plain_assignment(self, expr: Assign) -> bool:
@@ -241,6 +253,25 @@ class StmtEmitter(CallEmitter):
         char = self.assigned_value(expr)
         self.out.line(f"{text} = with_char({text}, {index}, {char}, {terminated})", expr.where)
 
+    def _through_char_pointer(self, target: Expr) -> bool:
+        """Is ``target`` a character written through a ``char*`` - into memory from
+        ``new char[n]``, which every pointer into it shares?"""
+        if not isinstance(target, Index):
+            return False
+        owner = self.typeof(target.obj)
+        return owner is not None and owner.is_string and bool(owner.pointer) and not owner.dims
+
+    def _put_char(self, expr: Assign) -> None:
+        """``p[i] = c``: written into the buffer ``p`` points into, in place."""
+        assert isinstance(expr.target, Index)
+        buffer, index = self.value(expr.target.obj), self.value(expr.target.index)
+        value = self.assigned_value(expr)
+        if expr.op in CHAR_OPERATORS:  # ``p[i] += 1``: the byte there, changed
+            value = f"char_at({buffer}, {index}) {expr.op[0]} ({self.value(expr.value)})"
+        elif expr.op != "=":
+            raise self.refuse(f"changing a character through a char* with {expr.op}", expr)
+        self.out.line(f"put_char({buffer}, {index}, {value})", expr.where)
+
     def _unassignable(self, target: Expr) -> str | None:
         """Why assigning to ``target`` has no Python that does the same, if it has none."""
         if isinstance(target, Unary):
@@ -262,6 +293,8 @@ class StmtEmitter(CallEmitter):
         """Can ``x op= v`` be written as Python's own ``op=`` - no C conversion to make?"""
         target = self.typeof(expr.target)
         if expr.op in ("/=", "%=", ">>=", "<<="):
+            return False
+        if _moved_pointer(target):
             return False
         if target is None or not target.scalar:
             return True
@@ -682,43 +715,50 @@ class StmtEmitter(CallEmitter):
             return self._member_statement(func, expr)
         return False
 
-    def _buffer(self, expr: Call, count: int) -> str:
-        """The buffer a C string function writes into, as something Python can assign."""
+    def _buffer(self, expr: Call, count: int) -> tuple[str, bool]:
+        """The buffer a C string function writes into, and whether the caller passed it -
+        when no variable here can be given the text in place of a buffer."""
         if len(expr.args) < count:
             raise self.refuse("a C string function with too few arguments", expr)
         target = expr.args[0]
+        passed = False
         if isinstance(target, Name):
             symbol = self.symbol(target)
-            if symbol is not None and symbol.kind == "param" and not symbol.cell:
-                raise self.refuse("writing a string into a buffer the caller passed", expr)
-            if symbol is not None:
+            passed = symbol is not None and symbol.kind == "param" and not symbol.cell
+            if symbol is not None and not passed:
                 self.assigned(symbol)
-        return self.value(target)
+        return self.value(target), passed
+
+    def _written(self, expr: Call, count: int, text: str) -> None:
+        """``buffer`` given ``text``: into memory from ``new char[n]`` in place, else as the new
+        string of its variable (:func:`~xrdroot.cppstd.buffers.text_into`)."""
+        buffer, passed = self._buffer(expr, count)
+        if passed:
+            self.out.line(f"text_into({buffer}, {text}, True)", expr.where)
+        else:
+            self.out.line(f"{buffer} = text_into({buffer}, {text})", expr.where)
 
     def _sprintf(self, expr: Call) -> None:
-        buffer = self._buffer(expr, 2)
         args = ", ".join(self.value(arg) for arg in expr.args[1:])
-        self.out.line(f"{buffer} = cformat({args})", expr.where)
+        self._written(expr, 2, f"cformat({args})")
 
     def _snprintf(self, expr: Call) -> None:
-        buffer = self._buffer(expr, 3)
-        size = self.at(expr.args[1], P.ADD)
+        size = self.at(expr.args[1], P.ADD) if len(expr.args) > 1 else ""
         args = ", ".join(self.value(arg) for arg in expr.args[2:])
-        self.out.line(f"{buffer} = cformat({args})[: {size} - 1]", expr.where)
+        self._written(expr, 3, f"cformat({args})[: {size} - 1]")
 
     def _strcpy(self, expr: Call) -> None:
-        buffer = self._buffer(expr, 2)
-        text = f"cstr({self.value(expr.args[1])})"
+        text = f"cstr({self.value(expr.args[1])})" if len(expr.args) > 1 else ""
         if len(expr.args) > 2:
             text += f"[: {self.value(expr.args[2])}]"
-        self.out.line(f"{buffer} = {text}", expr.where)
+        self._written(expr, 2, text)
 
     def _strcat(self, expr: Call) -> None:
-        buffer = self._buffer(expr, 2)
-        text = f"cstr({self.value(expr.args[1])})"
+        text = f"cstr({self.value(expr.args[1])})" if len(expr.args) > 1 else ""
         if len(expr.args) > 2:
             text += f"[: {self.value(expr.args[2])}]"
-        self.out.line(f"{buffer} += {text}", expr.where)
+        buffer = self.value(expr.args[0]) if expr.args else ""
+        self._written(expr, 2, f"cstr({buffer}) + {text}")
 
     def _swap(self, expr: Call) -> None:
         if len(expr.args) != 2:

@@ -563,12 +563,30 @@ class ExprEmitter(NameEmitter):
         if own is not None:
             return own, P.POSTFIX
         delta = "1" if node.op == "++" else "-1"
+        moved = self._pointer_step(node)
+        if moved is not None:
+            return moved
         name = self.local_name(node.operand)
         if name is not None:
             step = f"({name} := {name} + {delta})"
             return (f"({step} - {delta})", P.ADD) if node.postfix else (step, P.ATOM)
         helper = "postinc" if node.postfix else "preinc"
         return f"{helper}({self.reference(node.operand)}, {delta})", P.POSTFIX
+
+    def _pointer_step(self, node: Unary) -> Out | None:
+        """``p++`` in an expression, of a pointer into an array: the view one element on - not
+        Python's ``+``, which adds to every element - and ``p--``, refused, as no view goes
+        back; ``None`` for anything else."""
+        found = self.typeof(node.operand)
+        if found is None or not found.is_pointer or found.is_object_pointer:
+            return None
+        if node.op == "--":
+            raise self.refuse(f"moving a {_spelled(found)} back with --", node)
+        name = self.local_name(node.operand)
+        if name is None:
+            raise self.refuse(f"{_spelled(found)}++ of a pointer that is not a variable", node)
+        step = f"({name} := {name}[1:])"
+        return (f"({name}, {step})[0]", P.POSTFIX) if node.postfix else (step, P.ATOM)
 
     # -- assignment inside an expression -------------------------------------
 

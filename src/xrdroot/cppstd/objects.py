@@ -15,6 +15,7 @@ from typing import Any
 
 import numpy as np
 
+from .buffers import CharBuffer
 from .valuecopy import value_copy as value_copy
 
 __all__ = [
@@ -36,6 +37,9 @@ __all__ = [
     "INTEGRAL",
     "REAL",
 ]
+
+#: The character types, whose arrays are :class:`~.buffers.CharBuffer` s.
+CHARACTERS = frozenset({"char", "signed char", "unsigned char"})
 
 #: The NumPy type an array of each C++ arithmetic type is made of.
 DTYPES = {
@@ -80,6 +84,8 @@ def array(ctype: str, shape: Any, init: Any = None, make: Callable[..., Any] | N
     if dtype is None:
         return _object_array(dims, init, make)
     out = np.zeros(dims, dtype=dtype)
+    if ctype in CHARACTERS:  # memory a char* writes C strings into: :mod:`.buffers`
+        out = out.view(CharBuffer)
     if init is not None:
         _fill(out, init)
     return out

@@ -99,12 +99,19 @@ def test_a_methods_members_are_its_objects(source: str, fragment: str) -> None:
         ("h->~TH1F();", "calling the destructor ~TH1F by hand"),
         ("int n = sizeof(TH1F);", "sizeof of a type whose size"),
         ("int a = (delete p, 0);", "delete inside an expression"),
-        ("char *p = text(); p[0] = 'x';", "changing one character of a string in place"),
+        ("char *p = text(); p[0] *= 2;", r"changing a character through a char\* with \*="),
+        ("char *p = text(); char c = *p--;", r"moving a char\* back with --"),
+        ("char *p = text(); p = p - 1;", r"pointer arithmetic on a char\*"),
     ],
 )
 def test_what_has_no_python_that_does_the_same_is_refused(source: str, why: str) -> None:
     with pytest.raises(Refusal, match=why):
         body(source)
+
+
+def test_a_character_of_a_string_passed_by_value_is_refused() -> None:
+    with pytest.raises(Refusal, match="changing one character of a string in place"):
+        translate("void f(std::string s) { s[0] = 'x'; }", "t.C")
 
 
 def test_address_of_compound_assignment_borrows_the_cell() -> None:

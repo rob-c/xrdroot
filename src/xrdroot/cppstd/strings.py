@@ -13,8 +13,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .buffers import CharBuffer, put_char, text_into
+
 __all__ = [
     "with_char",
+    "put_char",
+    "text_into",
     "strlen",
     "strcmp",
     "strncmp",
@@ -138,7 +142,10 @@ def to_string(value: Any) -> str:
 
 
 def char_at(text: Any, index: Any) -> int:
-    """``s[i]`` of a string, as the ``char`` - a number - C++ gives."""
+    """``s[i]`` of a string, as the ``char`` - a number - C++ gives; of a buffer, the byte
+    there, a NUL or past one included."""
+    if isinstance(text, CharBuffer):
+        return int(text[int(index)])
     string = cstr(text)
     at = int(index)
     return ord(string[at]) if at < len(string) else 0

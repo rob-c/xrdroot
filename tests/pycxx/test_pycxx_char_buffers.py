@@ -1,0 +1,132 @@
+"""Memory from ``new char[n]``: one buffer every pointer into it shares, written in place.
+
+Each expected output is what the same program prints compiled by ROOT 6.40.04's cling.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from xrdroot.cppstd.buffers import CharBuffer, put_char, text_into
+from xrdroot.cppstd.objects import array
+from xrdroot.cppstd.strings import char_at, cstr
+from xrdroot.pycxx import run_program
+from xrdroot.pycxx.errors import MacroError, Refusal
+from xrdroot.pycxx.translation import translation
+
+
+def run(tmp_path: Path, capsys: pytest.CaptureFixture[str], body: str) -> str:
+    source = "#include <cstdio>\n#include <cstring>\n" + body
+    path = tmp_path / "buffers.cxx"
+    path.write_text(source)
+    assert run_program([path], use_cache=False) == 0
+    return capsys.readouterr().out
+
+
+def test_a_buffer_reads_as_the_c_string_it_holds() -> None:
+    buffer = array("char", 6)
+    assert isinstance(buffer, CharBuffer) and str(buffer) == "" and len(buffer) == 6
+    assert text_into(buffer, "abc") is buffer
+    assert str(buffer) == "abc" and cstr(buffer) == "abc" and f"{buffer:>4}" == " abc"
+    assert repr(buffer[1:]) == "CharBuffer('bc')"
+    assert char_at(buffer, 3) == 0 and char_at(buffer, 0) == ord("a")
+    assert put_char(buffer, 1, 300) == 300 and char_at(buffer, 1) == 44
+    assert put_char(buffer, 1, 200) == 200 and char_at(buffer, 1) == -56
+    unsigned = array("unsigned char", 2)
+    put_char(unsigned, 0, -56)
+    assert char_at(unsigned, 0) == 200
+
+
+def test_a_write_a_buffer_cannot_take_is_refused_as_it_runs() -> None:
+    with pytest.raises(TypeError, match="only memory from new char"):
+        put_char("text", 0, 65)
+    with pytest.raises(TypeError, match="buffer the caller passed"):
+        text_into("text", "more", True)
+    assert text_into("old", "new") == "new"
+    with pytest.raises(IndexError, match="past its end"):
+        text_into(CharBuffer(3), "abc")
+    assert np.asarray(CharBuffer(2)).dtype == np.int8
+
+
+def test_pointers_into_one_buffer_see_each_others_writes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    body = """
+struct B {
+   char *fName;
+   B(const char *name) { fName = (char *)new char[strlen(name) + 1]; strcpy(fName, name); }
+   void Up() { fName[0] = 'A'; }
+};
+void fill(char *out) { strcpy(out, "filled"); out[6] = '!'; out[7] = 0; }
+int main() {
+   B b("hello");
+   char *alias = b.fName;
+   b.Up();
+   printf("%s %s\\n", b.fName, alias);
+   char *c = new char[4];
+   c[0] = 'i'; c[1] = '0'; c[2] = '0'; c[3] = 0;
+   char *q = c + 1;
+   q[0] = '1';
+   (c[2])++;
+   c[2] += 1;
+   printf("%s %c %d\\n", c, *q, (int)strlen(c));
+   char *big = new char[20];
+   fill(big);
+   strcat(big, "?");
+   printf("%s\\n", big);
+   sprintf(big + 2, "%d", 42);
+   snprintf(big, 4, "%s", "zzzzz");
+   printf("%s\\n", big);
+   char buf[20];
+   sprintf(buf, "%d", 3);
+   strcat(buf, "x");
+   printf("%s\\n", buf);
+   delete [] c;
+   return 0;
+}
+"""
+    assert run(tmp_path, capsys, body) == "Aello Aello\ni12 1 3\nfilled!?\nzzz\n3x\n"
+
+
+def test_a_pointer_steps_through_its_buffer_without_touching_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    body = """
+int main() {
+   char *a = new char[4];
+   a[0] = 'A'; a[1] = 'B'; a[2] = 'C'; a[3] = 0;
+   char *p = a;
+   char c = *p++;
+   char d = *p;
+   char e = *++p;
+   int n = 0;
+   for (char *r = a; *r; ++r) n++;
+   char *w = a;
+   while (*w) { w++; }
+   double *x = new double[4];
+   x[1] = 5;
+   double *y = x;
+   y++;
+   y += 1;
+   *y = 2;
+   printf("%c %c %c %d %s %g %g\\n", c, d, e, n, a, x[1], x[2]);
+   return 0;
+}
+"""
+    assert run(tmp_path, capsys, body) == "A B C 3 ABC 5 2\n"
+
+
+def test_a_char_written_through_a_pointer_to_text_fails_as_it_runs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    body = 'void poke(char *p) { p[0] = 1; }\nint main() { char s[] = "abc"; poke(s); }\n'
+    with pytest.raises(MacroError, match="only memory from new char"):
+        run(tmp_path, capsys, body)
+
+
+def test_a_pointer_step_that_is_not_a_variables_is_refused() -> None:
+    with pytest.raises(Refusal, match=r"char\*\+\+ of a pointer that is not a variable"):
+        translation("struct S { char *p; };\nvoid f(S s) { char c = *s.p++; }", "t.cxx")
