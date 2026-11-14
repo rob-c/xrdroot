@@ -140,3 +140,23 @@ def test_decltype_of_a_variable_declares_another_of_its_type(capsys) -> None:
     """
     run_source(source, "dt.C")
     assert capsys.readouterr().out == "2 4 2.5 7 8\n"
+
+
+def test_a_local_class_declared_with_its_variable_destroys_it_as_the_scope_ends(
+    capsys,
+) -> None:
+    source = r"""
+    #include <cstdio>
+    #include <string>
+    int raii() {
+       struct Raii {
+          std::string f;
+          Raii(const char *n) : f(n) {}
+          ~Raii() { printf("bye %s\n", f.c_str()); }
+       } guard("x");
+       printf("hi %s\n", guard.f.c_str());
+       return 0;
+    }
+    """
+    run_source(source, "raii.C")
+    assert capsys.readouterr().out == "hi x\nbye x\n"

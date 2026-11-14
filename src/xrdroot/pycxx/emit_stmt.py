@@ -150,7 +150,9 @@ class StmtEmitter(CallEmitter):
         ``try`` whose ``finally`` runs it - where C++ runs it, as the scope ends, whatever way.
         """
         for index, stmt in enumerate(body):
-            outer, self.destructed = self.destructed, [] if isinstance(stmt, DeclStmt) else None
+            declares = isinstance(stmt, DeclStmt) or (isinstance(stmt, ClassDecl) and bool(
+                stmt.declarators))  # ``struct Raii {...} guard("x");``
+            outer, self.destructed = self.destructed, [] if declares else None
             try:
                 self.statement(stmt)
                 ending = self.destructed
