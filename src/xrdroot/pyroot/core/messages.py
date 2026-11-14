@@ -88,6 +88,7 @@ def message(kind: str, location: Any, fmt: Any, *args: Any) -> None:
         warnings.warn_explicit(text, RuntimeWarning, str(location or ""), 0)
         return
     where = f" in <{location}>" if location else ""
+    sys.stdout.flush()  # what was printed before comes before, as ROOT's own does
     print(f"{kind}{where}: {text}", file=sys.stderr)
     if level >= kFatal:
         raise SystemExit(1)

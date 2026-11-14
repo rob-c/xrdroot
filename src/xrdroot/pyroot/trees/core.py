@@ -115,6 +115,17 @@ class _TreeCore(_TObjectLike):
 
         return _compression(int(settings()))
 
+    def MakeProxy(self, classname: str, macro: str = "", cutfilename: str = "",
+                  option: str = "", maxUnrolling: int = 3) -> int:  # fmt: skip
+        """``MakeProxy``: refused - it writes C++ for ACLiC to compile against the tree."""
+        from ...errors import UnsupportedFeatureError
+
+        raise UnsupportedFeatureError(
+            f"TTree::MakeProxy writes {classname}.h, a C++ selector of proxies that ACLiC "
+            f"compiles round the macro {macro or '(none)'}, which xrdroot does not generate; "
+            f"read the branches with TTreeReader, RDataFrame or GetEntry instead"
+        )
+
     def _changed(self) -> None:
         """Forget what was worked out from the entries, because there are more of them."""
         self._snapshot = None

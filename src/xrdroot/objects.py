@@ -138,6 +138,7 @@ class BranchRecord:
         "file_name",
         "split",
         "element",
+        "compress",
     )
 
     def __init__(self) -> None:
@@ -152,6 +153,8 @@ class BranchRecord:
         #: baskets before and after compression - what ``TTree::Print`` says.
         self.basket_size = 0
         self.tot_bytes = self.zip_bytes = 0
+        #: ``fCompress``: how the branch's baskets were compressed, as ROOT spells it.
+        self.compress = 0
         #: The C++ class a ``TBranchElement`` belongs to; empty for a plain branch.
         self.classname = ""
         self.entry_offset_len = 0
@@ -272,7 +275,7 @@ def _branch_header(
 ) -> tuple[int, int]:
     if version > 7:
         buf.skip_record()  # TAttFill
-    buf.i32()  # compression
+    branch.compress = buf.i32()
     branch.basket_size = buf.i32()
     branch.entry_offset_len = buf.i32()
     write_basket = buf.i32()

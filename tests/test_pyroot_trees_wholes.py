@@ -147,8 +147,8 @@ def test_a_clones_array_makes_what_its_slots_hold_when_asked():
 
 def test_what_root_will_not_make_of_an_object_is_refused():
     tree = ROOT.TTree("t", "t")
-    clones = Cell(ROOT.TClonesArray("TLine"))
-    with pytest.raises(UnsupportedFeatureError, match="split into a branch per member"):
+    clones = Cell(ROOT.TClonesArray("TH1F"))  # a TLine's split now; a histogram's axes are not
+    with pytest.raises(UnsupportedFeatureError, match="TH1::fXaxis is a Object member"):
         tree.Branch("tcl", clones, 32000, 99)
 
     class Macro:
@@ -157,3 +157,13 @@ def test_what_root_will_not_make_of_an_object_is_refused():
     with pytest.raises(UnsupportedFeatureError, match="at split level 0"):
         tree.Branch("m", Macro(), 32000, 0)
     assert tree.Write() == 0  # no branches: nothing to write
+
+
+def test_a_proxy_selector_and_a_table_of_references_are_refused_by_name():
+    tree = ROOT.TTree("t", "t")
+    with pytest.raises(UnsupportedFeatureError, match=r"MakeProxy writes sel\.h"):
+        tree.MakeProxy("sel", "draw.C")
+    with pytest.raises(UnsupportedFeatureError, match=r"MakeProxy writes sel\.h.*\(none\)"):
+        tree.MakeProxy("sel")
+    with pytest.raises(UnsupportedFeatureError, match="BranchRef gives 't' a TRefTable"):
+        tree.BranchRef()

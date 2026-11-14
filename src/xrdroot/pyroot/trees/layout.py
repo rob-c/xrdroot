@@ -73,6 +73,11 @@ class BranchInfo(NamedTuple):
     #: ``fID`` -2 the top of a split object, ``fType`` 2 or more one holding others.
     fid: int = -1
     btype: int = 0
+    #: ``fCompress``: how its baskets are compressed, as ROOT spells it; -1 for a branch
+    #: whose record has not been written, which takes its file's.
+    compress: int = -1
+    #: ``fClonesName``: the class of the objects a ``TClonesArray`` branch holds.
+    clones: str = ""
 
     def walk(self) -> list[BranchInfo]:
         """This branch and every branch under it, in the order ROOT lists them."""
@@ -144,7 +149,10 @@ def _stored(name: str, leaves: list[LeafInfo], store: Store, stats: Any) -> Bran
     title = store.titles.get(name, leaves[0].title)
     classname = leaves[0].typename if leaves[0].vector else ""
     records = [stats.branches[leaf.name].record for leaf in leaves] if stats is not None else []
-    return BranchInfo(name, title, classname, leaves, store.entries, *_sizes(records))
+    compress = records[0].compress if records else -1
+    return BranchInfo(
+        name, title, classname, leaves, store.entries, *_sizes(records), compress=compress
+    )
 
 
 def _sizes(records: list[Any]) -> tuple[int, int, int, int]:
@@ -198,8 +206,9 @@ def _nested(record: Any, grouped: dict[int, tuple[Any, list[LeafInfo]]]) -> Bran
     leaves = grouped.get(id(record), (record, []))[1]
     children = tuple(_nested(child, grouped) for child in record.branches)
     fid, btype = (record.element[4], record.element[5]) if record.element else (-1, 0)
+    clones = record.element[1] if record.element else ""
     made = _with_record(_recorded(record, leaves))
-    return made._replace(children=children, fid=fid, btype=btype)
+    return made._replace(children=children, fid=fid, btype=btype, clones=clones)
 
 
 def _recorded(record: Any, leaves: list[LeafInfo]) -> BranchInfo:
@@ -213,4 +222,5 @@ def _recorded(record: Any, leaves: list[LeafInfo]) -> BranchInfo:
         record.zip_bytes,
         len(record.basket_seek),
         record.basket_size,
+        compress=record.compress,
     )

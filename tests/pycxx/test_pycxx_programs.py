@@ -130,6 +130,20 @@ def test_the_host_finds_the_standard_library_and_nothing_a_program_did_not_decla
         assert HOST.answer == 42
 
 
+def test_a_global_that_stands_for_another_is_told_what_to_stand_for_when_assigned() -> None:
+    told: list[int] = []
+
+    class StandIn:
+        def __assign__(self, value: int) -> None:
+            told.append(value)
+
+    library = type("Library", (), {"current": StandIn(), "plain": 1})
+    host = HostNamespace(lambda: library)
+    host.current = 7
+    host.plain = 2
+    assert told == [7] and isinstance(library.current, StandIn) and library.plain == 2
+
+
 def test_a_host_may_look_in_namespaces_a_program_uses_unqualified() -> None:
     library = type("Library", (), {"inner": type("Inner", (), {"found": len})})
     host = HostNamespace(lambda: library, ("inner", "missing.deeper"))
@@ -141,3 +155,31 @@ def test_the_runtime_reads_through_a_pointer_and_makes_the_standard_literals() -
     assert user_literal("ms", 250).total_seconds() == 0.25
     with pytest.raises(Unsupported, match=r'operator""_furlong'):
         user_literal("_furlong", 1)
+
+
+#: A class with a converting constructor and assignment from a pointer, as a persistent
+#: reference has: ``Ref r = p`` and ``r = p`` build one, they never make ``r`` the pointer.
+POINTED = r"""
+struct Thing { int value; };
+
+class Ref {
+public:
+   Ref(Thing *p = nullptr) : fValue(p ? p->value : -1) {}
+   int get() const { return fValue; }
+private:
+   int fValue;
+};
+
+int pointed() {
+   Thing *t = new Thing{7};
+   Thing *u = new Thing{5};
+   Ref a = t;
+   Ref b;
+   b = u;
+   return a.get() * 10 + b.get();
+}
+"""
+
+
+def test_an_object_initialised_or_assigned_from_a_pointer_is_built_from_it() -> None:
+    assert run_source(POINTED, "pointed.cxx") == 75

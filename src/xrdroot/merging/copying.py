@@ -195,6 +195,7 @@ class _Copier:
             cut=self.cut if applies else None,
             expressions=expressions,
             fast=self.fast,
+            classname=key.classname,
         )
         merging.add(tree, where, verbatim=self.verbatim)
 

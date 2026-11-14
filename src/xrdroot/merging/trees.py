@@ -225,8 +225,11 @@ class TreeMerge:
         cut: str | None = None,
         expressions: Mapping[str, str] | None = None,
         fast: bool = True,
+        classname: str = "TTree",
     ) -> None:
         self.directory = directory
+        #: What the tree is written as: a ``TNtuple`` stays one when it is taken whole.
+        self.classname = classname if names is None and not expressions else "TTree"
         self.name = name
         self.where = where
         self.cut = cut
@@ -253,7 +256,11 @@ class TreeMerge:
                 for name in [*self.plan.inexact, *self.expressions]:
                     columns[name] = spec_of(name, first_batch[name])
                 self.tree = self.directory.tree(
-                    self.name, columns, title=self.title, counters=self.plan.counters
+                    self.name,
+                    columns,
+                    title=self.title,
+                    counters=self.plan.counters,
+                    classname=self.classname,
                 )
             except ValueError as why:
                 raise UnsupportedFeatureError(

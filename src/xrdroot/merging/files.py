@@ -254,7 +254,9 @@ class _Merger:
         merging = self.values.get(path)
         if merging is None:
             here, leaf = self.out._place(path)
-            merging = self.values[path] = TreeMerge(here, leaf, tree, where, fast=self.fast)
+            merging = self.values[path] = TreeMerge(
+                here, leaf, tree, where, fast=self.fast, classname=key.classname
+            )
             self.kinds[path] = "tree"
         verbatim = self.keep or self.input_codes == self.codes
         merging.add(tree, where, verbatim=verbatim, in_place=in_place)

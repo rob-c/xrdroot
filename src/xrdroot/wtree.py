@@ -395,6 +395,7 @@ class _Column:
         "starts",
         "tot_bytes",
         "zip_bytes",
+        "compress",
     )
 
     def __init__(self, name: str, typecode: str, length: int, basket_size: int) -> None:
@@ -416,6 +417,9 @@ class _Column:
         self.starts = [0]
         self.tot_bytes = 0
         self.zip_bytes = 0
+        #: ``TBranch::SetCompressionSettings``: how this column's baskets are
+        #: compressed, as ROOT spells it; ``None`` for however the file is.
+        self.compress: int | None = None
 
     def _leaf_class(self) -> tuple[str, str, int, bool]:
         return LEAVES[self.typecode]
@@ -1109,6 +1113,16 @@ class WritableTree:
         """The classes of a macro's that this tree's objects are, described as declared."""
         return tuple(layout for spec in self._specs for layout in spec.declared())
 
+    def compress(self, column: str, codes: int) -> None:
+        """One column's baskets compressed otherwise than the file's: what
+        ``TBranch::SetCompressionSettings`` does.
+
+        ``codes`` is spelled as ROOT spells it, ``algorithm * 100 + level`` -
+        ``404`` for LZ4 at level 4 - and goes in the branch's record, as ROOT's
+        ``fCompress``, as well as deciding how its baskets are packed.
+        """
+        self._branch(column).compress = int(codes)
+
     def fill(self, **values: Any) -> None:
         """Add one entry, with a value for every column.
 
@@ -1287,6 +1301,7 @@ class WritableTree:
             listed=False,
             extra=extra,
             wide=True,
+            codes=column.compress,
         )
         column.seeks.append(seek)
         column.sizes.append(nbytes)
@@ -1457,7 +1472,8 @@ class WritableTree:
         count = 0
         if isinstance(column, _Rows):
             count = origin + places[column.counter.name][0] + MAP_OFFSET
-        places[column.name] = _branch(buf, column, self._entries, self._file._codes, count)
+        codes = self._file._codes if column.compress is None else column.compress
+        places[column.name] = _branch(buf, column, self._entries, codes, count)
         return [origin + place + MAP_OFFSET for place in places[column.name]]
 
 

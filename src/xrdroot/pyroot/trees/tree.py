@@ -180,17 +180,20 @@ class TTree(_Player):
         and is left out of the file - a macro stopped before its ``Branch`` call
         leaves its file closing over such a tree.
         """
+        return self._write_to(self._directory, name or self._name)
+
+    def _write_to(self, directory: Any, name: str) -> int:
+        """The tree written into ``directory`` under ``name``, as ``Write`` writes it."""
         store = self._writable("Write")
         if not store.slots:
             return 0
-        directory = self._directory
         directory = getattr(directory, "_xrd", directory)
         if directory is None or not hasattr(directory, "tree"):
             raise ValueError(
                 f"{self._name!r} is in memory, in no file; open one for writing before "
                 f"making the tree, or give it one with SetDirectory, then Write"
             )
-        self._wrote = store.write(directory, name or self._name, self._title, self._classname)
+        self._wrote = store.write(directory, name, self._title, self._classname)
         self._written = True
         self._layout_cache = None
         return max(sum(branch.tot_bytes for branch in self._layout()), 1)
@@ -270,6 +273,28 @@ class TTree(_Player):
 
     def SetMaxTreeSize(self, maxsize: int = 100_000_000_000) -> None:
         """How big ROOT lets a file grow before starting another; one file here."""
+
+    #: ``TTree::SetBranchStyle``: 1 splits objects into ``TBranchElement``s, 0 into the
+    #: ``TBranchObject``s of ROOT 3.
+    _branch_style = 1
+
+    @staticmethod
+    def SetBranchStyle(style: int = 1) -> None:
+        TTree._branch_style = int(style)
+
+    @staticmethod
+    def GetBranchStyle() -> int:
+        return TTree._branch_style
+
+    def BranchRef(self) -> None:
+        """``BranchRef``: refused - the table of which entry holds each referenced object."""
+        from ...errors import UnsupportedFeatureError
+
+        raise UnsupportedFeatureError(
+            f"TTree::BranchRef gives {self._name!r} a TRefTable branch saying which entry "
+            f"holds each object a TRef points at, which this writer does not write; a TRef "
+            f"finds an object read into memory without it, so leave the call out"
+        )
 
     def SetBasketSize(self, name: str, size: int = 16000) -> None:
         """A branch's basket size in ROOT; this writer sizes its own baskets."""

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from ...compression import CODES
 from ._base import ListOf, _TObjectLike
 from .layout import BranchInfo, LeafInfo
 
@@ -20,6 +21,10 @@ if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from .reading import _Reading as TTree
 
 __all__ = ["TBranch", "TLeaf"]
+
+#: ``RCompressionSetting::EDefaults::kUseCompiledDefault``: what a branch is set to
+#: when ``SetCompressionSettings`` is given nothing - zlib at level 1.
+DEFAULT_COMPRESSION = 101
 
 
 class TLeaf(_TObjectLike):
@@ -95,6 +100,7 @@ class TBranch(_TObjectLike):
         if info.classname:
             self._classname = "TBranchElement"
         self._leaves = ListOf(TLeaf(tree, leaf) for leaf in info.leaves)
+        self._compress: int | None = None
 
     @property
     def _info(self) -> BranchInfo:
@@ -160,6 +166,39 @@ class TBranch(_TObjectLike):
 
     def GetWriteBasket(self) -> int:
         return self._info.baskets
+
+    def SetCompressionSettings(self, settings: int = DEFAULT_COMPRESSION) -> None:
+        """``SetCompressionSettings``: this branch's baskets compressed otherwise than its
+        file's, ``algorithm * 100 + level`` as ROOT spells it; a tree read keeps it to say."""
+        self._compress = int(settings)
+        store = getattr(self._tree, "_store", None)
+        if store is not None:
+            store.compressions[self._name] = int(settings)
+            self._tree._changed()
+
+    def SetCompressionLevel(self, level: int = 1) -> None:
+        algorithm = self.GetCompressionAlgorithm()
+        self.SetCompressionSettings(algorithm * 100 + max(0, min(int(level), 99)))
+
+    def SetCompressionAlgorithm(self, algorithm: int = 0) -> None:
+        self.SetCompressionSettings(int(algorithm) * 100 + self.GetCompressionLevel())
+
+    def GetCompressionSettings(self) -> int:
+        """What the branch's baskets are compressed with: what it was told, what its
+        record says, or else its file's, which ROOT gives a branch as it is made."""
+        if self._compress is not None:
+            return self._compress
+        recorded = self._info.compress
+        if recorded >= 0:
+            return recorded
+        algorithm, level = self._tree._compression()
+        return CODES[algorithm] * 100 + int(level) if algorithm and level else 0
+
+    def GetCompressionLevel(self) -> int:
+        return self.GetCompressionSettings() % 100
+
+    def GetCompressionAlgorithm(self) -> int:
+        return self.GetCompressionSettings() // 100
 
     def Print(self, option: str = "") -> None:
         from .printing import branch_lines
