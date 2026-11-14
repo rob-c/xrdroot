@@ -10,6 +10,7 @@ arguments, which of several translated functions to call.
 
 from __future__ import annotations
 
+import functools
 import operator
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any
@@ -22,6 +23,7 @@ from .valuecopy import value_copy as value_copy
 __all__ = [
     "array",
     "convertible",
+    "function_template",
     "UNGIVEN",
     "Overloaded",
     "value_copy",
@@ -368,3 +370,19 @@ def _converted(apply: Callable[..., Any], operands: int, reflected: bool) -> Cal
 def _operand(value: Any) -> Any:
     """The other side of an operation: a number, or an object converting to one."""
     return _number(value) if hasattr(type(value), "_cxx_number_") else value
+
+
+class function_template:
+    """A function template written once for every use, which a library - PyROOT's
+    ``ROOT.f["ULong64_t"]`` - may also ask for an instance of by its arguments: that is
+    the same function, as Python's values carry their own types."""
+
+    def __init__(self, function: Callable[..., Any]) -> None:
+        self.function = function
+        functools.update_wrapper(self, function)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return self.function(*args, **kwargs)
+
+    def __getitem__(self, arguments: Any) -> Callable[..., Any]:
+        return self.function

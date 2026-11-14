@@ -283,3 +283,13 @@ def test_a_string_built_from_a_streams_iterators_is_the_rest_of_it(tmp_path, cap
     """
     run_source(source, "whole.C", (str(tmp_path / "text.txt"),))
     assert capsys.readouterr().out == "8 [one] [two\n]\n"
+
+
+def test_a_function_template_written_generically_takes_its_arguments_as_a_subscript() -> None:
+    """``ROOT.f["ULong64_t"]``, as PyROOT names an instance, is the generic function; the
+    function itself is still called and named as it was."""
+    module = run_source("template <typename T>\nT same(T v) { return v; }\n", "same.C",
+                        call=False)  # fmt: skip
+    same = module["same"]
+    assert same["unsigned long"](5) == 5 and same(7) == 7
+    assert same.__module__ == "__cint__" and same.__name__ == "same"

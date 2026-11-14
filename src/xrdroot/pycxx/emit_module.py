@@ -230,6 +230,8 @@ class Translator(TemplateEmitter):
                 lambda: self.overloaded(decl.name, py, funcs, self.function),
                 lambda why: self._uninstantiated_function(decl, py, why),
             )
+            # ``f["int"]`` from Python - a library naming an instance - is the generic one.
+            self.out.line(f"{py} = function_template({py})", decl.where)
         else:
             self.overloaded(decl.name, py, funcs, self.function)
 
