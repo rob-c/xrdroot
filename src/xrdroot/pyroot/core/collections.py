@@ -111,7 +111,8 @@ class TCollection(TObject):
     # -- ROOT's --------------------------------------------------------------------
 
     def GetName(self) -> str:
-        return self._name
+        """The collection's name - its class's, as ROOT's, when it was given none."""
+        return self._name or self.ClassName()
 
     def SetName(self, name: Any) -> None:
         self._name = str(name)
@@ -202,7 +203,8 @@ class TCollection(TObject):
         Indent.deeper()
         try:
             for item in self._items:
-                item.ls(option)
+                if item is not None:  # an array's empty slots list nothing
+                    item.ls(option)
         finally:
             Indent.deeper(-1)
 

@@ -29,10 +29,25 @@ def rebuilt(classname: str, value: Any, current: Any, clones: str = "") -> Any:
         return _lorentz(value, current)
     if classname == "TClonesArray":
         return _clones(value, current, clones)
+    declared = _declared(classname, value, current)
+    if declared is not None:
+        return declared
     from ...kinds import dress
     from ..core.wrapping import wrap
 
     return wrap(dress(classname, value))
+
+
+def _declared(classname: str, value: Any, current: Any) -> Any:
+    """An object of a class C++ declared, made again from one entry's members - into the one
+    the pointer points at already, as ROOT reads into it - or ``None`` for any other class."""
+    from ...wdeclared import parse_type
+    from ..core.declared import converted, find_class
+
+    cls = find_class(classname)
+    if cls is None:
+        return None
+    return converted(value, parse_type(classname), current if isinstance(current, cls) else None)
 
 
 def _four_vectors(value: dict[str, Any], current: Any) -> Any:

@@ -23,7 +23,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from typing import Any
 
-__all__ = ["HostNamespace", "CXX", "DECLARED", "use_namespace", "inherited"]
+__all__ = ["HostNamespace", "CXX", "DECLARED", "use_namespace"]
 
 #: What the programs run so far declared at their top - functions and classes - by name, as
 #: an interpreter keeps them: a line run later finds them.
@@ -156,15 +156,6 @@ class HostNamespace:
 
     def __repr__(self) -> str:
         return "<the host: the names a translated program did not declare>"
-
-
-def inherited(obj: Any, name: str, host: Any) -> Any:
-    """``name`` in a method of a class derived from a library's: the object's member - one
-    its library base has - if it has one, else the library's ``name``, as C++ looks."""
-    try:
-        return getattr(obj, name)
-    except AttributeError:
-        return getattr(host, name)
 
 
 def use_namespace(host: Any, dotted: str) -> None:

@@ -28,7 +28,6 @@ from .cstdio import __all__ as _cstdio
 from .istreams import *  # noqa: F403
 from .istreams import __all__ as _istreams
 from .namespace import CXX
-from .namespace import inherited as inherited
 from .namespace import use_namespace as use_namespace
 from .objects import *  # noqa: F403
 from .objects import __all__ as _objects
@@ -65,7 +64,6 @@ LIBRARY = [
     *_typeinfo,
     *_callrefs,
     "use_namespace",
-    "inherited",
 ]
 
 __all__ = ["CXX", *LIBRARY]

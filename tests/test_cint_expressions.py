@@ -64,6 +64,8 @@ def method(source: str) -> str:
         ("unsigned u = 3; unsigned v = u << 2; unsigned w = u >> 1;", "v = u << 2"),
         ("bool ok = !h; bool bad = !x;", "bad = not ROOT.x"),
         ("TH1F *h = nullptr; bool ok = !h; if (h && !h->IsZombie()) {}", "if h is not None and"),
+        # 8 bytes into an object is no object here: refused as it runs unless the offset is 0
+        ("TH1F *h = nullptr; h = (TH1F *)(((char *)h) - 8);", "h = byte_offset(h, -(8))"),
     ],
 )
 def test_expressions_become_the_python_that_does_the_same(source: str, fragment: str) -> None:
@@ -93,6 +95,8 @@ def test_a_methods_members_are_its_objects(source: str, fragment: str) -> None:
         ('const char *s = "abc"; const char *t = s - 1;', r"pointer arithmetic on a char\*"),
         ("double a[3]; double *p = a - 1;", r"pointer arithmetic on a double\[\]"),
         ("TH1F *hs[2]; TH1F **p = hs + 1;", r"pointer arithmetic on a TH1F\* is"),
+        # the bytes of numbers, unlike an object's, are not one Python object to stand on
+        ("double *d = nullptr; char *c = ((char *)d) - 8;", r"pointer arithmetic on a char\*"),
         ("std::ifstream in[2]; if (in[0] >> x) {}", "from a stream that is not a variable"),
         ("int x = f()++;", "changing this in the middle of an expression"),
         ("int x = gCount++;", "changing this in the middle of an expression"),

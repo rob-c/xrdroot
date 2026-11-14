@@ -72,12 +72,16 @@ PREDEFINED = f"""
 #define R__ADD_INCLUDE_PATH(x)
 #define R__ADD_LIBRARY_PATH(x)
 #define R__CLASS_VERSION(version) public: static Version_t Class_Version() {{ return version; }}
-#define ClassDef(name, version) R__CLASS_VERSION(version)
-#define ClassDefOverride(name, version) R__CLASS_VERSION(version)
-#define ClassDefNV(name, version) R__CLASS_VERSION(version)
-#define ClassDefInline(name, version) R__CLASS_VERSION(version)
-#define ClassDefInlineOverride(name, version) R__CLASS_VERSION(version)
-#define ClassDefInlineNV(name, version) R__CLASS_VERSION(version)
+#define R__CLASS_INFO(name) static TClass *Class() {{ return TClass::GetClass(#name); }} \
+   static const char *Class_Name() {{ return #name; }} \
+   virtual TClass *IsA() const {{ return TClass::GetClass(#name); }} \
+   virtual void Streamer(TBuffer &b) {{ TClass::GetClass(#name)->Streamer(this, b); }}
+#define ClassDef(name, version) R__CLASS_VERSION(version) R__CLASS_INFO(name)
+#define ClassDefOverride(name, version) R__CLASS_VERSION(version) R__CLASS_INFO(name)
+#define ClassDefNV(name, version) R__CLASS_VERSION(version) R__CLASS_INFO(name)
+#define ClassDefInline(name, version) R__CLASS_VERSION(version) R__CLASS_INFO(name)
+#define ClassDefInlineOverride(name, version) R__CLASS_VERSION(version) R__CLASS_INFO(name)
+#define ClassDefInlineNV(name, version) R__CLASS_VERSION(version) R__CLASS_INFO(name)
 #define ClassImp(name)
 #define ClassImpUnique(name, key)
 #define templateClassImp(name)

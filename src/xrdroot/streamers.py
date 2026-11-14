@@ -138,6 +138,68 @@ CLASSES["TStreamerInfo"] = read_info
 CLASSES["TObjArray"] = read_objarray
 
 
+#: One class as a file describes it in full: its checksum, version and elements, each element
+#: as :data:`~.winfo.INFOS` holds one.
+Described = tuple[int, int, tuple[tuple[Any, ...], ...]]
+
+
+def _element_in_full(kind: str) -> Any:
+    """A reader of one ``TStreamerElement`` subclass, keeping everything it says."""
+
+    def read(buf: Buffer) -> tuple[Any, ...]:
+        _version, end = buf.header()
+        inner = buf.header()[1] if kind == "TStreamerSTLstring" else None
+        base, shared = buf.header()
+        name, title = buf.named()
+        stype, size, length, dims = buf.i32(), buf.i32(), buf.i32(), buf.i32()
+        maxidx = tuple(buf.i32s(buf.i32() if base == 1 else 5))
+        typename = buf.string()
+        buf.resume(shared)
+        extras = _EXTRAS.get(kind, lambda buf: ())(buf)
+        buf.resume(inner)
+        buf.resume(end)
+        return (kind, name, title, stype, size, length, dims, maxidx, typename, extras)
+
+    return read
+
+
+#: What each subclass writes after the element it builds on.
+_EXTRAS: dict[str, Any] = {
+    "TStreamerBase": lambda buf: (buf.i32(),),
+    "TStreamerBasicPointer": lambda buf: (buf.i32(), buf.string(), buf.string()),
+    "TStreamerLoop": lambda buf: (buf.i32(), buf.string(), buf.string()),
+    "TStreamerSTL": lambda buf: (buf.i32(), buf.i32()),
+    "TStreamerSTLstring": lambda buf: (buf.i32(), buf.i32()),
+}
+
+
+def _info_in_full(buf: Buffer) -> tuple[str, Described]:
+    _version, end = buf.header()
+    name, _title = buf.named()
+    checksum, version = buf.u32(), buf.i32()
+    elements = buf.any(FULL) or []
+    buf.resume(end)
+    return name, (checksum, version, tuple(e for e in elements if isinstance(e, tuple)))
+
+
+#: The readers that keep every element whole, for :func:`read_infos`.
+FULL: dict[str, Any] = {kind: _element_in_full(kind) for kind in (*ELEMENTS, "TStreamerSTLstring")}
+FULL["TStreamerInfo"] = _info_in_full
+FULL["TObjArray"] = lambda buf: buf.objarray(FULL)
+
+
+def read_infos(source: Source) -> list[tuple[str, Described]]:
+    """Every class this file describes, in full and in the order it does - a class twice
+    when the file holds objects of two of its versions."""
+    from .file import Key
+
+    seek, nbytes = source.info
+    if seek <= 0 or nbytes <= 0:
+        return []
+    key = Key(Buffer(source.read(seek, min(nbytes, KEY_WINDOW))))
+    return [info for info in key.buffer(source).tlist(FULL) if isinstance(info, tuple)]
+
+
 def read_streamers(source: Source) -> dict[str, dict[str, Member]]:
     """Every class this file describes, by name.
 

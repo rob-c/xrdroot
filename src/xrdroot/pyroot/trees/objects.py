@@ -21,6 +21,7 @@ and the columns many entries make. An :class:`ObjectSlot` is the
 
 from __future__ import annotations
 
+import contextlib
 import sys
 from typing import Any
 
@@ -69,12 +70,6 @@ class Macro(Kind):
     """An object of a class a macro declared, split member by member."""
 
     def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
-        if split < 1:
-            raise UnsupportedFeatureError(
-                f"a {obj._cxx_layout_[0]} branch at split level 0 is one object streamed "
-                f"whole per entry, which this writer does for ROOT's own classes; give it "
-                f"split level 1 or more"
-            )
         return Split(declared(type(obj)), own=True, split=split, basket_size=bufsize)
 
     def entry(self, obj: Any) -> Any:
@@ -127,6 +122,56 @@ class _Whole(Kind):
 
     def columns(self, keys: list[str], entries: list[Any]) -> dict[str, Any]:
         return {keys[0]: list(entries)}
+
+
+class MacroWhole(_Whole):
+    """An object of a class a macro declared that this writer does not split - one given split
+    level 0, or with bases, strings, containers or objects among its members - streamed whole
+    each entry by its class's description, as ROOT streams an object it does not split."""
+
+    def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
+        from ...wbranch import DeclaredWhole, Described
+        from ...wdobjects import write_members
+        from ..core.declared import payload_of
+
+        made = payload_of(obj)
+        assert made is not None  # a macro's class is what made this kind
+        catalogue = made.catalogue
+        # One entry written aside, and every class reached described: what the file must say.
+        # The object a branch is given is not always whole yet - a pointer it promises is
+        # never null set only before the first Fill - so what it cannot write yet is left.
+        with contextlib.suppress(Exception):
+            write_members(WBuffer(), made.instance, catalogue)
+        for name in list(catalogue.declarations):
+            catalogue.info(name)
+        checksum, version, _elements = catalogue.info(made.classname)
+        described = tuple(Described(name, info[1], info[0], info[2])
+                          for name, info in catalogue.entries().items())  # fmt: skip
+        own, _sum = catalogue.version_of(made.classname)
+        return DeclaredWhole(made.classname, checksum, version if own else -1, described,
+                             tuple(catalogue.used), split=0, basket_size=bufsize)  # fmt: skip
+
+    def entry(self, obj: Any) -> bytes:
+        from ...wdobjects import write_members
+        from ..core.declared import payload_of
+
+        made = payload_of(obj)
+        assert made is not None
+        buf = WBuffer()
+        write_members(buf, made.instance, made.catalogue)
+        return bytes(buf.data)
+
+
+def _splittable(obj: Any, split: int) -> bool:
+    """Can this writer split an object of a macro's class: a class of numbers alone, standing
+    on no base, at a split level above 0?"""
+    if split < 1:
+        return False
+    try:
+        declared(type(obj))
+    except UnsupportedFeatureError:
+        return False
+    return True
 
 
 class Lorentz4(_Whole):
@@ -331,4 +376,6 @@ def object_slot(name: str, address: Any, split: int, bufsize: int | None) -> Obj
     kind = _kind(obj, split)
     if kind is None:
         return None
+    if isinstance(kind, Macro) and not _splittable(obj, split):
+        kind = MacroWhole()
     return ObjectSlot(name, address, kind, kind.spec(obj, split, bufsize))

@@ -94,6 +94,8 @@ SUBVERSIONS = {
     "TStreamerObjectPointer": 2,
     "TStreamerObjectAnyPointer": 1,
     "TStreamerSTL": 3,
+    "TStreamerSTLstring": 2,
+    "TStreamerLoop": 2,
 }
 
 #: One element of one class: its ``TStreamerElement`` subclass, name, title,

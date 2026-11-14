@@ -1209,7 +1209,7 @@ def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> St
         return _plainly(_reader(node))
     held = _class_held(member.typename)
     if held is None:
-        return None
+        return _pointer_map(member.typename, source, seen)
     name, pointed = held
     if pointed:
         classes = _Described(source, seen)
@@ -1217,6 +1217,38 @@ def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> St
     # A class the file describes can also be written field by field; one
     # that streams itself, such as a TArrayD, only ever comes whole.
     return _plainly(_objects(_embedded(name, source, seen), _columns(name, source, seen)))
+
+
+#: The maps a reader of pairs with objects for values knows.
+POINTER_MAPS = ("map", "unordered_map", "multimap", "unordered_multimap")
+
+
+def _pointer_map(typename: str, source: Source, seen: tuple[str, ...]) -> Step | None:
+    """How a map whose values are pointers to objects reads - ``map<string,T0Result*>`` - or
+    ``None`` for anything else: member-wise, the keys as a block and then each value an object
+    naming its class, read as the pairs it holds."""
+    from .cxx import _split
+
+    head, angle, rest = typename.replace("std::", "").strip().partition("<")
+    halves = _split(rest[:-1]) if angle and head in POINTER_MAPS else None
+    key = parse(halves[0]) if halves is not None else None
+    if halves is None or key is None or not halves[1].strip().endswith("*"):
+        return None
+    classes = _Described(source, seen)
+
+    def read(buf: Buffer) -> list[tuple[Any, Any]]:
+        version, end = buf.header()
+        if not version & MEMBER_WISE:
+            found = [(_single(key, buf), buf.any(classes)) for _ in range(buf.u32())]
+        else:
+            _versioned(buf)
+            count = buf.u32()
+            keys = _block(key, buf, count)
+            found = list(zip(keys, [buf.any(classes) for _ in range(count)], strict=True))
+        buf.resume(end)
+        return found
+
+    return _plainly(read)
 
 
 #: The streamer type of a ``TStreamerLoop``: ``x[n]`` of a class.
@@ -1253,6 +1285,15 @@ def _loop_step(
     return step
 
 
+#: ``kCharStar``: a ``char *`` member that no ``//[n]`` counts - a C string.
+CHAR_STAR = 7
+
+
+def _char_star(buf: Buffer) -> str:
+    """``TBuffer::ReadCharStar``: how many characters, then the characters."""
+    return buf.take(buf.i32()).decode("utf-8", "surrogateescape")
+
+
 def _step(
     member: Member, source: Source, seen: tuple[str, ...], before: dict[str, tuple[str, ...]]
 ) -> Step:
@@ -1261,6 +1302,8 @@ def _step(
     A member is numbers, a whole object, or a string or container, asked in
     that order; one that is none of them is refused by the kind it is.
     """
+    if member.stype == CHAR_STAR:
+        return _plainly(_char_star)
     step = _numeric_step(member, before) or _loop_step(member, source, seen, before)
     if step is None:
         step = _object_step(member, source, seen)

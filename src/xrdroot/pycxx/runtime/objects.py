@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 
+from ...cppstd.objects import AN_OBJECT as AN_OBJECT
 from ...cppstd.objects import DTYPES as DTYPES
 from ...cppstd.objects import INTEGRAL as INTEGRAL
 from ...cppstd.objects import REAL as REAL
@@ -66,8 +67,31 @@ __all__ = [
     "postinc",
     "INTEGRAL",
     "REAL",
+    "AN_OBJECT",
     "uninstantiated",
+    "inherited",
+    "base_member",
 ]
+
+
+def inherited(obj: Any, name: str, host: Any) -> Any:
+    """``f(...)`` in a method of a class derived from a library's class: the member ``f`` the
+    object has - its class's or a base's, as C++ looks in the class first - or else the
+    library's function of that name."""
+    if hasattr(type(obj), name) or name in getattr(obj, "__dict__", ()):  # a data member too
+        return getattr(obj, name)
+    return getattr(host, name)
+
+
+def base_member(base: Any, name: str, obj: Any) -> Any:
+    """``Base::f(...)`` in a method: ``Base``'s own ``f`` called on this object - or, for a
+    static member, the function itself."""
+    import inspect
+
+    raw = inspect.getattr_static(base, name)
+    if isinstance(raw, (staticmethod, classmethod)) or not hasattr(raw, "__get__"):
+        return getattr(base, name)
+    return raw.__get__(obj, base)
 
 
 def delete(obj: Any) -> bool:

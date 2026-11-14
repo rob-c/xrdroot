@@ -101,6 +101,37 @@ def test_generic_file_streams_write_and_close_without_loading_a_reader(tmp_path:
     assert stdlib.remove(target) == 0 and stdlib.remove(target) == -1
 
 
+def test_lists_and_deques_grow_and_shrink_at_both_ends() -> None:
+    held = containers.std.list["int"]([2, 3])
+    held.push_front(1)
+    held.pop_back()
+    assert list(held) == [1, 2] and type(held).__cpp_name__ == "list<int>"
+    held.pop_front()
+    queue = containers.std.deque["std::string"]()
+    queue.push_back("b")
+    queue.push_front("a")
+    assert list(held) == [2] and list(queue) == ["a", "b"]
+
+
+def test_a_multimap_keeps_every_pair_in_key_order() -> None:
+    held = containers.std.multimap["int", "double"]([(2, 1.0), (1, 5.0)])
+    held.insert((2, 3.0))
+    assert held.items() == [(1, 5.0), (2, 1.0), (2, 3.0)]
+    assert (held.size(), len(held), held.count(2), held.empty()) == (3, 3, 2, False)
+    assert held[0].second == 5.0 and held.begin() != held.end()
+    held.clear()
+    assert held.empty() and list(held) == []
+
+
+def test_unordered_containers_are_their_ordered_kin_by_another_name() -> None:
+    table = containers.std.unordered_map["int", "int"]()
+    table[2] = 4
+    kinds = containers.std.unordered_set["int"]()
+    kinds.insert(3)
+    assert type(table).__cpp_name__ == "unordered_map<int,int>" and dict(table.items()) == {2: 4}
+    assert type(kinds).__cpp_name__ == "unordered_set<int>" and list(kinds) == [3]
+
+
 def test_a_vector_is_made_from_a_range_and_inserted_into() -> None:
     from xrdroot.cppstd.containers import std
     from xrdroot.cppstd.objects import Pair

@@ -22,7 +22,7 @@ from .base import Out, P
 from .ctype import SMART, CType
 from .cursor import looks_like_type
 from .dialect import active
-from .emit_expr import ExprEmitter, _copy_store, _lvalue, zero
+from .emit_expr import ExprEmitter, _copy_store, _is_null, _lvalue, zero
 from .limits import FUNCTIONS as LIMIT_FUNCTIONS
 from .limits import is_limit
 from .literals import suffixes
@@ -131,6 +131,9 @@ class CallEmitter(ExprEmitter):
             found = special(self, func, node)
             if found is not None:
                 return found
+        inherited = self.inherited_call(func)
+        if inherited is not None:
+            return f"{inherited}({self.arguments(node)})", P.POSTFIX
         return f"{self.library(func)[0]}({self.arguments(node)})", P.POSTFIX
 
     def _instance_call(self, func: Name, node: Call, symbol: Symbol | None) -> str | None:
@@ -470,7 +473,13 @@ class CallEmitter(ExprEmitter):
         return self._object_store(ctype, node)
 
     def _object_store(self, ctype: CType, node: Expr) -> str:
-        """``node`` stored into an object: built from a pointer, copied, or shared as it is."""
+        """``node`` stored into an object: a string class made of a C string, built from a
+        pointer, copied - which Python would otherwise share - or shared as it is; a pointer
+        to an object set to ``0`` is null, which ``if (p)`` then finds it to be."""
+        if ctype.is_object_pointer and _is_null(node):
+            return "None"
+        if self._made_string(ctype, node):
+            return f"{self.host_name(ctype.name.split('::'))}({self.value(node)})"
         if self._converted_from_pointer(ctype, node):
             return f"{self.class_expr(ctype)}({self.value(node)})"
         if self._copied(ctype, node):
@@ -480,6 +489,14 @@ class CallEmitter(ExprEmitter):
             # that follows what is current.
             return f"pointer_now({self.value(node)})"
         return self.value(node)
+
+    def _made_string(self, ctype: CType, node: Expr) -> bool:
+        """Is a C string stored into one of the dialect's string classes - ``TString s;
+        s = "a"`` - which builds one of the class rather than make the variable a ``str``?"""
+        if ctype.pointer or ctype.name not in active().string_classes:
+            return False
+        found = self.typeof(node)
+        return found is not None and found.is_string
 
     def _converted_from_pointer(self, ctype: CType, node: Expr) -> bool:
         """Is ``T x = p`` - or ``x = p`` - an object built from a pointer by ``T``'s converting

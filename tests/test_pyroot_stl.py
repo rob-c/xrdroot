@@ -155,13 +155,13 @@ def test_a_pair_is_first_and_second_and_unpacks_as_two():
 
 
 def test_what_std_does_not_have_is_refused_by_name():
-    with pytest.raises(AttributeError, match=r"ROOT has std\.deque; xrdroot\.pyroot does not yet"):
-        std.deque  # noqa: B018
+    with pytest.raises(AttributeError, match=r"ROOT has std\.forward_list; xrdroot"):
+        std.forward_list  # noqa: B018
     assert repr(std) == "<namespace std>"
     with pytest.raises(TypeError, match="template argument"):
         std.vector["int", "int"]
     with pytest.raises(TypeError, match="not a type the std stand-ins know"):
-        std.vector["deque<int>"]
+        std.vector["queue<int>"]
     with pytest.raises(TypeError, match="not a type the std stand-ins know"):
         std.vector["vector<int"]
     with pytest.raises(TypeError, match="not a type an STL container can hold"):

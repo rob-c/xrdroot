@@ -139,7 +139,7 @@ def test_a_container_is_the_type_it_holds():
 def test_a_name_this_reader_has_no_idea_about_is_no_type_at_all():
     assert parse("TLorentzVector") is None
     assert parse("vector<TLorentzVector>") is None
-    assert parse("multimap<int,int>") is None  # a dict would drop the duplicate keys
+    assert py_name(parse("multimap<int,int>")) == "list[tuple[int32, int32]]"  # duplicates kept
     assert parse("map<int>") is None
     assert parse("map<int,TLorentzVector>") is None
     assert parse("map<TLorentzVector,int>") is None

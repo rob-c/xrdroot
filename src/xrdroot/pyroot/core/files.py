@@ -28,6 +28,7 @@ from typing import Any
 from ...compression import spelled
 from ...errors import ROOTError
 from .collections import THashList
+from .declared import made_from, payload_of
 from .directories import TDirectory, current_directory, forget_file, set_current
 from .messages import from_script, message
 from .objects import Indent, TNamed, TObject, templated
@@ -288,17 +289,23 @@ class TDirectoryFile(TDirectory):
 
     def _fetched(self, label: str, key: TKey) -> Any:
         """Read one record; a histogram or tree of the newest cycle stays in memory here."""
-        read = self._reader()[label]
+        read = self._record_of(label, key)
         found = _tree(read, key) or wrap(read)
         if not isinstance(found, TObject) and not _engine_own(found):
             named = str(getattr(found, "classname", "") or key.GetClassName())  # as it was read
-            made = from_members(key.GetClassName(), found)  # a null TRef is false, and made
-            found = TOther(named, found) if made is None else made
+            found = _dressed(key.GetClassName(), found, named)
         settle(found, read, self.GetFile())
         newest = key is self.GetKey(key.GetName())
         if newest and any(_inherits(found, kind) for kind in KEPT):
             self.Append(found, True)
         return found
+
+    def _record_of(self, label: str, key: TKey) -> Any:
+        """A key's record as read: from the file - or, from one still being written, from
+        what this session wrote under it."""
+        reader = self._reader()
+        again = getattr(key._key, "read", None) if reader is None else None
+        return again() if again is not None else reader[label]
 
     def _subdirectory(self, name: str, title: str = "") -> TDirectoryFile:
         if name not in self._subdirs:
@@ -354,9 +361,22 @@ class TDirectoryFile(TDirectory):
         own = getattr(obj, "_write_into", None)
         if own is not None:
             return int(own(self, called))
+        declared = payload_of(obj)
+        if declared is not None:  # an object of a class C++ declared, by its declaration
+            writer.write(called, declared, title=declared.title)
+            key = self._note_key(called, declared.title, declared.classname)
+            key._key = _Written(declared)
+            return 1
         writer.write(called, recorded(obj, writer), title=obj.GetTitle())
         self._note_key(called, obj.GetTitle(), obj.ClassName())
         return 1
+
+    def WriteObjectAny(
+        self, obj: Any, classname: Any, name: Any, option: Any = "", bufsize: int = 0
+    ) -> int:
+        """``WriteObjectAny(obj, "MyClass", name)``: ``obj`` written here - the class is the
+        object's own, which a Python object knows without being told."""
+        return self.WriteTObject(obj, name, option)
 
     def _note_key(self, name: str, title: str, classname: str) -> TKey:
         """A key for a record just written: the next cycle, listed before the older ones."""
@@ -472,6 +492,45 @@ def _tree(read: Any, key: TKey) -> Any:
         return None
     trees = importlib.import_module("xrdroot.pyroot.trees")
     return trees.wrap(read, key.GetClassName(), key._key)
+
+
+class _Written:
+    """A record of an object of a declared class this session wrote, kept so that the file,
+    still open for writing, can read it back - and say how long it is."""
+
+    def __init__(self, declared: Any) -> None:
+        self.classname, self.catalogue = declared.classname, declared.catalogue
+        self.payload = declared.root_payload(0)[0]
+        self.objlen = self.nbytes = len(self.payload)
+
+    def read(self) -> Any:
+        from ...buffer import Buffer
+        from ...rdobjects import reader_for
+
+        return reader_for(self.classname, self.catalogue)(Buffer(self.payload))
+
+
+def _note_layouts(reading: Any) -> None:
+    """Note the layouts a file opened describes its classes with, as ROOT notes them against
+    each class on opening it - a file whose description cannot be read noting none."""
+    from ...errors import FormatError
+    from ...streamers import read_infos
+    from .reflection import note_file_infos
+
+    try:
+        note_file_infos(read_infos(reading._source))
+    except (FormatError, ROOTError):
+        return
+
+
+def _dressed(classname: str, members: Any, named: str) -> Any:
+    """A record read as its members, made into its class: one the kit makes again, one C++
+    declared, or else an object that only says what it is - by ``named``, the class it was
+    read as."""
+    made = from_members(classname, members)  # a null TRef is false, and made
+    if made is None:
+        made = made_from(classname, members)
+    return made if made is not None else TOther(named, members)
 
 
 class _Noting:
@@ -591,6 +650,7 @@ class TFile(TDirectoryFile):
         if not self.GetTitle():
             self.SetTitle(_file_title(self._reading))
         self._keys_from(self._reading)
+        _note_layouts(self._reading)
 
     def _write_file(self, name: str, updating: bool) -> None:
         from ...writer import create

@@ -11,6 +11,8 @@ guessed at.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 __all__ = ["Prim", "Str", "Seq", "Mapping", "Pair", "parse", "py_name"]
 
 #: Every spelling of a fundamental type ROOT writes, and what it is here.
@@ -36,7 +38,8 @@ _PRIMS = [
             "ULong64_t",
         ),
     ),
-    ("float32", "f", 4, ("float", "Float_t")),
+    # A Double32_t a container holds, written as the float it is squeezed to without a range.
+    ("float32", "f", 4, ("float", "Float_t", "Double32_t")),
     ("float64", "d", 8, ("double", "Double_t")),
 ]
 
@@ -47,6 +50,8 @@ SEQUENCES = ("vector", "list", "forward_list", "deque", "set", "multiset", "unor
 #: Containers of pairs. ``multimap`` is missing on purpose: a Python dict
 #: would silently drop the duplicate keys that are the point of one.
 MAPPINGS = ("map", "unordered_map")
+#: The containers of pairs a key may be in more than once, read as the list of pairs they are.
+MULTIMAPS = ("multimap", "unordered_multimap")
 
 
 class Prim:
@@ -166,11 +171,15 @@ def _template(text: str) -> object | None:
         # A byte a bit, lowest bit first, and the count is in the file as well,
         # so the width in the name is not needed to read one.
         return Seq(Prim(*_BY_NAME["bool"]))
-    if head in MAPPINGS:
-        return _mapping(inside)
-    if head == "pair":
-        return _pair(inside)
-    return None
+    made = _OF_PAIRS.get(head)
+    return made(inside) if made is not None else None
+
+
+def _multimap(inside: str) -> Seq | None:
+    """A multimap: written as a map is, keys then values, and read as the pairs it holds -
+    duplicate keys and all."""
+    pairs = _mapping(inside)
+    return None if pairs is None else Seq(Pair(pairs.key, pairs.value))
 
 
 def _sequence(inside: str) -> Seq | None:
@@ -205,6 +214,14 @@ def _pair(inside: str) -> Pair | None:
         return None
     first, second = parse(halves[0]), parse(halves[1])
     return None if first is None or second is None else Pair(first, second)
+
+
+#: The templates of pairs, and of containers of them, by name: how each is read.
+_OF_PAIRS: dict[str, Callable[[str], object | None]] = {
+    **dict.fromkeys(MAPPINGS, _mapping),
+    **dict.fromkeys(MULTIMAPS, _multimap),
+    "pair": _pair,
+}
 
 
 def py_name(node: object) -> str:
