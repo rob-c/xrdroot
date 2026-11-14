@@ -361,6 +361,9 @@ class CallEmitter(ExprEmitter):
         if func.name in ("release", "get"):
             # A unique_ptr's: what it holds, unless the object has a method of its own by name.
             return f"pointee({self.value(func.obj)}, {func.name!r})", P.POSTFIX
+        if func.name in ("empty", "size", "length"):
+            # A std::string or container a library handed back is a str or a list here.
+            return f"std_member({self.value(func.obj)}, {func.name!r})", P.POSTFIX
         return None
 
     def _typed_method(self, owner: CType, func: Member, node: Call) -> Out | None:

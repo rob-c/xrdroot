@@ -19,7 +19,7 @@ from .ctype import CType
 from .dialect import active
 from .infer import Inference
 from .limits import is_limit, limit_text
-from .nodes import Binary, Literal, Name, Node, SizeOf, Unary
+from .nodes import Binary, Function, Literal, Name, Node, SizeOf, Unary
 from .operators import python_operator
 from .sizes import size_of
 from .symbols import Symbol
@@ -74,6 +74,17 @@ C_NAMES = {
 #: ``TEST_P`` body is the fixture's own, not a free function of the library's.
 INHERITED = frozenset({"GetParam", "HasFailure", "HasFatalFailure", "HasNonfatalFailure",
                        "IsSkipped", "RecordProperty"})  # fmt: skip
+
+
+def _known_plain(name: str) -> str | None:
+    """An unqualified name C, the dialect or the runtime itself gives a Python for."""
+    dialect = active()
+    if name in C_NAMES:
+        return C_NAMES[name]
+    found = dialect.functions.get(name) or dialect.constants.get(name)
+    if found is not None:
+        return found
+    return name if name in taken() else None
 
 
 def type_text(ctype: Any, spellings: dict[str, str] | None = None) -> str:
@@ -192,6 +203,8 @@ class NameEmitter(Inference):
 
     #: Template parameter names in scope, in a template written for every use.
     template_names: set[str]
+    #: The functions (and lambdas) being written, outermost first.
+    contexts: list[Any]
 
     def constant_value(self, node: Any) -> Any:
         """``node``'s value, if it is a constant known here - a number, a trait, ``sizeof`` -
@@ -252,18 +265,27 @@ class NameEmitter(Inference):
     def _plain(self, node: Name) -> Out:
         name = node.last
         dialect = active()
-        if name in C_NAMES:
-            return C_NAMES[name], P.ATOM
-        if name in dialect.functions:
-            return dialect.functions[name], P.ATOM
-        if name in dialect.constants:
-            return dialect.constants[name], P.ATOM
-        if name in taken():
-            return name, P.ATOM
+        known = _known_plain(name)
+        if known is not None:
+            return known, P.ATOM
         inherited = dialect.member_pattern.match(name) or name in INHERITED
         if self.scope.klass and inherited and self.derives_from_library():
             return f"self.{name}", P.POSTFIX
+        if self._library_member(name):
+            # A library base's member, or else the library's own name: C++ looks in the
+            # class and its bases first, and only the object knows what its base has.
+            return f"inherited(self, {name!r}, {dialect.host})" + self.targs(node.targs), P.POSTFIX
         return self.host_name([name]) + self.targs(node.targs), P.POSTFIX
+
+    def _library_member(self, name: str) -> bool:
+        """Is an undeclared ``name`` in a method of a class derived from a library's class,
+        where it may be a member that base has? Not a type's name, nor in a static method."""
+        if not self.scope.klass or active().class_pattern.match(name):
+            return False
+        owner = self.contexts[0].owner if self.contexts else None
+        if not isinstance(owner, Function) or owner.static:
+            return False
+        return self.derives_from_library()
 
     def derives_from_library(self) -> bool:
         """Is the class whose method is being written derived, somewhere up, from a class of

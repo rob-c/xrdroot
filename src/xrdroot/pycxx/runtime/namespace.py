@@ -23,7 +23,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from typing import Any
 
-__all__ = ["HostNamespace", "CXX", "DECLARED"]
+__all__ = ["HostNamespace", "CXX", "DECLARED", "use_namespace", "use_name", "inherited"]
 
 #: What the programs run so far declared at their top - functions and classes - by name, as
 #: an interpreter keeps them: a line run later finds them.
@@ -110,6 +110,11 @@ class HostNamespace:
             self._resolved[(id(namespace), name)] = module
             return module
 
+    def use(self, dotted: str) -> None:
+        """``using namespace A::B;`` of a program: ``A.B`` looked in too, from now on."""
+        if dotted not in self._namespaces:
+            object.__setattr__(self, "_namespaces", (*self._namespaces, dotted))
+
     def _used(self, namespace: Any, name: str) -> Any:
         """``name`` from a used namespace, declared or provided - or the refusal the
         namespace's own lookup gave.
@@ -151,6 +156,29 @@ class HostNamespace:
 
     def __repr__(self) -> str:
         return "<the host: the names a translated program did not declare>"
+
+
+def inherited(obj: Any, name: str, host: Any) -> Any:
+    """``name`` in a method of a class derived from a library's: the object's member - one
+    its library base has - if it has one, else the library's ``name``, as C++ looks."""
+    try:
+        return getattr(obj, name)
+    except AttributeError:
+        return getattr(host, name)
+
+
+def use_namespace(host: Any, dotted: str) -> None:
+    """What a translation's ``using namespace A::B;`` runs: the host looks in ``A.B`` too."""
+    if isinstance(host, HostNamespace):
+        host.use(dotted)
+
+
+def use_name(host: Any, name: str, dotted: str) -> None:
+    """What a translation's ``using A::B::C;`` runs: ``C`` is ``A.B.C`` of the host, where
+    the host has it - looked up now, as the declaration names it."""
+    found = _member(host, dotted)
+    if found is not None:
+        DECLARED.setdefault(name, found)
 
 
 def _member(namespace: Any, dotted: str) -> Any:

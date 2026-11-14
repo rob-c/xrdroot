@@ -77,6 +77,7 @@ class Translator(TemplateEmitter):
             filled = {"translator": dialect.translator, "host": dialect.host}
             self.out.line(line.format(name=name, runtime=dialect.runtime, **filled))
         self.predeclare()
+        self._usings()
         for index, decl in enumerate(self.program.order):
             self._instances(index)
             self.top(decl)
@@ -84,6 +85,21 @@ class Translator(TemplateEmitter):
         self._unnamed()
         self._footer()
         return self.out
+
+    def _usings(self) -> None:
+        """``using namespace A::B;``: the host told to look in ``A.B`` too for the names the
+        program does not declare; ``using A::B::C;``: ``C`` found as ``A.B.C``. The
+        standard's are the host's already; a namespace of the program's is its own."""
+        dialect = active()
+        for parts, namespace in self.program.unit.usings:
+            rest = parts[1:] if parts[0] == dialect.host_namespace else parts
+            if not rest or rest[0] == "std" or rest[0] in self.namespaces:
+                continue
+            dotted = ".".join(rest)
+            if namespace:
+                self.out.line(f"use_namespace({dialect.host}, {dotted!r})")
+            else:
+                self.out.line(f"use_name({dialect.host}, {rest[-1]!r}, {dotted!r})")
 
     def _instances(self, index: int) -> None:
         """The class templates' instances the declaration at ``index`` is the first to need,

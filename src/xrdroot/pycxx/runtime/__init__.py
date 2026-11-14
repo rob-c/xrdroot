@@ -26,6 +26,9 @@ from .cmath import __all__ as _cmath
 from .istreams import *  # noqa: F403
 from .istreams import __all__ as _istreams
 from .namespace import CXX
+from .namespace import inherited as inherited
+from .namespace import use_name as use_name
+from .namespace import use_namespace as use_namespace
 from .objects import *  # noqa: F403
 from .objects import __all__ as _objects
 from .printf import *  # noqa: F403
@@ -59,6 +62,9 @@ LIBRARY = [
     *_threads,
     *_typeinfo,
     *_callrefs,
+    "use_namespace",
+    "use_name",
+    "inherited",
 ]
 
 __all__ = ["CXX", *LIBRARY]

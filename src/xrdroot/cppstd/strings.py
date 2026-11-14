@@ -19,6 +19,7 @@ __all__ = [
     "with_char",
     "put_char",
     "text_into",
+    "std_member",
     "pointer_diff",
     "strlen",
     "strcmp",
@@ -269,3 +270,12 @@ def transformed(source: Any, start: Any, stop: Any, target: Any, at: Any, op: An
     for offset, item in enumerate(items):
         target[int(at) + offset] = op(item)
     return target
+
+
+def std_member(obj: Any, name: str) -> Any:
+    """``x.empty()``, ``x.size()``, ``x.length()`` of what the translator could not type: of
+    a string or a container - a ``str``, a list, an array here - what the standard's gives;
+    of anything else, its own method of that name."""
+    if isinstance(obj, (str, list, tuple, dict)) or type(obj).__name__ == "ndarray":
+        return len(obj) == 0 if name == "empty" else len(obj)
+    return getattr(obj, name)()

@@ -198,3 +198,66 @@ def test_a_string_read_through_a_pointer_to_it_is_the_string(capsys) -> None:
     """
     assert run_source(source, "strings.C") == 0
     assert capsys.readouterr().out == "--x y--\n--x y--\n"
+
+
+def test_a_using_directive_or_declaration_finds_the_hosts_names_there(capsys) -> None:
+    """``using namespace Lib::Hist;`` and ``using Lib::Axis;`` of a library's namespaces:
+    the names the program does not declare looked for there too; ``std`` and the
+    program's own namespaces are not the host's business."""
+    from types import SimpleNamespace
+
+    from xrdroot.pycxx.runtime import CXX as HOST
+    from xrdroot.pycxx.runtime.namespace import DECLARED, use_name, use_namespace
+
+    lib = SimpleNamespace(Lib=SimpleNamespace(Hist=SimpleNamespace(convert=lambda x: x * 2),
+                                              Axis=lambda: 5))  # fmt: skip
+    source = r"""
+    #include <cstdio>
+    namespace mine { int one() { return 1; } }
+    using namespace std;
+    using namespace mine;
+    using namespace Lib::Hist;
+    using Lib::Axis;
+    using typename Lib::Axis;
+    using Lib::Axis::operator();
+    int uses() { printf("%d %d %d\n", convert(21), Axis(), one()); return 0; }
+    """
+    python = translate(source, "uses.C")
+    assert "use_namespace(CXX, 'Lib.Hist')" in python and "'std'" not in python
+    with HOST.bind(lib):
+        run_source(source, "uses.C")
+    assert capsys.readouterr().out == "42 5 1\n"
+    use_namespace(object(), "Ignored")
+    use_name(HOST, "Nowhere", "No.Such")
+    assert "Nowhere" not in DECLARED
+    DECLARED.pop("Axis", None)
+
+
+def test_a_name_in_a_method_of_a_class_derived_from_a_library_is_its_bases_first(capsys):
+    """``par`` and ``SetParameters`` of a library base, unqualified in a method of a class
+    derived from it, are the object's; a name the base has not is the library's."""
+    from types import SimpleNamespace
+
+    from xrdroot.pycxx.runtime import CXX as HOST
+
+    class Base:
+        def __init__(self, n: int) -> None:
+            self.par = [0.0] * n
+
+        def SetParameters(self, values: list[float]) -> None:
+            self.par = list(values)
+
+    lib = SimpleNamespace(Base=Base, scale=10)
+    source = r"""
+    #include <cstdio>
+    #include <vector>
+    struct Model : public Base {
+       Model() : Base(1) { std::vector<double> p{2.5}; SetParameters(p); }
+       double value() const { return par[0] * scale; }
+       static int twice(int n) { return 2 * n; }
+    };
+    int model() { Model m; printf("%g %d\n", m.value(), Model::twice(3)); return 0; }
+    """
+    with HOST.bind(lib):
+        run_source(source, "model.C")
+    assert capsys.readouterr().out == "25 6\n"

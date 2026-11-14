@@ -475,3 +475,6 @@ class Unit(Node):
 
     decls: list[Stmt]
     unnamed: Block | None = None
+    #: ``using namespace A::B;`` and ``using A::B::C;``: each qualified name, and whether it
+    #: names a namespace (else one name of it), in the order written.
+    usings: list[tuple[tuple[str, ...], bool]] = field(default_factory=list)

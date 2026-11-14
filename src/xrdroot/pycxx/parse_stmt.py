@@ -371,7 +371,7 @@ class StmtParser(ExprParser):
     def _using(self) -> Stmt:
         where = self.take().where
         if self.accept("namespace"):
-            self.skip_to(";")
+            self._used(True)
             return Empty(where)
         if self.peek().kind == "id" and self.peek(1).is_("="):
             name = self.take().text
@@ -379,8 +379,27 @@ class StmtParser(ExprParser):
             ctype = self.type_id()
             self.expect(";")
             return self.alias(Typedef(where, name, ctype))
-        self.skip_to(";")
+        self._used(False)
         return Empty(where)
+
+    def _used(self, namespace: bool) -> None:
+        """A using-directive or using-declaration: its qualified name kept, for the names the
+        program does not declare to be looked for there too, as C++ looks."""
+        parts: list[str] = []
+        while not self.at_(";") and self.peek().kind != "eof":
+            word = self.take()
+            if word.kind == "id" and word.text != "typename":
+                parts.append(word.text)
+            elif not word.is_("::"):
+                parts = []  # not a plain qualified name: kept as nothing
+                self.skip_to(";")
+                return
+        self.take()
+        if parts:
+            self.usings.append((tuple(parts), namespace))
+
+    #: The using-directives and -declarations read so far, for :class:`~.nodes.Unit`.
+    usings: list[tuple[tuple[str, ...], bool]]
 
     def _typedef(self) -> Stmt:
         where = self.take().where

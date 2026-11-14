@@ -60,6 +60,7 @@ class Parser(StmtParser):
         self.aliases = {}
         self.alias_templates = {}
         self.functions = set()
+        self.usings = []
         #: The classes being read, innermost last: their names are their constructors'.
         self.classes: list[str] = []
         self._prescan()
@@ -96,7 +97,7 @@ class Parser(StmtParser):
                 unnamed = self._unnamed(unnamed)
                 continue
             decls.append(self.top())
-        return Unit(where, decls, unnamed)
+        return Unit(where, decls, unnamed, list(self.usings))
 
     def _unnamed(self, before: Block | None) -> Block:
         block = self.block()

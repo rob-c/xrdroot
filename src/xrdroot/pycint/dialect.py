@@ -198,6 +198,8 @@ RETURNED = {
     ("TDecompSVD", "GetSig"): "TVectorD",
     **{("TDecompLU", name): "TMatrixD" for name in ("GetLU", "Invert")},
     ("TDecompChol", "GetU"): "TMatrixD",
+    **{(kind, "str"): "std::string" for kind in ("HijackMessageStream",
+                                                  "RooHelpers::HijackMessageStream")},
     **{(kind, "Invert"): "TMatrixDSym" for kind in ("TDecompChol", "TDecompBK")},
 }
 
