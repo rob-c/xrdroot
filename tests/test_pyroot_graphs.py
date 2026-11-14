@@ -271,7 +271,7 @@ def test_a_stack_adds_up_its_histograms():
         (list(stack), [a, b]),
         (stack.GetMaximum(), 3),
         (stack.GetMaximum("nostack"), 2),
-        (stack.GetMinimum(), 0),
+        (stack.GetMinimum(), 1),  # the top of the stack's, as ROOT 6.40 has it
         (stack.GetStack().Last().GetBinContent(1), 3),
         (bool(stack.GetHists().At(1) is b), True),
         (stack.GetHistogram().GetEntries(), 0),
@@ -354,3 +354,25 @@ def test_a_function_is_applied_to_every_point_and_its_bars():
                                   np.array([0.0]), np.array([1.0]), np.array([1.0]))  # fmt: skip
     asym.Apply(ROOT.TF2("neg", "-y"))
     assert (asym.GetErrorYlow(0), asym.GetErrorYhigh(0)) == (1.0, 1.0)
+
+
+def test_a_stacks_extremes_take_the_sums_errors_or_each_histograms_as_root_does():
+    """The values of ROOT's ``test_THStack.cxx``."""
+    stack = ROOT.THStack("ext", "")
+    assert stack.GetMinimum() == 0.0
+    held = [ROOT.TH1F(f"e{i}", "", 5, 0, 5) for i in range(3)]
+    for hist in held:
+        for n in range(1, 6):
+            hist.SetBinContent(n, n if n < 4 else 6 - n)
+        stack.Add(hist)
+    expect(
+        (stack.GetMinimum(), 3), (stack.GetMaximum(), 9), (stack.GetMinimum("nostack"), 1),
+        (stack.GetMinimum("e"), pytest.approx(1.267949, abs=1e-6)),
+        (stack.GetMaximum("e"), pytest.approx(12)),
+        (stack.GetMinimum("nostack e"), pytest.approx(0, abs=1e-12)),
+        (stack.GetMaximum("nostack e"), pytest.approx(4.732051, abs=1e-6)),
+    )
+    held[2].SetBinError(4, 16)
+    stack.Modified()
+    assert stack.GetMinimum("e") == pytest.approx(-10.124515, abs=1e-6)
+    assert stack.GetMaximum("nostack e") == pytest.approx(18)

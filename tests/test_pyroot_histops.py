@@ -283,3 +283,28 @@ def test_a_function_of_two_or_three_variables_is_set_at_each_bin_s_centre_too():
     h3.Eval(f3, "r")
     assert (h3.GetBinContent(1, 1, 1), h3.GetBinContent(2, 1, 1)) == (1.5, 0.0)
     assert [getattr(f3, f"Get{v}{e}")() for v in "YZ" for e in ("min", "max")] == [0, 1, 0, 1]
+
+
+def test_a_th2_and_a_th3_interpolate_between_centres_holding_the_edges_flat_as_root_does():
+    """Values from ROOT 6.40's ``Interpolate`` on the same contents."""
+    h2 = ROOT.TH2F("i2", "", 4, 0, 4, 4, 0, 4)
+    h3 = ROOT.TH3F("i3", "", 4, 0, 4, 4, 0, 4, 4, 0, 4)
+    for i in range(4):
+        for j in range(4):
+            h2.SetBinContent(i + 1, j + 1, 1 + i + 10 * j)
+            for k in range(4):
+                h3.SetBinContent(i + 1, j + 1, k + 1, 1 + i + 10 * j + 100 * k)
+    expect(
+        (h2.Interpolate(0.2, 2), 16.0), (h2.Interpolate(3.9, 2.2), 21.0),
+        (h2.Interpolate(1.2, 0.1), pytest.approx(1.7)), (h2.Interpolate(4, 2), 0.0),
+        (h3.Interpolate(-1, 2, 2), 166.0), (h3.Interpolate(4, 4, 4), 334.0),
+        (h3.Interpolate(3.7, 1, 1), 59.0), (h3.Interpolate(-1, -1, -1), 1.0),
+    )
+
+
+def test_histograms_of_64_bit_integers_keep_whole_numbers():
+    for made in (ROOT.TH1L("l1", "", 2, 0, 2), ROOT.TH2L("l2", "", 2, 0, 2, 2, 0, 2),
+                 ROOT.TH3L("l3", "", 2, 0, 2, 2, 0, 2, 2, 0, 2)):
+        made.SetBinContent(1, 2**40 + 1)
+        assert made.GetBinContent(1) == 2**40 + 1 and made.ClassName().endswith("L")
+    assert ROOT.TH2L.CLASS_TITLE == "2-Dim histograms (one 64 bit integer per channel)"

@@ -37,6 +37,7 @@ __all__ = [
     "find_bin",
     "integral",
     "interpolate",
+    "interpolate_grid",
     "mean",
     "mean_error",
     "statistics",
@@ -251,6 +252,35 @@ def interpolate(histogram: Histogram, x: Any) -> Any:
     ends = np.where(points >= centres[axis.nbins], values[axis.nbins], line)
     result = np.where(points <= centres[1], values[1], ends)
     return float(result) if result.ndim == 0 else result
+
+
+def _corners(axis: Any, x: float) -> tuple[int, int, float]:
+    """The two bins whose centres are either side of ``x``, and how far along it is.
+
+    Past the first or the last centre both are that bin: the content is held
+    flat to the edge, as ROOT's ``TH2`` and ``TH3`` interpolation does.
+    """
+    centres = axis.root_centers()
+    found = int(axis.find_bin(x))
+    low = found - 1 if x < centres[min(max(found, 0), axis.nbins + 1)] else found
+    if low < 1:
+        return 1, 1, 0.0
+    if low >= axis.nbins:
+        return axis.nbins, axis.nbins, 0.0
+    return low, low + 1, (x - centres[low]) / (centres[low + 1] - centres[low])
+
+
+def interpolate_grid(histogram: Histogram, point: Sequence[float]) -> float:
+    """``TH2::Interpolate`` and ``TH3::Interpolate``: linear along each axis between the
+    nearest bin centres, the edge bins' contents held flat beyond them."""
+    values = histogram.values(flow=True).astype(np.float64)
+    cells = [_corners(axis, float(x)) for axis, x in zip(histogram.axes, point, strict=True)]
+    total = 0.0
+    for corner in np.ndindex(*([2] * len(cells))):
+        weight = math.prod(t if c else 1 - t for (_, _, t), c in zip(cells, corner, strict=True))
+        index = tuple(high if c else low for (low, high, _), c in zip(cells, corner, strict=True))
+        total += weight * float(values[index]) if weight else 0.0
+    return total
 
 
 def extreme(histogram: Histogram, highest: bool) -> float:

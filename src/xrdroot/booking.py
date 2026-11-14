@@ -55,6 +55,7 @@ STORAGE = {
     "C": ("TArrayC", np.int8),
     "S": ("TArrayS", np.int16),
     "I": ("TArrayI", np.int32),
+    "L": ("TArrayL64", np.int64),
     "F": ("TArrayF", np.float32),
     "D": ("TArrayD", np.float64),
 }
@@ -232,8 +233,8 @@ def histogram_members(
     """The class and members of an empty ``TH1C`` to ``TH3D``."""
     if kind not in STORAGE:
         raise ValueError(
-            f"kind={kind!r} is not a storage ROOT's histograms have: 'C', 'S' and 'I' for "
-            f"8, 16 and 32-bit integers, 'F' for floats and 'D' for doubles"
+            f"kind={kind!r} is not a storage ROOT's histograms have: 'C', 'S', 'I' and 'L' for "
+            f"8, 16, 32 and 64-bit integers, 'F' for floats and 'D' for doubles"
         )
     axes, title, titles = _parsed(specs, labels, title)
     core = th1_members(name, title, axes, titles)

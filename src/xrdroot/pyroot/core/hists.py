@@ -25,9 +25,9 @@ from .wrapping import adopt, register
 
 __all__ = [
     "TH1", "TH2", "TH3",
-    "TH1C", "TH1S", "TH1I", "TH1F", "TH1D", "TH1K",
-    "TH2C", "TH2S", "TH2I", "TH2F", "TH2D",
-    "TH3C", "TH3S", "TH3I", "TH3F", "TH3D",
+    "TH1C", "TH1S", "TH1I", "TH1L", "TH1F", "TH1D", "TH1K",
+    "TH2C", "TH2S", "TH2I", "TH2L", "TH2F", "TH2D",
+    "TH3C", "TH3S", "TH3I", "TH3L", "TH3F", "TH3D",
 ]  # fmt: skip
 
 
@@ -278,25 +278,29 @@ def _kind(base: type, letter: str, title: str) -> type:
 
 
 _TITLES = {"C": "one byte per channel", "S": "one short per channel", "I": "one int per channel",
+           "L": "one 64 bit integer per channel",
            "F": "one float per channel", "D": "one double per channel"}  # fmt: skip
 
 TH1C: Any = _kind(TH1, "C", f"1-Dim histograms ({_TITLES['C']})")
 TH1S: Any = _kind(TH1, "S", f"1-Dim histograms ({_TITLES['S']})")
 TH1I: Any = _kind(TH1, "I", f"1-Dim histograms ({_TITLES['I']})")
+TH1L: Any = _kind(TH1, "L", f"1-Dim histograms ({_TITLES['L']})")
 TH1F: Any = _kind(TH1, "F", f"1-Dim histograms ({_TITLES['F']})")
 TH1D: Any = _kind(TH1, "D", f"1-Dim histograms ({_TITLES['D']})")
 TH1K: Any = TH1D
 TH2C: Any = _kind(TH2, "C", f"2-Dim histograms ({_TITLES['C']})")
 TH2S: Any = _kind(TH2, "S", f"2-Dim histograms ({_TITLES['S']})")
 TH2I: Any = _kind(TH2, "I", f"2-Dim histograms ({_TITLES['I']})")
+TH2L: Any = _kind(TH2, "L", f"2-Dim histograms ({_TITLES['L']})")
 TH2F: Any = _kind(TH2, "F", f"2-Dim histograms ({_TITLES['F']})")
 TH2D: Any = _kind(TH2, "D", f"2-Dim histograms ({_TITLES['D']})")
 TH3C: Any = _kind(TH3, "C", f"3-Dim histograms ({_TITLES['C']})")
 TH3S: Any = _kind(TH3, "S", f"3-Dim histograms ({_TITLES['S']})")
 TH3I: Any = _kind(TH3, "I", f"3-Dim histograms ({_TITLES['I']})")
+TH3L: Any = _kind(TH3, "L", f"3-Dim histograms ({_TITLES['L']})")
 TH3F: Any = _kind(TH3, "F", f"3-Dim histograms ({_TITLES['F']})")
 TH3D: Any = _kind(TH3, "D", f"3-Dim histograms ({_TITLES['D']})")
 
-for _cls in (TH1C, TH1S, TH1I, TH1F, TH1D, TH2C, TH2S, TH2I, TH2F, TH2D,
-             TH3C, TH3S, TH3I, TH3F, TH3D):  # fmt: skip
+for _cls in (TH1C, TH1S, TH1I, TH1L, TH1F, TH1D, TH2C, TH2S, TH2I, TH2L, TH2F, TH2D,
+             TH3C, TH3S, TH3I, TH3L, TH3F, TH3D):  # fmt: skip
     register(_cls.__name__, factory=partial(adopt, _cls))

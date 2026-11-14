@@ -799,6 +799,28 @@ class TF2(TF1):
         kept.SetMaximum(self.GetMaximumStored())
         return kept
 
+    def _counts(self) -> list[int]:
+        return [self.GetNpx(), self.GetNpy()]
+
+    def Save(self, xmin: Any, xmax: Any, ymin: Any, ymax: Any, zmin: Any = 0.0,
+             zmax: Any = 0.0) -> None:
+        """``Save(xmin, xmax, ymin, ymax, zmin, zmax)``: the function sampled on a grid for
+        ``GetSave``; see :mod:`.funcsave`."""
+        from .funcsave import sample
+
+        dim = self.GetNdim()
+        found = self.GetRange()
+        own = [(found[d], found[d + dim]) for d in range(dim)]
+        evaluate = partial(self._xrd._raw, params=self._xrd.parameters)
+        self.__dict__["_save"] = sample(evaluate, (xmin, xmax, ymin, ymax, zmin, zmax), own,
+                                        self._counts())
+
+    def GetSave(self, x: Any) -> float:
+        """``GetSave(x)``: the saved samples interpolated at ``x``, zero outside them."""
+        from .funcsave import interpolate
+
+        return interpolate(self.__dict__.get("_save"), [x[d] for d in range(self.GetNdim())])
+
     def SetContour(self, nlevels: Any = 20, levels: Any = None) -> None:
         """``SetContour(n[, levels])``: the levels the function is drawn with - those given,
         or ``n`` of them, ROOT's ``-9999`` each until the painter spreads them evenly."""
@@ -884,6 +906,9 @@ class TF3(TF2):
 
     def GetZmin(self) -> float:
         return self.GetRange()[2]
+
+    def _counts(self) -> list[int]:
+        return [self.GetNpx(), self.GetNpy(), self.GetNpz()]
 
     def GetZmax(self) -> float:
         return self.GetRange()[5]
