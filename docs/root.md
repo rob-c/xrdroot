@@ -1345,10 +1345,18 @@ what ROOT's prints, character for character. A table of bit columns
 (`TFORM` `X`) and CFITSIO's column and binning filters are refused.
 
 **ROOT 7's histograms.** `ROOT.Experimental.RHist['int']` (or `'double'`,
-or `RBinWithError`) fills along `RRegularAxis` and `RVariableBinAxis` axes
-as `ROOT::Experimental` does, with its statistics of every fill;
-`Experimental.Hist.ConvertToTH1D` makes the `TH1` of it, and
-`RDataFrame.Hist` books one on a frame.
+or `RBinWithError`) and the `RHistEngine` under it fill along
+`RRegularAxis`, `RVariableBinAxis` and `RCategoricalAxis` axes - each one
+also an `RAxisVariant`, together an `RAxes` - as `ROOT::Experimental` does,
+with the same exceptions and their messages. `RBinIndex`, `RBinIndexRange`
+and `RBinIndexMultiDimRange` walk the bins, underflow and overflow
+included; `RHistStats` keeps the statistics of every fill (`RWeight` for a
+weighted one) and is tainted when a bin is set by hand; `RSliceSpec` slices,
+rebins and sums axes away; `RHistAutoAxisFiller` buffers fills until it can
+choose its axis, and `RHistConcurrentFiller` with its fill contexts fills from
+several threads. An attempt to write one to a file is refused as ROOT's
+`Streamer` refuses it. `Experimental.Hist.ConvertToTH1D` (and `I`, `L`...)
+makes the `TH1` of a histogram, and `RDataFrame.Hist` books one on a frame.
 
 **ROOT 7's RNTuple classes.** `RNTupleModel::Create()` and `MakeField<T>`,
 `RNTupleWriter::Recreate` and `Append`, `RNTupleParallelWriter` with its
