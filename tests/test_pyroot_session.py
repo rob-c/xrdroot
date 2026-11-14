@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import pathlib
 import time
 
 import pytest
@@ -249,7 +250,7 @@ def test_gsystem_makes_a_temporary_file_named_into_the_string_it_was_given(tmp_p
     made.write("text")
     made.stream.close()
     assert str(name).startswith(str(tmp_path / "root_test_")) and str(name).endswith(".txt")
-    assert open(str(name)).read() == "text"
+    assert pathlib.Path(str(name)).read_text() == "text"
     other = ROOT.gSystem.TempFileName("plain_", str(tmp_path))
     assert other.name.startswith(str(tmp_path / "plain_"))
     other.stream.close()
@@ -269,3 +270,30 @@ def test_a_uuid_is_version_1_made_now_or_version_4_at_random_and_orders_by_its_b
     assert again.Compare(random) == 0 and (now < random) == (now.Compare(random) == -1)
     assert len({ROOT.TUUID.UUIDv4() for _ in range(100)}) == 100 and now != "x"
     assert repr(again) == f"<TUUID {random.AsString()}>"
+
+
+def test_the_derivatives_of_samples_are_central_differences_with_one_sided_ends():
+    squares = [float(x * x) for x in range(6)]
+    assert list(ROOT.TMath.Gradient(6, squares, 1.0)) == [1.0, 2.0, 4.0, 6.0, 8.0, 9.0]
+    assert list(ROOT.TMath.Laplacian(6, squares, 1.0)) == [2.0] * 6
+    assert ROOT.TMath.Gradient(1, squares, 1.0) is None and ROOT.TMath.Laplacian(2, squares) is None
+    assert ROOT.TMath.Gradient(6, squares, 0) is None
+
+
+def test_gsystem_says_what_a_path_is_and_internal_gives_secure_random_bytes(tmp_path):
+    import ctypes
+
+    path = tmp_path / "f.txt"
+    path.write_text("12345")
+    stat = ROOT.FileStat_t()
+    assert ROOT.gSystem.GetPathInfo(str(path), stat) == 0 and stat.fSize == 5
+    assert not stat.fIsLink and stat.fMtime > 0 and stat.fUrl == ""
+    ident, size, flags, modified = (ctypes.c_long(), ctypes.c_long(), ctypes.c_long(),
+                                    ctypes.c_long())
+    assert ROOT.gSystem.GetPathInfo(str(tmp_path), ident, size, flags, modified) == 0
+    assert flags.value & 2 and modified.value > 0
+    assert ROOT.gSystem.GetPathInfo(str(tmp_path / "none"), stat) == 1
+    buffer = bytearray(16)
+    assert ROOT.Internal.GetCryptoRandom(buffer, 16) == 16 and any(buffer)
+    with pytest.raises(AttributeError, match=r"ROOT has Internal\.Other"):
+        ROOT.Internal.__getattr__("Other")

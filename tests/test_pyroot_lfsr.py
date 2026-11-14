@@ -64,3 +64,9 @@ def test_bad_taps_and_a_zero_seed_are_said_and_give_nothing(
         "Error in <ROOT::Math::LFSR>: A non-zero start value is needed",
     ]
     assert ROOT.Math.MathMoreLibrary.Load() is None
+
+
+def test_a_sequence_is_generated_with_template_arguments_saying_what_it_holds():
+    made = ROOT.Math.LFSR.GenerateSequence[3, 2, "bool"](ROOT.std.bitset[3]().flip(), [3, 2])
+    assert list(made) == [False, False, True, False, True, True, True]
+    assert list(ROOT.Math.LFSR.GenerateSequence[3](ROOT.std.bitset[3]().flip(), [3, 2]))[2] == 1

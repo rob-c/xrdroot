@@ -50,11 +50,11 @@ def test_an_eval_backend_is_a_command_with_a_name_and_a_number():
     cpu = ROOT.RooFit.EvalBackend.Cpu()
     assert (cpu.name(), cpu.value(), cpu.GetName()) == ("cpu", 1, "EvalBackend")
     assert cpu.value(0) == "cpu" and ROOT.RooFit.EvalBackend(cpu).name() == "cpu"
-    names = [made().name() for made in (ROOT.RooFit.EvalBackend.Legacy, ROOT.RooFit.EvalBackend.Cuda,
-                                        ROOT.RooFit.EvalBackend.Codegen,
-                                        ROOT.RooFit.EvalBackend.CodegenNoGrad)]
+    backend = ROOT.RooFit.EvalBackend
+    names = [made().name() for made in (backend.Legacy, backend.Cuda, backend.Codegen,
+                                        backend.CodegenNoGrad)]
     assert names == ["legacy", "cuda", "codegen", "codegen_no_grad"]
-    assert ROOT.RooFit.EvalBackend.defaultValue() == 1 and ROOT.RooFit.EvalBackend("CPU").value() == 1
+    assert backend.defaultValue() == 1 and backend("CPU").value() == 1
     with pytest.raises(ValueError, match="not one of RooFit's backends"):
         ROOT.RooFit.EvalBackend("gpu")
 
@@ -67,3 +67,30 @@ def test_std_get_takes_an_element_of_a_tuple_pair_or_vector_and_a_lone_value_is_
     assert ROOT.std.get[0](lone) is lone and "get" in repr(ROOT.std.get)
     with pytest.raises(IndexError, match="lone object"):
         ROOT.std.get[1](lone)
+
+
+def test_std_distance_counts_steps_and_make_tuple_makes_what_get_reads():
+    values = ROOT.std.vector["double"]([1.0, 2.0, 3.0])
+    assert ROOT.std.distance(values.begin(), values.end()) == 3
+
+    class Forward:
+        def __init__(self, at):
+            self.at = at
+
+        def __iadd__(self, step):
+            self.at += step
+            return self
+
+        def __eq__(self, other):
+            return self.at == other.at
+
+    assert ROOT.std.distance(Forward(2), Forward(6)) == 4
+    made = ROOT.std.make_tuple(1, "a")
+    assert made == (1, "a") and ROOT.std.get[1](made) == "a"
+
+
+def test_a_vector_of_a_library_class_is_filled_with_default_made_objects():
+    filled = ROOT.std.vector["TNamed"](2)
+    assert [type(item).__name__ for item in filled] == ["TNamed", "TNamed"]
+    assert list(ROOT.std.vector["TNamed*"](2)) == [None, None]
+    assert list(ROOT.std.vector["MinosError"](1)) == [None]  # one is made from what MINOS found

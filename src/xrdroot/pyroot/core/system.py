@@ -38,6 +38,8 @@ __all__ = [
     "kExecutePermission",
     "kWritePermission",
     "kReadPermission",
+    "FileStat_t",
+    "Internal",
 ]
 
 #: What ``GetMakeSharedLib`` says first: ROOT's template, which ``build.C``-style macros edit.
@@ -59,6 +61,36 @@ _MODES = {
     kWritePermission: os.W_OK,
     kReadPermission: os.R_OK,
 }
+
+
+class FileStat_t:
+    """``FileStat_t``: what ``GetPathInfo`` found of a file - its size, mode, owner, times."""
+
+    def __init__(self) -> None:
+        self.fDev = self.fIno = self.fMode = self.fUid = self.fGid = 0
+        self.fSize = self.fMtime = 0
+        self.fIsLink = False
+        self.fUrl = ""
+
+
+class _Internal:
+    """``ROOT::Internal``: the one of its functions a program calls directly here."""
+
+    @staticmethod
+    def GetCryptoRandom(buffer: Any, length: Any) -> int:
+        """``GetCryptoRandom(buf, len)``: ``len`` bytes from the system's secure source written
+        into ``buf``; how many, as ROOT returns it."""
+        made = os.urandom(int(length))
+        for at, byte in enumerate(made):
+            buffer[at] = byte
+        return len(made)
+
+    def __getattr__(self, name: str) -> Any:
+        raise AttributeError(f"ROOT has Internal.{name}; xrdroot.pyroot does not yet")
+
+
+#: ``ROOT.Internal``.
+Internal = _Internal()
 
 
 class TSystem(TNamed):
@@ -213,6 +245,25 @@ class TSystem(TNamed):
 
     # -- paths ----------------------------------------------------------------------------
 
+    def GetPathInfo(self, path: Any, *found: Any) -> int:
+        """``GetPathInfo(path, stat)`` - a ``FileStat_t`` filled - or ``GetPathInfo(path, &id,
+        &size, &flags, &modtime)``: 0 when the path is there, 1 when it is not."""
+        try:
+            info = os.stat(os.path.expanduser(str(path)))
+        except OSError:
+            return 1
+        if len(found) == 1:
+            _filled(found[0], info, os.path.islink(str(path)))
+        else:
+            from .refs import store
+
+            flags = (1 if os.access(str(path), os.X_OK) else 0) | \
+                (2 if os.path.isdir(str(path)) else 0)
+            for target, value in zip(found, (info.st_ino, info.st_size, flags,
+                                             int(info.st_mtime)), strict=False):
+                store(target, value)
+        return 0
+
     def AccessPathName(self, path: Any, mode: int = kFileExists) -> bool:
         """``AccessPathName``: *true* when ``path`` can **not** be reached - ROOT's way round."""
         return not os.access(os.path.expanduser(str(path)), _MODES.get(int(mode), os.F_OK))
@@ -357,6 +408,13 @@ class TSystem(TNamed):
 
     def IsFileInIncludePath(self, name: Any, fullpath: Any = None) -> bool:
         return os.path.exists(str(name))
+
+
+def _filled(stat: FileStat_t, info: os.stat_result, link: bool) -> None:
+    """A ``FileStat_t`` given what ``os.stat`` found."""
+    stat.fDev, stat.fIno, stat.fMode = info.st_dev, info.st_ino, info.st_mode
+    stat.fUid, stat.fGid, stat.fSize = info.st_uid, info.st_gid, info.st_size
+    stat.fMtime, stat.fIsLink = int(info.st_mtime), link
 
 
 #: ``gSystem``.

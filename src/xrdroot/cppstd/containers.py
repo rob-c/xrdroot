@@ -32,6 +32,7 @@ name, as the rest of ``xrdroot.pyroot`` refuses what it does not have.
 
 from __future__ import annotations
 
+import copy
 import re
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Any
@@ -814,7 +815,21 @@ def _default(kind: Any) -> Any:
     """What a new element of type ``kind`` is before anything is put in it: zero, or empty."""
     if isinstance(kind, np.dtype):
         return np.zeros((), dtype=kind).item()
-    return None if getattr(kind, "opaque", False) else kind()
+    if getattr(kind, "opaque", False):
+        return _constructed(kind)
+    return kind()
+
+
+def _constructed(kind: Any) -> Any:
+    """A default-made object of an opaque element type the adapter names a class for -
+    ``RBinIndex()`` - or ``None``: a null pointer, or a type made only from arguments."""
+    if str(kind.__cpp_name__).rstrip().endswith("*"):
+        return None
+    made = _resolved_class(kind)
+    try:
+        return made() if made is not None else None
+    except TypeError:
+        return None
 
 
 class _Pair(_Container):
@@ -1066,6 +1081,25 @@ TEMPLATES: dict[str, _Template] = {
 }
 
 
+def _distance(first: Any, last: Any) -> int:
+    """``std::distance(first, last)``: how many steps from one iterator to the other - by
+    their difference, or, for an iterator that only steps forward, by counting the steps."""
+    try:
+        return int(last - first)
+    except TypeError:
+        pass
+    steps, at = 0, copy.copy(first)
+    while at != last:
+        at += 1  # ++it, on a copy: an iterator's += may step it in place
+        steps += 1
+    return steps
+
+
+def _make_tuple(*values: Any) -> tuple[Any, ...]:
+    """``std::make_tuple(a, b, ...)``: a tuple of the values, which ``std::get`` reads."""
+    return tuple(values)
+
+
 class _GetTemplate:
     """``std::get<i>(t)``: the ``i``-th of a tuple, pair or array.
 
@@ -1153,6 +1187,8 @@ class _Namespace:
     unique_ptr = _stdlib.smart_pointer("unique_ptr")
     shared_ptr = _stdlib.smart_pointer("shared_ptr")
     remove = staticmethod(_stdlib.remove)
+    distance = staticmethod(_distance)
+    make_tuple = staticmethod(_make_tuple)
     rand = staticmethod(_stdlib.rand)
     srand = staticmethod(_stdlib.srand)
 

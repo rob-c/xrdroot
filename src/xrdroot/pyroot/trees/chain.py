@@ -36,7 +36,7 @@ def _split(name: str, tree: str) -> tuple[str, str]:
 def _synced(entries: Any, files: list[tuple[str, str]]) -> None:
     """Each sub-list of ``entries`` numbered by the file of the chain it is of, refusing as
     ``TChain::SetEntryList(..., "sync")`` refuses lists that are not the chain's files."""
-    from ...cppstd.objects import CppRuntimeError as RuntimeError  # noqa: A001 - C++'s
+    from ...cppstd.objects import CppRuntimeError as RuntimeError
 
     where = "In 'TChain::SetEntryList': "
     lists = entries._lists
