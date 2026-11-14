@@ -160,3 +160,25 @@ def test_a_local_class_declared_with_its_variable_destroys_it_as_the_scope_ends(
     """
     run_source(source, "raii.C")
     assert capsys.readouterr().out == "hi x\nbye x\n"
+
+
+def test_a_destructor_called_by_hand_runs_its_body(capsys) -> None:
+    source = r"""
+    #include <cstdio>
+    struct A { int v; A(int x) : v(x) {} ~A() { printf("~A %d\n", v); } };
+    struct P { int v; };
+    int dd() {
+       A *a = new A(3);
+       a->~A();
+       P *p = new P;
+       p->~P();
+       printf("end\n");
+       return 0;
+    }
+    """
+    run_source(source, "dd.C")
+    assert capsys.readouterr().out == "~A 3\nend\n"
+    with pytest.raises(Refusal, match="calling the destructor ~A by hand"):
+        translate("struct A { ~A() {} void f() { this->~A(); } };", "t.C")
+    with pytest.raises(Refusal, match="calling the destructor ~B by hand"):
+        translate("struct A { ~A() {} };\nvoid f(A *a) { a->~B(); }", "t.C")

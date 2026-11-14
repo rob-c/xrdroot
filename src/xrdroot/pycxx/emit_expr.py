@@ -717,10 +717,24 @@ class ExprEmitter(NameEmitter):
     # -- postfix ---------------------------------------------------------------
 
     def _member(self, node: Member) -> Out:
-        if node.name.startswith("~"):
-            raise self.refuse(f"calling the destructor {node.name} by hand", node)
         obj = "self" if isinstance(node.obj, This) else self.at(node.obj, P.POSTFIX)
+        if node.name.startswith("~"):
+            return self._destructor(node, obj), P.POSTFIX
         return self.attribute(obj, node.name) + self.targs(node.targs), P.POSTFIX
+
+    def _destructor(self, node: Member, obj: str) -> str:
+        """``p->~A()`` of a class of the program's: its destructor's body run, or nothing
+        where it has none. A library's class's destructor is the library's, and refused."""
+        info = self._destroyed_class(node)
+        if info is None or node.name[1:] != info.name.split("::")[-1]:
+            raise self.refuse(f"calling the destructor {node.name} by hand", node)
+        bodies = [func for func in info.methods.get(node.name, []) if func.body is not None]
+        return f"{obj}._destruct" if bodies else "(lambda: None)"
+
+    def _destroyed_class(self, node: Member) -> Any:
+        """The program's class whose object ``node`` names a destructor of, if it is one."""
+        found = None if isinstance(node.obj, This) else self.typeof(node.obj)
+        return self.program.classes.get(found.name) if found is not None else None
 
     @staticmethod
     def attribute(obj: str, name: str) -> str:
