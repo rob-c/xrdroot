@@ -2,8 +2,9 @@
 import numpy as np
 import pytest
 
+from xrdroot.cppstd.containers import _canonical
 from xrdroot.pyroot import stl
-from xrdroot.pyroot.rdf.rvec import RVec
+from xrdroot.pyroot.rdf.rvec import RVec, _rvec_class
 
 
 @pytest.mark.parametrize('name', list(stl.CPP_NAMES))
@@ -36,3 +37,45 @@ def test_builtin_alias_dtypes_keep_their_numpy_spelling():
     for name in ('longlong', 'ulonglong', 'intp', 'uintp'):
         dtype = np.dtype(name)
         assert stl.cpp_name(dtype) == stl.CPP_NAMES[dtype.name]
+
+
+@pytest.mark.parametrize('build', [stl._vector_class, _rvec_class], ids=['std', 'rvec'])
+@pytest.mark.parametrize('order', ['<', '>'])
+@pytest.mark.parametrize('metadata', [None, {'description': 'event column'}])
+@pytest.mark.parametrize('spelling', ['uint64', 'ulonglong'])
+def test_a_foreign_dtype_built_first_does_not_become_every_later_classes_dtype(
+        build, order, metadata, spelling):
+    # A big-endian or annotated dtype's class, built first and cached under "unsigned long",
+    # once gave every later RVec['unsigned long'] in the worker that byte order.
+    template = stl._Template('vector', 1, build)
+    foreign = np.dtype(spelling, metadata=metadata) if metadata else np.dtype(spelling)
+    first = template[foreign.newbyteorder(order)]
+    assert template['unsigned long'] is first
+    assert first.dtype == np.dtype('uint64') and first.dtype.isnative
+    assert first.dtype.metadata is None
+    words = np.array([0, 2**64 - 1, 2**63, 1], dtype='uint64')
+    value = first(words)
+    value.assign(value)
+    assert value.data().view('uint64').tobytes() == words.tobytes()
+
+
+def test_only_known_number_dtypes_are_made_canonical():
+    given = np.dtype('float16').newbyteorder('>')
+    assert _canonical(given) is given
+    assert _canonical(stl.string) is stl.string
+
+
+def test_the_identity_test_then_an_unsigned_long_rvec_self_assignment_in_one_process(
+        monkeypatch):
+    # The polluter, then the victim, as one xdist worker once ran them: with empty class
+    # caches, as in a worker where nothing had yet asked for an unsigned long vector.
+    monkeypatch.setattr(RVec, '_made', {})
+    monkeypatch.setattr(stl.std.vector, '_made', {})
+    for metadata in (None, {'description': 'event column'}):
+        test_numeric_dtypes_keep_their_cpp_name_and_template_identity('uint64', '>', metadata)
+    words = np.array([0, 2**64 - 1, 2**63, 1], dtype='uint64')
+    value = RVec['unsigned long'](words)
+    previous = value._data
+    value.assign(value)
+    assert value.data().view('uint64').tobytes() == previous.view('uint64').tobytes()
+    assert previous.tobytes() == words.tobytes()
