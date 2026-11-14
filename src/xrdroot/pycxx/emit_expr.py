@@ -859,7 +859,13 @@ class ExprEmitter(NameEmitter):
         return f"construct_at({self.value(place.obj)}, {self.value(place.index)}, {built})"
 
     def new_array(self, ctype: CType, count: Expr) -> str:
-        """``new T[n]``: an array of ``n`` zeros, or of ``None`` for pointers and objects."""
+        """``new T[n]``: an array of ``n`` zeros, or of ``None`` for pointers and objects;
+        ``new T[n][m]``, ``n`` rows of ``m`` numbers."""
+        if ctype.dims:
+            if not ctype.element().scalar or ctype.pointer:
+                raise self.refuse(f"new of an array of arrays of {ctype.name}", count)
+            dims = ", ".join(self.value(dim) for dim in [count, *ctype.dims])
+            return f"array({ctype.name!r}, ({dims}))"
         if ctype.scalar:
             return f"array({ctype.name!r}, {self.value(count)})"
         if ctype.pointer:

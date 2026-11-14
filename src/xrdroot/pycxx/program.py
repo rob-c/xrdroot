@@ -138,6 +138,9 @@ class Program:
         self.cells: dict[int, set[str]] = {}
         #: The globals whose address is taken somewhere.
         self.global_cells: set[str] = set()
+        #: The names handed to a library method that writes into a ``char`` array or reads it
+        #: as it changes (:attr:`~.dialect.Dialect.buffer_methods`): buffers, not text.
+        self.buffers: set[str] = set()
         #: The out-of-class definitions of static members, written in their class instead.
         self.class_statics: set[int] = set()
         #: The class templates, and the classes made of them for the arguments they are given.
@@ -316,6 +319,15 @@ class Program:
             self.global_cells |= names - local
         for var in self.globals.values():  # ``int *p = &i;`` at namespace scope
             self.global_cells |= set(self._escaping(var))
+        self._buffers()
+
+    def _buffers(self) -> None:
+        """The names handed to a method the dialect says writes into a buffer it is given."""
+        methods = active().buffer_methods
+        for _, _, body in self.bodies():
+            self.buffers |= {arg.last for node in walk(body) if isinstance(node, Call)
+                             and isinstance(node.func, Member) and node.func.name in methods
+                             for arg in node.args if isinstance(arg, Name)}  # fmt: skip
 
     def analyse(self, func: Function) -> None:
         """A function made after the rest were looked over - an instance of a template - looked

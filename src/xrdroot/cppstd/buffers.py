@@ -37,6 +37,12 @@ class CharBuffer(np.ndarray):  # type: ignore[misc]
         raw: bytes = np.asarray(self).astype(np.uint8).tobytes()
         return raw.split(b"\0", 1)[0].decode("latin-1")
 
+    def __getitem__(self, index: Any) -> Any:
+        """A byte read as the ``int`` C promotes a ``char`` to - not a NumPy byte, whose
+        arithmetic would wrap at 256 - and a slice as the view a pointer into it is."""
+        found = super().__getitem__(index)
+        return int(found) if isinstance(found, np.integer) else found
+
     def __format__(self, spec: str) -> str:
         return format(str(self), spec)
 

@@ -318,7 +318,7 @@ class VariableEmitter(StmtEmitter):
             else (InitList(decl.where, decl.args) if decl.args else None)
         )
         element = CType(ctype.name, ctype.args, ctype.pointer, False, ctype.const)
-        if element.name in ("char", "signed char", "unsigned char") and not element.pointer:
+        if element.name == "char" and not element.pointer:  # text; uint8_t's are bytes
             return self._char_array(decl, ctype, init)
         dims = self._dimensions(decl, ctype, init)
         values = f", {self.value(init)}" if init is not None else ""
@@ -339,7 +339,11 @@ class VariableEmitter(StmtEmitter):
         return dims[0] if len(dims) == 1 else f"({', '.join(dims)})"
 
     def _char_array(self, decl: VarDecl, ctype: CType, init: Expr | None) -> str:
-        """``char name[20]``: a C string, which is a Python ``str`` here."""
+        """``char name[20]``: a C string, which is a Python ``str`` here - or, handed to a
+        library to write into (:attr:`~.program.Program.buffers`), a buffer of its bytes."""
+        if decl.name in self.program.buffers and len(ctype.dims) == 1:
+            made = f"array('char', {self._dimensions(decl, ctype, init)})"
+            return made if init is None else f"text_into({made}, {self.value(init)})"
         if len(ctype.dims) > 1:
             items = self.value(init) if init is not None else "[]"
             dims = self._dimensions(decl, ctype, init)

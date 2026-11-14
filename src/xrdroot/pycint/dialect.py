@@ -288,6 +288,7 @@ ROOT = Dialect(
     read_only=READ_ONLY,
     layouts=LAYOUTS,
     string_classes=frozenset({"TString"}),
+    buffer_methods=frozenset({"Branch", "SetBranchAddress"}),
     string_methods={"Data": _data},
     guards=frozenset({"TFile", "TMemFile"}),
     value_readers=frozenset({"TTreeReaderValue"}),

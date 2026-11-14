@@ -164,6 +164,9 @@ def with_char(text: Any, index: Any, char: Any, terminated: bool) -> str:
     NUL written inside it. Any other character written past the end of either
     is refused: what C++ would find between is not kept.
     """
+    if isinstance(text, CharBuffer):  # memory: written in place, the same buffer kept
+        put_char(text, index, char)
+        return text
     string = cstr(text)
     at, code = int(index), int(char) % 256
     if terminated and not code:

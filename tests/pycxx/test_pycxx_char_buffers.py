@@ -12,7 +12,7 @@ import pytest
 
 from xrdroot.cppstd.buffers import CharBuffer, put_char, text_into
 from xrdroot.cppstd.objects import array
-from xrdroot.cppstd.strings import char_at, cstr
+from xrdroot.cppstd.strings import char_at, cstr, with_char
 from xrdroot.pycxx import run_program
 from xrdroot.pycxx.errors import MacroError, Refusal
 from xrdroot.pycxx.translation import translation
@@ -130,3 +130,44 @@ def test_a_char_written_through_a_pointer_to_text_fails_as_it_runs(
 def test_a_pointer_step_that_is_not_a_variables_is_refused() -> None:
     with pytest.raises(Refusal, match=r"char\*\+\+ of a pointer that is not a variable"):
         translation("struct S { char *p; };\nvoid f(S s) { char c = *s.p++; }", "t.cxx")
+
+
+def test_a_byte_array_and_a_new_array_of_rows_are_numbers_in_place(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    body = """
+#include <cstdint>
+int main() {
+   uint8_t buf[4];
+   for (int n = 0; n < 4; n++) buf[n] = n * 100;
+   unsigned char c[3] = {1, 2, 3};
+   c[1] += 250;
+   int s = 0;
+   for (int n = 0; n < 4; n++) s += buf[n];
+   int n = 3;
+   auto a2 = new float[n][2];
+   a2[1][1] = 5;
+   float (*b)[2] = new float[n][2];
+   b[2][0] = 1;
+   printf("%d %d %d %g %g\\n", s, c[1], (int)sizeof(buf), a2[1][1], b[2][0]);
+   return 0;
+}
+"""
+    assert run(tmp_path, capsys, body) == "344 252 4 5 1\n"
+    with pytest.raises(Refusal, match="new of an array of arrays of S"):
+        translation("struct S {};\nvoid f(int n) { auto p = new S[n][2]; }", "t.cxx")
+
+
+def test_a_char_array_a_library_writes_into_is_a_buffer() -> None:
+    from dataclasses import replace
+
+    from xrdroot.pycxx.dialect import CXX, using
+
+    lab = replace(CXX, name="lab-buffers", buffer_methods=frozenset({"Branch"}))
+    source = 'void f(T &t) { char s[10] = "onetwo"; char u[4]; t.Branch(s); s[3] = 0; }'
+    with using(lab):
+        python = translation(source, "t.cxx").python
+    assert "s = text_into(array('char', 10), 'onetwo')" in python
+    assert "u = ''" in python
+    buffer = text_into(array("char", 10), "onetwo")
+    assert with_char(buffer, 3, 0, True) is buffer and str(buffer) == "one"

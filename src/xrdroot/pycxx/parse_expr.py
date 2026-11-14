@@ -10,6 +10,7 @@ must make are made from what is known about names: ``(T)x`` is a cast when
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable
 from typing import Any, ClassVar
 
@@ -212,9 +213,11 @@ class ExprParser(TypeParser):
         if self.accept("["):
             count = self.expression()
             self.expect("]")
+            inner = []  # ``new float[n][2]``: n rows of float[2]
             while self.accept("["):
-                self.expression()
+                inner.append(self.expression())
                 self.expect("]")
+            ctype = dataclasses.replace(ctype, dims=inner) if inner else ctype
         if self.at_("("):
             return New(where, ctype, self.arguments(), count)
         if self.at_("{"):

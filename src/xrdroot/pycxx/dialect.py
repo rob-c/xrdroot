@@ -173,6 +173,9 @@ class Dialect:
     read_only: frozenset[str] = frozenset()
     #: The string classes a C string stored into one is converted to.
     string_classes: frozenset[str] = frozenset()
+    #: The library's methods a ``char`` array handed to is memory to write into, or read from
+    #: as it changes: such an array is a buffer (``cppstd.buffers``), not text.
+    buffer_methods: frozenset[str] = frozenset()
     #: The library's members of a ``std::string`` - a string class's that one converts to.
     string_methods: Mapping[str, Callable[[str, list[str]], str]] = field(default_factory=dict)
     #: The classes whose objects do something as their scope ends.

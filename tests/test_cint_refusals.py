@@ -16,7 +16,7 @@ def body(source: str) -> str:
 @pytest.mark.parametrize(
     ("source", "fragment"),
     [
-        ("int *m = new int[3][4];", "m = array('int', 3)"),
+        ("int *m = new int[3][4];", "m = array('int', (3, 4))"),
         ('TH1F *h = new TH1F{"h"};', "h = ROOT.TH1F('h')"),
         ('::printf("x"); double r = ::gRandom->Rndm();', "r = ROOT.gRandom.Rndm()"),
         ("int v = obj.operator()(1);", "ROOT.obj.__call__(1)"),

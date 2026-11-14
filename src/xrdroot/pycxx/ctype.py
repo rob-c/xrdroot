@@ -195,7 +195,7 @@ class CType:
     @property
     def is_string(self) -> bool:
         """A C string, a character array or a ``std::string``: all Python ``str`` here."""
-        chars = self.name in ("char", "signed char", "unsigned char")
+        chars = self.name == "char"  # signed and unsigned char arrays are bytes, not text
         if chars and self.pointer + len(self.dims) == 1:
             return True
         return self.name in STRINGS and not self.pointer and not self.dims

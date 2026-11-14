@@ -229,7 +229,12 @@ class Inference(EmitterBase):
         return CType("std::type_info", const=True)
 
     def _type_new(self, node: New) -> CType | None:
-        return node.ctype.pointed()
+        """``new T`` is a ``T*``; ``new T[n][m]``, rows of an array, is taken as a ``T**``:
+        indexed twice, as the array of arrays it is."""
+        ctype = node.ctype
+        if ctype.dims:
+            return CType(ctype.name, pointer=ctype.pointer + 1 + len(ctype.dims))
+        return ctype.pointed()
 
     def _type_index(self, node: Index) -> CType | None:
         inner = self.typeof(node.obj)
