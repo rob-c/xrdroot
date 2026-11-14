@@ -672,8 +672,14 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
         )
 
     def Clone(self, newname: str = "") -> Any:
-        """``Clone``: the same function, sharing nothing, and not put in ``gROOT``'s list."""
-        return wrap(self._xrd.copy(str(newname) if newname else None))
+        """``Clone``: the same function, sharing nothing, and not put in ``gROOT``'s list -
+        its histogram, and so its axes' titles, copied as ``TF1::Copy`` copies them."""
+        made = wrap(self._xrd.copy(str(newname) if newname else None))
+        kept = self.__dict__.get("_histogram")
+        if kept is not None:
+            made.__dict__["_histogram"] = kept.Clone()
+            made.__dict__["_grid"] = self.__dict__.get("_grid")
+        return made
 
     def Copy(self, obj: Any) -> None:
         obj._xrd = self._xrd.copy()

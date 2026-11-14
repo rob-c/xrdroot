@@ -488,3 +488,11 @@ def test_a_tf2_and_a_tf3_save_a_grid_and_interpolate_it_linearly_as_root_does():
     cube.SetNpz(4)
     cube.Save(0, 1, 0, 1, 0, 1)
     assert cube.GetSave([0.3, 0.6, 0.95]) == pytest.approx(1.85, abs=1e-12)
+
+
+def test_a_copy_of_a_function_keeps_its_axes_titles():
+    square = ROOT.TF1("sq", "x*x", -3, 3)
+    square.GetXaxis().SetTitle("xtitle")
+    copied = square.DrawCopy()
+    assert copied.GetXaxis().GetTitle() == "xtitle" and copied.GetHistogram() is not \
+        square.GetHistogram()
