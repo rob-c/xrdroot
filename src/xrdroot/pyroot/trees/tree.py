@@ -255,6 +255,28 @@ class TTree(_Player):
     def SetMaxTreeSize(self, maxsize: int = 100_000_000_000) -> None:
         """How big ROOT lets a file grow before starting another; one file here."""
 
+    #: ``TTree::SetBranchStyle``: 1 splits objects into ``TBranchElement``s, 0 into the
+    #: ``TBranchObject``s of ROOT 3.
+    _branch_style = 1
+
+    @staticmethod
+    def SetBranchStyle(style: int = 1) -> None:
+        TTree._branch_style = int(style)
+
+    @staticmethod
+    def GetBranchStyle() -> int:
+        return TTree._branch_style
+
+    def BranchRef(self) -> None:
+        """``BranchRef``: refused - the table of which entry holds each referenced object."""
+        from ...errors import UnsupportedFeatureError
+
+        raise UnsupportedFeatureError(
+            f"TTree::BranchRef gives {self._name!r} a TRefTable branch saying which entry "
+            f"holds each object a TRef points at, which this writer does not write; a TRef "
+            f"finds an object read into memory without it, so leave the call out"
+        )
+
     def SetBasketSize(self, name: str, size: int = 16000) -> None:
         """A branch's basket size in ROOT; this writer sizes its own baskets."""
 

@@ -76,6 +76,8 @@ class BranchInfo(NamedTuple):
     #: ``fCompress``: how its baskets are compressed, as ROOT spells it; -1 for a branch
     #: whose record has not been written, which takes its file's.
     compress: int = -1
+    #: ``fClonesName``: the class of the objects a ``TClonesArray`` branch holds.
+    clones: str = ""
 
     def walk(self) -> list[BranchInfo]:
         """This branch and every branch under it, in the order ROOT lists them."""
@@ -204,8 +206,9 @@ def _nested(record: Any, grouped: dict[int, tuple[Any, list[LeafInfo]]]) -> Bran
     leaves = grouped.get(id(record), (record, []))[1]
     children = tuple(_nested(child, grouped) for child in record.branches)
     fid, btype = (record.element[4], record.element[5]) if record.element else (-1, 0)
+    clones = record.element[1] if record.element else ""
     made = _with_record(_recorded(record, leaves))
-    return made._replace(children=children, fid=fid, btype=btype)
+    return made._replace(children=children, fid=fid, btype=btype, clones=clones)
 
 
 def _recorded(record: Any, leaves: list[LeafInfo]) -> BranchInfo:

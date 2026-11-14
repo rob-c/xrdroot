@@ -17,7 +17,14 @@ import numpy as np
 from .wpacking import BASIC, pack_member, packed_size
 from .wtree import _Column, _rows_of, _Variable
 
-__all__ = ["MemberColumn", "MemberRows", "CountColumn", "StreamedColumn", "VectorColumn"]
+__all__ = [
+    "MemberColumn",
+    "MemberRows",
+    "StringRows",
+    "CountColumn",
+    "StreamedColumn",
+    "VectorColumn",
+]
 
 #: The bits ROOT sets in a byte count to say that is what it is.
 BYTE_COUNT = 0x40000000
@@ -98,6 +105,34 @@ class MemberRows(_ElementColumn, _Variable):
     def pack_many(self, values: Any) -> tuple[bytes, np.ndarray[Any, Any]]:
         content, counts = _rows_of(self.name, values)
         return pack_member(self.stype, self.comment, content), counts * self.width
+
+
+class StringRows(_ElementColumn, _Variable):
+    """One ``TString`` member of every object in a split collection: a row of them per entry,
+    each its length - one byte, or 255 and four - and its bytes, as ``TString`` streams."""
+
+    __slots__ = ()
+
+    def __init__(self, name: str, basket_size: int) -> None:
+        super().__init__(name, "B", basket_size)
+
+    def pack(self, value: Any) -> bytes:
+        return b"".join(_tstring(str(text)) for text in value)
+
+    def pack_many(self, values: Any) -> tuple[bytes, np.ndarray[Any, Any]]:
+        pieces = [self.pack(row) for row in values]
+        return b"".join(pieces), np.asarray([len(piece) for piece in pieces], dtype=np.int64)
+
+
+def _tstring(text: str) -> bytes:
+    raw = text.encode()
+    if len(raw) < LONG_STRING:
+        return bytes([len(raw)]) + raw
+    return bytes([LONG_STRING]) + struct.pack(">i", len(raw)) + raw
+
+
+#: The length byte that says a longer ``TString``'s length follows in four bytes.
+LONG_STRING = 255
 
 
 class CountColumn(_ElementColumn, _Variable):

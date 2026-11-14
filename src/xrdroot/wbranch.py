@@ -17,7 +17,10 @@ kind, and each record is held to it field by field):
   branch per member of that;
 - a ``std::vector`` of objects split as a collection - a ``TBranchElement``
   of ``fType`` 4 whose baskets hold how many objects each entry has, and a
-  branch of ``fType`` 41 for each member, its rows that long.
+  branch of ``fType`` 41 for each member, its rows that long;
+- a ``TClonesArray`` split the same way - ``fType`` 3 and 31 - whose objects'
+  ``TObject`` part is split into ``fUniqueID`` and ``fBits`` too, and whose
+  ``TString`` members are rows of strings.
 
 The numbers in a member's baskets are big-endian, packed by
 :mod:`.wpacking` when the member is a ``Double32_t`` or ``Float16_t``.
@@ -35,14 +38,31 @@ from typing import Any, NamedTuple
 from .buffer import MAP_OFFSET
 from .errors import UnsupportedFeatureError
 from .wclasses import Layout, Member, _mixed, harvested
-from .wcolumns import CountColumn, MemberColumn, MemberRows, StreamedColumn, VectorColumn
+from .wcolumns import (
+    CountColumn,
+    MemberColumn,
+    MemberRows,
+    StreamedColumn,
+    StringRows,
+    VectorColumn,
+)
 from .winfo import INFOS
 from .wmeasure import Measuring, version
 from .wobjects import IGNORED
 from .wpacking import BASIC
 from .writer import BITS, WBuffer
 
-__all__ = ["Spec", "Vector", "Whole", "Split", "Collection", "LeafRefs", "column_keys"]
+__all__ = [
+    "Spec",
+    "Vector",
+    "Whole",
+    "Split",
+    "Collection",
+    "SplitClones",
+    "LeafRefs",
+    "column_keys",
+    "clones_members",
+]
 
 #: The record versions written here: the 6.08 ``TBranchElement`` and ``TLeafElement``,
 #: and the ``TBranchObject`` and ``TLeafObject`` the donors of :mod:`.winfo` have.
@@ -620,3 +640,95 @@ class Collection(Spec):
 
     def declared(self) -> tuple[Any, ...]:
         return (self.element,) if self.own else ()
+
+
+#: ``fType`` of a split ``TClonesArray``, and of one member of every object in it.
+CLONES, CLONES_MEMBER = 3, 31
+#: ``fStreamerType`` of a ``TString`` member, and of ``TObject``'s bits, whose
+#: ``TLeafElement`` names no width.
+TSTRING, BITS_TYPE = 65, 15
+
+
+class CloneMember(NamedTuple):
+    """One member of the objects of a split ``TClonesArray``, and the class that declares it -
+    the objects' class, or a base of it such as ``TObject``."""
+
+    owner: str
+    fid: int
+    name: str
+    stype: int
+    title: str
+
+
+def clones_members(element: str) -> list[CloneMember]:
+    """Every member a ``TClonesArray`` of ``element`` is split into, bases' first, as ROOT
+    splits one: numbers and ``TString``s, a base's members by their place in the base."""
+    found: list[CloneMember] = []
+    for fid, described in enumerate(_description(element)):
+        if described[0] == "TStreamerBase":
+            found += clones_members(described[1])
+        else:
+            found.append(_plain(element, fid, described))
+    return found
+
+
+def _description(classname: str) -> tuple[Any, ...]:
+    if classname not in INFOS:
+        raise UnsupportedFeatureError(
+            f"a TClonesArray of {classname} is split here only for a class this writer "
+            f"carries a description of; give the branch split level 0 and it is written whole"
+        )
+    return INFOS[classname][2]
+
+
+def _plain(owner: str, fid: int, element: Any) -> CloneMember:
+    kind, name, title, stype = element[:4]
+    if kind not in ("TStreamerBasicType", "TStreamerString") or (
+        stype != TSTRING and stype not in BASIC
+    ):
+        raise UnsupportedFeatureError(
+            f"{owner}::{name} is a {kind[9:]} member, and a TClonesArray is split here when "
+            f"each member of its objects is a number or a TString; give the branch split "
+            f"level 0 and it is written whole"
+        )
+    return CloneMember(owner, fid, name, stype, title)
+
+
+@dataclass(frozen=True)
+class SplitClones(Spec):
+    """A ``TClonesArray`` of objects of class ``element`` split as ``TTree::Branch`` splits one:
+    a ``TBranchElement`` of ``fType`` 3 counting the objects each entry holds, and one of
+    ``fType`` 31 per member, its rows that long."""
+
+    element: str
+
+    def build(self, name: str, basket_size: int) -> Branch:
+        size = self._size(basket_size)
+        count = ElementLeaf(f"{name}_", f"{name}_", 0, WHOLE, NOT_A_MEMBER)
+        checksum, version, _elements = INFOS["TClonesArray"]
+        info = ElementInfo("TClonesArray", "", self.element, checksum, version, 0, CLONES,
+                           NOT_A_MEMBER)  # fmt: skip
+        top = CollectionBranch(name, f"{name}_", self.split, CountColumn(name, size), [count], info)
+        top.children = [self._member(top, member, count, size) for member in self.members()]
+        return top
+
+    def members(self) -> list[CloneMember]:
+        return clones_members(self.element)
+
+    def _member(self, top: Branch, member: CloneMember, count: ElementLeaf, size: int) -> Branch:
+        checksum, version, _elements = INFOS[member.owner]
+        info = ElementInfo(member.owner, self.element, "", checksum, version, member.fid,
+                           CLONES_MEMBER, member.stype, count=top)  # fmt: skip
+        name, title = f"{top.name}.{member.name}", f"{member.name}[{count.name}]"
+        width = 0 if member.stype in (TSTRING, BITS_TYPE) else BASIC[member.stype][1]
+        column: Any = (
+            StringRows(name, size)
+            if member.stype == TSTRING
+            else MemberRows(name, member.stype, member.title, size)
+        )
+        leaf = ElementLeaf(name, title, width, member.fid, member.stype, count)
+        return Branch(name, title, 0, column, [leaf], info)
+
+    def classes(self) -> tuple[str, ...]:
+        owners = dict.fromkeys(member.owner for member in self.members())
+        return (*super().classes(), "TClonesArray", *_held("TClonesArray")[1:], *owners)

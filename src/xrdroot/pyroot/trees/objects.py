@@ -28,7 +28,7 @@ import numpy as np
 
 from ...errors import UnsupportedFeatureError
 from ...tree import Jagged
-from ...wbranch import Collection, Spec, Split, Whole, column_keys
+from ...wbranch import Collection, Spec, Split, SplitClones, Whole, clones_members, column_keys
 from ...wclasses import declared, harvested
 from ...wobjects import named, stream, stream_clones
 from ...writer import WBuffer
@@ -174,11 +174,6 @@ class Clones(_Whole):
     """A ``TClonesArray``, unsplit: its objects whole, or member by member when bypassing."""
 
     def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
-        if split > 0:
-            raise UnsupportedFeatureError(
-                "a TClonesArray split into a branch per member is not written here; give "
-                "the branch split level 0 and it is written whole, as ROOT also writes it"
-            )
         return Whole(
             "TClonesArray", object=True, holds=(obj._class,), split=0, basket_size=bufsize
         )
@@ -188,13 +183,60 @@ class Clones(_Whole):
         return named("TClonesArray", stream_clones(obj._class, getters, obj._bypass))
 
 
+class SplitArray(Kind):
+    """A ``TClonesArray`` split: how many objects each entry holds, and a row per member."""
+
+    def __init__(self, element: str) -> None:
+        self.members = clones_members(element)
+
+    def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
+        return SplitClones(obj._class, split=split, basket_size=bufsize)
+
+    def entry(self, obj: Any) -> Any:
+        return [tuple(_member(item, m.name) for m in self.members) for item in obj]
+
+    def columns(self, keys: list[str], entries: list[Any]) -> dict[str, Any]:
+        counts = np.asarray([len(rows) for rows in entries], dtype=np.int64)
+        offsets = np.concatenate([[0], np.cumsum(counts)])
+        columns: dict[str, Any] = {keys[0]: counts}
+        for at, (key, member) in enumerate(zip(keys[1:], self.members, strict=True)):
+            rows = [[values[at] for values in entry] for entry in entries]
+            columns[key] = rows if member.stype == TSTRING else _jagged(rows, offsets)
+        return columns
+
+
+def _jagged(rows: list[list[Any]], offsets: Any) -> Jagged:
+    """Rows of numbers, one per entry, as one column."""
+    return Jagged(np.asarray([value for row in rows for value in row], dtype=np.float64), offsets)
+
+
+#: ``fStreamerType`` of a ``TString`` member, whose rows are lists of strings.
+TSTRING = 65
+#: ``TObject::kIsOnHeap | kNotDeleted``, which a split ``TClonesArray`` leaves out of ``fBits``.
+HEAP_BITS = 0x03000000
+
+
+def _member(obj: Any, name: str) -> Any:
+    """One member of an object a ``TClonesArray`` holds, by ROOT's name for it."""
+    if name == "fUniqueID":
+        return int(obj.GetUniqueID())
+    if name == "fBits":
+        return int(obj._bitword()) & ~HEAP_BITS
+    getter = getattr(obj, GETTERS.get(name, ""), None)
+    return getter() if callable(getter) else _members_of(obj)(name)
+
+
+#: The members ROOT's own classes hand back through a method rather than keep as attributes.
+GETTERS = {"fName": "GetName", "fTitle": "GetTitle", "fString": "GetString"}
+
+
 def _members_of(obj: Any) -> Any:
     """How a drawing object's members are read: its own table of them, by ROOT's names."""
     members = getattr(obj, "members", None)
     return members.__getitem__ if members is not None else (lambda name: getattr(obj, name))
 
 
-def _kind(obj: Any) -> Kind | None:
+def _kind(obj: Any, split: int = 0) -> Kind | None:
     """The kind of object this is, if it is one a branch of objects can hold."""
     from ..core.collections import TClonesArray
     from ..core.genvector import LorentzVector
@@ -207,7 +249,7 @@ def _kind(obj: Any) -> Kind | None:
     if isinstance(obj, TLorentzVector):
         return Lorentz4()
     if isinstance(obj, TClonesArray):
-        return Clones()
+        return Clones() if split < 1 else SplitArray(obj._class)
     if _histogram(obj):
         return Histogram()
     return Lorentzes() if _of_lorentz(obj) else None
@@ -286,7 +328,7 @@ def _joined(pieces: list[Any]) -> Any:
 def object_slot(name: str, address: Any, split: int, bufsize: int | None) -> ObjectSlot | None:
     """The slot for a branch given an object, or ``None`` when ``address`` holds no object."""
     obj = _held(address)
-    kind = _kind(obj)
+    kind = _kind(obj, split)
     if kind is None:
         return None
     return ObjectSlot(name, address, kind, kind.spec(obj, split, bufsize))
