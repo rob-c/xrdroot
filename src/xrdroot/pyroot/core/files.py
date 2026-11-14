@@ -32,6 +32,7 @@ from .directories import TDirectory, current_directory, forget_file, set_current
 from .messages import message
 from .objects import Indent, TNamed, TObject, templated
 from .records import recorded
+from .references import file_process, settle
 from .wrapping import from_members, wrap
 
 __all__ = ["TFile", "TMemFile", "TDirectoryFile", "TKey"]
@@ -276,7 +277,9 @@ class TDirectoryFile(TDirectory):
         read = self._reader()[label]
         found = _tree(read, key) or wrap(read)
         if not isinstance(found, TObject) and not _engine_own(found):
-            found = from_members(key.GetClassName(), found) or TOther(key.GetClassName(), found)
+            made = from_members(key.GetClassName(), found)  # a null TRef is false, and made
+            found = TOther(key.GetClassName(), found) if made is None else made
+        settle(found, read, self.GetFile())
         newest = key is self.GetKey(key.GetName())
         if newest and any(_inherits(found, kind) for kind in KEPT):
             self.Append(found, True)
@@ -336,7 +339,7 @@ class TDirectoryFile(TDirectory):
         own = getattr(obj, "_write_into", None)
         if own is not None:
             return int(own(self, called))
-        writer.write(called, recorded(obj), title=obj.GetTitle())
+        writer.write(called, recorded(obj, writer), title=obj.GetTitle())
         self._note_key(called, obj.GetTitle(), obj.ClassName())
         return 1
 
@@ -604,6 +607,22 @@ class TFile(TDirectoryFile):
 
     def GetFile(self) -> Any:
         return self
+
+    def WriteProcessID(self, pid: Any) -> int:
+        """``WriteProcessID``: the file's index for the process ``pid`` - its ``ProcessID``
+        record written now if the file has none - or -1 for a file not being written."""
+        writer = self._writable()
+        if writer is None:
+            return -1
+        from .references import TProcessID
+
+        held = pid if pid is not None else TProcessID.GetPID()
+        return int(writer.process_index(held.GetTitle()))
+
+    def ReadProcessID(self, index: int) -> Any:
+        """``ReadProcessID``: the process the file's ``ProcessID{index}`` names, as the session
+        has it, or ``None`` if the file has none of that index."""
+        return file_process(self, int(index))
 
     def IsZombie(self) -> bool:
         return self._zombie

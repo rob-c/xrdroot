@@ -49,6 +49,8 @@ FAMILIES = (
     "efficiencies",
     "files",
     "compressions",
+    "references",
+    "bits",
     "merging",
     "parallel",
     "rootns",

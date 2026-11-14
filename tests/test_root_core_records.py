@@ -51,8 +51,8 @@ def test_a_tnamed_a_tobject_a_tobjstring_and_a_named_list_are_read_back_as_writt
 
 
 def test_a_record_of_a_class_without_a_layout_or_only_part_of_others_is_refused():
-    with pytest.raises(UnsupportedFeatureError, match="TBits is not a class"):
-        Record("TBits", {})
+    with pytest.raises(UnsupportedFeatureError, match="THnSparseD is not a class"):
+        Record("THnSparseD", {})
     with pytest.raises(UnsupportedFeatureError, match="TCollection is not a class"):
         Record("TCollection", {})
     assert "TNamed" in repr(Record("TNamed", {}, "t"))
@@ -133,3 +133,13 @@ def test_a_bare_tobject_and_a_list_of_a_class_without_a_wrapper_read_back_in_a_s
     assert listed[0].ClassName() == "TAttLine" and listed[1].GetName() == "x"
     assert listed[2].GetName() == "h" and listed[2].ClassName() == "TH1D"
     found.Close()
+
+
+def test_a_named_base_a_reference_may_point_at_names_its_process():
+    from xrdroot.writer import WBuffer, _write_tnamed
+
+    buf = WBuffer()
+    named = {"fName": "n", "fTitle": "t", "fBits": 1 << 4, "fUniqueID": 5, "pidf": 2}
+    _write_tnamed(buf, named)
+    expected = "40000012" "0001" "0001" "00000005" "00000010" "0002" "016e" "0174"
+    assert bytes(buf.data).hex() == expected

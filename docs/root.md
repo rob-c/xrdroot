@@ -1173,7 +1173,7 @@ ROOT: a new label takes the next free bin, a full axis doubles, and
 | graphs | `TGraph`, `TGraphErrors`, `TGraphAsymmErrors` (`SetPoint` past the end grows it, `GetPoint`, `GetX`, `SetPointError`, `Eval`, `Fit`, `GetHistogram` - ROOT's frame, a tenth wider than the points), `TMultiGraph` |
 | functions and fits | `TF1`, `TF2`, `TF3`, `TFormula` - from a formula, or from a Python `fn(x, p)` as PyROOT calls it - with `SetParameters`, `SetParNames`, `SetParLimits`, `FixParameter`, `Eval`, `Integral`, `Derivative`, `GetMaximumX`, `GetX`, `GetRandom`, `Moment`; `TFitResultPtr` and `TFitResult` (`Parameter`, `ParError`, `Chi2`, `Ndf`, `Prob`, `GetCovarianceMatrix`, `Print`); `TVirtualFitter.GetFitter().GetConfidenceIntervals`, the latest fit's band; `IntegralError`; `TEfficiency` |
 | mathematics | `TMath`, `ROOT.Math` (its distributions, `MinimizerOptions`, and GenVector's `PtEtaPhiMVector`, `PxPyPzEVector`, `XYZVector`... kept in their own coordinates and printed as `operator<<` prints them, with `VectorUtil`), `TVector2`, `TVector3`, `TRotation`, `TLorentzVector`, `TRandom`, `TRandom1`, `TRandom2`, `TRandom3` |
-| containers | `TList`, `TObjArray`, `THashList`, `THashTable`, `TIter` - each with a Python list's `append`, `extend`, `remove`, `count`, `+` and `*`, and the ordered ones `insert`, `pop`, `reverse`, `sort`, `index` and `[i]`/`[i:j:k]` to read, assign and delete - `TObjString` (compared, measured and shown as its string); `Write` puts a collection under one key with `TObject::kSingleKey` and each object under its own without; `TVectorT[float]`, which is `TVectorD`; `TArray`s and `TVectorD` raise `IndexError` past their ends |
+| containers | `TList`, `TObjArray`, `THashList`, `THashTable`, `TIter` - each with a Python list's `append`, `extend`, `remove`, `count`, `+` and `*`, and the ordered ones `insert`, `pop`, `reverse`, `sort`, `index` and `[i]`/`[i:j:k]` to read, assign and delete - `TObjString` (compared, measured and shown as its string); `Write` puts a collection under one key with `TObject::kSingleKey` and each object under its own without; `TRef`, `TRefArray` and `TProcessID` (an object numbered by its process when a reference is made to it, found again by `GetObject` - in memory, or read from a file beside the reference, ROOT's `ProcessID` records written and read both ways; `SetAction` with a command; `TTree::BranchRef` is refused); `TBits` (grown, searched, combined and shifted as ROOT's, `operator<<` and all); `TVectorT[float]`, which is `TVectorD`; `TArray`s and `TVectorD` raise `IndexError` past their ends |
 
 The namespace is put together from `xrdroot.pyroot.SUBMODULES`: this core,
 the trees (`TTree`, `TChain`, `RDataFrame`...), the STL stand-ins, RDF and
@@ -3656,6 +3656,15 @@ a dictionary per entry of those rows, as any split object does:
 >>> esd["Tracks.fITSncls"].array(0, 1)[0][:5]
 array([5, 6, 6, 6, 6], dtype=int32)
 ```
+
+A script's `TClonesArray` of one of ROOT's classes - a `TNamed`, a
+`TObjString`, a `TLine` - is written split the same way when `TTree::Branch`
+is given a split level of 1 or more, which is its default: its objects'
+`TObject` part as `fUniqueID` and `fBits`, each base's members and then the
+class's own, a `TString` member as a row of strings. A class whose members
+are objects - a histogram's axes - is refused at a split level above 0 and
+written whole at 0. Reading such a branch back into a `TClonesArray`, or a
+null pointer to one, makes the objects again.
 
 A branch ROOT was told to write to a file of its own — `TBranch::SetFile`,
 which ALICE used for its `ESDfriend` — records that file's name, and its

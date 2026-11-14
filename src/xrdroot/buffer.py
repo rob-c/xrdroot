@@ -275,11 +275,15 @@ class Buffer:
 
     def tobject(self) -> tuple[int, int]:
         """A ``TObject``: its identifier and bits, once the version is past."""
+        unique, bits, _process = self.referenced()
+        return unique, bits
+
+    def referenced(self) -> tuple[int, int, int | None]:
+        """A ``TObject`` and, when a ``TRef`` may point at it - ``kIsReferenced`` - which of the
+        file's ``ProcessID`` records numbered it; ``None`` for an object no reference names."""
         self.u16()
         unique, bits = self.u32(), self.u32()
-        if bits & IS_REFERENCED:
-            self.u16()
-        return unique, bits
+        return unique, bits, self.u16() if bits & IS_REFERENCED else None
 
     def named(self) -> tuple[str, str]:
         """A ``TNamed``: the name and title every ROOT object carries."""
