@@ -1023,11 +1023,121 @@ def _set_class(kind: Any) -> type:
 #: The templates, by the name C++ gives each.
 
 
+def _sequence_class(word: str) -> Callable[[Any], type]:
+    """``std::list`` and ``std::deque``: a vector of the kind, by their own name, that grows at
+    its front as well as at its back."""
+
+    def build(kind: Any) -> type:
+        base = _vector_class(kind)
+        name = f"{word}<{cpp_name(kind)}>"
+        made = type(name, (base,), {"__slots__": (), "__cpp_name__": name})
+        made.push_front = _push_front  # type: ignore[attr-defined]
+        made.pop_front = _pop_front  # type: ignore[attr-defined]
+        made.pop_back = _pop_back  # type: ignore[attr-defined]
+        return made
+
+    return build
+
+
+def _push_front(self: Any, value: Any) -> None:
+    items = [value, *self]
+    self.clear()
+    for item in items:
+        self.push_back(item)
+
+
+def _pop_front(self: Any) -> None:
+    items = list(self)[1:]
+    self.clear()
+    for item in items:
+        self.push_back(item)
+
+
+def _pop_back(self: Any) -> None:
+    items = list(self)[:-1]
+    self.clear()
+    for item in items:
+        self.push_back(item)
+
+
+def _renamed(word: str, build: Callable[..., type]) -> Callable[..., type]:
+    """``std::unordered_map`` and its kin: the ordered container, by their own name - an order
+    C++ leaves unspecified is free to be the sorted one."""
+
+    def made(*kinds: Any) -> type:
+        base = build(*kinds)
+        name = word + base.__cpp_name__[base.__cpp_name__.index("<") :]  # type: ignore[attr-defined]
+        return type(name, (base,), {"__slots__": (), "__cpp_name__": name})
+
+    return made
+
+
+class _MultiMap(_Container):
+    """``std::multimap``: pairs kept in key order, a key as often as it is inserted."""
+
+    __slots__ = ("_pairs",)
+    kinds: tuple[Any, Any] = (np.dtype("float64"), np.dtype("float64"))
+
+    def __init__(self, items: Any = None) -> None:
+        self._pairs: list[Any] = []
+        for item in items or ():
+            self.insert(item)
+
+    def __len__(self) -> int:
+        return len(self._pairs)
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(list(self._pairs))
+
+    def size(self) -> int:
+        return len(self._pairs)
+
+    def empty(self) -> bool:
+        return not self._pairs
+
+    def clear(self) -> None:
+        self._pairs.clear()
+
+    def count(self, key: Any) -> int:
+        return sum(1 for pair in self._pairs if pair.first == key)
+
+    def items(self) -> list[tuple[Any, Any]]:
+        return [(pair.first, pair.second) for pair in self._pairs]
+
+    def __getitem__(self, index: int) -> Any:
+        """The pair at ``index`` in key order: what an iterator at that place reads."""
+        return self._pairs[index]
+
+    def begin(self) -> _VectorIterator:
+        return _VectorIterator(self, 0)
+
+    def end(self) -> _VectorIterator:
+        return _VectorIterator(self, len(self._pairs))
+
+    def insert(self, pair: Any) -> None:
+        """``insert(p)``: after every pair whose key is not greater, as C++ keeps them."""
+        first, second = pair
+        made = _pair_class(*self.kinds)(first, second)
+        at = sum(1 for held in self._pairs if not made.first < held.first)
+        self._pairs.insert(at, made)
+
+
+def _multimap_class(key: Any, value: Any) -> type:
+    name = f"multimap<{cpp_name(key)},{cpp_name(value)}>"
+    members = {"kinds": (key, value), "__cpp_name__": name}
+    return type(name, (_MultiMap,), {"__slots__": (), **members})
+
+
 TEMPLATES: dict[str, _Template] = {
     "vector": _Template("vector", 1, _vector_class),
     "map": _Template("map", 2, _map_class),
     "pair": _Template("pair", 2, _pair_class),
     "set": _Template("set", 1, _set_class),
+    "list": _Template("list", 1, _sequence_class("list")),
+    "deque": _Template("deque", 1, _sequence_class("deque")),
+    "multimap": _Template("multimap", 2, _multimap_class),
+    "unordered_map": _Template("unordered_map", 2, _renamed("unordered_map", _map_class)),
+    "unordered_set": _Template("unordered_set", 1, _renamed("unordered_set", _set_class)),
 }
 
 
@@ -1084,6 +1194,11 @@ class _Namespace:
     map = TEMPLATES["map"]
     pair = TEMPLATES["pair"]
     set = TEMPLATES["set"]
+    list = TEMPLATES["list"]
+    deque = TEMPLATES["deque"]
+    multimap = TEMPLATES["multimap"]
+    unordered_map = TEMPLATES["unordered_map"]
+    unordered_set = TEMPLATES["unordered_set"]
     array = _ArrayTemplate()
     bitset = _bitset.bitset
     mt19937 = _random.mt19937
