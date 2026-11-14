@@ -25,15 +25,18 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from ...compression import spelled
 from ...errors import ROOTError
-from .collections import TList
+from .collections import THashList
 from .declared import made_from, payload_of
-from .directories import TDirectory, current_directory, set_current
-from .messages import message
+from .directories import TDirectory, current_directory, forget_file, set_current
+from .messages import from_script, message
 from .objects import Indent, TNamed, TObject, templated
-from .wrapping import from_members, unwrap, wrap
+from .records import recorded
+from .references import file_process, settle
+from .wrapping import from_members, wrap
 
-__all__ = ["TFile", "TMemFile", "TDirectoryFile", "TKey"]
+__all__ = ["TFile", "TFileOpenHandle", "TMemFile", "TDirectoryFile", "TKey"]
 
 #: ``TFile``'s modes, as ROOT reads the option: upper-cased, with its synonyms.
 MODES = {
@@ -45,9 +48,6 @@ MODES = {
     "UPDATE": "UPDATE",
     "READ_WITHOUT_GLOBALREGISTRATION": "READ",
 }
-#: ROOT's compression algorithms by the number a setting spells them with in its hundreds:
-#: 0, the global default, is zlib, as is 1.
-ALGORITHMS = {0: "zlib", 1: "zlib", 2: "lzma", 4: "lz4", 5: "zstd"}
 #: The setting ROOT writes a file with when it is not told one: zlib at level 1.
 DEFAULT_COMPRESSION = 101
 #: The classes a directory keeps in memory once read, as ``TH1`` and ``TTree`` add themselves.
@@ -228,17 +228,31 @@ class TDirectoryFile(TDirectory):
 
     # -- keys and reading -----------------------------------------------------------------
 
-    def GetListOfKeys(self) -> TList:
-        made = TList()
+    def GetListOfKeys(self) -> THashList:
+        made = THashList()
         for key in self._keys:
             made.Add(key)
         return made
 
+    def FindKey(self, keyname: Any) -> Any:
+        """``FindKey("name;cycle")``: the key of that cycle, or the newest without one."""
+        name, _, cycle = str(keyname).partition(";")
+        return self.GetKey(name, int(cycle) if cycle else 9999)
+
+    def FindKeyAny(self, keyname: Any) -> Any:
+        """``FindKeyAny``: the key here, or in the first directory below that has it."""
+        found = self.FindKey(keyname)
+        if found is not None:
+            return found
+        for key in self._keys:
+            below = self._named_directory(key.GetName()) if key.IsFolder() else None
+            found = below.FindKeyAny(keyname) if below is not None else None
+            if found is not None:
+                return found
+        return None
+
     def GetNkeys(self) -> int:
         return len(self._keys)
-
-    def FindKey(self, name: Any) -> Any:
-        return self.GetKey(name)
 
     def GetKey(self, name: Any, cycle: int = 9999) -> Any:
         """``GetKey``: the key of ``name`` - its newest cycle, or ``cycle`` if given."""
@@ -281,6 +295,7 @@ class TDirectoryFile(TDirectory):
         found = _tree(read, key) or wrap(read)
         if not isinstance(found, TObject) and not _engine_own(found):
             found = _dressed(key.GetClassName(), found)
+        settle(found, read, self.GetFile())
         newest = key is self.GetKey(key.GetName())
         if newest and any(_inherits(found, kind) for kind in KEPT):
             self.Append(found, True)
@@ -346,7 +361,7 @@ class TDirectoryFile(TDirectory):
             key = self._note_key(called, declared.title, declared.classname)
             key._key = _Written(declared)
             return 1
-        writer.write(called, unwrap(obj), title=obj.GetTitle())
+        writer.write(called, recorded(obj, writer), title=obj.GetTitle())
         self._note_key(called, obj.GetTitle(), obj.ClassName())
         return 1
 
@@ -449,10 +464,7 @@ class TDirectoryFile(TDirectory):
 
 def _compression(settings: int) -> tuple[str | None, int | None]:
     """The writer's algorithm and level for one of ROOT's settings; level 0 stores raw."""
-    level = settings % 100
-    if level == 0:
-        return None, None
-    return ALGORITHMS.get(settings // 100, "zlib"), level
+    return spelled(settings)
 
 
 def _top() -> Any:
@@ -508,7 +520,7 @@ def _note_layouts(reading: Any) -> None:
 def _dressed(classname: str, members: Any) -> Any:
     """A record read as its members, made into its class: one the kit makes again, one C++
     declared, or else an object that only says what it is."""
-    made = from_members(classname, members)
+    made = from_members(classname, members)  # a null TRef is false, and made
     if made is None:
         made = made_from(classname, members)
     return made if made is not None else TOther(classname, members)
@@ -565,6 +577,16 @@ def _fetched(name: str) -> Any:
     return io.BytesIO(fetch(name)) if is_remote(name) else name
 
 
+class TFileOpenHandle(TNamed):
+    """``TFileOpenHandle``: a file ``AsyncOpen`` was asked to open, opened by ``Open``."""
+
+    def __init__(
+        self, name: Any = "", option: Any = "READ", ftitle: Any = "", compress: int = 101
+    ) -> None:
+        super().__init__(str(name), str(ftitle))
+        self._args = (str(name), option, ftitle, compress)
+
+
 class TFile(TDirectoryFile):
     """``TFile``: a ROOT file - read, made anew, or added to - and the directory at its top."""
 
@@ -585,6 +607,8 @@ class TFile(TDirectoryFile):
         self._writing: Any = None
         self._zombie = False
         self._open(name)
+        if self._zombie and from_script():  # PyROOT's pythonization of the constructor
+            raise OSError(f"Failed to open file {name}")
         if not self._zombie:
             from .troot import gROOT
 
@@ -636,9 +660,20 @@ class TFile(TDirectoryFile):
     def Open(
         name: Any, option: Any = "READ", ftitle: Any = "", compress: int = 101, netopt: int = 0
     ) -> Any:
-        """``TFile::Open``: the file, or ``None`` - a null pointer - if it would not open."""
+        """``TFile::Open``: the file, or ``None`` - a null pointer - if it would not open.
+
+        ``name`` may be what ``AsyncOpen`` gave, which opens now as it was asked to then."""
+        if isinstance(name, TFileOpenHandle):
+            name, option, ftitle, compress = name._args
         made = TFile(name, option, ftitle, compress)
         return None if made.IsZombie() else made
+
+    @staticmethod
+    def AsyncOpen(
+        name: Any, option: Any = "READ", ftitle: Any = "", compress: int = 101, netopt: int = 0
+    ) -> TFileOpenHandle:
+        """``TFile::AsyncOpen``: a handle to open the file with later, by ``TFile::Open``."""
+        return TFileOpenHandle(name, option, ftitle, compress)
 
     @staticmethod
     def Cp(src: Any, dst: Any, progressbar: Any = True, buffersize: Any = 1000000) -> bool:
@@ -663,6 +698,22 @@ class TFile(TDirectoryFile):
 
     def GetFile(self) -> Any:
         return self
+
+    def WriteProcessID(self, pid: Any) -> int:
+        """``WriteProcessID``: the file's index for the process ``pid`` - its ``ProcessID``
+        record written now if the file has none - or -1 for a file not being written."""
+        writer = self._writable()
+        if writer is None:
+            return -1
+        from .references import TProcessID
+
+        held = pid if pid is not None else TProcessID.GetPID()
+        return int(writer.process_index(held.GetTitle()))
+
+    def ReadProcessID(self, index: int) -> Any:
+        """``ReadProcessID``: the process the file's ``ProcessID{index}`` names, as the session
+        has it, or ``None`` if the file has none of that index."""
+        return file_process(self, int(index))
 
     def IsZombie(self) -> bool:
         return self._zombie
@@ -736,6 +787,7 @@ class TFile(TDirectoryFile):
         gROOT.GetListOfFiles().Remove(self)
         if self in _OPEN:
             _OPEN.remove(self)
+        forget_file(self)
 
     def _destruct(self) -> None:
         """A file on a macro's stack, as its scope ends: closed, as ROOT's destructor does."""

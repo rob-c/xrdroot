@@ -678,11 +678,7 @@ class Histogram(Displayed):
         """
         if len(coordinates) != len(self.axes):
             self.fill(*coordinates, weight=weight)  # the refusal, as fill words it
-        found = filling.fill_one(self, coordinates, weight)
-        if found is None:
-            self.fill(*coordinates, weight=None if weight == 1.0 else weight)
-            return int(self.find_bin(*coordinates))
-        return found
+        return filling.fill_one(self, coordinates, weight)
 
     def fill_random(self, source: Any, n: int, *, rng: Any = None) -> None:
         """``FillRandom``: ``n`` entries drawn from a function, or from another histogram.

@@ -395,6 +395,7 @@ class _Column:
         "starts",
         "tot_bytes",
         "zip_bytes",
+        "compress",
     )
 
     def __init__(self, name: str, typecode: str, length: int, basket_size: int) -> None:
@@ -416,6 +417,9 @@ class _Column:
         self.starts = [0]
         self.tot_bytes = 0
         self.zip_bytes = 0
+        #: ``TBranch::SetCompressionSettings``: how this column's baskets are
+        #: compressed, as ROOT spells it; ``None`` for however the file is.
+        self.compress: int | None = None
 
     def _leaf_class(self) -> tuple[str, str, int, bool]:
         return LEAVES[self.typecode]
@@ -949,6 +953,28 @@ def _counter_code(name: str, types: Mapping[str, Any]) -> str:
     return code
 
 
+def _check_declared(classname: str, columns: Any, basket_size: Any, empty: bool) -> None:
+    """Refuse a tree declared as no class a tree is written as, without a mapping of columns
+    or - unless ``empty`` says it is meant - with none, or with no size for its baskets."""
+    if classname not in TREE_KINDS:
+        raise ValueError(
+            f"a tree is written as one of {', '.join(TREE_KINDS)}, and {classname!r} "
+            f"is none of them"
+        )
+    if not isinstance(columns, Mapping):
+        raise TypeError(
+            f"the columns are a {type(columns).__name__}; a tree is declared with a "
+            f"mapping of column name to type, as in {{'energy': float}}"
+        )
+    if not columns and not empty:
+        raise ValueError(
+            "a tree with no columns holds nothing that could be read back; "
+            "declare what each entry is made of"
+        )
+    if not isinstance(basket_size, int) or basket_size < 1:
+        raise ValueError(f"the basket size is {basket_size!r}, which is not a size in bytes")
+
+
 class WritableTree:
     """A tree being written: named columns, then one entry at a time.
 
@@ -984,24 +1010,9 @@ class WritableTree:
         counters: Mapping[str, Any] | None = None,
         *,
         classname: str = "TTree",
+        empty: bool = False,
     ) -> None:
-        if classname not in TREE_KINDS:
-            raise ValueError(
-                f"a tree is written as one of {', '.join(TREE_KINDS)}, and {classname!r} "
-                f"is none of them"
-            )
-        if not isinstance(columns, Mapping):
-            raise TypeError(
-                f"the columns are a {type(columns).__name__}; a tree is declared with a "
-                f"mapping of column name to type, as in {{'energy': float}}"
-            )
-        if not columns:
-            raise ValueError(
-                "a tree with no columns holds nothing that could be read back; "
-                "declare what each entry is made of"
-            )
-        if not isinstance(basket_size, int) or basket_size < 1:
-            raise ValueError(f"the basket size is {basket_size!r}, which is not a size in bytes")
+        _check_declared(classname, columns, basket_size, empty)
         self._file = file
         self._cycle = cycle
         #: What the tree is called, and what it says it is.
@@ -1010,6 +1021,8 @@ class WritableTree:
         #: The class the tree is written as: a ``TTree``, or a ``TNtuple`` or ``TNtupleD``.
         self.classname = classname
         self._entries = 0
+        #: Where each cluster :meth:`flush` closed ends: one past its last entry.
+        self._clusters: list[int] = []
         self._columns: dict[str, _Column] = {}
         self._counters: dict[str, _Counter] = {}
         #: Each branch at the top of the tree: a column, or a branch of objects (see
@@ -1099,6 +1112,16 @@ class WritableTree:
     def declared(self) -> tuple[Any, ...]:
         """The classes of a macro's that this tree's objects are, described as declared."""
         return tuple(layout for spec in self._specs for layout in spec.declared())
+
+    def compress(self, column: str, codes: int) -> None:
+        """One column's baskets compressed otherwise than the file's: what
+        ``TBranch::SetCompressionSettings`` does.
+
+        ``codes`` is spelled as ROOT spells it, ``algorithm * 100 + level`` -
+        ``404`` for LZ4 at level 4 - and goes in the branch's record, as ROOT's
+        ``fCompress``, as well as deciding how its baskets are packed.
+        """
+        self._branch(column).compress = int(codes)
 
     def fill(self, **values: Any) -> None:
         """Add one entry, with a value for every column.
@@ -1278,6 +1301,7 @@ class WritableTree:
             listed=False,
             extra=extra,
             wide=True,
+            codes=column.compress,
         )
         column.seeks.append(seek)
         column.sizes.append(nbytes)
@@ -1297,6 +1321,17 @@ class WritableTree:
         """Send out every basket part filled, so what comes next starts a basket afresh."""
         for column in self._branches:
             self._flush(column)
+
+    def flush(self) -> None:
+        """``FlushBaskets``: send out every basket part filled and end a cluster here.
+
+        ROOT marks the entries filled since the last cluster as one cluster of
+        their own, which a reader - ``TTree::GetClusterIterator``, distributed
+        ``RDataFrame`` splitting the tree into tasks - sees as a boundary.
+        """
+        self._flush_all()
+        if self._entries > (self._clusters[-1] if self._clusters else 0):
+            self._clusters.append(self._entries)
 
     def _adopt(self, column: _Column, place: tuple[int, int], entries: int, size: int) -> None:
         """Take in a basket that is already on file, as a basket of ``column``.
@@ -1376,15 +1411,15 @@ class WritableTree:
         buf.i32(SCAN_FIELD)
         buf.i32(0)  # fUpdate
         buf.i32(OFFSET_LEN)  # fDefaultEntryOffsetLen
-        buf.i32(0)  # fNClusterRange: no cluster boundaries were declared
+        ranges = self._cluster_ranges()
+        buf.i32(len(ranges))  # fNClusterRange: a range for each cluster flush closed
         buf.i64(MAX_ENTRIES)
         buf.i64(MAX_ENTRIES)  # fMaxEntryLoop
         buf.i64(0)  # fMaxVirtualSize
         buf.i64(AUTO_SAVE)
         buf.i64(AUTO_FLUSH)
         buf.i64(ESTIMATE)
-        buf.u8(0)  # fClusterRangeEnd, of which there are none
-        buf.u8(0)  # fClusterSize, likewise
+        _cluster_arrays(buf, ranges, [end - start for start, end in _pairs(self._clusters)])
         if isinstance(buf, Measuring):
             buf.features()
         # The tree owns its branches - TCollection's kIsOwner, which ROOT's array carries.
@@ -1403,6 +1438,11 @@ class WritableTree:
         buf.u32(0)  # fUserInfo: none
         buf.u32(0)  # fBranchRef: none
         buf.end(index)
+
+    def _cluster_ranges(self) -> list[int]:
+        """``fClusterRangeEnd``: the last entry of each cluster :meth:`flush` closed - none when
+        it was never called, which leaves the clusters to ``fAutoFlush``."""
+        return [end - 1 for end in self._clusters]
 
     def _write_branches(self, buf: WBuffer, origin: int) -> list[int]:
         """Every branch in order; what the tree's list of leaves holds for each leaf comes back.
@@ -1432,7 +1472,8 @@ class WritableTree:
         count = 0
         if isinstance(column, _Rows):
             count = origin + places[column.counter.name][0] + MAP_OFFSET
-        places[column.name] = _branch(buf, column, self._entries, self._file._codes, count)
+        codes = self._file._codes if column.compress is None else column.compress
+        places[column.name] = _branch(buf, column, self._entries, codes, count)
         return [origin + place + MAP_OFFSET for place in places[column.name]]
 
 
@@ -1466,3 +1507,16 @@ def _counts(column: _Rows, packed: dict[str, Packed]) -> np.ndarray[Any, Any]:
     sizes = packed[column.name][1]
     assert sizes is not None
     return sizes // column.itemsize
+
+
+def _cluster_arrays(buf: WBuffer, ends: list[int], sizes: list[int]) -> None:
+    """``fClusterRangeEnd`` and ``fClusterSize``: each array behind a byte saying it is there."""
+    for values in (ends, sizes):
+        buf.u8(1 if values else 0)
+        for value in values:
+            buf.i64(value)
+
+
+def _pairs(ends: list[int]) -> list[tuple[int, int]]:
+    """Each cluster's first entry and one past its last, from where each ends."""
+    return list(zip([0, *ends], ends, strict=False))

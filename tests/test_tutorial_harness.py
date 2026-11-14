@@ -315,11 +315,23 @@ def test_numbers_are_equal_within_the_relative_tolerance():
 
 
 def test_printed_decimals_one_unit_apart_in_their_last_digit_are_equal():
-    assert compare.same_line("Edm = 8.44652e-07", "Edm = 8.44653e-07", TOLERANCE)
+    assert compare.same_line("Fval = 8.44652e-07", "Fval = 8.44653e-07", TOLERANCE)
     assert compare.same_line("nbkg = 504.206 +/- 39.3066", "nbkg = 504.206 +/- 39.3065", TOLERANCE)
-    assert not compare.same_line("Edm = 8.44652e-07", "Edm = 8.44654e-07", TOLERANCE)
+    assert not compare.same_line("Fval = 8.44652e-07", "Fval = 8.44654e-07", TOLERANCE)
     assert not compare.same_line("p = 0.1", "p = 0.2", TOLERANCE)  # one unit, but 100%
     assert not compare.same_line("entries = 100001", "entries = 100002", TOLERANCE)  # a count
+
+
+def test_minuits_estimated_distance_to_minimum_is_compared_within_a_percent():
+    assert compare.same_line("Edm = 2.04915e-05", "Edm = 2.04909e-05", TOLERANCE)
+    assert compare.same_line(
+        "FCN value: 19.9696, estimated distance to minimum: 7.31602e-08",
+        "FCN value: 19.9696, estimated distance to minimum: 7.3256e-08",
+        TOLERANCE,
+    )
+    assert not compare.same_line("Edm = 2.04915e-05", "Edm = 2.2e-05", TOLERANCE)
+    assert not compare.same_line("Edm = 1e-07, Fval = 2.04915", "Edm = 1e-07, Fval = 2.04909",
+                                 TOLERANCE)  # only Edm itself is loosened
 
 
 def test_compressed_sizes_are_masked_and_uncompressed_totals_kept():

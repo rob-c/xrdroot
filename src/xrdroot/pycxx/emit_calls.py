@@ -469,10 +469,12 @@ class CallEmitter(ExprEmitter):
         return self._object_store(ctype, node)
 
     def _object_store(self, ctype: CType, node: Expr) -> str:
-        """``node`` stored into an object: a string class made of a C string, a copy of an
-        object - which Python would otherwise share - or the value itself."""
+        """``node`` stored into an object: a string class made of a C string, built from a
+        pointer, copied - which Python would otherwise share - or shared as it is."""
         if self._made_string(ctype, node):
             return f"{self.host_name(ctype.name.split('::'))}({self.value(node)})"
+        if self._converted_from_pointer(ctype, node):
+            return f"{self.class_expr(ctype)}({self.value(node)})"
         if self._copied(ctype, node):
             return f"value_copy({self.value(node)})"
         return self.value(node)
@@ -484,6 +486,15 @@ class CallEmitter(ExprEmitter):
             return False
         found = self.typeof(node)
         return found is not None and found.is_string
+
+    def _converted_from_pointer(self, ctype: CType, node: Expr) -> bool:
+        """Is ``T x = p`` - or ``x = p`` - an object built from a pointer by ``T``'s converting
+        constructor or assignment? A pointer can be nothing else to an object held by value."""
+        held = ctype.pointer or ctype.is_smart or ctype.reference or ctype.callable
+        if held or not ctype.is_class or ctype.dims or ctype.is_auto:
+            return False
+        found = self.typeof(node)
+        return found is not None and found.is_object_pointer and not found.is_smart
 
     def _copied(self, ctype: CType, node: Expr) -> bool:
         """Is ``T b = a`` a copy of an object - which Python would otherwise share, not copy?"""

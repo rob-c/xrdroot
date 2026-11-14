@@ -42,6 +42,7 @@ class Tolerance:
     rtol: float = 1e-6
     atol: float = 1e-12
     last_digit_rtol: float = 1e-5
+    edm_rtol: float = 1e-2
     image_threshold: float = 0.95
 
 
@@ -137,16 +138,28 @@ def _last_unit(text: str) -> float:
     return 10.0 ** (int(exponent or 0) - places)
 
 
+#: Minuit's estimated distance to the minimum, a convergence measure rather than a result:
+#: rounding in the last gradient step moves it by far more than the fitted values move.
+EDM_LABEL = re.compile(r"(?i)(\bedm|estimated distance to minimum)\s*[=:]\s*$")
+
+
 def same_line(one: str, two: str, tolerance: Tolerance) -> bool:
     """Equal text between the numbers, and numbers equal within the tolerance."""
     if one == two:
         return True
     if NUMBER.split(one) != NUMBER.split(two):
         return False
-    first, second = NUMBER.findall(one), NUMBER.findall(two)
+    first, second = list(NUMBER.finditer(one)), NUMBER.findall(two)
     return len(first) == len(second) and all(
-        _close(a, b, tolerance) for a, b in zip(first, second, strict=False)
+        _close_at(one, a, b, tolerance) for a, b in zip(first, second, strict=False)
     )
+
+
+def _close_at(line: str, found: re.Match[str], other: str, tolerance: Tolerance) -> bool:
+    if EDM_LABEL.search(line[: found.start()]):
+        loose = Tolerance(tolerance.edm_rtol, tolerance.atol, tolerance.edm_rtol)
+        return _close(found.group(), other, loose)
+    return _close(found.group(), other, tolerance)
 
 
 def first_difference(

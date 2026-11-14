@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from ..jagged import take
 from ..rntuple.writer import spec_of as field_of
 from ..wbranch import Vector
 from ..writer import create
@@ -54,11 +55,13 @@ MODES = ("RECREATE", "UPDATE")
 class _Writing:
     """The file being written, and the tree or RNTuple in it once it is declared."""
 
-    __slots__ = ("file", "table", "last")
+    __slots__ = ("file", "table", "last", "written")
 
     def __init__(self, file: Any) -> None:
         self.file = file
         self.table: Any = None
+        #: How many entries have gone in so far.
+        self.written = 0
         #: The latest batch, kept when it held nothing, to declare the columns from at the end.
         self.last: dict[str, Any] | None = None
 
@@ -76,12 +79,15 @@ class Snapshot(Action):
         rntuple: bool,
         compression: str | None,
         mode: str,
+        auto_flush: int = 0,
     ) -> None:
         super().__init__(node, inputs)
         self.tree_name, self.filename = target
         self.rntuple = rntuple
         self.compression = compression
         self.mode = mode
+        #: ``RSnapshotOptions::fAutoFlush``: entries per cluster of a tree, when positive.
+        self.auto_flush = auto_flush
 
     def partial(self, batch: Batch) -> Any:
         return {
@@ -110,8 +116,24 @@ class Snapshot(Action):
             return writing
         if writing.table is None:
             self._declare(writing, part)
-        writing.table.extend(part)
+        if self.auto_flush > 0 and not self.rntuple:
+            self._clustered(writing, part, count)
+        else:
+            writing.table.extend(part)
         return writing
+
+    def _clustered(self, writing: _Writing, part: dict[str, Any], count: int) -> None:
+        """A batch written in pieces that end where each cluster of ``auto_flush`` entries
+        does, each cluster's baskets flushed as it closes, as ROOT's ``fAutoFlush`` has it."""
+        start = 0
+        while start < count:
+            stop = min(count, start + self.auto_flush - writing.written % self.auto_flush)
+            rows = np.arange(start, stop)
+            writing.table.extend({name: take(values, rows) for name, values in part.items()})
+            writing.written += stop - start
+            if writing.written % self.auto_flush == 0:
+                writing.table.flush()
+            start = stop
 
     def finish(self, acc: Any, flow: dict[int, tuple[int, int]]) -> Any:
         if acc.table is None and acc.last is not None:

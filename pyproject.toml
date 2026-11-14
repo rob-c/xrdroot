@@ -39,6 +39,8 @@ xrdroot = "xrdroot.cli:main"
 plot = ["matplotlib>=3.5"]
 # The other two libraries plots are drawn with, and the experiments' styles.
 plotly = ["plotly>=5.11"]
+# ROOT.Numba.Declare: a Python function compiled for C++ to call, as ROOT compiles it.
+numba = ["numba>=0.59"]
 bokeh = ["bokeh>=3.1"]
 hep = ["mplhep>=0.3"]
 lz4 = ["lz4>=4", "xxhash>=3"]
@@ -54,12 +56,16 @@ geom = ["pyvista>=0.43", "plotly>=5.11"]
 # SaveXGBoost and RBDT read, and PyTorch - where it has a wheel - trains the
 # deep networks (NumPy's own descent does when it does not).
 tmva = ["scikit-learn>=1.3", "scipy>=1.10", "xgboost>=2", "torch>=2; platform_machine != 'x86_64' or sys_platform != 'darwin'"]
+# Distributed RDataFrame's backend: ROOT.RDataFrame(..., executor=dask_client).
+distrdf = ["dask[distributed]>=2024"]
 dev = [
   # The libraries a tree or a histogram can be handed to, so that every one of
   # those hand-overs is exercised by the suite rather than trusted.
   "awkward>=2",
   "boost-histogram>=1.4",
   "hist>=2.7",
+  # UHI's own conformance suite and JSON writer, which ROOT's histograms are run through.
+  "uhi>=1",
   # The C codecs the lz4 extra brings, so the fast paths are the ones tested;
   # the pure-Python ones are tested directly beside them.
   "lz4>=4",
@@ -79,6 +85,10 @@ dev = [
   "scikit-learn>=1.3",
   "scipy>=1.10",
   "xgboost>=2",
+  # ROOT.Numba.Declare compiles with it, so what it compiles is tested for real.
+  "numba>=0.59",
+  # Distributed RDataFrame's backend, so its tasks run on a real Dask cluster.
+  "dask[distributed]>=2024",
   "mypy>=1.10",
   "tomli; python_version < '3.11'",
   "pytest>=8",
@@ -166,6 +176,11 @@ ignore_missing_imports = true
 # turned into NumPy arrays and floats there.
 [[tool.mypy.overrides]]
 module = ["iminuit", "iminuit.*"]
+ignore_missing_imports = true
+
+# numba ships no stubs either; ROOT.Numba.Declare imports it where it compiles.
+[[tool.mypy.overrides]]
+module = ["numba", "numba.*"]
 ignore_missing_imports = true
 
 # TMVA's learners ship no stubs (scikit-learn, SciPy's optimizers, XGBoost)
@@ -344,7 +359,7 @@ hard = ["numpy"]
 modules = ["xrdroot.pyroot", "xrdroot.session"]
 depends = ["@engines", "pycxx"]
 hard = ["numpy"]
-optional = ["matplotlib", "scipy", "iminuit", "PIL", "skimage"]
+optional = ["matplotlib", "scipy", "iminuit", "PIL", "skimage", "numba", "dask", "distributed"]
 
 # ROOT's dialect of the translator, its macro runner, and the former translator's names.
 [tool.xrdroot.components.ownership.pycint]
@@ -352,16 +367,36 @@ modules = ["xrdroot.pycint", "xrdroot.cint"]
 depends = ["pycxx", "@facade"]
 hard = ["numpy"]
 
+# cppyy's interface, over ROOT's dialect of the translator: ``import cppyy`` without cppyy.
+[tool.xrdroot.components.ownership.cppyy]
+modules = ["xrdroot.cppyy"]
+depends = ["cppstd", "pyroot", "pycint"]
+hard = ["numpy"]
+
 [tool.xrdroot.components.ownership.app]
 modules = ["xrdroot.cli", "xrdroot.__main__", "xrdroot.apinamespace"]
 exact = ["xrdroot"]
-depends = ["@facade", "pycxx", "pycint"]
+depends = ["@facade", "pycxx", "pycint", "cppyy"]
 hard = ["numpy"]
 optional = ["IPython", "matplotlib"]
 
 # Exact source-reviewed dynamic sites. Each target is still checked against the
 # ordinary graph and external import policy; prefixes expand only installed
 # source modules in this same project. No new dependency is introduced here.
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.cli.shims"
+scope = "Aliases.find_spec"
+statement = "importlib.util.find_spec(name)"
+prefixes = ["xrdroot.pyroot", "xrdroot.cppyy"]
+reason = "A script's ROOT.x and cppyy.x are probed as the pyroot and cppyy modules they alias."
+
+[[tool.xrdroot.components.dynamic]]
+caller = "xrdroot.cli.shims"
+scope = "Aliases.create_module"
+statement = "importlib.import_module(self.target + spec.name[len(self.alias):])"
+prefixes = ["xrdroot.pyroot", "xrdroot.cppyy"]
+reason = "The alias imports the same pyroot or cppyy module its probe found."
+
 [[tool.xrdroot.components.dynamic]]
 caller = "xrdroot.cli"
 scope = "_module"

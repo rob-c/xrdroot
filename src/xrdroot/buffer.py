@@ -125,10 +125,13 @@ class Listed(list[Any]):
 
     #: The option each entry was added under, ``""`` for none.
     options: list[str]
+    #: The class each entry named itself as, ``""`` for a null or one pointed back at.
+    classes: list[str]
 
-    def __init__(self, items: Any = (), options: Any = ()) -> None:
+    def __init__(self, items: Any = (), options: Any = (), classes: Any = ()) -> None:
         super().__init__(items)
         self.options = list(options)
+        self.classes = list(classes)
 
 
 class Clones(list[Any]):
@@ -272,11 +275,15 @@ class Buffer:
 
     def tobject(self) -> tuple[int, int]:
         """A ``TObject``: its identifier and bits, once the version is past."""
+        unique, bits, _process = self.referenced()
+        return unique, bits
+
+    def referenced(self) -> tuple[int, int, int | None]:
+        """A ``TObject`` and, when a ``TRef`` may point at it - ``kIsReferenced`` - which of the
+        file's ``ProcessID`` records numbered it; ``None`` for an object no reference names."""
         self.u16()
         unique, bits = self.u32(), self.u32()
-        if bits & IS_REFERENCED:
-            self.u16()
-        return unique, bits
+        return unique, bits, self.u16() if bits & IS_REFERENCED else None
 
     def named(self) -> tuple[str, str]:
         """A ``TNamed``: the name and title every ROOT object carries."""
@@ -359,10 +366,25 @@ class Buffer:
         self.string()
         items = Listed()
         for _ in range(self.i32()):
+            items.classes.append(self._next_class())
             items.append(self.any(classes))
             items.options.append(self.string())
         self.resume(end)
         return items
+
+    def _next_class(self) -> str:
+        """The class the object that comes next names, read ahead without moving on - so
+        an entry read as its members still says what it was."""
+        at = self.pos
+        word = self.u32()
+        tag = word if not word & BYTE_COUNT_MASK or word == NEW_CLASS_TAG else self.u32()
+        name = ""
+        if tag == NEW_CLASS_TAG:
+            name = self.cstring()
+        elif tag & CLASS_MASK:
+            name = str(self.refs.get(tag & ~CLASS_MASK, ""))
+        self.pos = at
+        return name
 
     def objarray(self, classes: dict[str, Any]) -> list[Any]:
         """A ``TObjArray``: the container ROOT keeps branches and leaves in.

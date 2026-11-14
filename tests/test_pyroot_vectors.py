@@ -147,9 +147,16 @@ def test_space_vectors_combine():
 
 def test_a_space_vector_bad_index_is_roots_error(capsys):
     expect(
-        (ROOT.TVector3(1, 2, 3)[5], 0.0),
+        (ROOT.TVector3(1, 2, 3)(5), 0.0),
         (bool("bad index (5) returning 0" in capsys.readouterr().err), True),
     )
+
+
+def test_a_space_vector_indexed_past_its_end_is_also_pythons_index_error(capsys):
+    """As PyROOT's ``__getitem__``: ROOT's error is printed, then ``IndexError`` raised."""
+    with pytest.raises(IndexError):
+        ROOT.TVector3(1, 2, 3)[-1]
+    assert "bad index (-1) returning 0" in capsys.readouterr().err
 
 
 def test_space_vectors_are_set_in_their_other_coordinates():

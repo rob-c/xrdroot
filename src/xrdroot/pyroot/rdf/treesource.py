@@ -32,8 +32,11 @@ def _index(friend: Any) -> tuple[str, str] | None:
 
 
 def _matched(tree: Any, friend: Any) -> bool:
-    """Whether a friend is read entry for entry beside the tree, as its own data reads it."""
-    return _index(friend) is None and len(friend._xrd) == len(tree._xrd)
+    """Whether a friend is read entry for entry beside the tree, as the tree's own data reads
+    it - which a chain's data does not."""
+    if _index(friend) is not None:
+        return False
+    return hasattr(tree._xrd, "friends") and len(friend._xrd) == len(tree._xrd)
 
 
 def source_of(tree: Any) -> Source | None:

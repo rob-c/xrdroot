@@ -45,19 +45,27 @@ def column(values: Any) -> ndarray:
 
 
 class AsNumpyResult:
-    """``AsNumpy(lazy=True)``: the columns as a dict of arrays, read when first asked for."""
+    """``AsNumpy(lazy=True)``: the columns as a dict of arrays, read when first asked for.
 
-    def __init__(self, book: Callable[[], Callable[[], dict[str, Any]]]) -> None:
+    ``book`` books the read on the frame and gives back the booked result -
+    what distributed ``RDataFrame`` runs a range of, and adds up - and
+    ``present`` turns the dict of columns it gives into ``AsNumpy``'s own.
+    """
+
+    def __init__(
+        self, book: Callable[[], Any], present: Callable[[Any], dict[str, Any]]
+    ) -> None:
         self._book = book
+        self._present = present
         self._read = book()
         self._value: dict[str, Any] | None = None
 
     def GetValue(self) -> dict[str, Any]:
         if self._value is None:
-            self._value = self._read()
+            self._value = self._present(self._read.GetValue())
         return self._value
 
 
 def clone(result: AsNumpyResult) -> AsNumpyResult:
     """``_clone_asnumpyresult``: the same columns booked again - over the frame's range now."""
-    return AsNumpyResult(result._book)
+    return AsNumpyResult(result._book, result._present)

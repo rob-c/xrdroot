@@ -72,9 +72,17 @@ def test_rebinning_is_refused_when_it_would_split_a_bin_or_makes_no_sense():
     with pytest.raises(ValueError, match="one group per axis"):
         h.rebin(2, 2)
     with pytest.raises(ValueError, match="one group per axis"):
-        Histogram.book("h3", (2, 0, 1), (2, 0, 1), (2, 0, 1)).rebin(1, 1, 1)
+        Histogram.book("h3", (2, 0, 1), (2, 0, 1), (2, 0, 1)).rebin(1, 1)
     with pytest.raises(UnsupportedFeatureError, match="rebinning 'p' is not offered"):
         Profile.book("p", (2, 0, 1)).rebin(2)
+
+
+def test_three_axes_rebin_in_blocks_as_two_do():
+    h = Histogram.book("h3", (4, 0, 4), (2, 0, 2), (3, 0, 3))
+    h.fill([0.5, 1.5, 3.5], [0.5, 1.5, 0.5], [0.5, 2.5, 2.5])
+    made = h.rebin(2, 1, 2)
+    assert made.shape == (2, 2, 1) and made.values(flow=True).sum() == 3
+    assert made.values()[0, :, 0].tolist() == [1, 0] and made.values(flow=True)[2, 1, 2] == 1
 
 
 def test_two_axes_rebin_in_blocks_with_the_leftovers_in_the_overflow():

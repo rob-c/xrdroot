@@ -79,10 +79,10 @@ def adopt(cls: Any, xrd: Any) -> Any:
 
 #: Makers of pyroot objects from the members of a record read, by ROOT class name: for the
 #: classes the reader hands back as their members, which a part of the kit makes again.
-FROM_MEMBERS: dict[str, Callable[[dict[str, Any]], Any]] = {}
+FROM_MEMBERS: dict[str, Callable[[Any], Any]] = {}
 
 
-def register_members(classname: str, factory: Callable[[dict[str, Any]], Any]) -> None:
+def register_members(classname: str, factory: Callable[[Any], Any]) -> None:
     """Make a record of ``classname`` read as members into ``factory``'s object."""
     FROM_MEMBERS[classname] = factory
 
@@ -90,4 +90,4 @@ def register_members(classname: str, factory: Callable[[dict[str, Any]], Any]) -
 def from_members(classname: str, members: Any) -> Any:
     """The object ``factory`` makes of a record's members, or ``None`` if none is registered."""
     factory = FROM_MEMBERS.get(classname)
-    return factory(members) if factory is not None and isinstance(members, dict) else None
+    return factory(members) if factory is not None and isinstance(members, (dict, list)) else None

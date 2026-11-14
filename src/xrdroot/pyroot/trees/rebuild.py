@@ -20,14 +20,15 @@ __all__ = ["rebuilt"]
 COORDINATES = ("fX", "fY", "fZ", "fT")
 
 
-def rebuilt(classname: str, value: Any, current: Any) -> Any:
-    """The object ``value`` - one entry's members - stands for, ``current`` filled if it can be."""
+def rebuilt(classname: str, value: Any, current: Any, clones: str = "") -> Any:
+    """The object ``value`` - one entry's members - stands for, ``current`` filled if it can be;
+    ``clones`` is the class a ``TClonesArray`` branch says its objects are."""
     if classname.startswith("vector<") and "PxPyPzE4D" in classname:
         return _four_vectors(value, current)
     if classname == "TLorentzVector":
         return _lorentz(value, current)
     if classname == "TClonesArray":
-        return _clones(value, current)
+        return _clones(value, current, clones)
     declared = _declared(classname, value, current)
     if declared is not None:
         return declared
@@ -71,18 +72,29 @@ def _lorentz(value: dict[str, Any], current: Any) -> Any:
     return made
 
 
-def _clones(value: Any, current: Any) -> Any:
-    """A ``TClonesArray``: each object the entry held, made again from its members."""
+def _clones(value: Any, current: Any, clones: str = "") -> Any:
+    """A ``TClonesArray``: each object the entry held, made again from its members - which
+    a split one's branches hand back as a column of each member, a row per object."""
     from ..core.collections import TClonesArray
     from ..core.wrapping import from_members
 
-    made = current if isinstance(current, TClonesArray) else TClonesArray(value.classname)
+    classname = str(getattr(value, "classname", None) or getattr(current, "_class", clones))
+    made = current if isinstance(current, TClonesArray) else TClonesArray(classname)
     made.Clear()
-    for at, members in enumerate(value):
+    for at, members in enumerate(_objects(value)):
         flat = _flat(members)
-        obj = from_members(value.classname, flat)
-        made.AddAt(_drawn(value.classname, flat) if obj is None else obj, at)
+        obj = from_members(classname, flat)
+        made.AddAt(_drawn(classname, flat) if obj is None else obj, at)
     return made
+
+
+def _objects(value: Any) -> list[Any]:
+    """The objects of an entry: as they are, or, from a column per member, a row each."""
+    if not isinstance(value, dict):
+        return list(value)
+    columns = {name: list(np.asarray(column).tolist()) for name, column in value.items()}
+    count = len(next(iter(columns.values()), []))
+    return [{name: column[at] for name, column in columns.items()} for at in range(count)]
 
 
 def _drawn(classname: str, members: dict[str, Any]) -> Any:

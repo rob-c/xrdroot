@@ -115,15 +115,16 @@ def test_booking_refuses_what_is_not_an_axis():
         (((0, 0, 1),), "nowhere to put anything"),
         (((3, 1, 1),), "is not a range"),
         (((3, 0, float("inf")),), "is not a range"),
-        (([0, 2, 1],), "must be finite and increase"),
+        (([0, 2, 1],), "must increase"),
+        (([0, float("nan"), 1],), "must increase"),
         (([1],), "at least two edges"),
         (((1, 0, 1),) * 4, "one, two and three"),
         ((), "one, two and three"),
     ):
         with pytest.raises(ValueError, match=why):
             Histogram.book("h", *axes)
-    with pytest.raises(ValueError, match="kind='L' is not a storage"):
-        Histogram.book("h", (1, 0, 1), kind="L")
+    with pytest.raises(ValueError, match="kind='Q' is not a storage"):
+        Histogram.book("h", (1, 0, 1), kind="Q")
     with pytest.raises(ValueError, match="error_option='x' is not one of ROOT's"):
         Profile.book("p", (1, 0, 1), error_option="x")
 

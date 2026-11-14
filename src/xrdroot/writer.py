@@ -42,7 +42,7 @@ import numpy as np
 from xrdclient.url import parse
 
 from .buffer import BYTE_COUNT_MASK, IS_REFERENCED, NEW_CLASS_TAG, Buffer
-from .compression import CODES, LEVELS, compress
+from .compression import CODES, LEVELS, compress, spelled
 from .efficiency import EFFICIENCIES, Efficiency
 from .errors import UnsupportedFeatureError
 from .file import Key
@@ -59,10 +59,14 @@ if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from .rntuple.writer import WritableRNTuple
     from .wtree import WritableTree
 
-__all__ = ["create", "ObjString", "WritableFile", "WritableDirectory"]
+__all__ = ["create", "ObjString", "Record", "WritableFile", "WritableDirectory"]
 
 #: The bits a freshly made object carries: on the heap, and not deleted.
 BITS = 0x03000000
+#: The most bytes ``TKey`` writes an object in raw whatever the compression setting.
+SMALL_OBJECT = 256
+#: The bits of an object's identifier that number it within its process.
+NUMBER_MASK = 0xFFFFFF
 #: ``TCollection::kUseRWLock``, which ROOT sets on the list of functions every
 #: histogram it makes carries.
 USE_RWLOCK = 1 << 16
@@ -161,9 +165,6 @@ STL_VERSION = 9
 #: The objects this writer writes by their members, and the classes they are.
 WRITABLE = (Histogram, Graph, Efficiency, Function, MultiGraph)
 OBJECTS = (*HISTOGRAMS, *PROFILES, *EFFICIENCIES, *GRAPHS, *FUNCTIONS, "TMultiGraph")
-#: What a list may hold to be written: functions - the fits a histogram or a
-#: graph carries - and graphs, which is what a ``TMultiGraph`` keeps.
-LISTED = (Function, Graph)
 
 
 def packed_now() -> int:
@@ -414,18 +415,23 @@ def _array(buf: WBuffer, classname: str, values: Any) -> None:
     _numbers(buf, ARRAYS[classname].typecode, values)
 
 
-def _row(value: Any) -> dict[str, Any]:
+def _row(value: Any) -> Any:
     """The members an object is written from: a function of code sampled, as ROOT samples it."""
     if isinstance(value, Function):
         return value.written_members()
-    members: dict[str, Any] = value.members
-    return members
+    return value.members
 
 
 def _list(
-    buf: WBuffer, classname: str, entries: Any, used: dict[str, None], bits: int = BITS
+    buf: WBuffer,
+    classname: str,
+    entries: Any,
+    used: dict[str, None],
+    bits: int = BITS,
+    name: str = "",
 ) -> None:
-    """A ``TList`` of functions or graphs - fits, or a multigraph's graphs - or of nothing.
+    """A ``TList`` of what this writer writes - fits, a multigraph's graphs, a macro's
+    ``TObjString``s - or of nothing.
 
     Each entry is the object naming its class, then the option it was added
     with, which is written as none. Anything else is refused: what a list
@@ -433,23 +439,38 @@ def _list(
     than refusing.
     """
     held = list(entries or ())
-    strangers = [type(entry).__name__ for entry in held if not isinstance(entry, LISTED)]
+    strangers = [
+        type(entry).__name__ for entry in held if not isinstance(entry, (*WRITABLE, Record))
+    ]
     if strangers:
         raise UnsupportedFeatureError(
             f"a {classname} holding {', '.join(strangers)} is not written: a list of "
-            f"functions or graphs is, and what else a list carries could be anything at "
-            f"all, which writing wrongly would be worse than refusing; take them out first"
+            f"histograms, functions, graphs or ROOT's own named objects and strings is, and "
+            f"what else a list carries could be anything at all, which writing wrongly would "
+            f"be worse than refusing; take them out first"
         )
     index = buf.start(5)
     buf.tobject(bits)
-    buf.string("")
+    buf.string(name)
     buf.i32(len(held))
     for entry in held:
-        tag = buf.tag(entry.classname)
-        _record(buf, entry.classname, _row(entry), used)
-        buf.end(tag)
+        _listed(buf, entry, used)
         buf.string("")
     buf.end(index)
+
+
+def _listed(buf: WBuffer, entry: Any, used: dict[str, None]) -> None:
+    """One object a list holds, naming its class: a bare ``TObject`` has no byte count."""
+    tag = buf.tag(entry.classname)
+    hand = BY_HAND.get(entry.classname)
+    if hand is not None:
+        used.update(dict.fromkeys(hand(buf, _row(entry))))
+    elif entry.classname == "TObject":
+        used["TObject"] = None
+        _write_tobject(buf, _row(entry))
+    else:
+        _record(buf, entry.classname, _row(entry), used)
+    buf.end(tag)
 
 
 def _record(buf: WBuffer, classname: str, row: Any, used: dict[str, None]) -> None:
@@ -607,15 +628,33 @@ STL_WRITERS: dict[str, Callable[[WBuffer, str, Any], None]] = {
 
 
 def _write_tobject(buf: WBuffer, value: Any) -> None:
+    """``TObject::Streamer``: and for an object a ``TRef`` may point at - ``kIsReferenced``,
+    with ``pidf`` saying which of the file's ``ProcessID`` records numbered it - its number
+    within that process, then the record's index."""
     bits = value if isinstance(value, dict) else {}
-    buf.tobject(int(bits.get("fBits", BITS)), int(bits.get("fUniqueID", 0)))
+    word, unique = int(bits.get("fBits", BITS)), int(bits.get("fUniqueID", 0))
+    process = bits.get("pidf")
+    if process is None or not word & IS_REFERENCED:
+        buf.tobject(word, unique)
+        return
+    buf.u16(1)
+    buf.u32(unique & NUMBER_MASK)
+    buf.u32(word)
+    buf.u16(int(process))
 
 
 def _write_tnamed(buf: WBuffer, value: Any) -> None:
     named = value if isinstance(value, dict) else {}
     # The bits go out as they came in: a TEfficiency keeps its settings there.
     bits = int(named.get("fBits", BITS))
-    buf.named(str(named.get("fName", "")), str(named.get("fTitle", "")), bits)
+    if named.get("pidf") is None:
+        buf.named(str(named.get("fName", "")), str(named.get("fTitle", "")), bits)
+        return
+    index = buf.start(1)
+    _write_tobject(buf, named)
+    buf.string(str(named.get("fName", "")))
+    buf.string(str(named.get("fTitle", "")))
+    buf.end(index)
 
 
 def _write_base(buf: WBuffer, name: str, value: Any, used: dict[str, None]) -> None:
@@ -852,6 +891,110 @@ class ObjString(str):
     """
 
 
+class Record:
+    """An object of a class this writer carries a layout for, written from its members.
+
+    The classes ROOT's core streams for itself - a ``TObject``, a ``TNamed``,
+    a ``TObjString``, and a ``TList`` or ``THashList`` holding any of these -
+    are no xrdroot object of their own: whatever makes one hands over its
+    class and its members, as a reader would have read them back, and they
+    are laid out by the class's streamer information. A list's members are
+    the objects it holds, in order, and ``name`` is a list's own name.
+    """
+
+    __slots__ = ("classname", "members", "title", "name")
+
+    def __init__(self, classname: str, members: Any, title: str = "", name: str = "") -> None:
+        known = classname in INFOS or classname in BY_HAND
+        if not known or classname in UNRECORDED:
+            raise UnsupportedFeatureError(
+                f"a {classname} is not a class this writer carries a layout for; it writes "
+                f"a TObject, a TNamed, a TObjString, a TList of them, a TRef, a TRefArray, "
+                f"a TBits and a TProcessID from their members"
+            )
+        self.classname = classname
+        self.members = members
+        self.title = title
+        self.name = name
+
+    def __repr__(self) -> str:
+        return f"<Record {self.classname} {self.title!r}>"
+
+
+#: Classes described here that are parts of others rather than objects written whole.
+UNRECORDED = frozenset({"TCollection", "TSeqCollection", "TString"})
+
+
+def _tref(buf: WBuffer, members: dict[str, Any]) -> tuple[str, ...]:
+    """``TRef::Streamer``: its ``TObject``, no byte count, then the index of its process."""
+    _write_tobject(buf, members.get("TObject", {}))
+    buf.u16(int(members.get("pidf", 0)))
+    return ()
+
+
+def _trefarray(buf: WBuffer, members: dict[str, Any]) -> tuple[str, ...]:
+    """``TRefArray::Streamer``: its ``TObject`` and name, how many, the lower bound, the
+    index of its process and each object's identifier."""
+    uids = [int(uid) for uid in members.get("fUIDs", ())]
+    index = buf.start(1)
+    _write_tobject(buf, members.get("TObject", {}))
+    buf.string(str(members.get("fName", "")))
+    buf.i32(len(uids))
+    buf.i32(int(members.get("fLowerBound", 0)))
+    buf.u16(int(members.get("pidf", 0)))
+    for uid in uids:
+        buf.u32(uid)
+    buf.end(index)
+    return ()
+
+
+def _tprocessid(buf: WBuffer, members: dict[str, Any]) -> tuple[str, ...]:
+    """A ``TProcessID``: a ``TNamed`` - ``ProcessID0`` and on, titled with the UUID."""
+    index = buf.start(1)
+    _write_tnamed(buf, {"fBits": 0, **members})
+    buf.end(index)
+    return ("TNamed",)
+
+
+def _tbits(buf: WBuffer, members: dict[str, Any]) -> tuple[str, ...]:
+    """A ``TBits``: its ``TObject``, ``fNbits``, ``fNbytes`` and that many bytes."""
+    raw = bytes(members.get("fAllBits", b""))
+    index = buf.start(1)
+    _write_tobject(buf, members.get("TObject", {}))
+    buf.u32(int(members.get("fNbits", 8 * len(raw))))
+    buf.u32(len(raw))
+    buf.u8(1)  # the bytes are there: a pointer to an array, not a null one
+    buf.raw(raw)
+    buf.end(index)
+    return ("TBits",)
+
+
+#: Classes ROOT streams by hand rather than by their description, and how each is laid out;
+#: what comes back is the described classes the record used.
+BY_HAND: dict[str, Callable[[WBuffer, dict[str, Any]], tuple[str, ...]]] = {
+    "TRef": _tref,
+    "TRefArray": _trefarray,
+    "TProcessID": _tprocessid,
+    "TBits": _tbits,
+}
+
+
+def _record_payload(value: Record) -> tuple[str, bytes, tuple[str, ...]]:
+    buf = WBuffer()
+    used: dict[str, None] = {value.classname: None}
+    hand = BY_HAND.get(value.classname)
+    if hand is not None:
+        described = hand(buf, value.members)
+        return value.classname, bytes(buf.data), described
+    if value.classname == "TObject":  # TObject::Streamer: no byte count round it
+        _write_tobject(buf, value.members)
+    elif value.classname in LISTS:
+        _list(buf, value.classname, value.members, used, name=value.name)
+    else:
+        _record(buf, value.classname, value.members, used)
+    return value.classname, bytes(buf.data), tuple(used)
+
+
 def _objstring_payload(value: ObjString) -> tuple[str, bytes, tuple[str, ...]]:
     buf = WBuffer()
     used: dict[str, None] = {}
@@ -863,6 +1006,8 @@ def _payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]]:
     """What one object writes as: its class, its bytes, the layouts it needs."""
     if isinstance(obj, ObjString):
         return _objstring_payload(obj)
+    if isinstance(obj, Record):
+        return _record_payload(obj)
     if isinstance(obj, str):
         return _string_payload(obj)
     if isinstance(obj, (array.array, np.ndarray)):
@@ -874,7 +1019,7 @@ def _payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]]:
     raise UnsupportedFeatureError(
         f"a {type(obj).__name__} is not something this writer puts in a ROOT "
         f"file: it takes a Histogram, a Profile, an Efficiency, a Graph, a MultiGraph, "
-        f"a Function, any "
+        f"a Function, a Record of a TNamed, TObjString or TList, any "
         f"histogram that speaks the "
         f"plotting protocol (hist, boost-histogram), a (values, edges) pair "
         f"from numpy.histogram, a str, or a one-dimensional array of numbers"
@@ -1118,6 +1263,23 @@ class WritableDirectory:
         here, leaf = self._place(name)
         here._write(leaf, obj, title, rntuple)
 
+    def process_index(self, uuid: str) -> int:
+        """Which of the file's ``ProcessID`` records the process of this UUID is - written now,
+        at the top of the file, if the file has none for it yet: ``TFile::WriteProcessID``.
+
+        An object a ``TRef`` may point at is written with this index, and so is
+        every ``TRef`` and ``TRefArray``, which is how a reader finds the object
+        a reference names among those its file holds.
+        """
+        top = self._file
+        known = top._processes()
+        if uuid not in known:
+            index = len(known)
+            known[uuid] = index
+            name = f"ProcessID{index}"
+            top._write(name, Record("TProcessID", {"fName": name, "fTitle": uuid}, uuid), uuid)
+        return known[uuid]
+
     def _write(self, name: str, obj: Any, title: str | None, rntuple: bool = False) -> None:
         self._check_leaf(name)
         table = _table(obj)
@@ -1133,7 +1295,8 @@ class WritableDirectory:
             self.tree(name, columns, title=title).extend(table)
             return
         if title is None:
-            title = obj.title if isinstance(obj, WRITABLE) or hasattr(obj, "root_payload") else ""
+            titled = isinstance(obj, (*WRITABLE, Record)) or hasattr(obj, "root_payload")
+            title = obj.title if titled else ""
         _checked(title, "title")
         if hasattr(obj, "root_payload"):  # streams itself, knowing where its key's bytes end
             classname = str(obj.classname)
@@ -1157,6 +1320,7 @@ class WritableDirectory:
         basket_size: int = BASKET_BYTES,
         counters: Mapping[str, Any] | None = None,
         classname: str = "TTree",
+        empty: bool = False,
     ) -> WritableTree:
         """A tree in this directory, to be filled entry by entry.
 
@@ -1177,6 +1341,8 @@ class WritableDirectory:
         gives its name another integer type, as ROOT's ``n/b`` would be.
         ``classname`` writes the tree as a ``TNtuple`` or ``TNtupleD`` instead,
         as ROOT writes one: the same tree, and how many variables it has.
+        No columns at all is refused as a mistake, unless ``empty`` says it is
+        meant: a tree of no branches, as ROOT writes one asked to.
         """
         from .wtree import WritableTree
 
@@ -1185,8 +1351,9 @@ class WritableDirectory:
         _checked(title or "", "title")
         cycle = here._next_cycle(leaf)
         tree = WritableTree(
-            here, leaf, title or "", columns, basket_size, cycle, counters, classname=classname
-        )
+            here, leaf, title or "", columns, basket_size, cycle, counters, classname=classname,
+            empty=empty,
+        )  # fmt: skip
         self._file._trees.append(tree)
         self._file._used.update(dict.fromkeys(tree.classes))
         for layout in tree.declared:  # a macro's classes, described as they were declared
@@ -1385,6 +1552,7 @@ class WritableDirectory:
         *,
         objlen: int | None = None,
         wide: bool = False,
+        codes: int | None = None,
     ) -> tuple[int, int]:
         """One record in this directory: its key, then its payload, compressed
         when that is smaller.
@@ -1403,12 +1571,15 @@ class WritableDirectory:
         copied from another file, compressed or not - and is how long the
         object it holds is; nothing is squeezed then. ``wide`` asks for the
         wide key wherever the record lands, as :func:`_key_fields` has it.
+        ``codes`` compresses the payload otherwise than the file does.
         """
         file = self._file
         seek = file._out.size
         body = payload
         if objlen is None:
-            body = file._squeeze(payload) if packed else payload
+            # TKey leaves an object of 256 bytes or fewer raw; a basket is packed whatever its size.
+            packed = packed and (classname == "TBasket" or len(payload) > SMALL_OBJECT)
+            body = file._squeeze(payload, codes) if packed else payload
             objlen = len(payload)
         keylen = self._key_length(classname, name, title, len(extra), wide)
         key = WBuffer()
@@ -1534,16 +1705,37 @@ class WritableFile(WritableDirectory):
         #: and version, each a ``TStreamerInfo`` list entry that stands on its
         #: own: what a record copied as it was needs the file to say about it.
         self._carried: dict[tuple[str, int], bytes] = {}
+        #: The file's ``ProcessID`` records, by the UUID each is titled with: what an object
+        #: a ``TRef`` may point at is written with the index of.
+        self._pids: dict[str, int] | None = None
+
+    def _processes(self) -> dict[str, int]:
+        """The file's ``ProcessID`` records - those it had already, when it is being updated."""
+        if self._pids is None:
+            self._pids = {}
+            for raw in self._keys:
+                key = Key(Buffer(raw))
+                if key.classname == "TProcessID" and key.name.startswith("ProcessID"):
+                    self._pids[key.title] = int(key.name[len("ProcessID") :] or 0)
+        return self._pids
 
     def __repr__(self) -> str:
         state = "closed" if self._closed else f"{len(self._keys)} keys so far"
         return f"<WritableFile {self.name!r}, {state}>"
 
-    def _squeeze(self, payload: bytes) -> bytes:
-        """The payload compressed with the file's setting, if that made it smaller."""
-        if self._algorithm is None:
+    def _squeeze(self, payload: bytes, codes: int | None = None) -> bytes:
+        """The payload compressed with the file's setting, if that made it smaller.
+
+        ``codes`` is a setting of its own, as ROOT spells one, for what is
+        compressed otherwise than the file: a branch given one with
+        ``TBranch::SetCompressionSettings``.
+        """
+        algorithm, level = self._algorithm, self._level
+        if codes is not None:
+            algorithm, level = spelled(codes)
+        if algorithm is None:
             return payload
-        squeezed = compress(payload, self._algorithm, self._level)
+        squeezed = compress(payload, algorithm, level)
         return squeezed if len(squeezed) < len(payload) else payload
 
     def _release(self, region: tuple[int, int] | None) -> None:

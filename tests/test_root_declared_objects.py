@@ -411,3 +411,21 @@ void zero() {
 def test_a_class_with_a_version_and_no_classdef_is_foreign_and_reads_back_while_written(capfd):
     run_source(ZERO, "zero.C")
     assert capfd.readouterr().out == "4 1 14 10\n"
+
+
+RESIZED = r"""
+#include <vector>
+class Slot { public: int v = 6; };
+class Slots { public: std::vector<Slot> slots; Slots() { slots.resize(2); } };
+void resized(const char *name) {
+   Slots s;
+   TFile f(name, "RECREATE");
+   f.WriteObject(&s, "s");
+}
+"""
+
+
+def test_the_slots_resize_made_are_written_as_default_made_objects():
+    run_source(RESIZED, "resized.C", ("resized.root",))
+    back = ROOT.TFile("resized.root").Get("s")
+    assert [slot.v for slot in back.slots] == [6, 6]

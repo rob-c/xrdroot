@@ -398,6 +398,21 @@ class TClass(TNamed):
             raise TypeError(f"xrdroot.pyroot has no class {self._name} to make one of")
         return cls()
 
+    def DynamicCast(self, base: TClass, obj: Any, up: bool = True) -> Any:
+        """``DynamicCast``: ``obj``, of this class, seen as of ``base`` - or, with ``up``
+        false, ``obj`` of ``base`` seen as of this class again - as PyROOT gives it back:
+        an object of the other type over the same state, and the original on the way back."""
+        wanted = base._class() if up else self._class()
+        if wanted is None or type(obj) is wanted:
+            return obj
+        original = obj.__dict__.get("_cast_of")
+        if type(original) is wanted:
+            return original
+        view: Any = object.__new__(wanted)
+        view.__dict__ = obj.__dict__.copy()
+        view.__dict__["_cast_of"] = obj
+        return view
+
     def Streamer(self, obj: Any, buf: Any, onfile_class: Any = None) -> None:
         """``Streamer``: ``obj`` written into ``buf`` - or read from it, as it goes."""
         buf.StreamObject(obj, self)

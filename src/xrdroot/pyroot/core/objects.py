@@ -214,6 +214,35 @@ class TObject:
     def Hash(self) -> int:
         return hash(self.GetName())
 
+    # -- comparing, as PyROOT's operators do through IsEqual and Compare ----------
+
+    def IsEqual(self, obj: Any) -> bool:
+        """``IsEqual``: the same object, which is what ``TObject``'s compares."""
+        return obj is self
+
+    def Compare(self, obj: Any) -> int:
+        """``Compare``: ``TObject``'s is to be overridden; it warns so, and says equal."""
+        self.Warning("Compare", "this method must be overridden!")
+        return 0
+
+    def __eq__(self, other: object) -> bool:
+        """``IsEqual``'s yes; else the other side's answer, if it has one, and then Python's."""
+        return True if isinstance(other, TObject) and self.IsEqual(other) else NotImplemented
+
+    __hash__ = object.__hash__
+
+    def __lt__(self, other: Any) -> bool:
+        return self.Compare(other) < 0 if isinstance(other, TObject) else NotImplemented
+
+    def __le__(self, other: Any) -> bool:
+        return self.Compare(other) <= 0 if isinstance(other, TObject) else NotImplemented
+
+    def __gt__(self, other: Any) -> bool:
+        return self.Compare(other) > 0 if isinstance(other, TObject) else NotImplemented
+
+    def __ge__(self, other: Any) -> bool:
+        return self.Compare(other) >= 0 if isinstance(other, TObject) else NotImplemented
+
     # -- bits --------------------------------------------------------------------
 
     def _bitword(self) -> int:
@@ -348,7 +377,7 @@ class TObject:
         return f"<cppyy.gbl.{self.ClassName()} object at {hex(id(self))}>"
 
 
-# ``TObject::kSingleKey``, ``TObject::kCanDelete``: its bits and Write's options, by its name.
+# ``TObject::kSingleKey``, ``TObject::kCanDelete``...: the bits and write options, as members.
 for _bit, _value in BITS.items():
     setattr(TObject, _bit, _value)
 

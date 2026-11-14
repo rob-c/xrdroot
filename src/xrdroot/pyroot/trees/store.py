@@ -26,6 +26,7 @@ from typing import Any
 
 import numpy as np
 
+from ...jagged import take
 from ...tree import Jagged, concatenate
 from ...wbranch import Vector
 from .addresses import Address
@@ -176,6 +177,10 @@ class Store:
         self.entries = 0
         #: ``SetCircular``'s most entries kept; 0 for a tree that keeps every one.
         self.circular = 0
+        #: ``TBranch::SetCompressionSettings``: a branch's own compression, by branch.
+        self.compressions: dict[str, int] = {}
+        #: Where each cluster ``FlushBaskets`` closed ends: one past its last entry.
+        self.clusters: list[int] = []
 
     def add(self, slot: Slot) -> None:
         self.slots[slot.name] = slot
@@ -211,6 +216,12 @@ class Store:
             column = slot.column()
             slot.chunks = [column[len(column) - count :]]
         self.entries = count
+        self.clusters = []
+
+    def flush(self) -> None:
+        """``FlushBaskets``: the entries filled since the last cluster end one here."""
+        if self.entries > (self.clusters[-1] if self.clusters else 0):
+            self.clusters.append(self.entries)
 
     def extend(self, columns: Mapping[str, Any], count: int) -> None:
         """Take in many entries at once, a column for every slot, as a copy of a tree does."""
@@ -232,21 +243,40 @@ class Store:
         counted = self.counters()
         return {name: slot.spec() for name, slot in self.slots.items() if name not in counted}
 
-    def write(self, directory: Any, name: str, title: str, classname: str = "TTree") -> Any:
-        """Write every entry into ``directory``, as a tree of this name, title and class."""
+    def write(
+        self, directory: Any, name: str, title: str, classname: str = "TTree", empty: bool = False
+    ) -> Any:
+        """Write every entry into ``directory``, as a tree of this name, title and class - a
+        cluster ending wherever ``FlushBaskets`` ended one; ``empty`` writes a tree of no
+        branches, which is otherwise refused."""
         tree = directory.tree(
-            name, self.specs(), title=title, counters=self.counters(), classname=classname
-        )
+            name, self.specs(), title=title, counters=self.counters(), classname=classname,
+            empty=empty,
+        )  # fmt: skip
+        for slot in self.slots.values():
+            codes = self.compressions.get(slot.branch)
+            if codes is not None and slot.kind != OBJECT:
+                tree.compress(slot.name, codes)
         if self.entries:
-            tree.extend(self.columns())
+            self._clustered(tree, self.columns())
             tree._flush_all()  # TTree::Write sends every basket out, the last ones with it
         return tree
+
+    def _clustered(self, tree: Any, columns: dict[str, Any]) -> None:
+        """The entries written cluster by cluster, each ended where ``FlushBaskets`` was."""
+        for start, stop in zip([0, *self.clusters], [*self.clusters, self.entries], strict=True):
+            if stop > start:
+                rows = np.arange(start, stop)
+                tree.extend({key: take(values, rows) for key, values in columns.items()})
+            if stop in self.clusters:
+                tree.flush()
 
     def reset(self) -> None:
         """Forget every entry, keeping the branches: ``TTree::Reset``."""
         for slot in self.slots.values():
             slot.pending, slot.chunks = [], []  # the branches and their titles stay
         self.entries = 0
+        self.clusters = []
 
 
 def _nbytes(slot: Slot, value: Any) -> int:

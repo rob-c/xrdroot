@@ -36,6 +36,8 @@ __all__ = [
 
 #: Not ROOT's name, so not in the namespace; what ``GetListOfFunctions`` hands back.
 _PRIVATE = ["FunctionList"]
+#: ``TObject::kSingleKey``: a collection written under one key, rather than a key an object.
+SINGLE_KEY = 1 << 0
 
 
 def _named(item: Any, name: str) -> bool:
@@ -45,6 +47,8 @@ def _named(item: Any, name: str) -> bool:
 
 class TCollection(TObject):
     """``TCollection``: a named collection of objects, held in order."""
+
+    CLASS_TITLE = "Collection abstract base class"
 
     def __init__(self, *args: Any) -> None:
         super().__init__()
@@ -112,6 +116,17 @@ class TCollection(TObject):
 
     def SetName(self, name: Any) -> None:
         self._name = str(name)
+
+    def Write(self, name: Any = None, option: int = 0, bufsize: int = 0) -> int:
+        """``Write``: the collection under one key with ``TObject::kSingleKey``, else each
+        object it holds under a key of its own - named ``name``, if given, as ROOT does."""
+        if int(option) & SINGLE_KEY:
+            return super().Write(name, option, bufsize)
+        return sum(
+            int(obj.Write(name, int(option) & ~SINGLE_KEY, bufsize))
+            for obj in self._items
+            if obj is not None
+        )
 
     def Add(self, obj: Any) -> None:
         """``Add``: at the end."""
@@ -206,6 +221,8 @@ def _position(index: Any, size: int) -> int:
 
 class TSeqCollection(TCollection):
     """``TSeqCollection``: a collection in an order that can be indexed."""
+
+    CLASS_TITLE = "Sequenceable collection ABC"
 
     def __getitem__(self, index: Any) -> Any:
         """``c[i]`` the object there; ``c[i:j:k]`` a collection of the same class of them."""
@@ -406,9 +423,23 @@ class FunctionList(TList):
 class THashList(TList):
     """``THashList``: a list also found by name quickly, which a list is here."""
 
+    CLASS_TITLE = "Doubly linked list with hashtable for lookup"
+
+    def GetListForObject(self, obj: Any) -> TList:
+        """``GetListForObject``: what shares the name of ``obj`` - or the name itself - in the
+        order the list holds them, as its hash table's slot for that name does."""
+        name = obj if isinstance(obj, str) else obj.GetName()
+        made = TList()
+        for item in self._items:
+            if _named(item, str(name)):
+                made.Add(item)
+        return made
+
 
 class TOrdCollection(TSeqCollection):
     """``TOrdCollection``: an ordered collection."""
+
+    CLASS_TITLE = "An ordered collection"
 
 
 class TObjArray(TSeqCollection):
@@ -470,6 +501,8 @@ class TClonesArray(TObjArray):
     empties every slot for the next entry; ``BypassStreamer`` asks for the
     objects to be written member by member, which is how a tree writes them.
     """
+
+    CLASS_TITLE = "An array of clone objects"
 
     def __init__(self, classname: Any = "TObject", size: int = 1000, call_dtor: bool = False):
         super().__init__(size)
@@ -558,6 +591,8 @@ class TIter:
 class THashTable(TCollection):
     """``THashTable``: a collection found by hash - held in order here, which finds the same."""
 
+    CLASS_TITLE = "A hash table"
+
 
 def _text(other: Any) -> str | None:
     """What a ``TObjString`` is compared with as a string - a string, a ``TString`` or
@@ -568,6 +603,8 @@ def _text(other: Any) -> str | None:
 class TObjString(TNamed):
     """``TObjString``: a string that can be kept in a collection, compared and measured as
     its string is, and shown as Python shows a string."""
+
+    CLASS_TITLE = "Collectable string class"
 
     def __init__(self, text: Any = "") -> None:
         super().__init__(str(text), "")

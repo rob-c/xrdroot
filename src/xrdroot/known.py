@@ -16,10 +16,18 @@ from typing import Any
 from .buffer import Buffer
 from .errors import UnsupportedFeatureError
 
-__all__ = ["KNOWN", "read_recorder", "read_tref"]
+__all__ = [
+    "KNOWN",
+    "STREAMS_ITSELF",
+    "read_recorder",
+    "read_tobject",
+    "read_tprocessid",
+    "read_tref",
+    "read_trefarray",
+]
 
-#: ``TRef::kHasUUID``: the reference names its process by UUID rather than by number.
-HAS_UUID = 1 << 7
+#: ``TObject::kHasUUID``: the reference names its process by UUID rather than by number.
+HAS_UUID = 1 << 5
 
 
 def read_recorder(_described: Any) -> Callable[[Buffer], dict[str, Any]]:
@@ -36,6 +44,33 @@ def read_recorder(_described: Any) -> Callable[[Buffer], dict[str, Any]]:
         row = {"TObject": {"fUniqueID": unique, "fBits": bits}, "fFilename": buf.string()}
         buf.resume(end)
         return row
+
+    return read
+
+
+def read_tobject(_described: Any) -> Callable[[Buffer], dict[str, Any]]:
+    """How a bare ``TObject`` reads, which ROOT writes no description of: ``TObject::Streamer``,
+    no byte count, and for one a ``TRef`` may point at, which ``ProcessID`` record numbered it."""
+
+    def read(buf: Buffer) -> dict[str, Any]:
+        unique, bits, process = buf.referenced()
+        found: dict[str, Any] = {"fUniqueID": unique, "fBits": bits}
+        if process is not None:
+            found["pidf"] = process
+        return found
+
+    return read
+
+
+def read_tprocessid(_described: Any) -> Callable[[Buffer], dict[str, Any]]:
+    """How a ``TProcessID`` reads when its file does not describe it: a ``TNamed`` - the
+    record's name, ``ProcessID0`` and on, and the process's UUID as its title."""
+
+    def read(buf: Buffer) -> dict[str, Any]:
+        _version, end = buf.header()
+        name, title = buf.named()
+        buf.resume(end)
+        return {"TNamed": {"fName": name, "fTitle": title}}
 
     return read
 
@@ -57,8 +92,33 @@ def read_tref(_described: Any) -> Callable[[Buffer], dict[str, Any]]:
     return read
 
 
+def read_trefarray(_described: Any) -> Callable[[Buffer], dict[str, Any]]:
+    """How a ``TRefArray`` reads: its ``TObject`` and name, how many slots and the lower bound,
+    the process its objects belong to, and each object's identifier - ``TRefArray::Streamer``."""
+
+    def read(buf: Buffer) -> dict[str, Any]:
+        _version, end = buf.header()
+        unique, bits = buf.tobject()
+        name = buf.string()
+        count, lower = buf.i32(), buf.i32()
+        process = buf.u16()
+        uids = [buf.u32() for _ in range(count)]
+        buf.resume(end)
+        row = {"TObject": {"fUniqueID": unique, "fBits": bits}, "fName": name}
+        return {**row, "fLowerBound": lower, "fPID": process, "fUIDs": uids}
+
+    return read
+
+
+#: Classes read here even when the file describes them: ``TObject::Streamer`` writes, for an
+#: object a ``TRef`` may point at, two bytes its description does not mention.
+STREAMS_ITSELF = frozenset({"TObject"})
+
 #: The classes this module reads, against how each is read.
 KNOWN: dict[str, Callable[[Any], Callable[[Buffer], Any]]] = {
     "TRecorder": read_recorder,
+    "TObject": read_tobject,
+    "TProcessID": read_tprocessid,
     "TRef": read_tref,
+    "TRefArray": read_trefarray,
 }

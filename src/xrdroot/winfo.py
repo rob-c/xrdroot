@@ -859,6 +859,17 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
         ('TStreamerString', 'fString', 'wrapped TString',
          65, 24, 0, 0, (0, 0, 0, 0, 0), 'TString', ()),
     )),
+    # TBits as ROOT 6.40 describes it (tests/data/references-6.40.root).
+    "TBits": (0x0e763c48, 1, (
+        ('TStreamerBase', 'TObject', 'Basic ROOT object',
+         66, 0, 0, 0, (0, -1877229523, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerBasicType', 'fNbits', 'Highest bit set + 1',
+         13, 4, 0, 0, (0, 0, 0, 0, 0), 'unsigned int', ()),
+        ('TStreamerBasicType', 'fNbytes', 'Number of UChars in fAllBits',
+         13, 4, 0, 0, (0, 0, 0, 0, 0), 'unsigned int', ()),
+        ('TStreamerBasicPointer', 'fAllBits', '[fNbytes] array of UChars',
+         51, 8, 0, 0, (0, 0, 0, 0, 0), 'unsigned char*', (1, 'fNbytes', 'TBits')),
+    )),
     "TBranchElement": (0xe6037caf, 10, (
         ('TStreamerBase', 'TBranch', 'Branch descriptor',
          0, 0, 0, 0, (0, 1494256824, 0, 0, 0), 'BASE', (12,)),
