@@ -243,6 +243,8 @@ class TypeParser(Cursor):
         """A declarator that must name something: its name, and the full type it gives it."""
         ctype = self.pointers(base)
         if self.at_("(") and self.peek(1).is_("&") and self.peek(3).is_(")"):
+            if self.is_variable(self.peek(2).text):  # ``f(&a);`` of an ``a`` declared: a call
+                raise NoParse
             # ``T (&name)[N]``: a reference to an array, which is the array itself here.
             self.take()
             self.take()
