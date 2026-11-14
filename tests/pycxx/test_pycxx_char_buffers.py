@@ -188,3 +188,25 @@ int main() { D d; printf("%d\\n", peek<D>(&d, 0)); return peek<D>(&d, 8); }
     with pytest.raises(MacroError, match="moved by -8 bytes, into the middle of it"):
         run(tmp_path, capsys, body)
     assert capsys.readouterr().out == "7\n"
+
+
+def test_a_buffer_written_into_an_element_is_worked_out_once_and_is_never_null(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    body = """
+int main() {
+   char *arr[4] = {0};
+   int num = 0;
+   const char *words[] = {"one", "two"};
+   for (int w = 0; w < 2; w++) {
+      arr[num] = new char[8];
+      strcpy(arr[num++], words[w]);
+   }
+   strcat(arr[--num], "!");
+   int n = 0;
+   for (int i = 0; arr[i]; ++i) n++;
+   printf("%d %d %s %s\\n", num, n, arr[0], arr[1]);
+   return 0;
+}
+"""
+    assert run(tmp_path, capsys, body) == "1 2 one two!\n"

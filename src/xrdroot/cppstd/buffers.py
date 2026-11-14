@@ -43,6 +43,10 @@ class CharBuffer(np.ndarray):  # type: ignore[misc]
         found = super().__getitem__(index)
         return int(found) if isinstance(found, np.integer) else found
 
+    def __bool__(self) -> bool:
+        """A pointer to memory is not null - whatever bytes it holds, ``if (p)`` is true."""
+        return True
+
     def __format__(self, spec: str) -> str:
         return format(str(self), spec)
 

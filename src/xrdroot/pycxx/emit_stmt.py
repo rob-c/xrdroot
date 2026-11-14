@@ -754,12 +754,19 @@ class StmtEmitter(CallEmitter):
             passed = symbol is not None and symbol.kind == "param" and not symbol.cell
             if symbol is not None and not passed:
                 self.assigned(symbol)
+        if isinstance(target, Index) and not isinstance(target.index, (Name, Literal)):
+            # ``strcpy(arr[num++], ...)``: the element worked out once, read and written
+            at = self.fresh("at")
+            self.out.line(f"{at} = {self.value(target.index)}", expr.where)
+            return f"{self.at(target.obj, P.POSTFIX)}[{at}]", passed
         return self.value(target), passed
 
-    def _written(self, expr: Call, count: int, text: str) -> None:
-        """``buffer`` given ``text``: into memory from ``new char[n]`` in place, else as the new
-        string of its variable (:func:`~xrdroot.cppstd.buffers.text_into`)."""
+    def _written(self, expr: Call, count: int, text: str | Callable[[str], str]) -> None:
+        """``buffer`` given ``text`` - or what ``text`` makes of the buffer: into memory from
+        ``new char[n]`` in place, else as the new string of its variable
+        (:func:`~xrdroot.cppstd.buffers.text_into`)."""
         buffer, passed = self._buffer(expr, count)
+        text = text(buffer) if callable(text) else text
         if passed:
             self.out.line(f"text_into({buffer}, {text}, True)", expr.where)
         else:
@@ -784,8 +791,7 @@ class StmtEmitter(CallEmitter):
         text = f"cstr({self.value(expr.args[1])})" if len(expr.args) > 1 else ""
         if len(expr.args) > 2:
             text += f"[: {self.value(expr.args[2])}]"
-        buffer = self.value(expr.args[0]) if expr.args else ""
-        self._written(expr, 2, f"cstr({buffer}) + {text}")
+        self._written(expr, 2, lambda buffer: f"cstr({buffer}) + {text}")
 
     def _swap(self, expr: Call) -> None:
         if len(expr.args) != 2:
