@@ -1285,6 +1285,15 @@ def _loop_step(
     return step
 
 
+#: ``kCharStar``: a ``char *`` member that no ``//[n]`` counts - a C string.
+CHAR_STAR = 7
+
+
+def _char_star(buf: Buffer) -> str:
+    """``TBuffer::ReadCharStar``: how many characters, then the characters."""
+    return buf.take(buf.i32()).decode("utf-8", "surrogateescape")
+
+
 def _step(
     member: Member, source: Source, seen: tuple[str, ...], before: dict[str, tuple[str, ...]]
 ) -> Step:
@@ -1293,6 +1302,8 @@ def _step(
     A member is numbers, a whole object, or a string or container, asked in
     that order; one that is none of them is refused by the kind it is.
     """
+    if member.stype == CHAR_STAR:
+        return _plainly(_char_star)
     step = _numeric_step(member, before) or _loop_step(member, source, seen, before)
     if step is None:
         step = _object_step(member, source, seen)

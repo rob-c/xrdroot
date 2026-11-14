@@ -25,7 +25,7 @@ from .program import by_reference
 __all__ = ["FunctionEmitter", "kind_of"]
 
 #: The Python the overload dispatcher checks an argument of each kind of parameter against.
-KINDS = {"integral": "INTEGRAL", "floating": "REAL", "string": "str"}
+KINDS = {"integral": "INTEGRAL", "floating": "REAL", "string": "str", "object": "AN_OBJECT"}
 
 
 def kind_of(ctype: CType) -> str:
@@ -36,7 +36,17 @@ def kind_of(ctype: CType) -> str:
         return KINDS["floating"]
     if ctype.is_string:
         return KINDS["string"]
+    if _object(ctype):
+        return KINDS["object"]
     return "None"
+
+
+def _object(ctype: CType) -> bool:
+    """Is a ``ctype`` parameter an object - held, referred or pointed to - which no number and
+    no string is, short of a string class a C string converts to?"""
+    if ctype.name in active().string_classes or ctype.dims:
+        return False
+    return ctype.is_object_pointer or (ctype.is_class and not ctype.pointer)
 
 
 class FunctionEmitter(VariableEmitter):

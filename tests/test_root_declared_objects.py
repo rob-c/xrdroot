@@ -429,3 +429,107 @@ def test_the_slots_resize_made_are_written_as_default_made_objects():
     run_source(RESIZED, "resized.C", ("resized.root",))
     back = ROOT.TFile("resized.root").Get("s")
     assert [slot.v for slot in back.slots] == [6, 6]
+
+
+EVENT = r"""
+#include "TClonesArray.h"
+#include "TRef.h"
+#include "TBits.h"
+#include "TH1F.h"
+#include <vector>
+class Hit : public TObject {
+public:
+   float fE = 0;
+   Hit() {}
+   Hit(float e) : fE(e) {}
+   Hit(const Hit &other) : TObject(other), fE(other.fE + 100) {}
+   ClassDefOverride(Hit, 2);
+};
+class Evt : public TObject {
+public:
+   char fType[8];
+   char *fName;
+   int fN = 0;
+   Double32_t *fValues; //[fN][0,10,16]
+   std::vector<Double32_t> fMore;
+   TClonesArray *fHits; //->
+   TRef fLast;
+   TBits fBits;
+   TH1F *fH;
+   Evt() : fName(nullptr), fValues(0), fHits(new TClonesArray("Hit", 10)), fH(0) {}
+   void Build(int n) {
+      strcpy(fType, "kind");
+      fName = (char *)"evt";
+      fN = n;
+      fValues = new Double32_t[n];
+      for (int i = 0; i < n; ++i) { fValues[i] = i; new ((*fHits)[i]) Hit(i + 0.5); }
+      if (fValues) fMore.push_back(2.5);
+      Hit *first = (Hit *)fHits->At(0);
+      fLast = first;
+      fBits.SetBitNumber(3);
+      fH = new TH1F("h", "h", 4, 0, 4);
+      fH->Fill(1);
+   }
+   ClassDefOverride(Evt, 1);
+};
+void event(const char *name) {
+   TFile f(name, "RECREATE");
+   TTree t("T", "events");
+   Evt *e = new Evt;
+   t.Branch("event", &e);
+   e->Build(3);
+   t.Fill();
+   t.Write();
+}
+"""
+
+
+def test_an_event_of_objects_references_and_histograms_goes_whole_into_a_tree():
+    run_source(EVENT, "event.C", ("event.root",))
+    with open_root("event.root") as f:
+        entry = f.tree("T")["event"].array(0, 1)[0]
+    expect(
+        ((entry["fName"], entry["fN"], list(entry["fValues"])), ("evt", 3, [0.0, 1.0, 2.0])),
+        (bytes(entry["fType"][:4]), b"kind"),
+        ((len(entry["fHits"]), entry["fHits"][2]["fE"]), (3, 2.5)),
+        (list(entry["fMore"]), [2.5]),
+    )
+
+
+def test_an_overload_taking_an_object_is_not_chosen_for_a_number(capfd):
+    run_source(
+        "class P { public: float x; P(float v) : x(v) {} P(const P &o) : x(o.x + 1) {} };\n"
+        'void pick() { P a(2.5); P b(a); printf("%g %g\\n", a.x, b.x); }',
+        "pick.C",
+    )
+    assert capfd.readouterr().out == "2.5 3.5\n"
+
+
+def test_roots_objects_among_members_are_handed_to_the_writer_as_it_takes_them():
+    from xrdroot.pyroot.core.declared import _clones, _root_object
+    from xrdroot.wdobjects import Clones
+
+    catalogue = Catalogue({})
+    line = _root_object(ROOT.TLine(0, 0, 1, 1), "TLine", catalogue)
+    assert line["fX2"] == 1.0 and _root_object(ROOT.TObject(), "TNoSuch", catalogue) is not None
+    named = ROOT.TClonesArray("TNamed")
+    assert _clones(named, catalogue) == Clones("TNamed", "TNameds", [])
+    assert _clones(named, catalogue).classname == "TNamed"
+    decl = Declaration("Slot", 1, True, (), (Field("v", "int", "", ()),))
+    buf = WBuffer()
+    write_instance(buf, Instance("Slot", {"v": 1}), Catalogue({"Slot": decl}))
+    assert _clones(ROOT.TClonesArray("Slot"), Catalogue({"Slot": decl})).name == "Slots"
+    holder = Declaration("H", 1, True, (), (Field("c", "TClonesArray*", "->", ()),))
+    write_instance(
+        WBuffer(), Instance("H", {"c": Clones("Slot", "Slots", [None])}),
+        Catalogue({"H": holder, "Slot": decl}),
+    )  # fmt: skip
+
+
+def test_an_overload_taking_a_string_class_takes_a_c_string():
+    out = run_source(
+        "int pick(double x) { return 3; }\nint pick(const TString &s) { return 1; }\n"
+        'int pick(int n[2]) { return 2; }\nint which() { return pick("abc") * 10 + pick(1.5); }',
+        "which.C",
+    )
+    assert out == 13

@@ -18,6 +18,7 @@ import numpy as np
 from .valuecopy import value_copy as value_copy
 
 __all__ = [
+    "AN_OBJECT",
     "array",
     "Overloaded",
     "value_copy",
@@ -108,6 +109,18 @@ INTEGRAL = (int, np.integer)
 
 #: What an argument for a floating parameter may be: any real number.
 REAL = (int, float, np.integer, np.floating)
+
+
+class _ObjectKind(type):
+    """The kind of an argument for an object parameter: anything but a number or a string."""
+
+    def __instancecheck__(cls, value: Any) -> bool:
+        return not isinstance(value, (int, float, str, bytes, np.number))
+
+
+class AN_OBJECT(metaclass=_ObjectKind):
+    """What an argument for a parameter of a class type may be: an object, or a null pointer -
+    so ``Track(const Track &)`` is not chosen for ``Track(1.5)`` over ``Track(Float_t)``."""
 
 
 #: One function of an overload set: it, its fewest and most arguments, and their kinds.

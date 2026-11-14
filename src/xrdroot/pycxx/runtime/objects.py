@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 
+from ...cppstd.objects import AN_OBJECT as AN_OBJECT
 from ...cppstd.objects import DTYPES as DTYPES
 from ...cppstd.objects import INTEGRAL as INTEGRAL
 from ...cppstd.objects import REAL as REAL
@@ -60,6 +61,7 @@ __all__ = [
     "postinc",
     "INTEGRAL",
     "REAL",
+    "AN_OBJECT",
     "uninstantiated",
     "inherited",
     "base_member",

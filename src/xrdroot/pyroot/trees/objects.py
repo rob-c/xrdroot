@@ -21,6 +21,7 @@ and the columns many entries make. An :class:`ObjectSlot` is the
 
 from __future__ import annotations
 
+import contextlib
 import sys
 from typing import Any
 
@@ -130,11 +131,19 @@ class MacroWhole(_Whole):
 
     def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
         from ...wbranch import DeclaredWhole, Described
+        from ...wdobjects import write_members
         from ..core.declared import payload_of
 
         made = payload_of(obj)
         assert made is not None  # a macro's class is what made this kind
         catalogue = made.catalogue
+        # One entry written aside, and every class reached described: what the file must say.
+        # The object a branch is given is not always whole yet - a pointer it promises is
+        # never null set only before the first Fill - so what it cannot write yet is left.
+        with contextlib.suppress(Exception):
+            write_members(WBuffer(), made.instance, catalogue)
+        for name in list(catalogue.declarations):
+            catalogue.info(name)
         checksum, version, _elements = catalogue.info(made.classname)
         described = tuple(Described(name, info[1], info[0], info[2])
                           for name, info in catalogue.entries().items())  # fmt: skip

@@ -38,7 +38,8 @@ _PRIMS = [
             "ULong64_t",
         ),
     ),
-    ("float32", "f", 4, ("float", "Float_t")),
+    # A Double32_t a container holds, written as the float it is squeezed to without a range.
+    ("float32", "f", 4, ("float", "Float_t", "Double32_t")),
     ("float64", "d", 8, ("double", "Double_t")),
 ]
 

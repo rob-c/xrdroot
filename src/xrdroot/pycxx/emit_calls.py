@@ -22,7 +22,7 @@ from .base import Out, P
 from .ctype import SMART, CType
 from .cursor import looks_like_type
 from .dialect import active
-from .emit_expr import ExprEmitter, _copy_store, _lvalue, zero
+from .emit_expr import ExprEmitter, _copy_store, _is_null, _lvalue, zero
 from .limits import FUNCTIONS as LIMIT_FUNCTIONS
 from .limits import is_limit
 from .literals import suffixes
@@ -470,7 +470,10 @@ class CallEmitter(ExprEmitter):
 
     def _object_store(self, ctype: CType, node: Expr) -> str:
         """``node`` stored into an object: a string class made of a C string, built from a
-        pointer, copied - which Python would otherwise share - or shared as it is."""
+        pointer, copied - which Python would otherwise share - or shared as it is; a pointer
+        to an object set to ``0`` is null, which ``if (p)`` then finds it to be."""
+        if ctype.is_object_pointer and _is_null(node):
+            return "None"
         if self._made_string(ctype, node):
             return f"{self.host_name(ctype.name.split('::'))}({self.value(node)})"
         if self._converted_from_pointer(ctype, node):

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from contextvars import ContextVar
 from typing import Any
 
 import numpy as np
@@ -34,7 +35,7 @@ from ...wdeclared import (
     class_name,
     parse_type,
 )
-from ...wdobjects import DeclaredObject, Instance
+from ...wdobjects import Clones, DeclaredObject, Instance
 from ...winfo import INFOS
 from .objects import TNamed, TObject
 
@@ -169,15 +170,33 @@ def _reach(name: str, into: dict[str, Declaration]) -> None:
 # -- writing ------------------------------------------------------------------------------------
 
 
-def payload_of(obj: Any) -> DeclaredObject | None:
-    """What a file writes for ``obj``, if its class was declared in C++ - else ``None``."""
+def payload_of(obj: Any, writer: Any = None) -> DeclaredObject | None:
+    """What a file writes for ``obj``, if its class was declared in C++ - else ``None``.
+    ``writer`` is the file being written into, which a ``TRef`` among the object's members
+    names its process in - the current file's when not given."""
     cls = type(obj)
     if not declared_class(cls):
         return None
     catalogue = catalogue_of(cls)
     name = declaration_of(cls).name
     title = obj.GetTitle() if isinstance(obj, TObject) else ""
-    return DeclaredObject(instance_of(obj, name, catalogue), catalogue, str(title))
+    token = WRITER.set(writer if writer is not None else _current_writer())
+    try:
+        return DeclaredObject(instance_of(obj, name, catalogue), catalogue, str(title))
+    finally:
+        WRITER.reset(token)
+
+
+#: The file an object is being written into, for the references among its members.
+WRITER: ContextVar[Any] = ContextVar("WRITER", default=None)
+
+
+def _current_writer() -> Any:
+    """The writable directory of the current file, if it is one being written."""
+    from .directories import current_directory
+
+    writable = getattr(current_directory(), "_writable", None)
+    return writable() if callable(writable) else None
 
 
 def instance_of(obj: Any, name: str, catalogue: Catalogue) -> Instance:
@@ -235,8 +254,7 @@ def _root_member(obj: Any, member: str) -> Any:
 def _plain(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
     """A member's value as plain data: objects as instances, containers as lists or dicts - an
     object held by value that is not there yet, a slot ``resize`` made, as a default-made one."""
-    if value is None and not found.stars and found.name in catalogue.declarations:
-        value = new_value(found.name)
+    value = _present(value, found, catalogue)
     if value is None:
         return None
     if not found.stars and (found.name in STL_KINDS or found.name == "pair"):
@@ -244,14 +262,50 @@ def _plain(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
     return _plain_object(value, found, catalogue)
 
 
+def _present(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
+    """A member's value as there to write: an object held by value that is not made yet as
+    a default-made one, and a pointer a macro set to 0 as the null it is."""
+    if value is None and not found.stars and found.name in catalogue.declarations:
+        return new_value(found.name)
+    null = found.stars and isinstance(value, int) and value == 0
+    return None if null else value
+
+
 def _plain_object(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
     """An object as plain data - one of a declared class as an instance, one of ROOT's as its
     members - and anything else as it is, a string class as its text."""
     if catalogue.declared(found.name) is not None and found.name not in ("string", "TString"):
         return _object_of(value, found.name, catalogue)
-    if found.name in INFOS and isinstance(value, TObject):
-        return root_row(value, found.name)
+    if isinstance(value, TObject):
+        return _root_object(value, found.name, catalogue)
     return value if isinstance(value, (int, float, np.ndarray, list)) else _scalar(value)
+
+
+def _root_object(value: Any, classname: str, catalogue: Catalogue) -> Any:
+    """One of ROOT's objects among a declared class's members: a ``TClonesArray`` as the
+    objects it holds, one the writer takes - a histogram, a ``TRef``, a ``TBits`` - as it takes
+    it, and any other by the members its layout names."""
+    from .collections import TClonesArray
+    from .records import recorded
+
+    if isinstance(value, TClonesArray):
+        return _clones(value, catalogue)
+    made = recorded(value, WRITER.get())
+    if made is not value:
+        return made
+    return root_row(value, classname) if classname in INFOS else value
+
+
+def _clones(value: Any, catalogue: Catalogue) -> Clones:
+    """A ``TClonesArray`` of objects of a declared class, each as an instance of it."""
+    held = str(value._class)
+    if held not in catalogue.declarations:
+        cls = find_class(held)
+        if cls is not None:
+            catalogue.declarations.update(catalogue_of(cls).declarations)
+    items = [None if item is None else instance_of(item, held, catalogue)
+             for item in list(value)[: value.GetEntriesFast()]]  # fmt: skip
+    return Clones(held, str(getattr(value, "_name", "")) or held + "s", items)
 
 
 def _plain_container(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
@@ -367,7 +421,13 @@ def converted(value: Any, found: Spelled, current: Any) -> Any:
         return _pointed(value, found)
     if found.name in STL_KINDS:
         return _refilled(value, found, current)
-    if found.name in ("string", "TString"):
+    return _held(value, found, current)
+
+
+def _held(value: Any, found: Spelled, current: Any) -> Any:
+    """A value read for a member that is no container: text - a string class's, or a
+    ``char *``'s - a number, or an object."""
+    if found.name in ("string", "TString") or isinstance(value, str):
         return _text(value, found, current)
     if found.name in TYPES or found.name in WIDTHS:
         return _number(value, found.name, current)

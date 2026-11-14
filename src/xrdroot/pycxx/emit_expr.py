@@ -144,9 +144,18 @@ class ExprEmitter(NameEmitter):
             return f"{left} {op} {right}", level
         if isinstance(node, Unary) and node.op == "!":
             return self._negation(node)
-        if self.is_pointer(node) and not isinstance(node, (Binary, Literal)):
+        if self._null_tested(node) and not isinstance(node, (Binary, Literal)):
             return f"{self.at(node, P.COMPARE + 1)} is not None", P.COMPARE
         return self.expr(node)
+
+    def _null_tested(self, node: Expr) -> bool:
+        """Is ``node``'s truth whether it is null: a pointer to an object - or to numbers, an
+        array Python cannot take the truth of?"""
+        if self.is_pointer(node):
+            return True
+        found = self.typeof(node)
+        numbers = found is not None and found.pointer == 1 and found.arithmetic
+        return numbers and found is not None and not found.dims and found.name != "char"
 
     def _truth_at(self, node: Expr, level: int) -> str:
         text, own = self.cond(node)
@@ -159,7 +168,7 @@ class ExprEmitter(NameEmitter):
         return self._negated(node.operand)
 
     def _negated(self, node: Expr) -> Out:
-        if self.is_pointer(node):
+        if self._null_tested(node):
             return f"{self.at(node, P.COMPARE + 1)} is None", P.COMPARE
         return f"not {self._truth_at(node, P.NOT)}", P.NOT
 

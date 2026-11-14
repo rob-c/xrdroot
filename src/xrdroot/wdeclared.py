@@ -61,6 +61,10 @@ STL_STRING = 365
 #: ``kAny``, a pointer to one never null (``kObjectp``, ``kAnyp``) and maybe null
 #: (``kObjectP``, ``kAnyP``), and a container (``kSTL``).
 OBJECT, ANY, OBJECT_P, OBJECT_PP, ANY_P, ANY_PP, STL = 61, 62, 63, 64, 68, 69, 300
+#: ``kCharStar``: a C string, its length and then its characters.
+CHAR_STAR = 7
+#: ROOT's classes that stream themselves by hand and that a file holds no description of.
+SELF_STREAMED = ("TRef", "TRefArray")
 #: ``kTString``, ``kTObject``, ``kTNamed`` and ``kCounter``.
 TSTRING, TOBJECT, TNAMED, COUNTER = 65, 66, 67, 6
 #: ``kOffsetL`` and ``kOffsetP``: a fixed array of, and a counted pointer to, numbers.
@@ -201,15 +205,16 @@ class Catalogue:
         return found
 
     def known(self, name: str) -> bool:
-        """Is ``name`` a class this write can describe?"""
-        return self.declared(name) is not None or name in INFOS
+        """Is ``name`` a class this write can describe - or one of ROOT's that streams itself
+        and that the file has no description of, a ``TRef``?"""
+        return self.declared(name) is not None or name in INFOS or name in SELF_STREAMED
 
     def tobject(self, name: str) -> bool:
         """Does the class ``name`` derive from ``TObject``?"""
         found = self.declared(name)
         if found is not None:
             return found.tobject
-        return name == "TObject" or any(
+        return name in ("TObject", *SELF_STREAMED) or any(
             element[0] == "TStreamerBase" and self.tobject(element[1])
             for element in INFOS.get(name, (0, 0, ()))[2]
         )
@@ -220,6 +225,8 @@ class Catalogue:
         if found is not None:
             return found
         declared = self.declared(name)
+        if declared is None and name in SELF_STREAMED:
+            return 0, 1, ()  # streamed by hand, and described by nothing in the file
         if declared is None:
             self.used[name] = None
             return INFOS[name]
@@ -328,6 +335,15 @@ class Catalogue:
         return ("TStreamerBasicPointer", field.name, field.comment, stype + OFFSET_P, size,
                 0, 0, NO_DIMS, typename + "*", counted)  # fmt: skip
 
+    def _char_star(
+        self, owner: Declaration, field: Field, found: Spelled, counter: bool
+    ) -> Element | None:
+        """``char *name``, not counted: a C string, ``kCharStar``."""
+        if found.name != "char" or found.stars != 1 or field.dims or _counter_of(field):
+            return None
+        return ("TStreamerBasicType", field.name, field.comment, CHAR_STAR, POINTER_SIZE, 0, 0,
+                NO_DIMS, "char*", ())  # fmt: skip
+
     def _string(
         self, owner: Declaration, field: Field, found: Spelled, counter: bool
     ) -> Element | None:
@@ -404,6 +420,7 @@ _MEMBER_RULES: tuple[
 ] = (
     Catalogue._basic,
     Catalogue._counted,
+    Catalogue._char_star,
     Catalogue._string,
     Catalogue._container,
     Catalogue._object,

@@ -27,6 +27,7 @@ import numpy as np
 from .errors import UnsupportedFeatureError
 from .interp import MEMBER_WISE
 from .wdeclared import (
+    CHAR_STAR,
     MAPS,
     OFFSET_L,
     OFFSET_P,
@@ -37,17 +38,26 @@ from .wdeclared import (
     pair_name,
     parse_type,
 )
-from .winfo import Element
+from .winfo import INFOS, Element
 from .wpacking import pack_member
-from .writer import WBuffer, _record, info_entry
+from .writer import WBuffer, _payload, _record, info_entry
 
-__all__ = ["Instance", "DeclaredObject", "write_instance", "write_members", "write_value"]
+__all__ = ["Clones", "Instance", "DeclaredObject", "write_instance", "write_members", "write_value"]
 
 #: ``TObject``'s ``kIsOnHeap`` and ``kNotDeleted``, which ROOT keeps out of what it writes.
 MEMORY_BITS = 0x03000000
 #: The version ROOT 6.40 gives the record round a container or string inside an object:
 #: ``TStreamerInfo``'s own class version.
 STL_VERSION = 10
+
+
+class Clones(NamedTuple):
+    """A ``TClonesArray``: its name, the class it holds and the objects in it, ``None`` for an
+    empty slot - each an :class:`Instance` of that class."""
+
+    classname: str
+    name: str
+    items: list[Any]
 
 
 class Instance(NamedTuple):
@@ -114,6 +124,9 @@ class _Writer:
 
     def record(self, classname: str, value: Any) -> None:
         """An object of ``classname`` in place: its record, then its members."""
+        if isinstance(value, Clones):
+            self._clones(value)
+            return
         if self.catalogue.declared(classname) is None:
             self._root_record(classname, value)
             return
@@ -126,8 +139,31 @@ class _Writer:
 
     def _root_record(self, classname: str, value: Any) -> None:
         """An object of one of ROOT's classes, written by the layout the writer carries."""
+        if value is not None and not isinstance(value, (Mapping, Instance)):
+            # One of ROOT's own written by the writer: a histogram, a TBits, a TRef.
+            _classname, payload, used = _payload(value)
+            self.catalogue.used.update((name, None) for name in used if name in INFOS)
+            self.buf.raw(payload)
+            return
         row = dict(_members(value)) if value is not None else {}
         _record(self.buf, classname, row, self.catalogue.used)
+
+    def _clones(self, clones: Clones) -> None:
+        """``TClonesArray::Streamer``: its ``TObject``, name, class and version, how many and
+        the lower bound, then each slot - a zero, or a one and the object as it streams."""
+        version, _sum = self.catalogue.version_of(clones.classname)
+        self.catalogue.used["TClonesArray"] = None
+        at = self.buf.start(INFOS["TClonesArray"][1])
+        self.buf.tobject(0)
+        self.buf.string(clones.name)
+        self.buf.string(f"{clones.classname};{version}")
+        self.buf.i32(len(clones.items))
+        self.buf.i32(0)
+        for item in clones.items:
+            self.buf.u8(0 if item is None else 1)
+            if item is not None:
+                self.record(clones.classname, item)
+        self.buf.end(at)
 
     def members(self, classname: str, members: Mapping[str, Any]) -> None:
         for element in self.catalogue.info(classname)[2]:
@@ -143,7 +179,7 @@ class _Writer:
         if value is None:
             self.buf.u32(0)
             return
-        actual = value.classname if isinstance(value, Instance) else classname
+        actual = str(getattr(value, "classname", classname))
         at = self.buf.tag(actual)
         self.record(actual, value)
         self.buf.end(at)
@@ -163,7 +199,11 @@ class _Writer:
 
     def _basic(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
         stype, title = element[3], element[2]
+        if stype == CHAR_STAR:
+            self._char_star(value)
+            return
         if OFFSET_L < stype < OFFSET_P:
+            value = _characters(value, element[5]) if isinstance(value, (str, bytes)) else value
             values = np.asarray(_numbers(value), dtype=object).ravel()
             if len(values) != element[5]:
                 raise ValueError(
@@ -172,6 +212,12 @@ class _Writer:
             self.buf.raw(pack_member(stype - OFFSET_L, title, _numeric(values)))
             return
         self.buf.raw(pack_member(stype, title, _numeric([_number(value)])))
+
+    def _char_star(self, value: Any) -> None:
+        """``TBuffer::WriteCharStar``: the length, then the characters - a null one, nothing."""
+        text = b"" if value is None else _text(value).encode("utf-8", "surrogateescape")
+        self.buf.i32(len(text))
+        self.buf.raw(text)
 
     def _counted(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
         counter = str(element[9][1])
@@ -337,6 +383,12 @@ def _numeric(values: Any) -> np.ndarray[Any, Any]:
     """Values as one NumPy array of their kind, booleans and integers as they are."""
     found = np.asarray([item.item() if isinstance(item, np.generic) else item for item in values])
     return found.astype(np.float64) if found.dtype == object else found
+
+
+def _characters(text: Any, length: int) -> list[int]:
+    """A ``char x[n]`` holding a string: its bytes, NUL-padded to the array's length."""
+    raw = text if isinstance(text, bytes) else text.encode("utf-8", "surrogateescape")
+    return list(raw[:length]) + [0] * max(0, length - len(raw))
 
 
 def _text(value: Any) -> str:
