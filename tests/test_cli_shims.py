@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import json
 import json.decoder
+import math
 import sys
 from collections.abc import Iterator
 
@@ -68,3 +69,17 @@ def test_script_mode_has_nothing_to_tell_before_the_namespace_is_imported(
 ) -> None:
     monkeypatch.delitem(sys.modules, "xrdroot.pyroot.core.messages", raising=False)
     assert shims.python_warnings(True) is False
+
+
+def test_a_module_a_namespace_holds_is_imported_through_it(isolated: None) -> None:
+    root = shims.install_root()
+    distributed = importlib.import_module("ROOT.RDF.Distributed")
+    assert distributed is root.RDF.Distributed and root.RDF.__name__ == "ROOT.RDF"
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("ROOT.RDF.NoSuchThing")
+
+
+def test_an_object_taking_no_attributes_or_a_module_is_left_a_namespace_as_it_is() -> None:
+    shims._as_package(object(), "ROOT.Nothing")
+    shims._as_package(math, "ROOT.Math")
+    assert math.__name__ == "math" and not hasattr(math, "__path__")

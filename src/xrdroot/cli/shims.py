@@ -57,7 +57,7 @@ class Aliases(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         try:
             found = importlib.util.find_spec(name)
         except ModuleNotFoundError:  # a parent that is a namespace object, not a module
-            return None
+            return _member(fullname)
         if found is None:
             return None
         return importlib.util.spec_from_loader(fullname, self, is_package=found.parent == name)
@@ -71,6 +71,29 @@ class Aliases(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         """The module ran when it was imported under its own name; it keeps that name's spec,
         so that its relative imports still resolve from where it is."""
         module.__spec__ = self._specs.pop(module.__name__)
+
+
+class _Member(importlib.abc.Loader):
+    """Loads ``ROOT.RDF.Distributed``: the module a namespace object holds by that name."""
+
+    def __init__(self, module: ModuleType) -> None:
+        self.module = module
+        self.spec = module.__spec__
+
+    def create_module(self, spec: importlib.machinery.ModuleSpec) -> ModuleType:
+        return self.module
+
+    def exec_module(self, module: ModuleType) -> None:
+        module.__spec__ = self.spec
+
+
+def _member(fullname: str) -> importlib.machinery.ModuleSpec | None:
+    """The spec of a module a namespace in ``sys.modules`` holds as an attribute, if it does."""
+    parent, _, name = fullname.rpartition(".")
+    found = getattr(sys.modules.get(parent), name, None)
+    if not isinstance(found, ModuleType):
+        return None
+    return importlib.util.spec_from_loader(fullname, _Member(found))
 
 
 def _installed(alias: str) -> Aliases | None:
@@ -87,9 +110,23 @@ def install_root() -> ModuleType:
         found = getattr(root, name, None)
         if found is not None:
             sys.modules[f"ROOT.{name}"] = found
+            _as_package(found, f"ROOT.{name}")
     if _installed("ROOT") is None:  # first: ``ROOT.__path__`` would load a second copy
         sys.meta_path.insert(0, Aliases("ROOT", "xrdroot.pyroot"))
     return root
+
+
+def _as_package(namespace: Any, name: str) -> None:
+    """Give a namespace object a package's ``__path__`` and ``__spec__``, so that ``import
+    ROOT.RDF.Distributed`` looks inside it for ``Distributed`` as Python looks in a package."""
+    if isinstance(namespace, ModuleType) or "__path__" in getattr(namespace, "__dict__", {}):
+        return  # a module is imported from as it is
+    try:
+        namespace.__path__ = []
+        namespace.__name__ = name
+        namespace.__spec__ = importlib.machinery.ModuleSpec(name, None, is_package=True)
+    except (AttributeError, TypeError):  # an object that takes no new attributes
+        pass
 
 
 def install_cppyy() -> None:
