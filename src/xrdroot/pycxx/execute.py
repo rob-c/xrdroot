@@ -167,7 +167,8 @@ def run_program(
     Each file is translated and run, in order, in one namespace; then the
     program is started as the first file says. A function named like the
     first file is called with ``args``, its value printed as the dialect
-    prints it and exited with; else ``main(argc, argv)``, its value the exit
+    prints it and exited with - unless it needs arguments none were given and
+    there is a ``main``; else ``main(argc, argv)``, its value the exit
     status, as a compiled program's; else the GoogleTest tests the files
     define, as ``gtest_main`` runs them; else - nothing to run - a refusal.
     ``argv`` is the program's whole command line, its name first.
@@ -210,7 +211,8 @@ def _started(
     from .runtime import gtest
 
     first = made[0]
-    function = entry(first, module, first.file, args)
+    main = _own_main(module)
+    function = _starting(entry(first, module, first.file, args), main, args)
     if function is not None:
         with placed(made):
             value = function(*args)
@@ -218,8 +220,7 @@ def _started(
         if line is not None:
             sys.stdout.write(line + "\n")
         return dialect.status(value, first.returns)
-    main = module.get("main")
-    if callable(main) and getattr(main, "__module__", None) == MODULE:
+    if main is not None:
         return _main(main, made, argv)
     if gtest.registered():
         with placed(made):
@@ -229,6 +230,27 @@ def _started(
         f"{Path(first.file).stem}(), no main(), no GoogleTest TEST, and it is no unnamed "
         "macro { ... }, which are what xrdroot run looks for, in that order"
     )
+
+
+def _own_main(module: dict[str, Any]) -> Any:
+    """The program's own ``main``, or ``None``."""
+    main = module.get("main")
+    return main if callable(main) and getattr(main, "__module__", None) == MODULE else None
+
+
+def _starting(function: Any, main: Any, args: tuple[Any, ...]) -> Any:
+    """The function named like the file, unless it needs arguments none were given and the
+    program has a ``main``: then it is a compiled program's helper, and ``main`` starts it."""
+    if function is not None and not args and main is not None and _needs_arguments(function):
+        return None
+    return function
+
+
+def _needs_arguments(function: Any) -> bool:
+    """Whether ``function`` has a parameter with no default, which a call with none lacks."""
+    parameters = inspect.signature(function).parameters.values()
+    return any(p.default is p.empty and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+               for p in parameters)  # fmt: skip
 
 
 def _main(main: Any, made: list[Translation], argv: list[str]) -> int:

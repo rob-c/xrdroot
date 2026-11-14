@@ -100,6 +100,18 @@ def test_an_entry_function_named_like_the_file_runs_and_its_value_is_the_status(
     assert run_program([other], use_cache=False) == 0
 
 
+def test_a_program_whose_function_named_like_its_file_takes_arguments_starts_at_main(
+    tmp_path, capsys
+) -> None:
+    path = _written(tmp_path, "demo.cxx", "int demo(int n) { return n; }\n"
+                    "int main() { return demo(3); }\n")
+    assert run_program([path], use_cache=False) == 3
+    assert run_program([path], (5,), use_cache=False) == 5
+    defaulted = _written(tmp_path, "opt.cxx", "int opt(int n = 4) { return n; }\n"
+                         "int main() { return 9; }\n")
+    assert run_program([defaulted], use_cache=False) == 4
+
+
 def test_a_source_hands_back_its_names_or_its_entrys_value() -> None:
     names = run_source("int square(int n) { return n * n; }\n", "square.cxx", call=False)
     assert names["square"](5) == 25
