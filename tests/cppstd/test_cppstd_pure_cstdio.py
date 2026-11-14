@@ -42,3 +42,20 @@ def test_a_file_is_read_in_bytes_to_its_end_and_from_where_it_is_sought(tmp_path
     assert cstdio.fread(buffer, 0, 1, back) == 0
     assert cstdio.fseek(back, -1, cstdio.SEEK_END) == 0 and cstdio.fgetc(back) == ord("C")
     cstdio.fclose(back)
+
+
+def test_rand_draws_what_the_macos_c_library_draws_from_each_seed() -> None:
+    """The numbers of macOS's ``rand`` after ``srand(1)``, ``srand(0)`` and ``srand(42)``."""
+    from xrdroot.cppstd import stdlib
+    from xrdroot.cppstd.containers import std
+
+    stdlib.srand(1)
+    assert [std.rand() for _ in range(3)] == [16807, 282475249, 1622650073]
+    std.srand(0)
+    assert [stdlib.rand(), stdlib.rand()] == [520932930, 28925691]
+    stdlib.srand(42)
+    assert [stdlib.rand(), stdlib.rand()] == [705894, 1126542223]
+    stdlib.srand(2147483000)  # Schrage's product comes out negative, and is wrapped
+    assert [stdlib.rand(), stdlib.rand()] == [2136609518, 1922107539]
+    assert stdlib.RAND_MAX == 2**31 - 1
+    stdlib.srand(1)

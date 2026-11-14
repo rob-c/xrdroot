@@ -99,3 +99,20 @@ def test_generic_file_streams_write_and_close_without_loading_a_reader(tmp_path:
     output.close()
     assert not output.is_open() and target.read_text() == "answer 42"
     assert stdlib.remove(target) == 0 and stdlib.remove(target) == -1
+
+
+def test_a_vector_is_made_from_a_range_and_inserted_into() -> None:
+    from xrdroot.cppstd.containers import std
+    from xrdroot.cppstd.objects import Pair
+
+    numbers = std.vector["double"]([1.0, 2.0, 3.0])
+    part = std.vector["double"](numbers.begin() + 1, numbers.end())
+    assert list(part) == [2.0, 3.0]
+    at = part.insert(part.begin(), 2, 0.5)
+    part.insert(at + 1, 9.0)
+    part.insert(len(part), numbers.begin(), numbers.begin() + 1)
+    assert list(part) == [0.5, 9.0, 0.5, 2.0, 3.0, 1.0]
+    pairs = std.vector["std::pair<double,double>"]([Pair(1.0, 2.0)])
+    more = std.vector["std::pair<double,double>"](pairs.begin(), pairs.end())
+    more.insert(more.end(), pairs.begin(), pairs.end())
+    assert [p.first for p in more] == [1.0, 1.0]

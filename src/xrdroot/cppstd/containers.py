@@ -33,7 +33,7 @@ name, as the rest of ``xrdroot.pyroot`` refuses what it does not have.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Any
 
 import numpy as np
@@ -415,12 +415,12 @@ class _Vector(_Container):
             self._construct(*arguments)
 
     def _construct(self, first: Any, *rest: Any) -> None:
-        """``vector(n[, value])`` - a real ``n`` taken as C++ converts it, whole - or ``vector
-        (values)``."""
+        """``vector(n[, value])`` - a real ``n`` taken as C++ converts it, whole - ``vector
+        (values)``, or ``vector(begin, end)`` of another's range."""
         if isinstance(first, (int, float, np.integer, np.floating)) and not isinstance(first, bool):
             self.resize(int(first), *rest)
         else:
-            self.assign(first)
+            self.assign(_ranged(first, rest))
 
     def __repr__(self) -> str:
         return f"<{self.__cpp_name__} {self.data().tolist()!r}>"
@@ -572,6 +572,15 @@ class _Vector(_Container):
     def end(self) -> _VectorIterator:
         return _VectorIterator(self, self._size)
 
+    def insert(self, position: Any, *what: Any) -> _VectorIterator:
+        """``insert(pos, value)``, ``insert(pos, n, value)`` or ``insert(pos, first, last)``:
+        an iterator at the first element put in."""
+        at = position._position if isinstance(position, _VectorIterator) else int(position)
+        items = list(self)
+        items[at:at] = _insertion(what)
+        self.assign(items)
+        return _VectorIterator(self, at)
+
 
 #: Original numeric reading protocols; later user overrides keep the iterable conversion.
 _NUMERIC_READERS = {
@@ -602,7 +611,7 @@ class _ObjectVector(_Container):
         if isinstance(first, (int, np.integer)):
             self.resize(int(first), *rest)
         else:
-            self.assign(first)
+            self.assign(_ranged(first, rest))
 
     def __repr__(self) -> str:
         return f"<{self.__cpp_name__} {self._items!r}>"
@@ -705,6 +714,15 @@ class _ObjectVector(_Container):
     def end(self) -> _VectorIterator:
         return _VectorIterator(self, len(self._items))
 
+    def insert(self, position: Any, *what: Any) -> _VectorIterator:
+        """``insert(pos, value)``, ``insert(pos, n, value)`` or ``insert(pos, first, last)``:
+        an iterator at the first element put in."""
+        at = position._position if isinstance(position, _VectorIterator) else int(position)
+        items = list(self)
+        items[at:at] = _insertion(what)
+        self.assign(items)
+        return _VectorIterator(self, at)
+
 
 class _VectorIterator:
     """A ``std::vector`` iterator: ``*it`` - here the iterator itself - is the element it is at.
@@ -753,6 +771,23 @@ class _VectorIterator:
         return self._position < other._position
 
     __hash__ = None  # type: ignore[assignment]
+
+
+def _insertion(what: Sequence[Any]) -> list[Any]:
+    """What ``insert`` puts in: one value, ``n`` copies of one, or another vector's range."""
+    if len(what) == 2 and isinstance(what[0], _VectorIterator):
+        return list(_ranged(what[0], what[1:]))
+    if len(what) == 2:
+        return [what[1]] * int(what[0])
+    return [what[0]]
+
+
+def _ranged(first: Any, rest: Sequence[Any]) -> Any:
+    """What a vector is made of: ``first``, or the elements from iterator ``first`` up to
+    iterator ``rest[0]`` of the same vector - C++'s ``vector(begin, end)``."""
+    if not (rest and isinstance(first, _VectorIterator) and isinstance(rest[0], _VectorIterator)):
+        return first
+    return [first._owner[at] for at in range(first._position, rest[0]._position)]
 
 
 def _vector_class(kind: Any) -> type:
@@ -1094,6 +1129,8 @@ class _Namespace:
     unique_ptr = _stdlib.smart_pointer("unique_ptr")
     shared_ptr = _stdlib.smart_pointer("shared_ptr")
     remove = staticmethod(_stdlib.remove)
+    rand = staticmethod(_stdlib.rand)
+    srand = staticmethod(_stdlib.srand)
 
     def __repr__(self) -> str:
         return "<namespace std>"
