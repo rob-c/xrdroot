@@ -277,7 +277,8 @@ class TDirectoryFile(TDirectory):
         read = self._reader()[label]
         found = _tree(read, key) or wrap(read)
         if not isinstance(found, TObject) and not _engine_own(found):
-            found = from_members(key.GetClassName(), found) or TOther(key.GetClassName(), found)
+            named = str(getattr(found, "classname", "") or key.GetClassName())  # as it was read
+            found = from_members(key.GetClassName(), found) or TOther(named, found)
         newest = key is self.GetKey(key.GetName())
         if newest and any(_inherits(found, kind) for kind in KEPT):
             self.Append(found, True)

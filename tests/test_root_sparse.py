@@ -192,3 +192,9 @@ def test_a_multigraph_is_the_graphs_it_holds():
     assert all(isinstance(one, Graph) for one in multi)
     assert multi.name == "mg"
     assert repr(multi).startswith("<TMultiGraph 'mg' of 3>")
+
+
+def test_a_sparse_histogram_of_64_bit_integers_is_read_as_roots_class_by_its_old_name():
+    members = sparse_members([4], [(1,)], [1.0])
+    assert SparseHistogram("THnSparseT<TArrayL>", members).classname == "THnSparseT<TArrayL64>"
+    assert "THnSparseT<TArrayL>" in SPARSE and "THnSparseT<TArrayL64>" in SPARSE
