@@ -289,17 +289,23 @@ class TDirectoryFile(TDirectory):
 
     def _fetched(self, label: str, key: TKey) -> Any:
         """Read one record; a histogram or tree of the newest cycle stays in memory here."""
-        reader = self._reader()
-        again = getattr(key._key, "read", None) if reader is None else None
-        read = again() if again is not None else reader[label]
+        read = self._record_of(label, key)
         found = _tree(read, key) or wrap(read)
         if not isinstance(found, TObject) and not _engine_own(found):
-            found = _dressed(key.GetClassName(), found)
+            named = str(getattr(found, "classname", "") or key.GetClassName())  # as it was read
+            found = _dressed(key.GetClassName(), found, named)
         settle(found, read, self.GetFile())
         newest = key is self.GetKey(key.GetName())
         if newest and any(_inherits(found, kind) for kind in KEPT):
             self.Append(found, True)
         return found
+
+    def _record_of(self, label: str, key: TKey) -> Any:
+        """A key's record as read: from the file - or, from one still being written, from
+        what this session wrote under it."""
+        reader = self._reader()
+        again = getattr(key._key, "read", None) if reader is None else None
+        return again() if again is not None else reader[label]
 
     def _subdirectory(self, name: str, title: str = "") -> TDirectoryFile:
         if name not in self._subdirs:
@@ -517,13 +523,14 @@ def _note_layouts(reading: Any) -> None:
         return
 
 
-def _dressed(classname: str, members: Any) -> Any:
+def _dressed(classname: str, members: Any, named: str) -> Any:
     """A record read as its members, made into its class: one the kit makes again, one C++
-    declared, or else an object that only says what it is."""
+    declared, or else an object that only says what it is - by ``named``, the class it was
+    read as."""
     made = from_members(classname, members)  # a null TRef is false, and made
     if made is None:
         made = made_from(classname, members)
-    return made if made is not None else TOther(classname, members)
+    return made if made is not None else TOther(named, members)
 
 
 class _Noting:

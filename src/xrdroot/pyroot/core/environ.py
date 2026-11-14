@@ -6,6 +6,11 @@ then the working directory's ``.rootrc``, each over the one before, as
 ROOT reads them. ``GetValue(name, default)`` gives the value as the
 default's type: an ``int`` asked for of ``yes`` or ``no`` - or ``on``,
 ``off``, ``true``, ``false`` - is ``1`` or ``0``, as ROOT's ``TEnv`` makes it.
+
+``TEnv(name)`` reads the user's file of that name - in ``$ROOTENV_USER_PATH``
+if it is set, else the home directory - then the working directory's, and
+``SaveLevel`` writes one level's resources back to its file, keeping the
+old one as ``.bak``.
 """
 
 from __future__ import annotations
@@ -43,6 +48,8 @@ class TEnvRec(TObject):
     def __init__(self, name: str, value: str, level: int) -> None:
         super().__init__()
         self.fName, self.fValue, self.fLevel = name, value, level
+        #: Set in code since it was last saved, rather than read from a file.
+        self.fModified = True
 
     def GetName(self) -> str:
         return self.fName
@@ -72,10 +79,35 @@ class TEnv(TObject):
         self._records: dict[str, TEnvRec] = {}
         self._name = str(name)
         if self._name:
-            self.ReadFile(self._name, kEnvLocal)
+            self.ReadFile(_user_file(self._name), kEnvUser)
+            if Path.cwd() != Path(os.path.expanduser("~")):  # else it is the user's file
+                self.ReadFile(self._name, kEnvLocal)
 
     def GetRcName(self) -> str:
         return self._name
+
+    def SaveLevel(self, level: Any) -> None:
+        """``SaveLevel``: the resources set in code since, at ``level``, written to its file.
+
+        Resources set in code with no level take the one they are saved at.
+        The file's other lines are kept, and the file as it was is renamed
+        ``.bak``.
+        """
+        if not self._name or int(level) not in (kEnvUser, kEnvLocal):
+            return
+        target = _user_file(self._name) if int(level) == kEnvUser else Path(self._name)
+        saved = self._changed_at(int(level))
+        _rewrite(target, saved)
+        for record in saved:
+            record.fModified = False
+
+    def _changed_at(self, level: int) -> list[TEnvRec]:
+        """The resources set in code at ``level``, those set with none given it now."""
+        changed = [record for record in self._records.values() if record.fModified]
+        for record in changed:
+            if record.fLevel == kEnvChange:
+                record.fLevel = level
+        return [record for record in changed if record.fLevel == level]
 
     def ReadFile(self, fname: Any, level: Any = kEnvLocal) -> int:
         """``ReadFile``: each ``Name: value`` line of the file set; ``-1`` if it cannot be read."""
@@ -86,13 +118,20 @@ class TEnv(TObject):
             name, colon, value = line.partition(":")
             if colon and name.strip() and not name.lstrip().startswith("#"):
                 self.SetValue(name.strip(), value.strip(), level)
+                self._records[name.strip()].fModified = False
         return 0
 
-    def SetValue(self, name: Any, value: Any, level: Any = kEnvChange, type: Any = None) -> None:
-        """``SetValue(name, value)``: the resource set, as text; a ``name: value`` one alike."""
+    def SetValue(self, name: Any, value: Any = None, level: Any = kEnvChange,
+                 type: Any = None) -> None:
+        """``SetValue(name, value)``: the resource set, as text.
+
+        Given a name alone, ``name=value`` or ``name: value`` is split, and a
+        bare name is set to ``1``, as ROOT's one-argument ``SetValue`` does.
+        """
         text = str(name)
-        if value is None and ":" in text:
-            text, _, value = text.partition(":")
+        if value is None:
+            text, _, value = text.partition("=" if "=" in text else ":")
+            value = value or "1"
         written = ("yes" if value else "no") if isinstance(value, bool) else str(value).strip()
         self._records[text.strip()] = TEnvRec(text.strip(), written, int(level))
 
@@ -122,6 +161,27 @@ class TEnv(TObject):
         """``WriteFile``: the resources of that level - every one for ``kEnvAll`` - to a file."""
         kept = [r for r in self._records.values() if int(level) in (kEnvAll, r.fLevel)]
         Path(str(fname)).write_text("".join(f"{r.fName}: {r.fValue}\n" for r in kept))
+
+
+def _user_file(name: str) -> Path:
+    """Where a user's resource file of that name is: ``$ROOTENV_USER_PATH``, else home."""
+    return Path(os.environ.get("ROOTENV_USER_PATH") or os.path.expanduser("~")) / name
+
+
+def _rewrite(target: Path, saved: list[TEnvRec]) -> None:
+    """``target`` with ``saved`` written over its lines of the same names, the old one ``.bak``."""
+    names = {record.fName for record in saved}
+    kept = [line for line in _lines(target) if line.partition(":")[0].strip() not in names]
+    target.touch()
+    written = [*kept, *(f"{r.fName + ':':<40} {r.fValue}" for r in saved)]
+    Path(f"{target}.new").write_text("".join(line + "\n" for line in written))
+    os.replace(target, f"{target}.bak")
+    os.replace(f"{target}.new", target)
+
+
+def _lines(path: Path) -> list[str]:
+    """A file's lines, or none if there is no such file."""
+    return path.read_text(errors="replace").splitlines() if path.is_file() else []
 
 
 def _global() -> TEnv:

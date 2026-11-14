@@ -34,6 +34,7 @@ FAMILIES = (
     "timing",
     "system",
     "environ",
+    "uuids",
     "directories",
     "troot",
     "randoms",

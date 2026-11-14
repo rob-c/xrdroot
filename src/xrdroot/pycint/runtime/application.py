@@ -21,9 +21,12 @@ __all__ = ["TApplication", "gApplication", "started"]
 class TApplication:
     """``TApplication``: the running program, its arguments, and how it ends."""
 
-    def __init__(self, name: str = "TRint", argv: Sequence[str] = ()) -> None:
-        self._name = name
-        self._argv = list(argv) or ["root.exe"]
+    def __init__(self, name: str = "TRint", *given: Any) -> None:
+        """``TApplication(name, argv)``, or C++'s ``TApplication(name, &argc, argv[, options,
+        numOptions])``, whose count goes with the words."""
+        argv: Sequence[str] = (given[1] or ()) if len(given) > 1 else (given[0] if given else ())
+        self._name = str(name)
+        self._argv = [str(word) for word in argv] or ["root.exe"]
 
     def restart(self, name: str, argv: Sequence[str]) -> None:
         """The application started anew, as ``name`` with the command line ``argv``."""

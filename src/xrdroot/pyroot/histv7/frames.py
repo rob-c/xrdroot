@@ -12,7 +12,7 @@ from typing import Any
 
 import numpy as np
 
-from .hist import RHistEngine
+from .hist import RHist, RHistEngine
 from .stats import RWeight
 
 __all__ = ["BookedHist", "book"]
@@ -21,11 +21,11 @@ __all__ = ["BookedHist", "book"]
 class BookedHist:
     """What ``Hist`` gives back: the histogram, filled the first time it is asked for."""
 
-    def __init__(self, hist: RHistEngine, taken: list[Any], weight: Any) -> None:
+    def __init__(self, hist: RHist | RHistEngine, taken: list[Any], weight: Any) -> None:
         self._hist, self._taken, self._weight = hist, taken, weight
         self._filled = False
 
-    def GetValue(self) -> RHistEngine:
+    def GetValue(self) -> RHist | RHistEngine:
         if not self._filled:
             columns = [np.asarray(result.GetValue(), dtype=np.float64) for result in self._taken]
             weights = (None if self._weight is None else
@@ -42,7 +42,7 @@ class BookedHist:
     _cint_cell = True
 
     @property
-    def value(self) -> RHistEngine:
+    def value(self) -> RHist | RHistEngine:
         return self.GetValue()
 
     def IsReady(self) -> bool:
@@ -58,7 +58,7 @@ class BookedHist:
         return getattr(self.GetValue(), name)
 
 
-def _made(args: tuple[Any, ...]) -> tuple[RHistEngine, list[str], str | None]:
+def _made(args: tuple[Any, ...]) -> tuple[RHist | RHistEngine, list[str], str | None]:
     """The histogram a ``Hist`` call fills, its columns, and its weight's column."""
     from . import Experimental
 
@@ -67,7 +67,7 @@ def _made(args: tuple[Any, ...]) -> tuple[RHistEngine, list[str], str | None]:
         return hist, [str(args[2])], (str(args[3]) if len(args) > 3 else None)
     columns = [str(name) for name in ([args[1]] if isinstance(args[1], str) else args[1])]
     weight = str(args[2]) if len(args) > 2 else None
-    if isinstance(args[0], RHistEngine):
+    if isinstance(args[0], (RHist, RHistEngine)):
         return args[0], columns, weight
     axes = list(args[0])
     if len(axes) != len(columns):

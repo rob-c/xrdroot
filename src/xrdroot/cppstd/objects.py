@@ -269,6 +269,22 @@ class CppException(Exception):
         return str(what() if callable(what) else self.value)
 
 
+class CppRuntimeError(RuntimeError):
+    """A ``std::runtime_error`` a library throws to C++ code: caught as one, its message
+    ``what()``."""
+
+    def what(self) -> str:
+        return str(self.args[0]) if self.args else ""
+
+
+class CppInvalidArgument(ValueError):
+    """A ``std::invalid_argument`` a library throws to C++ code: caught as one, its message
+    ``what()``."""
+
+    def what(self) -> str:
+        return str(self.args[0]) if self.args else ""
+
+
 def throw(value: Any = None) -> Any:
     """``throw value`` where C++ allows it as an expression, in a ``?:``."""
     if isinstance(value, BaseException):

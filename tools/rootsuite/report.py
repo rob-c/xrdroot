@@ -5,6 +5,10 @@ the Markdown is drawn from it alone, so ``report`` can redraw it after the
 fact. Pass rates are given twice: over every test, and over the tests in
 scope (OUT-OF-SCOPE left out), because the first is the distance from
 ROOT's whole suite and the second the distance from what xrdroot means to do.
+
+A gtest program or unittest file passes only when every case in it does, so
+the cases are counted too, and causes are ranked by how many tests each one
+alone keeps from passing: a gtest program's causes are its failed cases'.
 """
 
 from __future__ import annotations
@@ -27,6 +31,8 @@ SCHEMA = "rootsuite/1"
 #: The statuses whose reasons are failure causes worth counting.
 _FAILING = ("FAIL", "DIFF", "UNSUPPORTED", "TIMEOUT")
 _ORDER = [*KINDS.values(), "other"]
+#: Keys a row's counter holds beside the statuses: the cases inside its tests.
+_CASES_PASSED, _CASES_TOTAL = " cases passed", " cases"
 
 
 def document(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]) -> dict[str, Any]:
@@ -50,19 +56,26 @@ def cause(reason: str) -> str:
 
 
 def _rates(statuses: Counter[str]) -> tuple[str, str]:
-    total = sum(statuses.values())
+    total = sum(statuses[status] for status in STATUSES)
     in_scope = total - statuses["OUT-OF-SCOPE"]
     passed = statuses["PASS"]
     overall = f"{100 * passed / total:.1f}%" if total else "-"
     return overall, (f"{100 * passed / in_scope:.1f}%" if in_scope else "-")
 
 
+def _cases(statuses: Counter[str]) -> str:
+    """``passed/total`` of the cases inside the row's tests, or ``-`` when none were counted."""
+    total = statuses[_CASES_TOTAL]
+    return f"{statuses[_CASES_PASSED]}/{total}" if total else "-"
+
+
 def _table(rows: Iterable[tuple[str, Counter[str]]], first: str) -> list[str]:
-    head = [first, "tests", *STATUSES, "pass rate", "in scope"]
+    head = [first, "tests", *STATUSES, "pass rate", "in scope", "cases passed"]
     lines = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for name, statuses in rows:
-        cells = [name, str(sum(statuses.values())), *(str(statuses[s]) for s in STATUSES),
-                 *_rates(statuses)]
+        tests = sum(statuses[status] for status in STATUSES)
+        cells = [name, str(tests), *(str(statuses[s]) for s in STATUSES), *_rates(statuses),
+                 _cases(statuses)]
         lines.append("| " + " | ".join(cells) + " |")
     return lines
 
@@ -70,8 +83,35 @@ def _table(rows: Iterable[tuple[str, Counter[str]]], first: str) -> list[str]:
 def _by(records: Iterable[Mapping[str, Any]], key: str) -> dict[str, Counter[str]]:
     grouped: dict[str, Counter[str]] = {}
     for record in records:
-        grouped.setdefault(record[key], Counter())[record["status"]] += 1
+        row = grouped.setdefault(record[key], Counter())
+        row[record["status"]] += 1
+        cases = record.get("cases") or {}
+        row[_CASES_PASSED] += cases.get("passed", 0)
+        row[_CASES_TOTAL] += sum(cases.values())
     return grouped
+
+
+def _causes_of(record: Mapping[str, Any]) -> set[str]:
+    """What keeps a test from passing: its failed cases' causes, else its reason's."""
+    failures = record.get("failures") or []
+    if failures:
+        return {cause(failure.partition(": ")[2]) for failure in failures}
+    return {cause(record.get("reason", ""))}
+
+
+def _unblockers(records: Sequence[Mapping[str, Any]]) -> list[str]:
+    """Causes ranked by how many tests each alone blocks, then by how many it appears in."""
+    alone: Counter[str] = Counter()
+    seen: Counter[str] = Counter()
+    for record in records:
+        if record["status"] not in _FAILING:
+            continue
+        causes = _causes_of(record)
+        seen.update(causes)
+        if len(causes) == 1:
+            alone.update(causes)
+    ranked = sorted(seen, key=lambda text: (-alone[text], -seen[text], text))[:15]
+    return [f"{alone[text]:5d} {seen[text]:5d}  {text}" for text in ranked]
 
 
 def _kinds(records: Sequence[Mapping[str, Any]]) -> list[str]:
@@ -86,6 +126,10 @@ def _kind_section(kind: str, records: Sequence[Mapping[str, Any]]) -> list[str]:
     if top:
         causes = [f"{count:5d}  {text}" for text, count in top.most_common(10)]
         lines += ["Top failure causes:", "", "```", *causes, "```", ""]
+    if any(record.get("failures") for record in mine):
+        lines += ["Causes by the tests each alone blocks, then the tests it is in (a gtest "
+                  "program's causes are its failed cases'):", "", "```", *_unblockers(mine),
+                  "```", ""]
     return lines
 
 

@@ -469,3 +469,30 @@ def test_points_the_functions_code_rejects_are_left_out_of_the_fit_and_its_ndf()
     assert result.Parameter(0) == pytest.approx(2.0) and result.Ndf() == 6
     assert ROOT.TF1.RejectedPoint() is False and f.Eval(4.5) == 0.0 and ROOT.TF1.RejectedPoint()
     ROOT.TF1.RejectPoint(False)
+
+
+def test_a_tf2_and_a_tf3_save_a_grid_and_interpolate_it_linearly_as_root_does():
+    plane = ROOT.TF2("plane", "x+2*y", -10, 10, -10, 10)
+    plane.SetNpx(20)
+    plane.SetNpy(20)
+    assert plane.GetSave([1.0, 1.0]) == 0.0  # nothing saved yet
+    plane.Save(-10, 10, -10, 10, 0, 0)
+    assert plane.GetSave([0.33, -4.4]) == pytest.approx(0.33 - 8.8, abs=1e-10)
+    assert plane.GetSave([-11.0, 0.0]) == 0.0
+    plane.Save(0, 0, 0, 0, 0, 0)  # no range given: the middles of the function's bins
+    assert plane.GetSave([-9.5, 9.5]) == pytest.approx(9.5, abs=1e-10)
+    assert plane.GetSave([-9.9, 0.0]) == 0.0
+    cube = ROOT.TF3("cube", "x+y+z", 0, 1, 0, 1, 0, 1)
+    cube.SetNpx(4)
+    cube.SetNpy(4)
+    cube.SetNpz(4)
+    cube.Save(0, 1, 0, 1, 0, 1)
+    assert cube.GetSave([0.3, 0.6, 0.95]) == pytest.approx(1.85, abs=1e-12)
+
+
+def test_a_copy_of_a_function_keeps_its_axes_titles():
+    square = ROOT.TF1("sq", "x*x", -3, 3)
+    square.GetXaxis().SetTitle("xtitle")
+    copied = square.DrawCopy()
+    assert copied.GetXaxis().GetTitle() == "xtitle" and copied.GetHistogram() is not \
+        square.GetHistogram()

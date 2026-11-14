@@ -23,7 +23,6 @@ Every method has ROOT's name, and a snake_case one beside it: ``Define`` and
 from __future__ import annotations
 
 import inspect
-import keyword
 import re
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Any, cast
@@ -74,6 +73,15 @@ SPECIAL = {"rdfentry_": EntryColumn("rdfentry_"), "rdfslot_": SlotColumn("rdfslo
 
 #: What a name ``Define`` makes may look like: C++'s identifiers.
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+#: C++'s reserved words, which no column may be called; Python's - ``def``, ``lambda`` - may.
+CPP_KEYWORDS = frozenset("""alignas alignof and and_eq asm auto bitand bitor bool break case catch
+char char8_t char16_t char32_t class compl concept const consteval constexpr constinit const_cast
+continue co_await co_return co_yield decltype default delete do double dynamic_cast else enum
+explicit export extern false float for friend goto if inline int long mutable namespace new
+noexcept not not_eq nullptr operator or or_eq private protected public register
+reinterpret_cast requires return short signed sizeof static static_assert static_cast struct
+switch template this thread_local throw true try typedef typeid typename union unsigned using
+virtual void volatile wchar_t while xor xor_eq""".split())
 
 
 def EnableImplicitMT(workers: int = 0) -> None:
@@ -452,7 +460,7 @@ class RDataFrame:
         return defaults[: len(names)] if len(defaults) >= len(names) else names
 
     def _check_new(self, name: str, what: str) -> None:
-        if not isinstance(name, str) or not IDENTIFIER.fullmatch(name) or keyword.iskeyword(name):
+        if not isinstance(name, str) or not IDENTIFIER.fullmatch(name) or name in CPP_KEYWORDS:
             raise ValueError(f"{what} makes a column called {name!r}, which is not a C++ name")
         if name in SPECIAL or name.startswith("rdf"):
             raise ValueError(f"{what} cannot make {name!r}: names beginning rdf are ROOT's own")

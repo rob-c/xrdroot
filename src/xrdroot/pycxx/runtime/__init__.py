@@ -3,7 +3,7 @@
 Every translation in plain C++ starts with that one import. It brings
 ``CXX`` (the host: the standard library's names, and what programs
 declared), :class:`Cell` for variables whose address is taken, C's
-``printf`` family, C++'s ``cout`` with its manipulators, ``<cmath>`` with
+``printf`` family and ``<cstdio>`` files, C++'s ``cout`` with its manipulators, ``<cmath>`` with
 C's edge cases, the string functions, and the helpers for the places C's
 arithmetic is not Python's: ``idiv`` and ``imod`` for integer division,
 ``f32`` for a ``float`` store, ``u32`` and kin for wrapping. Each is
@@ -23,6 +23,8 @@ from .chrono import *  # noqa: F403
 from .chrono import __all__ as _chrono
 from .cmath import *  # noqa: F403
 from .cmath import __all__ as _cmath
+from .cstdio import *  # noqa: F403
+from .cstdio import __all__ as _cstdio
 from .istreams import *  # noqa: F403
 from .istreams import __all__ as _istreams
 from .namespace import CXX
@@ -50,6 +52,7 @@ LIBRARY = [
     *_cmath,
     *_objects,
     *_printf,
+    *_cstdio,
     *_streams,
     *_strings,
     *_istreams,

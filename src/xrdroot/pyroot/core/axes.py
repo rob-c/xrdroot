@@ -158,8 +158,12 @@ class TAxis(TNamed, TAttAxis):
         """Every edge of an axis binned unevenly, as it keeps them."""
         return np.asarray(self._row["fXbins"], dtype=np.float64)
 
-    def GetXbins(self) -> np.ndarray[Any, Any]:
-        return np.asarray(self._row["fXbins"], dtype=np.float64)
+    def GetXbins(self) -> Any:
+        """``GetXbins``: the edges of an axis binned unevenly, a ``TArrayD`` - empty for one
+        binned evenly."""
+        from ..vectors import TArrayD
+
+        return TArrayD(np.asarray(self._row["fXbins"], dtype=np.float64))
 
     def GetBinLowEdge(self, bin: int) -> float:
         """``GetBinLowEdge``: as ROOT has it for the flow bins too, a width past each end."""

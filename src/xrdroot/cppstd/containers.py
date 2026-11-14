@@ -32,8 +32,9 @@ name, as the rest of ``xrdroot.pyroot`` refuses what it does not have.
 
 from __future__ import annotations
 
+import copy
 import re
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Any
 
 import numpy as np
@@ -410,9 +411,12 @@ class _Template:
 
     def __call__(self, *arguments: Any) -> Any:
         """``std.vector(int)``: the class; ``std::vector{1, 2, 3}``, a list: one made from it,
-        its element type deduced as C++17 deduces it."""
+        its element type deduced as C++17 deduces it - from a list, or from the range two
+        iterators span."""
         if self._arity == 1 and len(arguments) == 1 and isinstance(arguments[0], list):
             return self[deduced(arguments[0])](arguments[0])
+        if self._name == "vector" and len(arguments) == 2 and not any(map(_is_type, arguments)):
+            return _ranged_vector(self, arguments[0], arguments[1])
         return self[arguments]
 
 
@@ -425,6 +429,25 @@ def deduced(values: list[Any]) -> str:
     if all(isinstance(value, str) for value in values):
         return "std::string"
     return "double"
+
+
+def _is_type(given: Any) -> bool:
+    """Whether a template argument names a type - by name, class or NumPy type."""
+    return isinstance(given, (str, type, np.dtype))
+
+
+def _ranged_vector(template: _Template, first: Any, last: Any) -> Any:
+    """``std::vector(first, last)``: a vector of the range, its element type deduced from
+    what the iterators give - a number's or a string's as a braced list's is, else the
+    class of the first element."""
+    values: list[Any] = []
+    at = copy.copy(first)
+    while at != last:
+        deref = getattr(at, "__deref__", None)
+        values.append(deref() if deref is not None else at.value)
+        at += 1  # ++it on the copy
+    plain = all(isinstance(value, (int, float, np.number, str)) for value in values)
+    return template[deduced(values) if plain else type(values[0]).__name__](values)
 
 
 class _Vector(_Container):
@@ -442,12 +465,12 @@ class _Vector(_Container):
             self._construct(*arguments)
 
     def _construct(self, first: Any, *rest: Any) -> None:
-        """``vector(n[, value])`` - a real ``n`` taken as C++ converts it, whole - or ``vector
-        (values)``."""
+        """``vector(n[, value])`` - a real ``n`` taken as C++ converts it, whole - ``vector
+        (values)``, or ``vector(begin, end)`` of another's range."""
         if isinstance(first, (int, float, np.integer, np.floating)) and not isinstance(first, bool):
             self.resize(int(first), *rest)
         else:
-            self.assign(first)
+            self.assign(_ranged(first, rest))
 
     def __repr__(self) -> str:
         return f"<{self.__cpp_name__} {self.data().tolist()!r}>"
@@ -599,6 +622,15 @@ class _Vector(_Container):
     def end(self) -> _VectorIterator:
         return _VectorIterator(self, self._size)
 
+    def insert(self, position: Any, *what: Any) -> _VectorIterator:
+        """``insert(pos, value)``, ``insert(pos, n, value)`` or ``insert(pos, first, last)``:
+        an iterator at the first element put in."""
+        at = position._position if isinstance(position, _VectorIterator) else int(position)
+        items = list(self)
+        items[at:at] = _insertion(what)
+        self.assign(items)
+        return _VectorIterator(self, at)
+
 
 #: Original numeric reading protocols; later user overrides keep the iterable conversion.
 _NUMERIC_READERS = {
@@ -629,7 +661,7 @@ class _ObjectVector(_Container):
         if isinstance(first, (int, np.integer)):
             self.resize(int(first), *rest)
         else:
-            self.assign(first)
+            self.assign(_ranged(first, rest))
 
     def __repr__(self) -> str:
         return f"<{self.__cpp_name__} {self._items!r}>"
@@ -732,6 +764,15 @@ class _ObjectVector(_Container):
     def end(self) -> _VectorIterator:
         return _VectorIterator(self, len(self._items))
 
+    def insert(self, position: Any, *what: Any) -> _VectorIterator:
+        """``insert(pos, value)``, ``insert(pos, n, value)`` or ``insert(pos, first, last)``:
+        an iterator at the first element put in."""
+        at = position._position if isinstance(position, _VectorIterator) else int(position)
+        items = list(self)
+        items[at:at] = _insertion(what)
+        self.assign(items)
+        return _VectorIterator(self, at)
+
 
 class _VectorIterator:
     """A ``std::vector`` iterator: ``*it`` - here the iterator itself - is the element it is at.
@@ -782,6 +823,23 @@ class _VectorIterator:
     __hash__ = None  # type: ignore[assignment]
 
 
+def _insertion(what: Sequence[Any]) -> list[Any]:
+    """What ``insert`` puts in: one value, ``n`` copies of one, or another vector's range."""
+    if len(what) == 2 and isinstance(what[0], _VectorIterator):
+        return list(_ranged(what[0], what[1:]))
+    if len(what) == 2:
+        return [what[1]] * int(what[0])
+    return [what[0]]
+
+
+def _ranged(first: Any, rest: Sequence[Any]) -> Any:
+    """What a vector is made of: ``first``, or the elements from iterator ``first`` up to
+    iterator ``rest[0]`` of the same vector - C++'s ``vector(begin, end)``."""
+    if not (rest and isinstance(first, _VectorIterator) and isinstance(rest[0], _VectorIterator)):
+        return first
+    return [first._owner[at] for at in range(first._position, rest[0]._position)]
+
+
 def _vector_class(kind: Any) -> type:
     """The class ``std::vector<kind>`` is, made once per element type."""
     name = f"vector<{cpp_name(kind)}>"
@@ -806,7 +864,21 @@ def _default(kind: Any) -> Any:
     """What a new element of type ``kind`` is before anything is put in it: zero, or empty."""
     if isinstance(kind, np.dtype):
         return np.zeros((), dtype=kind).item()
-    return None if getattr(kind, "opaque", False) else kind()
+    if getattr(kind, "opaque", False):
+        return _constructed(kind)
+    return kind()
+
+
+def _constructed(kind: Any) -> Any:
+    """A default-made object of an opaque element type the adapter names a class for -
+    ``RBinIndex()`` - or ``None``: a null pointer, or a type made only from arguments."""
+    if str(kind.__cpp_name__).rstrip().endswith("*"):
+        return None
+    made = _resolved_class(kind)
+    try:
+        return made() if made is not None else None
+    except TypeError:
+        return None
 
 
 class _Pair(_Container):
@@ -1168,6 +1240,48 @@ TEMPLATES: dict[str, _Template] = {
 }
 
 
+def _distance(first: Any, last: Any) -> int:
+    """``std::distance(first, last)``: how many steps from one iterator to the other - by
+    their difference, or, for an iterator that only steps forward, by counting the steps."""
+    try:
+        return int(last - first)
+    except TypeError:
+        pass
+    steps, at = 0, copy.copy(first)
+    while at != last:
+        at += 1  # ++it, on a copy: an iterator's += may step it in place
+        steps += 1
+    return steps
+
+
+def _make_tuple(*values: Any) -> tuple[Any, ...]:
+    """``std::make_tuple(a, b, ...)``: a tuple of the values, which ``std::get`` reads."""
+    return tuple(values)
+
+
+class _GetTemplate:
+    """``std::get<i>(t)``: the ``i``-th of a tuple, pair or array.
+
+    A value that is none of those is a tuple of one, as C++ makes a lone
+    value given where a ``std::tuple<T>`` is wanted, so ``get<0>`` is it.
+    """
+
+    def __repr__(self) -> str:
+        return "<std.get template>"
+
+    def __getitem__(self, index: Any) -> Any:
+        def got(held: Any) -> Any:
+            if hasattr(held, "first") and hasattr(held, "second"):  # a pair, either kind
+                return (held.first, held.second)[int(index)]
+            if isinstance(held, (tuple, list)) or is_vector(held):
+                return held[int(index)]
+            if int(index) == 0:
+                return held
+            raise IndexError(f"std::get<{index}> of a lone {type(held).__name__}, which has one")
+
+        return got
+
+
 class _ArrayTemplate:
     """``std.array['double', 3]``: a vector of that many, filled from the list it is given.
 
@@ -1231,6 +1345,7 @@ class _Namespace:
     unordered_map = TEMPLATES["unordered_map"]
     unordered_set = TEMPLATES["unordered_set"]
     array = _ArrayTemplate()
+    get = _GetTemplate()
     bitset = _bitset.bitset
     mt19937 = _random.mt19937
     normal_distribution = _random.normal_distribution
@@ -1240,6 +1355,10 @@ class _Namespace:
     unique_ptr = _stdlib.smart_pointer("unique_ptr")
     shared_ptr = _stdlib.smart_pointer("shared_ptr")
     remove = staticmethod(_stdlib.remove)
+    distance = staticmethod(_distance)
+    make_tuple = staticmethod(_make_tuple)
+    rand = staticmethod(_stdlib.rand)
+    srand = staticmethod(_stdlib.srand)
 
     def __repr__(self) -> str:
         return "<namespace std>"

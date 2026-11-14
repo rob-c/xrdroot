@@ -429,6 +429,10 @@ def test_the_slots_resize_made_are_written_as_default_made_objects():
     run_source(RESIZED, "resized.C", ("resized.root",))
     back = ROOT.TFile("resized.root").Get("s")
     assert [slot.v for slot in back.slots] == [6, 6]
+    from xrdroot.pyroot.core.declared import _present, catalogue_of, find_class
+
+    catalogue = catalogue_of(find_class("Slots"))
+    assert _present(None, parse_type("Slot"), catalogue).v == 6  # a slot not made yet
 
 
 EVENT = r"""

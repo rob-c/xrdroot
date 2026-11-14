@@ -140,3 +140,9 @@ def test_a_root_typedef_called_like_a_function_is_a_cast() -> None:
     assert (HOST.Double_t(3) / 2, HOST.Bool_t(5)) == (1.5, True)
     with pytest.raises(AttributeError):
         _ = HOST.Nothing_at_all_t
+
+
+def test_an_application_is_made_as_cpp_makes_one_with_a_count_and_the_words():
+    made = TApplication("App", 2, ["prog", "-b"])
+    assert (made.GetName(), made.Argv(), made.Argc()) == ("App", ["prog", "-b"], 2)
+    assert TApplication("App", 0, None).Argv() == ["root.exe"]

@@ -177,6 +177,7 @@ OUT_PARAMETERS: dict[tuple[str, int], tuple[int, ...]] = {
     ("GetTailParameters", 16): tuple(range(16)),
     ("GetAngles", 3): (0, 1, 2),
     ("ShiftToNext", 1): (0,),
+    ("GetEntryAndTree", 2): (1,),
     ("ShiftToNext", 2): (0,),
     ("GetAngles", 6): (0, 1, 2, 3, 4, 5),
     ("Det", 2): (0, 1),
