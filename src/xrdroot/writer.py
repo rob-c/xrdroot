@@ -774,6 +774,13 @@ def info_entry(name: str, checksum: int, version: int, elements: tuple[Element, 
     return bytes(buf.data)
 
 
+#: ``kSTL``, a container member's streamer type in memory, and ``kStreamer``, what
+#: ``TStreamerSTL`` writes in its place in a file, as ROOT has since before version 6.
+STL, STREAMER = 300, 500
+#: ``TStreamerElement::kDoNotDelete``, and the containers of pairs it is set on.
+DO_NOT_DELETE = 1 << 13
+MAP_KINDS = (4, 5, 12, 13)
+
 #: ``TStreamerElement::kHasRange``: the element's title holds a packing range, which ROOT
 #: reads the title for only when this bit says to - without it the range is not there.
 HAS_RANGE = 1 << 6
@@ -788,14 +795,35 @@ def _ranged(stype: int, title: str) -> bool:
     return stype in PACKED_TYPES and len(_range_parts(title)) > 1
 
 
+def _element_bits(kind: str, stype: int, title: str, extras: tuple[object, ...]) -> int:
+    """The bits an element carries: a packed float's range, and ``kDoNotDelete`` on a map and
+    a container of pointers, whose items reading does not hand to the container to delete."""
+    bits = HAS_RANGE if _ranged(stype, title) else 0
+    if kind == "TStreamerSTL" and stype == STL and (extras[0] in MAP_KINDS or extras[1] == 63):
+        bits |= DO_NOT_DELETE
+    return bits
+
+
 def _info_element(buf: WBuffer, element: Element) -> None:
     """One ``TStreamerElement``, written the way the donor files write them."""
-    kind, name, title, stype, size, alen, adim, maxidx, typename, extras = element
+    kind = element[0]
     tag = buf.tag(kind)
+    if kind == "TStreamerSTLstring":  # a TStreamerSTL with a lid on it, one record deeper
+        lid = buf.start(SUBVERSIONS[kind])
+        _element_record(buf, element, "TStreamerSTL")
+        buf.end(lid)
+    else:
+        _element_record(buf, element, kind)
+    buf.end(tag)
+
+
+def _element_record(buf: WBuffer, element: Element, kind: str) -> None:
+    """The record of one element, as the subclass ``kind`` writes it."""
+    _kind, name, title, stype, size, alen, adim, maxidx, typename, extras = element
     sub = buf.start(SUBVERSIONS[kind])
     base = buf.start(4)  # the TStreamerElement the subclass builds on
-    buf.named(name, title, BITS | (HAS_RANGE if _ranged(stype, title) else 0))
-    buf.i32(stype)
+    buf.named(name, title, BITS | _element_bits(kind, stype, title, extras))
+    buf.i32(STREAMER if kind == "TStreamerSTL" and stype == STL else stype)
     buf.i32(size)
     buf.i32(alen)
     buf.i32(adim)
@@ -805,7 +833,7 @@ def _info_element(buf: WBuffer, element: Element) -> None:
     buf.end(base)
     if kind == "TStreamerBase":
         buf.i32(int(str(extras[0])))
-    elif kind == "TStreamerBasicPointer":
+    elif kind in ("TStreamerBasicPointer", "TStreamerLoop"):
         buf.i32(int(str(extras[0])))
         buf.string(str(extras[1]))
         buf.string(str(extras[2]))
@@ -813,7 +841,6 @@ def _info_element(buf: WBuffer, element: Element) -> None:
         buf.i32(int(str(extras[0])))
         buf.i32(int(str(extras[1])))
     buf.end(sub)
-    buf.end(tag)
 
 
 class ObjString(str):

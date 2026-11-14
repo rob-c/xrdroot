@@ -205,18 +205,43 @@ class StmtEmitter(CallEmitter):
         refusal = self._unassignable(target)
         if refusal is not None:
             raise self.refuse(refusal, expr)
-        lhs = self.value(target)
+        lhs = self._stored_into(target)
         if isinstance(target, Name):
             self.assigned(self.symbol(target))
         if lhs.startswith("getattr(") and lhs.endswith(")"):
             # ``pass = 0`` of a name that is a Python keyword, which only ``setattr`` can write.
             self.out.line(f"setattr({lhs[8:-1]}, {self.assigned_value(expr)})", expr.where)
             return True
-        if expr.op != "=" and self._in_place(expr):
-            self.out.line(f"{lhs} {expr.op} {self.value(expr.value)}", expr.where)
-            return True
-        self.out.line(f"{lhs} = {self.assigned_value(expr)}", expr.where)
+        self.out.line(self._assignment(expr, lhs), expr.where)
         return True
+
+    def _stored_into(self, target: Expr) -> str:
+        """What an assignment stores into: ``*p`` of a ``char *`` as its first element, which
+        reading it as a character of a string would not let be stored into."""
+        if isinstance(target, Unary) and target.op == "*" and self._walks(target.operand):
+            return f"{self.at(target.operand, P.POSTFIX)}[0]"
+        return self.value(target)
+
+    def _assignment(self, expr: Assign, lhs: str) -> str:
+        """The Python of ``lhs op= v``: a C string moved along by ``s += n``, Python's own
+        ``op=`` where no C conversion is to be made, else the value stored anew."""
+        if expr.op == "+=" and self._walks(expr.target):
+            return f"{lhs} = {lhs}[{self.value(expr.value)}:]"
+        if expr.op != "=" and self._in_place(expr):
+            return f"{lhs} {expr.op} {self._operand(expr)}"
+        return f"{lhs} = {self.assigned_value(expr)}"
+
+    def _operand(self, expr: Assign) -> str:
+        """What ``x op= v`` applies: ``v``, or - appended to a string - the character a
+        ``char`` is, which Python's ``str`` would not add as a number."""
+        value = self.value(expr.value)
+        if expr.op != "+=":
+            return value
+        target, added = self.typeof(expr.target), self.typeof(expr.value)
+        if target is None or added is None or not _texts(target):
+            return value
+        chars = added.name in ("char", "signed char", "unsigned char")
+        return f"cstr({value})" if chars and added.scalar else value
 
     def _character(self, target: Expr) -> bool:
         """Is ``target`` a character of a string that is a variable of its own - a char array
@@ -830,6 +855,14 @@ class StmtEmitter(CallEmitter):
         Return: _return,
         Try: _try,
     }
+
+
+def _texts(ctype: CType) -> bool:
+    """Is ``ctype`` a string a character is appended to: a ``std::string``, a character array,
+    or one of the dialect's string classes?"""
+    if ctype.pointer and not ctype.dims:
+        return False
+    return ctype.is_string or ctype.name in active().string_classes
 
 
 def _is_default(labels: list[Case]) -> bool:

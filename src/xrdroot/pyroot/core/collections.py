@@ -107,7 +107,8 @@ class TCollection(TObject):
     # -- ROOT's --------------------------------------------------------------------
 
     def GetName(self) -> str:
-        return self._name
+        """The collection's name - its class's, as ROOT's, when it was given none."""
+        return self._name or self.ClassName()
 
     def SetName(self, name: Any) -> None:
         self._name = str(name)
@@ -187,7 +188,8 @@ class TCollection(TObject):
         Indent.deeper()
         try:
             for item in self._items:
-                item.ls(option)
+                if item is not None:  # an array's empty slots list nothing
+                    item.ls(option)
         finally:
             Indent.deeper(-1)
 
@@ -339,6 +341,8 @@ class TSeqCollection(TCollection):
 class TList(TSeqCollection):
     """``TList``: a doubly linked list, which is a Python list here."""
 
+    CLASS_TITLE = "Doubly linked list"
+
     def FirstLink(self) -> TObjLink | None:
         return TObjLink(self, 0) if self._items else None
 
@@ -409,6 +413,8 @@ class TOrdCollection(TSeqCollection):
 
 class TObjArray(TSeqCollection):
     """``TObjArray``: an array of objects, with room made as it is asked for."""
+
+    CLASS_TITLE = "An array of objects"
 
     def __init__(self, size: int = 16, lower: int = 0) -> None:
         super().__init__()

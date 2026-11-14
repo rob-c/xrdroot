@@ -16,7 +16,7 @@ the wrapper for an object that has none.
 from __future__ import annotations
 
 import copy
-import sys
+import inspect
 from typing import Any
 
 from . import hooks
@@ -25,7 +25,6 @@ from .colors import BITS
 __all__ = [
     "TObject",
     "TNamed",
-    "TClass",
     "TAttLine",
     "TAttFill",
     "TAttMarker",
@@ -38,6 +37,19 @@ __all__ = [
 
 #: ROOT's ``nullptr``, which PyROOT spells as Python's ``None``.
 nullptr = None
+
+
+def _take_defaults(cls: type, name: str, method: Any) -> None:
+    """Give ``method`` of ``cls`` the trailing defaults the method it overrides declares, where
+    it declares none of its own."""
+    base = next((k.__dict__[name] for k in cls.__mro__[1:] if name in k.__dict__), None)
+    if not inspect.isfunction(base) or not base.__defaults__:
+        return
+    if method.__code__.co_argcount != base.__code__.co_argcount:
+        return
+    mine, theirs = method.__defaults__ or (), base.__defaults__
+    if len(mine) < len(theirs):
+        method.__defaults__ = theirs[: len(theirs) - len(mine)] + mine
 
 
 class _Bound:
@@ -132,69 +144,6 @@ def addressof(obj: Any, field: Any = None) -> Any:
     return AttrRef(obj, str(field))
 
 
-def _class_named(name: str) -> type | None:
-    """The namespace's class called ``name``, wherever it was defined in the kit."""
-    for module in list(sys.modules.values()):
-        if getattr(module, "__name__", "").startswith("xrdroot.pyroot"):
-            found = getattr(module, name, None)
-            if isinstance(found, type) and issubclass(found, TObject):
-                return found
-    return None
-
-
-class TClass:
-    """``TClass``: what ``IsA`` answers - a class's name, and what it inherits from."""
-
-    def __init__(self, name: str, python: type | None = None) -> None:
-        self._name = str(name)
-        self._python = python if python is not None else _class_named(self._name)
-
-    def GetName(self) -> str:
-        """The class's name, such as ``TH1F``."""
-        return self._name
-
-    def InheritsFrom(self, other: Any) -> bool:
-        """Is this class ``other`` - a name or a ``TClass`` - or derived from it?"""
-        wanted = other.GetName() if isinstance(other, TClass) else str(other)
-        if wanted == self._name:
-            return True
-        return self._python is not None and wanted in (base.__name__ for base in self._python.mro())
-
-    def New(self) -> Any:
-        """``TClass::New``: a default-made object of the class."""
-        if self._python is None:
-            raise TypeError(f"xrdroot.pyroot has no class {self._name} to make one of")
-        return self._python()
-
-    @staticmethod
-    def GetClass(name: Any) -> TClass:
-        """``TClass::GetClass(name)``: the class called ``name``."""
-        return TClass(str(name))
-
-    def IgnoreTObjectStreamer(self, ignore: bool = True) -> None:
-        """``IgnoreTObjectStreamer``: objects of the class written without their ``TObject``."""
-        from ...wobjects import IGNORED
-
-        if ignore:
-            IGNORED.add(self._name)
-        else:
-            IGNORED.discard(self._name)
-
-    def CanIgnoreTObjectStreamer(self) -> bool:
-        from ...wobjects import IGNORED
-
-        return self._name in IGNORED
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, TClass) and other._name == self._name
-
-    def __hash__(self) -> int:
-        return hash(self._name)
-
-    def __repr__(self) -> str:
-        return f"<TClass {self._name}>"
-
-
 class TObject:
     """``TObject``: the root of ROOT's classes, and of every class here."""
 
@@ -206,24 +155,40 @@ class TObject:
         if args and isinstance(args[0], TObject):
             args[0].Copy(self)
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """A class C++ derives from one of ROOT's: its overrides take the defaults the base
+        declares, as C++ calls a virtual function with the defaults of the type it is called
+        through - ``p->Print()`` of a ``TObject *`` reaches ``Print(Option_t *opt) const``."""
+        super().__init_subclass__(**kwargs)
+        if "_cxx_layout_" in cls.__dict__:
+            for name, method in list(cls.__dict__.items()):
+                if inspect.isfunction(method):
+                    _take_defaults(cls, name, method)
+
     # -- what it is -------------------------------------------------------------
 
     def ClassName(self) -> str:
-        """The ROOT class this is, such as ``TH1F``."""
-        return type(self).__name__
+        """The ROOT class this is, such as ``TH1F`` - one C++ declared by its C++ name."""
+        layout = type(self).__dict__.get("_cxx_layout_")
+        return str(layout[0]) if layout is not None else type(self).__name__
 
-    def IsA(self) -> TClass:
-        """``IsA``: the :class:`TClass` of this object."""
+    def IsA(self) -> Any:
+        """``IsA``: the ``TClass`` of this object."""
+        from .reflection import TClass
+
         return TClass(self.ClassName(), type(self))
 
     def InheritsFrom(self, other: Any) -> bool:
         """Is this object's class ``other``, or derived from it?"""
-        return self.IsA().InheritsFrom(other)
+        return bool(self.IsA().InheritsFrom(other))
 
     @classmethod
-    def Class(cls) -> TClass:
+    def Class(cls) -> Any:
         """``TH1F::Class()``: the class it is called on - ``TObject``'s for ``TObject::Class()``."""
-        return TClass(cls.__name__, cls)
+        from .reflection import TClass
+
+        layout = cls.__dict__.get("_cxx_layout_")
+        return TClass(str(layout[0]) if layout is not None else cls.__name__, cls)
 
     def GetName(self) -> str:
         """A ``TObject``'s name is its class's."""

@@ -288,7 +288,7 @@ depends = ["core"]
 hard = ["numpy"]
 
 [tool.xrdroot.components.ownership.io]
-modules = ["xrdroot.file", "xrdroot.streamers", "xrdroot.objects", "xrdroot.interp", "xrdroot.tree", "xrdroot.leaflist", "xrdroot.kinds", "xrdroot.known", "xrdroot.chain", "xrdroot.friends", "xrdroot.winfo", "xrdroot.writer", "xrdroot.wbranch", "xrdroot.wclasses", "xrdroot.wcolumns", "xrdroot.wmeasure", "xrdroot.wobjects", "xrdroot.wpacking", "xrdroot.wtree", "xrdroot.wupdate", "xrdroot.rntuple", "xrdroot.merging", "xrdroot.image", "xrdroot.remote", "xrdroot.drawable", "xrdroot.treedraw", "xrdroot.scan", "xrdroot.extending"]
+modules = ["xrdroot.file", "xrdroot.streamers", "xrdroot.objects", "xrdroot.interp", "xrdroot.tree", "xrdroot.leaflist", "xrdroot.kinds", "xrdroot.known", "xrdroot.chain", "xrdroot.friends", "xrdroot.winfo", "xrdroot.writer", "xrdroot.wbranch", "xrdroot.wclasses", "xrdroot.wdeclared", "xrdroot.wdobjects", "xrdroot.rdobjects", "xrdroot.wcolumns", "xrdroot.wmeasure", "xrdroot.wobjects", "xrdroot.wpacking", "xrdroot.wtree", "xrdroot.wupdate", "xrdroot.rntuple", "xrdroot.merging", "xrdroot.image", "xrdroot.remote", "xrdroot.drawable", "xrdroot.treedraw", "xrdroot.scan", "xrdroot.extending"]
 depends = ["core", "hist"]
 hard = ["numpy", "xrdclient"]
 optional = ["certifi", "PIL", "zstandard", "lz4", "xxhash", "matplotlib"]

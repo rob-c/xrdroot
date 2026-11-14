@@ -130,6 +130,9 @@ class CallEmitter(ExprEmitter):
             found = special(self, func, node)
             if found is not None:
                 return found
+        inherited = self.inherited_call(func)
+        if inherited is not None:
+            return f"{inherited}({self.arguments(node)})", P.POSTFIX
         return f"{self.library(func)[0]}({self.arguments(node)})", P.POSTFIX
 
     def _instance_call(self, func: Name, node: Call, symbol: Symbol | None) -> str | None:
@@ -463,9 +466,24 @@ class CallEmitter(ExprEmitter):
             return self.store(ctype, node.items[0]) if node.items else zero(ctype)
         if ctype.scalar:
             return self._arithmetic_store(ctype, node)
+        return self._object_store(ctype, node)
+
+    def _object_store(self, ctype: CType, node: Expr) -> str:
+        """``node`` stored into an object: a string class made of a C string, a copy of an
+        object - which Python would otherwise share - or the value itself."""
+        if self._made_string(ctype, node):
+            return f"{self.host_name(ctype.name.split('::'))}({self.value(node)})"
         if self._copied(ctype, node):
             return f"value_copy({self.value(node)})"
         return self.value(node)
+
+    def _made_string(self, ctype: CType, node: Expr) -> bool:
+        """Is a C string stored into one of the dialect's string classes - ``TString s;
+        s = "a"`` - which builds one of the class rather than make the variable a ``str``?"""
+        if ctype.pointer or ctype.name not in active().string_classes:
+            return False
+        found = self.typeof(node)
+        return found is not None and found.is_string
 
     def _copied(self, ctype: CType, node: Expr) -> bool:
         """Is ``T b = a`` a copy of an object - which Python would otherwise share, not copy?"""

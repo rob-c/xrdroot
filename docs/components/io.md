@@ -21,6 +21,13 @@ resolve to these operations. Engine modules avoid importing that app-owned
 facade to reach one another. `library` and `Jagged` are core primitives even
 though the tree reader still exposes compatible public names.
 
+Objects of the classes a program declares are described by `wdeclared` from a
+plain `Declaration` (each member's name, type as written, comment and array
+lengths), written by `wdobjects` and read back from bytes by `rdobjects`, all
+three knowing nothing of the translator: pyroot's `core.declared` builds the
+declarations from a translated class's `_cxx_layout_` and the objects from the
+plain data read.
+
 Decoding a canvas, RooWorkspace or HistFactory object needs a higher engine.
 These operations use [declared providers](providers.md). Unknown classes retain
 their diagnostics; file-specific streamer layouts still take precedence.

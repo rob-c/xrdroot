@@ -1205,7 +1205,7 @@ def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> St
         return _plainly(_reader(node))
     held = _class_held(member.typename)
     if held is None:
-        return None
+        return _pointer_map(member.typename, source, seen)
     name, pointed = held
     if pointed:
         classes = _Described(source, seen)
@@ -1213,6 +1213,38 @@ def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> St
     # A class the file describes can also be written field by field; one
     # that streams itself, such as a TArrayD, only ever comes whole.
     return _plainly(_objects(_embedded(name, source, seen), _columns(name, source, seen)))
+
+
+#: The maps a reader of pairs with objects for values knows.
+POINTER_MAPS = ("map", "unordered_map", "multimap", "unordered_multimap")
+
+
+def _pointer_map(typename: str, source: Source, seen: tuple[str, ...]) -> Step | None:
+    """How a map whose values are pointers to objects reads - ``map<string,T0Result*>`` - or
+    ``None`` for anything else: member-wise, the keys as a block and then each value an object
+    naming its class, read as the pairs it holds."""
+    from .cxx import _split
+
+    head, angle, rest = typename.replace("std::", "").strip().partition("<")
+    halves = _split(rest[:-1]) if angle and head in POINTER_MAPS else None
+    key = parse(halves[0]) if halves is not None else None
+    if halves is None or key is None or not halves[1].strip().endswith("*"):
+        return None
+    classes = _Described(source, seen)
+
+    def read(buf: Buffer) -> list[tuple[Any, Any]]:
+        version, end = buf.header()
+        if not version & MEMBER_WISE:
+            found = [(_single(key, buf), buf.any(classes)) for _ in range(buf.u32())]
+        else:
+            _versioned(buf)
+            count = buf.u32()
+            keys = _block(key, buf, count)
+            found = list(zip(keys, [buf.any(classes) for _ in range(count)], strict=True))
+        buf.resume(end)
+        return found
+
+    return _plainly(read)
 
 
 #: The streamer type of a ``TStreamerLoop``: ``x[n]`` of a class.

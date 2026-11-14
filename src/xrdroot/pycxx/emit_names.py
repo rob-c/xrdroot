@@ -265,6 +265,48 @@ class NameEmitter(Inference):
             return f"self.{name}", P.POSTFIX
         return self.host_name([name]) + self.targs(node.targs), P.POSTFIX
 
+    def inherited_call(self, func: Name) -> str | None:
+        """What ``f`` names, called in a method of a class derived from a library's class: as
+        C++ looks in the class before the namespace, the object's own ``f`` - its class's, or
+        one the library's base gives it - if it has one, else the library's function ``f``.
+        ``Base::f`` of a library's base is ``Base``'s ``f`` called on the object."""
+        function = self.scope.function
+        if not self.scope.klass or function is None or getattr(function, "static", False):
+            return None
+        if func.targs or not self.derives_from_library():
+            return None
+        if len(func.parts) == 1:
+            return self._inherited_name(func.last)
+        owner = func.parts[:-1]
+        if "::".join(owner) not in self.library_bases():
+            return None
+        return f"base_member({self.host_name(owner)}, {func.last!r}, self)"
+
+    def _inherited_name(self, name: str) -> str | None:
+        dialect = active()
+        known = (C_NAMES, dialect.functions, dialect.constants, INHERITED)
+        if any(name in names for names in known) or name in taken():
+            return None
+        if dialect.member_pattern.match(name):
+            return None  # a member of the library's class's, which ``self`` has
+        return f"inherited(self, {name!r}, {dialect.host})"
+
+    def library_bases(self) -> set[str]:
+        """The library's classes the class whose method is being written derives from."""
+        found: set[str] = set()
+        queue = [self.scope.klass]
+        seen: set[str] = set()
+        while queue:
+            klass = queue.pop()
+            if klass is None or klass in seen:
+                continue
+            seen.add(klass)
+            info = self.program.classes.get(klass)
+            for base in info.decl.bases if info is not None else ():
+                name = base.ctype.name
+                (queue.append if name in self.program.classes else found.add)(name)
+        return found
+
     def derives_from_library(self) -> bool:
         """Is the class whose method is being written derived, somewhere up, from a class of
         the library's - one the program did not declare?"""

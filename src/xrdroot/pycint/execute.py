@@ -292,6 +292,8 @@ def process_line(line: str, *, root: Any = None) -> Any:
     if text.startswith(".L"):
         load(called(text[2:]), root=root)
         return 0
+    if re.fullmatch(r"\.O\s*\d", text):
+        return 0  # ``.O0``: cling's optimisation level, which a translation does not have
     if text.startswith("."):
         raise ValueError(f"{text.split()[0]} is not a command gROOT->ProcessLine runs here")
     preload(text)

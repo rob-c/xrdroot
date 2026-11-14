@@ -2772,6 +2772,38 @@ knowing its `result_ptr`, or with `lazy=True` an `AsNumpyResult` - `ROOT.RDF.Fro
 `ROOT.RDF.RunGraphs`, and `ROOT.RVec` and `ROOT.VecOps` over NumPy, `VecOps.AsRVec`
 adopting an array's memory.
 
+### Objects of the classes a macro declares
+
+A class a macro, a library or ACLiC declares is a ROOT class here. One derived
+from `TObject`, `TNamed` or `TAttLine` has its base's members and calls them
+unqualified (`GetName()`, `TNamed::Print(opt)`), an override called through a
+base pointer takes the base's default arguments, and `ClassDef` gives it a
+version, `Class()` and `Class_Name()`. `TClass::GetClass("MyClass")` describes
+it as ROOT's dictionary would: `GetClassVersion` (-1 without a `ClassDef`),
+`GetCheckSum`, `GetListOfDataMembers` (`//!` transient, `//[n]` counted),
+`GetListOfBases`, `GetBaseClass`, `New`, and `GetStreamerInfo()`, whose `ls()`
+lists the layout as ROOT 6.40 does. `GetStreamerInfos()` adds each layout a
+file opened since describes the class with.
+
+`f->WriteObject(&obj, "name")`, `obj.Write()` and `TBufferFile` write such an
+object byte for byte as ROOT does - numbers, `Double32_t` and `Float16_t`
+packed by their comment, fixed and counted arrays, `std::string` and
+`TString`, the standard containers (member-wise for containers of objects),
+objects by value and by pointer, and bases - with the file describing every
+class reached. Reading one back makes an object of the class as it is
+declared now and converts each member the file holds to its type then: schema
+evolution of plain members, a member added or dropped, a `map` read into a
+`vector<pair>`.
+
+```cpp
+class Hit { public: int n = 3; Double32_t e = 1.5; //[0,10,12]
+            std::vector<float> v; ClassDef(Hit, 2) };
+TFile f("hits.root", "RECREATE");
+Hit h;
+f.WriteObject(&h, "hit");               // ROOT reads it with Hit's dictionary
+TClass::GetClass("Hit")->GetStreamerInfo()->ls();
+```
+
 ### Directories
 
 A name with a `/` in it goes into a directory, and every directory along the

@@ -97,6 +97,21 @@ def is_container(ctype: CType) -> bool:
     return last in CONTAINERS or last in active().containers
 
 
+def _c_string(ctype: CType) -> bool:
+    """Is ``ctype`` a pointer to characters - a C string, which is a Python ``str`` here?"""
+    chars = ctype.name in ("char", "signed char", "unsigned char")
+    return chars and ctype.pointer == 1 and not ctype.dims
+
+
+def _characters(ctype: CType) -> bool:
+    """Does indexing an object of ``ctype`` give a ``char``: a string, or a string class of
+    the dialect's - ``TString``?"""
+    if ctype.dims:
+        return False
+    plain = not ctype.pointer and ctype.name in active().string_classes
+    return ctype.is_string or plain
+
+
 def _is_null(node: Expr) -> bool:
     return isinstance(node, Literal) and (
         node.kind == "null" or (node.kind == "int" and node.value == 0)
@@ -347,8 +362,15 @@ class ExprEmitter(NameEmitter):
         held = self._read_through(operand, found)
         if held is not None:
             return held, P.POSTFIX
+        return self._pointee(operand, found)
+
+    def _pointee(self, operand: Expr, found: CType) -> Out:
+        """``*p`` of a plain pointer: the object it points at, the first character of a C
+        string - 0 at its end - or the first of the numbers it points at."""
         if found.is_object_pointer or (found.is_class and not found.pointer):
             return self.expr(operand)
+        if _c_string(found):
+            return f"char_at({self.value(operand)}, 0)", P.POSTFIX
         return f"{self.at(operand, P.POSTFIX)}[0]", P.POSTFIX
 
     def extreme_element(self, operand: Expr) -> str | None:
@@ -557,11 +579,24 @@ class ExprEmitter(NameEmitter):
             return own, P.POSTFIX
         delta = "1" if node.op == "++" else "-1"
         name = self.local_name(node.operand)
+        if name is not None and node.op == "++" and self._walks(node.operand):
+            return self._walked(name, node.postfix)
         if name is not None:
             step = f"({name} := {name} + {delta})"
             return (f"({step} - {delta})", P.ADD) if node.postfix else (step, P.ATOM)
         helper = "postinc" if node.postfix else "preinc"
         return f"{helper}({self.reference(node.operand)}, {delta})", P.POSTFIX
+
+    @staticmethod
+    def _walked(name: str, postfix: bool) -> Out:
+        """``s++`` of a C string: the rest of it, as walking a ``char *`` along gives."""
+        step = f"({name} := {name}[1:])"
+        return (f"({name}, {step})[0]", P.POSTFIX) if postfix else (step, P.ATOM)
+
+    def _walks(self, operand: Expr) -> bool:
+        """Is ``operand`` a C string, which ``++`` walks along?"""
+        found = self.typeof(operand)
+        return found is not None and _c_string(found)
 
     # -- assignment inside an expression -------------------------------------
 
@@ -678,7 +713,7 @@ class ExprEmitter(NameEmitter):
 
     def _index(self, node: Index) -> Out:
         found = self.typeof(node.obj)
-        if found is not None and found.is_string and not found.dims:
+        if found is not None and _characters(found):
             return f"char_at({self.value(node.obj)}, {self.value(node.index)})", P.POSTFIX
         return f"{self.at(node.obj, P.POSTFIX)}[{self.value(node.index)}]", P.POSTFIX
 

@@ -27,6 +27,7 @@ from typing import Any
 
 from ...errors import ROOTError
 from .collections import TList
+from .declared import made_from, payload_of
 from .directories import TDirectory, current_directory, set_current
 from .messages import message
 from .objects import Indent, TNamed, TObject, templated
@@ -277,7 +278,7 @@ class TDirectoryFile(TDirectory):
         read = self._reader()[label]
         found = _tree(read, key) or wrap(read)
         if not isinstance(found, TObject) and not _engine_own(found):
-            found = from_members(key.GetClassName(), found) or TOther(key.GetClassName(), found)
+            found = _dressed(key.GetClassName(), found)
         newest = key is self.GetKey(key.GetName())
         if newest and any(_inherits(found, kind) for kind in KEPT):
             self.Append(found, True)
@@ -337,6 +338,11 @@ class TDirectoryFile(TDirectory):
         own = getattr(obj, "_write_into", None)
         if own is not None:
             return int(own(self, called))
+        declared = payload_of(obj)
+        if declared is not None:  # an object of a class C++ declared, by its declaration
+            writer.write(called, declared, title=declared.title)
+            self._note_key(called, declared.title, declared.classname)
+            return 1
         writer.write(called, unwrap(obj), title=obj.GetTitle())
         self._note_key(called, obj.GetTitle(), obj.ClassName())
         return 1
@@ -460,6 +466,28 @@ def _tree(read: Any, key: TKey) -> Any:
     return trees.wrap(read, key.GetClassName(), key._key)
 
 
+def _note_layouts(reading: Any) -> None:
+    """Note the layouts a file opened describes its classes with, as ROOT notes them against
+    each class on opening it - a file whose description cannot be read noting none."""
+    from ...errors import FormatError
+    from ...streamers import read_infos
+    from .reflection import note_file_infos
+
+    try:
+        note_file_infos(read_infos(reading._source))
+    except (FormatError, ROOTError):
+        return
+
+
+def _dressed(classname: str, members: Any) -> Any:
+    """A record read as its members, made into its class: one the kit makes again, one C++
+    declared, or else an object that only says what it is."""
+    made = from_members(classname, members)
+    if made is None:
+        made = made_from(classname, members)
+    return made if made is not None else TOther(classname, members)
+
+
 class _Noting:
     """A writable xrdroot directory that notes, as a key of its owner, each tree made in it."""
 
@@ -565,6 +593,7 @@ class TFile(TDirectoryFile):
         if not self.GetTitle():
             self.SetTitle(_file_title(self._reading))
         self._keys_from(self._reading)
+        _note_layouts(self._reading)
 
     def _write_file(self, name: str, updating: bool) -> None:
         from ...writer import create

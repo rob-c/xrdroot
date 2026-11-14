@@ -4,7 +4,7 @@ A macro asks what something is - ``ROOT::GetClass(v.GetPtr())->GetName()``
 - of objects it made or was handed back: one of ROOT's classes, which says
 its own name, a ``std::vector`` of the kit, or the column a frame's
 ``Take`` gave, which ROOT holds as a ``vector`` of the column's type. The
-:class:`~.core.objects.TClass` handed back is the one ``IsA`` gives.
+:class:`~.core.reflection.TClass` handed back is the one ``IsA`` gives.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Any
 
 import numpy as np
 
-from .core.objects import TClass
+from .core.reflection import TClass
 from .stl import CPP_NAMES, _Container, cpp_name
 
 __all__ = ["GetClass"]

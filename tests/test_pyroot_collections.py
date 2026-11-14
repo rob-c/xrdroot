@@ -143,7 +143,7 @@ def test_print_and_ls_list_every_entry_one_level_in(capsys):
     assert capsys.readouterr().out.splitlines() == [
         "Collection name='things', class='TList', size=1",
         " OBJ: TNamed\ta\tA",
-        "OBJ: TList\tthings\tBasic ROOT object : 0",
+        "OBJ: TList\tthings\tDoubly linked list : 0",
         " OBJ: TNamed\ta\tA : 0",
     ]
 
