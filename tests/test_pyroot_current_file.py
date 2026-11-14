@@ -101,3 +101,10 @@ def test_keys_are_found_by_cycle_here_or_below_and_listed_by_name(tmp_path):
     assert [key.GetCycle() for key in listed] == [3, 2, 1]
     assert len(back.GetListOfKeys().GetListForObject(named)) == 3
     back.Close()
+
+
+def test_a_path_the_walk_resolves_whole_says_nothing_is_missing(capsys):
+    memory = ROOT.TDirectory("memory", "")
+    memory.mkdir("sub")
+    memory._unknown("sub")
+    assert capsys.readouterr().err == ""

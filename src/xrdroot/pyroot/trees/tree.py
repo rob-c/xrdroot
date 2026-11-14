@@ -180,11 +180,10 @@ class TTree(_Player):
         and is left out of the file - a macro stopped before its ``Branch`` call
         leaves its file closing over such a tree.
         """
-        return self._write_into(self._directory, name or self._name)
+        return self._write_to(self._directory, name or self._name)
 
-    def _write_into(self, directory: Any, name: str) -> int:
-        """The tree written into ``directory`` under ``name``: ``Write``, or a directory's
-        ``WriteObject`` handed the tree."""
+    def _write_to(self, directory: Any, name: str) -> int:
+        """The tree written into ``directory`` under ``name``, as ``Write`` writes it."""
         store = self._writable("Write")
         if not store.slots:
             return 0
