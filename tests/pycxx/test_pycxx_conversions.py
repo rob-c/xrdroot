@@ -88,3 +88,31 @@ def test_a_lambda_capture_that_names_a_value_holds_it_from_when_it_was_made(caps
     """
     run_source(source, "lam.C")
     assert capsys.readouterr().out == "24 3 4\n"
+
+
+def test_a_default_cpp_works_out_at_each_call_is_worked_out_at_each_call(capsys) -> None:
+    source = r"""
+    #include <cstdio>
+    #include <vector>
+    int g = 0;
+    const int kTen = 10;
+    struct B {
+       static int fg;
+       static int Next() { return ++fg; }
+       void F(int a = ++g, int b = B::Next(), int c = -kTen) { printf("%d %d %d\n", a, b, c); }
+    };
+    int B::fg = 0;
+    int grow(std::vector<int> v = {}) { v.push_back(1); return (int)v.size(); }
+    int calls() {
+       B o;
+       o.F();
+       o.F();
+       o.F(7);
+       auto f = [](int n = ++g) { return n; };
+       int h = B::fg++;
+       printf("%d %d %d %d %d\n", grow(), grow(), f(), h, B::fg);
+       return 0;
+    }
+    """
+    run_source(source, "calls.C")
+    assert capsys.readouterr().out == "1 1 -10\n2 2 -10\n7 3 -10\n1 1 3 3 4\n"

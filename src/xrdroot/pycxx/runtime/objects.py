@@ -14,6 +14,7 @@ import numpy as np
 from ...cppstd.objects import DTYPES as DTYPES
 from ...cppstd.objects import INTEGRAL as INTEGRAL
 from ...cppstd.objects import REAL as REAL
+from ...cppstd.objects import UNGIVEN as UNGIVEN
 from ...cppstd.objects import Candidate as Candidate
 from ...cppstd.objects import CppException as CppException
 from ...cppstd.objects import Overloaded as Overloaded
@@ -43,6 +44,7 @@ from ..errors import Refusal
 __all__ = [
     "array",
     "convertible",
+    "UNGIVEN",
     "Overloaded",
     "delete",
     "construct_at",

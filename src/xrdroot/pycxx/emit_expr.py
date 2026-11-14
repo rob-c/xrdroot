@@ -547,6 +547,9 @@ class ExprEmitter(NameEmitter):
             return None
         if symbol.cell:
             return ("self." if symbol.kind == "field" else "") + symbol.py
+        if symbol.kind == "static" and symbol.ctype is not None and symbol.ctype.scalar:
+            owner, _, name = symbol.py.rpartition(".")  # a class's static member, ``B.fg``
+            return f"AttrRef({owner}, {name!r})" if owner else None
         return f"AttrRef(self, {symbol.py!r})" if symbol.kind == "field" else None
 
     def local_name(self, target: Expr) -> str | None:

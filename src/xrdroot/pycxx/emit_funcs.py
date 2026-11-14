@@ -18,7 +18,7 @@ from .base import Out, P
 from .ctype import CType
 from .dialect import active
 from .emit_vars import Context, VariableEmitter, addressable
-from .nodes import Capture, Function, InitList, Lambda, Name, Param, VarDecl
+from .nodes import Capture, Expr, Function, InitList, Lambda, Literal, Name, Param, Unary, VarDecl
 from .nrvo import candidate
 from .program import by_reference
 
@@ -43,18 +43,45 @@ class FunctionEmitter(VariableEmitter):
     """The emitter's layer for functions."""
 
     def parameters(self, params: list[Param], method: bool) -> list[str]:
-        """The Python parameter list, declaring each parameter in the scope just opened."""
+        """The Python parameter list, declaring each parameter in the scope just opened.
+
+        A default C++ works out at each call - a call, an increment, a variable, an object
+        - is ``UNGIVEN`` in the list and given its value as the body starts
+        (:meth:`given_defaults`): Python works a default out once, as the function is
+        defined, and would share one object among the calls."""
         items = ["self"] if method else []
         cells = self.cell_names()
+        self.deferred: list[tuple[str, str, Param]] = []
         for index, param in enumerate(params):
             name = param.name or f"arg{index}"
-            default = ""
-            if param.default is not None:
-                default = "=" + self._default(name, param)
+            default = self._default(name, param) if param.default is not None else None
             cell = by_reference(param.ctype) or (name in cells and addressable(param.ctype))
             symbol = self.declare(name, "param", param.ctype.value(), cell=cell)
-            items.append(symbol.py + default)
+            if default is not None and not self._constant(param.default):
+                self.deferred.append((symbol.py, default, param))
+                default = "UNGIVEN"
+            items.append(symbol.py + ("" if default is None else "=" + default))
         return items
+
+    def _constant(self, node: Expr | None) -> bool:
+        """Is a default the same at every call: a literal, or a name of a constant?"""
+        if isinstance(node, Unary) and node.op in ("-", "+", "~", "!"):
+            return self._constant(node.operand)
+        if isinstance(node, Literal):
+            return True
+        if not isinstance(node, Name):
+            return False
+        symbol = self.symbol(node)
+        variable = symbol is not None and symbol.kind in ("local", "param", "global", "field",
+                                                          "static")  # fmt: skip
+        return not variable or bool(symbol is not None and symbol.ctype is not None
+                                    and symbol.ctype.const)  # fmt: skip
+
+    def given_defaults(self) -> None:
+        """Each default put off to the call, given as the body starts."""
+        for py, default, param in self.deferred:
+            self.out.line(f"if {py} is UNGIVEN: {py} = {default}", param.where)
+        self.deferred = []
 
     def _default(self, name: str, param: Param) -> str:
         """A parameter's default: ``std::vector<bool> opt = {1, 1}`` is a vector, as a
@@ -105,6 +132,7 @@ class FunctionEmitter(VariableEmitter):
         self.out.line(f"def {py}({', '.join(params)}):", func.where)
         with self.out.indented():
             head = self.out.mark()
+            self.given_defaults()
             self._wrap_parameters(func)
             self._deduce_values(func)
             if prologue is not None:
@@ -220,6 +248,7 @@ class FunctionEmitter(VariableEmitter):
     def _lambda_body(self, node: Lambda, context: Context) -> None:
         """A lambda's statements, with no loop around them for ``break`` to leave."""
         head = self.out.mark()
+        self.given_defaults()
         self.loops, saved = [], self.loops
         try:
             self.statements(node.body.body)

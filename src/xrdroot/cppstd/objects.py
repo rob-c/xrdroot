@@ -22,6 +22,7 @@ from .valuecopy import value_copy as value_copy
 __all__ = [
     "array",
     "convertible",
+    "UNGIVEN",
     "Overloaded",
     "value_copy",
     "dynamic_cast",
@@ -39,6 +40,16 @@ __all__ = [
     "INTEGRAL",
     "REAL",
 ]
+
+class _Ungiven:
+    """The default of a parameter whose C++ default is worked out at each call."""
+
+    def __repr__(self) -> str:
+        return "UNGIVEN"
+
+
+#: What a parameter holds when the call gave it nothing and its default is yet to be made.
+UNGIVEN = _Ungiven()
 
 #: The character types, whose arrays are :class:`~.buffers.CharBuffer` s.
 CHARACTERS = frozenset({"char", "signed char", "unsigned char"})
