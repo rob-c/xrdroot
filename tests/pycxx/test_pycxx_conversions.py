@@ -183,3 +183,18 @@ def test_a_destructor_called_by_hand_runs_its_body(capsys) -> None:
         translate("struct A { ~A() {} void f() { this->~A(); } };", "t.C")
     with pytest.raises(Refusal, match="calling the destructor ~B by hand"):
         translate("struct A { ~A() {} };\nvoid f(A *a) { a->~B(); }", "t.C")
+
+
+def test_a_string_read_through_a_pointer_to_it_is_the_string(capsys) -> None:
+    source = r"""
+    #include <iostream>
+    #include <string>
+    bool byAddress(std::string *s) { std::cout << "--" << *s << "--\n"; return *s == "x y"; }
+    int strings() {
+       std::string mine("x y");
+       std::string *p = &mine;
+       return byAddress(&mine) && byAddress(p) ? 0 : 1;
+    }
+    """
+    assert run_source(source, "strings.C") == 0
+    assert capsys.readouterr().out == "--x y--\n--x y--\n"

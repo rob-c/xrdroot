@@ -24,7 +24,7 @@ from collections.abc import Callable
 from typing import Any, ClassVar
 
 from .base import Out, P
-from .ctype import CType
+from .ctype import STRINGS, CType
 from .dialect import active
 from .emit_names import NameEmitter
 from .errors import Refusal
@@ -391,8 +391,9 @@ class ExprEmitter(NameEmitter):
 
     def _read_through(self, operand: Expr, found: CType) -> str | None:
         """``*p`` of what holds a value rather than being it: a ``shared_ptr<int>`` - a number,
-        or something holding one - or a library class that ``__deref__`` reads through."""
-        if _holds_value(found):
+        or something holding one - a ``std::string*``, which may be the cell ``&s`` of a
+        string is - or a library class that ``__deref__`` reads through."""
+        if _holds_value(found) or (found.pointer == 1 and found.name in STRINGS):
             return f"deref({self.value(operand)})"
         if self.reader_element(found, "value") is not None:
             return f"{self.at(operand, P.POSTFIX)}.__deref__()"
