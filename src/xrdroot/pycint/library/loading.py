@@ -85,13 +85,26 @@ ENVIRONMENT = ("ROOT_LIBRARY_PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH")
 
 
 class CxxNamespace:
-    """A C++ namespace a library declares: its members as attributes, nested ones too."""
+    """A C++ namespace a library declares: its members as attributes, nested ones too.
 
-    def __init__(self, name: str) -> None:
+    A class looked up in it is handed to PyROOT's pythonizations first, as
+    cppyy hands a class it binds, by its qualified name.
+    """
+
+    def __init__(self, name: str, qualified: str = "") -> None:
         self.__name__ = name
+        self.__cpp_name__ = qualified or name
 
     def __repr__(self) -> str:
         return f"<namespace {self.__name__}>"
+
+    def __getattribute__(self, name: str) -> Any:
+        found = object.__getattribute__(self, name)
+        if not isinstance(found, type) or name.startswith("_"):
+            return found
+        from ...pyroot.pythonizing import looked_up
+
+        return looked_up(found, name, object.__getattribute__(self, "__cpp_name__"))
 
 
 @dataclass
@@ -219,12 +232,16 @@ def _declare(loaded: Loaded) -> None:
         DECLARED[name] = _namespace(DECLARED.get(name), name, members, module)
 
 
-def _namespace(existing: Any, name: str, members: dict[str, Any], module: dict[str, Any]) -> Any:
+def _namespace(
+    existing: Any, name: str, members: dict[str, Any], module: dict[str, Any], outer: str = ""
+) -> Any:
     """The namespace ``name`` with ``members`` - added to one already declared, if there is."""
-    space = existing if isinstance(existing, CxxNamespace) else CxxNamespace(name)
+    qualified = f"{outer}::{name}" if outer else name
+    space = existing if isinstance(existing, CxxNamespace) else CxxNamespace(name, qualified)
     for member, inner in members.items():
         if isinstance(inner, dict):
-            setattr(space, member, _namespace(getattr(space, member, None), member, inner, module))
+            within = vars(space).get(member)
+            setattr(space, member, _namespace(within, member, inner, module, qualified))
         elif member in module:
             setattr(space, member, module[member])
     return space
@@ -234,22 +251,37 @@ def _namespace(existing: Any, name: str, members: dict[str, Any], module: dict[s
 OPEN_NAMESPACES = frozenset({"std", "ROOT"})
 
 
-def declare_namespaces(source: str) -> dict[str, CxxNamespace]:
+def declare_namespaces(
+    source: str, before: dict[str, Any]
+) -> tuple[dict[str, CxxNamespace], set[str]]:
     """The namespaces ``source`` - a ``Declare``, a line - declares, as objects of what they
-    hold, kept where later code finds them as a library's are: ``ROOT.NS.A``, ``NS::A``.
+    hold, kept where later code finds them as a library's are: ``ROOT.NS.A``, ``NS::A``; and
+    the names only those namespaces hold.
 
-    Its members are what the run of it just declared, so ``source`` has run first."""
-    if "namespace" not in source:
-        return {}
-    from .translate import namespaces_in
+    Its members are what the run of it just declared, so ``source`` has run first. A
+    translation's names are one flat module, so a member named as something declared before
+    at the top - ``NS::Foo`` after ``Foo`` - is put back to that, from ``before``."""
+    from .translate import declared_in
 
+    found = declared_in(source)
     made: dict[str, CxxNamespace] = {}
-    for name, members in namespaces_in(source).items():
+    for name, members in found.namespaces.items():
         existing = DECLARED.get(name)
         if name in OPEN_NAMESPACES or not isinstance(existing, (CxxNamespace, type(None))):
             continue
         DECLARED[name] = made[name] = _namespace(existing, name, members, DECLARED)
-    return made
+    hidden = _members(found.namespaces) - set(found.top)
+    DECLARED.update({name: before[name] for name in hidden if name in before})
+    return made, hidden
+
+
+def _members(namespaces: dict[str, Any]) -> set[str]:
+    """Every name the namespaces hold, at any depth, but the inner namespaces' own."""
+    names: set[str] = set()
+    for members in namespaces.values():
+        for member, inner in members.items():
+            names |= _members({member: inner}) if isinstance(inner, dict) else {member}
+    return names
 
 
 def unload(name: str) -> None:

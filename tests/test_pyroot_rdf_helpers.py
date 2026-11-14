@@ -112,6 +112,7 @@ def test_get_class_names_an_objects_class() -> None:
     """df001: ``ROOT::GetClass(b1Vec.GetPtr())->GetName()`` is ``vector<double>``."""
     taken = ROOT.RDataFrame(2).Define("x", "1.0").Take("x").GetValue()
     assert ROOT.GetClass(taken).GetName() == "vector<double>"
+    assert ROOT.GetClass(taken.data()).GetName() == "vector<double>"  # an array is one too
     assert ROOT.GetClass(ROOT.TH1D("gc", "", 1, 0, 1)).GetName() == "TH1D"
     assert ROOT.GetClass(ROOT.std.vector["int"]()).GetName() == "vector<int>"
     assert repr(ROOT.GetClass(ROOT.std.vector["int"]())) == "<TClass vector<int>>"

@@ -52,12 +52,22 @@ def _wrapped(value: Any) -> Any:
     return value
 
 
+def _vector_of(values: Any) -> Any:
+    """What ``Take`` gives back: the ``std::vector`` of a column of numbers, as ROOT's does."""
+    if isinstance(values, np.ndarray) and values.ndim == 1 and values.dtype.kind in "biuf":
+        from ..stl import std
+
+        return std.vector[values.dtype](values)
+    return values
+
+
 class RResultPtr:
     """``RResultPtr``: a booked result; its value, when asked for, as a PyROOT object."""
 
-    def __init__(self, inner: Any) -> None:
+    def __init__(self, inner: Any, taken: bool = False) -> None:
         self._inner = inner
         self._styled = False
+        self._taken = taken
 
     #: C++'s ``*booked`` reads its value through the macro runtime's cell protocol.
     _cint_cell = True
@@ -79,6 +89,8 @@ class RResultPtr:
         if isinstance(found, Histogram) and not self._styled:
             _in_style(found)
             self._styled = True
+        if self._taken:
+            found = _vector_of(found)
         return _wrapped(hooks.wrap(found))
 
     GetPtr = GetValue
@@ -165,12 +177,18 @@ class _Method:
         renamed = KEYWORDS.get(self.name, {})
         keywords = {renamed.get(key, key): _unwrapped(value) for key, value in options.items()}
         try:
-            return _wrapped(self.found(*given, **keywords))
+            return self._result(self.found(*given, **keywords))
         except Exception as why:  # C++ the batch evaluator refuses: translated, if it can be
             again = retried(self.name, getattr(self.found, "__self__", None), given, why)
             if again is None:
                 raise
-        return _wrapped(self.found(*again, **keywords))
+        return self._result(self.found(*again, **keywords))
+
+    def _result(self, found: Any) -> Any:
+        """What the method gave, as PyROOT gives it: ``Take``'s value a ``std::vector``."""
+        if self.name == "Take" and isinstance(found, _rdf.Result):
+            return RResultPtr(found, taken=True)
+        return _wrapped(found)
 
     def __getitem__(self, types: Any) -> _Method:
         return self

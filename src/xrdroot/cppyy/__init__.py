@@ -69,7 +69,9 @@ class _Global(types.ModuleType):
             found = getattr(_root(), name)
         except AttributeError:
             raise AttributeError(f"<namespace cppyy.gbl> has no attribute '{name}'") from None
-        return py.pythonized(found, name)
+        from ..pyroot.pythonizing import looked_up
+
+        return py.pythonized(looked_up(found, name), name)
 
     def __repr__(self) -> str:
         return "<namespace cppyy.gbl at 0x0>"

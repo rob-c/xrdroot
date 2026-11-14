@@ -27,6 +27,7 @@ from typing import Any
 
 from ..pycxx import execute as _cxx
 from ..pycxx.errors import MacroError, Refusal
+from ..pycxx.runtime.namespace import DECLARED
 from ..pycxx.translation import translation
 from .dialect import ROOT as DIALECT
 from .library import aclic
@@ -199,12 +200,17 @@ def run_source(
     handed back.
     """
     preload(source)
+    before = dict(DECLARED) if "namespace" in source else None
     done = _cxx.run_source(
         source, file, args, dialect=session_dialect(), namespace=root, use_cache=use_cache,
         call=call,
     )
-    spaces = libraries.declare_namespaces(source)
-    return {**done, **spaces} if not call else done
+    if before is None:
+        return done
+    spaces, hidden = libraries.declare_namespaces(source, before)
+    if call:
+        return done
+    return {**{name: value for name, value in done.items() if name not in hidden}, **spaces}
 
 
 def run(

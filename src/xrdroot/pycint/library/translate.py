@@ -33,7 +33,7 @@ from ...pycxx.program import Program
 from ...pycxx.translation import Translation
 from ..dialect import ROOT as DIALECT
 
-__all__ = ["Declared", "translated_unit", "declared", "namespaces_in", "digest"]
+__all__ = ["Declared", "translated_unit", "declared", "declared_in", "digest"]
 
 
 @dataclass
@@ -82,11 +82,11 @@ def translated_unit(
     return made, found
 
 
-def namespaces_in(source: str) -> dict[str, Any]:
-    """The namespaces ``source`` declares, each with its members' names, nested."""
+def declared_in(source: str) -> Declared:
+    """What ``source``, a few lines of C++, declares: its namespaces' members, nested."""
     with using(DIALECT):
         tokens, _ = preprocess(source, "<namespaces>", [])
-        return declared(parse(tokens)).namespaces
+        return declared(parse(tokens))
 
 
 def declared(unit: Unit) -> Declared:

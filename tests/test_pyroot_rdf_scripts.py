@@ -53,3 +53,10 @@ def test_an_array_on_the_left_of_an_rvec_gives_an_array_as_pyroot_does():
     found = np.array([1.0, 2.0], dtype=np.float32) == ROOT.RVecF([1.0, 3.0])
     assert type(found) is np.ndarray and list(found) == [True, False]
     assert type(ROOT.RVecF([1.0]) + np.array([1.0])) is not np.ndarray
+
+
+def test_take_gives_a_std_vector_of_numbers_which_compares_with_a_list():
+    df = ROOT.RDataFrame(3).Define("x", "(Long64_t)rdfentry_").Define("s", 'std::string("a")')
+    taken = df.Take["Long64_t"]("x").GetValue()
+    assert isinstance(taken, ROOT.std.vector["Long64_t"]) and taken == [0, 1, 2]
+    assert list(df.Take["std::string"]("s").GetValue()) == ["a", "a", "a"]

@@ -6,18 +6,27 @@ import importlib
 import json
 import json.decoder
 import sys
+from collections.abc import Iterator
 
 import pytest
 
 from xrdroot.cli import shims
 
+#: The names the tests import under an alias, taken out of ``sys.modules`` after each.
+ALIASED = ("ROOT", "jsonalias", "cppyy")
+
 
 @pytest.fixture
-def isolated(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The finders and modules a test installs are taken away again after it."""
+def isolated(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """The finders and aliased modules a test installs are taken away again after it."""
+    importlib.import_module("xrdroot.pyroot")  # once, as itself, before any alias
     others = [finder for finder in sys.meta_path if not isinstance(finder, shims.Aliases)]
     monkeypatch.setattr(sys, "meta_path", others)
-    monkeypatch.setattr(sys, "modules", dict(sys.modules))
+    kept = {name: module for name, module in sys.modules.items() if name.startswith(ALIASED)}
+    yield
+    for name in [name for name in sys.modules if name.startswith(ALIASED)]:
+        del sys.modules[name]
+    sys.modules.update(kept)
 
 
 def test_an_alias_is_the_module_it_names_not_a_second_copy(isolated: None) -> None:
@@ -26,6 +35,7 @@ def test_an_alias_is_the_module_it_names_not_a_second_copy(isolated: None) -> No
     decoder = importlib.import_module("jsonalias.decoder")
     assert alias is json
     assert decoder is json.decoder
+    assert json.__spec__.name == "json" and json.decoder.__spec__.name == "json.decoder"
 
 
 def test_an_alias_finds_nothing_for_other_names_or_missing_modules(isolated: None) -> None:
@@ -53,6 +63,8 @@ def test_cppyy_is_found_last_so_an_installed_cppyy_wins(isolated: None) -> None:
     assert sys.meta_path[-1] is aliases[0]
 
 
-def test_script_mode_has_nothing_to_tell_before_the_namespace_is_imported(isolated: None) -> None:
-    sys.modules.pop("xrdroot.pyroot.core.messages", None)
+def test_script_mode_has_nothing_to_tell_before_the_namespace_is_imported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delitem(sys.modules, "xrdroot.pyroot.core.messages", raising=False)
     assert shims.python_warnings(True) is False

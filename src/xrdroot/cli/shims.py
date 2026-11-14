@@ -24,6 +24,7 @@ import importlib.util
 import sys
 from collections.abc import Sequence
 from types import ModuleType
+from typing import Any
 
 __all__ = ["NAMESPACES", "Aliases", "install_root", "install_cppyy", "python_warnings"]
 
@@ -41,6 +42,8 @@ class Aliases(importlib.abc.MetaPathFinder, importlib.abc.Loader):
     def __init__(self, alias: str, target: str) -> None:
         self.alias = alias
         self.target = target
+        #: Each module's own spec, which Python overwrites with the alias's as it loads it.
+        self._specs: dict[str, Any] = {}
 
     def find_spec(
         self,
@@ -60,10 +63,14 @@ class Aliases(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         return importlib.util.spec_from_loader(fullname, self, is_package=found.parent == name)
 
     def create_module(self, spec: importlib.machinery.ModuleSpec) -> ModuleType:
-        return importlib.import_module(self.target + spec.name[len(self.alias) :])
+        module = importlib.import_module(self.target + spec.name[len(self.alias) :])
+        self._specs[module.__name__] = module.__spec__
+        return module
 
     def exec_module(self, module: ModuleType) -> None:
-        """The module ran when it was imported under its own name."""
+        """The module ran when it was imported under its own name; it keeps that name's spec,
+        so that its relative imports still resolve from where it is."""
+        module.__spec__ = self._specs.pop(module.__name__)
 
 
 def _installed(alias: str) -> Aliases | None:
