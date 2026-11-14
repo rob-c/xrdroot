@@ -379,8 +379,24 @@ class StmtParser(ExprParser):
             ctype = self.type_id()
             self.expect(";")
             return self.alias(Typedef(where, name, ctype))
+        parts = self._using_declared()
+        if len(parts) > 1 and self.at_(";") and not self.classes:
+            self.using_names[parts[-1]] = self.unaliased(parts)
         self.skip_to(";")
         return Empty(where)
+
+    def _using_declared(self) -> list[str]:
+        """``ns::Name`` of ``using ns::Name;``, read up to where it ends: a name a
+        using-declaration outside any class brings into scope. (One in a class, ``using
+        Base::f;``, is the class's own and is not followed.)"""
+        self.accept("::")
+        self.accept("typename")
+        parts: list[str] = []
+        while self.peek().kind == "id":
+            parts.append(self.take().text)
+            if not self.accept("::"):
+                break
+        return parts
 
     def _typedef(self) -> Stmt:
         where = self.take().where

@@ -87,6 +87,17 @@ def _cumulated(
     view[tuple(reversed(cut))] = block
 
 
+def _projection_option(option: str) -> tuple[str, str]:
+    """``Project3D``'s option split as ROOT splits it: ``_`` and what comes before its last
+    ``_``, and after it the option lowered, ``nuf``, ``nof``, ``e`` and ``o`` taken out."""
+    cut = option.rfind("_")
+    extra, opt = ("_" + option[:cut], option[cut + 1:]) if cut > 0 else ("", option)
+    opt = opt.lower()
+    for word in ("nuf", "nof", "e", "o"):
+        opt = opt.replace(word, "")
+    return extra, opt
+
+
 class Operations:
     """Arithmetic, reshaping, fitting and random numbers for a ``TH1``."""
 
@@ -325,10 +336,18 @@ class Operations:
         fit_slices(self, False, f1, firstxbin, lastxbin, cut, option, arr)
 
     def Project3D(self, option: str = "x") -> Any:
-        """``Project3D("xy")``: the axes named kept - in ROOT's order, the first letter along y."""
-        axes = "".join(letter for letter in str(option).lower() if letter in "xyz")
+        """``Project3D("xy")``: the axes named kept - in ROOT's order, the first letter along y.
+
+        Anything before the option's last ``_`` goes into the projection's name
+        (``"Projection_xy"`` makes ``h3_Projection_xy``), and the rest, less ROOT's
+        option words, is the name's end.
+        """
+        extra, opt = _projection_option(str(option))
+        axes = "".join(letter for letter in opt if letter in "xyz")
         ordered = axes[::-1] if len(axes) == 2 else axes
-        return _kept(self._xrd.projection(ordered, f"{self.GetName()}_{axes}"))
+        made = _kept(self._xrd.projection(ordered, f"{self.GetName()}{extra}_{opt}"))
+        made.SetTitle(f"{self.GetTitle()} {axes} projection")
+        return made
 
     def ProfileX(
         self, name: str = "_pfx", firstybin: int = 1, lastybin: int = -1, option: str = ""

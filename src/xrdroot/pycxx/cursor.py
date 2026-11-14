@@ -126,12 +126,21 @@ class Cursor:
         self.angle = 0
         #: ``namespace fs = std::filesystem;``: each alias, and the namespace it names.
         self.namespace_aliases: dict[str, list[str]] = {}
+        #: ``using ns::Name;``: each name a using-declaration brought in, and its full path.
+        self.using_names: dict[str, list[str]] = {}
 
     def unaliased(self, parts: list[str]) -> list[str]:
-        """``fs::path`` as ``std::filesystem::path``, when ``fs`` is an alias."""
+        """``fs::path`` as ``std::filesystem::path``, when ``fs`` is an alias; ``Name`` as
+        ``ns::Name`` after ``using ns::Name;``."""
         if len(parts) > 1 and parts[0] in self.namespace_aliases:
             return [*self.namespace_aliases[parts[0]], *parts[1:]]
+        if parts and parts[0] in self.using_names and not self._declared_here(parts[0]):
+            return [*self.using_names[parts[0]], *parts[1:]]
         return parts
+
+    def _declared_here(self, name: str) -> bool:
+        """Whether the macro declared ``name`` itself - a variable in scope, or a type."""
+        return name in self.types or any(name in scope for scope in self.variables)
 
     # -- looking --------------------------------------------------------------
 

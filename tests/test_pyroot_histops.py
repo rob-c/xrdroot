@@ -145,6 +145,9 @@ def test_projections_take_roots_names_and_reuse_them_silently(capsys):
     expect(
         (h3.Project3D("z").GetBinContent(2), 1),
         (h3.Project3D("xy").GetName(), "h3_xy"),
+        (h3.Project3D("Projection_xy").GetName(), "h3_Projection_xy"),
+        (h3.Project3D("ZX nof").GetName(), "h3_zx "),
+        (h3.Project3D("XYE").GetTitle().endswith(" xy projection"), True),
     )
 
 
