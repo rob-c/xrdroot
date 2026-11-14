@@ -72,7 +72,9 @@ PREDEFINED = f"""
 #define R__ADD_LIBRARY_PATH(x)
 #define R__CLASS_VERSION(version) public: static Version_t Class_Version() {{ return version; }}
 #define R__CLASS_INFO(name) static TClass *Class() {{ return TClass::GetClass(#name); }} \
-   static const char *Class_Name() {{ return #name; }}
+   static const char *Class_Name() {{ return #name; }} \
+   virtual TClass *IsA() const {{ return TClass::GetClass(#name); }} \
+   virtual void Streamer(TBuffer &b) {{ TClass::GetClass(#name)->Streamer(this, b); }}
 #define ClassDef(name, version) R__CLASS_VERSION(version) R__CLASS_INFO(name)
 #define ClassDefOverride(name, version) R__CLASS_VERSION(version) R__CLASS_INFO(name)
 #define ClassDefNV(name, version) R__CLASS_VERSION(version) R__CLASS_INFO(name)

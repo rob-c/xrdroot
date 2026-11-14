@@ -476,3 +476,32 @@ def test_an_array_lists_what_it_holds_and_passes_over_its_empty_slots(capsys):
 
 def _evo_declared():
     run_source(VERSIONS % "int", "evo.C", call=False)
+
+
+
+STREAMED = r"""
+#include "TBufferFile.h"
+class simple {
+public:
+   int i = 0;
+   float f = 0;
+   simple() {}
+   simple(int) : i(3), f(1.5) {}
+   ClassDef(simple, 2);
+};
+void streamed() {
+   TBufferFile buf(TBuffer::kWrite);
+   simple out(3);
+   out.Streamer(buf);
+   buf.SetReadMode();
+   buf.Reset();
+   simple in;
+   in.Streamer(buf);
+   printf("%d %g %s\n", in.i, in.f, in.IsA()->GetName());
+}
+"""
+
+
+def test_classdef_gives_a_class_its_own_streamer_and_isa(capfd):
+    run_source(STREAMED, "streamed.C")
+    assert capfd.readouterr().out == "3 1.5 simple\n"
