@@ -19,7 +19,7 @@ from .ctype import CType
 from .emit_funcs import FunctionEmitter
 from .errors import Refusal
 from .nodes import ClassDecl, EnumDecl, Expr, Function, Literal, Unary, VarDecl
-from .operators import DUNDERS
+from .operators import DUNDERS, conversion
 from .program import ClassInfo
 from .symbols import Symbol, member_name, python_name
 
@@ -125,6 +125,8 @@ class ClassEmitter(FunctionEmitter):
             self._members(info, scope.symbols)
             self._class_body(info)
         self.template_names -= template
+        if any(conversion(name) for name in info.methods):  # ``operator int()`` and kin
+            self.out.line(f"convertible({py})", decl.where)
         self.declarators(decl.declarators)
 
     def declarators(self, decls: list[VarDecl]) -> None:
@@ -288,9 +290,11 @@ class ClassEmitter(FunctionEmitter):
             return "_destruct"
         if func.kind != "operator":
             return member_name(func.name)
-        names = DUNDERS.get(func.name)
+        dunder = conversion(func.name)
+        names = DUNDERS.get(func.name) or ((None, dunder) if dunder is not None else None)
         if names is None:
-            raise self.refuse(f"the operator {func.name[8:]} defined for a class", func)
+            spelled = " ".join(func.name[8:].split())
+            raise self.refuse(f"the operator {spelled} defined for a class", func)
         binary, unary = names
         chosen = binary if func.params else unary
         if chosen is None:
@@ -356,3 +360,4 @@ def _spelled(ctype: CType, spellings: dict[str, str]) -> str:
     )
     name = ctype.written or spellings.get(ctype.name, ctype.name)
     return (f"{name}<{args}>" if ctype.args else name) + "*" * ctype.pointer
+

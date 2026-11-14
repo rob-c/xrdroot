@@ -37,6 +37,7 @@ from .nodes import (
     Member,
     Name,
 )
+from .operators import conversion
 from .symbols import Symbol
 
 __all__ = ["CallEmitter", "WRAPS"]
@@ -490,9 +491,14 @@ class CallEmitter(ExprEmitter):
     def _double_store(self, source: CType | None, node: Expr) -> str:
         if isinstance(node, Literal) and node.kind in ("int", "char"):
             return repr(float(node.value))
-        if source is not None and source.integral:
+        if source is not None and (source.integral or self._converts(source)):
             return f"float({self.value(node)})"
         return self.value(node)
+
+    def _converts(self, source: CType) -> bool:
+        """Is ``source`` a class of the program's that converts itself to a number?"""
+        info = self.program.classes.get(source.name) if not source.pointer else None
+        return info is not None and any(conversion(name) for name in info.methods)
 
     def _integral_store(self, ctype: CType, source: CType | None, node: Expr) -> str:
         text = self.value(node)

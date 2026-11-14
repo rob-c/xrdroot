@@ -87,6 +87,8 @@ def to_int(value: Any) -> int:
     """A value stored into an integer: truncated toward zero, as C converts."""
     if isinstance(value, str):
         return ord(value[:1] or "\0")
+    if hasattr(value, "__index__") and not _integer(value):  # a class's ``operator int()``
+        return int(value)
     number = float(value) if not _integer(value) else value
     if isinstance(number, float) and not math.isfinite(number):
         raise OverflowError(f"{number} does not fit in an integer, which C++ leaves undefined")

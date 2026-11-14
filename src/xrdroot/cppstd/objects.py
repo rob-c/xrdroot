@@ -10,6 +10,7 @@ arguments, which of several translated functions to call.
 
 from __future__ import annotations
 
+import operator
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any
 
@@ -20,6 +21,7 @@ from .valuecopy import value_copy as value_copy
 
 __all__ = [
     "array",
+    "convertible",
     "Overloaded",
     "value_copy",
     "dynamic_cast",
@@ -287,3 +289,71 @@ def postinc(ref: Any, delta: Any) -> Any:
     old = ref.value
     ref.value = old + delta
     return old
+
+
+def _operator(name: str) -> Callable[..., Any]:
+    """:mod:`operator`'s function for ``name``: ``add``, or ``and_`` for ``and``."""
+    found: Callable[..., Any] = getattr(operator, name, None) or getattr(operator, name + "_")
+    return found
+
+
+#: The operators a class converting to a number takes as that number does, by method: each
+#: with how many operands it has, and whether its object is the right one (``1 + s``).
+CONVERTED: dict[str, tuple[Callable[..., Any], int, bool]] = {
+    **{f"__{name}__": (_operator(name), 2, False) for name in
+       "add sub mul truediv floordiv mod lt le gt ge and or xor lshift rshift".split()},
+    **{f"__r{name}__": (_operator(name), 2, True) for name in
+       "add sub mul truediv floordiv mod and or xor".split()},
+    "__neg__": (operator.neg, 1, False),
+    "__pos__": (operator.pos, 1, False),
+}
+
+
+def _number(obj: Any) -> Any:
+    """The number a convertible object is: by the conversion its class itself has."""
+    return getattr(obj, type(obj)._cxx_number_)()
+
+
+def convertible(cls: type) -> type:
+    """A class with ``operator int()`` or ``operator double()``: in arithmetic and as a
+    number, it is that number, as C++ converts it - unless it has the operator itself.
+    ``==`` stays the object's: a pointer to one compares as a pointer."""
+    own = _own(cls)
+    integer = "__int__" in own
+    cls._cxx_number_ = "__int__" if integer else "__float__"  # type: ignore[attr-defined]
+    for name, method in _made(cls, integer).items():
+        if name not in own or name == "__index__":
+            setattr(cls, name, method)
+    return cls
+
+
+def _own(cls: type) -> set[str]:
+    """What a class and its bases define themselves - not what every object has."""
+    return {name for klass in cls.__mro__ if klass is not object for name in vars(klass)}
+
+
+def _made(cls: type, integer: bool) -> dict[str, Callable[..., Any]]:
+    """The methods a convertible class is given: its other conversion, and the operators."""
+    made = {"__index__": cls.__int__} if integer else {}  # type: ignore[attr-defined]
+    made["__float__" if integer else "__int__"] = _as(float if integer else int)
+    for name, (apply, operands, reflected) in CONVERTED.items():
+        made[name] = _converted(apply, operands, reflected)
+    return made
+
+
+def _as(kind: type) -> Callable[[Any], Any]:
+    return lambda self: kind(_number(self))
+
+
+def _converted(apply: Callable[..., Any], operands: int, reflected: bool) -> Callable[..., Any]:
+    """An operator of a convertible object, done on the number it is."""
+    if operands == 1:
+        return lambda self: apply(_number(self))
+    if reflected:
+        return lambda self, other: apply(_operand(other), _number(self))
+    return lambda self, other: apply(_number(self), _operand(other))
+
+
+def _operand(value: Any) -> Any:
+    """The other side of an operation: a number, or an object converting to one."""
+    return _number(value) if hasattr(type(value), "_cxx_number_") else value

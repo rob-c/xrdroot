@@ -26,6 +26,7 @@ from ...cppstd.objects import _flat as _flat
 from ...cppstd.objects import _object_array as _object_array
 from ...cppstd.objects import _walked as _walked
 from ...cppstd.objects import array as array
+from ...cppstd.objects import convertible as convertible
 from ...cppstd.objects import dynamic_cast as dynamic_cast
 from ...cppstd.objects import iterate as iterate
 from ...cppstd.objects import pointee as pointee
@@ -41,6 +42,7 @@ from ..errors import Refusal
 
 __all__ = [
     "array",
+    "convertible",
     "Overloaded",
     "delete",
     "construct_at",

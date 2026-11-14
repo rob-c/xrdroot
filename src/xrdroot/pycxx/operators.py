@@ -8,7 +8,9 @@ used where a macro calls an operator by name, ``obj.operator()(1)`` or
 
 from __future__ import annotations
 
-__all__ = ["DUNDERS", "python_operator"]
+from .ctype import FLOATING, INTEGRAL, builtin_name, canonical
+
+__all__ = ["DUNDERS", "python_operator", "conversion"]
 
 #: Each operator as the method Python calls for it: with an argument, and without one.
 DUNDERS = {
@@ -53,3 +55,16 @@ def python_operator(name: str) -> str:
         return name
     binary, unary = names
     return binary or unary or name
+
+
+def conversion(name: str) -> str | None:
+    """The method Python asks a class for in place of the C++ conversion ``name`` - an
+    ``operator unsigned int``, an ``operator id_type`` of a typedef of a number - if it
+    converts to a number: ``__int__`` or ``__float__``. ``operator bool`` is a
+    :data:`DUNDERS` entry of its own."""
+    if not name.startswith("operator ") or name in DUNDERS:
+        return None
+    target = canonical(builtin_name(name[len("operator") :].split()))
+    if target in INTEGRAL and target != "bool":
+        return "__int__"
+    return "__float__" if target in FLOATING else None
