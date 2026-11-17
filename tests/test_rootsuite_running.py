@@ -477,12 +477,12 @@ def test_a_harness_error_is_one_failed_record_not_a_lost_run(tmp_path, source, f
     assert records["ok"]["status"] == "FAIL" and "harness error" in records["ok"]["reason"]
 
 
-def test_the_shim_runs_a_unittest_file_with_root_as_xrdroot_pyroot(tmp_path):
+def test_the_shim_runs_a_unittest_file_with_root_as_a_module_of_pyroots_names(tmp_path):
     (tmp_path / "conftest.py").write_text("import ROOT._pythonization_internals\n")
     (tmp_path / "test_it.py").write_text(
         "import unittest\nimport ROOT\n\n\nclass T(unittest.TestCase):\n"
         "    def test_root_is_xrdroot(self):\n"
-        "        self.assertEqual(ROOT.__name__, 'xrdroot.pyroot')\n")
+        "        self.assertEqual(ROOT.__name__, 'ROOT')\n")
     junit = tmp_path / "junit.xml"
     done = subprocess.run([sys.executable, str(plan.SHIM), "--junitxml", str(junit),
                            str(tmp_path / "test_it.py")], cwd=tmp_path, capture_output=True,

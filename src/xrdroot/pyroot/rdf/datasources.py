@@ -29,8 +29,32 @@ def _types(given: Any) -> dict[str, str]:
     return {str(name): _char(letter) for name, letter in pairs}
 
 
+#: The rest of ``RCsvDS::ROptions``, by the keyword a Python call spells each with -
+#: ``RDF.FromCSV(f, leftTrim=True, skipFirstNLines=1, ...)``.
+KEYWORDS = {"leftTrim": "fLeftTrim", "rightTrim": "fRightTrim",
+            "skipBlankLines": "fSkipBlankLines", "skipFirstNLines": "fSkipFirstNLines",
+            "skipLastNLines": "fSkipLastNLines", "comment": "fComment",
+            "columnNames": "fColumnNames", "columns": "fColumnNames"}  # fmt: skip
+
+
+def _by_keyword(options: CsvOptions, given: dict[str, Any]) -> CsvOptions:
+    """``options`` with the ROOT options a call named set on it; an unknown name is refused."""
+    for name, value in given.items():
+        if name not in KEYWORDS:
+            raise TypeError(
+                f"RDF.FromCSV takes readHeaders, delimiter, linesChunkSize, colTypes or one of "
+                f"{', '.join(KEYWORDS)}, not {name}")
+        field_name = KEYWORDS[name]
+        if field_name == "fComment":
+            value = _char(value)
+        elif field_name == "fColumnNames":
+            value = [str(column) for column in value]
+        setattr(options, field_name, value)
+    return options
+
+
 def csv_source(fileName: Any, readHeaders: Any = True, delimiter: Any = ",",
-               linesChunkSize: int = -1, colTypes: Any = None) -> Columns:  # fmt: skip
+               linesChunkSize: int = -1, colTypes: Any = None, **rest: Any) -> Columns:  # fmt: skip
     """The CSV file's columns, read with ROOT's options; ROOT's warning of any empty integers."""
     if isinstance(readHeaders, CsvOptions):
         options = readHeaders
@@ -39,6 +63,7 @@ def csv_source(fileName: Any, readHeaders: Any = True, delimiter: Any = ",",
     else:
         options = CsvOptions(fHeaders=bool(readHeaders), fDelimiter=_char(delimiter),
                              fLinesChunkSize=int(linesChunkSize), fColumnTypes=_types(colTypes))
+    _by_keyword(options, rest)
     source = from_csv(str(fileName), options)
     if source.warning:
         Warning("RCsvDS", "%s", source.warning)

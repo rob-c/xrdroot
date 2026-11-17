@@ -640,3 +640,15 @@ def test_a_column_may_be_called_a_python_word_but_not_a_cpp_one():
     assert frame.HasColumn("def") and frame.Sum("def").GetValue() == 2
     with pytest.raises(ValueError, match="'class', which is not a C\\+\\+ name"):
         frame.Define("class", lambda: 1)
+
+
+def test_take_wraps_a_column_of_numbers_or_strings_and_leaves_other_values_alone() -> None:
+    """``Take`` gives back a ``std::vector``; a value that is not a column of one per entry -
+    a vector column's jagged rows, say - is handed on as it is."""
+    from xrdroot.pyroot.rdf.frame import _vector_of
+    from xrdroot.pyroot.stl import std
+
+    assert isinstance(_vector_of(np.arange(3.0)), std.vector["double"])
+    assert isinstance(_vector_of(np.array(["a", "b"], dtype=object)), std.vector["string"])
+    jagged = np.array([[1.0], [2.0, 3.0]], dtype=object)
+    assert _vector_of(jagged) is jagged and _vector_of(7) == 7

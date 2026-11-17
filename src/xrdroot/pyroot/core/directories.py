@@ -332,10 +332,14 @@ class TDirectory(TNamed):
         """
 
         def __init__(self, *directories: Any) -> None:
-            # ``TContext(previous, new)``: it is ``previous`` that is gone back to.
+            # ``TContext(previous, new)``: it is ``previous`` that is gone back to, and
+            # ``new`` - ``nullptr`` included, which leaves no directory current - that is
+            # gone into; ``TContext()`` only remembers where it was.
             self._previous = directories[0] if len(directories) == 2 else current_directory()
-            if directories and directories[-1] is not None:
-                directories[-1].cd()
+            if not directories:
+                return
+            chosen = directories[-1]  # ``TDirectory::TContext::CdNull`` for a null one
+            set_current(chosen.__real__() if hasattr(chosen, "__real__") else chosen)
 
         def __enter__(self) -> Any:
             return self

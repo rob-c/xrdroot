@@ -83,3 +83,15 @@ def test_an_object_taking_no_attributes_or_a_module_is_left_a_namespace_as_it_is
     shims._as_package(object(), "ROOT.Nothing")
     shims._as_package(math, "ROOT.Math")
     assert math.__name__ == "math" and not hasattr(math, "__path__")
+
+
+def test_root_answers_every_name_of_the_namespace_and_lists_them(isolated: None) -> None:
+    """The module ``ROOT`` is one of the namespace's names, called ``ROOT`` - and it says so
+    in ``dir()`` and refuses, as the namespace refuses, a name it has not."""
+    root = shims.install_root()
+    namespace = importlib.import_module("xrdroot.pyroot")
+    assert shims.install_root() is root and root.__name__ == "ROOT"
+    assert root.TH1F is namespace.TH1F and "TH1F" in root.__all__
+    assert dir(root) == dir(namespace)
+    with pytest.raises(AttributeError, match=r"xrdroot\.pyroot does not yet"):
+        root.NotARootName  # noqa: B018

@@ -315,3 +315,20 @@ def test_an_object_written_without_a_name_goes_under_its_own(tmp_path):
         out.WriteObject(ROOT.TH1D("kept", "its title", 2, 0, 1))
     assert ROOT.TFile(path).Get("kept").GetTitle() == "its title"
     assert ROOT.gObjectTable is None
+
+
+def test_a_context_given_nullptr_leaves_no_directory_current_until_it_ends():
+    """``TContext(nullptr)``: ROOT's own - the current directory is null inside the block,
+    which is what PyROOT's lazy ``gDirectory`` reports, and where it was afterwards."""
+    below = ROOT.gROOT.mkdir("nullbelow")
+    with ROOT.TDirectory.TContext(below):
+        with ROOT.TDirectory.TContext(ROOT.nullptr):
+            assert ROOT.gDirectory == ROOT.nullptr
+            assert ROOT.gDirectory != below
+        assert ROOT.gDirectory == below
+    assert ROOT.gDirectory == ROOT.gROOT
+    # ``TContext(previous, nullptr)``: gone back to ``previous`` when the block ends.
+    with ROOT.TDirectory.TContext(below, ROOT.nullptr):
+        assert ROOT.gDirectory == ROOT.nullptr
+    assert ROOT.gDirectory == below
+    ROOT.gROOT.cd()

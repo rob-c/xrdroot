@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect
@@ -119,3 +120,26 @@ def test_a_macros_lambdas_of_no_columns_of_slots_and_of_collections(tmp_path: An
     """
     run_source(macro, "s.C")
     assert capsys.readouterr().out == "1\n2\na 1\nb 2\n2\n"
+
+
+def test_the_rest_of_roots_csv_options_are_keywords_of_from_csv(tmp_path: Any) -> None:
+    """``leftTrim``, ``rightTrim``, ``skipFirstNLines``, ``skipLastNLines``, ``comment`` and
+    ``columnNames``: the rest of ``RCsvDS::ROptions``, as the Python tests of ROOT pass them.
+
+    A record with fewer fields than the file has columns is ROOT's: the columns past
+    its last field stay empty, which is a "nan" for each.
+    """
+    (tmp_path / "p.csv").write_text(
+        "!other data\n# comment 1\n First Name Last Name\n# comment 2\n\n"
+        " Harry Smith\t# comment 3\n! footer 1\n! footer 2\n")
+    names = ["FirstName", "LastName", "", ""]
+    frame = ROOT.RDF.FromCSV(str(tmp_path / "p.csv"), delimiter=" ", leftTrim=True,
+                             rightTrim=True, skipFirstNLines=1, skipLastNLines=2,
+                             comment="#", columnNames=names)  # fmt: skip
+    assert (frame.Count().GetValue(), list(frame.Take["string"]("FirstName").GetValue())) == (
+        1, ["Harry"])  # fmt: skip
+    with pytest.raises(TypeError, match="takes readHeaders, delimiter, linesChunkSize, colTypes"):
+        ROOT.RDF.FromCSV(str(tmp_path / "p.csv"), nothing=1)
+    (tmp_path / "wide.csv").write_text("a,b\n1,2,3\n")
+    with pytest.raises(ValueError, match="has 3 fields where the file has 2 columns"):
+        ROOT.RDF.FromCSV(str(tmp_path / "wide.csv"))

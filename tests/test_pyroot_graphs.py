@@ -50,7 +50,22 @@ def test_every_constructor_root_has(capsys):
     divided.Divide(passed, total)
     expect(
         (divided.GetN(), 1),
-        (bool(ROOT.TGraphBentErrors is ROOT.TGraphAsymmErrors), True),
+        (bool(ROOT.TGraphBentErrors is not ROOT.TGraphAsymmErrors), True),
+    )
+    bent = ROOT.TGraphBentErrors(
+        2, np.array([1.0, 2.0]), np.array([3.0, 4.0]),
+        np.array([0.1, 0.2]), np.array([0.3, 0.4]), np.array([0.5, 0.6]), np.array([0.7, 0.8]),
+        np.array([1.0, 2.0]), np.array([3.0, 4.0]), np.array([5.0, 6.0]), np.array([7.0, 8.0])
+    )  # fmt: skip
+    expect(
+        (bent.GetN(), 2),
+        (bent.GetEXlow().tolist(), [0.1, 0.2]),
+        (bent.GetEYhigh().tolist(), [0.7, 0.8]),
+        (bent.GetEXlowd().tolist(), [1.0, 2.0]),
+        (bent.GetEXhighd().tolist(), [3.0, 4.0]),
+        (bent.GetEYlowd().tolist(), [5.0, 6.0]),
+        (bent.GetEYhighd().tolist(), [7.0, 8.0]),
+        (bent.ClassName(), "TGraphBentErrors"),
     )
     errors = ROOT.TGraphErrors(
         2, np.array([1.0, 2.0]), np.array([1.0, 2.0]), None, np.array([0.1, 0.2])

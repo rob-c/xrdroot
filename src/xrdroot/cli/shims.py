@@ -103,9 +103,39 @@ def _installed(alias: str) -> Aliases | None:
     return None
 
 
+class RootModule(ModuleType):
+    """``ROOT``: the module a script imports, whose names are :mod:`xrdroot.pyroot`'s.
+
+    ROOT's own ``ROOT`` module is a facade over ``cppyy.gbl``, and it is called
+    ``ROOT`` - a script of ROOT's asserts ``ROOT.__name__ == "ROOT"`` - so this
+    is one too: a module of that name that answers every name the namespace has
+    and refuses, as the namespace refuses, the ones it has not.
+    """
+
+    def __init__(self, namespace: ModuleType) -> None:
+        super().__init__("ROOT")
+        #: A package, so that ``import ROOT.RDF.Distributed`` looks inside it.
+        self.__path__: list[str] = []
+        self._namespace = namespace
+        #: What ``from ROOT import *`` takes: every public name of the namespace.
+        self.__all__ = [name for name in dir(namespace) if not name.startswith("_")]
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._namespace, name)
+
+    def __dir__(self) -> list[str]:
+        return dir(self._namespace)
+
+
 def install_root() -> ModuleType:
-    """``ROOT`` is :mod:`xrdroot.pyroot`, ``ROOT.RDF`` its namespace, ``ROOT.x`` its module."""
-    root = sys.modules["ROOT"] = importlib.import_module("xrdroot.pyroot")
+    """``ROOT`` is a module of :mod:`xrdroot.pyroot`'s names, ``ROOT.RDF`` its namespace,
+    ``ROOT.x`` its module."""
+    namespace = importlib.import_module("xrdroot.pyroot")
+    here = sys.modules.get("ROOT")
+    if isinstance(here, RootModule) and here._namespace is namespace:
+        return here  # installed already: one module, not two
+
+    root = sys.modules["ROOT"] = RootModule(namespace)
     for name in NAMESPACES:  # ``from ROOT.Experimental import RCanvas`` imports the namespace
         found = getattr(root, name, None)
         if found is not None:

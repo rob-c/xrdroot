@@ -125,4 +125,8 @@ vars(_generic).update({
     "_rvec_of": _rvec_of,
 })
 _generic.STRINGS = STRINGS
+# ``ROOT.vector``: cppyy resolves a bare ``vector`` in the ROOT namespace to ``std::vector``,
+# so a script writes ``ROOT.vector[float]()`` as readily as ``ROOT.std.vector('float')``.
+_generic.__dict__["vector"] = TEMPLATES["vector"]
+_generic.__all__ = [*_generic.__all__, "vector"]
 _sys.modules[__name__] = _generic

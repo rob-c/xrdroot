@@ -28,6 +28,7 @@ ERRORS: dict[str, tuple[str, ...]] = {
     "TGraph": (),
     "TGraphErrors": ("ex", "ey"),
     "TGraphAsymmErrors": ("exl", "exh", "eyl", "eyh"),
+    "TGraphBentErrors": ("exl", "exh", "eyl", "eyh", "exld", "exhd", "eyld", "eyhd"),
 }
 
 
@@ -545,7 +546,24 @@ class TGraphAsymmErrors(TGraph):
             self.Print()
 
 
-TGraphBentErrors = TGraphAsymmErrors
+class TGraphBentErrors(TGraphAsymmErrors):
+    """``TGraphBentErrors``: bars whose ends are drawn apart from the points, each end's
+    distance along each axis a number of its own - ROOT's ``fEXlowd`` and its kin."""
 
-for _cls in (TGraph, TGraphErrors, TGraphAsymmErrors):
+    CLASS_TITLE = "A graph with bent, asymmetric error bars"
+
+    def GetEXlowd(self) -> Any:
+        return self._bar("exld")
+
+    def GetEXhighd(self) -> Any:
+        return self._bar("exhd")
+
+    def GetEYlowd(self) -> Any:
+        return self._bar("eyld")
+
+    def GetEYhighd(self) -> Any:
+        return self._bar("eyhd")
+
+
+for _cls in (TGraph, TGraphErrors, TGraphAsymmErrors, TGraphBentErrors):
     register(_cls.__name__, factory=partial(adopt, _cls))

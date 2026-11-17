@@ -198,18 +198,28 @@ def _records(name: str, options: CsvOptions) -> tuple[list[str] | None, list[lis
     return header, records
 
 
-def _check_widths(name: str, names: list[str], records: list[list[str]]) -> None:
-    short = next((n for n, row in enumerate(records) if len(row) != len(names)), None)
-    if short is not None:
-        raise ValueError(f"Record {short} of the CSV file {name} has {len(records[short])} fields "
-                         f"where the file has {len(names)} columns.")  # fmt: skip
+def _check_widths(name: str, names: list[str], records: list[list[str]]) -> list[list[str]]:
+    """The records, each as wide as the file's columns: a short one padded with an empty cell.
+
+    ``RCsvDS::FillRecord`` fills a record with as many values as the line has fields
+    and leaves the columns past them alone, which is an empty cell for each; a
+    record with *more* fields than the file has columns reads past the header
+    there, so it is refused here.
+    """
+    for at, row in enumerate(records):
+        if len(row) > len(names):
+            raise ValueError(
+                f"Record {at} of the CSV file {name} has {len(row)} fields where the file has "
+                f"{len(names)} columns.")
+        row.extend(["nan"] * (len(names) - len(row)))
+    return records
 
 
 def from_csv(name: str, options: CsvOptions) -> Columns:
     """A CSV file's records as columns, the file (or URL) read whole."""
     header, records = _records(name, options)
     names = _names(header if header is not None else records[0], options)
-    _check_widths(name, names, records)
+    records = _check_widths(name, names, records)
     letters = _letters(names, records, options)
     empty: list[str] = []
     columns = {n: _converted([row[i] for row in records], letters[n], n, empty)

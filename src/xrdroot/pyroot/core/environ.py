@@ -208,8 +208,9 @@ class _PyConfig:
     a script that sets them needs.
     """
 
-    #: Take ``sys.argv``'s ROOT options at start-up - off, as ROOT's own is by default.
-    IgnoreCommandLineOptions = False
+    #: Take ``sys.argv``'s ROOT options at start-up - on, which is ROOT's own default:
+    #: PyROOT takes ``-b``, ``-l``, ``-q`` and the rest off a script's command line.
+    IgnoreCommandLineOptions = True
     #: Run ``~/.rootlogon.C`` - off for the same reason.
     DisableRootLogon = False
     #: Install ROOT's exception hook - off; this library raises Python exceptions.

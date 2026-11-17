@@ -55,11 +55,15 @@ def _wrapped(value: Any) -> Any:
 
 
 def _vector_of(values: Any) -> Any:
-    """What ``Take`` gives back: the ``std::vector`` of a column of numbers, as ROOT's does."""
-    if isinstance(values, np.ndarray) and values.ndim == 1 and values.dtype.kind in "biuf":
+    """What ``Take`` gives back: the ``std::vector`` of a column - numbers, or strings - as
+    ROOT's does, so that ``Take['string']('name').at(0)`` reads one."""
+    if isinstance(values, np.ndarray) and values.ndim == 1:
         from ..stl import std
 
-        return std.vector[values.dtype](values)
+        if values.dtype.kind in "biuf":
+            return std.vector[values.dtype](values)
+        if values.dtype.kind in "OUS" and all(isinstance(v, str) for v in values):
+            return std.vector["string"](values)  # a column of strings, not of rows
     return values
 
 

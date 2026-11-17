@@ -110,7 +110,10 @@ def test_run_runs_a_python_script_with_root_as_pyroot(
     path = write(tmp_path, "script.py", "import ROOT\nprint(ROOT.kRed, __name__)\n")
     assert main(["run", str(path)]) == 0
     assert capsys.readouterr().out == "632 __main__\n"
-    assert sys.modules["ROOT"] is fake_pyroot
+    # ``ROOT`` is a module of the namespace's names - its own name, as ROOT's is - so a
+    # script's names come from the fake the test put in the namespace's place.
+    assert sys.modules["ROOT"].__name__ == "ROOT"
+    assert sys.modules["ROOT"].kRed is fake_pyroot.kRed
 
 
 def test_run_gives_a_python_script_its_own_name_alone_as_its_arguments(

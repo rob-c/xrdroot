@@ -167,7 +167,8 @@ def test_the_window_system_is_batch_and_says_so():
 
 def test_pyconfig_keeps_the_switches_a_script_sets():
     config = ROOT.PyConfig
-    assert config.IgnoreCommandLineOptions is False
+    # ROOT's own default: PyROOT takes the ROOT options off a script's command line.
+    assert config.IgnoreCommandLineOptions is True
     config.IgnoreCommandLineOptions = True
     assert config.IgnoreCommandLineOptions is True
     assert config.DisableRootLogon is False
