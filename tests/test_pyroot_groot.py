@@ -47,6 +47,10 @@ def test_groot_names_the_release_it_follows():
         (ROOT.gROOT.GetVersionCode(), (6 << 16) + (40 << 8) + 4),
         (ROOT.gROOT.GetGitCommit(), ""),
         (ROOT.gROOT.GetConfigFeatures(), "pyroot"),
+        # A date a macro compares with a number, as `GetVersionDate() < 20030406` does.
+        (ROOT.gROOT.GetVersionDate(), 20250417),
+        (ROOT.gROOT.GetVersionTime(), 0),
+        (ROOT.gDebug, 0),
     )
 
 

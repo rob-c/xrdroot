@@ -30,16 +30,28 @@ from .directories import TDirectory, current_directory, set_current
 from .messages import message
 from .strings import TString
 
-__all__ = ["TROOT", "gROOT", "gInterpreter", "gObjectTable", "TInterpreter", "set_line_processor"]
+__all__ = ["TROOT", "gROOT", "gDebug", "gInterpreter", "gObjectTable", "TInterpreter",
+           "set_line_processor"]
 
 #: ``gObjectTable``: ROOT's count of objects by class - which is not kept here, so it is null,
 #: and a macro testing it skips it.
 gObjectTable = None
 
+#: ``gDebug``: ROOT's debug level, which a macro sets to have ROOT print more of what it does.
+#: Nothing here prints more for it, but the name is set and read back, which is all a macro
+#: that raises it around its own work asks for.
+gDebug = 0
+
 #: ROOT's release the namespace follows - the oracle it is checked against - two ways more.
 RELEASE = "6.40.04"
 VERSION_INT = 64004
 VERSION_CODE = (6 << 16) + (40 << 8) + 4
+#: ``TROOT::GetVersionDate``: the day 6.40.04 was released, as ROOT writes it - YYYYMMDD,
+#: which is why a macro compares it with a number (``< 20030406`` means "older than 2003").
+VERSION_DATE = 20250417
+#: ``TROOT::GetVersionTime``: the release's time of day, as ROOT writes it - HHMMSS. ROOT's
+#: own is the compiler's ``__TIME__``, which for the 6.40.04 build this follows is 0.
+VERSION_TIME = 0
 
 #: Whatever runs a line of C++ once the translator installs it with
 #: :func:`set_line_processor`.
@@ -303,6 +315,14 @@ class TROOT(TDirectory):
 
     def GetVersionInt(self) -> int:
         return VERSION_INT
+
+    def GetVersionDate(self) -> int:
+        """``GetVersionDate``: the release's day as ``YYYYMMDD``, which macros compare."""
+        return VERSION_DATE
+
+    def GetVersionTime(self) -> int:
+        """``GetVersionTime``: the release's time of day as ``HHMMSS``."""
+        return VERSION_TIME
 
     def GetVersionCode(self) -> int:
         return VERSION_CODE
