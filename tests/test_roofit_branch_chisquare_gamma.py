@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from refmachine import roots
 from xrdroot.roofit.collections import RooArgList, RooArgSet
 from xrdroot.roofit.data.dataset import RooDataSet
 from xrdroot.roofit.functions import RooFormulaVar
@@ -22,6 +23,12 @@ from xrdroot.roofit.rng import generator
 from xrdroot.roofit.variables import RooRealVar
 
 EVENTS = (0.5, 1.5, 3.0, 7.0, 12.0)
+
+#: How close a likelihood's value is to ROOT's off ROOT's machine. The value is a sum of
+#: five terms of ``fast_log`` and ``fast_exp``; Apple's arm64 libm rounds one of them an ulp
+#: the other way from the x86-64 libraries that printed the reference, which moves the sum
+#: by one unit in its last place, 1.3e-16 of itself. 1e-12 leaves four orders of margin.
+NLL_REL = 1e-12
 
 
 def _data(x: Any) -> RooDataSet:
@@ -61,9 +68,9 @@ def test_the_chisquare_likelihood_takes_the_kernels_digits() -> None:
     """VDT's ``fast_log`` and ``fast_exp`` in the likelihood: ROOT's value to the last bit."""
     chi, x, ndof = _chi()
     nll = chi.createNLL(_data(x))
-    assert nll.getVal() == 13.972970374276391
+    assert nll.getVal() == roots(13.972970374276391, rel=NLL_REL)
     ndof.setVal(4.5)
-    assert nll.getVal() == 13.866060381602283
+    assert nll.getVal() == roots(13.866060381602283, rel=NLL_REL)
 
 
 def _noncentral() -> tuple[Any, Any, Any]:
@@ -148,7 +155,7 @@ def test_the_gamma_likelihood_is_the_kernels_even_at_its_origin() -> None:
     nll = pdf.createNLL(_data(x))
     assert math.isnan(nll.getVal())
     shape.setVal(1.0)
-    assert nll.getVal() == 16.360647572214347
+    assert nll.getVal() == roots(16.360647572214347, rel=NLL_REL)
 
 
 def test_gamma_draws_are_roots_for_every_shape_and_a_narrowed_range() -> None:
