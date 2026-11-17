@@ -20,13 +20,17 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1043 / 2173** |
-| gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 |
+| roottest | 1038 / 2173 (47.8 %) | **1044 / 2173** |
+| gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (507 cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **80 / 129 (469 / 515 cases)** |
-| `test/` | 4 / 59 | 4 / 59 |
-| module tests (`other`) | 14 / 109 | **15 / 109** |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1192 / 2820** |
+| `test/` | 4 / 59 | **6 / 59** |
+| module tests (`other`) | 14 / 109 | **16 / 109** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1198 / 2820 (42.5 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run) |
+
+The "now" column is `/tmp/xr2/final2` (roottest) and `/tmp/xr2/final1` (the
+other kinds), both run on this machine at `ddc6039`; 14 tests gained, none
+lost, and the per-test deltas are in §7.
 
 **The shape of the remaining work**, which decides the order below:
 
@@ -746,8 +750,29 @@ cheap to maintain and impossible to reconstruct.
 | Q-12 (part) | done | `95f4f41` | +1 roottest | a macro's `Cell` knows its C++ type, so `float n` is a `Float_t` branch; `SetBranchAddress` answers `-2` for a buffer of another type |
 | Q-8 | done | `f9b593a` | +2 pyunittest files (+6 cases) | `ROOT.__name__`, `PyConfig.IgnoreCommandLineOptions`, `TContext(nullptr)`, `FromCSV`'s options, `Take` of strings, `TGraphBentErrors`, `ROOT.vector` |
 | Q-1 (part) | done | `867410f` | roottest 1038 → 1043 | `TClass::GetClassInfo` and `ClassInfo`; gained `cling/stl/map/stringMap`, `badstringMap`, `cling/stl/vector/Run`, `io/perf/julius`, `treeformula/scan/FormattingWrite`, none lost |
-| W0-1 … W0-8 | todo | | | the harness tasks are untouched |
-| Q-7, Q-10, Q-11, Q-13 … | todo | | | |
+| Q-1 (part) | done | `7da3a87`, `ddc6039` | other +2, `test/` +2 | `TMath::LnGamma` is `::lgamma` at a negative argument (ROOT's own `mathcore-testSpecFuncGamma` exits 0 now); `gDebug`, `TROOT::GetVersionDate`/`GetVersionTime` |
+| Q-7 (part) | done | `ddc6039` | 1 | `gDebug`; `fgets`, `TCpu`/`Architecture`, `TEnum`, `TTreeFormula`, `TSelector` and the TMVA DNN surface are what the next block of `other` tests waits on |
+| W0-1 … W0-8 | todo | | | the harness tasks are untouched. Next: `baseline.json` is still `10e0e58`'s, which is a subset of today's PASSes (so the ratchet cannot regress), and `python -m tools.rootsuite baseline RUN/results.json` wants the four oracle-free kinds in one run |
+| Q-10, Q-11, Q-13 … | todo | | | |
+
+**Totals, measured** (`/tmp/xr2/final1` for gtest/pyunittest/test/other,
+`/tmp/xr2/final2` for roottest, both at `ddc6039`): roottest 1038 → 1044,
+pyunittest 78 → 80 files and 439 → 469 cases, `test/` 4 → 6, `other` 14 → 16,
+gtest 52 → 52. **No PASS was lost**, and the 12 that were gained, in the order
+they came:
+
+| test | why |
+|---|---|
+| `roottest/cling/stl/map/stringMap`, `badstringMap` | `TClass::GetClassInfo` |
+| `roottest/cling/stl/vector/Run` | `ROOT.vector`, and the char-array branch |
+| `roottest/root/io/perf/julius` | zlib level 1, ROOT's own compression |
+| `roottest/root/treeformula/scan/FormattingWrite` | a `Cell`'s C++ type is its branch's type |
+| `roottest/root/io/recover/empty` | `gDebug` |
+| `pyunittest/.../pyroot_root_module` (3 cases) | `ROOT.__name__`, `PyConfig`, `TContext(nullptr)` |
+| `pyunittest/tree/dataframe/datasource_py_csv` (1 case) | `FromCSV`'s option keywords |
+| `other/math/mathcore/mathcore-testSpecFuncGamma` | `TMath::LnGamma` at a negative argument |
+| `other/math/minuit2/minuit2_ParallelTest` | ran inside 300 s on an unloaded machine (it took 236 s; it is not a fix) |
+| `test/stressspectrum`, `test/stressspectrum-interpreted` | `TROOT::GetVersionDate` |
 
 Rules for the ledger: a row moves to `done` only when its **verification
 command** was run and the delta is in a `results.json`; quote the number

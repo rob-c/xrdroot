@@ -16,7 +16,8 @@ from typing import Any
 
 from .judge import STATUSES
 
-__all__ = ["BASELINE", "FULL_KINDS", "regressions", "write_baseline", "timeouts"]
+__all__ = ["BASELINE", "FULL_KINDS", "judged", "regressions", "write_baseline",
+           "timeouts"]
 
 #: Kept in the repository so checking a run never silently starts with no promises.
 BASELINE = Path(__file__).with_name("baseline.json")
@@ -25,14 +26,34 @@ BASELINE = Path(__file__).with_name("baseline.json")
 FULL_KINDS = ("gtest", "roottest", "pyunittest", "test")
 
 
+def judged(doc: Mapping[str, Any]) -> set[str]:
+    """The kinds a run covers, which are the only ones its ratchet may judge.
+
+    A run of one kind - ``--kind roottest`` while working on the tree layer - says
+    nothing about the others, so their baseline PASSes are not "missing": they
+    were not asked for. A document that does not say which kinds it ran is taken
+    to cover every kind the baseline holds.
+    """
+    kinds = set(doc.get("meta", {}).get("kinds") or FULL_KINDS)
+    return set(FULL_KINDS) if not kinds else kinds
+
+
 def regressions(baseline: Mapping[str, str], doc: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """Each baseline PASS that this run did not pass, with what it got instead."""
+    """Each baseline PASS of a kind this run covers that it did not pass, with what it got.
+
+    A run of one kind - ``--kind roottest`` while working on the tree layer - says
+    nothing about the others, so their baseline PASSes are not "missing": they
+    were not asked for. An id with no kind in it cannot be attributed to one, and
+    is judged as it always was.
+    """
     if not baseline or any(status not in STATUSES for status in baseline.values()):
         raise ValueError("The rootsuite baseline must map test ids to known statuses.")
     records = {record["id"]: record for record in doc["tests"]}
+    kinds = judged(doc)
     failed = []
     for test_id, status in sorted(baseline.items()):
-        if status != "PASS":
+        kind, sep, _ = test_id.partition("/")
+        if status != "PASS" or (sep and kind not in kinds):
             continue
         record = records.get(test_id, {"id": test_id, "status": "MISSING",
                                        "reason": "not in the results"})

@@ -124,6 +124,18 @@ def test_a_baseline_pass_that_fails_or_goes_missing_is_a_regression():
     assert [(r["id"], r["status"]) for r in failed] == [("a", "FAIL"), ("c", "MISSING")]
 
 
+def test_a_baseline_pass_of_a_kind_this_run_did_not_run_is_not_a_regression():
+    """``--kind roottest`` says nothing about the ``other`` kind, so its baseline PASSes are
+    not missing - they were not asked for - while a kind the run covers is still judged."""
+    doc = results(record("roottest/a", "FAIL", kind="roottest"),
+                  record("roottest/b", "PASS", kind="roottest"), kinds=["roottest"])
+    baseline = {"roottest/a": "PASS", "roottest/b": "PASS", "other/c": "PASS",
+                "gtest/d": "PASS"}
+    assert [r["id"] for r in ratchet.regressions(baseline, doc)] == ["roottest/a"]
+    assert ratchet.judged(doc) == {"roottest"}
+    assert ratchet.judged(results(record("a", "PASS"))) == set(ratchet.FULL_KINDS)
+
+
 def test_a_baseline_with_unknown_statuses_is_refused():
     with pytest.raises(ValueError):
         ratchet.regressions({"a": "GREAT"}, results())
