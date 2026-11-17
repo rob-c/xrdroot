@@ -148,7 +148,8 @@ def test_the_header_says_what_root_would_say():
         struct.unpack_from(">iiiiiBiii", data, 12)
     )
     assert end == len(data)
-    assert (nfree, units, codes) == (1, 4, 106)
+    # 101 is ROOT's own default: zlib at level 1, ``TFile::GetCompressionSettings``.
+    assert (nfree, units, codes) == (1, 4, 101)
     assert 100 < seek_info < seek_free < end
     assert nbytes_free == 34 + len("<file>") + 10  # the free record's key, then its 10 bytes
     assert nbytes_info > 0
@@ -314,9 +315,10 @@ def test_a_new_graph_refuses_bars_that_do_not_line_up_with_the_points():
 
 @pytest.mark.parametrize(
     ("algorithm", "code"),
-    [("zlib", 106), ("lzma", 206), ("lz4", 401), ("zstd", 503), (None, 0)],
+    [("zlib", 101), ("lzma", 206), ("lz4", 401), ("zstd", 503), (None, 0)],
 )
 def test_every_compression_setting_round_trips_and_says_so_in_the_header(algorithm, code):
+    """The zlib code is 101: ROOT's own default, ``TFile``'s zlib at level 1."""
     if algorithm == "zstd" and not HAVE_ZSTD:
         pytest.skip("no zstd in this interpreter")
     hist = Histogram.new("h", range(101), [float(step % 7) for step in range(100)])

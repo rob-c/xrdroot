@@ -41,8 +41,11 @@ CODES = {"zlib": 1, "lzma": 2, "lz4": 4, "zstd": 5}
 #: The algorithm a setting such as ``101`` names in its hundreds: 0, ROOT's
 #: global default, is zlib, as is 1.
 NUMBERED = {0: "zlib", 1: "zlib", 2: "lzma", 4: "lz4", 5: "zstd"}
-#: What each algorithm is asked for when the caller does not say.
-LEVELS = {"zlib": 6, "lzma": 6, "lz4": 1, "zstd": 3}
+#: What each algorithm is asked for when the caller does not say. zlib's one is
+#: ROOT's: ``TFile``'s default compression is 101, which is zlib at level 1 - the
+#: cheapest setting that still compresses, and the one a written file's header
+#: has to agree with.
+LEVELS = {"zlib": 1, "lzma": 6, "lz4": 1, "zstd": 3}
 TAGS = {"zlib": b"ZL", "lzma": b"XZ", "lz4": b"L4", "zstd": b"ZS"}
 #: The method byte each writer puts third in the block header, matching what
 #: ROOT writes: zlib says 8 (deflate), lzma says 0, lz4 and zstd say 1.
