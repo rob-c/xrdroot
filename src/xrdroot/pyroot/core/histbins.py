@@ -245,6 +245,23 @@ class Bins:
         w = float(args[1]) if len(args) > 1 else 1.0
         self._xrd._cells()[int(args[0])] += w
 
+    def SetContent(self, content: Any) -> bool:
+        """``SetContent(content)``: every cell at once, the flow bins included.
+
+        ROOT's takes a ``Double_t*`` of ``fNcells`` values in global-bin order, as
+        ``GetIntegral`` hands them back, and copies them over ``fArray`` without
+        touching the entries or the sums - which is what the two frequentist
+        upper-limit tutorials do to a clone of their histogram.
+        """
+        values = np.asarray(content, dtype=np.float64).ravel()
+        cells = self._xrd._cells()
+        if values.size < cells.size:
+            raise ValueError(
+                f"SetContent takes one value per cell of the histogram, flow bins included, "
+                f"which is {cells.size} here, and was given {values.size}")
+        cells[:] = values[: len(cells)]
+        return True
+
     def GetBinError(self, *args: Any) -> float:
         """``GetBinError``: the root of the bin's squared weights, or of its content."""
         bin = self._global(args)

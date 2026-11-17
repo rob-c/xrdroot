@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import array
+import math
 
 import numpy as np
 import pytest
@@ -222,7 +223,10 @@ def test_random_numbers_from_a_histogram(tmp_path):
     h = filled()
     expect(
         (bool(0 <= h.GetRandom(ROOT.TRandom3(2)) <= 4), True),
-        (h.GetIntegral()[-1], 1.0),
+        # ROOT's fIntegral is the running sums and then fEntries once more, as
+        # GetIntegral hands it out; [-2], the total, is normalised to one.
+        (h.GetIntegral()[-1], float(h.GetEntries())),
+        (h.GetIntegral()[-2], 1.0),
     )
     h2 = ROOT.TH2D("h2", "", 2, 0, 2, 2, 0, 2)
     h2.Fill(1.5, 0.5)
@@ -311,3 +315,34 @@ def test_histograms_of_64_bit_integers_keep_whole_numbers():
         made.SetBinContent(1, 2**40 + 1)
         assert made.GetBinContent(1) == 2**40 + 1 and made.ClassName().endswith("L")
     assert ROOT.TH2L.CLASS_TITLE == "2-Dim histograms (one 64 bit integer per channel)"
+
+
+def test_a_negative_bin_is_a_nan_integral_and_a_nan_draw(capsys):
+    """ROOT's ``onlyPositive`` check: ``Error in <TH1::ComputeIntegral>``, a NaN from
+    ``ComputeIntegral``, and a NaN from a draw - which is what ``GetRandom2`` sets too."""
+    h = ROOT.TH1D("h", "", 2, 0, 2)
+    h.Fill(0.5)
+    h.SetBinContent(2, -1.0)
+    assert math.isnan(h.ComputeIntegral(True))
+    assert "Error in <TH1::ComputeIntegral>: Bin content is negative - return a NaN value" in (
+        capsys.readouterr().err)
+    assert math.isnan(h.GetRandom())
+    x, y = array.array("d", [9]), array.array("d", [9])
+    h2 = ROOT.TH2D("h2", "", 2, 0, 2, 2, 0, 2)
+    h2.Fill(0.5, 0.5)
+    h2.SetBinContent(2, 2, -1.0)
+    assert all(math.isnan(v) for v in h2.GetRandom2(x, y))
+    assert (math.isnan(x[0]), math.isnan(y[0])) == (True, True)
+
+
+def test_an_integral_already_made_is_used_again_until_the_entries_move(capsys):
+    """ROOT keeps ``fIntegral`` and remakes it only when ``fEntries`` changed: an empty
+    histogram says its integral is zero once, and again once it is filled."""
+    empty = ROOT.TH1D("e", "", 2, 0, 1)
+    assert empty.ComputeIntegral() == 0.0
+    assert "Integral = 0, no hits in histogram bins" in capsys.readouterr().err
+    assert (empty.GetIntegral()[-1], empty.GetIntegral()[-2]) == (0.0, 0.0)
+    capsys.readouterr()
+    assert empty.GetIntegral()[-1] == 0.0 and capsys.readouterr().err == ""  # still the same
+    empty.Fill(0.5)
+    assert empty.GetIntegral()[-2] == 1.0 and empty.GetIntegral()[-1] == 1.0

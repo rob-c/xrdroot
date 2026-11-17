@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 
 from .directories import current_directory
+from .messages import message
 from .randoms import current_generator
 from .refs import store
 from .wrapping import unwrap, wrap
@@ -471,21 +472,64 @@ class Operations:
         self._xrd.fill_random(source, int(ntimes), rng=generator)
 
     def ComputeIntegral(self, onlyPositive: bool = False) -> float:
-        """``ComputeIntegral``: the running sum of the bins, x fastest, kept normalised."""
+        """``ComputeIntegral``: the running sum of the in-range bins, normalised to one.
+
+        ROOT keeps ``nbins + 2`` numbers in ``fIntegral``, ``nbins`` the
+        in-range bins taken x fastest: zero, a running sum per bin, and the
+        histogram's entry count once more at the end. ``GetIntegral`` hands
+        them out, which is what the frequentist upper-limit tutorials read
+        back with ``SetContent``, and what ``GetRandom`` draws through.
+
+        With ``onlyPositive`` a bin below zero is ROOT's error and a NaN
+        returned; a histogram with nothing in range is ROOT's error and 0.
+        ROOT recomputes only when the entry count moved, which is why
+        ``GetIntegral()`` on an empty histogram prints its error once.
+        """
         values = np.asarray(self._xrd.values(), dtype=np.float64).ravel(order="F")
         running = np.concatenate([[0.0], np.cumsum(values)])
         total = float(running[-1])
-        self._integral = running / total if total else running
-        return total
+        self._entries = float(self.GetEntries())  # type: ignore[attr-defined]
+        if onlyPositive and bool((values < 0.0).any()):
+            message("Error", "TH1::ComputeIntegral", "Bin content is negative - return a NaN value")
+            self._integral = np.concatenate([running, [float("nan")]])
+            return float("nan")
+        if total == 0.0:
+            message("Error", "TH1::ComputeIntegral",
+                    "Integral = 0, no hits in histogram bins (excluding over/underflow).")
+            self._integral = np.concatenate([running, [self._entries]])
+            return 0.0
+        self._integral = np.concatenate([running / total, [self._entries]])
+        return 1.0
 
     def GetIntegral(self) -> np.ndarray[Any, Any]:
-        self.ComputeIntegral()
+        """``GetIntegral``: ``fIntegral`` - the running sums, then the entry count."""
+        self._cached_integral()
         return self._integral
+
+    def _cached_integral(self) -> float:
+        """What :meth:`ComputeIntegral` returns, as ROOT asks for it: made again only when
+        the histogram's entry count moved since last time."""
+        cached = getattr(self, "_integral", None)
+        if cached is None or not (cached[-1] == float(self.GetEntries())):  # type: ignore[attr-defined]
+            return self.ComputeIntegral()
+        return float(cached[-2])
+
+    def _integral_for_drawing(self) -> float:
+        """The integral a draw is made from: ROOT's cached one, or a fresh check for bins
+        below zero - which is why a draw from an empty histogram says so once."""
+        return float(self._integral[-2]) if self._cache_is_current() else self.ComputeIntegral(True)
+
+    def _cache_is_current(self) -> bool:
+        cached = getattr(self, "_integral", None)
+        return cached is not None and cached[-1] == float(self.GetEntries())  # type: ignore[attr-defined]
 
     def GetRandom(self, rng: Any = None) -> float:
         """``GetRandom``: a number drawn from the histogram, as ROOT draws it from its bins."""
-        if self.ComputeIntegral(True) == 0:
+        integral = self._integral_for_drawing()
+        if integral == 0:
             return 0.0
+        if math.isnan(integral):
+            return float("nan")  # ROOT's GetRandom hands out a NaN for negative bins
         generator = unwrap(rng) if rng is not None else current_generator()
         r1 = float(generator.rndm())
         return self._position(0, r1)
@@ -493,7 +537,7 @@ class Operations:
     def _position(self, at: int, r1: float) -> float:
         """Where in its bin a draw of ``r1`` lands, by the running sum, along axis ``at``."""
         integral = self._integral
-        nbins = len(integral) - 1
+        nbins = len(integral) - 2  # fIntegral is the running sums, then the entry count
         ibin = int(np.searchsorted(integral[:nbins], r1, side="right")) - 1
         axis = self.GetXaxis()  # type: ignore[attr-defined]
         step = _within(r1, integral[ibin], integral[ibin + 1])
@@ -501,14 +545,19 @@ class Operations:
 
     def GetRandom2(self, x: Any = None, y: Any = None, rng: Any = None) -> tuple[float, float]:
         """``GetRandom2(x, y)``: a point drawn from a two-dimensional histogram."""
-        if self.ComputeIntegral(True) == 0:
+        integral = self._integral_for_drawing()
+        if integral == 0:
             store(x, 0.0)
             store(y, 0.0)
             return 0.0, 0.0
+        if math.isnan(integral):
+            store(x, float("nan"))
+            store(y, float("nan"))
+            return float("nan"), float("nan")
         generator = unwrap(rng) if rng is not None else current_generator()
         r1 = float(generator.rndm())
         integral, nx = self._integral, self._xrd.axes[0].nbins
-        ibin = int(np.searchsorted(integral[: len(integral) - 1], r1, side="right")) - 1
+        ibin = int(np.searchsorted(integral[: len(integral) - 2], r1, side="right")) - 1
         biny, binx = divmod(ibin, nx)
         xaxis, yaxis = self.GetXaxis(), self.GetYaxis()  # type: ignore[attr-defined]
         px = float(xaxis.GetBinLowEdge(binx + 1))

@@ -139,3 +139,12 @@ def test_every_array_kind_holds_its_type_and_is_iterated_and_set() -> None:
     floats.Reset(1.0)
     assert list(floats) == [1.0, 1.0] and len(floats) == 2
     assert np.array(floats, copy=True) is not floats.GetArray()
+
+
+def test_a_ta_arrays_public_farray_is_the_values_themselves() -> None:
+    """ROOT's own data member, so a macro that writes ``arr->fArray[i]`` reaches the array."""
+    numbers = ROOT.TArrayI([3, 4, 5])
+    assert numbers.fArray.tolist() == [3, 4, 5]
+    numbers.fArray[1] = 9
+    assert numbers.At(1) == 9 and list(numbers) == [3, 9, 5]
+    assert np.shares_memory(numbers.fArray, numbers.GetArray())

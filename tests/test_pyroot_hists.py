@@ -382,3 +382,27 @@ def test_a_macros_float_fills_the_bin_and_sums_a_double_does():
     assert (one.GetMean(1), one.GetSumOfWeights()) == (other.GetMean(1), other.GetSumOfWeights())
     one.Fill(np.uint8(2), np.float16(2.5))  # other kinds of number take the general way
     assert one.GetBinContent(3, 3) == 1.0
+
+
+def test_set_content_takes_every_cell_at_once_flows_included() -> None:
+    """ROOT's ``SetContent(const Double_t*)``: the bins and both flows, and nothing else moved.
+
+    The frequentist upper-limit tutorials do this to a clone of their histogram,
+    handing it what ``GetIntegral`` gave back.
+    """
+    h = ROOT.TH1F("h", "", 3, 0, 3)
+    h.Fill(0.5)
+    h.Fill(2.5)
+    assert h.SetContent([10.0, 1.0, 2.0, 3.0, 40.0]) is True
+    assert [h.GetBinContent(b) for b in range(0, 5)] == [10.0, 1.0, 2.0, 3.0, 40.0]
+    # The entries and the sums are the ones the fills left: SetContent copies fArray alone.
+    assert h.GetEntries() == 2
+    cumulative = h.Clone("c")
+    assert cumulative.SetContent(h.GetIntegral()) is True
+    assert cumulative.GetBinContent(3) == h.GetIntegral()[3]
+    square = ROOT.TH2D("s", "", 2, 0, 2, 2, 0, 2)
+    with pytest.raises(ValueError, match="one value per cell of the histogram"):
+        square.SetContent([1.0, 2.0, 3.0])
+    assert square.SetContent([float(cell) for cell in range(16)]) is True
+    # x fastest with a flow bin each side, as GetBin numbers them: (2, 2) is cell 10.
+    assert (square.GetBinContent(1, 1), square.GetBinContent(2, 2)) == (5.0, 10.0)

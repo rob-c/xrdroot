@@ -241,6 +241,15 @@ class _TArray(TObject):
     def GetArray(self) -> np.ndarray[Any, Any]:
         return self._v
 
+    @property
+    def fArray(self) -> np.ndarray[Any, Any]:
+        """``fArray``: ROOT's public pointer to the first value, which is the values here.
+
+        It is ROOT's own data member, so code that writes ``arr->fArray[i]`` - the
+        ``bigevent`` tests do - reaches the same numbers as ``GetArray()`` does.
+        """
+        return self._v
+
     def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray[Any, Any]:
         """The values, as NumPy asks for them: a copy when it asks for one."""
         made = np.asarray(self._v, dtype=dtype)
