@@ -506,3 +506,17 @@ void streamed() {
 def test_classdef_gives_a_class_its_own_streamer_and_isa(capfd):
     run_source(STREAMED, "streamed.C")
     assert capfd.readouterr().out == "3 1.5 simple\n"
+
+
+def test_get_class_info_answers_for_a_class_something_describes_and_null_otherwise():
+    """A macro asks ``cl->GetClassInfo() == 0`` to decide whether to load a dictionary first,
+    so a class that is here answers with one and a class nobody describes with nothing."""
+    _declared()
+    known = ROOT.TClass.GetClass("Named").GetClassInfo()
+    expect(
+        ((known.IsValid(), known.GetName(), known.Tagnum()), (True, "Named", 0)),
+        (known.Size() > 0, True),
+        (repr(known), "<ClassInfo_t of Named>"),
+        (ROOT.TClass.GetClass("vector<int>").GetClassInfo().GetName(), "vector<int>"),
+        (ROOT.TClass.GetClass("NobodyKnowsThis").GetClassInfo(), None),
+    )

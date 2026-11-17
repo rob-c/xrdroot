@@ -24,6 +24,7 @@ from .messages import message
 from .objects import TNamed, TObject
 
 __all__ = [
+    "ClassInfo",
     "TClass",
     "TStreamerInfo",
     "TVirtualStreamerInfo",
@@ -135,6 +136,37 @@ def _template(name: str) -> bool:
     return "<" in name and head in CONTAINERS
 
 
+class ClassInfo:
+    """``ClassInfo_t``: what the interpreter knows of a class, as ``GetClassInfo`` gives it.
+
+    ROOT's is an opaque handle and its parts are read through ``TInterpreter``'s
+    ``ClassInfo_*`` functions; what is kept here is the ``TClass`` it describes,
+    which is what those questions are about.
+    """
+
+    def __init__(self, klass: TClass) -> None:
+        self._klass = klass
+
+    def __repr__(self) -> str:
+        return f"<ClassInfo_t of {self._klass.GetName()}>"
+
+    def IsValid(self) -> bool:
+        return True
+
+    def GetName(self) -> str:
+        """``ClassInfo_Name``: the class's name, as C++ spells it."""
+        return self._klass.GetName()
+
+    def Size(self) -> int:
+        """``ClassInfo_Size``: how many bytes one object of the class takes."""
+        return self._klass.Size()
+
+    def Tagnum(self) -> int:
+        """``ClassInfo_Tagnum``: the interpreter's own number for the class, which is 0 here
+        since nothing is tagged: a macro that memoises by it memoises once."""
+        return 0
+
+
 class TClass(TNamed):
     """``TClass``: what ``IsA`` answers - a class's name, version, bases, members and layout."""
 
@@ -184,7 +216,19 @@ class TClass(TNamed):
 
     def HasDictionary(self) -> bool:
         """``HasDictionary``: does anything here describe the class's members?"""
-        return self._class() is not None or self._name in INFOS
+        return self._class() is not None or self._name in INFOS or _template(self._name)
+
+    def GetClassInfo(self) -> ClassInfo | None:
+        """``GetClassInfo()``: the interpreter's descriptor of the class - ``nullptr`` when no
+        dictionary describes it.
+
+        A macro asks this to decide whether it has to load a library first
+        (``if (cl->GetClassInfo() == 0) gROOT->ProcessLine(".L lib.cxx+")``), so a
+        class that is here - one PyROOT has, one the interpreter declared, or a
+        standard container this kit builds - answers with one, and one nobody
+        describes answers ``nullptr``.
+        """
+        return ClassInfo(self) if self.HasDictionary() else None
 
     def IsLoaded(self) -> bool:
         return self.HasDictionary()
