@@ -62,6 +62,9 @@ def test_a_reader_opens_an_rntuple_a_tfile_holds_or_gave() -> None:
     _write()
     f = ROOT.TFile("r.root")
     assert ROOT.RNTupleReader.Open("events", f).GetNEntries() == 2
+    # ``f["events"]`` is the RNTuple itself, not a TObject standing for one, so a reader
+    # opens it as ROOT's Python does.
+    assert ROOT.RNTupleReader.Open(f["events"]).GetNEntries() == 2
     with xrdroot.open_root("r.root") as opened:
         descriptor = ROOT.RNTupleReader.Open(opened["events"]).GetDescriptor()
     assert (descriptor.GetName(), descriptor.GetDescription(), descriptor.GetNEntries()) == (
@@ -96,3 +99,47 @@ def test_a_reader_prints_its_fields_in_roots_box_and_an_entry_in_json(capsys) ->
         '{\n  "x": 1e-07,\n  "ok": false,\n  "s": "c\\\\d"\n}\n')  # fmt: skip
     with pytest.raises(UnsupportedFeatureError, match="storage details"):
         reader.PrintInfo(ROOT.ENTupleInfo.kStorageDetails)
+
+
+def test_a_reader_is_a_context_manager_that_lets_its_file_go() -> None:
+    """ROOT's Python layer wraps a reader: one ``with`` block, then nothing.
+
+    The three refusals are ROOT's own words, because a test of ROOT's matches
+    on them.
+    """
+    _write()
+    reader = ROOT.RNTupleReader.Open("events", "r.root")
+    with reader as held:
+        assert held is reader and held.GetNEntries() == 2
+        entry = held.CreateEntry()
+        held.LoadEntry(1, entry)
+        assert entry["n"] == 2
+        with pytest.raises(RuntimeError, match="cannot nest `with` statements using the same"):
+            with reader:
+                pass
+    with pytest.raises(RuntimeError, match="cannot access RNTupleReader after the `with`"):
+        reader.GetNEntries()
+    with pytest.raises(RuntimeError, match="cannot reuse RNTupleReader in multiple"):
+        with reader:
+            pass
+    assert entry["n"] == 2  # an entry's values outlive the reader that filled them
+
+
+def test_an_entry_takes_and_gives_its_values_by_field_name() -> None:
+    """``entry["f"] = v`` is PyROOT's pythonization of ``GetPtr<T>(name)``, typed as the
+    field is: a string field takes a ``str``, a number field a number."""
+    model = ROOT.RNTupleModel.Create()
+    model.MakeField["int"]("n")
+    model.MakeField["std::string"]("s")
+    model.MakeField["std::vector<float>"]("v")
+    entry = model.CreateEntry()
+    entry["n"], entry["s"], entry["v"] = 7, "seven", [1.5, 2.5]
+    assert (entry["n"], entry["s"], list(entry["v"])) == (7, "seven", [1.5, 2.5])
+    with pytest.raises(TypeError, match="is a std::string, so it holds a str, not a int"):
+        entry["s"] = 7
+    with pytest.raises(TypeError, match="is a std::int32_t, so it holds a number, not a str"):
+        entry["n"] = "seven"
+    with pytest.raises(TypeError, match="holds a number, not a object"):
+        entry["n"] = object()
+    with pytest.raises(KeyError, match="invalid field name: nothing"):
+        entry["nothing"] = 1

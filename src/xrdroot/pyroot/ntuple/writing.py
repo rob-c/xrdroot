@@ -23,6 +23,7 @@ from typing import Any
 
 import numpy as np
 
+from .context import Guarded
 from .fields import RFieldPtr
 from .model import REntry, RNTupleModel
 
@@ -118,7 +119,13 @@ class _Sink:
         self.ntuple = directory.rntuple(str(name), specs, **sizes)
         self.lock = threading.Lock()
         self.names = list(specs)
-        self.closed = False
+        self._closed = False
+
+    @property
+    def closed(self) -> bool:
+        """Whether the RNTuple can take any more entries: the writer let it go, or the file
+        it is in was closed by whoever opened it."""
+        return self._closed or bool(self.ntuple.closed)
 
     def commit(self, taken: tuple[dict[str, list[Any]], int]) -> None:
         """Entries joining the RNTuple, whole, after those any other thread is adding."""
@@ -128,7 +135,7 @@ class _Sink:
                 self.ntuple.extend(columns)
 
     def close(self) -> None:
-        self.closed = True
+        self._closed = True
         if self.file is not None:
             self.file.close()
             self.file = None
@@ -156,7 +163,7 @@ _WRITING: weakref.WeakSet[Any] = weakref.WeakSet()
 @atexit.register
 def _finish_all() -> None:
     for writer in list(_WRITING):
-        writer.reset()
+        writer._let_go()
 
 
 class _Filling:
@@ -181,16 +188,27 @@ class _Filling:
 
     def FlushCluster(self) -> None:
         """``FlushCluster``: the entries gathered so far handed to the file."""
-        self._sink.commit(self._batch.take())
+        self._flush()
 
     CommitCluster = FlushCluster
+
+    def _flush(self) -> None:
+        """The flush itself, private so that letting a closed writer go still works."""
+        self._sink.commit(self._batch.take())
 
     def FlushColumns(self) -> None:
         """``FlushColumns``: entries are kept whole until their cluster is handed on."""
 
 
-class RNTupleWriter(_Filling):
-    """``ROOT::RNTupleWriter``: entries filled into an RNTuple of a new file or an open one."""
+class RNTupleWriter(Guarded, _Filling):
+    """``ROOT::RNTupleWriter``: entries filled into an RNTuple of a new file or an open one.
+
+    It is also a context manager, as ROOT's Python layer makes it: the end of
+    the ``with`` block writes the rest and closes the file, and the writer is
+    refused from then on (see :mod:`.context`).
+    """
+
+    CONTEXT_NAME = "RNTupleWriter"
 
     def __init__(self, model: RNTupleModel, sink: _Sink) -> None:
         super().__init__(model, sink)
@@ -199,12 +217,14 @@ class RNTupleWriter(_Filling):
     @staticmethod
     def Recreate(model: RNTupleModel, name: Any, path: Any, options: Any = None) -> RNTupleWriter:
         """``Recreate(model, name, path)``: a new file at ``path`` holding the RNTuple."""
-        return RNTupleWriter(model, _Sink(model, name, str(path), options))
+        kept = model._handed_over()
+        return RNTupleWriter(kept, _Sink(kept, name, str(path), options))
 
     @staticmethod
     def Append(model: RNTupleModel, name: Any, file: Any, options: Any = None) -> RNTupleWriter:
         """``Append(model, name, file)``: the RNTuple in a ``TFile`` open for writing."""
-        return RNTupleWriter(model, _Sink(model, name, file, options))
+        kept = model._handed_over()
+        return RNTupleWriter(kept, _Sink(kept, name, file, options))
 
     def GetNEntries(self) -> int:
         return len(self._sink.ntuple) + self._batch.size
@@ -215,13 +235,21 @@ class RNTupleWriter(_Filling):
 
     def reset(self) -> None:
         """``reset()``: the writer let go - the rest written, its file closed."""
+        self._let_go()
+
+    def _close(self) -> None:
+        """The end of a ``with`` block: the rest written, the file closed, as the pointer's
+        ``reset`` does in ROOT's wrapper."""
+        self._let_go()
+
+    def _let_go(self) -> None:
         if not self._sink.closed:
-            self.FlushCluster()
+            self._flush()
             self._sink.close()
 
     def __del__(self) -> None:
         if hasattr(self, "_sink"):
-            self.reset()
+            self._let_go()
 
 
 class RNTupleFillContext(_Filling):
@@ -293,6 +321,9 @@ class RNTupleParallelWriter:
 
     def reset(self) -> None:
         """The writer let go: every context's entries written, staged ones too, the file closed."""
+        self._let_go()
+
+    def _let_go(self) -> None:
         if self._sink.closed:
             return
         for context in self._contexts:
@@ -302,4 +333,4 @@ class RNTupleParallelWriter:
 
     def __del__(self) -> None:
         if hasattr(self, "_sink"):
-            self.reset()
+            self._let_go()

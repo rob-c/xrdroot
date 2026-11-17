@@ -43,7 +43,12 @@ def test_a_writer_fills_the_default_entry_and_finishes_when_let_go() -> None:
         name.value = f"e{i}"
         assert writer.Fill() > 0
     assert writer.GetNEntries() == 3 and writer.get() is writer
-    assert writer.GetModel() is model and writer.CreateEntry().GetPtr("n").value == 0
+    # ROOT's Python writer keeps a clone of the model it was given, so the
+    # caller's stays open to another MakeField; the clone keeps its default
+    # entry, which is what Fill() with no argument read.
+    assert writer.GetModel() is not model and writer.GetModel().IsFrozen()
+    assert not model.IsFrozen()
+    assert writer.CreateEntry().GetPtr("n").value == 0
     writer.FlushColumns()
     del writer
     assert _read("w.root") == {"n": [0, 1, 2], "pt": [[], [0.5], [0.5, 1.5]],
@@ -170,3 +175,43 @@ def test_a_snapshot_copies_a_vector_so_refilling_it_leaves_the_entry_be() -> Non
     copied = writing._snapshot(vector)
     vector.clear()
     assert np.array_equal(copied, [1.0])
+
+
+def test_a_writer_is_a_context_manager_that_finishes_the_file_it_opened() -> None:
+    """ROOT's Python layer wraps a writer too: the block's end writes the rest and closes.
+
+    Entering twice at once, or again after the block, is refused in ROOT's words.
+    """
+    model = ROOT.RNTupleModel.Create()
+    model.MakeField["int"]("n")
+    writer = ROOT.RNTupleWriter.Recreate(model, "events", "with.root")
+    with writer as held:
+        assert held is writer
+        entry = held.CreateEntry()
+        entry["n"] = 3
+        held.Fill(entry)
+        with pytest.raises(RuntimeError, match="cannot nest `with` statements using the same"):
+            with writer:
+                pass
+    assert _read("with.root") == {"n": [3]}
+    with pytest.raises(RuntimeError, match="cannot access RNTupleWriter after the `with`"):
+        writer.Fill(entry)
+    with pytest.raises(RuntimeError, match="cannot reuse RNTupleWriter in multiple"):
+        with writer:
+            pass
+    # The model ROOT's Python layer clones from stays open, as ROOT's does.
+    assert not model.IsFrozen()
+
+
+def test_a_writer_whose_model_was_bare_fills_only_entries_of_its_own() -> None:
+    """A bare model has no default entry, so the clone a writer holds has none either."""
+    model = ROOT.RNTupleModel.CreateBare()
+    model.MakeField["int"]("n")
+    writer = ROOT.RNTupleWriter.Recreate(model, "events", "bare.root")
+    with pytest.raises(RuntimeError, match="default entry of bare model"):
+        writer.GetModel().GetDefaultEntry()
+    entry = writer.CreateEntry()
+    entry["n"] = 1
+    writer.Fill(entry)
+    writer.reset()
+    assert _read("bare.root") == {"n": [1]}

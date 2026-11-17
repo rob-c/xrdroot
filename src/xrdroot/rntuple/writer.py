@@ -433,6 +433,12 @@ class WritableRNTuple:
         return self._entries
 
     @property
+    def closed(self) -> bool:
+        """Whether the file this RNTuple is in has been closed - by the writer, or by whoever
+        opened it - so that no entry can be added any more."""
+        return bool(self._file.closed)
+
+    @property
     def fields(self) -> dict[str, str]:
         """What each field is, in the C++ the file will say: ``{'pt': 'std::vector<float>'}``."""
         return {field.name: field.type for field in self._schema.tops()}

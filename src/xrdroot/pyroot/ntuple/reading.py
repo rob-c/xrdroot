@@ -18,8 +18,9 @@ import numpy as np
 
 from ...errors import UnsupportedFeatureError
 from ..core.objects import typed
+from .context import Guarded
 from .fields import RFieldPtr, field_type
-from .model import RField, RNTupleModel
+from .model import REntry, RField, RNTupleModel
 from .printing import info_text, json_text
 
 __all__ = ["RNTupleReader", "RNTupleView", "ENTupleInfo", "RNTupleDescriptor"]
@@ -101,12 +102,19 @@ def _load(held: Any, value: Any) -> None:
         held.assign(value)
 
 
-class RNTupleReader:
-    """``ROOT::RNTupleReader``: an RNTuple's entries, loaded one at a time into a model's entry."""
+class RNTupleReader(Guarded):
+    """``ROOT::RNTupleReader``: an RNTuple's entries, loaded one at a time into a model's entry.
+
+    A reader is a context manager too, as ROOT's Python layer makes it: the
+    end of the ``with`` block lets the file go and refuses the reader from
+    then on (see :mod:`.context`).
+    """
+
+    CONTEXT_NAME = "RNTupleReader"
 
     def __init__(self, ntuple: Any, model: RNTupleModel | None, file: Any = None) -> None:
         self._ntuple, self._file = ntuple, file
-        self._model = model if model is not None else _model_of(ntuple)
+        self._model = _model_of(ntuple) if model is None else model._handed_over()
         self._model.Freeze()
         self._columns: dict[str, Any] = {}
 
@@ -132,6 +140,10 @@ class RNTupleReader:
     def GetModel(self) -> RNTupleModel:
         return self._model
 
+    def CreateEntry(self) -> REntry:
+        """``CreateEntry()``: an entry of fresh values, one per field this reader holds."""
+        return self._model.CreateEntry()
+
     def GetDescriptor(self) -> RNTupleDescriptor:
         return RNTupleDescriptor(self._ntuple)
 
@@ -140,6 +152,9 @@ class RNTupleReader:
 
     def __del__(self) -> None:
         """The file this reader opened is closed with it, as ROOT's reader closes its own."""
+        self._close()
+
+    def _close(self) -> None:
         if getattr(self, "_file", None) is not None:
             self._file.close()
 

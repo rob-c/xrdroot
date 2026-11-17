@@ -12,9 +12,11 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Any
 
+import numpy as np
+
 from ...errors import UnsupportedFeatureError
 from ..core.objects import typed
-from .fields import FieldType, field_type
+from .fields import FieldType, RFieldPtr, field_type
 
 __all__ = ["RField", "REntry", "RNTupleModel"]
 
@@ -98,6 +100,39 @@ class REntry:
     def values(self) -> dict[str, Any]:
         """The holders, by field name, as a writer reads them."""
         return self._values
+
+    def __getitem__(self, name: Any) -> Any:
+        """``entry[name]``: the field's value - what PyROOT's ``GetPtr<T>(name)`` hands back."""
+        held = self._held(name)
+        return held.value if isinstance(held, RFieldPtr) else held
+
+    def __setitem__(self, name: Any, value: Any) -> None:
+        """``entry[name] = value``: the value into the holder, typed as the field is.
+
+        The field's type decides what may be stored: a number for a number,
+        a ``str`` for a ``std::string``, a sequence of numbers for a vector.
+        Anything else is a ``TypeError``, as storing through a
+        ``shared_ptr<T>`` of another type is in cppyy.
+        """
+        held, field = self._held(name), self._fields[str(name)]
+        if isinstance(held, RFieldPtr):
+            held.value = _stored(field, value)
+        else:
+            held.assign(value)
+
+
+def _stored(field: RField, value: Any) -> Any:
+    """``value`` as the field's own type, or a ``TypeError`` naming both."""
+    kind = field.kind()
+    where = f"the RNTuple field {field.GetFieldName()!r} is a {field.GetTypeName()}"
+    if kind.dtype is None:
+        if not isinstance(value, str):
+            raise TypeError(f"{where}, so it holds a str, not a {type(value).__name__}")
+        return str(value)
+    whole = isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_))
+    if not (whole or isinstance(value, (float, np.floating))):
+        raise TypeError(f"{where}, so it holds a number, not a {type(value).__name__}")
+    return kind.dtype.type(value).item()
 
 
 class RValue:
@@ -188,4 +223,18 @@ class RNTupleModel:
         made = RNTupleModel(bare=self._entry is None)
         for field in self._fields.values():
             made.AddField(field.Clone(field.GetFieldName()))
+        return made
+
+    def _handed_over(self) -> RNTupleModel:
+        """The model a writer or a reader holds, cloned from the one handed in.
+
+        ROOT's Python layer clones the model it is given, so that the caller's
+        own stays open to a ``MakeField`` afterwards - and it can do that
+        without losing anything there, because a Python model has no default
+        entry. Here one does, since it is what a translated macro fills
+        through, so the clone keeps the caller's default entry: ``Fill()``
+        with no entry writes what the caller put in it.
+        """
+        made = self.Clone()
+        made._entry = self._entry
         return made

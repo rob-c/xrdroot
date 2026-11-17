@@ -289,6 +289,8 @@ class TDirectoryFile(TDirectory):
 
     def _fetched(self, label: str, key: TKey) -> Any:
         """Read one record; a histogram or tree of the newest cycle stays in memory here."""
+        if key.GetClassName() == "ROOT::RNTuple":  # an RNTuple is read by its own reader
+            return self._reading[key.GetName()]
         read = self._record_of(label, key)
         found = _tree(read, key) or wrap(read)
         if not isinstance(found, TObject) and not _engine_own(found):
