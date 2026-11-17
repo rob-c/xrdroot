@@ -157,7 +157,7 @@ class TTreeReaderValue(_Read):
         """A numeric branch's writable pointer, or the existing object/collection value."""
         # The read runs before the buffer check: it is what moves the current entry into
         # the borrowed storage the pointer then exposes.
-        value = python_value(self._value(), self._leaf.vector)
+        value = python_value(self._value(), self._leaf)
         held = self._buffer()
         if held is not None:
             return held.reference()
@@ -165,7 +165,7 @@ class TTreeReaderValue(_Read):
 
     def __deref__(self) -> Any:
         """C++'s ``*value``: the number itself, or the object."""
-        return python_value(self._value(), self._leaf.vector)
+        return python_value(self._value(), self._leaf)
 
     _cint_cell = True
 

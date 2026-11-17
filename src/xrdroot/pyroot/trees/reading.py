@@ -10,6 +10,7 @@ and gets the same values.
 
 from __future__ import annotations
 
+import array
 import fnmatch
 import sys
 from collections.abc import Iterator
@@ -25,8 +26,51 @@ from .core import _TreeCore, python_value
 
 __all__ = ["_Reading"]
 
-#: What ``SetBranchAddress`` gives back: ``kMatch``, and ``kMissingBranch``.
-MATCH, MISSING_BRANCH = 0, -5
+#: What ``SetBranchAddress`` gives back: ``kMatch``, ``kMissingBranch`` and ``kMismatch``.
+MATCH, MISMATCH, MISSING_BRANCH = 0, -2, -5
+
+#: ROOT's ``EDataType`` number for each name ``TLeaf::GetTypeName`` gives, which
+#: its type-mismatch message carries beside the name.
+DATA_TYPES = {"Char_t": 1, "UChar_t": 11, "Short_t": 2, "UShort_t": 12, "Int_t": 3,
+              "UInt_t": 13, "Float_t": 5, "Double_t": 8, "Long64_t": 16, "ULong64_t": 17,
+              "Bool_t": 18}  # fmt: skip
+
+#: What a NumPy array or an ``array.array`` says it holds, as ROOT names and numbers it.
+GIVEN_TYPES = {"int8": (1, "Char_t"), "uint8": (11, "UChar_t"),
+               "int16": (2, "Short_t"), "uint16": (12, "UShort_t"),
+               "int32": (3, "Int_t"), "uint32": (13, "UInt_t"),
+               "int64": (16, "Long64_t"), "uint64": (17, "ULong64_t"),
+               "float32": (5, "Float_t"), "float64": (8, "Double_t"),
+               "bool": (18, "Bool_t")}  # fmt: skip
+
+
+def _given_type(address: Any) -> tuple[int, str] | None:
+    """The ROOT type a buffer of numbers says it holds, or ``None`` for anything else."""
+    if isinstance(address, array.array):
+        return GIVEN_TYPES.get(np.dtype(address.typecode).name)
+    if isinstance(address, np.ndarray):
+        return GIVEN_TYPES.get(address.dtype.name)
+    return None
+
+
+def _mismatch(leaves: list[Any], address: Any, name: str) -> str | None:
+    """ROOT's error when the address is a buffer of another type than the leaf's, or ``None``.
+
+    Only a buffer that names its type - a NumPy array or an ``array.array`` - is
+    checked, as PyROOT's pythonization of ``SetBranchAddress`` checks it by
+    asking the C++ template for that type: a ``char*`` is taken as a cast, which
+    is what ROOT's own check allows.
+    """
+    given = _given_type(address)
+    if given is None or len(leaves) != 1:
+        return None
+    expected = DATA_TYPES.get(leaves[0].typename)
+    number, given_name = given
+    if expected is None or number == expected or number == 1:
+        return None
+    return (f'Error in <TTree::SetBranchAddress>: The pointer type given "{given_name}" '
+            f'({number}) does not correspond to the type needed "{leaves[0].typename}" '
+            f"({expected}) by the branch: {name}")
 
 
 def _bound(address: Any, leaves: list[Any], what: str) -> list[Any]:
@@ -76,12 +120,17 @@ class _Reading(_TreeCore):
         return found or next((leaf for leaf in leaves if leaf.name == name), None)
 
     def SetBranchAddress(self, name: str, address: Any, ptr: Any = None) -> int:
-        """Read branch ``name`` into ``address`` from now on; ``-5`` if there is no such branch."""
+        """Read branch ``name`` into ``address`` from now on; ``-5`` if there is no such
+        branch, ``-2`` if the address is a buffer of another type than the branch's."""
         branch = self._branch_info(name)
         leaf = self._leaf_info(name) if branch is None else None
         if branch is None and leaf is None:
             print(f"Error in <TTree::SetBranchAddress>: unknown branch -> {name}", file=sys.stderr)
             return MISSING_BRANCH
+        wrong = _mismatch(branch.leaves if branch is not None else [leaf], address, name)
+        if wrong is not None:
+            print(wrong, file=sys.stderr)  # the address bound before stays bound, as ROOT's does
+            return MISMATCH
         for column, one in _columns_bound(name, branch, leaf, address).items():
             self._addresses[column] = one
             self._rebind(column, one)
@@ -188,7 +237,7 @@ class _Reading(_TreeCore):
         leaf = self._leaf_info(name)
         if leaf is None:
             return super().__getattr__(name)
-        return python_value(self._current(leaf.column), leaf.vector)
+        return python_value(self._current(leaf.column), leaf)
 
     def GetBranch(self, name: str) -> TBranch | None:
         """The branch ``name``, at the top of the tree or under a branch of objects."""

@@ -103,6 +103,48 @@ def test_an_address_holding_an_array_is_filled_where_it_is(tree):
     assert bytes(text).startswith(b"e3\0")
 
 
+def test_an_address_of_another_type_than_the_branch_is_refused_as_root_refuses_it(tree, capsys):
+    """-2, ``kMismatch``: PyROOT's ``SetBranchAddress`` asks the C++ template for the type the
+    buffer holds, and ROOT's check says the leaf needs another."""
+    assert tree.SetBranchAddress("px", np.zeros(1, "d")) == -2
+    assert ("The pointer type given \"Double_t\" (8) does not correspond to the type needed "
+            "\"Float_t\" (5) by the branch: px") in capsys.readouterr().err  # fmt: skip
+    assert tree.SetBranchAddress("px", np.zeros(1, "f")) == 0
+    from array import array
+
+    assert tree.SetBranchAddress("arr", array("f", [0.0])) == -2
+    # A char* is taken as a cast, as ROOT's own check takes it.
+    assert tree.SetBranchAddress("px", np.zeros(1, "b")) == 0
+    tree.SetBranchAddress("px", np.zeros(1, "f"))
+
+
+def test_a_char_array_branch_is_read_as_roots_char_array(tmp_path):
+    """``tree.label.as_string()``: cppyy hands a ``char[n]`` back as a proxy, not a ``str``."""
+    from xrdroot.cppstd.buffers import CharBuffer
+
+    label = CharBuffer(10)
+    t = TTree("t", "")
+    t.Branch("label", label, "label[10]/C")
+    for text in ("one", "onetwo"):
+        label[:] = 0
+        label[: len(text)] = np.frombuffer(text.encode(), dtype=np.int8)
+        t.Fill()
+    with xrdroot.create(str(tmp_path / "c.root")) as f:
+        t.SetDirectory(f)
+        t.Write()
+    opened = xrdroot.open_root(str(tmp_path / "c.root"))
+    back = wrap(opened["t"])
+    seen = []
+    for entry in (0, 1):
+        back.GetEntry(entry)
+        seen.append((back.label.as_string(), str(back.label), back.label[0]))
+    assert seen == [("one", "one", ord("o")), ("onetwo", "onetwo", ord("o"))]
+    assert (len(back.label), back.label[9], back.label[10]) == (10, 0, 0)  # char[10]
+    assert repr(back.label) == "<char[10] 'onetwo'>"
+    assert back.GetEntry(0) > 0 and back.label.as_string() == "one"
+    opened.close()
+
+
 def test_an_address_too_small_for_an_entry_is_refused_with_both_sizes(tree):
     tree.SetBranchAddress("arr", np.zeros(1))
     with pytest.raises(ValueError, match="holds 3 values and the array it is read into has room"):
@@ -276,3 +318,20 @@ def test_a_pointer_to_a_branch_handed_to_set_branch_address_is_given_the_branch(
     assert branch.value.GetName() == "px"
     branch.value.GetEntry(4)
     assert px[0] == 2.0
+
+
+def test_a_char_array_address_is_written_into_and_a_string_too_long_refused(tmp_path):
+    """``TreeHelper.h``'s ``char s[10]`` is a ``CharBuffer``: a branch of ``[10]/C`` reads
+    back into it, and text that would not fit is refused rather than overrun."""
+    from xrdroot.cppstd.buffers import CharBuffer
+    from xrdroot.pyroot.trees.addresses import address_of
+
+    label = CharBuffer(4)
+    held = address_of(label)
+    held.put("abc")
+    assert (str(label), list(label)) == ("abc", [97, 98, 99, 0])
+    with pytest.raises(IndexError, match=r"writing 5 bytes into a char\[4\]"):
+        held.put("abcd")
+    assert repr(held.get()) == "'abc'"
+    # A std::string is written through its assign, and a bytearray in place.
+    assert address_of(bytearray(8)).holder[0] == 0

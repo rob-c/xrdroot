@@ -18,19 +18,54 @@ from ..stl import std
 from ._base import _TObjectLike, hooks
 from .addresses import Address
 from .batch import Batch
-from .layout import BranchInfo, from_store, from_tree
+from .layout import BranchInfo, LeafInfo, from_store, from_tree
 from .memory import circular, tree_record
 from .store import Store, memory_tree
 
 __all__ = ["_TreeCore", "python_value"]
 
 
-def python_value(value: Any, vector: bool) -> Any:
-    """A value as a PyROOT script is handed it: a number, an array, or a ``std::vector``."""
+class CharArray:
+    """``char[n]`` as cppyy hands it back: the text, ``as_string()``, and a byte by index.
+
+    A ``chararrayb[10]/C`` branch is a pointer to ten bytes, and cppyy gives a
+    script a proxy over them rather than the ``str`` the bytes happen to hold -
+    ``event.Label.as_string()`` is how ROOT's own tests read one. ``len`` is the
+    declared size, as cppyy's is; ``str()`` is the C string, the bytes up to the
+    first NUL.
+    """
+
+    def __init__(self, text: Any, size: int | None = None) -> None:
+        self._text = str(text)
+        self._size = len(self._text) if not size else int(size)
+
+    def as_string(self) -> str:
+        """``as_string()``: the bytes up to the first NUL, as a ``str``."""
+        return self._text
+
+    def __str__(self) -> str:
+        return self._text
+
+    def __repr__(self) -> str:
+        return f"<char[{self._size}] {self._text!r}>"
+
+    def __len__(self) -> int:
+        return self._size
+
+    def __getitem__(self, index: Any) -> Any:
+        at = int(index)
+        return ord(self._text[at]) if 0 <= at < len(self._text) else 0
+
+
+def python_value(value: Any, leaf: LeafInfo) -> Any:
+    """A value as a PyROOT script is handed it: a number, an array, a ``char[n]`` or a
+    ``std::vector``."""
     if isinstance(value, np.generic):
         return value.item()
-    if vector and isinstance(value, np.ndarray):
+    if leaf.vector and isinstance(value, np.ndarray):
         return std.vector[value.dtype](value)
+    if leaf.classname == "TLeafC" and "[" in leaf.title:
+        return CharArray(value, leaf.size)  # a char[n] branch: cppyy's proxy, not a str
     return value
 
 

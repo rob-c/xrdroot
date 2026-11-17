@@ -25,6 +25,8 @@ from typing import Any
 
 import numpy as np
 
+from ...cppstd.buffers import CharBuffer
+from ...cppstd.objects import DTYPES as CPP_DTYPES
 from ..stl import is_vector as _is_vector
 from ..stl import string
 
@@ -100,6 +102,10 @@ class Value(Address):
         current = holder.value
         self.text = isinstance(current, (str, bytes, string))
         declared = getattr(holder, "dtype", None)
+        if declared is None:
+            # A macro's Cell knows the C++ type it was declared with - a `float n` is
+            # a Float_t branch in ROOT, not the double Python's float would make it.
+            declared = CPP_DTYPES.get(str(getattr(holder, "ctype", "") or ""))
         self.dtype = _dtype_of(current) if declared is None else np.dtype(declared)
 
     def get(self, count: int | None = None) -> Any:
@@ -136,7 +142,12 @@ class Vector(Address):
 
 
 class Text(Address):
-    """A ``std.string``, or a ``bytearray`` standing for a ``char[]``."""
+    """Text in place: a ``std.string``, a ``bytearray``, or a ``new char[n]`` buffer.
+
+    A ``char name[n]`` a macro declares is a :class:`~xrdroot.cppstd.buffers.CharBuffer`,
+    which is the C string up to its first NUL - what a ``[n]/C`` branch of a tree reads
+    and writes as its entry.
+    """
 
     room = None
     text = True
@@ -150,11 +161,21 @@ class Text(Address):
         return str(self.holder)
 
     def put(self, value: Any) -> None:
-        if isinstance(self.holder, bytearray):
+        holder = self.holder
+        if isinstance(holder, bytearray):
             raw = str(value).encode() + b"\0"
-            self.holder[: len(raw)] = raw
+            holder[: len(raw)] = raw
             return
-        self.holder.assign(value)
+        if isinstance(holder, np.ndarray):  # a char[n] from new char[n]
+            raw = str(value).encode("latin-1", "replace")
+            if len(raw) >= len(holder):
+                raise IndexError(
+                    f"writing {len(raw) + 1} bytes into a char[{len(holder)}], past its end, "
+                    "which C leaves undefined")
+            holder[:] = 0
+            holder[: len(raw)] = np.frombuffer(raw, dtype=np.uint8).astype(holder.dtype)
+            return
+        holder.assign(value)
 
 
 class Member(Address):
@@ -206,12 +227,9 @@ def address_of(given: Any, what: str = "the branch") -> Address:
     """What a tree keeps for the thing it was handed, or a refusal naming it."""
     if isinstance(given, Address):
         return given
-    if isinstance(given, np.ndarray):
-        return View(_numpy_view(given, what))
-    if isinstance(given, array.array):
-        return View(np.frombuffer(given, dtype=np.dtype(given.typecode)))
-    if isinstance(given, (ctypes._SimpleCData, ctypes.Array)):
-        return View(_ctypes_view(given))
+    made = _memory(given, what)
+    if made is not None:
+        return made
     if _is_vector(given):
         return Vector(given)
     if isinstance(given, (string, bytearray)):
@@ -220,6 +238,20 @@ def address_of(given: Any, what: str = "the branch") -> Address:
     if held is None:
         raise _refused(given, what)
     return held
+
+
+def _memory(given: Any, what: str) -> Address | None:
+    """The view over memory a tree can write into - an array's, a ``ctypes`` object's, or a
+    macro's ``char name[n]``, which is text - or ``None`` for anything else."""
+    if isinstance(given, CharBuffer):
+        return Text(given)
+    if isinstance(given, np.ndarray):
+        return View(_numpy_view(given, what))
+    if isinstance(given, array.array):
+        return View(np.frombuffer(given, dtype=np.dtype(given.typecode)))
+    if isinstance(given, (ctypes._SimpleCData, ctypes.Array)):
+        return View(_ctypes_view(given))
+    return None
 
 
 def _held(given: Any) -> Address | None:

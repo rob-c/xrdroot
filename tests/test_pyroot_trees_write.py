@@ -318,3 +318,30 @@ def test_a_tree_read_from_a_file_is_not_filled(tmp_path):
             read.Fill()
         with pytest.raises(TypeError, match="was read from a file"):
             wrap(f["t"], "TNtuple").Fill(1.0)
+
+
+def test_a_branch_without_a_leaf_list_takes_the_type_the_macro_declared(tmp_path):
+    """A translated ``flex l;`` is a ``Cell`` that knows its C++ type, and ROOT writes the
+    branch with that type - ``Long64_t`` for a ``long``, ``Float_t`` for a ``float`` - where
+    Python's own ``float`` would make every one of them a ``Double_t``."""
+    from xrdroot.cppstd.cells import Cell as MacroCell
+
+    values = {
+        "f": MacroCell(0.0, "float"),
+        "d": MacroCell(0.0, "double"),
+        "i": MacroCell(0, "int"),
+        "u": MacroCell(0, "unsigned int"),
+        "l": MacroCell(0, "long"),
+        "c": MacroCell(0, "char"),
+    }
+    t = TTree("t", "")
+    for name, where in values.items():
+        t.Branch(name, where)
+    values["f"].value, values["d"].value, values["i"].value = 1.5, 2.5, -3
+    values["u"].value, values["l"].value, values["c"].value = 4, 6, 65
+    t.Fill()
+    assert [t.GetLeaf(name).GetTypeName() for name in values] == [
+        "Float_t", "Double_t", "Int_t", "UInt_t", "Long64_t", "Char_t"]
+    got = _written(tmp_path, t)
+    assert (got["f"].dtype, got["d"].dtype, got["i"].dtype) == (np.float32, np.float64, np.int32)
+    assert (got["u"].dtype, got["l"].dtype, got["c"].dtype) == (np.uint32, np.int64, np.int8)

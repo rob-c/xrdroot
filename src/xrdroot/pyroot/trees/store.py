@@ -140,7 +140,9 @@ class Slot:
     def spec(self) -> Any:
         """What :meth:`xrdroot.WritableDirectory.tree` is told this column is."""
         if self.kind == TEXT:
-            return str
+            from ...wtree import FixedText
+
+            return str if self.size <= 1 else FixedText(self.size)
         if self.kind == VECTOR:
             return Vector(self.code, split=self.split, basket_size=self.basket_size)
         if self.kind == COUNTED:

@@ -46,7 +46,7 @@ from .writer import BASKET_BYTES, BITS, WBuffer, _checked
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from .writer import WritableDirectory
 
-__all__ = ["WritableTree", "BASKET_BYTES"]
+__all__ = ["WritableTree", "BASKET_BYTES", "FixedText"]
 
 #: The record versions written here, which are the ones :mod:`.winfo`
 #: describes: what the file says about its classes is what its records are.
@@ -677,26 +677,49 @@ class _Rows(_Variable):
         return _cast(self, content), counts * self.itemsize
 
 
+class FixedText:
+    """A ``char[n]``: text whose room ROOT writes as the leaf's own length.
+
+    A ``char label[10]`` branch is ROOT's ``TLeafC`` with ``fLen`` 10 and the
+    leaf title ``label[10]``, where a ``std::string`` branch keeps the room its
+    longest entry needed; the baskets hold either the same way, a length and
+    then the bytes.
+    """
+
+    __slots__ = ("width",)
+
+    def __init__(self, width: int) -> None:
+        self.width = int(width)
+
+
 class _Text(_Variable):
     """A string per entry: ROOT's ``TLeafC``, a length and then the bytes."""
 
-    __slots__ = ("widest",)
+    __slots__ = ("widest", "width")
 
-    def __init__(self, name: str, basket_size: int) -> None:
+    def __init__(self, name: str, basket_size: int, width: int = 0) -> None:
         super().__init__(name, "B", basket_size)
         #: The longest string kept so far, in bytes; none yet is -1.
         self.widest = -1
+        #: How many characters one entry has room for, when the macro said.
+        self.width = int(width)
 
     def _leaf_class(self) -> tuple[str, str, int, bool]:
         return TEXT_LEAF
 
     @property
     def leaf_len(self) -> int:
-        """One more than the longest string, as ROOT counts room for its NUL."""
-        return max(1, self.widest + 1)
+        """``fLen``: the ``char[n]``'s ``n``, or one more than the longest string - ROOT
+        counts the room for its NUL."""
+        return self.width if self.width > 1 else max(1, self.widest + 1)
+
+    @property
+    def leaf_title(self) -> str:
+        """The leaf title: the name, and the ``char[n]``'s size when the macro said one."""
+        return self.name if self.width <= 1 else f"{self.name}[{self.width}]"
 
     def limits(self) -> bytes:
-        return struct.pack(">ii", 0, self.widest + 1)
+        return struct.pack(">ii", 0, self.leaf_len)
 
     def pack(self, value: Any) -> bytes:
         if not isinstance(value, str):
@@ -929,6 +952,8 @@ def _declared(
     """
     if spec is str:
         return _Text(name, basket_size)
+    if isinstance(spec, FixedText):
+        return _Text(name, basket_size, spec.width)
     typecode, length = _typecode(name, spec)
     if isinstance(length, int):
         return _Column(name, typecode, length, basket_size)
