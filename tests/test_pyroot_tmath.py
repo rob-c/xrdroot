@@ -92,7 +92,7 @@ def test_counting_and_special_functions_off_their_domains():
         (T.BinomialI(0.5, 4, 5), 0),
         (T.Gamma(-2.0), 0),
         (T.Gamma(-0.5), pytest.approx(math.gamma(-0.5))),
-        (T.LnGamma(-1), 0),
+        (T.LnGamma(-1), math.inf),  # ROOT 6.40: ::lgamma at a pole
         (T.ErfInverse(1.0), 0),
         (T.ErfInverse(0.0), 0),
         (T.NormQuantile(0), 0),

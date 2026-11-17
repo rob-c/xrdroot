@@ -305,7 +305,12 @@ def Gamma(z: float, x: Any = None) -> float:
 
 
 def LnGamma(z: float) -> float:
-    return 0.0 if z <= 0 else math.lgamma(z)
+    """``LnGamma``: the C library's ``::lgamma`` - ROOT calls nothing else - so the log of the
+    absolute value of gamma at a negative argument too, and ROOT's infinity at a pole (zero
+    and the negative integers, where ``math.lgamma`` raises instead)."""
+    if z <= 0 and float(z).is_integer():
+        return math.inf
+    return math.lgamma(z)
 
 
 def Beta(p: float, q: float) -> float:
