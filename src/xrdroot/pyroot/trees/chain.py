@@ -60,6 +60,12 @@ class TChain(TTree):
 
     _classname = "TChain"
 
+    #: The ``TFile`` of the entry read last, while ``gROOT`` still lists it: ROOT's chain
+    #: opens the file it reads, and holds no file at all once that one is deleted.
+    _file: Any = None
+    #: Which of :attr:`_files` that file is, or ``-1`` for none.
+    _file_number = -1
+
     def __init__(self, name: str = "", title: str = "", *rest: Any) -> None:
         super().__init__(name, title, dir=False)
         self._directory = None
@@ -140,7 +146,79 @@ class TChain(TTree):
         if not 0 <= entry < self.GetEntries():
             return -2
         self._read_entry = int(entry)
+        self._take_up(int(entry))
         return self._home(int(entry))[1]
+
+    def GetEntry(self, entry: int = 0, getall: int = 0) -> int:
+        """``TChain::GetEntry``: the entry read; the file it was read from is held after."""
+        read = super().GetEntry(entry, getall)
+        self._take_up(int(entry))
+        return read
+
+    def GetCurrentFile(self) -> Any:
+        """``TChain::GetCurrentFile``: the file the entry read last is in, or ``None``.
+
+        ROOT's chain points at the file it opened, and at nothing once that file is
+        deleted - ``gROOT->GetListOfFiles()->Delete()``, or the file closed by hand. So
+        the file is handed back only while ``gROOT`` still lists it, and a chain asked
+        afterwards says it holds none, as ``TChain::RecursiveRemove`` leaves it.
+        """
+        held = self._file
+        if held is None or self._still_listed(held):
+            return held
+        self._let_go()
+        return None
+
+    def _still_listed(self, held: Any) -> bool:
+        """Whether ``gROOT`` still lists ``held``: a file is open exactly while it is there."""
+        from ..core.troot import gROOT
+
+        return held in gROOT.GetListOfFiles()
+
+    def _let_go(self) -> None:
+        """Hold no file: the one there is closed, as ``~TChain`` closes the file it opened.
+
+        A file deleted from ``gROOT``'s list is closed here too, because ROOT's deleting it
+        is what the chain is told about; ``TFile::Close`` on one already closed does nothing.
+        """
+        held, self._file, self._file_number = self._file, None, -1
+        if held is not None:
+            held.Close()
+
+    def _take_up(self, entry: int) -> None:
+        """Open the file of ``entry``, letting go of the one read before.
+
+        ROOT's chain holds one file at a time: ``TChain::LoadTree`` opens the file of the
+        entry it reads and deletes the one before, and opens that file again when it has
+        been deleted since - which is what a file no longer listed comes to here.
+        """
+        if not 0 <= entry < self.GetEntries():
+            return
+        number = self._home(entry)[0]
+        if number == self._file_number and self.GetCurrentFile() is not None:
+            return
+        self._let_go()
+        self._file = self._open_file(self._files[number][0])
+        self._file_number = number
+
+    def _open_file(self, path: str) -> Any:
+        """The ``TFile`` of one file of the chain, opened and the script left where it was.
+
+        ``TChain::LoadTree`` opens its file inside a ``TDirectory::TContext``, so that
+        reading a chain does not move where the objects a script makes are kept.
+        """
+        from ..core.directories import current_directory, set_current
+        from ..core.files import TFile
+
+        previous = current_directory()
+        try:
+            return TFile(path)
+        finally:
+            set_current(previous)
+
+    def _destruct(self) -> None:
+        """``~TChain``: the file the chain opened is closed, as ROOT's destructor closes it."""
+        self._let_go()
 
     def GetTree(self) -> Any:
         """The tree of the file the entry last read is in, as a ``TTree`` of its own."""
