@@ -97,12 +97,18 @@ _generic.TYPE_ALIASES["TString"] = "string"
 
 
 def _resolve_root_type(name: str) -> type | None:
+    """The class a C++ type name is, among ROOT's names - or among the classes the interpreter
+    declared, which is how ``ArrayHolderT<int>`` of a macro is found."""
     import xrdroot.pyroot as ROOT
 
     found: Any = ROOT
     for part in name.removeprefix("ROOT::").split("::"):
         found = getattr(found, part, None) if part.isidentifier() else None
-    return found if isinstance(found, type) else None
+    if isinstance(found, type):
+        return found
+    from .core.declared import find_class
+
+    return find_class(name)
 
 
 def _rvec_of(kind: Any) -> type:

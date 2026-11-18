@@ -53,6 +53,9 @@ STL_KINDS = {
     "multiset": 7, "forward_list": 9, "unordered_set": 10, "unordered_multiset": 11,
     "unordered_map": 12, "unordered_multimap": 13,
 }  # fmt: skip
+#: The names ``std::array`` may be spelled with: a fixed array whose N values are in place.
+ARRAY_TEMPLATES = ("array", "std::array")
+
 #: The containers that hold pairs, a key and a value.
 MAPS = ("map", "multimap", "unordered_map", "unordered_multimap")
 #: ``kSTLstring``: what ``std::string`` is to a ``TStreamerSTL``.
@@ -297,6 +300,24 @@ class Catalogue:
             f"know how to lay out in a ROOT file; mark it transient with //! to leave it out"
         )
 
+    def _fixed_array(
+        self, owner: Declaration, field: Field, found: Spelled, counter: bool
+    ) -> Element | None:
+        """``std::array<T,N>``: ROOT lays one out as the fixed array ``T a[N]`` it is - the
+        element's type with the array offset added, its size N values' worth, and N as the
+        length - so a member of one is read by another ROOT as the N values it holds.
+        """
+        if found.name not in ARRAY_TEMPLATES or len(found.args) != 2 or found.stars:
+            return None
+        element, count = found.args
+        basic = self.basic(element)
+        length = _whole(count)
+        if basic is None or length is None or length < 1 or element.stars:
+            return None
+        stype, typename, size = basic
+        return ("TStreamerBasicType", field.name, field.comment, stype + OFFSET_L,
+                size * length, length, 1, (length, *NO_DIMS)[:5], typename, ())  # fmt: skip
+
     def _basic(
         self, owner: Declaration, field: Field, found: Spelled, counter: bool
     ) -> Element | None:
@@ -418,6 +439,7 @@ _POINTERS = {(True, True): OBJECT_P, (True, False): OBJECT_PP,
 _MEMBER_RULES: tuple[
     Callable[[Catalogue, Declaration, Field, Spelled, bool], Element | None], ...
 ] = (
+    Catalogue._fixed_array,
     Catalogue._basic,
     Catalogue._counted,
     Catalogue._char_star,
@@ -454,6 +476,16 @@ def _counter_of(field: Field) -> str | None:
     if found is None or "*" not in field.spelled:
         return None
     return found.group(1)
+
+
+def _whole(spelled: Spelled) -> int | None:
+    """A template argument written as a whole number, which ``std::array``'s length is."""
+    if spelled.args or spelled.stars:
+        return None
+    try:
+        return int(spelled.name)
+    except ValueError:
+        return None
 
 
 def _dimensions(owner: Declaration, field: Field) -> tuple[int, ...]:

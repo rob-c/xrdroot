@@ -317,3 +317,41 @@ def test_a_list_sorts_deduplicates_reverses_and_removes_in_place() -> None:
     empty = containers.std.list["int"]()
     empty.unique()
     assert list(empty) == []
+
+
+def test_a_std_array_takes_a_member_declared_with_its_inner_braces() -> None:
+    """C++ elides the braces of a one-dimensional aggregate: ``std::array<int,3> a {{0,0,0}}``
+    hands over ``{0,0,0}``, which a member declared that way in a macro does -
+    roottest's ``io/stdarray`` declares one."""
+    assert list(containers.std.array["int", 3]([[1, 2, 3]])) == [1, 2, 3]
+    assert list(containers.std.array["int", 3]([1, 2, 3])) == [1, 2, 3]
+    assert containers._unbraced(([1, 2], [3, 4])) == [[1, 2], [3, 4]]  # a real nesting stays
+
+
+def test_a_class_name_is_the_cpp_name_its_layout_carries() -> None:
+    """A class a macro declares is named by its layout's C++ name, which a container of its
+    objects is named with - and one that says its own name is taken at its word."""
+
+    class Declared:
+        _cxx_layout_ = ("ns::Thing<int>", (), ())
+
+    assert containers.cpp_name(Declared) == "ns::Thing<int>"
+    assert containers.cpp_name(containers.string) == "string"
+    assert containers.cpp_name(np.dtype("int32")) == "int"
+
+
+def test_a_template_name_no_container_here_is_declared_is_resolved_by_the_installed_adapter():
+    """``std::vector<ArrayHolderT<int>>``: the element is a class a macro declared, which the
+    adapter ROOT installs finds by its C++ name - and nothing else is invented."""
+    from xrdroot.cppstd import containers as plain
+
+    class Holder:
+        pass
+
+    plain.set_type_resolver(lambda name: Holder if name == "ArrayHolderT<int>" else None)
+    try:
+        assert plain.element_type("ArrayHolderT<int>") is Holder
+        with pytest.raises(TypeError, match="is not a type the std stand-ins know"):
+            plain.element_type("ArrayHolderT<float>")
+    finally:
+        plain.set_type_resolver(None)

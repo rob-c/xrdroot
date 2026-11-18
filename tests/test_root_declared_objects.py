@@ -539,3 +539,31 @@ def test_an_overload_taking_a_string_class_takes_a_c_string():
         "which.C",
     )
     assert out == 13
+
+
+def test_a_std_array_member_is_the_fixed_array_root_lays_out():
+    """ROOT 6.40 writes ``std::array<int,4>`` as the ``int a[4]`` it is - a
+    ``TStreamerBasicType`` whose type carries the array offset, its size four values' worth
+    and four as the length - which is what a member of one is read back by."""
+
+    def catalogue(*fields, bases=()):
+        return Catalogue({"C": Declaration("C", 1, True, bases, fields)})
+
+    info = catalogue(Field("a0", "std::array<int,4>", "", ()),
+                     Field("a1", "std::array<float,2>", "", ())).info("C")
+    assert info[2] == (("TStreamerBasicType", "a0", "", 23, 16, 4, 1, (4, 0, 0, 0, 0), "int", ()),
+                       ("TStreamerBasicType", "a1", "", 25, 8, 2, 1, (2, 0, 0, 0, 0), "float", ()))
+    # An array of objects is not a basic type's array, and is refused rather than guessed.
+    with pytest.raises(UnsupportedFeatureError, match=r"C::v is a std::array<Thing,2>, which"):
+        catalogue(Field("v", "std::array<Thing,2>", "", ())).info("C")
+
+
+def test_the_length_of_a_std_array_must_be_a_comment_free_whole_number():
+    """``std::array<int,n>`` of a length nothing can count is refused, and so is one written
+    with stars or another template's arguments."""
+    from xrdroot.wdeclared import _whole, parse_type
+
+    assert _whole(parse_type("4")) == 4
+    assert _whole(parse_type("std::vector<int>")) is None
+    assert _whole(parse_type("T*")) is None
+    assert _whole(parse_type("n")) is None  # a name, not a number

@@ -74,3 +74,11 @@ def test_an_enumerator_whose_value_is_no_number_is_left_out_of_the_layout():
     text = translate("struct S { enum {kA = sizeof(int), kB}; Int_t f; };", "t.C")
     assert "kA" not in text.split("_cxx_layout_")[1].split("\n")[0]
     assert "('f', 'Int_t', '', ())" in text
+
+
+def test_a_template_argument_written_as_a_number_is_the_number_in_the_layout():
+    """``std::array<int,4>`` spells its length, and one whose length is an expression - which
+    the layout cannot say - is ``?``: the writer refuses what it cannot lay out."""
+    text = translate("struct S { std::array<int,4> a; std::array<float,2*3> b; };", "t.C")
+    assert "('a', 'std::array<int, 4>', '', ())" in text
+    assert "('b', 'std::array<float, ?>', '', ())" in text

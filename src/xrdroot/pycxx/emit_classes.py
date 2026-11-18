@@ -393,11 +393,18 @@ def _counted_up(decl: EnumDecl, owner: str, found: dict[str, int]) -> None:
             found.setdefault(spelled, last)
 
 
+def _template_argument(arg: Any, spellings: dict[str, str]) -> str:
+    """One template argument as C++ writes it: a type, a number, or ``?`` when the argument is
+    an expression the layout cannot say (``std::array<int, n>`` of a run-time length)."""
+    if isinstance(arg, CType):
+        return _spelled(arg, spellings)
+    number = _constant(arg)
+    return "?" if number is None else str(number)
+
+
 def _spelled(ctype: CType, spellings: dict[str, str]) -> str:
     """A member's type as C++ spells it: the typedef it was written as, its arguments, stars."""
-    args = ", ".join(
-        _spelled(arg, spellings) if isinstance(arg, CType) else "?" for arg in ctype.args
-    )
+    args = ", ".join(_template_argument(arg, spellings) for arg in ctype.args)
     name = ctype.written or spellings.get(ctype.name, ctype.name)
     return (f"{name}<{args}>" if ctype.args else name) + "*" * ctype.pointer
 

@@ -208,6 +208,9 @@ def _templated(text: str) -> Any:
         return _opaque(text)
     maker = TEMPLATES.get(outer)
     if maker is None or not inner.endswith(">"):
+        declared = TYPE_RESOLVER(text) if TYPE_RESOLVER is not None else None
+        if declared is not None:
+            return declared  # a class template a library declared, as C++ names it
         raise TypeError(
             f"{text!r} is not a type the std stand-ins know; they have vector, map and pair "
             f"of numbers, strings and one another"
@@ -250,11 +253,16 @@ def _class_type(given: type) -> Any:
 
 
 def cpp_name(kind: Any) -> str:
-    """How C++ spells an element type: ``float``, ``string``, ``vector<int>``."""
+    """How C++ spells an element type: ``float``, ``string``, ``vector<int>`` - and a class a
+    translation declared by the name its own layout carries."""
     if isinstance(kind, np.dtype):
         name = _DTYPE_NAMES.get(kind.num)
         return CPP_NAMES[name if name is not None else kind.name]
-    return str(kind.__cpp_name__)
+    spelled = getattr(kind, "__cpp_name__", None)
+    if spelled is None:
+        layout = getattr(kind, "_cxx_layout_", None)
+        spelled = layout[0] if layout is not None else kind.__name__
+    return str(spelled)
 
 
 def _converted(kind: Any, value: Any) -> Any:
@@ -1453,6 +1461,16 @@ class _GetTemplate:
         return got
 
 
+def _unbraced(values: Iterable[Any]) -> list[Any]:
+    """A braced initialiser's values, with C++'s brace elision taken off: ``{{1, 2, 3}}`` of a
+    one-dimensional array is ``{1, 2, 3}``, which is what a member declared
+    ``std::array<int,3> a {{0,0,0}};`` hands over."""
+    kept = list(values)
+    if len(kept) == 1 and isinstance(kept[0], (list, tuple)):
+        return list(kept[0])
+    return kept
+
+
 class _ArrayTemplate:
     """``std.array['double', 3]``: a vector of that many, filled from the list it is given.
 
@@ -1469,7 +1487,7 @@ class _ArrayTemplate:
 
         def made(values: Iterable[Any] = ()) -> Any:
             filled = vector(int(size))
-            for index, value in enumerate(values):
+            for index, value in enumerate(_unbraced(values)):
                 filled[index] = value
             return filled
 
