@@ -266,3 +266,20 @@ def test_a_pyunittest_passes_on_a_clean_exit_and_fails_when_nothing_was_collecte
     assert cases.judge_pyunittest(test, result(), tmp_path / "none.xml").status == "PASS"
     verdict = cases.judge_pyunittest(test, result(code=5), tmp_path / "none.xml")
     assert verdict.status == "FAIL" and "no tests" in verdict.reason
+
+
+def test_the_reason_quotes_a_diagnosis_rather_than_clings_echo_of_the_return_value(root):
+    """``(int) 4`` is the last line of a great many failing runs and says nothing; the line
+    that names what went wrong is what a reason should quote."""
+    from tools.rootsuite.judge import first_failure
+
+    assert first_failure(result("Test Done!\n(int) 0")) == "Test Done!"
+    assert first_failure(result("(int) 4")) == "(int) 4"  # nothing else to quote
+    assert first_failure(result("a\nError in <Draw>: no branch\n(int) 1")) == (
+        "Error in <Draw>: no branch")
+    assert first_failure(result("all fine\n(TFile *) 0x7f8a")) == "all fine"
+    assert first_failure(result("xrdroot run: not supported here\n(int) 2")) == (
+        "xrdroot run: not supported here")
+    assert status(roottest(outref="a/t.ref"), result("(int) 1", code=1), root) == "FAIL"
+    assert judge(roottest(outref="a/t.ref"), result("(int) 1", code=1), root, root).reason == (
+        "exit 1, expected 0: (int) 1")

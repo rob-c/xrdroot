@@ -96,3 +96,15 @@ def test_a_character_of_a_tstring_is_the_number_cpp_gives(
     source = """TString s = "ulong"; if (s[0] == 'u') printf("%d %c\\n", s[1], s[2]);"""
     run_source("{\n" + source + "\n}\n", "t.C")
     assert capsys.readouterr().out == "108 o\n"
+
+
+def test_a_tstring_gives_its_characters_as_a_view_and_as_data() -> None:
+    """``View`` is the ``std::string_view`` a ``TString`` is read through, which here is the
+    string itself: a Python ``str`` shares nothing that could be changed under it, which is
+    what a view is for. ``gtest/net/net/testParallelMergingFile`` builds a ``std::string``
+    from one."""
+    from xrdroot.pyroot.core.strings import TString
+
+    held = TString("parallelMergeTest")
+    assert (held.View(), held.Data(), str(held)) == (
+        "parallelMergeTest", "parallelMergeTest", "parallelMergeTest")

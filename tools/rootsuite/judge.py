@@ -53,6 +53,12 @@ ROOT_PYTHON_MODULES = {
 _NO_MODULE = re.compile(r"ModuleNotFoundError: No module named '([\w.]+)'")
 #: ``file.C:7:1: error: ...``: an error ``xrdroot root`` reports as cling would.
 _DIAGNOSTIC = re.compile(r"^(\S+): error: (.+)$", re.M)
+#: cling's echo of the value a macro's last statement returned - ``(int) 1``, ``(TFile *) 0x...``.
+#: It is the last line of a run that failed, and it says nothing about why.
+_ECHO = re.compile(r"^\((?:\w+ ?\**)\) (?:0x[0-9a-f]+|-?[\d.eE+-]+|[A-Za-z_][\w:<>]*)$")
+#: A line that says something went wrong, which is the line a failure's reason wants.
+_DIAGNOSIS = re.compile(r"Error|ERROR|Fatal|FAILED|failed|Warning|Traceback|refus|Unsupported")
+
 #: What xrdroot says of what it does not do: its refusal, a ROOT name it does not have
 #: yet, or C++ its translator does not turn into Python.
 _SAYS_UNSUPPORTED = re.compile(
@@ -104,8 +110,39 @@ def refusal(result: Result) -> str:
     return "" if _OS_ERROR.search(message) else message
 
 
+def _diagnosed(lines: list[str]) -> list[str]:
+    """The lines of a run's output that name a diagnosis."""
+    return [line for line in lines if _DIAGNOSIS.search(line)]
+
+
+def _worth_quoting(lines: list[str]) -> list[str]:
+    """The lines that are not cling's echo of the value a macro returned."""
+    return [line for line in lines if not _ECHO.match(line)]
+
+
+def _worst_line(text: str) -> str:
+    """The line of a run's output that best says why it failed.
+
+    A line naming a diagnosis - an ``Error``, a ``FAILED``, a refusal, a traceback -
+    comes first, and the last such is taken since that is the one that ended the run;
+    then the last line that is not cling's echo of the value a macro returned, which
+    is the last line of very many of these runs and says nothing.
+    """
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for candidates in (_diagnosed(lines), _worth_quoting(lines), lines):
+        if candidates:
+            return candidates[-1][:300]
+    return ""
+
+
 def first_failure(result: Result) -> str:
-    """The line most likely to say why a run failed: a gtest failure, else the last error line."""
+    """The line most likely to say why a run failed.
+
+    A gtest failure first, then the last line that names a diagnosis - an ``Error``, a
+    ``FAILED``, a refusal, a traceback - and only then the last line of all. cling's echo
+    of the value a macro returned is the last line of many of these runs and says
+    nothing, so it is passed over when there is anything else to quote.
+    """
     text = result.stdout + "\n" + result.stderr
     usage = _USAGE.search(text)
     if usage:
@@ -113,8 +150,7 @@ def first_failure(result: Result) -> str:
     failed = re.search(r"^\[  FAILED  \] (\S+)", text, re.M)
     if failed:
         return f"gtest case {failed.group(1)} failed"
-    lines = [line.strip() for line in (result.stderr or result.stdout).splitlines() if line.strip()]
-    return lines[-1][:300] if lines else ""
+    return _worst_line(result.stderr or result.stdout)
 
 
 def judge(test: Test, result: Result, root: Path, cwd: Path,

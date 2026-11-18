@@ -126,6 +126,11 @@ class TString:
         """``Data``: the characters, as a Python string."""
         return self._s
 
+    def View(self) -> str:
+        """``View``: a ``std::string_view`` of the characters, which here is the string itself -
+        a Python ``str`` is read-only and shares nothing, so it is what a view stands for."""
+        return self._s
+
     def Length(self) -> int:
         return len(self._s)
 
