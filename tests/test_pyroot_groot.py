@@ -336,3 +336,10 @@ def test_a_context_given_nullptr_leaves_no_directory_current_until_it_ends():
         assert ROOT.gDirectory == ROOT.nullptr
     assert ROOT.gDirectory == below
     ROOT.gROOT.cd()
+
+
+def test_the_system_loads_no_libraries_a_rootmap_names_because_it_keeps_none() -> None:
+    """``LoadAllLibraries`` of a rootmap this has none of: nothing to load, and 0 - which is
+    what roottest/root/core/StatusBitsCheck asks before it walks a map that is null."""
+    assert ROOT.gSystem.LoadAllLibraries() == 0
+    assert ROOT.gInterpreter.GetMapfile() is None

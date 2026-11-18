@@ -20,8 +20,13 @@ import sys
 from typing import Any, ClassVar
 
 from ...winfo import INFOS, Element
+from .classedit import TClassEdit
 from .messages import message
 from .objects import TNamed, TObject
+
+#: How ROOT shortens a type name - ``TClassEdit::ShortType`` - which is what a class is
+#: called by, since ``TClass::GetClass`` is asked for a name in any of its spellings.
+short_type = TClassEdit.ShortType
 
 __all__ = [
     "ClassInfo",
@@ -211,7 +216,11 @@ class TClass(TNamed):
         if isinstance(name, type):
             return TClass(getattr(name, "__cpp_name__", name.__name__), name)
         spelled = getattr(name, "_spelled", None)
-        text = str(spelled if spelled is not None else name).replace("std::", "").strip()
+        # ROOT keeps a class under the name it shortens the type to - GetClass("string")
+        # and GetClass("basic_string<char,char_traits<char> >") are the one class, called
+        # "string" - so the same shortening is what this is called by.
+        asked = str(spelled if spelled is not None else name)
+        text = short_type(asked).replace("std::", "").strip()
         return None if text in FUNDAMENTAL else TClass(text)
 
     def HasDictionary(self) -> bool:

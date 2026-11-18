@@ -25,6 +25,7 @@ FAMILIES = (
     "messages",
     "objects",
     "reflection",
+    "classedit",
     "collectionproxy",
     "buffers",
     "collections",

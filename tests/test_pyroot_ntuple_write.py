@@ -215,3 +215,15 @@ def test_a_writer_whose_model_was_bare_fills_only_entries_of_its_own() -> None:
     writer.Fill(entry)
     writer.reset()
     assert _read("bare.root") == {"n": [1]}
+
+
+def test_a_writer_recreates_a_model_from_a_list_of_make_pair_fields() -> None:
+    """``RNTupleWriter::Recreate({make_pair("int", "f")}, ...)``: ROOT's Python layer takes the
+    fields on the fly, each pair a field's type and its name."""
+    fields = [ROOT.std.make_pair("int", "f"), ROOT.std.make_pair("std::string", "s")]
+    writer = ROOT.RNTupleWriter.Recreate(fields, "events", "pairs.root")
+    with writer as held:
+        entry = held.CreateEntry()
+        entry["f"], entry["s"] = 42, "answer"
+        held.Fill(entry)
+    assert _read("pairs.root") == {"f": [42], "s": ["answer"]}

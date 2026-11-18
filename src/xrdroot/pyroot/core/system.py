@@ -132,6 +132,11 @@ class TSystem(TNamed):
         if unloading is not None:
             unloading(str(module))
 
+    def LoadAllLibraries(self, isroot: bool = True) -> int:
+        """``LoadAllLibraries``: the libraries a rootmap names, all loaded - of which there are
+        none here, since a rootmap is what this does not keep (``GetMapfile`` is null)."""
+        return 0
+
     def GetLibraries(self, regexp: Any = "", option: Any = "", isRegexp: bool = True) -> str:
         """``GetLibraries``: the libraries loaded - those whose name has ``regexp`` in it."""
         listed = _translator("loaded_libraries")

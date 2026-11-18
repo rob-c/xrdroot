@@ -1200,6 +1200,58 @@ def _multiset_class(kind: Any) -> type:
 #: The templates, by the name C++ gives each.
 
 
+def _rebuilt(owner: Any, values: Any) -> None:
+    """A sequence's elements replaced by ``values``, in place - which is how the list
+    operations that reorder one are done here."""
+    owner.clear()
+    for value in values:
+        owner.push_back(value)
+
+
+class _Unset:
+    """A value no element can be, for the first of a run."""
+
+
+def _list_sorted(self: Any) -> None:
+    """``sort()``: the elements in order, in place."""
+    _rebuilt(self, sorted(self))
+
+
+def _list_unique(self: Any) -> None:
+    """``unique()``: a run of equal elements cut to one, as C++'s does."""
+    kept: list[Any] = []
+    last: Any = _Unset
+    for value in self:
+        if isinstance(last, _Unset) or value != last:
+            kept.append(value)
+        last = value
+    _rebuilt(self, kept)
+
+
+def _list_reversed(self: Any) -> None:
+    """``reverse()``: the elements the other way round, in place."""
+    _rebuilt(self, list(self)[::-1])
+
+
+def _list_removed(self: Any, value: Any) -> None:
+    """``remove(value)``: every element equal to it taken out."""
+    _rebuilt(self, [held for held in self if held != value])
+
+
+def _list_class(kind: Any) -> type:
+    """``std::list``: the sequence that grows at both ends, and the sorting and reordering
+    only a list has - ``sort``, ``unique``, ``reverse`` and ``remove``, each in place."""
+    base = _vector_class(kind)
+    name = f"list<{cpp_name(kind)}>"
+    made = type(name, (base,), {"__slots__": (), "__cpp_name__": name})
+    for word, method in (("push_front", _push_front), ("pop_front", _pop_front),
+                         ("pop_back", _pop_back), ("sort", _list_sorted),
+                         ("unique", _list_unique), ("reverse", _list_reversed),
+                         ("remove", _list_removed)):  # fmt: skip
+        setattr(made, word, method)
+    return made
+
+
 def _sequence_class(word: str) -> Callable[[Any], type]:
     """``std::list`` and ``std::deque``: a vector of the kind, by their own name, that grows at
     its front as well as at its back."""
@@ -1322,7 +1374,7 @@ TEMPLATES: dict[str, _Template] = {
     "map": _Template("map", 2, _map_class),
     "pair": _Template("pair", 2, _pair_class),
     "set": _Template("set", 1, _set_class),
-    "list": _Template("list", 1, _sequence_class("list")),
+    "list": _Template("list", 1, _list_class),
     "deque": _Template("deque", 1, _sequence_class("deque")),
     "multimap": _Template("multimap", 2, _multimap_class),
     "multiset": _Template("multiset", 1, _multiset_class),

@@ -166,6 +166,18 @@ def _finish_all() -> None:
         writer._let_go()
 
 
+def _given_model(model: Any) -> RNTupleModel:
+    """The model a writer is handed: one itself, or - as ROOT's Python layer also takes -
+    a list of ``std::pair`` of a field's type and its name, ``{make_pair("int", "f")}``."""
+    if not isinstance(model, list):
+        kept: RNTupleModel = model
+        return kept
+    made = RNTupleModel.CreateBare()
+    for pair in model:
+        made.MakeField[str(pair.first)](str(pair.second))
+    return made
+
+
 class _Filling:
     """What a writer and a fill context share: a model, and a batch of entries to hand on."""
 
@@ -215,15 +227,16 @@ class RNTupleWriter(Guarded, _Filling):
         _WRITING.add(self)
 
     @staticmethod
-    def Recreate(model: RNTupleModel, name: Any, path: Any, options: Any = None) -> RNTupleWriter:
-        """``Recreate(model, name, path)``: a new file at ``path`` holding the RNTuple."""
-        kept = model._handed_over()
+    def Recreate(model: Any, name: Any, path: Any, options: Any = None) -> RNTupleWriter:
+        """``Recreate(model, name, path)``: a new file at ``path`` holding the RNTuple - or,
+        given ``{std::make_pair("int", "f")}``, a model of the fields the pairs name."""
+        kept = _given_model(model)._handed_over()
         return RNTupleWriter(kept, _Sink(kept, name, str(path), options))
 
     @staticmethod
-    def Append(model: RNTupleModel, name: Any, file: Any, options: Any = None) -> RNTupleWriter:
+    def Append(model: Any, name: Any, file: Any, options: Any = None) -> RNTupleWriter:
         """``Append(model, name, file)``: the RNTuple in a ``TFile`` open for writing."""
-        kept = model._handed_over()
+        kept = _given_model(model)._handed_over()
         return RNTupleWriter(kept, _Sink(kept, name, file, options))
 
     def GetNEntries(self) -> int:

@@ -300,3 +300,20 @@ def test_a_complex_and_an_atomic_are_added_to_in_place_as_cpp_adds() -> None:
     assert operator.index(counted) == 2  # ``a[i]`` of an atomic is its value, as C++'s is
     assert stdlib.complex_type("double") is stdlib.complex_type("double")
     assert repr(containers.std.multiset["int"]([1])) == "<multiset<int> [1]>"
+
+
+def test_a_list_sorts_deduplicates_reverses_and_removes_in_place() -> None:
+    """The four things only a ``std::list`` does to itself, which is what
+    ``roottest/root/meta/loadAllLibs`` runs over the libraries it finds."""
+    held = containers.std.list["string"](["b", "a", "a", "c"])
+    held.sort()
+    assert list(held) == ["a", "a", "b", "c"]
+    held.unique()
+    assert list(held) == ["a", "b", "c"]
+    held.reverse()
+    assert list(held) == ["c", "b", "a"]
+    held.remove("b")
+    assert list(held) == ["c", "a"]
+    empty = containers.std.list["int"]()
+    empty.unique()
+    assert list(empty) == []

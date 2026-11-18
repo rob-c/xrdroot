@@ -494,6 +494,29 @@ class TInterpreter:
         """``LoadLibraryMap``: a translated library carries its own map, read when needed."""
         return 0
 
+    def GetMapfile(self, library: Any = None) -> Any:
+        """``GetMapfile``: the ``.rootmap`` of a library as a ``TEnv``, which nothing here has.
+
+        ROOT reads a library's map at load time and keeps it in the interpreter's; this
+        has none, so the answer is ``nullptr`` - which a program that walks the map
+        already checks for and skips, as roottest's ``libraryLister.h`` does.
+        """
+        return None
+
+    def GetInterpreterTypeName(self, name: Any, output: Any = None, quiet: bool = False) -> str:
+        """``GetInterpreterTypeName(name, output, quiet)``: the type ``name`` as the interpreter
+        knows it, into ``output`` and handed back.
+
+        A name here is already the one the translator resolved - a typedef is its own
+        name, ``std::`` or not, as C++ wrote it - so it is echoed.
+        """
+        spelled = str(name).strip()
+        if hasattr(output, "assign"):
+            output.assign(spelled)
+        elif hasattr(output, "value"):
+            output.value = spelled
+        return spelled
+
     def UnloadLibraryMap(self, library: Any) -> int:
         """``UnloadLibraryMap``: nothing is autoloaded that a macro has not asked for by name."""
         return 0
