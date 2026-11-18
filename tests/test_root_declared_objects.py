@@ -33,7 +33,7 @@ from xrdroot.wdeclared import (
     normalised,
     parse_type,
 )
-from xrdroot.wdobjects import Instance, write_instance, write_members
+from xrdroot.wdobjects import Instance, write_instance, write_members, write_value
 from xrdroot.writer import WBuffer
 
 DATA = pathlib.Path(__file__).parent / "data"
@@ -708,6 +708,30 @@ def test_a_complex_in_an_array_behind_a_pointer_or_in_a_vector_is_roots_layout()
         "pnull": None, "palways": double(5, 6), "vc": [double(7, 8), double(9, 10)],
     }), catalogue)  # fmt: skip
     assert bytes(buf.data).hex() == COMPLEX_SHAPES_BYTES
+
+
+def test_a_vector_of_complex_is_described_whichever_member_comes_first():
+    """A container of objects asks the catalogue for the layout of what it holds before the
+    member's own rule is tried, so a ``vector<complex<T> >`` is described even when no member
+    of the plain complex came first to describe it."""
+    decl = Declaration("C", 1, True, (),
+                       (Field("vc", "std::vector<std::complex<float> >", "", ()),))  # fmt: skip
+    catalogue = Catalogue({"C": decl})
+    assert catalogue.info("C")[2][0][8:] == ("vector<complex<float> >", (1, 61))
+    assert catalogue.entries()["complex<float>"][:2] == (0x2E5C4608, 1)
+
+
+def test_a_complex_named_on_its_own_is_written_as_root_writes_the_object():
+    """``WriteObjectAny`` hands the writer a complex by its class name alone, with nothing
+    holding one to describe it: the value writer describes it then, and writes the object
+    ROOT does - its record, the version a class of no ``ClassDef`` carries and its checksum."""
+    catalogue = Catalogue({})
+    buf = WBuffer()
+    write_value(buf, "complex<double>", complex_type("double")(3, 4), catalogue)
+    assert bytes(buf.data).hex() == (
+        "400000160000db2371a140080000000000004010000000000000"
+    )
+    assert catalogue.entries()["complex<double>"][:2] == (0xDB2371A1, 1)
 
 
 def test_a_complex_of_a_width_this_writer_has_no_number_for_is_refused():

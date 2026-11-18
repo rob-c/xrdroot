@@ -37,6 +37,7 @@ from .wdeclared import (
     Catalogue,
     Spelled,
     class_name,
+    complex_declaration,
     pair_name,
     parse_type,
 )
@@ -114,7 +115,17 @@ def write_value(buf: WBuffer, classname: str, value: Any, catalogue: Catalogue) 
     if found.name in STL_KINDS and not found.stars:
         writer.collection(found, value)
     else:
-        writer.record(classname, value)
+        writer.record(_describe_complex(catalogue, found) or classname, value)
+
+
+def _describe_complex(catalogue: Catalogue, found: Spelled) -> str | None:
+    """The name a bare ``std::complex`` is written under, once the catalogue describes it -
+    ``WriteObjectAny`` is handed the class by name and nothing else knows its layout."""
+    made = complex_declaration(found)
+    if made is None:
+        return None
+    catalogue.declarations.setdefault(made[0], made[1])
+    return made[0]
 
 
 class _Writer:

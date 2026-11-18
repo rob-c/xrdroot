@@ -294,6 +294,7 @@ class Catalogue:
 
     def _member(self, owner: Declaration, field: Field, counter: bool) -> Element:
         found = parse_type(field.spelled)
+        _note_complexes(self, found)
         for rule in _MEMBER_RULES:
             made = rule(self, owner, field, found, counter)
             if made is not None:
@@ -419,15 +420,15 @@ class Catalogue:
         ``TStreamerObjectAny``, so a member of one takes the room of its two parts rather than
         the pointer a member of a class held by value takes.
 
-        Describing the class here is enough for everything else that holds one: a pointer to it
-        is an ``TStreamerObjectAnyPointer`` whose class the catalogue then knows, and a
-        container of it is written member-wise, as ROOT writes a container of objects.
+        The catalogue was told of the class before the rules ran, so a pointer to one is an
+        ``TStreamerObjectAnyPointer`` whose class is known and a container of one is written
+        member-wise, as ROOT writes a container of objects; this rule is what lays out the
+        member that is the complex itself.
         """
-        part = _complex_part(found)
-        if part is None:
+        made = complex_declaration(found)
+        if made is None:
             return None
-        name, (_stype, typename, size) = part
-        self.declarations.setdefault(name, _complex(name, typename))
+        name, _declared, size = made
         if found.stars:  # a pointer to one: the object rules lay that out, now that it is known
             return None
         self.describe(name)
@@ -502,17 +503,37 @@ def pair_name(found: Spelled) -> str:
                             Spelled(streamer_name(value), (), 0)), 0).text()  # fmt: skip
 
 
-def _complex_part(found: Spelled) -> tuple[str, tuple[int, str, int]] | None:
+def complex_declaration(found: Spelled) -> tuple[str, Declaration, int] | None:
     """What a type is of ``std::complex``: the name ROOT gives the class - ``complex<float>`` -
-    and the number its two parts are, or ``None`` for a type that is no complex or one of a
-    width this writer has no number for."""
+    the description its dictionary has of it - two numbers and no ``ClassDef``, so that its
+    objects carry that description's checksum where a version would go - and how wide each of
+    those numbers is, or ``None`` for a type that is no complex or one of a width this writer
+    has no number for.
+
+    A writer that is handed the class by name alone, as ``WriteObjectAny`` hands one, needs the
+    description as much as a class holding one does, which is why it is made here.
+    """
     if found.name not in COMPLEX_TEMPLATES or len(found.args) != 1:
         return None
     part = found.args[0]
     basic = TYPES.get(part.name) if not part.args and not part.stars else None
     if basic is None:
         return None
-    return Spelled("complex", (Spelled(basic[1], (), 0),), 0).text(), basic
+    typename = basic[1]
+    name = Spelled("complex", (Spelled(typename, (), 0),), 0).text()
+    fields = (Field("_real", typename, "", ()), Field("_imag", typename, "", ()))
+    return name, Declaration(name, 1, True, (), fields), basic[2]
+
+
+def _note_complexes(catalogue: Catalogue, found: Spelled) -> None:
+    """See that every complex a member's type names is described, wherever it stands: a
+    container of one is written member-wise and a pointer to one names it, and both ask the
+    catalogue for its layout before the member's own rule is tried."""
+    made = complex_declaration(found)
+    if made is not None:
+        catalogue.declarations.setdefault(made[0], made[1])
+    for arg in found.args:
+        _note_complexes(catalogue, arg)
 
 
 def _complex_element(field: Field, name: str, size: int, dims: tuple[int, ...]) -> Element:
@@ -523,13 +544,6 @@ def _complex_element(field: Field, name: str, size: int, dims: tuple[int, ...]) 
     return ("TStreamerObjectAny", field.name, field.comment, ANY + OFFSET_L if dims else ANY,
             size * 2 * length, length if dims else 0, len(dims),
             (*dims, *NO_DIMS)[:5] if dims else NO_DIMS, name, ())  # fmt: skip
-
-
-def _complex(name: str, typename: str) -> Declaration:
-    """A ``std::complex``, as ROOT's dictionary describes one: two numbers and no ``ClassDef``,
-    so that its objects carry the checksum of that description where a version would go."""
-    fields = (Field("_real", typename, "", ()), Field("_imag", typename, "", ()))
-    return Declaration(name, 1, True, (), fields)
 
 
 def _pair(name: str) -> Declaration:
