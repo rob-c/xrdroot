@@ -114,3 +114,25 @@ def test_a_lorentz_vector_is_never_split_and_ignores_its_tobject_when_told(capsy
     back.SetBranchAddress("tlv", read)
     back.GetEntry(2)
     assert (read.value.Px(), read.value.Py(), read.value.E()) == (2.0, -2.0, 7.0)
+
+
+def test_bronch_is_roots_older_spelling_of_branch_for_an_object() -> None:
+    """``tree->Bronch("v", "Vector3", &v, bufsize, split)``: the class named before the object,
+    which is the branch ``Branch`` makes from the same arguments - roottest's
+    ``io/bigevent`` declares its super branch that way."""
+    from xrdroot.pyroot.trees import TTree
+
+    def filled(branch: str) -> TTree:
+        held = Cell(Vector3())
+        tree = TTree("t", "")
+        made = getattr(tree, branch)("v", "Vector3", held, 16000, 1)
+        assert made is not None and made.GetName() == "v"
+        for step in range(3):
+            held.value.fX, held.value.fY, held.value.fZ = step, step * 2.0, step * 3.0
+            tree.Fill()
+        return tree
+
+    through_bronch, through_branch = filled("Bronch"), filled("Branch")
+    assert [branch.GetName() for branch in through_bronch.GetListOfBranches()] == [
+        branch.GetName() for branch in through_branch.GetListOfBranches()]
+    assert through_bronch.GetEntries() == 3

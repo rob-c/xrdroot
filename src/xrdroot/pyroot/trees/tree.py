@@ -121,6 +121,18 @@ class TTree(_Player):
             store.titles[name] = title
         return self._added(name)
 
+    def Bronch(
+        self, name: str, classname: Any = None, address: Any = None,
+        bufsize: int = 32000, splitlevel: int = 99,
+    ) -> TBranch:  # fmt: skip
+        """``Bronch(name, classname, address)``: ROOT's older spelling of ``Branch`` for a branch
+        of objects, the class's name given before the object it is read from.
+
+        ROOT keeps the name for the code that still calls it - roottest's ``io/bigevent``
+        does - and it makes the same branch ``Branch`` does from the same arguments.
+        """
+        return self.Branch(name, classname, address, bufsize, splitlevel)
+
     def _added(self, name: str) -> TBranch:
         """The branch just added, now that the tree knows of it."""
         self._changed()

@@ -18,7 +18,7 @@ from typing import Any
 from .ctype import CType
 from .emit_funcs import FunctionEmitter
 from .errors import Refusal
-from .nodes import ClassDecl, EnumDecl, Expr, Function, Literal, Unary, VarDecl
+from .nodes import ClassDecl, EnumDecl, Expr, Function, Literal, Name, Unary, VarDecl
 from .operators import DUNDERS, conversion
 from .program import ClassInfo
 from .symbols import Symbol, member_name, python_name
@@ -160,7 +160,8 @@ class ClassEmitter(FunctionEmitter):
 
     def _class_body(self, info: ClassInfo) -> None:
         spellings = self.program.templates.spellings
-        self.out.line(f"_cxx_layout_ = {_layout(info, spellings)!r}", info.decl.where)
+        values = _enumerators(self._lineage(info))
+        self.out.line(f"_cxx_layout_ = {_layout(info, spellings, values)!r}", info.decl.where)
         for name, var in info.statics.items():
             ctype = self.declared_type(var)
             self.out.line(f"{member_name(name)} = {self.initial(var, ctype)}", var.where)
@@ -337,20 +338,59 @@ def _constant(value: Expr) -> int | None:
 Layout = tuple[str, tuple[str, ...], tuple[tuple[str, str, str, tuple[int | None, ...]], ...]]
 
 
-def _layout(info: ClassInfo, spellings: dict[str, str]) -> Layout:
+def _layout(info: ClassInfo, spellings: dict[str, str], values: dict[str, int]) -> Layout:
     """A class's data members as a reflection dictionary would describe them, for a library
     that writes objects member by member - an instance of a template by its C++ name."""
     bases = tuple(spellings.get(base.ctype.name, base.ctype.name) for base in info.decl.bases)
     members = tuple(
-        (name, _spelled(var.ctype, spellings), var.comment, tuple(map(_dimension, var.ctype.dims)))
+        (name, _spelled(var.ctype, spellings), var.comment, _dimensions(var, values))
         for name, var in info.fields.items()
     )
     return spellings.get(info.name, info.name), bases, members
 
 
-def _dimension(size: Any) -> int | None:
-    """An array's length as declared: a number, or ``None`` for one worked out at run time."""
-    return size if isinstance(size, int) else _constant(size)
+def _dimensions(var: VarDecl, values: dict[str, int]) -> tuple[int | None, ...]:
+    """A member's array lengths, each resolved as far as a compile-time constant goes."""
+    return tuple(_dimension(each, values) for each in var.ctype.dims)
+
+
+def _dimension(size: Any, values: dict[str, int]) -> int | None:
+    """An array's length as declared: a number, the value of an enumerator, or ``None`` for one
+    worked out at run time."""
+    if isinstance(size, int):
+        return size
+    known = _constant(size)
+    if known is not None:
+        return known
+    return values.get("::".join(size.parts)) or values.get(size.parts[-1]) \
+        if isinstance(size, Name) else None
+
+
+def _enumerators(lineage: list[ClassInfo]) -> dict[str, int]:
+    """Every enumerator the class and its bases declare, with its value where it is a number.
+
+    ``enum {kSize = 10}; Int_t fMeasures[kSize];`` is an array of ten, and ROOT's layout
+    says ten - so a dimension written as an enumerator's name is resolved here rather
+    than left to whatever reads the layout.
+    """
+    found: dict[str, int] = {}
+    for info in lineage:
+        for decl in info.decl.members:
+            if isinstance(decl, EnumDecl):
+                _counted_up(decl, info.name, found)
+    return found
+
+
+def _counted_up(decl: EnumDecl, owner: str, found: dict[str, int]) -> None:
+    """One enum's enumerators, counted on from the last as C++ counts them, under both the
+    name it is written by and the qualified one a macro may write instead."""
+    last: int | None = -1
+    for name, value in decl.items:
+        last = None if last is None else last + 1 if value is None else _constant(value)
+        if last is None:
+            continue
+        for spelled in (name, f"{decl.name}::{name}" if decl.name else f"{owner}::{name}"):
+            found.setdefault(spelled, last)
 
 
 def _spelled(ctype: CType, spellings: dict[str, str]) -> str:

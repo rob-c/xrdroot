@@ -208,6 +208,8 @@ def test_what_this_writer_cannot_lay_out_is_refused_by_name():
         catalogue(Field("v", "std::vector<Thing>", "", ())).info("C")
     with pytest.raises(UnsupportedFeatureError, match="Thing is not a class"):
         catalogue(Field("v", "std::vector<Thing*>", "", ())).info("C")
+    with pytest.raises(UnsupportedFeatureError, match="C::a is a int whose array length"):
+        catalogue(Field("a", "int", "", (None,))).info("C")
 
 
 def test_a_counted_array_shorter_than_its_count_is_an_error():

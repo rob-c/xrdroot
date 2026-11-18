@@ -304,7 +304,7 @@ class Catalogue:
         if basic is None or found.stars:
             return None
         stype, typename, size = basic
-        dims = tuple(int(d) for d in field.dims)
+        dims = _dimensions(owner, field)
         if dims:
             length = _product(dims)
             maxidx = (*dims, *NO_DIMS)[:5]
@@ -454,6 +454,18 @@ def _counter_of(field: Field) -> str | None:
     if found is None or "*" not in field.spelled:
         return None
     return found.group(1)
+
+
+def _dimensions(owner: Declaration, field: Field) -> tuple[int, ...]:
+    """A member's array lengths, which a file's layout says as numbers - a length worked out
+    at run time is refused by name, since nothing in the record could hold it."""
+    if any(dimension is None for dimension in field.dims):
+        raise UnsupportedFeatureError(
+            f"{owner.name}::{field.name} is a {field.spelled} whose array length is worked out "
+            f"at run time, and a ROOT file's layout says a number of values: give the member a "
+            f"length C++ can count at compile time, or mark it transient with //! to leave it "
+            f"out of the file")
+    return tuple(int(dimension) for dimension in field.dims)
 
 
 def _product(dims: tuple[int, ...]) -> int:
