@@ -27,8 +27,10 @@ import numpy as np
 from .errors import UnsupportedFeatureError
 from .interp import MEMBER_WISE
 from .wdeclared import (
+    ANY,
     CHAR_STAR,
     MAPS,
+    OBJECT,
     OFFSET_L,
     OFFSET_P,
     STL_KINDS,
@@ -242,6 +244,12 @@ class _Writer:
         self.collection(parse_type(element[8]), value)
 
     def _object(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
+        if element[3] in (OBJECT + OFFSET_L, ANY + OFFSET_L):
+            # An array of them, as `T a[N]` and `std::array<T,N>` are laid out: one record
+            # after another, in place.
+            for one in value or ():
+                self.record(element[8], one)
+            return
         self.record(element[8], value)
 
     def _pointed(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:

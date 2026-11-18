@@ -24,7 +24,7 @@ from xrdroot.pycint.execute import run_source
 from xrdroot.pycxx.runtime.namespace import DECLARED
 from xrdroot.pyroot.core.declared import find_class, made_from, payload_of
 from xrdroot.wdeclared import Catalogue, Declaration, Field, normalised, parse_type
-from xrdroot.wdobjects import Instance, write_instance
+from xrdroot.wdobjects import Instance, write_instance, write_members
 from xrdroot.writer import WBuffer
 
 DATA = pathlib.Path(__file__).parent / "data"
@@ -556,6 +556,9 @@ def test_a_std_array_member_is_the_fixed_array_root_lays_out():
     # An array of objects is not a basic type's array, and is refused rather than guessed.
     with pytest.raises(UnsupportedFeatureError, match=r"C::v is a std::array<Thing,2>, which"):
         catalogue(Field("v", "std::array<Thing,2>", "", ())).info("C")
+    # ... and so is a length that is no number anything can count at compile time.
+    with pytest.raises(UnsupportedFeatureError, match=r"C::v is a std::array<int,n>, which"):
+        catalogue(Field("v", "std::array<int,n>", "", ())).info("C")
 
 
 def test_the_length_of_a_std_array_must_be_a_comment_free_whole_number():
@@ -567,3 +570,47 @@ def test_the_length_of_a_std_array_must_be_a_comment_free_whole_number():
     assert _whole(parse_type("std::vector<int>")) is None
     assert _whole(parse_type("T*")) is None
     assert _whole(parse_type("n")) is None  # a name, not a number
+
+
+def test_an_array_of_objects_whose_value_is_not_there_is_no_element_at_all():
+    """A member of an array of objects that holds nothing writes nothing, which is what an
+    empty array of them is."""
+    from xrdroot.pyroot.core.declared import _plain_member
+
+    fields = (Field("v", "std::array<A,2>", "", ()),)
+    made = Catalogue({"C": Declaration("C", 1, True, (), fields),
+                      "A": Declaration("A", 1, True, (), (Field("x", "int", "", ()),))})
+    field = made.declared("C").fields[0]
+    assert _plain_member(None, field, made) == []
+
+
+def test_an_array_of_objects_is_written_one_record_after_another():
+    """``std::array<A,2>`` and ``A a[2]`` are the same layout - ``kOffsetL + kObject``, two
+    values' worth of room, two as the length - and the values go in one record each."""
+    def catalogue(*fields, bases=()):
+        return Catalogue({"C": Declaration("C", 1, True, bases, fields),
+                           "A": Declaration("A", 1, True, (), (Field("x", "int", "", ()),))})
+
+    info = catalogue(Field("v", "std::array<A,2>", "", ()),
+                     Field("w", "A", "", (2,))).info("C")
+    assert info[2] == (("TStreamerObjectAny", "v", "", 82, 16, 2, 1, (2, 0, 0, 0, 0), "A", ()),
+                       ("TStreamerObjectAny", "w", "", 82, 16, 2, 1, (2, 0, 0, 0, 0), "A", ()))
+
+
+def test_an_array_of_objects_writes_one_record_per_element_and_refuses_one_it_cannot():
+    """The values of an array of objects go in one record each, and one whose class nothing
+    describes is refused rather than laid out by guesswork."""
+    def catalogue(*fields, bases=()):
+        return Catalogue({"C": Declaration("C", 1, True, bases, fields),
+                           "A": Declaration("A", 1, True, (), (Field("x", "int", "", ()),))})
+
+    with pytest.raises(UnsupportedFeatureError, match="C::v is a std::array<Unknown,2>"):
+        catalogue(Field("v", "std::array<Unknown,2>", "", ())).info("C")
+    # The writer's own path: one record per element, in place, each its member's bytes.
+    made = catalogue(Field("v", "std::array<A,2>", "", ()))
+    buf = WBuffer()
+    write_members(buf, Instance("C", {"v": [Instance("A", {"x": 1}),
+                                            Instance("A", {"x": 2})]}), made)  # fmt: skip
+    data = bytes(buf.data)
+    assert len(data) == 28  # two records of one member each, 14 bytes apiece
+    assert data.endswith(b"\x00\x00\x00\x02") and b"\x00\x00\x00\x01" in data

@@ -310,13 +310,30 @@ class Catalogue:
         if found.name not in ARRAY_TEMPLATES or len(found.args) != 2 or found.stars:
             return None
         element, count = found.args
-        basic = self.basic(element)
         length = _whole(count)
-        if basic is None or length is None or length < 1 or element.stars:
+        if length is None or length < 1 or element.stars:
             return None
-        stype, typename, size = basic
-        return ("TStreamerBasicType", field.name, field.comment, stype + OFFSET_L,
-                size * length, length, 1, (length, *NO_DIMS)[:5], typename, ())  # fmt: skip
+        basic = self.basic(element)
+        if basic is not None:
+            stype, typename, size = basic
+            return ("TStreamerBasicType", field.name, field.comment, stype + OFFSET_L,
+                    size * length, length, 1, (length, *NO_DIMS)[:5], typename, ())  # fmt: skip
+        return self._object_array(owner, field, element, length)
+
+    def _object_array(
+        self, owner: Declaration, field: Field, element: Spelled, length: int
+    ) -> Element | None:
+        """``std::array<T,N>`` of objects: the element a member of one object is, with the
+        array offset on its type and N values' worth of room - ROOT's ``TStreamerObject``
+        at ``kOffsetL + kObject``, as the oracle writes it."""
+        name = class_name(element)
+        if not self.known(name):
+            return None
+        self.describe(name)
+        tobject = self.tobject(name)
+        kind = "TStreamerObject" if tobject else "TStreamerObjectAny"
+        return (kind, field.name, field.comment, (OBJECT if tobject else ANY) + OFFSET_L,
+                POINTER_SIZE * length, length, 1, (length, *NO_DIMS)[:5], name, ())  # fmt: skip
 
     def _basic(
         self, owner: Declaration, field: Field, found: Spelled, counter: bool
@@ -415,8 +432,10 @@ class Catalogue:
         self, owner: Declaration, field: Field, found: Spelled, counter: bool
     ) -> Element | None:
         name = class_name(found)
-        if found.name in STL_KINDS or field.dims or found.stars > 1 or not self.known(name):
+        if found.name in STL_KINDS or found.stars > 1 or not self.known(name):
             return None
+        if field.dims:  # T a[N] of objects: the array a std::array<T,N> is
+            return self._object_array(owner, field, found, _product(_dimensions(owner, field)))
         self.describe(name)
         tobject = self.tobject(name)
         if not found.stars:

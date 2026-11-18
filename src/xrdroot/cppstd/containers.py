@@ -266,13 +266,20 @@ def cpp_name(kind: Any) -> str:
 
 
 def _converted(kind: Any, value: Any) -> Any:
-    """A value as an element of this type is kept: a string, or a container made from it."""
+    """A value as an element of this type is kept: a string, or a container made from it.
+
+    A braced list is C++'s list-initialisation of the element, so its values are the
+    constructor's arguments - ``std::array<Holder,3> a; a[0] = {1,2,3};`` builds the
+    element from the three, as ``Holder(1,2,3)`` builds it.
+    """
     if kind is string:
         return string(value)
     if getattr(kind, "opaque", False):
         return value
     if isinstance(value, kind):
         return value
+    if isinstance(value, (list, tuple)) and not issubclass(kind, _Container):
+        return kind(*value)  # the values of a brace-enclosed initialiser, as C++ passes them
     if issubclass(kind, _Pair):  # a pair made elsewhere - make_pair's, a tuple - as two
         return kind(*value)
     return kind(value)

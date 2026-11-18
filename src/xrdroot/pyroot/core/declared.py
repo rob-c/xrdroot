@@ -26,6 +26,7 @@ import numpy as np
 from ...cppstd.containers import std
 from ...wclasses import TYPES
 from ...wdeclared import (
+    ARRAY_TEMPLATES,
     MAPS,
     STL_KINDS,
     Catalogue,
@@ -153,10 +154,14 @@ def _gather(name: str, cls: type, found: dict[str, Declaration]) -> None:
 
 
 def _reach_type(found: Spelled, into: dict[str, Declaration]) -> None:
+    """Add every declared class a type reaches: the type itself - a template instance such as
+    a macro's ``ArrayHolderT<int>`` is a class of its own - and whatever its arguments are."""
     for arg in found.args:
         _reach_type(arg, into)
-    if not found.args and found.name not in TYPES:
-        _reach(found.name, into)
+    if found.name not in TYPES:
+        # The name with its arguments and without the stars: a pointer to a class reads
+        # the class, and a template instance is a class of its own.
+        _reach(Spelled(found.name, found.args, 0).text(), into)
 
 
 def _reach(name: str, into: dict[str, Declaration]) -> None:
@@ -209,7 +214,7 @@ def instance_of(obj: Any, name: str, catalogue: Catalogue) -> Instance:
     for field in declared.fields:
         if not field.comment.startswith("!"):
             value = getattr(obj, _attribute(field.name), None)
-            members[field.name] = _plain(value, parse_type(field.spelled), catalogue)
+            members[field.name] = _plain_member(value, field, catalogue)
     return Instance(name, members)
 
 
@@ -249,6 +254,23 @@ def _root_member(obj: Any, member: str) -> Any:
     """A member of one of ROOT's bases, from its getter where it has one: ``fLineColor``."""
     getter = getattr(obj, "Get" + member[1:], None)
     return getter() if callable(getter) else getattr(obj, member, None)
+
+
+def _plain_member(value: Any, field: Any, catalogue: Catalogue) -> Any:
+    """A data member's value as plain data.
+
+    An array of *objects* - ``T a[N]`` and ``std::array<T,N>`` alike - holds one plain
+    instance per element, which is what the member-wise writer writes one record
+    after another; an array of numbers stays the values it is.
+    """
+    found = parse_type(field.spelled)
+    template = found.name in ARRAY_TEMPLATES and bool(found.args)
+    content = found.args[0] if template else found  # a std::array's, or the element of T[N]
+    is_array = bool(field.dims) or template
+    if is_array and catalogue.declared(class_name(content)) is not None:  # an array of objects
+        return [_plain(element, content, catalogue) for element in (value if value is not None
+                                                                    else ())]  # fmt: skip
+    return _plain(value, found, catalogue)
 
 
 def _plain(value: Any, found: Spelled, catalogue: Catalogue) -> Any:

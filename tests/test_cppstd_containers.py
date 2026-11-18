@@ -355,3 +355,18 @@ def test_a_template_name_no_container_here_is_declared_is_resolved_by_the_instal
             plain.element_type("ArrayHolderT<float>")
     finally:
         plain.set_type_resolver(None)
+
+
+def test_a_brace_enclosed_value_builds_the_element_from_its_values() -> None:
+    """``a[0] = {1,2,3}`` of an element with a three-argument constructor: C++ list-initialises
+    the element, so the braced values are the constructor's arguments - as a pair's are."""
+
+    class Holder:
+        def __init__(self, *values):
+            self.values = values
+
+    assert containers._converted(Holder, [1, 2, 3]).values == (1, 2, 3)
+    already = Holder(4, 5, 6)
+    assert containers._converted(Holder, already) is already
+    pair = containers._element(containers.std.pair["int", "int"], (7, 8))
+    assert (pair.first, pair.second) == (7, 8)
