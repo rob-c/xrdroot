@@ -120,7 +120,7 @@ def _leaves(name: str, values: list[Any]) -> Array:
     if any(isinstance(value, dict) for value in values):
         raise UnsupportedFeatureError(
             f"{name!r} holds whole objects or maps, one dictionary per value, which an "
-            f"expression cannot do arithmetic on; name the split members instead, as "
+            f"expression cannot do arithmetic on; name a member of one instead, as "
             f"{name}.member, or read the column itself with arrays()"
         )
     if values and all(isinstance(value, str) for value in values):

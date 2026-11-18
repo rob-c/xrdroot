@@ -5,13 +5,18 @@ ROOT is generous about names, and so is this. A split object's member is
 column is ``alias.x``; a fixed-size array whose branch is called
 ``ArrayI16[10]`` is written ``ArrayI16``. When a dotted name could be read
 more than one way the longest branch it spells wins, so ``evt.P3.Px`` is the
-member and never the object ``P3`` with something left over.
+member and never the object ``P3`` with something left over. An object the tree
+holds whole names its members beside these - ``fNtrack``, and ``GetNtrack()``
+for it as a class's getter spells it - which is what :class:`~.objects.Whole`
+learned from the objects themselves.
 """
 
 from __future__ import annotations
 
 import difflib
-from collections.abc import Collection, Iterator
+from collections.abc import Collection, Iterator, Sequence
+
+from .objects import Whole
 
 __all__ = ["Names"]
 
@@ -19,10 +24,12 @@ __all__ = ["Names"]
 class Names:
     """The branches an expression may name, and how to find one from what was written."""
 
-    __slots__ = ("names", "exact", "bare")
+    __slots__ = ("names", "exact", "bare", "whole")
 
-    def __init__(self, names: Collection[str]) -> None:
+    def __init__(self, names: Collection[str], whole: Whole | None = None) -> None:
         self.names = list(names)
+        #: The members of the tree's whole objects, which a name may call by its getter.
+        self.whole = whole
         self.exact = set(self.names)
         #: A name with its array size taken off, against the branch it is.
         self.bare: dict[str, str] = {}
@@ -57,6 +64,25 @@ class Names:
             if self.find(".".join(parts[:start])) is None:
                 return
             yield start
+
+    def member(self, parts: Sequence[str]) -> str | None:
+        """The member of an object the tree holds whole that ``parts`` spells, if one is.
+
+        ``GetNtrack()`` names ``fNtrack`` and ``fH.GetXaxis().GetXmax()`` names
+        ``fH.fXaxis.fXmax``: ROOT's formulas ask the class for the method's
+        member, and with no class to ask here the getter is the member's other
+        spelling.
+        """
+        return None if self.whole is None else self.whole.member(parts)
+
+    def holds(self, parts: Sequence[str]) -> str | None:
+        """The object here that ``parts`` leads into, whether or not it has the last name.
+
+        A method of an object read from a file is refused for what it is - the
+        object is here and answers no such name - and never as a name nothing
+        has at all.
+        """
+        return self.whole.owner(parts) if self.whole is not None else None
 
     def nearest(self, written: str, others: Collection[str] = ()) -> str:
         """A clause naming the branches that look most like ``written``, for a refusal."""

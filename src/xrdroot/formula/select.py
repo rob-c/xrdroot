@@ -22,9 +22,11 @@ from typing import Any
 
 import numpy as np
 
+from ..errors import UnsupportedFeatureError
 from ..jagged import Jagged, _bounds, take
 from ..library import convert
 from .formula import Formula, compile_formula
+from .objects import SAMPLE, Whole, _whole, learned
 from .ops import truth
 
 __all__ = ["select", "TreeNames", "dimensions"]
@@ -72,7 +74,12 @@ def _shaped(branch: Any, value: Any) -> Any:
 
 
 class TreeNames(Mapping[str, int]):
-    """Every name an expression over a tree may use, against its number of dimensions."""
+    """Every name an expression over a tree may use, against its number of dimensions.
+
+    A branch of the tree is a name, and so is a friend's; and so is a member of
+    an object the tree holds whole - ``fNtrack``, or ``event.fNtrack`` - which
+    is no branch at all and is read out of the object each entry holds.
+    """
 
     def __init__(self, source: Any) -> None:
         self.source = source
@@ -81,6 +88,9 @@ class TreeNames(Mapping[str, int]):
             names += [f"{alias}.{name}" for name in friend.keys()]
             names += friend.keys()
         self.names = list(dict.fromkeys(names))
+        #: The members of the branches the tree holds whole, which are names too.
+        self.whole = _members(source, self.names)
+        self.names += [name for name in self.whole if name not in self.names]
 
     def __iter__(self) -> Iterator[str]:
         return iter(self.names)
@@ -92,7 +102,28 @@ class TreeNames(Mapping[str, int]):
         return name in self.names
 
     def __getitem__(self, name: str) -> int:
+        if isinstance(name, str) and name in self.whole:
+            return self.whole.dims[name]
         return dimensions(_underlying(self.source[name]))
+
+
+def _members(source: Any, names: Sequence[str]) -> Whole:
+    """What the branches the tree holds whole offer as names, learned from a few entries of them.
+
+    A branch that cannot be read offers nothing: an expression naming one of its
+    members is refused for the branch's own reason, and the other branches of
+    the tree are read as they were.
+    """
+    samples: dict[str, Any] = {}
+    for name in names:
+        branch = _underlying(source[name])
+        if not _whole(branch):
+            continue
+        try:
+            samples[name] = branch.array(0, SAMPLE)
+        except UnsupportedFeatureError:
+            continue
+    return learned(samples, names) if samples else Whole()
 
 
 def _local(source: Any, numbers: Array) -> Array | None:
@@ -106,8 +137,17 @@ def _local(source: Any, numbers: Array) -> Array | None:
 class _Read:
     """The entries one call reads, the branches read for them, and the numbers they have."""
 
-    def __init__(self, source: Any, start: int, stop: int | None, entries: Any) -> None:
+    def __init__(
+        self,
+        source: Any,
+        start: int,
+        stop: int | None,
+        entries: Any,
+        whole: Whole | None = None,
+    ) -> None:
         self.source = source
+        #: The members of the tree's whole objects, when the caller knows them.
+        self.whole = whole
         #: The entries named, or ``None`` for the range ``low`` to ``high``.
         self.rows: Array | None = None
         self.low, self.high = _bounds(len(source), start, stop)
@@ -122,19 +162,24 @@ class _Read:
     def column(self, name: str) -> Any:
         """One branch's values for these entries, read the first time it is asked for."""
         if name not in self.columns:
-            branch = self.source[name]
-            if self.rows is None:
-                self.columns[name] = branch.array(self.low, self.high)
+            if self.whole is not None and name in self.whole:
+                self.columns[name] = self.whole.read(name, self.column(self.whole.branch(name)))
             else:
-                self.columns[name] = branch.pick(self.rows)
+                branch = self.source[name]
+                if self.rows is None:
+                    self.columns[name] = branch.array(self.low, self.high)
+                else:
+                    self.columns[name] = branch.pick(self.rows)
         return self.columns[name]
 
+    def shaped(self, name: str) -> Any:
+        """One column as its branch's title declares it, or a member of a whole object as read."""
+        if self.whole is not None and name in self.whole:
+            return self.column(name)
+        return _shaped(_underlying(self.source[name]), self.column(name))
+
     def evaluate(self, formula: Formula, masked: bool = False) -> Any:
-        branches = {name: self.source[name] for name in formula.branches}
-        columns = {
-            name: _shaped(_underlying(branch), self.column(name))
-            for name, branch in branches.items()
-        }
+        columns = {name: self.shaped(name) for name in formula.branches}
         method = formula.evaluate_masked if masked else formula.evaluate
         return method(
             columns,
@@ -190,17 +235,17 @@ def _cut(columns: dict[str, Any], values: Any, valid: Any) -> dict[str, Any]:
 
 def _compiled(
     source: Any, wanted: list[str], cut: str | None, aliases: Mapping[str, str] | None
-) -> tuple[dict[str, Formula], Formula | None]:
-    """Every name that is not a branch compiled as an expression, and the cut."""
+) -> tuple[dict[str, Formula], Formula | None, TreeNames | None]:
+    """Every name that is not a branch compiled as an expression, the cut, and the names."""
     texts = [text for text in wanted if text not in source]
     if not texts and cut is None:
         # A friend recorded in the file is opened to list its names, and
         # plain branches should not make that happen.
-        return {}, None
+        return {}, None, None
     known = TreeNames(source)
     formulas = {text: compile_formula(text, known, aliases=aliases) for text in texts}
     selection = None if cut is None else compile_formula(cut, known, aliases=aliases)
-    return formulas, selection
+    return formulas, selection, known
 
 
 def select(
@@ -221,8 +266,9 @@ def select(
     given under its own text. With ``cut``, only what it selects comes back.
     """
     wanted = source.readable() if names is None else list(names)
-    formulas, selection = _compiled(source, wanted, cut, aliases)
-    read = _Read(source, entry_start, entry_stop, entries)
+    formulas, selection, known = _compiled(source, wanted, cut, aliases)
+    whole = None if known is None else known.whole
+    read = _Read(source, entry_start, entry_stop, entries, whole)
     columns = {
         text: read.evaluate(formulas[text]) if text in formulas else read.column(text)
         for text in wanted

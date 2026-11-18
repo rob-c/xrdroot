@@ -254,7 +254,7 @@ def compile_formula(
     their own, expanded wherever they are written, and refused when one
     stands for itself.
     """
-    root = parse(text, Names(names), aliases)
+    root = parse(text, Names(names, getattr(names, "whole", None)), aliases)
     formula = Formula(text, root, None)
     if isinstance(names, Mapping):
         dims = {name: _dims(names[name], name) for name in formula.branches}

@@ -237,18 +237,39 @@ class Parser:
                 f"formulas know; {self.names.nearest(text, self.aliases)}"
             )
         column, rest = found
-        if rest and any(name.startswith(f"{column}.") for name in self.names.names):
-            raise FormulaError(
-                f"{text!r} in {self.text!r} is not a member of {column!r} this tree has a "
-                f"branch for; {self.names.nearest(text)}"
-            )
         if rest:
-            raise UnsupportedFeatureError(
-                f"{text!r} in {self.text!r} asks for {rest!r} inside {column!r}, which the "
-                f"tree holds whole rather than split into a branch per member; only split "
-                f"members can be read by name in an expression"
-            )
+            self._member(text, column, rest)
         return self._indexed(Ref(column))
+
+    def _member(self, text: str, column: str, rest: str) -> NoReturn:
+        """Refuse a name that is no value an expression reads.
+
+        ``column`` is a branch, or an object the tree holds whole, and ``rest`` is
+        what of the name is left after it. Three ways a name is no value: it leads
+        into an object - ``event.fH`` - which ROOT draws as nothing at all and
+        this names as out of reach; it leads into an object this tree holds whole
+        and this reader has learnt no such member of; or the object is split into
+        names and this one is simply not among them, which the branches near it
+        say, as ROOT's own refusal does.
+        """
+        deeper = sorted(name for name in self.names.names if name.startswith(f"{text}."))
+        if deeper:
+            raise UnsupportedFeatureError(
+                f"{text!r} in {self.text!r} names {rest!r} of {column!r}, which is an object "
+                f"and not a number or a string that an expression reads; name one of its "
+                f"members instead, as {deeper[0]!r}"
+            )
+        if not any(name.startswith(f"{column}.") for name in self.names.names):
+            raise UnsupportedFeatureError(
+                f"{text!r} in {self.text!r} asks for {rest!r} inside {column!r}, which this "
+                f"tree holds whole: what such an object holds is learnt from the objects "
+                f"the tree's first entries hold, and none of them has {rest!r} - a member "
+                f"behind a collection those entries leave empty is not known here"
+            )
+        raise FormulaError(
+            f"{text!r} in {self.text!r} is not a member of {column!r} this tree has a branch "
+            f"for; {self.names.nearest(text)}"
+        )
 
     def _indexed(self, node: Node) -> Node:
         """The ``[i]`` and ``[]`` after a name, and a ``.size()`` after those."""
@@ -314,10 +335,55 @@ class Parser:
         for kind, build in CALLS:
             if kind(self, name):
                 return build(self, name, self._arguments())
+        args = self._arguments()
+        node = self._object_call(name, args)
+        if node is not None:
+            return node
+        if _is_member(self, name):
+            return self._member_call(name, args)
         raise FormulaError(
             f"{name!r} in {self.text!r} is not a function ROOT's formulas know; "
             f"{Names(list(FUNCTIONS)).nearest(name)}"
         )
+
+    def _object_call(self, name: str, args: tuple[Node, ...]) -> Node | None:
+        """``GetNtrack()``, ``fH.GetXaxis().GetXmax()``: a member of an object, named by a getter.
+
+        ROOT's formula asks the object's class for the method and calls what it
+        finds; an object read from a file is a dictionary of its members, so a
+        getter names a member instead - ``GetNtrack()`` is ``fNtrack`` - and
+        the calls chained after it walk on through what each one gives. ``None``
+        for a call that is nothing of the tree's, which the branch's own methods
+        and ROOT's functions then have their say about.
+        """
+        parts = name.split(".")
+        while not args and (step := self._chain()) is not None:
+            parts.append(step)
+            args = self._arguments() if self.peek.is_op("(") else ()
+        found = self.names.member(parts)
+        if found is not None:
+            return self._indexed(Ref(found, args))
+        owner = self.names.holds(parts)
+        if owner is not None:
+            raise UnsupportedFeatureError(
+                f"{name}() in {self.text!r} is a method of {owner!r}, which this tree holds "
+                f"whole: read from a file the object is a dictionary of its members, and the "
+                f"only method a formula reads off one is the getter naming a member - "
+                f"GetXmax() for fXmax; name the member the method works from instead"
+            )
+        return None
+
+    def _chain(self) -> str | None:
+        """The ``.Member`` written after a call, as the part of a name to go on with.
+
+        ``.size()`` is not one: it is the length of the collection the name
+        itself gave, which the name answers.
+        """
+        if self.peek.kind != "member":
+            return None
+        if self.peek.text[1:] in METHODS and self.tokens[self.at + 1].is_op("("):
+            return None
+        return self.take().text[1:]
 
     def _arity(self, name: str, args: tuple[Node, ...], least: int, most: int) -> None:
         if least <= len(args) <= most:
@@ -365,6 +431,7 @@ def _is_cast(parser: Parser, name: str) -> bool:
 
 
 def _is_member(parser: Parser, name: str) -> bool:
+    """``pt.size()``: a collection's own length, which is the only method a branch answers."""
     return "." in name and parser.names.resolve(name.rpartition(".")[0]) is not None
 
 
@@ -373,7 +440,6 @@ CALLS = (
     (_is_reducer, Parser._reducer),
     (_is_function, Parser._function),
     (_is_cast, Parser._functional_cast),
-    (_is_member, Parser._member_call),
 )
 
 

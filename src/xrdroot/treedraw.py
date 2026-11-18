@@ -33,7 +33,8 @@ from .extending import _cell_bins, fill_in_order
 from .filling import running
 from .formula import Formula, compile_formula
 from .formula.nodes import Alt, Node, Reduce, Ref, Size, Special
-from .formula.select import TreeNames, _Read, _shaped, _underlying
+from .formula.objects import Whole
+from .formula.select import TreeNames, _Read
 from .formula.together import evaluate_together
 from .graph import Graph
 from .hist import Histogram
@@ -310,7 +311,21 @@ def _integer_branch(branch: Any) -> bool:
     return name in INTEGER_TYPES
 
 
-def is_integer(formula: Formula, source: Any) -> bool:
+def _whole_of(source: Any, formulas: Sequence[Formula], whole: Whole | None) -> Whole | None:
+    """The members the tree's whole objects offer, for the formulas that name one.
+
+    ``None`` when it is in hand or no formula needs it - every name being a
+    branch of the tree - so that nothing learns what a tree's objects hold
+    unless an expression reads inside one of them.
+    """
+    if whole is not None:
+        return whole
+    if all(name in source for formula in formulas for name in formula.branches):
+        return None
+    return TreeNames(source).whole
+
+
+def is_integer(formula: Formula, source: Any, whole: Whole | None = None) -> bool:
     """``TTreeFormula::IsInteger``: a lone integer branch, or a count ROOT keeps."""
     root: Node = formula._root
     while isinstance(root, Alt):
@@ -320,6 +335,9 @@ def is_integer(formula: Formula, source: Any) -> bool:
     if isinstance(root, Reduce):
         return root.kind == "Length$"
     if isinstance(root, Ref):
+        whole = _whole_of(source, (formula,), whole)
+        if whole is not None and root.column in whole:
+            return whole.whole_number(root.column)
         return _integer_branch(source[root.column])
     return isinstance(root, Size)
 
@@ -341,15 +359,25 @@ def _numbers(values: Any, valid: Any) -> tuple[Array, Array]:
 
 
 def batches(
-    source: Any, formulas: Sequence[Formula], first: int, count: int | None, step: int
+    source: Any,
+    formulas: Sequence[Formula],
+    first: int,
+    count: int | None,
+    step: int,
+    whole: Whole | None = None,
 ) -> Iterator[list[tuple[Any, Any]]]:
-    """Every formula's value for one batch of entries after another, in one loop each."""
+    """Every formula's value for one batch of entries after another, in one loop each.
+
+    ``whole`` is the members the tree's whole-object branches offer, which a
+    formula reading ``fNtrack`` rather than a branch of that name needs.
+    """
     total = len(source)
     stop = total if count is None else min(total, first + count)
+    whole = _whole_of(source, formulas, whole)
     branches = list(dict.fromkeys(name for f in formulas for name in f.branches))
     for start in range(first, stop, step):
-        read = _Read(source, start, min(start + step, stop), None)
-        columns = {n: _shaped(_underlying(source[n]), read.column(n)) for n in branches}
+        read = _Read(source, start, min(start + step, stop), None, whole)
+        columns = {n: read.shaped(n) for n in branches}
         yield evaluate_together(
             formulas,
             columns,
@@ -522,9 +550,14 @@ def _checked_range(first_entry: int, entries: int | None, step: int, estimate: i
 
 
 def _compiled(
-    source: Any, chosen: Plan, selection: str, weight: Any, aliases: Any
+    source: Any,
+    chosen: Plan,
+    selection: str,
+    weight: Any,
+    aliases: Any,
+    names: TreeNames | None = None,
 ) -> tuple[list[Formula], Weighing]:
-    names = TreeNames(source)
+    names = TreeNames(source) if names is None else names
     formulas = [compile_formula(part, names, aliases=aliases) for part in chosen.parts]
     weighed: Formula | float
     if isinstance(weight, str):
@@ -545,6 +578,7 @@ def _filler(
     bins: Any,
     estimate: int,
     formulas: list[Formula],
+    whole: Whole | None = None,
 ) -> Filling | Scatter:
     if chosen.kind == "graph":
         if bins is not None:
@@ -559,7 +593,7 @@ def _filler(
         none = Axes([], None)
         return Filling(_booker(chosen, none), none, [], estimate, chosen.existing)
     axes = axes_for(found, bins, chosen.kind, binned)
-    integers = [is_integer(formula, source) for formula in formulas[:binned]]
+    integers = [is_integer(formula, source, whole) for formula in formulas[:binned]]
     return Filling(_booker(chosen, axes), axes, integers, estimate, None)
 
 
@@ -579,10 +613,11 @@ def _run(
     parts: int,
     weighing: Weighing,
     reading: tuple[int, int | None, int],
+    whole: Whole | None = None,
 ) -> int:
     """Read the tree a batch at a time into ``filler``: how many fills were made."""
     selected = 0
-    for results in batches(source, formulas, *reading):
+    for results in batches(source, formulas, *reading, whole):
         columns, weights = _fills(results, parts, weighing)
         filler.feed(columns, weights)
         selected += len(weights)
@@ -611,10 +646,11 @@ def draw(
     step = STEP if step is None else step
     _checked_range(first_entry, entries, step, estimate)
     chosen, found = plan(varexp, selection, option, name, title, histograms)
-    formulas, weighing = _compiled(source, chosen, selection, weight, aliases)
-    filler = _filler(source, chosen, found, bins, estimate, formulas)
+    names = TreeNames(source)
+    formulas, weighing = _compiled(source, chosen, selection, weight, aliases, names)
+    filler = _filler(source, chosen, found, bins, estimate, formulas, names.whole)
     reading = (first_entry, entries, step)
-    selected = _run(source, formulas, filler, len(chosen.parts), weighing, reading)
+    selected = _run(source, formulas, filler, len(chosen.parts), weighing, reading, names.whole)
     made = _made(filler, chosen, title)
     if chosen.options.norm and not isinstance(made, Graph):
         _normalised(made)
