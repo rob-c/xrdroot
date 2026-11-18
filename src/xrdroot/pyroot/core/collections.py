@@ -172,6 +172,11 @@ class TCollection(TObject):
         self._items.clear()
 
     def Delete(self, option: str = "") -> None:
+        from ...pycxx.runtime.objects import delete
+
+        for item in self._items:
+            if self._owner and item is not None:
+                delete(item)
         self._items.clear()
 
     def SetOwner(self, enable: bool = True) -> None:

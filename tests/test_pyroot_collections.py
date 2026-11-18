@@ -351,3 +351,19 @@ def test_a_list_merges_each_object_with_those_at_its_place_in_the_others(capsys)
         "Error in <TList::Merge>: some objects in the input list are not collections - "
         "merging aborted\n"
     )
+
+
+def test_a_collection_that_owns_its_entries_deletes_them_with_it():
+    """``Delete``: ROOT deletes what an owning collection holds, so a macro's ``~MyClass`` runs,
+    where ``Clear`` only forgets them - the difference roottest's ``collection/ROOT-7249``
+    watches for. A collection that owns nothing deletes nothing."""
+    made = ROOT.TList()
+    made.SetOwner()
+    made.Add(ROOT.TNamed("a", "A"))
+    made.Add(None)
+    made.Delete()  # no error on the null, as ROOT's Delete leaves it be
+    assert len(made) == 0 and made.IsOwner()
+    kept = ROOT.TList()
+    kept.Add(ROOT.TNamed("b", "B"))
+    kept.Delete()  # not an owner: nothing deleted, nothing to delete
+    assert len(kept) == 0

@@ -238,7 +238,7 @@ class ClassEmitter(FunctionEmitter):
         if inits and var.name in inits:
             args = inits[var.name]
             if var.ctype.reference and len(args) == 1:
-                return self.value(args[0])
+                return self.reference(args[0]) if ctype.scalar else self.value(args[0])
             return self.constructed(ctype, args, VarDecl(var.where, var.name, ctype, style="()"))
         if var.style is not None:
             return self.initial(var, self.declared_type(var))
@@ -305,7 +305,8 @@ class ClassEmitter(FunctionEmitter):
 
 def _data_symbols(klass: ClassInfo) -> list[Symbol]:
     """A class's members, static members and enumerators, as its methods see them."""
-    found = [Symbol(n, "field", member_name(n), v.ctype.value()) for n, v in klass.fields.items()]
+    found = [Symbol(n, "field", member_name(n), v.ctype.value(), cell=bool(
+        v.ctype.reference and v.ctype.value().scalar)) for n, v in klass.fields.items()]
     found += [Symbol(n, "static", f"{klass.name}.{n}", v.ctype) for n, v in klass.statics.items()]
     found += [Symbol(n, "static", f"{klass.name}.{n}", CType("int")) for n in klass.constants]
     return found
