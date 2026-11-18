@@ -520,3 +520,20 @@ def test_get_class_info_answers_for_a_class_something_describes_and_null_otherwi
         (ROOT.TClass.GetClass("vector<int>").GetClassInfo().GetName(), "vector<int>"),
         (ROOT.TClass.GetClass("NobodyKnowsThis").GetClassInfo(), None),
     )
+
+
+def test_an_enum_constant_is_one_of_a_class_s_data_members_as_cpp_lists_it():
+    """A dictionary lists ``TObject::kZombie`` among ``TNamed``'s public data members, so a
+    macro looking for it finds it - and a class nothing describes has no constants."""
+    from xrdroot.pyroot.core.reflection import _is_constant
+
+    members = ROOT.gROOT.GetClass("TNamed").GetListOfAllPublicDataMembers()
+    named = [member.GetName() for member in members]
+    assert "kZombie" in named and "kIsOnHeap" in named and "fName" in named
+    assert ROOT.gROOT.GetClass("TNamed").GetDataMember("kZombie").GetName() == "kZombie"
+    assert ROOT.gROOT.GetClass("TNamed").GetDataMember("notAMember") is None
+    assert [_is_constant(name, value) for name, value in
+            (("kZombie", 1), ("fName", 1), ("kThing", "text"), ("ALLCAPS", 2), ("CamelCase", 3))
+            ] == [True, False, False, True, False]  # fmt: skip
+    assert ROOT.TObject.kZombie == 0x04000000 and ROOT.TH1F.kIsOnHeap == 0x01000000
+    assert list(ROOT.TClass("NobodyKnowsThis").GetListOfDataMembers()) == []

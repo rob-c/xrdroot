@@ -108,6 +108,15 @@ def _emulated(name: str) -> bool:
     return TClass(name)._layout() is None
 
 
+#: How a class's enum constant is spelled: ``kSomething`` or ``ALL_CAPS``, and a number.
+_CONSTANT = re.compile(r"^(?:k[A-Z]\w*|[A-Z][A-Z0-9_]*)$")
+
+
+def _is_constant(name: str, value: Any) -> bool:
+    """Is this class attribute one of C++'s enum constants - a name and a number?"""
+    return bool(_CONSTANT.match(name)) and isinstance(value, int) and not isinstance(value, bool)
+
+
 #: What the names of ROOT's own classes look like: each has a dictionary in ROOT.
 ROOT_NAMES = re.compile(r"^(T[A-Z]|Roo|ROOT::|TMVA::|RooStats::|HistFactory::)")
 
@@ -407,12 +416,25 @@ class TClass(TNamed):
         return None
 
     def GetListOfDataMembers(self, load: bool = True) -> Any:
+        """``GetListOfDataMembers``: the class's members - and its enum constants, which C++
+        lists as members too (``TObject::kZombie`` is one of ``TNamed``'s)."""
         from .collections import TList
 
         made = TList()
         for field in self._fields():
             made.Add(TDataMember(self, *field))
+        for name in self._constants():
+            made.Add(TDataMember(self, name, "int", "", ()))
         return made
+
+    def _constants(self) -> list[str]:
+        """The enum constants the class declares itself: the names a dictionary lists beside
+        its data members."""
+        cls = self._class()
+        if cls is None:
+            return []
+        return [name for name, value in vars(cls).items()
+                if _is_constant(name, value)]  # fmt: skip
 
     def GetListOfAllPublicDataMembers(self, load: bool = True) -> Any:
         """Every data member, this class's and its bases'."""
@@ -423,8 +445,10 @@ class TClass(TNamed):
         return made
 
     def GetDataMember(self, name: Any) -> TDataMember | None:
+        """``GetDataMember``: a member by name - this class's or a base's, as ROOT finds one."""
         wanted = str(name).split("[")[0]
-        return next((m for m in self.GetListOfDataMembers() if m.GetName() == wanted), None)
+        return next((m for m in self.GetListOfAllPublicDataMembers() if m.GetName() == wanted),
+                    None)
 
     def GetListOfMethods(self, load: bool = True) -> Any:
         """``GetListOfMethods``: the class's own functions, by name."""

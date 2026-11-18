@@ -150,6 +150,22 @@ class TObject:
     #: What ``ClassDef`` says of the class, which is a ``TObject``'s title.
     CLASS_TITLE = "Basic ROOT object"
 
+    #: ``TObject::EStatusBits`` and ``EReadStatus``: the bits every object carries, which a
+    #: macro writes as ``TObject::kZombie`` and a dictionary lists among the class's own
+    #: members - C++ makes no difference between an enum constant and a data member there.
+    kCanDelete = 1 << 0
+    kMustCleanup = 1 << 3
+    kIsReferenced = 1 << 4
+    kHasUUID = 1 << 5
+    kCannotPick = 1 << 6
+    kNoContextMenu = 1 << 8
+    kInvalidObject = 1 << 13
+    kIsOnHeap = 0x01000000
+    kNotDeleted = 0x02000000
+    kZombie = 0x04000000
+    kInconsistent = 0x08000000
+    kBitMask = 0x00FFFFFF
+
     def __init__(self, *args: Any) -> None:
         self._unique_id = 0
         if args and isinstance(args[0], TObject):
