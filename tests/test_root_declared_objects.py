@@ -12,18 +12,27 @@ translated classes, member by member.
 from __future__ import annotations
 
 import pathlib
+import re
 
 import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect, fresh
+from xrdroot.cppstd.stdlib import complex_type
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.file import open_root
 from xrdroot.pycint.execute import run_source
 from xrdroot.pycxx.runtime.namespace import DECLARED
 from xrdroot.pyroot.core.declared import find_class, made_from, payload_of
-from xrdroot.wdeclared import Catalogue, Declaration, Field, normalised, parse_type
+from xrdroot.wdeclared import (
+    NO_DIMS,
+    Catalogue,
+    Declaration,
+    Field,
+    normalised,
+    parse_type,
+)
 from xrdroot.wdobjects import Instance, write_instance, write_members
 from xrdroot.writer import WBuffer
 
@@ -614,3 +623,99 @@ def test_an_array_of_objects_writes_one_record_per_element_and_refuses_one_it_ca
     data = bytes(buf.data)
     assert len(data) == 28  # two records of one member each, 14 bytes apiece
     assert data.endswith(b"\x00\x00\x00\x02") and b"\x00\x00\x00\x01" in data
+
+
+#: ROOT 6.40.04's ``TBufferFile::WriteObjectAny`` of a ``classWithComplex(1, 2, 3, 4)`` - a
+#: ``std::complex<float> fcf`` and a ``std::complex<double> fcd`` - as the oracle writes it: the
+#: record's byte count, the version a class of no ``ClassDef`` carries (0) and its checksum,
+#: then each member as a record of its own, ``_real`` before ``_imag``.
+COMPLEX_BYTES = (
+    "400000320000ef61cc47"
+    "4000000e00002e5c46083f80000040000000"
+    "400000160000db2371a140080000000000004010000000000000"
+)
+#: The oracle's bytes for a class of every shape a complex comes in: the two of them by value,
+#: ``std::complex<double> arr[3]``, a pointer that may be null and one declared ``//->`` never
+#: to be, and a ``vector<complex<double> >``, which ROOT writes member-wise.
+COMPLEX_SHAPES_BYTES = (
+    "400000ce0000b0127892"
+    "4000000e00002e5c46083f80000040000000"
+    "400000160000db2371a140080000000000004010000000000000"
+    "400000160000db2371a140240000000000004034000000000000"
+    "400000160000db2371a140260000000000004035000000000000"
+    "400000160000db2371a140280000000000004036000000000000"
+    "00000000"
+    "400000160000db2371a140140000000000004018000000000000"
+    "4000002c400a0000db2371a100000002"
+    "401c000000000000402200000000000040200000000000004024000000000000"
+)
+
+
+def test_a_complex_member_is_the_two_numbers_root_streams_in_place():
+    """ROOT's dictionary describes ``std::complex<T>`` as the pair of ``T`` it is - ``_real``
+    then ``_imag``, and no version, so its objects carry that description's checksum - and
+    streams a member of one in place: twice a number's room, not the pointer a member of a
+    class held by value takes."""
+    decl = Declaration("classWithComplex", 1, True, (),
+                       (Field("fcf", "std::complex<float>", "", ()),
+                        Field("fcd", "std::complex<double>", "", ())))  # fmt: skip
+    catalogue = Catalogue({"classWithComplex": decl})
+    assert catalogue.info("classWithComplex")[2] == (
+        ("TStreamerObjectAny", "fcf", "", 62, 8, 0, 0, (0, 0, 0, 0, 0), "complex<float>", ()),
+        ("TStreamerObjectAny", "fcd", "", 62, 16, 0, 0, (0, 0, 0, 0, 0), "complex<double>", ()),
+    )
+    # ROOT's checksum of each complex' description, which a file carries as its class version is
+    # 1 - and of the class holding them, which is what its objects name instead of a version.
+    described = {name: (hex(sum_), version)
+                 for name, (sum_, version, _elements) in catalogue.entries().items()}  # fmt: skip
+    assert described == {"complex<float>": ("0x2e5c4608", 1),
+                        "complex<double>": ("0xdb2371a1", 1),
+                        "classWithComplex": ("0xef61cc47", 1)}  # fmt: skip
+    buf = WBuffer()
+    write_instance(buf, Instance("classWithComplex", {
+        "fcf": complex_type("float")(1, 2), "fcd": complex_type("double")(3, 4),
+    }), catalogue)  # fmt: skip
+    assert bytes(buf.data).hex() == COMPLEX_BYTES
+
+
+def test_a_complex_in_an_array_behind_a_pointer_or_in_a_vector_is_roots_layout():
+    """Every other shape ROOT has of one: ``kOffsetL + kAny`` for an array - three values'
+    room and three as the length - the pointer's two spellings, and the container of one, which
+    is written member-wise as ROOT writes a container of objects."""
+    decl = Declaration("Shapes", 1, True, (), (
+        Field("fcf", "std::complex<float>", "", ()),
+        Field("fcd", "std::complex<double>", "", ()),
+        Field("arr", "std::complex<double>", "", (3,)),
+        Field("pnull", "std::complex<float>*", "", ()),
+        Field("palways", "std::complex<double>*", "-> never null", ()),
+        Field("vc", "std::vector<std::complex<double> >", "", ()),
+    ))  # fmt: skip
+    catalogue = Catalogue({"Shapes": decl})
+    sum_, _version, elements = catalogue.info("Shapes")
+    assert sum_ == 0xB0127892
+    assert elements[2:5] == (
+        ("TStreamerObjectAny", "arr", "", 82, 48, 3, 1, (3, 0, 0, 0, 0), "complex<double>", ()),
+        ("TStreamerObjectAnyPointer", "pnull", "", 69, 8, 0, 0, NO_DIMS, "complex<float>*", ()),
+        ("TStreamerObjectAnyPointer", "palways", "-> never null", 68, 8, 0, 0, NO_DIMS,
+         "complex<double>*", ()),
+    )
+    assert elements[5][8:] == ("vector<complex<double> >", (1, 61))
+    double = complex_type("double")
+    buf = WBuffer()
+    write_instance(buf, Instance("Shapes", {
+        "fcf": complex_type("float")(1, 2), "fcd": double(3, 4),
+        "arr": [double(10 + i, 20 + i) for i in range(3)],
+        "pnull": None, "palways": double(5, 6), "vc": [double(7, 8), double(9, 10)],
+    }), catalogue)  # fmt: skip
+    assert bytes(buf.data).hex() == COMPLEX_SHAPES_BYTES
+
+
+def test_a_complex_of_a_width_this_writer_has_no_number_for_is_refused():
+    """A complex is two numbers of one width, so one of a type that is not a number this
+    writer packs - or written without its width at all - is refused rather than guessed at."""
+    def catalogue(*fields):
+        return Catalogue({"C": Declaration("C", 1, True, (), fields)})
+
+    for spelled in ("std::complex<long double>", "std::complex<float*>", "std::complex"):
+        with pytest.raises(UnsupportedFeatureError, match=re.escape(f"C::c is a {spelled}, which")):
+            catalogue(Field("c", spelled, "", ())).info("C")

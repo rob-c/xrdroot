@@ -55,6 +55,9 @@ STL_KINDS = {
 }  # fmt: skip
 #: The names ``std::array`` may be spelled with: a fixed array whose N values are in place.
 ARRAY_TEMPLATES = ("array", "std::array")
+#: The names ``std::complex`` may be spelled with: a class of two numbers of one width, which
+#: ROOT has a dictionary for and streams as the pair of values it is.
+COMPLEX_TEMPLATES = ("complex", "std::complex")
 
 #: The containers that hold pairs, a key and a value.
 MAPS = ("map", "multimap", "unordered_map", "unordered_multimap")
@@ -407,6 +410,29 @@ class Catalogue:
         return ("TStreamerSTL", field.name, field.comment, STL, CONTAINER_SIZE, 0, 0, NO_DIMS,
                 streamer_name(found), (kind, content))  # fmt: skip
 
+    def _complex(
+        self, owner: Declaration, field: Field, found: Spelled, counter: bool
+    ) -> Element | None:
+        """``std::complex<T>``: ROOT's dictionary describes one as the pair of ``T`` it is -
+        ``_real`` then ``_imag``, under the name ``complex<T>``, with no version (its objects
+        carry that description's checksum instead) - and streams it in place, as
+        ``TStreamerObjectAny``, so a member of one takes the room of its two parts rather than
+        the pointer a member of a class held by value takes.
+
+        Describing the class here is enough for everything else that holds one: a pointer to it
+        is an ``TStreamerObjectAnyPointer`` whose class the catalogue then knows, and a
+        container of it is written member-wise, as ROOT writes a container of objects.
+        """
+        part = _complex_part(found)
+        if part is None:
+            return None
+        name, (_stype, typename, size) = part
+        self.declarations.setdefault(name, _complex(name, typename))
+        if found.stars:  # a pointer to one: the object rules lay that out, now that it is known
+            return None
+        self.describe(name)
+        return _complex_element(field, name, size, _dimensions(owner, field))
+
     def content_type(self, content: Spelled) -> int:
         """What a container's ``ctype`` says it holds: a number's type, or an object."""
         basic = self.basic(content) if not content.stars else None
@@ -464,6 +490,7 @@ _MEMBER_RULES: tuple[
     Catalogue._char_star,
     Catalogue._string,
     Catalogue._container,
+    Catalogue._complex,
     Catalogue._object,
 )
 
@@ -473,6 +500,36 @@ def pair_name(found: Spelled) -> str:
     key, value = found.args[0], found.args[1]
     return Spelled("pair", (Spelled(streamer_name(key), (), 0),
                             Spelled(streamer_name(value), (), 0)), 0).text()  # fmt: skip
+
+
+def _complex_part(found: Spelled) -> tuple[str, tuple[int, str, int]] | None:
+    """What a type is of ``std::complex``: the name ROOT gives the class - ``complex<float>`` -
+    and the number its two parts are, or ``None`` for a type that is no complex or one of a
+    width this writer has no number for."""
+    if found.name not in COMPLEX_TEMPLATES or len(found.args) != 1:
+        return None
+    part = found.args[0]
+    basic = TYPES.get(part.name) if not part.args and not part.stars else None
+    if basic is None:
+        return None
+    return Spelled("complex", (Spelled(basic[1], (), 0),), 0).text(), basic
+
+
+def _complex_element(field: Field, name: str, size: int, dims: tuple[int, ...]) -> Element:
+    """The element a member is: the two parts in place - ``kAny`` for one complex and
+    ``kOffsetL + kAny`` for an array of them, room for every one of them - which is how ROOT
+    streams a complex, rather than as a class held by value takes a pointer's room."""
+    length = _product(dims) if dims else 1
+    return ("TStreamerObjectAny", field.name, field.comment, ANY + OFFSET_L if dims else ANY,
+            size * 2 * length, length if dims else 0, len(dims),
+            (*dims, *NO_DIMS)[:5] if dims else NO_DIMS, name, ())  # fmt: skip
+
+
+def _complex(name: str, typename: str) -> Declaration:
+    """A ``std::complex``, as ROOT's dictionary describes one: two numbers and no ``ClassDef``,
+    so that its objects carry the checksum of that description where a version would go."""
+    fields = (Field("_real", typename, "", ()), Field("_imag", typename, "", ()))
+    return Declaration(name, 1, True, (), fields)
 
 
 def _pair(name: str) -> Declaration:

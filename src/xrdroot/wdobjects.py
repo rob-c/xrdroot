@@ -51,6 +51,8 @@ MEMORY_BITS = 0x03000000
 #: The version ROOT 6.40 gives the record round a container or string inside an object:
 #: ``TStreamerInfo``'s own class version.
 STL_VERSION = 10
+#: How ``cppstd`` writes the name a ``std::complex`` gives itself: ``complex<float>``.
+COMPLEX_PREFIX = "complex<"
 
 
 class Clones(NamedTuple):
@@ -367,10 +369,15 @@ def _contents(found: Spelled, value: Any) -> tuple[list[Any], Spelled]:
 
 
 def _members(value: Any) -> Mapping[str, Any]:
+    """An object's members as a mapping: an instance's, a mapping's, or a ``std::complex``'s two
+    numbers, which is all a class of C++'s own declaration is here - no layer builds an
+    instance of one."""
     if isinstance(value, Instance):
         return value.members
     if isinstance(value, Mapping):
         return value
+    if str(getattr(value, "__cpp_name__", "")).startswith(COMPLEX_PREFIX):
+        return {"_real": value.real(), "_imag": value.imag()}
     raise UnsupportedFeatureError(
         f"a {type(value).__name__} stands where an object of a class should be written"
     )
