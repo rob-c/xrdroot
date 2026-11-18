@@ -14,8 +14,9 @@ import pytest
 
 import xrdroot.pyroot as ROOT
 from xrdroot.cppstd.cells import Cell
+from xrdroot.cppstd.containers import std
 from xrdroot.errors import UnsupportedFeatureError
-from xrdroot.pyroot.core.jsonbuffer import _float_text
+from xrdroot.pyroot.core.jsonbuffer import _float_text, _scalar
 
 #: What ROOT's oracle prints for each value, as ``TArrayD`` and as ``TArrayF`` hold it.
 FLOATS = [
@@ -119,11 +120,20 @@ def test_a_gap_of_more_than_nine_zeros_ends_the_run_it_falls_in():
 
 
 def test_each_array_class_names_the_element_type_root_gives_it():
-    for made, typname in [(ROOT.TArrayC, "Int8"), (ROOT.TArrayS, "Int16"),
+    for made, typname in [(ROOT.TArrayS, "Int16"), (ROOT.TArrayI, "Int32"),
                           (ROOT.TArrayL, "Int64"), (ROOT.TArrayF, "Float32"),
                           (ROOT.TArrayD, "Float64")]:
         assert _json(made(6, [1, 2, 3, 4, 5, 6]), 23) == (
             f'{{"$arr":"{typname}","len":6,"v":[1,2,3,4,5,6]}}')
+    assert _json(ROOT.TArrayC(6, [65, 66, 67, 68, 69, 70]), 23) == '"ABCDEF"'
+
+
+def test_a_char_array_is_the_string_of_its_characters_at_every_level():
+    """ROOT writes a ``char`` array as one JSON string, which is what a ``TArrayC`` is."""
+    arr = ROOT.TArrayC(3, [ord("a"), ord("b"), ord("c")])
+    assert _json(arr, 0) == '"abc"'
+    assert _json(arr, 3) == '"abc"'
+    assert list(ROOT.TBufferJSON.FromJSON["TArrayC"]('"abc"')) == [97, 98, 99]
 
 
 def test_a_float_is_written_in_the_text_root_writes_it_in():
@@ -189,20 +199,45 @@ def test_a_run_longer_than_the_array_says_nothing_about_the_array_s_rest():
 def test_an_object_root_does_not_write_as_an_array_is_refused_by_its_name():
     with pytest.raises(UnsupportedFeatureError) as refused:
         _json(ROOT.TH1D("h", "a histogram", 10, 0, 1))
-    assert "not yet the JSON of a TH1D" in str(refused.value)
+    assert "does not yet write the JSON of a TH1D" in str(refused.value)
     assert "TArrayI" in str(refused.value)
 
 
-def test_writing_one_data_member_or_one_base_64_array_is_refused():
+def test_one_data_member_is_written_as_the_value_root_writes_for_it():
+    """``ToJSON(obj, level, member)`` writes that member's JSON and nothing round it."""
+    marker = ROOT.TPolyMarker3D(2)
+    marker.SetPoint(0, 1.5, -2.25, 3)
+    marker.SetPoint(1, 0.1, 1e10, 1e-10)
+    assert str(ROOT.TBufferJSON.ToJSON(marker, 0, "fN")) == "2"
+    assert str(ROOT.TBufferJSON.ToJSON(marker, 0, "fOption")) == '""'
+    assert str(ROOT.TBufferJSON.ToJSON(marker, 3, "fP")) == "[1.5,-2.25,3,0.1,10000000000,1e-10]"
+
+
+def test_a_member_a_class_does_not_have_is_refused_by_its_name():
     with pytest.raises(UnsupportedFeatureError) as refused:
         ROOT.TBufferJSON.ToJSON(ROOT.TArrayI(6), 0, "fN")
     assert "'fN'" in str(refused.value)
-    with pytest.raises(UnsupportedFeatureError) as coded:
-        _json(ROOT.TArrayI(6, [1, 2, 3, 4, 5, 6]), 33)
-    assert "kBase64" in str(coded.value)
-    with pytest.raises(UnsupportedFeatureError) as reading:
-        ROOT.TBufferJSON.ConvertFromJSON('{"$arr":"Int32","len":1,"b":"AAAA"}')
-    assert "base64" in str(reading.value)
+    with pytest.raises(UnsupportedFeatureError) as unknown:
+        ROOT.TBufferJSON.ToJSON(ROOT.TObjString("a"), 0, "fNope")
+    assert "'fNope'" in str(unknown.value) and "fString" in str(unknown.value)
+
+
+def test_base_64_is_the_bytes_of_the_values_little_endian_from_the_first_there_is():
+    arr = ROOT.TArrayI(6, [0, 0, 300, -2, 0, 0])
+    assert _json(arr, 30) == '{"$arr":"Int32", "len":6, "o":8, "b":"LAEAAP7///8="}'
+    assert _json(arr, 33) == '{"$arr":"Int32","len":6,"o":8,"b":"LAEAAP7///8="}'
+    assert list(ROOT.TBufferJSON.ConvertFromJSON(_json(arr, 33))) == [0, 0, 300, -2, 0, 0]
+    whole = ROOT.TArrayI(6, [1, 2, 3, 4, 5, 6])
+    assert _json(whole, 33) == '{"$arr":"Int32","len":6,"b":"AQAAAAIAAAADAAAABAAAAAUAAAAGAAAA"}'
+    zeros = ROOT.TArrayI(6)
+    assert _json(zeros, 33) == '{"$arr":"Int32","len":6,"b":""}'
+    assert _json(ROOT.TArrayI(0), 33) == "[]"
+
+
+def test_an_object_read_back_says_that_only_what_names_its_class_is_read():
+    with pytest.raises(UnsupportedFeatureError) as refused:
+        ROOT.TBufferJSON.ConvertFromJSON('{"_typename":"TNamed","fName":"a"}')
+    assert "does not yet read an object back" in str(refused.value)
 
 
 def test_a_bare_json_array_is_read_when_the_cell_knows_the_pointer_s_c_type():
@@ -238,3 +273,142 @@ def test_the_json_of_an_object_is_the_json_of_a_write():
     arr = ROOT.TArrayI(100, list(range(100)))
     assert ROOT.TBufferJSON.ConvertToJSON(arr, None, 23) == ROOT.TBufferJSON.ToJSON(arr, 23)
     assert ROOT.TBufferJSON.ConvertToJSON(arr, 23) == ROOT.TBufferJSON.ToJSON(arr)
+
+
+def _pair_map():
+    """The map ``runMap.C`` makes: ten keys named ``fieldN``, each holding ``7N``."""
+    data = std.map["std::string", "int"]()
+    for n in range(3):
+        data["field" + str(n)] = n * 7
+    return data
+
+
+def test_an_object_is_the_members_its_streamer_writes_in_the_order_it_writes_them():
+    """``PolyMarker.ref``: ``fLastPoint`` is not there, and ``fName`` comes after ``fOption``.
+
+    ROOT's own text for this marker says ``"fBits" : 1`` and
+    ``"fName" : "TPolyMarker3D"``; those two are the marker's own state, which ROOT's
+    constructor sets - ``kCanDelete`` and its class as its name - and this library's does
+    not yet, so what is written here is what the object holds.
+    """
+    marker = ROOT.TPolyMarker3D(3)
+    for n in range(3):
+        marker.SetPoint(n, n * 2, n * 3, n * 4)
+    assert _json(marker) == """{
+  "_typename" : "TPolyMarker3D",
+  "fUniqueID" : 0,
+  "fBits" : 0,
+  "fMarkerColor" : 1,
+  "fMarkerStyle" : 1,
+  "fMarkerSize" : 1,
+  "fN" : 3,
+  "fP" : [0, 0, 0, 2, 3, 4, 4, 6, 8],
+  "fOption" : "",
+  "fName" : ""
+}"""
+    assert _json(marker, 3) == (
+        '{"_typename":"TPolyMarker3D","fUniqueID":0,"fBits":0,"fMarkerColor":1,'
+        '"fMarkerStyle":1,"fMarkerSize":1,"fN":3,"fP":[0,0,0,2,3,4,4,6,8],"fOption":"",'
+        '"fName":""}')
+
+
+def test_a_polyline_writes_its_line_attributes_and_no_name():
+    """Its streamer writes ``fN``, ``fP`` and ``fOption``, and ``TPolyLine3D`` has no name."""
+    line = ROOT.TPolyLine3D(2)
+    line.SetPoint(0, 1, 2, 3)
+    line.SetPoint(1, 4, 5, 6)
+    assert _json(line, 2) == (
+        '{"_typename" : "TPolyLine3D","fUniqueID" : 0,"fBits" : 0,"fLineColor" : 1,'
+        '"fLineStyle" : 1,"fLineWidth" : 1,"fN" : 2,"fP" : [1, 2, 3, 4, 5, 6],'
+        '"fOption" : ""}')
+
+
+def test_a_member_an_object_does_not_hold_is_zero_rather_than_an_error():
+    """A drawn object keeps only what it was given; a member it never set is its type's zero."""
+    assert _json(ROOT.TObjString("hi"), 3) == (
+        '{"_typename":"TObjString","fUniqueID":0,"fBits":0,"fString":"hi"}')
+    assert _json(ROOT.TObject(), 3) == '{"_typename":"TObject","fUniqueID":0,"fBits":0}'
+    assert _json(ROOT.TNamed("a", "b"), 1) == (
+        '{\n"_typename" : "TNamed",\n"fUniqueID" : 0,\n"fBits" : 0,\n"fName" : "a",\n'
+        '"fTitle" : "b"\n}')
+
+
+def test_a_map_is_a_pair_per_entry_unless_the_level_asks_for_an_object():
+    """``Map.ref``: ``$pair`` objects at ``kNoCompress``, and a JSON object at 5 and 108."""
+    data = _pair_map()
+    assert _json(data, 0) == (
+        '[{"$pair" : "pair<string,int>", "first" : "field0", "second" : 0}, '
+        '{"$pair" : "pair<string,int>", "first" : "field1", "second" : 7}, '
+        '{"$pair" : "pair<string,int>", "first" : "field2", "second" : 14}]')
+    assert _json(data, 5) == (
+        '{"_typename": "map<string,int>", "field0": 0, "field1": 7, "field2": 14}')
+    assert _json(data, 3) == (
+        '[{"$pair":"pair<string,int>","first":"field0","second":0},'
+        '{"$pair":"pair<string,int>","first":"field1","second":7},'
+        '{"$pair":"pair<string,int>","first":"field2","second":14}]')
+    assert _json(data, 108) == '{"field0":0,"field1":7,"field2":14}'
+    assert _json(data, 103) == (
+        '[{"$pair":1,"first":"field0","second":0},{"$pair":1,"first":"field1","second":7},'
+        '{"$pair":1,"first":"field2","second":14}]')
+
+
+@pytest.mark.parametrize("level", [0, 3, 5, 8, 103, 105, 108])
+def test_a_map_read_back_is_the_map_root_wrote(level):
+    data = _pair_map()
+    read = ROOT.TBufferJSON.FromJSON["std::map<std::string,int>"](_json(data, level))
+    assert read.size() == data.size()
+    assert read.at("field2") == 14
+
+
+def test_a_value_json_has_no_number_for_is_written_as_root_s_own_stand_in():
+    assert _float_text(float("inf"), "Float64", True) == '"inf"'
+    assert _float_text(float("-inf"), "Float32", True) == '"-inff"'
+    assert _float_text(float("nan"), "Float64", True) == '"nan"'
+    assert _float_text(float("nan"), "Float32", False) == "null"
+    with pytest.raises(UnsupportedFeatureError) as refused:
+        _json({"a": 1})
+    assert "does not yet write the JSON of a dict" in str(refused.value)
+
+
+def test_a_string_is_written_with_the_escapes_javascript_reads_and_root_writes():
+    named = ROOT.TNamed('a"b\\c/d\te\nf', "x")
+    assert _json(named, 3) == (
+        '{"_typename":"TNamed","fUniqueID":0,"fBits":0,"fName":"a\\"b\\\\c\\/d\\te\\nf",'
+        '"fTitle":"x"}')
+
+
+def test_a_number_a_flag_or_nothing_at_all_is_written_as_json_has_it():
+    """The leaves a member or a ``$pair`` value can be, written as their own JSON."""
+    assert _json(True) == "true"
+    assert _json(False) == "false"
+    assert _json(None) == "null"
+    assert _scalar(True, "Bool", False) == "true"
+    assert _scalar(False, "Bool", False) == "false"
+
+
+def test_a_number_written_on_its_own_is_the_text_root_gives_that_type():
+    assert _json(7) == "7"
+    assert _json(np.int32(7)) == "7"
+    assert _json(0.5) == "0.5"
+    assert _json(np.float32(0.5)) == "0.5"
+    assert _json("a/b") == '"a\\/b"'
+
+
+def test_a_pointer_read_into_nothing_says_to_read_what_from_json_returns():
+    """A translated ``T *p`` that is ``nullptr`` has no cell for ``FromJSON`` to fill."""
+    with pytest.raises(UnsupportedFeatureError) as refused:
+        ROOT.TBufferJSON.FromJSON(None, '{"$arr":"Int32","len":2,"v":[1]}')
+    assert "nowhere to write" in str(refused.value)
+
+
+def test_the_numbers_a_drawn_object_keeps_are_written_as_the_array_they_are():
+    """A member array is a NumPy one here, and goes out as the array of its own type."""
+    assert _json(np.array([1.5, 2.5, 3.0], dtype=np.float32)) == "[1.5, 2.5, 3]"
+    marker = ROOT.TPolyMarker3D(2)
+    marker.SetPoint(0, 0.5, 1.5, 2.5)
+    marker.SetPoint(1, 3.5, 4.5, 5.5)
+    assert str(ROOT.TBufferJSON.ToJSON(marker, 23)) == (
+        '{"_typename":"TPolyMarker3D","fUniqueID":0,"fBits":0,"fMarkerColor":1,'
+        '"fMarkerStyle":1,"fMarkerSize":1,"fN":2,"fP":{"$arr":"Float32","len":6,'
+        '"v":[0.5,1.5,2.5,3.5,4.5,5.5]},"fOption":"","fName":""}'
+    )

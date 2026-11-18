@@ -28,6 +28,7 @@ FAMILIES = (
     "classedit",
     "collectionproxy",
     "buffers",
+    "jsonbuffer",
     "collections",
     "strings",
     "urls",
