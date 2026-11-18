@@ -310,34 +310,52 @@ class Catalogue:
         """``std::array<T,N>``: ROOT lays one out as the fixed array ``T a[N]`` it is - the
         element's type with the array offset added, its size N values' worth, and N as the
         length - so a member of one is read by another ROOT as the N values it holds.
+
+        One nested inside another is laid out as ``T a[M][N]``: ROOT's dictionary resolves
+        ``std::array<std::array<int,4>,3>`` to the very element it gives ``int a[3][4]``, one
+        element of ``int``, a length of 12, two dimensions with the outermost first, so the
+        nine values of the test's ``a2`` are written as the nine ints of its ``a3``.
         """
-        if found.name not in ARRAY_TEMPLATES or len(found.args) != 2 or found.stars:
+        shape = _array_shape(found)
+        if shape is None:
             return None
-        element, count = found.args
-        length = _whole(count)
-        if length is None or length < 1 or element.stars:
-            return None
+        element, lengths = shape
+        if len(lengths) > MAX_DIMS:
+            raise UnsupportedFeatureError(
+                f"{owner.name}::{field.name} is a {field.spelled}, nested {len(lengths)} arrays "
+                f"deep, and a ROOT file's layout records at most {MAX_DIMS} array dimensions; "
+                f"give the member a plain C array, or mark it transient with //! to leave it out"
+            )
         basic = self.basic(element)
         if basic is not None:
             stype, typename, size = basic
+            length = _product(lengths)
             return ("TStreamerBasicType", field.name, field.comment, stype + OFFSET_L,
-                    size * length, length, 1, (length, *NO_DIMS)[:5], typename, ())  # fmt: skip
-        return self._object_array(owner, field, element, length)
+                    size * length, length, len(lengths), (*lengths, *NO_DIMS)[:5],
+                    typename, ())  # fmt: skip
+        return self._object_array(owner, field, element, lengths)
 
     def _object_array(
-        self, owner: Declaration, field: Field, element: Spelled, length: int
+        self, owner: Declaration, field: Field, element: Spelled, lengths: int | tuple[int, ...]
     ) -> Element | None:
         """``std::array<T,N>`` of objects: the element a member of one object is, with the
         array offset on its type and N values' worth of room - ROOT's ``TStreamerObject``
-        at ``kOffsetL + kObject``, as the oracle writes it."""
+        at ``kOffsetL + kObject``, as the oracle writes it.
+
+        ``lengths`` is one dimension for a ``std::array``, and all of them outermost first
+        for one nested in another; a count from ``T a[N]`` is the one dimension of its own.
+        """
+        dims = (lengths,) if isinstance(lengths, int) else lengths
         name = class_name(element)
         if not self.known(name):
             return None
         self.describe(name)
         tobject = self.tobject(name)
         kind = "TStreamerObject" if tobject else "TStreamerObjectAny"
+        length = _product(dims)
         return (kind, field.name, field.comment, (OBJECT if tobject else ANY) + OFFSET_L,
-                POINTER_SIZE * length, length, 1, (length, *NO_DIMS)[:5], name, ())  # fmt: skip
+                POINTER_SIZE * length, length, len(dims), (*dims, *NO_DIMS)[:5],
+                name, ())  # fmt: skip
 
     def _basic(
         self, owner: Declaration, field: Field, found: Spelled, counter: bool
@@ -576,6 +594,30 @@ def _whole(spelled: Spelled) -> int | None:
         return int(spelled.name)
     except ValueError:
         return None
+
+
+#: The most array dimensions ROOT's ``TStreamerElement`` records, ``fMaxIndex``'s five.
+MAX_DIMS = 5
+
+
+def _array_shape(found: Spelled) -> tuple[Spelled, tuple[int, ...]] | None:
+    """A fixed array taken apart: the type it holds, and its lengths outermost first - from
+    ``std::array<std::array<int,4>,3>`` the ``int`` and ``(3, 4)``.
+
+    None for anything that is not a fixed array at all, and for one whose length nothing can
+    count at compile time, which ``_fixed_array``'s caller then refuses by name.
+    """
+    lengths: list[int] = []
+    while found.name in ARRAY_TEMPLATES and len(found.args) == 2 and not found.stars:
+        element, count = found.args
+        length = _whole(count)
+        if length is None or length < 1:
+            return None
+        lengths.append(length)
+        found = element
+    if not lengths or found.stars or found.name in ARRAY_TEMPLATES:
+        return None
+    return found, tuple(lengths)
 
 
 def _dimensions(owner: Declaration, field: Field) -> tuple[int, ...]:

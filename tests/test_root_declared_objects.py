@@ -581,6 +581,81 @@ def test_the_length_of_a_std_array_must_be_a_comment_free_whole_number():
     assert _whole(parse_type("n")) is None  # a name, not a number
 
 
+def test_a_fixed_array_is_taken_apart_into_what_it_holds_and_its_lengths():
+    """``std::array`` of ``std::array`` is one fixed array of the innermost type, as many
+    dimensions as the nesting asks for, outermost first - and anything else is no fixed
+    array at all, so that another member rule may take it."""
+    from xrdroot.wdeclared import _array_shape, parse_type
+
+    assert _array_shape(parse_type("std::array<std::array<int,4>,3>")) == (
+        parse_type("int"), (3, 4))  # fmt: skip
+    assert _array_shape(parse_type("std::array<int,4>")) == (parse_type("int"), (4,))
+    for nothing in ("int", "std::array<int,4>*", "std::array<int*>",
+                    "std::array<std::array<int*>,3>,3", "std::array<int,0>",
+                    "std::array<std::array<int>,3>", "std::array<std::array<int,3>,n>",
+                    "std::array<T*,3>"):
+        assert _array_shape(parse_type(nothing)) is None, nothing
+
+
+def test_a_std_array_of_a_std_array_is_the_two_dimensional_array_root_lays_out():
+    """ROOT 6.40 resolves ``std::array<std::array<int,3>,3>`` to the element it gives
+    ``int a[3][3]``: one ``int`` element, nine values' worth of room, a length of nine, two
+    dimensions outermost first - the oracle's answer for the stdarray roottest's ``a2``,
+    which prints ``Is Basic: 23`` and two maximum indices of three, as its ``a3`` does."""
+
+    def catalogue(*fields):
+        return Catalogue({"C": Declaration("C", 1, True, (), fields)})
+
+    info = catalogue(Field("a2", "std::array<std::array<int,3>,3>", "", ()),
+                     Field("a3", "int", "", (3, 3)),
+                     Field("a8", "std::array<std::array<float,3>,3>", "", ()),
+                     Field("b", "std::array<std::array<int,4>,3>", "", ()),
+                     Field("c", "std::array<std::array<std::array<int,2>,4>,3>", "", ()),
+                     ).info("C")  # fmt: skip
+    assert info[2] == (
+        ("TStreamerBasicType", "a2", "", 23, 36, 9, 2, (3, 3, 0, 0, 0), "int", ()),
+        ("TStreamerBasicType", "a3", "", 23, 36, 9, 2, (3, 3, 0, 0, 0), "int", ()),
+        ("TStreamerBasicType", "a8", "", 25, 36, 9, 2, (3, 3, 0, 0, 0), "float", ()),
+        ("TStreamerBasicType", "b", "", 23, 48, 12, 2, (3, 4, 0, 0, 0), "int", ()),
+        ("TStreamerBasicType", "c", "", 23, 96, 24, 3, (3, 4, 2, 0, 0), "int", ()))
+
+
+def test_a_std_array_of_a_std_array_writes_its_values_row_by_row_as_its_plain_array_does():
+    """The values of a nested array go as the flattened nine ints it holds, in the order
+    ``std::array`` holds them - the very bytes its plain ``int a[3][3]`` twin writes, which
+    is what a reader of the superposed layout expects."""
+    made = Catalogue({"C": Declaration("C", 1, True, (), (
+        Field("a2", "std::array<std::array<int,3>,3>", "", ()),
+        Field("a3", "int", "", (3, 3))))})  # fmt: skip
+    rows = [[1, 2, 3], [1, 2, 3], [1, 2, 3]]
+    buf = WBuffer()
+    write_members(buf, Instance("C", {"a2": rows, "a3": rows}), made)
+    nine = b"".join(value.to_bytes(4, "big") for row in rows for value in row)
+    assert bytes(buf.data) == nine + nine  # the nested member's nine ints, then the plain's
+
+
+def test_a_std_array_nested_deeper_than_root_records_is_refused_by_name():
+    """ROOT's ``TStreamerElement`` records five array dimensions; a member nested deeper is
+    refused rather than written with a shape a reader cannot recover."""
+    deep = "std::array<" * 6 + "int,2" + ">,2" * 5 + ">"
+    made = Catalogue({"C": Declaration("C", 1, True, (), (Field("v", deep, "", ()),))})
+    with pytest.raises(UnsupportedFeatureError, match=r"C::v is a std::array.*nested 6 arrays"):
+        made.info("C")
+
+
+def test_a_std_array_of_a_std_array_of_objects_is_one_element_of_two_dimensions():
+    """An array of objects nested in another is still one element - the object's type with
+    the array offset on it, every value's worth of room, two dimensions outermost first."""
+    def catalogue(*fields):
+        return Catalogue({"C": Declaration("C", 1, True, (), fields),
+                          "A": Declaration("A", 1, True, (), (Field("x", "int", "", ()),))})
+
+    info = catalogue(Field("v", "std::array<std::array<A,3>,3>", "", ()),
+                     Field("w", "std::array<A,9>", "", ())).info("C")  # fmt: skip
+    assert info[2] == (("TStreamerObjectAny", "v", "", 82, 72, 9, 2, (3, 3, 0, 0, 0), "A", ()),
+                       ("TStreamerObjectAny", "w", "", 82, 72, 9, 1, (9, 0, 0, 0, 0), "A", ()))
+
+
 def test_an_array_of_objects_whose_value_is_not_there_is_no_element_at_all():
     """A member of an array of objects that holds nothing writes nothing, which is what an
     empty array of them is."""
