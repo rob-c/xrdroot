@@ -93,9 +93,33 @@ def declaration_of(cls: type, name: str | None = None) -> Declaration:
     own, bases, fields = cls.__dict__["_cxx_layout_"]
     versioned = "Class_Version" in cls.__dict__
     version = int(cls.Class_Version()) if versioned else 1  # type: ignore[attr-defined]
-    made = tuple(Field(str(n), str(s), str(c), tuple(d)) for n, s, c, d in fields)
+    made = tuple(Field(str(n), str(s), comment_of(c), tuple(d)) for n, s, c, d in fields)
     return Declaration(name or str(own), version, foreign(cls), tuple(map(str, bases)), made,
                        issubclass(cls, TObject), _class_title(cls))  # fmt: skip
+
+
+#: The doxygen markers a member's note opens with once its ``//`` or ``/*`` is off: a comment
+#: written after the member it documents rather than above it. Doxygen's ``!`` and ``*`` are
+#: doxygen's, not ROOT's - ROOT's transient mark is a bare ``!``.
+DOXYGEN_TRAILERS = ("/<", "!<", "*<")
+
+
+def comment_of(note: str) -> str:
+    """A data member's trailing comment as ROOT reads it, which is what says whether the
+    member is persistent.
+
+    ROOT counts a member transient when its comment begins with ``!``, and doxygen's trailing
+    comments begin with a marker instead: ``Int_t fPy; //!< text`` is a persistent member
+    documented by ``text``, while ``Int_t fCache; ///<! text`` is a transient one. A note
+    reaches here with its ``//`` or ``/*`` already off, so the marker is what it opens with -
+    ``/<`` from ``///<``, ``*<`` from ``/**<``, and ``!<`` from ``//!<`` or ``/*!<``, the one
+    form in which doxygen's ``!`` is not ROOT's. A ``!`` anywhere else, ``//! text``
+    included, is ROOT's and stays.
+    """
+    text = str(note)
+    if text[:2] in DOXYGEN_TRAILERS:
+        text = text[2:]
+    return text.lstrip()
 
 
 def foreign(cls: type) -> bool:

@@ -818,3 +818,41 @@ def test_a_complex_of_a_width_this_writer_has_no_number_for_is_refused():
     for spelled in ("std::complex<long double>", "std::complex<float*>", "std::complex"):
         with pytest.raises(UnsupportedFeatureError, match=re.escape(f"C::c is a {spelled}, which")):
             catalogue(Field("c", spelled, "", ())).info("C")
+
+
+DOXYGEN = r'''
+class Documented {
+public:
+   Int_t fPlain; ///< A plain persistent member.
+   Int_t fDoxygen; //!< A persistent member, documented in doxygen's way.
+   Int_t fCachePlain; ///<! A transient member.
+   Int_t fCacheDoxygen; //!<! A transient member, documented in doxygen's way.
+   Int_t fBang; //! A member marked transient the plain way;
+
+   ClassDef(Documented, 1);
+};
+'''
+
+
+def test_a_doxygen_trailing_comment_documents_a_member_it_does_not_hide_it():
+    """ROOT reads ``///<`` and ``//!<`` as doxygen's trailing marker - the comment is the text
+    after it, and the member is persistent - where ``///<!`` and ``//!<!`` mark it transient
+    and keep the ``!`` their comment starts with. Checked against ROOT 6.40.04, whose file
+    lists ``fPlain`` and ``fDoxygen`` with those titles and no other member.
+    """
+    from xrdroot.pyroot.core.declared import catalogue_of, declaration_of
+
+    run_source(DOXYGEN, "doxygen.cxx", call=False)
+    cls = find_class("Documented")
+    fields = {field.name: field.comment for field in declaration_of(cls).fields}
+    elements = catalogue_of(cls).info("Documented")[2]
+    expect(
+        (fields, {"fPlain": "A plain persistent member.",
+                  "fDoxygen": "A persistent member, documented in doxygen's way.",
+                  "fCachePlain": "! A transient member.",
+                  "fCacheDoxygen": "! A transient member, documented in doxygen's way.",
+                  "fBang": "! A member marked transient the plain way;"}),
+        ([element[1] for element in elements], ["fPlain", "fDoxygen"]),
+        ([element[2] for element in elements],
+         ["A plain persistent member.", "A persistent member, documented in doxygen's way."]),
+    )  # fmt: skip
