@@ -231,3 +231,20 @@ def test_a_chain_syncs_an_entry_list_of_one_sub_list_per_file_or_says_why_not(fi
 
     assert CppRuntimeError().what() == "" and CppInvalidArgument("bad").what() == "bad"
     assert CppInvalidArgument().what() == ""
+
+
+def test_a_reader_reads_one_leaf_of_a_branch_that_holds_several():
+    """``TTreeReaderValue<double> b(reader, "b")`` of a branch declared ``a/I:b/D``: the name
+    is a leaf's and not a branch's, so nothing is put back together - it reads as any number."""
+    record = np.zeros(1, dtype=[("a", "i4"), ("b", "f8")])
+    tree = TTree("t", "")
+    tree.Branch("rec", record, "a/I:b/D")
+    for i in range(2):
+        record["a"], record["b"] = i, i / 2
+        tree.Fill()
+    reader = TTreeReader(tree)
+    b = TTreeReaderValue["double"](reader, "b")
+    seen = []
+    while reader.Next():
+        seen.append((b.Get()[0], b.__deref__()))
+    assert seen == [(0.0, 0.0), (0.5, 0.5)]

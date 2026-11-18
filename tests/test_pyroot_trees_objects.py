@@ -4,11 +4,13 @@ Each kind of object a tutorial hands a tree - a macro's class, GenVector's
 four-vector and a vector of them, a ``TLorentzVector``, histograms and a
 ``TClonesArray`` of lines - is filled entry by entry, written, and read
 back through ``SetBranchAddress`` into the object a pointer is made to
-point at, as ROOT reads it.
+point at, as ROOT reads it - or through ``TTreeReaderValue<T>``, whose
+``Get()`` and ``operator->`` are the object the branch holds.
 """
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
@@ -31,6 +33,21 @@ class Vector3:
 
     def __init__(self):
         self.fX = self.fY = self.fZ = 0.0
+
+
+class Holder:
+    """A macro's class, as ``roottest``'s ``ArrayHolderT<int>`` is translated: a vector and a
+    fixed array of numbers, and a method of its own that a macro calls through the reader."""
+
+    _cxx_layout_ = ("Holder", (), (("m_v", "std::vector<double>", "", ()),
+                                   ("m_a", "int", "", (3,))))  # fmt: skip
+
+    def __init__(self):
+        self.m_v = ROOT.std.vector["double"]()
+        self.m_a = np.zeros(3, "i4")
+
+    def ToString(self) -> str:
+        return "-".join([*(str(int(a)) for a in self.m_a), *(str(float(v)) for v in self.m_v)])
 
 
 def _filled(name, branch, fill, entries=4):
@@ -136,3 +153,50 @@ def test_bronch_is_roots_older_spelling_of_branch_for_an_object() -> None:
     assert [branch.GetName() for branch in through_bronch.GetListOfBranches()] == [
         branch.GetName() for branch in through_branch.GetListOfBranches()]
     assert through_bronch.GetEntries() == 3
+
+
+def test_a_reader_value_of_a_class_branch_is_the_object_and_runs_its_methods(monkeypatch):
+    """``TTreeReaderValue<ArrayHolder> r(reader, "h")``, then ``r->ToString()``: ROOT hands the
+    macro the object the branch holds, so ``operator->`` reaches the class's own method -
+    roottest's ``io/stdarray/colWiseRead_21`` compares that text with a fixed reference."""
+    held = Cell(Holder())
+
+    def fill(i):
+        held.value.m_a[:] = [i, i + 1, i + 2]
+        held.value.m_v.assign([i + 0.5])
+
+    out, _tree = _filled("holder", lambda t: t.Branch("h", held, 32000, 1), fill, entries=3)
+    out.Close()
+    monkeypatch.setitem(DECLARED, "Holder", Holder)
+    back = ROOT.TFile("holder.root").Get("T")
+    reader = ROOT.TTreeReader(back)
+    value = ROOT.TTreeReaderValue["Holder"](reader, "h")
+    seen = []
+    while reader.Next():
+        obj = value.__deref__()
+        # The translation writes r->ToString() as r.ToString(): the reader's unknown name is
+        # the object's, and a name of the reader's own - Get - is still the reader's.
+        seen.append((type(obj).__name__, obj.m_a.tolist(), list(obj.m_v), value.ToString()))
+    assert seen == [("Holder", [0, 1, 2], [0.5], "0-1-2-0.5"),
+                    ("Holder", [1, 2, 3], [1.5], "1-2-3-1.5"),
+                    ("Holder", [2, 3, 4], [2.5], "2-3-4-2.5")]  # fmt: skip
+    assert isinstance(value.Get(), Holder) and value.Get().m_a.tolist() == [2, 3, 4]
+
+
+def test_a_reader_value_of_a_class_never_declared_here_gives_the_members_read(monkeypatch):
+    """A file is read without the class's declaration as readily: the reader then hands back
+    the members ROOT's own description gave, as it always did, and a private name is still
+    the reader's own rather than the object's."""
+    held = Cell(Holder())
+    out, _tree = _filled("undeclared", lambda t: t.Branch("h", held, 32000, 1),
+                         lambda i: None, entries=1)  # fmt: skip
+    out.Close()
+    monkeypatch.delitem(DECLARED, "Holder", raising=False)
+    back = ROOT.TFile("undeclared.root").Get("T")
+    reader = ROOT.TTreeReader(back)
+    value = ROOT.TTreeReaderValue["Holder"](reader, "h")
+    assert reader.Next()
+    members = value.__deref__()
+    assert isinstance(members, dict) and members["m_a"].tolist() == [0, 0, 0]
+    with pytest.raises(AttributeError, match="has no attribute '_private'"):
+        value._private  # noqa: B018 - a name of the reader's own is never the object's

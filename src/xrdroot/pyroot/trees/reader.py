@@ -6,20 +6,23 @@
     ...     h.Fill(px.__deref__())          # *px in C++; px.Get()[0] as PyROOT has it
 
 A numeric value's ``Get()`` is a bound pointer into its branch buffer, so
-``px.Get()[0]`` reads or writes that value. Object and collection readers
-keep their existing value representation; ``__deref__()`` - C++'s ``*px`` - is the
-number itself. An array reads as a sequence: ``len``, ``[i]``, iteration,
-``GetSize()``. Each is read from the tree's own block of entries, so a loop
-over a reader costs what a loop of ``GetEntry`` does.
+``px.Get()[0]`` reads or writes that value. A branch of a class C++ declared
+reads as an object of that class made from the entry - ROOT's reader hands a
+macro the object the branch holds - so ``r->ToString()``, which the translation
+writes as ``r.ToString()``, is the class's own method; ``__deref__()`` - C++'s
+``*px`` - is the number or that object. An array reads as a sequence:
+``len``, ``[i]``, iteration, ``GetSize()``. Each is read from the tree's own
+block of entries, so a loop over a reader costs what a loop of ``GetEntry`` does.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from typing import Any
 
 import numpy as np
 
+from ..core.declared import made_from
 from ._base import _TObjectLike
 from .core import python_value
 from .readerbuffer import ReaderBuffer, buffer_for
@@ -125,6 +128,8 @@ class _Read:
         self._name = str(name)
         tree = reader._tree
         self._leaf: Any = tree._leaf_info(self._name) if tree is not None else None
+        #: The branch the name is, if it is one: what says which class its objects are.
+        self._branch: Any = tree._branch_info(self._name) if tree is not None else None
         if tree is not None and self._leaf is None:
             raise KeyError(
                 f"the tree {tree.GetName()!r} has no branch called {self._name!r} to read"
@@ -138,6 +143,17 @@ class _Read:
             )
         held = self._buffer()
         return held.read(tree._read_entry) if held is not None else tree._current(self._leaf.column)
+
+    def _object_value(self) -> Any:
+        """What the branch holds at the reader's entry, as PyROOT hands it over: an object of
+        the class the branch holds when C++ declared that class - ROOT's reader hands a macro
+        the ``ArrayHolder`` itself, so that ``r->ToString()`` runs the class's own method -
+        and otherwise, or when the class was never declared here, what it gave before."""
+        value = python_value(self._value(), self._leaf)
+        if self._branch is None or not isinstance(value, Mapping):
+            return value
+        made = made_from(self._branch.classname, value)
+        return value if made is None else made
 
     def _buffer(self) -> ReaderBuffer | None:
         tree = self._reader._tree
@@ -157,7 +173,7 @@ class TTreeReaderValue(_Read):
         """A numeric branch's writable pointer, or the existing object/collection value."""
         # The read runs before the buffer check: it is what moves the current entry into
         # the borrowed storage the pointer then exposes.
-        value = python_value(self._value(), self._leaf)
+        value = self._object_value()
         held = self._buffer()
         if held is not None:
             return held.reference()
@@ -165,7 +181,17 @@ class TTreeReaderValue(_Read):
 
     def __deref__(self) -> Any:
         """C++'s ``*value``: the number itself, or the object."""
-        return python_value(self._value(), self._leaf)
+        return self._object_value()
+
+    def __getattr__(self, name: str) -> Any:
+        """``r->ToString()``: C++'s ``operator->`` of a value reader is the object the branch
+        holds, and the translation writes a member or method of it on the reader, so a name
+        the reader does not have is the object's. A name of the reader's own - ``Get``,
+        ``value``, ``IsValid`` - is found before this runs; a private one is never the
+        object's and is refused here, without reading an entry."""
+        if name.startswith("_"):
+            raise AttributeError(f"{type(self).__name__} has no attribute {name!r}")
+        return getattr(self.__deref__(), name)
 
     _cint_cell = True
 
