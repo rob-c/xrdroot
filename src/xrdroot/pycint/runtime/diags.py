@@ -28,6 +28,7 @@ from ...pycxx.runtime.gtest import Namespace
 from ...pycxx.runtime.gtest.exceptions import adopt
 from ...pycxx.runtime.gtest.runner import AFTER_TEST
 from ...pycxx.runtime.gtest.state import report
+from .fileraii import FileRaii
 
 __all__ = ["CheckDiagsRAII", "ExpectDiag", "ExpectNoDiag", "close_all", "LEVELS", "TestSupport"]
 
@@ -192,8 +193,9 @@ def ExpectNoDiag(statement: Any, file: Any, line: Any) -> None:
         check.close(file, line)
 
 
-#: ``ROOT::TestSupport``: the check of the diagnostics a test prints.
-TestSupport = Namespace("ROOT::TestSupport", {"CheckDiagsRAII": CheckDiagsRAII})
+#: ``ROOT::TestSupport``: the check of the diagnostics a test prints, and the guard of a
+#: scratch file (:mod:`.fileraii`).
+TestSupport = Namespace("ROOT::TestSupport", {"CheckDiagsRAII": CheckDiagsRAII, "FileRaii": FileRaii})
 
 
 def _adopted() -> None:
