@@ -50,14 +50,20 @@ def test_opaque_element_construction_uses_the_explicit_resolver(monkeypatch: pyt
         seen.append(name)
         return Value
 
+    # The resolver is the one ROOT installs when pyroot is imported: put it back, or every
+    # later test in this process finds no adapter at all.
+    previous = containers.TYPE_RESOLVER
     containers.set_type_resolver(resolver)
-    values = containers.std.vector["CppstdValueFixture"]()
-    values.emplace_back(7, 9)
-    assert values[0].pair == (7, 9)
-    assert seen == ["CppstdValueFixture"]
-    assert containers._resolved_class(np.dtype("int32")) is None
-    containers.set_type_resolver(None)
-    assert containers._resolved_class(containers._opaque("NoAdapterFixture")) is None
+    try:
+        values = containers.std.vector["CppstdValueFixture"]()
+        values.emplace_back(7, 9)
+        assert values[0].pair == (7, 9)
+        assert seen == ["CppstdValueFixture"]
+        assert containers._resolved_class(np.dtype("int32")) is None
+        containers.set_type_resolver(None)
+        assert containers._resolved_class(containers._opaque("NoAdapterFixture")) is None
+    finally:
+        containers.set_type_resolver(previous)
 
 
 def test_standard_containers_and_traits_import_without_root_or_the_interpreter() -> None:
@@ -348,13 +354,14 @@ def test_a_template_name_no_container_here_is_declared_is_resolved_by_the_instal
     class Holder:
         pass
 
+    previous = plain.TYPE_RESOLVER
     plain.set_type_resolver(lambda name: Holder if name == "ArrayHolderT<int>" else None)
     try:
         assert plain.element_type("ArrayHolderT<int>") is Holder
         with pytest.raises(TypeError, match="is not a type the std stand-ins know"):
             plain.element_type("ArrayHolderT<float>")
     finally:
-        plain.set_type_resolver(None)
+        plain.set_type_resolver(previous)  # ROOT's, which pyroot installed
 
 
 def test_a_brace_enclosed_value_builds_the_element_from_its_values() -> None:
