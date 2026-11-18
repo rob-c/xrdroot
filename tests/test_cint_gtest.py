@@ -408,3 +408,35 @@ def test_a_matcher_the_test_defines_matches_describes_and_explains_as_gmocks_do(
         "FILE:17: Failure\nValue of: 7\nExpected: is multiple of 3\n  Actual: 7\n"
         "FILE:18: Failure\nValue of: -1\nExpected: is positive\n  Actual: -1\n"
     ) in out
+
+
+def test_file_raii_guards_a_scratch_file_and_removes_it_when_its_scope_ends(tmp_path):
+    """``ROOT::TestSupport::FileRaii``: the file a test makes for itself goes when the guard
+    does, and ``PreserveFile`` keeps it for a test being debugged by hand."""
+    from xrdroot.pycint.runtime.fileraii import LIVE, FileRaii, remove_all
+
+    kept = tmp_path / "kept.root"
+    guard = FileRaii(kept)
+    assert guard.GetPath() == str(kept) and guard in LIVE
+    kept.write_text("made by the test")
+    guard._destruct()
+    assert not kept.exists() and guard not in LIVE
+
+    preserved = tmp_path / "preserved.root"
+    kept_guard = FileRaii(preserved)
+    preserved.write_text("still here")
+    kept_guard.PreserveFile()
+    kept_guard._destruct()
+    assert preserved.exists()
+
+    never_made = FileRaii(tmp_path / "never.root")
+    never_made.remove()  # a file the test expected ROOT to refuse: no error
+    never_made._destruct()
+    never_made._destruct()  # a guard ended twice is not ended twice
+
+    for at in range(2):
+        FileRaii(tmp_path / f"alive{at}.root")
+        (tmp_path / f"alive{at}.root").write_text("x")
+    remove_all()
+    assert not any((tmp_path / f"alive{at}.root").exists() for at in range(2))
+    assert LIVE == []
