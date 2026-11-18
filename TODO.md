@@ -20,18 +20,18 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1052 / 2173** |
-| gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**510** cases) |
+| roottest | 1038 / 2173 (47.8 %) | **1070 / 2173** |
+| gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **16 / 109** |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1207 / 2820 (42.8 %)** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1225 / 2820 (43.4 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run) |
 
-The "now" column is `/tmp/xr3/final2` (roottest) and `/tmp/xr3/final1` (the
-other kinds), both run on this machine at `8f53999`; 22 tests gained and 4 lost,
-and both lists are in §7. The 4 are remote-file tests that time out: see the
-`P-6` row.
+The "now" column is two runs at `5ae0a0f`: `/tmp/xw/final2` (roottest, 1070) and
+`/tmp/xw/final1` (the other kinds). No PASS was lost; `other`'s
+`minuit2_ParallelTest` timed out under the load of sixteen parallel workers and
+passes when rerun alone.
 
 **The shape of the remaining work**, which decides the order below:
 
@@ -759,51 +759,37 @@ cheap to maintain and impossible to reconstruct.
 | Q-1 (part) | done | `57604e1` | roottest +1 | `TObject`'s `EStatusBits` as names, an enum constant listed among a class's data members as C++ lists it, and `TClass::GetDataMember` looking in the bases |
 | W0-1 … W0-8 | todo | | | the rest of the harness work is untouched. Next: `baseline.json` is still `10e0e58`'s, which is a subset of today's PASSes (so the ratchet cannot regress), and `python -m tools.rootsuite baseline RUN/results.json` wants the four oracle-free kinds in one run |
 | P-6 | todo | | -4 | `xrdroot cp` and `hadd` of a `root://` file read it basket by basket through the transport: `roottest/main/RootcpReadRemote` took 174.8 s when the server was quick and over 300 s twice since, which is the whole reason 4 tests are missing from "now". The same file copied *locally* takes 1.0 s, and reading it whole over the network takes 2.1 s, so the cost is ~650 round trips - the fix is to copy a key's record whole (`cp` has no reason to rewrite a tree it is not cutting) or to batch the transport's reads |
+| Q-16 (part) | done | `52420ee`, `0ce283c`, `f533e36`..`551c6a6` | roottest +6 | `std::array<T,N>` of a number, of a class and of a `std::array` laid out and written as ROOT writes one (oracle-checked), `std::complex` members, `std::array` brace elision, and the `T a[N]` twin of each |
+| Q-1 (part) | done | `084cfd5`, `57604e1` | roottest +2 | a class's `GetState` is ROOT's (`kInterpreted` 3, `kLoaded` 4) and a container's dictionary can be generated, so `meta/method/ReuseMethod` passes; `TObject`'s status bits are data members and `TTreeReaderValue` of a class branch is the object (`stdarray/colWiseRead_11/12/21/22`) |
+| Q-13 (part) | done | `5ae0a0f` | roottest +1 | `TObjArray::Delete` runs the destructors of what an owning collection holds, and a reference member is a cell |
+| Q-7 (part) | done | `35560bb`, `faba133` | roottest +1 | `fgets` and `sscanf`, `TBufferJSON` (`io/json/Map`), `TFile.SetReadaheadSize`/`GetCacheRead`, `ROOT::TestSupport::FileRaii` (17 gtest programs reach it) |
+| Q-17 (part) | done | `0b481bb` | roottest +1 | a doxygen trailing comment (`///<`, `//!<`) documents a member instead of making it transient |
+| P-6 | todo | | -0 | unchanged: `cp`/`hadd` of a `root://` file still reads it basket by basket. It passed this run (195 s) and timed out on others |
+| Q-11 | **attempted, not merged** | branch `w01` | 0 | worker 1 taught the formula engine to call a branch object's methods: 27 `FAIL`s became refusals with a precise reason (`fH.GetMean()` on an object read from a file is a dictionary of members, not an object), but `treeformula/sync/readfile-0` — a PASS — also became a refusal, so the branch is kept and not merged. The refusal to relax is `formula/binding.py::_mismatch` for `fTracks.fVertex[][fTracks.fNpoint%3]` |
+| Q-1 (TEnum) | **attempted, blocked** | — | 0 | worker 2 found `TClass::GetListOfEnums` needs `ROOT::GetListOfEnums`/`GetListOfGlobals` and the enum table the interpreter keeps, which lives outside `reflection.py`; `roottest/root/meta/enums/fclassVal` also needs a pointer cast of an object |
+| Q-12 (double32) | **attempted, blocked** | — | 0 | worker 8: the failing line is `gROOT->GetClass("MyVector<Double32_t>")->GetStreamerInfo()->ls()` — `TClass::GetStreamerInfo` is missing, so the fix is in `reflection.py`, not `interp.py` |
 | Q-10, Q-11, Q-13 … | todo | | | |
 
-**Totals, measured.** Two runs at `ddc6039` (`/tmp/xr2/final1`, `/tmp/xr2/final2`)
-took the suite from 1185 to 1198 passing tests; two more at `8f53999`
-(`/tmp/xr3/final1`, `/tmp/xr3/final2`) took it to 1207:
+**Totals, measured.** Three runs took the suite from 1185 to 1225 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` |
-|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 |
-| `test/` | 4 | 6 | 6 |
-| `other` | 14 | 16 | 16 |
-| **all non-tutorial** | **1185** | **1198** | **1207** |
+| | at `10e0e58` | after `ddc6039` | after `8f53999` | now (`5ae0a0f`) |
+|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | **1070** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / **512** |
+| `test/` | 4 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** |
 
-Every test that came in, in the order it did:
-
-| test | why |
-|---|---|
-| `roottest/cling/stl/map/stringMap`, `badstringMap` | `TClass::GetClassInfo` |
-| `roottest/cling/stl/vector/Run` | `ROOT.vector`, and the char-array branch |
-| `roottest/root/io/perf/julius` | zlib level 1, ROOT's own compression |
-| `roottest/root/treeformula/scan/FormattingWrite` | a `Cell`'s C++ type is its branch's type |
-| `roottest/root/io/recover/empty` | `gDebug` |
-| `pyunittest/.../pyroot_root_module` (3 cases) | `ROOT.__name__`, `PyConfig`, `TContext(nullptr)` |
-| `pyunittest/tree/dataframe/datasource_py_csv` (1 case) | `FromCSV`'s option keywords |
-| `other/math/mathcore/mathcore-testSpecFuncGamma` | `TMath::LnGamma` at a negative argument |
-| `other/math/minuit2/minuit2_ParallelTest` | ran inside 300 s on an unloaded machine (it took 236 s; it is not a fix) |
-| `test/stressspectrum`, `test/stressspectrum-interpreted` | `TROOT::GetVersionDate` |
-| `roottest/cling/bytecode/runcomplex`, `cling/return/barna` | `std::complex`, and `<complex>`'s functions |
-| `roottest/root/io/uniquePointer/writePtrColls`, `writeUniqPtrColls` | `std::forward_list`, `std::map::emplace`, `make_pair` |
-| `roottest/root/dataframe/test_callables`, `regression_zeroentries` | `std::atomic` and `atomic_int` |
-| `pyunittest/tree/ntuple/ntuple_py_basics` (1 case) | `Recreate` taking a list of `make_pair` fields |
-| `roottest/root/io/uniquePointer/checkNamesForIO` | `TClassEdit::GetNameForIO` |
-| `roottest/root/meta/loadAllLibs/LoadAllLibs`, `LoadAllLibsAZ`, `LoadAllLibsZA` | `GetMapfile`, `LoadAllLibraries`, `std::list::sort/unique` |
-| `roottest/root/meta/cmsUnload/case1`, `rmap-case1` | `TClassEdit`, `GetInterpreterTypeName` |
-| `roottest/root/multicore/exectsinclude` | the `TClass` naming above |
-
-**Lost, and why** (all four to one cause, `P-6`): `roottest/main/RootcpReadRemote`
-and its two dependants, and `roottest/root/io/hadd/test_hadd_regr_20872`. They
-copy a 21 MB file from `root://eospublic.cern.ch`, basket by basket; the same
-copy of the same file from disk takes 1.0 s and reading it whole over the network
-2.1 s, so the time is ~650 transport round trips. They passed at 174.8 s earlier
-in the same session and exceeded 300 s twice after - the network path is right at
-the limit, and no change of this session touched it.
+The last column is `/tmp/xw/final2` (roottest) and `/tmp/xw/final1` (the other
+kinds) at `5ae0a0f`; the eighteen roottest tests that came in with it are
+`collection/ROOT-7249`, `io/evolution/WriteFixedArray{New,Old}`,
+`io/evolution/pragma_read/testv1`, `io/json/Map`, `io/stdarray/colWiseRead_11`,
+`colWiseRead_12`, `colWiseRead_21`, `colWiseRead_22`, `colWiseWrite_1`,
+`io/transient/execTransientNoctor`, `meta/method/ReuseMethod`,
+`meta/runPublicDataMembers-auto`, `treeformula/array/filltree`, and the four
+network tests (`main/RootcpReadRemote` and its two dependants,
+`io/hadd/test_hadd_regr_20872`) that pass when the CERN endpoints are quick.
 
 Rules for the ledger: a row moves to `done` only when its **verification
 command** was run and the delta is in a `results.json`; quote the number
