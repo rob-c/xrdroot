@@ -32,6 +32,8 @@ def _fresh(tmp_path):
     DECLARED.update(declared)
     reflection.FILE_INFOS.clear()
     reflection.FILE_INFOS.update(infos)
+    reflection.GENERATED.clear()
+    reflection.INTERPRETED_METHODS.clear()
 
 
 def _names(cls):
@@ -201,6 +203,61 @@ def test_a_class_is_made_and_unmade_and_its_methods_listed():
         ([b.GetName() for b in ROOT.TClass("TList").GetListOfBases()], ["TSeqCollection"]),
         (ROOT.TClass.GetClass("TH1F").GetStreamerInfo().GetClassVersion(), 3),
     )  # fmt: skip
+
+
+def test_a_container_is_interpreted_until_a_dictionary_is_generated_for_it():
+    """ROOT's ``ReuseMethod``: a standard container is a class the interpreter describes, so
+    ``kInterpreted`` - 3, ROOT's number for it - until ``GenerateDictionary`` gives it one, and
+    then ``kHasTClassInit``. The ``TMethod`` found before the dictionary is still the list's."""
+    container = ROOT.TClass.GetClass("vector<TObject*>")
+    size = container.GetMethodWithPrototype("size", "")
+    assert (container.GetState(), ROOT.TClass.kInterpreted) == (3, 3)
+    assert ROOT.gInterpreter.GenerateDictionary("vector<TObject*>") == 0
+    again = ROOT.TClass.GetClass("vector<TObject*>")
+    expect(
+        (again.GetState(), ROOT.TClass.kHasTClassInit),
+        (again.GetState(), ROOT.TClass.kLoaded),
+        ([m.GetName() for m in again.GetListOfMethods(False)], ["size"]),
+        (again.GetListOfMethods(False).At(0) is size, True),
+        ((ROOT.TClass.GetClass("TH1F").GetState(), ROOT.TClass("TNoSuch").GetState()), (4, 2)),
+    )  # fmt: skip
+
+
+def test_a_containers_method_list_holds_the_functions_looked_up_in_it():
+    """ROOT lists none of a class's functions until something asks for one, and the list holds
+    what the interpreter was asked to make from then on. Only a member a container declares
+    with no argument is here to be found."""
+    container = ROOT.TClass.GetClass("vector<int>")
+    before = list(container.GetListOfMethods(False))
+    found = container.GetMethodWithPrototype("size", "")
+    expect(
+        (before, []),
+        ([m.GetName() for m in container.GetListOfMethods(False)], ["size"]),
+        (container.GetMethodWithPrototype("size", "") is found, True),
+        (container.GetMethodAny("size") is found, True),
+        (container.GetMethodWithPrototype("size", "int"), None),
+        (container.GetMethodWithPrototype("push_back", ""), None),
+        (container.GetMethodWithPrototype("grow", ""), None),
+    )
+
+
+def test_a_declared_classs_method_is_found_by_name_and_prototype():
+    _declared()
+    named = ROOT.TClass.GetClass("Named")
+    expect(
+        (named.GetMethodWithPrototype("Class_Name", "").GetName(), "Class_Name"),
+        (named.GetMethodWithPrototype("Class_Name", "int"), None),
+        (named.GetMethodWithPrototype("NoSuchMethod", ""), None),
+    )
+
+
+def test_a_dictionary_generated_for_several_classes_is_noted_for_each():
+    assert ROOT.gInterpreter.GenerateDictionary("vector<int>; std::vector<double>; ") == 0
+    expect(
+        (ROOT.TClass.GetClass("vector<int>").GetState(), ROOT.TClass.kHasTClassInit),
+        (ROOT.TClass.GetClass("std::vector<double>").GetState(), ROOT.TClass.kHasTClassInit),
+        (ROOT.TClass.GetClass("vector<float>").GetState(), ROOT.TClass.kInterpreted),
+    )
 
 
 def test_tvirtualstreamerinfos_switches_are_kept():

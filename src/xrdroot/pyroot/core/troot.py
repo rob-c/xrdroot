@@ -466,6 +466,16 @@ class TInterpreter:
         """``AddIncludePath``: nothing is compiled, so there is nothing to include."""
 
     def GenerateDictionary(self, classes: Any, headers: Any = "", *rest: Any) -> int:
+        """``GenerateDictionary``: a dictionary for the classes named - a semicolon separated
+        list - which ``TClass::GetState`` reports as ``kHasTClassInit`` from then on.
+
+        Nothing is compiled here: the classes such a dictionary would describe are the ones
+        this kit already builds, so what it adds is that ROOT's own answer about them - that a
+        dictionary is there - is the one a program gets.
+        """
+        from .reflection import note_generated_dictionary
+
+        note_generated_dictionary(classes)
         return 0
 
     #: Whether a name nothing declared is looked for in the libraries a rootmap lists.

@@ -54,10 +54,24 @@ Layout = tuple[int, int, tuple[Element, ...]]
 #: The layouts files read so far describe each class with, in the order they were met.
 FILE_INFOS: dict[str, list[Layout]] = {}
 
+#: The dictionaries generated while the program ran, which ``gInterpreter->GenerateDictionary``
+#: names: their classes have a ``TClass`` bootstrap from then on, as a loaded library's would.
+GENERATED: set[str] = set()
+
+#: The functions looked up in a class only the interpreter describes, by class: ROOT asks the
+#: interpreter for the one a program names and keeps the ``TMethod`` it made, which is what lets
+#: a program hold that method across the dictionary that replaces the interpreter's description.
+INTERPRETED_METHODS: dict[str, list[TNamed]] = {}
+
 #: The standard containers, whose classes ROOT knows without a dictionary of their own.
 CONTAINERS = ("vector", "list", "deque", "map", "multimap", "set", "multiset",
               "unordered_map", "unordered_set", "pair", "array", "forward_list",
               "unordered_multimap", "unordered_multiset", "bitset")  # fmt: skip
+
+#: The members every standard container declares with no argument, which are the functions a
+#: lookup in a container - a class only the interpreter describes here - can be answered with:
+#: nothing here knows a container's C++ signatures, so a function that takes one is ``nullptr``.
+CONTAINER_METHODS = ("clear", "empty", "max_size", "size")
 
 #: The fundamental types, which have no ``TClass``.
 FUNDAMENTAL = frozenset({
@@ -69,9 +83,29 @@ FUNDAMENTAL = frozenset({
 
 #: ``kIsTObject`` and the other bits ``TClass::Property`` and ``GetState`` answer with.
 K_IS_TOBJECT = 0x00008000
-#: ``TClass::EState``: ``kHasTClassInit``, the state of a class with a dictionary loaded.
+#: ``TClass::EState``: ``kInterpreted``, a class the interpreter describes and no dictionary
+#: does, and ``kHasTClassInit`` - ROOT's ``kLoaded`` too - one a dictionary describes.
+K_INTERPRETED = 3
 K_HAS_TCLASS_INIT = 4
-K_INTERPRETED = 5
+
+
+def note_generated_dictionary(classes: Any) -> None:
+    """Note the classes ``gInterpreter->GenerateDictionary`` was asked for - a semicolon
+    separated list of names - as having a dictionary from then on.
+
+    Nothing is compiled here, so what a dictionary adds to a class this kit already builds is
+    that ``TClass`` reports it as one a dictionary describes, which is what a program asking
+    for a dictionary and then asking the state of the class checks for.
+    """
+    for name in str(classes).split(";"):
+        if name.strip():
+            GENERATED.add(_known_as(name))
+
+
+def _known_as(name: str) -> str:
+    """The name a class is known by: the type shortened, without ``std::``, as ROOT keeps the
+    one name for a class whatever spelling it was asked for with."""
+    return short_type(name).replace("std::", "").strip()
 
 
 def note_file_infos(infos: list[tuple[str, Layout]]) -> None:
@@ -228,8 +262,7 @@ class TClass(TNamed):
         # ROOT keeps a class under the name it shortens the type to - GetClass("string")
         # and GetClass("basic_string<char,char_traits<char> >") are the one class, called
         # "string" - so the same shortening is what this is called by.
-        asked = str(spelled if spelled is not None else name)
-        text = short_type(asked).replace("std::", "").strip()
+        text = _known_as(str(spelled if spelled is not None else name))
         return None if text in FUNDAMENTAL else TClass(text)
 
     def HasDictionary(self) -> bool:
@@ -252,6 +285,15 @@ class TClass(TNamed):
         return self.HasDictionary()
 
     def GetState(self) -> int:
+        """``GetState``: how much is known of the class.
+
+        A standard container is one the interpreter builds from the template's own definition,
+        with no dictionary of its own - ``kInterpreted`` - until a dictionary for it is
+        generated, which makes it ``kHasTClassInit``. A class only a file describes is
+        ``kEmulated``.
+        """
+        if _template(self._name) and self._name not in GENERATED:
+            return K_INTERPRETED
         return K_HAS_TCLASS_INIT if self.HasDictionary() else self.kEmulated
 
     def IsForeign(self) -> bool:
@@ -451,20 +493,52 @@ class TClass(TNamed):
                     None)
 
     def GetListOfMethods(self, load: bool = True) -> Any:
-        """``GetListOfMethods``: the class's own functions, by name."""
+        """``GetListOfMethods``: the class's own functions, by name.
+
+        A class only the interpreter describes lists the functions a search has made so far,
+        as ROOT's list of them holds what the interpreter has been asked for.
+        """
         from .collections import TList
 
         made = TList()
         cls = self._class()
-        for name in sorted(vars(cls) if cls is not None else ()):
-            if callable(getattr(cls, name)) and not name.startswith("_"):
-                made.Add(TNamed(name, ""))
+        for found in sorted(vars(cls) if cls is not None else ()):
+            if callable(getattr(cls, found)) and not found.startswith("_"):
+                made.Add(TNamed(found, ""))
+        if cls is None:
+            for looked_up in INTERPRETED_METHODS.get(self._name, ()):
+                made.Add(looked_up)
         return made
 
     def GetMethodAny(self, name: Any) -> Any:
         return next((m for m in self.GetListOfMethods() if m.GetName() == str(name)), None)
 
     GetMethodAllAny = GetMethodAny
+
+    def GetMethodWithPrototype(self, name: Any, proto: Any = "", isconst: bool = False,
+                               mode: int = 0) -> Any:  # fmt: skip
+        """``GetMethodWithPrototype``: the function called ``name`` with the prototype
+        ``proto``, or ``nullptr`` when the class has none.
+
+        A function looked up in a class only the interpreter describes is made here and stays
+        in its list, as ROOT asks the interpreter for it and keeps the ``TMethod`` it made: that
+        is what lets a program hold the method across the dictionary a later
+        ``GenerateDictionary`` gives the class (roottest's ``ReuseMethod``), where the
+        dictionary would otherwise have replaced the interpreter's description.
+        """
+        for found in self.GetListOfMethods(False):
+            if found.GetName() == str(name) and found.GetTitle() == str(proto):
+                return found
+        if not self._made_here(str(name), str(proto)):
+            return None
+        made = TNamed(str(name), str(proto))
+        INTERPRETED_METHODS.setdefault(self._name, []).append(made)
+        return made
+
+    def _made_here(self, name: str, proto: str) -> bool:
+        """Is the function one this kit makes for a class only the interpreter describes - a
+        member every container declares with no argument, and nothing else?"""
+        return self.GetState() == K_INTERPRETED and not proto and name in CONTAINER_METHODS
 
     # -- objects ---------------------------------------------------------------------------
 
