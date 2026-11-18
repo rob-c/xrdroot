@@ -40,6 +40,7 @@ FAMILIES = (
     "troot",
     "randoms",
     "vectors",
+    "jsonbuffer",
     "axes",
     "hists",
     "candles",
