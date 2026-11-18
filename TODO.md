@@ -20,17 +20,18 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1044 / 2173** |
-| gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (507 cases) |
-| pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **80 / 129 (469 / 515 cases)** |
+| roottest | 1038 / 2173 (47.8 %) | **1052 / 2173** |
+| gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**510** cases) |
+| pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **16 / 109** |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1198 / 2820 (42.5 %)** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1207 / 2820 (42.8 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run) |
 
-The "now" column is `/tmp/xr2/final2` (roottest) and `/tmp/xr2/final1` (the
-other kinds), both run on this machine at `ddc6039`; 14 tests gained, none
-lost, and the per-test deltas are in §7.
+The "now" column is `/tmp/xr3/final2` (roottest) and `/tmp/xr3/final1` (the
+other kinds), both run on this machine at `8f53999`; 22 tests gained and 4 lost,
+and both lists are in §7. The 4 are remote-file tests that time out: see the
+`P-6` row.
 
 **The shape of the remaining work**, which decides the order below:
 
@@ -752,14 +753,27 @@ cheap to maintain and impossible to reconstruct.
 | Q-1 (part) | done | `867410f` | roottest 1038 → 1043 | `TClass::GetClassInfo` and `ClassInfo`; gained `cling/stl/map/stringMap`, `badstringMap`, `cling/stl/vector/Run`, `io/perf/julius`, `treeformula/scan/FormattingWrite`, none lost |
 | Q-1 (part) | done | `7da3a87`, `ddc6039` | other +2, `test/` +2 | `TMath::LnGamma` is `::lgamma` at a negative argument (ROOT's own `mathcore-testSpecFuncGamma` exits 0 now); `gDebug`, `TROOT::GetVersionDate`/`GetVersionTime` |
 | Q-7 (part) | done | `ddc6039` | 1 | `gDebug`; `fgets`, `TCpu`/`Architecture`, `TEnum`, `TTreeFormula`, `TSelector` and the TMVA DNN surface are what the next block of `other` tests waits on |
-| W0-1 … W0-8 | todo | | | the harness tasks are untouched. Next: `baseline.json` is still `10e0e58`'s, which is a subset of today's PASSes (so the ratchet cannot regress), and `python -m tools.rootsuite baseline RUN/results.json` wants the four oracle-free kinds in one run |
+| Q-7 (part) | done | `32f16f4` | roottest +6, pyunittest +1 file | `std::complex` (with `<complex>`'s functions, dispatched by the argument's type), `std::atomic` and its `atomic_int` spellings, `std::forward_list`, `std::multiset`, `std::make_pair`, `std::map::emplace` in all three forms, and `RNTupleWriter::Recreate` taking a list of `make_pair` fields |
+| Q-7 (part) | done | `31c7441` | roottest +4 | `TClassEdit::ShortType`/`GetNameForIO` (with `TClass` naming a class by its short spelling), `TInterpreter::GetMapfile` (null - there is no rootmap to walk), `GetInterpreterTypeName`, `TSystem::LoadAllLibraries`, `std::list::sort/unique/reverse/remove` |
+| W0-8b | done | `8f53999` | triage | a failure's reason prefers the line that names a diagnosis over cling's `(int) N` echo, which was the whole reason of 36 roottest tests |
+| W0-1 … W0-8 | todo | | | the rest of the harness work is untouched. Next: `baseline.json` is still `10e0e58`'s, which is a subset of today's PASSes (so the ratchet cannot regress), and `python -m tools.rootsuite baseline RUN/results.json` wants the four oracle-free kinds in one run |
+| P-6 | todo | | -4 | `xrdroot cp` and `hadd` of a `root://` file read it basket by basket through the transport: `roottest/main/RootcpReadRemote` took 174.8 s when the server was quick and over 300 s twice since, which is the whole reason 4 tests are missing from "now". The same file copied *locally* takes 1.0 s, and reading it whole over the network takes 2.1 s, so the cost is ~650 round trips - the fix is to copy a key's record whole (`cp` has no reason to rewrite a tree it is not cutting) or to batch the transport's reads |
 | Q-10, Q-11, Q-13 … | todo | | | |
 
-**Totals, measured** (`/tmp/xr2/final1` for gtest/pyunittest/test/other,
-`/tmp/xr2/final2` for roottest, both at `ddc6039`): roottest 1038 → 1044,
-pyunittest 78 → 80 files and 439 → 469 cases, `test/` 4 → 6, `other` 14 → 16,
-gtest 52 → 52. **No PASS was lost**, and the 12 that were gained, in the order
-they came:
+**Totals, measured.** Two runs at `ddc6039` (`/tmp/xr2/final1`, `/tmp/xr2/final2`)
+took the suite from 1185 to 1198 passing tests; two more at `8f53999`
+(`/tmp/xr3/final1`, `/tmp/xr3/final2`) took it to 1207:
+
+| | at `10e0e58` | `ddc6039` | `8f53999` |
+|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 |
+| `test/` | 4 | 6 | 6 |
+| `other` | 14 | 16 | 16 |
+| **all non-tutorial** | **1185** | **1198** | **1207** |
+
+Every test that came in, in the order it did:
 
 | test | why |
 |---|---|
@@ -773,6 +787,22 @@ they came:
 | `other/math/mathcore/mathcore-testSpecFuncGamma` | `TMath::LnGamma` at a negative argument |
 | `other/math/minuit2/minuit2_ParallelTest` | ran inside 300 s on an unloaded machine (it took 236 s; it is not a fix) |
 | `test/stressspectrum`, `test/stressspectrum-interpreted` | `TROOT::GetVersionDate` |
+| `roottest/cling/bytecode/runcomplex`, `cling/return/barna` | `std::complex`, and `<complex>`'s functions |
+| `roottest/root/io/uniquePointer/writePtrColls`, `writeUniqPtrColls` | `std::forward_list`, `std::map::emplace`, `make_pair` |
+| `roottest/root/dataframe/test_callables`, `regression_zeroentries` | `std::atomic` and `atomic_int` |
+| `pyunittest/tree/ntuple/ntuple_py_basics` (1 case) | `Recreate` taking a list of `make_pair` fields |
+| `roottest/root/io/uniquePointer/checkNamesForIO` | `TClassEdit::GetNameForIO` |
+| `roottest/root/meta/loadAllLibs/LoadAllLibs`, `LoadAllLibsAZ`, `LoadAllLibsZA` | `GetMapfile`, `LoadAllLibraries`, `std::list::sort/unique` |
+| `roottest/root/meta/cmsUnload/case1`, `rmap-case1` | `TClassEdit`, `GetInterpreterTypeName` |
+| `roottest/root/multicore/exectsinclude` | the `TClass` naming above |
+
+**Lost, and why** (all four to one cause, `P-6`): `roottest/main/RootcpReadRemote`
+and its two dependants, and `roottest/root/io/hadd/test_hadd_regr_20872`. They
+copy a 21 MB file from `root://eospublic.cern.ch`, basket by basket; the same
+copy of the same file from disk takes 1.0 s and reading it whole over the network
+2.1 s, so the time is ~650 transport round trips. They passed at 174.8 s earlier
+in the same session and exceeded 300 s twice after - the network path is right at
+the limit, and no change of this session touched it.
 
 Rules for the ledger: a row moves to `done` only when its **verification
 command** was run and the delta is in a `results.json`; quote the number
