@@ -322,3 +322,59 @@ def test_a_file_on_a_macros_stack_is_closed_as_its_scope_ends() -> None:
     assert "f._destruct()" in translate(source, "t.C")
     run_source(source, "t.C", root=ROOT)
     assert ROOT.TFile("stack.root").IsOpen()
+
+
+def test_the_read_ahead_size_is_one_setting_that_every_file_reads_in_batches_of():
+    out = ROOT.TFile("out.root", "RECREATE")
+    expect(
+        (ROOT.TFile.GetReadaheadSize(), files.READAHEAD_SIZE),
+        (files.READAHEAD_SIZE, 256000),
+    )
+    ROOT.TFile.SetReadaheadSize(0)
+    expect(
+        (ROOT.TFile.GetReadaheadSize(), 0),
+        (out.GetReadaheadSize(), 0),
+    )
+    ROOT.TFile.SetReadaheadSize()
+    expect((ROOT.TFile.GetReadaheadSize(), files.READAHEAD_SIZE))
+    out.Close()
+
+
+def test_a_file_hands_back_the_cache_it_reads_blocks_through_and_none_without_one():
+    out = ROOT.TFile("out.root", "RECREATE")
+    tree = ROOT.TTree("T", "a tree")
+    other = ROOT.TTree("U", "another tree")
+    default, for_tree, for_other = object(), object(), object()
+    expect(
+        (out.GetCacheRead(), None),
+        (out.GetCacheRead(tree), None),
+    )
+    out.SetCacheRead(for_tree, tree)
+    expect(
+        (bool(out.GetCacheRead(tree) is for_tree), True),
+        (bool(out.GetCacheRead(other) is for_tree), True),  # no cache of its own: the default
+    )
+    out.SetCacheRead(for_other, other)
+    expect(
+        (bool(out.GetCacheRead(other) is for_other), True),
+        (bool(out.GetCacheRead(tree) is for_tree), True),
+        (bool(out.GetCacheRead() is for_other), True),  # the last one set is the default
+    )
+    out.SetCacheRead(None, other)
+    expect(
+        (bool(out.GetCacheRead(other) is None), True),  # it was that tree's own, now taken away
+        (bool(out.GetCacheRead() is for_tree), True),  # the one cache left, though not default
+    )
+    out.SetCacheRead(default)
+    expect(
+        (bool(out.GetCacheRead(tree) is for_tree), True),
+        (bool(out.GetCacheRead(other) is default), True),
+        (bool(out.GetCacheRead() is default), True),
+    )
+    out.SetCacheRead(None)
+    out.SetCacheRead(None, tree)
+    expect(
+        (out.GetCacheRead(), None),
+        (out.GetCacheRead(tree), None),
+    )
+    out.Close()

@@ -50,6 +50,9 @@ MODES = {
 }
 #: The setting ROOT writes a file with when it is not told one: zlib at level 1.
 DEFAULT_COMPRESSION = 101
+#: ``TFile::fgReadaheadSize``: the bytes a batch of blocks is read ahead by - ROOT's 256 kB,
+#: shared by every file because ROOT's is a static.
+READAHEAD_SIZE = 256000
 #: The classes a directory keeps in memory once read, as ``TH1`` and ``TTree`` add themselves.
 KEPT = ("TH1", "TTree")
 
@@ -601,6 +604,9 @@ class TFile(TDirectoryFile):
 
     CLASS_TITLE = "ROOT file"
 
+    #: ``TFile::fgReadaheadSize``: one setting for every file, as ROOT's static is.
+    _readahead_size = READAHEAD_SIZE
+
     def __init__(
         self,
         fname: Any = "",
@@ -614,6 +620,8 @@ class TFile(TDirectoryFile):
         self._compress = int(compress)
         self._reading: Any = None
         self._writing: Any = None
+        self._cache_read: Any = None
+        self._cache_reads: list[tuple[Any, Any]] = []
         self._zombie = False
         self._open(name)
         if self._zombie and from_script():  # PyROOT's pythonization of the constructor
@@ -767,6 +775,53 @@ class TFile(TDirectoryFile):
         if self._writing is not None:
             file = self._writing._file
             file._algorithm, file._level = _compression(self._compress)
+
+    @staticmethod
+    def GetReadaheadSize() -> int:
+        """``GetReadaheadSize``: how far ahead a batch of blocks is read, for every file."""
+        return TFile._readahead_size
+
+    @staticmethod
+    def SetReadaheadSize(bufsize: int = READAHEAD_SIZE) -> None:
+        """``SetReadaheadSize``: how far ahead a batch of blocks is read, for every file.
+
+        A cache that asks for several blocks at once has them read in one go while they fit
+        in this many bytes; 0 turns that batching off, which a test measuring single reads
+        asks for.
+        """
+        TFile._readahead_size = int(bufsize)
+
+    def GetCacheRead(self, tree: Any = None) -> Any:
+        """``GetCacheRead``: the cache this file reads blocks through, or ``None`` as ROOT's
+        null pointer when it has none.
+
+        A tree cache belongs to one tree and answers only for it; the last cache set on the
+        file is the default that every other tree reads through, as in ROOT.
+        """
+        if tree is not None:
+            for held, cache in self._cache_reads:
+                if held is tree:
+                    return cache
+            return self._cache_read
+        if self._cache_read is None and len(self._cache_reads) == 1:
+            return self._cache_reads[0][1]
+        return self._cache_read
+
+    def SetCacheRead(self, cache: Any, tree: Any = None, action: Any = None) -> None:
+        """``SetCacheRead``: read blocks through ``cache`` from now on, for ``tree`` alone when
+        one is named, else for the file - and that cache becomes the file's default one.
+
+        ``action`` is ROOT's ``ECacheAction``, which tells a displaced cache whether to let go
+        of the file; xrdroot's caches read through the file they were given, so it is kept for
+        the signature and changes nothing.
+        """
+        if tree is not None:
+            self._cache_reads = [
+                (held, held_cache) for held, held_cache in self._cache_reads if held is not tree
+            ]
+            if cache is not None:
+                self._cache_reads.append((tree, cache))
+        self._cache_read = cache
 
     def Flush(self) -> None:
         """``Flush``: records go out as they are written."""
