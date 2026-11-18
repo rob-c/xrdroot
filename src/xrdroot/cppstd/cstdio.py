@@ -1,4 +1,5 @@
-"""C's ``<cstdio>`` files: ``fopen`` and ``fclose``, ``fwrite``, ``fread``, ``fputs``, ``fgetc``.
+"""C's ``<cstdio>`` files: ``fopen`` and ``fclose``, ``fwrite``, ``fread``, ``fgets``,
+``fputs``, ``fgetc``, and the ``sscanf`` that reads text back (:mod:`.cformat`).
 
 A ``FILE *`` is a :class:`FILE` here, wrapping a Python binary file, and a
 null one is ``None``, which is what ``fopen`` returns for a file it cannot
@@ -13,11 +14,14 @@ from __future__ import annotations
 import os
 from typing import IO, Any
 
-__all__ = ["FILE", "fopen", "fclose", "fwrite", "fread", "fputs", "fgetc", "fflush", "feof",
-           "ftell", "fseek", "rewind", "EOF", "SEEK_SET", "SEEK_CUR", "SEEK_END"]  # fmt: skip
+from .buffers import text_into
+from .cformat import EOF as EOF
+from .cformat import sscanf as sscanf
 
-#: ``EOF``: what ``fgetc`` and ``fclose`` return at the end or on failure.
-EOF = -1
+__all__ = ["FILE", "fopen", "fclose", "fwrite", "fread", "fgets", "fputs", "fgetc", "fflush",
+           "feof", "ftell", "fseek", "rewind", "sscanf", "EOF", "SEEK_SET", "SEEK_CUR",
+           "SEEK_END"]  # fmt: skip
+
 #: ``fseek``'s origins: the start, the current position, the end.
 SEEK_SET, SEEK_CUR, SEEK_END = 0, 1, 2
 
@@ -84,6 +88,23 @@ def fread(buffer: Any, size: Any, count: Any, file: FILE) -> int:
     file.eof = len(data) < int(size) * int(count)
     buffer[: len(data)] = data if isinstance(buffer, bytearray) else list(data)
     return len(data) // int(size) if int(size) else 0
+
+
+def fgets(buffer: Any, size: Any, file: FILE) -> Any:
+    """``fgets``: up to ``size - 1`` bytes of the next line, its newline included, written into
+    ``buffer`` and NUL terminated; the buffer, or ``None`` - a null ``char *`` - when nothing
+    was read, as at the end of the file. A ``size`` of one or less leaves no room for any
+    character, so nothing is read and the null pointer is returned rather than a buffer that
+    was not advanced, which would leave a program that reads a line at a time spinning.
+
+    The buffer is memory to write into, a :class:`~.buffers.CharBuffer`; text Python cannot
+    change in place is refused by :func:`~.buffers.text_into` rather than read and dropped.
+    """
+    data = file.stream.readline(int(size) - 1) if int(size) > 1 else b""
+    if not data:
+        file.eof = True
+        return None
+    return text_into(buffer, data.decode("latin-1"), True)
 
 
 def fputs(text: Any, file: Any) -> int:
