@@ -195,7 +195,8 @@ def ExpectNoDiag(statement: Any, file: Any, line: Any) -> None:
 
 #: ``ROOT::TestSupport``: the check of the diagnostics a test prints, and the guard of a
 #: scratch file (:mod:`.fileraii`).
-TestSupport = Namespace("ROOT::TestSupport", {"CheckDiagsRAII": CheckDiagsRAII, "FileRaii": FileRaii})
+TestSupport = Namespace("ROOT::TestSupport",
+                        {"CheckDiagsRAII": CheckDiagsRAII, "FileRaii": FileRaii})
 
 
 def _adopted() -> None:
