@@ -15,6 +15,8 @@ from typing import Any
 
 import numpy as np
 
+from . import stdlib as _stdlib
+
 __all__ = [
     "sqrt",
     "cbrt",
@@ -110,6 +112,9 @@ def set_vector_result(constructor: Callable[[Any], Any]) -> None:
 
 def _c(function: Callable[..., float], name: str) -> Callable[..., float]:
     def c_function(*args: Any) -> Any:
+        held = _complex_c(name, args)
+        if held is not None:
+            return held
         try:
             return function(*map(float, args))
         except ValueError:
@@ -124,6 +129,21 @@ def _c(function: Callable[..., float], name: str) -> Callable[..., float]:
     c_function.__name__ = name
     c_function.__doc__ = f"C's {name}: nan and inf where Python's would raise."
     return c_function
+
+
+def _complex_c(name: str, args: tuple[Any, ...]) -> Any:
+    """``std::NAME`` of a complex argument - which C++ finds by its type, not in ``<cmath>``.
+
+    ``exp(z)`` of a ``std::complex<double>`` is ``std::exp(std::complex)`` in C++;
+    here the arithmetic functions look for one of their arguments being a complex
+    and answer as ``<complex>`` defines that function.
+    """
+    if name not in _stdlib.COMPLEX_NAMES:
+        return None
+    for value in args:
+        if isinstance(value, _stdlib._Complex):
+            return _stdlib.complex_math(name, *args)
+    return None
 
 
 def _numbers(value: Any) -> Any:
@@ -152,6 +172,9 @@ def _promoted(given: list[Any]) -> Any:
 
 def _logarithm(function: Callable[[float], float], name: str) -> Callable[[Any], float]:
     def c_log(value: Any) -> Any:
+        held = _complex_c(name, (value,))
+        if held is not None:
+            return held
         if np.ndim(_numbers(value)):
             return _elementwise(c_log, (value,))
         number = float(value)
@@ -218,11 +241,17 @@ NUMBERS = frozenset({int, float, bool, np.float64, np.float32, np.int64, np.int3
 
 
 def pow(base: Any, exponent: Any) -> Any:
+    """``std::pow``: of a complex base ``<complex>``'s, else C's ``_pow``."""
+    held = _complex_c("pow", (base, exponent))
+    return _pow(base, exponent) if held is None else held
+
+
+def _pow(base: Any, exponent: Any) -> Any:
     """C's ``pow``: always a double, ``inf`` for a zero to a negative power - of each element,
     for an ``RVec``."""
     plain = type(base) in NUMBERS and type(exponent) in NUMBERS
     if not plain and (np.ndim(_numbers(base)) or np.ndim(_numbers(exponent))):
-        return _elementwise(pow, (base, exponent))
+        return _elementwise(_pow, (base, exponent))
     if float(base) == 0 and float(exponent) < 0:
         return INF
     try:
@@ -234,8 +263,11 @@ def pow(base: Any, exponent: Any) -> Any:
 
 
 def cabs(value: Any) -> Any:
-    """``std::abs``: an integer's stays an integer, a number's is a double, and an ``RVec``'s -
-    ``ROOT::VecOps::abs`` - is of each element."""
+    """``std::abs``: an integer's stays an integer, a number's is a double, a complex's is its
+    magnitude, and an ``RVec``'s - ``ROOT::VecOps::abs`` - is of each element."""
+    held = _complex_c("abs", (value,))
+    if held is not None:
+        return held
     if hasattr(value, "__array_ufunc__") and not isinstance(value, np.generic):
         return abs(value)
     if isinstance(value, int) or hasattr(value, "__index__"):

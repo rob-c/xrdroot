@@ -13,11 +13,13 @@ from __future__ import annotations
 
 import math
 import os
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
 
-__all__ = ["numeric_limits", "remove", "smart_pointer", "rand", "srand", "RAND_MAX"]
+__all__ = ["numeric_limits", "remove", "smart_pointer", "rand", "srand", "RAND_MAX",
+           "complex_type", "atomic_type"]
 
 #: ``RAND_MAX``: the largest number ``rand`` gives.
 RAND_MAX = 0x7FFFFFFF
@@ -192,6 +194,466 @@ class _SmartPointer:
 
 def smart_pointer(name: str) -> _SmartPointer:
     return _SmartPointer(name)
+
+
+class _Complex:
+    """``std::complex<T>``: a real part and an imaginary one, and C++'s arithmetic on them.
+
+    The parts are kept at the width the template was asked for - a
+    ``complex<float>`` keeps single-precision parts, which is what a file of one
+    holds - and every operator answers what ``std::complex`` answers: the four
+    rules, the two mixed with a number, the comparisons, and ``real``/``imag``
+    with and without an argument.
+    """
+
+    __slots__ = ("_real", "_imag")
+    #: How C++ spells this one, which each class made by :func:`complex_type` sets.
+    __cpp_name__ = "complex<double>"
+    #: The type of each part, as NumPy's scalar type: ``numpy.float32`` for ``complex<float>``.
+    part: Any = np.float64
+
+    def __init__(self, real: Any = 0.0, imag: Any = 0.0) -> None:
+        held = getattr(real, "_real", None)
+        if held is not None:  # complex(other), or complex(other, 0)
+            real, imag = real._real, real._imag
+        self._real, self._imag = self.part(real), self.part(imag)
+
+    def _part(self, value: Any) -> tuple[Any, Any]:
+        """Another complex's two parts, or a real number's."""
+        held = getattr(value, "_real", None)
+        return (held, value._imag) if held is not None else (value, 0.0)
+
+    def real(self, value: Any = None) -> Any:
+        """``real()``: the real part - or, given one, the complex with that part set."""
+        if value is None:
+            return _number(self._real)
+        self._real = self.part(value)
+        return None
+
+    def imag(self, value: Any = None) -> Any:
+        if value is None:
+            return _number(self._imag)
+        self._imag = self.part(value)
+        return None
+
+    def __complex__(self) -> complex:
+        return complex(float(self._real), float(self._imag))
+
+    def __abs__(self) -> float:
+        """``std::abs(z)``: the magnitude."""
+        return float(math.hypot(float(self._real), float(self._imag)))
+
+    def _made(self, real: Any, imag: Any) -> _Complex:
+        made = object.__new__(type(self))
+        made._real, made._imag = self.part(real), self.part(imag)
+        return made
+
+    def __add__(self, other: Any) -> _Complex:
+        real, imag = self._part(other)
+        return self._made(self._real + real, self._imag + imag)
+
+    __radd__ = __add__
+
+    def __sub__(self, other: Any) -> _Complex:
+        real, imag = self._part(other)
+        return self._made(self._real - real, self._imag - imag)
+
+    def __rsub__(self, other: Any) -> _Complex:
+        real, imag = self._part(other)
+        return self._made(real - self._real, imag - self._imag)
+
+    def __mul__(self, other: Any) -> _Complex:
+        real, imag = self._part(other)
+        made = self._made
+        return made(self._real * real - self._imag * imag, self._real * imag + self._imag * real)
+
+    __rmul__ = __mul__
+
+    def __truediv__(self, other: Any) -> _Complex:
+        real, imag = self._part(other)
+        size = real * real + imag * imag
+        return self._made((self._real * real + self._imag * imag) / size,
+                          (self._imag * real - self._real * imag) / size)
+
+    def __neg__(self) -> _Complex:
+        return self._made(-self._real, -self._imag)
+
+    def __pos__(self) -> _Complex:
+        return self
+
+    def __iadd__(self, other: Any) -> _Complex:
+        real, imag = self._part(other)
+        self._real, self._imag = self.part(self._real + real), self.part(self._imag + imag)
+        return self
+
+    def __isub__(self, other: Any) -> _Complex:
+        real, imag = self._part(other)
+        self._real, self._imag = self.part(self._real - real), self.part(self._imag - imag)
+        return self
+
+    def __eq__(self, other: object) -> bool:
+        real, imag = self._part(other)
+        return bool(self._real == real and self._imag == imag)
+
+    def __ne__(self, other: object) -> bool:
+        return not self == other
+
+    __hash__ = None  # type: ignore[assignment]
+
+    def __str__(self) -> str:
+        """As ``operator<<`` prints one: ``(1,2)``."""
+        return f"({float(self._real):g},{float(self._imag):g})"
+
+    def __repr__(self) -> str:
+        return f"<{self.__cpp_name__} {self}>"
+
+
+def _number(value: Any) -> Any:
+    """A stored part as Python's number, not NumPy's."""
+    return value.item() if isinstance(value, np.generic) else value
+
+
+def _parts(value: Any) -> tuple[float, float]:
+    """A complex's two parts as Python's floats, which the functions of ``<complex>`` use."""
+    return float(value._real), float(value._imag)
+
+
+def complex_math(name: str, *args: Any) -> Any:
+    """``std::NAME`` of a complex argument, as ``<complex>`` defines it.
+
+    C++ finds these overloads by the type of their argument - ``exp(z)`` of a
+    ``complex<double>`` is ``std::exp(std::complex)``, not the C library's - so
+    the arithmetic functions dispatch here when one of their arguments is a
+    complex, and answer in the same width the argument was.
+    """
+    found = COMPLEX_MATH.get(name)
+    if found is None:
+        raise AttributeError(f"xrdroot has no std::{name} of a std::complex")
+    return found(args[0], args[1:])
+
+
+def _magnitude(first: Any, rest: tuple[Any, ...]) -> Any:
+    return math.hypot(*_parts(first))
+
+
+def _norm(first: Any, rest: tuple[Any, ...]) -> Any:
+    real, imag = _parts(first)
+    return real * real + imag * imag
+
+
+def _argument(first: Any, rest: tuple[Any, ...]) -> Any:
+    return math.atan2(*reversed(_parts(first)))
+
+
+def _conjugate(first: Any, rest: tuple[Any, ...]) -> Any:
+    real, imag = _parts(first)
+    return first._made(real, -imag)
+
+
+def _exponential(first: Any, rest: tuple[Any, ...]) -> Any:
+    real, imag = _parts(first)
+    size = math.exp(real)
+    return first._made(size * math.cos(imag), size * math.sin(imag))
+
+
+def _logarithm(first: Any, rest: tuple[Any, ...]) -> Any:
+    real, imag = _parts(first)
+    size = math.hypot(real, imag)
+    return first._made(math.log(size) if size else -math.inf, math.atan2(imag, real))
+
+
+def _logarithm_ten(first: Any, rest: tuple[Any, ...]) -> Any:
+    return _logarithm(first, rest) / math.log(10.0)
+
+
+def _square_root(first: Any, rest: tuple[Any, ...]) -> Any:
+    return _exponential(_logarithm(first, rest) / 2.0, ())
+
+
+def _power(first: Any, rest: tuple[Any, ...]) -> Any:
+    """``pow(z, w)``: ``exp(w log z)``, of a real or a complex exponent."""
+    exponent, base = rest[0], _logarithm(first, ())
+    if hasattr(exponent, "_real"):
+        return _exponential(base * exponent, ())
+    return _exponential(base._made(base._real * float(exponent), base._imag * float(exponent)), ())
+
+
+def _trigonometry(first: Any, rest: tuple[Any, ...]) -> Any:
+    """``sin(z)``: ``(sin x cosh y, cos x sinh y)`` - and ``cos``, which is the pair swapped."""
+    sine = COMPLEX_NAMES_SINE[rest[0]] if rest else "sin"
+    real, imag = _parts(first)
+    one = math.sin(real) if sine == "sin" else math.cos(real)
+    two = math.cos(real) if sine == "sin" else -math.sin(real)
+    return first._made(one * math.cosh(imag), two * math.sinh(imag))
+
+
+def _hyperbolic(first: Any, rest: tuple[Any, ...]) -> Any:
+    """``sinh(z)``: ``(sinh x cos y, cosh x sin y)`` - and ``cosh``, the pair swapped."""
+    sine = COMPLEX_NAMES_HYPERBOLIC[rest[0]] if rest else "sinh"
+    real, imag = _parts(first)
+    one = math.sinh(real) if sine == "sinh" else math.cosh(real)
+    two = math.cosh(real) if sine == "sinh" else math.sinh(real)
+    return first._made(one * math.cos(imag), two * math.sin(imag))
+
+
+def _tangent(first: Any, rest: tuple[Any, ...]) -> Any:
+    """``tan(z)``: ``sin z / cos z`` and, for ``tanh``, ``sinh z / cosh z``."""
+    hyperbolic = rest[0] == "tanh" if rest else False
+    pair = ("sinh", "cosh") if hyperbolic else ("sin", "cos")
+    top = COMPLEX_MATH[pair[0]](first, ())
+    return top / COMPLEX_MATH[pair[1]](first, ())
+
+
+#: What each function of ``<complex>`` is here: the name ``<cmath>`` has for it, and the
+#: function that answers it. A complex argument is what sends a call here.
+COMPLEX_MATH: dict[str, Callable[[Any, tuple[Any, ...]], Any]] = {
+    "abs": _magnitude, "norm": _norm, "arg": _argument, "conj": _conjugate,
+    "exp": _exponential, "log": _logarithm, "log10": _logarithm_ten,
+    "sqrt": _square_root, "pow": _power,
+    "sin": lambda first, rest: _trigonometry(first, ("sin",)),
+    "cos": lambda first, rest: _trigonometry(first, ("cos",)),
+    "tan": lambda first, rest: _tangent(first, ("tan",)),
+    "sinh": lambda first, rest: _hyperbolic(first, ("sinh",)),
+    "cosh": lambda first, rest: _hyperbolic(first, ("cosh",)),
+    "tanh": lambda first, rest: _tangent(first, ("tanh",)),
+}  # fmt: skip
+
+#: The two of each pair of the trigonometric and hyperbolic functions.
+COMPLEX_NAMES_SINE = {"sin": "sin", "cos": "cos"}
+COMPLEX_NAMES_HYPERBOLIC = {"sinh": "sinh", "cosh": "cosh"}
+
+
+#: The functions of ``<complex>`` a complex argument dispatches to
+#: :func:`complex_math` for, by the name ``<cmath>``'s function has.
+COMPLEX_NAMES = frozenset({"exp", "log", "log10", "sqrt", "pow", "sin", "cos", "tan", "sinh",
+                           "cosh", "tanh", "abs", "norm", "arg", "conj"})  # fmt: skip
+
+
+#: What each C++ name a complex is asked for keeps its parts in, and how C++ spells it.
+COMPLEX_PARTS: dict[str, tuple[Any, str]] = {
+    "float": (np.float32, "float"),
+    "double": (np.float64, "double"),
+    "long double": (np.float64, "long double"),
+}
+
+
+#: What NumPy calls each width a template may be asked for, as C++ spells it.
+NUMPY_NAMES: dict[str, str] = {"float32": "float", "float64": "double", "int8": "char",
+                               "uint8": "unsigned char", "int16": "short",
+                               "uint16": "unsigned short", "int32": "int",
+                               "uint32": "unsigned int", "int64": "long", "uint64": "unsigned long",
+                               "bool": "bool"}  # fmt: skip
+
+
+def _cxx_name(kind: Any) -> str:
+    """A template argument's C++ name, whether it came as a name or as a NumPy type."""
+    if isinstance(kind, str):
+        return kind
+    if isinstance(kind, np.dtype):
+        name: str = kind.name
+        return NUMPY_NAMES.get(name, name)
+    if isinstance(kind, type) and issubclass(kind, np.generic):
+        scalar: str = np.dtype(kind).name
+        return NUMPY_NAMES.get(scalar, scalar)
+    return str(getattr(kind, "__name__", kind))
+
+
+#: The one class made for each template argument set, so that either spelling is the class.
+_COMPLEX_CLASSES: dict[str, type] = {}
+_ATOMIC_CLASSES: dict[str, type] = {}
+
+
+def complex_type(kind: Any) -> type:
+    """``std::complex<float>`` and its kin: the class of that name keeping that width.
+
+    C++ makes one of a floating type and of nothing else, so a complex of a
+    class is refused by name rather than kept at a width it never had.
+    """
+    spelled = _cxx_name(kind)
+    known = COMPLEX_PARTS.get(spelled)
+    if known is None:
+        raise TypeError(
+            f"std::complex<{spelled}> is not a complex this kit has: C++ makes one of float, "
+            f"double or long double, and {spelled} is none of them")
+    part, name = known
+    if name not in _COMPLEX_CLASSES:
+        members = {"part": part, "__cpp_name__": f"complex<{name}>"}
+        _COMPLEX_CLASSES[name] = type(f"complex<{name}>", (_Complex,), {"__slots__": (), **members})
+    return _COMPLEX_CLASSES[name]
+
+
+class _Atomic:
+    """``std::atomic<T>``: a value read and written whole, as C++'s atomics are.
+
+    Nothing here runs two threads through one atomic - xrdroot's event loops are
+    one thread, or processes - so what is kept is the value and the operations
+    C++ names for it, so that a program counting in a lambda counts.
+    """
+
+    __slots__ = ("_value",)
+    #: How C++ spells this one, which each class made by :func:`atomic_type` sets.
+    __cpp_name__ = "atomic<int>"
+    #: The type of the value: Python's ``int``, or ``float``, or ``bool``.
+    value_type: Any = int
+    #: A cell's word for "``*p`` reads ``.value``", which is what an atomic is read through.
+    _cint_cell = True
+
+    def __init__(self, value: Any = 0) -> None:
+        self._value = self.value_type(value)
+
+    @property
+    def value(self) -> Any:
+        """``operator T()`` and ``*p``: the value as it is now."""
+        return self._value
+
+    @value.setter
+    def value(self, value: Any) -> None:
+        self._value = self.value_type(value)
+
+    def load(self) -> Any:
+        return self._value
+
+    def store(self, value: Any) -> None:
+        self._value = self.value_type(value)
+
+    def exchange(self, value: Any) -> Any:
+        """``exchange(v)``: the value it had, with ``v`` in its place."""
+        old, self._value = self._value, self.value_type(value)
+        return old
+
+    def fetch_add(self, value: Any = 1) -> Any:
+        old, self._value = self._value, self.value_type(self._value + value)
+        return old
+
+    def fetch_sub(self, value: Any = 1) -> Any:
+        old, self._value = self._value, self.value_type(self._value - value)
+        return old
+
+    def __iadd__(self, value: Any) -> _Atomic:
+        self._value = self.value_type(self._value + value)
+        return self
+
+    def __isub__(self, value: Any) -> _Atomic:
+        self._value = self.value_type(self._value - value)
+        return self
+
+    def __add__(self, value: Any) -> Any:
+        return self._value + value
+
+    __radd__ = __add__
+
+    def __sub__(self, value: Any) -> Any:
+        return self._value - value
+
+    def __rsub__(self, value: Any) -> Any:
+        return value - self._value
+
+    def __mul__(self, value: Any) -> Any:
+        return self._value * value
+
+    __rmul__ = __mul__
+
+    def __truediv__(self, value: Any) -> Any:
+        return self._value / value
+
+    def __lt__(self, value: Any) -> bool:
+        return bool(self._value < value)
+
+    def __le__(self, value: Any) -> bool:
+        return bool(self._value <= value)
+
+    def __gt__(self, value: Any) -> bool:
+        return bool(self._value > value)
+
+    def __ge__(self, value: Any) -> bool:
+        return bool(self._value >= value)
+
+    def __int__(self) -> int:
+        return int(self._value)
+
+    def __index__(self) -> int:
+        return int(self._value)
+
+    def __float__(self) -> float:
+        return float(self._value)
+
+    def __bool__(self) -> bool:
+        return bool(self._value)
+
+    def __eq__(self, other: object) -> bool:
+        return bool(self._value == getattr(other, "_value", other))
+
+    __hash__ = None  # type: ignore[assignment]
+
+    def __repr__(self) -> str:
+        return f"<{self.__cpp_name__} {self._value!r}>"
+
+
+#: The value type ``std::atomic<T>`` keeps for each C++ arithmetic name.
+ATOMIC_VALUES: dict[str, Any] = {
+    "bool": bool, "char": int, "signed char": int, "unsigned char": int,
+    "short": int, "unsigned short": int, "int": int, "unsigned int": int,
+    "long": int, "unsigned long": int, "long long": int, "unsigned long long": int,
+    "float": float, "double": float,
+}  # fmt: skip
+
+
+def atomic_type(kind: Any) -> type:
+    """``std::atomic<int>`` and its kin: the class of that name keeping that value.
+
+    ``std::atomic_int`` and the other ``std::atomic_*`` spellings are the same
+    classes, so one made through either name is the one class.
+    """
+    spelled = _cxx_name(kind)
+    if spelled.startswith("atomic_"):  # ``std::atomic_int`` is ``std::atomic<int>``
+        spelled = spelled[len("atomic_"):]
+    elif spelled.startswith("atomic<") and spelled.endswith(">"):
+        spelled = spelled[len("atomic<"):-1]
+    name = f"atomic<{spelled}>"
+    if name not in _ATOMIC_CLASSES:
+        members = {"value_type": ATOMIC_VALUES.get(spelled, int), "__cpp_name__": name}
+        _ATOMIC_CLASSES[name] = type(name, (_Atomic,), {"__slots__": (), **members})
+    return _ATOMIC_CLASSES[name]
+
+
+class _Forwarded:
+    """What ``std::forward_as_tuple`` gives: the arguments, kept for the constructor that
+    reads them - which is how a ``std::map`` of ``std::unique_ptr`` is filled, the key and
+    the value each built from their own tuple."""
+
+    __slots__ = ("_values",)
+
+    def __init__(self, *values: Any) -> None:
+        self._values = tuple(values)
+
+    def __iter__(self) -> Any:
+        return iter(self._values)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    def __getitem__(self, index: int) -> Any:
+        return self._values[index]
+
+    def __repr__(self) -> str:
+        return f"<tuple {self._values!r}>"
+
+
+def forward_as_tuple(*values: Any) -> _Forwarded:
+    """``std::forward_as_tuple(values...)``: the values as the tuple a constructor reads."""
+    return _Forwarded(*values)
+
+
+class _Tag:
+    """A tag C++ only ever passes: the type is the argument, the value says nothing."""
+
+    __slots__ = ("__cpp_name__",)
+
+    def __init__(self, name: str) -> None:
+        self.__cpp_name__ = name
+
+    def __repr__(self) -> str:
+        return f"<{self.__cpp_name__} tag>"
 
 
 def remove(path: Any) -> int:

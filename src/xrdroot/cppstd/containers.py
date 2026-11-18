@@ -998,6 +998,27 @@ class _Map(_Container):
         if key not in self:
             self[key] = value
 
+    def emplace(self, *arguments: Any) -> None:
+        """``emplace(key, value)``, ``emplace(pair)``: the pair made where it goes, which here
+        is the pair inserted as ``insert`` does - a key already there keeps its value, as
+        C++'s ``emplace`` leaves it.
+
+        ``emplace(std::piecewise_construct, ...)`` builds the pair from the tuples and
+        is what a map of ``unique_ptr`` is filled through, so its arguments are read
+        through the forward-as-tuple wrappers as their first elements.
+        """
+        if arguments and getattr(arguments[0], "__cpp_name__", "") == "piecewise_construct":
+            parts = [getattr(each, "_values", each) for each in arguments[1:]]
+            key, value = [part[0] if isinstance(part, tuple) and part else part for part in parts]
+            self[key] = value
+            return
+        if len(arguments) == 1:
+            self.insert(arguments[0])
+            return
+        key, value = arguments[0], arguments[1]
+        if key not in self:
+            self[key] = value
+
     def begin(self) -> _MapIterator:
         """``begin()``: an iterator at the first key, which ``it += 1`` moves along."""
         return _MapIterator(self, 0)
@@ -1119,6 +1140,63 @@ def _set_class(kind: Any) -> type:
     return type(name, (_Set,), {"__slots__": (), "kind": kind, "__cpp_name__": name})
 
 
+class _Multiset(_Set):
+    """``std::multiset``: in order, and an element as many times as it was inserted."""
+
+    __slots__ = ("_counts",)
+
+    def __init__(self, items: Any = None) -> None:
+        self._counts: dict[Any, int] = {}
+        for item in items if items is not None else ():
+            self.insert(item)
+
+    def __repr__(self) -> str:
+        return f"<{self.__cpp_name__} {self._flat()!r}>"
+
+    def _flat(self) -> list[Any]:
+        kept = sorted(self._counts.items(), key=lambda pair: (pair[0],))
+        return [value for value, count in kept for _ in range(count)]
+
+    def __len__(self) -> int:
+        return sum(self._counts.values())
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(self._flat())
+
+    def __contains__(self, value: Any) -> bool:
+        return self._value(value) in self._counts
+
+    def __bool__(self) -> bool:
+        return bool(self._counts)
+
+    def count(self, value: Any) -> int:
+        return int(self._counts.get(self._value(value), 0))
+
+    def insert(self, value: Any) -> None:
+        found = self._value(value)
+        self._counts[found] = self._counts.get(found, 0) + 1
+
+    def erase(self, value: Any) -> int:
+        """``erase(value)``: every copy of it taken out, and how many there were."""
+        found = int(self.count(value))
+        self._counts.pop(self._value(value), None)
+        return found
+
+    def size(self) -> int:
+        return len(self)
+
+    def empty(self) -> bool:
+        return not self._counts
+
+    def clear(self) -> None:
+        self._counts.clear()
+
+
+def _multiset_class(kind: Any) -> type:
+    name = f"multiset<{cpp_name(kind)}>"
+    return type(name, (_Multiset,), {"__slots__": (), "kind": kind, "__cpp_name__": name})
+
+
 #: The templates, by the name C++ gives each.
 
 
@@ -1136,6 +1214,18 @@ def _sequence_class(word: str) -> Callable[[Any], type]:
         return made
 
     return build
+
+
+def _forward_list_class(kind: Any) -> type:
+    """``std::forward_list``: the sequence whose additions are at its front, as its name says -
+    iterating gives the last thing added first, which is the order C++ gives."""
+    base = _vector_class(kind)
+    name = f"forward_list<{cpp_name(kind)}>"
+    made = type(name, (base,), {"__slots__": (), "__cpp_name__": name})
+    made.push_front = _push_front  # type: ignore[attr-defined]
+    made.emplace_front = _push_front  # type: ignore[attr-defined]
+    made.pop_front = _pop_front  # type: ignore[attr-defined]
+    return made
 
 
 def _push_front(self: Any, value: Any) -> None:
@@ -1235,6 +1325,10 @@ TEMPLATES: dict[str, _Template] = {
     "list": _Template("list", 1, _sequence_class("list")),
     "deque": _Template("deque", 1, _sequence_class("deque")),
     "multimap": _Template("multimap", 2, _multimap_class),
+    "multiset": _Template("multiset", 1, _multiset_class),
+    "forward_list": _Template("forward_list", 1, _forward_list_class),
+    "complex": _Template("complex", 1, _stdlib.complex_type),
+    "atomic": _Template("atomic", 1, _stdlib.atomic_type),
     "unordered_map": _Template("unordered_map", 2, _renamed("unordered_map", _map_class)),
     "unordered_set": _Template("unordered_set", 1, _renamed("unordered_set", _set_class)),
 }
@@ -1252,6 +1346,31 @@ def _distance(first: Any, last: Any) -> int:
         at += 1  # ++it, on a copy: an iterator's += may step it in place
         steps += 1
     return steps
+
+
+def _make_pair(first: Any, second: Any) -> Any:
+    """``std::make_pair(first, second)``: a ``std::pair`` of the two, of their own types.
+
+    C++ deduces the pair's types from the values with ``std::decay``, so a
+    string literal and a number give ``pair<string,double>`` as they do there.
+    """
+    return _pair_class(_canonical(element_type(_deduced_type(first))),
+                       _canonical(element_type(_deduced_type(second))))(first, second)
+
+
+def _deduced_type(value: Any) -> Any:
+    """The type C++ deduces for a value handed to ``make_pair``, as a name that
+    :func:`element_type` takes."""
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, (int, np.integer)):
+        return "int" if -(2**31) <= int(value) < 2**31 else "long"
+    if isinstance(value, (float, np.floating)):
+        return "double"
+    given = type(value)
+    return given if issubclass(given, (string, _Container)) else str(value)
 
 
 def _make_tuple(*values: Any) -> tuple[Any, ...]:
@@ -1342,6 +1461,19 @@ class _Namespace:
     list = TEMPLATES["list"]
     deque = TEMPLATES["deque"]
     multimap = TEMPLATES["multimap"]
+    multiset = TEMPLATES["multiset"]
+    forward_list = TEMPLATES["forward_list"]
+    complex = TEMPLATES["complex"]
+    atomic = TEMPLATES["atomic"]
+    #: ``std::atomic_int`` and its kin: the ``atomic<T>`` of that name.
+    atomic_int = _stdlib.atomic_type("int")
+    atomic_uint = _stdlib.atomic_type("unsigned int")
+    atomic_long = _stdlib.atomic_type("long")
+    atomic_ulong = _stdlib.atomic_type("unsigned long")
+    atomic_llong = _stdlib.atomic_type("long long")
+    atomic_ullong = _stdlib.atomic_type("unsigned long long")
+    atomic_bool = _stdlib.atomic_type("bool")
+    atomic_char = _stdlib.atomic_type("char")
     unordered_map = TEMPLATES["unordered_map"]
     unordered_set = TEMPLATES["unordered_set"]
     array = _ArrayTemplate()
@@ -1357,6 +1489,10 @@ class _Namespace:
     remove = staticmethod(_stdlib.remove)
     distance = staticmethod(_distance)
     make_tuple = staticmethod(_make_tuple)
+    make_pair = staticmethod(_make_pair)
+    forward_as_tuple = staticmethod(_stdlib.forward_as_tuple)
+    #: ``std::piecewise_construct``: the tag that says a pair is built from two tuples.
+    piecewise_construct = _stdlib._Tag("piecewise_construct")
     rand = staticmethod(_stdlib.rand)
     srand = staticmethod(_stdlib.srand)
 
