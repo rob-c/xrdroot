@@ -20,6 +20,7 @@ from xrdroot import writer as writing
 from xrdroot.file import Key
 from xrdroot.merging.copying import _outermost
 from xrdroot.merging.records import copy_record
+from xrdroot.streamers import read_infos
 
 DATA = pathlib.Path(__file__).parent / "data"
 
@@ -173,3 +174,16 @@ def test_an_rntuple_is_copied_entry_by_entry(tmp_path):
     copy(source, tmp_path / "out.root")
     with open_root(str(tmp_path / "out.root")) as f:
         assert f["nt"]["pt"].array().tolist() == [0.0, 1.0, 2.0, 3.0]
+
+
+def test_a_copied_file_describes_every_class_its_source_described(tmp_path):
+    """``rootcp`` reads through a ``TFile``, and a ``TFile`` writes out the whole of what
+    it read - so a class the source describes is described by the copy too, even one no
+    object copied here is of. A tree's baskets carry no description of their own."""
+    out = tmp_path / "out.root"
+    copy(DATA / "tntuple.root", out)
+    with open_root(str(DATA / "tntuple.root")) as g:
+        described = {(name, version) for name, (_c, version, _e) in read_infos(g._source)}
+    assert ("TTree", 20) in described  # ROOT 6.40's, which this library does not write
+    with open_root(str(out)) as f:
+        assert described <= {(name, version) for name, (_c, version, _e) in read_infos(f._source)}

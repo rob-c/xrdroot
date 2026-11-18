@@ -30,6 +30,7 @@ from ..objects import TREE_CLASSES
 from ..writer import WritableDirectory, WritableFile, create
 from ..wupdate import update
 from .files import DIRECTORIES, NTUPLE, _is_local_file, _local_path, _opened, resolve_compression
+from .infos import carry
 from .ntuples import NtupleMerge
 from .records import copy_record, fits, renamed_record
 from .trees import TreeMerge, normal_codes
@@ -132,6 +133,13 @@ class _Copier:
         self.verbatim = normal_codes(top.compression) == normal_codes(out._codes)
         self.infos: dict[str, dict[tuple[str, int], bytes]] = {}
         self.written: list[str] = []
+        # ROOT's ``rootcp`` reads its source through a ``TFile`` as ``hadd``
+        # reads its inputs, so what it writes describes every class the source
+        # described - even one none of the objects copied is of, which the
+        # source describes because something else written there was: see
+        # :mod:`.infos`. A class copied as its own record brings its
+        # description along anyway; a tree's baskets bring none.
+        carry(out._file, top._source, self.infos)
 
     def copy(self, path: str, to: str) -> None:
         directory, key = _located(self.top, path)
