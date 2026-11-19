@@ -22,13 +22,18 @@ import io
 import os
 import struct
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from ...compression import spelled
+from ...cppstd.containers import std
 from ...errors import ROOTError
+from ...wdeclared import COMPLEX_TEMPLATES, Catalogue, parse_type
+from ...wdobjects import write_value
+from ...writer import WBuffer, info_entry
 from .collections import THashList
-from .declared import made_from, payload_of
+from .declared import catalogue_for, made_from, payload_of, plain_value
 from .directories import TDirectory, current_directory, forget_file, set_current
 from .messages import from_script, message
 from .objects import Indent, TNamed, TObject, templated
@@ -295,10 +300,7 @@ class TDirectoryFile(TDirectory):
         if key.GetClassName() == "ROOT::RNTuple":  # an RNTuple is read by its own reader
             return self._reading[key.GetName()]
         read = self._record_of(label, key)
-        found = _tree(read, key) or wrap(read)
-        if not isinstance(found, TObject) and not _engine_own(found):
-            named = str(getattr(found, "classname", "") or key.GetClassName())  # as it was read
-            found = _dressed(key.GetClassName(), found, named)
+        found = _object_of(key, read)
         settle(found, read, self.GetFile())
         newest = key is self.GetKey(key.GetName())
         if newest and any(_inherits(found, kind) for kind in KEPT):
@@ -379,9 +381,33 @@ class TDirectoryFile(TDirectory):
     def WriteObjectAny(
         self, obj: Any, classname: Any, name: Any, option: Any = "", bufsize: int = 0
     ) -> int:
-        """``WriteObjectAny(obj, "MyClass", name)``: ``obj`` written here - the class is the
-        object's own, which a Python object knows without being told."""
-        return self.WriteTObject(obj, name, option)
+        """``WriteObjectAny(obj, "MyClass", name)``: ``obj`` written here as an object of
+        ``classname``, which is the name its key carries.
+
+        An object of a class that says what it is - one C++ declared, or one of ROOT's that
+        knows its own name - is written as itself, the class name given agreeing with it. A
+        value of no such class, a ``complex<float>`` written as one, has only the name it is
+        handed, so the class name given is the one both its key and its record carry.
+        """
+        if payload_of(obj) is not None or hasattr(obj, "GetTitle"):
+            return self.WriteTObject(obj, name, option)
+        return self._write_any(str(classname), obj, name)
+
+    def _write_any(self, classname: str, value: Any, name: Any) -> int:
+        """``value`` written here under ``classname``, which no class of its Python type is."""
+        writer = self._writable()
+        called = str(name) if name else classname
+        if writer is None:
+            message(
+                "Error",
+                "TDirectoryFile::WriteObjectAny",
+                "Directory %s is not writable",
+                self.GetName(),
+            )
+            return 0
+        writer.write(called, _ValueObject(classname, value))
+        self._note_key(called, "", classname)
+        return 1
 
     def _note_key(self, name: str, title: str, classname: str) -> TKey:
         """A key for a record just written: the next cycle, listed before the older ones."""
@@ -528,14 +554,41 @@ def _note_layouts(reading: Any) -> None:
         return
 
 
+def _object_of(key: TKey, read: Any) -> Any:
+    """The object a key's record read is: a tree made of it, the pyroot class standing for it -
+    or, a record nothing made an object of yet, the class its members and name describe."""
+    found = _tree(read, key) or wrap(read)
+    if found is read and not isinstance(found, TObject) and not _engine_own(found):
+        # Nothing made the record into an object, so it is one read as its members: a value
+        # the kit makes instead - a std::complex - is an object already, and is left as it is.
+        named = str(getattr(found, "classname", "") or key.GetClassName())  # as it was read
+        return _dressed(key.GetClassName(), found, named)
+    return found
+
+
 def _dressed(classname: str, members: Any, named: str) -> Any:
     """A record read as its members, made into its class: one the kit makes again, one C++
-    declared, or else an object that only says what it is - by ``named``, the class it was
-    read as."""
+    declared, a value such as a ``std::complex``, or else an object that only says what it is
+    - by ``named``, the class it was read as."""
     made = from_members(classname, members)  # a null TRef is false, and made
     if made is None:
         made = made_from(classname, members)
+    if made is None:
+        made = _value_of(classname, members)
     return made if made is not None else TOther(named, members)
+
+
+def _value_of(classname: str, members: Any) -> Any:
+    """A class the kit has a value of rather than a class of ours: a ``std::complex<T>``,
+    whose record in a file is its ``_real`` and ``_imag`` - the two numbers of that width
+    made the complex they are - and ``None`` for every other class."""
+    found = parse_type(classname)
+    if found.name not in COMPLEX_TEMPLATES or found.stars or not found.args:
+        return None
+    if not isinstance(members, Mapping):
+        return None
+    made = std.complex[found.args[0].text()]
+    return made(members.get("_real", 0.0), members.get("_imag", 0.0))
 
 
 class _Noting:
@@ -875,6 +928,32 @@ _OPEN: list[TFile] = []
 def _close_all() -> None:
     for opened in list(_OPEN):
         opened.Close()
+
+
+class _ValueObject:
+    """A value handed to a file with the name of its class, as ``WriteObjectAny`` hands one:
+    it streams itself by that name, ROOT's layout of the value - a ``complex<float>``'s two
+    numbers - which nothing of its Python type could be described by."""
+
+    def __init__(self, classname: str, value: Any) -> None:
+        self.classname = classname
+        self.value = value
+        self.title = ""
+
+    def root_payload(
+        self, keylen: int
+    ) -> tuple[bytes, tuple[str, ...], dict[tuple[str, int], bytes]]:
+        """The value's bytes as ROOT writes them, the ROOT classes they reach, and the
+        descriptions of the class they are written by."""
+        catalogue: Catalogue = catalogue_for(self.classname)
+        buf = WBuffer()
+        plain = plain_value(self.value, self.classname, catalogue)
+        write_value(buf, self.classname, plain, catalogue)
+        carried = {
+            (name, version): info_entry(name, sum_, version, elements)
+            for name, (sum_, version, elements) in catalogue.entries().items()
+        }
+        return bytes(buf.data), tuple(catalogue.used), carried
 
 
 def _engine_own(obj: Any) -> bool:

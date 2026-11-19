@@ -378,3 +378,87 @@ def test_a_file_hands_back_the_cache_it_reads_blocks_through_and_none_without_on
         (out.GetCacheRead(tree), None),
     )
     out.Close()
+
+
+#: ROOT 6.40.04's ``WriteObjectAny`` of a ``std::complex<float>(1, 2)`` and a
+#: ``std::complex<double>(3, 4)``, as the oracle's file holds each key's payload: the record,
+#: the version a class of no ``ClassDef`` carries, and the checksum of its description.
+COMPLEX_KEY_PAYLOADS = {
+    "cFloat_0": "4000000e00002e5c46083f80000040000000",
+    "cDouble_0": "400000160000db2371a140080000000000004010000000000000",
+}
+
+
+def test_writeobjectany_writes_a_complex_under_the_class_name_it_is_handed():
+    """A ``std::complex`` names no class of its own in Python, so the class ``WriteObjectAny``
+    is handed is the one ROOT's key and record carry - checked against ROOT 6.40.04's file,
+    whose payloads are these byte for byte."""
+    from xrdroot.cppstd.stdlib import complex_type
+    from xrdroot.file import open_root
+
+    out = ROOT.TFile("complex.root", "RECREATE")
+    expect(
+        (out.WriteObjectAny(complex_type("float")(1, 2), "complex<float>", "cFloat_0"), 1),
+        (out.WriteObjectAny(complex_type("double")(3, 4), "complex<double>", "cDouble_0"), 1),
+        (out.GetKey("cFloat_0").GetClassName(), "complex<float>"),
+        (out.GetKey("cFloat_0").GetTitle(), ""),  # ROOT gives a value no title
+        (out.GetKey("cDouble_0").GetClassName(), "complex<double>"),
+    )
+    out.ls()
+    out.Close()
+    data = pathlib.Path("complex.root").read_bytes()
+    with open_root("complex.root") as held:
+        for name, payload in COMPLEX_KEY_PAYLOADS.items():
+            key = held.key(name)
+            at = key.seek_key + key.keylen
+            expect((data[at : at + key.nbytes - key.keylen].hex(), payload))
+
+
+def test_a_complex_written_by_its_class_name_reads_back_as_that_complex():
+    """``Get`` hands back the value a key holds: a ``complex<float>`` key read is the kit's
+    complex of that width, its two parts what the file holds - not an object of a class
+    nothing describes."""
+    from xrdroot.cppstd.stdlib import complex_type
+
+    out = ROOT.TFile("complex.root", "RECREATE")
+    out.WriteObjectAny(complex_type("float")(1, 2), "complex<float>", "cFloat_0")
+    out.WriteObjectAny(complex_type("double")(3, 4), "complex<double>", "cDouble_0")
+    out.Close()
+    held = ROOT.TFile("complex.root")
+    single, double = held.Get("cFloat_0"), held.Get("cDouble_0")
+    expect(
+        (type(single), complex_type("float")),
+        (type(double), complex_type("double")),
+        ((single.real(), single.imag()), (1.0, 2.0)),
+        ((double.real(), double.imag()), (3.0, 4.0)),
+        (complex(double), complex(3, 4)),
+    )
+
+
+def test_a_class_name_with_no_complex_or_another_class_says_no_value_of_it_is_made():
+    """``_value_of`` makes a value of a ``std::complex`` job and of nothing else: a pointer to
+    one is no class of its own, a template of no argument is no type, and a record that is no
+    mapping is not a complex' two numbers - each ``None``, so the read falls back to what an
+    object of an undescribed class is."""
+    expect(
+        (files._value_of("complex<float>*", {"_real": 1.0}), None),
+        (files._value_of("complex", {"_real": 1.0}), None),
+        (files._value_of("complex<float>", 1.0), None),
+        (files._value_of("vector<int>", {"_real": 1.0}), None),
+    )
+
+
+def test_writeobjectany_names_a_value_by_its_class_and_says_when_it_cannot_write(capsys):
+    """ROOT takes the name a key is written under, and a directory opened for reading writes
+    nothing: ``WriteObjectAny`` says so, as ``WriteTObject`` does, and answers 0."""
+    from xrdroot.cppstd.stdlib import complex_type
+
+    out = ROOT.TFile("complex.root", "RECREATE")
+    expect((out.WriteObjectAny(complex_type("float")(1, 2), "complex<float>", ""), 1))
+    expect((out.GetKey("complex<float>").GetClassName(), "complex<float>"))
+    out.Close()
+    held = ROOT.TFile("complex.root")
+    expect((held.WriteObjectAny(complex_type("float")(1, 2), "complex<float>", "z"), 0))
+    assert "Error in <TDirectoryFile::WriteObjectAny>: Directory complex.root is not writable" in (
+        capsys.readouterr().err
+    )
