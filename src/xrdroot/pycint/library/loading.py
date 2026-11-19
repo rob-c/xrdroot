@@ -228,6 +228,11 @@ def load_library(library: Library) -> Loaded:
     module: dict[str, Any] = {"__name__": MODULE, "__file__": library.file}
     with DIALECT.session(), placed([made]):
         exec(compile(made.python, label(made), "exec"), module)
+    # One class is one class: a class this library's sources see in the header of a library
+    # already loaded - a macro compiled against a test library, `macro.C+` with
+    # `libTestIoEvent` loaded - is that library's, whose constructors and methods the link
+    # would have made the calls in this one reach.
+    _rebound(module, made, HEADERS)
     headers = frozenset([*library.resolved(library.sources), *made.included])
     loaded = LOADED[key] = Loaded(library, module, headers)
     HEADERS.update(dict.fromkeys(headers, loaded))
