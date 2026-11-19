@@ -319,9 +319,15 @@ def _present(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
 
 def _plain_object(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
     """An object as plain data - one of a declared class as an instance, one of ROOT's as its
-    members - and anything else as it is, a string class as its text."""
-    if catalogue.declared(found.name) is not None and found.name not in ("string", "TString"):
-        return _object_of(value, found.name, catalogue)
+    members - and anything else as it is, a string class as its text.
+
+    The class is looked up by the name a streamer spells, template arguments and all:
+    a macro's ``ArrayHolderT<int>`` is declared under that name, where the spelled type
+    of the member says only ``ArrayHolderT``.
+    """
+    name = class_name(found)
+    if catalogue.declared(name) is not None and name not in ("string", "TString"):
+        return _object_of(value, name, catalogue)
     if isinstance(value, TObject):
         return _root_object(value, found.name, catalogue)
     return value if isinstance(value, (int, float, np.ndarray, list)) else _scalar(value)
