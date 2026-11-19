@@ -16,11 +16,13 @@ import io
 import pathlib
 import struct
 
+import numpy as np
 import pytest
 
 from xrdroot import create, open_root
 from xrdroot.buffer import Buffer
 from xrdroot.compression import decompress
+from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.objects import CLASSES
 from xrdroot.winfo import INFOS
 from xrdroot.writer import WIDER, _keylen
@@ -664,3 +666,23 @@ def test_an_ntuple_of_doubles_is_a_tntupled():
 def test_a_tree_is_written_as_no_class_but_a_tree_or_an_ntuple():
     with pytest.raises(ValueError, match="TTree, TNtuple, TNtupleD, and 'TChain' is none"):
         written({"x": float}, [], classname="TChain")
+
+
+def test_a_column_declared_as_python_objects_says_what_a_tree_can_hold():
+    """A tree holds numbers, text, or a branch of objects described member by member."""
+    with pytest.raises(ValueError, match="'x' is declared as object, and the Python types"):
+        _typecode("x", object)
+
+
+def test_an_object_where_a_column_of_numbers_goes_names_the_branch_of_objects():
+    """Cloning a tree whose branch is an object hands the writer one object per entry.
+
+    ROOT reads such a branch as the object itself - ``CloneTree`` copies it
+    whole - and a tree written here has a column per member instead, so the
+    refusal says which of the two the entry is and what to do about it.
+    """
+    with pytest.raises(UnsupportedFeatureError, match="'x' holds float64 values and was handed"):
+        written({"x": "d"}, [{"x": {"fNtrack": 3}}])
+    with pytest.raises(UnsupportedFeatureError, match="Write the object's members as columns"):
+        written({"x": "d"}, {"x": np.array([{"fNtrack": 3}], dtype=object)})
+

@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any, Optional
 import numpy as np
 
 from .buffer import MAP_OFFSET
+from .errors import UnsupportedFeatureError
 from .objects import LEAF_TYPES
 from .tree import Jagged
 from .wmeasure import Measuring, version
@@ -501,6 +502,8 @@ class _Column:
         try:
             return struct.pack(self.form, *values)
         except (struct.error, TypeError) as exc:
+            if isinstance(value, Mapping):
+                raise _objects_refused(self) from None
             raise ValueError(
                 f"{self.name!r} holds {self.typename} values, and this entry is not one "
                 f"of those: {exc}"
@@ -770,9 +773,28 @@ def _pack_many(column: _Column, values: Any) -> bytes:
     return _cast(column, given.reshape(want))
 
 
+def _objects_refused(column: _Column) -> UnsupportedFeatureError:
+    """The refusal of an object where a number goes, which is how a clone of a branch of
+    objects starts out.
+
+    ``TTree::CloneTree`` of a tree with a branch of objects copies the object
+    whole, because ROOT reads such a branch back as the object its class
+    describes; a tree written here has a column per member instead, so an
+    object handed to a column of numbers says the caller wanted the branch.
+    """
+    return UnsupportedFeatureError(
+        f"the column {column.name!r} holds {column.typename} values and was handed Python "
+        f"objects - the entries of a branch of objects, as cloning the tree that has one "
+        f"hands them. Write the object's members as columns of their own, or let ROOT "
+        f"clone the tree that has the branch."
+    )
+
+
 def _cast(column: _Column, given: np.ndarray[Any, Any]) -> bytes:
     """Values as the column's big-endian bytes, refused if they would change."""
     target = np.dtype(column.typecode)
+    if given.dtype == object and given.size:
+        raise _objects_refused(column)
     if given.size and not np.can_cast(given.dtype, target, "same_kind"):
         raise ValueError(
             f"{column.name!r} holds {column.typename} values, and these are {given.dtype}, "
