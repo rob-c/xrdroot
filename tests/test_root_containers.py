@@ -923,6 +923,20 @@ def test_a_split_member_of_a_type_this_reader_does_not_know_is_still_refused():
     assert "TLorentzVector, which is a C++ type this reader does not decode" in column.reason
 
 
+def test_a_member_held_by_value_is_read_with_the_record_around_it():
+    """ROOT splits ``tref_test_pid::fRef`` as the whole ``TRef`` every object holds, its
+    ``fStreamerType`` 61 saying the object is written into the entry where it stands - the
+    record that says where it ends, then its members - rather than pointed at.
+
+    The roottest ``root/io/tree`` split collections of that class are read only this way.
+    """
+    source = Layout(Event=declared("fRef", 61, "TRef"), TRef=declared("fUniqueID", 3, "int"))
+    column = column_of("Event", member="fRef", ltype=61, source=source)
+    assert isinstance(column, Values) and column.typename == "object"
+    written = struct.pack(">IHi", BYTE_COUNT_MASK | 6, 5, 42)
+    assert column.value(Buffer(written), 0) == {"fUniqueID": 42}
+
+
 def test_a_branch_this_reader_cannot_decode_is_named_in_the_tree_not_dropped():
     """A refused column is still a key: it is listed, with the reason, not hidden."""
     record_ = BranchRecord()

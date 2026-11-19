@@ -56,6 +56,11 @@ OBJECTS = (0, 61, 62)
 OBJECTS_HELD = (63, 68)
 OBJECTS_POINTED = (64, 69)
 
+#: The streamer types of one whole object written into the entry as it stands - a member
+#: held by value, or one the class promises is there - every object of a split collection
+#: the entry holds having one of its own, with a record in front to say where it ends.
+OBJECTS_INLINE = (61, 62, *OBJECTS_HELD)
+
 #: The collections that stream themselves rather than by the members they
 #: declare, each holding objects that say which class they are: a list, which
 #: keeps beside each object the option it was added under, and an array, which
@@ -106,8 +111,6 @@ KINDS = {
     0: "a base class written into the entry",
     7: "a C string pointer",
     10: "a legacy char",
-    61: "an object",
-    62: "an object without a dictionary",
     63: "a pointer to an object",
     64: "a pointer to an object",
     66: "a TObject",
@@ -1600,7 +1603,7 @@ def _declared(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column:
     if isinstance(declared, Refused):
         return declared
     name, header = declared
-    if header and leaf.ltype in OBJECTS_HELD + OBJECTS_POINTED:
+    if header and leaf.ltype in OBJECTS_INLINE + OBJECTS_POINTED:
         column = _pointer_member(name, leaf.ltype, source)
     else:
         column = _declared_node(parse(name), name, header, branch, source)
@@ -1608,13 +1611,14 @@ def _declared(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column:
 
 
 def _pointer_member(name: str, ltype: int, source: Source) -> Column:
-    """A pointer member ROOT left unsplit, read the way ROOT writes it.
+    """An object member ROOT left unsplit, read the way ROOT writes it.
 
-    One the class promises is never null is written in place; any other is
-    written the way ROOT writes any pointer - a null tag, or the class and
-    then the object.
+    One held by value, or one the class promises is never null, is written in
+    place: the record that says where it ends, then its members as the file's
+    streamer information has them. Any other pointer is written the way ROOT
+    writes any pointer - a null tag, or the class and then the object.
     """
-    if ltype in OBJECTS_HELD:
+    if ltype in OBJECTS_INLINE:
         return Values("object", _embedded(name.rstrip("*"), source, ()))
     classes = _Described(source, ())
     return Values("object", lambda buf: buf.any(classes))
@@ -1718,7 +1722,7 @@ def _element(branch: BranchRecord, leaf: LeafRecord, source: Source) -> Column:
     primitive = _primitive_element(branch, leaf, source)
     if primitive is not None:
         return primitive
-    if leaf.ltype not in KINDS or leaf.ltype in OBJECTS_HELD + OBJECTS_POINTED:
+    if leaf.ltype not in KINDS or leaf.ltype in OBJECTS_INLINE + OBJECTS_POINTED:
         return _declared(branch, leaf, source)
     if branch.whole:
         # ROOT 4 left the code at zero on a branch holding a whole
