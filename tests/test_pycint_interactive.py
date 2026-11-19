@@ -436,3 +436,24 @@ def test_the_translator_says_the_type_of_each_variable_declared_as_cling_spells_
         "str": ("str_", "std::string"),
         "pp": ("pp", "TH1F **"),
     }
+
+
+def test_only_a_macro_the_session_read_is_remembered_for_dot_typedef(tmp_path):
+    """``.typedef`` lists what the sources of the session declare, so ``.L``/``.x`` remember
+    theirs - and a library or a path that is not there is not one of them."""
+    from xrdroot.pycint.interactive.commands import SOURCES, remember_source
+
+    kept = dict(SOURCES)
+    macro = tmp_path / "t.C"
+    macro.write_text("typedef int word;\n")
+    try:
+        remember_source(macro)
+        assert str(macro.resolve()) in SOURCES
+        library = tmp_path / "libt.so"
+        library.write_text("")
+        remember_source(library)  # a library's types are ROOT's compiled ones
+        remember_source(tmp_path / "gone.C")  # a macro that is not there
+        assert list(SOURCES) == [*kept, str(macro.resolve())]
+    finally:
+        SOURCES.clear()
+        SOURCES.update(kept)
