@@ -144,6 +144,7 @@ class MacroWhole(_Whole):
             write_members(WBuffer(), made.instance, catalogue)
         for name in list(catalogue.declarations):
             catalogue.info(name)
+        _describe_pointed_at(catalogue)
         checksum, version, _elements = catalogue.info(made.classname)
         described = tuple(Described(name, info[1], info[0], info[2])
                           for name, info in catalogue.entries().items())  # fmt: skip
@@ -160,6 +161,31 @@ class MacroWhole(_Whole):
         buf = WBuffer()
         write_members(buf, made.instance, made.catalogue)
         return bytes(buf.data)
+
+
+def _describe_pointed_at(catalogue: Any) -> None:
+    """Describe every class the program declares that derives from one described already.
+
+    A pointer member's class is only known when an entry holds one - ``BaseABC *fABC`` may
+    point at a ``Derived`` - and ROOT's streamer record names every class it wrote, so a file
+    that left the derived class out cannot be laid out by a reader.
+    """
+    from ...pycxx.runtime.namespace import DECLARED
+    from ..core.declared import declaration_of, declared_class
+
+    described = set(catalogue.declarations)
+    growing = True
+    while growing:
+        growing = False
+        for name, cls in list(DECLARED.items()):
+            if name in described or not declared_class(cls):
+                continue
+            bases = {base.split("::")[-1] for base in declaration_of(cls, name).bases}
+            if bases & described:
+                described.add(name)
+                catalogue.declarations[name] = declaration_of(cls, name)
+                catalogue.info(name)
+                growing = True
 
 
 def _splittable(obj: Any, split: int) -> bool:
