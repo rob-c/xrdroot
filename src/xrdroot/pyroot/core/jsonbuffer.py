@@ -36,6 +36,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -134,11 +135,13 @@ LAYOUTS = {
 @dataclass(frozen=True)
 class _Member:
     """One data member of a class this writes: its name, the C++ type it goes out as, and
-    whether it is an array of them."""
+    whether it is an array of them - with the lengths declared for it, which is what makes
+    ``int fTest2[2][2]`` the nested arrays ROOT writes rather than one flat one."""
 
     name: str
     kind: Any
     array: bool = False
+    dims: tuple[int | None, ...] = ()
 
 
 #: Each class this writes, its members in the order ROOT's streamer writes them, with the
@@ -337,17 +340,31 @@ def _writable(obj: Any) -> tuple[_Member, ...]:
     return (_declared(obj) or ("", ()))[1]
 
 
+#: What a member's declaration comment says about how many values it holds: ROOT's
+#: ``// [fSize]``, which its streamer reads as "as many as ``fSize`` says" for a pointer.
+#: The comment is kept as the declaration spells it, so one leading ``/`` of ``///`` is gone.
+LENGTH = re.compile(r"\[\s*\w+\s*\]")
+
+
 def _declared_member(classname: str, entry: tuple[str, str, str, tuple[int, ...]]) -> _Member:
     """One member of a declared class, as the type it goes out as: a scalar, a piece of text,
-    or the refusal that names the member and what it is declared as."""
-    name, kind = entry[0], entry[1]
-    of = f"an array of {kind}" if entry[3] else f"a {kind}"
-    text = TEXTS.get((kind, bool(entry[3])))
+    or the refusal that names the member and what it is declared as.
+
+    A pointer whose comment declares its length - ``bool *fBool; // [fSize]`` - is the
+    array that length says, which is how ROOT's streamer reads it: a dynamic array written
+    as the numbers it holds, not as an address.
+    """
+    name, kind, comment = entry[0], entry[1], entry[2]
+    dims: tuple[int | None, ...] = entry[3]
+    if not dims and kind.endswith("*") and LENGTH.search(comment or ""):
+        kind, dims = kind.rstrip("*").strip(), (None,)
+    of = f"an array of {kind}" if dims else f"a {kind}"
+    text = TEXTS.get((kind, bool(dims)))
     if text is not None:
-        return _Member(name, text)
+        return _Member(name, text, bool(dims), dims)
     scalar = SCALARS.get(kind)
     if scalar is not None:
-        return _Member(name, scalar)
+        return _Member(name, scalar, bool(dims), dims)
     raise UnsupportedFeatureError(
         f"TBufferJSON::ConvertToJSON does not yet write {classname}::{name}, which is "
         f"declared as {of}. It writes the members a class declares of a number type "
@@ -467,6 +484,46 @@ def _chunk(suffix: str, position: int | None, held: list[str], count: int | None
     return pairs
 
 
+def _nested_dimensions(dims: tuple[int | None, ...]) -> bool:
+    """Do ``dims`` describe an array of arrays: more than one length, each a number the
+    declaration fixed, and so nested JSON arrays rather than one flat one."""
+    return len(dims) > 1 and all(isinstance(dim, int) for dim in dims)
+
+
+def _nest(values: list[Any], dims: tuple[int | None, ...],
+          leaf: Callable[[list[Any]], Any]) -> Any:  # fmt: skip
+    """``values``, a flat array, as the nested lists ``dims`` describe, each group of the
+    innermost length written by ``leaf`` - a ``char[N]`` row as one JSON string."""
+    if len(dims) == 1:
+        return leaf(values)
+    step = int(np.prod(dims[1:]))
+    return [_nest(values[at : at + step], dims[1:], leaf) for at in range(0, len(values), step)]
+
+
+def _list_text(nested: Any, comma: str) -> str:
+    """Nested JSON arrays of text, which ``leaf`` has already written as JSON."""
+    if isinstance(nested, str):
+        return nested
+    return "[" + comma.join(_list_text(each, comma) for each in nested) + "]"
+
+
+def _char_codes(value: Any) -> list[int]:
+    """The code points of a ``char`` member's characters, however the class holds them: a
+    Python ``str``, the buffer of an array, or the strings of a ``char[N][M]``'s rows."""
+    if isinstance(value, str):
+        return [ord(char) for char in value]
+    if isinstance(value, list):
+        return [code for each in value for code in _char_codes(each)]
+    return [int(code) for code in np.asarray(value, dtype=np.int8).ravel()]
+
+
+def _flat_numbers(value: Any) -> list[Any]:
+    """The numbers a JSON array holds, nested as deeply as ROOT wrote it."""
+    if isinstance(value, list):
+        return [number for each in value for number in _flat_numbers(each)]
+    return [value]
+
+
 class _Writer:
     """One export: the JSON for an object, its members and their arrays, laid out as the
     compact level asks and compressed the way JSROOT reads."""
@@ -561,15 +618,30 @@ class _Writer:
     def _member(self, member: _Member, obj: Any, depth: int) -> str:
         value = _held(obj, member)
         if member.kind == "chars":
-            return _quoted(str(value or "").split("\0")[0])
+            return self._char_text(value, member)
         if member.kind in ("cstring", "strptr"):
             return "null" if value is None else _quoted(value)
         if isinstance(member.kind, str):
             return _quoted("" if value is None else value)
         name = NUMPY_NAMES[np.dtype(member.kind)]
         if member.array:
-            return self._array(np.asarray(value, dtype=member.kind), name, depth)
+            held = np.asarray([] if value is None else value, dtype=member.kind)
+            if _nested_dimensions(member.dims):
+                return _list_text(_nest(held.ravel().tolist(), member.dims,
+                                        lambda group: self._items(group, name)),
+                                  self._layout.item_comma)  # fmt: skip
+            return self._array(held, name, depth)
         return _scalar(0 if value is None else value, name, self._store_inf)
+
+    def _char_text(self, value: Any, member: _Member) -> str:
+        """A ``char`` array of a declared class: one JSON string up to its first NUL, or - a
+        ``char[N][M]``, which ROOT writes as a string per row - the arrays of them."""
+        codes = [chr(code) for code in _char_codes(value)]
+        if not _nested_dimensions(member.dims):
+            return _quoted("".join(codes).split("\0")[0])
+        rows = _nest(codes, member.dims,
+                     lambda group: _quoted("".join(group).split("\0")[0]))  # fmt: skip
+        return _list_text(rows, self._layout.item_comma)
 
     def _braced(self, pairs: list[str], depth: int) -> str:
         """``{`` and ``}`` round members written as ``"name" : value``, on one line or with
@@ -771,16 +843,12 @@ def _rebuilt(text: str, kind: str | None) -> Any:
 
 
 def _rebuilt_named(data: Any, name: str) -> Any:
-    """An array from the JSON that names its class - an ``$arr`` object's own, or the one
-    asked for - and the refusals for what does not name one."""
+    """An array or an object from the JSON that names its class - an ``$arr`` object's own,
+    or the one asked for - and the refusals for what does not name one."""
     if isinstance(data, dict) and "$arr" in data:
         return _rebuilt_array(data)
     if isinstance(data, dict):
-        raise UnsupportedFeatureError(
-            "TBufferJSON::FromJSON does not yet read an object back: this one is a "
-            f"{data.get('_typename', 'classless object')}, and what is read here is the "
-            "JSON that names its own class - an $arr array, or a $pair map"
-        )
+        return _rebuilt_object(data)
     if name in ARRAY_CLASSES and isinstance(data, (list, str)):
         return _rebuilt_bare(data, ARRAY_CLASSES[name])
     raise UnsupportedFeatureError(
@@ -794,6 +862,61 @@ def _rebuilt_bare(data: Any, kind: type[Any]) -> Any:
     """An array of ``kind`` from the bare JSON ROOT writes for one where the level does not
     name its type: the numbers, or the characters of a ``char`` array's string."""
     return _built(kind, [ord(char) for char in data] if isinstance(data, str) else data)
+
+
+def _class_for(name: str) -> type[Any]:
+    """The class a JSON's ``_typename`` names: one the translation declared, or one of the
+    ``TArray`` classes this writes, and otherwise the refusal that says what is read here.
+
+    A class has to be named because a JSON object says what its members are and not what
+    order the streamer writes them in; the class is what knows that.
+    """
+    from .declared import find_class
+
+    found = find_class(name) if name else None
+    if found is None:
+        found = ARRAY_CLASSES.get(name)
+    if found is None:
+        raise UnsupportedFeatureError(
+            "TBufferJSON::ConvertFromJSONAny does not know the class "
+            f"{name or 'this JSON gives no name of'}: it reads back an object of a class a "
+            f"macro declared, and the TArrays ({', '.join(sorted(ARRAY_CLASSES))}). Read "
+            "anything else with a class this kit has, or ask FromJSON<T>(json) for the "
+            "class it names"
+        )
+    return found
+
+
+def _rebuilt_object(data: dict[str, Any]) -> Any:
+    """The object a JSON object describes: the class its ``_typename`` names, made, and given
+    back the members that JSON holds."""
+    name = _named(str(data.get("_typename", "")))
+    made = _class_for(name)()
+    for member in _writable(made):
+        if member.name in data:
+            _restore(made, member, data[member.name])
+    return made
+
+
+def _restore(obj: Any, member: _Member, value: Any) -> None:
+    """Put ``value``, read from JSON, in the attribute a declared class declares ``member``
+    as, which is where the writer reads it back from."""
+    setattr(obj, member.name, _converted(member, value))
+
+
+def _converted(member: _Member, value: Any) -> Any:
+    """What a member of a declared class holds, as the JSON wrote it: a number, a string of
+    characters, or the array of them its declared lengths shape."""
+    if member.kind == "chars":
+        return "".join(chr(code) for code in _char_codes(value))
+    if isinstance(member.kind, str):
+        return "" if value is None else str(value)
+    if not member.array:
+        return member.kind(0 if value is None else value).item()
+    numbers = np.asarray(_flat_numbers(value), dtype=member.kind)
+    if _nested_dimensions(member.dims) and numbers.size == int(np.prod(member.dims)):
+        return numbers.reshape(member.dims)
+    return numbers
 
 
 def _rebuilt_array(data: dict[str, Any]) -> Any:
@@ -898,6 +1021,20 @@ class TBufferJSON:
         """``ConvertToJSON(obj[, cl[, compact[, member]]])``: what ROOT's static function is
         called, with the class it takes - which the object's own says here."""
         return TBufferJSON.ToJSON(obj, compact, member)
+
+    @staticmethod
+    def ConvertFromJSONAny(text: Any, cl: Any = None) -> Any:
+        """``ConvertFromJSONAny(json, &cl)``: the object the JSON describes, and - in the
+        cell ``cl`` - the class it was read as, since ROOT writes the object back through
+        that class and ``roottest`` compares the two JSON strings."""
+        data = _decoded(_untext(text))
+        named = str(data.get("_typename", "")) if isinstance(data, dict) else ""
+        made = _rebuilt_named(data, _named(named))
+        if cl is not None:
+            from .reflection import TClass
+
+            cl.value = TClass.GetClass(named or type(made).__name__)
+        return made
 
     @staticmethod
     def ConvertFromJSON(text: Any) -> Any:

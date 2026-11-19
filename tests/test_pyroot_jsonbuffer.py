@@ -13,9 +13,11 @@ import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
+from xrdroot.cppstd.buffers import CharBuffer
 from xrdroot.cppstd.cells import Cell
 from xrdroot.cppstd.containers import std
 from xrdroot.errors import UnsupportedFeatureError
+from xrdroot.pycxx.runtime.namespace import DECLARED
 from xrdroot.pyroot.core.jsonbuffer import _float_text, _scalar
 
 #: What ROOT's oracle prints for each value, as ``TArrayD`` and as ``TArrayF`` hold it.
@@ -234,10 +236,53 @@ def test_base_64_is_the_bytes_of_the_values_little_endian_from_the_first_there_i
     assert _json(ROOT.TArrayI(0), 33) == "[]"
 
 
-def test_an_object_read_back_says_that_only_what_names_its_class_is_read():
+def test_a_member_of_declared_lengths_is_the_nested_arrays_root_writes_for_it():
+    """``int fTest2[2][2]`` is an array of arrays and ``char fChar[2][3][4]`` an array of the
+    strings its rows are, as ``BasicTypes.ref`` has them for ``TJsonEx2``."""
+    made = _declared_class("TNested", (("fTest2", "int", "", (2, 2)),
+                                      ("fChar", "char", "", (2, 3, 4))))()  # fmt: skip
+    made.fTest2 = np.array([[1, 2], [3, 4]], dtype=np.int32)
+    made.fChar = "012312342345123423453456"
+    assert _json(made) == (
+        '{\n  "_typename" : "TNested",\n  "fTest2" : [[1, 2], [3, 4]],\n'
+        '  "fChar" : [["0123", "1234", "2345"], ["1234", "2345", "3456"]]\n}'
+    )
+
+
+def test_an_object_is_read_back_from_its_typename_and_written_the_same_again(monkeypatch):
+    """What ``roottest`` calls ``store/read/store``: the object ``ConvertFromJSONAny`` makes
+    from a JSON object writes that JSON out again, member for member."""
+    made = _reading_class(monkeypatch, "TNested", (
+        ("fInt", "int", "", ()),
+        ("fTest2", "int", "", (2, 2)),
+        ("fChar", "char", "", (2, 3, 4)),
+    ))()  # fmt: skip
+    made.fInt, made.fTest2 = 123456, np.array([[1, 2], [3, 4]], dtype=np.int32)
+    made.fChar = "012312342345123423453456"
+    text = _json(made)
+    read = ROOT.TBufferJSON.ConvertFromJSON(text)
+    assert type(read) is type(made)
+    assert (read.fInt, read.fTest2.tolist()) == (123456, [[1, 2], [3, 4]])
+    assert _json(read) == text
+
+
+def test_convert_from_json_any_hands_back_the_class_the_json_was_read_as(monkeypatch):
+    """``ConvertFromJSONAny(json, &cl)`` fills the class cell, which is what a macro writes
+    the object back through, and returns the object itself."""
+    text = '{"_typename":"TReadBack","fInt":7}'
+    _reading_class(monkeypatch, "TReadBack", (("fInt", "int", "", ()),))
+    cell = type("Cell", (), {"value": None})()
+    read = ROOT.TBufferJSON.ConvertFromJSONAny(text, cell)
+    assert read.fInt == 7
+    assert cell.value.GetName() == "TReadBack"
+    assert str(ROOT.TBufferJSON.ConvertToJSON(read, cell.value, 3)) == text
+
+
+def test_an_object_of_a_class_nothing_declares_is_refused_by_its_name():
     with pytest.raises(UnsupportedFeatureError) as refused:
-        ROOT.TBufferJSON.ConvertFromJSON('{"_typename":"TNamed","fName":"a"}')
-    assert "does not yet read an object back" in str(refused.value)
+        ROOT.TBufferJSON.ConvertFromJSON('{"_typename":"TUnknown","fName":"a"}')
+    assert "does not know the class TUnknown" in str(refused.value)
+    assert "FromJSON<T>(json)" in str(refused.value)
 
 
 def test_a_bare_json_array_is_read_when_the_cell_knows_the_pointer_s_c_type():
@@ -437,6 +482,15 @@ def _declared_class(name, members, bases=(), base=None):
     return made
 
 
+def _reading_class(monkeypatch, name, members):
+    """A declared class put into the interpreter's declaration table, which is where a reader
+    looks up the ``_typename`` of the JSON it is handed - and taken out of it again after."""
+    made = _declared_class(name, members)
+    monkeypatch.setitem(DECLARED, name, made)
+    return made
+    return made
+
+
 #: A class as ``test_classes.h`` declares it: scalars and strings of its own, on top of a base
 #: whose members its streamer writes first.
 BASE = _declared_class("TBase", (("fBool", "bool", "", ()), ("fChar", "char", "", ()),
@@ -487,6 +541,41 @@ def test_a_member_of_a_type_no_writer_takes_refuses_the_object_by_name():
     assert "needs a writer for the container it holds first" in str(refused.value)
 
 
+def test_a_pointer_whose_comment_declares_its_length_is_the_array_root_writes(monkeypatch):
+    """``bool *fBool; // [fSize]`` is a dynamic array, which ROOT's streamer writes as the
+    values it points at - ``BasicTypes.ref``'s ``TJsonEx3`` - and not as an address."""
+    dynamic = _reading_class(monkeypatch, "TDynamic", (
+        ("fSize", "int", "", ()),
+        ("fBool", "bool*", "// [fSize]", ()),
+        ("fChar", "char*", "// [fSize]", ()),
+        ("fInt", "int*", "// [fSize]", ()),
+    ))  # fmt: skip
+    monkeypatch.setitem(DECLARED, "TDynamic", dynamic)
+    made = dynamic()
+    made.fSize, made.fBool, made.fChar = 7, [False] * 7, "1234567"
+    made.fInt = [0, 5, 10, 15, 20, 25, 30]
+    text = _json(made)
+    assert text == (
+        '{\n  "_typename" : "TDynamic",\n  "fSize" : 7,\n'
+        '  "fBool" : [false, false, false, false, false, false, false],\n'
+        '  "fChar" : "1234567",\n'
+        '  "fInt" : [0, 5, 10, 15, 20, 25, 30]\n}'
+    )
+    read = ROOT.TBufferJSON.ConvertFromJSON(text)
+    assert (read.fChar, read.fInt.tolist()) == ("1234567", [0, 5, 10, 15, 20, 25, 30])
+    assert _json(read) == text
+
+
+def test_a_pointer_with_no_length_in_its_comment_is_still_no_array(monkeypatch):
+    """The pointer is an array only where its comment says how long: one whose comment says
+    nothing is a pointer into storage the streamer does not describe, and is refused."""
+    plain = _declared_class("TPlain", (("fPtr", "bool*", "", ()),))
+    monkeypatch.setitem(DECLARED, "TPlain", plain)
+    with pytest.raises(UnsupportedFeatureError) as refused:
+        ROOT.TBufferJSON.ToJSON(plain())
+    assert "TPlain::fPtr, which is declared as a bool*" in str(refused.value)
+
+
 def test_a_class_whose_declaration_is_not_a_layout_is_no_declared_class():
     """A ``_cxx_layout_`` that is not a name, its bases and its members says nothing about the
     class, so the object is refused as a class with no table rather than half written."""
@@ -501,3 +590,33 @@ def test_a_base_the_object_does_not_inherit_writes_no_members():
     keeps a member of a base ROOT's streamer never writes out of the JSON."""
     lost = _declared_class("TLost", (("fInt", "int", "", ()),), bases=("TGone",))
     assert _json(lost()) == '{\n  "_typename" : "TLost",\n  "fInt" : 0\n}'
+
+
+def test_a_text_member_and_a_buffer_of_characters_are_read_back_as_they_are_held(monkeypatch):
+    """A ``std::string`` member reads back as text and a ``char[N]`` one as the characters
+    the buffer holds, which the writer reads as its code points - ``char[3]`` here."""
+    made = _reading_class(monkeypatch, "TText", (("fName", "std::string", "", ()),
+                                                  ("fChar", "char", "", (3,))))()  # fmt: skip
+    made.fName, made.fChar = "abc", np.array([49, 50, 51], dtype=np.int8).view(CharBuffer)
+    text = _json(made)
+    read = ROOT.TBufferJSON.ConvertFromJSON(text)
+    assert (read.fName, read.fChar) == ("abc", "123")
+    assert _json(read) == text
+    #: A member the JSON leaves out keeps what the class's constructor gave it.
+    assert ROOT.TBufferJSON.ConvertFromJSON('{"_typename":"TText","fName":"abc"}').fChar is None
+
+
+def test_an_array_of_a_length_the_declaration_leaves_to_run_time_stays_flat(monkeypatch):
+    """``int fDyn[n]`` is a length only the object knows, so the array is read as the flat
+    one ROOT writes from it rather than as the nested arrays a fixed one is."""
+    made = _reading_class(monkeypatch, "TDyn", (("fDyn", "int", "", (None,)),))()
+    made.fDyn = np.array([1, 2, 3], dtype=np.int32)
+    text = _json(made)
+    read = ROOT.TBufferJSON.ConvertFromJSON(text)
+    assert read.fDyn.tolist() == [1, 2, 3]
+    assert _json(read) == text
+
+
+def test_convert_from_json_any_needs_no_class_cell_to_read_an_object(monkeypatch):
+    _reading_class(monkeypatch, "TNoCell", (("fInt", "int", "", ()),))
+    assert ROOT.TBufferJSON.ConvertFromJSONAny('{"_typename":"TNoCell","fInt":3}').fInt == 3
