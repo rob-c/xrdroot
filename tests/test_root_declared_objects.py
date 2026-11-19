@@ -913,3 +913,23 @@ def test_a_doxygen_trailing_comment_documents_a_member_it_does_not_hide_it():
         ([element[2] for element in elements],
          ["A plain persistent member.", "A persistent member, documented in doxygen's way."]),
     )  # fmt: skip
+
+
+def test_a_class_a_pointer_member_points_at_is_described_with_it():
+    """A ``Base *f`` member may point at a ``Derived``, and ROOT's streamer record names every
+    class it wrote; so a class deriving from one already described is described too, one step
+    at a time down a chain of bases."""
+    from xrdroot.pycxx.runtime.namespace import DECLARED
+    from xrdroot.pyroot.core.declared import declaration_of
+    from xrdroot.pyroot.trees.objects import _describe_pointed_at
+
+    run_source(
+        """
+        class Root1 { public: int a = 1; };
+        class Middle1 : public Root1 { public: int b = 2; };
+        class Leaf1 : public Middle1 { public: int c = 3; };
+        """, "pointed.cxx", call=False)  # fmt: skip
+    catalogue = Catalogue({"Root1": declaration_of(find_class("Root1"))})
+    _describe_pointed_at(catalogue)
+    assert {"Root1", "Middle1", "Leaf1"} <= set(catalogue.declarations)
+    assert DECLARED  # the classes stay declared, nothing is unregistered

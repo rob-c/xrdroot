@@ -10,7 +10,7 @@ view, and printed as ROOT prints them.
 from __future__ import annotations
 
 from .fields import RFieldPtr
-from .model import REntry, RField, RFieldBase, RResult, RNTupleModel
+from .model import REntry, RField, RFieldBase, RNTupleModel, RResult
 from .processor import RNTupleOpenSpec, RNTupleProcessor
 from .reading import ENTupleInfo, RNTupleDescriptor, RNTupleReader, RNTupleView
 from .views import (

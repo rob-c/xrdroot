@@ -255,8 +255,23 @@ class VariableEmitter(StmtEmitter):
             return self.store(ctype, args[0])
         if ctype.pointer or ctype.is_smart or ctype.callable or ctype.is_string:
             return self._held(ctype, args)
+        if self._binds_an_object(ctype, args):
+            return self.store(ctype, args[0])
         items = self.constructor_arguments(ctype, args)
         return self._built(ctype, items, decl.style == "{}")
+
+    def _binds_an_object(self, ctype: CType, args: list[Expr]) -> bool:
+        """Is this a reference taking the object it already refers to - nothing to build?"""
+        return (ctype.reference and not ctype.dims and len(args) == 1
+                and self._same_object(ctype, args[0]))  # fmt: skip
+
+    def _same_object(self, ctype: CType, arg: Expr) -> bool:
+        """Is ``arg`` already the object a reference to ``ctype`` binds - ``const type_info&
+        ti(typeid(T))``, which builds nothing?"""
+        found = self.typeof(arg)
+        if found is None or bool(found.pointer) != bool(ctype.pointer):
+            return False
+        return found.name.split("::")[-1] == ctype.name.split("::")[-1]
 
     def _built(self, ctype: CType, items: str, braces: bool) -> str:
         """An object built from ``items``; a container from a braced list is built from a list."""

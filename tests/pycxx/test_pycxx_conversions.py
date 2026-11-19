@@ -324,3 +324,25 @@ def test_casts_of_a_null_and_of_a_number_moved_by_bytes() -> None:
     assert "a = address_of(p)" in addressed
     with pytest.raises(Refusal, match=r"pointer arithmetic on a char\*"):
         translate("void f(long n) { const char *p = (char *)n - 1; }", "t.C")
+
+
+def test_a_reference_bound_to_the_object_it_names_builds_nothing(capsys) -> None:
+    """``const T& r(t)`` is C++'s reference to an object already there, where anything else
+    handed to a reference is built from the argument - a number where a class is wanted, a
+    pointer where a value is, or an expression the translator cannot type at all.
+    """
+    run_source(
+        r"""
+        struct S { int v; S() : v(0) {} S(const S& o) : v(o.v) {} };
+        void t() {
+           S s; s.v = 4;
+           const S& same(s);
+           const S& temporary([&]() -> S { return s; }());
+           printf("%d %d\n", same.v, temporary.v);
+           int n = 3; double wide = 1.5;
+           const double& fromInt(n);
+           const double& fromDouble(wide);
+           printf("%g %g\n", fromInt, fromDouble);
+        }
+        """, "t.C")  # fmt: skip
+    assert capsys.readouterr().out == "4 4\n3 1.5\n"
