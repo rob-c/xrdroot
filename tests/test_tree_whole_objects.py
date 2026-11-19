@@ -23,6 +23,7 @@ import pytest
 
 from xrdroot import FormulaError, Jagged, UnsupportedFeatureError, compile_formula, open_root
 from xrdroot.errors import UnsupportedFeatureError as Refused
+from xrdroot.formula import select
 from xrdroot.formula.objects import SAMPLE, Whole, learned, spelled
 from xrdroot.formula.select import TreeNames
 from xrdroot.treedraw import draw, is_integer
@@ -542,3 +543,49 @@ def test_asking_after_a_bit_of_a_member_that_is_no_tbits_is_no_such_name():
     whole = learned({"e": [{"fN": 1.0}]})
     assert whole.tested(("fN",)) is None
     assert Whole().tested(("fN",)) is None
+
+
+# -- learning what a tree's objects hold, once ------------------------------------
+
+
+def test_a_tree_says_what_its_objects_hold_once_however_many_expressions_ask(
+    whole_tree, monkeypatch
+):
+    """Learning a table reads the first entries of every whole branch, so a tree learns
+    once: what a class holds does not change between two draws of the same tree, and the
+    draw that learned the table reads those same entries again for their values."""
+    inside, cleared = [], {}
+    monkeypatch.setattr(select, "_LEARNED", cleared)
+    original = select._learned
+
+    def counting(source, names):
+        inside.append(source)
+        return original(source, names)
+
+    monkeypatch.setattr(select, "_learned", counting)
+    first = whole_tree.arrays(["tlv.fE"])["tlv.fE"].tolist()
+    again = whole_tree.arrays(["tlv.fE", "fEntries"])["tlv.fE"].tolist()
+    assert inside == [whole_tree], "one table for the tree, however many expressions"
+    assert first == again == [20, 21, 22, 23, 24], "and the same members behind it"
+
+
+def test_a_tree_another_tree_displaces_is_learned_again_when_it_is_asked_for(
+    whole_tree, monkeypatch
+):
+    """A session has a few files open, not a run's worth, so the tables kept are bounded -
+    and a tree whose table went is learned again rather than read against a stranger's."""
+    inside = []
+    monkeypatch.setattr(select, "_LEARNED", {})
+    monkeypatch.setattr(select, "LEARNED_KEPT", 1)
+    original = select._learned
+
+    def counting(source, names):
+        inside.append(source)
+        return original(source, names)
+
+    monkeypatch.setattr(select, "_learned", counting)
+    with open_root(str(DATA / "object-branches-6.40.root")) as handle:
+        other = handle["t"]  # the same file, a tree of its own: a source of its own
+        for tree in (whole_tree, other, whole_tree):
+            assert tree.arrays(["tlv.fE"])["tlv.fE"].tolist() == [20, 21, 22, 23, 24]
+    assert inside == [whole_tree, other, whole_tree]

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime
 import math
+import struct
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -493,13 +494,34 @@ def _range(title: str) -> tuple[float, float, float] | None:
     return xmin, xmax, float((1 << nbits) if nbits < 32 else 0xFFFFFFFF) / (xmax - xmin)
 
 
+class _Steps:
+    """A ``Double32_t`` squeezed into a range: whole steps across it, and the doubles they are.
+
+    A member written that way is read by a struct and one division where the
+    column it belongs to is read by NumPy, and a member is what a class of them
+    - a vertex, three coordinates of one - holds a value apiece of.
+    """
+
+    __slots__ = ("factor", "xmin")
+
+    def __init__(self, factor: float, xmin: float) -> None:
+        self.factor, self.xmin = factor, xmin
+
+    def one(self, buf: Buffer) -> float:
+        """The one value written here, as the double the steps stand for."""
+        return float(buf.scalar(_form("I")) / self.factor + self.xmin)
+
+    def run(self, buf: Buffer, count: int) -> np.ndarray[Any, Any]:
+        """``count`` of them, by the arithmetic the column does on the same bytes."""
+        return np.array(buf.scalars(_form(f"{count}I"))) / self.factor + self.xmin
+
+    def __call__(self, raw: bytes) -> np.ndarray[Any, Any]:
+        return np.frombuffer(raw, ">u4") / self.factor + self.xmin
+
+
 def _scaled(factor: float, xmin: float) -> Unpack:
     """Values written as a whole number of steps across a known range."""
-
-    def unpack(raw: bytes) -> np.ndarray[Any, Any]:
-        return np.frombuffer(raw, ">u4") / factor + xmin
-
-    return unpack
+    return _Steps(factor, xmin)
 
 
 def _truncated(nbits: int) -> Unpack:
@@ -611,17 +633,66 @@ Fill = Callable[[Buffer, "list[dict[str, Any]]"], None]
 
 def _numbers(prim: Prim, unpack: Unpack | None, buf: Buffer, count: int) -> Any:
     """``count`` numbers of one type, packed or plain."""
-    raw = buf.take(count * prim.itemsize)
     if unpack is not None:
-        return unpack(raw)
-    return numbers(raw, prim.typename)
+        return unpack(buf.take(count * prim.itemsize))
+    return buf.run(count, prim.typename)
+
+
+#: The structs this reader reads with, by the format each was built from. A member of
+#: a whole object is read by a struct that covers it - or a run of members by one that
+#: covers the lot - and a class has the same members every time it is read, so the
+#: structs are built once rather than once per object.
+_FORMS: dict[str, struct.Struct] = {}
+
+
+def _form(code: str) -> struct.Struct:
+    """The struct ``code`` spells, built once however many members are read with it."""
+    found = _FORMS.get(code)
+    if found is None:
+        found = _FORMS[code] = struct.Struct(">" + code)
+    return found
+
+
+class _Plain:
+    """A member that is plain numbers, in the shape its declaration gives it.
+
+    ``code`` is how the numbers are written, as a struct spells them, ``count``
+    how many of them there are and ``dims`` the shape the declaration gives - a
+    ``Float_t fVertex[3]`` is three values of one dimension, a ``Double_t m[4][4]``
+    sixteen of two. Keeping these apart from the other steps is what lets a run of
+    them be read by one ``unpack``: a class of numbers writes its numbers one after
+    another with nothing in between, and reading them one at a time through a call
+    each is most of what reading such a class costs.
+    """
+
+    __slots__ = ("code", "typename", "count", "dims")
+
+    def __init__(self, code: str, typename: str, count: int, dims: tuple[int, ...]) -> None:
+        self.code, self.typename, self.count, self.dims = code, typename, count, dims
+
+    def __call__(self, buf: Buffer, _row: dict[str, Any]) -> Any:
+        if self.count == 1 and not self.dims:
+            return buf.scalar(_form(self.code))
+        values = buf.run(self.count, self.typename)
+        return values.reshape(self.dims) if self.dims else values
+
+
+def _bool_one(buf: Buffer, _row: dict[str, Any]) -> Any:
+    """A ``Bool_t``, which comes back as ``True`` or ``False`` rather than as 1 or 0."""
+    return buf.bool()
 
 
 def _one(prim: Prim, unpack: Unpack | None) -> Step:
     """A single number, which comes back as a number rather than a run of one."""
-    # ``item`` makes it a Python number: a member such as ``fNbins`` is a
-    # count to be used as one, not a NumPy scalar that leaks into everything.
-    return lambda buf, _row: _numbers(prim, unpack, buf, 1)[0].item()
+    # A struct gives a Python number rather than a NumPy scalar of one, which is
+    # what a member such as ``fNbins`` is: a count to be used as a count.
+    if isinstance(unpack, _Steps):
+        return lambda buf, _row: unpack.one(buf)
+    if unpack is not None:
+        return lambda buf, _row: _numbers(prim, unpack, buf, 1)[0].item()
+    if prim.typename == "bool":
+        return _bool_one
+    return _Plain(prim.typecode, prim.typename, 1, ())
 
 
 def _run(member: Member, prim: Prim, unpack: Unpack | None) -> Step:
@@ -632,12 +703,87 @@ def _run(member: Member, prim: Prim, unpack: Unpack | None) -> Step:
     ``m[1][2]`` is a cell of the first and a value of the second.
     """
     length, dims = member.length, member.dims
+    if isinstance(unpack, _Steps):
+        return lambda buf, _row: _shaped_values(unpack.run(buf, length), dims)
+    if unpack is None:
+        return _Plain(prim.typecode, prim.typename, length, dims)
 
     def step(buf: Buffer, _row: dict[str, Any]) -> Any:
-        values = _numbers(prim, unpack, buf, length)
-        return values.reshape(dims) if dims else values
+        return _shaped_values(_numbers(prim, unpack, buf, length), dims)
 
     return step
+
+
+def _shaped_values(values: np.ndarray[Any, Any], dims: tuple[int, ...]) -> Any:
+    """An array of a fixed-size member in the shape its declaration gives it."""
+    return values.reshape(dims) if dims else values
+
+
+def _shaped_run(run: list[tuple[str, _Plain]]) -> Step:
+    """A run of plain members, read by the one struct that covers all of them.
+
+    Every member but the last is a single number, which is the shape of nearly
+    every class of numbers, so the numbers are put under their names by ``zip``
+    and ``dict.update`` and no per-member call is made at all.
+    """
+    form = _form("".join(f"{field.count}{field.code}" for _l, field in run))
+    labels = tuple(label for label, _field in run)
+    if all(field.count == 1 for _l, field in run):
+        return lambda buf, row: row.update(zip(labels, buf.scalars(form), strict=True))
+    shapes = tuple((field.typename, field.count, field.dims) for _l, field in run)
+
+    def read(buf: Buffer, row: dict[str, Any]) -> None:
+        values = buf.scalars(form)
+        at = 0
+        for label, (typename, count, dims) in zip(labels, shapes, strict=True):
+            if count == 1:
+                row[label], at = values[at], at + 1
+                continue
+            found = np.array(values[at : at + count], dtype=typename)
+            row[label] = found.reshape(dims) if dims else found
+            at += count
+
+    return read
+
+
+def _plan(steps: list[tuple[str, Step]]) -> list[Step]:
+    """The members of a class as the fewest reads that read them in the order they come.
+
+    Consecutive plain numbers are gathered into one struct, which is what makes
+    reading a ``Track`` - fourteen ``Float_t`` one after another - one read rather
+    than fourteen; everything else keeps its own step, and the order of the reads,
+    which is the order of the bytes, is unchanged.
+    """
+    plan: list[Step] = []
+    run: list[tuple[str, _Plain]] = []
+    for label, step in steps:
+        if type(step) is _Plain and step.count >= 1:
+            run.append((label, step))
+            continue
+        _flush(plan, run)
+        run = []
+        plan.append(_named_step(label, step))
+    _flush(plan, run)
+    return plan
+
+
+def _flush(plan: list[Step], run: list[tuple[str, _Plain]]) -> None:
+    """Add the plain numbers gathered so far to the plan, as one read or as their own."""
+    if len(run) > 1:
+        plan.append(_shaped_run(run))
+        run.clear()
+    elif run:
+        label, step = run.pop()
+        plan.append(_named_step(label, step))
+
+
+def _named_step(label: str, step: Step) -> Step:
+    """One member read by its own step, put under its own name."""
+
+    def read(buf: Buffer, row: dict[str, Any]) -> None:
+        row[label] = step(buf, row)
+
+    return read
 
 
 def _pointer(prim: Prim, unpack: Unpack | None, count: tuple[str, ...]) -> Step:
@@ -1353,12 +1499,12 @@ def _members(
     name: str, source: Source, seen: tuple[str, ...] = ()
 ) -> Callable[[Buffer], dict[str, Any]]:
     """How every member of one class reads, in the order the class declares."""
-    steps = _steps(name, source, seen)
+    plan = _plan(_steps(name, source, seen))
 
     def read(buf: Buffer) -> dict[str, Any]:
         row: dict[str, Any] = {}
-        for label, step in steps:
-            row[label] = step(buf, row)
+        for step in plan:
+            step(buf, row)
         return row
 
     return read

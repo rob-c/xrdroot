@@ -107,6 +107,18 @@ class TreeNames(Mapping[str, int]):
         return dimensions(_underlying(self.source[name]))
 
 
+#: The member tables learned from trees, by the tree and the names it offers as branches.
+#: What a class holds does not change from one draw to the next, and learning it reads
+#: the first entries of every whole-object branch - which the draw that learned it reads
+#: again for its values - so a tree drawn many times, as ROOT's own tests draw one, says
+#: what its objects hold once. The tree is kept beside its table, so that its identity
+#: cannot be handed on to another tree while it is here.
+_LEARNED: dict[tuple[int, tuple[str, ...]], tuple[Any, Whole]] = {}
+
+#: How many trees' member tables are kept: a session's open files, not a run's.
+LEARNED_KEPT = 8
+
+
 def _members(source: Any, names: Sequence[str]) -> Whole:
     """What the branches the tree holds whole offer as names, learned from a few entries of them.
 
@@ -114,6 +126,19 @@ def _members(source: Any, names: Sequence[str]) -> Whole:
     members is refused for the branch's own reason, and the other branches of
     the tree are read as they were.
     """
+    key = (id(source), tuple(names))
+    held = _LEARNED.get(key)
+    if held is not None:
+        return held[1]
+    whole = _learned(source, names)
+    _LEARNED[key] = (source, whole)
+    while len(_LEARNED) > LEARNED_KEPT:
+        del _LEARNED[next(iter(_LEARNED))]  # the tree kept longest, which nothing has asked for
+    return whole
+
+
+def _learned(source: Any, names: Sequence[str]) -> Whole:
+    """The names the whole-object branches of a tree offer, from the first entries of each."""
     samples: dict[str, Any] = {}
     for name in names:
         branch = _underlying(source[name])

@@ -21,7 +21,20 @@ from xrdroot import FormatError, UnsupportedFeatureError, create, open_root
 from xrdroot.buffer import BYTE_COUNT_MASK, Buffer
 from xrdroot.cxx import Mapping, Pair, Prim, Seq, Str, parse, py_name
 from xrdroot.file import Source
-from xrdroot.interp import KINDS, Flat, Refused, Rows, Values, _fields, _packed, _range, build
+from xrdroot.interp import (
+    KINDS,
+    Flat,
+    Refused,
+    Rows,
+    Values,
+    _fields,
+    _form,
+    _packed,
+    _Plain,
+    _plan,
+    _range,
+    build,
+)
 from xrdroot.merging.infos import read_entries
 from xrdroot.objects import (
     BranchRecord,
@@ -831,6 +844,64 @@ def test_a_packed_float_whose_range_makes_no_sense_is_refused_inside_one_too():
     assert "'d', a packed float whose range is written '[1,2,3,4]'" in (
         column_of("Event", source=source).reason
     )
+
+
+def test_a_fixed_array_of_packed_floats_inside_an_unsplit_object_is_a_row():
+    # ``Double32_t fVertex[3]; //[-30,30,16]``: three steps across the range, read
+    # by one struct and one division, in the shape the declaration gives them.
+    source = Layout(Event=declared("v", 9 + 20, "Double32_t", title="[-30,30,16]", length=3))
+    row = column_of("Event", source=source).value(Buffer(struct.pack(">3I", 0, 2048, 4095)), 0)
+    assert row["v"].shape == (3,)
+    steps = np.frombuffer(struct.pack(">3I", 0, 2048, 4095), ">u4")
+    assert list(row["v"]) == list(steps * (60 / 65536) - 30)
+
+
+def test_a_fixed_array_of_packed_floats_with_no_recipe_is_the_floats_they_were_written_as():
+    # A ``Double32_t[3]`` whose declaration asks for nothing: ROOT wrote three floats,
+    # which is what a reader that cannot widen them any other way gives back as doubles.
+    source = Layout(Event=declared("v", 9 + 20, "Double32_t", length=3))
+    row = column_of("Event", source=source).value(Buffer(struct.pack(">3f", 1.5, -2.5, 0.5)), 0)
+    assert list(row["v"]) == [1.5, -2.5, 0.5]
+
+
+def _single_value(buf: Buffer, _row: dict[str, object]) -> object:
+    """A member read by its own step rather than gathered into a struct with the ones by it."""
+    return buf.i32()
+
+
+def test_a_run_of_plain_members_is_read_by_one_struct_and_keeps_its_order():
+    """A class of numbers reads its numbers a struct at a time, member for member in order.
+
+    Reading a run in one go is what makes a whole object of a few hundred numbers
+    affordable; what it must not do is read one member's numbers as another's, or
+    put them back under their names in a different order.
+    """
+    steps = [
+        ("i", _Plain("i", "int32", 1, ())),
+        ("f", _Plain("f", "float32", 1, ())),
+        ("other", _single_value),
+        ("m", _Plain("d", "float64", 4, (2, 2))),
+        ("d", _Plain("d", "float64", 1, ())),
+    ]
+    plan = _plan(steps)
+    assert len(plan) == 3  # the two numbers before the step that is not one, then each side
+    written = struct.pack(">ifi4dd", -3, 1.5, 7, 1, 2, 3, 4, 8.25)
+    buf, row = Buffer(written), {}
+    for step in plan:
+        step(buf, row)
+    assert list(row) == ["i", "f", "other", "m", "d"], "the members keep their places"
+    assert (row["i"], row["f"], row["other"], row["d"]) == (-3, 1.5, 7, 8.25)
+    assert list(np.asarray(row["m"]).reshape(-1)) == [1.0, 2.0, 3.0, 4.0]
+    assert np.asarray(row["m"]).shape == (2, 2), "a declaration's shape is kept"
+    assert _form("i") is _form("i")  # built once, however many members are read with it
+
+
+def test_a_bool_column_is_read_as_true_and_false_rather_than_one_and_zero():
+    assert list(Buffer(struct.pack(">3?", True, False, True)).run(3, "bool")) == [
+        True,
+        False,
+        True,
+    ]
 
 
 def test_a_class_inside_one_with_a_version_of_its_own_carries_no_checksum():

@@ -219,11 +219,22 @@ class Buffer:
         return len(self.data) - (self.pos - self.offset)
 
     def _take(self, form: struct.Struct) -> Any:
+        return self.scalars(form)[0]
+
+    def scalars(self, form: struct.Struct) -> tuple[Any, ...]:
+        """Every value ``form`` covers, for a reader that knew them all when it was built.
+
+        A member of a whole object is a number of a type the reader knew before it
+        read anything, and a run of such members is written out one number after
+        another; one struct over the run reads them all. So this gives the values
+        back as the tuple the struct unpacks, and :meth:`_take` is the one value
+        the typed readers above take out of it.
+        """
         index = self.pos - self.offset
         if index + form.size > len(self.data):
             raise FormatError(f"the record ends {form.size} bytes before it said it would")
         self.pos += form.size
-        return form.unpack_from(self.data, index)[0]
+        return form.unpack_from(self.data, index)
 
     def u8(self) -> int:
         return int(self._take(_U8))
@@ -254,6 +265,25 @@ class Buffer:
 
     def bool(self) -> bool:
         return self.u8() != 0
+
+    def scalar(self, form: struct.Struct) -> Any:
+        """One value of ``form``'s type, for a reader that knew the type when it was built.
+
+        The typed readers above name a type each and say what to call the value
+        they give back; a member of a whole object knows both already, and a
+        struct it built once is then the whole of reading it - which for a
+        member as small as one ``Float_t`` is most of what reading it costs.
+        """
+        return self._take(form)
+
+    def run(self, count: int, typename: str) -> np.ndarray[Any, Any]:
+        """``count`` numbers of one type, read where they are rather than copied out first."""
+        dtype = on_disk(typename)
+        index = self._span(count * dtype.itemsize)
+        values = np.frombuffer(self.data, dtype, count, index)
+        if typename == "bool":
+            return values != 0
+        return values.astype(typename)
 
     def take(self, count: int) -> bytes:
         """``count`` raw bytes."""
