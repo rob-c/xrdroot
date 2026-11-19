@@ -6,6 +6,11 @@ entry and calls the method on it. ``Draw()`` itself draws the object, entry
 by entry; any other method gives a number, and the numbers are drawn as
 any expression's are - as a tree of them, filled here, would draw them,
 under the expression ROOT titles its histogram with.
+
+A method that gives back an object - ``GetTriggerBits()`` of an event - is
+not drawn from here at all: ROOT has no such split, and its formula draws
+that object as it draws a member that is one, a ``TBits`` a set bit at a
+time. So this declines the whole expression, and the formula draws it.
 """
 
 from __future__ import annotations
@@ -43,15 +48,33 @@ def method_draw(
     calls = None if selection else _calls(tree, varexp)
     if calls is None:
         return None
-    stop = tree.GetEntries() if count is None else min(tree.GetEntries(), first + count)
-    entries = range(int(first), stop)
+    entries = _entries(tree, count, first)
     if len(calls) == 1 and calls[0][1] == "Draw":
-        branch, _name, args = calls[0]
-        for entry in entries:
-            _object(tree, branch, entry).Draw(*args)
-        return len(entries)
+        return _drawn_each(tree, calls[0], entries)
+    columns = _numbers(tree, calls, entries)
+    return None if columns is None else _drawn(tree, varexp, columns, option)
+
+
+def _entries(tree: Any, count: int | None, first: int) -> range:
+    """The entries a draw of ``count`` of them from ``first`` walks - all of them for neither."""
+    stop = tree.GetEntries() if count is None else min(tree.GetEntries(), first + count)
+    return range(int(first), stop)
+
+
+def _drawn_each(tree: Any, call: tuple[Any, str, tuple[Any, ...]], entries: range) -> int:
+    """``Draw()`` of each entry's object, which the object itself draws as ROOT's does."""
+    branch, _name, args = call
+    for entry in entries:
+        _object(tree, branch, entry).Draw(*args)
+    return len(entries)
+
+
+def _numbers(
+    tree: Any, calls: list[tuple[Any, str, tuple[Any, ...]]], entries: range
+) -> list[np.ndarray] | None:
+    """What each call gives, entry by entry - or ``None`` when one gives back an object."""
     columns = [_called(tree, call, entries) for call in calls]
-    return _drawn(tree, varexp, columns, option)
+    return None if any(column is None for column in columns) else columns
 
 
 def _calls(tree: Any, varexp: str) -> list[tuple[Any, str, tuple[Any, ...]]] | None:
@@ -73,10 +96,20 @@ def _calls(tree: Any, varexp: str) -> list[tuple[Any, str, tuple[Any, ...]]] | N
     return found
 
 
-def _called(tree: Any, call: tuple[Any, str, tuple[Any, ...]], entries: range) -> Any:
-    """What one method of each entry's object gives, entry by entry."""
+def _called(
+    tree: Any, call: tuple[Any, str, tuple[Any, ...]], entries: range
+) -> np.ndarray | None:
+    """What one method of each entry's object gives, entry by entry - or ``None`` when it
+    gives an object rather than a number, which only the formula knows how to draw."""
     branch, name, args = call
-    return np.asarray([float(getattr(_object(tree, branch, e), name)(*args)) for e in entries])
+    numbers = []
+    for entry in entries:
+        given = getattr(_object(tree, branch, entry), name)(*args)
+        try:
+            numbers.append(float(given))
+        except TypeError:  # a `TBits`, or any other object: no number to draw it by
+            return None
+    return np.asarray(numbers)
 
 
 def _object(tree: Any, branch: Any, entry: int) -> Any:

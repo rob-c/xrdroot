@@ -70,6 +70,20 @@ def test_methods_of_each_entrys_object_are_drawn_as_numbers_or_draw_themselves()
     assert method_draw(back, "hpx.GetXaxis().GetXmax()", "", "", None, 0) is None
 
 
+def test_a_method_giving_back_an_object_is_left_to_the_formula_which_refuses_a_ta_axis():
+    # ROOT draws what a method hands back as its formula draws any object - a `TBits` a set
+    # bit at a time (see ``test_tree_whole_objects``); a `TAxis` is no number either, so the
+    # expression falls through to the formula, which says why it cannot draw one.
+    from xrdroot.pyroot.trees.methods import method_draw
+
+    back = _histograms()
+    assert method_draw(back, "hpx.GetXaxis()", "", "", None, 0) is None
+    with pytest.raises(UnsupportedFeatureError, match=r"hpx.GetXaxis\(\) .* a dictionary of its"):
+        back.Draw("hpx.GetXaxis()", "", "goff")
+    # What is a number is drawn from here still, entry by entry.
+    assert back.Draw("hpx.GetEntries()", "", "goff") == 6
+
+
 def test_a_tree_drawn_before_anything_has_no_values_to_give():
     tree = ROOT.TTree("t", "t")
     assert tree.GetV1() is None and tree.GetSelectedRows() == 0
