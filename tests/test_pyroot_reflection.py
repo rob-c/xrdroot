@@ -156,6 +156,46 @@ def test_a_layout_a_file_holds_is_listed_beside_the_one_in_memory(capsys):
     assert "   i=" not in printed
 
 
+def test_a_class_only_files_describe_is_built_from_the_first_layout_read(capfd):
+    """ROOT emulates a class nothing in memory describes from the first layout a file read
+    gave it, and ``GetStreamerInfo`` hands that one back built - each element listed with the
+    action it is read with - and a later file's layout still by its version. A listing of
+    the layouts as the file holds them stays unbuilt, so it names no action."""
+    _evo("int", "one.root")
+    _evo("float", "two.root")
+    ROOT.TFile("one.root")
+    ROOT.TFile("two.root")
+    evo = ROOT.TClass.GetClass("Evo")
+    current = evo.GetStreamerInfo()
+    assert (current.IsBuilt(), current.GetClassVersion()) == (True, 1)
+    assert current.GetElement(0).GetTypeName() == "int"
+    assert evo.GetStreamerInfo(2).GetElement(0).GetTypeName() == "float"
+    assert evo.GetStreamerInfo(2).IsBuilt() and evo.GetStreamerInfo(3) is None
+    current.ls()
+    printed = capfd.readouterr().out
+    # A class only a file describes is versioned: ROOT prints the version the file gave it.
+    assert "StreamerInfo for class: Evo, version=1, checksum=" in printed
+    assert "   i= 0, a               type=  3, offset=  0, len=1, method=0" in printed
+
+
+def test_a_pair_names_no_version_where_a_plain_class_names_the_files_own(capsys):
+    """ROOT tells the layouts of a ``pair<A,B>`` apart by checksum - it is never given a
+    ``ClassDef`` - so a listing of one names no version, and the emulated layout is built."""
+    ROOT.TFile(str(DATA / "declared-objects-6.40.root"))
+    pair = ROOT.TClass.GetClass("pair<int,string>")
+    info = pair.GetStreamerInfo()
+    assert info is not None and info.IsBuilt()
+    info.ls()
+    printed = capsys.readouterr().out
+    assert "StreamerInfo for class: pair<int,string>, checksum=" in printed
+    assert "version=" not in printed and "   i= 0, first" in printed
+    found = pair.FindStreamerInfo(info.GetCheckSum())
+    assert (found.GetCheckSum(), found.IsBuilt()) == (info.GetCheckSum(), False)
+    found.ls()
+    printed = capsys.readouterr().out
+    assert "version=" not in printed and "   i=" not in printed
+
+
 def test_a_streamer_info_hands_out_its_elements_by_their_kinds():
     _declared()
     info = ROOT.TClass.GetClass("Plain").GetStreamerInfo()

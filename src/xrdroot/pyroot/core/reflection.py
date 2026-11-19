@@ -158,9 +158,17 @@ ROOT_NAMES = re.compile(r"^(T[A-Z]|Roo|ROOT::|TMVA::|RooStats::|HistFactory::)")
 def _undictionaried(name: str) -> bool:
     """Has nothing here a dictionary of the class ``name`` - neither the program nor ROOT -
     which ROOT warns of when a file it opens describes one?"""
-    if ROOT_NAMES.match(name) or _template(name) or name.startswith("pair<"):
+    if ROOT_NAMES.match(name) or _template(name) or _synthetic_pair(name):
         return False
     return TClass(name)._class() is None
+
+
+def _synthetic_pair(name: str) -> bool:
+    """Is ``name`` a ``pair<A,B>``, which no ``ClassDef`` ever versions? ROOT tells the
+    layouts of one apart by checksum - state ``kEmulated``, ``IsForeign`` - so a listing of
+    them names no version, while a plain class only a file describes prints the one it gave.
+    """
+    return name.removeprefix("std::").startswith("pair<")
 
 
 def _class_named(name: str) -> type | None:
@@ -394,14 +402,45 @@ class TClass(TNamed):
             return catalogue_of(cls).info(name)
         return INFOS.get(self._name)
 
+    def _file_layout(self) -> tuple[int, int, tuple[Element, ...]] | None:
+        """The layout the first file to describe the class gave it, if any.
+
+        A class nothing in memory describes is emulated from the first description a file it
+        reads holds - ``kEmulated``, which the class to ``pair<reco::Muon::MuonTrackType,
+        edm::Ref<...>>`` roottest writes for shows - and that is the class's current layout
+        for the rest of the session.
+        """
+        known = FILE_INFOS.get(self._name, [])
+        return known[0] if known else None
+
+    def _versioned(self) -> bool:
+        """Does a listing of one of the class's layouts name their version?
+
+        ROOT names it for the layouts a ``ClassDef`` versions - a class declared with one,
+        and one only files describe, which its files version - and not for those it tells
+        apart by checksum: a class declared without ``ClassDef``, and a ``pair<A,B>``, which
+        is never given one.
+        """
+        return self.IsVersioned() and not _synthetic_pair(self._name)
+
     def GetStreamerInfo(self, version: int = 0) -> TStreamerInfo | None:
         """``GetStreamerInfo``: the layout of the class in memory - or, given a version, the
-        layout of that version, from a file read if it is not the one in memory."""
+        layout of that version, from a file read if it is not the one in memory.
+
+        A class nothing in memory describes is emulated from the first layout a file it read
+        gave it, and ROOT builds what it hands back - so its elements are listed with the
+        action each is read with - where a layout it merely lists stays unbuilt.
+        """
         current = self._layout()
+        emulated = current is None
+        if emulated:
+            current = self._file_layout()
         if current is not None and version in (0, current[1]):
-            return TStreamerInfo(self._name, current, built=True, versioned=self.IsVersioned())
+            return TStreamerInfo(self._name, current, built=True, versioned=self._versioned())
         found = [i for i in FILE_INFOS.get(self._name, []) if i[1] == version]
-        return TStreamerInfo(self._name, found[0], versioned=True) if found else None
+        if not found:
+            return None
+        return TStreamerInfo(self._name, found[0], built=emulated, versioned=self._versioned())
 
     def FindStreamerInfo(self, checksum: int) -> TStreamerInfo | None:
         """``FindStreamerInfo``: the layout with that checksum, in memory or read."""
@@ -409,7 +448,7 @@ class TClass(TNamed):
         if current is not None and current[0] == checksum:
             return self.GetStreamerInfo()
         found = [i for i in FILE_INFOS.get(self._name, []) if i[0] == checksum]
-        return TStreamerInfo(self._name, found[0], versioned=self.IsVersioned()) if found else None
+        return TStreamerInfo(self._name, found[0], versioned=self._versioned()) if found else None
 
     def GetStreamerInfos(self) -> Any:
         """``GetStreamerInfos``: every layout known - the one in memory, then each a file
@@ -421,7 +460,7 @@ class TClass(TNamed):
         if current is not None:
             made.Add(self.GetStreamerInfo())
         for info in FILE_INFOS.get(self._name, []):
-            made.Add(TStreamerInfo(self._name, info, versioned=self.IsVersioned()))
+            made.Add(TStreamerInfo(self._name, info, versioned=self._versioned()))
         return made
 
     # -- members and bases --------------------------------------------------------------------
