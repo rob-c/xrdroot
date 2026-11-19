@@ -41,16 +41,22 @@ def _undeclared(address: Any, name: str) -> NoReturn:
     A collection says its type when its elements are numbers or text and not when they
     are objects: one level of counting is all a branch here lays out, so a collection of
     collections is refused by name rather than handed a leaf list that cannot express it.
+
+    The advice is the one route ROOT's own layout leaves open - a class that holds the
+    collection as a member, which a branch of objects streams whole, both counts and all -
+    because a leaf list counts one level whatever it is told, and no branch of this writer
+    counts the inner collections of another.
     """
     from ...errors import UnsupportedFeatureError
 
     if address.sized:
         raise UnsupportedFeatureError(
             f"the branch {name!r} holds a std::vector of {address.vector.value_type}, whose "
-            f"elements carry sizes of their own, and this writer lays out one count per "
-            f"entry: a branch of collections of collections would be written with the "
-            f"inner sizes lost. Give each inner collection a branch of its own, or write "
-            f"the values into a leaf list that counts them"
+            f"elements carry sizes of their own, and a branch here lays out one count per "
+            f"entry: written this way the inner sizes would be lost. Branch an object of a "
+            f"class that holds this collection as a member - Branch('top.', &top) streams "
+            f"it whole, both counts in its record - or write the values into a counted "
+            f"leaf list"
         )
     raise TypeError(
         f"the branch {name!r} was given no leaf list, and what its address holds does "

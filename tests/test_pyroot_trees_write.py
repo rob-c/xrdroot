@@ -163,11 +163,50 @@ def test_a_collection_of_collections_is_refused_rather_than_written_without_its_
     inner.assign([3.0, 6.0])
     nested = std.vector["std::vector<double>"]()
     nested.push_back(inner)
-    with pytest.raises(UnsupportedFeatureError, match="holds a std::vector of vector<double>"):
+    advised = "holds a std::vector of vector<double>"
+    with pytest.raises(UnsupportedFeatureError, match=advised) as caught:
         t.Branch("myvecvec.", nested)
+    # The advice is the layout that does keep them: a member of a class branched whole.
+    assert "both counts in its record" in str(caught.value)
     assert t.GetListOfBranches() == []
     t.Branch("myvec.", inner)  # one level of counting is what this writer lays out
     assert t.GetBranch("myvec.") is not None
+
+
+def test_the_refusal_of_a_collection_of_collections_names_the_layout_that_keeps_them(
+    tmp_path, monkeypatch
+):
+    """What that refusal advises, done: the collection is a member of a class whose branch is
+    streamed whole, so both counts are in its record and the inner sizes come back - the
+    route roottest's ``treeproxy/vectorint`` takes when it branches its ``Top`` object."""
+    import xrdroot.pyroot as ROOT
+    from xrdroot.pycint.runtime.root import DECLARED
+
+    class Nested:
+        _cxx_layout_ = ("Nested", (), (("fVals", "std::vector<std::vector<double> >", "", ()),))
+
+        def __init__(self):
+            self.fVals = std.vector["std::vector<double>"]()
+
+    monkeypatch.setitem(DECLARED, "Nested", Nested)
+    held = Cell(Nested())
+    out = ROOT.TFile(str(tmp_path / "nested.root"), "RECREATE")
+    t = TTree("T", "objects")
+    t.Branch("n.", held, 32000, 1)
+    for first in (3.0, 4.0):
+        inner = std.vector["double"]()
+        inner.assign([first, 6.0])
+        held.value.fVals.clear()
+        held.value.fVals.push_back(inner)
+        t.Fill()
+    t.Write()
+    out.Close()
+    reader = ROOT.TTreeReader(ROOT.TFile(str(tmp_path / "nested.root")).Get("T"))
+    value = ROOT.TTreeReaderValue["Nested"](reader, "n.")
+    seen = []
+    while reader.Next():
+        seen.append([list(inner) for inner in value.__deref__().fVals])
+    assert seen == [[[3.0, 6.0]], [[4.0, 6.0]]]
 
 
 def test_a_leaf_list_that_is_not_one_is_refused_with_what_is_wrong_with_it():
