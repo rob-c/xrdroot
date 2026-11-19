@@ -324,6 +324,132 @@ def test_roots_members_without_a_setter_are_left_as_they_are():
     assert (named.GetName(), named.GetTitle(), named.GetUniqueID()) == ("n", "u", 4)
 
 
+ARRAYED = r"""
+#include "TObjArray.h"
+class Holder {
+public:
+   int n = 0;
+   TObjArray *items = nullptr;
+};
+"""
+
+
+def _arrayed(*slots):
+    """The bytes of a ``Holder`` as ROOT writes one - its number, and then the
+    ``TObjArray::Streamer`` form of its array: the record's version, its ``TObject``, its
+    name, its size and lower bound, and one tagged object per slot, a hole as the zero of a
+    null pointer."""
+    out = WBuffer()
+    record = out.start(1)
+    out.i32(3)
+    tag = out.tag("TObjArray")
+    array = out.start(3)
+    out.tobject()
+    out.string("items")
+    out.i32(len(slots))
+    out.i32(0)
+    for slot in slots:
+        if slot is not None:
+            held = out.tag("TNamed")
+            out.named(slot, "for file")
+            out.end(held)
+        else:
+            out.u32(0)
+    out.end(array)
+    out.end(tag)
+    out.end(record)
+    return bytes(out.data)
+
+
+def _read_holder(payload):
+    """A ``Holder`` read back from ``payload`` as a buffer's object is: by the reader for its
+    class, its record converted to the class as the program declares it now."""
+    from xrdroot.buffer import Buffer
+    from xrdroot.pyroot.core.declared import catalogue_for, converted, new_value
+    from xrdroot.rdobjects import reader_for
+
+    run_source(ARRAYED, "arrayed.C", call=False)
+    row = reader_for("Holder", catalogue_for("Holder"))(Buffer(payload))
+    return converted(row, parse_type("Holder"), new_value("Holder"))
+
+
+def _root_named(name):
+    """One ``TNamed`` as a collection's reader hands it back: its members, and its class."""
+    from xrdroot.buffer import Named
+
+    return Named({"TObject": {"fUniqueID": 0, "fBits": 0}, "fName": name, "fTitle": "t"},
+                 "TNamed")  # fmt: skip
+
+
+def test_a_tobjarray_read_back_is_the_namespaces_array_not_the_list_it_read_as():
+    holder = _read_holder(_arrayed("objectone", "objecttwo"))
+    assert type(holder.items).__name__ == "TObjArray"
+    assert [item.GetName() for item in holder.items] == ["objectone", "objecttwo"]
+    assert [(item.GetTitle(), item.ClassName()) for item in holder.items] == [
+        ("for file", "TNamed"),
+        ("for file", "TNamed"),
+    ]
+
+
+def test_an_array_read_into_an_object_already_there_keeps_its_name_and_its_slots():
+    from xrdroot.pyroot.core.declared import converted
+
+    current = ROOT.TObjArray()
+    current.SetName("persist")
+    current.Add(ROOT.TNamed("stale", "before the read"))
+    made = converted([_root_named("one"), None, _root_named("two")], parse_type("TObjArray*"),
+                     current)  # fmt: skip
+    assert made is current and made.GetName() == "persist"
+    assert [item.GetName() for item in made if item is not None] == ["one", "two"]
+    assert (made.GetEntriesFast(), made.At(1)) == (3, None)  # a slot never filled stays a hole
+
+
+def test_a_list_read_back_is_the_namespaces_list_in_the_order_it_was_written():
+    from xrdroot.pyroot.core.declared import converted
+
+    made = converted([_root_named("one"), _root_named("two")], parse_type("TList"), None)
+    assert (type(made).__name__, [item.GetName() for item in made]) == (
+        "TList",
+        ["one", "two"],
+    )
+
+
+def test_a_collection_with_an_entry_of_a_declared_class_is_made_into_one():
+    from xrdroot.buffer import Named
+    from xrdroot.pyroot.core.declared import converted
+
+    run_source(ARRAYED, "arrayed.C", call=False)
+    made = converted([Named({"n": 3}, "Holder")], parse_type("TObjArray*"), None)
+    assert (type(made[0]).__name__, made[0].n) == ("Holder", 3)
+
+
+def test_a_collection_whose_class_this_kit_lacks_reads_as_the_list_it_was(monkeypatch):
+    from xrdroot.pyroot.core import declared
+
+    assert type(declared.converted([1], parse_type("TObjArray*"), None)).__name__ == "TObjArray"
+    monkeypatch.setattr(declared, "_collection_class", lambda named: None)
+    assert declared.converted([1], parse_type("TObjArray*"), None) == [1]
+
+
+def test_an_entry_of_no_class_and_one_of_no_name_are_kept_as_they_were_read():
+    from xrdroot.buffer import Named
+    from xrdroot.pyroot.core.declared import converted
+
+    kept = converted(["TNamed"], parse_type("TList"), None)  # a name stepped over, not an object
+    assert (type(kept).__name__, list(kept)) == ("TList", ["TNamed"])
+    record = converted([{"fName": "x"}], parse_type("TList"), None)  # a record naming no class
+    assert list(record) == [{"fName": "x"}]
+    unknown = converted([Named({"fName": "x"}, "TNoSuchClass")], parse_type("TList"), None)
+    assert list(unknown) == [{"fName": "x"}]
+
+
+def test_a_collection_this_kit_has_no_class_for_reads_as_the_list_it_was():
+    from xrdroot.pyroot.core.declared import converted
+
+    assert converted([1, 2], parse_type("TBtree"), None) == [1, 2]
+    assert converted({"fName": "x"}, parse_type("TObjArray*"), None) == {"fName": "x"}
+
+
 LINKED = r"""
 class Node {
 public:

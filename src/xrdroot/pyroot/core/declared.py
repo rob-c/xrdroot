@@ -65,6 +65,13 @@ FLOATS = ("float", "double", "Double32_t", "Float16_t", "long double")
 #: classes, and a description is derived from one class alone.
 CATALOGUES_KEPT = 4096
 
+#: ROOT's collections that hand themselves to a reader as the plain list of what they held -
+#: they stream themselves, so no streamer information is what reads them - and that the
+#: namespace has a class of its own for, which is what a member of one reads back as.
+COLLECTIONS = ("TList", "THashList", "TSortedList", "TObjArray")
+#: The collections of those that keep a numbered slot per object, a slot never filled a hole.
+SLOTTED = ("TObjArray",)
+
 
 def declared_class(cls: Any) -> bool:
     """Was ``cls`` declared in C++ - does its translation describe its members?"""
@@ -555,7 +562,7 @@ def converted(value: Any, found: Spelled, current: Any) -> Any:
     if value is None:
         return None
     if found.stars and found.name not in TYPES:
-        return _pointed(value, found)
+        return _pointed(value, found, current)
     if found.name in STL_KINDS:
         return _refilled(value, found, current)
     return _held(value, found, current)
@@ -571,11 +578,77 @@ def _held(value: Any, found: Spelled, current: Any) -> Any:
     return _object(value, found, current)
 
 
-def _pointed(value: Any, found: Spelled) -> Any:
+def _pointed(value: Any, found: Spelled, current: Any) -> Any:
     """A pointer's object: of the class the stream named, which may be a derived one - a
     ``BaseABC *fABC`` holding a ``Derived`` is a ``Derived``, as ROOT gives it back."""
-    made = made_from(str(getattr(value, "classname", "") or found.name), value)
-    return made if made is not None else value
+    named = str(getattr(value, "classname", "") or found.name)
+    made = made_from(named, value)
+    if made is not None:
+        return made
+    held = _collection(named, value, current)
+    return held if held is not None else value
+
+
+def _collection(named: str, value: Any, current: Any) -> Any:
+    """A ROOT collection read back - as the plain list of what it held - made into the
+    namespace's collection again, or ``None`` for one that is not such a collection.
+
+    ROOT reads a collection into the object it is handed, so one already there is refilled
+    where it stands and keeps the name it has: ``TObjArray::Streamer`` reads the name of the
+    array on file into that object, and a class's constructor has already given it the same
+    one. Where the collection is new, its name comes from the same place ROOT's does - the
+    bytes - which this reader hands back as the list alone.
+
+    A slot a ``TObjArray`` never filled stays a hole, so its entries go back by index; a
+    list is a run of what it held, which is what it is given.
+    """
+    if named not in COLLECTIONS or not isinstance(value, list):
+        return None
+    cls = _collection_class(named)
+    if cls is None:
+        return None
+    made: Any = current if isinstance(current, cls) else cls()
+    made.Clear()
+    for at, item in enumerate(value):
+        if item is not None:
+            _add_entry(made, _entry(item), at if named in SLOTTED else None)
+    return made
+
+
+def _collection_class(named: str) -> type | None:
+    """The namespace's class standing for one of ROOT's collections, if it has one yet."""
+    from .reflection import _class_named
+
+    return _class_named(named)
+
+
+def _add_entry(made: Any, item: Any, at: int | None) -> None:
+    """One entry into a collection: into its own slot if it numbers them, else on the end."""
+    if at is None:
+        made.Add(item)
+    else:
+        made.AddAt(item, at)
+
+
+def _entry(item: Any) -> Any:
+    """One object a collection held: made into an object of the class the stream named it
+    as, given the members read - or kept as the record it was read as, for a class this kit
+    has none of."""
+    named = str(getattr(item, "classname", ""))
+    made = made_from(named, item) if named else None
+    if made is not None or not named or not isinstance(item, Mapping):
+        return item if made is None else made
+    return _recorded_object(named, item)
+
+
+def _recorded_object(named: str, row: Mapping[str, Any]) -> Any:
+    """One of ROOT's own objects given the members a record of it holds."""
+    cls = _collection_class(named)
+    if cls is None:
+        return row
+    made = _new(cls)
+    fill_root(made, row)
+    return made
 
 
 def _object(value: Any, found: Spelled, current: Any) -> Any:
@@ -584,6 +657,9 @@ def _object(value: Any, found: Spelled, current: Any) -> Any:
         one, two = _pair_of(value)
         made = std.pair[first.text(), second.text()]
         return made(converted(one, first, None), converted(two, second, None))
+    held = _collection(found.name, value, current)
+    if held is not None:
+        return held
     cls = find_class(found.name)
     if not isinstance(value, Mapping):
         return value
