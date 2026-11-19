@@ -16,10 +16,12 @@ member added since (left as the constructor made it) or dropped (ignored).
 
 from __future__ import annotations
 
+import functools
 import math
 from collections.abc import Mapping
 from contextvars import ContextVar
-from typing import Any
+from typing import Any, NamedTuple
+from weakref import WeakKeyDictionary
 
 import numpy as np
 
@@ -59,6 +61,9 @@ WIDTHS = {
 }  # fmt: skip
 #: The floating types: what a member of one is read back as.
 FLOATS = ("float", "double", "Double32_t", "Float16_t", "long double")
+#: How many class descriptions are kept at once: a program declares a bounded number of
+#: classes, and a description is derived from one class alone.
+CATALOGUES_KEPT = 4096
 
 
 def declared_class(cls: Any) -> bool:
@@ -90,9 +95,18 @@ def find_class(name: str) -> type | None:
 
 def declaration_of(cls: type, name: str | None = None) -> Declaration:
     """What ``cls``'s translation says of it, as :mod:`xrdroot.wdeclared` takes a class."""
+    return _declaration_of(cls, name)
+
+
+@functools.lru_cache(maxsize=CATALOGUES_KEPT)
+def _declaration_of(cls: Any, name: str | None) -> Declaration:
+    """The declaration of ``cls``, kept: the fields of a class are read off its translation
+    once, not once per record written - a class is what its translation says and cannot
+    change underneath it. ``cls`` is ``Any`` because a class is a hashable key, not because a
+    caller may pass anything."""
     own, bases, fields = cls.__dict__["_cxx_layout_"]
     versioned = "Class_Version" in cls.__dict__
-    version = int(cls.Class_Version()) if versioned else 1  # type: ignore[attr-defined]
+    version = int(cls.Class_Version()) if versioned else 1
     made = tuple(Field(str(n), str(s), comment_of(c), tuple(d)) for n, s, c, d in fields)
     return Declaration(name or str(own), version, foreign(cls), tuple(map(str, bases)), made,
                        issubclass(cls, TObject), _class_title(cls))  # fmt: skip
@@ -134,7 +148,19 @@ def _class_title(cls: type) -> str:
 
 
 def catalogue_of(cls: type) -> Catalogue:
-    """Every declared class an object of ``cls`` can reach, described as a write needs."""
+    """Every declared class an object of ``cls`` can reach, described as a write needs.
+
+    Kept, because a description is a pure function of the class and the same one is asked for
+    again for every object written: a ``TClass::Streamer`` in a bulk loop of 10^7 records
+    re-derived its class's elements - and their checksum - 10^7 times, which was most of the
+    write. The class itself is the key, so a class declared again under the same name is
+    described afresh.
+    """
+    return _described_by(cls)
+
+
+@functools.lru_cache(maxsize=CATALOGUES_KEPT)
+def _described_by(cls: type) -> Catalogue:
     found: dict[str, Declaration] = {}
     _gather(declaration_of(cls).name, cls, found)
     return Catalogue(found)
@@ -142,7 +168,16 @@ def catalogue_of(cls: type) -> Catalogue:
 
 def catalogue_for(classname: str) -> Catalogue:
     """Every declared class a value of the type ``classname`` can reach: a class's, or what a
-    container holds."""
+    container holds.
+
+    Kept for the reason :func:`catalogue_of` gives; the class the type names now is part of
+    the key, so a type whose class has been declared again is described again.
+    """
+    return _described_for(classname, find_class(parse_type(classname).name))
+
+
+@functools.lru_cache(maxsize=CATALOGUES_KEPT)
+def _described_for(classname: str, cls: type | None) -> Catalogue:
     found: dict[str, Declaration] = {}
     _reach_type(parse_type(classname), found)
     return Catalogue(found)
@@ -229,17 +264,66 @@ def _current_writer() -> Any:
 
 
 def instance_of(obj: Any, name: str, catalogue: Catalogue) -> Instance:
-    """``obj`` as plain data, read by the declaration of its class ``name``."""
+    """``obj`` as plain data, read by the declaration of its class ``name``.
+
+    What the declaration says is worked out once per class and kept: an object written in a
+    bulk loop - the 10^7 records of ``TClass::Streamer`` - used to parse each member's type,
+    spell its class out again and look that class up, per member per record.
+    """
+    plan = _plan(catalogue, name)
+    members: dict[str, Any] = {}
+    for base in plan.bases:
+        members[base] = _base_value(obj, base, catalogue)
+    for field, attribute, found in plan.fields:
+        value = getattr(obj, attribute, None)
+        members[field.name] = value if found is None else _plain_member(value, field, catalogue,
+                                                                      found)  # fmt: skip
+    return Instance(name, members)
+
+
+class _Plan(NamedTuple):
+    """How one class's members come off an object, worked out from its declaration once."""
+
+    bases: tuple[str, ...]
+    #: Each persistent member: its field, the attribute the object keeps it in, and its type
+    #: taken apart - or ``None`` for a number, which is written as the value it is.
+    fields: tuple[tuple[Field, str, Spelled | None], ...]
+
+
+#: Each catalogue's plans by class name. Held weakly: a catalogue is kept with the class it
+#: describes, and a plan says nothing about anything outside it.
+_PLANS: WeakKeyDictionary[Catalogue, dict[str, _Plan]] = WeakKeyDictionary()
+
+
+def _plan(catalogue: Catalogue, name: str) -> _Plan:
+    """How the class ``name``'s members come off an object, made the first time it is asked."""
+    held = _PLANS.get(catalogue)
+    if held is None:
+        held = _PLANS[catalogue] = {}
+    found = held.get(name)
+    if found is None:
+        found = held[name] = _planned(catalogue, name)
+    return found
+
+
+def _planned(catalogue: Catalogue, name: str) -> _Plan:
+    """The plan for the class ``name``: whether each member is a number, which the writer
+    takes as the value itself, or something to take apart first."""
     declared = catalogue.declared(name)
     assert declared is not None  # every class reached is in the catalogue
-    members: dict[str, Any] = {}
-    for base in declared.bases:
-        members[base] = _base_value(obj, base, catalogue)
-    for field in declared.fields:
-        if not field.comment.startswith("!"):
-            value = getattr(obj, _attribute(field.name), None)
-            members[field.name] = _plain_member(value, field, catalogue)
-    return Instance(name, members)
+    fields = tuple(
+        (field, _attribute(field.name), None if _a_number(field) else parse_type(field.spelled))
+        for field in declared.fields
+        if not field.comment.startswith("!")
+    )
+    return _Plan(declared.bases, fields)
+
+
+def _a_number(field: Field) -> bool:
+    """Is the member a plain number - as opposed to an object, a container or an array - which
+    is plain data as it stands, so that :func:`_plain` would hand it back unchanged?"""
+    found = parse_type(field.spelled)
+    return not found.stars and not field.dims and found.name in TYPES
 
 
 def _attribute(name: str) -> str:
@@ -280,14 +364,15 @@ def _root_member(obj: Any, member: str) -> Any:
     return getter() if callable(getter) else getattr(obj, member, None)
 
 
-def _plain_member(value: Any, field: Any, catalogue: Catalogue) -> Any:
+def _plain_member(value: Any, field: Any, catalogue: Catalogue,
+                  found: Spelled | None = None) -> Any:  # fmt: skip
     """A data member's value as plain data.
 
     An array of *objects* - ``T a[N]`` and ``std::array<T,N>`` alike - holds one plain
     instance per element, which is what the member-wise writer writes one record
     after another; an array of numbers stays the values it is.
     """
-    found = parse_type(field.spelled)
+    found = parse_type(field.spelled) if found is None else found
     template = found.name in ARRAY_TEMPLATES and bool(found.args)
     content = found.args[0] if template else found  # a std::array's, or the element of T[N]
     is_array = bool(field.dims) or template

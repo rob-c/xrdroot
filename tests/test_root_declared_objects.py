@@ -1101,3 +1101,71 @@ void pointed(const char *name) {
 def test_a_pointer_member_reads_back_as_the_derived_class_the_stream_named(capfd):
     run_source(POINTED_AT, "pointed.C", ("pointed.root",))
     assert capfd.readouterr().out.splitlines() == ["0 1 0", "1 2 1", "2 3 2"]
+
+
+PLANNED = r"""
+#include <vector>
+class Inner { public: int v; Inner() { v = 3; } };
+class Outer {
+public:
+   int fN;
+   double fX;
+   int fArr[3];
+   std::vector<int> fVec;
+   Inner fInner;
+   Outer() { fN = 7; fX = 1.5; fArr[0] = 1; fArr[1] = 2; fArr[2] = 3; fVec.push_back(4); }
+};
+"""
+
+
+def test_a_class_is_described_once_however_often_an_object_of_it_is_written():
+    """A description is a pure function of a class, so the record after record of one class -
+    what a bulk ``TClass::Streamer`` loop writes - reads it again rather than deriving it."""
+    from xrdroot.pyroot.core.declared import catalogue_for, catalogue_of, declaration_of
+
+    run_source(PLANNED, "planned.C", call=False)
+    cls = find_class("Outer")
+    assert catalogue_of(cls) is catalogue_of(cls)
+    assert catalogue_for("Outer") is catalogue_for("Outer")
+    assert declaration_of(cls) is declaration_of(cls)
+
+
+def test_a_class_declared_again_under_one_name_is_described_afresh():
+    """A program that declares a class a second time with other members has another class: the
+    description kept for the first is not handed out for the second."""
+    from xrdroot.pyroot.core.declared import catalogue_for
+
+    made = {"_cxx_layout_": ("Again", (), (("fA", "int", "", ()),))}
+    other = {"_cxx_layout_": ("Again", (), (("fB", "double", "", ()),))}
+    DECLARED["Again"] = type("Again", (), made)
+    before = catalogue_for("Again")
+    DECLARED["Again"] = type("Again", (), other)
+    after = catalogue_for("Again")
+    assert before is not after
+    assert [element[1] for element in before.info("Again")[2]] == ["fA"]
+    assert [element[1] for element in after.info("Again")[2]] == ["fB"]
+
+
+def test_an_object_is_plain_data_by_the_plan_its_declaration_makes_once():
+    """The members of an object come off it by a plan worked out once per class: a member that
+    is a number is the value it is, and every other member is taken apart as before."""
+    from xrdroot.pyroot.core.declared import (
+        _attribute,
+        _plain_member,
+        _plan,
+        catalogue_of,
+        instance_of,
+    )
+
+    run_source(PLANNED, "planned.C", call=False)
+    cls = find_class("Outer")
+    catalogue = catalogue_of(cls)
+    assert _plan(catalogue, "Outer") is _plan(catalogue, "Outer")
+    outer = cls()
+    plan = _plan(catalogue, "Outer")
+    assert [(field.name, found is None) for field, _kept_in, found in plan.fields] == [
+        ("fN", True), ("fX", True), ("fArr", False), ("fVec", False), ("fInner", False)]
+    taken = {field.name: _plain_member(getattr(outer, _attribute(field.name)), field, catalogue)
+             for field, _kept_in, _found in plan.fields}  # fmt: skip
+    assert dict(instance_of(outer, "Outer", catalogue).members) == taken
+    assert taken["fN"] == 7 and taken["fInner"].members["v"] == 3
