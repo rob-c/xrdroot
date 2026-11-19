@@ -9,6 +9,7 @@ from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.core.objects import typed
 from xrdroot.pyroot.ntuple.fields import RFieldPtr, field_type
 from xrdroot.pyroot.ntuple.model import RFieldBase, RResult
+from xrdroot.rntuple.writer import RecordSpec
 
 
 @pytest.mark.parametrize(
@@ -142,6 +143,62 @@ def test_a_field_made_from_a_type_name_comes_back_in_a_result() -> None:
     model = ROOT.RNTupleModel.Create()
     model.AddField(RFieldBase.Create("n", "int").Unwrap())
     assert model.GetFieldNames() == ["n"] and model.GetDefaultEntry().GetPtr("n").value == 0
+
+
+def test_a_set_or_a_map_is_a_collection_field_over_the_item_under_it() -> None:
+    """roottest's makeproject header holds a ``std::unordered_set<double>``, a
+    ``std::unordered_map<int, std::string>`` and a ``std::unordered_multimap<std::string,
+    std::vector<float>>``; ROOT writes each as a collection - a set over its item, a map
+    over the record of a key and a value - so each is a field of its item's type."""
+    spam = field_type("std::unordered_set<double>")
+    assert (spam.cxx, spam.collection, spam.record, spam.item.cxx) == (
+        "std::unordered_set<double>", True, False, "double")  # fmt: skip
+    assert repr(spam.spec) == "<CollectionSpec std::unordered_set<double>>"
+    eggs = field_type("std::unordered_map<int, std::string>")
+    assert eggs.cxx == "std::unordered_map<std::int32_t,std::string>"
+    assert eggs.item.cxx == "std::pair<std::int32_t,std::string>"
+    assert [name for name, _ in eggs.item.members] == ["_0", "_1"]
+    assert isinstance(eggs.spec.item, RecordSpec) and eggs.spec.keyed
+    strange = field_type("std::unordered_multimap<std::string, std::vector<float>>")
+    assert strange.cxx == "std::unordered_multimap<std::string,std::vector<float>>"
+    assert [member.cxx for _, member in strange.item.members] == [
+        "std::string", "std::vector<float>"]  # fmt: skip
+    assert not field_type("std::vector<double>").collection
+    with pytest.raises(UnsupportedFeatureError, match="RNTuple field of type"):
+        field_type("std::map<int>")
+
+
+def test_a_set_or_a_map_is_held_in_the_container_of_its_kinds() -> None:
+    """An entry holds a set or a map in the C++ container itself, which cppstd has for
+    every one of them but the unordered multimap and multiset: those keep their items in
+    the ordered container of the same kinds, which iterates them the same way."""
+    spam = field_type("std::unordered_set<double>").holder()
+    assert type(spam).__name__ == "unordered_set<double>" and list(spam) == []
+    eggs = field_type("std::unordered_map<int,std::string>").holder()
+    eggs[2] = "two"
+    assert eggs.items() == [(2, "two")]
+    strange = field_type("std::unordered_multimap<std::string,std::vector<float>>").holder()
+    assert type(strange).__name__ == "multimap<string,vector<float>>"
+    assert field_type("std::multiset<int>").holder().__cpp_name__ == "multiset<int>"
+
+
+def test_an_entry_of_a_set_or_a_map_is_filled_with_its_items() -> None:
+    """C++ has no assignment of a list to a container either: an entry is filled the way
+    a macro fills one, item by item, after clearing what the holder held."""
+    model = ROOT.RNTupleModel.Create()
+    model.MakeField["std::unordered_set<double>"]("spam")
+    model.MakeField["std::unordered_map<int,std::string>"]("eggs")
+    entry = model.GetDefaultEntry()
+    entry["spam"] = [1.0, 3.0]
+    entry["eggs"] = {2: "two"}
+    assert list(entry["spam"]) == [1.0, 3.0]
+    assert entry["eggs"].items() == [(2, "two")]
+    entry["spam"] = [5.0]
+    assert list(entry["spam"]) == [5.0]
+    with pytest.raises(TypeError, match="so it holds the items of a list"):
+        entry["spam"] = 1.5
+    with pytest.raises(TypeError, match="so it holds the items of a list"):
+        entry["eggs"] = "two"
 
 
 def test_a_field_of_a_class_type_is_a_record_of_the_members_its_dictionary_lists() -> None:

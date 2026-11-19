@@ -55,7 +55,14 @@ from .schema import (
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from ..writer import WritableDirectory
 
-__all__ = ["WritableRNTuple", "RecordSpec", "spec_of", "CLUSTER_BYTES", "PAGE_BYTES"]
+__all__ = [
+    "WritableRNTuple",
+    "CollectionSpec",
+    "RecordSpec",
+    "spec_of",
+    "CLUSTER_BYTES",
+    "PAGE_BYTES",
+]
 
 #: How many bytes of values gather before a cluster is written. A reader
 #: reads a range a cluster at a time, so smaller clusters make a small range
@@ -120,9 +127,9 @@ def _refuse(name: str, spec: Any) -> ValueError:
         f"with here are numbers (a NumPy type, a C++ name such as 'std::int32_t', or "
         f"bool, int and float), str for std::string, and a vector of a number - or of "
         f"another such vector - spelled [type], 'std::vector<type>' or 'std::vector<"
-        f"std::vector<type>>', as 'std::bitset<N>' for N bits, or as a RecordSpec for a "
-        f"class's record. Variants and collections of strings are not written, because "
-        f"their layout would be a guess"
+        f"std::vector<type>>', as 'std::bitset<N>' for N bits, as a RecordSpec for a "
+        f"class's record, or as a CollectionSpec for a set or a map. Variants and "
+        f"collections of strings are not written, because their layout would be a guess"
     )
 
 
@@ -357,6 +364,80 @@ class _Text(_Rows):
     def prepare(self, values: Any) -> Any:
         content, offsets = _strings(self.name, values)
         return content, [offsets]
+
+
+class _Collection(_Writer):
+    """A set, or a map: an index column saying where each entry's items end, then the items.
+
+    ROOT writes a ``std::unordered_set<T>`` as a collection over ``T`` and a
+    ``std::unordered_map<K, V>`` as one over the ``std::pair<K, V>`` record, which
+    is the layout a vector has - the index column, then the item's own columns, one
+    field under another. An entry's items are given as a row; a map's are its keys
+    and values, as pairs or as a mapping, which become the pair's two members.
+    """
+
+    __slots__ = ("item", "keyed")
+
+    def __init__(self, name: str, keyed: bool) -> None:
+        super().__init__(name)
+        #: The writer of the item field, which the declaration sets once it is made.
+        self.item: _Writer | None = None
+        #: Whether an item is a ``std::pair`` - a map's key and value.
+        self.keyed = keyed
+
+    def prepare(self, values: Any) -> Any:
+        assert self.item is not None
+        rows = [_row_items(self.name, row) for row in values]
+        offsets = np.concatenate([[0], np.cumsum([len(row) for row in rows], dtype=np.int64)])
+        items = [item for row in rows for item in row]
+        if self.keyed:
+            items = [_pair_item(self.name, item) for item in items]
+        return offsets, self.item.prepare(items)
+
+    def length(self, prepared: Any) -> int:
+        return len(prepared[0]) - 1
+
+    def sizes(self, prepared: Any) -> np.ndarray[Any, Any]:
+        offsets, items = prepared
+        assert self.item is not None
+        kept = np.concatenate([[0], np.cumsum(self.item.sizes(items), dtype=np.int64)])
+        return 8 * np.diff(offsets) + kept[offsets[1:]] - kept[offsets[:-1]]
+
+    def put(self, prepared: Any, a: int, b: int) -> None:
+        offsets, items = prepared
+        assert self.item is not None
+        self.outs[0].add(np.diff(offsets[a : b + 1]))
+        self.item.put(items, int(offsets[a]), int(offsets[b]))
+
+
+def _row_items(name: str, row: Any) -> list[Any]:
+    """One entry's items: a row of them, or a mapping's keys and values paired up."""
+    if isinstance(row, Mapping):
+        return list(row.items())
+    if isinstance(row, np.ndarray) and row.ndim != 1:
+        raise ValueError(
+            f"the field {name!r} is a collection, and an entry given for it is shaped "
+            f"{row.shape}; give one row of items per entry"
+        )
+    if isinstance(row, (str, bytes)) or not isinstance(row, Iterable):
+        raise ValueError(
+            f"the field {name!r} is a collection, and an entry given for it is a "
+            f"{type(row).__name__}; give one row of items per entry"
+        )
+    return list(row)
+
+
+def _pair_item(name: str, item: Any) -> dict[str, Any]:
+    """One item of a map as the two members of its ``std::pair`` record."""
+    if isinstance(item, Mapping):
+        return dict(item)
+    given = list(item) if isinstance(item, Iterable) and not isinstance(item, (str, bytes)) else []
+    if len(given) != 2:
+        raise ValueError(
+            f"the field {name!r} is a map, so each of its items is a key and a value - "
+            f"a pair, or a mapping of its two members - not a {type(item).__name__}"
+        )
+    return {"_0": given[0], "_1": given[1]}
 
 
 class _Bits(_Writer):
@@ -655,6 +736,31 @@ def _awkward_spec(name: str, values: Any) -> Any:
     return [spec_of(name, ak.flatten(values, axis=1))]
 
 
+class CollectionSpec:
+    """A field that is a set or a map: the C++ name it is written with, and its item's.
+
+    ROOT writes any of ``std::set``, ``std::unordered_set``, ``std::multiset`` and
+    their unordered kin as a collection over their item, and ``std::map`` and its kin
+    as one over a ``std::pair`` record - which is the layout a reader of either
+    library finds. A collection is declared where a number would be:
+    ``f.rntuple('events', {'spam': CollectionSpec('std::unordered_set<double>', float)})``.
+    """
+
+    __slots__ = ("cxx", "item", "keyed")
+
+    def __init__(self, cxx: str, item: Any) -> None:
+        self.cxx = str(cxx)
+        #: The declaration of the item field under this one.
+        self.item = item
+        #: Whether the item is a ``std::pair``, as a map's is.
+        self.keyed = str(item.cxx if isinstance(item, RecordSpec) else "").startswith(
+            "std::pair<"
+        )
+
+    def __repr__(self) -> str:
+        return f"<CollectionSpec {self.cxx}>"
+
+
 class RecordSpec:
     """A field that is a class: its C++ type name, and its members as fields of their own.
 
@@ -798,6 +904,8 @@ class WritableRNTuple:
             made = _Bits(name, size)
             self._add(name, str(spec), LEAF, ["Bit"], made, parent, size)
             return made
+        if isinstance(spec, CollectionSpec):
+            return self._collection(name, spec, parent)
         found = _vector_spec(name, spec)
         if found is None:
             dtype = _number(name, spec)
@@ -812,6 +920,19 @@ class WritableRNTuple:
                 "_0", _vector(dtype, level), COLLECTION, [self._index()], writer, under
             )
         self._add("_0", CXX[dtype.name], LEAF, [self._kind(dtype)], writer, under)
+        return writer
+
+    def _collection(self, name: str, spec: CollectionSpec, parent: int | None) -> _Writer:
+        """A set or a map: the index column over the items, and the item field under it.
+
+        The item is declared the way any other field is - a number, a string, a
+        vector, or for a map the ``std::pair`` record of the key and the value - so
+        that a collection of collections nests as ROOT nests it.
+        """
+        writer = _Collection(name, spec.keyed)
+        under = self._add(name, spec.cxx, COLLECTION, [self._index()], writer, parent)
+        writer.item = self._declare("_0", spec.item, under)
+        writer.outs.extend(writer.item.outs)
         return writer
 
     def _record(self, name: str, spec: RecordSpec, parent: int | None) -> _Writer:

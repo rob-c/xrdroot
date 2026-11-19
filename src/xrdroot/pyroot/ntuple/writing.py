@@ -20,10 +20,11 @@ import atexit
 import threading
 import weakref
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
+from ..stl import _Container, _Map, string
 from .context import Guarded
 from .fields import RFieldPtr
 from .model import REntry, RNTupleModel
@@ -78,13 +79,34 @@ def _snapshot(held: Any) -> Any:
     """A holder's value as it is now, copied so that refilling the holder leaves it be.
 
     A record's holder is a mapping of member to holder, which is copied member by
-    member, so that a value of a class is its members' values and nothing else.
+    member, so that a value of a class is its members' values and nothing else. A
+    set's or a map's is the C++ container itself, given as the row of items it
+    holds - a map's each a key with its value - which is what the collection
+    field's writer takes.
     """
     if isinstance(held, RFieldPtr):
         return held.value
     if isinstance(held, Mapping):
         return {name: _snapshot(value) for name, value in held.items()}
+    if isinstance(held, _Map):
+        return [(_item(pair.first), _item(pair.second)) for pair in cast(Any, held)]
+    if isinstance(held, _Container):
+        return [_item(each) for each in cast(Any, held)]
     return np.array(held)
+
+
+def _item(value: Any) -> Any:
+    """One item of a set or a map as the collection field's writer takes it.
+
+    A ``std::string`` is its text, which is what a string field is written from,
+    and a vector of them is the items it holds - the containers nest as they do
+    in the field itself.
+    """
+    if isinstance(value, string):
+        return str(value)
+    if isinstance(value, _Container):
+        return [_item(each) for each in cast(Any, value)]
+    return value
 
 
 class _Batch:

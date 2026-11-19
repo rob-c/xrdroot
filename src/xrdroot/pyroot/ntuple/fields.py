@@ -16,8 +16,8 @@ from typing import Any
 import numpy as np
 
 from ...errors import UnsupportedFeatureError
-from ...rntuple.writer import CXX, RecordSpec
-from ..stl import _spelled, element_type, std, string
+from ...rntuple.writer import CXX, CollectionSpec, RecordSpec
+from ..stl import _spelled, _split_arguments, element_type, std, string
 
 __all__ = ["FieldType", "RFieldPtr", "field_type"]
 
@@ -27,7 +27,9 @@ class FieldType:
 
     A class type is a *record*: the type name is the class's, as the file keeps it,
     and what it holds is its members, each a field of its own. ROOT learns them
-    from the class's dictionary, which is where :func:`field_type` reads them.
+    from the class's dictionary, which is where :func:`field_type` reads them. A
+    set or a map is a *collection*: an item field under it - for a map the
+    ``std::pair`` record of the key and the value - as a ``std::vector`` has.
     """
 
     def __init__(
@@ -37,6 +39,7 @@ class FieldType:
         vector: bool,
         members: Any = None,
         bits: int = 0,
+        item: FieldType | None = None,
     ) -> None:
         self.cxx, self.dtype, self.vector = cxx, dtype, vector
         #: For a ``std::bitset``, how many bits an entry holds; zero for every other field.
@@ -46,6 +49,14 @@ class FieldType:
         self.members: tuple[tuple[str, FieldType], ...] | None = (
             None if members is None else tuple(members)
         )
+        #: For a set or a map, the type of the item under it; ``None`` for every other
+        #: kind of field. A map's item is the ``std::pair`` of its key and its value.
+        self.item = item
+
+    @property
+    def collection(self) -> bool:
+        """Whether this is a set or a map: a field whose value is its items'."""
+        return self.item is not None
 
     @property
     def record(self) -> bool:
@@ -57,11 +68,14 @@ class FieldType:
         """What :meth:`xrdroot.WritableFile.rntuple` declares a field of this type with.
 
         A record is declared as a :class:`~xrdroot.rntuple.writer.RecordSpec`: the
-        class's name, and each member's own declaration under it.
+        class's name, and each member's own declaration under it; a set or a map as
+        a :class:`~xrdroot.rntuple.writer.CollectionSpec` of the item under it.
         """
         if self.record:
             assert self.members is not None
             return RecordSpec(self.cxx, [(name, member.spec) for name, member in self.members])
+        if self.item is not None:
+            return CollectionSpec(self.cxx, self.item.spec)
         if self.bits:
             return self.cxx
         return self.cxx if self.dtype is not None else str
@@ -71,6 +85,8 @@ class FieldType:
         if self.record:
             assert self.members is not None
             return {name: member.holder() for name, member in self.members}
+        if self.item is not None:
+            return _container_class(self.cxx)()
         if self.vector:
             return std.vector[CPP_ITEMS[str(self.dtype)]]()
         return RFieldPtr(self)
@@ -114,6 +130,41 @@ def _number(text: str, whole: str) -> np.dtype[Any] | None:
 #: How a ``std::bitset<N>`` is spelled once the ``std::`` is off, its width inside.
 BITSETS = "bitset<"
 
+#: How a set or a map is spelled once the ``std::`` is off, and whether it is keyed.
+COLLECTIONS = {
+    "set": False,
+    "multiset": False,
+    "unordered_set": False,
+    "unordered_multiset": False,
+    "map": True,
+    "multimap": True,
+    "unordered_map": True,
+    "unordered_multimap": True,
+}
+
+#: The cppstd template a set's or a map's holder is made with, by the name it is
+#: spelled with. cppstd has no unordered multiset or multimap, and the ordered one
+#: of the same kinds iterates its items the same way - a key with its value - so a
+#: holder keeps them there; the field itself is written as the C++ type says.
+HOLDERS = {
+    "set": "set",
+    "multiset": "multiset",
+    "unordered_set": "unordered_set",
+    "unordered_multiset": "multiset",
+    "map": "map",
+    "multimap": "multimap",
+    "unordered_map": "unordered_map",
+    "unordered_multimap": "multimap",
+}
+
+
+def _container_class(cxx: str) -> Any:
+    """The cppstd class an entry of a set or a map field holds its items in."""
+    head, _sep, rest = cxx[len("std::") :].partition("<")
+    template = getattr(std, HOLDERS[head])
+    arguments = _split_arguments(rest[:-1])
+    return template[arguments[0]] if len(arguments) == 1 else template[tuple(arguments)]
+
 
 def _bitset(text: str) -> int | None:
     """How many bits a ``std::bitset`` is of, or ``None`` if ``text`` is no bitset's name."""
@@ -138,6 +189,9 @@ def field_type(cxx: Any, seen: frozenset[str] = frozenset()) -> FieldType:
     bits = _bitset(text)
     if bits is not None:
         return FieldType(f"std::{BITSETS}{bits}>", None, False, bits=bits)
+    found = _collection(text)
+    if found is not None:
+        return _collection_type(*found, str(cxx), seen)
     if text.startswith(VECTORS) and text.endswith(">"):
         item = _number(text[text.index("<") + 1 : -1], str(cxx))
         if item is None:  # a vector of strings: a nested collection
@@ -150,6 +204,34 @@ def field_type(cxx: Any, seen: frozenset[str] = frozenset()) -> FieldType:
             raise
         return _record(text, seen)
     return FieldType("std::string" if found is None else CXX[found.name], found, False)
+
+
+def _collection(text: str) -> tuple[str, list[str]] | None:
+    """A set's or a map's name with the ``std::`` off, and its template arguments."""
+    head, sep, rest = text.partition("<")
+    if not (sep and head in COLLECTIONS and rest.endswith(">")):
+        return None
+    return head, _split_arguments(rest[:-1])
+
+
+def _collection_type(
+    head: str, arguments: list[str], whole: str, seen: frozenset[str]
+) -> FieldType:
+    """A set or a map as a collection: the item under it, and for a map the ``std::pair``.
+
+    ROOT writes a map as a collection over the record of its key and its value, which
+    is what a reader of either library reads back as a key and a value.
+    """
+    if len(arguments) != (2 if COLLECTIONS[head] else 1):
+        raise _refusal(whole)
+    if not COLLECTIONS[head]:
+        item = field_type(arguments[0], seen)
+        return FieldType(f"std::{head}<{item.cxx}>", None, False, item=item)
+    key, value = field_type(arguments[0], seen), field_type(arguments[1], seen)
+    pair = FieldType(
+        f"std::pair<{key.cxx},{value.cxx}>", None, False, (("_0", key), ("_1", value))
+    )
+    return FieldType(f"std::{head}<{key.cxx},{value.cxx}>", None, False, item=pair)
 
 
 def _is_class(text: str) -> bool:

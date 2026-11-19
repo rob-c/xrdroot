@@ -23,7 +23,7 @@ from xrdroot import Jagged, RNTuple, WritableRNTuple, create, open_root
 from xrdroot.rntuple import checksum as xxh3
 from xrdroot.rntuple.columns import ENCODINGS
 from xrdroot.rntuple.schema import COLLECTION, LEAF, RECORD, REPETITIVE
-from xrdroot.rntuple.writer import RecordSpec, spec_of
+from xrdroot.rntuple.writer import CollectionSpec, RecordSpec, spec_of
 from xrdroot.streamers import read_streamers
 
 DATA = pathlib.Path(__file__).parent / "data" / "rntuple"
@@ -196,6 +196,61 @@ def test_a_record_field_is_laid_out_as_root_lays_a_class_out():
     assert [field.children for field in fields] == [[1, 2, 4], [], [3], [], []]
     assert [len(field.columns) for field in fields] == [0, 1, 1, 1, 1]
     assert plain(found.arrays())["evt"] == rows
+
+
+def test_a_set_is_written_as_an_index_column_over_its_items():
+    """ROOT writes a ``std::unordered_set<double>`` the way it writes a vector: an index
+    column saying where each entry's items end, and one column of the items under it,
+    which is what roottest's makeproject header holds a ``MySTLEvent`` of."""
+    spec = CollectionSpec("std::unordered_set<double>", np.dtype("float64"))
+    found = roundtrip({"spam": spec}, [{"spam": [[1.0, 3.0], []]}, {"spam": [[5.0]]}])
+    fields = found._store.schema.fields
+    assert [(field.id, field.name, field.type, field.role, field.parent) for field in fields] == [
+        (0, "spam", "std::unordered_set<double>", COLLECTION, 0),
+        (1, "_0", "double", LEAF, 0),
+    ]
+    assert plain(found.arrays()) == {"spam": [[1.0, 3.0], [], [5.0]]}
+    assert repr(spec) == "<CollectionSpec std::unordered_set<double>>"
+
+
+def test_a_map_is_written_as_an_index_column_over_the_record_of_its_pairs():
+    """A map's item is the ``std::pair`` record of its key and its value - the ``_0`` and
+    ``_1`` members ROOT keeps - so every entry reads back as a key with its value."""
+    key = np.dtype("int32")
+    value = CollectionSpec("std::vector<float>", np.dtype("float32"))
+    pair = RecordSpec("std::pair<std::int32_t,std::vector<float>>", [("_0", key), ("_1", value)])
+    found = roundtrip(
+        {"eggs": CollectionSpec("std::unordered_map<int,std::vector<float>>", pair)},
+        [{"eggs": [[(2, [1.0, 2.0])]]}],
+    )
+    assert found.cxx_types() == {"eggs": "std::unordered_map<int,std::vector<float>>"}
+    assert plain(found.arrays()) == {"eggs": [{2: [1.0, 2.0]}]}
+
+
+def test_the_pairs_of_a_map_are_given_as_pairs_or_as_a_mapping():
+    """A mapping's items are its keys and values, which is what an entry of a set or a
+    map holds - and an item that is neither is refused by name."""
+    spec = CollectionSpec(
+        "std::map<std::int32_t,std::string>",
+        RecordSpec(
+            "std::pair<std::int32_t,std::string>", [("_0", np.dtype("int32")), ("_1", str)]
+        ),
+    )
+    found = roundtrip({"eggs": spec}, [{"eggs": [{2: "two", 4: "four"}]}])
+    assert plain(found.arrays()) == {"eggs": [{2: "two", 4: "four"}]}
+    members = roundtrip({"eggs": spec}, [{"eggs": [[{"_0": 2, "_1": "two"}]]}])
+    assert plain(members.arrays()) == {"eggs": [{2: "two"}]}
+    assert spec.keyed and not CollectionSpec("std::set<int>", np.dtype("int32")).keyed
+    with pytest.raises(ValueError, match="is a map, so each of its items is a key"):
+        roundtrip({"eggs": spec}, [{"eggs": [[42]]}])
+
+
+def test_a_collection_entry_that_is_no_row_is_refused_by_name():
+    spec = CollectionSpec("std::unordered_set<double>", np.dtype("float64"))
+    with pytest.raises(ValueError, match="is a collection, and an entry given for it is a"):
+        roundtrip({"spam": spec}, [{"spam": [1.5]}])
+    with pytest.raises(ValueError, match=r"is shaped \(2, 2\)"):
+        roundtrip({"spam": spec}, [{"spam": np.ones((1, 2, 2))}])
 
 
 def test_a_record_with_no_members_is_written_for_a_class_that_holds_nothing():

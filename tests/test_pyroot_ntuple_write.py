@@ -67,6 +67,38 @@ def test_a_bitset_field_of_a_model_is_written_its_bits_lowest_first() -> None:
     assert _read("w.root")["foo"] == [[bool(0xFA2 >> bit & 1) for bit in range(16)]]
 
 
+def test_a_set_and_a_map_field_are_written_from_the_items_they_hold() -> None:
+    """The three unordered collections of roottest's makeproject header: each is written
+    as ROOT writes a collection - the index column over the items, then the items."""
+    model = ROOT.RNTupleModel.Create()
+    model.AddField(ROOT.RFieldBase.Create("spam", "std::unordered_set<double>").Unwrap())
+    model.AddField(
+        ROOT.RFieldBase.Create("eggs", "std::unordered_map<int,std::string>").Unwrap()
+    )
+    entry = model.GetDefaultEntry()
+    entry["spam"] = [1.0, 3.0, 5.0]
+    entry["eggs"] = [(2, "two"), (4, "four")]
+    writer = ROOT.RNTupleWriter.Recreate(ROOT.std.move(model), "events", "w.root")
+    writer.Fill()
+    del writer
+    assert _read("w.root") == {"spam": [[1.0, 3.0, 5.0]], "eggs": [{2: "two", 4: "four"}]}
+
+
+def test_a_map_of_vectors_is_written_with_the_items_of_its_vectors() -> None:
+    """A multimap's value is a vector, which nests in the file as a collection under the
+    pair's record - the last of roottest's makeproject header's members."""
+    model = ROOT.RNTupleModel.Create()
+    kind = "std::unordered_multimap<std::string,std::vector<float>>"
+    model.AddField(ROOT.RFieldBase.Create("strange", kind).Unwrap())
+    model.GetDefaultEntry()["strange"].insert(("one", ROOT.std.vector["float"]([1.0, 2.0])))
+    writer = ROOT.RNTupleWriter.Recreate(ROOT.std.move(model), "events", "w.root")
+    writer.Fill()
+    del writer
+    assert [(key, list(items)) for key, items in _read("w.root")["strange"][0]] == [
+        ("one", [1.0, 2.0])
+    ]
+
+
 def test_a_writer_fills_the_default_entry_and_finishes_when_let_go() -> None:
     model, n, pt, name = _model()
     writer = ROOT.RNTupleWriter.Recreate(ROOT.std.move(model), "events", "w.root")

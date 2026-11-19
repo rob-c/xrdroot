@@ -9,7 +9,7 @@ default entry: whoever fills with it makes entries of their own.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from typing import Any
 
 import numpy as np
@@ -165,6 +165,8 @@ class REntry:
         held, field = self._held(name), self._fields[str(name)]
         if field.kind().record:
             held.update(_stored(field, value))
+        elif field.kind().collection:
+            _fill(held, field, value)
         elif isinstance(held, RFieldPtr):
             held.value = _stored(field, value)
         else:
@@ -190,6 +192,30 @@ def _stored(field: RField, value: Any) -> Any:
     if not (whole or isinstance(value, (float, np.floating))):
         raise TypeError(f"{where}, so it holds a number, not a {type(value).__name__}")
     return kind.dtype.type(value).item()
+
+
+def _fill(held: Any, field: RField, value: Any) -> None:
+    """A set's or a map's holder given the items an entry is to hold.
+
+    C++ has no assignment of a list to a container either, so an entry is filled
+    the way a macro fills one: what the holder held is cleared, then an item is
+    inserted - for a map a key, and the value kept with it.
+    """
+    kind = field.kind()
+    assert kind.item is not None
+    where = f"the RNTuple field {field.GetFieldName()!r} is a {field.GetTypeName()}"
+    if not isinstance(value, Iterable) or isinstance(value, (str, bytes)):
+        raise TypeError(
+            f"{where}, so it holds the items of a list, not a {type(value).__name__}"
+        )
+    pairs, keyed = (value.items() if isinstance(value, Mapping) else value), kind.item.record
+    held.clear()
+    for item in pairs:
+        if keyed:
+            key, kept = item
+            held[key] = kept
+        else:
+            held.insert(item)
 
 
 def _bitset_value(size: int, value: Any) -> Any:
