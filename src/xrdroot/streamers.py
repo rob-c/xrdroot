@@ -208,12 +208,22 @@ FULL["TStreamerInfo"] = _info_in_full
 FULL["TObjArray"] = lambda buf: buf.objarray(FULL)
 
 
+#: The file :func:`read_infos` last described the layouts of, which ROOT's
+#: ``TStreamerInfo::BuildCheck`` warning names. That warning fires while the file is being
+#: opened, and the caller which notes those layouts (:func:`.reflection.note_file_infos`) is
+#: handed the layouts alone, so the name of the file they came from is kept here.
+LAST_SOURCE = ""
+
+
 def read_infos(source: Source) -> list[tuple[str, Described]]:
     """Every class this file describes, in full and in the order it does - a class twice
     when the file holds objects of two of its versions."""
     from .file import Key
 
+    global LAST_SOURCE
+
     seek, nbytes = source.info
+    LAST_SOURCE = str(getattr(source, "name", "") or "")
     if seek <= 0 or nbytes <= 0:
         return []
     key = Key(Buffer(source.read(seek, min(nbytes, KEY_WINDOW))))

@@ -15,6 +15,7 @@ import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect, fresh
+from xrdroot import streamers
 from xrdroot.pycint.execute import run_source
 from xrdroot.pycxx.runtime.namespace import DECLARED
 from xrdroot.pyroot.core import reflection
@@ -32,6 +33,7 @@ def _fresh(tmp_path):
     DECLARED.update(declared)
     reflection.FILE_INFOS.clear()
     reflection.FILE_INFOS.update(infos)
+    reflection.DISAGREED.clear()
     reflection.GENERATED.clear()
     reflection.INTERPRETED_METHODS.clear()
 
@@ -433,6 +435,74 @@ void evo(const char *name) {
 def _evo(kind, name):
     run_source(VERSIONS % kind, "evo.C", (name,))
     DECLARED.pop("Evo")
+
+
+VERSED = """
+class Versed {
+public:
+   int a = 1;
+   ClassDef(Versed, 1);
+};
+"""
+
+#: A file's layout of that member, as ``TStreamerInfo`` records one - its kind, name, title,
+#: ROOT's type code, its width, and the array bookkeeping after them - recorded at eight bytes.
+LONG64 = ("TStreamerBasicType", "a", "", 16, 8, 1, 0, (0, 0, 0, 0, 0), "Long64_t", ())
+#: The same member spelled ``Int_t`` at four bytes, under a type code today's ROOT no longer
+#: writes for it: what an old file records, and not a difference.
+AS_WIDE = ("TStreamerBasicType", "a", "", 6, 4, 1, 0, (0, 0, 0, 0, 0), "Int_t", ())
+
+
+def test_a_file_layout_differing_from_the_one_in_memory_names_the_file(capfd):
+    """ROOT's ``TStreamerInfo::BuildCheck``, which names the file when a layout of a version
+    the class has in memory records a member at another width, and ``CompareContent``, which
+    sets that member's two declarations out - once for the class, not once for each file."""
+    run_source(VERSED, "versed.C", call=False)
+    reflection.note_file_infos([("Versed", (0x1234567, 1, (LONG64,)))], "one.root")
+    reflection.note_file_infos([("Versed", (0x7654321, 1, (LONG64,)))], "two.root")
+    printed = capfd.readouterr().err
+    assert printed.count("Warning in <TStreamerInfo::BuildCheck>:") == 1
+    assert (
+        "   The StreamerInfo for version 1 of class Versed read from the file one.root\n"
+        "   has a different checksum than the previously loaded StreamerInfo." in printed
+    )
+    assert (
+        "Warning in <TStreamerInfo::CompareContent>: The following data member of\n"
+        "the on-file layout version 1 of class 'Versed' differs from\n"
+        "the in-memory layout version 1:\n   Long64_t a; //\nvs\n   int a; //" in printed
+    )
+
+
+def test_a_member_as_wide_either_way_is_not_reported(capfd):
+    """A number is compared by its width, so a member the file records at the width the class
+    in memory gives it is read across and ROOT says nothing - an old file spells ``Int_t``
+    under a type code today's ROOT no longer writes for it, and ``io/evolution/ClonesArrayEvo``
+    reads such a file and prints nothing - and a class with no layout in memory is not
+    reported either."""
+    run_source(VERSED, "versed.C", call=False)
+    reflection.note_file_infos([("Versed", (0x1234, 1, (AS_WIDE,)))], "one.root")
+    assert "BuildCheck" not in capfd.readouterr().err
+    reflection.note_file_infos([("Elsewhere", (0x5678, 1, (LONG64,)))], "one.root")
+    assert "BuildCheck" not in capfd.readouterr().err
+
+
+def test_a_layout_whose_file_is_unknown_names_no_file(capfd, monkeypatch):
+    """``BuildCheck`` names the file a layout came from, so a layout noted when nothing says
+    which file it was read from is answered with the members alone."""
+    monkeypatch.setattr(streamers, "LAST_SOURCE", "")
+    run_source(VERSED, "versed.C", call=False)
+    reflection.note_file_infos([("Versed", (0x1234, 1, (LONG64,)))])
+    printed = capfd.readouterr().err
+    assert "BuildCheck" not in printed and "   Long64_t a; //" in printed
+
+
+def test_the_last_file_read_names_the_layout_it_described(capfd, monkeypatch):
+    """Opening a file notes its layouts without naming it, so the name the warning gives is
+    the one :mod:`xrdroot.streamers` read those layouts from."""
+    monkeypatch.setattr(streamers, "LAST_SOURCE", "read.root")
+    run_source(VERSED, "versed.C", call=False)
+    reflection.note_file_infos([("Versed", (0x1234, 1, (LONG64,)))])
+    assert "class Versed read from the file read.root" in capfd.readouterr().err
 
 
 def test_files_layouts_are_numbered_as_met_while_no_class_is_in_memory(capfd):
