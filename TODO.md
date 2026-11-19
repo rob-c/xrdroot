@@ -34,8 +34,11 @@ sixteen roottest tests the last round brought in are the four
 `tree/branches/abc-*-read`, the four `tree/fastcloningeventtree/clone-*`, the four
 `treeformula/references/new.split*`, `tree/fastcloning/runabstract-datageneration1`,
 `ntuple/atlas-datavector/write`, `io/tree/copy` and `utils-build`; `other` gained six
-from TMVA's DNN (`MethodDL-*` with a RESHAPE layer and `Regression-Cpu`). Note that
-`other` reads 15 at `--jobs 5` and 16 alone: `minuit2_ParallelTest` takes 195-236 s. The six roottest tests the last round brought in are
+from TMVA's DNN (`MethodDL-*` with a RESHAPE layer and `Regression-Cpu`). `other` reads 21
+at `--jobs 5` **and still 21 alone**, because `minuit2_ParallelTest` now takes 309 s of the
+300 s limit: measured alone at `8af51aa`, `bb19779` and `68a8d07`, so it is this machine, not
+a code change (it took 195-236 s when the earlier rounds measured it). It is `P-9`'s
+`cppstd/containers.py:_fast_int` hot path. The six roottest tests the last round brought in are
 `io/json/PolyMarker`, `io/rootcint/cltest`, `io/stdarray/arrTemplMemberWrite`,
 `io/stdarray/colWiseWrite_3`, `meta/tclass/execTmpltD32` and
 `treeformula/string/cernbuild`. No PASS was lost; `roottest/main/RootcpReadRemote` and
@@ -619,8 +622,10 @@ Notes that will save days:
   `Streamer` call. `ntuple_largefile1` writes 268 435 456 entries one at a time (`Rndm` per
   event). `testBulkApiMultiple` spends 14.2 us per `Fill` in `trees/store.py:209` ->
   `_nbytes` -> `tree.py:184`, and the per-slot byte count can be computed at branch creation.
-  `minuit2_ParallelTest`'s 195-236 s is `cppstd/containers.py:_fast_int` in a translated
-  `__getitem__`.
+  `minuit2_ParallelTest` is `cppstd/containers.py:_fast_int` in a translated
+  `__getitem__`; it has grown from 195-236 s to **309 s** (measured 2026-11-19 at `8af51aa`,
+  `bb19779` and `68a8d07` alike, so the machine and not a commit), which is over the 300 s
+  limit and makes it a FAIL-by-timeout until the hot path is fixed.
 - **P-10.** `multicore/testSetAddressLoop` used to hang and now completes a run in 53 s
   (`16b3766`): 33 runs of it is 29 minutes. A run is 9 threads reading one entry; the busy
   wait `while (counter < kNThreads) {}` competes with them for the GIL.
