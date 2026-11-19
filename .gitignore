@@ -24,3 +24,8 @@ venv/
 
 # Agent worktrees made by Claude Code
 .claude/worktrees/
+
+# Ralph loop runtime state: the task file (.ralph/ROOT.md) is committed, its bookkeeping is not
+.ralph/*.state.json
+.ralph/archive/
+.ralph/*.log
