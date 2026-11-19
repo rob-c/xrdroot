@@ -350,6 +350,23 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - A harness run's PASS count is only comparable at the same `--jobs`: 300 s tests and
   same-directory collisions both move with the parallelism.
 
+## Round 1's close (recorded here for the next iteration)
+
+- Base `8c1b9f8`, closed at `a4ebcd0`. Sixteen workers, sixteen commits, **seven** roottest tests
+  in and **none** lost (`/tmp/r1/final2` vs `/tmp/x8/final2b`).
+- Two branches were reverted for losing a PASS: `TClass::GetStreamerInfo`'s printer
+  (`5e9076e` reverts `e0ab124`) and the template choice (`7a43bd9` reverts `81b9f75`). Both are
+  queue entries now — `Q-23` and `G-5` — with the exact text ROOT prints and the exact check
+  that is missing.
+- Two patches a round could not take, and why: a member template constructor (`G-6`, it regressed
+  a null-pointer member test) and the streamer-info printer (it conflicted with the work above).
+- Four workers found their fix outside their own scope and reported a patch instead
+  (`w07` genreflex, `w12` the streamer base name, `w13` the null pointer, `w15` the reference) —
+  that is the highest-value outcome a brief can ask for, and all four were applied here.
+- The next round's obvious first scope: `Q-23` (one worker, `reflection.py`), because it is what
+  makes `pairEnumEvo`'s 40 tests comparable; then `P-7`/`P-8` (seven hangs), `G-5`, `G-6`, and
+  the two big queues (`Q-20`'s writer bytes, `Q-11`'s formula).
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
