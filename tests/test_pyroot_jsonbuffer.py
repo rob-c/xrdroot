@@ -426,3 +426,78 @@ def test_the_numbers_a_drawn_object_keeps_are_written_as_the_array_they_are():
         '"fMarkerStyle":1,"fMarkerSize":1,"fN":2,"fP":{"$arr":"Float32","len":6,'
         '"v":[0.5,1.5,2.5,3.5,4.5,5.5]},"fOption":"","fName":"TPolyMarker3D"}'
     )
+
+
+def _declared_class(name, members, bases=(), base=None):
+    """A class the way the translation declares one: ``_cxx_layout_`` holding its name, the
+    names of its bases, and a ``(name, type, qualifiers, dims)`` per member."""
+    made = type(name, (base or object,), {"_cxx_layout_": (name, bases, members)})
+    for member in members:
+        setattr(made, member[0], None)
+    return made
+
+
+#: A class as ``test_classes.h`` declares it: scalars and strings of its own, on top of a base
+#: whose members its streamer writes first.
+BASE = _declared_class("TBase", (("fBool", "bool", "", ()), ("fChar", "char", "", ()),
+                                ("fShort", "short", "", ()), ("fInt", "int", "", ()),
+                                ("fLong", "long", "", ()), ("fFloat", "float", "", ()),
+                                ("fDouble", "double", "", ())), )  # fmt: skip
+OWN = _declared_class("TOwn", (("fStr1", "char", "", (100,)), ("fStr2", "char*", "", ()),
+                              ("fDummy2", "int", "", ()), ("fStr3", "TString", "", ()),
+                              ("fPtr", "std::string*", "", ())),
+                      bases=("TBase",), base=BASE)  # fmt: skip
+
+
+def test_a_class_a_macro_declared_is_written_from_its_own_declaration():
+    """ROOT writes the members a class declares, base's first, and each as the type it is
+    declared with: ``String.ref``'s ``TJsonEx4``, whose ``char[100]`` is one JSON string up to
+    its first NUL and whose ``char`` is the code point of one character."""
+    made = OWN()
+    made.fBool, made.fChar, made.fShort, made.fInt = True, 67, 123, 123456
+    made.fLong, made.fFloat, made.fDouble = 7654321, 1.2, 3.8
+    made.fStr1, made.fStr2, made.fDummy2, made.fStr3 = "Value of string 1\0\0", "", 1234567, ""
+    assert _json(made) == (
+        '{\n  "_typename" : "TOwn",\n  "fBool" : true,\n  "fChar" : 67,\n'
+        '  "fShort" : 123,\n  "fInt" : 123456,\n  "fLong" : 7654321,\n'
+        '  "fFloat" : 1.2,\n  "fDouble" : 3.8,\n  "fStr1" : "Value of string 1",\n'
+        '  "fStr2" : "",\n  "fDummy2" : 1234567,\n  "fStr3" : "",\n  "fPtr" : null\n}'
+    )
+
+
+def test_a_member_of_a_declared_class_is_written_on_its_own_as_root_writes_it():
+    """``ToJSON(obj, level, member)`` writes the member by name, text as text."""
+    made = OWN()
+    made.fStr3 = "--- normal string value ---"
+    assert str(ROOT.TBufferJSON.ToJSON(made, 0, "fStr3")) == '"--- normal string value ---"'
+    with pytest.raises(UnsupportedFeatureError) as refused:
+        ROOT.TBufferJSON.ToJSON(made, 0, "fMissing")
+    assert "has no member 'fMissing'" in str(refused.value)
+
+
+def test_a_member_of_a_type_no_writer_takes_refuses_the_object_by_name():
+    """An array of ``std::string``, or a container, is not written as a number: the object is
+    refused by the member's own name rather than written with the member left out."""
+    kinds = _declared_class("TKinds", (("fStrArr", "std::string", "", (3,)),
+                                       ("fVect", "std::vector<double>", "", ())),
+                            )  # fmt: skip
+    with pytest.raises(UnsupportedFeatureError) as refused:
+        ROOT.TBufferJSON.ToJSON(kinds())
+    assert "TKinds::fStrArr, which is declared as an array of std::string" in str(refused.value)
+    assert "needs a writer for the container it holds first" in str(refused.value)
+
+
+def test_a_class_whose_declaration_is_not_a_layout_is_no_declared_class():
+    """A ``_cxx_layout_`` that is not a name, its bases and its members says nothing about the
+    class, so the object is refused as a class with no table rather than half written."""
+    odd = type("TOdd", (object,), {"_cxx_layout_": ("TOdd",)})
+    with pytest.raises(UnsupportedFeatureError) as refused:
+        ROOT.TBufferJSON.ToJSON(odd())
+    assert "does not yet write the JSON of a TOdd" in str(refused.value)
+
+
+def test_a_base_the_object_does_not_inherit_writes_no_members():
+    """A layout that names a base the class does not have contributes nothing, which is what
+    keeps a member of a base ROOT's streamer never writes out of the JSON."""
+    lost = _declared_class("TLost", (("fInt", "int", "", ()),), bases=("TGone",))
+    assert _json(lost()) == '{\n  "_typename" : "TLost",\n  "fInt" : 0\n}'

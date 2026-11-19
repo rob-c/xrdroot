@@ -14,7 +14,10 @@ and the single-line forms after it, and ``kNoSpaces``. A class's members come
 from :data:`MEMBERS`, a table rather than a walk of the object, because ROOT
 writes what the class's *streamer* writes - for a class with a hand-written
 streamer, not every data member: ``TPolyMarker3D`` writes ``fN``, ``fP``,
-``fOption`` and ``fName`` and never ``fLastPoint``.
+``fOption`` and ``fName`` and never ``fLastPoint``. A class a macro declared
+needs no table: the translator read its declaration, and
+:func:`_declared` writes the members - its bases' first - in the order that
+declaration gives them.
 
 The numbers are :func:`_float_text`'s: whole values below ``1e15`` (a float)
 or ``1e25`` (a double) written out digit by digit, and everything else from
@@ -174,6 +177,23 @@ CLASS_BITS = {"TPolyMarker3D": 1}
 #: does not inherit, and its constructor names the marker after its class.
 DEFAULTS = {("TPolyMarker3D", "fName"): "TPolyMarker3D"}
 
+#: The ``$arr`` type name each scalar a C++ member can be declared as goes out as: a
+#: ``char`` is an integer, since ROOT writes one character of a member as its code point,
+#: which is why ``TJsonEx4``'s ``fChar`` is 67 and not ``"C"``.
+SCALARS = {"bool": np.bool_, "char": np.int8, "signed char": np.int8,
+           "unsigned char": np.uint8, "short": np.int16, "unsigned short": np.uint16,
+           "int": np.int32, "unsigned int": np.uint32, "long": np.int64,
+           "unsigned long": np.uint64, "long long": np.int64,
+           "float": np.float32, "double": np.float64}  # fmt: skip
+
+#: The members that hold text rather than a number, by the C++ type they are declared as and
+#: whether they are an array of it: a ``std::string``, a ``char[N]`` ROOT writes as one JSON
+#: string up to its first NUL, and the pointers to one, which ROOT writes as ``null`` where
+#: there is nothing there.
+TEXTS = {("std::string", False): "string", ("TString", False): "string",
+         ("char", True): "chars", ("char*", False): "cstring",
+         ("std::string*", False): "strptr"}  # fmt: skip
+
 
 def _remainder(value: int, mod: int) -> int:
     """``value % mod`` with the sign of ``value``, as C's ``%`` has it."""
@@ -252,9 +272,89 @@ def _pointer_bits(bits: Any) -> int:
 
 
 def _classname(obj: Any) -> str:
-    """The ROOT class an object is, by the name its JSON gives it."""
+    """The ROOT class an object is, by the name its JSON gives it: the object's own where it
+    has one, and otherwise what the translation declared it as."""
     named = getattr(obj, "ClassName", None)
-    return str(named()) if callable(named) else str(getattr(obj, "classname", ""))
+    given = str(named()) if callable(named) else str(getattr(obj, "classname", ""))
+    return given or (_declared(obj) or ("",))[0]
+
+
+def _declared(obj: Any) -> tuple[str, tuple[_Member, ...]] | None:
+    """The members the translation declared for the class of ``obj``, with that class's name,
+    or ``None`` for an object whose class the translation did not declare.
+
+    A class a macro defined is written the way its own declaration says, so its members do
+    not have to be listed here: ``_cxx_layout_`` is what the translator read off its base and
+    member declarations. A member this cannot write refuses the whole object by name, since a
+    member left out is a JSON that says the object holds less than it does.
+    """
+    return _layout(type(obj))
+
+
+#: What :func:`_layout` found for a class, by the class: its name and members, or ``None``
+#: for a class the translation did not declare.
+_DECLARED: dict[type[Any], tuple[str, tuple[_Member, ...]] | None] = {}
+
+
+def _layout(cls: type[Any]) -> tuple[str, tuple[_Member, ...]] | None:
+    """``cls``'s members in the order its streamer writes them - its bases' first, then its
+    own - looked at once and kept."""
+    if cls not in _DECLARED:
+        _DECLARED[cls] = _read_layout(cls)
+    return _DECLARED[cls]
+
+
+def _read_layout(cls: type[Any]) -> tuple[str, tuple[_Member, ...]] | None:
+    """The members ``_cxx_layout_`` declares for ``cls``, or ``None`` for a class the
+    translation did not declare."""
+    layout = getattr(cls, "_cxx_layout_", None)
+    if not (isinstance(layout, tuple) and len(layout) == 3):
+        return None
+    name, bases, writable = layout
+    made = tuple(member for base in bases for member in _base_members(cls, str(base)))
+    made += tuple(_declared_member(str(name), entry) for entry in writable)
+    return str(name), made
+
+
+def _base_members(cls: type[Any], name: str) -> tuple[_Member, ...]:
+    """The members of ``cls``'s base class ``name``, whose streamer writes them before the
+    object's own: a member of a base ROOT's streamer never writes - ``TObject``'s - is left
+    out of the layout, and out of the JSON."""
+    for kind in cls.__mro__:
+        layout = getattr(kind, "_cxx_layout_", None)
+        if isinstance(layout, tuple) and layout[0] == name:
+            found = _layout(kind)
+            return found[1] if found else ()
+    return ()
+
+
+def _writable(obj: Any) -> tuple[_Member, ...]:
+    """The members ``obj`` is written as: the ones its table gives it, or the ones its own
+    declaration does."""
+    found = MEMBERS.get(_classname(obj))
+    if found is not None:
+        return found
+    return (_declared(obj) or ("", ()))[1]
+
+
+def _declared_member(classname: str, entry: tuple[str, str, str, tuple[int, ...]]) -> _Member:
+    """One member of a declared class, as the type it goes out as: a scalar, a piece of text,
+    or the refusal that names the member and what it is declared as."""
+    name, kind = entry[0], entry[1]
+    of = f"an array of {kind}" if entry[3] else f"a {kind}"
+    text = TEXTS.get((kind, bool(entry[3])))
+    if text is not None:
+        return _Member(name, text)
+    scalar = SCALARS.get(kind)
+    if scalar is not None:
+        return _Member(name, scalar)
+    raise UnsupportedFeatureError(
+        f"TBufferJSON::ConvertToJSON does not yet write {classname}::{name}, which is "
+        f"declared as {of}. It writes the members a class declares of a number type "
+        f"({', '.join(SCALARS)}) and of text (std::string, TString, char[N], char*), and "
+        f"the members of the classes in its table ({', '.join(sorted(MEMBERS))}); a "
+        "container member needs a writer for the container it holds first"
+    )
 
 
 def _held(obj: Any, member: _Member) -> Any:
@@ -266,7 +366,13 @@ def _held(obj: Any, member: _Member) -> Any:
     writes is the object its constructor made rather than the one here."""
     classname = _classname(obj)
     found = getattr(obj, "members", None)
-    value = found.get(member.name) if isinstance(found, dict) else None
+    declared = getattr(type(obj), "_cxx_layout_", None)
+    if isinstance(found, dict):
+        value: Any = found.get(member.name)
+    elif isinstance(declared, tuple):
+        value = getattr(obj, member.name, None)
+    else:
+        value = None
     if value is None:
         value = getattr(obj, ATTRIBUTES.get(member.name, "_" + member.name), None)
     default = DEFAULTS.get((classname, member.name))
@@ -385,7 +491,7 @@ class _Writer:
     def member(self, obj: Any, name: str) -> str:
         """The JSON of one member of ``obj``, which is what ``ToJSON(obj, level, member)``
         writes in place of the whole object."""
-        members = MEMBERS.get(_classname(obj), ())
+        members = _writable(obj)
         for member in members:
             if member.name == name:
                 return self._member(member, obj, 0)
@@ -404,7 +510,7 @@ class _Writer:
         for kind, write in WRITERS:
             if isinstance(obj, kind):
                 return write(self, obj, depth)
-        if _classname(obj) in MEMBERS:
+        if _writable(obj):
             return self._object(obj, depth)
         raise UnsupportedFeatureError(
             "TBufferJSON::ConvertToJSON does not yet write the JSON of a "
@@ -439,7 +545,7 @@ class _Writer:
     # -- objects ----------------------------------------------------------------------
 
     def _object(self, obj: Any, depth: int) -> str:
-        members = [self._pair(member, obj, depth) for member in MEMBERS[_classname(obj)]]
+        members = [self._pair(member, obj, depth) for member in _writable(obj)]
         return self._braced(self._typed(members, _classname(obj), self._layout.colon), depth)
 
     def _typed(self, written: list[str], classname: str, colon: str) -> list[str]:
@@ -454,6 +560,10 @@ class _Writer:
 
     def _member(self, member: _Member, obj: Any, depth: int) -> str:
         value = _held(obj, member)
+        if member.kind == "chars":
+            return _quoted(str(value or "").split("\0")[0])
+        if member.kind in ("cstring", "strptr"):
+            return "null" if value is None else _quoted(value)
         if isinstance(member.kind, str):
             return _quoted("" if value is None else value)
         name = NUMPY_NAMES[np.dtype(member.kind)]
