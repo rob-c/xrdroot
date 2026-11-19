@@ -90,6 +90,8 @@ def _model_of(ntuple: Any) -> RNTupleModel:
             kind = field_type(cxx)
         except UnsupportedFeatureError:
             continue  # a record or a nested collection: read through views of its parts
+        if kind.record:
+            continue  # a class type: its members are what a view reads
         model.AddField(RField(name, kind))
     return model
 

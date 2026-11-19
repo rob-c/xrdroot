@@ -143,3 +143,13 @@ def test_an_entry_takes_and_gives_its_values_by_field_name() -> None:
         entry["n"] = object()
     with pytest.raises(KeyError, match="invalid field name: nothing"):
         entry["nothing"] = 1
+
+
+def test_a_model_of_every_field_leaves_a_record_to_the_views_of_its_members() -> None:
+    from xrdroot.pyroot.ntuple.reading import _model_of
+
+    class _Written:
+        def cxx_types(self) -> dict[str, str]:
+            return {"n": "int", "rec": "TLorentzVector", "vs": "std::vector<std::string>"}
+
+    assert _model_of(_Written()).GetFieldNames() == ["n"]

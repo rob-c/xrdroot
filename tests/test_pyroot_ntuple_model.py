@@ -29,7 +29,7 @@ def test_a_field_type_is_kept_by_the_name_roots_files_use(cxx, kept, spec) -> No
     assert (found.cxx, found.spec) == (kept, spec)
 
 
-@pytest.mark.parametrize("cxx", ["Vector3", "std::vector<std::string>", "auto", "foo<int>"])
+@pytest.mark.parametrize("cxx", ["TVector3*", "std::vector<std::string>", "auto", "foo<int>"])
 def test_a_field_of_a_record_or_a_nested_collection_is_refused(cxx) -> None:
     with pytest.raises(UnsupportedFeatureError, match="RNTuple field of type"):
         field_type(cxx)
@@ -127,6 +127,51 @@ def test_a_field_made_from_a_type_name_comes_back_in_a_result() -> None:
     assert model.GetFieldNames() == ["n"] and model.GetDefaultEntry().GetPtr("n").value == 0
 
 
-def test_a_field_of_a_class_type_is_refused_where_root_would_read_a_dictionary() -> None:
-    with pytest.raises(UnsupportedFeatureError, match="dictionary that describes its members"):
-        RFieldBase.Create("my_field", "AtlasLikeDataVector<CustomStruct>").Unwrap()
+def test_a_field_of_a_class_type_is_a_record_of_the_members_its_dictionary_lists() -> None:
+    """ROOT reads the class's dictionary to lay a record out, and writes the field under
+    the class's name; ``write.cxx`` of roottest's atlas-datavector asks for exactly this."""
+    field = RFieldBase.Create("my_field", "AtlasLikeDataVector<CustomStruct>").Unwrap()
+    assert field.GetTypeName() == "AtlasLikeDataVector<CustomStruct>"
+    kind = field.kind()
+    assert kind.record and kind.holder() == {}
+    model = ROOT.RNTupleModel.Create()
+    model.AddField(field)
+    entry = model.GetDefaultEntry()
+    entry["my_field"] = {}  # a record's value is its members', by name
+    assert entry["my_field"] == {}
+    with pytest.raises(TypeError, match="a dict of its members"):
+        entry["my_field"] = 3
+    with pytest.raises(UnsupportedFeatureError, match="is a record"):
+        assert kind.spec  # the writer has no record to declare
+
+
+def test_a_record_holds_the_members_of_the_classes_inside_it() -> None:
+    kind = field_type("TLorentzVector")
+    assert kind.record and [name for name, _ in kind.members] == ["fP", "fE"]
+    assert [member.cxx for _, member in kind.members] == ["TVector3", "double"]
+    assert [name for name, _ in kind.members[0][1].members] == ["fX", "fY", "fZ"]
+    assert kind.holder()["fE"].value == 0.0
+
+
+def test_a_name_that_is_no_class_is_refused_rather_than_taken_for_a_record() -> None:
+    """``flaot`` is a misspelt number: ROOT refuses a type no dictionary describes, and
+    so does xrdroot here. A capitalised name is a class, and a class is a record - one
+    with no members when nothing describes it."""
+    with pytest.raises(UnsupportedFeatureError, match="is not supported"):
+        field_type("flaot")
+    assert field_type("Vector3").members == ()
+
+
+def test_a_record_whose_dictionary_the_kit_cannot_read_has_no_members(monkeypatch) -> None:
+    from xrdroot.pyroot.core.reflection import TClass
+
+    def refuse(name: str) -> None:
+        raise RuntimeError("a library the kit cannot translate")
+
+    monkeypatch.setattr(TClass, "GetClass", staticmethod(refuse))
+    assert field_type("TLorentzVector").members == ()
+
+
+def test_a_record_that_holds_itself_is_refused() -> None:
+    with pytest.raises(UnsupportedFeatureError, match="holds a Node of itself"):
+        field_type("Node", frozenset({"Node"}))

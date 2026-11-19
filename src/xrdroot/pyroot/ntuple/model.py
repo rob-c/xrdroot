@@ -9,7 +9,7 @@ default entry: whoever fills with it makes entries of their own.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from typing import Any
 
 import numpy as np
@@ -57,9 +57,9 @@ class RFieldBase:
     what a class is made of, so a field made by name is the field a templated
     ``MakeField<T>`` makes. xrdroot's entries hold the types whose layout is
     beyond doubt - a number, ``std::string``, ``std::vector`` of a number - and
-    :func:`~.fields.field_type` refuses the rest in a sentence, which is where
-    a class type such as ``AtlasLikeDataVector<CustomStruct>`` stops: its
-    members are the dictionary's to say, and xrdroot reads no dictionary.
+    a class type, which becomes a record of the members its dictionary lists, so
+    that ``AtlasLikeDataVector<CustomStruct>`` is the field ROOT writes for it.
+    :func:`~.fields.field_type` refuses what is neither, in a sentence.
     """
 
     @staticmethod
@@ -162,7 +162,9 @@ class REntry:
         ``shared_ptr<T>`` of another type is in cppyy.
         """
         held, field = self._held(name), self._fields[str(name)]
-        if isinstance(held, RFieldPtr):
+        if field.kind().record:
+            held.update(_stored(field, value))
+        elif isinstance(held, RFieldPtr):
             held.value = _stored(field, value)
         else:
             held.assign(value)
@@ -172,6 +174,11 @@ def _stored(field: RField, value: Any) -> Any:
     """``value`` as the field's own type, or a ``TypeError`` naming both."""
     kind = field.kind()
     where = f"the RNTuple field {field.GetFieldName()!r} is a {field.GetTypeName()}"
+    if kind.record:
+        if not isinstance(value, Mapping):
+            raise TypeError(f"{where}, so it holds a dict of its members, not a "
+                            f"{type(value).__name__}")  # fmt: skip
+        return dict(value)
     if kind.dtype is None:
         if not isinstance(value, str):
             raise TypeError(f"{where}, so it holds a str, not a {type(value).__name__}")
