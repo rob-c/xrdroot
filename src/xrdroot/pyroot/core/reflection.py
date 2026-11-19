@@ -54,10 +54,6 @@ Layout = tuple[int, int, tuple[Element, ...]]
 #: The layouts files read so far describe each class with, in the order they were met.
 FILE_INFOS: dict[str, list[Layout]] = {}
 
-#: The classes a file's layout was reported as disagreeing with the class in memory about -
-#: which ROOT warns of once per class, however many files its layouts are read from.
-DISAGREED: set[str] = set()
-
 #: The dictionaries generated while the program ran, which ``gInterpreter->GenerateDictionary``
 #: names: their classes have a ``TClass`` bootstrap from then on, as a loaded library's would.
 GENERATED: set[str] = set()
@@ -112,116 +108,22 @@ def _known_as(name: str) -> str:
     return short_type(name).replace("std::", "").strip()
 
 
-def note_file_infos(infos: list[tuple[str, Layout]], source: Any = None) -> None:
+def note_file_infos(infos: list[tuple[str, Layout]]) -> None:
     """Note the layouts a file describes its classes with, as opening it makes ROOT do.
 
     A layout already met, by its checksum, is not noted again, nor is one the class in memory
     has: a class with ``ClassDef`` by its version, one without by its checksum. A class
     nothing in memory describes is emulated from its files, and ROOT numbers its layouts as
     they come, so a second layout of a version already taken gets the next number.
-
-    ``source`` is the file they were read from - the source itself, or its name - which the
-    ``BuildCheck`` warning names, so a layout of a version the class has in memory but of a
-    different checksum is reported where ROOT reports it: as the file is opened.
     """
-    origin = str(getattr(source, "name", source) or "")
     for name, (checksum, version, elements) in infos:
         if name not in FILE_INFOS and _undictionaried(name):
             message("Warning", "TClass::Init", "no dictionary for class %s is available", name)
-        met = _met(name, (checksum, version, elements), origin)
-        if met or _in_memory(name, checksum, version):
+        held = FILE_INFOS.setdefault(name, [])
+        if any(found[0] == checksum for found in held) or _in_memory(name, checksum, version):
             continue
-        held = FILE_INFOS[name]
         taken = {found[1] for found in held}
         held.append((checksum, _free_version(name, version, taken), elements))
-
-
-def _met(name: str, on_file: Layout, origin: str) -> bool:
-    """Whether a layout a file describes is one already met - reported here, or already held.
-
-    ROOT warns about a class once, so a layout it has reported, and one whose checksum a
-    layout already held has, are both met; the disagreement with the class in memory is
-    reported as the file is opened, which is where ROOT reports it.
-    """
-    held = FILE_INFOS.setdefault(name, [])
-    met = any(found[0] == on_file[0] for found in held) or name in DISAGREED
-    mine = _disagreement_with(name, on_file, met)
-    if mine is not None:
-        DISAGREED.add(name)
-        _disagreement(name, mine, on_file, origin)
-    return met
-
-
-def _wrong_width(mine: Layout, on_file: Layout) -> bool:
-    """Has a member of the file's layout a different width from the class's in memory?
-
-    ROOT stays silent about a layout whose checksum differs only because a member is spelled
-    differently and is as wide either way - ``roottest``'s ``AddVersion-3-6`` reads a file
-    recording ``long a`` into a class with ``long long a`` and prints no warning - and reports
-    the ones it cannot read across, which ``AddVersion-1-6``'s ``int a`` against
-    ``Long64_t a`` is.
-    """
-    here = {element[1]: element for element in mine[2]}
-    return any(e[1] in here and e[4] != here[e[1]][4] for e in on_file[2])
-
-
-def _disagreement_with(name: str, on_file: Layout, met: bool) -> Layout | None:
-    """The layout the class has in memory, when the one a file describes disagrees with it in
-    the way ROOT reports as the file is opened - a version the class versions, a checksum of
-    its own, and a member it would read at the wrong width.
-
-    A class already reported is not reported again: ``AddVersion-1-6`` reads
-    ``myclass1.root`` and then ``myclass2.root``, whose own layout of the class differs from
-    the class in memory just as much, and warns about the first file only.
-    """
-    current = TClass(name)._layout()
-    if met or current is None or not TClass(name)._versioned():
-        return None
-    same_version, differs = current[1] == on_file[1], current[0] != on_file[0]
-    return current if same_version and differs and _wrong_width(current, on_file) else None
-
-
-def _disagreement(name: str, mine: Layout, on_file: Layout, origin: str) -> None:
-    """The two warnings ROOT prints for a file whose layout of a versioned class disagrees
-    with the one in memory: ``BuildCheck``, which says the checksums differ and names the
-    file, and ``CompareContent``, which sets out each member the two record differently.
-
-    ROOT prints them when it opens the file, and the in-memory layout stays the current one -
-    which is why the class's layouts are listed afterwards as they were before the file was
-    read, the file's own for that version dropped.
-    """
-    if origin:
-        message("Warning", "TStreamerInfo::BuildCheck",
-                "\n   The StreamerInfo for version %d of class %s read from the file %s\n"
-                "   has a different checksum than the previously loaded StreamerInfo.\n"
-                "   Reading objects of type %s from the file %s\n"
-                "   (and potentially other files) might not work correctly.\n"
-                "   Most likely the version number of the class was not properly\n"
-                "   updated [See ClassDef(%s,%d)].",
-                on_file[1], name, origin, name, origin, name, on_file[1])
-    _compare_content(name, mine, on_file)
-
-
-def _declaration(element: Element) -> str:
-    """How ``CompareContent`` spells a member: its type and name, then the comment after it -
-    ``int a; //``."""
-    member = TStreamerElement(element)
-    return f"{member.GetTypeName()} {member.GetFullName()}; //{member.GetTitle()}"
-
-
-def _compare_content(name: str, mine: Layout, on_file: Layout) -> None:
-    """``TStreamerInfo::CompareContent``: each member of a versioned class whose type the file
-    records differently from the class in memory, the two declarations one above the other."""
-    here = {element[1]: element for element in mine[2]}
-    differ = [e for e in on_file[2] if e[1] in here and e[3] != here[e[1]][3]]
-    if not differ:
-        return
-    message("Warning", "TStreamerInfo::CompareContent",
-            "The following data member of\nthe on-file layout version %d of class '%s' "
-            "differs from\nthe in-memory layout version %d:\n   %s\nvs\n   %s",
-            on_file[1], name, mine[1],
-            "\n   ".join(_declaration(e) for e in differ),
-            "\n   ".join(_declaration(here[e[1]]) for e in differ))
 
 
 def _free_version(name: str, version: int, taken: set[int]) -> int:
