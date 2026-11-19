@@ -138,6 +138,21 @@ class atomic:
     def fetch_sub(self, delta: Any) -> Any:
         return self.fetch_add(-delta)
 
+    def exchange(self, value: Any) -> Any:
+        """``std::atomic::exchange``: the old value, with ``value`` stored in its place."""
+        with self._lock:
+            old = self._value
+            self._value = value
+        return old
+
+    def compare_exchange_strong(self, expected: Any, desired: Any) -> bool:
+        """``std::atomic::compare_exchange_strong``: store ``desired`` if still ``expected``."""
+        with self._lock:
+            if self._value != expected:
+                return False
+            self._value = desired
+            return True
+
     def __iadd__(self, delta: Any) -> atomic:
         self.fetch_add(delta)
         return self

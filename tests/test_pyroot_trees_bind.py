@@ -98,3 +98,18 @@ def test_a_method_is_called_with_the_numbers_and_strings_it_was_written_with():
 
 def test_a_list_of_labels_says_its_size_as_a_vector_does():
     assert Labels(["a", "b"]).size() == 2
+
+def test_a_whole_object_branch_answers_with_the_object_the_pointer_holds():
+    """``GetAddress()`` gives the pointer a macro set to ``SetAddress``, so what it is asked
+    for is the object's own: ``ptr->at(0)``, ``ptr->size()``, ``ptr->Px()``."""
+    from xrdroot.pyroot.trees.bind import _Whole
+
+    held = _Whole(ROOT.std.vector["double"]([1.0, 2.0, 3.0]), "vector<double>")
+    assert (held.at(1), held.size()) == (2.0, 3)
+    with pytest.raises(AttributeError):
+        held.no_such_member  # noqa: B018
+    # Before ``address`` is set - what copying one does - asking for it says so, rather than
+    # reading through the object it has not got yet.
+    half = _Whole.__new__(_Whole)
+    with pytest.raises(AttributeError, match="address"):
+        half.address  # noqa: B018

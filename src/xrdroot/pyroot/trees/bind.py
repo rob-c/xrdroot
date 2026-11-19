@@ -110,6 +110,13 @@ class _Whole(Address):
         if hasattr(self.address, "value"):
             self.address.value = made
 
+    def __getattr__(self, name: str) -> Any:
+        """Anything else is the object's own: ``GetAddress()`` gives the pointer a macro set,
+        so ``ptr->at(0)`` and ``ptr->size()`` reach the vector the pointer holds."""
+        if name == "address":  # before ``address`` exists, as ``__init__`` sets it last
+            raise AttributeError(name)
+        return getattr(self.get(), name)
+
 
 def bind_object(branch: Any, address: Any) -> dict[str, Address]:
     """What each column of a branch of objects is read into, given the pointer to read into."""

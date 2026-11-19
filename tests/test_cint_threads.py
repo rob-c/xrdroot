@@ -71,6 +71,15 @@ def test_an_atomic_changes_whole_and_reads_as_its_value() -> None:
     assert [0, 1, 2, 3, 4, 5, 6, 7][value] == 7
 
 
+def test_an_atomic_swaps_and_compares_as_cpps_does() -> None:
+    """``exchange`` hands back what was there; a failed ``compare_exchange_strong`` changes
+    nothing, which is the loop a lock-free flag is built from."""
+    value = atomic(3)
+    assert value.exchange(9) == 3 and int(value) == 9
+    assert value.compare_exchange_strong(1, 2) is False and int(value) == 9
+    assert value.compare_exchange_strong(9, 2) is True and int(value) == 2
+
+
 def test_mutexes_and_locks_are_taken_and_given_back() -> None:
     plain, again = mutex(), recursive_mutex()
     assert plain.try_lock() and not plain.try_lock()
