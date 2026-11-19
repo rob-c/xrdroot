@@ -32,6 +32,7 @@ def _fresh(tmp_path):
     DECLARED.update(declared)
     reflection.FILE_INFOS.clear()
     reflection.FILE_INFOS.update(infos)
+    reflection.DISAGREED.clear()
     reflection.GENERATED.clear()
     reflection.INTERPRETED_METHODS.clear()
 
@@ -433,6 +434,70 @@ void evo(const char *name) {
 def _evo(kind, name):
     run_source(VERSIONS % kind, "evo.C", (name,))
     DECLARED.pop("Evo")
+
+
+VERSED = """
+class Versed {
+public:
+   int a = 1;
+   ClassDef(Versed, 1);
+};
+"""
+
+#: A file's layout of a member of ``Versed``, as ``TStreamerInfo`` records one - its kind,
+#: name, title, ROOT's type code, its width, and the array and STL bookkeeping after them.
+LONG64 = ("TStreamerBasicType", "a", "", 16, 8, 1, 0, (0, 0, 0, 0, 0), "Long64_t", ())
+AS_WIDE = ("TStreamerBasicType", "a", "", 3, 4, 1, 0, (0, 0, 0, 0, 0), "signed int", ())
+
+
+def test_a_file_layout_differing_from_the_one_in_memory_names_the_file(capfd):
+    """ROOT's ``TStreamerInfo::BuildCheck``, which names the file when a layout of a version
+    the class has in memory records a member at another width, and ``CompareContent``, which
+    sets that member's two declarations out - once for the class, not once for each file."""
+    run_source(VERSED, "versed.C", call=False)
+    reflection.note_file_infos([("Versed", (0x1234567, 1, (LONG64,)))], "one.root")
+    reflection.note_file_infos([("Versed", (0x7654321, 1, (LONG64,)))], "two.root")
+    printed = capfd.readouterr().err
+    assert printed.count("Warning in <TStreamerInfo::BuildCheck>:") == 1
+    assert (
+        "   The StreamerInfo for version 1 of class Versed read from the file one.root\n"
+        "   has a different checksum than the previously loaded StreamerInfo." in printed
+    )
+    assert (
+        "Warning in <TStreamerInfo::CompareContent>: The following data member of\n"
+        "the on-file layout version 1 of class 'Versed' differs from\n"
+        "the in-memory layout version 1:\n   Long64_t a; //\nvs\n   int a; //" in printed
+    )
+
+
+def test_a_member_as_wide_either_way_is_not_reported(capfd):
+    """A member spelled differently that is as wide in the file as in memory is read across,
+    so ROOT says nothing - ``roottest``'s ``AddVersion-3-6`` reads ``long a`` into a class
+    with ``long long a`` - and a class with no layout in memory is not reported either."""
+    run_source(VERSED, "versed.C", call=False)
+    reflection.note_file_infos([("Versed", (0x1234, 1, (AS_WIDE,)))], "one.root")
+    assert "BuildCheck" not in capfd.readouterr().err
+    reflection.note_file_infos([("Elsewhere", (0x5678, 1, (LONG64,)))], "one.root")
+    assert "BuildCheck" not in capfd.readouterr().err
+
+
+def test_a_layout_noted_without_its_file_names_no_file(capfd):
+    """``BuildCheck`` names the file a layout came from, so a layout noted without one - as a
+    file read only for its layouts is - is answered with the members alone."""
+    run_source(VERSED, "versed.C", call=False)
+    reflection.note_file_infos([("Versed", (0x1234, 1, (LONG64,)))])
+    printed = capfd.readouterr().err
+    assert "BuildCheck" not in printed and "   Long64_t a; //" in printed
+
+
+def test_a_member_the_same_type_at_another_width_names_no_member(capfd):
+    """The report is of the checksums, which differ, and of the members whose types differ:
+    one recorded as the same type at another width is not set out."""
+    run_source(VERSED, "versed.C", call=False)
+    on_file = ("TStreamerBasicType", "a", "", 3, 8, 1, 0, (0, 0, 0, 0, 0), "int", ())
+    reflection.note_file_infos([("Versed", (0x99, 1, (on_file,)))], "one.root")
+    printed = capfd.readouterr().err
+    assert "BuildCheck" in printed and "CompareContent" not in printed
 
 
 def test_files_layouts_are_numbered_as_met_while_no_class_is_in_memory(capfd):
