@@ -365,6 +365,17 @@ def test_a_macro_compiled_against_a_loaded_library_calls_the_library_s_bodies() 
     assert run("built.C+") == 16
 
 
+def test_a_loaded_library_s_classes_are_the_ones_with_a_dictionary() -> None:
+    # `if (!TClassTable::GetDict("geo::Shape")) gSystem->Load("libShapes")` is how a program
+    # decides, and the dictionary it asks about is the library's own.
+    shapes()
+    assert ROOT.TClassTable.GetDict("geo::Shape") is None
+    assert load("libShapes") == 0
+    found = ROOT.TClassTable.GetDict("geo::Shape")
+    assert found is not None and found.GetName() == "Shape"
+    assert ROOT.TClassTable.GetDict("CountShapes") is None  # a function, not a class
+
+
 def test_a_header_a_library_provides_declared_in_python_or_a_line_is_the_library_s(
 ) -> None:
     shapes()

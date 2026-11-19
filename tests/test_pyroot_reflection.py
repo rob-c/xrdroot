@@ -300,6 +300,29 @@ def test_a_dictionary_generated_for_several_classes_is_noted_for_each():
     )
 
 
+def test_the_class_table_answers_for_the_classes_a_dictionary_describes():
+    # A program asks this to decide whether it must load a library first, so a class of
+    # ROOT's answers by its qualified name too, and one nobody describes does not.
+    assert ROOT.TClassTable.GetDict("TH1F").GetName() == "TH1F"
+    assert ROOT.TClassTable.GetDictAny("ROOT::TNamed").GetName() == "TNamed"
+    assert ROOT.gClassTable.GetDict("TNamed").GetName() == "TNamed"
+    assert ROOT.TClassTable.GetDict("NoSuchClassIsHere") is None
+    assert ROOT.TClassTable.GetDict("TH1F").IsLoaded()
+    ROOT.TClassTable.Add("NotedByHand", 1)  # a dictionary's class, noted as one from now on
+    assert ROOT.TClassTable.GetDict("NotedByHand").GetName() == "NotedByHand"
+
+
+def test_the_class_table_lists_the_classes_it_holds(capsys):
+    ROOT.TClassTable.Add("NotedByHand", 1)
+    names = ROOT.TClassTable.GetTable()
+    assert names == sorted(names) and "TH1F" in names and "NotedByHand" in names
+    assert ROOT.TClassTable.Classes() == len(names)
+    assert ROOT.TClassTable.At(0) == names[0]
+    assert ROOT.gClassTable.GetName() == "TClassTable"
+    ROOT.TClassTable.Print("TH1F")
+    assert "TH1F\n" in capsys.readouterr().out
+
+
 def test_tvirtualstreamerinfos_switches_are_kept():
     previous = ROOT.TVirtualStreamerInfo.SetStreamMemberWise(False)
     assert previous and not ROOT.TVirtualStreamerInfo.GetStreamMemberWise()

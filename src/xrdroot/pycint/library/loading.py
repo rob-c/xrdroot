@@ -253,6 +253,25 @@ def _declare(loaded: Loaded) -> None:
             DECLARED[name] = value
     for name, members in loaded.library.namespaces.items():
         DECLARED[name] = _namespace(DECLARED.get(name), name, members, module)
+    _dictionaried(loaded)
+
+
+def _dictionaried(loaded: Loaded) -> None:
+    """Tell ROOT's class table which classes this library's dictionary describes.
+
+    A program asks ``TClassTable::GetDict("Event")`` to decide whether it must load the
+    library first, which under ROOT is answered by the dictionary the library carries.
+    """
+    classes = [
+        name
+        for name, value in loaded.module.items()
+        if isinstance(value, type) and getattr(value, "__module__", None) == MODULE
+    ]
+    if not classes:
+        return
+    from ...pyroot.core.reflection import note_generated_dictionary
+
+    note_generated_dictionary(";".join(classes))
 
 
 def _namespace(
@@ -325,6 +344,9 @@ def loaded_names() -> list[str]:
 
 def forget_all() -> None:
     """Unload everything: a fresh session's state, for a test that starts over."""
+    from ...pyroot.core.reflection import forget_dictionaries
+
+    forget_dictionaries()
     LOADED.clear()
     HEADERS.clear()
     WATCHED.clear()
