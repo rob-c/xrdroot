@@ -884,11 +884,24 @@ def _table(buf: WBuffer, values: list[int], width: int, code: str) -> None:
     buf.raw(struct.pack(f">{width}{code}", *values, *([0] * (width - len(values)))))
 
 
-def _branch(buf: WBuffer, column: _Column, entries: int, compress: int, count: int) -> list[int]:
-    """One ``TBranch``, leaves and all; where its leaves landed comes back."""
+def _branch(
+    buf: WBuffer,
+    column: _Column,
+    entries: int,
+    compress: int,
+    count: int,
+    *,
+    titles_type: bool = True,
+) -> list[int]:
+    """One ``TBranch``, leaves and all; where its leaves landed comes back.
+
+    ``TBranch::GetTitle`` is the leaf list the branch was made from, ``x/F``, for a
+    tree whose branches :meth:`TTree.Branch` was given one at a time; an ntuple makes
+    its branches another way, and there ROOT titles each one with the leaf's own name.
+    """
     at = buf.tag("TBranch")
     index = buf.start(version(buf, "TBranch", BRANCH_VERSION))
-    buf.named(column.name, column.title, BITS | BRANCH_BITS)
+    buf.named(column.name, column.title if titles_type else column.leaf_title, BITS | BRANCH_BITS)
     fill = buf.start(ATTRIBUTE_VERSION)
     buf.i16(0)  # fFillColor
     buf.i16(FILL_STYLE)  # what every TBranch ROOT makes carries
@@ -1520,7 +1533,9 @@ class WritableTree:
         if isinstance(column, _Rows):
             count = origin + places[column.counter.name][0] + MAP_OFFSET
         codes = self._file._codes if column.compress is None else column.compress
-        places[column.name] = _branch(buf, column, self._entries, codes, count)
+        places[column.name] = _branch(
+            buf, column, self._entries, codes, count, titles_type=self.classname == "TTree"
+        )
         return [origin + place + MAP_OFFSET for place in places[column.name]]
 
 

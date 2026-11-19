@@ -654,6 +654,18 @@ def test_an_ntuple_is_a_tree_record_wrapped_in_its_own_with_how_many_variables_i
         assert "TTree" in described
 
 
+def test_an_ntuple_titles_each_branch_with_its_leaf_name_and_a_tree_with_its_leaf_list():
+    """ROOT's ``TNtuple::Init`` makes its branches from a colon-separated name list rather
+    than from a leaf list, and the title it leaves behind is the leaf's plain name, where
+    ``TTree::Branch("x", &x, "x/F")`` keeps the ``/F`` in the branch's title."""
+    row = [{"px": 1.5}]
+    for kind, title in (("TNtuple", "px"), ("TNtupleD", "px"), ("TTree", "px/F")):
+        column = "d" if kind == "TNtupleD" else "f"
+        data = written({"px": column}, row, name="nt", classname=kind)
+        with read_back(data) as back:
+            assert [record.title for record in back["nt"].records] == [title], kind
+
+
 def test_an_ntuple_of_doubles_is_a_tntupled():
     data = written({"a": float}, [{"a": 0.25}], name="nd", classname="TNtupleD")
     _buf, version, _end = tree_record(data, "nd")
