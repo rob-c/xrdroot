@@ -30,6 +30,16 @@ are :data:`DERIVED`, read from the members a file's object does hold, and
 only where it holds all of them - a name the object gives no reason to
 trust is not offered.
 
+A ``TBits`` is drawn rather than read: ``TSelectorDraw::ProcessFillObject``
+fills the number of each bit such an object holds *set*, one fill a bit, so
+``event.fTriggerBits`` is a `TBits` member an expression names as it names a
+member which is a number. What says an object is one is the three members
+ROOT's class keeps - ``fNbits``, ``fNbytes`` and ``fAllBits`` - so a member
+holding them is offered under two names: itself, whose value is the numbers
+of the bits set, and ``TestBitNumber``, whose call's argument indexes a value
+per bit position - ``TestBitNumber(28)``, which is what ROOT's own macro
+selects on.
+
 What a whole branch offers as a name is learned here from the values of a few
 entries of it, because what the class holds is the file's description of it,
 which is above this layer in the component graph. That is a limit on names,
@@ -63,6 +73,18 @@ Array = Any
 #: One basket is read whatever its count, and a collection that is empty in the
 #: first entries still offers its members if a later one is looked at.
 SAMPLE = 8
+
+#: The members ``TBits`` keeps, which is how a file's object says it is one: a
+#: ``TBits`` the tree holds is drawn a set bit at a time, and no other object is.
+BITS_MEMBERS = ("fNbits", "fNbytes", "fAllBits")
+
+#: ROOT's method asking after one bit of a ``TBits``, whose argument is the bit.
+TEST_BIT = "TestBitNumber"
+
+#: What a ``TBits`` name reads: the numbers of the bits it holds set - what ROOT's
+#: draw fills - or, for ``TestBitNumber``, a value per bit position the call indexes.
+SET = "set"
+ASKED = "asked"
 
 
 class _Absent:
@@ -154,6 +176,14 @@ def _dims(values: Sequence[Any]) -> int:
     return 0
 
 
+def _bits(objects: Sequence[Any]) -> bool:
+    """Are these objects a ``TBits``, which ROOT's draw fills a set bit at a time?"""
+    return bool(objects) and all(
+        isinstance(obj, dict) and all(_found(obj, name) is not MISSING for name in BITS_MEMBERS)
+        for obj in objects
+    )
+
+
 def _learn(
     branch: str,
     objects: Sequence[Any],
@@ -207,6 +237,32 @@ def _derive(
             learned.kinds.setdefault(name, "d")
 
 
+def _offer_bits(
+    branch: str,
+    path: tuple[str, ...],
+    learned: _Learned,
+    dims: int,
+    crossed: bool,
+) -> None:
+    """The two names a ``TBits`` member offers: the bits it holds set, and the method asking one.
+
+    Both are a row per object - or, through a collection, a row per element -
+    and both are whole numbers, which is what ``TTreeFormula::IsInteger`` says
+    of a ``TBits``: ROOT bins it a whole number wide.
+    """
+    asked = (*path[:-1], f"{path[-1]}.{TEST_BIT}")
+    for name, reading in ((path, SET), (asked, ASKED)):
+        written = ".".join(name)
+        names = [written, f"{branch}.{written}"]
+        if crossed:
+            names.append(name[-1])
+        for one in names:
+            learned.paths.setdefault(one, (branch, path))
+            learned.bits.setdefault(one, reading)
+            learned.dims.setdefault(one, dims + 1)
+            learned.kinds.setdefault(one, "i")
+
+
 def _offer(
     branch: str,
     path: tuple[str, ...],
@@ -219,6 +275,8 @@ def _offer(
     deeper = _objects(values)
     if deeper is not None:
         elements, rows = deeper
+        if _bits(elements):
+            _offer_bits(branch, path, learned, dims, crossed)
         _learn(branch, elements, path, learned, dims + rows, crossed or bool(rows))
         return
     written = ".".join(path)
@@ -253,7 +311,7 @@ DERIVED_OPS: dict[str, Callable[..., Array]] = {"mean": _mean}
 class _Learned:
     """What one whole-object branch offers, as it is learned member by member."""
 
-    __slots__ = ("paths", "dims", "kinds", "derived")
+    __slots__ = ("paths", "dims", "kinds", "derived", "bits")
 
     def __init__(self) -> None:
         self.paths: dict[str, tuple[str, tuple[str, ...]]] = {}
@@ -261,6 +319,8 @@ class _Learned:
         self.kinds: dict[str, str] = {}
         #: The methods computed from members, against the members they read.
         self.derived: dict[str, tuple[tuple[str, ...], str]] = {}
+        #: The members that are a ``TBits``, against what of its bits each name reads.
+        self.bits: dict[str, str] = {}
 
 
 class Whole:
@@ -271,7 +331,7 @@ class Whole:
     branch it is read from and the path into each entry's object.
     """
 
-    __slots__ = ("paths", "dims", "kinds", "derived")
+    __slots__ = ("paths", "dims", "kinds", "derived", "bits")
 
     def __init__(
         self,
@@ -279,6 +339,7 @@ class Whole:
         dims: Mapping[str, int] | None = None,
         kinds: Mapping[str, str] | None = None,
         derived: Mapping[str, tuple[tuple[str, ...], str]] | None = None,
+        bits: Mapping[str, str] | None = None,
     ) -> None:
         self.paths = dict(paths or {})
         #: How many dimensions each name has, as binding needs it before anything is read.
@@ -286,6 +347,8 @@ class Whole:
         self.kinds = dict(kinds or {})
         #: The methods computed from members - ``fH.GetMean`` - against what they read.
         self.derived = dict(derived or {})
+        #: The members that are a ``TBits``, against what of its bits each name reads.
+        self.bits = dict(bits or {})
 
     def __repr__(self) -> str:
         objects = len({branch for branch, _path in self.paths.values()})
@@ -397,7 +460,22 @@ class Whole:
             members, op = self.derived[name]
             return DERIVED_OPS[op](*(self.read(member, entries) for member in members))
         _branch, path = self.paths[name]
-        return _column(name, [_take(entry, path) for entry in entries])
+        values = [_take(entry, path) for entry in entries]
+        if name in self.bits:
+            return _bits_column(name, values, self.bits[name])
+        return _column(name, values)
+
+    def tested(self, parts: Sequence[str]) -> str | None:
+        """The name ``parts`` give if it asks into a ``TBits`` - ``fTriggerBits.TestBitNumber``.
+
+        The call's argument indexes the bit, so what it is read from is a value
+        per bit position rather than a value per object: the name ROOT's macro
+        selects on, which the caller answers with an indexed ``Ref``.
+        """
+        for name in self.written(parts):
+            if self.bits.get(name) == ASKED:
+                return name
+        return None
 
 
 def _take(value: Any, path: tuple[str, ...]) -> Any:
@@ -461,6 +539,47 @@ def _column(name: str, values: Sequence[Any]) -> Any:
     return [list(value) if isinstance(value, (list, tuple)) else value for value in values]
 
 
+def _bits_column(name: str, values: Sequence[Any], reading: str) -> Any:
+    """A ``TBits`` member's column: per object, what its bits are.
+
+    ROOT draws a ``TBits`` rather than reading it as one value -
+    ``TSelectorDraw::ProcessFillObject`` fills the number of each bit that is
+    set, one fill a bit, and warns and fills nothing for any other object - so
+    the column of a name that is a ``TBits`` is a row of bit numbers per object,
+    empty for an object whose bits are all clear. ``TestBitNumber`` asks after
+    one bit instead, so what it reads is a value per bit position, which the
+    call's argument indexes.
+    """
+    _consistent(name, values)
+    return [_bit_row(name, value, reading) for value in values]
+
+
+def _bit_row(name: str, value: Any, reading: str) -> Any:
+    """One object's bits - or, through a collection, one row of them per element."""
+    if isinstance(value, (list, tuple)):
+        return [_bit_row(name, item, reading) for item in value]
+    if not isinstance(value, dict):
+        raise UnsupportedFeatureError(
+            f"{name!r} is a ``TBits`` of the objects this tree holds whole, and one entry "
+            f"does not hold it; an expression is read entry for entry, so select the "
+            f"entries that all hold it"
+        )
+    bits = _bits_of(value)
+    return np.flatnonzero(bits) if reading == SET else bits
+
+
+def _bits_of(obj: Mapping[str, Any]) -> Any:
+    """One ``TBits`` as a value per bit position: ``1`` where the bit is set, else ``0``.
+
+    The bytes are ``fAllBits`` and the count ``fNbits``, which is ``TBits``'s own
+    layout - its set bits are the ones ``FirstSetBit`` walks, so drawing them is
+    the numbers of the bits ROOT's own loop would take one after another.
+    """
+    held = np.asarray(_found(obj, "fAllBits"), dtype=np.uint8).reshape(-1)
+    count = int(np.asarray(_found(obj, "fNbits")).reshape(-1)[0])
+    return np.unpackbits(held, bitorder="little")[:count].astype(np.int64)
+
+
 def spelled(part: str) -> tuple[str, ...]:
     """A name as written, then as the member the getter of that name reads.
 
@@ -486,19 +605,21 @@ def learned(samples: Mapping[str, Sequence[Any]], taken: Sequence[str] = ()) -> 
     dims: dict[str, int] = {}
     kinds: dict[str, str] = {}
     derived: dict[str, tuple[tuple[str, ...], str]] = {}
+    bits: dict[str, str] = {}
     for branch, values in samples.items():
         own = _Learned()
         _learn(branch, list(values), (), own, 0)
-        _members(both, own, dims, kinds, taken)
+        _members(own, both, dims, kinds, bits, taken)
         _methods(own, both, derived, dims, kinds, taken)
-    return Whole(both, dims, kinds, derived)
+    return Whole(both, dims, kinds, derived, bits)
 
 
 def _members(
-    both: dict[str, tuple[str, tuple[str, ...]]],
     own: _Learned,
+    both: dict[str, tuple[str, tuple[str, ...]]],
     dims: dict[str, int],
     kinds: dict[str, str],
+    bits: dict[str, str],
     taken: Sequence[str],
 ) -> None:
     """Keep the members one whole branch offers, a name an earlier branch had staying with it."""
@@ -508,6 +629,8 @@ def _members(
         both.setdefault(name, found)  # the first whole branch of the tree wins
         dims.setdefault(name, own.dims[name])
         kinds.setdefault(name, own.kinds[name])
+        if name in own.bits:
+            bits.setdefault(name, own.bits[name])
 
 
 def _methods(

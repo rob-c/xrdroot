@@ -15,6 +15,7 @@ times, and ``lines`` the ``i`` lines the macro made.
 from __future__ import annotations
 
 import pathlib
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
@@ -447,3 +448,97 @@ def test_a_call_a_file_cannot_answer_names_the_member_the_rest_of_it_reads():
     assert whole.member(("event", "GetHistogram", "GetXaxis", "GetXmax")) == (
         "event.fH.fXaxis.fXmax"
     )
+
+
+# -- an object ROOT draws rather than reads: a TBits ------------------------------
+
+
+class _Objects(dict):
+    """A tree of one whole-object branch, as a draw asks a source for the objects."""
+
+    def __init__(self, objects: list[dict[str, Any]], branch: str = "event") -> None:
+        super().__init__({branch: _Branch("dict", objects)})
+        self.objects = objects
+        self.friends: dict[str, Any] = {}
+
+    def __len__(self) -> int:
+        return len(self.objects)
+
+
+def _bits(set_bits: Sequence[int], count: int = 20) -> dict[str, Any]:
+    """A ``TBits`` as a file holds one whole: the bytes ``fAllBits`` and the count ``fNbits``."""
+    raw = np.zeros((count + 7) // 8, np.uint8)
+    for bit in set_bits:
+        raw[bit // 8] |= 1 << bit % 8
+    return {"fNbits": np.uint32(count), "fNbytes": np.uint32(len(raw)), "fAllBits": raw}
+
+
+def _triggering() -> _Objects:
+    """The same two objects as ``Event``: a trigger mask each, and one track's apiece."""
+    return _Objects(
+        [
+            {"fTriggerBits": _bits([2, 5]), "fTracks": [{"fPx": 1.5, "fTriggerBits": _bits([5])}]},
+            {
+                "fTriggerBits": _bits([7, 8, 9]),
+                "fTracks": [{"fPx": -2.5, "fTriggerBits": _bits([1])}],
+            },
+        ]
+    )
+
+
+def test_a_tbits_is_drawn_as_the_number_of_each_bit_it_holds_set():
+    # TSelectorDraw::ProcessFillObject fills a set bit at a time: one fill a bit.
+    histogram = draw(_triggering(), "event.fTriggerBits")
+    assert histogram.entries == 5  # the two bits of the first object, the three of the second
+    assert histogram.mean() == pytest.approx(6.2)  # 2, 5, 7, 8 and 9
+
+
+def test_a_tbits_of_a_collection_is_drawn_a_set_bit_at_a_time_too():
+    # One mask a track, and a fill for each bit either track holds set: 5, then 1.
+    histogram = draw(_triggering(), "fTracks.fTriggerBits")
+    assert histogram.entries == 2
+    assert histogram.mean() == pytest.approx(3.0)
+
+
+def test_a_tbits_is_drawn_through_the_getter_that_names_its_member():
+    # ROOT's Event::GetTriggerBits() returns fTriggerBits, and a file holds the member.
+    histogram = draw(_triggering(), "event.GetTriggerBits()")
+    assert histogram.entries == draw(_triggering(), "event.fTriggerBits").entries == 5
+
+
+def test_a_bit_of_every_element_of_a_collection_is_asked_after_one_by_one():
+    # ``fTracks.fTriggerBits.TestBitNumber(5)`` is one value a track, so it selects
+    # with ``fPx`` a track at a time, as ROOT's own treeformula/event test draws it.
+    tree = _triggering()
+    histogram = draw(tree, "fTracks.fPx", "fTracks.fTriggerBits.TestBitNumber(5)")
+    assert histogram.entries == 1  # only the first entry's track has bit 5 set
+    assert histogram.mean() == pytest.approx(1.5)
+
+
+def test_a_bit_of_an_object_that_is_no_collection_selects_an_entry_at_a_time():
+    tree = _triggering()
+    histogram = draw(tree, "event.fTracks.fPx", "event.fTriggerBits.TestBitNumber(7)")
+    assert histogram.entries == 1  # the second entry's mask has bit 7 set
+    assert histogram.mean() == pytest.approx(-2.5)
+
+
+def test_a_tbits_is_binned_a_whole_number_wide_as_root_bins_one():
+    names = TreeNames(_triggering())
+    assert is_integer(compile_formula("event.fTriggerBits", names), _triggering(), names.whole)
+
+
+def test_a_tbits_an_entry_does_not_hold_is_a_refusal():
+    whole = Whole(
+        {"fBits": ("e", ("fBits",))},
+        {"fBits": 1},
+        {"fBits": "i"},
+        bits={"fBits": "set"},
+    )
+    with pytest.raises(Refused, match="one entry does not hold it"):
+        whole.read("fBits", [{"fBits": 1.0}, {"fBits": 2.0}])
+
+
+def test_asking_after_a_bit_of_a_member_that_is_no_tbits_is_no_such_name():
+    whole = learned({"e": [{"fN": 1.0}]})
+    assert whole.tested(("fN",)) is None
+    assert Whole().tested(("fN",)) is None

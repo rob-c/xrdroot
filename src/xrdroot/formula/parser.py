@@ -360,6 +360,9 @@ class Parser:
         while not args and (step := self._chain()) is not None:
             parts.append(step)
             args = self._arguments() if self.peek.is_op("(") else ()
+        tested = self.names.tested(parts)
+        if tested is not None:
+            return self._tested(tested, args)
         found = self.names.member(parts)
         if found is not None:
             return self._indexed(Ref(found, args))
@@ -372,6 +375,18 @@ class Parser:
                 f"GetXmax() for fXmax; name the member the method works from instead"
             )
         return None
+
+    def _tested(self, column: str, args: tuple[Node, ...]) -> Node:
+        """``fTriggerBits.TestBitNumber(28)``: the bit's value, out of what the object holds.
+
+        A ``TBits`` is read as a value per bit position - one dimension more than
+        the object it belongs to - so the call's argument indexes the bit and the
+        dimensions the object has are looped over, which is how ROOT reads the
+        bit of every element of a collection it is asked a bit of.
+        """
+        self._arity("TestBitNumber", args, 1, 1)
+        looped = (None,) * (self.names.dimensions(column) - 1)
+        return self._indexed(Ref(column, (*looped, args[0])))
 
     def _chain(self) -> str | None:
         """The ``.Member`` written after a call, as the part of a name to go on with.

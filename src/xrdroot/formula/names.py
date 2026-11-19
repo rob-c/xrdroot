@@ -84,6 +84,20 @@ class Names:
         """
         return self.whole.owner(parts) if self.whole is not None else None
 
+    def tested(self, parts: Sequence[str]) -> str | None:
+        """The column a ``TestBitNumber(i)`` of an object the tree holds whole is read from.
+
+        ``TBits::TestBitNumber`` asks after one bit, which is a value per bit
+        position that the call's own argument indexes - so the name is a
+        dimension deeper than the object, and :meth:`dimensions` says how much
+        deeper, for the caller to index the bit it asks about.
+        """
+        return self.whole.tested(parts) if self.whole is not None else None
+
+    def dimensions(self, name: str) -> int:
+        """How many dimensions a member of an object the tree holds whole has."""
+        return 0 if self.whole is None else self.whole.dims.get(name, 0)
+
     def nearest(self, written: str, others: Collection[str] = ()) -> str:
         """A clause naming the branches that look most like ``written``, for a refusal."""
         close = difflib.get_close_matches(written, [*self.names, *others], n=3, cutoff=0.6)
