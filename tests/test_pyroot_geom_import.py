@@ -171,11 +171,6 @@ def test_a_placement_is_a_matrix_of_the_kind_the_file_states(tmp_path: Path) -> 
            (tuple(world.GetNode(0).GetMatrix().GetTranslation()), (0.0, 0.0, 10.0)))  # fmt: skip
 
 
-def test_a_geometry_root_wrote_is_still_refused_by_name(tmp_path: Path) -> None:
-    with pytest.raises(UnsupportedFeatureError, match=r"'a\.root' was not read"):
-        ROOT.TGeoManager.Import("a.root")
-
-
 def test_a_solid_kind_the_reader_does_not_build_is_refused_by_name(tmp_path: Path) -> None:
     document = DOCUMENT.replace(
         '<box name="box1" lunit="cm" x="2" y="4" z="6"/>',
@@ -199,8 +194,8 @@ def test_the_world_volume_is_one_the_file_defines(tmp_path: Path) -> None:
         ROOT.TGeoManager.Import(str(written(tmp_path, document)))
 
 
-def test_a_file_that_is_not_gdml_is_refused_by_its_extension(tmp_path: Path) -> None:
+def test_a_file_that_is_neither_gdml_nor_a_root_file_is_refused_by_name(tmp_path: Path) -> None:
     path = tmp_path / "geometry.geo"
     path.write_text(DOCUMENT)
-    with pytest.raises(UnsupportedFeatureError, match="xrdroot reads only the GDML"):
+    with pytest.raises(UnsupportedFeatureError, match="neither a GDML document nor a ROOT"):
         ROOT.TGeoManager.Import(str(path))

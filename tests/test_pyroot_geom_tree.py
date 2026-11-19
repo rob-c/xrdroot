@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 import xrdroot.pyroot as ROOT
-from geomsupport import geometry_session  # noqa: F401
+from geomsupport import DATA, geometry_session  # noqa: F401
 from pyrootsupport import expect
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.geom.painting import solids
@@ -183,7 +183,8 @@ def test_the_current_geometry_is_there_only_once_one_is_made() -> None:
      (lambda g: g.MakePhysicalNode("/TOP_1"), "MakePhysicalNode"),
      (lambda g: g.CheckOverlaps(0.1), "CheckOverlaps"), (lambda g: g.FindNode(0, 0, 0), "FindNode"),
      (lambda g: g.Export("g.gdml"), "'g.gdml' was not written"),
-     (lambda g: ROOT.TGeoManager.Import("a.root"), r"'a\.root' was not read"),
+     (lambda g: ROOT.TGeoManager.Import(str(DATA / "tgeometry-small-6.40.root")),
+      "holds no TGeoManager"),
      (lambda g: g.GetElementTable(), "RadioNuclides.txt"),
      (lambda g: g.GetTopVolume().RandomRays(10), "RandomRays tracks rays"),
      (lambda g: g.GetTopVolume().CheckOverlaps(), "CheckOverlaps needs"),

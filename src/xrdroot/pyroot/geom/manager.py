@@ -29,12 +29,23 @@ _CURRENT: list[TGeoManager] = []
 #: ``TGeoManager::SetVerboseLevel``'s level - reports are said at 1 and above - and
 #: ``SetExportPrecision``'s digits, kept to be asked back.
 _SETTINGS = {"verbose": 1, "precision": 17}
+#: Whether the navigator's cache has been built yet: ROOT makes room for one depth of geometry
+#: per process, so only the first geometry read is told what depth that is.
+_CACHE = {"said": False}
 
 
 def _said(place: str, text: str) -> None:
     """One of ``TGeoManager``'s reports, on standard error, unless it was told to be quiet."""
     if _SETTINGS["verbose"] > 0:
         Info(place, text)
+
+
+def _navigator_cache() -> tuple[str, str] | None:
+    """``TGeoNavigator::BuildCache``'s report, the first time a geometry is read in a process."""
+    if _CACHE["said"]:
+        return None
+    _CACHE["said"] = True
+    return ("TGeoNavigator::BuildCache", "--- Maximum geometry depth set to 100")
 
 
 class TVirtualGeoPainter(TNamed):
@@ -58,12 +69,16 @@ class TVirtualGeoPainter(TNamed):
 class TGeoManager(Makers, TNamed):
     """``TGeoManager(name, title)``: a geometry, made current as it is made."""
 
-    def __init__(self, name: Any = "Geometry", title: Any = "default geometry") -> None:
+    def __init__(self, name: Any = "Geometry", title: Any = "default geometry",
+                 _hello: bool = True) -> None:  # fmt: skip
+        """``_hello`` is false for a geometry made to hold what a file already describes: ROOT
+        says nothing of one it reads back, only what closing it afterwards says."""
         super().__init__(str(name), str(title))
         self._lists: dict[str, TList] = {
             key: TList() for key in ("materials", "media", "shapes", "volumes", "matrices")
         }
         self._top: Any = None
+        self._loaded: tuple[int, int, int, int] | None = None
         self._settings = {"nsegments": 20, "vislevel": 3, "visoption": 1, "topvisible": False}
         self._closed = False
         self._painter = TVirtualGeoPainter()
@@ -71,7 +86,9 @@ class TGeoManager(Makers, TNamed):
         from ..core.troot import gROOT
 
         gROOT.GetListOfGeometries().Add(self)
-        _said("TGeoManager::TGeoManager", f"Geometry {self.GetName()}, {self.GetTitle()} created")
+        if _hello:
+            _said("TGeoManager::TGeoManager",
+                  f"Geometry {self.GetName()}, {self.GetTitle()} created")  # fmt: skip
 
     # -- what it lists ------------------------------------------------------------
 
@@ -145,10 +162,19 @@ class TGeoManager(Makers, TNamed):
     def GetMasterVolume(self) -> Any:
         return self._top
 
+    def _loaded_from_file(self, top: Any, counts: tuple[int, int, int, int]) -> None:
+        """The top volume and the counts a file gave: a geometry read back is not counted and
+        voxelised again, since the file holds all of that already."""
+        self._top, self._loaded = top, counts
+
     def CloseGeometry(self, option: str = "d") -> None:
         """``CloseGeometry``: the tree counted - nodes, volumes and depth - as ROOT reports it."""
         if self._top is None:
             self.Error("CloseGeometry", "you have to define the top volume first")
+            return
+        if self._loaded is not None:
+            self._report_loaded()
+            self._closed = True
             return
         nodes = list(walk(self._top))
         depth = max((level for *_, level, _ in nodes), default=0)
@@ -164,6 +190,26 @@ class TGeoManager(Makers, TNamed):
         ):  # fmt: skip
             _said(f"TGeoManager::{place}", said)
         self._closed = True
+
+    def _report_loaded(self) -> None:
+        """What ROOT says closing a geometry read from a file: where the tree came from, and
+        the numbers the file's own count of it gives."""
+        nodes, uids, level, widest = self._loaded or (0, 0, 0, 0)
+        top = self._top.GetName()
+        depth = _navigator_cache()
+        told = [
+            ("TGeoManager::CloseGeometry", "Geometry loaded from file..."),
+            ("TGeoManager::SetTopVolume", f"Top volume is {top}. Master volume is {top}"),
+            ("TGeoManager::CloseGeometry", "Voxelization retrieved from file"),
+            ("TGeoManager::CountLevels", f"max level = {level}, max placements = {widest}"),
+            ("TGeoManager::CloseGeometry", f"{nodes} nodes/ {uids} volume UID's in "
+                                            f"{self.GetTitle()}"),
+            ("TGeoManager::CloseGeometry", "----------------modeler ready----------------"),
+        ]  # fmt: skip
+        if depth is not None:
+            told.insert(2, depth)
+        for place, said in told:
+            _said(place, said)
 
     def _unique_volumes(self) -> int:
         """How many volume UIDs there are: volumes of one name share one, as ROOT's do."""
@@ -251,22 +297,19 @@ class TGeoManager(Makers, TNamed):
 
     @staticmethod
     def Import(filename: str, name: str = "", option: str = "") -> Any:
-        """``Import``: the geometry the GDML file at ``filename`` describes, made current.
+        """``Import``: the geometry at ``filename`` - a GDML file, or a ROOT file holding a
+        ``TGeoManager`` - made current.
 
-        ROOT's ``name`` and ``option`` neither rename nor change what GDML describes: the
-        file's ``<setup>`` names the geometry, as it does for ROOT.
+        ROOT's ``name`` and ``option`` neither rename nor change what the file describes: the
+        GDML's ``<setup>``, or the manager the ROOT file holds, names the geometry.
         """
         from .imported import from_gdml
+        from .rootfile import from_file
 
         _said("TGeoManager::Import", f"Reading geometry from file: {filename}")
-        if not str(filename).lower().endswith((".gdml", ".xml")):
-            raise UnsupportedFeatureError(
-                f"TGeoManager::Import reads a GDML file or a TGeoManager ROOT wrote, and "
-                f"xrdroot reads only the GDML; {filename!r} was not read - read the geometry "
-                f"from the GDML it was made from, or build it with TGeoManager's own methods "
-                f"instead"
-            )
-        return from_gdml(str(filename))
+        if str(filename).lower().endswith((".gdml", ".xml")):
+            return from_gdml(str(filename))
+        return from_file(str(filename))
 
     def GetElementTable(self) -> Any:
         raise UnsupportedFeatureError(
