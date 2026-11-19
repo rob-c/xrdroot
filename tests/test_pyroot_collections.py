@@ -380,3 +380,106 @@ def test_a_collection_that_owns_its_entries_deletes_them_with_it():
     kept.Add(ROOT.TNamed("b", "B"))
     kept.Delete()  # not an owner: nothing deleted, nothing to delete
     assert len(kept) == 0
+
+
+def test_a_map_holds_a_pair_per_key_and_finds_it_from_either_side():
+    held = ROOT.TMap()
+    key, value = ROOT.TNamed("key", "KEY"), ROOT.TNamed("value", "VALUE")
+    held.Add(key, value)
+    assert held.GetSize() == 1
+    assert held.GetValue("key") is value
+    assert held.GetValue(key) is value
+    assert held["key"] is value
+    assert held("key") is value
+    assert held.FindObject("key").Key() is key
+    assert held.FindObject(key).Value() is value
+    assert held.GetName() == "TMap"
+
+
+def test_a_map_finds_the_key_of_a_value_either_way_it_is_named():
+    held = ROOT.TMap()
+    key, value = ROOT.TNamed("key", "KEY"), ROOT.TNamed("value", "VALUE")
+    held.Add(key, value)
+    assert held.GetKey(value) is key
+    assert held.GetKey("value") is key
+
+
+def test_a_map_added_a_key_it_already_holds_replaces_that_entry():
+    held = ROOT.TMap()
+    key, first, second = (ROOT.TNamed("key", "KEY"), ROOT.TNamed("first", ""),
+                          ROOT.TNamed("second", ""))
+    held.Add(key, first)
+    held.Add(key, second)
+    assert held.GetSize() == 1
+    assert held.GetValue(key) is second
+    assert held.Remove("none") is None
+    assert held.GetValue("none") is None
+    assert held.GetKey("none") is None
+    assert held.FindObject("none") is None
+
+
+def test_a_map_a_key_not_held_is_none_whichever_way_it_is_looked_up():
+    held = ROOT.TMap()
+    stranger = ROOT.TNamed("key", "KEY")
+    held.Add(ROOT.TNamed("key", "KEY"), ROOT.TNamed("value", "VALUE"))
+    assert held.GetValue(stranger) is None
+    assert held.GetKey(stranger) is None
+    assert held.FindObject(stranger) is None
+
+
+def test_a_map_removes_a_key_handing_that_key_back():
+    held = ROOT.TMap()
+    key = ROOT.TNamed("key", "KEY")
+    held.Add(key, ROOT.TNamed("value", "VALUE"))
+    assert held.Remove("key") is key
+    assert held.GetSize() == 0
+
+
+def test_a_map_is_named_after_the_object_it_is_given():
+    assert ROOT.TMap(ROOT.TNamed("mapped", "")).GetName() == "mapped"
+    assert ROOT.TMap("mapped").GetName() == "mapped"
+    held = ROOT.TMap()
+    held.SetName("again")
+    assert held.GetName() == "again"
+
+
+def test_a_map_deletes_the_keys_and_values_it_holds():
+    held = ROOT.TMap()
+    held.Add(ROOT.TNamed("key", "KEY"), ROOT.TNamed("value", "VALUE"))
+    held.Add(ROOT.TNamed("bare", ""), None)
+    held.Delete()
+    assert held.GetSize() == 0
+
+
+def test_a_pair_is_called_and_compared_by_its_keys_name():
+    one = ROOT.TPair(ROOT.TNamed("a", ""), None)
+    other = ROOT.TPair(ROOT.TNamed("b", ""), None)
+    assert (one.GetName(), one.GetTitle()) == ("a", "a")
+    assert one.IsSortable() is True
+    assert one.Compare(other) < 0
+    assert other.Compare(one) > 0
+    assert one.Compare(one) == 0
+    assert ROOT.TPair().GetName() == ""
+
+
+def test_a_pair_holds_what_it_is_given_and_that_can_be_changed():
+    pair = ROOT.TPair()
+    key, value = ROOT.TNamed("key", ""), ROOT.TNamed("value", "")
+    pair.SetKey(key)
+    pair.SetValue(value)
+    assert (pair.Key(), pair.Value()) == (key, value)
+
+
+def test_a_map_puts_a_value_as_its_add_does():
+    held = ROOT.TMap()
+    key, value = ROOT.TNamed("key", ""), ROOT.TNamed("value", "")
+    held.Put(key, value)
+    assert held.GetValue("key") is value
+
+
+def test_a_clones_array_is_told_the_class_its_slots_hold():
+    clones = ROOT.TClonesArray("TBox", 3)
+    clones.SetClass("TLine")
+    assert clones.GetClass().GetName() == "TLine"
+    clones.SetClass(ROOT.TNamed("TH1F", ""))
+    assert clones.GetClass().GetName() == "TH1F"

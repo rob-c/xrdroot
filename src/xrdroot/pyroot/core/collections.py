@@ -32,6 +32,8 @@ __all__ = [
     "TObjString",
     "TObjLink",
     "THashTable",
+    "TPair",
+    "TMap",
 ]
 
 #: Not ROOT's name, so not in the namespace; what ``GetListOfFunctions`` hands back.
@@ -527,6 +529,12 @@ class TClonesArray(TObjArray):
 
         return TNamed(self._class, "")
 
+    def SetClass(self, classname: Any, *rest: Any) -> None:
+        """``SetClass(classname)``: the class every slot holds from now on. ROOT 5 read a
+        second word as how many slots to make for it, which an array that grows to the
+        slot asked of it has no use for."""
+        self._class = getattr(classname, "GetName", lambda: str(classname))()
+
     def BypassStreamer(self, bypass: bool = True) -> None:
         self._bypass = bool(bypass)
 
@@ -660,3 +668,133 @@ class TObjString(TNamed):
 
     def __hash__(self) -> int:
         return hash(self.GetName())
+
+
+class TPair(TObject):
+    """``TPair``: one entry of a ``TMap``, the key object and the value it holds.
+
+    ROOT calls a pair after its key, which is how a ``TMap`` finds the pair of a key at
+    all: the table of pairs hashes and compares what each pair is called.
+    """
+
+    CLASS_TITLE = "Pair of objects"
+
+    def __init__(self, key: Any = None, value: Any = None) -> None:
+        super().__init__()
+        self._key = key
+        self._value = value
+
+    def GetName(self) -> str:
+        """The key's name: a pair with no key has none, as ROOT's has."""
+        return self._key.GetName() if self._key is not None else ""
+
+    def GetTitle(self) -> str:
+        return self.GetName()
+
+    def Key(self) -> Any:
+        return self._key
+
+    def Value(self) -> Any:
+        return self._value
+
+    def SetKey(self, key: Any) -> None:
+        self._key = key
+
+    def SetValue(self, value: Any) -> None:
+        self._value = value
+
+    def IsSortable(self) -> bool:
+        return True
+
+    def Compare(self, obj: Any) -> int:
+        """By key name, as ROOT compares the pairs of a map."""
+        return int(self.GetName() > obj.GetName()) - int(self.GetName() < obj.GetName())
+
+
+class TMap(THashTable):
+    """``TMap``: a collection of ``TPair``s, looked up by key.
+
+    ROOT keeps the pairs of a map in a ``THashTable``, so it hands them back in bucket
+    order; here they are held in the order they were added, as the hash tables above are,
+    which answers the same lookups and walks the same pairs.
+    """
+
+    CLASS_TITLE = "Map with keys and values"
+
+    def __init__(self, name: Any = None, *rest: Any) -> None:
+        """``TMap()``, or ``TMap(name)``: ROOT names a map after the object it is given,
+        and a table held in order has no use for the capacity and load factor a hash of
+        buckets takes."""
+        super().__init__()
+        if isinstance(name, TObject):
+            self.SetName(name.GetName())
+        elif name is not None:
+            self.SetName(name)
+
+    def Add(self, obj: Any, opt: Any = None) -> None:
+        """``Add(key, value)``: a new pair at the end - or, when a pair with that key is
+        already there, that pair's value replaced, as ROOT's own ``Add`` does. The second
+        word is the value, since the option a collection's ``Add`` takes says nothing about
+        a map."""
+        found = self.FindObject(obj)
+        if found is None:
+            self._items.append(TPair(obj, opt))
+        else:
+            found.SetValue(opt)
+
+    def Put(self, key: Any, value: Any) -> None:
+        """``Put``: ROOT's old name for ``Add``, which it keeps as the same call."""
+        self.Add(key, value)
+
+    def FindObject(self, key: Any) -> Any:
+        """The pair of ``key`` - by name for a string, else the key object itself - or
+        ``None`` when the map holds no such key."""
+        called = _text(key)
+        if called is not None:
+            return next((pair for pair in self._items if pair.GetName() == called), None)
+        return next((pair for pair in self._items if pair.Key() is key), None)
+
+    def GetValue(self, key: Any) -> Any:
+        """``GetValue(key)``: the value that key holds, or ``None`` for a key not held."""
+        found = self.FindObject(key)
+        return None if found is None else found.Value()
+
+    def GetKey(self, value: Any) -> Any:
+        """``GetKey(value)``: the key of the entry that holds ``value`` - by name for a
+        string, else the value object itself - or ``None``."""
+        found = self._holding(value)
+        return None if found is None else found.Key()
+
+    def _holding(self, value: Any) -> TPair | None:
+        """The pair whose value is ``value``, compared as ``GetValue``'s keys are: by the
+        name a string gives it, else by being that object."""
+        called = _text(value)
+        if called is not None:
+            return next((pair for pair in self._items if _named(pair.Value(), called)), None)
+        return next((pair for pair in self._items if pair.Value() is value), None)
+
+    def Remove(self, key: Any) -> Any:
+        """``Remove(key)``: the pair taken out of the map, handing back the key it held as
+        ROOT does, or ``None`` when no entry has that key."""
+        found = self.FindObject(key)
+        if found is None:
+            return None
+        self._items.remove(found)
+        return found.Key()
+
+    def Delete(self, option: str = "") -> None:
+        """``Delete``: every key and every value deleted with the map, as ROOT's deletes
+        them."""
+        from ...pycxx.runtime.objects import delete
+
+        for pair in self._items:
+            for obj in (pair.Key(), pair.Value()):
+                if obj is not None:
+                    delete(obj)
+        self._items.clear()
+
+    def __getitem__(self, key: Any) -> Any:
+        return self.GetValue(key)
+
+    def __call__(self, key: Any) -> Any:
+        return self.GetValue(key)
