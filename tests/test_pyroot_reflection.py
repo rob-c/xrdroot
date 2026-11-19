@@ -153,7 +153,35 @@ def test_a_layout_a_file_holds_is_listed_beside_the_one_in_memory(capsys):
     assert (
         "string         second          offset=  0 type=300 stl=365 ctype=365 Emulation" in printed
     )
-    assert "   i=" not in printed
+    # ROOT emulates a class no dictionary describes from the first layout a file gave it, so
+    # the pair's layout is built - each element listed with the action it is read with - and
+    # not versioned, no ``ClassDef`` giving it a version; ROOT 6.40.04 prints both for this
+    # file's pair when it lists it: an "i=" line per element and no "version=".
+    assert "StreamerInfo for class: pair<int,string>, checksum=" in printed
+    assert "version=" not in printed
+    assert "   i= 1, second          type=300, offset=  0, len=1, method=0" in printed
+
+
+def test_a_class_only_files_describe_is_emulated_from_the_first_layout_read(capfd):
+    """ROOT builds a class nothing in memory describes from the first layout a file it reads
+    holds, and ``GetStreamerInfo()`` gives that one - built, so its elements are read with
+    actions - while a later file's layout stays known by its version."""
+    _evo("int", "one.root")
+    _evo("float", "two.root")
+    ROOT.TFile("one.root")
+    ROOT.TFile("two.root")
+    evo = ROOT.TClass.GetClass("Evo")
+    current = evo.GetStreamerInfo()
+    assert (current.IsBuilt(), current.GetElement(0).GetTypeName()) == (True, "int")
+    assert current is not None and evo.GetStreamerInfo(1).GetClassVersion() == 1
+    assert evo.GetStreamerInfo(2).GetElement(0).GetTypeName() == "float"
+    assert evo.GetStreamerInfo(3) is None
+    assert len(list(ROOT.TClass("TNoSuch").GetStreamerInfos())) == 0
+    assert ROOT.TClass("TNoSuch").GetStreamerInfo() is None
+    current.ls()
+    printed = capfd.readouterr().out
+    assert "StreamerInfo for class: Evo, checksum=" in printed and "version=" not in printed
+    assert "   i= 0, a               type=  3, offset=  0, len=1, method=0" in printed
 
 
 def test_a_streamer_info_hands_out_its_elements_by_their_kinds():

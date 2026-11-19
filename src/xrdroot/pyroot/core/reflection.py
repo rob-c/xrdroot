@@ -394,34 +394,71 @@ class TClass(TNamed):
             return catalogue_of(cls).info(name)
         return INFOS.get(self._name)
 
+    def _file_layout(self) -> tuple[int, int, tuple[Element, ...]] | None:
+        """The layout the first file to describe the class gave it, if any.
+
+        A class nothing in memory describes is emulated: ROOT builds its ``TStreamerInfo``
+        from the first description a file it reads holds - ``kEmulated``, which the class to
+        ``pair<reco::Muon::MuonTrackType,edm::Ref<...>>`` roottest writes for shows - and
+        that is the class's current layout for the rest of the session.
+        """
+        known = FILE_INFOS.get(self._name, [])
+        return known[0] if known else None
+
+    def _current_layout(self) -> tuple[int, int, tuple[Element, ...]] | None:
+        """The layout the class's current ``TStreamerInfo`` is made from: the one in memory,
+        or - for a class only files describe - the first a file gave it."""
+        current = self._layout()
+        return current if current is not None else self._file_layout()
+
+    def _versioned(self) -> bool:
+        """Does a listing of a layout of the class name its version?
+
+        ROOT names it for a class its ``ClassDef`` versioned, and not for one declared
+        without ``ClassDef`` - whose objects carry a checksum instead - nor for one that only
+        a file describes, which ``IsVersioned`` answers for a class in memory alone.
+        """
+        return self._layout() is not None and self.IsVersioned()
+
     def GetStreamerInfo(self, version: int = 0) -> TStreamerInfo | None:
         """``GetStreamerInfo``: the layout of the class in memory - or, given a version, the
-        layout of that version, from a file read if it is not the one in memory."""
-        current = self._layout()
-        if current is not None and version in (0, current[1]):
-            return TStreamerInfo(self._name, current, built=True, versioned=self.IsVersioned())
+        layout of that version, from a file read if it is not the one in memory.
+
+        A class no dictionary and no declaration describes is emulated from the first layout
+        a file read gave it, which ROOT builds - so its elements are read with actions - and
+        hands back for version 0.
+        """
+        in_memory = self._layout()
+        current = in_memory if in_memory is not None else self._file_layout()
+        if current is None:
+            return None
+        if version in (0, current[1]):
+            return TStreamerInfo(self._name, current, built=True, versioned=self._versioned())
         found = [i for i in FILE_INFOS.get(self._name, []) if i[1] == version]
         return TStreamerInfo(self._name, found[0], versioned=True) if found else None
 
     def FindStreamerInfo(self, checksum: int) -> TStreamerInfo | None:
         """``FindStreamerInfo``: the layout with that checksum, in memory or read."""
-        current = self._layout()
+        current = self._current_layout()
         if current is not None and current[0] == checksum:
             return self.GetStreamerInfo()
         found = [i for i in FILE_INFOS.get(self._name, []) if i[0] == checksum]
-        return TStreamerInfo(self._name, found[0], versioned=self.IsVersioned()) if found else None
+        return TStreamerInfo(self._name, found[0], versioned=self._versioned()) if found else None
 
     def GetStreamerInfos(self) -> Any:
-        """``GetStreamerInfos``: every layout known - the one in memory, then each a file
-        read describes it with that is not that one."""
+        """``GetStreamerInfos``: every layout known - the current one, then each a file read
+        describes the class with that is not that one."""
         from .collections import TObjArray
 
         made = TObjArray()
-        current = self._layout()
+        in_memory = self._layout()
+        current = in_memory if in_memory is not None else self._file_layout()
         if current is not None:
             made.Add(self.GetStreamerInfo())
         for info in FILE_INFOS.get(self._name, []):
-            made.Add(TStreamerInfo(self._name, info, versioned=self.IsVersioned()))
+            if info is current:
+                continue
+            made.Add(TStreamerInfo(self._name, info, versioned=self._versioned()))
         return made
 
     # -- members and bases --------------------------------------------------------------------
