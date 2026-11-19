@@ -287,6 +287,24 @@ class Buffer:
         if end is not None:
             self.pos = end
 
+    def check_count(self, start: int, end: int | None) -> tuple[int, int] | None:
+        """``TBufferFile::CheckByteCount``: the bytes a record took against its own count.
+
+        ROOT checks, once an object has been streamed, that it moved the cursor
+        exactly as far as the record's byte count said it would, and says so when
+        it did not: a record read by a layout that does not describe its bytes
+        takes the wrong number of them, and every object after it is read from the
+        wrong place. Both numbers here count the byte-count word itself, as ROOT's
+        message does. ``start`` is where that word began, which is what
+        :meth:`header` was called at; the answer is ``None`` when the two agree, or
+        when the record was written without a byte count and has no length to be
+        checked against.
+        """
+        if end is None:
+            return None
+        consumed, recorded = self.pos - start, end - start
+        return None if consumed == recorded else (consumed, recorded)
+
     def skip_record(self) -> int:
         """Step over a whole record, and say which version it was.
 

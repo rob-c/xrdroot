@@ -17,18 +17,26 @@ import numpy as np
 import pytest
 
 from support import plain
-from xrdroot import FormatError, UnsupportedFeatureError, open_root
+from xrdroot import FormatError, UnsupportedFeatureError, create, open_root
 from xrdroot.buffer import BYTE_COUNT_MASK, Buffer
 from xrdroot.cxx import Mapping, Pair, Prim, Seq, Str, parse, py_name
 from xrdroot.file import Source
 from xrdroot.interp import KINDS, Flat, Refused, Rows, Values, _fields, _packed, _range, build
+from xrdroot.merging.infos import read_entries
 from xrdroot.objects import (
     BranchRecord,
     LeafRecord,
     read_branch_element,
     read_derived_branch,
 )
-from xrdroot.streamers import Member, read_element, read_info, read_streamers
+from xrdroot.streamers import (
+    Member,
+    read_element,
+    read_info,
+    read_layouts,
+    read_streamers,
+    reconcile,
+)
 from xrdroot.tree import TTree
 
 DATA = pathlib.Path(__file__).parent / "data"
@@ -208,6 +216,115 @@ def test_a_streamer_element_from_2001_counted_its_own_dimensions():
 def test_a_class_written_with_no_member_list_has_no_members():
     body = named_bytes("Empty", "") + struct.pack(">Ii", 0, 1) + struct.pack(">I", 0)
     assert read_info(Buffer(record(9, body))) == ("Empty", {})
+
+
+def test_a_record_read_by_the_wrong_layout_reports_the_bytes_it_took():
+    """``TBufferFile::CheckByteCount``: what an object used against what its count said."""
+    buf = Buffer(record(3, struct.pack(">ii", 1, 2)))
+    start = buf.pos
+    assert buf.header()[1] == start + 14  # the count word, the version and two numbers
+    buf.i32()
+    assert buf.check_count(start, start + 14) == (start + 10, start + 14)
+    buf.i32()
+    assert buf.check_count(start, start + 14) is None  # everything the count held was read
+
+
+def test_a_record_without_a_byte_count_has_no_length_to_be_checked_against():
+    buf = Buffer(struct.pack(">Hi", 3, 5))
+    _version, end = buf.header()
+    buf.i32()
+    assert end is None
+    assert buf.check_count(0, end) is None
+
+
+def test_a_class_a_file_records_twice_keeps_both_layouts(tmp_path):
+    """A merged file records one class per version, and every object names its own."""
+    with opened("small-evnt-tree-fullsplit") as handle:
+        entries = read_entries(handle._source)
+        once = read_layouts(handle._source)
+    (name, version), entry = next((pair, e) for pair, e in entries.items() if pair[0] == "Event")
+    twice = dict(entries)
+    twice[(name, version + 5)] = entry  # the same class, recorded a second time
+    with create(tmp_path / "twice.root") as out:
+        out._carried.update(twice)
+        out["note"] = "twice"
+    with open_root(str(tmp_path / "twice.root")) as again:
+        assert read_layouts(again._source)[name] == once[name] * 2
+        assert len(read_streamers(again._source)[name]) == len(once[name][0][2])
+
+
+def test_a_layout_of_one_name_keeps_its_checksum_and_version():
+    with opened("small-evnt-tree-fullsplit") as handle:
+        layouts = read_layouts(handle._source)
+        members = handle._source.streamers()
+    checksum, version, elements = layouts["Event"][0]
+    assert checksum == 0x42F2461B and version == 1
+    assert [element[1] for element in elements] == list(members["Event"])
+
+
+#: ``ParticleImplVec`` declared ``ClassDefOverride(ParticleImplVec,10)`` over a ``Particle``
+#: whose own version moved from 11 to 12: the layout in memory, and the one a v1 file has.
+IN_MEMORY = (
+    0x8E42FEE8,
+    10,
+    (("TStreamerBase", "Particle", "", 0, 0, 0, 0, (0,) * 5, "BASE", (12,)),),
+)
+ON_FILE = (
+    0xB5AD127C,
+    10,
+    (("TStreamerBase", "Particle", "", 0, 0, 0, 0, (0,) * 5, "BASE", (11,)),),
+)
+
+
+def test_a_class_whose_version_kept_but_whose_layout_moved_reads_as_declared():
+    """ROOT's ``CreateReadMemberWiseActions`` warning, word for word from the ``.ref``."""
+    layout, warning = reconcile("ParticleImplVec", IN_MEMORY, [ON_FILE], "mixedBase_v1.root")
+    assert layout == IN_MEMORY
+    assert warning == (
+        "   The StreamerInfo of class ParticleImplVec read from file mixedBase_v1.root\n"
+        "   has the same version (=10) as the active class but a different checksum.\n"
+        "   You should update the version to ClassDef(ParticleImplVec,11).\n"
+        "   The objects on this file might not be readable because:\n"
+        "   The in-memory layout version 10 for class 'ParticleImplVec' has a base class "
+        "(Particle) with version 12 but the on-file layout version 10 recorded the version "
+        "number 11 for this base class (Particle)."
+    )
+
+
+def test_a_layout_that_differs_with_no_base_class_to_blame_still_warns_and_reads_declared():
+    mine = (0x11111111, 4, ())
+    theirs = (0x22222222, 4, ())
+    layout, warning = reconcile("Tdata", mine, [theirs], "data1.root")
+    assert layout == mine
+    assert "might not be readable" not in warning  # no base class's version moved
+    assert reconcile("Tdata", mine, [mine], "data1.root") == (mine, "")
+
+
+def test_a_file_that_describes_another_version_of_a_class_is_left_to_the_record():
+    """No layout at the version in memory means no disagreement to settle: the version the
+    record itself names picks one from ``on_file``."""
+    assert reconcile("Tdata", IN_MEMORY, [], "data1.root") == (None, "")
+    other = (0x33333333, 9, ())
+    assert reconcile("Tdata", IN_MEMORY, [other], "data1.root") == (None, "")
+
+
+def test_a_class_whose_checksum_differs_over_a_base_class_nobody_moved_says_so_only_once():
+    mine = (
+        0x44444444,
+        7,
+        (
+            ("TStreamerBase", "TObject", "", 0, 0, 0, 0, (0,) * 5, "BASE", (1,)),
+            ("TStreamerBase", "Holder", "", 0, 0, 0, 0, (0,) * 5, "BASE", (9,)),
+        ),
+    )
+    theirs = (0x55555555, 7, (("TStreamerBase", "Holder", "", 0, 0, 0, 0, (0,) * 5, "BASE", (9,)),))
+    layout, warning = reconcile("GenParticle", mine, [theirs], "v1.root")
+    assert layout == mine
+    assert warning.splitlines() == [
+        "   The StreamerInfo of class GenParticle read from file v1.root",
+        "   has the same version (=7) as the active class but a different checksum.",
+        "   You should update the version to ClassDef(GenParticle,8).",
+    ]
 
 
 def test_a_branch_element_from_before_the_version_shrank_still_names_its_class():

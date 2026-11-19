@@ -21,7 +21,7 @@ from .buffer import Buffer
 if TYPE_CHECKING:
     from .file import Source
 
-__all__ = ["Member", "read_streamers"]
+__all__ = ["Member", "read_layouts", "read_streamers", "reconcile"]
 
 #: Enough of the record at ``fSeekInfo`` to read its key.
 KEY_WINDOW = 512
@@ -220,12 +220,96 @@ def read_infos(source: Source) -> list[tuple[str, Described]]:
     return [info for info in key.buffer(source).tlist(FULL) if isinstance(info, tuple)]
 
 
+def read_layouts(source: Source) -> dict[str, list[Described]]:
+    """Every class this file describes, by name, keeping every version it recorded.
+
+    One name can hold more than one layout: a file merged from two vintages of a
+    program, or appended to after a class changed, records a layout per version,
+    and each object must be read by the layout of the version its own record
+    names. Collapsing them - which is what :func:`read_streamers` does, because a
+    reader that only wants to know what a member's name means wants one - misreads
+    every object written by the vintage that came second.
+    """
+    found: dict[str, list[Described]] = {}
+    for name, layout in read_infos(source):
+        found.setdefault(name, []).append(layout)
+    return found
+
+
+#: ``TStreamerBase``: the element kind that names a base class. Its element name is the
+#: class and the one number it keeps past the shared part is the version it was declared
+#: with - which is the whole of what the warning below needs.
+BASE = "TStreamerBase"
+
+
+def _bases(layout: Described) -> dict[str, int]:
+    """The base classes one layout records, and the version each of them was declared with."""
+    return {element[1]: element[9][0] for element in layout[2] if element[0] == BASE and element[9]}
+
+
+def reconcile(
+    name: str, mine: Described, on_file: list[Described], filename: str
+) -> tuple[Described | None, str]:
+    """Which layout a file's objects of one class are read with, and what ROOT says about it.
+
+    ROOT reads a record by the layout the file recorded for the version the record
+    names - but not when that version is also the version the class has in memory:
+    then a differing checksum means the file was written by another build of the
+    same class version, and ROOT reads by the *in-memory* layout, because that is
+    the one the objects in memory have and the only one that makes the two agree.
+    Reading by the file's layout instead is silently wrong rather than loudly: it
+    consumes a plausible number of bytes, so the values come out as the file meant
+    them and nothing is noticed until an object is compared with the same object
+    written today.
+
+    ``mine`` is the layout the class has in memory, ``on_file`` every layout the
+    file records for it, and the answer is the layout to read with - ``None`` when
+    the file records none at that version, where the version a record names picks
+    one from ``on_file`` and there is nothing to settle - plus the warning text,
+    which is empty when the two agree. The caller puts
+    ``Warning in <CreateReadMemberWiseActions>: `` in front of it.
+    """
+    same = next((layout for layout in on_file if layout[1] == mine[1]), None)
+    if same is None or same[0] == mine[0]:
+        return same, ""
+    return mine, _not_in_sync(name, mine, same, filename)
+
+
+def _not_in_sync(name: str, mine: Described, on_file: Described, filename: str) -> str:
+    """ROOT's warning for a class whose version survived but whose layout did not.
+
+    Every line but ROOT's own prefix is indented by three spaces, which is how the
+    message reads in ``execMixedBaseClass_v2.ref``: the last sentence names the base
+    class that changed, since that is what moved the members the record's objects
+    were written with, and it is left out when no base class's version differs.
+    """
+    version = mine[1]
+    lines = [
+        f"   The StreamerInfo of class {name} read from file {filename}",
+        f"   has the same version (={version}) as the active class but a different checksum.",
+        f"   You should update the version to ClassDef({name},{version + 1}).",
+    ]
+    theirs = _bases(on_file)
+    for base, declared in _bases(mine).items():
+        if theirs.get(base, declared) != declared:
+            lines += [
+                "   The objects on this file might not be readable because:",
+                f"   The in-memory layout version {version} for class '{name}' has a base "
+                f"class ({base}) with version {declared} but the on-file layout version "
+                f"{version} recorded the version number {theirs[base]} for this base "
+                f"class ({base}).",
+            ]
+            break
+    return "\n".join(lines)
+
+
 def read_streamers(source: Source) -> dict[str, dict[str, Member]]:
-    """Every class this file describes, by name.
+    """Every class this file describes, by name, as the first layout it recorded.
 
     A file written without streamer information - which a tree of plain
     numbers does not need - gives back nothing, and the branches that would
-    have wanted it say so for themselves.
+    have wanted it say so for themselves. Use :func:`read_layouts` instead
+    where two versions of one class must be told apart.
     """
     from .file import Key
 
