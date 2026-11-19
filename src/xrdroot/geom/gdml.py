@@ -139,6 +139,8 @@ class Geometry:
     positions: dict[str, tuple[float, float, float]] = field(default_factory=dict)
     rotations: dict[str, tuple[float, float, float]] = field(default_factory=dict)
     world: str = ""
+    #: The ``<setup>``'s own name, which ROOT names the ``TGeoManager`` after.
+    setup: str = ""
 
     def counts(self) -> Counts:
         """What ``TGeoManager::CountLevels`` counts: the nodes of the tree, level by level."""
@@ -324,6 +326,7 @@ def _volumes(geometry: Geometry, section: ET.Element) -> None:
 def _setup(geometry: Geometry, section: ET.Element) -> None:
     world = section.find("world")
     geometry.world = "" if world is None else world.get("ref", "")
+    geometry.setup = section.get("name", "")
 
 
 _SECTIONS = {

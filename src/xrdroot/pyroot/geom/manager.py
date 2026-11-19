@@ -251,11 +251,22 @@ class TGeoManager(Makers, TNamed):
 
     @staticmethod
     def Import(filename: str, name: str = "", option: str = "") -> Any:
-        raise UnsupportedFeatureError(
-            f"TGeoManager::Import reads a geometry from GDML or from a TGeoManager ROOT wrote, "
-            f"neither of which xrdroot.pyroot reads; {filename!r} was not read - build the "
-            f"geometry with TGeoManager's own methods instead"
-        )
+        """``Import``: the geometry the GDML file at ``filename`` describes, made current.
+
+        ROOT's ``name`` and ``option`` neither rename nor change what GDML describes: the
+        file's ``<setup>`` names the geometry, as it does for ROOT.
+        """
+        from .imported import from_gdml
+
+        _said("TGeoManager::Import", f"Reading geometry from file: {filename}")
+        if not str(filename).lower().endswith((".gdml", ".xml")):
+            raise UnsupportedFeatureError(
+                f"TGeoManager::Import reads a GDML file or a TGeoManager ROOT wrote, and "
+                f"xrdroot reads only the GDML; {filename!r} was not read - read the geometry "
+                f"from the GDML it was made from, or build it with TGeoManager's own methods "
+                f"instead"
+            )
+        return from_gdml(str(filename))
 
     def GetElementTable(self) -> Any:
         raise UnsupportedFeatureError(
