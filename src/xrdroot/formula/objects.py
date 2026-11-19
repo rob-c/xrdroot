@@ -317,13 +317,66 @@ class Whole:
         Every part may be either spelling, which is why each combination is
         tried rather than each part mapped on its own: a formula mixes them,
         as ROOT's own code does, writing ``fH.GetXaxis().GetXmax()`` for the
-        member ``fH.fXaxis.fXmax``.
+        member ``fH.fXaxis.fXmax``. A getter no member is spelt after - see
+        :meth:`answered` - has the names of the rest of the expression say
+        which member ROOT's method gives back.
         """
-        for candidate in itertools.product(*(spelled(part) for part in parts)):
-            name = ".".join(candidate)
+        for name in self.written(parts):
+            if name in self:
+                return name
+        for name in self.answered(parts):
             if name in self:
                 return name
         return None
+
+    def written(self, parts: Sequence[str]) -> Iterator[str]:
+        """The names ``parts`` spell, each part as written and as the getter of it reads."""
+        for candidate in itertools.product(*(spelled(part) for part in parts)):
+            yield ".".join(candidate)
+
+    def answered(self, parts: Sequence[str]) -> Iterator[str]:
+        """The names a getter that spells no member here would give if it gave a member.
+
+        ROOT's formula calls the method its class declares and reads the rest of
+        the expression off what comes back, so ``GetHistogram().GetXaxis()`` is
+        the axis of the member that method returns. A file has members and no
+        method bodies, so which member a getter of a name like that answers with
+        is written nowhere - but which member reads the rest of the name is:
+        tried as each object the expression has reached, only the one holding
+        what follows answers, and where none does nothing is offered. A getter
+        with nothing after it names an object and not a number, so it has no
+        such reading.
+        """
+        for at, part in enumerate(parts[:-1]):
+            if not self.unnamed(part):
+                continue
+            heads = list(self.written(parts[:at]))
+            for left in self.objects():
+                steps = left.split(".")
+                if len(steps) != at + 1 or ".".join(steps[:-1]) not in heads:
+                    continue  # a name of this object's own, not one of a member of it
+                yield from self.written([*parts[:at], steps[-1], *parts[at + 1 :]])
+
+    def unnamed(self, part: str) -> bool:
+        """Is ``part`` a getter naming no member - neither as written nor as ``f`` and its name?"""
+        if GETTER.fullmatch(part) is None:
+            return False
+        return not any(step in self.segments() for step in spelled(part))
+
+    def segments(self) -> set[str]:
+        """Every name one step of a member's path is written with here."""
+        return {step for name in self for step in name.split(".")}
+
+    def objects(self) -> list[str]:
+        """Every name here that holds members, in the order they were learned."""
+        found: list[str] = []
+        for name in self:
+            parts = name.split(".")
+            for stop in range(1, len(parts)):
+                prefix = ".".join(parts[:stop])
+                if prefix not in found:
+                    found.append(prefix)
+        return found
 
     def owner(self, parts: Sequence[str]) -> str | None:
         """The deepest object here that ``parts`` leads into, whether or not it has the last name.

@@ -376,3 +376,48 @@ def test_a_branch_of_the_tree_wins_over_a_method_of_the_same_name():
     # A name the tree has a branch for is read from the branch, as ROOT reads it.
     tree = {"h": {"TH1": {"fTsumwx": 4.0, "fTsumw": 2.0}}}
     assert "h.GetMean" not in learned({"t": [tree]}, taken=["h.GetMean", "GetMean"])
+
+
+# -- a getter whose member ROOT's class names otherwise ----------------------------
+
+
+def _event_holding_a_histogram():
+    """An object shaped as ``Event`` is: its histogram is ``fH``, and ``GetHistogram`` gives it."""
+    return {"event": [{"fH": {"fXaxis": {"fXmax": 1.0}}, "fEvtHdr": {"fRun": 3}, "fNtrack": 4}]}
+
+
+def test_a_getter_no_member_is_spelt_after_is_the_member_the_rest_of_the_name_reads():
+    # ROOT's Event::GetHistogram() returns fH. A file holds the member and no method
+    # body, so which member it gives is read off what the rest of the name needs: only
+    # fH holds an fXaxis with an fXmax, and GetHistogram().GetXaxis().GetXmax() is it.
+    whole = learned(_event_holding_a_histogram())
+    assert whole.member(("GetHistogram", "GetXaxis", "GetXmax")) == "fH.fXaxis.fXmax"
+    assert whole.member(("GetHistogram", "GetXaxis", "fXmax")) == "fH.fXaxis.fXmax"
+    assert whole.member(("event", "GetHistogram", "GetXaxis", "GetXmax")) == (
+        "event.fH.fXaxis.fXmax"
+    )
+
+
+def test_a_getter_the_rest_of_the_name_reads_off_no_member_is_still_no_name():
+    whole = learned(_event_holding_a_histogram())
+    assert whole.member(("GetHistogram", "GetNope")) is None  # nothing holds what follows
+    assert whole.member(("GetNope", "GetXmax")) is None  # a getter that names no member here
+    assert whole.member(("fH", "GetRMS")) is None  # a method of the histogram, not a member
+    assert whole.member(("GetHistogram",)) is None  # and nothing says which member alone
+
+
+def test_a_getter_the_member_it_names_is_never_read_as_another_member():
+    # GetXmax names fXmax, so the rest of the name is never asked to choose for it.
+    axis = {"fXaxis": {"fXmax": 4.0, "fXmin": 0.0}, "fXmax": 9.0}
+    whole = learned({"e": [{"fH": axis}]})
+    assert whole.member(("fH", "GetXmax")) == "fH.fXmax"
+    assert whole.member(("fH", "GetXaxis", "GetXmax")) == "fH.fXaxis.fXmax"
+
+
+def test_a_call_a_file_cannot_answer_names_the_member_the_rest_of_it_reads():
+    event = _Branch("dict", [{"fH": {"fXaxis": {"fXmax": 1.0}}}] * 3)
+    whole = TreeNames(_Tree({"event": event})).whole
+    assert whole.member(("GetHistogram", "GetXaxis", "GetXmax")) == "fH.fXaxis.fXmax"
+    assert whole.member(("event", "GetHistogram", "GetXaxis", "GetXmax")) == (
+        "event.fH.fXaxis.fXmax"
+    )
