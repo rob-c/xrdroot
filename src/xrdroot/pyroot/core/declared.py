@@ -593,11 +593,10 @@ def _collection(named: str, value: Any, current: Any) -> Any:
     """A ROOT collection read back - as the plain list of what it held - made into the
     namespace's collection again, or ``None`` for one that is not such a collection.
 
-    ROOT reads a collection into the object it is handed, so one already there is refilled
-    where it stands and keeps the name it has: ``TObjArray::Streamer`` reads the name of the
-    array on file into that object, and a class's constructor has already given it the same
-    one. Where the collection is new, its name comes from the same place ROOT's does - the
-    bytes - which this reader hands back as the list alone.
+    ROOT reads a collection into the object it is handed, name and all, so the name on
+    file is the name either object ends up with: an array refilled where it stands loses
+    the one its constructor gave it, as it does in ROOT, and one made here because the
+    member was null is named from the same bytes.
 
     A slot a ``TObjArray`` never filled stays a hole, so its entries go back by index; a
     list is a run of what it held, which is what it is given.
@@ -609,6 +608,9 @@ def _collection(named: str, value: Any, current: Any) -> Any:
         return None
     made: Any = current if isinstance(current, cls) else cls()
     made.Clear()
+    name = str(getattr(value, "name", ""))
+    if name:
+        made.SetName(name)
     for at, item in enumerate(value):
         if item is not None:
             _add_entry(made, _entry(item), at if named in SLOTTED else None)

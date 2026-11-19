@@ -395,6 +395,25 @@ def test_an_object_array_yields_what_it_holds():
     assert buf.remaining == 0
 
 
+#: ROOT 6.40's own bytes for ``TObjArray a(2, 0); a.SetName("axes");
+#: a.Add(new TObjString("first"));`` written with ``TBufferFile::WriteObject``: the record its
+#: class puts in front of itself, then its name, its size, its lower bound and its one entry.
+ROOT_OBJARRAY = bytes.fromhex(
+    "40000054ffffffff544f626a4172726179004000"
+    "0042000300010000000000000000046178657300"
+    "0000010000000040000025ffffffff544f626a53"
+    "7472696e67004000001200010001000000000000"
+    "0000056669727374"
+)
+
+
+def test_an_object_array_comes_back_named_as_roothanded_it_on_file():
+    buf = Buffer(ROOT_OBJARRAY)
+    held = buf.any({"TObjArray": lambda b: b.objarray({})})
+    assert (type(held).__name__, held.name, list(held)) == ("Written", "axes", ["TObjString"])
+    assert buf.remaining == 0
+
+
 # -- compression ----------------------------------------------------------
 
 

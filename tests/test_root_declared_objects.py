@@ -404,6 +404,22 @@ def test_an_array_read_into_an_object_already_there_keeps_its_name_and_its_slots
     assert (made.GetEntriesFast(), made.At(1)) == (3, None)  # a slot never filled stays a hole
 
 
+def test_an_array_made_where_the_member_was_null_is_named_from_the_bytes():
+    holder = _read_holder(_arrayed("objectone"))
+    assert holder.items.GetName() == "items"
+    assert [item.GetName() for item in holder.items] == ["objectone"]
+
+
+def test_an_array_read_back_into_an_object_already_there_takes_the_name_on_file():
+    from xrdroot.buffer import Written
+    from xrdroot.pyroot.core.declared import converted
+
+    current = ROOT.TObjArray()
+    current.SetName("persist")
+    made = converted(Written([_root_named("one")], "all"), parse_type("TObjArray*"), current)
+    assert made is current and made.GetName() == "all"  # ROOT reads the name into the object
+
+
 def test_a_list_read_back_is_the_namespaces_list_in_the_order_it_was_written():
     from xrdroot.pyroot.core.declared import converted
 

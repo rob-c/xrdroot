@@ -27,6 +27,7 @@ __all__ = [
     "Clones",
     "Listed",
     "Named",
+    "Written",
     "as_datetime",
     "gather",
     "numbers",
@@ -170,6 +171,24 @@ class Clones(list[Any]):
     def __init__(self, items: Any = (), classname: str = "TObject") -> None:
         super().__init__(items)
         self.classname = classname
+
+
+class Written(list[Any]):
+    """What a collection that streams itself held, and the name it was written with.
+
+    Such a collection is not described by the file's streamer information: its
+    own record begins with the name ROOT reads into the object it was handed,
+    so handing the entries back as a plain list throws the name away - and an
+    array read into a fresh object, a member a constructor left null, comes
+    back nameless where ROOT's would be named.
+    """
+
+    #: The name on file, empty for a collection written with none.
+    name: str
+
+    def __init__(self, items: Any = (), name: str = "") -> None:
+        super().__init__(items)
+        self.name = str(name)
 
 
 class Buffer:
@@ -444,7 +463,7 @@ class Buffer:
         self.pos = at
         return name
 
-    def objarray(self, classes: dict[str, Any]) -> list[Any]:
+    def objarray(self, classes: dict[str, Any]) -> Written:
         """A ``TObjArray``: the container ROOT keeps branches and leaves in.
 
         ROOT 2 wrote version 2 of it, with no ``TObject`` in front and every
@@ -453,12 +472,11 @@ class Buffer:
         version, end = self.header()
         if version > 2:
             self.tobject()
-        if version > 1:
-            self.string()  # the array's own name, always empty in a tree
+        name = self.string() if version > 1 else ""
         size, _low = self.i32(), self.i32()
         items = [self.any(classes) for _ in range(size)]
         self.resume(end)
-        return items
+        return Written(items, name)
 
     def clones(self, classes: dict[str, Any], fields: Any = None) -> list[Any]:
         """A ``TClonesArray``: many objects of one class, the class written once.
