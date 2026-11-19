@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -326,3 +327,56 @@ def test_fscanf_scans_text_into_the_buffer_a_char_array_is_held_in(tmp_path: Pat
 def test_fscanf_of_a_null_file_says_to_check_the_pointer() -> None:
     with pytest.raises(TypeError, match="fscanf of a null FILE"):
         rt.fscanf(None, "%d", Cell(0))
+
+
+def test_the_runtimes_atomic_is_the_one_whose_reads_share_the_interpreter() -> None:
+    from xrdroot.cppstd.threads import atomic as plain
+    from xrdroot.pycint.runtime import spinning
+
+    assert rt.atomic is spinning.atomic
+    assert issubclass(rt.atomic, plain)
+    #: A translation binds it through ``from xrdroot.pycint.runtime import *``.
+    assert "atomic" in rt.__all__
+
+
+def test_an_atomic_read_answers_the_value_it_holds() -> None:
+    counted = rt.atomic(3)
+    assert bool(counted) is True
+    assert (counted.load(), counted == 3, counted < 4) == (3, True, True)
+    assert (counted > 2, counted <= 3, counted >= 3) == (True, True, True)
+    assert rt.atomic(0).__bool__() is False
+
+
+def test_every_read_of_an_atomic_gives_the_interpreter_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    from xrdroot.pycint.runtime import spinning
+
+    shared: list[int] = []
+    monkeypatch.setattr(spinning, "_shared", lambda: shared.append(1))
+    counted = rt.atomic(3)
+    reads = [
+        bool(counted),
+        counted.load(),
+        counted == 3,
+        counted < 4,
+        counted > 2,
+        counted <= 3,
+        counted >= 3,
+    ]
+    assert reads == [True, 3, True, True, True, True, True]
+    assert len(shared) == 7
+
+
+def test_a_spin_ends_when_another_thread_stores_false() -> None:
+    flag = rt.atomic(True)
+    cleared = threading.Event()
+
+    def spin() -> None:
+        while flag:
+            pass
+        cleared.set()
+
+    spinning = threading.Thread(target=spin, daemon=True)
+    spinning.start()
+    flag.store(False)
+    spinning.join(30)
+    assert cleared.is_set(), "a spin on an atomic never saw the false another thread stored"
