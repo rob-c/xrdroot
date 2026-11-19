@@ -41,7 +41,16 @@ from .checksum import checksum
 from .columns import ENCODINGS, Encoding, encode
 from .envelope import FOOTER, HEADER, PAGE_LIST, Anchor, Builder, Link, envelope
 from .fields import FUNDAMENTALS
-from .schema import COLLECTION, LEAF, RECORD, Column, Field, Schema, write_description
+from .schema import (
+    COLLECTION,
+    LEAF,
+    RECORD,
+    REPETITIVE,
+    Column,
+    Field,
+    Schema,
+    write_description,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from ..writer import WritableDirectory
@@ -100,6 +109,8 @@ CXX = {numpy: cxx for cxx, numpy in FUNDAMENTALS.items() if cxx not in ("char", 
 PYTHON = {bool: "bool", int: "int64", float: "float64"}
 #: The spellings of a vector a field can be declared with.
 VECTORS = ("std::vector<", "ROOT::VecOps::RVec<", "ROOT::RVec<", "vector<")
+#: How a ``std::bitset<N>`` field is declared, its width between the angle brackets.
+BITSETS = "std::bitset<"
 _BY_NAME = {kind.name: kind for kind in ENCODINGS.values()}
 
 
@@ -109,8 +120,9 @@ def _refuse(name: str, spec: Any) -> ValueError:
         f"with here are numbers (a NumPy type, a C++ name such as 'std::int32_t', or "
         f"bool, int and float), str for std::string, and a vector of a number - or of "
         f"another such vector - spelled [type], 'std::vector<type>' or 'std::vector<"
-        f"std::vector<type>>', or as a RecordSpec for a class's record. Variants and "
-        f"collections of strings are not written, because their layout would be a guess"
+        f"std::vector<type>>', as 'std::bitset<N>' for N bits, or as a RecordSpec for a "
+        f"class's record. Variants and collections of strings are not written, because "
+        f"their layout would be a guess"
     )
 
 
@@ -155,6 +167,21 @@ def _vector_spec(name: str, spec: Any) -> tuple[np.dtype[Any], int] | None:
         return _number(name, item), depth
     except ValueError:
         raise _refuse(name, spec) from None
+
+
+def _bitset(name: str, spec: Any) -> int | None:
+    """How many bits a ``std::bitset`` field is declared with, or ``None`` if ``spec`` is none.
+
+    ROOT writes the bitset as a repetitive field - its width in the field, and
+    its bits one element each in a single column of bits - so the width is all
+    the declaration has to say beyond the type's own name.
+    """
+    if not isinstance(spec, str) or not spec.startswith(BITSETS) or not spec.endswith(">"):
+        return None
+    written = spec[len(BITSETS) : -1].strip()
+    if not written.isdigit():
+        raise _refuse(name, spec)
+    return int(written)
 
 
 def _vector(dtype: np.dtype[Any], depth: int) -> str:
@@ -330,6 +357,63 @@ class _Text(_Rows):
     def prepare(self, values: Any) -> Any:
         content, offsets = _strings(self.name, values)
         return content, [offsets]
+
+
+class _Bits(_Writer):
+    """A ``std::bitset<N>``: its ``N`` bits, the lowest first, in one column of bits."""
+
+    __slots__ = ("size",)
+
+    def __init__(self, name: str, size: int) -> None:
+        super().__init__(name)
+        self.size = size
+
+    def prepare(self, values: Any) -> Any:
+        return _bit_rows(self.name, values, self.size)
+
+    def length(self, prepared: Any) -> int:
+        return len(prepared)
+
+    def sizes(self, prepared: Any) -> np.ndarray[Any, Any]:
+        return np.full(len(prepared), (self.size + 7) // 8, np.int64)
+
+    def put(self, prepared: Any, a: int, b: int) -> None:
+        self.outs[0].add(prepared[a:b].reshape(-1))
+
+
+def _bit_rows(name: str, values: Any, size: int) -> np.ndarray[Any, Any]:
+    """A batch of bitsets as one row of ``size`` bits per entry, the lowest bit first."""
+    if isinstance(values, np.ndarray) and values.ndim == 2:
+        if values.shape[1] != size:
+            raise ValueError(
+                f"the field {name!r} holds {size} bits per entry, and these are shaped "
+                f"{values.shape}; give a number per entry, or that many bits of each"
+            )
+        return values != 0
+    return np.array([_bit_row(name, value, size) for value in values], bool).reshape(
+        len(values), size
+    )
+
+
+def _bit_row(name: str, value: Any, size: int) -> Any:
+    """One entry's bits: a number, a row of bits, or a ``std::bitset``'s ``to_ulong()``."""
+    handed = getattr(value, "to_ulong", None)
+    if handed is not None:
+        return _bit_row(name, int(handed()), size)
+    if isinstance(value, (int, np.integer)):
+        if value >> size:
+            raise ValueError(
+                f"the field {name!r} holds {size} bits per entry, and the number {value} "
+                f"needs more than that, so it would not go in without losing its top bits"
+            )
+        return [(int(value) >> bit) & 1 for bit in range(size)]
+    row = np.asarray(value)
+    if row.shape != (size,):
+        raise ValueError(
+            f"the field {name!r} holds {size} bits per entry, and one of these is shaped "
+            f"{row.shape}; give a number per entry, or that many bits of each"
+        )
+    return row != 0
 
 
 def _numbers(name: str, values: Any, dtype: np.dtype[Any]) -> np.ndarray[Any, Any]:
@@ -709,6 +793,11 @@ class WritableRNTuple:
             writer = _Text(name)
             self._add(name, "std::string", LEAF, [self._index(), "Char"], writer, parent)
             return writer
+        size = _bitset(name, spec)
+        if size is not None:
+            made = _Bits(name, size)
+            self._add(name, str(spec), LEAF, ["Bit"], made, parent, size)
+            return made
         found = _vector_spec(name, spec)
         if found is None:
             dtype = _number(name, spec)
@@ -757,11 +846,21 @@ class WritableRNTuple:
         kinds: list[str],
         writer: _Writer,
         parent: int | None = None,
+        array_size: int = 0,
     ) -> int:
-        """A field, and its columns; a top-level field is its own parent."""
+        """A field, and its columns; a top-level field is its own parent.
+
+        ``array_size`` is how many fixed elements a repetitive field - a
+        ``std::bitset`` - holds to every entry, which is what ROOT keeps in the
+        field itself rather than in a column of its own.
+        """
         fields = self._schema.fields
         id = len(fields)
-        fields.append(Field(id, id if parent is None else parent, role, name, cxx))
+        field = Field(id, id if parent is None else parent, role, name, cxx)
+        if array_size:
+            field.flags |= REPETITIVE
+            field.array_size = array_size
+        fields.append(field)
         for kind in kinds:
             self._column(kind, id, writer)
         return id

@@ -56,6 +56,17 @@ def test_an_entry_that_was_never_given_a_record_is_written_as_its_default() -> N
     assert _read("w.root")["evt"] == [{"fP": {"fX": 0.0, "fY": 0.0, "fZ": 0.0}, "fE": 0.0}]
 
 
+def test_a_bitset_field_of_a_model_is_written_its_bits_lowest_first() -> None:
+    """The holder of a ``std::bitset<16>`` is a bitset, and a fill writes its bits."""
+    model = ROOT.RNTupleModel.Create()
+    model.AddField(ROOT.RFieldBase.Create("foo", "std::bitset<16>").Unwrap())
+    model.GetDefaultEntry()["foo"] = 0xFA2
+    writer = ROOT.RNTupleWriter.Recreate(ROOT.std.move(model), "events", "w.root")
+    writer.Fill()
+    del writer
+    assert _read("w.root")["foo"] == [[bool(0xFA2 >> bit & 1) for bit in range(16)]]
+
+
 def test_a_writer_fills_the_default_entry_and_finishes_when_let_go() -> None:
     model, n, pt, name = _model()
     writer = ROOT.RNTupleWriter.Recreate(ROOT.std.move(model), "events", "w.root")

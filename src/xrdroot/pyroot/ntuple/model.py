@@ -16,6 +16,7 @@ import numpy as np
 
 from ...errors import UnsupportedFeatureError
 from ..core.objects import typed
+from ..stl import std
 from .fields import FieldType, RFieldPtr, field_type
 
 __all__ = ["RField", "RFieldBase", "RResult", "REntry", "RNTupleModel"]
@@ -179,6 +180,8 @@ def _stored(field: RField, value: Any) -> Any:
             raise TypeError(f"{where}, so it holds a dict of its members, not a "
                             f"{type(value).__name__}")  # fmt: skip
         return dict(value)
+    if kind.bits:
+        return _bitset_value(kind.bits, value)
     if kind.dtype is None:
         if not isinstance(value, str):
             raise TypeError(f"{where}, so it holds a str, not a {type(value).__name__}")
@@ -187,6 +190,12 @@ def _stored(field: RField, value: Any) -> Any:
     if not (whole or isinstance(value, (float, np.floating))):
         raise TypeError(f"{where}, so it holds a number, not a {type(value).__name__}")
     return kind.dtype.type(value).item()
+
+
+def _bitset_value(size: int, value: Any) -> Any:
+    """A ``std::bitset`` of ``size`` bits from a number, or from another bitset's bits."""
+    handed = getattr(value, "to_ulong", None)
+    return std.bitset[size](value if handed is None else handed())
 
 
 class RValue:

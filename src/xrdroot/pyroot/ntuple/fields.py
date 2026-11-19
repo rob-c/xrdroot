@@ -36,8 +36,11 @@ class FieldType:
         dtype: np.dtype[Any] | None,
         vector: bool,
         members: Any = None,
+        bits: int = 0,
     ) -> None:
         self.cxx, self.dtype, self.vector = cxx, dtype, vector
+        #: For a ``std::bitset``, how many bits an entry holds; zero for every other field.
+        self.bits = bits
         #: For a record, its members - ``(name, FieldType)`` - in the class's order;
         #: ``None`` for every other kind of field, which holds a value of its own.
         self.members: tuple[tuple[str, FieldType], ...] | None = (
@@ -59,6 +62,8 @@ class FieldType:
         if self.record:
             assert self.members is not None
             return RecordSpec(self.cxx, [(name, member.spec) for name, member in self.members])
+        if self.bits:
+            return self.cxx
         return self.cxx if self.dtype is not None else str
 
     def holder(self) -> Any:
@@ -71,6 +76,8 @@ class FieldType:
         return RFieldPtr(self)
 
     def zero(self) -> Any:
+        if self.bits:
+            return std.bitset[self.bits]()
         return "" if self.dtype is None else self.dtype.type(0).item()
 
 
@@ -104,6 +111,18 @@ def _number(text: str, whole: str) -> np.dtype[Any] | None:
     raise _refusal(whole)
 
 
+#: How a ``std::bitset<N>`` is spelled once the ``std::`` is off, its width inside.
+BITSETS = "bitset<"
+
+
+def _bitset(text: str) -> int | None:
+    """How many bits a ``std::bitset`` is of, or ``None`` if ``text`` is no bitset's name."""
+    if not text.startswith(BITSETS) or not text.endswith(">"):
+        return None
+    written = text[len(BITSETS) : -1].strip()
+    return int(written) if written.isdigit() else None
+
+
 #: How a vector's C++ name starts, however it is spelled.
 VECTORS = ("vector<", "ROOT::VecOps::RVec<", "ROOT::RVec<", "RVec<")
 
@@ -116,6 +135,9 @@ def field_type(cxx: Any, seen: frozenset[str] = frozenset()) -> FieldType:
     rather than descended into for ever.
     """
     text = _spelled(str(cxx))
+    bits = _bitset(text)
+    if bits is not None:
+        return FieldType(f"std::{BITSETS}{bits}>", None, False, bits=bits)
     if text.startswith(VECTORS) and text.endswith(">"):
         item = _number(text[text.index("<") + 1 : -1], str(cxx))
         if item is None:  # a vector of strings: a nested collection

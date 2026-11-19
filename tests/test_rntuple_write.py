@@ -22,7 +22,7 @@ from support import plain
 from xrdroot import Jagged, RNTuple, WritableRNTuple, create, open_root
 from xrdroot.rntuple import checksum as xxh3
 from xrdroot.rntuple.columns import ENCODINGS
-from xrdroot.rntuple.schema import COLLECTION, LEAF, RECORD
+from xrdroot.rntuple.schema import COLLECTION, LEAF, RECORD, REPETITIVE
 from xrdroot.rntuple.writer import RecordSpec, spec_of
 from xrdroot.streamers import read_streamers
 
@@ -247,6 +247,46 @@ def test_vectors_are_written_as_deep_as_they_nest():
     assert found.cxx_types() == {"v": "std::vector<std::vector<std::vector<float>>>"}
     assert [field.name for field in found._store.schema.fields] == ["v", "_0", "_0", "_0"]
     assert plain(found.arrays())["v"] == rows
+
+
+def test_a_bitset_field_is_written_as_its_bits_the_lowest_first():
+    """ROOT writes a ``std::bitset<16>`` as a repetitive field of sixteen one-bit
+    elements in a single column, which is what roottest's makeproject header asks for."""
+    found = roundtrip({"foo": "std::bitset<16>"}, [{"foo": [0xFA2, 1]}])
+    field = found._store.schema.fields[0]
+    assert (field.role, field.flags, field.array_size) == (LEAF, REPETITIVE, 16)
+    column = found._store.schema.columns[0]
+    assert (ENCODINGS[column.type].name, column.bits) == ("Bit", 1)
+    assert found.cxx_types() == {"foo": "std::bitset<16>"}
+    expected = [[bool(0xFA2 >> bit & 1) for bit in range(16)], [True, *[False] * 15]]
+    assert plain(found.arrays())["foo"] == expected
+
+
+def test_a_bitset_holds_a_number_or_the_bits_themselves():
+    rows = np.array([[True, False] * 8, [False] * 16])
+    found = roundtrip({"foo": "std::bitset<16>"}, [{"foo": rows}, {"foo": [3]}])
+    listed = roundtrip({"foo": "std::bitset<16>"}, [{"foo": rows.tolist()}])
+    assert plain(found.arrays())["foo"] == [*rows.tolist(), [True, True, *[False] * 14]]
+    assert plain(listed.arrays())["foo"] == rows.tolist()
+
+
+@pytest.mark.parametrize(
+    ("batch", "message"),
+    [
+        ({"foo": [0x1_0000]}, "needs more than that"),
+        ({"foo": [[1, 0]]}, r"one of these is shaped \(2,\)"),
+        ({"foo": np.zeros((1, 8), bool)}, r"these are shaped \(1, 8\)"),
+    ],
+)
+def test_a_bitset_that_does_not_fit_its_width_is_refused(batch, message):
+    with pytest.raises(ValueError, match=message):
+        roundtrip({"foo": "std::bitset<16>"}, [batch])
+
+
+def test_a_bitset_declared_with_no_width_is_refused_by_name():
+    with create(io.BytesIO()) as f:
+        with pytest.raises(ValueError, match="Variants and collections of strings"):
+            f.rntuple("events", {"x": "std::bitset<x>"})
 
 
 def test_awkward_arrays_of_rows_are_written_as_they_are_held():

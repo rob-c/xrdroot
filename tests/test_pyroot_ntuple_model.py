@@ -35,6 +35,23 @@ def test_a_field_of_a_record_or_a_nested_collection_is_refused(cxx) -> None:
         field_type(cxx)
 
 
+def test_a_bitset_is_held_as_its_bits_and_declared_by_how_many_there_are() -> None:
+    """``std::bitset<16>`` is one field type of its own, whose entry holds the bits."""
+    found = field_type("std::bitset<16>")
+    assert (found.cxx, found.bits, found.spec) == ("std::bitset<16>", 16, "std::bitset<16>")
+    held = found.holder()
+    assert isinstance(held, RFieldPtr) and held.value.to_ulong() == 0
+    assert found.zero().to_string() == "0" * 16
+    assert field_type("int").bits == 0 and field_type("std::vector<int>").bits == 0
+    model = ROOT.RNTupleModel.Create()
+    model.AddField(RFieldBase.Create("foo", "std::bitset<16>").Unwrap())
+    entry = model.GetDefaultEntry()
+    entry["foo"] = 0xFA2
+    assert entry["foo"].to_ulong() == 0xFA2
+    entry["foo"] = ROOT.std.bitset[16](0x0F)
+    assert entry["foo"].to_ulong() == 0x0F
+
+
 def test_a_number_or_string_is_held_by_a_pointer_and_a_vector_is_itself() -> None:
     held = field_type("int").holder()
     assert isinstance(held, RFieldPtr) and held.value == 0 and held[0] == 0
