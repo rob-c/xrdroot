@@ -579,6 +579,19 @@ def test_get_class_info_answers_for_a_class_something_describes_and_null_otherwi
     )
 
 
+def test_has_interpreter_info_answers_for_a_class_the_interpreter_describes():
+    """``HasInterpreterInfo`` tells ROOT whether the class has a declaration to build a
+    ``TStreamerInfo`` from: one PyROOT has, one C++ declared and a container do, a class
+    nobody describes does not."""
+    _declared()
+    expect(
+        (ROOT.TClass.GetClass("Named").HasInterpreterInfo(), True),
+        (ROOT.TClass.GetClass("TNamed").HasInterpreterInfo(), True),
+        (ROOT.TClass.GetClass("vector<int>").HasInterpreterInfo(), True),
+        (ROOT.TClass.GetClass("NobodyKnowsThis").HasInterpreterInfo(), False),
+    )
+
+
 def test_an_enum_constant_is_one_of_a_class_s_data_members_as_cpp_lists_it():
     """A dictionary lists ``TObject::kZombie`` among ``TNamed``'s public data members, so a
     macro looking for it finds it - and a class nothing describes has no constants."""

@@ -281,6 +281,16 @@ class TClass(TNamed):
         """
         return ClassInfo(self) if self.HasDictionary() else None
 
+    def HasInterpreterInfo(self) -> bool:
+        """``HasInterpreterInfo``: is the class one the interpreter describes?
+
+        ROOT asks it before it builds a ``TStreamerInfo`` from the class's own
+        declaration - a class only a file describes has none, and what is known of
+        such a class is what that file says. A standard container is described by
+        the interpreter from its template's definition, as ROOT's is.
+        """
+        return self._class() is not None or self._name in INFOS or _template(self._name)
+
     def IsLoaded(self) -> bool:
         return self.HasDictionary()
 
