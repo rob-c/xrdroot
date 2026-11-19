@@ -561,11 +561,26 @@ def converted(value: Any, found: Spelled, current: Any) -> Any:
     member as the constructor left it, where that is a container or an object."""
     if value is None:
         return None
+    if found.stars and (found.name in TYPES or found.name in WIDTHS):
+        # A pointer to numbers is an array whose length the stream gives, not the shape the
+        # class's constructor happened to leave there: ROOT hands the member a new array of
+        # the count the file writes, so reading an entry with more or fewer than the one
+        # before it does not keep the first one's length.
+        return _array_of(value, found.name)
     if found.stars and found.name not in TYPES:
         return _pointed(value, found, current)
     if found.name in STL_KINDS:
         return _refilled(value, found, current)
     return _held(value, found, current)
+
+
+def _array_of(value: Any, typename: str) -> Any:
+    """A pointer's numbers as the array ROOT reads one into - of the length the stream gave."""
+    if isinstance(value, (str, bytes)):
+        return value
+    if isinstance(value, (list, tuple, np.ndarray)):
+        return np.asarray(value)
+    return _number(value, typename, None)
 
 
 def _held(value: Any, found: Spelled, current: Any) -> Any:
@@ -612,8 +627,11 @@ def _dressed(named: str, value: Any) -> Any:
     object standing for what comes back is the one a macro holds.
     """
     from ...kinds import dress
-    from .wrapping import wrap
+    from .wrapping import from_members, wrap
 
+    made = from_members(named, value)  # a class the kit makes again from a record's members
+    if made is not None:
+        return made
     dressed = dress(named, value) if isinstance(value, dict) else value
     wrapped = wrap(dressed)
     return None if wrapped is value else wrapped
