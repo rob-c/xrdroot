@@ -8,7 +8,9 @@ width (a width may be written in ``N``, the number of inputs); the
 ``1 - ValidationSize`` of the training events, stopping each once the rest
 have not improved for ``ConvergenceSteps`` epochs. The training is
 PyTorch's when PyTorch is installed and NumPy's otherwise; either way the
-network is TMVA's DL ``<DenseLayer>`` XML. Convolutional and recurrent
+network is TMVA's DL ``<DenseLayer>`` XML. A ``RESHAPE`` layer - which only
+lays the values out as a depth by height by width tensor, having no weights
+of its own - is accepted and adds no layer; convolutional and recurrent
 layers are refused by name.
 """
 
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import ast
 import operator
+import re
 import time
 from typing import Any, ClassVar
 
@@ -37,7 +40,9 @@ OPERATORS = {
     ast.FloorDiv: operator.floordiv,
 }
 #: The layer kinds TMVA's DL has that this does not.
-REFUSED = ("CONV", "MAXPOOL", "RESHAPE", "RNN", "LSTM", "GRU", "BNORM", "PADDING2D")
+REFUSED = ("CONV", "MAXPOOL", "RNN", "LSTM", "GRU", "BNORM", "PADDING2D")
+#: The layer kinds that only change the shape of the values, having no weights of their own.
+SHAPE_ONLY = ("RESHAPE",)
 
 
 def _width(text: str, nvar: int) -> int:
@@ -56,14 +61,26 @@ def _width(text: str, nvar: int) -> int:
 
 
 def parse_layout(layout: str, nvar: int, nout: int) -> tuple[list[int], list[str]]:
-    """``ParseDenseLayer`` of each layer: the network's sizes and its layers' activations."""
+    """``ParseDenseLayer`` of each layer: the network's sizes and its layers' activations.
+
+    A ``RESHAPE`` layer adds no size and no activation: all it does is lay the values out
+    as a depth by height by width tensor instead of a flat vector (``FLAT``), and the dense
+    layer after it flattens them again, so the values reaching the next layer are the same.
+    """
     sizes, activations = [nvar], []
     for layer in (piece for piece in layout.split(",") if piece.strip()):
+        if _shape_only(layer):
+            continue
         width, activation = _dense_layer(layer, nvar)
         activations.append(activation)
         sizes.append(width)
     sizes[-1] = nout
     return sizes, activations
+
+
+def _shape_only(layer: str) -> bool:
+    """Whether a ``|``-separated layer only changes the shape of the values."""
+    return layer.split("|", 1)[0].strip().upper() in SHAPE_ONLY
 
 
 def _dense_layer(layer: str, nvar: int) -> tuple[int, str]:
@@ -92,20 +109,40 @@ def _refuse(parts: list[str]) -> None:
 REGULARIZATION = {"L1": "1", "L2": "2"}
 
 
+#: The number a setting starts with, as ``TString::Atof`` and ``TString::Atoi`` read it.
+LEADING_NUMBER = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
+
+
+def _number(text: str) -> float:
+    """A setting's value where the number starts, as ROOT reads it.
+
+    ROOT reads every ``TrainingStrategy`` number with ``Atof``/``Atoi``, which stop at the
+    first character that is not part of the number: a phase written ``MaxEpochs=100``
+    immediately followed by ``WeightDecay=0``, with no comma between them, still gives 100.
+    """
+    found = LEADING_NUMBER.match(text.strip())
+    return float(found.group()) if found else 0.0
+
+
+def _integer(text: str) -> int:
+    """A setting's value as ``Atoi`` gives it: the number it starts with, truncated to an int."""
+    return int(_number(text))
+
+
 def strategy_phases(text: str) -> list[Descent]:
     """``TrainingStrategy``: each ``|``-separated phase's settings, TMVA's defaults for the rest."""
     phases = []
     for block in (piece for piece in text.split("|") if piece.strip()):
         values = dict(item.split("=", 1) for item in block.split(",") if "=" in item)
-        drop = tuple(float(x) for x in values.get("DropConfig", "0.0").split("+") if x)
+        drop = tuple(_number(x) for x in values.get("DropConfig", "0.0").split("+") if x)
         phases.append(
             Descent(
-                learning_rate=float(values.get("LearningRate", 1e-5)),
-                momentum=float(values.get("Momentum", 0.3)),
-                batch_size=int(float(values.get("BatchSize", 30))),
-                convergence_steps=int(float(values.get("ConvergenceSteps", 100))),
-                max_epochs=int(float(values.get("MaxEpochs", 2000))),
-                decay=float(values.get("WeightDecay", 0.0))
+                learning_rate=_number(values.get("LearningRate", "1e-5")),
+                momentum=_number(values.get("Momentum", "0.3")),
+                batch_size=_integer(values.get("BatchSize", "30")),
+                convergence_steps=_integer(values.get("ConvergenceSteps", "100")),
+                max_epochs=_integer(values.get("MaxEpochs", "2000")),
+                decay=_number(values.get("WeightDecay", "0.0"))
                 if values.get("Regularization", "NONE").upper() == "L2"
                 else 0.0,
                 dropout=drop,

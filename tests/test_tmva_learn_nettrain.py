@@ -113,6 +113,23 @@ def test_a_layer_width_that_is_not_arithmetic_in_n_is_refused():
         parse_layout("DENSE|N**2|TANH,LINEAR", 4, 1)
 
 
+def test_a_reshape_layer_only_relays_the_values_out_so_it_adds_no_layer():
+    # ROOT's TReshapeLayer copies the values into a differently shaped tensor and a dense
+    # layer flattens them again, so both spellings of RESHAPE leave the sizes alone.
+    sizes, names = parse_layout("RESHAPE|1|1|4|FLAT,DENSE|128|TANH,DENSE|1|LINEAR", 4, 1)
+    assert sizes == [4, 128, 1] and names == ["tanh", "linear"]
+    sizes, names = parse_layout("RESHAPE|FLAT,DENSE|10|TANH,DENSE|3|LINEAR", 42, 3)
+    assert sizes == [42, 10, 3] and names == ["tanh", "linear"]
+
+
+def test_a_training_phase_reads_its_numbers_as_root_reads_them():
+    # ROOT reads them with Atof and Atoi, which stop at the first character that is not part
+    # of the number: TestRegressionMethodDL.cxx writes MaxEpochs=100WeightDecay=0.
+    (phase,) = strategy_phases("MaxEpochs=100WeightDecay=0,LearningRate=1e-3,Momentum=.5x")
+    assert phase.max_epochs == 100 and phase.learning_rate == 1e-3 and phase.momentum == 0.5
+    assert strategy_phases("MaxEpochs=,LearningRate=NONE")[0].max_epochs == 0
+
+
 def test_the_training_strategy_gives_each_phase_its_settings_and_tmvas_defaults():
     first, second = strategy_phases(
         "LearningRate=0.1,Regularization=L1,WeightDecay=0.5,DropConfig=0.2+0.1,Optimizer=sgd|"
