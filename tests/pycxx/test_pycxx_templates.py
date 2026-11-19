@@ -538,3 +538,92 @@ def test_what_a_smart_pointer_holds_is_what_a_template_is_deduced_from(capsys) -
     """
     run_source(source, "held.C")
     assert capsys.readouterr().out == "2\n"
+
+
+def test_a_template_beside_a_function_of_its_name_is_the_call_that_fits_it(capsys) -> None:
+    """ROOT's ``Generator.h`` has ``generate<T>(T *&)`` beside ``generate(void *, TClass *)``:
+    ``generate(p)`` of an ``A *p`` is the template, ``T`` an ``A``, and the two arguments the
+    instance goes on to pass are a call of the other function of the set."""
+    source = r"""
+    #include <cstdio>
+    struct A { int n; };
+    void gen(void *o, int k) { printf("plain %d\n", k); }
+    template <typename T> void gen(T *o) { gen(o, 7); }
+    void t() { A *p = new A(); gen(p); }
+    """
+    python = translate(source, "t.C")
+    assert "def gen__A(o):\n    gen(o, 7)\n" in python and "gen__A(p)" in python
+    run_source(source, "t.C")
+    assert capsys.readouterr().out == "plain 7\n"
+
+
+def test_an_overload_set_keeps_its_other_functions_where_its_template_refuses() -> None:
+    """A template written once for every set of arguments has no ``typeid(T)`` to write, so it
+    refuses its own uses alone: ``gen(void *, int)`` beside it is still written and still
+    called by arity, and the arguments it does know are an instance as before."""
+    source = r"""
+    #include <cstdio>
+    #include <typeinfo>
+    template <typename T> void gen(T *&o) { const std::type_info &ti(typeid(T)); }
+    void gen(void *o, int k) { printf("plain %d\n", k); }
+    void t() { int *p = 0; gen(p); }
+    """
+    python = translate(source, "t.C")
+    assert "uninstantiated('the function template gen', " in python
+    assert "def gen__2(o, k):" in python
+    assert "def gen__int(o):" in python and "gen__int(p)" in python
+    assert "gen = Overloaded('gen', (gen__1, 1, 1, " in python
+    names = run_source(source, "t.C", call=False)
+    with pytest.raises(Refusal, match="the function template gen, used where"):
+        names["gen"](object())
+
+
+def test_a_set_one_function_of_which_cannot_be_written_at_all_stands_in_whole() -> None:
+    """``typeid`` of an array whose size the translator cannot see refuses in the body of an
+    ordinary function of the set too: nothing of the set can then be chosen by arity, so the
+    one stand-in is the set's, under the template's name."""
+    source = r"""
+    #include <typeinfo>
+    template <typename T> void gen(T *o) { }
+    void gen(int n) { double a[n]; auto &t = typeid(a); }
+    void t(int *p) { gen(p); }
+    """
+    python = translate(source, "t.C")
+    assert "uninstantiated('the function template gen', " in python
+    assert "Overloaded('gen', " not in python
+
+
+def test_a_member_set_one_member_of_which_cannot_be_written_stands_in_whole() -> None:
+    source = r"""
+    #include <typeinfo>
+    struct S {
+       template <class T> void add(T x) { }
+       void add(int n) { double a[n]; auto &t = typeid(a); }
+    };
+    void t(S s) { s.add(1); }
+    """
+    python = translate(source, "t.C")
+    assert "uninstantiated('the member template add', " in python
+    assert "Overloaded('add', " not in python
+
+
+def test_a_template_is_not_the_call_where_a_function_of_its_name_takes_it(capsys) -> None:
+    """``take(a, "x")`` of ``take(const A &, const char *)`` beside ``take(T in, V ref)`` is
+    the function, as C++ prefers one to a template: the template's ``V`` would be a
+    ``char *``, which has no ``std::numeric_limits`` to write, and ROOT's own
+    ``execSourceTypes.cxx`` refuses that way where its ``test_value`` does the same."""
+    source = r"""
+    #include <cstdio>
+    #include <limits>
+    struct A { int n; };
+    bool take(const A &a, const char *b) { printf("plain %s\n", b); return true; }
+    template <typename T, typename V> bool take(T in, V ref) {
+       return std::numeric_limits<V>::epsilon() > 0;
+    }
+    void t() { A a; take(a, "x"); }
+    """
+    python = translate(source, "t.C")
+    assert "uninstantiated('the function template take', " in python
+    assert "take__A(" not in python
+    run_source(source, "t.C")
+    assert capsys.readouterr().out == "plain x\n"
