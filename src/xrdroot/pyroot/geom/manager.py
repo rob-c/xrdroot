@@ -319,9 +319,34 @@ class TGeoManager(Makers, TNamed):
         )
 
     def Export(self, filename: str, name: str = "", option: str = "vg") -> Any:
+        """``Export``: the geometry written as the file ``filename`` names.
+
+        A ``.gdml`` name is written by ``TGDMLWrite`` as ROOT's ``Export`` does, and
+        read back by ``Import``. A ``.root`` or ``.xml`` one asks the ROOT file writer
+        for a ``TGeoManager`` record, which xrdroot's writer does not carry yet, and
+        ``.C`` one for a C++ script - both are refused by name, since writing a file
+        ROOT would misread is worse than saying so.
+        """
+        from ...geom.gdml import write
+        from .gdmlwrite import geometry_of
+
+        target = str(filename)
+        if target.endswith(".gdml"):
+            _said("TGeoManager::Export", f"Exporting {self.GetName()} {self.GetTitle()} as "
+                                         f"gdml code")
+            write(target, geometry_of(self))
+            return 1
+        if target.endswith(".C"):
+            raise UnsupportedFeatureError(
+                f"TGeoManager::Export writes a .C name as a C++ script that rebuilds the "
+                f"geometry - ROOT's TGeoVolume::SaveAs - and xrdroot.pyroot does not write "
+                f"geometry as C++ code; export the geometry to {target[:-2]}.gdml instead"
+            )
         raise UnsupportedFeatureError(
-            f"TGeoManager::Export writes the geometry as a ROOT file or GDML, neither of which "
-            f"xrdroot.pyroot writes a geometry as; {filename!r} was not written"
+            f"TGeoManager::Export writes a .root or .xml name as a ROOT file holding the "
+            f"geometry, whose TGeoManager record xrdroot's writer does not carry a layout "
+            f"for yet, so {target!r} was not written; export the geometry to "
+            f"{target}.gdml instead"
         )
 
 

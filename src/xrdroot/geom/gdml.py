@@ -20,8 +20,9 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
-__all__ = ["read", "Geometry", "GdmlError", "Counts"]
+__all__ = ["read", "write", "text", "Geometry", "GdmlError", "Counts"]
 
 #: How many centimetres one of GDML's length units is.
 LENGTH_UNITS = {
@@ -338,3 +339,197 @@ _SECTIONS = {
 }
 
 
+
+
+#: The attribute each solid's ``params`` are written as, in the reader's own order.
+_ATTRIBUTES = {
+    "box": ("x", "y", "z"),
+    "tube": ("rmin", "rmax", "z", "startphi", "deltaphi"),
+    "cone": ("rmin1", "rmax1", "rmin2", "rmax2", "z", "startphi", "deltaphi"),
+    "trd": ("x1", "x2", "y1", "y2", "z"),
+    "sphere": ("rmin", "rmax", "startphi", "deltaphi", "starttheta", "deltatheta"),
+}
+#: What a GDML file starts with: the schema `TGDMLWrite` names, so that ROOT's own
+#: reader - which goes by the elements alone - and Geant4 both take the file.
+_HEADER = ('<?xml version="1.0" encoding="UTF-8" ?>\n'
+           '<gdml xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"\n'
+           '      xsi:noNamespaceSchemaLocation="http://service-spi.web.cern.ch/'
+           'service-spi/app/releases/GDML/schema/gdml.xsd">\n')
+
+
+def _number(value: float) -> str:
+    """A number as GDML states it, at the digits ``SetExportPrecision`` keeps."""
+    stated = float(value) + 0.0
+    return f"{0.0 if stated == 0.0 else stated:.17g}"
+
+
+def _attributes(**named: Any) -> str:
+    return " ".join(f'{key.replace("_", "")}="{value}"' for key, value in named.items())
+
+
+def text(geometry: Geometry) -> str:
+    """``geometry`` as the GDML a reader of this module reads back.
+
+    Lengths are written in centimetres and angles in degrees, the units
+    both sides work in, so that the numbers are the file's own: a solid's
+    half lengths, radii and z extent as ROOT keeps them.
+    """
+    lines = [_HEADER.rstrip("\n")]
+    places = _places(geometry)
+    lines.extend(_written_define(geometry, places))
+    lines.append("  <materials>")
+    lines.extend(_written_materials(geometry))
+    lines.append("  </materials>")
+    lines.append("  <solids>")
+    lines.extend(_written_solids(geometry))
+    lines.append("  </solids>")
+    lines.append("  <structure>")
+    lines.extend(_written_volumes(geometry, places))
+    lines.append("  </structure>")
+    lines.append(f'  <setup name="{geometry.setup}" version="1.0">')
+    lines.append(f'    <world ref="{geometry.world}"/>')
+    lines.append("  </setup>")
+    lines.append("</gdml>")
+    return "\n".join(lines) + "\n"
+
+
+def write(path: str | Path, geometry: Geometry) -> None:
+    """Write ``geometry`` as the GDML file at ``path``, as ``TGDMLWrite`` writes one."""
+    Path(path).write_text(text(geometry), encoding="utf-8")
+
+
+def _places(geometry: Geometry) -> dict[str, str]:
+    """A name for each distinct position and rotation a placement states.
+
+    A ``<physvol>`` names its placement through ``<positionref>`` and
+    ``<rotationref>``: ROOT's own reader looks each up in ``<define>`` and
+    has no placement at all for one stated inline.
+    """
+    places: dict[str, str] = {}
+    for volume in geometry.volumes.values():
+        for placement in volume.placements:
+            for kind, stated in (("pos", placement.position), ("rot", placement.rotation)):
+                places.setdefault(f"{kind}:{stated}", f"{kind}{len(places) // 2}")
+    return places
+
+
+def _place_name(places: dict[str, str], kind: str, stated: tuple[float, ...]) -> str:
+    """The name ``_places`` gave one placement's position or rotation."""
+    return places[f"{kind}:{stated}"]
+
+
+def _written_define(geometry: Geometry, places: dict[str, str]) -> list[str]:
+    """``<define>``: the named positions and rotations a placement refers to."""
+    lines = ["  <define>"]
+    for name, place in list(geometry.positions.items()) + _generated(places, "pos"):
+        x, y, z = (_number(value) for value in place)
+        lines.append(f'    <position name="{name}" unit="cm" x="{x}" y="{y}" z="{z}"/>')
+    for name, angles in list(geometry.rotations.items()) + _generated(places, "rot"):
+        x, y, z = (_number(value) for value in angles)
+        lines.append(f'    <rotation name="{name}" unit="deg" x="{x}" y="{y}" z="{z}"/>')
+    lines.append("  </define>")
+    return lines
+
+
+def _generated(places: dict[str, str], kind: str) -> list[tuple[str, tuple[float, ...]]]:
+    """The placements' own names and numbers, one per distinct placement of that kind."""
+    found = []
+    for key, name in places.items():
+        stated, values = key.split(":", 1)
+        if stated == kind:
+            found.append((name, tuple(float(v) for v in values.strip("()").split(","))))
+    return found
+
+
+def _written_materials(geometry: Geometry) -> list[str]:
+    """The ``<element>`` and ``<material>`` rows: a material's density and its parts."""
+    lines = []
+    for element in geometry.elements.values():
+        lines.append(f'    <element name="{element.name}" formula="{element.formula}" '
+                     f'Z="{element.z}">')
+        lines.append(f'      <atom value="{_number(element.a)}" unit="g/mole"/>')
+        lines.append("    </element>")
+    for material in geometry.materials.values():
+        lines.append(f'    <material name="{material.name}" Z="0">')
+        lines.append(f'      <D value="{_number(material.density)}" unit="g/cm3"/>')
+        for name, weight in material.parts:
+            lines.append(f'      <fraction n="{_number(weight)}" ref="{name}"/>')
+        lines.append("    </material>")
+    return lines
+
+
+def _written_solids(geometry: Geometry) -> list[str]:
+    """One row per solid: its shape's numbers, or a subtraction's two operands."""
+    lines = []
+    for solid in geometry.solids.values():
+        if solid.shape == "subtraction":
+            lines.extend(_written_subtraction(solid))
+            continue
+        names = _ATTRIBUTES.get(solid.shape)
+        if names is None:
+            raise GdmlError(f"the solid {solid.name!r} is a {solid.shape!r}, which GDML has no "
+                            f"element for in this writer; make the geometry of boxes, tubes, "
+                            f"cones, trapezoids, spheres or polycones")
+        stated = {name: _number(value) for name, value in zip(names, solid.params, strict=False)}
+        angles = ' aunit="deg"' if "startphi" in stated or "deltatheta" in stated else ""
+        lines.append(f'    <{solid.shape} name="{solid.name}" lunit="cm"{angles} '
+                     f'{_attributes(**stated)}/>')
+    return lines
+
+
+def _written_subtraction(solid: Solid) -> list[str]:
+    """A solid cut out of another: the two operand names and the second's placement."""
+    first, second = solid.operands
+    x, y, z, phi, theta, psi = (_number(value) for value in solid.params)
+    return [f'    <subtraction name="{solid.name}">',
+            f'      <first ref="{first}"/>',
+            f'      <second ref="{second}"/>',
+            f'      <position unit="cm" x="{x}" y="{y}" z="{z}"/>',
+            f'      <rotation unit="deg" x="{phi}" y="{theta}" z="{psi}"/>',
+            "    </subtraction>"]
+
+
+def _written_volumes(geometry: Geometry, places: dict[str, str]) -> list[str]:
+    """One ``<volume>`` per volume, with a ``<physvol>`` for each volume placed in it.
+
+    The volumes come in the order ROOT's reader needs them: the tree from the
+    world down, each volume after the volumes it holds, since a ``<physvol>``
+    must name a volume the file has already defined.
+    """
+    lines = []
+    for volume in _ordered(geometry):
+        lines.append(f'    <volume name="{volume.name}">')
+        lines.append(f'      <materialref ref="{volume.material}"/>')
+        lines.append(f'      <solidref ref="{volume.solid}"/>')
+        lines.extend(_written_placement(placement, places) for placement in volume.placements)
+        lines.append("    </volume>")
+    return lines
+
+
+def _ordered(geometry: Geometry) -> list[Volume]:
+    """Every volume, each after the volumes placed in it, the world's tree first."""
+    order: list[Volume] = []
+    seen: set[str] = set()
+
+    def visit(name: str) -> None:
+        if name in seen or name not in geometry.volumes:
+            return
+        seen.add(name)
+        for placement in geometry.volumes[name].placements:
+            visit(placement.volume)
+        order.append(geometry.volumes[name])
+
+    visit(geometry.world)
+    order.extend(volume for name, volume in geometry.volumes.items() if name not in seen)
+    return order
+
+
+def _written_placement(placement: Placement, places: dict[str, str]) -> str:
+    """One ``<physvol>``, naming the position and rotation ``<define>`` states."""
+    where = _place_name(places, "pos", placement.position)
+    turned = _place_name(places, "rot", placement.rotation)
+    return (f'      <physvol>\n'
+            f'        <volumeref ref="{placement.volume}"/>\n'
+            f'        <positionref ref="{where}"/>\n'
+            f'        <rotationref ref="{turned}"/>\n'
+            f'      </physvol>')
