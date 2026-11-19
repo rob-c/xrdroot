@@ -317,3 +317,53 @@ def test_bits_of_other_sizes_combine_and_shift_as_roots_do():
     wide >>= 3
     assert (wide.FirstSetBit(), wide.LastSetBit(), wide.GetNbits()) == (2, 14, 19)
     assert ((~wide).CountBits(), (~wide).GetNbits()) == (22, 19)
+
+
+def test_a_reference_carries_the_memory_bits_of_an_object_made_on_the_heap():
+    # ROOT's ``TObject()`` asks ``TStorage::UpdateIsOnHeap`` where it was made; a ``TRef``
+    # read back from a file is made by ``TClass::New``, on the heap, so it carries both bits.
+    assert ROOT.TRef().TestBits(0xFFFFFFFF) == references.HEAP_BITS
+
+
+def test_set_action_numbers_the_action_in_the_bits_and_runs_what_it_numbers(monkeypatch):
+    ran: list[str] = []
+    monkeypatch.setattr(ROOT.gROOT, "ProcessLine", lambda line: ran.append(line))
+    assert ROOT.TRef.AddExec("load()") == 1 and ROOT.TRef.AddExec("fill()") == 2
+    first = ROOT.TRef(ROOT.TObject())
+    first.SetAction("load()")
+    second = ROOT.TRef(ROOT.TObject())
+    second.SetAction("fill()")
+    assert first.TestBits(0xFF0000) == 1 << 16 and second.TestBits(0xFF0000) == 2 << 16
+    # A reference read back from a file knows only the number in its bits.
+    read = references._tref_from({"TObject": {"fUniqueID": 1, "fBits": 2 << 16}})
+    read._pid = TProcessID.GetSessionProcessID()
+    TProcessID.GetSessionProcessID().Clear()
+    assert read.GetObject() is None and ran == ["fill()"]
+
+
+def test_an_action_no_bit_numbers_and_one_past_the_execs_run_nothing(monkeypatch):
+    ran: list[str] = []
+    monkeypatch.setattr(ROOT.gROOT, "ProcessLine", lambda line: ran.append(line))
+    ROOT.TRef.AddExec("load()")
+    session = TProcessID.GetSessionProcessID()
+    session.Clear()
+    unnumbered = ROOT.TRef(ROOT.TObject())
+    past_the_end = ROOT.TRef(ROOT.TObject())
+    past_the_end.SetBit(9 << 16)
+    assert unnumbered.GetObject() is None and past_the_end.GetObject() is None
+    assert ran == []
+
+
+def test_assigning_into_a_reference_keeps_the_bits_the_action_is_numbered_in():
+    # ``fReference = obj`` in C++ writes into the reference - ``TRef::operator=`` - so the
+    # bits, and the action numbered in them, stay; only the number and the process move.
+    ROOT.TRef.AddExec("load()")
+    numbered = ROOT.TRef(ROOT.TObject())
+    numbered.SetAction("load()")
+    target = ROOT.TNamed("t", "")
+    numbered._assign(target)
+    assert numbered.GetObject() is target and numbered.TestBits(0xFF0000) == 1 << 16
+    other = ROOT.TRef(ROOT.TNamed("other", ""))
+    numbered._assign(other)
+    assert numbered.GetPID() is other.GetPID()
+    assert numbered.GetUniqueID() == other.GetUniqueID() and numbered.TestBits(0xFF0000) == 1 << 16

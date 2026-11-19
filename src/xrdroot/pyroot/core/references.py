@@ -38,8 +38,14 @@ NUMBER_MASK = 0xFFFFFF
 MOST = NUMBER_MASK
 #: The index a process past the 255th is filed under in an identifier's top byte.
 FAR = 0xFF
-#: ``TObject::kIsOnHeap | kNotDeleted``, which a record carries and an object read does not.
+#: ``TObject::kIsOnHeap | kNotDeleted``, which every object made on the heap carries:
+#: a ``TRef`` is one here, as ``TClass::New`` makes it when a file reads one back.
 HEAP_BITS = 0x03000000
+#: ``TRef::SetAction`` numbers the action it was given in the bits it sets - ``execid << 16``,
+#: ``execid`` being the action's place among ``AddExec``'s, from one.
+ACTION_SHIFT = 16
+#: The bits of ``fBits`` that number it - ``TestBits(0xff0000) >> 16``, ROOT's.
+EXEC_MASK = 0xFF0000
 
 
 def _unique(obj: Any) -> int:
@@ -216,6 +222,9 @@ class TRef(TObject):
 
     def __init__(self, obj: Any = None) -> None:
         super().__init__()
+        # ``TObject()`` asks ``TStorage::UpdateIsOnHeap`` where it was made; every object
+        # here is made on the heap, so a fresh reference carries ROOT's two memory bits.
+        self._store_bits(HEAP_BITS)
         self._pid: TProcessID | None = None
         self._action: Any = None
         if isinstance(obj, TRef):
@@ -236,18 +245,39 @@ class TRef(TObject):
         self.SetUniqueID(number)
         return self
 
+    def _assign(self, value: Any) -> None:
+        """``operator=``, which writes into this reference where ``tref = other`` would bind
+        a new one over it: the bits - and with them the action the reference was given -
+        stay, as C++'s assignment leaves them; only the number and the process move."""
+        if isinstance(value, TRef):
+            self.SetUniqueID(value.GetUniqueID())
+            self._pid = value._pid
+            self.SetBit(HAS_UUID, value.TestBit(HAS_UUID))
+            return
+        self.Set(value)
+
     def GetObject(self) -> Any:
         """The object referred to, if its process still has it - after running the action,
         if there is one and the object was not there - and ``None`` otherwise."""
         if self._pid is None or not TProcessID.IsValid(self._pid):
             return None
         found = self._pid.GetObjectWithID(self.GetUniqueID())
-        if found is None and isinstance(self._action, str):
-            from .troot import gROOT
+        if found is not None:
+            return found
+        action = self._action if isinstance(self._action, str) else self._numbered_action()
+        if action is None:
+            return None
+        from .troot import gROOT
 
-            gROOT.ProcessLine(self._action)
-            found = self._pid.GetObjectWithID(self.GetUniqueID())
-        return found
+        gROOT.ProcessLine(action)
+        return self._pid.GetObjectWithID(self.GetUniqueID())
+
+    def _numbered_action(self) -> str | None:
+        """The action this reference's bits number, which is how a reference read back from
+        a file - one ``SetAction`` was never called on here - knows the one it was given:
+        ROOT keeps only the exec's number in ``fBits``."""
+        execid = (self._bitword() & EXEC_MASK) >> ACTION_SHIFT
+        return TRef._execs[execid - 1] if 0 < execid <= len(TRef._execs) else None
 
     @staticmethod
     def AddExec(name: str) -> int:
@@ -262,8 +292,18 @@ class TRef(TObject):
 
     def SetAction(self, action: Any) -> None:
         """``SetAction``: a command to run when the object is wanted and not here - or the
-        object whose class's ``//EXEC:`` comment names it, which nothing here reads."""
-        self._action = str(action) if isinstance(action, str) else action
+        object whose class's ``//EXEC:`` comment names it, which nothing here reads.
+
+        ROOT looks the command up among ``AddExec``'s and, finding it, sets the bit that
+        numbers it; a command it does not know it refuses. Here an unknown command is kept
+        and run all the same - a macro's ``//EXEC:`` line names one nothing registered - so
+        only a registered action moves the bits."""
+        if not isinstance(action, str):
+            self._action = action
+            return
+        self._action = action
+        if action in TRef._execs:
+            self.SetBit((TRef._execs.index(action) + 1) << ACTION_SHIFT)
 
     def GetAction(self) -> Any:
         return self._action
@@ -476,7 +516,9 @@ def _tref_from(members: Any) -> TRef:
     made = TRef()
     tobject = members.get("TObject", {})
     made.SetUniqueID(int(tobject.get("fUniqueID", 0)))
-    made._store_bits(int(tobject.get("fBits", 0)) & ~HEAP_BITS)
+    # ROOT's ``TObject::Streamer`` leaves the memory bits out of what it writes - a stack
+    # object's ``kIsOnHeap`` is not the reader's - so an object read is given them afresh.
+    made._store_bits(int(tobject.get("fBits", 0)) | HEAP_BITS)
     return made
 
 
