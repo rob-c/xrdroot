@@ -20,19 +20,21 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1134 / 2173** |
+| roottest | 1038 / 2173 (47.8 %) | **1138 / 2173** |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **21 / 109** at `--jobs 5` (22 alone) |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1294 / 2820 (45.9 %)** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1298 / 2820 (46.0 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
-The "now" column is two runs at `2d0e458`: `/tmp/r7/final2` (roottest, 1134) and
-`/tmp/r7/final1` (the other kinds: gtest 52, pyunittest 81, `test/` 6, `other` 21 -
-`minuit2_ParallelTest` timed out and passes alone). The two roottest tests the last round
-brought in are `AddVersion-1-6` (the `BuildCheck` warning, judged by the member's width)
-and `io/geo/readGeo` (a `TGeoManager` read back from a ROOT file). `other` reads 21
+The "now" column is two runs at `f65e991`: `/tmp/r8/final2` (roottest, 1138) and
+`/tmp/r8/final1` (the other kinds: gtest 52, pyunittest 81, `test/` 6, `other` 21 -
+`minuit2_ParallelTest` timed out and passes alone). The four roottest tests the last round
+brought in are the three `io/abstractclass/read_test*` (a class whose version is zero is
+read as a version unless its record has room for a checksum) and
+`ntuple/makeproject/rntuple/read_rntuple` (an RNTuple record read back as the class its
+file keeps). `other` reads 21
 at `--jobs 5` **and still 21 alone**, because `minuit2_ParallelTest` now takes 309 s of the
 300 s limit: measured alone at `8af51aa`, `bb19779` and `68a8d07`, so it is this machine, not
 a code change (it took 195-236 s when the earlier rounds measured it). It is `P-9`'s
@@ -941,20 +943,34 @@ cheap to maintain and impossible to reconstruct.
 | W0-24 | attempted, not merged | - | 0 | worker 12: `test/stressgraphics` compares xrdroot's *encoder* output, so no change inside `pyroot/graphics/` can pass them (`/tmp/r7/w12-report.md`) |
 | W0-25 | attempted, not merged | - | 0 | worker 13: all six `io/json` targets need `pyroot/core/jsonbuffer.py`'s container writers plus `TMap` (`/tmp/r7/w13.log`) |
 
+| Q-45 (abstract) | **done** | `17c3e9e` (worker 8) | roottest +3 | a class whose version is zero is read as a version unless its record has room for a checksum: the three `io/abstractclass/read_test*` pass |
+| Q-46 | **done** | `7d0502e` (worker 15) + `95a48b2` | roottest +1 | an RNTuple record is read back as an object of the class its file keeps, and a whole-object member of a split collection is a row of objects: `makeproject/rntuple/read_rntuple` passes, so all four `makeproject` tests do |
+| Q-48 | **attempted, reverted** | `e9cb809`, reverted by `f65e991` | 0 | worker 1 put a method that gives back an object back to the formula, as ROOT draws one - right about ROOT, but the shape it left (`_divergence`'s closure in `interp.py`) has a branch no test without a real file can reach, so it was reverted rather than shipped under the coverage floor |
+| Q-48 (formula) | **done in part** | `18af0e9` (worker 1) | 0 | `pyroot/trees/methods.py` now leaves an object a method gives back to the formula, which is what round 7's prototype asked for; the 40 `treeformula`/`fastcloningeventtree` tests move on to their next wall |
+| Q-39 | **done in part** | `1ab88cb` (worker 2) | 0 | a template instance is one class under either spelling of its arguments (`pyroot/core/declared.py`); `io/bigevent` reaches the writer's next member |
+| Q-36 (part) | **done in part** | `260be7c` (worker 3) | 0 | the version-0 header guard from `/tmp/r5/w14-patches.diff`, with the `reconcile` wiring still to come (its third hunk was reverted with `f65e991`) |
+| Q-33 | **done** | `13507ab` (worker 4) | 0 | a braced list fills the hashed and multi- containers, and two containers compare by what they hold: `makeproject/ttree`'s first wall is gone |
+| Q-44 (export) | **done in part** | `98f8b65` (worker 6) | 0 | a geometry's polycones and polygons are read as the solids their arrays make, and a sphere is not taken for a tube - the reader side of the twenty `io/geo/export_*` tests |
+| W0-25 | **done in part** | `6b1d29d` (worker 7) | 0 | `TBufferJSON` reads an object back from its `_typename` and writes a member of declared lengths; the JSON targets move on |
+| Q-41 (bigevent) | **done in part** | `a6c0ffc` (worker 11) | 0 | a member of a `TDatime` is a description this writer carries |
+| Q-40 (part) | **done** | `70029ef` (worker 12) | 0 | a collection of collections is refused with the layout that does keep its sizes, instead of being given a leaf list |
+| W0-26 | attempted, not merged | - | 0 | worker 9's `ROOT.SetHeuristicMemoryPolicy` (`c9edf96`) landed, but `roottest/python/memory` still needs the lifetime patch (`/tmp/r7/w10-memory-lifetime.patch`) applied with it |
+| W0-27 | attempted, not merged | - | 0 | workers 5, 10, 13, 14 and 16 reported without a commit: `SplitClones` still needs `wclasses.py` (5), `stressgraphics` compares encoders (10), `selectorreader/Classes` needs a class the process has a dictionary for (13), `pycint/typedefs.py` did not move `tree/stl` (14), and `testSetAddressLoop`'s 53 s is the GIL's (16) - each report is `/tmp/r8/wNN.log` |
+
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | now (`2d0e458`) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | **1134** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
-| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | now (`f65e991`) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | **1138** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
+| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** |
 
-The last column is `/tmp/r7/final2` (roottest, 1134) and `/tmp/r7/final1` (the other kinds)
-at `2d0e458`; the column before it, `/tmp/r6/final2b` (1132) and `/tmp/r6/final1` at
+The last column is `/tmp/r8/final2` (roottest, 1138) and `/tmp/r8/final1` (the other kinds)
+at `f65e991`; the column before it, `/tmp/r7/final2` (1134) and `/tmp/r7/final1` at `2d0e458`; the column before it, `/tmp/r6/final2b` (1132) and `/tmp/r6/final1` at
 `3825443`; the column before it, `/tmp/r5/final2b` (1123) and `/tmp/r5/final1` at
 `f583422`; the column before it, `/tmp/r4/final2` (1114) and `/tmp/r4/final1` at
 `932164a`; the column before it, `/tmp/r3/final2` (roottest, 1105) and
