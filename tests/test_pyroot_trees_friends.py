@@ -264,3 +264,80 @@ def test_an_entry_list_enters_a_stepped_range_and_is_renamed_and_reset():
     assert (stepped.GetTreeName(), stepped.GetFileName()) == ("u", "h.root")
     stepped.Reset()
     assert stepped.GetN() == 0 and list(stepped) == []
+
+
+def _donor_of_whole_objects():
+    """ROOT 6.40's ``object-branches-6.40.root``, which ``object_branches.C`` wrote."""
+    import pathlib
+
+    return xrdroot.open_root(str(pathlib.Path(__file__).parent / "data" /
+                                  "object-branches-6.40.root"))  # fmt: skip
+
+
+def _described_packed():
+    """A declaration of ``Packed``, a macro class, described as the donor file describes it."""
+    from xrdroot.streamers import read_infos
+    from xrdroot.wbranch import DeclaredWhole, Described
+
+    with _donor_of_whole_objects() as f:
+        infos = dict(read_infos(f._source))
+    checksum, version, _elements = infos["Packed"]
+    described = tuple(Described(name, one[1], one[0], one[2]) for name, one in infos.items())
+    return DeclaredWhole("Packed", checksum, version, described, split=0)
+
+
+def _written_whole_objects(tmp_path, entries):
+    """A file whose one branch is a whole object per entry, as ROOT streams an unsplit one."""
+    path = tmp_path / "whole.root"
+    with xrdroot.create(str(path)) as out:
+        out.tree("t", {"p": _described_packed()}).extend({"p": entries})
+    return str(path)
+
+
+def test_a_clone_copies_a_branch_of_whole_objects_as_the_bytes_it_holds(tmp_path):
+    """ROOT's fast clone moves such a branch's baskets across without reading them.
+
+    The clone's file must therefore carry the description the source file gave,
+    because no class in this process need be the one the branch holds.
+    """
+    path = _written_whole_objects(tmp_path, [b"one", b"two"])
+    with xrdroot.open_root(path) as f:
+        parent = wrap(f["t"])
+        clone = parent.CloneTree(-1, "fast")
+        assert clone.GetEntries() == 2
+        assert clone._store.columns() == {"p": [b"one", b"two"]}
+        assert "Packed" in repr(clone._store.slots["p"])
+        with pytest.raises(ValueError, match="has read none yet"):
+            parent.CloneTree(0).Fill()
+        parent.GetEntry(1)
+        clone.Fill()
+        assert clone._store.columns()["p"] == [b"one", b"two", b"two"]
+
+
+def test_a_copy_tree_of_whole_objects_keeps_the_entries_the_cut_keeps(tmp_path):
+    entries = [b"one", b"two", b"three"]
+    with xrdroot.open_root(_written_whole_objects(tmp_path, entries)) as f:
+        copy = wrap(f["t"]).CopyTree("Entry$ % 2 == 0")
+        assert copy.GetEntries() == 2
+        assert copy._store.columns() == {"p": [b"one", b"three"]}
+    with xrdroot.open_root(_write(tmp_path, copy, "cut")) as f:
+        assert f["t"].keys() == ["p"]
+
+
+def test_a_clone_of_a_branch_whose_class_streams_itself_says_what_to_do(tmp_path):
+    """A class ROOT streams with its own streamer is not one this clone can rewrite."""
+    import io
+
+    from xrdroot import create
+    from xrdroot.errors import UnsupportedFeatureError
+    from xrdroot.pyroot.trees import copying
+    from xrdroot.wbranch import Whole
+
+    assert copying._infos(object()) == {}
+    buf = io.BytesIO()
+    with create(buf) as out:
+        spec = Whole("TLorentzVector", custom=True, split=0)
+        out.tree("t", {"v": spec}).extend({"v": [bytes(44), bytes(44)]})
+    with xrdroot.open_root(io.BytesIO(buf.getvalue())) as f:
+        with pytest.raises(UnsupportedFeatureError, match="ROOT streams itself"):
+            wrap(f["t"]).CloneTree(-1, "fast")
