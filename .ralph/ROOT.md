@@ -3,7 +3,9 @@
 This loop advances `/Users/rcurrie/src/xrdroot` — a pure-Python, NumPy-backed re-implementation
 of CERN ROOT — one **round** at a time. A round is: read the queue in `TODO.md`, pick sixteen
 disjoint scopes, fan sixteen workers out over their own git worktrees, integrate what passes the
-gates, measure with ROOT's own test suite, and record the result in `TODO.md`'s ledger.
+gates, measure with ROOT's own test suite, and then **close the round in `TODO.md`** — the numbers,
+a ledger row per fix and per attempt, and a queue entry for every piece of work the round
+discovered and did not do.
 
 Read `AGENTS.md` and `TODO.md` in full before the first round. They are the specification; this
 file is the procedure and the record of what has already been learned the hard way.
@@ -38,7 +40,7 @@ Measured at `986f0d8` (`/tmp/x8/final2b` for roottest, `/tmp/x8/final1b` for the
 it came from. §0's table and §4's queue are the plan. **Start each round from the ledger**, not
 from `AGENTS.md`'s stale "what remains" list.
 
-## The round, in five steps
+## The round, in six steps
 
 ### 1. Read the queue and rank the work
 
@@ -249,11 +251,59 @@ CERN-network copies (`main/RootcpReadRemote` and its two dependants, `io/hadd/te
 and `other/math/minuit2/minuit2_ParallelTest` takes 195–236 s of a 300 s limit; all four have
 passed when rerun alone, repeatedly.
 
-Update `TODO.md` in the **same commit as the improvement**: §0's "now" column, the cumulative
-table in §7, one ledger row per fix group (task id, commit, tests moved as `roottest 1076 → 1084`,
-and the note that says what ROOT does), and a row for every attempt that is *not* merged, naming
-the refusal to relax or the missing name. Then commit and push only if the operator asked; the
-gates are run before the commit, never after.
+Then close the round with step 6. Push only if the operator asked; the gates are run before the
+commit, never after.
+
+### 6. Close the round in `TODO.md` — every round ends here
+
+A round is not finished until `TODO.md` carries it, in the **same commit as the improvement** it
+records. Three things go in, and the third is the one that is easy to forget:
+
+**(a) The measured numbers.** §0's "now" column (per kind), and a new column in §7's cumulative
+table for this round, quoting the round's `final1`/`final2` `results.json` by path. Quote
+`roottest 1076 → 1084`; never "improved".
+
+**(b) One ledger row per fix group and per attempt.** For a merged fix: task id, commit, tests
+moved, and a note saying what ROOT does. For an attempt that is *not* merged: the same row with
+`attempted, not merged`, the branch it is on, `0` tests moved, and the exact refusal or missing
+name to relax — `formula/binding.py::_mismatch` refuses `fTracks.fVertex[][fTracks.fNpoint%3]` is
+the shape of a useful row.
+
+**(c) The extra work the round discovered — as queue entries, not as prose.** Every one of these
+becomes a row in §4's queue (or, where it is small, a bullet in §5's housekeeping), with the file,
+the observed message and one line of why:
+
+- a worker's "the fix is one line, in a file outside my scope" (that is the highest-value finding
+  a round can produce);
+- a refusal that a fix turned from a crash into a sentence — the next worker needs to know it is
+  now a *named* gap;
+- a missing ROOT name, class or method a test asked for and nothing in the queue listed;
+- a test that needs an environment package (`jupyter`, `torch`, `libomp`) rather than code;
+- a hang or a test near the 300 s limit, with the stack that shows where it spends its time;
+- a file layout measured against the oracle (a byte count, a streamer element, a leaf title) that
+  differs and is not yet fixed;
+- any tool or harness gap found (a wrong test id in a brief, `ratchet` misfiring, a stale
+  `baseline.json`), because the next round will otherwise pay for it again.
+
+Write each as a row someone can act on without the round's context:
+
+```markdown
+| Q-NN | <the name of the thing> | <tests blocked> | S | <file(s)> | `<message or measurement>` — <what ROOT does, what is missing>. <the first step> |
+```
+
+and keep the numbering of the existing queue (extend `Q-`, `P-`, `G-`, `W0-`), so the next round's
+ranking lands on the same ids. If a discovered item is one the round's own workers were told to
+do, mark the *original* row's status instead of adding a new one.
+
+Finish with:
+
+```bash
+cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot
+git -c commit.gpgsign=false commit -am "docs: the ledger after round <N>"
+```
+
+and put the round's own summary — the sixteen scopes, what landed, what was rejected, what is
+new — in the loop's task file (`.ralph/<name>.md`), which is where the next iteration reads it.
 
 ## Hard rules (from `AGENTS.md`, do not violate)
 
@@ -305,6 +355,11 @@ gates are run before the commit, never after.
 - [ ] **every branch that loses a PASS rejected**, with the refusal to relax recorded
 - [ ] both harness runs made; every TIMEOUT rerun alone before being called a loss
 - [ ] `TODO.md` §0, §7's cumulative table and the ledger rows updated in the same commits
+- [ ] **every extra thing the round found added to §4's queue or §5's housekeeping**, with file,
+      message and first step (see step 6c) — a round that discovers work and does not write it
+      down has wasted it
+- [ ] the round's summary written into the loop's task file (`.ralph/<name>.md`)
+- [ ] gates re-run at the round's final commit
 - [ ] commits made; nothing pushed unless asked
 - [ ] the round directory kept (its `results.json` files are the evidence)
 

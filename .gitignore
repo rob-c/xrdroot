@@ -29,3 +29,5 @@ venv/
 .ralph/*.state.json
 .ralph/archive/
 .ralph/*.log
+.ralph/*.md
+!.ralph/ROOT.md
