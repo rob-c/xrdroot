@@ -283,6 +283,30 @@ def test_roots_bases_objects_and_pointers_never_null_are_written_in_place():
     assert lined.named.GetName() == "inside"
 
 
+HELD = r"""
+#include "TH1F.h"
+class Held {
+public:
+   TH1F *h;   //->
+   Held() : h(new TH1F("h", "inside", 10, 0, 1)) { h->SetBinContent(1, 3); }
+};
+void held(const char *name) {
+   TFile f(name, "RECREATE");
+   Held one;
+   f.WriteObjectAny(&one, "Held", "one");
+}
+"""
+
+
+def test_a_member_that_is_a_pointer_to_roots_class_is_that_class_again():
+    # What the file holds for the member is the histogram's members, since the class is the
+    # member's own type; a macro's pointer is the TH1F ROOT would give it, not the members.
+    run_source(HELD, "held.C", ("held.root",))
+    back = ROOT.TFile("held.root").Get("one")
+    assert type(back.h).__name__ == "TH1F"
+    assert (back.h.GetName(), back.h.GetBinContent(1)) == ("h", 3.0)
+
+
 def test_a_class_of_roots_that_nothing_derives_from_is_a_base_by_its_own_description():
     decl = Declaration("C", 1, True, ("TObjString",), (Field("c", "char", "", ()),))
     catalogue = Catalogue({"C": decl})
@@ -314,6 +338,24 @@ def test_a_pointer_read_to_a_class_no_one_declared_is_kept_as_read():
     assert converted(3, parse_type("Unknown"), None) == 3
     assert converted([1, 2], parse_type("int"), None).tolist() == [1, 2]
     assert converted(-1.5, parse_type("short"), 0) == -1
+
+
+def test_a_tclonesarray_member_reads_back_as_the_objects_its_class_names():
+    # A TClonesArray names its one class at the front of the array and holds its objects'
+    # members; a macro's pointer to it is an array of that class's objects again.
+    from xrdroot.buffer import Clones
+    from xrdroot.pycint.execute import run_source as run
+    from xrdroot.pyroot.core.collections import TClonesArray
+    from xrdroot.pyroot.core.declared import converted
+
+    run("class Dot { public: double fX; };\nint nothing() { return 0; }", "dots.C", ())
+    held = Clones([{"fX": 1.5}, {"fX": -2.0}], "Dot")
+    back = converted(held, parse_type("TClonesArray*"), None)
+    assert isinstance(back, TClonesArray)
+    assert [type(dot).__name__ for dot in back] == ["Dot", "Dot"]
+    assert [dot.fX for dot in back] == [1.5, -2.0]
+    # A list read for a class nothing knows is left as it was read.
+    assert converted([1, 2], parse_type("Unknown*"), None) == [1, 2]
 
 
 def test_roots_members_without_a_setter_are_left_as_they_are():
