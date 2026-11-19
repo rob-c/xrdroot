@@ -487,7 +487,9 @@ def _held(value: Any, found: Spelled, current: Any) -> Any:
 
 
 def _pointed(value: Any, found: Spelled) -> Any:
-    made = made_from(found.name, value)
+    """A pointer's object: of the class the stream named, which may be a derived one - a
+    ``BaseABC *fABC`` holding a ``Derived`` is a ``Derived``, as ROOT gives it back."""
+    made = made_from(str(getattr(value, "classname", "") or found.name), value)
     return made if made is not None else value
 
 

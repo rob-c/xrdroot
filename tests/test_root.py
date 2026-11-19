@@ -34,7 +34,14 @@ from xrdroot import (
     UnsupportedFeatureError,
     open_root,
 )
-from xrdroot.buffer import BYTE_COUNT_MASK, CLASS_MASK, MAP_OFFSET, NEW_CLASS_TAG, Buffer
+from xrdroot.buffer import (
+    BYTE_COUNT_MASK,
+    CLASS_MASK,
+    MAP_OFFSET,
+    NEW_CLASS_TAG,
+    Buffer,
+    Named,
+)
 from xrdroot.compression import _lz4, _xxh64, algorithm, decompress
 from xrdroot.cxx import parse
 from xrdroot.file import Source, _directory_record
@@ -1566,3 +1573,19 @@ def test_a_directory_can_be_built_over_any_source():
     root = Directory(source_over(b""), [], "sub")
     assert list(root) == []
     assert root.get("anything") is None
+
+
+def _one_record(name: str, body: bytes) -> bytes:
+    """One object written where it stands, its class named and then its bytes."""
+    whole = struct.pack(">I", BYTE_COUNT_MASK | (4 + len(body)))
+    return whole + struct.pack(">I", NEW_CLASS_TAG) + name.encode() + b"\x00" + body
+
+
+def test_a_record_read_by_class_keeps_the_name_the_stream_gave_it():
+    read = Buffer(_one_record("Derived", b"\x07")).any({"Derived": lambda b: {"n": b.u8()}})
+    assert (read, read.classname) == ({"n": 7}, "Derived")
+
+
+def test_a_record_that_already_names_its_class_is_not_named_again():
+    seen = Named({"n": 7}, "BaseABC")
+    assert Buffer(_one_record("Derived", b"\x07")).any({"Derived": lambda b: seen}) is seen

@@ -1017,3 +1017,52 @@ def test_a_class_a_pointer_member_points_at_is_described_with_it():
     _describe_pointed_at(catalogue)
     assert {"Root1", "Middle1", "Leaf1"} <= set(catalogue.declarations)
     assert DECLARED  # the classes stay declared, nothing is unregistered
+
+
+POINTED_AT = r"""
+class BaseABC {
+public:
+   BaseABC(int i = -1): abc(i) {}
+   virtual ~BaseABC() {}
+   virtual int pv() = 0;
+   int abc;
+};
+class Derived: public BaseABC {
+public:
+   ~Derived() override {}
+   Derived(int i = -2): BaseABC(i + 1), derived(i) {}
+   int pv() override { return abc + derived; }
+   int derived;
+};
+class Holder {
+public:
+   Holder(): fABC(nullptr) {}
+   ~Holder() { delete fABC; }
+   void Set(int i) { delete fABC; fABC = new Derived(i); }
+   BaseABC *fABC;
+};
+void pointed(const char *name) {
+   {
+      Holder h;
+      TFile f(name, "RECREATE");
+      TTree t("tree", "abc tree");
+      t.Branch("h", &h);
+      for (int e = 0; e < 3; ++e) { h.Set(e); t.Fill(); }
+      t.Write();
+   }
+   TFile f(name);
+   TTree *t = (TTree *)f.Get("tree");
+   Holder *read = nullptr;
+   t->SetBranchAddress("h", &read);
+   for (int e = 0; e < 3; ++e) {
+      t->GetEntry(e);
+      Derived *d = (Derived *)read->fABC;
+      printf("%d %d %d\n", e, d->abc, d->derived);
+   }
+}
+"""
+
+
+def test_a_pointer_member_reads_back_as_the_derived_class_the_stream_named(capfd):
+    run_source(POINTED_AT, "pointed.C", ("pointed.root",))
+    assert capfd.readouterr().out.splitlines() == ["0 1 0", "1 2 1", "2 3 2"]

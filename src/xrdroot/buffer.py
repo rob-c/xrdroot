@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime
 import struct
+from collections.abc import Mapping
 from functools import cache
 from typing import Any
 
@@ -21,7 +22,16 @@ import numpy as np
 
 from .errors import FormatError, UnsupportedFeatureError
 
-__all__ = ["Buffer", "Clones", "Listed", "as_datetime", "gather", "numbers", "on_disk"]
+__all__ = [
+    "Buffer",
+    "Clones",
+    "Listed",
+    "Named",
+    "as_datetime",
+    "gather",
+    "numbers",
+    "on_disk",
+]
 
 
 @cache
@@ -34,6 +44,22 @@ def on_disk(typename: str) -> np.dtype[Any]:
     if typename == "bool":
         return np.dtype("u1")
     return np.dtype(typename).newbyteorder(">")
+
+
+class Named(dict[str, Any]):
+    """One object's members, and the class the stream said they were the members of.
+
+    An object written where it stands names its class in front of itself, and a
+    pointer read by the type it was declared with - ``BaseABC *fABC`` holding a
+    ``Derived`` - can only be made into the object ROOT would give back if that
+    name survives the walk over the members, which are laid out apart from it.
+    """
+
+    __slots__ = ("classname",)
+
+    def __init__(self, members: Mapping[str, Any], classname: str) -> None:
+        super().__init__(members)
+        self.classname = classname
 
 
 def gather(data: bytes, starts: Any, lengths: Any) -> bytes:
@@ -342,6 +368,19 @@ class Buffer:
             if not name:
                 raise FormatError(f"a class reference at {start} points nowhere")
 
+        obj = self._classed(classes, name, start, end)
+        self.refs[start + MAP_OFFSET] = obj
+        return obj
+
+    def _classed(
+        self, classes: dict[str, Any], name: str, start: int, end: int | None
+    ) -> Any:
+        """The object ``name`` names, read by ``classes`` or stepped over if it is not there.
+
+        A record that does come back is handed on with the name in front of it kept, because
+        the members alone do not say what class they are the members of, and a pointer read
+        by the type it was declared with may point at a class derived from that one.
+        """
         reader = classes.get(name)
         if reader is None:
             if end is None:
@@ -349,7 +388,8 @@ class Buffer:
             self.pos = end
             return name
         obj = reader(self)
-        self.refs[start + MAP_OFFSET] = obj
+        if isinstance(obj, dict) and not isinstance(obj, Named):
+            return Named(obj, name)
         return obj
 
     def tlist(self, classes: dict[str, Any]) -> Listed:
