@@ -1018,6 +1018,25 @@ def test_a_class_spelled_with_a_space_where_a_streamer_names_it_is_the_same_clas
     assert set(made.entries()) == {spelled}
 
 
+def test_a_member_of_a_template_instance_is_an_object_held_in_place_of_that_class():
+    """The flip side of the spelling above, and what the writer asks of it: a class holding
+    ``template2<template1<int> > fTemplateMember`` - the bigevent roottest's ``Event`` - is laid
+    out as ROOT lays a class held by value out, ``kAny`` under the spelling a streamer uses, and
+    the class the member is of is described in the file as well, so a reader can walk the
+    member by it. The class reaches the catalogue only once something has reached the
+    *translation's* class of that name; the catalogue then answers to either spelling.
+    """
+    spelled = "template2<template1<int> >"
+    made = Catalogue({
+        "Event": Declaration("Event", 1, False, (), (
+            Field("fTemplateMember", spelled, "", ()),)),
+        "template2<template1<int>>": Declaration("template2<template1<int>>", 1, True, (), ()),
+    })  # fmt: skip
+    assert made.info("Event")[2] == (
+        ("TStreamerObjectAny", "fTemplateMember", "", 62, 8, 0, 0, NO_DIMS, spelled, ()),)
+    assert set(made.entries()) == {"Event", "template2<template1<int>>"}
+
+
 #: ROOT 6.40.04's ``TBufferFile::WriteObjectAny`` of a ``classWithComplex(1, 2, 3, 4)`` - a
 #: ``std::complex<float> fcf`` and a ``std::complex<double> fcd`` - as the oracle writes it: the
 #: record's byte count, the version a class of no ``ClassDef`` carries (0) and its checksum,
