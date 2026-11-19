@@ -573,11 +573,26 @@ def converted(value: Any, found: Spelled, current: Any) -> Any:
     member as the constructor left it, where that is a container or an object."""
     if value is None:
         return None
+    if found.stars and (found.name in TYPES or found.name in WIDTHS):
+        # A pointer to numbers is an array whose length the stream gives, not the shape the
+        # class's constructor happened to leave there: ROOT hands the member a new array of
+        # the count the file writes, so reading an entry with more or fewer than the one
+        # before it does not keep the first one's length.
+        return _array_of(value, found.name)
     if found.stars and found.name not in TYPES:
         return _pointed(value, found, current)
     if found.name in STL_KINDS:
         return _refilled(value, found, current)
     return _held(value, found, current)
+
+
+def _array_of(value: Any, typename: str) -> Any:
+    """A pointer's numbers as the array ROOT reads one into - of the length the stream gave."""
+    if isinstance(value, (str, bytes)):
+        return value
+    if isinstance(value, (list, tuple, np.ndarray)):
+        return np.asarray(value)
+    return _number(value, typename, None)
 
 
 def _held(value: Any, found: Spelled, current: Any) -> Any:
@@ -592,13 +607,64 @@ def _held(value: Any, found: Spelled, current: Any) -> Any:
 
 def _pointed(value: Any, found: Spelled, current: Any) -> Any:
     """A pointer's object: of the class the stream named, which may be a derived one - a
-    ``BaseABC *fABC`` holding a ``Derived`` is a ``Derived``, as ROOT gives it back."""
-    named = str(getattr(value, "classname", "") or found.name)
+    ``BaseABC *fABC`` holding a ``Derived`` is a ``Derived``, as ROOT gives it back.
+
+    Only a record - an object as its members - carries the class it was written as. What a
+    collection comes back as carries the class of its *elements*, which is not what the
+    member is, so there the member's own type names it.
+    """
+    streamed = str(getattr(value, "classname", "")) if isinstance(value, Mapping) else ""
+    named = streamed or found.name
     made = made_from(named, value)
     if made is not None:
         return made
+    known = _dressed(named, value)
+    if known is not None:
+        return known
     held = _collection(named, value, current)
-    return held if held is not None else value
+    if held is not None:
+        return held
+    if named == "TClonesArray" and isinstance(value, list):
+        return _clones_of(str(getattr(value, "classname", "")), value, current)
+    return value
+
+
+def _dressed(named: str, value: Any) -> Any:
+    """A pointer to one of ROOT's own classes as that class - ``TH1F *fH`` as the ``TH1F``
+    ``f.Get("fH")`` would give - or ``None`` for a class this namespace does not have.
+
+    The file leaves such a member as the members it was written as, since the class name is
+    the member's type rather than something the stream said; the class makes itself from
+    them, which is what reading the same object as a key of the file does, and the ROOT
+    object standing for what comes back is the one a macro holds.
+    """
+    from ...kinds import dress
+    from .wrapping import from_members, wrap
+
+    made = from_members(named, value)  # a class the kit makes again from a record's members
+    if made is not None:
+        return made
+    dressed = dress(named, value) if isinstance(value, dict) else value
+    wrapped = wrap(dressed)
+    return None if wrapped is value else wrapped
+
+
+def _clones_of(classname: str, value: list[Any], current: Any) -> Any:
+    """A ``TClonesArray`` member: each record made again as an object of the class the array
+    names once at its front, in the array the macro's pointer holds.
+
+    The reader hands a ``TClonesArray`` back as what it held and the one class they are of,
+    as a branch of one does; the objects are made from that class's declaration.
+    """
+    from .collections import TClonesArray
+
+    classname = classname or str(getattr(current, "_class", ""))
+    made = current if isinstance(current, TClonesArray) else TClonesArray(classname)
+    made.Clear()
+    for at, members in enumerate(value):
+        obj = made_from(classname, members)
+        made.AddAt(obj if obj is not None else members, at)
+    return made
 
 
 def _collection(named: str, value: Any, current: Any) -> Any:

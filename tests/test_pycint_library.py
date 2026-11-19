@@ -355,6 +355,27 @@ def test_a_macro_including_a_loaded_library_s_header_uses_the_library_s_definiti
     assert run("use.C") == 14
 
 
+def test_a_macro_compiled_against_a_loaded_library_calls_the_library_s_bodies() -> None:
+    # `macro.C+` is a library of its own, and cling's link makes its calls into the loaded
+    # library's: a class its header only declares is constructed by that library's code.
+    shapes()
+    assert load("libShapes") == 0
+    write("built.C", """#include "Shapes.h"
+    int built() { geo::Shape a(4); return (int)a.Area(); }""")
+    assert run("built.C+") == 16
+
+
+def test_a_loaded_library_s_classes_are_the_ones_with_a_dictionary() -> None:
+    # `if (!TClassTable::GetDict("geo::Shape")) gSystem->Load("libShapes")` is how a program
+    # decides, and the dictionary it asks about is the library's own.
+    shapes()
+    assert ROOT.TClassTable.GetDict("geo::Shape") is None
+    assert load("libShapes") == 0
+    found = ROOT.TClassTable.GetDict("geo::Shape")
+    assert found is not None and found.GetName() == "Shape"
+    assert ROOT.TClassTable.GetDict("CountShapes") is None  # a function, not a class
+
+
 def test_a_header_a_library_provides_declared_in_python_or_a_line_is_the_library_s(
 ) -> None:
     shapes()

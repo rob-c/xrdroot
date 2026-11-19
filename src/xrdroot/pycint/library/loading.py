@@ -228,6 +228,11 @@ def load_library(library: Library) -> Loaded:
     module: dict[str, Any] = {"__name__": MODULE, "__file__": library.file}
     with DIALECT.session(), placed([made]):
         exec(compile(made.python, label(made), "exec"), module)
+    # One class is one class: a class this library's sources see in the header of a library
+    # already loaded - a macro compiled against a test library, `macro.C+` with
+    # `libTestIoEvent` loaded - is that library's, whose constructors and methods the link
+    # would have made the calls in this one reach.
+    _rebound(module, made, HEADERS)
     headers = frozenset([*library.resolved(library.sources), *made.included])
     loaded = LOADED[key] = Loaded(library, module, headers)
     HEADERS.update(dict.fromkeys(headers, loaded))
@@ -248,6 +253,25 @@ def _declare(loaded: Loaded) -> None:
             DECLARED[name] = value
     for name, members in loaded.library.namespaces.items():
         DECLARED[name] = _namespace(DECLARED.get(name), name, members, module)
+    _dictionaried(loaded)
+
+
+def _dictionaried(loaded: Loaded) -> None:
+    """Tell ROOT's class table which classes this library's dictionary describes.
+
+    A program asks ``TClassTable::GetDict("Event")`` to decide whether it must load the
+    library first, which under ROOT is answered by the dictionary the library carries.
+    """
+    classes = [
+        name
+        for name, value in loaded.module.items()
+        if isinstance(value, type) and getattr(value, "__module__", None) == MODULE
+    ]
+    if not classes:
+        return
+    from ...pyroot.core.reflection import note_generated_dictionary
+
+    note_generated_dictionary(";".join(classes))
 
 
 def _namespace(
@@ -320,6 +344,9 @@ def loaded_names() -> list[str]:
 
 def forget_all() -> None:
     """Unload everything: a fresh session's state, for a test that starts over."""
+    from ...pyroot.core.reflection import forget_dictionaries
+
+    forget_dictionaries()
     LOADED.clear()
     HEADERS.clear()
     WATCHED.clear()

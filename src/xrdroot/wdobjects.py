@@ -192,11 +192,17 @@ class _Writer:
         _ELEMENTS[element[0]](self, element, members.get(element[1]), members)
 
     def pointer(self, classname: str, value: Any) -> None:
-        """A pointer that may be null: a zero, or the object naming its class."""
+        """A pointer that may be null: a zero, or the object naming its class.
+
+        A ``TClonesArray`` names itself, not the class its elements are of: the array says
+        once, inside, that its objects are of that class, where the tag in front of it says
+        what the array itself is - and ROOT reads an object of the wrong class otherwise.
+        """
         if value is None:
             self.buf.u32(0)
             return
-        actual = str(getattr(value, "classname", classname))
+        named = str(getattr(value, "classname", classname))
+        actual = classname if isinstance(value, Clones) else named
         at = self.buf.tag(actual)
         self.record(actual, value)
         self.buf.end(at)

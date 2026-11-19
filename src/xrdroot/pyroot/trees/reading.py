@@ -240,9 +240,16 @@ class _Reading(_TreeCore):
         return python_value(self._current(leaf.column), leaf)
 
     def GetBranch(self, name: str) -> TBranch | None:
-        """The branch ``name``, at the top of the tree or under a branch of objects."""
+        """The branch ``name``, at the top of the tree, under a branch of objects, or in a
+        friend - which ROOT's own ``GetBranch`` looks in too."""
         found = self._branch_info(name)
-        return None if found is None else TBranch(self, found)
+        if found is not None:
+            return TBranch(self, found)
+        for _alias, friend in self._friends:
+            theirs: TBranch | None = friend.GetBranch(name)
+            if theirs is not None:
+                return theirs
+        return None
 
     def GetListOfBranches(self) -> ListOf:
         return ListOf(TBranch(self, branch) for branch in self._layout())

@@ -32,6 +32,8 @@ short_type = TClassEdit.ShortType
 __all__ = [
     "ClassInfo",
     "TClass",
+    "TClassTable",
+    "gClassTable",
     "TStreamerInfo",
     "TVirtualStreamerInfo",
     "TStreamerElement",
@@ -119,6 +121,11 @@ def _known_as(name: str) -> str:
     """The name a class is known by: the type shortened, without ``std::``, as ROOT keeps the
     one name for a class whatever spelling it was asked for with."""
     return short_type(name).replace("std::", "").strip()
+
+
+def forget_dictionaries() -> None:
+    """A fresh session's state: the dictionaries a library gave are not there any more."""
+    GENERATED.clear()
 
 
 def note_file_infos(infos: list[tuple[str, Layout]], source: Any = None) -> None:
@@ -377,6 +384,71 @@ class ClassInfo:
         """``ClassInfo_Tagnum``: the interpreter's own number for the class, which is 0 here
         since nothing is tagged: a macro that memoises by it memoises once."""
         return 0
+
+
+class TClassTable(TObject):
+    """``TClassTable``: the classes that have a dictionary, as ROOT's table of them.
+
+    A program asks ``GetDict`` to decide whether it has to load a library first
+    (``if (!TClassTable::GetDict("Event")) gSystem->Load("libEvent")``), so what answers is
+    a class a dictionary describes - one of ROOT's own, or one a compiled library declared -
+    and never a class a macro's own ``#include`` described, which no dictionary is behind.
+    """
+
+    @staticmethod
+    def GetDict(name: Any, load: bool = True, silent: bool = False) -> TClass | None:
+        """``GetDict(name)``: the class's ``TClass`` where a dictionary describes it.
+
+        A name may be given qualified - ``geo::Shape`` - as ROOT's own table takes one: the
+        class is the last part of it, which is the name the dictionary is under.
+        """
+        text = _last(_known_as(str(name)))
+        return TClass.GetClass(text, False, silent) if text in _with_dictionary() else None
+
+    @staticmethod
+    def GetDictAny(name: Any) -> TClass | None:
+        """``GetDictAny(name)``: ``GetDict``, which has nothing to autoload here."""
+        return TClassTable.GetDict(name, False)
+
+    @staticmethod
+    def Add(name: Any, version: Any = 0, factory: Any = None) -> None:
+        """``Add``: a dictionary's class, noted as one from now on."""
+        GENERATED.add(_last(_known_as(str(name))))
+
+    @staticmethod
+    def Classes() -> int:
+        """``Classes()``: how many classes the table holds."""
+        return len(_with_dictionary())
+
+    @staticmethod
+    def At(index: Any) -> str:
+        """``At(index)``: the name of the class the table lists at ``index``."""
+        return _with_dictionary()[int(index)]
+
+    @staticmethod
+    def GetTable() -> list[str]:
+        """``GetTable()``: every name the table holds, which ROOT gives as ``const char**``."""
+        return _with_dictionary()
+
+    @staticmethod
+    def Print(option: Any = "") -> None:
+        """``Print()``: the names, one a line, as ROOT's own ``Print`` lists them."""
+        for name in _with_dictionary():
+            print(name)
+
+
+def _last(name: str) -> str:
+    """A class's name without the namespace it is in, which is how a table holds it."""
+    return name.split("::")[-1].strip()
+
+
+def _with_dictionary() -> list[str]:
+    """The classes a dictionary here describes: ROOT's own the kit carries, and a library's."""
+    return sorted({*INFOS, *GENERATED})
+
+
+#: ROOT's global table of the classes that have a dictionary - ``gClassTable``.
+gClassTable = TClassTable("TClassTable", "")
 
 
 class TClass(TNamed):

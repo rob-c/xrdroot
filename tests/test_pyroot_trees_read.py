@@ -240,6 +240,32 @@ def test_a_vector_branch_says_the_class_it_holds(path):
     assert t.GetLeaf("v").ClassName() == "TLeafElement"
 
 
+def test_a_branch_of_a_class_is_the_tbranch_element_root_makes_of_one():
+    t = _filled()
+    branch = t.GetBranch("v")
+    element = xrdroot.pyroot.TBranchElement
+    assert (type(branch).__name__, branch.ClassName()) == ("TBranchElement", "TBranchElement")
+    assert branch.InheritsFrom(element.Class())
+    assert not branch.InheritsFrom(xrdroot.pyroot.TBranchObject.Class())
+    assert element.Class().GetName() == "TBranchElement"
+    assert t.GetBranch("px").ClassName() == "TBranch"
+
+
+def test_a_friends_branch_is_found_by_the_tree_that_has_the_friend():
+    friend = _filled()
+    px = np.zeros(1, "f")
+    parent = TTree("parent", "with a friend")
+    parent.Branch("px", px, "px/F")
+    for value in range(ENTRIES):
+        px[0] = value
+        parent.Fill()
+    parent.AddFriend(friend, "f")
+    assert parent.GetBranch("px").ClassName() == "TBranch"  # its own
+    # a friend's, which ROOT's own GetBranch looks in too
+    assert parent.GetBranch("v").GetClassName() == "vector<int>"
+    assert parent.GetBranch("no_such_branch") is None
+
+
 def test_load_tree_and_get_tree_are_the_tree_itself_for_a_tree(tree):
     assert tree.LoadTree(3) == 3 and tree.LoadTree(ENTRIES) == -2
     assert tree.GetTree() is tree and tree.GetTreeNumber() == 0
