@@ -262,15 +262,18 @@ def run_program(
     ``argv`` is the program's whole command line, its name first.
     """
     wheres = [_path(path) for path in paths]
+    dialect = session_dialect()
     for where in wheres:
         _preread(where)
         if str(where).endswith(EXTENSIONS):
             # Cling's preprocessor pass over a macro finishes before the macro runs, so a
-            # `#define` it makes is in force for the file it runs itself - and ever after.
+            # `#define` it makes is in force for the file it runs itself - and ever after -
+            # while the file's own guards read the pass's before-state. The dialect taken
+            # above is that before-state.
             define(_read(where))
     if aclic.is_compiled(str(paths[0])):
         return _compiled(str(paths[0]), tuple(args))
-    return _cxx.run_program(wheres, args, argv, dialect=session_dialect(), use_cache=use_cache)
+    return _cxx.run_program(wheres, args, argv, dialect=dialect, use_cache=use_cache)
 
 
 def _compiled(spec: str, args: tuple[Any, ...]) -> int:
