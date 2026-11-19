@@ -62,6 +62,9 @@ RETURNS = {
     "isfinite": BOOL,
     "to_string": CType("std::string"),
     "string": CType("std::string"),
+    #: The C string searches give back text, or C's null pointer - which is ``None`` here, so
+    #: ``strstr(s, t) != 0`` is a test of whether the text is there, as ROOT's macros write it.
+    **dict.fromkeys("strstr strchr strrchr getenv".split(), CType("char", pointer=1)),
 }
 
 #: The standard's smart pointers and their makers, and the smart pointer each gives.
@@ -129,6 +132,9 @@ def _made_field(func: Member) -> CType | None:
         return None
     return replace(first, pointer=first.pointer + 1)
 
+
+#: The C++ names a pointer to text is spelled with: a null ``char *`` is ``None``, not 0.
+CHAR_NAMES = ("char", "signed char", "unsigned char")
 
 class Inference(EmitterBase):
     """The emitter's type pass: :meth:`typeof` of any expression, or ``None``."""
@@ -401,5 +407,15 @@ class Inference(EmitterBase):
     }
 
     def is_pointer(self, node: Expr) -> bool:
+        """Is this a pointer whose null this kit holds as ``None`` - an object's, a ``char *``'s.
+
+        A ``char *`` is text, and C's null pointer is the ``None`` beside it, so
+        ``strstr(s, t) != 0`` - which ROOT's own macros select on - asks whether the text is
+        there at all. The pointers that are addresses stay numbers, and compare as numbers.
+        """
         found = self.typeof(node)
-        return found is not None and (found.is_object_pointer or found.name == "nullptr_t")
+        if found is None:
+            return False
+        if found.is_object_pointer or found.name == "nullptr_t":
+            return True
+        return found.is_pointer and found.name in CHAR_NAMES
