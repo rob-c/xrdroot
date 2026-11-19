@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from .addresses import address_of, members_of
-from .branches import TBranch
+from .branches import TBranch, TBranchRef
 from .copying import clone
 from .leaflist import Leaf, parse
 from .objects import object_slot
@@ -181,7 +181,12 @@ class TTree(_Player):
 
     def Fill(self) -> int:
         """Read every branch's address as one more entry; the bytes it took come back."""
-        nbytes = int(self._writable("Fill").fill())
+        store = self._writable("Fill")
+        if self._ref_branch is not None:
+            self._ref_branch.Clear()  # ROOT clears the table before the branches are filled
+        nbytes = int(store.fill())
+        if self._ref_branch is not None:
+            self._ref_branch._account(store)  # every referenced object's branch, this entry
         self._changed()
         return nbytes
 
@@ -205,10 +210,28 @@ class TTree(_Player):
                 f"{self._name!r} is in memory, in no file; open one for writing before "
                 f"making the tree, or give it one with SetDirectory, then Write"
             )
+        self._check_ref(directory)
         self._wrote = store.write(directory, name, self._title, self._classname)
+        if self._ref_branch is not None:
+            self._wrote._ref_table = self._ref_branch._described()
         self._written = True
         self._layout_cache = None
         return max(sum(branch.tot_bytes for branch in self._layout()), 1)
+
+    def _check_ref(self, directory: Any) -> None:
+        """A tree whose references were recorded can be written only where the writer puts
+        the table in the tree record: one that would lose it is refused, not written wrong."""
+        refs = self._ref_branch
+        if refs is None or not refs._has_rows() or getattr(directory, "writes_ref_table", False):
+            return
+        from ...errors import UnsupportedFeatureError
+
+        raise UnsupportedFeatureError(
+            f"TTree::Write cannot write {self._name!r}'s TBranchRef: this writer puts no "
+            f"fBranchRef in the tree record, so the table saying which entry holds each "
+            f"referenced object would be lost and a TRef read from the file would find "
+            f"nothing; write the tree without BranchRef until the writer carries it"
+        )
 
     def _write_into(self, directory: Any, name: str) -> int:
         """``WriteObject``/``WriteTObject``: the tree written into ``directory`` under ``name`` -
@@ -298,15 +321,20 @@ class TTree(_Player):
     def GetBranchStyle() -> int:
         return TTree._branch_style
 
-    def BranchRef(self) -> None:
-        """``BranchRef``: refused - the table of which entry holds each referenced object."""
-        from ...errors import UnsupportedFeatureError
+    #: ``fBranchRef``: the branch holding the table of referenced objects, made by BranchRef.
+    _ref_branch: TBranchRef | None = None
 
-        raise UnsupportedFeatureError(
-            f"TTree::BranchRef gives {self._name!r} a TRefTable branch saying which entry "
-            f"holds each object a TRef points at, which this writer does not write; a TRef "
-            f"finds an object read into memory without it, so leave the call out"
-        )
+    def BranchRef(self) -> TBranchRef:
+        """``BranchRef``: give the tree the branch that says which entry holds each object
+        a ``TRef`` points at, and hand it back - the same one every time it is called."""
+        if self._ref_branch is None:
+            self._writable("BranchRef")
+            self._ref_branch = TBranchRef(self)
+        return self._ref_branch
+
+    def GetBranchRef(self) -> TBranchRef | None:
+        """``GetBranchRef``: the branch ``BranchRef`` made, or ``None`` if it never was."""
+        return self._ref_branch
 
     def SetBasketSize(self, name: str, size: int = 16000) -> None:
         """A branch's basket size in ROOT; this writer sizes its own baskets."""

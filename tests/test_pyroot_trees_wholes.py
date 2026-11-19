@@ -155,11 +155,10 @@ def test_what_root_will_not_make_of_an_object_is_refused():
     assert tree.Write() == 0  # no branches: nothing to write
 
 
-def test_a_proxy_selector_and_a_table_of_references_are_refused_by_name():
+def test_a_proxy_selector_is_refused_by_name():
     tree = ROOT.TTree("t", "t")
     with pytest.raises(UnsupportedFeatureError, match=r"MakeProxy writes sel\.h"):
         tree.MakeProxy("sel", "draw.C")
     with pytest.raises(UnsupportedFeatureError, match=r"MakeProxy writes sel\.h.*\(none\)"):
         tree.MakeProxy("sel")
-    with pytest.raises(UnsupportedFeatureError, match="BranchRef gives 't' a TRefTable"):
-        tree.BranchRef()
+    assert tree.BranchRef().GetName() == "TRefTable"  # made, though the writer cannot carry it
