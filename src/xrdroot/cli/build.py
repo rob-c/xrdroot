@@ -69,6 +69,9 @@ def add_parser(subparsers: Any) -> None:
     dictionary.add_argument("--selection-required", action="store_true",
                             help="fail, as rootcling run by hand does, when nothing selects "
                             "what the dictionary is of")  # fmt: skip
+    dictionary.add_argument("--selection-syntax-only", action="store_true",
+                            help="read the selection and stop, as genreflex --selSyntaxOnly "
+                            "does: no dictionary is written")  # fmt: skip
     _common(steps.add_parser("library", help="a library from sources"), "SOURCE")
     _common(steps.add_parser("executable", help="a program from sources"), "SOURCE")
     aclic = steps.add_parser("aclic", help="ACLiC's library of a macro: macro.C+")
@@ -92,10 +95,13 @@ def run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _dictionary(args: argparse.Namespace) -> Path:
+def _dictionary(args: argparse.Namespace) -> Path | None:
     from ..pycint.library import build_dictionary
-    from ..pycint.library.build import Strictness
+    from ..pycint.library.build import Strictness, check_selection
 
+    if args.selection_syntax_only:
+        check_selection(args.files, linkdef=args.linkdef, selection=args.selection)
+        return None
     strict = Strictness(args.selection_required, args.fail_on_warnings)
     return build_dictionary(args.name, args.files, linkdef=args.linkdef,
                             selection=args.selection, includes=args.includes, out=args.out,

@@ -39,6 +39,24 @@ DESCRIPTIONS = {
 #: An entry of ``xrdroot --help``'s list of subcommands.
 _ENTRY = re.compile(r"^ {4}([a-z][\w-]*)(?:\s|$)", re.M)
 
+#: ROOT's dictionary generators, which a test may run from a shell of its own - inside a
+#: Python script's ``subprocess``, say - so that ``bin/`` has to hold them too.
+GENERATORS = ("genreflex", "rootcling", "rootcint")
+
+#: A generator's stand-in: the translation of its words (``dictgen.dictionary_words``) is the
+#: harness's, and it is made when the generator is run, so the shim asks the harness.
+_GENERATOR = '''#!{python}
+"""{tool}: xrdroot's dictionary generator, its words as ``xrdroot build dictionary``'s."""
+import subprocess
+import sys
+
+sys.path.insert(0, {root!r})
+from tools.rootsuite.dictgen import dictionary_words  # noqa: E402  (after the path)
+
+sys.exit(subprocess.call([{python!r}, "-m", "xrdroot", "build",
+                          *dictionary_words({tool!r}, sys.argv[1:])]))
+'''
+
 
 def subcommands(python: str, env: Mapping[str, str]) -> frozenset[str] | None:
     """The subcommands ``python -m xrdroot`` has, or ``None`` when it does not say."""
@@ -75,7 +93,21 @@ def launchers(work: Path, python: str, available: frozenset[str] | None) -> Path
         path = directory / tool
         path.write_text(_launcher(python, tool, sub, available), encoding="utf-8")
         path.chmod(0o755)
+    _generators(directory, python, available)
     return directory
+
+
+def _generators(directory: Path, python: str, available: frozenset[str] | None) -> None:
+    """``bin/``'s ``genreflex`` and its like, for a test that runs one from a shell."""
+    root = Path(__file__).resolve().parents[2]
+    for tool in GENERATORS:
+        path = directory / tool
+        if available is not None and "build" not in available:
+            path.write_text(_launcher(python, tool, "build", available), encoding="utf-8")
+        else:
+            path.write_text(_GENERATOR.format(python=python, tool=tool, root=str(root)),
+                             encoding="utf-8")  # fmt: skip
+        path.chmod(0o755)
 
 
 def tutorials(root: Path, work: Path) -> Path | None:

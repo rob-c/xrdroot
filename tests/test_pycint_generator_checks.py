@@ -199,3 +199,30 @@ def test_a_nested_typedef_is_a_name_a_linkdef_may_select(
           "\n#pragma link C++ class vector<int>;\n")  # fmt: skip
     build_dictionary("N", [Path("n.h")], linkdef=Path("LinkDef.h"), strict=Strictness())
     assert capsys.readouterr().err == ""
+
+
+def test_a_selection_read_for_its_syntax_alone_refuses_no_duplicate_rule(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """genreflex's ``--selSyntaxOnly``: ROOT 6.40.04 reads a selection whose rules conflict,
+    warns of each pair as it parses them, writes nothing and exits 0 - the duplicates stop
+    the build that follows, not the check."""
+    write("a.h", "class A { int fMember; };\n")
+    write("sel.xml", CONFLICTING)
+    assert main(["build", "dictionary", "--name", "D", "--selection", "sel.xml",
+                 "--selection-syntax-only", "a.h"]) == 0
+    assert "Conflicting rule already stored" in capsys.readouterr().err
+    assert not Path("libD.xrdlib").exists()
+
+
+def test_a_selection_read_for_its_syntax_alone_still_refuses_an_xml_error() -> None:
+    write("a.h", "class A {};\n")
+    write("sel.xml", '<rootdict>\n<class name="A" noStreamer="perhaps" />\n</rootdict>\n')
+    assert main(["build", "dictionary", "--name", "D", "--selection", "sel.xml",
+                 "--selection-syntax-only", "a.h"]) == 1
+
+
+def test_a_syntax_check_of_a_selection_that_is_not_there_reads_none() -> None:
+    """A generator run for its syntax with no selection is rootcling's, and refuses nothing."""
+    write("a.h", "class A {};\n")
+    assert main(["build", "dictionary", "--name", "D", "--selection-syntax-only", "a.h"]) == 0

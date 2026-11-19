@@ -47,3 +47,17 @@ def test_strings_are_copied_into_an_rvec_of_strings_of_one_type_only():
     with pytest.raises(TypeError, match="All elements in the numpy array must be of the same"):
         ROOT.VecOps.AsRVec(np.array(["a", {}], dtype=object))
     assert list(numbers) == [1, 2]
+
+
+def test_one_class_is_adopted_once_however_many_arrays_come_through_it():
+    """``_adopting`` caches the class it makes, so every ``AsRVec`` of one element type is that
+    one class - which is what ``isinstance`` and a tree's check of what it was handed need."""
+    from xrdroot.pyroot.rdf.rvec import _adopting
+
+    class Held:
+        __slots__ = ()
+        __python_owns__ = False
+
+    first = _adopting(Held)
+    assert _adopting(Held) is first and first.__name__ == "Held"
+    assert first.__python_owns__ is True and "_adopted" in first.__slots__

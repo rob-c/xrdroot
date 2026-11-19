@@ -168,6 +168,17 @@ def _warned(warnings: list[str], fatal: bool) -> None:
         raise checks.GeneratorError(1)
 
 
+def check_selection(
+    files: Sequence[Path], *, linkdef: Path | None = None, selection: Path | None = None
+) -> None:
+    """genreflex's ``--selSyntaxOnly``: the selection parsed and what it says reported, with no
+    dictionary written. genreflex refuses a duplicate rule only when it goes on to generate, so
+    nothing is refused here."""
+    tool = "genreflex" if selection is not None and linkdef is None else "rootcling"
+    _missing([*files, *(each for each in (linkdef, selection) if each is not None)], tool)
+    checks.before(files, linkdef, selection, tool == "genreflex", fatal_duplicates=False)
+
+
 def build_library(
     name: str,
     files: Sequence[Path],

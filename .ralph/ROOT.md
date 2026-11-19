@@ -387,6 +387,14 @@ For the round's work, the evidence is, in this order:
   `~/.cache/xrdroot-tutorials/oracle`, and the round directories holding its `results.json`
 - Result: recorded in `TODO.md` §7 (the cumulative table's last column and the round's ledger rows)
 
+## Round log
+
+Each iteration appends one row here, and the *detail* of the round goes into `TODO.md` (step 6).
+
+| round | base | scopes | in the round's `results.json` | new queue entries |
+|---|---|---|---|---|
+| 1 | `8c1b9f8` | sixteen, `/tmp/r1/wNN-brief.md`: formula member calls (from branch `w01`), an array of `std::vector` in a class, object columns in a tree, `BranchRef`/`TRefTable`, `GetStreamerInfo`+`pairEnumEvo`, evolution print DIFFs, genreflex XML, split `TClonesArray`, `std::array` as an element type, `RFieldBase`, nested-collection RNTuple, a text branch read, `ReadClones`, `typeid` of a template parameter, the `generate` template, and the seven timeouts (diagnosis only) | roottest 1076, non-tutorial 1231 (before) | pending |
+
 ## Notes
 
 - Write the ledger as you go: it is the only project state that is cheap to maintain and

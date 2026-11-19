@@ -6,7 +6,7 @@ import stat
 from pathlib import Path
 
 import pytest
-from tools.rootsuite import builds, cli, dictgen, machine
+from tools.rootsuite import builds, buildtree, cli, dictgen, machine
 from tools.rootsuite.discover import discover, variables
 from tools.rootsuite.model import Dictionary, Registry, Target, Test
 
@@ -361,3 +361,27 @@ def test_foreach_range_counts_as_cmake_counts(tmp_path):
                          f"foreach(i {how})\n" + body.format(name) for how, name in loops)})
     assert [test.id.split("/")[-1] for test in discover(tmp_path)] == [
         "z-0", "z-1", "z-2", "o-3", "o-5", "o-7", "s-1", "s-2", "i-p", "i-q"]
+
+
+def test_the_working_copy_holds_the_dictionary_generators_a_script_may_run(tmp_path: Path) -> None:
+    """A selection XML is parsed by a Python test's ``subprocess`` call to genreflex, so
+    ``bin/`` - first on PATH - must hold it, asking the harness for its words."""
+    directory = buildtree.launchers(tmp_path, "/usr/bin/python3", frozenset({"build", "root"}))
+    for tool in buildtree.GENERATORS:
+        path = directory / tool
+        assert path.stat().st_mode & stat.S_IXUSR
+        assert tool in path.read_text() and "dictionary_words" in path.read_text()
+
+
+def test_genreflex_asked_for_the_syntax_alone_is_xrdroots_own_flag() -> None:
+    words = dictgen.dictionary_words(
+        "genreflex", ["a.h", "-o", "d.cxx", "-s", "s.xml", "--selSyntaxOnly"]
+    )
+    assert words == ["dictionary", "--name", "d", "--selection", "s.xml",
+                     "--selection-syntax-only", "--no-rootmap", "a.h"]  # fmt: skip
+
+
+def test_a_generator_xrdroot_cannot_run_says_so_rather_than_building(tmp_path: Path) -> None:
+    directory = buildtree.launchers(tmp_path, "/usr/bin/python3", frozenset({"root"}))
+    said = (directory / "genreflex").read_text()
+    assert "no `xrdroot build` subcommand" in said

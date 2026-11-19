@@ -90,6 +90,7 @@ def _genreflex(words: Sequence[str]) -> list[str]:
     selection = found.get("selection", [])
     extra = ["--selection", selection[0]] if selection else []
     extra += ["--fail-on-warnings"] if "--fail_on_warnings" in words else []
+    extra += ["--selection-syntax-only"] if "--selSyntaxOnly" in words else []
     return _build(name, found, headers, extra)
 
 

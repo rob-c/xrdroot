@@ -133,13 +133,15 @@ def said(lines: Sequence[str]) -> None:
 
 
 def before(
-    files: Sequence[Path], linkdef: Path | None, selection: Path | None, genreflex: bool
+    files: Sequence[Path], linkdef: Path | None, selection: Path | None, genreflex: bool,
+    fatal_duplicates: bool = True,
 ) -> Parsed:
     """Refuse what the generator would refuse before it compiles a line; the selection's
-    rules, for the checks after."""
+    rules, for the checks after. Only a generator that goes on to write a dictionary refuses
+    the duplicates it finds, so ``--selSyntaxOnly`` passes ``fatal_duplicates=False``."""
     parsed = rules(_text(selection)) if selection is not None else Parsed()
     _booleans(parsed)
-    _duplicates(parsed)
+    _duplicates(parsed, fatal_duplicates)
     errors = _pragma_once(files) if genreflex else []
     errors += _standard([rule.key[1] for rule in parsed.classes if rule.key is not None
                          and rule.key[0] == "name"])  # fmt: skip
@@ -164,20 +166,26 @@ def _booleans(parsed: Parsed) -> None:
                 raise GeneratorError(1)
 
 
-def _duplicates(parsed: Parsed) -> None:
+def _duplicates(parsed: Parsed, fatal: bool = True) -> None:
     """``SelectionRules::CheckDuplicates``: each pair of rules for one name or pattern, the
-    last first. Identical ones are only warned about, while two that differ stop the
-    build."""
-    pairs = [(rule, later) for index, rule in enumerate(parsed.classes)
-             for later in parsed.classes[index + 1 :]
-             if rule.key is not None and rule.key == later.key][::-1]  # fmt: skip
-    conflicting = any(_differ(rule, later) for rule, later in pairs)
+    last first. Identical ones are only warned about, while two that differ stop the build -
+    unless ``fatal`` is off, as genreflex's ``--selSyntaxOnly`` reads a selection."""
+    pairs = _pairs_of(parsed.classes)
+    conflicting = fatal and any(_differ(rule, later) for rule, later in pairs)
     shown = [line for rule, later in pairs for line in _pair(rule, later)]
     if not conflicting:
         said(shown)
         return
     said([*shown, "Error in <SelectionRules::CheckDuplicates>: Duplicates in rules were found."])
     raise GeneratorError(1)
+
+
+def _pairs_of(classes: list[Rule]) -> list[tuple[Rule, Rule]]:
+    """Every pair of rules naming one key, the later rule first - the pairs a duplicate is."""
+    found = [(rule, later) for index, rule in enumerate(classes)
+             for later in classes[index + 1:]
+             if rule.key is not None and rule.key == later.key]  # fmt: skip
+    return found[::-1]
 
 
 def _differ(rule: Rule, later: Rule) -> bool:
