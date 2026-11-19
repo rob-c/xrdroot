@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from ._base import hooks as hooks
-from .branches import TBranch, TLeaf
+from .branches import TBranch, TBranchElement, TBranchObject, TLeaf
 from .chain import TChain
 from .entrylist import TEntryList
 from .ntuple import TNtuple, TNtupleD
@@ -31,6 +31,8 @@ __all__ = [
     "TNtupleD",
     "TChain",
     "TBranch",
+    "TBranchElement",
+    "TBranchObject",
     "TLeaf",
     "TEntryList",
     "TTreeReader",

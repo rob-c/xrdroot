@@ -96,6 +96,14 @@ class TBranch(_TObjectLike):
 
     _classname = "TBranch"
 
+    def __new__(cls, tree: Any = None, info: Any = None) -> Any:
+        """A branch of a class is the ``TBranchElement`` ROOT makes of it, which is what
+        ``Class()`` and ``InheritsFrom`` are asked about - a macro writes the style of the
+        branch it read, ``eb->InheritsFrom(TBranchElement::Class())``."""
+        if cls is TBranch and getattr(info, "classname", "") != "":
+            return object.__new__(TBranchElement)
+        return object.__new__(cls)
+
     def __init__(self, tree: TTree, info: BranchInfo) -> None:
         super().__init__(info.name, info.title)
         self._tree = tree
@@ -408,6 +416,20 @@ class TRefTable(_TObjectLike):
 #: What ``TBranchRef`` is called and titled, as ``TBranchRef::TBranchRef(TTree*)`` sets them.
 REF_NAME = "TRefTable"
 REF_TITLE = "List of branch numbers with referenced objects"
+
+
+class TBranchElement(TBranch):
+    """``TBranchElement``: the branch ROOT makes of a class - split into a member per branch,
+    or one branch holding the whole object."""
+
+    _classname = "TBranchElement"
+
+
+class TBranchObject(TBranch):
+    """``TBranchObject``: ROOT 3's branch of whole objects, each entry the class's name and
+    then the object, which a file written before ROOT's own split keeps."""
+
+    _classname = "TBranchObject"
 
 
 class TBranchRef(TBranch):
