@@ -9,18 +9,10 @@ calls it, with any class instance it is the first to need before it. A call
 whose template arguments cannot all be worked out - an argument of a type
 the translator does not know - calls the template itself, written once for
 every such use (:meth:`~.emit_classes.ClassEmitter.generic`).
-
-That stand-in is the template's alone. A template beside other functions of
-its name - ROOT's ``generate<T>(T *&)`` beside ``generate(void *, TClass *)``
-- is the one a call of as many arguments names, and the others are written
-as they are: written once for every set of arguments, the template has no
-``typeid(T)`` to write and refuses its own uses, but a call that is the
-other function's still reaches it.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 from .ctype import CType
@@ -32,14 +24,6 @@ from .symbols import Scope, Symbol, python_name
 from .writer import Writer
 
 __all__ = ["TemplateEmitter"]
-
-
-def _takes(func: Function, count: int) -> bool:
-    """Can ``func`` be called with ``count`` arguments: as many as its parameters, or fewer
-    where the ones left out have defaults."""
-    fewest = sum(1 for param in func.params if param.default is None)
-    most = 255 if func.variadic else len(func.params)
-    return fewest <= count <= most
 
 
 class TemplateEmitter(ClassEmitter):
@@ -54,23 +38,13 @@ class TemplateEmitter(ClassEmitter):
     splicing = False
 
     def _template_of(self, symbol: Symbol | None, node: Call) -> Function | None:
-        """The function template a call of ``symbol`` calls: the one template of its name that
-        takes this many arguments - ``generate(p)`` of ``generate<T>(T *&)`` beside
-        ``generate(void *, TClass *)`` is the template, ``T`` deduced from ``p`` - a template
-        with a body, since only the run chooses between a set's ordinary functions."""
+        """The function template a call of ``symbol`` calls: the one function of its name,
+        a template with a body - not a set of overloads, which only the run chooses between."""
         if symbol is None or symbol.kind not in ("function", "static", "method"):
             return None
-        return self._template_taking(self.function_named(symbol), len(node.args))
-
-    @staticmethod
-    def _template_taking(funcs: list[Function], count: int) -> Function | None:
-        """The one template among ``funcs`` a call of ``count`` arguments names, if a template
-        with a body there is one - a set of two templates of the same arity is the run's."""
-        templates = [func for func in funcs if func.template is not None and func.body]
-        if len(funcs) == 1:
-            return templates[0] if templates else None
-        fitting = [func for func in templates if _takes(func, count)]
-        return fitting[0] if len(fitting) == 1 else None
+        funcs = self.function_named(symbol)
+        found: Function | None = funcs[0] if len(funcs) == 1 else None
+        return found if found is not None and found.template is not None and found.body else None
 
     def _bindings(
         self, func: Name | Member, node: Call, template: Function
@@ -149,44 +123,6 @@ class TemplateEmitter(ClassEmitter):
         if template is None or bindings is None or template.returns.is_auto:
             return None
         return substituted(template.returns, bindings)
-
-    def overloaded(
-        self,
-        name: str,
-        py: str,
-        funcs: list[Function],
-        emit: Callable[[Function, str], None],
-        method: bool = False,
-    ) -> None:
-        """An overload set whose template cannot be written for arguments the translator does
-        not know - one with a ``typeid(T)`` in it, say - keeps its other functions callable:
-        the template refuses its own uses, typed by its own arity, and a call of the
-        arguments of another function of the set still reaches that function."""
-        super().overloaded(name, py, funcs, self._templated(emit, method), method)
-
-    def _templated(
-        self, emit: Callable[[Function, str], None], member: bool
-    ) -> Callable[[Function, str], None]:
-        """``emit``, with a template of the set standing in for itself where it cannot be
-        written once for every set of arguments."""
-
-        def one(func: Function, py: str) -> None:
-            if func.template is None:
-                emit(func, py)
-                return
-            self.generic(
-                lambda: emit(func, py), lambda why: self._stand_in(func, py, why, member)
-            )
-
-        return one
-
-    def _stand_in(self, func: Function, py: str, why: str, member: bool) -> None:
-        """A template of an overload set, as the function refusing a use whose arguments were
-        not worked out - the set's other functions written as they are."""
-        what = f"the {'member' if member else 'function'} template {func.name}"
-        self.out.line(f"def {py}(*args, **kwargs):", func.where)
-        with self.out.indented():
-            self.out.line(f"uninstantiated({what!r}, {why!r})", func.where)
 
     def _root(self) -> Scope:
         scope = self.scope
