@@ -22,6 +22,7 @@ from support import plain
 from xrdroot import Jagged, RNTuple, WritableRNTuple, create, open_root
 from xrdroot.rntuple import checksum as xxh3
 from xrdroot.rntuple.columns import ENCODINGS
+from xrdroot.rntuple.schema import COLLECTION, LEAF
 from xrdroot.rntuple.writer import spec_of
 from xrdroot.streamers import read_streamers
 
@@ -141,6 +142,64 @@ def test_strings_and_vectors_come_back_as_they_went_in_from_every_shape_they_com
     want = [*rows, [4.0]]
     assert batch["v"] == batch["w"] == batch["x"] == want
     assert batch["s"] == ["", "é", "b", "raw"]
+
+
+def test_a_vector_of_vectors_comes_back_as_it_went_in_from_every_shape_it_comes_in():
+    rows = [[[1.5, 2.5], [], [3.5]], [[4.5]], []]
+    found = roundtrip(
+        {"v": [[np.float32]], "w": "std::vector<std::vector<double>>"},
+        [
+            {"v": rows, "w": [[[1.0]], [[2.0]], []]},
+            {"v": [[[5.5], [6.5, 7.5]], [], []], "w": [[[3.0]], [], [[4.0], [5.0]]]},
+        ],
+    )
+    batch = plain(found.arrays())
+    assert batch["v"] == [*rows, [[5.5], [6.5, 7.5]], [], []]
+    assert batch["w"] == [[[1.0]], [[2.0]], [], [[3.0]], [], [[4.0], [5.0]]]
+    assert found.cxx_types() == {
+        "v": "std::vector<std::vector<float>>",
+        "w": "std::vector<std::vector<double>>",
+    }
+    assert found.typenames() == {"v": "list[list[float32]]", "w": "list[list[float64]]"}
+
+
+def test_a_vector_of_vectors_is_laid_out_as_root_lays_it_out():
+    found = roundtrip({"v": [[np.float32]]}, [{"v": [[[1.0, 2.0], []]]}])
+    fields = found._store.schema.fields
+    assert [(field.id, field.name, field.type, field.role, field.parent) for field in fields] == [
+        (0, "v", "std::vector<std::vector<float>>", COLLECTION, 0),
+        (1, "_0", "std::vector<float>", COLLECTION, 0),
+        (2, "_0", "float", LEAF, 1),
+    ]
+    assert [field.children for field in fields] == [[1], [2], []]
+    assert [len(field.columns[0]) for field in fields] == [1, 1, 1]
+
+
+def test_a_vector_of_vectors_crossing_clusters_keeps_its_offsets_a_cluster_at_a_time():
+    rows = [[[float(row), float(item)] for item in range(row % 3)] for row in range(40)]
+    found = roundtrip(
+        {"v": [[np.float64]]}, [{"v": rows}], cluster_size=64, page_size=32
+    )
+    assert found.num_clusters > 1
+    assert plain(found.arrays())["v"] == rows
+
+
+def test_vectors_are_written_as_deep_as_they_nest():
+    rows = [[[[1.5], []], [[2.5, 3.5]]], [], [[[4.5]]]]
+    found = roundtrip({"v": [[[np.float32]]]}, [{"v": rows}])
+    assert found.cxx_types() == {"v": "std::vector<std::vector<std::vector<float>>>"}
+    assert [field.name for field in found._store.schema.fields] == ["v", "_0", "_0", "_0"]
+    assert plain(found.arrays())["v"] == rows
+
+
+def test_awkward_arrays_of_rows_are_written_as_they_are_held():
+    ak = pytest.importorskip("awkward")
+    table = {"rows": ak.Array([[[1.0], []], [[2.0, 3.0]]])}
+    buf = io.BytesIO()
+    with create(buf) as f:
+        f.write("events", table, rntuple=True)
+    buf.seek(0)
+    assert plain(open_root(buf)["events"].arrays())["rows"] == [[[1.0], []], [[2.0, 3.0]]]
 
 
 def test_awkward_arrays_are_written_as_they_are_held():
@@ -312,7 +371,8 @@ def test_a_file_written_without_xxhash_carries_the_same_checksums(monkeypatch):
         complex,
         "std::vector<std::string>",
         [str],
-        [[float]],
+        [[str]],
+        [[np.float16]],
         np.float16,
         "TLorentzVector",
         3,
@@ -321,7 +381,7 @@ def test_a_file_written_without_xxhash_carries_the_same_checksums(monkeypatch):
 )
 def test_a_field_this_writer_cannot_lay_out_is_refused_by_name(spec):
     with create(io.BytesIO()) as f:
-        with pytest.raises(ValueError, match="Records, nested collections and variants"):
+        with pytest.raises(ValueError, match="Records, variants and collections of strings"):
             f.rntuple("events", {"x": spec})
 
 
@@ -351,6 +411,8 @@ def test_a_badly_declared_rntuple_is_refused_with_the_reason(name, fields, optio
         ({"x": np.int32}, {"x": [1.5]}, "these are float64, which would not go into it"),
         ({"x": np.int32}, {"x": [[1, 2]]}, r"shaped \(1, 2\)"),
         ({"x": [np.int32]}, {"x": [[[1]]]}, "not a row of numbers"),
+        ({"x": [[np.int32]]}, {"x": 3}, "a batch given for it is a int"),
+        ({"x": [[np.int32]]}, {"x": [[[0.5]]]}, "would not go into it"),
         ({"x": [np.int32]}, {"x": [[0.5]]}, "would not go into it"),
         ({"x": str}, {"x": "abc"}, "one str for the whole batch"),
         ({"x": str}, {"x": [3]}, "an entry given for it is a int"),
@@ -375,20 +437,26 @@ def test_nothing_is_added_once_the_file_is_closed():
 
 
 def test_the_type_of_a_column_is_read_off_its_values():
-    ak = pytest.importorskip("awkward")
     assert spec_of("x", np.arange(3.0)) == np.float64
     assert spec_of("x", np.array(["a", "b"])) is str
     assert spec_of("x", ["a", b"b"]) is str
     assert spec_of("x", [[1, 2], [3]]) == [np.dtype(int)]
+    assert spec_of("x", np.zeros((2, 3), np.int8)) == [np.int8]  # rows, all of a length
     assert spec_of("x", Jagged(np.zeros(2, np.float32), [0, 2])) == [np.float32]
+
+
+def test_the_type_of_a_column_of_vectors_of_vectors_is_read_off_its_values():
+    ak = pytest.importorskip("awkward")
+    assert spec_of("x", [[[1.5], [], [2.5]], [[3.5]]]) == [[np.dtype(float)]]
+    assert spec_of("x", np.zeros((2, 3, 4), np.int16)) == [[np.int16]]
     assert spec_of("x", ak.Array([[1.5], []])) == [np.float64]
+    assert spec_of("x", ak.Array([[[1.5], []], [[2.5]]])) == [[np.float64]]
     assert spec_of("x", ak.Array(["a"])) is str
     assert spec_of("x", ak.Array([True])) == np.bool_
-    assert spec_of("x", np.zeros((2, 3), np.int8)) == [np.int8]  # rows, all of a length
 
 
 def test_values_that_are_no_type_an_rntuple_is_written_from_are_refused():
-    for bad in ([{"a": 1}], [["a"], ["b"]], []):
+    for bad in ([{"a": 1}], [["a"], ["b"]], [], [[], []], [[[[]]]]):
         with pytest.raises(ValueError, match="neither numbers, nor strings, nor rows"):
             spec_of("x", bad)
 

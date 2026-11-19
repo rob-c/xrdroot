@@ -11,9 +11,12 @@ encodings are ROOT's defaults: split, zigzag and delta when the file is
 compressed, which is what they are for, and the plain ones when it is not.
 
 The fields that can be written are the ones whose layout is beyond doubt:
-the fundamental numbers, ``bool``, ``std::string`` and ``std::vector`` of a
-number. Anything else - records, nested collections, variants - is refused by
-name, on the principle the rest of the writer keeps: a file ROOT misreads is
+the fundamental numbers, ``bool``, ``std::string``, and a ``std::vector`` of a
+number or of another such vector. A collection nests as ROOT nests it: the
+outer collection's offset column says where each entry's items end, the one
+under it where those items' own items end, and so on down to a column of the
+leaves. Anything else - records, variants, collections of strings - is refused
+by name, on the principle the rest of the writer keeps: a file ROOT misreads is
 worse than an error message.
 
 Entries gather in memory a cluster at a time, and a cluster is written once
@@ -102,9 +105,10 @@ def _refuse(name: str, spec: Any) -> ValueError:
     return ValueError(
         f"the field {name!r} is declared as {spec!r}; the fields an RNTuple is written "
         f"with here are numbers (a NumPy type, a C++ name such as 'std::int32_t', or "
-        f"bool, int and float), str for std::string, and a vector of a number, spelled "
-        f"[type] or 'std::vector<type>'. Records, nested collections and variants are "
-        f"not written, because their layout would be a guess"
+        f"bool, int and float), str for std::string, and a vector of a number - or of "
+        f"another such vector - spelled [type], 'std::vector<type>' or 'std::vector<"
+        f"std::vector<type>>'. Records, variants and collections of strings are not "
+        f"written, because their layout would be a guess"
     )
 
 
@@ -130,6 +134,33 @@ def _vector_item(spec: Any) -> Any:
     if isinstance(spec, str) and spec.startswith(VECTORS) and spec.endswith(">"):
         return spec[spec.index("<") + 1 : -1].strip()
     return None
+
+
+def _vector_spec(name: str, spec: Any) -> tuple[np.dtype[Any], int] | None:
+    """The type a vector holds at bottom and how deep its vectors nest, or ``None``.
+
+    ``[[float]]`` and ``'std::vector<std::vector<float>>'`` are both a vector
+    two deep over a fundamental number, which is the only thing a vector may
+    hold here - a collection of strings or of records is refused whole, so
+    that the sentence names the declaration that was given.
+    """
+    depth, item = 0, spec
+    while (inner := _vector_item(item)) is not None:
+        item, depth = inner, depth + 1
+    if not depth:
+        return None
+    try:
+        return _number(name, item), depth
+    except ValueError:
+        raise _refuse(name, spec) from None
+
+
+def _vector(dtype: np.dtype[Any], depth: int) -> str:
+    """The C++ name of a vector of ``dtype`` nested ``depth`` deep."""
+    name = CXX[dtype.name]
+    for _ in range(depth):
+        name = f"std::vector<{name}>"
+    return name
 
 
 class _Out:
@@ -210,31 +241,42 @@ class _Scalar(_Writer):
 
 
 class _Rows(_Writer):
-    """A ``std::string`` or ``std::vector``: where each entry ends, then its items.
+    """A ``std::string`` or a vector - of numbers, or of vectors nested deeper.
 
-    The offset column is fed each entry's length here, and made into ends
-    counted from the start of the cluster when the cluster is written.
+    Every level of items has an offset column saying where that level's items
+    end, and the leaves have a column of their own. The outermost offset
+    column is fed each entry's length here, and every one of them is made
+    into ends counted from the start of the cluster when the cluster is
+    written; a ``std::vector<std::vector<float>>`` is therefore two offset
+    columns over one of floats, which is how ROOT lays it out.
     """
 
-    __slots__ = ("dtype",)
+    __slots__ = ("dtype", "depth")
 
-    def __init__(self, name: str, dtype: np.dtype[Any]) -> None:
+    def __init__(self, name: str, dtype: np.dtype[Any], depth: int = 1) -> None:
         super().__init__(name)
         self.dtype = dtype
+        #: How many vectors nest here; one is a plain vector of numbers.
+        self.depth = depth
 
     def prepare(self, values: Any) -> Any:
-        return _vectors(self.name, values, self.dtype)
+        return _deep_rows(self.name, values, self.dtype, self.depth)
 
     def length(self, prepared: Any) -> int:
-        return len(prepared[1]) - 1
+        return len(prepared[1][0]) - 1
 
     def sizes(self, prepared: Any) -> np.ndarray[Any, Any]:
-        return np.diff(prepared[1]) * self.dtype.itemsize + 8
+        offsets, leaves = _per_entry(prepared[1])
+        return offsets * 8 + leaves * self.dtype.itemsize
 
     def put(self, prepared: Any, a: int, b: int) -> None:
-        content, offsets = prepared
-        self.outs[0].add(np.diff(offsets[a : b + 1]))
-        self.outs[1].add(content[offsets[a] : offsets[b]])
+        content, levels = prepared
+        self.outs[0].add(np.diff(levels[0][a : b + 1]))
+        lo, hi = int(levels[0][a]), int(levels[0][b])
+        for out, level in zip(self.outs[1 : self.depth], levels[1:], strict=True):
+            out.add(np.diff(level[lo : hi + 1]))
+            lo, hi = int(level[lo]), int(level[hi])
+        self.outs[-1].add(content[lo:hi])
 
 
 class _Text(_Rows):
@@ -246,7 +288,8 @@ class _Text(_Rows):
         super().__init__(name, np.dtype("int8"))
 
     def prepare(self, values: Any) -> Any:
-        return _strings(self.name, values)
+        content, offsets = _strings(self.name, values)
+        return content, [offsets]
 
 
 def _numbers(name: str, values: Any, dtype: np.dtype[Any]) -> np.ndarray[Any, Any]:
@@ -295,6 +338,82 @@ def _vectors(name: str, values: Any, dtype: np.dtype[Any]) -> tuple[Any, Any]:
     return _numbers(name, content, dtype), np.asarray(offsets, np.int64)
 
 
+def _deep_rows(
+    name: str, values: Any, dtype: np.dtype[Any], depth: int
+) -> tuple[Any, list[Any]]:
+    """The leaves end to end, and the offset column of every level of items above them.
+
+    One level is a row per entry; deeper than that, each entry's items are
+    themselves rows, and are descended one at a time, so what comes back is
+    ``depth`` offset columns, each counted over the items of the level above
+    it, then the leaves. A row's own offsets start at zero, so they are
+    accumulated as the rows go by to give the ends the cluster will keep.
+    """
+    if depth == 1:
+        content, offsets = _vectors(name, values, dtype)
+        return content, [offsets]
+    return _nested_rows(name, _sub_rows(name, values), dtype, depth)
+
+
+def _nested_rows(
+    name: str, rows: list[Any], dtype: np.dtype[Any], depth: int
+) -> tuple[Any, list[Any]]:
+    """One entry's rows made into the leaves and offsets of the batch they belong to."""
+    outer = np.zeros(len(rows) + 1, np.int64)
+    under: list[list[int]] = [[] for _ in range(depth - 1)]
+    contents = []
+    for at, row in enumerate(rows):
+        content, levels = _deep_rows(name, row, dtype, depth - 1)
+        contents.append(content)
+        outer[at + 1] = len(levels[0]) - 1
+        _collect(under, levels)
+    return _joined(contents, under, outer, dtype)
+
+
+def _collect(under: list[list[int]], levels: list[Any]) -> None:
+    """Add one row's counts at every level to the batch's, which the offsets sum."""
+    for keep, level in zip(under, levels, strict=True):
+        keep.extend(np.diff(level).tolist())
+
+
+def _joined(
+    contents: list[Any], under: list[list[int]], outer: np.ndarray[Any, Any], dtype: np.dtype[Any]
+) -> tuple[Any, list[Any]]:
+    """The rows' leaves and counts joined end to end: the leaves, then every offset column."""
+    filled = [item for item in contents if len(item)]
+    content = np.concatenate(filled) if filled else np.zeros(0, dtype)
+    offsets = [np.concatenate([[0], np.cumsum(keep, dtype=np.int64)]) for keep in under]
+    return content, [np.cumsum(outer), *offsets]
+
+
+def _sub_rows(name: str, values: Any) -> list[Any]:
+    """Each element's own items, so that a vector of vectors can be descended row by row."""
+    if type(values).__module__.partition(".")[0] == "awkward":
+        return list(_module("ak").to_list(values))
+    if not isinstance(values, (list, tuple, np.ndarray)):
+        raise ValueError(
+            f"the field {name!r} is a vector of vectors, and a batch given for it is a "
+            f"{type(values).__name__}; give a list with one row of rows per entry"
+        )
+    return list(values)
+
+
+def _per_entry(levels: list[Any]) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
+    """How many offset values, and how many leaves, every entry of the batch holds.
+
+    The levels are offsets columns one inside the next, so what an entry holds
+    of a deeper level is the difference between that level's offsets at the
+    two ends of the range the level above gives it; the outermost column holds
+    one value per entry whatever the rest does.
+    """
+    offsets = np.ones(len(levels[0]) - 1, np.int64)
+    at = levels[0]
+    for level in levels[1:]:
+        offsets += np.diff(at)
+        at = level[at]
+    return offsets, np.diff(at)
+
+
 def _listed_rows(name: str, values: Any, dtype: np.dtype[Any]) -> tuple[Any, Any]:
     """Rows given one by one - lists, or arrays - as their items and where each ends."""
     rows = [np.asarray(row) for row in values]
@@ -340,7 +459,8 @@ def spec_of(name: str, values: Any) -> Any:
 
     One number per entry is that number's type; rows of numbers - a
     :class:`~xrdroot.tree.Jagged`, an Awkward list, a list of arrays - are a
-    vector of the type of their items; strings are ``str``.
+    vector of the type of their items, and rows of rows as many vectors as
+    there are levels of them; strings are ``str``.
     """
     if isinstance(values, Jagged):
         return [values.content.dtype]
@@ -355,24 +475,60 @@ def spec_of(name: str, values: Any) -> Any:
 
 
 def _object_spec(name: str, values: list[Any]) -> Any:
+    """The declaration a list of rows needs, worked out from what the rows hold.
+
+    Each level of rows descended is a vector, so a list of rows of rows is a
+    vector of vectors, however deep that goes. An empty row says nothing about
+    what it holds and is no trouble, but a batch with no leaves in it at all
+    cannot say what it holds and is refused.
+    """
     if values and all(isinstance(value, (str, bytes)) for value in values):
         return str
-    items = [np.asarray(value) for value in values]
-    if items and all(item.ndim == 1 for item in items):
-        found = np.concatenate(items).dtype
-        if found.kind in "biuf":
-            return [found]
-    raise ValueError(
+    depth, leaves = _descend(values)
+    if not depth or not leaves:
+        raise _not_rows(name)
+    found = np.asarray(leaves)
+    if found.dtype.kind not in "biuf":
+        raise _not_rows(name)
+    return _nested_spec(found.dtype, depth)
+
+
+def _descend(values: list[Any]) -> tuple[int, list[Any]]:
+    """How many levels of rows ``values`` holds, and the leaves at the bottom of them."""
+    depth, items = 0, values
+    while items and all(_is_row(item) for item in items):
+        items, depth = [leaf for item in items for leaf in item], depth + 1
+    return depth, items
+
+
+def _nested_spec(dtype: np.dtype[Any], depth: int) -> Any:
+    """A vector of ``dtype`` declared ``depth`` vectors deep: ``[[float]]`` for two."""
+    spec: Any = dtype
+    for _ in range(depth):
+        spec = [spec]
+    return spec
+
+
+def _is_row(value: Any) -> bool:
+    """Whether a value is a row with items to count: a list, an array, an Awkward list."""
+    return isinstance(value, (list, tuple, np.ndarray)) or (
+        type(value).__module__.partition(".")[0] == "awkward"
+    )
+
+
+def _not_rows(name: str) -> ValueError:
+    return ValueError(
         f"the field {name!r} is given values that are neither numbers, nor strings, nor "
         f"rows of numbers, which are what an RNTuple is written from here"
     )
 
 
 def _awkward_spec(name: str, values: Any) -> Any:
+    """What an Awkward list needs: one axis off is what its items are, however few."""
     ak = _module("ak")
     if values.ndim == 1:  # numbers, or strings, which NumPy holds as either
         return spec_of(name, ak.to_numpy(values))
-    return [ak.to_numpy(ak.flatten(values, axis=1)).dtype]
+    return [spec_of(name, ak.flatten(values, axis=1))]
 
 
 class WritableRNTuple:
@@ -386,9 +542,10 @@ class WritableRNTuple:
     A field is declared as a number - a NumPy type, a C++ name such as
     ``'std::uint16_t'`` or ``'double'``, or a Python ``bool``, ``int`` or
     ``float`` - or as ``str`` for a ``std::string``, or as a vector of a
-    number, ``[np.float32]`` or ``'std::vector<float>'``. Every entry needs a
-    value for every field. The header, the page list, the footer and the
-    anchor are written when the file closes.
+    number, ``[np.float32]`` or ``'std::vector<float>'``, or as vectors of
+    vectors, ``[[np.float32]]`` or ``'std::vector<std::vector<float>>'``, as
+    deep as it goes. Every entry needs a value for every field. The header,
+    the page list, the footer and the anchor are written when the file closes.
     """
 
     def __init__(
@@ -444,20 +601,24 @@ class WritableRNTuple:
         return {field.name: field.type for field in self._schema.tops()}
 
     def _declare(self, name: str, spec: Any) -> _Writer:
-        item = _vector_item(spec)
         if spec is str or spec in ("std::string", "string"):
             writer: _Writer = _Text(name)
             self._add(name, "std::string", LEAF, [self._index(), "Char"], writer)
-        elif item is not None:
-            dtype = _number(name, item)
-            writer = _Rows(name, dtype)
-            vector = f"std::vector<{CXX[dtype.name]}>"
-            parent = self._add(name, vector, COLLECTION, [self._index()], writer)
-            self._add("_0", CXX[dtype.name], LEAF, [self._kind(dtype)], writer, parent)
-        else:
+            return writer
+        found = _vector_spec(name, spec)
+        if found is None:
             dtype = _number(name, spec)
             writer = _Scalar(name, dtype)
             self._add(name, CXX[dtype.name], LEAF, [self._kind(dtype)], writer)
+            return writer
+        dtype, depth = found
+        writer = _Rows(name, dtype, depth)
+        parent = self._add(name, _vector(dtype, depth), COLLECTION, [self._index()], writer)
+        for level in range(depth - 1, 0, -1):
+            parent = self._add(
+                "_0", _vector(dtype, level), COLLECTION, [self._index()], writer, parent
+            )
+        self._add("_0", CXX[dtype.name], LEAF, [self._kind(dtype)], writer, parent)
         return writer
 
     def _index(self) -> str:
