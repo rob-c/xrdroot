@@ -172,6 +172,7 @@ PROVIDERS: dict[tuple[str, str], tuple[str, str, str]] = {
         'pyroot', 'xrdroot.pyroot.roofit.bindings', 'registered_name',
     ),
     ('root.class', 'TMarker'): ('pyroot', 'xrdroot.pyroot.graphics.shapes', 'TMarker'),
+    ('rdf.objects', 'default'): ('pyroot', 'xrdroot.pyroot.rdf.objects', 'kinds'),
     ('roofit.contour_graph', 'default'): ('pyroot', 'xrdroot.pyroot.roofit.contour', 'make_graph'),
     ('roostats.posterior_hist', 'default'): (
         'pyroot', 'xrdroot.pyroot.roostats.mcmcplot', 'posterior_hist',

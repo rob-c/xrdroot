@@ -50,7 +50,7 @@ from .graph import (
     chain_of,
 )
 from .sources import SampleInfo, Source
-from .values import from_column, to_column, truth
+from .values import from_column, objects_from, to_column, truth
 
 __all__ = ["Batch", "Plan", "execute", "accumulate", "run_task"]
 
@@ -69,16 +69,23 @@ def _positions(inner: Array | None, outer: Array | None) -> Array | None:
 
 
 def _column_of(values: Any, count: int) -> Any:
-    """One value an entry, as a column: an array of numbers, or a list of anything else."""
+    """One value an entry, as a column: an array of numbers, a collection of objects, or a
+    list of anything else."""
     if isinstance(values, np.ndarray):
         return values
     if count and all(isinstance(v, (int, float, np.number, np.bool_)) for v in values):
         return np.asarray(values)
-    return list(values)
+    return objects_from(list(values)) or list(values)
 
 
 def _checked(name: str, out: Any, count: int) -> Any:
     """What a callable gave for a batch, if it is one value (or collection) per entry."""
+    objects = objects_from(out)
+    return _sized(name, out, count) if objects is None else objects
+
+
+def _sized(name: str, out: Any, count: int) -> Any:
+    """The same, checked to be one value per entry: an array, a ``Jagged`` or a list."""
     sized = isinstance(out, (Jagged, list)) or (isinstance(out, np.ndarray) and out.ndim > 0)
     if sized and len(out) == count:
         return out

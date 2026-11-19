@@ -27,6 +27,7 @@ from ..wtree import spec_of as column_of
 from ..wupdate import update
 from .actions import Action
 from .graph import Definition, Selector
+from .values import Objects
 
 if TYPE_CHECKING:
     from .loop import Batch
@@ -116,10 +117,11 @@ class Snapshot(Action):
             return writing
         if writing.table is None:
             self._declare(writing, part)
+        columns = _expanded(part, self.rntuple)
         if self.auto_flush > 0 and not self.rntuple:
-            self._clustered(writing, part, count)
+            self._clustered(writing, columns, count)
         else:
-            writing.table.extend(part)
+            writing.table.extend(columns)
         return writing
 
     def _clustered(self, writing: _Writing, part: dict[str, Any], count: int) -> None:
@@ -148,8 +150,25 @@ class Snapshot(Action):
 
 def _tree_spec(name: str, values: Any) -> Any:
     """A column's branch: a collection of numbers per entry - an ``RVec`` - is the
-    ``std::vector`` branch ROOT's ``Snapshot`` writes it as, not a counted array."""
+    ``std::vector`` branch ROOT's ``Snapshot`` writes it as, not a counted array, and a
+    collection of objects a ``std::vector`` of their class, split as ROOT splits it."""
+    if isinstance(values, Objects):
+        return values.kind.spec(name)
     spec = column_of(name, values)
     if isinstance(spec, tuple) and spec[1] is None:
         return Vector(VECTOR_CODES[np.dtype(spec[0]).name])
     return spec
+
+
+def _expanded(part: dict[str, Any], rntuple: bool) -> dict[str, Any]:
+    """A batch's columns as a tree takes them: a collection of objects is the branch of
+    objects ROOT writes, so one column becomes each column under it."""
+    if rntuple:
+        return part
+    columns: dict[str, Any] = {}
+    for name, values in part.items():
+        if isinstance(values, Objects):
+            columns.update(values.kind.columns(name, values.rows))
+        else:
+            columns[name] = values
+    return columns

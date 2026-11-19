@@ -22,7 +22,7 @@ row it happened in, and the expression says which entry that was.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from typing import Any
 
 import numpy as np
@@ -33,6 +33,11 @@ from . import kernels
 
 __all__ = [
     "Value",
+    "Objects",
+    "collection_class",
+    "objects_from",
+    "objects_of",
+    "objects_column",
     "Mismatch",
     "Undefined",
     "from_column",
@@ -95,11 +100,57 @@ class Value:
         return np.asarray(self.data).dtype
 
 
+class Objects:
+    """A column of collections of objects: each entry a run of instances of one C++ class.
+
+    A tree holds a ``std::vector<XYZTVector>`` as one branch of each
+    coordinate of each four-vector, so one entry's objects have to be made
+    again from the columns under the branch, and written back into them,
+    which only the ROOT layer knows how to do. What a source that has done
+    it hands over is this: the ROOT layer's way with the class - which reads
+    an entry's members as objects, declares the branch, and says the C++ type
+    - and each entry's objects. Everything above treats it as a collection
+    whose elements are not numbers: ``size()``, ``empty()`` and one element
+    at a time, as an ``RVec`` of a class is.
+    """
+
+    __slots__ = ("kind", "rows")
+
+    def __init__(self, kind: Any, rows: Sequence[Any]) -> None:
+        #: The ROOT layer's way with a collection of this class.
+        self.kind = kind
+        #: Each entry's objects, a sequence of them.
+        self.rows = rows
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(self.rows)
+
+    def take(self, rows: Any) -> Objects:
+        """These entries, in the order given, still a collection of the same class."""
+        return Objects(self.kind, [self.rows[int(row)] for row in rows])
+
+    def __getstate__(self) -> tuple[Any, Any]:
+        """What a worker process is sent: the class, and the objects of each entry as numbers,
+        which is how they cross a process boundary - a translated ``std::vector`` cannot."""
+        return self.kind, self.kind.pack(self.rows)
+
+    def __setstate__(self, state: tuple[Any, Any]) -> None:
+        self.kind, self.rows = state[0], state[0].unpack(state[1])
+
+    def __repr__(self) -> str:
+        return f"<Objects {self.kind.classname} for {len(self.rows)} entries>"
+
+
 def subset(value: Value, rows: Array) -> Value:
     """The same value for only the rows given, in the order given."""
     if value.items is not None:
         return Value(value.data, items=tuple(subset(item, rows) for item in value.items))
     if value.offsets is not None:
+        if np.asarray(value.data).dtype == object:  # objects, which no kernel counts in
+            return _object_rows(Jagged(value.data, value.offsets).take(rows))
         content, offsets = kernels.compact(Jagged(value.data, value.offsets).take(rows))
         return Value(content, offsets)
     return Value(value.data[rows])  # a column is never a constant: one value per row
@@ -133,8 +184,77 @@ def _listed(name: str, values: list[Any]) -> Value:
     raise _refused(name, "Python objects - nested collections, maps or classes")
 
 
+def collection_class(values: Sequence[Any]) -> str | None:
+    """What a batch of collections of one class of objects holds, as ``vector<Class>``.
+
+    A translated C++ ``std::vector`` says what its elements are in
+    ``value_type``, so a column a macro filled needs no more telling than
+    that; values that say nothing of the sort are not collections of one
+    class, and give ``None``.
+    """
+    held = getattr(values[0], "value_type", None) if values else None
+    if not isinstance(held, str):
+        return None
+    same = all(getattr(each, "value_type", None) == held for each in values)
+    return f"vector<{held}>" if same else None
+
+
+def objects_of(classname: str) -> Any:
+    """The ROOT layer's way to read and write a collection of ``classname``, or ``None``.
+
+    The class of each element is spelled in C++, so making one again from the
+    columns of the branch, and declaring the branch to write, is the ROOT
+    layer's work; this asks it, through the provider ``rdf.objects``, which is
+    the one place a collection of objects crosses into that layer.
+    """
+    from .. import plugins
+
+    found = plugins.lookup("rdf.objects", "default")
+    return None if found is None else found(classname)
+
+
+def objects_from(values: Any) -> Any:
+    """The column of collections of objects that these per-entry values make, or ``None``.
+
+    A callable of a batch gives back one collection an entry, each a translated
+    ``std::vector`` - whose ``value_type`` is the class it holds - or a list of
+    the objects themselves, which says nothing of its class, so is not one.
+    """
+    if not isinstance(values, list) or not values:
+        return None
+    classname = collection_class(values)
+    kind = objects_of(classname) if classname is not None else None
+    return None if kind is None else Objects(kind, values)
+
+
+def objects_column(table: Any, name: str) -> Any:
+    """The way to read and write the column ``name`` of ``table`` when it is a collection of
+    objects, or ``None`` for a column of numbers, text or a single object per entry."""
+    branch = table[name]
+    if not hasattr(branch, "record"):  # a chain's: its first file's tree says what it holds
+        branch = table.tree(0)[name]
+    classname = getattr(branch.record, "classname", "") or ""
+    return objects_of(classname) if classname.startswith("vector<") else None
+
+
+def _object_rows(rows: Sequence[Sequence[Any]]) -> Value:
+    """Rows of objects: one object array of every entry's elements, and where each row starts."""
+    lengths = np.fromiter((len(row) for row in rows), np.int64, len(rows))
+    offsets = np.zeros(len(lengths) + 1, np.int64)
+    np.cumsum(lengths, out=offsets[1:])
+    data = np.empty(int(offsets[-1]), dtype=object)
+    at = 0
+    for row in rows:
+        for element in row:
+            data[at] = element
+            at += 1
+    return Value(data, offsets)
+
+
 def from_column(name: str, values: Any) -> Value:
     """A column, as reading or defining it gave it, as a value to compute with."""
+    if isinstance(values, Objects):
+        return _object_rows(values.rows)
     if isinstance(values, Jagged):
         return _jagged_rows(values)
     if isinstance(values, tuple):

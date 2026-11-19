@@ -2486,6 +2486,7 @@ df.Define("xy", lambda x, y: x * y, extra_args={"y": 0.5})
 | `Display(columns, rows, elements)` | ROOT's box of the first entries |
 | `Report()` | the cut flow of the named filters, printed as ROOT prints it |
 | `Snapshot(tree, file, columns)` | the entries and columns written to a file, and a frame over it |
+| `Book(helper, columns)` | the RooFit data object a helper filled, once the loop is done |
 
 A histogram's model is ROOT's `TH1DModel` as a tuple — `("name", "title",
 nbins, low, high)`, or a number of bins and a list of edges per axis, a
@@ -2501,6 +2502,29 @@ numbers, collections and strings; columns as a list or a regular expression,
 every one by default; `mode="UPDATE"` to add to a file already there;
 `lazy=True` for a `Result` rather than the frame over the file written. A
 loop that fails abandons the file rather than leaving half of one.
+
+`Book` is ROOT's bridge to RooFit: a `RooDataSetHelper` or a
+`RooDataHistHelper`, given the RooFit variables and the frame's columns, is
+filled by the loop and gives back the dataset or the histogram it filled.
+ROOT matches the columns to the variables by position, and so does this, and
+every `Book` of one frame costs one event loop between them:
+
+```python
+x = ROOT.RooRealVar("x", "x", -5.0, 5.0)
+y = ROOT.RooRealVar("y", "y", -50.0, 50.0)
+x.setBins(10)
+y.setBins(20)
+booked = df.Book(ROOT.std.move(ROOT.RooDataSetHelper("data", "a dataset", ROOT.RooArgSet(x, y))),
+                 ("x", "y"))
+data = booked.GetValue()          # a RooDataSet, filled at GetValue, not before
+```
+
+A column that is a collection of objects - ROOT reads a
+`std::vector<ROOT::Math::XYZTVector>` branch as an
+`ROOT::VecOps::RVec<ROOT::Math::XYZTVector>` - is one column, of the
+four-vectors of each entry, so `tracks.size()` and a C++ function taking the
+`RVec` both work on it, and `Snapshot` writes it back as ROOT's branch of
+each coordinate. The branches under it are readable on their own as well.
 
 `GetColumnNames()` (or `.columns`), `GetDefinedColumnNames()`,
 `GetColumnType(c)` — ROOT's names for the types, `Float_t` for a tree's

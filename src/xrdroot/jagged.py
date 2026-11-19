@@ -173,6 +173,8 @@ def take(values: Any, rows: Any) -> Any:
     """The entries at the given places of what one read gave, whatever its shape."""
     if isinstance(values, (np.ndarray, Jagged)):
         return values[rows] if isinstance(values, np.ndarray) else values.take(rows)
+    if hasattr(values, "take"):  # a column that keeps what it holds together, as objects do
+        return values.take(rows)
     return [values[row] for row in np.asarray(rows).tolist()]
 
 

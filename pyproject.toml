@@ -265,6 +265,7 @@ extensions = [
     { caller = "xrdroot.pyroot.rdf.jitted", point = "interpreter.run_source", provider = "pycint", target = "xrdroot.pycint.execute:run_source" },
     { caller = "xrdroot.pyroot.trees.selector", point = "interpreter.run_source", provider = "pycint", target = "xrdroot.pycint.execute:run_source" },
     { caller = "xrdroot.pyroot.rdf.batched", point = "interpreter.dialect", provider = "pycint", target = "xrdroot.pycint.dialect:dialect" },
+    { caller = "xrdroot.rdf.values", point = "rdf.objects", provider = "pyroot", target = "xrdroot.pyroot.rdf.objects:kinds" },
     # Libraries built from C++ (dictionaries, ACLiC's) are loaded and found by the translator.
     { caller = "xrdroot.pyroot.core.troot", point = "interpreter.load_library", provider = "pycint", target = "xrdroot.pycint.library.loading:load" },
     { caller = "xrdroot.pyroot.core.troot", point = "interpreter.unload_library", provider = "pycint", target = "xrdroot.pycint.library.loading:unload" },

@@ -23,6 +23,7 @@ from ..file import ROOTFile, open_root
 from ..formula.select import TreeNames
 from ..rntuple import RNTuple
 from ..tree import TTree, concatenate
+from .values import Objects, objects_column
 
 __all__ = ["Source", "Table", "Empty", "Joined", "SampleInfo", "open_named", "wrap"]
 
@@ -122,6 +123,8 @@ class Table(Source):
         self.owned = owned
         #: The file this opened to find the table in, closed with it.
         self.file = file
+        #: Each column that is a collection of objects, and how ROOT's layer reads it.
+        self._objects: dict[str, Any] = {}
 
     def __len__(self) -> int:
         return len(self.table)
@@ -135,7 +138,19 @@ class Table(Source):
         return list(self.table.readable())
 
     def read(self, name: str, start: int, stop: int) -> Any:
-        return self.table[name].array(start, stop)
+        objects = self.objects(name)
+        if objects is None:
+            return self.table[name].array(start, stop)
+        return Objects(objects, objects.read(self.table[name].array(start, stop)))
+
+    def objects(self, name: str) -> Any:
+        """How ROOT's layer reads the column ``name`` as a collection of objects, if it is
+        one; asked once per column."""
+        if isinstance(self.table, RNTuple):
+            return None
+        if name not in self._objects:
+            self._objects[name] = objects_column(self.table, name)
+        return self._objects[name]
 
     def boundaries(self) -> list[int]:
         if isinstance(self.table, Chain):
@@ -155,7 +170,8 @@ class Table(Source):
     def cxx_type(self, name: str) -> str | None:
         if isinstance(self.table, RNTuple):
             return self.table.cxx_types().get(name)
-        return None
+        objects = self.objects(name)
+        return None if objects is None else objects.column_type()
 
     def describe(self) -> str:
         kind = type(self.table).__name__
