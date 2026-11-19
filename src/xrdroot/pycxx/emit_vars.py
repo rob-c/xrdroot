@@ -17,7 +17,7 @@ from typing import Any
 
 from .ctype import CType
 from .dialect import active
-from .emit_expr import is_container, zero
+from .emit_expr import _is_null, is_container, zero
 from .emit_stmt import StmtEmitter
 from .nodes import (
     Call,
@@ -273,6 +273,8 @@ class VariableEmitter(StmtEmitter):
     def _held(self, ctype: CType, args: list[Expr]) -> str:
         """A pointer, callable or string built from arguments: what the first one is."""
         if not ctype.is_string:
+            if ctype.is_object_pointer and _is_null(args[0]):
+                return "None"
             return self.value(args[0])
         return f"cstr({self.value(args[0])})" if len(args) == 1 else self._string_of(args)
 

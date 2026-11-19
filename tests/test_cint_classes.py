@@ -189,3 +189,28 @@ def test_arguments_given_to_the_macro_reach_its_function(
     source = 'void t(int n = 2, const char *what = "x") { printf("%d %s\\n", n * 2, what); }'
     assert output(capsys, source) == "4 x\n"
     assert output(capsys, source, 5, "y") == "10 y\n"
+
+
+def test_a_pointer_member_initialised_with_zero_is_null_not_the_number(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``: fPtr(0)`` in a constructor's initialiser list is a null pointer.
+
+    C++ makes it one, and the macro then tests it with ``== 0`` and stores
+    through it; the number zero would pass the test's translation and fail
+    the store, on a member that is a pointer to an object the macro declares.
+    """
+    source = """
+    class Track { public: double fEnergy; Track(double e = 0) : fEnergy(e) {} };
+    class TopLevel {
+      Track *fTracksPtr;
+    public:
+      TopLevel() : fTracksPtr(0) {}
+      void AddTrack(int seed) {
+        if (fTracksPtr == 0) fTracksPtr = new Track(seed);
+        printf("%g\\n", fTracksPtr->fEnergy);
+      }
+    };
+    void t() { TopLevel top; top.AddTrack(33); Track *alone(0); printf("%d\\n", alone == 0); }
+    """
+    assert output(capsys, source) == "33\n1\n"
