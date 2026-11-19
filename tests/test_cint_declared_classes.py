@@ -135,6 +135,45 @@ def test_a_character_stored_through_a_char_pointer_is_its_first_element():
     assert "p[0] = ord('x')" in python
 
 
+GLOBAL_STORE = r"""
+class Quiet : public TNamed {
+public:
+   void hush() { gErrorIgnoreLevel = 1; }
+   int level() { return gErrorIgnoreLevel; }
+};
+void quiet() {
+   Quiet q;
+   q.hush();
+   printf("%d\n", q.level());
+}
+"""
+
+
+def test_a_library_global_is_written_where_the_library_keeps_it(capfd):
+    """``gErrorIgnoreLevel = 1`` in a method of a class derived from ROOT's: the object has
+    no such member, so C++ writes ROOT's global - where ``inherited(...)``, a call, cannot."""
+    import xrdroot.pyroot as ROOT
+
+    python = translate(GLOBAL_STORE, "quiet.C")
+    assert "ROOT.gErrorIgnoreLevel = 1" in python
+    assert "inherited(self, 'gErrorIgnoreLevel', ROOT) =" not in python
+    kept = ROOT.gErrorIgnoreLevel
+    try:
+        run_source(GLOBAL_STORE, "quiet.C")
+        assert capfd.readouterr().out == "1\n"
+    finally:
+        ROOT.gErrorIgnoreLevel = kept
+
+
+def test_a_library_global_in_a_fixtures_test_body_is_written_the_same_way():
+    """The gtest programs write ROOT's globals from a ``TEST`` body, which is a method of a
+    class derived from ``testing::Test`` too."""
+    python = translate(
+        '#include "gtest/gtest.h"\nTEST(Suite, Name) { gErrorIgnoreLevel = 2; }', "t.cxx"
+    )
+    assert "ROOT.gErrorIgnoreLevel = 2" in python
+
+
 def test_a_base_reached_twice_and_a_members_call_keep_their_meaning():
     python = translate(
         "class A : public TNamed {}; class B : public A {}; class C : public A {};\n"

@@ -11,6 +11,7 @@ the C++ line it came from.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
@@ -234,7 +235,15 @@ class StmtEmitter(CallEmitter):
         reading it as a character of a string would not let be stored into."""
         if isinstance(target, Unary) and target.op == "*" and self._walks(target.operand):
             return f"{self.at(target.operand, P.POSTFIX)}[0]"
-        return self.value(target)
+        value = self.value(target)
+        inherited = _INHERITED_READ.fullmatch(value) if isinstance(target, Name) else None
+        if inherited is None:
+            return value
+        # ``gDirectory = f`` inside a method of a class derived from a library's class: the
+        # object has no member of that name - an ``fXxx`` would have been read from it - so
+        # C++ finds the library's own global, which the host keeps. ``inherited(...)`` reads
+        # it, but a call has no attribute to store in: the host is what is written.
+        return self.attribute(inherited.group(2), inherited.group(1))
 
     def _assignment(self, expr: Assign, lhs: str) -> str:
         """The Python of ``lhs op= v``: a C string moved along by ``s += n``, Python's own
@@ -903,6 +912,12 @@ class StmtEmitter(CallEmitter):
         Return: _return,
         Try: _try,
     }
+
+
+#: How a library's global reads inside a method of a class derived from one of the library's
+#: classes - ``inherited(self, 'gDirectory', ROOT)``: the object's member of that name, else
+#: the host's, the second answer being the one an assignment to a global has to store in.
+_INHERITED_READ = re.compile(r"inherited\(self, '([^']+)', (.+)\)$")
 
 
 def _texts(ctype: CType) -> bool:
