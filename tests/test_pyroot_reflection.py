@@ -18,7 +18,7 @@ from pyrootsupport import expect, fresh
 from xrdroot import streamers
 from xrdroot.pycint.execute import run_source
 from xrdroot.pycxx.runtime.namespace import DECLARED
-from xrdroot.pyroot.core import reflection
+from xrdroot.pyroot.core import reflection, troot
 
 DATA = pathlib.Path(__file__).parent / "data"
 SOURCE = (DATA / "declared_objects.C").read_text()
@@ -28,6 +28,8 @@ SOURCE = (DATA / "declared_objects.C").read_text()
 def _fresh(tmp_path):
     declared = dict(DECLARED)
     infos = {name: list(found) for name, found in reflection.FILE_INFOS.items()}
+    enums = dict(troot._ENUMS)
+    troot._ENUMS.clear()
     yield from fresh(tmp_path)
     DECLARED.clear()
     DECLARED.update(declared)
@@ -36,6 +38,8 @@ def _fresh(tmp_path):
     reflection.DISAGREED.clear()
     reflection.GENERATED.clear()
     reflection.INTERPRETED_METHODS.clear()
+    troot._ENUMS.clear()
+    troot._ENUMS.update(enums)
 
 
 def _names(cls):
@@ -762,6 +766,33 @@ def test_an_enum_constant_is_one_of_a_class_s_data_members_as_cpp_lists_it():
             ] == [True, False, False, True, False]  # fmt: skip
     assert ROOT.TObject.kZombie == 0x04000000 and ROOT.TH1F.kIsOnHeap == 0x01000000
     assert list(ROOT.TClass("NobodyKnowsThis").GetListOfDataMembers()) == []
+
+
+def test_a_class_lists_the_enums_it_declares_and_an_empty_list_for_none():
+    """``TClass::GetListOfEnums`` is the session's table filtered by owner, as ROOT's is: a
+    class declaring no enumeration answers with an empty list rather than ``nullptr``, which
+    is what roottest's ``execEnumsTest`` walks."""
+    nested = troot.note_enum("A::B::C::enumC1", [("kClassEnumC1A", 0)])
+    sibling = troot.note_enum("A::B::C::enumC2", [("kClassEnumC2A", 0)])
+    troot.note_enum("A::B::enumB", [("kClassEnumB1", 0)])
+    troot.note_enum("ETest", [("kA", 3)])
+    listed = ROOT.TClass.GetClass("A::B::C").GetListOfEnums()
+    assert listed.ClassName() == "TListOfEnums"
+    assert list(listed) == [nested, sibling]
+    assert listed.FindObject("enumC1") is nested
+    # The flag ROOT reads the class's payload for fills the same table in, so it adds nothing.
+    assert list(ROOT.TClass.GetClass("A::B::C").GetListOfEnums(True)) == [nested, sibling]
+    assert ROOT.TClass.GetClass("TNamed").GetListOfEnums().GetSize() == 0
+    assert list(ROOT.TClass("NobodyKnowsThis").GetListOfEnums()) == []
+
+
+def test_a_namespace_answers_with_the_enums_declared_in_it():
+    """A namespace is a ``TClass`` too, and ``TClass::GetClass("N")->GetListOfEnums()`` is
+    how ``runTEnum`` reaches ``N::namespaceEnum`` - the enum's owner is what owns it."""
+    namespaced = troot.note_enum("N::namespaceEnum", [("kNamespace", 1)])
+    troot.note_enum("N2::otherEnum", [("kOther", 1)])
+    assert namespaced.GetClass() is not None
+    assert list(ROOT.TClass.GetClass("N", True).GetListOfEnums()) == [namespaced]
 
 
 def test_a_file_written_before_a_class_had_a_version_is_listed_above_the_librarys():

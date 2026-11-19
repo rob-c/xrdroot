@@ -742,6 +742,22 @@ class TClass(TNamed):
                 return deeper
         return None
 
+    def GetListOfEnums(self, load: bool = False) -> Any:
+        """``GetListOfEnums``: the enumerations the class - or the namespace - declares.
+
+        ROOT keeps one table of the interpreter's enumerations and answers a class with the
+        part of it that class owns, so this is a filter of the session's table and not a
+        list of its own: a class declaring no enum answers with an empty ``TListOfEnums``,
+        never with ``nullptr`` (roottest's ``execEnumsTest`` dereferences it).
+
+        ``load`` is the autoloading ROOT would do to fill the list in by reading the class's
+        payload, which no library here is read for - so it changes nothing, as an enum the
+        interpreter has not declared is one nothing here can find.
+        """
+        from .troot import class_enums
+
+        return class_enums(self._name)
+
     def GetListOfDataMembers(self, load: bool = True) -> Any:
         """``GetListOfDataMembers``: the class's members - and its enum constants, which C++
         lists as members too (``TObject::kZombie`` is one of ``TNamed``'s)."""
