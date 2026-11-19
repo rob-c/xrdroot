@@ -1037,6 +1037,51 @@ def test_a_member_of_a_template_instance_is_an_object_held_in_place_of_that_clas
     assert set(made.entries()) == {"Event", "template2<template1<int>>"}
 
 
+TEMPLATE_MEMBER = r"""
+template <class T> struct template1 {};
+template <class T> struct template2 {};
+class TemplateHolder {
+public:
+   int fN;
+   template2< template1< int > > fTemplateMember;
+   ClassDef(TemplateHolder, 1)
+};
+void template_member(const char *name) {
+   TFile f(name, "RECREATE");
+   TemplateHolder h;
+   h.fN = 7;
+   f.WriteObject(&h, "h");
+}
+"""
+
+
+def test_a_template_instance_is_found_by_the_spelling_a_streamer_names_it_with():
+    """The class a member of a template instance is of is reached by the spelling the
+    declaration wrote, ``template2<template1<int> >``, and asked for by the one a streamer
+    writes, ``template2<template1<int>>``: ``find_class`` answers to both, so the instance
+    reaches the object's catalogue and the file describes it instead of refusing its member."""
+    from xrdroot.pyroot.core.declared import catalogue_of
+
+    run_source(TEMPLATE_MEMBER, "template_member.C", call=False)
+    spaced = find_class("template2<template1<int> >")
+    assert spaced is not None
+    assert find_class("template2<template1<int>>") is spaced
+    assert set(catalogue_of(find_class("TemplateHolder")).declarations) == {
+        "TemplateHolder", "template1<int>", "template2<template1<int> >"}
+
+
+def test_an_object_holding_a_template_instance_is_written_and_read_back_whole():
+    """What the reach above is for, end to end: the bigevent roottest's ``Event`` held a
+    ``template2<template1<int> >`` and was refused at that member before the two spellings
+    were told to be one class; an empty instance has no members to lay out, so the object
+    goes out and comes back as the class it was made as."""
+    run_source(TEMPLATE_MEMBER, "template_member.C", ("template-member.root",))
+    h = ROOT.TFile("template-member.root").Get("h")
+    assert type(h).__name__ == "TemplateHolder" and h.fN == 7
+    assert _streamers("template-member.root")["TemplateHolder"]["fTemplateMember"].typename == (
+        "template2<template1<int> >")
+
+
 #: ROOT 6.40.04's ``TBufferFile::WriteObjectAny`` of a ``classWithComplex(1, 2, 3, 4)`` - a
 #: ``std::complex<float> fcf`` and a ``std::complex<double> fcd`` - as the oracle writes it: the
 #: record's byte count, the version a class of no ``ClassDef`` carries (0) and its checksum,

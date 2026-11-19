@@ -83,21 +83,33 @@ def find_class(name: str) -> type | None:
 
     The translation names a class in a namespace, or inside another class, by
     its own name alone, so ``ns::Deep`` is found as ``Deep``.
+
+    A template instance is one class under two spellings: the declaration writes
+    ``template2<template1<int> >`` as C++ requires of nested ``>``, and a streamer
+    names it ``template2<template1<int>>``, so the spaces are out of both sides
+    before they are compared - the bigevent roottest's ``Event::fTemplateMember``
+    is reached only by the first and asked for only by the second.
     """
     from ...pycxx.runtime.namespace import DECLARED
 
-    wanted = name.strip()
+    wanted = _squashed_name(name)
     last = wanted.split("::")[-1]
     fallback = None
     for cls in list(DECLARED.values()):
         if not declared_class(cls):
             continue
-        own = str(cls.__dict__["_cxx_layout_"][0])
+        own = _squashed_name(str(cls.__dict__["_cxx_layout_"][0]))
         if own == wanted:
             return cls  # type: ignore[no-any-return]
         if own.split("::")[-1] == last:
             fallback = cls
     return fallback
+
+
+def _squashed_name(name: str) -> str:
+    """A class name's spelling with the spaces out of it, which is what two spellings of one
+    template instance agree on: ``A<B<int> >`` and ``A<B<int>>`` are the one class."""
+    return name.strip().replace(" ", "")
 
 
 def declaration_of(cls: type, name: str | None = None) -> Declaration:
