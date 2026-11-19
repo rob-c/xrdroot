@@ -367,6 +367,22 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   makes `pairEnumEvo`'s 40 tests comparable; then `P-7`/`P-8` (seven hangs), `G-5`, `G-6`, and
   the two big queues (`Q-20`'s writer bytes, `Q-11`'s formula).
 
+## Round 2's close (recorded here for the next iteration)
+
+- Base `773a63c`, closed at `450231d`. Sixteen workers, twelve cherry-picked commits plus one patch
+  applied, **eleven** roottest tests in and **no PASS lost** (`/tmp/r2/final2` vs `/tmp/r1/final2`).
+- The round's biggest step is not a PASS: the streamer-info printer (`43686bf`) took **all 40
+  `pairEnumEvo` tests from a crash to a DIFF**, and 28 formula tests from a refusal to a failure
+  that names its next gap. That is what `Q-24` and the formula rows now carry.
+- One regression: `.typedef`/`.autodict` (`27791f5`) turns seven `tree/stl` DIFFs into six failures
+  and one refusal, for two PASSes the other way. It is `W0-10`, with the revert that isolates it
+  recorded there. Decide next round: find what a prompt command changes about a `.L` load, or
+  revert it and lose the two.
+- Three workers produced only a diagnosis and a patch (the `CloneTree` column typing, `TBranchRef`'s
+  streamer slot, the split `TClonesArray`). Their notes are `Q-25`, `Q-26`, `Q-27`.
+- The next round's first scopes: `Q-24` (pairEnumEvo's listing), `W0-10`, `Q-25`, `Q-26`, then the
+  writer's bytes (`Q-20`) and the formula (`Q-11`).
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -418,6 +434,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | round | base | scopes | in the round's `results.json` | new queue entries |
 |---|---|---|---|---|
 | 1 | `8c1b9f8` | sixteen, `/tmp/r1/wNN-brief.md`: formula member calls (from branch `w01`), an array of `std::vector` in a class, object columns in a tree, `BranchRef`/`TRefTable`, `GetStreamerInfo`+`pairEnumEvo`, evolution print DIFFs, genreflex XML, split `TClonesArray`, `std::array` as an element type, `RFieldBase`, nested-collection RNTuple, a text branch read, `ReadClones`, `typeid` of a template parameter, the `generate` template, and the seven timeouts (diagnosis only) | **roottest 1076 → 1078, non-tutorial 1231 → 1233** (`/tmp/r1/final2`, `/tmp/r1/final1` at `7a43bd9`) | 9 rows: `Q-23` (the streamer-info printer), `P-7`/`P-8` (the hangs and their two named causes), `G-5` (the template choice), `G-6` (member template constructors), `W0-9` (hadd tests colliding in one directory), plus the reverts recorded in the ledger |
+| 2 | `773a63c` | sixteen, `/tmp/r2/wNN-brief.md`: the streamer-info printer (`Q-23`), formula objects, tree columns of objects, an array of `std::vector`, `BranchRef`, the `a(b) = c` SyntaxError (5 gtest), the template choice (`G-5`), `typeid` (`G-6`), `.Class`/`.typedef`/`.autodict`, TEnum, `TPostScript`, `TBufferJSON`, `TSelector`, a split `TClonesArray`, an RNTuple class field, and `WriteObjectAny` | **roottest 1078 → 1089, non-tutorial 1233 → 1244** (`/tmp/r2/final2`, `/tmp/r2/final1` at `5c88c8c`) | 6: `Q-24`, `Q-25`, `Q-26`, `Q-27`, `W0-10`, and the `pairEnumEvo`/formula notes in the ledger |
 
 ## Notes
 
