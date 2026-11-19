@@ -85,7 +85,8 @@ assert 'Float_t' not in containers.NUMBERS
 assert 'Int_t' not in stdlib._KINDS
 assert set(containers.TEMPLATES) == {'vector', 'map', 'pair', 'set', 'list', 'deque', 'multimap',
                                      'multiset', 'forward_list', 'complex', 'atomic',
-                                     'unordered_map', 'unordered_set'}
+                                     'unordered_map', 'unordered_set',
+                                     'unordered_multimap', 'unordered_multiset'}
 values = std.vector['int']([1, 2, 3])
 copy = std.vector['vector<int>']([values])
 values[0] = 9
@@ -399,3 +400,51 @@ def test_a_brace_enclosed_value_builds_the_element_from_its_values() -> None:
     assert containers._converted(Holder, already) is already
     pair = containers._element(containers.std.pair["int", "int"], (7, 8))
     assert (pair.first, pair.second) == (7, 8)
+
+
+def test_a_hashed_multi_container_keeps_what_it_was_given_as_cpp_names_it() -> None:
+    """``std::unordered_multimap`` and ``std::unordered_multiset``, which a macro's braced
+    list fills: the multimap takes a key as often as it is inserted, and both are spelled
+    with the name C++ gives them."""
+    spreads = containers.std.unordered_multimap["std::string", "std::vector<float>"](
+        [["one", [1, 2, 3]], ["one", [4, 5, 6]]]
+    )
+    assert spreads.__cpp_name__ == "unordered_multimap<string,vector<float>>"
+    assert (len(spreads), [key for key, _ in spreads.items()]) == (2, ["one", "one"])
+    assert [list(value) for _, value in spreads.items()] == [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+    assert containers.std.unordered_multimap["int", "int"]().size() == 0
+    counted = containers.std.unordered_multiset["int"]([3, 1, 1])
+    assert counted.__cpp_name__ == "unordered_multiset<int>"
+    assert (list(counted), counted.count(1)) == ([1, 1, 3], 2)
+
+
+def test_two_sets_are_equal_when_they_hold_the_same_elements() -> None:
+    """``a == b``, which ``EXPECT_EQ`` and a macro's ``==`` both mean: what is held, and how
+    often - never the order a hashed container is free not to keep."""
+    numbers = containers.std.unordered_set["double"]([1, 3, 5, 6, 8])
+    assert numbers == containers.std.unordered_set["double"]([8, 6, 5, 3, 1])
+    assert numbers != containers.std.unordered_set["double"]([1, 3])
+    assert numbers != 5  # a set is not equal to something that is not one
+    assert containers.std.multiset["int"]([1, 1, 2]) == containers.std.multiset["int"]([2, 1, 1])
+    assert containers.std.multiset["int"]([1, 1, 2]) != containers.std.multiset["int"]([1, 2])
+    assert containers.std.vector["int"]([1]) == containers.std.vector["int"]([1])
+
+
+def test_two_maps_are_equal_when_they_hold_the_same_pairs() -> None:
+    """A map's ``==`` by its keys and their values, and a multimap's by its pairs however
+    the hashed order it does not promise happened to put them in."""
+    eggs = containers.std.unordered_map["int", "std::string"]([[2, "two"]])
+    assert eggs == containers.std.unordered_map["int", "std::string"]([[2, "two"]])
+    assert eggs != containers.std.unordered_map["int", "std::string"]([[4, "four"]])
+    assert eggs != 3
+    pairs = containers.std.unordered_multimap["std::string", "int"](
+        [["one", 1], ["one", 2], ["two", 3]]
+    )
+    assert pairs == containers.std.unordered_multimap["std::string", "int"](
+        [["two", 3], ["one", 2], ["one", 1]]
+    )
+    assert pairs != containers.std.unordered_multimap["std::string", "int"]([["one", 1]])
+    assert pairs != containers.std.unordered_multimap["std::string", "int"](
+        [["one", 1], ["one", 2], ["two", 4]]
+    )
+    assert pairs != 3  # and it is not equal to something that is not a multimap

@@ -1080,6 +1080,15 @@ class _Map(_Container):
         found = self._key(key)
         return _MapIterator(self, keys.index(found) if found in self._items else len(keys))
 
+    def __eq__(self, other: object) -> bool:
+        """``a == b``: the same keys holding equal values - what C++ compares, and not the
+        order a hashed map would keep them in."""
+        if not isinstance(other, _Map):
+            return NotImplemented
+        return self._items == other._items
+
+    __hash__ = None  # type: ignore[assignment]
+
 
 class _MapIterator:
     """A ``std::map`` iterator: ``it->first``, ``it->second`` (assignable), ``++it``."""
@@ -1181,6 +1190,20 @@ class _Set(_Container):
         self._items.discard(self._value(value))
         return found
 
+    def _tally(self) -> dict[Any, int]:
+        """Every element with how often it is held - what two of these are compared by, since
+        an order C++ leaves unspecified cannot be compared element by element."""
+        return dict.fromkeys(self._items, 1)
+
+    def __eq__(self, other: object) -> bool:
+        """``a == b``: each element held as often as in the other, which is all C++ can compare
+        of a container whose order it does not promise."""
+        if not isinstance(other, _Set):
+            return NotImplemented
+        return self._tally() == other._tally()
+
+    __hash__ = None  # type: ignore[assignment]
+
 
 def _set_class(kind: Any) -> type:
     name = f"set<{cpp_name(kind)}>"
@@ -1237,6 +1260,11 @@ class _Multiset(_Set):
 
     def clear(self) -> None:
         self._counts.clear()
+
+    def _tally(self) -> dict[Any, int]:
+        """Every element with how often it is held, which is how a ``multiset`` is compared:
+        the counts differ from a ``set``'s even where the elements do not."""
+        return self._counts
 
 
 def _multiset_class(kind: Any) -> type:
@@ -1409,6 +1437,23 @@ class _MultiMap(_Container):
         at = sum(1 for held in self._pairs if not made.first < held.first)
         self._pairs.insert(at, made)
 
+    def __eq__(self, other: object) -> bool:
+        """``a == b``: the same pairs, once - each of one found among those of the other, so
+        that the order a hashed multimap keeps them in does not decide it."""
+        if not isinstance(other, _MultiMap):
+            return NotImplemented
+        unclaimed = [tuple(held) for held in other._pairs]
+        if len(unclaimed) != len(self._pairs):
+            return False
+        for pair in self._pairs:
+            found = tuple(pair)
+            if found not in unclaimed:
+                return False
+            unclaimed.remove(found)
+        return True
+
+    __hash__ = None  # type: ignore[assignment]
+
 
 def _multimap_class(key: Any, value: Any) -> type:
     name = f"multimap<{cpp_name(key)},{cpp_name(value)}>"
@@ -1430,6 +1475,12 @@ TEMPLATES: dict[str, _Template] = {
     "atomic": _Template("atomic", 1, _stdlib.atomic_type),
     "unordered_map": _Template("unordered_map", 2, _renamed("unordered_map", _map_class)),
     "unordered_set": _Template("unordered_set", 1, _renamed("unordered_set", _set_class)),
+    "unordered_multimap": _Template(
+        "unordered_multimap", 2, _renamed("unordered_multimap", _multimap_class)
+    ),
+    "unordered_multiset": _Template(
+        "unordered_multiset", 1, _renamed("unordered_multiset", _multiset_class)
+    ),
 }
 
 
@@ -1585,6 +1636,8 @@ class _Namespace:
     atomic_char = _stdlib.atomic_type("char")
     unordered_map = TEMPLATES["unordered_map"]
     unordered_set = TEMPLATES["unordered_set"]
+    unordered_multimap = TEMPLATES["unordered_multimap"]
+    unordered_multiset = TEMPLATES["unordered_multiset"]
     array = _ArrayTemplate()
     get = _GetTemplate()
     bitset = _bitset.bitset

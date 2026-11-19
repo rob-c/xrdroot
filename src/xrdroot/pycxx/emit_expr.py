@@ -59,8 +59,24 @@ from .typeids import polymorphic, qualified_names, spelled
 
 __all__ = ["ExprEmitter", "COMPARISONS", "CONTAINERS", "is_container", "zero"]
 
-#: The standard containers, which are built from a Python list of what a braced list holds.
-CONTAINERS = ("vector", "list", "deque", "set", "array", "map", "unordered_map")
+#: The standard containers, which are built from a Python list of what a braced list holds - the
+#: associative ones of the hashed and multi- families included, since C++ picks the
+#: ``initializer_list`` constructor for a braced list whatever the container's ordering is.
+CONTAINERS = (
+    "vector",
+    "list",
+    "deque",
+    "set",
+    "array",
+    "map",
+    "unordered_map",
+    "multiset",
+    "multimap",
+    "unordered_set",
+    "unordered_multiset",
+    "unordered_multimap",
+    "forward_list",
+)
 
 #: C's comparison operators, which are Python's.
 COMPARISONS = frozenset({"==", "!=", "<", ">", "<=", ">="})
