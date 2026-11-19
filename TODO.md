@@ -20,22 +20,21 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1123 / 2173** |
+| roottest | 1038 / 2173 (47.8 %) | **1132 / 2173** |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **22 / 109** |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1284 / 2820 (45.5 %)** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1293 / 2820 (45.9 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
-The "now" column is two runs at `f583422`: `/tmp/r5/final2b` (roottest, 1123) and
-`/tmp/r5/final1` (the other kinds: gtest 52, pyunittest 81, `test/` 6, `other` 22 - the
-first run in which `minuit2_ParallelTest` came in under the limit again). The nine
-roottest tests the last round brought in are `AddVersion-1-3`/`-1-4`/`-2-3` (a file
-written before a class had a version is listed above the library's), the two
-`io/perf/WriteBuffer*` (a declared class is described once, not once per record), the two
-`meta/genreflex/ROOT-6640/*`, `cling/dict/exectemplatetemplateTest` (a template template
-parameter) and `ntuple/makeproject/rntuple/write_rntuple` (a set or map field). `other` reads 21
+The "now" column is two runs at `3825443`: `/tmp/r6/final2b` (roottest, 1132) and
+`/tmp/r6/final1` (the other kinds: gtest 52, pyunittest 81, `test/` 6, `other` 22). The
+nine roottest tests the last round brought in are the two `io/perf/ReadBuffer*` (a class
+is read by a plan made once), `io/geo/Parse` (GDML), three of the four
+`io/references/actions/*` (`TRef`'s process and assignment), the two
+`ntuple/makeproject/rntuple/*` (`TFile::MakeProject`) and `cling/bytecode/runhenry`
+(`fscanf`). `other` reads 21
 at `--jobs 5` **and still 21 alone**, because `minuit2_ParallelTest` now takes 309 s of the
 300 s limit: measured alone at `8af51aa`, `bb19779` and `68a8d07`, so it is this machine, not
 a code change (it took 195-236 s when the earlier rounds measured it). It is `P-9`'s
@@ -602,7 +601,8 @@ these unblock did not set up.
 | Q-45 | A whole-object branch's member letter is not a number (`event.fTriggerBits` names an object) | 42 | M |
 | Q-46 | `TFile::MakeProject`, which the RNTuple makeproject tests call after writing | 4 | M |
 | Q-47 | `.Class` on a class a library defines (`Class Name::MyClass not found`) | 3 | S |
-Notes that will save days:
+| Q-48 | The formula reads an object member as an object (`event.fTriggerBits`), the last wall before 42 tests | 42 | L |
+| Q-49 | An old element code with a name today's ROOT knows (`Int_t` under code 6) is not a width difference | 2 | S |Notes that will save days:
 
 - **Q-38** is the round-4 worker 4's find and it is a bug, not a gap: `interp.Each` *is* a
   `Values`, so `copying._whole`'s "one streamed object per entry?" says yes for a split
@@ -915,20 +915,34 @@ cheap to maintain and impossible to reconstruct.
 | W0-16 | attempted, not merged | - | 0 | worker 14's four-line patches (`interp.py`'s version-0 header, `cppstd/bitset.py`'s `set`/`reset`/`test`, `TCollection.Add(obj, opt)`) are in `/tmp/r5/w14-patches.diff`; each unblocks a different `io/json`/`io/abstractclass` test |
 | W0-17 | attempted, not merged | - | 0 | worker 15 read `roottest/python/memory/memory`'s three failures; its report is `/tmp/r5/w15.log` and the fix is in ROOT's Python-side memory accounting, which nothing here implements |
 
+| P-9 | **done** | `267e974` (worker 2) | roottest +2 | a declared class is read by a plan made once, not one made per record: `io/perf/ReadBuffer-1` and `-2`, TIMEOUTs in every round until now, pass (221.6 s and 172.1 s of the 300 s limit). With round 5's write half, `io/perf` is four PASSes from four TIMEOUTs |
+| Q-44 | **done in part** | `ce4c62a` (worker 8) | roottest +1 | `TGeoManager::Import` reads a GDML geometry as ROOT's `TGDMLParse` does - `io/geo/Parse` passes with stdout byte-identical to `execParse.ref`. The other twenty `io/geo` tests need `Export` and a `TGeoManager` file reader |
+| Q-46 | **done in part** | `24a51fb` (worker 9) | roottest +2 | `TFile::MakeProject` writes the classes a file describes as a project: `makeproject/rntuple` and `read_rntuple-build` pass; `read_rntuple` itself fails its own gtest (`RNTupleMakeProject.ReadBackRNTuple`) |
+| Q-35 | **done** | `330c55c` (worker 12) | roottest +3 | a `TRef` read inside an object gets the process its record names, and `TRef`'s heap bits and action bit are set: `io/references/actions/{test,test1,test2}` pass, `test3` is one call away |
+| Q-16 (part) | done | `43ec833`, `8190689`, `7ba79e1` (workers 3, 6, 10) | 0 | a list may hold a ROOT object this writer has a layout for; a bitset's `set`/`reset`; `TCollection::Add(obj, opt)`; a `TObjArray` comes back with the name ROOT read into it from the bytes |
+| Q-41 (part) | done | `00ab886` (worker 14) | roottest +1 | `fscanf` scans a file's fields on from where the call before it stopped: `cling/bytecode/runhenry` passes |
+| Q-42 (part) | done | `88bb607` (worker 1) | 0 | a whole `TBits` member drawn a set bit at a time, and `TestBitNumber` over its bits: the `treeformula` fixture moves from `dt_DrawTest.C:17` to `fTriggerBits` read as an object (`Q-48`) |
+| Q-29 | **attempted, reverted** | `f156b59`, reverted by `40036da` | 0 | `TStreamerInfo::BuildCheck`/`CompareContent` made `AddVersion-1-6` pass but printed a warning two PASSes' `.ref` files do not have (`io/evolution/ClonesArrayEvo`, `treeformula/clones/nested-2`), because an old file spells `Int_t` under a code today's ROOT has dropped (`Q-49`). Narrowing the gate to the member's *type name* does fix those two - measured, `/tmp/r6/check-lost5` - but leaves `AddVersion-1-6` short by its `offset=na` listing, so the warning is reverted and this is the shape the next attempt starts from |
+| Q-24 (part) | attempted, not merged | - | 0 | worker 11's `CompareContent` also needs `offset=na` in `TStreamerElement::ls` for a file-only layout, which is `Q-30`'s printing half |
+| W0-18 | attempted, not merged | - | 0 | worker 13's bigevent template member is pinned by its own test (`647f8e9`) but the writing half needs the template spelling fix in `pyroot/core/declared.py` (round 4's worker 3 patch); its measurement is `/tmp/r6/w13.log` |
+| W0-19 | done | `267e974` | 0 | worker 15's `tree/stl` seven DIFFs: the `.typedef`/`.autodict` command's effect on a split branch was measured and is unchanged by anything in `pycint/execute.py`; the row stays `W0-10` with its numbers |
+| W0-20 | attempted, not merged | - | 0 | worker 16 read `roottest/python/memory/memory`'s three failures (`/tmp/r6/w16.log`); they ask for ROOT's Python-side memory accounting, which nothing here implements |
+
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | now (`f583422`) |
-|---|---|---|---|---|---|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | **1123** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
-| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | now (`3825443`) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | **1132** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
+| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** |
 
-The last column is `/tmp/r5/final2b` (roottest, 1123) and `/tmp/r5/final1` (the other
-kinds) at `f583422`; the column before it, `/tmp/r4/final2` (1114) and `/tmp/r4/final1` at
+The last column is `/tmp/r6/final2b` (roottest, 1132) and `/tmp/r6/final1` (the other
+kinds) at `3825443`; the column before it, `/tmp/r5/final2b` (1123) and `/tmp/r5/final1` at
+`f583422`; the column before it, `/tmp/r4/final2` (1114) and `/tmp/r4/final1` at
 `932164a`; the column before it, `/tmp/r3/final2` (roottest, 1105) and
 `/tmp/r3/final1` at `8af51aa`; the column before it, `/tmp/r2/final2` (roottest, 1089) and
 `/tmp/r2/final1` (the other kinds) at `5c88c8c`; the round before it, `/tmp/r1/final2` (1078) and `/tmp/r1/final1`
