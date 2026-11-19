@@ -1609,3 +1609,25 @@ def test_a_collection_member_comes_back_as_the_namespaces_collection():
 
     back = _pointed(["a", "b"], parse_type("TObjArray*"), None)
     assert (type(back).__name__, list(back)[:2]) == ("TObjArray", ["a", "b"])
+
+
+def test_a_tbits_member_inside_a_clones_array_element_is_the_bits_it_holds():
+    # roottest's treeformula/event fills a TBits per track out of the TClonesArray its Event
+    # holds, and read nothing at all until the elements were made objects with their members
+    # converted on the way in: hTrackTrigger and hFiltTrackTrigger were empty in the reference
+    # while the draws beside them counted 88420 and 1471. The bits of an element are what
+    # FirstSetBit and TestBitNumber walk, as they are for an event's own TBits.
+    from xrdroot.buffer import Clones, Named
+    from xrdroot.pyroot.core.collections import TClonesArray
+    from xrdroot.pyroot.core.declared import converted
+
+    run_source("class Bit { public: TBits fBits; };\nint nothing() { return 0; }", "bits.C", ())
+    raw = np.zeros(2, np.uint8)
+    raw[0] = 0b00010100  # bits 2 and 4
+    held = Clones([{"fBits": Named({"fNbits": 12, "fNbytes": 2, "fAllBits": raw}, "TBits")}],
+                  "Bit")
+    back = converted(held, parse_type("TClonesArray*"), None)
+    assert isinstance(back, TClonesArray)
+    bit = list(back)[0]
+    assert type(bit).__name__ == "Bit" and bit.fBits.GetNbits() == 12
+    assert [at for at in range(12) if bit.fBits.TestBitNumber(at)] == [2, 4]
