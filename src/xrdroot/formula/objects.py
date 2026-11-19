@@ -173,7 +173,7 @@ def _learn(
         if not isinstance(obj, dict):
             continue
         for name in _names(obj):
-            found.setdefault(name, []).append(_found(obj, name))
+            found.setdefault(name, []).append(_characters(_found(obj, name)))
     for name, values in found.items():
         _offer(branch, (*path, name), values, learned, dims, crossed)
     _derive(branch, path, found, learned, crossed)
@@ -403,13 +403,29 @@ class Whole:
 def _take(value: Any, path: tuple[str, ...]) -> Any:
     """What ``path`` is in one entry's object: one value, or a row of them through a collection."""
     if not path:
-        return value
+        return _characters(value)
     if isinstance(value, (list, tuple)):
         return [_take(item, path) for item in value]
     if not isinstance(value, dict):
         return MISSING
     found = _found(value, path[0])
     return MISSING if found is MISSING else _take(found, path[1:])
+
+
+def _characters(value: Any) -> Any:
+    """A ``char[N]`` member as the C string it is, as ROOT's ``TLeafC`` reads one.
+
+    ROOT streams a fixed-size array of ``char`` as the characters it holds, so a
+    formula sees a string and not twenty numbers: ``fType == "type1"``, which is
+    how ROOT's own tree tests select on a ``char fType[20]`` member. The chars
+    stop at the first NUL, as ``strlen`` does, and a byte that is not UTF-8 is
+    carried through as its own character rather than refused.
+    """
+    if isinstance(value, np.ndarray) and value.ndim == 1 and value.dtype == np.int8:
+        text = value.tobytes()
+        end = text.find(b"\x00")
+        return text[: len(text) if end < 0 else end].decode("utf-8", "surrogateescape")
+    return value
 
 
 def _absent(value: Any) -> bool:

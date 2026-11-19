@@ -262,6 +262,32 @@ def test_a_name_is_read_off_the_object_as_a_number_a_string_or_a_row():
     assert whole.read("fR", [{"fR": np.array([1.0, 2.0])}])[0].tolist() == [1.0, 2.0]
 
 
+def test_a_char_array_member_is_the_c_string_it_holds_and_not_its_characters():
+    # ``char fType[20]`` streams as twenty ``int8``s; ROOT's ``TLeafC`` reads it as a
+    # string, which is what ``fType == "type1"`` in ROOT's own tree tests selects on.
+    entry = {"fType": np.frombuffer(b"type1" + b"\x00" * 15, dtype=np.int8)}
+    whole = learned({"event": [entry]})
+    assert whole.read("fType", [entry, entry]) == ["type1", "type1"]
+    assert whole.dims["fType"] == 0  # one string an entry, not twenty numbers
+    assert whole.whole_number("fType") is False
+
+
+def test_a_full_char_array_is_every_character_of_it_and_a_short_one_all_it_has():
+    full = {"fType": np.frombuffer(b"0123456789abcdefghij", dtype=np.int8)}  # no NUL
+    short = {"fType": np.frombuffer(b"ab", dtype=np.int8)}
+    whole = learned({"event": [full, short]})
+    assert whole.read("fType", [full, short]) == ["0123456789abcdefghij", "ab"]
+
+
+def test_a_row_of_unsigned_bytes_is_numbers_and_not_a_string():
+    # ``UChar_t`` is a number in ROOT and only ``char`` is a string, so a row of
+    # them stays what it is.
+    entry = {"fAllBits": np.frombuffer(bytes(4), dtype=np.uint8)}
+    whole = learned({"event": [entry]})
+    assert whole.dims["fAllBits"] == 1
+    assert whole.read("fAllBits", [entry])[0].tolist() == [0, 0, 0, 0]
+
+
 def test_a_member_no_entry_holds_and_one_that_is_a_row_in_only_some_are_refused():
     whole = learned({"e": [{"fI": 1.0}]})
     with pytest.raises(Refused, match="the entries differ in holding it"):
