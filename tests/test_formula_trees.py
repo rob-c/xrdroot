@@ -230,3 +230,35 @@ def test_a_cut_can_hand_its_columns_to_pandas(flat):
     frame = flat.arrays(["Int32", "Float64 / 2"], cut="Int32 >= 98", library="pd")
     assert isinstance(frame, pd.DataFrame)
     assert frame["Float64 / 2"].tolist() == [49.0, 49.5]
+
+
+def test_alt_reads_a_shorter_array_at_the_loop_s_flat_index(tmp_path):
+    """``Alt$``'s argument is read flat, as ROOT reads it, not row by row.
+
+    ``m[2][3] - Alt$(v, 6)`` loops over ``m``'s six elements in one run, so ROOT
+    reads ``v`` at the flat index ``i0 * 3 + i1`` and supplies the alternative
+    once that runs past the elements an entry holds. A strong branch in the same
+    place is only repeated - ROOT's ``m - v`` of that matrix reads ``v[i0]`` -
+    which is what makes the arithmetic here differ between the two lines. The
+    numbers are ROOT's, checked against a file it wrote with these same titles.
+    """
+    path = tmp_path / "flat-alt.root"
+    with create(str(path)) as f:
+        f["t"] = {
+            "m": np.array([[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]),
+            "v": np.arange(10.0, 70.0, 10.0).reshape(1, 6),
+            "w": np.arange(10.0, 50.0, 10.0).reshape(1, 4),
+            "s": np.array([[10.0, 20.0]]),
+        }
+    with open_root(str(path)) as f:
+        tree = f["t"]
+        tree["m"].leaf.title = "m[2][3]"
+        tree["v"].leaf.title = "v[6]"
+        tree["w"].leaf.title = "w[4]"
+        tree["s"].leaf.title = "s[2]"
+        assert dimensions(tree["m"]) == 2 and dimensions(tree["v"]) == 1
+        got = tree.arrays(["m - Alt$(v, 0)", "m - Alt$(w, 0)", "m - Alt$(s, 0)", "m - v"])
+        assert got["m - Alt$(v, 0)"].tolist() == [[-9.0, -18.0, -27.0, -36.0, -45.0, -54.0]]
+        assert got["m - Alt$(w, 0)"].tolist() == [[-9.0, -18.0, -27.0, -36.0, 5.0, 6.0]]
+        assert got["m - Alt$(s, 0)"].tolist() == [[-9.0, -18.0, 3.0, 4.0, 5.0, 6.0]]
+        assert got["m - v"].tolist() == [[-9.0, -8.0, -7.0, -16.0, -15.0, -14.0]]

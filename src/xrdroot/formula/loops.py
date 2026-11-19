@@ -24,6 +24,16 @@ A branch inside ``Alt$``'s first argument is weak: it is looped over with the
 rest but does not cut the loop short, and where it has run out its value is
 missing and ``Alt$`` gives the alternative - which is how ROOT's
 ``arr1 + Alt$(arr2, 0)`` runs the length of ``arr1``.
+
+Running out of dimensions is not the same as running out of loop, though: when
+the loop has levels left that the weak branch has no dimension for, ROOT reads
+that branch *flat*, at ``index * count + local`` - the last dimension's index
+becomes a mixed-radix number whose digits are the remaining levels. So
+``fMatrix - Alt$(fClosestDistance, 0)`` of a ``fMatrix[4][4]`` and a
+``fClosestDistance`` of ``fNvertex`` elements subtracts ``fClosestDistance[i0*4
++ i1]``, and gives the alternative once that runs past the entry's elements.
+A strong branch in the same place is simply repeated instead, which is where
+ROOT's ``m - v`` of a ``m[2][3]`` and a ``v[6]`` reads ``v[i0]``.
 """
 
 from __future__ import annotations
@@ -129,7 +139,18 @@ class Cursor:
     stops: its values are then a slice of the column rather than a gather.
     """
 
-    __slots__ = ("node", "layout", "specs", "weak", "at", "span", "_place", "valid")
+    __slots__ = (
+        "node",
+        "layout",
+        "specs",
+        "weak",
+        "at",
+        "span",
+        "last",
+        "index",
+        "_place",
+        "valid",
+    )
 
     def __init__(self, node: Node, layout: Layout, specs: tuple[Index, ...], weak: bool) -> None:
         #: The expression node this is the value of.
@@ -141,6 +162,9 @@ class Cursor:
         self.at = 0
         #: The run of nodes it is at, while they are one.
         self.span: tuple[int, int] | None = (0, layout.rows)
+        #: For a weak one, the nodes its last dimension was read from, and at what index.
+        self.last: Array | None = None
+        self.index: Array | None = None
         self._place: Array | None = None
         self.valid: Array | None = None
 
@@ -173,10 +197,45 @@ class Cursor:
         start, stop = self.span
         return offsets[start + 1 : stop + 1] - offsets[start:stop]
 
+    @property
+    def bottom(self) -> bool:
+        """Is the dimension it is at the last one, below which only values are?"""
+        return self.at == self.layout.dims - 1
+
+    def take(self, node: Array, index: Array) -> None:
+        """Remember where the last dimension was read, in case the loop goes on past it."""
+        if self.weak and self.bottom:
+            self.last = node
+            self.index = index
+
+    def spread(self, space: Space) -> None:
+        """Read one level past the last dimension: its contents taken flat, as ROOT does.
+
+        ROOT pairs a loop's levels with a branch's dimensions left to right; a
+        branch that has no dimension for a level is read at ``index * count +
+        local`` there, so the elements of its last dimension line up with the
+        items of the levels below it. Past the elements the entry has, the
+        value is missing and whatever weakens it - ``Alt$`` - takes over.
+        """
+        assert self.last is not None and self.index is not None
+        parent = space.parent
+        offsets = self.layout.offsets[self.layout.dims - 1]
+        node = self.last[parent]
+        if self.valid is not None:  # where a dimension ran out, its last node is a placeholder
+            node = np.minimum(node, len(offsets) - 2)
+        index = self.index[parent] * space.count[parent] + space.local
+        room = offsets[node + 1] - offsets[node]
+        valid = both(index < room, None if self.valid is None else self.valid[parent])
+        self.last = node
+        self.index = index if valid is None else np.where(valid, index, 0)
+        self.valid = valid
+        self.move(offsets[node] + self.index)
+
     def step(self, index: Array, ok: Array | None) -> None:
         """Go down one dimension, to the ``index``-th child of each node."""
         sizes = self.sizes()
         good = both(both((index >= 0) & (index < sizes), ok), self.valid)
+        self.take(self.place, index)
         self.move(self.layout.child(self.at, self.place, index, good))
         self.valid = good
         self.at += 1
@@ -184,12 +243,14 @@ class Cursor:
     def follow(self, space: Space, sizes: Array, full: bool) -> None:
         """Go down the dimension looped over, to the child the loop is at for each new item."""
         if full and self.span is not None and self.valid is None:
+            self.take(self.place[space.parent], space.local)
             offsets = self.layout.offsets[self.at]
             self.span = (int(offsets[self.span[0]]), int(offsets[self.span[1]]))
             self._place = None
             self.at += 1
             return
         place = self.place[space.parent]
+        self.take(place, space.local)
         valid = None if self.valid is None else self.valid[space.parent]
         good = both(space.local < sizes[space.parent], valid) if self.weak else valid
         self.move(self.layout.child(self.at, place, space.local, True if good is None else good))
@@ -218,11 +279,13 @@ class Scope:
     down, from where they are carried to the last level when asked for.
     """
 
-    __slots__ = ("spaces", "done")
+    __slots__ = ("spaces", "done", "flat")
 
     def __init__(self, entries: int) -> None:
         self.spaces = [Space.of_entries(entries)]
         self.done: dict[int, tuple[Array, Array | None, int]] = {}
+        #: The weak cursors that ran out of dimensions, read flat if a level follows.
+        self.flat: list[Cursor] = []
 
     @property
     def space(self) -> Space:
@@ -233,6 +296,7 @@ class Scope:
         active = self._settle(cursors, indexer)
         while active:
             self.spaces.append(self._expand(active))
+            self._flatten()
             active = self._settle(active, indexer)
 
     def _settle(self, cursors: list[Cursor], indexer: Indexer) -> list[Cursor]:
@@ -241,11 +305,23 @@ class Scope:
         for cursor in cursors:
             self._index(cursor, indexer)
             if cursor.finished:
-                values, valid = cursor.result()
-                self.done[id(cursor.node)] = (values, valid, len(self.spaces) - 1)
+                self._record(cursor)
+                if cursor.weak and cursor.at and len(cursor.specs) == cursor.layout.dims:
+                    self.flat.append(cursor)  # it may yet be read flat, one level further down
             else:
                 active.append(cursor)
         return active
+
+    def _record(self, cursor: Cursor) -> None:
+        """Note what a cursor gives at the level it stopped at."""
+        values, valid = cursor.result()
+        self.done[id(cursor.node)] = (values, valid, len(self.spaces) - 1)
+
+    def _flatten(self) -> None:
+        """Let the weak cursors read their last dimension flat at the level just made."""
+        for cursor in self.flat:
+            cursor.spread(self.space)
+            self._record(cursor)
 
     def _index(self, cursor: Cursor, indexer: Indexer) -> None:
         while not cursor.finished and not cursor.looping:
