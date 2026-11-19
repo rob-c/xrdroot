@@ -976,3 +976,89 @@ def test_a_fixed_array_keeps_the_shape_the_file_declares():
     assert read_element(Buffer(shaped_bytes(1, (16,), 16))).dims == ()
     # A description that does not add up says nothing about a shape.
     assert read_element(Buffer(shaped_bytes(2, (4, 5), 16))).dims == ()
+
+
+def test_a_class_the_program_declares_is_laid_out_as_it_has_it_in_memory():
+    """Only the layer that declares a class knows its in-memory layout, and a collection of
+    it is read by that layout rather than by the file's (``TStreamerInfo`` in memory)."""
+    from xrdroot import interp
+
+    source = Source(io.BytesIO(b""), "mixedBase_v1.root", owned=True)
+    assert interp._member_wise(source) is source  # nothing declared, nothing to lay out
+    try:
+        interp.declare("ParticleImplVec", IN_MEMORY)
+        laid_out = interp._member_wise(source)
+        assert set(laid_out.streamers()["ParticleImplVec"]) == {"Particle"}
+        assert laid_out.name == "mixedBase_v1.root"
+    finally:
+        interp.DECLARED.clear()
+
+
+def test_a_class_whose_layout_moved_says_so_once_per_file(monkeypatch, capsys):
+    """``TStreamerInfo::CreateReadMemberWiseActions``, said where ROOT says it: while the
+    collection that needs the actions is being read, and only the once."""
+    from xrdroot import interp
+
+    source = Source(io.BytesIO(b""), "mixedBase_v1.root", owned=True)
+    monkeypatch.setattr(interp, "read_layouts", lambda _source: {"ParticleImplVec": [ON_FILE]})
+    interp._divergence(source, "Tdata")()  # a class this program does not declare
+    assert capsys.readouterr().out == ""
+    try:
+        interp.declare("ParticleImplVec", IN_MEMORY)
+        report = interp._divergence(source, "ParticleImplVec")
+        report()
+        report()
+    finally:
+        interp.DECLARED.clear()
+    said = capsys.readouterr().out
+    assert said.startswith("Warning in <CreateReadMemberWiseActions>:    The StreamerInfo")
+    assert said.count("Warning in <CreateReadMemberWiseActions>:") == 1
+
+
+def test_a_record_a_changed_class_overran_is_reported_and_read_on_from_its_end(capsys):
+    """``TBufferFile::CheckByteCount``: the bytes a member-wise record took against its own
+    count - said, and then carried on from the end the record named, as ROOT does."""
+    from xrdroot import interp
+
+    source = Source(io.BytesIO(b""), "mixedBase_v1.root", owned=True)
+    buf = Buffer(record(1) + b"\0" * 12)
+    start = buf.pos
+    _version, end = buf.header()
+    assert end is not None
+    buf.pos = end + 12
+    interp._byte_count("vector<ParticleImplVec>", source)(buf, start, end)
+    assert capsys.readouterr().out.splitlines() == [
+        "Error in <TBufferFile::CheckByteCount>: object of class vector<ParticleImplVec> "
+        f"read too many bytes: {end + 12} instead of {end}",
+        "Warning in <TBufferFile::CheckByteCount>: vector<ParticleImplVec>::Streamer() not in "
+        "sync with data on file mixedBase_v1.root, fix Streamer()",
+    ]
+    assert buf.pos == end  # every object after the record is read from where it says
+
+
+def test_a_member_wise_record_that_ended_short_is_still_refused():
+    """A record read by a layout that describes somebody else's bytes is not forgiven: only
+    a class the program declares has an account of why it did not end where it said."""
+    from xrdroot import interp
+
+    source = Source(io.BytesIO(b""), "mixedBase_v1.root", owned=True)
+    buf = Buffer(record(1) + b"\0" * 12)
+    start = buf.pos
+    _version, end = buf.header()
+    assert end is not None
+    buf.pos = end - 4
+    with pytest.raises(FormatError, match="ended 4 bytes"):
+        interp._byte_count("vector<ParticleImplVec>", source)(buf, start, end)
+
+
+def test_a_member_wise_container_is_read_by_its_columns_and_checked_afterwards():
+    """The one shape ``_objects`` reads that has a record of its own to be checked against."""
+    from xrdroot import interp
+
+    said: list[str] = []
+    buf = Buffer(record(interp.MEMBER_WISE, struct.pack(">hi", 1, 0)))
+    warning = lambda: said.append("warning")  # noqa: E731 - a report of one line
+    counted = lambda _buf, _start, _end: said.append("counted")  # noqa: E731
+    read = interp._objects(lambda _buf: {}, [], (warning, counted))
+    assert read(buf) == []
+    assert said == ["warning", "counted"]

@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import datetime
 import math
+import sys
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -23,11 +24,12 @@ from .cxx import SEQUENCES, Mapping, Pair, Prim, Seq, Str, parse, py_name
 from .errors import FormatError, UnsupportedFeatureError
 from .plugins import lookup, lookup_loaded
 from .rootarrays import ARRAYS as ARRAYS
+from .streamers import read_layouts, reconcile
 
 if TYPE_CHECKING:
     from .file import Source
     from .objects import BranchRecord, LeafRecord
-    from .streamers import Member
+    from .streamers import Described, Member
     from .tree import Basket
 
 __all__ = ["Column", "Flat", "Rows", "Values", "Members", "Refused", "build", "whole_object"]
@@ -35,6 +37,29 @@ __all__ = ["Column", "Flat", "Rows", "Values", "Members", "Refused", "build", "w
 #: Set in a record's version when a container was written field by field
 #: rather than object by object: all the keys, then all the values.
 MEMBER_WISE = 0x4000
+
+#: The layouts the program's own classes have in memory, by name, as ROOT's dictionary holds
+#: them. A file written by another vintage of a class records a layout that is not the one
+#: the objects in memory have, and only the layer that declares a class knows the latter, so
+#: it publishes it here with :func:`declare`.
+DECLARED: dict[str, Described] = {}
+
+
+def declare(name: str, layout: Described) -> None:
+    """Record the layout the program's class ``name`` has in memory, as a dictionary would.
+
+    A class declared a second time is described again and the second description stands,
+    as re-declaring it in ROOT replaces what its dictionary said of it.
+    """
+    DECLARED[name] = layout
+
+
+def _members_of(layout: Described) -> dict[str, Member]:
+    """One layout as the reader takes it: a member by its name, in declaration order."""
+    from .rdobjects import _member  # the one place an element becomes a reader's member
+
+    return {element[1]: _member(element) for element in layout[2]}
+
 
 #: A record header - four bytes of byte count, two of version.
 RECORD = 6
@@ -840,7 +865,9 @@ def _columns(
         if member.stype != 0 or member.typename != "BASE":
             found.append((label, _column(label, member, step, source, seen)))
             continue
-        inner = _columns(member.name, source, seen)
+        # A base class is read as the program has it in memory: member-wise reading goes
+        # straight into the object, so the base is the one the class derives from today.
+        inner = _columns(member.name, _member_wise(source), seen)
         if inner is None:
             return None
         found += [(label, _into_column(label, column)) for _sub, column in inner]
@@ -963,8 +990,45 @@ def _group(buf: Buffer, columns: list[tuple[str, Fill]]) -> list[dict[str, Any]]
     return rows
 
 
+def _byte_count(
+    typename: str, source: Source
+) -> Callable[[Buffer, int, int | None], None]:
+    """``TBufferFile::CheckByteCount`` for a collection written member by member.
+
+    ROOT reads such a collection by the class *in memory* - straight into objects it has
+    already made - so a base class that has gained a member since the file was written takes
+    more bytes than the file's record holds. That is the one thing ROOT takes in its stride:
+    it says how many bytes it read against how many the record held, says the class's
+    streamer is out of step with the file, and carries on at the end the record named, which
+    is why the objects after it still read. A record read by a layout that describes
+    somebody else's bytes is still refused (see :func:`_ended`).
+    """
+    filename = getattr(source, "name", "")
+
+    def report(buf: Buffer, start: int, end: int | None) -> None:
+        over = buf.check_count(start, end)
+        if over is None or over[0] < over[1]:
+            _ended(buf, end, f"a container of {typename}")
+            return
+        sys.stdout.write(
+            f"Error in <TBufferFile::CheckByteCount>: object of class {typename} read too "
+            f"many bytes: {over[0]} instead of {over[1]}\n"
+        )
+        sys.stdout.write(
+            f"Warning in <TBufferFile::CheckByteCount>: {typename}::Streamer() not in sync "
+            f"with data on file {filename}, fix Streamer()\n"
+        )
+        buf.resume(end)
+
+    return report
+
+
 def _field_by_field(
-    buf: Buffer, end: int | None, columns: list[tuple[str, Fill]]
+    buf: Buffer,
+    start: int,
+    end: int | None,
+    columns: list[tuple[str, Fill]],
+    counted: Callable[[Buffer, int, int | None], None] | None = None,
 ) -> list[dict[str, Any]]:
     """A container written a member at a time rather than an object at a time.
 
@@ -979,7 +1043,10 @@ def _field_by_field(
     """
     _versioned(buf)
     rows = _group(buf, columns)
-    _ended(buf, end, f"a container of {len(rows)}")
+    if counted is None:
+        _ended(buf, end, f"a container of {len(rows)}")
+    else:
+        counted(buf, start, end)
     return rows
 
 
@@ -994,11 +1061,19 @@ def _ended(buf: Buffer, end: int | None, what: str) -> None:
 
 
 def _objects(
-    one: Callable[[Buffer], Any], columns: list[tuple[str, Fill]] | None = None
+    one: Callable[[Buffer], Any],
+    columns: list[tuple[str, Fill]] | None = None,
+    member_wise: tuple[Callable[[], None], Callable[[Buffer, int, int | None], None]] | None = None,
 ) -> Callable[[Buffer], list[Any]]:
-    """A container of whole objects, each written the way its own class is."""
+    """A container of whole objects, each written the way its own class is.
+
+    ``member_wise`` is what ROOT says while reading a collection written a member at a time:
+    the warning that the class in memory differs from the file's, said once before the items
+    are read, and the byte count it checks afterwards.
+    """
 
     def read(buf: Buffer) -> list[Any]:
+        start = buf.pos
         version, end = buf.header()
         if not version & MEMBER_WISE:
             return [one(buf) for _ in range(buf.u32())]
@@ -1007,7 +1082,11 @@ def _objects(
                 "this container was written field by field, which happens for a "
                 "container of pointers and is not a shape this reader decodes"
             )
-        return list(_field_by_field(buf, end, columns))
+        if member_wise is None:
+            return list(_field_by_field(buf, start, end, columns))
+        warning, counted = member_wise
+        warning()
+        return list(_field_by_field(buf, start, end, columns, counted))
 
     return read
 
@@ -1208,6 +1287,57 @@ def _object_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step 
     return None
 
 
+class _MemberWise:
+    """A source whose classes are laid out as the program has them in memory.
+
+    ROOT reads a collection written member by member straight into objects it has already
+    made, so what it reads a base class by is the base class in memory and not the layout
+    the file recorded for it: a base versioned on since the file was written takes the bytes
+    it takes today, and the record then ends somewhere other than its own byte count said -
+    which :func:`_counted` reports, as ROOT does. A collection's own class is still the
+    file's, because ROOT picks its version out of the record.
+    """
+
+    def __init__(self, source: Source) -> None:
+        self._source = source
+        self.name = getattr(source, "name", "")
+
+    def streamers(self) -> dict[str, dict[str, Member]]:
+        found = dict(self._source.streamers())
+        found.update({name: _members_of(layout) for name, layout in DECLARED.items()})
+        return found
+
+
+def _member_wise(source: Source) -> Source:
+    """The source a base class of a member-wise collection is read through, which is the
+    source itself unless the program declares classes at all."""
+    return cast("Source", _MemberWise(source)) if DECLARED else source
+
+
+def _divergence(source: Source, name: str) -> Callable[[], None]:
+    """ROOT's ``CreateReadMemberWiseActions`` warning, said once per class and file.
+
+    ROOT builds a class's member-wise read actions the first time a collection of it is
+    read, and compares there the layout the file has of that version with the one the class
+    has in memory. The byte count ROOT reports next (:func:`_byte_count`) is the consequence the
+    warning predicts, so the two belong to the same record being read.
+    """
+    mine = DECLARED.get(name)
+    filename = getattr(source, "name", "")
+    said = False
+
+    def report() -> None:
+        nonlocal said
+        if mine is None or said:
+            return
+        said = True
+        _layout, warning = reconcile(name, mine, read_layouts(source).get(name, []), filename)
+        if warning:
+            sys.stdout.write(f"Warning in <CreateReadMemberWiseActions>: {warning}\n")
+
+    return report
+
+
 def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step | None:
     """How a string or container member reads, or ``None`` if it is neither.
 
@@ -1227,7 +1357,13 @@ def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> St
         return _plainly(_objects(lambda buf: buf.any(classes)))
     # A class the file describes can also be written field by field; one
     # that streams itself, such as a TArrayD, only ever comes whole.
-    return _plainly(_objects(_embedded(name, source, seen), _columns(name, source, seen)))
+    return _plainly(
+        _objects(
+            _embedded(name, source, seen),
+            _columns(name, source, seen),
+            (_divergence(source, name), _byte_count(member.typename, source)),
+        )
+    )
 
 
 #: The maps a reader of pairs with objects for values knows.
