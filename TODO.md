@@ -20,18 +20,23 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1070 / 2173** |
+| roottest | 1038 / 2173 (47.8 %) | **1076 / 2173** |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **16 / 109** |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1225 / 2820 (43.4 %)** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1231 / 2820 (43.6 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run) |
 
-The "now" column is two runs at `5ae0a0f`: `/tmp/xw/final2` (roottest, 1070) and
-`/tmp/xw/final1` (the other kinds). No PASS was lost; `other`'s
-`minuit2_ParallelTest` timed out under the load of sixteen parallel workers and
-passes when rerun alone.
+The "now" column is two runs at `68a8d07`: `/tmp/x8/final2b` (roottest, 1076) and
+`/tmp/x8/final1b` (the other kinds), with `/tmp/x8/final2` and `/tmp/x8/final1`
+at the commit before it. The six roottest tests the last round brought in are
+`io/json/PolyMarker`, `io/rootcint/cltest`, `io/stdarray/arrTemplMemberWrite`,
+`io/stdarray/colWiseWrite_3`, `meta/tclass/execTmpltD32` and
+`treeformula/string/cernbuild`. No PASS was lost; `roottest/main/RootcpReadRemote` and
+`io/hadd/test_hadd_regr_20872` time out when their CERN endpoint is slow and pass
+when rerun alone (both did, twice), and `minuit2_ParallelTest` does the same under
+load.
 
 **The shape of the remaining work**, which decides the order below:
 
@@ -765,31 +770,44 @@ cheap to maintain and impossible to reconstruct.
 | Q-7 (part) | done | `35560bb`, `faba133` | roottest +1 | `fgets` and `sscanf`, `TBufferJSON` (`io/json/Map`), `TFile.SetReadaheadSize`/`GetCacheRead`, `ROOT::TestSupport::FileRaii` (17 gtest programs reach it) |
 | Q-17 (part) | done | `0b481bb` | roottest +1 | a doxygen trailing comment (`///<`, `//!<`) documents a member instead of making it transient |
 | P-6 | todo | | -0 | unchanged: `cp`/`hadd` of a `root://` file still reads it basket by basket. It passed this run (195 s) and timed out on others |
-| Q-11 | **attempted, not merged** | branch `w01` | 0 | worker 1 taught the formula engine to call a branch object's methods: 27 `FAIL`s became refusals with a precise reason (`fH.GetMean()` on an object read from a file is a dictionary of members, not an object), but `treeformula/sync/readfile-0` — a PASS — also became a refusal, so the branch is kept and not merged. The refusal to relax is `formula/binding.py::_mismatch` for `fTracks.fVertex[][fTracks.fNpoint%3]` |
 | Q-1 (TEnum) | **attempted, blocked** | — | 0 | worker 2 found `TClass::GetListOfEnums` needs `ROOT::GetListOfEnums`/`GetListOfGlobals` and the enum table the interpreter keeps, which lives outside `reflection.py`; `roottest/root/meta/enums/fclassVal` also needs a pointer cast of an object |
 | Q-12 (double32) | **attempted, blocked** | — | 0 | worker 8: the failing line is `gROOT->GetClass("MyVector<Double32_t>")->GetStreamerInfo()->ls()` — `TClass::GetStreamerInfo` is missing, so the fix is in `reflection.py`, not `interp.py` |
+| Q-16 (rest) | done | `68a8d07` | roottest +2 | a member of a *class template* kept by value is written as an instance: `colWiseWrite_3` and `arrTemplMemberWrite` pass, and `colWiseWrite_4`/`colWiseRead_31..42` move on. Found by worker e, one line, in a file outside its scope |
+| Q-7 (rest) | done | `e554a93`, `f64894e`, `fa63558`, `270eea2` | roottest +2 | `TBufferJSON`'s constructor bits and name (`io/json/PolyMarker`); `fgets`/`sscanf` writing into a macro's `char[]` (`treeformula/string/cernbuild` passes, and the three `stressgraphics` tests now reach `TPostScript`); `TClass::HasInterpreterInfo`; a tree never written counts its streamed record in `Print`'s Total |
+| Q-20 (part) | done | `90f227e` | 0 | `hadd` now carries the streamer infos its inputs describe (merging `tests/data/tntuple.root` lost `TTree v20`, `TBranch v13`, `ROOT::TIOFeatures`, `TBranchRef`, `TRefTable`; now 18/18). It moves nothing in `io/filemerger`, and worker a measured why: the input there is xrdroot's own `hsimple.root`, 412 079 bytes where ROOT's is 414 892 — the gap is in what **the writer** puts in `hsimple.root`, not in the merge |
+| Q-11 | **attempted twice, not merged** | branches `w01`, `xc` | 0 | workers 1 and c taught the formula engine to call a branch object's methods - 27 `FAIL`s became refusals naming the reason (`fH.GetMean()` on an object read from a file is a dictionary of members), and `TH1::GetMean` became a method derived from the sums a file's object holds - but `treeformula/sync/readfile-0`, a PASS, becomes a refusal in both, so neither branch is merged. The refusal to relax is `formula/binding.py::_mismatch` for `fTracks.fVertex[][fTracks.fNpoint%3]`, which indexed a loop by a value that changes and the older code handled |
+| Q-14 (GDML) | **attempted, blocked** | — | 0 | worker f: all 20 `io/geo` refusals come from `TGeoManager::Import`, which needs a GDML reader and a reader for a `TGeoManager` in a ROOT file; both are absent, and the refusal it already gives names them |
 | Q-10, Q-11, Q-13 … | todo | | | |
 
-**Totals, measured.** Three runs took the suite from 1185 to 1225 passing tests:
+**Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | after `ddc6039` | after `8f53999` | now (`5ae0a0f`) |
-|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | **1070** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / **512** |
-| `test/` | 4 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | now (`68a8d07`) |
+|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | **1076** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 |
+| `test/` | 4 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** |
 
-The last column is `/tmp/xw/final2` (roottest) and `/tmp/xw/final1` (the other
-kinds) at `5ae0a0f`; the eighteen roottest tests that came in with it are
+The last column is `/tmp/x8/final2b` (roottest) and `/tmp/x8/final1b` (the other
+kinds) at `68a8d07`. The six roottest tests the last round brought in are
+`io/json/PolyMarker`, `io/rootcint/cltest`, `io/stdarray/arrTemplMemberWrite`,
+`io/stdarray/colWiseWrite_3`, `meta/tclass/execTmpltD32` and
+`treeformula/string/cernbuild`; the round before, eighteen:
 `collection/ROOT-7249`, `io/evolution/WriteFixedArray{New,Old}`,
 `io/evolution/pragma_read/testv1`, `io/json/Map`, `io/stdarray/colWiseRead_11`,
 `colWiseRead_12`, `colWiseRead_21`, `colWiseRead_22`, `colWiseWrite_1`,
 `io/transient/execTransientNoctor`, `meta/method/ReuseMethod`,
-`meta/runPublicDataMembers-auto`, `treeformula/array/filltree`, and the four
-network tests (`main/RootcpReadRemote` and its two dependants,
+`meta/runPublicDataMembers-auto`, `treeformula/array/filltree`, and four network
+tests (`main/RootcpReadRemote` and its two dependants,
 `io/hadd/test_hadd_regr_20872`) that pass when the CERN endpoints are quick.
+
+**No PASS was lost.** Two tests time out when their CERN endpoint is slow -
+`main/RootcpReadRemote` and `io/hadd/test_hadd_regr_20872` - and pass when rerun
+alone, which has been checked every time it happened; `other`'s
+`minuit2_ParallelTest` does the same under load, taking 195-236 s against the
+300 s limit.
 
 Rules for the ledger: a row moves to `done` only when its **verification
 command** was run and the delta is in a `results.json`; quote the number
