@@ -27,6 +27,7 @@ from typing import Any
 
 import numpy as np
 
+from ... import plugins
 from ...errors import UnsupportedFeatureError
 from .layout import element_class
 
@@ -384,8 +385,6 @@ def _macro(source: str, path: Path) -> dict[str, Any]:
     The translation is the interpreter's, through the provider a host installs, so that a
     tree needs no more of :mod:`xrdroot.pycint` than ``gROOT`` itself does.
     """
-    from ... import plugins
-
     run_source = plugins.lookup("interpreter.run_source")
     if run_source is None:
         raise UnsupportedFeatureError(
