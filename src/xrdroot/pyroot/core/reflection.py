@@ -128,6 +128,11 @@ def note_file_infos(infos: list[tuple[str, Layout]]) -> None:
         held.append((checksum, version, elements))
 
 
+def _version_of(layout: tuple[Layout, bool]) -> int:
+    """The version a layout is listed at, which is the index ROOT keeps it at."""
+    return layout[0][1]
+
+
 def _in_memory(name: str, checksum: int, version: int) -> bool:
     """Is a layout of ``name`` the one the class in memory has - its version for a class with
     ``ClassDef``, its checksum for one without?"""
@@ -451,16 +456,26 @@ class TClass(TNamed):
         return TStreamerInfo(self._name, found[0], versioned=self._versioned()) if found else None
 
     def GetStreamerInfos(self) -> Any:
-        """``GetStreamerInfos``: every layout known - the one in memory, then each a file
-        read describes it with that is not that one."""
+        """``GetStreamerInfos``: every layout known - the one in memory, and each a file read
+        describes it with that is not that one.
+
+        ROOT keeps a versioned class's layouts in the order of their versions, which is not
+        the order the files were read in: ``roottest``'s ``AddVersion-1-4`` reads a file
+        holding versions 1 and 3 beside a library at version 2 and lists them 1, 2, 3. A class
+        told apart by checksum has no version to be sorted by, so there the layout in memory
+        comes first and each file's follows as it was met.
+        """
         from .collections import TObjArray
 
         made = TObjArray()
         current = self._layout()
-        if current is not None:
-            made.Add(self.GetStreamerInfo())
-        for info in FILE_INFOS.get(self._name, []):
-            made.Add(TStreamerInfo(self._name, info, versioned=self._versioned()))
+        versioned = self._versioned()
+        held = [(current, True)] if current is not None else []
+        held.extend((info, False) for info in FILE_INFOS.get(self._name, []))
+        if versioned:
+            held.sort(key=_version_of)
+        for info, in_memory in held:
+            made.Add(TStreamerInfo(self._name, info, built=in_memory, versioned=versioned))
         return made
 
     # -- members and bases --------------------------------------------------------------------

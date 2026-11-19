@@ -461,6 +461,28 @@ def test_files_layouts_are_numbered_as_met_while_no_class_is_in_memory(capfd):
     assert evo.FindStreamerInfo(evo.GetCheckSum()).IsBuilt()
 
 
+def test_a_versioned_classs_layouts_are_listed_by_version():
+    """ROOT lists a versioned class's layouts in the order of their versions, which is not the
+    order the files were read in: ``roottest``'s ``AddVersion-1-4`` reads a file holding
+    versions 1 and 3 beside a library at version 2 and prints them 1, 2, 3. A class told apart
+    by checksum has no version to be sorted by, so it keeps the order it met them in - and the
+    layout in memory stays built where a file's does not."""
+    _evo("int", "one.root")
+    _evo("float", "two.root")
+    ROOT.TFile("one.root")
+    ROOT.TFile("two.root")
+    run_source(
+        VERSIONS.replace("public:", "public: ClassDef(Evo, 3)") % "double", "evo.C", call=False
+    )
+    infos = list(ROOT.TClass.GetClass("Evo").GetStreamerInfos())
+    assert [(i.GetClassVersion(), i.GetElement(0).GetTypeName()) for i in infos] == [
+        (1, "int"),
+        (2, "float"),
+        (3, "double"),
+    ]
+    assert [i.IsBuilt() for i in infos] == [False, False, True]
+
+
 def test_a_layout_the_class_in_memory_has_is_not_noted_again():
     run_source(
         VERSIONS.replace("public:", "public: ClassDef(Evo, 1)") % "short", "evo.C", ("v.root",)
