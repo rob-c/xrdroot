@@ -54,7 +54,9 @@ def _refusal(whole: str) -> UnsupportedFeatureError:
     return UnsupportedFeatureError(
         f"an RNTuple field of type {whole} is not supported: xrdroot's RNTuple writer and "
         f"entries hold numbers, std::string and std::vector of a number, whose layout is "
-        f"beyond doubt; records, nested collections and variants are not written."
+        f"beyond doubt; records, nested collections and variants are not written, and a "
+        f"class type would need the dictionary that describes its members to be read, "
+        f"which xrdroot does not do."
     )
 
 

@@ -8,6 +8,7 @@ import xrdroot.pyroot as ROOT
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.core.objects import typed
 from xrdroot.pyroot.ntuple.fields import RFieldPtr, field_type
+from xrdroot.pyroot.ntuple.model import RFieldBase, RResult
 
 
 @pytest.mark.parametrize(
@@ -111,3 +112,21 @@ def test_a_field_made_apart_is_cloned_under_another_name() -> None:
         "y", "y", "an x")  # fmt: skip
     with pytest.raises(UnsupportedFeatureError, match="low precision"):
         field.SetHalfPrecision()
+
+
+def test_a_field_made_from_a_type_name_comes_back_in_a_result() -> None:
+    result = RFieldBase.Create("pt", "std::vector<float>", "momenta")
+    assert isinstance(result, RResult) and result.IsValid() and result.GetError() == ""
+    field = result.Unwrap()
+    assert "RField" in result.Inspect() and "RResult" in repr(result)
+    assert type(field) is ROOT.RField and isinstance(field, RFieldBase)
+    assert (field.GetFieldName(), field.GetTypeName(), field.GetDescription()) == (
+        "pt", "std::vector<float>", "momenta")  # fmt: skip
+    model = ROOT.RNTupleModel.Create()
+    model.AddField(RFieldBase.Create("n", "int").Unwrap())
+    assert model.GetFieldNames() == ["n"] and model.GetDefaultEntry().GetPtr("n").value == 0
+
+
+def test_a_field_of_a_class_type_is_refused_where_root_would_read_a_dictionary() -> None:
+    with pytest.raises(UnsupportedFeatureError, match="dictionary that describes its members"):
+        RFieldBase.Create("my_field", "AtlasLikeDataVector<CustomStruct>").Unwrap()

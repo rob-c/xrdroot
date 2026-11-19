@@ -18,10 +18,57 @@ from ...errors import UnsupportedFeatureError
 from ..core.objects import typed
 from .fields import FieldType, RFieldPtr, field_type
 
-__all__ = ["RField", "REntry", "RNTupleModel"]
+__all__ = ["RField", "RFieldBase", "RResult", "REntry", "RNTupleModel"]
 
 
-class RField:
+class RResult:
+    """``ROOT::RResult<T>``: what a maker that can fail hands back - the value, or why none.
+
+    ``RFieldBase::Create`` returns one because the type name it is given may be
+    one no dictionary describes; a macro takes the field out with ``Unwrap()``.
+    xrdroot refuses such a name where it is given, in a sentence, rather than
+    handing back a result that has no field in it, so every one made here does.
+    """
+
+    def __init__(self, value: Any) -> None:
+        self._value = value
+
+    def Unwrap(self) -> Any:
+        """``Unwrap()``: the value, as ROOT hands it over and throws where it has none."""
+        return self._value
+
+    def IsValid(self) -> bool:
+        return True
+
+    def GetError(self) -> str:
+        return ""
+
+    def Inspect(self) -> str:
+        return str(self._value)
+
+    def __repr__(self) -> str:
+        return f"<RResult {self._value!r}>"
+
+
+class RFieldBase:
+    """``ROOT::RFieldBase``: a field made from its C++ type's name, as ``Create`` makes one.
+
+    ROOT builds whatever type name it is given, reading a dictionary to learn
+    what a class is made of, so a field made by name is the field a templated
+    ``MakeField<T>`` makes. xrdroot's entries hold the types whose layout is
+    beyond doubt - a number, ``std::string``, ``std::vector`` of a number - and
+    :func:`~.fields.field_type` refuses the rest in a sentence, which is where
+    a class type such as ``AtlasLikeDataVector<CustomStruct>`` stops: its
+    members are the dictionary's to say, and xrdroot reads no dictionary.
+    """
+
+    @staticmethod
+    def Create(name: Any, type_name: Any, description: Any = "") -> RResult:
+        """``Create(name, typeName)``: the field of that type, in an ``RResult``."""
+        return RResult(RField(name, type_name, description))
+
+
+class RField(RFieldBase):
     """``RField<T>``: a field's name and type, before a model holds it."""
 
     def __init__(self, name: Any, kind: Any = None, description: Any = "") -> None:
