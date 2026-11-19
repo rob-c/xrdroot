@@ -496,7 +496,7 @@ For the round's work, the evidence is, in this order:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
 - Round 5's result of it, at `edbfdfa`: `TOTAL 113219 0 28014 0 100%`, `11912 passed, 1 skipped,
   46 xfailed`; with `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1008 files,
-  maintainability 29 030 functions, components 1007 modules and 0 undeclared imports,
+  maintainability 29 031 functions, components 1007 modules and 0 undeclared imports,
   `mkdocs build --strict` built.
 - Round 4's result of it, at `9bc439a`: `TOTAL 112760 0 27888 0 100%`, `Required test coverage of
   100.0% reached`, `11863 passed, 1 skipped, 46 xfailed` in 38 s; with
