@@ -10,6 +10,7 @@ import pytest
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect, fresh
 from xrdroot.errors import UnsupportedFeatureError
+from xrdroot.pycxx.runtime import objects as cxx_objects
 from xrdroot.pyroot.core import directories, troot
 
 
@@ -345,10 +346,11 @@ def test_the_system_loads_no_libraries_a_rootmap_names_because_it_keeps_none() -
     assert ROOT.gInterpreter.GetMapfile() is None
 
 
-def test_the_heuristic_memory_policy_is_off_and_says_what_it_was():
+def test_the_heuristic_memory_policy_is_off_and_says_what_it_was(monkeypatch):
     """``ROOT.SetHeuristicMemoryPolicy``: deprecated since 6.40, off by default, and it answers
     with the policy in force before the call - which roottest/python/memory/memory needs, so
     that the policy it saves and restores around its heuristics is the one it wrote."""
+    monkeypatch.setattr(cxx_objects, "HEURISTIC", False)
     assert troot._heuristic_policy is False
     with pytest.warns(FutureWarning) as warned:
         expect(
@@ -357,6 +359,20 @@ def test_the_heuristic_memory_policy_is_off_and_says_what_it_was():
             (troot.SetHeuristicMemoryPolicy(False), True),
         )
     assert [str(each.message) for each in warned.list] == [troot._HEURISTIC_DEPRECATED] * 3
+    assert troot._heuristic_policy is False  # the translator holds it, not this namespace
+
+
+def test_a_translator_with_no_policy_switch_is_answered_from_the_value_kept_here(monkeypatch):
+    """The switch belongs to the translator, since it is what runs destructors; a translator
+    without one still reads the sequence of policies a script wrote, so a namespace whose
+    binding was split out of the package keeps ``ROOT.SetHeuristicMemoryPolicy`` working."""
+    monkeypatch.setattr(troot, "_HEURISTIC_SWITCH", ("xrdroot.pycxx.runtime", "no_such_switch"))
+    monkeypatch.setattr(troot, "_heuristic_policy", False)
+    with pytest.warns(FutureWarning):
+        expect(
+            (troot.SetHeuristicMemoryPolicy(True), False),
+            (troot.SetHeuristicMemoryPolicy(0), True),
+        )
     assert troot._heuristic_policy is False
 
 
@@ -373,14 +389,11 @@ def test_a_translator_that_owns_the_policy_switch_is_the_one_asked(monkeypatch):
     assert troot._heuristic_policy is False  # the translator holds it, not this namespace
 
 
-def test_the_memory_policy_is_reached_by_root_s_name_as_well():
+def test_the_memory_policy_is_reached_by_root_s_name_as_well(monkeypatch):
     """ROOT has the call on its namespace, not on ``gROOT``: ``ROOT.SetHeuristicMemoryPolicy``
     is the one function, so a script may import it either way."""
     assert ROOT.SetHeuristicMemoryPolicy is troot.SetHeuristicMemoryPolicy
     assert "SetHeuristicMemoryPolicy" in ROOT.__all__
-    kept = troot._heuristic_policy
-    try:
-        with pytest.warns(FutureWarning):
-            assert ROOT.SetHeuristicMemoryPolicy(kept) is kept
-    finally:
-        troot._heuristic_policy = kept
+    monkeypatch.setattr(cxx_objects, "HEURISTIC", False)
+    with pytest.warns(FutureWarning):
+        assert ROOT.SetHeuristicMemoryPolicy(False) is False

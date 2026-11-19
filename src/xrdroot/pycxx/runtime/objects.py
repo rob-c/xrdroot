@@ -71,6 +71,8 @@ __all__ = [
     "uninstantiated",
     "inherited",
     "base_member",
+    "release",
+    "set_heuristic",
 ]
 
 
@@ -92,6 +94,25 @@ def base_member(base: Any, name: str, obj: Any) -> Any:
     if isinstance(raw, (staticmethod, classmethod)) or not hasattr(raw, "__get__"):
         return getattr(base, name)
     return raw.__get__(obj, base)
+
+
+#: cppyy's heuristic memory policy: off since ROOT 6.40 unless a program turns it on again.
+HEURISTIC = False
+
+
+def set_heuristic(enabled: bool) -> bool:
+    """``ROOT.SetHeuristicMemoryPolicy``: turn the heuristic on or off; whether it was."""
+    global HEURISTIC
+    before, HEURISTIC = HEURISTIC, bool(enabled)
+    return before
+
+
+def release(obj: Any) -> None:
+    """A call handing an instance to a non-const pointer parameter: with the heuristic on,
+    the C++ side is assumed to keep it, so ``del`` leaves it alone - though an explicit
+    ``TClass::Destructor`` still runs the destructor, as cppyy's proxy allows."""
+    if HEURISTIC and hasattr(obj, "__dict__"):
+        obj.__dict__["_cxx_released"] = True
 
 
 def delete(obj: Any) -> bool:

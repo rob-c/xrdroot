@@ -162,9 +162,12 @@ class ClassEmitter(FunctionEmitter):
         spellings = self.program.templates.spellings
         values = _enumerators(self._lineage(info))
         self.out.line(f"_cxx_layout_ = {_layout(info, spellings, values)!r}", info.decl.where)
+        self.out.line("_cxx_destroyed = False", info.decl.where)
+        self.out.line("_cxx_released = False", info.decl.where)
         for name, var in info.statics.items():
             ctype = self.declared_type(var)
             self.out.line(f"{member_name(name)} = {self.initial(var, ctype)}", var.where)
+        self._static_writes(info)
         for decl in info.decl.members:
             if isinstance(decl, EnumDecl):
                 for name, value in self.enum_values(decl):
@@ -172,6 +175,42 @@ class ClassEmitter(FunctionEmitter):
         self._constructors(info)
         for name, funcs in info.methods.items():
             self._method(info, name, [func for func in funcs if func.body is not None])
+        self._finalizer(info)
+
+    def _static_writes(self, info: ClassInfo) -> None:
+        """``obj.counter = 1`` of a static data member writes the class, as C++ writes it.
+
+        The write goes to the class that declares the member, found along ``type(self)``'s
+        lineage: a subclass inherits this ``__setattr__`` rather than getting one of its own,
+        so ``D().counter = 1`` reaches the base's ``counter`` as C++'s does, not a field of
+        ``D`` - and a subclass declaring its own ``counter`` hides the base's, nearest first.
+        """
+        names = sorted(member_name(name) for name in info.statics)
+        if not names:
+            return
+        self.out.line(f"_cxx_statics_ = {names!r}", info.decl.where)
+        self.out.blank()
+        self.out.line("def __setattr__(self, name, value):", info.decl.where)
+        with self.out.indented():
+            self.out.line("for declared in type(self).__mro__:")
+            with self.out.indented():
+                self.out.line("if name in declared.__dict__.get('_cxx_statics_', ()):")
+                with self.out.indented():
+                    self.out.line("setattr(declared, name, value)")
+                    self.out.line("return")
+            self.out.line("object.__setattr__(self, name, value)")
+
+    def _finalizer(self, info: ClassInfo) -> None:
+        """``del obj`` runs the destructor, as cppyy's proxy does for the instance it owns."""
+        if not any(func.body is not None for func in info.methods.get("~" + info.name, [])):
+            return
+        self.out.blank()
+        self.out.line("def __del__(self):", info.decl.where)
+        with self.out.indented():
+            self.out.line("if self._cxx_released:")
+            with self.out.indented():
+                self.out.line("return")
+            self.out.line("self._destruct()", info.decl.where)
 
     def _constructors(self, info: ClassInfo) -> None:
         ctors = [f for f in info.methods.get(info.name, []) if f.kind == "constructor"]
@@ -272,13 +311,20 @@ class ClassEmitter(FunctionEmitter):
         self.out.blank()
         decorator = "@staticmethod" if static and len(funcs) == 1 else None
 
+        once = self._destroyed_once if py == "_destruct" else None
+
         def write() -> None:
             self.overloaded(
                 name,
                 py,
                 funcs,
                 lambda func, each: self.function(
-                    func, each, method=not static, decorator=decorator
+                    func,
+                    each,
+                    method=not static,
+                    decorator=decorator,
+                    prologue=once,
+                    epilogue=self._releases(func) if py != "_destruct" else None,
                 ),
                 method=not static,
             )
@@ -287,6 +333,29 @@ class ClassEmitter(FunctionEmitter):
             self.generic(write, lambda why: self._uninstantiated_method(funcs[0], py, why))
         else:
             write()
+
+    def _destroyed_once(self) -> None:
+        """``delete``, a scope's end and ``del`` all reach ``_destruct``: the first wins."""
+        self.out.line("if self._cxx_destroyed:")
+        with self.out.indented():
+            self.out.line("return")
+        self.out.line("self._cxx_destroyed = True")
+
+    def _releases(self, func: Function) -> Callable[[], None] | None:
+        """The parameters the heuristic memory policy assumes C++ keeps: non-const pointers."""
+        names = [
+            python_name(param.name or f"arg{index}")
+            for index, param in enumerate(func.params)
+            if param.ctype.pointer and not param.ctype.const and not param.ctype.value().scalar
+        ]
+        if not names:
+            return None
+
+        def epilogue() -> None:
+            for name in names:
+                self.out.line(f"release({name})", func.where)
+
+        return epilogue
 
     def _uninstantiated_method(self, func: Function, py: str, why: str) -> None:
         """A member template whose body needs its arguments, used where they are not known."""

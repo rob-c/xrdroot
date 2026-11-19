@@ -111,6 +111,7 @@ class FunctionEmitter(VariableEmitter):
         method: bool = False,
         decorator: str | None = None,
         prologue: Callable[[], None] | None = None,
+        epilogue: Callable[[], None] | None = None,
     ) -> None:
         """``def py(...):`` and the body of ``func``, in a scope of its own."""
         context = Context(func, func.returns if func.kind != "constructor" else None)
@@ -119,7 +120,7 @@ class FunctionEmitter(VariableEmitter):
         self.contexts.append(context)
         try:
             with self.scoped("function", function=func):
-                self._function_body(func, py, method, decorator, prologue)
+                self._function_body(func, py, method, decorator, prologue, epilogue)
         finally:
             self.contexts.pop()
 
@@ -130,6 +131,7 @@ class FunctionEmitter(VariableEmitter):
         method: bool,
         decorator: str | None,
         prologue: Callable[[], None] | None,
+        epilogue: Callable[[], None] | None = None,
     ) -> None:
         context = self.contexts[-1]
         template = set(func.template or [])
@@ -152,6 +154,8 @@ class FunctionEmitter(VariableEmitter):
             lower(func.body, self.refuse)
             self.statements(func.body.body)
             self._declare_scopes(context, head, func)
+            if epilogue is not None:
+                epilogue()
         self.template_names -= template
 
     def _value_parameters(self, func: Function, starred: bool) -> list[str]:
