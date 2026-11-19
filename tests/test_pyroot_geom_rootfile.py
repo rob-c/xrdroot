@@ -195,6 +195,53 @@ def test_a_solid_of_a_kind_xrdroot_has_no_class_for_is_refused_by_name_when_it_i
         polycone.mesh()
 
 
+def test_a_polycone_is_built_from_the_sections_the_file_keeps_in_three_arrays() -> None:
+    members = _members()
+    members["fVolumes"][0]["fShape"] = {
+        "TGeoBBox": {"TGeoShape": {"fName": "poly"}, "fDX": 1.0, "fDY": 1.0, "fDZ": 9.0},
+        "fNz": 2, "fPhi1": 10.0, "fDphi": 350.0,
+        "fZ": [-1.0, 1.0], "fRmin": [0.5, 0.25], "fRmax": [2.0, 1.5]}
+    geometry = rootfile._built(members)
+    polycone = geometry.GetVolume("WORLD").GetShape()
+    expect((type(polycone).__name__, "TGeoPcon"),
+           (polycone.GetPhi1(), 10.0),
+           (polycone.GetDphi(), 350.0),
+           (polycone.GetNz(), 2),
+           (polycone.GetZ(1), 1.0),
+           (polycone.GetRmin(0), 0.5),
+           (polycone.GetRmax(1), 1.5))
+    assert polycone.mesh().faces  # a surface, so the polygon can be drawn
+
+
+def test_a_polygon_of_flat_sides_is_built_from_its_sections_and_its_edge_count() -> None:
+    members = _members()
+    members["fVolumes"][0]["fShape"] = {
+        "TGeoBBox": {"TGeoShape": {"fName": "poly"}, "fDX": 1.0, "fDY": 1.0, "fDZ": 9.0},
+        "fNz": 1, "fNedges": 8, "fPhi1": 0.0, "fDphi": 360.0,
+        "fZ": [0.0], "fRmin": [0.0], "fRmax": [3.0]}
+    geometry = rootfile._built(members)
+    polygon = geometry.GetVolume("WORLD").GetShape()
+    expect((type(polygon).__name__, "TGeoPgon"),
+           (polygon.GetNedges(), 8),
+           (polygon.GetDphi(), 360.0),
+           (polygon.GetRmax(0), 3.0))
+    assert polygon.mesh().faces  # eight flat sides, drawn as their faces
+
+
+def test_a_sphere_whose_file_keeps_its_segment_count_is_not_taken_for_a_tube() -> None:
+    members = _members()
+    members["fVolumes"][0]["fShape"] = {
+        "TGeoBBox": {"TGeoShape": {"fName": "mirror"}, "fDX": 5.0, "fDY": 5.0, "fDZ": 5.0},
+        "fRmin": 3.0, "fRmax": 5.0, "fTheta1": 20.0, "fTheta2": 160.0, "fPhi1": 0.0,
+        "fPhi2": 90.0, "fNseg": 12, "fNz": 8}
+    geometry = rootfile._built(members)
+    mirror = geometry.GetVolume("WORLD").GetShape()
+    expect((type(mirror).__name__, "TGeoSphere"),
+           (mirror.GetRmin(), 3.0),
+           (mirror.GetTheta2(), 160.0),
+           (mirror.GetPhi2(), 90.0))
+
+
 def test_a_solid_missing_one_of_its_numbers_is_kept_and_refused_rather_than_guessed() -> None:
     members = _members()
     members["fVolumes"][0]["fShape"] = {"TGeoTube": {"fRmin": 1.0, "fRmax": 2.0}}

@@ -28,6 +28,7 @@ from ...errors import UnsupportedFeatureError
 from ..core.files import TFile
 from .manager import TGeoManager
 from .materials import TGeoMaterial, TGeoMedium, TGeoMixture
+from .polyshapes import TGeoPcon, TGeoPgon
 from .shapes import (
     TGeoArb8,
     TGeoBBox,
@@ -60,13 +61,22 @@ _KINDS: dict[str, tuple[type, tuple[str, ...]]] = {
     "TGeoTrd2": (TGeoTrd2, ("fDx1", "fDx2", "fDy1", "fDy2", "fDz")),
     "TGeoArb8": (TGeoArb8, ("fDz",)),
     "TGeoSphere": (TGeoSphere, ("fRmin", "fRmax", "fTheta1", "fTheta2", "fPhi1", "fPhi2")),
+    "TGeoPcon": (TGeoPcon, ("fPhi1", "fDphi", "fNz")),
+    "TGeoPgon": (TGeoPgon, ("fPhi1", "fDphi", "fNedges", "fNz")),
 }
+
+#: The solids whose sections - a ``(z, rmin, rmax)`` each - the file keeps in three arrays rather
+#: than in the constructor's arguments.
+_SECTIONED = (TGeoPcon,)
 
 #: What tells one solid kind from another: the numbers only its constructor takes, the kinds
 #: that take the numbers of the kinds above them first. A file writes a solid's bounding box
 #: under it as well - every solid derives from ``TGeoBBox`` - so the class a record is filed
 #: under names the kind only in some of ROOT's releases; the numbers always do.
 _SIGNS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("TGeoPgon", ("fNz", "fNedges")),
+    ("TGeoPcon", ("fNz", "fZ")),
+    ("TGeoSphere", ("fTheta1",)),
     ("TGeoConeSeg", ("fRmin1", "fPhi1")),
     ("TGeoCone", ("fRmin1",)),
     ("TGeoTubeSeg", ("fRmin", "fPhi1")),
@@ -74,7 +84,6 @@ _SIGNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("TGeoTrd2", ("fDx1", "fDy1")),
     ("TGeoTrd1", ("fDx1",)),
     ("TGeoTrap", ("fH1",)),
-    ("TGeoSphere", ("fTheta1",)),
     ("TGeoArb8", ("fXY",)),
     ("TGeoBBox", ("fDX",)),
 )
@@ -289,7 +298,17 @@ def _solid(kind: str, entry: Any) -> Any:
     if isinstance(shape, TGeoArb8):
         for index, (x, y) in enumerate(np.ravel(_field(entry, "fXY")).reshape(8, 2)):
             shape.SetVertex(index, float(x), float(y))
+    if isinstance(shape, _SECTIONED):
+        _define_sections(shape, entry)
     return shape
+
+
+def _define_sections(shape: Any, entry: Any) -> None:
+    """A polycone's sections, which the file keeps as three arrays rather than in the
+    constructor's arguments."""
+    columns = (np.ravel(_field(entry, name)) for name in ("fZ", "fRmin", "fRmax"))
+    for index, (z, rmin, rmax) in enumerate(zip(*columns, strict=False)):
+        shape.DefineSection(index, float(z), float(rmin), float(rmax))
 
 
 def _field(entry: Any, name: str) -> Any:
