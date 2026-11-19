@@ -15,7 +15,8 @@ import pytest
 import xrdroot
 import xrdroot.pyroot as ROOT
 from xrdroot.errors import UnsupportedFeatureError
-from xrdroot.wbranch import clones_members
+from xrdroot.pyroot.trees import objects
+from xrdroot.wbranch import CloneMember, clones_members
 
 #: ``TTree::Print`` of ROOT 6.40 for the tree :func:`_written` makes, its sizes and all.
 PRINTED = """\
@@ -192,3 +193,41 @@ def test_a_clone_says_so_when_a_member_of_a_split_collection_is_not_copied(tmp_p
     upstream.SetBranchStatus("N.fName", 0)
     with pytest.raises(UnsupportedFeatureError, match="turn that branch back on"):
         upstream.CloneTree()
+
+
+class _Pid:
+    """The shape a macro's ``tref_test_pid`` gives the split: a name and one whole ``TRef``."""
+
+    def __init__(self, name: str, ref: object) -> None:
+        self.fName = name
+        self.fRef = ROOT.TRef(ref)
+
+
+def test_a_member_that_is_one_whole_object_a_row_is_that_object_and_not_a_number(monkeypatch):
+    """ROOT splits ``tref_test_pid::fRef`` as a whole ``TRef`` for every object of the
+    collection (``fType`` 31, ``fStreamerType`` 61), and a ``TRef`` holds no number to pack:
+    its rows are the references themselves, one list per entry, which a column streams.
+
+    The class is one the file describes rather than one of ROOT's own, so its members are
+    spelled out here - ``clones_members`` reads them once the writer carries its description.
+    """
+    members = [
+        CloneMember("TNamed", 1, "fName", 65, ""),
+        CloneMember("tref_test_pid", 0, "fRef", 61, "a reference"),
+    ]
+    monkeypatch.setattr(objects, "clones_members", lambda element: members)
+    kind = objects.SplitArray("tref_test_pid")
+    named = [ROOT.TNamed(f"n{at}", "") for at in range(3)]
+    entries = [
+        kind.entry([_Pid("a", named[0]), _Pid("b", named[1])]),
+        kind.entry([_Pid("c", named[2])]),
+    ]
+    keys = ["r1", "r1.fName", "r1.fRef"]
+    columns = kind.columns(keys, entries)
+    assert list(columns["r1"]) == [2, 1]
+    assert columns["r1.fName"] == [["a", "b"], ["c"]]
+    refs = columns["r1.fRef"]
+    assert [(row[0].GetObject().GetName(), row[1].GetObject().GetName()) for row in refs[:1]] == [
+        ("n0", "n1")
+    ]
+    assert [ref.GetObject().GetName() for ref in refs[1]] == ["n2"]

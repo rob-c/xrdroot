@@ -272,7 +272,7 @@ class SplitArray(Kind):
         columns: dict[str, Any] = {keys[0]: counts}
         for at, (key, member) in enumerate(zip(keys[1:], self.members, strict=True)):
             rows = [[values[at] for values in entry] for entry in entries]
-            columns[key] = rows if member.stype == TSTRING else _jagged(rows, offsets)
+            columns[key] = rows if member.stype in KEPT_ROWS else _jagged(rows, offsets)
         return columns
 
 
@@ -283,6 +283,13 @@ def _jagged(rows: list[list[Any]], offsets: Any) -> Jagged:
 
 #: ``fStreamerType`` of a ``TString`` member, whose rows are lists of strings.
 TSTRING = 65
+#: ``fStreamerType`` (``kObject``) of a member that is a whole object of its own for every
+#: object of the collection - ``TRef`` in ``roottest``'s ``tref_test_pid`` - whose rows are
+#: that object, streamed by its class rather than packed as a number.
+OBJECT_TYPE = 61
+#: The member types whose rows are not numbers: they go to the writer as the objects or the
+#: strings they are, one list per entry, for a column that streams each of them.
+KEPT_ROWS = (TSTRING, OBJECT_TYPE)
 #: ``TObject::kIsOnHeap | kNotDeleted``, which a split ``TClonesArray`` leaves out of ``fBits``.
 HEAP_BITS = 0x03000000
 
