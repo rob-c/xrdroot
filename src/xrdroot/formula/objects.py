@@ -23,6 +23,13 @@ names are two spellings of one member (:func:`spelled`), and a call's
 arguments index that member - ``GetClosestDistance(2)`` is
 ``fClosestDistance[2]``, which is how ROOT's formulas reach into an array.
 
+A few of ROOT's methods keep nothing to name: a histogram works its mean out
+of the sums of weights and of ``x * w`` it accumulated as it was filled, so
+``GetMean()`` is arithmetic over two members and not a member at all. Those
+are :data:`DERIVED`, read from the members a file's object does hold, and
+only where it holds all of them - a name the object gives no reason to
+trust is not offered.
+
 What a whole branch offers as a name is learned here from the values of a few
 entries of it, because what the class holds is the file's description of it,
 which is above this layer in the component graph. That is a limit on names,
@@ -36,7 +43,7 @@ from __future__ import annotations
 
 import itertools
 import re
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -169,6 +176,35 @@ def _learn(
             found.setdefault(name, []).append(_found(obj, name))
     for name, values in found.items():
         _offer(branch, (*path, name), values, learned, dims, crossed)
+    _derive(branch, path, found, learned, crossed)
+
+
+def _derive(
+    branch: str,
+    path: tuple[str, ...],
+    found: Mapping[str, Sequence[Any]],
+    learned: _Learned,
+    crossed: bool,
+) -> None:
+    """Offer the methods of ROOT's classes that are arithmetic over members this object holds.
+
+    Every member one needs must be here and be a value: a method is not offered
+    on the strength of one of its members, since an object that is not quite a
+    histogram would then answer for a mean it never computed.
+    """
+    values = {name for name, held in found.items() if _objects(held) is None}
+    for method, (needs, op) in DERIVED.items():
+        if not all(need in values for need in needs):
+            continue
+        written = ".".join((*path, method))
+        members = tuple(".".join((*path, need)) for need in needs)
+        names = [written, f"{branch}.{written}"]
+        if crossed:
+            names.append(method)
+        for name in names:
+            learned.derived.setdefault(name, (members, op))
+            learned.dims.setdefault(name, 0)
+            learned.kinds.setdefault(name, "d")
 
 
 def _offer(
@@ -195,15 +231,36 @@ def _offer(
         learned.kinds.setdefault(name, _kind(values))
 
 
+#: The methods that are arithmetic over members rather than a member themselves: the
+#: members each needs, and how they are combined. ``GetMean`` of a histogram is
+#: ``fTsumwx / fTsumw`` - ROOT's ``TH1::GetMean`` for an axis of equal bins.
+DERIVED: dict[str, tuple[tuple[str, ...], str]] = {
+    "GetMean": (("fTsumwx", "fTsumw"), "mean"),
+}
+
+
+def _mean(sum_wx: Array, sum_w: Array) -> Array:
+    """``fTsumwx / fTsumw``, and zero for a histogram nothing was filled into."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        out = np.divide(np.asarray(sum_wx, np.float64), np.asarray(sum_w, np.float64))
+    return np.where(np.asarray(sum_w) == 0, 0.0, out)
+
+
+#: How each :data:`DERIVED` method combines the members it reads.
+DERIVED_OPS: dict[str, Callable[..., Array]] = {"mean": _mean}
+
+
 class _Learned:
     """What one whole-object branch offers, as it is learned member by member."""
 
-    __slots__ = ("paths", "dims", "kinds")
+    __slots__ = ("paths", "dims", "kinds", "derived")
 
     def __init__(self) -> None:
         self.paths: dict[str, tuple[str, tuple[str, ...]]] = {}
         self.dims: dict[str, int] = {}
         self.kinds: dict[str, str] = {}
+        #: The methods computed from members, against the members they read.
+        self.derived: dict[str, tuple[tuple[str, ...], str]] = {}
 
 
 class Whole:
@@ -214,28 +271,31 @@ class Whole:
     branch it is read from and the path into each entry's object.
     """
 
-    __slots__ = ("paths", "dims", "kinds")
+    __slots__ = ("paths", "dims", "kinds", "derived")
 
     def __init__(
         self,
         paths: Mapping[str, tuple[str, tuple[str, ...]]] | None = None,
         dims: Mapping[str, int] | None = None,
         kinds: Mapping[str, str] | None = None,
+        derived: Mapping[str, tuple[tuple[str, ...], str]] | None = None,
     ) -> None:
         self.paths = dict(paths or {})
         #: How many dimensions each name has, as binding needs it before anything is read.
         self.dims = dict(dims or {})
         self.kinds = dict(kinds or {})
+        #: The methods computed from members - ``fH.GetMean`` - against what they read.
+        self.derived = dict(derived or {})
 
     def __repr__(self) -> str:
         objects = len({branch for branch, _path in self.paths.values()})
-        return f"<Whole {len(self.paths)} members of {objects} objects>"
+        return f"<Whole {len(self.paths) + len(self.derived)} members of {objects} objects>"
 
     def __contains__(self, name: object) -> bool:
-        return name in self.paths
+        return name in self.paths or name in self.derived
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self.paths)
+        return itertools.chain(self.paths, self.derived)
 
     def whole_number(self, name: str) -> bool:
         """Is the member a whole number, which ROOT bins a whole number wide?
@@ -247,7 +307,9 @@ class Whole:
 
     def branch(self, name: str) -> str:
         """The whole-object branch a member is read from."""
-        return self.paths[name][0]
+        if name in self.paths:
+            return self.paths[name][0]
+        return self.paths[self.derived[name][0][0]][0]
 
     def member(self, parts: Sequence[str]) -> str | None:
         """The member ``parts`` spells, as written or as a getter reads it, or ``None``.
@@ -259,7 +321,7 @@ class Whole:
         """
         for candidate in itertools.product(*(spelled(part) for part in parts)):
             name = ".".join(candidate)
-            if name in self.paths:
+            if name in self:
                 return name
         return None
 
@@ -272,12 +334,15 @@ class Whole:
         """
         for stop in range(len(parts), 0, -1):
             prefix = ".".join(parts[:stop])
-            if any(name.startswith(f"{prefix}.") for name in self.paths):
+            if any(name.startswith(f"{prefix}.") for name in self):
                 return prefix
         return None
 
     def read(self, name: str, entries: Sequence[Any]) -> Any:
         """One member's column: its value per entry, or a row per entry through a collection."""
+        if name in self.derived:
+            members, op = self.derived[name]
+            return DERIVED_OPS[op](*(self.read(member, entries) for member in members))
         _branch, path = self.paths[name]
         return _column(name, [_take(entry, path) for entry in entries])
 
@@ -351,13 +416,44 @@ def learned(samples: Mapping[str, Sequence[Any]], taken: Sequence[str] = ()) -> 
     both: dict[str, tuple[str, tuple[str, ...]]] = {}
     dims: dict[str, int] = {}
     kinds: dict[str, str] = {}
+    derived: dict[str, tuple[tuple[str, ...], str]] = {}
     for branch, values in samples.items():
         own = _Learned()
         _learn(branch, list(values), (), own, 0)
-        for name, found in own.paths.items():
-            if name in taken:  # a branch of that name is read first, as ROOT reads it
-                continue
-            both.setdefault(name, found)  # the first whole branch of the tree wins
-            dims.setdefault(name, own.dims[name])
-            kinds.setdefault(name, own.kinds[name])
-    return Whole(both, dims, kinds)
+        _members(both, own, dims, kinds, taken)
+        _methods(own, both, derived, dims, kinds, taken)
+    return Whole(both, dims, kinds, derived)
+
+
+def _members(
+    both: dict[str, tuple[str, tuple[str, ...]]],
+    own: _Learned,
+    dims: dict[str, int],
+    kinds: dict[str, str],
+    taken: Sequence[str],
+) -> None:
+    """Keep the members one whole branch offers, a name an earlier branch had staying with it."""
+    for name, found in own.paths.items():
+        if name in taken:  # a branch of that name is read first, as ROOT reads it
+            continue
+        both.setdefault(name, found)  # the first whole branch of the tree wins
+        dims.setdefault(name, own.dims[name])
+        kinds.setdefault(name, own.kinds[name])
+
+
+def _methods(
+    own: _Learned,
+    both: Mapping[str, tuple[str, tuple[str, ...]]],
+    derived: dict[str, tuple[tuple[str, ...], str]],
+    dims: dict[str, int],
+    kinds: dict[str, str],
+    taken: Sequence[str],
+) -> None:
+    """Keep the methods one branch's members spell, where it holds every member they read."""
+    for name, (members, op) in own.derived.items():
+        named = all(member in both or member in own.paths for member in members)
+        if name in taken or name in both or not named:
+            continue
+        derived.setdefault(name, (members, op))
+        dims.setdefault(name, own.dims[name])
+        kinds.setdefault(name, own.kinds[name])

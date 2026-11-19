@@ -74,11 +74,11 @@ def test_a_chain_of_calls_names_a_member_of_a_member(whole_tree):
 
 
 def test_a_call_is_a_refusal_when_the_object_has_no_member_behind_it(whole_tree):
-    # TH1::GetMean() is arithmetic over the bins, not one of its data members, and
-    # there is no class in a file to call it.
+    # TH1::GetRMS() is arithmetic over the bins too, and no relation between the
+    # members a file holds spells it, so there is no class in a file to call it.
     refused = r"is a method of 'h1'.*name the member the method works from"
     with pytest.raises(Refused, match=refused):
-        whole_tree.arrays(["h1.GetMean()"])
+        whole_tree.arrays(["h1.GetRMS()"])
 
 
 def test_a_name_leading_into_an_object_no_member_was_learnt_of_is_unsupported(whole_tree):
@@ -323,3 +323,56 @@ def test_a_member_named_in_a_name_that_no_entry_leads_to_is_a_refusal():
     whole = Whole({"a.b": ("e", ("a", "b"))}, {"a.b": 0}, {"a.b": "f"})
     with pytest.raises(Refused, match="the entries differ in holding it"):
         whole.read("a.b", [{"a": 1.0}])
+
+
+# -- a method that is arithmetic over members ----------------------------------
+
+
+def test_a_histograms_mean_is_the_sums_of_weights_it_was_filled_with(whole_tree):
+    # TH1 keeps no fMean: TH1::GetMean divides fTsumwx by the fTsumw it accumulated,
+    # and ROOT's formula reads the two members a file still holds.
+    got = whole_tree.arrays(["h1.GetMean()", "h1.fTsumwx", "h1.fTsumw"])
+    assert got["h1.GetMean()"].tolist() == (got["h1.fTsumwx"] / got["h1.fTsumw"]).tolist()
+    assert got["h1.GetMean()"].tolist() == [0.0, 0.5, 1.0, 1.5, 1.5]
+
+
+def test_a_method_is_offered_only_where_the_object_holds_every_member_it_reads():
+    # An object that is not quite a histogram answers for no mean: one of the two
+    # sums is missing, so there is nothing to divide.
+    half = learned({"t": [{"h": {"TH1": {"fTsumwx": 3.0}}}]})
+    assert "h.GetMean" not in half and "GetMean" not in half
+    both = learned({"t": [{"h": {"TH1": {"fTsumwx": 3.0, "fTsumw": 2.0}}}]})
+    assert both.read("h.GetMean", [{"h": {"TH1": {"fTsumwx": 3.0, "fTsumw": 2.0}}}])[0] == 1.5
+
+
+def test_a_mean_of_a_histogram_nothing_was_filled_into_is_zero():
+    # ROOT answers 0 rather than dividing by nothing, and a draw of it fills that bin.
+    empty = {"h": {"TH1": {"fTsumwx": 0.0, "fTsumw": 0.0}}}
+    whole = learned({"t": [empty]})
+    assert whole.read("h.GetMean", [empty]).tolist() == [0.0]
+    assert whole.dims["h.GetMean"] == 0
+    assert not whole.whole_number("h.GetMean")  # a mean is not binned whole-number wide
+
+
+def test_a_member_object_is_not_a_member_a_method_computes_from():
+    # fTsumwx here is an object, not a number the class summed, so GetMean stays away.
+    odd = learned({"t": [{"h": {"TH1": {"fTsumwx": {"fX": 1.0}, "fTsumw": 2.0}}}]})
+    assert "h.GetMean" not in odd
+
+
+def test_a_method_reached_through_a_collection_is_a_bare_name_too():
+    # ROOT reads fPx of a whole fTracks as the tracks' momentum, and a method of one
+    # of its objects as h.GetMean is read of the object a loop is at.
+    tracks = {"fTracks": [{"Track": {"h": {"TH1": {"fTsumwx": 4.0, "fTsumw": 2.0}}}}]}
+    whole = learned({"t": [tracks]})
+    assert "fTracks.h.GetMean" in whole and "GetMean" in whole
+    assert whole.member(["GetMean"]) == "GetMean"
+    assert whole.owner(["fTracks", "h", "nothing"]) == "fTracks.h"
+    assert whole.branch("fTracks.h.GetMean") == "t"
+    assert whole.branch("GetMean") == "t"
+
+
+def test_a_branch_of_the_tree_wins_over_a_method_of_the_same_name():
+    # A name the tree has a branch for is read from the branch, as ROOT reads it.
+    tree = {"h": {"TH1": {"fTsumwx": 4.0, "fTsumw": 2.0}}}
+    assert "h.GetMean" not in learned({"t": [tree]}, taken=["h.GetMean", "GetMean"])
