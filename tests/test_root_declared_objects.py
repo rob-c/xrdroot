@@ -358,6 +358,51 @@ def test_a_tclonesarray_member_reads_back_as_the_objects_its_class_names():
     assert converted([1, 2], parse_type("Unknown*"), None) == [1, 2]
 
 
+def test_a_pointer_to_numbers_is_as_long_as_the_entry_says():
+    # `double *fV; //[fN]` is an array whose length the stream writes per entry; ROOT hands
+    # the member a new one, so an entry with more values than the one before it is not cut
+    # down to the length the constructor left.
+    from xrdroot.pyroot.core.declared import converted
+
+    held = np.zeros(2)
+    five = converted([0.5, 1.5, 2.5, 3.5, 4.5], parse_type("double*"), held)
+    assert isinstance(five, np.ndarray) and len(five) == 5
+    assert (five[0], five[-1]) == (0.5, 4.5)
+    assert len(converted([1.0], parse_type("double*"), five)) == 1
+    assert converted("text", parse_type("char*"), None) == "text"
+    assert converted(2.5, parse_type("double*"), None) == 2.5
+    assert converted(-1.5, parse_type("Short_t*"), None) == -1
+
+
+def test_one_of_roots_classes_read_a_member_at_a_time_is_made_again():
+    # A TRefArray read as its members is the array again, which a macro's destructor calls
+    # Delete on - what the kit registers for a class it makes from a record's members.
+    from xrdroot.buffer import Named
+    from xrdroot.pyroot.core.declared import converted
+
+    row = Named({"fSize": 2, "fLowerBound": 0, "fLast": 0}, "TRefArray")
+    back = converted(row, parse_type("TRefArray*"), None)
+    assert type(back).__name__ == "TRefArray" and hasattr(back, "Delete")
+    assert back.GetEntries() == 0
+
+
+def test_a_clones_array_member_names_the_array_and_not_the_class_it_holds():
+    # The tag in front of an object says what the object is; a TClonesArray says inside
+    # which class its elements are, so the tag is the array's - ROOT reads an object of the
+    # wrong class otherwise, and gives up on the record with a byte-count error.
+    from xrdroot.wdobjects import Clones as Written
+
+    bag = Declaration("Bag", 1, True, (), (Field("t", "TClonesArray*", "", ()),))
+    blip = Declaration("Blip", 1, True, (), (Field("x", "double", "", ()),))
+    catalogue = Catalogue({"Bag": bag, "Blip": blip})
+    buf = WBuffer()
+    held = Written("Blip", "", [Instance("Blip", {"x": 1.5})])
+    write_instance(buf, Instance("Bag", {"t": held}), catalogue)
+    data = bytes(buf.data)
+    assert b"TClonesArray\x00" in data
+    assert b"Blip\x00" not in data  # the class is named once, inside the array, as "Blip;0"
+
+
 def test_roots_members_without_a_setter_are_left_as_they_are():
     from xrdroot.pyroot.core.declared import fill_root
 
