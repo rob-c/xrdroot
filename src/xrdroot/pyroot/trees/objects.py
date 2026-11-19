@@ -396,6 +396,70 @@ def _joined(pieces: list[Any]) -> Any:
     return concatenate(pieces)
 
 
+class ClonedSlot:
+    """A split collection a clone copies: ROOT's one branch again, its members' rows within.
+
+    ROOT writes a split ``TClonesArray`` as a branch counting the objects each
+    entry holds and a branch per member of every object, so its members are no
+    columns of a tree of their own - no column's name holds a dot. A clone
+    therefore hands the writer the spec its source was written with, and the
+    rows of every member for it to lay out again exactly as ROOT did.
+    """
+
+    kind = OBJECT
+    counter = None
+    size = 1
+    code = ""
+
+    def __init__(
+        self, name: str, element: str, split: int, sources: list[str], follows: list[Any]
+    ) -> None:
+        self.name = self.branch = self.title = name
+        self._kind = SplitArray(element)
+        self._spec = SplitClones(element, split=split)
+        #: What the tree this copies calls each member's column, in ROOT's order.
+        self.sources = sources
+        self._follows = follows
+        #: The names the writer keeps the count and each member's rows under.
+        self.keys = column_keys(name, self._spec.build(name, 32000))
+        self.pending: list[Any] = []
+        self.chunks: list[Any] = []
+
+    def __repr__(self) -> str:
+        return f"<ClonedSlot {self.name!r} of {len(self.sources)} members>"
+
+    def read(self, counts: Any = None) -> Any:
+        """One entry as ``Fill`` reads it: each object of the entry, and its members' values."""
+        values = [follow.get() for follow in self._follows]
+        return [tuple(one) for one in zip(*values, strict=True)]
+
+    def taken(self, read: Any) -> list[Any]:
+        """Every entry copied at once: each of its objects' members, from the columns read."""
+        entries = zip(*[read[column] for column in self.sources], strict=True)
+        return [[tuple(values) for values in zip(*entry, strict=True)] for entry in entries]
+
+    def keep(self, value: Any) -> None:
+        self.pending.append(value)
+
+    def seal(self) -> None:
+        if self.pending:
+            self.chunks.append(self.pending)
+            self.pending = []
+
+    def columns(self) -> dict[str, Any]:
+        """How many objects each entry holds, and each member's rows, as ROOT writes them."""
+        self.seal()
+        rows = [row for chunk in self.chunks for row in chunk]
+        return self._kind.columns(self.keys, rows)
+
+    def spec(self) -> Spec:
+        return self._spec
+
+    def nbytes(self, value: Any) -> int:
+        """What ``Fill`` says this entry took: the size of what each of its objects read."""
+        return 8 * sum(int(np.size(one)) for row in value for one in row)
+
+
 def object_slot(name: str, address: Any, split: int, bufsize: int | None) -> ObjectSlot | None:
     """The slot for a branch given an object, or ``None`` when ``address`` holds no object."""
     obj = _held(address)

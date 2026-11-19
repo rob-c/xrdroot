@@ -116,3 +116,79 @@ def test_a_class_without_a_description_or_with_members_not_split_here_is_refused
         clones_members("TH1F")
     names = [(m.owner, m.name) for m in clones_members("TLine")]
     assert ("TAttLine", "fLineColor") in names and ("TLine", "fX1") in names
+
+
+def _cloned(tmp_path, name: str, entries: int = -1, cut: str | None = None) -> ROOT.TTree:
+    """The tree of a written file, cloned or copied by a cut into a file of its own."""
+    path = str(tmp_path / "clones.root")
+    _written(path)
+    source = ROOT.TFile(path)
+    upstream = source.Get("T")
+    clone = upstream.CopyTree(cut) if cut else upstream.CloneTree(entries)
+    clone.SetName(name)
+    source.Close()
+    with xrdroot.create(str(tmp_path / "clone.root")) as out:
+        clone.SetDirectory(out)
+        clone.Write()
+    return clone
+
+
+def test_a_clone_hands_the_writer_one_branch_for_the_split_collection(tmp_path):
+    """ROOT writes a split ``TClonesArray`` as a count and a branch per member, so a clone
+    of one is that same branch again, not a column for each member of its own.
+
+    A member's column is ``N.fName``, and no column of a tree may be named with a dot.
+    """
+    clone = _cloned(tmp_path, "C")
+    assert clone.GetEntries() == 3
+    assert list(clone._store.slots) == ["N"] and "ClonedSlot" in repr(clone._store.slots["N"])
+    assert sorted(clone._store.columns()) == [
+        "N",
+        "N\x00N.fBits",
+        "N\x00N.fName",
+        "N\x00N.fTitle",
+        "N\x00N.fUniqueID",
+    ]
+    with xrdroot.open_root(str(tmp_path / "clone.root")) as found:
+        written = found["C"]
+        assert written.keys() == ["N", "N.fUniqueID", "N.fBits", "N.fName", "N.fTitle"]
+        assert written.arrays(["N.fName"])["N.fName"][2] == ["N_2_0", "N_2_1", "N_2_2"]
+        assert written.branches["N"].record.element == ("", "TNamed", 3066088035, 4, 0, 3, -1, 3)
+        bits = written.branches["N.fBits"].record.element
+        assert bits == ("TNamed", "", 2417737773, 1, 1, 31, 15, 0)
+
+
+def test_a_clone_filled_entry_by_entry_copies_the_objects_each_entry_holds(tmp_path):
+    """``CloneTree(0)`` then ``GetEntry`` and ``Fill``: the clone reads its objects from the
+    entry the source last read, as ROOT's clone shares its source's branch buffers."""
+    path = str(tmp_path / "clones.root")
+    _written(path)
+    source = ROOT.TFile(path)
+    upstream = source.Get("T")
+    clone = upstream.CloneTree(0)
+    assert upstream.GetEntry(2)
+    assert clone.Fill()
+    source.Close()
+    with xrdroot.create(str(tmp_path / "filled.root")) as out:
+        clone.SetDirectory(out)
+        clone.Write()
+    with xrdroot.open_root(str(tmp_path / "filled.root")) as found:
+        assert found["T"].arrays(["N.fName"])["N.fName"] == [["N_2_0", "N_2_1", "N_2_2"]]
+
+
+def test_a_copy_tree_of_a_split_collection_keeps_the_entries_the_cut_keeps(tmp_path):
+    clone = _cloned(tmp_path, "C", cut="Entry$ % 2 == 0")
+    assert clone.GetEntries() == 2
+    with xrdroot.open_root(str(tmp_path / "clone.root")) as found:
+        assert found["C"].arrays(["N.fName"])["N.fName"] == [["N_0_0"], ["N_2_0", "N_2_1", "N_2_2"]]
+
+
+def test_a_clone_says_so_when_a_member_of_a_split_collection_is_not_copied(tmp_path):
+    """A collection is one branch, so a member the clone does not read leaves it half written."""
+    path = str(tmp_path / "clones.root")
+    _written(path)
+    source = ROOT.TFile(path)
+    upstream = source.Get("T")
+    upstream.SetBranchStatus("N.fName", 0)
+    with pytest.raises(UnsupportedFeatureError, match="turn that branch back on"):
+        upstream.CloneTree()

@@ -15,12 +15,13 @@ from typing import Any
 import numpy as np
 
 from ...errors import UnsupportedFeatureError
-from ...interp import Values
+from ...interp import Each, Values
 from ...streamers import read_infos
 from ...tree import Jagged
-from ...wbranch import DeclaredWhole, Described
+from ...wbranch import DeclaredWhole, Described, clones_members
 from ...winfo import INFOS
 from .addresses import Address
+from .objects import ClonedSlot
 from .store import OBJECT, Slot, memory_tree
 
 __all__ = ["Follow", "clone", "subset"]
@@ -77,9 +78,19 @@ def _whole(leaf: Any, branch: Any) -> bool:
     A split object is a branch per member and reads back member by member, so
     its leaves are copied as the columns they are; an unsplit one holds the
     whole object, and its class need not be one this process has.
+
+    A column holding a list per entry - an :class:`~xrdroot.interp.Each` - is
+    one member's values for every object of a split collection, not one streamed
+    object, so ``Values`` alone does not make a branch a branch of whole
+    objects: every base of every split class has such columns.
     """
     column = getattr(branch, "column", None)
-    return not leaf.text and leaf.classname != "TLeafObject" and isinstance(column, Values)
+    return (
+        not leaf.text
+        and leaf.classname != "TLeafObject"
+        and isinstance(column, Values)
+        and not isinstance(column, Each)
+    )
 
 
 def _infos(backing: Any) -> dict[str, tuple[int, int, tuple[Any, ...]]]:
@@ -184,10 +195,14 @@ class Streamed:
     size = 1
     code = ""
 
-    def __init__(self, name: str, title: str, spec: Any, address: Address) -> None:
+    #: The tree's own name for the column this branch's entries are read from.
+    source: str
+
+    def __init__(self, name: str, title: str, spec: Any, address: Address, source: str) -> None:
         self.name = self.branch = name
         self.title = title
         self.address = address
+        self.source = source
         self._spec = spec
         self.pending: list[Any] = []
         self.chunks: list[Any] = []
@@ -197,6 +212,10 @@ class Streamed:
 
     def read(self, counts: Any = None) -> Any:
         return self.address.get()
+
+    def taken(self, read: Any) -> Any:
+        """The bytes of this branch's objects, out of the columns read in one go."""
+        return read[self.source]
 
     def keep(self, value: Any) -> None:
         self.pending.append(value)
@@ -217,16 +236,32 @@ class Streamed:
         return len(value)
 
 
+class Copied(Slot):
+    """A leaf of numbers or text a clone copies, either a value at a time or a column at once.
+
+    ``Fill`` reads a clone's leaves through the source tree's own addresses, so
+    a clone filled entry by entry sees what ``GetEntry`` last read there; a
+    clone given whole entries at once is handed each column already read.
+    """
+
+    #: The tree's own name for this leaf's column, which need not be the slot's.
+    source: str
+
+    def taken(self, read: Any) -> Any:
+        return read[self.source]
+
+
 def _slot(tree: Any, leaf: Any, backing: Any) -> Any:
     branch = backing[leaf.column]
     if _whole(leaf, branch):
         name = leaf.column if "." not in leaf.column else leaf.name
-        return Streamed(name, name, _object_spec(backing, leaf, branch), Raw(tree, leaf.column))
+        spec = _object_spec(backing, leaf, branch)
+        return Streamed(name, name, spec, Raw(tree, leaf.column), leaf.column)
     sample = branch.array(0, 0)
     code = "C" if leaf.text else _code(sample)
     follow = Follow(tree, leaf.column, leaf.vector, leaf.text)
     name = leaf.column if "." not in leaf.column else leaf.name
-    return Slot(
+    slot = Copied(
         name,
         leaf.branch if "." not in leaf.branch else name,
         code,
@@ -235,20 +270,80 @@ def _slot(tree: Any, leaf: Any, backing: Any) -> Any:
         counter=leaf.counter,
         title=leaf.title,
     )
+    slot.source = leaf.column
+    return slot
+
+
+def _element(leaf: Any, backing: Any) -> tuple[str, int] | None:
+    """The class of the split collection this leaf is the top of, and its split level.
+
+    ROOT hangs a split ``TClonesArray`` from a branch of its own (``fType`` 3)
+    whose baskets hold only how many objects each entry has, and puts every
+    member of every object in a branch under it. A branch of a chain keeps no
+    record of its own - its files do - so a chain's collections are not copied
+    as one branch, which :func:`_members` goes on to say.
+    """
+    record = getattr(backing[leaf.column], "record", None)
+    if record is None or not record.collection or not record.element:
+        return None
+    return record.element[1], record.split
+
+
+def _members(top: str, element: str, leaves: dict[str, Any]) -> list[Any]:
+    """The leaves of one split collection's members, in the order ROOT writes them."""
+    names = [f"{top}.{member.name}" for member in clones_members(element)]
+    missing = next((name for name in names if name not in leaves), None)
+    if missing is not None:
+        raise UnsupportedFeatureError(
+            f"the branch {top!r} splits a TClonesArray of {element} and {missing!r} is not a "
+            f"leaf this clone copies, so the collection could not be written back whole; "
+            f"turn that branch back on, or do not clone the tree"
+        )
+    return [leaves[name] for name in names]
+
+
+def _slots(tree: Any, leaves: list[Any], backing: Any) -> tuple[list[Any], set[str]]:
+    """A slot for each leaf the clone fills, and the split collections' top branches.
+
+    Every member of every object of a split collection goes into the one branch
+    ROOT writes the collection as, so those leaves get no slot of their own,
+    and the collection's own top branch - whose value is its members put back
+    together - is the only one of the two that is read.
+    """
+    elements = {leaf.column: _element(leaf, backing) for leaf in leaves}
+    by_column = {leaf.column: leaf for leaf in leaves}
+    slots: list[Any] = []
+    grouped: set[str] = set()
+    inside: set[str] = set()
+    for leaf in leaves:
+        if leaf.column in inside:
+            continue
+        found = elements[leaf.column]
+        if found is None:
+            slots.append(_slot(tree, leaf, backing))
+            continue
+        element, split = found
+        members = _members(leaf.column, element, by_column)
+        follows = [Follow(tree, one.column, one.vector, one.text) for one in members]
+        sources = [one.column for one in members]
+        slots.append(ClonedSlot(leaf.column, element, split, sources, follows))
+        grouped.add(leaf.column)
+        inside |= {one.column for one in members}
+    return slots, grouped
 
 
 def clone(tree: Any, made: Any, start: int, stop: int, selection: str | None) -> Any:
     """Give ``made`` a slot for each leaf ``tree`` has, and the entries asked for."""
     backing = tree._backing()
     leaves = _wanted(tree)
-    slots = [_slot(tree, leaf, backing) for leaf in leaves]
+    slots, grouped = _slots(tree, leaves, backing)
     for slot in slots:
         made._store.add(slot)
     if stop > start:
-        columns = [leaf.column for leaf in leaves]
-        read = _read(backing, leaves, start, stop, selection)
+        wanted = [leaf for leaf in leaves if leaf.column not in grouped]
+        read = _read(backing, wanted, start, stop, selection)
         count = len(next(iter(read.values()))) if read else 0
-        made._store.extend({s.name: read[c] for s, c in zip(slots, columns, strict=False)}, count)
+        made._store.extend({slot.name: slot.taken(read) for slot in slots}, count)
     made._changed()
     return made
 
