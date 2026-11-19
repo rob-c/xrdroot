@@ -449,6 +449,11 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 3's result of it, at `e46e28d`: `TOTAL 112531 0 27814 0 100%`, `Required test coverage
+  of 100.0% reached`, `11620 passed, 1 skipped, 46 xfailed` in 59 s; with
+  `XRDROOT_TEST_OTHER_MACHINE=1` the same 11 620 passed. `ruff` clean, `mypy` 1006 files,
+  maintainability 28 831 functions, components 1005 modules and **0 undeclared imports**,
+  `mkdocs build --strict` built.
 - Working directory: `/Users/rcurrie/src/xrdroot`
 - Required preserved artifacts: the venv `.venv` (with `.[dev,zstd,fit,docs]`), ROOT's sources at
   `/tmp/rootsrc-6.40`, the oracle at `~/.local/root-oracle`, the tutorial oracle cache at
