@@ -358,11 +358,6 @@ class Catalogue:
 
         ``lengths`` is one dimension for a ``std::array``, and all of them outermost first
         for one nested in another; a count from ``T a[N]`` is the one dimension of its own.
-
-        An array of *pointers*, ``TAxis *fVaxis[3]``, keeps the pointer: ``TStreamerObjectPointer``
-        whose type is the pointer's alone - the oracle gives ``TAxis *fVaxis[3]`` type 64,
-        ``kObjectP`` with no ``kOffsetL``, and the three it holds as its length and its maximum
-        index - and whose room is a pointer per element.
         """
         dims = (lengths,) if isinstance(lengths, int) else lengths
         name = class_name(element)
@@ -370,16 +365,11 @@ class Catalogue:
             return None
         self.describe(name)
         tobject = self.tobject(name)
-        length = _product(dims)
-        maxidx = (*dims, *NO_DIMS)[:5]
-        if element.stars:
-            kind = "TStreamerObjectPointer" if tobject else "TStreamerObjectAnyPointer"
-            stype = _POINTERS[tobject, field.comment.startswith("->")]
-            return (kind, field.name, field.comment, stype, POINTER_SIZE * length, length,
-                    len(dims), maxidx, streamer_name(element), ())  # fmt: skip
         kind = "TStreamerObject" if tobject else "TStreamerObjectAny"
+        length = _product(dims)
         return (kind, field.name, field.comment, (OBJECT if tobject else ANY) + OFFSET_L,
-                POINTER_SIZE * length, length, len(dims), maxidx, name, ())  # fmt: skip
+                POINTER_SIZE * length, length, len(dims), (*dims, *NO_DIMS)[:5],
+                name, ())  # fmt: skip
 
     def _basic(
         self, owner: Declaration, field: Field, found: Spelled, counter: bool
@@ -532,34 +522,6 @@ class Catalogue:
                 f"layout for, so an object holding one cannot be written"
             )
 
-    def _pointer_loop(
-        self, owner: Declaration, field: Field, found: Spelled, counter: bool
-    ) -> Element | None:
-        """``TAxis *fPaxis //[fNvertex]`` and ``TAxis **fQaxis //[fNvertex]``: as many objects
-        as the counter member holds, one after another inside a single record - ROOT's
-        ``kStreamLoop``, the type as it is written with its stars, and the counter's version,
-        name and class.
-
-        A pointer to a class that a ``//[n]`` comment counts is a loop of objects rather than
-        the one object the object rules would make of it, whether it is written with one star
-        or two: ROOT 6.40.04's own description of a ``Probe`` holding both spells
-        each as a ``TStreamerLoop``, naming ``TAxis*`` and ``TAxis**``. Laid out as the pointer
-        to one object that a member without a count is, the file would say the member holds a
-        single object where ROOT wrote a run of them - which is how the bigevent roottest's
-        ``Event`` was wrong before this rule, its ``fPaxis`` silently as much as its
-        ``fQaxis``.
-        """
-        count = _counter_of(field)
-        if count is None or found.stars > 2 or field.dims:
-            return None
-        name = class_name(found)
-        if not self.known(name):
-            return None
-        self.describe(name)
-        counted = (_class_version(owner, owner.version), count, owner.name)
-        return ("TStreamerLoop", field.name, field.comment, STREAM_LOOP, POINTER_SIZE, 0, 0,
-                NO_DIMS, streamer_name(found), counted)  # fmt: skip
-
     def _object(
         self, owner: Declaration, field: Field, found: Spelled, counter: bool
     ) -> Element | None:
@@ -597,7 +559,6 @@ _MEMBER_RULES: tuple[
     Catalogue._string,
     Catalogue._container,
     Catalogue._complex,
-    Catalogue._pointer_loop,
     Catalogue._object,
 )
 
