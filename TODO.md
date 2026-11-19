@@ -20,12 +20,12 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1078 / 2173** |
+| roottest | 1038 / 2173 (47.8 %) | **1089 / 2173** |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **16 / 109** |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1233 / 2820 (43.7 %)** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1244 / 2820 (44.1 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
 The "now" column is two runs at `68a8d07`: `/tmp/x8/final2b` (roottest, 1076) and
@@ -794,20 +794,26 @@ cheap to maintain and impossible to reconstruct.
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | now (`7a43bd9`) |
-|---|---|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | **1078** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 |
-| `test/` | 4 | 6 | 6 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 | 16 | 16 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | now (`5c88c8c`) |
+|---|---|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | **1089** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 |
+| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** |
 
-The last column is `/tmp/r1/final2` (roottest, 1078) and `/tmp/r1/final1` (the other
-kinds) at `7a43bd9`. The six roottest tests the last round brought in are
-`io/json/PolyMarker`, `io/rootcint/cltest`, `io/stdarray/arrTemplMemberWrite`,
+The last column is `/tmp/r2/final2` (roottest, 1089) and `/tmp/r2/final1` (the other
+kinds) at `5c88c8c`; the round before it, `/tmp/r1/final2` (1078) and `/tmp/r1/final1`
+at `7a43bd9`. The eleven roottest tests the last round brought in are
+`cling/parsing/assertSpaces`, `cling/typedef/runptrptr`,
+`io/alloc/customConstructor-build`, `io/alloc/customLoader-build`,
+`tree/selectorreader/Collections`, `tree/selectorreader/Simple`, and five that pass
+when the machine is quiet (`main/RootcpReadRemote` and its two dependants,
+`io/hadd/test_hadd_regr_20872`, `io/hadd/test_MergeNestedSameName`); the round before,
+six: `io/json/PolyMarker`, `io/rootcint/cltest`, `io/stdarray/arrTemplMemberWrite`,
 `io/stdarray/colWiseWrite_3`, `meta/tclass/execTmpltD32` and
-`treeformula/string/cernbuild`; the round before, eighteen:
+`treeformula/string/cernbuild`; the round before that, eighteen:
 `collection/ROOT-7249`, `io/evolution/WriteFixedArray{New,Old}`,
 `io/evolution/pragma_read/testv1`, `io/json/Map`, `io/stdarray/colWiseRead_11`,
 `colWiseRead_12`, `colWiseRead_21`, `colWiseRead_22`, `colWiseWrite_1`,
