@@ -107,6 +107,7 @@ This is xrdroot's C++ prompt: what is typed is translated into Python and run.
   .typedef [name]    the typedefs the session has seen declared, or the one named
   .autodict [0|1]    cling's switch for building a dictionary on demand, kept as a setting
   .class Name        a class: its bases and its methods
+  .Class Name        a class's layout, as a dictionary describes it
   .rawInput [0|1]    cling's raw input mode, kept only as a setting here
   .O [level]         cling's optimization level, kept only as a setting here
   .@                 cancel the lines of an unfinished input
@@ -383,6 +384,79 @@ def _described(found: type, name: str) -> list[Said]:
     return [Said(heading), Said(f"  {len(methods)} public methods:"), *map(Said, listed)]
 
 
+#: The width ROOT prints ``.Class``'s sections to, and the headings it prints them under.
+CLASS_WIDTH = 75
+
+
+def _Class(interp: Interpreter, rest: str) -> list[Said]:
+    """``.Class Name``: the layout a dictionary gives a class - ROOT's, which asks the
+    interpreter; here the class is read back off the C++ declaration the session translated,
+    and its size off the layout ``sizeof`` gives, so only what was declared is described."""
+    name = rest.strip()
+    if not name:
+        return [Said("error: .Class needs the name of a class to describe, as .Class TObject",
+                     True)]  # fmt: skip
+    found = _class_description(name)
+    if found is None:
+        return [Said(f"Class {name} not found")]
+    return [Said(line) for line in _class_lines(found)]
+
+
+def _class_description(name: str) -> Any:
+    """The class ``name`` described, from the sources of the libraries loaded - the file a
+    library was built from reads as the declarations it provided."""
+    from ...pycxx.describe import described, program_of
+    from ...pycxx.errors import CxxError
+    from ..library.loading import LOADED
+
+    for path in _class_sources(name, LOADED):
+        where = Path(path)
+        if not where.is_file():
+            continue
+        try:
+            program = program_of(where.read_text(encoding="utf-8", errors="replace"),
+                                 str(where), [where.parent])  # fmt: skip
+        except CxxError:
+            continue  # a file this translator cannot read declares nothing to describe
+        found = described(program, name)
+        if found is not None:
+            return found
+    return None
+
+
+def _class_sources(name: str, loaded: dict[str, Any]) -> list[str]:
+    """The files ``name`` may be declared in: the file each library that lists the class was
+    built from, then every source of theirs, then the macros the session loaded - the order
+    ROOT's rootmaps find a class in, which is the order its declarations were read in."""
+    last = name.split("::")[-1].split("<")[0]
+    listed = [each.library for each in loaded.values()
+              if any(own.split("::")[-1] == last for own in each.library.classes)]
+    return list(dict.fromkeys([*[each.file for each in listed],
+                               *[path for each in listed for path in each.sources],
+                               *SOURCES]))
+
+
+def _class_lines(found: Any) -> list[str]:
+    """A description as ROOT prints one: its name, its size and place, then its functions."""
+    lines = ["=" * CLASS_WIDTH, f"class {found.name}"]
+    if found.size is not None:
+        lines.append(f"SIZE: {found.size} FILE: {os.path.basename(found.file)} "
+                     f"LINE: {found.line}")  # fmt: skip
+    if found.bases:
+        lines.append(_heading("Base classes:"))
+        lines += [f"0x0        {base.access} {base.name}" for base in found.bases]
+    lines.append(_heading("List of member functions:"))
+    lines.append("filename     line:size busy function type and name")
+    lines += [f"(compiled)     (NA):(NA) 0 {each.access}: {each.template}{each.signature};"
+              for each in found.methods]  # fmt: skip
+    return lines
+
+
+def _heading(text: str) -> str:
+    """``List of member variables: ---...``: a section's name, dashed to ROOT's width."""
+    return (text + " ").ljust(CLASS_WIDTH, "-")
+
+
 #: Every command, by name: each takes the interpreter and the text after the name.
 COMMANDS: dict[str, Callable[[Interpreter, str], list[Said]]] = {
     "x": _run,
@@ -411,6 +485,7 @@ COMMANDS: dict[str, Callable[[Interpreter, str], list[Said]]] = {
     "O": _optimize,
     "g": _globals,
     "class": _class,
+    "Class": _Class,
     "typedef": _typedef,
     "autodict": _autodict,
 }

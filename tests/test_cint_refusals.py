@@ -67,7 +67,8 @@ def test_constructs_with_no_python_are_refused_by_name_at_their_line(source: str
     [
         ("struct A { void *operator new(size_t n); };", "a class's own operator new or delete"),
         ("template <typename... Args> void f(Args... args) {}", "a variadic template"),
-        ("template <template <typename> class C> void f() {}", "a template template parameter"),
+        ("template <template <typename> int C> void f() {}",
+         "a template template parameter that names a value"),
         ("auto f = [](auto... xs) { return 0; };", "a parameter pack, which a variadic"),
         ("int f() try { return 1; } catch (...) { return 0; }", "a function-try-block"),
         ("struct A { int bits : 3; };", "the bit-field bits"),

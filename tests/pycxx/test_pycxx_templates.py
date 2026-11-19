@@ -627,3 +627,16 @@ def test_a_template_is_not_the_call_where_a_function_of_its_name_takes_it(capsys
     assert "take__A(" not in python
     run_source(source, "t.C")
     assert capsys.readouterr().out == "plain x\n"
+
+
+#: A template whose parameter is itself a class template, as ``roottest/cling/dict``'s
+#: ``exectemplatetemplateTest.cxx`` declares one: ``C`` stands for a template, not a type.
+TEMPLATE_PARAMETER = r"""
+template <class T> class AnInnocentTemplate { public: T value; };
+template <template <class T> class C> class Wooha { public: int tag; };
+Wooha<AnInnocentTemplate> b;
+"""
+
+
+def test_a_template_template_parameter_is_translated_and_its_class_made() -> None:
+    assert run_source(TEMPLATE_PARAMETER, "wooha.cxx", call=False)["b"].tag == 0

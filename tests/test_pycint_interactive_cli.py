@@ -222,6 +222,82 @@ def test_dot_class_shows_a_classes_bases_and_methods_or_says_there_is_none() -> 
     ]
 
 
+def test_dot_Class_prints_the_layout_of_a_class_a_compiled_macro_declared() -> None:
+    write("equal.C", "class privateOp2 {\nprivate:\n   privateOp2& operator=(const int&);\n"
+                     "public:\n   int c;\n};\n")
+    prompt = Interpreter()
+    typed(prompt, ".L equal.C+")
+    assert typed(prompt, ".Class privateOp2") == [
+        "=" * 75,
+        "class privateOp2",
+        "SIZE: 4 FILE: equal.C LINE: 1",
+        "List of member functions: " + "-" * 49,
+        "filename     line:size busy function type and name",
+        "(compiled)     (NA):(NA) 0 private: privateOp2 &operator=(const int &);",
+    ]
+
+
+def test_dot_Class_reads_a_class_out_of_a_library_s_sources_and_skips_ones_it_cannot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from xrdroot.pycint.library import loading
+    from xrdroot.pycint.library.manifest import Library
+
+    gone = tmp_path / "gone.hh"
+    kept = write("kept.hh", "class Kept { public: void f(); };\n")
+    refused = write("refused.hh", "struct S { int bits : 3; };\n")
+    monkeypatch.setattr(
+        loading, "LOADED",
+        {
+            "gone": loading.Loaded(Library("libgone", "dictionary", "", str(gone),
+                                           classes=["Kept", "S"]), {}),
+            "kept": loading.Loaded(Library("libkept", "dictionary", "", str(refused),
+                                           sources=[str(refused)], classes=["Kept"]), {}),
+            "third": loading.Loaded(Library("libthird", "dictionary", "", str(kept),
+                                            classes=["Kept"]), {}),
+        },
+    )
+    assert typed(Interpreter(), ".Class Kept")[1:4] == [
+        "class Kept",
+        "SIZE: 1 FILE: kept.hh LINE: 1",
+        "List of member functions: " + "-" * 49,
+    ]
+
+
+def test_dot_Class_prints_a_base_class_and_leaves_out_a_size_it_does_not_know(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from xrdroot.pycint.library import loading
+    from xrdroot.pycint.library.manifest import Library
+
+    shapes = write("shapes.hh", "class Base { public: int a; };\n"
+                                "class Kid : public Base { public: int x; };\n"
+                                "class E { public: TGraph g; };\n")
+    monkeypatch.setattr(loading, "LOADED", {
+        "shapes": loading.Loaded(Library("libshapes", "dictionary", "", str(shapes),
+                                         classes=["Kid", "E"]), {})})  # fmt: skip
+    prompt = Interpreter()
+    assert typed(prompt, ".Class Kid")[1:6] == [
+        "class Kid",
+        "SIZE: 8 FILE: shapes.hh LINE: 2",
+        "Base classes: " + "-" * 61,
+        "0x0        public Base",
+        "List of member functions: " + "-" * 49,
+    ]
+    assert "SIZE:" not in " ".join(typed(prompt, ".Class E"))
+
+
+def test_dot_Class_says_a_class_nothing_declares_is_not_found_and_needs_a_name() -> None:
+    assert typed(Interpreter(), ".Class Nowhere", ".Class") == [
+        "Class Nowhere not found",
+        "error: .Class needs the name of a class to describe, as .Class TObject",
+    ]
+
+
+def test_dot_help_lists_the_Class_command() -> None:
+    assert any(line.strip().startswith(".Class Name") for line in typed(Interpreter(), ".help"))
+
+
 def test_an_unknown_command_is_named() -> None:
     assert typed(Interpreter(), ".frobnicate") == [
         "error: .frobnicate is not a command this prompt knows; .help lists the ones it does"

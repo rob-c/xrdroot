@@ -52,6 +52,16 @@ CONSTRUCTOR_WORDS = frozenset({"explicit", "inline", "virtual", "constexpr"})
 ACCESS = frozenset({"public", "private", "protected", "signals", "slots"})
 
 
+def _reached(member: Stmt, hidden: bool) -> None:
+    """How the member just read is reached: ``public`` unless the access label above it hid it.
+
+    A data member keeps its own (``VarDecl.hidden``, which lays its class out); a function's
+    is kept here, for the signature ``.Class`` prints.
+    """
+    if isinstance(member, Function):
+        member.hidden = hidden
+
+
 class Parser(StmtParser):
     """A macro's tokens read into a :class:`Unit`."""
 
@@ -236,7 +246,7 @@ class Parser(StmtParser):
 
     def _template_parameter(self) -> str:
         if self.at_("template"):
-            raise self.refuse("a template template parameter")
+            return self._class_template_parameter()
         typename = self.accept("typename", "class")
         if self.accept("..."):
             raise self.refuse("a variadic template, whose parameter pack Python has no form for")
@@ -255,6 +265,32 @@ class Parser(StmtParser):
         default = self.constant() if self.accept("=") else None
         self.template_values.append(Param(where, name, ctype, default))
         self.template_defaults.append(default)
+        return name
+
+    def _class_template_parameter(self) -> str:
+        """``template <class T> class C`` of ``template <template <class T> class C>``: the name
+        ``C``, which stands for a class template and not a class.
+
+        Its own parameters are read to find where it ends and are named nowhere else: what a
+        library's template does with them is its dialect's, as ``std::vector``'s is, so the
+        name stands for the template it is given rather than for a type here.
+        """
+        self.take()
+        self.expect("<")
+        self.angle += 1
+        try:
+            depth = 1
+            while depth:  # a list that does not end is the macro's end, refused there
+                token = self.take()
+                depth += token.is_("<") - token.is_(">") - 2 * token.is_(">>")
+        finally:
+            self.angle -= 1
+        if not self.accept("typename", "class"):
+            raise self.refuse("a template template parameter that names a value")
+        self.accept("...")
+        name = self.identifier() if self.peek().kind == "id" else "_"
+        self.types.add(name)
+        self.template_defaults.append(self.type_id() if self.accept("=") else None)
         return name
 
     #: The value parameters of the template being read, ``N`` of ``template <int N>``.
@@ -597,6 +633,7 @@ class Parser(StmtParser):
             while not self.accept("}"):
                 member = self.member()
                 if member is not None:
+                    _reached(member, self.hidden)
                     members.append(member)
         finally:
             self.pop()

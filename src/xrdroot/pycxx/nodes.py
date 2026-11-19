@@ -436,6 +436,8 @@ class Function(Stmt):
     #: The template arguments of the class a member is defined outside of: ``<int>`` of
     #: ``Box<int>::Box()``.
     scope_args: list[Any] = field(default_factory=list)
+    #: A member declared private or protected: how ``.Class`` reaches it.
+    hidden: bool = False
 
 
 @dataclass(eq=False)
