@@ -342,6 +342,13 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   is not a 6.40 test. Check the id with
   `$PY -m tools.rootsuite list --root /tmp/rootsrc-6.40 | grep <name>` first.
 - The 300 s timeout is a hard wall: never raise it, and measure any test near it alone.
+- **Never start a measurement while a conflicted file is on disk.** A `git apply -3` that leaves
+  `<<<<<<<` markers in `reflection.py` and a harness run started beside it made 114 pyunittest
+  files fail with `SyntaxError` and read like a catastrophe; check `git status` for `UU` first.
+- Tests in one directory share a working copy: `io/hadd`'s tests write `src1.root`/`dest.root`, so
+  at `--jobs 5` they collide and a PASS turns into a DIFF that passes alone (`W0-9`).
+- A harness run's PASS count is only comparable at the same `--jobs`: 300 s tests and
+  same-directory collisions both move with the parallelism.
 
 ## Checklist (per round)
 
@@ -393,7 +400,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 
 | round | base | scopes | in the round's `results.json` | new queue entries |
 |---|---|---|---|---|
-| 1 | `8c1b9f8` | sixteen, `/tmp/r1/wNN-brief.md`: formula member calls (from branch `w01`), an array of `std::vector` in a class, object columns in a tree, `BranchRef`/`TRefTable`, `GetStreamerInfo`+`pairEnumEvo`, evolution print DIFFs, genreflex XML, split `TClonesArray`, `std::array` as an element type, `RFieldBase`, nested-collection RNTuple, a text branch read, `ReadClones`, `typeid` of a template parameter, the `generate` template, and the seven timeouts (diagnosis only) | roottest 1076, non-tutorial 1231 (before) | pending |
+| 1 | `8c1b9f8` | sixteen, `/tmp/r1/wNN-brief.md`: formula member calls (from branch `w01`), an array of `std::vector` in a class, object columns in a tree, `BranchRef`/`TRefTable`, `GetStreamerInfo`+`pairEnumEvo`, evolution print DIFFs, genreflex XML, split `TClonesArray`, `std::array` as an element type, `RFieldBase`, nested-collection RNTuple, a text branch read, `ReadClones`, `typeid` of a template parameter, the `generate` template, and the seven timeouts (diagnosis only) | **roottest 1076 → 1078, non-tutorial 1231 → 1233** (`/tmp/r1/final2`, `/tmp/r1/final1` at `7a43bd9`) | 9 rows: `Q-23` (the streamer-info printer), `P-7`/`P-8` (the hangs and their two named causes), `G-5` (the template choice), `G-6` (member template constructors), `W0-9` (hadd tests colliding in one directory), plus the reverts recorded in the ledger |
 
 ## Notes
 

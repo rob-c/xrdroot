@@ -20,13 +20,13 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1076 / 2173** |
+| roottest | 1038 / 2173 (47.8 %) | **1078 / 2173** |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **16 / 109** |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1231 / 2820 (43.6 %)** |
-| tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run) |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1233 / 2820 (43.7 %)** |
+| tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
 The "now" column is two runs at `68a8d07`: `/tmp/x8/final2b` (roottest, 1076) and
 `/tmp/x8/final1b` (the other kinds), with `/tmp/x8/final2` and `/tmp/x8/final1`
@@ -777,21 +777,34 @@ cheap to maintain and impossible to reconstruct.
 | Q-20 (part) | done | `90f227e` | 0 | `hadd` now carries the streamer infos its inputs describe (merging `tests/data/tntuple.root` lost `TTree v20`, `TBranch v13`, `ROOT::TIOFeatures`, `TBranchRef`, `TRefTable`; now 18/18). It moves nothing in `io/filemerger`, and worker a measured why: the input there is xrdroot's own `hsimple.root`, 412 079 bytes where ROOT's is 414 892 — the gap is in what **the writer** puts in `hsimple.root`, not in the merge |
 | Q-11 | **attempted twice, not merged** | branches `w01`, `xc` | 0 | workers 1 and c taught the formula engine to call a branch object's methods - 27 `FAIL`s became refusals naming the reason (`fH.GetMean()` on an object read from a file is a dictionary of members), and `TH1::GetMean` became a method derived from the sums a file's object holds - but `treeformula/sync/readfile-0`, a PASS, becomes a refusal in both, so neither branch is merged. The refusal to relax is `formula/binding.py::_mismatch` for `fTracks.fVertex[][fTracks.fNpoint%3]`, which indexed a loop by a value that changes and the older code handled |
 | Q-14 (GDML) | **attempted, blocked** | — | 0 | worker f: all 20 `io/geo` refusals come from `TGeoManager::Import`, which needs a GDML reader and a reader for a `TGeoManager` in a ROOT file; both are absent, and the refusal it already gives names them |
-| Q-10, Q-11, Q-13 … | todo | | | |
+| Q-1 (part) | done | `e0ab124`…(reverted `5e9076e`) | 0 | `TClass::GetStreamerInfo`/`GetStreamerInfos` landed and turned 40 `pairEnumEvo` crashes into output, then was **reverted**: it printed `offset=0` and the `i=` action lines for a layout only a file describes, where ROOT prints `version=N` and `offset=na` with no actions, and `io/evolution/versions/AddVersion-2-1/2/5` went PASS → DIFF. The printer must tell a layout the process has a dictionary for (no `version=`, `offset=na`, actions listed) from one only the file describes (`version=N`, `offset=na`, none). See the queue row below |
+| Q-7 (part) | done | `8491022`, `bfd2911`, `c006793` | roottest +6 | genreflex's `--selSyntaxOnly` (`meta/genreflex/XMLParsing/0..4` pass); a tree's object where its column of numbers goes is refused by name; `std::array<T,N>` as an element type (`io/stdarray/aclicModelWrite` passes) |
+| Q-13 (part) | done | `038038b`, `cb88a7a` | roottest +1 | a pointer member initialised with `0` is the null pointer (`tree/evolution/WriteClones` passes), and a class's streamer record names the base its member is of |
+| Q-15 (part) | done | `8dc4156`, `43a287a` | 0 | an RNTuple field of a nested vector, laid out as ROOT lays it out; a field made from a type name |
+| Q-11 (part) | done | `6b16368`, `a3bf9b6` | 0 | the formula engine reads a branch object's members and their getters, and works out an index that loops inside the loop the branch makes; `roottest/root/treeformula/sync/readfile-0` stays PASS and now reaches `sync.C:70` (`Clones` has no `At`) instead of `:37` |
+| Q-12 (part) | done | `bbdbec1` | 0 | a reference initialised with the object it already names builds nothing (`typeid(T)`'s `const type_info&`) |
+| Q-16 (part) | done | `7a80af7` | 0 | an array of `std::vector` is the STL element ROOT lays out at `kOffsetL`; `io/bigevent`'s refusal moved eleven members down the class (to `fVectorTobject`) |
+| P-7 | todo | | 8 | **the seven hangs**, diagnosed by a worker: `io/TFile/assert_tcontext_thread_hoping` (a dead thread; `std::atomic::exchange`), `root/multicore/testSetAddressLoop` (`TBranch::GetAddress` returns ...), and five more in its table at `/tmp/r1/`'s reports; each costs 300 s of wall time and hides its real failure |
+| P-8 | todo | | | `std::atomic::exchange` and `TBranch::GetAddress`, the two named causes of hangs above — check names first, the first may already exist on `_Atomic` and be missing on another type |
+| G-5 | todo | | 4 | `emit_vars.VariableEmitter._binds_an_object` is right; the *template choice* (`_template_of`/`_template_taking`, `emit_templates.py`) picks the template whose parameters take as many arguments as the call passes without checking that each argument's type binds its parameter, so an instantiation with a `char*` parameter was chosen and `std::numeric_limits<char*>::epsilon()` was refused (`execSourceTypes-build` PASS → UNSUPPORTED, reverted at `7a43bd9`). Add the type check, then retry worker 15's target |
+| G-6 | todo | | 2 | a member template constructor of a non-template class (`template <class T> WithTemplate(T*)` in `io/alloc/customConstructor.C`) needs `emit_classes` to instantiate a constructor per call; worker 14's patch did it but regressed `test_a_pointer_member_initialised_with_zero_is_null_not_the_number` |
+| Q-23 | todo | | 0 | `TStreamerInfo::ls` and `TStreamerElement::ls` must print what ROOT prints (`roottest/root/io/evolution/versions/*.ref`): a dictionary-less class shows `version=N` and `offset=na` and no `i=` action line; a class with a dictionary in memory shows no `version=`, `offset=na`, and the actions. This is the one change that would let `pairEnumEvo`'s 40 tests compare output, so it is worth a worker of its own (`reflection.py`) |
+| W0-9 | todo | | | harness: the `io/hadd` tests write `src1.root`/`dest.root` in one working directory, so at `--jobs 5` they collide — `test_MergeNestedSameName` read a file another test was writing and went PASS → DIFF, then passed alone. Give each test of a directory its own working copy, or serialise that directory |
+
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | now (`68a8d07`) |
-|---|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | 1070 | **1076** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 |
-| `test/` | 4 | 6 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 | 16 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | now (`7a43bd9`) |
+|---|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | **1078** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 |
+| `test/` | 4 | 6 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 | 16 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** |
 
-The last column is `/tmp/x8/final2b` (roottest) and `/tmp/x8/final1b` (the other
-kinds) at `68a8d07`. The six roottest tests the last round brought in are
+The last column is `/tmp/r1/final2` (roottest, 1078) and `/tmp/r1/final1` (the other
+kinds) at `7a43bd9`. The six roottest tests the last round brought in are
 `io/json/PolyMarker`, `io/rootcint/cltest`, `io/stdarray/arrTemplMemberWrite`,
 `io/stdarray/colWiseWrite_3`, `meta/tclass/execTmpltD32` and
 `treeformula/string/cernbuild`; the round before, eighteen:
