@@ -624,9 +624,20 @@ def _one(prim: Prim, unpack: Unpack | None) -> Step:
     return lambda buf, _row: _numbers(prim, unpack, buf, 1)[0].item()
 
 
-def _run(prim: Prim, unpack: Unpack | None, length: int) -> Step:
-    """A fixed-size array, ``x[10]``, whose length the declaration fixes."""
-    return lambda buf, _row: _numbers(prim, unpack, buf, length)
+def _run(member: Member, prim: Prim, unpack: Unpack | None) -> Step:
+    """A fixed-size array, ``x[10]``, in the shape its declaration gives it.
+
+    ``m[4][4]`` is one array of two dimensions and ``m[16]`` is one of one: the
+    values are the same 16, and a formula indexes them by the shape, so
+    ``m[1][2]`` is a cell of the first and a value of the second.
+    """
+    length, dims = member.length, member.dims
+
+    def step(buf: Buffer, _row: dict[str, Any]) -> Any:
+        values = _numbers(prim, unpack, buf, length)
+        return values.reshape(dims) if dims else values
+
+    return step
 
 
 def _pointer(prim: Prim, unpack: Unpack | None, count: tuple[str, ...]) -> Step:
@@ -1139,7 +1150,7 @@ def _shaped(
             )
         return _pointer(prim, unpack, where)
     if base == OFFSET_L:
-        return _run(prim, unpack, member.length)
+        return _run(member, prim, unpack)
     return _one(prim, unpack)
 
 

@@ -31,7 +31,12 @@ def _member(element: Element) -> Member:
     if kind in ("TStreamerSTL", "TStreamerSTLstring") and stype == 300:
         stype = STREAMER
     count = str(extras[1]) if kind in ("TStreamerBasicPointer", "TStreamerLoop") else ""
-    return Member(name, title, stype, typename, length, count)
+    return Member(name, title, stype, typename, length, count, _shape(_dims, _maxidx))
+
+
+def _shape(dims: int, max_index: tuple[int, ...]) -> tuple[int, ...]:
+    """A member's array lengths as the catalogue records them, for the reader's own shape."""
+    return tuple(int(size) for size in max_index[:dims]) if dims > 1 else ()
 
 
 class DescribedSource:

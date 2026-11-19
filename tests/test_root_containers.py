@@ -842,3 +842,20 @@ def test_a_tnamed_base_gives_back_the_name_and_title_it_carries():
     assert column.value(Buffer(named_bytes("a name", "a title")), 0) == {
         "TNamed": {"fName": "a name", "fTitle": "a title", "fUniqueID": 0, "fBits": 0}
     }
+
+
+def shaped_bytes(dimensions: int, sizes: tuple[int, ...], length: int) -> bytes:
+    """A ``TStreamerElement`` of a fixed array in ``dimensions`` dimensions."""
+    body = named_bytes("m", "") + struct.pack(">iiii", 3, 4, length, dimensions)
+    body += struct.pack(">5i", *(sizes + (0,) * (5 - len(sizes))))
+    return record(4, record(4, body + tstring("Double32_t")))
+
+
+def test_a_fixed_array_keeps_the_shape_the_file_declares():
+    """ROOT writes how many dimensions a member has and each one's maximum index, so
+    `m[4][4]` is a (4, 4) member and `m[16]` is a flat one, not the same thing."""
+    shaped = read_element(Buffer(shaped_bytes(2, (4, 4), 16)))
+    assert (shaped.length, shaped.dims) == (16, (4, 4))
+    assert read_element(Buffer(shaped_bytes(1, (16,), 16))).dims == ()
+    # A description that does not add up says nothing about a shape.
+    assert read_element(Buffer(shaped_bytes(2, (4, 5), 16))).dims == ()

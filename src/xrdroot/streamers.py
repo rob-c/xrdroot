@@ -12,6 +12,8 @@ whose branches all say what they hold.
 
 from __future__ import annotations
 
+import math
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from .buffer import Buffer
@@ -28,7 +30,7 @@ KEY_WINDOW = 512
 class Member:
     """One data member of one class, as the file describes it."""
 
-    __slots__ = ("name", "title", "stype", "typename", "length", "count")
+    __slots__ = ("name", "title", "stype", "typename", "length", "count", "dims")
 
     def __init__(
         self,
@@ -38,6 +40,7 @@ class Member:
         typename: str,
         length: int,
         count: str = "",
+        dims: tuple[int, ...] = (),
     ) -> None:
         self.name = name
         #: The declaration's trailing comment, where a packed float keeps its range.
@@ -47,6 +50,9 @@ class Member:
         self.length = length
         #: The member holding how many of these there are, for a counted pointer.
         self.count = count
+        #: The lengths of a fixed array's dimensions, outermost first - ``fMatrix[4][4]``'s
+        #: ``(4, 4)`` - which is the shape its ``length`` values were declared in.
+        self.dims = dims
 
     def __repr__(self) -> str:
         return f"<Member {self.typename} {self.name}>"
@@ -70,8 +76,8 @@ def read_element(buf: Buffer, depth: int = 1, counted: bool = False) -> Member:
     stype = buf.i32()
     buf.i32()  # how many bytes the member takes in memory
     length = buf.i32()
-    buf.i32()  # how many dimensions, which the maximum indices below repeat
-    buf.i32s(buf.i32() if base == 1 else 5)
+    dimensions = buf.i32()
+    sizes = buf.i32s(buf.i32() if base == 1 else 5)
     typename = buf.string()
     buf.resume(inner)
     count = ""
@@ -79,7 +85,21 @@ def read_element(buf: Buffer, depth: int = 1, counted: bool = False) -> Member:
         buf.i32()  # the version of the class the counter belongs to
         count = buf.string()
     buf.resume(end)
-    return Member(name, title, stype, typename, length, count)
+    return Member(name, title, stype, typename, length, count, _dims(dimensions, sizes, length))
+
+
+def _dims(dimensions: int, sizes: Sequence[int], length: int) -> tuple[int, ...]:
+    """The lengths of a fixed array's dimensions, or none for one that is not shaped.
+
+    ROOT writes how many dimensions the member has and, after it, the maximum
+    index of each, so ``m[4][4]`` is two dimensions of four. A description that
+    does not add up - no dimensions, one, or lengths that do not come to the
+    values written - says nothing about a shape, and the values stay flat.
+    """
+    if dimensions < 2 or len(sizes) < dimensions:
+        return ()
+    found = tuple(int(size) for size in sizes[:dimensions])
+    return found if all(size > 0 for size in found) and math.prod(found) == length else ()
 
 
 def read_counted(buf: Buffer) -> Member:
