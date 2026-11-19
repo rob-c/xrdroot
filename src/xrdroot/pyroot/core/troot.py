@@ -20,6 +20,7 @@ import importlib
 import importlib.util
 import os
 import sys
+import warnings
 from collections.abc import Callable
 from typing import Any
 
@@ -32,8 +33,8 @@ from .objects import TNamed, TObject
 from .strings import TString
 
 __all__ = ["TROOT", "gROOT", "gDebug", "gInterpreter", "gObjectTable", "TInterpreter",
-           "set_line_processor", "TEnum", "TEnumConstant", "TListOfEnums", "class_enums",
-           "TListOfEnumsWithLock", "find_enum", "note_enum"]
+           "set_line_processor", "SetHeuristicMemoryPolicy", "TEnum", "TEnumConstant",
+           "TListOfEnums", "class_enums", "TListOfEnumsWithLock", "find_enum", "note_enum"]
 
 #: ``gObjectTable``: ROOT's count of objects by class - which is not kept here, so it is null,
 #: and a macro testing it skips it.
@@ -591,6 +592,44 @@ class TROOT(TDirectory):
         """``LoadMacro``: ``.L filename``, loaded by :mod:`xrdroot.pycint`."""
         self.ProcessLine(f".L {filename}")
         return 0
+
+
+#: ``ROOT.SetHeuristicMemoryPolicy``'s deprecation text, as ROOT 6.40 gives it.
+_HEURISTIC_DEPRECATED = (
+    "ROOT.SetHeuristicMemoryPolicy() is deprecated and will be removed in ROOT 6.44.\n"
+    "        Since ROOT 6.40, the heuristic memory policy is disabled by default, and with\n"
+    "        ROOT 6.44 it won't be possible to re-enable it with "
+    "ROOT.SetHeuristicMemoryPolicy(),\n"
+    "        which was only meant to be used during a transition period and will be removed.\n"
+)
+
+#: Where a translator that owns the policy keeps its switch - the binding is what runs a
+#: translated destructor, so the answer belongs there.
+_HEURISTIC_SWITCH = ("xrdroot.pycxx.runtime.objects", "set_heuristic")
+
+#: The policy as this namespace remembers it, for a translator with no switch of its own:
+#: ROOT 6.40 turned the heuristic memory policy off, so ``False``.
+_heuristic_policy = False
+
+
+def SetHeuristicMemoryPolicy(enabled: Any) -> bool:
+    """``ROOT.SetHeuristicMemoryPolicy``: whether a call that passes an object to a non-const
+    pointer parameter is taken as leaving it to C++, and what the answer was before.
+
+    Off since 6.40, and deprecated: a translated class's destructor runs when its Python
+    object is collected, where the policy used to say the callee had taken the object over.
+    The switch is the translator's, since that is what destroys; one without a switch gets the
+    value remembered here, so a program that sets and restores the policy still reads the
+    sequence it wrote.
+    """
+    global _heuristic_policy
+    warnings.warn(_HEURISTIC_DEPRECATED, FutureWarning, stacklevel=0)
+    module, name = _HEURISTIC_SWITCH
+    switch = getattr(_submodule(module), name, None)
+    if switch is not None:
+        return bool(switch(bool(enabled)))
+    previous, _heuristic_policy = _heuristic_policy, bool(enabled)
+    return previous
 
 
 #: ``gROOT``.

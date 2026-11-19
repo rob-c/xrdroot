@@ -343,3 +343,44 @@ def test_the_system_loads_no_libraries_a_rootmap_names_because_it_keeps_none() -
     what roottest/root/core/StatusBitsCheck asks before it walks a map that is null."""
     assert ROOT.gSystem.LoadAllLibraries() == 0
     assert ROOT.gInterpreter.GetMapfile() is None
+
+
+def test_the_heuristic_memory_policy_is_off_and_says_what_it_was():
+    """``ROOT.SetHeuristicMemoryPolicy``: deprecated since 6.40, off by default, and it answers
+    with the policy in force before the call - which roottest/python/memory/memory needs, so
+    that the policy it saves and restores around its heuristics is the one it wrote."""
+    assert troot._heuristic_policy is False
+    with pytest.warns(FutureWarning) as warned:
+        expect(
+            (troot.SetHeuristicMemoryPolicy(True), False),
+            (troot.SetHeuristicMemoryPolicy(1), True),
+            (troot.SetHeuristicMemoryPolicy(False), True),
+        )
+    assert [str(each.message) for each in warned.list] == [troot._HEURISTIC_DEPRECATED] * 3
+    assert troot._heuristic_policy is False
+
+
+def test_a_translator_that_owns_the_policy_switch_is_the_one_asked(monkeypatch):
+    """A translator that runs destructors is where the answer belongs, so the name hands the
+    value over rather than keeping a second copy of it."""
+    told = []
+    fake = types.ModuleType("xrdroot.pycxx.runtime.objects")
+    fake.set_heuristic = lambda enabled: told.append(enabled) or True  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "xrdroot.pycxx.runtime.objects", fake)
+    with pytest.warns(FutureWarning):
+        assert troot.SetHeuristicMemoryPolicy(1) is True
+    assert told == [True]
+    assert troot._heuristic_policy is False  # the translator holds it, not this namespace
+
+
+def test_the_memory_policy_is_reached_by_root_s_name_as_well():
+    """ROOT has the call on its namespace, not on ``gROOT``: ``ROOT.SetHeuristicMemoryPolicy``
+    is the one function, so a script may import it either way."""
+    assert ROOT.SetHeuristicMemoryPolicy is troot.SetHeuristicMemoryPolicy
+    assert "SetHeuristicMemoryPolicy" in ROOT.__all__
+    kept = troot._heuristic_policy
+    try:
+        with pytest.warns(FutureWarning):
+            assert ROOT.SetHeuristicMemoryPolicy(kept) is kept
+    finally:
+        troot._heuristic_policy = kept
