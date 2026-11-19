@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
+import numpy as np
+
 
 def test_c_files_and_the_scan_are_what_a_translation_finds_by_name() -> None:
     runtime = importlib.import_module("xrdroot.pycxx.runtime")
@@ -31,3 +33,14 @@ def test_reading_a_file_and_scanning_what_was_read_works_through_the_runtime(
     assert (str(name), count.value, real.value) == ("a", 12, 3.5)
     assert runtime.fgets(line, 80, handle) is None
     runtime.fclose(handle)
+
+
+def test_a_pointer_to_memory_is_true_whatever_bytes_it_holds() -> None:
+    """``if (p)`` of a ``char *`` that holds text - and of one that holds none at all."""
+    from xrdroot.cppstd.buffers import CharBuffer
+
+    empty = CharBuffer(4)
+    assert empty is not None and bool(empty)
+    text = CharBuffer(5)
+    text[:4] = np.frombuffer(b"text", np.int8)
+    assert str(text) == "text" and bool(text)

@@ -436,6 +436,46 @@ def test_a_clones_array_member_names_the_array_and_not_the_class_it_holds():
     assert b"Blip\x00" not in data  # the class is named once, inside the array, as "Blip;0"
 
 
+def test_a_char_array_member_is_the_string_it_holds():
+    # `char fType[20]` is text, which a macro compares with strcmp and searches with strstr -
+    # ROOT streams it as the characters, not as twenty numbers.
+    from xrdroot.pyroot.core.declared import converted
+
+    held = np.zeros(20, "int8")
+    held[:5] = np.frombuffer(b"type0", "int8")
+    assert converted(held, parse_type("char"), None) == "type0"
+    assert converted(b"type1\x00junk", parse_type("char"), None) == "type1"  # up to the NUL
+    assert converted(b"ab", parse_type("char"), None) == "ab"  # no NUL at all
+    assert converted(b"\xff", parse_type("char"), None) == "\udcff"  # not UTF-8: carried through
+    assert converted(65, parse_type("char"), 0) == 65  # a plain char is still a number
+    assert converted(np.zeros(3, "int32"), parse_type("char"), None).tolist() == [0, 0, 0]
+
+
+def test_a_tbits_member_of_a_whole_object_is_the_bits_it_holds():
+    # A TBits held by value comes back as the bits, which a macro walks with FirstSetBit and
+    # asks with TestBitNumber - the members a file holds are not its storage.
+    from xrdroot.buffer import Named
+    from xrdroot.pyroot.core.declared import converted
+
+    raw = np.zeros(2, np.uint8)
+    raw[0] = 0b00010100  # bits 2 and 4
+    row = Named({"fNbits": 12, "fNbytes": 2, "fAllBits": raw}, "TBits")
+    bits = converted(row, parse_type("TBits"), None)
+    assert type(bits).__name__ == "TBits" and bits.GetNbits() == 12
+    assert [at for at in range(12) if bits.TestBitNumber(at)] == [2, 4]
+
+
+def test_a_root_class_held_by_value_with_no_factory_is_filled_where_it_stands():
+    # A class of ROOT's the kit has no maker for is given its members in the object the
+    # member already holds, which is how ROOT reads into the object it was handed.
+    from xrdroot.pyroot.core.declared import converted
+
+    held = ROOT.TAttLine()
+    back = converted({"fLineColor": 4}, parse_type("TAttLine"), held)
+    assert back is held and back.GetLineColor() == 4
+    assert converted({"fLineColor": 4}, parse_type("TAttLine"), None) == {"fLineColor": 4}
+
+
 def test_roots_members_without_a_setter_are_left_as_they_are():
     from xrdroot.pyroot.core.declared import fill_root
 
