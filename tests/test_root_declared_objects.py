@@ -34,7 +34,7 @@ from xrdroot.wdeclared import (
     parse_type,
 )
 from xrdroot.wdobjects import Instance, write_instance, write_members, write_value
-from xrdroot.winfo import INFOS
+from xrdroot.winfo import INFOS, Element
 from xrdroot.writer import WBuffer
 
 DATA = pathlib.Path(__file__).parent / "data"
@@ -1164,6 +1164,86 @@ def test_a_counted_array_of_strings_holding_fewer_than_the_count_is_refused():
     buf = WBuffer()
     with pytest.raises(ValueError, match=r"fS holds 1 strings where fN says 3"):
         write_instance(buf, Instance("Probe", {"TObject": {}, "fN": 3, "fS": ["a"]}), made)
+
+
+def test_a_counted_pointer_to_a_class_is_roots_streamer_loop_however_many_stars():
+    """``TAxis *f //[n]`` and ``TAxis **f //[n]`` are both ``kStreamLoop`` - not the pointer
+    to one object a member without a count is - with room for a pointer and the counter's
+    version, name and class as their extra fields, the stars kept in the type name. The
+    oracle says so of ``class Probe : public TObject { Int_t fN; TAxis *fP; //[fN]
+    TAxis **fQ; //[fN] }``, which is how the bigevent roottest's ``Event::fPaxis`` and
+    ``Event::fQaxis`` are described."""
+    made = _a_class_holding_counted_objects()
+    assert made.info("Probe")[2][1:] == (
+        ("TStreamerBasicType", "fN", "how many", 6, 4, 0, 0, NO_DIMS, "int", ()),
+        ("TStreamerLoop", "fP", "[fN] the objects", 501, 8, 0, 0, NO_DIMS, "Point*",
+         (1, "fN", "Probe")),
+        ("TStreamerLoop", "fQ", "[fN] pointers to the objects", 501, 8, 0, 0, NO_DIMS,
+         "Point**", (1, "fN", "Probe")))  # fmt: skip
+
+
+def _a_class_holding_counted_objects() -> Catalogue:
+    """A class of a program's own holding both kinds of counted object pointer, which is the
+    bigevent roottest's ``Event`` cut down to the two members this writer learns here."""
+    return Catalogue({
+        "Point": Declaration("Point", 1, False, (), (Field("fX", "Int_t", "x", ()),)),
+        "Probe": Declaration("Probe", 1, False, ("TObject",), (
+            Field("fN", "Int_t", "how many", ()),
+            Field("fP", "Point*", "[fN] the objects", ()),
+            Field("fQ", "Point**", "[fN] pointers to the objects", ()))),
+    })  # fmt: skip
+
+
+def test_only_a_pointer_a_count_says_how_many_of_is_a_streamer_loop():
+    """The counted loop is the counted loop alone: an uncounted pointer is the one object it
+    points at, an array of pointers is still the array the array rules make, and a pointer to
+    a class nothing knows, or one star too many, is refused by name rather than guessed at."""
+    def elements(*fields: Field) -> tuple[Element, ...]:
+        return Catalogue({"C": Declaration("C", 1, False, (), fields)}).info("C")[2]
+
+    assert elements(Field("p", "TAxis*", "-> never null", ()))[0][0] == "TStreamerObjectPointer"
+    # An array of pointers keeps the pointer - type 64, kObjectP, with no array offset - and
+    # the elements it holds as its length, as the oracle describes `TAxis *fVaxis[3]`.
+    arrayed = elements(Field("p", "TAxis*", "[3] three of them", (3,)))[0]
+    assert arrayed[:4] == ("TStreamerObjectPointer", "p", "[3] three of them", 64)
+    assert arrayed[4:9] == (24, 3, 1, (3, 0, 0, 0, 0), "TAxis*")
+    with pytest.raises(UnsupportedFeatureError, match=r"C::p is a Thing\*\*, which"):
+        elements(Field("p", "Thing**", "[n] two stars of nothing", ()))
+    with pytest.raises(UnsupportedFeatureError, match=r"C::p is a TAxis\*\*\*, which"):
+        elements(Field("p", "TAxis***", "[n] three stars", ()))
+
+
+#: ROOT 6.40.04's bytes for the ``Probe`` of `_a_class_holding_counted_objects` holding two
+#: ``Point``s in ``fP`` - ``fX`` 11 and 22 - and in ``fQ`` one ``Point`` of ``fX`` 33 and then
+#: nothing, so that both kinds of item and the null pointer are in one record.
+COUNTED_OBJECTS_BYTES = (
+    "4000004c" "0001" "00010000000000000000" "00000002"
+    "40000016" "000a" "40000006" "0001" "0000000b" "40000006" "0001" "00000016"
+    "4000001e" "000a" "40000014" "ffffffff" "506f696e7400" "40000006" "0001" "00000021"
+    "00000000")  # fmt: skip
+
+
+def test_a_counted_pointer_to_a_class_is_written_as_its_objects_in_one_record():
+    """ROOT writes a ``kStreamLoop`` of objects as the record it writes a container in - its
+    count word and version - holding one object after another: for ``Point *fP //[n]`` each
+    the record of the object itself, in place, and for ``Point **fQ //[n]`` each a pointer
+    that names its class, or four zero bytes where it is null. The bytes are the oracle's."""
+    made = _a_class_holding_counted_objects()
+    buf = WBuffer()
+    members = {"fN": 2, "fP": [{"fX": 11}, {"fX": 22}],
+               "fQ": [{"fX": 33}, None]}  # fmt: skip
+    write_instance(buf, Instance("Probe", {"TObject": {}, **members}), made)
+    assert bytes(buf.data).hex() == COUNTED_OBJECTS_BYTES
+
+
+def test_a_counted_pointer_holding_fewer_objects_than_the_count_is_refused():
+    """The count is what ROOT reads by, so a value of fewer objects than the counter says is
+    a row this writer cannot lay out rather than a shorter record."""
+    made = _a_class_holding_counted_objects()
+    buf = WBuffer()
+    with pytest.raises(ValueError, match=r"fP holds 1 objects where fN says 2"):
+        write_instance(
+            buf, Instance("Probe", {"TObject": {}, "fN": 2, "fP": [{"fX": 1}]}), made)
 
 
 def test_a_class_spelled_with_a_space_where_a_streamer_names_it_is_the_same_class():

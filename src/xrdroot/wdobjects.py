@@ -56,6 +56,9 @@ MEMORY_BITS = 0x03000000
 STL_VERSION = 10
 #: How ``cppstd`` writes the name a ``std::complex`` gives itself: ``complex<float>``.
 COMPLEX_PREFIX = "complex<"
+#: The names a string of C++'s owns, which a ``kStreamLoop`` member holds as text - the rest
+#: of what such a member can hold being objects.
+STRING_NAMES = ("TString", "string", "basic_string")
 
 
 class Clones(NamedTuple):
@@ -262,24 +265,41 @@ class _Writer:
         self.buf.end(at)
 
     def _stream_loop(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
-        """``kStreamLoop``: ``TString *name //[n]``, as many strings as the counter member
-        holds, one after another inside a single record - the record a container's is - and no
-        marker for the pointer, which ROOT only streams as the record it fetched them from.
+        """``kStreamLoop``: as many of the one thing as the counter member holds, one after
+        another inside a single record - the record a container's is - and no marker for the
+        pointer, which ROOT only streams as the record it fetched them from.
 
-        A count of nothing is the record alone, the same bytes a null pointer writes, so
-        nothing here asks whether the pointer is set.
+        ``TString *name //[n]`` holds the strings themselves. A counted pointer to a class
+        holds objects: ROOT writes each in place for one star, as it writes the object a
+        member held by value is, and for two stars each as a pointer naming its class - the
+        two shapes :func:`~.interp._loop_step` reads back. A count of nothing is the record
+        alone, the same bytes a null pointer writes, so nothing here asks whether the pointer
+        is set.
         """
+        typename = element[8]
+        noun = "strings" if typename.rstrip("*") in STRING_NAMES else "objects"
         counter = str(element[9][1])
         count = int(_number(members.get(counter, 0)))
-        texts = [_text(text) for text in (() if value is None else value)][:count]
-        if len(texts) < count:
+        items = list(() if value is None else value)[:count]
+        if len(items) < count:
             raise ValueError(
-                f"{element[1]} holds {len(texts)} strings where {counter} says {count}"
+                f"{element[1]} holds {len(items)} {noun} where {counter} says {count}"
             )
         at = self.buf.start(STL_VERSION)
-        for text in texts:
-            self.buf.string(text)
+        for item in items:
+            self._loop_item(typename, item)
         self.buf.end(at)
+
+    def _loop_item(self, typename: str, item: Any) -> None:
+        """One item of a ``kStreamLoop``: the string itself, the object in place for a
+        ``MyClass *x //[n]``, or for ``MyClass **x`` the pointer that names its class - which
+        is a zero, where the pointer is null, rather than an object."""
+        if typename.endswith("**"):
+            self.pointer(class_name(parse_type(typename)), item)
+        elif typename.rstrip("*") in STRING_NAMES:
+            self.buf.string(_text(item))
+        else:
+            self.record(typename.rstrip("*"), item)
 
     def _stl(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
         found = parse_type(element[8])
