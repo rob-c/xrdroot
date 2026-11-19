@@ -10,7 +10,7 @@ view, and printed as ROOT prints them.
 from __future__ import annotations
 
 from .fields import RFieldPtr
-from .model import REntry, RField, RNTupleModel
+from .model import REntry, RField, RFieldBase, RResult, RNTupleModel
 from .processor import RNTupleOpenSpec, RNTupleProcessor
 from .reading import ENTupleInfo, RNTupleDescriptor, RNTupleReader, RNTupleView
 from .views import (
@@ -25,6 +25,8 @@ __all__ = [
     "RNTupleModel",
     "REntry",
     "RField",
+    "RFieldBase",
+    "RResult",
     "RFieldPtr",
     "RNTupleWriter",
     "RNTupleWriteOptions",
