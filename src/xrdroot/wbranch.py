@@ -37,7 +37,7 @@ from typing import Any, NamedTuple
 
 from .buffer import MAP_OFFSET
 from .errors import UnsupportedFeatureError
-from .wclasses import Layout, Member, _mixed, harvested
+from .wclasses import OBJECT, Layout, Member, _mixed, harvested
 from .wcolumns import (
     CountColumn,
     MemberColumn,
@@ -677,24 +677,46 @@ TSTRING, BITS_TYPE = 65, 15
 
 class CloneMember(NamedTuple):
     """One member of the objects of a split ``TClonesArray``, and the class that declares it -
-    the objects' class, or a base of it such as ``TObject``."""
+    the objects' class, or a base of it such as ``TObject`` - with that class's checksum and
+    version, which each member's branch names instead of the objects' own."""
 
     owner: str
     fid: int
     name: str
     stype: int
     title: str
+    checksum: int = 0
+    version: int = 0
 
 
-def clones_members(element: str) -> list[CloneMember]:
+def clones_members(element: str | Layout) -> list[CloneMember]:
     """Every member a ``TClonesArray`` of ``element`` is split into, bases' first, as ROOT
-    splits one: numbers and ``TString``s, a base's members by their place in the base."""
+    splits one: numbers, ``TString``s and whole objects - a ``TRef`` - a base's members by
+    their place in the base.
+
+    ``element`` is a class ROOT has, by name, or a macro's class as it was
+    declared: the declaration is what says which of its members are base
+    classes', and which are whole objects of their own.
+    """
+    if isinstance(element, Layout):
+        return _layout_members(element)
     found: list[CloneMember] = []
     for fid, described in enumerate(_description(element)):
         if described[0] == "TStreamerBase":
             found += clones_members(described[1])
         else:
             found.append(_plain(element, fid, described))
+    return found
+
+
+def _layout_members(layout: Layout) -> list[CloneMember]:
+    """A macro's class as it was declared: each base's members first, then its own."""
+    found: list[CloneMember] = []
+    for base in layout.bases:
+        found += clones_members(base.name)
+    for fid, member in enumerate(layout.members):
+        found.append(CloneMember(layout.name, fid, member.name, member.stype, member.title,
+                                 layout.checksum, layout.version))  # fmt: skip
     return found
 
 
@@ -714,10 +736,11 @@ def _plain(owner: str, fid: int, element: Any) -> CloneMember:
     ):
         raise UnsupportedFeatureError(
             f"{owner}::{name} is a {kind[9:]} member, and a TClonesArray is split here when "
-            f"each member of its objects is a number or a TString; give the branch split "
-            f"level 0 and it is written whole"
+            f"each member of its objects is a number, a TString or an object whose class "
+            f"streams itself; give the branch split level 0 and it is written whole"
         )
-    return CloneMember(owner, fid, name, stype, title)
+    checksum, version, _elements = INFOS[owner]
+    return CloneMember(owner, fid, name, stype, title, checksum, version)
 
 
 @dataclass(frozen=True)
@@ -726,13 +749,14 @@ class SplitClones(Spec):
     a ``TBranchElement`` of ``fType`` 3 counting the objects each entry holds, and one of
     ``fType`` 31 per member, its rows that long."""
 
-    element: str
+    element: str | Layout
 
     def build(self, name: str, basket_size: int) -> Branch:
         size = self._size(basket_size)
         count = ElementLeaf(f"{name}_", f"{name}_", 0, WHOLE, NOT_A_MEMBER)
         checksum, version, _elements = INFOS["TClonesArray"]
-        info = ElementInfo("TClonesArray", "", self.element, checksum, version, 0, CLONES,
+        clones = self.element if isinstance(self.element, str) else self.element.name
+        info = ElementInfo("TClonesArray", "", clones, checksum, version, 0, CLONES,
                            NOT_A_MEMBER)  # fmt: skip
         top = CollectionBranch(name, f"{name}_", self.split, CountColumn(name, size), [count], info)
         top.children = [self._member(top, member, count, size) for member in self.members()]
@@ -742,19 +766,27 @@ class SplitClones(Spec):
         return clones_members(self.element)
 
     def _member(self, top: Branch, member: CloneMember, count: ElementLeaf, size: int) -> Branch:
-        checksum, version, _elements = INFOS[member.owner]
-        info = ElementInfo(member.owner, self.element, "", checksum, version, member.fid,
+        clones = self.element if isinstance(self.element, str) else self.element.name
+        info = ElementInfo(member.owner, clones, "", member.checksum, member.version, member.fid,
                            CLONES_MEMBER, member.stype, count=top)  # fmt: skip
         name, title = f"{top.name}.{member.name}", f"{member.name}[{count.name}]"
-        width = 0 if member.stype in (TSTRING, BITS_TYPE) else BASIC[member.stype][1]
-        column: Any = (
-            StringRows(name, size)
-            if member.stype == TSTRING
-            else MemberRows(name, member.stype, member.title, size)
+        width = (
+            0 if member.stype in (TSTRING, BITS_TYPE, OBJECT) else BASIC[member.stype][1]
         )
+        column: Any = _column(name, member, size)
         leaf = ElementLeaf(name, title, width, member.fid, member.stype, count)
         return Branch(name, title, 0, column, [leaf], info)
 
     def classes(self) -> tuple[str, ...]:
         owners = dict.fromkeys(member.owner for member in self.members())
         return (*super().classes(), "TClonesArray", *_held("TClonesArray")[1:], *owners)
+
+
+def _column(name: str, member: CloneMember, size: int) -> Any:
+    """The rows of one member of a split collection: numbers, strings, or the whole objects
+    of a class that streams itself, each row the bytes its streamer made of one."""
+    if member.stype == TSTRING:
+        return StringRows(name, size)
+    if member.stype == OBJECT:
+        return StreamedColumn(name, size)
+    return MemberRows(name, member.stype, member.title, size)

@@ -14,8 +14,9 @@ import pytest
 
 from xrdroot import UnsupportedFeatureError
 from xrdroot.interp import _packing
-from xrdroot.wbranch import nested
+from xrdroot.wbranch import SplitClones, nested
 from xrdroot.wclasses import Member, checksum, declared, harvested
+from xrdroot.wcolumns import StreamedColumn
 from xrdroot.wpacking import DOUBLE32, FLOAT16, pack_member, packed_size
 
 VALUES = np.array([-3.0, -1.0, -0.123456, 0.0, 0.5, 2.718281828, 3.1])
@@ -77,7 +78,6 @@ def test_a_macros_class_is_described_as_its_declaration_and_classdef_say():
 @pytest.mark.parametrize(
     ("layout", "words"),
     [
-        (("Derived", ("TObject",), ()), "derives from TObject"),
         (("Holder", (), (("fV", "std::vector<float>", "", ()),)), "is a std::vector<float>"),
         (("Array", (), (("fA", "float", "", (3,)),)), r"is a float\[3\]"),
     ],
@@ -85,6 +85,47 @@ def test_a_macros_class_is_described_as_its_declaration_and_classdef_say():
 def test_a_class_of_more_than_plain_numbers_is_refused_by_name(layout, words):
     with pytest.raises(UnsupportedFeatureError, match=words):
         declared(type(layout[0], (), {"_cxx_layout_": layout}))
+
+
+class Derived:
+    """roottest's ``tref_test_pid``: a ``TNamed`` and a ``TRef``, and nothing else."""
+
+    _cxx_layout_ = ("tref_test_pid", ("TNamed",), (("fRef", "TRef", "a reference", ()),))
+
+
+def test_a_class_deriving_from_a_class_root_has_is_described_with_its_base():
+    """ROOT writes a base first in a class's description, and a ``TRef`` member as a whole
+    object, its own class named: what roottest's ``tref_test_pid`` is, and the checksum
+    ROOT 6.40 writes for it is the one this makes of the same elements."""
+    layout = declared(Derived)
+    assert [(b.name, b.version, b.checksum) for b in layout.bases] == [
+        ("TNamed", 1, -541636036)
+    ]
+    assert layout.checksum == 2532022293  # ROOT's -1762945003, unsigned
+    assert [element[:5] for element in layout.elements()] == [
+        ("TStreamerBase", "TNamed", "The basis for a named object (name, title)", 67, 0),
+        ("TStreamerObject", "fRef", "a reference", 61, 24),
+    ]
+
+
+def test_a_class_deriving_from_a_class_root_does_not_describe_is_refused_by_name():
+    undeclared = type("Odd", (), {"_cxx_layout_": ("Odd", ("TMath",), ())})
+    with pytest.raises(UnsupportedFeatureError, match=r"TMath is a base class .* no description"):
+        declared(undeclared)
+
+
+def test_a_split_collection_of_a_macros_class_writes_each_whole_object_member_as_its_own():
+    """A ``TRef`` member of a split ``TClonesArray`` is no number: each row is the reference
+    streamed by its own class, so its column streams whole objects - and its leaf names no
+    width, as ROOT's ``fRef[r1_]`` does not."""
+    top = SplitClones(declared(Derived)).build("r1", 32000)
+    names = [child.name for child in top.children]
+    assert names == ["r1.fUniqueID", "r1.fBits", "r1.fName", "r1.fTitle", "r1.fRef"]
+    ref = top.children[-1]
+    assert isinstance(ref.baskets, StreamedColumn)
+    assert ref.info.checksum == 2532022293 and ref.info.stype == 61
+    leaf, = ref.own
+    assert (leaf.name, leaf.title) == ("r1.fRef", "fRef[r1_]")
 
 
 def test_a_class_root_has_is_split_only_when_its_members_allow():

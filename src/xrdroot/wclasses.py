@@ -17,7 +17,8 @@ first brackets - which reproduces every checksum the donors carry.
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from functools import cache
+from typing import Any, NamedTuple, cast
 
 from .errors import UnsupportedFeatureError
 from .winfo import INFOS, Element
@@ -58,20 +59,45 @@ class Member(NamedTuple):
     size: int
 
 
+class Base(NamedTuple):
+    """A base class: as one of the donors describes the element that names it - the
+    streamer type of the base itself, its title, its checksum and its version."""
+
+    name: str
+    stype: int
+    title: str
+    checksum: int
+    version: int
+
+
 class Layout(NamedTuple):
-    """One class as a file describes it: name, version, checksum and members."""
+    """One class as a file describes it: name, version, checksum, members and bases.
+
+    A macro's class that derives from one of ROOT's carries that base first in
+    what the file says of it, so a ``TRef`` member's owner - the class that
+    declares it - is named for each member and not only for the class.
+    """
 
     name: str
     version: int
     checksum: int
     members: tuple[Member, ...]
+    bases: tuple[Base, ...] = ()
 
     def elements(self) -> tuple[Element, ...]:
-        """The ``TStreamerElement`` of each member, as :data:`~.winfo.INFOS` holds them."""
-        return tuple(
-            ("TStreamerBasicType", m.name, m.title, m.stype, m.size, 0, 0, (0,) * 5, m.typename, ())
+        """The ``TStreamerElement`` of each base and member, as :data:`~.winfo.INFOS` holds
+        them: a base's own checksum and version, a member's streamer type and title."""
+        bases = tuple(
+            ("TStreamerBase", b.name, b.title, b.stype, 0, 0, 0, (0, b.checksum, 0, 0, 0), "BASE",
+             (b.version,))
+            for b in self.bases
+        )  # fmt: skip
+        kinds = {OBJECT: "TStreamerObject"}
+        return bases + tuple(
+            (kinds.get(m.stype, "TStreamerBasicType"), m.name, m.title, m.stype, m.size, 0, 0,
+             (0,) * 5, m.typename, ())
             for m in self.members
-        )
+        )  # fmt: skip
 
 
 def checksum(name: str, elements: tuple[Element, ...]) -> int:
@@ -120,30 +146,62 @@ def harvested(name: str) -> Layout | None:
     return Layout(name, version, stored, members)
 
 
+#: ``kObject``: a member that is a whole object of its own instead of a number, and how many
+#: bytes each class of such a member takes in memory - ``sizeof(TRef)``, as ROOT writes it.
+OBJECT = 61
+OBJECT_TYPES: dict[str, int] = {"TRef": 24}
+
+
+@cache
+def _bases() -> dict[str, Base]:
+    """ROOT's base classes, as the donors describe the elements naming them."""
+    found: dict[str, Base] = {}
+    for _checksum, _version, elements in INFOS.values():
+        for element in elements:
+            kind, name, title, stype, _size, _a, _d, maxima, _t, extra = element
+            if kind == "TStreamerBase" and name not in found:
+                found[name] = _element_base(name, stype, title, maxima, extra)
+    return found
+
+
+def _element_base(name: str, stype: int, title: str, maxima: Any, extra: Any) -> Base:
+    """The base an element names: its checksum is the second maximum, its version the extra."""
+    version = cast("tuple[int, ...]", extra)
+    return Base(name, stype, title, cast("int", maxima[1]), version[0] if version else 1)
+
+
+def _base(name: str) -> Base:
+    """The base ``name``, which has to be one of ROOT's for a macro's class to be split."""
+    found = _bases().get(name)
+    if found is None:
+        raise UnsupportedFeatureError(
+            f"{name} is a base class this writer has no description of, so a macro's class "
+            f"deriving from it cannot be described member by member; declare the class "
+            f"without that base"
+        )
+    return found
+
+
 def declared(cls: Any) -> Layout:
     """A class a macro declared, from what its translation says of its members."""
     name, bases, fields = cls._cxx_layout_
-    if bases:
-        raise UnsupportedFeatureError(
-            f"{name} derives from {', '.join(bases)}, and a tree writes a macro's class "
-            f"member by member only when it stands alone; give the branch a class of "
-            f"plain members"
-        )
     members = tuple(_member(name, *field) for field in fields)
     version_of = getattr(cls, "Class_Version", None)
     version = int(version_of()) if callable(version_of) else 1
-    made = Layout(name, version, 0, members)
+    made = Layout(name, version, 0, members, tuple(_base(base) for base in bases))
     return made._replace(checksum=checksum(name, made.elements()))
 
 
 def _member(owner: str, name: str, spelled: str, title: str, dims: tuple[Any, ...]) -> Member:
     found = TYPES.get(spelled)
-    if found is None or dims:
+    if dims or (found is None and spelled not in OBJECT_TYPES):
         what = f"{spelled}[{']['.join(map(str, dims))}]" if dims else spelled
         raise UnsupportedFeatureError(
             f"{owner}::{name} is a {what}, and a macro's class is written to a tree here "
             f"when each of its members is a single number; keep this one out of the class "
             f"the branch holds"
         )
+    if found is None:
+        return Member(name, OBJECT, spelled, title, OBJECT_TYPES[spelled])
     stype, typename, size = found
     return Member(name, stype, typename, title, size)
