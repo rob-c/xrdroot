@@ -302,8 +302,15 @@ def test_a_bad_index_is_refused_when_the_dimensions_are_known():
         compile_formula("x[0]", {"x": 0})
     with pytest.raises(FormulaError, match="'pt' indexed 1 times is one value"):
         compile_formula("pt[0].size()", {"pt": 1})
-    with pytest.raises(UnsupportedFeatureError, match="ROOT nests those loops"):
-        compile_formula("m[][idx]", {"m": 2, "idx": 1})
+    assert compile_formula("m[][idx]", {"m": 2, "idx": 1}).per_element
+    with pytest.raises(UnsupportedFeatureError, match="reaches 2 levels into the loop"):
+        compile_formula("pt[idx]", {"pt": 1, "idx": 2})
+    with pytest.raises(UnsupportedFeatureError, match="read 2 levels into the loop"):
+        compile_formula("m[][][idx]", {"m": 3, "idx": 1})
+    with pytest.raises(UnsupportedFeatureError, match="read 2 levels into the loop"):
+        compile_formula("m[Iteration$]", {"m": 2})
+    # Sum$ loops on its own and gives one value per entry, so it reaches no level.
+    assert compile_formula("m[Sum$(m)]", {"m": 2}).per_element  # its dimension is looped over
 
 
 def test_a_formula_is_exported_from_the_package():

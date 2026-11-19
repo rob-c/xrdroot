@@ -27,7 +27,7 @@ from typing import Any
 import numpy as np
 
 from ..errors import UnsupportedFeatureError
-from .binding import Specs, column, explicit, loops, varies
+from .binding import Specs, column, explicit, levels, varies
 from .columns import Layout
 from .functions import CASTS, FUNCTIONS, STRING_FUNCTIONS
 from .loops import Cursor, Scope, Space, both
@@ -81,14 +81,12 @@ class Numbers:
 class Member:
     """A branch in one loop, and how it takes part in it."""
 
-    __slots__ = ("node", "weak", "in_index", "late")
+    __slots__ = ("node", "weak", "late")
 
-    def __init__(self, node: Node, weak: bool, in_index: bool, late: bool) -> None:
+    def __init__(self, node: Node, weak: bool, late: bool) -> None:
         self.node = node
         #: Inside ``Alt$``'s first argument, so it does not cut the loop short.
         self.weak = weak
-        #: Inside the index of another branch.
-        self.in_index = in_index
         #: Indexed by something that differs element to element, so read at the last level.
         self.late = late
 
@@ -182,8 +180,7 @@ class Evaluator:
         """Run the loop the branches under ``roots`` make, as far down as it goes."""
         members: list[Member] = []
         for root in roots:
-            self._collect(root, False, False, members)
-        self._refuse_crossed(members)
+            self._collect(root, False, members)
         scope = Scope(self.entries)
         cursors = [
             Cursor(m.node, self.layouts[column(m.node)], self.specs[id(m.node)], m.weak)
@@ -196,43 +193,22 @@ class Evaluator:
     def _late(self, node: Node) -> bool:
         return any(varies(index, self.specs) for index in explicit(node) if index is not None)
 
-    def _collect(self, node: Node, weak: bool, in_index: bool, out: list[Member]) -> None:
+    def _collect(self, node: Node, weak: bool, out: list[Member]) -> None:
         if isinstance(node, Reduce):
             return  # it loops on its own
         if isinstance(node, Alt):
-            self._collect(node.primary, True, in_index, out)
-            self._collect(node.alternate, weak, in_index, out)
+            self._collect(node.primary, True, out)
+            self._collect(node.alternate, weak, out)
             return
         if not isinstance(node, (Ref, Size)):
             for child in children(node):
-                self._collect(child, weak, in_index, out)
+                self._collect(child, weak, out)
             return
         late = self._late(node)
-        out.append(Member(node, weak, in_index, late))
+        out.append(Member(node, weak, late))
         for index in explicit(node) if late else ():
-            assert index is not None  # a branch indexed element by element never also loops
-            self._collect(index, weak, True, out)
-
-    def _refuse_crossed(self, members: list[Member]) -> None:
-        """Refuse a loop inside an index beside a loop outside one, which ROOT nests."""
-        indexed = [m for m in members if m.late and self._indexed_by_loop(m.node)]
-        free = [m for m in members if self._loops_freely(m)]
-        if indexed and free:
-            raise UnsupportedFeatureError(
-                f"{column(indexed[0].node)!r} is indexed by a collection while "
-                f"{column(free[0].node)!r} is looped over outside any index; ROOT runs those "
-                f"as two loops, one inside the other, which this does not do - reduce one of "
-                f"them with Sum$, Max$ or an explicit index"
-            )
-
-    def _indexed_by_loop(self, node: Node) -> bool:
-        return any(loops(index, self.specs) for index in explicit(node) if index is not None)
-
-    def _loops_freely(self, member: Member) -> bool:
-        """Does a branch loop on its own account, rather than inside another's index?"""
-        if member.late or member.in_index:
-            return False
-        return None in self.specs[id(member.node)]
+            if index is not None:  # a dim looped over is the loop's, not an index's
+                self._collect(index, weak, out)
 
     def _index(self, spec: Node) -> tuple[Array, Array | None]:
         """An index expression's value per entry, in a loop of its own that never loops."""
@@ -263,17 +239,41 @@ class Evaluator:
         return Value(data, valid, items)
 
     def _late_branch(self, node: Node, scope: Scope) -> Value:
-        """A branch indexed element by element, read at the last level of the loop."""
-        space = scope.space
-        cursor = Cursor(node, self.layouts[column(node)], self.specs[id(node)], False)
-        cursor.move(space.entry)
-        for spec in cursor.specs:
-            assert spec is not None
-            written = lift(self.value(spec, scope), space)
-            index, ok = as_index(written.data)
-            cursor.step(index, both(ok, written.valid))
+        """A branch indexed element by element, its index worked out inside the loop.
+
+        The dimensions are taken in order: one looped over goes down a level of
+        the loop the other branches make, and one given an index is stepped at
+        the level :func:`levels` puts it at, which is where ROOT works an index
+        out - inside the loops the branch's other dimensions make.
+        """
+        specs = self.specs[id(node)]
+        ats = levels(specs, self.specs)
+        # Weak: the loop is another branch's, so this one is read as far as it reaches.
+        cursor = Cursor(node, self.layouts[column(node)], specs, True)
+        level = ats[0] if ats else 0  # where its first dimension is taken
+        cursor.move(scope.spaces[level].entry)
+        for spec, at in zip(specs, ats, strict=True):
+            if spec is None:
+                cursor.follow(scope.spaces[at], cursor.sizes(), False)
+            else:
+                data, ok = self._index_at(spec, scope, at)
+                index, inside = as_index(data)
+                cursor.step(index, both(inside, ok))
+            level = at
         data, valid = cursor.result()
-        return Value(data, valid, space.looped)
+        for space in scope.spaces[level + 1 :]:
+            data = data[space.parent]
+            valid = None if valid is None else valid[space.parent]
+        return Value(data, valid, scope.space.looped)
+
+    def _index_at(self, spec: Node, scope: Scope, level: int) -> tuple[Array, Array | None]:
+        """An index expression's value at one level of the loop, one per item of that level."""
+        written = lift(self.value(spec, scope), scope.space)
+        data, dropped = scope.reduce(written.data, level)
+        valid = written.valid
+        if valid is not None:
+            valid, _ = scope.reduce(valid, level)
+        return data, both(dropped, valid)
 
     def _special(self, node: Node, scope: Scope) -> Value:
         assert isinstance(node, Special)

@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 from xrdroot import FormulaError, Jagged, UnsupportedFeatureError, compile_formula
+from xrdroot.formula.loops import Scope, Space
 
 
 def jagged(rows):
@@ -236,8 +237,75 @@ def test_a_collection_indexed_by_a_collection_follows_the_index():
     assert run("pt[idx] * w", columns) == [[30, 10], [], [6]]
     assert run("Sum$(pt[idx])", columns) == [40, 0, 2]
     assert compile_formula("pt[idx]", {"pt": 1, "idx": 1}).per_element
-    with pytest.raises(UnsupportedFeatureError, match="ROOT runs those as two loops"):
-        run("pt - pt[idx]", columns)
+    # An index that loops is worked out inside the loop the branch makes, as
+    # ROOT nests them: ``pt - pt[idx]`` pairs the elements the index walks.
+    assert run("pt - pt[idx]", columns) == [[-20, 10], [], [0]]
+
+
+def test_a_dimension_indexed_by_a_collection_is_indexed_one_element_at_a_time():
+    """``fVertex[][fNpoint % 3]``: ROOT nests the index's loop inside the branch's dimensions."""
+    columns = {
+        "m": np.arange(12.0).reshape(1, 3, 4),
+        "k": jagged([[2, 0, 3]]),
+    }
+    assert run("m[][k]", columns) == [[2, 4, 11]]
+    assert compile_formula("m[][k]", columns).per_element
+
+
+def test_an_index_is_worked_out_at_the_level_of_the_loop_it_belongs_to():
+    scope = Scope(1)
+    scope.spaces.append(Space(1, scope.spaces[0], np.array([2, 1])))
+    scope.spaces.append(Space(1, scope.spaces[1], np.array([1, 0, 2])))
+    values, valid = scope.reduce(np.array([10.0, 11.0, 12.0]), 1)
+    # The second item of the first level is expanded no further, so it has no
+    # value of its own; the third one's first element is the second item's.
+    assert valid.tolist() == [True, False, True]
+    assert values[0] == 10.0 and values[2] == 11.0
+    assert scope.reduce(np.array([10.0, 11.0, 12.0]), 2)[0].tolist() == [10.0, 11.0, 12.0]
+
+
+NESTED = {
+    "m": np.arange(24.0).reshape(2, 3, 4),
+    "n": jagged([[0.0, 1.0, 2.0], [0.0]]),
+    "p": np.arange(12.0).reshape(2, 3, 2),
+}
+
+
+def test_an_index_that_loops_is_read_at_its_own_level_of_the_loop():
+    """``m[][n]``: the second dimension is indexed by a value that changes element to element."""
+    result = compile_formula("m[][n] - p", NESTED).evaluate(NESTED)
+    # Entry 0 is three rows of four indexed by 0, 1 and 2, less the two rows of p.
+    assert result.lengths().tolist() == [6, 2]
+    assert result.content.tolist() == [0.0, -1.0, 3.0, 2.0, 6.0, 5.0, -6.0, -7.0]
+
+
+def test_an_index_that_is_itself_missing_leaves_its_elements_out():
+    result = compile_formula("m[][n[n + 1]] - p", NESTED).evaluate(NESTED)
+    # The second entry's n has no n[1], so its index has no value at all.
+    assert result.lengths().tolist() == [4, 0]
+    assert result.content.tolist() == [1.0, 0.0, 4.0, 3.0]
+
+
+def test_a_value_is_carried_down_through_every_level_under_it():
+    scope = Scope(1)
+    scope.spaces.append(Space(1, scope.spaces[0], np.array([2])))
+    scope.spaces.append(Space(1, scope.spaces[1], np.array([2])))
+    scope.spaces.append(Space(1, scope.spaces[2], np.array([3, 4])))
+    values, valid = scope.reduce(np.arange(7.0), 1)
+    # The second item of the first level is expanded no further, so the last
+    # level holds nothing under it; the first one's first element is the first.
+    assert values.tolist() == [0.0, 6.0]
+    assert valid.tolist() == [True, False]
+    assert scope.reduce(np.arange(7.0), 2)[0].tolist() == [0.0, 3.0]
+
+
+def test_a_level_nothing_reaches_has_no_values_of_its_own():
+    scope = Scope(1)
+    scope.spaces.append(Space(1, scope.spaces[0], np.array([2, 1])))
+    scope.spaces.append(Space(1, scope.spaces[1], np.array([0, 0, 0])))
+    values, valid = scope.reduce(np.zeros(0), 1)
+    assert values.tolist() == [0.0, 0.0, 0.0]
+    assert not valid.any()
 
 
 def test_strings_compare_with_strings_and_do_nothing_else():

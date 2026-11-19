@@ -272,6 +272,31 @@ class Scope:
             cursor.follow(space, size, size is space.count or np.array_equal(size, space.count))
         return space
 
+    def reduce(self, values: Array, level: int) -> tuple[Array, Array | None]:
+        """Values per item of the last level, taken down to one per item of ``level``.
+
+        Every level of the loop is made by repeating the items of the one above
+        it, so a level's values are found again in the first item under each of
+        its items. An item with nothing under it has none, which is marked.
+        """
+        if level == len(self.spaces) - 1:
+            return values, None
+        width = len(self.spaces[level])
+        if not len(values):  # the loop stops short of this level: nothing has a value
+            return np.zeros(width, dtype=values.dtype), np.zeros(width, np.bool_)
+        below, ok = self.under(level)
+        return values[below], ok
+
+    def under(self, level: int) -> tuple[Array, Array | None]:
+        """For each item of one level, the first item of the last level that came from it."""
+        below = self.spaces[level + 1].parent
+        for space in self.spaces[level + 2 :]:
+            below = below[space.parent]
+        row = np.arange(len(self.spaces[level]), dtype=np.int64)
+        found = np.minimum(np.searchsorted(below, row), len(below) - 1)
+        ok = below[found] == row
+        return found, None if ok.all() else ok
+
     def value(self, node: Node) -> tuple[Array, Array | None, bool]:
         """A branch's values and validity at the last level, and whether they are per item."""
         values, valid, level = self.done[id(node)]

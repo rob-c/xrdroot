@@ -15,13 +15,13 @@ next, which decides when an index has to be worked out element by element.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from ..errors import UnsupportedFeatureError
 from .errors import FormulaError
 from .nodes import Index, Node, Reduce, Ref, Size, Special, children
 
-__all__ = ["Specs", "bind", "loops", "varies", "explicit"]
+__all__ = ["Specs", "bind", "loops", "varies", "explicit", "levels"]
 
 #: The index of each dimension of one branch, ``None`` for one that is looped over.
 Specs = dict[int, tuple[Index, ...]]
@@ -61,35 +61,107 @@ def _size_specs(node: Size, dims: int) -> tuple[Index, ...]:
     return indices + (None,) * left
 
 
-def _mismatch(node: Node, specs: tuple[Index, ...], table: Specs) -> None:
-    """Refuse a branch that both loops and is indexed by something that loops."""
+def depth(node: Node, table: Specs) -> int:
+    """How deep in the loop a node's value is known: how many levels of it the node crosses.
+
+    A branch is read at the last level its own dimensions loop at, and an
+    index reaching deeper than that is read there too, which is ROOT's rule
+    that the index's loop is nested inside the branch's.
+    """
+    if isinstance(node, Reduce):
+        return 0  # it loops on its own and gives one value per entry
+    if isinstance(node, Special):
+        return int(node.name == "Iteration$")
+    if isinstance(node, (Ref, Size)):
+        return _read_at(node, table)
+    return max((depth(child, table) for child in children(node)), default=0)
+
+
+def _read_at(node: Node, table: Specs) -> int:
+    """The level one branch is read at: the dimensions it loops over, or a deeper index."""
     written = [index for index in explicit(node) if index is not None]
-    if None in specs and any(varies(index, table) for index in written):
-        raise UnsupportedFeatureError(
-            f"{column(node)!r} is indexed by a value that changes from element to element "
-            f"and also looped over in another dimension; ROOT nests those loops inside one "
-            f"another, which this does not do - give every other dimension an index"
-        )
+    inside = max((depth(index, table) for index in written), default=0)
+    return max(sum(1 for spec in table[id(node)] if spec is None), inside)
+
+
+def levels(specs: tuple[Index, ...], table: Specs) -> list[int]:
+    """The level of the loop at which each dimension of one branch is taken.
+
+    A dimension looped over makes the next level, and one given an index is
+    taken at the level that index's own loop reaches - which is ROOT's rule
+    that the index is worked out inside the loops the branch's other
+    dimensions make, so ``m[][idx]`` indexes row by row.
+    """
+    out: list[int] = []
+    level = 0
+    for spec in specs:
+        if spec is None:
+            level += 1
+        else:
+            deeper = depth(spec, table)
+            if deeper > level + 1:
+                raise UnsupportedFeatureError(
+                    f"an index reaches {deeper} levels into the loop where the dimension it "
+                    f"indexes is {level + 1} deep; ROOT nests those loops inside one another "
+                    f"and this does not, so give the branch an index at each dimension "
+                    f"before that one"
+                )
+            level = max(level, deeper)
+        out.append(level)
+    return out
 
 
 def bind(root: Node, dims_of: Callable[[str], int]) -> Specs:
     """The specs of every branch under ``root``, keyed by the ``id`` of its node."""
     table: Specs = {}
-    _bind(root, dims_of, table)
+    found: list[Node] = []
+    _bind(root, dims_of, table, found)
+    _check(found, table)
     return table
 
 
-def _bind(node: Node, dims_of: Callable[[str], int], table: Specs) -> None:
+def _bind(node: Node, dims_of: Callable[[str], int], table: Specs, found: list[Node]) -> None:
     below = children(node.ref) if isinstance(node, Size) else children(node)
     for child in below:
-        _bind(child, dims_of, table)
+        _bind(child, dims_of, table, found)
     if isinstance(node, Size):
         table[id(node)] = _size_specs(node, dims_of(node.ref.column))
     elif isinstance(node, Ref):
         table[id(node)] = _ref_specs(node, dims_of(node.column))
     else:
         return
-    _mismatch(node, table[id(node)], table)
+    found.append(node)
+
+
+def _check(found: Sequence[Node], table: Specs) -> None:
+    """Refuse a branch whose indexing reaches deeper into the loop than the loop goes.
+
+    The levels a branch is taken at are made by the branches that loop on
+    their own account, so a branch indexed at a level nothing else reaches has
+    no loop to be read in: ROOT would make that loop out of the branch's own
+    dimensions, which is a second kind of nesting this does not write.
+    """
+    reach = max(
+        (
+            sum(1 for spec in table[id(node)] if spec is None)
+            for node in found
+            if not _late(node, table)
+        ),
+        default=0,
+    )
+    for node in found:
+        deepest = levels(table[id(node)], table)[-1] if explicit(node) else 0
+        if deepest > reach:
+            raise UnsupportedFeatureError(
+                f"{column(node)!r} is read {deepest} levels into the loop and the expression "
+                f"loops {reach} deep; ROOT makes that loop out of the branch's own dimensions, "
+                f"which this does not nest - loop another branch alongside it, or give the "
+                f"dimensions before it an index"
+            )
+
+
+def _late(node: Node, table: Specs) -> bool:
+    return any(varies(index, table) for index in explicit(node) if index is not None)
 
 
 def _differs(node: Node, table: Specs, iteration: bool) -> bool:
