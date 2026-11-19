@@ -586,6 +586,17 @@ def converted(value: Any, found: Spelled, current: Any) -> Any:
     return _held(value, found, current)
 
 
+def _text_of(value: Any) -> str | None:
+    """A ``char[N]`` read as the string it holds - up to the first NUL, as ``strlen`` reads it,
+    a byte that is not UTF-8 carried through as its own character - or ``None``."""
+    if isinstance(value, bytes):
+        end = value.find(b"\x00")
+        return value[: len(value) if end < 0 else end].decode("utf-8", "surrogateescape")
+    if isinstance(value, np.ndarray) and value.ndim == 1 and value.dtype == np.int8:
+        return _text_of(value.tobytes())
+    return None
+
+
 def _array_of(value: Any, typename: str) -> Any:
     """A pointer's numbers as the array ROOT reads one into - of the length the stream gave."""
     if isinstance(value, (str, bytes)):
@@ -597,7 +608,13 @@ def _array_of(value: Any, typename: str) -> Any:
 
 def _held(value: Any, found: Spelled, current: Any) -> Any:
     """A value read for a member that is no container: text - a string class's, or a
-    ``char *``'s - a number, or an object."""
+    ``char``'s - a number, or an object."""
+    if found.name == "char" and not isinstance(value, (int, np.number)):
+        # ``char name[N]`` is the C string it holds, as ROOT's TLeafC reads one: a macro
+        # compares it with strcmp and searches it with strstr, not a row of numbers.
+        text = _text_of(value)
+        if text is not None:
+            return text
     if found.name in ("string", "TString") or isinstance(value, str):
         return _text(value, found, current)
     if found.name in TYPES or found.name in WIDTHS:
@@ -743,7 +760,12 @@ def _object(value: Any, found: Spelled, current: Any) -> Any:
     cls = find_class(found.name)
     if not isinstance(value, Mapping):
         return value
-    if cls is None:  # one of ROOT's classes, held by value: given its members where it is
+    from .wrapping import from_members
+
+    if cls is None:  # one of ROOT's classes, held by value
+        made = from_members(found.name, value)
+        if made is not None:  # one the kit makes again from a record's members
+            return made
         if current is None:
             return value
         fill_root(current, value)
