@@ -28,9 +28,9 @@ def test_the_survey_counts_what_translates_is_refused_and_crashes(
     report = capsys.readouterr().out
     assert report.startswith(f"3 macros under {tmp_path}\n  translated     1   33.3%\n")
     assert "  refused        1   33.3%" in report and "  crashed        1   33.3%" in report
-    assert "goto, which jumps to a label" in report
+    assert "a goto forward to a label" in report
     assert "RuntimeError: a bug" in report
-    assert "  jump.cxx: goto" in report
+    assert "  jump.cxx: a goto forward to a label" in report
 
 
 def test_a_reason_keeps_its_wording_and_drops_its_particulars() -> None:

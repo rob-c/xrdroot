@@ -18,6 +18,7 @@ from .base import Out, P
 from .ctype import CType
 from .dialect import active
 from .emit_vars import Context, VariableEmitter, addressable
+from .labels import lower
 from .nodes import Capture, Expr, Function, InitList, Lambda, Literal, Name, Param, Unary, VarDecl
 from .nrvo import candidate
 from .program import by_reference
@@ -148,6 +149,7 @@ class FunctionEmitter(VariableEmitter):
             if prologue is not None:
                 prologue()
             assert func.body is not None, "only a function with a body is written"
+            lower(func.body, self.refuse)
             self.statements(func.body.body)
             self._declare_scopes(context, head, func)
         self.template_names -= template
@@ -259,6 +261,7 @@ class FunctionEmitter(VariableEmitter):
         """A lambda's statements, with no loop around them for ``break`` to leave."""
         head = self.out.mark()
         self.given_defaults()
+        lower(node.body, self.refuse)
         self.loops, saved = [], self.loops
         try:
             self.statements(node.body.body)

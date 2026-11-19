@@ -29,8 +29,10 @@ from .nodes import (
     Expr,
     ExprStmt,
     For,
+    Goto,
     Handler,
     If,
+    Label,
     Param,
     RangeFor,
     Return,
@@ -83,10 +85,12 @@ class StmtParser(ExprParser):
         if handler is not None:
             return handler(self)
         if token.kind == "id" and token.text not in KEYWORDS and self.peek(1).is_(":"):
-            # A label is only somewhere for a goto to go, and every goto is refused.
+            # A label: somewhere for a ``goto`` to go, and the head of a loop where one jumps
+            # back to it (:mod:`.labels`).
             self.take()
             self.take()
-            return self.statement() if not self.at_("}") else Empty(token.where)
+            body = self.statement() if not self.at_("}") else Empty(token.where)
+            return Label(token.where, token.text, body)
         if self.looks_declaration():
             return self.declaration_statement()
         expr = self.expression()
@@ -338,7 +342,12 @@ class StmtParser(ExprParser):
         return Return(where, value)
 
     def _goto(self) -> Stmt:
-        raise self.refuse("goto, which jumps to a label, and Python has no jump")
+        where = self.take().where
+        if self.at_("*"):
+            raise self.refuse("goto of a computed address, which is a GNU extension")
+        name = self.identifier()
+        self.expect(";")
+        return Goto(where, name)
 
     def _asm(self) -> Stmt:
         raise self.refuse("inline assembly")

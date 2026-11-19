@@ -636,6 +636,9 @@ class ExprEmitter(NameEmitter):
         own = self.own_operator(node.operand, "operator" + node.op, int(node.postfix))
         if own is not None:
             return own, P.POSTFIX
+        stepped = self._stepped(node)
+        if stepped is not None:
+            return stepped
         delta = "1" if node.op == "++" else "-1"
         moved = self._pointer_step(node)
         if moved is not None:
@@ -646,6 +649,44 @@ class ExprEmitter(NameEmitter):
             return (f"({step} - {delta})", P.ADD) if node.postfix else (step, P.ATOM)
         helper = "postinc" if node.postfix else "preinc"
         return f"{helper}({self.reference(node.operand)}, {delta})", P.POSTFIX
+
+    def _stepped(self, node: Unary) -> Out | None:
+        """``(++c)--``, and ``++(i++)`` of an iterator: an increment of what an increment gave.
+
+        A prefix ``++c`` is the variable itself - an lvalue - so what is done with it next is
+        done to ``c`` once more, and the value read is the one before that second step
+        (postfix) or after it (prefix). A postfix ``i++`` is a copy, and the step taken on
+        the copy is thrown away: only where ``i`` is a class, which is what has an iterator,
+        does that stay valid C++ at all, and what is left is ``++i``.
+        """
+        inner = node.operand
+        if not isinstance(inner, Unary) or inner.op not in ("++", "--"):
+            return None
+        if self.own_operator(inner.operand, "operator" + inner.op, int(inner.postfix)):
+            return None  # the macro's class has an operator of its own, which is used
+        if inner.postfix:
+            return self._copy_step(node, inner)
+        return self._variable_step(node, inner)
+
+    def _copy_step(self, node: Unary, inner: Unary) -> Out | None:
+        """``++(i++)`` of a class: the copy's step is thrown away, and ``i`` is stepped once."""
+        if inner.op != node.op:
+            return None  # ``++(i--)`` steps each way, and is not ``--i``
+        return self.increment(Unary(node.where, node.op, inner.operand))
+
+    def _variable_step(self, node: Unary, inner: Unary) -> Out:
+        """``(++c)--``: ``c`` stepped twice, read before the second step or after it."""
+        first = 1 if inner.op == "++" else -1
+        second = 1 if node.op == "++" else -1
+        chosen = int(not node.postfix)
+        name = self.local_name(inner.operand)
+        if name is not None:
+            both = f"({name} := {name} + {first}), ({name} := {name} + {second})"
+            return f"({both})[{chosen}]", P.POSTFIX
+        reference = self.reference(inner.operand)
+        again = "postinc" if node.postfix else "preinc"
+        both = f"preinc({reference}, {first}), {again}({reference}, {second})"
+        return f"({both})[{chosen}]", P.POSTFIX
 
     def _walks(self, operand: Expr) -> bool:
         """Is ``operand`` a C string, which ``++`` and ``+=`` walk along?"""

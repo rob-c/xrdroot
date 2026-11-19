@@ -150,7 +150,8 @@ def test_run_refuses_a_construct_in_one_line(
     path = write(tmp_path, "jump.C", "void jump() {\n  goto end;\n}\n")
     assert main(["run", str(path)]) == 2
     assert capsys.readouterr().err == (
-        f"xrdroot run: {path}:2: goto, which jumps to a label, and Python has no jump\n"
+        f"xrdroot run: {path}:2: a goto forward to a label, or across a loop's edge is not "
+        "something this translator turns into Python\n"
     )
 
 

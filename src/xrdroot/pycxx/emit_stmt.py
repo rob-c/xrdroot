@@ -49,9 +49,11 @@ from .nodes import (
     Expr,
     ExprStmt,
     For,
+    Goto,
     If,
     Index,
     InitList,
+    Label,
     Literal,
     Member,
     Name,
@@ -323,6 +325,9 @@ class StmtEmitter(CallEmitter):
     def _through_pointer(self, target: Unary) -> str | None:
         if target.op != "*":
             return "assigning to something that is not a variable"
+        found = self.typeof(target.operand)
+        if found is not None and found.is_class and not found.is_pointer:
+            return "assigning through an object that is a value, not a place"
         return None
 
     def _in_place(self, expr: Assign) -> bool:
@@ -346,9 +351,24 @@ class StmtEmitter(CallEmitter):
         if own is not None:
             self.out.line(own, expr.where)
             return True
+        if isinstance(expr.operand, Unary) and expr.operand.op in ("++", "--"):
+            return self._stepped_statement(expr)
         op = "+=" if expr.op == "++" else "-="
         one = Literal(expr.where, "int", 1, "int")
         return self._assign_statement(Assign(expr.where, op, expr.operand, one))
+
+    def _stepped_statement(self, expr: Unary) -> bool:
+        """``(++c)--;``: both steps are taken on ``c``, and the value is thrown away - the one
+        step ``++i++`` leaves, the copy it was taken on being a copy (:meth:`._stepped`)."""
+        assert isinstance(expr.operand, Unary)
+        inner = expr.operand
+        if inner.postfix:
+            if inner.op != expr.op:
+                raise self.refuse(f"{expr.op} of what {inner.op} left, which steps each way", expr)
+            return self._increment_statement(inner)
+        for step in (inner, Unary(expr.where, expr.op, inner.operand)):
+            self._increment_statement(step)
+        return True
 
     def _delete_statement(self, expr: Delete) -> bool:
         found = self.typeof(expr.operand)
@@ -564,6 +584,16 @@ class StmtEmitter(CallEmitter):
             raise self.refuse("a continue inside a switch whose cases fall through", node)
         for step in loop.step:
             self.expression_statement(step)
+        self.out.line("continue", node.where)
+
+    def _label(self, node: Label) -> None:
+        """``again:`` - the loop it heads is written already, so only what it labels is."""
+        self.statement(node.body)
+
+    def _goto(self, node: Goto) -> None:
+        """``goto again;``, which the label it names made a ``continue`` of its loop."""
+        if not node.lowered:
+            raise self.refuse("a goto forward to a label, or across a loop's edge", node)
         self.out.line("continue", node.where)
 
     def _return(self, node: Return) -> None:
@@ -911,6 +941,8 @@ class StmtEmitter(CallEmitter):
         Continue: _continue,
         Return: _return,
         Try: _try,
+        Label: _label,
+        Goto: _goto,
     }
 
 

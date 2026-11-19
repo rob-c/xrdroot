@@ -38,7 +38,7 @@ def test_the_corners_of_the_grammar_are_read(source: str, fragment: str) -> None
 @pytest.mark.parametrize(
     ("source", "why"),
     [
-        ("goto end; end: ;", "goto, which jumps to a label"),
+        ("goto end; end: ;", "a goto forward to a label, or across a loop's edge"),
         ("char buf[8]; TH1F *h = new (buf) TH1F();", "placement new"),
         ("auto a = alignof(TNone);", "alignof of a type whose size this translator does not know"),
         ("bool b = noexcept(f());", "noexcept is not something"),

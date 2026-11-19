@@ -55,6 +55,8 @@ __all__ = [
     "Try",
     "Handler",
     "Empty",
+    "Label",
+    "Goto",
     "Param",
     "Function",
     "ClassDecl",
@@ -370,6 +372,24 @@ class Try(Stmt):
 @dataclass(eq=False)
 class Empty(Stmt):
     pass
+
+
+@dataclass(eq=False)
+class Label(Stmt):
+    """``again:`` and the statement it labels, dropped unless a ``goto`` reaches it."""
+
+    name: str
+    body: Stmt
+
+
+@dataclass(eq=False)
+class Goto(Stmt):
+    """``goto again;``, which is a ``continue`` when it jumps back to a label of the same
+    loop's nesting and nothing this translator can write otherwise."""
+
+    name: str
+    #: Whether the label it names became the ``while True:`` this jump continues.
+    lowered: bool = False
 
 
 # -- declarations ------------------------------------------------------------
