@@ -22,7 +22,7 @@ from pyrootsupport import fresh
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.trees import reader as made_reader
 from xrdroot.pyroot.trees import selector as made
-from xrdroot.pyroot.trees.layout import BranchInfo, LeafInfo, element_class
+from xrdroot.pyroot.trees.layout import BranchInfo, LeafInfo, element_class, held_typename
 from xrdroot.streamers import Member
 
 #: A leaf of numbers, as the tree's layout reports one.
@@ -243,6 +243,34 @@ def test_the_class_of_a_branch_of_objects_comes_from_what_its_record_says():
     assert element_class(_branch("vp", [leaf], "TClonesArray"), leaf) == "Particle"
     assert element_class(_branch("vp", [leaf], "TObjArray"), leaf) == "Particle"
     assert element_class(_branch("vp", [leaf], "Particle"), leaf) == "Particle"
+
+
+def test_the_type_a_split_member_is_held_as_comes_from_the_files_streamers():
+    leaf = LeafInfo("fC.fPx", "fC.fPx", "", "Float_t", "TLeafElement", 1, None,
+                    "fC", False, False)  # fmt: skip
+    branch = _branch("fC", [leaf], "ClassB")
+    found = _read_from({"ClassB": {"fPx": Member("fPx", "", 18, "ClassC", 0)}}, ["fC"])
+    assert held_typename(Fake([leaf], [branch], {}, found), branch, leaf) == "ClassC"
+
+
+def test_a_member_the_streamer_information_does_not_describe_is_typed_by_its_branch():
+    leaf = LeafInfo("fC.fPx", "fC.fPx", "", "Float_t", "TLeafElement", 1, None,
+                    "fC", False, False)  # fmt: skip
+    branch = _branch("fC", [leaf], "ClassB")
+    other = {"ClassB": {"fOther": Member("fOther", "", 18, "ClassC", 0)}}
+    unnamed = Fake([leaf], [branch], {}, _read_from(other, ["fC"]))
+    assert held_typename(unnamed, branch, leaf) is None  # the class, but not this member
+    undescribed = Fake([leaf], [branch], {}, _read_from({}, ["fC"]))
+    assert held_typename(undescribed, branch, leaf) is None  # nor the class
+    assert held_typename(undescribed, None, leaf) is None  # a leaf with no branch
+
+
+def test_a_tree_not_read_from_a_file_holds_no_streamer_information():
+    leaf = LeafInfo("fPx", "fPx", "", "Float_t", "TLeafF", 1, None, "fPx", False, False)
+    branch = _branch("fPx", [leaf], "ClassB")
+    assert held_typename(Fake([leaf], [branch], {}), branch, leaf) is None
+    backing = _read_from({}, [])
+    assert held_typename(Fake([leaf], [branch], {}, backing), branch, leaf) is None
 
 
 def test_a_tree_with_no_interpreter_installed_refuses_to_run_a_selector(tmp_path, monkeypatch):

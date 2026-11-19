@@ -15,7 +15,14 @@ from typing import Any, NamedTuple
 from .sizes import Streamed, streamed
 from .store import OBJECT, TEXT, VECTOR, Store
 
-__all__ = ["LeafInfo", "BranchInfo", "from_store", "from_tree", "element_class"]
+__all__ = [
+    "LeafInfo",
+    "BranchInfo",
+    "from_store",
+    "from_tree",
+    "element_class",
+    "held_typename",
+]
 
 #: The type name each leaf class reads as, signed and then unsigned.
 LEAF_TYPES: dict[str, tuple[str, str]] = {
@@ -101,6 +108,27 @@ def element_class(branch: BranchInfo | None, leaf: LeafInfo) -> str:
     if spelled and spelled not in ("TClonesArray", "TObjArray"):
         return spelled
     return leaf.typename
+
+
+def held_typename(tree: Any, branch: BranchInfo | None, leaf: LeafInfo) -> str | None:
+    """The type the file's streamer information gives the member a branch stands for.
+
+    A branch split out of a class carries the class it was split from - ``ClassB`` for the
+    branch of its member ``fC``, whose own type is ``ClassC`` - so :func:`element_class`
+    typed from the branch alone would hand a macro a ``ClassB``. ROOT types it from the
+    class's dictionary, which is the same account of the member as the file's streamer
+    information; ``None`` when that information describes neither the class nor the
+    member, so nothing but the branch itself says what the leaf holds.
+    """
+    if branch is None:
+        return None
+    backing = getattr(tree, "_backing", None)
+    held = getattr(backing(), "branches", {}).get(branch.name) if backing else None
+    source = getattr(held, "_source", None)
+    if source is None:
+        return None
+    found = source.streamers().get(branch.classname, {}).get(leaf.name.rpartition(".")[2])
+    return None if found is None else str(found.typename)
 
 
 def from_store(store: Store, stats: Any = None, written: bool = False) -> list[BranchInfo]:
