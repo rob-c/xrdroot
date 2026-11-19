@@ -34,6 +34,7 @@ from xrdroot.wdeclared import (
     parse_type,
 )
 from xrdroot.wdobjects import Instance, write_instance, write_members, write_value
+from xrdroot.winfo import INFOS
 from xrdroot.writer import WBuffer
 
 DATA = pathlib.Path(__file__).parent / "data"
@@ -297,6 +298,38 @@ def test_an_enumeration_is_an_int_by_its_own_name():
     decl = Declaration("C", 1, True, (), (Field("k", "EKind", "", ()),))
     elements = Catalogue({"C": decl}, frozenset({"EKind"})).info("C")[2]
     assert elements[0][3] == 3 and elements[0][8] == "EKind"
+
+
+#: The class a program's class reaches as a *member* rather than as a base - a ``TDatime``
+#: held by value, which ``roottest/root/io/bigevent``'s ``Event`` carries - exactly as ROOT
+#: 6.40.04's own ``TClass::GetStreamerInfo`` describes it:
+#:
+#:   root -l -b -q -e 'auto *c = TClass::GetClass("TDatime"); printf("%#x v%d\\n",
+#:     (unsigned)c->GetCheckSum(), c->GetStreamerInfo()->GetClassVersion());
+#:     c->GetStreamerInfo()->GetElements()->ls();'
+MEMBERS_OF_ROOTS = {
+    "TDatime": (0xb44671ee, 1, (
+        ("TStreamerBasicType", "fDatime", "Date (relative to 1995) + time",
+         13, 4, 0, 0, NO_DIMS, "unsigned int", ()),
+    )),
+}
+
+
+def test_a_class_a_member_is_described_as_roots_streamer_info_describes_it():
+    for name, described in MEMBERS_OF_ROOTS.items():
+        assert INFOS[name] == described
+    assert Catalogue({}).known("TDatime")
+
+
+def test_a_member_of_one_of_roots_classes_is_an_object_any():
+    fields = (Field("fDatime", "TDatime", "date and time", ()),
+              Field("fDatimeP", "TDatime*", "-> a pointer to one", ()))
+    elements = Catalogue({"C": Declaration("C", 1, True, (), fields)}).info("C")[2]
+    assert [element[:4] for element in elements] == [
+        ("TStreamerObjectAny", "fDatime", "date and time", 62),
+        ("TStreamerObjectAnyPointer", "fDatimeP", "-> a pointer to one", 68),
+    ]
+    assert [element[8] for element in elements] == ["TDatime", "TDatime*"]
 
 
 def test_a_value_that_is_no_object_where_one_should_be_is_refused():

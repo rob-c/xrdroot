@@ -972,20 +972,24 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
     "TAttBBox2D": (0x002549fc, 0, (
     )),
 
-    # What a drawn histogram's statistics box is made of, and the two records
-    # a tree that keeps references needs: ROOT writes these descriptions
-    # whenever what it streams reaches them - ``TH1::fFunctions`` holds a
-    # ``TPaveStats`` once the histogram is drawn, and ``TTree`` a
-    # ``TBranchRef`` over its ``TRefTable`` - and a file written here that
-    # carries those objects has to describe them the same way. One donor for
-    # all ten, where the rest of this table has several: ``hsimple.root`` as
-    # ROOT 6.40.04 wrote it, running ``tutorials/hsimple.C``, whose drawn
-    # ``hpx`` has the box and whose ``ntuple`` is a tree of that vintage.
-    # ``TAttBBox2D``, the twelfth class ROOT's file lists, is above, where
-    # ``TLine`` reaches it; ``ROOT::TIOFeatures`` is left out on purpose: it
-    # is a member of ROOT 6.40's ``TTree`` and of nothing this writer lays
-    # out, so a description of it here would be one no object of this
-    # library's could ever ask for.
+    # The class a program's own class reaches as a member rather than as a base - a
+    # ``TDatime`` held by value, which is what ``roottest/root/io/bigevent``'s ``Event``
+    # carries - exactly as the oracle says its own ``TStreamerInfo`` holds it:
+    #
+    #   root -l -b -q -e 'for (auto n : {"TDatime"}) { auto *c = TClass::GetClass(n);
+    #     printf("%s %#x v%d\n", n, (unsigned)c->GetCheckSum(),
+    #     c->GetStreamerInfo()->GetClassVersion());
+    #     c->GetStreamerInfo()->GetElements()->ls(); }'
+    #
+    # ``TArray``, ``TArrayF`` and ``TArrayI``, the other classes that test reaches, are
+    # deliberately absent: their one counted member ``fN`` is ``kCounter`` in the
+    # descriptions ROOT's files hold, where the oracle's in-memory one says ``kInt``, and a
+    # description of them here reaches every file that holds a histogram - which ROOT writes
+    # without them - so they are worth adding only with the counter's type settled.
+    "TDatime": (0xb44671ee, 1, (
+        ('TStreamerBasicType', 'fDatime', 'Date (relative to 1995) + time',
+         13, 4, 0, 0, (0, 0, 0, 0, 0), 'unsigned int', ()),
+    )),
     "TAttText": (0x2c0902d2, 2, (
         ('TStreamerBasicType', 'fTextAngle', 'Text angle',
          5, 4, 0, 0, (0, 0, 0, 0, 0), 'float', ()),
