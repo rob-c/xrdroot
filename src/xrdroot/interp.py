@@ -1101,8 +1101,8 @@ def _streamed(read: Callable[[Buffer], Any]) -> Callable[[Buffer], Any]:
 
     def value(buf: Buffer) -> Any:
         version, end = buf.header()
-        if version == 0:
-            buf.u32()  # a class with no version of its own says so with a checksum
+        if version == 0 and end is not None and end - buf.pos >= 4:
+            buf.u32()  # a foreign class carries its checksum where a version would go
         row = read(buf)
         buf.resume(end)
         return row
