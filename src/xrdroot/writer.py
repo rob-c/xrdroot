@@ -1660,26 +1660,35 @@ class WritableFile(WritableDirectory):
         owned: bool,
         algorithm: str | None,
         level: int | None,
+        title: str = "",
     ) -> None:
         self._start(handle, owned, algorithm, level)
         label = _checked(name.rstrip("/").rpartition("/")[2] or name, "file name")
+        # ROOT calls the file title the description of the file - the third
+        # argument of ``new TFile(name, option, ftitle)`` - and it is the title
+        # of the key in front of the file's own record. That key is written
+        # more than once (the fBEGIN block, the top directory's key list, the
+        # free list), and each copy carries the title, so a file with one is
+        # four bytes longer per character than the same file without.
+        titled = _checked(title, "file title")
         # The key in front of the file's own record: the fixed part, then
-        # "TFile", the name, and an empty title; the name and title again.
-        keylen = _keylen("TFile", label, "")
-        nname = keylen + 2 + len(label.encode())
+        # "TFile", the name, the title; the name and title again.
+        keylen = _keylen("TFile", label, titled)
+        nname = keylen + 2 + len(label.encode("utf-8", "surrogateescape"))
+        nname += len(titled.encode("utf-8", "surrogateescape"))
         #: The header, then the room the file's own record takes; both are
         #: filled in at close, when everything they point at has a place.
         self._out = _Output(handle, BEGIN + nname + DIRECTORY_BYTES)
-        super().__init__(self, "", "", BEGIN, 0, nname)
+        super().__init__(self, "", titled, BEGIN, 0, nname)
         #: What the file calls itself: the last segment of where it is going.
         self.name = name
-        self._listed_as = ("TFile", label, "")
+        self._listed_as = ("TFile", label, titled)
         #: The file's identity, which its top directory shares, as in ROOT.
         self._file_uuid = self._uuid
         head = WBuffer()  # the fBEGIN block: the file is a key like any other
         sizes = (nname + DIRECTORY_BYTES, nname - keylen + DIRECTORY_BYTES, keylen)
         _key_fields(head, BEGIN, 0, sizes, 1, self._datime)
-        for text in ("TFile", label, "", label, ""):
+        for text in ("TFile", label, titled, label, titled):
             head.string(text)
         self._out.head[BEGIN : BEGIN + len(head.data)] = head.data
 
@@ -1829,6 +1838,7 @@ class WritableFile(WritableDirectory):
 def create(
     target: Any,
     *,
+    title: str = "",
     compression: str | None = "zlib",
     level: int | None = None,
     config: Any = None,
@@ -1842,13 +1852,18 @@ def create(
 
     ``target`` is a local path, a URL of any scheme this library writes, or
     an already-open binary file, which is used as it is and left open.
+    ``title`` is what the file says it is, as ROOT's
+    ``new TFile(name, option, ftitle)`` has it, and is empty - like a file the
+    command line alone makes - unless given; a title is the only thing ROOT
+    keeps in the key of the file itself, and it is written four times over.
     ``compression`` is ``zlib`` unless said otherwise - ``lzma``, ``lz4``,
     ``zstd``, or ``None`` to store everything as it is - and each object is
     stored raw anyway when compressing it did not make it smaller.
     """
     _check_compression(compression)
     if hasattr(target, "write"):
-        return WritableFile(target, getattr(target, "name", "<file>"), False, compression, level)
+        name = getattr(target, "name", "<file>")
+        return WritableFile(target, name, False, compression, level, title)
     url = parse(target)
     if url.is_local:
         handle: IO[bytes] = open(url.path, "wb")
@@ -1858,7 +1873,7 @@ def create(
         # Persist on successful close: a process that dies part way through
         # leaves the server nothing, where cutting back could not be done.
         handle = open_url(url, "wb", config=config, posc=True)
-    return WritableFile(handle, str(target), True, compression, level)
+    return WritableFile(handle, str(target), True, compression, level, title)
 
 
 def _check_compression(compression: str | None) -> None:

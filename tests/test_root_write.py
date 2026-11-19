@@ -27,6 +27,7 @@ from xrdroot import (
     create,
     open_root,
 )
+from xrdroot.buffer import Buffer
 from xrdroot.compression import (
     BLOCK,
     _lz4,
@@ -36,9 +37,19 @@ from xrdroot.compression import (
     compress,
     decompress,
 )
+from xrdroot.file import Key
 from xrdroot.interp import OFFSET_L, OFFSET_P
 from xrdroot.winfo import INFOS, WRITER_VERSION
-from xrdroot.writer import ObjString, WBuffer, _closure, _element, _find, _list, _record
+from xrdroot.writer import (
+    BEGIN,
+    ObjString,
+    WBuffer,
+    _closure,
+    _element,
+    _find,
+    _list,
+    _record,
+)
 
 DATA = pathlib.Path(__file__).parent / "data"
 
@@ -57,6 +68,15 @@ def written(**objects) -> bytes:
     """A file holding ``objects``, written to memory with the defaults."""
     buf = io.BytesIO()
     with create(buf) as out:
+        for name, obj in objects.items():
+            out[name] = obj
+    return buf.getvalue()
+
+
+def written_with(title: str, **objects) -> bytes:
+    """A file holding ``objects``, written with the defaults and a file title."""
+    buf = io.BytesIO()
+    with create(buf, title=title) as out:
         for name, obj in objects.items():
             out[name] = obj
     return buf.getvalue()
@@ -154,6 +174,34 @@ def test_the_header_says_what_root_would_say():
     assert nbytes_free == 34 + len("<file>") + 10  # the free record's key, then its 10 bytes
     assert nbytes_info > 0
     assert struct.unpack_from(">H", data, 45)[0] == 1  # the UUID's version word
+
+
+def test_a_file_title_is_written_wherever_root_writes_it():
+    title = "Demo ROOT file with histograms"
+    plain, titled = written(s="hello"), written_with(title, s="hello")
+    # ROOT writes the file's own key four times over - twice in the block at
+    # fBEGIN, once in the top directory's key list and once in the free list -
+    # so a file with a title is four bytes longer for each character of it.
+    assert titled.count(title.encode()) == 4
+    assert len(titled) == len(plain) + 4 * len(title)
+    key = Key(Buffer(titled[BEGIN:]))
+    assert (key.classname, key.name, key.title) == ("TFile", "<file>", title)
+    with read_back(titled) as back:
+        assert back["s"] == "hello"  # the title is the file's, not the object's
+
+
+def test_a_file_title_a_key_cannot_carry_is_refused():
+    with pytest.raises(ValueError, match="the file title"):
+        create(io.BytesIO(), title="x" * 255)
+
+
+def test_a_file_title_lands_on_a_file_made_by_its_path(tmp_path):
+    path = tmp_path / "titled.root"
+    with create(str(path), title="written here") as out:
+        out["s"] = "hello"
+    with open_root(str(path)) as back:
+        assert back._source.info[0] > BEGIN  # it wrote what a reader can walk
+    assert b"written here" in path.read_bytes()
 
 
 # -- what else a file can hold ---------------------------------------------
@@ -560,6 +608,36 @@ def test_a_counter_is_found_wherever_a_base_keeps_it():
 
 def test_a_class_no_seed_describes_still_comes_out_of_the_closure():
     assert _closure(dict.fromkeys(["TWhatever"])) == ["TWhatever"]
+
+
+def test_the_statistics_box_and_the_reference_table_are_root_6_40s_own():
+    """The ten classes ROOT writes around a drawn histogram and a tree of
+    references, harvested from its own ``hsimple.root`` - made by ROOT 6.40.04
+    running ``tutorials/hsimple.C``, whose drawn ``hpx`` carries the box."""
+    theirs = {
+        "TAttText": (0x2C0902D2, 2),
+        "TText": (0x3E81D43D, 3),
+        "TBox": (0x65C15337, 3),
+        "TPave": (0xB32728BF, 3),
+        "TLatex": (0xEF2C5136, 2),
+        "TPaveText": (0x9CD2638D, 2),
+        "TVirtualPaveStats": (0x4F46652C, 0),
+        "TPaveStats": (0x5B80DACC, 5),
+        "TBranchRef": (0x2360B3FD, 1),
+        "TRefTable": (0x8C895B85, 3),
+    }
+    assert {name: (INFOS[name][0], INFOS[name][1]) for name in theirs} == theirs
+    reached = _closure(dict.fromkeys(["TPaveStats", "TBranchRef"]))
+    for classname in (*theirs, "TAttBBox2D", "TObject", "TAttLine", "TAttFill", "TNamed"):
+        if classname in ("TLatex", "TText"):
+            # A TPaveText's lines are TLatex objects, written as the class each
+            # of them is, so they are needed by a file that holds one rather
+            # than reached from any base the closure walks.
+            assert classname in INFOS, classname
+            continue
+        assert classname in reached, classname
+    assert reached.index("TPaveStats") < reached.index("TPaveText") < reached.index("TPave")
+    assert reached.index("TPave") < reached.index("TBox") < reached.index("TAttBBox2D")
 
 
 def test_a_list_holding_anything_refuses_and_an_unknown_class_does_too():
