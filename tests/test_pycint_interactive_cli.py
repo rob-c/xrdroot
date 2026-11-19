@@ -698,6 +698,19 @@ def test_the_sources_typedefs_are_read_from_are_macros_with_a_file() -> None:
         del commands.SOURCES["libThing.so"], commands.SOURCES["gone.C"]
 
 
+def test_dot_u_forgets_the_typedefs_of_the_macro_it_unloads() -> None:
+    write("typed.C", "typedef int t14_myint_t;\nint twice(int x) { return 2 * x; }\n")
+    prompt = Interpreter()
+    assert typed(prompt, ".L typed.C") == []
+    assert typed(prompt, ".typedef t14_myint_t") == [
+        "typed.C           1 typedef int t14_myint_t"
+    ]  # fmt: skip
+    assert typed(prompt, ".U typed.C", ".typedef t14_myint_t", "twice(1)") == [
+        "Type t14_myint_t is not defined",
+        "ROOT_prompt_4:1:1: error: use of undeclared identifier 'twice'",
+    ]  # fmt: skip
+
+
 def test_dot_autodict_keeps_cling_s_switch_and_says_nothing() -> None:
     prompt = Interpreter()
     assert typed(prompt, ".autodict", ".autodict 0", ".autodict 1", ".autodict off") == []

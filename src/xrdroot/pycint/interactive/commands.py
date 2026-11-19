@@ -166,12 +166,15 @@ def _load(interp: Interpreter, rest: str) -> list[Said]:
 
 
 def _unload(interp: Interpreter, rest: str) -> list[Said]:
-    """``.U file.C``: what ``.L`` declared from the file, forgotten."""
-    names = interp.loaded.pop(str(Path(split_call(rest)[0].rstrip("+"))) if rest else "", None)
+    """``.U file.C``: what ``.L`` declared from the file, forgotten - and the typedefs it
+    declared with it, since cling's ``.typedef`` lists what the session still holds."""
+    key = str(Path(split_call(rest)[0].rstrip("+"))) if rest else ""
+    names = interp.loaded.pop(key, None)
     if names is None:
         return [Said(f"error: {rest or 'nothing'} was not loaded with .L, so there is "
                      "nothing to unload", True)]  # fmt: skip
     forget(names)
+    SOURCES.pop(str(Path(key).resolve()), None)
     return []
 
 
