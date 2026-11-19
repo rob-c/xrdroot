@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +28,7 @@ from .runtime import ROOT as HOST
 from .runtime import __all__ as RUNTIME_NAMES
 from .typedefs import TYPEDEFS
 
-__all__ = ["ROOT", "dialect", "TYPEDEFS", "PREDEFINED", "ROOT_VERSION"]
+__all__ = ["ROOT", "LIBRARY", "dialect", "TYPEDEFS", "PREDEFINED", "ROOT_VERSION"]
 
 #: ROOT's typedefs that are pointers to what a macro never sees inside - ``TXMLEngine``'s
 #: handles - which a macro copies, compares and passes by reference as the pointers they are.
@@ -72,6 +73,8 @@ PREDEFINED = f"""
 #define R__ADD_INCLUDE_PATH(x)
 #define R__ADD_LIBRARY_PATH(x)
 #define R__CLASS_VERSION(version) public: static Version_t Class_Version() {{ return version; }}
+#define RootClassVersion(Class, version) \
+   static auto _R__CLASS_VERSION_ = {emit.CLASS_VERSION}(Class, version);
 #define R__CLASS_INFO(name) static TClass *Class() {{ return TClass::GetClass(#name); }} \
    static const char *Class_Name() {{ return #name; }} \
    virtual TClass *IsA() const {{ return TClass::GetClass(#name); }} \
@@ -284,7 +287,7 @@ ROOT = Dialect(
     constants={"kTRUE": "True", "kFALSE": "False", "kNPOS": "npos"},
     functions={"R__ASSERT": "cassert"},
     member_pattern=re.compile(r"^f[A-Z]\w*$"),
-    calls={"Format": emit.formatted},
+    calls={"Format": emit.formatted, emit.CLASS_VERSION: emit.class_version},
     call_classes=frozenset({"TString"}),
     member_statement=emit.changing,
     out_parameters=OUT_PARAMETERS,
@@ -318,6 +321,13 @@ ROOT = Dialect(
     loaded=_loaded,
     sources=(Path(__file__).parent,),
 )
+
+
+#: ROOT's dialect as the compiler ACLiC builds a library with sees it: ``__CLING__``, which
+#: only Cling and the rootcling that builds a dictionary define, is not defined there, so a
+#: header's ``#ifndef __CLING__`` blocks - ``RootClassVersion(MyClass,3)`` - are compiled in
+#: and its ``#ifdef __CLING__`` ones are left out, as ROOT leaves them.
+LIBRARY = replace(ROOT, name="root-library", predefined=PREDEFINED + "#undef __CLING__\n")
 
 
 def dialect() -> Any:

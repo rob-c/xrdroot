@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from xrdroot.pycint import Refusal, Where
+from xrdroot.pycint.dialect import LIBRARY
 from xrdroot.pycint.dialect import ROOT as ROOT_DIALECT
 from xrdroot.pycxx.dialect import using
 from xrdroot.pycxx.literals import number
@@ -232,3 +233,13 @@ def test_a_header_in_latin_1_is_still_read(tmp_path: Path) -> None:
     (tmp_path / "old.h").write_bytes(b'const char *s = "\xe9";\n')
     tokens, _ = preprocess('#include "old.h"\n', str(tmp_path / "m.C"))
     assert tokens[-2].text == '"é"'
+
+
+def test_cling_is_defined_for_the_interpreter_and_not_for_a_library_that_is_compiled() -> None:
+    """``__CLING__`` is Cling's and rootcling's: a macro run by the interpreter has it, and
+    the compiler ACLiC builds a library with does not - so a header's ``#ifndef __CLING__``
+    block, ``RootClassVersion(MyClass,3)`` in roottest's ``myclass.h``, is compiled in."""
+    source = "#ifdef __CLING__\ncling\n#endif\n#ifndef __CLING__\ncompiled\n#endif\n"
+    assert words(source) == "cling"
+    with using(LIBRARY):
+        assert words(source) == "compiled"

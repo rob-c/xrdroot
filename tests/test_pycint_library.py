@@ -575,3 +575,36 @@ def test_root_refuses_a_library_that_is_not_there_and_goes_into_a_directory(
     assert Path.cwd().name == "sub"
     with pytest.raises(FileNotFoundError, match="no library xrdroot built"):
         aclic.call("gone_C.so")
+
+
+#: A header that gives a class without a ``ClassDef`` a version of its own, as roottest's
+#: ``io/evolution/versions/myclass.h`` does: the version is compiled in, rootcling is not told.
+VERSIONED_H = """\
+class MyClass {
+public:
+   double a;
+};
+
+#ifndef __CLING__
+RootClassVersion(MyClass,3)
+#endif
+"""
+
+
+def test_a_class_written_without_a_classdef_takes_the_version_the_compiled_header_names(
+) -> None:
+    """``RootClassVersion(MyClass,3)`` is compiled into an ACLiC library - ROOT's macro is
+    inside ``#ifndef __CLING__``, and only rootcling defines that - and sets the version the
+    class is described by, so a class without a ``ClassDef`` is written at version 3 rather
+    than as a foreign class, which is what roottest's ``AddVersion-1-3`` reads back."""
+    from xrdroot.pycint.dialect import LIBRARY
+    from xrdroot.pycint.dialect import ROOT as ROOT_DIALECT
+    from xrdroot.pycxx import translate
+    from xrdroot.pyroot.core.declared import declaration_of
+
+    compiled: dict[str, object] = {}
+    exec(translate(VERSIONED_H, "myclass.h", dialect=LIBRARY), compiled)
+    declared = declaration_of(compiled["MyClass"])  # type: ignore[arg-type]
+    assert (declared.version, declared.foreign) == (3, True)
+    cling = translate(VERSIONED_H, "myclass.h", dialect=ROOT_DIALECT)
+    assert "Class_Version" not in cling  # what Cling, which has __CLING__, leaves out

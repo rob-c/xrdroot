@@ -18,7 +18,12 @@ from ..pycxx.nodes import Block, Call, Expr, For, Name, RangeFor, VarDecl
 from .fill_loops import VectorDraw, vector_fill
 from .tree_loops import NtupleFill, ntuple_fill
 
-__all__ = ["formatted", "changing", "counted_loop", "range_loop", "SEQUENCES"]
+__all__ = ["formatted", "class_version", "changing", "counted_loop", "range_loop",
+            "SEQUENCES", "CLASS_VERSION"]
+
+#: The function ``RootClassVersion`` is written as: not one a program calls, so that the
+#: class it names keeps the version as a class of the translation rather than as a call.
+CLASS_VERSION = "R__ROOT_CLASS_VERSION"
 
 #: ``ROOT::TSeq``'s names, whose ``for`` walks integers as ``range`` does.
 SEQUENCES = frozenset({"TSeq", "TSeqI", "TSeqU", "TSeqL", "TSeqUL"})
@@ -29,6 +34,24 @@ def formatted(emitter: Any, func: Name, node: Call) -> Out | None:
     if func.parts != ["TString", "Format"]:
         return None
     return f"ROOT.TString(cformat({emitter.arguments(node)}))", P.POSTFIX
+
+
+def class_version(emitter: Any, func: Name, node: Call) -> Out | None:
+    """``RootClassVersion(Class, version)``: the version the class's dictionary records.
+
+    ROOT's ``RootClassVersion`` macro - ``#ifndef __CLING__`` around it, since only the
+    compiled library and not rootcling's dictionary is meant to run it - sets the version
+    of the dictionary rootcling generated for the class, ``GenerateInitInstance((Class*)0)
+    ->SetVersion(version)``, which is what lets a class written without a ``ClassDef`` be
+    written with a version of its own rather than as a foreign class. A class declared here
+    carries that version in the ``Class_Version`` its ``ClassDef`` would have defined, which
+    is what both a file's streamer information and the objects written by it are described
+    from, so the version is given to the class as it is made.
+    """
+    assert len(node.args) == 2  # ROOT's macro passes the class and the version, nothing else
+    declared, version = (emitter.value(arg) for arg in node.args)
+    return (f'setattr({declared}, "Class_Version", staticmethod(lambda: {version}))',
+            P.POSTFIX)  # fmt: skip
 
 
 def changing(emitter: Any, owner: CType, target: str, name: str, args: list[str]) -> str | None:
