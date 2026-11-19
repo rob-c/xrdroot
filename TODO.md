@@ -20,17 +20,22 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1089 / 2173** |
+| roottest | 1038 / 2173 (47.8 %) | **1105 / 2173** |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
-| module tests (`other`) | 14 / 109 | **16 / 109** |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1244 / 2820 (44.1 %)** |
+| module tests (`other`) | 14 / 109 | **21 / 109** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1265 / 2820 (44.9 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
-The "now" column is two runs at `68a8d07`: `/tmp/x8/final2b` (roottest, 1076) and
-`/tmp/x8/final1b` (the other kinds), with `/tmp/x8/final2` and `/tmp/x8/final1`
-at the commit before it. The six roottest tests the last round brought in are
+The "now" column is two runs at `8af51aa`: `/tmp/r3/final2` (roottest, 1105) and
+`/tmp/r3/final1` (the other kinds: gtest 52, pyunittest 81, `test/` 6, `other` 21). The
+sixteen roottest tests the last round brought in are the four
+`tree/branches/abc-*-read`, the four `tree/fastcloningeventtree/clone-*`, the four
+`treeformula/references/new.split*`, `tree/fastcloning/runabstract-datageneration1`,
+`ntuple/atlas-datavector/write`, `io/tree/copy` and `utils-build`; `other` gained six
+from TMVA's DNN (`MethodDL-*` with a RESHAPE layer and `Regression-Cpu`). Note that
+`other` reads 15 at `--jobs 5` and 16 alone: `minuit2_ParallelTest` takes 195-236 s. The six roottest tests the last round brought in are
 `io/json/PolyMarker`, `io/rootcint/cltest`, `io/stdarray/arrTemplMemberWrite`,
 `io/stdarray/colWiseWrite_3`, `meta/tclass/execTmpltD32` and
 `treeformula/string/cernbuild`. No PASS was lost; `roottest/main/RootcpReadRemote` and
@@ -573,8 +578,52 @@ these unblock did not set up.
 | Q-19 | `TTree::MakeSelector`, `TSelector` | 5 | M |
 | Q-20 | **Byte-exact written-file layout** (`Disk size … should have been N`) | 18 + 13 tutorials | L |
 | Q-21 | `hsimple`'s `hprof` bin errors (2·10⁻⁶ relative) | 1 + fixture | S |
+| Q-28 | **`RootClassVersion(Class,N)` and `__CLING__`** | 5 + a written-file layout | M |
+| Q-29 | `TStreamerInfo::BuildCheck`/`CompareContent` warnings, and which stream an OUTREF test compares | 4 | S |
+| Q-30 | The emulated layout: file offsets, `newtype`, `Emulation` titles, `GetStreamerInfos` identity | 40 | L |
+| Q-31 | `hadd` of a split branch whose name ends in a dot (`'holder.' is not a name a column can have`) | 4 | S |
+| Q-32 | TMVA's DNN layers beyond DENSE (`RESHAPE` done) and `ROOT has Architecture` | 7 | M |
+| Q-33 | pycxx brace-init of `unordered_set`/`multiset`/`multimap`/`unordered_multimap`, and `_Set`'s arity | 8 | S |
+| Q-34 | `TObjArray` written as ROOT's `TObjArray::Streamer` writes it (with the `TNamed` title) | 44 | M |
+| Q-35 | `TObject`'s heap bits and `TRef::SetAction`'s BIT(16) | 4 | XS |
+| Q-36 | `TBufferFile::CheckByteCount`, and reading by the declared layout when versions match but checksums differ | 5 | M |
+| Q-37 | A `TRef`'s read side: `TFile::ReadProcessID`, `TRef::GetObject`, `TRefTable` resolved per entry | 12 | M |
 
 Notes that will save days:
+
+- **Q-28 = `RootClassVersion` + `__CLING__`.** `src/xrdroot/pycint/dialect.py:62` defines
+  `__CLING__` for every translation, including an ACLiC library build, where real ROOT does
+  not - so `#ifndef __CLING__ RootClassVersion(MyClass,3) #endif` in a test header is dropped
+  and `RootClassVersion` does not exist anywhere in `src/`. Consequence on disk: xrdroot's
+  `myclass3.root` records `MyClass` version 1 where ROOT records 3. This is the whole of
+  `io/evolution/versions/AddVersion-1-3` and `-1-4`.
+- **Q-30.** Measured by worker 5 against all 40 `.ref`s: the file's `offset=4` is
+  recomputed by ROOT's `TStreamerInfo::Build` (the macOS oracle prints 8 for the same file -
+  ROOT's `.ref` was made on x86_64), the in-memory layout is the file's with each member's
+  known type substituted (`newtype=` keeps the file's, and the action line prints `type+200`),
+  `Emulation` titles mark a built-from-file layout, and `#N` is the index in ROOT's
+  `fStreamerInfos`, which appends a layout on every refresh - so the same checksum appears
+  twice. `TStreamerElement.GetOffset` always returns 0 here because the reader drops the
+  file's offset.
+- **Q-34.** ROOT's own 88-byte `TObjArray` stream is `/tmp/r3/oracle-objarray/oa.bin`:
+  `40000054 ffffffff "TObjArray" 40000042 0003`, then `TObject`, then **name and title**,
+  then `fSize` and `fLowerBound`, then each slot as a tagged object.
+- **Q-36.** ROOT reads a record by the *declared* layout when the on-file version equals the
+  in-memory version but the checksums differ; xrdroot reads by the file's layout everywhere,
+  so `meta/evolution/execMixedBaseClass_v2` silently misreads (44 B where ROOT reads 56).
+  `Buffer.resume(end)` also jumps to the recorded end with no `CheckByteCount`.
+- **P-9.** Worker 14's numbers, per 10^6 records: `WriteBuffer-1/2` ~825 s,
+  `ReadBuffer-1/2` ~2 430 s, both in `core/declared.py::_plain_object` -> `wdeclared.declared`
+  -> `wdobjects._basic` -> `wpacking.pack_member` (11.7 of 30.8 s per 10^5 calls); the fix is
+  to memoise the class description and its `struct.Struct` per `TClass` rather than per
+  `Streamer` call. `ntuple_largefile1` writes 268 435 456 entries one at a time (`Rndm` per
+  event). `testBulkApiMultiple` spends 14.2 us per `Fill` in `trees/store.py:209` ->
+  `_nbytes` -> `tree.py:184`, and the per-slot byte count can be computed at branch creation.
+  `minuit2_ParallelTest`'s 195-236 s is `cppstd/containers.py:_fast_int` in a translated
+  `__getitem__`.
+- **P-10.** `multicore/testSetAddressLoop` used to hang and now completes a run in 53 s
+  (`16b3766`): 33 runs of it is 29 minutes. A run is 9 threads reading one entry; the busy
+  wait `while (counter < kNThreads) {}` competes with them for the GIL.
 
 - **Q-11.** The message to look for is
   `FormulaError: 'GetNtrack' in 'GetNtrack()' is not a function ROOT's formulas know`
@@ -626,6 +675,8 @@ Notes that will save days:
 | P-3 | RooStats toy studies and RooFit integral/caching reuse | 32→ ~15 tutorials >5× | L |
 | P-4 | Canvas text and palette speed (`perceptualcolormap`, `schroedinger_hydrogen`, `tmathtext`) | 12–15× → <3×, and the same defect is the worst image DIFFs | M |
 | P-5 | zlib level 1 (Q-6) + a reused `compressobj`; consider `python-isal` | 2–3× on every write | S |
+| P-9 | The five genuinely O(n) timeouts, measured by worker 14 | 8 tests | L |
+| P-10 | `multicore/testSetAddressLoop`: 33 runs of a 53 s run | 1 test | M |
 
 **P-1 is the highest-value engineering task in this document.** The batch
 evaluator (`src/xrdroot/rdf/expression.py`, `src/xrdroot/pyroot/rdf/batched.py`)
@@ -790,21 +841,36 @@ cheap to maintain and impossible to reconstruct.
 | G-6 | todo | | 2 | a member template constructor of a non-template class (`template <class T> WithTemplate(T*)` in `io/alloc/customConstructor.C`) needs `emit_classes` to instantiate a constructor per call; worker 14's patch did it but regressed `test_a_pointer_member_initialised_with_zero_is_null_not_the_number` |
 | Q-23 | todo | | 0 | `TStreamerInfo::ls` and `TStreamerElement::ls` must print what ROOT prints (`roottest/root/io/evolution/versions/*.ref`): a dictionary-less class shows `version=N` and `offset=na` and no `i=` action line; a class with a dictionary in memory shows no `version=`, `offset=na`, and the actions. This is the one change that would let `pairEnumEvo`'s 40 tests compare output, so it is worth a worker of its own (`reflection.py`) |
 | W0-9 | todo | | | harness: the `io/hadd` tests write `src1.root`/`dest.root` in one working directory, so at `--jobs 5` they collide — `test_MergeNestedSameName` read a file another test was writing and went PASS → DIFF, then passed alone. Give each test of a directory its own working copy, or serialise that directory |
+| Q-27 | **done in part** | `c6c380f` (worker 2) | roottest +5 | `CloneTree(-1,"fast")` never reads the objects: it moves the basket bytes and keeps the source file's class description, which is now what `copying.py` does (`Streamed` slot, bytes from `basket.start_of`..`end_of`, a cut picks rows by `Entry$`). `fastcloningeventtree/clone-{split0,split1,split9,streamed}` and `fastcloning/runabstract-datageneration1` pass, and 20 more `draw-*`/`reference` reach the macro instead of a refusal. A class ROOT streams with its own streamer (`TLorentzVector`) is refused in a sentence: writing its bytes back under a member-by-member description read as another shape (verified) |
+| Q-15 | **done in part** | `3683a1d` (worker 4), `16b3766` | roottest +5 | `TRefTable`/`TBranchRef` exist in memory: `BranchRef()` makes the branch (not in `GetListOfBranches`, as ROOT), `Fill` records the row, and `Write` refuses a tree whose table has rows rather than writing it without one. The twelve `io/tree/create-r`/`test-r` tests move two layers down (to splitting a `TClonesArray` of a macro class), and `io/tree/copy` plus the four `treeformula/references/new.split*` now PASS because a `TRef` row can be counted. Worker 4's writer patch - exact, disabled - is `/tmp/r3/w04-patch.diff`; it needs `winfo.INFOS` entries for both classes and a `_ref_branch` in `wtree.py` |
+| Q-20 | **measured exactly** | `a5c3163` (worker 8) | 0 | the 2 811-byte gap between xrdroot's `hsimple.root` (412 081 B with the ntuple-title fix; ROOT's is 414 892) is accounted for byte by byte: 120 B of file title (`writer.py` writes `("TFile", label, "", label, "")`), 2 268 B of twelve missing `StreamerInfo` entries, 346 B of the drawn `TH1F`'s `TPaveStats`, 48 + 11 B of a `float` vs `double` `pz` (a *translator* difference: 3 923 of 25 000 entries differ in the last bit), 18 B of `TTree v20`/`TBranch v13`. **Eleven `io/filemerger` FAILs are exactly these bytes.** None of it is in `wpacking.py`/`wtree.py` |
+| Q-24 | **done in part** | `63852cf` (worker 5) | 0 | a versioned class's layouts are listed in version order, as ROOT keeps them at their version's index - the `reflection.py` half of `AddVersion-1-4`. The 40 `pairEnumEvo` tests stay DIFF and the diagnosis is now exact: see `Q-28` and `Q-30` |
+| Q-14 | **done in part** | `fe937cd` (worker 7) | 0 | `geom/gdml.py` reads a GDML file's tables, solids and placed volumes and passes its own tests; what `io/geo` still needs is `TGeoManager::Import` wired to it, ROOT's eleven `Info in <TGeoManager...>` lines verbatim (they are in `/tmp/r3/w07.log`), `Export`, and a reader for a `TGeoManager` written in a ROOT file. Any partial support only moves the failure, because the compared `.ref` is the GDML one |
+| G-2 (part) | done | `34d6a73` (worker 15) | roottest +1 | `roottest/utils-build` passes: a forward `goto` inside one function is the `while True:`/`break` a retry is, and an increment of an increment translates. `VectorSort`'s `v[i](x) = ...` moved to a *place* refusal (it needs `cppstd`), and the six `TSeqTests`/`coreconttestUnit` tests moved to `ROOT has TListIter` / `'TSeqI' object has no attribute 'begin'` |
+| Q-32 | done | `80c109c` (worker 13) | other +6 | a RESHAPE layer is implemented rather than refused: the five `other/tmva/tmva/DNN/TMVA-DNN-MethodDL-*-Cpu` and `TMVA-DNN-Regression-Cpu` pass |
+| Q-11 (part) | done | `9cb6d31` (worker 1), `d5b0caa` | 0 | a getter whose class names no such member (`Event::GetHistogram` -> `fH`) is the member the rest of the name reads, tried against each object the expression has reached and only when the rest of the name reads something off it; and `Draw("event.GetHistogram().GetXaxis().GetXmax()>>h")` no longer dies in `ast.literal_eval` before the formula engine is asked. No PASS moved: `treeformula/event`'s fixture now gets from `dt_DrawTest.C:17` to line 113, where `'fMatrix' has 1 dimension and is given 2 indices` is the next gap |
+| Q-25 (part) | done | w11's patch, `f2977d4` | roottest +4 | a pointer read by the class it was declared with (`BaseABC *fABC` holding a `Derived`) gives back the derived class the stream named: `buffer.py` keeps the name in front of a record and `pyroot/core/declared.py` makes the object of that class. All four `tree/branches/abc-*-read` pass |
+| P-7 | **done in part** | `16b3766` | 2 hangs | `std::atomic::exchange`/`compare_exchange_strong` and a `_Whole` that answers with the object it holds end the two deadlocks worker 14 found: `io/TFile/assert_tcontext_thread_hoping` gets past its thread and now FAILs on its own subject (`One of the two file is not deleted`), and `multicore/testSetAddressLoop` completes a run in 53 s where it used to hang - 33 runs of speed work now, not a deadlock (`P-10`) |
+| Q-16 (part) | done | `d8f37c2` (worker 9) | roottest +1 | an RNTuple record is a field per member with no column of its own, so `ntuple/atlas-datavector/write` passes and `evolution/write_ntplevolv` fails one step later (`'dict' object has no attribute 'fA'`) |
+| W0-10 | **resolved by decision** | - | 0 | worker 16 measured the premise wrong: reverting `27791f5` gives 9 PASS + 4 FAIL + 7 DIFF where HEAD gives 11 PASS + 8 FAIL + 1 UNSUPPORTED, and the seven `tree/stl` DIFFs turn into failures because of the `.typedef`/`.autodict` *command*, not `execute.load`'s `remember_source` line (removing that line alone changes only `cling/typedef/runptrptr`). **Two PASSes beat seven DIFFs**, so the commit stays; the cause is now known |
+| Q-34 | attempted, not merged | w12's `/tmp/r3/w12-patch.diff` | 0 | worker 12's `TObjArray` writer patch moved `io/datamodelevolution/00/test1` from `required argument is not an integer` to `'list' object has no attribute 'Print'`, but its `_array` writes ROOT's `TObjArray::Streamer` **without the `TNamed` title string**, so the bytes are wrong; ROOT's own 88-byte stream is `/tmp/r3/oracle-objarray/oa.bin`. Not merged, with the reference bytes kept |
+| Q-35 | todo | | 4 | a `TObject` inside a heap object carries `kIsOnHeap|kNotDeleted` = `0x03000000` and `TRef::SetAction` sets BIT(16) = `0x10000`, so ROOT prints `0x3010000` where `TObject._bitword()` starts at 0 (`io/references/actions/test` and its three dependants). Oracle-verified: `0x2000000`, then `0x2010000`, then `0x3000000` |
 
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | now (`5c88c8c`) |
-|---|---|---|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | **1089** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 |
-| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | now (`8af51aa`) |
+|---|---|---|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | **1105** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 |
+| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** |
 
-The last column is `/tmp/r2/final2` (roottest, 1089) and `/tmp/r2/final1` (the other
-kinds) at `5c88c8c`; the round before it, `/tmp/r1/final2` (1078) and `/tmp/r1/final1`
+The last column is `/tmp/r3/final2` (roottest, 1105) and `/tmp/r3/final1` (the other
+kinds) at `8af51aa`; the column before it, `/tmp/r2/final2` (roottest, 1089) and
+`/tmp/r2/final1` (the other kinds) at `5c88c8c`; the round before it, `/tmp/r1/final2` (1078) and `/tmp/r1/final1`
 at `7a43bd9`. The eleven roottest tests the last round brought in are
 `cling/parsing/assertSpaces`, `cling/typedef/runptrptr`,
 `io/alloc/customConstructor-build`, `io/alloc/customLoader-build`,
