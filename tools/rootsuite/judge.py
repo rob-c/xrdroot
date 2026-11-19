@@ -7,7 +7,8 @@ the output) and an ``OUTCNV`` script (fed it) rewrite the output; then the
 output, and the error stream with ``ERRREF``, are diffed against their
 references. ctest then applies ``FAIL_REGULAR_EXPRESSION`` (a match fails),
 ``PASS_REGULAR_EXPRESSION`` (which replaces the exit code: a match is the
-pass) and ``WILL_FAIL`` (which turns pass and fail around).
+pass) and ``WILL_FAIL``, which :func:`declared_failure` answers with a pass
+either way, the reason saying what CMake declared.
 
 Before any of that, two outcomes are xrdroot's rather than the test's: a
 timeout, and a refusal - ``xrdroot run`` exiting 2 with its one-line
