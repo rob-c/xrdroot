@@ -63,7 +63,13 @@ def _calls(tree: Any, varexp: str) -> list[tuple[Any, str, tuple[Any, ...]]] | N
         branch = tree._branch_info(call.group(1)) if call is not None else None
         if call is None or branch is None or not is_object(branch):
             return None
-        found.append((branch, call.group(2), _arguments(call.group(3))))
+        try:
+            arguments = _arguments(call.group(3))
+        except (SyntaxError, ValueError, TypeError):
+            # A call of a call, `event.GetHistogram().GetXaxis()`, has no literal arguments,
+            # and is an expression like any other: drawn by the formula, not by the objects.
+            return None
+        found.append((branch, call.group(2), arguments))
     return found
 
 

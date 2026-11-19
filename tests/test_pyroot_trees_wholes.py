@@ -66,6 +66,8 @@ def test_methods_of_each_entrys_object_are_drawn_as_numbers_or_draw_themselves()
     assert method_draw(back, "hpx.GetMean()", "hpx.GetEntries() > 2", "", None, 0) is None
     assert method_draw(back, "nothing.GetMean()", "", "", None, 0) is None
     assert method_draw(back, "hpx", "", "", None, 0) is None
+    # A call of a call has no literal arguments, so what it draws is the formula's to say.
+    assert method_draw(back, "hpx.GetXaxis().GetXmax()", "", "", None, 0) is None
 
 
 def test_a_tree_drawn_before_anything_has_no_values_to_give():
