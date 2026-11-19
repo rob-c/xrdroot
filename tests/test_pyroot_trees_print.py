@@ -64,6 +64,26 @@ def test_print_lays_the_tree_and_every_branch_out_in_roots_table(capsys):
     assert {len(line) for line in lines} == {78}
 
 
+def test_a_tree_never_written_adds_its_own_record_to_the_header(capsys):
+    """ROOT streams the tree object itself and adds no baskets until it is written."""
+    from xrdroot.pyroot.trees.memory import TREE_RECORD
+
+    TTree("T", "a tree to print").Print()
+    lines = capsys.readouterr().out.splitlines()
+    total = TREE_RECORD + len("T") + len("a tree to print")
+    assert lines[2] == f"*Entries :        0 : Total = {total:15d} bytes  File  Size = {0:10d} *"
+    assert len(lines[2]) == 78
+
+
+def test_a_branch_whose_record_is_not_known_leaves_the_total_to_the_baskets(capsys):
+    """A branch of a variable number of values is not one the record can be counted for."""
+    t = _tree()
+    t.Print()
+    lines = capsys.readouterr().out.splitlines()
+    baskets = sum(branch.tot_bytes for branch in t._layout())
+    assert lines[2] == f"*Entries :        5 : Total = {baskets:15d} bytes  File  Size = {0:10d} *"
+
+
 def test_a_tree_written_prints_its_baskets_on_file(capsys, tmp_path):
     import xrdroot
 

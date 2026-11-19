@@ -22,6 +22,7 @@ from typing import Any
 import numpy as np
 
 from .layout import BranchInfo, LeafInfo
+from .memory import tree_record
 
 __all__ = ["tree_lines", "branch_lines", "show_lines"]
 
@@ -56,12 +57,14 @@ def tree_lines(
     :class:`xrdroot.Key` the tree was read from, when whoever read it says,
     ``record`` the length of the tree's key and record when it is known
     otherwise - in memory, or written in this session - and ``packed`` that
-    record's bytes on file; without any of them the totals are the baskets' alone.
+    record's bytes on file. Without a key the tree is one made here, and ROOT's
+    total is then the baskets plus whatever the tree streams to, which
+    :func:`tree_record` counts when every branch is one it can count.
     """
     every = [below for branch in branches for below in branch.walk()]
     tot = sum(branch.tot_bytes for branch in every)
     zipped = sum(branch.zip_bytes for branch in every)
-    total = tot + (record or 0) if key is None else tot + key.keylen + key.objlen
+    total = tot + _own_record(name, title, branches, key, record)
     on_file = zipped + packed if key is None else zipped + key.nbytes
     return [
         STARS,
@@ -71,6 +74,22 @@ def tree_lines(
         "                       *",
         STARS,
     ]
+
+
+def _own_record(
+    name: str, title: str, branches: Sequence[BranchInfo], key: Any, record: int | None
+) -> int:
+    """What the tree's own record adds to its branches' bytes, as ``TTree::Print`` counts it.
+
+    ROOT streams the tree object itself - ``b.Length()`` - and adds the key and
+    the record of the file's key only for a tree read from a file: a tree that is
+    new has neither, so nothing but its streamed self is added, and the baskets
+    count only once it has been written (``TBranch::GetTotalSize`` adds them only
+    while ``fZipBytes`` is set).
+    """
+    if key is not None:
+        return int(key.keylen) + int(key.objlen)
+    return record if record is not None else (tree_record(name, title, branches) or 0)
 
 
 def _title(branch: BranchInfo) -> str:
