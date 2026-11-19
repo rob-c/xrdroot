@@ -62,6 +62,21 @@ def test_dot_x_runs_a_macro_and_prints_what_it_returns(capsys: pytest.CaptureFix
     assert capsys.readouterr().out == "filled 4\n(double) 6.0000000\nfilled 3\n(double) 4.5000000\n"
 
 
+def test_a_macros_define_is_kept_for_the_macro_it_runs_itself(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Cling finishes the preprocessor pass over a macro before its statements run, so a macro
+    that guards a second run on its own ``#define`` does not re-read itself for ever."""
+    write("inner.C", 'void inner() {\n#ifdef ONCE\nprintf("once\\n");\n#endif\n}\n')
+    write(
+        "outer.C",
+        '#define ONCE\nvoid outer() { gROOT->ProcessLine(".x inner.C"); }\n',
+    )
+    prompt = Interpreter()
+    assert typed(prompt, ".x outer.C", ".x inner.C") == []
+    assert capsys.readouterr().out == "once\nonce\n"
+
+
 def test_dot_x_reports_a_missing_macro_as_root_does_and_a_failing_one_at_its_line() -> None:
     write("bad.C", "int bad() { return 1 / 0; }")
     write("unnamed.C", "{ }")

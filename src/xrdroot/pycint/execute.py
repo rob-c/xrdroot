@@ -199,18 +199,20 @@ def run_source(
     root: Any = None,
     use_cache: bool = False,
     call: bool = True,
+    dialect: Any = None,
 ) -> Any:
     """Translate and run a macro's text; call its function (or unnamed block) with ``args``.
 
     With ``root``, ROOT's names are looked up there rather than in
     :mod:`xrdroot.pyroot`; with ``call`` false, the macro's names are what is
-    handed back.
+    handed back. ``dialect`` is the run's, when the caller took it before the
+    macro's own ``#define`` lines were kept for it.
     """
     preload(source)
     before = dict(DECLARED) if "namespace" in source else None
     done = _cxx.run_source(
-        source, file, args, dialect=session_dialect(), namespace=root, use_cache=use_cache,
-        call=call,
+        source, file, args, dialect=dialect or session_dialect(), namespace=root,
+        use_cache=use_cache, call=call,
     )
     if before is None:
         return done
@@ -262,6 +264,10 @@ def run_program(
     wheres = [_path(path) for path in paths]
     for where in wheres:
         _preread(where)
+        if str(where).endswith(EXTENSIONS):
+            # Cling's preprocessor pass over a macro finishes before the macro runs, so a
+            # `#define` it makes is in force for the file it runs itself - and ever after.
+            define(_read(where))
     if aclic.is_compiled(str(paths[0])):
         return _compiled(str(paths[0]), tuple(args))
     return _cxx.run_program(wheres, args, argv, dialect=session_dialect(), use_cache=use_cache)
@@ -386,8 +392,15 @@ def _executed(text: str, root: Any) -> Any:
     else:
         where = _path(spec)
         source = _read(where)
-        spelled = _cxx.translated(source, str(where), session_dialect(), True).returns
-        value = run_source(source, str(where), arguments(given), root=root, use_cache=True)
+        # Cling finishes the preprocessor pass over a macro before its statements run, so a
+        # `#define` in the macro is kept for the `.x` it runs itself; the run's dialect is the
+        # one taken before that, or the nested read would take the same branch for ever.
+        dialect = session_dialect()
+        spelled = _cxx.translated(source, str(where), dialect, True).returns
+        define(source)
+        value = run_source(
+            source, str(where), arguments(given), root=root, use_cache=True, dialect=dialect
+        )
     line = DIALECT.shown(value, spelled)
     if line is not None:
         sys.stdout.write(line + "\n")
