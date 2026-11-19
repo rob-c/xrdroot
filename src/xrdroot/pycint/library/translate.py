@@ -31,7 +31,7 @@ from ...pycxx.parse_decl import parse
 from ...pycxx.preprocessor import preprocess
 from ...pycxx.program import Program
 from ...pycxx.translation import Translation
-from ..dialect import ROOT as DIALECT
+from ..dialect import LIBRARY as DIALECT
 
 __all__ = ["Declared", "translated_unit", "declared", "declared_in", "digest"]
 

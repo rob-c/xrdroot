@@ -123,9 +123,22 @@ def note_file_infos(infos: list[tuple[str, Layout]]) -> None:
         if any(found[0] == checksum for found in held) or _in_memory(name, checksum, version):
             continue
         taken = {found[1] for found in held}
-        if version in taken and _emulated(name):
-            version = max(taken) + 1
-        held.append((checksum, version, elements))
+        held.append((checksum, _free_version(name, version, taken), elements))
+
+
+def _free_version(name: str, version: int, taken: set[int]) -> int:
+    """The version to list ``name``'s next layout at, given the ones already taken.
+
+    A file written by a class the library has a version of its own for says version 1 - ROOT
+    records what the class was before ``RootClassVersion`` gave it a number - so the layout
+    belongs above the in-memory one. A class nothing describes is emulated from its files and
+    ROOT numbers its layouts as they come, so a version already taken gets the next number.
+    """
+    current = TClass(name)._layout()
+    if current is not None and current[1] > 1 and version <= 1:
+        taken.add(current[1])
+        return next(number for number in range(1, len(taken) + 2) if number not in taken)
+    return max(taken) + 1 if version in taken and _emulated(name) else version
 
 
 def _version_of(layout: tuple[Layout, bool]) -> int:
@@ -327,7 +340,7 @@ class TClass(TNamed):
         return cls is not None and foreign(cls)
 
     def IsVersioned(self) -> bool:
-        return not self.IsForeign()
+        return not (self.GetClassVersion() <= 1 and self.IsForeign())
 
     def IsTObject(self) -> bool:
         cls = self._class()
@@ -349,11 +362,9 @@ class TClass(TNamed):
     def GetClassVersion(self) -> int:
         """``GetClassVersion``: ``ClassDef``'s - -1 for a class declared without one, whose
         layouts are told apart by checksum - and ROOT's own as the donors say."""
-        if self.IsForeign():
-            return -1
         info = self._layout()
         if info is not None:
-            return info[1]
+            return -1 if self.IsForeign() and info[1] <= 1 else info[1]
         version = getattr(self._class(), "Class_Version", None)
         return int(version()) if callable(version) else 1
 

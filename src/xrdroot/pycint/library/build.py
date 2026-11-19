@@ -22,7 +22,7 @@ from pathlib import Path
 
 from ...pycxx import cache
 from ...pycxx.errors import CxxError
-from ..dialect import ROOT as DIALECT
+from ..dialect import LIBRARY as DIALECT
 from . import checks
 from .manifest import SUFFIX, Library, read, write
 from .selection import requested

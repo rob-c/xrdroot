@@ -26,7 +26,7 @@ from typing import Any
 from ...pycxx.errors import CxxError
 from ...pycxx.execute import entry, placed
 from ...pycxx.translation import Translation
-from ..dialect import ROOT as DIALECT
+from ..dialect import LIBRARY as DIALECT
 from .build import BuildError, build_aclic, explained, translator_version
 from .loading import HEADERS, LOADED, Loaded, find, load_library
 from .manifest import SUFFIX, Library, read, stem_of

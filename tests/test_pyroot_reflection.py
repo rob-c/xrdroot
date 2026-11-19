@@ -669,3 +669,25 @@ def test_an_enum_constant_is_one_of_a_class_s_data_members_as_cpp_lists_it():
             ] == [True, False, False, True, False]  # fmt: skip
     assert ROOT.TObject.kZombie == 0x04000000 and ROOT.TH1F.kIsOnHeap == 0x01000000
     assert list(ROOT.TClass("NobodyKnowsThis").GetListOfDataMembers()) == []
+
+
+def test_a_file_written_before_a_class_had_a_version_is_listed_above_the_librarys():
+    """ROOT records version 1 for a class whose library had none when the file was written, so
+    that layout belongs above the in-memory one rather than at 1 where ``ClassDef`` put it -
+    ``AddVersion-1-3`` reads a version-1 file beside a library at version 3."""
+    from xrdroot.pyroot.core.reflection import _free_version
+
+    run_source(
+        VERSIONS.replace("public:", "public: ClassDef(Evo, 3)") % "long", "evo.C", call=False
+    )
+    assert _free_version("Evo", 1, {3}) == 1
+
+
+def test_an_emulated_classs_second_layout_takes_the_next_number():
+    """A class nothing in memory describes is emulated from its files and ROOT numbers the
+    layouts as they come, so a version already taken gets the next number."""
+    from xrdroot.pyroot.core.reflection import _free_version
+
+    _evo("int", "one.root")
+    ROOT.TFile("one.root")
+    assert _free_version("Evo", 1, {1}) == 2
