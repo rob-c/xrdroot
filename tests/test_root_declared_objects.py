@@ -818,15 +818,50 @@ def test_a_container_of_pointers_to_strings_holds_pointers_to_objects():
          NO_DIMS, "list<string*>", (2, 63)),)
 
 
-def test_a_counted_array_of_strings_is_refused_as_the_streamer_loop_it_is():
-    """``TString *f //[n]`` is ``kStreamLoop``: as many strings as the count says, one after
-    another, with no record round them. This writer has not been taught that layout, and the
-    member is refused by name rather than written as a pointer to one string."""
-    made = Catalogue({"C": Declaration("C", 1, True, (), (
-        Field("fTstringp", "TString*", "[fNvertex] array of TString", ()),))})
-    with pytest.raises(UnsupportedFeatureError,
-                       match=r"fTstringp is a TString\* counted by a //\[n\] comment"):
-        made.info("C")  # fmt: skip
+def test_a_counted_array_of_strings_is_roots_streamer_loop_holding_the_counter():
+    """``TString *f //[n]`` is ``kStreamLoop``, 501 - not ``kSTLp`` - with room for a pointer
+    and the counter's version, name and class as its extra fields. The oracle says so of
+    ``class Probe : public TObject { Int_t fN; TString *fS; //[fN] }``, the layout the bigevent
+    roottest's ``Event::fTstringp`` is described by."""
+    made = _a_class_holding_counted_strings()
+    assert made.info("Probe")[2][1:] == (
+        ("TStreamerBasicType", "fN", "how many strings", 6, 4, 0, 0, NO_DIMS, "int", ()),
+        ("TStreamerLoop", "fS", "[fN] the strings", 501, 8, 0, 0, NO_DIMS, "TString*",
+         (1, "fN", "Probe")))
+
+
+def _a_class_holding_counted_strings() -> Catalogue:
+    return Catalogue({"Probe": Declaration("Probe", 1, False, ("TObject",), (
+        Field("fN", "Int_t", "how many strings", ()),
+        Field("fS", "TString*", "[fN] the strings", ())))})  # fmt: skip
+
+
+def test_a_counted_array_of_strings_is_written_as_one_record_of_them():
+    """ROOT streams a ``TString *f //[n]`` as the record it streams a container in - its count
+    word and version - holding the counter's strings one after another, a ``TString`` each, and
+    nothing marking the pointer itself: a count of nothing is that record alone. The bytes are
+    the oracle's, for the same class holding ``a``, ``bb``, ``ccc`` and then nothing."""
+    made = _a_class_holding_counted_strings()
+    cases = {
+        "three": ({"fN": 3, "fS": ["a", "bb", "ccc"]},
+                  "4000001f0001" "00010000000000000000" "00000003"
+                  "4000000b000a" "0161" "026262" "03636363"),
+        "none": ({"fN": 0, "fS": None},
+                 "40000016" "0001" "00010000000000000000" "00000000" "40000002000a"),
+    }
+    for case, (members, expected) in cases.items():
+        buf = WBuffer()
+        write_instance(buf, Instance("Probe", {"TObject": {}, **members}), made)
+        assert bytes(buf.data).hex() == expected, case
+
+
+def test_a_counted_array_of_strings_holding_fewer_than_the_count_is_refused():
+    """The count is what ROOT reads by, so a value of fewer strings than the counter says is a
+    row this writer cannot lay out rather than a shorter record."""
+    made = _a_class_holding_counted_strings()
+    buf = WBuffer()
+    with pytest.raises(ValueError, match=r"fS holds 1 strings where fN says 3"):
+        write_instance(buf, Instance("Probe", {"TObject": {}, "fN": 3, "fS": ["a"]}), made)
 
 
 def test_a_class_spelled_with_a_space_where_a_streamer_names_it_is_the_same_class():

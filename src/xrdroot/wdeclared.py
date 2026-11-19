@@ -71,6 +71,10 @@ OBJECT, ANY, OBJECT_P, OBJECT_PP, ANY_P, ANY_PP, STL = 61, 62, 63, 64, 68, 69, 3
 CHAR_STAR = 7
 #: ``kSTLp``: a pointer to a container, which ROOT lays out as the container itself.
 STL_P = 71
+#: ``kStreamLoop``: as many of the one thing as a ``//[n]`` comment's counter says, one after
+#: another inside a single record. ``TString *fNames; //[fNvertex]`` is how the bigevent
+#: roottest's ``Event::fTstringp`` is laid out.
+STREAM_LOOP = 501
 #: ROOT's classes that stream themselves by hand and that a file holds no description of.
 SELF_STREAMED = ("TRef", "TRefArray")
 #: ``kTString``, ``kTObject``, ``kTNamed`` and ``kCounter``.
@@ -435,19 +439,20 @@ class Catalogue:
         """A pointer to a string is a container pointer, ``kSTLp``, that ROOT writes as the
         string itself - an empty one where the pointer is null - under ``kSTLstring``.
 
-        Counted by a ``//[n]`` comment, the same member is ROOT's ``kStreamLoop`` instead: as
-        many strings as the count says, one after another, a layout this writer has not been
-        taught, so the member is refused by name rather than written as a pointer to one.
+        Counted by a ``//[n]`` comment, the same member is ROOT's ``kStreamLoop``: the
+        oracle's bytes for ``class Probe { Int_t fN; TString *fS; //[fN] }`` holding three
+        strings are ``4000000b000a`` ``0161`` ``026262`` ``03636363`` - a record whose count
+        word and version are a container's, then that many strings one after another, a
+        ``TString`` each, and nothing marking the pointer. A count of nothing is the record
+        alone, which is what a null pointer writes.
         """
         if found.stars > 1 or found.name not in ("string", "basic_string", "TString"):
             return None
-        if _counter_of(field) is not None:
-            raise UnsupportedFeatureError(
-                f"{owner.name}::{field.name} is a {field.spelled} counted by a //[n] comment, "
-                f"which ROOT writes as ``kStreamLoop``: as many strings as the count says, "
-                f"streamed one after another. This writer has not been taught that layout; "
-                f"give the member a std::vector<std::string>, or mark it transient with //! to "
-                f"leave it out of the file")
+        counter = _counter_of(field)
+        if counter is not None:
+            counted = (_class_version(owner, owner.version), counter, owner.name)
+            return ("TStreamerLoop", field.name, field.comment, STREAM_LOOP, POINTER_SIZE,
+                    0, 0, NO_DIMS, streamer_name(found), counted)  # fmt: skip
         return ("TStreamerSTL", field.name, field.comment, STL_P, POINTER_SIZE, 0, 0,
                 NO_DIMS, streamer_name(found), (STL_STRING, STL_STRING))  # fmt: skip
 

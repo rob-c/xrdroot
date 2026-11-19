@@ -255,6 +255,26 @@ class _Writer:
         self.buf.string(_text(value))
         self.buf.end(at)
 
+    def _stream_loop(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
+        """``kStreamLoop``: ``TString *name //[n]``, as many strings as the counter member
+        holds, one after another inside a single record - the record a container's is - and no
+        marker for the pointer, which ROOT only streams as the record it fetched them from.
+
+        A count of nothing is the record alone, the same bytes a null pointer writes, so
+        nothing here asks whether the pointer is set.
+        """
+        counter = str(element[9][1])
+        count = int(_number(members.get(counter, 0)))
+        texts = [_text(text) for text in (() if value is None else value)][:count]
+        if len(texts) < count:
+            raise ValueError(
+                f"{element[1]} holds {len(texts)} strings where {counter} says {count}"
+            )
+        at = self.buf.start(STL_VERSION)
+        for text in texts:
+            self.buf.string(text)
+        self.buf.end(at)
+
     def _stl(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
         found = parse_type(element[8])
         if element[3] in (STL + OFFSET_L, STL_P + OFFSET_L):
@@ -397,6 +417,7 @@ _ELEMENTS: dict[str, Callable[[_Writer, Element, Any, Mapping[str, Any]], None]]
     "TStreamerBasicPointer": _Writer._counted,
     "TStreamerString": _Writer._tstring,
     "TStreamerSTLstring": _Writer._stl_string,
+    "TStreamerLoop": _Writer._stream_loop,
     "TStreamerSTL": _Writer._stl,
     "TStreamerObject": _Writer._object,
     "TStreamerObjectAny": _Writer._object,
