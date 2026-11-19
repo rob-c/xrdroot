@@ -700,6 +700,63 @@ def test_an_array_of_objects_writes_one_record_per_element_and_refuses_one_it_ca
     assert data.endswith(b"\x00\x00\x00\x02") and b"\x00\x00\x00\x01" in data
 
 
+#: ROOT 6.40.04's bytes for ``class V : public TObject { std::vector<double> fVectorD[4];
+#: std::vector<int> fVint[2]; }`` - written by the oracle through ACLiC with 1.5 in ``[0]``,
+#: 2.5 and 3.5 in ``[3]``, and 7 in the second int vector. The array of containers is one
+#: record holding every element's count and values in turn, not a record apiece.
+ARRAY_OF_CONTAINERS_BYTES = (
+    "4000004c0001"
+    "00010000000000000000"
+    "4000002a000a000000013ff80000000000000000000000000000000000024004000000000000"
+    "400c000000000000"
+    "4000000e000a000000000000000100000007"
+)
+
+
+def test_an_array_of_containers_is_roots_stl_element_with_the_array_offset():
+    """ROOT 6.40 describes ``vector<double> f[4]`` as one ``TStreamerSTL`` whose type carries
+    the array offset, room for four containers and four as the length - the oracle's answer
+    for the bigevent roottest's ``Event::fVectorD``, which prints ``type=320 stl=1 ctype=8``,
+    a size of 96, a length of 4, one dimension and a maximum index of 4 - and a
+    two-dimensional one as one element of six, two dimensions outermost first."""
+
+    def catalogue(*fields):
+        return Catalogue({"C": Declaration("C", 1, True, (), fields)})
+
+    info = catalogue(Field("fVectorD", "vector<double>", "array of STL vectors of doubles", (4,)),
+                     Field("v", "vector<int>", "", (2, 3)),
+                     Field("one", "vector<int>", "", ())).info("C")  # fmt: skip
+    assert info[2] == (
+        ("TStreamerSTL", "fVectorD", "array of STL vectors of doubles", 320, 96, 4, 1,
+         (4, 0, 0, 0, 0), "vector<double>", (1, 8)),
+        ("TStreamerSTL", "v", "", 320, 144, 6, 2, (2, 3, 0, 0, 0), "vector<int>", (1, 3)),
+        ("TStreamerSTL", "one", "", 300, 24, 0, 0, NO_DIMS, "vector<int>", (1, 3)))
+
+
+def test_an_array_of_containers_writes_every_element_into_its_one_record():
+    """The values of such an array go as one record's worth: the version a container carries,
+    then each element's count and what it holds, in the order the array holds them - ROOT's
+    own bytes for a class of an array of doubles' vectors and an array of ints'."""
+    made = Catalogue({"V": Declaration("V", 1, False, ("TObject",), (
+        Field("fVectorD", "vector<double>", "array of STL vectors of doubles", (4,)),
+        Field("fVint", "vector<int>", "", (2,))))})  # fmt: skip
+    buf = WBuffer()
+    write_instance(buf, Instance("V", {"TObject": {}, "fVectorD": [[1.5], [], [], [2.5, 3.5]],
+                                        "fVint": [[], [7]]}), made)  # fmt: skip
+    assert bytes(buf.data).hex() == ARRAY_OF_CONTAINERS_BYTES
+
+
+def test_an_array_of_containers_of_objects_is_refused_by_name():
+    """ROOT writes a container of objects member by member, and how it lays one of those out
+    column by column inside an array's single record is not a shape this writer knows: the
+    member is refused with a sentence naming it rather than written on a guess."""
+    made = Catalogue({"C": Declaration("C", 1, True, (), (
+        Field("v", "vector<TLine>", "", (2,)),))})
+    with pytest.raises(UnsupportedFeatureError,
+                       match=r"a vector<TLine> array holds objects, which ROOT writes"):
+        write_members(WBuffer(), Instance("C", {"v": [[], []]}), made)  # fmt: skip
+
+
 #: ROOT 6.40.04's ``TBufferFile::WriteObjectAny`` of a ``classWithComplex(1, 2, 3, 4)`` - a
 #: ``std::complex<float> fcf`` and a ``std::complex<double> fcd`` - as the oracle writes it: the
 #: record's byte count, the version a class of no ``ClassDef`` carries (0) and its checksum,

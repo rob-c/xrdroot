@@ -420,12 +420,23 @@ class Catalogue:
     def _container(
         self, owner: Declaration, field: Field, found: Spelled, counter: bool
     ) -> Element | None:
+        """``vector<T> name``, or the array of containers ``vector<T> name[N]``: a ROOT file
+        describes both as one ``TStreamerSTL``, and the array with the array offset on its
+        type, room for N containers and N as its length - as the oracle writes the
+        ``vector<double> f[4]`` this class holds.
+        """
         kind = STL_KINDS.get(found.name)
-        if kind is None or found.stars or field.dims:
+        if kind is None or found.stars:
             return None
         content = OBJECT if found.name in MAPS else self.content_type(found.args[0])
         if found.name in MAPS:
             self.describe(pair_name(found))
+        dims = _dimensions(owner, field)
+        if dims:
+            length = _product(dims)
+            return ("TStreamerSTL", field.name, field.comment, STL + OFFSET_L,
+                    CONTAINER_SIZE * length, length, len(dims), (*dims, *NO_DIMS)[:5],
+                    streamer_name(found), (kind, content))  # fmt: skip
         return ("TStreamerSTL", field.name, field.comment, STL, CONTAINER_SIZE, 0, 0, NO_DIMS,
                 streamer_name(found), (kind, content))  # fmt: skip
 

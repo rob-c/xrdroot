@@ -33,6 +33,7 @@ from .wdeclared import (
     OBJECT,
     OFFSET_L,
     OFFSET_P,
+    STL,
     STL_KINDS,
     Catalogue,
     Spelled,
@@ -254,7 +255,11 @@ class _Writer:
         self.buf.end(at)
 
     def _stl(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
-        self.collection(parse_type(element[8]), value)
+        found = parse_type(element[8])
+        if element[3] == STL + OFFSET_L:
+            self.container_array(found, value)
+            return
+        self.collection(found, value)
 
     def _object(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
         if element[3] in (OBJECT + OFFSET_L, ANY + OFFSET_L):
@@ -299,6 +304,28 @@ class _Writer:
         if content.stars or content.name in STL_KINDS:
             return False
         return self.catalogue.basic(content) is None and content.name not in ("string", "TString")
+
+    def container_array(self, found: Spelled, value: Any) -> None:
+        """An array of containers, as ``vector<double> f[4]`` is: ROOT writes the whole array
+        into one record - its version, then each element's count and what it holds, in turn -
+        rather than giving every element a record of its own, as a container nested in a
+        container is written.
+
+        An element holding objects goes member by member, and how ROOT lays one of those out
+        column by column inside an array's single record is not something this writer has been
+        shown, so such a member is refused by name instead of guessed at.
+        """
+        if self._member_wise(_contents(found, None)[1]):
+            raise UnsupportedFeatureError(
+                f"a {found.text()} array holds objects, which ROOT writes column by column "
+                f"inside the array's one record, a layout this writer has not been taught; "
+                f"give the member a container of numbers or strings, or mark it transient "
+                f"with //! to leave it out of the file")
+        at = self.buf.start(STL_VERSION)
+        for one in value or ():
+            items, content = _contents(found, one)
+            self.items(content, items)
+        self.buf.end(at)
 
     def items(self, content: Spelled, items: list[Any]) -> None:
         """A count and the items one after another, as a container of other things holds them."""
