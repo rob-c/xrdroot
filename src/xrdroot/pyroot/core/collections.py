@@ -45,6 +45,12 @@ def _named(item: Any, name: str) -> bool:
     return hasattr(item, "GetName") and item.GetName() == name
 
 
+def _named_by(obj: Any, option: str) -> None:
+    """``Add(obj, option)``'s option, which names the object ROOT is about to add."""
+    if option and hasattr(obj, "SetName"):
+        obj.SetName(option)
+
+
 class TCollection(TObject):
     """``TCollection``: a named collection of objects, held in order."""
 
@@ -128,8 +134,9 @@ class TCollection(TObject):
             if obj is not None
         )
 
-    def Add(self, obj: Any) -> None:
-        """``Add``: at the end."""
+    def Add(self, obj: Any, opt: str = "") -> None:
+        """``Add(obj[, opt])``: at the end, ROOT's option naming the object when it names one."""
+        _named_by(obj, opt)
         self._items.append(obj)
 
     def AddLast(self, obj: Any) -> None:
@@ -400,7 +407,8 @@ class FunctionList(TList):
 
         return self._functions if isinstance(getattr(obj, "_xrd", None), Function) else self._extras
 
-    def Add(self, obj: Any) -> None:
+    def Add(self, obj: Any, opt: str = "") -> None:
+        _named_by(obj, opt)
         home = self._home(obj)
         home.append(obj._xrd if home is self._functions else obj)
 

@@ -85,6 +85,19 @@ def test_a_sequence_is_indexed_and_walked_both_ways():
     assert not held.IsSorted()
 
 
+def test_an_add_with_a_name_option_renames_the_object_it_adds():
+    held = ROOT.TList()
+    held.Add(ROOT.TNamed("old", "Old"), "option_0_option")
+    nameless = object()
+    held.Add(nameless, "ignored")
+    expect(
+        (held.GetSize(), 2),
+        (held[0].GetName(), "option_0_option"),
+        (held[0].GetTitle(), "Old"),
+        (bool(held[1] is nameless), True),
+    )
+
+
 def test_links_walk_a_list():
     held = ROOT.TList()
     expect(

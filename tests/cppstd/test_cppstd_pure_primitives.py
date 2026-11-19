@@ -50,6 +50,17 @@ def test_bitsets_mask_shifts_and_mutate_bits_in_place() -> None:
     assert value.to_string() == "0001" and value.any() and not value.none()
 
 
+def test_a_bitset_sets_resets_and_tests_the_bits_cpp_names() -> None:
+    value = bitset.bitset[6]()
+    assert value.set(1).set(4) is value and value.to_string() == "010010"
+    assert value.reset(1) is value and value.to_string() == "010000"
+    assert value.test(4) and not value.test(1)
+    assert value.reset() is value and value.to_string() == "000000"
+    assert value.set(2, False).to_string() == "000000" and value.set(2, True).test(2)
+    with pytest.raises(IndexError, match="6 is outside this bitset of 6 bits"):
+        value.test(6)
+
+
 def test_duration_units_and_atomic_updates_keep_their_value_semantics() -> None:
     duration = chrono.chrono.milliseconds(1500)
     assert duration.count() == 1500

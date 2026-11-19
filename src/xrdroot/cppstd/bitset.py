@@ -37,6 +37,25 @@ class Bitset:
         bit = 1 << int(index)
         self._bits = self._bits | bit if value else self._bits & ~bit
 
+    def set(self, index: int, value: Any = True) -> Bitset:
+        """``set(i)`` a bit, or ``set(i, false)`` clear it, in place as C++'s does."""
+        self[index] = value
+        return self
+
+    def reset(self, index: Any = None) -> Bitset:
+        """``reset()`` every bit, or ``reset(i)`` one, in place as C++'s does."""
+        if index is None:
+            self._bits = 0
+        else:
+            self[index] = False
+        return self
+
+    def test(self, index: int) -> bool:
+        """``test(i)``: the bit at ``i``, refusing as ``std::bitset::test`` does past the width."""
+        if not 0 <= int(index) < self._size:
+            raise IndexError(f"{index} is outside this bitset of {self._size} bits")
+        return self[index]
+
     def flip(self, index: Any = None) -> Bitset:
         """``flip()`` every bit, or ``flip(i)`` one - in place, as C++'s, and the set returned."""
         self._bits ^= self._mask() if index is None else 1 << int(index)
