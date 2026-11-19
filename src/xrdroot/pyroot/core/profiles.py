@@ -38,14 +38,22 @@ class _Profiled:
     DIM: int
 
     def _booked(self, args: tuple[Any, ...]) -> Any:
+        """The profile ROOT's constructor arguments describe, drawn in ``gStyle``'s attributes.
+
+        A ``TProfile`` is a ``TH1`` and is built by ``TH1::Build`` as one is, so its
+        line colour is ``gStyle``'s ``HistLineColor`` - 602 - and not the ``1`` a
+        ``TAttLine`` starts with. That colour is in the bytes a file keeps.
+        """
         from ...profile import Profile
+        from .histcore import _in_style
 
         if not args:
-            return Profile.book("", *[(1, 0.0, 1.0)] * self.DIM)
+            return _in_style(Profile.book("", *[(1, 0.0, 1.0)] * self.DIM))
         specs, rest = axis_specs(args[2:], self.DIM)
         values, option = _value_range(rest)
-        return Profile.book(str(args[0]), *specs, title=str(args[1]), error_option=option.lower(),
-                            value_range=values)  # fmt: skip
+        made = Profile.book(str(args[0]), *specs, title=str(args[1]),
+                            error_option=option.lower(), value_range=values)  # fmt: skip
+        return _in_style(made)
 
     def ClassName(self) -> str:
         return str(self._xrd.classname)

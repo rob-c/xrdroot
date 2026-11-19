@@ -743,7 +743,9 @@ class TFile(TDirectoryFile):
             self._writing = update(name)
         else:
             algorithm, level = _compression(self._compress)
-            self._writing = create(name, compression=algorithm, level=level)
+            self._writing = create(
+                name, title=self.GetTitle(), compression=algorithm, level=level
+            )
         self._writer = self._writing
 
     @staticmethod

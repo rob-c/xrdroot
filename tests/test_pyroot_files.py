@@ -6,6 +6,7 @@ import pathlib
 
 import pytest
 
+import xrdroot
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect, fresh
 from xrdroot.pyroot.core import files
@@ -75,6 +76,18 @@ def test_a_file_made_keeps_what_is_booked_after_it_and_writes_it(capsys):
         (bool(out.GetSize() > 0), True),
     )
     out.Close()
+
+
+def test_the_title_a_file_is_made_with_is_the_one_its_bytes_carry():
+    """ROOT's ``new TFile(name, option, ftitle)`` puts the title in the key of the file
+    itself, in all four places that key is written; ``hsimple.root`` has four of them."""
+    out = ROOT.TFile("titled.root", "RECREATE", "Demo ROOT file with histograms")
+    ROOT.TH1F("hpx", "px", 10, 0, 1).Write()
+    out.Close()
+    raw = pathlib.Path("titled.root").read_bytes()
+    assert raw.count(b"\x1eDemo ROOT file with histograms") == 4  # ROOT's own hsimple.root
+    with xrdroot.open_root("titled.root") as again:
+        assert files._file_title(again) == "Demo ROOT file with histograms"
 
 
 def test_a_file_read_hands_back_roots_classes_and_keeps_its_histograms(capsys):

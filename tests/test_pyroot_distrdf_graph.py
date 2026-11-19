@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 import xrdroot
+import xrdroot.file
 import xrdroot.pyroot as ROOT
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.file import open_root
@@ -64,6 +65,19 @@ def _fresh_caches():
 
 def _frame(*args, npartitions=None, backend=None):
     return RDataFrame(get_headnode(backend or Here(), npartitions, *args))
+
+
+@pytest.fixture(autouse=True)
+def _close_the_files_the_frames_opened():
+    """A frame reads the files it was built from long after the test that built it.
+
+    Nothing but the file itself is left referring to them once the frame is
+    gone, and Python's finaliser of an open file is a ``ResourceWarning`` - which
+    this suite turns into an error in whichever test happens to trigger it.
+    """
+    yield
+    for opened in list(xrdroot.file.OPENED.values()):
+        opened.close()
 
 
 def _write(path, tree="t", count=10, flush_every=None, column="x"):

@@ -98,7 +98,8 @@ def test_the_other_flags_reach_merge(tmp_path, capsys):
     assert capsys.readouterr().out == ""
     assert main(["merge", "-a", "-v", "3", out, source]) == 0
     said = capsys.readouterr()
-    assert "h: merged" in said.out and "warning: 'note' is a string" in said.err
+    # 'note' is a string, which hadd carries over a cycle per input without a word about it.
+    assert "h: merged" in said.out and "note: copied" in said.out and said.err == ""
     with open_root(out) as f:
         assert f["h"].values().tolist() == [2.0, 4.0, 6.0]
     missing = str(tmp_path / "missing.root")

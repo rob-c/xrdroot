@@ -265,6 +265,24 @@ def test_a_profile_is_the_mean_in_each_bin():
     )
 
 
+def test_a_profile_is_drawn_in_the_style_s_histogram_attributes_as_a_histogram_is():
+    """``TProfile`` is a ``TH1`` and ``TH1::Build`` dresses it from ``gStyle``.
+
+    ROOT's own ``TProfile`` has ``fLineColor`` 602, ``gStyle``'s ``HistLineColor``,
+    where a bare ``TAttLine`` starts at 1 - and that number is a byte of the file
+    a profile is written to. Checked against ROOT 6.40: a fresh
+    ``TProfile("b","",10,0,1,0,20)`` answers ``602``.
+    """
+    plain = ROOT.TProfile("a", "", 10, 0, 1, 0, 20)
+    styled = ROOT.TProfile("b", "", 10, 0, 1, 0, 20)
+    expect(
+        (plain.GetLineColor(), 602),
+        (styled.GetLineColor(), ROOT.TH1F("c", "", 10, 0, 1).GetLineColor()),
+        (styled.GetLineStyle(), 1),
+        (styled.GetFillStyle(), 1001),
+    )
+
+
 def test_two_and_three_dimensional_profiles():
     p2 = ROOT.TProfile2D("p2", "", 2, 0, 2, 2, 0, 2, 0, 100)
     p2.Fill(0.5, 0.5, 3.0)
