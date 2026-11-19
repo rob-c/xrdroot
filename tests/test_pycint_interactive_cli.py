@@ -13,7 +13,7 @@ import pytest
 
 from pyrootsupport import fresh
 from xrdroot.cli import main
-from xrdroot.pycint.interactive import Interpreter, interact, terminal
+from xrdroot.pycint.interactive import Interpreter, commands, interact, terminal
 from xrdroot.pycint.interactive.terminal import Completer, say
 from xrdroot.pycxx import cache
 
@@ -569,3 +569,45 @@ def test_a_macro_defined_on_the_command_line_is_defined_in_the_macros_run_after(
     execute.process_line('#define STAGE "second"')
     assert run("root", "-l", "-b", "-q", "stage.C") == 1
     assert execute.session_dialect() is execute.session_dialect()
+
+
+def test_dot_typedef_lists_a_macro_s_typedefs_as_cint_prints_them() -> None:
+    write("ptrptr.C", "typedef void *** iterator_1;\n"
+                      "class wrapper {\npublic:\n"
+                      "typedef void ** const * iterator_2;\n};\n")
+    prompt = Interpreter()
+    typed(prompt, ".L ptrptr.C")
+    assert typed(prompt, ".typedef") == [
+        "List of typedefs",
+        "ptrptr.C          1 typedef void *** iterator_1",
+        "ptrptr.C          4 typedef void **const * wrapper::iterator_2",
+    ]
+    assert typed(prompt, ".typedef iterator_1") == [
+        "ptrptr.C          1 typedef void *** iterator_1"
+    ]
+    assert typed(prompt, ".typedef nope") == ["Type nope is not defined"]
+
+
+def test_dot_typedef_reads_the_typedefs_typed_at_the_prompt() -> None:
+    prompt = Interpreter()
+    typed(prompt, "typedef int myint;")
+    said = typed(prompt, ".typedef myint")
+    assert len(said) == 1
+    assert said[0].startswith("ROOT_prompt_") and said[0].endswith("typedef int myint")
+
+
+def test_the_sources_typedefs_are_read_from_are_macros_with_a_file() -> None:
+    prompt = Interpreter()
+    before = typed(prompt, ".typedef")
+    commands.SOURCES["libThing.so"] = Path("libThing.so")
+    commands.SOURCES["gone.C"] = Path("gone.C")
+    try:
+        assert typed(prompt, ".typedef") == before
+    finally:
+        del commands.SOURCES["libThing.so"], commands.SOURCES["gone.C"]
+
+
+def test_dot_autodict_keeps_cling_s_switch_and_says_nothing() -> None:
+    prompt = Interpreter()
+    assert typed(prompt, ".autodict", ".autodict 0", ".autodict 1", ".autodict off") == []
+    assert vars(prompt)["autodict"] is False

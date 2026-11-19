@@ -29,7 +29,8 @@ from ..library.manifest import stem_of
 if TYPE_CHECKING:
     from .interpreter import Interpreter
 
-__all__ = ["Said", "COMMAND", "COMMANDS", "HELP", "dispatch", "failure"]
+__all__ = ["Said", "Typedef", "COMMAND", "COMMANDS", "HELP", "SOURCES", "dispatch",
+           "failure", "remember_source"]
 
 
 class Said(NamedTuple):
@@ -39,8 +40,52 @@ class Said(NamedTuple):
     error: bool = False
 
 
+class Typedef(NamedTuple):
+    """A typedef as CINT lists one: the file it was declared in, its line, what the new name
+    means, and that name itself."""
+
+    where: str
+    line: int
+    true: str
+    name: str
+
+    def said(self) -> str:
+        """The line ``.typedef`` prints for it: ``ptrptr.C          1 typedef void *** it_1``."""
+        return f"{self.where:<14}{self.line:>5} typedef {self.true} {self.name}"
+
+
+#: What a typedef typed at the prompt is declared in: the file cling wraps that input in.
+PROMPT = "ROOT_prompt"
+
+#: The macro files the session has translated, by absolute path, in the order it did: a typedef
+#: leaves nothing in Python to list, so ``.typedef`` reads the sources it was declared in.
+SOURCES: dict[str, Path] = {}
+
+
+def remember_source(path: Path) -> None:
+    """Keep the file a ``.L`` or ``.x`` translated, for ``.typedef`` to read the typedefs of.
+
+    A library is not one: its types are ROOT's compiled ones, which a dictionary describes and
+    no source of the session declares.
+    """
+    if path.suffix in MACRO_SUFFIXES and path.is_file():
+        SOURCES.setdefault(str(path.resolve()), path)
+
+
 #: A command: a dot, a name or one of cling's punctuation commands, and what follows.
 COMMAND = re.compile(r"^\.(?P<name>[A-Za-z]+|[!?@>])\s*(?P<rest>.*?)\s*$", re.S)
+
+#: ``typedef void ** const * iterator_2;``: what the new name means, then that name.
+TYPEDEF = re.compile(r"^\s*typedef\s+(?P<true>.+?)\s+(?P<name>[A-Za-z_]\w*)\s*;")
+
+#: A class or namespace whose body's typedefs CINT lists qualified: ``wrapper::iterator_1``.
+TYPEDEF_SCOPE = re.compile(r"^\s*(?:class|struct|namespace)\s+(?P<name>[A-Za-z_]\w*)[^;{]*\{")
+
+#: A ``const`` typed after a ``*``, which CINT prints against that ``*``: ``void **const *``.
+STAR_CONST = re.compile(r"(\*+)\s+const\b")
+
+#: The sources a session's typedefs are read from: the macros it may load, never a library.
+MACRO_SUFFIXES = frozenset({".C", ".c", ".cxx", ".cpp", ".cc", ".h", ".hxx"})
 
 #: What ``.help`` prints: every command this prompt knows.
 HELP = """\
@@ -59,6 +104,8 @@ This is xrdroot's C++ prompt: what is typed is translated into Python and run.
   .! command         run a shell command
   .> file            send standard output to the file; .> alone sends it back
   .g [name]          the variables declared at the prompt, and their types
+  .typedef [name]    the typedefs the session has seen declared, or the one named
+  .autodict [0|1]    cling's switch for building a dictionary on demand, kept as a setting
   .class Name        a class: its bases and its methods
   .rawInput [0|1]    cling's raw input mode, kept only as a setting here
   .O [level]         cling's optimization level, kept only as a setting here
@@ -240,6 +287,74 @@ def _globals(interp: Interpreter, rest: str) -> list[Said]:
     return [Said(f"{types[name] or 'auto'} {name}") for name in names]
 
 
+def _spelled(true: str) -> str:
+    """A typedef's meaning as CINT prints it: one space between the words, and a ``const``
+    written after a ``*`` against it - ``void ** const *`` is ``void **const *``."""
+    return STAR_CONST.sub(r"\1const", " ".join(true.split()))
+
+
+def _typedefs_in(text: str) -> list[tuple[int, str, str]]:
+    """Each ``typedef`` a source declares: its line, what it means, and its name qualified by
+    the class or namespace it sits in, as CINT names one - ``wrapper::iterator_1``."""
+    found: list[tuple[int, str, str]] = []
+    scopes: list[tuple[int, str]] = []
+    depth = 0
+    for number, line in enumerate(text.splitlines(), 1):
+        body = line.split("//")[0]
+        opened = TYPEDEF_SCOPE.match(body)
+        if opened is not None:
+            scopes.append((depth, opened["name"]))
+        declared = TYPEDEF.match(body)
+        if declared is not None:
+            found.append((number, _spelled(declared["true"]),
+                          "::".join([name for _, name in scopes] + [declared["name"]])))
+        depth += body.count("{") - body.count("}")
+        while scopes and depth <= scopes[-1][0]:
+            scopes.pop()
+    return found
+
+
+def _session_typedefs(interp: Interpreter) -> list[Typedef]:
+    """Every typedef the session knows of: those of the macros it loaded, in the order it
+    loaded them, then those typed at its prompt, read from their C++ as cling read them."""
+    found: list[Typedef] = []
+    sources = dict.fromkeys(str(Path(each).resolve()) for each in [*interp.loaded, *SOURCES])
+    for path in sources:
+        if Path(path).suffix not in MACRO_SUFFIXES or not Path(path).is_file():
+            continue
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+        where = os.path.basename(path)
+        found += [Typedef(where, line, true, name) for line, true, name in _typedefs_in(text)]
+    for (number, line), origin in zip(enumerate(interp.unit.lines, 1), interp.unit.origins,
+                                      strict=False):
+        found += [Typedef(f"{PROMPT}_{origin.prompt}", number, true, name)
+                  for number, true, name in _typedefs_in(line)]
+    return found
+
+
+def _typedef(interp: Interpreter, rest: str) -> list[Said]:
+    """``.typedef``: every typedef the session has seen - or ``.typedef NAME``, the one named,
+    which cling says is not defined when it has seen none by that name."""
+    found = _session_typedefs(interp)
+    if rest:
+        matched = [each for each in found if each.name == rest]
+        if not matched:
+            return [Said(f"Type {rest} is not defined")]
+        return [Said(each.said()) for each in matched]
+    return [Said("List of typedefs"), *[Said(each.said()) for each in found]]
+
+
+def _autodict(interp: Interpreter, rest: str) -> list[Said]:
+    """``.autodict [0|1]``: cling's switch for building a dictionary on demand, which a bare
+    ``.autodict`` turns over. Nothing here is ever built on demand - the translator reads the
+    headers it is given - so the switch is kept as a setting and changes nothing else."""
+    given = rest.strip()
+    on = given not in ("0", "off") if given else not getattr(interp, "autodict", True)
+    # The interpreter owns the session, so its switch rides on it; nothing downstream reads it.
+    vars(interp)["autodict"] = on
+    return []
+
+
 def _class_named(interp: Interpreter, name: str) -> type | None:
     """The class ``name`` means: one declared at the prompt, else ROOT's - or ``None``."""
     found = interp.unit.namespace.get(name)
@@ -296,6 +411,8 @@ COMMANDS: dict[str, Callable[[Interpreter, str], list[Said]]] = {
     "O": _optimize,
     "g": _globals,
     "class": _class,
+    "typedef": _typedef,
+    "autodict": _autodict,
 }
 
 

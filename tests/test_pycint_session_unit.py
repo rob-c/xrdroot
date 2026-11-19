@@ -141,13 +141,16 @@ def test_process_line_runs_the_prompts_commands_but_not_leaving(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """``.O 0`` is kept for the next ``.O``; ``.pwd`` hands back ``1``, as ROOT's
-    ``ProcessLine`` does for its own commands; ``.q`` and an unknown command are refused."""
+    ``ProcessLine`` does for its own commands; ``.q`` and an unknown command are refused -
+    but ``.typedef``, which cling runs, is one of the prompt's own and says what it found."""
     assert process_line(".O 0") == 0
     assert process_line(".O") == 0
     assert process_line(".pwd") == 1
+    assert process_line(".typedef X") == 0
     out = capsys.readouterr().out
     assert out.startswith("Current cling optimization level: 0\nCurrent directory: ")
-    for refused in (".q", ".typedef X", ". odd"):
+    assert out.endswith("Type X is not defined\n")
+    for refused in (".q", ".frobnicate", ". odd"):
         with pytest.raises(ValueError, match="is not a command gROOT->ProcessLine runs here"):
             process_line(refused)
 

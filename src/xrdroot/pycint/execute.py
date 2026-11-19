@@ -290,6 +290,9 @@ def load(path: str | Path, *, root: Any = None) -> dict[str, Any]:
     if aclic.is_library(text):
         return _library(text)
     where = _path(path)
+    from .interactive.commands import remember_source  # the prompt's ``.typedef`` reads it
+
+    remember_source(where)
     source = where.read_text(encoding="utf-8", errors="replace")
     namespace: dict[str, Any] = run_source(source, str(where), root=root, call=False)
     return namespace
