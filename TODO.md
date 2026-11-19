@@ -20,20 +20,22 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1114 / 2173** |
+| roottest | 1038 / 2173 (47.8 %) | **1123 / 2173** |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
-| module tests (`other`) | 14 / 109 | **21 / 109** |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1274 / 2820 (45.2 %)** |
+| module tests (`other`) | 14 / 109 | **22 / 109** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1284 / 2820 (45.5 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
-The "now" column is two runs at `932164a`: `/tmp/r4/final2` (roottest, 1114) and
-`/tmp/r4/final1` (the other kinds: gtest 52, pyunittest 81, `test/` 6, `other` 21). The
-nine roottest tests the last round brought in are the three `main/SimplePattern*`
-(ROOT's `cmdLineUtils` as a Python module), the four `io/fakeClass/*` (a macro's
-`#define` kept for the run it starts), `io/newClassDef/noclassdef/driver-build` and
-`io/stdarray/modelCheckValues` (both from the writer's missing streamer layouts). `other` reads 21
+The "now" column is two runs at `f583422`: `/tmp/r5/final2b` (roottest, 1123) and
+`/tmp/r5/final1` (the other kinds: gtest 52, pyunittest 81, `test/` 6, `other` 22 - the
+first run in which `minuit2_ParallelTest` came in under the limit again). The nine
+roottest tests the last round brought in are `AddVersion-1-3`/`-1-4`/`-2-3` (a file
+written before a class had a version is listed above the library's), the two
+`io/perf/WriteBuffer*` (a declared class is described once, not once per record), the two
+`meta/genreflex/ROOT-6640/*`, `cling/dict/exectemplatetemplateTest` (a template template
+parameter) and `ntuple/makeproject/rntuple/write_rntuple` (a set or map field). `other` reads 21
 at `--jobs 5` **and still 21 alone**, because `minuit2_ParallelTest` now takes 309 s of the
 300 s limit: measured alone at `8af51aa`, `bb19779` and `68a8d07`, so it is this machine, not
 a code change (it took 195-236 s when the earlier rounds measured it). It is `P-9`'s
@@ -596,7 +598,10 @@ these unblock did not set up.
 | Q-41 | `.Class` in `ProcessLine`, and a template template parameter in a dictionary build | 7 | M |
 | Q-42 | The treeformula walls after `fMatrix`: `==` with a string, `strstr`, `fValid<<4`, `fValid&0x1`, `TestBitNumber`, `TMath::BreitWigner`, `Alt$` | 40 | L |
 | Q-43 | A `dict`-held record's members by attribute (`'dict' object has no attribute 'fA'`) | 4 | S |
-
+| Q-44 | `TGeoManager`'s `Import`/`Export` lines and a `TGeoManager` file reader (GDML is read) | 21 | M |
+| Q-45 | A whole-object branch's member letter is not a number (`event.fTriggerBits` names an object) | 42 | M |
+| Q-46 | `TFile::MakeProject`, which the RNTuple makeproject tests call after writing | 4 | M |
+| Q-47 | `.Class` on a class a library defines (`Class Name::MyClass not found`) | 3 | S |
 Notes that will save days:
 
 - **Q-38** is the round-4 worker 4's find and it is a bug, not a gap: `interp.Each` *is* a
@@ -892,20 +897,39 @@ cheap to maintain and impossible to reconstruct.
 | Q-28 (part) | done | `6b1eee4` (worker 15) | 0 | `RootClassVersion` exists and a compiled library no longer sees `__CLING__`, so the header's version block compiles as ROOT's does. `AddVersion-1-3`/`-1-4` stay DIFF: the version now reaches the library but not the `Declaration` the writer emits |
 | Q-30 (part) | done | `06101b4` (worker 2's patch) | 0 | a fixed array keeps the shape its file declares: `Member.dims` holds `(4, 4)` for `Double32_t fMatrix[4][4]`, and the interp step reshapes a fixed array to it, so a formula indexing `m[1][2]` no longer refuses. The `treeformula` fixture moves from `dt_DrawTest.C:113` to line 32, where `==` between a string and a literal is the next wall |
 
+| Q-28 (part) | done | `cef312f` (worker 13's patch) | roottest +3 | a file written before a class had a version is listed above the library's: ROOT records version 1 for a class whose library had none when the file was written, so that layout belongs above the in-memory one instead of colliding with it (`AddVersion-1-3`, `-1-4`, `-2-3`). A compiled library's translation takes the dialect that does not define `__CLING__`, so `RootClassVersion` is seen. Its `_free_version` split keeps the function under the maintainability limit; its dead `IsForeign` branch removed |
+| W0-14 | done | `f583422` | roottest +1 (restored) | the dialect change above cost one PASS - `cling/other/runfileClose`, whose header takes `&x` in `x`'s own initialiser and whose `gSystem->Load("fileClose_C")` had no library to find. A static that takes its own address is now made before it is filled, and `Load` of a name ACLiC gave a library builds the macro it came from, as ROOT does. **The one PASS round 5 lost is back** |
+| P-9 (part) | done | `6ab5b1b` (worker 7) | roottest +2 | a declared class is described once, not once per record: `io/perf/WriteBuffer-1` and `-2` pass inside the 300 s limit (they were TIMEOUTs every round until now). `ReadBuffer-1/2` still time out - the read direction rebuilds the layout per record - and that is the rest of `P-9` |
+| Q-41 | done in part | `10faa1e` (worker 5) | roottest +1 | `.Class` prints a class's layout, which takes four `cling/operator`/`template` tests from FAIL to DIFF, and a template template parameter is parsed, which is `cling/dict/exectemplatetemplateTest` passing (`Q-47` is what the DIFFs still want) |
+| Q-38 | done | `efe41a6` (worker 2) | 0 in this run | a clone writes a split `TClonesArray` as the one branch ROOT writes, on top of worker 4's `Each`-is-a-`Values` bug: `CloneTree(0)` no longer refuses. The twelve `io/tree` tests are one layer further on now (the writer's `SplitClones` for a class the file describes) |
+| Q-39 | done | `169c6cf` (worker 3) | 0 | a `TString*` counted by a `//[n]` comment is ROOT's `kStreamLoop` - as many strings as the count says; `io/bigevent` now gets past `fTstringp` to the next refusal (a template member whose spelling `find_class` does not match) |
+| Q-43 (part) | done | `cee27a7` (worker 8) | 0 | a ROOT collection read back is the namespace's collection, not the list it read as: `TList`/`THashList`/`TSortedList`/`TObjArray` members come back as objects, a `TObjArray`'s holes as holes |
+| Q-35 (part) | done | `f2b74f2` (worker 12) | 0 (1 with the patch) | a `TRef`'s heap bits, its action bit and in-place assignment: `io/references/actions/test` prints `0x3000000` where it printed `0x0` and needs one more line (`TRef::operator=` on assignment, worker 12's `w12-ASSIGNED.patch`) |
+| Q-15 (ntuple) | done in part | `f313b4e` (worker 9) | roottest +1 | an RNTuple field of a `std::set` or `std::map` is written as its items: `makeproject/rntuple/write_rntuple` passes; the read side needs `TFile::MakeProject` (`Q-46`) |
+| W0-15 | done | `684763f` (worker 16) | 0 | the harness's `WILLFAIL` inversion is one function in `judge.py`, shared with the pyunittest path, and a `WILLFAIL` test that xrdroot *refuses* or that times out is still xrdroot failing - so `cling/bytecode/runarrayhist` is PASS and nothing can pass by not running |
+| Q-20 (part) | attempted, not merged | - | 0 | worker 6 measured that neither of the two remaining rows is in the files its brief named: the `TPaveStats` 346 B is the histogram *payload* the writer never builds, and the 59 B of `pz` is the translator's `float`-vs-`double` narrowing. Both need a worker next round with `wobjects.py`/`wdeclared.py` and `pycxx/emit_expr.py` |
+| Q-42 (part) | attempted, not merged | - | 0 | worker 1 took the formula engine seven walls further (a `char[N]` member of a whole object is the string it holds, so `fType == "type1"` and `strstr` work) and the fixture now dies at `dt_DrawTest.C:17` on `event.fTriggerBits`, which is an *object* the expression reads as a number (`Q-45`). The 42 targets stay blocked |
+| Q-14 (GDML) | attempted, not merged | - | 0 | worker 4's patch for `TGeoManager::Import`/`Export` is at `/tmp/r5/w04.log`; it needs 21 tests' worth of ROOT's `Info in <TGeoManager...>` lines and a `TGeoManager` file reader (`Q-44`) |
+| Q-40 (part) | attempted, not merged | - | 0 | worker 10 read `treeproxy/vectorint` down to `Branch()`'s deduction of a `std::vector<std::vector<int>>` and its patch is in `/tmp/r5/w10.log`; blocked on `pyroot/trees/tree.py`'s `_declared` |
+| Q-36 (part) | attempted, not merged | - | 0 | worker 11's wiring patch for `interp.whole_object` (using `streamers.reconcile`) is in `/tmp/r5/w11.log`; it needs `rdobjects.py`, which another worker owned |
+| W0-16 | attempted, not merged | - | 0 | worker 14's four-line patches (`interp.py`'s version-0 header, `cppstd/bitset.py`'s `set`/`reset`/`test`, `TCollection.Add(obj, opt)`) are in `/tmp/r5/w14-patches.diff`; each unblocks a different `io/json`/`io/abstractclass` test |
+| W0-17 | attempted, not merged | - | 0 | worker 15 read `roottest/python/memory/memory`'s three failures; its report is `/tmp/r5/w15.log` and the fix is in ROOT's Python-side memory accounting, which nothing here implements |
+
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | now (`932164a`) |
-|---|---|---|---|---|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | **1114** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
-| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | now (`f583422`) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | **1123** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
+| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** |
 
-The last column is `/tmp/r4/final2` (roottest, 1114) and `/tmp/r4/final1` (the other
-kinds) at `932164a`; the column before it, `/tmp/r3/final2` (roottest, 1105) and
+The last column is `/tmp/r5/final2b` (roottest, 1123) and `/tmp/r5/final1` (the other
+kinds) at `f583422`; the column before it, `/tmp/r4/final2` (1114) and `/tmp/r4/final1` at
+`932164a`; the column before it, `/tmp/r3/final2` (roottest, 1105) and
 `/tmp/r3/final1` at `8af51aa`; the column before it, `/tmp/r2/final2` (roottest, 1089) and
 `/tmp/r2/final1` (the other kinds) at `5c88c8c`; the round before it, `/tmp/r1/final2` (1078) and `/tmp/r1/final1`
 at `7a43bd9`. The eleven roottest tests the last round brought in are
