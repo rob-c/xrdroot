@@ -69,6 +69,8 @@ def test_the_flags_are_kept_and_a_merge_without_trees_leaves_them_out(two_files)
     merger.SetFastMethod(True)
     merger.SetCompressionAlgorithm(0)
     merger.SetMsgLevel(0)
+    merger.SetPrintLevel(-1)
+    merger.SetMsgPrefix("testKeyOrder")
     merger.AddFileImpl("tomerge0.root")
     assert merger.PartialMerge(ROOT.TFileMerger.kNoTrees) is True
     # a merger that is left without merging merges on the way out of the with
@@ -78,6 +80,16 @@ def test_the_flags_are_kept_and_a_merge_without_trees_leaves_them_out(two_files)
     with other:
         pass
     assert xrdroot.open_root("other.root").keys() == ["h1"]
+
+
+def test_root_s_merger_takes_its_two_flags_and_merges_the_same_either_way(two_files):
+    # `new TFileMerger(kFALSE, kFALSE)` - roottest/root/io/filemerger/execKeyOrder.C -
+    # names ROOT's isLocal and histoOneGo, neither of which changes what is written.
+    merger = ROOT.TFileMerger(False, False)
+    assert merger.OutputFile("merged.root") is True
+    assert merger.AddFile("tomerge0.root") is True
+    assert merger.Merge() is True
+    assert xrdroot.open_root("merged.root").keys() == ["h0"]
 
 
 def test_an_object_without_a_name_is_added_as_it_is(two_files):

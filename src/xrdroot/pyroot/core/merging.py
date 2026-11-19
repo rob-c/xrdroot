@@ -54,8 +54,15 @@ class TFileMerger:
     kMessages = 32
     kVerbose = 64
 
-    def __init__(self, printout: bool = True) -> None:
-        self._printout = bool(printout)
+    def __init__(self, is_local: bool = True, histo_one_go: bool = True) -> None:
+        """ROOT's two flags: local copies of remote inputs, and histograms merged in one go.
+
+        Neither changes what is written here - an input is read where it is and
+        a histogram is merged as any other object is - so both are kept and
+        nothing reads them back.
+        """
+        self._is_local = bool(is_local)
+        self._histo_one_go = bool(histo_one_go)
         self._inputs: list[str] = []
         self._output: str | None = None
         self._fast = True
@@ -91,6 +98,12 @@ class TFileMerger:
 
     def SetMsgLevel(self, level: Any = 0) -> None:
         """``SetMsgLevel``: how much ROOT reports while merging - nothing, here."""
+
+    def SetPrintLevel(self, level: Any = 0) -> None:
+        """``SetPrintLevel``: what the merger prints as it goes - nothing, as ROOT's 0."""
+
+    def SetMsgPrefix(self, prefix: Any = "TFileMerger") -> None:
+        """``SetMsgPrefix``: the name ROOT's merger's own messages carry - it says none."""
 
     def SetMergeOptions(self, options: int) -> None:
         """``SetMergeOptions``: the flags a later ``PartialMerge`` merges with."""

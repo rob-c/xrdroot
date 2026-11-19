@@ -144,7 +144,10 @@ def test_multigraphs_gather_their_graphs_as_tmultigraph_merge_does(tmp_path):
 def test_what_hadd_does_not_merge_is_carried_over_from_every_input_a_cycle_each(tmp_path):
     source = DATA / "tformula.root"
     out = tmp_path / "out.root"
-    with pytest.warns(MergeWarning, match=r"'func1' is a TF1, which is not merged"):
+    with warnings.catch_warnings():
+        # ROOT's own merger carries such an object over without a word, so a
+        # MergeWarning here would be one no .ref file of its tests has.
+        warnings.simplefilter("error", MergeWarning)
         result = merge(out, [source, source])
     assert result.objects["func1"] == "copied"
     with open_root(str(out)) as f, open_root(str(source)) as g:

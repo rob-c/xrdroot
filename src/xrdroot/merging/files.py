@@ -247,7 +247,7 @@ class _Merger:
         value = directory._read(newest) if newest.classname in INFOS else None
         merger = mergeable(value)
         if merger is None:
-            self._carry(directory, path, keys, label, in_place)
+            self._carry(directory, path, keys, in_place)
             return
         self.kinds[path] = "merged"
         before = self.values.get(path)
@@ -281,15 +281,14 @@ class _Merger:
         merging.add(ntuple, f"{path!r} in {label}")
 
     def _carry(
-        self, directory: Directory, path: str, keys: list[Key], label: str, in_place: bool
+        self, directory: Directory, path: str, keys: list[Key], in_place: bool
     ) -> None:
-        """An object nothing here merges: every cycle of it copied over, as ROOT does."""
+        """An object nothing here merges: every cycle of it copied over, as ROOT does.
+
+        ROOT says nothing about such an object - ``hadd`` carries a ``TF1`` in
+        without a word - so neither does this.
+        """
         self.kinds[path] = "copied"
-        self.notes.setdefault(
-            path,
-            f"{path!r} is a {keys[-1].classname}, which is not merged, so every input's "
-            f"copy of it is carried over as it is, a cycle each, as hadd does",
-        )
         if in_place:
             return  # already in the file being written, where it stays
         here, leaf = self.out._place(path)
