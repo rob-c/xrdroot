@@ -16,6 +16,7 @@ import io
 import math
 import pathlib
 import struct
+from types import SimpleNamespace
 
 import pytest
 
@@ -28,6 +29,7 @@ from xrdroot import (
     open_root,
 )
 from xrdroot.buffer import Buffer
+from xrdroot.canvas.model import Primitive
 from xrdroot.compression import (
     BLOCK,
     _lz4,
@@ -458,6 +460,33 @@ def test_an_object_the_writer_has_no_layout_for_is_refused():
             out["m"] = multi
 
 
+def test_a_histogram_carrying_an_object_the_writer_has_a_layout_for_is_written_with_it():
+    """A drawn histogram's ``TPaveStats`` is a ``TList`` entry like a fit: ROOT streams it."""
+    hist = Histogram.new("h", [0, 1, 2], [1, 2])
+    members = {
+        "fName": "stats", "fTitle": "hpx", "fBits": 0x03000000, "fUniqueID": 0,
+        "fX": 0.1, "fY": 0.2, "fTextAngle": 0.0, "fTextSize": 0.05, "fTextAlign": 12,
+        "fTextColor": 1, "fTextFont": 42, "fLimitFactorSize": 3, "fOriginSize": 0.05,
+        "fLineColor": 1, "fLineStyle": 1, "fLineWidth": 1,
+    }  # fmt: skip
+    box = Primitive("TLatex", members)
+    hist.members["TH1"]["fFunctions"] = [box]
+    buf = io.BytesIO()
+    with create(buf) as out:
+        out["h"] = hist
+    buf.seek(0)
+    (held,) = open_root(buf)["h"].functions
+    assert held.classname == "TLatex" and held.members["TText"]["TNamed"]["fName"] == "stats"
+    assert held.members["TText"]["TNamed"]["fTitle"] == "hpx"
+    assert held.members["TAttLine"]["fLineStyle"] == 1
+
+
+def test_a_list_refuses_a_class_the_writer_has_no_layout_for():
+    stranger = SimpleNamespace(classname="TNotAClass", members={})
+    with pytest.raises(UnsupportedFeatureError, match="take them out first"):
+        _list(WBuffer(), "TList", [stranger], {})
+
+
 def test_a_histogram_carrying_anything_but_functions_is_refused_rather_than_stripped():
     hist = Histogram.new("h", [0, 1, 2], [1, 2])
     hist.members["TH1"]["fFunctions"] = ["a fit"]
@@ -654,6 +683,14 @@ def test_a_missing_base_falls_back_to_an_empty_object():
     element = ("TStreamerBase", "TNamed", "", 0, 0, 0, 0, (0, 0, 0, 0, 0), "BASE", (1,))
     _element(buf, element, {}, {})  # no TNamed in the row: default bits, empty names
     assert bytes(buf.data[-2:]) == b"\x00\x00"  # two empty strings close it
+
+
+def test_a_base_whose_members_are_kept_flat_is_written_from_the_object_itself():
+    """The graphics layer's paves are one dict of every member they inherit."""
+    buf = WBuffer()
+    element = ("TStreamerBase", "TNamed", "", 0, 0, 0, 0, (0, 0, 0, 0, 0), "BASE", (1,))
+    _element(buf, element, {"fName": "stats", "fTitle": "hpx"}, {})
+    assert bytes(buf.data).endswith(b"\x05stats\x03hpx")
 
 
 def test_a_fixed_array_must_hold_exactly_what_was_declared():

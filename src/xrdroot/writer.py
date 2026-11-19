@@ -439,9 +439,7 @@ def _list(
     than refusing.
     """
     held = list(entries or ())
-    strangers = [
-        type(entry).__name__ for entry in held if not isinstance(entry, (*WRITABLE, Record))
-    ]
+    strangers = [type(entry).__name__ for entry in held if not _streamable(entry)]
     if strangers:
         raise UnsupportedFeatureError(
             f"a {classname} holding {', '.join(strangers)} is not written: a list of "
@@ -457,6 +455,16 @@ def _list(
         _listed(buf, entry, used)
         buf.string("")
     buf.end(index)
+
+
+def _streamable(entry: Any) -> bool:
+    """Whether a list may hold ``entry``: an object this writer writes, or one whose
+    class it carries a layout for - a drawn histogram's ``TPaveStats`` and its lines."""
+    if isinstance(entry, (*WRITABLE, Record)):
+        return True
+    return getattr(entry, "classname", None) in INFOS and isinstance(
+        getattr(entry, "members", None), dict
+    )
 
 
 def _listed(buf: WBuffer, entry: Any, used: dict[str, None]) -> None:
@@ -518,7 +526,7 @@ def _element(buf: WBuffer, element: Element, row: dict[str, Any], used: dict[str
     """One member of one class, laid out exactly as its element describes."""
     _kind, name, _title, stype, _size, alen, _adim, _maxidx, typename, extras = element
     value = row.get(name, DEFAULTS.get(name))
-    if _base_element(buf, name, stype, value, used):
+    if _base_element(buf, name, stype, value, used, row):
         return
     if name == "fFunctions" and "fNcells" in row:  # a histogram's, which ROOT locks
         _list(buf, "TList", value, used, BITS | USE_RWLOCK)
@@ -548,7 +556,16 @@ def _stl_element(buf: WBuffer, name: str, typename: str, value: Any) -> bool:
     return True
 
 
-def _base_element(buf: WBuffer, name: str, stype: int, value: Any, used: dict[str, None]) -> bool:
+def _base_element(
+    buf: WBuffer,
+    name: str,
+    stype: int,
+    value: Any,
+    used: dict[str, None],
+    row: dict[str, Any],
+) -> bool:
+    if stype in (0, 66, 67):
+        value = _flat_base(row, name, value)
     if stype == 66:  # the TObject base, which streams itself
         _write_tobject(buf, value)
     elif stype == 67:  # the TNamed base, likewise
@@ -560,6 +577,20 @@ def _base_element(buf: WBuffer, name: str, stype: int, value: Any, used: dict[st
     else:
         return False
     return True
+
+
+def _flat_base(row: dict[str, Any], name: str, value: Any) -> Any:
+    """A base class's members: its own row, or the object's when it keeps them flat.
+
+    The graphics layer's paves are one dict of every member they inherit -
+    ``fX1NDC`` beside ``fBorderSize`` beside ``fTextFont`` - rather than the
+    row per base class a file holds, so a base with none of its own is the
+    object itself; a base whose members are nowhere is written empty, which
+    every layout this writer carries allows for an interface class.
+    """
+    if value is not None:
+        return value
+    return row if any(element[1] in row for element in INFOS[name][2]) else {}
 
 
 def _pairs(buf: WBuffer, value: Any) -> None:
