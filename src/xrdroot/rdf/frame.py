@@ -861,6 +861,16 @@ class RDataFrame:
         inputs = self._single(column, "Aggregate")
         return self._book(actions.Aggregate(self._node, inputs, aggregator, merger, init))
 
+    def Book(self, target: Any, columns: Sequence[str]) -> Result:
+        """Fill ``target`` - a RooFit helper - with the entries of ``columns``, lazily.
+
+        The object is filled a batch at a time, in the order of the entries,
+        as the loop reads them; the booked result is what it holds once the
+        loop is done, so several ``Book``s of one frame cost one loop.
+        """
+        inputs = [self._column(name, "Book") for name in _as_names(columns)]
+        return self._book(actions.Book(self._node, inputs, target))
+
     def _foreach(self, function: Callable[..., Any], columns: Any, slot: bool) -> None:
         what = "ForeachSlot" if slot else "Foreach"
         if columns is None:

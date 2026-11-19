@@ -20,8 +20,10 @@ from ...roofit.plot import params as _params
 from ...roofit.registry import classes
 from ..core import draw_hook
 from .commands import RooFit
+from .helpers_abs import RooDataHistHelper, RooDataSetHelper
 
-__all__ = ["RooFit", "RooHelpers", "dynamic_range_cast", "static_range_cast"]
+__all__ = ["RooFit", "RooHelpers", "RooDataHistHelper", "RooDataSetHelper",
+           "dynamic_range_cast", "static_range_cast"]
 
 #: The classes of RooFit's that ROOT has at its top level without the ``Roo`` of their name -
 #: HistFactory's, which ``FlexibleInterpVar`` is not: that is ``RooStats::HistFactory``'s.

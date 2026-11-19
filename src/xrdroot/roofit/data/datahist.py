@@ -105,12 +105,20 @@ class RooDataHist(RooAbsData):
     def add_data(self, data: RooAbsData) -> None:
         """Fill in a dataset's events, each weighing its weight."""
         columns = {one.GetName(): data.column(one.GetName()) for one in self._vars}
+        self.add_arrays(columns, data.weights() if data.isWeighted() else None)
+
+    def add_arrays(self, columns: dict[str, Any], weights: Any = None) -> None:
+        """Fill in events given a column at a time, each weighing ``weights`` or one.
+
+        An event outside every variable's range is dropped, as ``RooDataHist::add``
+        drops one no bin holds.
+        """
         bins = self._bin_of(columns)
         keep = bins >= 0
-        weights = data.weights()[keep]
+        each = np.ones(len(bins)) if weights is None else np.asarray(weights, dtype=np.float64)
         size = len(self._grid_weights())
-        self._weights = self._grid_weights() + np.bincount(bins[keep], weights, size)
-        self._sumw2 = self._sumw2 + np.bincount(bins[keep], weights**2, size)
+        self._weights = self._grid_weights() + np.bincount(bins[keep], each[keep], size)
+        self._sumw2 = self._sumw2 + np.bincount(bins[keep], each[keep] ** 2, size)
 
     def _import(self, chosen: list[Any], histogram: Any, density: bool) -> None:
         """``importTH1``: the histogram's bins inside the variables' ranges, the ranges widened to

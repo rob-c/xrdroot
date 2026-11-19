@@ -67,7 +67,8 @@ def entrywise(function: Callable[..., Any], slot: bool = False,
 
 
 def _column(results: list[Any]) -> Any:
-    """What a batch's answers make: numbers an array, collections a ``Jagged``, else a list."""
+    """What a batch's answers make: numbers an array, collections a ``Jagged``, else a list -
+    which the frame then reads as a collection of objects, when that is what it is."""
     if results and all(isinstance(each, (_Vector, np.ndarray)) for each in results):
         rows = [np.asarray(each.data() if isinstance(each, _Vector) else each) for each in results]
         offsets = np.concatenate([[0], np.cumsum([len(row) for row in rows])])

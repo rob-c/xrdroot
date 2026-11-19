@@ -569,6 +569,38 @@ class Aggregate(Action):
         return self.merger(acc, part)
 
 
+class Book(Action):
+    """``Book``: an object filled a column batch at a time, whose data is the result.
+
+    ROOT's ``Book`` hands a helper's ``Fill`` one entry's values at a time.
+    An object that can take a batch at once - ``fill_columns`` - is given the
+    batch instead, which is the same events in the same order for a fraction
+    of the calls; ``result`` then gives what was filled.
+    """
+
+    kind = "Book"
+    parallel = False
+
+    def __init__(self, node: Selector, inputs: Sequence[Definition], target: Any) -> None:
+        super().__init__(node, inputs)
+        self.target = target
+
+    def start(self) -> Any:
+        return self.target
+
+    def partial(self, batch: Batch) -> Any:
+        names = {each.name: values for each, values in zip(self.inputs, self.columns(batch),
+                                                          strict=True)}
+        self.target.fill_columns(names)
+        return self.target
+
+    def merge(self, acc: Any, part: Any) -> Any:
+        return part
+
+    def finish(self, acc: Any, flow: dict[int, tuple[int, int]]) -> Any:
+        return self.target.result()
+
+
 class Foreach(Action):
     """``Foreach`` and ``ForeachSlot``: a callable run on every batch, for what it does."""
 
