@@ -70,6 +70,19 @@ def test_methods_of_each_entrys_object_are_drawn_as_numbers_or_draw_themselves()
     assert method_draw(back, "hpx.GetXaxis().GetXmax()", "", "", None, 0) is None
 
 
+def test_a_method_giving_back_an_object_is_left_for_the_formula_to_draw():
+    # ROOT draws what a method gives back - a TBits one fill per bit set - rather than
+    # reading it as a number, and the formula reads the objects' members, so such an
+    # expression is not a column of numbers here.
+    from xrdroot.pyroot.trees.methods import _an_object, _numbers_or_none, method_draw
+
+    back = _histograms()
+    assert method_draw(back, "hpx.GetListOfFunctions()", "", "", None, 0) is None
+    assert _an_object([1, 2.5, np.float32(3.0)]) is False
+    assert _an_object([ROOT.TBits()]) is True
+    assert _numbers_or_none(back, [], range(0)) == []
+
+
 def test_a_tree_drawn_before_anything_has_no_values_to_give():
     tree = ROOT.TTree("t", "t")
     assert tree.GetV1() is None and tree.GetSelectedRows() == 0

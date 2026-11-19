@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 import re
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
@@ -46,12 +47,33 @@ def method_draw(
     stop = tree.GetEntries() if count is None else min(tree.GetEntries(), first + count)
     entries = range(int(first), stop)
     if len(calls) == 1 and calls[0][1] == "Draw":
-        branch, _name, args = calls[0]
-        for entry in entries:
-            _object(tree, branch, entry).Draw(*args)
-        return len(entries)
-    columns = [_called(tree, call, entries) for call in calls]
-    return _drawn(tree, varexp, columns, option)
+        return _drawn_objects(tree, calls[0], entries)
+    columns = _numbers_or_none(tree, calls, entries)
+    return None if columns is None else _drawn(tree, varexp, columns, option)
+
+
+def _drawn_objects(tree: Any, call: tuple[Any, str, tuple[Any, ...]], entries: range) -> int:
+    """``branch.Draw(...)`` of every entry's object: each object drawn in turn, as ROOT's."""
+    branch, _name, args = call
+    for entry in entries:
+        _object(tree, branch, entry).Draw(*args)
+    return len(entries)
+
+
+def _numbers_or_none(
+    tree: Any, calls: list[tuple[Any, str, tuple[Any, ...]]], entries: range
+) -> list[Any] | None:
+    """What each call gives, as a column of numbers - or ``None`` for a call that gives an
+    object rather than a number.
+
+    ROOT draws an object a method gives back as it draws a member that is one: a ``TBits``
+    one fill per bit set, any other object a warning and no fill. The formula reads a
+    member, so such an expression is drawn as any other expression is.
+    """
+    called = [_called(tree, call, entries) for call in calls]
+    if any(_an_object(values) for values in called):
+        return None
+    return [np.asarray(values) for values in called]
 
 
 def _calls(tree: Any, varexp: str) -> list[tuple[Any, str, tuple[Any, ...]]] | None:
@@ -73,10 +95,15 @@ def _calls(tree: Any, varexp: str) -> list[tuple[Any, str, tuple[Any, ...]]] | N
     return found
 
 
-def _called(tree: Any, call: tuple[Any, str, tuple[Any, ...]], entries: range) -> Any:
+def _called(tree: Any, call: tuple[Any, str, tuple[Any, ...]], entries: range) -> list[Any]:
     """What one method of each entry's object gives, entry by entry."""
     branch, name, args = call
-    return np.asarray([float(getattr(_object(tree, branch, e), name)(*args)) for e in entries])
+    return [getattr(_object(tree, branch, e), name)(*args) for e in entries]
+
+
+def _an_object(values: Sequence[Any]) -> bool:
+    """Is what a method gives back an object rather than a number - a ``TBits``, a ``vector``?"""
+    return any(not isinstance(value, (int, float, np.number)) for value in values)
 
 
 def _object(tree: Any, branch: Any, entry: int) -> Any:
