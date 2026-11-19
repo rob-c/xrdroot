@@ -35,7 +35,7 @@ from __future__ import annotations
 import copy
 import re
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -206,16 +206,48 @@ def _templated(text: str) -> Any:
     outer, _, inner = text.partition("<")
     if (not inner and re.fullmatch(r"[A-Za-z_][\w:]*\s*\**", text)) or outer in SMART_POINTERS:
         return _opaque(text)
+    if not inner.endswith(">"):
+        return _undeclared(text)
+    if outer == "array":
+        return _array_type(_split_arguments(inner[:-1]))
     maker = TEMPLATES.get(outer)
-    if maker is None or not inner.endswith(">"):
-        declared = TYPE_RESOLVER(text) if TYPE_RESOLVER is not None else None
-        if declared is not None:
-            return declared  # a class template a library declared, as C++ names it
+    return maker[tuple(_split_arguments(inner[:-1]))] if maker is not None else _undeclared(text)
+
+
+def _undeclared(text: str) -> Any:
+    """The class a library declared under the C++ name ``text``, or the refusal that none did."""
+    declared = TYPE_RESOLVER(text) if TYPE_RESOLVER is not None else None
+    if declared is not None:
+        return declared  # a class template a library declared, as C++ names it
+    raise TypeError(
+        f"{text!r} is not a type the std stand-ins know; they have vector, map and pair "
+        f"of numbers, strings and one another"
+    )
+
+
+def _arrayed(kind: Any) -> type:
+    """The class a ``std::array`` of ``kind`` is: the vector class of its element type.
+
+    ``std::array`` never grows, which the macro leaves to the code that fills it, so a
+    ``std::array<int,3>`` is a ``std::vector<int>`` of three: that is the class a
+    declaration's ``std.array['int', 3]()`` makes, and the one a
+    ``std::vector<std::array<int,3>>`` holds its elements as.
+    """
+    return cast(type, TEMPLATES["vector"][kind])
+
+
+def _array_type(arguments: list[str]) -> Any:
+    """``std::array<int,3>`` as an element type: the vector of three ints that it is.
+
+    The second template argument is the size, not a type, so it is not something
+    :func:`element_type` can resolve; only the element type is resolved here, and
+    the size is what the declaration in the macro already gives its ``std.array``.
+    """
+    if len(arguments) != 2 or not arguments[1].isdigit():
         raise TypeError(
-            f"{text!r} is not a type the std stand-ins know; they have vector, map and pair "
-            f"of numbers, strings and one another"
+            f"std::array takes an element type and a size, and {', '.join(arguments)} is not that"
         )
-    return maker[tuple(_split_arguments(inner[:-1]))]
+    return _arrayed(element_type(arguments[0]))
 
 
 def element_type(given: Any) -> Any:
@@ -1490,7 +1522,7 @@ class _ArrayTemplate:
 
     def __getitem__(self, arguments: tuple[Any, Any]) -> Any:
         kind, size = arguments
-        vector = TEMPLATES["vector"][kind]
+        vector = _arrayed(kind)
 
         def made(values: Iterable[Any] = ()) -> Any:
             filled = vector(int(size))

@@ -364,6 +364,28 @@ def test_a_template_name_no_container_here_is_declared_is_resolved_by_the_instal
         plain.set_type_resolver(previous)  # ROOT's, which pyroot installed
 
 
+def test_a_std_array_is_an_element_type_of_a_vector_and_of_itself() -> None:
+    """``std::array<int,3>`` where an element type is asked for: a ``vector<std::array<int,3>>``
+    holds what ``std.array['int', 3]`` makes, and a ``std::array<std::array<int,3>,3>`` holds
+    three of them - the declarations roottest's ``io/stdarray`` writes out and reads back.
+
+    The size is not a type, so only the element type is resolved; a vector of the two arrays is
+    the one class, since a ``std::array`` here is a vector of its size that never grows.
+    """
+    made = containers.std.array["int", 3]([[1, 2, 3]])
+    assert isinstance(made, containers.element_type("std::array<int,3>"))  # one class, not two
+    inner = containers.std.array["std::array<int,3>", 3]([[[[1, 2, 3]], [[1, 2, 3]]]])
+    assert [list(each) for each in inner[:1]] == [[1, 2, 3]]
+    assert len(inner) == 3  # the size comes from the declaration, not from the values given
+    held = containers.std.vector["std::array<int,3>"]()
+    held.push_back([1, 2, 3])
+    assert list(held[0]) == [1, 2, 3]
+    with pytest.raises(TypeError, match="std::array takes an element type and a size"):
+        containers.element_type("std::array<int>")
+    with pytest.raises(TypeError, match="std::array takes an element type and a size"):
+        containers.element_type("std::array<int,N>")
+
+
 def test_a_brace_enclosed_value_builds_the_element_from_its_values() -> None:
     """``a[0] = {1,2,3}`` of an element with a three-argument constructor: C++ list-initialises
     the element, so the braced values are the constructor's arguments - as a pair's are."""
