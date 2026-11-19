@@ -199,3 +199,10 @@ def test_a_step_each_way_of_a_copy_is_read_as_one_step_the_way_the_outer_one_goe
     with pytest.raises(Refusal) as raised:
         translate(source, "t.cxx")
     assert "changing this in the middle of an expression" in str(raised.value)
+
+
+def test_a_static_that_takes_its_own_address_is_made_before_it_is_filled() -> None:
+    """C++ may take the address of the variable its initialiser initialises -
+    ``static int x = (f(&x), 0);`` - which Python cannot, so the cell is made first."""
+    python = translate("int take(int *p) { return *p; }\nstatic int x = (take(&x), 0);\n")
+    assert "x = Cell(0, 'int')" in python and "x.value = " in python

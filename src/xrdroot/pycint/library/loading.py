@@ -184,6 +184,9 @@ def load(name: str) -> int:
     text = str(name).strip()
     found = find(text)
     if found is None:
+        compiled = _compiled(text)
+        if compiled is not None:
+            return compiled
         status = _root_library(stem_of(text))
         return _not_found(text) if status is None else status
     if str(found.resolve()) in LOADED:
@@ -197,6 +200,21 @@ def load(name: str) -> int:
         return -1
     load_library(library)
     return 0
+
+
+def _compiled(name: str) -> int | None:
+    """``gSystem->Load("foo_C")`` with no library built yet: ACLiC compiles ``foo.C`` for it.
+
+    ROOT names the library it compiles ``foo.C`` ``foo_C``, so a load of that name is a
+    request to build the macro it came from; ``None`` is a name no such macro answers to.
+    """
+    from . import aclic
+
+    stem = stem_of(name)
+    for source in (stem, stem[:-2] if stem.endswith("_C") else ""):
+        if source and source + ".C" in {path.name for path in Path().iterdir()}:
+            return 0 if aclic.compile_macro(source + ".C", "kc") else -1
+    return None
 
 
 def load_library(library: Library) -> Loaded:

@@ -608,3 +608,18 @@ def test_a_class_written_without_a_classdef_takes_the_version_the_compiled_heade
     assert (declared.version, declared.foreign) == (3, True)
     cling = translate(VERSIONED_H, "myclass.h", dialect=ROOT_DIALECT)
     assert "Class_Version" not in cling  # what Cling, which has __CLING__, leaves out
+
+def test_a_load_of_a_name_no_library_or_macro_answers_to_is_not_found() -> None:
+    """``gSystem->Load("nothing_C")``: no library, no ``nothing.C`` - ROOT's -1 and its message."""
+    from xrdroot.pycint.library.loading import load
+
+    assert load("nothing_at_all_C") == -1
+
+
+def test_a_load_of_a_name_aclic_named_builds_the_macro_it_came_from() -> None:
+    """``gSystem->Load("tiny_C")`` is a request to compile ``tiny.C``: ROOT names the library
+    ACLiC makes of ``tiny.C`` ``tiny_C``."""
+    from xrdroot.pycint.library.loading import load
+
+    Path("tiny.C").write_text("int tiny_f(int x) { return x + 1; }\n")
+    assert load("tiny_C") == 0

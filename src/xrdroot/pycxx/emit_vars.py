@@ -177,6 +177,12 @@ class VariableEmitter(StmtEmitter):
         if symbol.cell:
             ctype = symbol.ctype
             kind = f", {ctype.name!r}" if ctype is not None and ctype.scalar else ""
+            if _mentions(value, symbol.py):
+                # C++'s own initialiser may take the address of the variable it initialises -
+                # `static int x = (f(&x), 0)` - so the cell is made first and filled after.
+                self.out.line(f"{symbol.py} = Cell(0{kind})", decl.where)
+                self.out.line(f"{symbol.py}.value = {value}", decl.where)
+                return
             value = f"Cell({value}{kind})"
         self.out.line(f"{symbol.py} = {value}", decl.where)
 
@@ -450,6 +456,11 @@ def addressable(ctype: CType | None) -> bool:
 def sized(ctype: CType | None, decl: VarDecl) -> CType | None:
     """``int a[] = {1, 2, 3}`` has the size its initialiser gives it, which ``sizeof`` needs."""
     return None if ctype is None else sized_type(ctype, decl)
+
+
+def _mentions(python: str, name: str) -> bool:
+    """Does the Python text ``python`` read ``name`` - as a name, not inside a string?"""
+    return re.search(rf"(?<![\w.]){re.escape(name)}(?![\w])", python) is not None
 
 
 def _initialiser(decl: VarDecl) -> Expr | None:
