@@ -35,6 +35,7 @@ from .wdeclared import (
     OFFSET_P,
     STL,
     STL_KINDS,
+    STL_P,
     Catalogue,
     Spelled,
     class_name,
@@ -256,8 +257,15 @@ class _Writer:
 
     def _stl(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
         found = parse_type(element[8])
-        if element[3] == STL + OFFSET_L:
+        if element[3] in (STL + OFFSET_L, STL_P + OFFSET_L):
             self.container_array(found, value)
+            return
+        if element[3] == STL_P and found.name in ("string", "basic_string", "TString"):
+            # A pointer to a string: the string itself, an empty one where it is null, which
+            # is how ROOT streams a container pointer.
+            at = self.buf.start(STL_VERSION)
+            self.buf.string(_text(value))
+            self.buf.end(at)
             return
         self.collection(found, value)
 

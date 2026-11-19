@@ -69,6 +69,8 @@ STL_STRING = 365
 OBJECT, ANY, OBJECT_P, OBJECT_PP, ANY_P, ANY_PP, STL = 61, 62, 63, 64, 68, 69, 300
 #: ``kCharStar``: a C string, its length and then its characters.
 CHAR_STAR = 7
+#: ``kSTLp``: a pointer to a container, which ROOT lays out as the container itself.
+STL_P = 71
 #: ROOT's classes that stream themselves by hand and that a file holds no description of.
 SELF_STREAMED = ("TRef", "TRefArray")
 #: ``kTString``, ``kTObject``, ``kTNamed`` and ``kCounter``.
@@ -191,6 +193,10 @@ class Catalogue:
         self, declarations: Mapping[str, Declaration], enums: frozenset[str] = frozenset()
     ) -> None:
         self.declarations = dict(declarations)
+        #: The same classes by the spelling with no spaces in it: a streamer names an instance
+        #: ``template2<template1<int>>`` where the declaration writes
+        #: ``template2<template1<int> >``, and both are the one class.
+        self.spelled = {_squash(name): name for name in self.declarations}
         #: The program's enumerations, which are written as ``int`` under their own names.
         self.enums = enums
         #: Each class described so far: its checksum, version and elements.
@@ -205,6 +211,8 @@ class Catalogue:
     def declared(self, name: str) -> Declaration | None:
         """The program's class ``name``, or the pair a map holds, if it is one."""
         found = self.declarations.get(name)
+        if found is None:
+            found = self.declarations.get(self.spelled.get(_squash(name), ""))
         if found is None and name.startswith("pair<"):
             found = _pair(name)
             self.declarations[name] = found
@@ -227,10 +235,12 @@ class Catalogue:
 
     def info(self, name: str) -> tuple[int, int, tuple[Element, ...]]:
         """The class ``name``'s checksum, version and elements."""
+        declared = self.declared(name)
+        if declared is not None:
+            name = declared.name  # described once, however a type spells it
         found = self.infos.get(name)
         if found is not None:
             return found
-        declared = self.declared(name)
         if declared is None and name in SELF_STREAMED:
             return 0, 1, ()  # streamed by hand, and described by nothing in the file
         if declared is None:
@@ -407,8 +417,10 @@ class Catalogue:
     def _string(
         self, owner: Declaration, field: Field, found: Spelled, counter: bool
     ) -> Element | None:
-        if found.stars or field.dims:
+        if field.dims:
             return None
+        if found.stars:
+            return self._string_pointer(owner, field, found)
         if found.name == "TString":
             return ("TStreamerString", field.name, field.comment, TSTRING, STRING_SIZE, 0, 0,
                     NO_DIMS, "TString", ())  # fmt: skip
@@ -417,6 +429,28 @@ class Catalogue:
                     NO_DIMS, "string", (STL_STRING, STL_STRING))  # fmt: skip
         return None
 
+    def _string_pointer(
+        self, owner: Declaration, field: Field, found: Spelled
+    ) -> Element | None:
+        """A pointer to a string is a container pointer, ``kSTLp``, that ROOT writes as the
+        string itself - an empty one where the pointer is null - under ``kSTLstring``.
+
+        Counted by a ``//[n]`` comment, the same member is ROOT's ``kStreamLoop`` instead: as
+        many strings as the count says, one after another, a layout this writer has not been
+        taught, so the member is refused by name rather than written as a pointer to one.
+        """
+        if found.stars > 1 or found.name not in ("string", "basic_string", "TString"):
+            return None
+        if _counter_of(field) is not None:
+            raise UnsupportedFeatureError(
+                f"{owner.name}::{field.name} is a {field.spelled} counted by a //[n] comment, "
+                f"which ROOT writes as ``kStreamLoop``: as many strings as the count says, "
+                f"streamed one after another. This writer has not been taught that layout; "
+                f"give the member a std::vector<std::string>, or mark it transient with //! to "
+                f"leave it out of the file")
+        return ("TStreamerSTL", field.name, field.comment, STL_P, POINTER_SIZE, 0, 0,
+                NO_DIMS, streamer_name(found), (STL_STRING, STL_STRING))  # fmt: skip
+
     def _container(
         self, owner: Declaration, field: Field, found: Spelled, counter: bool
     ) -> Element | None:
@@ -424,21 +458,19 @@ class Catalogue:
         describes both as one ``TStreamerSTL``, and the array with the array offset on its
         type, room for N containers and N as its length - as the oracle writes the
         ``vector<double> f[4]`` this class holds.
+
+        A pointer to one, ``vector<T> *name`` or ``vector<T> *name[N]``, is ROOT's ``kSTLp``
+        with its container number offset by ``kOffsetP``: a null pointer is written as the
+        empty container it would have held, so nothing else about the layout changes.
         """
         kind = STL_KINDS.get(found.name)
-        if kind is None or found.stars:
+        if kind is None or found.stars > 1:
             return None
         content = OBJECT if found.name in MAPS else self.content_type(found.args[0])
         if found.name in MAPS:
             self.describe(pair_name(found))
         dims = _dimensions(owner, field)
-        if dims:
-            length = _product(dims)
-            return ("TStreamerSTL", field.name, field.comment, STL + OFFSET_L,
-                    CONTAINER_SIZE * length, length, len(dims), (*dims, *NO_DIMS)[:5],
-                    streamer_name(found), (kind, content))  # fmt: skip
-        return ("TStreamerSTL", field.name, field.comment, STL, CONTAINER_SIZE, 0, 0, NO_DIMS,
-                streamer_name(found), (kind, content))  # fmt: skip
+        return _container_element(field, found, kind, content, dims)
 
     def _complex(
         self, owner: Declaration, field: Field, found: Spelled, counter: bool
@@ -469,7 +501,8 @@ class Catalogue:
         if basic is not None:
             return basic[0]
         if content.stars:
-            self._require(content.name)
+            if content.name not in ("string", "TString"):
+                self._require(content.name)
             return OBJECT_P
         if content.name not in STL_KINDS and content.name not in ("string", "TString"):
             name = class_name(content)
@@ -525,6 +558,12 @@ _MEMBER_RULES: tuple[
 )
 
 
+def _squash(name: str) -> str:
+    """A class name with the spaces out of it, which is how two spellings of one instance are
+    told to be the same class."""
+    return name.replace(" ", "")
+
+
 def pair_name(found: Spelled) -> str:
     """The pair a map holds, as ROOT names it: ``pair<int,string>``."""
     key, value = found.args[0], found.args[1]
@@ -563,6 +602,27 @@ def _note_complexes(catalogue: Catalogue, found: Spelled) -> None:
         catalogue.declarations.setdefault(made[0], made[1])
     for arg in found.args:
         _note_complexes(catalogue, arg)
+
+
+def _container_element(
+    field: Field, found: Spelled, kind: int, content: int, dims: tuple[int, ...]
+) -> Element:
+    """The one element a container member is, whatever room it takes: ROOT's ``kSTL``, or
+    ``kSTLp`` for a pointer to a container - which a null pointer writes as the empty container
+    it would have held, so the star changes the element's type, its container number offset by
+    ``kOffsetP``, and the room the member takes in memory; plus the array offset when the member
+    is an array of them, whose length and maximum index are the array's."""
+    stl = kind + OFFSET_P if found.stars else kind
+    if not dims:
+        stype = STL_P if found.stars else STL
+        room = POINTER_SIZE if found.stars else CONTAINER_SIZE
+        return ("TStreamerSTL", field.name, field.comment, stype, room, 0, 0, NO_DIMS,
+                streamer_name(found), (stl, content))  # fmt: skip
+    length = _product(dims)
+    stype = (STL_P if found.stars else STL) + OFFSET_L
+    room = (POINTER_SIZE if found.stars else CONTAINER_SIZE) * length
+    return ("TStreamerSTL", field.name, field.comment, stype, room, length, len(dims),
+            (*dims, *NO_DIMS)[:5], streamer_name(found), (stl, content))  # fmt: skip
 
 
 def _complex_element(field: Field, name: str, size: int, dims: tuple[int, ...]) -> Element:

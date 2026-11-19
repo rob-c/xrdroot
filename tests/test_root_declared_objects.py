@@ -757,6 +757,90 @@ def test_an_array_of_containers_of_objects_is_refused_by_name():
         write_members(WBuffer(), Instance("C", {"v": [[], []]}), made)  # fmt: skip
 
 
+#: ROOT 6.40.04's bytes for ``class P : public TObject { std::vector<int> *fVint;
+#: std::string *fS; std::vector<int> *fA[2]; }``, streamed by the oracle through ACLiC with every
+#: pointer null and then with ``fVint`` {1,2}, ``fS`` "hi" and ``fA[1]`` {7}. A pointer to a
+#: container is written as the container itself - an empty one where the pointer is null, an
+#: empty string for a ``std::string`` - and an array of pointers as the one record round all
+#: of its elements, each whose count follows the one before.
+POINTER_TO_CONTAINER_BYTES = {
+    "null": "4000002b00010001000000000000000040000006000a0000000040000003000a"
+            "004000000a000a0000000000000000",
+    "set": "400000390001000100000000000000004000000e000a000000020000000100000002"
+           "40000005000a0268694000000e000a000000000000000100000007",
+}  # fmt: skip
+
+
+def _a_class_of_pointers_to_containers():
+    return Catalogue({"P": Declaration("P", 1, False, ("TObject",), (
+        Field("fVint", "vector<int>*", "", ()),
+        Field("fS", "string*", "", ()),
+        Field("fA", "vector<int>*", "", (2,))))})  # fmt: skip
+
+
+def test_a_pointer_to_a_container_is_roots_stl_pointer_element():
+    """ROOT describes ``vector<T> *f`` as ``kSTLp``, 71, its container number offset by
+    ``kOffsetP`` - ``stl=41`` for a vector, 365 for the ``kSTLstring`` a pointer to a string is
+    - and the room a pointer takes; an array of such pointers as ``kSTLp + kOffsetL``, 91,
+    with its length and maximum index. The oracle says so for the bigevent roottest's
+    ``fVectorTobject``, ``fVectorTnamed``, ``fListString``, ``fMapTAxisp``, ``fSetTAxisp``
+    and ``fMultiSetTAxisp``."""
+    elements = _a_class_of_pointers_to_containers().info("P")[2]
+    assert elements[1:] == (
+        ("TStreamerSTL", "fVint", "", 71, 8, 0, 0, NO_DIMS, "vector<int>*", (41, 3)),
+        ("TStreamerSTL", "fS", "", 71, 8, 0, 0, NO_DIMS, "string*", (365, 365)),
+        ("TStreamerSTL", "fA", "", 91, 16, 2, 1, (2, 0, 0, 0, 0), "vector<int>*", (41, 3)))
+
+
+def test_a_pointer_to_a_container_is_written_as_the_container_root_writes():
+    """ROOT streams a pointer to a container exactly as the container it points at, so a null
+    pointer is the empty container - a count of nothing, or a string of no characters - and
+    nothing marks the pointer itself."""
+    made = _a_class_of_pointers_to_containers()
+    cases = {
+        "null": {"fVint": None, "fS": None, "fA": [None, None]},
+        "set": {"fVint": [1, 2], "fS": "hi", "fA": [[], [7]]},
+    }
+    for case, members in cases.items():
+        buf = WBuffer()
+        write_instance(buf, Instance("P", {"TObject": {}, **members}), made)
+        assert bytes(buf.data).hex() == POINTER_TO_CONTAINER_BYTES[case], case
+
+
+def test_a_container_of_pointers_to_strings_holds_pointers_to_objects():
+    """``list<string *>`` is ``kObjectp``, 63, as any container of pointers is - ROOT needs no
+    class of the kit for the thing pointed at, so the bigevent roottest's ``fListStringp`` is
+    laid out rather than refused."""
+    made = Catalogue({"C": Declaration("C", 1, True, (), (
+        Field("fListStringp", "list<string *>", "STL list of pointers to strings", ()),))})
+    assert made.info("C")[2] == (
+        ("TStreamerSTL", "fListStringp", "STL list of pointers to strings", 300, 24, 0, 0,
+         NO_DIMS, "list<string*>", (2, 63)),)
+
+
+def test_a_counted_array_of_strings_is_refused_as_the_streamer_loop_it_is():
+    """``TString *f //[n]`` is ``kStreamLoop``: as many strings as the count says, one after
+    another, with no record round them. This writer has not been taught that layout, and the
+    member is refused by name rather than written as a pointer to one string."""
+    made = Catalogue({"C": Declaration("C", 1, True, (), (
+        Field("fTstringp", "TString*", "[fNvertex] array of TString", ()),))})
+    with pytest.raises(UnsupportedFeatureError,
+                       match=r"fTstringp is a TString\* counted by a //\[n\] comment"):
+        made.info("C")  # fmt: skip
+
+
+def test_a_class_spelled_with_a_space_where_a_streamer_names_it_is_the_same_class():
+    """A declaration spells a template instance as C++ writes it,
+    ``template2<template1<int> >``, while a streamer names the very class
+    ``template2<template1<int>>``: the catalogue answers to either spelling, so the bigevent
+    roottest's ``Event::fTemplateMember`` - an empty class - is laid out, not refused."""
+    spelled = "template2<template1<int> >"
+    made = Catalogue({spelled: Declaration(spelled, 1, False, (), ())})
+    assert made.known("template2<template1<int>>")
+    assert made.info("template2<template1<int>>")[2] == ()
+    assert set(made.entries()) == {spelled}
+
+
 #: ROOT 6.40.04's ``TBufferFile::WriteObjectAny`` of a ``classWithComplex(1, 2, 3, 4)`` - a
 #: ``std::complex<float> fcf`` and a ``std::complex<double> fcd`` - as the oracle writes it: the
 #: record's byte count, the version a class of no ``ClassDef`` carries (0) and its checksum,
