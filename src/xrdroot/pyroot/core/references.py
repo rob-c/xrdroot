@@ -489,17 +489,41 @@ def file_process(file: Any, index: int) -> TProcessID | None:
 
 def settle(found: Any, members: Any, file: Any) -> None:
     """What reading an object read from ``file`` leaves to the session: a reference given the
-    process its file names, and an object a reference may point at filed in its process."""
+    process its file names, and an object a reference may point at filed in its process.
+
+    The references among an object's members are given their process too. ROOT reads one as
+    part of the member's own ``Streamer``, which nothing here runs - a declared class is made
+    by its constructor and then filled from its record - so without this a ``TRef fReference``
+    read back names no process, and ``GetObject`` gives up before it can look its object up, or
+    run the action its bits number (roottest/root/io/references/actions).
+    """
     if not isinstance(members, dict) or file is None:
         return
     if isinstance(found, (TRef, TRefArray)):
-        pid = file_process(file, int(members.get("fPID", 0)))
-        if pid is not None:
-            found._pid = pid
+        _give_process(found, members, file)
         return
     tobject = members if "pidf" in members else members.get("TObject")
     if isinstance(tobject, dict) and "pidf" in tobject and isinstance(found, TObject):
         _filed(found, tobject, file_process(file, int(tobject["pidf"])))
+    _settle_members(found, members, file)
+
+
+def _settle_members(found: Any, members: dict[str, Any], file: Any) -> None:
+    """The references held by an object read, given the process their records name."""
+    from ...pycxx.symbols import member_name
+
+    for name, record in members.items():
+        if isinstance(record, dict) and "fPID" in record:
+            held = getattr(found, member_name(name), None)
+            if isinstance(held, (TRef, TRefArray)):
+                _give_process(held, record, file)
+
+
+def _give_process(found: Any, members: dict[str, Any], file: Any) -> None:
+    """``found`` given the session's process that the file's ``ProcessID`` record names."""
+    pid = file_process(file, int(members.get("fPID", 0)))
+    if pid is not None:
+        found._pid = pid
 
 
 def _filed(found: Any, tobject: dict[str, Any], pid: TProcessID | None) -> None:

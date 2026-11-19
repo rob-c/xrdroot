@@ -275,6 +275,40 @@ def test_a_record_naming_a_process_its_file_lacks_is_left_unresolved():
     found.Close()
 
 
+class _Naming:
+    """A file that names one process: what ``TFile::ReadProcessID`` reads a ``ProcessID``
+    record through, without a file's worth of bytes behind it."""
+
+    def __init__(self, uuid: str) -> None:
+        self._uuid = uuid
+
+    def _reader(self):
+        return {"ProcessID0": {"TNamed": {"fName": "ProcessID0", "fTitle": self._uuid}}}
+
+
+class _Holding:
+    """An object read from a record and filled from it, as a declared class is: ROOT's own
+    classes give a member its ``Streamer``, and one made here is filled member by member."""
+
+    def __init__(self) -> None:
+        self.fReference = ROOT.TRef()
+        self.fOther = ROOT.TRef()
+
+
+def test_a_reference_among_a_read_object_s_members_is_given_the_process_its_record_names():
+    """Without the process its record names, a ``TRef`` read inside an object looks nothing up
+    and runs no action - ``roottest/root/io/references/actions/test1`` reads back a
+    ``TRef fReference`` whose action has to run."""
+    found = _Holding()
+    record = {"TObject": {"fUniqueID": 2, "fBits": 8}, "fName": "A"}
+    record["fReference"] = {"TObject": {"fUniqueID": 1, "fBits": 0x3010000}, "fPID": 0}
+    record["fOther"] = {"TObject": {"fUniqueID": 3, "fBits": 0x3000000}}
+    record["fGone"] = {"fPID": 0}  # a record the class has no member for
+    references.settle(found, record, _Naming("a-uuid-of-its-own"))
+    assert found.fReference.GetPID().GetTitle() == "a-uuid-of-its-own"
+    assert found.fOther.GetPID() is None  # no process in its record to be given
+
+
 def test_bits_read_without_their_bytes_and_grown_within_their_bytes_keep_count():
     bits = ROOT.TBits()
     bits.SetBitNumber(13)

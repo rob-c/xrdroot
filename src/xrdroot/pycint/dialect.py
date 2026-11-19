@@ -225,9 +225,11 @@ VIEWS = ("Row", "Column", "Diag", "Sub", "Flat", "Row_const", "Column_const", "D
 
 #: ROOT's classes a variable of is set by ``=`` in place: a matrix's view, which ``view =
 #: value`` writes through, and those whose ``operator=`` takes a number or a label rather than
-#: making the object anew - ``RooRealVar x(...); x = 3;`` (rf402).
+#: making the object anew - ``RooRealVar x(...); x = 3;`` (rf402) - and a ``TRef``, whose
+#: ``operator=`` writes into the reference, so the action numbered in its bits survives
+#: ``fReference = obj`` (roottest/root/io/references/actions).
 ASSIGNED = re.compile(
-    rf"^(?:TMatrix.*(?:{'|'.join(VIEWS)})|RooRealVar|RooCategory)$", re.S
+    rf"^(?:TRef|TMatrix.*(?:{'|'.join(VIEWS)})|RooRealVar|RooCategory)$", re.S
 )
 
 #: ``ROOT::RVecF`` and its kind: ``RVec``s whose element type their name gives.
