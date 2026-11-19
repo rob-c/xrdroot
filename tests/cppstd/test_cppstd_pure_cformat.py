@@ -140,6 +140,16 @@ def test_text_scanned_into_a_char_array_the_translation_holds_as_text_is_refused
     assert "%s" in str(refused.value) and "new char[n]" in str(refused.value)
 
 
+def test_text_scanned_into_the_cell_a_char_array_stands_for_is_given_the_cell() -> None:
+    """A translated ``char name[100]`` has no memory for the scan to write into, so the
+    emitter passes a cell in its place: ``%s`` stores the field in the cell, and the
+    variable takes the text once the scan has run (:func:`~cppstd.cstdio.written_after`).
+    """
+    name, count = Cell(""), Cell(0)
+    assert cstdio.sscanf("ab 12", "%s %d", name, count) == 2
+    assert (name.value, count.value) == ("ab", 12)
+
+
 def test_a_format_whose_conversions_outnumber_its_targets_is_refused() -> None:
     with pytest.raises(TypeError) as refused:
         cstdio.sscanf("1 2", "%d %d", Cell(0))

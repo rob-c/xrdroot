@@ -87,6 +87,26 @@ def test_a_line_read_into_text_python_cannot_change_in_place_is_refused(
     cstdio.fclose(read)
 
 
+def test_a_line_read_into_the_cell_a_char_array_stands_for_gives_the_cell_back(
+        tmp_path: Path) -> None:
+    """A translated ``char line[80]`` has no memory for ``fgets`` to fill, so the emitter
+    passes a cell in its place and the variable takes the cell's text afterwards: the read
+    hands the cell back, as C hands its buffer back, and the text is in the cell.
+    """
+    from xrdroot.cppstd.cells import Cell
+
+    path = tmp_path / "lines.txt"
+    path.write_bytes(b"first\nsecond\n")
+    read = cstdio.fopen(path, "r")
+    assert read is not None
+    line = Cell("")
+    assert cstdio.fgets(line, 80, read) is line and line.value == "first\n"
+    assert cstdio.written_after(cstdio.fgets(line, 80, read), line) is line
+    assert line.value == "second\n"
+    assert cstdio.fgets(line, 80, read) is None and line.value == "second\n"
+    cstdio.fclose(read)
+
+
 def test_rand_draws_what_the_macos_c_library_draws_from_each_seed() -> None:
     """The numbers of macOS's ``rand`` after ``srand(1)``, ``srand(0)`` and ``srand(42)``."""
     from xrdroot.cppstd import stdlib

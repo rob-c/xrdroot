@@ -12,8 +12,10 @@ Where the value lands is C's pointer: anything with a read/write ``.value`` - a
 what ``&x``, ``&d.field`` and ``&a[i]`` become - or an array's first element, which is where
 a pointer into one points. ``%s`` writes into a character buffer
 (:func:`~.buffers.text_into`), and refuses text Python cannot change in place: a ``char
-name[20]`` the translation holds as a ``str`` is such text, so the caller must hand the scan
-memory that can be written (``new char[n]``, or an array a library writes into) instead.
+name[20]`` the translation holds as a ``str`` is such text, so the emitter hands the scan a
+cell in the variable's place and gives the variable the cell's text afterwards
+(:func:`~.cstdio.written_after`); a caller of this function directly must hand it memory
+that can be written (``new char[n]``, or an array a library writes into) instead.
 
 The count is C's: the fields stored, or ``EOF`` when the text ran out before one was.
 """
@@ -221,13 +223,17 @@ def _store(target: Any, value: Any, conv: str) -> None:
 
 
 def _store_text(target: Any, text: str) -> None:
-    """``%s``: the text and its NUL into the character buffer the target points at."""
+    """``%s``: the text and its NUL into the character array the target points at."""
     if isinstance(target, str):
         raise TypeError(
             "sscanf stores the text of a %s conversion in a character array, and a char array "
             "the translation holds as a Python str is text Python cannot change in place; scan "
             "into memory from new char[n], or a char array a library writes into, instead"
         )
+    if hasattr(target, "value"):
+        # A char[] the translation holds as text, for which the emitter passed a cell.
+        target.value = text
+        return
     text_into(target, text, True)
 
 

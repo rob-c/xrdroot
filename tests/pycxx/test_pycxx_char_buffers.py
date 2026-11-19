@@ -173,6 +173,81 @@ def test_a_char_array_a_library_writes_into_is_a_buffer() -> None:
     assert with_char(buffer, 3, 0, True) is buffer and str(buffer) == "one"
 
 
+def test_a_line_read_and_scanned_gives_its_text_to_the_variables_they_stand_for(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``while (fgets(line, 160, fp)) sscanf(line, "%s %d %d", name, &a, &b)`` - ROOT's
+    ``test/stressGraphics.cxx`` and ``tree500_cernbuild.C``. Neither ``line`` nor ``name``
+    is memory here, so each callee is handed a cell in the variable's place and the variable
+    takes the cell's text once the call has run. ROOT 6.40.04 prints the same three lines.
+    """
+    rows = tmp_path / "rows.txt"
+    rows.write_text("staff 12 -3\nother 7 8\nnot-enough\n")
+    body = f'''
+int main() {{
+   FILE *fp = fopen("{rows}", "r");
+   char line[160];
+   char name[100];
+   int a = 0, b = 0;
+   while (fgets(line, 160, fp)) {{
+      if (sscanf(line, "%s %d %d", name, &a, &b) != 3) continue;
+      printf("[%s] %d %d\\n", name, a, b);
+   }}
+   fclose(fp);
+   return 0;
+}}
+'''
+    assert run(tmp_path, capsys, body) == "[staff] 12 -3\n[other] 7 8\n"
+
+
+def test_a_scan_into_an_array_of_numbers_writes_its_first_element(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Only a character array is text to give back to a variable: an array of numbers a
+    pointer names is written where it already lies."""
+    body = """
+int main() {
+   int numbers[2] = {0, 0};
+   sscanf("5", "%d", numbers);
+   printf("%d %d\\n", numbers[0], numbers[1]);
+   return 0;
+}
+"""
+    assert run(tmp_path, capsys, body) == "5 0\n"
+
+
+def test_a_scan_into_a_parameter_s_array_is_the_caller_s_to_write(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``char buf[10]`` a function was handed belongs to its caller: the callee cannot give
+    it the text, so the scan refuses rather than read into a ``str`` the caller keeps."""
+    body = ('void fill(char buf[10]) { sscanf("text", "%s", buf); }\n'
+            'int main() { char s[10]; fill(s); }\n')
+    with pytest.raises(MacroError, match=r"new char\[n\]"):
+        run(tmp_path, capsys, body)
+
+
+def test_a_scan_writes_only_into_the_text_a_variable_stands_for() -> None:
+    """A target that is not the macro's own variable - ``p + 1`` into memory a pointer
+    already names - has no variable to give the text back to, and is written in place.
+    """
+    python = translation('void f(char *p) { sscanf("x", "%s", p + 1); }', "t.cxx").python
+    assert "written_after" not in python and "sscanf('x', '%s', p[1:])" in python
+
+
+def test_a_scan_into_a_char_array_a_library_writes_into_writes_it_in_place() -> None:
+    from dataclasses import replace
+
+    from xrdroot.pycxx.dialect import CXX, using
+
+    lab = replace(CXX, name="lab-buffers", buffer_methods=frozenset({"Branch"}))
+    source = 'void f(T &t) { char s[10]; t.Branch(s); sscanf("x", "%s", s); }'
+    with using(lab):
+        python = translation(source, "t.cxx").python
+    assert "written_after" not in python
+    assert "sscanf('x', '%s', s)" in python
+
+
 def test_an_object_moved_by_its_base_offset_is_itself_at_offset_zero(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

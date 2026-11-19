@@ -57,6 +57,10 @@ WRAPS = {
 #: ``std::max_element`` and ``std::min_element``, and the Python of what the one found holds.
 EXTREMES = {"max_element": "max", "min_element": "min"}
 
+#: C's functions that write text into character arrays, and the index their first such
+#: argument has: a scan writes into each of its targets, ``fgets`` into the buffer it fills.
+TEXT_TARGETS = {"fgets": 0, "scanf": 1, "fscanf": 2, "sscanf": 2}
+
 #: A container's iterator functions, and the index each stands for in a slice.
 ITERATOR_ENDS = {"begin": "0", "cbegin": "0", "end": "None", "cend": "None"}
 
@@ -86,11 +90,16 @@ class CallEmitter(ExprEmitter):
         positions = self.program.constructor_positions(ctype.name, len(args))
         return self.argument_list(args, positions)
 
-    def argument_list(self, args: list[Expr], at: tuple[int, ...]) -> str:
+    def argument_list(self, args: list[Expr], at: tuple[int, ...],
+                      replaced: dict[int, str] | None = None) -> str:
+        """``args``, with those at ``at`` passed as something writable and those ``replaced``
+        - by index - passed as what the caller worked out instead."""
         positions = set(at)
         items = []
         for index, arg in enumerate(args):
-            if index in positions and _lvalue(arg) and not self._object(arg):
+            if replaced is not None and index in replaced:
+                items.append(replaced[index])
+            elif index in positions and _lvalue(arg) and not self._object(arg):
                 items.append(self.reference(arg))
             else:
                 items.append(self.value(arg))
@@ -131,10 +140,58 @@ class CallEmitter(ExprEmitter):
             found = special(self, func, node)
             if found is not None:
                 return found
+        return self.library_call(func, node)
+
+    def library_call(self, func: Name, node: Call) -> Out:
+        """A function the program did not declare: an inherited member's, a C text writer's
+        that has to give its character array its text back, or the library's own call."""
         inherited = self.inherited_call(func)
         if inherited is not None:
             return f"{inherited}({self.arguments(node)})", P.POSTFIX
+        written = self.text_written(func, node)
+        if written is not None:
+            return written, P.POSTFIX
         return f"{self.library(func)[0]}({self.arguments(node)})", P.POSTFIX
+
+    def text_written(self, func: Name, node: Call) -> str | None:
+        """``sscanf(line, "%s %d", name, &n)`` where ``name`` is a ``char[]`` the translation
+        holds as a ``str``: C writes the field into that array's memory, which Python cannot
+        write into, so a cell takes its place in the call and the variable is given the text
+        once the call has run - by :func:`~xrdroot.cppstd.cstdio.written_after`, whose value
+        is the call's own: the fields stored, or the buffer ``fgets`` filled."""
+        start = self._text_start(func)
+        if start is None:
+            return None
+        targets = [(index, arg) for index, arg in enumerate(node.args)
+                   if index >= start and self._text_target(arg)]
+        if not targets:
+            return None
+        cells = {index: self.fresh("text") for index, _ in targets}
+        replaced = {index: f"{cells[index]} := Cell({self.value(arg)})" for index, arg in targets}
+        positions = self.program.reference_positions(node)
+        given = self.argument_list(node.args, positions, replaced)
+        assigned = [f"{self.value(arg)} := {cells[index]}.value" for index, arg in targets]
+        return f"written_after({self.library(func)[0]}({given}), {', '.join(assigned)})"
+
+    def _text_start(self, func: Name) -> int | None:
+        """Where the character arrays a C function writes into start among its arguments, if
+        the call is C's own function: a library's ``scanf`` is not this one."""
+        return TEXT_TARGETS.get(func.last) if len(func.parts) == 1 else None
+
+    def _text_target(self, arg: Expr) -> bool:
+        """Is ``arg`` a ``char[]`` variable the translation holds as a ``str`` - one a callee
+        writing text into it has to give the text back to through the variable? An array
+        handed to a library to write into is memory, which is written in place, and a
+        parameter's array belongs to the caller, who is the one to give it its text."""
+        if not isinstance(arg, Name):
+            return False
+        symbol = self.symbol(arg)
+        if symbol is None or symbol.kind != "local" or len(arg.parts) != 1:
+            return False
+        found = self.typeof(arg)
+        if found is None or found.name != "char" or len(found.dims) != 1:
+            return False
+        return arg.last not in self.program.buffers
 
     def _instance_call(self, func: Name, node: Call, symbol: Symbol | None) -> str | None:
         """A call of a function template's instance, a member template's handed ``self``."""

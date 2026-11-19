@@ -7,6 +7,11 @@ open - as C's does, rather than raising. What is written may be text, bytes
 or an array of numbers; ``fwrite(data, size, count, f)`` writes ``size *
 count`` bytes of it and returns ``count`` when they were all written. A
 :class:`FILE` has ``write`` too, so ``fprintf`` prints to one.
+
+A ``char name[100]`` is a ``str`` here, which Python cannot write into, so a
+callee that fills one - ``fgets``, ``sscanf`` - is handed a cell in the
+variable's place and the variable is given the text afterwards: that is
+:func:`written_after`, which the emitter wraps such a call in.
 """
 
 from __future__ import annotations
@@ -19,8 +24,8 @@ from .cformat import EOF as EOF
 from .cformat import sscanf as sscanf
 
 __all__ = ["FILE", "fopen", "fclose", "fwrite", "fread", "fgets", "fputs", "fgetc", "fflush",
-           "feof", "ftell", "fseek", "rewind", "sscanf", "EOF", "SEEK_SET", "SEEK_CUR",
-           "SEEK_END"]  # fmt: skip
+           "feof", "ftell", "fseek", "rewind", "sscanf", "written_after", "EOF", "SEEK_SET",
+           "SEEK_CUR", "SEEK_END"]  # fmt: skip
 
 #: ``fseek``'s origins: the start, the current position, the end.
 SEEK_SET, SEEK_CUR, SEEK_END = 0, 1, 2
@@ -97,14 +102,34 @@ def fgets(buffer: Any, size: Any, file: FILE) -> Any:
     character, so nothing is read and the null pointer is returned rather than a buffer that
     was not advanced, which would leave a program that reads a line at a time spinning.
 
-    The buffer is memory to write into, a :class:`~.buffers.CharBuffer`; text Python cannot
-    change in place is refused by :func:`~.buffers.text_into` rather than read and dropped.
+    The buffer is memory to write into, a :class:`~.buffers.CharBuffer`, or the cell the
+    emitter passes for a ``char name[100]`` the translation holds as a ``str`` - the text is
+    given the cell and the cell is handed back, as C hands back its buffer, for the
+    variable to take the text from (:func:`written_after`). Text Python cannot change in
+    place is otherwise refused by :func:`~.buffers.text_into` rather than read and dropped.
     """
     data = file.stream.readline(int(size) - 1) if int(size) > 1 else b""
     if not data:
         file.eof = True
         return None
-    return text_into(buffer, data.decode("latin-1"), True)
+    text = data.decode("latin-1")
+    if hasattr(buffer, "value"):
+        buffer.value = text
+        return buffer
+    return text_into(buffer, text, True)
+
+
+def written_after(result: Any, *assigned: Any) -> Any:
+    """``fgets``'s buffer, or the fields ``sscanf`` stored, once the text it wrote into a
+    ``char[]`` has been given to the variable that array stands for.
+
+    C writes into the memory of ``char name[100]``; the translation holds that as a ``str``,
+    which Python cannot write into, so the callee is handed a cell in the variable's place
+    and the variable takes the cell's text afterwards. ``assigned`` are those assignments -
+    ``name := text_1.value`` - made in order as this call's arguments, before the value of
+    the call itself (the count, or the buffer) is used.
+    """
+    return result
 
 
 def fputs(text: Any, file: Any) -> int:
