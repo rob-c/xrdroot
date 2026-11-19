@@ -287,9 +287,9 @@ def test_an_object_is_the_members_its_streamer_writes_in_the_order_it_writes_the
     """``PolyMarker.ref``: ``fLastPoint`` is not there, and ``fName`` comes after ``fOption``.
 
     ROOT's own text for this marker says ``"fBits" : 1`` and
-    ``"fName" : "TPolyMarker3D"``; those two are the marker's own state, which ROOT's
-    constructor sets - ``kCanDelete`` and its class as its name - and this library's does
-    not yet, so what is written here is what the object holds.
+    ``"fName" : "TPolyMarker3D"``: ``TPolyMarker3D``'s constructor calls
+    ``SetBit(kCanDelete)`` and names the marker after its class, and neither has this
+    library's object, so both come from :data:`CLASS_BITS` and :data:`DEFAULTS`.
     """
     marker = ROOT.TPolyMarker3D(3)
     for n in range(3):
@@ -297,19 +297,33 @@ def test_an_object_is_the_members_its_streamer_writes_in_the_order_it_writes_the
     assert _json(marker) == """{
   "_typename" : "TPolyMarker3D",
   "fUniqueID" : 0,
-  "fBits" : 0,
+  "fBits" : 1,
   "fMarkerColor" : 1,
   "fMarkerStyle" : 1,
   "fMarkerSize" : 1,
   "fN" : 3,
   "fP" : [0, 0, 0, 2, 3, 4, 4, 6, 8],
   "fOption" : "",
-  "fName" : ""
+  "fName" : "TPolyMarker3D"
 }"""
     assert _json(marker, 3) == (
-        '{"_typename":"TPolyMarker3D","fUniqueID":0,"fBits":0,"fMarkerColor":1,'
+        '{"_typename":"TPolyMarker3D","fUniqueID":0,"fBits":1,"fMarkerColor":1,'
         '"fMarkerStyle":1,"fMarkerSize":1,"fN":3,"fP":[0,0,0,2,3,4,4,6,8],"fOption":"",'
-        '"fName":""}')
+        '"fName":"TPolyMarker3D"}')
+
+
+def test_a_name_the_object_is_given_is_the_name_that_is_written():
+    """The default is what the constructor sets; ``SetName`` still decides what goes out."""
+    marker = ROOT.TPolyMarker3D(1)
+    marker.SetName("other")
+    assert _json(marker, 3).endswith('"fOption":"","fName":"other"}')
+
+
+def test_the_heap_bits_of_a_member_the_object_holds_are_added_to_its_class_s():
+    """A drawn object keeps ``fBits`` itself, with the heap's two bits, which ROOT masks."""
+    marker = ROOT.TPolyMarker3D(1)
+    marker.members["fBits"] = 0x03000003
+    assert '"fBits":3' in _json(marker, 3)
 
 
 def test_a_polyline_writes_its_line_attributes_and_no_name():
@@ -408,7 +422,7 @@ def test_the_numbers_a_drawn_object_keeps_are_written_as_the_array_they_are():
     marker.SetPoint(0, 0.5, 1.5, 2.5)
     marker.SetPoint(1, 3.5, 4.5, 5.5)
     assert str(ROOT.TBufferJSON.ToJSON(marker, 23)) == (
-        '{"_typename":"TPolyMarker3D","fUniqueID":0,"fBits":0,"fMarkerColor":1,'
+        '{"_typename":"TPolyMarker3D","fUniqueID":0,"fBits":1,"fMarkerColor":1,'
         '"fMarkerStyle":1,"fMarkerSize":1,"fN":2,"fP":{"$arr":"Float32","len":6,'
-        '"v":[0.5,1.5,2.5,3.5,4.5,5.5]},"fOption":"","fName":""}'
+        '"v":[0.5,1.5,2.5,3.5,4.5,5.5]},"fOption":"","fName":"TPolyMarker3D"}'
     )

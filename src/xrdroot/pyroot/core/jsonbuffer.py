@@ -162,7 +162,17 @@ MEMBERS: dict[str, tuple[_Member, ...]] = {
 #: Where a core class keeps a member ROOT names otherwise: ``TObject``'s ``fUniqueID`` is
 #: the object's ``_unique_id``, and a ``TObjString``'s one string is its ``fName``.
 ATTRIBUTES = {"fUniqueID": "_unique_id", "fBits": "_bits", "fName": "_name",
-              "fTitle": "_title", "fString": "_name"}
+              "fTitle": "_title", "fString": "_name"}  # fmt: skip
+
+#: The bits a class's *own* constructor sets and the object here does not carry, so that the
+#: JSON would describe one ROOT never makes: ``TPolyMarker3D`` calls ``SetBit(kCanDelete)``,
+#: and ``PolyMarker.ref`` shows the marker's ``fBits`` as 1 for that bit.
+CLASS_BITS = {"TPolyMarker3D": 1}
+
+#: The value a class's constructor gives a member the object here leaves unset.
+#: ``TPolyMarker3D``'s ``fName`` is its own ``TString`` member, not the ``TNamed`` name it
+#: does not inherit, and its constructor names the marker after its class.
+DEFAULTS = {("TPolyMarker3D", "fName"): "TPolyMarker3D"}
 
 
 def _remainder(value: int, mod: int) -> int:
@@ -249,12 +259,22 @@ def _classname(obj: Any) -> str:
 
 def _held(obj: Any, member: _Member) -> Any:
     """The value of ``member`` in ``obj``: one of the members a drawn object keeps by name,
-    where ``fBits`` carries the heap's bits too, or the attribute a core class keeps it in."""
+    where ``fBits`` carries the heap's bits too, or the attribute a core class keeps it in.
+
+    A member the object leaves empty takes the value its class's constructor gives it, and
+    the bits its class's constructor sets are added to the object's own, since what ROOT
+    writes is the object its constructor made rather than the one here."""
+    classname = _classname(obj)
     found = getattr(obj, "members", None)
     value = found.get(member.name) if isinstance(found, dict) else None
     if value is None:
         value = getattr(obj, ATTRIBUTES.get(member.name, "_" + member.name), None)
-    return _pointer_bits(value) if member.name == "fBits" and value is not None else value
+    default = DEFAULTS.get((classname, member.name))
+    if default is not None and not (isinstance(value, str) and value):
+        value = default
+    if member.name == "fBits":
+        return _pointer_bits(value or 0) | CLASS_BITS.get(classname, 0)
+    return value
 
 
 def _content(values: list[Any]) -> tuple[int, int]:
