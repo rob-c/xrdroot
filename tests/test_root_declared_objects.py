@@ -1395,3 +1395,12 @@ def test_a_container_standing_on_its_own_is_read_by_one_reader_of_its_items():
         True,
         [1, 2, 3],
     )
+
+
+def test_a_collection_member_comes_back_as_the_namespaces_collection():
+    """A ``TObjArray*`` member is read as the plain list of what it held, and the object a
+    macro's pointer holds is the namespace's ``TObjArray``, named from the same bytes."""
+    from xrdroot.pyroot.core.declared import _pointed
+
+    back = _pointed(["a", "b"], parse_type("TObjArray*"), None)
+    assert (type(back).__name__, list(back)[:2]) == ("TObjArray", ["a", "b"])
