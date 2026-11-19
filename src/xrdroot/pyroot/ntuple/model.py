@@ -211,11 +211,14 @@ def _fill(held: Any, field: RField, value: Any) -> None:
     pairs, keyed = (value.items() if isinstance(value, Mapping) else value), kind.item.record
     held.clear()
     for item in pairs:
-        if keyed:
-            key, kept = item
-            held[key] = kept
-        else:
+        if not keyed:
             held.insert(item)
+            continue
+        key, kept = item
+        if hasattr(held, "__setitem__"):  # a map: the value kept under its key
+            held[key] = kept
+        else:  # a multimap: the pair inserted, so that a key may come more than once
+            held.insert((key, kept))
 
 
 def _bitset_value(size: int, value: Any) -> Any:

@@ -118,4 +118,4 @@ class RNTupleCollectionView:
         """``GetView<T>("_0")``: the items, read by their numbers."""
         from .reading import RNTupleView
 
-        return RNTupleView(self.reader, f"{self.name}.{name}")
+        return RNTupleView(self.reader, f"{self.name}.{name}", kind)

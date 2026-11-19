@@ -72,9 +72,7 @@ def test_a_set_and_a_map_field_are_written_from_the_items_they_hold() -> None:
     as ROOT writes a collection - the index column over the items, then the items."""
     model = ROOT.RNTupleModel.Create()
     model.AddField(ROOT.RFieldBase.Create("spam", "std::unordered_set<double>").Unwrap())
-    model.AddField(
-        ROOT.RFieldBase.Create("eggs", "std::unordered_map<int,std::string>").Unwrap()
-    )
+    model.AddField(ROOT.RFieldBase.Create("eggs", "std::unordered_map<int,std::string>").Unwrap())
     entry = model.GetDefaultEntry()
     entry["spam"] = [1.0, 3.0, 5.0]
     entry["eggs"] = [(2, "two"), (4, "four")]
@@ -96,6 +94,20 @@ def test_a_map_of_vectors_is_written_with_the_items_of_its_vectors() -> None:
     del writer
     assert [(key, list(items)) for key, items in _read("w.root")["strange"][0]] == [
         ("one", [1.0, 2.0])
+    ]
+
+
+def test_a_multimap_field_takes_every_pair_it_is_given_for_a_key() -> None:
+    """``entry[name] = [...]`` inserts a pair each time, as ``std::unordered_multimap``'s
+    ``insert`` does, where a map keeps one value under a key."""
+    model = ROOT.RNTupleModel.Create()
+    kind = "std::unordered_multimap<std::string,std::vector<float>>"
+    model.AddField(ROOT.RFieldBase.Create("strange", kind).Unwrap())
+    entry = model.GetDefaultEntry()
+    entry["strange"] = [("one", [1.0]), ("one", [2.0])]
+    assert [(pair.first, list(pair.second)) for pair in entry["strange"]] == [
+        ("one", [1.0]),
+        ("one", [2.0]),
     ]
 
 

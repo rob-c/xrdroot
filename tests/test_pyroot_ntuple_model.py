@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import numpy
 import pytest
 
 import xrdroot.pyroot as ROOT
 from xrdroot.errors import UnsupportedFeatureError
+from xrdroot.pyroot import stl
 from xrdroot.pyroot.core.objects import typed
-from xrdroot.pyroot.ntuple.fields import RFieldPtr, field_type
+from xrdroot.pyroot.ntuple import fields
+from xrdroot.pyroot.ntuple.fields import RFieldPtr, _default_object, field_type
 from xrdroot.pyroot.ntuple.model import RFieldBase, RResult
 from xrdroot.rntuple.writer import RecordSpec
 
@@ -51,6 +54,81 @@ def test_a_bitset_is_held_as_its_bits_and_declared_by_how_many_there_are() -> No
     assert entry["foo"].to_ulong() == 0xFA2
     entry["foo"] = ROOT.std.bitset[16](0x0F)
     assert entry["foo"].to_ulong() == 0x0F
+
+
+def test_a_record_is_held_as_the_object_its_class_default_constructs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``MakeField<T>(name)`` hands out what a class's default constructor makes, so a fill
+    of nothing writes the class's default member initialisers - which is why roottest's
+    makeproject reads back ``bar == {1, 2}`` and ``foo == 0xfa2``."""
+
+    class Point:
+        def __init__(self) -> None:
+            self.fX, self.fY, self.fZ = 1.0, 2.0, 3.0
+
+    class Event:
+        def __init__(self) -> None:
+            self.fP = Point()
+            self.fE = 4.0
+
+    monkeypatch.setattr(fields, "_default_object", lambda cxx: Event())
+    held = field_type("TLorentzVector").holder()
+    assert held["fE"].value == 4.0
+    assert (held["fP"]["fX"].value, held["fP"]["fZ"].value) == (1.0, 3.0)
+
+
+def test_a_default_object_is_the_class_a_dictionary_declares_or_there_is_none() -> None:
+    """The object a record's holder is filled from exists only where a dictionary here
+    declares the class; a name none does has its members' zeros alone."""
+    assert isinstance(_default_object("TLorentzVector"), ROOT.TLorentzVector)
+    assert _default_object("NoClassIsDeclaredUnderThisName") is None
+
+
+def test_a_record_no_dictionary_declares_is_read_as_its_members_alone() -> None:
+    """A class nobody declared here has no object to make, so a view hands out the
+    members the file keeps, as a ``dict``."""
+    assert field_type("NoSuchEventClass").value({}) == {}
+
+
+def test_a_class_with_no_default_constructor_makes_no_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``find_class`` gives a class, and ``cls()`` is what may fail: a class whose only
+    constructor takes an argument is one ROOT could not make for a file either."""
+
+    class NoDefault:
+        def __init__(self, required: int) -> None:
+            self.required = required
+
+    monkeypatch.setattr(stl, "_resolve_root_type", lambda cxx: NoDefault)
+    assert _default_object("NoDefault") is None
+
+
+def test_a_member_of_a_container_kind_is_the_objects_own_container() -> None:
+    """A vector, a set or a map member is held as the object holds it, not as a copy, so
+    that what a macro puts in the object is what a fill writes."""
+
+    class Event:
+        def __init__(self) -> None:
+            self.v = ROOT.std.vector["int"]([1, 2])
+
+    made = Event()
+    assert fields._member_holder("v", field_type("std::vector<int>"), made) is made.v
+
+
+def test_a_value_from_a_file_is_held_as_c_holds_the_fields_type() -> None:
+    """A view hands out a bitset of its bits, a vector of its items and a set or a map of
+    its own, rather than the columns' arrays."""
+    bits = numpy.array([bool(0xFA2 >> bit & 1) for bit in range(16)])
+    assert field_type("std::bitset<16>").value(bits).to_ulong() == 0xFA2
+    vector = field_type("std::vector<int>").value(numpy.array([1, 2], dtype="int32"))
+    assert (vector.size(), list(vector)) == (2, [1, 2])
+    items = field_type("std::unordered_set<double>").value(numpy.array([3.5, 1.5]))
+    assert sorted(items) == [1.5, 3.5]
+    kept = field_type("std::unordered_map<int,std::string>").value({2: "two"})
+    assert dict(kept.items()) == {2: "two"}
+    assert field_type("std::string").value("text") == "text"
 
 
 def test_a_number_or_string_is_held_by_a_pointer_and_a_vector_is_itself() -> None:

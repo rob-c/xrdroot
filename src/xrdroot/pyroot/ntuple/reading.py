@@ -99,7 +99,7 @@ def _model_of(ntuple: Any) -> RNTupleModel:
 def _load(held: Any, value: Any) -> None:
     """Put one entry's value in its holder: a number or string, or a vector's items."""
     if isinstance(held, RFieldPtr):
-        held.value = value.item() if isinstance(value, np.generic) else value
+        held.value = held.kind.value(value)
     else:
         held.assign(value)
 
@@ -179,7 +179,7 @@ class RNTupleReader(Guarded):
     @typed
     def GetView(self, kind: Any, name: Any) -> RNTupleView:
         """``GetView<T>(name)``: one field's values by number, ``view(i)``."""
-        return RNTupleView(self, str(name))
+        return RNTupleView(self, str(name), kind)
 
     def GetCollectionView(self, name: Any) -> Any:
         """``GetCollectionView(name)``: a vector field's sizes, and views of its items."""
@@ -204,11 +204,30 @@ class RNTupleReader(Guarded):
         print(json_text(values), end="")
 
 
+def _held_as(reader: Any, name: str, kind: Any) -> Any:
+    """The type a view hands its values out as: the one it was made with, else the file's.
+
+    ``GetView<T>(name)`` names the type, and a view of ``GetView`` of a collection's
+    items names theirs; a view made only by name reads the type the file keeps, so that
+    a record is still an object of its class rather than the members' values alone.
+    """
+    if kind is not None:
+        try:
+            return field_type(kind)
+        except UnsupportedFeatureError:
+            return None
+    try:
+        return field_type(reader._ntuple[name].cxx_type)
+    except (AttributeError, KeyError, UnsupportedFeatureError):
+        return None
+
+
 class RNTupleView:
     """``RNTupleView<T>``: a field's values by entry number, or a vector's items by theirs."""
 
-    def __init__(self, reader: RNTupleReader, name: str) -> None:
+    def __init__(self, reader: RNTupleReader, name: str, kind: Any = None) -> None:
         self._reader, self._name = reader, name
+        self._kind = _held_as(reader, name, kind)
 
     def __class_getitem__(cls, kind: Any) -> Any:
         """``RNTupleView<T>(view)``: a view of the same values - the view itself."""
@@ -216,6 +235,8 @@ class RNTupleView:
 
     def __call__(self, index: Any) -> Any:
         found = self._reader.column(self._name)[int(index)]
+        if self._kind is not None:
+            found = self._kind.value(found)
         return found.item() if isinstance(found, np.generic) else found
 
     def GetFieldRange(self) -> range:

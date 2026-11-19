@@ -81,15 +81,38 @@ class FieldType:
         return self.cxx if self.dtype is not None else str
 
     def holder(self) -> Any:
-        """A fresh value for an entry of this field: zero, empty, or an empty vector."""
+        """A fresh value for an entry of this field: zero, empty, or an empty vector.
+
+        A record's is its members' values of an object of its class default-constructed,
+        which is what ``MakeField<T>(name)`` hands out and a ``Fill()`` with nothing set
+        writes: a class's default member initialisers are part of the value the file gets.
+        """
         if self.record:
             assert self.members is not None
-            return {name: member.holder() for name, member in self.members}
+            made = _default_object(self.cxx)
+            return {name: _member_holder(name, member, made) for name, member in self.members}
         if self.item is not None:
             return _container_class(self.cxx)()
         if self.vector:
             return std.vector[CPP_ITEMS[str(self.dtype)]]()
         return RFieldPtr(self)
+
+    def value(self, data: Any) -> Any:
+        """A value as the file gives it, held as C++ holds this type.
+
+        A view hands out what C++ would: a ``std::bitset`` of its bits, a vector of its
+        items, a set or a map of its, and a record as an object of its class - the class
+        the interpreter declared, whose members are the ones the file keeps.
+        """
+        if self.record:
+            return _record_value(self, data)
+        if self.item is not None:
+            return _collection_value(self, data)
+        if self.vector:
+            return _vector_value(self, data)
+        if self.bits:
+            return std.bitset[self.bits](_bits(data))
+        return _scalar_value(self, data)
 
     def zero(self) -> Any:
         if self.bits:
@@ -156,6 +179,80 @@ HOLDERS = {
     "unordered_map": "unordered_map",
     "unordered_multimap": "multimap",
 }
+
+
+def _record_value(kind: FieldType, data: Any) -> Any:
+    """A record as an object of its class, its members under their names - or, where no
+    dictionary here declares the class, the members' values alone, as a ``dict``."""
+    assert kind.members is not None
+    members = {name: member.value(data[name]) for name, member in kind.members}
+    made = _default_object(kind.cxx)
+    if made is None:
+        return members
+    for name, held in members.items():
+        setattr(made, name, held)
+    return made
+
+
+def _collection_value(kind: FieldType, data: Any) -> Any:
+    """A set's or a map's items in the container an entry holds them in."""
+    from .model import RField, _fill
+
+    held = kind.holder()
+    _fill(held, RField("", kind), data)
+    return held
+
+
+def _vector_value(kind: FieldType, data: Any) -> Any:
+    """A vector's items, in a ``std::vector`` of the field's own element type."""
+    vector = kind.holder()
+    vector.assign(data)
+    return vector
+
+
+def _scalar_value(kind: FieldType, data: Any) -> Any:
+    """A number as the type the file keeps it as, or a string's text."""
+    found = data.item() if isinstance(data, np.generic) else data
+    return str(found) if kind.dtype is None else kind.dtype.type(found).item()
+
+
+def _bits(data: Any) -> int:
+    """The number a column of a ``std::bitset``'s bits is, lowest bit first."""
+    return sum(int(bool(bit)) << at for at, bit in enumerate(data))
+
+
+def _default_object(cxx: str) -> Any:
+    """An object of a class the interpreter declared, default-constructed - or ``None``.
+
+    ROOT reads the class's dictionary for both the members a record is laid out of and
+    the object one is filled from, so what the file holds of a class nobody declared
+    here is its members' zeros alone.
+    """
+    from ..stl import _resolve_root_type
+
+    try:
+        found = _resolve_root_type(cxx)
+        return None if not isinstance(found, type) else found()
+    except Exception:  # a class with no constructor a dictionary here gives: no object
+        return None
+
+
+def _member_holder(name: str, member: FieldType, made: Any) -> Any:
+    """A record member's holder: what the object's own member holds, or the member's zero.
+
+    ``made`` is the default-constructed object of the class the member belongs to, or
+    ``None`` where no dictionary here declared that class.
+    """
+    value = None if made is None else getattr(made, name, None)
+    if member.record:
+        return {sub: _member_holder(sub, sub_kind, value) for sub, sub_kind in member.members or ()}
+    held = member.holder()
+    if value is None:
+        return held
+    if isinstance(held, RFieldPtr):  # a number, a string or a bitset: held by a pointer
+        held.value = value
+        return held
+    return value  # a vector, a set or a map: the object's own, which a fill reads
 
 
 def _container_class(cxx: str) -> Any:
@@ -228,9 +325,7 @@ def _collection_type(
         item = field_type(arguments[0], seen)
         return FieldType(f"std::{head}<{item.cxx}>", None, False, item=item)
     key, value = field_type(arguments[0], seen), field_type(arguments[1], seen)
-    pair = FieldType(
-        f"std::pair<{key.cxx},{value.cxx}>", None, False, (("_0", key), ("_1", value))
-    )
+    pair = FieldType(f"std::pair<{key.cxx},{value.cxx}>", None, False, (("_0", key), ("_1", value)))
     return FieldType(f"std::{head}<{key.cxx},{value.cxx}>", None, False, item=pair)
 
 

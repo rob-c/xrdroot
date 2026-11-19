@@ -11,6 +11,7 @@ import xrdroot.pyroot as ROOT
 from pyrootsupport import fresh
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.ntuple.printing import json_text
+from xrdroot.pyroot.ntuple.reading import _held_as
 
 DATA = pathlib.Path(__file__).parent / "data" / "rntuple"
 
@@ -58,6 +59,22 @@ def test_a_reader_with_no_model_has_every_field_it_can_hold() -> None:
     assert nested.GetView["int"]("my_struct.i")(2) == 2
 
 
+def test_a_view_of_a_record_field_hands_out_an_object_of_its_class() -> None:
+    """``GetView<T>(name)(i)`` of a record is the class the file was written from, its
+    members the values the file keeps - what roottest's makeproject reads back as
+    ``event.foo``, where reading the file's members alone gives a dict."""
+    model = ROOT.RNTupleModel.Create()
+    model.AddField(ROOT.RFieldBase.Create("evt", "TLorentzVector").Unwrap())
+    model.GetDefaultEntry()["evt"] = {"fP": {"fX": 1.0, "fY": 2.0, "fZ": 3.0}, "fE": 4.0}
+    writer = ROOT.RNTupleWriter.Recreate(ROOT.std.move(model), "events", "rec.root")
+    writer.Fill()
+    del writer
+    reader = ROOT.RNTupleReader.Open("events", "rec.root")
+    event = reader.GetView["TLorentzVector"]("evt")(0)
+    assert isinstance(event, ROOT.TLorentzVector)
+    assert (event.fP.fX, event.fP.fY, event.fP.fZ, event.fE) == (1.0, 2.0, 3.0, 4.0)
+
+
 def test_a_reader_opens_an_rntuple_a_tfile_holds_or_gave() -> None:
     _write()
     f = ROOT.TFile("r.root")
@@ -81,6 +98,19 @@ def test_a_view_reads_a_field_by_entry_and_a_vectors_items_by_theirs() -> None:
     assert [view(i) for i in view.GetFieldRange()] == [1, 2]
     items = ROOT.RNTupleView["float"](reader.GetView["float"]("pt._0"))
     assert [items(i) for i in items.GetFieldRange()] == [0.5, 1.5, 2.5]
+
+
+def test_a_view_of_a_type_xrdroot_cannot_hold_hands_the_column_out_as_it_is() -> None:
+    """A view named for a type this layer refuses - a vector of strings - gives the
+    column's own value rather than refusing the read of a field it can still give."""
+    _write()
+    reader = ROOT.RNTupleReader.Open("events", "r.root")
+    plain = ROOT.RNTupleView(reader, "n", "std::vector<std::string>")
+    assert plain(0) == 1
+    #: A view made by its name alone reads the type the file keeps for the field, and a
+    #: field the file does not have is a view that hands the column out as it is.
+    assert ROOT.RNTupleView(reader, "n")(0) == 1
+    assert _held_as(reader, "nothing", None) is None
 
 
 def test_a_reader_prints_its_fields_in_roots_box_and_an_entry_in_json(capsys) -> None:
