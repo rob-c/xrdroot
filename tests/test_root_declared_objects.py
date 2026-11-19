@@ -1098,6 +1098,46 @@ def _a_class_holding_counted_strings() -> Catalogue:
         Field("fS", "TString*", "[fN] the strings", ())))})  # fmt: skip
 
 
+def test_a_counted_pointer_to_a_class_is_roots_streamer_loop_however_many_stars():
+    """``TAxis *f //[n]`` and ``TAxis **f //[n]`` are both ``kStreamLoop`` - not the pointer
+    to one object a member without a count is - with room for a pointer and the counter's
+    version, name and class as their extra fields, the two stars kept in the type name. The
+    oracle says so of ``class Probe : public TObject { Int_t fN; TAxis *fP; //[fN]
+    TAxis **fQ; //[fN] }``, which is how the bigevent roottest's ``Event::fPaxis`` and
+    ``Event::fQaxis`` are described."""
+    made = Catalogue({"Probe": Declaration("Probe", 1, False, ("TObject",), (
+        Field("fN", "Int_t", "how many", ()),
+        Field("fPaxis", "TAxis*", "[fN] pointer to an array of TAxis objects", ()),
+        Field("fQaxis", "TAxis**", "[fN] pointer to an array of pointers to TAxis objects", ()),
+    ))})  # fmt: skip
+    assert made.info("Probe")[2][1:] == (
+        ("TStreamerBasicType", "fN", "how many", 6, 4, 0, 0, NO_DIMS, "int", ()),
+        ("TStreamerLoop", "fPaxis", "[fN] pointer to an array of TAxis objects", 501, 8, 0, 0,
+         NO_DIMS, "TAxis*", (1, "fN", "Probe")),
+        ("TStreamerLoop", "fQaxis", "[fN] pointer to an array of pointers to TAxis objects",
+         501, 8, 0, 0, NO_DIMS, "TAxis**", (1, "fN", "Probe")))  # fmt: skip
+
+
+def test_only_a_pointer_a_count_says_how_many_of_is_a_streamer_loop():
+    """The counted loop is the counted loop alone: an uncounted pointer is the one object it
+    points at, an array of pointers is still the array of objects the array rules make, and a
+    pointer to a class nothing knows, or one star too many, is refused by name rather than
+    guessed at."""
+    def elements(*fields):
+        return Catalogue({"C": Declaration("C", 1, False, (), fields)}).info("C")[2]
+
+    assert elements(Field("p", "TAxis*", "-> never null", ()))[0][0] == "TStreamerObjectPointer"
+    # An array of pointers keeps the pointer - type 64, kObjectP, with no array offset - and
+    # the elements it holds as its length, as the oracle describes `TAxis *fVaxis[3]`.
+    arrayed = elements(Field("p", "TAxis*", "[3] three of them", (3,)))[0]
+    assert arrayed[:4] == ("TStreamerObjectPointer", "p", "[3] three of them", 64)
+    assert arrayed[4:9] == (24, 3, 1, (3, 0, 0, 0, 0), "TAxis*")
+    with pytest.raises(UnsupportedFeatureError, match=r"C::p is a Thing\*\*, which"):
+        elements(Field("p", "Thing**", "[n] two stars of nothing", ()))
+    with pytest.raises(UnsupportedFeatureError, match=r"C::p is a TAxis\*\*\*, which"):
+        elements(Field("p", "TAxis***", "[n] three stars", ()))
+
+
 def test_a_counted_array_of_strings_is_written_as_one_record_of_them():
     """ROOT streams a ``TString *f //[n]`` as the record it streams a container in - its count
     word and version - holding the counter's strings one after another, a ``TString`` each, and
