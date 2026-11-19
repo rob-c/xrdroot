@@ -20,21 +20,20 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1105 / 2173** |
+| roottest | 1038 / 2173 (47.8 %) | **1114 / 2173** |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **21 / 109** |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1265 / 2820 (44.9 %)** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1274 / 2820 (45.2 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
-The "now" column is two runs at `8af51aa`: `/tmp/r3/final2` (roottest, 1105) and
-`/tmp/r3/final1` (the other kinds: gtest 52, pyunittest 81, `test/` 6, `other` 21). The
-sixteen roottest tests the last round brought in are the four
-`tree/branches/abc-*-read`, the four `tree/fastcloningeventtree/clone-*`, the four
-`treeformula/references/new.split*`, `tree/fastcloning/runabstract-datageneration1`,
-`ntuple/atlas-datavector/write`, `io/tree/copy` and `utils-build`; `other` gained six
-from TMVA's DNN (`MethodDL-*` with a RESHAPE layer and `Regression-Cpu`). `other` reads 21
+The "now" column is two runs at `932164a`: `/tmp/r4/final2` (roottest, 1114) and
+`/tmp/r4/final1` (the other kinds: gtest 52, pyunittest 81, `test/` 6, `other` 21). The
+nine roottest tests the last round brought in are the three `main/SimplePattern*`
+(ROOT's `cmdLineUtils` as a Python module), the four `io/fakeClass/*` (a macro's
+`#define` kept for the run it starts), `io/newClassDef/noclassdef/driver-build` and
+`io/stdarray/modelCheckValues` (both from the writer's missing streamer layouts). `other` reads 21
 at `--jobs 5` **and still 21 alone**, because `minuit2_ParallelTest` now takes 309 s of the
 300 s limit: measured alone at `8af51aa`, `bb19779` and `68a8d07`, so it is this machine, not
 a code change (it took 195-236 s when the earlier rounds measured it). It is `P-9`'s
@@ -591,8 +590,32 @@ these unblock did not set up.
 | Q-35 | `TObject`'s heap bits and `TRef::SetAction`'s BIT(16) | 4 | XS |
 | Q-36 | `TBufferFile::CheckByteCount`, and reading by the declared layout when versions match but checksums differ | 5 | M |
 | Q-37 | A `TRef`'s read side: `TFile::ReadProcessID`, `TRef::GetObject`, `TRefTable` resolved per entry | 12 | M |
+| Q-38 | `interp.Each` is a `Values`, so every `isinstance(column, Values)` "one streamed object per entry?" test misreads a split member | 12 + 29 clone tests | S |
+| Q-39 | `TString*` counted by a `//[n]` comment (`kStreamLoop`): away with `bigevent`'s `fTemplateMember` | 16 | S |
+| Q-40 | A macro class deriving from `TObject` cannot be split (`wclasses.declared` refuses any base; `harvested` excludes `TStreamerBase`) | 9 | M |
+| Q-41 | `.Class` in `ProcessLine`, and a template template parameter in a dictionary build | 7 | M |
+| Q-42 | The treeformula walls after `fMatrix`: `==` with a string, `strstr`, `fValid<<4`, `fValid&0x1`, `TestBitNumber`, `TMath::BreitWigner`, `Alt$` | 40 | L |
+| Q-43 | A `dict`-held record's members by attribute (`'dict' object has no attribute 'fA'`) | 4 | S |
 
 Notes that will save days:
+
+- **Q-38** is the round-4 worker 4's find and it is a bug, not a gap: `interp.Each` *is* a
+  `Values`, so `copying._whole`'s "one streamed object per entry?" says yes for a split
+  `TNamed` base's `fName`/`fTitle` columns and the clone refuses with
+  `the branch 'TNamed' holds whole objects ...`. Its 64-line prototype is
+  `/tmp/r4/w04-prototype-patch.diff` (adds `and not isinstance(column, Each)`, plus a slot
+  for the counter leaf `N_` a per-object column is counted by); with it, 29 clone tests
+  pass and `CloneTree(0)` gets as far as the writer's `SplitClones`.
+- **Q-42** is the whole of `treeformula`'s 40: with `fMatrix`'s shape kept (Q-30), the
+  fixture dies at `dt_DrawTest.C:32` on `fType == "type1"` (`fType` is a `char[20]` column),
+  then `1 && strstr(fType,"1")`, `fValid<<4`, `fValid&0x1`,
+  `fTracks.fTriggerBits.TestBitNumber(5)`, `TMath::BreitWigner(fPx,3,2)` and
+  `Alt$(fClosestDistance,0)`, in that order. `TTree.keys()` and `TTree.arrays` do not exist
+  on pyroot's `TTree` at all, so a PyROOT-level test of a formula shape has to go through
+  `xrdroot.open_root(...)['T']`.
+- **P-9** after `f113afb`: `pack_member` is 2x faster, and what is left is the *per-record*
+  rebuild of the class description and its offsets (`core/declared.py::_plain_object` ->
+  `wdeclared.declared`), which is what the 825 s / 2 430 s figures are made of.
 
 - **Q-28 = `RootClassVersion` + `__CLING__`.** `src/xrdroot/pycint/dialect.py:62` defines
   `__CLING__` for every translation, including an ACLiC library build, where real ROOT does
@@ -860,21 +883,30 @@ cheap to maintain and impossible to reconstruct.
 | W0-10 | **resolved by decision** | - | 0 | worker 16 measured the premise wrong: reverting `27791f5` gives 9 PASS + 4 FAIL + 7 DIFF where HEAD gives 11 PASS + 8 FAIL + 1 UNSUPPORTED, and the seven `tree/stl` DIFFs turn into failures because of the `.typedef`/`.autodict` *command*, not `execute.load`'s `remember_source` line (removing that line alone changes only `cling/typedef/runptrptr`). **Two PASSes beat seven DIFFs**, so the commit stays; the cause is now known |
 | Q-34 | attempted, not merged | w12's `/tmp/r3/w12-patch.diff` | 0 | worker 12's `TObjArray` writer patch moved `io/datamodelevolution/00/test1` from `required argument is not an integer` to `'list' object has no attribute 'Print'`, but its `_array` writes ROOT's `TObjArray::Streamer` **without the `TNamed` title string**, so the bytes are wrong; ROOT's own 88-byte stream is `/tmp/r3/oracle-objarray/oa.bin`. Not merged, with the reference bytes kept |
 | Q-35 | todo | | 4 | a `TObject` inside a heap object carries `kIsOnHeap|kNotDeleted` = `0x03000000` and `TRef::SetAction` sets BIT(16) = `0x10000`, so ROOT prints `0x3010000` where `TObject._bitword()` starts at 0 (`io/references/actions/test` and its three dependants). Oracle-verified: `0x2000000`, then `0x2010000`, then `0x3000000` |
+| W0-12 | done | `db5f021` (worker 13's patch) | roottest +4 | cling's preprocessor pass over a macro finishes before the macro's statements run, so a `#define` it makes is in force for the `.x` it starts itself - and the file's own `#ifndef`s read the pass's before-state. xrdroot kept nothing, so `produceLittleFile.C` re-read itself to the recursion limit; keeping it before the run instead made the file skip its own `.L`. The dialect is now taken before the defines and handed to the run. All four `io/fakeClass/*` tests pass |
+| W0-13 | done | `932164a` (worker 16) | roottest +3 | `ROOT.cmdLineUtils` exists as a Python module - the one ROOT's `rootls`, `rootcp`, `rootmv` and `rootrm` are written over - on top of xrdroot's own subcommands: `main/SimplePattern{1,2,3}` pass |
+| Q-20 (part) | done | `bcc03ba` (worker 1) | roottest +2 | the file's title is written where ROOT writes it (four times over, 4 bytes per character, so 120 B for `hsimple`), ten more streamer layouts are harvested from ROOT 6.40.04's own `hsimple.root`, and `TBranchRef`/`TRefTable` are described in every file holding a tree - which is why `io/newClassDef/noclassdef/driver-build` and `io/stdarray/modelCheckValues` now pass. The eleven `io/filemerger` FAILs still miss the `TPaveStats` 346 B and the `float`/`double` `pz` 59 B |
+| Q-36 (part) | done | `f6374c2` (worker 6) | 0 | the reader half: `streamers.read_layouts` keeps a class's layouts per version (a merged file no longer collapses them), `streamers.reconcile` applies ROOT's rule - same version, different checksum, so the *in-memory* layout reads - and speaks its warning verbatim, and `Buffer.check_count` is `TBufferFile::CheckByteCount`'s consumed-vs-recorded pair. 8 unit tests. The wiring in `interp.py` is the next step |
+| Q-15 (ntuple) | done in part | `a5b6dee` (worker 9) | 0 | `std::bitset<N>` is a field type the RNTuple writer declares, laid out as ROOT writes it and checked both directions against the oracle. `makeproject/rntuple` still needs the class-typed field before it |
+| P-9 (part) | done | `f113afb` (worker 14) | 0 | `pack_member` writes one number through a `struct.Struct` memoised per streamer type (0.45 us -> 0.24 us per member), with the NumPy path kept for columns and for every value `struct` refuses; tests pin 15 streamer types byte-for-byte against it. The four `io/perf` tests still time out - the remaining 825 s / 2 430 s is the per-record description rebuild, which is `P-9`'s own item |
+| Q-28 (part) | done | `6b1eee4` (worker 15) | 0 | `RootClassVersion` exists and a compiled library no longer sees `__CLING__`, so the header's version block compiles as ROOT's does. `AddVersion-1-3`/`-1-4` stay DIFF: the version now reaches the library but not the `Declaration` the writer emits |
+| Q-30 (part) | done | `06101b4` (worker 2's patch) | 0 | a fixed array keeps the shape its file declares: `Member.dims` holds `(4, 4)` for `Double32_t fMatrix[4][4]`, and the interp step reshapes a fixed array to it, so a formula indexing `m[1][2]` no longer refuses. The `treeformula` fixture moves from `dt_DrawTest.C:113` to line 32, where `==` between a string and a literal is the next wall |
 
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | now (`8af51aa`) |
-|---|---|---|---|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | **1105** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 |
-| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | now (`932164a`) |
+|---|---|---|---|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | **1114** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
+| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** |
 
-The last column is `/tmp/r3/final2` (roottest, 1105) and `/tmp/r3/final1` (the other
-kinds) at `8af51aa`; the column before it, `/tmp/r2/final2` (roottest, 1089) and
+The last column is `/tmp/r4/final2` (roottest, 1114) and `/tmp/r4/final1` (the other
+kinds) at `932164a`; the column before it, `/tmp/r3/final2` (roottest, 1105) and
+`/tmp/r3/final1` at `8af51aa`; the column before it, `/tmp/r2/final2` (roottest, 1089) and
 `/tmp/r2/final1` (the other kinds) at `5c88c8c`; the round before it, `/tmp/r1/final2` (1078) and `/tmp/r1/final1`
 at `7a43bd9`. The eleven roottest tests the last round brought in are
 `cling/parsing/assertSpaces`, `cling/typedef/runptrptr`,
