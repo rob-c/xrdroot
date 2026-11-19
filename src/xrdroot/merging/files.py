@@ -39,6 +39,7 @@ from ..winfo import INFOS
 from ..writer import WritableFile, create
 from ..wupdate import AS_FILED, _setting, update
 from .baskets import Moved
+from .infos import carry
 from .objects import mergeable
 from .records import copy_record
 from .trees import TreeMerge, normal_codes
@@ -177,6 +178,12 @@ class _Merger:
 
     def take(self, top: ROOTFile, label: str, selection: _Selection, in_place: bool) -> None:
         """Everything in one input, down every directory, merged into what is there so far."""
+        # ``hadd`` reads its inputs through a ``TFile``, and a ``TFile`` writes out the
+        # whole of the streamer information it read: what it writes describes every class
+        # an input described, even one no object of it is, which a tree carried across as
+        # its baskets - describing nothing itself - would otherwise leave out. See
+        # :mod:`.infos`; the copier carries its source's the same way.
+        carry(self.out, top._source, self.infos)
         self.input_codes = normal_codes(top.compression)
         self._take_directory(top, "", label, selection, in_place, False)
 

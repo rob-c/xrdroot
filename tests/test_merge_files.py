@@ -32,6 +32,7 @@ from xrdroot import (
     open_root,
 )
 from xrdroot.merging.files import codes_of, resolve_compression
+from xrdroot.streamers import read_infos
 
 DATA = pathlib.Path(__file__).parent / "data"
 
@@ -300,6 +301,20 @@ def test_a_merge_can_go_into_a_file_object_as_create_can(tmp_path):
 def test_a_merge_needs_something_to_merge(tmp_path):
     with pytest.raises(ValueError, match=r"at least one input"):
         merge(tmp_path / "out.root", [])
+
+
+def test_a_merged_file_describes_every_class_its_inputs_described(tmp_path):
+    """``hadd`` reads its inputs through a ``TFile``, and a ``TFile`` writes out the whole
+    of what it read, so the merged file describes every class an input described - even
+    one no object of the input is. A tree goes across as its baskets, which describe
+    nothing, so TTree v20, TBranch v13, ROOT::TIOFeatures, TBranchRef and TRefTable of a
+    ROOT-written input would otherwise be lost."""
+    with open_root(str(DATA / "tntuple.root")) as g:
+        described = {(name, version) for name, (_c, version, _e) in read_infos(g._source)}
+    assert ("TTree", 20) in described  # ROOT 6.40's, which this library does not write
+    f, _result = merged(tmp_path, [DATA / "tntuple.root"])
+    with f:
+        assert described <= {(name, version) for name, (_c, version, _e) in read_infos(f._source)}
 
 
 def test_an_input_that_will_not_open_stops_the_merge_or_is_passed_over(tmp_path):
