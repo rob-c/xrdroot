@@ -25,13 +25,15 @@ from typing import Any
 
 from ... import plugins
 from ...errors import UnsupportedFeatureError
-from .collections import TList
+from .collections import THashList, TList
 from .directories import TDirectory, current_directory, set_current
 from .messages import message
+from .objects import TNamed, TObject
 from .strings import TString
 
 __all__ = ["TROOT", "gROOT", "gDebug", "gInterpreter", "gObjectTable", "TInterpreter",
-           "set_line_processor"]
+           "set_line_processor", "TEnum", "TEnumConstant", "TListOfEnums", "class_enums",
+           "TListOfEnumsWithLock", "find_enum", "note_enum"]
 
 #: ``gObjectTable``: ROOT's count of objects by class - which is not kept here, so it is null,
 #: and a macro testing it skips it.
@@ -133,6 +135,176 @@ def _submodule(name: str) -> Any:
 _PRELUDE: dict[str, Any] = {}
 
 
+# -- the interpreter's enumerations ---------------------------------------------------
+
+#: ``kInt_t`` in ROOT's ``EDataType``: what ``TEnum::GetUnderlyingType`` answers with for an
+#: enumeration declared with no integer type of its own, which C++ gives ``int`` when its
+#: values fit.
+K_INT = 3
+
+#: The integer types an enumeration is declared with - ``enum E : short`` - in ROOT's
+#: ``EDataType`` codes, as the 6.40.04 oracle answers them: ``char`` is 1, ``short`` 2,
+#: ``int`` 3, ``long`` 4. A type not here is answered as ``int``, which is C++'s default.
+UNDERLYING_TYPES = {"char": 1, "short": 2, "int": 3, "long": 4}
+
+#: ``gROOT``'s ``fEnums``: every enumeration the interpreter has declared so far, by
+#: qualified name, in the order declared. ROOT keeps this table in ``TROOT`` because an
+#: enumeration is the interpreter's, not a dictionary's: what a class asks for with
+#: ``TClass::GetListOfEnums`` is the part of it that class owns.
+_ENUMS: dict[str, TEnum] = {}
+
+
+class TEnumConstant(TObject):
+    """``TEnumConstant``: one enumerator - its name and its value - as a ``TEnum`` holds it."""
+
+    def __init__(self, name: str, value: int, enum: TEnum | None = None) -> None:
+        super().__init__()
+        self._constant = str(name)
+        self._value = int(value)
+        self._enum = enum
+
+    def GetName(self) -> str:
+        return self._constant
+
+    def GetTitle(self) -> str:
+        """``GetTitle``: the enum's title, which ROOT gives each of its constants too."""
+        return "" if self._enum is None else self._enum.GetTitle()
+
+    def GetValue(self) -> int:
+        return self._value
+
+    def GetEnum(self) -> TEnum | None:
+        return self._enum
+
+
+class TEnum(TNamed):
+    """``TEnum``: one enumeration of the interpreter's - its name, the comment ROOT keeps as
+    its title, and its constants in the order written.
+
+    A ``TEnum`` is made by :func:`note_enum` as the C++ declaring it is run, and kept in
+    :data:`_ENUMS`; ``TEnum::GetEnum`` and ``gROOT.GetListOfEnums`` are how a program finds
+    it again.
+    """
+
+    def __init__(self, name: str, items: Any = (), title: str = "", underlying: int = K_INT,
+                 scoped: bool = False, owner: str = "") -> None:  # fmt: skip
+        super().__init__(str(name), str(title))
+        self._items = [(str(item), int(value)) for item, value in items]
+        self._underlying = int(underlying)
+        self._scoped = bool(scoped)
+        self._owner = str(owner)
+
+    def GetConstants(self, load: bool = True) -> THashList:
+        """``GetConstants``: the constants, in the ``THashList`` ROOT keeps them in.
+
+        The list is made once and then handed back, so a constant a program is holding is
+        still the one the enum answers with after the enum has been looked up again - which
+        is what roottest's ``execEnumsTest`` compares addresses for.
+        """
+        held: THashList | None = self.__dict__.get("_constants")
+        if held is None:
+            held = THashList()
+            for item, value in self._items:
+                held.Add(TEnumConstant(item, value, self))
+            self.__dict__["_constants"] = held
+        return held
+
+    def GetConstant(self, name: Any) -> TEnumConstant | None:
+        """``GetConstant``: the constant of that name, ``nullptr`` if the enum has none."""
+        found = self.GetConstants().FindObject(str(name))
+        return found if isinstance(found, TEnumConstant) else None
+
+    def GetQualifiedName(self) -> str:
+        """``GetQualifiedName``: the name as C++ writes it - ``N::namespaceEnum``, else the
+        name alone for an enumeration of the global namespace."""
+        return f"{self._owner}::{self._name}" if self._owner else self._name
+
+    def GetUnderlyingType(self) -> int:
+        """``GetUnderlyingType``: the ``EDataType`` code of the integer type the enum was
+        declared with, ``kInt_t`` when it was declared with none."""
+        return self._underlying
+
+    def IsScoped(self) -> bool:
+        """``IsScoped``: whether it is an ``enum class``, whose constants need its name."""
+        return self._scoped
+
+    def GetClass(self) -> Any:
+        """``GetClass``: the ``TClass`` of the class or namespace owning the enum, or
+        ``nullptr`` for one of the global namespace - which no class describes."""
+        if not self._owner:
+            return None
+        from .reflection import TClass
+
+        return TClass.GetClass(self._owner, False)
+
+    #: ``TEnum::EAutoloading``: whether a lookup may load the library providing the enum.
+    #: Nothing here loads a library to answer a lookup, so the two read the same either way.
+    kAutoload = 0
+    kNoAutoload = 1
+
+    @staticmethod
+    def GetEnum(name: Any, type: Any = None, autoload: Any = True) -> TEnum | None:
+        """``TEnum::GetEnum``: the enumeration C++ calls ``name``, looked up as written.
+
+        ``type`` - the ``std::type_info`` of the enum - is not consulted: a name is what the
+        table is keyed by, and a program asking by type asks for an enum it declared, whose
+        name the caller has. ``autoload`` likewise changes nothing, since nothing here reads
+        a header to find an enum.
+        """
+        return find_enum(str(name))
+
+
+class TListOfEnums(TList):
+    """``TListOfEnums``: a list of ``TEnum`` - the session's, and a class's own part of it."""
+
+
+class TListOfEnumsWithLock(TListOfEnums):
+    """``TListOfEnumsWithLock``: the list ROOT 6.40 gives the session's enums, written and
+    read under the interpreter's lock, which one program running alone has no need of."""
+
+
+def note_enum(qualified: Any, items: Any = (), title: str = "", underlying: Any = None,
+              scoped: bool = False) -> TEnum:  # fmt: skip
+    """Note an enumeration C++ has just declared, which is what grows ROOT's table.
+
+    ``qualified`` is the name as C++ writes it (``N::E``, ``A::B::C::enumC1``, ``E``);
+    ``items`` its enumerators and their values, in the order written; ``title`` the comment
+    written after it; ``underlying`` the integer type after ``:``, if it has one. An enum
+    declared again - a header included twice, a macro rerun - is the one already noted, as
+    ROOT's table keeps one ``TEnum`` per enumeration.
+    """
+    full = str(qualified).strip()
+    known = _ENUMS.get(full)
+    if known is not None:
+        return known
+    owner, _, own = full.rpartition("::")
+    made = TEnum(own, items, title, UNDERLYING_TYPES.get(str(underlying), K_INT), scoped, owner)
+    _ENUMS[full] = made
+    return made
+
+
+def find_enum(name: Any) -> TEnum | None:
+    """The enumeration declared as ``name``, or ``None`` - ROOT's table is keyed by the name
+    C++ writes, so ``N::E`` is found and a bare ``E`` is not (the oracle finds neither)."""
+    return _ENUMS.get(str(name).strip())
+
+
+def class_enums(owner: Any = None) -> TListOfEnums:
+    """The enums ``owner`` - a class or namespace name, ``""`` for the global namespace, or
+    ``None`` for every one the interpreter knows - in the list a caller asks them in.
+
+    The session's ``GetListOfEnums`` is all of them, as ROOT's ``fEnums`` is, and is the
+    locked list ROOT 6.40 gives it; a class's is its own, the same objects filtered by the
+    class that owns them.
+    """
+    made = TListOfEnumsWithLock() if owner is None else TListOfEnums()
+    names = None if owner is None else str(owner).strip()
+    for enum in _ENUMS.values():
+        if names is None or enum._owner == names:
+            made.Add(enum)
+    return made
+
+
 class TROOT(TDirectory):
     """``TROOT``: the session, and the directory at the top of every other."""
 
@@ -209,6 +381,16 @@ class TROOT(TDirectory):
 
     def GetListOfTypes(self, load: bool = False) -> TList:
         return self._listed("Types")
+
+    def GetListOfEnums(self, load: bool = False) -> TList:
+        """``GetListOfEnums``: every enumeration the interpreter has declared.
+
+        ROOT's ``load`` asks the interpreter to read the declarations still waiting to be
+        parsed before answering; a declaration here is noted as it is run, so nothing waits
+        and it changes nothing. The list is made afresh from the table each time, so an enum
+        declared since the last call is in it - which is what a caller looks for.
+        """
+        return class_enums()
 
     def GetListOfCleanups(self) -> TList:
         return self._listed("Cleanups")
