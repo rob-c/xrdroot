@@ -12,6 +12,7 @@ from typing import Any, ClassVar
 import numpy as np
 
 from .drawn import NDC_BIT, Drawn
+from .text import TText
 
 __all__ = [
     "TArc",
@@ -238,6 +239,30 @@ class TMarker(Drawn):
 
     def DrawMarker(self, x: float, y: float) -> Any:
         return _copy(self, "", fX=x, fY=y)
+
+    def DisplayMarkerTypes(self) -> None:
+        """Draw ROOT's table of the marker styles with their numbers into the pad.
+
+        ``stressGraphics.cxx``'s ``tmarker`` section calls this to show every style it
+        can set: styles 1 to 15, 20 to 34 and 35 to 49 in three rows, each style above
+        the number that selects it, so the picture is also the key to the numbers.
+        """
+        marker = TMarker()
+        marker.SetMarkerSize(3)
+        text = TText()
+        text.SetTextFont(62)
+        text.SetTextAlign(22)
+        text.SetTextSize(0.1)
+        #: The three rows: the style's offset from the column, the marker's height
+        #: and the height of its number, as ``TMarker::DisplayMarkerTypes`` places them.
+        rows = ((0, 0.25, 0.12), (19, 0.55, 0.42), (34, 0.85, 0.72))
+        x = 0.0
+        for i in range(1, 16):
+            x += 1 / 16.0
+            for offset, marker_y, text_y in rows:
+                marker.SetMarkerStyle(i + offset)
+                marker.DrawMarker(x, marker_y)
+                text.DrawText(x, text_y, str(i + offset))
 
 
 class TPolyLine(Drawn):

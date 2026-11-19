@@ -186,3 +186,32 @@ def test_a_stats_box_says_its_own_options_and_parent():
     stats.SetParent("h")
     assert (stats.GetOptStat(), stats.GetOptFit(), stats.GetParent()) == (11, 1, "h")
     assert stats.GetName() == "stats"
+
+
+def _displayed_marker_types():
+    """The markers and texts ``TMarker::DisplayMarkerTypes`` draws, as they were drawn."""
+    c = ROOT.TCanvas("c", "c", 600, 300)
+    ROOT.TMarker().DisplayMarkerTypes()
+    drawn = [obj for obj, _ in c.primitives]
+    return c, [o for o in drawn if o.ClassName() == "TMarker"], [
+        o for o in drawn if o.ClassName() == "TText"]
+
+
+def test_display_marker_types_draws_every_style_in_three_rows():
+    """Styles 1-15, 20-34 and 35-49, a sixteenth of the pad apart, at ROOT's three heights."""
+    _, markers, _ = _displayed_marker_types()
+    assert [m.GetMarkerStyle() for m in markers[:3]] == [1, 20, 35]
+    assert markers[-1].GetMarkerStyle() == 49 and markers[0].GetMarkerSize() == 3.0
+    assert (markers[0].GetX(), markers[-1].GetX()) == (1 / 16, 15 / 16)
+    assert [m.GetY() for m in markers[:3]] == [0.25, 0.55, 0.85]
+
+
+def test_display_marker_types_numbers_each_style_it_draws():
+    """Each number is the style it names, in the font ROOT puts it in, under the marker."""
+    c, markers, texts = _displayed_marker_types()
+    assert len(markers) == len(texts) == 45
+    assert [t.GetTitle() for t in texts[:3]] == ["1", "20", "35"]
+    assert [t.GetY() for t in texts[:3]] == [0.12, 0.42, 0.72]
+    assert (texts[0].GetTextFont(), texts[0].GetTextAlign()) == (62, 22)
+    assert texts[0].GetTextSize() == 0.1 and texts[0].GetX() == 1 / 16
+    assert len(_figure(c).axes[0].texts) >= 45
