@@ -10,6 +10,7 @@ import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootgraphics import fresh_session, gaussian  # noqa: F401
+from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.graphics import compare, output
 
 
@@ -60,6 +61,14 @@ def test_a_name_is_what_is_saved_when_none_is_given(tmp_path, monkeypatch):
     c.SaveAs()
     c.Print()
     assert (tmp_path / "c.png").exists() and (tmp_path / "c.ps").exists()
+
+
+def test_a_pad_is_refused_as_a_c_macro_and_told_what_to_save_it_as(tmp_path):
+    """ROOT's ``SaveAs("x.C")`` writes the calls that draw the pad again, which is not written."""
+    with pytest.raises(UnsupportedFeatureError, match="not yet written as the C macro"):
+        _canvas().SaveAs(str(tmp_path / "c.C"))
+    with pytest.raises(UnsupportedFeatureError, match=r"\.png, \.pdf"):
+        _canvas().Print(str(tmp_path / "c"), "cxx")
 
 
 def test_a_format_this_does_not_write_is_refused_by_name(tmp_path):

@@ -29,6 +29,7 @@ from .output import close_books
 from .pads import TPad, gPad
 from .paves import TDiamond, TPave, TPaveLabel, TPaveStats, TPavesText, TPaveText
 from .pie import TPie, TPieSlice
+from .postscript import TPDF, TSVG, TPostScript, TVirtualPS, close_devices
 from .shapes import (
     TArc,
     TArrow,
@@ -59,6 +60,8 @@ __all__ = [
     # shapes
     "TLine", "TArrow", "TBox", "TWbox", "TEllipse", "TArc", "TCrown", "TMarker",
     "TPolyLine", "TPolyMarker", "TPie", "TPieSlice",
+    # the devices that write a pad to a file
+    "TVirtualPS", "TPostScript", "TPDF", "TSVG",
     # the palettes by name
     *PALETTE_NUMBERS,
     # for the harness and gROOT
@@ -69,3 +72,4 @@ globals().update(PALETTE_NUMBERS)
 
 hook.install()
 atexit.register(close_books)
+atexit.register(close_devices)

@@ -26,6 +26,8 @@ from typing import Any
 
 __all__ = ["BOOKS", "FORMATS", "save"]
 
+#: The formats that would be a macro drawing the pad again, which ROOT's ``SaveAs`` writes.
+MACRO = ("c", "cxx", "cpp")
 #: The pictures written, by suffix, and the format matplotlib writes each in.
 FORMATS = {
     "png": "png", "jpg": "jpg", "jpeg": "jpg", "gif": "gif", "svg": "svg",
@@ -48,6 +50,14 @@ def _split(filename: str, option: str) -> tuple[str, str, str]:
     suffix = Path(name).suffix.lstrip(".").lower()
     given = option.split("Title:")[0].strip() if "Title:" in option else option  # a page title
     wanted = (given or suffix).lower()
+    if wanted in MACRO:
+        from ...errors import UnsupportedFeatureError
+
+        raise UnsupportedFeatureError(
+            f"A pad is not yet written as the C macro {filename!r} names: ROOT writes there the "
+            "calls that draw the pad again and xrdroot has no writer for them. Save the pad as "
+            "a picture (.png, .pdf, .ps, .svg) instead."
+        )
     if wanted not in FORMATS:
         raise ValueError(
             f"a pad is saved as {', '.join(sorted(FORMATS))}; {filename!r} asks for "
