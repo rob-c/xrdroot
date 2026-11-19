@@ -12,7 +12,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import xrdroot.pyroot as ROOT
-from xrdroot.pyroot.core import directories, files, fitters, hooks
+from xrdroot.pyroot.core import directories, files, fitters, hooks, reflection
 
 
 def expect(*checks: tuple[Any, Any]) -> None:
@@ -45,6 +45,7 @@ def fresh(tmp_path: Any) -> Iterator[None]:
 def _reset() -> None:
     for opened in list(files._OPEN):
         opened.Close()
+    reflection.FILE_INFOS.clear()  # the layouts the session's files described
     ROOT.gROOT.Reset()
     ROOT.gROOT.GetListOfFunctions().Clear()
     ROOT.gROOT.GetListOfFiles().Clear()
