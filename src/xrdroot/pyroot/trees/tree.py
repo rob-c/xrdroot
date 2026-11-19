@@ -17,7 +17,7 @@ address can be, and :mod:`.leaflist` for the leaf lists ``Branch`` takes.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NoReturn
 
 from .addresses import address_of, members_of
 from .branches import TBranch, TBranchRef
@@ -35,16 +35,36 @@ PLATFORM = {"l": "q", "L": "Q"}
 CODES = "bBhHiIqQfd?"
 
 
+def _undeclared(address: Any, name: str) -> NoReturn:
+    """What a branch given no leaf list is told of an address that cannot say its type.
+
+    A collection says its type when its elements are numbers or text and not when they
+    are objects: one level of counting is all a branch here lays out, so a collection of
+    collections is refused by name rather than handed a leaf list that cannot express it.
+    """
+    from ...errors import UnsupportedFeatureError
+
+    if address.sized:
+        raise UnsupportedFeatureError(
+            f"the branch {name!r} holds a std::vector of {address.vector.value_type}, whose "
+            f"elements carry sizes of their own, and this writer lays out one count per "
+            f"entry: a branch of collections of collections would be written with the "
+            f"inner sizes lost. Give each inner collection a branch of its own, or write "
+            f"the values into a leaf list that counts them"
+        )
+    raise TypeError(
+        f"the branch {name!r} was given no leaf list, and what its address holds does "
+        f"not say its type; give one, as in Branch({name!r}, x, '{name}/D')"
+    )
+
+
 def _declared(address: Any, name: str) -> list[Leaf]:
     """The leaf a branch declared without a leaf list is: what its address holds."""
     if address.text:
         return [Leaf(name, "C", 1, None, name)]
     code = "" if address.dtype is None else PLATFORM.get(address.dtype.char, address.dtype.char)
     if not code or code not in CODES:
-        raise TypeError(
-            f"the branch {name!r} was given no leaf list, and what its address holds does "
-            f"not say its type; give one, as in Branch({name!r}, x, '{name}/D')"
-        )
+        _undeclared(address, name)
     size = 1 if address.sized or address.room is None else address.room
     return [Leaf(name, str(code), size, None, name if size == 1 else f"{name}[{size}]")]
 

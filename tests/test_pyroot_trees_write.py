@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 import xrdroot
+from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.stl import std
 from xrdroot.pyroot.trees import TNtuple, TNtupleD, TTree, hooks
 
@@ -154,6 +155,19 @@ def test_what_cannot_be_read_in_place_is_refused_by_name():
         t.Branch("x", {}, "x/F:y/F")
     with pytest.raises(AttributeError, match="has no y"):
         t.Branch("x", type("P", (), {"x": 0.0})(), "x/F:y/F")
+
+
+def test_a_collection_of_collections_is_refused_rather_than_written_without_its_sizes():
+    t = TTree("t", "")
+    inner = std.vector["double"]()
+    inner.assign([3.0, 6.0])
+    nested = std.vector["std::vector<double>"]()
+    nested.push_back(inner)
+    with pytest.raises(UnsupportedFeatureError, match="holds a std::vector of vector<double>"):
+        t.Branch("myvecvec.", nested)
+    assert t.GetListOfBranches() == []
+    t.Branch("myvec.", inner)  # one level of counting is what this writer lays out
+    assert t.GetBranch("myvec.") is not None
 
 
 def test_a_leaf_list_that_is_not_one_is_refused_with_what_is_wrong_with_it():
