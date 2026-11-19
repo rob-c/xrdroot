@@ -462,3 +462,164 @@ def test_writeobjectany_names_a_value_by_its_class_and_says_when_it_cannot_write
     assert "Error in <TDirectoryFile::WriteObjectAny>: Directory complex.root is not writable" in (
         capsys.readouterr().err
     )
+
+
+def test_make_project_writes_a_header_for_each_class_the_file_describes(tmp_path):
+    """``MakeProject`` gives a reader, under the project's directory, one header per class the
+    file's streamer infos describe and the project, LinkDef and ``G__`` source that put them
+    in a library."""
+    held = ROOT.TFile(str(DATA / "declared-objects-6.40.root"))
+    place = tmp_path / "libproj"
+    held.MakeProject(str(place))
+    derived = (place / "Derived.h").read_text()
+    expect(
+        ("#ifndef R__LIBPROJ_DERIVED" in derived, True),
+        ("class Derived : public Base1 {" in derived, True),
+        ("   int arr2[2][3];" in derived, True),
+        ("   vector<vector<float> > vvf;" in derived, True),
+        ("   ns::Deep deep;" in derived, True),
+        ("#include <vector>" in derived, True),
+        ("using namespace std;" in derived, True),
+    )
+    deep = (place / "Deep.h").read_text()
+    expect(
+        ("namespace ns {" in deep and "} // namespace ns" in deep, True),
+        ("class Deep {" in deep, True),
+        ("   int x;" in deep, True),
+    )
+    project = (place / "libprojProject.h").read_text()
+    linkdef = (place / "libprojLinkDef.h").read_text()
+    expected = '#include "Derived.h"'
+    expect(
+        (expected in project, True),
+        ('#pragma link C++ class Derived+;' in linkdef, True),
+        ((place / "G__libproj.cxx").read_text().startswith('#include "libprojProject.h"'), True),
+    )
+
+
+def test_a_project_leaves_out_the_classes_the_namespace_already_has(tmp_path):
+    """A ROOT class the namespace implements, and a standard container, are not declared again
+    - a second ``TNamed`` of the same name would be nothing a reader could use."""
+    place = tmp_path / "libproj"
+    ROOT.TFile(str(DATA / "declared-objects-6.40.root")).MakeProject(str(place))
+    written = {found.name for found in place.glob("*.h")}
+    expect(
+        ("TNamed.h" not in written, True),
+        ("pair.h" not in written, True),
+        ("Inner.h" in written, True),
+    )
+
+
+def test_make_project_writes_the_classes_the_pattern_names(tmp_path):
+    """ROOT, which generates a project for a few classes at a time as well as for all of them,
+    is asked by name; ``*`` is every one."""
+    place = tmp_path / "libproj"
+    ROOT.TFile(str(DATA / "declared-objects-6.40.root")).MakeProject(str(place), "Inner")
+    expect(
+        ((place / "Inner.h").exists(), True),
+        ((place / "Derived.h").exists(), False),
+    )
+
+
+def test_make_project_recreating_the_directory_empties_it_first(tmp_path):
+    """``recreate`` makes the directory anew, as ROOT does, so a header of a class the file no
+    longer describes does not outlive it."""
+    place = tmp_path / "libproj"
+    place.mkdir()
+    (place / "stale.h").write_text("a class the file no longer describes")
+    ROOT.TFile(str(DATA / "declared-objects-6.40.root")).MakeProject(str(place), "*", "recreate")
+    expect(
+        ((place / "stale.h").exists(), False),
+        ((place / "Inner.h").exists(), True),
+    )
+
+
+def test_a_project_of_a_file_being_written_declares_no_class(tmp_path):
+    """A file this session only writes has no streamer info to describe a class with, so its
+    project is the empty one ROOT writes too."""
+    made = ROOT.TFile(str(tmp_path / "empty.root"), "RECREATE")
+    made.MakeProject(str(tmp_path / "libproj"))
+    made.Close()
+    project = (tmp_path / "libproj" / "libprojProject.h").read_text()
+    expect(
+        ('#include "' in project, False),
+        ((tmp_path / "libproj" / "G__libproj.cxx").exists(), True),
+    )
+
+
+def test_a_record_of_an_rntuple_declares_the_cxx_type_each_of_its_members_was_written_with(
+    tmp_path,
+):
+    """An RNTuple stores a record's members as physical columns, so the record is declared from
+    the C++ type each field says it was written with - the one part of it no physical layout
+    can say: a jagged list of pairs is a ``std::unordered_multimap`` here and an ordered
+    ``std::multimap`` in the next file."""
+    from types import SimpleNamespace
+
+    members = [
+        SimpleNamespace(field=SimpleNamespace(type="std::bitset<16>")),
+        SimpleNamespace(field=SimpleNamespace(type="std::unordered_multimap<std::string,std::vector<float>>")),
+    ]
+    record = SimpleNamespace(names=["foo", "strange"], members=members)
+    declared = files._record(SimpleNamespace(node=record))
+    header = files._header("libproj", "MySTLEvent", declared)
+    expect(
+        ("class MySTLEvent {" in header, True),
+        ("   std::bitset<16> foo;" in header, True),
+        ("   std::unordered_multimap<std::string,std::vector<float>> strange;" in header, True),
+        ("#include <bitset>" in header, True),
+        ("#include <unordered_map>" in header, True),
+    )
+
+
+def test_a_pointer_member_is_declared_with_the_star_the_file_may_not_spell():
+    """A streamer element whose kind is a pointer but whose type names a class alone - ROOT's
+    ``TStreamerObjectAnyPointer`` - is declared as the pointer it is."""
+    star = files._member(("TStreamerObjectAnyPointer", "p", "", 0, 0, 0, 0, (0,) * 5, "Thing", ()))
+    plain = files._member(("TStreamerObjectPointer", "q", "", 0, 0, 0, 0, (0,) * 5, "TList*", ()))
+    expect((star.spelling, "Thing*"), (plain.spelling, "TList*"))
+
+
+def test_a_files_description_that_cannot_be_read_describes_no_class(monkeypatch):
+    """A project is what a file describes; a description that cannot be read leaves the project
+    empty rather than refusing it, as ROOT's generator writes what it finds."""
+    from xrdroot.errors import FormatError
+
+    def broken(source):
+        raise FormatError("no")
+
+    monkeypatch.setattr("xrdroot.streamers.read_infos", broken)
+    expect((files._described(type("Reading", (), {"_source": None})()), {}))
+
+
+def test_a_projects_rntuple_record_is_declared_from_the_cxx_type_its_fields_name(tmp_path):
+    """An RNTuple written from a declared struct leaves the project a record whose fields name
+    the C++ type each was written with, which is what the record's header is declared from."""
+    ROOT.gInterpreter.Declare("struct Ev { std::vector<int> v; std::bitset<8> b; };")
+    made = ROOT.TFile("a.root", "RECREATE")
+    model = ROOT.RNTupleModel.Create()
+    model.MakeField["Ev"]("test")
+    writer = ROOT.RNTupleWriter.Append(model, "events", made)
+    writer.Fill()
+    writer.reset()
+    made.Close()
+    held = ROOT.TFile("a.root")
+    held.MakeProject("libproj")
+    header = (tmp_path / "libproj" / "Ev.h").read_text()
+    expect(
+        ("class Ev {" in header, True),
+        ("   std::bitset<8> b;" in header, True),
+        ((tmp_path / "libproj" / "libprojLinkDef.h").read_text().count("Ev+;"), 1),
+    )
+
+
+def test_the_rntuples_a_file_holds_are_looked_for_below_its_directories():
+    """ROOT's project is made of the whole file, so a directory's RNTuples are as much its as
+    the top's are."""
+    import xrdroot
+
+    held = xrdroot.open_root(str(DATA / "dirs-6.14.00.root"))
+    try:
+        expect((files._ntuples(held), []))
+    finally:
+        held.close()

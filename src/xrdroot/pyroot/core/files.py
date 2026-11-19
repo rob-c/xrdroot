@@ -18,11 +18,14 @@ kept too.
 from __future__ import annotations
 
 import atexit
+import fnmatch
 import io
 import os
+import shutil
 import struct
 import sys
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -480,6 +483,23 @@ class TDirectoryFile(TDirectory):
         ]
         for key, mark in zip(keys, _listing_marks(keys), strict=False):
             key.ls(mark)
+
+    def MakeProject(self, dirname: Any, classes: Any = "*", option: Any = "new") -> None:
+        """``TFile::MakeProject``: what classes the file describes written out as a project.
+
+        ROOT writes, under ``dirname``, a header per class no loaded dictionary already
+        describes, and the project header, LinkDef and ``G__`` source that make a library of
+        them; a reader then includes ``<dirname>/<Class>.h`` and gets the class back. What
+        the file describes is what is written - its streamer infos, and the C++ type of an
+        RNTuple record's fields - so a file that describes a class in neither way writes no
+        header for it, rather than one guessed from the values.
+
+        ``classes`` selects by name, as ``*`` selects everything; ``option`` with
+        ``recreate`` in it empties ``dirname`` first. ROOT compiles the library when the
+        option ends in ``+``; nothing is compiled here, because a translation reads the
+        header it is given, so the project is usable as soon as it is written.
+        """
+        write_project(self, str(dirname), str(classes), str(option))
 
     def _write_trees(self) -> None:
         """The trees not yet written - but not one with no name, as ``new TTree()`` makes."""
@@ -1012,3 +1032,282 @@ class TMemFile(TFile):
         count = min(len(view), len(data))
         view[:count] = data[:count]
         return count
+
+
+# -- `TFile::MakeProject`: the file's classes written out as a project a reader includes ------
+
+#: The class of the key an RNTuple is under, whose fields name the classes it holds.
+RNTUPLE = "ROOT::RNTuple"
+
+#: The streamer element kinds that are a class's base, which a declaration names instead of
+#: holding as a member.
+BASES = ("TStreamerBase",)
+
+#: The standard library's class templates, which no project header declares: the file's
+#: spelling of one is what a reader's own header already says.
+STANDARD = frozenset(
+    "array bitset complex deque function list map multimap optional pair set shared_ptr "
+    "string tuple unique_ptr unordered_map unordered_multimap unordered_set unordered_multiset "
+    "valarray variant vector weak_ptr".split()
+)
+
+#: The include a member's standard type needs, so a compiler that reads the header has it.
+INCLUDES = {
+    "bitset": "<bitset>",
+    "complex": "<complex>",
+    "deque": "<deque>",
+    "list": "<list>",
+    "map": "<map>",
+    "multimap": "<map>",
+    "multiset": "<set>",
+    "pair": "<utility>",
+    "set": "<set>",
+    "string": "<string>",
+    "tuple": "<tuple>",
+    "unordered_map": "<unordered_map>",
+    "unordered_multimap": "<unordered_map>",
+    "unordered_multiset": "<unordered_set>",
+    "unordered_set": "<unordered_set>",
+    "vector": "<vector>",
+}  # fmt: skip
+
+
+@dataclass(frozen=True)
+class _Member:
+    """One member a project header declares: the C++ type it was written with, its name, and
+    the ``[2][3]`` a fixed array was declared with."""
+
+    spelling: str
+    name: str
+    dims: str = ""
+
+
+@dataclass(frozen=True)
+class _Declared:
+    """One class a project header declares: the classes it derives from, and its members."""
+
+    bases: tuple[str, ...]
+    members: tuple[_Member, ...]
+
+
+def write_project(file: TDirectoryFile, dirname: str, classes: str, option: str) -> None:
+    """A file's classes written under ``dirname`` as ROOT's project generator writes them.
+
+    ROOT makes a directory of headers, a project header that includes them, the LinkDef that
+    gives each a dictionary entry and the ``G__`` source the dictionary is compiled from.
+    """
+    place = Path(dirname)
+    if "recreate" in option.lower() and place.exists():
+        shutil.rmtree(place)
+    place.mkdir(parents=True, exist_ok=True)
+    chosen = {
+        name: what
+        for name, what in project_classes(file).items()
+        if fnmatch.fnmatch(name, classes)
+    }
+    base = place.name
+    for name, what in chosen.items():
+        (place / f"{_short(name)}.h").write_text(_header(base, name, what), encoding="utf-8")
+    (place / f"{base}Project.h").write_text(_project(base, list(chosen)), encoding="utf-8")
+    (place / f"{base}LinkDef.h").write_text(_linkdef(list(chosen)), encoding="utf-8")
+    (place / f"G__{base}.cxx").write_text(_generated(base), encoding="utf-8")
+
+
+def project_classes(file: TDirectoryFile) -> dict[str, _Declared]:
+    """Every class the file describes, by name.
+
+    What the file describes is what can be declared: its streamer infos, and the C++ type each
+    RNTuple record field was written with. A class the session already has - one the namespace
+    implements, one a loaded dictionary declared, a standard container - is left out, as ROOT
+    leaves out a class whose dictionary it finds, since a header for it would declare a second
+    class of that name.
+    """
+    reading = file._reading
+    if reading is None:
+        return {}
+    found: dict[str, _Declared] = dict(_described(reading))
+    for ntuple in _ntuples(reading):
+        for field in ntuple.fields.values():
+            found.setdefault(field.cxx_type, _record(field))
+    return {name: what for name, what in found.items() if not _known(name)}
+
+
+def _described(reading: Any) -> dict[str, _Declared]:
+    """The classes the file's streamer infos describe; a file whose descriptions cannot be read
+    describes none, as ROOT's generator finds none rather than refusing the project."""
+    from ...errors import FormatError
+    from ...streamers import read_infos
+
+    try:
+        infos = read_infos(reading._source)
+    except (FormatError, ROOTError):
+        return {}
+    return {name: _layout(layout) for name, layout in infos}
+
+
+def _ntuples(reading: Any) -> list[Any]:
+    """The RNTuples in one directory of the file, and those in the directories below it."""
+    found: list[Any] = []
+    for key in reading.all_keys():
+        if key.classname == RNTUPLE:
+            found.append(reading[key.name])
+        elif key.classname in ("TDirectory", "TDirectoryFile"):
+            found.extend(_ntuples(reading[key.name]))
+    return found
+
+
+def _layout(layout: Any) -> _Declared:
+    """One class as its streamer info describes it: its bases, and each member's C++ type."""
+    bases, members = [], []
+    for element in layout[2]:
+        if element[0] in BASES:
+            bases.append(element[1])
+        else:
+            members.append(_member(element))
+    return _Declared(tuple(bases), tuple(members))
+
+
+def _member(element: Any) -> _Member:
+    """One member as the streamer element describes it: its C++ type - with the ``*`` a pointer
+    to a class the file does not spell one for - and the ``[2][3]`` a fixed array was declared
+    with."""
+    dims = "".join(f"[{size}]" for size in tuple(element[7])[: element[6]])
+    pointed = element[0].endswith("Pointer") and not element[8].endswith("*")
+    return _Member(element[8] + "*" if pointed else element[8], element[1], dims)
+
+
+def _record(field: Any) -> _Declared:
+    """One class as an RNTuple record field describes it: the members the file names, with the
+    C++ types each was written with."""
+    node = field.node
+    members = tuple(
+        _Member(member.field.type, name)
+        for name, member in zip(node.names, node.members, strict=False)
+    )
+    return _Declared((), members)
+
+
+def _known(name: str) -> bool:
+    """Whether the namespace implements ``name`` itself, so that a project header for it would
+    declare a second class of that name.
+
+    ROOT also leaves out a class whose dictionary its root map finds along its library path. A
+    ``.xrdlib`` in the working directory is found here too, but a project is what a reader
+    includes to get the class as the file describes it, so only what the namespace itself
+    implements - a ROOT class, a standard container - is left out.
+    """
+    bare = name.removeprefix("std::").split("<", 1)[0]
+    if not bare or bare in STANDARD or bare.startswith(("ROOT::", "ROOT.")):
+        return True
+    return _implemented(bare.split("::")[-1])
+
+
+def _implemented(short: str) -> bool:
+    """Whether a module of the namespace defines a class of this name - one it wrote itself,
+    not one a dictionary loaded into it."""
+    for module in list(sys.modules.values()):
+        name = getattr(module, "__name__", "")
+        found = getattr(module, short, None)
+        if name.startswith("xrdroot.pyroot") and getattr(found, "__module__", None) == name:
+            return True
+    return False
+
+
+def _short(name: str) -> str:
+    """The name a class is written by: its own, without the namespace it is declared in."""
+    return name.split("::")[-1]
+
+
+def _guard(base: str, name: str) -> str:
+    """The macro a header's declarations are kept behind, named for the class and the project."""
+    spelled = "".join(char if char.isalnum() else "_" for char in f"R__{base}_{name}")
+    return spelled.upper()
+
+
+def _header(base: str, name: str, what: _Declared) -> str:
+    """One class's header: what it needs included, then its declaration."""
+    guard = _guard(base, name)
+    lines = [f"#ifndef {guard}", f"#define {guard}", ""]
+    needs = _needs(what)
+    lines += [f"#include {each}" for each in needs]
+    if needs:  # a streamer spells a standard type by its own name, ``vector<int>``
+        lines += ["", "using namespace std;"]
+    lines += ["", *_declaration(name, what), "", f"#endif // {guard}", ""]
+    return "\n".join(lines)
+
+
+def _needs(what: _Declared) -> list[str]:
+    """The standard headers the members' types need, each once, in a stable order."""
+    found: set[str] = set()
+    for member in what.members:
+        found.update(INCLUDES[word] for word in _typed(member.spelling) if word in INCLUDES)
+        if _fixed_width(member.spelling):
+            found.add("<cstdint>")
+    return sorted(found)
+
+
+def _typed(spelling: str) -> set[str]:
+    """The types a member's spelling names without their namespaces or template arguments:
+    ``unordered_map<std::int32_t,std::string>`` names three."""
+    pieces = spelling.replace("<", " ").replace(">", " ").replace(",", " ").split()
+    return {piece.removeprefix("std::").strip("*") for piece in pieces}
+
+
+def _fixed_width(spelling: str) -> bool:
+    """Whether a type only ``<cstdint>`` declares names a member: ``std::int32_t``."""
+    return "std::" in spelling and any(
+        word in spelling for word in ("int8_t", "int16_t", "int32_t", "int64_t", "uint8_t")
+    )
+
+
+def _declaration(name: str, what: _Declared) -> list[str]:
+    """A class's declaration, inside the namespaces its own name gives it."""
+    derives = f" : public {', public '.join(what.bases)}" if what.bases else ""
+    body = [
+        f"class {_short(name)}{derives} {{",
+        "public:",
+        *(f"   {member.spelling} {member.name}{member.dims};" for member in what.members),
+        "};",
+    ]
+    return _namespaced(name, body)
+
+
+def _namespaced(name: str, body: list[str]) -> list[str]:
+    """``body`` inside the namespaces of ``name``'s qualification - ``ns::Deep`` in ``ns``."""
+    above = name.split("::")[:-1]
+    return [
+        *(f"namespace {part} {{" for part in above),
+        *body,
+        *(f"}} // namespace {part}" for part in reversed(above)),
+    ]
+
+
+def _project(base: str, names: list[str]) -> str:
+    """The project's own header: every class of the project included."""
+    guard = _guard(base, "project")
+    lines = [f"#ifndef {guard}", f"#define {guard}", ""]
+    lines += [f'#include "{_short(name)}.h"' for name in names]
+    lines += ["", f"#endif // {guard}", ""]
+    return "\n".join(lines)
+
+
+def _linkdef(names: list[str]) -> str:
+    """The LinkDef that gives each class of the project a dictionary entry."""
+    lines = ["#ifdef __CLING__", ""]
+    lines += [f"#pragma link C++ class {name}+;" for name in names]
+    lines += ["", "#endif", ""]
+    return "\n".join(lines)
+
+
+def _generated(base: str) -> str:
+    """The source ROOT has the project's dictionary compiled from."""
+    return "\n".join(
+        [
+            f'#include "{base}Project.h"',
+            "",
+            "#ifdef __CLING__",
+            f'#include "{base}LinkDef.h"',
+            "#endif",
+            "",
+        ]
+    )
