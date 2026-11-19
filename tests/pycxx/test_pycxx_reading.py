@@ -174,3 +174,42 @@ def test_an_extreme_by_a_comparison_of_its_own_is_refused() -> None:
 def test_a_member_template_whose_body_needs_its_arguments_refuses_its_use_where_unknown() -> None:
     source = "struct S { template <class T> T make() { T x; return x; } }; void f(S s) {}"
     assert "uninstantiated('the member template make', " in translate(source, "t.C")
+
+
+def test_a_member_template_constructor_leaves_the_other_constructors_to_be_called(capsys) -> None:
+    """ROOT's ``io/alloc/customConstructor.C`` has ``template <class T> WithTemplate(T *)``
+    asking ``typeid(T *)`` beside ``WithTemplate()``: only an instance's arguments name ``T``,
+    so the template stands in for itself and the class is still built with no argument - which
+    is what ``TClass::New`` does with it."""
+    source = r"""
+    #include <cstdio>
+    #include <typeinfo>
+    struct WithTemplate {
+       WithTemplate() { printf("default\n"); }
+       template <class T> WithTemplate(T *) { printf("%s\n", typeid(T *).name()); }
+    };
+    void t() { WithTemplate s; }
+    """
+    python = translate(source, "t.C")
+    assert "def __init____2(*args, **kwargs):\n" in python
+    assert "uninstantiated('the member template WithTemplate', " in python
+    assert "def __init____1(self):\n        printf('default\\n')\n" in python
+    run_source(source, "t.C")
+    assert capsys.readouterr().out == "default\n"
+
+
+def test_a_member_template_constructor_used_refuses_a_sentence_where_the_class_is_made() -> None:
+    """A ``WithTemplate(p)`` of a ``T *p`` is the template, whose body no known argument was
+    given for: the stand-in names the class and says what it cannot do."""
+    source = r"""
+    #include <cstdio>
+    #include <typeinfo>
+    struct WithTemplate {
+       WithTemplate() { }
+       template <class T> WithTemplate(T *) { printf("%s\n", typeid(T *).name()); }
+    };
+    void t(int *p) { WithTemplate s(p); }
+    """
+    names = run_source(source, "t.C", call=False)
+    with pytest.raises(Refusal, match="the member template WithTemplate, used where"):
+        names["t"](None)

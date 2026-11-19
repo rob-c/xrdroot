@@ -180,15 +180,24 @@ class ClassEmitter(FunctionEmitter):
             self._default_init(info, aggregate=not ctors and not info.decl.bases)
             return
         self.out.blank()
-        self.overloaded(
-            "__init__",
-            "__init__",
-            defined,
-            lambda func, py: self.function(
-                func, py, method=True, prologue=lambda: self.initialise(info, func)
-            ),
-            method=True,
-        )
+        self.overloaded("__init__", "__init__", defined, self._constructor(info), method=True)
+
+    def _constructor(self, info: ClassInfo) -> Callable[[Function, str], None]:
+        """How each constructor of ``info`` is written: as it is, or - a member template, whose
+        arguments a call made of a ``T *`` is not known to give - as a stand-in refusing the
+        uses the translator cannot work out. A template standing in for itself alone leaves the
+        class's other constructors there to call, which ROOT's ``TClass::New`` still needs."""
+
+        def write(func: Function, py: str) -> None:
+            def build() -> None:
+                self.function(func, py, method=True, prologue=lambda: self.initialise(info, func))
+
+            if func.template is None:
+                build()
+            else:
+                self.generic(build, lambda why: self._uninstantiated_method(func, py, why))
+
+        return write
 
     def _default_init(self, info: ClassInfo, aggregate: bool) -> None:
         """The constructor C++ writes when a class declares none."""
