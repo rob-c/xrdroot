@@ -19,6 +19,7 @@ from __future__ import annotations
 import atexit
 import threading
 import weakref
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
@@ -74,9 +75,15 @@ class RNTupleWriteOptions:
 
 
 def _snapshot(held: Any) -> Any:
-    """A holder's value as it is now, copied so that refilling the holder leaves it be."""
+    """A holder's value as it is now, copied so that refilling the holder leaves it be.
+
+    A record's holder is a mapping of member to holder, which is copied member by
+    member, so that a value of a class is its members' values and nothing else.
+    """
     if isinstance(held, RFieldPtr):
         return held.value
+    if isinstance(held, Mapping):
+        return {name: _snapshot(value) for name, value in held.items()}
     return np.array(held)
 
 

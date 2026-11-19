@@ -32,6 +32,30 @@ def _read(path: str, name: str = "events") -> dict[str, object]:
         return {key: getattr(value, "tolist", lambda v=value: v)() for key, value in found.items()}
 
 
+def test_a_record_field_is_written_as_the_members_its_dictionary_lists() -> None:
+    """``write.cxx`` of roottest's atlas-datavector makes a field of a class type and
+    fills a default entry; the file keeps it as ROOT does, a record of its members."""
+    model = ROOT.RNTupleModel.Create()
+    model.AddField(ROOT.RFieldBase.Create("evt", "TLorentzVector").Unwrap())
+    entry = model.GetDefaultEntry()
+    entry["evt"] = {"fP": {"fX": 1.0, "fY": 2.0, "fZ": 3.0}, "fE": 4.0}
+    writer = ROOT.RNTupleWriter.Recreate(ROOT.std.move(model), "events", "w.root")
+    writer.Fill()
+    del writer
+    assert _read("w.root")["evt"] == [{"fP": {"fX": 1.0, "fY": 2.0, "fZ": 3.0}, "fE": 4.0}]
+
+
+def test_an_entry_that_was_never_given_a_record_is_written_as_its_default() -> None:
+    """A record's holder starts as its members' defaults, which is the object a class's
+    default constructor makes - what ``writer->Fill()`` with no values writes."""
+    model = ROOT.RNTupleModel.Create()
+    model.AddField(ROOT.RFieldBase.Create("evt", "TLorentzVector").Unwrap())
+    writer = ROOT.RNTupleWriter.Recreate(ROOT.std.move(model), "events", "w.root")
+    writer.Fill()
+    del writer
+    assert _read("w.root")["evt"] == [{"fP": {"fX": 0.0, "fY": 0.0, "fZ": 0.0}, "fE": 0.0}]
+
+
 def test_a_writer_fills_the_default_entry_and_finishes_when_let_go() -> None:
     model, n, pt, name = _model()
     writer = ROOT.RNTupleWriter.Recreate(ROOT.std.move(model), "events", "w.root")

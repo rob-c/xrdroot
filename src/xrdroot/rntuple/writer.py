@@ -15,9 +15,11 @@ the fundamental numbers, ``bool``, ``std::string``, and a ``std::vector`` of a
 number or of another such vector. A collection nests as ROOT nests it: the
 outer collection's offset column says where each entry's items end, the one
 under it where those items' own items end, and so on down to a column of the
-leaves. Anything else - records, variants, collections of strings - is refused
-by name, on the principle the rest of the writer keeps: a file ROOT misreads is
-worse than an error message.
+leaves. A class is a :class:`RecordSpec` - the class's name, and a field of its
+own for every member the class's dictionary declares, the record itself having
+no column - which is how ROOT writes one. Anything else - variants,
+collections of strings - is refused by name, on the principle the rest of the
+writer keeps: a file ROOT misreads is worse than an error message.
 
 Entries gather in memory a cluster at a time, and a cluster is written once
 it holds ``cluster_size`` bytes of values, so an RNTuple far larger than
@@ -39,12 +41,12 @@ from .checksum import checksum
 from .columns import ENCODINGS, Encoding, encode
 from .envelope import FOOTER, HEADER, PAGE_LIST, Anchor, Builder, Link, envelope
 from .fields import FUNDAMENTALS
-from .schema import COLLECTION, LEAF, Column, Field, Schema, write_description
+from .schema import COLLECTION, LEAF, RECORD, Column, Field, Schema, write_description
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from ..writer import WritableDirectory
 
-__all__ = ["WritableRNTuple", "spec_of", "CLUSTER_BYTES", "PAGE_BYTES"]
+__all__ = ["WritableRNTuple", "RecordSpec", "spec_of", "CLUSTER_BYTES", "PAGE_BYTES"]
 
 #: How many bytes of values gather before a cluster is written. A reader
 #: reads a range a cluster at a time, so smaller clusters make a small range
@@ -107,8 +109,8 @@ def _refuse(name: str, spec: Any) -> ValueError:
         f"with here are numbers (a NumPy type, a C++ name such as 'std::int32_t', or "
         f"bool, int and float), str for std::string, and a vector of a number - or of "
         f"another such vector - spelled [type], 'std::vector<type>' or 'std::vector<"
-        f"std::vector<type>>'. Records, variants and collections of strings are not "
-        f"written, because their layout would be a guess"
+        f"std::vector<type>>', or as a RecordSpec for a class's record. Variants and "
+        f"collections of strings are not written, because their layout would be a guess"
     )
 
 
@@ -216,6 +218,44 @@ class _Writer:
 
     def put(self, prepared: Any, a: int, b: int) -> None:
         raise NotImplementedError
+
+
+class _Record(_Writer):
+    """A class: no column of its own, and one field per member the class declares.
+
+    ROOT writes a class as a record - ``RRecordField`` - whose members are fields
+    of their own, so that a value of the class is its members' values and nothing
+    else is stored. The record's own bytes are the bytes of the member fields,
+    which is what a record's share of a cluster is.
+    """
+
+    __slots__ = ("members",)
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        #: Each member's name, and the writer of its own field.
+        self.members: list[tuple[str, _Writer]] = []
+
+    def prepare(self, values: Any) -> Any:
+        rows = _members(self.name, values, [member for member, _ in self.members])
+        return rows, [
+            writer.prepare([row[member] for row in rows]) for member, writer in self.members
+        ]
+
+    def length(self, prepared: Any) -> int:
+        return len(prepared[0])
+
+    def sizes(self, prepared: Any) -> np.ndarray[Any, Any]:
+        members = prepared[1]
+        total = np.zeros(len(prepared[0]), np.int64)
+        for (_member, writer), member_values in zip(self.members, members, strict=True):
+            total += writer.sizes(member_values)
+        return total
+
+    def put(self, prepared: Any, a: int, b: int) -> None:
+        members = prepared[1]
+        for (_member, writer), member_values in zip(self.members, members, strict=True):
+            writer.put(member_values, a, b)
 
 
 class _Scalar(_Writer):
@@ -531,6 +571,66 @@ def _awkward_spec(name: str, values: Any) -> Any:
     return [spec_of(name, ak.flatten(values, axis=1))]
 
 
+class RecordSpec:
+    """A field that is a class: its C++ type name, and its members as fields of their own.
+
+    ROOT reads a class's dictionary and writes the class as a record of what the
+    dictionary declares, so the name is the class's and the members are the whole
+    of what is stored - a name such as ``'AtlasLikeDataVector<CustomStruct>'``
+    with the members ``CustomStruct`` declares. A record is declared where a
+    number would be: ``f.rntuple('events', {'evt': RecordSpec(...)})``.
+    """
+
+    __slots__ = ("cxx", "members")
+
+    def __init__(self, cxx: str, members: Iterable[tuple[str, Any]]) -> None:
+        self.cxx = str(cxx)
+        #: Each member's name, and the declaration of its field.
+        self.members = [(str(name), spec) for name, spec in members]
+
+    def __repr__(self) -> str:
+        return f"<RecordSpec {self.cxx} of {', '.join(name for name, _ in self.members)}>"
+
+
+def _members(name: str, values: Any, members: list[str]) -> list[Mapping[str, Any]]:
+    """A batch of a record's values: one mapping of member to value per entry."""
+    rows = list(values)
+    for row in rows:
+        _check_record(name, row, members)
+    return rows
+
+
+def _check_record(name: str, row: Any, members: list[str]) -> None:
+    """One entry of a record: every member, and nothing the record does not hold."""
+    if not isinstance(row, Mapping):
+        raise ValueError(
+            f"the field {name!r} is a record, so each of its entries is "
+            f"{_record_shape(members)}, not a {type(row).__name__}"
+        )
+    missing = [member for member in members if member not in row]
+    unknown = [str(member) for member in row if member not in members]
+    if missing or unknown:
+        raise ValueError(
+            f"this entry of the record {name!r} has {_trouble(missing, unknown)}; its "
+            f"members are {', '.join(members) or 'none'}, and every entry needs all of them"
+        )
+
+
+def _record_shape(members: list[str]) -> str:
+    """What one entry of a record is: a mapping of its members, or nothing at all."""
+    if not members:
+        return "an empty mapping, because the record has no members"
+    return f"a mapping of member to value, as in {{{members[0]!r}: ...}}"
+
+
+def _trouble(missing: list[str], unknown: list[str]) -> str:
+    """What an entry has wrong with its names: those it lacks, and those it should not."""
+    apart = [f"no {', '.join(missing)}"] if missing else []
+    if unknown:
+        apart.append(f"{', '.join(unknown)}, which it does not have")
+    return " and ".join(apart)
+
+
 class WritableRNTuple:
     """An RNTuple being written: named fields, then entries, a cluster at a time.
 
@@ -544,7 +644,8 @@ class WritableRNTuple:
     ``float`` - or as ``str`` for a ``std::string``, or as a vector of a
     number, ``[np.float32]`` or ``'std::vector<float>'``, or as vectors of
     vectors, ``[[np.float32]]`` or ``'std::vector<std::vector<float>>'``, as
-    deep as it goes. Every entry needs a value for every field. The header,
+    deep as it goes, or as a :class:`RecordSpec` for a class, whose every entry
+    is a mapping of member to value. Every entry needs a value for every field. The header,
     the page list, the footer and the anchor are written when the file closes.
     """
 
@@ -600,25 +701,43 @@ class WritableRNTuple:
         """What each field is, in the C++ the file will say: ``{'pt': 'std::vector<float>'}``."""
         return {field.name: field.type for field in self._schema.tops()}
 
-    def _declare(self, name: str, spec: Any) -> _Writer:
+    def _declare(self, name: str, spec: Any, parent: int | None = None) -> _Writer:
+        if isinstance(spec, RecordSpec):
+            return self._record(name, spec, parent)
+        writer: _Writer
         if spec is str or spec in ("std::string", "string"):
-            writer: _Writer = _Text(name)
-            self._add(name, "std::string", LEAF, [self._index(), "Char"], writer)
+            writer = _Text(name)
+            self._add(name, "std::string", LEAF, [self._index(), "Char"], writer, parent)
             return writer
         found = _vector_spec(name, spec)
         if found is None:
             dtype = _number(name, spec)
             writer = _Scalar(name, dtype)
-            self._add(name, CXX[dtype.name], LEAF, [self._kind(dtype)], writer)
+            self._add(name, CXX[dtype.name], LEAF, [self._kind(dtype)], writer, parent)
             return writer
         dtype, depth = found
         writer = _Rows(name, dtype, depth)
-        parent = self._add(name, _vector(dtype, depth), COLLECTION, [self._index()], writer)
+        under = self._add(name, _vector(dtype, depth), COLLECTION, [self._index()], writer, parent)
         for level in range(depth - 1, 0, -1):
-            parent = self._add(
-                "_0", _vector(dtype, level), COLLECTION, [self._index()], writer, parent
+            under = self._add(
+                "_0", _vector(dtype, level), COLLECTION, [self._index()], writer, under
             )
-        self._add("_0", CXX[dtype.name], LEAF, [self._kind(dtype)], writer, parent)
+        self._add("_0", CXX[dtype.name], LEAF, [self._kind(dtype)], writer, under)
+        return writer
+
+    def _record(self, name: str, spec: RecordSpec, parent: int | None) -> _Writer:
+        """A record: the class's name, and a field under it for every member.
+
+        The record keeps the columns of no field of its own, so every page it is
+        written in belongs to a member - which is what ROOT writes for a class and
+        what makes an RNTuple written here readable by a reader of either.
+        """
+        writer = _Record(name)
+        under = self._add(name, spec.cxx, RECORD, [], writer, parent)
+        for member, member_spec in spec.members:
+            _check_name(member, "field")
+            writer.members.append((member, self._declare(member, member_spec, under)))
+        writer.outs = [out for _member, made in writer.members for out in made.outs]
         return writer
 
     def _index(self) -> str:
@@ -726,10 +845,8 @@ class WritableRNTuple:
         missing = [name for name in self._writers if name not in row]
         unknown = [str(name) for name in row if name not in self._writers]
         if missing or unknown:
-            trouble = [f"no {', '.join(missing)}"] if missing else []
-            trouble += [f"{', '.join(unknown)}, which it does not have"] if unknown else []
             raise ValueError(
-                f"this entry of {self.name!r} has {' and '.join(trouble)}; its fields "
+                f"this entry of {self.name!r} has {_trouble(missing, unknown)}; its fields "
                 f"are {', '.join(self._writers)}, and every entry needs all of them"
             )
 

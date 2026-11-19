@@ -22,8 +22,8 @@ from support import plain
 from xrdroot import Jagged, RNTuple, WritableRNTuple, create, open_root
 from xrdroot.rntuple import checksum as xxh3
 from xrdroot.rntuple.columns import ENCODINGS
-from xrdroot.rntuple.schema import COLLECTION, LEAF
-from xrdroot.rntuple.writer import spec_of
+from xrdroot.rntuple.schema import COLLECTION, LEAF, RECORD
+from xrdroot.rntuple.writer import RecordSpec, spec_of
 from xrdroot.streamers import read_streamers
 
 DATA = pathlib.Path(__file__).parent / "data" / "rntuple"
@@ -173,6 +173,63 @@ def test_a_vector_of_vectors_is_laid_out_as_root_lays_it_out():
     ]
     assert [field.children for field in fields] == [[1], [2], []]
     assert [len(field.columns[0]) for field in fields] == [1, 1, 1]
+
+
+def test_a_record_field_is_laid_out_as_root_lays_a_class_out():
+    """ROOT writes a class as a record: the class's name, no column of its own, and a
+    field under it for every member - which is what roottest's atlas-datavector asks
+    for, a field of type AtlasLikeDataVector<CustomStruct>."""
+    spec = RecordSpec(
+        "CustomStruct",
+        [("a", np.dtype("float32")), ("v1", [np.dtype("float32")]), ("s", str)],
+    )
+    rows = [{"a": 1.5, "v1": [1.0, 2.0], "s": "first"}, {"a": 2.5, "v1": [], "s": "second"}]
+    found = roundtrip({"evt": spec}, [{"evt": rows}])
+    fields = found._store.schema.fields
+    assert [(field.id, field.name, field.type, field.role, field.parent) for field in fields] == [
+        (0, "evt", "CustomStruct", RECORD, 0),
+        (1, "a", "float", LEAF, 0),
+        (2, "v1", "std::vector<float>", COLLECTION, 0),
+        (3, "_0", "float", LEAF, 2),
+        (4, "s", "std::string", LEAF, 0),
+    ]
+    assert [field.children for field in fields] == [[1, 2, 4], [], [3], [], []]
+    assert [len(field.columns) for field in fields] == [0, 1, 1, 1, 1]
+    assert plain(found.arrays())["evt"] == rows
+
+
+def test_a_record_with_no_members_is_written_for_a_class_that_holds_nothing():
+    """A class no dictionary describes is a record with no members, which is what ROOT
+    writes for a class that holds nothing: a field and no column at all."""
+    found = roundtrip({"evt": RecordSpec("Empty", [])}, [{"evt": [{}, {}]}])
+    assert found._store.schema.fields[0].role == RECORD
+    assert found._store.schema.fields[0].columns == []
+    assert plain(found.arrays())["evt"] == [{}, {}]
+    assert found.num_entries == 2
+
+
+def test_an_entry_of_a_record_is_a_mapping_of_its_members():
+    spec = RecordSpec("CustomStruct", [("a", np.dtype("float32"))])
+    with pytest.raises(ValueError, match="each of its entries is a mapping of member"):
+        roundtrip({"evt": spec}, [{"evt": [1.5]}])
+    with pytest.raises(ValueError, match="each of its entries is an empty mapping"):
+        roundtrip({"evt": RecordSpec("Empty", [])}, [{"evt": [1.5]}])
+
+
+def test_a_record_entry_missing_or_adding_a_member_is_refused_whole():
+    spec = RecordSpec("CustomStruct", [("a", np.dtype("float32")), ("b", str)])
+    with pytest.raises(ValueError, match="this entry of the record 'evt' has no b; its "
+                                         "members are a, b"):  # fmt: skip
+        roundtrip({"evt": spec}, [{"evt": [{"a": 1.5}]}])
+    with pytest.raises(ValueError, match="c, which it does not have"):
+        roundtrip({"evt": spec}, [{"evt": [{"a": 1.5, "b": "x", "c": 1.0}]}])
+
+
+def test_the_declaration_a_record_is_written_from_says_what_it_holds():
+    thin = RecordSpec("TVector3", [("fX", float)])
+    spec = RecordSpec("TLorentzVector", [("fP", thin), ("fE", float)])
+    assert repr(spec) == "<RecordSpec TLorentzVector of fP, fE>"
+    assert repr(spec.members[0][1]) == "<RecordSpec TVector3 of fX>"
 
 
 def test_a_vector_of_vectors_crossing_clusters_keeps_its_offsets_a_cluster_at_a_time():
@@ -381,7 +438,7 @@ def test_a_file_written_without_xxhash_carries_the_same_checksums(monkeypatch):
 )
 def test_a_field_this_writer_cannot_lay_out_is_refused_by_name(spec):
     with create(io.BytesIO()) as f:
-        with pytest.raises(ValueError, match="Records, variants and collections of strings"):
+        with pytest.raises(ValueError, match="Variants and collections of strings"):
             f.rntuple("events", {"x": spec})
 
 

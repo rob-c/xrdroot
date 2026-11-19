@@ -141,8 +141,18 @@ def test_a_field_of_a_class_type_is_a_record_of_the_members_its_dictionary_lists
     assert entry["my_field"] == {}
     with pytest.raises(TypeError, match="a dict of its members"):
         entry["my_field"] = 3
-    with pytest.raises(UnsupportedFeatureError, match="is a record"):
-        assert kind.spec  # the writer has no record to declare
+    declared = kind.spec
+    assert declared.cxx == "AtlasLikeDataVector<CustomStruct>"
+
+
+def test_a_record_is_declared_to_the_writer_as_the_fields_of_its_members() -> None:
+    """ROOT lays a class out as a record of the members its dictionary lists, so the
+    writer is told the class's name and each member's own declaration under it."""
+    declared = field_type("TLorentzVector").spec
+    assert repr(declared) == "<RecordSpec TLorentzVector of fP, fE>"
+    assert [name for name, _ in declared.members] == ["fP", "fE"]
+    assert repr(declared.members[0][1]) == "<RecordSpec TVector3 of fX, fY, fZ>"
+    assert declared.members[1][1] == "double"
 
 
 def test_a_record_holds_the_members_of_the_classes_inside_it() -> None:

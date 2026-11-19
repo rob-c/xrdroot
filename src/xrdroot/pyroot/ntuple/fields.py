@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 
 from ...errors import UnsupportedFeatureError
-from ...rntuple.writer import CXX
+from ...rntuple.writer import CXX, RecordSpec
 from ..stl import _spelled, element_type, std, string
 
 __all__ = ["FieldType", "RFieldPtr", "field_type"]
@@ -51,15 +51,14 @@ class FieldType:
 
     @property
     def spec(self) -> Any:
-        """What :meth:`xrdroot.WritableFile.rntuple` declares a field of this type with."""
+        """What :meth:`xrdroot.WritableFile.rntuple` declares a field of this type with.
+
+        A record is declared as a :class:`~xrdroot.rntuple.writer.RecordSpec`: the
+        class's name, and each member's own declaration under it.
+        """
         if self.record:
-            raise UnsupportedFeatureError(
-                f"an RNTuple field of type {self.cxx} is a record, and writing one is not "
-                f"supported yet: xrdroot's RNTuple writer declares leaf and collection "
-                f"fields only, so it has no way to say that a field is a record of fields "
-                f"with no column of its own. Give the record's members as fields of the "
-                f"model instead, and read the class back with a view of them."
-            )
+            assert self.members is not None
+            return RecordSpec(self.cxx, [(name, member.spec) for name, member in self.members])
         return self.cxx if self.dtype is not None else str
 
     def holder(self) -> Any:
