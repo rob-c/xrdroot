@@ -161,6 +161,25 @@ class _TreeCore(_TObjectLike):
             f"read the branches with TTreeReader, RDataFrame or GetEntry instead"
         )
 
+    def MakeSelector(self, name: str = "", option: str = "") -> int:
+        """``MakeSelector``: write the skeleton class that reads this tree, here.
+
+        ROOT writes ``Name.h`` and ``Name.C`` - the class, whose ``Process`` reads the
+        branches through a ``TTreeReader``, and the methods it leaves to be filled in -
+        into the current directory; ``option`` picks which readers, as ROOT's does.
+        """
+        from .selector import make_selector
+
+        return make_selector(self, name, option)
+
+    def Process(
+        self, filename: Any, option: Any = "", nentries: int = -1, firstentry: int = 0
+    ) -> int:
+        """``Process``: run the selector macro ``filename`` over the entries, as ROOT does."""
+        from .selector import process
+
+        return process(self, filename, option, nentries, firstentry)
+
     def _changed(self) -> None:
         """Forget what was worked out from the entries, because there are more of them."""
         self._snapshot = None

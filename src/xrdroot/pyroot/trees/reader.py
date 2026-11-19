@@ -17,6 +17,7 @@ block of entries, so a loop over a reader costs what a loop of ``GetEntry`` does
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator, Mapping
 from typing import Any
 
@@ -25,12 +26,25 @@ import numpy as np
 from ..core.declared import made_from
 from ._base import _TObjectLike
 from .core import python_value
+from .layout import element_class
 from .readerbuffer import ReaderBuffer, buffer_for
 
 __all__ = ["TTreeReader", "TTreeReaderValue", "TTreeReaderArray"]
 
 #: ``TTreeReader::EEntryStatus``: what ``SetEntry`` says.
 ENTRY_VALID, ENTRY_NO_TREE, ENTRY_BEYOND_END = 0, 2, 7
+
+
+def _unqualified(leaf: Any) -> str:
+    """A leaf's name without the branch it is under: ``fPx`` for ``C1.fPx``."""
+    return str(leaf.column).rsplit(".", 1)[-1]
+
+
+def _ambiguous(name: str) -> None:
+    """ROOT's ``AddReader`` warning: one name, several branches, and the first one read."""
+    print(f"Warning in <AddReader>: Ignored branch {name} because a branch with the same name "
+          f"already exists. TTreeReader requires an unique name for the branches. You may "
+          f"need to put a dot at the end of the name of top-level branches.", file=sys.stderr)
 
 
 def _tree_of(tree: Any, where: Any) -> Any:
@@ -126,16 +140,49 @@ class _Read:
     def __init__(self, reader: TTreeReader, name: str) -> None:
         self._reader = reader
         self._name = str(name)
-        tree = reader._tree
-        self._leaf: Any = tree._leaf_info(self._name) if tree is not None else None
+        self._leaf: Any = None
         #: The branch the name is, if it is one: what says which class its objects are.
-        self._branch: Any = tree._branch_info(self._name) if tree is not None else None
-        if tree is not None and self._leaf is None:
+        self._branch: Any = None
+        self._resolved = False
+        self._attach()
+
+    def _attach(self) -> None:
+        """Find the branch this name reads, now that the reader has a tree.
+
+        ROOT's skeleton builds its readers in the class's constructor, before ``Init``
+        gives the reader the tree - the member initializers name only the reader and a
+        branch - so a reader of a tree it does not have yet resolves at the first read.
+        The name may also be one several branches share, which ROOT's reader resolves to
+        the first of them and warns about, as its ``AddReader`` does.
+        """
+        tree = self._reader._tree
+        if self._resolved or tree is None:
+            return
+        leaf = self._found(tree)
+        self._branch = None if leaf is None else tree._branch_info(self._name)
+        self._leaf = leaf
+        self._resolved = True
+
+    def _found(self, tree: Any) -> Any:
+        """The leaf this name reads, warning when several branches hold one of that name."""
+        leaf = tree._leaf_info(self._name)
+        matches = [one for one in tree._leaves()
+                   if self._name in (one.column, one.name)]
+        if leaf is None:
+            # A name of the leaf alone, which a split branch of objects names twice: ROOT
+            # reads the first branch that holds one of that name.
+            matches = [one for one in tree._leaves() if _unqualified(one) == self._name]
+            leaf = matches[0] if matches else None
+        if leaf is None:
             raise KeyError(
                 f"the tree {tree.GetName()!r} has no branch called {self._name!r} to read"
             )
+        if len(matches) > 1:
+            _ambiguous(self._name)
+        return leaf
 
     def _value(self) -> Any:
+        self._attach()
         tree = self._reader._tree
         if tree is None or tree._read_entry < 0:
             raise ValueError(
@@ -160,6 +207,7 @@ class _Read:
         return buffer_for(tree, self._leaf) if tree is not None and self._leaf is not None else None
 
     def IsValid(self) -> bool:
+        self._attach()
         return self._leaf is not None
 
     def GetBranchName(self) -> str:
@@ -217,8 +265,29 @@ class TTreeReaderValue(_Read):
 class TTreeReaderArray(_Read):
     """``TTreeReaderArray<T>``: one branch's collection at the reader's entry, as a sequence."""
 
-    def _items(self) -> np.ndarray[Any, Any]:
-        return np.asarray(self._value()).reshape(-1)
+    def _items(self) -> Any:
+        self._attach()
+        value = self._value()
+        if isinstance(value, Mapping):
+            return self._members(value)
+        return np.asarray(value).reshape(-1)
+
+    def _members(self, value: Mapping[str, Any]) -> list[Any]:
+        """``arr[i]`` of a branch of objects: element ``i``, made from its members' values.
+
+        A collection of a class this session declared reads as its members' columns; ROOT's
+        reader hands a macro the objects, so ``arr[i].fPosX`` is the member's value at that
+        index, and a class that was never declared here keeps the mapping it came as.
+        """
+        columns = [item for item in value.values() if hasattr(item, "__len__")]
+        length = max((len(item) for item in columns), default=0)
+        elements = []
+        for index in range(length):
+            members = {name: (item[index] if hasattr(item, "__len__") else item)
+                       for name, item in value.items()}
+            made = made_from(element_class(self._branch, self._leaf), members)
+            elements.append(members if made is None else made)
+        return elements
 
     def __len__(self) -> int:
         return len(self._items())
@@ -238,7 +307,8 @@ class TTreeReaderArray(_Read):
         return held.reference(index)
 
     def __iter__(self) -> Iterator[Any]:
-        return iter(self._items().tolist())
+        items = self._items()
+        return iter(items if isinstance(items, list) else items.tolist())
 
     def GetSize(self) -> int:
         return len(self)

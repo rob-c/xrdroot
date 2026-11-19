@@ -22,6 +22,7 @@ from .chain import TChain
 from .entrylist import TEntryList
 from .ntuple import TNtuple, TNtupleD
 from .reader import TTreeReader, TTreeReaderArray, TTreeReaderValue
+from .selector import TSelector
 from .tree import TTree
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     "TTreeReader",
     "TTreeReaderValue",
     "TTreeReaderArray",
+    "TSelector",
 ]
 
 #: The class each of ROOT's tree classes is read back as.

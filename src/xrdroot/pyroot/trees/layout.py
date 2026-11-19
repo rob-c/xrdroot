@@ -15,7 +15,7 @@ from typing import Any, NamedTuple
 from .sizes import Streamed, streamed
 from .store import OBJECT, TEXT, VECTOR, Store
 
-__all__ = ["LeafInfo", "BranchInfo", "from_store", "from_tree"]
+__all__ = ["LeafInfo", "BranchInfo", "from_store", "from_tree", "element_class"]
 
 #: The type name each leaf class reads as, signed and then unsigned.
 LEAF_TYPES: dict[str, tuple[str, str]] = {
@@ -82,6 +82,25 @@ class BranchInfo(NamedTuple):
     def walk(self) -> list[BranchInfo]:
         """This branch and every branch under it, in the order ROOT lists them."""
         return [self, *(below for child in self.children for below in child.walk())]
+
+
+def element_class(branch: BranchInfo | None, leaf: LeafInfo) -> str:
+    """The class one element of a branch of objects holds.
+
+    A branch of a ``TClonesArray`` names it in ``fClonesName``, one of a ``vector<T>`` in
+    its own class name, and one of a class simply in its class name; a branch the
+    translation split into its members is typed by the leaf it stands for.
+    """
+    if branch is None:
+        return leaf.typename
+    if branch.clones:
+        return branch.clones
+    spelled = branch.classname
+    if spelled.startswith("vector<") and spelled.endswith(">"):
+        return spelled[len("vector<") : -1]
+    if spelled and spelled not in ("TClonesArray", "TObjArray"):
+        return spelled
+    return leaf.typename
 
 
 def from_store(store: Store, stats: Any = None, written: bool = False) -> list[BranchInfo]:
