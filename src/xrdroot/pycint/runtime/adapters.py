@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 
+from ...cppstd import cformat as _cformat
 from ...cppstd import cmath as _cmath
 from ...cppstd.units import duration_literal
 from ...pycxx.runtime import callrefs as _callrefs
@@ -29,6 +30,7 @@ from .root import ROOT
 
 __all__ = [
     "delete",
+    "fscanf",
     "construct_at",
     "deref",
     "assign_method",
@@ -121,6 +123,40 @@ def user_literal(suffix: str, value: Any) -> Any:
     if duration is not None:
         return duration
     return getattr(ROOT.RPadLength, PAD_LENGTHS[suffix])(value)
+
+
+def fscanf(file: Any, fmt: Any, *targets: Any) -> int:
+    """``fscanf``: the fields of a ``FILE`` that ``fmt`` names, each stored where its target is.
+
+    C's ``fscanf`` keeps its place in the stream between calls, so the scan of a file that
+    has started is kept on the :class:`~xrdroot.cppstd.cstdio.FILE` itself: the first call
+    reads the rest of the stream and every later one goes on from where the one before it
+    stopped. A program that scans a file must not also read it another way - ``fgets`` after
+    ``fscanf`` finds the stream at its end - because the text is held here as the scan reads
+    it. The count is C's: the fields stored, or ``EOF`` when the text ran out before one was.
+    """
+    if file is None:
+        raise TypeError(
+            "fscanf of a null FILE *: fopen returned None, and C would read through a null "
+            "pointer; check fp against None before scanning from it"
+        )
+    scan = getattr(file, "scan", None)
+    if scan is None:
+        # The scan's own state, so that a call goes on where the last one stopped: cformat's
+        # scanning of a text, as sscanf uses it, without a fresh text for every call.
+        text = file.stream.read().decode("latin-1")
+        scan = file.scan = _cformat._Scan(text)
+    given = iter(targets)
+    stored = 0
+    for kind, item in _cformat._tokens(str(fmt)):
+        outcome = _cformat._STEPS[kind](scan, item, given)
+        if outcome == _cformat.EXHAUSTED:
+            file.eof = True
+            return stored or _cformat.EOF
+        if outcome == _cformat.MISMATCH:
+            return stored
+        stored += outcome
+    return stored
 
 
 def Printf(fmt: Any, *args: Any) -> None:

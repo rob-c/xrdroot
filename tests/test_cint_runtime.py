@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import numpy as np
 import pytest
 
+from xrdroot.cppstd.cells import Cell
 from xrdroot.pycint import runtime as rt
 
 
@@ -275,3 +277,52 @@ def test_string_functions_read_c_strings_as_c_does(got: object, expected: object
 def test_string_functions_that_throw_in_cpp_raise(call: object, why: str) -> None:
     with pytest.raises((ValueError, IndexError), match=why):
         call()  # type: ignore[operator]
+
+
+def test_fscanf_reads_a_files_fields_in_rows_and_stops_at_its_end(tmp_path: Path) -> None:
+    """``fscanf`` keeps its place in the file: the second call reads the next row."""
+    path = tmp_path / "henry.dat"
+    path.write_bytes(b"1 0.1 2 0.2\n3 0.3 4 0.4\n")
+    handle = rt.fopen(path, "r")
+    fields = [Cell(0) for _ in range(8)]
+    assert rt.fscanf(handle, "%lf %lf %lf %lf", *fields[:4]) == 4
+    assert [cell.value for cell in fields[:4]] == [1.0, 0.1, 2.0, 0.2]
+    assert rt.fscanf(handle, "%lf %lf %lf %lf", *fields[4:]) == 4
+    assert [cell.value for cell in fields[4:]] == [3.0, 0.3, 4.0, 0.4]
+    assert rt.fscanf(handle, "%lf", Cell(0)) == rt.EOF
+    assert handle.eof
+    rt.fclose(handle)
+
+
+def test_fscanf_keeps_the_fields_it_stored_when_the_file_ends_between_two(
+        tmp_path: Path) -> None:
+    path = tmp_path / "one.dat"
+    path.write_bytes(b"7\n")
+    handle = rt.fopen(path, "r")
+    assert rt.fscanf(handle, "%d %d", Cell(0), Cell(0)) == 1
+    assert rt.fscanf(handle, "%d", Cell(0)) == rt.EOF
+    assert handle.eof
+    rt.fclose(handle)
+
+
+def test_fscanf_answers_zero_where_the_text_is_not_the_field_it_wants(tmp_path: Path) -> None:
+    path = tmp_path / "word.dat"
+    path.write_bytes(b"alpha\n")
+    handle = rt.fopen(path, "r")
+    assert rt.fscanf(handle, "%d", Cell(0)) == 0
+    rt.fclose(handle)
+
+
+def test_fscanf_scans_text_into_the_buffer_a_char_array_is_held_in(tmp_path: Path) -> None:
+    path = tmp_path / "name.dat"
+    path.write_bytes(b"alpha 3\n")
+    handle = rt.fopen(path, "r")
+    word, count = Cell(""), Cell(0)
+    assert rt.fscanf(handle, "%s %d", word, count) == 2
+    assert (word.value, count.value) == ("alpha", 3)
+    rt.fclose(handle)
+
+
+def test_fscanf_of_a_null_file_says_to_check_the_pointer() -> None:
+    with pytest.raises(TypeError, match="fscanf of a null FILE"):
+        rt.fscanf(None, "%d", Cell(0))
