@@ -14,6 +14,8 @@ for a ``Float16_t``. The arithmetic is ``TBufferFile::WriteDouble32``'s and
 
 from __future__ import annotations
 
+import struct
+from functools import cache
 from typing import Any
 
 import numpy as np
@@ -51,7 +53,20 @@ BASIC: dict[int, tuple[str, int, str]] = {
 #: A float written as its exponent byte and a cut-down mantissa, three bytes.
 TRUNCATED = np.dtype([("exp", "u1"), ("man", ">u2")])
 
+#: ``struct``'s code for one value of a plain streamer type, by its NumPy kind and width.
+#: The two agree on the bytes - both are big-endian, width for width - so a member that is
+#: a single number can skip NumPy, whose per-call cost dwarfs the four bytes it produces.
+CODES: dict[str, dict[int, str]] = {
+    "i": {1: "b", 2: "h", 4: "i", 8: "q"},
+    "u": {1: "B", 2: "H", 4: "I", 8: "Q"},
+    "f": {4: "f", 8: "d"},
+}
 
+#: One ``struct.Struct`` per plain streamer type, made the first time a member needs it.
+PACKERS: dict[int, struct.Struct] = {}
+
+
+@cache
 def _recipe(title: str) -> tuple[float, float, float]:
     """``xmin``, ``xmax`` and the factor a packed member's comment asks for."""
     found = _range(title)
@@ -73,11 +88,36 @@ def packed_size(stype: int, title: str) -> int:
     return 3
 
 
+def _packer(stype: int) -> struct.Struct:
+    """The ``struct`` that writes one value of the plain streamer type ``stype``."""
+    found = PACKERS.get(stype)
+    if found is None:
+        dtype = np.dtype(BASIC[stype][0])
+        order = ">" if dtype.itemsize > 1 else ""
+        found = PACKERS[stype] = struct.Struct(order + CODES[dtype.kind][dtype.itemsize])
+    return found
+
+
+def _whole(stype: int, values: Any) -> bytes | None:
+    """One value written through ``struct``, or ``None`` where NumPy must convert it
+    instead: a float into an integer member truncates there and raises here, and a number
+    too wide for the member wraps there, which is what ROOT on file really holds."""
+    if not isinstance(values, np.ndarray) or values.ndim != 1 or len(values) != 1:
+        return None
+    try:
+        return _packer(stype).pack(values[0])
+    except (struct.error, TypeError):
+        return None
+
+
 def pack_member(stype: int, title: str, values: Any) -> bytes:
     """A column of one member's values, as its streamer type writes them."""
-    given = np.asarray(values)
     if stype not in (DOUBLE32, FLOAT16):
-        return bytes(given.astype(BASIC[stype][0]).tobytes())
+        one = _whole(stype, values)
+        if one is not None:
+            return one
+        return bytes(np.asarray(values).astype(BASIC[stype][0]).tobytes())
+    given = np.asarray(values)
     xmin, xmax, factor = _recipe(title)
     if factor:
         clipped = np.clip(given.astype(np.float64), xmin, xmax)
