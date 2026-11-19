@@ -6,10 +6,18 @@ the descriptions :mod:`.wdeclared` makes of the program's classes, handed to
 the same reader a file's are (:mod:`.interp`) as though a file described
 them. A standard container standing on its own - a ``vector<int>`` written
 into a buffer - reads as the one member of a class made up to hold it.
+
+How a class reads is a pure function of its name and the catalogue that
+describes it, so both the layouts a catalogue answers with and the reader a
+class is read by are kept: ``TClass::Streamer`` in a bulk loop - roottest's
+``ReadBuffer`` reads 10^7 records of one declared class - used to lay out
+ROOT's own eighty classes and this program's for every record, which was
+nearly all of the read.
 """
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Callable
 from typing import Any
 
@@ -23,6 +31,14 @@ __all__ = ["DescribedSource", "reader_for"]
 
 #: The streamer type a file gives a container member, which its reader goes by.
 STREAMER = 500
+
+#: How many catalogues' layouts are kept at once. A program declares a bounded number of
+#: classes, so it reads a bounded number of catalogues - one per class declared again - and a
+#: layout is a dictionary of every class ROOT carries, so this is the width of the memory kept.
+SOURCES_KEPT = 32
+#: How many readers are kept at once: one per class read from each catalogue, which is the
+#: number of classes a program declares or holds in a file.
+READERS_KEPT = 256
 
 
 def _member(element: Element) -> Member:
@@ -41,21 +57,55 @@ def _shape(dims: int, max_index: tuple[int, ...]) -> tuple[int, ...]:
 
 class DescribedSource:
     """What the reader asks a file for - how each class is laid out - answered from a catalogue
-    of the program's classes and the layouts of ROOT's own."""
+    of the program's classes and the layouts of ROOT's own.
 
-    def __init__(self, catalogue: Catalogue, extra: dict[str, dict[str, Member]] | None = None):
+    The answer is worked out once and kept, because it is asked for again for every record read
+    and it changes only when the catalogue describes another class: the count of what the
+    catalogue knows is the sign of that, so a class described later is in the layouts a reader
+    made afterwards works from, while a record read by a reader already made costs nothing.
+    """
+
+    def __init__(
+        self,
+        catalogue: Catalogue,
+        extra: dict[str, dict[str, Member]] | None = None,
+        base: DescribedSource | None = None,
+    ) -> None:
         self.catalogue = catalogue
         self._extra = extra or {}
+        #: The source whose layouts these extend, for the class made up to hold a container.
+        self._base = base
+        self._found: dict[str, dict[str, Member]] | None = None
+        #: What the catalogue knew when ``_found`` was worked out.
+        self._described: tuple[int, int] | None = None
 
     def streamers(self) -> dict[str, dict[str, Member]]:
-        found = {name: _layout(info[2]) for name, info in INFOS.items()}
-        found.update((name, _layout(info[2])) for name, info in self.catalogue.entries().items())
-        found.update(self._extra)
-        return found
+        if self._base is not None:  # a container's holder, on the layouts of the catalogue
+            found = dict(self._base.streamers())
+            found.update(self._extra)
+            return found
+        key = (len(self.catalogue.declarations), len(self.catalogue.infos))
+        if self._found is None or self._described != key:
+            self._found = _described(self.catalogue)
+            self._described = key
+        return self._found
+
+
+def _described(catalogue: Catalogue) -> dict[str, dict[str, Member]]:
+    """Every class laid out as the catalogue describes it: ROOT's own, and the program's."""
+    found = {name: _layout(info[2]) for name, info in INFOS.items()}
+    found.update((name, _layout(info[2])) for name, info in catalogue.entries().items())
+    return found
 
 
 def _layout(elements: tuple[Element, ...]) -> dict[str, Member]:
     return {element[1]: _member(element) for element in elements}
+
+
+@functools.lru_cache(maxsize=SOURCES_KEPT)
+def _source(catalogue: Catalogue) -> DescribedSource:
+    """The layouts one catalogue answers with, kept for the readers made from it."""
+    return DescribedSource(catalogue)
 
 
 #: The made-up class a container standing on its own is read as the one member of.
@@ -64,16 +114,26 @@ HOLDER = "<standing container>"
 
 def reader_for(classname: str, catalogue: Catalogue) -> Callable[[Buffer], Any]:
     """How an object of ``classname`` reads from bytes: its record and members - or, for a
-    container, its record and items."""
+    container, its record and items.
+
+    Kept per class and catalogue, because what it is is nothing the bytes can change: a
+    ``TClass::Streamer`` in a bulk loop of 10^7 records used to lay every class out again and
+    step each of its members again for every one of them, which was most of the read.
+    """
+    return _reader_for(classname, catalogue)
+
+
+@functools.lru_cache(maxsize=READERS_KEPT)
+def _reader_for(classname: str, catalogue: Catalogue) -> Callable[[Buffer], Any]:
     found = parse_type(classname)
     if found.name in STL_KINDS and not found.stars:
         _describe_contents(found, catalogue)
         held = {HOLDER: {"value": Member("value", "", STREAMER, classname, 0)}}
-        holder: Any = DescribedSource(catalogue, held)  # what the reader asks a file, answered
-        read = _members(HOLDER, holder)
+        holder: Any = DescribedSource(catalogue, held, _source(catalogue))
+        read = _members(HOLDER, holder)  # what the reader asks of the made-up holder
         return lambda buf: read(buf)["value"]
     catalogue.info(classname)
-    source: Any = DescribedSource(catalogue)
+    source: Any = _source(catalogue)
     return _streamed(_members(classname, source))
 
 

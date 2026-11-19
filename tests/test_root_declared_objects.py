@@ -1295,3 +1295,68 @@ def test_an_object_is_plain_data_by_the_plan_its_declaration_makes_once():
              for field, _kept_in, _found in plan.fields}  # fmt: skip
     assert dict(instance_of(outer, "Outer", catalogue).members) == taken
     assert taken["fN"] == 7 and taken["fInner"].members["v"] == 3
+
+
+
+def test_a_class_is_read_by_one_reader_however_many_records_it_has():
+    run_source(SOURCE, "declared_objects.C", call=False)
+    from xrdroot.pyroot.core.declared import catalogue_for, catalogue_of
+    from xrdroot.rdobjects import reader_for
+
+    first = catalogue_for("Plain")
+    assert reader_for("Plain", first) is reader_for("Plain", first)
+    # A catalogue describes the classes one object reaches, so the same class may be described
+    # by two of them - reached from another object, or from the class alone - and each lays out
+    # a reader of its own.
+    second = catalogue_of(find_class("Plain"))
+    assert second is not first
+    assert reader_for("Plain", first) is not reader_for("Plain", second)
+
+
+def test_one_reader_reads_every_record_of_its_class_alike():
+    from xrdroot.buffer import Buffer
+    from xrdroot.pyroot.core.declared import catalogue_for
+    from xrdroot.rdobjects import reader_for
+
+    payload = _plain_payload()  # which declares the classes, as running the macro does
+    read = reader_for("Plain", catalogue_for("Plain"))
+    first, second = read(Buffer(payload)), read(Buffer(payload))
+    assert sorted(first) == sorted(second)
+    assert [(first["b"], first["c"], list(first["var"]))] == [
+        (second["b"], second["c"], list(second["var"]))
+    ] == [(True, 50, [7.0, 8.0])]  # fmt: skip
+
+
+def _plain_payload():
+    """``Plain`` as ROOT wrote it: a key's bytes are its record and its members."""
+    run_source(SOURCE, "declared_objects.C", call=False)
+    with open_root(ORACLE) as found:
+        return {key.name: key.payload(found._source) for key in found.all_keys()}["plain"]
+
+
+def test_a_layout_worked_out_before_a_class_was_described_is_worked_out_again():
+    from xrdroot.rdobjects import DescribedSource
+    from xrdroot.winfo import INFOS
+
+    decl = Declaration("C", 1, True, (), (Field("v", "std::vector<int>", "", ()),))
+    catalogue = Catalogue({"C": decl})
+    source = DescribedSource(catalogue)
+    # Nothing of the program's is described yet, and asking again works it out no further.
+    assert len(source.streamers()) == len(source.streamers()) == len(INFOS)
+    catalogue.info("C")
+    laid_out = source.streamers()
+    assert (len(laid_out), list(laid_out["C"])) == (len(INFOS) + 1, ["v"])
+
+
+def test_a_container_standing_on_its_own_is_read_by_one_reader_of_its_items():
+    from xrdroot.buffer import Buffer
+    from xrdroot.rdobjects import reader_for
+
+    catalogue = Catalogue({})
+    out = WBuffer()
+    write_value(out, "vector<int>", [1, 2, 3], catalogue)
+    read = reader_for("vector<int>", catalogue)
+    assert (read is reader_for("vector<int>", catalogue), list(read(Buffer(bytes(out.data))))) == (
+        True,
+        [1, 2, 3],
+    )
