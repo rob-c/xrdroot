@@ -68,6 +68,7 @@ SUBMODULES = [
     "pythonizing",
     "_pythonization",
     "uhi",
+    "cmdlineutils",
 ]
 
 __all__: list[str] = []
