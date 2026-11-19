@@ -12,6 +12,7 @@ names ROOT refuses.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import pytest
@@ -22,6 +23,7 @@ from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.trees import reader as made_reader
 from xrdroot.pyroot.trees import selector as made
 from xrdroot.pyroot.trees.layout import BranchInfo, LeafInfo, element_class
+from xrdroot.streamers import Member
 
 #: A leaf of numbers, as the tree's layout reports one.
 FLOAT = LeafInfo("x", "x", "x/F", "Float_t", "TLeafF", 1, None, "x", False, False)
@@ -30,12 +32,14 @@ FLOAT = LeafInfo("x", "x", "x/F", "Float_t", "TLeafF", 1, None, "x", False, Fals
 class Fake:
     """As much of a tree as ``MakeSelector`` reads: its name, its leaves and an entry."""
 
-    def __init__(self, leaves, branches, values):
+    def __init__(self, leaves, branches, values, backing=None):
         self._given = leaves
         self._branches = branches
         self._values = values
         self._read_entry = -1
         self._reader_buffers: dict[str, object] = {}
+        #: What the file says about the classes it holds, as a tree read from one has it.
+        self._backing: object = (lambda: backing) if backing is not None else None
 
     def GetName(self):
         return "fake"
@@ -71,6 +75,22 @@ class Fake:
 def _branch(name, leaves, classname="", clones="", children=()):
     return BranchInfo(name, name, classname, list(leaves), 1, 0, 0, 0, 32000,
                       children=tuple(children), clones=clones)  # fmt: skip
+
+
+def _read_from(streamers, names):
+    """A tree read from a file: the branches it has, and what the file says of each class."""
+
+    class Source:
+        def streamers(self):
+            return streamers
+
+    class Held:
+        _source = Source()
+
+    class Backing:
+        branches: ClassVar[dict[str, object]] = {name: Held() for name in names}
+
+    return Backing()
 
 
 def test_a_skeleton_is_written_with_a_reader_per_leaf_of_the_tree(tmp_path, monkeypatch):
@@ -153,6 +173,47 @@ def test_a_branch_of_objects_reads_as_a_value_and_a_collection_as_an_array():
                 {"r": {"fPosX": 1.0}, "arr": {"fPosX": np.array([1.0])}})  # fmt: skip
     assert made._reader(tree, one) == ("Value", "Particle")
     assert made._reader(tree, many) == ("Array", "Particle")
+
+
+def test_a_branch_of_a_collection_is_an_array_and_one_of_a_class_a_value():
+    assert made._many(None) is False  # a leaf with no branch of its own
+    assert made._many(_branch("one", [FLOAT], "Particle")) is False
+    assert made._many(_branch("list", [FLOAT], "TClonesArray")) is True
+    assert made._many(_branch("objs", [FLOAT], "TObjArray")) is True
+    assert made._many(_branch("vec", [FLOAT], "vector<Particle>")) is True
+    assert made._many(_branch("clones", [FLOAT], "", clones="Particle")) is True
+
+
+def test_a_class_one_of_whose_members_is_a_collection_reads_as_one_object():
+    leaf = LeafInfo("ClassWithVector_branch", "ClassWithVector_branch", "", "ClassWithVector",
+                    "TLeafElement", 1, None, "ClassWithVector_branch", False, False)  # fmt: skip
+    held = {"vec": np.zeros(5), "vecBool": np.zeros(5)}
+    tree = Fake([leaf], [_branch("ClassWithVector_branch", [leaf], "ClassWithVector")],
+                {"ClassWithVector_branch": held})
+    assert made._reader(tree, leaf) == ("Value", "ClassWithVector")
+
+
+def test_a_reader_of_a_member_branch_is_typed_by_the_member_its_class_declares():
+    outer = LeafInfo("ClassB_branch", "ClassB_branch", "", "ClassB", "TLeafElement",
+                     1, None, "ClassB_branch", False, False)  # fmt: skip
+    member = LeafInfo("fC", "fC", "", "ClassB", "TLeafElement", 1, None,
+                      "fC", False, False)  # fmt: skip
+    top = _branch("ClassB_branch", [outer], "ClassB", children=[_branch("fC", [member], "ClassB")])
+    values = {"ClassB_branch": {"fPy": 1.0}, "fC": {"fPx": 2.0, "fEv": 3}}
+    described = {"ClassB": {"fC": Member("fC", "", 61, "ClassC", 1)}}
+    tree = Fake([outer, member], [top], values, backing=_read_from(described, ["fC"]))
+    assert made._reader(tree, member) == ("Value", "ClassC")
+    assert made._declarations(tree, "@fC") == [
+        '   TTreeReaderValue<ClassC> fC = {fReader, "fC"};'
+    ]
+    # the file's description of another class says nothing about this branch's member
+    other = Fake([outer, member], [top], values, backing=_read_from({}, ["fC"]))
+    assert made._reader(other, member) == ("Value", "ClassB")
+    # a tree being filled keeps no description of its classes, and a friend no branches
+    nothing = Fake([outer, member], [top], values, backing=object())
+    assert made._reader(nothing, member) == ("Value", "ClassB")
+    unfound = Fake([outer, member], [top], values, backing=_read_from({}, ["elsewhere"]))
+    assert made._reader(unfound, member) == ("Value", "ClassB")
 
 
 def test_a_leaf_whose_type_root_did_not_name_is_typed_by_what_it_held():

@@ -64,6 +64,9 @@ _NAMED = frozenset({"Bool_t", "Char_t", "Double_t", "Float_t", "Int_t", "Long64_
                     "Long_t", "Short_t", "UChar_t", "UInt_t", "ULong64_t", "ULong_t",
                     "UShort_t"})  # fmt: skip
 
+#: The classes whose branch holds many objects: ROOT's two arrays, and any ``vector<T>``.
+_COLLECTIONS = frozenset({"TClonesArray", "TObjArray"})
+
 
 class TSelector:
     """``TSelector``: the option, the lists and the reader a ``Process`` call runs with.
@@ -159,14 +162,45 @@ def _element(tree: Any, leaf: Any) -> str:
     return _VECTOR_TYPE.get((dtype.kind, dtype.itemsize), "int")
 
 
+def _many(branch: Any) -> bool:
+    """Does this branch hold a collection of objects, or one object per entry?
+
+    ROOT declares ``TTreeReaderArray<Element>`` for a branch of a collection - a
+    ``TClonesArray``, a ``TObjArray`` or a ``vector<T>`` - and ``TTreeReaderValue<Class>``
+    for one of a class, whose own members may hold collections without the branch
+    holding more than one object.
+    """
+    if branch is None:
+        return False
+    spelled = str(branch.classname)
+    return bool(branch.clones) or spelled in _COLLECTIONS or spelled.startswith("vector<")
+
+
+def _member_type(tree: Any, branch: Any, leaf: Any) -> str | None:
+    """The type the file's streamer information gives the member a branch stands for.
+
+    A branch split out of a class carries the class it was split from - ``ClassB`` for
+    the branch of its member ``fC``, whose own type is ``ClassC`` - so a reader of it
+    typed from the branch alone would hand a macro a ``ClassB``. ROOT types it from the
+    class's dictionary, which is the same account of the member as the file's streamer
+    information: what a branch names is its own class for one holding a whole object.
+    """
+    backing = getattr(tree, "_backing", None)
+    held = getattr(backing(), "branches", {}).get(branch.name) if backing else None
+    source = getattr(held, "_source", None)
+    if source is None:
+        return None
+    found = source.streamers().get(branch.classname, {}).get(leaf.name.rpartition(".")[2])
+    return None if found is None else str(found.typename)
+
+
 def _reader(tree: Any, leaf: Any) -> tuple[str, str]:
     """``Value`` or ``Array``, and the C++ type: how ROOT declares this leaf's reader."""
     value = _observed(tree, leaf.column)
     branch = tree._branch_info(leaf.branch)
     if isinstance(value, Mapping):
-        held = element_class(branch, leaf)
-        arrays = any(isinstance(item, (np.ndarray, list)) for item in value.values())
-        return ("Array" if arrays else "Value"), held
+        held = _member_type(tree, branch, leaf) or element_class(branch, leaf)
+        return ("Array" if _many(branch) else "Value"), held
     if leaf.vector:
         element = _element(tree, leaf)
         if element in ("bool", "Bool_t"):
