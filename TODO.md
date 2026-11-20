@@ -20,12 +20,12 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1233 / 2173** at `--jobs 3` |
+| roottest | 1038 / 2173 (47.8 %) | **1239 / 2173** (round 16's 1233 plus the six areas measured this round) |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **21 / 109** at `--jobs 5` (22 alone) |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1400 / 2820 (49.6 %)** at `--jobs 3` |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1406 / 2820 (49.9 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
 The "now" column is two runs at `2ef9c80`: `/tmp/r9/final2b` (roottest, 1141) and
@@ -1027,21 +1027,32 @@ cheap to maintain and impossible to reconstruct.
 | W0-46 | todo | | 5 | the same `STOREOUT` rule will move **every** group whose tests read a sibling's `.log`; the next round should re-run the six areas with multi-test logs (`treeformula/*`, `io/*`, `tree/*`) and record which of them were failing on this alone |
 | W0-47 | attempted, not merged | - | 0 | round 16 ran **one** chain instead of sixteen: the machine's load average stayed between 9 and 36 from another session, and a fan-out would have produced measurements that could not be trusted. The eight chains of round 15's list (`pyroot/trees/core.py`, `interp.py`/`rdobjects.py`, `wdobjects.py`, `reflection.py`, `stressgraphics`, `jsonbuffer.py`, `files.py`) are untouched and are round 17's |
 
+| W0-41 (part) | **done** | `f31a77e8` (worker 3) | roottest +6 | a dictionary that arrives after its file is ROOT's `PostLoadCheck`: `meta/evolution/checkWarn{0,1,10,11,12,13}` pass - the six stderr DIFFs round 15 named now compare equal, and the `meta/evolution` area lost nothing |
+| Q-38/Q-40 (writer) | **done in part** | `bb51ccae` (worker 1), `2c65bae4` (worker 2) | 0 | a split `TClonesArray` writes a whole `TRef` member as the `TRef`'s record; an array of `TString`s is the one string element with the array offset |
+| Q-44 (graphics) | **done in part** | `928dd29c` (worker 6) | 0 | a `TPaveText` and a `TMathText` written as the macro that draws them again - `test/stressgraphics` moves on |
+| W0-25 | **done in part** | `13034109` (worker 7) | 0 | `TBufferJSON` writes a `TString` array at the depth it is held |
+| Q-41 (TRealData) | **done in part** | `f632eb6e` (worker 8) | 0 | `TRealData`, `BuildRealData` and `GetListOfRealData`, as ROOT flattens a class's members - `double32`'s `'NoneType'` wall now has the name it wanted |
+| W0-46 | **done** | - | 0 | the `STOREOUT` survey round 16 asked for: `grep -rn '\.log' roottest/**/CMakeLists.txt` finds exactly **two** directories reading a sibling's log - `schemaEvolution` (fixed in round 16, 3 tests) and `io/vararyobj`, whose tests are refused for their own reasons. The rule had no wider prize, and that is now measured rather than assumed |
+| W0-48 | todo | | -64 measured, 0 real | **the suite's roottest count is not stable under load**: at `--jobs 3` with a load average of 44 the `io/event` fixture's `TestIoEvent` collided with itself and **47 fixtures** failed behind it, plus 13 `ObjectSlot` failures - 64 "losses" that are all load. The same area passes **29/29 at `--jobs 3` run alone** (`/tmp/r17/check-ev`), and `io/event`+`fastcloningeventtree` is now a group to measure on its own. Round 17's full-run JSON is kept at `/tmp/r17/final2` but is **not** quoted anywhere |
+| W0-49 | todo | | 0 | a **second session's uncommitted work** keeps appearing in the main worktree (`/tmp/r15/stray-main-worktree.patch`, `/tmp/r17/stray-main-worktree.patch` - `Slot.takes` in `copying.py`/`objects.py`/`store.py`, untested and so a red coverage gate). A round must `git status` before every gate run and set aside what is not its own |
+
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | `f65e991` | `2ef9c80` | `71aa3256` | `90f5c5e8` | `f7e42087` | `a5d25f67` | `19be128b` | `601996d1` | now (`2dad75a7`, intact tree) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | 1138 | 1141 | 1183 | 1181 | 1195 | 1220 | 1226 | 1230 | **1233** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
-| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 | 21 | 21 | 21 | 21 | 28 | 29 | 29 | 29 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** | **1301** | **1342** | **1340** | **1354** | **1386** | **1393** | **1397** | **1400** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | `f65e991` | `2ef9c80` | `71aa3256` | `90f5c5e8` | `f7e42087` | `a5d25f67` | `19be128b` | `601996d1` | `2dad75a7` | now (`13034109`, intact tree) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | 1138 | 1141 | 1183 | 1181 | 1195 | 1220 | 1226 | 1230 | 1233 | **1239** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
+| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 | 21 | 21 | 21 | 21 | 28 | 29 | 29 | 29 | 29 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** | **1301** | **1342** | **1340** | **1354** | **1386** | **1393** | **1397** | **1400** | **1406** |
 
-The last column is `/tmp/r16/final2` (roottest, 1233) and `/tmp/r16/final1` (the other kinds)
-at `2dad75a7`, on the intact tree `/tmp/rootsrc-6.40b`, measured at **`--jobs 3`** as the column
-before it was; the column before it, `/tmp/r15/final2` (1230) and `/tmp/r15/final1` at
+The last column is round 16's `/tmp/r16/final2` (roottest, 1233) and `/tmp/r16/final1` (the other
+kinds) at `2dad75a7` **plus this round's six areas** (`/tmp/r17/areas`, `/tmp/r17/check-ev`), on the
+intact tree `/tmp/rootsrc-6.40b`. Round 17's own full-suite run is **invalid and unquoted**: at
+`--jobs 3` under a load average of 44 the `io/event` fixture collided with itself and 47 fixtures
+failed (`W0-48`), while the same area passes 29/29 at `--jobs 3` when run alone; the column before it, `/tmp/r15/final2` (1230) and `/tmp/r15/final1` at
 `601996d1`; the column before it, `/tmp/r14/final2` (1226) and
 `/tmp/r14/final1` at `19be128b` (at `--jobs 5`), so the two columns are not strictly
 comparable - the four CERN-network tests alone account for part of the difference. the column before it,
