@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import pathlib
 import struct
+from typing import Any
 
 import numpy as np
 import pytest
@@ -1099,3 +1100,145 @@ def test_a_fixed_array_keeps_the_shape_the_file_declares():
     assert read_element(Buffer(shaped_bytes(1, (16,), 16))).dims == ()
     # A description that does not add up says nothing about a shape.
     assert read_element(Buffer(shaped_bytes(2, (4, 5), 16))).dims == ()
+
+
+def test_a_class_whose_layout_moved_says_so_once_per_file(monkeypatch, capsys):
+    """``TStreamerInfo::CreateReadMemberWiseActions``, said where ROOT says it: while the
+    collection that needs the actions is being read, and only the once."""
+    from xrdroot import interp
+
+    source = Source(io.BytesIO(b""), "mixedBase_v1.root", owned=True)
+    monkeypatch.setattr(interp, "read_layouts", lambda _source: {"ParticleImplVec": [ON_FILE]})
+    interp._divergence(source, "Tdata")()  # a class this program does not declare
+    assert capsys.readouterr().out == ""
+    try:
+        interp.declare("ParticleImplVec", IN_MEMORY)
+        report = interp._divergence(source, "ParticleImplVec")
+        report()
+        report()
+    finally:
+        interp.DECLARED.clear()
+    said = capsys.readouterr().out
+    assert said.startswith("Warning in <CreateReadMemberWiseActions>:    The StreamerInfo")
+    assert said.count("Warning in <CreateReadMemberWiseActions>:") == 1
+
+
+def test_a_class_whose_layout_did_not_move_says_nothing_and_is_not_asked_again(
+    monkeypatch, capsys
+):
+    """A class the file records at the same checksum as memory has nothing to report, and
+    the question is not asked again for the next collection of it."""
+    from xrdroot import interp
+
+    source = Source(io.BytesIO(b""), "mixedBase_v2.root", owned=True)
+    asked: list[str] = []
+
+    def looked(_source: Source) -> dict[str, list[tuple[int, int, tuple[tuple[Any, ...], ...]]]]:
+        asked.append("read")
+        return {"ParticleImplVec": [IN_MEMORY]}
+
+    monkeypatch.setattr(interp, "read_layouts", looked)
+    try:
+        interp.declare("ParticleImplVec", IN_MEMORY)
+        report = interp._divergence(source, "ParticleImplVec")
+        report()
+        monkeypatch.setattr(
+            interp, "read_layouts", lambda _source: {"ParticleImplVec": [ON_FILE]}
+        )
+        report()
+    finally:
+        interp.DECLARED.clear()
+    assert capsys.readouterr().out == ""
+    assert asked == ["read"]
+
+
+def test_a_record_a_changed_class_overran_is_reported_and_read_on_from_its_end(capsys):
+    """``TBufferFile::CheckByteCount``: the bytes a member-wise record took against its own
+    count - said, and then carried on from the end the record named, as ROOT does."""
+    from xrdroot import interp
+
+    source = Source(io.BytesIO(b""), "mixedBase_v1.root", owned=True)
+    buf = Buffer(record(1, b"\0" * 20) + b"\0" * 12)
+    start = buf.pos
+    _version, end = buf.header()
+    assert end is not None
+    buf.pos = end + 12  # three items, each a member longer than the file recorded
+    interp._byte_count("vector<ParticleImplVec>", source)(buf, start, end)
+    # Both counts start past the record's byte count word, as ROOT's own message does: a
+    # record whose word says 48 is reported as "56 instead of 44" (mixedBase_v1).
+    assert capsys.readouterr().out.splitlines() == [
+        "Error in <TBufferFile::CheckByteCount>: object of class vector<ParticleImplVec> "
+        f"read too many bytes: {end + 8} instead of {end - 4}",
+        "Warning in <TBufferFile::CheckByteCount>: vector<ParticleImplVec>::Streamer() not in "
+        "sync with data on file mixedBase_v1.root, fix Streamer()",
+    ]
+    assert buf.pos == end  # every object after the record is read from where it says
+
+
+def test_a_record_a_changed_class_ended_exactly_as_counted_says_nothing(capsys):
+    """The bytes taken are the record's own count: nothing to report, and the record is
+    left where the walk ended it."""
+    from xrdroot import interp
+
+    source = Source(io.BytesIO(b""), "mixedBase_v2.root", owned=True)
+    buf = Buffer(record(1, b"\0" * 20))
+    start = buf.pos
+    _version, end = buf.header()
+    assert end is not None
+    buf.pos = end
+    interp._byte_count("vector<ParticleImplVec>", source)(buf, start, end)
+    assert capsys.readouterr().out == ""
+    assert buf.pos == end
+
+
+def test_a_member_wise_record_that_ended_short_is_still_refused():
+    """A record read by a layout that describes somebody else's bytes is not forgiven: only
+    a class the program declares has an account of why it did not end where it said."""
+    from xrdroot import interp
+
+    source = Source(io.BytesIO(b""), "mixedBase_v1.root", owned=True)
+    buf = Buffer(record(1, b"\0" * 20))
+    start = buf.pos
+    _version, end = buf.header()
+    assert end is not None
+    buf.pos = end - 4
+    with pytest.raises(FormatError, match="ended 4 bytes"):
+        interp._byte_count("vector<ParticleImplVec>", source)(buf, start, end)
+
+
+def test_a_member_wise_container_is_read_by_its_columns_and_checked_afterwards():
+    """The one shape ``_objects`` reads that has a record of its own to be checked against."""
+    from xrdroot import interp
+
+    said: list[str] = []
+    buf = Buffer(record(interp.MEMBER_WISE, struct.pack(">hi", 1, 0)))
+    warning = lambda: said.append("warning")  # noqa: E731 - a report of one line
+    counted = lambda _buf, _start, _end: said.append("counted")  # noqa: E731
+    read = interp._objects(lambda _buf: {}, [], (warning, counted))
+    assert read(buf) == []
+    assert said == ["warning", "counted"]
+
+
+def test_the_items_of_a_member_wise_collection_are_read_as_the_class_is_today(monkeypatch):
+    """A file that records the class at the version in memory under another checksum: the
+    items go straight into objects the program has made, so they are read by the layout in
+    memory - bases and all - and the record then ends where it did not say."""
+    from xrdroot import interp
+
+    source = Source(io.BytesIO(b""), "mixedBase_v1.root", owned=True)
+    monkeypatch.setattr(interp, "read_layouts", lambda _source: {"ParticleImplVec": [ON_FILE]})
+    assert interp._read_by_memory(source, "Tdata") is source  # nothing declared
+    try:
+        interp.declare("ParticleImplVec", IN_MEMORY)
+        laid_out = interp._read_by_memory(source, "ParticleImplVec")
+        assert set(laid_out.streamers()["ParticleImplVec"]) == {"Particle"}
+        assert laid_out.name == "mixedBase_v1.root"
+        # The file's own classes are still the file's, and a class it records at another
+        # version is read by that version, as a record of it anywhere else is.
+        assert "Tdata" not in laid_out.streamers()  # only the declared names are laid out
+        monkeypatch.setattr(
+            interp, "read_layouts", lambda _source: {"ParticleImplVec": [(0x12345678, 9, ())]}
+        )
+        assert interp._read_by_memory(source, "ParticleImplVec") is source
+    finally:
+        interp.DECLARED.clear()

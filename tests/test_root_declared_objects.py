@@ -93,6 +93,26 @@ def test_the_file_describes_each_class_reached_with_roots_checksum():
     assert infos["Plain"]["var"].count == "n" and infos["Plain"]["d32r"].title == "[0,20,10]"
 
 
+def test_the_layout_each_declared_class_has_in_memory_is_published_for_a_reader_of_a_file():
+    """A file written by another vintage of a class is read with the layout in memory, and the
+    only account of that layout is the one made here; ROOT's own classes are not published,
+    since a reader of a file uses the file's layout for those, as ROOT does."""
+    from xrdroot import interp
+
+    interp.DECLARED.clear()
+    try:
+        run_source(SOURCE, "declared_objects.C", ("mine.root",))
+        published = dict(interp.DECLARED)
+    finally:
+        interp.DECLARED.clear()
+    assert {"Plain", "Inner", "Derived", "Versioned"} <= set(published)
+    assert "TNamed" not in published and "TObject" not in published
+    # What is published is the class as the program declared it: the file this run wrote
+    # describes exactly that, so the two layouts are the same one.
+    members = [element[1] for element in published["Plain"][2]]
+    assert members == list(_streamers("mine.root")["Plain"])
+
+
 def _read_back(name):
     run_source(SOURCE, "declared_objects.C", call=False)
     return ROOT.TFile(str(ORACLE)).Get(name)

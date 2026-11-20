@@ -211,7 +211,7 @@ def catalogue_of(cls: type) -> Catalogue:
 def _described_by(cls: type) -> Catalogue:
     found: dict[str, Declaration] = {}
     _gather(declaration_of(cls).name, cls, found)
-    return Catalogue(found)
+    return _published(Catalogue(found), found)
 
 
 def catalogue_for(classname: str) -> Catalogue:
@@ -228,7 +228,22 @@ def catalogue_for(classname: str) -> Catalogue:
 def _described_for(classname: str, cls: type | None) -> Catalogue:
     found: dict[str, Declaration] = {}
     _reach_type(parse_type(classname), found)
-    return Catalogue(found)
+    return _published(Catalogue(found), found)
+
+
+def _published(catalogue: Catalogue, found: dict[str, Declaration]) -> Catalogue:
+    """Say how each of these classes is laid out in memory, for a reader of another file.
+
+    ROOT's ``TClass`` holds a class's description whether an object of it is being written or
+    read, so a file written by another vintage of the class is read with the description in
+    memory rather than with the file's own account of it. Nothing below ``pyroot`` can reach a
+    class the program declared, so the layout is published where the read can find it.
+    """
+    from ...interp import declare
+
+    for name in found:
+        declare(name, catalogue.info(name))
+    return catalogue
 
 
 def plain_value(value: Any, classname: str, catalogue: Catalogue) -> Any:
