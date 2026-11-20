@@ -61,6 +61,10 @@ FILE_INFOS: dict[str, list[Layout]] = {}
 #: which ROOT warns of once per class, however many files its layouts are read from.
 DISAGREED: set[str] = set()
 
+#: The flat lists of persistent data members built so far, by class: ``BuildRealData`` builds
+#: one and ``GetListOfRealData`` hands it back, as ROOT caches it with the class.
+REAL_INFOS: dict[str, list[Any]] = {}
+
 #: ``TStreamerElement``'s ``kMissingOffset``: the offset ROOT gives an element of a file's
 #: layout it cannot set against the class in memory.
 _MISSING_OFFSET = 99999
@@ -926,6 +930,35 @@ class TClass(TNamed):
         return next((m for m in self.GetListOfAllPublicDataMembers() if m.GetName() == wanted),
                     None)
 
+    def BuildRealData(self, name: Any = None) -> None:
+        """``BuildRealData``: work out the flat list of the class's persistent members.
+
+        ROOT builds it from the interpreter's description of the class and caches it, which
+        is what makes it right to ask once ``gInterpreter->Declare`` has made the class known:
+        asking before that would have been too soon, and ROOT's own comment on
+        ``execInitOrder`` says so. ``name`` is a ``TClass`` to build the real data of instead,
+        as ROOT lets a caller hand one in.
+        """
+        target = name if isinstance(name, TClass) else self
+        REAL_INFOS[target.GetName()] = _real_data_of(target)
+
+    def GetListOfRealData(self) -> Any:
+        """``GetListOfRealData``: the persistent members, each at the offset it is held at.
+
+        A class's members as an object of it holds them: the class's own, then the ones it
+        inherits with nothing in front of their names, and a member that is an object of a
+        class of its own followed by that object's members named after it. A class nothing
+        has asked the real data of yet is built here, as ROOT builds one on demand.
+        """
+        from .collections import TList
+
+        if self._name not in REAL_INFOS:
+            REAL_INFOS[self._name] = _real_data_of(self)
+        made = TList()
+        for data in REAL_INFOS[self._name]:
+            made.Add(data)
+        return made
+
     def GetListOfMethods(self, load: bool = True) -> Any:
         """``GetListOfMethods``: the class's own functions, by name.
 
@@ -1128,6 +1161,186 @@ class TDataMember(TNamed):
 
     def GetComment(self) -> str:
         return self._title
+
+
+#: The bytes and alignment of the types whose width nothing else here needs - the kit writes
+#: a container member by member and never had to know how wide one is. ROOT's ``std::vector``
+#: is three pointers and ``std::string`` a pointer and a small buffer, the same on every
+#: machine this runs on.
+_FIXED_SIZES: dict[str, tuple[int, int]] = {
+    "vector": (24, 8), "string": (32, 8), "map": (48, 8), "set": (48, 8), "list": (24, 8),
+}  # fmt: skip
+
+
+def _aligned(offset: int, align: int) -> int:
+    """The first place at or after ``offset`` a value aligned to ``align`` starts."""
+    return (offset + align - 1) // align * align
+
+
+def _dims_of(spelled: str, dims: tuple[Any, ...]) -> tuple[int, ...]:
+    """The dimensions a member declared as ``spelled`` with ``dims`` holds.
+
+    ``std::array<T, N>`` is an array of ``N`` as far as a real-data listing goes, which ROOT
+    names ``m_a[3]`` rather than ``m_a``, and which is the one container whose width the
+    declaration itself gives.
+    """
+    from ...wdeclared import parse_type
+
+    found = tuple(int(dim) for dim in dims if dim is not None)
+    parsed = parse_type(str(spelled).strip())
+    if parsed.name == "array" and len(parsed.args) == 2:
+        found += (int(parsed.args[1].name),)
+    return found
+
+
+def _size_align(spelled: str, seen: tuple[str, ...] = ()) -> tuple[int, int]:
+    """``sizeof`` and ``alignof`` of one value of a member declared as ``spelled``, which is
+    what places the member after it: a type nothing here knows - a class only a file describes,
+    a template instantiation with no layout - takes no room. ``std::array<T, N>`` is one value
+    of ``T`` here, so that a caller counting its ``N`` does not count them twice."""
+    from ...wclasses import TYPES
+    from ...wdeclared import parse_type
+
+    text = str(spelled).strip()
+    if text.endswith("*"):
+        return (8, 8)
+    parsed = parse_type(text)
+    if parsed.name == "array" and len(parsed.args) == 2:
+        return _size_align(parsed.args[0].name, seen)
+    if not parsed.args and parsed.name in TYPES:
+        return (TYPES[parsed.name][2], TYPES[parsed.name][2])
+    if parsed.name in _FIXED_SIZES:
+        return _FIXED_SIZES[parsed.name]
+    return _class_size(TClass(parsed.name), seen)
+
+
+def _class_size(cls: TClass, seen: tuple[str, ...] = ()) -> tuple[int, int]:
+    """The bytes an object of ``cls`` takes and what it is aligned to: each base's and then
+    each own member's place, every one of them aligned to what it holds."""
+    if cls.GetName() in seen:
+        return (0, 1)
+    seen += (cls.GetName(),)
+    offset, align = 0, 1
+    for base in cls._base_names():
+        size, base_align = _class_size(TClass(base), seen)
+        offset, align = _aligned(offset, base_align) + size, max(align, base_align)
+    for _name, spelled, comment, dims in cls._fields():
+        if comment.startswith("!"):
+            continue
+        size, member_align = _size_align(spelled, seen)
+        count = 1
+        for dim in _dims_of(spelled, dims):
+            count *= dim
+        offset, align = _aligned(offset, member_align) + size * count, max(align, member_align)
+    return (_aligned(offset, align), align)
+
+
+def _object_class(spelled: str) -> TClass | None:
+    """The class a member declared as ``spelled`` is an object of, whose own members are that
+    member's - a pointer's are not held by the object, and a container's are a listing of its
+    own."""
+    from ...wdeclared import parse_type
+
+    text = str(spelled).strip()
+    if text.endswith("*"):
+        return None
+    parsed = parse_type(text)
+    if parsed.args or parsed.name in _FIXED_SIZES or parsed.name == "array":
+        return None
+    deeper = TClass(parsed.name)
+    return deeper if deeper._fields() else None
+
+
+def _bases_at(cls: TClass, prefix: str, base: int,
+              seen: tuple[str, ...]) -> tuple[list[TRealData], int]:  # fmt: skip
+    """Each base's members at the place the base starts, and the first offset after them."""
+    made: list[TRealData] = []
+    offset = 0
+    for name in cls._base_names():
+        size, align = _class_size(TClass(name), seen)
+        offset = _aligned(offset, align)
+        made.extend(_real_members(TClass(name), prefix, base + offset, seen))
+        offset += size
+    return made, offset
+
+
+def _members_from(cls: TClass, prefix: str, base: int, offset: int,
+                  seen: tuple[str, ...]) -> list[TRealData]:  # fmt: skip
+    """Each persistent member of the class at the place it is held from ``offset`` on, and the
+    members of the object it holds after it."""
+    made: list[TRealData] = []
+    listed = {member.GetName(): member for member in cls.GetListOfDataMembers()}
+    for name, spelled, comment, dims in cls._fields():
+        member = listed.get(name)
+        if comment.startswith("!") or member is None:
+            continue
+        size, align = _size_align(spelled, seen)
+        offset = _aligned(offset, align)
+        found = _dims_of(spelled, dims)
+        where = prefix + name + "".join(f"[{dim}]" for dim in found)
+        made.append(TRealData(where, cls, member, base + offset))
+        deeper = _object_class(spelled)
+        if deeper is not None:
+            made.extend(_real_members(deeper, prefix + name + ".", base + offset, seen))
+        offset += size * max(1, _count(found))
+    return made
+
+
+def _real_members(cls: TClass, prefix: str, base: int,
+                  seen: tuple[str, ...] = ()) -> list[TRealData]:  # fmt: skip
+    """``TClass::BuildRealData``'s walk of one class: each persistent member at the place it
+    is held, and, for a member that is an object of a class of its own, that class's members
+    after it, named the member's name and then their own after a dot.
+
+    A base's members are the object's own with no name in front of them. ROOT lists them
+    after the class's own, though they are held before them, so the offset a base's members
+    are given is the one the base really starts at and the order is ROOT's."""
+    if cls.GetName() in seen:
+        return []
+    seen += (cls.GetName(),)
+    inherited, offset = _bases_at(cls, prefix, base, seen)
+    # ROOT lists a class's own members before the ones it inherits - ``Derived``'s ``fValue``
+    # is its first real data and its base ``TObject``'s two come after - which is not the
+    # order they are held in, as the base's bytes are the object's first.
+    return _members_from(cls, prefix, base, offset, seen) + inherited
+
+
+def _count(dims: tuple[int, ...]) -> int:
+    """How many values a member of those dimensions holds."""
+    count = 1
+    for dim in dims:
+        count *= dim
+    return count
+
+
+def _real_data_of(cls: TClass) -> list[TRealData]:
+    """The flat list of a class's persistent members, as ROOT builds one on demand."""
+    return _real_members(cls, "", 0)
+
+
+class TRealData(TNamed):
+    """``TRealData``: one persistent data member of an object, where the object holds it."""
+
+    CLASS_TITLE = "Description of persistent data members"
+
+    def __init__(self, name: str, owner: TClass, member: TDataMember, this_offset: int) -> None:
+        TNamed.__init__(self, name, self.CLASS_TITLE)
+        self._owner, self._member, self._this_offset = owner, member, this_offset
+
+    def GetClass(self) -> TClass:
+        return self._owner
+
+    def GetDataMember(self) -> TDataMember:
+        return self._member
+
+    def GetThisOffset(self) -> int:
+        return self._this_offset
+
+    def GetOffset(self) -> int:
+        return self._this_offset
+
+    def IsPointer(self) -> bool:
+        return self._member.IsaPointer()
 
 
 class TStreamerInfo(TNamed):
