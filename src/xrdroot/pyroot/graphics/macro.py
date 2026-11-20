@@ -19,16 +19,36 @@ from typing import Any
 
 from .drawn import GROUPS, Drawn
 
-__all__ = ["CORNERS", "CTORS", "write"]
+__all__ = ["CORNERS", "CTORS", "EXTRAS", "PAD", "POINTS", "ROUNDED", "write"]
 
 #: The members a line's or a box's constructor takes, in its order.
 CORNERS = ("fX1", "fY1", "fX2", "fY2")
+#: The members a round shape's constructor takes, in ROOT's order: its centre, its two
+#: radii, and the angles it is cut between.
+ROUNDED = ("fX1", "fY1", "fR1", "fR2", "fPhimin", "fPhimax")
 #: Each class written, by the members its ROOT constructor takes in order.
 CTORS: dict[str, tuple[str, ...]] = {
     "TLine": CORNERS, "TBox": CORNERS, "TWbox": CORNERS,
     "TText": ("fX", "fY", "fTitle"), "TLatex": ("fX", "fY", "fTitle"),
     "TMarker": ("fX", "fY", "fMarkerStyle"),
+    "TArrow": (*CORNERS, "fArrowSize", "fOption"),
+    "TPave": (*CORNERS, "fBorderSize", "fOption"),
+    "TPaveLabel": (*CORNERS, "fLabel", "fOption"),
+    "TEllipse": (*ROUNDED, "fTheta"),
+    "TArc": ("fX1", "fY1", "fR1", "fPhimin", "fPhimax"),
+    "TCrown": ROUNDED,
 }  # fmt: skip
+#: A member only a ``Set`` of its own reaches, which ROOT's macro writes as that ``Set``.
+EXTRAS: dict[str, tuple[tuple[str, str], ...]] = {"TArrow": (("Angle", "fAngle"),)}
+#: Each class made from its points, by the members holding its count, its xs and its ys.
+#: ROOT's constructor for these takes the arrays, which a macro spells out by setting
+#: every point in turn: an array literal of a length only the pad knows is not the same
+#: thing to read back, and a point set by name is the one the pad drew.
+POINTS: dict[str, tuple[str, str, str]] = {
+    "TPolyLine": ("fN", "fX", "fY"), "TPolyMarker": ("fN", "fX", "fY"),
+}  # fmt: skip
+#: The class of a pad inside the canvas, which a macro makes and then draws into.
+PAD = "TPad"
 #: A canvas this cannot measure is written at ROOT's default window, 700 by 500.
 DEFAULT_WINDOW = (700, 500)
 
@@ -61,26 +81,71 @@ def _classname(obj: Any) -> str:
     return obj.classname if isinstance(obj, Drawn) else str(obj.ClassName())
 
 
+def _points(obj: Any, classname: str, variable: str) -> list[str]:
+    """The lines that make a polyline or a polymarker of ``obj``'s points, one point at a time."""
+    count, xs, ys = POINTS[classname]
+    x, y = obj.members[xs], obj.members[ys]
+    lines = [f"   {classname} *{variable} = new {classname}({int(obj.members[count])});"]
+    for at in range(min(int(obj.members[count]), len(x), len(y))):
+        right = f"{_literal(float(x[at]))}, {_literal(float(y[at]))}"
+        lines.append(f"   {variable}->SetPoint({at}, {right});")
+    return lines
+
+
+def _made(obj: Any, classname: str, variable: str) -> list[str]:
+    """The one line that makes ``obj``: by its constructor, its points, or its place in the pad."""
+    if classname in POINTS:
+        return _points(obj, classname, variable)
+    if classname == PAD:
+        return _subpad(obj, variable)
+    arguments = ", ".join(_literal(obj.members[member]) for member in CTORS[classname])
+    return [f"   {classname} *{variable} = new {classname}({arguments});"]
+
+
+def _unknown(classname: str) -> None:
+    """Refuse a class this has no constructor for, by name, and say what to save instead."""
+    from ...errors import UnsupportedFeatureError
+
+    known = ", ".join(sorted({*CTORS, *POINTS, PAD}))
+    raise UnsupportedFeatureError(
+        f"A pad drawing a {classname} is not yet written as the C macro the '.C' name asks "
+        f"for: xrdroot writes the calls that draw a pad again for {known}, and knows no "
+        "constructor for this one. Save the pad as a picture (.png, .pdf, .ps, .svg) "
+        "instead."
+    )
+
+
+def _setters(obj: Any, classname: str, variable: str) -> list[str]:
+    """A ``Set`` for each attribute ``obj`` carries, its groups' first, then those of its own."""
+    lines = [
+        f"   {variable}->Set{setter}({_literal(obj.members[member])});"
+        for group in obj.groups
+        for setter, (member, _style, _kind) in GROUPS[group].items()
+    ]
+    return lines + [
+        f"   {variable}->Set{setter}({_literal(obj.members[member])});"
+        for setter, member in EXTRAS.get(classname, ())
+    ]
+
+
 def _object(obj: Any, index: int) -> list[str]:
     """The lines that make ``obj``, as ROOT's ``SavePrimitive`` of it would."""
     classname = _classname(obj)
-    if classname not in CTORS:
-        from ...errors import UnsupportedFeatureError
-
-        known = ", ".join(sorted(CTORS))
-        raise UnsupportedFeatureError(
-            f"A pad drawing a {classname} is not yet written as the C macro the '.C' name asks "
-            f"for: xrdroot writes the calls that draw a pad again for {known}, and knows no "
-            "constructor for this one. Save the pad as a picture (.png, .pdf, .ps, .svg) "
-            "instead."
-        )
+    if classname not in CTORS and classname not in POINTS and classname != PAD:
+        _unknown(classname)
     variable = _variable(index, classname)
-    arguments = ", ".join(_literal(obj.members[member]) for member in CTORS[classname])
-    lines = [f"   {classname} *{variable} = new {classname}({arguments});"]
-    for group in obj.groups:
-        for setter, (member, _style, _kind) in GROUPS[group].items():
-            lines.append(f"   {variable}->Set{setter}({_literal(obj.members[member])});")
-    return lines
+    return _made(obj, classname, variable) + _setters(obj, classname, variable)
+
+
+def _subpad(pad: Any, variable: str) -> list[str]:
+    """A pad inside the canvas: where it sits in fractions of its mother, which a macro places."""
+    members = pad.members
+    left, bottom = float(members["fXlowNDC"]), float(members["fYlowNDC"])
+    given = ", ".join(_literal(value) for value in (
+        members["fName"], members["fTitle"], left, bottom,
+        left + float(members["fWNDC"]), bottom + float(members["fHNDC"]),
+    ))  # fmt: skip
+    return [f"   TPad *{variable} = new TPad({given});"]
 
 
 def _canvas(pad: Any) -> str:
@@ -94,6 +159,25 @@ def _canvas(pad: Any) -> str:
     return f"   TCanvas *canvas = new TCanvas({given}, {left}, {up}, {across}, {down});"
 
 
+def _contents(pad: Any, counted: list[int]) -> list[str]:
+    """Everything ``pad`` holds, drawn: a pad inside it is entered, drawn into, and left again.
+
+    ``counted`` is the one counter of the macro's variables, carried down into the pads
+    drawn in this one, so that no two objects of the macro share a name.
+    """
+    lines: list[str] = []
+    for obj, option in pad.primitives:
+        counted[0] += 1
+        classname, variable = _classname(obj), _variable(counted[0], _classname(obj))
+        lines += _object(obj, counted[0])
+        lines.append(f"   {variable}->Draw({_literal(option)});")
+        if classname == PAD:
+            lines.append(f"   {variable}->cd();")
+            lines += _contents(obj, counted)
+            lines.append("   canvas->cd();")
+    return lines
+
+
 def write(pad: Any, filename: str) -> None:
     """Write ``pad`` as the macro ``filename`` names: run it and the pad is drawn again."""
     lines = [
@@ -102,8 +186,6 @@ def write(pad: Any, filename: str) -> None:
         f"void {_function(filename)}()",
         "{",
         _canvas(pad),
+        *_contents(pad, [0]),
     ]
-    for index, (obj, option) in enumerate(pad.primitives, 1):
-        lines += _object(obj, index)
-        lines.append(f"   {_variable(index, _classname(obj))}->Draw({_literal(option)});")
     Path(filename).write_text("\n".join([*lines, "}", ""]))

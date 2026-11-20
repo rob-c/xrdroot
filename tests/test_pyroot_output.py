@@ -100,6 +100,89 @@ def test_a_macro_literal_is_the_c_that_writes_the_value_again():
     assert macro._literal('a"b\\c') == '"a\\"b\\\\c"'
 
 
+def test_a_polyline_is_written_point_by_point_as_the_pad_drew_it(tmp_path):
+    """ROOT's constructor takes the arrays; a macro's points are the ones set by name."""
+    from xrdroot.pycint.execute import run
+
+    c = ROOT.TCanvas("poly", "poly", 300, 200)
+    line = ROOT.TPolyLine(2, [0.1, 0.5], [0.2, 0.6])
+    line.SetLineWidth(3)
+    line.Draw("F")
+    path = tmp_path / "sg_poly.C"
+    c.SaveAs(str(path))
+    written = path.read_text()
+    assert "TPolyLine *tpolyline1 = new TPolyLine(2);" in written
+    assert "tpolyline1->SetPoint(0, 0.1, 0.2);" in written
+    assert "tpolyline1->SetLineWidth(3);" in written and 'tpolyline1->Draw("F");' in written
+    run(path, use_cache=False)
+    drawn = [o for o, option in ROOT.gPad.GetCanvas().primitives if o.ClassName() == "TPolyLine"]
+    assert [(list(o.members["fX"]), list(o.members["fY"])) for o in drawn] == [
+        ([0.1, 0.5], [0.2, 0.6])
+    ]
+
+
+def test_a_polyline_is_written_only_as_far_as_its_points_go(tmp_path):
+    """A count set past the points it holds writes the points there are, not an IndexError."""
+    from xrdroot.pyroot.graphics import macro
+
+    c = ROOT.TCanvas("short", "short", 300, 200)
+    line = ROOT.TPolyLine(4, [0.0], [0.0])
+    line.members["fN"] = 4
+    line.Draw()
+    c.SaveAs(str(tmp_path / "short.C"))
+    written = (tmp_path / "short.C").read_text()
+    assert "new TPolyLine(4);" in written
+    assert written.count("SetPoint(") == 1
+    assert macro.POINTS["TPolyLine"] == ("fN", "fX", "fY")
+
+
+def test_a_pad_of_pads_is_written_as_the_pads_it_was_divided_into(tmp_path):
+    """``Divide`` makes pads: the macro makes each, enters it, draws what is in it, and leaves."""
+    from xrdroot.pycint.execute import run
+
+    c = ROOT.TCanvas("divided", "divided", 400, 300)
+    c.Divide(2, 1)
+    c.cd(1)
+    ROOT.TEllipse(0.5, 0.5, 0.2, 0.2).Draw()
+    path = tmp_path / "sg_divided.C"
+    c.SaveAs(str(path))
+    written = path.read_text()
+    assert 'TPad *tpad1 = new TPad("divided_1", "divided_1", 0.01, 0.01, 0.49, 0.99);' in written
+    assert "tpad1->cd();" in written and "   canvas->cd();" in written
+    order = [written.index(part) for part in ("tpad1->cd();", "TEllipse", "canvas->cd();")]
+    assert order == sorted(order)
+    run(path, use_cache=False)
+    canvas = ROOT.gPad.GetCanvas()
+    pads = [o for o, _ in canvas.primitives if o.ClassName() == "TPad"]
+    assert [(o.GetName(), o.members["fWNDC"]) for o in pads] == [
+        ("divided_1", pytest.approx(0.48)), ("divided_2", pytest.approx(0.48)),
+    ]  # fmt: skip
+    assert [o.ClassName() for o, _ in pads[0].primitives] == ["TEllipse"]
+
+
+def test_a_member_only_a_set_of_its_own_reaches_is_written_as_that_set(tmp_path):
+    """``TArrow``'s angle has no attribute group's setter, and is still the arrow's own."""
+    c = ROOT.TCanvas("arrow", "arrow", 300, 200)
+    arrow = ROOT.TArrow(0.1, 0.1, 0.9, 0.9, 0.05, "|>")
+    arrow.SetAngle(40)
+    arrow.Draw()
+    c.SaveAs(str(tmp_path / "arrow.C"))
+    written = (tmp_path / "arrow.C").read_text()
+    assert 'new TArrow(0.1, 0.1, 0.9, 0.9, 0.05, "|>");' in written
+    assert "tarrow1->SetAngle(40);" in written
+
+
+def test_a_pave_label_and_a_crown_are_written_with_the_arguments_their_constructors_take(tmp_path):
+    """A pave's label and a crown's radii are its constructor's, in ROOT's order."""
+    c = ROOT.TCanvas("round", "round", 300, 200)
+    ROOT.TPaveLabel(0.1, 0.8, 0.9, 0.95, "a label").Draw()
+    ROOT.TCrown(0.5, 0.5, 0.2, 0.3, 45.0, 315.0).Draw()
+    c.SaveAs(str(tmp_path / "round.C"))
+    written = (tmp_path / "round.C").read_text()
+    assert 'new TPaveLabel(0.1, 0.8, 0.9, 0.95, "a label", "br");' in written
+    assert "new TCrown(0.5, 0.5, 0.2, 0.3, 45, 315);" in written
+
+
 def test_a_pad_drawing_a_class_with_no_known_constructor_is_refused_by_name(tmp_path):
     c = ROOT.TCanvas("wrapped", "wrapped", 300, 200)
     ROOT.TH1F("h", "h", 10, -4.0, 4.0).Draw()
