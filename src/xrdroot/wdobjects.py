@@ -9,7 +9,9 @@ byte, strings by length, and containers in a record of their own. A container
 of objects goes *member-wise*, as ROOT 6 writes it: the version of what it
 holds, the count, then each member of every object in turn, a map's keys
 before its values. A pointer that may be null is a zero, or the object
-naming its class.
+naming its class. An array of ROOT's own - a ``TArrayF`` or a ``TArrayI``
+- is its count word and then its values, with no version in front of them:
+ROOT streams one by hand.
 
 What is written is an :class:`Instance`: a class name and its members as plain
 values - numbers, strings, sequences, mappings, and further instances - which
@@ -337,6 +339,10 @@ class _Writer:
         if isinstance(value, (Written, Listed)):
             self.streamed(classname, value)
             return
+        stype = ARRAY_STREAMS.get(classname)
+        if stype is not None:
+            self._root_array(classname, stype, value)
+            return
         plan = self.catalogue.written_as(classname)
         if plan is None:
             self._root_record(classname, value)
@@ -349,6 +355,23 @@ class _Writer:
         for step in _steps_of(self.catalogue, classname, elements):
             step(self, members)
         self.buf.end(at)
+
+    def _root_array(self, classname: str, stype: int, value: Any) -> None:
+        """``TArrayF::Streamer`` and the arrays it is one of: the count the ``TArray`` base
+        streams, and then the values, with nothing else round them.
+
+        ROOT writes no version in front of these: a version word is what a class past its
+        first carries, every array here is at 1, and the count word is already the number a
+        reader needs - so a ``TArrayF`` of five is ``00 00 00 05`` and five big-endian
+        floats, standing where ROOT's own ``TFile`` wrote one. Nor is there a marker byte in
+        front of the values, which is how the ``TStreamerBasicPointer`` a file describes
+        ``fArray`` with would read them: the class's hand-written ``Streamer`` is what writes
+        and reads these bytes, and the description is only what a file says about them.
+        """
+        self.catalogue.info(classname)  # the record the file carries must describe it
+        values = [] if value is None else _array_values(value)
+        self.buf.i32(len(values))
+        self.buf.raw(pack_member(stype, "", _numeric(values)))
 
     def _root_record(self, classname: str, value: Any) -> None:
         """An object of one of ROOT's classes, written by the layout the writer carries."""
@@ -776,6 +799,32 @@ class _Writer:
         for row in rows:
             self.item(found, row.get(element[1]))
         self.buf.end(at)
+
+
+#: ROOT's arrays, whose ``Streamer`` is written by hand, and the streamer type of the numbers
+#: each holds: ``TArrayF::Streamer`` streams the ``fN`` of its ``TArray`` base and then its
+#: ``fArray`` - the shape :meth:`_Writer._root_array` writes. These are the ones the catalogue
+#: carries a layout for, so that a file holding one of them says what it is.
+ARRAY_STREAMS: dict[str, int] = {
+    "TArrayF": 5,  # kFloat_t
+    "TArrayI": 3,  # kInt_t
+    "TArrayD": 8,  # kDouble_t
+}
+
+
+def _array_values(value: Any) -> list[Any]:
+    """The values a ``TArray`` holds: the ``fArray`` ROOT's array keeps them in, or the
+    numbers of a plain sequence - a translated macro hands over one of ROOT's own, whose
+    ``fArray`` is the values and nothing else of it is a member anything writes."""
+    held = value if isinstance(value, (list, tuple, np.ndarray)) else getattr(value, "fArray",
+                                                                              None)  # fmt: skip
+    if held is None:
+        raise UnsupportedFeatureError(
+            f"a {type(value).__name__} stands where a ROOT array should be written, and an "
+            f"array is written as the values it holds; hand over ROOT's own array, whose "
+            f"fArray is those values, or the run of numbers itself"
+        )
+    return list(np.asarray(held).ravel())
 
 
 #: How each kind of element is written.
