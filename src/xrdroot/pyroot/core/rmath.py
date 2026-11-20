@@ -8,6 +8,7 @@ vectors are those of :mod:`.genvector`, and ``VectorUtil`` beside them.
 
 from __future__ import annotations
 
+import math
 from typing import Any, ClassVar
 
 from ...fit.defaults import DEFAULTS, minimizer_algo, minimizer_type, set_minimizer
@@ -33,6 +34,176 @@ from .mathtools import (  # noqa: F401 - ROOT::Math's function objects and tools
     Minimizer,
     RootFinder,
 )
+
+#: The fraction of an interval a golden-section search keeps: ``(3 - sqrt 5) / 2``, as
+#: GSL's ``GSL_MIN_GOLDEN_RATIO`` and ROOT's ``GSLMinimizer1D`` use it.
+_GOLDEN_RATIO = 0.381966011250105151795413165634
+
+#: GSL's status codes, which ``GSLMinimizer1D.Minimize`` returns.
+_GSL_SUCCESS = 0
+_GSL_EMAXITER = 1
+
+
+class Minim1D:
+    """``ROOT::Math::Minim1D``: which one-dimensional search ``GSLMinimizer1D`` runs."""
+
+    kBRENT, kGOLDENSECTION, kBISECTION = range(3)
+
+
+class IGenFunction:
+    """``ROOT::Math::IGenFunction``: a function of one number, as ROOT's numerical tools take it.
+
+    A macro's own class derives from this and overrides ``DoEval``; ``__call__``
+    is what the tools call, as they call ``operator()``, which ROOT defines in
+    terms of ``DoEval``.
+    """
+
+    def __call__(self, x: Any) -> float:
+        return float(self.DoEval(float(x)))
+
+    def DoEval(self, x: float) -> float:
+        """``DoEval(x)``: what the function is at ``x``, which a subclass says."""
+        raise NotImplementedError(
+            "IGenFunction is the interface ROOT's tools call a function of one number through; "
+            "derive from it and override DoEval, or pass a plain Python function to Functor1D."
+        )
+
+    def NDim(self) -> int:
+        """``NDim()``: one, this being the one-dimensional interface."""
+        return 1
+
+
+class Polynomial(IGenFunction):
+    """``ROOT::Math::Polynomial``: ``p[0] + p[1] x + … + p[order] x**order``.
+
+    The coefficients are ROOT's to set in place, so a minimiser holding a reference
+    to one sees whatever the caller last set, as ROOT's ``IGenFunction &`` does.
+    """
+
+    def __init__(self, order: int, *coefficients: Any) -> None:
+        self._p = [0.0] * (int(order) + 1)
+        if coefficients:
+            self.SetParameters(*coefficients)
+
+    def Order(self) -> int:
+        """``Order()``: one less than the number of coefficients."""
+        return len(self._p) - 1
+
+    def SetParameters(self, *params: Any) -> None:
+        """``SetParameters``: the ``order+1`` coefficients, constant first.
+
+        They come as one array - the pointer ROOT's own signature takes - or one
+        at a time.
+        """
+        values = [float(value) for value in (params[0] if len(params) == 1 else params)]
+        if len(values) != len(self._p):
+            raise ValueError(
+                f"a polynomial of order {self.Order()} takes {len(self._p)} coefficients and was "
+                f"given {len(values)}; give one per coefficient, constant first."
+            )
+        self._p = values
+
+    def Parameters(self) -> list[float]:
+        """``Parameters()``: the coefficients, constant first."""
+        return list(self._p)
+
+    def DoEval(self, x: float) -> float:
+        """``DoEval(x)``: Horner's rule over the coefficients."""
+        value = 0.0
+        for coefficient in reversed(self._p):
+            value = value * x + coefficient
+        return value
+
+    def Derivative(self, x: float) -> float:
+        """``Derivative(x)``: the polynomial's own derivative at ``x``, exactly."""
+        value = 0.0
+        for power in range(len(self._p) - 1, 0, -1):
+            value = value * x + power * self._p[power]
+        return value
+
+
+class GSLMinimizer1D:
+    """``ROOT::Math::GSLMinimizer1D``: where a function of one number is least inside a bracket.
+
+    Both of GSL's kinds run the search below - a golden-section one, which needs
+    no derivative and no constant tuned to the function - and stop at the
+    tolerances asked for; the two kinds differ in GSL in how many evaluations
+    they spend reaching them, not in the minimum they reach.
+    """
+
+    def __init__(self, kind: int = Minim1D.kBRENT) -> None:
+        self._kind = int(kind)
+        self._fn: Any = None
+        self._bounds: tuple[float, float] = (0.0, 1.0)
+        self._x = math.nan
+        self._fval = math.nan
+        self._iterations = 0
+        self._status = _GSL_SUCCESS
+
+    def SetFunction(self, fn: Any, *bounds: float) -> bool:
+        """``SetFunction(f, xlow, xup)``: the function to minimise and where to look.
+
+        Numbers in front of the two bounds are parameters a minimiser of one
+        variable has no use for; ROOT's own signature takes none, and a macro
+        written against GSL's may pass them, so they are accepted and ignored.
+        """
+        if len(bounds) < 2:
+            raise ValueError(
+                "SetFunction takes the function and the two ends of the bracket to search in; "
+                "give SetFunction(f, low, high)."
+            )
+        self._fn, self._bounds = fn, (float(bounds[-2]), float(bounds[-1]))
+        return True
+
+    def Minimize(self, maxIter: int = 100, absTol: float = 1e-8, relTol: float = 1e-8) -> int:
+        """``Minimize``: search, and return GSL's status - 0 found, 1 out of iterations."""
+        low, high = self._bounds
+        golden = _GOLDEN_RATIO
+        x = low + golden * (high - low)
+        self._fval = float(self._fn(x))
+        self._x, self._iterations, self._status = x, 0, _GSL_EMAXITER
+        while self._iterations < int(maxIter):
+            self._iterations += 1
+            left = low + golden * (x - low)
+            right = x + golden * (high - x)
+            fleft, fright = float(self._fn(left)), float(self._fn(right))
+            if fleft < self._fval <= fright:
+                high, x, self._fval = x, left, fleft
+            elif fright < self._fval:
+                low, x, self._fval = x, right, fright
+            else:  # the middle point is the lowest of the three: both sides move in
+                low, high = left, right
+            if high - low <= absTol + relTol * abs(x):
+                self._status = _GSL_SUCCESS
+                break
+        self._x = x
+        return self._status
+
+    def XMinimum(self) -> float:
+        """``XMinimum()``: the abscissa of the least point found."""
+        return self._x
+
+    def FValMinimum(self) -> float:
+        """``FValMinimum()``: the function there."""
+        return self._fval
+
+    def Iterations(self) -> int:
+        """``Iterations()``: how many steps of the search were taken."""
+        return self._iterations
+
+    def Status(self) -> int:
+        """``Status()``: GSL's code for how the search ended, 0 when it converged."""
+        return self._status
+
+    def Type(self) -> int:
+        """``Type()``: the kind of search asked for."""
+        return self._kind
+
+    def Name(self) -> str:
+        """``Name()``: what GSL calls the search asked for."""
+        if self._kind == Minim1D.kGOLDENSECTION:
+            return "goldensection"
+        return "brent"
 
 
 class MinimizerOptions:
