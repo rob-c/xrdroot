@@ -528,6 +528,10 @@ class ObjectSlot:
         """What ``Fill`` says this entry took: its bytes, or eight a number."""
         return len(value) if isinstance(value, bytes) else 8 * int(np.size(value))
 
+    def takes(self, value: Any) -> int:
+        """How many bytes of a basket one entry took, as a store's slot counts."""
+        return self.nbytes(value)
+
 
 def _joined(pieces: list[Any]) -> Any:
     from ...tree import concatenate
@@ -599,6 +603,10 @@ class ClonedSlot:
     def nbytes(self, value: Any) -> int:
         """What ``Fill`` says this entry took: the size of what each of its objects read."""
         return 8 * sum(int(np.size(one)) for row in value for one in row)
+
+    def takes(self, value: Any) -> int:
+        """How many bytes of a basket one entry took, as a store's slot counts."""
+        return self.nbytes(value)
 
 
 def object_slot(name: str, address: Any, split: int, bufsize: int | None) -> ObjectSlot | None:

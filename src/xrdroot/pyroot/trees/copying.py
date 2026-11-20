@@ -230,7 +230,8 @@ class Streamed:
     def spec(self) -> Any:
         return self._spec
 
-    def nbytes(self, value: Any) -> int:
+    def takes(self, value: Any) -> int:
+        """How many bytes of a basket one entry took: the bytes of its objects."""
         return len(value)
 
 
