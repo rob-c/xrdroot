@@ -204,11 +204,26 @@ def _references(test: Test, result: Result, root: Path, cwd: Path,
         return Verdict("FAIL", f"the post-command {_exit(post, 0)}")
     for reference, text, stream in ((test.outref, output, "output"),
                                     (test.errref, errors, "error output")):
-        diff = _compare(test, (root / reference).read_text(errors="replace"), text) \
-            if reference else ""
+        diff = _compare(test, _expected(root, reference, cwd), text) if reference else ""
         if diff:
             return Verdict("DIFF", f"standard {stream} differs from {reference}", diff)
     return Verdict("PASS")
+
+
+def _expected(root: Path, reference: str, cwd: Path) -> str:
+    """The reference's text: below ROOT's source tree, or in the build tree it names.
+
+    ``OUTREF ${CMAKE_CURRENT_BINARY_DIR}/reference.log`` names a file a *previous* test wrote -
+    ROOT's driver stores every test's output as ``<build>/<name>.log`` - so it is read from the
+    working copy rather than from the source tree.
+    """
+    source = root / reference
+    if source.is_file():
+        return source.read_text(errors="replace")
+    built = cwd / Path(reference).name
+    if built.is_file():
+        return built.read_text(errors="replace")
+    return source.read_text(errors="replace")
 
 
 def _streams(test: Test, result: Result, root: Path, cwd: Path) -> tuple[str, str]:

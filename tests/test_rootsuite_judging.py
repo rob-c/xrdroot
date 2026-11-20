@@ -311,3 +311,21 @@ def test_the_reason_quotes_a_diagnosis_rather_than_clings_echo_of_the_return_val
     assert status(roottest(outref="a/t.ref"), result("(int) 1", code=1), root) == "FAIL"
     assert judge(roottest(outref="a/t.ref"), result("(int) 1", code=1), root, root).reason == (
         "exit 1, expected 0: (int) 1")
+
+
+def test_a_reference_in_the_build_tree_is_read_from_the_working_copy(root):
+    """``OUTREF ${CMAKE_CURRENT_BINARY_DIR}/reference.log`` names a file a previous test wrote
+    there — ROOT's driver stores every test's output as ``<build>/<name>.log`` — so the judge
+    reads it from the working copy rather than looking for it in ROOT's source tree."""
+    from tools.rootsuite.judge import _expected
+
+    (root / "a").mkdir(parents=True, exist_ok=True)
+    (root / "a/source.ref").write_text("from the source tree\n")
+    work = root / "work"
+    work.mkdir()
+    (work / "reference.log").write_text("633554432\n")
+    assert _expected(root, "a/source.ref", work) == "from the source tree\n"
+    assert _expected(root, "${CMAKE_CURRENT_BINARY_DIR}/reference.log", work) == "633554432\n"
+    # neither place: the source path is what raises, naming the reference the test declared
+    with pytest.raises(FileNotFoundError):
+        _expected(root, "a/missing.ref", work)

@@ -512,3 +512,20 @@ def test_a_second_run_reuses_the_working_copy_and_the_hsimple_already_made(tmp_p
     assert records["py"]["status"] == "PASS" and records["ok"]["status"] == "PASS"
     assert not (tmp_path / "out/logs/build/hsimple").exists()
     runner._copy(source / "d/ok.C", tmp_path / "out/work/d/ok.C")
+
+
+def test_a_roottest_stores_its_output_where_the_next_test_reads_it(tmp_path):
+    """ROOT's ``ROOTTEST_ADD_TEST`` hands every test's output to the driver as
+    ``OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${testname}.log``, so a test that follows one finds the
+    file its sibling wrote — ``schemaRun2check``'s ``sed schemaRun2.log``."""
+    from tools.rootsuite.model import Test
+    from tools.rootsuite.plan import Invocation
+    from tools.rootsuite.runner import Result, _store_output
+
+    test = Test(id="roottest/root/a/schemaRun1", ctest="x", kind="roottest",
+                directory="a", runner="root", store_out=True)
+    invocation = Invocation(argv=("true",), cwd=tmp_path, env={}, copy=(), before=(), after=(),
+                            merge="", stdin=None)
+    _store_output(test, invocation, Result(stdout="633554432\n", stderr="", exit_code=0,
+                                           runtime=0.0, timed_out=False, command="true"))
+    assert (tmp_path / "schemaRun1.log").read_text() == "633554432\n"
