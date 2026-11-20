@@ -101,7 +101,9 @@ class Chain(Drawable):
     be sent to a worker process, which opens them again there.
     """
 
-    __slots__ = ("tree_name", "config", "_links", "_counts")
+    # ``__weakref__`` so that what formulas learn of a chain's whole objects can be
+    # kept against the chain itself, and let go with it.
+    __slots__ = ("tree_name", "config", "_links", "_counts", "__weakref__")
 
     def __init__(
         self, tree_name: str, sources: Iterable[Any], config: Config | None = None

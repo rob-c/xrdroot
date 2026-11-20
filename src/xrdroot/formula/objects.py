@@ -74,14 +74,6 @@ Array = Any
 #: first entries still offers its members if a later one is looked at.
 SAMPLE = 8
 
-#: How many objects of one collection the members are learned from. A collection
-#: holds one class, so its objects offer the same names one another does, and a
-#: ``TClonesArray`` of a few hundred of them says nothing the first few did not:
-#: the entries are sampled for which members are held at all, not for what any
-#: one object holds, and walking every object of a large collection to learn
-#: names - which the draw then reads again for its values - is time spent twice.
-LEARNED_OBJECTS = 8
-
 #: The members ``TBits`` keeps, which is how a file's object says it is one: a
 #: ``TBits`` the tree holds is drawn a set bit at a time, and no other object is.
 BITS_MEMBERS = ("fNbits", "fNbytes", "fAllBits")
@@ -157,7 +149,7 @@ def _one_level_down(values: Sequence[Any]) -> tuple[list[Any], int] | None:
     """The elements of one level of collections, when they are objects and not numbers."""
     rows = [item for value in values for item in value]
     if rows and all(isinstance(item, dict) for item in rows):
-        return rows[:LEARNED_OBJECTS], 1
+        return rows, 1
     return None
 
 
@@ -205,9 +197,16 @@ def _learn(
     ``crossed`` says a collection was met on the way here, whose elements' last
     member is also a name of its own: ROOT reads ``fPx`` of a tree that holds
     ``fTracks`` whole as the tracks' momentum, looped over as ``fTracks.fPx`` is.
+
+    Every object of the level is walked, not the first few: a collection of pointers
+    may hold objects of several classes - a ``TObjArray`` holding a ``TAttMarker``
+    and a ``TAttLine`` - and what ROOT resolves is every member any of them holds, so a
+    name a later object alone has is still a name. The entries are what is sampled;
+    a collection of a few hundred objects costs a walk of their member names once a
+    tree, which the reading of their values then dwarfs.
     """
     found: dict[str, list[Any]] = {}
-    for obj in objects[:LEARNED_OBJECTS]:
+    for obj in objects:
         if not isinstance(obj, dict):
             continue
         for name in _names(obj):

@@ -23,6 +23,7 @@ from xrdroot.cxx import Mapping, Pair, Prim, Seq, Str, parse, py_name
 from xrdroot.file import Source
 from xrdroot.interp import (
     KINDS,
+    OFFSET_L,
     Flat,
     Refused,
     Rows,
@@ -902,6 +903,43 @@ def test_a_bool_column_is_read_as_true_and_false_rather_than_one_and_zero():
         False,
         True,
     ]
+
+
+def test_a_member_declared_as_an_array_of_one_value_is_an_array_of_one_value():
+    """``Float_t v[1]`` is an array of one value as ``Float_t v[3]`` is an array of three.
+
+    The shape is what a formula indexes a member by, and the one dimension is what makes
+    a ``char[1]`` the string ``TLeafC`` reads; a run of single numbers hands back bare
+    values, so a declaration of one value keeps a read of its own - and what it gives
+    must not depend on the members declared beside it.
+    """
+    source = Layout(
+        Event={
+            **declared("n", 3, "int32"),
+            **declared("v", OFFSET_L + 5, "Float_t", length=1),
+            **declared("c", OFFSET_L + 1, "char", length=1),
+            **declared("b", OFFSET_L + 18, "Bool_t", length=1),
+        }
+    )
+    row = column_of("Event", source=source).value(Buffer(struct.pack(">ifbb", 7, 2.5, 97, 1)), 0)
+    assert row["n"] == 7, "a member of one number is still the number"
+    assert (row["v"].shape, row["v"].dtype, float(row["v"][0])) == ((1,), np.float32, 2.5)
+    assert (row["c"].shape, row["c"].dtype) == ((1,), np.int8), "twenty chars of one is a string"
+    assert (row["b"].shape, row["b"].dtype, bool(row["b"][0])) == ((1,), np.bool_, True)
+
+
+def test_a_declaration_of_one_value_in_two_dimensions_keeps_both_beside_a_number():
+    """``Double_t m[1][1]`` is a matrix of one cell alone and a matrix of one cell next to
+    a plain number: which member a run gathers must not decide another's shape."""
+    matrix = {"m": Member("m", "", OFFSET_L + 8, "float64", 1, "", dims=(1, 1))}
+    beside = {**declared("a", 3, "int32"), **matrix}
+    alone = column_of("Event", source=Layout(Event=matrix)).value(Buffer(struct.pack(">d", 5.0)), 0)
+    with_number = column_of("Event", source=Layout(Event=beside)).value(
+        Buffer(struct.pack(">id", 1, 5.0)), 0
+    )
+    assert alone["m"].shape == with_number["m"].shape == (1, 1)
+    assert alone["m"].tolist() == with_number["m"].tolist() == [[5.0]]
+    assert with_number["a"] == 1
 
 
 def test_a_class_inside_one_with_a_version_of_its_own_carries_no_checksum():

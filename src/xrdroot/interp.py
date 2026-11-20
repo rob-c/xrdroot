@@ -666,18 +666,25 @@ class _Plain:
     them be read by one ``unpack``: a class of numbers writes its numbers one after
     another with nothing in between, and reading them one at a time through a call
     each is most of what reading such a class costs.
+
+    ``shaped`` says the member is a declaration of fixed size rather than one number,
+    which is what keeps ``Float_t v[1]`` an array of one value: a run of single numbers
+    hands back bare values, and a declaration of one value read in a run would lose the
+    shape a formula indexes and the one that makes a ``char[1]`` a string.
     """
 
-    __slots__ = ("code", "typename", "count", "dims")
+    __slots__ = ("code", "typename", "count", "dims", "shaped")
 
-    def __init__(self, code: str, typename: str, count: int, dims: tuple[int, ...]) -> None:
+    def __init__(
+        self, code: str, typename: str, count: int, dims: tuple[int, ...], shaped: bool = False
+    ) -> None:
         self.code, self.typename, self.count, self.dims = code, typename, count, dims
+        self.shaped = shaped
 
     def __call__(self, buf: Buffer, _row: dict[str, Any]) -> Any:
-        if self.count == 1 and not self.dims:
-            return buf.scalar(_form(self.code))
-        values = buf.run(self.count, self.typename)
-        return values.reshape(self.dims) if self.dims else values
+        if not self.shaped:
+            return buf.scalar(_form(self.code))  # one number, as a count or an index
+        return _shaped_values(buf.run(self.count, self.typename), self.dims)
 
 
 def _bool_one(buf: Buffer, _row: dict[str, Any]) -> Any:
@@ -709,7 +716,7 @@ def _run(member: Member, prim: Prim, unpack: Unpack | None) -> Step:
     if isinstance(unpack, _Steps):
         return lambda buf, _row: _shaped_values(unpack.run(buf, length), dims)
     if unpack is None:
-        return _Plain(prim.typecode, prim.typename, length, dims)
+        return _Plain(prim.typecode, prim.typename, length, dims, shaped=True)
 
     def step(buf: Buffer, _row: dict[str, Any]) -> Any:
         return _shaped_values(_numbers(prim, unpack, buf, length), dims)
@@ -725,9 +732,10 @@ def _shaped_values(values: np.ndarray[Any, Any], dims: tuple[int, ...]) -> Any:
 def _shaped_run(run: list[tuple[str, _Plain]]) -> Step:
     """A run of plain members, read by the one struct that covers all of them.
 
-    Every member but the last is a single number, which is the shape of nearly
-    every class of numbers, so the numbers are put under their names by ``zip``
-    and ``dict.update`` and no per-member call is made at all.
+    A single number is nearly every member of a class of numbers, so when every
+    member of the run is one the numbers go under their names by ``zip`` and
+    ``dict.update`` and no per-member call is made at all; a fixed array in the run
+    is cut out of the same values and given the shape its declaration gives it.
     """
     form = _form("".join(f"{field.count}{field.code}" for _l, field in run))
     labels = tuple(label for label, _field in run)
@@ -760,7 +768,7 @@ def _plan(steps: list[tuple[str, Step]]) -> list[Step]:
     plan: list[Step] = []
     run: list[tuple[str, _Plain]] = []
     for label, step in steps:
-        if type(step) is _Plain and step.count >= 1:
+        if type(step) is _Plain and _gathered(step):
             run.append((label, step))
             continue
         _flush(plan, run)
@@ -768,6 +776,18 @@ def _plan(steps: list[tuple[str, Step]]) -> list[Step]:
         plan.append(_named_step(label, step))
     _flush(plan, run)
     return plan
+
+
+def _gathered(step: _Plain) -> bool:
+    """Can this member's numbers be read by the struct that covers it and the ones by it?
+
+    A single number can, and so can a fixed array of several - the run gives each
+    member back under its own name in the shape it was declared with. An array of
+    exactly one value keeps a read of its own: a run hands a one-value member back as
+    the bare number it read, and ``Float_t v[1]`` is an array of one value to every
+    name that reads it, as it is in the file.
+    """
+    return step.count > 1 or not step.shaped
 
 
 def _flush(plan: list[Step], run: list[tuple[str, _Plain]]) -> None:

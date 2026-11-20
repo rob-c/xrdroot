@@ -14,8 +14,11 @@ times, and ``lines`` the ``i`` lines the macro made.
 
 from __future__ import annotations
 
+import gc
 import pathlib
+import weakref
 from collections.abc import Sequence
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -545,6 +548,27 @@ def test_asking_after_a_bit_of_a_member_that_is_no_tbits_is_no_such_name():
     assert Whole().tested(("fN",)) is None
 
 
+# -- what a collection of objects offers as names ------------------------------
+
+
+def test_a_name_only_a_later_object_of_a_collection_holds_is_still_a_name():
+    """A collection of pointers may hold objects of several classes, so every object of
+    one is asked what it holds: ROOT resolves a member any of them has, and it is a
+    sample of a few entries that says which members exist, not a sample of a few objects."""
+    tracks = [{"fPx": float(n)} for n in range(9)] + [{"fPx": 9.0, "fLate": 1.0}]
+    whole = learned({"event": [{"fTracks": tracks}] * 2})
+    assert "fTracks.fLate" in whole, "the tenth track's member is a name"
+    assert "fLate" in whole, "and a bare one, as a crossed collection's member is"
+
+
+def test_a_collection_filled_only_by_a_later_object_is_learned_from_it():
+    """The same for a collection inside a collection: an object that holds none of them
+    says nothing about what one holds, so the collection is learned from the objects that
+    fill it, however late among the entry's objects they come."""
+    objects = [{"fOuter": []} for _ in range(9)] + [{"fOuter": [{"fDeep": 1.0}]}]
+    assert "fOuter.fDeep" in learned({"e": objects})
+
+
 # -- learning what a tree's objects hold, once ------------------------------------
 
 
@@ -589,3 +613,92 @@ def test_a_tree_another_tree_displaces_is_learned_again_when_it_is_asked_for(
         for tree in (whole_tree, other, whole_tree):
             assert tree.arrays(["tlv.fE"])["tlv.fE"].tolist() == [20, 21, 22, 23, 24]
     assert inside == [whole_tree, other, whole_tree]
+
+
+def test_a_table_whose_tree_is_gone_is_not_trusted_for_another(whole_tree, monkeypatch):
+    """The next tree may be given the identity the last one had, so a table is only the
+    right one for a tree that is still there."""
+    monkeypatch.setattr(select, "_LEARNED", {})
+    whole_tree.arrays(["tlv.fE"])
+    key = next(iter(select._LEARNED))
+    select._LEARNED[key] = (weakref.ref(_Gone()), select._LEARNED[key][1])
+    assert whole_tree.arrays(["tlv.fE"])["tlv.fE"].tolist() == [20, 21, 22, 23, 24]
+    assert select._LEARNED[key][0]() is whole_tree, "and the table behind it is the tree's own"
+
+
+def test_a_table_goes_when_the_tree_it_was_learned_from_does(monkeypatch):
+    """A session reads a few entries from a file and moves on: the file must be let go,
+    so what was learned of its tree is kept by a pointer to it and not by the tree."""
+    monkeypatch.setattr(select, "_LEARNED", {})
+    with open_root(str(DATA / "object-branches-6.40.root")) as handle:
+        tree = handle["t"]
+        assert isinstance(select._pointing_at(tree), weakref.ref)
+        tree.arrays(["tlv.fE"])
+        assert len(select._LEARNED) == 1
+        gone = weakref.ref(tree)
+    del tree
+    gc.collect()
+    assert gone() is None, "the cache held nothing of it"
+    assert select._pointing_at(object()) is None, "and a reader that cannot be pointed at"
+
+
+def test_a_reader_that_cannot_be_pointed_at_is_learned_every_time(monkeypatch):
+    """A reader of a kind that cannot be pointed at weakly still answers, and is learned
+    every time: a table kept for it would have to be kept by the reader itself."""
+    monkeypatch.setattr(select, "_LEARNED", {})
+    bare = _Bare()
+    assert select.TreeNames(bare).whole is not None
+    assert select.TreeNames(bare).whole is not None
+    assert select._LEARNED == {}, "nothing is kept of a reader that cannot be pointed at"
+
+
+def test_a_table_asked_for_again_is_the_last_the_cache_would_let_go(whole_tree, monkeypatch):
+    """Eviction takes the table nothing has asked for longest, so a tree drawn again and
+    again is not the one to go: being asked for is what moves a table to the end."""
+    inside = []
+    monkeypatch.setattr(select, "_LEARNED", {})
+    monkeypatch.setattr(select, "LEARNED_KEPT", 2)
+    original = select._learned
+
+    def counting(source, names):
+        inside.append(source)
+        return original(source, names)
+
+    monkeypatch.setattr(select, "_learned", counting)
+    with open_root(str(DATA / "object-branches-6.40.root")) as handle:
+        other, third = handle["t"], handle["t"]
+        whole_tree.arrays(["tlv.fE"])  # the first table
+        other.arrays(["tlv.fE"])  # the second
+        whole_tree.arrays(["tlv.fE"])  # asked for again: now the freshest of the two
+        third.arrays(["tlv.fE"])  # one too many, so the second one goes
+        other.arrays(["tlv.fE"])  # and is learned again
+    assert inside == [whole_tree, other, third, other]
+
+
+class _Gone:
+    """A tree that is about to be collected, to leave its identity behind in a table."""
+
+
+class _NumberBranch:
+    """A branch of numbers, which holds nothing whole."""
+
+    typename = "int32"
+    record = SimpleNamespace(branches={})
+
+
+class _Bare:
+    """A reader of no tree's kind: names, and nothing whole among them.
+
+    It has no ``__weakref__``, as a reader written out of plain slots may not.
+    """
+
+    __slots__ = ()
+
+    def keys(self) -> list[str]:
+        return ["fE"]
+
+    def __getitem__(self, name: str) -> _NumberBranch:
+        return _NumberBranch()
+
+    def __len__(self) -> int:
+        return 1

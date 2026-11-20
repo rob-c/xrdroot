@@ -456,6 +456,10 @@ class TTree(Drawable):
         "_recorded",
         "records",
         "clustering",
+        # What formulas learn of the objects the tree holds whole is kept against the
+        # tree itself, so a tree has to be pointable at: a table of names lives as long
+        # as the tree it was learned from and no longer, and the file goes with it.
+        "__weakref__",
     )
 
     def __init__(

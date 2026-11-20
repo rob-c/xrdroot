@@ -17,6 +17,7 @@ passed, so that the columns still line up entry for entry.
 from __future__ import annotations
 
 import re
+import weakref
 from collections.abc import Iterator, Mapping, Sequence
 from typing import Any
 
@@ -111,8 +112,15 @@ class TreeNames(Mapping[str, int]):
 #: What a class holds does not change from one draw to the next, and learning it reads
 #: the first entries of every whole-object branch - which the draw that learned it reads
 #: again for its values - so a tree drawn many times, as ROOT's own tests draw one, says
-#: what its objects hold once. The tree is kept beside its table, so that its identity
-#: cannot be handed on to another tree while it is here.
+#: what its objects hold once.
+#:
+#: The tree is pointed at rather than kept: a table is worth having while its tree is
+#: open and worth nothing after, and a closed file must be given back, so a tree that is
+#: gone takes its table with it. A table whose tree is gone is not trusted either, since
+#: the next tree may be given the identity the last one had.
+#:
+#: A table asked for again is put back at the end of the queue, so the one that goes when
+#: there are more trees than are kept is the one nothing has asked for longest.
 _LEARNED: dict[tuple[int, tuple[str, ...]], tuple[Any, Whole]] = {}
 
 #: How many trees' member tables are kept: a session's open files, not a run's.
@@ -128,13 +136,25 @@ def _members(source: Any, names: Sequence[str]) -> Whole:
     """
     key = (id(source), tuple(names))
     held = _LEARNED.get(key)
-    if held is not None:
+    if held is not None and held[0]() is not None:
+        _LEARNED[key] = _LEARNED.pop(key)  # asked for again: the youngest table it has
         return held[1]
     whole = _learned(source, names)
-    _LEARNED[key] = (source, whole)
+    pointing = _pointing_at(source)
+    if pointing is None:
+        return whole  # a reader that cannot be pointed at weakly, learned every time
+    _LEARNED[key] = (pointing, whole)
     while len(_LEARNED) > LEARNED_KEPT:
         del _LEARNED[next(iter(_LEARNED))]  # the tree kept longest, which nothing has asked for
     return whole
+
+
+def _pointing_at(source: Any) -> Any:
+    """A weak reference to a tree, or ``None`` for a reader of a kind that cannot have one."""
+    try:
+        return weakref.ref(source)
+    except TypeError:
+        return None
 
 
 def _learned(source: Any, names: Sequence[str]) -> Whole:
