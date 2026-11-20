@@ -43,10 +43,12 @@ _SUBSTITUTIONS = [
     (re.compile(r"(input_line_|ROOT_prompt_)[0-9]+"), r"\1--"),
 ]
 
-#: Standard-error lines the driver forgives a test that checks only its error stream.
+#: Standard-error lines the driver forgives a test that checks only its error stream: what
+#: ROOT itself says on standard error for a macro that draws, which no test asks about.
 _EXPECTED_ERRORS = (
     re.compile(r"^Info in <.+::ACLiC>: creating shared library.+"),
     re.compile(r"^Info in <TROOT>: Object auto registration.*"),
+    re.compile(r"^Info in <TCanvas::MakeDefCanvas>:  created default TCanvas with name \S+$"),
 )
 
 

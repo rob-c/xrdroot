@@ -27,12 +27,23 @@ __all__ = ["_Player", "MAX_ENTRIES"]
 
 #: ``TTree::kMaxEntries``: the ``nentries`` that means all of them.
 MAX_ENTRIES = 1_000_000_000_000_000_000
-#: The settings ``Scan``'s option can carry.
+#: The settings ``Scan``'s option can carry: ROOT lowercases the option and reads each
+#: ``name=value`` out of it, ``col=`` being the ``printf`` conversions one per column.
 SCAN_OPTIONS = re.compile(r"(colsize|precision)=(\d+)")
+SCAN_COLUMNS = re.compile(r"col=([0-9a-z#.:]*)")
 
 
 def _count(nentries: int) -> int | None:
     return None if nentries >= MAX_ENTRIES or nentries < 0 else int(nentries)
+
+
+def _scan_settings(option: str) -> tuple[dict[str, int], list[str] | None]:
+    """``colsize=``, ``precision=`` and ``col=`` as ``TTreePlayer::Scan`` reads them."""
+    lowered = str(option or "").lower()
+    found = dict(SCAN_OPTIONS.findall(lowered))
+    columns = SCAN_COLUMNS.search(lowered)
+    conversions = None if columns is None else columns.group(1).split(":")
+    return {key: int(value) for key, value in found.items()}, conversions
 
 
 def _entries_before(varexp: str, registry: Any) -> float:
@@ -206,7 +217,7 @@ class _Player(_Friends):
         firstentry: int = 0,
     ) -> int:
         """``TTree::Scan``: print ROOT's table of values; how many entries it selected."""
-        settings = {key: int(value) for key, value in SCAN_OPTIONS.findall(str(option or ""))}
+        settings, conversions = _scan_settings(option)
         text = self._view().scan(
             str(varexp or ""),
             str(selection or ""),
@@ -214,6 +225,7 @@ class _Player(_Friends):
             first_entry=int(firstentry),
             width=settings.get("colsize"),
             precision=settings.get("precision"),
+            conversions=conversions,
             file=sys.stdout,
             aliases=self._aliases or None,
         )

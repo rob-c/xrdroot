@@ -13,8 +13,10 @@
 Each column is an expression, as ``Draw``'s are, and each is printed the
 way ``TTreeFormula::PrintValue`` prints it: a number through C's ``%9.9g``,
 trimmed of digits before its exponent when that makes it too wide, and
-anything too wide for its column cut off at the column's edge; a string as
-it is. A column is as wide as its name, from nine characters to twenty.
+anything too wide for its column cut off at the column's edge - a name that
+is too wide for its column is cut off the same way; a string as it is. A
+column is nine characters wide unless ``colsize=`` or a column's own
+``printf`` conversion says otherwise.
 
 An expression that loops over a collection prints a row per element under an
 ``Instance`` column. The columns go down together only when the selection
@@ -25,6 +27,7 @@ entry being the most any of them has and the columns that run out left blank.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator, Mapping, Sequence
 from typing import IO, Any, NamedTuple
 
@@ -40,8 +43,6 @@ Array = Any
 
 #: ``TTreePlayer::Scan``'s width and precision of a column, unless told otherwise.
 COLUMN = 9
-#: The widest a column grows to fit its name.
-WIDEST = 20
 #: The most digits ``colsize=`` gives the precision.
 MOST_PRECISE = 18
 #: Entries read at a time.
@@ -49,45 +50,118 @@ STEP = 10_000
 #: The columns an empty expression prints: ROOT's first eight leaves.
 FIRST = 8
 
+#: A ``printf`` conversion without its ``%``: the flags, width and precision, the length
+#: that casts the value, and the letter that names its type - ``9.9``, ``#x``, ``5lld``.
+CONVERSION = re.compile(r"([hlLjzt]*)([cdioxXufFeEgG])$")
+#: The digits a conversion starts with: its width, which is also what it keeps of a number.
+_DIGITS = re.compile(r"\d*")
+#: What a conversion's type letter casts to: the widths ROOT's ``PrintValue`` uses.
+SIGNED = {"": 32, "h": 16, "l": 64, "ll": 64, "L": 64, "j": 64, "z": 64, "t": 64}
+
+
+class Field(NamedTuple):
+    """One column: how wide it is, and the ``printf`` conversion its values go through."""
+
+    size: int
+    #: ROOT's ``decform``, the part of the conversion after the ``%``.
+    conversion: str
+
 
 class Layout(NamedTuple):
     """The widths a table is printed with, and whether it has an ``Instance`` column."""
 
     names: list[str]
-    sizes: list[int]
-    column: int
-    precision: int
+    fields: list[Field]
     instances: bool
 
     def border(self) -> str:
         """A line of stars as wide as the table."""
         start = "*" * (22 if self.instances else 11)
-        return start + "".join("*" * (size + 3) for size in self.sizes) + "*"
+        return start + "".join("*" * (field.size + 3) for field in self.fields) + "*"
 
     def header(self) -> str:
-        """The names of the columns, each cut to ``...`` if it is wider than its column."""
+        """The names of the columns, each cut off at its column's edge, as ``%9.9s`` cuts."""
         cells = []
-        for name, size in zip(self.names, self.sizes, strict=False):
-            if len(name) > size:
-                name = name[: max(1, size - 3)] + "..."
-            cells.append(f"* {name[:size]:>{size}} ")
+        for name, field in zip(self.names, self.fields, strict=False):
+            cells.append(f"* {name[: field.size]:>{field.size}} ")
         return "*    Row   " + ("* Instance " if self.instances else "") + "".join(cells) + "*"
 
-    def cell(self, value: Any, size: int) -> str:
+    def cell(self, value: Any, field: Field) -> str:
         """One value as ``PrintValue`` prints it, then cut to its column."""
-        return f"* {self.text(value)[:size]:>{size}} "
+        return f"* {_printed(value, field)[: field.size]:>{field.size}} "
 
-    def text(self, value: Any) -> str:
-        if value is None:
-            return ""
-        if isinstance(value, str):
-            return str(value)
-        text = f"{float(value):{self.column}.{self.precision}g}"
-        exponent = text.find("e")
-        if exponent >= 0 and len(text) > self.column:
-            cut = len(text) - self.column  # trim the digits before the exponent
-            text = text[: exponent - cut] + text[exponent:]
+
+def _cast(value: Any, length: str, signed: bool) -> int:
+    """``value`` as the C type a conversion's length names, wrapping as C's cast does."""
+    bits = SIGNED.get(length.lower(), 64)
+    number = int(value)
+    if signed and bits == 64:
+        return number
+    masked = number & ((1 << bits) - 1)
+    if signed and masked >> (bits - 1):
+        masked -= 1 << bits
+    return masked
+
+
+def _text(spec: str, value: int | float) -> str:
+    """``value`` through ``spec``: Python's ``%`` takes every conversion C's does, less
+
+    the length modifier, which only chooses the cast and is dropped here."""
+    found = CONVERSION.search(spec)
+    if found is None:
+        return f"{float(value):{spec}g}"
+    return ("%" + spec[: found.start(1)] + found.group(2)) % value
+
+
+def _printed(value: Any, field: Field) -> str:
+    """One value as ``TTreeFormula::PrintValue`` prints it under the column's conversion.
+
+    A string is printed as it is, whatever the conversion: ROOT's ``PrintValue`` returns
+    a string column's value before it looks at one. A number goes through
+    :func:`_number`, and nothing - a column with no value this instance - is blank.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return str(value)
+    return _number(value, field.conversion)
+
+
+def _number(value: Any, conversion: str) -> str:
+    """A number through the conversion, cast to the type its last letter names - ``%d`` as
+    an ``Int_t``, ``%x`` as a ``UInt_t``, ``%c`` as the ``int`` C prints a byte of - and a
+    conversion that names no type at all is a ``%g``, as ``PrintValue``'s default is."""
+    found = CONVERSION.search(conversion)
+    letter, length = (found.group(2), found.group(1)) if found is not None else ("", "")
+    if letter == "c":
+        return _text(conversion, _cast(value, length, signed=True) & 0xFF)
+    if letter in ("d", "i"):
+        return _text(conversion, _cast(value, length, signed=True))
+    if letter in ("o", "x", "X", "u"):
+        return _text(conversion, _cast(value, length, signed=False))
+    return _trimmed(_text(conversion, float(value)), conversion)
+
+
+def _leading(conversion: str) -> int:
+    """The number a conversion starts with, which is both its width and its digit count."""
+    found = _DIGITS.match(conversion)
+    return int(found.group(0) or 0) if found is not None else 0
+
+
+def _trimmed(text: str, conversion: str) -> str:
+    """``text`` with its digits before the exponent dropped, when it is wider than the
+    conversion asked for: ``%9.9g`` of a large number loses everything but ``e+20``'s few."""
+    exponent = text.find("e")
+    digits = _leading(conversion)
+    if exponent < 0 or len(text) <= digits:
         return text
+    cut = len(text) - digits
+    return text[: exponent - cut] + text[exponent:]
+
+
+def _width(conversion: str, column: int) -> int:
+    """A column's width: the number its own conversion starts with, else ROOT's default."""
+    return _leading(conversion) or column
 
 
 def _columns(source: Any, varexp: str) -> list[str]:
@@ -99,16 +173,29 @@ def _columns(source: Any, varexp: str) -> list[str]:
 
 
 def _layout(
-    names: list[str], width: int | None, precision: int | None, instances: bool
+    names: list[str],
+    width: int | None,
+    precision: int | None,
+    conversions: Sequence[str] | None,
+    instances: bool,
 ) -> Layout:
     column = COLUMN if width is None else width
-    widest = WIDEST if width is None else width
     if precision is None:
         precision = COLUMN if width is None else min(width, MOST_PRECISE)
     if column < 1 or precision < 0:
         raise ValueError("a column is at least one character wide, and precision is not negative")
-    sizes = [min(max(len(name), column), max(widest, column)) for name in names]
-    return Layout(names, sizes, column, precision, instances)
+    default = f"{column}.{precision}"
+    wanted = list(conversions or [])
+    return Layout(names, [_field(at, wanted, default, column) for at in range(len(names))],
+                  instances)
+
+
+def _field(at: int, wanted: list[str], default: str, column: int) -> Field:
+    """The column at ``at``: its own conversion if the list reached it and it is not empty -
+    ROOT reads an empty ``col=`` entry as the default - and its width out of that."""
+    given = wanted[at] if at < len(wanted) else ""
+    conversion = given or default
+    return Field(_width(conversion, column), conversion)
 
 
 class Result(NamedTuple):
@@ -188,8 +275,8 @@ class Table:
 
     def _row(self, results: Sequence[Result], entry: int, instance: int, number: int) -> str:
         line = f"* {number:8d} " + (f"* {instance:8d} " if self.layout.instances else "")
-        for result, size in zip(results, self.layout.sizes, strict=False):
-            line += self.layout.cell(result.at(entry, instance), size)
+        for result, field in zip(results, self.layout.fields, strict=False):
+            line += self.layout.cell(result.at(entry, instance), field)
         return line + "*"
 
 
@@ -260,6 +347,7 @@ def scan(
     first_entry: int = 0,
     width: int | None = None,
     precision: int | None = None,
+    conversions: Sequence[str] | None = None,
     file: IO[str] | None = None,
     step: int = STEP,
     aliases: Mapping[str, str] | None = None,
@@ -269,7 +357,7 @@ def scan(
     names = _columns(source, varexp)
     formulas, cut = _compiled(source, names, selection, aliases)
     looping = any(bool(f.per_element) for f in [*formulas, *([cut] if cut else [])])
-    layout = _layout(names, width, precision, looping)
+    layout = _layout(names, width, precision, conversions, looping)
     table = Table(layout, formulas, cut)
     out = Output(file)
     out.emit([layout.border(), layout.header(), layout.border()])

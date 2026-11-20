@@ -43,7 +43,19 @@ def _wrapper(obj: Any) -> bool:
 
 
 class Registry(MutableMapping[str, Any]):
-    """``gDirectory`` as ``Draw`` sees it: xrdroot histograms by name, anything else as it is."""
+    """``gDirectory`` as ``Draw`` sees it: xrdroot histograms by name, anything else as it is.
+
+    ``Draw`` keeps what it filled in the current directory, and a ``Draw`` that
+    fills a name already there - ``htemp`` above all - replaces it silently:
+    ROOT's ``TSelectorDraw`` deletes the histogram it made last time before it
+    makes this one, so nothing is leaked and nothing is warned about. Only a
+    name ``Draw`` did not put there warns, once, as ROOT's ``Append`` does.
+    """
+
+    def __init__(self) -> None:
+        #: Each name ``Draw`` filled and the directory it filled it in, whose replacement
+        #: is no leak: one entry a name, so nothing is kept of a directory that has gone.
+        self._filled: dict[str, Any] = {}
 
     def __getitem__(self, name: str) -> Any:
         found = current_directory().GetList().FindObject(str(name))
@@ -58,7 +70,11 @@ class Registry(MutableMapping[str, Any]):
             return
         if made is not value and hasattr(made, "SetName"):
             made.SetName(name)
-        here.Append(made, True)
+        # A name this registry filled in this directory is replaced silently: ROOT's
+        # ``TSelectorDraw`` deletes the histogram it made last time before it makes this
+        # one, so there is no leak to warn of; a name it did not fill warns, as ROOT does.
+        here.Append(made, self._filled.get(str(name)) is not here)
+        self._filled[str(name)] = here
 
     def __delitem__(self, name: str) -> None:
         found = current_directory().GetList().FindObject(str(name))

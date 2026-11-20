@@ -260,3 +260,21 @@ def test_print_and_show_of_a_file_root_wrote_are_what_root_6_40_prints(capsys):
     printed = capsys.readouterr().out.splitlines()
     assert printed[:2] + printed[3:] == expected[:2] + expected[3:]
     assert printed[2].endswith("File  Size =      10452 *")
+
+
+def test_a_draw_replaces_the_histogram_it_made_last_time_and_says_nothing(tmp_path, capsys):
+    """ROOT's ``TSelectorDraw`` deletes the ``htemp`` it made last time before it makes
+    this one, so a second ``Draw`` of one tree leaks nothing and ROOT warns nothing -
+    where a histogram a draw did not make is replaced with ROOT's ``Append`` warning."""
+    from xrdroot.pyroot import ROOT
+    from xrdroot.pyroot.trees import hooks
+
+    with ROOT.TFile(str(tmp_path / "drawn.root"), "RECREATE"):
+        t = _tree(3)
+        t.Draw("x", "", "goff")
+        t.Draw("x", "", "goff")
+        t.Draw("x", "", "goff")
+        assert capsys.readouterr().err == ""
+        ROOT.TH1D("hand", "", 10, 0, 10)
+        hooks.registry()["hand"] = hooks.wrap(ROOT.TH1D("hand", "", 10, 0, 10))
+        assert "Replacing existing TH1D: hand (Potential memory leak)." in capsys.readouterr().err

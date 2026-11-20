@@ -9,7 +9,7 @@ scan the same way. The work is in :mod:`~xrdroot.treedraw` and
 
 from __future__ import annotations
 
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Mapping, MutableMapping, Sequence
 from typing import IO, Any
 
 __all__ = ["Drawable"]
@@ -105,6 +105,7 @@ class Drawable:
         first_entry: int = 0,
         width: int | None = None,
         precision: int | None = None,
+        conversions: Sequence[str] | None = None,
         file: IO[str] | None = None,
         aliases: Mapping[str, str] | None = None,
     ) -> str:
@@ -116,9 +117,13 @@ class Drawable:
         column this reads and ``""`` for the first eight. The ``selection``
         keeps the rows it is true for, and a line after the table says how
         many there were. ``width`` is ROOT's ``colsize=``, which fixes every
-        column at that many characters; without it a column is nine, or as
-        wide as its name up to twenty. ``precision`` is the digits a number
-        is printed with, nine unless told.
+        column at that many characters; without it a column is nine, and a
+        name wider than its column is cut off at its edge. ``precision`` is
+        the digits a number is printed with, nine unless told.
+        ``conversions`` is ROOT's ``col=``: one ``printf`` conversion per
+        column - ``"#x"``, ``"c"``, ``"20.10"``, ``5lld`` - which sets both
+        how its values are printed and, if it starts with a number, how wide
+        the column is. A column the list leaves out takes the default.
 
         The table comes back as a string; ``file`` is also written to as the
         rows are made, which for a long scan is the way to see them come.
@@ -134,6 +139,7 @@ class Drawable:
             first_entry=first_entry,
             width=width,
             precision=precision,
+            conversions=conversions,
             file=file,
             aliases=aliases,
         )

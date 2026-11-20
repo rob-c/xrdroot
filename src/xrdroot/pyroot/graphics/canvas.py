@@ -168,14 +168,22 @@ class TCanvas(TPad):
 
 
 def default_canvas() -> TCanvas:
-    """``gROOT->MakeDefCanvas()``: ``c1``, or ``c1_n2`` and on when there is one already."""
+    """``gROOT->MakeDefCanvas()``: ``c1``, or ``c1_n2`` and on when there is one already.
+
+    ROOT says so on standard error, with two spaces after the colon, and a
+    macro's output that is compared with ROOT's reference has the line in it.
+    """
     names = {c.GetName() for c in CANVASES}
     name, number = "c1", 1
     while name in names:
         number += 1
         name = f"c1_n{number}"
-    return TCanvas(name, name, gStyle.GetCanvasDefX(), gStyle.GetCanvasDefY(),
+    made = TCanvas(name, name, gStyle.GetCanvasDefX(), gStyle.GetCanvasDefY(),
                    gStyle.GetCanvasDefW(), gStyle.GetCanvasDefH())  # fmt: skip
+    from ..core.messages import message
+
+    message("Info", "TCanvas::MakeDefCanvas", " created default TCanvas with name %s", name)
+    return made
 
 
 def _all_written(pads: list[Any], filename: str) -> None:

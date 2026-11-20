@@ -108,6 +108,17 @@ def test_drawing_with_no_canvas_makes_c1_and_then_c1_n2():
     assert [c.GetName() for c in pads.CANVASES] == ["c1", "c1_n2"]
 
 
+def test_a_canvas_made_for_a_draw_says_so_on_standard_error_as_root_does(capsys):
+    """ROOT's ``TCanvas::MakeDefCanvas`` announces the canvas it made, two spaces after
+    the colon, and a macro's merged output has the line where ROOT's has it."""
+    gaussian().Draw()
+    assert capsys.readouterr().err == (
+        "Info in <TCanvas::MakeDefCanvas>:  created default TCanvas with name c1\n")
+    graphics.canvas.default_canvas()
+    assert capsys.readouterr().err == (
+        "Info in <TCanvas::MakeDefCanvas>:  created default TCanvas with name c1_n2\n")
+
+
 def test_data_drawn_without_same_clears_the_pad_and_with_it_is_added():
     c = ROOT.TCanvas("c", "c")
     first, second = gaussian("a"), gaussian("b")
