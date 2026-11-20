@@ -21,13 +21,14 @@ import functools
 from collections.abc import Callable
 from typing import Any
 
+from . import interp
 from .buffer import Buffer
 from .interp import _members, _streamed
 from .streamers import Member
 from .wdeclared import MAPS, STL_KINDS, Catalogue, Spelled, pair_name, parse_type
 from .winfo import INFOS, Element
 
-__all__ = ["DescribedSource", "reader_for"]
+__all__ = ["DescribedSource", "flat_reader_for", "reader_for"]
 
 #: The streamer type a file gives a container member, which its reader goes by.
 STREAMER = 500
@@ -135,6 +136,29 @@ def _reader_for(classname: str, catalogue: Catalogue) -> Callable[[Buffer], Any]
     catalogue.info(classname)
     source: Any = _source(catalogue)
     return _streamed(_members(classname, source))
+
+
+def flat_reader_for(
+    classname: str, catalogue: Catalogue
+) -> tuple[Callable[[Buffer], tuple[Any, ...]], tuple[str, ...]] | None:
+    """How an object of ``classname`` reads as one struct, with its members' names - or
+    ``None`` when it is more than a run of plain numbers.
+
+    Kept like the reader itself, because what it is no bytes can change.
+    """
+    return _flat_reader_for(classname, catalogue)
+
+
+@functools.lru_cache(maxsize=READERS_KEPT)
+def _flat_reader_for(
+    classname: str, catalogue: Catalogue
+) -> tuple[Callable[[Buffer], tuple[Any, ...]], tuple[str, ...]] | None:
+    found = parse_type(classname)
+    if found.name in STL_KINDS and not found.stars:
+        return None
+    catalogue.info(classname)
+    source: Any = _source(catalogue)
+    return interp.flat_reader(classname, source)
 
 
 def _describe_contents(found: Spelled, catalogue: Catalogue) -> None:

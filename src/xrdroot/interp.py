@@ -781,6 +781,54 @@ def _shaped_run(run: list[tuple[str, _Plain]]) -> Step:
     return read
 
 
+def flat_reader(
+    name: str, source: Source
+) -> tuple[Callable[[Buffer], tuple[Any, ...]], tuple[str, ...]] | None:
+    """How an object of ``name`` reads as one struct: the reader giving every member's value
+    in the order their names are - or ``None`` for a class that is more than a run of plain
+    numbers, which the members' own steps read.
+
+    A class of nine numbers read by a bulk loop of ten million records built a dictionary of
+    them per record; a record that is one struct hands back the values themselves.
+    """
+    try:
+        steps = _steps(name, source)
+    except _Unreadable:
+        return None
+    form = _flat_form(steps)
+    if form is None:
+        return None
+    return _streamed_flat(form), tuple(label for label, _step in steps)
+
+
+def _flat_form(steps: list[tuple[str, Step]]) -> struct.Struct | None:
+    """The one struct that reads every member of a class, or ``None`` for a class a member of
+    which is not one number: a fixed array of them is a row, an object or a string a step."""
+    fields = [step for _label, step in steps]
+    if not fields or not all(_a_member_number(field) for field in fields):
+        return None
+    return _form("".join(cast(_Plain, field).code for field in fields))
+
+
+def _a_member_number(step: Any) -> bool:
+    """Is this member one plain number, the kind a struct reads beside its neighbours?"""
+    return type(step) is _Plain and step.count == 1 and not step.shaped
+
+
+def _streamed_flat(form: struct.Struct) -> Callable[[Buffer], tuple[Any, ...]]:
+    """A class that streamed itself, read as the one struct over its members."""
+
+    def value(buf: Buffer) -> tuple[Any, ...]:
+        version, end = buf.header()
+        if version == 0 and end is not None and end - buf.pos >= 4:
+            buf.u32()  # a foreign class carries its checksum where a version would go
+        values = buf.scalars(form)
+        buf.resume(end)
+        return values
+
+    return value
+
+
 def _plan(steps: list[tuple[str, Step]]) -> list[Step]:
     """The members of a class as the fewest reads that read them in the order they come.
 

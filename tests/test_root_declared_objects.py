@@ -14,12 +14,15 @@ from __future__ import annotations
 import datetime
 import pathlib
 import re
+import struct
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect, fresh
+from xrdroot.buffer import BYTE_COUNT_MASK, Buffer
 from xrdroot.cppstd.bitset import Bitset
 from xrdroot.cppstd.stdlib import complex_type
 from xrdroot.errors import UnsupportedFeatureError
@@ -37,6 +40,7 @@ from xrdroot.pyroot.core.declared import (
     plain_value,
     root_row,
 )
+from xrdroot.rdobjects import flat_reader_for
 from xrdroot.streamers import read_infos
 from xrdroot.wclasses import checksum
 from xrdroot.wdeclared import (
@@ -357,6 +361,54 @@ def test_a_foreign_class_of_numbers_carries_its_checksum_after_a_zero_version():
     written = WBuffer()
     assert written_flat(written, "C", foreign, [3, 4]) is True
     assert bytes(written.data)[4:6] == b"\x00\x00"  # version zero, the checksum after it
+
+
+def _record(version: int, body: bytes) -> bytes:
+    """A record as ROOT writes one: its byte count, its version, then the body."""
+    return struct.pack(">IH", BYTE_COUNT_MASK | (2 + len(body)), version) + body
+
+
+def test_a_class_of_numbers_is_read_as_one_struct_of_its_members():
+    """The reader a bulk loop takes for a class of numbers gives every member's value in the
+    order their names are - and stands aside for a class that is more than that."""
+    fields = tuple(Field(name, "int", "", ()) for name in ("a", "b", "c"))
+    catalogue = Catalogue({"C": Declaration("C", 2, False, (), fields)})
+    read, labels = flat_reader_for("C", catalogue)
+    assert labels == ("a", "b", "c")
+    assert read(Buffer(_record(2, struct.pack(">iii", 7, 8, 9)))) == (7, 8, 9)
+    arrays = Catalogue({"C": Declaration("C", 2, False, (), (Field("v", "int", "", (3,)),))})
+    assert flat_reader_for("C", arrays) is None  # a fixed array is a row, not one number
+    assert flat_reader_for("vector<int>", catalogue) is None  # a container is not one either
+
+
+def test_a_foreign_class_of_numbers_reads_past_the_checksum_its_version_holds():
+    """A class without ``ClassDef`` carries its checksum where a version would go, which a
+    read of one struct steps over as the members' own steps do."""
+    fields = tuple(Field(name, "int", "", ()) for name in ("a", "b"))
+    catalogue = Catalogue({"C": Declaration("C", 0, True, (), fields)})
+    read, _labels = flat_reader_for("C", catalogue)
+    body = struct.pack(">I", 1234) + struct.pack(">ii", 1, 2)
+    assert read(Buffer(_record(0, body))) == (1, 2)
+
+
+def test_a_flat_read_stands_aside_for_a_class_or_a_file_it_cannot_fill(monkeypatch):
+    """A class the catalogue does not describe, a class that is more than numbers, and a file
+    whose members are not the ones the class declares: the reader's own steps take them."""
+    from xrdroot.pyroot.core import buffers
+
+    class _Nothing:
+        def declared(self, name: str) -> None:
+            return None
+
+    assert buffers._read_flat(Buffer(b""), "X", _Nothing(), object()) is None
+    fields = tuple(Field(name, "int", "", ()) for name in ("a", "b"))
+    catalogue = Catalogue({"C": Declaration("C", 2, False, (), fields)})
+    strings = Catalogue({"C": Declaration("C", 2, False, (), (Field("s", "TString", "", ()),))})
+    assert buffers._read_flat(Buffer(b""), "C", strings, object()) is None
+    monkeypatch.setattr(
+        buffers, "flat_reader_for", lambda name, held: (lambda buf: (1, 2), ("z", "y"))
+    )
+    assert buffers._read_flat(Buffer(b""), "C", catalogue, SimpleNamespace()) is None
 
 
 def test_a_container_of_containers_of_objects_is_refused():
