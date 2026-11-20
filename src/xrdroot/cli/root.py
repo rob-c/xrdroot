@@ -36,12 +36,16 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..pycint.interactive import Interpreter, interact
-from ..pycint.interactive.commands import dispatch
-from ..pycint.interactive.terminal import say
 from .run import LOGOFF, LOGON
+
+#: The interpreter this subcommand runs a session with, imported by `run` and not here: a
+#: process that asked for ``xrdroot --help``, or for any other subcommand, used to import it -
+#: and through it the whole runtime, 798 modules for a list of flags. Type-checking and the
+#: annotations below are all that is wanted at import time.
+if TYPE_CHECKING:
+    from ..pycint.interactive import Interpreter
 
 __all__ = ["add_parser", "run", "banner", "Options", "options"]
 
@@ -153,6 +157,9 @@ def _logon(prompt: Interpreter, name: str) -> None:
     typed at the prompt, so no prompt number is used up and its value is no exit status."""
     if Path(name).is_file():
         status = prompt.last_status
+        from ..pycint.interactive.commands import dispatch
+        from ..pycint.interactive.terminal import say
+
         say(dispatch(prompt, f".x {name}") or [])
         prompt.last_status = status
 
@@ -190,6 +197,8 @@ def _start(prompt: Interpreter, given: Options) -> None:
     for what, text in given.items:
         if prompt.finished or prompt.failed:
             return
+        from ..pycint.interactive.terminal import say
+
         say(prompt.feed(text) if what == "e" else prompt.given(text))
 
 
@@ -220,6 +229,8 @@ def _session(given: Options, argv: list[str]) -> int:
     if not given.no_banner and not given.items:
         sys.stdout.write(banner() + "\n")
     with started(["root.exe", *argv]):
+        from ..pycint.interactive import Interpreter
+
         prompt = Interpreter(exit_on_error=given.exit_on_error)
         logons = () if given.no_logon else (LOGON, LOGOFF)
         for name in logons[:1]:
@@ -241,4 +252,8 @@ def _running(prompt: Interpreter, given: Options) -> int:
     if given.items and not given.quit:
         sys.stdout.write("\n")
     _start(prompt, given)
-    return prompt.status if given.quit or prompt.finished else interact(prompt)
+    if given.quit or prompt.finished:
+        return prompt.status
+    from ..pycint.interactive import interact
+
+    return interact(prompt)
