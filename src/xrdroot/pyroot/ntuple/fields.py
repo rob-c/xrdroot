@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 
 from ...errors import UnsupportedFeatureError
-from ...rntuple.writer import CXX, CollectionSpec, RecordSpec
+from ...rntuple.writer import CXX, CollectionSpec, LowPrecisionSpec, RecordSpec
 from ..stl import _spelled, _split_arguments, element_type, std, string
 
 __all__ = ["FieldType", "RFieldPtr", "field_type"]
@@ -40,8 +40,12 @@ class FieldType:
         members: Any = None,
         bits: int = 0,
         item: FieldType | None = None,
+        precision: LowPrecisionSpec | None = None,
     ) -> None:
         self.cxx, self.dtype, self.vector = cxx, dtype, vector
+        #: For a float or a double told to be stored in fewer bits, how it is stored;
+        #: ``None`` for every other field, which keeps its own type's precision.
+        self.precision = precision
         #: For a ``std::bitset``, how many bits an entry holds; zero for every other field.
         self.bits = bits
         #: For a record, its members - ``(name, FieldType)`` - in the class's order;
@@ -71,6 +75,8 @@ class FieldType:
         class's name, and each member's own declaration under it; a set or a map as
         a :class:`~xrdroot.rntuple.writer.CollectionSpec` of the item under it.
         """
+        if self.precision is not None:
+            return self.precision
         if self.record:
             assert self.members is not None
             return RecordSpec(self.cxx, [(name, member.spec) for name, member in self.members])

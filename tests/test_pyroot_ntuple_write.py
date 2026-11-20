@@ -67,6 +67,60 @@ def test_a_bitset_field_of_a_model_is_written_its_bits_lowest_first() -> None:
     assert _read("w.root")["foo"] == [[bool(0xFA2 >> bit & 1) for bit in range(16)]]
 
 
+def test_a_float_field_told_to_be_kept_in_fewer_bits_is_written_that_way() -> None:
+    """``ntpl018_low_precision_floats`` sets a field's column type - ``SetHalfPrecision()``,
+    ``SetTruncated(bits)``, ``SetQuantized(low, high, bits)`` - before the model takes it,
+    and ROOT reads the float back as a float whatever column holds it."""
+    model = ROOT.RNTupleModel.Create()
+    for name, store in (
+        ("half", lambda field: field.SetHalfPrecision()),
+        ("trunc", lambda field: field.SetTruncated(20)),
+        ("quant", lambda field: field.SetQuantized(-1.0, 1.0, 24)),
+    ):
+        field = ROOT.RField["float"](name)
+        store(field)
+        model.AddField(field)
+    for name in ("half", "trunc", "quant"):
+        model.GetDefaultEntry()[name] = 0.1
+    writer = ROOT.RNTupleWriter.Recreate(ROOT.std.move(model), "events", "w.root")
+    writer.Fill()
+    del writer
+    read = _read("w.root")
+    # The values ROOT keeps at each precision, which are what it reads back.
+    assert read["half"] == [0.0999755859375]
+    assert read["trunc"] == [0.0999755859375]
+    assert read["quant"] == [0.09999997168779373]
+    with xrdroot.open_root("w.root") as f:
+        assert [column.type for column in f["events"]._store.schema.columns] == [0x0B, 0x1C, 0x1D]
+
+
+def test_a_field_that_is_no_float_has_no_precision_to_give_up() -> None:
+    """Only a float or a double can be stored in fewer bits; a vector's items are a field
+    of their own, one lower, and a string has no bits of its own to lose."""
+    for cxx in ("std::vector<float>", "std::string"):
+        field = ROOT.RFieldBase.Create("v", cxx).Unwrap()
+        with pytest.raises(xrdroot.UnsupportedFeatureError, match="one float or one double"):
+            field.SetTruncated(16)
+
+
+def test_a_quantized_field_is_set_by_the_range_and_the_bits_in_either_order() -> None:
+    """ROOT 6.40 takes ``SetQuantized(min, max, nBits)`` and the ``(nBits, {min, max})``
+    that replaces it; a call naming neither is refused with both spellings."""
+    field = ROOT.RField["float"]("q")
+    field.SetQuantized(24, (-1.0, 1.0))
+    assert repr(field.kind().spec) == "<LowPrecisionSpec quantized keeping 24 of a float32>"
+    with pytest.raises(TypeError, match="takes the range and the bits"):
+        field.SetQuantized(-1.0)
+
+
+def test_walking_a_fields_subfields_is_refused_by_name() -> None:
+    """``for (auto &field : *fieldEvents)`` walks a class's whole hierarchy in ROOT, to
+    find the float under each member; nothing here walks one."""
+    field = ROOT.RField["float"]("pt")
+    with pytest.raises(xrdroot.UnsupportedFeatureError, match="walking the subfields"):
+        len(field)
+
+
 def test_a_set_and_a_map_field_are_written_from_the_items_they_hold() -> None:
     """The three unordered collections of roottest's makeproject header: each is written
     as ROOT writes a collection - the index column over the items, then the items."""

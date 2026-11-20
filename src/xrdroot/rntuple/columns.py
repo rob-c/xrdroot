@@ -24,7 +24,7 @@ import numpy as np
 
 from ..errors import FormatError, UnsupportedFeatureError
 
-__all__ = ["Encoding", "ENCODINGS", "decode", "encode", "stored_size"]
+__all__ = ["Encoding", "ENCODINGS", "decode", "element_bytes", "encode", "stored_size"]
 
 
 class Encoding:
@@ -116,6 +116,13 @@ def encoding(code: int) -> Encoding:
     return found
 
 
+def element_bytes(kind: Encoding, bits: int) -> float:
+    """How many bytes one element takes in a page: a fraction of one for a packed bit."""
+    if kind.packed:
+        return bits / 8
+    return float(kind.dtype.itemsize)
+
+
 def stored_size(kind: Encoding, bits: int, count: int) -> int:
     """How many bytes ``count`` elements take in a page before compression."""
     if kind.packed:
@@ -149,6 +156,33 @@ def _real32(kind: Encoding, bits: int, low: float, high: float, raw: bytes, coun
         raise FormatError(f"a Real32Quant column says it keeps {bits} bits, not 1 to 32")
     steps = _bitfield(raw, bits, count).astype(np.float64)
     return (low + (high - low) * steps / float((1 << bits) - 1)).astype(np.float32)
+
+
+def _truncated(bits: int, values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+    """The top ``bits`` bits of each value's float32, which is what ROOT keeps of it.
+
+    Truncation drops the low bits of the pattern rather than rounding them, and
+    a ``double`` field is narrowed to a float first, as ROOT narrows it.
+    """
+    if not 10 <= bits <= 31:
+        raise ValueError(f"a Real32Trunc column keeps {bits} bits, not 10 to 31")
+    squeezed = np.ascontiguousarray(values, np.float32).view(np.uint32)
+    return np.right_shift(squeezed, np.uint32(32 - bits)).astype(np.uint64)
+
+
+def _quantized(
+    bits: int, low: float, high: float, values: np.ndarray[Any, Any]
+) -> np.ndarray[Any, Any]:
+    """Where each value falls between ``low`` and ``high``, as ROOT counts it.
+
+    ROOT rounds the count to the nearest step, halves away from zero, which for
+    a value the range holds is ``floor(count + 1/2)``.
+    """
+    if not 1 <= bits <= 32:
+        raise ValueError(f"a Real32Quant column keeps {bits} bits, not 1 to 32")
+    steps = float((1 << bits) - 1)
+    counted = (np.asarray(values, np.float64) - low) * steps / (high - low) + 0.5
+    return np.floor(counted).astype(np.uint64)
 
 
 def _unsplit(raw: bytes, dtype: np.dtype[Any], count: int) -> np.ndarray[Any, Any]:
@@ -191,14 +225,26 @@ def decode(column: Any, raw: bytes, count: int) -> np.ndarray[Any, Any]:
     return values
 
 
-def encode(kind: Encoding, values: np.ndarray[Any, Any]) -> bytes:
+def encode(
+    kind: Encoding,
+    values: np.ndarray[Any, Any],
+    bits: int = 0,
+    low: float = 0.0,
+    high: float = 0.0,
+) -> bytes:
     """One page's elements, packed the way ``kind`` stores them.
 
-    The writer here only ever asks for the encodings it writes - booleans,
-    whole bytes, plain little-endian numbers and the split ones - which is
-    :func:`decode` backwards and in the other order: the differences and the
-    zigzag go first, and the bytes are rearranged last.
+    This is :func:`decode` backwards and in the other order: a lossy float is
+    squeezed first, then the differences and the zigzag go, and the bytes are
+    rearranged last. ``bits``, ``low`` and ``high`` are the column's own, which
+    only the lossy float encodings read.
     """
+    if kind.name == "Real16":
+        return bytes(np.ascontiguousarray(values, "<f2").tobytes())
+    if kind.name == "Real32Trunc":
+        return _packbits(_truncated(bits, values), bits)
+    if kind.name == "Real32Quant":
+        return _packbits(_quantized(bits, low, high, values), bits)
     if kind.name == "Bit":
         return _packbits(values.astype(np.uint8), 1)
     data = np.ascontiguousarray(values, dtype=kind.dtype)

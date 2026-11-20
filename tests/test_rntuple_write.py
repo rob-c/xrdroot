@@ -21,9 +21,9 @@ import xrdroot
 from support import plain
 from xrdroot import Jagged, RNTuple, WritableRNTuple, create, open_root
 from xrdroot.rntuple import checksum as xxh3
-from xrdroot.rntuple.columns import ENCODINGS
+from xrdroot.rntuple.columns import ENCODINGS, encode
 from xrdroot.rntuple.schema import COLLECTION, LEAF, RECORD, REPETITIVE
-from xrdroot.rntuple.writer import CollectionSpec, RecordSpec, spec_of
+from xrdroot.rntuple.writer import CollectionSpec, LowPrecisionSpec, RecordSpec, spec_of
 from xrdroot.streamers import read_streamers
 
 DATA = pathlib.Path(__file__).parent / "data" / "rntuple"
@@ -196,6 +196,151 @@ def test_a_record_field_is_laid_out_as_root_lays_a_class_out():
     assert [field.children for field in fields] == [[1, 2, 4], [], [3], [], []]
     assert [len(field.columns) for field in fields] == [0, 1, 1, 1, 1]
     assert plain(found.arrays())["evt"] == rows
+
+
+#: What ROOT 6.40.04 itself stores a float as at each low precision, read back out of
+#: the file it wrote: the values it keeps are the ones a field must come back to.
+LOW_PRECISION_VALUES = [0.0, 1.0, -1.0, 0.1, 0.5, 1 / 3, 0.9999999, -0.7]
+
+
+def _low_precision(fields, values=LOW_PRECISION_VALUES):
+    batch = {name: np.array(values, np.float64) for name in fields}
+    return roundtrip(fields, [batch])
+
+
+def test_a_half_precision_field_is_written_as_an_ieee_half():
+    """``SetHalfPrecision()``: ROOT stores the float as a 16-bit IEEE half, which is a
+    column of its own type - not a float with fewer bits of something else."""
+    found = _low_precision({"h": LowPrecisionSpec.half()})
+    columns = found._store.schema.columns
+    assert [(ENCODINGS[c.type].name, c.bits, c.flags) for c in columns] == [("Real16", 16, 0)]
+    assert found.typenames() == {"h": "float32"}
+    assert list(found.arrays()["h"]) == [
+        np.float32(0.0), np.float32(1.0), np.float32(-1.0), np.float32(0.0999755859375),
+        np.float32(0.5), np.float32(0.333251953125), np.float32(1.0), np.float32(-0.7001953125),
+    ]  # fmt: skip
+
+
+def test_a_truncated_field_keeps_the_top_bits_of_its_float_and_drops_the_rest():
+    """``SetTruncated(bits)``: the value's bit pattern loses everything below ``bits`` -
+    dropped, not rounded - so that ROOT reads back the truncated float."""
+    found = _low_precision(
+        {"t20": LowPrecisionSpec.truncated(20), "t10": LowPrecisionSpec.truncated(10)}
+    )
+    columns = found._store.schema.columns
+    assert [(ENCODINGS[c.type].name, c.bits, c.flags) for c in columns] == [
+        ("Real32Trunc", 20, 0), ("Real32Trunc", 10, 0),
+    ]  # fmt: skip
+    read = found.arrays()
+    assert list(read["t20"]) == [
+        np.float32(0.0), np.float32(1.0), np.float32(-1.0), np.float32(0.099975586),
+        np.float32(0.5), np.float32(0.33325195), np.float32(0.99975586), np.float32(-0.6999512),
+    ]  # fmt: skip
+    assert list(read["t10"]) == [
+        np.float32(0.0), np.float32(1.0), np.float32(-1.0), np.float32(0.09375),
+        np.float32(0.5), np.float32(0.25), np.float32(0.75), np.float32(-0.5),
+    ]  # fmt: skip
+
+
+def test_a_quantized_field_counts_steps_between_the_range_it_declares():
+    """``SetQuantized(low, high, bits)``: a count of equal steps, which is why the column
+    carries the range it was counted over - ROOT keeps it in the column's own flags."""
+    found = _low_precision({"q": LowPrecisionSpec.quantized(24, -1.0, 1.0)})
+    (column,) = found._store.schema.columns
+    assert (ENCODINGS[column.type].name, column.bits, column.flags) == ("Real32Quant", 24, 2)
+    assert (column.low, column.high) == (-1.0, 1.0)
+    assert list(found.arrays()["q"]) == [
+        np.float32(5.960464477539063e-08), np.float32(1.0), np.float32(-1.0),
+        np.float32(0.09999997168779373), np.float32(0.4999999701976776),
+        np.float32(0.3333333432674408), np.float32(0.9999998807907104),
+        np.float32(-0.7000000476837158),
+    ]  # fmt: skip
+
+
+def test_a_low_precision_double_field_is_stored_the_same_way_and_read_back_as_a_double():
+    """A ``double`` told to keep 16 bits is narrowed to a float and truncated, as ROOT
+    narrows it, while the field itself stays a ``double`` in the file."""
+    found = _low_precision(
+        {"d": LowPrecisionSpec.truncated(16, np.float64), "h": LowPrecisionSpec.half(np.float64)}
+    )
+    assert found.cxx_types() == {"d": "double", "h": "double"}
+    assert [ENCODINGS[c.type].name for c in found._store.schema.columns] == [
+        "Real32Trunc", "Real16",
+    ]  # fmt: skip
+    read = found.arrays()
+    assert read["d"].dtype == np.float64
+    assert list(read["d"]) == [
+        0.0, 1.0, -1.0, 0.099609375, 0.5, 0.33203125, 0.99609375, -0.69921875,
+    ]  # fmt: skip
+    assert list(read["h"]) == [
+        0.0, 1.0, -1.0, 0.0999755859375, 0.5, 0.333251953125, 1.0, -0.7001953125,
+    ]  # fmt: skip
+
+
+def test_a_low_precision_field_keeps_its_pages_and_clusters_whole():
+    """The bit-packed columns are cut into pages of the same megabyte as the rest, so a
+    field of many entries still comes back entry by entry across clusters."""
+    spread = np.linspace(-1, 1, 300, dtype=np.float32)
+    found = roundtrip(
+        {"t": LowPrecisionSpec.truncated(20), "q": LowPrecisionSpec.quantized(24, -1.0, 1.0)},
+        [{"t": spread, "q": spread}],
+        cluster_size=64,
+    )
+    assert len(found) == 300
+    assert found.num_clusters > 1
+    read = found.arrays()
+    assert np.all(np.abs(read["t"] - np.linspace(-1, 1, 300)) < 0.001)
+    assert np.all(np.abs(read["q"] - np.linspace(-1, 1, 300)) < 1e-6)
+
+
+def test_a_quantized_field_takes_a_batch_of_no_entries():
+    """Nothing is out of range in no values, so a field asked for none of them writes an
+    RNTuple of no entries rather than refusing one."""
+    found = roundtrip({"q": LowPrecisionSpec.quantized(8, -1.0, 1.0)}, [{"q": np.zeros(0)}])
+    assert (len(found), list(found.arrays()["q"])) == (0, [])
+
+
+def test_a_quantized_field_refuses_a_batch_that_leaves_its_range():
+    """ROOT reports the entries that left the range when it commits the cluster; the
+    batch is refused whole here, before any of it is kept."""
+    with create(io.BytesIO()) as f:
+        ntuple = f.rntuple("e", {"q": LowPrecisionSpec.quantized(24, -1.0, 1.0)})
+        with pytest.raises(ValueError, match="is quantized between -1 and 1"):
+            ntuple.extend({"q": np.array([0.0, 1.5], np.float32)})
+        assert len(ntuple) == 0
+
+
+@pytest.mark.parametrize(
+    ("spec", "message"),
+    [
+        (LowPrecisionSpec.truncated(9), "declared truncated to 9 bits"),
+        (LowPrecisionSpec.truncated(32), "declared truncated to 32 bits"),
+        (LowPrecisionSpec.quantized(0, -1.0, 1.0), "declared quantized to 0 bits"),
+        (LowPrecisionSpec.quantized(33, -1.0, 1.0), "declared quantized to 33 bits"),
+        (LowPrecisionSpec.half(np.int32), "is no float"),
+        (LowPrecisionSpec.quantized(8, -1.0, 1.0, np.int16), "is no float"),
+    ],
+)
+def test_a_low_precision_field_that_keeps_no_float_is_refused_by_name(spec, message):
+    with create(io.BytesIO()) as f:
+        with pytest.raises(ValueError, match=message):
+            f.rntuple("e", {"v": spec})
+
+
+def test_the_bits_of_a_low_precision_column_are_checked_where_they_are_packed():
+    """The writer refuses the declaration first, and the encoders check the bits too, so
+    that no column can be packed at a width the reader of it would not know."""
+    values = np.array([0.5], np.float32)
+    trunc = next(kind for kind in ENCODINGS.values() if kind.name == "Real32Trunc")
+    quant = next(kind for kind in ENCODINGS.values() if kind.name == "Real32Quant")
+    with pytest.raises(ValueError, match="a Real32Trunc column keeps 8 bits, not 10 to 31"):
+        encode(trunc, values, 8)
+    with pytest.raises(ValueError, match="a Real32Quant column keeps 0 bits, not 1 to 32"):
+        encode(quant, values, 0, -1.0, 1.0)
+    # 0.5f is 0x3F000000; its top 20 bits are 0x3F000, packed end to end as three bytes.
+    assert encode(trunc, values, 20) == bytes.fromhex("00f003")
+    # The top of the range is the last of 24 bits of steps: 0xFFFFFF, packed as three bytes.
+    assert encode(quant, np.array([1.0], np.float32), 24, -1.0, 1.0) == bytes.fromhex("ffffff")
 
 
 def test_a_set_is_written_as_an_index_column_over_its_items():

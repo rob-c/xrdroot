@@ -309,7 +309,9 @@ def write_description(out: Builder, schema: Schema | None) -> None:
     mark = out.list(len(columns))
     for column in columns:
         record = out.record()
-        out.pack("HHIHH", column.type, column.bits, column.field, 0, column.rep)
+        out.pack("HHIHH", column.type, column.bits, column.field, column.flags, column.rep)
+        if column.flags & RANGED:
+            out.pack("dd", column.low, column.high)
         out.close(record)
     out.close(mark)
     out.empty_list()  # no alias columns: nothing written here is projected

@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 
 from ...errors import UnsupportedFeatureError
+from ...rntuple.writer import LowPrecisionSpec
 from ..core.objects import typed
 from ..stl import std
 from .fields import FieldType, RFieldPtr, field_type
@@ -108,13 +109,73 @@ class RField(RFieldBase):
     def kind(self) -> FieldType:
         return self._type
 
-    def _low_precision(self, *args: Any) -> None:
-        raise UnsupportedFeatureError(
-            "an RNTuple field stored at low precision - half-precision, truncated or quantized "
-            "floats - is not supported: xrdroot's RNTuple writer stores a float in its own 32 "
-            "bits, as ROOT does unless told otherwise.")
+    def __len__(self) -> int:
+        """Refuse a walk over a field's hierarchy, which is what ROOT's ``begin()`` is for.
 
-    SetHalfPrecision = SetTruncated = SetQuantized = _low_precision
+        ``for (auto &field : someField)`` visits the field and every subfield under
+        it, so that a class's members can be told to be stored another way. Nothing
+        here walks a field: a class that a model holds is written from the members
+        its dictionary declares, and a member is changed by declaring it so.
+        """
+        raise UnsupportedFeatureError(
+            f"walking the subfields of the RNTuple field {self._name!r} is not supported: "
+            f"xrdroot writes a class's members from its dictionary, and a member is given "
+            f"another precision by being declared with it - as "
+            f"LowPrecisionSpec.truncated(16) - rather than found by walking the field"
+        )
+
+    def _low_precision(self, precision: LowPrecisionSpec) -> None:
+        """Store this field in fewer bits than its type holds, as ROOT's columns do.
+
+        Only a field holding one ``float`` or one ``double`` has a precision to give
+        up - a vector's items are a field of their own, one lower, which ROOT reaches
+        by walking the vector's field, and nothing here walks one.
+        """
+        if not _stores_one_float(self._type):
+            raise UnsupportedFeatureError(
+                f"the RNTuple field {self._name!r} is a {self._type.cxx}, and only a field "
+                f"holding one float or one double has fewer bits to be stored in; a "
+                f"vector's items are a field of their own, one lower"
+            )
+        self._type.precision = precision
+
+    def SetHalfPrecision(self) -> None:
+        """``SetHalfPrecision()``: an IEEE half, 16 bits where a float has 32."""
+        self._low_precision(LowPrecisionSpec.half(self._type.dtype))
+
+    def SetTruncated(self, bits: Any) -> None:
+        """``SetTruncated(bits)``: the value's top ``bits``, every one below dropped."""
+        self._low_precision(LowPrecisionSpec.truncated(int(bits), self._type.dtype))
+
+    def SetQuantized(self, *args: Any) -> None:
+        """``SetQuantized(low, high, bits)``: a step between ``low`` and ``high``.
+
+        ROOT 6.40 spells this ``SetQuantized(min, max, nBits)``, replacing it with
+        ``SetQuantized(nBits, {min, max})``; both are taken here.
+        """
+        low, high, bits = _quantized_arguments(args)
+        self._low_precision(LowPrecisionSpec.quantized(bits, low, high, self._type.dtype))
+
+
+def _stores_one_float(kind: FieldType) -> bool:
+    """Whether a field holds one float or one double - the only field with bits to give up."""
+    if kind.vector or kind.record or kind.collection:
+        return False
+    return kind.dtype is not None and kind.dtype.name in ("float32", "float64")
+
+
+def _quantized_arguments(given: tuple[Any, ...]) -> tuple[float, float, int]:
+    """The range and the bits of a ``SetQuantized`` call, in either spelling ROOT has."""
+    if len(given) == 3:
+        low, high, bits = given
+    elif len(given) == 2:
+        bits, (low, high) = given
+    else:
+        raise TypeError(
+            "SetQuantized takes the range and the bits - SetQuantized(min, max, nBits), or "
+            "SetQuantized(nBits, (min, max))"
+        )
+    return float(low), float(high), int(bits)
 
 
 class REntry:

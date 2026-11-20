@@ -10,12 +10,22 @@ only part of it a ROOT file's directory lists is the anchor, a
 ``arrays`` and ``iterate``.
 
 :meth:`~xrdroot.WritableFile.rntuple` writes one, from numbers, booleans,
-strings and vectors of numbers.
+strings and vectors of numbers, as a class is from a
+:class:`~.writer.RecordSpec` and a set or a map from a
+:class:`~.writer.CollectionSpec`; a float or a double can be asked to be stored
+in fewer bits than it holds with a :class:`~.writer.LowPrecisionSpec`.
 """
 
 from __future__ import annotations
 
 from .reader import RField, RNTuple
-from .writer import WritableRNTuple
+from .writer import CollectionSpec, LowPrecisionSpec, RecordSpec, WritableRNTuple
 
-__all__ = ["RNTuple", "RField", "WritableRNTuple"]
+__all__ = [
+    "RNTuple",
+    "RField",
+    "WritableRNTuple",
+    "CollectionSpec",
+    "LowPrecisionSpec",
+    "RecordSpec",
+]

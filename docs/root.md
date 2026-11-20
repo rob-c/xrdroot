@@ -3230,7 +3230,25 @@ with xrdroot.create("out.root") as f:
 A field is a number — a NumPy type, a C++ name such as `"std::uint16_t"` or
 `"double"`, or a Python `bool`, `int` or `float` — or `str` for a
 `std::string`, or a vector of a number, spelled `[np.float32]` or
-`"std::vector<float>"`. A vector is given as a `Jagged`, an Awkward list, or a
+`"std::vector<float>"`, or a `RecordSpec` for a class, or a
+`CollectionSpec` for a set or a map. A float or a double field can be asked
+to be stored in fewer bits than it holds, as `SetHalfPrecision()` and its two
+kin do in ROOT, with a `LowPrecisionSpec`, and the column type that gives —
+`Real16`, `Real32Trunc`, `Real32Quant` — is what the file says, the field
+staying a `float` or a `double`:
+
+```python
+from xrdroot.rntuple import LowPrecisionSpec
+
+fields = {
+    "pt": LowPrecisionSpec.half(),                    # an IEEE half: 16 bits for 32
+    "e": LowPrecisionSpec.truncated(20),              # the top 20 of the float's 32
+    "phi": LowPrecisionSpec.quantized(24, -3.2, 3.2),  # a step between two values
+}
+```
+
+A quantized field refuses a batch holding a value outside the range it
+declares, which ROOT reports when it commits the cluster. A vector is given as a `Jagged`, an Awkward list, or a
 list of rows. Entries gather a cluster at a time — `cluster_size` bytes of
 values, 32 MB unless said otherwise — and each column is written in pages of
 at most `page_size` bytes, ROOT's own megabyte by default, so an RNTuple far
@@ -3246,9 +3264,11 @@ XXH3 here when it is not, which the test suite holds to the C library's
 digests and to the checksums ROOT wrote into the files under `tests/data`. What
 this writes is read back by uproot and by go-hep, which checks every checksum.
 
-Records, nested collections, variants and the lossy float encodings are not
-written: their layout is well defined, but a writer that gets one subtly wrong
-makes files ROOT misreads, and each is refused by name until it is here.
+A class is written as a `RecordSpec` of the members its dictionary declares,
+and a set or a map as a `CollectionSpec` over its items, which is how ROOT
+writes one. Variants and collections of strings are refused by name: a writer
+that gets one subtly wrong makes files ROOT misreads, and each is refused
+rather than guessed at.
 
 ## The shell and command-line tools
 

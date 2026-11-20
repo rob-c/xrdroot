@@ -206,8 +206,8 @@ def test_a_field_made_apart_is_cloned_under_another_name() -> None:
     clone = field.Clone("y")
     assert (clone.GetFieldName(), clone.GetQualifiedFieldName(), clone.GetDescription()) == (
         "y", "y", "an x")  # fmt: skip
-    with pytest.raises(UnsupportedFeatureError, match="low precision"):
-        field.SetHalfPrecision()
+    field.SetHalfPrecision()
+    assert repr(field.kind().spec) == "<LowPrecisionSpec half keeping a half of a float32>"
 
 
 def test_a_field_made_from_a_type_name_comes_back_in_a_result() -> None:

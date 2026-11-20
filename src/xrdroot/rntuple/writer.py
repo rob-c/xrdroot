@@ -12,7 +12,10 @@ compressed, which is what they are for, and the plain ones when it is not.
 
 The fields that can be written are the ones whose layout is beyond doubt:
 the fundamental numbers, ``bool``, ``std::string``, and a ``std::vector`` of a
-number or of another such vector. A collection nests as ROOT nests it: the
+number or of another such vector. A float or a double can also be asked to be
+stored in fewer bits than it holds - an IEEE half, the top bits of its own
+pattern, or a count of steps between two values - which changes its column,
+not its type. A collection nests as ROOT nests it: the
 outer collection's offset column says where each entry's items end, the one
 under it where those items' own items end, and so on down to a column of the
 leaves. A class is a :class:`RecordSpec` - the class's name, and a field of its
@@ -38,12 +41,13 @@ from ..library import _module
 from ..tree import Jagged
 from ..winfo import INFOS
 from .checksum import checksum
-from .columns import ENCODINGS, Encoding, encode
+from .columns import ENCODINGS, Encoding, element_bytes, encode
 from .envelope import FOOTER, HEADER, PAGE_LIST, Anchor, Builder, Link, envelope
 from .fields import FUNDAMENTALS
 from .schema import (
     COLLECTION,
     LEAF,
+    RANGED,
     RECORD,
     REPETITIVE,
     Column,
@@ -58,6 +62,7 @@ if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
 __all__ = [
     "WritableRNTuple",
     "CollectionSpec",
+    "LowPrecisionSpec",
     "RecordSpec",
     "spec_of",
     "CLUSTER_BYTES",
@@ -118,6 +123,11 @@ PYTHON = {bool: "bool", int: "int64", float: "float64"}
 VECTORS = ("std::vector<", "ROOT::VecOps::RVec<", "ROOT::RVec<", "vector<")
 #: How a ``std::bitset<N>`` field is declared, its width between the angle brackets.
 BITSETS = "std::bitset<"
+#: The column type ROOT stores each kind of low-precision float in.
+LOW_PRECISION = {"half": "Real16", "truncated": "Real32Trunc", "quantized": "Real32Quant"}
+#: How few and how many bits each of the bit-packed low-precision columns may keep.
+TRUNCATED_BITS = (10, 31)
+QUANTIZED_BITS = (1, 32)
 _BY_NAME = {kind.name: kind for kind in ENCODINGS.values()}
 
 
@@ -128,7 +138,8 @@ def _refuse(name: str, spec: Any) -> ValueError:
         f"bool, int and float), str for std::string, and a vector of a number - or of "
         f"another such vector - spelled [type], 'std::vector<type>' or 'std::vector<"
         f"std::vector<type>>', as 'std::bitset<N>' for N bits, as a RecordSpec for a "
-        f"class's record, or as a CollectionSpec for a set or a map. Variants and "
+        f"class's record, as a CollectionSpec for a set or a map, or as a "
+        f"LowPrecisionSpec for a float kept in fewer bits than it holds. Variants and "
         f"collections of strings are not written, because their layout would be a guess"
     )
 
@@ -189,6 +200,28 @@ def _bitset(name: str, spec: Any) -> int | None:
     if not written.isdigit():
         raise _refuse(name, spec)
     return int(written)
+
+
+def _low_precision(name: str, spec: LowPrecisionSpec) -> tuple[np.dtype[Any], str]:
+    """The float type a low-precision field holds, and the column type it is stored in."""
+    dtype = _number(name, spec.dtype)
+    if dtype.name not in ("float32", "float64"):
+        raise ValueError(
+            f"the field {name!r} is declared at low precision, and {dtype} is no float; "
+            f"only a float or a double is stored in fewer bits than it holds"
+        )
+    if spec.encoding == "truncated" and not TRUNCATED_BITS[0] <= spec.bits <= TRUNCATED_BITS[1]:
+        raise ValueError(
+            f"the field {name!r} is declared truncated to {spec.bits} bits, and a "
+            f"Real32Trunc column keeps {TRUNCATED_BITS[0]} to {TRUNCATED_BITS[1]} of a "
+            f"float's 32 - fewer is no float at all"
+        )
+    if spec.encoding == "quantized" and not QUANTIZED_BITS[0] <= spec.bits <= QUANTIZED_BITS[1]:
+        raise ValueError(
+            f"the field {name!r} is declared quantized to {spec.bits} bits, and a "
+            f"Real32Quant column keeps {QUANTIZED_BITS[0]} to {QUANTIZED_BITS[1]}"
+        )
+    return dtype, LOW_PRECISION[spec.encoding]
 
 
 def _vector(dtype: np.dtype[Any], depth: int) -> str:
@@ -295,14 +328,21 @@ class _Record(_Writer):
 class _Scalar(_Writer):
     """A number or a ``bool`` per entry, in one column."""
 
-    __slots__ = ("dtype",)
+    __slots__ = ("dtype", "precision")
 
-    def __init__(self, name: str, dtype: np.dtype[Any]) -> None:
+    def __init__(
+        self, name: str, dtype: np.dtype[Any], precision: LowPrecisionSpec | None = None
+    ) -> None:
         super().__init__(name)
         self.dtype = dtype
+        #: What a low-precision float field says of its column; ``None`` for every other.
+        self.precision = precision
 
     def prepare(self, values: Any) -> Any:
-        return _numbers(self.name, values, self.dtype)
+        prepared = _numbers(self.name, values, self.dtype)
+        if self.precision is not None and self.precision.encoding == "quantized":
+            _require_in_range(self.name, prepared, self.precision)
+        return prepared
 
     def length(self, prepared: Any) -> int:
         return len(prepared)
@@ -495,6 +535,23 @@ def _bit_row(name: str, value: Any, size: int) -> Any:
             f"{row.shape}; give a number per entry, or that many bits of each"
         )
     return row != 0
+
+
+def _require_in_range(name: str, given: np.ndarray[Any, Any], precision: LowPrecisionSpec) -> None:
+    """Refuse a batch of a quantized field that leaves the range it declared.
+
+    ROOT keeps no count outside the range - it reports the entries that left it
+    when it commits the cluster - so the batch is refused whole here instead.
+    """
+    if not len(given):
+        return
+    low, high = float(given.min()), float(given.max())
+    if low < precision.low or high > precision.high:
+        raise ValueError(
+            f"the field {name!r} is quantized between {precision.low:g} and "
+            f"{precision.high:g}, and these run from {low:g} to {high:g}, which no "
+            f"Real32Quant column can hold"
+        )
 
 
 def _numbers(name: str, values: Any, dtype: np.dtype[Any]) -> np.ndarray[Any, Any]:
@@ -761,6 +818,59 @@ class CollectionSpec:
         return f"<CollectionSpec {self.cxx}>"
 
 
+class LowPrecisionSpec:
+    """A float field stored in fewer bits than its own type holds.
+
+    ROOT writes such a field in one of three column types - ``Real16``, an IEEE
+    half; ``Real32Trunc``, a float's top bits with the rest dropped; and
+    ``Real32Quant``, a count of equal steps between two values - while the field
+    itself stays a ``float`` or a ``double``. What a low-precision field changes
+    is therefore its column, not its type, which is why this is declared where
+    a number would be: ``f.rntuple('e', {'pt': LowPrecisionSpec.half()})``.
+
+    A quantized field carries the range it stays in, and ROOT refuses a value
+    outside it when the cluster is committed; the writer here refuses the batch
+    that holds one, before anything of it is kept.
+    """
+
+    __slots__ = ("dtype", "encoding", "bits", "low", "high")
+
+    def __init__(
+        self, dtype: Any, encoding: str, bits: int = 0, low: float = 0.0, high: float = 0.0
+    ) -> None:
+        #: The float type the field keeps: ``float32`` unless told otherwise.
+        self.dtype = dtype
+        #: Which of ROOT's three low-precision columns it is stored in.
+        self.encoding = encoding
+        #: How many bits the column keeps; none for ``Real16``, whose width is its type's.
+        self.bits = bits
+        #: The range a quantized field's values stay in, and zero for every other kind.
+        self.low = low
+        self.high = high
+
+    def __repr__(self) -> str:
+        kept = f"{self.bits} of" if self.bits else "a half of"
+        return f"<LowPrecisionSpec {self.encoding} keeping {kept} a {np.dtype(self.dtype)}>"
+
+    @classmethod
+    def half(cls, dtype: Any = np.float32) -> LowPrecisionSpec:
+        """``SetHalfPrecision()``: an IEEE half, which is 16 bits for a float's 32."""
+        return cls(dtype, "half")
+
+    @classmethod
+    def truncated(cls, bits: int, dtype: Any = np.float32) -> LowPrecisionSpec:
+        """``SetTruncated(bits)``: the value's top ``bits``, every one below dropped."""
+        return cls(dtype, "truncated", int(bits))
+
+    @classmethod
+    def quantized(
+        cls, bits: int, low: float, high: float, dtype: Any = np.float32
+    ) -> LowPrecisionSpec:
+        """``SetQuantized(low, high, bits)``: a step between ``low`` and ``high``, and
+        the range its values must stay in."""
+        return cls(dtype, "quantized", int(bits), float(low), float(high))
+
+
 class RecordSpec:
     """A field that is a class: its C++ type name, and its members as fields of their own.
 
@@ -894,7 +1004,23 @@ class WritableRNTuple:
     def _declare(self, name: str, spec: Any, parent: int | None = None) -> _Writer:
         if isinstance(spec, RecordSpec):
             return self._record(name, spec, parent)
-        writer: _Writer
+        if isinstance(spec, CollectionSpec):
+            return self._collection(name, spec, parent)
+        if isinstance(spec, LowPrecisionSpec):
+            return self._precision(name, spec, parent)
+        made = self._leaf(name, spec, parent)
+        return made if made is not None else self._rows(name, spec, parent)
+
+    def _precision(self, name: str, spec: LowPrecisionSpec, parent: int | None) -> _Writer:
+        """A float kept in fewer bits: one leaf column, in ROOT's lossy float type."""
+        dtype, kind = _low_precision(name, spec)
+        writer = _Scalar(name, dtype, spec)
+        self._add(name, CXX[dtype.name], LEAF, [kind], writer, parent, precision=spec)
+        return writer
+
+    def _leaf(self, name: str, spec: Any, parent: int | None) -> _Writer | None:
+        """A field of one value - a string, a bitset, or a number - or ``None`` if it is
+        a vector, whose items are fields of their own one level down."""
         if spec is str or spec in ("std::string", "string"):
             writer = _Text(name)
             self._add(name, "std::string", LEAF, [self._index(), "Char"], writer, parent)
@@ -904,14 +1030,17 @@ class WritableRNTuple:
             made = _Bits(name, size)
             self._add(name, str(spec), LEAF, ["Bit"], made, parent, size)
             return made
-        if isinstance(spec, CollectionSpec):
-            return self._collection(name, spec, parent)
+        if _vector_spec(name, spec) is not None:
+            return None
+        dtype = _number(name, spec)
+        leaf = _Scalar(name, dtype)
+        self._add(name, CXX[dtype.name], LEAF, [self._kind(dtype)], leaf, parent)
+        return leaf
+
+    def _rows(self, name: str, spec: Any, parent: int | None) -> _Writer:
+        """A vector: an index column at every level of nesting, then a column of the leaves."""
         found = _vector_spec(name, spec)
-        if found is None:
-            dtype = _number(name, spec)
-            writer = _Scalar(name, dtype)
-            self._add(name, CXX[dtype.name], LEAF, [self._kind(dtype)], writer, parent)
-            return writer
+        assert found is not None, "a vector was asked for by a declaration that is none"
         dtype, depth = found
         writer = _Rows(name, dtype, depth)
         under = self._add(name, _vector(dtype, depth), COLLECTION, [self._index()], writer, parent)
@@ -968,12 +1097,14 @@ class WritableRNTuple:
         writer: _Writer,
         parent: int | None = None,
         array_size: int = 0,
+        precision: LowPrecisionSpec | None = None,
     ) -> int:
         """A field, and its columns; a top-level field is its own parent.
 
         ``array_size`` is how many fixed elements a repetitive field - a
         ``std::bitset`` - holds to every entry, which is what ROOT keeps in the
-        field itself rather than in a column of its own.
+        field itself rather than in a column of its own; ``precision`` is what
+        a low-precision float field says about the column it is stored in.
         """
         fields = self._schema.fields
         id = len(fields)
@@ -983,14 +1114,25 @@ class WritableRNTuple:
             field.array_size = array_size
         fields.append(field)
         for kind in kinds:
-            self._column(kind, id, writer)
+            self._column(kind, id, writer, precision)
         return id
 
-    def _column(self, kind: str, field: int, writer: _Writer) -> None:
+    def _column(
+        self,
+        kind: str,
+        field: int,
+        writer: _Writer,
+        precision: LowPrecisionSpec | None = None,
+    ) -> None:
         code = _BY_NAME[kind]
         columns = self._schema.columns
         column = Column(len(columns), code.code, 8 * code.dtype.itemsize, field)
         column.bits = 1 if kind == "Bit" else column.bits
+        if precision is not None:
+            column.bits = precision.bits or column.bits
+            if precision.encoding == "quantized":
+                column.flags |= RANGED
+                column.low, column.high = precision.low, precision.high
         columns.append(column)
         writer.outs.append(_Out(column))
 
@@ -1081,19 +1223,19 @@ class WritableRNTuple:
             values = out.take()
             if out.kind.index:
                 values = np.cumsum(values, dtype=np.int64)
-            out.pages.append((out.first, self._pages(out.kind, values)))
+            out.pages.append((out.first, self._pages(out, values)))
             out.first += len(values)
         self._clusters.append((self._entries - self._gathered, self._gathered))
         self._gathered, self._bytes = 0, 0
 
-    def _pages(self, kind: Encoding, values: np.ndarray[Any, Any]) -> list[tuple[int, int, int]]:
+    def _pages(self, out: _Out, values: np.ndarray[Any, Any]) -> list[tuple[int, int, int]]:
         """One column of one cluster, in pages of at most ``page_size`` bytes each."""
-        width = kind.dtype.itemsize * (1 if kind.name != "Bit" else 1 / 8)
-        per = max(int(self._page_size // width), 1)
+        column = out.column
+        per = max(int(self._page_size // element_bytes(out.kind, column.bits)), 1)
         pages = []
         for start in range(0, len(values), per):
             chunk = values[start : start + per]
-            raw = self._squeezed(encode(kind, chunk))
+            raw = self._squeezed(encode(out.kind, chunk, column.bits, column.low, column.high))
             offset = self._blob(raw + checksum(raw).to_bytes(8, "little"))
             pages.append((len(chunk), len(raw), offset))
         return pages
