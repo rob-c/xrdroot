@@ -84,6 +84,11 @@ TYPEDEF_SCOPE = re.compile(r"^\s*(?:class|struct|namespace)\s+(?P<name>[A-Za-z_]
 #: A ``const`` typed after a ``*``, which CINT prints against that ``*``: ``void **const *``.
 STAR_CONST = re.compile(r"(\*+)\s+const\b")
 
+#: ``#include "myhdr.h"``: a header whose typedefs the session's macro brought in. Only a
+#: quoted one is followed: ``#include <TString.h>`` is ROOT's own compiled interface, and
+#: ``.typedef`` lists the typedefs a session's sources declare, not the ones a library has.
+INCLUDE = re.compile(r'^\s*#\s*include\s+"(?P<name>[^"]+)"')
+
 #: The sources a session's typedefs are read from: the macros it may load, never a library.
 MACRO_SUFFIXES = frozenset({".C", ".c", ".cxx", ".cpp", ".cc", ".h", ".hxx"})
 
@@ -297,42 +302,74 @@ def _spelled(true: str) -> str:
     return STAR_CONST.sub(r"\1const", " ".join(true.split()))
 
 
-def _typedefs_in(text: str) -> list[tuple[int, str, str]]:
-    """Each ``typedef`` a source declares: its line, what it means, and its name qualified by
-    the class or namespace it sits in, as CINT names one - ``wrapper::iterator_1``."""
-    found: list[tuple[int, str, str]] = []
+def _typedefs_in(text: str, where: str,
+                 included: Callable[[str], list[Typedef]] | None = None) -> list[Typedef]:
+    """Each ``typedef`` a source declares, as CINT lists one: the file it is in - ``where`` -
+    its line, what the new name means, and that name qualified by the class or namespace it
+    sits in, as CINT names one - ``wrapper::iterator_1``.
+
+    A header the source ``#include``s declares its typedefs where that line stands, which is
+    why they come from ``included``: the same scan, on another source.
+    """
+    found: list[Typedef] = []
     scopes: list[tuple[int, str]] = []
     depth = 0
     for number, line in enumerate(text.splitlines(), 1):
         body = line.split("//")[0]
+        header = INCLUDE.match(body)
+        if header is not None and included is not None:
+            found += included(header["name"])
         opened = TYPEDEF_SCOPE.match(body)
         if opened is not None:
             scopes.append((depth, opened["name"]))
         declared = TYPEDEF.match(body)
         if declared is not None:
-            found.append((number, _spelled(declared["true"]),
-                          "::".join([name for _, name in scopes] + [declared["name"]])))
+            name = "::".join([each for _, each in scopes] + [declared["name"]])
+            found.append(Typedef(where, number, _spelled(declared["true"]), name))
         depth += body.count("{") - body.count("}")
         while scopes and depth <= scopes[-1][0]:
             scopes.pop()
     return found
 
 
+def _header_paths(header: str, look_in: list[Path]) -> list[Path]:
+    """The files an ``#include "header"`` names, in the order the search finds them - one per
+    directory that has it, since each may be a different file."""
+    return [where / header for where in look_in if (where / header).is_file()]
+
+
+def _source_typedefs(path: Path, look_in: list[Path],
+                     reading: tuple[Path, ...] = ()) -> list[Typedef]:
+    """What one macro or header declares, and what each header it includes declares.
+
+    ``reading`` is the chain of sources being read, so that a header including itself, or two
+    that include each other, end: a file already in the chain is not read again.
+    """
+    def included(header: str) -> list[Typedef]:
+        """The header ``header``'s typedefs: a quoted include looks beside the file that
+        includes it first, then in a directory ``.I`` added."""
+        return [each for found in _header_paths(header, [path.parent, *look_in])
+                if found.resolve() not in {other.resolve() for other in reading}
+                for each in _source_typedefs(found, look_in, (*reading, path))]
+
+    return _typedefs_in(path.read_text(encoding="utf-8", errors="replace"), path.name,
+                        included)  # fmt: skip
+
+
 def _session_typedefs(interp: Interpreter) -> list[Typedef]:
-    """Every typedef the session knows of: those of the macros it loaded, in the order it
-    loaded them, then those typed at its prompt, read from their C++ as cling read them."""
+    """Every typedef the session knows of: those of the macros it loaded and the headers
+    they include, in the order it loaded them, then those typed at its prompt."""
     found: list[Typedef] = []
     sources = dict.fromkeys(str(Path(each).resolve()) for each in [*interp.loaded, *SOURCES])
     for path in sources:
         if Path(path).suffix not in MACRO_SUFFIXES or not Path(path).is_file():
             continue
-        text = Path(path).read_text(encoding="utf-8", errors="replace")
-        where = os.path.basename(path)
-        found += [Typedef(where, line, true, name) for line, true, name in _typedefs_in(text)]
+        found += _source_typedefs(Path(path), list(interp.unit.includes))
     for (number, line), origin in zip(enumerate(interp.unit.lines, 1), interp.unit.origins,
                                       strict=False):
-        found += [Typedef(f"{PROMPT}_{origin.prompt}", number, true, name)
-                  for number, true, name in _typedefs_in(line)]
+        # A prompt input's typedef is dated by the line it was typed on, as cling dates it.
+        found += [each._replace(line=number)
+                  for each in _typedefs_in(line, f"{PROMPT}_{origin.prompt}")]  # fmt: skip
     return found
 
 

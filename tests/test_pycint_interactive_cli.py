@@ -711,6 +711,62 @@ def test_dot_u_forgets_the_typedefs_of_the_macro_it_unloads() -> None:
     ]  # fmt: skip
 
 
+def test_dot_typedef_lists_the_typedefs_of_the_headers_a_macro_includes() -> None:
+    write("deep.h", "typedef short deep_t;\n")
+    write("mid.h", '#include "deep.h"\ntypedef double mid_t;\n')
+    write("macro.C", '#include "mid.h"\n#include "deep.h"\ntypedef int own_t;\n'
+                      "int m() { return 6; }\n")
+    prompt = Interpreter()
+    typed(prompt, ".L macro.C")
+    # roottest/cling/typedef and ROOT: a header's typedefs are listed where its #include
+    # stands, named by the header, and an unguarded header included twice is listed twice.
+    # The registry outlives a session (a test's macros are all in one directory), so the
+    # listing is read with only this test's sources in it.
+    kept = dict(commands.SOURCES)
+    try:
+        commands.SOURCES.clear()
+        assert typed(prompt, ".typedef") == [
+            "List of typedefs",
+            "deep.h            1 typedef short deep_t",
+            "mid.h             2 typedef double mid_t",
+            "deep.h            1 typedef short deep_t",
+            "macro.C           3 typedef int own_t",
+        ]
+    finally:
+        commands.SOURCES.clear()
+        commands.SOURCES.update(kept)
+
+
+def test_a_quoted_include_looks_in_a_directory_dot_i_added(tmp_path: Path) -> None:
+    (tmp_path / "inc").mkdir()
+    (tmp_path / "inc" / "away.h").write_text("typedef long away_t;\n")
+    write("macro.C", '#include "away.h"\ntypedef int local_t;\nint m() { return 7; }\n')
+    prompt = Interpreter()
+    assert typed(prompt, ".I inc", ".L macro.C", ".typedef away_t") == [
+        "away.h            1 typedef long away_t"
+    ]
+
+
+def test_a_header_that_includes_itself_is_read_once_round() -> None:
+    write("a.h", '#pragma once\n#include "b.h"\ntypedef char a_t;\n')
+    write("b.h", '#pragma once\n#include "a.h"\ntypedef float b_t;\n')
+    write("macro.C", '#include "a.h"\nint m() { return 8; }\n')
+    prompt = Interpreter()
+    typed(prompt, ".L macro.C")
+    assert typed(prompt, ".typedef a_t", ".typedef b_t") == [
+        "a.h               3 typedef char a_t",
+        "b.h               3 typedef float b_t",
+    ]
+
+
+def test_a_header_that_is_not_there_declares_no_typedefs() -> None:
+    write("macro.C", '#include "nowhere-at-all.h"\ntypedef short hole_t;\nint m() { return 9; }\n')
+    prompt = Interpreter()
+    assert typed(prompt, ".L macro.C", ".typedef hole_t") == [
+        "macro.C           2 typedef short hole_t"
+    ]
+
+
 def test_dot_autodict_keeps_cling_s_switch_and_says_nothing() -> None:
     prompt = Interpreter()
     assert typed(prompt, ".autodict", ".autodict 0", ".autodict 1", ".autodict off") == []
