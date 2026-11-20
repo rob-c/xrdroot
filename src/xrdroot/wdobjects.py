@@ -568,9 +568,11 @@ class _Writer:
         rather than giving every element a record of its own, as a container nested in a
         container is written.
 
-        An element holding objects goes member by member, and how ROOT lays one of those out
-        column by column inside an array's single record is not something this writer has been
-        shown, so such a member is refused by name instead of guessed at.
+        An element holding objects goes member by member, one element after another inside
+        that one record: the class's version once for the array, then each element's count
+        and the column each of its members is, as the oracle writes
+        ``vector<TNamed> *f[2]`` - ``400a``, ``0001`` for ``TNamed``'s version, a count, the
+        ``TObject`` base of each object and then a column per string.
         """
         width = bitset_width(found)
         if width is not None:  # a bitset's elements are its bits, and no object among them
@@ -579,16 +581,34 @@ class _Writer:
                 self.items(Spelled("bool", (), 0), _bits(width, one))
             self.buf.end(at)
             return
-        if self._member_wise(_contents(found, None)[1]):
-            raise UnsupportedFeatureError(
-                f"a {found.text()} array holds objects, which ROOT writes column by column "
-                f"inside the array's one record, a layout this writer has not been taught; "
-                f"give the member a container of numbers or strings, or mark it transient "
-                f"with //! to leave it out of the file")
+        content = _contents(found, None)[1]
+        if self._member_wise(content):
+            self.member_wise_array(found, content, value)
+            return
         at = self.buf.start(STL_VERSION)
         for one in value or ():
             items, content = _contents(found, one)
             self.items(content, items)
+        self.buf.end(at)
+
+    def member_wise_array(self, found: Spelled, content: Spelled, value: Any) -> None:
+        """``vector<Obj> *f[N]``: one record for the whole array - the container's version
+        with its member-wise bit, the element class's version the one time the array needs
+        it, then each element's count and its objects' members as columns, in the array's
+        order."""
+        classname = class_name(content)
+        elements = self.catalogue.info(classname)[2]
+        at = self.buf.start(STL_VERSION | MEMBER_WISE)
+        version, sum_ = self.catalogue.version_of(classname)
+        self.buf.i16(version)
+        if sum_ is not None:
+            self.buf.u32(sum_)
+        for one in value or ():
+            items, _held = _contents(found, one)
+            rows = [_members(item) for item in items]
+            self.buf.i32(len(items))
+            for element in elements:
+                self.column(element, rows)
         self.buf.end(at)
 
     def items(self, content: Spelled, items: list[Any]) -> None:

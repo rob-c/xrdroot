@@ -1324,15 +1324,31 @@ def test_an_array_of_containers_writes_every_element_into_its_one_record():
     assert bytes(buf.data).hex() == ARRAY_OF_CONTAINERS_BYTES
 
 
-def test_an_array_of_containers_of_objects_is_refused_by_name():
-    """ROOT writes a container of objects member by member, and how it lays one of those out
-    column by column inside an array's single record is not a shape this writer knows: the
-    member is refused with a sentence naming it rather than written on a guess."""
+def test_an_array_of_containers_of_objects_is_one_record_of_columns():
+    """The oracle's bytes for ``std::vector<TNamed> *f[2]`` with a ``TNamed`` in the first
+    element and nothing in the second: one record round the whole array - the container's
+    version with its member-wise bit, ``TNamed``'s own version the once the array needs it,
+    then each element's count and its objects' members as columns. A class of ``int`` stands
+    in for ``TNamed`` here, so its version is 3 and its one column a number."""
+    made = Catalogue({
+        "E": Declaration("E", 3, True, (), (Field("a", "int", "", ()),)),
+        "C": Declaration("C", 1, True, (), (Field("v", "vector<E>", "", (2,)),))})  # fmt: skip
+    buf = WBuffer()
+    write_members(buf, Instance("C", {"v": [[{"a": 1}], []]}), made)
+    assert bytes(buf.data).hex() == ("40000010" "400a" "0003"
+                                     "00000001" "00000001" "00000000")  # fmt: skip
+
+
+def test_an_array_of_containers_of_objects_takes_the_class_version_once():
+    """A ``std::complex`` has no version of its own but a checksum, and an array of its
+    containers writes that pair once for the array rather than once per element."""
     made = Catalogue({"C": Declaration("C", 1, True, (), (
-        Field("v", "vector<TLine>", "", (2,)),))})
-    with pytest.raises(UnsupportedFeatureError,
-                       match=r"a vector<TLine> array holds objects, which ROOT writes"):
-        write_members(WBuffer(), Instance("C", {"v": [[], []]}), made)  # fmt: skip
+        Field("v", "vector<complex<double> >", "", (2,)),))})
+    buf = WBuffer()
+    write_members(buf, Instance("C", {"v": [[{"_real": 1.5, "_imag": 2.5}], []]}), made)
+    assert bytes(buf.data).hex() == (
+        "40000020" "400a" "0000db2371a1" "00000001"
+        "3ff8000000000000" "4004000000000000" "00000000")  # fmt: skip
 
 
 #: ROOT 6.40.04's bytes for ``class P : public TObject { std::vector<int> *fVint;
