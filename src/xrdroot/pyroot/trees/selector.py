@@ -153,11 +153,18 @@ def _numeric(leaf: Any, value: Any) -> str:
     return _LEAF_TYPE.get((dtype.kind, dtype.itemsize), "Double_t")
 
 
-def _element(tree: Any, leaf: Any) -> str:
-    """The C++ type one item of a collection leaf holds: its ``vector<T>``, or what it read."""
-    spelled = leaf.typename
+def _vector_element(spelled: str) -> str | None:
+    """The ``T`` of a ``vector<T>`` spelled type, or ``None`` for any other spelling."""
     if spelled.startswith("vector<") and spelled.endswith(">"):
         return str(spelled[len("vector<") : -1])
+    return None
+
+
+def _element(tree: Any, leaf: Any) -> str:
+    """The C++ type one item of a collection leaf holds: its ``vector<T>``, or what it read."""
+    held = _vector_element(str(leaf.typename))
+    if held is not None:
+        return held
     dtype = np.asarray(_observed(tree, leaf.column)).dtype
     return _VECTOR_TYPE.get((dtype.kind, dtype.itemsize), "int")
 
@@ -194,13 +201,45 @@ def _member_type(tree: Any, branch: Any, leaf: Any) -> str | None:
     return None if found is None else str(found.typename)
 
 
-def _reader(tree: Any, leaf: Any) -> tuple[str, str]:
-    """``Value`` or ``Array``, and the C++ type: how ROOT declares this leaf's reader."""
+def _held_reader(held: str) -> tuple[str, str] | None:
+    """The reader of a branch holding the member ``held`` - a ``vector<T>`` - or ``None``.
+
+    A collection the entry could not be read as is still a collection the file's streamer
+    information names: ROOT declares ``TTreeReaderArray<Particle>`` for the
+    ``TreeEventTreeSimple1`` branch of ``EventData::fParticles``, whose ``vector<Particle>``
+    is one block of the entry, so the macro's ``fParticles[i].fPosX`` reads an element.
+    """
+    element = _vector_element(held)
+    if element is None:
+        return None
+    if element in ("bool", "Bool_t"):
+        return "Value", "vector<bool>"
+    return "Array", element
+
+
+def _read_type(tree: Any, leaf: Any) -> tuple[Any, tuple[str, str] | None]:
+    """What the entry holds, and - only when it holds nothing - the reader the file types.
+
+    A tree being filled has no entry to read yet, and a column this reader refuses raises
+    rather than say what it holds; what is left is the file's streamer information, which
+    for a ``vector<Particle>`` member says the reader is an array of ``Particle``.
+    """
     value = _observed(tree, leaf.column)
+    if value is not None:
+        return value, None
+    held = _member_type(tree, tree._branch_info(leaf.branch), leaf)
+    return None, (None if held is None else _held_reader(held))
+
+
+def _object_reader(tree: Any, leaf: Any) -> tuple[str, str]:
+    """The reader of a branch of objects or of a collection of them."""
     branch = tree._branch_info(leaf.branch)
-    if isinstance(value, Mapping):
-        held = _member_type(tree, branch, leaf) or element_class(branch, leaf)
-        return ("Array" if _many(branch) else "Value"), held
+    held = _member_type(tree, branch, leaf) or element_class(branch, leaf)
+    return ("Array" if _many(branch) else "Value"), held
+
+
+def _plain_reader(tree: Any, leaf: Any, value: Any) -> tuple[str, str]:
+    """The reader of a leaf of numbers, one per entry or several."""
     if leaf.vector:
         element = _element(tree, leaf)
         if element in ("bool", "Bool_t"):
@@ -209,6 +248,16 @@ def _reader(tree: Any, leaf: Any) -> tuple[str, str]:
     if leaf.size > 1 or isinstance(value, np.ndarray):
         return "Array", _numeric(leaf, value)
     return "Value", _numeric(leaf, value)
+
+
+def _reader(tree: Any, leaf: Any) -> tuple[str, str]:
+    """``Value`` or ``Array``, and the C++ type: how ROOT declares this leaf's reader."""
+    value, made = _read_type(tree, leaf)
+    if made is not None:
+        return made
+    if isinstance(value, Mapping):
+        return _object_reader(tree, leaf)
+    return _plain_reader(tree, leaf, value)
 
 
 def _leaves(tree: Any) -> list[Any]:

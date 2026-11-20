@@ -20,6 +20,7 @@ import pytest
 import xrdroot.pyroot as ROOT
 from pyrootsupport import fresh
 from xrdroot.errors import UnsupportedFeatureError
+from xrdroot.pycint.runtime.root import DECLARED as declared
 from xrdroot.pyroot.trees import reader as made_reader
 from xrdroot.pyroot.trees import selector as made
 from xrdroot.pyroot.trees.layout import BranchInfo, LeafInfo, element_class, held_typename
@@ -214,6 +215,36 @@ def test_a_reader_of_a_member_branch_is_typed_by_the_member_its_class_declares()
     assert made._reader(nothing, member) == ("Value", "ClassB")
     unfound = Fake([outer, member], [top], values, backing=_read_from({}, ["elsewhere"]))
     assert made._reader(unfound, member) == ("Value", "ClassB")
+
+
+def test_an_unreadable_member_is_typed_by_the_collection_the_file_says_it_holds():
+    """``EventData::fParticles`` in a tree written one split level deep: the branch is the
+    member whole, one ``vector<Particle>`` block of the entry, so the entry cannot be read
+    as columns and the file's account of the member is what the reader is declared from -
+    ROOT writes ``TTreeReaderArray<Particle> fParticles``, whose ``fParticles[i].fPosX``
+    then reads an element. A member holding no collection stays what the leaf was typed as.
+    """
+    parts = LeafInfo("fParticles", "fParticles", "", "EventData", "TLeafElement",
+                     1, None, "fParticles", False, False)  # fmt: skip
+    flags = LeafInfo("fFlags", "fFlags", "", "EventData", "TLeafElement",
+                     1, None, "fFlags", False, False)  # fmt: skip
+    other = LeafInfo("fOther", "fOther", "", "EventData", "TLeafElement",
+                     1, None, "fOther", False, False)  # fmt: skip
+    branches = [_branch(name, [leaf], "EventData")
+                for name, leaf in (("fParticles", parts), ("fFlags", flags),
+                                   ("fOther", other))]  # fmt: skip
+    described = {"EventData": {"fParticles": Member("fParticles", "", 62, "vector<Particle>", 1),
+                               "fFlags": Member("fFlags", "", 61, "vector<bool>", 1),
+                               "fOther": Member("fOther", "", 61, "Particle", 1)}}  # fmt: skip
+    tree = Fake([parts, flags, other], branches, {},
+                backing=_read_from(described, ["fParticles", "fFlags", "fOther"]))  # fmt: skip
+    assert made._reader(tree, parts) == ("Array", "Particle")
+    assert made._reader(tree, flags) == ("Value", "vector<bool>")
+    # a member that is no collection is still the number a nameless leaf reads as
+    assert made._reader(tree, other) == ("Value", "Double_t")
+    assert made._declarations(tree, "@fParticles") == [
+        '   TTreeReaderArray<Particle> fParticles = {fReader, "fParticles"};'
+    ]
 
 
 def test_a_leaf_whose_type_root_did_not_name_is_typed_by_what_it_held():
@@ -426,3 +457,70 @@ def test_a_reader_of_a_branch_the_tree_does_not_have_is_refused_by_name():
     reader = ROOT.TTreeReader(tree)
     with pytest.raises(KeyError, match="has no branch called 'nope'"):
         ROOT.TTreeReaderValue[np.float32](reader, "nope")
+
+
+def test_a_value_reader_hands_out_the_class_it_was_declared_for(monkeypatch):
+    """``TTreeReaderValue<ClassC> fC(reader, "fC")`` of a branch split out of a ``ClassB``:
+    the branch carries the class it was split from, and ROOT types its reader from the ``T``
+    it was declared with, so the object handed over is a ``ClassC`` - roottest's
+    selectorreader/Options reads ``fC->GetEv()``, which a ``ClassB`` does not have."""
+    outer = LeafInfo("ClassB_branch", "ClassB_branch", "", "ClassB", "TLeafElement",
+                     1, None, "ClassB_branch", False, False)  # fmt: skip
+    member = LeafInfo("fC", "fC", "", "ClassB", "TLeafElement", 1, None, "fC", False, False)
+    top = _branch("ClassB_branch", [outer], "ClassB", children=[_branch("fC", [member], "ClassB")])
+    tree = Fake([outer, member], [top], {"fC": {"fPx": 101.0, "fEv": 201}})
+    tree._read_entry = 0
+
+    class FakeReader:
+        _tree = tree
+
+    class ClassC:
+        _cxx_layout_ = ("ClassC", (), (("fPx", "Float_t", "", ()), ("fEv", "Int_t", "", ())))
+        def __init__(self):
+            self.fPx = 0.0
+            self.fEv = 0
+
+        def GetEv(self):
+            return self.fEv
+
+    class ClassB:
+        _cxx_layout_ = ("ClassB", (), ())
+
+    monkeypatch.setitem(declared, "ClassC", ClassC)
+    monkeypatch.setitem(declared, "ClassB", ClassB)
+    value = ROOT.TTreeReaderValue["ClassC"](FakeReader(), "fC")
+    assert isinstance(value.__deref__(), ClassC) and value.GetEv() == 201
+    # the branch's own class answers for a template argument naming no class declared here,
+    # and for a reader made with no template argument at all
+    assert isinstance(ROOT.TTreeReaderValue["Elsewhere"](FakeReader(), "fC").__deref__(), ClassB)
+    assert isinstance(ROOT.TTreeReaderValue(FakeReader(), "fC").__deref__(), ClassB)
+
+
+def test_a_collection_its_writer_did_not_split_reads_as_its_elements(monkeypatch):
+    """A ``std::vector`` branch with no split holds its elements in the block the file's
+    streamer information names ``This``, one record each; ROOT's reader hands a macro the
+    objects, so ``vp[i].fPosX`` is that element's member - roottest's
+    selectorreader/CollectionClasses prints them."""
+    held = LeafInfo("vp", "vp", "", "vector<Particle>", "TLeafElement", 1, None,
+                    "vp", False, True)  # fmt: skip
+    rows = {"This": [{"fPosX": 110.0}, {"fPosX": 111.0}]}
+    tree = Fake([held], [_branch("vp", [held], "vector<Particle>")], {"vp": rows})
+    tree._read_entry = 0
+
+    class FakeReader:
+        _tree = tree
+
+    class Particle:
+        _cxx_layout_ = ("Particle", (), (("fPosX", "double", "", ()),))
+
+        def __init__(self):
+            self.fPosX = 0.0
+
+    monkeypatch.setitem(declared, "Particle", Particle)
+    array = ROOT.TTreeReaderArray["Particle"](FakeReader(), "vp")
+    assert [element.fPosX for element in array] == [110.0, 111.0]
+    assert array.GetSize() == 2 and array.At(1).fPosX == 111.0
+    # a class never declared here keeps the record the file read
+    monkeypatch.delitem(declared, "Particle", raising=False)
+    kept = ROOT.TTreeReaderArray[Particle](FakeReader(), "vp")
+    assert list(kept) == [{"fPosX": 110.0}, {"fPosX": 111.0}]

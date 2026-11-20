@@ -199,8 +199,22 @@ class _Read:
         value = python_value(self._value(), self._leaf)
         if self._branch is None or not isinstance(value, Mapping):
             return value
-        made = made_from(self._branch.classname, value)
+        made = self._made(value)
         return value if made is None else made
+
+    def _made(self, value: Mapping[str, Any]) -> Any:
+        """The object a branch's value is handed over as, or ``None`` for a mapping.
+
+        The class is the one the reader was declared for, which is what ROOT types its
+        reader from: a branch split out of a class carries the class it was split from -
+        ``ClassB`` for the branch of its member ``fC``, whose own type is ``ClassC`` -
+        so a reader declared ``TTreeReaderValue<ClassC>`` must hand out a ``ClassC``.
+        The branch's own ``fClassName`` is the answer only when the declared type names
+        no class of this session, which a numeric reader's ``T`` never does.
+        """
+        spelled = self._type if isinstance(self._type, str) else ""
+        made = made_from(spelled, value) if spelled else None
+        return made if made is not None else made_from(self._branch.classname, value)
 
     def _buffer(self) -> ReaderBuffer | None:
         tree = self._reader._tree
@@ -269,8 +283,22 @@ class TTreeReaderArray(_Read):
         self._attach()
         value = self._value()
         if isinstance(value, Mapping):
-            return self._members(value)
+            return self._whole(value) if set(value) == {"This"} else self._members(value)
         return np.asarray(value).reshape(-1)
+
+    def _whole(self, value: Mapping[str, Any]) -> list[Any]:
+        """``arr[i]`` of a collection the file streamed as one value, rather than split.
+
+        A branch of a ``std::vector`` its writer did not split holds its elements in the
+        block the file's streamer information names ``This``, each an element's own
+        members; ROOT's reader hands a macro the objects, so each record is made into one.
+        """
+        held = element_class(self._branch, self._leaf)
+        elements = []
+        for row in value["This"]:
+            made = made_from(held, row)
+            elements.append(row if made is None else made)
+        return elements
 
     def _members(self, value: Mapping[str, Any]) -> list[Any]:
         """``arr[i]`` of a branch of objects: element ``i``, made from its members' values.
