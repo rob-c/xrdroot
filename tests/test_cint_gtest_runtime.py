@@ -208,6 +208,20 @@ def test_googletests_namespaces_refuse_by_name_what_they_do_not_have() -> None:
     assert ROOT.TestSupport is TestSupport and ROOT.testing is testing
 
 
+def test_a_test_reads_its_own_failure_state_through_root(running: Result) -> None:
+    """``HasFailure()`` inside a lambda or a local class of a test body has no ``self``
+    holding the fixture's inherited static, so the translation writes ``ROOT.HasFailure``."""
+    assert ROOT.HasFailure is testing.Test.HasFailure
+    assert not ROOT.HasFailure()
+    running.failures = 1
+    assert ROOT.HasFailure() and ROOT.HasNonfatalFailure()
+    assert not ROOT.HasFatalFailure() and not ROOT.IsSkipped()
+    running.fatal = True
+    assert ROOT.HasFatalFailure() and not ROOT.HasNonfatalFailure()
+    running.skipped = True
+    assert ROOT.IsSkipped()
+
+
 def test_standard_output_and_error_can_be_captured_as_googletest_captures_them() -> None:
     testing.internal.CaptureStdout()
     testing.internal.CaptureStderr()

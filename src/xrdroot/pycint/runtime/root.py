@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib
 import sys
+from functools import partial
 from typing import Any
 
 from ...pycxx.runtime.namespace import DECLARED, HostNamespace
@@ -68,18 +69,34 @@ def _test_support() -> Any:
     return TestSupport
 
 
+#: The ``::testing::Test`` members a test asks unqualified about the test being run.
+#: A test body says ``HasFailure()`` and reads the fixture's inherited static;
+#: inside a lambda or a local class of one there is no ``self`` to read it from,
+#: and the translation reaches it as ``ROOT.HasFailure`` - so it is provided here.
+GTEST_STATE = ("HasFailure", "HasFatalFailure", "HasNonfatalFailure", "IsSkipped")
+
+
+def _gtest_state(name: str) -> Any:
+    """One of :data:`GTEST_STATE`, GoogleTest's own answer for the running test."""
+    from ...pycxx.runtime.gtest.fixtures import Test
+
+    return getattr(Test, name)
+
+
 class RootProxy(HostNamespace):
     """ROOT's namespace, looked up late: :mod:`xrdroot.pyroot`, or whatever is bound.
 
     It is plain C++'s host, configured: pyroot is the namespace, :data:`USED`
-    are the namespaces a macro says ``using`` for, ``TestSupport`` is provided
-    beside GoogleTest, and ``std`` is pyroot's.
+    are the namespaces a macro says ``using`` for, ``TestSupport`` and the
+    GoogleTest state its unit tests read are provided beside GoogleTest, and
+    ``std`` is pyroot's.
     """
 
     def __init__(self) -> None:
         # ROOT's typedefs called like functions, ``Long64_t(x)``, are casts.
         casts = {name: _cast(target) for name, target in TYPEDEFS.items()}
-        provided = {**casts, "TestSupport": _test_support, "gApplication": _application,
+        state = {name: partial(_gtest_state, name) for name in GTEST_STATE}
+        provided = {**casts, **state, "TestSupport": _test_support, "gApplication": _application,
                     "TApplication": _application_class, "TRint": _application_class}  # fmt: skip
         super().__init__(_pyroot, USED, provided, _std)
 
