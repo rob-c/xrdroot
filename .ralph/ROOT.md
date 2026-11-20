@@ -744,6 +744,22 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   `rdobjects.py`, a test) put a failing test and 99.99% coverage in the tree; it was saved to
   `/tmp/r20/stray-main-worktree.patch` and `/tmp/r20/stray2.patch` and the gate re-run clean.
 
+## Round 21's close (recorded here for the next iteration)
+
+- Base `57940f19`, closed at `02f37c6e`. Four commits, **one feature**, as `W0-55` set: `Event::fTemplateMember`
+  (`template2<template1<int>>`) is now declared, described, written and read (`67d08e8e`, `5b3c58f9`,
+  `d84f3e7f`, `ac2c...`/`ac2 41de`), one file per worker.
+- **The wall is gone even though no PASS moved.** `io/bigevent`'s dictionary and library now build and the group
+  measures **2 PASS / 0 FAIL / 2 UNSUPPORTED** (`/tmp/r21/ev2`), its refusal moved from the template member to
+  `a TArrayI is not something this writer puts in a ROOT file` (`W0-57`). That is the unit `W0-55` asks a round
+  to be judged by.
+- **`W0-57` is the next feature and it serves two groups**: `TArrayI`/`TArrayF`/`TArrayD` as a *member* is what
+  `io/bigevent` needs next and is one of the four things `double32`'s `template32` needs (`W0-53`).
+- **`W0-56` is a harness hazard**: a run started immediately after a cherry-pick failed with
+  `ImportError: cannot import name 'compare' from 'xrdroot.filling'` and the same group passed on a rerun. The
+  translation cache is not always revalidated when the source changes under it - rerun once before believing an
+  `ImportError` in a build step.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -782,6 +798,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 21's result of it, at `02f37c6e`: `TOTAL 117057 0 29252 0 100%`, `12685 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
+  maintainability 30 295 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 20's result of it, at `f283ae1c`: `TOTAL 116891 0 29140 0 100%`, `12664 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
   maintainability 30 270 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -875,6 +894,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 18 | `cb5c17e4` | **eight** chains (load average 9-20): the data model, `pairEnumEvo`, `double32`, bigevent's writer, `TBufferJSON`, the graphics encoders, `SplitClones`, and `roottest/python` | **0 gained, 0 lost**: ten areas, 167 tests, three commits that each move a wall without flipping a test (`/tmp/r18/areas` at `--jobs 1`) | 1: `W0-50` - a file-path chain cannot contain a missing behaviour |
 | 19 | `2c6be318` | **eight groups with their whole component in scope** (the rule `W0-50` set): bigevent, `pairEnumEvo`, `io/tree`, the data model, `double32`, the graphics pad, `TBufferJSON`, `roottest/python` | **0 gained, 0 lost again** (`/tmp/r19/areas`, `/tmp/r19/tree`): six commits, each removing one refusal | 3: `W0-51`, `W0-52` (what each group actually needs), `W0-53` |
 | 20 | `1000afdd` | **four** targets, each one change round 19 had named: the ACLiC `NameError` (24 cases of `roottest/python`), `TClass::GetClassVersion` for a file-only layout (11 `io/tree` tests), `TBufferJSON`'s `MEMBERS` entries, and the pad's PostScript counts | **0 gained, 0 lost**: three commits, and both groups measured unchanged in PASS (`/tmp/r20/areas`, `/tmp/r20/tree`) - each fix revealed the group's next wall | 2: `W0-54`, `W0-55` |
+| 21 | `57940f19` | **one feature in four files** (`W0-55`'s rule): `Event::fTemplateMember`, the `template2<template1<int>>` member of `io/bigevent`'s class - `winfo.py`, `wdeclared.py`, `wdobjects.py`, `rdobjects.py` | **0 PASS, and the wall is gone**: `io/bigevent` builds and measures **2 PASS / 0 FAIL / 2 UNSUPPORTED** (`/tmp/r21/ev2`), its refusal moved to `a TArrayI is not something this writer puts in a ROOT file` | 2: `W0-56` (stale-cache ImportError), `W0-57` (`TArrayI` as a member) |
 
 ## Notes
 
