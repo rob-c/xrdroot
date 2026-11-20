@@ -179,8 +179,9 @@ def _met(name: str, on_file: Layout, origin: str) -> bool:
     return met
 
 
-def _differing(mine: Layout, on_file: Layout) -> list[Element]:
-    """The members of the file's layout ROOT says the class in memory declares differently.
+def _differing(mine: Layout, on_file: Layout) -> list[tuple[Element, Element]]:
+    """The members of the file's layout ROOT says the class in memory declares differently,
+    each with the class's own member it is set against.
 
     A member of a number differs when the file records it at another *width*: ROOT reports
     ``AddVersion-1-6``'s ``int a`` against ``Long64_t a`` and stays silent about
@@ -192,7 +193,27 @@ def _differing(mine: Layout, on_file: Layout) -> list[Element]:
     wrote the file as on this one.
     """
     here = {element[1]: element for element in mine[2]}
-    return [e for e in on_file[2] if e[1] in here and _differs(e, here[e[1]])]
+    named = {element[1] for element in on_file[2]}
+    found = []
+    for index, element in enumerate(on_file[2]):
+        ours = here.get(element[1]) or _renamed(mine, named, index)
+        if ours is not None and _differs(element, ours):
+            found.append((element, ours))
+    return found
+
+
+def _renamed(mine: Layout, named: set[str], index: int) -> Element | None:
+    """The class's member a file's member is set against when the two spell it differently.
+
+    ROOT pairs the members of two layouts of a version by where they come rather than by
+    name, so ``roottest``'s ``checkWarn`` reads a file whose ``int myvar_one`` the class in
+    memory declares as ``double mydouble_two`` and is told the two differ. A member the file
+    names is only ever set against the class's member of that name, so a name both layouts
+    have is never paired here.
+    """
+    if index >= len(mine[2]) or mine[2][index][1] in named:
+        return None
+    return mine[2][index]
 
 
 def _differs(on_file: Element, mine: Element) -> bool:
@@ -261,14 +282,13 @@ def _compare_content(name: str, mine: Layout, on_file: Layout) -> None:
     """``TStreamerInfo::CompareContent``: each member of a versioned class whose type the file
     records differently from the class in memory, the two declarations one above the other -
     called for a file whose layout differs, which is what :func:`_differing` says."""
-    here = {element[1]: element for element in mine[2]}
     differ = _differing(mine, on_file)
     message("Warning", "TStreamerInfo::CompareContent",
             "The following data member of\nthe on-file layout version %d of class '%s' "
             "differs from\nthe in-memory layout version %d:\n   %s\nvs\n   %s",
             on_file[1], name, mine[1],
-            "\n   ".join(_declaration(e) for e in differ),
-            "\n   ".join(_declaration(here[e[1]]) for e in differ))
+            "\n   ".join(_declaration(theirs) for theirs, _ours in differ),
+            "\n   ".join(_declaration(ours) for _theirs, ours in differ))
 
 
 def _free_version(name: str, version: int, taken: set[int]) -> int:
