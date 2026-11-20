@@ -10,6 +10,7 @@ this was written); here it is read back by xrdroot both ways.
 
 from __future__ import annotations
 
+import struct
 from typing import Any
 
 import pytest
@@ -19,7 +20,7 @@ import xrdroot.pyroot as ROOT
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.trees import objects
 from xrdroot.pyroot.trees.objectinfo import object_info
-from xrdroot.wbranch import CloneMember, SplitClones, clones_members
+from xrdroot.wbranch import CloneMember, SplitClones, clones_members, tref_record
 from xrdroot.wclasses import declared
 
 #: ``TTree::Print`` of ROOT 6.40 for the tree :func:`_written` makes, its sizes and all.
@@ -323,16 +324,32 @@ def test_a_split_array_writes_its_numbers_and_strings_as_the_entries_hold_them(m
     assert kind.written(["a"], columns) is columns
 
 
-def test_a_member_that_is_one_whole_object_is_refused_when_a_split_array_is_written():
-    """ROOT writes a whole ``TRef`` member of a split ``TClonesArray`` as that object's record,
-    and nothing here writes another class's record into a tree entry: the refusal names the
-    member rather than failing on a column of bytes that are never made.
+def test_a_member_that_is_one_whole_ref_is_written_as_that_refs_record():
+    """ROOT writes a whole ``TRef`` member of a split ``TClonesArray`` as the ``TRef``'s own
+    record, so the member's rows are its bytes rather than the objects, the whole entry's
+    references one after another. Checked against the 6.40 oracle, which writes a heap
+    ``TRef`` referring to object 1 of ``ProcessID0`` as ``0001 00000001 03000000 0000``:
+    ``TObject``'s version, the number it refers to, its bits, and which process record
+    numbered that object - as many records as the entry's count says.
     """
     split = objects.SplitArray(declared(_A))
     keys = ["C1", "C1.fUniqueID", "C1.fBits", "C1._o"]
-    columns = split.columns(keys, [((0, 0, None),)])
-    with pytest.raises(UnsupportedFeatureError, match=r"holds _o, a whole TRef of its own"):
-        split.written(keys, columns)
+    ref = ROOT.TRef(ROOT.TNamed("n", "t"))
+    number = ref.GetUniqueID()
+    columns = split.columns(keys, [((0, 0, ref), (0, 0, ref))])
+    record = struct.pack(">HIIH", 1, number, 0x03000000, ref._pid.GetUniqueID())
+    assert record == bytes.fromhex(f"0001{number:08x}030000000000")
+    assert split.written(keys, columns)["C1._o"] == [record * 2]
+    # A reference that points at nothing names no process: ROOT writes ``fPID`` as 0.
+    assert tref_record(ROOT.TRef()) == bytes.fromhex("0001" "00000000" "03000000" "0000")
+
+
+def test_a_whole_member_of_another_class_is_refused_by_the_class_it_holds():
+    """Only a ``TRef`` has a streamer here, so a split collection's member that is a whole
+    object of any other class is refused by that class's name rather than written wrong."""
+    member = CloneMember("A", 2, "_o", 61, "", typename="TGraph")
+    with pytest.raises(UnsupportedFeatureError, match=r"A holds _o, a whole TGraph"):
+        objects._objects(member, [])
 
 
 def test_a_whole_object_members_leaf_is_typed_by_that_members_class():
