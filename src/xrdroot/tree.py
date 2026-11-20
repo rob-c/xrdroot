@@ -388,6 +388,10 @@ class Branch:
         for index, low, high in self._spans(start, stop):
             basket = self.basket(index)
             at, end = column.spans(basket, low, high, self.leaf.offset)
+            # An entry holding no objects keeps no bytes at all - ROOT writes neither a
+            # marker nor a count for it - so its row starts past its own end, which is
+            # no values rather than a row of negative length.
+            at = np.minimum(at, end)
             counts.append((end - at) // column.itemsize)
             pieces.append(gather(basket.data, at, end - at))
         values = column.decode(b"".join(pieces))

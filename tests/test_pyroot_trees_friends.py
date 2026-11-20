@@ -7,6 +7,8 @@ parent must find in the friend the entry with the same two numbers.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -375,3 +377,64 @@ def test_a_friend_shorter_than_its_tree_is_a_refusal_here_where_root_warns():
         occasional.AddFriend(short, "s")
     longer = _parent()
     assert occasional.AddFriend(longer, "big") is longer  # a longer friend is fine
+
+
+class _CountingTree:
+    """A tree whose entries hold a member's values, as much of one as a count needs."""
+
+    def __init__(self, values: Any) -> None:
+        self._addresses: dict[str, Any] = {}
+        self.values = values
+
+    def _current(self, column: str) -> Any:
+        return self.values
+
+
+class _SlotOfAColumn:
+    """As much of a slot as a made-up count reads: its name, its counter, its column."""
+
+    def __init__(self, name: str, counter: str | None, column: str, tree: Any) -> None:
+        self.name = name
+        self.counter = counter
+        self.source = column
+        self.address = type("address", (), {"tree": tree})()
+
+
+def test_a_count_whose_leaf_the_tree_lacks_is_read_as_how_many_values_a_member_holds():
+    """ROOT's count of a split collection is a branch of its own, with no leaf to copy.
+
+    The store still has to be told what type that count is written as and what
+    each entry's is, so the clone takes both from the collection's first member.
+    """
+    from xrdroot.pyroot.trees import copying
+    from xrdroot.tree import Jagged
+
+    tree = _CountingTree([1, 2])
+    slots = [
+        _SlotOfAColumn("c.x", "c_", "c.x", tree),
+        _SlotOfAColumn("c.y", "c_", "c.y", tree),
+        _SlotOfAColumn("n", "n_", "n", tree),
+        _SlotOfAColumn("n_", None, "n_", tree),  # a counter with a leaf is copied as one
+    ]
+    counted = copying._count_slots(slots)
+    assert [slot.name for slot in counted] == ["c_"]
+    slot = counted[0]
+    assert (slot.code, slot.source, slot.title) == ("I", "c.x", "c_")
+    rows = Jagged(np.array([1.0, 2.0, 3.0]), np.array([0, 1, 1, 3]))
+    assert list(slot.taken({"c.x": rows})) == [1, 0, 2]
+    listed = slot.taken({"c.x": [np.array([1.0, 2.0]), np.array([3.0])]})
+    assert (list(listed), str(listed.dtype)) == ([2, 1], "int32")
+    assert copying._count_slots([_SlotOfAColumn("n_", None, "n_", tree)]) == []
+    with pytest.raises(ValueError, match="no slot of this clone reads 'gone'"):
+        copying._tree_of(slots, "gone")
+
+
+def test_a_count_read_off_the_entry_last_read_holds_one_value_for_one_string():
+    """A string member is one object however long it is; a row of them is one each."""
+    from xrdroot.pyroot.trees import copying
+
+    assert copying.CountOf(_CountingTree(np.array([4.0, 5.0])), "c.x").get() == 2
+    assert copying.CountOf(_CountingTree("abc"), "c.x").get() == 1
+    assert copying.CountOf(_CountingTree(b"ab"), "c.x").get() == 1
+    assert copying.CountOf(_CountingTree(7.0), "c.x").get() == 1
+    copying.CountOf(_CountingTree(7.0), "c.x").put(3.0)  # a clone's leaves are the other tree's

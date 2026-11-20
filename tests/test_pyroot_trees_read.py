@@ -361,3 +361,39 @@ def test_a_char_array_address_is_written_into_and_a_string_too_long_refused(tmp_
     assert repr(held.get()) == "'abc'"
     # A std::string is written through its assign, and a bytearray in place.
     assert address_of(bytearray(8)).holder[0] == 0
+
+
+def test_a_member_of_an_empty_split_collection_reads_as_no_values():
+    """ROOT writes no bytes at all for an entry whose collection holds no objects.
+
+    The basket's offsets say such a row starts at the same place it ends, which
+    with the marker byte a row usually begins with is a start past its end: no
+    values, where a row of negative length would misplace every row after it.
+    """
+    from xrdroot.cxx import Prim
+    from xrdroot.interp import Rows
+    from xrdroot.tree import Branch, Jagged
+
+    class _Basket:
+        #: One object's two values, then another's one, each behind its marker byte.
+        data = bytes.fromhex("01 00000001 00000002 01 00000003")
+
+        def starts(self, low, high, offset):
+            return np.array([0, 0, 9])[low:high]
+
+        def ends(self, low, high):
+            return np.array([0, 9, 14])[low:high]
+
+    class _Branch:
+        leaf = type("leaf", (), {"offset": 0})()
+        column = Rows(Prim("int32", "i", 4), header=1, counted=False)
+
+        def _spans(self, start, stop):
+            return [(0, start, stop)]
+
+        def basket(self, index):
+            return _Basket()
+
+    rows = Branch._rows(_Branch(), _Branch.column, 0, 3)
+    assert isinstance(rows, Jagged)
+    assert [list(row) for row in rows] == [[], [1, 2], [3]]

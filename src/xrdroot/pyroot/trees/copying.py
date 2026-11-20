@@ -116,9 +116,7 @@ def _object_spec(backing: Any, leaf: Any, branch: Any) -> Any:
             f"members as columns of their own"
         )
     checksum, version, _elements = found[classname]
-    described = tuple(
-        Described(name, one[1], one[0], one[2]) for name, one in found.items()
-    )
+    described = tuple(Described(name, one[1], one[0], one[2]) for name, one in found.items())
     return DeclaredWhole(classname, checksum, version, described, split=0)
 
 
@@ -251,6 +249,80 @@ class Copied(Slot):
         return read[self.source]
 
 
+class Counted(Slot):
+    """A count of a split collection, which a clone copies without a leaf to copy it from.
+
+    ROOT keeps how many objects an entry's collection holds in a branch of its
+    own, and what this reader knows of that branch is the name the collection's
+    member leaves carry as their ``counter`` - there is no leaf of it to make a
+    slot of, yet the store must still be told the type the count is written as
+    and how many values each entry has, which is what its member holds.
+    """
+
+    #: The member leaf whose values the count is: the collection's first.
+    source: str
+
+    def taken(self, read: Any) -> Any:
+        rows = read[self.source]
+        if isinstance(rows, Jagged):
+            return np.diff(rows.offsets).astype(np.int32)
+        return np.fromiter((len(np.atleast_1d(row)) for row in rows), np.int32, count=len(rows))
+
+
+class CountOf(Address):
+    """What a :class:`Counted` reads: the objects the entry last read holds of its member."""
+
+    room = None
+
+    def __init__(self, tree: Any, column: str) -> None:
+        self.follower = Follow(tree, column, False, False)
+
+    def get(self, count: int | None = None) -> Any:
+        value = self.follower.get()
+        if isinstance(value, (str, bytes)):  # one string is one object, however long
+            return 1
+        return len(np.atleast_1d(value))
+
+    def put(self, value: Any) -> None:
+        """Nothing: a clone's leaves are the other tree's, which ``GetEntry`` fills there."""
+
+
+def _count_slots(slots: list[Any]) -> list[Any]:
+    """A slot for each count the clone's own slots name and no leaf gives, ahead of them.
+
+    A count comes first because a counted leaf's read asks the store how many
+    values it takes, and ROOT writes the branch in that order too. Its type is
+    ``Int_t``, the leaf ROOT makes of a split collection's count, and its values
+    are the ones its collection's first member holds. A collection a single
+    branch carries whole - :class:`~.objects.ClonedSlot` - names no count, so
+    nothing is made up for it.
+    """
+    named = {slot.name for slot in slots}
+    first: dict[str, str] = {}
+    for slot in slots:
+        if slot.counter and slot.counter not in named:
+            first.setdefault(slot.counter, slot.source)
+    counts = []
+    for name, column in first.items():
+        slot = Counted(name, name, "I", CountOf(_tree_of(slots, column), column), title=name)
+        slot.source = column
+        # The writer makes a count out of the rows it counts, so the store must not
+        # offer it as a column of its own: it skips every name another slot counts.
+        # A count names itself, which keeps it out of the columns without its own
+        # read wanting a count in front of it.
+        slot.counter = name
+        counts.append(slot)
+    return counts
+
+
+def _tree_of(slots: list[Any], column: str) -> Any:
+    """The tree a clone reads ``column`` from, whose entry last read a count is taken of."""
+    for slot in slots:
+        if slot.source == column:
+            return slot.address.tree
+    raise ValueError(f"no slot of this clone reads {column!r}, so its count has no entry")
+
+
 def _slot(tree: Any, leaf: Any, backing: Any) -> Any:
     branch = backing[leaf.column]
     if _whole(leaf, branch):
@@ -329,7 +401,7 @@ def _slots(tree: Any, leaves: list[Any], backing: Any) -> tuple[list[Any], set[s
         slots.append(ClonedSlot(leaf.column, element, split, sources, follows))
         grouped.add(leaf.column)
         inside |= {one.column for one in members}
-    return slots, grouped
+    return _count_slots(slots) + slots, grouped
 
 
 def clone(tree: Any, made: Any, start: int, stop: int, selection: str | None) -> Any:
