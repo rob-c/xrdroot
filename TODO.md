@@ -20,12 +20,12 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1183 / 2173** |
+| roottest | 1038 / 2173 (47.8 %) | **1181 / 2173** measured, **1185** with the four CERN-network tests (`/tmp/r11/net` passes all four alone) |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **21 / 109** at `--jobs 5` (22 alone) |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1342 / 2820 (47.6 %)** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1340 / 2820 (47.5 %)** measured, **1344** with the network tests |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
 The "now" column is two runs at `2ef9c80`: `/tmp/r9/final2b` (roottest, 1141) and
@@ -977,20 +977,30 @@ cheap to maintain and impossible to reconstruct.
 | W0-31 | todo | | 0 | **The ROOT source tree was damaged** (`/tmp/rootsrc-6.40`: `roottest/root/meta/evolution/` had 3 of 82 files) and every roottest figure up to round 9 came from it. The intact clone is `/tmp/rootsrc-6.40b`; `tools/rootsuite list` shows the same 2820 non-tutorial tests, so counts are comparable but individual statuses were not. **Always run with `/tmp/rootsrc-6.40b` from now on**, and re-derive any figure older than this round before quoting it |
 | W0-32 | todo | | 1 | four workers died with `backend unavailable` (2, 7, 10, 12) and two reported without a commit; their briefs are unchanged and are round 11's by default |
 
+| Q-39 | **done** | `d48bd3e1` (worker 1) | roottest +1 | a pointer to a container is written as the container it points at: `tree/evolution/WriteVector` passes. Round 10's worker 9's measured one-liner in `declared.py::_plain`, taken with its `and not found.stars` caveat |
+| W0-25/Q-41 | **done in part** | `caf4d6cb` (worker 9) | roottest +1 | `TBufferJSON` writes the containers a class declares and reads back empty ones: `io/json/STL0` passes |
+| Q-44 (geo) | **done in part** | `6d99995a` (worker 3) | 0 | `TBrowser` opens nothing in batch, as ROOT's own batch run says - the 17 `io/geo/export_*` tests now get into the geometry macros (worker 2 took the file writer's side: `dd674358`, ROOT's self-streamed collections written back as the file wrote them) |
+| Q-16 (part) | done | `90f5c5e8` (worker 5) | 0 | a `TArrayF`/`TArrayI` member of a declared class is described as ROOT describes it |
+| Q-33 (part) | done | `c1fca432` (worker 10) | 0 | an unqualified hashed multi-container or forward list is the standard library's |
+| W0-10 | **done in part** | `1053acde` (worker 14), `b590e726` (worker 16) | 0 | `.typedef` lists the typedefs of the headers a macro includes, and worker 16 wrote the measurement the next attempt needs: `tests/test_root_split_branch_name.py` pins what a split branch's name and leaf list are with and without the command |
+| Q-39 (writer) | **attempted, not merged** | `5b65bffa` | 0 | worker 15's "one of ROOT's arrays of numbers is written as its count and values" collided with worker 5's `TArrayX` work in `wdeclared.py`: merging the two broke three of worker 5's tests, so the pair was resolved in worker 5's favour and 15's is unmerged |
+| W0-33 | attempted, not merged | - | 0 | seven workers reported without a commit (4, 6, 7, 8, 11, 12, 13); the refusal each hit has *moved one file further out* - `w04-outside-scope.patch`, `w06`'s `wdobjects.py`, `w07-nested-vector.patch`, `w11-out-of-scope.patch`, and the `storage`/`TBrowser` walls in 12 and 13. Their reports are `/tmp/r11/wNN.log` |
+
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | `f65e991` | `2ef9c80` | now (`71aa3256`, intact tree) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | 1138 | 1141 | **1183** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 80 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
-| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 | 21 | 21 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** | **1301** | **1342** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | `f65e991` | `2ef9c80` | `71aa3256` | now (`90f5c5e8`, intact tree) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | 1138 | 1141 | 1183 | **1181** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 80 / 470 | 80 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
+| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 | 21 | 21 | 21 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** | **1301** | **1342** | **1340** |
 
-The last column is `/tmp/r10/final2` (roottest, 1183) and `/tmp/r10/final1` (the other kinds)
-at `71aa3256`, on the intact tree `/tmp/rootsrc-6.40b`; **every earlier column was measured on
+The last column is `/tmp/r11/final2` (roottest, 1181) and `/tmp/r11/final1` (the other kinds)
+at `90f5c5e8`, on the intact tree `/tmp/rootsrc-6.40b`; the column before it,
+`/tmp/r10/final2` (1183) and `/tmp/r10/final1` at `71aa3256`; **every earlier column was measured on
 a damaged tree** (`W0-31`), so compare counts only within a column. The column before it is
 `/tmp/r9/final2b` (1141) and `/tmp/r9/final1` at `2ef9c80`; the column before it, `/tmp/r8/final2` (1138) and `/tmp/r8/final1` at `f65e991`; the column before it, `/tmp/r7/final2` (1134) and `/tmp/r7/final1` at `2d0e458`; the column before it, `/tmp/r6/final2b` (1132) and `/tmp/r6/final1` at
 `3825443`; the column before it, `/tmp/r5/final2b` (1123) and `/tmp/r5/final1` at
