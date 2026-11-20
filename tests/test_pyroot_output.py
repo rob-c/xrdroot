@@ -185,8 +185,8 @@ def test_a_pave_label_and_a_crown_are_written_with_the_arguments_their_construct
 
 def test_a_pad_drawing_a_class_with_no_known_constructor_is_refused_by_name(tmp_path):
     c = ROOT.TCanvas("wrapped", "wrapped", 300, 200)
-    ROOT.TH1F("h", "h", 10, -4.0, 4.0).Draw()
-    with pytest.raises(UnsupportedFeatureError, match="A pad drawing a TH1F is not yet written"):
+    ROOT.TH2F("h", "h", 4, -4.0, 4.0, 4, -4.0, 4.0).Draw()
+    with pytest.raises(UnsupportedFeatureError, match="A pad drawing a TH2F is not yet written"):
         c.SaveAs(str(tmp_path / "c.C"))
     with pytest.raises(UnsupportedFeatureError, match=r"knows no constructor for this one"):
         c.Print(str(tmp_path / "c"), "cxx")
@@ -417,3 +417,169 @@ def test_a_mathtext_is_written_with_the_text_it_draws(tmp_path):
     run(path, use_cache=False)
     drawn = [o for o, _ in ROOT.gPad.GetCanvas().primitives if o.ClassName() == "TMathText"]
     assert [o.members["fTitle"] for o in drawn] == [r"W_{\delta_1\rho_1}^{3\beta}"]
+
+
+def _graph_canvas():
+    """A graph with two points, drawn with a title and a title on one of its axes."""
+    c = ROOT.TCanvas("graph", "a graph", 300, 200)
+    graph = ROOT.TGraph(2)
+    graph.SetPoint(0, 0.5, 1.5)
+    graph.SetPoint(1, 1.5, 2.5)
+    graph.SetLineColor(2)
+    graph.SetMarkerStyle(21)
+    graph.SetTitle("a simple graph")
+    graph.GetXaxis().SetTitle("X title")
+    graph.Draw("ACP")
+    return c
+
+
+def test_a_graph_is_written_by_its_points_and_the_attributes_it_was_drawn_with(tmp_path):
+    """A graph keeps no members to read by name, so a macro makes it and sets each point."""
+    path = tmp_path / "sg_graph.C"
+    _graph_canvas().SaveAs(str(path))
+    written = path.read_text()
+    assert "TGraph *tgraph1 = new TGraph(2);" in written
+    assert "tgraph1->SetPoint(0, 0.5, 1.5);" in written
+    assert "tgraph1->SetLineColor(2);" in written and "tgraph1->SetMarkerStyle(21);" in written
+    assert 'tgraph1->SetTitle("a simple graph");' in written
+    assert 'tgraph1->GetXaxis()->SetTitle("X title");' in written
+    assert 'tgraph1->Draw("ACP");' in written
+
+
+def test_the_macro_of_a_graph_draws_the_points_and_titles_it_was_saved_with(tmp_path):
+    """An axis no title was given to is not written, and the one that was is."""
+    from xrdroot.pycint.execute import run
+
+    path = tmp_path / "graphagain.C"
+    _graph_canvas().SaveAs(str(path))
+    run(path, use_cache=False)
+    drawn = next(o for o, _ in ROOT.gPad.GetCanvas().primitives if o.ClassName() == "TGraph")
+    assert [(drawn.GetPointX(at), drawn.GetPointY(at)) for at in range(2)] == [
+        (0.5, 1.5), (1.5, 2.5),
+    ]
+    assert drawn.GetMarkerStyle() == 21 and drawn.GetXaxis().GetTitle() == "X title"
+    assert drawn.GetYaxis().GetTitle() == ""
+
+
+def test_the_errors_of_a_graph_are_written_with_the_arguments_each_kind_takes():
+    """A symmetric error is two numbers and an asymmetric one four: ROOT's own arguments."""
+    from xrdroot.pyroot.graphics import macro
+
+    even, odd = ROOT.TGraphErrors(1), ROOT.TGraphAsymmErrors(1)
+    for graph in (even, odd):
+        graph.SetPoint(0, 1.0, 2.0)
+    even.SetPointError(0, 0.1, 0.2)
+    odd.SetPointError(0, 0.1, 0.2, 0.3, 0.4)
+    assert macro._graph(even, "TGraphErrors", "g") == [
+        "   TGraphErrors *g = new TGraphErrors(1);",
+        "   g->SetPoint(0, 1, 2);",
+        "   g->SetPointError(0, 0.1, 0.2);",
+    ]
+    assert macro._graph(odd, "TGraphAsymmErrors", "g")[2] == (
+        "   g->SetPointError(0, 0.1, 0.2, 0.3, 0.4);"
+    )
+    assert macro._point_errors(ROOT.TGraph(1), "TGraph", "g", 0) == []  # a graph has none
+
+
+def test_a_graph_with_no_title_is_written_without_the_set_that_would_set_one():
+    """A title is one of TNamed's, not an attribute group's: only one there is gets a Set."""
+    from xrdroot.pyroot.graphics import macro
+
+    graph = ROOT.TGraph(1)
+    graph.SetTitle("")
+    lines = macro._api_setters(graph, "g")
+    assert not [line for line in lines if "SetTitle" in line]
+    graph.SetTitle("named")
+    assert '   g->SetTitle("named");' in macro._api_setters(graph, "g")
+
+
+def test_a_graph_is_written_only_as_far_as_its_points_go():
+    """A count set past the points it holds writes the points there are, not an IndexError."""
+    from xrdroot.pyroot.graphics import macro
+
+    class Short:
+        def GetN(self):
+            return 3
+
+        def GetX(self):
+            return [0.0]
+
+        def GetY(self):
+            return [0.0]
+
+    assert macro._graph(Short(), "TGraph", "g")[1:] == ["   g->SetPoint(0, 0, 0);"]
+
+
+def test_a_multigraph_is_written_as_the_graphs_it_holds_and_then_given_them(tmp_path):
+    """A multigraph's graphs are not the pad's primitives: each takes the next variable name."""
+    from xrdroot.pycint.execute import run
+
+    c = ROOT.TCanvas("multi", "multi", 300, 200)
+    multi = ROOT.TMultiGraph()
+    multi.SetTitle("exclusion graphs")
+    for color in (2, 4):
+        graph = ROOT.TGraph(1)
+        graph.SetPoint(0, 0.5, float(color))
+        graph.SetLineColor(color)
+        multi.Add(graph)
+    multi.Draw("AC")
+    path = tmp_path / "multi.C"
+    c.SaveAs(str(path))
+    written = path.read_text()
+    assert "TMultiGraph *tmultigraph1 = new TMultiGraph();" in written
+    assert 'tmultigraph1->SetTitle("exclusion graphs");' in written
+    assert "TGraph *tgraph2 = new TGraph(1);" in written  # the canvas took 1
+    assert "tmultigraph1->Add(tgraph2);" in written and "tmultigraph1->Add(tgraph3);" in written
+    assert written.index("Add(tgraph2)") < written.index("Add(tgraph3)")
+    run(path, use_cache=False)
+    drawn = [o for o, _ in ROOT.gPad.GetCanvas().primitives if o.ClassName() == "TMultiGraph"]
+    assert [one.GetLineColor() for one in drawn[0].GetListOfGraphs()] == [2, 4]
+
+
+def test_a_histogram_is_written_from_its_binning_and_given_every_bin(tmp_path):
+    """A histogram's bins are its content: a macro makes the binning and then fills them."""
+    from xrdroot.pycint.execute import run
+
+    c = ROOT.TCanvas("hist", "hist", 300, 200)
+    hist = ROOT.TH1F("h", "a histogram", 2, 0.0, 2.0)
+    hist.SetBinContent(1, 1.5)
+    hist.SetBinError(1, 0.5)
+    hist.SetBinContent(2, 2.5)
+    hist.SetFillColor(5)
+    hist.GetXaxis().SetTitle("x")
+    hist.Draw("HIST")
+    path = tmp_path / "sg_hist.C"
+    c.SaveAs(str(path))
+    written = path.read_text()
+    assert 'TH1F *th1f1 = new TH1F("h", "a histogram", 2, 0, 2);' in written
+    assert "th1f1->SetBinContent(1, 1.5);" in written and "th1f1->SetBinError(1, 0.5);" in written
+    assert "th1f1->SetBinContent(2, 2.5);" in written
+    assert "th1f1->SetBinError(2, " not in written  # a bin with no error written is zero
+    run(path, use_cache=False)
+    drawn = [o for o, _ in ROOT.gPad.GetCanvas().primitives if o.ClassName() == "TH1F"][-1]
+    assert [(drawn.GetBinContent(at), drawn.GetBinError(at)) for at in (1, 2)] == [
+        (1.5, 0.5), (2.5, 0.0),
+    ]
+    assert (drawn.GetFillColor(), drawn.GetXaxis().GetTitle()) == (5, "x")
+
+
+def test_an_axis_is_written_where_it_runs_and_with_the_labels_it_was_given(tmp_path):
+    """A ``TGaxis`` is its two ends, the range it says, its divisions, and its own sizes."""
+    from xrdroot.pycint.execute import run
+
+    c = ROOT.TCanvas("axis", "axis", 300, 200)
+    axis = ROOT.TGaxis(0.1, 0.1, 0.9, 0.1, 0.0, 10.0, 510, "")
+    axis.SetLabelSize(0.05)
+    axis.SetTitleSize(0.06)
+    axis.SetLineColor(2)
+    axis.Draw()
+    path = tmp_path / "sg_axis.C"
+    c.SaveAs(str(path))
+    written = path.read_text()
+    assert 'TGaxis *tgaxis1 = new TGaxis(0.1, 0.1, 0.9, 0.1, 0, 10, 510, "");' in written
+    assert "tgaxis1->SetLabelSize(0.05);" in written
+    assert "tgaxis1->SetTitleSize(0.06);" in written and "tgaxis1->SetLineColor(2);" in written
+    run(path, use_cache=False)
+    drawn = next(o for o, _ in ROOT.gPad.GetCanvas().primitives if o.ClassName() == "TGaxis")
+    assert (drawn.members["fWmax"], drawn.members["fX2"]) == (10.0, 0.9)
+    assert (drawn.members["fLabelSize"], drawn.members["fTitleSize"]) == (0.05, 0.06)
