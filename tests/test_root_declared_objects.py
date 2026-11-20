@@ -27,6 +27,7 @@ from xrdroot.cppstd.bitset import Bitset
 from xrdroot.cppstd.stdlib import complex_type
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.file import open_root
+from xrdroot.interp import flat_reader
 from xrdroot.pycint.execute import run_source
 from xrdroot.pycxx.runtime.namespace import DECLARED
 from xrdroot.pyroot.core.declared import (
@@ -379,6 +380,8 @@ def test_a_class_of_numbers_is_read_as_one_struct_of_its_members():
     arrays = Catalogue({"C": Declaration("C", 2, False, (), (Field("v", "int", "", (3,)),))})
     assert flat_reader_for("C", arrays) is None  # a fixed array is a row, not one number
     assert flat_reader_for("vector<int>", catalogue) is None  # a container is not one either
+    # a class the file's streamer information does not describe is no one struct either
+    assert flat_reader("C", SimpleNamespace(streamers=dict)) is None
 
 
 def test_a_foreign_class_of_numbers_reads_past_the_checksum_its_version_holds():
