@@ -42,6 +42,24 @@ class _Friends(_Reading):
         if isinstance(friend, str):
             friend, alias = _opened(friend, alias)
         name = str(alias or friend.GetName())
+        # A friend with an index is read at the entry whose keys match, so it may hold fewer
+        # entries than its tree - ROOT allows that. One without an index is read entry for
+        # entry, and ROOT warns "FriendElement ... has less entries than its parent Tree" and
+        # reads past its end; that is a plausible misreading of physics data, so this refuses
+        # it in a sentence instead - here, where ROOT says it, and not at the first Draw.
+        indexed = getattr(friend, "_index", None) is not None
+        try:
+            # A chain of trees of different names is read as a patchwork and has no one
+            # count; it is refused or read at the first entry, not here.
+            friend_entries, own_entries = int(friend.GetEntries()), int(self.GetEntries())
+        except ValueError:
+            friend_entries = own_entries = 0
+        if not indexed and friend_entries < own_entries:
+            raise ValueError(
+                f"{name!r} has {friend_entries} entries and {self.GetName()!r} has "
+                f"{own_entries}: a friend is read entry for entry, so a shorter one has "
+                f"nothing to read past its own end"
+            )
         self._friends.append((name, friend))
         if self._store is None:
             self._befriend(self._source)

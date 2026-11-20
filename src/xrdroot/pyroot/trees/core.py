@@ -134,8 +134,11 @@ class _TreeCore(_TObjectLike):
             return self._source
         if self._snapshot is None or self._snapshot_entries != self._store.entries:
             store, name, title = self._store, self._name or "tree", self._title
+            # A tree of no branches is the one ROOT writes asked to: the tree whose columns
+            # are all its friends', which a draw reads through those friends.
+            empty = not store.slots
             self._snapshot = memory_tree(
-                name, lambda out: store.write(out, name, title), self._compression()
+                name, lambda out: store.write(out, name, title, empty=empty), self._compression()
             )
             self._snapshot_entries = store.entries
             self._befriend(self._snapshot)
@@ -193,7 +196,11 @@ class _TreeCore(_TObjectLike):
                 continue  # a chain of trees of names of their own is read as a patchwork
             other = friend._backing()
             known = getattr(backing, "friends", None)
-            if known is not None and alias not in known and len(other) == len(backing):
+            if known is None or alias in known:
+                continue
+            # A tree with no entries of its own takes its friends' count, so a friend is
+            # attached to it however long it is; otherwise the two read entry for entry.
+            if len(backing) == 0 or len(other) >= len(backing):
                 backing.add_friend(other, alias)
 
     def _layout(self) -> list[BranchInfo]:

@@ -341,3 +341,37 @@ def test_a_clone_of_a_branch_whose_class_streams_itself_says_what_to_do(tmp_path
     with xrdroot.open_root(io.BytesIO(buf.getvalue())) as f:
         with pytest.raises(UnsupportedFeatureError, match="ROOT streams itself"):
             wrap(f["t"]).CloneTree(-1, "fast")
+
+
+def test_a_tree_with_no_entries_of_its_own_reads_as_far_as_its_friend_does(tmp_path):
+    # ROOT's treeformula/event mode 4 is exactly this: a TTree made only to hold a friend.
+    # ROOT reports 0 entries for it and its Draw walks the friend's - verified with 6.40.04.
+    path = _write(tmp_path, _parent(), "parent")
+    base = TTree("T", "Base of friendship")
+    base.AddFriend("T", path)
+    assert base.GetEntries() == 0  # ROOT says 0 too, though the draw reads the friend's
+    assert base.Draw("x", "", "goff") == ENTRIES
+    assert list(base.GetV1())[:3] == [0.0, 0.25, 0.5]
+    assert base.GetBranch("x") is not None  # a friend's, which ROOT's GetBranch finds
+
+
+def test_a_friend_shorter_than_its_tree_is_a_refusal_here_where_root_warns():
+    # ROOT warns "FriendElement ... has less entries" and reads past the friend's end; that is
+    # a plausible misreading of a file, so this refuses it by name instead.
+    short = TTree("S", "shorter")
+    px = np.zeros(1, "f")
+    short.Branch("px", px, "px/F")
+    for i in range(3):
+        px[0] = i
+        short.Fill()
+    assert len(short) == 3
+    occasional = TTree("O", "one with four")
+    py = np.zeros(1, "f")
+    occasional.Branch("py", py, "py/F")
+    for i in range(4):
+        py[0] = i
+        occasional.Fill()
+    with pytest.raises(ValueError, match="a shorter one has nothing to read past its own end"):
+        occasional.AddFriend(short, "s")
+    longer = _parent()
+    assert occasional.AddFriend(longer, "big") is longer  # a longer friend is fine

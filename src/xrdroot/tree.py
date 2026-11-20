@@ -452,6 +452,7 @@ class TTree(Drawable):
         "unreadable",
         "_source",
         "_friends",
+        "_friend_entries",
         "_recorded",
         "records",
         "clustering",
@@ -473,6 +474,8 @@ class TTree(Drawable):
         self.branches: dict[str, Branch] = {}
         self.unreadable: dict[str, str] = {}
         self._friends: dict[str, Any] = {}
+        #: How many entries the longest friend holds: what a tree with none of its own reads.
+        self._friend_entries = 0
         #: The friends the file recorded, found and opened the first time a
         #: friend is asked for rather than every time a tree is opened.
         self._recorded = list(friends)
@@ -590,15 +593,19 @@ class TTree(Drawable):
             >>> events.add_friend(f2["weights"], "w")          # doctest: +SKIP
             >>> events["w.nominal"].array(0, 10)
 
-        ``other`` is a :class:`TTree` or a :class:`~.chain.Chain` of exactly
-        as many entries, since entry ``i`` of a friend is read as entry ``i``
-        of this tree and a count that differs means that is not what it is.
+        ``other`` is a :class:`TTree` or a :class:`~.chain.Chain`, and entry
+        ``i`` of it is read as entry ``i`` of this tree, as ROOT reads one. A
+        friend with fewer entries than this tree is what ROOT warns about and
+        does not refuse, so neither does this; a tree with no entries of its
+        own - one made only to hold friends, ``new TTree("T","Base of
+        friendship"); tree->AddFriend("T",file)`` - reads as many entries as
+        its friends hold, though it still says it has none, as ROOT's does.
         Its columns are then here as ``alias.branch`` - the alias is the
         friend's own name unless given - and by their bare names too, when
         neither this tree nor another friend has one of the same name.
         """
         alias = str(alias or other.name)
-        if len(other) != self.num_entries:
+        if self.num_entries and len(other) != self.num_entries:
             raise ValueError(
                 f"{alias!r} has {len(other)} entries and {self.name!r} has "
                 f"{self.num_entries}: a friend is read entry for entry, so the two "
@@ -607,6 +614,11 @@ class TTree(Drawable):
         if alias in self._friends:
             raise ValueError(f"{self.name!r} already has a friend called {alias!r}; give an alias")
         self._friends[alias] = other
+        self._friend_entries = max(self._friend_entries, len(other))
+        if self.num_entries == 0:
+            # A tree made only to hold friends reads as far as they go, and still says it has
+            # no entries of its own - ROOT's GetEntries() is 0 and its Draw walks the friend's.
+            self.num_entries = self._friend_entries
 
     def _befriended(self, name: str) -> Any:
         """A friend's column: ``alias.branch``, or a bare name only one friend has."""
