@@ -526,13 +526,29 @@ class Catalogue:
     def _string(
         self, owner: Declaration, field: Field, found: Spelled, counter: bool
     ) -> Element | None:
-        if field.dims:
-            return None
+        """``TString name``, or the array of them ``TString name[N]``: ROOT describes a
+        ``TString`` as the one ``TStreamerString`` its class writes, and an array of them as
+        that same element with the array offset on its type, room for N strings and N as its
+        length - ``TString f[2]`` is type 85, 48 bytes, a length of 2 and one dimension, as
+        the 6.40.04 oracle dumps the streamer information of a class holding one.
+
+        Without the array offset a ``TString name[N]`` would be described as the one string it
+        is not, and ROOT reading the file back would take the twelve of the bigevent
+        roottest's ``Event::fNames`` for one string and lose the other eleven.
+        """
         if found.stars:
-            return self._string_pointer(owner, field, found)
+            return None if field.dims else self._string_pointer(owner, field, found)
+        dims = _dimensions(owner, field)
         if found.name == "TString":
+            if dims:
+                length = _product(dims)
+                return ("TStreamerString", field.name, field.comment, TSTRING + OFFSET_L,
+                        STRING_SIZE * length, length, len(dims), (*dims, *NO_DIMS)[:5],
+                        "TString", ())  # fmt: skip
             return ("TStreamerString", field.name, field.comment, TSTRING, STRING_SIZE, 0, 0,
                     NO_DIMS, "TString", ())  # fmt: skip
+        if dims:
+            return None
         if found.name in ("string", "basic_string"):
             return ("TStreamerSTLstring", field.name, field.comment, STL, STRING_SIZE, 0, 0,
                     NO_DIMS, "string", (STL_STRING, STL_STRING))  # fmt: skip

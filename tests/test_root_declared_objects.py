@@ -35,6 +35,7 @@ from xrdroot.pyroot.core.declared import (
     plain_value,
 )
 from xrdroot.streamers import read_infos
+from xrdroot.wclasses import checksum
 from xrdroot.wdeclared import (
     CARRIED_LAYOUTS,
     NO_DIMS,
@@ -2211,3 +2212,41 @@ def test_a_container_of_roots_core_objects_is_written_by_the_members_their_layou
     # container, ``TObject``'s version and the count - one column per member of a ``TObject``.
     assert bytes(buf.data)[24:].hex() == "40000010" + "400a" + "0001" + "00000001" \
         + "00000000" + "03000000"
+
+
+def test_an_array_of_tstrings_is_one_string_element_with_the_array_offset():
+    """``TString f[2]`` is the one ``TStreamerString`` a single ``TString`` is, with the array
+    offset on its type, room for the two strings and two as its length. The 6.40.04 oracle
+    dumps ``class P : public TObject { TString f[2]; }`` as type 85, 48 bytes, a length of 2
+    and one dimension, and checksums the class at 3007492621, which this layout does too -
+    the twelve ``TString``s of the bigevent roottest's ``Event::fNames`` are described so."""
+    made = _a_class_holding_an_array_of_tstrings()
+    _version, _sum, elements = made.info("P")
+    assert elements[1] == (
+        "TStreamerString", "f", "", 85, 48, 2, 1, (2, 0, 0, 0, 0), "TString", ())
+    assert checksum("P", elements) == 3007492621  # the oracle's for that class
+
+
+def _a_class_holding_an_array_of_tstrings() -> Catalogue:
+    return Catalogue({"P": Declaration("P", 1, True, ("TObject",), (
+        Field("f", "TString", "", (2,)),))})
+
+
+def test_an_array_of_tstrings_is_written_one_string_after_another():
+    """ROOT writes the N strings of a ``TString f[N]`` in turn, each with the length byte the
+    one string is written with, and a slot the object holds no string for as the empty string
+    ROOT's own default-made ``TString`` is."""
+    made = _a_class_holding_an_array_of_tstrings()
+    for given, expected in ((("ab", "cd"), "026162026364"), (("ab",), "02616200")):
+        buf = WBuffer()
+        write_instance(buf, Instance("P", {"TObject": {}, "f": list(given)}), made)
+        assert bytes(buf.data).endswith(bytes.fromhex(expected)), given
+
+
+def test_an_array_of_tstrings_holding_more_strings_than_it_has_room_for_is_refused():
+    """The array in the layout is a number of strings, so more than it says is a row this
+    writer cannot lay out rather than a longer record."""
+    made = _a_class_holding_an_array_of_tstrings()
+    buf = WBuffer()
+    with pytest.raises(ValueError, match=r"f holds 3 strings where its array has room for 2"):
+        write_instance(buf, Instance("P", {"TObject": {}, "f": ["a", "b", "c"]}), made)

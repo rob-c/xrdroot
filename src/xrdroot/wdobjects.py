@@ -450,7 +450,21 @@ class _Writer:
         self.buf.raw(pack_member(element[3] - OFFSET_P, element[2], _numeric(values)))
 
     def _tstring(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
-        self.buf.string(_text(value))
+        """A ``TString`` member - or the array ``TString f[N]`` ROOT lays out as that same
+        element with the array offset on its type, whose N strings it writes one after
+        another, each with the length byte the one is written with. A slot the object holds
+        no string for is the empty one ROOT's own default-made ``TString`` is."""
+        length = int(element[5])  # the N of the array, which a lone string has none of
+        if not length:
+            self.buf.string(_text(value))
+            return
+        held = [_text(one) for one in value or ()]
+        if len(held) > length:
+            raise ValueError(
+                f"{element[1]} holds {len(held)} strings where its array has room for {length}"
+            )
+        for one in (*held, *("" for _ in range(length - len(held)))):
+            self.buf.string(one)
 
     def _stl_string(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
         at = self.buf.start(STL_VERSION)
