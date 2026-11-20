@@ -24,7 +24,13 @@ from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.file import open_root
 from xrdroot.pycint.execute import run_source
 from xrdroot.pycxx.runtime.namespace import DECLARED
-from xrdroot.pyroot.core.declared import find_class, made_from, payload_of
+from xrdroot.pyroot.core.declared import (
+    catalogue_for,
+    find_class,
+    made_from,
+    payload_of,
+    plain_value,
+)
 from xrdroot.wdeclared import (
     NO_DIMS,
     Catalogue,
@@ -704,6 +710,123 @@ def test_a_branch_of_a_class_this_writer_does_not_split_is_written_whole(capfd):
     with open_root("tree.root") as f:
         infos = f._source.streamers()
     assert {"Event", "Track", "Flat"} <= set(infos)
+
+
+VECTOR_POINTER = r"""
+#include <vector>
+#include "TObject.h"
+#include "TTree.h"
+#include "TFile.h"
+class Track : public TObject {
+   double fEnergy;
+public:
+   Track(double energy = -99.99) : fEnergy(energy) {}
+   ClassDefOverride(Track, 1);
+};
+class TopLevel {
+   vector<Track> fTracks;
+   vector<Track> *fTracksPtr;
+public:
+   TopLevel() : fTracksPtr(0) {}
+   virtual ~TopLevel() { delete fTracksPtr; }
+   void AddTrack(int seed) {
+      if (fTracksPtr == 0) fTracksPtr = new vector<Track>;
+      Track t(seed);
+      fTracks.push_back(t);
+      fTracksPtr->push_back(t);
+   }
+};
+class TopLevelCl {
+   vector<Track> fTracks;
+   vector<Track> *fTracksPtr;
+public:
+   TopLevelCl() : fTracksPtr(0) {}
+   virtual ~TopLevelCl() { delete fTracksPtr; }
+   void AddTrack(int seed) {
+      if (fTracksPtr == 0) fTracksPtr = new vector<Track>;
+      Track t(seed);
+      fTracks.push_back(t);
+      fTracksPtr->push_back(t);
+   }
+   ClassDef(TopLevelCl, 2);
+};
+void writevector() {
+   TFile *f = new TFile("vectorfile.root", "RECREATE");
+   TTree *t = new TTree("tree", "test tree");
+   TopLevel *obj = new TopLevel;
+   TopLevelCl *objcl = new TopLevelCl;
+   t->Branch("Top", "TopLevel", &obj, 32000, 0);
+   t->Branch("TopSplit99.", "TopLevel", &obj, 32000, 99);
+   t->Branch("TopCl", "TopLevelCl", &objcl, 32000, 0);
+   t->Branch("TopClSplit99.", "TopLevelCl", &objcl, 32000, 99);
+   obj->AddTrack(33);
+   obj->AddTrack(77);
+   objcl->AddTrack(11);
+   objcl->AddTrack(66);
+   t->Fill();
+   f->Write();
+   f->Close();
+}
+"""
+
+
+def test_a_pointer_to_a_vector_of_objects_is_written_as_the_container_it_points_at():
+    """ROOT streams a ``vector<T>*`` member as the vector it points at, so the roottest's
+    ``WriteVector`` writes ``fTracksPtr`` exactly as it writes ``fTracks``, split or whole.
+
+    The value the translator hands over is the container's contents, and the member's type
+    says ``vector<Track> *``, so the stars must not send it down the object path: it was
+    refused as a Track standing where an object of a class should be written.
+    """
+    run_source(VECTOR_POINTER, "writevector.C")
+    tree = ROOT.TFile("vectorfile.root").Get("tree")
+    assert [branch.GetName() for branch in tree.GetListOfBranches()] == [
+        "Top", "TopSplit99.", "TopCl", "TopClSplit99."]
+    with open_root("vectorfile.root") as f:
+        infos = f._source.streamers()
+    assert {"TopLevel", "TopLevelCl", "Track"} <= set(infos)
+
+
+POINTERS = r"""
+#include <utility>
+#include <vector>
+#include "TObject.h"
+class Track : public TObject {
+public:
+   int fX;
+   Track(int x = 1) : fX(x) {}
+   ClassDef(Track, 1);
+};
+class Holder : public TObject {
+public:
+   std::vector<Track> *fV;
+   std::pair<Track, int> *fPair;
+   Holder() : fV(new std::vector<Track>(2, Track(1))),
+              fPair(new std::pair<Track, int>(Track(3), 7)) {}
+   ClassDef(Holder, 1);
+};
+void pointers() {}
+"""
+
+
+def test_a_pointer_to_a_container_is_plain_data_and_a_pointer_to_a_pair_is_an_object():
+    """``_plain``'s contract is objects as instances and containers as lists; a pointer adds
+    nothing to it, since ROOT streams a pointer as the thing it points at.
+
+    A bare ``pair<A,B>`` is the one exception: the declaration describes it as a class of its
+    own, written through its members, so a pair's pointer stays on the object path - the
+    container path knows only the pair a *map* holds.
+    """
+    run_source(POINTERS, "pointers.C")
+    holder = find_class("Holder")
+    assert holder is not None
+    catalogue = catalogue_for("Holder")
+    made = holder()
+    held = plain_value(made.fV, "vector<Track>*", catalogue)
+    assert [item.classname for item in held] == ["Track", "Track"]
+    pair = plain_value(made.fPair, "pair<Track,int>*", catalogue)
+    assert isinstance(pair, Instance)
+    assert (pair.classname, pair.members["second"]) == ("pair<Track,int>", 7)
 
 
 ZERO = r"""

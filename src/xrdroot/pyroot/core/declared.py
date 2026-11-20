@@ -403,11 +403,16 @@ def _plain_member(value: Any, field: Any, catalogue: Catalogue,
 
 def _plain(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
     """A member's value as plain data: objects as instances, containers as lists or dicts - an
-    object held by value that is not there yet, a slot ``resize`` made, as a default-made one."""
+    object held by value that is not there yet, a slot ``resize`` made, as a default-made one.
+
+    A pointer to a container is the container it points at, ROOT streams it as that and the
+    translator hands over the contents, so the stars decide nothing here. They do for ``pair``:
+    a bare ``pair<A,B>`` is a class the declaration describes, written through its members.
+    """
     value = _present(value, found, catalogue)
     if value is None:
         return None
-    if not found.stars and (found.name in STL_KINDS or found.name == "pair"):
+    if found.name in STL_KINDS or (found.name == "pair" and not found.stars):
         return _plain_container(value, found, catalogue)
     return _plain_object(value, found, catalogue)
 
