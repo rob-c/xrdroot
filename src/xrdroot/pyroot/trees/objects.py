@@ -23,14 +23,31 @@ from __future__ import annotations
 
 import contextlib
 import sys
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
 from ...errors import UnsupportedFeatureError
 from ...tree import Jagged
-from ...wbranch import Collection, Spec, Split, SplitClones, Whole, clones_members, column_keys
+from ...wbranch import (
+    COLLECTION,
+    NOT_A_MEMBER,
+    WHOLE,
+    Branch,
+    Collection,
+    ElementLeaf,
+    Spec,
+    Split,
+    SplitClones,
+    Whole,
+    _collection_info,
+    clones_members,
+    column_keys,
+    vector_of,
+)
 from ...wclasses import declared, harvested
+from ...wcolumns import StreamedColumn
 from ...wobjects import named, stream, stream_clones
 from ...writer import WBuffer
 from .store import OBJECT
@@ -328,9 +345,18 @@ def _kind(obj: Any, split: int = 0) -> Kind | None:
         return Lorentz4()
     if isinstance(obj, TClonesArray):
         return Clones() if split < 1 else SplitArray(obj._class)
+    return _held_kind(obj)
+
+
+def _held_kind(obj: Any) -> Kind | None:
+    """The kind of a container object, which says its class by what it holds rather than by
+    what it is: a histogram of the file, four-vectors, or a collection of collections."""
     if _histogram(obj):
         return Histogram()
-    return Lorentzes() if _of_lorentz(obj) else None
+    if _of_lorentz(obj):
+        return Lorentzes()
+    nested = _nested(obj)
+    return None if nested is None else Nested(nested)
 
 
 def _histogram(obj: Any) -> bool:
@@ -342,6 +368,63 @@ def _of_lorentz(obj: Any) -> bool:
     """Is this a ``std::vector`` of GenVector's Cartesian four-vectors?"""
     kind = str(getattr(obj, "value_type", ""))
     return hasattr(obj, "push_back") and ("XYZTVector" in kind or "PxPyPzE4D" in kind)
+
+
+def _nested(obj: Any) -> str | None:
+    """The ROOT spelling of the class of a ``std::vector`` of collections, if this is one.
+
+    One branch here counts one level of elements, so a collection whose elements count
+    their own values cannot be laid out as rows: ROOT writes such a ``vector`` whole, as
+    the container its streamer describes, and that is what :class:`Nested` does. Only a
+    collection of collections is one - ROOT splits a ``vector`` of a class of its own,
+    such as ``std::pair``, into a branch per member, which this writer refuses for want
+    of a count no writer here makes.
+    """
+    kind = str(getattr(obj, "value_type", ""))
+    return vector_of(kind) if hasattr(obj, "push_back") and kind.startswith("vector<") else None
+
+
+class Nested(_Whole):
+    """A ``std::vector`` of containers, written whole each entry as its class streams it.
+
+    ROOT gives such a branch the collection's own class name - ``vector<vector<double> >``
+    - and one leaf, its basket holding every entry's count and inner counts, which no
+    split branch of this writer expresses: a branch of a collection splits it into a
+    count and a row per member of each element, and an element here has no members.
+    """
+
+    def __init__(self, classname: str) -> None:
+        self.classname = classname
+
+    def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
+        return WholeCollection(self.classname, split=0, basket_size=bufsize)
+
+    def entry(self, obj: Any) -> bytes:
+        from ...wdeclared import Catalogue
+        from ...wdobjects import write_value
+
+        buf = WBuffer()
+        write_value(buf, self.classname, [list(inner) for inner in obj], Catalogue({}))
+        return bytes(buf.data)
+
+
+@dataclass(frozen=True)
+class WholeCollection(Spec):
+    """A ``std::vector`` of containers, which ROOT lays out whole: one entry the collection
+    as its own streamer writes it, since a nested count is no shape a split branch holds.
+
+    The spec sits beside the kind that makes it rather than with the other specs of
+    :mod:`~xrdroot.wbranch`: only a branch given an object holds a collection of
+    collections, and only this module's :class:`Nested` builds one.
+    """
+
+    classname: str
+
+    def build(self, name: str, basket_size: int) -> Branch:
+        column = StreamedColumn(name, self._size(basket_size))
+        info = _collection_info(self.classname, "", COLLECTION)
+        leaf = ElementLeaf(name, name, 0, WHOLE, NOT_A_MEMBER)
+        return Branch(name, name, self.split, column, [leaf], info)
 
 
 class ObjectSlot:

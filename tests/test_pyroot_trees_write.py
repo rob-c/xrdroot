@@ -14,7 +14,6 @@ import numpy as np
 import pytest
 
 import xrdroot
-from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.stl import std
 from xrdroot.pyroot.trees import TNtuple, TNtupleD, TTree, hooks
 
@@ -157,28 +156,28 @@ def test_what_cannot_be_read_in_place_is_refused_by_name():
         t.Branch("x", type("P", (), {"x": 0.0})(), "x/F:y/F")
 
 
-def test_a_collection_of_collections_is_refused_rather_than_written_without_its_sizes():
+def test_a_collection_of_collections_is_written_whole_with_both_counts():
+    """A leaf list counts one level, so a collection of collections cannot be laid out as
+    rows: ROOT writes it whole, one entry the outer vector's record, and the branch says
+    the collection's class rather than an element's."""
     t = TTree("t", "")
     inner = std.vector["double"]()
     inner.assign([3.0, 6.0])
     nested = std.vector["std::vector<double>"]()
     nested.push_back(inner)
-    advised = "holds a std::vector of vector<double>"
-    with pytest.raises(UnsupportedFeatureError, match=advised) as caught:
-        t.Branch("myvecvec.", nested)
-    # The advice is the layout that does keep them: a member of a class branched whole.
-    assert "both counts in its record" in str(caught.value)
-    assert t.GetListOfBranches() == []
+    t.Branch("myvecvec.", nested)
+    assert t.GetBranch("myvecvec.").GetClassName() == "vector<vector<double> >"
     t.Branch("myvec.", inner)  # one level of counting is what this writer lays out
-    assert t.GetBranch("myvec.") is not None
+    assert t.GetBranch("myvec.").GetClassName() == "vector<double>"
 
 
-def test_the_refusal_of_a_collection_of_collections_names_the_layout_that_keeps_them(
+def test_a_collection_of_collections_as_a_member_of_a_class_is_written_whole(
     tmp_path, monkeypatch
 ):
-    """What that refusal advises, done: the collection is a member of a class whose branch is
-    streamed whole, so both counts are in its record and the inner sizes come back - the
-    route roottest's ``treeproxy/vectorint`` takes when it branches its ``Top`` object."""
+    """A collection of collections written the other way: as a member of a class whose
+    branch is streamed whole, so both counts are in its record and the inner sizes come
+    back - the route roottest's ``treeproxy/vectorint`` takes when it branches its
+    ``Top`` object."""
     import xrdroot.pyroot as ROOT
     from xrdroot.pycint.runtime.root import DECLARED
 

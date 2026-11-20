@@ -15,6 +15,7 @@ import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import fresh
+from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pycint.runtime import Cell
 from xrdroot.pycint.runtime.root import DECLARED
 from xrdroot.wobjects import IGNORED
@@ -200,3 +201,44 @@ def test_a_reader_value_of_a_class_never_declared_here_gives_the_members_read(mo
     assert isinstance(members, dict) and members["m_a"].tolist() == [0, 0, 0]
     with pytest.raises(AttributeError, match="has no attribute '_private'"):
         value._private  # noqa: B018 - a name of the reader's own is never the object's
+
+
+def test_a_vector_of_vectors_is_written_whole_with_the_counts_of_both_levels():
+    """ROOT lays a ``std::vector`` of containers out whole - the count of the outer one and
+    each inner one's own - since a split branch of this writer counts one level; the file
+    gives both counts back, entry for entry, to the vector read into."""
+    outer = ROOT.std.vector["vector<double>"]()
+    held = Cell(outer)
+
+    def fill(i):
+        outer.clear()
+        for j in range(i + 1):
+            inner = ROOT.std.vector["double"]()
+            inner.push_back(float(j))
+            inner.push_back(float(j) + 0.5)
+            outer.push_back(inner)
+
+    out, tree = _filled("vecvec", lambda t: t.Branch("vv", held), fill, entries=3)
+    branch = tree.GetBranch("vv")
+    assert branch.GetClassName() == "vector<vector<double> >"
+    assert [leaf.GetName() for leaf in branch.GetListOfLeaves()] == ["vv"]
+    out.Close()
+    back = ROOT.TFile("vecvec.root").Get("T")
+    read = ROOT.std.vector["vector<double>"]()
+    assert back.SetBranchAddress("vv", read) == 0
+    seen = []
+    for i in range(back.GetEntries()):
+        back.GetEntry(i)
+        seen.append([list(inner) for inner in read])
+    assert seen == [[[0.0, 0.5]], [[0.0, 0.5], [1.0, 1.5]],
+                    [[0.0, 0.5], [1.0, 1.5], [2.0, 2.5]]]  # fmt: skip
+
+
+def test_a_collection_of_objects_whose_own_width_is_unknown_is_still_refused():
+    """The write of a collection whole needs the class its elements are, spelled as ROOT
+    spells it; a vector of a class this writer does not write whole has no such name, and
+    a branch laying out one count cannot say what its elements hold."""
+    held = Cell(ROOT.std.vector["HalfKnown"]())
+    tree = ROOT.TTree("t", "t")
+    with pytest.raises(UnsupportedFeatureError, match="carry sizes of their own"):
+        tree.Branch("hv", held)
