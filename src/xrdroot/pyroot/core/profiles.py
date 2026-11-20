@@ -74,6 +74,12 @@ class _Profiled:
     def _contents(self) -> np.ndarray[Any, Any]:
         return np.asarray(self._xrd.values(flow=True)).ravel(order="F")
 
+    def _one_content(self, bin: int) -> float:
+        """A profile's bin is a mean, which is an array of its own: one bin's content comes
+        out of it as it always did."""
+        cells = self._contents()
+        return float(cells[bin]) if 0 <= bin < len(cells) else 0.0
+
     def _one_error(self, bin: int) -> float:
         """A profile's error is its spread, which is an array of its own: one bin's comes
         out of it as it always did."""

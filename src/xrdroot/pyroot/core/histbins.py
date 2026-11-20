@@ -10,6 +10,7 @@ arrays, so a bin set here is a bin written.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -222,10 +223,11 @@ class Bins:
         bin = self._global(args)
         return self._one_content(bin)
 
-    def _one_content(self, bin: int) -> float:
-        """One bin's content, out of the array of every bin's."""
-        cells = self._contents()
-        return float(cells[bin]) if 0 <= bin < len(cells) else 0.0
+    #: One bin's content and one bin's error, which the class a histogram is answers for
+    #: itself: straight out of its storage, or - for a profile, whose bins are means and
+    #: whose errors are spreads - out of the array of them it keeps.
+    _one_content: Callable[[int], float]
+    _one_error: Callable[[int], float]
 
     def _contents(self) -> np.ndarray[Any, Any]:
         """Every bin's content, flow included, flat in global-bin order."""
@@ -269,11 +271,6 @@ class Bins:
     def GetBinError(self, *args: Any) -> float:
         """``GetBinError``: the root of the bin's squared weights, or of its content."""
         return self._one_error(self._global(args))
-
-    def _one_error(self, bin: int) -> float:
-        """One bin's error, out of the array of every bin's."""
-        errors = self._errors()
-        return float(errors[bin]) if 0 <= bin < len(errors) else 0.0
 
     def _errors(self) -> np.ndarray[Any, Any]:
         return np.asarray(self._xrd._bin_errors())
