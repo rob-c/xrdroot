@@ -28,12 +28,14 @@ from xrdroot.pycint.execute import run_source
 from xrdroot.pycxx.runtime.namespace import DECLARED
 from xrdroot.pyroot.core.declared import (
     _member_maker,
+    _root_member,
     catalogue_for,
     converted,
     find_class,
     made_from,
     payload_of,
     plain_value,
+    root_row,
 )
 from xrdroot.streamers import read_infos
 from xrdroot.wclasses import checksum
@@ -578,6 +580,39 @@ def test_one_of_roots_classes_read_a_member_at_a_time_is_made_again():
     back = converted(row, parse_type("TRefArray*"), None)
     assert type(back).__name__ == "TRefArray" and hasattr(back, "Delete")
     assert back.GetEntries() == 0
+
+
+def test_a_root_member_is_read_by_its_getter_with_or_without_the_get_prefix():
+    # ROOT names a getter after the member without its ``f`` - ``GetLast`` for ``fLast`` - but
+    # not always with a ``Get``: ``TObjArray::fLowerBound`` is read by ``LowerBound``, so a
+    # member written by the layout alone is the number it holds rather than None.
+    arr = ROOT.TObjArray()
+    arr.SetName("items")
+    assert _root_member(arr, "fLast") == -1
+    assert _root_member(arr, "fLowerBound") == 0
+
+
+def test_a_root_member_with_no_getter_at_all_is_the_attribute_itself():
+    # A class of ROOT's the kit keeps by name - a drawing class's ``fLineColor`` - has no
+    # getter to ask, and the member is what the object holds.
+    class Kept:
+        fLineColor = 4
+
+    assert _root_member(Kept(), "fLineColor") == 4
+    assert _root_member(Kept(), "fLineStyle") is None
+
+
+def test_one_of_roots_collections_is_written_by_the_members_its_layout_names():
+    # A ``TObjArray`` among a declared class's members has no record of its own here, so it
+    # is written by what its streamer info names - its name, its size, its lower bound and
+    # the index of its last filled slot.
+    arr = ROOT.TObjArray()
+    arr.SetName("items")
+    arr.Add(ROOT.TNamed("one", ""))
+    row = root_row(arr, "TObjArray")
+    held = row["TSeqCollection"]["TCollection"]
+    assert (held["fName"], held["fSize"]) == ("items", 1)
+    assert (row["fLowerBound"], row["fLast"]) == (0, 0)
 
 
 def test_a_clones_array_member_names_the_array_and_not_the_class_it_holds():

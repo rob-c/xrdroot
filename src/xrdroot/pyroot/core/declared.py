@@ -462,14 +462,19 @@ def root_row(obj: Any, classname: str) -> dict[str, Any]:
 def _root_member(obj: Any, member: str) -> Any:
     """A member of one of ROOT's bases, from its getter where it has one: ``fLineColor``.
 
-    A member with neither a getter nor an attribute of its own is taken from the row the
-    object keeps its members in, which is where a ``TAxis`` holds ``fBits2`` - ROOT's second
-    bit status word of an axis, which no ``Get`` of ROOT's asks for and which the axis here
-    keeps for the histogram it belongs to.
+    ROOT names most of them ``Get`` and the member's name without its ``f``, but not all of
+    them - ``TObjArray::fLowerBound`` is read by ``LowerBound()`` - so the name alone is tried
+    before the attribute, which a few classes keep for themselves instead. A member with
+    neither is taken from the row the object keeps its members in, which is where a ``TAxis``
+    holds ``fBits2`` - ROOT's second bit status word of an axis, which no ``Get`` of ROOT's
+    asks for and which the axis here keeps for the histogram it belongs to.
     """
     getter = getattr(obj, "Get" + member[1:], None)
     if callable(getter):
         return getter()
+    terse = getattr(obj, member[1:], None)
+    if callable(terse):
+        return terse()
     held = getattr(obj, "_row", None)
     if isinstance(held, Mapping) and member in held:
         return held[member]
