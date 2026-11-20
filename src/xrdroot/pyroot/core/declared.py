@@ -20,7 +20,7 @@ import functools
 import math
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 from weakref import WeakKeyDictionary
 
 import numpy as np
@@ -98,10 +98,30 @@ def find_class(name: str) -> type | None:
     """
     from ...pycxx.runtime.namespace import DECLARED
 
+    held = DECLARED.get(name)
+    known = _FOUND.get(name)
+    if known is not None and known[0] is held:
+        return cast(type, known[1])  # settled on, and nothing has replaced the entry
+    found = _searched(name, DECLARED)
+    if found is not None and found is held:
+        # the name as C++ declared it, which is the answer a bulk read asks for again
+        _FOUND[name] = (held, found)
+    return found
+
+
+#: The classes ``find_class`` has settled on by the name it was asked for, with the entry
+#: ``DECLARED`` held at the time. A name declared again is another object, so a cached answer
+#: is only given back while that object is still the one under the name - which is the case
+#: a bulk write or read asks about, ten million times over.
+_FOUND: dict[str, tuple[Any, Any]] = {}
+
+
+def _searched(name: str, declared: dict[str, Any]) -> type | None:
+    """``find_class`` by the rules its docstring gives, over everything declared so far."""
     wanted = _squashed_name(name)
     last = wanted.split("::")[-1]
     fallback = None
-    for cls in list(DECLARED.values()):
+    for cls in list(declared.values()):
         if not declared_class(cls):
             continue
         own = _squashed_name(str(cls.__dict__["_cxx_layout_"][0]))
@@ -656,14 +676,14 @@ def _member_maker(found: Spelled, dims: Any = ()) -> Callable[[Any, Any], Any]:
 
 def _number_maker(typename: str) -> Callable[[Any, Any], Any]:
     """``_number``'s work for a member that is a number and not an array of them."""
-    c_type = TYPES[typename][1]
+    made_number = _converter(TYPES[typename][1])
 
     def made(value: Any, current: Any) -> Any:
         if value is None:
             return None
         if isinstance(current, np.ndarray) or isinstance(value, (list, tuple, np.ndarray)):
             return _number(value, typename, current)
-        return _scalar_number(value, c_type)
+        return made_number(value)
 
     return made
 
@@ -946,17 +966,44 @@ def _number(value: Any, typename: str, current: Any) -> Any:
 
 
 def _scalar_number(value: Any, typename: str) -> Any:
-    number = value.item() if isinstance(value, np.generic) else value
+    return _converter(typename)(value)
+
+
+@functools.cache
+def _converter(typename: str) -> Callable[[Any], Any]:
+    """How a number of the C++ type ``typename`` is made from what a stream read for it.
+
+    The width and the sign a reading masks and unwraps by are the same for every member of
+    that type, so they are worked out once: a record read ten million times is nine numbers
+    of one class apiece, and looking the width up for each of them was most of the member.
+    """
     if typename == "bool":
-        return bool(number)
+        return _as_bool
     if typename in FLOATS:
-        return float(number)
+        return _as_float
     bits, signed = WIDTHS[_c_name(typename)]  # every integer a streamer names has a width
-    whole = math.trunc(number) if isinstance(number, float) else int(number)
-    whole &= (1 << bits) - 1
-    if signed and whole >= 1 << (bits - 1):
-        whole -= 1 << bits
+    mask, sign, width = (1 << bits) - 1, 1 << (bits - 1), 1 << bits
+
+    def whole(value: Any) -> Any:
+        number = _unwrapped(value)
+        number = math.trunc(number) if isinstance(number, float) else int(number)
+        number &= mask
+        return number - width if signed and number >= sign else number
+
     return whole
+
+
+def _unwrapped(value: Any) -> Any:
+    """A number a stream gave, as the Python number it stands for."""
+    return value.item() if isinstance(value, np.generic) else value
+
+
+def _as_bool(value: Any) -> bool:
+    return bool(_unwrapped(value))
+
+
+def _as_float(value: Any) -> float:
+    return float(_unwrapped(value))
 
 
 def _c_name(typename: str) -> str:
