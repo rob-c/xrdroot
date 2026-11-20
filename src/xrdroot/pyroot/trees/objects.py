@@ -406,7 +406,47 @@ def _held_kind(obj: Any) -> Kind | None:
     if _of_lorentz(obj):
         return Lorentzes()
     nested = _nested(obj)
-    return None if nested is None else Nested(nested)
+    if nested is not None:
+        return Nested(nested)
+    layout = _root_layout(obj)
+    return None if layout is None else Root(layout)
+
+
+class Root(Kind):
+    """An object of a class ROOT itself describes - a bare ``TObject`` - split member by member.
+
+    ``TTree::Branch("Abc", "TObject", &obj, 4000, 99)`` gives a branch per member of the
+    class at a split level above 0, as ROOT splits an object it holds a description for: the
+    6.40 oracle's ``tref_test.root`` keeps ``Abc.fUniqueID`` and ``Abc.fBits`` under a branch
+    named for the object. A class whose members are not numbers - a ``TRef`` - has no layout
+    to split here, and :func:`_undeclared` is asked for its address instead.
+    """
+
+    def __init__(self, layout: Layout) -> None:
+        self.layout = layout
+
+    def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
+        return Split(self.layout, split=max(split, 1), basket_size=bufsize)
+
+    def entry(self, obj: Any) -> Any:
+        return tuple(_whole_member(obj, member.name) for member in self.layout.members)
+
+
+def _whole_member(obj: Any, name: str) -> Any:
+    """One member of such an object as its own split branch reads it.
+
+    ``fBits`` is the object's whole bit word here - the heap's bits included, as ROOT writes
+    them for a branch of an object - where a split ``TClonesArray`` leaves those out.
+    """
+    if name == "fBits":
+        return int(obj._bitword())
+    return _member(obj, name)
+
+
+def _root_layout(obj: Any) -> Layout | None:
+    """The layout of the class this object is, if ROOT describes that class by numbers alone."""
+    name = obj.ClassName() if hasattr(obj, "ClassName") else ""
+    return harvested(name) if name else None
 
 
 def _histogram(obj: Any) -> bool:
@@ -475,6 +515,24 @@ class WholeCollection(Spec):
         info = _collection_info(self.classname, "", COLLECTION)
         leaf = ElementLeaf(name, name, 0, WHOLE, NOT_A_MEMBER)
         return Branch(name, name, self.split, column, [leaf], info)
+
+
+def _no_layout(obj: Any, name: str) -> None:
+    """Refuse, by name, a branch of an object of a class this writer has no layout for.
+
+    The address does say its type - it holds an object of a ROOT class - so the advice a
+    branch of a number gets is wrong: what is missing is a layout for that class, and the
+    way round it is a leaf list of the members or a branch of the class the writer does
+    describe.
+    """
+    classname = obj.ClassName() if hasattr(obj, "ClassName") else ""
+    if not classname:
+        return
+    raise UnsupportedFeatureError(
+        f"the branch {name!r} holds a {classname}, and this writer carries no layout for a "
+        f"{classname} to split or stream whole: write the members it needs as leaves of "
+        f"their own, as in Branch({name!r}, {name}, 'fUniqueID/i')"
+    )
 
 
 class ObjectSlot:
@@ -614,6 +672,7 @@ def object_slot(name: str, address: Any, split: int, bufsize: int | None) -> Obj
     obj = _held(address)
     kind = _kind(obj, split)
     if kind is None:
+        _no_layout(obj, name)
         return None
     if isinstance(kind, Macro) and not _splittable(obj, split):
         kind = MacroWhole()
