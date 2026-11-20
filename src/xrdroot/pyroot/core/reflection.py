@@ -347,7 +347,33 @@ def _undictionaried(name: str) -> bool:
     which ROOT warns of when a file it opens describes one?"""
     if ROOT_NAMES.match(name) or _template(name) or _synthetic_pair(name):
         return False
+    if _pair_base(name) or _instantiable(name):
+        return False
     return TClass(name)._class() is None
+
+
+def _pair_base(name: str) -> bool:
+    """Is ``name`` the ``__pair_base<A,B>`` a standard library's ``pair`` derives from?
+
+    ROOT never reports that class, which is not one a program can ask for: its
+    ``TClass::Init`` skips the warning for a ``pair``'s base (``TClassEdit::IsStdPairBase``),
+    and a file which describes one - ``roottest/root/io/stdpair``'s ``ab02.root`` - opens with
+    no warning about it, as the 6.40 oracle does.
+    """
+    return name.removeprefix("std::").startswith("__pair_base<")
+
+
+def _instantiable(name: str) -> bool:
+    """Is ``name`` an instance of a template whose class a dictionary describes?
+
+    ROOT asks the interpreter for the class of a name a file describes, and the interpreter
+    answers a template's instance from the template itself: with a dictionary for ``Ref`` in
+    the session, ``Ref<vector<...>>`` is a type cling can declare, so ``TClass::Init`` warns
+    about no missing dictionary for it - which is why ``pairEnumEvo``'s runs that load the
+    library before the file print none of the warnings the runs that read the file first do.
+    """
+    head = name.split("<", 1)[0]
+    return bool(head) and _last(_known_as(head)) in GENERATED
 
 
 def _synthetic_pair(name: str) -> bool:

@@ -532,6 +532,44 @@ def test_the_last_file_read_names_the_layout_it_described(capfd, monkeypatch):
     assert "class Versed read from the file read.root" in capfd.readouterr().err
 
 
+def test_a_files_pair_base_is_no_missing_dictionary(capfd):
+    """``__pair_base<A,B>`` is not a class a program can ask for - ROOT's ``TClass::Init``
+    skips the warning for a ``pair``'s base - so the file ``roottest/root/io/stdpair`` reads,
+    which describes one beside its pair, opens without a word about it."""
+    reflection.note_file_infos(
+        [("__pair_base<edm::Hash<1>,edm::ParameterSetBlob>", (0x2829819F, 1, ()))]
+    )
+    assert capfd.readouterr().err == ""
+    reflection.note_file_infos([("std::__pair_base<int,int>", (0x2829819F, 1, ()))])
+    assert capfd.readouterr().err == ""
+
+
+def test_a_files_instance_of_a_dictionarys_template_needs_no_dictionary(capfd):
+    """ROOT asks the interpreter for the class of a name a file describes, and the interpreter
+    answers a template's instance from the template: with ``Ref``'s dictionary in the session,
+    ``edm::Ref<vector<int>>`` is a type cling can declare, so ``TClass::Init`` makes no
+    complaint about it - and without that dictionary it does, as ``pairEnumEvo``'s runs that
+    read the file before loading the library print."""
+    described = [("edm::Ref<vector<int> >", (0x251EA0D5, 11, ()))]
+    reflection.note_file_infos(described)
+    assert (
+        "no dictionary for class edm::Ref<vector<int> > is available"
+        in capfd.readouterr().err
+    )
+    ROOT.TClassTable.Add("Ref", 11)
+    reflection.note_file_infos(described)
+    assert capfd.readouterr().err == ""
+
+
+def test_a_name_that_is_no_instance_of_anything_needs_its_dictionary(capfd):
+    """``<`` alone is no template's instance - a name without one, or whose head is empty, is
+    judged by its own dictionary alone."""
+    reflection.note_file_infos([("Nowhere", (0x1, 1, ())), ("<odd>", (0x2, 1, ()))])
+    printed = capfd.readouterr().err
+    assert "no dictionary for class Nowhere is available" in printed
+    assert "no dictionary for class <odd> is available" in printed
+
+
 def test_files_layouts_are_numbered_as_met_while_no_class_is_in_memory(capfd):
     _evo("int", "one.root")
     _evo("float", "two.root")
