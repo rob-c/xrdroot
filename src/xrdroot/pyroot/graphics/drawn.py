@@ -19,10 +19,12 @@ from typing import Any, ClassVar
 from ..core import draw_hook
 from .style import gStyle
 
-__all__ = ["GROUPS", "NDC_BIT", "Drawn"]
+__all__ = ["GROUPS", "NDC_BIT", "ON_HEAP", "Drawn"]
 
 #: ``SetNDC``'s bit of ``fBits``.
 NDC_BIT = 1 << 14
+#: ``kIsOnHeap``: the bit ``TObject::IsOnHeap`` asks about.
+ON_HEAP = 0x01000000
 #: The bits every object on the heap has, as every drawn one is.
 HEAP = 0x03000000
 

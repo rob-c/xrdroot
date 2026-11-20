@@ -1,7 +1,9 @@
 """``SaveAs`` and ``Print``: a pad as a picture, by the suffix of its name.
 
 ``.png``, ``.jpg``, ``.gif``, ``.svg``, ``.pdf``, ``.eps`` and ``.ps`` are
-written by matplotlib at the canvas's size in pixels. A PDF can be a book
+written by matplotlib at the canvas's size in pixels; a ``.c``, ``.cxx`` or
+``.cpp`` name is a macro, written by :mod:`.macro`, which running draws the pad
+again. A PDF can be a book
 of pages, as ROOT makes one: ``Print("book.pdf[")`` opens it and prints
 nothing, ``Print("book.pdf")`` adds this pad as a page while it is open,
 ``"book.pdf("`` opens it with this pad as its first page, ``"book.pdf)"``
@@ -51,13 +53,7 @@ def _split(filename: str, option: str) -> tuple[str, str, str]:
     given = option.split("Title:")[0].strip() if "Title:" in option else option  # a page title
     wanted = (given or suffix).lower()
     if wanted in MACRO:
-        from ...errors import UnsupportedFeatureError
-
-        raise UnsupportedFeatureError(
-            f"A pad is not yet written as the C macro {filename!r} names: ROOT writes there the "
-            "calls that draw the pad again and xrdroot has no writer for them. Save the pad as "
-            "a picture (.png, .pdf, .ps, .svg) instead."
-        )
+        return name, "macro", bracket
     if wanted not in FORMATS:
         raise ValueError(
             f"a pad is saved as {', '.join(sorted(FORMATS))}; {filename!r} asks for "
@@ -77,6 +73,12 @@ def save(pad: Any, filename: str, option: str = "") -> None:
     from ...canvas.styles import DRAWING
 
     name, kind, bracket = _split(str(filename), str(option))
+    if kind == "macro":
+        from .macro import write
+
+        write(pad, name)
+        _announce(f"macro file {name} has been created")
+        return
     with rc_context(DRAWING):  # text is drawn when saved, and drawn as ROOT's only so
         if kind == "pdf" and (bracket or name in BOOKS):
             _book(pad, name, bracket)

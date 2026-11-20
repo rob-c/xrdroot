@@ -328,6 +328,12 @@ class TPad(Drawn):
     def Modified(self, flag: bool = True) -> None:
         self.members["fModified"] = bool(flag)
 
+    def IsOnHeap(self) -> bool:
+        """Whether the pad was made with ``new``: ``StartTest`` deletes the old canvas if so."""
+        from .drawn import ON_HEAP
+
+        return bool(int(self.members["fBits"]) & ON_HEAP)
+
     def IsModified(self) -> bool:
         return bool(self.members.get("fModified", False))
 

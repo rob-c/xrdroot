@@ -1,4 +1,4 @@
-"""Saving live canvases as pictures and books, comparing pictures, and the ROOT namespace."""
+"""Saving live canvases as pictures, books and macros, comparing pictures, and ROOT's namespace."""
 
 from __future__ import annotations
 
@@ -63,12 +63,50 @@ def test_a_name_is_what_is_saved_when_none_is_given(tmp_path, monkeypatch):
     assert (tmp_path / "c.png").exists() and (tmp_path / "c.ps").exists()
 
 
-def test_a_pad_is_refused_as_a_c_macro_and_told_what_to_save_it_as(tmp_path):
-    """ROOT's ``SaveAs("x.C")`` writes the calls that draw the pad again, which is not written."""
-    with pytest.raises(UnsupportedFeatureError, match="not yet written as the C macro"):
-        _canvas().SaveAs(str(tmp_path / "c.C"))
-    with pytest.raises(UnsupportedFeatureError, match=r"\.png, \.pdf"):
-        _canvas().Print(str(tmp_path / "c"), "cxx")
+def test_a_pad_is_written_as_the_c_macro_that_draws_it_again(tmp_path, capsys):
+    """ROOT's ``SaveAs("x.C")`` writes the calls that draw the pad again, not a picture."""
+    c = ROOT.TCanvas("mac", "a macro", 300, 200)
+    line = ROOT.TLine(0.1, 0.2, 0.9, 0.8)
+    line.SetLineColor(2)
+    line.Draw("l")
+    ROOT.TLatex(0.1, 0.5, 'says "hi"').Draw()
+    path = tmp_path / "sg-macro.C"
+    c.SaveAs(str(path))
+    written = path.read_text()
+    assert "void sg_macro()" in written  # the function ``.x`` finds by the file's name
+    assert 'TCanvas *canvas = new TCanvas("mac", "a macro", 10, 10, 300, 200);' in written
+    assert "new TLine(0.1, 0.2, 0.9, 0.8);" in written
+    assert "tline1->SetLineColor(2);" in written and 'tline1->Draw("l");' in written
+    assert 'new TLatex(0.1, 0.5, "says \\"hi\\"");' in written
+    assert f"macro file {path} has been created" in capsys.readouterr().err
+
+
+def test_the_macro_of_a_pad_runs_again_and_draws_what_was_saved(tmp_path):
+    from xrdroot.pycint.execute import run
+
+    c = ROOT.TCanvas("mac", "a macro", 300, 200)
+    ROOT.TLine(0.1, 0.2, 0.9, 0.8).Draw()
+    c.SaveAs(str(tmp_path / "again.C"))
+    run(tmp_path / "again.C", use_cache=False)
+    drawn = [obj for obj, _ in ROOT.gPad.GetCanvas().primitives if obj.ClassName() == "TLine"]
+    assert [(obj.members["fX1"], obj.members["fY2"]) for obj in drawn] == [(0.1, 0.8)]
+
+
+def test_a_macro_literal_is_the_c_that_writes_the_value_again():
+    from xrdroot.pyroot.graphics import macro
+
+    assert (macro._literal(True), macro._literal(False)) == ("true", "false")
+    assert (macro._literal(2), macro._literal(0.5)) == ("2", "0.5")
+    assert macro._literal('a"b\\c') == '"a\\"b\\\\c"'
+
+
+def test_a_pad_drawing_a_class_with_no_known_constructor_is_refused_by_name(tmp_path):
+    c = ROOT.TCanvas("wrapped", "wrapped", 300, 200)
+    ROOT.TH1F("h", "h", 10, -4.0, 4.0).Draw()
+    with pytest.raises(UnsupportedFeatureError, match="A pad drawing a TH1F is not yet written"):
+        c.SaveAs(str(tmp_path / "c.C"))
+    with pytest.raises(UnsupportedFeatureError, match=r"knows no constructor for this one"):
+        c.Print(str(tmp_path / "c"), "cxx")
 
 
 def test_a_format_this_does_not_write_is_refused_by_name(tmp_path):

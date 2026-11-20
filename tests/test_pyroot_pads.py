@@ -291,3 +291,11 @@ def test_highlighting_is_kept_and_never_fires_on_a_batch_canvas(capsys):
     cube.SetHighlight()
     assert not cube.IsHighlight()
     assert "Supported only 1-D or 2-D histograms" in capsys.readouterr().err
+
+
+def test_a_pad_says_whether_it_was_made_with_new_as_root_asks_before_deleting_it():
+    """``StartTest`` in ``stressGraphics.cxx`` deletes a canvas of the same name if it is."""
+    canvas = ROOT.TCanvas("heap", "heap", 100, 100)
+    stack = ROOT.TPad("stack", "stack")
+    stack.members["fBits"] = 0
+    assert (canvas.IsOnHeap(), canvas.cd(0).IsOnHeap(), stack.IsOnHeap()) == (True, True, False)
