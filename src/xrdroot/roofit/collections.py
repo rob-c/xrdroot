@@ -362,6 +362,32 @@ class RooArgSet(RooAbsCollection):
 
     unique = True
 
+    # -- the ASCII configuration file -------------------------------------------------
+
+    def writeToFile(self, fileName: Any) -> None:
+        """``writeToFile``: the members as lines of text a later fit can read back.
+
+        The format is RooFit's own - ``f =  0.45 +/- 0.03 L(0 - 1) `` - so that a file
+        this writes is one ROOT reads, and the other way round (:mod:`.configfile`).
+        """
+        from .configfile import write_file
+
+        write_file(self, fileName)
+
+    def readFromFile(
+        self, fileName: Any, flagReadAtt: Any = None, section: Any = None,
+        verbose: bool = False,
+    ) -> bool:
+        """``readFromFile``: the values in that file read into the members of that name.
+
+        ``flagReadAtt`` marks each member a line of the file set, and ``section`` reads
+        only that ``[section]`` of the file; ``true`` comes back when reading went
+        wrong, as ROOT answers.
+        """
+        from .configfile import read_file
+
+        return read_file(self, fileName, flagReadAtt, section, verbose)
+
 
 class RooArgList(RooAbsCollection):
     """``RooArgList``: variables and functions in order, where a name may come twice."""

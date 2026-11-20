@@ -1688,6 +1688,12 @@ initializes the available samplers.
   and `paramOn`.
 - **The workspace**: `RooWorkspace` with its factory language (`SUM`, `PROD`, `EXPR`,
   `SIMUL`...).
+- **ASCII configuration files**: `RooArgSet.writeToFile` writes the set as ROOT writes it -
+  `f =  0.45 +/- 0.03 L(0 - 1) `, five significant figures by the error's precision, then
+  `C`, `L(lo - hi)`, `B(n)` and the unit - and `readFromFile` reads such a file back:
+  sections, `include`, `echo`, `abort`, `if`/`else`/`endif`, and the deprecated `P(...)`
+  and `F(...)`, with ROOT's own warnings and errors. Values are read as `RooFit::toDouble`
+  reads them, so an unbounded `L(-INF - +INF)` line does not read back, as in ROOT.
 - **Messages**: `RooMsgService` and `RooAbsReal` evaluation-error logging controls.
   `setEvalErrorLoggingMode` accepts the constants or names `PrintErrors`, `CollectErrors`,
   `CountErrors` and `Ignore`. `logEvalError` follows that policy; `numEvalErrors` counts
