@@ -331,24 +331,32 @@ def test_a_run_of_numbers_is_written_by_one_struct_and_falls_back_where_it_must(
 
 
 def test_a_run_of_plain_numbers_is_written_from_the_values_at_hand():
-    """A class whose members are all numbers is one struct over the object's own values, and
-    a value the struct refuses - or a class that is more than numbers - takes the writer's
-    own steps instead."""
+    """A class whose members are all numbers is one struct over the object's own values."""
     fields = tuple(Field(name, "int", "", ()) for name in ("a", "b"))
     catalogue = Catalogue({"C": Declaration("C", 2, False, (), fields)})
     buf = WBuffer()
     assert written_flat(buf, "C", catalogue, [1, 2]) is True
     assert bytes(buf.data).hex() == "4000000a0002" + "0000000100000002"
+
+
+def test_a_run_of_numbers_stands_aside_for_a_value_or_a_class_it_cannot_write():
+    """A class nothing describes, a class that is more than numbers, a value the struct
+    refuses, and a row that is not one value per member: the writer's own steps write them."""
+    fields = tuple(Field(name, "int", "", ()) for name in ("a", "b"))
+    catalogue = Catalogue({"C": Declaration("C", 2, False, (), fields)})
+    assert flat_record(Catalogue({}), "NoSuchClass") is None
+    strings = Catalogue({"C": Declaration("C", 2, False, (), (Field("s", "TString", "", ()),))})
+    assert flat_record(strings, "C") is None
     assert written_flat(WBuffer(), "C", catalogue, [1.9, 2]) is False  # the struct refuses it
     assert written_flat(WBuffer(), "C", catalogue, [1]) is False  # not one value per member
-    assert written_flat(WBuffer(), "NoSuchClass", catalogue, [1, 2]) is False
-    assert flat_record(Catalogue({}), "NoSuchClass") is None  # a class nothing describes
-    strings = Catalogue({"C": Declaration("C", 2, False, (), (Field("s", "TString", "", ()),))})
-    assert flat_record(strings, "C") is None  # a class that is more than numbers
-    foreign = Catalogue({"C": Declaration("C", 1, True, (), fields)})  # carries its checksum
+
+
+def test_a_foreign_class_of_numbers_carries_its_checksum_after_a_zero_version():
+    fields = tuple(Field(name, "int", "", ()) for name in ("a", "b"))
+    foreign = Catalogue({"C": Declaration("C", 1, True, (), fields)})
     written = WBuffer()
     assert written_flat(written, "C", foreign, [3, 4]) is True
-    assert bytes(written.data)[4:6] == b"\x00\x00"  # version zero, then the checksum
+    assert bytes(written.data)[4:6] == b"\x00\x00"  # version zero, the checksum after it
 
 
 def test_a_container_of_containers_of_objects_is_refused():
