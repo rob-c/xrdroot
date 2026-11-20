@@ -780,3 +780,28 @@ def test_an_array_of_a_length_the_declaration_leaves_to_run_time_stays_flat(monk
 def test_convert_from_json_any_needs_no_class_cell_to_read_an_object(monkeypatch):
     _reading_class(monkeypatch, "TNoCell", (("fInt", "int", "", ()),))
     assert ROOT.TBufferJSON.ConvertFromJSONAny('{"_typename":"TNoCell","fInt":3}').fInt == 3
+
+
+def test_a_t_string_array_is_written_at_the_depth_the_object_holds_it():
+    """``TString fStr[2]`` is one JSON array of its strings, and ``TString *fStr2[3]`` - a
+    pointer another member counts, as ``StreamerLoop.ref``'s ``fStr2`` - is an array of one
+    array per slot, each the ``null`` pointer where the object holds none."""
+    kinds = _declared_class("TStringArrays", (("fStr", "TString", "", (2,)),
+                                              ("fStr2", "TString*", "", (2,))))()  # fmt: skip
+    kinds.fStr = [ROOT.TString("a"), ROOT.TString("")]
+    kinds.fStr2 = [[ROOT.TString("b")], [None]]
+    assert _json(kinds) == (
+        '{\n  "_typename" : "TStringArrays",\n  "fStr" : ["a", ""],\n'
+        '  "fStr2" : [["b"], [null]]\n}'
+    )
+
+
+def test_a_t_string_array_reads_back_with_the_empty_pointer_as_none(monkeypatch):
+    """What makes ``StreamerLoop``'s store/read/store one JSON twice: the reader keeps the
+    depth the JSON wrote and the ``null`` that stands for a pointer with nothing there."""
+    _reading_class(monkeypatch, "TStringBack", (("fStr", "TString", "", (2,)),
+                                                ("fStr2", "TString*", "", (2,))))  # fmt: skip
+    read = ROOT.TBufferJSON.ConvertFromJSON(
+        '{"_typename":"TStringBack","fStr":["a",""],"fStr2":[["b"],[null]]}')
+    assert read.fStr == ["a", ""]
+    assert read.fStr2 == [["b"], [None]]

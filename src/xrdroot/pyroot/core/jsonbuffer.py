@@ -195,6 +195,7 @@ SCALARS = {"bool": np.bool_, "char": np.int8, "signed char": np.int8,
 #: there is nothing there.
 TEXTS = {("std::string", False): "string", ("TString", False): "string",
          ("std::string", True): "strings", ("std::string*", True): "strptrs",
+         ("TString", True): "tstrings", ("TString*", True): "tstrings",
          ("char", True): "chars", ("char*", False): "cstring",
          ("std::string*", False): "strptr"}  # fmt: skip
 
@@ -552,6 +553,14 @@ def _nest(values: list[Any], dims: tuple[int | None, ...],
     return [_nest(values[at : at + step], dims[1:], leaf) for at in range(0, len(values), step)]
 
 
+def _text_tree(value: Any, comma: str) -> str:
+    """The strings of a ``TString`` array as the JSON ROOT writes them, at whatever depth the
+    object holds them: ``null`` for a pointer with nothing there, and one array per level."""
+    if isinstance(value, (list, tuple)):
+        return "[" + comma.join(_text_tree(each, comma) for each in value) + "]"
+    return "null" if value is None else _quoted(str(value))
+
+
 def _list_text(nested: Any, comma: str) -> str:
     """Nested JSON arrays of text, which ``leaf`` has already written as JSON."""
     if isinstance(nested, str):
@@ -677,7 +686,7 @@ class _Writer:
         """A member that is not a number: text, an array of text, or a container."""
         if member.kind == "chars":
             return self._char_text(value, member)
-        if member.kind in ("strings", "strptrs"):
+        if member.kind in ("strings", "strptrs", "tstrings"):
             return self._texts(member, value, depth)
         if member.kind in CONTAINER_KINDS:
             return self._containers(member, value, depth)
@@ -709,7 +718,14 @@ class _Writer:
 
     def _texts(self, member: _Member, value: Any, depth: int) -> str:
         """A ``std::string[N]``: one JSON array of its strings, a pointer with nothing there
-        written as ``null``, or - a ``std::string[N][M]`` - an array of those."""
+        written as ``null``, or - a ``std::string[N][M]`` - an array of those.
+
+        A ``TString`` array is the one ROOT's ``kStreamerLoop`` writes: it goes out at the
+        depth the object holds it at rather than the depth its declaration gives it, since
+        what a ``TString *fStr; // [fCnt]`` holds is as many strings as another member's
+        counter says, and ``fStr2[3]`` is three of those."""
+        if member.kind == "tstrings":
+            return _text_tree(value, self._layout.item_comma)
         nested = _nest(list(value or []), member.dims,
                        lambda group: self._text_row(member, group))  # fmt: skip
         return _list_text(nested, self._layout.item_comma)
@@ -1063,11 +1079,21 @@ def _converted_text(member: _Member, value: Any) -> Any:
     """What a member of text, of an array of it, or of characters holds."""
     if member.kind == "chars":
         return "".join(chr(code) for code in _char_codes(value))
+    if member.kind == "tstrings":
+        return _converted_tree(value)
     if member.kind in ("strings", "strptrs"):
         return _converted_texts(member, value)
     if member.kind in ("cstring", "strptr"):
         return None if value is None else str(value)
     return "" if value is None else str(value)
+
+
+def _converted_tree(value: Any) -> Any:
+    """A ``TString`` array the JSON wrote, at the depth it wrote it: the strings it holds
+    and ``None`` where a pointer had nothing there."""
+    if isinstance(value, list):
+        return [_converted_tree(each) for each in value]
+    return None if value is None else str(value)
 
 
 def _converted_texts(member: _Member, value: Any) -> list[str | None]:
