@@ -773,6 +773,18 @@ class TInterpreter:
                 namespace[name] = value  # a function, a class - or a global it declared
         return True
 
+    def LoadText(self, code: Any) -> None:
+        """``LoadText``: C++ read as a file's contents - declared now, as if a header were
+        included, so a script can call what it declares straight away.
+
+        ROOT keeps the text in the interpreter and parses it there; nothing is compiled
+        here, so what the text declares is what :meth:`Declare` puts in the namespace.
+        """
+        if _translator("run_source") is None:
+            _processor("gInterpreter.LoadText")(str(code))
+            return
+        self.Declare(code)
+
     def ProcessLine(self, line: Any, error: Any = None) -> Any:
         return gROOT.ProcessLine(line, error)
 
