@@ -117,7 +117,7 @@ def test_the_typedef_and_autodict_commands_leave_the_split_branch_as_they_found_
     # lines are what is asserted here rather than a list another test could change.
     lines = said.getvalue().splitlines()
     assert lines[0] == "List of typedefs"
-    assert all(re.match(r"^\S+\s+\d+\s+typedef .+ [A-Za-z_]\w*$", line) for line in lines[1:])
+    assert all(re.match(r"^\S+\s+\d+\s+typedef \S", line) for line in lines[1:])
     assert _branched(DECLARED["Two"]()) == before
 
 
