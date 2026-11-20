@@ -691,6 +691,24 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   encoder - all untouched this round - **plus** `io/event`+`fastcloningeventtree` measured on its own
   so its 47 fixtures stop moving the count.
 
+## Round 18's close (recorded here for the next iteration)
+
+- Base `cb5c17e4`, closed at `6ae78a7a`. Three commits landed from eight chains, **0 tests gained and
+  0 lost** across ten areas (167 tests, `--jobs 1`, `/tmp/r18/areas`).
+- **That is the round's finding, not an accident** (`W0-50`). Every remaining group in those areas is
+  one *feature* from passing: `io/bigevent`'s next member, `pairEnumEvo`'s emulated layout, the data
+  model's reader, `double32`'s `TRealData` consumer, the graphics pad's macro, `io/tree`'s
+  `SplitClones`, `jsonbuffer.py`'s last writers. Four of eight workers stopped with the same
+  sentence - "the wall is outside my chain" - which is true and no longer useful.
+- **The scoping rule has to change with the work.** A chain scoped by *file path* worked while the
+  walls were one file away (rounds 12-13 gained 39 tests that way). It cannot contain a wall that is
+  a missing *behaviour*: the next rounds take **one group each with the whole component in scope**,
+  and expect a round per group. `W0-50` says so.
+- The machine's load average stayed at 9-20; every measurement was `--jobs 1`, and `io/event` +
+  `fastcloningeventtree` was measured on its own (29/29) so `W0-48`'s collision cannot move the count.
+- Round 19's candidates, one per round now: `io/bigevent` (16), `pairEnumEvo` (4 + 40 near-misses),
+  the data model (7), `double32` (7), `io/tree` (11), the graphics pad (3), `jsonbuffer` (6).
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -729,6 +747,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 18's result of it, at `6ae78a7a`: `TOTAL 116689 0 29096 0 100%`, `12634 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
+  maintainability 30 208 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 17's result of it, at `5ff715a5`: `TOTAL 116559 0 29080 0 100%`, `12620 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
   maintainability 30 168 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -810,6 +831,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 15 | `99525851` | **eight** chains (the machine's load average reached 64): bigevent's writer, `SplitClones`, the evolved class's warnings and walk, the data model's records, a `TRef` in a `TClonesArray`, `pairEnumEvo`'s listing, the harness's lost working file, and the four buffers' margin | **roottest 1226 → 1230 at `--jobs 3`, non-tutorial 1393 → 1397** (`/tmp/r15/final2`, `/tmp/r15/final1` at `601996d1`), 8 in, 0 lost to code | 4: `W0-41`…`W0-44` |
 | 16 | `df6d9833` | **one chain**, not sixteen (the machine stayed at a load average of 9-36): the harness's `STOREOUT` rule and a build-tree `OUTREF` - ROOT stores every roottest's output as `<build>/<name>.log` and the next test reads it, which xrdroot never did | **roottest 1230 → 1233, non-tutorial 1397 → 1400** (`/tmp/r16/final2`, `/tmp/r16/final1` at `2dad75a7`, `--jobs 3`), 3 in, 0 lost | 3: `W0-46`, `W0-47`, plus the `W0-40` closure |
 | 17 | `ba2985b6` | **eight** chains (the machine stayed at a load average of 13-44): `SplitClones`' last answer, bigevent's writer, the evolved class's six stderr DIFFs, the data model's records, `pairEnumEvo`'s listing, the graphics encoders, `TBufferJSON`, and `double32` | **roottest 1233 → 1239, non-tutorial 1400 → 1406** measured in six areas (`/tmp/r17/areas`, `/tmp/r17/check-ev` at `13034109`); the round's own full run is invalid and unquoted (`W0-48`) | 4: `W0-46` closed, `W0-48`, `W0-49` |
+| 18 | `cb5c17e4` | **eight** chains (load average 9-20): the data model, `pairEnumEvo`, `double32`, bigevent's writer, `TBufferJSON`, the graphics encoders, `SplitClones`, and `roottest/python` | **0 gained, 0 lost**: ten areas, 167 tests, three commits that each move a wall without flipping a test (`/tmp/r18/areas` at `--jobs 1`) | 1: `W0-50` - a file-path chain cannot contain a missing behaviour |
 
 ## Notes
 
