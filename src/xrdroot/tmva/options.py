@@ -13,9 +13,13 @@ leaves out is the class's default exactly as in TMVA.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 __all__ = ["Options", "truth"]
+
+#: Where a number starts in an option's value: its digits, its point and its exponent.
+_LEADING_NUMBER = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
 
 #: The words TMVA's ``Option<bool>`` reads as true; anything else is false.
 TRUE_WORDS = frozenset({"1", "t", "true", "ktrue", "y", "yes"})
@@ -26,6 +30,18 @@ def truth(text: Any) -> bool:
     if isinstance(text, bool):
         return text
     return str(text).strip().lower() in TRUE_WORDS
+
+
+def _leading(value: Any) -> str:
+    """The number at the start of ``value``, which C++ reads and the rest of it ignores.
+
+    TMVA reads its options with ``atoi`` and ``atof``, which stop at the first character
+    that cannot continue a number: ROOT's own test programs rely on that where two adjacent
+    literals lost their ``:`` - ``nTest_Signal=0)`` and ``RandomSeed=123VarTransform=None``.
+    A value holding no number at all is handed back whole, for ``float`` to refuse it.
+    """
+    found = _LEADING_NUMBER.match(str(value).strip())
+    return found.group() if found else str(value).strip()
 
 
 def _split(token: str) -> tuple[str, str | None, int | None]:
@@ -90,12 +106,12 @@ class Options:
     def number(self, name: str, default: float = 0.0) -> float:
         """A floating-point option."""
         value = self._values.get(name.lower())
-        return default if value is None else float(str(value).rstrip("%"))
+        return default if value is None else float(_leading(str(value).rstrip("%")))
 
     def integer(self, name: str, default: int = 0) -> int:
         """An integer option; ``1e3`` and ``2.0`` are read as C++'s stream reads them, whole."""
         value = self._values.get(name.lower())
-        return default if value is None else int(float(str(value)))
+        return default if value is None else int(float(_leading(value)))
 
     def array(self, name: str, size: int, default: Any) -> list[Any]:
         """An array option: the whole-array value or ``default``, then each index given."""
@@ -116,7 +132,7 @@ def _like(default: Any, value: Any) -> Any:
     if isinstance(default, bool):
         return truth(value)
     if isinstance(default, int):
-        return int(float(value))
+        return int(float(_leading(value)))
     if isinstance(default, float):
         return float(value)
     return str(value)

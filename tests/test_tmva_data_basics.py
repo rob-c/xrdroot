@@ -30,6 +30,22 @@ def test_an_array_option_takes_its_whole_value_then_each_index_within_its_size()
     assert options.given("smooth") and not options.given("other")
 
 
+def test_an_option_number_stops_where_c_plus_plus_stops_reading_one():
+    options = Options("Seed=123VarTransform=None:Test=0):Rate=12%junk")
+    assert options.integer("Seed") == 123
+    assert options.integer("Test") == 0
+    assert options.number("Rate") == 12.0
+    assert options.array("Seed", 1, 0) == [123]
+
+
+def test_an_option_with_no_number_at_all_is_refused_by_name():
+    options = Options("Seed=abc")
+    with pytest.raises(ValueError, match="could not convert string to float: 'abc'"):
+        options.integer("Seed")
+    with pytest.raises(ValueError, match="could not convert string to float: 'abc'"):
+        options.number("Seed")
+
+
 def test_an_array_option_is_read_as_the_type_of_its_default():
     options = Options("A[0]=True:B[0]=2.5:C[0]=x")
     assert options.array("A", 1, False) == [True]
