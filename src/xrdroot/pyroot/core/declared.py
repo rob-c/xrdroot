@@ -70,6 +70,10 @@ CATALOGUES_KEPT = 4096
 #: they stream themselves, so no streamer information is what reads them - and that the
 #: namespace has a class of its own for, which is what a member of one reads back as.
 COLLECTIONS = ("TList", "THashList", "TSortedList", "TObjArray")
+#: The names a string of ROOT's or of C++'s owns. A member of one is written as its text, by
+#: the ``TStreamerString`` its element is, though ``TString`` has a layout in
+#: :data:`~.xrdroot.winfo.INFOS` like any other class of ROOT's.
+STRINGS = ("TString", "string", "basic_string")
 #: The collections of those that keep a numbered slot per object, a slot never filled a hole.
 SLOTTED = ("TObjArray",)
 
@@ -414,9 +418,15 @@ def root_row(obj: Any, classname: str) -> dict[str, Any]:
     names - each base's under the base's name, a ``TObject``'s bits and a ``TNamed``'s name and
     title alongside, as either way of writing them reads them."""
     row: dict[str, Any] = {}
+    held = getattr(obj, "members", None)
     if isinstance(obj, TObject):
         row["fBits"] = obj._bitword()
         row["fUniqueID"] = obj.GetUniqueID()
+    elif isinstance(held, Mapping) and classname == "TObject":
+        # A drawing class keeps the members ROOT would write by name in ``members``, and is
+        # not a ``TObject`` here though ROOT's ``TLine`` derives from one.
+        row["fBits"] = int(held.get("fBits", 0))
+        row["fUniqueID"] = int(held.get("fUniqueID", 0))
     if isinstance(obj, TNamed):
         row["fName"] = TNamed.GetName(obj)
         row["fTitle"] = TNamed.GetTitle(obj)
@@ -487,11 +497,27 @@ def _plain_object(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
     of the member says only ``ArrayHolderT``.
     """
     name = class_name(found)
-    if catalogue.declared(name) is not None and name not in ("string", "TString"):
+    if catalogue.declared(name) is not None and name not in STRINGS:
         return _object_of(value, name, catalogue)
     if isinstance(value, TObject):
         return _root_object(value, found.name, catalogue)
+    if _held_by_root(name, value):
+        # Written by the layout alone: nothing else here knows the class, and it is no
+        # ``TObject`` to be asked what class it is - a drawing class, a ``TAttLine``.
+        return root_row(value, name)
     return value if isinstance(value, (int, float, np.ndarray, list)) else _scalar(value)
+
+
+def _held_by_root(name: str, value: Any) -> bool:
+    """Does ``value`` stand for one of ROOT's classes the writer carries the layout of, which
+    is written by what that layout names rather than by what the value keeps?
+
+    Not every one of them is a ``TObject`` here: a drawing class such as ``TLine`` keeps its
+    members by name for the canvas, and ``TAttLine`` its three in the group it belongs to, and
+    ROOT streams either through the layout's ``Get`` of each member.
+    """
+    plain = (str, bytes, int, float, np.ndarray, list, tuple, Mapping)
+    return name in INFOS and name not in STRINGS and not isinstance(value, plain)
 
 
 def _root_object(value: Any, classname: str, catalogue: Catalogue) -> Any:

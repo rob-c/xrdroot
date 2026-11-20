@@ -47,7 +47,7 @@ from .wdeclared import (
 )
 from .winfo import INFOS, Element
 from .wpacking import pack_member
-from .writer import WBuffer, _payload, _record, info_entry
+from .writer import Record, WBuffer, _payload, _record, info_entry
 
 __all__ = ["Clones", "Instance", "DeclaredObject", "write_instance", "write_members", "write_value"]
 
@@ -561,10 +561,11 @@ def _bits(width: int, value: Any) -> list[int]:
 
 
 def _members(value: Any) -> Mapping[str, Any]:
-    """An object's members as a mapping: an instance's, a mapping's, or a ``std::complex``'s two
-    numbers, which is all a class of C++'s own declaration is here - no layer builds an
-    instance of one."""
-    if isinstance(value, Instance):
+    """An object's members as a mapping: an instance's, a mapping's, a record's - one of ROOT's
+    core classes handed over by the layer that knows it, which members are what the class's own
+    streamer information describes - or a ``std::complex``'s two numbers, which is all a class
+    of C++'s own declaration is here - no layer builds an instance of one."""
+    if isinstance(value, (Instance, Record)):
         return value.members
     if isinstance(value, Mapping):
         return value

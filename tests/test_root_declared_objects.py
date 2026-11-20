@@ -2103,3 +2103,59 @@ def ROOT_BYTES(value: Instance, catalogue: Catalogue) -> bytes:
     buf = WBuffer()
     write_instance(buf, value, catalogue)
     return bytes(buf.data)
+
+
+DRAWN = r"""
+#include "TLine.h"
+class Drawn {
+public:
+   std::vector<TLine> lines;
+   std::deque<TAttLine> parts;
+   std::vector<TObject> objects;
+};
+void drawn() {}
+"""
+
+
+def test_a_drawing_class_and_an_attribute_class_are_plain_members_of_their_layouts():
+    """ROOT's ``TLine`` is not a ``TObject`` in this namespace - the canvas keeps its members
+    by name - and ``TAttLine``, a class ROOT derives from nothing, keeps its three in the
+    group it belongs to; either is written by the members ROOT's layout names, read through
+    the ``Get`` of each, where a container of them is written member by member."""
+    run_source(DRAWN, "drawn.C")
+    cls = find_class("Drawn")
+    assert cls is not None
+    made = cls()
+    line = ROOT.TLine(0.25, 0.5, 1.5, 2.0)
+    line.SetLineColor(4)
+    made.lines.push_back(line)
+    att = ROOT.TAttLine()
+    att.SetLineColor(2)
+    made.parts.push_back(att)
+    catalogue = catalogue_for("Drawn")
+    (held,) = plain_value(made.lines, "vector<TLine>", catalogue)
+    assert (held["fX1"], held["fY1"], held["fX2"], held["fY2"]) == (0.25, 0.5, 1.5, 2.0)
+    assert held["TAttLine"]["fLineColor"] == 4
+    assert set(held) == {"TObject", "TAttLine", "TAttBBox2D", "fX1", "fY1", "fX2", "fY2"}
+    (part,) = plain_value(made.parts, "deque<TAttLine>", catalogue)
+    assert (part["fLineColor"], part["fLineStyle"]) == (2, 1)
+
+
+def test_a_container_of_roots_core_objects_is_written_by_the_members_their_layout_names():
+    """A ``TObject`` among a member's items reaches the writer as a record of the class, which
+    is what the members its layout names are read off - the same shape a histogram's or a
+    ``TRef``'s is, and no instance of a class of the program's at all."""
+    run_source(DRAWN, "drawn.C")
+    cls = find_class("Drawn")
+    assert cls is not None
+    made = cls()
+    made.objects.push_back(ROOT.TObject())
+    catalogue = catalogue_for("Drawn")
+    (held,) = plain_value(made.objects, "vector<TObject>", catalogue)
+    assert (type(held).__name__, held.classname) == ("Record", "TObject")
+    buf = WBuffer()
+    write_members(buf, Instance("Drawn", {"objects": [held]}), catalogue)
+    # The two empty containers the class declares first, then - version 10 of a member-wise
+    # container, ``TObject``'s version and the count - one column per member of a ``TObject``.
+    assert bytes(buf.data)[24:].hex() == "40000010" + "400a" + "0001" + "00000001" \
+        + "00000000" + "03000000"
