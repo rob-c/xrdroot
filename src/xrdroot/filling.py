@@ -255,20 +255,46 @@ def _add_one_cell(cells: Any, cell: int, weight: float) -> None:
 def fill_one(histogram: Histogram, coordinates: Sequence[float], weight: float) -> int:
     """``TH1::Fill`` of one entry, in plain floats - the same doubles :func:`fill_histogram`
     adds, without the cost of arrays of one; the global bin it went to comes back."""
+    bins: list[int] = []
+    inside = True  # on every axis, rather than in a flow bin of one
+    for axis, x in zip(histogram.axes, coordinates, strict=False):
+        found = one_bin(axis, x)
+        bins.append(found)
+        inside = inside and 1 <= found <= axis.nbins
+    cell = bins[0] if len(bins) == 1 else _global_one(bins, histogram._widths)
     cells = histogram._cells()
     squares = histogram._sumw2()
     if weight != 1.0 and squares is None:
         squares = histogram._ensure_sumw2()  # before the first weight that is not one
-    bins = [one_bin(axis, x) for axis, x in zip(histogram.axes, coordinates, strict=False)]
-    cell = _global_one(bins, histogram._widths)
     core = histogram._core
     core["fEntries"] = float(core["fEntries"]) + 1
     _add_one_cell(cells, cell, weight)
     if squares is not None:
         squares[cell] += weight * weight
-    if all(1 <= found <= axis.nbins for found, axis in zip(bins, histogram.axes, strict=False)):
-        _add_one(histogram._moment_homes(), one_terms(weight, coordinates))
+    if inside:
+        _add_one_terms(histogram._moment_homes(), weight, coordinates)
     return cell
+
+
+def _add_one_terms(
+    homes: dict[str, dict[str, Any]], weight: float, coordinates: Sequence[float]
+) -> None:
+    """:func:`one_terms` added to the moments each belongs to, without the list of them.
+
+    The same values in the same order as :func:`one_terms` and :func:`_add_one` together,
+    which is what an entry of a column adds; a loop of fills asks for it a million times
+    over and the list of pairs costs more than the additions do.
+    """
+    values = [weight, weight * weight]
+    for value in coordinates:
+        values += [weight * value, weight * value * value]
+    for first in range(len(coordinates)):
+        for second in range(first + 1, len(coordinates)):
+            values.append(weight * coordinates[first] * coordinates[second])
+    names = ONE_NAMES.get(len(coordinates)) or _one_names(len(coordinates))
+    for name, value in zip(names, values, strict=True):
+        home = homes[name]
+        home[name] = float(home[name]) + value
 
 
 def _add_one(homes: dict[str, dict[str, Any]], terms: list[tuple[str, float]]) -> None:

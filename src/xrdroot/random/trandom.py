@@ -436,6 +436,14 @@ class TRandom:
         These are the ``Double_t`` overload's; the ``Float_t`` one's are these
         rounded to single precision, ``np.float32(a)``.
         """
+        if n is None:
+            # One pair, drawn a number at a time: the same two draws, the same arithmetic,
+            # without a column of one pair - which is most of what a macro that fills a
+            # histogram from ``Rannor`` does, a pair at a time.
+            first, second = self._next(), self._next()
+            angle = second * RANNOR_TWO_PI
+            radius = math.sqrt(-2 * libm.log(first))
+            return radius * libm.sin(angle), radius * libm.cos(angle)
         count, shape = _count(n)
         draws = self._take(2 * count).reshape(count, 2)
         x = draws[:, 1] * RANNOR_TWO_PI
