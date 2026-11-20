@@ -103,7 +103,10 @@ def test_t_enum_get_enum_finds_what_was_declared_and_nothing_else() -> None:
     assert troot.TEnum.GetEnum("ETest") is made
     assert troot.TEnum.GetEnum("ENowhere") is None
     assert troot.TEnum.GetEnum("ETest", troot.TEnum.kAutoload) is made
-    assert troot.TEnum.kNoAutoload != troot.TEnum.kAutoload
+    assert troot.TEnum.GetEnum("ETest", troot.TEnum.kNoAutoload) is made
+    # ROOT 6.40's ``kNoAutoload`` is ``kNone``, not ROOT 5's ``kAutoload``: the oracle prints
+    # both as 0, so a lookup by that name asks the table alone.
+    assert troot.TEnum.kNoAutoload == troot.TEnum.kNone != troot.TEnum.kAutoload
 
 
 def test_a_lookup_that_may_autoload_reads_the_library_its_rootmap_names(
@@ -118,9 +121,9 @@ def test_a_lookup_that_may_autoload_reads_the_library_its_rootmap_names(
         troot.note_enum(name, [("kOne", 1)])
         return True
 
-    monkeypatch.setitem(troot._PROVIDED, "autoload", lambda: loader)
+    monkeypatch.setitem(troot._PROVIDED, "autoload_enum", lambda: loader)
     found = troot.TEnum.GetEnum("myns::EIn")
-    assert (asked, found) == (["myns::EIn"], troot.find_enum("myns::EIn"))
+    assert (asked, found) == (["myns", "myns::EIn"], troot.find_enum("myns::EIn"))
     # ``kInterpLookup`` and ``kNone`` ask the table alone, which holds nothing yet.
     asked.clear()
     troot._ENUMS.clear()
@@ -134,11 +137,56 @@ def test_without_a_translator_a_lookup_that_may_autoload_only_asks_the_table(
 ) -> None:
     """A session with no translator loaded - a PyROOT program using no C++ - cannot read a
     library, so the lookup answers what the table holds and no more."""
-    monkeypatch.setitem(troot._PROVIDED, "autoload", _no_translator)
-    assert troot.autoload_enum("myns::EIn") is False
+    monkeypatch.setitem(troot._PROVIDED, "autoload_enum", _no_translator)
+    assert troot._autoload_enum("myns::EIn") is None
     assert troot.TEnum.GetEnum("myns::EIn") is None
     troot.note_enum("myns::EIn", [("kOne", 1)])
     assert troot.TEnum.GetEnum("myns::EIn") is troot.find_enum("myns::EIn")
+
+
+def test_a_lookup_does_not_read_a_library_for_a_scope_the_interpreter_has(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ROOT looks an enumeration up where it would be declared, and reads a library only when
+    that scope is not here at all: roottest's ``execenumsInNamespaces`` declares an empty
+    ``myNamespace`` and then does not find the ``A`` the dictionary on its path declares."""
+    asked: list[str] = []
+
+    def loader(name: str) -> bool:
+        asked.append(name)
+        return False
+
+    monkeypatch.setitem(troot._PROVIDED, "autoload_enum", lambda: loader)
+    ROOT.gInterpreter.ProcessLine("namespace myNamespace { }")
+    assert troot._owner_known("myNamespace")
+    assert troot.TEnum.GetEnum("myNamespace::A") is None
+    assert asked == []
+
+
+def test_a_lookup_finds_the_enumeration_a_library_for_its_scope_declares(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ROOT asks for a library declaring the scope first, which is how a class's
+    ``Holder::Mode`` is found before ``Holder`` itself: the library's own load notes the
+    enumeration, and the lookup takes it without asking for the enumeration's name too."""
+    asked: list[str] = []
+
+    def loader(name: str) -> bool:
+        asked.append(name)
+        troot.note_enum("Holder::Mode", [("kOff", 0)])
+        return True
+
+    monkeypatch.setitem(troot._PROVIDED, "autoload_enum", lambda: loader)
+    found = troot.TEnum.GetEnum("Holder::Mode")
+    assert (asked, found) == (["Holder"], troot.find_enum("Holder::Mode"))
+
+
+def test_the_scope_a_name_is_qualified_with_is_every_part_of_it() -> None:
+    """A declared ``myns`` does not make ``myns::inner`` a scope the interpreter has, and a
+    name in no scope - one with no ``::`` in it - is a scope it knows nothing about."""
+    ROOT.gInterpreter.ProcessLine("namespace outer { namespace inner { } }")
+    assert (troot._owner_known("outer"), troot._owner_known("outer::inner")) == (True, True)
+    assert (troot._owner_known("outer::missing"), troot._owner_known("")) == (False, False)
 
 
 def _no_translator() -> None:

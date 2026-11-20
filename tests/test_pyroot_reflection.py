@@ -318,6 +318,40 @@ def test_the_class_table_answers_for_the_classes_a_dictionary_describes():
     assert ROOT.TClassTable.GetDict("NotedByHand").GetName() == "NotedByHand"
 
 
+def test_t_class_get_dict_is_the_class_table_s_answer_in_its_older_spelling():
+    """ROOT keeps ``TClass::GetDict`` beside ``TClassTable::GetDict``, and a program asks it to
+    decide whether it must load a library first - so a class a dictionary describes answers,
+    and one nothing describes does not, whatever spellings the name is asked for in."""
+    assert ROOT.TClass.GetDict("TH1F").GetName() == "TH1F"
+    assert ROOT.TClass.GetDict("ROOT::TNamed").GetName() == "TNamed"
+    assert ROOT.TClass.GetDict("NoSuchClassIsHere") is None
+    assert ROOT.TClass.GetDict("TH1F", False, True).GetName() == "TH1F"
+
+
+def test_a_data_type_is_a_fundamental_type_named_and_sized_as_root_has_it():
+    """``TDataType::GetDataType`` turns the ``EDataType`` code ``TEnum::GetUnderlyingType``
+    answers with into the type: roottest's ``enumSize`` checks that ``enum E : short`` is a
+    ``short`` that way."""
+    short = ROOT.TDataType.GetDataType(2)
+    assert (short.GetName(), short.GetType(), short.Size()) == ("short", 2, 2)
+    assert (short.GetAlignOf(), short.Size()) == (2, 2)  # ``short``, on the 64-bit oracle
+    assert (short.GetTypeName(), short.GetFullTypeName()) == ("short", "short")
+    assert [ROOT.TDataType.GetDataType(code).GetName() for code in (1, 8, 18, 4)] == [
+        "char", "double", "bool", "long",
+    ]
+    assert ROOT.TDataType.GetDataType(4).Size() == 8  # ``long`` on the 64-bit oracle
+    assert ROOT.TDataType().Size() == 0
+
+
+def test_a_code_that_describes_no_type_is_no_data_type():
+    """``kNumDataTypes`` is one past the last code ``TDataType`` describes, and the codes
+    outside its range - ``kNoType_t`` 0, a number this knows nothing of - name no type."""
+    assert ROOT.kNumDataTypes == 23
+    assert ROOT.TDataType.GetDataType(ROOT.kNumDataTypes) is None
+    assert ROOT.TDataType.GetDataType(0) is None
+    assert ROOT.TDataType.GetDataType("no code") is None
+
+
 def test_the_class_table_lists_the_classes_it_holds(capsys):
     ROOT.TClassTable.Add("NotedByHand", 1)
     names = ROOT.TClassTable.GetTable()

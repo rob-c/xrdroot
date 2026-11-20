@@ -54,6 +54,7 @@ __all__ = [
     "rebind",
     "declare_namespaces",
     "autoload",
+    "autoload_enum",
     "forget_all",
     "ROOT_LIBRARIES",
 ]
@@ -254,6 +255,30 @@ def _declare(loaded: Loaded) -> None:
     for name, members in loaded.library.namespaces.items():
         DECLARED[name] = _namespace(DECLARED.get(name), name, members, module)
     _dictionaried(loaded)
+    _enumerated(loaded)
+
+
+def _enumerated(loaded: Loaded) -> None:
+    """Tell ROOT's table of enumerations which ones this library declares.
+
+    A dictionary knows the enumerations of the headers it was built from, and ROOT's
+    interpreter knows them as soon as the library is loaded - ``TEnum::GetEnum("myNamespace::A")``
+    finds one before anything has read the header. The title of one a namespace declares is
+    the namespace's name, which is what the oracle answers for a rootcling-built enumeration
+    (roottest's ``qualifiedNames`` prints ``enpclass/myns``); one a class declares has no
+    title, as the oracle answers ``""`` for ``C::cE``, and neither has one a line declares.
+    """
+    if not loaded.library.enums:
+        return
+    from ...pyroot.core.troot import note_enum
+    from .translate import EnumNote
+
+    classes = frozenset(loaded.library.classes)
+    for stored in loaded.library.enums:
+        note = EnumNote.of_stored(stored)
+        owner = note.qualified.rpartition("::")[0]
+        note_enum(note.qualified, note.items, "" if owner in classes else owner,
+                  note.underlying, note.scoped)  # fmt: skip
 
 
 def _dictionaried(loaded: Loaded) -> None:
@@ -439,8 +464,11 @@ def _indexed(path: Path) -> Library | None:
 
 
 def provides(library: Library, name: str) -> bool:
-    """Whether ``library`` declares ``name`` at its top: a class, function or namespace."""
-    return name in library.names or any(each.split("::")[0] == name for each in library.classes)
+    """Whether ``library`` declares ``name`` at its top: a class, function, namespace or
+    enumeration - what its rootmap makes it loadable for."""
+    if name in library.names or any(each.get("name") == name for each in library.enums):
+        return True
+    return any(each.split("::")[0] == name for each in library.classes)
 
 
 def _candidates() -> list[Path]:
@@ -452,7 +480,25 @@ AUTOLOADING: set[str] = set()
 
 
 def autoload(name: str) -> bool:
-    """Load the library on the search path that provides ``name``; whether one did."""
+    """Load the library on the search path that provides ``name``; whether it is declared now."""
+    return _providing_loaded(name) and name in DECLARED
+
+
+def autoload_enum(name: str) -> bool:
+    """Load the library providing the enumeration ``name``; whether the table holds it now.
+
+    ``TEnum::GetEnum`` autoloads as ``TClass::GetClass`` does, by the enumeration's own name -
+    a rootmap lists an enumeration a dictionary was built for, here as the library's
+    ``enums`` - so a program asking for one no header has yet declared finds it (roottest's
+    ``qualifiedNames`` never loads its dictionary).
+    """
+    from ...pyroot.core.troot import find_enum
+
+    return _providing_loaded(name) and find_enum(name) is not None
+
+
+def _providing_loaded(name: str) -> bool:
+    """Load the library on the search path that provides ``name``; whether one was loaded."""
     if name.startswith("_"):
         return False
     for path in _candidates():
@@ -465,5 +511,5 @@ def autoload(name: str) -> bool:
             load_library(library)
         finally:
             AUTOLOADING.discard(key)
-        return name in DECLARED
+        return True
     return False

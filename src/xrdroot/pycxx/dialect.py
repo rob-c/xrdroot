@@ -91,6 +91,14 @@ def _nothing_loaded(module: dict[str, Any], made: Any) -> None:
     """A host with no libraries of its own leaves a program's names as it defined them."""
 
 
+def _nothing_parsed(unit: Any) -> Any:
+    """Plain C++ has no host behind it, so a declaration parsed asks nothing of one."""
+    return None
+
+
+def _nothing_noted(notes: Any) -> None:
+    """Plain C++ has no host keeping a table, so nothing a parse noted is given to one."""
+
 @dataclass(frozen=True, eq=False)
 class Dialect:
     """A library's additions to C++, by name - empty for plain C++ (:data:`CXX`)."""
@@ -225,6 +233,14 @@ class Dialect:
     #: ``(module, translation)``: called once a program's Python has run and before anything
     #: in it is called - where a host binds the names a library it loaded already defines.
     loaded: Callable[[dict[str, Any], Any], None] = _nothing_loaded
+    #: ``(unit)``: called with what a program declares, as it is parsed and before it runs -
+    #: where a host keeping a table of declarations, as an interpreter does, notes them. What
+    #: it returns is kept with the translation - plain JSON - and given to :attr:`noted`.
+    parsed: Callable[[Any], Any] = _nothing_parsed
+    #: ``(notes)``: what :attr:`parsed` returned, given to the host whether the translation was
+    #: just made or read back from the cache - a cached translation is parsed not at all, so
+    #: without this a program run twice would declare its enumerations only the first time.
+    noted: Callable[[Any], None] = _nothing_noted
     #: Directories whose code shapes translations, hashed into a cached translation's key.
     sources: tuple[Path, ...] = ()
 

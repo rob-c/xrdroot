@@ -29,7 +29,7 @@ __all__ = ["FORMAT", "SUFFIX", "LIBRARY_SUFFIXES", "Library", "read", "write", "
 #: What a library file says it is in its ``format`` field.
 FORMAT = "xrdroot-library"
 #: The version of the layout below; a different one is rebuilt, never misread.
-VERSION = 1
+VERSION = 2
 #: The extension of a translated library, where a compiler would write ``.so``.
 SUFFIX = ".xrdlib"
 #: The extensions ROOT accepts after a library's name, every one meaning the same library.
@@ -61,6 +61,9 @@ class Library:
     namespaces: dict[str, Any] = field(default_factory=dict)
     #: The classes it provides, qualified: what a rootmap lists, and autoloading looks up.
     classes: list[str] = field(default_factory=list)
+    #: The enumerations it declares, as ROOT's interpreter knows them once it is loaded: each
+    #: by its qualified name, with its constants' values (:class:`.translate.EnumNote`).
+    enums: list[dict[str, Any]] = field(default_factory=list)
     #: Whether autoloading finds it by the names it provides, as ROOT's rootmap file does.
     rootmap: bool = True
     #: The libraries to load before it.

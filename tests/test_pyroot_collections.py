@@ -19,6 +19,18 @@ def named(*names):
     return [ROOT.TNamed(name, name.upper()) for name in names]
 
 
+def test_a_constant_is_looked_up_by_the_std_string_that_holds_its_name():
+    """A C++ program looks one up with a ``std::string`` - ``holder->FindObject(s.c_str())``,
+    which roottest's ``execEnumsTest`` does - and a ``std::string`` here is Python's ``str``,
+    so the lookup is by the name the object answers with."""
+    named_ = named("kLow")
+    held = ROOT.TList()
+    held.Add(named_[0])
+    assert held.FindObject(ROOT.std.string("kLow")) is named_[0]
+    assert held.FindObject(ROOT.std.string("kHigh")) is None
+    assert held.FindObject(object()) is None  # no name in it, so an object is looked for
+
+
 def test_a_list_adds_finds_and_removes_as_roots_does():
     a, b, c = named("a", "b", "c")
     held = ROOT.TList()

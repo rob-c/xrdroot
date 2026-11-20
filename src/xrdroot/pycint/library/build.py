@@ -83,7 +83,7 @@ def _unit(
         name, "library", made.python, unity, dict(made.source_map), sources=inputs,
         headers=headers, digest=digest(inputs + headers),
         translator=translator_version(), names=found.top, namespaces=found.namespaces,
-        classes=found.classes,
+        classes=found.classes, enums=[note.as_stored() for note in found.enums],
     ), found  # fmt: skip
 
 
@@ -246,6 +246,7 @@ def build_aclic(
         made.returns, sources=inputs, headers=headers, digest=digest(inputs + headers),
         translator=translator_version(),
         names=found.top, namespaces=found.namespaces, classes=found.classes, rootmap=False,
+        enums=[note.as_stored() for note in found.enums],
     )  # fmt: skip
     write(library, out)
     return library

@@ -272,6 +272,7 @@ extensions = [
     { caller = "xrdroot.pyroot.core.troot", point = "interpreter.loaded_libraries", provider = "pycint", target = "xrdroot.pycint.library.loading:loaded_names" },
     { caller = "xrdroot.pyroot.core.troot", point = "interpreter.compile_macro", provider = "pycint", target = "xrdroot.pycint.library.aclic:compile_macro" },
     { caller = "xrdroot.pyroot.core.troot", point = "interpreter.autoload", provider = "pycint", target = "xrdroot.pycint.library.loading:autoload" },
+    { caller = "xrdroot.pyroot.core.troot", point = "interpreter.autoload_enum", provider = "pycint", target = "xrdroot.pycint.library.loading:autoload_enum" },
 ]
 
 [tool.xrdroot.components.groups]

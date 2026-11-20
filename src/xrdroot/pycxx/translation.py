@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from .dialect import Dialect, active, using
 from .emit_module import Translator
@@ -34,6 +35,9 @@ class Translation:
     unnamed: bool = False
     #: The entry's return type as the dialect spells it, or None when it prints none.
     returns: str | None = None
+    #: What the dialect's ``parsed`` hook made of the unit - plain JSON, kept beside the
+    #: translation so that a run from the cache tells the host what parsing would have.
+    notes: Any = None
 
 
 def translation(
@@ -47,6 +51,7 @@ def translation(
     with using(dialect or active()):
         tokens, included = preprocess(source, file, directories)
         unit = parse(tokens)
+        notes = active().parsed(unit)
         program = Program(unit)
         stem = Path(file).stem if file != "<macro>" else "macro"
         translator = Translator(program, file, stem)
@@ -59,4 +64,5 @@ def translation(
         [str(path) for path in included],
         unit.unnamed is not None,
         translator.entry_returns,
+        notes,
     )

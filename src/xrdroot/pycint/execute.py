@@ -144,9 +144,9 @@ VARIABLE = re.compile(
     r"(?:=[^;]*|\{[^;]*\}|\([^;]*\))?;$"
 )
 
-#: A line that declares - a namespace, a class, a template - which cling keeps at the top,
-#: rather than statements run in a block of their own.
-DECLARATION = re.compile(r"^(?:namespace|class|struct|union|template\s*<)\b")
+#: A line that declares - a namespace, a class, an enumeration, a template - which cling keeps
+#: at the top, rather than statements run in a block of their own.
+DECLARATION = re.compile(r"^(?:namespace|class|struct|union|enum|template\s*<)\b")
 
 DEFINITION = re.compile(r"^[ \t]*#[ \t]*(?:define|undef)\b.*$", re.M)
 

@@ -36,6 +36,7 @@ from xrdroot.pycint.library.build import translator_version
 from xrdroot.pycxx import cache
 from xrdroot.pycxx.errors import CxxError, Refusal
 from xrdroot.pycxx.runtime.namespace import DECLARED
+from xrdroot.pyroot.core import troot
 
 #: A header with a class in a namespace, a static member and a function only declared.
 SHAPES_H = """\
@@ -223,6 +224,8 @@ def test_what_is_not_a_library_file_this_version_wrote_is_not_read() -> None:
     assert read(write("c.xrdlib", '{"format": "other"}')) is None
     assert read(write("d.xrdlib", f'{{"format": "{manifest.FORMAT}", "version": 0}}')) is None
     assert read(write("e.xrdlib", f'{{"format": "{manifest.FORMAT}", "version": 1}}')) is None
+    this = f'{{"format": "{manifest.FORMAT}", "version": {manifest.VERSION}}}'
+    assert read(write("f.xrdlib", this)) is None  # this version's, with nothing in it
 
 
 def test_a_library_s_files_are_kept_relative_to_it_and_found_absolute_when_read() -> None:
@@ -644,3 +647,69 @@ def test_a_load_of_a_name_aclic_named_builds_the_macro_it_came_from() -> None:
 
     Path("tiny.C").write_text("int tiny_f(int x) { return x + 1; }\n")
     assert load("tiny_C") == 0
+
+
+ENUMS_H = """\
+#ifndef ENUMS_H
+#define ENUMS_H
+namespace myns {
+enum enpclass {kNoneNonConflicting};
+enum class Kind : short {kOne, kTwo};
+}
+class Holder {
+public:
+   enum Mode {kOff, kOn = 5};
+};
+enum Global {kFirst = 2, kNext};
+#endif
+"""
+
+
+# -- the enumerations a dictionary carries --------------------------------------------------
+
+
+def test_a_dictionary_lists_the_enumerations_of_the_headers_it_was_built_from() -> None:
+    """A rootmap lists a dictionary's enumerations beside its classes, and ROOT's interpreter
+    knows them as soon as the library is loaded - before anything reads the header."""
+    write("Enums.h", ENUMS_H)
+    build_dictionary("Enums", [Path("Enums.h")], rootmap=False)
+    library = read(Path("libEnums.xrdlib"))
+    assert library is not None
+    assert [each["name"] for each in library.enums] == [
+        "myns::enpclass", "myns::Kind", "Holder::Mode", "Global",
+    ]  # fmt: skip
+    assert library.enums[1]["scoped"] and library.enums[1]["underlying"] == "short"
+
+
+def test_loading_a_dictionary_makes_its_enumerations_the_interpreter_s() -> None:
+    """The title of one a namespace declares is the namespace's name, which is what the oracle
+    answers for a rootcling-built enumeration (roottest's ``qualifiedNames`` prints
+    ``enpclass/myns``); one a class declares has none."""
+    write("Enums.h", ENUMS_H)
+    build_dictionary("Enums", [Path("Enums.h")], rootmap=False)
+    assert troot.find_enum("myns::Kind") is None
+    load("libEnums")
+    kinds = troot.find_enum("myns::Kind")
+    assert kinds is not None
+    assert (kinds.GetTitle(), kinds.GetUnderlyingType()) == ("myns", 2)
+    assert [(one.GetName(), one.GetValue()) for one in kinds.GetConstants()] == [
+        ("kOne", 0), ("kTwo", 1),
+    ]  # fmt: skip
+    mode = troot.find_enum("Holder::Mode")
+    assert mode is not None and mode.GetTitle() == ""
+    assert [(one.GetName(), one.GetValue()) for one in mode.GetConstants()] == [
+        ("kOff", 0), ("kOn", 5),
+    ]  # fmt: skip
+    assert [one.GetName() for one in troot.class_enums("myns")] == ["enpclass", "Kind"]
+
+
+def test_a_library_is_autoloaded_by_the_name_of_an_enumeration_it_declares() -> None:
+    """``TEnum::GetEnum`` loads the library a rootmap lists an enumeration in, and looks
+    again: roottest's ``qualifiedNames`` never loads its dictionary and still finds it."""
+    write("Enums.h", ENUMS_H)
+    build_dictionary("Enums", [Path("Enums.h")])
+    assert loading.provides(read(Path("libEnums.xrdlib")), "myns::Kind")
+    assert not loading.autoload_enum("myns::Nowhere")
+    assert loading.autoload_enum("myns::Kind")
+    assert ours() == ["libEnums"]
+    assert troot.find_enum("myns::Kind") is not None

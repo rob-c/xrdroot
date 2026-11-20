@@ -46,6 +46,8 @@ __all__ = [
     "TStreamerObject",
     "TStreamerObjectAny",
     "TStreamerObjectPointer",
+    "TDataType",
+    "kNumDataTypes",
     "TStreamerObjectAnyPointer",
     "TStreamerLoop",
     "TDataMember",
@@ -95,6 +97,23 @@ FUNDAMENTAL = frozenset({
     "void", "Int_t", "Float_t", "Double_t", "Long64_t", "ULong64_t", "Bool_t", "Char_t",
     "Short_t",
 })  # fmt: skip
+
+#: ``EDataType::kNumDataTypes``: one past the last code ``TDataType`` describes, which ROOT
+#: keeps in the namespace so that a program can ask whether a code it holds is a type at all.
+kNumDataTypes = 23
+
+#: The fundamental types ``TDataType`` describes, by their ``EDataType`` code: the name ROOT
+#: gives each, how many bytes it is and how it is aligned, which on the 64-bit oracle is its
+#: size for these. The codes with nothing here - ``kNoType_t`` 0, ``kOther_t`` -1 and
+#: ``kNumDataTypes`` itself - describe no type, and ROOT answers with ``nullptr`` for them.
+DATA_TYPES: dict[int, tuple[str, int]] = {
+    1: ("char", 1), 2: ("short", 2), 3: ("int", 4), 4: ("long", 8),
+    5: ("float", 4), 6: ("counter", 4), 7: ("char*", 8), 8: ("double", 8),
+    9: ("Double32_t", 4), 10: ("char", 1), 11: ("unsigned char", 1),
+    12: ("unsigned short", 2), 13: ("unsigned int", 4), 14: ("unsigned long", 8),
+    15: ("bits", 8), 16: ("long long", 8), 17: ("unsigned long long", 8),
+    18: ("bool", 1), 19: ("Float16_t", 2), 20: ("void", 0),
+}  # fmt: skip
 
 #: ``kIsTObject`` and the other bits ``TClass::Property`` and ``GetState`` answer with.
 K_IS_TOBJECT = 0x00008000
@@ -386,6 +405,56 @@ class ClassInfo:
         return 0
 
 
+class TDataType(TNamed):
+    """``TDataType``: one of ROOT's fundamental types, named and sized as ROOT has it.
+
+    An enumeration answers ``TEnum::GetUnderlyingType`` with an ``EDataType`` code, and ROOT
+    turns that code into a type with ``TDataType::GetDataType`` - which is how roottest's
+    ``enumSize`` checks that ``enum E : short`` is stored as a ``short``.
+    """
+
+    def __init__(self, name: str = "", code: int = 0, size: int = 0) -> None:
+        super().__init__(str(name), str(name))
+        self._code = int(code)
+        self._size = int(size)
+
+    def GetType(self) -> int:
+        """``GetType``: the ``EDataType`` code of the type."""
+        return self._code
+
+    def Size(self) -> int:
+        """``Size``: how many bytes a value of the type takes, as ROOT's ``sizeof`` does."""
+        return self._size
+
+    def GetAlignOf(self) -> int:
+        """``GetAlignOf``: the alignment ROOT reports for the type, which for these is its
+        size - ``short`` 2, ``double`` 8 - and 0 for a type it knows nothing of."""
+        return self._size
+
+    def GetTypeName(self) -> str:
+        """``GetTypeName``: the type's name, as ROOT's ``TString`` gives it."""
+        return self.GetName()
+
+    def GetFullTypeName(self) -> str:
+        """``GetFullTypeName``: the type's name, which for a fundamental type is its name."""
+        return self.GetName()
+
+    @staticmethod
+    def GetDataType(code: Any) -> TDataType | None:
+        """``GetDataType(code)``: the type that code names, or ``nullptr`` for no type.
+
+        ROOT types the argument ``EDataType``, which is an integer; a program that passes
+        something else - as a macro passing a string does when it means one of the names -
+        gets no type back rather than a guess.
+        """
+        try:
+            number = int(code)
+        except (TypeError, ValueError):
+            return None
+        found = DATA_TYPES.get(number)
+        return None if found is None else TDataType(found[0], number, found[1])
+
+
 class TClassTable(TObject):
     """``TClassTable``: the classes that have a dictionary, as ROOT's table of them.
 
@@ -500,6 +569,22 @@ class TClass(TNamed):
         # "string" - so the same shortening is what this is called by.
         text = _known_as(str(spelled if spelled is not None else name))
         return None if text in FUNDAMENTAL else TClass(text)
+
+    @staticmethod
+    def GetDict(name: Any, load: bool = True, silent: bool = False) -> TClass | None:
+        """``TClass::GetDict(name)``: the class's ``TClass`` where a dictionary describes it.
+
+        ROOT keeps this older spelling of ``TClassTable::GetDict`` - a name in any of its
+        spellings, and for a namespace the ``TClass`` describing it - because programs ask it
+        to decide whether they must load a library first (roottest's ``execfwdDeclarations``
+        asks for every class its dictionary was built for and for one it was not).
+
+        ROOT 6.40's signature is ``static DictFuncPtr_t GetDict(const char*)``: the answers
+        here are ``TClass``es, and ``load`` and ``silent`` are ``TClassTable::GetDict``'s
+        arguments, which no program in the suite passes. Nothing calls the dictionary
+        function the pointer would be, so the object that answers truthiness is enough.
+        """
+        return TClassTable.GetDict(name, load, silent)
 
     def HasDictionary(self) -> bool:
         """``HasDictionary``: does anything here describe the class's members?"""

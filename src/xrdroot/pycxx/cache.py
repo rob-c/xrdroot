@@ -87,6 +87,7 @@ def load(source: str, file: str, dialect: Dialect | None = None) -> Translation 
         kept["included"],
         kept["unnamed"],
         kept["returns"],
+        kept.get("notes"),
     )
 
 
@@ -101,6 +102,7 @@ def save(
         "included": translation.included,
         "unnamed": translation.unnamed,
         "returns": translation.returns,
+        "notes": translation.notes,
         "included_hash": _included_hash(translation.included),
     }
     where = directory()

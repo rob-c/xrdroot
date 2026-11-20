@@ -18,6 +18,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from ...cppstd.containers import TEMPLATES as _TEMPLATES
+from ...cppstd.containers import string as StdString
 from .objects import Indent, TNamed, TObject
 from .strings import TString
 
@@ -53,6 +54,18 @@ SINGLE_KEY = 1 << 0
 def _named(item: Any, name: str) -> bool:
     """Is ``item`` called ``name``, as ``FindObject`` compares them?"""
     return hasattr(item, "GetName") and item.GetName() == name
+
+
+def _looked_up(name: Any) -> str | None:
+    """The name a lookup is by, or ``None`` when the object itself is looked for.
+
+    A ``std::string`` is taken as the name it holds, which a C++ program writes as
+    ``s.c_str()``: the translator emits that call as the string itself, since a ``std::string``
+    is Python's ``str`` here - and roottest's ``execEnumsTest`` looks a constant up with one.
+    """
+    if isinstance(name, str):
+        return name
+    return str(name) if isinstance(name, StdString) else None
 
 
 def _named_by(obj: Any, option: str) -> None:
@@ -189,8 +202,9 @@ class TCollection(TObject):
 
     def FindObject(self, name: Any) -> Any:
         """The first object called ``name``, or the object itself if held; ``None`` if neither."""
-        if isinstance(name, str):
-            return next((item for item in self._items if _named(item, name)), None)
+        text = _looked_up(name)
+        if text is not None:
+            return next((item for item in self._items if _named(item, text)), None)
         return next((item for item in self._items if item is name), None)
 
     def IndexOf(self, obj: Any) -> int:

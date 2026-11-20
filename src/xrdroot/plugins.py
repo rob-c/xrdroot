@@ -224,6 +224,9 @@ PROVIDERS: dict[tuple[str, str], tuple[str, str, str]] = {
         'pycint', 'xrdroot.pycint.library.aclic', 'compile_macro',
     ),
     ('interpreter.autoload', 'default'): ('pycint', 'xrdroot.pycint.library.loading', 'autoload'),
+    ('interpreter.autoload_enum', 'default'): (
+        'pycint', 'xrdroot.pycint.library.loading', 'autoload_enum',
+    ),
 }
 
 

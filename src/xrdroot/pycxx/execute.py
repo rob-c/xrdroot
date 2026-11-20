@@ -60,12 +60,12 @@ def _reset_streams() -> None:
 def translated(source: str, file: str, dialect: Dialect, use_cache: bool) -> Translation:
     """The translation of ``source`` in ``dialect``: from the cache if allowed and kept there."""
     found = cache.load(source, file, dialect) if use_cache else None
-    if found is not None:
-        return found
-    made = translation(source, file, [Path(file).parent], dialect)
-    if use_cache:
-        cache.save(source, file, made, dialect)
-    return made
+    if found is None:
+        found = translation(source, file, [Path(file).parent], dialect)
+        if use_cache:
+            cache.save(source, file, found, dialect)
+    dialect.noted(found.notes)
+    return found
 
 
 @contextmanager

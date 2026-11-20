@@ -14,19 +14,23 @@ from __future__ import annotations
 from typing import Any
 
 from .ctype import CType
-from .nodes import ClassDecl, Namespace, Stmt
+from .nodes import ClassDecl, EnumDecl, Namespace, Stmt
 from .program import ClassInfo
 
 __all__ = ["qualified_names", "spelled", "polymorphic"]
 
 
 def qualified_names(decls: list[Stmt], prefix: str = "") -> dict[str, str]:
-    """Each of the macro's classes, by its name, as its namespaces and outer classes qualify it."""
+    """Each of the macro's classes and enumerations, by its name, as its namespaces and outer
+    classes qualify it - which is the name a ``typeid`` of one spells, and the name the
+    interpreter keeps it under."""
     found: dict[str, str] = {}
     for decl in decls:
         if isinstance(decl, Namespace):
             inner = f"{prefix}{decl.name}::" if decl.name else prefix
             found.update(qualified_names(decl.body, inner))
+        elif isinstance(decl, EnumDecl) and decl.name:
+            found[decl.name] = prefix + decl.name
         elif isinstance(decl, ClassDecl):
             found[decl.name] = prefix + decl.name
             found.update(qualified_names(decl.members, f"{prefix}{decl.name}::"))

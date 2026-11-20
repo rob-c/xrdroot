@@ -80,6 +80,7 @@ _PROVIDED: dict[str, Callable[[], Any]] = {
     "unload_library": lambda: plugins.lookup("interpreter.unload_library"),
     "compile_macro": lambda: plugins.lookup("interpreter.compile_macro"),
     "autoload": lambda: plugins.lookup("interpreter.autoload"),
+    "autoload_enum": lambda: plugins.lookup("interpreter.autoload_enum"),
 }
 
 
@@ -292,9 +293,49 @@ class TEnum(TNamed):
         found = find_enum(spelled)
         if found is not None:
             return found
-        if action in (TEnum.kAutoload, TEnum.kALoadAndInterpLookup) and autoload_enum(spelled):
-            return find_enum(spelled)
+        if action not in (TEnum.kAutoload, TEnum.kALoadAndInterpLookup):
+            return None
+        return _autoload_enum(spelled)
+
+
+def _autoload_enum(spelled: str) -> TEnum | None:
+    """Load the library a rootmap lists ``spelled`` in, and answer with the enumeration it
+    notes - unless the interpreter already has the scope the name is qualified with, which is
+    where ROOT looks and goes no further.
+
+    ROOT asks for a library declaring the scope first, then for one declaring the enumeration,
+    which is how a class's ``Holder::Mode`` is found before ``Holder`` is. A name with no
+    ``::`` in it is in no scope, so the library declaring the enumeration itself is asked for.
+    """
+    scope = spelled.rpartition("::")[0].strip()
+    if scope and _owner_known(scope):
         return None
+    load_providing = _translator("autoload_enum")
+    if load_providing is None:
+        return None
+    if scope:
+        load_providing(scope)
+        found = find_enum(spelled)
+        if found is not None:
+            return found
+    return find_enum(spelled) if load_providing(spelled.strip()) else None
+
+
+def _owner_known(scope: str) -> bool:
+    """Does the interpreter already know the namespace or class ``scope``?
+
+    Every part of it must be here for it to be ROOT's: a declared ``myns`` does not make
+    ``myns::inner`` a scope the interpreter has.
+    """
+    if not scope:
+        return False
+    from ...pycxx.runtime.namespace import DECLARED
+
+    parts = scope.split("::")
+    found = DECLARED.get(parts[0])
+    for part in parts[1:]:
+        found = getattr(found, part, None) if found is not None else None
+    return found is not None
 
 
 class TGlobal(TNamed):
@@ -370,22 +411,6 @@ def find_enum(name: Any) -> TEnum | None:
     """The enumeration declared as ``name``, or ``None`` - ROOT's table is keyed by the name
     C++ writes, so ``N::E`` is found and a bare ``E`` is not (the oracle finds neither)."""
     return _ENUMS.get(str(name).strip())
-
-
-def autoload_enum(name: str) -> bool:
-    """Load the library whose rootmap lists the enumeration ``name``, as ``TEnum::GetEnum``
-    does before it gives up; whether a translator able to load one was there at all.
-
-    What a loaded dictionary declares is noted against the table, so the caller looks again
-    rather than being told the enumeration it has just loaded is absent: a rootmap lists an
-    enumeration by the name of the type it declares, and the library answering for that name
-    holds the enumerators a macro reads.
-    """
-    load = _translator("autoload")
-    if load is None:
-        return False
-    load(str(name).strip())
-    return True
 
 
 def class_enums(owner: Any = None) -> TListOfEnums:

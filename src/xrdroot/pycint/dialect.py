@@ -262,6 +262,34 @@ def _loaded(module: dict[str, Any], made: Any) -> None:
     rebind(module, made)
 
 
+def _parsed(unit: Any) -> list[dict[str, Any]]:
+    """The enumerations a program declares, as the interpreter knows them once it has read it.
+
+    ROOT's interpreter declares an enumeration as it parses the declaration, so a line
+    looking one up - ``TEnum::GetEnum("a::b::en")`` - finds it whether or not the line that
+    declares it has run yet. The notes are stored with the translation, so that a run from
+    the cache - which parses nothing - tells the interpreter the same as the run that
+    translated it.
+    """
+    from .library.translate import enums_of
+
+    return [note.as_stored() for note in enums_of(unit)]
+
+
+def _noted(notes: Any) -> None:
+    """Note the enumerations a translation declared, which a cached one declared earlier.
+
+    The title of an enumeration a line or a macro declares is empty, where a dictionary's is
+    the name of the namespace that declares it.
+    """
+    from ..pyroot.core.troot import note_enum
+    from .library.translate import EnumNote
+
+    for stored in notes or ():
+        note = EnumNote.of_stored(stored)
+        note_enum(note.qualified, note.items, "", note.underlying, note.scoped)
+
+
 def _data(obj: str, args: list[str]) -> str:
     """``s.Data()`` of a string: the string, which is what a ``TString``'s holds."""
     return obj
@@ -321,6 +349,8 @@ ROOT = Dialect(
     status=returned.status,
     session=_session,
     loaded=_loaded,
+    parsed=_parsed,
+    noted=_noted,
     sources=(Path(__file__).parent,),
 )
 

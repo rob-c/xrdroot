@@ -1416,6 +1416,23 @@ as ROOT does - a bare word is a host over `http`, a path a local file - and
 `Compare`s by its text. `TObject`'s comparison operators are ROOT's, through
 `IsEqual` and `Compare`, so a list of `TUrl` or `TNamed` sorts.
 
+**Enumerations and the interpreter's table.** `TEnum` is one enumeration of the
+interpreter's - its name as C++ writes it, the comment over it as its title, its
+constants and their values (`TEnumConstant`, `GetConstants`), whether it is an
+`enum class` and the `EDataType` code of the integer type it is stored as
+(`GetUnderlyingType`, which `TDataType::GetDataType` turns into the type).
+`TEnum::GetEnum` takes a name or a `typeid`, and `ESearchAction` - `kNone` 0,
+`kAutoload` 1, `kInterpLookup` 2, `kALoadAndInterpLookup` 3, the default - says
+whether a library a rootmap lists the enumeration in may be read first, which
+it is not when the interpreter already has the scope the name is qualified
+with. The table is ROOT's `TROOT::GetListOfEnums`, `TClass::GetListOfEnums` for
+the part of it a class or namespace owns, and `TROOT::GetListOfGlobals` for a
+`TGlobal` per enumerator declared outside every namespace - whose address a
+macro reads the number through. It is filled as the interpreter reads
+declarations: a line run with `ProcessLine` and a dictionary loaded into the
+session both add to it, with their constants' values worked out as C++ counts
+them.
+
 **Python compiled for C++.** `@ROOT.Numba.Declare(["float"], "float")`
 compiles a function with numba (the `numba` extra) for the C++ types given -
 numbers, and `RVec`, `std::vector` and `std::array` of them - and puts it
