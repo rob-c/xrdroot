@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from . import buildtree, cases, judge, plan, scope
+from . import buildtree, cases, judge, plan, ratchet, scope
 from .discover import fixture_providers
 from .model import Test, area_of
 from .process import Result, execute
@@ -55,6 +55,10 @@ class Settings:
     xrdroot_src: Path | None = None
     jobs: int = 6
     timeout: float = 300.0
+    #: A shorter cap for a test whose committed status is already not PASS: it buys nothing by
+    #: running its full time to be wrong again. ``None`` - the default - caps nothing, and a
+    #: baseline PASS is never shortened, so no PASS can be lost by asking for this.
+    timeout_known: float | None = None
     kinds: tuple[str, ...] = ()
     only: tuple[str, ...] = ()
     scope: Path = scope.SCOPE
@@ -161,6 +165,8 @@ class Runner:
         self.context = plan.Context(settings.root, self.work, settings.python,
                                     settings.xrdroot_src)
         self.records: dict[str, dict[str, Any]] = {}
+        #: The committed statuses, read the first time a known failure's cap is worked out.
+        self._baseline: dict[str, str] | None = None
         self.lock = threading.Lock()
         self.modules: dict[str, bool] = {}
         self.available: frozenset[str] | None = None
@@ -261,12 +267,27 @@ class Runner:
                     return record
         return None
 
+    def _timeout_of(self, test: Test) -> float:
+        """How long ``test`` may take: its own, the run's - or the shorter cap for a known
+        failure."""
+        own = test.timeout or self.settings.timeout
+        known = self.settings.timeout_known
+        if known is not None and self._committed().get(test.id, "PASS") != "PASS":
+            own = min(own, known)
+        return min(self.settings.timeout, own)
+
+    def _committed(self) -> dict[str, str]:
+        """The statuses the committed baseline records, read once and only if asked for."""
+        if self._baseline is None:
+            self._baseline = ratchet.statuses(ratchet.BASELINE)
+        return self._baseline
+
     def _one(self, test: Test, invocation: plan.Invocation) -> None:
         logs = self.logs / test.id
         logs.mkdir(parents=True, exist_ok=True)
         invocation.cwd.mkdir(parents=True, exist_ok=True)
         _copy_to_build(invocation.copy, self.work / test.directory)
-        timeout = min(self.settings.timeout, test.timeout or self.settings.timeout)
+        timeout = self._timeout_of(test)
         steps: list[tuple[plan.Step, Result]] = []
         for step in invocation.before:
             done = self._step(step, invocation.env, timeout)

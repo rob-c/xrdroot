@@ -54,6 +54,15 @@ def parser() -> argparse.ArgumentParser:
     _selection(run)
     run.add_argument("--jobs", "-j", type=int, default=6, help="parallel workers (6)")
     run.add_argument("--timeout", type=float, default=300.0, help="seconds per test (300)")
+    #: A shorter cap for a test whose committed status is already not PASS: it will not pass
+    #: by being given the full time again. Never shortens a baseline PASS, so no PASS can be
+    #: lost by asking for it - and it is a flag rather than a silent rule, so a run that
+    #: shortens anything says so on its command line.
+    run.add_argument(
+        "--timeout-known", type=float, default=None, metavar="SECONDS",
+        help="cap a test whose baseline status is not PASS (off); a capped test that others "
+             "require as a fixture takes its dependants with it",
+    )
     run.add_argument("--out", type=Path, default=DEFAULT_OUT, help=f"results ({DEFAULT_OUT})")
     run.add_argument("--python", default=sys.executable, help="the Python that runs xrdroot")
     run.add_argument("--xrdroot-src", type=Path, default=REPOSITORY / "src",
@@ -144,7 +153,8 @@ def _run(args: argparse.Namespace) -> int:
         return status
     settings = Settings(root=args.root.resolve(), out=args.out.resolve(), python=args.python,
                         xrdroot_src=args.xrdroot_src, jobs=args.jobs, timeout=args.timeout,
-                        kinds=tuple(args.kind), only=tuple(args.only), scope=args.scope)
+                        timeout_known=args.timeout_known, kinds=tuple(args.kind),
+                        only=tuple(args.only), scope=args.scope)
     start = time.monotonic()
     records = Runner(settings).run(tests)
     doc = report.document(records, _meta(args, settings, time.monotonic() - start))
@@ -159,7 +169,8 @@ def _meta(args: argparse.Namespace, settings: Settings, seconds: float) -> dict[
         "root": str(settings.root), "python": settings.python,
         "xrdroot_src": str(settings.xrdroot_src), "xrdroot_commit": _commit(settings.xrdroot_src),
         "kinds": list(settings.kinds), "only": list(settings.only), "jobs": settings.jobs,
-        "timeout": settings.timeout, "features": sorted(_features(args)),
+        "timeout": settings.timeout, "timeout_known": settings.timeout_known,
+        "features": sorted(_features(args)),
         "wall_seconds": round(seconds, 1), "out": str(settings.out),
     }
 
@@ -225,7 +236,8 @@ def _recheck(doc: dict[str, Any], ids: list[str], parent: Path) -> set[str]:
     root = Path(meta["root"])
     settings = Settings(root=root, out=parent / "timeout-rechecks", python=meta["python"],
                         xrdroot_src=Path(meta["xrdroot_src"]), jobs=1,
-                        timeout=min(float(meta.get("timeout", 300)), 300.0), only=tuple(ids))
+                        timeout=min(float(meta.get("timeout", 300)), 300.0),
+                        timeout_known=meta.get("timeout_known"), only=tuple(ids))
     tests = select(discover(root, meta.get("features") or DEFAULT_FEATURES), (), ids)
     records = Runner(settings).run(tests)
     return {record["id"] for record in records if record["status"] == "PASS"}

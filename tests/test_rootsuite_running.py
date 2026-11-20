@@ -512,3 +512,32 @@ def test_a_second_run_reuses_the_working_copy_and_the_hsimple_already_made(tmp_p
     assert records["py"]["status"] == "PASS" and records["ok"]["status"] == "PASS"
     assert not (tmp_path / "out/logs/build/hsimple").exists()
     runner._copy(source / "d/ok.C", tmp_path / "out/work/d/ok.C")
+
+
+def test_a_known_failure_may_be_capped_and_a_baseline_pass_may_not(tmp_path):
+    """--timeout-known shortens a test the baseline already records as not PASS: it will not pass
+    by being given its full time again. A baseline PASS keeps the run's timeout, so asking for the
+    cap can never cost a PASS - and a test the baseline does not hold is treated as a PASS."""
+    from tools.rootsuite import runner as running
+
+    def settings(cap):
+        return running.Settings(root=tmp_path, out=tmp_path / "out", timeout=300.0,
+                                timeout_known=cap, progress=lambda line: None)
+
+    made = running.Runner(settings(60.0))
+    made._baseline = {"roottest/a": "FAIL", "roottest/b": "PASS", "roottest/c": "TIMEOUT"}
+    def as_test(name):
+        return running.Test(id=name, ctest=name, kind="roottest", directory="",
+                            runner="root")
+    assert made._timeout_of(as_test("roottest/a")) == 60.0   # a known FAIL is capped
+    assert made._timeout_of(as_test("roottest/c")) == 60.0   # a known TIMEOUT too
+    assert made._timeout_of(as_test("roottest/b")) == 300.0  # a baseline PASS is never shortened
+    assert made._timeout_of(as_test("roottest/new")) == 300.0  # not in the baseline: assume PASS
+    off = running.Runner(settings(None))
+    off._baseline = {"roottest/a": "FAIL"}
+    assert off._timeout_of(as_test("roottest/a")) == 300.0   # off by default
+    own = running.Runner(settings(60.0))
+    own._baseline = {"roottest/a": "FAIL"}
+    shorter = running.Test(id="roottest/a", ctest="a", kind="roottest", directory="",
+                           runner="root", timeout=5.0)
+    assert own._timeout_of(shorter) == 5.0  # its own cap is shorter still

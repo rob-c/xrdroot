@@ -16,14 +16,20 @@ from typing import Any
 
 from .judge import STATUSES
 
-__all__ = ["BASELINE", "FULL_KINDS", "judged", "regressions", "write_baseline",
-           "timeouts"]
+__all__ = ["BASELINE", "FULL_KINDS", "judged", "regressions", "statuses",
+           "write_baseline", "timeouts"]
 
 #: Kept in the repository so checking a run never silently starts with no promises.
 BASELINE = Path(__file__).with_name("baseline.json")
 
 #: The kinds a baseline must cover: everything that runs without ROOT itself.
 FULL_KINDS = ("gtest", "roottest", "pyunittest", "test")
+
+
+def statuses(path: Path) -> dict[str, str]:
+    """The status each test id has in the baseline at ``path``, as a committed run recorded it."""
+    found: dict[str, str] = json.loads(path.read_text(encoding="utf-8"))
+    return {str(name): str(status) for name, status in found.items()}
 
 
 def judged(doc: Mapping[str, Any]) -> set[str]:
