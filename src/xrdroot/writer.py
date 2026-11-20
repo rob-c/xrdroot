@@ -41,7 +41,7 @@ from typing import IO, TYPE_CHECKING, Any
 import numpy as np
 from xrdclient.url import parse
 
-from .buffer import BYTE_COUNT_MASK, IS_REFERENCED, NEW_CLASS_TAG, Buffer
+from .buffer import BYTE_COUNT_MASK, CLASS_MASK, IS_REFERENCED, MAP_OFFSET, NEW_CLASS_TAG, Buffer
 from .compression import CODES, LEVELS, compress, spelled
 from .efficiency import EFFICIENCIES, Efficiency
 from .errors import UnsupportedFeatureError
@@ -188,10 +188,20 @@ class WBuffer:
     and :meth:`tag` does the same for an object that names its class first.
     """
 
-    __slots__ = ("data",)
+    __slots__ = ("backrefs", "data", "origin", "_first")
 
-    def __init__(self) -> None:
+    def __init__(self, origin: int = 0) -> None:
         self.data = bytearray()
+        #: What a reference back to a place in here has added to it: the length of the key
+        #: in front of the payload when this buffer is one - ROOT counts a reference from
+        #: the start of the record, key and all, because it streams both into one buffer.
+        self.origin = origin
+        #: Whether a class named again is written as a reference back to the first spelling.
+        #: ROOT writes it that way; this writer spells every name out unless a record says
+        #: so, which means its class references can only be right when one buffer holds the
+        #: whole record - the ``StreamerInfo`` list is the one.
+        self.backrefs = False
+        self._first: dict[str, int] = {}
 
     def raw(self, chunk: bytes) -> None:
         self.data += chunk
@@ -246,12 +256,19 @@ class WBuffer:
         """Open a counted object that names its class, the way ``any`` reads one.
 
         The class is spelled out every time rather than referred back to,
-        which is longer and legal, and means no bookkeeping can be wrong.
+        which is longer and legal, and means no bookkeeping can be wrong -
+        except where :attr:`backrefs` asks for ROOT's own shorter spelling.
         """
         index = len(self.data)
         self.data += b"\x00\x00\x00\x00"
-        self.u32(NEW_CLASS_TAG)
-        self.cstring(classname)
+        first = self._first.get(classname) if self.backrefs else None
+        if first is None:
+            self.u32(NEW_CLASS_TAG)
+            self.cstring(classname)
+            if self.backrefs:
+                self._first[classname] = index
+        else:
+            self.u32(CLASS_MASK | (self.origin + first + 4 + MAP_OFFSET))
         return index
 
     def end(self, index: int) -> None:
@@ -782,7 +799,9 @@ def _closure(seeds: dict[str, None]) -> list[str]:
 
 
 def _streamers(
-    used: dict[str, None], carried: Mapping[tuple[str, int], bytes] | None = None
+    used: dict[str, None],
+    carried: Mapping[tuple[str, int], bytes] | None = None,
+    keylen: int = 0,
 ) -> bytes:
     """The ``StreamerInfo`` record: what this file says its classes look like.
 
@@ -790,15 +809,20 @@ def _streamers(
     file describes its classes exactly as the ROOT that the descriptions were
     harvested from would have - and then whatever descriptions ``carried``
     brings from other files, for records copied from them as they were.
+
+    ``keylen`` is how long the key in front of this record turns out, which is
+    what the references back to a class named a second time are counted from.
     """
     names = _closure(used)
     extra = carried_entries(names, carried)
-    buf = WBuffer()
+    buf = WBuffer(keylen)
+    buf.backrefs = True
     index = buf.start(5)
     buf.tobject()
     buf.string("")
     buf.i32(len(names) + len(extra))
-    buf.raw(_info_entries(names))
+    for name in names:
+        _entry_into(buf, name, *INFOS[name])
     buf.raw(b"".join(extra))
     buf.end(index)
     return bytes(buf.data)
@@ -817,12 +841,27 @@ def _info_entries(names: list[str]) -> bytes:
     full rather than referring back, so the bytes mean the same wherever in
     a list they land - which is what lets an update add them to a list that
     is already there."""
-    return b"".join(info_entry(name, *INFOS[name]) for name in names)
+    buf = WBuffer()
+    for name in names:
+        _entry_into(buf, name, *INFOS[name])
+    return bytes(buf.data)
 
 
 def info_entry(name: str, checksum: int, version: int, elements: tuple[Element, ...]) -> bytes:
-    """One class's ``TStreamerInfo`` list entry, its elements in full, its option after it."""
+    """One class's ``TStreamerInfo`` list entry, its elements in full, its option after it.
+
+    Every class it names is spelled out: an entry on its own cannot know where
+    in the list it will land, so a reference back would point nowhere.
+    """
     buf = WBuffer()
+    _entry_into(buf, name, checksum, version, elements)
+    return bytes(buf.data)
+
+
+def _entry_into(
+    buf: WBuffer, name: str, checksum: int, version: int, elements: tuple[Element, ...]
+) -> None:
+    """One list entry written into ``buf``, which may be holding the entries before it."""
     tag = buf.tag("TStreamerInfo")
     info = buf.start(9)
     buf.named(name, "")
@@ -841,7 +880,6 @@ def info_entry(name: str, checksum: int, version: int, elements: tuple[Element, 
     buf.end(info)
     buf.end(tag)
     buf.u8(0)  # the option string every list entry carries, empty
-    return bytes(buf.data)
 
 
 #: ``kSTL``, a container member's streamer type in memory, and ``kStreamer``, what
@@ -1810,7 +1848,8 @@ class WritableFile(WritableDirectory):
 
     def _write_streamers(self) -> tuple[int, int]:
         """The file's ``StreamerInfo`` record, and where it went."""
-        info = _streamers(self._used, self._carried)
+        keylen = self._key_length("TList", "StreamerInfo", "Doubly linked list")
+        info = _streamers(self._used, self._carried, keylen)
         return self._put("TList", "StreamerInfo", "Doubly linked list", info, 1, listed=False)
 
     def _write_free(self) -> tuple[int, tuple[int, int, int]]:

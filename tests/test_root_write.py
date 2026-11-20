@@ -765,3 +765,106 @@ def test_a_string_wrapped_as_an_objstring_is_written_as_the_tobjstring_the_donor
     assert [(m.name, m.typename, m.stype) for m in ours.values()] == [
         (m.name, m.typename, m.stype) for m in theirs.values()
     ]
+
+
+
+# -- how the streamer list spells the classes it describes ------------------
+
+
+def _spellings(payload: bytes) -> list[tuple[int, str]]:
+    """Every class name spelled out in a record, and the place it was spelled at.
+
+    A name in full is ROOT's ``kNewClassTag`` - four ``0xff`` bytes - and then
+    the name and its terminator. The place given back is the byte count the
+    object opens with, four bytes before the tag, because that is what a
+    reference back to it names; a class named anywhere else in the record is
+    such a reference, which is why the places matter.
+    """
+    found, at = [], payload.find(bytes.fromhex("ffffffff"))
+    while at >= 0:
+        end = payload.find(b"\x00", at + 4)
+        name = payload[at + 4 : end].decode("utf-8", "surrogateescape")
+        found.append((at - 4, name))
+        at = payload.find(bytes.fromhex("ffffffff"), end)
+    return found
+
+
+def _referring(
+    payload: bytes, spellings: list[tuple[int, str]], keylen: int
+) -> list[tuple[int, int]]:
+    """Every reference in a record, and the place whose class it names.
+
+    A reference counts from the start of the record, the key in front of the
+    payload included, so ``keylen`` comes off it to find that place; six is
+    ``MAP_OFFSET`` and the byte count ROOT adds to a place to name an object.
+    """
+    places = {place for place, _name in spellings}
+    out = []
+    for at in range(0, len(payload) - 4):
+        word = struct.unpack_from(">I", payload, at)[0]
+        place = (word & ~0x80000000) - keylen - 6
+        if word & 0x80000000 and word != 0xFFFFFFFF and place in places:
+            out.append((at, place))
+    return out
+
+
+def _info_record(data: bytes) -> tuple[bytes, int]:
+    """The streamer list of a written file: its payload, and the length of its key."""
+    with read_back(data) as back:
+        seek, nbytes = back._source.info
+        key = Key(Buffer(back._source.read(seek, min(nbytes, 200))))
+        return key.payload(back._source), key.keylen
+
+
+def test_a_streamer_list_names_each_reader_class_once_and_refers_back_after():
+    """ROOT 6.40's own ``hsimple.root`` names a reader class once and refers back
+    to it for every later element: this writer's list is written the same way."""
+    with opened("gauss-h1") as donor:
+        hist = donor["h1d"]
+    payload, keylen = _info_record(written(h=hist))
+    spellings = _spellings(payload)
+    assert len({name for _at, name in spellings}) == len(spellings)
+    assert {"TStreamerInfo", "TObjArray", "TStreamerBase", "TStreamerBasicType"} <= {
+        name for _at, name in spellings
+    }
+    references = _referring(payload, spellings, keylen)
+    assert references, "an element class named by a second class is referred back to"
+    for _at, place in references:
+        assert payload[place] & 0x40, "a reference names the byte count of an object"
+
+
+def test_a_reference_is_counted_from_the_start_of_the_record_the_key_included():
+    """ROOT streams a key and its payload into one buffer, so the places in it count
+    from the key's first byte; a reference that did not would point nowhere."""
+    from xrdroot.writer import _streamers
+
+    keylen = 64
+    payload = _streamers({"TH1F": None, "TH1D": None}, None, keylen)
+    references = _referring(payload, _spellings(payload), keylen)
+    assert references
+    for at, place in references:
+        assert struct.unpack_from(">I", payload, at)[0] == 0x80000000 | (keylen + place + 6)
+
+
+def test_a_streamer_list_with_references_reads_back_as_the_classes_it_describes():
+    with opened("gauss-h1") as donor:
+        hist, other = donor["h1d"], donor["h1f"]
+    with opened("tprofile") as donor:
+        profile = donor["p1d"]
+    with read_back(written(a=hist, b=other, c=profile)) as back:
+        described = back._source.streamers()
+        assert back["a"].classname == "TH1D"
+    assert {"TH1D", "TH1F", "TProfile", "TH1", "TNamed"} <= set(described)
+
+
+def test_an_entry_added_to_a_list_already_written_names_its_classes_in_full():
+    """An update appends to a list that is already in a file, so a reference in the
+    entry would point at a place in another record: every class is spelled out."""
+    from xrdroot.writer import info_entry
+
+    entry = info_entry("TNamed", *INFOS["TNamed"])
+    spellings = _spellings(entry)
+    # TStreamerString is spelled twice, once for each string member: a class
+    # named again in an entry on its own is named in full again, not referred to.
+    assert [name for _at, name in spellings].count("TStreamerString") == 2
+    assert not _referring(entry, spellings, 0)
