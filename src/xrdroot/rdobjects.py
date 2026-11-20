@@ -33,6 +33,11 @@ __all__ = ["DescribedSource", "flat_reader_for", "reader_for"]
 #: The streamer type a file gives a container member, which its reader goes by.
 STREAMER = 500
 
+#: The streamer type ROOT gives a container that is pointed at rather than held, a
+#: ``vector<TObject> *fVectorTobject``: the container written where the pointer stands, with
+#: no tag in front of it to say a pointer was there at all.
+STL_POINTER = 71
+
 #: How many catalogues' layouts are kept at once. A program declares a bounded number of
 #: classes, so it reads a bounded number of catalogues - one per class declared again - and a
 #: layout is a dictionary of every class ROOT carries, so this is the width of the memory kept.
@@ -43,10 +48,18 @@ READERS_KEPT = 256
 
 
 def _member(element: Element) -> Member:
-    """One element as a file's description of a class gives it to the reader."""
+    """One element as a file's description of a class gives it to the reader.
+
+    A container is read by the type it names rather than by a class of its own, and that is
+    the same bytes whether the member is a container or a pointer to one: the bigevent
+    roottest's ``Event::fVectorTobject`` is a ``vector<TObject> *`` whose three objects come
+    after a record and a count, with nothing saying the pointer was there, so the pointer is
+    taken off the type and the container read where the pointer stands.
+    """
     kind, name, title, stype, _size, length, _dims, _maxidx, typename, extras = element
-    if kind in ("TStreamerSTL", "TStreamerSTLstring") and stype == 300:
+    if kind in ("TStreamerSTL", "TStreamerSTLstring") and stype in (300, STL_POINTER):
         stype = STREAMER
+        typename = typename.rstrip("*")  # a pointer to a container holds the container
     count = str(extras[1]) if kind in ("TStreamerBasicPointer", "TStreamerLoop") else ""
     return Member(name, title, stype, typename, length, count, _shape(_dims, _maxidx))
 
