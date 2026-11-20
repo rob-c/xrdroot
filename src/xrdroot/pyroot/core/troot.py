@@ -288,7 +288,13 @@ class TEnum(TNamed):
         with no second argument does - loads the library a rootmap lists the enumeration in;
         ``kNone`` and ``kInterpLookup`` ask the interpreter alone, which here is the table.
         """
-        return find_enum(name if isinstance(name, str) else str(name))
+        spelled = name if isinstance(name, str) else str(name)
+        found = find_enum(spelled)
+        if found is not None:
+            return found
+        if action in (TEnum.kAutoload, TEnum.kALoadAndInterpLookup) and autoload_enum(spelled):
+            return find_enum(spelled)
+        return None
 
 
 class TGlobal(TNamed):
@@ -364,6 +370,22 @@ def find_enum(name: Any) -> TEnum | None:
     """The enumeration declared as ``name``, or ``None`` - ROOT's table is keyed by the name
     C++ writes, so ``N::E`` is found and a bare ``E`` is not (the oracle finds neither)."""
     return _ENUMS.get(str(name).strip())
+
+
+def autoload_enum(name: str) -> bool:
+    """Load the library whose rootmap lists the enumeration ``name``, as ``TEnum::GetEnum``
+    does before it gives up; whether a translator able to load one was there at all.
+
+    What a loaded dictionary declares is noted against the table, so the caller looks again
+    rather than being told the enumeration it has just loaded is absent: a rootmap lists an
+    enumeration by the name of the type it declares, and the library answering for that name
+    holds the enumerators a macro reads.
+    """
+    load = _translator("autoload")
+    if load is None:
+        return False
+    load(str(name).strip())
+    return True
 
 
 def class_enums(owner: Any = None) -> TListOfEnums:

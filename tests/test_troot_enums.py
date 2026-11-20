@@ -106,6 +106,46 @@ def test_t_enum_get_enum_finds_what_was_declared_and_nothing_else() -> None:
     assert troot.TEnum.kNoAutoload != troot.TEnum.kAutoload
 
 
+def test_a_lookup_that_may_autoload_reads_the_library_its_rootmap_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ROOT loads the library a rootmap lists an enumeration in and looks again: the table is
+    what a dictionary notes its enumerations against, so the second look is what finds it."""
+    asked: list[str] = []
+
+    def loader(name: str) -> bool:
+        asked.append(name)
+        troot.note_enum(name, [("kOne", 1)])
+        return True
+
+    monkeypatch.setitem(troot._PROVIDED, "autoload", lambda: loader)
+    found = troot.TEnum.GetEnum("myns::EIn")
+    assert (asked, found) == (["myns::EIn"], troot.find_enum("myns::EIn"))
+    # ``kInterpLookup`` and ``kNone`` ask the table alone, which holds nothing yet.
+    asked.clear()
+    troot._ENUMS.clear()
+    assert troot.TEnum.GetEnum("myns::EIn", troot.TEnum.kInterpLookup) is None
+    assert troot.TEnum.GetEnum("myns::EIn", troot.TEnum.kNone) is None
+    assert asked == []
+
+
+def test_without_a_translator_a_lookup_that_may_autoload_only_asks_the_table(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A session with no translator loaded - a PyROOT program using no C++ - cannot read a
+    library, so the lookup answers what the table holds and no more."""
+    monkeypatch.setitem(troot._PROVIDED, "autoload", _no_translator)
+    assert troot.autoload_enum("myns::EIn") is False
+    assert troot.TEnum.GetEnum("myns::EIn") is None
+    troot.note_enum("myns::EIn", [("kOne", 1)])
+    assert troot.TEnum.GetEnum("myns::EIn") is troot.find_enum("myns::EIn")
+
+
+def _no_translator() -> None:
+    """The provider of a ``gInterpreter->AutoLoad`` that this session cannot reach."""
+    raise AttributeError("interpreter.autoload")
+
+
 class _TypeInfo:
     """``typeid(E)`` as a program passes it: ROOT spells it out and looks that up."""
 
