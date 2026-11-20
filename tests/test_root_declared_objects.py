@@ -48,7 +48,14 @@ from xrdroot.wdeclared import (
     normalised,
     parse_type,
 )
-from xrdroot.wdobjects import Instance, write_instance, write_members, write_value
+from xrdroot.wdobjects import (
+    Instance,
+    flat_record,
+    write_instance,
+    write_members,
+    write_value,
+    written_flat,
+)
 from xrdroot.winfo import INFOS, Element
 from xrdroot.writer import WBuffer
 
@@ -321,6 +328,22 @@ def test_a_run_of_numbers_is_written_by_one_struct_and_falls_back_where_it_must(
     refused = WBuffer()
     write_instance(refused, Instance("C", {"a": 1.9, "b": 2, "c": 3}), catalogue)
     assert bytes(refused.data).hex() == "4000000e0002" + "000000010000000200000003"
+
+
+def test_a_run_of_plain_numbers_is_written_from_the_values_at_hand():
+    """A class whose members are all numbers is one struct over the object's own values, and
+    a value the struct refuses - or a class that is more than numbers - takes the writer's
+    own steps instead."""
+    fields = tuple(Field(name, "int", "", ()) for name in ("a", "b"))
+    catalogue = Catalogue({"C": Declaration("C", 2, False, (), fields)})
+    buf = WBuffer()
+    assert written_flat(buf, "C", catalogue, [1, 2]) is True
+    assert bytes(buf.data).hex() == "4000000e0002" + "0000000100000002"
+    assert written_flat(WBuffer(), "C", catalogue, [1.9, 2]) is False  # the struct refuses it
+    assert written_flat(WBuffer(), "C", catalogue, [1]) is False  # not one value per member
+    assert written_flat(WBuffer(), "NoSuchClass", catalogue, [1, 2]) is False
+    based = Catalogue({"C": Declaration("C", 2, False, ("Base",), fields)})
+    assert flat_record(based, "NoSuchClass") is None
 
 
 def test_a_container_of_containers_of_objects_is_refused():

@@ -42,8 +42,9 @@ from ...wdeclared import (
     class_name,
     parse_type,
 )
-from ...wdobjects import Clones, DeclaredObject, Instance
+from ...wdobjects import Clones, DeclaredObject, Instance, written_flat
 from ...winfo import INFOS
+from ...writer import WBuffer
 from .objects import TNamed, TObject
 
 __all__ = [
@@ -352,6 +353,24 @@ def _current_writer() -> Any:
     return writable() if callable(writable) else None
 
 
+def flat_bytes(obj: Any, classname: str, catalogue: Catalogue) -> bytes | None:
+    """The record of an object of a class whose members are all plain numbers, written
+    straight from the object - or ``None`` for one that is more than that.
+
+    The members are fetched from the object and packed under the one struct their class is
+    written with, with no dictionary of them in between: roottest's ``WriteBuffer`` writes
+    ten million records of nine numbers, and that dictionary was a third of what each cost.
+    """
+    if catalogue.declared(classname) is None:
+        return None
+    attributes = _plan(catalogue, classname).flat
+    if attributes is None:
+        return None
+    out = WBuffer()
+    values = [getattr(obj, attribute, None) for attribute in attributes]
+    return bytes(out.data) if written_flat(out, classname, catalogue, values) else None
+
+
 def instance_of(obj: Any, name: str, catalogue: Catalogue) -> Instance:
     """``obj`` as plain data, read by the declaration of its class ``name``.
 
@@ -377,6 +396,10 @@ class _Plan(NamedTuple):
     #: Each persistent member: its field, the attribute the object keeps it in, and its type
     #: taken apart - or ``None`` for a number, which is written as the value it is.
     fields: tuple[tuple[Field, str, Spelled | None], ...]
+    #: The attributes of a class whose members are all plain numbers and which has no base -
+    #: a record that is one struct over the object's own values - or ``None`` for a class
+    #: that is more than that.
+    flat: tuple[str, ...] | None
 
 
 #: Each catalogue's plans by class name. Held weakly: a catalogue is kept with the class it
@@ -405,7 +428,10 @@ def _planned(catalogue: Catalogue, name: str) -> _Plan:
         for field in declared.fields
         if not field.comment.startswith("!")
     )
-    return _Plan(declared.bases, fields)
+    flat = None
+    if not declared.bases and all(found is None for _field, _at, found in fields):
+        flat = tuple(attribute for _field, attribute, _found in fields)
+    return _Plan(declared.bases, fields, flat)
 
 
 def _a_number(field: Field) -> bool:

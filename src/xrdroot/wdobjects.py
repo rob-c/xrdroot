@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import datetime
 import struct
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, NamedTuple
 from weakref import WeakKeyDictionary
 
@@ -52,7 +52,8 @@ from .winfo import INFOS, Element
 from .wpacking import _PLAIN_STYPES, _packer, pack_member, pack_one
 from .writer import Record, WBuffer, _payload, _record, info_entry
 
-__all__ = ["Clones", "Instance", "DeclaredObject", "write_instance", "write_members", "write_value"]
+__all__ = ["Clones", "Instance", "DeclaredObject", "flat_record", "write_instance",
+           "write_members", "write_value", "written_flat"]
 
 #: ``TObject``'s ``kIsOnHeap`` and ``kNotDeleted``, which ROOT keeps out of what it writes.
 MEMORY_BITS = 0x03000000
@@ -258,6 +259,60 @@ def _written_run(run: list[Element]) -> Step:
                 _Writer._basic(writer, element, row.get(label), row)
 
     return step
+
+
+#: Each catalogue's flat records by class name: what :func:`flat_record` worked out for it.
+_FLAT: WeakKeyDictionary[
+    Catalogue, dict[str, tuple[int, int | None, struct.Struct, tuple[str, ...]] | None]
+] = WeakKeyDictionary()
+
+
+def flat_record(
+    catalogue: Catalogue, classname: str
+) -> tuple[int, int | None, struct.Struct, tuple[str, ...]] | None:
+    """How a class of plain numbers is written in one go - its version, the checksum a
+    foreign class carries after it, the struct over its members and their names - or
+    ``None`` for a class that is more than that: a base, a string, a container, an object.
+
+    ``TClass::Streamer`` in roottest's bulk loop writes ten million records of nine ints,
+    and each of them went through a dictionary of its members to reach the one struct that
+    writes them all.
+    """
+    held = _FLAT.get(catalogue)
+    if held is None:
+        held = _FLAT[catalogue] = {}
+    if classname in held:
+        return held[classname]
+    plan = catalogue.written_as(classname)
+    made = None
+    if plan is not None:
+        version, sum_, elements = plan
+        if elements and all(_a_plain_number(element) for element in elements):
+            made = (version, sum_, _run_form(list(elements)),
+                    tuple(element[1] for element in elements))  # fmt: skip
+    held[classname] = made
+    return made
+
+
+def written_flat(
+    buf: WBuffer, classname: str, catalogue: Catalogue, values: Sequence[Any]
+) -> bool:
+    """``values`` written into ``buf`` as a record of ``classname``, when that class is a run
+    of plain numbers - ``False`` when it is not, or a value the struct refuses, and the
+    writer's own steps must write it."""
+    made = flat_record(catalogue, classname)
+    if made is None or len(values) != len(made[3]):
+        return False
+    version, sum_, form, _labels = made
+    at = buf.start(version)
+    if sum_ is not None:
+        buf.u32(sum_)
+    try:
+        buf.raw(form.pack(*[_number(value) for value in values]))
+    except (struct.error, TypeError, OverflowError):
+        return False  # a value the struct will not take, written the way it always was
+    buf.end(at)
+    return True
 
 
 class _Writer:
