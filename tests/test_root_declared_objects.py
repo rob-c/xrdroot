@@ -287,6 +287,20 @@ def test_a_counted_array_shorter_than_its_count_is_an_error():
     assert bytes(buf.data).hex() == "4000000f0002000000000000000001" + "00000002"
 
 
+def test_a_run_of_numbers_is_written_by_one_struct_and_falls_back_where_it_must():
+    """A class of numbers writes its numbers one after another, so the writer writes the run
+    with one ``struct`` - and, where the ``struct`` refuses a value, writes the members one at
+    a time, so a float into an ``int`` member is the truncation NumPy makes and not an error."""
+    fields = tuple(Field(name, "int", "", ()) for name in ("a", "b", "c"))
+    catalogue = Catalogue({"C": Declaration("C", 2, False, (), fields)})
+    buf = WBuffer()
+    write_instance(buf, Instance("C", {"a": 1, "b": 2, "c": 3}), catalogue)
+    assert bytes(buf.data).hex() == "4000000e0002" + "000000010000000200000003"
+    refused = WBuffer()
+    write_instance(refused, Instance("C", {"a": 1.9, "b": 2, "c": 3}), catalogue)
+    assert bytes(refused.data).hex() == "4000000e0002" + "000000010000000200000003"
+
+
 def test_a_container_of_containers_of_objects_is_refused():
     decl = Declaration("C", 1, True, (), (Field("v", "std::vector<std::vector<Inner> >", "", ()),))
     inner = Declaration("Inner", 1, True, (), (Field("x", "int", "", ()),))

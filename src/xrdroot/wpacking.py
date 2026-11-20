@@ -50,6 +50,11 @@ BASIC: dict[int, tuple[str, int, str]] = {
     FLOAT16: (">f4", 2, "Float16_t"),
 }
 
+#: The streamer types that are one plain number on file, which a run of members can be
+#: gathered into one ``struct`` over: every type ``BASIC`` describes but the two packed floats,
+#: whose recipe is their declaration's comment and not their streamer type.
+_PLAIN_STYPES = frozenset(BASIC) - {DOUBLE32, FLOAT16}
+
 #: A float written as its exponent byte and a cut-down mantissa, three bytes.
 TRUNCATED = np.dtype([("exp", "u1"), ("man", ">u2")])
 

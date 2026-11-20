@@ -19,8 +19,10 @@ hands a file one, with the descriptions of every class it reached.
 
 from __future__ import annotations
 
+import struct
 from collections.abc import Callable, Mapping
 from typing import Any, NamedTuple
+from weakref import WeakKeyDictionary
 
 import numpy as np
 
@@ -46,7 +48,7 @@ from .wdeclared import (
     parse_type,
 )
 from .winfo import INFOS, Element
-from .wpacking import pack_member, pack_one
+from .wpacking import _PLAIN_STYPES, _packer, pack_member, pack_one
 from .writer import Record, WBuffer, _payload, _record, info_entry
 
 __all__ = ["Clones", "Instance", "DeclaredObject", "write_instance", "write_members", "write_value"]
@@ -142,6 +144,120 @@ def _describe_complex(catalogue: Catalogue, found: Spelled) -> str | None:
     return made[0]
 
 
+#: How one member of a class, or a run of them, is written: the writer, and its members.
+Step = Callable[["_Writer", Mapping[str, Any]], None]
+
+
+def _steps_of(
+    catalogue: Catalogue, classname: str, elements: tuple[Element, ...]
+) -> tuple[Step, ...]:
+    """A class's elements as the fewest writes that write them in the order they come.
+
+    Consecutive plain numbers go under one ``struct``, which is what makes a class of nine
+    ``int`` members - the record roottest's ``WriteBuffer`` streams ten million times - one
+    ``pack`` rather than nine calls into the writer. Everything else keeps its own step, and
+    the order of the writes, which is the order of the bytes, is unchanged.
+
+    Kept per class: a class's elements are the same every time it is written, and a bulk
+    write of one class asks for them ten million times.
+    """
+    held = _STEPS.get(catalogue)
+    if held is None:
+        held = _STEPS[catalogue] = {}
+    found = held.get(classname)
+    if found is None:
+        found = held[classname] = _planned(elements)
+    return found
+
+
+#: Each catalogue's steps by class name. Held weakly: a step says nothing outside its class.
+_STEPS: WeakKeyDictionary[Catalogue, dict[str, tuple[Step, ...]]] = WeakKeyDictionary()
+
+#: The structs a run of numbers is written with, by the format each was built from.
+_RUNS: dict[str, struct.Struct] = {}
+
+#: The streamer type of a member that is one plain number, which a run can gather.
+_BASIC_KIND = "TStreamerBasicType"
+
+
+def _run_form(members: list[Element]) -> struct.Struct:
+    """The struct that writes a run of plain numbers, built once however many runs use it."""
+    code = "".join(_packer(element[3]).format.removeprefix(">") for element in members)
+    found = _RUNS.get(code)
+    if found is None:
+        found = _RUNS[code] = struct.Struct(">" + code)
+    return found
+
+
+def _planned(elements: tuple[Element, ...]) -> tuple[Step, ...]:
+    """A class's elements as steps, each run of plain numbers gathered into one write."""
+    steps: list[Step] = []
+    run: list[Element] = []
+    for element in elements:
+        if _a_plain_number(element):
+            run.append(element)
+            continue
+        _flushed(steps, run)
+        steps.append(_one_element(element))
+    _flushed(steps, run)
+    return tuple(steps)
+
+
+def _a_plain_number(element: Element) -> bool:
+    """Is this member one number of a type ``struct`` writes by itself?
+
+    A packed float is squeezed by the recipe in its declaration and is not one of these; an
+    array, a counted array and a ``char *`` are not one number either, and keep their own
+    writers.
+    """
+    stype = element[3]
+    return (
+        element[0] == _BASIC_KIND
+        and stype in _PLAIN_STYPES
+        and not OFFSET_L < stype < OFFSET_P
+    )
+
+
+def _flushed(steps: list[Step], run: list[Element]) -> None:
+    """Add a run of plain numbers to the plan, as one write or as members of their own."""
+    if len(run) > 1:
+        steps.append(_written_run(run))
+    elif run:
+        steps.append(_one_element(run[0]))
+    run.clear()
+
+
+def _one_element(element: Element) -> Step:
+    """One member, written by the writer its streamer type has."""
+    write = _ELEMENTS[element[0]]
+    label = element[1]
+
+    def step(writer: _Writer, members: Mapping[str, Any]) -> None:
+        write(writer, element, members.get(label), members)
+
+    return step
+
+
+def _written_run(run: list[Element]) -> Step:
+    """A run of plain numbers written by the one ``struct`` that covers them.
+
+    A number the ``struct`` refuses - a float where an ``int`` goes, a number too wide for
+    its member - takes the members one at a time, written as they always were, so that what
+    lands on file is NumPy's truncation or wrap and not a refusal.
+    """
+    members, labels = tuple(run), tuple(element[1] for element in run)
+    form = _run_form(run)
+
+    def step(writer: _Writer, row: Mapping[str, Any]) -> None:
+        try:
+            writer.buf.raw(form.pack(*[_number(row.get(label)) for label in labels]))
+        except (struct.error, TypeError, OverflowError):
+            for element, label in zip(members, labels, strict=True):
+                _Writer._basic(writer, element, row.get(label), row)
+
+    return step
+
+
 class _Writer:
     """Writes objects into one buffer, by the descriptions of one catalogue."""
 
@@ -168,8 +284,8 @@ class _Writer:
         if sum_ is not None:
             self.buf.u32(sum_)
         members = _members(value)
-        for element in elements:
-            _ELEMENTS[element[0]](self, element, members.get(element[1]), members)
+        for step in _steps_of(self.catalogue, classname, elements):
+            step(self, members)
         self.buf.end(at)
 
     def _root_record(self, classname: str, value: Any) -> None:
