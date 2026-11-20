@@ -633,6 +633,24 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   there, and the `schemaEvolution` log bug (`tools/rootsuite`) is a harness defect worth a worker
   of its own.
 
+## Round 15's close (recorded here for the next iteration)
+
+- Base `99525851`, closed at `177f6159`. Four commits landed from eight chains, **eight roottest tests
+  in and none lost to code** (`/tmp/r15/final2` at `--jobs 3` vs `/tmp/r14/final2` at `--jobs 5`).
+- **The machine is shared and it dominated the round.** Load averages of 20, then 64, from another
+  session: five-way measurement was impossible, so the round measured at `--jobs 3` and says so.
+  `W0-44` is the rule for next time: check `uptime` first, and record the parallelism a number was
+  measured at, because a count is only comparable within one.
+- **The CERN endpoint was slow the whole round**: the four network tests timed out at `--jobs 1` with
+  nothing else running (`/tmp/r15/net`). `W0-43` says they must never be counted as losses without
+  that rerun - this is the third round the distinction has mattered.
+- Worker 3's `CompareContent` pair-by-position work is the round's real gain: three `checkWarn*` tests
+  and, more importantly, the six stderr DIFFs in `meta/evolution` now fail for a *named* reason - the
+  harness compares stdout for an OUTREF test where ROOT merges stderr into it.
+- Round 16's first chains: the `meta/evolution` stderr question (16 tests, harness + `streamers.py`),
+  `pyroot/trees/core.py` + `objects.py` (`SplitClones`' last answer), `interp.py` + `rdobjects.py`
+  (the data model), `wdobjects.py` (bigevent), and `reflection.py` (`pairEnumEvo`).
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -671,6 +689,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 15's result of it, at `177f6159`: `TOTAL 116420 0 29072 0 100%`, `12584 passed, 1 skipped,
+  46 xfailed`; `ruff` clean, `mypy` 1017 files, maintainability 30 080 functions, components 0
+  undeclared, `mkdocs build --strict` built.
 - Round 14's result of it, at `77042aa8`: `TOTAL 116342 0 29012 0 100%`, `12575 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
   maintainability 30 055 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -738,6 +759,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 12 | `14ef50ad` | sixteen **chains**, `/tmp/r12/wNN-brief.md`: the split `TClonesArray` writer chain, the geometry export chain, bigevent's declaration chain, the evolved-class read chain, `treeproxy`'s pyroot chain, the graphics encoders, a selector's reader, `TBufferJSON`, the makeproject translator chain, `TEnum`, `tree/stl`'s `pycint` chain, a 300 s clone, `double32`, TMVA, `roottest/python`, and the gtest runtime | **roottest 1181 → 1195, non-tutorial 1340 → 1354** (`/tmp/r12/final2`, `/tmp/r12/final1` at `f7e42087`), **14 in, 0 lost** | 2: `W0-34`, `W0-35` |
 | 13 | `70523896` | sixteen **chains**, `/tmp/r13/wNN-brief.md`: the geometry export chain, the compression-setting chain, the split `TClonesArray`, the evolved-class read, `ROOT.list` and JSON, `lotsRef`, the makeproject _Set, the tests near the limit, the graphics encoders, `TEnum`/enums, `double32`, `roottest/python`, the gtest kind, TMVA, `treeproxy`, and the module tests' missing names | **roottest 1195 → 1220, non-tutorial 1354 → 1386** (`/tmp/r13/final2`, `/tmp/r13/final1` at `a5d25f67`), **25 roottest + 7 `other` in, 0 lost** | 1: `W0-36` |
 | 14 | `12646b58` | sixteen **chains**, `/tmp/r14/wNN-brief.md`, each **starting** at the file round 13's reports named: bigevent's drawing classes, `GetClonesName`, the evolved-class read, the data model's records, a `TRef` in a `TClonesArray`, the harness's lost `schemaRun1.log`, the WILLFAIL verdict, the tests near the limit, the graphics encoders, `roottest/python`, the gtest kind, TMVA, `other/math`, `MakeProxy`, `TBufferJSON`, and `double32` | **roottest 1220 → 1226 measured (1231 with the five that pass alone), non-tutorial 1386 → 1393 (1398)** (`/tmp/r14/final2`, `/tmp/r14/final1`, `/tmp/r14/solo` at `19be128b`) | 3: `W0-37`, `W0-38`, `W0-39`, `W0-40` |
+| 15 | `99525851` | **eight** chains (the machine's load average reached 64): bigevent's writer, `SplitClones`, the evolved class's warnings and walk, the data model's records, a `TRef` in a `TClonesArray`, `pairEnumEvo`'s listing, the harness's lost working file, and the four buffers' margin | **roottest 1226 → 1230 at `--jobs 3`, non-tutorial 1393 → 1397** (`/tmp/r15/final2`, `/tmp/r15/final1` at `601996d1`), 8 in, 0 lost to code | 4: `W0-41`…`W0-44` |
 
 ## Notes
 

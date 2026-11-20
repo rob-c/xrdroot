@@ -29,6 +29,24 @@ def test_a_name_root_has_and_this_does_not_is_refused_by_that_name():
         ROOT.TNoSuchThing  # noqa: B018
 
 
+def test_a_name_of_a_namespace_not_gathered_yet_is_gathered_when_it_is_asked_for(monkeypatch):
+    """The modules a macro rarely names are gathered when one of their names is asked for,
+    so that importing the namespace costs what a macro that reads a tree and draws pays."""
+    monkeypatch.setattr(ROOT, "_gathered_all", False)
+    monkeypatch.delitem(ROOT.__dict__, "TProfile2Poly", raising=False)
+    assert ROOT._gathered_all is False
+    assert ROOT.TProfile2Poly.__name__ == "TProfile2Poly"
+    assert ROOT._gathered_all is True  # and they are gathered for good
+    assert "TProfile2Poly" in ROOT.__all__
+
+
+def test_a_name_no_namespace_offers_is_refused_after_gathering_them_all(monkeypatch):
+    monkeypatch.setattr(ROOT, "_gathered_all", False)
+    with pytest.raises(AttributeError, match=r"TNoSuchThing; xrdroot\.pyroot does not yet"):
+        ROOT.TNoSuchThing  # noqa: B018
+    assert ROOT._gathered_all is True
+
+
 def test_a_listed_module_that_is_not_installed_is_passed_over(monkeypatch):
     monkeypatch.setattr(ROOT, "SUBMODULES", ["core", "no_such_module"])
     namespace: dict = {}

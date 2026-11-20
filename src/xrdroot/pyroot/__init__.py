@@ -28,8 +28,9 @@ import importlib
 import importlib.util
 import typing as _typing  # not ``Any``: ``ROOT.Any`` is ``ROOT::VecOps::Any``
 
-#: The modules the namespace is made from, in order: a later one's name wins.
-SUBMODULES = [
+#: The modules gathered when the namespace is imported: what a macro that reads a tree,
+#: fills a histogram or draws a canvas reaches - nearly every macro ROOT's own tests run.
+EAGER = (
     "core",
     "stl",
     "classes",
@@ -39,6 +40,13 @@ SUBMODULES = [
     "graphics.ratioplot",
     "graphics.widgets",
     "graphics.views3d",
+)
+
+#: The modules gathered when a name one of them exports is first asked for: RooFit, RooStats,
+#: TMVA, the spectra, the geometry and the rest, which a macro names or does not name. They
+#: are a third of the namespace's modules and a fifth of a second of every command that never
+#: says one of their names.
+LATER = (
     "graphics.polar",
     "graphics.polargraph",
     "graphics.texec",
@@ -69,20 +77,28 @@ SUBMODULES = [
     "_pythonization",
     "uhi",
     "cmdlineutils",
-]
+)
 
-__all__: list[str] = []
+#: The modules the namespace is made from, in order: a later one's name wins.
+SUBMODULES = [*EAGER, *LATER]
+
+#: The names gathered so far, in the order they were gathered: ``__all__``, which is asked
+#: for by ``from ROOT import *`` and by ``dir``, and only then has to hold every name.
+_EXPORTED: list[str] = []
 
 
-def _gather(namespace: dict[str, _typing.Any] | None = None) -> list[str]:
+def _gather(
+    namespace: dict[str, _typing.Any] | None = None,
+    modules: _typing.Sequence[str] | None = None,
+) -> list[str]:
     """Import each listed module that exists and put its ``__all__`` in ``namespace``.
 
-    Without a namespace given it is this module's own, and ``__all__`` grows
-    by the names gathered.
+    Without a namespace given it is this module's own, and the names gathered
+    join the ones :data:`_EXPORTED` holds.
     """
     into = globals() if namespace is None else namespace
     exported: list[str] = []
-    for module in SUBMODULES:
+    for module in SUBMODULES if modules is None else modules:
         if importlib.util.find_spec(f"{__name__}.{module}") is None:
             continue
         found = importlib.import_module(f"{__name__}.{module}")
@@ -90,21 +106,42 @@ def _gather(namespace: dict[str, _typing.Any] | None = None) -> list[str]:
             into[name] = getattr(found, name)
             exported.append(name)
     if namespace is None:
-        fresh = [name for name in dict.fromkeys(exported) if name not in __all__]
-        __all__.extend(fresh)
+        fresh = [name for name in dict.fromkeys(exported) if name not in _EXPORTED]
+        _EXPORTED.extend(fresh)
     return exported
 
 
-_gather()
+_gather(modules=EAGER)
+
+#: Have the modules the namespace holds only some of been gathered yet?
+_gathered_all = False
+
+
+def _gather_later() -> None:
+    """Gather the modules the namespace has not, once: the rest of ROOT's own namespaces."""
+    global _gathered_all
+    if not _gathered_all:
+        _gathered_all = True
+        _gather(modules=LATER)
 
 #: ``ROOT.__version__``: the release this namespace follows, as ``gROOT.GetVersion()`` has it.
 __version__: str = globals()["gROOT"].GetVersion()
 
 
 def __getattr__(name: str) -> _typing.Any:
-    """An object ``gROOT`` finds by that name, as PyROOT falls back to - ``ROOT.h1``, a
-    geometry's ``ROOT.YK01`` - or else a name ROOT has and this namespace does not yet."""
+    """A name one of the modules the namespace has not gathered yet exports; an object
+    ``gROOT`` finds by that name, as PyROOT falls back to - ``ROOT.h1``, a geometry's
+    ``ROOT.YK01`` - or else a name ROOT has and this namespace does not yet."""
+    if name == "__all__":
+        _gather_later()
+        globals()["__all__"] = _EXPORTED  # asked for once, and an attribute from now on
+        return _EXPORTED
     if not name.startswith("_"):
+        if not _gathered_all:
+            _gather_later()
+            found = globals().get(name)
+            if found is not None:
+                return found
         found = globals()["gROOT"].FindObject(name)
         if found is not None:
             return found
@@ -114,6 +151,12 @@ def __getattr__(name: str) -> _typing.Any:
 
             return looked_up(declared, name)
     raise AttributeError(f"ROOT has {name}; xrdroot.pyroot does not yet")
+
+
+def __dir__() -> list[str]:
+    """Every name the namespace offers: asked for them, it gathers the ones it has not."""
+    _gather_later()
+    return sorted(globals())
 
 
 def _declared(name: str) -> _typing.Any:
