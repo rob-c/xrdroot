@@ -195,9 +195,14 @@ class TSystem(TNamed):
 
     # -- the environment --------------------------------------------------------------------
 
-    def Getenv(self, name: Any) -> str | None:
-        """``Getenv``: the variable's value, or ``None`` - a null pointer - if it is not set."""
-        return os.environ.get(str(name))
+    def Getenv(self, name: Any) -> str:
+        """``Getenv``: the variable's value, or the empty string if it is not set.
+
+        ROOT's ``TUnixSystem::GetEnv`` hands back ``getenv``'s null pointer as ``""``,
+        never as a null one, so a script reading a variable it may not be given sees a
+        string either way.
+        """
+        return os.environ.get(str(name), "")
 
     def Setenv(self, name: Any, value: Any) -> None:
         os.environ[str(name)] = str(value)
@@ -227,8 +232,12 @@ class TSystem(TNamed):
     # -- commands and the event loop ------------------------------------------------------
 
     def Exec(self, shellcmd: Any) -> int:
-        """``Exec``: run a command in the shell, and hand back its status."""
-        return int(subprocess.call(str(shellcmd), shell=True))
+        """``Exec``: run a command in the shell, and hand back ``system``'s waiting status.
+
+        ROOT returns what ``system()`` returns - the exit code shifted up by eight bits,
+        so ``false`` is 256 - and a script written for ROOT shifts it back down itself.
+        """
+        return int(os.system(str(shellcmd)))
 
     def GetFromPipe(self, command: Any) -> TString:
         """``GetFromPipe``: what a command printed, its last newline taken off."""
@@ -318,7 +327,13 @@ class TSystem(TNamed):
         return self.ChangeDirectory(path)
 
     def BaseName(self, path: Any) -> str:
-        return os.path.basename(str(path).rstrip("/")) or "/"
+        """``BaseName``: what follows the last slash, which a path ending in one lacks.
+
+        ROOT takes the last component as it stands, so ``/a/b/`` has no base name at all
+        rather than ``b``; ``/`` itself, the one path that is all slash, is its own.
+        """
+        text = str(path)
+        return "/" if text == "/" else text[text.rfind("/") + 1 :]
 
     def DirName(self, path: Any) -> str:
         return os.path.dirname(str(path).rstrip("/")) or ("/" if str(path).startswith("/") else ".")
@@ -350,17 +365,23 @@ class TSystem(TNamed):
     def UnixPathName(self, path: Any) -> str:
         return str(path)
 
-    def Which(self, search: Any, name: Any, mode: int = kFileExists) -> str | None:
-        """``Which``: ``name`` in one of the ``search`` path's directories, or ``None``."""
+    def Which(self, search: Any, name: Any, mode: int = kFileExists) -> str:
+        """``Which``: ``name`` in one of the ``search`` path's directories, or ``""``.
+
+        ROOT hands back an empty ``TString`` rather than a null pointer when it finds
+        nothing, so ``Which`` is always a string a script may test.
+        """
         if os.path.isabs(str(name)):
-            return str(name) if not self.AccessPathName(name, mode) else None
+            return str(name) if not self.AccessPathName(name, mode) else ""
         for directory in str(search).split(":"):
             found = os.path.join(directory or ".", str(name))
             if not self.AccessPathName(found, mode):
                 return found
-        return shutil.which(str(name)) if mode == kExecutePermission else None
+        if mode == kExecutePermission:
+            return shutil.which(str(name)) or ""
+        return ""
 
-    def FindFile(self, search: Any, name: Any, mode: int = kFileExists) -> str | None:
+    def FindFile(self, search: Any, name: Any, mode: int = kFileExists) -> str:
         return self.Which(search, name, mode)
 
     def mkdir(self, name: Any, recursive: bool = False) -> int:
@@ -391,9 +412,17 @@ class TSystem(TNamed):
         return 0
 
     def CopyFile(self, source: Any, target: Any, overwrite: bool = False) -> int:
+        """``CopyFile``: 0 copied, -2 there already and ``overwrite`` unset, -1 it failed.
+
+        ROOT keeps those two refusals apart, so a script that asks a file in beside one
+        already there can tell that apart from the copy having gone wrong.
+        """
         if os.path.exists(str(target)) and not overwrite:
+            return -2
+        try:
+            shutil.copyfile(str(source), str(target))
+        except OSError:
             return -1
-        shutil.copyfile(str(source), str(target))
         return 0
 
     def OpenDirectory(self, name: Any) -> Iterator[str] | None:

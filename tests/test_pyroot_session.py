@@ -134,7 +134,7 @@ def test_gsystem_loads_and_includes_without_complaint():
 
 def test_gsystem_reads_and_sets_the_environment(monkeypatch):
     monkeypatch.delenv("PYROOT_TEST", raising=False)
-    assert ROOT.gSystem.Getenv("PYROOT_TEST") is None
+    assert ROOT.gSystem.Getenv("PYROOT_TEST") == ""  # ROOT hands back "", not a null pointer
     ROOT.gSystem.Setenv("PYROOT_TEST", 5)
     assert ROOT.gSystem.Getenv("PYROOT_TEST") == "5"
     ROOT.gSystem.Unsetenv("PYROOT_TEST")
@@ -152,6 +152,7 @@ def test_gsystem_reads_and_sets_the_environment(monkeypatch):
 def test_gsystem_runs_commands_and_sleeps():
     expect(
         (ROOT.gSystem.Exec("true"), 0),
+        (bool(ROOT.gSystem.Exec("exit 3") == 3 << 8), True),  # system()'s waiting status
         (ROOT.gSystem.GetFromPipe("echo hi"), "hi"),
         (bool(ROOT.gSystem.ProcessEvents() is False), True),
     )
@@ -176,6 +177,8 @@ def test_gsystem_walks_and_names_paths(tmp_path):
     expect(
         (ROOT.gSystem.BaseName("/x/y.root"), "y.root"),
         (ROOT.gSystem.BaseName("/"), "/"),
+        (ROOT.gSystem.BaseName("/x/y/"), ""),  # a path ending in a slash has no base name
+        (ROOT.gSystem.BaseName("y"), "y"),
         (ROOT.gSystem.DirName("/x/y.root"), "/x"),
         (ROOT.gSystem.DirName("y"), "."),
         (ROOT.gSystem.DirName("/y"), "/"),
@@ -204,9 +207,9 @@ def test_gsystem_expands_and_finds_files(tmp_path, monkeypatch):
     (tmp_path / "found.txt").write_text("x")
     expect(
         (ROOT.gSystem.Which(f"/nowhere:{tmp_path}", "found.txt"), str(tmp_path / "found.txt")),
-        (bool(ROOT.gSystem.Which(".", "missing.txt") is None), True),
+        (bool(ROOT.gSystem.Which(".", "missing.txt") == ""), True),
         (ROOT.gSystem.Which("", str(tmp_path / "found.txt")), str(tmp_path / "found.txt")),
-        (bool(ROOT.gSystem.Which("", "/no/such/file") is None), True),
+        (bool(ROOT.gSystem.Which("", "/no/such/file") == ""), True),
         (bool(ROOT.gSystem.Which("/nowhere", "sh", ROOT.kExecutePermission)), True),
         (bool(ROOT.gSystem.FindFile(str(tmp_path), "found.txt")), True),
         (bool(ROOT.gSystem.IsFileInIncludePath("found.txt")), True),
@@ -217,7 +220,8 @@ def test_gsystem_moves_and_removes_files(tmp_path):
     (tmp_path / "a.txt").write_text("x")
     expect(
         (ROOT.gSystem.CopyFile("a.txt", "b.txt"), 0),
-        (ROOT.gSystem.CopyFile("a.txt", "b.txt"), -1),
+        (ROOT.gSystem.CopyFile("a.txt", "b.txt"), -2),  # there already, and no overwrite
+        (ROOT.gSystem.CopyFile("nope.txt", "d.txt"), -1),  # no such file to copy
         (ROOT.gSystem.CopyFile("a.txt", "b.txt", True), 0),
         (ROOT.gSystem.Rename("b.txt", "c.txt"), 0),
         (ROOT.gSystem.Rename("nope", "d"), -1),
