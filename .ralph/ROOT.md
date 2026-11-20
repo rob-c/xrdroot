@@ -532,6 +532,30 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   (worker 8), `stressgraphics`' encoder (worker 14), `double32` (worker 10), `selectorreader`
   (worker 11), and `Q-48`'s next formula wall (worker 1).
 
+## Round 10's close (recorded here for the next iteration)
+
+- Base `05b43b7`, closed at `d33afbbd`. Eleven commits landed, one reverted after measurement, and
+  **roottest went 1141 → 1183** (`/tmp/r10/final2`): the 40 `treeformula`/`fastcloningeventtree`
+  draws that four worker-rounds had measured now pass, with `python/memory`, `execCreateAndMerge`,
+  `execKeyOrder`, `test_stringfiltercolumn` and the `cmsUnload` pair.
+- **The most important finding is about the harness, not the code.** `/tmp/rootsrc-6.40` was
+  damaged: `roottest/root/meta/evolution/` held 3 files where the release has 82. Every roottest
+  figure up to round 9 came from that tree, so tests with missing inputs both "passed" for nothing
+  and failed for nothing. The intact sparse clone is **`/tmp/rootsrc-6.40b`** and every later run
+  must use it; `tools/rootsuite list` gives the same 2820 non-tutorial tests there, so counts stay
+  comparable. Round 9's base re-measured on the intact tree (`/tmp/r10/base9-run`) fails the same
+  three `meta/evolution` tests, which is how the delta was separated from the tree.
+- Two lessons for the next round:
+  - **A revert is not proof of a cause**: `Q-36` was reverted in round 9 *and* round 10, and the
+    second bisect showed the three "lost" tests fail at the old base too. Bisect against the *base*
+    before blaming a commit.
+  - Four workers died with `backend unavailable` (`W0-32`); their briefs are unchanged and are round
+    11's scopes by default.
+- Round 11's first scopes: the 12 `io/tree` tests (both `SplitClones` halves landed: `b231145`,
+  `e7b2784`, `ecb6457`), `io/json`'s containers (`9134a49` landed `TMap`), the `_Set` cursor
+  (worker 12 never committed), `stressgraphics`' encoder, and re-deriving one round-9 figure on the
+  intact tree to confirm the comparison.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -570,6 +594,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 10's result of it, at `d33afbbd`: `TOTAL 114900 0 28534 0 100%`, `12122 passed, 1 skipped,
+  46 xfailed`; `ruff` clean, `mypy` 1014 files, maintainability 29 553 functions, components 0
+  undeclared, `mkdocs build --strict` built.
 - Round 9's result of it, at `a35c8e7`: `TOTAL 114450 0 28424 0 100%`, `12060 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1012 files,
   maintainability 29 398 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -617,6 +644,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 7 | `ebf4262` | sixteen, `/tmp/r7/wNN-brief.md`: the formula's object wall (`Q-48`), the `BuildCheck` warning and its old element code (`Q-29`/`Q-49`), `TGeoManager::Export` (`Q-44`), `SplitClones` (`Q-38`), bigevent's template member (`Q-39`), `treeproxy` (`Q-40`), the `reconcile` wiring (`Q-36`), `_Set`, `abstractclass`/`double32`, `python/memory`, `TClonesArray` of a base-less class, `stressgraphics`, `io/json`, the RNTuple read, `selectorreader`, and the last TIMEOUT (`P-10`) | **roottest 1132 → 1134, non-tutorial 1293 → 1294** (`/tmp/r7/final2`, `/tmp/r7/final1` at `2d0e458`) | 5: `W0-21`…`W0-25`, plus the `Q-29`/`Q-44`/`Q-46` closures in the ledger |
 | 8 | `3f1cb63` | sixteen, `/tmp/r8/wNN-brief.md`, **built from round 7's reports' file lists**: the formula's object wall in `methods.py` (`Q-48`), the template spelling (`Q-39`), the reader's layouts (`Q-36`), the brace-init containers (`Q-33`), `SplitClones` (`Q-38`), `TGeoManager::Export` (`Q-44`), `TBufferJSON` (`W0-25`), a version-0 class, `python/memory`, `stressgraphics`, bigevent, `treeproxy`, `selectorreader`, `.typedef`, and the last TIMEOUT | **roottest 1134 → 1138, non-tutorial 1294 → 1298** (`/tmp/r8/final2`, `/tmp/r8/final1` at `f65e991`) | 1: `W0-26`, `W0-27` in the ledger |
 | 9 | `9b37ece` | sixteen, `/tmp/r9/wNN-brief.md`: the formula's object member (`Q-48`), bigevent's template member (`Q-39`), `SplitClones` over four writer files (`Q-38`), `treeproxy` (`Q-40`), the `reconcile` wiring (`Q-36`), `TGeoManager::Export` (`Q-44`), `TBufferJSON` (`W0-25`), `_Set`, splitting in `objects.py`, `double32`, `selectorreader`, `tree/stl` (`W0-10`), `python/memory`, `stressgraphics`, the last TIMEOUT (`P-10`), and `TEnum` | **roottest 1138 → 1141, non-tutorial 1298 → 1301** (`/tmp/r9/final2b`, `/tmp/r9/final1` at `2ef9c80`) | 3: `W0-28`, `W0-29`, `W0-30` in the ledger |
+| 10 | `05b43b7` | sixteen, `/tmp/r10/wNN-brief.md`, from round 9's reports: the reference loop's reads (`Q-42`/`Q-48`), `Alt$`'s flat index, `SplitClones` on both sides (`Q-38`/`Q-40`), bigevent's members, `treeproxy`, `selectorreader`, `jsonbuffer`, `objects.py`, `double32`/`TEnum`, the memory lifetime patch, the `_Set` cursor, `stressgraphics`, `tree/stl` (`W0-10`), the read-by-declared-layout (`Q-36`), and the geo exports | **roottest 1141 → 1183, non-tutorial 1301 → 1342** (`/tmp/r10/final2`, `/tmp/r10/final1` at `71aa3256`) - the first roottest figure from an **intact** source tree | 2: `W0-31` (the damaged tree), `W0-32` |
 
 ## Notes
 
