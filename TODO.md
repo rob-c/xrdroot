@@ -20,12 +20,12 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1181 / 2173** measured, **1185** with the four CERN-network tests (`/tmp/r11/net` passes all four alone) |
+| roottest | 1038 / 2173 (47.8 %) | **1195 / 2173** |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **21 / 109** at `--jobs 5` (22 alone) |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1340 / 2820 (47.5 %)** measured, **1344** with the network tests |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1354 / 2820 (48.0 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
 The "now" column is two runs at `2ef9c80`: `/tmp/r9/final2b` (roottest, 1141) and
@@ -986,21 +986,33 @@ cheap to maintain and impossible to reconstruct.
 | Q-39 (writer) | **attempted, not merged** | `5b65bffa` | 0 | worker 15's "one of ROOT's arrays of numbers is written as its count and values" collided with worker 5's `TArrayX` work in `wdeclared.py`: merging the two broke three of worker 5's tests, so the pair was resolved in worker 5's favour and 15's is unmerged |
 | W0-33 | attempted, not merged | - | 0 | seven workers reported without a commit (4, 6, 7, 8, 11, 12, 13); the refusal each hit has *moved one file further out* - `w04-outside-scope.patch`, `w06`'s `wdobjects.py`, `w07-nested-vector.patch`, `w11-out-of-scope.patch`, and the `storage`/`TBrowser` walls in 12 and 13. Their reports are `/tmp/r11/wNN.log` |
 
+| **Round 12 re-scoped the fan-out**: instead of sixteen disjoint *files*, sixteen disjoint *chains* - every file a refusal walks through - because four rounds of workers had each spent their budget discovering the wall one file further out. The result: **14 roottest tests gained and none lost** (`/tmp/r12/final2` vs `/tmp/r11/final2`), against 2 gained in round 11 |
+| Q-38/Q-40 | **done in part** | `6b920c39`, `5bfaccac`, `f599f6ea`, `8078577b`, `9672d02c` (workers 1, 3, 4, 5, 7) | roottest +6 | a split collection of a macro's class is carried rather than named among ROOT's; a class deriving from a container is laid out as ROOT lays that base out; a member-wise collection reads its items as the program's class is; a branch of a `std::vector` of collections is written whole, both counts in its record; a selector's reader is typed by the class it was declared for. `treeproxy/vectorint/createfile` and `selectorreader/{CollectionClasses,Options}` pass |
+| Q-45 (part) | done | `e2410c4d` (worker 9) | roottest +5 | an unqualified `bitset` is the standard library's, as a macro writes it: the five `treeformula/schemaEvolution/*` and `treeformula/array/nonSplit` pass with `collection/tbits` and `tree/addresses/twrite` |
+| Q-44 (graphics) | **done in part** | `b8f09177` (worker 6) | 0 | a pad saved under a `.C` name is written as the macro ROOT writes - `test/stressgraphics` moves to its next wall |
+| Q-16 (TEnum) | **done in part** | `2c3cfbe9` (worker 10) | 0 | the enum table knows the type an enumeration is stored as and lists its global enumerators |
+| W0-10 | **done in part** | `67d6b9bf` (worker 11) | 0 | the interpreter's typedef walk lists what `.typedef` lists, and the characterisation test now matches ROOT's line shape (`f7e42087`) |
+| Q-36 | **done in part** | `2c3cfbe9`, `f599f6ea` (workers 4, 10) | 0 | a member-wise collection reads its items as the program's class is and says when it did not - `meta/evolution`'s wiring is one layer further on |
+| Q-41 (part) | done | `9b7ca7e9` (worker 14) | 0 | TMVA reads an option's number where C++ stops |
+| W0-34 | done | `e4708933` (worker 15) | 0 | `gSystem`'s answers as ROOT gives them, checked against the oracle |
+| G-2 (part) | done | `3aff3e15` (worker 16) | 0 | `HasFailure()` inside a lambda reads GoogleTest's own state - the gtest kind's largest single translator cause |
+| W0-35 | attempted, not merged | - | 0 | worker 2 left five files uncommitted in its worktree (the `TGeoManager` record) and workers 8, 12 and 13 died or reported without a commit; their chains are round 13's by default |
+
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | `f65e991` | `2ef9c80` | `71aa3256` | now (`90f5c5e8`, intact tree) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | 1138 | 1141 | 1183 | **1181** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 80 / 470 | 80 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
-| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 | 21 | 21 | 21 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** | **1301** | **1342** | **1340** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | `f65e991` | `2ef9c80` | `71aa3256` | `90f5c5e8` | now (`f7e42087`, intact tree) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | 1138 | 1141 | 1183 | 1181 | **1195** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 80 / 470 | 80 / 470 | 80 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
+| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 | 21 | 21 | 21 | 21 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** | **1301** | **1342** | **1340** | **1354** |
 
-The last column is `/tmp/r11/final2` (roottest, 1181) and `/tmp/r11/final1` (the other kinds)
-at `90f5c5e8`, on the intact tree `/tmp/rootsrc-6.40b`; the column before it,
-`/tmp/r10/final2` (1183) and `/tmp/r10/final1` at `71aa3256`; **every earlier column was measured on
+The last column is `/tmp/r12/final2` (roottest, 1195) and `/tmp/r12/final1` (the other kinds)
+at `f7e42087`, on the intact tree `/tmp/rootsrc-6.40b`; the column before it,
+`/tmp/r11/final2` (1181) and `/tmp/r11/final1` at `90f5c5e8`; **every earlier column was measured on
 a damaged tree** (`W0-31`), so compare counts only within a column. The column before it is
 `/tmp/r9/final2b` (1141) and `/tmp/r9/final1` at `2ef9c80`; the column before it, `/tmp/r8/final2` (1138) and `/tmp/r8/final1` at `f65e991`; the column before it, `/tmp/r7/final2` (1134) and `/tmp/r7/final1` at `2d0e458`; the column before it, `/tmp/r6/final2b` (1132) and `/tmp/r6/final1` at
 `3825443`; the column before it, `/tmp/r5/final2b` (1123) and `/tmp/r5/final1` at
