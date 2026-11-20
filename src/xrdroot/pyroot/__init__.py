@@ -35,11 +35,7 @@ EAGER = (
     "stl",
     "classes",
     "trees",
-    "rdf",
     "graphics",
-    "graphics.ratioplot",
-    "graphics.widgets",
-    "graphics.views3d",
 )
 
 #: The modules gathered when a name one of them exports is first asked for: RooFit, RooStats,
@@ -47,6 +43,10 @@ EAGER = (
 #: are a third of the namespace's modules and a fifth of a second of every command that never
 #: says one of their names.
 LATER = (
+    "rdf",
+    "graphics.ratioplot",
+    "graphics.widgets",
+    "graphics.views3d",
     "graphics.polar",
     "graphics.polargraph",
     "graphics.texec",

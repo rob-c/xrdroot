@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from typing import Any
 
 import pytest
 
@@ -27,6 +28,22 @@ def test_the_namespace_holds_roots_classes_by_their_names():
 def test_a_name_root_has_and_this_does_not_is_refused_by_that_name():
     with pytest.raises(AttributeError, match=r"TNoSuchThing; xrdroot\.pyroot does not yet"):
         ROOT.TNoSuchThing  # noqa: B018
+
+
+def test_a_module_gathered_later_cannot_change_a_name_the_macro_already_has():
+    """``ROOT.EnableImplicitMT`` and its kin are exported by ``core`` and by ``rdf``: the two
+    are the one function, which is what lets ``rdf`` be gathered after the namespace is made
+    without a macro's name meaning something else than it would have."""
+    eager_names: dict[str, Any] = {}
+    for name in ROOT.EAGER:
+        module = importlib.import_module(f"xrdroot.pyroot.{name}")
+        for exported in getattr(module, "__all__", ()):
+            eager_names.setdefault(exported, getattr(module, exported))
+    for name in ROOT.LATER:
+        module = importlib.import_module(f"xrdroot.pyroot.{name}")
+        for exported in getattr(module, "__all__", ()):
+            if exported in eager_names:
+                assert getattr(module, exported) is eager_names[exported], (name, exported)
 
 
 def test_a_name_of_a_namespace_not_gathered_yet_is_gathered_when_it_is_asked_for(monkeypatch):
