@@ -20,12 +20,12 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1141 / 2173** |
+| roottest | 1038 / 2173 (47.8 %) | **1183 / 2173** |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **21 / 109** at `--jobs 5` (22 alone) |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1301 / 2820 (46.1 %)** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1342 / 2820 (47.6 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
 The "now" column is two runs at `2ef9c80`: `/tmp/r9/final2b` (roottest, 1141) and
@@ -967,20 +967,32 @@ cheap to maintain and impossible to reconstruct.
 | W0-29 | attempted, not merged | - | 0 | worker 7 took `io/json/BasicTypes` to PASS in its worktree (`/tmp/r9/w07.log`) with the container writers in `jsonbuffer.py`; its commit was never made and the work is in the worktree, unmerged |
 | W0-30 | attempted, not merged | - | 0 | workers 3, 4, 9, 10, 11, 12, 13 and 14 reported without a commit; each report (`/tmp/r9/wNN.log`) names the file it wanted, and together they are round 10's brief |
 
+| Q-42/Q-48 | **done** | `87ac2d8`, `26bc629d`, `fe307d31` (workers 1, 2) | roottest +40 | the 40 `treeformula/event/draw-*` and `tree/fastcloningeventtree/draw-*` tests pass: a `TBits` inside a `TClonesArray` element is the bits it holds, `Alt$` reads its branch at the loop's flat element index (ROOT's rule, mean -0.021071 against xrdroot's old -0.301389), and a tree made only to hold friends reads as far as they do. Four worker-rounds of measurement (`/tmp/r7`…`/tmp/r9/w01.log`) went into these 40 |
+| Q-38/Q-40 (writer) | **done in part** | `9955f67`, `e7b2784`, `ecb6457`, `38f45ec` (workers 3, 4, 5, 6) | 0 | a member held by value is one whole object written where it stands; a macro's class with a base and a `TRef` member is described for a split collection; a counted pointer is a loop of objects, laid out and written; the type a split member is held as is read from the file's streamers. The 12 `io/tree` tests are one layer further on |
+| Q-41 (part) | **done in part** | `9134a49` (worker 8) | 0 | `TMap` holds its pairs by key and a clones array can be told its class - `io/json`'s `RootClasses` moves on |
+| W0-20 | **done** | `a93ce61`, `56df50d` (worker 11) | roottest +1 | a translated object's destructor runs when its Python object is collected, with the memory lifetime patch: `roottest/python/memory/memory` passes (3 assertions) |
+| W0-25 | **done in part** | `0a9c9d4` (worker 13) | 0 | `TMarker::DisplayMarkerTypes` draws ROOT's table of marker styles - `test/stressgraphics` moves to its next wall |
+| W0-10 | **done** | `01d34f3` (worker 14) | 0 | `.U` forgets the typedefs of the macro it unloads, as cling does: the `tree/stl` seven still DIFF but the mechanism is now measured and pinned |
+| Q-36 | **reverted again** | `422ed08`, reverted by `71aa3256` | 0 | worker 15's checksum-agnostic read is right in principle and wrong in this wiring: it turned `execBaseClass_v2` and both `baseClass_53410` tests into failures and fixed nothing. **Round 9 reverted the same shape from worker 5** - the next attempt must not touch `interp.py`'s walk without a like-for-like run of `meta/evolution` |
+| W0-31 | todo | | 0 | **The ROOT source tree was damaged** (`/tmp/rootsrc-6.40`: `roottest/root/meta/evolution/` had 3 of 82 files) and every roottest figure up to round 9 came from it. The intact clone is `/tmp/rootsrc-6.40b`; `tools/rootsuite list` shows the same 2820 non-tutorial tests, so counts are comparable but individual statuses were not. **Always run with `/tmp/rootsrc-6.40b` from now on**, and re-derive any figure older than this round before quoting it |
+| W0-32 | todo | | 1 | four workers died with `backend unavailable` (2, 7, 10, 12) and two reported without a commit; their briefs are unchanged and are round 11's by default |
+
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | `f65e991` | now (`2ef9c80`) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | 1138 | **1141** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
-| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 | 21 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** | **1301** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | `f65e991` | `2ef9c80` | now (`71aa3256`, intact tree) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | 1138 | 1141 | **1183** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 80 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
+| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 | 21 | 21 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** | **1301** | **1342** |
 
-The last column is `/tmp/r9/final2b` (roottest, 1141) and `/tmp/r9/final1` (the other kinds)
-at `2ef9c80`; the column before it, `/tmp/r8/final2` (1138) and `/tmp/r8/final1` at `f65e991`; the column before it, `/tmp/r7/final2` (1134) and `/tmp/r7/final1` at `2d0e458`; the column before it, `/tmp/r6/final2b` (1132) and `/tmp/r6/final1` at
+The last column is `/tmp/r10/final2` (roottest, 1183) and `/tmp/r10/final1` (the other kinds)
+at `71aa3256`, on the intact tree `/tmp/rootsrc-6.40b`; **every earlier column was measured on
+a damaged tree** (`W0-31`), so compare counts only within a column. The column before it is
+`/tmp/r9/final2b` (1141) and `/tmp/r9/final1` at `2ef9c80`; the column before it, `/tmp/r8/final2` (1138) and `/tmp/r8/final1` at `f65e991`; the column before it, `/tmp/r7/final2` (1134) and `/tmp/r7/final1` at `2d0e458`; the column before it, `/tmp/r6/final2b` (1132) and `/tmp/r6/final1` at
 `3825443`; the column before it, `/tmp/r5/final2b` (1123) and `/tmp/r5/final1` at
 `f583422`; the column before it, `/tmp/r4/final2` (1114) and `/tmp/r4/final1` at
 `932164a`; the column before it, `/tmp/r3/final2` (roottest, 1105) and
