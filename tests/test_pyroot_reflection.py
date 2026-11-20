@@ -969,3 +969,33 @@ def test_a_class_whose_members_a_file_names_alike_lists_them_at_their_offsets(ca
     ROOT.TClass.GetClass("Versed").GetStreamerInfo().ls()
     printed = capfd.readouterr().out
     assert "offset=  0 type= 3" in printed and "newtype" not in printed
+
+
+def test_an_element_a_file_spelled_another_way_names_the_type_in_memory(capsys):
+    """ROOT lists a file's element with the *new* type the class in memory gives that member,
+    and reads it with an action numbered two hundred above the file's - ``kHasNewType``. An
+    enum a file wrote as the ``int`` it is declared as is the case the roottest pair shows."""
+    spelled = [("TStreamerBasicType", "first", "", 3, 4, 0, 0, (0,) * 5, "AnEnum", ())]
+    today = [("TStreamerBasicType", "first", "", 13, 4, 0, 0, (0,) * 5, "AnEnum", ())]
+    from xrdroot.pyroot.core.reflection import TStreamerInfo
+
+    TStreamerInfo("Spelled", (0xB15D1241, 2, tuple(spelled)), built=True, from_file=True,
+                  memory=tuple(today)).ls()
+    printed = capsys.readouterr().out
+    assert "  AnEnum         first           offset=  0 type= 3 newtype=13" in printed
+    assert "   i= 0, first           type=203, offset=  0, len=1, method=0" in printed
+
+
+def test_a_member_the_two_layouts_type_alike_names_no_new_type(capsys):
+    """The same type in both layouts is no new type: ROOT's listing is the file's own."""
+    same = [("TStreamerBasicType", "first", "", 3, 4, 0, 0, (0,) * 5, "int", ())]
+    extra = [("TStreamerBasicType", "gone", "", 3, 4, 0, 0, (0,) * 5, "int", ())]
+    from xrdroot.pyroot.core.reflection import TStreamerInfo
+
+    info = TStreamerInfo("Alike", (1, 2, tuple(same + extra)), built=True, memory=tuple(same))
+    info.ls()
+    printed = capsys.readouterr().out
+    assert "newtype" not in printed
+    assert "   i= 0, first           type=  3, offset=  0, len=1, method=0" in printed
+    # A member the layout in memory does not have is the file's own, new type or no.
+    assert "   i= 1, gone            type=  3, offset=  0, len=1, method=0" in printed
