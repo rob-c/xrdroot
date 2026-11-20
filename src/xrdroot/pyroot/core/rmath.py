@@ -8,6 +8,7 @@ vectors are those of :mod:`.genvector`, and ``VectorUtil`` beside them.
 
 from __future__ import annotations
 
+import cmath
 import math
 from typing import Any, ClassVar
 
@@ -42,6 +43,26 @@ _GOLDEN_RATIO = 0.381966011250105151795413165634
 #: GSL's status codes, which ``GSLMinimizer1D.Minimize`` returns.
 _GSL_SUCCESS = 0
 _GSL_EMAXITER = 1
+
+#: Below this the sine and cosine integrals' power series is a few dozen terms whose partial
+#: sums stay small, so summing it exactly loses only the last bit or two; above it their
+#: terms grow to the size of ``x**x / x!`` and cancel down to the answer, which costs the
+#: places a caller reads. ``Si(10)`` says it: 228 cancelling to 1.66 keeps 14 digits, which
+#: is not the last place of a double, while the continued fraction below converges in a few
+#: dozen terms and loses none.
+_SICI_SERIES_LIMIT = 5.0
+
+#: Enough terms of each sum for ``|x| < 5`` at the last place of a double: the series needs
+#: about thirty of them and the fraction about ninety.
+_SICI_SERIES_TERMS = 60
+_SICI_FRACTION_TERMS = 200
+
+#: ``pi/2``, which the sine integral tends to.
+_HALF_PI = 1.5707963267948966
+#: Euler's constant, which the cosine integral's series starts from.
+_EULER = 0.57721566490153286060651209008240243104215933593992
+#: What Lentz's algorithm divides by where a denominator is zero, as ROOT's own does.
+_TINY = 1e-300
 
 
 class Minim1D:
@@ -120,6 +141,94 @@ class Polynomial(IGenFunction):
         for power in range(len(self._p) - 1, 0, -1):
             value = value * x + power * self._p[power]
         return value
+
+
+def _si_series(x: float) -> float:
+    """``Si(x)`` for a small ``x``: ``sum (-1)**k x**(2k+1) / ((2k+1) (2k+1)!)``."""
+    x2 = x * x
+    terms = [x]
+    term = x
+    for k in range(1, _SICI_SERIES_TERMS):
+        term *= -x2 / (2 * k * (2 * k + 1))
+        terms.append(term / (2 * k + 1))
+        if abs(terms[-1]) <= 1e-18 * abs(x):
+            break
+    return math.fsum(terms)
+
+
+def _ci_series(x: float) -> float:
+    """``Ci(x)`` for a small ``x``: ``gamma + ln x + sum (-1)**k x**(2k) / (2k (2k)!)``."""
+    x2 = x * x
+    head = _EULER + math.log(x)
+    terms = [head]
+    term = 1.0
+    for k in range(1, _SICI_SERIES_TERMS):
+        term *= -x2 / ((2 * k - 1) * (2 * k))
+        terms.append(term / (2 * k))
+        if abs(terms[-1]) <= 1e-18 * abs(head):
+            break
+    return math.fsum(terms)
+
+
+def _e1_of_ix(x: float) -> complex:
+    """``E1(i x)`` by the incomplete gamma's continued fraction, which is ``-Ci(x)+i (Si(x)-pi/2)``.
+
+    The fraction is the exponential integral's, ``e**-z / (z + 1/(1 + 1/(z + 2/(1 + ...))))``,
+    taken by Lentz's algorithm at ``z = i x``, whose denominators alternate ``z`` and one
+    while its numerators grow by one every other term. Working in the complex plane is the
+    point: the tail of both integrals is one number here, where ``pi/2 - f cos x - g sin x``
+    would have a cosine and a sine cancel down to it.
+    """
+    z = complex(0.0, x)
+    fraction = z
+    root = fraction
+    tail = 0j
+    for k in range(1, _SICI_FRACTION_TERMS):
+        b = 1.0 if k % 2 else z
+        tail = b + (k + 1) // 2 * tail
+        tail = 1.0 / tail if tail else 1.0 / _TINY
+        root = b + (k + 1) // 2 / root if root else b + _TINY
+        step = root * tail
+        fraction *= step
+        if abs(step - 1.0) <= 1e-17:
+            break
+    return cmath.exp(-z) / fraction
+
+
+def sinint(x: Any) -> float:
+    """``sinint(x)``: the sine integral ``Si(x)``, as ``ROOT::Math::sinint`` answers it.
+
+    Odd, zero at zero and tending to ``pi/2``. ROOT's own answer is Cephes's, which meets
+    the tables of the integral to a unit or two in the last place; these two pieces meet
+    them too, split where each is cheapest, so a caller comparing against such a table sees
+    ROOT's numbers. A non-finite argument answers a NaN, as ROOT's does.
+    """
+    value = float(x)
+    if not math.isfinite(value):
+        return math.nan
+    if value == 0.0:
+        return value
+    if abs(value) < _SICI_SERIES_LIMIT:
+        return _si_series(value)
+    return math.copysign(_HALF_PI + _e1_of_ix(abs(value)).imag, value)
+
+
+def cosint(x: Any) -> float:
+    """``cosint(x)``: the cosine integral ``Ci(x)``, which is even, so a negative argument
+    gives the real part ROOT gives.
+
+    ``-inf`` at zero, where the logarithm its series starts from is; the sine integral's
+    series and continued fraction serve it, so the two agree where ROOT's do.
+    """
+    value = float(x)
+    if not math.isfinite(value):
+        return math.nan
+    magnitude = abs(value)
+    if magnitude == 0.0:
+        return -math.inf
+    if magnitude < _SICI_SERIES_LIMIT:
+        return _ci_series(magnitude)
+    return -_e1_of_ix(magnitude).real
 
 
 class GSLMinimizer1D:
