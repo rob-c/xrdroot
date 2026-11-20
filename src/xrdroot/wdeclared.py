@@ -179,8 +179,13 @@ def normalised(spelled: str, resolve: bool = True) -> str:
     return streamer_name(found)
 
 
+@functools.cache
 def class_name(found: Spelled) -> str:
-    """The class a type names, its template arguments as ROOT spells them: ``pair<int,float>``."""
+    """The class a type names, its template arguments as ROOT spells them: ``pair<int,float>``.
+
+    Kept by the type it names, which is a pure function of it: a record of a class writes one
+    of its members by looking its class up, ten million times over in roottest's own loop.
+    """
     return streamer_name(Spelled(found.name, found.args, 0))
 
 

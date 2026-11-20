@@ -760,6 +760,8 @@ def _members(value: Any) -> Mapping[str, Any]:
 
 def _number(value: Any) -> Any:
     """A number as written: a one-character string is the character's code."""
+    if type(value) is int or type(value) is float:
+        return value  # what a member of a declared class nearly always is
     if isinstance(value, (str, bytes)):
         return ord(value[:1] or "\0") if value else 0
     return 0 if value is None else value
