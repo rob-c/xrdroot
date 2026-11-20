@@ -549,3 +549,15 @@ def dispatch(interp: Interpreter, line: str) -> list[Said] | None:
     if name not in ("x", "X"):
         interp.last_status = int(name in ONE)
     return command(interp, found["rest"])
+
+
+def session_typedef_infos() -> list[tuple[str, str]]:
+    """Every typedef the session knows, each one's name and what it means.
+
+    This is ``gInterpreter->TypedefInfo_*``'s table. Cling walks the compiler's typedefs;
+    what this interpreter knows is what its sources and its prompt declared, which is the
+    same list ``.typedef`` prints, so the two cannot disagree.
+    """
+    from .lines import _holder  # the session's unit, which ProcessLine's commands reach
+
+    return [(each.name, each.true) for each in _session_typedefs(_holder())]

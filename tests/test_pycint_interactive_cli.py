@@ -711,6 +711,24 @@ def test_dot_u_forgets_the_typedefs_of_the_macro_it_unloads() -> None:
     ]  # fmt: skip
 
 
+def test_the_interpreter_s_typedef_walk_lists_the_typedefs_the_session_knows() -> None:
+    """``gInterpreter->TypedefInfo_*`` reads this list, so it names the same typedefs."""
+    write("walk.C", "typedef void *** walked_1;\n")
+    prompt = Interpreter()
+    typed(prompt, ".L walk.C")
+    assert ("walked_1", "void ***") in commands.session_typedef_infos()
+
+
+def test_the_typedef_walk_is_empty_while_a_session_declared_no_typedef(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A macro that declared none walks an empty table, as ``assertTypedefIter.ref`` has it."""
+    prompt = Interpreter()
+    typed(prompt, "int nothing_declared = 0;")  # a unit of its own, with no typedef
+    monkeypatch.setattr(commands, "SOURCES", {})
+    assert commands.session_typedef_infos() == []
+
+
 def test_dot_typedef_lists_the_typedefs_of_the_headers_a_macro_includes() -> None:
     write("deep.h", "typedef short deep_t;\n")
     write("mid.h", '#include "deep.h"\ntypedef double mid_t;\n')
