@@ -12,6 +12,7 @@ import pytest
 
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pycint.runtime import ROOT, diags
+from xrdroot.pycint.runtime import adapters as adapted
 from xrdroot.pycint.runtime.diags import TestSupport
 from xrdroot.pycxx.runtime.gtest import checks, runner, testing
 from xrdroot.pycxx.runtime.gtest.exceptions import caught, internal
@@ -345,3 +346,20 @@ def test_a_test_whose_fixture_cannot_be_made_or_set_up_fails_without_its_body(
         "fixture's constructor.\n"
     ) in out
     assert ENVIRONMENT_SAID == ["up", "down"]
+
+
+def test_a_message_with_no_place_to_name_prints_none_as_root_prints_it(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """ROOT 6.40.04's ``Error("", fmt, ...)`` and ``Warning(nullptr, ...)`` have no tag to
+    name and print none - ``Error: msg`` - so a check of diagnostics, whose lines all read
+    ``Error in <tag>: msg``, has no place to match one against."""
+    adapted.Error("", "empty where %d", 7)
+    adapted.Warning(None, "no place")
+    adapted.Error("TThing::Do", "tagged")
+    assert capsys.readouterr().err == (
+        "Error: empty where 7\nWarning: no place\nError in <TThing::Do>: tagged\n"
+    )
+    check = TestSupport.CheckDiagsRAII(3000, "unknown", "empty where 7")
+    check.close()
+    assert "Expected diagnostic message missing" in said(capsys)
