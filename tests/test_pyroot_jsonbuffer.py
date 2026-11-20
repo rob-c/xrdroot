@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
+from xrdroot.cppstd.bitset import Bitset
 from xrdroot.cppstd.buffers import CharBuffer
 from xrdroot.cppstd.cells import Cell
 from xrdroot.cppstd.containers import std
@@ -530,15 +531,174 @@ def test_a_member_of_a_declared_class_is_written_on_its_own_as_root_writes_it():
 
 
 def test_a_member_of_a_type_no_writer_takes_refuses_the_object_by_name():
-    """An array of ``std::string``, or a container, is not written as a number: the object is
-    refused by the member's own name rather than written with the member left out."""
-    kinds = _declared_class("TKinds", (("fStrArr", "std::string", "", (3,)),
-                                       ("fVect", "std::vector<double>", "", ())),
-                            )  # fmt: skip
+    """A pair, which ROOT writes as a class of its own, is not written as a number: the
+    object is refused by the member's own name rather than written with it left out."""
+    kinds = _declared_class("TKinds", (("fPair", "std::pair<int, int>", "", ()),))
     with pytest.raises(UnsupportedFeatureError) as refused:
         ROOT.TBufferJSON.ToJSON(kinds())
-    assert "TKinds::fStrArr, which is declared as an array of std::string" in str(refused.value)
-    assert "needs a writer for the container it holds first" in str(refused.value)
+    assert "TKinds::fPair, which is declared as a std::pair<int, int>" in str(refused.value)
+
+
+def _vector(*values):
+    """A ``std::vector<double>`` holding ``values``, as a translated member arrives."""
+    made = std.vector("double")()
+    for value in values:
+        made.push_back(value)
+    return made
+
+
+def test_an_empty_container_is_written_as_the_empty_json_root_writes_for_it():
+    """``STL0.ref``: every container ``TJsonEx7`` declares, written as the ``[]`` a class's
+    constructor leaves it - and a map whose declaration says ``/ JSON_object`` as one JSON
+    object that names itself and holds no key."""
+    kinds = _declared_class("TEmpty", (
+        ("fVect", "std::vector<double>", "", ()),
+        ("fVectPtr", "std::vector<double>*", "", ()),
+        ("fList", "std::list<double>", "", ()),
+        ("fSet", "std::set<double>", "", ()),
+        ("fMap", "std::map<int, double>", "", ()),
+        ("fMapObj", "std::map<std::string, int>", "/ JSON_object", ()),
+    ))()
+    for name, value in (("fVect", _vector()), ("fList", std.list("double")()),
+                        ("fSet", std.set("double")()),
+                        ("fMap", std.map("int", "double")()),
+                        ("fMapObj", std.map("std::string", "int")())):
+        setattr(kinds, name, value)
+    kinds.fVectPtr = None
+    assert _json(kinds) == (
+        '{\n  "_typename" : "TEmpty",\n  "fVect" : [],\n  "fVectPtr" : null,\n'
+        '  "fList" : [],\n  "fSet" : [],\n  "fMap" : [],\n'
+        '  "fMapObj" : {"_typename": "map<string,int>"}\n}'
+    )
+
+
+def test_a_container_is_written_as_the_values_it_holds():
+    """A sequence is one JSON array of its values and a map a ``$pair`` per entry, as
+    ``STL.ref`` has them for every container ``TJsonEx7`` fills."""
+    kinds = _declared_class("THeld", (("fVect", "std::vector<double>", "", ()),
+                                      ("fMap", "std::map<int, double>", "", ())))()  # fmt: skip
+    kinds.fVect = _vector(3.0, 6.0)
+    kinds.fMap = std.map("int", "double")()
+    kinds.fMap[1] = 5.0
+    assert _json(kinds) == (
+        '{\n  "_typename" : "THeld",\n  "fVect" : [3, 6],\n'
+        '  "fMap" : [{"$pair" : "pair<int,double>", "first" : 1, "second" : 5}]\n}'
+    )
+
+
+def test_a_string_array_is_written_as_its_strings_and_a_pointer_array_as_nulls():
+    """``std::string[N]`` is one JSON array of the strings - a constructor's unset entries as
+    the empty string - and ``std::string *[N]`` an array of the ``null`` pointers, which is
+    ``STL0.ref``'s ``fStrArr`` and ``fStrPtrArr``."""
+    kinds = _declared_class("TStrings", (("fStrArr", "std::string", "", (3,)),
+                                         ("fStrPtrArr", "std::string*", "", (3,))))()  # fmt: skip
+    kinds.fStrArr = [None, "b", None]
+    kinds.fStrPtrArr = ["c", None, None]
+    assert _json(kinds) == (
+        '{\n  "_typename" : "TStrings",\n  "fStrArr" : ["", "b", ""],\n'
+        '  "fStrPtrArr" : ["c", null, null]\n}'
+    )
+
+
+def test_a_bitset_is_written_as_a_boolean_per_bit_in_the_order_the_bits_are_numbered():
+    """``bitset<16>`` is what ``STL0.ref`` writes as sixteen ``false`` and ``STL.ref`` as
+    ``k % 2`` set over them."""
+    kinds = _declared_class("TBits", (("fBitsSet16", "std::bitset<4>", "", ()),))()
+    kinds.fBitsSet16 = Bitset(4)
+    kinds.fBitsSet16[1] = True
+    assert _json(kinds) == (
+        '{\n  "_typename" : "TBits",\n  "fBitsSet16" : [false, true, false, false]\n}'
+    )
+
+
+def test_an_array_of_containers_is_written_as_an_array_of_them():
+    """``vector<double> fVectDoubleArr[3]``: one JSON array per slot, which is
+    ``STL0.ref``'s ``[[], [], []]``, and ``null`` where the slot is a pointer to none."""
+    kinds = _declared_class("TArrayOf", (("fArr", "std::vector<double>", "", (3,)),
+                                         ("fPtrArr", "std::vector<double>*", "", (3,))))()
+    kinds.fArr = [_vector(), _vector(3.0), _vector()]
+    kinds.fPtrArr = [None, None, None]
+    assert _json(kinds) == (
+        '{\n  "_typename" : "TArrayOf",\n  "fArr" : [[], [3], []],\n'
+        '  "fPtrArr" : [null, null, null]\n}'
+    )
+
+
+def test_a_container_a_class_inherits_is_written_under_the_name_root_gives_it():
+    """``TJsonEx8 : std::vector<int>`` holds no member of its own: the object is the vector,
+    and ROOT writes its values first, as ``fVector`` (``STL0.ref``)."""
+    base = type(std.vector("int")())
+    inherited = _declared_class("TJsonEx8", (("fInt", "int", "", ()),),
+                                bases=("std::vector",), base=base)  # fmt: skip
+    made = inherited()
+    made.push_back(7)
+    assert _json(made) == (
+        '{\n  "_typename" : "TJsonEx8",\n  "fVector" : [7],\n  "fInt" : 0\n}'
+    )
+
+
+def test_an_empty_container_reads_back_as_the_one_its_constructor_made(monkeypatch):
+    """What ``STL0`` calls ``store/read/store``: a container's JSON says the values it
+    holds, so an empty one leaves the container the class's constructor made - and a
+    bitset's bits are read back, in the order ROOT numbers them."""
+    containers = _reading_class(monkeypatch, "TContainers", (
+        ("fVect", "std::vector<double>", "", ()),
+        ("fBitsSet16", "std::bitset<4>", "", ()),
+    ))  # fmt: skip
+
+    def __init__(self) -> None:
+        self.fVect, self.fBitsSet16 = _vector(), Bitset(4)
+
+    containers.__init__ = __init__
+    made = containers()
+    made.fBitsSet16 = Bitset(4)
+    made.fBitsSet16[2] = True
+    text = _json(made)
+    read = ROOT.TBufferJSON.ConvertFromJSON(text)
+    assert list(read.fVect) == []
+    assert [read.fBitsSet16[at] for at in range(4)] == [False, False, True, False]
+    assert _json(read) == text
+
+
+def test_a_member_that_holds_values_is_refused_when_it_is_read_back(monkeypatch):
+    """Reading values back into a container is a reader of its own, and the refusal says so
+    by the member's name rather than reading the object with the values dropped."""
+    _reading_class(monkeypatch, "TFilled", (("fVect", "std::vector<double>", "", ()),))
+    for held in ('[3]', '3', '{"first":1}'):
+        with pytest.raises(UnsupportedFeatureError) as refused:
+            ROOT.TBufferJSON.ConvertFromJSON(f'{{"_typename":"TFilled","fVect":{held}}}')
+        assert "TFilled::fVect holds some" in str(refused.value)
+        assert "containers are empty" in str(refused.value)
+
+
+def test_a_string_array_reads_back_as_its_strings_and_its_pointer_as_null(monkeypatch):
+    """A ``std::string[N]`` member is read back as the strings the JSON holds, and a
+    ``std::string *`` with ``null`` as the pointer with nothing there - which is what makes
+    ``STL0``'s ``store/read/store`` the same JSON twice."""
+    _reading_class(monkeypatch, "TTextArrays", (("fStrArr", "std::string", "", (2,)),
+                                                ("fStrPtrArr", "std::string*", "", (2,)),
+                                                ("fStrPtr", "std::string*", "", ())))  # fmt: skip
+    read = ROOT.TBufferJSON.ConvertFromJSON(
+        '{"_typename":"TTextArrays","fStrArr":["a",""],'
+        '"fStrPtrArr":["b",null],"fStrPtr":null}'
+    )
+    assert (read.fStrArr, read.fStrPtrArr, read.fStrPtr) == (["a", ""], ["b", None], None)
+
+
+def test_a_member_called_f_vector_that_is_no_container_is_written_as_its_number():
+    """ROOT names a container a class inherits ``fVector``, and a class of its own may hold a
+    member of that name: only a container member is the inherited one."""
+    numbers = _declared_class("TNumber", (("fVector", "int", "", ()),))()  # fmt: skip
+    assert _json(numbers) == '{\n  "_typename" : "TNumber",\n  "fVector" : 0\n}'
+
+
+def test_a_bitset_read_from_json_that_is_no_array_of_bits_is_refused(monkeypatch):
+    bits = (("fBitsSet16", "std::bitset<4>", "", ()),)
+    _reading_class(monkeypatch, "TBitsOnly", bits)
+    with pytest.raises(UnsupportedFeatureError) as refused:
+        ROOT.TBufferJSON.ConvertFromJSON('{"_typename":"TBitsOnly","fBitsSet16":3}')
+    assert "TBitsOnly::fBitsSet16 holds" in str(refused.value)
+    assert "one boolean per bit" in str(refused.value)
 
 
 def test_a_pointer_whose_comment_declares_its_length_is_the_array_root_writes(monkeypatch):

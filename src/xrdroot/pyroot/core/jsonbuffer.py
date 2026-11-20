@@ -194,8 +194,19 @@ SCALARS = {"bool": np.bool_, "char": np.int8, "signed char": np.int8,
 #: string up to its first NUL, and the pointers to one, which ROOT writes as ``null`` where
 #: there is nothing there.
 TEXTS = {("std::string", False): "string", ("TString", False): "string",
+         ("std::string", True): "strings", ("std::string*", True): "strptrs",
          ("char", True): "chars", ("char*", False): "cstring",
          ("std::string*", False): "strptr"}  # fmt: skip
+
+#: The C++ containers ROOT writes as the values they hold: a sequence as one JSON array of
+#: them, a map as a ``$pair`` per entry, and a ``bitset`` as a boolean per bit. A member
+#: declared as one of these is no scalar, so the table of scalar types says nothing of it.
+CONTAINERS = ("std::vector", "std::list", "std::deque", "std::set", "std::multiset",
+              "std::map", "std::multimap", "std::bitset")  # fmt: skip
+
+#: The ``_Member.kind`` a container is written as, which is also what the reader looks at:
+#: a sequence or map of values, one that names itself an object of its keys, or its bits.
+CONTAINER_KINDS = ("container", "map_object", "bitset")
 
 
 def _remainder(value: int, mod: int) -> int:
@@ -322,12 +333,17 @@ def _read_layout(cls: type[Any]) -> tuple[str, tuple[_Member, ...]] | None:
 def _base_members(cls: type[Any], name: str) -> tuple[_Member, ...]:
     """The members of ``cls``'s base class ``name``, whose streamer writes them before the
     object's own: a member of a base ROOT's streamer never writes - ``TObject``'s - is left
-    out of the layout, and out of the JSON."""
+    out of the layout, and out of the JSON.
+
+    A class derived from a container inherits no members of its own: ROOT writes the values
+    it was made holding under ``fVector``, named after the kind of container it is."""
     for kind in cls.__mro__:
         layout = getattr(kind, "_cxx_layout_", None)
         if isinstance(layout, tuple) and layout[0] == name:
             found = _layout(kind)
             return found[1] if found else ()
+    if name.startswith("std::vector"):
+        return (_Member("fVector", "container", False, ()),)
     return ()
 
 
@@ -359,6 +375,9 @@ def _declared_member(classname: str, entry: tuple[str, str, str, tuple[int, ...]
     if not dims and kind.endswith("*") and LENGTH.search(comment or ""):
         kind, dims = kind.rstrip("*").strip(), (None,)
     of = f"an array of {kind}" if dims else f"a {kind}"
+    style = _container_style(kind, comment)
+    if style is not None:
+        return _Member(name, style, bool(dims), dims)
     text = TEXTS.get((kind, bool(dims)))
     if text is not None:
         return _Member(name, text, bool(dims), dims)
@@ -374,6 +393,18 @@ def _declared_member(classname: str, entry: tuple[str, str, str, tuple[int, ...]
     )
 
 
+def _container_style(kind: str, comment: str) -> str | None:
+    """How ROOT writes a member declared as ``kind``: a sequence or map of the values it
+    holds, one JSON object of its keys where its declaration's comment says
+    ``/ JSON_object``, or a boolean per bit; ``None`` for anything but a container."""
+    bare = kind.rstrip("*").strip()
+    if not bare.startswith(CONTAINERS):
+        return None
+    if bare.startswith("std::bitset"):
+        return "bitset"
+    return "map_object" if "JSON_object" in (comment or "") else "container"
+
+
 def _held(obj: Any, member: _Member) -> Any:
     """The value of ``member`` in ``obj``: one of the members a drawn object keeps by name,
     where ``fBits`` carries the heap's bits too, or the attribute a core class keeps it in.
@@ -382,6 +413,21 @@ def _held(obj: Any, member: _Member) -> Any:
     the bits its class's constructor sets are added to the object's own, since what ROOT
     writes is the object its constructor made rather than the one here."""
     classname = _classname(obj)
+    value = _recorded(obj, member)
+    if value is None and member.name == "fVector" and _inherits_container(obj, member):
+        value = obj
+    default = DEFAULTS.get((classname, member.name))
+    if default is not None and not (isinstance(value, str) and value):
+        value = default
+    if member.name == "fBits":
+        return _pointer_bits(value or 0) | CLASS_BITS.get(classname, 0)
+    return value
+
+
+def _recorded(obj: Any, member: _Member) -> Any:
+    """The value ``obj`` keeps for ``member``: by name where it holds its members in a dict,
+    as a drawn object does, else the attribute its declaration names, and last the one a core
+    class keeps it in."""
     found = getattr(obj, "members", None)
     declared = getattr(type(obj), "_cxx_layout_", None)
     if isinstance(found, dict):
@@ -392,12 +438,18 @@ def _held(obj: Any, member: _Member) -> Any:
         value = None
     if value is None:
         value = getattr(obj, ATTRIBUTES.get(member.name, "_" + member.name), None)
-    default = DEFAULTS.get((classname, member.name))
-    if default is not None and not (isinstance(value, str) and value):
-        value = default
-    if member.name == "fBits":
-        return _pointer_bits(value or 0) | CLASS_BITS.get(classname, 0)
     return value
+
+
+def _inherits_container(obj: Any, member: _Member) -> bool:
+    """Is ``member`` the synthetic one ROOT writes for a container the class inherits?
+    ``TJsonEx8 : std::vector<int>`` has no member of its own holding the base's values - the
+    object is the vector - and ROOT writes them as ``fVector``, named after the base's kind."""
+    if member.name != "fVector" or member.kind not in CONTAINER_KINDS:
+        return False
+    layout = getattr(type(obj), "_cxx_layout_", None)
+    bases = layout[1] if isinstance(layout, tuple) and len(layout) == 3 else ()
+    return any(str(base).startswith("std::vector") for base in bases)
 
 
 def _content(values: list[Any]) -> tuple[int, int]:
@@ -617,21 +669,33 @@ class _Writer:
 
     def _member(self, member: _Member, obj: Any, depth: int) -> str:
         value = _held(obj, member)
+        if isinstance(member.kind, str):
+            return self._text_member(member, value, depth)
+        return self._number_member(member, value, depth)
+
+    def _text_member(self, member: _Member, value: Any, depth: int) -> str:
+        """A member that is not a number: text, an array of text, or a container."""
         if member.kind == "chars":
             return self._char_text(value, member)
+        if member.kind in ("strings", "strptrs"):
+            return self._texts(member, value, depth)
+        if member.kind in CONTAINER_KINDS:
+            return self._containers(member, value, depth)
         if member.kind in ("cstring", "strptr"):
             return "null" if value is None else _quoted(value)
-        if isinstance(member.kind, str):
-            return _quoted("" if value is None else value)
+        return _quoted("" if value is None else value)
+
+    def _number_member(self, member: _Member, value: Any, depth: int) -> str:
+        """A member of a number type: one number, or the array its declaration shapes."""
         name = NUMPY_NAMES[np.dtype(member.kind)]
-        if member.array:
-            held = np.asarray([] if value is None else value, dtype=member.kind)
-            if _nested_dimensions(member.dims):
-                return _list_text(_nest(held.ravel().tolist(), member.dims,
-                                        lambda group: self._items(group, name)),
-                                  self._layout.item_comma)  # fmt: skip
-            return self._array(held, name, depth)
-        return _scalar(0 if value is None else value, name, self._store_inf)
+        if not member.array:
+            return _scalar(0 if value is None else value, name, self._store_inf)
+        held = np.asarray([] if value is None else value, dtype=member.kind)
+        if _nested_dimensions(member.dims):
+            rows = _nest(held.ravel().tolist(), member.dims,
+                         lambda group: self._items(group, name))  # fmt: skip
+            return _list_text(rows, self._layout.item_comma)
+        return self._array(held, name, depth)
 
     def _char_text(self, value: Any, member: _Member) -> str:
         """A ``char`` array of a declared class: one JSON string up to its first NUL, or - a
@@ -642,6 +706,49 @@ class _Writer:
         rows = _nest(codes, member.dims,
                      lambda group: _quoted("".join(group).split("\0")[0]))  # fmt: skip
         return _list_text(rows, self._layout.item_comma)
+
+    def _texts(self, member: _Member, value: Any, depth: int) -> str:
+        """A ``std::string[N]``: one JSON array of its strings, a pointer with nothing there
+        written as ``null``, or - a ``std::string[N][M]`` - an array of those."""
+        nested = _nest(list(value or []), member.dims,
+                       lambda group: self._text_row(member, group))  # fmt: skip
+        return _list_text(nested, self._layout.item_comma)
+
+    def _text_row(self, member: _Member, group: list[Any]) -> str:
+        """One row of a text array: its strings, or ``null`` for a ``std::string *`` with
+        nothing there."""
+        items = ["null" if each is None and member.kind == "strptrs"
+                 else _quoted("" if each is None else str(each)) for each in group]
+        return "[" + self._layout.item_comma.join(items) + "]"
+
+    def _containers(self, member: _Member, value: Any, depth: int) -> str:
+        """A member holding a container - or, declared ``vector<T>[N]``, an array of them,
+        which ROOT writes as an array of the containers."""
+        if not member.array:
+            return self._container_text(member, value, depth)
+        nested = _nest(list(value or []), member.dims,
+                       lambda group: self._container_row(member, group, depth))  # fmt: skip
+        return _list_text(nested, self._layout.item_comma)
+
+    def _container_row(self, member: _Member, group: list[Any], depth: int) -> str:
+        """One row of an array of containers: each container written as it goes out."""
+        items = [self._container_text(member, each, depth) for each in group]
+        return "[" + self._layout.item_comma.join(items) + "]"
+
+    def _container_text(self, member: _Member, value: Any, depth: int) -> str:
+        """One container as JSON: ``null`` for a pointer with nothing there, a boolean per
+        bit of a ``bitset``, a map's keys as one object, or the values a sequence holds."""
+        if value is None:
+            return "null"
+        if member.kind == "map_object":
+            return self._map_object(value, list(value.items()), depth)
+        if isinstance(value, _Map):
+            return self._map(value, depth)
+        if member.kind == "bitset":
+            bits = ["true" if value[at] else "false" for at in range(value.size())]
+            return "[" + self._layout.item_comma.join(bits) + "]"
+        held = [self._value(each, depth + 1) for each in value]
+        return "[" + self._layout.item_comma.join(held) + "]"
 
     def _braced(self, pairs: list[str], depth: int) -> str:
         """``{`` and ``}`` round members written as ``"name" : value``, on one line or with
@@ -900,17 +1007,79 @@ def _rebuilt_object(data: dict[str, Any]) -> Any:
 
 def _restore(obj: Any, member: _Member, value: Any) -> None:
     """Put ``value``, read from JSON, in the attribute a declared class declares ``member``
-    as, which is where the writer reads it back from."""
+    as, which is where the writer reads it back from.
+
+    A container member keeps the container its constructor made: what such a JSON says is
+    the values the container holds, and reading values back into a ``std::map`` keyed by an
+    object - or into a ``bitset`` of a length its type fixes - is a writer and reader of its
+    own. An empty one is what the constructor made, so it needs nothing read into it."""
+    if member.kind == "bitset":
+        held = getattr(obj, member.name, None)
+        if not isinstance(value, list) or held is None:
+            raise UnsupportedFeatureError(
+                f"TBufferJSON::FromJSON does not know what {_classname(obj)}::{member.name} "
+                "holds: a bitset is read back as one boolean per bit, in the order the "
+                "bits are numbered, and this JSON holds something else. Ask for the "
+                "members of a number type and of text, or read this JSON with the class it "
+                "names"
+            )
+        for at, bit in enumerate(value):
+            held[at] = bool(bit)
+        return
+    if member.kind in CONTAINER_KINDS:
+        if not _blank(value):
+            raise UnsupportedFeatureError(
+                "TBufferJSON::FromJSON does not yet fill a member that holds values, and "
+                f"{_classname(obj)}::{member.name} holds some: it reads back an object "
+                "whose containers are empty, which is what a class's constructor makes "
+                "them. Ask for the members of a number type and of text, or read this JSON "
+                "with the class it names"
+            )
+        return
     setattr(obj, member.name, _converted(member, value))
+
+
+def _blank(value: Any) -> bool:
+    """Does this JSON hold no value at all: ``null``, an empty array, a map with nothing in
+    it, or arrays of those?"""
+    if value is None or value == []:
+        return True
+    if isinstance(value, dict):
+        return set(value) <= {"_typename"}
+    if isinstance(value, list):
+        return all(_blank(each) for each in value)
+    return False
 
 
 def _converted(member: _Member, value: Any) -> Any:
     """What a member of a declared class holds, as the JSON wrote it: a number, a string of
     characters, or the array of them its declared lengths shape."""
+    if isinstance(member.kind, str):
+        return _converted_text(member, value)
+    return _converted_number(member, value)
+
+
+def _converted_text(member: _Member, value: Any) -> Any:
+    """What a member of text, of an array of it, or of characters holds."""
     if member.kind == "chars":
         return "".join(chr(code) for code in _char_codes(value))
-    if isinstance(member.kind, str):
-        return "" if value is None else str(value)
+    if member.kind in ("strings", "strptrs"):
+        return _converted_texts(member, value)
+    if member.kind in ("cstring", "strptr"):
+        return None if value is None else str(value)
+    return "" if value is None else str(value)
+
+
+def _converted_texts(member: _Member, value: Any) -> list[str | None]:
+    """An array of ``std::string`` - or of pointers to one - as the strings it holds, with
+    ``None`` where a pointer had nothing there."""
+    items = value if isinstance(value, list) else [value]
+    return [None if each is None and member.kind == "strptrs" else str(each or "")
+            for each in items]
+
+
+def _converted_number(member: _Member, value: Any) -> Any:
+    """What a member of a number type holds: one number, or the array its lengths shape."""
     if not member.array:
         return member.kind(0 if value is None else value).item()
     numbers = np.asarray(_flat_numbers(value), dtype=member.kind)
