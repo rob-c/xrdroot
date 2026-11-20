@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 import numpy as np
 import pytest
@@ -11,6 +12,7 @@ import xrdroot.pyroot as ROOT
 from test_tmva_learn_bdt import read_back, train_one, without
 from tmvasupport import session, weights
 from xrdroot.tmva import TMVAError
+from xrdroot.tmva.method import CLASSIFICATION, MULTICLASS
 from xrdroot.tmva.methods.knn import scale_widths
 
 __all__ = ["session"]
@@ -109,3 +111,36 @@ def test_a_scikit_learn_ensemble_is_pickled_beside_its_weight_file_and_read_back
     prefix = method.estimator[2]
     assert os.path.exists(os.path.join("dataset", "weights", f"{prefix}_{title}.PyData"))
     agrees(method, title)
+
+
+def test_pymva_starts_an_interpreter_that_is_already_this_process():
+    """PyMVA's embedded interpreter is the one running the test, and its executable is this."""
+    assert ROOT.TMVA.Python_Executable() == sys.executable
+    assert ROOT.TMVA.PyMethodBase.PyInitialize() is None
+    assert ROOT.TMVA.PyMethodBase.PyFinalize() is None
+
+
+def test_a_python_ensemble_answers_with_one_probability_for_each_class(session):
+    """A multiclass fit targets the class number, and answers with every class's chance."""
+    from test_tmva_frame_multiclass import multiclass
+
+    factory = multiclass([(ROOT.TMVA.Types.kPyGTB, "PyGTB", "!H:!V:NEstimators=5:MaxDepth=2")])
+    method = factory.GetMethod("dataset", "PyGTB")
+    assert method.analysis == MULTICLASS
+    reader, cells = read_back("PyGTB")
+    # The third class's means, which are the variables' first four multiples of its shift.
+    for cell, mean in zip(cells.values(), (0.375, 0.75, 1.125, 1.5), strict=True):
+        cell[0] = mean
+    outputs = list(reader.EvaluateMulticlass("PyGTB"))
+    assert len(outputs) == 3
+    assert sum(outputs) == pytest.approx(1.0, abs=1e-4)
+    assert outputs.index(max(outputs)) == 2
+    assert reader.EvaluateMulticlass(2, "PyGTB") == pytest.approx(outputs[2], abs=1e-6)
+
+
+def test_a_python_ensemble_of_two_classes_answers_with_the_signal_probability(session):
+    """One class against the rest is a classification: the answer is the signal's chance."""
+    method = train_one(ROOT.TMVA.Types.kPyGTB, "PyGTB", "NEstimators=5:MaxDepth=2")
+    assert method.analysis == CLASSIFICATION
+    assert method.evaluate(np.array([[1.0, 1.0, 1.0, 1.0]]))[0] > 0.5
+    assert method.evaluate(np.array([[-1.0, -1.0, -1.0, -1.0]]))[0] < 0.5

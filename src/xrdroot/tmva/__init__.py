@@ -30,6 +30,7 @@ from .loader import DataLoader
 from .log import Config, TMVAError
 from .methods.category import MethodCategory
 from .methods.cuts import MethodCuts
+from .pyapi import PyMethodBase, Python_Executable
 from .rbdt import RBDT, SaveXGBoost
 from .reader import Reader
 from .tensor import AsRTensor, AsTensor, MemoryLayout, RTensor
@@ -47,6 +48,8 @@ __all__ = [
     "Interval",
     "MethodCategory",
     "MethodCuts",
+    "PyMethodBase",
+    "Python_Executable",
     "Reader",
     "TMVAError",
     "Tools",

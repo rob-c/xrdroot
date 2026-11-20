@@ -18,7 +18,7 @@ from typing import Any, ClassVar
 import numpy as np
 
 from ..dataset import Events
-from ..method import Method
+from ..method import CLASSIFICATION, MULTICLASS, Method
 from ..xmlfile import Node
 
 __all__ = ["MethodPyAdaBoost", "MethodPyGTB", "MethodPyRandomForest"]
@@ -26,6 +26,9 @@ __all__ = ["MethodPyAdaBoost", "MethodPyGTB", "MethodPyRandomForest"]
 
 class _PyMethod(Method):
     """The part the three share: options to keyword arguments, the pickle, the output."""
+
+    #: A scikit-learn classifier is a classifier: one class against the rest is either analysis.
+    analyses = frozenset({CLASSIFICATION, MULTICLASS})
 
     #: The scikit-learn estimator's module and class, and the pickle's prefix.
     estimator: ClassVar[tuple[str, str, str]] = ("", "", "")
@@ -47,18 +50,32 @@ class _PyMethod(Method):
         }
         return getattr(importlib.import_module(module), kind)(**arguments)
 
-    def train(self, events: Events) -> None:
+    def _targets(self, events: Events) -> Any:
+        """What the estimator is fitted to: the class number, or which side of signal it is on.
+
+        A multiclass fit needs every class at once, which is the class index the data set
+        gave each event; a classification fit is TMVA's two classes, with the signal's 0.
+        """
+        if self.analysis == MULTICLASS:
+            return np.asarray(events.classes)
         signal = events.classes == self.dsi.GetSignalClassIndex()
+        return np.where(signal, 0, 1)
+
+    def train(self, events: Events) -> None:
         self.model = self._made()
         self.model.fit(
             np.asarray(events.values, dtype=np.float64),
-            np.where(signal, 0, 1),
+            self._targets(events),
             sample_weight=np.asarray(events.weights, dtype=np.float64),
         )
 
     def evaluate(self, values: Any) -> Any:
         found = self.model.predict_proba(np.asarray(values, dtype=np.float64))
-        return found[:, list(self.model.classes_).index(0)]
+        listed = list(self.model.classes_)
+        if self.analysis == MULTICLASS:
+            # One column per class in the data set's order, whatever order the fit sorted in.
+            return found[:, [listed.index(cls) for cls in range(self.dsi.GetNClasses())]]
+        return found[:, listed.index(0)]
 
     def add_weights(self, node: Node) -> None:
         node.add("Weights")
