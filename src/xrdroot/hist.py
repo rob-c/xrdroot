@@ -221,6 +221,19 @@ def _moment_homes(row: dict[str, Any], found: dict[str, dict[str, Any]]) -> None
             _moment_homes(value, found)
 
 
+#: The NumPy type each storage's bins are kept in, worked out once: a fill asks for it per
+#: entry, and ``np.dtype`` of a name is a lookup that costs more than the bins do.
+_STORAGE: dict[str, np.dtype[Any]] = {}
+
+
+def _storage(key: str) -> np.dtype[Any]:
+    """The NumPy type a histogram's bins are kept in, by the array member holding them."""
+    found = _STORAGE.get(key)
+    if found is None:
+        found = _STORAGE[key] = np.dtype(ARRAYS[key].typename)
+    return found
+
+
 class Histogram(Displayed):
     """A histogram: its bins, what is in them, and the axes they lie on.
 
@@ -286,7 +299,7 @@ class Histogram(Displayed):
         puts that in the members, so the members and the change are one.
         """
         held = self._home[self._key]
-        dtype = np.dtype(ARRAYS[self._key].typename)
+        dtype = _storage(self._key)
         if not (isinstance(held, np.ndarray) and held.dtype == dtype and held.flags.writeable):
             held = np.array(held, dtype=dtype)
             self._home[self._key] = held

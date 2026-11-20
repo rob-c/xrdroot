@@ -143,6 +143,12 @@ class FFTCache:
                 f"'{x.GetName()}'.")  # fmt: skip
         self._key: Any = None
         self._grid: Any = None
+        #: The variables a change of which refills the cache, worked out once: they are the
+        #: convolution's own structure, and an evaluation asks for them a hundred thousand
+        #: times over an integration.
+        self._watched: list[Any] | None = None
+        #: The binning an interpolated read takes its rows from, made once the same way.
+        self._rows: Any = None
 
     # -- making it ----------------------------------------------------------------
 
@@ -213,9 +219,11 @@ class FFTCache:
         """What RooFit's change tracker watches: the variables, less the observables of a cache
         of the density's observables - so a cache observable of a cache that does not hold it
         is not watched, and the cache is not refilled when it changes, as in RooFit."""
-        final = self.conv.pdf_observable_names(self.names)
-        mine = final | {one.GetName() for one in self.conv.actual_observables(frozenset(final))}
-        return [one for one in self.conv.leaves() if one.GetName() not in mine]
+        if self._watched is None:
+            final = self.conv.pdf_observable_names(self.names)
+            mine = final | {one.GetName() for one in self.conv.actual_observables(frozenset(final))}
+            self._watched = [one for one in self.conv.leaves() if one.GetName() not in mine]
+        return self._watched
 
     def weights(self, ctx: Context) -> np.ndarray[Any, Any]:
         """The weights for the parameters' values in ``ctx`` - refilled only when they change."""
@@ -281,8 +289,10 @@ class FFTCache:
         """``weightFast``: the bin's density, or - with an order - the interpolation of it."""
         order = self.conv.getInterpolationOrder()
         if order > 0 and len(points) <= 2:
-            rows = clone_rows(self.hist_obs[-1], self.axes[-1].low, self.axes[-1].high)
-            return weights_interpolated(self.axes, density, points, order, rows=rows)
+            if self._rows is None:
+                last = self.axes[-1]
+                self._rows = clone_rows(self.hist_obs[-1], last.low, last.high)
+            return weights_interpolated(self.axes, density, points, order, rows=self._rows)
         return density[tuple(a.numbers(p) for a, p in zip(self.axes, points, strict=False))]
 
     def analytic_over(self, names: frozenset[str]) -> bool:
