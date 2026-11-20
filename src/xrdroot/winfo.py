@@ -981,11 +981,10 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
     #     c->GetStreamerInfo()->GetClassVersion());
     #     c->GetStreamerInfo()->GetElements()->ls(); }'
     #
-    # ``TArray``, ``TArrayF`` and ``TArrayI``, the other classes that test reaches, are
-    # deliberately absent: their one counted member ``fN`` is ``kCounter`` in the
-    # descriptions ROOT's files hold, where the oracle's in-memory one says ``kInt``, and a
-    # description of them here reaches every file that holds a histogram - which ROOT writes
-    # without them - so they are worth adding only with the counter's type settled.
+    # ``TArray`` and the arrays built on it, which that test reaches next as ``fArrayF`` and
+    # ``fArrayI``, are in :data:`~.wdeclared.CARRIED_LAYOUTS` instead: a file says what they
+    # look like only when one of the program's own objects holds one, and this table is what a
+    # file that merely holds a histogram says - which ROOT writes without them.
     "TDatime": (0xb44671ee, 1, (
         ('TStreamerBasicType', 'fDatime', 'Date (relative to 1995) + time',
          13, 4, 0, 0, (0, 0, 0, 0, 0), 'unsigned int', ()),

@@ -31,7 +31,9 @@ from xrdroot.pyroot.core.declared import (
     payload_of,
     plain_value,
 )
+from xrdroot.streamers import read_infos
 from xrdroot.wdeclared import (
+    CARRIED_LAYOUTS,
     NO_DIMS,
     Catalogue,
     Declaration,
@@ -349,6 +351,49 @@ def test_a_class_a_member_is_described_as_roots_streamer_info_describes_it():
     for name, described in MEMBERS_OF_ROOTS.items():
         assert INFOS[name] == described
     assert Catalogue({}).known("TDatime")
+
+
+#: The arrays ROOT builds its own classes on, as the file ROOT wrote describes them - and as
+#: ROOT 6.40.04's ``TClass::GetStreamerInfo`` describes an interpreted class that holds one,
+#: which is why these numbers come from ``g4-like.root`` rather than from a running ROOT: an
+#: interpreted ``Event``'s ``fArrayF`` is a ``TStreamerObjectAny`` of type 62, its ``fArrayI``
+#: a ``TStreamerObjectAnyPointer`` of type 69, and its ``Track``'s ``fInts`` a
+#: ``TStreamerObjectAny`` again. The counter ``fN`` of the base spells its type ``Int_t`` in
+#: the file and ``int`` in memory, so the two disagree on the checksum, and only the file's
+#: word is the one a reader of a file is handed.
+ARRAYS_OF_ROOTS = ("TArray", "TArrayF", "TArrayI", "TArrayD")
+
+
+def test_the_arrays_root_builds_its_classes_on_are_described_as_a_file_root_wrote_does():
+    with open_root(DATA / "g4-like.root") as found:
+        donor = dict(read_infos(found._source))
+    for name in ARRAYS_OF_ROOTS:
+        assert CARRIED_LAYOUTS[name] == donor[name], name
+    sum_, version, elements = CARRIED_LAYOUTS["TArrayF"]
+    assert (sum_, version, [element[0] for element in elements]) == (
+        0x4700FA2E, 1, ["TStreamerBase", "TStreamerBasicPointer"])
+    # The counter is the base's member, so the counted ``fArray`` names the class it lives in.
+    assert elements[1][9] == (1, "fN", "TArray")
+
+
+def test_a_member_that_is_one_of_the_array_classes_is_an_object_naming_it():
+    fields = (Field("fArrayF", "TArrayF", "an array of floats", ()),
+              Field("fArrayI", "TArrayI*", "a pointer to one", ()),
+              Field("fArrayD", "TArrayD", "an array of doubles", ()))  # fmt: skip
+    catalogue = Catalogue({"C": Declaration("C", 1, True, (), fields)})
+    elements = catalogue.info("C")[2]
+    assert [(element[0], element[3], element[8]) for element in elements] == [
+        ("TStreamerObjectAny", 62, "TArrayF"),
+        ("TStreamerObjectAnyPointer", 69, "TArrayI*"),
+        ("TStreamerObjectAny", 62, "TArrayD"),
+    ]
+    # The file has to say what those classes look like - ROOT's own checksums and versions,
+    # carried beside the program's classes in its streamer record - and no one else is told
+    # of them, which is why they are carried rather than listed in ``INFOS``: a file that
+    # only holds a histogram names no TArray at all.
+    assert sorted(catalogue.entries()) == ["C", "TArrayD", "TArrayF", "TArrayI"]
+    assert catalogue.entries()["TArrayI"] == CARRIED_LAYOUTS["TArrayI"]
+    assert catalogue.used == {} and "TArrayI" not in INFOS
 
 
 def test_a_member_of_one_of_roots_classes_is_an_object_any():

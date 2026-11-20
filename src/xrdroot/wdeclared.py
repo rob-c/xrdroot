@@ -26,7 +26,8 @@ from .errors import UnsupportedFeatureError
 from .wclasses import TYPES, checksum
 from .winfo import INFOS, Element
 
-__all__ = ["Field", "Declaration", "Spelled", "Catalogue", "parse_type", "normalised"]
+__all__ = ["Field", "Declaration", "Spelled", "Catalogue", "parse_type", "normalised",
+           "CARRIED_LAYOUTS"]
 
 #: ROOT's typedefs of numbers, as the C++ types they stand for.
 ROOT_TYPEDEFS = {
@@ -185,6 +186,48 @@ def streamer_name(found: Spelled) -> str:
     return Spelled(name, args, found.stars).text()
 
 
+#: What ROOT's classes look like that a declared class reaches only as a member - ``TArray``
+#: and the arrays built on it, which ``roottest/root/io/bigevent``'s ``Event`` holds as
+#: ``fArrayF`` and ``fArrayI``, described exactly as ``tests/data/g4-like.root``, which ROOT
+#: wrote, describes them. They are not in :data:`~.winfo.INFOS`: that table is what a file
+#: written from it *says*, and ROOT writes no description of the arrays in a file that only
+#: holds a histogram, so a class here is described and carried when an object of a program's
+#: class holds one, and named to no one else. The counter ``fN`` of the base spells its type
+#: ``Int_t`` in that file where a running ROOT's in-memory streamer information says ``int``,
+#: and the two spellings give different checksums: these are the bytes a file holds.
+#:
+#: ROOT describes a member that is one of them as ``TStreamerObjectAny`` of type 62, naming
+#: the class - a ``TArrayI *`` as ``TStreamerObjectAnyPointer`` of type 69 - which is what
+#: :meth:`Catalogue._object` makes of the member, and ``TStreamerObjectAny`` is also what it
+#: makes of an interpreted ``Event``'s ``fArrayF``:
+#:
+#:   root -l -b -q -e 'gInterpreter->ProcessLine("#include \"Event.h\"");
+#:     TClass::GetClass("Event")->GetStreamerInfo()->ls()'
+CARRIED_LAYOUTS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
+    "TArray": (0x03F126B3, 1, (
+        ("TStreamerBasicType", "fN", "Number of array elements",
+         3, 0, 0, 0, (0, 0, 0, 0, 0), "Int_t", ()),
+    )),
+    "TArrayF": (0x4700FA2E, 1, (
+        ("TStreamerBase", "TArray", "Abstract array base class",
+         0, 0, 0, 0, (0, 0, 0, 0, 0), "BASE", (1,)),
+        ("TStreamerBasicPointer", "fArray", "[fN] Array of fN integers",
+         45, 0, 0, 0, (0, 0, 0, 0, 0), "Float_t*", (1, "fN", "TArray")),
+    )),
+    "TArrayI": (0xDB6344FE, 1, (
+        ("TStreamerBase", "TArray", "Abstract array base class",
+         0, 0, 0, 0, (0, 0, 0, 0, 0), "BASE", (1,)),
+        ("TStreamerBasicPointer", "fArray", "[fN] Array of fN integers",
+         43, 0, 0, 0, (0, 0, 0, 0, 0), "Int_t*", (1, "fN", "TArray")),
+    )),
+    "TArrayD": (0xF60A3FF1, 1, (
+        ("TStreamerBase", "TArray", "Abstract array base class",
+         0, 0, 0, 0, (0, 0, 0, 0, 0), "BASE", (1,)),
+        ("TStreamerBasicPointer", "fArray", "[fN] Array of fN integers",
+         48, 0, 0, 0, (0, 0, 0, 0, 0), "Double_t*", (1, "fN", "TArray")),
+    )),
+}
+
 class Catalogue:
     """The classes a write reaches, each described once: the program's and ROOT's.
 
@@ -225,7 +268,8 @@ class Catalogue:
     def known(self, name: str) -> bool:
         """Is ``name`` a class this write can describe - or one of ROOT's that streams itself
         and that the file has no description of, a ``TRef``?"""
-        return self.declared(name) is not None or name in INFOS or name in SELF_STREAMED
+        return (self.declared(name) is not None or name in INFOS or name in SELF_STREAMED
+                or name in CARRIED_LAYOUTS)
 
     def tobject(self, name: str) -> bool:
         """Does the class ``name`` derive from ``TObject``?"""
@@ -248,6 +292,10 @@ class Catalogue:
         if declared is None and name in SELF_STREAMED:
             return 0, 1, ()  # streamed by hand, and described by nothing in the file
         if declared is None:
+            carried = CARRIED_LAYOUTS.get(name)
+            if carried is not None:
+                self.infos[name] = carried  # a file says it, without naming it to anyone
+                return carried
             self.used[name] = None
             return INFOS[name]
         self._building.add(name)
@@ -275,7 +323,8 @@ class Catalogue:
         return version, None
 
     def entries(self) -> dict[str, tuple[int, int, tuple[Element, ...]]]:
-        """The program's classes this write described, for the file's streamer record."""
+        """The descriptions this write made, for the file's streamer record: the program's
+        classes, and the ones of ROOT's an object of them holds a member of."""
         return {name: self.infos[name] for name in self.infos}
 
     # -- elements -----------------------------------------------------------------
