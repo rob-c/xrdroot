@@ -1240,16 +1240,22 @@ def _class_size(cls: TClass, seen: tuple[str, ...] = ()) -> tuple[int, int]:
 def _object_class(spelled: str) -> TClass | None:
     """The class a member declared as ``spelled`` is an object of, whose own members are that
     member's - a pointer's are not held by the object, and a container's are a listing of its
-    own."""
+    own.
+
+    A member of a class template's instantiation - ``MyVector<Double32_t> v1`` - is such an
+    object too, and ROOT lists its members as ``v1.d32``: the instantiation is asked for by
+    the whole spelling, since it is the instantiation and not the template that holds the
+    layout. A standard container declares none, so a member of one has none either.
+    """
     from ...wdeclared import parse_type
 
     text = str(spelled).strip()
     if text.endswith("*"):
         return None
     parsed = parse_type(text)
-    if parsed.args or parsed.name in _FIXED_SIZES or parsed.name == "array":
+    if parsed.name in _FIXED_SIZES or parsed.name == "array":
         return None
-    deeper = TClass(parsed.name)
+    deeper = TClass(text)
     return deeper if deeper._fields() else None
 
 

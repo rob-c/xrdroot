@@ -148,6 +148,29 @@ def test_an_array_of_a_standard_class_is_as_wide_as_its_values():
     expect((listed, [("m_a[3]", 0), ("after", 12)]))
 
 
+def test_a_member_of_a_template_instantiation_lists_that_objects_members():
+    """``Vec2<double> v1`` holds an object of a class of its own, just as a plain class member
+    does, so ROOT lists ``v1.d32`` and ``v1.regdouble`` after it.
+
+    The instantiation is what holds the layout - its ``d32`` is a ``double`` while
+    ``Vec2<float>``'s is a ``float`` - so the member's whole spelling is the class asked for,
+    not the template's name with the arguments dropped.
+    """
+    run_source(
+        "template <class T> struct Vec2 { T d32; double regdouble; };\n"
+        "struct Contains { Vec2<double> v1; Vec2<float> v2; };\n",
+        "real_data_template.C",
+        call=False,
+    )  # fmt: skip
+    listed, cls = _listed("Contains")
+    expect(
+        (listed, [("v1", 0), ("v1.d32", 0), ("v1.regdouble", 8), ("v2", 8),
+                  ("v2.d32", 8), ("v2.regdouble", 16)]),
+        (cls.GetListOfRealData().At(1).GetDataMember().GetTypeName(), "double"),
+        (cls.GetListOfRealData().At(4).GetDataMember().GetTypeName(), "float"),
+    )  # fmt: skip
+
+
 def test_a_container_member_is_one_member_and_not_a_class_of_its_own():
     """A ``std::vector``'s elements are not the object's members, and the kit writes a
     vector without knowing how wide one is, so it is listed where it is held and no more."""
