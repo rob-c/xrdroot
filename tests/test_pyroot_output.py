@@ -344,3 +344,76 @@ def test_a_pie_made_from_a_histogram_is_written_by_the_slices_the_bins_gave_it(t
     assert 'TPie *tpie1 = new TPie("h", "h", 3);' in written
     assert 'tpie1->GetSlice(2)->SetTitle("bin3");' in written
     assert "tpie1->GetSlice(2)->SetValue(3);" in written
+
+
+def _pave_text_canvas():
+    """A pave of text with a stacked line, a placed line, a drawing line and a label."""
+    c = ROOT.TCanvas("pavetext", "a pave of text", 300, 200)
+    pave = ROOT.TPaveText(0.05, 0.1, 0.95, 0.8)
+    pave.AddText("#frac{2s}{#pi#alpha^{2}}")
+    placed = pave.AddText(0.1, 0.2, "placed")
+    placed.SetTextColor(2)
+    pave.AddLine(0.1, 0.3, 0.4, 0.5).SetLineColor(3)
+    pave.SetLabel("Born equation")
+    pave.Draw()
+    return c
+
+
+def test_a_pave_of_text_is_written_as_the_lines_it_was_given(tmp_path):
+    """ROOT's macro makes the pave empty and adds each of its lines back to it."""
+    path = tmp_path / "pave.C"
+    _pave_text_canvas().SaveAs(str(path))
+    written = path.read_text()
+    assert 'TPaveText *tpavetext1 = new TPaveText(0.05, 0.1, 0.95, 0.8, "br");' in written
+    assert 'tpavetext1->SetLabel("Born equation");' in written
+    # A line no ``AddText(x, y, text)`` placed is the one the pave stacks, so only its text is
+    # given - ROOT's own test, and a placed line keeps the coordinates it was put at.
+    assert 'TLatex *tpavetext1_text0 = tpavetext1->AddText("#frac{2s}{#pi#alpha^{2}}");' in written
+    assert 'TLatex *tpavetext1_text1 = tpavetext1->AddText(0.1, 0.2, "placed");' in written
+    assert "tpavetext1_text1->SetTextColor(2);" in written
+    assert "TLine *tpavetext1_line2 = tpavetext1->AddLine(0.1, 0.3, 0.4, 0.5);" in written
+    assert "tpavetext1_line2->SetLineColor(3);" in written
+    assert written.index("SetLabel(") < written.index("AddText(")  # the pave, then its lines
+
+
+def test_the_macro_of_a_pave_of_text_draws_the_lines_it_was_saved_with(tmp_path):
+    from xrdroot.pycint.execute import run
+
+    path = tmp_path / "paveagain.C"
+    _pave_text_canvas().SaveAs(str(path))
+    run(path, use_cache=False)
+    paves = [o for o, _ in ROOT.gPad.GetCanvas().primitives if o.ClassName() == "TPaveText"]
+    assert [line.classname for line in paves[0].members["fLines"]] == ["TLatex", "TLatex", "TLine"]
+    stacked, placed = paves[0].members["fLines"][:2]
+    assert (stacked.members["fX"], stacked.members["fY"]) == (0.0, 0.0)  # still stacked
+    assert (placed.members["fX"], placed.members["fTextColor"]) == (0.1, 2)
+    assert paves[0].members["fLabel"] == "Born equation"
+
+
+def test_either_coordinate_of_a_placed_line_is_enough_to_write_both(tmp_path):
+    """ROOT asks only whether either coordinate is set, and a line at the origin stacks."""
+    from xrdroot.pyroot.graphics import macro
+
+    edge = ROOT.TPaveText().AddText(0.0, 0.5, "on the left")
+    corner = ROOT.TPaveText().AddText(0.0, 0.0, "at the corner")
+    assert macro._line_arguments(edge, "TLatex") == '0, 0.5, "on the left"'
+    assert macro._line_arguments(corner, "TLatex") == '"at the corner"'
+
+
+def test_a_mathtext_is_written_with_the_text_it_draws(tmp_path):
+    """A ``TMathText``'s ``DrawMathText`` puts a text primitive in the pad, which a macro makes."""
+    from xrdroot.pycint.execute import run
+
+    c = ROOT.TCanvas("math", "math", 300, 200)
+    math = ROOT.TMathText()
+    math.SetTextSize(0.06)
+    math.DrawMathText(0.5, 0.8, r"W_{\delta_1\rho_1}^{3\beta}")
+    path = tmp_path / "math.C"
+    c.SaveAs(str(path))
+    written = path.read_text()
+    assert 'new TMathText(0.5, 0.8, "W_{\\\\delta_1\\\\rho_1}^{3\\\\beta}");' in written
+    assert "TMathText *tmathtext1 = new TMathText(0.5, 0.8," in written
+    assert "tmathtext1->SetTextSize(0.06);" in written
+    run(path, use_cache=False)
+    drawn = [o for o, _ in ROOT.gPad.GetCanvas().primitives if o.ClassName() == "TMathText"]
+    assert [o.members["fTitle"] for o in drawn] == [r"W_{\delta_1\rho_1}^{3\beta}"]

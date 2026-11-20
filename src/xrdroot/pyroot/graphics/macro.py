@@ -30,6 +30,7 @@ ROUNDED = ("fX1", "fY1", "fR1", "fR2", "fPhimin", "fPhimax")
 CTORS: dict[str, tuple[str, ...]] = {
     "TLine": CORNERS, "TBox": CORNERS, "TWbox": CORNERS,
     "TText": ("fX", "fY", "fTitle"), "TLatex": ("fX", "fY", "fTitle"),
+    "TMathText": ("fX", "fY", "fTitle"),
     "TMarker": ("fX", "fY", "fMarkerStyle"),
     "TArrow": (*CORNERS, "fArrowSize", "fOption"),
     "TPave": (*CORNERS, "fBorderSize", "fOption"),
@@ -37,9 +38,18 @@ CTORS: dict[str, tuple[str, ...]] = {
     "TEllipse": (*ROUNDED, "fTheta"),
     "TArc": ("fX1", "fY1", "fR1", "fPhimin", "fPhimax"),
     "TCrown": ROUNDED,
+    "TPaveText": (*CORNERS, "fOption"),
 }  # fmt: skip
 #: A member only a ``Set`` of its own reaches, which ROOT's macro writes as that ``Set``.
-EXTRAS: dict[str, tuple[tuple[str, str], ...]] = {"TArrow": (("Angle", "fAngle"),)}
+EXTRAS: dict[str, tuple[tuple[str, str], ...]] = {
+    "TArrow": (("Angle", "fAngle"),), "TPaveText": (("Label", "fLabel"),),
+}  # fmt: skip
+#: Each class that holds lines and adds them back one at a time, by the member holding them:
+#: a pave of text is made empty and its lines are added to it, as ROOT's own macro adds them.
+LINES: dict[str, str] = {"TPaveText": "fLines"}
+#: The ``Add`` each kind of line is added with: a dividing line by its corners, a line of text
+#: by the text it says and, if it was placed in the pave's fractions, by where.
+ADDS = {"TLine": "AddLine", "TText": "AddText", "TLatex": "AddText"}
 #: A ``Set`` ROOT's macro writes that takes more than one member: a pie's circle is its
 #: centre and its radius together, and its formats are what its labels are made of.
 CALLS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
@@ -134,6 +144,32 @@ def _pieces(obj: Any, classname: str, variable: str) -> list[str]:
     return lines
 
 
+def _line_arguments(line: Any, kind: str) -> str:
+    """The arguments a pave's line is added back with: its corners, or its text where it was put.
+
+    A line of text no ``AddText(x, y, text)`` placed - ROOT's own macro's test, both
+    coordinates zero - is the one the pave stacks from its top, so only its text is given.
+    """
+    members = line.members
+    if kind == "TLine":
+        return ", ".join(_literal(float(members[one])) for one in CORNERS)
+    x, y = float(members["fX"]), float(members["fY"])
+    said = _literal(str(members["fTitle"]))
+    return ", ".join([_literal(x), _literal(y), said]) if x or y else said
+
+
+def _added_lines(obj: Any, classname: str, variable: str) -> list[str]:
+    """Each line ``obj`` holds, added back to it and then given what the pad gave it."""
+    lines: list[str] = []
+    for at, line in enumerate(obj.members[LINES[classname]]):
+        kind = _classname(line)
+        named = f"{variable}_{'line' if kind == 'TLine' else 'text'}{at}"
+        given = _line_arguments(line, kind)
+        lines.append(f"   {kind} *{named} = {variable}->{ADDS[kind]}({given});")
+        lines += _setters(line, kind, named)
+    return lines
+
+
 def _made(obj: Any, classname: str, variable: str) -> list[str]:
     """The one line that makes ``obj``: by its constructor, its points, or its place in the pad."""
     if classname in POINTS:
@@ -183,7 +219,10 @@ def _object(obj: Any, index: int) -> list[str]:
     variable = _variable(index, classname)
     if classname in PIECES:
         return _pieces(obj, classname, variable)
-    return _made(obj, classname, variable) + _setters(obj, classname, variable)
+    lines = _made(obj, classname, variable) + _setters(obj, classname, variable)
+    if classname in LINES:
+        lines += _added_lines(obj, classname, variable)
+    return lines
 
 
 def _subpad(pad: Any, variable: str) -> list[str]:
