@@ -147,14 +147,16 @@ def parse_type(spelled: str, resolve: bool = True) -> Spelled:
     return found
 
 
-def _parse(tokens: list[str], at: int, resolve: bool = True) -> tuple[Spelled, int]:
-    name = _plain_name(tokens[at], resolve)
+def _parse(
+    tokens: list[str], at: int, resolve: bool = True, top: bool = True
+) -> tuple[Spelled, int]:
+    name = _plain_name(tokens[at], resolve, top)
     at += 1
     args: list[Spelled] = []
     if at < len(tokens) and tokens[at] == "<":
         at += 1
         while tokens[at] != ">":
-            arg, at = _parse(tokens, at, resolve)
+            arg, at = _parse(tokens, at, resolve, False)
             args.append(arg)
             at += 1 if tokens[at] == "," else 0
         at += 1
@@ -165,11 +167,32 @@ def _parse(tokens: list[str], at: int, resolve: bool = True) -> tuple[Spelled, i
     return Spelled(name, tuple(args), stars), at
 
 
-def _plain_name(text: str, resolve: bool = True) -> str:
-    words = [word for word in text.split() if word not in ("const", "volatile", "struct", "class")]
+#: The words a type's spelling carries that say nothing about the class it names: a template
+#: argument keeps its own ``const``, which is what ROOT counts.
+QUALIFIERS = ("const", "volatile")
+
+
+def _plain_name(text: str, resolve: bool = True, top: bool = True) -> str:
+    """One level of a type's spelling: the class it names, with the words that say nothing of
+    the class out of it.
+
+    ``struct`` and ``class`` may introduce a type anywhere, and a member's own ``const`` or
+    ``volatile`` is the member's rather than its class's, so all four go. A *template
+    argument*'s ``const`` stays: ROOT spells the element of a ``list<const TObject*>`` member
+    ``list<const TObject*>`` - the bigevent roottest's ``Event::fVectorTobjectp`` - and counts
+    that word in the class's checksum, while the class it names is found without it.
+    """
+    dropped = ("struct", "class", *QUALIFIERS) if top else ("struct", "class")
+    words = [word for word in text.split() if word not in dropped]
     name = " ".join(words).removeprefix("::")
     name = name.removeprefix("std::")
     return ROOT_TYPEDEFS.get(name, name) if resolve else name
+
+
+def _unqualified(name: str) -> str:
+    """``name`` without the ``const`` a template argument kept in front of it, which is how
+    the class it names is looked up."""
+    return " ".join(word for word in name.split() if word not in QUALIFIERS)
 
 
 def normalised(spelled: str, resolve: bool = True) -> str:
@@ -270,9 +293,9 @@ class Catalogue:
 
     def declared(self, name: str) -> Declaration | None:
         """The program's class ``name``, or the pair a map holds, if it is one."""
-        found = self.declarations.get(name)
+        found = self.declarations.get(_unqualified(name))
         if found is None:
-            found = self.declarations.get(self.spelled.get(_squash(name), ""))
+            found = self.declarations.get(self.spelled.get(_squash(_unqualified(name)), ""))
         if found is None and name.startswith("pair<"):
             found = _pair(name)
             self.declarations[name] = found
@@ -281,8 +304,9 @@ class Catalogue:
     def known(self, name: str) -> bool:
         """Is ``name`` a class this write can describe - or one of ROOT's that streams itself
         and that the file has no description of, a ``TRef``?"""
-        return (self.declared(name) is not None or name in INFOS or name in SELF_STREAMED
-                or name in CARRIED_LAYOUTS)
+        plain = _unqualified(name)
+        return (self.declared(name) is not None or plain in INFOS or plain in SELF_STREAMED
+                or plain in CARRIED_LAYOUTS)
 
     def tobject(self, name: str) -> bool:
         """Does the class ``name`` derive from ``TObject``?"""
