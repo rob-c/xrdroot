@@ -184,6 +184,26 @@ def test_a_class_only_files_describe_is_built_from_the_first_layout_read(capfd):
     assert "   i= 0, a               type=  3, offset=  0, len=1, method=0" in printed
 
 
+def test_a_class_only_files_describe_takes_the_version_its_files_give_it():
+    """``TClass::GetClassVersion`` answers the version the file gave a class nothing in memory
+    describes - ``roottest``'s ``io/tree/read`` unloads ``classes_C`` and asks what its file
+    records for ``TNonPhysObj``, which is version 0 - where an in-memory answer would be no
+    answer at all. A class the session does describe keeps the version it is declared with.
+    """
+    _declared()
+    reflection.note_file_infos([("FromFile", (0x2468, 0, (LONG64,)))], "one.root")
+    reflection.note_file_infos([("Later", (0x9876, 7, (LONG64,)))], "two.root")
+    reflection.note_file_infos([("Named", (0x1357, 9, (LONG64,)))], "three.root")
+    from_file = ROOT.TClass.GetClass("FromFile")
+    expect(
+        ((from_file.GetClassVersion(), from_file.IsForeign()), (0, False)),
+        (from_file.GetState(), 2),
+        (ROOT.TClass.GetClass("Later").GetClassVersion(), 7),
+        (ROOT.TClass.GetClass("Named").GetClassVersion(), 2),  # its own, not the file's 9
+        (ROOT.TClass("TNoSuch").GetClassVersion(), 1),  # no file describes it
+    )
+
+
 def test_a_pair_names_no_version_where_a_plain_class_names_the_files_own(capsys):
     """ROOT tells the layouts of a ``pair<A,B>`` apart by checksum - it is never given a
     ``ClassDef`` - so a listing of one names no version, and the emulated layout is built."""

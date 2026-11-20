@@ -695,8 +695,15 @@ class TClass(TNamed):
 
     def GetClassVersion(self) -> int:
         """``GetClassVersion``: ``ClassDef``'s - -1 for a class declared without one, whose
-        layouts are told apart by checksum - and ROOT's own as the donors say."""
-        info = self._layout()
+        layouts are told apart by checksum - and ROOT's own as the donors say.
+
+        A class nothing in memory describes has the version the files that describe it give
+        it, which is the class's version for the rest of the session: ``roottest``'s
+        ``io/tree/read`` unloads ``classes_C`` and asks a class only ``copy.root`` describes
+        for its ``ClassDef``, and ROOT answers with the file's - ``0`` for a class whose
+        file says so - where the class in memory would be no answer at all.
+        """
+        info = self._layout() or self._file_layout()
         if info is not None:
             return -1 if self.IsForeign() and info[1] <= 1 else info[1]
         version = getattr(self._class(), "Class_Version", None)
