@@ -23,7 +23,7 @@ from typing import Any, NamedTuple, cast
 from .errors import UnsupportedFeatureError
 from .winfo import INFOS, Element
 
-__all__ = ["Layout", "Member", "checksum", "declared", "harvested"]
+__all__ = ["TREF", "Layout", "Member", "checksum", "declared", "harvested"]
 
 #: The integer types ``TClass::GetCheckSum`` does not count as an enum.
 INTEGERS = ("int", "Int_t", "unsigned int", "UInt_t")
@@ -180,6 +180,22 @@ def _base(name: str) -> Base:
             f"without that base"
         )
     return found
+
+
+def _tref() -> Layout:
+    """ROOT's description of ``TRef``, its checksum worked out from the base as ROOT does."""
+    found = Layout("TRef", 1, 0, (), (_base("TObject"),))
+    return found._replace(checksum=checksum("TRef", found.elements()))
+
+
+#: ``TRef`` as a file describes it, which is as ROOT's own does: no member of its own - the
+#: process id ``fPID`` is transient, and the id of the object referred to travels in
+#: ``TObject``'s ``fUniqueID`` - so nothing but the ``TObject`` base. A whole-object member
+#: of a split collection is written into a tree entry as this class's record, and ROOT reads
+#: that record back by this description; ``roottest``'s ``io/references/lotsRef`` holds one.
+#: The version and the base are ROOT 6.40's, and :func:`checksum` gives back ROOT's
+#: ``0x91757901`` for them, which is what proves the description is the one ROOT writes.
+TREF: Layout = _tref()
 
 
 def declared(cls: Any) -> Layout:

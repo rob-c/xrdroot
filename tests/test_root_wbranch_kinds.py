@@ -15,7 +15,7 @@ import pytest
 from xrdroot import UnsupportedFeatureError
 from xrdroot.interp import _packing
 from xrdroot.wbranch import SplitClones, nested
-from xrdroot.wclasses import Member, checksum, declared, harvested
+from xrdroot.wclasses import TREF, Member, checksum, declared, harvested
 from xrdroot.wcolumns import StreamedColumn
 from xrdroot.wpacking import DOUBLE32, FLOAT16, pack_member, packed_size
 
@@ -126,6 +126,24 @@ def test_a_split_collection_of_a_macros_class_writes_each_whole_object_member_as
     assert ref.info.checksum == 2532022293 and ref.info.stype == 61
     leaf, = ref.own
     assert (leaf.name, leaf.title) == ("r1.fRef", "fRef[r1_]")
+
+
+def test_root_describes_a_tref_as_the_tobject_it_streams_and_nothing_else():
+    """``TRef`` is the class a whole-object member of a split collection is written as, and the
+    file carries this description of it (``roottest``'s ``io/references/lotsRef``). Its own
+    members are none: ``fPID`` is transient and the id of the object referred to is
+    ``TObject``'s ``fUniqueID``. The checksum withholds nothing: recomputed from the base
+    alone it is ROOT 6.40's ``0x91757901``, so the version, the base and its checksum are
+    ROOT's own."""
+    assert (TREF.name, TREF.version, TREF.members) == ("TRef", 1, ())
+    base, = TREF.bases
+    assert (base.name, base.stype, base.version) == ("TObject", 66, 1)
+    assert base.checksum & 0xFFFFFFFF == 0x901BC02D
+    assert TREF.checksum == 0x91757901 == checksum("TRef", TREF.elements())
+    assert TREF.elements() == (
+        ("TStreamerBase", "TObject", "Basic ROOT object", 66, 0, 0, 0,
+         (0, base.checksum, 0, 0, 0), "BASE", (1,)),
+    )  # fmt: skip
 
 
 def test_a_class_root_has_is_split_only_when_its_members_allow():
