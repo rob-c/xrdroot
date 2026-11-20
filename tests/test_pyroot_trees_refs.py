@@ -206,6 +206,18 @@ def test_a_fill_with_no_object_branch_has_nothing_to_record():
     assert ref._has_rows() is False
 
 
+def test_a_cloned_split_collection_is_not_accounted_for_by_an_address_it_has_not():
+    """A split ``TClonesArray`` a clone copies holds no address of its own - its objects are
+    read out of its columns - so a ``BranchRef`` filling such a tree has nothing to number
+    through it and steps past it, as ROOT's table, which the writing branch feeds, does."""
+    tree = ROOT.TTree("t", "a tree")
+    tree.Branch("x", np.zeros(1), "x/D")
+    ref = tree.BranchRef()
+    cloned = SimpleNamespace(kind="object", branch="r1", follows=[])
+    ref._account(SimpleNamespace(slots={"r1": cloned}, entries=1))
+    assert ref._has_rows() is False
+
+
 def test_a_tree_whose_table_cannot_be_written_refuses_rather_than_losing_it():
     out = ROOT.TFile("a.root", "RECREATE")
     tree = ROOT.TTree("t", "a tree")

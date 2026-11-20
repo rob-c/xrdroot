@@ -44,6 +44,7 @@ from ...wbranch import (
     _collection_info,
     clones_members,
     column_keys,
+    tref_record,
     vector_of,
 )
 from ...wclasses import Layout, declared, harvested
@@ -300,23 +301,30 @@ class SplitArray(Kind):
         return columns
 
     def written(self, keys: list[str], columns: dict[str, Any]) -> dict[str, Any]:
-        """A member that is one whole object of its own has no row this writer can fill yet.
+        """A member that is one whole object of its own arrives as that object's record.
 
-        ROOT writes such a row as the object's own record - its byte count, its version
-        and its members - which is no bytes :mod:`xrdroot.wbranch` packs: the writer there
-        streams a ``TRef`` a file holds as a key, without the record around it, and has no
-        description of the class to write one with inside a tree entry.
+        ROOT writes such a row as the object's own record - its version and its members -
+        which no column packs as a number: each row becomes the bytes its class's streamer
+        made of one object, and the whole entry's objects are written one after the other,
+        as many as the entry's count says.
         """
-        for _key, member in zip(keys[1:], self.members, strict=True):
-            if member.stype == OBJECT_TYPE:
-                clones = self.element if isinstance(self.element, str) else self.element.name
-                raise UnsupportedFeatureError(
-                    f"a TClonesArray of {clones} holds {member.name}, a whole "
-                    f"{member.typename} of its own, and nothing here writes another class's "
-                    f"record into a tree entry yet; write that member as a number instead, or "
-                    f"leave the branch out"
-                )
+        for key, member in zip(keys[1:], self.members, strict=True):
+            if member.stype != OBJECT_TYPE:
+                continue
+            columns[key] = [_objects(member, rows) for rows in columns[key]]
         return columns
+
+
+def _objects(member: Any, rows: list[Any]) -> bytes:
+    """One entry's whole objects of a member, each as the record its class streams."""
+    if member.typename != "TRef":
+        clones = member.owner
+        raise UnsupportedFeatureError(
+            f"{clones} holds {member.name}, a whole {member.typename} of its own, and this "
+            f"writer streams no {member.typename} into a tree entry yet; write that member "
+            f"as a number instead, or leave the branch out"
+        )
+    return b"".join(tref_record(ref) for ref in rows)
 
 
 def _jagged(rows: list[list[Any]], offsets: Any) -> Jagged:

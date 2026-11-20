@@ -506,13 +506,14 @@ class TBranchRef(TBranch):
         from .objects import _held
 
         for slot in store.slots.values():
-            if slot.kind != OBJECT:
+            address = getattr(slot, "address", None)
+            if slot.kind != OBJECT or address is None:
                 continue
             branch = self._tree.GetBranch(slot.branch)
             if branch is None:
                 continue
             numbered = False
-            for obj in _referenced(_held(slot.address)):
+            for obj in _referenced(_held(address)):
                 number = int(obj.GetUniqueID()) & NUMBER_MASK
                 if not numbered:  # the branch takes its number here, before its objects
                     self._ref_table.SetParent(branch, -1)

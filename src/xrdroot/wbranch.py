@@ -689,6 +689,30 @@ CLONES, CLONES_MEMBER = 3, 31
 TSTRING, BITS_TYPE = 65, 15
 
 
+#: ``TObject``'s class version, which ``TRef::Streamer`` writes in front of its ``TObject``
+#: base: a ``TRef`` has no member of its own to write, so its record is the base's and then
+#: which of the entry's process records numbered the object it refers to.
+TOBJECT_VERSION = 1
+
+
+def tref_record(ref: Any) -> bytes:
+    """``TRef::Streamer``'s bytes for one reference, as a split collection holds one.
+
+    ROOT writes a whole-object member of a split ``TClonesArray`` as its own class's
+    record, so a ``TRef`` member goes out as ``TObject``'s version, the number of the
+    object it refers to - kept in ``fUniqueID`` - the reference's bits, and ``fPID``: the
+    index of the process record that numbered that object, which a file writes before
+    the trees that refer to it. Checked byte for byte against the 6.40 oracle.
+    """
+    process = getattr(ref, "_pid", None)
+    buf = WBuffer()
+    buf.u16(TOBJECT_VERSION)
+    buf.u32(int(ref.GetUniqueID()))
+    buf.u32(int(ref._bitword()))
+    buf.u16(0 if process is None else int(process.GetUniqueID()))
+    return bytes(buf.data)
+
+
 class CloneMember(NamedTuple):
     """One member of the objects of a split ``TClonesArray``, and the class that declares it -
     the objects' class, or a base of it such as ``TObject`` - with that class's checksum and
