@@ -654,6 +654,24 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   `pyroot/trees/core.py` + `objects.py` (`SplitClones`' last answer), `interp.py` + `rdobjects.py`
   (the data model), `wdobjects.py` (bigevent), and `reflection.py` (`pairEnumEvo`).
 
+## Round 16's close (recorded here for the next iteration)
+
+- Base `df6d9833`, closed at `4509b416`. **One chain ran, not sixteen** - the machine's load average
+  stayed between 9 and 36 from another session all round, so a fan-out would have produced
+  measurements nobody could trust (`W0-47`). The iteration was spent on the one thing that needed no
+  machine: a harness defect.
+- **`W0-40` is fixed.** ROOT's `ROOTTEST_ADD_TEST` hands the driver `OUTPUT <build>/<name>.log`, so a
+  test that follows one reads its sibling's output (`schemaRun2check`'s `sed schemaRun2.log`). The
+  harness stored nothing and looked for a build-tree `OUTREF` in ROOT's *source* tree. Every roottest
+  now writes its log and the judge reads a build-tree reference from the working copy:
+  `schemaEvolution` went **9 PASS / 5 FAIL → 12 PASS / 2 DIFF / 4 UNSUPPORTED**.
+- **The rule probably applies far wider** (`W0-46`): any group whose tests read a sibling's `.log`
+  was failing on this alone. Round 17 should re-run the multi-test-log areas and count what moves -
+  that may be the cheapest remaining win in the suite.
+- Round 17's chains, unchanged from round 15's list: `pyroot/trees/core.py` + `objects.py`
+  (`SplitClones`), `interp.py` + `rdobjects.py` (the data model), `wdobjects.py` (bigevent),
+  `reflection.py` (`pairEnumEvo`), `stressgraphics`, `jsonbuffer.py`, `files.py`.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -692,6 +710,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 16's result of it, at `4509b416`: `TOTAL 116579 0 29072 0 100%`, `12588 passed, 1 skipped,
+  46 xfailed`; `ruff` clean, `mypy` 1017 files, maintainability 30 094 functions, components 0
+  undeclared, `mkdocs build --strict` built. Run with `-n 2` while the machine is loaded (`W0-45`).
 - Round 15's result of it, at `177f6159`: `TOTAL 116525 0 29068 0 100%`, `12586 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
   maintainability 30 090 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -765,6 +786,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 13 | `70523896` | sixteen **chains**, `/tmp/r13/wNN-brief.md`: the geometry export chain, the compression-setting chain, the split `TClonesArray`, the evolved-class read, `ROOT.list` and JSON, `lotsRef`, the makeproject _Set, the tests near the limit, the graphics encoders, `TEnum`/enums, `double32`, `roottest/python`, the gtest kind, TMVA, `treeproxy`, and the module tests' missing names | **roottest 1195 → 1220, non-tutorial 1354 → 1386** (`/tmp/r13/final2`, `/tmp/r13/final1` at `a5d25f67`), **25 roottest + 7 `other` in, 0 lost** | 1: `W0-36` |
 | 14 | `12646b58` | sixteen **chains**, `/tmp/r14/wNN-brief.md`, each **starting** at the file round 13's reports named: bigevent's drawing classes, `GetClonesName`, the evolved-class read, the data model's records, a `TRef` in a `TClonesArray`, the harness's lost `schemaRun1.log`, the WILLFAIL verdict, the tests near the limit, the graphics encoders, `roottest/python`, the gtest kind, TMVA, `other/math`, `MakeProxy`, `TBufferJSON`, and `double32` | **roottest 1220 → 1226 measured (1231 with the five that pass alone), non-tutorial 1386 → 1393 (1398)** (`/tmp/r14/final2`, `/tmp/r14/final1`, `/tmp/r14/solo` at `19be128b`) | 3: `W0-37`, `W0-38`, `W0-39`, `W0-40` |
 | 15 | `99525851` | **eight** chains (the machine's load average reached 64): bigevent's writer, `SplitClones`, the evolved class's warnings and walk, the data model's records, a `TRef` in a `TClonesArray`, `pairEnumEvo`'s listing, the harness's lost working file, and the four buffers' margin | **roottest 1226 → 1230 at `--jobs 3`, non-tutorial 1393 → 1397** (`/tmp/r15/final2`, `/tmp/r15/final1` at `601996d1`), 8 in, 0 lost to code | 4: `W0-41`…`W0-44` |
+| 16 | `df6d9833` | **one chain**, not sixteen (the machine stayed at a load average of 9-36): the harness's `STOREOUT` rule and a build-tree `OUTREF` - ROOT stores every roottest's output as `<build>/<name>.log` and the next test reads it, which xrdroot never did | **roottest 1230 → 1233, non-tutorial 1397 → 1400** (`/tmp/r16/final2`, `/tmp/r16/final1` at `2dad75a7`, `--jobs 3`), 3 in, 0 lost | 3: `W0-46`, `W0-47`, plus the `W0-40` closure |
 
 ## Notes
 
