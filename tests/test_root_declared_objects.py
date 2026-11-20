@@ -197,14 +197,32 @@ def test_a_record_of_a_class_no_one_declared_is_not_made_into_one():
 
 
 def test_a_member_that_is_one_number_is_made_as_its_types_reading_makes_one():
-    """The arithmetic the bulk read takes for a member that is one number gives back what
-    ``converted`` gives back, including where it stands aside for an array of them."""
+    """The reading a bulk read takes for a member that is one number gives back what
+    ``converted`` gives back - for what a file gives and for every other shape a value comes
+    in, including where it stands aside for an array of them."""
+    for typename in ("int", "short", "char", "unsigned char", "long long", "unsigned int"):
+        found = parse_type(typename)
+        made = _member_maker(found)
+        for value in (0, 1, -1, 127, 128, 255, 256, -128, -129, 2**31 - 1, 2**31, 2**40, 5.7):
+            assert made(value, 0) == converted(value, found, 0), (typename, value)
     made = _member_maker(parse_type("int"))
     assert made(None, 0) is None
     assert made(7, 0) == 7
+    assert made(np.int64(7), 0) == converted(np.int64(7), parse_type("int"), 0)
     assert made([1, 2], None).tolist() == [1, 2]  # a record whose member is a row
     held = np.zeros(2, dtype=np.int64)
     assert made([5, 6], held) is held and held.tolist() == [5, 6]
+
+
+def test_a_member_of_a_float_or_a_bool_is_converted_as_converted_converts_it():
+    """A type whose reading is a conversion, not a mask, keeps the conversion."""
+    for typename in ("double", "float", "bool"):
+        found = parse_type(typename)
+        made = _member_maker(found)
+        for value in (1, 1.5, -2.5, 0, True):
+            assert made(value, None) == converted(value, found, None), (typename, value)
+        assert made(None, None) is None
+        assert made([1, 2], None).tolist() == converted([1, 2], found, None).tolist()
 
 
 def test_a_member_that_is_text_or_an_array_is_not_taken_for_one_number():
