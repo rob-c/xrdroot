@@ -24,6 +24,7 @@ from typing import Any
 from . import interp
 from .buffer import Buffer
 from .interp import _members, _streamed
+from .rootarrays import ARRAYS as ARRAY_CLASSES
 from .streamers import Member
 from .wdeclared import MAPS, STL_KINDS, Catalogue, Spelled, pair_name, parse_type
 from .winfo import INFOS, Element
@@ -148,7 +149,46 @@ def _reader_for(classname: str, catalogue: Catalogue) -> Callable[[Buffer], Any]
         return lambda buf: read(buf)["value"]
     catalogue.info(classname)
     source: Any = _source(catalogue)
-    return _streamed(_members(classname, source))
+    return _array_read(source, classname, _streamed(_members(classname, source)))
+
+
+def _array_members(source: Any, classname: str) -> tuple[str, ...]:
+    """Which of a class's members are one of ROOT's array classes, by name.
+
+    ROOT describes a ``TArrayF`` as a class of two members - the counter ``fN`` of the base
+    ``TArray`` it derives from, and the values ``fArray`` counted by it - but gives the class
+    no streamer of its own, so a member of one, held by value or pointed at, is written as
+    those two members and nothing else: no record round them, and no class name in front of
+    the one held by value. The reader reads that as the row of numbers it is, and these are
+    the members to give back as the class the namespace has, which is what a macro reaches
+    ``fArray`` and ``GetArray`` on.
+    """
+    layout = source.streamers().get(classname) or {}
+    return tuple(
+        name for name, member in layout.items()
+        if parse_type(member.typename).name in ARRAY_CLASSES  # not a base, which types ``BASE``
+    )  # fmt: skip
+
+
+def _array_read(
+    source: Any, classname: str, read: Callable[[Buffer], Any]
+) -> Callable[[Buffer], Any]:
+    """A class's record read, with each member that is one of ROOT's arrays handed back as the
+    members that class is described with - or ``read`` itself, for a class holding none, which
+    is every class but the ones that keep a ROOT array in them."""
+    names = _array_members(source, classname)
+    if not names:
+        return read
+
+    def value(buf: Buffer) -> dict[str, Any]:
+        row: dict[str, Any] = read(buf)
+        for name in names:
+            held = row.get(name)
+            if held is not None:  # a pointer to one that was never made is still null
+                row[name] = {"TArray": {"fN": len(held)}, "fArray": held}
+        return row
+
+    return value
 
 
 def flat_reader_for(
