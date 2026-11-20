@@ -23,7 +23,7 @@ import numpy as np
 from .errors import UnsupportedFeatureError
 from .interp import _range
 
-__all__ = ["BASIC", "DOUBLE32", "FLOAT16", "pack_member", "packed_size"]
+__all__ = ["BASIC", "DOUBLE32", "FLOAT16", "pack_member", "pack_one", "packed_size"]
 
 #: ``TStreamerInfo``'s ``kDouble32`` and ``kFloat16``: the two packed float types.
 DOUBLE32, FLOAT16 = 9, 19
@@ -108,6 +108,24 @@ def _whole(stype: int, values: Any) -> bytes | None:
         return _packer(stype).pack(values[0])
     except (struct.error, TypeError):
         return None
+
+
+def pack_one(stype: int, title: str, value: Any) -> bytes:
+    """One value of a member, as :func:`pack_member` writes a column holding one.
+
+    A member that is a single number is nearly every member of a class of numbers -
+    nine of them in each of the ten million records ``TClass::Streamer`` writes in
+    roottest's own benchmark - so the number goes to a ``struct`` as it comes and
+    never through NumPy, whose per-call cost is several times the four bytes it
+    produces. A number that does not fit its member is written as it always was,
+    truncated or wrapped as ROOT on file holds it.
+    """
+    if stype not in (DOUBLE32, FLOAT16):
+        try:
+            return _packer(stype).pack(value)
+        except (struct.error, TypeError, OverflowError):
+            pass
+    return pack_member(stype, title, np.asarray([value]))
 
 
 def pack_member(stype: int, title: str, values: Any) -> bytes:

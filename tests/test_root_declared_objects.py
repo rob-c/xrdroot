@@ -26,7 +26,9 @@ from xrdroot.file import open_root
 from xrdroot.pycint.execute import run_source
 from xrdroot.pycxx.runtime.namespace import DECLARED
 from xrdroot.pyroot.core.declared import (
+    _member_maker,
     catalogue_for,
+    converted,
     find_class,
     made_from,
     payload_of,
@@ -188,6 +190,26 @@ def test_a_member_whose_type_changed_is_converted_as_cpp_converts_it():
 def test_a_record_of_a_class_no_one_declared_is_not_made_into_one():
     assert made_from("NoSuchClass", {"x": 1}) is None
     assert find_class("NoSuchClass") is None
+
+
+def test_a_member_that_is_one_number_is_made_as_its_types_reading_makes_one():
+    """The arithmetic the bulk read takes for a member that is one number gives back what
+    ``converted`` gives back, including where it stands aside for an array of them."""
+    made = _member_maker(parse_type("int"))
+    assert made(None, 0) is None
+    assert made(7, 0) == 7
+    assert made([1, 2], None).tolist() == [1, 2]  # a record whose member is a row
+    held = np.zeros(2, dtype=np.int64)
+    assert made([5, 6], held) is held and held.tolist() == [5, 6]
+
+
+def test_a_member_that_is_text_or_an_array_is_not_taken_for_one_number():
+    """A ``char`` may be the string it holds, and ``int v[3]`` is three numbers: those keep
+    the reading they had."""
+    text = _member_maker(parse_type("char"))
+    assert text("abc", None) == converted("abc", parse_type("char"), None) == "abc"
+    array = _member_maker(parse_type("int"), (3,))
+    assert array([1, 2, 3], None).tolist() == [1, 2, 3]
     assert payload_of(3) is None
 
 

@@ -46,7 +46,7 @@ from .wdeclared import (
     parse_type,
 )
 from .winfo import INFOS, Element
-from .wpacking import pack_member
+from .wpacking import pack_member, pack_one
 from .writer import Record, WBuffer, _payload, _record, info_entry
 
 __all__ = ["Clones", "Instance", "DeclaredObject", "write_instance", "write_members", "write_value"]
@@ -159,14 +159,17 @@ class _Writer:
         if isinstance(value, (Written, Listed)):
             self.streamed(classname, value)
             return
-        if self.catalogue.declared(classname) is None:
+        plan = self.catalogue.written_as(classname)
+        if plan is None:
             self._root_record(classname, value)
             return
-        version, sum_ = self.catalogue.version_of(classname)
+        version, sum_, elements = plan
         at = self.buf.start(version)
         if sum_ is not None:
             self.buf.u32(sum_)
-        self.members(classname, _members(value))
+        members = _members(value)
+        for element in elements:
+            _ELEMENTS[element[0]](self, element, members.get(element[1]), members)
         self.buf.end(at)
 
     def _root_record(self, classname: str, value: Any) -> None:
@@ -302,7 +305,7 @@ class _Writer:
                 )
             self.buf.raw(pack_member(stype - OFFSET_L, title, _numeric(values)))
             return
-        self.buf.raw(pack_member(stype, title, _numeric([_number(value)])))
+        self.buf.raw(pack_one(stype, title, _number(value)))
 
     def _char_star(self, value: Any) -> None:
         """``TBuffer::WriteCharStar``: the length, then the characters - a null one, nothing."""

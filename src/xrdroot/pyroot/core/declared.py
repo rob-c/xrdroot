@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import functools
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from typing import Any, NamedTuple
 from weakref import WeakKeyDictionary
@@ -26,6 +26,7 @@ from weakref import WeakKeyDictionary
 import numpy as np
 
 from ...cppstd.containers import std
+from ...pycxx.symbols import member_name
 from ...wclasses import TYPES
 from ...wdeclared import (
     ARRAY_TEMPLATES,
@@ -395,8 +396,6 @@ def _a_number(field: Field) -> bool:
 
 
 def _attribute(name: str) -> str:
-    from ...pycxx.symbols import member_name
-
     return member_name(name)
 
 
@@ -606,14 +605,67 @@ def _new(cls: type) -> Any:
 
 def _fill(obj: Any, cls: type, row: Mapping[str, Any]) -> None:
     """``obj`` given the members of ``row``, by the declaration of ``cls``."""
-    _own, bases, fields = cls.__dict__["_cxx_layout_"]
+    _own, bases, _fields = cls.__dict__["_cxx_layout_"]
     for base in bases:
         _fill_base(obj, cls, str(base), row.get(str(base)))
-    for name, spelled, comment, _dims in fields:
-        if name in row and not str(comment).startswith("!"):
-            attribute = _attribute(str(name))
-            current = getattr(obj, attribute, None)
-            setattr(obj, attribute, converted(row[name], parse_type(str(spelled)), current))
+    for name, attribute, made in _fills_of(cls):
+        if name in row:
+            setattr(obj, attribute, made(row[name], getattr(obj, attribute, None)))
+
+
+def _fills_of(cls: type) -> tuple[tuple[str, str, Callable[[Any, Any], Any]], ...]:
+    """The members of ``cls`` a read fills: its name in the row, its attribute, and how the
+    value it was read as becomes the member's own.
+
+    Kept per class - a ``TClass::Streamer`` in roottest's bulk loop fills ten million
+    records of one class of nine numbers, and working out which attribute a name is and
+    what type its member has is not something a record changes.
+    """
+    found = _FILLS.get(cls)
+    if found is None:
+        found = _FILLS[cls] = tuple(
+            (str(name), _attribute(str(name)), _member_maker(parse_type(str(spelled)), dims))
+            for name, spelled, comment, dims in cls.__dict__["_cxx_layout_"][2]
+            if not str(comment).startswith("!")
+        )
+    return found
+
+
+#: Each class's fill plan, held weakly: a plan says nothing about anything outside the class.
+_FILLS: WeakKeyDictionary[type, tuple[tuple[str, str, Callable[[Any, Any], Any]], ...]] = (
+    WeakKeyDictionary()
+)
+
+#: The types a member's value is made from with nothing but the value itself, less the one
+#: whose reading is not a number a stream gives: a ``char`` may be the string it holds.
+_PLAIN = frozenset(name for name in TYPES if name not in ("char", "Char_t"))
+
+
+def _member_maker(found: Spelled, dims: Any = ()) -> Callable[[Any, Any], Any]:
+    """How a member of the type ``found`` is given the value read for it.
+
+    A member that is one number - nine members in ten of a class of numbers - goes straight
+    to the arithmetic its C++ type's reading is, where :func:`converted` would first ask
+    whether it is a pointer, a container, a bitset or a string. A declaration of an array of
+    them is not one number, and keeps the reading it had.
+    """
+    if found.stars or dims or found.name not in _PLAIN:
+        return lambda value, current: converted(value, found, current)
+    return _number_maker(found.name)
+
+
+def _number_maker(typename: str) -> Callable[[Any, Any], Any]:
+    """``_number``'s work for a member that is a number and not an array of them."""
+    c_type = TYPES[typename][1]
+
+    def made(value: Any, current: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(current, np.ndarray) or isinstance(value, (list, tuple, np.ndarray)):
+            return _number(value, typename, current)
+        return _scalar_number(value, c_type)
+
+    return made
 
 
 def _fill_base(obj: Any, cls: type, base: str, row: Any) -> None:

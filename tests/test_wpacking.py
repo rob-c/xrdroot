@@ -14,7 +14,15 @@ import struct
 import numpy as np
 import pytest
 
-from xrdroot.wpacking import BASIC, DOUBLE32, FLOAT16, PACKERS, _packer, pack_member
+from xrdroot.wpacking import (
+    BASIC,
+    DOUBLE32,
+    FLOAT16,
+    PACKERS,
+    _packer,
+    pack_member,
+    pack_one,
+)
 
 #: One value of every plain streamer type whose file image ``struct`` can write, with
 #: values that exercise the width, the sign and what a conversion must do.
@@ -63,3 +71,17 @@ def test_the_struct_a_type_is_written_with_is_made_once_and_reused() -> None:
 def test_a_packed_float_still_takes_the_recipe_its_comment_gives() -> None:
     assert pack_member(DOUBLE32, "", np.asarray([1.5])) == bytes.fromhex("3fc00000")
     assert pack_member(FLOAT16, "[0,0,8]", np.asarray([-2.0])) == bytes.fromhex("800200")
+
+
+@pytest.mark.parametrize("stype", PLAIN)
+@pytest.mark.parametrize("value", VALUES)
+def test_one_value_is_packed_as_the_column_of_one_it_stands_for(stype: int, value: object) -> None:
+    assert pack_one(stype, "", value) == numpy_bytes(stype, value)
+
+
+def test_a_value_the_member_cannot_hold_is_written_as_the_column_converts_it() -> None:
+    """The struct refuses what NumPy converts, so a value that does not fit is not refused
+    but written the way it always was: truncated, or wrapped."""
+    assert pack_one(3, "", 1.9) == bytes.fromhex("00000001")
+    assert pack_one(3, "", 2**31) == b"\x80\x00\x00\x00"
+    assert pack_one(DOUBLE32, "[-10,10,12] a packed double", -2.0) == bytes.fromhex("00000666")

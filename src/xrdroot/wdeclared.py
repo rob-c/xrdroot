@@ -258,6 +258,8 @@ class Catalogue:
         self.used: dict[str, None] = {}
         #: The classes being described just now, which a member may point back at.
         self._building: set[str] = set()
+        #: How each declared class's record begins and what its members are written with.
+        self._plans: dict[str, tuple[int, int | None, tuple[Element, ...]]] = {}
 
     # -- what a class is ----------------------------------------------------------
 
@@ -327,6 +329,26 @@ class Catalogue:
         if found is not None and found.foreign and version <= 1:
             return 0, sum_
         return version, None
+
+    def written_as(self, name: str) -> tuple[int, int | None, tuple[Element, ...]] | None:
+        """How a record of ``name`` is written: its version, the checksum a foreign class
+        carries after it, and the elements its members are written by - or ``None`` for a
+        class the program did not declare, whose record ROOT's own layout writes.
+
+        Kept, for the reason :attr:`infos` is: ``TClass::Streamer`` in a bulk loop writes
+        ten million records of one class and asks this once for every one of them.
+        """
+        found = self._plans.get(name)
+        if found is not None:
+            return found
+        declared = self.declared(name)
+        if declared is None:
+            return None  # not kept: a class a file describes later may be this one
+        sum_, version, elements = self.info(name)
+        foreign = declared.foreign and version <= 1  # a foreign class carries its checksum
+        made = (0, sum_, elements) if foreign else (version, None, elements)
+        self._plans[name] = made
+        return made
 
     def entries(self) -> dict[str, tuple[int, int, tuple[Element, ...]]]:
         """The descriptions this write made, for the file's streamer record: the program's
