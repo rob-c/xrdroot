@@ -130,6 +130,10 @@ IS_REFERENCED = 1 << 4
 BYPASS_STREAMER = 1 << 12
 NO_MEMBER_WISE = 1 << 17
 
+#: A ``TObject``'s version and the two words every object carries: what :meth:`Buffer.referenced`
+#: reads in one go, every object of every tree being one.
+_TOBJECT = struct.Struct(">HII")
+
 _U8 = struct.Struct(">B")
 _I8 = struct.Struct(">b")
 _U16 = struct.Struct(">H")
@@ -219,7 +223,17 @@ class Buffer:
         return len(self.data) - (self.pos - self.offset)
 
     def _take(self, form: struct.Struct) -> Any:
-        return self.scalars(form)[0]
+        """The one value ``form`` covers, read where the cursor is.
+
+        Not the tuple :meth:`scalars` gives, which is for a run of members: a member read on
+        its own is the commonest read there is - a whole object walked member by member
+        takes a million of them a tree - and the tuple it would make costs as much again.
+        """
+        index = self.pos - self.offset
+        if index + form.size > len(self.data):
+            raise FormatError(f"the record ends {form.size} bytes before it said it would")
+        self.pos += form.size
+        return form.unpack_from(self.data, index)[0]
 
     def scalars(self, form: struct.Struct) -> tuple[Any, ...]:
         """Every value ``form`` covers, for a reader that knew them all when it was built.
@@ -374,8 +388,7 @@ class Buffer:
     def referenced(self) -> tuple[int, int, int | None]:
         """A ``TObject`` and, when a ``TRef`` may point at it - ``kIsReferenced`` - which of the
         file's ``ProcessID`` records numbered it; ``None`` for an object no reference names."""
-        self.u16()
-        unique, bits = self.u32(), self.u32()
+        _version, unique, bits = self.scalars(_TOBJECT)
         return unique, bits, self.u16() if bits & IS_REFERENCED else None
 
     def named(self) -> tuple[str, str]:
