@@ -338,12 +338,17 @@ def test_a_run_of_plain_numbers_is_written_from_the_values_at_hand():
     catalogue = Catalogue({"C": Declaration("C", 2, False, (), fields)})
     buf = WBuffer()
     assert written_flat(buf, "C", catalogue, [1, 2]) is True
-    assert bytes(buf.data).hex() == "4000000e0002" + "0000000100000002"
+    assert bytes(buf.data).hex() == "4000000a0002" + "0000000100000002"
     assert written_flat(WBuffer(), "C", catalogue, [1.9, 2]) is False  # the struct refuses it
     assert written_flat(WBuffer(), "C", catalogue, [1]) is False  # not one value per member
     assert written_flat(WBuffer(), "NoSuchClass", catalogue, [1, 2]) is False
-    based = Catalogue({"C": Declaration("C", 2, False, ("Base",), fields)})
-    assert flat_record(based, "NoSuchClass") is None
+    assert flat_record(Catalogue({}), "NoSuchClass") is None  # a class nothing describes
+    strings = Catalogue({"C": Declaration("C", 2, False, (), (Field("s", "TString", "", ()),))})
+    assert flat_record(strings, "C") is None  # a class that is more than numbers
+    foreign = Catalogue({"C": Declaration("C", 1, True, (), fields)})  # carries its checksum
+    written = WBuffer()
+    assert written_flat(written, "C", foreign, [3, 4]) is True
+    assert bytes(written.data)[4:6] == b"\x00\x00"  # version zero, then the checksum
 
 
 def test_a_container_of_containers_of_objects_is_refused():
