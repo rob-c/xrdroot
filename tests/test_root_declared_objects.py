@@ -1708,6 +1708,6 @@ def test_a_tbits_member_inside_a_clones_array_element_is_the_bits_it_holds():
                   "Bit")
     back = converted(held, parse_type("TClonesArray*"), None)
     assert isinstance(back, TClonesArray)
-    bit = list(back)[0]
+    bit = next(iter(back))
     assert type(bit).__name__ == "Bit" and bit.fBits.GetNbits() == 12
     assert [at for at in range(12) if bit.fBits.TestBitNumber(at)] == [2, 4]
