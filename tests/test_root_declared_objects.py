@@ -11,6 +11,7 @@ translated classes, member by member.
 
 from __future__ import annotations
 
+import datetime
 import pathlib
 import re
 
@@ -2298,3 +2299,117 @@ def test_an_array_of_tstrings_holding_more_strings_than_it_has_room_for_is_refus
     buf = WBuffer()
     with pytest.raises(ValueError, match=r"f holds 3 strings where its array has room for 2"):
         write_instance(buf, Instance("P", {"TObject": {}, "f": ["a", "b", "c"]}), made)
+
+
+#: The classes the writers of a whole array of containers, of a counted array of ROOT's own
+#: objects and of a ``TDatime`` are reached through - the shapes the bigevent roottest fills a
+#: whole ``Event`` with, one member at a time.
+SHAPES = """
+class Inner {
+public:
+   Int_t n;
+   Inner() : n(1) {}
+   ClassDef(Inner, 1)
+};
+
+class Arrayed {
+public:
+   std::vector<int> *fV[2];
+   std::vector<Inner> *fO[2];
+   Arrayed();
+   ClassDef(Arrayed, 1)
+};
+
+Arrayed::Arrayed() {
+   for (int i = 0; i < 2; ++i) {
+      fV[i] = new std::vector<int>();
+      fO[i] = new std::vector<Inner>();
+   }
+   fV[0]->push_back(1);
+   fV[0]->push_back(2);
+   fO[0]->push_back(Inner());
+}
+
+class Counted {
+public:
+   Int_t fN;
+   TAxis *fP;      //[fN]
+   TDatime fD;
+   Counted();
+   ClassDef(Counted, 1)
+};
+
+Counted::Counted() : fN(2), fP(0) {
+   fP = new TAxis[fN];
+   for (int i = 0; i < fN; ++i) fP[i].Set(10, 0., 1.);
+   fD.Set(2006, 1, 2, 15, 4, 5);
+}
+"""
+
+
+def test_an_array_of_pointers_to_vectors_is_plain_data_one_vector_per_slot():
+    """The array level stays where ROOT keeps it: ``std::vector<int> *f[2]`` is two vectors,
+    each written as its own count and values inside the array's one record. Converting the
+    member as the element's type would fold the two levels into one - which is how the
+    bigevent roottest's six ``vector<TNamed> *`` reached the writer as six objects."""
+    from xrdroot.pyroot.core.declared import catalogue_for, instance_of
+
+    run_source(SHAPES, "shapes.C", call=False)
+    made = instance_of(find_class("Arrayed")(), "Arrayed", catalogue_for("Arrayed"))
+    assert made.members["fV"] == [[1, 2], []]
+    assert [list(one) for one in made.members["fO"]] == [[Instance("Inner", {"n": 1})], []]
+
+
+def test_a_member_of_an_axis_that_has_no_getter_is_taken_from_the_row_it_keeps():
+    """``fBits2`` is ROOT's second bit status word of an axis, which no ``Get`` of ROOT's asks
+    for: the axis here keeps it in the row the histogram writes, and ``fCanExtend``'s bit
+    with it."""
+    from xrdroot.pyroot.core.axes import CAN_EXTEND, TAxis
+    from xrdroot.pyroot.core.declared import root_row
+
+    axis = TAxis(10, 0.0, 1.0)
+    assert root_row(axis, "TAxis")["fBits2"] == 0
+    axis.SetCanExtend(True)
+    assert root_row(axis, "TAxis")["fBits2"] == CAN_EXTEND
+
+
+def test_a_counted_array_of_roots_own_objects_is_plain_data_one_object_per_slot():
+    """``TAxis *fP //[fN]`` is a ``kStreamLoop`` of objects ROOT writes in place, so each slot
+    is the members its layout names - which is what the writer lays out, where the axis object
+    itself is one this writer does not put in a file."""
+    from xrdroot.pyroot.core.declared import catalogue_for, instance_of
+
+    run_source(SHAPES, "shapes.C", call=False)
+    made = instance_of(find_class("Counted")(), "Counted", catalogue_for("Counted"))
+    held = made.members["fP"]
+    assert [row["fNbins"] for row in held] == [10, 10]
+    assert [row["fXmax"] for row in held] == [1.0, 1.0]
+
+
+def test_a_tdatime_member_is_the_moment_it_stands_for():
+    """ROOT streams a ``TDatime`` as one packed word and no record - the one class of its kit
+    small enough to have skipped the version header - so what the writer is handed is the
+    moment reading one back gives."""
+    import datetime
+
+    from xrdroot.pyroot.core.declared import catalogue_for, instance_of
+
+    run_source(SHAPES, "shapes.C", call=False)
+    made = instance_of(find_class("Counted")(), "Counted", catalogue_for("Counted"))
+    assert made.members["fD"] == datetime.datetime(2006, 1, 2, 15, 4, 5)
+
+
+def test_a_tdatime_is_the_one_packed_word_root_writes_for_it():
+    made = Catalogue({"C": Declaration("C", 1, True, (), (
+        Field("fD", "TDatime", "date and time", ()),))})
+    buf = WBuffer()
+    write_members(buf, Instance("C", {"fD": datetime.datetime(2006, 1, 2, 15, 4, 5)}), made)
+    assert bytes(buf.data).hex() == "2c44f105"  # what as_datetime unpacks
+
+
+def test_a_tdatime_that_is_not_a_moment_is_refused():
+    made = Catalogue({"C": Declaration("C", 1, True, (), (
+        Field("fD", "TDatime", "date and time", ()),))})
+    buf = WBuffer()
+    with pytest.raises(UnsupportedFeatureError, match="a TDatime is written as the moment"):
+        write_members(buf, Instance("C", {"fD": 20060102}), made)

@@ -19,6 +19,7 @@ hands a file one, with the descriptions of every class it reached.
 
 from __future__ import annotations
 
+import datetime
 import struct
 from collections.abc import Callable, Mapping
 from typing import Any, NamedTuple
@@ -70,6 +71,7 @@ STRING_NAMES = ("TString", "string", "basic_string")
 #: ``THashList`` derives from ``TList`` and overrides nothing, so a file that numbers its own
 #: ``THashList`` layout at 0 still writes version 5 of ``TList`` in front of its entries.
 STREAMED_COLLECTIONS = {"TObjArray": "TObjArray", "TList": "TList", "THashList": "TList"}
+
 
 
 class Clones(NamedTuple):
@@ -269,6 +271,10 @@ class _Writer:
 
     def record(self, classname: str, value: Any) -> None:
         """An object of ``classname`` in place: its record, then its members."""
+        packed = PACKED_WORDS.get(classname)
+        if packed is not None:
+            self.buf.u32(packed(value))
+            return
         if isinstance(value, Clones):
             self._clones(value)
             return
@@ -777,3 +783,27 @@ def _characters(text: Any, length: int) -> list[int]:
 
 def _text(value: Any) -> str:
     return "" if value is None else str(value)
+
+
+def _packed_datime(value: Any) -> int:
+    """ROOT's packed date word for a moment - the inverse of :func:`~.buffer.as_datetime`,
+    whose years count from 1995."""
+    if not isinstance(value, datetime.datetime):
+        raise UnsupportedFeatureError(
+            f"a TDatime is written as the moment it stands for, and a {type(value).__name__} "
+            f"is not one; hand over the datetime a TDatime stands for"
+        )
+    when = value
+    return (
+        ((when.year - 1995) << 26)
+        | (when.month << 22)
+        | (when.day << 17)
+        | (when.hour << 12)
+        | (when.minute << 6)
+        | when.second
+    )
+
+#: The classes whose whole streamer is one packed word - no record and no version round them,
+#: which ROOT unpacks the way :func:`~.buffer.as_datetime` does - and how that word is made of
+#: the value handed over, so why a ``TDatime`` member reaches here as the moment it stands for.
+PACKED_WORDS: dict[str, Callable[[Any], int]] = {"TDatime": _packed_datime}

@@ -16,6 +16,7 @@ member added since (left as the constructor made it) or dropped (ignored).
 
 from __future__ import annotations
 
+import datetime
 import functools
 import math
 from collections.abc import Callable, Mapping
@@ -459,24 +460,39 @@ def root_row(obj: Any, classname: str) -> dict[str, Any]:
 
 
 def _root_member(obj: Any, member: str) -> Any:
-    """A member of one of ROOT's bases, from its getter where it has one: ``fLineColor``."""
+    """A member of one of ROOT's bases, from its getter where it has one: ``fLineColor``.
+
+    A member with neither a getter nor an attribute of its own is taken from the row the
+    object keeps its members in, which is where a ``TAxis`` holds ``fBits2`` - ROOT's second
+    bit status word of an axis, which no ``Get`` of ROOT's asks for and which the axis here
+    keeps for the histogram it belongs to.
+    """
     getter = getattr(obj, "Get" + member[1:], None)
-    return getter() if callable(getter) else getattr(obj, member, None)
+    if callable(getter):
+        return getter()
+    held = getattr(obj, "_row", None)
+    if isinstance(held, Mapping) and member in held:
+        return held[member]
+    return getattr(obj, member, None)
 
 
 def _plain_member(value: Any, field: Any, catalogue: Catalogue,
                   found: Spelled | None = None) -> Any:  # fmt: skip
     """A data member's value as plain data.
 
-    An array of *objects* - ``T a[N]`` and ``std::array<T,N>`` alike - holds one plain
-    instance per element, which is what the member-wise writer writes one record
-    after another; an array of numbers stays the values it is.
+    An array of anything but a number - ``T a[N]`` and ``std::array<T,N>`` alike - holds one
+    plain element per slot, which is what the writer of an array of objects, and of an array of
+    containers, writes one after another; an array of numbers stays the values it is, and so
+    does a string of characters, which is one text and not a run of them. The array level is
+    the writer's: converting the member as the element's type would fold the two levels into
+    one, and the bigevent roottest's ``vector<TNamed> *fVectorTnamed[6]`` arrives here as six
+    vectors.
     """
     found = parse_type(field.spelled) if found is None else found
     template = found.name in ARRAY_TEMPLATES and bool(found.args)
     content = found.args[0] if template else found  # a std::array's, or the element of T[N]
     is_array = bool(field.dims) or template
-    if is_array and catalogue.declared(class_name(content)) is not None:  # an array of objects
+    if is_array and found.name not in TYPES:  # an array of objects, containers or pointers
         return [_plain(element, content, catalogue) for element in (value if value is not None
                                                                     else ())]  # fmt: skip
     return _plain(value, found, catalogue)
@@ -518,6 +534,8 @@ def _plain_object(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
     name = class_name(found)
     if catalogue.declared(name) is not None and name not in STRINGS:
         return _object_of(value, name, catalogue)
+    if isinstance(value, (list, tuple)) and name in INFOS and name not in STRINGS:
+        return _plain_run(value, found, catalogue)
     if isinstance(value, TObject):
         return _root_object(value, found.name, catalogue)
     if _held_by_root(name, value):
@@ -525,6 +543,14 @@ def _plain_object(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
         # ``TObject`` to be asked what class it is - a drawing class, a ``TAttLine``.
         return root_row(value, name)
     return value if isinstance(value, (int, float, np.ndarray, list)) else _scalar(value)
+
+
+def _plain_run(value: Any, found: Spelled, catalogue: Catalogue) -> list[Any]:
+    """A counted array of one of ROOT's own objects, ``T *f //[n]`` and ``T **f //[n]``: one
+    plain object per slot, which is what ROOT streams one after another - in place for one
+    star, behind a pointer that names the class for two. The bigevent roottest's ``fPaxis``
+    and ``fQaxis`` arrive here as the ``TAxis`` objects the macro made."""
+    return [_plain_object(element, found, catalogue) for element in value]
 
 
 def _held_by_root(name: str, value: Any) -> bool:
@@ -545,7 +571,12 @@ def _root_object(value: Any, classname: str, catalogue: Catalogue) -> Any:
     it, and any other by the members its layout names."""
     from .collections import TClonesArray
     from .records import recorded
+    from .timing import TDatime
 
+    if isinstance(value, TDatime):
+        # A ``TDatime`` streams itself as one packed word and no record, so what is handed on
+        # is the moment it stands for - the value reading one back gives.
+        return _moment(value)
     if isinstance(value, TClonesArray):
         return _clones(value, catalogue)
     made = recorded(value, WRITER.get())
@@ -564,6 +595,16 @@ def _clones(value: Any, catalogue: Catalogue) -> Clones:
     items = [None if item is None else instance_of(item, held, catalogue)
              for item in list(value)[: value.GetEntriesFast()]]  # fmt: skip
     return Clones(held, str(getattr(value, "_name", "")) or held + "s", items)
+
+
+def _moment(value: Any) -> datetime.datetime:
+    """A ``TDatime`` as the moment it stands for, from the two numbers ROOT lets one be read
+    by: its date as ``YYYYMMDD`` and its time as ``HHMMSS``."""
+    date, clock = int(value.GetDate()), int(value.GetTime())
+    return datetime.datetime(
+        date // 10000, date // 100 % 100, date % 100,
+        clock // 10000, clock // 100 % 100, clock % 100,
+    )  # fmt: skip
 
 
 def _plain_container(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
