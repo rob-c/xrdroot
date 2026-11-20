@@ -198,13 +198,15 @@ def test_index_conversion_may_mutate_the_previously_obtained_storage_shape():
 
     def checked(index):
         calls.append("reshape")
-        storage.shape = (2, 1)
+        # In place, as a container's own buffer is reshaped behind the object's back;
+        # setting ``.shape`` on an array is deprecated from NumPy 2.5 on.
+        storage.resize((2, 1))
         return int(index)
 
     vector = _observed(storage, calls, checked)
     expected = _ordinary_scalar(vector, 1)
     original_calls = calls[:]
-    storage.shape = (2,)
+    storage.resize((2,))
     calls.clear()
     assert vector[1] == expected == 2.0
     assert storage.shape == (2, 1)
