@@ -264,6 +264,15 @@ def test_a_record_read_by_the_wrong_layout_reports_the_bytes_it_took():
     assert buf.check_count(start, start + 14) is None  # everything the count held was read
 
 
+def test_a_run_of_members_the_record_has_no_room_for_is_refused():
+    """A run read for a class of numbers is one read; one that overruns the record says so
+    rather than reading the next object's bytes."""
+    buf = Buffer(struct.pack(">ii", 1, 2))
+    _first, _second = buf.scalars(struct.Struct(">ii"))  # the record's two numbers
+    with pytest.raises(FormatError, match="the record ends 8 bytes before it said it would"):
+        buf.scalars(struct.Struct(">ii"))
+
+
 def test_a_record_without_a_byte_count_has_no_length_to_be_checked_against():
     buf = Buffer(struct.pack(">Hi", 3, 5))
     _version, end = buf.header()
