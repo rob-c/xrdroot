@@ -284,6 +284,68 @@ def test_an_object_of_a_class_nothing_declares_is_refused_by_its_name():
         ROOT.TBufferJSON.ConvertFromJSON('{"_typename":"TUnknown","fName":"a"}')
     assert "does not know the class TUnknown" in str(refused.value)
     assert "FromJSON<T>(json)" in str(refused.value)
+    assert "TBox" in str(refused.value)  # a class its own table describes is read back
+
+
+#: What ROOT 6.40.04's oracle prints for ``TBufferJSON::ToJSON(new TBox(11,22,33,44))`` at
+#: ``kNoCompress``: ``TObject``'s two members, then ``TAttLine``'s three, ``TAttFill``'s two
+#: and the corners, which is the order ``roottest``'s ``RootClasses.ref`` writes them in.
+BOX_JSON = """{
+  "_typename" : "TBox",
+  "fUniqueID" : 0,
+  "fBits" : 0,
+  "fLineColor" : 1,
+  "fLineStyle" : 1,
+  "fLineWidth" : 1,
+  "fFillColor" : 19,
+  "fFillStyle" : 1001,
+  "fX1" : 11,
+  "fY1" : 22,
+  "fX2" : 33,
+  "fY2" : 44
+}"""
+
+
+def test_a_box_is_written_as_the_members_its_streamer_writes_in_their_order():
+    assert _json(ROOT.TBox(11, 22, 33, 44)) == BOX_JSON
+
+
+def test_a_class_the_table_describes_reads_back_as_the_namespace_s_class():
+    """``TBufferJSON::ConvertFromJSONAny`` of ROOT's own ``TBox`` JSON: the table says what
+    a box's members are, so the JSON is read into the ``TBox`` the namespace has, and what
+    is written from that object again is the same JSON - ``RootClasses``' store/read/store."""
+    cell = type("Cell", (), {"value": None})()
+    read = ROOT.TBufferJSON.ConvertFromJSONAny(BOX_JSON, cell)
+    assert isinstance(read, ROOT.TBox)
+    assert cell.value.GetName() == "TBox"
+    assert _json(read) == BOX_JSON
+
+
+def test_a_member_read_back_is_held_where_the_writer_reads_it():
+    """A drawn object keeps its members in a dict by name, not in attributes: the corners
+    come back into that dict, which is what ``IsInside`` and the writer both read."""
+    read = ROOT.TBufferJSON.ConvertFromJSONAny(BOX_JSON)
+    assert read.members["fX1"] == 11
+    assert read.IsInside(20, 30)
+
+
+def test_a_to_object_read_back_keeps_its_members_where_a_core_class_holds_them():
+    """``TObject``'s ``fUniqueID`` is the object's ``_unique_id``, so a JSON of one is read
+    back into the attribute the writer reads rather than an attribute named ``fUniqueID``."""
+    read = ROOT.TBufferJSON.ConvertFromJSONAny(
+        '{"_typename":"TObject","fUniqueID":7,"fBits":0}')
+    assert isinstance(read, ROOT.TObject)
+    assert read.GetUniqueID() == 7
+    assert _json(read) == '{\n  "_typename" : "TObject",\n  "fUniqueID" : 7,\n  "fBits" : 0\n}'
+
+
+def test_a_name_the_table_describes_that_is_no_class_is_left_to_the_refusal(monkeypatch):
+    """The namespace holds an object by that name rather than the class - a ``gROOT``
+    object, say - and the JSON is then refused as any class this cannot read back."""
+    monkeypatch.setattr(ROOT, "TObjString", "not a class")
+    with pytest.raises(UnsupportedFeatureError) as refused:
+        ROOT.TBufferJSON.ConvertFromJSONAny('{"_typename":"TObjString","fString":"a"}')
+    assert "does not know the class TObjString" in str(refused.value)
 
 
 def test_a_bare_json_array_is_read_when_the_cell_knows_the_pointer_s_c_type():

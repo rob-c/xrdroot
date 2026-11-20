@@ -17,7 +17,9 @@ streamer, not every data member: ``TPolyMarker3D`` writes ``fN``, ``fP``,
 ``fOption`` and ``fName`` and never ``fLastPoint``. A class a macro declared
 needs no table: the translator read its declaration, and
 :func:`_declared` writes the members - its bases' first - in the order that
-declaration gives them.
+declaration gives them. A class of the table that the namespace has is read
+back too, into that class's object, which is what ``ConvertFromJSONAny``
+means by naming its ``_typename``.
 
 The numbers are :func:`_float_text`'s: whole values below ``1e15`` (a float)
 or ``1e25`` (a double) written out digit by digit, and everything else from
@@ -163,6 +165,12 @@ MEMBERS: dict[str, tuple[_Member, ...]] = {
                     _Member("fLineColor", np.int16), _Member("fLineStyle", np.int16),
                     _Member("fLineWidth", np.int16), _Member("fN", np.int32),
                     _Member("fP", np.float32, True), _Member("fOption", "string")),
+    "TBox": (_Member("fUniqueID", np.uint32), _Member("fBits", np.uint32),
+             _Member("fLineColor", np.int16), _Member("fLineStyle", np.int16),
+             _Member("fLineWidth", np.int16), _Member("fFillColor", np.int16),
+             _Member("fFillStyle", np.int16), _Member("fX1", np.float64),
+             _Member("fY1", np.float64), _Member("fX2", np.float64),
+             _Member("fY2", np.float64)),
 }
 
 #: Where a core class keeps a member ROOT names otherwise: ``TObject``'s ``fUniqueID`` is
@@ -1020,14 +1028,33 @@ def _class_for(name: str) -> type[Any]:
     if found is None:
         found = ARRAY_CLASSES.get(name)
     if found is None:
+        found = _namespace_class(name)
+    if found is None:
         raise UnsupportedFeatureError(
             "TBufferJSON::ConvertFromJSONAny does not know the class "
             f"{name or 'this JSON gives no name of'}: it reads back an object of a class a "
-            f"macro declared, and the TArrays ({', '.join(sorted(ARRAY_CLASSES))}). Read "
+            f"macro declared, the TArrays ({', '.join(sorted(ARRAY_CLASSES))}), and the "
+            f"classes whose members are in its table ({', '.join(sorted(MEMBERS))}). Read "
             "anything else with a class this kit has, or ask FromJSON<T>(json) for the "
             "class it names"
         )
     return found
+
+
+def _namespace_class(name: str) -> type[Any] | None:
+    """The namespace's class of ROOT's called ``name``, for a class :data:`MEMBERS` describes.
+
+    What this writes it reads back, which is what ``ConvertFromJSONAny`` promises of a JSON
+    that names its ``_typename``: ``TObject``'s members are known here, so its JSON becomes
+    the ``TObject`` the namespace has. A class in the table that the namespace does not have
+    - ``TPolyMarker3D``, which only a file ever holds - is left to the refusal.
+    """
+    if name not in MEMBERS:
+        return None
+    import xrdroot.pyroot as namespace  # asked for a name, it gathers the module holding it
+
+    found = getattr(namespace, name, None)  # a name it does not have is left to the refusal
+    return found if isinstance(found, type) else None
 
 
 def _rebuilt_object(data: dict[str, Any]) -> Any:
@@ -1072,7 +1099,23 @@ def _restore(obj: Any, member: _Member, value: Any) -> None:
                 "with the class it names"
             )
         return
-    setattr(obj, member.name, _converted(member, value))
+    _stored(obj, member, _converted(member, value))
+
+
+def _stored(obj: Any, member: _Member, value: Any) -> None:
+    """Put ``value`` where :func:`_recorded` reads it back from: in the dict a drawn object
+    keeps its members in - ``TBox``'s ``fX1`` - in the attribute a declared class declares,
+    or in the one a class of ROOT's keeps it in, ``TObject``'s ``fUniqueID`` being
+    ``_unique_id``."""
+    kept = getattr(obj, "members", None)
+    if isinstance(kept, dict):
+        kept[member.name] = value
+        return
+    declared = getattr(type(obj), "_cxx_layout_", None)
+    if isinstance(declared, tuple):
+        setattr(obj, member.name, value)
+        return
+    setattr(obj, ATTRIBUTES.get(member.name) or "_" + member.name, value)
 
 
 def _blank(value: Any) -> bool:
