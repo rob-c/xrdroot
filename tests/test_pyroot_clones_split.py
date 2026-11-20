@@ -344,3 +344,31 @@ def test_a_whole_object_members_leaf_is_typed_by_that_members_class():
     info = object_info(holder, None, 1, False)
     leaves = {child.name: child.leaves[0].typename for child in info.children}
     assert leaves["C1._o"] == "TRef" and leaves["C1.fBits"] == "UInt_t"
+
+
+def test_a_clones_branch_names_the_class_it_holds_and_a_vector_branch_names_none(tmp_path):
+    """``TBranchElement::GetClonesName``: what a macro reads to make the ``TClonesArray`` it
+    reads the branch into - ``roottest``'s ``io/tree/tref_test_pid.C`` does. ROOT keeps
+    ``fClonesName`` for a ``TClonesArray`` alone, leaving it empty for a collection of a
+    ``std::vector``; checked against the 6.40 oracle.
+    """
+    path = str(tmp_path / "clones.root")
+    _written(path)
+    back = ROOT.TFile(path)
+    tree = back.Get("T")
+    assert tree.GetBranch("N").GetClonesName() == "TNamed"
+    back.Close()
+    out = ROOT.TFile(str(tmp_path / "plain.root"), "RECREATE")
+    plain = ROOT.TTree("p", "plain")
+    numbers = ROOT.std.vector["int"]()
+    plain.Branch("v", numbers)
+    plain.Fill()
+    plain.Write()
+    out.Close()
+    back = ROOT.TFile(str(tmp_path / "plain.root"))
+    read = back.Get("p")
+    assert (read.GetBranch("v").GetClonesName(), read.GetBranch("v").GetClassName()) == (
+        "",
+        "vector<int>",
+    )
+    back.Close()

@@ -126,6 +126,15 @@ class TBranch(_TObjectLike):
     def GetClassName(self) -> str:
         return self._info.classname
 
+    def GetClonesName(self) -> str:
+        """``fClonesName``: the class of the objects a ``TClonesArray`` branch holds.
+
+        ROOT keeps the name for a ``TClonesArray`` alone and leaves it empty for a
+        collection of a ``std::vector`` and for an object split into its members, and
+        a macro reads it to make the ``TClonesArray`` it reads the branch into.
+        """
+        return self._info.clones
+
     def GetEntries(self) -> int:
         return self._tree.GetEntries()
 
