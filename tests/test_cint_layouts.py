@@ -42,6 +42,15 @@ def test_a_pointer_member_and_a_template_member_are_spelled_as_written():
     assert "('h', 'TH1F*', '', ())" in text and "('v', 'std::vector<int>', '', ())" in text
 
 
+def test_an_unqualified_hashed_multimap_member_is_the_standards_in_the_layout():
+    """``TFile::MakeProject`` writes the header it generates with ``using namespace std``, so
+    ``unordered_multimap<string, vector<float>>`` stands there with no ``std::``; the layout is
+    what a reader is told the member is, so it says the standard library's name."""
+    source = "struct S { unordered_multimap<string, vector<float>> strange; };"
+    text = translate(source, "t.C")
+    assert "('strange', 'std::unordered_multimap<std::string, std::vector<float>>', '', ())" in text
+
+
 def test_an_array_length_written_as_an_enumerator_is_the_number_it_holds():
     """``enum {kSize = 10}; Int_t fA[kSize];`` is an array of ten, and ROOT's dictionary says
     ten - ``Event.h`` in roottest's ``io/bigevent`` declares one that way."""

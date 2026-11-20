@@ -28,6 +28,19 @@ def body(source: str) -> str:
         ("int x = {}; double d = {2};", "x = 0"),
         ("double d = {2};", "d = 2.0"),
         ("std::vector<int> v = {1, 2};", "v = ROOT.std.vector['int']([1, 2])"),
+        # MakeProject writes its header with `using namespace std`, so the hashed multi-
+        # containers and the forward list reach the translator unqualified; they are as much
+        # the standard's as `vector` is (roottest's ntuple/makeproject/ttree says so).
+        (
+            'unordered_multimap<string, vector<float>> m = {{"one", {1, 2}}};',
+            "m = ROOT.std.unordered_multimap['std::string', 'std::vector<float>']"
+            "([['one', [1, 2]]])",
+        ),
+        (
+            "unordered_multiset<int> s = {1, 2, 2};",
+            "s = ROOT.std.unordered_multiset['int']([1, 2, 2])",
+        ),
+        ("forward_list<double> f = {1.5, 2.5};", "f = ROOT.std.forward_list['double']([1.5, 2.5])"),
         ("ROOT::RVecF v{1., 2.};", "v = ROOT.RVecF([1.0, 2.0])"),
         ("RVecD v = {1., 2.};", "v = ROOT.RVecD([1.0, 2.0])"),
         ("TLorentzVector v[2];", "v = array('TLorentzVector', 2, make=ROOT.TLorentzVector)"),

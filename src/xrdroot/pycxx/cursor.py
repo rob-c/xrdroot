@@ -34,7 +34,8 @@ KEYWORDS = frozenset(
 
 #: Names the standard library declares that a macro uses unqualified after ``using namespace std``.
 STD_NAMES = frozenset(
-    """string vector map multimap unordered_map set multiset unordered_set list deque array pair
+    """string vector map multimap unordered_map unordered_multimap set multiset unordered_set
+    unordered_multiset forward_list list deque array pair
     tuple make_pair make_tuple unique_ptr shared_ptr make_unique make_shared function
     numeric_limits complex cout cerr clog endl flush setw setprecision setfill fixed
     scientific left right boolalpha noboolalpha ostringstream stringstream istringstream
