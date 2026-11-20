@@ -114,9 +114,13 @@ def test_gsystem_loads_and_includes_without_complaint():
     )
     ROOT.gSystem.Unload("libPhysics")
     ROOT.gSystem.Unload("libNothing")
+    # The include path is the process's, so a test that ran before this one in this process
+    # has left its own in it: what adding appends is held against what was there.
+    before = ROOT.gSystem.GetIncludePath()
     ROOT.gSystem.AddIncludePath("-I/a")
     ROOT.gSystem.AddIncludePath("-I/b")
-    assert ROOT.gSystem.GetIncludePath() == "-I/a -I/b"
+    assert ROOT.gSystem.GetIncludePath() == " ".join(part for part in (before, "-I/a", "-I/b")
+                                                    if part)  # fmt: skip
     ROOT.gSystem.SetIncludePath("-I/c")
     assert ROOT.gSystem.GetIncludePath() == "-I/c"
     ROOT.gSystem.AddLinkedLibs("-lm")
