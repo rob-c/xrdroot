@@ -74,6 +74,12 @@ class _Profiled:
     def _contents(self) -> np.ndarray[Any, Any]:
         return np.asarray(self._xrd.values(flow=True)).ravel(order="F")
 
+    def _one_error(self, bin: int) -> float:
+        """A profile's error is its spread, which is an array of its own: one bin's comes
+        out of it as it always did."""
+        errors = self._errors()
+        return float(errors[bin]) if 0 <= bin < len(errors) else 0.0
+
     def _errors(self) -> np.ndarray[Any, Any]:
         return np.asarray(self._xrd.errors(flow=True)).ravel(order="F")
 

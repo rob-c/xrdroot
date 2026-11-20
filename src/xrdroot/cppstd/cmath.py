@@ -112,6 +112,15 @@ def set_vector_result(constructor: Callable[[Any], Any]) -> None:
 
 def _c(function: Callable[..., float], name: str) -> Callable[..., float]:
     def c_function(*args: Any) -> Any:
+        if len(args) == 1 and type(args[0]) is float:
+            # One number of the function's own type: what a formula's evaluation is, and
+            # what the complex check and the conversion of the arguments would change nothing by.
+            try:
+                return function(args[0])
+            except ValueError:
+                return NAN
+            except OverflowError:
+                return INF
         held = _complex_c(name, args)
         if held is not None:
             return held

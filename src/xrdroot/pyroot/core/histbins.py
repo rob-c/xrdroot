@@ -220,6 +220,10 @@ class Bins:
     def GetBinContent(self, *args: Any) -> float:
         """``GetBinContent(bin)`` or ``(binx, biny[, binz])``."""
         bin = self._global(args)
+        return self._one_content(bin)
+
+    def _one_content(self, bin: int) -> float:
+        """One bin's content, out of the array of every bin's."""
         cells = self._contents()
         return float(cells[bin]) if 0 <= bin < len(cells) else 0.0
 
@@ -264,7 +268,10 @@ class Bins:
 
     def GetBinError(self, *args: Any) -> float:
         """``GetBinError``: the root of the bin's squared weights, or of its content."""
-        bin = self._global(args)
+        return self._one_error(self._global(args))
+
+    def _one_error(self, bin: int) -> float:
+        """One bin's error, out of the array of every bin's."""
         errors = self._errors()
         return float(errors[bin]) if 0 <= bin < len(errors) else 0.0
 

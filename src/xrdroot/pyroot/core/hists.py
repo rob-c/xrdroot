@@ -37,6 +37,20 @@ class TH1(
 ):
     """``TH1``: a histogram of one axis - and the base of every other."""
 
+    def _one_content(self, bin: int) -> float:
+        """One bin's content straight out of the storage: a fit walks every bin of a
+        histogram on every turn of its minimiser, and the array of them is not remade."""
+        if not 0 <= bin < len(self._xrd._bins):
+            return 0.0
+        return float(self._xrd.bin_content(bin))
+
+    def _one_error(self, bin: int) -> float:
+        """One bin's error straight from its squared weights, without the array of every
+        bin's: a fit's objective asks for them a bin at a time, ten thousand times a call."""
+        if not 0 <= bin < len(self._xrd._bins):
+            return 0.0
+        return float(self._xrd.bin_error(bin))
+
     CLASS_TITLE = "1-Dim histogram base class"
     kNoStats = 1 << 9
     kUserContour = 1 << 10

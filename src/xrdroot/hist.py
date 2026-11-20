@@ -595,6 +595,20 @@ class Histogram(Displayed):
         """``GetBinError`` of every bin, flow and all, in the order they are kept."""
         return np.sqrt(np.abs(self._variance_cells()))
 
+    def bin_content(self, cell: int) -> float:
+        """``GetBinContent`` of one bin, out of the array the bins are kept in."""
+        return float(self._bins[cell])
+
+    def bin_error(self, cell: int) -> float:
+        """``GetBinError`` of one bin: the root of its squared weights, or of its content.
+
+        What :meth:`_bin_errors` gives for that bin, and in the same double precision,
+        without building the array of every bin's - which a fit's objective asks for a bin
+        at a time, ten thousand times a call.
+        """
+        squares = self._sumw2()
+        return float(np.sqrt(abs(float(self._bins[cell] if squares is None else squares[cell]))))
+
     def _variance_cells(self) -> np.ndarray[Any, Any]:
         """``GetBinErrorSqUnchecked`` of every bin: the square of weights, or the content."""
         squares = self._sumw2()
