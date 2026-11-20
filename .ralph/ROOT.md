@@ -672,6 +672,25 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   (`SplitClones`), `interp.py` + `rdobjects.py` (the data model), `wdobjects.py` (bigevent),
   `reflection.py` (`pairEnumEvo`), `stressgraphics`, `jsonbuffer.py`, `files.py`.
 
+## Round 17's close (recorded here for the next iteration)
+
+- Base `ba2985b6`, closed at `5ff715a5`. Six commits landed from eight chains, **six roottest tests in
+  and none lost**, measured in the six areas they touch (`/tmp/r17/areas`) plus `io/event`
+  (`/tmp/r17/check-ev`).
+- **Round 17's own full-suite run is invalid and is not quoted.** At `--jobs 3` with a load average
+  of 44 the `io/event` fixture's `TestIoEvent` collided with itself and **47 fixtures failed behind
+  it**, plus 13 `ObjectSlot` failures - 64 apparent losses. The same area passes **29/29 at
+  `--jobs 3` alone**. `W0-48` records it: the suite's roottest count is not stable under load, and a
+  group whose tests share a working copy must be measured on its own.
+- **Two assumptions were measured and closed.** `W0-46`: `STOREOUT` had no wider prize - exactly two
+  roottest directories read a sibling's log, one of them now fixed. And `W0-49`: a second session's
+  uncommitted work keeps appearing in the main worktree (`Slot.takes`, untested, red coverage gate);
+  a round must `git status` before every gate run.
+- Round 18's chains: `interp.py` + `rdobjects.py`'s data model, `reflection.py`'s `pairEnumEvo`,
+  `pyroot/core/files.py`'s `double32`, `wdobjects.py`'s bigevent, `jsonbuffer.py`, and the graphics
+  encoder - all untouched this round - **plus** `io/event`+`fastcloningeventtree` measured on its own
+  so its 47 fixtures stop moving the count.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -710,6 +729,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 17's result of it, at `5ff715a5`: `TOTAL 116559 0 29080 0 100%`, `12620 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
+  maintainability 30 168 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 16's result of it, at `4509b416`: `TOTAL 116525 0 29068 0 100%`, `12588 passed, 1 skipped,
   46 xfailed`; `ruff` clean, `mypy` 1017 files, maintainability 30 094 functions, components 0
   undeclared, `mkdocs build --strict` built. Run with `-n 2` while the machine is loaded (`W0-45`).
@@ -787,6 +809,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 14 | `12646b58` | sixteen **chains**, `/tmp/r14/wNN-brief.md`, each **starting** at the file round 13's reports named: bigevent's drawing classes, `GetClonesName`, the evolved-class read, the data model's records, a `TRef` in a `TClonesArray`, the harness's lost `schemaRun1.log`, the WILLFAIL verdict, the tests near the limit, the graphics encoders, `roottest/python`, the gtest kind, TMVA, `other/math`, `MakeProxy`, `TBufferJSON`, and `double32` | **roottest 1220 → 1226 measured (1231 with the five that pass alone), non-tutorial 1386 → 1393 (1398)** (`/tmp/r14/final2`, `/tmp/r14/final1`, `/tmp/r14/solo` at `19be128b`) | 3: `W0-37`, `W0-38`, `W0-39`, `W0-40` |
 | 15 | `99525851` | **eight** chains (the machine's load average reached 64): bigevent's writer, `SplitClones`, the evolved class's warnings and walk, the data model's records, a `TRef` in a `TClonesArray`, `pairEnumEvo`'s listing, the harness's lost working file, and the four buffers' margin | **roottest 1226 → 1230 at `--jobs 3`, non-tutorial 1393 → 1397** (`/tmp/r15/final2`, `/tmp/r15/final1` at `601996d1`), 8 in, 0 lost to code | 4: `W0-41`…`W0-44` |
 | 16 | `df6d9833` | **one chain**, not sixteen (the machine stayed at a load average of 9-36): the harness's `STOREOUT` rule and a build-tree `OUTREF` - ROOT stores every roottest's output as `<build>/<name>.log` and the next test reads it, which xrdroot never did | **roottest 1230 → 1233, non-tutorial 1397 → 1400** (`/tmp/r16/final2`, `/tmp/r16/final1` at `2dad75a7`, `--jobs 3`), 3 in, 0 lost | 3: `W0-46`, `W0-47`, plus the `W0-40` closure |
+| 17 | `ba2985b6` | **eight** chains (the machine stayed at a load average of 13-44): `SplitClones`' last answer, bigevent's writer, the evolved class's six stderr DIFFs, the data model's records, `pairEnumEvo`'s listing, the graphics encoders, `TBufferJSON`, and `double32` | **roottest 1233 → 1239, non-tutorial 1400 → 1406** measured in six areas (`/tmp/r17/areas`, `/tmp/r17/check-ev` at `13034109`); the round's own full run is invalid and unquoted (`W0-48`) | 4: `W0-46` closed, `W0-48`, `W0-49` |
 
 ## Notes
 
