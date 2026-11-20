@@ -50,7 +50,8 @@ kSysError = 5000
 kFatal = 6000
 
 #: ``gErrorIgnoreLevel``: messages below this level are not printed; a script
-#: sets it on the namespace, where :func:`ignore_level` reads it.
+#: sets it on ``ROOT`` - or on the namespace, as the tests do - and
+#: :func:`ignore_level` reads it from whichever of the two it is on.
 gErrorIgnoreLevel = kUnset
 
 #: Whether code runs as PyROOT runs a script - ``xrdroot run script.py``, the suite's
@@ -72,10 +73,18 @@ LEVELS = {
 
 
 def ignore_level() -> int:
-    """``gErrorIgnoreLevel`` as the script left it on the namespace, or ROOT's default."""
+    """``gErrorIgnoreLevel`` as the script left it, or ROOT's default.
+
+    A script writes ``ROOT.gErrorIgnoreLevel = ROOT.kError``, on the module it
+    imported rather than on the namespace under it, so that module is asked
+    first - it answers with the namespace's own value when the script has not
+    written one there.
+    """
+    script = sys.modules.get("ROOT")
+    if script is not None and "gErrorIgnoreLevel" in getattr(script, "__dict__", {}):
+        return int(script.gErrorIgnoreLevel)
     namespace = sys.modules.get("xrdroot.pyroot")
-    level = getattr(namespace, "__dict__", {}).get("gErrorIgnoreLevel", kUnset)
-    return int(level)
+    return int(getattr(namespace, "__dict__", {}).get("gErrorIgnoreLevel", kUnset))
 
 
 def message(kind: str, location: Any, fmt: Any, *args: Any) -> None:

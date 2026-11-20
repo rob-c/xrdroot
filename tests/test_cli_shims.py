@@ -95,3 +95,15 @@ def test_root_answers_every_name_of_the_namespace_and_lists_them(isolated: None)
     assert dir(root) == dir(namespace)
     with pytest.raises(AttributeError, match=r"xrdroot\.pyroot does not yet"):
         root.NotARootName  # noqa: B018
+
+
+def test_a_script_silencing_messages_on_root_is_obeyed(
+    isolated: None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``ROOT.gErrorIgnoreLevel`` is a global a script sets on the module it imported, so
+    the level is read from there - the namespace under it has not been written to."""
+    root = shims.install_root()
+    root.Warning("here", "shown")
+    root.gErrorIgnoreLevel = root.kError
+    root.Warning("here", "hidden")
+    assert capsys.readouterr().err == "Warning in <here>: shown\n"
