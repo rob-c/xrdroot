@@ -67,6 +67,16 @@ so the version 12 this writer gives it is read as one. ``TClonesArray``,
 ``LorentzVector<PxPyPzE4D<double> >`` and its coordinates, come from
 ``object-branches-6.40.root``, which ROOT 6.40 wrote from ``object_branches.C``.
 
+A class a *program* declares is not here, even where ROOT's own record of one can be read
+out of a file. An instance of a template the program itself declares -
+``roottest/root/io/bigevent``'s ``Event::fTemplateMember``, a ``template2<template1<int> >`` -
+is described by that declaration: ROOT writes its record as version 1, no elements, checksum
+``0xf1819316``, and writes *objects* of it as a foreign class of no ``ClassDef`` - version 0
+and that checksum after it, which is what the declaration reproduces to the byte.
+``pyroot/core/declared._reach`` stops at a name this table holds, so an entry here would take
+the class away from the declaration and write the member's record as ``40000002 0001`` where
+ROOT writes ``40000006 0000`` and ``f1819316``.
+
 Writing carries these descriptions back out verbatim, checksums and all, so a
 file written here says exactly what a ROOT of that vintage would say about the
 same classes, and anything reading it - ROOT, this library, or another - walks

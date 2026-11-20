@@ -1763,6 +1763,36 @@ def test_a_member_of_a_template_instance_is_an_object_held_in_place_of_that_clas
     assert set(made.entries()) == {"Event", "template2<template1<int>>"}
 
 
+def test_an_instantiated_template_is_described_by_the_declaration_and_not_by_roots_table():
+    """The bigevent roottest's ``Event::fTemplateMember`` is an instance of a template the
+    program itself declares, so ROOT describes it out of that declaration and never out of
+    its own table: its record is version 1 with no elements - both templates are empty - and
+    an object of it is written as a class of no ``ClassDef`` is, version 0 and the checksum
+    ``0xf1819316`` after it. An entry for the instance in :data:`~.winfo.INFOS` would take it
+    away from the declaration instead - ``pyroot/core/declared._reach`` stops at a name the
+    table holds - and its record would go out as version 1 with no checksum.
+    """
+    spelled = "template2<template1<int> >"
+    assert spelled not in INFOS
+    made = Catalogue({
+        "Holder": Declaration("Holder", 1, False, (), (
+            Field("fN", "Int_t", "", ()),
+            Field("fTemplateMember", "template2< template1< int > >", "", ()),
+            Field("fAfter", "Int_t", "", ()),)),
+        spelled: Declaration(spelled, 1, True, (), ()),
+    })  # fmt: skip
+    assert made.info("Holder")[2][1] == (
+        "TStreamerObjectAny", "fTemplateMember", "", 62, 8, 0, 0, NO_DIMS, spelled, ())
+    buf = WBuffer()
+    write_instance(buf, Instance("Holder", {
+        "fN": 5, "fTemplateMember": {}, "fAfter": 3}), made)  # fmt: skip
+    # The record ROOT 6.40.04 writes for a ``Holder`` of the same three members: no tag in
+    # front of the member - the layout already says a class is held there - and no bytes of
+    # its own, an empty class being nothing but its version word and its checksum.
+    assert bytes(buf.data) == bytes.fromhex(
+        "40000014" "0001" "00000005" "40000006" "0000" "f1819316" "00000003")
+
+
 TEMPLATE_MEMBER = r"""
 template <class T> struct template1 {};
 template <class T> struct template2 {};
