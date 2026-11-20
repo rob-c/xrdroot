@@ -727,6 +727,23 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   documented catastrophe. It was resolved by hand in `bdc4a2cc`, and a stray `libTD.xrdlib` was kept
   out of the tree. `git status` before every gate run is not optional.
 
+## Round 20's close (recorded here for the next iteration)
+
+- Base `1000afdd`, closed at `f283ae1c`. Three commits landed from four targets, **0 tests gained, 0 lost**.
+- **The three walls round 19 named as cheapest are now landed** and none of them flipped a test:
+  the ACLiC `NameError` (`2ae5d980`), `TClass::GetClassVersion` for a file-only layout (`95014dca`) and
+  `TBufferJSON` reading a class its table describes (`8b83e603`). `roottest/python` measured
+  **8 PASS / 17 FAIL** and `io/tree` **5 PASS / 12 FAIL** - unchanged in PASS.
+- **Three consecutive rounds at 0 gained (12 commits).** `W0-55` records the conclusion: these groups
+  are features with several walls each, every wall a real ROOT behaviour, so no 50-minute worker can
+  finish one however precisely its first wall is named. **The next iterations take ONE feature per
+  round**, chosen from `W0-52`/`W0-53`, and are judged by the wall they remove and the commit they
+  land. The PASS ledger stays authoritative for what has been achieved (**roottest 1239, non-tutorial
+  1406**) but is no longer a good per-round target.
+- `W0-49` bit twice more this round: another session's uncommitted work (`interp.py`, `buffers.py`,
+  `rdobjects.py`, a test) put a failing test and 99.99% coverage in the tree; it was saved to
+  `/tmp/r20/stray-main-worktree.patch` and `/tmp/r20/stray2.patch` and the gate re-run clean.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -765,6 +782,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 20's result of it, at `f283ae1c`: `TOTAL 116891 0 29140 0 100%`, `12664 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
+  maintainability 30 270 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 19's result of it, at `a12bc98b`: `TOTAL 116782 0 29124 0 100%`, `12652 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
   maintainability 30 236 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -854,6 +874,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 17 | `ba2985b6` | **eight** chains (the machine stayed at a load average of 13-44): `SplitClones`' last answer, bigevent's writer, the evolved class's six stderr DIFFs, the data model's records, `pairEnumEvo`'s listing, the graphics encoders, `TBufferJSON`, and `double32` | **roottest 1233 → 1239, non-tutorial 1400 → 1406** measured in six areas (`/tmp/r17/areas`, `/tmp/r17/check-ev` at `13034109`); the round's own full run is invalid and unquoted (`W0-48`) | 4: `W0-46` closed, `W0-48`, `W0-49` |
 | 18 | `cb5c17e4` | **eight** chains (load average 9-20): the data model, `pairEnumEvo`, `double32`, bigevent's writer, `TBufferJSON`, the graphics encoders, `SplitClones`, and `roottest/python` | **0 gained, 0 lost**: ten areas, 167 tests, three commits that each move a wall without flipping a test (`/tmp/r18/areas` at `--jobs 1`) | 1: `W0-50` - a file-path chain cannot contain a missing behaviour |
 | 19 | `2c6be318` | **eight groups with their whole component in scope** (the rule `W0-50` set): bigevent, `pairEnumEvo`, `io/tree`, the data model, `double32`, the graphics pad, `TBufferJSON`, `roottest/python` | **0 gained, 0 lost again** (`/tmp/r19/areas`, `/tmp/r19/tree`): six commits, each removing one refusal | 3: `W0-51`, `W0-52` (what each group actually needs), `W0-53` |
+| 20 | `1000afdd` | **four** targets, each one change round 19 had named: the ACLiC `NameError` (24 cases of `roottest/python`), `TClass::GetClassVersion` for a file-only layout (11 `io/tree` tests), `TBufferJSON`'s `MEMBERS` entries, and the pad's PostScript counts | **0 gained, 0 lost**: three commits, and both groups measured unchanged in PASS (`/tmp/r20/areas`, `/tmp/r20/tree`) - each fix revealed the group's next wall | 2: `W0-54`, `W0-55` |
 
 ## Notes
 
