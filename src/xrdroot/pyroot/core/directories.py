@@ -257,6 +257,27 @@ class TDirectory(TNamed):
         self.Append(made)
         return made
 
+    def rmdir(self, name: Any) -> None:
+        """``rmdir``: the key ``name`` dropped, a directory with everything below it.
+
+        ROOT looks ``name`` up in this directory's own list, so ``a/b`` and ``..``
+        find nothing, and it drops whatever key answers to it - a histogram as
+        readily as a directory, which is why a name that is not a directory is
+        not an error. A directory that was current leaves this one current;
+        ROOT leaves ``gDirectory`` null there, which a Python script cannot be
+        given.
+        """
+        if not str(name):
+            return
+        found = self.FindObject(str(name))
+        if found is None:
+            return
+        if isinstance(found, TDirectory) and current_directory() is found:
+            set_current(self)
+        self.Remove(found)
+        if isinstance(found, TDirectory):
+            found.Clear()
+
     def IsWritable(self) -> bool:
         return False
 
