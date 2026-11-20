@@ -647,6 +647,9 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - Worker 3's `CompareContent` pair-by-position work is the round's real gain: three `checkWarn*` tests
   and, more importantly, the six stderr DIFFs in `meta/evolution` now fail for a *named* reason - the
   harness compares stdout for an OUTREF test where ROOT merges stderr into it.
+- **The coverage gate flaps under load**: three consecutive `-n 4` runs under a load average above 20
+  each reported 100% coverage of a different single branch missing, and `-n 2` is clean twice. That
+  is a measurement artefact, not a gap - `W0-45` records it so no round adds a test to chase it.
 - Round 16's first chains: the `meta/evolution` stderr question (16 tests, harness + `streamers.py`),
   `pyroot/trees/core.py` + `objects.py` (`SplitClones`' last answer), `interp.py` + `rdobjects.py`
   (the data model), `wdobjects.py` (bigevent), and `reflection.py` (`pairEnumEvo`).
@@ -689,9 +692,11 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
-- Round 15's result of it, at `177f6159`: `TOTAL 116420 0 29072 0 100%`, `12584 passed, 1 skipped,
-  46 xfailed`; `ruff` clean, `mypy` 1017 files, maintainability 30 080 functions, components 0
-  undeclared, `mkdocs build --strict` built.
+- Round 15's result of it, at `177f6159`: `TOTAL 116525 0 29068 0 100%`, `12586 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
+  maintainability 30 090 functions, components 0 undeclared, `mkdocs build --strict` built.
+  **Run it with `-n 2` while this machine is loaded**: at `-n 4` under a load average above 20 the
+  xdist workers lose a test's coverage now and then and the 100% gate flaps (`W0-45`).
 - Round 14's result of it, at `77042aa8`: `TOTAL 116342 0 29012 0 100%`, `12575 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
   maintainability 30 055 functions, components 0 undeclared, `mkdocs build --strict` built.

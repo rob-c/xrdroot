@@ -1021,6 +1021,7 @@ cheap to maintain and impossible to reconstruct.
 | W0-42 | attempted, not merged | - | 0 | workers 2, 4 and 8 reported without a commit and each measured that its chain's wall is outside it (`pyroot/trees/core.py`, `interp.py`, `rdobjects.py`); their reports are `/tmp/r15/wNN.log`. Worker 8 took `io/perf` no further: the buffers pass again at `--jobs 3` and still have only a 40-90 s margin (`W0-39` stands) |
 | W0-43 | todo | | 4 | the CERN endpoint was slow for the whole round: `main/RootcpReadRemote{,CheckOutput,Clean}` and `io/hadd/test_hadd_regr_20872` timed out at `--jobs 1` with nothing else running (`/tmp/r15/net`). They are not code failures and must never be counted as losses without this rerun |
 | W0-44 | todo | | 0 | **the machine is shared**: load averages of 20, then 64, during this round, from another session. Rounds should check `uptime` before choosing `--jobs`, and a round whose load is above ~8 should measure at `--jobs 3` and say so |
+| W0-45 | todo | | 0 | **the coverage gate flaps under load**: three `-n 4` runs at a load average above 20 each missed 100% by one branch in a different file (`pyroot/__init__.py` twice, then `interp.py`), and `-n 2` was clean twice. A round on a loaded machine should run the gate with `-n 2` and not add a test to chase the branch |
 
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
