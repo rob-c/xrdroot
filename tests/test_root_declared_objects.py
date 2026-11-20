@@ -1879,3 +1879,75 @@ def test_a_tbits_member_inside_a_clones_array_element_is_the_bits_it_holds():
     bit = next(iter(back))
     assert type(bit).__name__ == "Bit" and bit.fBits.GetNbits() == 12
     assert [at for at in range(12) if bit.fBits.TestBitNumber(at)] == [2, 4]
+
+
+WHOLE_TREE = r"""
+class Part { public: double fX = 0; int fN = 0; ClassDef(Part, 1) };
+class Whole {
+public:
+   Part fPart;
+   double fY = 0;
+   char fTag[8];
+   TClonesArray *fParts;
+   Whole() : fParts(new TClonesArray("Part", 4)) {}
+   ClassDef(Whole, 1)
+};
+void front(const char *name) {
+   TFile f(name, "RECREATE");
+   TTree t("t", "whole");
+   Whole one;
+   t.Branch("w", &one);
+   for (int i = 0; i < 3; ++i) {
+      one.fY = i * 1.5;
+      one.fPart.fX = i;
+      one.fPart.fN = i + 1;
+      snprintf(one.fTag, 8, "tag%d", i);
+      t.Fill();
+   }
+   t.Write();
+   f.Close();
+}
+"""
+
+
+def test_a_member_of_a_whole_object_is_a_name_a_scan_reads(capsys):
+    # Scan("fY") of a branch of whole Wholes: ROOT's Scan reads a member of the object the
+    # branch holds, which is no branch at all - the same names Draw's formulas resolve.
+    run_source(WHOLE_TREE, "front.C", ("front.root",))
+    back = ROOT.TFile("front.root").Get("t")
+    assert back.Scan("fY", "", "goff") == 3
+    assert back.Scan("fPart.fX", "", "goff") == 3
+    assert back.Scan("fY:fPart.fX") == 3
+    out = capsys.readouterr().out
+    assert "*    Row   *        fY *  fPart.fX *" in out  # both are names ROOT's Scan reads
+    assert out.count("\n*") >= 5  # a header, a rule, three rows and a closing rule
+
+
+def test_show_prints_the_members_of_an_object_the_branch_holds_whole(capsys):
+    # The branch hands back the object's members, not a number, so Show names them one a
+    # line rather than reading one as a number - which it used to fail on.
+    run_source(WHOLE_TREE, "front.C", ("front.root",))
+    back = ROOT.TFile("front.root").Get("t")
+    back.Show(2)
+    shown = capsys.readouterr().out.splitlines()
+    assert shown[0] == "======> EVENT:2"
+    printed = {}
+    for line in shown[1:]:
+        name, _, value = line.partition("=")
+        printed[name.strip()] = value.strip()
+    assert (printed["fY"], printed["fX"], printed["fN"]) == ("3", "2", "3")
+    assert printed["fTag"] == "tag2"  # a char[] member is the text it holds
+
+
+def test_show_prints_a_collection_of_objects_as_a_pointer_not_as_its_tree():
+    # One member's line, as Show makes it: a TClonesArray is ``->`` where a number would be,
+    # and a member nothing can print as a number is that too rather than a crash.
+    from xrdroot.pyroot.trees.printing import _one_member
+
+    class Leaf:
+        name, text, vector, classname, typename = "w", False, False, "TLeafF", "float"
+
+    assert _one_member(Leaf(), "fParts", [{"fX": 1.0}], 1) == " fParts          = ->"
+    assert _one_member(Leaf(), "fStr", "text", 1) == " fStr            = text"
+    assert _one_member(Leaf(), "fY", np.asarray([1.5]), 1) == " fY              = 1.5"
+    assert _one_member(Leaf(), "fNone", None, 1) is None

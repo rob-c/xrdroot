@@ -16,7 +16,7 @@ adds for the size of the branch record itself.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -204,7 +204,60 @@ def show_lines(entry: int, leaves: Sequence[tuple[LeafInfo, Any]]) -> list[str]:
     """What ``TTree::Show`` prints for one entry, given each leaf and its value in it."""
     lines = [f"======> EVENT:{entry}"]
     for leaf, value in leaves:
+        if isinstance(value, Mapping):
+            # A branch that holds a whole object with nothing split out of it hands back the
+            # object's members, not a number: ROOT prints the object's members, one a line.
+            lines += _record_lines(leaf, value)
+            continue
         if not leaf.text and not leaf.vector and np.size(value) == 0:
             continue
         lines.append(f" {leaf.name:<15} = {_joined(leaf, value)}")
     return lines
+
+
+def _numbers_or_text(value: Any) -> bool:
+    """Is this a value ``TLeaf::PrintValue`` can print - numbers, or the text of a ``char[]``?"""
+    flat = np.asarray(value).reshape(-1)
+    return bool(flat.size) and flat.dtype.kind in "biufcUS"
+
+
+def _is_characters(value: Any) -> bool:
+    """Is this a ``char[N]`` as the reader hands one back - a run of ``int8``?"""
+    return isinstance(value, np.ndarray) and value.ndim == 1 and value.dtype == np.int8
+
+
+def _text_of(value: Any) -> str:
+    """The C string a ``char[]`` holds: its bytes up to the first NUL, as ``TLeafC`` reads it."""
+    if isinstance(value, np.ndarray):
+        value = value.tobytes()
+    if isinstance(value, bytes):
+        value = value.split(b"\x00", 1)[0].decode("utf-8", "replace")
+    return str(value)
+
+
+def _record_lines(leaf: LeafInfo, value: Mapping[str, Any], depth: int = 1) -> list[str]:
+    """One object's members as ``Show`` prints them, a base's members where the base is."""
+    lines: list[str] = []
+    for name, held in value.items():
+        if isinstance(held, Mapping):
+            lines += _record_lines(leaf, held, depth + 1)
+            continue
+        one = _one_member(leaf, name, held, depth)
+        if one is not None:
+            lines.append(one)
+    return lines
+
+
+def _one_member(leaf: LeafInfo, name: str, held: Any, depth: int) -> str | None:
+    """One member as ``Show`` prints it: its text, its numbers, or ``->`` for a pointer.
+
+    A collection of objects - a ``TClonesArray`` - is a pointer ROOT prints as ``->`` rather
+    than expanding, and a member that is an object is printed by its own lines instead; Show
+    is one entry's numbers, not the whole tree under it.
+    """
+    marker = f" {'  ' * (depth - 1)}{name:<15} ="
+    if isinstance(held, (str, bytes)) or _is_characters(held):  # a char[] member: its text
+        return f"{marker} {_text_of(held)}"
+    if _numbers_or_text(held):
+        return f"{marker} {_joined(leaf, held)}"
+    return None if held is None or np.size(held) == 0 else f"{marker} ->"

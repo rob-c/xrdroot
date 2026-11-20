@@ -193,6 +193,16 @@ class Table:
         return line + "*"
 
 
+def _whole_of(source: Any, branches: Sequence[str]) -> Any:
+    """The members the tree's whole objects offer, or ``None`` when every name is a branch."""
+    return None if all(name in source for name in branches) else TreeNames(source).whole
+
+
+def _column_of(source: Any, name: str, whole: Any) -> Any:
+    """What a name is read from: a branch, or the whole object a member of it is."""
+    return source[whole.branch(name)] if whole is not None and name in whole else source[name]
+
+
 def _compiled(
     source: Any, names: list[str], selection: str, aliases: Mapping[str, str] | None
 ) -> tuple[list[Formula], Formula | None]:
@@ -209,9 +219,14 @@ def _batches(
     stop = total if entries is None else min(total, first + entries)
     everything = table.formulas + ([table.selection] if table.selection else [])
     branches = list(dict.fromkeys(name for f in everything for name in f.branches))
+    # A scan may name a member of an object the tree holds whole - ``Scan("fTemperature")``
+    # of a branch of Events - which is no branch at all: the members are what the tree's
+    # objects offer, learned the first time an expression reads inside one of them.
+    whole = _whole_of(source, branches)
     for start in range(first, stop, step):
-        read = _Read(source, start, min(start + step, stop), None)
-        columns = {n: _shaped(_underlying(source[n]), read.column(n)) for n in branches}
+        read = _Read(source, start, min(start + step, stop), None, whole)
+        columns = {n: _shaped(_underlying(_column_of(source, n, whole)), read.column(n))
+                   for n in branches}  # fmt: skip
         yield list(table.rows(table.results(columns, read, total), read.numbers))
 
 
