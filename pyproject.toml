@@ -25,14 +25,18 @@ classifiers = [
 # through it. Until these layers are on PyPI the requirement names the
 # repository it comes from; swap it for a version specifier at first release.
 dependencies = [
-  # The transport, at its 0.5.0 release. Its own 0.5.0 dependencies - xrdhttp[s3], xrdsec and
-  # xrdcore - are pinned here from their tags too: all four are released as tags before their
+  # The transport at whichever release the Python can have. 0.5.0 - and 0.4.0 before it - declare
+  # requires-python >= 3.11, where the commit pinned for 3.10 declares >= 3.9; xrdroot still
+  # promises 3.10, so each Python gets the newest transport it can import. The three packages
+  # 0.5.0 needs are pinned from their tags with it: all four are released as tags before their
   # wheels reach PyPI, and a resolver that cannot see them cannot install xrdclient 0.5.0 at all.
-  # Drop the three transitive pins once xrdhttp, xrdsec and xrdcore 0.5.0 are on PyPI.
-  "xrdclient @ git+https://github.com/rob-c/xrdclient@v0.5.0",
-  "xrdhttp[s3] @ git+https://github.com/rob-c/xrdhttp@v0.5.0",
-  "xrdsec @ git+https://github.com/rob-c/xrdsec@v0.5.0",
-  "xrdcore @ git+https://github.com/rob-c/xrdcore@v0.5.0",
+  # Drop those three once xrdhttp, xrdsec and xrdcore 0.5.0 are on PyPI, and this whole split
+  # once xrdroot's floor is 3.11.
+  "xrdclient @ git+https://github.com/rob-c/xrdclient@v0.5.0 ; python_version >= '3.11'",
+  "xrdhttp[s3] @ git+https://github.com/rob-c/xrdhttp@v0.5.0 ; python_version >= '3.11'",
+  "xrdsec @ git+https://github.com/rob-c/xrdsec@v0.5.0 ; python_version >= '3.11'",
+  "xrdcore @ git+https://github.com/rob-c/xrdcore@v0.5.0 ; python_version >= '3.11'",
+  "xrdclient @ git+https://github.com/rob-c/xrdclient@80677788959a18e392576e938b6a943d0fbeb95a ; python_version < '3.11'",
   # Every column, histogram and graph comes back as an array, decoded in C.
   "numpy>=1.22",
 ]
