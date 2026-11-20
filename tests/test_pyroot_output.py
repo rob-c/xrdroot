@@ -283,3 +283,64 @@ def test_the_default_draw_hook_remembers_what_was_drawn():
         assert core.DRAWN[-1] == ("thing", "opt")
     finally:
         hook.install()
+
+
+def _pie_canvas():
+    c = ROOT.TCanvas("pie", "pie", 400, 400)
+    pie = ROOT.TPie("pie1", "a pie", 3, [0.2, 1.1, 0.6], [2, 3, 4])
+    pie.SetCircle(0.5, 0.45, 0.3)
+    pie.SetEntryRadiusOffset(1, 0.1)
+    pie.SetEntryFillStyle(0, 3030)
+    pie.Draw("3d rsc")
+    return c
+
+
+def test_a_pie_is_written_as_the_circle_and_the_slices_the_pad_gave_it(tmp_path):
+    """A pie's constructor is told only how many slices it has; ROOT's macro sets each one."""
+    from xrdroot.pyroot.graphics import macro
+
+    path = tmp_path / "pie.C"
+    _pie_canvas().SaveAs(str(path))
+    written = path.read_text()
+    assert 'TPie *tpie1 = new TPie("pie1", "a pie", 3);' in written
+    assert "tpie1->SetCircle(0.5, 0.45, 0.3);" in written
+    assert "tpie1->GetSlice(1)->SetValue(1.1);" in written
+    assert "tpie1->GetSlice(1)->SetRadiusOffset(0.1);" in written
+    assert "tpie1->GetSlice(0)->SetFillStyle(3030);" in written
+    assert written.index("SetCircle(") < written.index("GetSlice(0)")  # the pie, then its slices
+    assert macro.PIECES["TPie"][0] == "fPieSlices"
+
+
+def test_the_macro_of_a_pie_draws_the_slices_the_pie_was_saved_with(tmp_path):
+    from xrdroot.pycint.execute import run
+
+    path = tmp_path / "pie.C"
+    _pie_canvas().SaveAs(str(path))
+    run(path, use_cache=False)
+    drawn = [o for o, _ in ROOT.gPad.GetCanvas().primitives if o.ClassName() == "TPie"]
+    assert [(one.members["fRadiusOffset"], one.members["fFillStyle"]) for one in
+            drawn[0].members["fPieSlices"]] == [(0.0, 3030), (0.1, 1001), (0.0, 1001)]  # fmt: skip
+
+
+def test_a_pie_of_no_slices_is_written_as_the_count_it_has(tmp_path):
+    """A pie made without values has no slice to give anything to, and is still written."""
+    c = ROOT.TCanvas("empty", "empty", 300, 300)
+    ROOT.TPie("none", "no values", 0).Draw()
+    c.SaveAs(str(tmp_path / "empty.C"))
+    written = (tmp_path / "empty.C").read_text()
+    assert 'TPie *tpie1 = new TPie("none", "no values", 0);' in written
+    assert "GetSlice(" not in written
+
+
+def test_a_pie_made_from_a_histogram_is_written_by_the_slices_the_bins_gave_it(tmp_path):
+    hist = ROOT.TH1F("h", "h", 3, 0.0, 3.0)
+    for at, value in enumerate((1.0, 2.0, 3.0), start=1):
+        hist.SetBinContent(at, value)
+        hist.GetXaxis().SetBinLabel(at, f"bin{at}")
+    c = ROOT.TCanvas("pieh", "pieh", 300, 300)
+    ROOT.TPie(hist).Draw()
+    c.SaveAs(str(tmp_path / "pieh.C"))
+    written = (tmp_path / "pieh.C").read_text()
+    assert 'TPie *tpie1 = new TPie("h", "h", 3);' in written
+    assert 'tpie1->GetSlice(2)->SetTitle("bin3");' in written
+    assert "tpie1->GetSlice(2)->SetValue(3);" in written

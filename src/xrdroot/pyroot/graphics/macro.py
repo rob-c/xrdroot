@@ -40,12 +40,38 @@ CTORS: dict[str, tuple[str, ...]] = {
 }  # fmt: skip
 #: A member only a ``Set`` of its own reaches, which ROOT's macro writes as that ``Set``.
 EXTRAS: dict[str, tuple[tuple[str, str], ...]] = {"TArrow": (("Angle", "fAngle"),)}
+#: A ``Set`` ROOT's macro writes that takes more than one member: a pie's circle is its
+#: centre and its radius together, and its formats are what its labels are made of.
+CALLS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
+    "TPie": (
+        ("Circle", ("fX", "fY", "fRadius")),
+        ("ValueFormat", ("fValueFormat",)),
+        ("LabelFormat", ("fLabelFormat",)),
+        ("PercentFormat", ("fPercentFormat",)),
+        ("FractionFormat", ("fFractionFormat",)),
+        ("LabelsOffset", ("fLabelsOffset",)),
+        ("AngularOffset", ("fAngularOffset",)),
+        ("Height", ("fHeight",)),
+        ("Angle3D", ("fAngle3D",)),
+    ),
+}  # fmt: skip
 #: Each class made from its points, by the members holding its count, its xs and its ys.
 #: ROOT's constructor for these takes the arrays, which a macro spells out by setting
 #: every point in turn: an array literal of a length only the pad knows is not the same
 #: thing to read back, and a point set by name is the one the pad drew.
 POINTS: dict[str, tuple[str, str, str]] = {
     "TPolyLine": ("fN", "fX", "fY"), "TPolyMarker": ("fN", "fX", "fY"),
+}  # fmt: skip
+#: Each class made by its count and then given its pieces one at a time, by the member
+#: holding them and the setters a piece takes: a pie's constructor is told how many slices
+#: it has, and each slice's title, value, offset and fill are then set on it by number.
+#: ROOT's macro writes them through ``GetSlice(i)->Set…``, which is a slice's own setter.
+PIECES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "TPie": (
+        "fPieSlices",
+        ("Title", "Value", "RadiusOffset", "FillColor", "FillStyle",
+         "LineColor", "LineStyle", "LineWidth"),
+    ),
 }  # fmt: skip
 #: The class of a pad inside the canvas, which a macro makes and then draws into.
 PAD = "TPad"
@@ -92,6 +118,22 @@ def _points(obj: Any, classname: str, variable: str) -> list[str]:
     return lines
 
 
+def _pieces(obj: Any, classname: str, variable: str) -> list[str]:
+    """The lines that make ``obj`` and give each of its pieces what the pad gave it."""
+    member, setters = PIECES[classname]
+    pieces = obj.members[member]
+    given = f"{_literal(obj.members['fName'])}, {_literal(obj.members['fTitle'])}"
+    lines = [f"   {classname} *{variable} = new {classname}({given}, {len(pieces)});"]
+    lines += _setters(obj, classname, variable)
+    for at, piece in enumerate(pieces):
+        lines += [
+            f"   {variable}->GetSlice({at})->Set{setter}("
+            f"{_literal(piece.members[f'f{setter}'])});"
+            for setter in setters
+        ]
+    return lines
+
+
 def _made(obj: Any, classname: str, variable: str) -> list[str]:
     """The one line that makes ``obj``: by its constructor, its points, or its place in the pad."""
     if classname in POINTS:
@@ -106,7 +148,7 @@ def _unknown(classname: str) -> None:
     """Refuse a class this has no constructor for, by name, and say what to save instead."""
     from ...errors import UnsupportedFeatureError
 
-    known = ", ".join(sorted({*CTORS, *POINTS, PAD}))
+    known = ", ".join(sorted({*CTORS, *POINTS, *PIECES, PAD}))
     raise UnsupportedFeatureError(
         f"A pad drawing a {classname} is not yet written as the C macro the '.C' name asks "
         f"for: xrdroot writes the calls that draw a pad again for {known}, and knows no "
@@ -122,9 +164,13 @@ def _setters(obj: Any, classname: str, variable: str) -> list[str]:
         for group in obj.groups
         for setter, (member, _style, _kind) in GROUPS[group].items()
     ]
-    return lines + [
+    lines += [
         f"   {variable}->Set{setter}({_literal(obj.members[member])});"
         for setter, member in EXTRAS.get(classname, ())
+    ]
+    return lines + [
+        f"   {variable}->Set{setter}({', '.join(_literal(obj.members[one]) for one in members)});"
+        for setter, members in CALLS.get(classname, ())
     ]
 
 
@@ -132,8 +178,11 @@ def _object(obj: Any, index: int) -> list[str]:
     """The lines that make ``obj``, as ROOT's ``SavePrimitive`` of it would."""
     classname = _classname(obj)
     if classname not in CTORS and classname not in POINTS and classname != PAD:
-        _unknown(classname)
+        if classname not in PIECES:
+            _unknown(classname)
     variable = _variable(index, classname)
+    if classname in PIECES:
+        return _pieces(obj, classname, variable)
     return _made(obj, classname, variable) + _setters(obj, classname, variable)
 
 
