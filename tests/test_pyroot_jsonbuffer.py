@@ -766,6 +766,43 @@ def test_a_text_member_and_a_buffer_of_characters_are_read_back_as_they_are_held
     assert ROOT.TBufferJSON.ConvertFromJSON('{"_typename":"TText","fName":"abc"}').fChar is None
 
 
+def test_a_char_array_is_written_as_one_string_per_row_of_its_own(monkeypatch):
+    """ROOT writes a ``char[N][M]`` as a string per row, and each row ends at its own first
+    NUL: ``test_classes.h``'s ``TJsonEx2::fChar`` is ``[["0123", "1234", "2345"], ...]``,
+    and a row of two characters is that row rather than the start of the one after it."""
+    made = _reading_class(monkeypatch, "TCharRows", (("fChar", "char", "", (2, 3, 4)),))()
+    made.fChar = np.zeros((2, 3, 4), dtype=np.int8)
+    for at, row in enumerate(("0123", "1234", "2", "3456", "4567", "5678")):
+        made.fChar[at // 3][at % 3][: len(row)] = [ord(char) for char in row]
+    assert _json(made) == (
+        '{\n  "_typename" : "TCharRows",\n'
+        '  "fChar" : [["0123", "1234", "2"], ["3456", "4567", "5678"]]\n}'
+    )
+
+
+def test_a_char_array_reads_back_with_each_row_where_his_declaration_puts_it(monkeypatch):
+    """What makes a ``char[N][M]`` member's store/read/store one JSON twice: the rows come
+    back at the width the declaration gives them, each padded with the NULs that end it,
+    rather than as one run of characters the writer would cut into rows again."""
+    made = _reading_class(monkeypatch, "TCharBack", (("fChar", "char", "", (2, 3, 4)),))()
+    made.fChar = np.zeros((2, 3, 4), dtype=np.int8)
+    for at, row in enumerate(("0123", "1234", "2", "3456", "4567", "5678")):
+        made.fChar[at // 3][at % 3][: len(row)] = [ord(char) for char in row]
+    text = _json(made)
+    read = ROOT.TBufferJSON.ConvertFromJSON(text)
+    assert read.fChar.shape == (2, 3, 4)
+    assert read.fChar[0][2].tolist() == [50, 0, 0, 0]
+    assert _json(read) == text
+
+
+def test_a_char_array_written_as_its_code_points_reads_back_as_its_characters(monkeypatch):
+    """A ``char[N]`` whose JSON is the numbers of its characters - which ROOT writes when the
+    member is not text - reads back as the characters they are."""
+    _reading_class(monkeypatch, "TCodes", (("fChar", "char", "", (3,)),))
+    read = ROOT.TBufferJSON.ConvertFromJSON('{"_typename":"TCodes","fChar":[49,50,51]}')
+    assert read.fChar == "123"
+
+
 def test_an_array_of_a_length_the_declaration_leaves_to_run_time_stays_flat(monkeypatch):
     """``int fDyn[n]`` is a length only the object knows, so the array is read as the flat
     one ROOT writes from it rather than as the nested arrays a fixed one is."""

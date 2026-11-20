@@ -578,6 +578,28 @@ def _char_codes(value: Any) -> list[int]:
     return [int(code) for code in np.asarray(value, dtype=np.int8).ravel()]
 
 
+def _char_rows(value: Any, dims: tuple[int | None, ...]) -> Any:
+    """The codes a ``char`` member holds, cut into the rows the declaration gives it: one
+    list of codes per innermost length, nested as deeply as the declaration is.
+
+    ROOT writes a ``char[N][M]`` as one JSON string per row - ``TJsonEx2``'s ``fChar`` is
+    ``[["0123", "1234", "2345"], ...]`` - so the rows are cut here from the object's own
+    nesting rather than from one flattened run of codes: a row that ends in a NUL is shorter
+    than the one beside it, and flattening the two first would shift every row after it.
+    """
+    if len(dims) > 1 and not isinstance(value, str):
+        return [_char_rows(each, dims[1:]) for each in value]
+    return _nest(_char_codes(value), dims, lambda row: row)
+
+
+def _char_strings(rows: Any, depth: int) -> Any:
+    """One JSON string per row of a ``char[N][M]``, at the depth the declaration nests them:
+    the characters up to the row's first NUL."""
+    if depth:
+        return [_char_strings(each, depth - 1) for each in rows]
+    return [_quoted("".join(chr(code) for code in row).split("\0")[0]) for row in rows]
+
+
 def _flat_numbers(value: Any) -> list[Any]:
     """The numbers a JSON array holds, nested as deeply as ROOT wrote it."""
     if isinstance(value, list):
@@ -709,11 +731,9 @@ class _Writer:
     def _char_text(self, value: Any, member: _Member) -> str:
         """A ``char`` array of a declared class: one JSON string up to its first NUL, or - a
         ``char[N][M]``, which ROOT writes as a string per row - the arrays of them."""
-        codes = [chr(code) for code in _char_codes(value)]
         if not _nested_dimensions(member.dims):
-            return _quoted("".join(codes).split("\0")[0])
-        rows = _nest(codes, member.dims,
-                     lambda group: _quoted("".join(group).split("\0")[0]))  # fmt: skip
+            return _quoted("".join(chr(code) for code in _char_codes(value)).split("\0")[0])
+        rows = _char_strings(_char_rows(value, member.dims), len(member.dims) - 2)
         return _list_text(rows, self._layout.item_comma)
 
     def _texts(self, member: _Member, value: Any, depth: int) -> str:
@@ -1078,7 +1098,11 @@ def _converted(member: _Member, value: Any) -> Any:
 def _converted_text(member: _Member, value: Any) -> Any:
     """What a member of text, of an array of it, or of characters holds."""
     if member.kind == "chars":
-        return "".join(chr(code) for code in _char_codes(value))
+        if not _nested_dimensions(member.dims):
+            return "".join(chr(code) for code in _char_codes(value))
+        rows = np.zeros(member.dims, dtype=np.int8)
+        _place_chars(rows, value)
+        return rows
     if member.kind == "tstrings":
         return _converted_tree(value)
     if member.kind in ("strings", "strptrs"):
@@ -1086,6 +1110,22 @@ def _converted_text(member: _Member, value: Any) -> Any:
     if member.kind in ("cstring", "strptr"):
         return None if value is None else str(value)
     return "" if value is None else str(value)
+
+
+def _place_chars(placed: Any, rows: Any) -> None:
+    """The characters of a ``char[N][M]``'s JSON - one string per row, nested as the
+    declaration nests them - into ``placed``, the buffer the member is.
+
+    A row is cut at the width its declaration gives it, and what it does not fill stays the
+    NUL a C buffer holds there, which is what the writer reads back as its shorter string.
+    """
+    if placed.ndim == 1:
+        codes = [ord(char) for char in rows]
+        kept = codes[: placed.shape[0]]
+        placed[: len(kept)] = kept
+        return
+    for row, each in zip(placed, rows, strict=False):
+        _place_chars(row, each)
 
 
 def _converted_tree(value: Any) -> Any:
