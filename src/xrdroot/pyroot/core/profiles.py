@@ -63,8 +63,7 @@ class _Profiled:
         count = self.DIM + 1
         given = [float(value) for value in args[:count]]
         weight = float(args[count]) if len(args) > count else 1.0
-        self._xrd.fill(*given, weight=None if weight == 1.0 else weight)
-        return int(self._xrd.find_bin(*given[: self.DIM]))
+        return int(self._xrd.fill_one(given, None if weight == 1.0 else weight))
 
     def FillN(self, ntimes: int, x: Any, y: Any, w: Any = None, stride: int = 1) -> None:
         count = int(ntimes)

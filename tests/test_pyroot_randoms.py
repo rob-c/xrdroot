@@ -29,6 +29,16 @@ def test_each_generator_is_the_xrdroot_one_of_its_name(cls):
     )
 
 
+def test_a_uniform_drawn_one_at_a_time_is_the_one_the_column_holds():
+    """``Uniform`` of one number is the column's arithmetic done on one draw, and the stream
+    must not be able to tell the difference: the same seed gives the same numbers either way."""
+    for parameters in ((1.0,), (10.0,), (2.5, 7.25), (-3, 4)):
+        one_at_a_time, column = ROOT.TRandom3(4242), ROOT.TRandom3(4242)
+        drawn = [one_at_a_time.Uniform(*parameters) for _ in range(64)]
+        together = column.Uniform(parameters[0], parameters[1] if len(parameters) > 1 else None, 64)
+        expect(*zip([float(value) for value in together], drawn, strict=True))
+
+
 def test_every_distribution_root_offers():
     r = ROOT.TRandom3(4357)
     expect(

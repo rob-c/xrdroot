@@ -406,6 +406,12 @@ class TRandom:
 
     def uniform(self, a: Any = 1.0, b: Any = None, n: Count = None) -> Any:
         """``Uniform(a)`` in ]0, a[, or ``Uniform(a, b)`` in ]a, b[."""
+        if n is None and isinstance(a, (int, float)) and (b is None or isinstance(b, (int, float))):
+            # One number, drawn one at a time: the arithmetic is the array arithmetic of
+            # two floats, which is what a loop over a histogram's fills costs ten million
+            # times over, done without the array.
+            draw = self._next()
+            return float(a * draw) if b is None else float(a + (b - a) * draw)
         if b is None:
             count, shape = _count(n, a)
             return _shaped(_float(a) * _like(self._take(count), shape), shape)
