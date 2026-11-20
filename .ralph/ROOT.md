@@ -709,6 +709,24 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - Round 19's candidates, one per round now: `io/bigevent` (16), `pairEnumEvo` (4 + 40 near-misses),
   the data model (7), `double32` (7), `io/tree` (11), the graphics pad (3), `jsonbuffer` (6).
 
+## Round 19's close (recorded here for the next iteration)
+
+- Base `2c6be318`, closed at `a12bc98b`. Six commits landed from eight whole-component groups,
+  **0 tests gained and 0 lost** in the measured areas (`/tmp/r19/areas`, `/tmp/r19/tree`).
+- **Two rounds at zero is a measurement of the work, not of the loop.** `W0-52` now records, from the
+  eight reports, exactly what each remaining group needs: a layout model for bigevent's template
+  member, ROOT's `fStreamerInfos` index bookkeeping for `pairEnumEvo`, one line in
+  `pyroot/core/reflection.py:GetClassVersion` for `io/tree`, four things for `double32` (`W0-53`),
+  the pad's PostScript character counts at ±50 in `canvas/` for the graphics tests, `MEMBERS` entries
+  for `jsonbuffer`, and one ACLiC `NameError` in `pycint/library/loading.py` that blocks 24 cases of
+  `roottest/python`.
+- **The most valuable next step is the cheapest one already measured**: the `NameError` (24 cases)
+  and the `GetClassVersion` line (11 tests) are each one change in a named file. The rest are
+  days-scale features, and the ledger now says so instead of hoping a 50-minute worker will find them.
+- A conflicted cherry-pick left conflict markers in `pyroot/core/declared.py` for a while - the
+  documented catastrophe. It was resolved by hand in `bdc4a2cc`, and a stray `libTD.xrdlib` was kept
+  out of the tree. `git status` before every gate run is not optional.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -747,6 +765,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 19's result of it, at `a12bc98b`: `TOTAL 116782 0 29124 0 100%`, `12652 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
+  maintainability 30 236 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 18's result of it, at `6ae78a7a`: `TOTAL 116689 0 29096 0 100%`, `12634 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
   maintainability 30 208 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -832,6 +853,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 16 | `df6d9833` | **one chain**, not sixteen (the machine stayed at a load average of 9-36): the harness's `STOREOUT` rule and a build-tree `OUTREF` - ROOT stores every roottest's output as `<build>/<name>.log` and the next test reads it, which xrdroot never did | **roottest 1230 → 1233, non-tutorial 1397 → 1400** (`/tmp/r16/final2`, `/tmp/r16/final1` at `2dad75a7`, `--jobs 3`), 3 in, 0 lost | 3: `W0-46`, `W0-47`, plus the `W0-40` closure |
 | 17 | `ba2985b6` | **eight** chains (the machine stayed at a load average of 13-44): `SplitClones`' last answer, bigevent's writer, the evolved class's six stderr DIFFs, the data model's records, `pairEnumEvo`'s listing, the graphics encoders, `TBufferJSON`, and `double32` | **roottest 1233 → 1239, non-tutorial 1400 → 1406** measured in six areas (`/tmp/r17/areas`, `/tmp/r17/check-ev` at `13034109`); the round's own full run is invalid and unquoted (`W0-48`) | 4: `W0-46` closed, `W0-48`, `W0-49` |
 | 18 | `cb5c17e4` | **eight** chains (load average 9-20): the data model, `pairEnumEvo`, `double32`, bigevent's writer, `TBufferJSON`, the graphics encoders, `SplitClones`, and `roottest/python` | **0 gained, 0 lost**: ten areas, 167 tests, three commits that each move a wall without flipping a test (`/tmp/r18/areas` at `--jobs 1`) | 1: `W0-50` - a file-path chain cannot contain a missing behaviour |
+| 19 | `2c6be318` | **eight groups with their whole component in scope** (the rule `W0-50` set): bigevent, `pairEnumEvo`, `io/tree`, the data model, `double32`, the graphics pad, `TBufferJSON`, `roottest/python` | **0 gained, 0 lost again** (`/tmp/r19/areas`, `/tmp/r19/tree`): six commits, each removing one refusal | 3: `W0-51`, `W0-52` (what each group actually needs), `W0-53` |
 
 ## Notes
 
