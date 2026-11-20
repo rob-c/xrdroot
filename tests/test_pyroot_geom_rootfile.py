@@ -285,3 +285,69 @@ def test_a_volume_of_no_solid_at_all_is_a_volume_of_no_solid() -> None:
     members = _members()
     members["fVolumes"][0]["fShape"] = None
     expect((rootfile._built(members).GetVolume("WORLD").GetShape(), None))
+
+
+def test_a_geometry_read_from_a_file_is_written_back_as_the_file_it_came_from(
+    tmp_path: Any,
+) -> None:
+    """What ``Export`` writes is the record the geometry was read from, so reading it back
+    gives the same tree: the export ``roottest/root/io/geo`` asks for of every geometry it
+    imports."""
+    target = tmp_path / "exported.export.root"
+    read = ROOT.TGeoManager.Import(str(GEOMETRY))
+    expect((read.Export(str(target)), 1))
+    written = ROOT.TGeoManager.Import(str(target))
+    expect((written.GetTitle(), read.GetTitle()),
+           (written.GetTopVolume().GetName(), read.GetTopVolume().GetName()),
+           (written.GetListOfVolumes().GetEntries(), read.GetListOfVolumes().GetEntries()),
+           (written.GetListOfMaterials().GetEntries(),
+            read.GetListOfMaterials().GetEntries()),
+           (written.GetListOfMedia().GetEntries(), read.GetListOfMedia().GetEntries()))
+
+
+def test_what_export_writes_is_read_by_rown_as_the_geometry_that_went_in(
+    tmp_path: Any,
+) -> None:
+    """The file is ROOT's own: it describes the classes it holds, so ROOT rebuilding the
+    manager from it counts the nodes the geometry had."""
+    target = tmp_path / "counted.export.root"
+    read = ROOT.TGeoManager.Import(str(GEOMETRY))
+    read.Export(str(target))
+    written = ROOT.TGeoManager.Import(str(target))
+    expect((written.GetVolume("WORLD").GetNdaughters(),
+            read.GetVolume("WORLD").GetNdaughters()),
+           (written.GetVolume("PIPE").GetShape().GetKind()
+            if isinstance(written.GetVolume("PIPE").GetShape(), rootfile.TGeoImportedShape)
+            else type(written.GetVolume("PIPE").GetShape()).__name__,
+            type(read.GetVolume("PIPE").GetShape()).__name__))
+
+
+def test_a_geometry_made_in_memory_is_refused_by_name_and_told_what_to_do(
+    tmp_path: Any,
+) -> None:
+    """A manager built by hand is only the tree xrdroot models, which is not what ROOT's
+    ``TGeoManager`` streams: writing it would be a file ROOT misreads."""
+    made = ROOT.TGeoManager("made", "in memory")
+    with pytest.raises(UnsupportedFeatureError, match=r"made in memory.*\.gdml instead"):
+        made.Export(str(tmp_path / "made.export.root"))
+
+
+def test_an_xml_file_name_is_refused_for_the_flavour_of_root_file_it_names(
+    tmp_path: Any,
+) -> None:
+    """ROOT writes a ``.xml`` name as its own format in XML, which xrdroot writes no
+    flavour of; the refusal says so, and names both files that would work."""
+    with pytest.raises(UnsupportedFeatureError,
+                       match=r"XML flavour.*\.root, or export the geometry to .*\.gdml"):
+        ROOT.TGeoManager("made", "in memory").Export(str(tmp_path / "made.xml"))
+
+
+def test_a_streamed_record_is_written_as_the_bytes_it_was_read_with() -> None:
+    """The record counts every length inside itself from its own start, so nothing of it
+    depends on the key in front: the writer is handed the same bytes, and the descriptions
+    the source file gave the classes, whatever key it is written under."""
+    carried = {("TGeoManager", 1): b"a layout"}
+    streamed = rootfile._Streamed("TGeoManager", "a geometry", b"\x00\x01\x02", carried)
+    expect((streamed.root_payload(0), (b"\x00\x01\x02", (), carried)),
+           (streamed.root_payload(4096), (b"\x00\x01\x02", (), carried)),
+           ((streamed.classname, streamed.title), ("TGeoManager", "a geometry")))

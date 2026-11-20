@@ -182,7 +182,7 @@ def test_the_current_geometry_is_there_only_once_one_is_made() -> None:
     [(lambda g: g.CreateParallelWorld("p"), "CreateParallelWorld needs ROOT's geometry navigator"),
      (lambda g: g.MakePhysicalNode("/TOP_1"), "MakePhysicalNode"),
      (lambda g: g.CheckOverlaps(0.1), "CheckOverlaps"), (lambda g: g.FindNode(0, 0, 0), "FindNode"),
-     (lambda g: g.Export("g.root"), "'g.root' was not written"),
+     (lambda g: g.Export("g.root"), "made in memory"),
      (lambda g: ROOT.TGeoManager.Import(str(DATA / "tgeometry-small-6.40.root")),
       "holds no TGeoManager"),
      (lambda g: g.GetElementTable(), "RadioNuclides.txt"),

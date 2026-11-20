@@ -25,6 +25,8 @@ from typing import Any
 import numpy as np
 
 from ...errors import UnsupportedFeatureError
+from ...streamers import read_layouts
+from ...writer import create, info_entry
 from ..core.files import TFile
 from .manager import TGeoManager
 from .materials import TGeoMaterial, TGeoMedium, TGeoMixture
@@ -44,7 +46,7 @@ from .shapes import (
 )
 from .volumes import TGeoVolume
 
-__all__ = ["from_file"]
+__all__ = ["from_file", "to_file"]
 
 #: The solid kinds xrdroot has ROOT's class for, and the members of ROOT's file that class is
 #: made from, in its constructor's order.
@@ -132,7 +134,76 @@ def from_file(filename: str) -> TGeoManager:
             f"geometry it holds is not there to be built; write the geometry as GDML and read "
             f"that instead"
         )
-    return _built(members)
+    return _recorded(_built(members), reading, key, read)
+
+
+def _recorded(manager: TGeoManager, reading: Any, key: Any, read: Any) -> TGeoManager:
+    """The manager, told which record it was read from, so ``Export`` can write it again.
+
+    What a ``TGeoManager`` is, is thirty-odd members ROOT streams for the class itself: its
+    materials, media, solids, matrices, volumes and the placements between them, each the
+    object the file described it as. Reading one rebuilds the tree xrdroot answers
+    questions with; the record it was read from - the key's own bytes, and the descriptions
+    the file described those classes with - is what makes it that geometry again, and
+    writing those into a new file is what ``TGeoManager::Export`` does with a geometry, and
+    ``roottest/root/io/geo`` exports nothing else. Saying the same bytes again one member at
+    a time is what the writer would cost for them: 3.1M records and 108 s for e907's 16722
+    nodes, where the file already holds the record.
+    """
+    source = reading._reading._source
+    manager._recorded = (str(key.GetName()), str(read.GetTitle()), key._key.payload(source),
+                         read_layouts(source))
+    return manager
+
+
+class _Streamed:
+    """A record another file streamed, written out as it was read - what ``root_payload``
+    hands the writer, where :class:`~.wdobjects.DeclaredObject` has members to lay out."""
+
+    def __init__(self, classname: str, title: str, payload: bytes,
+                 carried: dict[tuple[str, int], bytes]) -> None:
+        self.classname = classname
+        self.title = title
+        self.payload = payload
+        self.carried = carried
+
+    def root_payload(
+        self, keylen: int
+    ) -> tuple[bytes, tuple[str, ...], dict[tuple[str, int], bytes]]:
+        """The record's bytes, ROOT's classes it reached - which it names itself - and the
+        descriptions the file it came from described them with.
+
+        ``keylen`` is what the record knows of the key in front of it, and ROOT's
+        ``TGeoManager`` needs nothing of one: every byte count inside the record is counted
+        from the record's own start, which is why the same bytes are the same geometry under
+        any name.
+        """
+        return self.payload, (), self.carried
+
+
+def to_file(manager: Any, filename: str) -> int:
+    """``manager``, written as the ROOT file ``filename`` names - what ``Export`` writes.
+
+    The record is the one the geometry was read from, written out again by the descriptions
+    the source file described its classes with, which the new file carries too, so that it is
+    read back by ROOT as the geometry that went in. A geometry made in memory has no such
+    record - nothing but the tree xrdroot models, which is not what ROOT's ``TGeoManager``
+    streams - so writing one is refused by name rather than faked.
+    """
+    recorded = manager._recorded
+    if recorded is None:
+        raise UnsupportedFeatureError(
+            f"TGeoManager::Export writes a geometry read from a file back as the ROOT file it "
+            f"came from, and {manager.GetName()} was made in memory, so its TGeoManager "
+            f"record is not one xrdroot can write; export the geometry to {filename}.gdml "
+            f"instead"
+        )
+    name, title, payload, layouts = recorded
+    carried = {(classname, version): info_entry(classname, sum_, version, elements)
+               for classname, ((sum_, version, elements),) in layouts.items()}
+    with create(filename, title=title) as writing:
+        writing.write(name, _Streamed("TGeoManager", title, payload, carried))
+    return 1
 
 
 def _manager_key(reading: Any, filename: str) -> Any:

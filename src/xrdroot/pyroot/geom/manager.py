@@ -79,6 +79,9 @@ class TGeoManager(Makers, TNamed):
         }
         self._top: Any = None
         self._loaded: tuple[int, int, int, int] | None = None
+        #: The name, title and members of the file this geometry was read from, and the
+        #: layouts that file described its classes with - what ``Export`` writes back.
+        self._recorded: tuple[str, str, dict[str, Any], dict[str, Any]] | None = None
         self._settings = {"nsegments": 20, "vislevel": 3, "visoption": 1, "topvisible": False}
         self._closed = False
         self._painter = TVirtualGeoPainter()
@@ -322,10 +325,12 @@ class TGeoManager(Makers, TNamed):
         """``Export``: the geometry written as the file ``filename`` names.
 
         A ``.gdml`` name is written by ``TGDMLWrite`` as ROOT's ``Export`` does, and
-        read back by ``Import``. A ``.root`` or ``.xml`` one asks the ROOT file writer
-        for a ``TGeoManager`` record, which xrdroot's writer does not carry yet, and
-        ``.C`` one for a C++ script - both are refused by name, since writing a file
-        ROOT would misread is worse than saying so.
+        read back by ``Import``. A ``.root`` one is the geometry read from a file written
+        out again - ROOT's ``TGeoManager`` record as that file streamed it; a geometry made
+        in memory has no such record and is refused by name. A ``.xml`` name is the XML
+        flavour of ROOT's file format, which xrdroot does not write, and a ``.C`` one a C++
+        script - both are refused by name, since writing a file ROOT would misread is worse
+        than saying so.
         """
         from ...geom.gdml import write
         from .gdmlwrite import geometry_of
@@ -342,12 +347,19 @@ class TGeoManager(Makers, TNamed):
                 f"geometry - ROOT's TGeoVolume::SaveAs - and xrdroot.pyroot does not write "
                 f"geometry as C++ code; export the geometry to {target[:-2]}.gdml instead"
             )
-        raise UnsupportedFeatureError(
-            f"TGeoManager::Export writes a .root or .xml name as a ROOT file holding the "
-            f"geometry, whose TGeoManager record xrdroot's writer does not carry a layout "
-            f"for yet, so {target!r} was not written; export the geometry to "
-            f"{target}.gdml instead"
-        )
+        if target.endswith(".xml"):
+            raise UnsupportedFeatureError(
+                f"TGeoManager::Export writes a .xml name as the XML flavour of ROOT's own "
+                f"file format - the same TGeoManager record TXMLFile streams as text - and "
+                f"xrdroot's writer writes ROOT's binary flavour only, so {target!r} was not "
+                f"written; name the file {target[:-4]}.root, or export the geometry to "
+                f"{target}.gdml instead"
+            )
+        from .rootfile import to_file
+
+        _said("TGeoManager::Export", f"Exporting {self.GetName()} {self.GetTitle()} as "
+                                     f"root file")
+        return to_file(self, target)
 
 
 def current_manager() -> TGeoManager:

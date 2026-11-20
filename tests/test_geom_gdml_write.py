@@ -168,7 +168,7 @@ def test_exporting_a_geometry_with_no_top_volume_is_refused() -> None:
 def test_a_root_file_name_is_refused_with_what_to_do_instead() -> None:
     manager = ROOT.TGeoManager("exported", "a root file")
     _built(manager)
-    with pytest.raises(UnsupportedFeatureError, match=r"not written.*\.gdml instead"):
+    with pytest.raises(UnsupportedFeatureError, match=r"made in memory.*\.gdml instead"):
         manager.Export("/tmp/exported.export.root")
 
 
