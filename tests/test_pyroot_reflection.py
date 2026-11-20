@@ -815,3 +815,63 @@ def test_an_emulated_classs_second_layout_takes_the_next_number():
     _evo("int", "one.root")
     ROOT.TFile("one.root")
     assert _free_version("Evo", 1, {1}) == 2
+
+
+#: A file's layout of a versioned class, naming the member ``int myvar_one`` where the class
+#: in memory declares ``double mydouble_two`` - ``roottest``'s ``checkWarn``, whose class is
+#: given a version of its own in each macro.
+ON_FILE_INT = ("TStreamerBasicType", "myvar_one", "", 3, 4, 1, 0, (0, 0, 0, 0, 0), "int", ())
+
+
+def _renamed_class(name, spelling):
+    run_source(VERSED.replace("Versed", name).replace("int a = 1", f"{spelling} = 1"),
+               f"{name}.C", call=False)  # fmt: skip
+
+
+def test_a_member_the_file_names_differently_is_set_against_the_class_s_own(capfd):
+    """``roottest``'s ``checkWarn`` opens a file recording ``int myvar_one`` where the class in
+    memory declares ``double mydouble_two``: ROOT pairs the two members by where each comes,
+    not by name, and sets the two declarations out."""
+    _renamed_class("Renamed", "double mydouble_two")
+    reflection.note_file_infos([("Renamed", (0x1234567, 1, (ON_FILE_INT,)))], "data1.root")
+    printed = capfd.readouterr().err
+    assert "Warning in <TStreamerInfo::BuildCheck>:" in printed
+    assert "   int myvar_one; //\nvs\n   double mydouble_two; //" in printed
+
+
+def test_a_member_named_in_both_layouts_is_never_paired_by_position(capfd):
+    """A file that names a member the class has is set against that member, so a layout with
+    one member the class shares and one it does not names only the one it cannot read."""
+    run_source(VERSED, "versed.C", call=False)
+    somewhere = (*ON_FILE_INT[:1], "b", *ON_FILE_INT[2:])
+    reflection.note_file_infos([("Versed", (0x1234567, 1, (LONG64, somewhere)))], "one.root")
+    printed = capfd.readouterr().err
+    assert "   Long64_t a; //\nvs\n   int a; //" in printed
+    assert "myvar_one" not in printed
+
+
+def test_a_layout_the_class_in_memory_disowns_is_listed_as_roots_file_layout(capfd):
+    """A file's layout of a version the class in memory also has, with a checksum of its own,
+    stays the class's current one - ROOT warns the class should be given the next version
+    rather than replacing it - and is listed with each element set against nothing: a type a
+    hundred above the file's own, no new type, and the missing offset."""
+    reflection.note_file_infos([("Owned", (0x589374F7, 1, (ON_FILE_INT,)))], "data1.root")
+    _renamed_class("Owned", "double mydouble_two")
+    info = ROOT.TClass.GetClass("Owned").GetStreamerInfo()
+    assert (info.GetCheckSum(), info.GetClassVersion()) == (0x589374F7, 1)
+    info.ls()
+    printed = capfd.readouterr().out
+    assert "checksum=0x589374f7" in printed
+    assert "  int            myvar_one       offset=99999 type= 3 newtype=-1" in printed
+    assert "   i= 0, myvar_one       type=103, offset=99999, len=1, method=0" in printed
+
+
+def test_a_class_whose_members_a_file_names_alike_lists_them_at_their_offsets(capfd):
+    """The class in memory's own layout - the one ROOT builds - is listed with each element's
+    offset and the action it is read with, and a file's layout that agrees with it changes
+    nothing."""
+    run_source(VERSED, "versed.C", call=False)
+    reflection.note_file_infos([("Versed", (0x1234, 1, (AS_WIDE,)))], "one.root")
+    ROOT.TClass.GetClass("Versed").GetStreamerInfo().ls()
+    printed = capfd.readouterr().out
+    assert "offset=  0 type= 3" in printed and "newtype" not in printed

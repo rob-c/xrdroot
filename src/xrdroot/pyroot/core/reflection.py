@@ -61,6 +61,10 @@ FILE_INFOS: dict[str, list[Layout]] = {}
 #: which ROOT warns of once per class, however many files its layouts are read from.
 DISAGREED: set[str] = set()
 
+#: ``TStreamerElement``'s ``kMissingOffset``: the offset ROOT gives an element of a file's
+#: layout it cannot set against the class in memory.
+_MISSING_OFFSET = 99999
+
 #: The numeric types a member can be declared with, whose width - and not whose spelling -
 #: is what ROOT compares: they are as wide on every machine ROOT builds on.
 NUMBERS = frozenset({
@@ -669,6 +673,18 @@ class TClass(TNamed):
         """
         return self.IsVersioned() and not _synthetic_pair(self._name)
 
+    def _current_layout(self) -> Layout | None:
+        """The layout ROOT keeps as the class's current one: the class's own as it is in
+        memory, or, where a file has already given a layout of that version a checksum of its
+        own, the file's - which ROOT keeps as that version's and warns over instead of
+        replacing, saying the class should be given the next version.
+        """
+        current = self._layout()
+        if current is None:
+            return self._file_layout()
+        return next((info for info in FILE_INFOS.get(self._name, [])
+                     if info[1] == current[1] and info[0] != current[0]), current)
+
     def GetStreamerInfo(self, version: int = 0) -> TStreamerInfo | None:
         """``GetStreamerInfo``: the layout of the class in memory - or, given a version, the
         layout of that version, from a file read if it is not the one in memory.
@@ -677,16 +693,17 @@ class TClass(TNamed):
         gave it, and ROOT builds what it hands back - so its elements are listed with the
         action each is read with - where a layout it merely lists stays unbuilt.
         """
-        current = self._layout()
-        emulated = current is None
-        if emulated:
-            current = self._file_layout()
+        mine = self._layout()
+        emulated = mine is None
+        current = self._current_layout()
         if current is not None and version in (0, current[1]):
-            return TStreamerInfo(self._name, current, built=True, versioned=self._versioned())
+            return TStreamerInfo(self._name, current, built=True, versioned=self._versioned(),
+                                 from_file=current is not mine)
         found = [i for i in FILE_INFOS.get(self._name, []) if i[1] == version]
         if not found:
             return None
-        return TStreamerInfo(self._name, found[0], built=emulated, versioned=self._versioned())
+        return TStreamerInfo(self._name, found[0], built=emulated, versioned=self._versioned(),
+                             from_file=True)
 
     def FindStreamerInfo(self, checksum: int) -> TStreamerInfo | None:
         """``FindStreamerInfo``: the layout with that checksum, in memory or read."""
@@ -1022,8 +1039,10 @@ class TStreamerInfo(TNamed):
 
     CLASS_TITLE = "Streamer information for one class version"
 
-    def __init__(self, name: Any = "", info: tuple[int, int, tuple[Element, ...]] | None = None,
-                 built: bool = False, versioned: bool = True) -> None:  # fmt: skip
+    def __init__(
+        self, name: Any = "", info: tuple[int, int, tuple[Element, ...]] | None = None,
+        built: bool = False, versioned: bool = True, from_file: bool = False,
+    ) -> None:  # fmt: skip
         TNamed.__init__(self, str(name), "")
         self._checksum, self._version, elements = info if info is not None else (0, 1, ())
         self._elements = [element_of(e) for e in elements]
@@ -1031,6 +1050,7 @@ class TStreamerInfo(TNamed):
             element._on_file = not built
         self._built = built
         self._versioned = versioned
+        self._from_file = from_file
 
     def GetClass(self) -> TClass:
         return TClass(self._name)
@@ -1064,18 +1084,34 @@ class TStreamerInfo(TNamed):
     def IsCompiled(self) -> bool:
         return self._built
 
+    def _unmatched(self) -> bool:
+        """Are the elements listed as ROOT lists those of a file's layout it cannot set
+        against the class in memory - the class having a layout of that version now, with a
+        checksum the file's does not have?
+
+        ROOT then marks each element with no counterpart as a pointer to what the file
+        recorded - a type a hundred above the file's own - its offset missing, and no new
+        type, which is what ``checkWarn`` reads back.
+        """
+        mine = TClass(self._name)._layout()
+        return self._from_file and mine is not None and mine[0] != self._checksum
+
     def ls(self, option: str = "") -> None:
         """``ls``: ROOT's ``StreamerInfo for class`` line, each element, and - for the layout
         in memory, which ROOT builds - the actions each element is read with."""
         version = f", version={self._version}" if self._versioned else ""
+        unmatched = self._unmatched()
         print(f"\nStreamerInfo for class: {self._name}{version}, checksum={self._checksum:#x}")
         for element in self._elements:
-            element.ls(option)
+            element.ls(option, unmatched)
         if not self._built:
             return
         for index, element in enumerate(e for e in self._elements):
-            print(f"   i={index:2d}, {element.GetName():<15} type={element.GetType():3d}, "
-                  f"offset={0:3d}, len={max(1, element.GetArrayLength())}, method=0")  # fmt: skip
+            kind = element.GetType() + (100 if unmatched else 0)
+            offset = _MISSING_OFFSET if unmatched else 0
+            length = max(1, element.GetArrayLength())
+            print(f"   i={index:2d}, {element.GetName():<15} type={kind:3d}, "
+                  f"offset={offset:3d}, len={length}, method=0")  # fmt: skip
 
 
 #: ``TVirtualStreamerInfo``: the interface ``TStreamerInfo`` fills in.
@@ -1160,10 +1196,17 @@ class TStreamerElement(TNamed):
     def _sequence(self) -> str:
         return ""
 
-    def ls(self, option: str = "") -> None:
-        """``ls``: the element's line of a ``TStreamerInfo`` listing."""
-        print(f"  {self._typename:<14} {self.GetFullName():<15} offset={0:3d} "
-              f"type={self._stype:2d} {self._sequence()}{self._title:<20}")  # fmt: skip
+    def ls(self, option: str = "", unmatched: bool = False) -> None:
+        """``ls``: the element's line of a ``TStreamerInfo`` listing.
+
+        An element of a file's layout the class in memory cannot be set against - one
+        ``unmatched`` says so of the whole layout - is listed at ROOT's missing offset, with
+        no new type.
+        """
+        where = f"offset={_MISSING_OFFSET}" if unmatched else f"offset={0:3d}"
+        new = "newtype=-1 " if unmatched else ""
+        print(f"  {self._typename:<14} {self.GetFullName():<15} {where} "
+              f"type={self._stype:2d} {new}{self._sequence()}{self._title:<20}")  # fmt: skip
 
 
 class TStreamerBase(TStreamerElement):
@@ -1173,9 +1216,11 @@ class TStreamerBase(TStreamerElement):
     def GetBaseVersion(self) -> int:
         return int(str(self._extras[0])) if self._extras else 0
 
-    def ls(self, option: str = "") -> None:
-        print(f"  {self._name:<14} {'BASE':<15} offset={0:3d} "
-              f"type={self._stype:2d} {self._title:<20}")  # fmt: skip
+    def ls(self, option: str = "", unmatched: bool = False) -> None:
+        where = f"offset={_MISSING_OFFSET}" if unmatched else f"offset={0:3d}"
+        new = "newtype=-1 " if unmatched else ""
+        print(f"  {self._name:<14} {'BASE':<15} {where} "
+              f"type={self._stype:2d} {new}{self._title:<20}")  # fmt: skip
 
 
 class TStreamerBasicType(TStreamerElement):
@@ -1225,9 +1270,11 @@ class TStreamerSTL(TStreamerElement):
         nodelete = self.GetSTLtype() in (4, 5, 12, 13) or self.GetCtype() == 63
         return " (nodelete) " if nodelete and self._on_file else ""
 
-    def ls(self, option: str = "") -> None:
-        print(f"  {self._typename:<14} {self.GetFullName():<15} offset={0:3d} "
-              f"type={self._stype:2d} stl={self.GetSTLtype()} ctype={self.GetCtype()} "
+    def ls(self, option: str = "", unmatched: bool = False) -> None:
+        where = f"offset={_MISSING_OFFSET}" if unmatched else f"offset={0:3d}"
+        new = "newtype=-1 " if unmatched else ""
+        print(f"  {self._typename:<14} {self.GetFullName():<15} {where} "
+              f"type={self._stype:2d} {new}stl={self.GetSTLtype()} ctype={self.GetCtype()} "
               f"{self._sequence()}{self._title:<20}")  # fmt: skip
 
 
