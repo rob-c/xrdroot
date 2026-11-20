@@ -41,6 +41,7 @@ def body(source: str) -> str:
             "s = ROOT.std.unordered_multiset['int']([1, 2, 2])",
         ),
         ("forward_list<double> f = {1.5, 2.5};", "f = ROOT.std.forward_list['double']([1.5, 2.5])"),
+        ("bitset<16> b = 0xfa2;", "b = ROOT.std.bitset[16](4002)"),
         ("ROOT::RVecF v{1., 2.};", "v = ROOT.RVecF([1.0, 2.0])"),
         ("RVecD v = {1., 2.};", "v = ROOT.RVecD([1.0, 2.0])"),
         ("TLorentzVector v[2];", "v = array('TLorentzVector', 2, make=ROOT.TLorentzVector)"),
