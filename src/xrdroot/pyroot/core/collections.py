@@ -17,10 +17,16 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Any
 
+from ...cppstd.containers import TEMPLATES as _TEMPLATES
 from .objects import Indent, TNamed, TObject
 from .strings import TString
 
+#: The ``std::`` templates cppyy gives by a bare C++ name too - a macro's ``list<Track>`` is
+#: ``ROOT.list['Track']`` - and this kit's table of them is that list of names.
+BARE_TEMPLATES = tuple(_TEMPLATES)
+
 __all__ = [
+    *BARE_TEMPLATES,
     "TCollection",
     "TSeqCollection",
     "TList",
@@ -38,6 +44,8 @@ __all__ = [
 
 #: Not ROOT's name, so not in the namespace; what ``GetListOfFunctions`` hands back.
 _PRIVATE = ["FunctionList"]
+
+
 #: ``TObject::kSingleKey``: a collection written under one key, rather than a key an object.
 SINGLE_KEY = 1 << 0
 
@@ -51,6 +59,22 @@ def _named_by(obj: Any, option: str) -> None:
     """``Add(obj, option)``'s option, which names the object ROOT is about to add."""
     if option and hasattr(obj, "SetName"):
         obj.SetName(option)
+
+
+def __getattr__(name: str) -> Any:
+    """``ROOT.list`` and its kin: the ``std::`` template of that name, of the element type
+    asked for.
+
+    They are answered here and not assigned above because ``list``, ``map``, ``set`` and
+    ``pair`` are Python's own names, and every ``list(...)`` and ``set(...)`` in this module
+    means the builtin's; a module's ``__getattr__`` is asked only for what its globals do not
+    hold, so the two keep to themselves. Anything else is an ``AttributeError``, which is how
+    the namespace reads "not here".
+    """
+    made = _TEMPLATES.get(name)
+    if made is not None:
+        return made
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class TCollection(TObject):

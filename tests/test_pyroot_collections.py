@@ -483,3 +483,30 @@ def test_a_clones_array_is_told_the_class_its_slots_hold():
     assert clones.GetClass().GetName() == "TLine"
     clones.SetClass(ROOT.TNamed("TH1F", ""))
     assert clones.GetClass().GetName() == "TH1F"
+
+
+def test_a_bare_std_name_is_the_std_template_pyroot_gives():
+    """PyROOT resolves a bare ``list``, ``map`` and their kin to the ``std::`` template of
+    that name, which is how a translated macro's ``list<Track>`` reaches the namespace."""
+    from xrdroot.cppstd.containers import TEMPLATES
+
+    held = ROOT.list[int]()
+    held.push_back(3)
+    held.push_front(1)
+    expect(
+        (list(held), [1, 3]),
+        (ROOT.list[int] is TEMPLATES["list"][int], True),
+        (ROOT.map[str, int] is TEMPLATES["map"][str, int], True),
+        (ROOT.vector[float] is TEMPLATES["vector"][float], True),
+        (ROOT.pair[int, int].__cpp_name__, "pair<int,int>"),
+    )
+
+
+def test_a_name_that_is_no_std_template_is_not_here():
+    """Every other name is an ``AttributeError``, which is how the namespace reads "not
+    here" - a refusal would turn each lookup of it into a failure."""
+    import xrdroot.pyroot.core.collections as collections
+
+    for missing in ("no_such_template", "_private"):
+        with pytest.raises(AttributeError, match="has no attribute"):
+            getattr(collections, missing)
