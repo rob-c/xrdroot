@@ -1241,6 +1241,7 @@ def test_a_hatch_takes_its_colour_where_this_matplotlib_keeps_one(monkeypatch):
         return real(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", missing)
+    shapes._hatch_colour.cache_clear()  # an answer given before is not this import's
     assert shapes._hatch_colour() == "hatchcolor"
 
 

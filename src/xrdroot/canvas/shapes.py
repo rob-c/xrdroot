@@ -10,6 +10,7 @@ does anyway.
 from __future__ import annotations
 
 import math
+from functools import cache
 from typing import Any
 
 import numpy as np
@@ -211,7 +212,7 @@ def patch_style(scene: Scene, prim: Any, outline: bool = True) -> dict[str, Any]
         made["facecolor"] = filled["facecolor"]
         if filled["hatch"]:
             made["hatch"] = filled["hatch"]
-            made[_HATCH_COLOUR] = filled["hatchcolor"]
+            made[_hatch_colour()] = filled["hatchcolor"]
     return made
 
 
@@ -223,21 +224,21 @@ def _filled(scene: Scene, prim: Any, patch: Any) -> None:
     shade(scene, patch, lookup(prim, "fFillColor", 0))
 
 
+@cache
 def _hatch_colour() -> str:
     """The keyword a hatch takes its colour from in this matplotlib.
 
     ``hatchcolor`` came in matplotlib 3.10; before it a hatch is drawn in the
-    patch's edge colour, which is where ROOT's fill colour goes instead.
+    patch's edge colour, which is where ROOT's fill colour goes instead. Asked
+    when a patch is drawn rather than when this module is imported: importing
+    matplotlib to answer it would cost every command a quarter of a second to
+    learn something only a hatched fill needs.
     """
     try:
         from matplotlib.patches import Patch
     except ImportError:
         return "hatchcolor"
     return "hatchcolor" if hasattr(Patch, "set_hatchcolor") else "edgecolor"
-
-
-#: What a patch's hatch colour is called here.
-_HATCH_COLOUR = _hatch_colour()
 
 
 def box(scene: Scene, prim: Primitive, _option: str) -> None:
