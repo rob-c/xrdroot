@@ -534,7 +534,30 @@ class _Writer:
         self.record(element[8], value)
 
     def _pointed(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
+        """``T *member``, or the array of them ``T *member[N]``, which ROOT describes as that
+        same pointer element with no array offset on its type and the N it holds as its
+        length - the oracle gives ``TAxis *fVaxis[3]`` type 64, ``kObjectP``, a length of 3
+        and three as its maximum index - writing one pointer per element, in turn.
+
+        Read as the one pointer such an element otherwise looks like, the array would be the
+        single tag of the first element's object and nothing of the other two.
+        """
         classname = element[8].rstrip("*")
+        length = int(element[5])  # the N of the array, which a lone pointer has none of
+        if not length:
+            self._one_pointer(element, classname, value)
+            return
+        held = list(() if value is None else value)
+        if len(held) > length:
+            raise ValueError(
+                f"{element[1]} holds {len(held)} pointers where its array has room for {length}"
+            )
+        for one in (*held, *(None for _ in range(length - len(held)))):
+            self._one_pointer(element, classname, one)
+
+    def _one_pointer(self, element: Element, classname: str, value: Any) -> None:
+        """One pointer of such an element: the object in place, where the comment promises it
+        is never null, or the tag naming the class it points at - a zero where it is null."""
         if element[3] in (63, 68):  # promised never null: in place, as if held by value
             self.record(classname, value)
         else:

@@ -1539,6 +1539,54 @@ def test_a_counted_pointer_holding_fewer_objects_than_the_count_is_refused():
             buf, Instance("Probe", {"TObject": {}, "fN": 2, "fP": [{"fX": 1}]}), made)
 
 
+def _a_class_holding_an_array_of_pointers(comment: str) -> Catalogue:
+    """``Point *f[2]`` - the array of pointers ROOT describes as the one pointer element with
+    the two it holds as its length, and no array offset on its type."""
+    return Catalogue({
+        "Point": Declaration("Point", 1, False, (), (Field("fX", "Int_t", "x", ()),)),
+        "Holder": Declaration("Holder", 1, False, ("TObject",), (
+            Field("f", "Point*", comment, (2,)),)),
+    })  # fmt: skip
+
+
+def test_an_array_of_pointers_an_arrow_owns_is_written_one_record_after_another():
+    """An array of ``Point *f[2]; //->`` is described as type 68, the pointer written in place
+    as if held by value, so ROOT writes each element's record and the array's length says how
+    many there are."""
+    made = _a_class_holding_an_array_of_pointers("-> owned")
+    _version, _sum, elements = made.info("Holder")[0:3]
+    assert elements[1][:4] == ("TStreamerObjectAnyPointer", "f", "-> owned", 68)
+    assert elements[1][4:9] == (16, 2, 1, (2, 0, 0, 0, 0), "Point*")
+    buf = WBuffer()
+    write_instance(buf, Instance("Holder", {"TObject": {}, "f": [{"fX": 11}, {"fX": 22}]}),
+                   made)  # fmt: skip
+    # Two ``Point`` records, the version word and the version, then ``fX``: no tag of a class
+    # in front of either, since the layout already says the elements are points.
+    assert bytes(buf.data).endswith(bytes.fromhex(
+        "40000006" "0001" "0000000b" "40000006" "0001" "00000016"))
+
+
+def test_an_array_of_pointers_with_no_arrow_is_written_with_a_tag_each():
+    """``Point *f[2]`` with no comment is type 69, the pointer ROOT writes as the tag naming
+    the class it points at, or four zero bytes where it is the null one - one such pointer per
+    element of the array, and a slot the object holds no pointer for written as the null."""
+    made = _a_class_holding_an_array_of_pointers("")
+    assert made.info("Holder")[2][1][3] == 69
+    buf = WBuffer()
+    write_instance(buf, Instance("Holder", {"TObject": {}, "f": [{"fX": 16}]}), made)
+    assert bytes(buf.data).endswith(bytes.fromhex(
+        "40000014" "ffffffff" "506f696e7400" "40000006" "0001" "00000010" "00000000"))
+
+
+def test_an_array_of_pointers_holding_more_pointers_than_it_has_room_for_is_refused():
+    """The array in the layout is a number of pointers, so more than it says is a row this
+    writer cannot lay out rather than a longer record."""
+    made = _a_class_holding_an_array_of_pointers("")
+    buf = WBuffer()
+    with pytest.raises(ValueError, match=r"f holds 3 pointers where its array has room for 2"):
+        write_instance(buf, Instance("Holder", {"TObject": {}, "f": [None, None, None]}), made)
+
+
 def test_a_class_spelled_with_a_space_where_a_streamer_names_it_is_the_same_class():
     """A declaration spells a template instance as C++ writes it,
     ``template2<template1<int> >``, while a streamer names the very class
