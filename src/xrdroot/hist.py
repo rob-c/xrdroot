@@ -24,6 +24,7 @@ from .booking import axis_members as _axis
 from .display import Displayed
 from .draw import bar, missing_picture, shade
 from .errors import FormatError, UnsupportedFeatureError
+from .filling import ONE_NAMES, _one_names
 from .function.attached import listed
 from .rootarrays import ARRAYS
 
@@ -262,7 +263,8 @@ class Histogram(Displayed):
     and the projections make a new one and leave this as it was.
     """
 
-    __slots__ = ("classname", "members", "axes", "_core", "_home", "_key", "_widths", "_homes")
+    __slots__ = ("classname", "members", "axes", "_core", "_home", "_key", "_widths", "_homes",
+                 "_term_homes")  # fmt: skip
 
     def __init__(self, classname: str, members: dict[str, Any]) -> None:
         core, contents = _core(members), _contents(members)
@@ -342,6 +344,24 @@ class Histogram(Displayed):
         _moment_homes(self.members, found)
         self._homes = (self.members, self._core, found)
         return found
+
+    def _moment_terms(self) -> tuple[tuple[dict[str, Any], str], ...]:
+        """Each moment an entry of this histogram adds to, with the dictionary holding it, in
+        the order :func:`~.filling.one_terms` names them - kept beside the homes.
+
+        A loop of fills adds to them an entry at a time, and a name looked up in the homes for
+        every term of every entry costs more than the additions do.
+        """
+        kept: tuple[Any, Any, tuple[tuple[dict[str, Any], str], ...]] | None = getattr(
+            self, "_term_homes", None
+        )
+        if kept is not None and kept[0] is self.members and kept[1] is self._core:
+            return kept[2]
+        homes = self._moment_homes()
+        names = ONE_NAMES.get(len(self.axes)) or _one_names(len(self.axes))
+        terms = tuple((homes[name], name) for name in names)
+        self._term_homes = (self.members, self._core, terms)
+        return terms
 
     def _moment_names(self) -> tuple[str, ...]:
         """The moments ROOT's ``GetStats`` gives for this class, in its order."""

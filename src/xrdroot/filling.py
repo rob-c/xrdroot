@@ -272,18 +272,19 @@ def fill_one(histogram: Histogram, coordinates: Sequence[float], weight: float) 
     if squares is not None:
         squares[cell] += weight * weight
     if inside:
-        _add_one_terms(histogram._moment_homes(), weight, coordinates)
+        _add_one_terms(histogram._moment_terms(), weight, coordinates)
     return cell
 
 
 def _add_one_terms(
-    homes: dict[str, dict[str, Any]], weight: float, coordinates: Sequence[float]
+    terms: Sequence[tuple[dict[str, Any], str]], weight: float, coordinates: Sequence[float]
 ) -> None:
     """:func:`one_terms` added to the moments each belongs to, without the list of them.
 
     The same values in the same order as :func:`one_terms` and :func:`_add_one` together,
     which is what an entry of a column adds; a loop of fills asks for it a million times
-    over and the list of pairs costs more than the additions do.
+    over, and both the list of pairs and the homes looked up by name cost more than the
+    additions do.
     """
     values = [weight, weight * weight]
     for value in coordinates:
@@ -291,9 +292,7 @@ def _add_one_terms(
     for first in range(len(coordinates)):
         for second in range(first + 1, len(coordinates)):
             values.append(weight * coordinates[first] * coordinates[second])
-    names = ONE_NAMES.get(len(coordinates)) or _one_names(len(coordinates))
-    for name, value in zip(names, values, strict=True):
-        home = homes[name]
+    for (home, name), value in zip(terms, values, strict=True):
         home[name] = float(home[name]) + value
 
 
