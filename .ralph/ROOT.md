@@ -748,7 +748,7 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 
 - Base `57940f19`, closed at `02f37c6e`. Four commits, **one feature**, as `W0-55` set: `Event::fTemplateMember`
   (`template2<template1<int>>`) is now declared, described, written and read (`67d08e8e`, `5b3c58f9`,
-  `d84f3e7f`, `ac2c...`/`ac2 41de`), one file per worker.
+  `d84f3e7f`, `ac2541de`), one file per worker.
 - **The wall is gone even though no PASS moved.** `io/bigevent`'s dictionary and library now build and the group
   measures **2 PASS / 0 FAIL / 2 UNSUPPORTED** (`/tmp/r21/ev2`), its refusal moved from the template member to
   `a TArrayI is not something this writer puts in a ROOT file` (`W0-57`). That is the unit `W0-55` asks a round
