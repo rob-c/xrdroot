@@ -24,6 +24,7 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from .buffer import Listed, Written
 from .errors import UnsupportedFeatureError
 from .interp import MEMBER_WISE
 from .wdeclared import (
@@ -59,6 +60,13 @@ COMPLEX_PREFIX = "complex<"
 #: The names a string of C++'s owns, which a ``kStreamLoop`` member holds as text - the rest
 #: of what such a member can hold being objects.
 STRING_NAMES = ("TString", "string", "basic_string")
+
+#: ROOT's collections that stream themselves rather than by the layout a file describes them
+#: with - so one read back out of a file is the entries and the name it held, not members - and
+#: the class whose ``Streamer`` writes each of them, whose version the record carries.
+#: ``THashList`` derives from ``TList`` and overrides nothing, so a file that numbers its own
+#: ``THashList`` layout at 0 still writes version 5 of ``TList`` in front of its entries.
+STREAMED_COLLECTIONS = {"TObjArray": "TObjArray", "TList": "TList", "THashList": "TList"}
 
 
 class Clones(NamedTuple):
@@ -147,6 +155,9 @@ class _Writer:
         if isinstance(value, Clones):
             self._clones(value)
             return
+        if isinstance(value, (Written, Listed)):
+            self.streamed(classname, value)
+            return
         if self.catalogue.declared(classname) is None:
             self._root_record(classname, value)
             return
@@ -184,6 +195,59 @@ class _Writer:
             if item is not None:
                 self.record(clones.classname, item)
         self.buf.end(at)
+
+    def streamed(self, classname: str, value: Any) -> None:
+        """``TObjArray::Streamer`` and ``TList::Streamer``: a version, the ``TObject``, the name
+        the collection was given, how many entries it holds - and the lower bound a
+        ``TObjArray`` keeps - then each entry naming the class it was read as, with a
+        ``TList``'s option after it.
+
+        A collection read out of a file is the entries it held, not the members its layout
+        describes - ROOT writes it by hand, which is why its description says nothing about
+        the bytes of one - so writing the entries back is what makes it a collection again.
+        ``buffer.Written`` keeps no lower bound and ``buffer.Listed`` no name, so those go out
+        as the empty ones a freshly made array and list start with. Which record is written
+        follows what was read, since that is where the shape is: an array is an array of
+        entries and a list is entries with the option each was added under.
+        """
+        held = STREAMED_COLLECTIONS.get(classname)
+        listed = isinstance(value, Listed)
+        if held is None or (held == "TList") != listed:
+            raise UnsupportedFeatureError(
+                f"a {classname} read out of a file is written back only where it is one of "
+                f"ROOT's collections that stream themselves - "
+                f"{', '.join(sorted(STREAMED_COLLECTIONS))} - and its entries are objects of "
+                f"classes that file describes; write what you want as the object of the "
+                f"class holding it instead"
+            )
+        at = self.buf.start(INFOS[held][1])
+        self.buf.tobject()
+        self.buf.string(str(getattr(value, "name", "")))
+        self.buf.i32(len(value))
+        if listed:
+            for item, option in zip(value, value.options, strict=True):
+                self.streamed_item(item)
+                self.buf.string(str(option))
+        else:
+            self.buf.i32(0)  # fLowerBound, which reading an array does not keep
+            for item in value:
+                self.streamed_item(item)
+        self.buf.end(at)
+
+    def streamed_item(self, item: Any) -> None:
+        """One entry of such a collection: a zero where the slot was empty, or the object
+        naming the class the file said it was, which is how those entries are read."""
+        if item is None:
+            self.buf.u32(0)
+            return
+        named = str(getattr(item, "classname", ""))
+        if not named:
+            raise UnsupportedFeatureError(
+                f"an entry of a collection read out of a file is written back only where it "
+                f"names the class the file said it was, and a {type(item).__name__} does not; "
+                f"write the collection this reader made of the file instead"
+            )
+        self.pointer(named, item)
 
     def members(self, classname: str, members: Mapping[str, Any]) -> None:
         for element in self.catalogue.info(classname)[2]:
@@ -246,15 +310,24 @@ class _Writer:
         self.buf.raw(text)
 
     def _counted(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
+        """``x[n]``: the marker byte, then the values it says are there.
+
+        Nothing to write is the marker alone, whatever the counter says: the counter is a
+        member of its own, so a null pointer whose class still says how long it would be is
+        written as that marker and no values, which is how ROOT writes one and how reading a
+        file gives it back.
+        """
         counter = str(element[9][1])
         count = int(_number(members.get(counter, 0)))
         values = list(_numbers(value))[:count] if value is not None else []
+        if not values:
+            self.buf.u8(0)
+            return
         if len(values) < count:
             held = len(values)
             raise ValueError(f"{element[1]} holds {held} values where {counter} says {count}")
-        self.buf.u8(1 if count else 0)
-        if count:
-            self.buf.raw(pack_member(element[3] - OFFSET_P, element[2], _numeric(values)))
+        self.buf.u8(1)
+        self.buf.raw(pack_member(element[3] - OFFSET_P, element[2], _numeric(values)))
 
     def _tstring(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
         self.buf.string(_text(value))
