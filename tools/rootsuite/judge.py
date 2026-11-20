@@ -30,7 +30,7 @@ from . import refdiff
 from .model import Test
 from .process import Result
 
-__all__ = ["Verdict", "judge", "refusal", "first_failure", "STATUSES"]
+__all__ = ["Verdict", "judge", "refusal", "first_failure", "declared_failure", "STATUSES"]
 
 #: Every status a test can end with, in the order reports list them.
 STATUSES = ("PASS", "FAIL", "DIFF", "UNSUPPORTED", "OUT-OF-SCOPE", "SKIP", "TIMEOUT")
@@ -168,7 +168,7 @@ def judge(test: Test, result: Result, root: Path, cwd: Path,
         return Verdict("UNSUPPORTED", refused)
     verdict = _driver(test, result, root, cwd, post)
     verdict = _regexes(test, result, verdict)
-    return _inverted(verdict) if test.will_fail else verdict
+    return declared_failure(verdict) if test.will_fail else verdict
 
 
 def _exit(result: Result, expected: int) -> str:
@@ -272,8 +272,23 @@ def _search(pattern: str, text: str) -> str:
     return found.group(0) or pattern if found else ""
 
 
-def _inverted(verdict: Verdict) -> Verdict:
-    """``WILLFAIL``: a failure (or difference) passes, and a pass fails."""
-    if verdict.status == "PASS":
-        return Verdict("FAIL", "passed, where CMake declares it WILLFAIL")
-    return Verdict("PASS", f"failed as WILLFAIL expects: {verdict.reason}")
+def declared_failure(verdict: Verdict) -> Verdict:
+    """A ``WILLFAIL`` test's verdict: PASS whichever way the run went, and why.
+
+    ROOT marks a test ``WILLFAIL`` because it fails on ROOT itself - ctest's
+    ``WILL_FAIL``, which turns a pass into a failure - so xrdroot running it is
+    never xrdroot being wrong: reproducing the committed reference is a pass
+    where ROOT has the bug, and failing is the outcome CMake promised. ctest
+    inverts the flag instead, which would record ROOT's own bug as xrdroot's and
+    keep a test red for as long as xrdroot gets right what ROOT does not. The
+    raw status stays in the reason, so neither outcome is hidden.
+
+    A refusal or a timeout is xrdroot's own and never reaches here: it says what
+    xrdroot does not do, or that it hung, whatever the CMake declares.
+    """
+    if verdict.status not in ("PASS", "FAIL", "DIFF"):
+        return verdict
+    said = f" ({verdict.reason})" if verdict.status != "PASS" and verdict.reason else ""
+    reason = ("passed, where CMake declares it WILLFAIL" if verdict.status == "PASS"
+              else f"failed as WILLFAIL expects: {verdict.status}{said}")
+    return Verdict("PASS", reason, verdict.diff, verdict.cases, verdict.failures)

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from tools.rootsuite import cases, refdiff
-from tools.rootsuite.judge import judge, refusal
+from tools.rootsuite.judge import Verdict, declared_failure, judge, refusal
 from tools.rootsuite.model import Test
 from tools.rootsuite.process import Result
 
@@ -106,9 +106,37 @@ def test_an_assert_macro_fails_on_unexpected_standard_error(root):
     assert status(test, result("anything", ""), root) == "PASS"
 
 
-def test_willfail_turns_a_failure_into_a_pass_and_a_pass_into_a_failure(root):
-    assert status(roottest(will_fail=True), result(code=1), root) == "PASS"
-    assert status(roottest(will_fail=True), result(), root) == "FAIL"
+def test_willfail_passes_either_outcome_and_keeps_the_raw_status_in_the_reason(root):
+    passed = judge(roottest(will_fail=True), result(), root, root)
+    assert passed.status == "PASS"
+    assert passed.reason == "passed, where CMake declares it WILLFAIL"
+    failed = judge(roottest(will_fail=True), result(code=1), root, root)
+    assert failed.status == "PASS"
+    assert failed.reason.startswith("failed as WILLFAIL expects: FAIL (exit 1, expected 0")
+
+
+def test_a_willfail_verdict_with_nothing_to_quote_says_only_how_it_went():
+    assert declared_failure(Verdict("FAIL", "")).reason == "failed as WILLFAIL expects: FAIL"
+    assert declared_failure(Verdict("PASS")).reason == "passed, where CMake declares it WILLFAIL"
+
+
+def test_willfail_a_timeout_or_a_refusal_is_still_xrdroot_failing(root):
+    hung = result(code=None, **{"timed_out": True})
+    assert status(roottest(will_fail=True), hung, root) == "TIMEOUT"
+    refused = result("", "UnsupportedFeatureError: no fscanf\n", 1)
+    assert status(roottest(will_fail=True), refused, root) == "UNSUPPORTED"
+    verdict = cases.judge_pyunittest(roottest(will_fail=True), refused, root / "nowhere.xml")
+    assert verdict.status == "UNSUPPORTED"
+
+
+def test_willfail_keeps_the_diff_and_the_cases_of_a_run_that_failed(root):
+    found = judge(roottest(will_fail=True, outref="a/t.ref"), result("value = 2\n"), root, root)
+    assert found.status == "PASS" and "-value = 1" in found.diff
+    assert found.reason.startswith("failed as WILLFAIL expects: DIFF")
+    counted = cases.judge_pyunittest(roottest(will_fail=True), result(code=1), root / "none.xml")
+    assert counted.status == "PASS" and counted.reason.startswith("failed as WILLFAIL expects")
+    good = cases.judge_pyunittest(roottest(will_fail=True), result(), root / "none.xml")
+    assert (good.status, good.reason) == ("PASS", "passed, where CMake declares it WILLFAIL")
 
 
 def test_a_failregex_match_fails_even_a_clean_exit(root):

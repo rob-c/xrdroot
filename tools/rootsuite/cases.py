@@ -13,7 +13,7 @@ import re
 import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 
-from .judge import Verdict, refusal
+from .judge import Verdict, declared_failure, refusal
 from .model import Test
 from .process import Result
 
@@ -101,9 +101,7 @@ def judge_pyunittest(test: Test, result: Result, junit_path: Path) -> Verdict:
         return Verdict("TIMEOUT", f"still running after {result.runtime:.0f} s", cases=counts)
     verdict = _verdict(result, counts, messages)
     verdict.cases = counts
-    if test.will_fail and verdict.status in ("PASS", "FAIL"):
-        verdict.status = "FAIL" if verdict.status == "PASS" else "PASS"
-    return verdict
+    return declared_failure(verdict) if test.will_fail else verdict
 
 
 def _verdict(result: Result, counts: dict[str, int], messages: list[str]) -> Verdict:
