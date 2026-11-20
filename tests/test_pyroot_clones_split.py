@@ -10,12 +10,15 @@ this was written); here it is read back by xrdroot both ways.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 import xrdroot
 import xrdroot.pyroot as ROOT
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.trees import objects
+from xrdroot.pyroot.trees.objectinfo import object_info
 from xrdroot.wbranch import CloneMember, SplitClones, clones_members
 from xrdroot.wclasses import declared
 
@@ -270,3 +273,74 @@ def test_a_split_collection_of_a_class_of_roots_names_it_and_carries_nothing():
     split = SplitClones("TLine", split=2)
     assert split.declared() == ()
     assert "TLine" in split.classes()
+
+
+class _A:
+    """``roottest``'s ``io/references`` ``A``: a ``TObject`` with one whole ``TRef`` member."""
+
+    _cxx_layout_ = ("A", ("TObject",), (("_o", "TRef", "", ()),))
+
+
+def _declared_in_cxx(monkeypatch, cls: Any) -> None:
+    """``cls`` as the interpreter holds a class a macro declared, which is what ``find_class``
+    searches - the translation registers every class it makes there."""
+    from xrdroot.pycxx.runtime.namespace import DECLARED
+
+    monkeypatch.setitem(DECLARED, str(cls._cxx_layout_[0]), cls)
+
+
+def test_a_clones_array_of_a_macros_class_is_split_by_the_declaration_it_carries(monkeypatch):
+    """``roottest``'s ``io/references/lotsRef`` asks for a ``TClonesArray`` of a macro's ``A``
+    at split level 3, and the array names its class as a string no description answers for:
+    the class is one the translation declared, so it is split member by member off that
+    declaration - the ``TObject`` part first, then the reference - and not refused.
+    """
+    _declared_in_cxx(monkeypatch, _A)
+    held = ROOT.TClonesArray("A", 1)
+    kind = objects._kind(held, 3)
+    assert isinstance(kind, objects.SplitArray)
+    assert [member.name for member in kind.members] == ["fUniqueID", "fBits", "_o"]
+    assert kind.members[-1].typename == "TRef"  # the leaf names it, the branch does not
+    spec = kind.spec(held, 3, 32000)
+    assert spec.declared() == (declared(_A),)
+    assert spec.build("C1", 32000).info.clones == "A"
+
+
+def test_a_clones_array_of_a_class_root_has_is_still_split_by_name(monkeypatch):
+    """A class ROOT describes itself is split by that description, whether or not a macro
+    declared one of the same name: ``INFOS`` is what the file's classes are read from."""
+    _declared_in_cxx(monkeypatch, _A)
+    held = ROOT.TClonesArray("TNamed")
+    kind = objects._kind(held, 3)
+    assert isinstance(kind, objects.SplitArray) and kind.element == "TNamed"
+
+
+def test_a_split_array_writes_its_numbers_and_strings_as_the_entries_hold_them(monkeypatch):
+    """Every kind whose rows are numbers or strings hands its columns to the writer as they
+    are; only a row holding another class's object needs anything done to it."""
+    kind = objects.Macro()
+    columns = {"a": 1}
+    assert kind.written(["a"], columns) is columns
+
+
+def test_a_member_that_is_one_whole_object_is_refused_when_a_split_array_is_written():
+    """ROOT writes a whole ``TRef`` member of a split ``TClonesArray`` as that object's record,
+    and nothing here writes another class's record into a tree entry: the refusal names the
+    member rather than failing on a column of bytes that are never made.
+    """
+    split = objects.SplitArray(declared(_A))
+    keys = ["C1", "C1.fUniqueID", "C1.fBits", "C1._o"]
+    columns = split.columns(keys, [((0, 0, None),)])
+    with pytest.raises(UnsupportedFeatureError, match=r"holds _o, a whole TRef of its own"):
+        split.written(keys, columns)
+
+
+def test_a_whole_object_members_leaf_is_typed_by_that_members_class():
+    """``TLeafElement::GetTypeName`` of ``C1._o`` is ``TRef``, as ROOT prints it: the branch
+    names the class that owns the member - ``A`` - so the member's own class travels on the
+    leaf, where nothing of the record could hold it."""
+    split = SplitClones(declared(_A), split=2)
+    holder = type("Slot", (), {"name": "C1", "spec": lambda self: split})()
+    info = object_info(holder, None, 1, False)
+    leaves = {child.name: child.leaves[0].typename for child in info.children}
+    assert leaves["C1._o"] == "TRef" and leaves["C1.fBits"] == "UInt_t"

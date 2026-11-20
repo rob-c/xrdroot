@@ -151,10 +151,21 @@ class ElementLeaf:
     """A ``TLeafElement``: what one branch of an object holds, by its ``fID`` and ``fType``."""
 
     def __init__(
-        self, name: str, title: str, lentype: int, fid: int, ftype: int, count: Any = None
+        self,
+        name: str,
+        title: str,
+        lentype: int,
+        fid: int,
+        ftype: int,
+        count: Any = None,
+        typename: str = "",
     ) -> None:
         self.name, self.title, self.lentype = name, title, lentype
         self.fid, self.ftype, self.count = fid, ftype, count
+        #: The member's class when the member is a whole object of its own - ``TRef`` - which
+        #: ``TLeafElement::GetTypeName`` says of it. The branch's record cannot: ROOT writes
+        #: the class that *owns* the member there, so the name is kept beside it, unwritten.
+        self.typename = typename
 
     def write(self, buf: WBuffer, refs: LeafRefs) -> None:
         at = buf.tag("TLeafElement")
@@ -177,6 +188,9 @@ class ElementLeaf:
 
 class ObjectLeaf:
     """A ``TLeafObject``: the leaf of a ``TBranchObject``, titled with the object's class."""
+
+    #: A ``TLeafObject`` is titled with its class rather than typed by a member's.
+    typename = ""
 
     def __init__(self, name: str, classname: str) -> None:
         self.name, self.classname = name, classname
@@ -687,6 +701,10 @@ class CloneMember(NamedTuple):
     title: str
     checksum: int = 0
     version: int = 0
+    #: The member's own class when the member is a whole object of its own - ``TRef`` - which
+    #: ``TLeafElement::GetTypeName`` names and the branch's record does not: ROOT writes the
+    #: class that owns the member there.
+    typename: str = ""
 
 
 def clones_members(element: str | Layout) -> list[CloneMember]:
@@ -716,7 +734,7 @@ def _layout_members(layout: Layout) -> list[CloneMember]:
         found += clones_members(base.name)
     for fid, member in enumerate(layout.members):
         found.append(CloneMember(layout.name, fid, member.name, member.stype, member.title,
-                                 layout.checksum, layout.version))  # fmt: skip
+                                 layout.checksum, layout.version, member.typename))  # fmt: skip
     return found
 
 
@@ -774,7 +792,7 @@ class SplitClones(Spec):
             0 if member.stype in (TSTRING, BITS_TYPE, OBJECT) else BASIC[member.stype][1]
         )
         column: Any = _column(name, member, size)
-        leaf = ElementLeaf(name, title, width, member.fid, member.stype, count)
+        leaf = ElementLeaf(name, title, width, member.fid, member.stype, count, member.typename)
         return Branch(name, title, 0, column, [leaf], info)
 
     def classes(self) -> tuple[str, ...]:

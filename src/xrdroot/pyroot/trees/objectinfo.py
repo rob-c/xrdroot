@@ -83,7 +83,7 @@ def _info(branch: Branch, entries: int, written: bool) -> BranchInfo:
 
 def _leaf(branch: Branch, leaf: Any) -> LeafInfo:
     """One leaf of a branch of objects, read by its branch's name."""
-    typename = _typename(branch)
+    typename = leaf.typename or _typename(branch)
     classname = "TLeafObject" if isinstance(branch, ObjectBranch) else "TLeafElement"
     return LeafInfo(
         leaf.name,

@@ -46,8 +46,9 @@ from ...wbranch import (
     column_keys,
     vector_of,
 )
-from ...wclasses import declared, harvested
+from ...wclasses import Layout, declared, harvested
 from ...wcolumns import StreamedColumn
+from ...winfo import INFOS
 from ...wobjects import named, stream, stream_clones
 from ...writer import WBuffer
 from .store import OBJECT
@@ -81,6 +82,11 @@ class Kind:
         """A column per key from entries that are each a tuple of numbers, one per key."""
         table = np.asarray(entries, dtype=np.float64).reshape(len(entries), len(keys))
         return {key: table[:, at] for at, key in enumerate(keys)}
+
+    def written(self, keys: list[str], columns: dict[str, Any]) -> dict[str, Any]:
+        """Those columns as the writer takes them, which for most kinds is as the entries
+        hold them; a kind whose rows are whole objects streams them first."""
+        return columns
 
 
 class Macro(Kind):
@@ -274,11 +280,12 @@ class Clones(_Whole):
 class SplitArray(Kind):
     """A ``TClonesArray`` split: how many objects each entry holds, and a row per member."""
 
-    def __init__(self, element: str) -> None:
+    def __init__(self, element: str | Layout) -> None:
+        self.element = element
         self.members = clones_members(element)
 
     def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
-        return SplitClones(obj._class, split=split, basket_size=bufsize)
+        return SplitClones(self.element, split=split, basket_size=bufsize)
 
     def entry(self, obj: Any) -> Any:
         return [tuple(_member(item, m.name) for m in self.members) for item in obj]
@@ -290,6 +297,25 @@ class SplitArray(Kind):
         for at, (key, member) in enumerate(zip(keys[1:], self.members, strict=True)):
             rows = [[values[at] for values in entry] for entry in entries]
             columns[key] = rows if member.stype in KEPT_ROWS else _jagged(rows, offsets)
+        return columns
+
+    def written(self, keys: list[str], columns: dict[str, Any]) -> dict[str, Any]:
+        """A member that is one whole object of its own has no row this writer can fill yet.
+
+        ROOT writes such a row as the object's own record - its byte count, its version
+        and its members - which is no bytes :mod:`xrdroot.wbranch` packs: the writer there
+        streams a ``TRef`` a file holds as a key, without the record around it, and has no
+        description of the class to write one with inside a tree entry.
+        """
+        for _key, member in zip(keys[1:], self.members, strict=True):
+            if member.stype == OBJECT_TYPE:
+                clones = self.element if isinstance(self.element, str) else self.element.name
+                raise UnsupportedFeatureError(
+                    f"a TClonesArray of {clones} holds {member.name}, a whole "
+                    f"{member.typename} of its own, and nothing here writes another class's "
+                    f"record into a tree entry yet; write that member as a number instead, or "
+                    f"leave the branch out"
+                )
         return columns
 
 
@@ -344,8 +370,24 @@ def _kind(obj: Any, split: int = 0) -> Kind | None:
     if isinstance(obj, TLorentzVector):
         return Lorentz4()
     if isinstance(obj, TClonesArray):
-        return Clones() if split < 1 else SplitArray(obj._class)
+        return Clones() if split < 1 else SplitArray(_element(obj._class))
     return _held_kind(obj)
+
+
+def _element(classname: str) -> str | Layout:
+    """What a ``TClonesArray``'s objects are, as one of ROOT's classes or as a macro's own.
+
+    The array names its class as a string, which describes nothing when the class is
+    one a macro declared: it is written by the description its translation carries
+    (``_cxx_layout_``), and so is a split array of it - ROOT splits such an array the
+    same way, the class description travelling with the file rather than ROOT's own
+    catalogue. ``roottest``'s ``io/references/lotsRef`` holds a ``TClonesArray`` of a
+    macro's ``A`` at split level 3 for exactly that.
+    """
+    from ..core.declared import find_class
+
+    own = None if classname in INFOS else find_class(classname)
+    return classname if own is None else declared(own)
 
 
 def _held_kind(obj: Any) -> Kind | None:
@@ -460,7 +502,8 @@ class ObjectSlot:
 
     def seal(self) -> None:
         if self.pending:
-            self.chunks.append(self._kind.columns(self.keys, self.pending))
+            columns = self._kind.columns(self.keys, self.pending)
+            self.chunks.append(self._kind.written(self.keys, columns))
             self.pending = []
 
     def columns(self) -> dict[str, Any]:
