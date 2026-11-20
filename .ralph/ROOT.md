@@ -556,6 +556,27 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   (worker 12 never committed), `stressgraphics`' encoder, and re-deriving one round-9 figure on the
   intact tree to confirm the comparison.
 
+## Round 11's close (recorded here for the next iteration)
+
+- Base `2a4744f6`, closed at `641748fd`. Nine commits landed, one unmerged for a collision, **two**
+  roottest tests in (`tree/evolution/WriteVector`, `io/json/STL0`) against four lost to the
+  CERN-network timeout - all four pass alone (`/tmp/r11/net`), so the effective count is 1185.
+- **The round's real property: the wall moved one file further out, seven times.** Workers 4, 6, 7,
+  8, 11, 12 and 13 each measured that the refusal now lives one file beyond the one their brief
+  gave them, and left a patch. That is the fourth round in a row with this shape, and it is now the
+  dominant cost of the loop: each worker spends forty minutes to hand over a file name.
+- Round 12 should therefore **aim at whole subsystems, not single files**: give one worker the
+  *chain* a refusal walks (`tree.py` → `objects.py` → `wbranch.py`, or `geometry`'s writer plus its
+  `TBrowser`), and let it edit all of them. The disjointness rule has been protecting against
+  cherry-pick conflicts, but the conflicts have been cheap (one this round, resolved in five
+  minutes) while the handovers have been expensive.
+- One collision resolved by rule: worker 15's `TArrayX` writer and worker 5's `TArrayX` declaration
+  both landed in `wdeclared.py`; merging both broke worker 5's tests, so 15's is unmerged and the
+  ledger says why.
+- Next round's first scopes, from these reports: the `io/geo` export chain (18 tests, two files),
+  `treeproxy`'s nested vector (`w07-nested-vector.patch`), `SplitClones`' next layer, bigevent's
+  next member, and the `stressgraphics` encoder.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -594,6 +615,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 11's result of it, at `641748fd`: `TOTAL 115054 0 28600 0 100%`, `12167 passed, 1 skipped,
+  46 xfailed`; `ruff` clean, `mypy` 1014 files, maintainability 29 631 functions, components 0
+  undeclared, `mkdocs build --strict` built.
 - Round 10's result of it, at `d33afbbd`: `TOTAL 114900 0 28534 0 100%`, `12122 passed, 1 skipped,
   46 xfailed`; `ruff` clean, `mypy` 1014 files, maintainability 29 553 functions, components 0
   undeclared, `mkdocs build --strict` built.
@@ -645,6 +669,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 8 | `3f1cb63` | sixteen, `/tmp/r8/wNN-brief.md`, **built from round 7's reports' file lists**: the formula's object wall in `methods.py` (`Q-48`), the template spelling (`Q-39`), the reader's layouts (`Q-36`), the brace-init containers (`Q-33`), `SplitClones` (`Q-38`), `TGeoManager::Export` (`Q-44`), `TBufferJSON` (`W0-25`), a version-0 class, `python/memory`, `stressgraphics`, bigevent, `treeproxy`, `selectorreader`, `.typedef`, and the last TIMEOUT | **roottest 1134 → 1138, non-tutorial 1294 → 1298** (`/tmp/r8/final2`, `/tmp/r8/final1` at `f65e991`) | 1: `W0-26`, `W0-27` in the ledger |
 | 9 | `9b37ece` | sixteen, `/tmp/r9/wNN-brief.md`: the formula's object member (`Q-48`), bigevent's template member (`Q-39`), `SplitClones` over four writer files (`Q-38`), `treeproxy` (`Q-40`), the `reconcile` wiring (`Q-36`), `TGeoManager::Export` (`Q-44`), `TBufferJSON` (`W0-25`), `_Set`, splitting in `objects.py`, `double32`, `selectorreader`, `tree/stl` (`W0-10`), `python/memory`, `stressgraphics`, the last TIMEOUT (`P-10`), and `TEnum` | **roottest 1138 → 1141, non-tutorial 1298 → 1301** (`/tmp/r9/final2b`, `/tmp/r9/final1` at `2ef9c80`) | 3: `W0-28`, `W0-29`, `W0-30` in the ledger |
 | 10 | `05b43b7` | sixteen, `/tmp/r10/wNN-brief.md`, from round 9's reports: the reference loop's reads (`Q-42`/`Q-48`), `Alt$`'s flat index, `SplitClones` on both sides (`Q-38`/`Q-40`), bigevent's members, `treeproxy`, `selectorreader`, `jsonbuffer`, `objects.py`, `double32`/`TEnum`, the memory lifetime patch, the `_Set` cursor, `stressgraphics`, `tree/stl` (`W0-10`), the read-by-declared-layout (`Q-36`), and the geo exports | **roottest 1141 → 1183, non-tutorial 1301 → 1342** (`/tmp/r10/final2`, `/tmp/r10/final1` at `71aa3256`) - the first roottest figure from an **intact** source tree | 2: `W0-31` (the damaged tree), `W0-32` |
+| 11 | `2a4744f6` | sixteen, `/tmp/r11/wNN-brief.md`: a `vector<Track>` pointer (`Q-39`), a `TGeoManager` record, a batch `TBrowser` (`Q-44`), `SplitClones`' next layer, bigevent, an evolved class (`Q-36`), `treeproxy`, `selectorreader`, `TBufferJSON` (`W0-25`), the `_Set` cursor, the last TIMEOUT, `TEnum`, `stressgraphics`, `tree/stl` (`W0-10`), the writer's arrays, and the split-branch measurement | **roottest 1183 → 1181 measured (1185 with the four network tests), non-tutorial 1342 → 1340 (1344)** (`/tmp/r11/final2`, `/tmp/r11/final1`, `/tmp/r11/net` at `90f5c5e8`) | 1: `W0-33`, plus the `W0-10`/`W0-25` rows in the ledger |
 
 ## Notes
 
