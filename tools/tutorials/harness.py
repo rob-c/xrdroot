@@ -73,7 +73,8 @@ class Settings:
     tutorials: Path
     cache: Path = DEFAULT_CACHE
     out: Path | None = None
-    jobs: int = 4
+    #: How many run at once: one a core, keeping two back (see ``cli.default_jobs``).
+    jobs: int = field(default_factory=lambda: max(1, min((os.cpu_count() or 1) - 2, 8)))
     timeout: float = 300.0
     refresh_oracle: bool = False
     network: bool = False

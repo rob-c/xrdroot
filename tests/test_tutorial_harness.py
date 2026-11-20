@@ -918,3 +918,20 @@ def test_output_matching_no_recorded_order_is_still_a_diff(harness, tmp_path):
     assert (status, reason) == ("DIFF", "stdout")
     assert record["details"] == ["stdout line 1: ROOT 'RooCategory::tagCat = Lepton(idx = 0)', "
                                 "xrdroot 'RooCategory::tagCat = Kaon(idx = 3)'"]
+
+
+def test_the_width_of_a_run_comes_from_the_machine_and_keeps_two_cores_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fixed width of four left a third of the tutorial run in a queue: the committed timings
+    say 3 093 s at four and 1 803 at eight. Measured here on roottest's roostats tutorials, the
+    same selection took 322.8 s at four and 233.8 s at eight."""
+    monkeypatch.setattr(cli.os, "cpu_count", lambda: 18)
+    assert cli.default_jobs() == 8  # two cores back for the oracle half, and capped at eight
+    monkeypatch.setattr(cli.os, "cpu_count", lambda: 6)
+    assert cli.default_jobs() == 4
+    monkeypatch.setattr(cli.os, "cpu_count", lambda: 2)
+    assert cli.default_jobs() == 1  # nothing left to keep back, but never no workers
+    monkeypatch.setattr(cli.os, "cpu_count", lambda: None)
+    assert cli.default_jobs() == 1  # a machine that will not say
+    assert Settings(tutorials=harnessing.Path(".")).jobs >= 1

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Sequence
 from dataclasses import asdict
@@ -39,7 +40,9 @@ def parser() -> argparse.ArgumentParser:
     commands = top.add_subparsers(dest="command", required=True)
     run = commands.add_parser("run", help="run the tutorials and write the reports")
     _common(run)
-    run.add_argument("--jobs", "-j", type=int, default=4, help="parallel runs (4)")
+    run.add_argument(
+        "--jobs", "-j", type=int, default=default_jobs(), help=f"parallel runs ({default_jobs()})"
+    )
     run.add_argument("--timeout", type=float, default=300.0, help="seconds per run (300)")
     run.add_argument("--refresh-oracle", action="store_true", help="rerun ROOT, ignoring the cache")
     run.add_argument("--network", action="store_true", help="run tutorials that need the network")
@@ -74,6 +77,19 @@ def parser() -> argparse.ArgumentParser:
     api.add_argument("--libraries", nargs="+", default=list(api_coverage.LIBRARIES))
     api.add_argument("--out", type=Path, default=Path("/tmp/harness/api"))
     return top
+
+
+def default_jobs() -> int:
+    """How many tutorials run at once when none is asked for: one a core, as the timings say.
+
+    The committed timings are 11 505 s of tutorial work, so a fixed width of four leaves a third of
+    the wall clock in a queue: modelled from ``baseline-timings.json``, 3 093 s at four, 2 191 at
+    six and 1 803 at eight, against a packing floor of 1 438. Two cores are kept back for the ROOT
+    oracle half of each pair and for whatever else the machine is doing, and the width is capped so
+    a many-core runner does not open a hundred turtles.
+    """
+    cores = os.cpu_count() or 1
+    return max(1, min(cores - 2, 8))
 
 
 def _common(command: argparse.ArgumentParser) -> None:
