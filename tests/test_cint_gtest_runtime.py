@@ -260,6 +260,48 @@ def test_a_diagnostic_read_after_its_checks_ended_is_let_through(
     assert not diags.ACTIVE
 
 
+def test_a_filter_sees_a_diagnostic_its_test_means_to_read_instead_of_printing(
+    running: Result, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``ROOT::TestSupport::FilterDiagsRAII``: ROOT puts the filter in the handler's place, so a
+    diagnostic it takes is not printed at all - the double-throw warning a test asserts on."""
+    seen: list[tuple[int, bool, str, str]] = []
+    flt = TestSupport.FilterDiagsRAII(
+        lambda level, is_error, where, message: seen.append((level, is_error, where, message))
+    )
+    sys.stderr.write("Error in <Unwinding>: unhandled RResult\nInfo in <Quiet>: counting\n")
+    flt._destruct()
+    sys.stderr.write("Info in <After>: counted\n")
+    assert seen == [(3000, True, "Unwinding", "unhandled RResult"),
+                    (1000, False, "Quiet", "counting")]  # fmt: skip
+    assert capsys.readouterr().err == "Info in <After>: counted\n"
+    assert running.failures == 0
+
+
+def test_a_filter_of_no_handler_takes_nothing_and_takes_itself_away_once(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A filter that was made without a handler is what ``FilterDiagsRAII{}`` is not, and a
+    filter whose scope ends twice leaves the standard error it found in place."""
+    flt = diags.FilterDiagsRAII()
+    sys.stderr.write("Error in <Somewhere>: said\n")
+    flt._destruct()
+    flt._destruct()
+    assert capsys.readouterr().err == "Error in <Somewhere>: said\n"
+    assert not diags.FILTERS and not isinstance(sys.stderr, diags._Reader)
+
+
+def test_a_filter_left_alive_gives_standard_error_back_with_its_test(
+    running: Result, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A test that never ends its filter is emptied with the test, as its checks are."""
+    TestSupport.FilterDiagsRAII(lambda *diagnostic: None)
+    assert diags.FILTERS
+    runner.AFTER_TEST[-1]()
+    assert not diags.FILTERS
+    assert not running.failures
+
+
 def test_googletests_flags_are_taken_from_any_argument_list() -> None:
     runner.InitGoogleTest()
     runner.InitGoogleTest(1, ("prog", "--gtest_filter=A.*", "--gtest_color=no"))

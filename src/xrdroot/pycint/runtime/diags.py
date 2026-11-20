@@ -30,7 +30,16 @@ from ...pycxx.runtime.gtest.runner import AFTER_TEST
 from ...pycxx.runtime.gtest.state import report
 from .fileraii import FileRaii
 
-__all__ = ["CheckDiagsRAII", "ExpectDiag", "ExpectNoDiag", "close_all", "LEVELS", "TestSupport"]
+__all__ = [
+    "CheckDiagsRAII",
+    "FilterDiagsRAII",
+    "ExpectDiag",
+    "ExpectNoDiag",
+    "close_all",
+    "close_filters",
+    "LEVELS",
+    "TestSupport",
+]
 
 #: A ROOT diagnostic as a line: ``Error in <TFile::TFile>: file x.root does not exist``.
 DIAGNOSTIC = re.compile(r"^(Print|Info|Warning|Error|Break|SysError|Fatal) in <(.*?)>: (.*)$")
@@ -49,6 +58,8 @@ LEVELS = {
 WORDS = {level: word for word, level in LEVELS.items()}
 #: The least level a diagnostic must have for nobody expecting it to fail the test.
 WARNING = 2000
+#: The least level that makes a diagnostic an error, which a filter is told of.
+ERROR = 3000
 
 
 @dataclass
@@ -73,6 +84,8 @@ class Diagnostic:
 
 #: The checks alive, innermost last; standard error is read while there is one.
 ACTIVE: list[CheckDiagsRAII] = []
+#: The filters alive, innermost last: a diagnostic one accepts is not printed at all.
+FILTERS: list[FilterDiagsRAII] = []
 
 
 class CheckDiagsRAII:
@@ -118,6 +131,33 @@ class CheckDiagsRAII:
             report(file, line, f"{intro}Unexpected diagnostic message received:\n{line_text}", 0)
 
 
+class FilterDiagsRAII:
+    """``ROOT::TestSupport::FilterDiagsRAII``: a test's own handler for the diagnostics it means
+    to see - the warning of a second throw during stack unwinding, which ROOT's
+    ``RResult`` prints and a test asserts on rather than reads. While one lives, every
+    diagnostic goes to its handler and is not printed, as ROOT's handler chain puts the
+    filter in place of the one that would print; a handler that wants one printed writes it.
+    """
+
+    def __init__(self, handler: Any = None) -> None:
+        self.handler = handler
+        _watch()
+        FILTERS.append(self)
+
+    def filter(self, level: int, where: str, message: str) -> bool:
+        """Is this diagnostic the filter's? Its handler sees it, and it is not printed."""
+        if self.handler is None:
+            return False
+        self.handler(level, level >= ERROR, where, message)
+        return True
+
+    def _destruct(self) -> None:
+        """The filter's scope ends: the diagnostics after it are printed as they were."""
+        if self in FILTERS:
+            FILTERS.remove(self)
+        _unwatch()
+
+
 class _Reader(io.TextIOBase):
     """Standard error while a check lives: each whole line offered to the checks first."""
 
@@ -144,32 +184,58 @@ class _Reader(io.TextIOBase):
 
 
 def _offered(line: str) -> bool:
-    """Was ``line`` a diagnostic a live check took? An unexpected warning is noted as one."""
+    """Was ``line`` a diagnostic a live filter or check took? An unexpected warning is noted."""
     found = DIAGNOSTIC.match(line)
-    if found is None or not ACTIVE:  # not ROOT's, or read after every check has ended
+    if found is None or not (ACTIVE or FILTERS):  # not ROOT's, or read after every check ended
         return False
     level, where, message = LEVELS[found[1]], found[2], found[3]
-    if any(check.take(level, where, message) for check in reversed(ACTIVE)):
+    if _filtered(level, where, message) or _taken(level, where, message):
         return True
-    if level >= WARNING:
+    if ACTIVE and level >= WARNING:  # a filter alone takes one, and notes nothing
         ACTIVE[-1].unexpected.append(line)
     return False
 
 
-def _listen(check: CheckDiagsRAII) -> None:
+def _filtered(level: int, where: str, message: str) -> bool:
+    """Did a live filter take this diagnostic, its handler seeing it instead of the stream?"""
+    return any(flt.filter(level, where, message) for flt in reversed(FILTERS))
+
+
+def _taken(level: int, where: str, message: str) -> bool:
+    """Did a live check expect this diagnostic, taking it as ROOT's handler would?"""
+    return any(check.take(level, where, message) for check in reversed(ACTIVE))
+
+
+def _watch() -> None:
+    """Standard error is read while a filter or a check lives."""
     if not isinstance(sys.stderr, _Reader):
         sys.stderr = _Reader(sys.stderr)
+
+
+def _unwatch() -> None:
+    if not ACTIVE and not FILTERS and isinstance(sys.stderr, _Reader):
+        sys.stderr = sys.stderr.finish()
+
+
+def _listen(check: CheckDiagsRAII) -> None:
+    _watch()
     ACTIVE.append(check)
 
 
 def _stop(check: CheckDiagsRAII) -> None:
     ACTIVE.remove(check)
-    if not ACTIVE and isinstance(sys.stderr, _Reader):
-        sys.stderr = sys.stderr.finish()
+    _unwatch()
+
+
+def close_filters() -> None:
+    """End every filter still alive, innermost first: the test it was made in has ended."""
+    for flt in reversed(list(FILTERS)):
+        flt._destruct()
 
 
 def close_all() -> None:
     """End every check still alive, innermost first: the test they were made in has ended."""
+    close_filters()
     for check in reversed(list(ACTIVE)):
         check.close()
 
@@ -195,8 +261,10 @@ def ExpectNoDiag(statement: Any, file: Any, line: Any) -> None:
 
 #: ``ROOT::TestSupport``: the check of the diagnostics a test prints, and the guard of a
 #: scratch file (:mod:`.fileraii`).
-TestSupport = Namespace("ROOT::TestSupport",
-                        {"CheckDiagsRAII": CheckDiagsRAII, "FileRaii": FileRaii})
+TestSupport = Namespace(
+    "ROOT::TestSupport",
+    {"CheckDiagsRAII": CheckDiagsRAII, "FilterDiagsRAII": FilterDiagsRAII, "FileRaii": FileRaii},
+)
 
 
 def _adopted() -> None:
