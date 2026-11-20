@@ -25,6 +25,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ... import plugins
+from ...cppstd.cells import Cell
 from ...errors import UnsupportedFeatureError
 from .collections import THashList, TList
 from .directories import TDirectory, current_directory, set_current
@@ -34,7 +35,8 @@ from .strings import TString
 
 __all__ = ["TROOT", "gROOT", "gDebug", "gInterpreter", "gObjectTable", "TInterpreter",
            "set_line_processor", "SetHeuristicMemoryPolicy", "TEnum", "TEnumConstant",
-           "TListOfEnums", "class_enums", "TListOfEnumsWithLock", "find_enum", "note_enum"]
+           "TListOfEnums", "class_enums", "TListOfEnumsWithLock", "find_enum", "note_enum",
+           "TGlobal"]
 
 #: ``gObjectTable``: ROOT's count of objects by class - which is not kept here, so it is null,
 #: and a macro testing it skips it.
@@ -138,15 +140,40 @@ _PRELUDE: dict[str, Any] = {}
 
 # -- the interpreter's enumerations ---------------------------------------------------
 
-#: ``kInt_t`` in ROOT's ``EDataType``: what ``TEnum::GetUnderlyingType`` answers with for an
-#: enumeration declared with no integer type of its own, which C++ gives ``int`` when its
-#: values fit.
+#: ``kInt_t`` in ROOT's ``EDataType``: the type an ``enum class`` with no type of its own is
+#: stored as, and the one an unscoped enum gets when one of its values is negative.
 K_INT = 3
 
+#: ``kUInt_t``: the type clang gives an unscoped enumeration with no type of its own whose
+#: enumerators are all non-negative, which is what ROOT reports for ``enum E {kA, kB}``.
+K_UINT = 13
+
 #: The integer types an enumeration is declared with - ``enum E : short`` - in ROOT's
-#: ``EDataType`` codes, as the 6.40.04 oracle answers them: ``char`` is 1, ``short`` 2,
-#: ``int`` 3, ``long`` 4. A type not here is answered as ``int``, which is C++'s default.
-UNDERLYING_TYPES = {"char": 1, "short": 2, "int": 3, "long": 4}
+#: ``EDataType`` codes, as the 6.40.04 oracle answers them: ``char`` 1, ``unsigned char``
+#: 11, ``short`` 2, ``unsigned short`` 12, ``int`` 3, ``unsigned int`` 13, ``long`` 4,
+#: ``unsigned long`` 14, ``long long`` 16, ``unsigned long long`` 17, ``bool`` 18.
+UNDERLYING_TYPES = {
+    "bool": 18, "char": 1, "unsigned char": 11, "short": 2, "unsigned short": 12,
+    "int": 3, "unsigned int": 13, "long": 4, "unsigned long": 14,
+    "long long": 16, "unsigned long long": 17,
+}  # fmt: skip
+
+
+def _underlying_type(written: str, items: list[tuple[str, int]], scoped: bool) -> int:
+    """The ``EDataType`` code of the type the enumeration is stored as.
+
+    A declaration with a type of its own - ``enum E : short`` - is stored as that type. One
+    without is stored as the type clang picks for it, which the 6.40.04 oracle answers:
+    ``unsigned int`` when the enumeration is unscoped and every enumerator is non-negative,
+    and ``int`` otherwise - an ``enum class`` does not take its values through the scope,
+    so clang gives it ``int``.
+    """
+    declared = UNDERLYING_TYPES.get(" ".join(written.split()))
+    if declared is not None:
+        return declared
+    if scoped or any(value < 0 for _, value in items):
+        return K_INT
+    return K_UINT
 
 #: ``gROOT``'s ``fEnums``: every enumeration the interpreter has declared so far, by
 #: qualified name, in the order declared. ROOT keeps this table in ``TROOT`` because an
@@ -221,8 +248,10 @@ class TEnum(TNamed):
         return f"{self._owner}::{self._name}" if self._owner else self._name
 
     def GetUnderlyingType(self) -> int:
-        """``GetUnderlyingType``: the ``EDataType`` code of the integer type the enum was
-        declared with, ``kInt_t`` when it was declared with none."""
+        """``GetUnderlyingType``: the ``EDataType`` code of the integer type the enum is
+        stored as - the type written after ``:``, or the one clang gives a declaration with
+        none, which is ``kUInt_t`` for an unscoped enumeration of non-negative values and
+        ``kInt_t`` otherwise."""
         return self._underlying
 
     def IsScoped(self) -> bool:
@@ -238,21 +267,65 @@ class TEnum(TNamed):
 
         return TClass.GetClass(self._owner, False)
 
-    #: ``TEnum::EAutoloading``: whether a lookup may load the library providing the enum.
-    #: Nothing here loads a library to answer a lookup, so the two read the same either way.
-    kAutoload = 0
-    kNoAutoload = 1
+    #: ``TEnum::ESearchAction``: what a lookup may do when the table does not hold the enum,
+    #: in ROOT 6.40's names and values - so a program that passes one by number, as C++
+    #: code does when it casts, gets what ROOT does with that number.
+    kNone = 0
+    kAutoload = 1
+    kInterpLookup = 2
+    kALoadAndInterpLookup = 3
+    #: ROOT 5's name for :attr:`kNone`, which some code written against it still uses.
+    kNoAutoload = kNone
 
     @staticmethod
-    def GetEnum(name: Any, type: Any = None, autoload: Any = True) -> TEnum | None:
+    def GetEnum(name: Any, action: Any = kALoadAndInterpLookup) -> TEnum | None:
         """``TEnum::GetEnum``: the enumeration C++ calls ``name``, looked up as written.
 
-        ``type`` - the ``std::type_info`` of the enum - is not consulted: a name is what the
-        table is keyed by, and a program asking by type asks for an enum it declared, whose
-        name the caller has. ``autoload`` likewise changes nothing, since nothing here reads
-        a header to find an enum.
+        ``name`` is the enumeration's name as C++ writes it - ``myns::E`` - or its
+        ``std::type_info``, ROOT's other overload, whose spelled name is what the table is
+        keyed by. ``action`` is ROOT's ``ESearchAction``: a lookup that may autoload -
+        ``kAutoload`` or ``kALoadAndInterpLookup``, the default, which is what ``GetEnum``
+        with no second argument does - loads the library a rootmap lists the enumeration in;
+        ``kNone`` and ``kInterpLookup`` ask the interpreter alone, which here is the table.
         """
-        return find_enum(str(name))
+        return find_enum(name if isinstance(name, str) else str(name))
+
+
+class TGlobal(TNamed):
+    """``TGlobal``: an enumerator declared outside every namespace, as the interpreter knows
+    it, with the address its value is at.
+
+    ROOT keeps one list of these, ``gROOT->GetListOfGlobals()``, and a program looking for a
+    constant a global enumeration declared finds it there and reads it through the address
+    (``*(Long64_t*)global->GetAddress()``, which is what roottest's ``execEnumsTest`` does).
+    A variable a line declares at the prompt is not in the list yet; ROOT keeps a
+    ``TEnumConstant`` for the enumerator of a dictionary's global enumeration and a
+    ``TGlobal`` for one a line declares, and here every enumerator is a ``TGlobal``.
+    """
+
+    def __init__(self, name: str, title: str = "", typename: str = "int",
+                 value: Any = 0) -> None:  # fmt: skip
+        super().__init__(str(name), str(title))
+        self._typename = str(typename)
+        self._address = Cell(value, str(typename))
+
+    def GetAddress(self) -> Any:
+        """``GetAddress``: where the value is, which a program reads through."""
+        return self._address
+
+    def GetTypeName(self) -> str:
+        """``GetTypeName``: the type as C++ declares it, ``int`` for a plain enumerator."""
+        return self._typename
+
+    GetFullTypeName = GetTypeName
+
+
+def global_constants(owner: str = "") -> list[TGlobal]:
+    """A ``TGlobal`` for each enumerator of each enumeration declared in ``owner`` - ``""``
+    for the global namespace - in the order they were declared."""
+    return [TGlobal(constant.GetName(), "", enum.GetName(), constant.GetValue())
+            for enum in _ENUMS.values() if enum._owner == owner
+            for constant in enum.GetConstants() if isinstance(constant, TEnumConstant)]  # fmt: skip
 
 
 class TListOfEnums(TList):
@@ -270,16 +343,19 @@ def note_enum(qualified: Any, items: Any = (), title: str = "", underlying: Any 
 
     ``qualified`` is the name as C++ writes it (``N::E``, ``A::B::C::enumC1``, ``E``);
     ``items`` its enumerators and their values, in the order written; ``title`` the comment
-    written after it; ``underlying`` the integer type after ``:``, if it has one. An enum
-    declared again - a header included twice, a macro rerun - is the one already noted, as
-    ROOT's table keeps one ``TEnum`` per enumeration.
+    written after it; ``underlying`` the integer type after ``:``, if it has one, whose
+    ``EDataType`` code the enum answers with - derived from the values when it has none. An
+    enum declared again - a header included twice, a macro rerun - is the one already noted,
+    as ROOT's table keeps one ``TEnum`` per enumeration.
     """
     full = str(qualified).strip()
     known = _ENUMS.get(full)
     if known is not None:
         return known
     owner, _, own = full.rpartition("::")
-    made = TEnum(own, items, title, UNDERLYING_TYPES.get(str(underlying), K_INT), scoped, owner)
+    values = [(str(item), int(value)) for item, value in items]
+    stored = _underlying_type(str(underlying), values, bool(scoped))
+    made = TEnum(own, values, title, stored, scoped, owner)
     _ENUMS[full] = made
     return made
 
@@ -364,7 +440,23 @@ class TROOT(TDirectory):
         return self._listed("Specials")
 
     def GetListOfGlobals(self, load: bool = False) -> TList:
-        return self._listed("Globals")
+        """``GetListOfGlobals``: the globals the session knows - every enumerator of every
+        enumeration declared outside a namespace.
+
+        The list outlives the call, as ROOT's does, and is filled from the table of
+        enumerations as it is asked for: an enumerator a line or a dictionary declared is a
+        global a program finds by name and reads through its address, and each is added once.
+        A variable declared at the prompt is not in it yet, which is the other half of what
+        ROOT's list holds.
+
+        ``load`` is the autoloading ROOT would do first, which changes nothing here because
+        nothing waits to be read.
+        """
+        made = self._listed("Globals")
+        for found in global_constants():
+            if made.FindObject(found.GetName()) is None:
+                made.Add(found)
+        return made
 
     def GetListOfBrowsers(self) -> TList:
         return self._listed("Browsers")

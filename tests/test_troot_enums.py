@@ -23,11 +23,13 @@ def _empty_table() -> Iterator[None]:
     """Each test starts with no enum declared and leaves the session's table as it found it."""
     kept = dict(troot._ENUMS)
     troot._ENUMS.clear()
+    ROOT.gROOT._lists["Globals"].Clear()
     try:
         yield
     finally:
         troot._ENUMS.clear()
         troot._ENUMS.update(kept)
+        ROOT.gROOT._lists["Globals"].Clear()
 
 
 def test_an_enum_is_kept_by_the_name_cpp_writes_and_noted_once() -> None:
@@ -44,14 +46,16 @@ def test_an_enum_of_the_global_namespace_is_its_own_qualified_name() -> None:
     made = troot.note_enum("ETest", [("kA", 3), ("kB", 4)])
     assert made.GetQualifiedName() == "ETest"
     assert made.GetClass() is None
-    assert made.GetUnderlyingType() == troot.K_INT
+    assert made.GetUnderlyingType() == troot.K_UINT
 
 
 def test_the_integer_type_an_enum_is_declared_with_is_the_one_it_answers() -> None:
     short = troot.note_enum("EOnlyShort", [("kA", 0)], underlying="short")
     assert short.GetUnderlyingType() == 2
     unknown = troot.note_enum("EOdd", [("kA", 0)], underlying="long double")
-    assert unknown.GetUnderlyingType() == troot.K_INT
+    assert unknown.GetUnderlyingType() == troot.K_UINT
+    negative = troot.note_enum("EOddNeg", [("kA", -1)], underlying="long double")
+    assert negative.GetUnderlyingType() == troot.K_INT
 
 
 def test_an_enums_constants_are_made_once_so_a_held_one_stays_the_same_object() -> None:
@@ -100,3 +104,73 @@ def test_t_enum_get_enum_finds_what_was_declared_and_nothing_else() -> None:
     assert troot.TEnum.GetEnum("ENowhere") is None
     assert troot.TEnum.GetEnum("ETest", troot.TEnum.kAutoload) is made
     assert troot.TEnum.kNoAutoload != troot.TEnum.kAutoload
+
+
+class _TypeInfo:
+    """``typeid(E)`` as a program passes it: ROOT spells it out and looks that up."""
+
+    def __str__(self) -> str:
+        return "N::E"
+
+
+def test_the_integer_type_an_enum_is_stored_as_is_the_one_clang_gives_it() -> None:
+    """The oracle's answers: ``enum E {kA, kB}`` is stored ``unsigned int`` (13), one with a
+    negative enumerator ``int`` (3), an ``enum class`` ``int``, and ``: short`` is 2."""
+    plain = troot.note_enum("EPlain", [("kA", 0), ("kB", 1)])
+    assert plain.GetUnderlyingType() == troot.K_UINT == 13
+    negative = troot.note_enum("ENeg", [("kC", -1), ("kD", 0)])
+    assert negative.GetUnderlyingType() == troot.K_INT == 3
+    assert troot.note_enum("EScoped", [("kX", 0)], scoped=True).GetUnderlyingType() == 3
+    assert troot.note_enum("EShort", [("kS", 0)], underlying="short").GetUnderlyingType() == 2
+
+
+def test_every_integer_type_an_enum_may_be_declared_with_is_the_code_root_gives_it() -> None:
+    for index, (written, code) in enumerate(troot.UNDERLYING_TYPES.items()):
+        made = troot.note_enum(f"EType{index}", [("kA", 0)], underlying=written)
+        assert made.GetUnderlyingType() == code, written
+
+
+def test_a_global_enumerator_is_read_through_the_address_it_is_kept_at() -> None:
+    made = troot.TGlobal("kA", "the comment", "int", 7)
+    assert (made.GetName(), made.GetTitle()) == ("kA", "the comment")
+    assert made.GetTypeName() == "int"
+    assert made.GetFullTypeName() == "int"
+    assert made.GetAddress().value == 7
+    made.GetAddress().value = 9  # a macro writes into the constant it found
+    assert made.GetAddress().value == 9
+    assert troot.TGlobal("kB").GetAddress().value == 0
+
+
+def test_the_globals_are_the_enumerators_of_the_enumerations_no_namespace_owns() -> None:
+    troot.note_enum("ETest", [("kA", 3), ("kB", 4)])
+    troot.note_enum("N::EIn", [("kIn", 1)])
+    assert [one.GetName() for one in troot.global_constants()] == ["kA", "kB"]
+    assert [one.GetTypeName() for one in troot.global_constants("N")] == ["EIn"]
+    assert troot.global_constants("Nowhere") == []
+
+
+def test_the_sessions_list_of_globals_holds_each_enumerator_of_the_global_scope_once() -> None:
+    troot.note_enum("ETest", [("kA", 3)])
+    troot.note_enum("N::EIn", [("kIn", 1)])
+    listed = ROOT.gROOT.GetListOfGlobals(True)
+    assert listed is ROOT.gROOT.GetListOfGlobals()
+    assert [one.GetName() for one in listed] == ["kA"]
+    assert listed.FindObject("kA").GetAddress().value == 3
+
+
+def test_a_lookup_by_type_info_is_a_lookup_by_the_name_it_spells() -> None:
+    made = troot.note_enum("N::E", [("kA", 0)])
+    assert troot.TEnum.GetEnum(_TypeInfo()) is made
+
+
+def test_a_lookup_that_asks_the_interpreter_alone_finds_only_what_was_noted() -> None:
+    """Nothing here reads a library for a lookup, so whichever ``ESearchAction`` a program
+    passes it finds exactly the enumerations the interpreter has been told about."""
+    made = troot.note_enum("ETest", [("kA", 3)])
+    for action in (troot.TEnum.kNone, troot.TEnum.kInterpLookup, troot.TEnum.kAutoload,
+                   troot.TEnum.kALoadAndInterpLookup):  # fmt: skip
+        assert troot.TEnum.GetEnum("ETest", action) is made
+        assert troot.TEnum.GetEnum("ENowhere", action) is None
+    assert (troot.TEnum.kNone, troot.TEnum.kInterpLookup) == (0, 2)
+    assert (troot.TEnum.kAutoload, troot.TEnum.kALoadAndInterpLookup) == (1, 3)
+    assert troot.TEnum.kNoAutoload == troot.TEnum.kNone
