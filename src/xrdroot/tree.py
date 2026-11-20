@@ -31,10 +31,40 @@ if TYPE_CHECKING:
     from .file import Source
     from .objects import BranchRecord, FriendRecord, LeafRecord
 
-__all__ = ["Jagged", "Branch", "Group", "TTree"]
+__all__ = ["Jagged", "Branch", "Group", "TTree", "AHEAD"]
 
 #: Entries per step when iterating, if nobody says otherwise.
 DEFAULT_STEP = 10_000
+
+#: How many bytes of one branch's baskets are read in a single request.
+AHEAD = 1 << 20
+
+
+def _ahead_run(
+    seeks: Sequence[int], sizes: Sequence[int], index: int, count: int, span: int
+) -> list[int]:
+    """The baskets one read can bring back with basket ``index``: those after it, in order.
+
+    A basket stops the run when it does not lie after the bytes already taken
+    - a tree that flushed more than once writes its baskets out of order - or
+    when bringing it would pass ``span``. Baskets kept inside the branch
+    itself have no seek point, so a run ends where those begin. A ``span`` of
+    zero asks for nothing but the basket itself.
+    """
+    start = seeks[index]
+    end = start + sizes[index]
+    run = [index]
+    for other in range(index + 1, min(count, len(seeks))):
+        if seeks[other] < end or seeks[other] + sizes[other] - start > span:
+            break
+        end = seeks[other] + sizes[other]
+        run.append(other)
+    return run
+
+
+def _remote(source: Source) -> int:
+    """How many bytes of a branch read ahead: :data:`AHEAD` over a network, nothing locally."""
+    return AHEAD if "://" in str(source.name) else 0
 
 
 class Basket:
@@ -67,9 +97,13 @@ class Basket:
     @classmethod
     def keyed(cls, source: Source, seek: int, nbytes: int, has_offsets: bool) -> Basket:
         """The usual kind: a record of its own, read from where the branch says."""
+        return cls.parsed(source.read(seek, nbytes), has_offsets)
+
+    @classmethod
+    def parsed(cls, raw: bytes, has_offsets: bool) -> Basket:
+        """One basket, out of the bytes a read brought - which may hold others after it."""
         from .file import Key
 
-        raw = source.read(seek, nbytes)
         head = Buffer(raw)
         key = Key(head)
         head.i16()  # the basket's own version, which adds nothing we use
@@ -159,7 +193,7 @@ class Branch:
     ``branch.leaf``, which is how ROOT itself writes such a name.
     """
 
-    __slots__ = ("name", "record", "leaf", "column", "_source", "_cached")
+    __slots__ = ("name", "record", "leaf", "column", "_source", "_cached", "_ahead")
 
     def __init__(
         self,
@@ -176,6 +210,8 @@ class Branch:
         self.column = column
         self._source = source
         self._cached: tuple[int, Basket] | None = None
+        #: The baskets the last read brought along with the one asked for.
+        self._ahead: dict[int, Basket] = {}
 
     def __repr__(self) -> str:
         return f"<Branch {self.name!r} of {self.typename or self.leaf.classname}>"
@@ -247,19 +283,42 @@ class Branch:
             return held  # already here, and never on its own
         if self._cached is not None and self._cached[0] == index:
             return self._cached[1]
+        basket = self._ahead.get(index)
+        if basket is None:
+            basket = self._read_ahead(index)
+        self._cached = (index, basket)
+        return basket
+
+    def _read_ahead(self, index: int) -> Basket:
+        """Read this basket, and the ones one request can bring with it.
+
+        A branch's baskets are spread through the file, interleaved with every
+        other branch's, and a file on a network pays a round trip per read: a
+        megabyte at a time is what turns a whole tree's baskets into a few
+        hundred reads instead of thousands. The bytes between them are the
+        other branches' baskets, which a walk over every column reads anyway;
+        a branch read for a few entries at a time over-reads by at most
+        :data:`AHEAD` bytes. A local file pays no round trip, so it is read a
+        basket at a time as it always was.
+        """
         source = self._source
         if self.record.file_name:
             from .friends import basket_source
 
             source = basket_source(self.record.file_name, source)
-        basket = Basket.keyed(
-            source,
-            self.record.basket_seek[index],
-            self.record.basket_bytes[index],
-            self.record.entry_offset_len > 0,
-        )
-        self._cached = (index, basket)
-        return basket
+        seeks, sizes = self.record.basket_seek, self.record.basket_bytes
+        has_offsets = self.record.entry_offset_len > 0
+        run = _ahead_run(seeks, sizes, index, self.num_baskets, _remote(source))
+        if len(run) == 1:
+            return Basket.keyed(source, seeks[index], sizes[index], has_offsets)
+        start, end = seeks[index], seeks[run[-1]] + sizes[run[-1]]
+        raw = source.read(start, end - start)
+        self._ahead = {
+            other: Basket.parsed(raw[seeks[other] - start : seeks[other] - start + sizes[other]],
+                                 has_offsets)
+            for other in run
+        }  # fmt: skip
+        return self._ahead[index]
 
     def array(
         self, entry_start: int = 0, entry_stop: int | None = None, *, entries: Any = None

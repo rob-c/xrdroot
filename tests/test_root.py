@@ -22,6 +22,7 @@ import zlib
 import numpy as np
 import pytest
 
+import xrdroot
 from support import plain
 from xrdroot import (
     Branch,
@@ -62,7 +63,7 @@ from xrdroot.interp import (
 )
 from xrdroot.objects import BranchRecord, LeafRecord, read_branch, read_tree
 from xrdroot.streamers import Member
-from xrdroot.tree import Basket
+from xrdroot.tree import AHEAD, Basket, _ahead_run, _remote
 
 DATA = pathlib.Path(__file__).parent / "data"
 
@@ -1531,6 +1532,87 @@ def test_a_basket_written_into_its_branch_holds_its_entries_where_it_stands():
 
 def test_a_basket_that_kept_no_bytes_leaves_the_branch_to_read_them():
     assert Basket.inline(Buffer(inline_basket_bytes(b"", flag=2))) is None
+
+
+def test_a_read_ahead_stops_where_one_request_would_pass_the_limit():
+    """A branch's baskets are spread over the file: a run takes the ones within ``span``."""
+    seeks, sizes = [0, 100, 200, 900, 1200], [50, 50, 50, 50, 50]
+    assert _ahead_run(seeks, sizes, 0, 5, 1024) == [0, 1, 2, 3]  # 1200 + 50 would pass 1024
+    assert _ahead_run(seeks, sizes, 4, 5, 1024) == [4]
+    assert _ahead_run(seeks, sizes, 0, 5, 0) == [0]
+
+
+def test_a_read_ahead_stops_at_a_basket_written_before_the_bytes_taken():
+    """A tree that flushed twice writes its baskets again, out of order."""
+    seeks, sizes = [0, 400, 200, 700], [50, 50, 50, 50]
+    assert _ahead_run(seeks, sizes, 0, 4, AHEAD) == [0, 1]
+
+
+def test_a_read_ahead_stops_where_a_basket_kept_inside_its_branch_begins():
+    """An inline basket has no seek point, so it is not brought with a run."""
+    assert _ahead_run([0, 100], [50, 50], 0, 3, AHEAD) == [0, 1]
+
+
+def test_only_a_file_over_a_network_is_read_ahead():
+    """The read-ahead buys round trips, and a local file pays none."""
+    assert _remote(source_over(b"", name="root://example.org//t.root")) == AHEAD
+    assert _remote(source_over(b"", name="/scratch/t.root")) == 0
+
+
+class Counted(Source):
+    """A source that says how many reads a tree over it took, and of what size."""
+
+    __slots__ = ("reads",)
+
+    def __init__(self, handle: object, name: str) -> None:
+        super().__init__(handle, name, owned=True)  # type: ignore[arg-type]
+        self.reads: list[tuple[int, int]] = []
+
+    def read(self, offset: int, size: int) -> bytes:
+        self.reads.append((offset, size))
+        return super().read(offset, size)
+
+
+def _baskets_read(counted: Counted, tree: TTree, name: str) -> list[tuple[int, int]]:
+    """Which of the reads were one basket exactly, rather than a run that brought several."""
+    record = tree[name].record
+    pairs = set(zip(record.basket_seek, record.basket_bytes, strict=True))
+    return [read for read in counted.reads if read in pairs]
+
+
+def test_a_tree_over_a_network_reads_its_baskets_a_megabyte_at_a_time(tmp_path):
+    """One request per round trip is what a file over a network costs; a run is one request."""
+    path = tmp_path / "many.root"
+    values = np.arange(1000, dtype=np.float64)
+    with xrdroot.create(path) as f:
+        tree = f.tree("t", {"x": np.float64}, basket_size=512)
+        tree.extend({"x": values})
+    with open_root(path) as f:
+        baskets = f["t"]["x"].num_baskets
+    assert baskets > 2
+
+    with open(path, "rb") as handle:
+        counted = Counted(handle, "root://example.org//many.root")
+        with ROOTFile(counted) as remote:
+            assert np.array_equal(remote["t"]["x"].array(), values)
+            alone = _baskets_read(counted, remote["t"], "x")
+    assert len(alone) < baskets and len(set(alone)) == len(alone)
+
+
+def test_a_local_file_reads_its_baskets_one_at_a_time(tmp_path):
+    """Nothing is read ahead of a local file: it costs no round trip, and holds no bytes."""
+    path = tmp_path / "many.root"
+    values = np.arange(1000, dtype=np.float64)
+    with xrdroot.create(path) as f:
+        tree = f.tree("t", {"x": np.float64}, basket_size=512)
+        tree.extend({"x": values})
+    with open(path, "rb") as handle:
+        counted = Counted(handle, str(path))
+        with ROOTFile(counted) as local:
+            assert np.array_equal(local["t"]["x"].array(), values)
+            baskets = local["t"]["x"].num_baskets
+            alone = _baskets_read(counted, local["t"], "x")
+    assert len(alone) == baskets
 
 
 # -- jagged ---------------------------------------------------------------
