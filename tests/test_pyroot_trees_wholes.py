@@ -9,6 +9,8 @@ ROOT refuses to make of them is refused too.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -169,10 +171,11 @@ def test_what_root_will_not_make_of_an_object_is_refused():
     assert tree.Write() == 0  # no branches: nothing to write
 
 
-def test_a_proxy_selector_is_refused_by_name():
+def test_a_proxy_without_a_macro_is_root_s_error_and_a_cut_is_refused(capsys):
     tree = ROOT.TTree("t", "t")
-    with pytest.raises(UnsupportedFeatureError, match=r"MakeProxy writes sel\.h"):
-        tree.MakeProxy("sel", "draw.C")
-    with pytest.raises(UnsupportedFeatureError, match=r"MakeProxy writes sel\.h.*\(none\)"):
-        tree.MakeProxy("sel")
+    assert tree.MakeProxy("sel") == 0
+    assert "A file name for the user script is required" in capsys.readouterr().err
+    assert not Path("sel.h").exists()
+    with pytest.raises(UnsupportedFeatureError, match=r"cut file cut\.C"):
+        tree.MakeProxy("sel", "draw.C", "cut.C")
     assert tree.BranchRef().GetName() == "TRefTable"  # made, though the writer cannot carry it

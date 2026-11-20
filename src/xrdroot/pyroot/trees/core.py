@@ -155,14 +155,27 @@ class _TreeCore(_TObjectLike):
 
     def MakeProxy(self, classname: str, macro: str = "", cutfilename: str = "",
                   option: str = "", maxUnrolling: int = 3) -> int:  # fmt: skip
-        """``MakeProxy``: refused - it writes C++ for ACLiC to compile against the tree."""
-        from ...errors import UnsupportedFeatureError
+        """``MakeProxy``: write ``classname.h``, the proxy class that runs a macro per entry.
 
-        raise UnsupportedFeatureError(
-            f"TTree::MakeProxy writes {classname}.h, a C++ selector of proxies that ACLiC "
-            f"compiles round the macro {macro or '(none)'}, which xrdroot does not generate; "
-            f"read the branches with TTreeReader, RDataFrame or GetEntry instead"
-        )
+        ROOT writes a class whose members are read from the tree entry by entry, include
+        the macro's file in it, and hand each entry's value to the macro's own function:
+        the tree is read without a selector being written by hand. ``maxUnrolling`` limits
+        how deep ROOT writes a member of a nested collection; xrdroot's proxy reads each
+        top-level branch whole, so it has nothing to unroll.
+        """
+        from .selector import make_proxy
+
+        return make_proxy(self, classname, macro, cutfilename, option, maxUnrolling)
+
+    def _proxy_value(self, column: str) -> Any:
+        """What a generated ``MakeProxy`` member of ``column`` holds: this entry's value.
+
+        The generated class calls this once per entry, before it runs the macro's function
+        - which is what ROOT's proxy reads through, and what those members are set to.
+        """
+        from .selector import TBranchProxy
+
+        return TBranchProxy(self._current(column))
 
     def MakeSelector(self, name: str = "", option: str = "") -> int:
         """``MakeSelector``: write the skeleton class that reads this tree, here.

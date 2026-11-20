@@ -356,6 +356,73 @@ def test_an_include_is_spelled_out_only_when_only_the_run_directory_has_it(tmp_p
     assert made._resolved(text, macro) == text  # a file nowhere found stays as it was
 
 
+def test_a_proxy_class_is_written_with_a_member_per_branch(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "dude.C").write_text("double dude() { return 3; }\n")
+    tree = ROOT.TTree("Tree", "a tree")
+    ev = np.zeros(1, dtype=np.int32)
+    tree.Branch("ev", ev, "ev/I")
+    assert tree.MakeProxy("Proxy", "dude.C", "", "goff") == 1
+    header = (tmp_path / "Proxy.h").read_text()
+    assert "class Proxy : public TSelector {" in header
+    assert "   Int_t ev;" in header
+    assert '   ev = fTree->_proxy_value("ev");' in header
+    assert '#include "dude.C"' in header
+    assert "   dude();" in header
+    assert 'called with option "goff"' in header.lower()
+
+
+def test_a_proxy_of_a_tree_with_no_branch_has_nothing_to_read(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    tree = ROOT.TTree("Plain", "a tree of no branches")
+    assert tree.MakeProxy("", "dude.C") == 1
+    header = (tmp_path / "PlainProxy.h").read_text()
+    assert "   // (no proxy)" in header
+    assert "   // (nothing to read)" in header
+    assert "   dude();" in header
+
+
+def test_a_proxy_leaves_out_a_branch_whose_class_has_no_dictionary(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    vector = LeafInfo("v.", "v.", "", "vector<double>", "TLeafElement", 1, None, "v", True, False)
+    number = LeafInfo("n", "n", "", "Int_t", "TLeafI", 1, None, "n", False, False)
+    obj = LeafInfo("o.", "o.", "", "ClassB", "TLeafElement", 1, None, "o", False, False)
+    tree = Fake([vector, number, obj], [
+        _branch("v.", [vector], "vector<double>"),
+        _branch("n", [number]),
+        _branch("myint.someodd.name", [number]),
+        _branch("o.", [obj], "ClassB"),
+    ], {})
+    members, left = made._proxies(tree)
+    assert members == [("vector<double> v", "v."), ("Int_t n", "n"),
+                       ("Int_t myint_someodd_name", "n")]  # fmt: skip
+    assert left == ["o."]
+    assert made.make_proxy(tree, "Fake", "dude.C") == 1
+    assert ("   // No proxy for the branch(es) o.: a branch of objects needs its class's "
+            "dictionary.") in (tmp_path / "Fake.h").read_text()
+
+
+def test_a_proxy_answers_the_ways_a_macro_reads_a_branch():
+    proxy = made.TBranchProxy(ROOT.std.vector["vector<double>"](
+        [ROOT.std.vector["double"]([3.0, 6.0])]))
+    assert len(proxy) == 1 and proxy.size() == 1 and proxy.GetEntries() == 1
+    assert list(proxy) == [ROOT.std.vector["double"]([3.0, 6.0])]
+    assert proxy[0][1] == 6.0
+    assert proxy.__deref__() is proxy.fValue
+    assert proxy.at(0) == proxy.fValue[0]  # anything else the value answers, it answers
+
+
+def test_a_proxy_member_reads_the_entry_the_reader_set():
+    tree = ROOT.TTree("Tree", "a tree")
+    ev = np.zeros(1, dtype=np.int32)
+    tree.Branch("ev", ev, "ev/I")
+    for i in range(3):
+        ev[0] = 100 + i
+        tree.Fill()
+    tree.GetEntry(1)
+    assert tree._proxy_value("ev").fValue == 101
+
+
 def test_a_selector_runs_the_entries_it_is_given(tmp_path, capsys):
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.chdir(tmp_path)
