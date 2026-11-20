@@ -115,10 +115,80 @@ def note_generated_dictionary(classes: Any) -> None:
     Nothing is compiled here, so what a dictionary adds to a class this kit already builds is
     that ``TClass`` reports it as one a dictionary describes, which is what a program asking
     for a dictionary and then asking the state of the class checks for.
+
+    A dictionary arriving for a class a file has already described is ROOT's
+    ``TClass::PostLoadCheck``: :func:`_post_load_check` says what the two layouts disagree
+    about, which the file could not have said itself - the class had no dictionary when it
+    was read.
     """
     for name in str(classes).split(";"):
         if name.strip():
-            GENERATED.add(_known_as(name))
+            known = _known_as(name)
+            GENERATED.add(known)
+            _post_load_check(known)
+
+
+def _post_load_check(name: str) -> None:
+    """``TClass::PostLoadCheck``: the class's dictionary has arrived, so the layouts a file
+    gave it can at last be held against the class in memory.
+
+    A class a file described while it had no dictionary kept the file's layout as that
+    version's - it was the only description there was - so a dictionary of the same version
+    with another checksum is the class having been changed since, and ROOT says so once per
+    class: ``roottest``'s ``checkWarn0`` reads ``data1.root`` and then ``.L data2.C+`` and is
+    warned, where ``checkWarn2`` loads the class first and is warned as the file opens.
+
+    Only a class a file has described is looked at, so loading a dictionary computes nothing
+    about the classes no file has read: what a class's layout costs is its writer's knowledge
+    of every type it holds, which is asked for when it is written, not when it is loaded.
+    """
+    mine = TClass(name)._layout() if name in FILE_INFOS else None
+    if mine is None or name in DISAGREED:
+        return
+    on_file = _layout_of_version(name, mine)
+    if on_file is None or not TClass(name)._versioned():
+        return
+    _post_load_warnings(name, mine, on_file)
+
+
+def _layout_of_version(name: str, mine: Layout) -> Layout | None:
+    """The layout a file gave ``name`` of the version the class in memory has, if its
+    checksum is not the class's own - the disagreement ``PostLoadCheck`` is about."""
+    return next((info for info in FILE_INFOS.get(name, [])
+                 if info[1] == mine[1] and info[0] != mine[0]), None)
+
+
+def _post_load_warnings(name: str, mine: Layout, on_file: Layout) -> None:
+    """The two warnings ROOT prints for a dictionary that arrives after the class's file
+    layouts were read: ``TClass::PostLoadCheck``, that the file's version of the class is not
+    the one in memory, and ``TStreamerInfo::CompareContent``, which lists the members the
+    file's layout has and the class in memory does not declare - ``int myvar_one; //`` beside
+    ``double mydouble_two; //``.
+
+    The file's layout stays the version's current one, as ROOT keeps it, so what the class's
+    streamer information lists afterwards is the file's, which is why ``checkWarn0`` prints
+    ``myvar_one`` after loading the class that declares ``mydouble_two``.
+    """
+    DISAGREED.add(name)
+    message("Warning", "TClass::PostLoadCheck",
+            "\n   The StreamerInfo version %d for the class %s which was read\n"
+            "   from a file previously opened has the same version as the active class\n"
+            "   but a different checksum. You should update the version to ClassDef(%s,%d).\n"
+            "   Do not try to write objects with the current class definition,\n"
+            "   the files will not be readable.\n",
+            on_file[1], name, name, on_file[1] + 1)
+    message("Warning", "TStreamerInfo::CompareContent",
+            "The following data member of\nthe in-memory layout version %d of class '%s' "
+            "is missing from\nthe on-file layout version %d:\n   %s",
+            on_file[1], name, mine[1],
+            "\n   ".join(_declaration(element) for element in _lost(mine, on_file)))
+
+
+def _lost(mine: Layout, on_file: Layout) -> list[Element]:
+    """The members a file's layout records that the class in memory declares by other names,
+    which is what ``CompareContent`` lists as missing."""
+    declared = {element[1] for element in mine[2]}
+    return [element for element in on_file[2] if element[1] not in declared]
 
 
 def _known_as(name: str) -> str:

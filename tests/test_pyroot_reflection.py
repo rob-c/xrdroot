@@ -888,6 +888,62 @@ def test_a_member_named_in_both_layouts_is_never_paired_by_position(capfd):
     assert "myvar_one" not in printed
 
 
+def test_a_dictionary_loaded_after_the_file_is_a_post_load_check(capfd):
+    """``roottest``'s ``checkWarn0`` reads ``data1.root`` and then loads the class: the file's
+    layout is the only description of the class there was, so ROOT says the version should be
+    updated and lists the members the class in memory does not declare."""
+    reflection.note_file_infos([("Renamed", (0x1234567, 1, (ON_FILE_INT,)))], "data1.root")
+    _renamed_class("Renamed", "double mydouble_two")
+    capfd.readouterr()
+    reflection.note_generated_dictionary("Renamed")
+    printed = capfd.readouterr().err
+    assert (
+        "Warning in <TClass::PostLoadCheck>: \n"
+        "   The StreamerInfo version 1 for the class Renamed which was read\n"
+        "   from a file previously opened has the same version as the active class\n"
+        "   but a different checksum. You should update the version to ClassDef(Renamed,2).\n"
+        "   Do not try to write objects with the current class definition,\n"
+        "   the files will not be readable.\n" in printed
+    )
+    assert (
+        "Warning in <TStreamerInfo::CompareContent>: The following data member of\n"
+        "the in-memory layout version 1 of class 'Renamed' is missing from\n"
+        "the on-file layout version 1:\n   int myvar_one; //" in printed
+    )
+
+
+def test_a_dictionary_is_checked_against_the_file_once(capfd):
+    """ROOT warns once per class however many dictionaries a session loads of it, so a second
+    load of the class says nothing."""
+    reflection.note_file_infos([("Renamed", (0x1234567, 1, (ON_FILE_INT,)))], "data1.root")
+    _renamed_class("Renamed", "double mydouble_two")
+    reflection.note_generated_dictionary("Renamed")
+    capfd.readouterr()
+    reflection.note_generated_dictionary("Renamed")
+    assert "PostLoadCheck" not in capfd.readouterr().err
+
+
+def test_a_dictionary_of_a_class_no_file_disagrees_with_says_nothing(capfd):
+    """A class whose layout in memory nothing disagrees with - no file read it, or a file whose
+    checksum is the class's own - is loaded without a word."""
+    run_source(VERSED, "versed.C", call=False)
+    reflection.note_generated_dictionary("Versed;Nonesuch")
+    assert "PostLoadCheck" not in capfd.readouterr().err
+    checksum = reflection.TClass("Versed")._layout()[0]
+    reflection.note_file_infos([("Versed", (checksum, 1, (LONG64,)))], "same.root")
+    reflection.note_generated_dictionary("Versed")
+    assert "PostLoadCheck" not in capfd.readouterr().err
+
+
+def test_a_file_layout_of_a_class_with_no_classdef_is_no_post_load_check(capfd):
+    """A class declared without ``ClassDef`` is told apart by checksum rather than by version,
+    so a file's layout of it is no version the class failed to update."""
+    run_source("class Forin {\npublic:\n   int a = 1;\n};\n", "forin.C", call=False)
+    reflection.note_file_infos([("Forin", (0x1234567, 1, (ON_FILE_INT,)))], "data1.root")
+    reflection.note_generated_dictionary("Forin")
+    assert "PostLoadCheck" not in capfd.readouterr().err
+
+
 def test_a_layout_the_class_in_memory_disowns_is_listed_as_roots_file_layout(capfd):
     """A file's layout of a version the class in memory also has, with a checksum of its own,
     stays the class's current one - ROOT warns the class should be given the next version
