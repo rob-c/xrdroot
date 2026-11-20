@@ -20,12 +20,12 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1195 / 2173** |
+| roottest | 1038 / 2173 (47.8 %) | **1220 / 2173** |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **21 / 109** at `--jobs 5` (22 alone) |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1354 / 2820 (48.0 %)** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1386 / 2820 (49.1 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
 The "now" column is two runs at `2ef9c80`: `/tmp/r9/final2b` (roottest, 1141) and
@@ -998,21 +998,34 @@ cheap to maintain and impossible to reconstruct.
 | G-2 (part) | done | `3aff3e15` (worker 16) | 0 | `HasFailure()` inside a lambda reads GoogleTest's own state - the gtest kind's largest single translator cause |
 | W0-35 | attempted, not merged | - | 0 | worker 2 left five files uncommitted in its worktree (the `TGeoManager` record) and workers 8, 12 and 13 died or reported without a commit; their chains are round 13's by default |
 
+| Q-44 | **done** | `c747849c`, `f2ddea6c` (worker 1) | roottest +19 | the geometry chain, end to end: a `TGeoManager` record is written into the ROOT file the export makes, and all nineteen `io/geo/export_*` tests pass. Five rounds had approached this one file at a time |
+| Q-46/Q-41 | **done** | `8f7775b0` (worker 7) | roottest +4 | a `std::bitset` member written, generated and read back: all four `ntuple/makeproject/ttree/*` pass, so the makeproject group is complete |
+| Q-39 (list) | **done** | `c262c846` (worker 5) | roottest +1 | `ROOT.list` and the other bare standard templates, as cppyy has them: `tree/evolution/WriteList` passes |
+| W0-34 | **done** | `1fc6bff2` (worker 12) | 0 | `gErrorIgnoreLevel` is read where a script set it, on ROOT itself |
+| Q-40 (part) | done | `be6f0cd7` (worker 6) | 0 | a `TClonesArray` of a macro's class is split off its declaration |
+| Q-38 (compression) | **done in part** | `c0cd9118` (worker 2) | 0 | a compression level past an algorithm's range packs at its top, as ROOT's does - `io/compression` no longer dies in `zlib`, it now refuses by name where the algorithm is missing |
+| Q-44 (graphics) | **done in part** | `fb57bfb4` (worker 9) | 0 | a pad's macro writes polylines, arrows, paves, round shapes and its sub-pads |
+| Q-16 (TEnum) | **done in part** | `344809f5` (worker 10) | 0 | `TEnum::GetEnum` loads the library a rootmap lists an enumeration in |
+| G-2 (part) | done | `85065e8d` (worker 13) | 0 | `ROOT::TestSupport::FilterDiagsRAII`, a test's own handler for a diagnostic |
+| Q-32 (TMVA) | **done in part** | `8342d8d6` (worker 14) | other +6 | PyMVA's interpreter, and the ensembles' multiclass fit: six `other/tmva/pymva/*` tests pass |
+| Q-38 (math) | **done in part** | `a5d25f67` (worker 16) | other +1 | `ROOT::Math`'s `Polynomial`, `IGenFunction` and `GSLMinimizer1D`: `mathmore-testMinimization1D` passes |
+| W0-36 | attempted, not merged | - | 0 | workers 3, 4, 11 and 15 each measured that their chain's wall is one file outside it (`pyroot/trees/core.py`'s `MakeProxy`, `interp.py`'s walk, `files.py`); their reports are `/tmp/r13/wNN.log` and are round 14's chains |
+
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | `f65e991` | `2ef9c80` | `71aa3256` | `90f5c5e8` | now (`f7e42087`, intact tree) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | 1138 | 1141 | 1183 | 1181 | **1195** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 80 / 470 | 80 / 470 | 80 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
-| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 | 21 | 21 | 21 | 21 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** | **1301** | **1342** | **1340** | **1354** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | `f65e991` | `2ef9c80` | `71aa3256` | `90f5c5e8` | `f7e42087` | now (`a5d25f67`, intact tree) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | 1138 | 1141 | 1183 | 1181 | 1195 | **1220** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
+| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 | 21 | 21 | 21 | 21 | 28 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** | **1301** | **1342** | **1340** | **1354** | **1386** |
 
-The last column is `/tmp/r12/final2` (roottest, 1195) and `/tmp/r12/final1` (the other kinds)
-at `f7e42087`, on the intact tree `/tmp/rootsrc-6.40b`; the column before it,
-`/tmp/r11/final2` (1181) and `/tmp/r11/final1` at `90f5c5e8`; **every earlier column was measured on
+The last column is `/tmp/r13/final2` (roottest, 1220) and `/tmp/r13/final1` (the other kinds)
+at `a5d25f67`, on the intact tree `/tmp/rootsrc-6.40b`; the column before it,
+`/tmp/r12/final2` (1195) and `/tmp/r12/final1` at `f7e42087`; **every earlier column was measured on
 a damaged tree** (`W0-31`), so compare counts only within a column. The column before it is
 `/tmp/r9/final2b` (1141) and `/tmp/r9/final1` at `2ef9c80`; the column before it, `/tmp/r8/final2` (1138) and `/tmp/r8/final1` at `f65e991`; the column before it, `/tmp/r7/final2` (1134) and `/tmp/r7/final1` at `2d0e458`; the column before it, `/tmp/r6/final2b` (1132) and `/tmp/r6/final1` at
 `3825443`; the column before it, `/tmp/r5/final2b` (1123) and `/tmp/r5/final1` at
