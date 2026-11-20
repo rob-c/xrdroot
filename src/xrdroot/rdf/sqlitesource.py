@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import os
 import re
-import sqlite3
 import tempfile
 from collections.abc import Callable
 from contextlib import closing
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import sqlite3
 
 import numpy as np
 
@@ -102,6 +104,8 @@ def _column(values: list[Any], kind: str) -> Any:
 
 
 def _query(path: str, query: str) -> Columns:
+    import sqlite3  # a command that reads no SQLite pays nothing for it
+
     with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as db:
         cursor = db.execute(query)
         names = [str(column[0]) for column in cursor.description or []]

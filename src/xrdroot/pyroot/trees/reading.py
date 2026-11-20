@@ -196,7 +196,11 @@ class _Reading(_TreeCore):
         value = self._batch.value(column, entry)
         if held is None or held.address is not address:
             address.put(value.item() if isinstance(value, np.generic) else value)
-        return max(int(np.asarray(value).nbytes) if not isinstance(value, str) else len(value), 1)
+        if isinstance(value, np.generic):
+            return max(int(value.dtype.itemsize), 1)  # one number: the bytes of its own width
+        if isinstance(value, str):
+            return max(len(value), 1)
+        return max(int(np.asarray(value).nbytes), 1)
 
     def _load_friends(self, entry: int) -> None:
         """Read the same entry of every friend, or the entry its index matches."""
