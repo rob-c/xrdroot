@@ -20,12 +20,12 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1226 / 2173** measured, **1231** with the five that pass alone |
+| roottest | 1038 / 2173 (47.8 %) | **1230 / 2173** at `--jobs 3` (1234 if the CERN endpoint were quick) |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **21 / 109** at `--jobs 5` (22 alone) |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1393 / 2820 (49.4 %)** measured, **1398** with the load-sensitive five |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1397 / 2820 (49.5 %)** at `--jobs 3` |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
 The "now" column is two runs at `2ef9c80`: `/tmp/r9/final2b` (roottest, 1141) and
@@ -1016,20 +1016,29 @@ cheap to maintain and impossible to reconstruct.
 | W0-39 | todo | | 0 | the four `io/perf` buffers now take 211-261 s of the 300 s limit (`/tmp/r14/solo`), so they will flip to TIMEOUT on any loaded machine. `P-9` closed them functionally; they need the *next* factor of two, or a per-test timeout the harness can justify |
 | W0-40 | attempted, not merged | | 0 | six workers (3, 4, 6, 12, 15, 16) reported without a commit; their reports name the next file each chain needs - `pyroot/trees/core.py`'s proxy (landed by worker 14), `interp.py`'s walk, `tools/rootsuite`'s working copy, `jsonbuffer.py`, `files.py`. Those are round 15's chains |
 
+| W0-41 | **done in part** | `ccfd6aa3`, `4f8856f3`, `601996d1` (worker 3) | roottest +3 | a file's member pairs with the class's own by position as ROOT's `CompareContent` pairs it; a file's layout of a version the class also has stays the class's current one; and a file's pair base and a dictionary's template instance are no missing dictionary. Three `meta/evolution/checkWarn*` tests pass, and the six stderr DIFFs move on |
+| Q-39 (arrays) | **done in part** | `c69185f5` (worker 1) | 0 | an array of containers of objects is one record of columns - the bigevent writer's next member |
+| W0-42 | attempted, not merged | - | 0 | workers 2, 4 and 8 reported without a commit and each measured that its chain's wall is outside it (`pyroot/trees/core.py`, `interp.py`, `rdobjects.py`); their reports are `/tmp/r15/wNN.log`. Worker 8 took `io/perf` no further: the buffers pass again at `--jobs 3` and still have only a 40-90 s margin (`W0-39` stands) |
+| W0-43 | todo | | 4 | the CERN endpoint was slow for the whole round: `main/RootcpReadRemote{,CheckOutput,Clean}` and `io/hadd/test_hadd_regr_20872` timed out at `--jobs 1` with nothing else running (`/tmp/r15/net`). They are not code failures and must never be counted as losses without this rerun |
+| W0-44 | todo | | 0 | **the machine is shared**: load averages of 20, then 64, during this round, from another session. Rounds should check `uptime` before choosing `--jobs`, and a round whose load is above ~8 should measure at `--jobs 3` and say so |
+
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | `f65e991` | `2ef9c80` | `71aa3256` | `90f5c5e8` | `f7e42087` | `a5d25f67` | now (`19be128b`, intact tree) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | 1138 | 1141 | 1183 | 1181 | 1195 | 1220 | **1226** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
-| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 | 21 | 21 | 21 | 21 | 28 | 29 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** | **1301** | **1342** | **1340** | **1354** | **1386** | **1393** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | `f65e991` | `2ef9c80` | `71aa3256` | `90f5c5e8` | `f7e42087` | `a5d25f67` | `19be128b` | now (`601996d1`, intact tree) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | 1138 | 1141 | 1183 | 1181 | 1195 | 1220 | 1226 | **1230** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
+| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 | 21 | 21 | 21 | 21 | 28 | 29 | 29 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** | **1301** | **1342** | **1340** | **1354** | **1386** | **1393** | **1397** |
 
-The last column is `/tmp/r14/final2` (roottest, 1226) and `/tmp/r14/final1` (the other kinds)
-at `19be128b`, on the intact tree `/tmp/rootsrc-6.40b`; the column before it,
+The last column is `/tmp/r15/final2` (roottest, 1230) and `/tmp/r15/final1` (the other kinds)
+at `601996d1`, on the intact tree `/tmp/rootsrc-6.40b`, measured at **`--jobs 3`** because the
+machine's load average reached 64; the column before it, `/tmp/r14/final2` (1226) and
+`/tmp/r14/final1` at `19be128b` (at `--jobs 5`), so the two columns are not strictly
+comparable - the four CERN-network tests alone account for part of the difference. the column before it,
 `/tmp/r13/final2` (1220) and `/tmp/r13/final1` at `a5d25f67`; the column before it,
 `/tmp/r12/final2` (1195) and `/tmp/r12/final1` at `f7e42087`; **every earlier column was measured on
 a damaged tree** (`W0-31`), so compare counts only within a column. The column before it is
