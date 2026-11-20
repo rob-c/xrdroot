@@ -710,7 +710,7 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
-- Round 16's result of it, at `4509b416`: `TOTAL 116579 0 29072 0 100%`, `12588 passed, 1 skipped,
+- Round 16's result of it, at `4509b416`: `TOTAL 116525 0 29068 0 100%`, `12588 passed, 1 skipped,
   46 xfailed`; `ruff` clean, `mypy` 1017 files, maintainability 30 094 functions, components 0
   undeclared, `mkdocs build --strict` built. Run with `-n 2` while the machine is loaded (`W0-45`).
 - Round 15's result of it, at `177f6159`: `TOTAL 116525 0 29068 0 100%`, `12586 passed, 1 skipped,
