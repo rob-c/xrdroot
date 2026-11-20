@@ -10,7 +10,7 @@ laptop: the bytes that cross the wire are the ones asked for.
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -38,6 +38,10 @@ DEFAULT_STEP = 10_000
 
 #: How many bytes of one branch's baskets are read in a single request.
 AHEAD = 1 << 20
+
+#: How many entries of whole objects one branch decodes for a formula and keeps: a draw
+#: asks for a tree's entries once per expression, at most this many at a time.
+REMEMBERED = 100_000
 
 
 def _ahead_run(
@@ -193,7 +197,8 @@ class Branch:
     ``branch.leaf``, which is how ROOT itself writes such a name.
     """
 
-    __slots__ = ("name", "record", "leaf", "column", "_source", "_cached", "_ahead")
+    __slots__ = ("name", "record", "leaf", "column", "_source", "_cached", "_ahead",
+                 "_whole")  # fmt: skip
 
     def __init__(
         self,
@@ -212,6 +217,8 @@ class Branch:
         self._cached: tuple[int, Basket] | None = None
         #: The baskets the last read brought along with the one asked for.
         self._ahead: dict[int, Basket] = {}
+        #: The whole objects of the last range read for a formula: its ends, and its objects.
+        self._whole: tuple[int, int, list[Any]] | None = None
 
     def __repr__(self) -> str:
         return f"<Branch {self.name!r} of {self.typename or self.leaf.classname}>"
@@ -400,8 +407,32 @@ class Branch:
         np.cumsum(lengths, out=offsets[1:])
         return Jagged(values, offsets)
 
+    def objects(self, entry_start: int = 0, entry_stop: int | None = None) -> list[Any]:
+        """The whole objects of a range of entries, kept where a formula cannot change them.
+
+        A tree whose objects are not split into branches is read an object at a
+        time, each walk over its members costing what the whole class costs - and
+        ``TTree::Draw`` asks for the same entries once per expression, so sixty
+        draws of one tree decode its objects sixty times over. A formula takes
+        one member out of each object and drops it, so nothing it can reach is
+        the object itself, and the last range read is kept for the next reader.
+        What is handed back is then the same dictionaries twice, which is why
+        only a reader that keeps them to itself asks for them this way:
+        :meth:`array` decodes afresh.
+        """
+        if not isinstance(self.column, Values) or walkable(self.record):
+            return cast(list[Any], self.array(entry_start, entry_stop))
+        self._refuse_if_unreadable()
+        start, stop = self._bounds(entry_start, entry_stop)
+        if self._whole is not None and self._whole[:2] == (start, stop):
+            return self._whole[2]
+        objects = self._objects(self.column, start, stop)
+        if stop - start <= REMEMBERED:
+            self._whole = (start, stop, objects)
+        return objects
+
     def _objects(self, column: Values, start: int, stop: int) -> list[Any]:
-        out = []
+        out: list[Any] = []
         for index, low, high in self._spans(start, stop):
             basket = self.basket(index)
             reader = Buffer(basket.data, basket.keylen)

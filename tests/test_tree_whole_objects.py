@@ -159,6 +159,44 @@ def test_a_whole_numbered_member_is_binned_a_whole_number_wide(whole_tree):
     assert is_integer(compile_formula("fNcells", names), whole_tree)
 
 
+# -- reading a whole object once for a formula --------------------------------------
+
+
+def test_a_formula_is_given_the_objects_the_last_one_read_and_nothing_else_is(whole_tree):
+    # ``Draw`` asks for the same entries once per expression over them, and takes one
+    # member out of each object; sixty draws of one tree should decode it once.
+    branch = whole_tree["tlv"]
+    first = branch.objects(0, 5)
+    assert branch.objects(0, 5) is first
+    assert branch.objects(0, 5) == first
+    assert branch.objects(0, 3) is not first  # a range nobody has read yet
+    assert branch.objects(0, 3) != first
+
+
+def test_the_values_a_reader_hands_on_are_its_own_object_each_time(whole_tree):
+    # ``array`` is what a script reads, and it never gives back what a formula was given.
+    branch = whole_tree["tlv"]
+    borrowed = branch.objects(0, 5)
+    assert branch.array(0, 5) is not borrowed
+    assert branch.array(0, 5) == borrowed
+
+
+def test_a_range_too_long_to_be_kept_is_read_and_let_go_of(whole_tree, monkeypatch):
+    from xrdroot import tree as trees
+
+    monkeypatch.setattr(trees, "REMEMBERED", 2)
+    branch = whole_tree["tlv"]
+    branch._whole = None
+    assert len(branch.objects(0, 5)) == 5  # read, but not remembered: it is over the limit
+    assert branch._whole is None
+
+
+def test_a_column_of_numbers_is_read_as_it_always_was_and_kept_nowhere(whole_tree):
+    branch = whole_tree["numbers"]
+    assert branch.objects(0, 5).tolist() == branch.array(0, 5).tolist()
+    assert branch._whole is None
+
+
 # -- the learning itself ----------------------------------------------------------
 
 

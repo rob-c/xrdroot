@@ -370,6 +370,17 @@ class ChainedBranch:
         ]
         return concatenate(pieces) if pieces else self._branch(0).array(0, 0)
 
+    def objects(self, entry_start: int = 0, entry_stop: int | None = None) -> list[Any]:
+        """The whole objects of a range of the chain's entries, as each file's branch keeps them."""
+        self.typename  # noqa: B018 - asked for the refusal a disagreement makes
+        start, stop = _bounds(len(self.chain), entry_start, entry_stop)
+        out: list[Any] = []
+        for index, low, high in self.chain.spans(start, stop):
+            branch = self._branch(index)
+            objects = getattr(branch, "objects", None)
+            out.extend(branch.array(low, high) if objects is None else objects(low, high))
+        return out
+
     def pick(self, rows: np.ndarray[Any, Any]) -> Any:
         """The values of the chain's entries numbered in ``rows``, in that order."""
         self.typename  # noqa: B018 - asked for the refusal a disagreement makes

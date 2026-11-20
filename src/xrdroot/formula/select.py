@@ -179,6 +179,18 @@ def _local(source: Any, numbers: Array) -> Array | None:
     return numbers - starts[np.searchsorted(starts, numbers, side="right") - 1]
 
 
+def _values(branch: Any, low: int, high: int, borrowed: bool) -> Any:
+    """A branch's values for a range of entries, which may be the last reader's own.
+
+    ``borrowed`` is for a caller that takes values out of the objects and drops
+    them - a draw's formula, a scan's row - and may therefore be given the objects
+    one reader decoded rather than a fresh walk over their bytes; see
+    :meth:`~xrdroot.tree.Branch.objects`.
+    """
+    objects = getattr(branch, "objects", None)
+    return branch.array(low, high) if objects is None or not borrowed else objects(low, high)
+
+
 class _Read:
     """The entries one call reads, the branches read for them, and the numbers they have."""
 
@@ -189,10 +201,13 @@ class _Read:
         stop: int | None,
         entries: Any,
         whole: Whole | None = None,
+        borrowed: bool = False,
     ) -> None:
         self.source = source
         #: The members of the tree's whole objects, when the caller knows them.
         self.whole = whole
+        #: Does the caller take only values out of the objects, never the objects?
+        self.borrowed = borrowed
         #: The entries named, or ``None`` for the range ``low`` to ``high``.
         self.rows: Array | None = None
         self.low, self.high = _bounds(len(source), start, stop)
@@ -212,7 +227,7 @@ class _Read:
             else:
                 branch = self.source[name]
                 if self.rows is None:
-                    self.columns[name] = branch.array(self.low, self.high)
+                    self.columns[name] = _values(branch, self.low, self.high, self.borrowed)
                 else:
                     self.columns[name] = branch.pick(self.rows)
         return self.columns[name]

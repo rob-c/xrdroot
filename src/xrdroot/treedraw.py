@@ -376,7 +376,7 @@ def batches(
     whole = _whole_of(source, formulas, whole)
     branches = list(dict.fromkeys(name for f in formulas for name in f.branches))
     for start in range(first, stop, step):
-        read = _Read(source, start, min(start + step, stop), None, whole)
+        read = _Read(source, start, min(start + step, stop), None, whole, borrowed=True)
         columns = {n: read.shaped(n) for n in branches}
         yield evaluate_together(
             formulas,

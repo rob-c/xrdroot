@@ -224,7 +224,7 @@ def _batches(
     # objects offer, learned the first time an expression reads inside one of them.
     whole = _whole_of(source, branches)
     for start in range(first, stop, step):
-        read = _Read(source, start, min(start + step, stop), None, whole)
+        read = _Read(source, start, min(start + step, stop), None, whole, borrowed=True)
         columns = {n: _shaped(_underlying(_column_of(source, n, whole)), read.column(n))
                    for n in branches}  # fmt: skip
         yield list(table.rows(table.results(columns, read, total), read.numbers))
