@@ -278,49 +278,11 @@ def reconcile(
     one from ``on_file`` and there is nothing to settle - plus the warning text,
     which is empty when the two agree. The caller puts
     ``Warning in <CreateReadMemberWiseActions>: `` in front of it.
-
-    Two layouts whose members are the same are not a divergence however far apart
-    our checksums for them are (:func:`_holds_the_same`).
     """
     same = next((layout for layout in on_file if layout[1] == mine[1]), None)
-    if same is None or same[0] == mine[0] or _holds_the_same(same, mine):
+    if same is None or same[0] == mine[0]:
         return same, ""
     return mine, _not_in_sync(name, mine, same, filename)
-
-
-def _holds_the_same(one: Described, other: Described) -> bool:
-    """Whether two layouts of one version hold the same members, element for element.
-
-    A checksum is a number computed from these elements, so two layouts whose elements agree
-    are the one layout and ROOT's checksums for them agree too; a checksum of ours that says
-    otherwise is our own arithmetic, and the file's account of the class is the true one. That
-    matters because the difference is a warning and a read by the class in memory: an
-    unversioned base class of a test program (``execBaseClass_v2``) has the same members on
-    the file as in memory and its base's version did not move, so ROOT says nothing about it.
-
-    The checksum of a base class rides in its ``BASE`` element, and it is a number of our own
-    from the other program's build, so it is left out of the comparison; the base's version,
-    which is what ROOT compares, is not.
-    """
-    if len(one[2]) != len(other[2]):
-        return False
-    return all(
-        _same_element(mine, theirs) for mine, theirs in zip(one[2], other[2], strict=True)
-    )
-
-
-def _same_element(one: tuple[Any, ...], other: tuple[Any, ...]) -> bool:
-    """One streamer element against another, without the base class's checksum."""
-    return (
-        one[:7] == other[:7]
-        and one[8:] == other[8:]
-        and _unhashed(one[7]) == _unhashed(other[7])
-    )
-
-
-def _unhashed(options: tuple[int, ...]) -> tuple[int, ...]:
-    """A ``BASE`` element's array bounds without the checksum the writer put in the second."""
-    return options[:1] + options[2:]
 
 
 def _not_in_sync(name: str, mine: Described, on_file: Described, filename: str) -> str:
