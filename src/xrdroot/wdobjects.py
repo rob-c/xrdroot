@@ -375,7 +375,9 @@ class _Writer:
             self.record(typename.rstrip("*"), item)
 
     def _stl(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
-        found = parse_type(element[8])
+        # A container base names the container in the element's name and gives no type name
+        # of its own; a member's element carries both, so either says what the container is.
+        found = parse_type(element[8] or element[1])
         if element[3] in (STL + OFFSET_L, STL_P + OFFSET_L):
             self.container_array(found, value)
             return

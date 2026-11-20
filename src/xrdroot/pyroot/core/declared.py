@@ -127,8 +127,37 @@ def _declaration_of(cls: Any, name: str | None) -> Declaration:
     versioned = "Class_Version" in cls.__dict__
     version = int(cls.Class_Version()) if versioned else 1
     made = tuple(Field(str(n), str(s), comment_of(c), tuple(d)) for n, s, c, d in fields)
-    return Declaration(name or str(own), version, foreign(cls), tuple(map(str, bases)), made,
+    return Declaration(name or str(own), version, foreign(cls), _spelled_bases(cls, bases), made,
                        issubclass(cls, TObject), _class_title(cls))  # fmt: skip
+
+
+def _spelled_bases(cls: Any, bases: Any) -> tuple[str, ...]:
+    """The bases as C++ declares them, a template instance's arguments and all.
+
+    The translator records a base by the name of the class it names, so that a class deriving
+    from ``vector<UShort_t>`` - the bigevent roottest's ``UShortVector`` - arrives as deriving
+    from ``std::vector``, with nothing left to say what the vector holds. What it holds is
+    what a file's description of the base has to say, so the base is spelled here as the class
+    of ``cppstd`` it is, which names itself with its arguments: the class ``cls`` derives from
+    in Python, matched to the declared base by the class name before the angle bracket.
+    """
+    held = [_name_of(base) for base in cls.__bases__]
+    spelled: list[str] = []
+    for base in bases:
+        stem = _stem(str(base))
+        spelled.append(next((one for one in held if _stem(one) == stem), str(base)))
+    return tuple(spelled)
+
+
+def _name_of(base: Any) -> str:
+    """What a class of the namespace calls itself in C++: ``vector<unsigned short>``."""
+    return str(getattr(base, "__cpp_name__", "") or base.__name__)
+
+
+def _stem(name: str) -> str:
+    """A class name without its template arguments and namespace: ``vector<unsigned short>``'s
+    ``vector``, which is what two spellings of one base agree on."""
+    return _squashed_name(name).split("<")[0].rsplit("::", 1)[-1]
 
 
 #: The doxygen markers a member's note opens with once its ``//`` or ``/*`` is off: a comment
@@ -352,8 +381,15 @@ def _attribute(name: str) -> str:
 
 
 def _base_value(obj: Any, base: str, catalogue: Catalogue) -> Any:
+    """The part of ``obj`` one base ``base`` is: an instance for a class the program declares,
+    the container's contents for a base that is one of the standard library's - whose object
+    *is* that container, so what it holds is written as a member of the type - and one of
+    ROOT's classes by the members its layout names."""
     if catalogue.declared(base) is not None:
         return instance_of(obj, base, catalogue)
+    found = parse_type(base)
+    if found.name in STL_KINDS and not found.stars:
+        return _plain(obj, found, catalogue)
     return root_row(obj, base)
 
 

@@ -1951,3 +1951,83 @@ def test_show_prints_a_collection_of_objects_as_a_pointer_not_as_its_tree():
     assert _one_member(Leaf(), "fStr", "text", 1) == " fStr            = text"
     assert _one_member(Leaf(), "fY", np.asarray([1.5]), 1) == " fY              = 1.5"
     assert _one_member(Leaf(), "fNone", None, 1) is None
+
+
+#: A class deriving from a container of the standard library, as the bigevent roottest's
+#: ``UShortVector`` does - the one member ROOT's own ``ClassDef`` gives it, and the base that
+#: carries the values.
+USHORT_BASED = r"""
+class UShortVector: public vector<UShort_t> {
+private:
+   Int_t fNshorts;   //length of STL std::vector (duplicated info)
+public:
+   UShortVector() {}
+   virtual ~UShortVector() {}
+   ClassDef(UShortVector, 1)
+};
+"""
+
+
+def test_a_base_that_is_a_container_is_spelled_with_what_it_holds():
+    """A class deriving from ``vector<UShort_t>`` derives from a class the translator records
+    as ``std::vector`` alone, with nothing to say what the vector holds; the base is what a
+    file's description of the class has to lay out, so the declaration spells it whole - the
+    name the class of ``cppstd`` the translation derives from gives itself."""
+    from xrdroot.pyroot.core.declared import declaration_of
+
+    run_source(USHORT_BASED, "ushort.cxx", call=False)
+    cls = find_class("UShortVector")
+    assert cls is not None
+    assert declaration_of(cls).bases == ("vector<unsigned short>",)
+    assert cls.__bases__[0].__cpp_name__ == "vector<unsigned short>"
+
+
+def test_a_base_that_is_a_container_is_described_as_roots_streamer_info_describes_it():
+    """ROOT 6.40.04, asked for ``UShortVector``'s streamer information, gives a version 1
+    class with checksum 0x6ec7be1e and two elements - the container its base is, named
+    ``vector<unsigned short>`` in 24 bytes, stltype 1 and ctype 12, then the member. Nothing
+    in the file describes a ``vector``: the element is where the container's type is said, and
+    it carries no type name of its own - with the name repeated there the checksum is
+    0xe5acc7d6, so this class is the test of both."""
+    from xrdroot.pyroot.core.declared import catalogue_of
+
+    run_source(USHORT_BASED, "ushort.cxx", call=False)
+    cls = find_class("UShortVector")
+    assert cls is not None
+    sum_, version, elements = catalogue_of(cls).info("UShortVector")
+    expect((sum_, 0x6EC7BE1E), (version, 1), (elements, (
+        ("TStreamerSTL", "vector<unsigned short>", "", 300, 24, 0, 0, NO_DIMS,
+         "", (1, 12)),
+        ("TStreamerBasicType", "fNshorts",
+         "length of STL std::vector (duplicated info)", 3, 4, 0, 0, NO_DIMS, "int", ()),
+    )))  # fmt: skip
+
+
+def test_a_container_base_is_written_in_front_of_the_members_its_class_declares():
+    """The object's bytes are ROOT's: a 20-byte record of version 1, the base as a record of
+    its own - version 10 - holding the count and the two shorts, then ``fNshorts``.
+    ``~/.local/root-oracle``'s ROOT wrote ``40 00 00 14 00 01 40 00 00 0a 00 0a 00 00 00 02
+    00 03 00 05`` for a ``UShortVector`` holding 3 and 5, the four bytes after it being an
+    ``fNshorts`` its default constructor never set - the zero this translation starts every
+    number at."""
+    from xrdroot.pyroot.core.declared import declaration_of, instance_of
+
+    run_source(USHORT_BASED, "ushort.cxx", call=False)
+    cls = find_class("UShortVector")
+    assert cls is not None
+    catalogue = Catalogue({"UShortVector": declaration_of(cls)})
+    held = cls()
+    held.push_back(3)
+    held.push_back(5)
+    value = instance_of(held, "UShortVector", catalogue)
+    # What the object holds is what its base holds: the member the base's element names.
+    assert list(value.members["vector<unsigned short>"]) == [3, 5]
+    assert ROOT_BYTES(value, catalogue) == bytes.fromhex(
+        "400000140001" "4000000a000a0000000200030005" "00000000")
+
+
+def ROOT_BYTES(value: Instance, catalogue: Catalogue) -> bytes:
+    """An instance's bytes, as a file's key holds an object of it."""
+    buf = WBuffer()
+    write_instance(buf, value, catalogue)
+    return bytes(buf.data)

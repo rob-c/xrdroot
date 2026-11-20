@@ -339,6 +339,22 @@ class Catalogue:
         return tuple(found)
 
     def _base(self, name: str) -> Element:
+        """One base of a class, as ROOT describes it.
+
+        A base that is a container of the standard library is that container's element, a
+        ``TStreamerSTL`` named for the whole type - the bigevent roottest's ``UShortVector``
+        derives from ``vector<UShort_t>`` and ROOT describes its base as ``vector<unsigned
+        short>``, type 300, stltype 1 and ctype 12, in 24 bytes - rather than a base element
+        naming a class the file has a description of, since a container has none.
+        """
+        found = parse_type(name)
+        if found.name in STL_KINDS and found.args and not found.stars:
+            spelled = streamer_name(found)
+            made = self._container_of(Field(spelled, spelled, "", ()), found, ())
+            # ROOT gives such an element no type name of its own - ``ls()`` shows the container
+            # in the name column and computes the type name from it - and the checksum says
+            # so: with the name repeated as the type name it is not ``0x6ec7be1e``.
+            return (*made[:8], "", made[9])
         if not self.known(name):
             raise UnsupportedFeatureError(
                 f"a class derives from {name}, which is neither a class the program declares "
@@ -532,10 +548,15 @@ class Catalogue:
         kind = STL_KINDS.get(found.name)
         if kind is None or found.stars > 1:
             return None
+        return self._container_of(field, found, _dimensions(owner, field))
+
+    def _container_of(self, field: Field, found: Spelled, dims: tuple[int, ...]) -> Element:
+        """The one element a container is, by what it holds: a member's, and a base's, whose
+        name is the container's own and which no record of its own is written for."""
+        kind = STL_KINDS[found.name]
         content = OBJECT if found.name in MAPS else self.content_type(found.args[0])
         if found.name in MAPS:
             self.describe(pair_name(found))
-        dims = _dimensions(owner, field)
         return _container_element(field, found, kind, content, dims)
 
     def _complex(
