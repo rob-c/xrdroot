@@ -19,6 +19,7 @@ import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect, fresh
+from xrdroot.cppstd.bitset import Bitset
 from xrdroot.cppstd.stdlib import complex_type
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.file import open_root
@@ -442,6 +443,57 @@ def test_a_pointer_read_to_a_class_no_one_declared_is_kept_as_read():
     assert converted(3, parse_type("Unknown"), None) == 3
     assert converted([1, 2], parse_type("int"), None).tolist() == [1, 2]
     assert converted(-1.5, parse_type("short"), 0) == -1
+
+
+def _bitset(width: int, value: int) -> Bitset:
+    """A ``std::bitset`` of ``width`` bits, as a translated macro holds one."""
+    return Bitset(width, value)
+
+
+def test_a_bitset_is_laid_out_as_the_container_of_its_bits_it_is():
+    """ROOT calls a ``std::bitset<N>`` a ``TStreamerSTL`` of ``kSTLbitset`` holding a ``bool``
+    per bit, in the room of the words its bits take."""
+    decl = Declaration("C", 1, True, (), (Field("foo", "std::bitset<16>", "", ()),))
+    assert Catalogue({"C": decl}).info("C")[2] == (
+        ("TStreamerSTL", "foo", "", 300, 8, 0, 0, (0, 0, 0, 0, 0), "bitset<16>", (8, 18)),
+    )
+
+
+def test_a_bitset_member_is_written_as_its_count_and_then_a_byte_a_bit():
+    """``0xfa2`` in a ``bitset<16>``: sixteen, then sixteen bytes, the lowest bit first."""
+    decl = Declaration("C", 1, True, (), (Field("foo", "std::bitset<16>", "", ()),))
+    made = Catalogue({"C": decl})
+    buf = WBuffer()
+    write_members(buf, Instance("C", {"foo": _bitset(16, 0xFA2)}), made)
+    bits = [(0xFA2 >> at) & 1 for at in range(16)]
+    assert bytes(buf.data) == b"\x40\x00\x00\x16\x00\x0a\x00\x00\x00\x10" + bytes(bits)
+
+
+def test_a_bitset_standing_alone_and_an_array_of_them_are_written_one_bit_a_byte():
+    """A bitset handed over by itself - ``WriteObjectAny`` - is the container it is, and an
+    array of them is one record holding each one's count and bits in turn."""
+    decl = Declaration("C", 1, True, (), (Field("b", "std::bitset<2>", "", (3,)),))
+    made = Catalogue({"C": decl})
+    alone = WBuffer()
+    write_value(alone, "std::bitset<3>", _bitset(3, 0b101), made)
+    assert bytes(alone.data) == b"\x40\x00\x00\x09\x00\x0a\x00\x00\x00\x03\x01\x00\x01"
+    array = WBuffer()
+    write_members(array, Instance("C", {"b": [_bitset(2, 0b01), None, _bitset(2, 0b10)]}), made)
+    bits_each = b"\x00\x00\x00\x02"
+    assert bytes(array.data).endswith(bits_each + b"\x01\x00"
+                                        + bits_each + b"\x00\x00"
+                                        + bits_each + b"\x00\x01")  # fmt: skip
+
+
+def test_a_bitset_read_is_the_bitset_the_member_holds():
+    """A macro compares one bitset with another, so the member is one and not the row of
+    numbers the bits are on file - the stream's bits, or a bitset read already."""
+    from xrdroot.pyroot.core.declared import converted
+
+    found = parse_type("std::bitset<4>")
+    read = converted(np.array([1, 0, 1, 1]), found, None)
+    assert (read.size(), read.to_ulong()) == (4, 0b1101)
+    assert converted(_bitset(4, 0b1101), found, None) == read
 
 
 def test_a_tclonesarray_member_reads_back_as_the_objects_its_class_names():

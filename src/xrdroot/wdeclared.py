@@ -72,6 +72,12 @@ OBJECT, ANY, OBJECT_P, OBJECT_PP, ANY_P, ANY_PP, STL = 61, 62, 63, 64, 68, 69, 3
 CHAR_STAR = 7
 #: ``kSTLp``: a pointer to a container, which ROOT lays out as the container itself.
 STL_P = 71
+#: ``kSTLbitset``: what ``std::bitset<N>`` is to a ``TStreamerSTL``, whose items are its bits.
+STL_BITSET = 8
+#: ``kBool_t``, the type of one bit of a bitset, which is a byte on file.
+BOOL = 18
+#: How many bytes a word of a bitset takes in memory; its bits are as many words as hold them.
+BITSET_WORD = 8
 #: ``kStreamLoop``: as many of the one thing as a ``//[n]`` comment's counter says, one after
 #: another inside a single record. ``TString *fNames; //[fNvertex]`` is how the bigevent
 #: roottest's ``Event::fTstringp`` is laid out.
@@ -533,6 +539,24 @@ class Catalogue:
         return ("TStreamerSTL", field.name, field.comment, STL_P, POINTER_SIZE, 0, 0,
                 NO_DIMS, streamer_name(found), (STL_STRING, STL_STRING))  # fmt: skip
 
+    def _bitset(
+        self, owner: Declaration, field: Field, found: Spelled, counter: bool
+    ) -> Element | None:
+        """``std::bitset<N> name``: ROOT describes a bitset as the container of its bits that it
+        is - a ``TStreamerSTL`` of ``kSTLbitset``, named ``bitset<N>``, holding a ``bool`` per
+        bit - so a member of one is written as the count of its bits and then a byte each,
+        lowest bit first, and reads back as the bitset it was.
+
+        Its room in memory is the words its bits take rather than a container's three pointers,
+        since ROOT's checksum of a class counts the room its members take.
+        """
+        width = bitset_width(found)
+        if width is None:
+            return None
+        room = BITSET_WORD * ((width + 63) // 64)
+        return _container_element(field, found, STL_BITSET, BOOL, _dimensions(owner, field),
+                                  room)  # fmt: skip
+
     def _container(
         self, owner: Declaration, field: Field, found: Spelled, counter: bool
     ) -> Element | None:
@@ -666,6 +690,7 @@ _MEMBER_RULES: tuple[
     Catalogue._counted,
     Catalogue._char_star,
     Catalogue._string,
+    Catalogue._bitset,
     Catalogue._container,
     Catalogue._complex,
     Catalogue._pointer_loop,
@@ -720,7 +745,12 @@ def _note_complexes(catalogue: Catalogue, found: Spelled) -> None:
 
 
 def _container_element(
-    field: Field, found: Spelled, kind: int, content: int, dims: tuple[int, ...]
+    field: Field,
+    found: Spelled,
+    kind: int,
+    content: int,
+    dims: tuple[int, ...],
+    room: int = CONTAINER_SIZE,
 ) -> Element:
     """The one element a container member is, whatever room it takes: ROOT's ``kSTL``, or
     ``kSTLp`` for a pointer to a container - which a null pointer writes as the empty container
@@ -730,14 +760,26 @@ def _container_element(
     stl = kind + OFFSET_P if found.stars else kind
     if not dims:
         stype = STL_P if found.stars else STL
-        room = POINTER_SIZE if found.stars else CONTAINER_SIZE
-        return ("TStreamerSTL", field.name, field.comment, stype, room, 0, 0, NO_DIMS,
+        size = POINTER_SIZE if found.stars else room
+        return ("TStreamerSTL", field.name, field.comment, stype, size, 0, 0, NO_DIMS,
                 streamer_name(found), (stl, content))  # fmt: skip
     length = _product(dims)
     stype = (STL_P if found.stars else STL) + OFFSET_L
-    room = (POINTER_SIZE if found.stars else CONTAINER_SIZE) * length
-    return ("TStreamerSTL", field.name, field.comment, stype, room, length, len(dims),
+    size = (POINTER_SIZE if found.stars else room) * length
+    return ("TStreamerSTL", field.name, field.comment, stype, size, length, len(dims),
             (*dims, *NO_DIMS)[:5], streamer_name(found), (stl, content))  # fmt: skip
+
+
+def bitset_width(found: Spelled) -> int | None:
+    """How many bits a ``std::bitset<N>`` is of, or ``None`` for a type that is no bitset.
+
+    The width is the one number between the angle brackets: ``std::bitset<n>``, whose width a
+    template parameter decides, is a bitset no file can be told the length of.
+    """
+    if found.name != "bitset" or len(found.args) != 1:
+        return None
+    width = found.args[0].name
+    return int(width) if width.isdigit() and not found.args[0].args else None
 
 
 def _complex_element(field: Field, name: str, size: int, dims: tuple[int, ...]) -> Element:

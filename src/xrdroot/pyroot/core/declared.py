@@ -35,6 +35,7 @@ from ...wdeclared import (
     Declaration,
     Field,
     Spelled,
+    bitset_width,
     class_name,
     parse_type,
 )
@@ -639,7 +640,22 @@ def converted(value: Any, found: Spelled, current: Any) -> Any:
         return _pointed(value, found, current)
     if found.name in STL_KINDS:
         return _refilled(value, found, current)
+    width = bitset_width(found)
+    if width is not None:
+        return _bitset_of(width, value)
     return _held(value, found, current)
+
+
+def _bitset_of(width: int, value: Any) -> Any:
+    """A member's ``std::bitset<N>`` from the bits read for it, lowest first.
+
+    The member holds a bitset rather than the row of numbers the bits are on file, since a
+    macro compares one with another and prints it as C++ does.
+    """
+    handed = getattr(value, "to_ulong", None)
+    if handed is not None:
+        return std.bitset[width](handed())
+    return std.bitset[width](sum(1 << at for at, bit in enumerate(value) if bit))
 
 
 def _text_of(value: Any) -> str | None:

@@ -39,6 +39,7 @@ from .wdeclared import (
     STL_P,
     Catalogue,
     Spelled,
+    bitset_width,
     class_name,
     complex_declaration,
     pair_name,
@@ -125,7 +126,7 @@ def write_value(buf: WBuffer, classname: str, value: Any, catalogue: Catalogue) 
     its record, count and items, as a member that is one writes it."""
     found = parse_type(classname)
     writer = _Writer(buf, catalogue)
-    if found.name in STL_KINDS and not found.stars:
+    if bitset_width(found) is not None or (found.name in STL_KINDS and not found.stars):
         writer.collection(found, value)
     else:
         writer.record(_describe_complex(catalogue, found) or classname, value)
@@ -410,6 +411,14 @@ class _Writer:
 
     def collection(self, found: Spelled, value: Any) -> None:
         """A container member: its record, then its count and what it holds."""
+        width = bitset_width(found)
+        if width is not None:
+            # A bitset is written as the container of its bits: how many there are, then a byte
+            # each, the lowest bit first - the order C++ hands them out in.
+            at = self.buf.start(STL_VERSION)
+            self.items(Spelled("bool", (), 0), _bits(width, value))
+            self.buf.end(at)
+            return
         items, content = _contents(found, value)
         if self._member_wise(content):
             classname = class_name(content)
@@ -444,6 +453,13 @@ class _Writer:
         column by column inside an array's single record is not something this writer has been
         shown, so such a member is refused by name instead of guessed at.
         """
+        width = bitset_width(found)
+        if width is not None:  # a bitset's elements are its bits, and no object among them
+            at = self.buf.start(STL_VERSION)
+            for one in value or ():
+                self.items(Spelled("bool", (), 0), _bits(width, one))
+            self.buf.end(at)
+            return
         if self._member_wise(_contents(found, None)[1]):
             raise UnsupportedFeatureError(
                 f"a {found.text()} array holds objects, which ROOT writes column by column "
@@ -534,6 +550,14 @@ def _contents(found: Spelled, value: Any) -> tuple[list[Any], Spelled]:
         items: list[Any] = [{"first": key, "second": item} for key, item in pairs]
         return items, parse_type(pair_name(found))
     return list(value if value is not None else ()), found.args[0]
+
+
+def _bits(width: int, value: Any) -> list[int]:
+    """``width`` bits of a bitset, lowest first, as ROOT writes one: a byte each."""
+    if value is None:
+        return [0] * width
+    number = int(value.to_ulong()) if hasattr(value, "to_ulong") else int(value)
+    return [(number >> bit) & 1 for bit in range(width)]
 
 
 def _members(value: Any) -> Mapping[str, Any]:

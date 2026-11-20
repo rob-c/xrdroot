@@ -445,9 +445,11 @@ def _unusable(node: Any) -> str:
         return _nested(node.value)
     if isinstance(node, Seq) and isinstance(node.item, Pair):
         pair = node.item
-        if not isinstance(pair.first, (Prim, Str)) or not isinstance(pair.second, (Prim, Str)):
-            return "a pair holding a container, which no file this reader has met writes"
-        return ""
+        if not isinstance(pair.first, (Prim, Str)):
+            return "a pair keyed by a container, which is not a thing a dict can be keyed by"
+        # A map's value may be a container of numbers or strings: written member-wise, a value's
+        # block is one record round the whole column and then a count and items per pair.
+        return _nested(pair.second)
     return _nested(node)
 
 

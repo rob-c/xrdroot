@@ -179,8 +179,28 @@ def test_a_pair_is_the_tuple_it_obviously_is():
 
 def test_a_pair_anywhere_but_under_its_own_container_is_refused():
     assert "a pair standing on its own" in column_of("pair<int,int>").reason
-    assert "a pair holding a container" in column_of("vector<pair<int,vector<int> > >").reason
     assert "below the top of its container" in column_of("vector<vector<pair<int,int> > >").reason
+    assert "a map inside another container" in column_of("vector<map<int,int> >").reason
+    assert "a map inside another container" in column_of(
+        "vector<pair<int,map<int,int> > >"
+    ).reason
+    assert "a pair keyed by a container" in column_of(
+        "vector<pair<vector<int>,int> >"
+    ).reason
+
+
+def test_a_pair_may_hold_a_container_of_its_own_which_reads_a_column_of_them():
+    """A map whose values are containers - ``unordered_multimap<string,vector<float>>`` - is
+    written member-wise: every key, then every value, each value a count and its items inside
+    the one record the column's items are wrapped in."""
+    from xrdroot import interp
+
+    column = column_of("vector<pair<int,vector<int> > >")
+    keys = struct.pack(">ii", 1, 2)
+    values = record(0, struct.pack(">i2i", 2, 15, 25) + struct.pack(">i", 0))
+    body = struct.pack(">hi", 1, 2) + keys + values
+    read = column.value(Buffer(record(interp.MEMBER_WISE | 1, body)), 0)
+    assert [(key, list(value)) for key, value in read] == [(1, [15, 25]), (2, [])]
 
 
 def test_the_members_of_a_class_that_cannot_be_walked_are_no_fields_at_all():
