@@ -27,6 +27,7 @@ from weakref import WeakKeyDictionary
 import numpy as np
 
 from ...cppstd.containers import std
+from ...pycxx.runtime.namespace import DECLARED
 from ...pycxx.symbols import member_name
 from ...wclasses import TYPES
 from ...wdeclared import (
@@ -97,8 +98,6 @@ def find_class(name: str) -> type | None:
     before they are compared - the bigevent roottest's ``Event::fTemplateMember``
     is reached only by the first and asked for only by the second.
     """
-    from ...pycxx.runtime.namespace import DECLARED
-
     held = DECLARED.get(name)
     known = _FOUND.get(name)
     if known is not None and known[0] is held:
@@ -722,7 +721,33 @@ def _member_maker(found: Spelled, dims: Any = ()) -> Callable[[Any, Any], Any]:
 
 def _number_maker(typename: str) -> Callable[[Any, Any], Any]:
     """``_number``'s work for a member that is a number and not an array of them."""
-    made_number = _converter(TYPES[typename][1])
+    c_type = TYPES[typename][1]
+    made_number = _converter(c_type)
+    if c_type in FLOATS or c_type == "bool":
+        return _converted_number(typename, made_number)
+    # An integer member of a record read out of a file is a Python int - what ``struct``
+    # gives - so the mask and the sign are worked out here, as ``_scalar_number`` works them
+    # out, without a call and two checks that a value of that type never needs.
+    bits, signed = WIDTHS[_c_name(c_type)]
+    mask, sign, width = (1 << bits) - 1, 1 << (bits - 1), 1 << bits
+
+    def made(value: Any, current: Any) -> Any:
+        if type(value) is int:
+            whole = value & mask
+            return whole - width if signed and whole >= sign else whole
+        if value is None:
+            return None
+        if isinstance(current, np.ndarray) or isinstance(value, (list, tuple, np.ndarray)):
+            return _number(value, typename, current)
+        return made_number(value)
+
+    return made
+
+
+def _converted_number(
+    typename: str, made_number: Callable[[Any], Any]
+) -> Callable[[Any, Any], Any]:
+    """A member of a type whose value is a conversion rather than a mask: a float, a bool."""
 
     def made(value: Any, current: Any) -> Any:
         if value is None:
