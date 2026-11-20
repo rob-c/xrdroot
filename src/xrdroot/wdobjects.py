@@ -42,6 +42,7 @@ from .wdeclared import (
     STL_P,
     Catalogue,
     Spelled,
+    _squash,
     bitset_width,
     class_name,
     complex_declaration,
@@ -450,10 +451,23 @@ class _Writer:
             self.buf.u32(0)
             return
         named = str(getattr(value, "classname", classname))
-        actual = classname if isinstance(value, Clones) else named
+        actual = classname if isinstance(value, Clones) else self._named(named)
         at = self.buf.tag(actual)
         self.record(actual, value)
         self.buf.end(at)
+
+    def _named(self, classname: str) -> str:
+        """``classname`` as the catalogue spells the class - the name ROOT's dictionary gave
+        it, which is the one a tag in front of a pointer carries.
+
+        ``TBufferFile::WriteObjectAny`` writes ``obj->IsA()->GetName()``, and ROOT's dictionary
+        spells a template instance the way C++ must, ``template2<template1<int> >``, while the
+        translation of the very class spells it ``template2<template1<int>>``. Both are one
+        class to the catalogue, which answers to either, but the tag has to be the spelling
+        ROOT reads back, since ROOT looks the name up in the dictionary it made - so an
+        instance the bridge named the translation's way goes out under the catalogue's.
+        """
+        return self.catalogue.spelled.get(_squash(classname), classname)
 
     # -- elements -----------------------------------------------------------------------
 
