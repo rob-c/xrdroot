@@ -20,12 +20,12 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1220 / 2173** |
+| roottest | 1038 / 2173 (47.8 %) | **1226 / 2173** measured, **1231** with the five that pass alone |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **21 / 109** at `--jobs 5` (22 alone) |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1386 / 2820 (49.1 %)** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1393 / 2820 (49.4 %)** measured, **1398** with the load-sensitive five |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
 The "now" column is two runs at `2ef9c80`: `/tmp/r9/final2b` (roottest, 1141) and
@@ -1011,20 +1011,26 @@ cheap to maintain and impossible to reconstruct.
 | Q-38 (math) | **done in part** | `a5d25f67` (worker 16) | other +1 | `ROOT::Math`'s `Polynomial`, `IGenFunction` and `GSLMinimizer1D`: `mathmore-testMinimization1D` passes |
 | W0-36 | attempted, not merged | - | 0 | workers 3, 4, 11 and 15 each measured that their chain's wall is one file outside it (`pyroot/trees/core.py`'s `MakeProxy`, `interp.py`'s walk, `files.py`); their reports are `/tmp/r13/wNN.log` and are round 14's chains |
 
+| W0-37 | **done** | `428f2bfd`, `ad59b281`, `5fc12bf5`, `d1c3e1a0`, `327062f5`, `294a40e0`, `3070b310`, `9e2fd3a2`, `c5cf418b`, `c545445e` (ten workers) | roottest +11, other +1 | the round's ten chains: ROOT's drawing classes written where an object is a member (bigevent's next wall), `TBranch::GetClonesName`, ROOT's own `TRef` description, the WILLFAIL verdict, a clone's split-collection count, a pad's pie chart, `TDirectory::rmdir`, a message with no place to name, `ROOT::Math`'s sine and cosine integrals, and `TTree::MakeProxy`. The last is the round: it unblocked five `treeproxy` tests, two `vectorint` selectors and `treeformula/string/MakeProxy` |
+| W0-38 | todo | | 0 | **A second agent session is committing to `feat/root-testsuite`.** Mid-round it reset the branch and re-applied its own commits on top; the round's ten cherry-picks survived only on their `r14-NN` branches and were re-applied by hand (all ten were content-identical once rebased). Every later round must check `git log` at its start *and* its end, and quote the sha it actually measured |
+| W0-39 | todo | | 0 | the four `io/perf` buffers now take 211-261 s of the 300 s limit (`/tmp/r14/solo`), so they will flip to TIMEOUT on any loaded machine. `P-9` closed them functionally; they need the *next* factor of two, or a per-test timeout the harness can justify |
+| W0-40 | attempted, not merged | | 0 | six workers (3, 4, 6, 12, 15, 16) reported without a commit; their reports name the next file each chain needs - `pyroot/trees/core.py`'s proxy (landed by worker 14), `interp.py`'s walk, `tools/rootsuite`'s working copy, `jsonbuffer.py`, `files.py`. Those are round 15's chains |
+
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
-| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | `f65e991` | `2ef9c80` | `71aa3256` | `90f5c5e8` | `f7e42087` | now (`a5d25f67`, intact tree) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | 1138 | 1141 | 1183 | 1181 | 1195 | **1220** |
-| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 |
-| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
-| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
-| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 | 21 | 21 | 21 | 21 | 28 |
-| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** | **1301** | **1342** | **1340** | **1354** | **1386** |
+| | at `10e0e58` | `ddc6039` | `8f53999` | `5ae0a0f` | `68a8d07` | `7a43bd9` | `5c88c8c` | `8af51aa` | `932164a` | `f583422` | `3825443` | `2d0e458` | `f65e991` | `2ef9c80` | `71aa3256` | `90f5c5e8` | `f7e42087` | `a5d25f67` | now (`19be128b`, intact tree) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| roottest | 1038 | 1044 | 1052 | 1070 | 1076 | 1078 | 1089 | 1105 | 1114 | 1123 | 1132 | 1134 | 1138 | 1141 | 1183 | 1181 | 1195 | 1220 | **1226** |
+| pyunittest (files / cases) | 78 / 439 | 80 / 469 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 81 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 | 80 / 470 |
+| gtest (files / cases) | 52 / 507 | 52 / 507 | 52 / 510 | 52 / 512 | 52 / 512 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 | 52 / 511 |
+| `test/` | 4 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 | 6 |
+| `other` | 14 | 16 | 16 | 16 | 16 | 16 | 16 | 21 | 21 | 22 | 22 | 21 | 21 | 21 | 21 | 21 | 21 | 28 | 29 |
+| **all non-tutorial** | **1185** | **1198** | **1207** | **1225** | **1231** | **1233** | **1244** | **1265** | **1274** | **1284** | **1293** | **1294** | **1298** | **1301** | **1342** | **1340** | **1354** | **1386** | **1393** |
 
-The last column is `/tmp/r13/final2` (roottest, 1220) and `/tmp/r13/final1` (the other kinds)
-at `a5d25f67`, on the intact tree `/tmp/rootsrc-6.40b`; the column before it,
+The last column is `/tmp/r14/final2` (roottest, 1226) and `/tmp/r14/final1` (the other kinds)
+at `19be128b`, on the intact tree `/tmp/rootsrc-6.40b`; the column before it,
+`/tmp/r13/final2` (1220) and `/tmp/r13/final1` at `a5d25f67`; the column before it,
 `/tmp/r12/final2` (1195) and `/tmp/r12/final1` at `f7e42087`; **every earlier column was measured on
 a damaged tree** (`W0-31`), so compare counts only within a column. The column before it is
 `/tmp/r9/final2b` (1141) and `/tmp/r9/final1` at `2ef9c80`; the column before it, `/tmp/r8/final2` (1138) and `/tmp/r8/final1` at `f65e991`; the column before it, `/tmp/r7/final2` (1134) and `/tmp/r7/final1` at `2d0e458`; the column before it, `/tmp/r6/final2b` (1132) and `/tmp/r6/final1` at
