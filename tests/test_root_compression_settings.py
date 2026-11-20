@@ -70,3 +70,13 @@ def test_zstd_past_its_highest_level_is_held_there_as_zstd_holds_it():
     data = b"abc" * 300
     assert compress(data, "zstd", 99) == compress(data, "zstd", 11)
     assert decompress(compress(data, "zstd", 99), len(data)) == data
+
+
+@pytest.mark.parametrize(("algorithm", "top"), [("zlib", 9), ("lzma", 9), ("lz4", 12)])
+def test_a_level_past_the_top_of_its_range_is_packed_at_the_top(algorithm, top):
+    """A setting of 199 - zlib at level 99 - is what ``SetCompressionLevel(101)`` leaves, and
+    ROOT hands its zipper the level clipped rather than refusing it, so 9 is what it packs at."""
+    assert spelled(199) == ("zlib", 99)
+    data = b"abc" * 300
+    assert compress(data, algorithm, 99) == compress(data, algorithm, top)
+    assert decompress(compress(data, algorithm, 99), len(data)) == data

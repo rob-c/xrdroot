@@ -118,3 +118,27 @@ def test_a_tree_handed_to_writeobject_is_written_under_the_name_given(tmp_path):
     with xrdroot.open_root(path) as found:
         assert found.compression == 404
         assert found["renamed"].arrays(["x"])["x"].tolist() == [42]
+
+
+def test_a_file_told_a_level_zlib_has_not_got_keeps_it_and_packs_at_its_top(tmp_path):
+    """``IoBigEventGenerator`` passes 101 to ``SetCompressionLevel``, as roottest's
+    ``root/io/compression`` does, and ROOT keeps that as zlib at level 99: the file
+    says 199 while its blocks were made at zlib's own top level, 9."""
+    path = str(tmp_path / "level99.root")
+    out = ROOT.TFile(path, "RECREATE")
+    out.SetCompressionLevel(101)
+    assert out.GetCompressionSettings() == 199
+    tree = ROOT.TTree("t", "t")
+    x = array("i", [0])
+    tree.Branch("x", x, "x/I")
+    for value in range(2000):
+        x[0] = value % 7
+        tree.Fill()
+    tree.Write()
+    out.Close()
+    with xrdroot.open_root(path) as found:
+        assert found.compression == 199
+        record = found["t"].branches["x"].record
+        raw = (tmp_path / "level99.root").read_bytes()
+        assert _basket_algorithm(raw, record.basket_seek[0]) == "zlib"
+        assert found["t"].arrays(["x"])["x"].sum() == sum(value % 7 for value in range(2000))

@@ -387,10 +387,16 @@ def _unpack_lz4(block: bytes, size: int) -> bytes:
 LZMA_DICT_MIN = 4096
 #: ``ZSTD_maxCLevel``: zstd's highest level, which it holds a higher one to.
 ZSTD_MAX_LEVEL = 22
+#: The highest level each algorithm's own library takes, which ROOT clips a
+#: setting to when it hands it on: ``TFile::SetCompressionLevel(101)`` keeps the
+#: level the caller gave, capped at 99, so the setting 199 it stores - zlib at
+#: level 99 - packs at level 9, and a file says 199 while its blocks are level 9.
+TOP_LEVEL = {"zlib": 9, "lzma": 9, "lz4": 12, "zstd": ZSTD_MAX_LEVEL}
 
 
 def _packed(chunk: bytes, algorithm: str, level: int) -> bytes:
     """One block's bytes, before ROOT's header, as ``R__zip`` would have packed them."""
+    level = min(level, TOP_LEVEL[algorithm])
     if algorithm == "zlib":
         return zlib.compress(chunk, level)
     if algorithm == "lzma":
@@ -414,7 +420,10 @@ def compress(data: bytes, algorithm: str = "zlib", level: int | None = None) -> 
     below level four and its high-compression mode from there; zstd at twice
     the level; and xz with a CRC32 check and a dictionary a quarter of the
     block. LZ4 1.10 compresses differently from earlier versions in its fast
-    mode, so there the bytes are ROOT's only with the library ROOT has.
+    mode, so there the bytes are ROOT's only with the library ROOT has. A
+    level past what an algorithm takes is clipped to the top of its range,
+    as ROOT clips it - so 199, which is what ``SetCompressionLevel(101)``
+    leaves behind, packs at zlib's level 9 while the file still says 199.
     """
     if algorithm not in TAGS:
         raise ValueError(f"algorithm must be one of {', '.join(TAGS)}, not {algorithm!r}")
