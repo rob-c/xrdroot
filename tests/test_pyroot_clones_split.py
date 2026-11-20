@@ -16,7 +16,8 @@ import xrdroot
 import xrdroot.pyroot as ROOT
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.trees import objects
-from xrdroot.wbranch import CloneMember, clones_members
+from xrdroot.wbranch import CloneMember, SplitClones, clones_members
+from xrdroot.wclasses import declared
 
 #: ``TTree::Print`` of ROOT 6.40 for the tree :func:`_written` makes, its sizes and all.
 PRINTED = """\
@@ -231,3 +232,41 @@ def test_a_member_that_is_one_whole_object_a_row_is_that_object_and_not_a_number
         ("n0", "n1")
     ]
     assert [ref.GetObject().GetName() for ref in refs[1]] == ["n2"]
+
+
+class _TrefPid:
+    """``roottest``'s ``tref_test_pid`` as the translator declares one: a ``TNamed``
+    with one whole ``TRef`` member."""
+
+    _cxx_layout_ = ("tref_test_pid", ("TNamed",), (("fRef", "TRef", "a reference", ()),))
+
+
+def test_a_split_collection_of_a_macros_class_is_carried_and_not_named_to_root():
+    """A ``TClonesArray`` of a class a macro declared is split member by member off its own
+    declaration, bases' members first, and the file is told what that class is: ROOT writes
+    ``tref_test_pid``'s ``TStreamerInfo`` into the file, and names no such class among the
+    ones it harvested a description of - there is none of ROOT's to look it up in.
+    """
+    layout = declared(_TrefPid)
+    assert [(member.owner, member.name) for member in clones_members(layout)][-3:] == [
+        ("TNamed", "fName"),
+        ("TNamed", "fTitle"),
+        ("tref_test_pid", "fRef"),
+    ]
+    split = SplitClones(layout, split=2)
+    assert split.declared() == (layout,)
+    assert "tref_test_pid" not in split.classes() and {"TNamed", "TObject"} <= set(split.classes())
+    top = split.build("r1", 32000)
+    assert top.info.clones == "tref_test_pid"
+    assert [child.name for child in top.children] == [
+        "r1.fUniqueID", "r1.fBits", "r1.fName", "r1.fTitle", "r1.fRef"
+    ]
+    assert [child.leaves()[0].ftype for child in top.children][-1] == 61
+
+
+def test_a_split_collection_of_a_class_of_roots_names_it_and_carries_nothing():
+    """A class ROOT has is described as :data:`~.winfo.INFOS` describes it, so the file names
+    it among the classes it uses and carries no description of the writer's own."""
+    split = SplitClones("TLine", split=2)
+    assert split.declared() == ()
+    assert "TLine" in split.classes()

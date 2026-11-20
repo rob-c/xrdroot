@@ -779,7 +779,22 @@ class SplitClones(Spec):
 
     def classes(self) -> tuple[str, ...]:
         owners = dict.fromkeys(member.owner for member in self.members())
+        #: A macro's own class is not one the file *uses*: the description it is written by
+        #: is carried in the file's streamer record instead, as a split class of a branch of
+        #: objects writes its own - otherwise the writer looks it up among ROOT's and fails.
+        own = self._own
+        if own is not None:
+            owners.pop(own, None)
         return (*super().classes(), "TClonesArray", *_held("TClonesArray")[1:], *owners)
+
+    def declared(self) -> tuple[Any, ...]:
+        """A macro's class, carried rather than looked up among ROOT's."""
+        return () if self._own is None else (self.element,)
+
+    @property
+    def _own(self) -> str | None:
+        """The name of the class a macro declared, if this array's objects are one of them."""
+        return self.element.name if isinstance(self.element, Layout) else None
 
 
 def _column(name: str, member: CloneMember, size: int) -> Any:
