@@ -114,6 +114,21 @@ def test_a_widget_that_is_only_interaction_is_refused(widget: str, said: str) ->
         getattr(ROOT, widget)("vertical", "bar")
 
 
+def test_a_browser_opens_nothing_in_batch_and_says_so(capsys: pytest.CaptureFixture[str]) -> None:
+    """ROOT's ``TBrowser``, with no window, prints its warning and stops there.
+
+    A macro that opens one - every geometry export macro ROOT tests begins with
+    ``new TBrowser`` - carries on past it, so the object leaving nothing behind is
+    the whole contract; the warning is ROOT's own, word for word.
+    """
+    browser = ROOT.TBrowser()
+    expect((capsys.readouterr().err,
+            "Warning in <TBrowser::TBrowser>: The ROOT browser cannot run in batch mode\n"),
+           (ROOT.TBrowser("name", "title").classname, "TBrowser"),
+           (repr(browser), "<TBrowser in batch>"))
+    assert not hasattr(browser, "GetBrowserImp")
+
+
 def test_a_timer_keeps_what_it_is_told_and_never_fires() -> None:
     timer = ROOT.TTimer(20)
     timer.SetCommand("Animate()")

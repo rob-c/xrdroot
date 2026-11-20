@@ -1,4 +1,4 @@
-"""``TButton``, as a picture shows it; ``TControlBar`` and ``TSlider``, refused by name.
+"""``TButton``, as a picture shows it; ``TBrowser`` in batch; ``TControlBar``/``TSlider`` refused.
 
 A ``TButton`` is a small raised pad with its title in the middle and a
 line of C++ it would run when clicked. In a picture it is only the pad and
@@ -7,7 +7,10 @@ as in ROOT's batch mode - so the button is kept, its method is kept, and
 nothing ever clicks it. The widgets that are nothing but interaction - a
 bar of buttons in a window of its own (``TControlBar``), a slider dragged
 along a pad (``TSlider``) - are refused, saying why, since a script that
-builds one is waiting on a person to use it.
+builds one is waiting on a person to use it. ``TBrowser`` is neither: it is a
+window too, but ROOT's own batch run answers ``new TBrowser`` with a warning and
+carries on, and the geometry export macros of ROOT's tests open one as their
+first line.
 """
 
 from __future__ import annotations
@@ -15,10 +18,11 @@ from __future__ import annotations
 from typing import Any
 
 from ...errors import UnsupportedFeatureError
+from ..core.messages import Warning
 from .pads import TPad
 from .text import TLatex
 
-__all__ = ["TButton", "TControlBar", "TSlider", "TGroupButton"]
+__all__ = ["TButton", "TControlBar", "TSlider", "TGroupButton", "TBrowser"]
 
 #: ``TAttText(22, 0, 1, 61, 0.65)``: how a button's title is written.
 TITLE_TEXT = {"align": 22, "color": 1, "font": 61, "size": 0.65}
@@ -80,3 +84,23 @@ class TGroupButton(TButton):
     """``TGroupButton``: one of a group of buttons, drawn as any button is."""
 
     classname = "TGroupButton"
+
+
+class TBrowser:
+    """``TBrowser``: ROOT's browser window, which a batch run says it cannot open.
+
+    ``TBrowser``'s constructor, given no window system, prints ROOT's own warning
+    and stops there, leaving the browser half-built behind it; nothing afterwards
+    touches it. That is the whole of what the geometry export macros of
+    roottest/root/io/geo ask of it - ``new TBrowser`` is the line each one opens
+    with - so refusing it would refuse the macro, while a browser with no window
+    to browse in has nothing else to offer.
+    """
+
+    classname = "TBrowser"
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        Warning("TBrowser::TBrowser", "The ROOT browser cannot run in batch mode")
+
+    def __repr__(self) -> str:
+        return "<TBrowser in batch>"
