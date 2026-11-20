@@ -164,14 +164,17 @@ class ClassEmitter(FunctionEmitter):
         self.out.line(f"_cxx_layout_ = {_layout(info, spellings, values)!r}", info.decl.where)
         self.out.line("_cxx_destroyed = False", info.decl.where)
         self.out.line("_cxx_released = False", info.decl.where)
-        for name, var in info.statics.items():
-            ctype = self.declared_type(var)
-            self.out.line(f"{member_name(name)} = {self.initial(var, ctype)}", var.where)
-        self._static_writes(info)
+        # The enumerators first: a static's initialiser is written in the class's own body,
+        # where ``A::k`` is read as the body's name ``k`` (:meth:`~.emit_names.NameEmitter.
+        # _class_member`), so ``k`` has to be there before the static that names it is.
         for decl in info.decl.members:
             if isinstance(decl, EnumDecl):
                 for name, value in self.enum_values(decl):
                     self.out.line(f"{name} = {value}", decl.where)
+        for name, var in info.statics.items():
+            ctype = self.declared_type(var)
+            self.out.line(f"{member_name(name)} = {self.initial(var, ctype)}", var.where)
+        self._static_writes(info)
         self._constructors(info)
         for name, funcs in info.methods.items():
             self._method(info, name, [func for func in funcs if func.body is not None])

@@ -511,6 +511,28 @@ def test_dot_l_plus_builds_loads_and_reloads_a_changed_macro(
     assert process_line("twice(2)") == 6
 
 
+def test_a_compiled_class_s_static_reads_its_own_class_as_its_body_writes_it(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``int A::s = A::k;``: a static's definition is written in the class's Python body, which
+    runs before the class's name is bound there - so what the body reads is its own ``k``."""
+    write("own.C", """\
+struct Own {
+   enum E { k = 3, next };
+   static E s;
+   static int n;
+   static int doubled;
+};
+Own::E Own::s = Own::k;
+int Own::n = (int)Own::s + Own::next;
+int Own::doubled = 2 * Own::n;
+""")  # fmt: skip
+    loaded = dot_l("own.C+")
+    klass = loaded["Own"]
+    assert (klass.s, klass.n, klass.doubled) == (3, 7, 14)
+    assert "creating shared library" in capsys.readouterr().err
+
+
 def test_dot_x_plus_runs_the_compiled_function_and_prints_its_value(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

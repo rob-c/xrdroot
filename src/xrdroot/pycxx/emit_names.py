@@ -22,7 +22,7 @@ from .limits import is_limit, limit_text
 from .nodes import Binary, Function, Literal, Name, Node, SizeOf, Unary
 from .operators import python_operator
 from .sizes import size_of
-from .symbols import Symbol
+from .symbols import Symbol, member_name
 from .traits import is_trait, trait
 
 __all__ = ["NameEmitter", "STD", "type_text"]
@@ -147,10 +147,23 @@ class NameEmitter(Inference):
             return self.lookup(klass)
         if name in info.statics or name in info.constants:
             found = info.statics.get(name)
-            return Symbol(name, "static", f"{klass}.{name}", found.ctype if found else None)
+            return Symbol(name, "static", self._class_body_name(klass, name),
+                          found.ctype if found else None)  # fmt: skip
         if name in info.methods:
             return Symbol(name, "static", f"{klass}.{python_operator(name)}", owner=klass)
         return None
+
+    def _class_body_name(self, klass: str, name: str) -> str:
+        """Where ``klass``'s member ``name`` is read from in the body of ``klass`` itself.
+
+        A class's Python body runs before its name is bound, so ``A::k`` written in it -
+        ``static int n = A::k;`` - could not be read by the name ``A``; the body's own name
+        for it is ``k``, which C++'s lookup in the class finds first anyway. A static is a
+        body name as an attribute is spelled, an enumerator as the body writes it.
+        """
+        if self.scope.kind == "class" and self.scope.klass == klass:
+            return member_name(name) if name in self.program.classes[klass].statics else name
+        return f"{klass}.{name}"
 
     def use(self, symbol: Symbol) -> Out:
         """What a use of ``symbol`` reads: its Python name, through a cell or ``self``."""
