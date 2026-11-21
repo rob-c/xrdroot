@@ -26,6 +26,7 @@ from .errors import FormatError, UnsupportedFeatureError
 from .plugins import lookup, lookup_loaded
 from .rootarrays import ARRAYS as ARRAYS
 from .streamers import read_layouts, reconcile
+from .winfo import INFOS
 
 if TYPE_CHECKING:
     from .file import Source
@@ -1058,15 +1059,22 @@ def _into(label: str, sub: str, step: Step) -> Step:
 
 
 def _base_flattened(member: Member) -> bool:
-    """Is this member a base whose own class the program declares, and so written as columns?
+    """Is this member a base that ROOT writes as bare members, rather than as a record of its own?
 
-    ROOT writes every base of a member-wise collection that way: the class's members are
-    columns among the rest and the base gets no record of its own. ``vector<TLine>`` in the
-    bigevent roottest is the exception this reader cannot yet tell apart from the rule - the
-    oracle gives ``TAttLine`` a record of its own there - so ``Event::fVectorTLine`` is still
-    not readable, and :func:`_columns` flattens.
+    ROOT gives a base a record of its own per object when its class has a compiled
+    ``Streamer`` of ROOT's - a ``TAttLine``, whose version and three shorts stand in a
+    record inside ``vector<TLine>`` - and only lays its members among the rest when the
+    class is one that nothing but a streamer info describes: a HistFactory class, which ROOT
+    writes at version 0 with a checksum, or a class the program declares. The classes with
+    a compiled ``Streamer`` of ROOT's are the ones this library carries a layout for
+    (:data:`~.winfo.INFOS`), which is the set the writer gives a record to as well
+    (:meth:`~.wdobjects._Writer.column` follows its catalogue, which holds the program's
+    classes and no class of ``INFOS``), so reading one of the two ways cannot disagree with
+    the bytes a file written here holds. A base with no layout here that streams itself has
+    no members to flatten, and :func:`_member_columns` refuses the container rather than
+    reading it either way.
     """
-    return member.stype == 0 and member.typename == "BASE"
+    return member.stype == 0 and member.typename == "BASE" and member.name not in INFOS
 
 
 def _columns(
@@ -1081,13 +1089,12 @@ def _columns(
     container of a class under one header and then each object's count and items, a
     map likewise, and every other kind of member for each object in turn.
 
-    A base whose own class the program declares is flattened into these columns - the class
-    in memory has it laid out, so ROOT writes its members among the rest. A base of one of
-    ROOT's own classes is not: it has a description of its own, and ROOT gives it a record
-    of its own per object, version and all, exactly as it writes an object held by value.
-    The oracle's ``vector<TLine>`` holds ``4000 0008 0002 0001 0001 0001`` for ``TAttLine``
-    and ``4000 0002 0000`` for ``TAttBBox2D`` where a flattened ``TLine`` would hold the
-    three shorts and nothing else.
+    A base that only a streamer info describes is flattened into these columns; a base of
+    one of ROOT's own classes, which has a compiled ``Streamer``, is not - ROOT gives it a
+    record of its own per object, version and all, exactly as it writes an object held by
+    value (see :func:`_base_flattened`). The oracle's ``vector<TLine>`` holds
+    ``4000 0008 0002 0001 0001 0001`` for ``TAttLine`` and ``4000 0002 0000`` for
+    ``TAttBBox2D`` where a flattened ``TLine`` would hold the three shorts and nothing else.
     """
     if name in SELF_STREAMING:
         return None
@@ -1098,14 +1105,27 @@ def _columns(
     found: list[tuple[str, Fill]] = []
     members = (_description(source, name) or {}).values()
     for (label, step), member in zip(steps, members, strict=True):
-        if not _base_flattened(member):
-            found.append((label, _column(label, member, step, source, seen)))
-            continue
+        columns = _member_columns(label, step, member, source, seen)
+        if columns is None:
+            return None
+        found += columns
+    return found
+
+
+def _member_columns(
+    label: str, step: Step, member: Member, source: Source, seen: tuple[str, ...]
+) -> list[tuple[str, Fill]] | None:
+    """One member's columns - its own, or a flattened base's several - or ``None`` for a base
+    whose own class has nothing to read one member at a time: one that streams itself, or one
+    the file does not describe. That leaves the whole container unreadable field by field,
+    which is what the class's own fields would be too."""
+    if member.stype == 0:
         inner = _columns(member.name, source, seen)
         if inner is None:
             return None
-        found += [(label, _into_column(label, column)) for _sub, column in inner]
-    return found
+        if _base_flattened(member):
+            return [(label, _into_column(label, column)) for _sub, column in inner]
+    return [(label, _column(label, member, step, source, seen))]
 
 
 def _column(
