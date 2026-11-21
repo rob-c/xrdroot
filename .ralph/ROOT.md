@@ -1512,6 +1512,30 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   average of 19-26. ruff clean, mypy 1020 files, maintainability 31 217 functions, components 1019 modules /
   0 undeclared.
 
+## Round 52's close (recorded here for the next iteration)
+
+- Base `0537d989`, closed at **`5f58c997`**. **One commit, and the first harness PASSes in four rounds: gtest 54 -> 56.**
+- **A collection's element has the type C++'s range gives it.** `for (auto bcl : *cl->GetListOfBases())` hands its
+  body a `TObject *` whatever the list holds, and `Class()` is a *static* member, so the compiler resolves
+  `bcl->Class()` to `TObject::Class()` and ROOT prints `TObject` for a `TBaseClass`; Python finds `Class` on the
+  object and printed the class it really is. What a translated range visits is now `TypedElement`
+  (`pyroot/core/rangecast.py`): the object in every respect but `Class`, which answers the range's static type - with
+  a `__class__` property so `isinstance` still sees the object. `pycint/runtime/adapters.py::iterate` is the one place
+  that is decided, because it is the one place a translated range-for asks what it visits.
+- **`ROOT::Detail`** exists too: `TRangeStaticCast<T>(c)` (every object as a `T *`, unchecked, as `static_cast` does)
+  and `TRangeDynCast<T>(c)` (only the objects that really are a `T`, `None` for the rest, as `dynamic_cast`'s
+  `nullptr`). The translator already resolved the unqualified names to `ROOT.TRangeStaticCast`, so no `pycxx` change
+  was needed.
+- **`gtest/core/cont/coreconttestUnit` and `gtest/core/cont/testTypedIteration` both PASS** (`/tmp/r52/cont`, 2 -> 4 PASS
+  in the area); **`W0-113` closed**. Nothing lost: `roottest/root/io/tree/*` **18 / 0 / 0 / 2** (`/tmp/r52/tree`),
+  `roottest/root/io/json/*` **11 / 0 / 0 / 1** (`/tmp/r52/json`), and 66 gtest programs of `io`/`hist`/`graf2d`
+  **26 / 32 / 8** - the same set as round 47's (`/tmp/r52/gtest-iohist`).
+- Gates: **`TOTAL 119625 0 29998 0 100%`** (12 990 passed, then 44) at a load average of 24-33; ruff clean, mypy 1021
+  files, maintainability 31 245 functions, components 1020 modules / 0 undeclared.
+- Queued: **`W0-130`** (a wrapper is one more reference a macro can keep - `TCollection` should unwrap what it is
+  handed), **`W0-131`** (round 44's gtest bucket table is eight rounds stale; re-measure the kind whole before working
+  from it), **`W0-132`** (`test_THBinIterator`: 20 cases in 64 s, 7 failing - a bin iterator's cost and fidelity).
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1567,6 +1591,9 @@ For the round's work, the evidence is, in this order:
 - Round 51's result of them, at `4227df45`: **`TOTAL 119561 0 29992 0 100%`** - 12 983 passed then 44 passed - at a
   load average of 19-26; ruff clean, mypy 1020 files, maintainability 31 217 functions, components 1019 modules /
   0 undeclared. `/tmp/r51/gate1.log` is the first command's output.
+- Round 52's result of them, at `5f58c997`: **`TOTAL 119625 0 29998 0 100%`** - 12 990 passed then 44 passed - at a
+  load average of 24-33; ruff clean, mypy 1021 files, maintainability 31 245 functions, components 1020 modules /
+  0 undeclared. `/tmp/r52/gate1.log` is the first command's output.
 - Round 50's result of them, at `2e10bb4d`: **`TOTAL 119555 0 29992 0 100%`** - 12 982 passed then 44 passed - at a
   load average of 24-39; ruff clean, mypy 1020 files, maintainability 31 215 functions, components 1019 modules /
   0 undeclared, `mkdocs --strict` built. `/tmp/r50/gate1.log` is the first command's output.
@@ -1779,6 +1806,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 49 | `55318546` | **one commit**: `AddBinContent` takes one bin number per axis, as `TH2`/`TH3` overload it (`3f3dae7f`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **11 -> 10 failing cases** (`TH1.AddBinContent` now OK); the round's own gate caught the `Eval` regression the change caused | 0 new: `W0-129` **sharpened** to a case-by-case account of `testTH1`'s ten remaining cases |
 | 50 | `a21ec264` | **one commit**: `TAxis` reports the binning it cannot use, as ROOT's `TAxis::Set` does, and `TAxis(edges)` is ROOT's constructor from a vector of edges (`2e10bb4d`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **10 -> 9 failing cases** (`TAxis.EqualBinEdges` now OK) | 0 new: `W0-129` re-stated as the handover item, with each of `testTH1`'s nine cases and what it needs |
 | 51 | `b9570d8d` | **one commit**: `TH1::SmoothArray`, the static 353QH-twice smoother over a raw array a program hands as a pointer (`4227df45`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **9 -> 8 failing cases** (`TH1.SmoothArrayCrossCheck` now OK) | 0 new: `W0-129` down to eight cases, each measured, with `SetBufferedSumw2` and `DumpOutput` named as the expensive two |
+| 52 | `0537d989` | **one commit**: a collection's element carries the type C++'s range gives it (`TypedElement`), `iterate` hands a `TCollection`'s objects out as the `TObject *` C++ iterates, and `ROOT::Detail::TRangeStaticCast<T>`/`TRangeDynCast<T>` (`5f58c997`) | **gtest +2: `gtest/core/cont/coreconttestUnit` and `gtest/core/cont/testTypedIteration` PASS** (`/tmp/r52/cont`), the kind **54 -> 56**; nothing lost in `io/tree` (18/0/0/2), `io/json` (11/0/0/1) or 66 `io`/`hist`/`graf2d` gtest programs (`/tmp/r52/gtest-iohist`) | 3: `W0-130` (a wrapper a macro can keep - `TCollection` should unwrap), `W0-131` (the round-44 gtest bucket table is eight rounds stale), `W0-132` (`test_THBinIterator`: 64 s for 20 cases, 7 failing); `W0-113` closed |
 
 ## Notes
 
