@@ -822,6 +822,26 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   lays it out.
 - The machine's load average was 10-12, so both workers measured at `--jobs 1` and the round quotes those runs.
 
+## Round 26's close (recorded here for the next iteration)
+
+- Base `a4f10d15`, closed at `85adfa05`. **Three features, three workers, disjoint files** - and for the first time
+  a *general* correctness gap rather than a test-specific one.
+- **`fName`/`fTitle` are the object's own members, read and written** (`7f1663d1` + tests `172093d3`). A macro class
+  deriving from `TNamed` may now do `fName.Form("%s_%d", n, id)` and `fTitle = "x"`, exactly as C++ does:
+  `xrdroot run` on the six-line probe prints `name=[hello_7] title=[x]`, and **`roottest/root/io/tree/create-r`
+  PASSES** (`/tmp/r26/base1` -> `/tmp/r26/tree`, PASS 5 -> 6).
+- **A container template's nested `iterator` is nameable** (`a6336c75`): `std::list<std::pair<A,B>>::iterator` used to
+  fail with `AttributeError: '_Template' object has no attribute 'iterator'`; `test-r` now *runs* and moved FAIL ->
+  **DIFF**.
+- **The `Event`'s maps read** (`33678ae2`): `io/bigevent` stays 3 PASS / 0 FAIL / 1 UNSUPPORTED but the refusal is now
+  a *format* error deep in the data (`vector<TLine>` 480 bytes = 48/event off) rather than a refusal at a map - which
+  is `W0-67`, a real reader bug the refusal had been hiding.
+- **`W0-66` is the next feature and it is 11 tests**: the `io/tree` chain now reads the objects but prints
+  `TTP  ref: (!NULL!)` - empty names and null `TRef`s. Reading a `TRef` (PID bookkeeping) is what the family wants,
+  and `tref-write`/`tref-read` are refused for the same reason.
+- **`W0-69`**: worker 04 committed `docs/README.md` and `docs/discoveries/…` (`572b39e2`), not taken. A brief cannot
+  prevent it; **check `git show --stat` of every worker commit for `docs/` before cherry-picking**.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -860,6 +880,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 26's result of it, at `85adfa05`: `TOTAL 117554 0 29432 0 100%`, `12777 passed, 1 skipped,
+  46 xfailed` (measured at the three feature commits; the docs commits follow); `ruff` clean, `mypy` 1018
+  files, maintainability 30 477 functions, components 0 undeclared.
 - Round 25's result of it, at `dab9b98d`: `TOTAL 117460 0 29386 0 100%`, `12750 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1018 files,
   maintainability 30 418 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -973,6 +996,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 23 | `21ab15c4` | **one feature in three files**: a ROOT class's member that is itself one of ROOT's classes (`TLorentzVector::fP` is a `TVector3`) - `pyroot/core/declared.py`, `wdobjects.py`, `rdobjects.py` | **roottest +1: `io/bigevent/write` PASSES** - the group is **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r23/ev`), its `read` side walled by `a vector<TObject> * member ... that this reader does not decode inside an entry` | 2: `W0-60`, `W0-61` |
 | 24 | `a12e5e43` | **one feature in two files**: a container a member *points at* is read as the container it names (`vector<TObject> *fVectorTobject`, stype 71) - `interp.py`, `rdobjects.py` | **0 PASS**: `io/bigevent` stays **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r24/ev3`), `read`'s refusal moved to `fVectorTnamed` | 2: `W0-62` (that wall is `vector<TNamed> *[6]`, an array of pointers - the round's one-line attempt was reverted by its own unit test), `W0-63` (a refusal that moves further is not progress until the full suite agrees) |
 | 25 | `3aa0b0db` | **one feature in two files**: an array of pointers to containers reads out of one record, each item named (`W0-62`) - `interp.py`, `rdobjects.py` | **0 PASS**: `io/bigevent` stays **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r25/ev`), `read`'s refusal moved two members on to `fMapTNamedp` - and this time the full suite agreed, where round 24's relabelling had broken a unit test | 2: `W0-64` (a `std::map` whose key is a ROOT class), `W0-65` (the feature that replaced the revert) |
+| 26 | `a4f10d15` | **three features, three workers, disjoint files**: `fName`/`fTitle` are the object's own members, read and written (`7f1663d1`, `172093d3`, `pyroot/core/`); a container template's nested `iterator` is a name a macro can declare (`a6336c75`, `cppstd/`); the `Event`'s maps read (`33678ae2`, `interp.py`) | **roottest +1: `io/tree/create-r` PASSES** (`/tmp/r26/base1` -> `/tmp/r26/tree`, 5 -> 6 PASS in `roottest/root/io/tree/*`), `test-r` FAIL -> DIFF (it runs now); `io/bigevent` 3 PASS / 0 FAIL / 1 UNSUPPORTED with a named format error 48 bytes/event into `vector<TLine>` (`/tmp/r26/ev`) | 5: `W0-66` (the chain's real feature: a `TRef` read, 11 tests), `W0-67` (a class with a base read member-wise), `W0-68` (SplitClones of a file-only class), `W0-69` (`docs/` committed by a worker again), `W0-70` (scratch files) |
 
 ## Notes
 
