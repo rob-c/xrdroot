@@ -128,9 +128,12 @@ class CallEmitter(ExprEmitter):
         if instance is not None:
             return instance, P.POSTFIX
         if symbol is not None:
-            given = [self.arguments(node), self._template_values(func, symbol)]
-            args = ", ".join(filter(None, given))
-            return f"{self.use(symbol)[0]}({args})", P.POSTFIX
+            # A member function named through its class is called on the object C++ gives it
+            # implicitly, ``Base::Init()`` in a method being ``Base.Init(self)``: the plain
+            # function is not bound to anything, so the call has to hand ``self`` over.
+            own = ["self"] if symbol.kind == "member" else []
+            given = [*own, self.arguments(node), self._template_values(func, symbol)]
+            return f"{self.use(symbol)[0]}({', '.join(filter(None, given))})", P.POSTFIX
         if is_limit(func.parts, func.targs) and func.last in LIMIT_FUNCTIONS:
             return self.limit(func, node, "()"), P.ATOM
         if self._smart_alias(func):
@@ -198,7 +201,7 @@ class CallEmitter(ExprEmitter):
         instance = self.function_instance(func, node, symbol)
         if instance is None:
             return None
-        own = "self" if symbol is not None and symbol.kind == "method" else ""
+        own = "self" if symbol is not None and symbol.kind in ("method", "member") else ""
         return f"{instance}({', '.join(filter(None, (own, self.arguments(node))))})"
 
     def function_instance(self, func: Name, node: Call, symbol: Symbol | None) -> str | None:
@@ -238,7 +241,7 @@ class CallEmitter(ExprEmitter):
 
     def _valued(self, symbol: Symbol) -> Function | None:
         """The function template with value parameters that ``symbol`` names, if it is one."""
-        if symbol.kind not in ("function", "static", "method"):
+        if symbol.kind not in ("function", "static", "method", "member"):
             return None
         return next((f for f in self.function_named(symbol) if f.values), None)
 

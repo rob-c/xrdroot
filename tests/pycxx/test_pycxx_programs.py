@@ -206,3 +206,44 @@ int pointed() {
 
 def test_an_object_initialised_or_assigned_from_a_pointer_is_built_from_it() -> None:
     assert run_source(POINTED, "pointed.cxx") == 75
+
+
+#: A method called through its own class, as ``TJsonEx1::Init()`` in a derived class's
+#: ``Init()`` is: C++ calls it on the object, which the call has to hand over, and a static
+#: member named the same way takes no object at all.
+QUALIFIED = r"""
+#include <cstdio>
+
+class Base {
+public:
+   int n = 0;
+   void Init() { n = n + 1; }
+   static int Doubled(int k) { return 2 * k; }
+   int Called() { return Base::Doubled(n); }
+};
+
+class Derived : public Base {
+public:
+   void Init() { Base::Init(); Base::Init(); }
+};
+
+void qualified() {
+   Derived d;
+   d.Init();
+   printf("%d %d\n", d.n, d.Called());
+}
+"""
+
+
+def test_a_member_function_named_through_its_class_is_called_on_the_object(
+        capsys: pytest.CaptureFixture[str]) -> None:
+    """``Base::Init()`` in a method is ``Base.Init(self)``: ``Base.Init()`` loses the object."""
+    run_source(QUALIFIED, "qualified.cxx")
+    assert capsys.readouterr().out == "2 4\n"
+
+
+def test_a_member_function_named_through_its_class_outside_one_is_left_to_the_class() -> None:
+    """No ``this`` is an object to hand over, so the call stays the class's own - and fails
+    as such, rather than with a ``self`` the code naming it never had."""
+    source = "struct A { void f() {} };\nint g() { A::f(); return 0; }\n"
+    assert "A.f()" in translate(source, "g.cxx", CXX)

@@ -150,8 +150,28 @@ class NameEmitter(Inference):
             return Symbol(name, "static", self._class_body_name(klass, name),
                           found.ctype if found else None)  # fmt: skip
         if name in info.methods:
-            return Symbol(name, "static", f"{klass}.{python_operator(name)}", owner=klass)
+            kind = self._method_kind(info.methods[name])
+            return Symbol(name, kind, f"{klass}.{python_operator(name)}", owner=klass)
         return None
+
+    def _method_kind(self, overloads: list[Any]) -> str:
+        """How ``Cls::method`` is reached: ``member`` when it is called on the object C++
+        gives it, ``static`` when there is no object to give.
+
+        A member function named through its own class - ``Init()`` of ``TJsonEx4`` calling
+        ``TJsonEx1::Init()`` - is called on ``*this`` in C++, and ``this`` is what the call
+        has to hand over: ``Base.Init`` is the plain Python function, not a method of an
+        object, so writing ``Base.Init()`` loses the object and is the ``TypeError`` of a
+        missing ``self``. A static member is reached through the class and takes no object,
+        and one named where ``this`` is no object - a static member function, a free
+        function - is left as it was, since such a call is not one C++ allows either.
+        """
+        if all(func.static for func in overloads):
+            return "static"
+        function = self.scope.function
+        if self.scope.klass is None or getattr(function, "static", False):
+            return "static"
+        return "member"
 
     def _class_body_name(self, klass: str, name: str) -> str:
         """Where ``klass``'s member ``name`` is read from in the body of ``klass`` itself.

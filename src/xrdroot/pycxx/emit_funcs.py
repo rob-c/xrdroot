@@ -84,7 +84,7 @@ class FunctionEmitter(VariableEmitter):
             return False
         symbol = self.symbol(node)
         variable = symbol is not None and symbol.kind in ("local", "param", "global", "field",
-                                                          "static")  # fmt: skip
+                                                          "static", "member")  # fmt: skip
         return not variable or bool(symbol is not None and symbol.ctype is not None
                                     and symbol.ctype.const)  # fmt: skip
 

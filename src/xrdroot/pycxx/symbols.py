@@ -107,10 +107,12 @@ class Symbol:
     """One declared name: what it is, its C++ type, and the Python that stands for it.
 
     ``kind`` is ``local``, ``param``, ``global``, ``field``, ``static``,
-    ``method``, ``function``, ``class``, ``enum`` or ``constant``. A symbol
-    with ``cell`` set lives in a :class:`~xrdroot.pycxx.runtime.Cell`; one
+    ``method``, ``member``, ``function``, ``class``, ``enum`` or ``constant``. A
+    symbol with ``cell`` set lives in a :class:`~xrdroot.pycxx.runtime.Cell`; one
     with ``alias`` set is a C++ reference, and every use of it is the
-    expression it was bound to.
+    expression it was bound to. A ``member`` is one of the macro's own member
+    functions named through its class, ``Base.Init``: the class's own function,
+    which the call hands ``self`` to rather than one an object binds.
     """
 
     name: str

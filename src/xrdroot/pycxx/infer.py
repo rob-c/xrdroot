@@ -277,7 +277,7 @@ class Inference(EmitterBase):
             return self._library_call(func, node)
         if symbol.kind == "class":
             return CType(symbol.name)
-        if symbol.kind in ("function", "method", "static"):
+        if symbol.kind in ("function", "method", "static", "member"):
             return self._function_result(func, node, symbol)
         return None
 
