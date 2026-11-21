@@ -1442,6 +1442,26 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   average of 12-26. ruff clean, mypy 1020 files, maintainability 31 211 functions, components 1019 modules /
   0 undeclared, `mkdocs --strict` built.
 
+## Round 49's close (recorded here for the next iteration)
+
+- Base `55318546`, closed at **`3f3dae7f`**. **One fix, no harness PASS**, and ROOT's own `testTH1` is now **10 failing
+  cases** where round 48 left it at 11.
+- **`TH1.AddBinContent` takes one bin number per axis.** `TH1::AddBinContent(bin[, w])` is one axis's bin and its weight;
+  `TH2`'s and `TH3`'s overloads are `(binx, biny[, binz][, w])` - a weight only when one *more* number arrives than the
+  histogram has axes. Ours read the first argument as a global bin and the second as a weight, so
+  `h2.AddBinContent(1, 1, 1.)` added to global bin 1 and dropped the y bin; ROOT's test read 0 where ROOT reads 1.
+  The mapping is the bins' own (`_global`/`GetBin`), and `Eval` - which works out a global bin itself - now goes
+  through a new `_add_to_bin` rather than through the coordinate form, which the round's own gate caught as a
+  regression in `test_a_function_of_two_or_three_variables_is_set_at_each_bin_s_centre_too` (`W0-63` again).
+- **`W0-129` is now a case-by-case account of the ten that remain**, each with its message and what it needs:
+  `SmoothArray` (a static over a raw array, ROOT's 353 routine), `THLimitsFinder` (`OptimizeLimits`), `SetBuffer` **and
+  the buffer's own semantics** (200 weighted fills into one bin then `Sumw2()` must still give `sqrt(200*4)`, so a
+  buffer has to keep the weights for a later `Sumw2`, and `SetBuffer` raises a small size to at least 100), `Dump`'s
+  `*fArray                       ->0` line, the two implicit-ownership cases, and three `TAxis` bin-edge numerics.
+- Gates: **`TOTAL 119540 0 29984 0 100%`** by the two-command decomposition (12 981 passed, then 44), at a load
+  average of 21-23. ruff clean, mypy 1020 files, maintainability 31 213 functions, components 1019 modules /
+  0 undeclared, `mkdocs --strict` built.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1494,6 +1514,9 @@ For the round's work, the evidence is, in this order:
   The first reports ~99.73% by design (the ignored files' code is not covered yet) and the second
   reaches 100%. Then `ruff check src tests tools`, `mypy`, `python tools/maintainability.py check`,
   `python tools/components.py check`, `mkdocs build --strict`.
+- Round 49's result of them, at `3f3dae7f`: **`TOTAL 119540 0 29984 0 100%`** - 12 981 passed then 44 passed - at a
+  load average of 21-23; ruff clean, mypy 1020 files, maintainability 31 213 functions, components 1019 modules /
+  0 undeclared, `mkdocs --strict` built. `/tmp/r49/gate1.log` is the first command's output.
 - Round 48's result of them, at `f16f5aeb`: **`TOTAL 119535 0 29984 0 100%`** - 12 980 passed then 44 passed - at a
   load average of 12-26; ruff clean, mypy 1020 files, maintainability 31 211 functions, components 1019 modules /
   0 undeclared, `mkdocs build --strict` built. `/tmp/r48/gate2.log` is the first command's output.
@@ -1697,6 +1720,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 46 | `56b0a92a` | **three commits**: a `char[]` from a braced list is a byte buffer unless it spells a C string, the dialect's `buffer_functions`, and `TBits::Get` filling bytes into any element width (`af1e82fd`); a word read into a dialect string class is that class (`7e369769`); the two reads' tests and the split of two functions the limits caught (`e142f240`) | **`test/` +1**: `test/testbits` PASSES (`/tmp/r46/bits`, 41 tests), the kind 8 -> 9; `test/stressgraphics-interpreted` FAIL -> UNSUPPORTED (`ROOT has localtime`) | 1: `W0-126` (C's `localtime`/`struct tm`); `W0-123` and `W0-125` closed |
 | 47 | `44c42d2d` | **two commits**: a failed extraction stores nothing, as C++ leaves the variable alone (`35c96338`, `W0-127` closed); C's `tm`/`localtime`/`gmtime`/`strftime` (`f0655cf0`, `W0-126` closed) | **no harness PASS**, but the **gtest kind re-measured whole: 54 PASS / 218 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** (`/tmp/r47/gtest`, one gain, none lost in four rounds), and `test/stressgraphics-interpreted` **UNSUPPORTED -> FAIL**: it runs the graphics stress suite and fails on image byte counts (`/tmp/r47/sg2`) | 1: `W0-128` (the images' character counts - the `canvas/` work `W0-52` records); `W0-126` and `W0-127` closed |
 | 48 | `c003f165` | **two commits**: `TH1::Normalize` and `TH1::EStatOverflows`' own name, with `Get/SetStatOverflows` and the static `StatOverflows` (`4e2ba73b`, `W0-122` closed); a class body's enum is metadata, so `TH1D`'s native methods are still called (`f16f5aeb`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **13 -> 11 failing cases** (`TH1.Normalize` and `TH1.StatOverflows` now OK), and the round's own gate caught a regression a class attribute caused in `hfnative` (13 failed, 78 at the base by bisect) | 1: `W0-129` (`testTH1`'s nine remaining cases, each a feature); `W0-122` closed |
+| 49 | `55318546` | **one commit**: `AddBinContent` takes one bin number per axis, as `TH2`/`TH3` overload it (`3f3dae7f`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **11 -> 10 failing cases** (`TH1.AddBinContent` now OK); the round's own gate caught the `Eval` regression the change caused | 0 new: `W0-129` **sharpened** to a case-by-case account of `testTH1`'s ten remaining cases |
 
 ## Notes
 
