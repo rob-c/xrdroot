@@ -15,7 +15,15 @@ from typing import Any
 
 import numpy as np
 
-from . import fitdata
+from ...fit.defaults import DEFAULTS
+from ...tmva import genetic as tmva_genetic
+from . import fitdata, messages
+from .funcbase import (
+    IBaseFunctionMultiDim,
+    IBaseFunctionOneDim,
+    IGradientFunctionMultiDim,
+    IGradientFunctionOneDim,
+)
 
 __all__ = [
     "Functor1D",
@@ -28,12 +36,18 @@ __all__ = [
     "Fitter",
     "Fit",
     "Minimizer",
+    "GeneticMinimizer",
+    "GeneticMinimizerParameters",
     "Factory",
 ]
 
 
-class Functor1D:
-    """``ROOT::Math::Functor1D``: a function of one number."""
+class Functor1D(IBaseFunctionOneDim):
+    """``ROOT::Math::Functor1D``: a function of one number.
+
+    ``Derivative`` answers zero, as ROOT's own ``Functor1D`` does - a functor wraps
+    only what its caller could write, a value or that and a derivative.
+    """
 
     def __init__(self, fn: Callable[[float], float]) -> None:
         self._fn = fn
@@ -41,11 +55,12 @@ class Functor1D:
     def __call__(self, x: float) -> float:
         return float(self._fn(x))
 
-    def NDim(self) -> int:
-        return 1
+    def Clone(self) -> Any:
+        """``Clone()``: another functor over the same Python function."""
+        return type(self)(self._fn)
 
 
-class Functor:
+class Functor(IBaseFunctionMultiDim):
     """``ROOT::Math::Functor``: a function of an array of ``ndim`` numbers."""
 
     def __init__(self, fn: Callable[[Any], float], ndim: int) -> None:
@@ -54,11 +69,19 @@ class Functor:
     def __call__(self, x: Any) -> float:
         return float(self._fn(np.asarray(x, dtype=np.float64)))
 
+    def DoEval(self, x: Any) -> float:
+        """``DoEval(x)``: the Python function at the point, with ``x`` as an array."""
+        return float(self._fn(np.asarray(x, dtype=np.float64)))
+
     def NDim(self) -> int:
         return self._ndim
 
+    def Clone(self) -> Any:
+        """``Clone()``: another functor over the same Python function."""
+        return type(self)(self._fn, self._ndim)
 
-class GradFunctor1D(Functor1D):
+
+class GradFunctor1D(Functor1D, IGradientFunctionOneDim):
     """``ROOT::Math::GradFunctor1D``: a function of one number, and its derivative."""
 
     def __init__(self, fn: Callable[[float], float], derivative: Callable[[float], float]) -> None:
@@ -68,8 +91,20 @@ class GradFunctor1D(Functor1D):
     def Derivative(self, x: float) -> float:
         return float(self._derivative(x))
 
+    def DoDerivative(self, x: Any) -> float:
+        """``DoDerivative(x)``: the derivative the caller gave, as ``Derivative`` is."""
+        return float(self._derivative(float(x)))
 
-class GradFunctor(Functor):
+    def Clone(self) -> Any:
+        """``Clone()``: another functor over the same function and its derivative."""
+        return type(self)(self._fn, self._derivative)
+
+    def HasGradient(self) -> bool:
+        """``HasGradient()``: yes, the derivative was given."""
+        return True
+
+
+class GradFunctor(Functor, IGradientFunctionMultiDim):
     """``ROOT::Math::GradFunctor``: a function of ``ndim`` numbers, and each partial derivative."""
 
     def __init__(
@@ -78,8 +113,20 @@ class GradFunctor(Functor):
         super().__init__(fn, ndim)
         self._gradient = gradient
 
-    def Derivative(self, x: Any, coordinate: int) -> float:
-        return float(self._gradient(np.asarray(x, dtype=np.float64), int(coordinate)))
+    def Derivative(self, x: Any, icoord: int = 0) -> float:
+        return float(self._gradient(np.asarray(x, dtype=np.float64), int(icoord)))
+
+    def DoDerivative(self, x: Any, icoord: int) -> float:
+        """``DoDerivative(x, icoord)``: the partial derivative the caller gave."""
+        return float(self._gradient(np.asarray(x, dtype=np.float64), int(icoord)))
+
+    def Clone(self) -> Any:
+        """``Clone()``: another functor over the same function and gradient."""
+        return type(self)(self._fn, self._gradient, self._ndim)
+
+    def HasGradient(self) -> bool:
+        """``HasGradient()``: yes, the gradient was given."""
+        return True
 
 
 #: GSL's ``qk21``: the Kronrod abscissae, then the Gauss and the Kronrod weights.
@@ -407,7 +454,7 @@ def _minimised(fcn: Any, settings: list[ParameterSettings]) -> Any:
     steps = np.array([one.StepSize() for one in settings])
     limits = [one._limits for one in settings]
     fixed = [one.IsFixed() for one in settings]
-    if not isinstance(fcn, GradFunctor):
+    if gradient(fcn, len(start)) is None:
         return core.minimize(lambda p: float(fcn(p)), start, names=names, errors=steps,
                              limits=limits, fixed=fixed)  # fmt: skip
     made = _minuit(fcn, start, names)
@@ -439,7 +486,8 @@ class Minimizer:
 
     def __init__(self, name: str = "Minuit2", algorithm: str = "") -> None:
         self._name, self._algorithm = str(name or "Minuit2"), str(algorithm or "Migrad")
-        self._settings = {"calls": 0, "tolerance": 0.01, "print": 0, "strategy": 1}
+        self._settings = {"calls": 0, "iterations": 0, "tolerance": 0.01, "print": 0,
+                          "strategy": 1}  # fmt: skip
         self._fcn: Any = None
         self._variables: dict[int, list[Any]] = {}
         self._found: Any = None
@@ -448,7 +496,13 @@ class Minimizer:
         self._settings["calls"] = int(calls)
 
     def SetMaxIterations(self, iterations: int) -> None:
-        """``SetMaxIterations``: for GSL's minimisers - Minuit counts calls instead."""
+        """``SetMaxIterations``: for GSL's and the genetic minimisers - Minuit counts calls.
+
+        A count that is not positive is no limit, so it is not set, as ROOT's own
+        ``Minimizer::SetMaxIterations`` ignores it.
+        """
+        if int(iterations) > 0:
+            self._settings["iterations"] = int(iterations)
 
     def SetTolerance(self, tolerance: float) -> None:
         self._settings["tolerance"] = float(tolerance)
@@ -459,8 +513,51 @@ class Minimizer:
     def SetStrategy(self, strategy: int) -> None:
         self._settings["strategy"] = int(strategy)
 
+    def MaxFunctionCalls(self) -> int:
+        """``MaxFunctionCalls()``: the limit ``SetMaxFunctionCalls`` was given."""
+        return int(self._settings["calls"])
+
+    def MaxIterations(self) -> int:
+        """``MaxIterations()``: the limit ``SetMaxIterations`` was given."""
+        return int(self._settings["iterations"])
+
+    def Tolerance(self) -> float:
+        """``Tolerance()``: the convergence tolerance last set."""
+        return float(self._settings["tolerance"])
+
+    def PrintLevel(self) -> int:
+        """``PrintLevel()``: how much the minimisation is to say, zero by default."""
+        return int(self._settings["print"])
+
+    def Strategy(self) -> int:
+        """``Strategy()``: Minuit's strategy, which the genetic search has no use for."""
+        return int(self._settings["strategy"])
+
     def SetFunction(self, fcn: Any) -> None:
         self._fcn = fcn
+
+    def Clear(self) -> None:
+        """``Clear()``: forget the variables and what was found, so that the same minimiser
+        can be set up and run again - what a test program does between two functions."""
+        self._variables, self._found = {}, None
+
+    def GetMinosError(self, ivar: int, el: Any, eu: Any) -> bool:
+        """``GetMinosError(ivar, el, eu)``: MINOS's two errors on one parameter, written into
+        the two references given, and whether Minuit had them to give.
+
+        MINOS needs a minimum it trusts, so a minimisation that ended anywhere else - or
+        one that has not run - answers false rather than an error read off nothing.
+        """
+        if self._found is None:
+            return False
+        name = self._variables[sorted(self._variables)[int(ivar)]][0]
+        try:
+            self._found.minos(name)
+            error = self._found.merrors[name]
+        except (RuntimeError, KeyError):  # no minimum MINOS trusts, or no error from it
+            return False
+        el.value, eu.value = float(error.lower), float(error.upper)
+        return True
 
     def SetVariable(self, index: int, name: Any, value: float, step: float) -> bool:
         self._variables[int(index)] = [str(name), float(value), float(step), None]
@@ -519,23 +616,303 @@ class Minimizer:
         return 0 if self._found.valid else 3
 
 
+#: ``GeneticMinimizerParameters``' defaults, as ROOT's own struct has them: the search
+#: runs at most this many generations of this many points, and narrows its step by
+#: ``fSC_factor`` after ``fSC_rate`` good generations of the last ``fSC_steps``.
+_GENETIC_STEPS = 100
+_GENETIC_POPULATION = 300
+_GENETIC_CYCLES = 3
+_GENETIC_SC_STEPS = 10
+_GENETIC_SC_RATE = 5
+_GENETIC_SC_FACTOR = 0.95
+
+
+class _GeneticTarget(tmva_genetic.IFitterTarget):
+    """``TMVA::IFitterTarget`` over a ``ROOT::Math::IMultiGenFunction``: the function at the
+    coordinates TMVA's search draws, asked of the minimiser that holds it."""
+
+    def __init__(self, minimizer: Any) -> None:
+        self.minimizer = minimizer
+
+    def EstimatorFunction(self, parameters: Any) -> float:
+        """``EstimatorFunction``: the function at one drawn point of the population."""
+        return float(self.minimizer._evaluate(parameters))
+
+
+class GeneticMinimizerParameters:
+    """``ROOT::Math::GeneticMinimizerParameters``: how the genetic search is run.
+
+    The fields are ROOT's, ``f``-prefixed as its struct spells them, and so are the
+    defaults: a hundred generations of three hundred points, a step narrowed by
+    ``0.95`` after five good generations of the last ten, and a seed of zero - which is
+    ROOT's way of saying "draw one", so a search is repeatable only once a seed is set.
+    """
+
+    def __init__(self) -> None:
+        steps = int(DEFAULTS["MaxIterations"])
+        self.fNsteps = steps if steps > 0 else _GENETIC_STEPS
+        self.fPopSize = _GENETIC_POPULATION
+        self.fCycles = _GENETIC_CYCLES
+        self.fSC_steps = _GENETIC_SC_STEPS
+        self.fSC_rate = _GENETIC_SC_RATE
+        self.fSC_factor = _GENETIC_SC_FACTOR
+        self.fConvCrit = 10.0 * float(DEFAULTS["Tolerance"])
+        if self.fConvCrit <= 0:
+            self.fConvCrit = 0.001
+        self.fSeed = 0
+
+
+class GeneticMinimizer(Minimizer):
+    """``ROOT::Math::GeneticMinimizer``: TMVA's genetic algorithm, as a minimiser.
+
+    It is for a function whose derivative is noise, or one with several minima that a
+    gradient search would miss: a population spread over the ranges is bred - children
+    combine two parents' coordinates, and a share of them is mutated - so nothing but
+    the function's value is asked of it. A coordinate needs a range, which is why
+    ``SetVariable`` invents one fifty steps either side of the value.
+
+    What a genetic search cannot give is an error: ``MinValue`` and ``X`` are the least
+    point found, ``Edm`` and ``CovMatrix`` are zero, and ``Errors`` is empty. Give it a
+    print level above zero to have the generations reported, as ROOT reports them.
+    """
+
+    def __init__(self, i: int = 0) -> None:
+        super().__init__("Genetic", "")
+        self._parameters = GeneticMinimizerParameters()
+        self._ranges: dict[int, tuple[float, float]] = {}
+        self._fixed: dict[int, float] = {}
+        self._result: list[float] = []
+        self._ndim = 0
+        self._best = math.inf
+        self._calls = 0
+        self._status = 0
+        self.SetTolerance(0.1 * self._parameters.fConvCrit)
+        self.SetMaxIterations(self._parameters.fNsteps)
+
+    # -- what is minimised -------------------------------------------------------------
+
+    def Clear(self) -> None:
+        """``Clear()``: forget the function, its coordinates and what was found, as ROOT's
+        ``Clear`` does - ``SetFunction`` starts from here, so set the variables after it."""
+        self._fcn = None
+        self._ranges, self._fixed, self._result = {}, {}, []
+        self._ndim, self._best, self._calls, self._status = 0, math.inf, 0, 0
+
+    def SetFunction(self, fcn: Any) -> None:
+        """``SetFunction(func)``: the function of the parameters, whose ``NDim`` is the
+        number of coordinates the search works in."""
+        self.Clear()
+        self._fcn, self._ndim = fcn, int(fcn.NDim())
+        self._result = [0.0] * self._ndim
+
+    def SetLimitedVariable(self, index: int, name: Any, value: float, step: float,
+                           low: float, high: float) -> bool:  # fmt: skip
+        """``SetLimitedVariable``: a coordinate and where it may go, which is what the
+        search needs and all it keeps of the name and the step."""
+        self._ranges[int(index)] = (float(low), float(high))
+        return True
+
+    def SetVariable(self, index: int, name: Any, value: float, step: float) -> bool:
+        """``SetVariable``: a coordinate with no limits, given the range fifty steps either
+        side of the value - a genetic search has no other way to bound one - and saying
+        so, as ROOT's ``Info`` does."""
+        low, high = float(value) - 50.0 * float(step), float(value) + 50.0 * float(step)
+        messages.Info("GeneticMinimizer::SetVariable",
+             "Variables should be limited - set automatic range to 50 times step size "
+             "for %s : [%f, %f]", name, low, high)  # fmt: skip
+        self._ranges[int(index)] = (low, high)
+        return True
+
+    def SetFixedVariable(self, index: int, name: Any, value: float) -> bool:
+        """``SetFixedVariable``: a coordinate held at ``value`` while the others are searched.
+
+        The function is given the value at every point the search tries rather than the
+        coordinate being drawn, so ``NFree`` counts what is left to search over.
+        """
+        self._fixed[int(index)] = float(value)
+        return True
+
+    def SetParameters(self, parameters: GeneticMinimizerParameters) -> None:
+        """``SetParameters(params)``: the search's own settings, with the tolerance and the
+        iteration count of the base class kept in step with them, as ROOT keeps them."""
+        self._parameters = parameters
+        self.SetTolerance(0.1 * parameters.fConvCrit)
+        self.SetMaxIterations(parameters.fNsteps)
+
+    def SetRandomSeed(self, seed: int) -> None:
+        """``SetRandomSeed(seed)``: where the population's draws come from, so that a
+        search can be repeated."""
+        self._parameters.fSeed = int(seed)
+
+    def MinimizerParameters(self) -> GeneticMinimizerParameters:
+        """``MinimizerParameters()``: the settings the search runs with."""
+        return self._parameters
+
+    # -- the search ---------------------------------------------------------------------
+
+    def Minimize(self) -> bool:
+        """``Minimize()``: the genetic search, and ``True`` once it has run.
+
+        The generations stop when the least value has moved by no more than
+        ``fConvCrit`` in each of ``fNsteps`` generations running, or when
+        ``MaxIterations`` of them have been bred - which is ``Status()`` 1, as ROOT's
+        is. The value is the best point's own, so nothing is evaluated twice.
+        """
+        if self._fcn is None:
+            messages.Error("GeneticMinimizer::Minimize", "Fitness function has not been set")
+            return False
+        settings = self._synced()
+        ranges = [tmva_genetic.Interval(low, high) for low, high in self._ranges_in_order()]
+        found = tmva_genetic.GeneticAlgorithm(_GeneticTarget(self), settings.fPopSize, ranges,
+                                              settings.fSeed)  # fmt: skip
+        if self.PrintLevel() > 0:
+            print("GeneticMinimizer::Minimize  - Start iterating - max iterations = "
+                  f"{settings.fNsteps} conv criteria (tolerance) =  {settings.fConvCrit}")
+        self._status, iterations = self._generations(found, settings)
+        self._reported(found, iterations)
+        return True
+
+    def _synced(self) -> GeneticMinimizerParameters:
+        """The settings the search runs with: ``Minimize`` takes the generation count and
+        the tolerance from the base class, as ROOT's does, when they were set."""
+        settings = self._parameters
+        if self.MaxIterations() > 0:
+            settings.fNsteps = self.MaxIterations()
+        if self.Tolerance() > 0:
+            settings.fConvCrit = 10.0 * self.Tolerance()
+        return settings
+
+    def _generations(self, found: Any, settings: GeneticMinimizerParameters) -> tuple[int, int]:
+        """How the search ended - ``Status()`` and the generations bred - once it settled
+        or ran out of the generations ROOT allows itself."""
+        iterations = 0
+        while True:
+            found.Init()
+            found.CalculateFitness()
+            found.GetGeneticPopulation().TrimPopulation()
+            found.SpreadControl(settings.fSC_steps, settings.fSC_rate, settings.fSC_factor)
+            iterations += 1
+            if 0 < settings.fNsteps < iterations:
+                if self.PrintLevel() > 0:
+                    messages.Info("GeneticMinimizer::Minimize",
+                                  "Max number of iterations %d reached - stop iterating",
+                                  settings.fNsteps)  # fmt: skip
+                return 1, iterations
+            if found.HasConverged(settings.fNsteps, settings.fConvCrit):
+                return 0, iterations
+
+    def _reported(self, found: Any, iterations: int) -> None:
+        """Keep - and at a print level above zero, say - what the search found."""
+        genes = found.GetGeneticPopulation().GetGenes(0)
+        self._best = genes.fitness
+        self._result = self._point(genes.factors)
+        if self.PrintLevel() > 0:
+            print("Finished Iteration (niter = " + str(iterations) +
+                  "  with fitness function value = " + str(self._best) + ")")
+            for at, value in enumerate(self._result):
+                print(f" Parameter-{at}\t=\t{value}")
+
+    def _ranges_in_order(self) -> list[tuple[float, float]]:
+        """The ranges of the coordinates the search may move, in the order of their
+        indices, which is the order the function's own coordinates are in."""
+        return [self._ranges[at] for at in sorted(self._ranges) if at not in self._fixed]
+
+    def _point(self, factors: Any) -> list[float]:
+        """The function's coordinates: the ones drawn, with the fixed values filled in."""
+        if not self._fixed:
+            return list(factors)
+        free = iter(factors)
+        return [self._fixed[at] if at in self._fixed else next(free) for at in range(self._ndim)]
+
+    def _evaluate(self, factors: Any) -> float:
+        """The function at one point of the population, as the search asks for it."""
+        self._calls += 1
+        return float(self._fcn(self._point(factors)))
+
+    # -- what was found -----------------------------------------------------------------
+
+    def MinValue(self) -> float:
+        """``MinValue()``: the least value the search met, zero for a search not run."""
+        return 0.0 if self._fcn is None else float(self._best)
+
+    def X(self) -> np.ndarray[Any, Any]:
+        """``X()``: the coordinates of the least point found."""
+        return np.array(self._result, dtype=np.float64)
+
+    def NCalls(self) -> int:
+        """``NCalls()``: how many times the function was evaluated."""
+        return self._calls
+
+    def NDim(self) -> int:
+        """``NDim()``: the coordinates the function takes, the fixed ones included."""
+        return self._ndim
+
+    def NFree(self) -> int:
+        """``NFree()``: how many of them the search may move."""
+        return len(self._ranges_in_order())
+
+    def MinGradient(self) -> list[float]:
+        """``MinGradient()``: nothing, the search never looking at a gradient."""
+        return []
+
+    def ProvidesError(self) -> bool:
+        """``ProvidesError()``: no - a genetic search has no covariance to give."""
+        return False
+
+    def Errors(self) -> list[float]:
+        """``Errors()``: none, as ROOT's ``Errors`` is a null pointer here."""
+        return []
+
+    def Edm(self) -> float:
+        """``Edm()``: zero, the estimated distance to the minimum being Minuit's own."""
+        return 0.0
+
+    def CovMatrix(self, i: int, j: int) -> float:
+        """``CovMatrix(i, j)``: zero, there being no covariance to give."""
+        return 0.0
+
+    def Status(self) -> int:
+        """``Status()``: one, a search that ran to the generations ROOT allows itself.
+
+        ROOT asks the same ``MaxIterations`` of the base class for both the count it
+        stops at and the count of quiet generations it wants, and stops on the first
+        before asking about the second, so ROOT's own search reports 1 as well.
+        """
+        return self._status
+
+
 def _minuit(fcn: Any, start: Any, names: list[str]) -> Any:
-    """iminuit's Minuit over ``fcn``, with its gradient when it is a ``GradFunctor``."""
+    """iminuit's Minuit over ``fcn``, with its gradient when it can say one."""
     from ...fit import minuit as core
 
     value = lambda p: float(fcn(p))  # noqa: E731 - Minuit is handed a plain function
-    grad = None
-    if isinstance(fcn, GradFunctor):
-        grad = lambda p: [fcn.Derivative(p, at) for at in range(len(start))]  # noqa: E731
-    made = core.iminuit().Minuit(value, np.asarray(start, dtype=np.float64), grad=grad,
+    made = core.iminuit().Minuit(value, np.asarray(start, dtype=np.float64), grad=gradient(fcn),
                                  name=tuple(names))  # fmt: skip
     made.errordef, made.print_level = 1.0, 0
     return made
 
 
+def gradient(fcn: Any, ndim: int = 0) -> Any:
+    """The gradient of ``fcn``, or ``None`` when it has none: ROOT's tools ask a
+    function whether it can say its derivatives - ``HasGradient`` - and difference
+    it themselves when it cannot."""
+    if not getattr(fcn, "HasGradient", _no_gradient)():
+        return None
+    return lambda p: [float(fcn.Derivative(p, at)) for at in range(ndim or fcn.NDim())]
+
+
+def _no_gradient() -> bool:
+    """A plain Python callable's answer to ``HasGradient()``: it has no gradient."""
+    return False
+
+
 class Factory:
-    """``ROOT::Math::Factory``: minimisers by name - each one Minuit2's here."""
+    """``ROOT::Math::Factory``: minimisers by name - Minuit2's, or the genetic search."""
 
     @staticmethod
     def CreateMinimizer(name: Any = "Minuit2", algorithm: Any = "") -> Minimizer:
+        """``CreateMinimizer(type, algorithm)``: a ``Minimizer``, the genetic search being
+        the one kind whose algorithm is its own."""
+        if str(name) == "Genetic":
+            return GeneticMinimizer()
         return Minimizer(str(name), str(algorithm))

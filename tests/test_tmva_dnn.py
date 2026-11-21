@@ -46,7 +46,7 @@ def test_a_matrix_reads_a_tmatrix_its_elements_and_hands_them_back() -> None:
     made = dnn.matrix_type("double")(TMatrixT())
     assert made.GetMatrixArray().tolist() == [1.0, 3.0, 2.0, 4.0]
     assert np.asarray(made, dtype=np.float32).dtype == np.float32
-    copied = np.asarray(made, copy=True)
+    copied = np.array(made)  # a copy of the values; NumPy 1.26's asarray has no copy=
     copied[0, 0] = 99.0
     assert made(0, 0) == 1.0
     assert repr(made) == "<TCpuMatrix 2x2>"

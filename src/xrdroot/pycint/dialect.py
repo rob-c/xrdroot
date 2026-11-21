@@ -179,6 +179,7 @@ OUT_PARAMETERS: dict[tuple[str, int], tuple[int, ...]] = {
     ("GetMinimumAndMaximum", 2): (0, 1),
     ("mnstat", 6): (0, 1, 2, 3, 4, 5),
     ("GetStats", 4): (0, 1, 2, 3),
+    ("GetMinosError", 3): (1, 2),
     ("GetSigma", 2): (0, 1),
     ("GetSigmaX", 2): (0, 1),
     ("GetSigmaY", 2): (0, 1),
