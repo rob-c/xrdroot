@@ -1495,6 +1495,23 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   `W0-114`/`W0-115` for the last two big roottest and gtest items.
 - **Nothing is uncommitted and nothing is pushed.** The last ten rounds' evidence lives in `/tmp/r41` … `/tmp/r50`.
 
+## Round 51's close (recorded here for the next iteration)
+
+- Base `b9570d8d`, closed at **`4227df45`**. **One commit, no harness PASS**, and ROOT's own `testTH1` is now **8 failing
+  cases** (round 50 left it at 9).
+- **`TH1::SmoothArray(nn, yy[, ntimes])` exists.** It is HBOOK's `hsmoof` - Friedman's 353QH twice - over an array a
+  program hands as a pointer, in place; `stats.smooth_array` has been this kit's version of it since `TH1::Smooth` was
+  written, so the *static* name was the whole gap. Its write lands where the pointer points, so a `std::vector`'s own
+  values smooth, and ROOT's assertion - a ramp and one repeated value come back unchanged - holds.
+- **`W0-129` is down to eight cases with each one measured**, and the two expensive ones are named as such:
+  `SetBufferedSumw2` needs `SetBuffer` *and* a buffer that keeps its weights for a later `Sumw2` (with `fill_one` the
+  hottest path in the project, every read that must flush first is a surface); `DumpOutput` needs ROOT's whole-object
+  listing, whose wanted line is `*fArray                       ->0                 [fN] Array of fN floats` - and `fArray`
+  is not in this writer's member table, so it is not a formatting tweak.
+- Gates: **`TOTAL 119561 0 29992 0 100%`** by the two-command decomposition (12 983 passed, then 44), at a load
+  average of 19-26. ruff clean, mypy 1020 files, maintainability 31 217 functions, components 1019 modules /
+  0 undeclared.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1547,6 +1564,9 @@ For the round's work, the evidence is, in this order:
   The first reports ~99.73% by design (the ignored files' code is not covered yet) and the second
   reaches 100%. Then `ruff check src tests tools`, `mypy`, `python tools/maintainability.py check`,
   `python tools/components.py check`, `mkdocs build --strict`.
+- Round 51's result of them, at `4227df45`: **`TOTAL 119561 0 29992 0 100%`** - 12 983 passed then 44 passed - at a
+  load average of 19-26; ruff clean, mypy 1020 files, maintainability 31 217 functions, components 1019 modules /
+  0 undeclared. `/tmp/r51/gate1.log` is the first command's output.
 - Round 50's result of them, at `2e10bb4d`: **`TOTAL 119555 0 29992 0 100%`** - 12 982 passed then 44 passed - at a
   load average of 24-39; ruff clean, mypy 1020 files, maintainability 31 215 functions, components 1019 modules /
   0 undeclared, `mkdocs --strict` built. `/tmp/r50/gate1.log` is the first command's output.
@@ -1758,6 +1778,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 48 | `c003f165` | **two commits**: `TH1::Normalize` and `TH1::EStatOverflows`' own name, with `Get/SetStatOverflows` and the static `StatOverflows` (`4e2ba73b`, `W0-122` closed); a class body's enum is metadata, so `TH1D`'s native methods are still called (`f16f5aeb`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **13 -> 11 failing cases** (`TH1.Normalize` and `TH1.StatOverflows` now OK), and the round's own gate caught a regression a class attribute caused in `hfnative` (13 failed, 78 at the base by bisect) | 1: `W0-129` (`testTH1`'s nine remaining cases, each a feature); `W0-122` closed |
 | 49 | `55318546` | **one commit**: `AddBinContent` takes one bin number per axis, as `TH2`/`TH3` overload it (`3f3dae7f`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **11 -> 10 failing cases** (`TH1.AddBinContent` now OK); the round's own gate caught the `Eval` regression the change caused | 0 new: `W0-129` **sharpened** to a case-by-case account of `testTH1`'s ten remaining cases |
 | 50 | `a21ec264` | **one commit**: `TAxis` reports the binning it cannot use, as ROOT's `TAxis::Set` does, and `TAxis(edges)` is ROOT's constructor from a vector of edges (`2e10bb4d`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **10 -> 9 failing cases** (`TAxis.EqualBinEdges` now OK) | 0 new: `W0-129` re-stated as the handover item, with each of `testTH1`'s nine cases and what it needs |
+| 51 | `b9570d8d` | **one commit**: `TH1::SmoothArray`, the static 353QH-twice smoother over a raw array a program hands as a pointer (`4227df45`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **9 -> 8 failing cases** (`TH1.SmoothArrayCrossCheck` now OK) | 0 new: `W0-129` down to eight cases, each measured, with `SetBufferedSumw2` and `DumpOutput` named as the expensive two |
 
 ## Notes
 
