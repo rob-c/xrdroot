@@ -288,17 +288,31 @@ class Catalogue:
         self._building: set[str] = set()
         #: How each declared class's record begins and what its members are written with.
         self._plans: dict[str, tuple[int, int | None, tuple[Element, ...]]] = {}
+        #: The names settled as no class of the program's, and how many there were then.
+        self._absent: dict[str, int] = {}
 
     # -- what a class is ----------------------------------------------------------
 
     def declared(self, name: str) -> Declaration | None:
-        """The program's class ``name``, or the pair a map holds, if it is one."""
-        found = self.declarations.get(_unqualified(name))
-        if found is None:
-            found = self.declarations.get(self.spelled.get(_squash(_unqualified(name)), ""))
+        """The program's class ``name``, or the pair a map holds, if it is one.
+
+        A name that is not the program's - every one of ROOT's own, asked once per object
+        written - is remembered as absent, with how many classes the catalogue described
+        when it was asked: a class described later is looked for again.
+        """
+        unqualified = _unqualified(name)
+        found = self.declarations.get(unqualified)
+        if found is not None:
+            return found
+        absent = self._absent.get(unqualified)
+        if absent is not None and absent == len(self.declarations):
+            return None
+        found = self.declarations.get(self.spelled.get(_squash(unqualified), ""))
         if found is None and name.startswith("pair<"):
             found = _pair(name)
             self.declarations[name] = found
+        if found is None:
+            self._absent[unqualified] = len(self.declarations)
         return found
 
     def known(self, name: str) -> bool:
