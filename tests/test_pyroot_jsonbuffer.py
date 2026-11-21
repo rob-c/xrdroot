@@ -8,6 +8,7 @@ the float table below, so a difference is this library's and not the test's.
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import numpy as np
 import pytest
@@ -189,6 +190,73 @@ def test_from_json_fills_the_pointer_it_is_handed_and_the_array_it_is_handed():
     other = ROOT.TArrayD(0)
     assert list(ROOT.TBufferJSON.FromJSON(other, text)) == [0, 0, 3, 4, 5, 0]
     assert isinstance(ROOT.TBufferJSON.FromJSON(ROOT.TArrayI(0), text), ROOT.TArrayI)
+
+
+#: The numbers ``roottest``'s ``runArrayCompress`` puts in a ``TArrayI(100)``, in the order it
+#: makes them: the ramp it starts from, and then - each after an ``arr.Reset(0)`` - what it
+#: writes into an array of zeros.
+def _array_compress_states() -> list[np.ndarray[Any, Any]]:
+    ramp = np.arange(100)
+    many = np.zeros(100, dtype=int)
+    many[17:27] = 7
+    many[56:66] = 11
+    inside = np.zeros(100, dtype=int)
+    inside[10:20] = np.arange(10)
+    inside[20:30] = 55
+    inside[30:40] = np.arange(10)
+    outside = np.zeros(100, dtype=int)
+    outside[10:20] = 11
+    outside[20:30] = np.arange(10) + 7
+    outside[30:40] = 22
+    return [ramp, np.zeros(100, dtype=int), many, inside, outside]
+
+
+#: What ROOT writes for each state above at ``kSameSuppression``, as ``ArrayCompress.ref``
+#: has it: the run of equal values ROOT leaves out, and the stretches it writes on either
+#: side of a gap of zeros.
+COMPRESSED = [
+    '{"$arr":"Int32","len":100,"p":1,"v":[' + ",".join(str(n) for n in range(1, 100)) + "]}",
+    '{"$arr":"Int32","len":100}',
+    '{"$arr":"Int32","len":100,"p":17,"v":7,"n":10,"p1":56,"v1":11,"n1":10}',
+    '{"$arr":"Int32","len":100,"p":11,"v":[1,2,3,4,5,6,7,8,9],"v1":55,"n1":10,'
+    '"p2":31,"v2":[1,2,3,4,5,6,7,8,9]}',
+    '{"$arr":"Int32","len":100,"p":10,"v":11,"n":10,"v1":[7,8,9,10,11,12,13,14,15,16],'
+    '"v2":22,"n2":10}',
+]
+
+
+def test_the_compressed_arrays_of_root_s_own_array_test_are_written_and_read_back():
+    """``runArrayCompress``: each of its five arrays at ``kNoSpaces`` and at
+    ``kSameSuppression``, and the compressed text read back as the array it holds.
+
+    The macro itself is refused, because ``FromJSON(arr2, json)`` writes through a pointer
+    the translation has no cell for; what it would print once that cell is there is this.
+    """
+    for state, compressed in zip(_array_compress_states(), COMPRESSED, strict=True):
+        arr = ROOT.TArrayI(100)
+        for index, value in enumerate(state):
+            arr[index] = int(value)
+        assert _json(arr, 3) == "[" + ",".join(str(int(each)) for each in state) + "]"
+        assert _json(arr, 23) == compressed
+        read = ROOT.TBufferJSON.ConvertFromJSON(compressed)
+        assert isinstance(read, ROOT.TArrayI)
+        assert list(read) == list(state)
+
+
+def test_a_cell_typed_by_the_pointer_reads_a_json_array_that_names_no_class():
+    """``TBufferJSON::FromJSON(T *&obj, json)`` takes the class from the pointer it fills, which
+    is how a ``TArrayI`` written at ``kNoSpaces`` - a JSON array that names no class - is read
+    back. The cell a translated pointer arrives in carries that type, and this is the reader's
+    half of it: with the type, both of ROOT's spellings of the same array are read.
+    """
+    cell = Cell(None, "TArrayI")
+    read = ROOT.TBufferJSON.FromJSON(cell, "[0,1,2]")
+    assert isinstance(read, ROOT.TArrayI)
+    assert cell.value is read
+    assert list(read) == [0, 1, 2]
+    compressed = Cell(None, "TArrayI")
+    assert list(ROOT.TBufferJSON.FromJSON(compressed, '{"$arr":"Int32","len":3,"v":[1,2]}')) \
+        == [1, 2, 0]
 
 
 def test_a_run_longer_than_the_array_says_nothing_about_the_array_s_rest():
