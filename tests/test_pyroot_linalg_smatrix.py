@@ -103,8 +103,8 @@ def test_a_symmetric_matrix_mirrors_what_is_set():
     square.__setcall__(0, 2, 5)
     square[2, 1] = 7
     assert square(2, 0) == 5.0 and square(1, 2) == 7.0
-    filled = SMatrix["double", 2]([1, 2, 3, 4])
-    assert [filled(i, j) for i in range(2) for j in range(2)] == [1.0, 2.0, 2.0, 4.0]
+    filled = SMatrix["double", 2]([1, 2, 3])
+    assert [filled(i, j) for i in range(2) for j in range(2)] == [1.0, 2.0, 2.0, 3.0]
 
 
 def test_a_matrix_adds_subtracts_and_scales():
@@ -191,7 +191,9 @@ def test_a_matrix_places_vectors_and_submatrices():
 def test_a_vector_or_matrix_is_built_from_a_pointer_and_a_count():
     numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9]
     assert list(SVector["double", 3](numbers, 3)) == [1.0, 2.0, 3.0]
-    assert SMatrix["double", 3](numbers, 9)(2, 2) == 9.0
+    assert SMatrix["double", 3, 3](numbers, 9)(2, 2) == 9.0
+    # One triangle is all a symmetric matrix is given, so it reads the first six values.
+    assert SMatrix["double", 3](numbers, 6)(2, 2) == 6.0
     with pytest.raises(TypeError, match="these two arguments are none of those"):
         SMatrix["double", 2, 2]("abc", "ab")
 
@@ -225,21 +227,42 @@ def test_a_matrix_reads_a_row_a_column_and_its_diagonal_as_vectors():
 
 def test_a_matrix_copies_the_rest_of_a_row_a_column_or_itself():
     numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    square = SMatrix["double", 3](numbers, 9)
+    square = SMatrix["double", 3, 3](numbers, 9)
     assert list(square.SubRow(0, 1)) == [2.0, 3.0]
-    assert list(square.SubCol(0, 1)) == [2.0, 5.0, 6.0]
+    assert list(square.SubCol(0, 1)) == [2.0, 5.0, 8.0]
     corner = square.Sub(1, 1)
     assert (corner.kRows, corner.kCols) == (2, 2)
-    assert [corner(i, j) for i in range(2) for j in range(2)] == [5.0, 6.0, 6.0, 9.0]
+    assert [corner(i, j) for i in range(2) for j in range(2)] == [5.0, 6.0, 8.0, 9.0]
     assert list(square.SubRow[SVector["double", 2]](0, 1)) == [2.0, 3.0]
-    assert list(square.SubCol[SVector["double", 2]](0, 1)) == [2.0, 5.0, 6.0]
+    assert list(square.SubCol[SVector["double", 2]](0, 1)) == [2.0, 5.0, 8.0]
     assert square.Sub[SMatrix["double", 2, 2]](1, 1)(1, 1) == 9.0
 
 
+def test_a_symmetric_matrix_is_filled_from_its_upper_triangle_column_by_column():
+    # ROOT's MatRepSym keeps one triangle, so `SMatrix<double,3>(v.begin(), v.end())` reads
+    # v[0..5] column by column and mirrors them; the last three of nine values are not read.
+    from_oracle = SMatrix["double", 3]([1, 2, 3, 4, 5, 6])
+    assert [from_oracle(i, j) for i in range(3) for j in range(3)] == [
+        1.0, 2.0, 4.0, 2.0, 3.0, 5.0, 4.0, 5.0, 6.0,
+    ]
+    assert SMatrix["double", 3]([1, 2, 3, 4, 5, 6, 7, 8, 9]) == from_oracle
+
+
 def test_a_symmetric_matrix_hands_over_its_triangles():
-    square = SMatrix["double", 3]([1, 2, 3, 4, 5, 6, 7, 8, 9])
-    assert list(square.UpperBlock()) == [1.0, 2.0, 3.0, 5.0, 6.0, 9.0]
-    assert list(square.LowerBlock()) == [1.0, 2.0, 5.0, 3.0, 6.0, 9.0]
+    square = SMatrix["double", 3]([1, 2, 3, 4, 5, 6])
+    assert list(square.UpperBlock()) == [1.0, 2.0, 4.0, 3.0, 5.0, 6.0]
+    assert list(square.LowerBlock()) == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+
+
+def test_a_range_over_a_symmetric_matrix_is_its_upper_triangle():
+    square = SMatrix["double", 3]([1, 2, 3, 4, 5, 6])
+    assert list(square.begin()) == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    assert square.begin() != square.end()
+    assert list(SVector["double", 6](square.begin(), square.end())) == [
+        1.0, 2.0, 3.0, 4.0, 5.0, 6.0,
+    ]
+    with pytest.raises(TypeError, match="is built from the 6 values of its upper triangle"):
+        SMatrix["double", 3]([1, 2, 3])
 
 
 def test_the_free_functions_of_a_matrix_are_the_ones_root_has():

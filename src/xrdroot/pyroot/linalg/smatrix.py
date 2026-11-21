@@ -64,6 +64,13 @@ def _is_dimension(value: Any) -> bool:
     return isinstance(value, (int, np.integer))
 
 
+def _triangle_size(size: int) -> int:
+    """How many values the upper triangle of a symmetric ``size`` by ``size`` matrix holds:
+    what its iterators hand over, where a matrix that stores every element hands over all
+    ``size * size`` of them."""
+    return size * (size + 1) // 2
+
+
 def _upto(first: Any, last: Any) -> list[Any]:
     """The numbers from one cursor up to another of the same container, stepped the way C++
     steps one: ``*it`` reads and ``++it`` moves on, which is what a ``std::vector``'s iterator
@@ -134,7 +141,9 @@ class _Templated:
 class _Cursor:
     """A position in a vector or matrix, which ``(begin, last)`` builds another container from:
     the range form ``std::vector<T>(a.begin(), a.end())`` compares its two cursors and steps
-    one, so this is what both an equal comparison and ``next()`` mean here."""
+    one, so this is what both an equal comparison and ``next()`` mean here. Two cursors are
+    equal at one position over the same values, which is what a range over a symmetric matrix
+    asks of the two lists a triangle is read out into."""
 
     def __init__(self, values: list[Any], at: int = 0) -> None:
         self._values, self._at = values, at
@@ -142,8 +151,8 @@ class _Cursor:
     def __eq__(self, other: object) -> bool:
         return (
             isinstance(other, _Cursor)
-            and self._values is other._values
             and self._at == other._at
+            and self._values == other._values
         )
 
     def __iadd__(self, step: int) -> _Cursor:
@@ -426,8 +435,11 @@ class SMatrix:
             self._filled(_selected(values))
 
     def _filled(self, given: list[Any]) -> None:
-        """Fill from the elements in row order, and from one triangle's worth when the matrix
-        is symmetric, which is what ROOT's iterators hand over."""
+        """Fill from the elements in row order, and from the upper triangle when the matrix is
+        symmetric, which is all ``MatRepSym`` stores and so all its iterators hand over."""
+        if self._symmetric:
+            self._filled_triangle(given)
+            return
         if len(given) != len(self._values):
             raise TypeError(
                 f"an SMatrix of {self.kRows} by {self.kCols} cannot be built from "
@@ -435,8 +447,23 @@ class SMatrix:
             )
         for index, value in enumerate(given):
             self._values[index] = self._element(value)
-        if self._symmetric:
-            self._mirrored()
+
+    def _filled_triangle(self, given: list[Any]) -> None:
+        """A symmetric matrix from its upper triangle taken column by column, which is the
+        order ``SMatrix<T,N>(v.begin(), v.end())`` copies - ROOT's ``MatRepSym`` keeps that
+        triangle and mirrors the other one. Anything past the triangle is not read, as ROOT
+        does not read it either."""
+        stored = _triangle_size(self.kRows)
+        if len(given) < stored:
+            raise TypeError(
+                f"a symmetric SMatrix of {self.kRows} by {self.kCols} is built from the "
+                f"{stored} values of its upper triangle, and {len(given)} is not that many"
+            )
+        at = 0
+        for col in range(self.kCols):
+            for row in range(col + 1):
+                self[row, col] = given[at]
+                at += 1
 
     @property
     def _symmetric(self) -> bool:
@@ -456,13 +483,6 @@ class SMatrix:
     def kSize(self) -> int:
         """How many elements are stored: all of them, or one triangle of a symmetric one."""
         return self.kRows * self.kCols
-
-    def _mirrored(self) -> None:
-        """Copy the upper triangle onto the lower one, which is how a symmetric matrix is
-        filled from the triangle ROOT's iterators hand over."""
-        for i in range(self.kCols):
-            for j in range(i):
-                self._values[i * self.kCols + j] = self._values[j * self.kCols + i]
 
     def __call__(self, row: int, col: int) -> Any:
         return self._values[row * self.kCols + col]
@@ -657,14 +677,21 @@ class SMatrix:
         ]
         return self._vector_of(cells)
 
+    def _stored_values(self) -> list[Any]:
+        """What a range over this matrix hands over: every element in row order, or one
+        triangle of a symmetric one, which is all it keeps."""
+        if not self._symmetric:
+            return self._values
+        return [self(row, col) for col in range(self.kCols) for row in range(col + 1)]
+
     def begin(self) -> _Cursor:
-        """A cursor at the first element in row order, so a range built from
+        """A cursor at the first stored element, so a range built from
         ``(m.begin(), m.end())`` reads the matrix as ROOT's iterators hand it over."""
-        return _Cursor(self._values)
+        return _Cursor(self._stored_values())
 
     def end(self) -> _Cursor:
-        """A cursor past the last element in row order."""
-        return _Cursor(self._values, len(self._values))
+        """A cursor past the last stored element."""
+        return _Cursor(self._stored_values(), len(self._stored_values()))
 
     def _product_by_element(self, other: Any) -> Any:
         """Each element times the matching one, or times a number: ``Times(a, b)``, which is
