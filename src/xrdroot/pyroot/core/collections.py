@@ -844,7 +844,7 @@ class TMapIter(TIterator):
     CLASS_TITLE = "Iterator of map"
 
     def __init__(self, collection: Any = None, dir: bool = True) -> None:
-        held = [] if collection is None else [pair for pair in collection]
+        held = [] if collection is None else list(collection)
         super().__init__(collection, held, dir)
 
     def GetValue(self) -> Any:

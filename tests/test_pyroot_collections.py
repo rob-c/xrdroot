@@ -177,6 +177,7 @@ def test_a_collection_makes_the_iterator_root_gives_it():
         (type(ROOT.TMap().MakeIterator()).__name__, "TMapIter"),
         (type(ROOT.THashTable().MakeIterator()).__name__, "THashTableIter"),
         (type(ROOT.TClonesArray().MakeIterator()).__name__, "TObjArrayIter"),
+        (type(ROOT.TOrdCollection().MakeIterator()).__name__, "TCollectionIter"),
     )
 
 

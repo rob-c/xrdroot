@@ -119,6 +119,11 @@ def test_next_permutation_walks_the_orders_and_rewinds_to_the_first() -> None:
     assert values == [2, 1, 3]
     assert objects.next_permutation_range([3, 2, 1], 0, None) is False
     assert objects.next_permutation_range([1, 2, 2], 0, 3) is True
+    # The suffix is descending, so its last element is its smallest and the successor is
+    # often one back: ``[2, 3, 1]`` takes the 3, not the 1 it ends with.
+    backwards = [2, 3, 1]
+    assert objects.next_permutation_range(backwards, 0, 3) is True
+    assert backwards == [3, 1, 2]
 
 
 def test_next_permutation_rewinds_the_last_order_and_leaves_one_element_alone() -> None:

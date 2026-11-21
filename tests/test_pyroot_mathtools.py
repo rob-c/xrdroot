@@ -59,7 +59,16 @@ def test_the_root_finder_brackets_or_follows_a_derivative():
     expect(
         (bool(bracket.Solve()), True),
         (bracket.Root(), pytest.approx(0.25)),
+        (finder.Name(), "newton"),
+        (bool(finder.Iterations() > 0), True),
+        (bracket.Name(), "BrentRootFinder"),
     )
+    # ``exp`` has no root and Newton's step never shrinks, so it takes the steps it is
+    # given and says how many that was.
+    stuck = ROOT.Math.RootFinder(ROOT.Math.RootFinder.kGSL_NEWTON)
+    stuck.SetFunction(ROOT.Math.GradFunctor1D(np.exp, np.exp), 1.0)
+    assert stuck.Solve(3) is True
+    assert stuck.Iterations() == 3
 
 
 def test_the_fitter_minimises_and_prints_as_root_does(capsys):

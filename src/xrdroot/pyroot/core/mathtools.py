@@ -175,11 +175,25 @@ class RootFinder:
         kGSL_STEFFENSON,
     ) = range(7)
 
+    #: What ROOT's ``RootFinder::Name()`` answers for each kind: GSL's own algorithm names
+    #: for the six GSL solvers, and ``BrentRootFinder`` for ROOT's own Brent implementation.
+    NAMES = ("BrentRootFinder", "bisection", "falsepos", "brent", "newton", "secant",
+             "steffenson")  # fmt: skip
+
     def __init__(self, kind: int = 0) -> None:
         self._kind = int(kind)
         self._fn: Any = None
         self._bounds: tuple[float, ...] = ()
         self._root = math.nan
+        self._iterations = 0
+
+    def Name(self) -> str:
+        """``Name``: the solver's name, as GSL would spell it."""
+        return self.NAMES[self._kind] if 0 <= self._kind < len(self.NAMES) else "NoSolver"
+
+    def Iterations(self) -> int:
+        """``Iterations``: how many steps the last ``Solve`` took."""
+        return self._iterations
 
     def SetFunction(self, fn: Any, *bounds: float) -> bool:
         """``SetFunction(f, low, high)`` to bracket, or ``(f, start)`` for Newton's method."""
@@ -188,14 +202,17 @@ class RootFinder:
 
     def Solve(self, maxIter: int = 100, absTol: float = 1e-8, relTol: float = 1e-10) -> bool:
         """``Solve``: Newton's from the start given, or bisection inside the bracket given."""
+        self._iterations = 0
         if len(self._bounds) == 1:
             self._root = self._newton(self._bounds[0], maxIter)
         else:
-            self._root = _bisected(self._fn, self._bounds[0], self._bounds[1])
+            self._root, self._iterations = _bisected(self._fn, self._bounds[0],
+                                                     self._bounds[1])
         return not math.isnan(self._root)
 
     def _newton(self, x: float, iterations: int) -> float:
-        for _ in range(int(iterations)):
+        for step_at in range(int(iterations)):
+            self._iterations = step_at + 1
             step = self._fn(x) / self._fn.Derivative(x)
             x -= step
             if abs(step) <= 1e-15 * max(abs(x), 1.0):
@@ -206,14 +223,18 @@ class RootFinder:
         return self._root
 
 
-def _bisected(fn: Callable[[float], float], low: float, high: float) -> float:
-    """Where ``fn`` changes sign between ``low`` and ``high``, to the last bit."""
+def _bisected(fn: Callable[[float], float], low: float, high: float
+              ) -> tuple[float, int]:
+    """Where ``fn`` changes sign between ``low`` and ``high``, to the last bit - and how many
+    halvings it took, which is what ``RootFinder::Iterations`` answers with."""
     below = fn(low) < 0
     middle = 0.5 * (low + high)
+    steps = 0
     while middle not in (low, high):
         low, high = (middle, high) if (fn(middle) < 0) == below else (low, middle)
         middle = 0.5 * (low + high)
-    return middle
+        steps += 1
+    return middle, steps
 
 
 class _FCNResult:
