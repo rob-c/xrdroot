@@ -272,3 +272,21 @@ def test_double_precision_values_keep_their_bits_across_multiple_read_batches(tm
         assert actual.GetEntries() == expected.GetEntries() == len(values)
         assert tree.GetReadEntry() == len(values) - 1
         assert tree.GetArgs().tobytes() == values[-1:].tobytes()
+
+
+def test_a_class_bearing_an_enum_still_has_its_methods_called_natively():
+    """``hfnative`` runs a class's own methods only when nothing in its body could run Python
+    as a field is read - and a class written in a body is an enum's namespace, whose members
+    are constants: ``TH1::EStatOverflows`` makes ``TH1D`` no less native. A body holding
+    something that is neither metadata nor a method does."""
+    from xrdroot.roofit.fitting import hfnative
+
+    class WithEnum:
+        kOne = 1
+
+        class Enum:
+            kOne, kTwo = 1, 2
+
+    assert hfnative._attribute(WithEnum.Enum)
+    assert not hfnative._attribute(object())  # neither metadata nor a method
+    assert hfnative.instance(ROOT.TH1D("h", "h", 2, 0, 1), (ROOT.TH1D,))
