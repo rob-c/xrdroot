@@ -231,3 +231,12 @@ def test_a_qualified_static_call_fills_the_local_handed_to_it_by_reference() -> 
     text = body("int x; TBufferJSON::FromJSON(x, s);")
     assert "x = Cell(" in text
     assert "ROOT.TBufferJSON.FromJSON(x," in text
+
+
+def test_a_cell_holding_an_object_pointer_carries_the_class_it_was_declared_with() -> None:
+    """``TArrayI *a2 = nullptr; FromJSON(a2, json)`` makes an object of the class the
+    *declaration* names - ROOT's template argument - and a cell holding ``None`` has no
+    value that could say which class that is, so the cell carries the type's name."""
+    text = body("TArrayI *a2 = nullptr; TBufferJSON::FromJSON(a2, s);")
+    assert "a2 = Cell(None, 'TArrayI')" in text
+    assert "ROOT.TBufferJSON.FromJSON(a2," in text

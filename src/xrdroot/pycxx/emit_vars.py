@@ -176,7 +176,7 @@ class VariableEmitter(StmtEmitter):
     def write_variable(self, symbol: Symbol, value: str, decl: VarDecl) -> None:
         if symbol.cell:
             ctype = symbol.ctype
-            kind = f", {ctype.name!r}" if ctype is not None and ctype.scalar else ""
+            kind = cell_type(ctype)
             if _mentions(value, symbol.py):
                 # C++'s own initialiser may take the address of the variable it initialises -
                 # `static int x = (f(&x), 0)` - so the cell is made first and filled after.
@@ -392,7 +392,7 @@ class VariableEmitter(StmtEmitter):
         anything runs.
         """
         ctype = sized(self.declared_type(decl), decl)
-        kind = f", {ctype.name!r}" if ctype is not None and ctype.scalar else ""
+        kind = cell_type(ctype)
         symbol = self.declare(decl.name, "local", ctype, cell=True)
         symbol.py = self.fresh(f"{self._static_owner()}_{decl.name}")
         if _constant_static(decl, ctype):
@@ -445,6 +445,22 @@ def _by_value(ctype: CType) -> bool:
     """An object held by value: not a pointer, smart pointer or reference to one."""
     held = ctype.pointer or ctype.is_smart or ctype.reference or ctype.callable
     return ctype.is_class and not held
+
+
+def cell_type(ctype: CType | None) -> str:
+    """The type name a :class:`~xrdroot.cppstd.cells.Cell` carries, as a ``Cell`` argument.
+
+    A number's width has to be known because C stores it more narrowly than Python does, so
+    ``float x`` and ``double x`` are different cells. An object pointer's *class* has to be
+    known for the same reason one level up: ``TBufferJSON::FromJSON(T *&obj, json)`` makes
+    an object of the class ``T`` the declared pointer names, and while the cell holds the
+    ``None`` the pointer starts as, no value in it can say which class that is. A ``void *``
+    - the opaque handle ROOT's ``XML::NodePointer`` is - names no class at all, so it stays
+    a bare cell.
+    """
+    if ctype is None or ctype.name == "void" or not (ctype.scalar or ctype.is_object_pointer):
+        return ""
+    return f", {ctype.name!r}"
 
 
 def addressable(ctype: CType | None) -> bool:
