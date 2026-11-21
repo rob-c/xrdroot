@@ -242,18 +242,14 @@ def test_a_symmetric_matrix_hands_over_its_triangles():
     assert list(square.LowerBlock()) == [1.0, 2.0, 5.0, 3.0, 6.0, 9.0]
 
 
-def test_the_free_functions_make_the_matrices_and_vectors_root_makes():
+def test_the_free_functions_of_a_matrix_are_the_ones_root_has():
     from xrdroot.pyroot.linalg.smatrix import (
-        Cross,
-        Mag,
-        Mag2,
         Similarity,
         SimilarityT,
         SMatrixIdentity,
         Square,
         Times,
         Transpose,
-        Unit,
     )
 
     square = SMatrix["double", 2, 2](1, 2, 3, 4)
@@ -261,20 +257,32 @@ def test_the_free_functions_make_the_matrices_and_vectors_root_makes():
     assert Times(square, square)(0, 1) == 4.0
     assert Times(square, 2)(1, 0) == 6.0
     assert Square(square)(1, 1) == 16.0
-    x = SVector["double", 3](1, 2, 3)
-    assert Mag2(x) == 14.0 and Mag(x) == pytest.approx(14.0**0.5)
-    assert list(Cross(x, SVector["double", 3](4, 5, 6))) == [-3.0, 6.0, -3.0]
-    assert list(Unit(x)) == pytest.approx([1 / 14.0**0.5 * n for n in (1, 2, 3)])
-    assert Mag(SVector["int", 2](3, 4)) == 5
     identity = SMatrixIdentity(SMatrix["float", 2, 3])
     assert [identity(i, j) for i in range(2) for j in range(3)] == [1.0, 0, 0, 0, 1.0, 0]
     three = SMatrix["double", 3, 3]([1, 2, 3, 4, 5, 6, 7, 8, 9])
+    x = SVector["double", 3](1, 2, 3)
     assert Similarity(x, three) == pytest.approx(228.0)
     assert Similarity(square, square)(0, 1) == (square * square * square.Transpose())(0, 1)
     assert SimilarityT(square, square)(0, 0) == pytest.approx(
         (square.Transpose() * square * square)(0, 0)
     )
     assert Times(SVector["double", 2](1, 2), SVector["double", 2](3, 4))[1] == 8.0
+
+
+def test_the_free_functions_of_a_vector_are_the_ones_root_has():
+    from xrdroot.pyroot.linalg.smatrix import Cross, Mag, Mag2, Unit
+
+    x = SVector["double", 3](1, 2, 3)
+    assert Mag2(x) == 14.0 and Mag(x) == pytest.approx(14.0**0.5)
+    assert list(Cross(x, SVector["double", 3](4, 5, 6))) == [-3.0, 6.0, -3.0]
+    assert list(Unit(x)) == pytest.approx([1 / 14.0**0.5 * n for n in (1, 2, 3)])
+    assert Mag(SVector["int", 2](3, 4)) == 5
+
+
+def test_a_vector_of_the_wrong_width_is_refused_by_name():
+    from xrdroot.pyroot.linalg.smatrix import Cross, SMatrixIdentity
+
+    x = SVector["double", 3](1, 2, 3)
     with pytest.raises(TypeError, match="two vectors of three elements, not 2 and 3"):
         Cross(SVector["double", 2](1, 2), x)
     with pytest.raises(TypeError, match="has to name that variable's class here"):
