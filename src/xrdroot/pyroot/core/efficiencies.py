@@ -13,7 +13,7 @@ import numpy as np
 
 from ...efficiency import METHODS, Efficiency
 from .histcore import axis_specs
-from .objects import TAttFill, TAttLine, TAttMarker, TNamed
+from .objects import TAttFill, TAttLine, TAttMarker, TNamed, renamed
 from .wrapping import adopt, register, remember, unwrap, wrap
 
 __all__ = ["TEfficiency"]
@@ -53,6 +53,7 @@ class TEfficiency(TNamed, TAttLine, TAttFill, TAttMarker):
         return str(self._xrd.members["TNamed"]["fName"])
 
     def SetName(self, name: Any) -> None:
+        renamed(self)
         self._xrd.members["TNamed"]["fName"] = str(name)
 
     def GetTitle(self) -> str:

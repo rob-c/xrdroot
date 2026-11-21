@@ -144,6 +144,18 @@ def addressof(obj: Any, field: Any = None) -> Any:
     return AttrRef(obj, str(field))
 
 
+#: How many times an object's name has been set since the process started: a collection's
+#: index by name is stale after any of them. An object is named as it is made, not by
+#: ``SetName``, so making a thousand of them counts nothing.
+RENAMED = 0
+
+
+def renamed(obj: Any) -> None:
+    """Note that ``obj``'s name has been set, which every collection's index must see."""
+    global RENAMED
+    RENAMED += 1
+
+
 class TObject:
     """``TObject``: the root of ROOT's classes, and of every class here."""
 
@@ -416,6 +428,7 @@ class TNamed(TObject):
         return self._title
 
     def SetName(self, name: Any) -> None:
+        renamed(self)
         self._name = str(name)
 
     def SetTitle(self, title: Any = "") -> None:

@@ -510,3 +510,71 @@ def test_a_name_that_is_no_std_template_is_not_here():
     for missing in ("no_such_template", "_private"):
         with pytest.raises(AttributeError, match="has no attribute"):
             getattr(collections, missing)
+
+
+def test_an_object_is_found_by_name_however_the_list_has_changed():
+    """``FindObject`` reads an index by name that every mutation - and every rename anywhere -
+    makes stale, so what it finds is what a scan of the list finds, after any change."""
+    held = ROOT.TList()
+    other = ROOT.TList()
+    operations = (
+        lambda: held.Add(ROOT.TNamed("a", "")),
+        lambda: held.Add(ROOT.TNamed("b", "")),
+        lambda: held.AddFirst(ROOT.TNamed("c", "")),
+        lambda: held.AddLast(ROOT.TNamed("d", "")),
+        lambda: held.AddAt(ROOT.TNamed("e", ""), 1),
+        lambda: held.AddBefore(held.First(), ROOT.TNamed("f", "")),
+        lambda: held.AddAfter(held.First(), ROOT.TNamed("g", "")),
+        lambda: held.insert(2, ROOT.TNamed("h", "")),
+        lambda: held.reverse(),
+        lambda: held.Sort(),
+        lambda: held.Sort(False),
+        lambda: held.pop(0),
+        lambda: held.RemoveAt(1),
+        lambda: held.Remove(held.At(0)),
+        lambda: held.__setitem__(0, ROOT.TNamed("i", "")),
+        lambda: held.__delitem__(1),
+        lambda: held.AddAll(other),
+        lambda: held.At(0).SetName("renamed"),
+        lambda: other.Add(ROOT.TNamed("renamed", "")),
+        lambda: held.Clear(),
+    )
+    for at, operation in enumerate(operations):
+        operation()
+        for name in ("a", "b", "c", "d", "e", "f", "g", "h", "i", "renamed"):
+            scanned = next(
+                (item for item in list(held) if item is not None and item.GetName() == name), None
+            )
+            assert held.FindObject(name) is scanned, (at, name)
+
+
+def test_an_object_that_cannot_say_its_name_yet_is_indexed_when_it_can():
+    """A histogram is appended to its directory while it is still being made, and a file's
+    objects are in its list while they are torn down: one that cannot say its name is left
+    out of the index by name until it can, and is found once it can."""
+    class _Mute:
+        named = False
+
+        def GetName(self):
+            if not self.named:
+                raise AttributeError("not made yet")
+            return "mute"
+
+    held = ROOT.TList()
+    mute = _Mute()
+    held.Add(mute)  # no name to give: nothing to index it under
+    assert held.FindObject("mute") is None
+    held.Add(_Mute())  # and one that is still being made: it stays waiting
+    assert held.FindObject("mute") is None
+    mute.named = True
+    assert held.FindObject("mute") is mute  # settled into the index as soon as it has one
+    assert held.FindObject("nothing") is None
+    held.Remove(mute)
+    assert held.FindObject("mute") is None
+    # an index that is stale already settles nothing into it: the build that follows finds
+    # the object by reading the list, as it always can
+    held.reverse()
+    late = _Mute()
+    held.Add(late)
+    late.GetName = lambda: "late"
+    assert held.FindObject("late") is late

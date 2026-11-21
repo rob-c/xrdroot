@@ -14,7 +14,7 @@ from typing import Any
 import numpy as np
 
 from ...graph2d import GRAPHS2D, UNSET, Graph2D, members
-from .objects import TAttFill, TAttLine, TAttMarker, TNamed
+from .objects import TAttFill, TAttLine, TAttMarker, TNamed, renamed
 from .refs import store
 from .wrapping import adopt, register, wrap
 
@@ -71,6 +71,7 @@ class TGraph2D(TNamed, TAttLine, TAttFill, TAttMarker):
         return self._xrd.classname
 
     def SetName(self, name: Any) -> None:
+        renamed(self)
         TNamed.SetName(self, name)
         self._xrd.members["TNamed"]["fName"] = str(name)
 
