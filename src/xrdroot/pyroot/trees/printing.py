@@ -175,7 +175,14 @@ def element_lines(branch: BranchInfo, count: int) -> tuple[list[str], int]:
 
 
 def _printed(leaf: LeafInfo, value: Any) -> str:
-    """One value as ``TLeaf::PrintValue`` prints it: ``%g`` for floating point, else whole."""
+    """One value as ``TLeaf::PrintValue`` prints it: ``%g`` for floating point, else whole.
+
+    A value that is one object's members rather than a number is an object ROOT streams
+    itself - a ``TRef`` - which it prints as the class the value names, or, when the record
+    names no class, as the pointer ROOT would have shown.
+    """
+    if isinstance(value, Mapping):
+        return str(value.get("classname") or "->")
     number = np.asarray(value).item()
     if isinstance(number, float):
         return f"{number:g}"
@@ -211,14 +218,26 @@ def show_lines(entry: int, leaves: Sequence[tuple[LeafInfo, Any]]) -> list[str]:
             continue
         if not leaf.text and not leaf.vector and np.size(value) == 0:
             continue
-        lines.append(f" {leaf.name:<15} = {_joined(leaf, value)}")
+        texts = _texts(value)
+        printed = _joined(leaf, value) if texts is None else ", ".join(texts)
+        lines.append(f" {leaf.name:<15} = {printed}")
     return lines
 
 
 def _numbers_or_text(value: Any) -> bool:
-    """Is this a value ``TLeaf::PrintValue`` can print - numbers, or the text of a ``char[]``?"""
+    """Is this a value ``TLeaf::PrintValue`` can print as numbers - a ``char[]``'s text is not,
+    which the caller has already taken out?"""
     flat = np.asarray(value).reshape(-1)
-    return bool(flat.size) and flat.dtype.kind in "biufcUS"
+    return bool(flat.size) and flat.dtype.kind in "biufc"
+
+
+def _texts(value: Any) -> list[str] | None:
+    """The strings a member of a ``TString`` per object holds - one name per object of a split
+    collection - or ``None`` when the member is not text."""
+    flat = np.asarray(value).reshape(-1)
+    if not flat.size or flat.dtype.kind not in "US":
+        return None
+    return [_text_of(each) for each in flat[:SHOW_MAX]]
 
 
 def _is_characters(value: Any) -> bool:
@@ -258,6 +277,9 @@ def _one_member(leaf: LeafInfo, name: str, held: Any, depth: int) -> str | None:
     marker = f" {'  ' * (depth - 1)}{name:<15} ="
     if isinstance(held, (str, bytes)) or _is_characters(held):  # a char[] member: its text
         return f"{marker} {_text_of(held)}"
+    texts = _texts(held)
+    if texts is not None:  # a TString member: every object of the collection's own
+        return f"{marker} {', '.join(texts)}"
     if _numbers_or_text(held):
         return f"{marker} {_joined(leaf, held)}"
     return None if held is None or np.size(held) == 0 else f"{marker} ->"

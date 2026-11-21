@@ -267,3 +267,68 @@ def test_a_branch_ref_with_nothing_recorded_writes_the_tree_as_ever():
     assert tree.Write() > 0
     out.Close()
     assert ROOT.TFile("a.root").Get("t").GetEntry(0) > 0
+
+
+def test_the_objects_of_the_entry_being_read_are_filed_once_for_its_references():
+    """ROOT files an object as its streamer reads it, and numbers a process's objects from
+    the start in every entry, so an entry's objects are filed again in the entry after."""
+    from xrdroot.pyroot.trees.branches import read_referenced
+
+    filing = []
+    tree = SimpleNamespace(GetReadEntry=lambda: 3, holds=filing, GetName=lambda: "t")
+    tree.__dict__["_backing"] = lambda: {}
+    tree.__dict__["_leaves"] = lambda: []
+    TRefTable._tree, TRefTable._filed, TRefTable._kept = tree, None, []
+    read_referenced(SimpleNamespace(GetUniqueID=lambda: 1))
+    assert TRefTable._filed == (id(tree), 3)
+    assert TRefTable._kept == []
+    TRefTable._tree, TRefTable._filed, TRefTable._kept = None, None, []
+
+
+def test_a_reference_with_no_tree_being_read_files_nothing():
+    from xrdroot.pyroot.trees.branches import read_referenced
+
+    TRefTable._tree, TRefTable._filed = None, None
+    read_referenced(SimpleNamespace(GetUniqueID=lambda: 1))
+    assert TRefTable._filed is None
+
+
+def test_an_object_a_reference_may_point_at_is_filed_under_the_number_it_carries():
+    from xrdroot.pyroot.core.references import (
+        IS_REFERENCED,
+        TProcessID,
+        filed_object,
+        named_process,
+    )
+
+    out = ROOT.TFile("plain.root", "RECREATE")
+    out.WriteTObject(ROOT.TNamed("only", "no process record here"))
+    out.Close()
+    read = ROOT.TFile("plain.root")
+    pid = TProcessID.AddProcessID()
+    named = ROOT.TNamed("N", "N")
+    named.SetBit(IS_REFERENCED)
+    named.SetUniqueID(7)
+    filed_object(named, read)  # the file has no ProcessID record to file it in
+    plain = ROOT.TNamed("P", "P")
+    filed_object(plain, read)  # and this one is no object a reference may point at
+    assert named_process(None, 0) is None
+    assert named_process(read, None) is None
+    assert pid.GetObjectWithID(7) is None
+    read.Close()
+
+
+def test_the_reference_of_a_member_read_back_names_the_process_of_the_file_it_came_from():
+    """``TRef::Streamer`` resolves its process as it reads, through ``gFile``."""
+    from xrdroot.pyroot.core.references import TProcessID, _tref_from
+
+    out = ROOT.TFile("p.root", "RECREATE")
+    named = ROOT.TNamed("N", "N")
+    ref = ROOT.TRef(named)
+    assert out.WriteProcessID(ref.GetPID()) == 0
+    out.Close()
+    read = ROOT.TFile("p.root")
+    made = _tref_from({"TObject": {"fUniqueID": 1, "fBits": 0}, "fPID": 0})
+    assert isinstance(made.GetPID(), TProcessID)
+    assert made.GetObject() is None  # the object itself was never read into this session
+    read.Close()

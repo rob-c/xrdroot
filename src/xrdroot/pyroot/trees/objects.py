@@ -324,7 +324,24 @@ def _objects(member: Any, rows: list[Any]) -> bytes:
             f"writer streams no {member.typename} into a tree entry yet; write that member "
             f"as a number instead, or leave the branch out"
         )
+    _named_processes(rows)
     return b"".join(tref_record(ref) for ref in rows)
+
+
+def _named_processes(rows: list[Any]) -> None:
+    """The file being written given a record for each process these references name.
+
+    A reference's record holds the index of its process among the file's ``ProcessID``
+    records, not the process's name, so the records have to be there for a reader to
+    resolve one - ROOT writes them as its ``TRef::Streamer`` meets the process, through
+    ``TFile::WriteProcessID``. Every other path to a ``TRef`` goes through the writer's
+    own record of it, which writes the record; a collection in a tree does not.
+    """
+    from ..core.directories import current_file
+
+    file = current_file()
+    for ref in rows if file is not None else ():
+        file.WriteProcessID(getattr(ref, "_pid", None))
 
 
 def _jagged(rows: list[list[Any]], offsets: Any) -> Jagged:
@@ -632,9 +649,35 @@ class ClonedSlot:
         return f"<ClonedSlot {self.name!r} of {len(self.sources)} members>"
 
     def read(self, counts: Any = None) -> Any:
-        """One entry as ``Fill`` reads it: each object of the entry, and its members' values."""
+        """One entry as ``Fill`` reads it: each object of the entry, and its members' values.
+
+        A clone shares its collection's address with the tree it was cloned from, as ROOT's
+        does: once ``SetBranchAddress`` has given that tree the objects to read into, those
+        objects are the entry - and they are the ones a ``TRef`` made from them numbered, so
+        the clone has to write them and not the copies the entry was read as
+        (roottest/root/io/tree/create-r).
+        """
+        live = self._live()
+        if live is not None:
+            return self._kind.entry(live)
         values = [follow.get() for follow in self._follows]
         return [tuple(one) for one in zip(*values, strict=True)]
+
+    def _live(self) -> Any:
+        """The objects the source tree holds for this collection, if it was given any.
+
+        A collection holding a whole object of its own per row - a ``TRef`` - is copied from
+        the values read instead, which the writer streams itself: those rows are not members
+        of the objects the tree was given but the objects themselves.
+        """
+        if any(member.stype == OBJECT_TYPE for member in getattr(self._kind, "members", ())):
+            return None
+        tree = self._follows[0].tree if self._follows else None
+        address = getattr(tree, "_addresses", {}).get(self.name)
+        if address is None:
+            return None
+        held = address.get() if hasattr(address, "get") else _held(address)
+        return None if held is None or isinstance(held, (int, float)) else held
 
     def taken(self, read: Any) -> list[Any]:
         """Every entry copied at once: each of its objects' members, from the columns read."""

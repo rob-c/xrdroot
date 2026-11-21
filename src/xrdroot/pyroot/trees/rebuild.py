@@ -82,6 +82,7 @@ def _clones(value: Any, current: Any, clones: str = "") -> Any:
     of the array empty. A class ROOT or the kit describes instead is made by name, as before.
     """
     from ..core.collections import TClonesArray
+    from ..core.references import filed_object
     from ..core.wrapping import from_members
 
     classname = str(getattr(value, "classname", None) or getattr(current, "_class", clones))
@@ -94,6 +95,7 @@ def _clones(value: Any, current: Any, clones: str = "") -> Any:
             obj = from_members(classname, flat)
             if obj is None:
                 obj = _drawn(classname, flat)
+        filed_object(obj)
         made.AddAt(obj, at)
     return made
 

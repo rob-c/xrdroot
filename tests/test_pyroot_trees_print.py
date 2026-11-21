@@ -11,6 +11,7 @@ docs show for ``staff.C``'s one branch of nine leaves. ``Show`` is
 from __future__ import annotations
 
 import re
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -260,3 +261,19 @@ def test_print_and_show_of_a_file_root_wrote_are_what_root_6_40_prints(capsys):
     printed = capsys.readouterr().out.splitlines()
     assert printed[:2] + printed[3:] == expected[:2] + expected[3:]
     assert printed[2].endswith("File  Size =      10452 *")
+
+
+def test_a_member_of_one_string_per_object_is_printed_as_the_names_it_holds():
+    from xrdroot.pyroot.trees.printing import show_lines
+
+    leaf = SimpleNamespace(name="N.fName", text=False, vector=False, classname="")
+    lines = show_lines(0, [(leaf, np.array(["N_0_0", "N_0_1"]))])
+    assert lines[-1] == " N.fName         = N_0_0, N_0_1"
+
+
+def test_a_member_of_whole_objects_is_printed_as_the_class_or_the_pointer_it_is():
+    from xrdroot.pyroot.trees.printing import show_lines
+
+    leaf = SimpleNamespace(name="r1.fRef", text=False, vector=False, classname="")
+    lines = show_lines(0, [(leaf, [{"TObject": {"fUniqueID": 1}}])])
+    assert lines[-1] == " r1.fRef         = ->"
