@@ -387,9 +387,21 @@ class Buffer:
 
     def referenced(self) -> tuple[int, int, int | None]:
         """A ``TObject`` and, when a ``TRef`` may point at it - ``kIsReferenced`` - which of the
-        file's ``ProcessID`` records numbered it; ``None`` for an object no reference names."""
+        file's ``ProcessID`` records numbered it; ``None`` for an object no reference names.
+
+        The two words come back exactly as the file wrote them. The bits are not the reader's to
+        change here: these members are read back out and written again as they came in, so a
+        word with ROOT's ``kIsOnHeap|kNotDeleted`` in it would be a word the file never held.
+        ROOT's reader sets those two bits on the *object* it fills (``TObject::Streamer``), which
+        is :meth:`xrdroot.pyroot.core.objects.TObject._bitword` here.
+
+        The identifier is the number alone for the same reason the process is handed back
+        beside it rather than folded into its top byte: the index means nothing until the file
+        it was written in is known, and it is that file's records that name the process.
+        """
         _version, unique, bits = self.scalars(_TOBJECT)
-        return unique, bits, self.u16() if bits & IS_REFERENCED else None
+        process = self.u16() if bits & IS_REFERENCED else None
+        return unique, bits, process
 
     def named(self) -> tuple[str, str]:
         """A ``TNamed``: the name and title every ROOT object carries."""
