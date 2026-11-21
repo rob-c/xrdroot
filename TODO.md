@@ -1059,6 +1059,10 @@ cheap to maintain and impossible to reconstruct.
 | W0-60 | todo | | 1 | `io/bigevent/read`'s wall, named: a `vector<TObject> *` member (`fVectorTobject`) is a kind `rdobjects.py` does not decode inside an entry. That is the reader's own feature, and the group's last one - the *writer* already lays it out |
 | W0-61 | todo | | 0 | **three rounds of stray files in the main worktree from other sessions** (`dot.C`, `h.h`, `mkroot.py`, `test.root` this round; `interp.py`/`buffers.py`/`rdobjects.py` in rounds 19-20). `git status` before every gate run caught them all, but the loop is sharing a worktree with another writer: the round should `git clean -n` its own files before the gate |
 
+| **Round 24: `io/bigevent`'s reader takes one more member** - a container a member *points at* (`vector<TObject> *fVectorTobject`, stype 71) is read as the container it names | `0d4ed89f` (interp.py), `1ac5101d` (rdobjects.py) | 0 PASS: the group stays **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r24/ev3`) and `read`'s refusal moved from `fVectorTobject` to `fVectorTnamed` |
+| W0-62 | todo | | 1 | **`fVectorTnamed` is not a stype to teach.** It is `vector<TNamed> *fVectorTnamed[6]` - a pointer to a container *and* an array (`Event.h:100`, stype 91 = `STL_POINTER + 20`) - which ROOT writes into one record for the whole array. This round tried treating 91 as 71 and the harness's refusal moved on, but by **misreading the bytes**: the existing test `test_an_array_of_pointers_to_containers_leaves_the_type_as_the_file_describes_it` failed with `DID NOT RAISE`, which is why the change was reverted. A future round must write the array-of-pointers reading, not relabel the kind |
+| W0-63 | todo | | 1 | the harness's own lesson from `W0-62`: a one-line change that moves a refusal *further* is not progress until the full suite agrees. The unit tests caught this in 0.3 s; the harness alone would have called it a gain |
+
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
