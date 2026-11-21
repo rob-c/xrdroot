@@ -1304,6 +1304,29 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   maintainability 31 089 functions in 1729 files, components 1018 modules and 0 undeclared imports,
   `mkdocs build --strict` built.
 
+## Round 44's close (recorded here for the next iteration)
+
+- Base `9ba7eb49`, closed at `250324e3`. **One commit, +1 gtest PASS**, and a correction of round 43's own ranking.
+- **`gtest/core/cont/TSeqTests` PASSES** (`250324e3`, measured at `/tmp/r44/seq`: the four `core/cont` programs are
+  2 PASS / 2 FAIL, where they were 1 PASS / 3 FAIL). `ROOT::TSeq`'s `begin()`/`end()` are C++ **random-access**
+  iterators: `it + n`, `it - m` for the distance, `--`/`-=` in place, `it[n]`, and `*it` as the `value` it holds.
+  A `TSeq` works its value out - `begin + index * step` - rather than looking it up, which is why `c[3]` is the
+  fourth value on from `c` even past the last stored one; `TSeqU`/`TSeqUL` were missing too.
+  `coreconttestUnit`, which includes the same file, moves on to `TCollection.RangeCast` (`W0-113`'s
+  `TRangeStaticCast`). The gtest kind is **54 / 350**.
+- **`W0-118` is corrected, and the correction is the round's other product.** Round 43's bucket table counted
+  *occurrences in a log*, not programs, so `TInterpreter.CreateTemporary` read as "26 programs" and `RVec::Pt` as
+  "17" - it was 1 program, 17 times. Recounted per program from the same evidence (`/tmp/r44/gtest-buckets.md`):
+  **114 of the 219 FAIL programs ask for no missing name at all** - each is an assertion of its own subject, so
+  each is its own feature - and the 105 that do are 1-3 programs each. **There is no wide name cluster in the
+  gtest kind**, and the next round must not plan as if there were. This is `W0-75`'s mistake (a hand-rolled count
+  believed over the harness's own) and the rule stands: count with the evidence's own structure.
+- **`W0-119` shrinks with it**: the Clad family is **not** 26 programs. Re-counted, `CreateTemporary` is one
+  program's first wall (`math/mathcore/CladDerivatorTests`), so the scope question is worth asking but it is not
+  the kind's wide win.
+- The gate is green at `250324e3`: **`TOTAL 119220 0 29922 0 100%`** by the two-command decomposition (12 955
+  passed, then 44), at a load average of 7-14. ruff clean, mypy 1019 files, maintainability 31 108 functions.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
