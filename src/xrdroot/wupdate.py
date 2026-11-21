@@ -22,12 +22,11 @@ import struct
 from functools import partial
 from typing import IO, Any, NamedTuple
 
-from xrdclient.url import parse
-
 from .buffer import BYTE_COUNT_MASK, CLASS_MASK, MAP_OFFSET, NEW_CLASS_TAG, Buffer
 from .compression import CODES
 from .errors import FormatError, UnsupportedFeatureError
 from .file import Key, Source
+from .transport import parse
 from .winfo import INFOS
 from .writer import (
     DIRECTORY_BYTES,

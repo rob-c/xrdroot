@@ -1271,3 +1271,15 @@ def test_the_items_of_a_member_wise_collection_are_read_as_the_class_is_today(mo
         assert interp._read_by_memory(source, "ParticleImplVec") is source
     finally:
         interp.DECLARED.clear()
+
+
+def test_a_member_of_a_type_this_writer_does_not_lay_out_is_refused_by_name():
+    """A class's elements are asked once, when it is first written, which write each takes -
+    and a member whose streamer type is none of them is refused by its name and type."""
+    from xrdroot.winfo import Element
+    from xrdroot.writer import WBuffer, _kind_of, _written_element
+
+    element: Element = ("TStreamerBasicType", "fOdd", "", 4242, 0, 1, (0, 0, 0, 0, 0), 0, "int", ())
+    assert _kind_of(element) == ""
+    with pytest.raises(UnsupportedFeatureError, match="fOdd is of streamer type 4242"):
+        _written_element(WBuffer(), "", element, {"fOdd": 1}, {})

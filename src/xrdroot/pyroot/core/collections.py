@@ -18,6 +18,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from ...cppstd.containers import TEMPLATES as _TEMPLATES
+from . import objects
 from .objects import Indent, TNamed, TObject
 from .strings import TString
 
@@ -48,6 +49,21 @@ _PRIVATE = ["FunctionList"]
 
 #: ``TObject::kSingleKey``: a collection written under one key, rather than a key an object.
 SINGLE_KEY = 1 << 0
+
+
+def _name_of(item: Any) -> str | None:
+    """The name a collection indexes ``item`` under, or ``None`` for one that says none yet.
+
+    A histogram is appended to its directory while it is still being made, before it has a
+    name to give; it is indexed as soon as it has one.
+    """
+    found = getattr(item, "GetName", None)
+    if found is None:
+        return None
+    try:
+        return str(found())
+    except Exception:  # an object being torn down cannot say its name
+        return None
 
 
 def _named(item: Any, name: str) -> bool:
@@ -87,6 +103,75 @@ class TCollection(TObject):
         self._items: list[Any] = []
         self._name = ""
         self._owner = False
+        #: The objects by name, and the marks the index was built at: how many times this
+        #: collection has changed, and how many names have been set in the process. A
+        #: directory asks its list for an object by name once per object appended - its
+        #: name-clash check - and scanning a thousand objects with a Python call each was
+        #: most of what booking a histogram cost.
+        self._by_name: dict[str, list[Any]] = {}
+        self._stale = True
+        self._stamp = 0
+        self._marks = -1
+        #: Objects added before they could say their name - a histogram is appended to its
+        #: directory while it is still being made - which are indexed as soon as they can.
+        self._unnamed: list[Any] = []
+
+    def _changed(self) -> None:
+        """Note that this collection has changed in a way its index by name cannot follow one
+        object at a time - an object moved, or the order changed: the index is built again."""
+        self._stale = True
+
+    def _included(self, obj: Any) -> None:
+        """One object added at the end: into the index, unless it is stale already."""
+        name = _name_of(obj)
+        if name is None:
+            self._unnamed.append(obj)  # still being made: indexed as soon as it can be
+        elif not self._stale:
+            self._by_name.setdefault(name, []).append(obj)
+        self._stamp += 1
+
+    def _excluded(self, obj: Any) -> None:
+        """One object taken out: out of the index, unless it is stale already."""
+        if not self._stale:
+            name = _name_of(obj)
+            if name is None:
+                self._stale = True  # one that cannot say its name may still be in the index
+            bucket = self._by_name.get(name) if name is not None else None
+            if bucket and obj in bucket:
+                bucket.remove(obj)
+                if not bucket:
+                    self._by_name.pop(str(name), None)
+        self._stamp += 1
+
+    def _settle(self) -> None:
+        """Index the objects that could not say their name when they were added."""
+        waiting, self._unnamed = self._unnamed, []
+        for obj in waiting:
+            name = _name_of(obj)
+            if name is None:
+                self._unnamed.append(obj)
+            elif not self._stale:
+                self._by_name.setdefault(name, []).append(obj)
+
+    def _indexed(self) -> dict[str, list[Any]]:
+        """The objects by name, in the order they are held, built when the index is stale.
+
+        A directory asks its list for an object by name once per object appended - ROOT's
+        name-clash check - so a scan over a thousand objects, with a Python call each, was
+        most of what booking a histogram cost.
+        """
+        self._settle()
+        marks = objects.RENAMED
+        if self._stale or self._marks != marks:
+            found: dict[str, list[Any]] = {}
+            for item in self._items:
+                name = _name_of(item)
+                if name is not None:
+                    found.setdefault(name, []).append(item)
+            self._by_name = found
+            self._stale = False
+            self._marks = marks
+        return self._by_name
 
     # -- Python's view ------------------------------------------------------------
 
@@ -164,15 +249,19 @@ class TCollection(TObject):
         """``Add(obj[, opt])``: at the end, ROOT's option naming the object when it names one."""
         _named_by(obj, opt)
         self._items.append(obj)
+        self._included(obj)
 
     def AddLast(self, obj: Any) -> None:
         self._items.append(obj)
+        self._included(obj)
 
     def AddFirst(self, obj: Any) -> None:
         self._items.insert(0, obj)
+        self._changed()
 
     def AddAll(self, other: Any) -> None:
         self._items.extend(other)
+        self._changed()
 
     def GetSize(self) -> int:
         return len(self._items)
@@ -190,7 +279,8 @@ class TCollection(TObject):
     def FindObject(self, name: Any) -> Any:
         """The first object called ``name``, or the object itself if held; ``None`` if neither."""
         if isinstance(name, str):
-            return next((item for item in self._items if _named(item, name)), None)
+            found = self._indexed().get(name)
+            return found[0] if found else None
         return next((item for item in self._items if item is name), None)
 
     def IndexOf(self, obj: Any) -> int:
@@ -199,10 +289,15 @@ class TCollection(TObject):
     def Remove(self, obj: Any) -> Any:
         """``Remove``: take ``obj`` out and hand it back, or ``None`` if it is not held."""
         at = self.IndexOf(obj)
-        return None if at < 0 else self._items.pop(at)
+        if at < 0:
+            return None
+        self._excluded(obj)
+        return self._items.pop(at)
 
     def Clear(self, option: str = "") -> None:
         self._items.clear()
+        self._by_name.clear()
+        self._stamp += 1
 
     def Delete(self, option: str = "") -> None:
         from ...pycxx.runtime.objects import delete
@@ -211,6 +306,8 @@ class TCollection(TObject):
             if self._owner and item is not None:
                 delete(item)
         self._items.clear()
+        self._by_name.clear()
+        self._stamp += 1
 
     def SetOwner(self, enable: bool = True) -> None:
         self._owner = bool(enable)
@@ -273,23 +370,29 @@ class TSeqCollection(TCollection):
     def __setitem__(self, index: Any, value: Any) -> None:
         if isinstance(index, slice):
             self._items[index] = list(value)
-            return
-        self._items[_position(index, len(self._items))] = value
+        else:
+            self._items[_position(index, len(self._items))] = value
+        self._changed()
 
     def __delitem__(self, index: Any) -> None:
         if isinstance(index, slice):
             del self._items[index]
-            return
-        del self._items[_position(index, len(self._items))]
+        else:
+            del self._items[_position(index, len(self._items))]
+        self._changed()
 
     def insert(self, index: int, obj: Any) -> None:
         self._items.insert(int(index), obj)
+        self._changed()
 
     def pop(self, index: Any = -1) -> Any:
-        return self._items.pop(_position(index, len(self._items)))
+        found = self._items.pop(_position(index, len(self._items)))
+        self._excluded(found)
+        return found
 
     def reverse(self) -> None:
         self._items.reverse()
+        self._changed()
 
     def sort(self, key: Any = None, reverse: bool = False) -> None:
         """``sort()``: ROOT's ``Sort``; with a ``key`` or ``reverse``, Python's sort of them."""
@@ -297,6 +400,7 @@ class TSeqCollection(TCollection):
             self.Sort()
             return
         self._items.sort(key=key, reverse=reverse)
+        self._changed()
 
     def index(self, obj: Any) -> int:
         at = self.IndexOf(obj)
@@ -319,13 +423,16 @@ class TSeqCollection(TCollection):
 
     def AddAt(self, obj: Any, index: int) -> None:
         self._items.insert(int(index), obj)
+        self._changed()
 
     def AddBefore(self, before: Any, obj: Any) -> None:
         self._items.insert(max(self.IndexOf(before), 0), obj)
+        self._changed()
 
     def AddAfter(self, after: Any, obj: Any) -> None:
         at = self.IndexOf(after)
         self._items.insert(len(self._items) if at < 0 else at + 1, obj)
+        self._changed()
 
     def After(self, obj: Any) -> Any:
         at = self.IndexOf(obj)
@@ -336,7 +443,11 @@ class TSeqCollection(TCollection):
         return None if at <= 0 else self.At(at - 1)
 
     def RemoveAt(self, index: int) -> Any:
-        return self._items.pop(index) if 0 <= index < len(self._items) else None
+        if not 0 <= index < len(self._items):
+            return None
+        found = self._items.pop(index)
+        self._changed()
+        return found
 
     def RemoveFirst(self) -> Any:
         return self.RemoveAt(0)
@@ -351,6 +462,7 @@ class TSeqCollection(TCollection):
     def Sort(self, order: bool = True) -> None:
         """``Sort``: by name - ``Compare`` - up, or down with ``order`` false."""
         self._items.sort(key=lambda item: item.GetName(), reverse=not order)
+        self._changed()
 
     def IsSorted(self) -> bool:
         names = [item.GetName() for item in self._items]
@@ -495,6 +607,7 @@ class TObjArray(TSeqCollection):
         while len(self._items) <= index:
             self._items.append(None)
         self._items[index] = obj
+        self._changed()
 
     def AddAtAndExpand(self, obj: Any, index: int) -> None:
         self.AddAt(obj, index)
@@ -502,6 +615,7 @@ class TObjArray(TSeqCollection):
     def Expand(self, size: int) -> None:
         del self._items[size:]
         self._items.extend([None] * (size - len(self._items)))
+        self._changed()
 
     def GetEntries(self) -> int:
         """The slots holding something, which ``GetEntriesFast`` does not count."""
@@ -517,6 +631,7 @@ class TObjArray(TSeqCollection):
 
     def Compress(self) -> None:
         self._items = [item for item in self._items if item is not None]
+        self._changed()
 
     def LowerBound(self) -> int:
         return self._lower
@@ -526,6 +641,7 @@ class TObjArray(TSeqCollection):
         if not 0 <= index < len(self._items):
             return None
         found, self._items[index] = self._items[index], None
+        self._changed()
         return found
 
     def Remove(self, obj: Any) -> Any:
@@ -567,6 +683,8 @@ class TClonesArray(TObjArray):
 
     def Clear(self, option: str = "") -> None:
         self._items = []
+        self._by_name.clear()
+        self._stamp += 1
 
     def ConstructedAt(self, index: int) -> Any:
         """The object in slot ``index``, made with its class's default constructor if empty."""
@@ -762,7 +880,9 @@ class TMap(THashTable):
         a map."""
         found = self.FindObject(obj)
         if found is None:
-            self._items.append(TPair(obj, opt))
+            pair = TPair(obj, opt)
+            self._items.append(pair)
+            self._included(pair)
         else:
             found.SetValue(opt)
 
@@ -804,6 +924,7 @@ class TMap(THashTable):
         if found is None:
             return None
         self._items.remove(found)
+        self._excluded(found)
         return found.Key()
 
     def Delete(self, option: str = "") -> None:
@@ -816,6 +937,8 @@ class TMap(THashTable):
                 if obj is not None:
                     delete(obj)
         self._items.clear()
+        self._by_name.clear()
+        self._stamp += 1
 
     def __getitem__(self, key: Any) -> Any:
         return self.GetValue(key)
