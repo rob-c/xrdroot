@@ -1385,6 +1385,33 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   average of 16-20. ruff clean, mypy 1019 files, maintainability 31 126 functions, components 1018 modules /
   0 undeclared.
 
+## Round 47's close (recorded here for the next iteration)
+
+- Base `44c42d2d`, closed at **`f0655cf0`**. **Two fixes, no harness PASS**, and two measurements that matter more
+  than a single test: the whole **gtest kind re-measured** and **`stressgraphics`'s refusal turned into its real
+  subject**.
+- **`W0-127` closed** (`35c96338`): `while (in >> word) {}` cleared `word` as the loop ended, because the empty text a
+  *failed* read gives was stored. C++ sets failbit and assigns nothing, and never reads through a stream that has
+  already failed. `cppstd/istreams.py::extracted(stream, current, ctype)` is the read now in both places one is
+  written - and it is also where the dialect's string class goes around the word, so the class and the failure rule
+  are one function instead of two.
+- **`W0-126` closed** (`f0655cf0`): C's broken-down calendar time exists - `tm` (with `tm_year` from 1900 and
+  `tm_mon` from January being 0), `localtime`, `gmtime`, `formatted_time` and `strftime`, whose `char[]` is given
+  its text the way `sprintf`'s is (a new statement handler `_strftime`; `TEXT_TARGETS` is for cells, and putting it
+  there wrote through a `Cell` wrongly).
+- **The gtest kind is current: 54 PASS / 218 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r47/gtest`), against
+  round 43's 53. `TSeqTests` is the gain (round 44) and **nothing was lost in four rounds of fixes** - that is the
+  `W0-63` check the kind had not had since round 43.
+- **`test/stressgraphics-interpreted` moved UNSUPPORTED → FAIL, and that is the round's most useful measurement**
+  (`/tmp/r47/sg2`): it now *runs ROOT's own 32-test graphics stress suite* and fails on the images' byte counts -
+  `Test 1. TLine` 1289 against ROOT's 529, PDF 1585 against 12827, PNG 4665 against 3937. Behind the refusal was the
+  `canvas/` fidelity work `W0-52` has recorded since round 19, now with a number per format (`W0-128`).
+- **`test/testbits` still PASSES** (`/tmp/r47/sg2`), so `W0-127`'s change to every read did not cost the round 46
+  PASS.
+- Gates: ruff, mypy (1020 files), maintainability, components all clean and the two-command coverage gate at
+  **`TOTAL 119506 … 100%`** before the last two test-only commits, then re-run at `f0655cf0` - see Final
+  verification.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1437,6 +1464,9 @@ For the round's work, the evidence is, in this order:
   The first reports ~99.73% by design (the ignored files' code is not covered yet) and the second
   reaches 100%. Then `ruff check src tests tools`, `mypy`, `python tools/maintainability.py check`,
   `python tools/components.py check`, `mkdocs build --strict`.
+- Round 47's result of them, at `f0655cf0`: **`TOTAL 119506 0 29978 0 100%`** - 12 977 passed then 44 passed - at a
+  load average of 13-21; ruff clean, mypy 1020 files, maintainability 31 201 functions, components 1019 modules /
+  0 undeclared. `/tmp/r47/gate3.log` is the first command's output.
 - Round 46's result of them, at `e142f240`: **`TOTAL 119286 0 29940 0 100%`** - 12 962 passed then 44 passed - at a
   load average of 16-20; ruff clean, mypy 1019 files, maintainability 31 126 functions, components 1018 modules /
   0 undeclared. `/tmp/r46/gate3.log` is the first command's output.
@@ -1632,6 +1662,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 44 | `9ba7eb49` | **one commit**: ROOT::TSeq's random-access iterator - `begin()`/`end()`, `+`/`-`/`++`/`--`/`[]`/`*it`, and `TSeqU`/`TSeqUL` (`250324e3`) | **gtest +1**: `gtest/core/cont/TSeqTests` PASSES (`/tmp/r44/seq`), the kind 53 -> 54; `coreconttestUnit` moves to `TCollection.RangeCast` | 0 new: `W0-118` **corrected** (round 43 counted occurrences, not programs - 114 of 219 FAIL programs ask for no missing name at all) |
 | 45 | `2f5d8392` | **two commits**: `fflush` reads the name a translation writes for a stream, as `fprintf` does, and `TBits::Set`/`Get` (`4a98e20d`); `root` names an option it cannot read, and the harness matches a `PASSREGEX` across newlines as CMake does (`4468d37b`) | **`other` +1**: `root_exe_errorMessage` PASSES (`/tmp/r45/errm2`), and **both `test/` and `other` measured whole for the first time in ~28 rounds**: `other` 40 / 109 (`/tmp/r45/other`), `test/` 8 / 59 (`/tmp/r45/testkind`) | 3: `W0-123` (a `Char_t[]` of bytes becomes a `str` truncated at the first NUL), `W0-124` (the five `RooUnitTest` tests are a framework), `W0-125` (`testbits` needs only `W0-123`) |
 | 46 | `56b0a92a` | **three commits**: a `char[]` from a braced list is a byte buffer unless it spells a C string, the dialect's `buffer_functions`, and `TBits::Get` filling bytes into any element width (`af1e82fd`); a word read into a dialect string class is that class (`7e369769`); the two reads' tests and the split of two functions the limits caught (`e142f240`) | **`test/` +1**: `test/testbits` PASSES (`/tmp/r46/bits`, 41 tests), the kind 8 -> 9; `test/stressgraphics-interpreted` FAIL -> UNSUPPORTED (`ROOT has localtime`) | 1: `W0-126` (C's `localtime`/`struct tm`); `W0-123` and `W0-125` closed |
+| 47 | `44c42d2d` | **two commits**: a failed extraction stores nothing, as C++ leaves the variable alone (`35c96338`, `W0-127` closed); C's `tm`/`localtime`/`gmtime`/`strftime` (`f0655cf0`, `W0-126` closed) | **no harness PASS**, but the **gtest kind re-measured whole: 54 PASS / 218 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** (`/tmp/r47/gtest`, one gain, none lost in four rounds), and `test/stressgraphics-interpreted` **UNSUPPORTED -> FAIL**: it runs the graphics stress suite and fails on image byte counts (`/tmp/r47/sg2`) | 1: `W0-128` (the images' character counts - the `canvas/` work `W0-52` records); `W0-126` and `W0-127` closed |
 
 ## Notes
 
