@@ -12,10 +12,15 @@ import cmath
 import math
 from typing import Any, ClassVar
 
+import numpy as np
+
 from ...fit.defaults import DEFAULTS, minimizer_algo, minimizer_type, set_minimizer
 from ...function.rootmath import *  # noqa: F403 - scalar ROOT::Math compatibility exports
 from ...function.rootmath import __all__ as _scalars
 from .fitdata import WrappedMultiTF1  # noqa: F401 - ROOT::Math's, by name
+from .funcbase import *  # noqa: F403 - ROOT's function interfaces, which macros derive from
+from .funcbase import IGenFunction
+from .funcbase import __all__ as _interfaces
 from .genvector import *  # noqa: F403
 from .genvector import __all__ as _vectors
 from .legendres import (  # noqa: F401 - ROOT::Math's Legendre polynomials, by name
@@ -28,6 +33,8 @@ from .mathtools import (  # noqa: F401 - ROOT::Math's function objects and tools
     Factory,
     Functor,
     Functor1D,
+    GeneticMinimizer,
+    GeneticMinimizerParameters,
     GradFunctor,
     GradFunctor1D,
     Integrator,
@@ -63,35 +70,15 @@ _HALF_PI = 1.5707963267948966
 _EULER = 0.57721566490153286060651209008240243104215933593992
 #: What Lentz's algorithm divides by where a denominator is zero, as ROOT's own does.
 _TINY = 1e-300
+#: Where ``Util::EvalLog`` stops taking a logarithm and continues linearly instead:
+#: twice the smallest normal double, as ROOT's ``2.0 * numeric_limits<double>::min()``.
+_EVALLOG_EPSILON = 4.4501477170144027e-308
 
 
 class Minim1D:
     """``ROOT::Math::Minim1D``: which one-dimensional search ``GSLMinimizer1D`` runs."""
 
     kBRENT, kGOLDENSECTION, kBISECTION = range(3)
-
-
-class IGenFunction:
-    """``ROOT::Math::IGenFunction``: a function of one number, as ROOT's numerical tools take it.
-
-    A macro's own class derives from this and overrides ``DoEval``; ``__call__``
-    is what the tools call, as they call ``operator()``, which ROOT defines in
-    terms of ``DoEval``.
-    """
-
-    def __call__(self, x: Any) -> float:
-        return float(self.DoEval(float(x)))
-
-    def DoEval(self, x: float) -> float:
-        """``DoEval(x)``: what the function is at ``x``, which a subclass says."""
-        raise NotImplementedError(
-            "IGenFunction is the interface ROOT's tools call a function of one number through; "
-            "derive from it and override DoEval, or pass a plain Python function to Functor1D."
-        )
-
-    def NDim(self) -> int:
-        """``NDim()``: one, this being the one-dimensional interface."""
-        return 1
 
 
 class Polynomial(IGenFunction):
@@ -338,6 +325,35 @@ class MinimizerOptions:
         return minimizer_algo()
 
 
+class Util:
+    """``ROOT::Math::Util``: what MathCore's own classes spell a value out with.
+
+    ``ToString`` is an ``std::ostringstream``'s answer for the type it is given - the
+    digits of an integer, six significant ones of a double, a string as itself - which
+    is what ROOT's ``ParameterName`` and its test programs build names from.
+    """
+
+    @staticmethod
+    def ToString(value: Any) -> str:
+        """``ToString(value)``: the value as ``std::ostringstream << value`` writes it."""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, bool):
+            return str(int(value))
+        if isinstance(value, (int, np.integer)):
+            return str(int(value))
+        return f"{float(value):g}"
+
+    @staticmethod
+    def EvalLog(x: Any) -> float:
+        """``EvalLog(x)``: ``log(x)``, continued linearly below ``2e-308`` so that a
+        likelihood's logarithm stays finite where the density is zero."""
+        value = float(x)
+        if value <= _EVALLOG_EPSILON:
+            return value / _EVALLOG_EPSILON + math.log(_EVALLOG_EPSILON) - 1.0
+        return math.log(value)
+
+
 class MathMoreLibrary:
     """``ROOT::Math::MathMoreLibrary``: what loads MathMore, whose functions - the quantiles,
     the special functions - are here already."""
@@ -370,8 +386,11 @@ __all__ = sorted(
     [name for name, value in list(globals().items()) if _exported(name, value)]
     + list(_scalars)
     + list(_vectors)
+    + list(_interfaces)
     + [
         "Factory",
+        "GeneticMinimizer",
+        "GeneticMinimizerParameters",
         "Minimizer",
         "Functor",
         "Functor1D",

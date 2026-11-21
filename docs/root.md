@@ -751,6 +751,8 @@ unbinned(x, "gaus", parameters=[1, 0, 1], range=(-5, 5))  # an unbinned likeliho
 | `gr->Fit("pol1")`, `mg->Fit("pol1", "F")` | `gr.fit("pol1")`, `mg.fit("pol1", "F")` |
 | `gMinuit`, `ROOT::Math::Minimizer` with an FCN | `xrdroot.fit.minimize(fcn, x0, ...)` |
 | `TTree::UnbinnedFit`, `Fitter::LikelihoodFit` on `UnBinData` | `xrdroot.fit.unbinned(data, model, ...)` |
+| `ROOT::Math::GeneticMinimizer` | `ROOT.Math.GeneticMinimizer`, or `Factory.CreateMinimizer("Genetic")` |
+| a class deriving from `ROOT::Math::IMultiGenFunction` or `IParamFunction` | a Python class deriving from `ROOT.Math.IMultiGenFunction` or `.IParamFunction`, overriding `DoEval` or `DoEvalPar` |
 
 The options are ROOT's letters, read as `FitOptionsMake` reads them — any
 order, either case, a word such as `WIDTH` or `MULTI` taken out before its
@@ -829,6 +831,35 @@ more than `fNpx` times its lower end, at `fNpx + 1` points otherwise. A file
 written with it is one ROOT reads as fitted. A `TF2` fitted to a `TH2` is
 recorded the same way, but a histogram holding one cannot yet be written,
 since no `TF2` layout is to hand to write it by.
+
+**A function of your own.** ROOT's tools are handed an interface, not a
+function: a macro derives a class from `ROOT::Math::IMultiGenFunction` (or
+`IParamFunction` for one carrying parameters) and overrides `DoEval` — or
+`DoEvalPar`, `Parameters`, `SetParameters` and `NPar`. A translated macro
+derives from `ROOT.Math.IMultiGenFunction` and everything below it is ROOT's
+own: `operator()` in terms of `DoEval`, `Gradient` in terms of `DoDerivative`,
+`ParameterGradient` in terms of `DoParameterDerivative`, the `Par_i` names,
+and the zero derivative ROOT answers when a function gives none. Every name
+ROOT's `IFunctionfwd.h` and `IParamFunctionfwd.h` define is there —
+`IMultiGenFunction`, `IGenFunction`, `IGradFunction`, `IMultiGradFunction`,
+`IParamFunction`, `IParamMultiFunction`, `IParamGradFunction`,
+`IParamMultiGradFunction` and the templated classes behind them, which take a
+backend type they then ignore, as everything here is a double. `Functor`,
+`Functor1D`, `GradFunctor` and `GradFunctor1D` are these interfaces too, so
+`Minimizer` and `Fitter` take a Python function and a translated class alike,
+and use the gradient of either only when it has one.
+
+**A genetic search.** `ROOT::Math::GeneticMinimizer` is TMVA's genetic
+algorithm — `GeneticAlgorithm`, `GeneticPopulation` and `GeneticRange`, draw
+for draw, over the same `TRandom3` stream — for a function whose derivative is
+noise or one with several minima a gradient search would miss. A coordinate
+needs a range (`SetVariable` invents one fifty steps either side of the value,
+as ROOT does), the least point found is `MinValue` and `X`, and there is no
+error to give: `ProvidesError` is false and `Errors` is empty. Its settings are
+ROOT's `GeneticMinimizerParameters` — three hundred points, a hundred
+generations, a step moved by `0.95` as generations improve or not — and
+`SetRandomSeed` makes a search repeatable; with ROOT's default seed of zero
+each run draws its own, as ROOT's does.
 
 **How close to ROOT.** `tgme.root`'s multigraph was fitted by ROOT 6.24 with
 `mg->Fit("pol1", "FQ")`: three graphs, one without errors, one with

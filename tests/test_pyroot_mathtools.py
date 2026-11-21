@@ -245,3 +245,82 @@ def test_a_fitter_set_up_first_minimises_from_its_parameters_settings():
     assert not config.ParSettings(0).IsFixed()
     config.SetParamsSettings(2)
     assert config.ParSettings(1).Value() == 0.0
+
+
+def test_root_maths_utility_spells_a_value_out_as_an_ostringstream_does():
+    # ROOT::Math::Util::ToString, which ROOT's own test programs build parameter names with
+    assert ROOT.Math.Util.ToString(1) == "1"
+    assert ROOT.Math.Util.ToString(True) == "1"
+    assert ROOT.Math.Util.ToString("x") == "x"
+    assert ROOT.Math.Util.ToString(1.5) == "1.5"
+    assert ROOT.Math.Util.ToString(1e-5) == "1e-05"  # six significant digits, as << gives
+    assert ROOT.Math.Util.ToString(1234567.0) == "1.23457e+06"
+
+
+def test_a_logarithm_below_the_smallest_double_is_continued_into_a_line():
+    # ROOT::Math::Util::EvalLog, so that a likelihood of zero still has a logarithm
+    smallest = 4.4501477170144028e-308  # 2 * numeric_limits<double>::min()
+    assert ROOT.Math.Util.EvalLog(0.0) == pytest.approx(-708.70327135170419, rel=1e-15)
+    assert ROOT.Math.Util.EvalLog(smallest) == pytest.approx(
+        smallest / smallest + np.log(smallest) - 1.0, rel=1e-15
+    )
+    assert ROOT.Math.Util.EvalLog(2.0) == pytest.approx(0.69314718055994529, rel=1e-15)
+
+
+def test_a_minimizer_keeps_the_settings_it_is_given_and_ignores_no_limits():
+    minimizer = ROOT.Math.Minimizer()
+    minimizer.SetMaxFunctionCalls(1000)
+    minimizer.SetMaxIterations(50)
+    minimizer.SetStrategy(2)
+    assert (minimizer.MaxFunctionCalls(), minimizer.MaxIterations(), minimizer.Strategy()) == (
+        1000, 50, 2)
+    # ROOT's own SetMaxIterations ignores a count that is not a limit
+    minimizer.SetMaxIterations(0)
+    assert minimizer.MaxIterations() == 50
+
+
+def test_the_genetic_parameters_fall_back_to_a_tolerance_root_can_use(monkeypatch):
+    # a session whose default tolerance was set to zero still gets a convergence criterion
+    monkeypatch.setitem(mathtools.DEFAULTS, "Tolerance", 0.0)
+    assert ROOT.Math.GeneticMinimizerParameters().fConvCrit == 0.001
+
+
+class Cell:
+    """What a ``double &`` is on this side: the value written into it, and read back."""
+
+    def __init__(self):
+        self.value = 0.0
+
+
+def test_a_minimizer_gives_minoss_two_errors_on_a_parameter():
+    minimizer = ROOT.Math.Minimizer()
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: (v[0] - 2.0) ** 2, 1))
+    minimizer.SetVariable(0, "a", 0.0, 0.1)
+    # nothing has been minimised yet, so there is no minimum to have errors around
+    assert minimizer.GetMinosError(0, Cell(), Cell()) is False
+    assert minimizer.Minimize()
+    lower, upper = Cell(), Cell()
+    assert minimizer.GetMinosError(0, lower, upper) is True
+    # a parabola of one parameter: MINOS's errors are Minuit's error definition either side
+    errors = (lower.value, upper.value)
+    assert errors == (pytest.approx(-1.0, abs=0.05), pytest.approx(1.0, abs=0.05))
+
+
+def test_minos_gives_no_error_where_minuit_trusts_no_minimum():
+    minimizer = ROOT.Math.Minimizer()
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: 0.0, 1))  # a constant: no minimum
+    minimizer.SetVariable(0, "a", 1.0, 0.1)
+    assert minimizer.Minimize() is False
+    assert minimizer.GetMinosError(0, Cell(), Cell()) is False
+
+
+def test_a_minimizer_cleared_is_ready_to_be_set_up_again():
+    minimizer = ROOT.Math.Minimizer()
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: (v[0] - 2.0) ** 2, 1))
+    minimizer.SetVariable(0, "a", 0.0, 0.1)
+    assert minimizer.Minimize()
+    minimizer.Clear()
+    assert minimizer.NDim() == 0
+    minimizer.SetVariable(0, "b", 5.0, 0.1)
+    assert minimizer.Minimize()
+    assert minimizer.X()[0] == pytest.approx(2.0, abs=1e-2)
