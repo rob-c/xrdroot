@@ -1132,6 +1132,26 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - Gates: ruff, mypy (1019 files), maintainability (30 990 functions), components (0 undeclared), `mkdocs --strict` all
   clean; the two-command pytest gate at 100%.
 
+## Round 40's close (recorded here for the next iteration)
+
+- Base `17c9a7fa`, closed at `aabf7f48`. **Two commits, +1 roottest PASS, and the `TRef` group's area is clean.**
+- **`W0-102` is closed after three rounds.** `82001fb0`: the four `Warning in <TClass::Init>: no dictionary for class …`
+  lines `missingClass.ref` wants (`TEmcl`, `TPhysObj`, `TNonEmcl`, `TNonPhysObj`) are emitted, and **`TGeoAtt`,
+  `TGeoVoxelFinder` and `TGeoParallelWorld` stay silent** because a new `ROOT_CLASSES` set in `pyroot/core/reflection.py`
+  names "ROOT has a dictionary for it and this kit implements nothing of it". Round 37's reverted attempt was right in
+  every other respect. `roottest/root/io/tree/read` **PASSES**; the area is **18 PASS / 0 FAIL / 0 DIFF / 2
+  UNSUPPORTED** (`/tmp/r40/tree`) where three rounds ago it was 11 PASS / 7 DIFF.
+- **`W0-108` is closed as a decision, not a fix.** `other/math/mathcore/mathcore-stdsort` is a **benchmark**:
+  `200000/(n/10)` passes of `TMath::Sort` and `std::sort` over vectors of 10 to 100 000 elements with a comparator
+  object per pair. Measured: `xrdroot run stdsort.cxx` ran **4 minutes without finishing the first size**. It cannot pass
+  inside the limit, and the limit is not to be raised.
+- `de1e9cac` adds the tests for `declared.py`'s accessor fall-backs - the 2 lines and 1 branch that were the only gap at
+  a clean load (its own file reports `declared.py` at 98% with those three covered).
+- **`W0-109`: the gate needs a load average under ~20.** At 34-54 this round's two-command gate reported **99.54%** and
+  **99.85%** with all 12 931 tests passing - a worker's coverage data lost, not a gap. Round 39's `TOTAL 118830 0 29826 0
+  100%` remains the last clean measurement.
+- ruff, mypy (1019 files), maintainability (31 005 functions), components (0 undeclared) and `mkdocs --strict` all pass.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -1170,6 +1190,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 40's result of it, at `aabf7f48`: **not measurable at this load** (`W0-109`): at a load average of 34-54 the
+  two-command gate reported 99.54% and 99.85% with all 12 931 tests passing. Round 39's at `297950c4` remains the last
+  clean one: `TOTAL 118830 0 29826 0 100%` by the two-command decomposition (12 925 + 44 passed).
 - Round 39's result of it, at `297950c4`: `TOTAL 118830 0 29826 0 100%` **by the two-command decomposition**
   (`pytest -n 4 --cov --ignore=tests/test_tmva_learn_networks.py --ignore=tests/test_pyroot_references.py` →
   12 925 passed, then `pytest tests/test_tmva_learn_networks.py tests/test_pyroot_references.py --cov --cov-append`
@@ -1341,6 +1364,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 37 | `d13ce7e8` | **two commits in, two reverted**: a TMap's JSON as the pairs it holds (`4e0461e6`); a symmetric SMatrix filled from its upper triangle (`aa265151`). **Reverted**: the address of a vector element (`b28bb2c2`, `W0-98`'s top row - six branches with no test, branch `r37-01` kept) and a user class's missing dictionary (`03c2c442`, `afd8afdd` - it warns for `TGeoAtt`/`TGeoVoxelFinder`/`TGeoParallelWorld`, which ROOT has dictionaries for, and breaks a PASS) | **0 PASS**: `io/json` **10 / 0 / 0 / 2** (`/tmp/r37/json`) and `roottest/root/math/*` **0 / 4 / 1** (`/tmp/r37/rmath`), both unchanged | 3: `W0-101` (what the vector-element tests must reach), `W0-102` (why the class warning broke a PASS), `W0-103` (**no gate is measurable above a load average of ~20** - `W0-45` is worse than recorded) |
 | 38 | `7216c284` | **three commits**: the address of a vector element reaches every branch it added (`bcd98495`, `W0-101` closed); `wpacking`'s `OverflowError` on Python 3.14 and `np.atan`'s NumPy-2 spelling (`2c64e67f`); two float comparisons through their decimal spelling, as a tolerance (`db1c1a00`) | **no harness measurement** (load average 20-124, `W0-103` stands); **916 unit tests pass** in every file the commits touch | 2: `W0-104` (three pre-existing breakages, fixed, with their causes), `W0-105` (**the venv is Python 3.14 + NumPy 1.26**, where the tree assumed NumPy 2 and older `struct` errors); `W0-101` closed |
 | 39 | `ebd7485f` | **one commit**: both of the trainer's optimisers, and the coverage gate measurable again (`4f7ddee5`, `W0-107`) | **the gate is green**: `TOTAL 118830 0 29826 0 100%` by the two-command decomposition (12 925 pass, then 44 with `--cov-append`); **`other` +1**: `other/math` **21 -> 22 PASS** (`/tmp/r39/other`, `mathcore-testSpecFuncBeta`), 0 FAIL, 45 -> 41 UNSUPPORTED, one new TIMEOUT (`mathcore-stdsort` runs now); `io/tree/read` **4 lines** from PASS (`/tmp/r39/read`) | 1: `W0-108` (**`mathcore-stdsort` times out at 300 s** - the translated `std::sort` needs one NumPy pass); `W0-102` sharpened to its two-part fix; `W0-107` closed |
+| 40 | `17c9a7fa` | **two commits**: a class ROOT has a dictionary for is no warning, by name as well as by layout (`82001fb0`, `W0-102` closed after three rounds); the declared-class accessors' fall-backs (`de1e9cac`) | **roottest +1: `io/tree/read` PASSES** - `roottest/root/io/tree/*` is **18 PASS / 0 FAIL / 0 DIFF / 2 UNSUPPORTED** (`/tmp/r40/tree`) | 2: `W0-108` (**`mathcore-stdsort` is a benchmark** - 10^7 comparator calls, 4 min without finishing the first size: a decision, not a fix), `W0-109` (**the gate needs a load under ~20 again** - 99.5% at 34-54 with every test passing); `W0-102` closed |
 
 ## Notes
 
