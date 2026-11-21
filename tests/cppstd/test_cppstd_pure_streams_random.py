@@ -51,3 +51,26 @@ def test_normal_distribution_reuses_its_pair_then_reset_uses_the_current_engine_
     distribution.reset()
     fresh = random.normal_distribution(5, 2)
     assert distribution(engine) == fresh(clone)
+
+
+def test_the_default_engine_is_libcxxs_minstd_rand0_and_spans_its_modulus() -> None:
+    engine = random.default_random_engine()
+    assert engine() == 16807
+    assert random.default_random_engine(0)() == 0
+    reseeded = random.default_random_engine(7)
+    reseeded.discard(2)
+    stepped = random.default_random_engine(7)
+    stepped()
+    stepped()
+    assert reseeded() == stepped()
+    assert random.default_random_engine.min() == 1
+    assert random.default_random_engine.max() == 2147483646
+
+
+def test_width_is_the_member_cpp_declares_and_the_one_field_it_applies_to() -> None:
+    output = streams.ostringstream()
+    assert output.width() == 0
+    assert output.width(6) == 0
+    assert output.width() == 6
+    output << "ab"
+    assert output.str() == "    ab" and output.width() == 0

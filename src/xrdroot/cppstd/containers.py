@@ -1698,6 +1698,48 @@ class _ArrayTemplate:
         return self[deduced(values), len(values)](values)
 
 
+def _range_span(first: Any, last: Any, name: str) -> tuple[Any, int, int]:
+    """The container and the half-open span that the two ends of a range name.
+
+    A range arrives as the emitter leaves it: two iterators of one vector, or a
+    pointer and the tail it leaves over - ``a, a + n`` is ``a`` and ``a[n:]``, so the
+    end is what the first still holds after the second's. The container itself, not a
+    copy of the span, is what an algorithm gets, because C++ writes back through the
+    iterators and a copy would swallow the write.
+    """
+    if isinstance(first, _VectorIterator) and isinstance(last, _VectorIterator):
+        if first._owner is not last._owner:
+            raise TypeError(f"std::{name}() over the ends of two different containers; "
+                            "give it the begin() and end() of one of them.")
+        return first._owner, first._position, last._position
+    if not isinstance(first, _VectorIterator) and hasattr(first, "__len__") \
+            and hasattr(last, "__len__"):
+        return first, 0, len(first) - len(last)
+    raise TypeError(f"std::{name}() over a range xrdroot cannot follow back to its container; "
+                    "give it v.begin(), v.end() or a pointer and its end.")
+
+
+def _shuffle(first: Any, last: Any, engine: Any = None) -> None:
+    """``std::shuffle(begin, end, g)``: the span's elements in an order ``g`` draws."""
+    from .objects import shuffle_range
+
+    shuffle_range(*_range_span(first, last, "shuffle"), engine)
+
+
+def _generate(first: Any, last: Any, generate: Any) -> None:
+    """``std::generate(begin, end, gen)``: ``gen()`` called into each element in turn."""
+    from .objects import generate_range
+
+    generate_range(*_range_span(first, last, "generate"), generate)
+
+
+def _next_permutation(first: Any, last: Any) -> bool:
+    """``std::next_permutation(begin, end)``: the next permutation, in place."""
+    from .objects import next_permutation_range
+
+    return next_permutation_range(*_range_span(first, last, "next_permutation"))
+
+
 class _Stream:
     """``std::cout`` and ``std::cerr``: what ``<<`` is given, written as text."""
 
@@ -1720,7 +1762,6 @@ class _Stream:
 
 class _Namespace:
     """``ROOT.std``: the containers, the streams, and a refusal by name for the rest of it."""
-
     cout = _Stream("cout")
     cerr = _Stream("cerr")
     endl = "\n"
@@ -1752,6 +1793,7 @@ class _Namespace:
     get = _GetTemplate()
     bitset = _bitset.bitset
     mt19937 = _random.mt19937
+    default_random_engine = _random.default_random_engine
     normal_distribution = _random.normal_distribution
     uniform_real_distribution = _random.uniform_real_distribution
     string = string
@@ -1767,6 +1809,9 @@ class _Namespace:
     piecewise_construct = _stdlib._Tag("piecewise_construct")
     rand = staticmethod(_stdlib.rand)
     srand = staticmethod(_stdlib.srand)
+    shuffle = staticmethod(_shuffle)
+    generate = staticmethod(_generate)
+    next_permutation = staticmethod(_next_permutation)
 
     def __repr__(self) -> str:
         return "<namespace std>"

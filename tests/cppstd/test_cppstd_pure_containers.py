@@ -263,3 +263,32 @@ def test_a_sets_iterator_steps_the_elements_in_the_order_iteration_gives() -> No
         seen.append(int(each))
         each += 1
     assert seen == [1, 1, 2]
+
+
+def test_the_std_algorithms_take_the_range_a_translated_call_hands_them() -> None:
+    """``std.shuffle(v.begin(), v.end(), g)``, ``std.generate(x, x + n, f)``: the emitter
+    lowers an algorithm it does not name to an attribute of ``std``, so the namespace must
+    read a range back to the container it came from and write there."""
+    std = containers.std
+    values = std.vector["int"]([3, 1, 2])
+    std.shuffle(values.begin(), values.end())
+    assert sorted(values) == [1, 2, 3]
+    std.next_permutation(values.begin(), values.end())
+    ordered = list(values)
+    assert ordered == [1, 3, 2] or ordered == [2, 1, 3]
+    doubles = std.vector["double"]([0.0, 0.0])
+    std.generate(doubles.begin(), doubles.end(), lambda: 2.5)
+    assert list(doubles) == [2.5, 2.5]
+    array = np.zeros(3)
+    std.generate(array, array[3:], lambda: 1.0)
+    assert array.tolist() == [1.0, 1.0, 1.0]
+
+
+def test_a_std_algorithm_refuses_a_range_it_cannot_follow_back_to_one_container() -> None:
+    std = containers.std
+    left = std.vector["int"]([1, 2]).begin()
+    right = std.vector["int"]([3, 4]).end()
+    with pytest.raises(TypeError, match=r"the ends of two different containers"):
+        std.shuffle(left, right)
+    with pytest.raises(TypeError, match=r"cannot follow back to its container"):
+        std.generate(3, 4, lambda: 0)

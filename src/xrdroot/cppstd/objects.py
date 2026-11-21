@@ -278,6 +278,53 @@ def reverse_range(container: Any, start: int, stop: Any) -> None:
     container[start:end] = list(container[start:end])[::-1]
 
 
+def generate_range(container: Any, start: int, stop: Any, generate: Callable[[], Any]) -> None:
+    """``std::generate(begin, end, gen)``: a call of ``gen`` into each element, in order."""
+    end = len(container) if stop is None else int(stop)
+    for at in range(start, end):
+        container[at] = generate()
+
+
+def shuffle_range(
+    container: Any, start: int, stop: Any, engine: Any = None
+) -> None:
+    """``std::shuffle(begin, end, g)``: each element swapped with one drawn before it.
+
+    The engine is the one the macro named - ``std::default_random_engine`` when it gave
+    none, which C++ has no overload for but a shuffle without one plainly means - and
+    each step draws one word and scales it into ``[0, i]``, as
+    ``std::uniform_int_distribution`` does over that engine's own range.
+    """
+    from .random import default_random_engine
+
+    spread = default_random_engine() if engine is None else engine
+    low, span = int(spread.min()), int(spread.max()) - int(spread.min()) + 1
+    end = len(container) if stop is None else int(stop)
+    for at in range(end - 1, start, -1):
+        chosen = start + int((float(spread()) - low) / span * (at - start + 1))
+        container[at], container[chosen] = container[chosen], container[at]
+
+
+def next_permutation_range(container: Any, start: int, stop: Any) -> bool:
+    """``std::next_permutation(begin, end)``: the next permutation in place; ``False``
+    when the range was the last one, which is then rewound to its first, as C++ does."""
+    end = len(container) if stop is None else int(stop)
+    items = list(container[start:end])
+    pivot = len(items) - 2
+    while pivot >= 0 and not items[pivot] < items[pivot + 1]:
+        pivot -= 1
+    if pivot < 0:
+        container[start:end] = items[::-1]
+        return False
+    successor = len(items) - 1
+    while not items[pivot] < items[successor]:
+        successor -= 1
+    items[pivot], items[successor] = items[successor], items[pivot]
+    items[pivot + 1:] = items[pivot + 1:][::-1]
+    container[start:end] = items
+    return True
+
+
 class CppException(Exception):
     """A C++ ``throw`` of anything: the value thrown, and ``what()`` as ``std::exception`` has."""
 
