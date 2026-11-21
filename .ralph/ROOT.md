@@ -1266,6 +1266,37 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   two-command decomposition (12 948 passed, then 44 with `--cov-append`). ruff clean, mypy 1019 files,
   maintainability 31 064 functions, components 1018 modules / 0 undeclared, `mkdocs build --strict` built.
 
+## Round 43's close (recorded here for the next iteration)
+
+- Base `0cbe14e9`, closed at **`4e473e1e`**. **Two commits, +1 `other` PASS**, and the round's other product is
+  the **first whole measurement of the gtest kind since round 13** - the load average was 11-20, so both the
+  harness and the gate could be run.
+- **`W0-116` is closed.** `0be3733b`: `ROOT::Math::Roots::Brent`/`Bisection`/`FalsePos`/`Newton`/`Secant`/
+  `Steffenson` over `GSLRootFinder` and `GSLRootFinderDeriv` - **siblings** under `IRootFinderMethod`, as ROOT
+  has them, because the two are handed different functions (a bracket, or the derivative and the `fdf` that
+  gives both). `other/math/mathmore-testGSLRootFinder` **PASSES** (`/tmp/r43/gsl`): all six of its solvers
+  bracket `sqrt(5)` and `Name()` answers with GSL's own spelling. `kMODAB`'s is `ModABRootFinder`, read off
+  the oracle. `other/math` is **22 → 23 PASS**.
+- **`4e473e1e` moves seven programs' walls and flips none**, and says so: `TTree`/`TAxis`/`TH1`/`TInterpreter`
+  status words and `RootFinder::kMODAB` are the *first* failure of thirty gtest programs, and every one of
+  those programs has several walls. Measured before and after at `/tmp/r43/enums2` (0 PASS / 7 FAIL both
+  times); what each hits now is in the queue - `THistRange` for `test_THBinIterator`, `TH1::SetStatOverflows`
+  (`W0-122`), `std::vector::resize` (`W0-120`), `BulkApiVariableTest.stdRead`, `TTreeClusterTest.countBaskets`.
+- **The gtest ranking is current again** (`/tmp/r43/gtest`, bucketed at `/tmp/r43/gtest-buckets.md`):
+  **53 PASS / 219 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** of 350. The 219 first failures reduce to 16 missing
+  class names and 16 missing methods; the rest are each program's own subject. The widest are
+  `TInterpreter.CreateTemporary` (**26 programs**, `W0-119`), `RVec::Pt` (17), `ostream::rdbuf` (12),
+  `ROOT.Detail` (11), `RNTupleModel.AddProjectedField` (10), `RDataFrame.Vary` (9).
+- **`W0-119` is a scope question, not a fix**: the 26 `CreateTemporary` programs are the Clad derivator family,
+  and `clad::differentiate` is cling's Clad plugin. Either the committed scope labels cover "a compiler plugin
+  that differentiates C++" in a full sentence, or the derivative is computed numerically. It needs a review,
+  not a quiet label.
+- **`W0-121` is a fidelity bug found while proving the round's PASS**: `xrdroot run` looks for a `.cxx`'s
+  *namesake* function before `main`, and echoes the returned value as a macro's - so `testGSLRootFinder` prints
+  `(int) 0` where a compiled ROOT program prints nothing. Invisible wherever the judge is the exit code (as
+  for every `other` test), a DIFF wherever a `test/` or `other` test has an `OUTREF`.
+- ruff, mypy (1019 files) clean; the gate was run at the round's final commit - see "Final verification".
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit

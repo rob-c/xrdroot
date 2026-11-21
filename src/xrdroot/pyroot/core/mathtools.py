@@ -244,7 +244,8 @@ def _bisected(fn: Callable[[float], float], low: float, high: float
 
 class IRootFinderMethod:
     """``ROOT::Math::IRootFinderMethod``: what every solver of ROOT's answers - the root it
-    found, how many steps it took, and the name of the algorithm."""
+    found and how many steps it took. ``Name`` and ``Solve`` are each solver's own, as ROOT
+    declares them pure virtual."""
 
     def __init__(self) -> None:
         self._root = math.nan
@@ -255,10 +256,6 @@ class IRootFinderMethod:
 
     def Iterations(self) -> int:
         return self._iterations
-
-    def Name(self) -> str:
-        """``Name``: the algorithm's, as GSL spells it for its own algorithms."""
-        return "GSL"
 
 
 class GSLRootFinder(IRootFinderMethod):
