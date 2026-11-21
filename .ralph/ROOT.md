@@ -1327,6 +1327,36 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - The gate is green at `250324e3`: **`TOTAL 119220 0 29922 0 100%`** by the two-command decomposition (12 955
   passed, then 44), at a load average of 7-14. ruff clean, mypy 1019 files, maintainability 31 108 functions.
 
+## Round 45's close (recorded here for the next iteration)
+
+- Base `2f5d8392`, closed at **`4468d37b`** (ledger `80b9e82e`). **Two commits, +1 `other` PASS**, and the round's
+  other product is that **the `test/` and `other` kinds were measured whole for the first time in ~28 rounds**
+  (the load average was 11-26, so both the harness and the gate could run).
+- **The kinds, measured:** `other` **40 PASS / 0 FAIL / 67 UNSUPPORTED / 2 TIMEOUT** of 109 (`/tmp/r45/other` is
+  39 of them; `root_exe_errorMessage` makes 40, `/tmp/r45/errm2`); `test/` **8 PASS / 7 FAIL / 44 UNSUPPORTED**
+  of 59 (`/tmp/r45/testkind`). The ledger's 23 for `other` was `other/math` plus a handful - the kind had never
+  been counted whole. **All non-tutorial is 1421 / 2820 (50.4 %)** by those five figures.
+- **`root_exe_errorMessage` PASSES**, and it took *two* fixes that each hid the other:
+  `root` silently dropped a long option it did not know and read `-e invalid` glued into one word as a *macro
+  file* - ROOT's parser names every option it cannot read and runs nothing, so `cli/root.py` now does, keeping
+  the long options it takes and ignores (`--web=off`, `--notebook`, …) silent; and the message is three lines
+  while the check is one expression, because **CMake's `.` in a `PASS_REGULAR_EXPRESSION` is every character
+  including a newline** - `tools/rootsuite/judge.py` searched with `re.M` only and now searches with `re.S`.
+  That second half is a **harness defect affecting every `PASSREGEX` test**, and it is the kind of thing that
+  only shows up when a message is longer than a line.
+- **`4a98e20d`** fixes a general translation bug: a translation has no `FILE` object for `stderr`, so
+  `fprintf(stderr, …)` is `fprintf('stderr', …)` - which `printf.py` already read as the stream it names, and
+  `fflush` did not, so `fprintf(stderr, …); fflush(stderr);` failed with `'str' object has no attribute
+  'flush'`. Both read the name now (`cstdio.standard`), and `fflush(NULL)` flushes the two streams a translation
+  writes to. `TBits::Set`/`Get` - ROOT's bulk forms over the *bytes* of an array of any width - landed with it.
+- **`W0-123` is the next `testbits` wall and it is a translator gap**: `static const Char_t char_bits[] =
+  {0,1,3,7,15,31,63,127}` is emitted as `char_bits = ''`, because a `char[]` from a braced list is taken as text
+  and truncated at the first NUL. C++ makes it an array of chars, indexable and arithmetic-able. `W0-124` records
+  that `test/`'s five `RooUnitTest` tests are a *framework*, not a name - the biggest group in that kind.
+- Gates: **`TOTAL 119253 0 29932 0 100%`** by the two-command decomposition (12 959 passed, then 44), at a load
+  average of 18-26. ruff clean, mypy 1019 files, maintainability 31 117 functions, components 1018 modules /
+  0 undeclared.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1569,6 +1599,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 42 | `4dad0dad` | **no fan-out** (the load average opened at 76 and never went under 14): the cell's class for an object pointer (`4e5436ff`, `W0-99` closed), ROOT's iterator family and a `TIter` that owns one (`a2ef7d77`), `RootFinder::Name`/`Iterations` plus the two tests round 41's unmeasurable gate hid (`938d9faf`) | **roottest +1**: `io/json/ArrayCompress` PASSES, `io/json` **11 PASS / 0 FAIL / 0 DIFF / 1 UNSUPPORTED** (`/tmp/r42/json`); gtest `coreconttestUnit`'s two `TIter` cases pass | 6: `W0-112` (a branch shipped with no test while the gate was unmeasurable), `W0-113` (`TRangeStaticCast` and ROOT's static `Class()`), `W0-114` (`RootClasses` needs a `TH1I`'s JSON), `W0-115` (`RActionImpl`, `TQObject`), `W0-116` (`Roots::Newton`/`Brent` for `testGSLRootFinder`), `W0-117` (the `ResourceWarning` flake only a run without `--cov` sees) |
 | 43 | `0cbe14e9` | **two commits**: ROOT::Math's GSL solvers - `Roots::*`, `GSLRootFinder`, `GSLRootFinderDeriv`, `IRootFinderMethod` (`0be3733b`, `W0-116` closed); the class constants ROOT's tests name - `TTree`/`TAxis`/`TH1`/`TInterpreter` status words and `RootFinder::kMODAB` (`4e473e1e`) | **`other` +1**: `other/math/mathmore-testGSLRootFinder` PASSES, `other/math` 22 -> 23 (`/tmp/r43/gsl`); **the gtest kind measured whole for the first time since round 13**: 53 PASS / 219 FAIL / 76 UNSUPPORTED / 2 TIMEOUT (`/tmp/r43/gtest`) | 5: `W0-118` (the gtest ranking's 219 first failures), `W0-119` (the Clad derivator family is a scope decision), `W0-120` (`std::vector::resize`), `W0-121` (a `.cxx` with `main()` runs its namesake), `W0-122` (`TH1::SetStatOverflows`) |
 | 44 | `9ba7eb49` | **one commit**: ROOT::TSeq's random-access iterator - `begin()`/`end()`, `+`/`-`/`++`/`--`/`[]`/`*it`, and `TSeqU`/`TSeqUL` (`250324e3`) | **gtest +1**: `gtest/core/cont/TSeqTests` PASSES (`/tmp/r44/seq`), the kind 53 -> 54; `coreconttestUnit` moves to `TCollection.RangeCast` | 0 new: `W0-118` **corrected** (round 43 counted occurrences, not programs - 114 of 219 FAIL programs ask for no missing name at all) |
+| 45 | `2f5d8392` | **two commits**: `fflush` reads the name a translation writes for a stream, as `fprintf` does, and `TBits::Set`/`Get` (`4a98e20d`); `root` names an option it cannot read, and the harness matches a `PASSREGEX` across newlines as CMake does (`4468d37b`) | **`other` +1**: `root_exe_errorMessage` PASSES (`/tmp/r45/errm2`), and **both `test/` and `other` measured whole for the first time in ~28 rounds**: `other` 40 / 109 (`/tmp/r45/other`), `test/` 8 / 59 (`/tmp/r45/testkind`) | 3: `W0-123` (a `Char_t[]` of bytes becomes a `str` truncated at the first NUL), `W0-124` (the five `RooUnitTest` tests are a framework), `W0-125` (`testbits` needs only `W0-123`) |
 
 ## Notes
 
