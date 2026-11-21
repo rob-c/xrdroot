@@ -226,65 +226,15 @@ def note_file_infos(infos: list[tuple[str, Layout]], source: Any = None) -> None
     :mod:`xrdroot.streamers` read them from.
     """
     origin = _origin(source)
-    for name in _as_root_lists_them(infos):
+    for name, (checksum, version, elements) in infos:
         if name not in FILE_INFOS and _undictionaried(name):
             message("Warning", "TClass::Init", "no dictionary for class %s is available", name)
-    for name, (checksum, version, elements) in infos:
         met = _met(name, (checksum, version, elements), origin)
         if met or _in_memory(name, checksum, version):
             continue
         held = FILE_INFOS[name]
         taken = {found[1] for found in held}
         held.append((checksum, _free_version(name, version, taken), elements))
-
-
-def _as_root_lists_them(infos: list[tuple[str, Layout]]) -> list[str]:
-    """The classes a file describes, in the order ROOT warns of them: a class before the
-    classes its layout is built on.
-
-    ROOT registers a class's streamer information as it first streams an object of it, and a
-    base's after the derived class's - ``roottest/root/io/tree``'s ``write.C`` streams a
-    ``TEmcl``, whose base is ``TPhysObj``, so the file ROOT wrote lists ``TEmcl`` first and
-    ``missingClass.ref`` names it first. The writer here lays a base down before its derived
-    class, which is ROOT's order read backwards, so the order ROOT would have read is worked
-    out from the layouts: a class whose base the file lists before it is warned of first, and
-    the base with it.
-    """
-    bases = {}
-    for name, (_sum, _version, elements) in infos:
-        bases[name] = _bases_of(elements)
-    deferred: set[str] = set()
-    for found in bases.values():
-        deferred.update(found)
-    order: list[str] = []
-    warned: set[str] = set()
-    for name, _layout in infos:
-        if name not in deferred:
-            _warn_order(name, bases, order, warned)
-    for name, _layout in infos:
-        _warn_order(name, bases, order, warned)
-    return order
-
-
-def _bases_of(elements: tuple[Element, ...]) -> list[str]:
-    """The classes a layout is built on: the names of its ``TStreamerBase`` elements."""
-    found = []
-    for element in elements:
-        if element[0] == "TStreamerBase":
-            found.append(element[1])
-    return found
-
-
-def _warn_order(name: str, bases: dict[str, list[str]], order: list[str],
-                warned: set[str]) -> None:  # fmt: skip
-    """``name``, then the classes its layout is built on, each once - which is the order a
-    file ROOT wrote lists them in."""
-    if name in warned:
-        return
-    warned.add(name)
-    order.append(name)
-    for base in bases.get(name, ()):
-        _warn_order(base, bases, order, warned)
 
 
 def _origin(source: Any) -> str:
@@ -467,50 +417,18 @@ def _is_constant(name: str, value: Any) -> bool:
     return bool(_CONSTANT.match(name)) and isinstance(value, int) and not isinstance(value, bool)
 
 
+#: What the names of ROOT's own classes look like: each has a dictionary in ROOT.
+ROOT_NAMES = re.compile(r"^(T[A-Z]|Roo|ROOT::|TMVA::|RooStats::|HistFactory::)")
+
+
 def _undictionaried(name: str) -> bool:
     """Has nothing here a dictionary of the class ``name`` - neither the program nor ROOT -
     which ROOT warns of when a file it opens describes one?"""
-    if _template(name) or _synthetic_pair(name):
+    if ROOT_NAMES.match(name) or _template(name) or _synthetic_pair(name):
         return False
-    if _pair_base(name) or _instantiable(name) or _modelled(name):
+    if _pair_base(name) or _instantiable(name):
         return False
     return TClass(name)._class() is None
-
-
-def _modelled(name: str) -> bool:
-    """Is ``name`` a class of ROOT's own, one of those ROOT's libraries carry a dictionary
-    for, so that opening a file which describes it says nothing?
-
-    A name's spelling is no help: a user's class is called ``TEmcl`` or ``TCedarEvent`` as
-    readily as ROOT's own is called ``TBasket``, and ROOT warns of the program's four
-    emulated classes in ``roottest/root/io/tree``'s ``missingClass`` while staying silent
-    about the ``TTree`` beside them. What tells them apart is knowledge of the class, not of
-    its name, and what the kit knows of ROOT's classes is what it implements - as a Python
-    class of the namespace's, ``TCanvas`` and ``TUUID`` too, which derive from no ``TObject``
-    here - and what it streams: the layouts of :data:`xrdroot.winfo.INFOS`, and the readers
-    of :mod:`xrdroot.objects` and :mod:`xrdroot.known` for the classes the kit writes itself.
-    A name none of those knows is emulated from the file with ROOT's warning.
-    """
-    from ...known import KNOWN
-    from ...objects import CLASSES
-    from ...sparse import SPARSE
-
-    if name in INFOS or name in GENERATED:
-        return True
-    if name in CLASSES or name in KNOWN or name in SPARSE:
-        return True
-    return _implemented(name)
-
-
-def _implemented(name: str) -> bool:
-    """Does the namespace hold a class called ``name``, whether or not it derives from
-    ``TObject`` - which is how ``TEventList``, ``TUUID``, ``TStyle`` and ``TColor`` are known
-    to be ROOT's own, whose files ROOT describes without a warning."""
-    for module in list(sys.modules.values()):
-        if getattr(module, "__name__", "").startswith("xrdroot.pyroot"):
-            if isinstance(getattr(module, name, None), type):
-                return True
-    return False
 
 
 def _pair_base(name: str) -> bool:

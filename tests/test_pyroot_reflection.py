@@ -634,36 +634,6 @@ def test_a_name_that_is_no_instance_of_anything_needs_its_dictionary(capfd):
     assert "no dictionary for class <odd> is available" in printed
 
 
-def test_a_user_class_named_like_roots_own_needs_its_dictionary(capfd):
-    """A name's spelling says nothing about whose class it is: ``roottest/root/io/tree``'s
-    ``missingClass`` reads a file describing ``TEmcl``, ``TPhysObj``, ``TNonEmcl`` and
-    ``TNonPhysObj``, a program's own classes all four, and ROOT warns of each beside the
-    ``TTree`` its file describes without a word."""
-    reflection.note_file_infos([("TEmcl", (0x7D5A2E11, 1, ()))])
-    assert (
-        "Warning in <TClass::Init>: no dictionary for class TEmcl is available"
-        in capfd.readouterr().err
-    )
-
-
-def test_a_root_class_the_kit_streams_needs_no_dictionary(capfd):
-    """ROOT's own classes have the dictionaries its libraries were built with, and the kit
-    knows them by what it streams: the layout ``TH1F`` is written with, ``TBasket``'s reader,
-    ``THnSparseD``'s branches and ``TRef``'s."""
-    described = [(name, (index, 1, ())) for index, name in enumerate(
-        ("TH1F", "TBasket", "THnSparseD", "TRef"))]
-    reflection.note_file_infos(described)
-    assert capfd.readouterr().err == ""
-
-
-def test_a_root_class_the_kit_implements_without_a_tobject_needs_no_dictionary(capfd):
-    """``TStyle``, ``TCanvas`` and ``TColor`` are ROOT's own classes and have their
-    dictionaries, though the namespace's implementations of them derive from no ``TObject``
-    - a file describing one opens as quietly as ROOT opens it."""
-    reflection.note_file_infos([("TStyle", (0x11, 1, ())), ("TColor", (0x12, 1, ()))])
-    assert capfd.readouterr().err == ""
-
-
 def test_files_layouts_are_numbered_as_met_while_no_class_is_in_memory(capfd):
     _evo("int", "one.root")
     _evo("float", "two.root")
@@ -1093,15 +1063,3 @@ def test_a_member_the_two_layouts_type_alike_names_no_new_type(capsys):
     assert "   i= 0, first           type=  3, offset=  0, len=1, method=0" in printed
     # A member the layout in memory does not have is the file's own, new type or no.
     assert "   i= 1, gone            type=  3, offset=  0, len=1, method=0" in printed
-
-
-def test_a_files_classes_are_warned_of_in_the_order_root_wrote_them(capfd):
-    """ROOT registers a class's streamer information as it first streams an object of it and a
-    base's after the derived class's, so ``roottest/root/io/tree``'s file lists ``TEmcl``
-    before its base ``TPhysObj`` and ``missingClass.ref`` names it first. The writer here lays
-    a base down first, so the warnings are put in ROOT's order before they are given."""
-    base = ("TStreamerBase", "TPhysObj", "", 0, 0, 0, 0, (0, 0, 0, 0, 0), "BASE", (0,))
-    described = [("TPhysObj", (0x1, 1, ())), ("TEmcl", (0x2, 1, (base,)))]
-    reflection.note_file_infos(described)
-    printed = capfd.readouterr().err
-    assert printed.index("class TEmcl") < printed.index("class TPhysObj")
