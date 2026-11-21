@@ -295,6 +295,21 @@ def _scalar(value: Any, name: str, stored: bool) -> str:
     return _float_text(float(value), name, stored)
 
 
+def _nothing_at(member: _Member, value: Any, depth: int) -> bool:
+    """Is there no string at the pointer ``member`` is: ``None`` for a pointer here, or - a
+    ``char*`` written on its own, which ``depth`` below zero is - the empty text.
+
+    ROOT writes a null ``char*`` as ``""`` inside an object, since the empty string is what
+    it streams one as, and only a member written on its own from the pointer itself is
+    ``null``: a class holding ``const char* fNull{nullptr}`` and ``const char* fEmpty{""}``
+    writes ``""`` for both whole and ``null`` and ``""`` for the two members. The
+    translation keeps a null ``char*`` as that same empty text - ``cstr(None)`` - so at that
+    depth a ``char*`` with nothing in it is the pointer with nothing at it, and a ``char*``
+    that really points at ``""`` is the one case this cannot tell apart from a null one.
+    """
+    return not value if depth < 0 and member.kind == "cstring" else value is None
+
+
 def _pointer_bits(bits: Any) -> int:
     """The bits of a ``TObject`` ROOT writes: its status word without the heap's two, which
     say where the object is rather than what it is."""
@@ -810,7 +825,7 @@ class _Writer:
         if member.kind in CONTAINER_KINDS:
             return self._containers(member, value, depth)
         if member.kind in ("cstring", "strptr"):
-            return "null" if value is None else _quoted(value)
+            return "null" if _nothing_at(member, value, depth) else _quoted(value)
         return _quoted("" if value is None else value)
 
     def _number_member(self, member: _Member, value: Any, depth: int) -> str:

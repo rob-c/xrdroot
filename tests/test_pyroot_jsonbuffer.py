@@ -592,6 +592,22 @@ def test_a_member_of_a_declared_class_is_written_on_its_own_as_root_writes_it():
     assert "has no member 'fMissing'" in str(refused.value)
 
 
+def test_a_char_pointer_with_no_string_at_it_is_null_where_root_writes_one_on_its_own():
+    """``String.ref``: ``TJsonEx4``'s ``const char* fStr2`` is a null pointer, and ROOT
+    writes ``null`` for it as a member of its own - the pointer itself - while the whole
+    object has ``""`` there, the text it streams a null ``char*`` as. A null ``char*`` is
+    the empty text once translated, so what tells them apart is that the member is written
+    from the pointer rather than as a member of the object."""
+    made = OWN()
+    made.fStr1, made.fStr2 = "a char array\0", ""
+    assert str(ROOT.TBufferJSON.ToJSON(made, 0, "fStr2")) == "null"
+    assert str(ROOT.TBufferJSON.ToJSON(made, 0, "fPtr")) == "null"
+    made.fStr2 = "a string after all"
+    assert str(ROOT.TBufferJSON.ToJSON(made, 0, "fStr2")) == '"a string after all"'
+    made.fStr2 = ""
+    assert '"fStr2" : ""' in _json(made)
+
+
 def test_a_member_of_a_type_no_writer_takes_refuses_the_object_by_name():
     """A pair, which ROOT writes as a class of its own, is not written as a number: the
     object is refused by the member's own name rather than written with it left out."""
