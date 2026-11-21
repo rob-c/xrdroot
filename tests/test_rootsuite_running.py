@@ -307,6 +307,28 @@ def test_a_working_copy_holds_the_files_and_data_but_not_other_test_directories(
     assert not (work / "sub").exists()
 
 
+def test_a_working_copy_another_xrdroot_made_is_copied_and_translated_again(tmp_path):
+    """A .xrdlib is a source file as one xrdroot translated it, and another cannot run it.
+
+    Handed over, it fails where the source would not - which reads as the test's failure and
+    cost one phantom "missing name" cluster: twelve tests reported missing a member they had.
+    """
+    root = tmp_path / "root"
+    (root / "d").mkdir(parents=True)
+    (root / "d" / "t.C").write_text("x")
+    work = tmp_path / "work"
+    runner.prepare(root, work, ["d"])
+    library = work / "d" / "t_C.xrdlib"
+    library.write_text("translated by another xrdroot")
+    stamp = work / ".rootsuite-stamp"
+    assert stamp.exists() and not runner.stale(work)
+    stamp.write_text("an older xrdroot\n")
+    assert runner.stale(work)
+    runner.prepare(root, work, ["d"])
+    assert not library.exists(), "the other xrdroot's library is dropped"
+    assert not runner.stale(work), "the copy is this xrdroot's now"
+
+
 def test_the_directories_copied_are_those_below_root_the_tests_use():
     test = spec(files=("/abs/x.C", "e/y.C", "z.C"), copy=("f/g.root",),
                 builds=(("h", "aclic", "x"),), working_dir="w")

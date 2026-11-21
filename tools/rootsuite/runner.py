@@ -406,6 +406,35 @@ def _directories(tests: Iterable[Test]) -> list[str]:
     return sorted(name for name in found if name and name != "." and not name.startswith("/"))
 
 
+def _stamp() -> str:
+    """What makes a working copy: this xrdroot, and the interpreter that runs it."""
+    import xrdroot
+
+    parts = [getattr(xrdroot, "__version__", ""), xrdroot.__file__, sys.version.split()[0]]
+    return " ".join(part for part in parts if part)
+
+
+def stale(work: Path) -> bool:
+    """Was ``work`` copied, and its libraries translated, by a different xrdroot than this one?"""
+    written = work / ".rootsuite-stamp"
+    return written.exists() and written.read_text().strip() != _stamp().strip()
+
+
+def refresh(work: Path) -> None:
+    """Let another xrdroot's working copy be copied and translated again.
+
+    A ``.xrdlib`` holds a source file as one xrdroot translated it; given to another, it fails
+    where the source would not, and the failure reads as the test's rather than the build's. A
+    stale copy has already cost one phantom "missing name" cluster here - twelve tests reported
+    failing on a member they had had for weeks.
+    """
+    for path in work.rglob("*.xrdlib"):
+        path.unlink()
+    for path in work.rglob(".rootsuite-copied"):
+        path.unlink()
+    (work / ".rootsuite-stamp").unlink()
+
+
 def prepare(root: Path, work: Path, directories: Iterable[str]) -> None:
     """Copy each source directory once: its files, and subdirectories holding no tests of their own.
 
@@ -413,6 +442,8 @@ def prepare(root: Path, work: Path, directories: Iterable[str]) -> None:
     the working copy; ``OUT/work`` mirrors the source tree, so relative paths
     between test directories still hold.
     """
+    if stale(work):
+        refresh(work)
     for relative in directories:
         source, target = root / relative, work / relative
         if (target / ".rootsuite-copied").exists() or not source.is_dir():
@@ -421,6 +452,8 @@ def prepare(root: Path, work: Path, directories: Iterable[str]) -> None:
         for entry in sorted(source.iterdir()):
             _copy(entry, target / entry.name)
         (target / ".rootsuite-copied").touch()
+    work.mkdir(parents=True, exist_ok=True)
+    (work / ".rootsuite-stamp").write_text(_stamp() + "\n")
 
 
 def _copy(entry: Path, target: Path) -> None:
