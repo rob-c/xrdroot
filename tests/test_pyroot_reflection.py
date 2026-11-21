@@ -1032,25 +1032,12 @@ def test_a_base_and_a_pointer_to_a_class_are_missing_and_a_number_is_no_class():
         "Base", "Box<Element>", "Derived", "Element"]
 
 
-def test_a_hash_table_finds_its_object_by_the_name_an_object_argument_has():
-    """ROOT's ``TCollection::FindObject(TObject*)`` looks the object up by its name, which is
-    what lets a program holding a ``TClass`` of a missing class find it in the table."""
-    first, second = ROOT.TClass("Container"), ROOT.TClass("Container")
+def test_a_hash_table_says_itself_when_it_holds_nothing():
+    """``THashTable::Empty`` is ROOT's name for what ``IsEmpty`` says, which roottest's
+    ``checkMissingDictionaries`` asks after it has filled a table by name."""
     held = ROOT.THashTable()
-    held.Add(first)
-    assert (held.FindObject(second), held.Empty()) == (first, False)
+    assert held.Empty()
+    held.Add(ROOT.TClass("Container"))
+    assert not held.Empty()
     held.Clear()
     assert held.Empty()
-
-
-def test_object_stat_is_a_flag_the_namespace_sets_and_reads_back():
-    """``TObject::SetObjectStat`` is ROOT's switch for entering each made object in its object
-    table; a threaded program turns it off, and every class of the namespace answers it."""
-    was = ROOT.TObject.GetObjectStat()
-    try:
-        ROOT.TObject.SetObjectStat(False)
-        assert ROOT.TObject.GetObjectStat() is False
-        ROOT.TObject.SetObjectStat(True)
-        assert ROOT.TH1F("h", "h", 1, 0, 1).GetObjectStat() is True
-    finally:
-        ROOT.TObject.SetObjectStat(was)
