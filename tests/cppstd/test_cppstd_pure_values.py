@@ -64,3 +64,8 @@ def test_generic_assignment_updates_held_containers_and_keeps_the_return_contrac
     assert references.assign_call(grid, (0, 1), 7) == 7 and grid[0, 1] == 7
     with pytest.raises(TypeError, match="returned by value"):
         references.assign_into(3, 4)
+
+
+def test_an_item_reference_says_the_container_and_the_key_it_holds() -> None:
+    values = [1.0, 2.0, 3.0]
+    assert repr(cells.ItemRef(values, 1)) == f"ItemRef({values!r}, 1)"

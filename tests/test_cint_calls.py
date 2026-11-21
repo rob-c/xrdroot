@@ -158,3 +158,43 @@ def test_a_class_deriving_from_roots_reaches_roots_members_through_self() -> Non
     assert "self.fChain.GetEntry(entry)" in text
     assert "self.fInput.Print()" in text
     assert "ROOT.fOther = 2" in text
+
+
+def test_an_address_of_a_vector_element_by_front_at_or_index_is_the_element(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``&v.front()``, ``&v.at(i)`` and ``&v[0]`` all name the vector and an offset, and an
+    algorithm handed one writes back through it - which is what ``std::sort`` does."""
+    for address in ("&v.front()", "&v.at(0)", "&v[0]"):
+        source = (
+            "std::vector<int> v; v.push_back(3); v.push_back(1); v.push_back(2);"
+            f'int *p = {address}; std::sort(p, p + 2); printf("%d %d %d\\n", v[0], v[1], v[2]);'
+        )
+        assert printed(capsys, "void t() {" + source + "}") == "1 3 2\n", address
+
+
+def test_an_element_taken_by_at_is_a_pointer_into_the_container(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``&v.at(i)`` handed to something other than a range - an initialiser here - is a pointer
+    into the vector's own buffer: what it points at is that element."""
+    source = (
+        "std::vector<double> v(3, 0.); v.at(1) = 5.;"
+        "double *q = &v.at(1);"
+        'printf("%g\\n", *q);'
+    )
+    assert printed(capsys, "void t() {" + source + "}") == "5\n"
+
+
+def test_an_element_taken_by_front_is_a_pointer_into_the_container(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``&v.front()`` likewise: element zero of the vector, reached through a pointer."""
+    source = 'std::vector<double> v(3, 0.); v.front() = 4.; double *r = &v.front(); printf("%g\\n", *r);'
+    assert printed(capsys, "void t() {" + source + "}") == "4\n"
+
+
+def test_the_address_of_a_call_that_names_no_element_is_not_a_pointer_into_it() -> None:
+    """``&v.size()`` is a call whose name is neither ``front`` nor ``at``, so it names no
+    element: the address taken is the member's own, not a pointer into the vector."""
+    assert "ItemRef" not in body("std::vector<int> v; auto *p = &v.size(); (void)p;")
