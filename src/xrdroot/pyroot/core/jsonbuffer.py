@@ -59,7 +59,7 @@ from ...cppstd.containers import (
 )
 from ...errors import UnsupportedFeatureError
 from ..vectors import TArrayC, TArrayD, TArrayF, TArrayI, TArrayL, TArrayS
-from .collections import TList, TSeqCollection
+from .collections import TList, TMap, TSeqCollection
 from .strings import TString
 
 __all__ = ["TBufferJSON"]
@@ -769,6 +769,8 @@ class _Writer:
                 return write(self, obj, depth)
         if isinstance(obj, TSeqCollection):
             return self._collection(obj, depth)
+        if isinstance(obj, TMap):
+            return self._map_collection(obj, depth)
         if _writable(obj):  # a class of its own, even one that derives from a container
             return self._object(obj, depth, by_value)
         if isinstance(obj, _Container):
@@ -839,6 +841,36 @@ class _Writer:
             options = ["null"] * len(held)
             members.append(_quoted("opt") + colon + "[" + comma.join(options) + "]")
         return self._braced(self._typed(members, _classname(obj), colon), depth)
+
+    def _map_collection(self, obj: TMap, depth: int) -> str:
+        """A ``TMap``: the name it holds its pairs under and the pairs themselves, which is
+        what :func:`_rebuilt_map_pairs` reads back into a map of the pairs the JSON holds.
+
+        ROOT writes the pairs of a map as a collection, not as the pairs of a ``std::map``:
+        ``TMap`` shares its ``arr`` with ``TList``, and each entry of it is a ``$pair`` in a
+        layout of its own - see :meth:`_held_pair`."""
+        held = [self._held_pair(pair.Key(), pair.Value(), depth) for pair in obj]
+        colon = self._layout.colon
+        members = [_quoted("name") + colon + _quoted(str(obj.GetName())),
+                   _quoted("arr") + colon + "[" + self._layout.item_comma.join(held) + "]"]
+        return self._braced(self._typed(members, _classname(obj), colon), depth)
+
+    def _held_pair(self, key: Any, value: Any, depth: int) -> str:
+        """One pair of a ``TMap``, as ROOT writes it inside the ``arr`` of one: over three
+        lines whose indentation is the depth of the array that holds them - one step out
+        from what :meth:`_braced` gives an object at that depth, since ROOT's writer opens
+        the pair on the line the array does - and with a space after each comma, which a
+        ``std::map``'s ``$pair`` does not have. A pair keeps its ``TPair`` name at every
+        level, even the one that skips the type of everything else."""
+        colon = self._layout.colon
+        members = ['"$pair"' + colon + _quoted("TPair"),
+                   '"first"' + colon + self._value(key, depth + 1),
+                   '"second"' + colon + self._value(value, depth + 1)]
+        if not self._layout.newline:
+            return "{" + (self._layout.item_comma).join(members) + "}"
+        pad = " " * (self._layout.indent * (depth + 1))
+        sep = self._layout.item_comma + "\n" + pad
+        return "{\n" + pad + sep.join(members) + "\n" + pad + "}"
 
     def _typed(self, written: list[str], classname: str, colon: str) -> list[str]:
         """``written`` with the ``_typename`` ROOT puts in front of it, unless the level
@@ -1297,7 +1329,8 @@ def _namespace_class(name: str) -> type[Any] | None:
     found = getattr(namespace, name, None)  # a name it does not have is left to the refusal
     if not isinstance(found, type):
         return None
-    return found if name in MEMBERS or issubclass(found, TSeqCollection) else None
+    holds_objects = name in MEMBERS or issubclass(found, (TSeqCollection, TMap))
+    return found if holds_objects else None
 
 
 #: The objects read so far, in the order they were made: what a ``{"$ref":N}`` stands for,
@@ -1332,6 +1365,9 @@ def _rebuilt_object(data: dict[str, Any]) -> Any:
     if isinstance(made, TSeqCollection):
         _rebuilt_collection(made, data)
         return made
+    if isinstance(made, TMap):
+        _rebuilt_map_pairs(made, data)
+        return made
     for member in _writable(made):
         if member.name in data:
             _restore(made, member, data[member.name])
@@ -1358,6 +1394,19 @@ def _rebuilt_collection(made: TSeqCollection, data: dict[str, Any]) -> None:
         made.SetName(str(data["name"]))
     for each in data.get("arr", []):
         made.Add(_rebuilt_named(each, ""))
+
+
+def _rebuilt_map_pairs(made: TMap, data: dict[str, Any]) -> None:
+    """Fill a ``TMap`` with the pairs of the ``arr`` ROOT writes for one, under the name the
+    map had and in the order the JSON holds them, which is how it is written back whole.
+
+    The order is the JSON's and not a hash's: a map here keeps its pairs in the order they
+    were added, so a ``TMap`` written from a JSON keeps the order ROOT wrote - which for
+    ROOT's own text is the order of its buckets, not of its ``Add`` calls."""
+    if data.get("name"):
+        made.SetName(str(data["name"]))
+    for entry in data.get("arr", []):
+        made.Add(_rebuilt_named(entry["first"], ""), _rebuilt_named(entry["second"], ""))
 
 
 def _restore(obj: Any, member: _Member, value: Any) -> None:

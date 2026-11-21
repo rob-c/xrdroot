@@ -1393,3 +1393,95 @@ def test_the_name_a_map_holds_is_the_one_its_declaration_gives():
     assert _pair_name("std::map<TString, int>") == "pair<TString,int>"
     assert _pair_name("std::map<int, std::set<TJsonEx1> >") == "pair<int,set<TJsonEx1> >"
     assert _pair_name("std::vector<int>") is None
+
+
+#: What ROOT's oracle prints for a ``TMap`` of two pairs, keyed by ``TObjString`` and valued
+#: by ``TNamed``, at ``kNoCompress`` and at ``kNoSpaces`` - ``RootClasses.ref``'s own layout
+#: for one, which opens the pair on the line the ``arr`` of the map does and keeps a space
+#: after each comma inside it.
+MAP_INDENTED = "\n".join([
+    "{",
+    '  "_typename" : "TMap",',
+    '  "name" : "TMap",',
+    '  "arr" : [{',
+    '  "$pair" : "TPair", ',
+    '  "first" : {',
+    '    "_typename" : "TObjString",',
+    '    "fUniqueID" : 0,',
+    '    "fBits" : 0,',
+    '    "fString" : "Str0"',
+    '  }, ',
+    '  "second" : {',
+    '    "_typename" : "TNamed",',
+    '    "fUniqueID" : 0,',
+    '    "fBits" : 0,',
+    '    "fName" : "Name0",',
+    '    "fTitle" : "Title0"',
+    '  }',
+    '  }, {',
+    '  "$pair" : "TPair", ',
+    '  "first" : {',
+    '    "_typename" : "TObjString",',
+    '    "fUniqueID" : 0,',
+    '    "fBits" : 0,',
+    '    "fString" : "Str1"',
+    '  }, ',
+    '  "second" : {',
+    '    "_typename" : "TNamed",',
+    '    "fUniqueID" : 0,',
+    '    "fBits" : 0,',
+    '    "fName" : "Name1",',
+    '    "fTitle" : "Title1"',
+    '  }',
+    '  }]',
+    "}",
+])
+
+MAP_NO_SPACES = (
+    '{"_typename":"TMap","name":"TMap","arr":['
+    '{"$pair":"TPair","first":{"_typename":"TObjString","fUniqueID":0,"fBits":0,'
+    '"fString":"Str0"},"second":{"_typename":"TNamed","fUniqueID":0,"fBits":0,'
+    '"fName":"Name0","fTitle":"Title0"}},'
+    '{"$pair":"TPair","first":{"_typename":"TObjString","fUniqueID":0,"fBits":0,'
+    '"fString":"Str1"},"second":{"_typename":"TNamed","fUniqueID":0,"fBits":0,'
+    '"fName":"Name1","fTitle":"Title1"}}]}'
+)
+
+
+def _map_of_two_pairs():
+    """The ``TMap`` ``RootClasses`` writes, of the two pairs whose JSON is above."""
+    made = ROOT.TMap()
+    for n in range(2):
+        made.Add(ROOT.TObjString(f"Str{n}"), ROOT.TNamed(f"Name{n}", f"Title{n}"))
+    return made
+
+
+def test_a_tmap_is_written_as_the_pairs_it_holds_rather_than_as_a_member_of_it():
+    """``TMap`` is written as a collection - the name it holds under and an ``arr`` of pairs -
+    and each pair over three lines of its own, indented as the ``arr`` is, which is what
+    ``RootClasses.ref``'s ``TMap representation`` shows; the one-line level writes the pair
+    on one line. The ``TPair`` name stays even where the level skips every other type."""
+    assert _json(_map_of_two_pairs(), 0) == MAP_INDENTED
+    assert _json(_map_of_two_pairs(), 3) == MAP_NO_SPACES
+    untyped = _json(_map_of_two_pairs(), 100)
+    assert untyped.startswith('{\n  "name" : "TMap",\n  "arr" : [{\n  "$pair" : "TPair", ')
+    assert "_typename" not in untyped
+
+
+def test_a_tmap_reads_back_as_the_pairs_the_json_holds_in_the_order_it_holds_them():
+    """``ConvertFromJSONAny`` of a ``TMap``'s JSON: the map ROOT made, pair for pair and in
+    the order the JSON has them, so writing it again is the text it was read from."""
+    read = ROOT.TBufferJSON.ConvertFromJSONAny(MAP_INDENTED)
+    assert isinstance(read, ROOT.TMap)
+    assert [(pair.Key().GetName(), pair.Value().GetName()) for pair in read] == [
+        ("Str0", "Name0"), ("Str1", "Name1")]  # fmt: skip
+    assert _json(read, 0) == MAP_INDENTED
+    assert _json(ROOT.TBufferJSON.ConvertFromJSONAny(MAP_NO_SPACES), 0) == MAP_INDENTED
+
+
+def test_a_map_named_nothing_with_no_pairs_is_read_back_empty():
+    """A ``TMap``'s JSON with no ``name`` and no ``arr`` is the empty map ROOT writes for one
+    with no pairs, which keeps the name its constructor gives it."""
+    read = ROOT.TBufferJSON.ConvertFromJSONAny('{"_typename":"TMap"}')
+    assert isinstance(read, ROOT.TMap)
+    assert (read.GetName(), len(list(read))) == ("TMap", 0)
