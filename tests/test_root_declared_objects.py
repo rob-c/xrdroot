@@ -2587,3 +2587,130 @@ def test_a_tdatime_that_is_not_a_moment_is_refused():
     buf = WBuffer()
     with pytest.raises(UnsupportedFeatureError, match="a TDatime is written as the moment"):
         write_members(buf, Instance("C", {"fD": 20060102}), made)
+
+
+def test_a_member_that_is_one_of_roots_classes_is_written_as_that_classs_row():
+    """The bigevent roottest's ``TLorentzVector fLorentz`` holds a ``TVector3 fP``, which is a
+    class of ROOT's itself: what the file holds is the members ``TVector3`` is written by, and
+    the ``double fE`` beside it stays the number it is."""
+    row = root_row(ROOT.TLorentzVector(1.0, 2.0, 3.0, 4.0), "TLorentzVector")
+    assert row["fP"]["fX"] == 1.0
+    assert row["fP"]["fY"] == 2.0
+    assert row["fP"]["fZ"] == 3.0
+    assert row["fP"]["TObject"] == {"fBits": 0, "fUniqueID": 0}
+    assert row["fE"] == 4.0
+
+
+def test_the_vector_a_four_vector_keeps_is_written_where_no_getter_hands_it_over():
+    """``P()`` answers the momentum's *length*, and it is the name the member has without its
+    ``f``: a method of the member's name is no way to reach the member, so the vector the
+    class keeps its components in is what is written - and the length is not what the row of
+    ``fP`` says."""
+    four = ROOT.TLorentzVector(1.0, 2.0, 3.0, 4.0)
+    assert four.P() == pytest.approx(3.7416573867739413)
+    assert root_row(four, "TLorentzVector")["fP"]["fX"] == 1.0
+
+
+#: A stand-in for a class of ROOT's that holds one object of another by value.
+HELD_INFO = (0, 1, (("TStreamerObject", "fInner", "", 61, 0, 0, 0, NO_DIMS, "Kept", ()),))
+#: The class of the object held: one number, as ROOT describes a plain member.
+KEPT_INFO = (0, 1, (("TStreamerBasicType", "fX", "", 8, 8, 0, 0, NO_DIMS, "double", ()),))
+
+
+class Kept:
+    """An object of a stand-in class of ROOT's, held by another."""
+
+    def __init__(self, x: float) -> None:
+        self.fX = x
+
+
+def test_a_held_object_whose_name_is_the_members_is_the_one_written(monkeypatch):
+    """Two objects of the member's class are kept, and the member's own name - ``fInner``'s
+    ``_inner``, whose case is all that tells them apart - says which is written."""
+    monkeypatch.setitem(INFOS, "Held", HELD_INFO)
+    monkeypatch.setitem(INFOS, "Kept", KEPT_INFO)
+
+    class Holder:
+        def __init__(self) -> None:
+            self._other = Kept(1.0)
+            self._inner = Kept(2.0)
+
+        def GetInner(self) -> float:  # what a getter of the member's name answers instead
+            return -1.0
+
+    assert root_row(Holder(), "Held")["fInner"] == {"fX": 2.0}
+
+
+def test_a_held_object_that_is_the_only_one_of_its_class_is_the_one_written(monkeypatch):
+    monkeypatch.setitem(INFOS, "Held", HELD_INFO)
+    monkeypatch.setitem(INFOS, "Kept", KEPT_INFO)
+
+    class Holder:
+        def __init__(self) -> None:
+            self._kept = Kept(3.0)
+
+        def GetInner(self) -> float:
+            return -1.0
+
+    assert root_row(Holder(), "Held")["fInner"] == {"fX": 3.0}
+
+
+def test_a_holder_that_keeps_no_members_by_name_is_left_the_value_it_answered(monkeypatch):
+    monkeypatch.setitem(INFOS, "Held", HELD_INFO)
+    monkeypatch.setitem(INFOS, "Kept", KEPT_INFO)
+
+    class Holder:
+        __slots__ = ()
+
+        def GetInner(self) -> float:
+            return -1.0
+
+    assert root_row(Holder(), "Held")["fInner"] == -1.0
+
+
+def test_a_member_that_is_already_the_objects_own_row_is_left_as_it_is(monkeypatch):
+    monkeypatch.setitem(INFOS, "Held", HELD_INFO)
+    monkeypatch.setitem(INFOS, "Kept", KEPT_INFO)
+
+    class Holder:
+        def GetInner(self) -> dict[str, float]:
+            return {"fX": 5.0}
+
+    assert root_row(Holder(), "Held")["fInner"] == {"fX": 5.0}
+
+
+def test_a_member_a_getter_already_answers_with_its_own_class_is_that_classs_row(monkeypatch):
+    monkeypatch.setitem(INFOS, "Held", HELD_INFO)
+    monkeypatch.setitem(INFOS, "Kept", KEPT_INFO)
+
+    class Holder:
+        def GetInner(self) -> Kept:
+            return Kept(7.0)
+
+    assert root_row(Holder(), "Held")["fInner"] == {"fX": 7.0}
+
+
+def test_a_member_of_roots_that_is_a_string_or_a_collection_is_left_as_it_is(monkeypatch):
+    """A ``TString`` has a layout of ROOT's like any class, and a collection streams its own
+    entries: neither is a row of members the writer lays out."""
+    elements = (
+        ("TStreamerObject", "fS", "", 61, 0, 0, 0, NO_DIMS, "TString", ()),
+        ("TStreamerObject", "fL", "", 61, 0, 0, 0, NO_DIMS, "TObjArray", ()),
+        ("TStreamerBasicType", "fN", "", 8, 8, 0, 0, NO_DIMS, "double", ()),
+    )
+    monkeypatch.setitem(INFOS, "Held", (0, 1, elements))
+    held = ROOT.TObjArray()
+
+    class Holder:
+        def GetS(self) -> str:
+            return "text"
+
+        def GetL(self) -> object:
+            return held
+
+        def GetN(self) -> float:
+            return 0.5
+
+    row = root_row(Holder(), "Held")
+    assert (row["fS"], row["fN"]) == ("text", 0.5)
+    assert row["fL"] is held

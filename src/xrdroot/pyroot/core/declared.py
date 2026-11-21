@@ -80,6 +80,11 @@ COLLECTIONS = ("TList", "THashList", "TSortedList", "TObjArray")
 STRINGS = ("TString", "string", "basic_string")
 #: The collections of those that keep a numbered slot per object, a slot never filled a hole.
 SLOTTED = ("TObjArray",)
+#: The elements whose member is an object of a class ROOT writes in place - by value, not behind
+#: a pointer - so that what the writer is handed for it is the row of that class's members, as
+#: :func:`root_row` builds one: a ``TLorentzVector``'s ``TVector3 fP``. An object behind a marker
+#: is the writer's own business, a pointer to one arriving as a record already.
+HELD_OBJECTS = ("TStreamerObject", "TStreamerObjectAny")
 
 
 def declared_class(cls: Any) -> bool:
@@ -480,11 +485,11 @@ def root_row(obj: Any, classname: str) -> dict[str, Any]:
         if element[0] == "TStreamerBase":
             row[member] = root_row(obj, member)
         elif member not in row:
-            row[member] = _root_member(obj, member)
+            row[member] = _root_member(obj, member, element[0], element[8])
     return row
 
 
-def _root_member(obj: Any, member: str) -> Any:
+def _root_member(obj: Any, member: str, kind: str = "", typename: str = "") -> Any:
     """A member of one of ROOT's bases, from its getter where it has one: ``fLineColor``.
 
     ROOT names most of them ``Get`` and the member's name without its ``f``, but not all of
@@ -493,7 +498,27 @@ def _root_member(obj: Any, member: str) -> Any:
     neither is taken from the row the object keeps its members in, which is where a ``TAxis``
     holds ``fBits2`` - ROOT's second bit status word of an axis, which no ``Get`` of ROOT's
     asks for and which the axis here keeps for the histogram it belongs to.
+
+    ``kind`` and ``typename`` are the element's, and are what say that the member is itself an
+    object of one of ROOT's classes, held by value: what is written then is that class's own
+    row of members, not the value a method of the member's name happens to answer.
     """
+    value = _member_value(obj, member)
+    if kind not in HELD_OBJECTS or typename in STRINGS or typename not in INFOS:
+        return value
+    if typename in COLLECTIONS:  # written as the entries it holds, not as a row of members
+        return value
+    if isinstance(value, Mapping):
+        return value
+    if _of_class(value, typename):
+        return root_row(value, typename)
+    kept = _kept_object(obj, member, typename)
+    return value if kept is None else root_row(kept, typename)
+
+
+def _member_value(obj: Any, member: str) -> Any:
+    """What ``obj`` answers for the member ``member``: its getter's, its own of that name, or
+    the one the row it keeps its members in holds."""
     getter = getattr(obj, "Get" + member[1:], None)
     if callable(getter):
         return getter()
@@ -504,6 +529,33 @@ def _root_member(obj: Any, member: str) -> Any:
     if isinstance(held, Mapping) and member in held:
         return held[member]
     return getattr(obj, member, None)
+
+
+def _of_class(value: Any, typename: str) -> bool:
+    """Is ``value`` an object of the class ROOT's element calls ``typename``?"""
+    return type(value).__name__ == typename
+
+
+def _kept_object(obj: Any, member: str, typename: str) -> Any:
+    """The object of ROOT's class ``typename`` that ``obj`` keeps for its member ``member``,
+    for when no getter of ROOT's hands that member over.
+
+    A ``TLorentzVector``'s ``TVector3 fP`` is such a member: ``P()`` - the member's name
+    without its ``f``, which is what :func:`_member_value` tries before the attribute - answers
+    the momentum's *length* rather than the vector the class keeps its components in, so the
+    length is what is asked for and not what the file holds. The attribute a class keeps such
+    an object in is the only one of that class, or is the one named after the member - ``_p``
+    for ``fP``, which is all that tells two vectors apart.
+    """
+    held = getattr(obj, "__dict__", None)
+    if not isinstance(held, dict):
+        return None
+    kept = [(name.lstrip("_").lower(), value) for name, value in held.items()
+            if _of_class(value, typename)]  # fmt: skip
+    named = [value for name, value in kept if name == member.lstrip("f").lower()]
+    if named:
+        return named[0]
+    return kept[0][1] if kept else None
 
 
 def _plain_member(value: Any, field: Any, catalogue: Catalogue,
