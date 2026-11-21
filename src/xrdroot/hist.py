@@ -860,6 +860,14 @@ class Histogram(Displayed):
         """``Add(other, c)``: add ``c`` times ``other`` to this one, in place."""
         arithmetic.add(self, other, float(c))
 
+    def stat_overflows(self) -> int:
+        """``GetStatOverflows``: this histogram's own ``EStatOverflows``, ``kNeutral`` until set."""
+        return int(self._core["fStatOverflows"])
+
+    def set_stat_overflows(self, value: int) -> None:
+        """``SetStatOverflows(flag)``: ``kIgnore``, ``kConsider`` or ``kNeutral``."""
+        self._core["fStatOverflows"] = int(value)
+
     def scale(self, c: float, width: bool = False) -> None:
         """``Scale(c)``, in place; ``width`` is ROOT's ``"width"``, dividing by bin size too."""
         arithmetic.scale(self, float(c), width)

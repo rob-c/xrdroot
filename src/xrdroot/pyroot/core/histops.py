@@ -120,6 +120,9 @@ class Operations:
     GetTitle: Any
     SetName: Any
     GetDimension: Any
+    GetMaximum: Any
+    GetSumOfWeights: Any
+    Integral: Any
 
     # -- copies ---------------------------------------------------------------------------
 
@@ -214,6 +217,23 @@ class Operations:
     def Scale(self, c1: float = 1.0, option: str = "") -> None:
         """``Scale(c1[, "width"])``: in place; ``"width"`` divides by each bin's width too."""
         self._xrd.scale(float(c1), "width" in str(option).lower())
+
+    def Normalize(self, option: Any = "") -> None:
+        """``Normalize``: this histogram scaled so that what ``option`` names is one.
+
+        No option - or ``"integral"`` - makes the integral over the bins' *widths* one, which
+        for bins of unit total width is the sum of the contents; ``"max"`` the largest bin and
+        ``"sum"`` the sum of the weights. ``GetEntries`` is untouched either way, as ROOT
+        leaves it: normalising rescales what the bins hold, not how many entries went in.
+        """
+        how = str(option or "").strip().lower()
+        if how == "max":
+            largest = float(self.GetMaximum())
+        elif how == "sum":
+            largest = float(self.GetSumOfWeights())
+        else:
+            largest = float(self.Integral("width"))
+        self.Scale(1.0 / largest if largest else 1.0)
 
     def Multiply(
         self, h1: Any, h2: Any = None, c1: float = 1.0, c2: float = 1.0, option: str = ""

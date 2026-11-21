@@ -346,3 +346,50 @@ def test_an_integral_already_made_is_used_again_until_the_entries_move(capsys):
     assert empty.GetIntegral()[-1] == 0.0 and capsys.readouterr().err == ""  # still the same
     empty.Fill(0.5)
     assert empty.GetIntegral()[-2] == 1.0 and empty.GetIntegral()[-1] == 1.0
+
+
+def test_normalize_scales_what_its_option_names_to_one_as_root_does():
+    """``TH1::Normalize``: the numbers are ROOT's own ``test_TH1.cxx`` case - no option makes
+    the integral over the bins' widths one (10 for ten unit-width bins holding 18), ``"max"``
+    the largest bin, ``"sum"`` the sum of the weights; and ``GetEntries`` stays as it was."""
+    def made():
+        h = ROOT.TH1F("n", "n", 10, 0, 1)
+        for at, content in ((1, 1.0), (3, 5.0), (5, 10.0), (7, -1.0), (10, 3.0)):
+            h.SetBinContent(at, content)
+        return h
+
+    plain = made()
+    expect(
+        (plain.GetEntries(), 5.0),
+        (plain.GetSumOfWeights(), 18.0),
+        (plain.Integral("width"), pytest.approx(1.8)),
+        (plain.GetMaximum(), 10.0),
+    )
+    for option, weights, width_sum, largest in (("", 10.0, 1.0, 50 / 9),
+                                                ("integral", 10.0, 1.0, 50 / 9),
+                                                ("max", 1.8, 0.18, 1.0),
+                                                ("sum", 1.0, 0.1, 5 / 9)):  # fmt: skip
+        scaled = made()
+        scaled.Normalize(option)
+        assert scaled.GetEntries() == 5.0
+        assert scaled.GetSumOfWeights() == pytest.approx(weights)
+        assert scaled.Integral("width") == pytest.approx(width_sum)
+        assert scaled.GetMaximum() == pytest.approx(largest)
+
+
+def test_a_histogram_asks_a_global_flag_for_its_statistics_overflows():
+    """``TH1::EStatOverflows``: a histogram is ``kNeutral`` until told otherwise - its own
+    flag, which neither ``TH1::StatOverflows`` nor another histogram's flag changes."""
+    neutral, ignoring = ROOT.TH1F("a", "a", 2, 0, 1), ROOT.TH1F("b", "b", 2, 0, 1)
+    expect(
+        (neutral.GetStatOverflows(), ROOT.TH1.EStatOverflows.kNeutral),
+        (ROOT.TH1.EStatOverflows.kConsider, 1),
+    )
+    ignoring.SetStatOverflows(ROOT.TH1.EStatOverflows.kIgnore)
+    ROOT.TH1.StatOverflows(True)
+    expect(
+        (ignoring.GetStatOverflows(), ROOT.TH1.kIgnore),
+        (neutral.GetStatOverflows(), ROOT.TH1.kNeutral),
+        (ROOT.TH1F("c", "c", 2, 0, 1).GetStatOverflows(), ROOT.TH1.kNeutral),
+    )
+    ROOT.TH1.StatOverflows(False)
