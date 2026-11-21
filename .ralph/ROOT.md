@@ -1111,6 +1111,27 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - **`W0-107`:** the last ten lines are `src/xrdroot/tmva/nettrain.py:188, 199-207` and a branch - another session's
   "training failed" path, which no test reaches. Even the decomposition cannot reach 100% until it has one.
 
+## Round 39's close (recorded here for the next iteration)
+
+- Base `ebd7485f`, closed at `297950c4`. **One commit, and the gate is measurable again.**
+- **`W0-107` closed and the gate is green.** `tmva/nettrain.py`'s `_step` has two optimiser branches and **no test
+  reached either** - the deep-network tests train through the trainer without ever calling a step. One parametrised test
+  (`4f7ddee5`) calls it with ADAM and with momentum and checks each rule's first step. The two-command decomposition now
+  reads **`TOTAL 118830 0 29826 0 100%`**: `pytest -n 4 --cov --ignore=tests/test_tmva_learn_networks.py
+  --ignore=tests/test_pyroot_references.py` (12 925 pass), then `pytest tests/test_tmva_learn_networks.py
+  tests/test_pyroot_references.py --cov --cov-append` (44 pass).
+- **The first harness numbers in three rounds.** `other/math` is **21 -> 22 PASS** (`/tmp/r39/other`:
+  `mathcore-testSpecFuncBeta`), 0 FAIL, 43 -> 41 UNSUPPORTED - and **`mathcore-stdsort` now runs**, which is the test
+  `W0-98`'s vector-element feature unblocked. It hits the 300 s limit: `W0-108`, the translated `std::sort` must sort a
+  buffer in one NumPy pass instead of one `ItemRef` at a time. **The limit is not to be raised.**
+- **`io/tree/read` is exactly four lines from PASS** (`/tmp/r39/read`): `missingClass.ref` begins with four
+  `Warning in <TClass::Init>: no dictionary for class …` lines (`TEmcl`, `TPhysObj`, `TNonEmcl`, `TNonPhysObj`) and our
+  output has none. **`W0-102` now has its two-part fix named**: `TGeoAtt`, `TGeoVoxelFinder` and `TGeoParallelWorld` are
+  ROOT's own classes and belong in `winfo.INFOS`; then "a class in the file's streamer list that is in neither `INFOS`
+  nor `DECLARED`" is exactly the right guard, and both tests pass.
+- Gates: ruff, mypy (1019 files), maintainability (30 990 functions), components (0 undeclared), `mkdocs --strict` all
+  clean; the two-command pytest gate at 100%.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -1149,6 +1170,10 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 39's result of it, at `297950c4`: `TOTAL 118830 0 29826 0 100%` **by the two-command decomposition**
+  (`pytest -n 4 --cov --ignore=tests/test_tmva_learn_networks.py --ignore=tests/test_pyroot_references.py` →
+  12 925 passed, then `pytest tests/test_tmva_learn_networks.py tests/test_pyroot_references.py --cov --cov-append`
+  → 44 passed, 100%); ruff/mypy (1019 files)/maintainability (30 990 functions)/components/`mkdocs --strict` clean.
 - Round 38's result of it, at `4bd75d90`: **not measured** - the load average was 20-124 all round (`W0-103` again);
   916 unit tests pass in every file the three commits touch, and ruff/mypy (1019 files)/maintainability/components/
   `mkdocs --strict` are clean. **Rerun when the load average is under 20.**
@@ -1315,6 +1340,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 36 | `59744112` | **two commits**: a reference written after a clone names the file's process record (`1b2ae9d5`, `W0-95`); ROOT's own array-compression forms in JSON (`f0c859a9`) | **roottest +3**: `io/tree` **14 -> 17 PASS**, 4 -> **1 DIFF**, **0 FAIL** (`/tmp/r36/tree`: `test-rcr2`, `test-rcrr2`, `test-rcrr123`) - **the whole `TRef` family is closed**; `io/json` unchanged at 10 / 0 / 0 / 2 (`/tmp/r36/json`) | 3: `W0-98` (**the translator's `&v[0]`/`&v.front()` refusal blocks 10 of `other/math`'s 43** - the top of round 36's 22-cause bucket table), `W0-99` (`io/json`'s last two refusals), `W0-100` (`io/tree/read`'s last DIFF); `W0-95` and `W0-96` closed |
 | 37 | `d13ce7e8` | **two commits in, two reverted**: a TMap's JSON as the pairs it holds (`4e0461e6`); a symmetric SMatrix filled from its upper triangle (`aa265151`). **Reverted**: the address of a vector element (`b28bb2c2`, `W0-98`'s top row - six branches with no test, branch `r37-01` kept) and a user class's missing dictionary (`03c2c442`, `afd8afdd` - it warns for `TGeoAtt`/`TGeoVoxelFinder`/`TGeoParallelWorld`, which ROOT has dictionaries for, and breaks a PASS) | **0 PASS**: `io/json` **10 / 0 / 0 / 2** (`/tmp/r37/json`) and `roottest/root/math/*` **0 / 4 / 1** (`/tmp/r37/rmath`), both unchanged | 3: `W0-101` (what the vector-element tests must reach), `W0-102` (why the class warning broke a PASS), `W0-103` (**no gate is measurable above a load average of ~20** - `W0-45` is worse than recorded) |
 | 38 | `7216c284` | **three commits**: the address of a vector element reaches every branch it added (`bcd98495`, `W0-101` closed); `wpacking`'s `OverflowError` on Python 3.14 and `np.atan`'s NumPy-2 spelling (`2c64e67f`); two float comparisons through their decimal spelling, as a tolerance (`db1c1a00`) | **no harness measurement** (load average 20-124, `W0-103` stands); **916 unit tests pass** in every file the commits touch | 2: `W0-104` (three pre-existing breakages, fixed, with their causes), `W0-105` (**the venv is Python 3.14 + NumPy 1.26**, where the tree assumed NumPy 2 and older `struct` errors); `W0-101` closed |
+| 39 | `ebd7485f` | **one commit**: both of the trainer's optimisers, and the coverage gate measurable again (`4f7ddee5`, `W0-107`) | **the gate is green**: `TOTAL 118830 0 29826 0 100%` by the two-command decomposition (12 925 pass, then 44 with `--cov-append`); **`other` +1**: `other/math` **21 -> 22 PASS** (`/tmp/r39/other`, `mathcore-testSpecFuncBeta`), 0 FAIL, 45 -> 41 UNSUPPORTED, one new TIMEOUT (`mathcore-stdsort` runs now); `io/tree/read` **4 lines** from PASS (`/tmp/r39/read`) | 1: `W0-108` (**`mathcore-stdsort` times out at 300 s** - the translated `std::sort` needs one NumPy pass); `W0-102` sharpened to its two-part fix; `W0-107` closed |
 
 ## Notes
 
