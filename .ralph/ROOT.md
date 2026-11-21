@@ -7,6 +7,10 @@ gates, measure with ROOT's own test suite, and then **close the round in `TODO.m
 a ledger row per fix and per attempt, and a queue entry for every piece of work the round
 discovered and did not do.
 
+**Every round runs in worktrees of its own**: made from `main`'s tip when the round opens, merged
+back onto `main` before it closes, and removed at the close — no worktree and no round branch is
+carried from one iteration of this loop to the next (steps 0 and 6d).
+
 Read `AGENTS.md` and `TODO.md` in full before the first round. They are the specification; this
 file is the procedure and the record of what has already been learned the hard way.
 
@@ -97,13 +101,46 @@ not stuck: the two bulk-API tests write and read 10⁷ entries, `Kalman` runs fo
 iterations of `testKalman.cxx`, and `runtreeCloneTest2` clones a large tree; the tutorial
 timeouts are the RDF analyses that read NanoAOD over the network.
 
-## The round, in six steps
+## The round, in seven steps
+
+### 0. Open the round in worktrees of its own, off `main`
+
+**Every round makes fresh worktrees, and none outlives its round.** A worktree carried over from
+an earlier round holds a stale base, that round's branches and half its files; anything measured
+in it answers a question about a tree nobody has any more. So the round opens with a directory of
+its own, one integration worktree based on `main`, and sixteen worker worktrees branching from
+that same commit:
+
+```bash
+R=/tmp/ralph-round-$(date +%Y%m%d%H%M)      # one directory per round, outside the repository
+ROUND=$(basename $R)                         # the round's name, in its branches
+PY=/Users/rcurrie/src/xrdroot/.venv/bin/python   # the venv is the primary checkout's; the
+                                                 # worktrees have none of their own
+mkdir -p $R
+git -C /Users/rcurrie/src/xrdroot fetch origin main
+BASE=$(git -C /Users/rcurrie/src/xrdroot rev-parse origin/main)   # what `main` *is* now, not
+                                                                  # what a checkout was left at
+git -C /Users/rcurrie/src/xrdroot worktree add -q $R/main -B $ROUND-main main
+for w in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16; do
+  git -C /Users/rcurrie/src/xrdroot worktree add -q $R/w$w -B r-$w $BASE
+done
+cd $R/main && export PYTHONPATH=$PWD/src && git log --oneline -3 && git status --short
+```
+
+The **primary checkout is not touched** — do not switch its branch and do not commit in it: it
+belongs to whichever session is working there, and it is usually mid-round. The round integrates
+in `$R/main` and reaches `main` by pushing that worktree's branch (step 6d), so a round that dies
+halfway cannot leave `main` looking as though its work had been measured.
+
+`-B` and not `-b`: a branch name left over from an earlier round is reset onto this round's base
+instead of inherited with that round's commits — and if it is still checked out somewhere, the
+command fails loudly, which is the check that the previous round's teardown really ran.
 
 ### 1. Read the queue and rank the work
 
 ```bash
-cd /Users/rcurrie/src/xrdroot && export PYTHONPATH=$PWD/src
-git log --oneline -6; git status --short          # must be clean
+cd $R/main && export PYTHONPATH=$PWD/src      # the round's own worktree, which is `main`'s tip
+git log --oneline -6; git status --short      # must be clean
 sed -n '/## 7. Progress ledger/,/## Appendix A/p' TODO.md
 ```
 
@@ -171,13 +208,8 @@ per scope, `async: true`, each with its worktree as `cwd` and the brief as its t
 **(b) Otherwise, `pi -p`** — the same harness, headless, one process per worktree. This is what
 the last two rounds used. It works; do not use any other agent CLI.
 
-```bash
-R=/tmp/ralph-round-$(date +%Y%m%d%H%M)        # outside the repository, per workspace rules
-mkdir -p $R && cd /Users/rcurrie/src/xrdroot
-for w in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16; do
-  git worktree add -q $R/w$w -b r-$w HEAD
-done
-```
+The worktrees themselves were made in step 0; this step writes the briefs and launches one agent
+in each.
 
 Write one brief per worker into `$R/w<NN>-brief.md`. It must carry: the mission and the hard rules
 (below), the environment, the target test id, the files it **may not leave**, the reason the test
@@ -234,8 +266,7 @@ Watch progress with the session files, not the logs (a `pi -p` log stays empty u
 finishes):
 
 ```bash
-BASE=$(git -C /Users/rcurrie/src/xrdroot rev-parse HEAD)   # the round's base
-for w in $(seq -w 1 16); do
+for w in $(seq -w 1 16); do                  # $BASE is step 0's, the round's base
   f=$(ls -t ~/.pi/agent/sessions/*/2026-*.jsonl 2>/dev/null \
       | xargs grep -l "Task r-$w:" 2>/dev/null | head -1)
   printf "w%s commits=%s dirty=%s events=%s\n" "$w" \
@@ -246,11 +277,12 @@ done
 
 A worker's **working tree** can be ahead of its commit — two rounds lost the final state of the
 best implementation that way. When a worker committed early and kept working, copy its *files*
-(`cp $R/wNN/<path> <repo>/<path>`), not just its commits.
+(`cp $R/wNN/<path> $R/main/<path>`), not just its commits.
 
 ### 4. Integrate, and let no PASS be lost
 
-For each worker with a commit, in order of expected value:
+All of this happens in `$R/main` — the round's own worktree on `main`, with `PYTHONPATH=$PWD/src`
+there — never in the primary checkout. For each worker with a commit, in order of expected value:
 
 ```bash
 git cherry-pick -x <commit>            # -x records whose work it is
@@ -308,8 +340,9 @@ CERN-network copies (`main/RootcpReadRemote` and its two dependants, `io/hadd/te
 and `other/math/minuit2/minuit2_ParallelTest` takes 195–236 s of a 300 s limit; all four have
 passed when rerun alone, repeatedly.
 
-Then close the round with step 6. Push only if the operator asked; the gates are run before the
-commit, never after.
+Then close the round with step 6: the gates are run before the commit, never after, and the round's
+commits reach `main` in step 6d — a merge that is only local is a merge the next session's
+`git reset --hard origin/main` throws away.
 
 ### 6. Close the round in `TODO.md` — every round ends here
 
@@ -355,12 +388,42 @@ do, mark the *original* row's status instead of adding a new one.
 Finish with:
 
 ```bash
-cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot
+cd $R/main && PYTHONPATH=$PWD/src $PY -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot
 git -c commit.gpgsign=false commit -am "docs: the ledger after round <N>"
 ```
 
 and put the round's own summary — the sixteen scopes, what landed, what was rejected, what is
 new — in the loop's task file (`.ralph/<name>.md`), which is where the next iteration reads it.
+
+**(d) Tear the round down — no worktree, no round branch, and the round's `main` branch with it.**
+This is the last thing a round does, and the order matters: the push comes *first*, because a
+worktree removed before it — with `main` moved under the round — would take the round's only
+remaining reference to its commits into a directory that no longer exists.
+
+```bash
+cd $R/main && git status --short         # must be empty: nothing is left uncommitted
+git push origin $ROUND-main:main || { git fetch origin main && git rebase origin/main \
+  && git push origin $ROUND-main:main; }  # another session pushed: rebase the round onto it
+git ls-remote origin main | cut -f1      # the tip, which must be this worktree's HEAD
+
+cd /Users/rcurrie/src/xrdroot
+git worktree list --porcelain | awk '/^worktree /{print $2}' | grep "^$R/"   # what will go
+for w in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16; do
+  git worktree remove --force $R/w$w && git branch -D r-$w
+done
+git worktree remove --force $R/main && git branch -D $ROUND-main
+git worktree prune
+git worktree list | grep "^$R/" || echo "every round worktree is gone"
+```
+
+A branch the round decided **not** to merge is no exception: `git format-patch $BASE..r-NN -o
+$R/rejected/` writes it into the round's directory as the evidence it now is, the ledger row
+names the refusal it hit, and the branch goes with the worktree. A branch is a worktree's state;
+a patch is evidence.
+
+Keep the rest of the round directory: `final1/`, `final2/` and any `areas/`/`solo/` run the
+ledger quotes, the briefs, and the workers' reports. The worktrees and their logs are what goes —
+`rm -rf $R/w*.log` once their findings are in `TODO.md`.
 
 ## Hard rules (from `AGENTS.md`, do not violate)
 
@@ -381,8 +444,10 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
    them.
 10. **Component boundaries hold**; a new module is owned by a component in `pyproject.toml`, and a
     new `pyroot` module also goes in `SUBMODULES`.
-11. **Work in worktrees on disjoint files**, `PYTHONPATH=$PWD/src`. Never edit another worker's
-    worktree, never push without being asked.
+11. **A new worktree every round, merged to `main` and torn down in that same round** (steps 0
+    and 6d), on disjoint files, `PYTHONPATH=$PWD/src`. The round's integration worktree is the one
+    that pushes `main`; nothing else is pushed without being asked. Never edit another worker's
+    worktree, and never reuse one round's worktree in the next.
 
 ## Traps already paid for
 
@@ -406,6 +471,11 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   at `--jobs 5` they collide and a PASS turns into a DIFF that passes alone (`W0-9`).
 - A harness run's PASS count is only comparable at the same `--jobs`: 300 s tests and
   same-directory collisions both move with the parallelism.
+- **Another session resets `main` to `origin/main`** (`git reflog show main` says `branch: Reset
+  to origin/main`), which discards anything committed to local `main` and not pushed, within
+  minutes. So the round pushes `main` itself (step 6d) and then checks `git ls-remote origin
+  main`; if the round's commits are missing afterwards they are still in `$R/main`'s log —
+  re-apply them there before the worktree goes.
 
 ## Round 1's close (recorded here for the next iteration)
 
