@@ -45,7 +45,18 @@ from typing import Any
 
 import numpy as np
 
-from ...cppstd.containers import _Map, _Pair, cpp_name, std, string
+from ...cppstd.containers import (
+    _Container,
+    _Map,
+    _MultiMap,
+    _Pair,
+    _Set,
+    _split_arguments,
+    cpp_name,
+    element_type,
+    std,
+    string,
+)
 from ...errors import UnsupportedFeatureError
 from ..vectors import TArrayC, TArrayD, TArrayF, TArrayI, TArrayL, TArrayS
 from .collections import TList, TSeqCollection
@@ -145,6 +156,9 @@ class _Member:
     kind: Any
     array: bool = False
     dims: tuple[int | None, ...] = ()
+    #: The C++ type the declaration spells, which is what a pointer to a container the
+    #: constructor left empty is made of when JSON turns out to hold values for it.
+    decl: str = ""
 
 
 #: Each class this writes, its members in the order ROOT's streamer writes them, with the
@@ -403,12 +417,15 @@ def _declared_member(classname: str, entry: tuple[str, str, str, tuple[int, ...]
     """
     name, kind, comment = entry[0], entry[1], entry[2]
     dims: tuple[int | None, ...] = entry[3]
+    style = _length_style(kind, comment)
+    if style is not None:  # the length is the comment's: written from what it points at
+        return _Member(name, style, bool(dims), dims, kind.rstrip("* ").strip())
     if not dims and kind.endswith("*") and LENGTH.search(comment or ""):
         kind, dims = kind.rstrip("*").strip(), (None,)
     of = f"an array of {kind}" if dims else f"a {kind}"
     style = _member_style(kind, comment, dims)
     if style is not None:
-        return _Member(name, style, bool(dims), dims)
+        return _Member(name, style, bool(dims), dims, kind)
     raise UnsupportedFeatureError(
         f"TBufferJSON::ConvertToJSON does not yet write {classname}::{name}, which is "
         f"declared as {of}. It writes the members a class declares of a number type "
@@ -416,6 +433,22 @@ def _declared_member(classname: str, entry: tuple[str, str, str, tuple[int, ...]
         f"container, and of the classes in its table ({', '.join(sorted(MEMBERS))}); any "
         "other member type needs a writer of its own first"
     )
+
+
+def _length_style(kind: str, comment: str) -> Any:
+    """How a pointer whose declaration comment gives its length is written, when its type is
+    no number and no container: the text it points at, or ``nested`` for anything else.
+
+    ROOT's streamer reads ``//[fCnt]`` as "as many as fCnt says", so such a pointer is the
+    array the comment declares rather than an address. A text goes out flat, but an object or
+    a ``TArray`` - and a pointer to a pointer, which is an array of arrays - is written at the
+    depth the object holds it at, which is the one thing the declaration cannot say."""
+    if not (kind.endswith("*") and LENGTH.search(comment or "")):
+        return None
+    bare = kind.rstrip("*").strip()
+    if bare in SCALARS or bare.startswith(CONTAINERS):
+        return None
+    return TEXTS.get((bare, True)) or "nested"
 
 
 def _member_style(kind: str, comment: str, dims: tuple[int | None, ...]) -> Any:
@@ -735,8 +768,10 @@ class _Writer:
                 return write(self, obj, depth)
         if isinstance(obj, TSeqCollection):
             return self._collection(obj, depth)
-        if _writable(obj):
+        if _writable(obj):  # a class of its own, even one that derives from a container
             return self._object(obj, depth)
+        if isinstance(obj, _Container):
+            return self._nested_container(obj, depth)
         raise UnsupportedFeatureError(
             "TBufferJSON::ConvertToJSON does not yet write the JSON of a "
             f"{_classname(obj) or type(obj).__name__}: it writes numbers and strings, the "
@@ -818,6 +853,8 @@ class _Writer:
         """A member that is not a number: text, an array of text, or a container."""
         if member.kind == "chars":
             return self._char_text(value, member)
+        if member.kind == "nested":
+            return self._trees(value, depth)
         if member.kind in ("strings", "strptrs", "tstrings"):
             return self._texts(member, value, depth)
         if member.kind in OBJECT_KINDS:
@@ -861,6 +898,21 @@ class _Writer:
         nested = _nest(_flatten(value or []), member.dims,
                        lambda group: self._text_row(member, group))  # fmt: skip
         return _list_text(nested, self._layout.item_comma)
+
+    def _trees(self, value: Any, depth: int) -> str:
+        """A member the comment gives the length of and whose type is no number or text -
+        ``TNamed **fNm6[3]; //[fCnt]``: one JSON array per row, and a row an array of what
+        the object holds there, ``null`` where a pointer has nothing.
+
+        The depth is the object's, not the declaration's: the lengths in the declaration and
+        in the comment say how many rows and how many in a row, and whether a row's entries
+        are objects, arrays or text is what the values are."""
+        if value is None:
+            return "null"
+        if isinstance(value, list):
+            items = [self._trees(each, depth) for each in value]
+            return "[" + self._layout.item_comma.join(items) + "]"
+        return self._value(value, depth + 1)
 
     def _text_row(self, member: _Member, group: list[Any]) -> str:
         """One row of a text array: its strings, or ``null`` for a ``std::string *`` with
@@ -909,11 +961,18 @@ class _Writer:
         if member.kind == "map_object":
             return self._map_object(value, list(value.items()), depth)
         if isinstance(value, _Map):
-            return self._map(value, depth)
+            return self._map(value, depth, _pair_name(member.decl))
         if member.kind == "bitset":
             bits = ["true" if value[at] else "false" for at in range(value.size())]
             return "[" + self._layout.item_comma.join(bits) + "]"
         held = [self._value(each, depth + 1) for each in value]
+        return "[" + self._layout.item_comma.join(held) + "]"
+
+    def _nested_container(self, obj: Any, depth: int) -> str:
+        """A container that is a value of its own - the ``set`` a ``map`` holds - written as
+        the array of the values it holds, and a ``std::multimap``'s as the ``$pair`` per entry
+        a map's is: ROOT streams the container where the value is, not behind a name."""
+        held = [self._value(each, depth + 1) for each in obj]
         return "[" + self._layout.item_comma.join(held) + "]"
 
     def _braced(self, pairs: list[str], depth: int) -> str:
@@ -980,13 +1039,17 @@ class _Writer:
 
     # -- collections ------------------------------------------------------------------
 
-    def _map(self, obj: _Map, depth: int) -> str:
+    def _map(self, obj: Any, depth: int, named: str | None = None) -> str:
         """A ``std::map``: a ``$pair`` object per entry, or - with ``kMapAsObject`` - one
-        JSON object whose keys are the map's."""
+        JSON object whose keys are the map's.
+
+        ``named`` is what the member's declaration calls the types it holds, which is what
+        ROOT writes and what the values may no longer say: a ``TString`` key is a ``string``
+        by the time it reaches the writer."""
         entries = list(obj.items())
         if self._map_as_object:
             return self._map_object(obj, entries, depth)
-        name = f"pair<{cpp_name(obj.kinds[0])},{cpp_name(obj.kinds[1])}>"
+        name = named or f"pair<{cpp_name(obj.kinds[0])},{cpp_name(obj.kinds[1])}>"
         pairs = [self._pair_entry(name, entry, depth) for entry in entries]
         return "[" + self._layout.item_comma.join(pairs) + "]"
 
@@ -1085,6 +1148,19 @@ def _expanded(data: dict[str, Any], name: str) -> list[Any]:
         values[at : at + len(placed)] = placed
         at += len(placed)
         index += 1
+
+
+def _pair_name(decl: str) -> str | None:
+    """ROOT's spelling of the types a map holds, as its declaration gives them:
+    ``std::map<TString,int>`` is ``pair<TString,int>``, and a nested template keeps the space
+    ROOT writes between two ``>``. ``None`` for a member no declaration of a map describes,
+    which is then named by the types the values happen to have."""
+    bare = decl.rstrip("* ").strip()
+    if not bare.replace("std::", "").startswith(("map<", "multimap<", "unordered_map<")):
+        return None
+    held = _split_arguments(bare[bare.index("<") + 1 : bare.rindex(">")])
+    kinds = [each.replace("std::", "").replace(" ", "") for each in held]
+    return ("pair<" + ",".join(kinds) + ">").replace(">>", "> >")
 
 
 def _entries(data: Any) -> list[tuple[Any, Any]]:
@@ -1255,10 +1331,10 @@ def _restore(obj: Any, member: _Member, value: Any) -> None:
     """Put ``value``, read from JSON, in the attribute a declared class declares ``member``
     as, which is where the writer reads it back from.
 
-    A container member keeps the container its constructor made: what such a JSON says is
-    the values the container holds, and reading values back into a ``std::map`` keyed by an
-    object - or into a ``bitset`` of a length its type fixes - is a writer and reader of its
-    own. An empty one is what the constructor made, so it needs nothing read into it."""
+    A container member keeps the container its constructor made and is given the values the
+    JSON holds, since what such a JSON says is what the container holds rather than another
+    container; a ``bitset`` of a length its type fixes is the one container filled bit by
+    bit here."""
     if member.kind == "bitset":
         held = getattr(obj, member.name, None)
         if not isinstance(value, list) or held is None:
@@ -1273,16 +1349,88 @@ def _restore(obj: Any, member: _Member, value: Any) -> None:
             held[at] = bool(bit)
         return
     if member.kind in CONTAINER_KINDS:
-        if not _blank(value):
-            raise UnsupportedFeatureError(
-                "TBufferJSON::FromJSON does not yet fill a member that holds values, and "
-                f"{_classname(obj)}::{member.name} holds some: it reads back an object "
-                "whose containers are empty, which is what a class's constructor makes "
-                "them. Ask for the members of a number type and of text, or read this JSON "
-                "with the class it names"
-            )
+        _refilled(obj, member, value)
         return
     _stored(obj, member, _converted(member, value))
+
+
+def _refilled(obj: Any, member: _Member, value: Any) -> None:
+    """Fill the container ``member`` holds in ``obj`` with the values the JSON ``value``
+    carries, as ROOT gives the containers of an object it reads into the values the JSON
+    holds - the object the constructor made, not another one.
+
+    A ``null`` is what ROOT writes for a pointer with nothing there and leaves the member as
+    the constructor left it; a member declared ``vector<T>[N]`` is one container per slot,
+    which the declaration's lengths shape as they shape the arrays it writes."""
+    if member.array:
+        _refilled_rows(_recorded(obj, member), member, member.dims, value or [])
+        return
+    held = _recorded(obj, member)
+    if held is None and _inherits_container(obj, member):
+        held = obj  # the class inherits the container: the object is the container
+    if value is None:
+        return
+    if held is None:
+        _stored(obj, member, _given(None, member, value))
+        return
+    _given(held, member, value)
+
+
+def _refilled_rows(held: Any, member: _Member, dims: tuple[int | None, ...],
+                   rows: list[Any]) -> None:
+    """Fill each slot of an array of containers with the container its row holds, one array
+    of them per length the declaration gives - ``vector<double> f[3]`` is three containers."""
+    if len(dims) > 1:
+        for slot, row in zip(held or [], rows, strict=False):
+            _refilled_rows(slot, member, dims[1:], row or [])
+        return
+    for at, row in enumerate(rows[: len(held or [])]):
+        if row is not None:
+            held[at] = _given(held[at], member, row)
+
+
+def _given(held: Any, member: _Member, value: Any) -> Any:
+    """The container the JSON ``value`` holds: ``held`` - the one the class's constructor
+    made - emptied and given those values, or, where the constructor left a pointer holding
+    none, a container of the type the declaration spells.
+
+    What an element is is the container's own business: each value goes to it as the object,
+    the nested container or the number the JSON describes, and it converts that to its
+    element type exactly as C++ converts what a macro hands it."""
+    made = held if held is not None else _container_of(member)
+    made.clear()
+    if isinstance(made, _MultiMap):
+        for key, each in _entries(value):
+            made.insert((_unpacked(key), _unpacked(each)))
+    elif isinstance(made, _Map):
+        for key, each in _entries(value):
+            made[_unpacked(key)] = _unpacked(each)
+    elif isinstance(made, _Set):
+        for each in value:
+            made.insert(_unpacked(each))
+    else:
+        for each in value:
+            made.push_back(_unpacked(each))
+    return made
+
+
+def _container_of(member: _Member) -> Any:
+    """The empty container a member's declaration spells, for the pointer whose constructor
+    left nothing there: ``std::vector<double>*`` is a ``std::vector<double>``."""
+    return element_type(member.decl.rstrip("* ").strip())()
+
+
+def _unpacked(value: Any) -> Any:
+    """The JSON value with the objects it describes made: a JSON object rebuilt as the class
+    its ``_typename`` names, and a ``$ref`` as the very object read before it - so that a
+    container can be handed what is left, the numbers and the nested arrays of a container
+    of containers, and build its own elements from them."""
+    if isinstance(value, list):
+        return [_unpacked(each) for each in value]
+    if isinstance(value, dict):
+        return _rebuilt_object(value)
+    return value
+
 
 
 def _stored(obj: Any, member: _Member, value: Any) -> None:
@@ -1299,18 +1447,6 @@ def _stored(obj: Any, member: _Member, value: Any) -> None:
         setattr(obj, member.name, value)
         return
     setattr(obj, ATTRIBUTES.get(member.name) or "_" + member.name, value)
-
-
-def _blank(value: Any) -> bool:
-    """Does this JSON hold no value at all: ``null``, an empty array, a map with nothing in
-    it, or arrays of those?"""
-    if value is None or value == []:
-        return True
-    if isinstance(value, dict):
-        return set(value) <= {"_typename"}
-    if isinstance(value, list):
-        return all(_blank(each) for each in value)
-    return False
 
 
 def _converted(member: _Member, value: Any) -> Any:
@@ -1331,6 +1467,8 @@ def _converted_text(member: _Member, value: Any) -> Any:
         rows = np.zeros(member.dims, dtype=np.int8)
         _place_chars(rows, value)
         return rows
+    if member.kind == "nested":
+        return _converted_nested(member.decl, len(member.dims) + 1, value)
     if member.kind == "tstrings":
         return _converted_tree(value)
     if member.kind in ("strings", "strptrs"):
@@ -1351,6 +1489,26 @@ def _converted_objects(value: Any) -> Any:
     if isinstance(value, list):
         return [_converted_objects(each) for each in value]
     return None if value is None else _rebuilt_object(value)
+
+
+def _converted_nested(decl: str, depth: int, value: Any) -> Any:
+    """A member a comment gives the length of, read back at the depth the JSON nests it: the
+    rows of arrays the declaration and the comment shape, and at the end of each row what
+    the member points at - a ``TArray`` the JSON gives as its numbers, an object, or text.
+
+    The depth is what the JSON says, and not what its values look like: a ``TArrayI``'s own
+    numbers are one array inside the row's, and telling the two apart by their shape alone
+    would read a row of numbers as the row itself.
+    """
+    if depth and isinstance(value, list):
+        return [_converted_nested(decl, depth - 1, each) for each in value]
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return _rebuilt_named(value, decl)
+    if decl in ARRAY_CLASSES:
+        return _rebuilt_bare(value, ARRAY_CLASSES[decl])
+    return _rebuilt_named(value, decl)  # an object, or the refusal that it is none
 
 
 def _place_chars(placed: Any, rows: Any) -> None:

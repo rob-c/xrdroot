@@ -762,15 +762,91 @@ def test_an_empty_container_reads_back_as_the_one_its_constructor_made(monkeypat
     assert _json(read) == text
 
 
-def test_a_member_that_holds_values_is_refused_when_it_is_read_back(monkeypatch):
-    """Reading values back into a container is a reader of its own, and the refusal says so
-    by the member's name rather than reading the object with the values dropped."""
-    _reading_class(monkeypatch, "TFilled", (("fVect", "std::vector<double>", "", ()),))
-    for held in ('[3]', '3', '{"first":1}'):
-        with pytest.raises(UnsupportedFeatureError) as refused:
-            ROOT.TBufferJSON.ConvertFromJSON(f'{{"_typename":"TFilled","fVect":{held}}}')
-        assert "TFilled::fVect holds some" in str(refused.value)
-        assert "containers are empty" in str(refused.value)
+def test_a_member_that_holds_values_is_filled_with_them_when_it_is_read_back(monkeypatch):
+    """``STL1``'s ``store/read/store``: the JSON says which values a container holds, so they
+    are put into the container the class's constructor made - the one the writer then reads
+    them back from - rather than into an object whose containers stay as empty as they were."""
+    containers = _reading_class(monkeypatch, "TFilled", (
+        ("fVect", "std::vector<double>", "", ()),
+        ("fList", "std::list<double>", "", ()),
+        ("fSet", "std::set<double>", "", ()),
+        ("fMap", "std::map<int, double>", "", ()),
+        ("fMulti", "std::multimap<int, double>", "", ()),
+    ))  # fmt: skip
+
+    def __init__(self) -> None:
+        self.fVect, self.fList = _vector(), std.list("double")()
+        self.fSet, self.fMap = std.set("double")(), std.map("int", "double")()
+        self.fMulti = std.multimap("int", "double")()
+
+    containers.__init__ = __init__
+    text = (
+        '{"_typename":"TFilled","fVect":[3,6],"fList":[8],"fSet":[2,3],'
+        '"fMap":[{"$pair":"pair<int,double>","first":1,"second":5}],'
+        '"fMulti":[{"$pair":"pair<int,double>","first":0,"second":0},'
+        '{"$pair":"pair<int,double>","first":0,"second":1000}]}'
+    )
+    read = ROOT.TBufferJSON.ConvertFromJSON(text)
+    assert (list(read.fVect), list(read.fList), list(read.fSet)) == ([3.0, 6.0], [8.0], [2.0, 3.0])
+    assert read.fMap.items() == [(1, 5.0)]
+    assert read.fMulti.items() == [(0, 0.0), (0, 1000.0)]
+    assert _json(read, 3) == text
+
+
+def test_a_container_of_objects_holds_the_objects_the_json_names(monkeypatch):
+    """A ``vector<TJsonEx1>`` of pointers: each element is the object its ``_typename`` names,
+    and a ``$ref`` is the very object read before it, so the two links ``STL1``'s
+    ``fVectEx1Ptr`` has to one object are still one object after the read."""
+    _reading_class(monkeypatch, "TElem", (("fBool", "bool", "", ()),))
+    members = (("fVect", "std::vector<TElem*>", "", ()),)
+    made = _reading_class(monkeypatch, "TVect", members)
+    made.__init__ = lambda self: setattr(self, "fVect", std.vector("TElem*")())
+    text = (
+        '{"_typename":"TVect","fVect":[{"_typename":"TElem","fBool":true},'
+        '{"$ref":1},null]}'
+    )
+    read = ROOT.TBufferJSON.ConvertFromJSON(text)
+    assert read.fVect[0] is read.fVect[1]
+    assert (read.fVect[0].fBool, read.fVect[2]) == (True, None)
+    assert _json(read, 3) == text
+
+
+def test_a_container_of_containers_is_filled_at_every_depth(monkeypatch):
+    """A ``vector<vector<int>>`` is one JSON array per element, and a ``set<TJsonEx1>`` a map
+    holds is built the same way - ``STL1``'s ``TJsonEx13`` has both."""
+    nested = _reading_class(monkeypatch, "TNested", (
+        ("vvvv", "std::vector<std::vector<int> >", "", ()),
+        ("map1", "std::map<int, std::set<int> >", "", ()),
+    ))  # fmt: skip
+
+    def __init__(self) -> None:
+        self.vvvv = std.vector("std::vector<int>")()
+        self.map1 = std.map("int", "std::set<int>")()
+
+    nested.__init__ = __init__
+    text = (
+        '{"_typename":"TNested","vvvv":[[0,1],[2]],'
+        '"map1":[{"$pair":"pair<int,set<int> >","first":1,"second":[7]}]}'
+    )
+    read = ROOT.TBufferJSON.ConvertFromJSON(text)
+    assert [list(row) for row in read.vvvv] == [[0, 1], [2]]
+    assert [list(held) for _, held in read.map1.items()] == [[7]]
+    assert _json(read, 3) == text
+
+
+def test_a_pointer_to_a_container_is_made_of_what_the_declaration_spells(monkeypatch):
+    """``STL1``'s ``fVectPtrDouble``: the constructor leaves the pointer empty and the JSON
+    holds values, so the container is made of the type the declaration gives it."""
+    made = _reading_class(monkeypatch, "TPointed", (
+        ("fPtr", "std::vector<double>*", "", ()),
+        ("fRows", "std::vector<double>*", "", (2,)),
+    ))  # fmt: skip
+    made.__init__ = lambda self: setattr(self, "fPtr", None) or setattr(
+        self, "fRows", [None, None])
+    text = '{"_typename":"TPointed","fPtr":[3],"fRows":[[1],[2]]}'
+    read = ROOT.TBufferJSON.ConvertFromJSON(text)
+    assert (list(read.fPtr), [list(row) for row in read.fRows]) == ([3.0], [[1.0], [2.0]])
+    assert _json(read, 3) == text
 
 
 def test_a_string_array_reads_back_as_its_strings_and_its_pointer_as_null(monkeypatch):
@@ -1151,3 +1227,98 @@ def test_a_member_that_is_an_array_is_written_as_the_text_root_gives_it(monkeypa
     assert str(ROOT.TBufferJSON.ToJSON(made, 0, "fObj")) == (
         '{\n  "_typename" : "TOne",\n  "fInt" : 4\n}'
     )
+
+
+def test_a_class_that_inherits_its_container_is_filled_where_the_object_is_one(monkeypatch):
+    """``TJsonEx8 : std::vector<int>`` has no member of its own holding the base's values: the
+    object is the vector, so that is what the JSON's ``fVector`` is read into - and a ``null``
+    there leaves it as the constructor made it."""
+    inherited = _declared_class("TInherits", (("fInt", "int", "", ()),),
+                                bases=("std::vector",), base=type(std.vector("int")()))  # fmt: skip
+    monkeypatch.setitem(DECLARED, "TInherits", inherited)
+    read = ROOT.TBufferJSON.ConvertFromJSON(
+        '{"_typename":"TInherits","fVector":[46,69],"fInt":12345}'
+    )
+    assert (list(read), read.fInt) == ([46, 69], 12345)
+    empty = ROOT.TBufferJSON.ConvertFromJSON('{"_typename":"TInherits","fVector":null}')
+    assert list(empty) == []
+
+
+def test_a_two_dimensional_array_of_containers_is_filled_row_by_row(monkeypatch):
+    """``vector<double> f[2][2]`` is two rows of two containers, which is the depth the
+    declaration's lengths give the JSON - and a row that is ``null`` is a pointer with
+    nothing there."""
+    members = (("fRows", "std::vector<double>", "", (2, 2)),)
+    rows = _reading_class(monkeypatch, "TRows", members)
+    rows.__init__ = lambda self: setattr(
+        self, "fRows", [[_vector(), _vector()], [_vector(), None]])
+    read = ROOT.TBufferJSON.ConvertFromJSON(
+        '{"_typename":"TRows","fRows":[[[1],[2]],[[3],null]]}'
+    )
+    assert (list(read.fRows[0][0]), list(read.fRows[1][0])) == ([1.0], [3.0])
+    assert read.fRows[1][1] is None
+
+
+def test_an_array_of_objects_is_read_back_as_the_objects_root_describes(monkeypatch):
+    """``TBase fArr[2]``: one object per element, at the depth the declaration gives, so an
+    array of them is read back the way an array of text is."""
+    _reading_class(monkeypatch, "TElement", (("fBool", "bool", "", ()),))
+    holder = _reading_class(monkeypatch, "TArray", (("fArr", "TElement", "", (2,)),))  # fmt: skip
+    holder.__init__ = lambda self: setattr(self, "fArr", [None, None])
+    text = '{"_typename":"TArray","fArr":[{"_typename":"TElement","fBool":true},null]}'
+    read = ROOT.TBufferJSON.ConvertFromJSON(text)
+    assert (read.fArr[0].fBool, read.fArr[1]) == (True, None)
+    assert _json(read, 3) == text
+    assert _json(ROOT.TBufferJSON.ConvertFromJSON('{"_typename":"TArray","fArr":null}'), 3) == (
+        '{"_typename":"TArray","fArr":null}'
+    )
+
+
+def test_a_pointer_whose_length_a_comment_gives_is_written_at_the_depth_it_is_held(monkeypatch):
+    """``TString *fStr; //[fCnt]`` and ``TNamed **fNm6[3]; //[fCnt]``: the declaration gives
+    the length and the comment the one inside it, so the JSON is an array per row - nested as
+    deeply as the object holds it - and ``null`` where a pointer has nothing."""
+    rows = _reading_class(monkeypatch, "TLengths", (
+        ("fStr", "TString**", "", (3,)),
+        ("fArr", "TArrayI**", "", (3,)),
+        ("fChars", "TArrayC**", "", (3,)),
+        ("fObj", "TElement**", "", (3,)),
+    ))  # fmt: skip
+    for name in ("fStr", "fArr", "fChars", "fObj"):
+        setattr(rows, name, None)
+    rows._cxx_layout_ = ("TLengths", (), (
+        ("fStr", "TString**", "[fCnt]", (3,)),
+        ("fArr", "TArrayI**", "[fCnt]", (3,)),
+        ("fChars", "TArrayC**", "[fCnt]", (3,)),
+        ("fObj", "TElement**", "[fCnt]", (3,)),
+    ))
+    _reading_class(monkeypatch, "TElement", (("fBool", "bool", "", ()),))
+    text = (
+        '{"_typename":"TLengths","fStr":[[null],["a"]],'
+        '"fArr":[[null],[{"$arr":"Int32","len":2,"v":[0,3]}]],"fChars":[[null],["ab"]],'
+        '"fObj":[[null],[{"_typename":"TElement","fBool":true}]]}'
+    )
+    read = ROOT.TBufferJSON.ConvertFromJSON(text)
+    assert (read.fStr, list(read.fArr[1][0])) == ([[None], ["a"]], [0, 3])
+    assert list(read.fChars[1][0]) == [ord("a"), ord("b")]
+    assert read.fObj[1][0].fBool is True
+    with pytest.raises(UnsupportedFeatureError) as refused:
+        ROOT.TBufferJSON.ConvertFromJSON(
+            '{"_typename":"TLengths","fObj":[[5]]}'
+        )
+    assert "cannot read this JSON as TElement" in str(refused.value)
+    plain = text.replace('{"$arr":"Int32","len":2,"v":[0,3]}', "[0,3]")
+    assert _json(ROOT.TBufferJSON.ConvertFromJSON(plain), 3) == plain
+    both = ROOT.TBufferJSON.ConvertFromJSON(plain).fArr
+    assert list(both[1][0]) == [0, 3]
+
+
+def test_the_name_a_map_holds_is_the_one_its_declaration_gives():
+    """ROOT names the types a ``$pair`` holds as the declaration spells them, which the values
+    no longer say - a ``TString`` key is a ``string`` by the time it reaches the writer - and
+    a nested template keeps the space ROOT writes between two ``>``."""
+    from xrdroot.pyroot.core.jsonbuffer import _pair_name
+
+    assert _pair_name("std::map<TString, int>") == "pair<TString,int>"
+    assert _pair_name("std::map<int, std::set<TJsonEx1> >") == "pair<int,set<TJsonEx1> >"
+    assert _pair_name("std::vector<int>") is None
