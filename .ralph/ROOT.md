@@ -1357,6 +1357,34 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   average of 18-26. ruff clean, mypy 1019 files, maintainability 31 117 functions, components 1018 modules /
   0 undeclared.
 
+## Round 46's close (recorded here for the next iteration)
+
+- Base `56b0a92a`, closed at **`e142f240`** plus a tests commit. **`test/` +1: `test/testbits` PASSES**
+  (`/tmp/r46/bits`, 41 tests), the kind **8 → 9**. The load average was 16-20, so the harness and the gate both ran.
+- **`W0-123` closed**, and it was the general gap it was recorded as: a `char[]` initialised from a braced list was
+  always a Python `str`, cut at its first NUL - so `const char bits[] = {0,1,3,7,15,31,63,127}` was `''` and
+  `bits[i>>3] & 1 << (i&7)` had nothing to work on. An array is text now only when its list **spells a C string**
+  (printable characters or C's white-space escapes, then NUL padding) and a byte buffer otherwise. The dialect
+  gained **`buffer_functions`** (`memset`, `memcpy`) for the free functions whose first `char` array is memory - the
+  companion of `buffer_methods` - which is how `memset(buf, 0, sizeof(buf))` makes `buf` a buffer from its
+  declaration rather than a `str` no write reaches in place (`W0-125`, closed with it).
+- **`TBits::Get` had a second bug its own test found**: ROOT's overloads fill `GetNbytes()` *bytes* whatever the
+  array's element width, and writing one element per byte ran off a `Char_t[8]` and put a byte in each of a
+  `Short_t[4]`'s slots. It copies bytes now, so an array of `Short_t` takes them two at a time.
+- **`7e369769` is a general translator fix**: `while (in >> line) if (line.Contains(...))` - ROOT's own
+  `test/stressGraphics.cxx` counting a PostScript file - read into a `str`, because an extraction gives one and a
+  `str` has no `Contains`. Both places a read is written (`extraction` in an expression, `_read_statement` for a
+  statement) now build the dialect's string class around the word. `test/stressgraphics-interpreted` moves
+  **FAIL → UNSUPPORTED**, refused by name: `ROOT has localtime` (`W0-126`).
+- **`e142f240` is the gate's own lesson**: the two fixes pushed `_read_statement` to ccn 11 / npath 624 and
+  `_buffers` to ccn 14 / npath 386 - the full gate caught it and both were **split**, never limited
+  (`W0-93` again: run every gate after every commit).
+- Also recorded for the next round: a **failed extraction leaves the target changed** (`in >> word` at the end of a
+  stream sets `word` to `''` where C++ leaves it as it was), found while writing the test above and not chased.
+- Gates: **`TOTAL 119286 0 29940 0 100%`** by the two-command decomposition (12 962 passed, then 44), at a load
+  average of 16-20. ruff clean, mypy 1019 files, maintainability 31 126 functions, components 1018 modules /
+  0 undeclared.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1409,6 +1437,9 @@ For the round's work, the evidence is, in this order:
   The first reports ~99.73% by design (the ignored files' code is not covered yet) and the second
   reaches 100%. Then `ruff check src tests tools`, `mypy`, `python tools/maintainability.py check`,
   `python tools/components.py check`, `mkdocs build --strict`.
+- Round 46's result of them, at `e142f240`: **`TOTAL 119286 0 29940 0 100%`** - 12 962 passed then 44 passed - at a
+  load average of 16-20; ruff clean, mypy 1019 files, maintainability 31 126 functions, components 1018 modules /
+  0 undeclared. `/tmp/r46/gate3.log` is the first command's output.
 - Round 42's result of them, at `fd657322`: **`TOTAL 119070 0 29912 0 100%`** - 12 948 passed then
   44 passed - at a load average of 90-139, which is the highest a 100% has ever been measured at here.
   **The same two commands with `XRDROOT_TEST_OTHER_MACHINE=1` are green too** (12 948 then 44, 100%,
@@ -1600,6 +1631,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 43 | `0cbe14e9` | **two commits**: ROOT::Math's GSL solvers - `Roots::*`, `GSLRootFinder`, `GSLRootFinderDeriv`, `IRootFinderMethod` (`0be3733b`, `W0-116` closed); the class constants ROOT's tests name - `TTree`/`TAxis`/`TH1`/`TInterpreter` status words and `RootFinder::kMODAB` (`4e473e1e`) | **`other` +1**: `other/math/mathmore-testGSLRootFinder` PASSES, `other/math` 22 -> 23 (`/tmp/r43/gsl`); **the gtest kind measured whole for the first time since round 13**: 53 PASS / 219 FAIL / 76 UNSUPPORTED / 2 TIMEOUT (`/tmp/r43/gtest`) | 5: `W0-118` (the gtest ranking's 219 first failures), `W0-119` (the Clad derivator family is a scope decision), `W0-120` (`std::vector::resize`), `W0-121` (a `.cxx` with `main()` runs its namesake), `W0-122` (`TH1::SetStatOverflows`) |
 | 44 | `9ba7eb49` | **one commit**: ROOT::TSeq's random-access iterator - `begin()`/`end()`, `+`/`-`/`++`/`--`/`[]`/`*it`, and `TSeqU`/`TSeqUL` (`250324e3`) | **gtest +1**: `gtest/core/cont/TSeqTests` PASSES (`/tmp/r44/seq`), the kind 53 -> 54; `coreconttestUnit` moves to `TCollection.RangeCast` | 0 new: `W0-118` **corrected** (round 43 counted occurrences, not programs - 114 of 219 FAIL programs ask for no missing name at all) |
 | 45 | `2f5d8392` | **two commits**: `fflush` reads the name a translation writes for a stream, as `fprintf` does, and `TBits::Set`/`Get` (`4a98e20d`); `root` names an option it cannot read, and the harness matches a `PASSREGEX` across newlines as CMake does (`4468d37b`) | **`other` +1**: `root_exe_errorMessage` PASSES (`/tmp/r45/errm2`), and **both `test/` and `other` measured whole for the first time in ~28 rounds**: `other` 40 / 109 (`/tmp/r45/other`), `test/` 8 / 59 (`/tmp/r45/testkind`) | 3: `W0-123` (a `Char_t[]` of bytes becomes a `str` truncated at the first NUL), `W0-124` (the five `RooUnitTest` tests are a framework), `W0-125` (`testbits` needs only `W0-123`) |
+| 46 | `56b0a92a` | **three commits**: a `char[]` from a braced list is a byte buffer unless it spells a C string, the dialect's `buffer_functions`, and `TBits::Get` filling bytes into any element width (`af1e82fd`); a word read into a dialect string class is that class (`7e369769`); the two reads' tests and the split of two functions the limits caught (`e142f240`) | **`test/` +1**: `test/testbits` PASSES (`/tmp/r46/bits`, 41 tests), the kind 8 -> 9; `test/stressgraphics-interpreted` FAIL -> UNSUPPORTED (`ROOT has localtime`) | 1: `W0-126` (C's `localtime`/`struct tm`); `W0-123` and `W0-125` closed |
 
 ## Notes
 
