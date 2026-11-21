@@ -1009,6 +1009,28 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - Gates: `12917 passed`, `TOTAL 118534 0 29744 0 100%`, ruff/mypy (1019 files)/maintainability (30 869
   functions)/components/`mkdocs --strict` clean, `XRDROOT_TEST_OTHER_MACHINE=1` the same.
 
+## Round 35's close (recorded here for the next iteration)
+
+- Base `1c25bcff`, closed at `4a9eb5ce`. **Five commits, +5 PASS** - the best round since round 27, and it closed the
+  feature four rounds had been chasing.
+- **`W0-91` is closed.** `920dfe4c` (a clone writes the identifiers its objects were numbered with) + `dee7d185` (a
+  `TObject` read member at a time carries the two words its object has) are **round 33's two named edits**, and both were
+  needed exactly as its note said. `io/tree` went **11 -> 14 PASS, 7 -> 4 DIFF, 0 FAIL** (`/tmp/r35/tree`):
+  `test-rcr`, `test-rcrr`, `test-rcrr3` closed.
+- **`other/math` is 19 -> 21 PASS** (`/tmp/r35/other`): `84e15c0f` (AssignSym/MatRepSym), `3e2588d0` + `e67c9a79` (ROOT::Math's
+  genetic minimiser, `Chi2FCN` under its template name, the seed as ROOT's) closed `genetic-testGAMinimizer` and
+  `genetic-GAMinTutorial`. It is **21 PASS / 0 FAIL / 43 UNSUPPORTED / 1 TIMEOUT**.
+- **`W0-95` is the next feature and it is the same one a level deeper**: `test-rcr2`, `test-rcrr2`, `test-rcrr123` print the
+  same 180 `r2` lines as ROOT but resolve them to the **base** object (`ref: N_0_8`) where ROOT resolves to the **first
+  clone** (`ref: r1_N_0_8_8`) - a clone of a *clone* is not yet numbered into its own `ProcessID` record.
+- `W0-96` and `W0-97` re-state the two maths areas so the next round does not re-derive them: `other/math`'s 43
+  UNSUPPORTED want bucketing by reason (most are translator pointer arithmetic), and `roottest/root/math` should be taken
+  as five macros read together, not one error at a time.
+- The machine's load average reached **37** mid-round (another session) and then settled at 13; every measurement was
+  `--jobs 1`, the gates `-n 2` (`W0-44`, `W0-45`).
+- Gates: `12942 passed`, `TOTAL 118743 0 29788 0 100%`, ruff/mypy (1019 files)/maintainability (30 946
+  functions)/components/`mkdocs --strict` clean, `XRDROOT_TEST_OTHER_MACHINE=1` the same.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -1047,6 +1069,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 35's result of it, at `4a9eb5ce`: `TOTAL 118743 0 29788 0 100%`, `12942 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1019 files,
+  maintainability 30 946 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 34's result of it, at `c5962455`/`84271e6c`: `TOTAL 118534 0 29744 0 100%`, `12917 passed,
   1 skipped, 46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1019 files,
   maintainability 30 869 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -1196,6 +1221,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 32 | `3372a1eb` | **two commits**: a `std::set`/`std::map` keeps a copy of what it is given, as C++ does (`8c150a28`); ROOT::Math's integration kinds, function interfaces and Util (`62afe7fe`) | **roottest +1**: `io/json/STL` PASSES - `io/json` **10 PASS / 0 FAIL / 0 DIFF / 2 UNSUPPORTED** (`/tmp/r32/json`); **`other` +2**: `other/math/*` **16 -> 18 PASS**, no PASS lost (`/tmp/r32/other`) | 5: `W0-87` (`other/math`'s next six: `Minimizer.Clear()`/`GetMinosError()`, `Minuit2Minimizer`, `BinData.GetErrorType`, `Chi2FCN`), `W0-88` (**read a dead worker's `docs/discoveries/` - that is where `W0-87` came from**), `W0-89` (`roottest/root/math/*`, 5 tests, 0 PASS); `W0-86` closed; `W0-85`/`W0-79` re-queued |
 | 33 | `91bf694c` | **two commits**: a `Minimizer` that can be cleared and asked for its MINOS errors (`88fa5527`); ROOT::Math's `SVector`/`SMatrix`, subscripted as the macro writes them (`e3838fad`) | **`other` +1**: `other/math/mathcore-testMinim` PASSES - `other/math` **19 PASS / 0 FAIL / 45 UNSUPPORTED / 1 TIMEOUT** (`/tmp/r33/other`); `roottest/root/math/*` still **0 PASS / 4 FAIL / 1 UNSUPPORTED** (`/tmp/r33/rmath`) but all five now *run* | 4: `W0-90` (`roottest/root/math`'s five named walls), `W0-91` (**`W0-79`'s root cause, measured byte for byte** - a clone's new `ProcessID` record and the file index in both the reference and the identifier), `W0-92` (no `TRefTable` is written, so a collision resolves by branch order); `W0-87`/`W0-89` partly taken |
 | 34 | `8997cd97` | **three commits**: ROOT::Math's free functions on `SVector`/`SMatrix` (`efa5f946`); a split `TObject`'s identifier keeps the process byte the file carries (`6bd0d6ba`); the SMatrix test split to stay inside the CCN limit (`c5962455`) | **0 PASS**: `io/tree` stays **11 / 7 / 2** (`/tmp/r34/tree`) and `roottest/root/math/*` stays **0 / 4 / 1** (`/tmp/r34/rmath`); both groups' failures moved but none closed | 4: `W0-93` (**a worker's test with CCN 14 failed the maintainability gate** - every gate after every cherry-pick, not coverage alone), `W0-94` (**two of four workers produced nothing at all**); `W0-91` partly taken (two of three pieces), `W0-90` re-queued |
+| 35 | `1c25bcff` | **five commits**: ROOT::Math's `AssignSym` and the `MatRepSym` a translated type names as text (`84e15c0f`); **a clone writes the identifiers its objects were numbered with** (`920dfe4c`, round 33's two edits at last); a `TObject` read member at a time carries the two words its object has (`dee7d185`); ROOT::Math's genetic minimiser and its seed (`3e2588d0`, `e67c9a79`) | **roottest +3**: `io/tree` **11 -> 14 PASS**, 7 -> **4 DIFF**, **0 FAIL** (`/tmp/r35/tree`: `test-rcr`, `test-rcrr`, `test-rcrr3`); **`other` +2**: `other/math` **19 -> 21 PASS** (`/tmp/r35/other`: `genetic-testGAMinimizer`, `genetic-GAMinTutorial`); `roottest/root/math/*` 0 / 4 / 1 (`/tmp/r35/rmath`) | 3: `W0-95` (**the same feature one level deeper** - a clone of a clone still names the base object, three tests, 180 identical-count lines each), `W0-96` (`other/math`'s 43 UNSUPPORTED bucketed), `W0-97` (`roottest/root/math`, take all five macros at once); `W0-91`, `W0-85`, `W0-87` closed |
 
 ## Notes
 
