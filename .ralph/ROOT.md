@@ -1098,6 +1098,19 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - **The next iteration's first act** should be to re-run the full gate when the load is under ~20, then measure
   `other/math` (the ten tests `W0-98` names) and `io/tree/read` (`W0-100`).
 
+## Round 38's addendum (recorded at its close)
+
+- **The whole-suite gate has three separate obstacles on this machine** (`W0-106`, all measured): the torch file
+  `tests/test_tmva_learn_networks.py` fails 5-9 cases under `-n 4`/`-n 2` and passes alone in 8 s while its dead worker
+  takes the coverage data with it (24% at `-n 2`); `-n 0` dies with `Fatal Python error` at 63-91%; and
+  `tests/test_pyroot_references.py::test_a_reference_numbers_its_object_in_the_session_process_and_finds_it` fails only
+  when it shares a worker (26 pass alone) - the global-`TProcessID` flake again.
+- **The decomposition that works**: `pytest -n 4 --cov --ignore=tests/test_tmva_learn_networks.py
+  --ignore=tests/test_pyroot_references.py` (12 925 pass, 99.73%), then
+  `pytest tests/test_tmva_learn_networks.py tests/test_pyroot_references.py --cov --cov-append` (41 pass, 99.99%).
+- **`W0-107`:** the last ten lines are `src/xrdroot/tmva/nettrain.py:188, 199-207` and a branch - another session's
+  "training failed" path, which no test reaches. Even the decomposition cannot reach 100% until it has one.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
