@@ -19,6 +19,23 @@ class Drawn(ROOT.TNamed, TAttLine, TAttMarker, TAttText):
     """A named object with drawing attributes of its own, as a graphics class has."""
 
 
+def test_a_program_that_threads_stops_root_logging_every_object():
+    """roottest's multicore tests call TObject::SetObjectStat(false) before they start threads.
+
+    ROOT keeps a list of every object made, which is not safe to append to from several threads
+    at once, so it is switched off for the run and the translated call must reach the same flag.
+    """
+    from xrdroot.pyroot import TObject
+
+    assert TObject.GetObjectStat() is True
+    try:
+        TObject.SetObjectStat(False)
+        assert TObject.GetObjectStat() is False
+    finally:
+        TObject.SetObjectStat(True)
+    assert TObject.GetObjectStat() is True
+
+
 def test_a_tobject_is_named_and_titled_by_its_class():
     thing = ROOT.TObject()
     expect(

@@ -206,6 +206,20 @@ class TObject:
         layout = cls.__dict__.get("_cxx_layout_")
         return TClass(str(layout[0]) if layout is not None else cls.__name__, cls)
 
+    #: Whether ROOT logs every object it makes in a list of all objects. A program that runs
+    #: several threads turns it off, because that list is not safe to append to from each.
+    _object_stat = True
+
+    @classmethod
+    def SetObjectStat(cls, on: Any = True) -> None:
+        """``TObject::SetObjectStat``: stop (``false``) or resume logging every object made."""
+        TObject._object_stat = bool(on)
+
+    @classmethod
+    def GetObjectStat(cls) -> bool:
+        """``TObject::GetObjectStat``: is every object made being logged?"""
+        return TObject._object_stat
+
     def GetName(self) -> str:
         """A ``TObject``'s name is its class's."""
         return self.ClassName()
