@@ -28,6 +28,7 @@ from .matrices import (
     TMatrixTSym,
     values_of,
 )
+from .smatrix import Dot, MatRepStd, MatRepSym, SMatrix, SVector
 from .views import (
     TMatrixDColumn,
     TMatrixDColumn_const,
@@ -50,6 +51,7 @@ __all__ = [
     "TMatrixDColumn_const", "TMatrixDDiag_const", "TMatrixTRow", "TMatrixTColumn",
     "TMatrixTDiag", "TDecompLU", "TDecompChol", "TDecompBK", "TDecompSVD", "TDecompQRH",
     "NormalEqn", "VerifyVectorIdentity", "VerifyMatrixIdentity",
+    "SVector", "SMatrix", "MatRepStd", "MatRepSym", "Dot",
 ]  # fmt: skip
 
 
