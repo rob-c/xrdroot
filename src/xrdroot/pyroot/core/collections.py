@@ -775,8 +775,10 @@ class TObjString(TNamed):
     def GetString(self) -> str:
         return self.GetName()
 
-    def String(self) -> str:
-        return self.GetName()
+    def String(self) -> TString:
+        """``String``: the string, as ROOT's ``const TString &`` - a ``TString`` rather than a
+        Python string, so that ``String() + "*"`` is a ``TString`` too and answers ``Data``."""
+        return TString(self.GetName())
 
     def SetString(self, text: Any) -> None:
         self.SetName(text)

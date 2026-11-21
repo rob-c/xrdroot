@@ -21,6 +21,7 @@ from typing import Any
 
 from . import hooks
 from .colors import BITS
+from .strings import MemberString, TString
 
 __all__ = [
     "TObject",
@@ -426,6 +427,27 @@ class TNamed(TObject):
 
     def GetTitle(self) -> str:
         return self._title
+
+    @property
+    def fName(self) -> TString:
+        """``TNamed::fName``: the name as the member C++ gives, so that ``fName.Form(...)``
+        formats into this object and ``fName = "x"`` renames it - a macro of ROOT's writes
+        ``fName.Form("%s_%d", name, GetID())`` in a constructor and relies on it."""
+        return MemberString(self.GetName, self.SetName)
+
+    @fName.setter
+    def fName(self, name: Any) -> None:
+        self.SetName(name)
+
+    @property
+    def fTitle(self) -> TString:
+        """``TNamed::fTitle``: the title as the member C++ gives, so that it reads and
+        assigns as ``fTitle = "x"`` does there rather than only through ``SetTitle``."""
+        return MemberString(self.GetTitle, self.SetTitle)
+
+    @fTitle.setter
+    def fTitle(self, title: Any) -> None:
+        self.SetTitle(title)
 
     def SetName(self, name: Any) -> None:
         renamed(self)

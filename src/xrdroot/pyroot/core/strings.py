@@ -9,11 +9,12 @@ the changing ones handing back the string itself as ROOT's do.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from .cformat import c_format
 
-__all__ = ["TString", "TSubString", "kNPOS", "Printf"]
+__all__ = ["TString", "TSubString", "MemberString", "kNPOS", "Printf"]
 
 #: ``TString::kNPOS``: what ``Index`` finds when it finds nothing.
 kNPOS = -1
@@ -304,6 +305,30 @@ class TString:
     @staticmethod
     def UItoa(value: int, base: int) -> TString:
         return TString.Itoa(abs(int(value)), base)
+
+
+class MemberString(TString):
+    """A ``TString`` that is a data member of an object rather than a string of its own.
+
+    C++ gives the member itself, so ``fName.Form("%s_%d", n, i)``, ``fName += "x"`` and
+    ``fName = "other"`` all change the object where it stands, and ROOT's own macros do
+    exactly that. Here every change goes through the object's getter and setter, so a
+    class that keeps its name somewhere other than a ``TNamed`` wrapper's - a ``TAxis``
+    keeps it in the ``TNamed`` row of its xrdroot object, a ``TEfficiency`` splits it over
+    its axes' - answers as the same member does in C++.
+    """
+
+    def __init__(self, read: Callable[[], str], write: Callable[[Any], None]) -> None:
+        self._read, self._write = read, write
+
+    @property
+    def _s(self) -> str:
+        """The object's text as it is now, which is why this is read on every use."""
+        return self._read()
+
+    @_s.setter
+    def _s(self, text: Any) -> None:
+        self._write(text)
 
 
 class TSubString(TString):
