@@ -74,7 +74,13 @@ def _lorentz(value: dict[str, Any], current: Any) -> Any:
 
 def _clones(value: Any, current: Any, clones: str = "") -> Any:
     """A ``TClonesArray``: each object the entry held, made again from its members - which
-    a split one's branches hand back as a column of each member, a row per object."""
+    a split one's branches hand back as a column of each member, a row per object.
+
+    An element of a class the session declared is made by that declaration, which is what
+    fills the ``TNamed`` part of ``roottest``'s ``tref_test_pid``: no branch under the
+    collection names a base of the class, so a member set one at a time leaves every element
+    of the array empty. A class ROOT or the kit describes instead is made by name, as before.
+    """
     from ..core.collections import TClonesArray
     from ..core.wrapping import from_members
 
@@ -82,10 +88,64 @@ def _clones(value: Any, current: Any, clones: str = "") -> Any:
     made = current if isinstance(current, TClonesArray) else TClonesArray(classname)
     made.Clear()
     for at, members in enumerate(_objects(value)):
-        flat = _flat(members)
-        obj = from_members(classname, flat)
-        made.AddAt(_drawn(classname, flat) if obj is None else obj, at)
+        obj = _member(classname, members)
+        if obj is None:
+            flat = _flat(members)
+            obj = from_members(classname, flat)
+            if obj is None:
+                obj = _drawn(classname, flat)
+        made.AddAt(obj, at)
     return made
+
+
+def _member(classname: str, members: Any) -> Any:
+    """One object of a class C++ declared in this session, from the members read for it - or
+    ``None`` when no class of that name was declared, and a part of the kit makes it instead.
+
+    The branches under a split object name a member by its own name alone, never by the base
+    that declares it, so the row a class's reader takes - a base's members under the base's
+    name - is put together here from the declaration, which is all ROOT's dictionary knows
+    of a class too.
+    """
+    from ..core.declared import made_from
+
+    cls = _described(classname)
+    if cls is None or not isinstance(members, dict):
+        return None
+    return made_from(classname, _by_base(cls, members))
+
+
+def _described(classname: str) -> Any:
+    """The class ``classname`` if C++ declared it - if its translation says its members."""
+    from ..core.declared import find_class
+
+    cls = find_class(classname)
+    return cls if getattr(cls, "__dict__", {}).get("_cxx_layout_") is not None else None
+
+
+def _by_base(cls: Any, flat: dict[str, Any]) -> dict[str, Any]:
+    """One object's members grouped under the base each belongs to, as a class's reader takes
+    them: the members ``cls`` declares itself, and under each of its bases - declared, or one
+    of the namespace's own - the members of that base.
+    """
+    _name, bases, fields = cls.__dict__["_cxx_layout_"]
+    row = {str(key): flat[str(key)] for key, *_ in fields if str(key) in flat}
+    rest = {key: value for key, value in flat.items() if not _declares(cls, key)}
+    for base in bases:
+        owner = _described(str(base))
+        row[str(base)] = _by_base(owner, flat) if owner is not None else dict(rest)
+    return row
+
+
+def _declares(cls: Any, key: str) -> bool:
+    """Does ``cls`` or a base of it name ``key`` among the members it declares?"""
+    _name, bases, fields = cls.__dict__["_cxx_layout_"]
+    if any(str(name) == key for name, *_ in fields):
+        return True
+    return any(
+        owner is not None and _declares(owner, key)
+        for owner in map(_described, (str(base) for base in bases))
+    )
 
 
 def _objects(value: Any) -> list[Any]:

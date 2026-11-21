@@ -18,6 +18,8 @@ import pytest
 import xrdroot
 import xrdroot.pyroot as ROOT
 from xrdroot.errors import UnsupportedFeatureError
+from xrdroot.pycint.execute import run_source
+from xrdroot.pyroot.core.declared import find_class
 from xrdroot.pyroot.trees import objects
 from xrdroot.pyroot.trees.objectinfo import object_info
 from xrdroot.wbranch import CloneMember, SplitClones, clones_members, tref_record
@@ -389,3 +391,110 @@ def test_a_clones_branch_names_the_class_it_holds_and_a_vector_branch_names_none
         "vector<int>",
     )
     back.Close()
+
+
+#: ``roottest``'s ``io/tree/tref_test_pid.C``'s class: a ``TNamed`` with a whole ``TRef``.
+TREF_PID = r"""
+class tref_test_pid: public TNamed {
+public:
+   tref_test_pid() {}
+   TRef fRef;
+   ClassDef(tref_test_pid, 1)
+};
+"""
+
+
+def _written_pid(path: str) -> None:
+    """``tref_test_pid``'s tree: two entries of three named objects, the ``TClonesArray``
+    split member by member as ROOT splits one."""
+    run_source(TREF_PID, "tref_test_pid.C", call=False)
+    made_class = find_class("tref_test_pid")
+    assert made_class is not None
+    out = ROOT.TFile(path, "RECREATE")
+    tree = ROOT.TTree("T", "T")
+    held = ROOT.TClonesArray("tref_test_pid")
+    tree.Branch("r1", held)
+    for entry in range(2):
+        held.Clear()
+        for at in range(3):
+            made = made_class()
+            made.SetName(f"r1_N_{entry}_{at}")
+            made.SetTitle(f"title {at}")
+            held.AddAt(made, at)
+        tree.Fill()
+    tree.Write()
+    out.Close()
+
+
+def test_a_split_collection_read_into_a_clones_array_fills_every_elements_members(
+    tmp_path,
+):
+    """``roottest``'s ``io/tree/tref_test_pid.C`` hands ``SetAddress`` a ``TClonesArray`` and
+    reads each element's members off the split branches - the ``TNamed`` part among them,
+    which the declaration names as a base and no branch names at all. Every element is an
+    object of the branch's class with the name and title read, not an empty one.
+    """
+    path = str(tmp_path / "pid.root")
+    _written_pid(path)
+    back = ROOT.TFile(path)
+    tree = back.Get("T")
+    held = ROOT.TClonesArray(tree.GetBranch("r1").GetClonesName())
+    tree.SetBranchAddress("r1", held)
+    tree.GetEntry(1)
+    assert [o.GetName() for o in held] == ["r1_N_1_0", "r1_N_1_1", "r1_N_1_2"]
+    assert [o.GetTitle() for o in held] == ["title 0", "title 1", "title 2"]
+    assert all(o.GetName() != "" for o in held)
+    back.Close()
+
+
+def test_a_split_collection_read_into_a_pointer_is_the_clones_array_it_points_at(tmp_path):
+    """``b->SetAddress(&caN)`` points at an array the tree fills: the cell keeps the array
+    made for it, and each element of it is an object of the branch's class again."""
+    path = str(tmp_path / "pid.root")
+    _written_pid(path)
+    back = ROOT.TFile(path)
+    tree = back.Get("T")
+    cell = type("Cell", (), {"value": ROOT.TClonesArray("tref_test_pid")})()
+    tree.SetBranchAddress("r1", cell)
+    tree.GetEntry(0)
+    assert [o.GetName() for o in cell.value] == ["r1_N_0_0", "r1_N_0_1", "r1_N_0_2"]
+    back.Close()
+
+
+class _Base:
+    """A class a macro declared, which another class of the macro's derives from."""
+
+    _cxx_layout_ = ("_Base", (), (("fX", "int", "the x", ()),))
+
+
+class _Derived:
+    """The derived class: one member of its own, and its base's."""
+
+    _cxx_layout_ = ("_Derived", ("_Base",), (("fY", "int", "the y", ()),))
+
+
+def test_a_base_a_macro_declared_takes_its_members_under_its_own_name(monkeypatch):
+    """A split branch names ``fX`` and ``fY`` side by side, and a class's reader takes only
+    the members it declares itself: the row nests a declared base's members under the base's
+    name, and leaves out a member of the file that nothing declares.
+    """
+    from xrdroot.pyroot.trees.rebuild import _by_base
+
+    _declared_in_cxx(monkeypatch, _Base)
+    _declared_in_cxx(monkeypatch, _Derived)
+    assert _by_base(_Derived, {"fX": 1, "fY": 2, "fLost": 3}) == {
+        "fY": 2,
+        "_Base": {"fX": 1},
+    }
+
+
+def test_a_class_nobody_declared_is_made_by_the_part_of_the_kit_that_knows_it():
+    """A collection of one of ROOT's own classes - ``TNamed`` - is made by the factory
+    registered for it, and one of neither is refused by the namespace rather than made
+    empty, so a session that never declared the class does not read silent blanks.
+    """
+    from xrdroot.pyroot.trees.rebuild import _member
+
+    assert _member("TNamed", {"fName": "n", "fTitle": ""}) is None
+    assert _member("Nowhere", {"fName": "n"}) is None
+    assert _member("TNamed", ["n"]) is None  # not a row of members at all
