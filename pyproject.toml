@@ -74,7 +74,15 @@ tmva = ["scikit-learn>=1.3", "scipy>=1.10", "xgboost>=2", "torch>=2; platform_ma
 # package SKIP for that reason, rather than FAIL.
 pymva = [
   "torch>=2; platform_machine != 'x86_64' or sys_platform != 'darwin'",
-  "tensorflow>=2.16; python_version < '3.14'",
+  "tensorflow>=2.16; python_version >= '3.12' and python_version < '3.14'",
+  # Apple's Metal plugin: tensorflow-macos 2.15 with tensorflow-metal 1.1, which needs Python
+  # 3.11 - `tensorflow-metal` 1.2 cannot load against TensorFlow 2.16 and later (their wheel
+  # layout moved the library it links), and every TensorFlow a 3.12 can have is 2.16 or newer.
+  # Measured here: the pair reports GPU:0 (Apple M5 Max) and runs a matmul on it, so this is the
+  # only recipe that gives a GPU on macOS arm64. Its price is numpy<2, which pyarrow refuses, so
+  # it belongs in a venv of its own - `--python` on the harness - and never in the gate's.
+  "tensorflow-macos==2.15.0; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version < '3.12'",
+  "tensorflow-metal==1.1.0; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version < '3.12'",
 ]
 # Distributed RDataFrame's backend: ROOT.RDataFrame(..., executor=dask_client).
 distrdf = ["dask[distributed]>=2024"]
