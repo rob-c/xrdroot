@@ -533,7 +533,9 @@ class CallEmitter(ExprEmitter):
         """``node`` stored into an object: a string class made of a C string, built from a
         pointer, copied - which Python would otherwise share - or shared as it is; a pointer
         to an object set to ``0`` is null, which ``if (p)`` then finds it to be."""
-        if ctype.is_object_pointer and _is_null(node):
+        if ctype.pointer and _is_null(node):
+            # ``char *p = 0`` is the null pointer as much as ``TObject *o = 0`` is: ROOT's own
+            # MainEvent.C leaves an unused argument null and asks ``if (arg)`` before using it.
             return "None"
         if self._made_string(ctype, node):
             return f"{self.host_name(ctype.name.split('::'))}({self.value(node)})"
