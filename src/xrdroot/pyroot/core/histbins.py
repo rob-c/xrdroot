@@ -31,6 +31,7 @@ class Bins:
     _xrd: Any
     _core: Any
     DIM: int
+    GetDimension: Any
 
     def _widths(self) -> list[int]:
         """The cells along each axis, flow included, as the global bin number counts them."""
@@ -247,9 +248,18 @@ class Bins:
             cells[bin] = content
 
     def AddBinContent(self, *args: Any) -> None:
-        """``AddBinContent(bin[, w])``: add to one bin's content alone, as ROOT's does."""
-        w = float(args[1]) if len(args) > 1 else 1.0
-        self._xrd._cells()[int(args[0])] += w
+        """``AddBinContent(bin[, w])`` - or ``AddBinContent(binx, biny[, binz][, w])``, as
+        each TH2 and TH3 overloads it: the bin numbers are one per axis, so the last argument
+        is the weight only when there are more of them than the histogram has axes."""
+        axes = self.GetDimension()
+        coordinates = args[:axes]
+        weight = float(args[axes]) if len(args) > axes else 1.0
+        self._add_to_bin(self._global(tuple(int(each) for each in coordinates)), weight)
+
+    def _add_to_bin(self, bin: int, weight: float) -> None:
+        """``weight`` added to the **global** bin ``bin``, which the histogram's own loops
+        (``Eval``, a function set bin by bin) use where a macro would name the coordinates."""
+        self._xrd._cells()[int(bin)] += float(weight)
 
     def SetContent(self, content: Any) -> bool:
         """``SetContent(content)``: every cell at once, the flow bins included.

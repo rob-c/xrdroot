@@ -393,3 +393,29 @@ def test_a_histogram_asks_a_global_flag_for_its_statistics_overflows():
         (ROOT.TH1F("c", "c", 2, 0, 1).GetStatOverflows(), ROOT.TH1.kNeutral),
     )
     ROOT.TH1.StatOverflows(False)
+
+
+def test_add_bin_content_takes_one_bin_number_per_axis_then_the_weight():
+    """``TH1::AddBinContent(bin[, w])`` and the overloads ``TH2``/``TH3`` add - the bin
+    numbers are one per axis, so a 2-D histogram's third argument is its y bin and not a
+    weight, and only one more than the number of axes is a weight. ROOT's own case
+    ``TH1.AddBinContent`` - ``h2.AddBinContent(1, 1, 1.)`` adds one to the bin (1, 1) -
+    and ``Eval``, which works out a global bin itself, still adds to that one."""
+    h1 = ROOT.TH1F("a1", "", 10, 0, 1)
+    h1.AddBinContent(1, 1.0)
+    h1.AddBinContent(1, 2.0)
+    h2 = ROOT.TH2F("a2", "", 10, 0, 1, 2, 0, 3)
+    h2.AddBinContent(1, 1, 1.0)
+    h2.AddBinContent(2, 2, 0.5)
+    h2.AddBinContent(3, 2, 2.0)
+    h3 = ROOT.TH3F("a3", "", 5, 0, 1, 2, 0, 2, 2, 0, 3)
+    h3.AddBinContent(1, 1, 1, 1.0)
+    expect(
+        (h1.GetBinContent(1), 3.0),
+        ((h2.GetBinContent(1, 1), h2.GetBinContent(2, 2), h2.GetBinContent(3, 2)),
+         (1.0, 0.5, 2.0)),
+        (h2.GetBinContent(2, 1), 0.0),
+        (h3.GetBinContent(1, 1, 1), 1.0),
+    )
+    h1.AddBinContent(2)  # one number per axis and no weight: one entry
+    assert h1.GetBinContent(2) == 1.0

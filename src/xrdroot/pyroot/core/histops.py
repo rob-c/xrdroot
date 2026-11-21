@@ -201,7 +201,7 @@ class Operations:
             if fu is None:
                 continue
             bin = owner.GetBin(binx, biny, binz)
-            owner.AddBinContent(bin, fu)
+            owner._add_to_bin(bin, fu)
             if squares is not None:
                 squares[bin] += abs(fu)
 
