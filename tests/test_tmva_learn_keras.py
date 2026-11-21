@@ -343,7 +343,9 @@ def test_memory_growth_is_asked_of_every_gpu_when_the_option_says_so(keras):
 # -- booking and training ---------------------------------------------------------------
 
 
-def test_pykeras_is_a_method_of_the_registry_with_a_model_file_of_its_own(session):
+def test_pykeras_is_a_method_of_the_registry_with_a_model_file_of_its_own(session, keras):
+    """Booking a PyKeras method asks TensorFlow whether it is there, so the stand-in answers -
+    as it does for every other test here that books one; without it the method is refused."""
     assert REGISTRY["PyKeras"] is MethodPyKeras
     assert booked("V").trained_model == os.path.join(
         "dataset", "weights", "TrainedModel_PyKeras.keras"
